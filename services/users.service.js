@@ -60,9 +60,9 @@ function normalizeBadge(badge) {
 function validateBadgeNumber(badge) {
   const b = String(badge || "").trim();
   if (!b) return "Badge / Username is required.";
-  // Only alphanumerics are allowed for account generation.
-  if (!/^[A-Za-z0-9]+$/.test(b)) {
-    return "Badge / Username can only contain letters and numbers.";
+  // Allow letters, numbers, dashes, and underscores only.
+  if (!/^[A-Za-z0-9_-]+$/.test(b)) {
+    return "Badge / Username can only contain letters, numbers, dashes, and underscores.";
   }
   return null;
 }
@@ -1401,7 +1401,7 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
       if (emailErr) rowErrors.push(emailErr);
     }
 
-    // Badge must be numerics only (same rule as UI)
+    // Badge/username base must match the same allowed characters as UI/backend validation.
     const badgeErr = validateBadgeNumber(badge);
     if (badgeErr) rowErrors.push(badgeErr);
 

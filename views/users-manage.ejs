@@ -23,8 +23,8 @@
           type="text"
           name="badge"
           placeholder="Enter Badge Number / Radio ID / Callsign or Username"
-          pattern="[A-Za-z0-9]+"
-          title="Use letters and numbers only."
+          pattern="[A-Za-z0-9_-]+"
+          title="Use letters, numbers, dashes, and underscores only."
           required
         />
       </label>
@@ -439,7 +439,7 @@ function isValidPassword(pwd) {
 }
 
 function isValidBadgeOrUsername(value) {
-  return /^[A-Za-z0-9]+$/.test(String(value || "").trim());
+  return /^[A-Za-z0-9_-]+$/.test(String(value || "").trim());
 }
 
 // -------------------- Agencies --------------------
@@ -645,7 +645,7 @@ form.onsubmit = async (e) => {
 
   if (!isValidBadgeOrUsername(payload.badge)) {
     setMsg(
-      "Badge / Username can only contain letters and numbers.",
+      "Badge / Username can only contain letters, numbers, dashes, and underscores.",
       false
     );
     return;
