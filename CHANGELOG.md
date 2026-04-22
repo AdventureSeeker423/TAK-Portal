@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.2.75 - 4/22/26
+✨ `Enhancement` - Revert recent changes to allow usernames to include dashes and underscores.  Sorry y'all!
+
 ### v1.2.74 - 4/18/26
 🎉 `New Feature` - Added Data Package Manager for global admins.  A current limitation is that any uploaded DP from TAK Portal will result with all groups/channels having access.
 
