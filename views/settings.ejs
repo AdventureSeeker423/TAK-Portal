@@ -134,6 +134,7 @@
         "EMAIL_SEND_COPY_TO",
         "EMAIL_FAIL_HARD",
         "BETA_MODE",
+        "DEFAULT_THEME_MODE",
 
         "SMS_PROVIDER",
         "SMS_TWILIO_ACCOUNT_SID",
@@ -1074,6 +1075,19 @@
         <div class="settings-body">
           <div class="grid2">
             <% renderField("BETA_MODE","Enable Beta Features","If true, shows in-development features for global admins (e.g. Data Sync, Getting Started). Data Package and Locate Persons are available to global admins regardless of this setting."); %>
+            <label class="settings-field">
+              <span class="settings-label">Default Theme Mode</span>
+              <%
+                const defaultThemeMode = String(settings.DEFAULT_THEME_MODE || "dark").toLowerCase();
+              %>
+              <select name="settings[DEFAULT_THEME_MODE]">
+                <option value="dark" <%= defaultThemeMode === "dark" ? "selected" : "" %>>dark</option>
+                <option value="light" <%= defaultThemeMode === "light" ? "selected" : "" %>>light</option>
+              </select>
+              <small class="settings-help">
+                Sets first-load appearance for users who have not toggled a saved theme on this device yet.
+              </small>
+            </label>
             <label class="settings-field">
               <span class="settings-label">Portal Logo</span>
               <input type="file" name="BRAND_LOGO_UPLOAD" accept="image/*" />

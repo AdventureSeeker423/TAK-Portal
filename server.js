@@ -142,15 +142,18 @@ const upload = multer({ storage: uploadStorage });
 app.use((req, res, next) => {
   try {
     const settings = settingsSvc.getSettings();
+    const defaultTheme = String(settings?.DEFAULT_THEME_MODE || "dark")
+      .trim()
+      .toLowerCase();
     res.locals.settings = settings || {};
-    // Hard default: dark mode; per-device toggle is handled client-side.
-    res.locals.brandTheme = "dark";
+    // Server default is used when no per-device theme has been saved yet.
+    res.locals.brandTheme = defaultTheme === "light" ? "light" : "dark";
     res.locals.brandLogoUrl = settings.BRAND_LOGO_URL || "";
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
   } catch (err) {
     console.warn("Failed to load settings for request:", err?.message || err);
     res.locals.settings = {};
-    res.locals.brandTheme = "dark-blue";
+    res.locals.brandTheme = "dark";
     res.locals.brandLogoUrl = "";
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
   }
