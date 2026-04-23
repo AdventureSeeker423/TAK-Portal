@@ -35,8 +35,8 @@ function validateCreate(input) {
     throw new Error("Email Address must be valid");
   }
   if (!badgeNumber) throw new Error("Badge Number is required");
-  if (!/^[A-Za-z0-9]+$/.test(badgeNumber)) {
-    throw new Error("Badge Number can only contain letters and numbers");
+  if (!/^[A-Za-z0-9._-]+$/.test(badgeNumber)) {
+    throw new Error("Badge Number can only contain letters, numbers, periods, dashes, and underscores");
   }
   if (!agencySuffix) throw new Error("Agency is required");
 

@@ -60,9 +60,9 @@ function normalizeBadge(badge) {
 function validateBadgeNumber(badge) {
   const b = String(badge || "").trim();
   if (!b) return "Badge / Username is required.";
-  // Allow letters, numbers, dashes, and underscores only.
-  if (!/^[A-Za-z0-9_-]+$/.test(b)) {
-    return "Badge / Username can only contain letters, numbers, dashes, and underscores.";
+  // Allow letters, numbers, periods, dashes, and underscores only.
+  if (!/^[A-Za-z0-9._-]+$/.test(b)) {
+    return "Badge / Username can only contain letters, numbers, periods, dashes, and underscores.";
   }
   return null;
 }
