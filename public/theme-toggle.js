@@ -2,8 +2,10 @@
   var STORAGE_KEY = "tak-portal-theme";
   var DARK = "dark";
   var LIGHT = "light";
+  var forceServerDefault = false;
 
   function getStoredTheme() {
+    if (forceServerDefault) return null;
     try {
       var v = localStorage.getItem(STORAGE_KEY);
       if (v === DARK || v === LIGHT) return v;
@@ -26,9 +28,11 @@
     if (theme !== DARK && theme !== LIGHT) theme = DARK;
     document.body.classList.remove("theme-dark", "theme-light", "theme-dark-blue");
     document.body.classList.add("theme-" + theme);
-    try {
-      localStorage.setItem(STORAGE_KEY, theme);
-    } catch (e) {}
+    if (!forceServerDefault) {
+      try {
+        localStorage.setItem(STORAGE_KEY, theme);
+      } catch (e) {}
+    }
 
     var toggle = document.getElementById("themeToggle");
     if (toggle) {
@@ -38,6 +42,11 @@
   }
 
   function init() {
+    forceServerDefault =
+      document.body &&
+      document.body.dataset &&
+      document.body.dataset.themeDefaultOnly === "true";
+
     var initial = detectInitialTheme();
     applyTheme(initial);
 
