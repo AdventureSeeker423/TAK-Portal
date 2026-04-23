@@ -253,21 +253,34 @@ app.set("views", path.join(__dirname, "views"));
 
 app.get("/logout", (req, res) => {
   // Where to send the user back after logout (the portal itself)
-  const portalUrl =
+  const portalUrlRaw =
     getString("TAK_PORTAL_PUBLIC_URL", "") ||
     `${req.protocol}://${req.get("host")}/`;
+  const authentikPublicUrlRaw = getString("AUTHENTIK_PUBLIC_URL", "");
   try {
-    // Use the outpost sign-out endpoint on the portal domain so the
-    // outpost proxy cookie is cleared (prevents immediate re-authentication).
-    const u = new URL(portalUrl);
+    const portalUrl = new URL(portalUrlRaw).toString();
+
+    // Prefer Authentik's public URL for sign-out when configured, since some
+    // deployments do not proxy /outpost.goauthentik.io/* on the portal host.
+    // Fall back to the portal host for setups that do.
+    const logoutBase = String(authentikPublicUrlRaw || "").trim() || portalUrl;
+
+    const u = new URL(logoutBase);
     u.pathname = "/outpost.goauthentik.io/sign_out";
+    u.search = "";
     u.searchParams.set("rd", portalUrl);
     return res.redirect(u.toString());
   } catch (err) {
-    console.error("Failed to build outpost logout URL:", err);
-    return res
-      .status(500)
-      .send("Logout is misconfigured. Check portal base URL/proxy setup.");
+    console.error("Failed to build outpost logout URL:", err?.message || err);
+    try {
+      // Last-resort fallback for partially configured environments.
+      const fallbackRd = encodeURIComponent(String(portalUrlRaw || "/"));
+      return res.redirect(`/outpost.goauthentik.io/sign_out?rd=${fallbackRd}`);
+    } catch (_) {
+      return res
+        .status(500)
+        .send("Logout is misconfigured. Check AUTHENTIK_PUBLIC_URL / TAK_PORTAL_PUBLIC_URL.");
+    }
   }
 });
 
