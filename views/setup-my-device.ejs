@@ -3,6 +3,9 @@
 
 <main class="main">
   <h1>Setup My Device</h1>
+  <%
+    const showITakLinks = String((settings && settings.SHOW_ITAK_LINKS) || "false").toLowerCase() === "true";
+  %>
 
   <!-- Device selector -->
   <div class="card" id="deviceSelectCard">
@@ -32,30 +35,66 @@
   <div id="iosFlow" style="display:none;">
     <div class="card">
       <h2>Step 1: Download the TAK App</h2>
-      <a
-        href="https://apps.apple.com/us/app/tak-aware/id6738631659"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="btn tile"
-      >
-        <span class="title">iOS - TAK Aware</span>
-        <span class="desc">Download TAK Aware for iPhone or iPad.</span>
-      </a>
-    </div>
-
-    <div class="card">
-      <h2>Step 2: Enroll Your Device</h2>
       <div class="grid2">
-        <button type="button" class="btn tile" id="scanQrBtnTakAware">
-          <span class="title">Scan QR Code (Recommended)</span>
-          <span class="desc">Scan an enrollment QR code to automatically connect TAK Aware.</span>
-        </button>
-        <button type="button" class="btn tile" id="manualLoginBtnTakAware">
-          <span class="title">Manual Login</span>
-          <span class="desc">Manually connect TAK Aware to the TAK Server.</span>
-        </button>
+        <a
+          href="https://apps.apple.com/us/app/tak-aware/id6738631659"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn tile"
+        >
+          <span class="title">iOS - TAK Aware</span>
+          <span class="desc">Download TAK Aware for iPhone or iPad.</span>
+        </a>
+        <% if (showITakLinks) { %>
+          <a
+            href="https://apps.apple.com/us/app/itak/id1561656396"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn tile"
+          >
+            <span class="title">iOS - iTAK</span>
+            <span class="desc">Download iTAK for iPhone or iPad.</span>
+          </a>
+        <% } %>
       </div>
     </div>
+
+    <% if (showITakLinks) { %>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 0.5rem;">
+        <div>
+          <div class="card">
+            <h2>Step 2: Enroll Your Device - TAK Aware</h2>
+            <button type="button" class="btn tile" id="manualLoginBtnTakAware">
+              <span class="title">Manual Enrollment</span>
+              <span class="desc">Manually connect TAK Aware to the TAK Server.</span>
+            </button>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <h2>Step 2: Enroll Your Device - iTAK</h2>
+            <button type="button" class="btn tile" id="manualLoginBtnITak">
+              <span class="title">Manual Enrollment</span>
+              <span class="desc">Manually connect iTAK to the TAK Server.</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    <% } else { %>
+      <div class="card">
+        <h2>Step 2: Enroll Your Device</h2>
+        <div class="grid2">
+          <button type="button" class="btn tile" id="scanQrBtnTakAware">
+            <span class="title">Scan QR Code (Recommended)</span>
+            <span class="desc">Scan an enrollment QR code to automatically connect TAK Aware.</span>
+          </button>
+          <button type="button" class="btn tile" id="manualLoginBtnTakAware">
+            <span class="title">Manual Login</span>
+            <span class="desc">Manually connect TAK Aware to the TAK Server.</span>
+          </button>
+        </div>
+      </div>
+    <% } %>
 
     <div class="card">
       <h2>Step 3: Configure Device Preferences</h2>
@@ -260,6 +299,7 @@
 <script>
   // CloudTAK URL (from settings.json via server render)
   const cloudtakUrl = <%- JSON.stringify((settings && typeof settings.CLOUDTAK_URL === "string") ? settings.CLOUDTAK_URL.trim() : "") %>;
+  const showITakLinks = <%- JSON.stringify(String((settings && settings.SHOW_ITAK_LINKS) || "false").toLowerCase() === "true") %>;
 
   // --- device selection UI (NO persistence; forgets on reload) ---
   const iosFlow = document.getElementById("iosFlow");
@@ -301,6 +341,7 @@
   // --- QR modal + enrollment logic ---
   const scanQrBtnTakAware = document.getElementById("scanQrBtnTakAware");
   const scanQrBtnAtak = document.getElementById("scanQrBtnAtak");
+  const manualLoginBtnITak = document.getElementById("manualLoginBtnITak");
   const overlay = document.getElementById("setupQrOverlay");
   const closeBtn = document.getElementById("setupQrCloseBtn");
   const qrImg = document.getElementById("setupQrImg");
@@ -362,8 +403,13 @@
 
   function setManualLoginInstructions(mode, ottData) {
     const isTakAware = mode === "takaware";
+    const isITak = mode === "itak";
     const isOtt = mode === "ott";
-    manualLoginInstructionsTitle.textContent = isTakAware ? "TAK Aware (iOS): How to Manually Configure" : isOtt ? "Open TAK Tracker: How to Manually Configure" : "ATAK (Android): How to Manually Configure";
+    manualLoginInstructionsTitle.textContent = isTakAware || isITak
+      ? (isITak ? "iTAK (iOS): How to Manually Configure" : "TAK Aware (iOS): How to Manually Configure")
+      : isOtt
+        ? "Open TAK Tracker: How to Manually Configure"
+        : "ATAK (Android): How to Manually Configure";
 
     if (isOtt && ottData) {
       const c = (ottData.callsign && escapeHtml(ottData.callsign)) || "";
@@ -385,7 +431,7 @@
       return;
     }
 
-    const steps = isTakAware
+    const steps = (isTakAware || isITak)
       ? [
           "Open TAK Aware on your iOS device.",
           "When prompted, allow Location access and set it to 'Always Allow'.",
@@ -877,10 +923,13 @@
   });
 
   // Attach handlers (buttons exist in DOM even when flows are hidden)
-  scanQrBtnTakAware.addEventListener("click", () => handleScanClick("takaware"));
+  if (scanQrBtnTakAware) scanQrBtnTakAware.addEventListener("click", () => handleScanClick("takaware"));
   scanQrBtnAtak.addEventListener("click", () => handleScanClick("atak"));
   manualLoginBtnTakAware.addEventListener("click", () => handleManualLoginClick("takaware"));
   manualLoginBtnAtak.addEventListener("click", () => handleManualLoginClick("atak"));
+  if (showITakLinks && manualLoginBtnITak) {
+    manualLoginBtnITak.addEventListener("click", () => handleManualLoginClick("itak"));
+  }
 
   // Open TAK Tracker column: OTT enrollment QR (includes callsign/team/role), same manual login modal
   const scanQrBtnOtt = document.getElementById("scanQrBtnOtt");

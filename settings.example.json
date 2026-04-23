@@ -19,6 +19,7 @@
   "TAK_BYPASS_ENABLED": "false",
   "DASHBOARD_TAK_STATS_REFRESH_SECONDS": "15",
   "CLOUDTAK_URL": "",
+  "SHOW_ITAK_LINKS": "false",
   "TAK_SSH_HOST": "",
   "TAK_SSH_PORT": "22",
   "TAK_SSH_USER": "",
