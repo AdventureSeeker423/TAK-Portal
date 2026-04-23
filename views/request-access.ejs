@@ -214,6 +214,10 @@
 <script src="https://js.hcaptcha.com/1/api.js?onload=hcaptchaOnLoad&render=explicit" async defer></script>
 <% } %>
 
+<script>
+  // This page always starts from the server-configured default theme on refresh.
+  try { localStorage.removeItem("tak-portal-theme"); } catch (e) {}
+</script>
 <script src="/theme-toggle.js" defer></script>
 
 </div>
