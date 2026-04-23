@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.2.77 - 4/23/26
+🎉 `New Feature` - Agencies can now be imported by CSV for mass creation
+
 ### v1.2.76 - 4/23/26
 ✨ `Enhancement` - Allow periods to be used in usernames<br>
 ✨ `Enhancement` - Server Settings option added to set default appearance for pages
