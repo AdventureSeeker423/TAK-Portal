@@ -1081,8 +1081,8 @@
                 const defaultThemeMode = String(settings.DEFAULT_THEME_MODE || "dark").toLowerCase();
               %>
               <select name="settings[DEFAULT_THEME_MODE]">
-                <option value="dark" <%= defaultThemeMode === "dark" ? "selected" : "" %>>dark</option>
-                <option value="light" <%= defaultThemeMode === "light" ? "selected" : "" %>>light</option>
+                <option value="Dark" <%= defaultThemeMode === "dark" ? "selected" : "" %>>dark</option>
+                <option value="Light" <%= defaultThemeMode === "light" ? "selected" : "" %>>light</option>
               </select>
               <small class="settings-help">
                 Sets first-load appearance for users who have not toggled a saved theme on this device yet.
