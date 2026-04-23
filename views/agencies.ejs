@@ -136,8 +136,16 @@
         </select>
       </label>
       
-      <label> <br>
-      <button class="btn">Create Agency</button></label>
+      <label><br>
+        <button class="btn" type="submit">Create Agency</button>
+      </label>
+      <label><br>
+        <button class="btn success" type="button" id="agencyCsvBtn">Create from CSV</button>
+      </label>
+      <label><br>
+        <button class="btn btn-access" type="button" id="agencyCsvTemplateBtn">Download CSV Template</button>
+      </label>
+      <input type="file" id="agencyCsvFileInput" accept=".csv" style="display:none" />
     </form>
     <div id="msg" class="msg"></div>
   </div>
@@ -309,6 +317,9 @@ const AGENCY_TYPE_OPTIONS = <%- JSON.stringify(Array.isArray(agencyTypeOptions) 
 const msg = document.getElementById("msg");
 const tbody = document.getElementById("tbody");
 const addForm = document.getElementById("addForm");
+const agencyCsvBtn = document.getElementById("agencyCsvBtn");
+const agencyCsvFileInput = document.getElementById("agencyCsvFileInput");
+const agencyCsvTemplateBtn = document.getElementById("agencyCsvTemplateBtn");
 const refreshBtn = document.getElementById("refreshBtn");
 const agencyAttributesEditBtn = document.getElementById("agencyAttributesEditBtn");
 const agencyTable = document.getElementById("agencyTable");
@@ -329,6 +340,89 @@ let sortState = { key: "name", dir: 1 }; // default: Agency asc
 function setMsg(text, ok=true){
   msg.textContent = text || "";
   msg.className = "msg " + (ok ? "ok" : "bad");
+}
+
+if (agencyCsvTemplateBtn) {
+  agencyCsvTemplateBtn.addEventListener("click", () => {
+    const a = document.createElement("a");
+    a.href = "/sample-agencies.csv";
+    a.download = "agencies-import-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+}
+
+if (agencyCsvBtn && agencyCsvFileInput) {
+  agencyCsvBtn.addEventListener("click", () => {
+    setMsg("");
+    agencyCsvFileInput.value = "";
+    agencyCsvFileInput.click();
+  });
+
+  agencyCsvFileInput.addEventListener("change", async () => {
+    const file = agencyCsvFileInput.files && agencyCsvFileInput.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setMsg("Please select a .csv file", false);
+      agencyCsvFileInput.value = "";
+      return;
+    }
+
+    agencyCsvBtn.disabled = true;
+    setMsg("Importing agencies from CSV...", true);
+
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+
+      const res = await fetch("/api/agencies/import-csv", {
+        method: "POST",
+        body: fd,
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(out.error || "CSV import failed", false);
+        return;
+      }
+
+      const created = Array.isArray(out.created) ? out.created : [];
+      const skipped = Array.isArray(out.skipped) ? out.skipped : [];
+      const failed = Array.isArray(out.failed) ? out.failed : [];
+
+      let summary = `Imported ${created.length} agenc${created.length === 1 ? "y" : "ies"} from CSV.`;
+      if (skipped.length) {
+        summary += ` Skipped ${skipped.length} row${skipped.length === 1 ? "" : "s"}.`;
+      }
+      if (failed.length) {
+        summary += ` ${failed.length} row${failed.length === 1 ? "" : "s"} had errors and were not imported.`;
+      }
+
+      if (skipped.length) {
+        summary += " Skipped: " + skipped.map((s) => `line ${s.line} (${s.suffix || "n/a"}: ${s.reason || "skipped"})`).join(" | ");
+      }
+      if (failed.length) {
+        const first = failed.slice(0, 20);
+        summary += " Errors: " + first
+          .map((f) => `line ${f.line} (${f.suffix || "n/a"}): ${(Array.isArray(f.messages) ? f.messages.join("; ") : String(f.messages || "error"))}`)
+          .join(" | ");
+        if (failed.length > first.length) {
+          summary += ` | …and ${failed.length - first.length} more (see browser console).`;
+        }
+      }
+
+      setMsg(summary, created.length > 0);
+      if (skipped.length) console.warn("Agency CSV import skipped rows:", skipped);
+      if (failed.length) console.warn("Agency CSV import failed rows:", failed);
+      await loadAgenciesWithCounts();
+      syncCountyAbbrevFromExisting();
+    } catch (err) {
+      setMsg(err?.message || "CSV import failed", false);
+    } finally {
+      agencyCsvBtn.disabled = false;
+      agencyCsvFileInput.value = "";
+    }
+  });
 }
 
 function esc(s){

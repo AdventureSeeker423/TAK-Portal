@@ -1,4 +1,5 @@
 const router = require("express").Router();
+const multer = require("multer");
 const store = require("../services/agencies.service");
 const agencyTypesSvc = require("../services/agencyTypes.service");
 const accessSvc = require("../services/access.service");
@@ -6,6 +7,7 @@ const usersService = require("../services/users.service");
 const groupsService = require("../services/groups.service");
 const api = require("../services/authentik");
 const auditSvc = require("../services/auditLog.service");
+const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
   const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
@@ -103,6 +105,35 @@ function validateAgency(a) {
   if (a.countyAbbrev.length < 3) return "County abbreviation must be at least 3 characters";
   return null;
 }
+
+function toTitleCaseWords(str) {
+  return String(str || "")
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function normalizeCountyName(raw) {
+  let v = String(raw || "").trim().replace(/\s+/g, " ");
+  if (!v) return "";
+  const lower = v.toLowerCase();
+  if (lower.endsWith(" county")) {
+    const base = v.slice(0, lower.lastIndexOf(" county"));
+    return toTitleCaseWords(base);
+  }
+  return toTitleCaseWords(v);
+}
+
+const ALLOWED_STATES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+  "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+  "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+  "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+  "WI", "WY", "FED", "OTHER",
+]);
 
 // Basic agencies list (raw)
 router.get("/", (req, res) => {
@@ -231,6 +262,202 @@ const ALLOWED_AGENCY_COLORS = new Set([
   "White",
   "Yellow",
 ]);
+
+router.post("/import-csv", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: "No CSV file uploaded" });
+    }
+
+    const rawText = String(req.file.buffer.toString("utf8") || "");
+    const text = rawText.charCodeAt(0) === 0xfeff ? rawText.slice(1) : rawText;
+    const lines = text
+      .split(/\r?\n/)
+      .map((l) => String(l || "").trim())
+      .filter(Boolean);
+
+    if (lines.length < 2) {
+      return res.status(400).json({
+        error: "CSV must include a header row and at least one data row",
+      });
+    }
+
+    const header = lines[0].split(",").map((h) => String(h || "").trim());
+    const normalizedHeader = header.map((h) => h.toLowerCase());
+    const requiredColumns = [
+      { key: "name", label: "Agency Full Name", aliases: ["agency full name", "name"] },
+      { key: "groupPrefix", label: "Agency Abbreviation", aliases: ["agency abbreviation", "groupprefix"] },
+      { key: "suffix", label: "Username Suffix", aliases: ["username suffix", "suffix"] },
+      { key: "state", label: "State", aliases: ["state"] },
+      { key: "county", label: "County", aliases: ["county"] },
+      { key: "countyAbbrev", label: "County Abbreviation", aliases: ["county abbreviation", "countyabbrev"] },
+      { key: "type", label: "Agency Type", aliases: ["agency type", "type"] },
+      { key: "color", label: "Agency Color", aliases: ["agency color", "color"] },
+    ];
+
+    const columnIndexes = new Map();
+    for (const col of requiredColumns) {
+      const idx = normalizedHeader.findIndex((h) => col.aliases.includes(h));
+      if (idx < 0) {
+        return res.status(400).json({ error: `Missing required column: ${col.label}` });
+      }
+      columnIndexes.set(col.key, idx);
+    }
+
+    function get(parts, key) {
+      const idx = columnIndexes.get(key);
+      return Number.isInteger(idx) ? String(parts[idx] ?? "").trim() : "";
+    }
+
+    const allAgencyTypes = new Set(agencyTypesSvc.getAgencyTypeOptions());
+    const allAgencies = store.load();
+    const visibleAgencies = accessSvc.filterAgenciesForUser(req.authentikUser, allAgencies);
+    const allowedSuffixes = new Set(
+      visibleAgencies.map((a) => String(a?.suffix || "").trim().toLowerCase()).filter(Boolean)
+    );
+
+    const existingSuffixes = new Set(
+      allAgencies.map((a) => String(a?.suffix || "").trim().toLowerCase()).filter(Boolean)
+    );
+    const seenIncomingSuffixes = new Set();
+
+    const created = [];
+    const skipped = [];
+    const failed = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(",");
+      const line = i + 1;
+
+      const name = get(parts, "name");
+      const groupPrefix = get(parts, "groupPrefix").toUpperCase();
+      const suffix = get(parts, "suffix").toLowerCase();
+      const state = get(parts, "state").toUpperCase();
+      const county = normalizeCountyName(get(parts, "county"));
+      const countyAbbrev = get(parts, "countyAbbrev").toUpperCase().replace(/[^A-Z]/g, "");
+      const type = get(parts, "type");
+      const color = get(parts, "color");
+
+      const candidate = normalizeAgency({
+        name,
+        groupPrefix,
+        suffix,
+        state,
+        county,
+        countyAbbrev,
+        type,
+        color,
+      });
+
+      const rowErrors = [];
+      const baseErr = validateAgency(candidate);
+      if (baseErr) rowErrors.push(baseErr);
+      if (candidate.suffix && !/^[a-z0-9_-]+$/.test(candidate.suffix)) {
+        rowErrors.push("Username suffix can only contain lowercase letters, numbers, dashes, and underscores");
+      }
+      if (candidate.groupPrefix && !/^[A-Z0-9_-]+$/.test(candidate.groupPrefix)) {
+        rowErrors.push("Agency abbreviation can only contain letters, numbers, dashes, and underscores");
+      }
+      if (candidate.state && !ALLOWED_STATES.has(candidate.state)) {
+        rowErrors.push(`Invalid state "${candidate.state}"`);
+      }
+      if (candidate.type && !allAgencyTypes.has(candidate.type)) {
+        rowErrors.push(`Invalid agency type "${candidate.type}"`);
+      }
+      if (candidate.color && !ALLOWED_AGENCY_COLORS.has(candidate.color)) {
+        rowErrors.push(`Invalid agency color "${candidate.color}"`);
+      }
+
+      if (rowErrors.length) {
+        failed.push({
+          line,
+          suffix: candidate.suffix || undefined,
+          messages: rowErrors,
+        });
+        continue;
+      }
+
+      if (!accessSvc.isSuffixAllowed(req.authentikUser, candidate.suffix)) {
+        failed.push({
+          line,
+          suffix: candidate.suffix,
+          messages: [`You do not have access to create agency suffix "${candidate.suffix}"`],
+        });
+        continue;
+      }
+
+      if (existingSuffixes.has(candidate.suffix)) {
+        skipped.push({
+          line,
+          suffix: candidate.suffix,
+          reason: "Suffix already exists",
+        });
+        continue;
+      }
+
+      if (seenIncomingSuffixes.has(candidate.suffix)) {
+        skipped.push({
+          line,
+          suffix: candidate.suffix,
+          reason: "Duplicate suffix in CSV",
+        });
+        continue;
+      }
+
+      try {
+        await ensureAgencyAdminGroupExists(candidate);
+        allAgencies.push(candidate);
+        existingSuffixes.add(candidate.suffix);
+        seenIncomingSuffixes.add(candidate.suffix);
+        created.push({
+          line,
+          suffix: candidate.suffix,
+          name: candidate.name,
+        });
+      } catch (err) {
+        failed.push({
+          line,
+          suffix: candidate.suffix,
+          messages: [
+            err?.response?.data?.detail ||
+              err?.response?.data ||
+              err?.message ||
+              "Failed to create agency admin group",
+          ],
+        });
+      }
+    }
+
+    if (created.length) {
+      store.save(allAgencies);
+      auditSvc.logEvent({
+        actor: req.authentikUser || null,
+        request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+        action: "IMPORT_AGENCIES_CSV",
+        targetType: "agency",
+        targetId: "bulk",
+        details: {
+          created: created.length,
+          skipped: skipped.length,
+          failed: failed.length,
+          createdSuffixes: created.map((x) => x.suffix),
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      count: created.length,
+      created,
+      skipped,
+      failed,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      error: err?.response?.data?.detail || err?.response?.data || err?.message || "CSV import failed",
+    });
+  }
+});
 
 router.patch("/:index/color", (req, res) => {
   const idx = Number(req.params.index);
