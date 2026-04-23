@@ -253,10 +253,13 @@ app.set("views", path.join(__dirname, "views"));
 
 app.get("/logout", (req, res) => {
   // Where to send the user back after logout (the portal itself)
-  const portalUrl =
+  const portalUrlRaw =
     getString("TAK_PORTAL_PUBLIC_URL", "") ||
     `${req.protocol}://${req.get("host")}/`;
   try {
+    // Canonicalize so rd is always a full normalized URL (includes trailing slash on host roots).
+    const portalUrl = new URL(portalUrlRaw).toString();
+
     // Use the outpost sign-out endpoint on the portal domain so the
     // outpost proxy cookie is cleared (prevents immediate re-authentication).
     const u = new URL(portalUrl);
