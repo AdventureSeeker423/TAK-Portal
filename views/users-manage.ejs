@@ -102,9 +102,9 @@
       </div>
 
       <div class="createActionsRow" style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap;">
-        <button class="btn" type="submit" id="createUserSubmitBtn">Create New User</button>
-        <button class="btn success" type="button" id="createCsvBtn">Create from CSV</button>
         <button class="btn btn-access createTemplateDownloadBtn" type="button" id="downloadCsvTemplateBtn">Download CSV Template</button>
+        <button class="btn success" type="button" id="createCsvBtn">Create from CSV</button>
+        <button class="btn createUserSubmitBtnAlignRight" type="submit" id="createUserSubmitBtn">Create New User</button>
         <input type="file" id="createCsvFileInput" accept=".csv" style="display:none" />
         <span id="createMsg" class="msg"></span>
       </div>
@@ -2826,8 +2826,11 @@ th.sortable:hover{
 }
 
 .createTemplateDownloadBtn{
-  margin-left: auto;
   white-space: nowrap;
+}
+
+.createUserSubmitBtnAlignRight{
+  margin-left: auto;
 }
 
 /* Purple accent used elsewhere in portal (Mutual Aid / Manage Access). */

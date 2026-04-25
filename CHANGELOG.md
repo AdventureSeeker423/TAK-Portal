@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.2.78 - 4/25/26
+🐛 `Bug Fix` - Fixes issue with standard users not being able to download plugins.<br>
+
 ### v1.2.77 - 4/23/26
 🎉 `New Feature` - Agencies can now be imported by CSV for mass creation
 
