@@ -24,6 +24,7 @@ const usersSvc = require("./services/users.service");
 const groupsSvc = require("./services/groups.service");
 const agencyTypesSvc = require("./services/agencyTypes.service");
 const locatorsSvc = require("./services/locators.service");
+const pluginsSvc = require("./services/plugins.service");
 const { toSafeApiError } = require("./services/apiErrorPayload.service");
 
 const app = express();
@@ -287,6 +288,21 @@ app.use("/api/setup-my-device", require("./routes/setupDevice.routes"));
 app.use("/api/mutual-aid", require("./routes/mutualAid.routes"));
 app.use("/api/tak", require("./routes/takMetrics.routes"));
 app.use("/api/user-requests", require("./routes/userRequests.routes"));
+// Allow authenticated users on the Plugins page to download plugin files.
+app.get("/api/plugins/:id/download", (req, res) => {
+  try {
+    const { id } = req.params;
+    const filePath = pluginsSvc.getPluginFilePath(id);
+    if (!filePath) {
+      return res.status(404).json({ error: "Plugin not found." });
+    }
+    const filename = path.basename(filePath);
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.sendFile(filePath);
+  } catch (err) {
+    return res.status(500).json({ error: toSafeApiError(err) });
+  }
+});
 app.use("/api/audit-log", requireGlobalAdmin, require("./routes/auditLog.routes"));
 app.use("/api/plugins", requireGlobalAdmin, require("./routes/plugins.routes"));
 app.use("/api/integrations", requireGlobalAdmin, require("./routes/integrations.routes"));

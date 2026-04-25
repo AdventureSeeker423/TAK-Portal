@@ -45,6 +45,7 @@ function normalizePath(p) {
 
 function portalAuthMiddleware(req, res, next) {
   const authEnabled = getBool("PORTAL_AUTH_ENABLED", false);
+  const method = String(req.method || "").toUpperCase();
 
   // Safe defaults for views
   res.locals.authUser = null;
@@ -63,7 +64,12 @@ function portalAuthMiddleware(req, res, next) {
   // admin-only listing endpoint.
   const isPublicAccessRequestSubmit =
     normalizedPath === "/api/user-requests" &&
-    String(req.method || "").toUpperCase() === "POST";
+    method === "POST";
+
+  const isPluginDownloadApi =
+    method === "GET" &&
+    normalizedPath.startsWith("/api/plugins/") &&
+    normalizedPath.endsWith("/download");
 
   // ============================================================
   // AUTH DISABLED => EVERYTHING WIDE OPEN + BOOTSTRAP ADMIN USER
@@ -181,7 +187,8 @@ if (!isPublicPath) {
     const isAllowedNonAdminPath =
       normalizedPath === "/setup-my-device" ||
       normalizedPath.startsWith("/api/setup-my-device") ||
-      normalizedPath === "/plugins";
+      normalizedPath === "/plugins" ||
+      isPluginDownloadApi;
     if (!isAllowedNonAdminPath) {
       return deny();
     }
@@ -227,6 +234,7 @@ if (!isPublicPath) {
       "/api/user-requests",
       "/api/tak",
       "/api/documents",
+      "/api/plugins",
     ];
 
     const allowed = allowedAgencyAdminPrefixes.some(prefix =>
@@ -245,6 +253,7 @@ if (!isPublicPath) {
       "/setup-my-device",
       "/api/setup-my-device",
       "/plugins",
+      "/api/plugins",
     ];
 
     const allowed = allowedUserPrefixes.some(prefix =>
