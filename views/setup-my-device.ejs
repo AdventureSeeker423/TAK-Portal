@@ -1044,8 +1044,8 @@
   function handleIosPreferenceManualClick() {
     iosPreferenceManualInstructions.innerHTML = [
       "In TAK Aware, open the menu from the icon in the top-right corner.",
-      "Open <strong>Display Settings</strong>. Set <strong>Base Map</strong> to <strong>Flyover</strong> so terrain reads more clearly at a glance.",
-      "On the same screen, scroll to <strong>Map Label Display</strong> and choose <strong>Show Full Label</strong> so roads, points, and other features stay legible on the map."
+      "Open <strong>Display Settings</strong>. Set <strong>Base Map</strong> to <strong>Flyover</strong> to display a hybrid map with satellite imagery and street names.",
+      "On the same screen, scroll to <strong>Map Label Display</strong> and choose <strong>Show Full Label</strong> so COT callsigns are fully visible."
     ].map(function (s) { return "<li>" + s + "</li>"; }).join("");
     openIosPreferenceManualModal();
   }
