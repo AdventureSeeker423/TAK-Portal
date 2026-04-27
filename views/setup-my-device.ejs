@@ -31,45 +31,23 @@
     </div>
   </div>
 
-  <!-- iOS flow -->
+  <!-- iOS flow: one vertical stack per app (download → enroll → optional settings) -->
   <div id="iosFlow" style="display:none;">
-    <div class="card">
-      <h2>Step 1: Download the TAK App</h2>
-      <div class="<%= showITakLinks ? 'grid3' : 'grid2' %>">
-        <a
-          href="https://apps.apple.com/us/app/tak-aware/id6738631659"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn tile success"
-        >
-          <span class="title">iOS - TAK Aware (Recommended)</span>
-          <span class="desc">Download TAK Aware for iPhone or iPad.</span>
-        </a>
-        <a
-          href="https://apps.apple.com/us/app/tak-tracker/id6455684671"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn tile"
-        >
-          <span class="title">iOS - TAK Tracker</span>
-          <span class="desc">Download TAK Tracker for iPhone or iPad. (Tracking Only, No Map)</span>
-        </a>
-        <% if (showITakLinks) { %>
+    <div class="iosSetupGrid <%= showITakLinks ? 'iosSetupGrid--three' : 'iosSetupGrid--two' %>" style="margin-top: 0.5rem;">
+      <!-- TAK Aware -->
+      <div class="iosAppColumn">
+        <div class="card">
+          <h2>Step 1: Download - TAK Aware</h2>
           <a
-            href="https://apps.apple.com/us/app/itak/id1561656396"
+            href="https://apps.apple.com/us/app/tak-aware/id6738631659"
             target="_blank"
             rel="noopener noreferrer"
-            class="btn tile"
+            class="btn tile success"
           >
-            <span class="title">iOS - iTAK</span>
-            <span class="desc">Download iTAK for iPhone or iPad.</span>
+            <span class="title">iOS - TAK Aware (Recommended)</span>
+            <span class="desc">Download TAK Aware for iPhone or iPad.</span>
           </a>
-        <% } %>
-      </div>
-    </div>
-
-    <div class="<%= showITakLinks ? 'grid3' : 'grid2' %>" style="margin-top: 0.5rem;">
-      <div>
+        </div>
         <div class="card">
           <h2>Step 2: Enroll Your Device - TAK Aware</h2>
           <div class="grid2">
@@ -83,8 +61,29 @@
             </button>
           </div>
         </div>
+        <div class="card">
+          <h2>Step 3: Recommended Settings - TAK Aware</h2>
+          <button type="button" class="btn tile" id="iosPreferenceManualBtn">
+            <span class="title">Recommended Settings</span>
+            <span class="desc">Tune map display options for clearer labels and terrain (recommended).</span>
+          </button>
+        </div>
       </div>
-      <div>
+
+      <!-- TAK Tracker -->
+      <div class="iosAppColumn">
+        <div class="card">
+          <h2>Step 1: Download - TAK Tracker</h2>
+          <a
+            href="https://apps.apple.com/us/app/tak-tracker/id6455684671"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn tile"
+          >
+            <span class="title">iOS - TAK Tracker</span>
+            <span class="desc">Download TAK Tracker for iPhone or iPad. (Tracking Only, No Map)</span>
+          </a>
+        </div>
         <div class="card">
           <h2>Step 2: Enroll Your Device - TAK Tracker</h2>
           <div class="grid2">
@@ -99,8 +98,21 @@
           </div>
         </div>
       </div>
+
       <% if (showITakLinks) { %>
-        <div>
+        <div class="iosAppColumn">
+          <div class="card">
+            <h2>Step 1: Download - iTAK</h2>
+            <a
+              href="https://apps.apple.com/us/app/itak/id1561656396"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn tile"
+            >
+              <span class="title">iOS - iTAK</span>
+              <span class="desc">Download iTAK for iPhone or iPad.</span>
+            </a>
+          </div>
           <div class="card">
             <h2>Step 2: Enroll Your Device - iTAK</h2>
             <button type="button" class="btn tile" id="manualLoginBtnITak">
@@ -109,22 +121,6 @@
             </button>
           </div>
         </div>
-      <% } %>
-    </div>
-
-    <div class="<%= showITakLinks ? 'grid3' : 'grid2' %>" style="margin-top: 0.5rem;">
-      <div>
-        <div class="card">
-          <h2>Step 3: Recommended Settings - TAK Aware</h2>
-          <button type="button" class="btn tile" id="iosPreferenceManualBtn">
-            <span class="title">Recommended Settings</span>
-            <span class="desc">Tune map display options for clearer labels and terrain (recommended).</span>
-          </button>
-        </div>
-      </div>
-      <div aria-hidden="true"></div>
-      <% if (showITakLinks) { %>
-        <div aria-hidden="true"></div>
       <% } %>
     </div>
   </div>

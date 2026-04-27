@@ -868,6 +868,34 @@ select:focus {
    SETUP MY DEVICE
    ====================== */
 
+.iosSetupGrid {
+    display: grid;
+    gap: 14px;
+    align-items: start;
+}
+
+.iosSetupGrid--two {
+    grid-template-columns: 1fr 1fr;
+}
+
+.iosSetupGrid--three {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+@media (max-width: 900px) {
+
+    .iosSetupGrid--two,
+    .iosSetupGrid--three {
+        grid-template-columns: 1fr;
+    }
+}
+
+.iosAppColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
 .btn.tile {
     width: 100%;
     padding: 18px 16px;
