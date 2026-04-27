@@ -31,13 +31,15 @@
     </div>
   </div>
 
-  <!-- iOS flow: one vertical stack per app (download → enroll → optional settings) -->
+  <!-- iOS flow: one card per app; steps 1–3 stacked vertically inside -->
   <div id="iosFlow" style="display:none;">
     <div class="iosSetupGrid <%= showITakLinks ? 'iosSetupGrid--three' : 'iosSetupGrid--two' %>" style="margin-top: 0.5rem;">
       <!-- TAK Aware -->
-      <div class="iosAppColumn">
-        <div class="card">
-          <h2>Step 1: Download - TAK Aware</h2>
+      <div class="card iosAppGroup">
+        <h2 class="iosAppGroupTitle">TAK Aware</h2>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 1: Download</h3>
           <a
             href="https://apps.apple.com/us/app/tak-aware/id6738631659"
             target="_blank"
@@ -47,9 +49,10 @@
             <span class="title">iOS - TAK Aware (Recommended)</span>
             <span class="desc">Download TAK Aware for iPhone or iPad.</span>
           </a>
-        </div>
-        <div class="card">
-          <h2>Step 2: Enroll Your Device - TAK Aware</h2>
+        </section>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 2: Enroll your device</h3>
           <div class="grid2">
             <button type="button" class="btn tile" id="scanQrBtnTakAware">
               <span class="title">Scan QR Code (Recommended)</span>
@@ -60,20 +63,23 @@
               <span class="desc">Manually connect TAK Aware to the TAK Server.</span>
             </button>
           </div>
-        </div>
-        <div class="card">
-          <h2>Step 3: Recommended Settings - TAK Aware</h2>
+        </section>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 3: Recommended settings</h3>
           <button type="button" class="btn tile" id="iosPreferenceManualBtn">
             <span class="title">Recommended Settings</span>
             <span class="desc">Tune map display options for clearer labels and terrain (recommended).</span>
           </button>
-        </div>
+        </section>
       </div>
 
       <!-- TAK Tracker -->
-      <div class="iosAppColumn">
-        <div class="card">
-          <h2>Step 1: Download - TAK Tracker</h2>
+      <div class="card iosAppGroup">
+        <h2 class="iosAppGroupTitle">TAK Tracker</h2>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 1: Download</h3>
           <a
             href="https://apps.apple.com/us/app/tak-tracker/id6455684671"
             target="_blank"
@@ -83,9 +89,10 @@
             <span class="title">iOS - TAK Tracker</span>
             <span class="desc">Download TAK Tracker for iPhone or iPad. (Tracking Only, No Map)</span>
           </a>
-        </div>
-        <div class="card">
-          <h2>Step 2: Enroll Your Device - TAK Tracker</h2>
+        </section>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 2: Enroll your device</h3>
           <div class="grid2">
             <button type="button" class="btn tile" id="scanQrBtnTakTracker">
               <span class="title">Scan QR Code (Recommended)</span>
@@ -96,13 +103,15 @@
               <span class="desc">Manually connect TAK Tracker to the TAK Server.</span>
             </button>
           </div>
-        </div>
+        </section>
       </div>
 
       <% if (showITakLinks) { %>
-        <div class="iosAppColumn">
-          <div class="card">
-            <h2>Step 1: Download - iTAK</h2>
+        <div class="card iosAppGroup">
+          <h2 class="iosAppGroupTitle">iTAK</h2>
+
+          <section class="iosStep">
+            <h3 class="iosStepHeading">Step 1: Download</h3>
             <a
               href="https://apps.apple.com/us/app/itak/id1561656396"
               target="_blank"
@@ -112,14 +121,15 @@
               <span class="title">iOS - iTAK</span>
               <span class="desc">Download iTAK for iPhone or iPad.</span>
             </a>
-          </div>
-          <div class="card">
-            <h2>Step 2: Enroll Your Device - iTAK</h2>
+          </section>
+
+          <section class="iosStep">
+            <h3 class="iosStepHeading">Step 2: Enroll your device</h3>
             <button type="button" class="btn tile" id="manualLoginBtnITak">
               <span class="title">Manual Enrollment</span>
               <span class="desc">Manually connect iTAK to the TAK Server.</span>
             </button>
-          </div>
+          </section>
         </div>
       <% } %>
     </div>

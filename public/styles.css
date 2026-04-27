@@ -890,10 +890,40 @@ select:focus {
     }
 }
 
-.iosAppColumn {
+/* Single card per app: vertical steps inside */
+.iosSetupGrid > .iosAppGroup {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.iosAppGroupTitle {
+    margin: 0 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.iosStep {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
+}
+
+.iosStep + .iosStep {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+}
+
+.iosStepHeading {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
 }
 
 .btn.tile {
