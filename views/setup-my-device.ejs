@@ -115,9 +115,9 @@
     <div class="<%= showITakLinks ? 'grid3' : 'grid2' %>" style="margin-top: 0.5rem;">
       <div>
         <div class="card">
-          <h2>Step 3: Optional Settings</h2>
+          <h2>Step 3: Recommended Settings</h2>
           <button type="button" class="btn tile" id="iosPreferenceManualBtn">
-            <span class="title">Optional Settings - TAK Aware</span>
+            <span class="title">Recommended Settings - TAK Aware</span>
             <span class="desc">Tune map display options for clearer labels and terrain (recommended).</span>
           </button>
         </div>
@@ -311,7 +311,7 @@
   </div>
 </div>
 
-<!-- iOS Step 3: Optional Settings (TAK Aware) -->
+<!-- iOS Step 3: Recommended Settings (TAK Aware) -->
 <div class="modalOverlay" id="iosPreferenceManualOverlay" style="display:none;">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="iosPreferenceManualTitle">
     <div class="modalHeader">
@@ -320,7 +320,6 @@
     </div>
     <div class="modalBody">
       <div style="max-width: 600px;">
-        <p style="margin: 0 0 12px;">These display tweaks are optional but improve how the map looks and reads. Skip them if you are already happy with the defaults.</p>
         <ol id="iosPreferenceManualInstructions" style="margin-top: 6px;"></ol>
       </div>
     </div>
@@ -887,22 +886,10 @@
   }
 
   async function applyIosQrEnrollmentPreferences(mode) {
-    function esc(s) {
-      const d = document.createElement("div");
-      d.textContent = String(s);
-      return d.innerHTML;
-    }
     try {
       const data = await fetchPreferenceData();
       if (!data || !data.ok) return;
       setScanInstructions(mode, data);
-      const extras = [];
-      if (data.callsign) extras.push(`<span class="chip">Callsign: ${esc(data.callsign)}</span>`);
-      if (data.teamLabel) extras.push(`<span class="chip">Team: ${esc(data.teamLabel)}</span>`);
-      if (data.roleLabel) extras.push(`<span class="chip">Role: ${esc(data.roleLabel)}</span>`);
-      if (extras.length) {
-        details.innerHTML = (details.innerHTML ? details.innerHTML + " " : "") + extras.join(" ");
-      }
     } catch (e) {}
   }
 
