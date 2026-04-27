@@ -188,7 +188,7 @@
           <h2>Step 4: Install Plugins</h2>
           <a href="/plugins" class="btn tile">
             <span class="title">Browse &amp; Install Plugins</span>
-            <span class="desc">Open the Plugins page to download and install ATAK plugins for your team.</span>
+            <span class="desc">Open the Plugins page to download and install ATAK plugins to improve your experience.</span>
           </a>
         </div>
       </div>
@@ -423,7 +423,7 @@
       ? [
           isTakTracker ? "Open TAK Tracker on your iOS device." : "Open TAK Aware on your iOS device.",
           "When prompted, allow Location access and set it to 'Always Allow'.",
-          "When the app asks for your identity, use the call sign, team, and role from your welcome email.",
+          "Enter your assigned Call Sign / Team / Role (per your welcome email).",
           "Tap 'Connect to a TAK Server', then choose 'Scan QR Code'.",
           "Allow camera access and scan the QR until you see 'Status: Succeeded'."
         ]
@@ -441,7 +441,7 @@
     instructionsList.innerHTML = steps.map(s => `<li>${s}</li>`).join("");
   }
 
-  function setManualLoginInstructions(mode, ottData) {
+  function setManualLoginInstructions(mode, prefData) {
     const isTakAware = mode === "takaware";
     const isTakTracker = mode === "taktracker";
     const isITak = mode === "itak";
@@ -456,10 +456,10 @@
         ? "Open TAK Tracker: How to Manually Configure"
         : "ATAK (Android): How to Manually Configure";
 
-    if (isOtt && ottData) {
-      const c = (ottData.callsign && escapeHtml(ottData.callsign)) || "";
-      const t = (ottData.teamLabel && escapeHtml(ottData.teamLabel)) || "";
-      const r = (ottData.roleLabel && escapeHtml(ottData.roleLabel)) || "Team Member";
+    if (isOtt && prefData) {
+      const c = (prefData.callsign && escapeHtml(prefData.callsign)) || "";
+      const t = (prefData.teamLabel && escapeHtml(prefData.teamLabel)) || "";
+      const r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
       const steps = [
         "Open the Open TAK Tracker app on your Android device.",
         "Select the settings icon in the top right.",
@@ -476,11 +476,39 @@
       return;
     }
 
+    const iosOpenLine = isITak
+      ? "Open iTAK on your iOS device."
+      : isTakTracker
+        ? "Open TAK Tracker on your iOS device."
+        : "Open TAK Aware on your iOS device.";
+
+    if ((isTakAware || isITak || isTakTracker) && prefData && prefData.ok) {
+      const c = (prefData.callsign && escapeHtml(prefData.callsign)) || "";
+      const t = (prefData.teamLabel && escapeHtml(prefData.teamLabel)) || "";
+      const r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
+      const steps = [
+        iosOpenLine,
+        "When prompted, allow Location access and set it to 'Always Allow'.",
+        "Enter your assigned Call Sign / Team / Role (per your welcome email).",
+        "Select the callsign menu under User Information.",
+        "Select Callsign and enter: <strong>" + c + "</strong>",
+        "Select Team and select: <strong>" + t + "</strong>",
+        "Select Role and select: <strong>" + r + "</strong>",
+        "Tap 'Connect to a TAK Server', then choose 'Certificate Enrollment'.",
+        "Enter the hostname: <strong><%= takHost || 'your TAK server hostname' %></strong>",
+        `Enter your username and password: <strong>${CURRENT_USERNAME}</strong>`,
+        "Tap 'Start Enrollment', if successful, you should see 'Status: Succeeded'.",
+        "You can then tap 'Close'."
+      ];
+      manualLoginInstructions.innerHTML = steps.map(s => "<li>" + s + "</li>").join("");
+      return;
+    }
+
     const steps = (isTakAware || isITak || isTakTracker)
       ? [
-          isTakTracker ? "Open TAK Tracker on your iOS device." : "Open TAK Aware on your iOS device.",
+          iosOpenLine,
           "When prompted, allow Location access and set it to 'Always Allow'.",
-          "When the app asks for your identity, use the call sign, team, and role from your welcome email.",
+          "Enter your assigned Call Sign / Team / Role (per your welcome email).",
           "Tap 'Connect to a TAK Server', then choose 'Certificate Enrollment'.",
           "Enter the hostname: <strong><%= takHost || 'your TAK server hostname' %></strong>",
           `Enter your username and password: <strong>${CURRENT_USERNAME}</strong>`,
@@ -730,6 +758,9 @@
     if (!CURRENT_USERNAME) {
       try {
         await fetchAndShowQr(isOtt ? "ott" : "atak");
+        if (!isOtt && (mode === "takaware" || mode === "taktracker")) {
+          await appendIosEnrollmentPreferenceChipsForQr();
+        }
       } catch (err) {
         setMsg(msg, err?.message || String(err), false);
         openModal();
@@ -742,12 +773,18 @@
       const existing = loadCache();
       if (existing && existing.qrCode && existing.enrollUrl && existing.token) {
         renderFromCache(existing);
+        if (mode === "takaware" || mode === "taktracker") {
+          await appendIosEnrollmentPreferenceChipsForQr();
+        }
         return;
       }
     }
 
     try {
       await fetchAndShowQr(isOtt ? "ott" : "atak");
+      if (!isOtt && (mode === "takaware" || mode === "taktracker")) {
+        await appendIosEnrollmentPreferenceChipsForQr();
+      }
     } catch (err) {
       setMsg(msg, err?.message || String(err), false);
       openModal();
@@ -771,9 +808,31 @@
       }
       return;
     }
+
+    const isIosManual = mode === "takaware" || mode === "taktracker" || mode === "itak";
+    if (isIosManual) {
+      manualLoginInstructions.innerHTML = "<li>Loading...</li>";
+      manualLoginDetails.innerHTML = "";
+      openManualLoginModal();
+      try {
+        const data = await fetchPreferenceData();
+        setManualLoginInstructions(mode, data);
+        const chips = [];
+        if (CURRENT_USERNAME) chips.push(`<span class="chip">User: ${escapeHtml(CURRENT_USERNAME)}</span>`);
+        manualLoginDetails.innerHTML = chips.join(" ");
+      } catch (err) {
+        setManualLoginInstructions(mode);
+        const chips = [];
+        if (CURRENT_USERNAME) chips.push(`<span class="chip">User: ${escapeHtml(CURRENT_USERNAME)}</span>`);
+        chips.push(`<span class="chip">Callsign / team / role could not be loaded — use your welcome email.</span>`);
+        manualLoginDetails.innerHTML = chips.join(" ");
+      }
+      return;
+    }
+
     setManualLoginInstructions(mode);
     const chips = [];
-    if (CURRENT_USERNAME) chips.push(`<span class="chip">User: ${CURRENT_USERNAME}</span>`);
+    if (CURRENT_USERNAME) chips.push(`<span class="chip">User: ${escapeHtml(CURRENT_USERNAME)}</span>`);
     manualLoginDetails.innerHTML = chips.join(" ");
     openManualLoginModal();
   }
@@ -808,6 +867,24 @@
     try { data = JSON.parse(rawText); } catch { data = {}; }
     if (!res.ok || !data.ok) throw new Error((data && data.error) || "Failed to load preference data");
     return data;
+  }
+
+  async function appendIosEnrollmentPreferenceChipsForQr() {
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+    try {
+      const data = await fetchPreferenceData();
+      if (!data || !data.ok) return;
+      const extras = [];
+      if (data.callsign) extras.push(`<span class="chip">Callsign: ${esc(data.callsign)}</span>`);
+      if (data.teamLabel) extras.push(`<span class="chip">Team: ${esc(data.teamLabel)}</span>`);
+      if (data.roleLabel) extras.push(`<span class="chip">Role: ${esc(data.roleLabel)}</span>`);
+      if (!extras.length) return;
+      details.innerHTML = (details.innerHTML ? details.innerHTML + " " : "") + extras.join(" ");
+    } catch (e) {}
   }
 
   function openPreferenceQrModal() {
