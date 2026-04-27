@@ -405,7 +405,7 @@
   // Which app the user is scanning with (controls modal instructions)
   let scanMode = "takaware"; // "takaware" | "taktracker" | "atak" | "ott"
 
-  function setScanInstructions(mode) {
+  function setScanInstructions(mode, prefData) {
     scanMode = mode;
 
     const isTakAware = mode === "takaware";
@@ -418,6 +418,24 @@
         : isOtt
           ? "Open TAK Tracker: How to Scan"
           : "ATAK (Android): How to Scan";
+
+    if ((isTakAware || isTakTracker) && prefData && prefData.ok) {
+      const c = (prefData.callsign && escapeHtml(prefData.callsign)) || "";
+      const t = (prefData.teamLabel && escapeHtml(prefData.teamLabel)) || "";
+      const r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
+      const steps = [
+        isTakTracker ? "Open TAK Tracker on your iOS device." : "Open TAK Aware on your iOS device.",
+        "When prompted, allow Location access and set it to 'Always Allow'.",
+        "Select the menu icon in the top right.",
+        "Select Callsign and enter: <strong>" + c + "</strong>",
+        "Select Team and enter: <strong>" + t + "</strong>",
+        "Select Role and select: <strong>" + r + "</strong>",
+        "Tap 'Connect to a TAK Server', then choose 'Scan QR Code'.",
+        "Allow camera access and scan the QR until you see 'Status: Succeeded'."
+      ];
+      instructionsList.innerHTML = steps.map(s => `<li>${s}</li>`).join("");
+      return;
+    }
 
     const steps = isTakAware || isTakTracker
       ? [
@@ -489,10 +507,9 @@
       const steps = [
         iosOpenLine,
         "When prompted, allow Location access and set it to 'Always Allow'.",
-        "Enter your assigned Call Sign / Team / Role (per your welcome email).",
-        "Select the callsign menu under User Information.",
+        "Select the menu icon in the top right.",
         "Select Callsign and enter: <strong>" + c + "</strong>",
-        "Select Team and select: <strong>" + t + "</strong>",
+        "Select Team and enter: <strong>" + t + "</strong>",
         "Select Role and select: <strong>" + r + "</strong>",
         "Tap 'Connect to a TAK Server', then choose 'Certificate Enrollment'.",
         "Enter the hostname: <strong><%= takHost || 'your TAK server hostname' %></strong>",
@@ -759,7 +776,7 @@
       try {
         await fetchAndShowQr(isOtt ? "ott" : "atak");
         if (!isOtt && (mode === "takaware" || mode === "taktracker")) {
-          await appendIosEnrollmentPreferenceChipsForQr();
+          await applyIosQrEnrollmentPreferences(mode);
         }
       } catch (err) {
         setMsg(msg, err?.message || String(err), false);
@@ -774,7 +791,7 @@
       if (existing && existing.qrCode && existing.enrollUrl && existing.token) {
         renderFromCache(existing);
         if (mode === "takaware" || mode === "taktracker") {
-          await appendIosEnrollmentPreferenceChipsForQr();
+          await applyIosQrEnrollmentPreferences(mode);
         }
         return;
       }
@@ -783,7 +800,7 @@
     try {
       await fetchAndShowQr(isOtt ? "ott" : "atak");
       if (!isOtt && (mode === "takaware" || mode === "taktracker")) {
-        await appendIosEnrollmentPreferenceChipsForQr();
+        await applyIosQrEnrollmentPreferences(mode);
       }
     } catch (err) {
       setMsg(msg, err?.message || String(err), false);
@@ -869,7 +886,7 @@
     return data;
   }
 
-  async function appendIosEnrollmentPreferenceChipsForQr() {
+  async function applyIosQrEnrollmentPreferences(mode) {
     function esc(s) {
       const d = document.createElement("div");
       d.textContent = String(s);
@@ -878,12 +895,14 @@
     try {
       const data = await fetchPreferenceData();
       if (!data || !data.ok) return;
+      setScanInstructions(mode, data);
       const extras = [];
       if (data.callsign) extras.push(`<span class="chip">Callsign: ${esc(data.callsign)}</span>`);
       if (data.teamLabel) extras.push(`<span class="chip">Team: ${esc(data.teamLabel)}</span>`);
       if (data.roleLabel) extras.push(`<span class="chip">Role: ${esc(data.roleLabel)}</span>`);
-      if (!extras.length) return;
-      details.innerHTML = (details.innerHTML ? details.innerHTML + " " : "") + extras.join(" ");
+      if (extras.length) {
+        details.innerHTML = (details.innerHTML ? details.innerHTML + " " : "") + extras.join(" ");
+      }
     } catch (e) {}
   }
 
