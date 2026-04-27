@@ -112,12 +112,20 @@
       <% } %>
     </div>
 
-    <div class="card">
-      <h2>Step 3: Configure Device Preferences</h2>
-      <button type="button" class="btn tile" id="iosPreferenceManualBtn">
-        <span class="title">Manual Configuration</span>
-        <span class="desc">Enter your callsign, team, and role in TAK Aware settings.</span>
-      </button>
+    <div class="<%= showITakLinks ? 'grid3' : 'grid2' %>" style="margin-top: 0.5rem;">
+      <div>
+        <div class="card">
+          <h2>Step 3: Optional Settings</h2>
+          <button type="button" class="btn tile" id="iosPreferenceManualBtn">
+            <span class="title">Optional Settings - TAK Aware</span>
+            <span class="desc">Tune map display options for clearer labels and terrain (recommended).</span>
+          </button>
+        </div>
+      </div>
+      <div aria-hidden="true"></div>
+      <% if (showITakLinks) { %>
+        <div aria-hidden="true"></div>
+      <% } %>
     </div>
   </div>
 
@@ -175,6 +183,13 @@
               <span class="desc">Manually configure ATAK preferences.</span>
             </button>
           </div>
+        </div>
+        <div class="card">
+          <h2>Step 4: Install Plugins</h2>
+          <a href="/plugins" class="btn tile">
+            <span class="title">Browse &amp; Install Plugins</span>
+            <span class="desc">Open the Plugins page to download and install ATAK plugins for your team.</span>
+          </a>
         </div>
       </div>
       <!-- Right: Open TAK Tracker -->
@@ -296,16 +311,16 @@
   </div>
 </div>
 
-<!-- iOS Step 3: Configure Device Preferences (TAK Aware) -->
+<!-- iOS Step 3: Optional Settings (TAK Aware) -->
 <div class="modalOverlay" id="iosPreferenceManualOverlay" style="display:none;">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="iosPreferenceManualTitle">
     <div class="modalHeader">
-      <h2 id="iosPreferenceManualTitle" style="margin:0;">Configure Device Preferences - TAK Aware</h2>
+      <h2 id="iosPreferenceManualTitle" style="margin:0;">Optional Settings - TAK Aware</h2>
       <button class="btn" id="iosPreferenceManualCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
       <div style="max-width: 600px;">
-        <p style="margin: 0 0 12px;">If not already completed during device setup, please complete the following:</p>
+        <p style="margin: 0 0 12px;">These display tweaks are optional but improve how the map looks and reads. Skip them if you are already happy with the defaults.</p>
         <ol id="iosPreferenceManualInstructions" style="margin-top: 6px;"></ol>
       </div>
     </div>
@@ -408,7 +423,7 @@
       ? [
           isTakTracker ? "Open TAK Tracker on your iOS device." : "Open TAK Aware on your iOS device.",
           "When prompted, allow Location access and set it to 'Always Allow'.",
-          "Enter your assigned Call Sign / Team / Role (per your welcome email).",
+          "When the app asks for your identity, use the call sign, team, and role from your welcome email.",
           "Tap 'Connect to a TAK Server', then choose 'Scan QR Code'.",
           "Allow camera access and scan the QR until you see 'Status: Succeeded'."
         ]
@@ -465,7 +480,7 @@
       ? [
           isTakTracker ? "Open TAK Tracker on your iOS device." : "Open TAK Aware on your iOS device.",
           "When prompted, allow Location access and set it to 'Always Allow'.",
-          "Enter your assigned Call Sign / Team / Role (per your welcome email).",
+          "When the app asks for your identity, use the call sign, team, and role from your welcome email.",
           "Tap 'Connect to a TAK Server', then choose 'Certificate Enrollment'.",
           "Enter the hostname: <strong><%= takHost || 'your TAK server hostname' %></strong>",
           `Enter your username and password: <strong>${CURRENT_USERNAME}</strong>`,
@@ -882,7 +897,7 @@
   preferenceQrOverlay.addEventListener("click", (e) => { if (e.target === preferenceQrOverlay) closePreferenceQrModal(); });
   preferenceManualOverlay.addEventListener("click", (e) => { if (e.target === preferenceManualOverlay) closePreferenceManualModal(); });
 
-  // iOS Step 3: Configure Device Preferences (TAK Aware) - manual only
+  // iOS Step 3: Optional display settings (TAK Aware)
   const iosPreferenceManualBtn = document.getElementById("iosPreferenceManualBtn");
   const iosPreferenceManualOverlay = document.getElementById("iosPreferenceManualOverlay");
   const iosPreferenceManualCloseBtn = document.getElementById("iosPreferenceManualCloseBtn");
@@ -898,27 +913,13 @@
     document.body.classList.remove("noScroll");
   }
 
-  async function handleIosPreferenceManualClick() {
-    iosPreferenceManualInstructions.innerHTML = "<li>Loading...</li>";
+  function handleIosPreferenceManualClick() {
+    iosPreferenceManualInstructions.innerHTML = [
+      "In TAK Aware, open the menu from the icon in the top-right corner.",
+      "Open <strong>Display Settings</strong>. Set <strong>Base Map</strong> to <strong>Flyover</strong> so terrain reads more clearly at a glance.",
+      "On the same screen, scroll to <strong>Map Label Display</strong> and choose <strong>Show Full Label</strong> so roads, points, and other features stay legible on the map."
+    ].map(function (s) { return "<li>" + s + "</li>"; }).join("");
     openIosPreferenceManualModal();
-    try {
-      const data = await fetchPreferenceData();
-      const callsign = (data.callsign && escapeHtml(data.callsign)) || "";
-      const team = (data.teamLabel && escapeHtml(data.teamLabel)) || "";
-      const role = (data.roleLabel && escapeHtml(data.roleLabel)) || "Team Member";
-      iosPreferenceManualInstructions.innerHTML = [
-        "Open the TAK Aware app on your Apple device.",
-        "Select the menu icon in the top right.",
-        "Select the callsign menu under User Information.",
-        "Select Callsign and enter: <strong>" + callsign + "</strong>",
-        "Select Team and select: <strong>" + team + "</strong>",
-        "Select Role and select: <strong>" + role + "</strong>",
-        "Once complete you may close the window.",
-        "It is also recommended from the settings menu to open Display Settings and change the Base Map to \"Flyover\" and to set the Map Label Display to \"Show Full Label\"."
-      ].map(function (s) { return "<li>" + s + "</li>"; }).join("");
-    } catch (err) {
-      iosPreferenceManualInstructions.innerHTML = "<li class=\"msg bad\">" + escapeHtml(err?.message || "Failed to load preference data") + "</li>";
-    }
   }
 
   iosPreferenceManualBtn.addEventListener("click", handleIosPreferenceManualClick);
