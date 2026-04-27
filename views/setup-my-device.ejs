@@ -135,37 +135,28 @@
     </div>
   </div>
 
-  <!-- Android flow -->
+  <!-- Android flow: one card per app; steps stacked vertically (same pattern as iOS) -->
   <div id="androidFlow" style="display:none;">
-    <div class="card">
-      <h2>Step 1: Download the TAK App</h2>
-      <div class="grid2">
-        <a
-          href="https://play.google.com/store/apps/details?id=com.atakmap.app.civ"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn tile"
-        >
-          <span class="title">Android - ATAK</span>
-          <span class="desc">Download ATAK for Android devices.</span>
-        </a>
-        <a
-          href="https://github.com/GoTAK-LLC/OpenTAKTracker/releases"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn tile"
-        >
-          <span class="title">Android - Open TAK Tracker</span>
-          <span class="desc">Download Open TAK Tracker for Android devices. (Tracking Only, No Map)</span>
-        </a>
-      </div>
-    </div>
+    <div class="iosSetupGrid iosSetupGrid--two" style="margin-top: 0.5rem;">
+      <!-- ATAK -->
+      <div class="card iosAppGroup">
+        <h2 class="iosAppGroupTitle">ATAK</h2>
 
-    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 0.5rem;">
-      <!-- Left: ATAK -->
-      <div>
-        <div class="card">
-          <h2>Step 2: Enroll Your Device - ATAK</h2>
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 1: Download</h3>
+          <a
+            href="https://play.google.com/store/apps/details?id=com.atakmap.app.civ"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn tile"
+          >
+            <span class="title">Android - ATAK</span>
+            <span class="desc">Download ATAK for Android devices.</span>
+          </a>
+        </section>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 2: Enroll your device</h3>
           <div class="grid2">
             <button type="button" class="btn tile" id="scanQrBtnAtak">
               <span class="title">Scan QR Code (Recommended)</span>
@@ -176,9 +167,10 @@
               <span class="desc">Manually connect ATAK to the TAK Server.</span>
             </button>
           </div>
-        </div>
-        <div class="card">
-          <h2>Step 3: Configure Device Preferences - ATAK</h2>
+        </section>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 3: Configure device preferences</h3>
           <div class="grid2">
             <button type="button" class="btn tile" id="preferenceScanQrBtn">
               <span class="title">Scan QR Code (Recommended)</span>
@@ -189,30 +181,47 @@
               <span class="desc">Manually configure ATAK preferences.</span>
             </button>
           </div>
-        </div>
-        <div class="card">
-          <h2>Step 4: Install Plugins</h2>
+        </section>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 4: Install plugins</h3>
           <a href="/plugins" class="btn tile">
             <span class="title">Browse &amp; Install Plugins</span>
             <span class="desc">Open the Plugins page to download and install ATAK plugins to improve your experience.</span>
           </a>
-        </div>
+        </section>
       </div>
-      <!-- Right: Open TAK Tracker -->
-      <div>
-        <div class="card">
-          <h2>Step 2: Enroll Your Device - Open TAK Tracker</h2>
+
+      <!-- Open TAK Tracker -->
+      <div class="card iosAppGroup">
+        <h2 class="iosAppGroupTitle">Open TAK Tracker</h2>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 1: Download</h3>
+          <a
+            href="https://github.com/GoTAK-LLC/OpenTAKTracker/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn tile"
+          >
+            <span class="title">Android - Open TAK Tracker</span>
+            <span class="desc">Download Open TAK Tracker for Android devices. (Tracking Only, No Map)</span>
+          </a>
+        </section>
+
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Step 2: Enroll your device</h3>
           <div class="grid2">
             <button type="button" class="btn tile" id="scanQrBtnOtt">
               <span class="title">Scan QR Code (Recommended)</span>
-              <span class="desc">Scan an enrollment QR code to automatically connect and configureOpen TAK Tracker.</span>
+              <span class="desc">Scan an enrollment QR code to automatically connect and configure Open TAK Tracker.</span>
             </button>
             <button type="button" class="btn tile" id="manualLoginBtnOtt">
               <span class="title">Manual Enrollment</span>
               <span class="desc">Manually configure Open TAK Tracker.</span>
             </button>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   </div>

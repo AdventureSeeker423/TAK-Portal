@@ -890,7 +890,7 @@ select:focus {
     }
 }
 
-/* Single card per app: vertical steps inside */
+/* Setup My Device — iOS & Android: single card per app, vertical steps inside */
 .iosSetupGrid > .iosAppGroup {
     margin-top: 0;
     margin-bottom: 0;
