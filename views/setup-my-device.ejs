@@ -40,9 +40,9 @@
           href="https://apps.apple.com/us/app/tak-aware/id6738631659"
           target="_blank"
           rel="noopener noreferrer"
-          class="btn tile"
+          class="btn tile success"
         >
-          <span class="title">iOS - TAK Aware</span>
+          <span class="title">iOS - TAK Aware (Recommended)</span>
           <span class="desc">Download TAK Aware for iPhone or iPad.</span>
         </a>
         <a
@@ -495,14 +495,21 @@
 
     if (isITak) {
       const has = prefData && prefData.ok;
-      const c = has && prefData.callsign ? escapeHtml(prefData.callsign) : "your call sign (from your welcome email)";
-      const t = has && prefData.teamLabel ? escapeHtml(prefData.teamLabel) : "your team (from your welcome email)";
-      const r = has && prefData.roleLabel ? escapeHtml(prefData.roleLabel) : "Team Member";
+      let c, t, r;
+      if (has) {
+        c = (prefData.callsign && escapeHtml(prefData.callsign)) || "";
+        t = (prefData.teamLabel && escapeHtml(prefData.teamLabel)) || "";
+        r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
+      } else {
+        c = "your call sign (from your welcome email)";
+        t = "your team (from your welcome email)";
+        r = "Team Member";
+      }
       const steps = [
         "Open iTAK on your iOS device.",
         "Select Callsign and enter: <strong>" + c + "</strong>.",
-        "Select team: <strong>" + t + "</strong>.",
-        "Select role: <strong>" + r + "</strong>.",
+        "Select Team and enter: <strong>" + t + "</strong>.",
+        "Select Role and select: <strong>" + r + "</strong>.",
         "Enable notifications, enable Location Services, and when prompted select Allow While Using the App.",
         "Change Location Services to Always Allow (via Settings or the iTAK prompt).",
         "Select the settings (gear) icon in the top right corner.",
