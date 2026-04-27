@@ -78,7 +78,7 @@
               <span class="desc">Scan an enrollment QR code to automatically connect TAK Aware.</span>
             </button>
             <button type="button" class="btn tile" id="manualLoginBtnTakAware">
-              <span class="title">Manual Login</span>
+              <span class="title">Manual Enrollment</span>
               <span class="desc">Manually connect TAK Aware to the TAK Server.</span>
             </button>
           </div>
@@ -93,7 +93,7 @@
               <span class="desc">Scan an enrollment QR code to automatically connect TAK Tracker.</span>
             </button>
             <button type="button" class="btn tile" id="manualLoginBtnTakTracker">
-              <span class="title">Manual Login</span>
+              <span class="title">Manual Enrollment</span>
               <span class="desc">Manually connect TAK Tracker to the TAK Server.</span>
             </button>
           </div>
@@ -115,7 +115,7 @@
     <div class="<%= showITakLinks ? 'grid3' : 'grid2' %>" style="margin-top: 0.5rem;">
       <div>
         <div class="card">
-          <h2>Step 3: Recommended Settings</h2>
+          <h2>Step 3: Recommended Settings - TAK Aware</h2>
           <button type="button" class="btn tile" id="iosPreferenceManualBtn">
             <span class="title">Recommended Settings - TAK Aware</span>
             <span class="desc">Tune map display options for clearer labels and terrain (recommended).</span>
@@ -166,7 +166,7 @@
               <span class="desc">Scan an enrollment QR code to automatically connect ATAK.</span>
             </button>
             <button type="button" class="btn tile" id="manualLoginBtnAtak">
-              <span class="title">Manual Login</span>
+              <span class="title">Manual Enrollment</span>
               <span class="desc">Manually connect ATAK to the TAK Server.</span>
             </button>
           </div>
@@ -202,7 +202,7 @@
               <span class="desc">Scan an enrollment QR code to automatically connect and configureOpen TAK Tracker.</span>
             </button>
             <button type="button" class="btn tile" id="manualLoginBtnOtt">
-              <span class="title">Manual Login</span>
+              <span class="title">Manual Enrollment</span>
               <span class="desc">Manually configure Open TAK Tracker.</span>
             </button>
           </div>
@@ -243,11 +243,11 @@
   </div>
 </div>
 
-<!-- Manual Login Modal -->
+<!-- Manual Enrollment Modal -->
 <div class="modalOverlay" id="manualLoginOverlay" style="display:none;">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="manualLoginTitle">
     <div class="modalHeader">
-      <h2 id="manualLoginTitle" style="margin:0;">Manual Login Instructions</h2>
+      <h2 id="manualLoginTitle" style="margin:0;">Manual Enrollment Instructions</h2>
       <button class="btn" id="manualLoginCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
@@ -315,7 +315,7 @@
 <div class="modalOverlay" id="iosPreferenceManualOverlay" style="display:none;">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="iosPreferenceManualTitle">
     <div class="modalHeader">
-      <h2 id="iosPreferenceManualTitle" style="margin:0;">Optional Settings - TAK Aware</h2>
+      <h2 id="iosPreferenceManualTitle" style="margin:0;">Recommended Settings</h2>
       <button class="btn" id="iosPreferenceManualCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
@@ -391,7 +391,7 @@
   const instructionsTitle = document.getElementById("setupQrInstructionsTitle");
   const instructionsList = document.getElementById("setupQrInstructions");
 
-  // Manual Login modal elements
+  // Manual Enrollment modal elements
   const manualLoginBtnTakAware = document.getElementById("manualLoginBtnTakAware");
   const manualLoginBtnTakTracker = document.getElementById("manualLoginBtnTakTracker");
   const manualLoginBtnAtak = document.getElementById("manualLoginBtnAtak");
@@ -493,13 +493,36 @@
       return;
     }
 
-    const iosOpenLine = isITak
-      ? "Open iTAK on your iOS device."
-      : isTakTracker
-        ? "Open TAK Tracker on your iOS device."
-        : "Open TAK Aware on your iOS device.";
+    if (isITak) {
+      const has = prefData && prefData.ok;
+      const c = has && prefData.callsign ? escapeHtml(prefData.callsign) : "your call sign (from your welcome email)";
+      const t = has && prefData.teamLabel ? escapeHtml(prefData.teamLabel) : "your team (from your welcome email)";
+      const r = has && prefData.roleLabel ? escapeHtml(prefData.roleLabel) : "Team Member";
+      const steps = [
+        "Open iTAK on your iOS device.",
+        "Select Callsign and enter: <strong>" + c + "</strong>.",
+        "Select team: <strong>" + t + "</strong>.",
+        "Select role: <strong>" + r + "</strong>.",
+        "Enable notifications, enable Location Services, and when prompted select Allow While Using the App.",
+        "Change Location Services to Always Allow (via Settings or the iTAK prompt).",
+        "Select the settings (gear) icon in the top right corner.",
+        "Select Network and Servers.",
+        "In the bottom right, tap the plus button and select Connect with Credentials.",
+        "Select Address and enter: <strong>" + escapeHtml(TAK_HOST) + "</strong>.",
+        "Select Port and enter: <strong>8089</strong>.",
+        "Select Username and enter: <strong>" + escapeHtml(CURRENT_USERNAME) + "</strong>.",
+        "Select Password and enter your TAK Portal password.",
+        "Select Connect in the top right corner; the server should show as connected."
+      ];
+      manualLoginInstructions.innerHTML = steps.map(s => "<li>" + s + "</li>").join("");
+      return;
+    }
 
-    if ((isTakAware || isITak || isTakTracker) && prefData && prefData.ok) {
+    const iosOpenLine = isTakTracker
+      ? "Open TAK Tracker on your iOS device."
+      : "Open TAK Aware on your iOS device.";
+
+    if ((isTakAware || isTakTracker) && prefData && prefData.ok) {
       const c = (prefData.callsign && escapeHtml(prefData.callsign)) || "";
       const t = (prefData.teamLabel && escapeHtml(prefData.teamLabel)) || "";
       const r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
@@ -520,7 +543,7 @@
       return;
     }
 
-    const steps = (isTakAware || isITak || isTakTracker)
+    const steps = (isTakAware || isTakTracker)
       ? [
           iosOpenLine,
           "When prompted, allow Location access and set it to 'Always Allow'.",
@@ -1047,7 +1070,7 @@
     manualLoginBtnITak.addEventListener("click", () => handleManualLoginClick("itak"));
   }
 
-  // Open TAK Tracker column: OTT enrollment QR (includes callsign/team/role), same manual login modal
+  // Open TAK Tracker column: OTT enrollment QR (includes callsign/team/role), same manual enrollment modal
   const scanQrBtnOtt = document.getElementById("scanQrBtnOtt");
   const manualLoginBtnOtt = document.getElementById("manualLoginBtnOtt");
   if (scanQrBtnOtt) scanQrBtnOtt.addEventListener("click", () => handleScanClick("ott"));
