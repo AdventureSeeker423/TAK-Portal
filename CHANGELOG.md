@@ -12,6 +12,11 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.2.79 - 4/27/26
+✨ `Enhancement` - Setup My Device page now features a cleaner UI to assist with flows and instructions<br>
+✨ `Enhancement` - Instructions with dynamic callsigns and team colors have been added / improved<br>
+✨ `Enhancement` - iTAK added as an option for Setup My Device - THIS IS DISABLED BY DEFAULT AND MUST BE ENABLED IN SERVER SETTINGS - TAK SERVER to use.
+
 ### v1.2.78 - 4/25/26
 ✨ `Enhancement` - Updated button order for creating a new user to match best UI practices<br>
 🐛 `Bug Fix` - Fixes issue with standard users not being able to download plugins.
