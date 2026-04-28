@@ -140,7 +140,7 @@
   };
 
   const roleLabel = {
-    user: "User",
+    user: "Standard User",
     agency_admin: "Agency Admin",
     global_admin: "Global Admin",
   };
@@ -367,7 +367,7 @@
         "<td>" + (agency || "-") + "</td>" +
         "<td>" +
           "<select class=\"ac-role-select\" data-user-id=\"" + String(u?.pk || "") + "\" data-username=\"" + username + "\">" +
-          "<option value=\"user\" " + (role === "user" ? "selected" : "") + ">User</option>" +
+          "<option value=\"user\" " + (role === "user" ? "selected" : "") + ">Standard User</option>" +
           "<option value=\"agency_admin\" " + (role === "agency_admin" ? "selected" : "") + ">Agency Admin</option>" +
           "<option value=\"global_admin\" " + (role === "global_admin" ? "selected" : "") + ">Global Admin</option>" +
           "</select>" +
@@ -407,7 +407,7 @@
             ? "Permissions updated: Global Admin."
             : (out.role || role) === "agency_admin"
             ? "Permissions updated: Agency Admin."
-            : "Permissions updated: User.";
+            : "Permissions updated: Standard User.";
           setSearchMsg(doneLabel, false, true);
           await runSearch();
           if (selectedUsername && selectedUsername === username) {

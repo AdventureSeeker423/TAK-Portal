@@ -73,7 +73,7 @@
 
       <label>Permissions
         <select name="permissions" id="createPermissionsSelect" aria-label="User permissions">
-          <option value="user" selected>User</option>
+          <option value="user" selected>Standard User</option>
           <option value="agency_admin">Agency Admin</option>
           <% if (isGlobalAdmin) { %>
             <option value="global_admin">Global Admin</option>
@@ -326,7 +326,7 @@
             <span class="templateBarLabel">Permissions</span>
 
             <select id="permissionsSelect">
-              <option value="user">User</option>
+              <option value="user">Standard User</option>
               <option value="agency_admin">Agency Admin</option>
               <% if (isGlobalAdmin) { %>
                 <option value="global_admin">Global Admin</option>
@@ -1632,7 +1632,7 @@ function roleForUser(user){
   }
 
   // 3 Default
-  return "User";
+  return "Standard User";
 }
 
 async function loadGroups(){
@@ -2088,7 +2088,7 @@ if (applyPermissionsBtn) applyPermissionsBtn.addEventListener("click", async () 
   window.__lastUsers = updatedVisible.slice();
   renderResults(updatedVisible);
 
-  const doneLabel = desired === "global_admin" ? "Permissions updated: Global Admin." : desired === "agency_admin" ? "Permissions updated: Agency Admin." : "Permissions updated: User.";
+  const doneLabel = desired === "global_admin" ? "Permissions updated: Global Admin." : desired === "agency_admin" ? "Permissions updated: Agency Admin." : "Permissions updated: Standard User.";
   setMsgEl(actionMsg, doneLabel, true);
 });
 
