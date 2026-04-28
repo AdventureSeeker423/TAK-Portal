@@ -125,10 +125,6 @@
       </div>
     </div>
 
-    <div class="card">
-      <h2>Effective Access</h2>
-      <ul id="acEffective" class="ac-effective"></ul>
-    </div>
   </div>
 
 </main>
@@ -290,29 +286,11 @@
           .then(async () => {
             setMsg("Saved.", false);
             runSearch();
-            await refreshEffective();
           })
           .catch((err) => {
             setMsg(err?.message || "Save failed.", true);
           });
       });
-    });
-  }
-
-  async function refreshEffective() {
-    if (!selectedUsername) return;
-    const r = await fetch("/api/access-control/effective?user=" + encodeURIComponent(selectedUsername), { headers: { Accept: "application/json" } });
-    if (!r.ok) {
-      el("acEffective").innerHTML = "<li>Could not load effective access.</li>";
-      return;
-    }
-    const j = await r.json();
-    const ul = el("acEffective");
-    ul.innerHTML = "";
-    (j.effectiveLabels || []).forEach((x) => {
-      const li = document.createElement("li");
-      li.textContent = (x.label || x.id) + (x.section ? " (" + x.section + ")" : "");
-      ul.appendChild(li);
     });
   }
 
@@ -346,7 +324,6 @@
 
     el("acEditor").style.display = "block";
     buildEditor();
-    refreshEffective();
   }
 
   async function getRoleForUsername(username) {
@@ -492,7 +469,6 @@
       setMsg("Cleared. Role defaults apply.");
       buildEditor();
       runSearch();
-      refreshEffective();
     } catch (e) {
       setMsg(e?.message || "Reset failed.", true);
     }
