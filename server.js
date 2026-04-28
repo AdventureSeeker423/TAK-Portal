@@ -20,6 +20,8 @@ const agenciesStore = require("./services/agencies.service");
 const userRequestsSvc = require("./services/userRequests.service");
 const auditSvc = require("./services/auditLog.service");
 const accessSvc = require("./services/access.service");
+const permsSvc = require("./services/permissions.service");
+const accessControlRoutes = require("./routes/accessControl.routes");
 const usersSvc = require("./services/users.service");
 const groupsSvc = require("./services/groups.service");
 const agencyTypesSvc = require("./services/agencyTypes.service");
@@ -184,29 +186,25 @@ app.use((req, res, next) => {
   return portalAuth(req, res, next);
 });
 
-// Helper: only allow Global Admins to access certain routes (e.g. settings, templates)
-function requireGlobalAdmin(req, res, next) {
-  const user = req.authentikUser;
-
-  // Allow both Global Admins and Agency Admins
-  if (!user || (!user.isGlobalAdmin && !user.isAgencyAdmin)) {
-    const username = user && user.username ? user.username : "";
-    return res.status(403).render("access-denied", { username });
-  }
-
-  next();
+function isApiRequest(req) {
+  const p = req.originalUrl || req.path || "";
+  return p.startsWith("/api/");
 }
 
-// Helper: only allow Global Admins (no Agency Admins)
-function requireStrictGlobalAdmin(req, res, next) {
-  const user = req.authentikUser;
-
-  if (!user || !user.isGlobalAdmin) {
-    const username = user && user.username ? user.username : "";
-    return res.status(403).render("access-denied", { username });
-  }
-
-  next();
+/** Capability check using effective permissions (role defaults minus overrides). */
+function requirePermission(permissionId) {
+  return (req, res, next) => {
+    const eff = req.effectivePermissionSet;
+    if (!eff || !permsSvc.can(eff, permissionId)) {
+      const user = req.authentikUser;
+      const username = user && user.username ? user.username : "";
+      if (isApiRequest(req)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      return res.status(403).render("access-denied", { username });
+    }
+    next();
+  };
 }
 
 function requireBetaMode(req, res, next) {
@@ -228,20 +226,7 @@ function requireBetaDocumentsPage(req, res, next) {
       username: req.authentikUser?.username || "",
     });
   }
-  const u = req.authentikUser;
-  if (!u || (!u.isGlobalAdmin && !u.isAgencyAdmin)) {
-    const username = u && u.username ? u.username : "";
-    return res.status(403).render("access-denied", { username });
-  }
-  next();
-}
-
-function requireStrictGlobalAdminApi(req, res, next) {
-  const user = req.authentikUser;
-  if (!user || !user.isGlobalAdmin) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  next();
+  return requirePermission("page.documents")(req, res, next);
 }
 
 function requireBetaModeApi(req, res, next) {
@@ -303,23 +288,22 @@ app.get("/api/plugins/:id/download", (req, res) => {
     return res.status(500).json({ error: toSafeApiError(err) });
   }
 });
-app.use("/api/audit-log", requireGlobalAdmin, require("./routes/auditLog.routes"));
-app.use("/api/plugins", requireGlobalAdmin, require("./routes/plugins.routes"));
-app.use("/api/integrations", requireGlobalAdmin, require("./routes/integrations.routes"));
-app.use("/api/ssh", requireGlobalAdmin, require("./routes/ssh.routes"));
-// Locate + data packages (admin + JSON APIs): strict global admin only. Not gated by BETA_MODE
-// (Data Sync / Getting Started remain beta + global admin).
-app.use("/api/locate", requireStrictGlobalAdminApi, require("./routes/locate.routes"));
+app.use("/api/audit-log", requirePermission("api.audit_log"), require("./routes/auditLog.routes"));
+app.use("/api/plugins", requirePermission("api.plugins_admin"), require("./routes/plugins.routes"));
+app.use("/api/integrations", requirePermission("api.integrations"), require("./routes/integrations.routes"));
+app.use("/api/ssh", requirePermission("api.ssh"), require("./routes/ssh.routes"));
+// Locate + data packages (admin + JSON APIs): global capability (not beta-gated).
+app.use("/api/locate", requirePermission("api.locate"), require("./routes/locate.routes"));
 
 app.use(
   "/api/data-sync",
-  requireStrictGlobalAdminApi,
+  requirePermission("api.data_sync"),
   requireBetaModeApi,
   require("./routes/dataSync.routes")
 );
 app.use(
   "/api/data-packages",
-  requireStrictGlobalAdminApi,
+  requirePermission("api.data_packages"),
   require("./routes/dataPackages.routes")
 );
 
@@ -480,15 +464,18 @@ app.get(
 app.post("/locate/:slug/ping", publicLocateApiCors, handlePublicLocatePing);
 app.options("/locate/:slug/stop-sharing", publicLocateApiCors);
 app.post("/locate/:slug/stop-sharing", publicLocateApiCors, handlePublicLocateStopSharing);
-app.use("/api/email", (req, res, next) => {
-  const user = req.authentikUser;
-  if (!user || (!user.isGlobalAdmin && !user.isAgencyAdmin)) {
-    const username = user && user.username ? user.username : "";
-    return res.status(403).render("access-denied", { username });
-  }
-  next();
-}, require("./routes/email.routes"));
+app.use("/api/email", requirePermission("api.email"), require("./routes/email.routes"));
 app.use("/dashboard", require("./routes/dashboard.routes"));
+
+// Access control (per-user permission deny overrides)
+app.get("/access-control", requirePermission("page.access_control"), (req, res) =>
+  res.render("access-control")
+);
+app.use(
+  "/api/access-control",
+  requirePermission("page.access_control"),
+  accessControlRoutes
+);
 
 // UI Routes
 
@@ -508,49 +495,44 @@ app.get("/users/manage", (req, res) => {
     pendingUserRequestsCount,
   });
 });
-app.get("/sample-users.csv", requireGlobalAdmin, (req, res) => {
+app.get("/sample-users.csv", requirePermission("misc.import_samples"), (req, res) => {
   const filePath = path.join(__dirname, "sample-users.csv");
   return res.download(filePath, "users-import-template.csv");
 });
-app.get("/sample-agencies.csv", requireGlobalAdmin, (req, res) => {
+app.get("/sample-agencies.csv", requirePermission("misc.import_samples"), (req, res) => {
   const filePath = path.join(__dirname, "sample-agencies.csv");
   return res.download(filePath, "agencies-import-template.csv");
 });
-app.get("/csv-instructions-readme.txt", requireGlobalAdmin, (req, res) => {
+app.get("/csv-instructions-readme.txt", requirePermission("misc.import_samples"), (req, res) => {
   const filePath = path.join(__dirname, "csv-instructions-readme.txt");
   return res.download(filePath, "csv-instructions-readme.txt");
 });
 app.get("/groups", (req, res) => res.render("groups"));
-app.get("/agencies", requireGlobalAdmin, (req, res) =>
+app.get("/agencies", requirePermission("page.agencies"), (req, res) =>
   res.render("agencies", {
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
   })
 ); //require Global Admin
 app.get("/templates", (req, res) => res.render("templates"));
-app.get("/mutual-aid", requireGlobalAdmin, (req, res) =>
+app.get("/mutual-aid", requirePermission("page.mutual_aid"), (req, res) =>
   res.render("mutual-aid")
 ); //require Global Admin
-app.get("/integrations", requireGlobalAdmin, (req, res) =>
+app.get("/integrations", requirePermission("page.integrations"), (req, res) =>
   res.render("integrations")
 );
 
-// Admin: email (global + agency admins; always visible, not gated by beta)
-app.get("/email", (req, res) => {
-  const user = req.authentikUser;
-  if (!user || (!user.isGlobalAdmin && !user.isAgencyAdmin)) {
-    const username = user && user.username ? user.username : "";
-    return res.status(403).render("access-denied", { username });
-  }
-  return res.render("email");
-});
+// Admin: email (global + agency defaults; overridable per user)
+app.get("/email", requirePermission("page.email"), (req, res) =>
+  res.render("email")
+);
 app.get("/locate-persons", (req, res) => {
   res.redirect(301, "/locate");
 });
 
 // Locate admin page: global admins only (not beta-gated).
-app.get("/locate", requireStrictGlobalAdmin, (req, res) => res.render("locate"));
+app.get("/locate", requirePermission("page.locate"), (req, res) => res.render("locate"));
 
-app.get("/data-sync", requireStrictGlobalAdmin, requireBetaMode, (req, res) =>
+app.get("/data-sync", requirePermission("page.data_sync"), requireBetaMode, (req, res) =>
   res.render("data-sync")
 );
 
@@ -571,7 +553,7 @@ app.get("/locate/:slug", (req, res) => {
 });
 
 // Plugin Manager (global admin only)
-app.get("/plugin-manager", requireGlobalAdmin, async (req, res) => {
+app.get("/plugin-manager", requirePermission("page.plugin_manager"), async (req, res) => {
   const pluginsSvc = require("./services/plugins.service");
   const takGovLink = await pluginsSvc.getTakGovLinkState(false);
   const plugins = pluginsSvc.listPlugins();
@@ -579,7 +561,7 @@ app.get("/plugin-manager", requireGlobalAdmin, async (req, res) => {
 });
 
 // Beta: Getting Started (global admins only, beta mode)
-app.get("/getting-started", requireStrictGlobalAdmin, requireBetaMode, (req, res) =>
+app.get("/getting-started", requirePermission("page.getting_started"), requireBetaMode, (req, res) =>
   res.render("getting-started")
 );
 
@@ -597,10 +579,10 @@ app.get("/documents", requireBetaDocumentsPage, (req, res) => {
 });
 
 // Data Package (global admins only; not beta-gated)
-app.get("/data-package", requireStrictGlobalAdmin, (req, res) =>
+app.get("/data-package", requirePermission("page.data_package"), (req, res) =>
   res.render("data-package")
 );
-app.get("/data-packages", requireStrictGlobalAdmin, (req, res) =>
+app.get("/data-packages", requirePermission("page.data_package"), (req, res) =>
   res.redirect("/data-package")
 );
 
@@ -612,7 +594,7 @@ app.get("/plugins", (req, res) => {
 });
 
 // Admin: audit log (GLOBAL ADMINS ONLY)
-app.get("/audit-log", requireGlobalAdmin, async (req, res) => {
+app.get("/audit-log", requirePermission("page.audit_log"), async (req, res) => {
   try {
     const raw = req.query || {};
 
@@ -1007,11 +989,11 @@ app.get("/request-access/confirmation", (req, res) => {
 });
 
 // Admin: review pending access requests
-app.get("/pending-user-requests", requireGlobalAdmin, (req, res) => {
+app.get("/pending-user-requests", requirePermission("page.pending_requests"), (req, res) => {
   return res.render("pending-user-requests");
 });
 
-app.get("/settings", requireGlobalAdmin, (req, res) => {
+app.get("/settings", requirePermission("page.settings"), (req, res) => {
   const settings = settingsSvc.getSettings();
   const keys = Object.keys(settings).sort();
 
@@ -1133,7 +1115,7 @@ app.get("/settings", requireGlobalAdmin, (req, res) => {
 
 app.post(
   "/settings",
-  requireGlobalAdmin,
+  requirePermission("page.settings"),
   upload.fields([
     { name: "TAK_API_P12_UPLOAD", maxCount: 1 },
     { name: "TAK_CA_UPLOAD", maxCount: 1 },
@@ -1381,7 +1363,7 @@ app.post(
 
 // Send a simple SMTP test email using Always CC / BCC lists
 
-app.post("/settings/test-email", requireGlobalAdmin, async (req, res) => {
+app.post("/settings/test-email", requirePermission("page.settings"), async (req, res) => {
   console.log("[settings] Test email requested");
 
   try {
@@ -1404,7 +1386,7 @@ app.post("/settings/test-email", requireGlobalAdmin, async (req, res) => {
 const uploadSmsTest = multer();
 app.post(
   "/settings/test-sms",
-  requireGlobalAdmin,
+  requirePermission("page.settings"),
   uploadSmsTest.none(),
   async (req, res) => {
     try {
@@ -1481,7 +1463,7 @@ app.post(
 //   - <files...>       (will be treated as data/<files...>)
 app.post(
   "/settings/import-data",
-  requireGlobalAdmin,
+  requirePermission("page.settings"),
   upload.single("CONFIG_ZIP_UPLOAD"),
   async (req, res) => {
     const unzipper = require("unzipper");
@@ -1575,7 +1557,7 @@ app.post(
 );
 
 // Export a zip of the data folder
-app.get("/settings/export-data", requireGlobalAdmin, (req, res) => {
+app.get("/settings/export-data", requirePermission("page.settings"), (req, res) => {
   const archiver = require("archiver");
   const dataDir = path.join(__dirname, "data");
 

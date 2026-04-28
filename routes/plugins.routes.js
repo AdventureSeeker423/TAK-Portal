@@ -1,6 +1,6 @@
 /**
  * Plugin Manager API: TAK.gov link, list/download/delete plugins.
- * All routes require global admin (mounted with requireGlobalAdmin).
+ * Mounted with requirePermission("api.plugins_admin") in server.js.
  */
 
 const router = require("express").Router();

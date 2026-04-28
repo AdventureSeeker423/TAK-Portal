@@ -11,7 +11,14 @@
       ? (authUser.displayName || authUser.username)
       : "";
 
-  const canSeeSettings = _isGlobalAdmin;
+  const _perm = typeof perm === "function" ? perm : function () { return false; };
+
+  const canSeeConfigSection =
+    _perm("page.agencies") ||
+    _perm("page.integrations") ||
+    _perm("page.plugin_manager") ||
+    _perm("page.settings") ||
+    _perm("page.access_control");
 
   const _settings = typeof settings !== "undefined" && settings ? settings : {};
   const betaModeEnabled =
@@ -58,9 +65,15 @@
             <span class="nav-section-chevron" aria-hidden="true">▾</span>
           </button>
           <div class="nav-section-links" id="nav-users-groups">
+            <% if (_perm("page.users")) { %>
             <a href="/users/manage" class="<%= isActive('/users/manage') ? 'active' : '' %>">Users</a>
+            <% } %>
+            <% if (_perm("page.groups")) { %>
             <a href="/groups" class="<%= isActive('/groups') ? 'active' : '' %>">Groups</a>
+            <% } %>
+            <% if (_perm("page.templates")) { %>
             <a href="/templates" class="<%= isActive('/templates') ? 'active' : '' %>">Templates</a>
+            <% } %>
           </div>
         </div>
 
@@ -71,24 +84,28 @@
             <span class="nav-section-chevron" aria-hidden="true">▾</span>
           </button>
           <div class="nav-section-links" id="nav-administration">
-            <% if (_isGlobalAdmin) { %>
+            <% if (_perm("page.audit_log")) { %>
               <a href="/audit-log" class="<%= isActive('/audit-log') ? 'active' : '' %>">Audit Log</a>
+            <% } %>
+            <% if (_perm("page.data_package")) { %>
               <a href="/data-package" class="<%= isActive('/data-package') ? 'active' : '' %>">Data Package</a>
             <% } %>
-            <% if (_isGlobalAdmin && betaModeEnabled) { %>
+            <% if (_perm("page.data_sync") && betaModeEnabled) { %>
               <a href="/data-sync" class="<%= isActive('/data-sync') ? 'active' : '' %>">Data Sync</a>
             <% } %>
+            <% if (_perm("page.email")) { %>
             <a href="/email" class="<%= isActive('/email') ? 'active' : '' %>">Email Users</a>
-            <% if (_isGlobalAdmin) { %>
+            <% } %>
+            <% if (_perm("page.locate")) { %>
               <a href="/locate" class="<%= isActive('/locate') ? 'active' : '' %>">Locate Persons</a>
             <% } %>
-            <% if (_isGlobalAdmin) { %>
+            <% if (_perm("page.mutual_aid")) { %>
               <a href="/mutual-aid" class="<%= isActive('/mutual-aid') ? 'active' : '' %>">Mutual Aid</a>
             <% } %>
           </div>
         </div>
 
-        <% if (canSeeSettings) { %>
+        <% if (canSeeConfigSection) { %>
         <!-- Configuration -->
         <div class="nav-section" data-section="configuration">
           <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-configuration" id="nav-toggle-configuration">
@@ -96,10 +113,21 @@
             <span class="nav-section-chevron" aria-hidden="true">▾</span>
           </button>
           <div class="nav-section-links" id="nav-configuration">
+            <% if (_perm("page.agencies")) { %>
             <a href="/agencies" class="<%= isActive('/agencies') ? 'active' : '' %>">Agencies</a>
+            <% } %>
+            <% if (_perm("page.integrations")) { %>
             <a href="/integrations" class="<%= isActive('/integrations') ? 'active' : '' %>">Integrations</a>
+            <% } %>
+            <% if (_perm("page.plugin_manager")) { %>
             <a href="/plugin-manager" class="<%= isActive('/plugin-manager') ? 'active' : '' %>">Plugin Manager</a>
+            <% } %>
+            <% if (_perm("page.settings")) { %>
             <a href="/settings" class="<%= isActive('/settings') ? 'active' : '' %>">Server Settings</a>
+            <% } %>
+            <% if (_perm("page.access_control")) { %>
+            <a href="/access-control" class="<%= isActive('/access-control') ? 'active' : '' %>">Access control</a>
+            <% } %>
           </div>
         </div>
         <% } %>
@@ -144,7 +172,7 @@
             type="button"
             class="update-available-pill"
             id="update-pill"
-            <% if (!_isGlobalAdmin) { %> disabled style="opacity:.6; cursor:not-allowed;" <% } %>
+            <% if (!_perm("page.settings")) { %> disabled style="opacity:.6; cursor:not-allowed;" <% } %>
           >
             Update Available
             <% if (typeof APP_LATEST_VERSION !== "undefined" && APP_LATEST_VERSION) { %>
@@ -212,7 +240,7 @@
 </script>
 
 <% /* Modal OUTSIDE sidebar so layout never interferes */ %>
-<% if (_isGlobalAdmin && typeof APP_UPDATE_AVAILABLE !== "undefined" && APP_UPDATE_AVAILABLE) { %>
+<% if (_perm("page.settings") && typeof APP_UPDATE_AVAILABLE !== "undefined" && APP_UPDATE_AVAILABLE) { %>
   <div id="update-modal" class="modalOverlay" style="display:none;">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
       <div class="modalHeader">

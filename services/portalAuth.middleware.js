@@ -1,6 +1,8 @@
 // services/portalAuth.middleware.js
 const { getBool, getString } = require("./env");
 const accessSvc = require("./access.service");
+const { parseGroupList } = require("./authzRoles.service");
+const permsSvc = require("./permissions.service");
 
 /**
  * Optional Authentik-based access control with role levels.
@@ -29,18 +31,17 @@ const PUBLIC_PATHS = new Set([
   "/favicon.ico",
 ]);
 
-function parseGroupList(raw) {
-  if (!raw) return [];
-  return String(raw)
-    .split(",")
-    .map((g) => g.trim().toLowerCase())
-    .filter(Boolean);
-}
-
 function normalizePath(p) {
   // remove trailing slashes (except keep "/" as "/")
   const out = String(p || "").replace(/\/+$/, "");
   return out || "/";
+}
+
+function attachPermissions(req, res, authUser, authEnabled) {
+  const eff = permsSvc.getEffectivePermissionSet(authUser, !authEnabled);
+  req.effectivePermissionSet = eff;
+  res.locals.perm = (permissionId) => permsSvc.can(eff, permissionId);
+  res.locals.effectivePermissionIds = Array.from(eff).sort();
 }
 
 function portalAuthMiddleware(req, res, next) {
@@ -51,6 +52,9 @@ function portalAuthMiddleware(req, res, next) {
   res.locals.authUser = null;
   res.locals.isGlobalAdmin = false;
   res.locals.isAgencyAdmin = false;
+  res.locals.perm = () => false;
+  res.locals.effectivePermissionIds = [];
+  delete req.effectivePermissionSet;
 
   // Always allow logout through so users who are blocked can sign out
   if (req.path === "/logout") {
@@ -63,8 +67,7 @@ function portalAuthMiddleware(req, res, next) {
   // Allow anonymous submission of access requests without exposing the
   // admin-only listing endpoint.
   const isPublicAccessRequestSubmit =
-    normalizedPath === "/api/user-requests" &&
-    method === "POST";
+    normalizedPath === "/api/user-requests" && method === "POST";
 
   const isPluginDownloadApi =
     method === "GET" &&
@@ -81,7 +84,7 @@ function portalAuthMiddleware(req, res, next) {
       displayName: "ANONYMOUS",
       groups: [],
       isGlobalAdmin: true,
-      isAgencyAdmin: true, // optional, but helps if any code checks this too
+      isAgencyAdmin: true,
       allowedAgencySuffixes: [],
     };
 
@@ -90,7 +93,7 @@ function portalAuthMiddleware(req, res, next) {
     res.locals.isGlobalAdmin = true;
     res.locals.isAgencyAdmin = true;
     res.locals.allowedAgencySuffixes = [];
-
+    attachPermissions(req, res, bootstrapUser, authEnabled);
     return next();
   }
 
@@ -143,8 +146,9 @@ function portalAuthMiddleware(req, res, next) {
   // Agency admin status now comes purely from the Agencies config. Any
   // agency that lists one of the user's groups in its "adminGroups"
   // field will treat this user as an agency admin for that agency.
-  const agencySuffixesForUser =
-    accessSvc.getAllowedAgencySuffixesForGroups(userGroupsLower);
+  const agencySuffixesForUser = accessSvc.getAllowedAgencySuffixesForGroups(
+    userGroupsLower
+  );
   const isAgencyAdmin =
     Array.isArray(agencySuffixesForUser) && agencySuffixesForUser.length > 0;
 
@@ -155,116 +159,35 @@ function portalAuthMiddleware(req, res, next) {
   const hasAnyRequired =
     !anyAdminGroupConfigured || isGlobalAdmin || isAgencyAdmin;
 
-// ============================================================
-// ROLE-BASED ROUTE ENFORCEMENT
-// ============================================================
-
-function deny() {
-  if (normalizedPath.startsWith("/api/")) {
-    return res.status(403).json({ error: "Access denied" });
-  }
-  return res.status(403).render("access-denied", { username });
-}
-
-if (!isPublicPath) {
-
-  // Must be authenticated
-  if (!username) {
+  function deny() {
     if (normalizedPath.startsWith("/api/")) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(403).json({ error: "Access denied" });
     }
-
-    return res
-      .status(401)
-      .send(
-        "Authentication required. This portal expects to be behind an Authentik forward_auth proxy."
-      );
+    return res.status(403).render("access-denied", { username });
   }
 
-  // If admin groups exist, user must be at least agency admin — except
-  // any authenticated user may access Setup My Device and the Plugins page.
-  if (!hasAnyRequired) {
-    const isAllowedNonAdminPath =
-      normalizedPath === "/setup-my-device" ||
-      normalizedPath.startsWith("/api/setup-my-device") ||
-      normalizedPath === "/plugins" ||
-      isPluginDownloadApi;
-    if (!isAllowedNonAdminPath) {
-      return deny();
-    }
-  }
-
-  // GLOBAL ADMINS can access everything
-  if (isGlobalAdmin) {
-    // allow
-  }
-
-  // AGENCY ADMINS limited routes
-  else if (isAgencyAdmin) {
-
-    // Agency admins must be able to *read* agencies so the UI can load and
-    // prefill agency dropdowns (Users / Groups / Templates).
-    // Any writes to agencies remain GLOBAL ADMIN only.
-    if (normalizedPath === "/api/agencies" || normalizedPath.startsWith("/api/agencies/")) {
-      const method = String(req.method || "GET").toUpperCase();
-      if (method !== "GET") {
+  // —— Minimum portal membership: must be in an admin group (when configured) ——
+  if (!isPublicPath) {
+    if (!hasAnyRequired) {
+      const isAllowedNonAdminPath =
+        normalizedPath === "/setup-my-device" ||
+        normalizedPath.startsWith("/api/setup-my-device") ||
+        normalizedPath === "/plugins" ||
+        isPluginDownloadApi;
+      if (!isAllowedNonAdminPath) {
         return deny();
       }
-      // GET is allowed; continue to normal allowlist checks.
     }
 
-    const allowedAgencyAdminPrefixes = [
-      "/dashboard",
-      "/users",
-      "/groups",
-      "/templates",
-      "/email",
-      "/plugins",
-      "/setup-my-device",
-      "/pending-user-requests",
-      "/documents",
-      "/sample-users.csv",
-      "/csv-instructions-readme.txt",
-      "/api/users",
-      "/api/groups",
-      "/api/templates",
-      "/api/agencies",
-      "/api/email",
-      "/api/setup-my-device",
-      "/api/user-requests",
-      "/api/tak",
-      "/api/documents",
-      "/api/plugins",
-    ];
-
-    const allowed = allowedAgencyAdminPrefixes.some(prefix =>
-      normalizedPath === prefix || normalizedPath.startsWith(prefix + "/")
+    // —— Capability / path table (replaces per-role allowlists) ——
+    const eff = permsSvc.getEffectivePermissionSet(
+      { username, isGlobalAdmin, isAgencyAdmin },
+      false
     );
-
-    if (!allowed) {
+    if (!permsSvc.canAccessPath(eff, normalizedPath, method)) {
       return deny();
     }
   }
-
-  // NORMAL USERS: setup-my-device and plugins page
-  else {
-
-    const allowedUserPrefixes = [
-      "/setup-my-device",
-      "/api/setup-my-device",
-      "/plugins",
-      "/api/plugins",
-    ];
-
-    const allowed = allowedUserPrefixes.some(prefix =>
-      normalizedPath === prefix || normalizedPath.startsWith(prefix + "/")
-    );
-
-    if (!allowed) {
-      return deny();
-    }
-  }
-}
 
   const displayNameHeader =
     req.headers["x-authentik-name"] || req.headers["x-authentik-display-name"];
@@ -286,6 +209,7 @@ if (!isPublicPath) {
   res.locals.isGlobalAdmin = isGlobalAdmin;
   res.locals.isAgencyAdmin = isAgencyAdmin;
   res.locals.allowedAgencySuffixes = agencySuffixesForUser || [];
+  attachPermissions(req, res, authUser, authEnabled);
 
   return next();
 }

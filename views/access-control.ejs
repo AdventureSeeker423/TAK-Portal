@@ -1,0 +1,373 @@
+<%- include("partials/header") %>
+<%- include("partials/sidebar") %>
+
+<main class="main">
+  <h1>Access control</h1>
+  <p class="muted" style="margin-top:0; max-width: 52rem;">
+    Restrict capabilities for a specific user on top of their Authentik role (global admin, agency admin, or standard).
+    Denied items are removed from their effective access immediately after save.
+  </p>
+
+  <div class="card">
+    <h2>Select user</h2>
+    <label style="display:block; max-width: 28rem;">
+      Search Authentik username
+      <input type="search" id="acUserSearch" placeholder="Type to search…" autocomplete="off" />
+    </label>
+    <div id="acSearchResults" class="ac-search-results" style="margin-top:8px; max-height:200px; overflow:auto; display:none;"></div>
+    <div id="acUserSummary" style="margin-top:12px; display:none;">
+      <strong id="acSelName"></strong>
+      <span id="acSelMeta" class="muted" style="margin-left:8px;"></span>
+      <div id="acPills" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div id="acEditor" style="display:none;">
+    <div class="card">
+      <h2>Restrictions</h2>
+      <p class="muted" style="margin-top:0;">
+        Toggle <strong>Restrict</strong> to deny a capability for this user. Leave as <strong>Inherit</strong> to use their role defaults.
+      </p>
+      <div id="acGroups"></div>
+      <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button type="button" class="btn success" id="acSaveBtn">Save restrictions</button>
+        <button type="button" class="btn" id="acResetBtn">Reset to role defaults</button>
+        <span id="acMsg" class="msg"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Effective access (preview)</h2>
+      <p class="muted" style="margin-top:0;">What this user can still do after overrides.</p>
+      <ul id="acEffective" class="ac-effective"></ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>All users with overrides</h2>
+    <table class="ac-table" id="acAllTable" style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left; padding:6px;">Username</th>
+          <th style="text-align:left; padding:6px;">Restrictions</th>
+        </tr>
+      </thead>
+      <tbody id="acAllBody"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+(function () {
+  const SECTION_LABELS = {
+    core: "Core",
+    onboarding: "Onboarding",
+    usersGroups: "Users &amp; groups",
+    administration: "Administration",
+    configuration: "Configuration",
+    api: "APIs",
+    other: "Other",
+  };
+
+  let registryFlat = [];
+  let selectedUsername = null;
+  let currentDeny = new Set();
+  let searchTimer = null;
+
+  const el = (id) => document.getElementById(id);
+
+  function setMsg(text, isErr) {
+    const m = el("acMsg");
+    m.textContent = text || "";
+    m.style.color = isErr ? "#f66" : "";
+  }
+
+  async function loadRegistry() {
+    const r = await fetch("/api/access-control/registry", { headers: { Accept: "application/json" } });
+    if (!r.ok) throw new Error("Failed to load registry");
+    const j = await r.json();
+    registryFlat = j.permissions || [];
+  }
+
+  function buildEditor() {
+    const by = new Map();
+    for (const m of registryFlat) {
+      const s = m.section || "other";
+      if (!by.has(s)) by.set(s, []);
+      by.get(s).push(m);
+    }
+    const host = el("acGroups");
+    host.innerHTML = "";
+    for (const [section, items] of by) {
+      const wrap = document.createElement("div");
+      wrap.style.marginBottom = "20px";
+      const h = document.createElement("h3");
+      h.style.margin = "0 0 8px 0";
+      h.innerHTML = SECTION_LABELS[section] || section;
+      wrap.appendChild(h);
+      for (const m of items) {
+        const id = m.id;
+        const row = document.createElement("div");
+        row.style.display = "grid";
+        row.style.gridTemplateColumns = "1fr 220px";
+        row.style.gap = "10px";
+        row.style.alignItems = "start";
+        row.style.padding = "8px 0";
+        row.style.borderBottom = "1px solid rgba(128,128,128,.2)";
+        row.innerHTML =
+          "<div><strong>" +
+          (m.label || id) +
+          "</strong><div class=\"muted\" style=\"font-size:0.9em; margin-top:2px;\">" +
+          (m.description || "") +
+          "</div></div><div class=\"ac-toggle\" data-id=\"" + id + "\">" + buildToggle(id) + "</div>";
+        wrap.appendChild(row);
+      }
+      host.appendChild(wrap);
+    }
+
+    host.querySelectorAll("select.ac-state").forEach((sel) => {
+      sel.addEventListener("change", function () {
+        const id = this.getAttribute("data-id");
+        if (this.value === "deny") currentDeny.add(id);
+        else currentDeny.delete(id);
+        refreshEffective();
+      });
+    });
+  }
+
+  function buildToggle(id) {
+    const d = currentDeny.has(id);
+    return (
+      "<label class=\"muted\" style=\"display:block;\">" +
+      "<select class=\"ac-state\" data-id=\"" +
+      id +
+      "\" style=\"min-width: 12rem;\">" +
+      "<option value=\"inherit\" " +
+      (d ? "" : "selected") +
+      ">Inherit from role (allowed)</option>" +
+      "<option value=\"deny\" " +
+      (d ? "selected" : "") +
+      ">Restrict access</option></select></label>" +
+      (d ? " <span class=\"pill\" style=\"background:#553\">Restricted</span>" : "")
+    );
+  }
+
+  function syncToggles() {
+    document.querySelectorAll("select.ac-state").forEach((sel) => {
+      const id = sel.getAttribute("data-id");
+      sel.value = currentDeny.has(id) ? "deny" : "inherit";
+    });
+  }
+
+  async function refreshEffective() {
+    if (!selectedUsername) return;
+    const q = encodeURIComponent(selectedUsername);
+    const r = await fetch("/api/access-control/effective?user=" + q, { headers: { Accept: "application/json" } });
+    if (!r.ok) {
+      el("acEffective").innerHTML = "<li>Could not load effective access.</li>";
+      return;
+    }
+    const j = await r.json();
+    const ul = el("acEffective");
+    ul.innerHTML = "";
+    (j.effectiveLabels || []).forEach((x) => {
+      const li = document.createElement("li");
+      li.textContent = (x.label || x.id) + (x.section ? " (" + x.section + ")" : "");
+      ul.appendChild(li);
+    });
+  }
+
+  async function selectUser(username) {
+    selectedUsername = username;
+    el("acUserSearch").value = username;
+    el("acSearchResults").style.display = "none";
+    el("acUserSummary").style.display = "block";
+    setMsg("");
+
+    const r = await fetch(
+      "/api/access-control/effective?user=" + encodeURIComponent(username),
+      { headers: { Accept: "application/json" } }
+    );
+    if (!r.ok) {
+      setMsg("User not found or not accessible.", true);
+      el("acEditor").style.display = "none";
+      return;
+    }
+    const j = await r.json();
+    el("acSelName").textContent = j.displayName || j.username;
+    const role =
+      j.baseRole === "global_admin"
+        ? "Global admin"
+        : j.baseRole === "agency_admin"
+        ? "Agency admin"
+        : "Standard";
+    el("acSelMeta").textContent = j.username + " — Base role: " + role;
+    el("acPills").innerHTML = "";
+    const p = document.createElement("span");
+    p.className = "pill";
+    p.textContent = "Overrides: " + (j.deny && j.deny.length ? j.deny.length + " restrictions" : "None");
+    el("acPills").appendChild(p);
+
+    const ov = await fetch(
+      "/api/access-control/overrides/" + encodeURIComponent(j.username),
+      { headers: { Accept: "application/json" } }
+    );
+    const oj = ov.ok ? await ov.json() : { deny: [] };
+    currentDeny = new Set(oj.deny || []);
+
+    el("acEditor").style.display = "block";
+    buildEditor();
+    refreshEffective();
+  }
+
+  el("acUserSearch").addEventListener("input", function () {
+    const q = this.value.trim();
+    clearTimeout(searchTimer);
+    if (q.length < 2) {
+      el("acSearchResults").style.display = "none";
+      return;
+    }
+    searchTimer = setTimeout(async () => {
+      try {
+        const r = await fetch(
+          "/api/users/search?q=" + encodeURIComponent(q) + "&page=1&pageSize=20",
+          { headers: { Accept: "application/json" } }
+        );
+        if (!r.ok) return;
+        const j = await r.json();
+        const items = j.users || j.items || j.rows || j.results || [];
+        const box = el("acSearchResults");
+        box.innerHTML = "";
+        items.forEach((u) => {
+          const un = (u && u.username) || u;
+          if (!un) return;
+          const a = document.createElement("button");
+          a.type = "button";
+          a.className = "btn";
+          a.style.display = "block";
+          a.style.width = "100%";
+          a.style.textAlign = "left";
+          a.style.marginBottom = "4px";
+          a.textContent = un + (u.name ? " — " + u.name : "");
+          a.addEventListener("click", function () {
+            selectUser(String(un).trim());
+          });
+          box.appendChild(a);
+        });
+        box.style.display = items.length ? "block" : "none";
+      } catch (e) {
+        /* ignore */
+      }
+    }, 300);
+  });
+
+  el("acSaveBtn").addEventListener("click", async function () {
+    if (!selectedUsername) return;
+    setMsg("Saving…");
+    try {
+      const body = { deny: Array.from(currentDeny) };
+      const r = await fetch(
+        "/api/access-control/overrides/" + encodeURIComponent(selectedUsername),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
+      if (!r.ok) {
+        const t = await r.text();
+        setMsg("Save failed: " + t, true);
+        return;
+      }
+      setMsg("Saved.");
+      loadAllOverrides();
+      refreshEffective();
+    } catch (e) {
+      setMsg("Save failed.", true);
+    }
+  });
+
+  el("acResetBtn").addEventListener("click", async function () {
+    if (!selectedUsername) return;
+    if (!confirm("Clear all permission overrides for " + selectedUsername + "?")) return;
+    currentDeny = new Set();
+    setMsg("Saving…");
+    try {
+      const r = await fetch(
+        "/api/access-control/overrides/" + encodeURIComponent(selectedUsername),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ deny: [] }),
+        }
+      );
+      if (!r.ok) {
+        setMsg("Reset failed.", true);
+        return;
+      }
+      setMsg("Cleared. Role defaults apply.");
+      syncToggles();
+      loadAllOverrides();
+      refreshEffective();
+    } catch (e) {
+      setMsg("Reset failed.", true);
+    }
+  });
+
+  async function loadAllOverrides() {
+    const r = await fetch("/api/access-control/overrides", { headers: { Accept: "application/json" } });
+    const tb = el("acAllBody");
+    tb.innerHTML = "";
+    if (!r.ok) return;
+    const j = await r.json();
+    const list = j.usernames || [];
+    if (!list.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="2" class="muted" style="padding:8px;">No overrides yet.</td>';
+      tb.appendChild(tr);
+      return;
+    }
+    const rows = await Promise.all(
+      list.map(async (un) => {
+        const rr = await fetch(
+          "/api/access-control/overrides/" + encodeURIComponent(un),
+          { headers: { Accept: "application/json" } }
+        );
+        if (!rr.ok) return { un, c: 0 };
+        const o = await rr.json();
+        return { un, c: (o.deny || []).length };
+      })
+    );
+    for (const { un, c } of rows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td style=\"padding:6px;\"><button type=\"button\" class=\"linkish\" data-user=\"" +
+        un +
+        "\">" +
+        un +
+        "</button></td>" +
+        "<td style=\"padding:6px;\">" +
+        c +
+        "</td>";
+      tb.appendChild(tr);
+    }
+    tb.querySelectorAll("button.linkish").forEach((b) => {
+      b.addEventListener("click", function () {
+        selectUser(this.getAttribute("data-user"));
+        window.scrollTo(0, 0);
+      });
+    });
+  }
+
+  loadRegistry().catch(function () {
+    setMsg("Could not load permission metadata.", true);
+  });
+
+  loadAllOverrides();
+})();
+</script>
+
+</main>
+</div>
+</body>
+</html>

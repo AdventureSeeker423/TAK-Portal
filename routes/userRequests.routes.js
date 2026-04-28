@@ -1,12 +1,12 @@
 const router = require("express").Router();
 const userRequestsSvc = require("../services/userRequests.service");
 const auditSvc = require("../services/auditLog.service");
+const permsSvc = require("../services/permissions.service");
 
-function requireAnyAdmin(req, res, next) {
-  const user = req.authentikUser;
-  if (!user || (!user.isGlobalAdmin && !user.isAgencyAdmin)) {
-    const username = user && user.username ? user.username : "";
-    return res.status(403).render("access-denied", { username });
+function requireUserRequestsApi(req, res, next) {
+  const eff = req.effectivePermissionSet;
+  if (!eff || !permsSvc.can(eff, "api.user_requests")) {
+    return res.status(403).json({ error: "Forbidden" });
   }
   next();
 }
@@ -33,13 +33,13 @@ router.post("/", async (req, res) => {
 });
 
 // Admin: list all pending requests
-router.get("/", requireAnyAdmin, (req, res) => {
+router.get("/", requireUserRequestsApi, (req, res) => {
   const list = userRequestsSvc.listRequestsForUser(req.authentikUser);
   return res.json(list);
 });
 
 // Admin: delete a request (reject)
-router.delete("/:id", requireAnyAdmin, (req, res) => {
+router.delete("/:id", requireUserRequestsApi, (req, res) => {
   const before = userRequestsSvc
     .listRequestsForUser(req.authentikUser)
     .find((x) => String(x?.id) === String(req.params.id)) || null;
