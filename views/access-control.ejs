@@ -2,54 +2,159 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1>Access control</h1>
-  <p class="muted" style="margin-top:0; max-width: 52rem;">
-    Restrict capabilities for a specific user on top of their Authentik role (global admin, agency admin, or standard).
-    Denied items are removed from their effective access immediately after save.
+  <h1>Access Control</h1>
+  <p class="muted" style="margin-top:0; max-width: 62rem;">
+    Manage page-level capabilities per user. Use the table to locate users, optionally change base role,
+    then click <strong>Edit Permissions</strong> to apply granular Allow/Deny overrides.
   </p>
 
+  <style>
+    .ac-user-table-wrap {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .ac-user-table-scroll {
+      max-height: 300px;
+      overflow: auto;
+    }
+    .ac-user-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+    }
+    .ac-user-table th,
+    .ac-user-table td {
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+      font-size: 0.95rem;
+    }
+    .ac-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 0.82rem;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    .ac-pill-user { background: rgba(120,120,120,.12); border-color: rgba(120,120,120,.35); }
+    .ac-pill-agency { background: rgba(70,140,255,.12); border-color: rgba(70,140,255,.35); }
+    .ac-pill-global { background: rgba(35,180,95,.12); border-color: rgba(35,180,95,.35); }
+
+    .ac-state-legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0 0 10px 0;
+    }
+    .ac-legend-item {
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.84rem;
+      border: 1px solid transparent;
+    }
+    .ac-state-inherit-allowed { background: rgba(65,140,255,.08); border-color: rgba(65,140,255,.24); }
+    .ac-state-inherit-denied { background: rgba(130,130,130,.08); border-color: rgba(130,130,130,.24); }
+    .ac-state-allow { background: rgba(40,180,95,.12); border-color: rgba(40,180,95,.34); }
+    .ac-state-deny { background: rgba(210,75,75,.12); border-color: rgba(210,75,75,.34); }
+
+    .ac-perm-row {
+      display: grid;
+      grid-template-columns: minmax(300px,1fr) 280px;
+      gap: 10px;
+      align-items: start;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      transition: background-color .15s ease;
+    }
+  </style>
+
   <div class="card">
-    <h2>Select user</h2>
-    <label style="display:block; max-width: 28rem;">
-      Search Authentik username
-      <input type="search" id="acUserSearch" placeholder="Type to search…" autocomplete="off" />
-    </label>
-    <div id="acSearchResults" class="ac-search-results" style="margin-top:8px; max-height:200px; overflow:auto; display:none;"></div>
-    <div id="acUserSummary" style="margin-top:12px; display:none;">
-      <strong id="acSelName"></strong>
-      <span id="acSelMeta" class="muted" style="margin-left:8px;"></span>
-      <div id="acPills" style="margin-top:8px;"></div>
+    <h2>Select User</h2>
+
+    <div style="display:grid; grid-template-columns: 240px minmax(260px,1fr); gap:10px; align-items:end; max-width: 920px;">
+      <label>
+        Agency Filter
+        <select id="acAgencyFilter">
+          <option value="">All Agencies</option>
+        </select>
+      </label>
+      <label>
+        Search Existing Users
+        <input type="search" id="acUserSearch" placeholder="Search username, name, or email" autocomplete="off" />
+      </label>
+    </div>
+
+    <div id="acSearchMsg" class="muted" style="margin-top:8px;">Type 2+ characters to search.</div>
+
+    <div class="ac-user-table-wrap">
+      <div class="ac-user-table-scroll">
+        <table class="ac-user-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Agency</th>
+              <th>Current Access</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="acSearchRows"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
   <div id="acEditor" style="display:none;">
     <div class="card">
-      <h2>Restrictions</h2>
+      <h2>Edit User Permissions</h2>
+      <div id="acUserSummary" style="margin-bottom:10px;">
+        <strong id="acSelName"></strong>
+        <span id="acSelMeta" class="muted" style="margin-left:8px;"></span>
+        <span id="acPillRole" class="ac-pill" style="margin-left:8px;"></span>
+      </div>
+
+      <div class="ac-state-legend">
+        <span class="ac-legend-item ac-state-inherit-allowed">Inherit From Role (Allowed)</span>
+        <span class="ac-legend-item ac-state-inherit-denied">Inherit From Role (Not Allowed)</span>
+        <span class="ac-legend-item ac-state-allow">Allow Override</span>
+        <span class="ac-legend-item ac-state-deny">Deny Override</span>
+      </div>
+
       <p class="muted" style="margin-top:0;">
-        Set each capability to <strong>Inherit From Role</strong>, <strong>Allow</strong>, or <strong>Deny</strong>.
+        Restriction order mirrors the sidebar. Choose <strong>Allow</strong> or <strong>Deny</strong>,
+        or leave as <strong>Inherit From Role</strong>.
       </p>
+
       <div id="acGroups"></div>
-      <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-        <button type="button" class="btn success" id="acSaveBtn">Save restrictions</button>
-        <button type="button" class="btn" id="acResetBtn">Reset to role defaults</button>
+
+      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button type="button" class="btn success" id="acSaveBtn">Save Permissions</button>
+        <button type="button" class="btn" id="acResetBtn">Reset To Role Defaults</button>
         <span id="acMsg" class="msg"></span>
       </div>
     </div>
 
     <div class="card">
-      <h2>Effective access (preview)</h2>
-      <p class="muted" style="margin-top:0;">What this user can still do after overrides.</p>
+      <h2>Effective Access</h2>
       <ul id="acEffective" class="ac-effective"></ul>
     </div>
   </div>
 
   <div class="card">
-    <h2>All users with overrides</h2>
+    <h2>All Users With Overrides</h2>
     <table class="ac-table" id="acAllTable" style="width:100%; border-collapse:collapse;">
       <thead>
         <tr>
           <th style="text-align:left; padding:6px;">Username</th>
-          <th style="text-align:left; padding:6px;">Restrictions</th>
+          <th style="text-align:left; padding:6px;">Overrides</th>
         </tr>
       </thead>
       <tbody id="acAllBody"></tbody>
@@ -61,16 +166,21 @@
 (function () {
   const SECTION_LABELS = {
     core: "Core",
-    onboarding: "Onboarding",
-    usersGroups: "Users &amp; groups",
+    usersGroups: "Users & Groups",
     administration: "Administration",
     configuration: "Configuration",
-    api: "APIs",
     other: "Other",
+  };
+
+  const roleLabel = {
+    user: "User",
+    agency_admin: "Agency Admin",
+    global_admin: "Global Admin",
   };
 
   let registryFlat = [];
   let selectedUsername = null;
+  let selectedUserId = null;
   let currentDeny = new Set();
   let currentAllow = new Set();
   let currentBaseAllowed = new Set();
@@ -80,8 +190,15 @@
 
   function setMsg(text, isErr) {
     const m = el("acMsg");
+    if (!m) return;
     m.textContent = text || "";
     m.style.color = isErr ? "#f66" : "";
+  }
+
+  function roleToPillClass(role) {
+    if (role === "global_admin") return "ac-pill ac-pill-global";
+    if (role === "agency_admin") return "ac-pill ac-pill-agency";
+    return "ac-pill ac-pill-user";
   }
 
   async function loadRegistry() {
@@ -89,6 +206,43 @@
     if (!r.ok) throw new Error("Failed to load registry");
     const j = await r.json();
     registryFlat = j.permissions || [];
+  }
+
+  async function loadAgencies() {
+    try {
+      const r = await fetch("/api/agencies", { headers: { Accept: "application/json" } });
+      if (!r.ok) return;
+      const list = await r.json();
+      const sel = el("acAgencyFilter");
+      (Array.isArray(list) ? list : []).forEach((a) => {
+        const opt = document.createElement("option");
+        opt.value = String(a?.suffix || "").trim().toLowerCase();
+        opt.textContent = `${String(a?.name || "Agency")} (${String(a?.suffix || "").trim()})`;
+        sel.appendChild(opt);
+      });
+    } catch (_) {}
+  }
+
+  function classifyRowState(id) {
+    if (currentAllow.has(id)) return "ac-state-allow";
+    if (currentDeny.has(id)) return "ac-state-deny";
+    return currentBaseAllowed.has(id) ? "ac-state-inherit-allowed" : "ac-state-inherit-denied";
+  }
+
+  function buildToggle(id) {
+    const d = currentDeny.has(id);
+    const a = currentAllow.has(id);
+    const baseAllowed = currentBaseAllowed.has(id);
+    const inheritLabel = baseAllowed
+      ? "Inherit From Role (Allowed)"
+      : "Inherit From Role (Not Allowed)";
+    return (
+      "<select class=\"ac-state\" data-id=\"" + id + "\" style=\"min-width:16rem;\">" +
+      "<option value=\"inherit\" " + (!a && !d ? "selected" : "") + ">" + inheritLabel + "</option>" +
+      "<option value=\"allow\" " + (a ? "selected" : "") + ">Allow</option>" +
+      "<option value=\"deny\" " + (d ? "selected" : "") + ">Deny</option>" +
+      "</select>"
+    );
   }
 
   function buildEditor() {
@@ -102,26 +256,21 @@
     host.innerHTML = "";
     for (const [section, items] of by) {
       const wrap = document.createElement("div");
-      wrap.style.marginBottom = "20px";
+      wrap.style.marginBottom = "18px";
       const h = document.createElement("h3");
       h.style.margin = "0 0 8px 0";
-      h.innerHTML = SECTION_LABELS[section] || section;
+      h.textContent = SECTION_LABELS[section] || section;
       wrap.appendChild(h);
+
       for (const m of items) {
         const id = m.id;
         const row = document.createElement("div");
-        row.style.display = "grid";
-        row.style.gridTemplateColumns = "1fr 220px";
-        row.style.gap = "10px";
-        row.style.alignItems = "start";
-        row.style.padding = "8px 0";
-        row.style.borderBottom = "1px solid rgba(128,128,128,.2)";
+        row.className = "ac-perm-row " + classifyRowState(id);
+        row.setAttribute("data-row-id", id);
         row.innerHTML =
-          "<div><strong>" +
-          (m.label || id) +
-          "</strong><div class=\"muted\" style=\"font-size:0.9em; margin-top:2px;\">" +
-          (m.description || "") +
-          "</div></div><div class=\"ac-toggle\" data-id=\"" + id + "\">" + buildToggle(id) + "</div>";
+          "<div><strong>" + (m.label || id) + "</strong>" +
+          "<div class=\"muted\" style=\"font-size:.9em;margin-top:2px;\">" + (m.description || "") + "</div></div>" +
+          "<div>" + buildToggle(id) + "</div>";
         wrap.appendChild(row);
       }
       host.appendChild(wrap);
@@ -140,50 +289,19 @@
           currentAllow.delete(id);
           currentDeny.delete(id);
         }
+        const row = host.querySelector('[data-row-id="' + id + '"]');
+        if (row) {
+          row.classList.remove("ac-state-allow", "ac-state-deny", "ac-state-inherit-allowed", "ac-state-inherit-denied");
+          row.classList.add(classifyRowState(id));
+        }
         refreshEffective();
       });
     });
   }
 
-  function buildToggle(id) {
-    const d = currentDeny.has(id);
-    const a = currentAllow.has(id);
-    const baseAllowed = currentBaseAllowed.has(id);
-    const inheritLabel = baseAllowed
-      ? "Inherit From Role (Allowed)"
-      : "Inherit From Role (Not Allowed)";
-    return (
-      "<label class=\"muted\" style=\"display:block;\">" +
-      "<select class=\"ac-state\" data-id=\"" +
-      id +
-      "\" style=\"min-width: 12rem;\">" +
-      "<option value=\"inherit\" " +
-      (!a && !d ? "selected" : "") +
-      ">" + inheritLabel + "</option>" +
-      "<option value=\"allow\" " +
-      (a ? "selected" : "") +
-      ">Allow</option>" +
-      "<option value=\"deny\" " +
-      (d ? "selected" : "") +
-      ">Deny</option></select></label>" +
-      (d ? " <span class=\"pill\" style=\"background:#553\">Denied</span>" : "") +
-      (a ? " <span class=\"pill\" style=\"background:#355\">Allowed</span>" : "")
-    );
-  }
-
-  function syncToggles() {
-    document.querySelectorAll("select.ac-state").forEach((sel) => {
-      const id = sel.getAttribute("data-id");
-      if (currentAllow.has(id)) sel.value = "allow";
-      else if (currentDeny.has(id)) sel.value = "deny";
-      else sel.value = "inherit";
-    });
-  }
-
   async function refreshEffective() {
     if (!selectedUsername) return;
-    const q = encodeURIComponent(selectedUsername);
-    const r = await fetch("/api/access-control/effective?user=" + q, { headers: { Accept: "application/json" } });
+    const r = await fetch("/api/access-control/effective?user=" + encodeURIComponent(selectedUsername), { headers: { Accept: "application/json" } });
     if (!r.ok) {
       el("acEffective").innerHTML = "<li>Could not load effective access.</li>";
       return;
@@ -198,122 +316,171 @@
     });
   }
 
-  async function selectUser(username) {
+  async function selectUser(user) {
+    const username = String(user?.username || user || "").trim();
+    if (!username) return;
     selectedUsername = username;
-    el("acUserSearch").value = username;
-    el("acSearchResults").style.display = "none";
-    el("acUserSummary").style.display = "block";
+    selectedUserId = user?.pk ? String(user.pk) : null;
     setMsg("");
 
-    const r = await fetch(
-      "/api/access-control/effective?user=" + encodeURIComponent(username),
-      { headers: { Accept: "application/json" } }
-    );
+    const r = await fetch("/api/access-control/effective?user=" + encodeURIComponent(username), { headers: { Accept: "application/json" } });
     if (!r.ok) {
       setMsg("User not found or not accessible.", true);
       el("acEditor").style.display = "none";
       return;
     }
+
     const j = await r.json();
     currentBaseAllowed = new Set(Array.isArray(j.baseIds) ? j.baseIds : []);
-    el("acSelName").textContent = j.displayName || j.username;
-    const role =
-      j.baseRole === "global_admin"
-        ? "Global admin"
-        : j.baseRole === "agency_admin"
-        ? "Agency admin"
-        : "Standard";
-    el("acSelMeta").textContent = j.username + " — Base role: " + role;
-    el("acPills").innerHTML = "";
-    const p = document.createElement("span");
-    p.className = "pill";
-    const denyCount = Array.isArray(j.deny) ? j.deny.length : 0;
-    const allowCount = Array.isArray(j.allow) ? j.allow.length : 0;
-    const total = denyCount + allowCount;
-    p.textContent = "Overrides: " + (total ? total + " changes" : "None");
-    el("acPills").appendChild(p);
 
-    const ov = await fetch(
-      "/api/access-control/overrides/" + encodeURIComponent(j.username),
-      { headers: { Accept: "application/json" } }
-    );
+    const ov = await fetch("/api/access-control/overrides/" + encodeURIComponent(j.username), { headers: { Accept: "application/json" } });
     const oj = ov.ok ? await ov.json() : { deny: [], allow: [] };
     currentDeny = new Set(oj.deny || []);
     currentAllow = new Set(oj.allow || []);
 
+    const role = j.baseRole || "user";
+    el("acSelName").textContent = j.displayName || j.username;
+    el("acSelMeta").textContent = j.username;
+    const rolePill = el("acPillRole");
+    rolePill.className = roleToPillClass(role);
+    rolePill.textContent = roleLabel[role] || role;
+
     el("acEditor").style.display = "block";
     buildEditor();
-    syncToggles();
     refreshEffective();
   }
 
-  el("acUserSearch").addEventListener("input", function () {
-    const q = this.value.trim();
-    clearTimeout(searchTimer);
-    if (q.length < 2) {
-      el("acSearchResults").style.display = "none";
+  async function getRoleForUsername(username) {
+    const r = await fetch("/api/access-control/effective?user=" + encodeURIComponent(username), { headers: { Accept: "application/json" } });
+    if (!r.ok) return "user";
+    const j = await r.json();
+    return String(j.baseRole || "user");
+  }
+
+  async function renderSearchRows(items) {
+    const body = el("acSearchRows");
+    body.innerHTML = "";
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="6" class="muted">No matching users.</td></tr>';
       return;
     }
-    searchTimer = setTimeout(async () => {
-      try {
-        const r = await fetch(
-          "/api/users/search?q=" + encodeURIComponent(q) + "&page=1&pageSize=20",
-          { headers: { Accept: "application/json" } }
-        );
-        if (!r.ok) return;
-        const j = await r.json();
-        const items = j.users || j.items || j.rows || j.results || [];
-        const box = el("acSearchResults");
-        box.innerHTML = "";
-        items.forEach((u) => {
-          const un = (u && u.username) || u;
-          if (!un) return;
-          const a = document.createElement("button");
-          a.type = "button";
-          a.className = "btn";
-          a.style.display = "block";
-          a.style.width = "100%";
-          a.style.textAlign = "left";
-          a.style.marginBottom = "4px";
-          a.textContent = un + (u.name ? " — " + u.name : "");
-          a.addEventListener("click", function () {
-            selectUser(String(un).trim());
+
+    const withRoles = await Promise.all(items.map(async (u) => {
+      const role = await getRoleForUsername(String(u?.username || ""));
+      return { u, role };
+    }));
+
+    withRoles.forEach(({ u, role }) => {
+      const tr = document.createElement("tr");
+      const username = String(u?.username || "");
+      const name = String(u?.name || "");
+      const email = String(u?.email || "");
+      const agency = String(u?.attributes?.agency_abbreviation || u?.agency_abbreviation || "").toUpperCase();
+      tr.innerHTML =
+        "<td>" + username + "</td>" +
+        "<td>" + (name || "-") + "</td>" +
+        "<td>" + (email || "-") + "</td>" +
+        "<td>" + (agency || "-") + "</td>" +
+        "<td>" +
+          "<select class=\"ac-role-select\" data-user-id=\"" + String(u?.pk || "") + "\" data-username=\"" + username + "\">" +
+          "<option value=\"user\" " + (role === "user" ? "selected" : "") + ">User</option>" +
+          "<option value=\"agency_admin\" " + (role === "agency_admin" ? "selected" : "") + ">Agency Admin</option>" +
+          "<option value=\"global_admin\" " + (role === "global_admin" ? "selected" : "") + ">Global Admin</option>" +
+          "</select>" +
+        "</td>" +
+        "<td><button type=\"button\" class=\"btn success ac-edit-btn\" data-user=\"" + username + "\" data-user-id=\"" + String(u?.pk || "") + "\">Edit Permissions</button></td>";
+      body.appendChild(tr);
+    });
+
+    body.querySelectorAll(".ac-edit-btn").forEach((btn) => {
+      btn.addEventListener("click", function () {
+        const user = { username: this.getAttribute("data-user"), pk: this.getAttribute("data-user-id") };
+        selectUser(user);
+        window.scrollTo(0, 220);
+      });
+    });
+
+    body.querySelectorAll(".ac-role-select").forEach((sel) => {
+      sel.addEventListener("change", async function () {
+        const userId = this.getAttribute("data-user-id");
+        const username = this.getAttribute("data-username");
+        const role = this.value;
+        if (!userId) return;
+        const prev = this.getAttribute("data-prev") || "user";
+        this.disabled = true;
+        try {
+          const r = await fetch("/api/access-control/user-role/" + encodeURIComponent(userId), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ role }),
           });
-          box.appendChild(a);
-        });
-        box.style.display = items.length ? "block" : "none";
-      } catch (e) {
-        /* ignore */
-      }
-    }, 300);
+          const out = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(out.error || "Failed to update role.");
+          this.setAttribute("data-prev", out.role || role);
+          if (selectedUsername && selectedUsername === username) {
+            await selectUser({ username, pk: userId });
+          }
+        } catch (e) {
+          this.value = prev;
+          alert(e?.message || "Failed to update role.");
+        } finally {
+          this.disabled = false;
+        }
+      });
+      sel.setAttribute("data-prev", sel.value);
+    });
+  }
+
+  async function runSearch() {
+    const q = String(el("acUserSearch").value || "").trim();
+    const agencySuffix = String(el("acAgencyFilter").value || "").trim().toLowerCase();
+    const params = new URLSearchParams();
+    params.set("page", "1");
+    params.set("pageSize", "5");
+    if (q.length >= 2) params.set("q", q);
+    if (agencySuffix) params.set("agencySuffix", agencySuffix);
+
+    const msg = el("acSearchMsg");
+    msg.textContent = "Loading users...";
+
+    try {
+      const r = await fetch("/api/users/search?" + params.toString(), { headers: { Accept: "application/json" } });
+      if (!r.ok) throw new Error("Failed to search users.");
+      const j = await r.json();
+      const items = j.users || [];
+      msg.textContent = items.length
+        ? "Showing up to 5 users. Refine search/filter for a narrower list."
+        : "No matching users.";
+      await renderSearchRows(items);
+    } catch (e) {
+      msg.textContent = e?.message || "Search failed.";
+      el("acSearchRows").innerHTML = '<tr><td colspan="6" class="muted">Search failed.</td></tr>';
+    }
+  }
+
+  el("acUserSearch").addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 300);
   });
+  el("acAgencyFilter").addEventListener("change", runSearch);
 
   el("acSaveBtn").addEventListener("click", async function () {
     if (!selectedUsername) return;
-    setMsg("Saving…");
+    setMsg("Saving...");
     try {
-      const body = {
-        deny: Array.from(currentDeny),
-        allow: Array.from(currentAllow),
-      };
-      const r = await fetch(
-        "/api/access-control/overrides/" + encodeURIComponent(selectedUsername),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify(body),
-        }
-      );
-      if (!r.ok) {
-        const t = await r.text();
-        setMsg("Save failed: " + t, true);
-        return;
-      }
+      const body = { deny: Array.from(currentDeny), allow: Array.from(currentAllow) };
+      const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(selectedUsername), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+      const outText = await r.text();
+      if (!r.ok) throw new Error(outText || "Save failed.");
       setMsg("Saved.");
       loadAllOverrides();
       refreshEffective();
     } catch (e) {
-      setMsg("Save failed.", true);
+      setMsg(e?.message || "Save failed.", true);
     }
   });
 
@@ -322,26 +489,20 @@
     if (!confirm("Clear all permission overrides for " + selectedUsername + "?")) return;
     currentDeny = new Set();
     currentAllow = new Set();
-    setMsg("Saving…");
+    setMsg("Saving...");
     try {
-      const r = await fetch(
-        "/api/access-control/overrides/" + encodeURIComponent(selectedUsername),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ deny: [], allow: [] }),
-        }
-      );
-      if (!r.ok) {
-        setMsg("Reset failed.", true);
-        return;
-      }
+      const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(selectedUsername), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ deny: [], allow: [] }),
+      });
+      if (!r.ok) throw new Error("Reset failed.");
       setMsg("Cleared. Role defaults apply.");
-      syncToggles();
+      buildEditor();
       loadAllOverrides();
       refreshEffective();
     } catch (e) {
-      setMsg("Reset failed.", true);
+      setMsg(e?.message || "Reset failed.", true);
     }
   });
 
@@ -353,46 +514,36 @@
     const j = await r.json();
     const list = j.usernames || [];
     if (!list.length) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = '<td colspan="2" class="muted" style="padding:8px;">No overrides yet.</td>';
-      tb.appendChild(tr);
+      tb.innerHTML = '<tr><td colspan="2" class="muted" style="padding:8px;">No overrides yet.</td></tr>';
       return;
     }
-    const rows = await Promise.all(
-      list.map(async (un) => {
-        const rr = await fetch(
-          "/api/access-control/overrides/" + encodeURIComponent(un),
-          { headers: { Accept: "application/json" } }
-        );
-        if (!rr.ok) return { un, c: 0 };
-        const o = await rr.json();
-        return { un, c: (o.deny || []).length + (o.allow || []).length };
-      })
-    );
+    const rows = await Promise.all(list.map(async (un) => {
+      const rr = await fetch("/api/access-control/overrides/" + encodeURIComponent(un), { headers: { Accept: "application/json" } });
+      if (!rr.ok) return { un, c: 0 };
+      const o = await rr.json();
+      return { un, c: (o.deny || []).length + (o.allow || []).length };
+    }));
+
     for (const { un, c } of rows) {
       const tr = document.createElement("tr");
       tr.innerHTML =
-        "<td style=\"padding:6px;\"><button type=\"button\" class=\"linkish\" data-user=\"" +
-        un +
-        "\">" +
-        un +
-        "</button></td>" +
-        "<td style=\"padding:6px;\">" +
-        c +
-        "</td>";
+        "<td style=\"padding:6px;\"><button type=\"button\" class=\"linkish\" data-user=\"" + un + "\">" + un + "</button></td>" +
+        "<td style=\"padding:6px;\">" + c + "</td>";
       tb.appendChild(tr);
     }
     tb.querySelectorAll("button.linkish").forEach((b) => {
       b.addEventListener("click", function () {
-        selectUser(this.getAttribute("data-user"));
-        window.scrollTo(0, 0);
+        selectUser({ username: this.getAttribute("data-user") });
+        window.scrollTo(0, 220);
       });
     });
   }
 
-  loadRegistry().catch(function () {
-    setMsg("Could not load permission metadata.", true);
-  });
+  Promise.all([loadRegistry(), loadAgencies()])
+    .then(runSearch)
+    .catch(() => {
+      el("acSearchMsg").textContent = "Failed to initialize Access Control.";
+    });
 
   loadAllOverrides();
 })();

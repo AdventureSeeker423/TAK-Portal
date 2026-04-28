@@ -9,10 +9,30 @@ const authzRoles = require("../services/authzRoles.service");
 const permsSvc = require("../services/permissions.service");
 const registry = require("../services/permissions.registry");
 const auditSvc = require("../services/auditLog.service");
-const { getBool } = require("../services/env");
+const accessSvc = require("../services/access.service");
+const agenciesSvc = require("../services/agencies.service");
+const { getBool, getString } = require("../services/env");
 const api = require("../services/authentik");
 
 const router = express.Router();
+const PERMISSION_UI_ORDER = [
+  "page.dashboard",
+  "page.users",
+  "page.groups",
+  "page.templates",
+  "page.audit_log",
+  "page.data_package",
+  "page.data_sync",
+  "page.email",
+  "page.locate",
+  "page.mutual_aid",
+  "page.pending_requests",
+  "page.agencies",
+  "page.integrations",
+  "page.plugin_manager",
+  "page.settings",
+  "page.access_control",
+];
 
 async function loadGroupNamesForUserId(userId) {
   const user = await usersSvc.getUserById(userId);
@@ -30,7 +50,14 @@ async function loadGroupNamesForUserId(userId) {
 }
 
 router.get("/registry", (req, res) => {
-  const flat = registry.listAllPermissionMeta();
+  const flat = registry.listAllPermissionMeta().slice().sort((a, b) => {
+    const ai = PERMISSION_UI_ORDER.indexOf(a.id);
+    const bi = PERMISSION_UI_ORDER.indexOf(b.id);
+    const aa = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
+    const bb = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
+    if (aa !== bb) return aa - bb;
+    return String(a.label || a.id).localeCompare(String(b.label || b.id));
+  });
   const bySection = new Map();
   for (const m of flat) {
     const s = m.section || "other";
@@ -38,6 +65,101 @@ router.get("/registry", (req, res) => {
     bySection.get(s).push(m);
   }
   res.json({ permissions: flat, bySection: Object.fromEntries(bySection) });
+});
+
+router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, res) => {
+  try {
+    const actor = req.authentikUser || null;
+    if (!actor || !actor.isGlobalAdmin) {
+      return res.status(403).json({ error: "Only global admins can change base user roles." });
+    }
+    const desiredRole = String(req.body?.role || "").trim().toLowerCase();
+    if (!["user", "agency_admin", "global_admin"].includes(desiredRole)) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+    const userId = String(req.params.userId || "").trim();
+    if (!userId) return res.status(400).json({ error: "Missing user id." });
+
+    const target = await usersSvc.getUserById(userId);
+    if (!target) return res.status(404).json({ error: "User not found." });
+    const currentGroups = new Set((target.groups || []).map((x) => String(x)));
+    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const groupsByNameLower = new Map(
+      (allGroups || []).map((g) => [String(g?.name || "").trim().toLowerCase(), String(g?.pk || "")])
+    );
+
+    const globalGroupNames = String(getString("PORTAL_AUTH_REQUIRED_GROUP", ""))
+      .split(",")
+      .map((x) => String(x || "").trim().toLowerCase())
+      .filter(Boolean);
+    const globalIds = globalGroupNames
+      .map((n) => groupsByNameLower.get(n))
+      .filter(Boolean);
+
+    const attrs = target.attributes || {};
+    const userAbbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+    const agency = (agenciesSvc.load() || []).find(
+      (a) => String(a?.groupPrefix || "").trim().toUpperCase() === userAbbr
+    );
+    const agencyAdminGroupNames = agency
+      ? accessSvc.getAllAgencyAdminGroupNames(agency).map((n) => String(n || "").trim().toLowerCase())
+      : [];
+    const agencyAdminIds = agencyAdminGroupNames
+      .map((n) => groupsByNameLower.get(n))
+      .filter(Boolean);
+
+    if ((desiredRole === "agency_admin" || desiredRole === "user") && !agencyAdminIds.length) {
+      return res.status(400).json({
+        error: "Cannot change role: agency admin group not resolvable for this user.",
+      });
+    }
+    if (desiredRole === "global_admin" && !globalIds.length) {
+      return res.status(400).json({ error: "Global admin groups are not configured." });
+    }
+
+    const toAdd = new Set();
+    const toRemove = new Set();
+    if (desiredRole === "user") {
+      agencyAdminIds.forEach((id) => toRemove.add(id));
+      globalIds.forEach((id) => toRemove.add(id));
+    } else if (desiredRole === "agency_admin") {
+      agencyAdminIds.forEach((id) => toAdd.add(id));
+      globalIds.forEach((id) => toRemove.add(id));
+    } else {
+      globalIds.forEach((id) => toAdd.add(id));
+      agencyAdminIds.forEach((id) => toRemove.add(id));
+    }
+    for (const id of Array.from(toAdd)) if (currentGroups.has(id)) toAdd.delete(id);
+    for (const id of Array.from(toRemove)) if (!currentGroups.has(id)) toRemove.delete(id);
+
+    if (toAdd.size) await usersSvc.addUserGroups(userId, Array.from(toAdd));
+    if (toRemove.size) await usersSvc.removeUserGroups(userId, Array.from(toRemove));
+
+    const { groupNames } = await loadGroupNamesForUserId(userId);
+    const roles = authzRoles.computePortalRolesFromGroupNames(groupNames);
+    const resultingRole = roles.isGlobalAdmin
+      ? "global_admin"
+      : roles.isAgencyAdmin
+      ? "agency_admin"
+      : "user";
+
+    auditSvc.logEvent({
+      actor,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "ACCESS_CONTROL_ROLE_CHANGE",
+      targetType: "user",
+      targetId: String(target.username || userId).trim().toLowerCase(),
+      details: {
+        requestedRole: desiredRole,
+        resultingRole,
+        userId,
+      },
+    });
+
+    return res.json({ ok: true, role: resultingRole });
+  } catch (e) {
+    return res.status(500).json({ error: e?.message || "Failed to update role." });
+  }
 });
 
 router.get("/effective", async (req, res) => {
