@@ -19,7 +19,6 @@ const qrSvc = require("./services/qr.service");
 const agenciesStore = require("./services/agencies.service");
 const userRequestsSvc = require("./services/userRequests.service");
 const auditSvc = require("./services/auditLog.service");
-const accessSvc = require("./services/access.service");
 const permsSvc = require("./services/permissions.service");
 const accessControlRoutes = require("./routes/accessControl.routes");
 const usersSvc = require("./services/users.service");
@@ -218,22 +217,6 @@ function requireBetaMode(req, res, next) {
   next();
 }
 
-/** Beta + global or agency admin (for Documents page + shared MOU workflows). */
-function requireBetaDocumentsPage(req, res, next) {
-  const cfg = settingsSvc.getSettings() || {};
-  if (String(cfg.BETA_MODE || "").toLowerCase() !== "true") {
-    return res.status(404).render("access-denied", {
-      username: req.authentikUser?.username || "",
-    });
-  }
-  const u = req.authentikUser;
-  if (!u || (!u.isGlobalAdmin && !u.isAgencyAdmin)) {
-    const username = u && u.username ? u.username : "";
-    return res.status(403).render("access-denied", { username });
-  }
-  return next();
-}
-
 function requireGlobalAdminRole(req, res, next) {
   const u = req.authentikUser;
   if (!u || !u.isGlobalAdmin) {
@@ -323,8 +306,6 @@ app.use(
   requirePermission("page.data_package"),
   require("./routes/dataPackages.routes")
 );
-
-app.use("/api/documents", requireBetaDocumentsPage, require("./routes/documents.routes"));
 
 // Public locate APIs: CORS + OPTIONS (preflight for JSON POST).
 function publicLocateApiCors(req, res, next) {
@@ -581,19 +562,6 @@ app.get("/plugin-manager", requirePermission("page.plugin_manager"), async (req,
 app.get("/getting-started", requireGlobalAdminRole, requireBetaMode, (req, res) =>
   res.render("getting-started")
 );
-
-// Beta: Documents (global + agency admins; per-document ACL in API)
-app.get("/documents", requireBetaDocumentsPage, (req, res) => {
-  const agencies = agenciesStore.load();
-  const visible = accessSvc.filterAgenciesForUser(req.authentikUser, agencies);
-  const docAgencyOptions = visible
-    .filter((a) => a && String(a.suffix || "").trim())
-    .map((a) => ({
-      value: String(a.suffix).trim().toLowerCase(),
-      label: `${String(a.name || "").trim() || "Agency"} (${String(a.suffix).trim()})`,
-    }));
-  return res.render("documents", { docAgencyOptions });
-});
 
 // Data Package (global admins only; not beta-gated)
 app.get("/data-package", requirePermission("page.data_package"), (req, res) =>

@@ -31,8 +31,7 @@
     _perm("page.data_sync") ||
     _perm("page.email") ||
     _perm("page.locate") ||
-    _perm("page.mutual_aid") ||
-    ((_isGlobalAdmin || _isAgencyAdmin) && betaModeEnabled);
+    _perm("page.mutual_aid");
   const canSeeOnboardingSection = true;
 
   const _path = (typeof currentPath !== "undefined" && currentPath) ? String(currentPath).replace(/\/+$/, "") || "/" : "/";
@@ -103,9 +102,6 @@
             <% } %>
             <% if (_perm("page.mutual_aid")) { %>
               <a href="/mutual-aid" class="<%= isActive('/mutual-aid') ? 'active' : '' %>">Mutual Aid</a>
-            <% } %>
-            <% if ((_isGlobalAdmin || _isAgencyAdmin) && betaModeEnabled) { %>
-              <a href="/documents" class="<%= isActive('/documents') ? 'active' : '' %>">Documents</a>
             <% } %>
           </div>
         </div>
