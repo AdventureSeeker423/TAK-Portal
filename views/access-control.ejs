@@ -99,6 +99,7 @@
               <th>Email</th>
               <th>Agency</th>
               <th>Current Access</th>
+              <th>Overrides</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -137,18 +138,6 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>All Users With Overrides</h2>
-    <table class="ac-table" id="acAllTable" style="width:100%; border-collapse:collapse;">
-      <thead>
-        <tr>
-          <th style="text-align:left; padding:6px;">Username</th>
-          <th style="text-align:left; padding:6px;">Overrides</th>
-        </tr>
-      </thead>
-      <tbody id="acAllBody"></tbody>
-    </table>
-  </div>
 </main>
 
 <script>
@@ -345,20 +334,28 @@
     return String(j.baseRole || "user");
   }
 
+  async function getOverrideCountForUsername(username) {
+    const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(username), { headers: { Accept: "application/json" } });
+    if (!r.ok) return 0;
+    const j = await r.json().catch(() => ({}));
+    return (j.deny || []).length + (j.allow || []).length;
+  }
+
   async function renderSearchRows(items) {
     const body = el("acSearchRows");
     body.innerHTML = "";
     if (!items.length) {
-      body.innerHTML = '<tr><td colspan="6" class="muted">No matching users.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="muted">No matching users.</td></tr>';
       return;
     }
 
     const withRoles = await Promise.all(items.map(async (u) => {
       const role = await getRoleForUsername(String(u?.username || ""));
-      return { u, role };
+      const overrides = await getOverrideCountForUsername(String(u?.username || ""));
+      return { u, role, overrides };
     }));
 
-    withRoles.forEach(({ u, role }) => {
+    withRoles.forEach(({ u, role, overrides }) => {
       const tr = document.createElement("tr");
       const username = String(u?.username || "");
       const name = String(u?.name || "");
@@ -376,6 +373,7 @@
           "<option value=\"global_admin\" " + (role === "global_admin" ? "selected" : "") + ">Global Admin</option>" +
           "</select>" +
         "</td>" +
+        "<td>" + (overrides > 0 ? String(overrides) : "-") + "</td>" +
         "<td><button type=\"button\" class=\"btn success ac-edit-btn\" data-user=\"" + username + "\" data-user-id=\"" + String(u?.pk || "") + "\">Edit Permissions</button></td>";
       body.appendChild(tr);
     });
@@ -465,7 +463,7 @@
       const outText = await r.text();
       if (!r.ok) throw new Error(outText || "Save failed.");
       setMsg("Saved.");
-      loadAllOverrides();
+      runSearch();
       refreshEffective();
     } catch (e) {
       setMsg(e?.message || "Save failed.", true);
@@ -487,53 +485,18 @@
       if (!r.ok) throw new Error("Reset failed.");
       setMsg("Cleared. Role defaults apply.");
       buildEditor();
-      loadAllOverrides();
+      runSearch();
       refreshEffective();
     } catch (e) {
       setMsg(e?.message || "Reset failed.", true);
     }
   });
 
-  async function loadAllOverrides() {
-    const r = await fetch("/api/access-control/overrides", { headers: { Accept: "application/json" } });
-    const tb = el("acAllBody");
-    tb.innerHTML = "";
-    if (!r.ok) return;
-    const j = await r.json();
-    const list = j.usernames || [];
-    if (!list.length) {
-      tb.innerHTML = '<tr><td colspan="2" class="muted" style="padding:8px;">No overrides yet.</td></tr>';
-      return;
-    }
-    const rows = await Promise.all(list.map(async (un) => {
-      const rr = await fetch("/api/access-control/overrides/" + encodeURIComponent(un), { headers: { Accept: "application/json" } });
-      if (!rr.ok) return { un, c: 0 };
-      const o = await rr.json();
-      return { un, c: (o.deny || []).length + (o.allow || []).length };
-    }));
-
-    for (const { un, c } of rows) {
-      const tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td style=\"padding:6px;\"><button type=\"button\" class=\"linkish\" data-user=\"" + un + "\">" + un + "</button></td>" +
-        "<td style=\"padding:6px;\">" + c + "</td>";
-      tb.appendChild(tr);
-    }
-    tb.querySelectorAll("button.linkish").forEach((b) => {
-      b.addEventListener("click", function () {
-        selectUser({ username: this.getAttribute("data-user") });
-        window.scrollTo(0, 220);
-      });
-    });
-  }
-
   Promise.all([loadRegistry(), loadAgencies()])
     .then(runSearch)
     .catch(() => {
       el("acSearchMsg").textContent = "Failed to initialize Access Control.";
     });
-
-  loadAllOverrides();
 })();
 </script>
 
