@@ -2,8 +2,6 @@
   const _isGlobalAdmin = typeof isGlobalAdmin !== "undefined" ? !!isGlobalAdmin : false;
   const _isAgencyAdmin = typeof isAgencyAdmin !== "undefined" ? !!isAgencyAdmin : false;
 
-  const isAdmin = _isGlobalAdmin || _isAgencyAdmin;
-
   const _displayName =
     typeof authUser !== "undefined" &&
     authUser &&
@@ -19,6 +17,18 @@
     _perm("page.plugin_manager") ||
     _perm("page.settings") ||
     _perm("page.access_control");
+  const canSeeUsersGroupsSection =
+    _perm("page.users") || _perm("page.groups") || _perm("page.templates");
+  const canSeeAdminSection =
+    _perm("page.audit_log") ||
+    _perm("page.data_package") ||
+    _perm("page.data_sync") ||
+    _perm("page.email") ||
+    _perm("page.locate") ||
+    _perm("page.mutual_aid") ||
+    _perm("page.documents");
+  const canSeeOnboardingSection =
+    _perm("page.setup_device") || _perm("page.plugins");
 
   const _settings = typeof settings !== "undefined" && settings ? settings : {};
   const betaModeEnabled =
@@ -44,20 +54,11 @@
 
   <nav class="sidebar-nav">
     <div class="nav-top">
-      <% if (!isAdmin) { %>
-        <div class="nav-section" data-section="onboarding">
-          <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-onboarding" id="nav-toggle-onboarding">
-            <span class="nav-section-label">Onboarding</span>
-            <span class="nav-section-chevron" aria-hidden="true">▾</span>
-          </button>
-          <div class="nav-section-links" id="nav-onboarding">
-            <a href="/setup-my-device" class="<%= isActive('/setup-my-device') ? 'active' : '' %>">Setup My Device</a>
-            <a href="/plugins" class="<%= isActive('/plugins') ? 'active' : '' %>">ATAK Plugins</a>
-          </div>
-        </div>
-      <% } else { %>
+      <% if (_perm("page.dashboard")) { %>
         <a href="/" class="<%= isActive('/') ? 'active' : '' %>">Dashboard</a>
+      <% } %>
 
+      <% if (canSeeUsersGroupsSection) { %>
         <!-- Users & Groups -->
         <div class="nav-section" data-section="users-groups">
           <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-users-groups" id="nav-toggle-users-groups">
@@ -76,7 +77,9 @@
             <% } %>
           </div>
         </div>
+      <% } %>
 
+      <% if (canSeeAdminSection) { %>
         <!-- Administration -->
         <div class="nav-section" data-section="administration">
           <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-administration" id="nav-toggle-administration">
@@ -102,10 +105,14 @@
             <% if (_perm("page.mutual_aid")) { %>
               <a href="/mutual-aid" class="<%= isActive('/mutual-aid') ? 'active' : '' %>">Mutual Aid</a>
             <% } %>
+            <% if (_perm("page.documents")) { %>
+              <a href="/documents" class="<%= isActive('/documents') ? 'active' : '' %>">Documents</a>
+            <% } %>
           </div>
         </div>
+      <% } %>
 
-        <% if (canSeeConfigSection) { %>
+      <% if (canSeeConfigSection) { %>
         <!-- Configuration -->
         <div class="nav-section" data-section="configuration">
           <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-configuration" id="nav-toggle-configuration">
@@ -130,8 +137,9 @@
             <% } %>
           </div>
         </div>
-        <% } %>
+      <% } %>
 
+      <% if (canSeeOnboardingSection) { %>
         <!-- Onboarding -->
         <div class="nav-section" data-section="onboarding">
           <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-onboarding" id="nav-toggle-onboarding">
@@ -139,8 +147,12 @@
             <span class="nav-section-chevron" aria-hidden="true">▾</span>
           </button>
           <div class="nav-section-links" id="nav-onboarding">
+            <% if (_perm("page.setup_device")) { %>
             <a href="/setup-my-device" class="<%= isActive('/setup-my-device') ? 'active' : '' %>">Setup My Device</a>
+            <% } %>
+            <% if (_perm("page.plugins")) { %>
             <a href="/plugins" class="<%= isActive('/plugins') ? 'active' : '' %>">ATAK Plugins</a>
+            <% } %>
           </div>
         </div>
       <% } %>
@@ -166,7 +178,7 @@
         </a>
       </small>
 
-      <% if (isAdmin && typeof APP_UPDATE_AVAILABLE !== "undefined" && APP_UPDATE_AVAILABLE) { %>
+      <% if (typeof APP_UPDATE_AVAILABLE !== "undefined" && APP_UPDATE_AVAILABLE) { %>
         <div class="update-available-form">
           <button
             type="button"
