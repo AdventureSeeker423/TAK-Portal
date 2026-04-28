@@ -152,8 +152,6 @@
               <th>Name</th>
               <th>Email</th>
               <th>Agency</th>
-              <th>Current Access</th>
-              <th>Overrides</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -170,6 +168,16 @@
         <strong id="acSelName"></strong>
         <span id="acSelMeta" class="muted" style="margin-left:8px;"></span>
         <span id="acPillRole" class="ac-pill" style="margin-left:8px;"></span>
+      </div>
+      <div class="row" style="gap:10px; align-items:center; margin-bottom:12px;">
+        <label style="margin:0;">
+          Access Level
+          <select id="acEditorRoleSelect" style="min-width: 220px;">
+            <option value="user">Standard User</option>
+            <option value="agency_admin">Agency Admin</option>
+            <option value="global_admin">Global Admin</option>
+          </select>
+        </label>
       </div>
 
       <div id="acGroups"></div>
@@ -376,40 +384,24 @@
     const rolePill = el("acPillRole");
     rolePill.className = roleToPillClass(role);
     rolePill.textContent = roleLabel[role] || role;
+    const roleSel = el("acEditorRoleSelect");
+    roleSel.value = role;
+    roleSel.setAttribute("data-prev", role);
+    roleSel.disabled = !selectedUserId;
 
     el("acEditor").style.display = "block";
     buildEditor();
-  }
-
-  async function getRoleForUsername(username) {
-    const r = await fetch("/api/access-control/effective?user=" + encodeURIComponent(username), { headers: { Accept: "application/json" } });
-    if (!r.ok) return "user";
-    const j = await r.json();
-    return String(j.baseRole || "user");
-  }
-
-  async function getOverrideCountForUsername(username) {
-    const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(username), { headers: { Accept: "application/json" } });
-    if (!r.ok) return 0;
-    const j = await r.json().catch(() => ({}));
-    return (j.deny || []).length;
   }
 
   async function renderSearchRows(items) {
     const body = el("acSearchRows");
     body.innerHTML = "";
     if (!items.length) {
-      body.innerHTML = '<tr><td colspan="7" class="muted">No matching users.</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="muted">No matching users.</td></tr>';
       return;
     }
 
-    const withRoles = await Promise.all(items.map(async (u) => {
-      const role = await getRoleForUsername(String(u?.username || ""));
-      const overrides = await getOverrideCountForUsername(String(u?.username || ""));
-      return { u, role, overrides };
-    }));
-
-    withRoles.forEach(({ u, role, overrides }) => {
+    items.forEach((u) => {
       const tr = document.createElement("tr");
       const username = String(u?.username || "");
       const name = String(u?.name || "");
@@ -420,14 +412,6 @@
         "<td>" + (name || "-") + "</td>" +
         "<td>" + (email || "-") + "</td>" +
         "<td>" + (agency || "-") + "</td>" +
-        "<td>" +
-          "<select class=\"ac-role-select\" data-user-id=\"" + String(u?.pk || "") + "\" data-username=\"" + username + "\">" +
-          "<option value=\"user\" " + (role === "user" ? "selected" : "") + ">Standard User</option>" +
-          "<option value=\"agency_admin\" " + (role === "agency_admin" ? "selected" : "") + ">Agency Admin</option>" +
-          "<option value=\"global_admin\" " + (role === "global_admin" ? "selected" : "") + ">Global Admin</option>" +
-          "</select>" +
-        "</td>" +
-        "<td>" + (overrides > 0 ? String(overrides) : "-") + "</td>" +
         "<td><button type=\"button\" class=\"btn success ac-edit-btn\" data-user=\"" + username + "\" data-user-id=\"" + String(u?.pk || "") + "\">Edit Permissions</button></td>";
       body.appendChild(tr);
     });
@@ -438,44 +422,6 @@
         selectUser(user);
         window.scrollTo(0, 220);
       });
-    });
-
-    body.querySelectorAll(".ac-role-select").forEach((sel) => {
-      sel.addEventListener("change", async function () {
-        const userId = this.getAttribute("data-user-id");
-        const username = this.getAttribute("data-username");
-        const role = this.value;
-        if (!userId) return;
-        const prev = this.getAttribute("data-prev") || "user";
-        setSearchMsg("Updating permissions...", false, false);
-        this.disabled = true;
-        try {
-          const r = await fetch("/api/access-control/user-role/" + encodeURIComponent(userId), {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({ role }),
-          });
-          const out = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(out.error || "Failed to update role.");
-          this.setAttribute("data-prev", out.role || role);
-          const doneLabel = (out.role || role) === "global_admin"
-            ? "Permissions updated: Global Admin."
-            : (out.role || role) === "agency_admin"
-            ? "Permissions updated: Agency Admin."
-            : "Permissions updated: Standard User.";
-          setSearchMsg(doneLabel, false, true);
-          await runSearch();
-          if (selectedUsername && selectedUsername === username) {
-            await selectUser({ username, pk: userId });
-          }
-        } catch (e) {
-          this.value = prev;
-          setSearchMsg(e?.message || "Failed to update permissions.", true, false);
-        } finally {
-          this.disabled = false;
-        }
-      });
-      sel.setAttribute("data-prev", sel.value);
     });
   }
 
@@ -502,9 +448,47 @@
       await renderSearchRows(items);
     } catch (e) {
       setSearchMsg(e?.message || "Search failed.", true, false);
-      el("acSearchRows").innerHTML = '<tr><td colspan="7" class="muted">Search failed.</td></tr>';
+      el("acSearchRows").innerHTML = '<tr><td colspan="5" class="muted">Search failed.</td></tr>';
     }
   }
+
+  el("acEditorRoleSelect").addEventListener("change", async function () {
+    if (!selectedUserId || !selectedUsername) return;
+    const role = this.value;
+    const prev = this.getAttribute("data-prev") || "user";
+    setMsg("Updating access level...", false);
+    this.disabled = true;
+    try {
+      const r = await fetch("/api/access-control/user-role/" + encodeURIComponent(selectedUserId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(out.error || "Failed to update access level.");
+      const resolvedRole = String(out.role || role || "user");
+      this.value = resolvedRole;
+      this.setAttribute("data-prev", resolvedRole);
+      const rolePill = el("acPillRole");
+      rolePill.className = roleToPillClass(resolvedRole);
+      rolePill.textContent = roleLabel[resolvedRole] || resolvedRole;
+      setMsg(
+        resolvedRole === "global_admin"
+          ? "Permissions updated: Global Admin."
+          : resolvedRole === "agency_admin"
+          ? "Permissions updated: Agency Admin."
+          : "Permissions updated: Standard User.",
+        false
+      );
+      await selectUser({ username: selectedUsername, pk: selectedUserId });
+      await runSearch();
+    } catch (e) {
+      this.value = prev;
+      setMsg(e?.message || "Failed to update access level.", true);
+    } finally {
+      this.disabled = false;
+    }
+  });
 
   el("acUserSearch").addEventListener("input", function () {
     clearTimeout(searchTimer);
