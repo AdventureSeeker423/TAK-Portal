@@ -208,6 +208,14 @@
     global_admin: "Global Admin",
   };
 
+  function normalizeRole(role) {
+    const raw = String(role || "").trim().toLowerCase();
+    if (raw === "global_admin") return "global_admin";
+    if (raw === "agency_admin") return "agency_admin";
+    // permissions service can return "standard" for non-admin users
+    return "user";
+  }
+
   let registryFlat = [];
   let selectedUsername = null;
   let selectedUserId = null;
@@ -378,7 +386,7 @@
     const oj = ov.ok ? await ov.json() : { deny: [] };
     currentDeny = new Set(oj.deny || []);
 
-    const role = j.baseRole || "user";
+    const role = normalizeRole(j.baseRole);
     el("acSelName").textContent = j.displayName || j.username;
     el("acSelMeta").textContent = j.username;
     const rolePill = el("acPillRole");
@@ -466,7 +474,7 @@
       });
       const out = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(out.error || "Failed to update access level.");
-      const resolvedRole = String(out.role || role || "user");
+      const resolvedRole = normalizeRole(out.role || role);
       this.value = resolvedRole;
       this.setAttribute("data-prev", resolvedRole);
       const rolePill = el("acPillRole");
