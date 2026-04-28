@@ -1,5 +1,5 @@
 /**
- * Effective permissions: role defaults + per-user deny overrides (JSON file).
+ * Effective permissions: role defaults + per-user allow/deny overrides (JSON file).
  */
 
 const fs = require("fs");
@@ -60,11 +60,21 @@ function getEffectivePermissionSet(user, authDisabled) {
   const un = normalizeUsername(user && user.username);
   const all = loadOverridesFromDisk();
   const entry = un && all[un] ? all[un] : null;
-  if (!entry || !Array.isArray(entry.deny) || !entry.deny.length) {
+  if (!entry) {
     return new Set(base);
   }
   const out = new Set(base);
-  for (const id of entry.deny) {
+  const allow = Array.isArray(entry.allow) ? entry.allow : [];
+  for (const id of allow) {
+    if (registry.isValidPermissionId(id)) {
+      out.add(id);
+    }
+  }
+  const deny = Array.isArray(entry.deny) ? entry.deny : [];
+  if (!deny.length) {
+    return out;
+  }
+  for (const id of deny) {
     if (registry.isValidPermissionId(id)) {
       out.delete(id);
     }
@@ -91,28 +101,62 @@ function canAccessPath(effectiveSet, reqPath, method) {
   return required.every((id) => effectiveSet.has(id));
 }
 
-function saveOverridesForUser(username, denyList) {
+function saveOverridesForUser(username, overrideInput) {
   const un = normalizeUsername(username);
   if (!un) {
     throw new Error("Username required");
   }
-  const unique = Array.from(
+  // Backward compatibility:
+  // - saveOverridesForUser(username, denyList[])
+  // - saveOverridesForUser(username, { deny: [], allow: [] })
+  const rawDeny = Array.isArray(overrideInput)
+    ? overrideInput
+    : overrideInput && Array.isArray(overrideInput.deny)
+    ? overrideInput.deny
+    : [];
+  const rawAllow =
+    overrideInput && !Array.isArray(overrideInput) && Array.isArray(overrideInput.allow)
+      ? overrideInput.allow
+      : [];
+
+  const uniqueDeny = Array.from(
     new Set(
-      (denyList || [])
+      (rawDeny || [])
         .map((x) => String(x || "").trim())
         .filter(Boolean)
     )
   );
-  for (const id of unique) {
+  const uniqueAllow = Array.from(
+    new Set(
+      (rawAllow || [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  for (const id of uniqueDeny) {
     if (!registry.isValidPermissionId(id)) {
       throw new Error("Invalid permission id: " + id);
     }
   }
+  for (const id of uniqueAllow) {
+    if (!registry.isValidPermissionId(id)) {
+      throw new Error("Invalid permission id: " + id);
+    }
+  }
+
+  // Deny wins on conflicts.
+  const denySet = new Set(uniqueDeny);
+  const allowFinal = uniqueAllow.filter((id) => !denySet.has(id));
+
   const all = loadOverridesFromDisk();
-  if (unique.length === 0) {
+  if (uniqueDeny.length === 0 && allowFinal.length === 0) {
     delete all[un];
   } else {
-    all[un] = { deny: unique.sort() };
+    all[un] = {
+      deny: uniqueDeny.sort(),
+      allow: allowFinal.sort(),
+    };
   }
   const dir = path.dirname(DATA_FILE);
   if (!fs.existsSync(dir)) {
@@ -129,10 +173,12 @@ function getOverridesForUser(username) {
   const un = normalizeUsername(username);
   const all = loadOverridesFromDisk();
   const ent = all[un];
-  if (!ent || !Array.isArray(ent.deny)) {
-    return { deny: [] };
+  if (!ent) {
+    return { deny: [], allow: [] };
   }
-  return { deny: ent.deny.slice() };
+  const deny = Array.isArray(ent.deny) ? ent.deny.slice() : [];
+  const allow = Array.isArray(ent.allow) ? ent.allow.slice() : [];
+  return { deny, allow };
 }
 
 function listAllOverrideUsernames() {
@@ -141,7 +187,7 @@ function listAllOverrideUsernames() {
 }
 
 /**
- * For UI: effective = base minus deny; return labels for granted areas
+ * For UI: effective = base + allow - deny; return labels for granted areas
  */
 function describeEffectiveForUser(user, authDisabled) {
   const role = getRoleType(user);
@@ -150,10 +196,12 @@ function describeEffectiveForUser(user, authDisabled) {
   const all = loadOverridesFromDisk();
   const entry = un && all[un] ? all[un] : null;
   const deny = entry && Array.isArray(entry.deny) ? entry.deny : [];
+  const allow = entry && Array.isArray(entry.allow) ? entry.allow : [];
   const effective = getEffectivePermissionSet(user, authDisabled);
   return {
     baseRole: role,
     deny,
+    allow,
     effectiveIds: Array.from(effective).sort(),
   };
 }

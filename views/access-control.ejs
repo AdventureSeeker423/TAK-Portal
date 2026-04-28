@@ -26,7 +26,7 @@
     <div class="card">
       <h2>Restrictions</h2>
       <p class="muted" style="margin-top:0;">
-        Toggle <strong>Restrict</strong> to deny a capability for this user. Leave as <strong>Inherit</strong> to use their role defaults.
+        Set each capability to <strong>Inherit From Role</strong>, <strong>Allow</strong>, or <strong>Deny</strong>.
       </p>
       <div id="acGroups"></div>
       <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
@@ -72,6 +72,7 @@
   let registryFlat = [];
   let selectedUsername = null;
   let currentDeny = new Set();
+  let currentAllow = new Set();
   let currentBaseAllowed = new Set();
   let searchTimer = null;
 
@@ -129,8 +130,16 @@
     host.querySelectorAll("select.ac-state").forEach((sel) => {
       sel.addEventListener("change", function () {
         const id = this.getAttribute("data-id");
-        if (this.value === "deny") currentDeny.add(id);
-        else currentDeny.delete(id);
+        if (this.value === "allow") {
+          currentAllow.add(id);
+          currentDeny.delete(id);
+        } else if (this.value === "deny") {
+          currentDeny.add(id);
+          currentAllow.delete(id);
+        } else {
+          currentAllow.delete(id);
+          currentDeny.delete(id);
+        }
         refreshEffective();
       });
     });
@@ -138,28 +147,36 @@
 
   function buildToggle(id) {
     const d = currentDeny.has(id);
+    const a = currentAllow.has(id);
     const baseAllowed = currentBaseAllowed.has(id);
+    const inheritLabel = baseAllowed
+      ? "Inherit From Role (Allowed)"
+      : "Inherit From Role (Not Allowed)";
     return (
       "<label class=\"muted\" style=\"display:block;\">" +
       "<select class=\"ac-state\" data-id=\"" +
       id +
       "\" style=\"min-width: 12rem;\">" +
       "<option value=\"inherit\" " +
-      (d ? "" : "selected") +
-      (baseAllowed
-        ? ">Inherit from role (allowed)</option>"
-        : ">Inherit from role (not allowed)</option>") +
+      (!a && !d ? "selected" : "") +
+      ">" + inheritLabel + "</option>" +
+      "<option value=\"allow\" " +
+      (a ? "selected" : "") +
+      ">Allow</option>" +
       "<option value=\"deny\" " +
       (d ? "selected" : "") +
-      ">Restrict access</option></select></label>" +
-      (d ? " <span class=\"pill\" style=\"background:#553\">Restricted</span>" : "")
+      ">Deny</option></select></label>" +
+      (d ? " <span class=\"pill\" style=\"background:#553\">Denied</span>" : "") +
+      (a ? " <span class=\"pill\" style=\"background:#355\">Allowed</span>" : "")
     );
   }
 
   function syncToggles() {
     document.querySelectorAll("select.ac-state").forEach((sel) => {
       const id = sel.getAttribute("data-id");
-      sel.value = currentDeny.has(id) ? "deny" : "inherit";
+      if (currentAllow.has(id)) sel.value = "allow";
+      else if (currentDeny.has(id)) sel.value = "deny";
+      else sel.value = "inherit";
     });
   }
 
@@ -210,18 +227,23 @@
     el("acPills").innerHTML = "";
     const p = document.createElement("span");
     p.className = "pill";
-    p.textContent = "Overrides: " + (j.deny && j.deny.length ? j.deny.length + " restrictions" : "None");
+    const denyCount = Array.isArray(j.deny) ? j.deny.length : 0;
+    const allowCount = Array.isArray(j.allow) ? j.allow.length : 0;
+    const total = denyCount + allowCount;
+    p.textContent = "Overrides: " + (total ? total + " changes" : "None");
     el("acPills").appendChild(p);
 
     const ov = await fetch(
       "/api/access-control/overrides/" + encodeURIComponent(j.username),
       { headers: { Accept: "application/json" } }
     );
-    const oj = ov.ok ? await ov.json() : { deny: [] };
+    const oj = ov.ok ? await ov.json() : { deny: [], allow: [] };
     currentDeny = new Set(oj.deny || []);
+    currentAllow = new Set(oj.allow || []);
 
     el("acEditor").style.display = "block";
     buildEditor();
+    syncToggles();
     refreshEffective();
   }
 
@@ -270,7 +292,10 @@
     if (!selectedUsername) return;
     setMsg("Saving…");
     try {
-      const body = { deny: Array.from(currentDeny) };
+      const body = {
+        deny: Array.from(currentDeny),
+        allow: Array.from(currentAllow),
+      };
       const r = await fetch(
         "/api/access-control/overrides/" + encodeURIComponent(selectedUsername),
         {
@@ -296,6 +321,7 @@
     if (!selectedUsername) return;
     if (!confirm("Clear all permission overrides for " + selectedUsername + "?")) return;
     currentDeny = new Set();
+    currentAllow = new Set();
     setMsg("Saving…");
     try {
       const r = await fetch(
@@ -303,7 +329,7 @@
         {
           method: "PUT",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ deny: [] }),
+          body: JSON.stringify({ deny: [], allow: [] }),
         }
       );
       if (!r.ok) {
@@ -340,7 +366,7 @@
         );
         if (!rr.ok) return { un, c: 0 };
         const o = await rr.json();
-        return { un, c: (o.deny || []).length };
+        return { un, c: (o.deny || []).length + (o.allow || []).length };
       })
     );
     for (const { un, c } of rows) {

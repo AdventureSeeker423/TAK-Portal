@@ -78,6 +78,7 @@ router.get("/effective", async (req, res) => {
       isAgencyAdmin: roles.isAgencyAdmin,
       baseRole: desc.baseRole,
       baseIds,
+      allow: desc.allow,
       deny: desc.deny,
       effectiveIds: desc.effectiveIds,
       effectiveLabels,
@@ -123,9 +124,10 @@ router.put("/overrides/:username", express.json({ limit: "2mb" }), (req, res) =>
     return res.status(400).json({ error: "Username required" });
   }
   const deny = Array.isArray(req.body && req.body.deny) ? req.body.deny : [];
+  const allow = Array.isArray(req.body && req.body.allow) ? req.body.allow : [];
   const before = permsSvc.getOverridesForUser(target);
   try {
-    permsSvc.saveOverridesForUser(target, deny);
+    permsSvc.saveOverridesForUser(target, { deny, allow });
   } catch (e) {
     return res.status(400).json({ error: e && e.message ? e.message : String(e) });
   }
@@ -141,12 +143,17 @@ router.put("/overrides/:username", express.json({ limit: "2mb" }), (req, res) =>
       action: "PERMISSION_OVERRIDES_UPDATE",
       targetType: "user",
       targetId: target,
-      details: { beforeDeny: before.deny, afterDeny: after.deny },
+      details: {
+        beforeDeny: before.deny,
+        afterDeny: after.deny,
+        beforeAllow: before.allow || [],
+        afterAllow: after.allow || [],
+      },
     });
   } catch (_) {
     // non-blocking
   }
-  return res.json({ ok: true, deny: after.deny });
+  return res.json({ ok: true, deny: after.deny, allow: after.allow || [] });
 });
 
 module.exports = router;
