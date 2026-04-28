@@ -29,8 +29,8 @@ const PERMISSION_UI_ORDER = [
   "page.agencies",
   "page.integrations",
   "page.plugin_manager",
-  "page.settings",
   "page.access_control",
+  "page.settings",
 ];
 
 async function loadGroupNamesForUserId(userId) {

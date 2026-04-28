@@ -124,11 +124,11 @@
             <% if (_perm("page.plugin_manager")) { %>
             <a href="/plugin-manager" class="<%= isActive('/plugin-manager') ? 'active' : '' %>">Plugin Manager</a>
             <% } %>
-            <% if (_perm("page.settings")) { %>
-            <a href="/settings" class="<%= isActive('/settings') ? 'active' : '' %>">Server Settings</a>
-            <% } %>
             <% if (_perm("page.access_control")) { %>
             <a href="/access-control" class="<%= isActive('/access-control') ? 'active' : '' %>">Access Control</a>
+            <% } %>
+            <% if (_perm("page.settings")) { %>
+            <a href="/settings" class="<%= isActive('/settings') ? 'active' : '' %>">Server Settings</a>
             <% } %>
           </div>
         </div>
