@@ -1006,7 +1006,7 @@ app.get("/request-access/confirmation", (req, res) => {
 });
 
 // Admin: review pending access requests
-app.get("/pending-user-requests", requirePermission("page.pending_requests"), (req, res) => {
+app.get("/pending-user-requests", requirePermission("page.users"), (req, res) => {
   return res.render("pending-user-requests");
 });
 

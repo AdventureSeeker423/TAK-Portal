@@ -5,7 +5,7 @@ const permsSvc = require("../services/permissions.service");
 
 function requireUserRequestsApi(req, res, next) {
   const eff = req.effectivePermissionSet;
-  if (!eff || !permsSvc.can(eff, "page.pending_requests")) {
+  if (!eff || !permsSvc.can(eff, "page.users")) {
     return res.status(403).json({ error: "Forbidden" });
   }
   next();

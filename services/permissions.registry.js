@@ -34,12 +34,6 @@ const PERMISSIONS = {
       description: "Send email to users from the portal.",
       section: "administration",
     },
-    pending_requests: {
-      id: "page.pending_requests",
-      label: "Pending User Requests",
-      description: "Review access requests (admin queue).",
-      section: "administration",
-    },
     agencies: {
       id: "page.agencies",
       label: "Agencies",
@@ -127,7 +121,6 @@ const AGENCY_DEFAULT = new Set([
   "page.groups",
   "page.templates",
   "page.email",
-  "page.pending_requests",
 ]);
 
 /** Standard defaults are now handled by always-on routes (plugins/setup), not configurable keys. */
@@ -168,7 +161,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/templates")) return ["page.templates"];
   if (p.startsWith("/api/mutual-aid")) return ["page.mutual_aid"];
   if (p.startsWith("/api/tak")) return ["page.dashboard"];
-  if (p.startsWith("/api/user-requests")) return ["page.pending_requests"];
+  if (p.startsWith("/api/user-requests")) return ["page.users"];
   if (p.startsWith("/api/email")) return ["page.email"];
   // Documents/getting-started are role-gated in server.js, not permission-toggled.
   if (p.startsWith("/api/documents")) return [];
@@ -181,7 +174,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/groups")) return ["page.groups"];
   if (p.startsWith("/templates")) return ["page.templates"];
   if (p === "/email" || p.startsWith("/email/")) return ["page.email"];
-  if (p === "/pending-user-requests" || p.startsWith("/pending-user-requests/")) return ["page.pending_requests"];
+  if (p === "/pending-user-requests" || p.startsWith("/pending-user-requests/")) return ["page.users"];
   if (p === "/agencies" || p.startsWith("/agencies/")) return ["page.agencies"];
   if (p === "/settings" || p.startsWith("/settings/")) return ["page.settings"];
   if (p === "/integrations" || p.startsWith("/integrations/")) return ["page.integrations"];

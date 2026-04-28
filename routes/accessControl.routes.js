@@ -26,7 +26,6 @@ const PERMISSION_UI_ORDER = [
   "page.email",
   "page.locate",
   "page.mutual_aid",
-  "page.pending_requests",
   "page.agencies",
   "page.integrations",
   "page.plugin_manager",
@@ -134,6 +133,11 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
 
     if (toAdd.size) await usersSvc.addUserGroups(userId, Array.from(toAdd));
     if (toRemove.size) await usersSvc.removeUserGroups(userId, Array.from(toRemove));
+    // Any explicit per-user permission customizations must be cleared when base role changes.
+    permsSvc.saveOverridesForUser(String(target.username || "").trim().toLowerCase(), {
+      deny: [],
+      allow: [],
+    });
 
     const { groupNames } = await loadGroupNamesForUserId(userId);
     const roles = authzRoles.computePortalRolesFromGroupNames(groupNames);

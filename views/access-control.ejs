@@ -55,7 +55,6 @@
     }
     .ac-state-inherit-allowed { background: rgba(40,180,95,.08); border-color: rgba(40,180,95,.26); }
     .ac-state-inherit-denied { background: rgba(210,75,75,.08); border-color: rgba(210,75,75,.26); }
-    .ac-state-allow { background: rgba(40,180,95,.12); border-color: rgba(40,180,95,.34); }
     .ac-state-deny { background: rgba(210,75,75,.12); border-color: rgba(210,75,75,.34); }
 
     .ac-perm-row {
@@ -155,7 +154,6 @@
   let selectedUsername = null;
   let selectedUserId = null;
   let currentDeny = new Set();
-  let currentAllow = new Set();
   let currentBaseAllowed = new Set();
   let searchTimer = null;
 
@@ -197,22 +195,19 @@
   }
 
   function classifyRowState(id) {
-    if (currentAllow.has(id)) return "ac-state-allow";
     if (currentDeny.has(id)) return "ac-state-deny";
     return currentBaseAllowed.has(id) ? "ac-state-inherit-allowed" : "ac-state-inherit-denied";
   }
 
   function buildToggle(id) {
     const d = currentDeny.has(id);
-    const a = currentAllow.has(id);
     const baseAllowed = currentBaseAllowed.has(id);
     const inheritLabel = baseAllowed
       ? "Inherit From Role (Allowed)"
       : "Inherit From Role (Not Allowed)";
     return (
       "<select class=\"ac-state\" data-id=\"" + id + "\" style=\"min-width:16rem;\">" +
-      "<option value=\"inherit\" " + (!a && !d ? "selected" : "") + ">" + inheritLabel + "</option>" +
-      "<option value=\"allow\" " + (a ? "selected" : "") + ">Allow</option>" +
+      "<option value=\"inherit\" " + (!d ? "selected" : "") + ">" + inheritLabel + "</option>" +
       "<option value=\"deny\" " + (d ? "selected" : "") + ">Deny</option>" +
       "</select>"
     );
@@ -220,13 +215,19 @@
 
   function buildEditor() {
     const by = new Map();
-    for (const m of registryFlat) {
+    // Show only permissions allowed by the selected user's base role.
+    const visible = registryFlat.filter((m) => currentBaseAllowed.has(m.id));
+    for (const m of visible) {
       const s = m.section || "other";
       if (!by.has(s)) by.set(s, []);
       by.get(s).push(m);
     }
     const host = el("acGroups");
     host.innerHTML = "";
+    if (!visible.length) {
+      host.innerHTML = "<p class=\"muted\">No configurable permissions for this access level.</p>";
+      return;
+    }
     for (const [section, items] of by) {
       const wrap = document.createElement("div");
       wrap.style.marginBottom = "18px";
@@ -251,19 +252,14 @@
     host.querySelectorAll("select.ac-state").forEach((sel) => {
       sel.addEventListener("change", function () {
         const id = this.getAttribute("data-id");
-        if (this.value === "allow") {
-          currentAllow.add(id);
-          currentDeny.delete(id);
-        } else if (this.value === "deny") {
+        if (this.value === "deny") {
           currentDeny.add(id);
-          currentAllow.delete(id);
         } else {
-          currentAllow.delete(id);
           currentDeny.delete(id);
         }
         const row = host.querySelector('[data-row-id="' + id + '"]');
         if (row) {
-          row.classList.remove("ac-state-allow", "ac-state-deny", "ac-state-inherit-allowed", "ac-state-inherit-denied");
+          row.classList.remove("ac-state-deny", "ac-state-inherit-allowed", "ac-state-inherit-denied");
           row.classList.add(classifyRowState(id));
         }
         refreshEffective();
@@ -306,9 +302,8 @@
     currentBaseAllowed = new Set(Array.isArray(j.baseIds) ? j.baseIds : []);
 
     const ov = await fetch("/api/access-control/overrides/" + encodeURIComponent(j.username), { headers: { Accept: "application/json" } });
-    const oj = ov.ok ? await ov.json() : { deny: [], allow: [] };
+    const oj = ov.ok ? await ov.json() : { deny: [] };
     currentDeny = new Set(oj.deny || []);
-    currentAllow = new Set(oj.allow || []);
 
     const role = j.baseRole || "user";
     el("acSelName").textContent = j.displayName || j.username;
@@ -333,7 +328,7 @@
     const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(username), { headers: { Accept: "application/json" } });
     if (!r.ok) return 0;
     const j = await r.json().catch(() => ({}));
-    return (j.deny || []).length + (j.allow || []).length;
+    return (j.deny || []).length;
   }
 
   async function renderSearchRows(items) {
@@ -433,7 +428,7 @@
       await renderSearchRows(items);
     } catch (e) {
       msg.textContent = e?.message || "Search failed.";
-      el("acSearchRows").innerHTML = '<tr><td colspan="6" class="muted">Search failed.</td></tr>';
+      el("acSearchRows").innerHTML = '<tr><td colspan="7" class="muted">Search failed.</td></tr>';
     }
   }
 
@@ -447,7 +442,7 @@
     if (!selectedUsername) return;
     setMsg("Saving...");
     try {
-      const body = { deny: Array.from(currentDeny), allow: Array.from(currentAllow) };
+      const body = { deny: Array.from(currentDeny), allow: [] };
       const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(selectedUsername), {
         method: "PUT",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -467,7 +462,6 @@
     if (!selectedUsername) return;
     if (!confirm("Clear all permission overrides for " + selectedUsername + "?")) return;
     currentDeny = new Set();
-    currentAllow = new Set();
     setMsg("Saving...");
     try {
       const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(selectedUsername), {
