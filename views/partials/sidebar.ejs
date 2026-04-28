@@ -11,6 +11,12 @@
 
   const _perm = typeof perm === "function" ? perm : function () { return false; };
 
+  const _settings = typeof settings !== "undefined" && settings ? settings : {};
+  const betaModeEnabled =
+    typeof _settings.BETA_MODE === "string"
+      ? _settings.BETA_MODE.toLowerCase() === "true"
+      : false;
+
   const canSeeConfigSection =
     _perm("page.agencies") ||
     _perm("page.integrations") ||
@@ -28,12 +34,6 @@
     _perm("page.mutual_aid") ||
     ((_isGlobalAdmin || _isAgencyAdmin) && betaModeEnabled);
   const canSeeOnboardingSection = true;
-
-  const _settings = typeof settings !== "undefined" && settings ? settings : {};
-  const betaModeEnabled =
-    typeof _settings.BETA_MODE === "string"
-      ? _settings.BETA_MODE.toLowerCase() === "true"
-      : false;
 
   const _path = (typeof currentPath !== "undefined" && currentPath) ? String(currentPath).replace(/\/+$/, "") || "/" : "/";
   function isActive(href) {

@@ -155,7 +155,12 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/locate")) return ["page.locate"];
   if (p.startsWith("/api/data-sync")) return ["page.data_sync"];
   if (p.startsWith("/api/data-packages")) return ["page.data_package"];
-  if (p === "/api/agencies" || p.startsWith("/api/agencies/")) return ["page.agencies"];
+  if (p === "/api/agencies" || p.startsWith("/api/agencies/")) {
+    // Shared lookup API used by multiple pages (Users/Groups/Templates/Email/Pending requests).
+    // Keep reads broadly available for authenticated users; writes remain restricted.
+    if (m === "GET" || m === "HEAD") return [];
+    return ["page.agencies"];
+  }
   if (p.startsWith("/api/users")) return ["page.users"];
   if (p.startsWith("/api/groups")) return ["page.groups"];
   if (p.startsWith("/api/templates")) return ["page.templates"];
