@@ -429,8 +429,11 @@
     const agencySuffix = String(el("acAgencyFilter").value || "").trim().toLowerCase();
     const params = new URLSearchParams();
     params.set("page", "1");
-    params.set("pageSize", "5");
-    if (q.length >= 2) params.set("q", q);
+    // Keep this aligned with users-manage search behavior.
+    params.set("pageSize", "50");
+    params.set("sortKey", "name");
+    params.set("sortDir", "asc");
+    params.set("q", q);
     if (agencySuffix) params.set("agencySuffix", agencySuffix);
 
     setSearchMsg("Loading users...", false, false);
