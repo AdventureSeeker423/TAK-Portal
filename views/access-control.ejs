@@ -72,6 +72,7 @@
   let registryFlat = [];
   let selectedUsername = null;
   let currentDeny = new Set();
+  let currentBaseAllowed = new Set();
   let searchTimer = null;
 
   const el = (id) => document.getElementById(id);
@@ -137,6 +138,7 @@
 
   function buildToggle(id) {
     const d = currentDeny.has(id);
+    const baseAllowed = currentBaseAllowed.has(id);
     return (
       "<label class=\"muted\" style=\"display:block;\">" +
       "<select class=\"ac-state\" data-id=\"" +
@@ -144,7 +146,9 @@
       "\" style=\"min-width: 12rem;\">" +
       "<option value=\"inherit\" " +
       (d ? "" : "selected") +
-      ">Inherit from role (allowed)</option>" +
+      (baseAllowed
+        ? ">Inherit from role (allowed)</option>"
+        : ">Inherit from role (not allowed)</option>") +
       "<option value=\"deny\" " +
       (d ? "selected" : "") +
       ">Restrict access</option></select></label>" +
@@ -194,6 +198,7 @@
       return;
     }
     const j = await r.json();
+    currentBaseAllowed = new Set(Array.isArray(j.baseIds) ? j.baseIds : []);
     el("acSelName").textContent = j.displayName || j.username;
     const role =
       j.baseRole === "global_admin"

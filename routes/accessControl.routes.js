@@ -63,6 +63,7 @@ router.get("/effective", async (req, res) => {
     const authDisabled = getBool("PORTAL_AUTH_ENABLED", false) === false;
     const desc = permsSvc.describeEffectiveForUser(userStub, authDisabled);
     const byId = new Map(registry.listAllPermissionMeta().map((m) => [m.id, m]));
+    const baseIds = Array.from(registry.getDefaultSetForRole(desc.baseRole)).sort();
     const effectiveLabels = desc.effectiveIds.map((id) => {
       const m = byId.get(id);
       return m
@@ -76,6 +77,7 @@ router.get("/effective", async (req, res) => {
       isGlobalAdmin: roles.isGlobalAdmin,
       isAgencyAdmin: roles.isAgencyAdmin,
       baseRole: desc.baseRole,
+      baseIds,
       deny: desc.deny,
       effectiveIds: desc.effectiveIds,
       effectiveLabels,
