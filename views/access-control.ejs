@@ -120,7 +120,6 @@
       <div id="acGroups"></div>
 
       <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-        <button type="button" class="btn success" id="acSaveBtn">Save Permissions</button>
         <button type="button" class="btn" id="acResetBtn">Reset To Role Defaults</button>
         <span id="acMsg" class="msg"></span>
       </div>
@@ -164,6 +163,30 @@
     if (!m) return;
     m.textContent = text || "";
     m.style.color = isErr ? "#f66" : "";
+  }
+
+  function setSearchMsg(text, isErr, isOk) {
+    const m = el("acSearchMsg");
+    if (!m) return;
+    m.textContent = text || "";
+    if (isErr) m.style.color = "#f66";
+    else if (isOk) m.style.color = "#59d27f";
+    else m.style.color = "";
+  }
+
+  async function persistOverrides() {
+    if (!selectedUsername) return false;
+    const body = { deny: Array.from(currentDeny), allow: [] };
+    const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(selectedUsername), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const outText = await r.text();
+      throw new Error(outText || "Save failed.");
+    }
+    return true;
   }
 
   function roleToPillClass(role) {
@@ -262,7 +285,16 @@
           row.classList.remove("ac-state-deny", "ac-state-inherit-allowed", "ac-state-inherit-denied");
           row.classList.add(classifyRowState(id));
         }
-        refreshEffective();
+        setMsg("Saving...", false);
+        persistOverrides()
+          .then(async () => {
+            setMsg("Saved.", false);
+            runSearch();
+            await refreshEffective();
+          })
+          .catch((err) => {
+            setMsg(err?.message || "Save failed.", true);
+          });
       });
     });
   }
@@ -383,6 +415,7 @@
         const role = this.value;
         if (!userId) return;
         const prev = this.getAttribute("data-prev") || "user";
+        setSearchMsg("Updating permissions...", false, false);
         this.disabled = true;
         try {
           const r = await fetch("/api/access-control/user-role/" + encodeURIComponent(userId), {
@@ -393,12 +426,19 @@
           const out = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(out.error || "Failed to update role.");
           this.setAttribute("data-prev", out.role || role);
+          const doneLabel = (out.role || role) === "global_admin"
+            ? "Permissions updated: Global Admin."
+            : (out.role || role) === "agency_admin"
+            ? "Permissions updated: Agency Admin."
+            : "Permissions updated: User.";
+          setSearchMsg(doneLabel, false, true);
+          await runSearch();
           if (selectedUsername && selectedUsername === username) {
             await selectUser({ username, pk: userId });
           }
         } catch (e) {
           this.value = prev;
-          alert(e?.message || "Failed to update role.");
+          setSearchMsg(e?.message || "Failed to update permissions.", true, false);
         } finally {
           this.disabled = false;
         }
@@ -416,18 +456,17 @@
     if (q.length >= 2) params.set("q", q);
     if (agencySuffix) params.set("agencySuffix", agencySuffix);
 
-    const msg = el("acSearchMsg");
-    msg.textContent = "Loading users...";
+    setSearchMsg("Loading users...", false, false);
 
     try {
       const r = await fetch("/api/users/search?" + params.toString(), { headers: { Accept: "application/json" } });
       if (!r.ok) throw new Error("Failed to search users.");
       const j = await r.json();
       const items = j.users || [];
-      msg.textContent = items.length ? "" : "No matching users.";
+      setSearchMsg(items.length ? "" : "No matching users.", false, false);
       await renderSearchRows(items);
     } catch (e) {
-      msg.textContent = e?.message || "Search failed.";
+      setSearchMsg(e?.message || "Search failed.", true, false);
       el("acSearchRows").innerHTML = '<tr><td colspan="7" class="muted">Search failed.</td></tr>';
     }
   }
@@ -437,26 +476,6 @@
     searchTimer = setTimeout(runSearch, 300);
   });
   el("acAgencyFilter").addEventListener("change", runSearch);
-
-  el("acSaveBtn").addEventListener("click", async function () {
-    if (!selectedUsername) return;
-    setMsg("Saving...");
-    try {
-      const body = { deny: Array.from(currentDeny), allow: [] };
-      const r = await fetch("/api/access-control/overrides/" + encodeURIComponent(selectedUsername), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(body),
-      });
-      const outText = await r.text();
-      if (!r.ok) throw new Error(outText || "Save failed.");
-      setMsg("Saved.");
-      runSearch();
-      refreshEffective();
-    } catch (e) {
-      setMsg(e?.message || "Save failed.", true);
-    }
-  });
 
   el("acResetBtn").addEventListener("click", async function () {
     if (!selectedUsername) return;
