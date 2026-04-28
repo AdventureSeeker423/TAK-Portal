@@ -238,6 +238,36 @@ router.get("/overrides", (req, res) => {
   res.json({ usernames: permsSvc.listAllOverrideUsernames() });
 });
 
+router.post("/overrides/reset-all", (req, res) => {
+  try {
+    const actor = req.authentikUser || null;
+    if (!actor || !actor.isGlobalAdmin) {
+      return res.status(403).json({ error: "Only global admins can reset all overrides." });
+    }
+    const beforeUsernames = permsSvc.listAllOverrideUsernames();
+    permsSvc.clearAllOverrides();
+    auditSvc.logEvent({
+      actor,
+      request: {
+        method: req.method,
+        path: req.originalUrl || req.path,
+        ip: req.ip,
+      },
+      action: "PERMISSION_OVERRIDES_RESET_ALL",
+      targetType: "permission_overrides",
+      targetId: "all_users",
+      details: {
+        affectedUsers: beforeUsernames,
+        affectedCount: beforeUsernames.length,
+        summary: `Reset all granular permission overrides to defaults for ${beforeUsernames.length} user(s).`,
+      },
+    });
+    return res.json({ ok: true, affectedCount: beforeUsernames.length });
+  } catch (e) {
+    return res.status(500).json({ error: e?.message || "Failed to reset overrides." });
+  }
+});
+
 router.get("/overrides/:username", (req, res) => {
   let raw;
   try {

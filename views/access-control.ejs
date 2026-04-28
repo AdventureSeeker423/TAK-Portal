@@ -142,6 +142,9 @@
     </div>
 
     <div id="acSearchMsg" class="muted" style="margin-top:8px;">Type 2+ characters to search.</div>
+    <div style="margin-top:8px;">
+      <button type="button" class="btn danger" id="acResetAllOverridesBtn">Reset All Overrides (Testing)</button>
+    </div>
 
     <div class="ac-user-table-wrap">
       <div class="ac-user-table-scroll">
@@ -511,6 +514,28 @@
     searchTimer = setTimeout(runSearch, 300);
   });
   el("acAgencyFilter").addEventListener("change", runSearch);
+
+  el("acResetAllOverridesBtn").addEventListener("click", async function () {
+    if (!confirm("Reset ALL user permission overrides to role defaults? This cannot be undone.")) return;
+    this.disabled = true;
+    setSearchMsg("Resetting all overrides...", false, false);
+    try {
+      const r = await fetch("/api/access-control/overrides/reset-all", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(out.error || "Failed to reset overrides.");
+      setSearchMsg(`All overrides cleared (${Number(out.affectedCount) || 0} user${Number(out.affectedCount) === 1 ? "" : "s"}).`, false, true);
+      currentDeny = new Set();
+      if (selectedUsername) buildEditor();
+      await runSearch();
+    } catch (e) {
+      setSearchMsg(e?.message || "Failed to reset overrides.", true, false);
+    } finally {
+      this.disabled = false;
+    }
+  });
 
   el("acResetBtn").addEventListener("click", async function () {
     if (!selectedUsername) return;
