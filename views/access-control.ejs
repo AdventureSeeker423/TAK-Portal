@@ -5,6 +5,21 @@
   <h1>Access Control</h1>
 
   <style>
+    .ac-filter-row {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 10px;
+      align-items: end;
+      width: 100%;
+    }
+    .ac-filter-row label {
+      min-width: 0;
+    }
+    .ac-filter-row input,
+    .ac-filter-row select {
+      width: 100%;
+      box-sizing: border-box;
+    }
     .ac-user-table-wrap {
       margin-top: 12px;
       border: 1px solid var(--line);
@@ -76,12 +91,44 @@
       margin-bottom: 8px;
       transition: background-color .15s ease;
     }
+    @media (max-width: 900px) {
+      .ac-filter-row {
+        grid-template-columns: 1fr;
+      }
+      .ac-user-table {
+        min-width: 760px;
+      }
+      .ac-user-table-scroll {
+        max-height: 260px;
+      }
+      .ac-perm-row {
+        grid-template-columns: 1fr;
+      }
+      .ac-perm-row select.ac-state {
+        width: 100%;
+        min-width: 0 !important;
+      }
+    }
+    @media (max-width: 640px) {
+      .ac-user-table {
+        min-width: 640px;
+      }
+      .ac-user-table th,
+      .ac-user-table td {
+        padding: 7px 6px;
+        font-size: 0.88rem;
+      }
+      .ac-pill {
+        margin-left: 0 !important;
+        margin-top: 6px;
+      }
+    }
   </style>
 
   <div class="card">
     <h2>Select User</h2>
 
-    <div style="display:grid; grid-template-columns: 240px minmax(260px,1fr); gap:10px; align-items:end; max-width: 920px;">
+    <div class="ac-filter-row">
       <label>
         Agency Filter
         <select id="acAgencyFilter">

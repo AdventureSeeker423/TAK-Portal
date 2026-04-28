@@ -83,9 +83,21 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
     if (!target) return res.status(404).json({ error: "User not found." });
     const currentGroups = new Set((target.groups || []).map((x) => String(x)));
     const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const groupNameById = new Map(
+      (allGroups || []).map((g) => [String(g?.pk || ""), String(g?.name || "")])
+    );
     const groupsByNameLower = new Map(
       (allGroups || []).map((g) => [String(g?.name || "").trim().toLowerCase(), String(g?.pk || "")])
     );
+    const currentGroupNames = Array.from(currentGroups)
+      .map((id) => groupNameById.get(String(id)) || "")
+      .filter(Boolean);
+    const currentRoles = authzRoles.computePortalRolesFromGroupNames(currentGroupNames);
+    const previousRole = currentRoles.isGlobalAdmin
+      ? "global_admin"
+      : currentRoles.isAgencyAdmin
+      ? "agency_admin"
+      : "user";
 
     const globalGroupNames = String(getString("PORTAL_AUTH_REQUIRED_GROUP", ""))
       .split(",")
@@ -154,9 +166,14 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
       targetType: "user",
       targetId: String(target.username || userId).trim().toLowerCase(),
       details: {
+        username: String(target.username || "").trim().toLowerCase(),
+        previousRole,
         requestedRole: desiredRole,
         resultingRole,
         userId,
+        groupsAdded: Array.from(toAdd),
+        groupsRemoved: Array.from(toRemove),
+        summary: `Changed access role for ${String(target.username || "user").trim()} from ${previousRole} to ${resultingRole}. Cleared granular permission overrides.`,
       },
     });
 
@@ -270,10 +287,12 @@ router.put("/overrides/:username", express.json({ limit: "2mb" }), (req, res) =>
       targetType: "user",
       targetId: target,
       details: {
+        username: target,
         beforeDeny: before.deny,
         afterDeny: after.deny,
         beforeAllow: before.allow || [],
         afterAllow: after.allow || [],
+        summary: `Updated granular permission overrides for ${target}: deny ${before.deny.length} -> ${after.deny.length}, allow ${(before.allow || []).length} -> ${(after.allow || []).length}.`,
       },
     });
   } catch (_) {
