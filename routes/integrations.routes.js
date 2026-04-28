@@ -27,7 +27,7 @@ function parseStoredDataFeedPort(raw) {
 /**
  * GET /api/integrations
  * List all users whose username starts with "nodered-".
- * Mounted with requirePermission("api.integrations") in server.js.
+ * Mounted with requirePermission("page.integrations") in server.js.
  */
 router.get("/", async (req, res) => {
   try {
@@ -107,7 +107,7 @@ router.get("/", async (req, res) => {
 /**
  * POST /api/integrations
  * Create a new integration user: username "nodered-{slug from title}", single group.
- * Mounted with requirePermission("api.integrations") in server.js.
+ * Mounted with requirePermission("page.integrations") in server.js.
  */
 router.post("/", async (req, res) => {
   try {

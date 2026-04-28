@@ -1,6 +1,6 @@
 /**
  * Plugin Manager API: TAK.gov link, list/download/delete plugins.
- * Mounted with requirePermission("api.plugins_admin") in server.js.
+ * Mounted with requirePermission("page.plugin_manager") in server.js.
  */
 
 const router = require("express").Router();

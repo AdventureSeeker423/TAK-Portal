@@ -226,7 +226,24 @@ function requireBetaDocumentsPage(req, res, next) {
       username: req.authentikUser?.username || "",
     });
   }
-  return requirePermission("page.documents")(req, res, next);
+  const u = req.authentikUser;
+  if (!u || (!u.isGlobalAdmin && !u.isAgencyAdmin)) {
+    const username = u && u.username ? u.username : "";
+    return res.status(403).render("access-denied", { username });
+  }
+  return next();
+}
+
+function requireGlobalAdminRole(req, res, next) {
+  const u = req.authentikUser;
+  if (!u || !u.isGlobalAdmin) {
+    const username = u && u.username ? u.username : "";
+    if (isApiRequest(req)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    return res.status(403).render("access-denied", { username });
+  }
+  return next();
 }
 
 function requireBetaModeApi(req, res, next) {
@@ -288,26 +305,26 @@ app.get("/api/plugins/:id/download", (req, res) => {
     return res.status(500).json({ error: toSafeApiError(err) });
   }
 });
-app.use("/api/audit-log", requirePermission("api.audit_log"), require("./routes/auditLog.routes"));
-app.use("/api/plugins", requirePermission("api.plugins_admin"), require("./routes/plugins.routes"));
-app.use("/api/integrations", requirePermission("api.integrations"), require("./routes/integrations.routes"));
-app.use("/api/ssh", requirePermission("api.ssh"), require("./routes/ssh.routes"));
-// Locate + data packages (admin + JSON APIs): global capability (not beta-gated).
-app.use("/api/locate", requirePermission("api.locate"), require("./routes/locate.routes"));
+app.use("/api/audit-log", requirePermission("page.audit_log"), require("./routes/auditLog.routes"));
+app.use("/api/plugins", requirePermission("page.plugin_manager"), require("./routes/plugins.routes"));
+app.use("/api/integrations", requirePermission("page.integrations"), require("./routes/integrations.routes"));
+app.use("/api/ssh", requirePermission("page.integrations"), require("./routes/ssh.routes"));
+// Locate + data packages (admin + JSON APIs): page-aligned capability.
+app.use("/api/locate", requirePermission("page.locate"), require("./routes/locate.routes"));
 
 app.use(
   "/api/data-sync",
-  requirePermission("api.data_sync"),
+  requirePermission("page.data_sync"),
   requireBetaModeApi,
   require("./routes/dataSync.routes")
 );
 app.use(
   "/api/data-packages",
-  requirePermission("api.data_packages"),
+  requirePermission("page.data_package"),
   require("./routes/dataPackages.routes")
 );
 
-app.use("/api/documents", require("./routes/documents.routes"));
+app.use("/api/documents", requireBetaDocumentsPage, require("./routes/documents.routes"));
 
 // Public locate APIs: CORS + OPTIONS (preflight for JSON POST).
 function publicLocateApiCors(req, res, next) {
@@ -464,7 +481,7 @@ app.get(
 app.post("/locate/:slug/ping", publicLocateApiCors, handlePublicLocatePing);
 app.options("/locate/:slug/stop-sharing", publicLocateApiCors);
 app.post("/locate/:slug/stop-sharing", publicLocateApiCors, handlePublicLocateStopSharing);
-app.use("/api/email", requirePermission("api.email"), require("./routes/email.routes"));
+app.use("/api/email", requirePermission("page.email"), require("./routes/email.routes"));
 app.use("/dashboard", require("./routes/dashboard.routes"));
 
 // Access control (per-user permission deny overrides)
@@ -495,15 +512,15 @@ app.get("/users/manage", (req, res) => {
     pendingUserRequestsCount,
   });
 });
-app.get("/sample-users.csv", requirePermission("misc.import_samples"), (req, res) => {
+app.get("/sample-users.csv", requirePermission("page.users"), (req, res) => {
   const filePath = path.join(__dirname, "sample-users.csv");
   return res.download(filePath, "users-import-template.csv");
 });
-app.get("/sample-agencies.csv", requirePermission("misc.import_samples"), (req, res) => {
+app.get("/sample-agencies.csv", requirePermission("page.users"), (req, res) => {
   const filePath = path.join(__dirname, "sample-agencies.csv");
   return res.download(filePath, "agencies-import-template.csv");
 });
-app.get("/csv-instructions-readme.txt", requirePermission("misc.import_samples"), (req, res) => {
+app.get("/csv-instructions-readme.txt", requirePermission("page.users"), (req, res) => {
   const filePath = path.join(__dirname, "csv-instructions-readme.txt");
   return res.download(filePath, "csv-instructions-readme.txt");
 });
@@ -561,7 +578,7 @@ app.get("/plugin-manager", requirePermission("page.plugin_manager"), async (req,
 });
 
 // Beta: Getting Started (global admins only, beta mode)
-app.get("/getting-started", requirePermission("page.getting_started"), requireBetaMode, (req, res) =>
+app.get("/getting-started", requireGlobalAdminRole, requireBetaMode, (req, res) =>
   res.render("getting-started")
 );
 
