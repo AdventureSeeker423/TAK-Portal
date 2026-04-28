@@ -186,18 +186,6 @@ function listAllOverrideUsernames() {
   return Object.keys(all).sort();
 }
 
-function clearAllOverrides() {
-  const dir = path.dirname(DATA_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  const tmp = DATA_FILE + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify({}, null, 2), "utf8");
-  fs.renameSync(tmp, DATA_FILE);
-  cache = { raw: null, mtimeMs: 0, parsed: {} };
-  loadOverridesFromDisk();
-}
-
 /**
  * For UI: effective = base + allow - deny; return labels for granted areas
  */
@@ -226,7 +214,6 @@ module.exports = {
   saveOverridesForUser,
   getOverridesForUser,
   listAllOverrideUsernames,
-  clearAllOverrides,
   describeEffectiveForUser,
   DATA_FILE,
 };
