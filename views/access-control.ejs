@@ -3,10 +3,6 @@
 
 <main class="main">
   <h1>Access Control</h1>
-  <p class="muted" style="margin-top:0; max-width: 62rem;">
-    Manage page-level capabilities per user. Use the table to locate users, optionally change base role,
-    then click <strong>Edit Permissions</strong> to apply granular Allow/Deny overrides.
-  </p>
 
   <style>
     .ac-user-table-wrap {
@@ -57,8 +53,8 @@
       font-size: 0.84rem;
       border: 1px solid transparent;
     }
-    .ac-state-inherit-allowed { background: rgba(65,140,255,.08); border-color: rgba(65,140,255,.24); }
-    .ac-state-inherit-denied { background: rgba(130,130,130,.08); border-color: rgba(130,130,130,.24); }
+    .ac-state-inherit-allowed { background: rgba(40,180,95,.08); border-color: rgba(40,180,95,.26); }
+    .ac-state-inherit-denied { background: rgba(210,75,75,.08); border-color: rgba(210,75,75,.26); }
     .ac-state-allow { background: rgba(40,180,95,.12); border-color: rgba(40,180,95,.34); }
     .ac-state-deny { background: rgba(210,75,75,.12); border-color: rgba(210,75,75,.34); }
 
@@ -119,13 +115,6 @@
         <strong id="acSelName"></strong>
         <span id="acSelMeta" class="muted" style="margin-left:8px;"></span>
         <span id="acPillRole" class="ac-pill" style="margin-left:8px;"></span>
-      </div>
-
-      <div class="ac-state-legend">
-        <span class="ac-legend-item ac-state-inherit-allowed">Inherit From Role (Allowed)</span>
-        <span class="ac-legend-item ac-state-inherit-denied">Inherit From Role (Not Allowed)</span>
-        <span class="ac-legend-item ac-state-allow">Allow Override</span>
-        <span class="ac-legend-item ac-state-deny">Deny Override</span>
       </div>
 
       <p class="muted" style="margin-top:0;">
@@ -268,8 +257,7 @@
         row.className = "ac-perm-row " + classifyRowState(id);
         row.setAttribute("data-row-id", id);
         row.innerHTML =
-          "<div><strong>" + (m.label || id) + "</strong>" +
-          "<div class=\"muted\" style=\"font-size:.9em;margin-top:2px;\">" + (m.description || "") + "</div></div>" +
+          "<div><strong>" + (m.label || id) + "</strong></div>" +
           "<div>" + buildToggle(id) + "</div>";
         wrap.appendChild(row);
       }
