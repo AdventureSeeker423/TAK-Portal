@@ -13,7 +13,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ## Version History
 
 ### v1.3.0 - 4/27/26
-🎉 `New Feature` - Implementation and Addition of a more robust permissions system centered around an Access Control page that is designed to customize permissions of admin users.  More updates to come in the near future to expand this functionality beyond the existing access levels!<br>
+🎉 `New Feature` - Implementation and addition of a more robust permissions system centered around an Access Control page that is designed to customize permissions of admin users.  More updates to come in the near future to expand this functionality beyond the existing access levels!<br>
 🐛 `Bug Fix` - Updates Open TAK Tracker Link to fixes issue with GoTAK removing their app from GitHub.
 
 ### v1.2.79 - 4/27/26
