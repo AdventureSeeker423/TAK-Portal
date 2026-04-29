@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.2 - 4/28/26
+✨ `Enhancement` - Plugin Manager now allows multiple versions of a plugin to be downloaded for multiple versions of ATAK<br>
+🐛 `Bug Fix` - Fixes issue with Plugin Manager link to TAK.gov only allowing a fixed list of ATAK versions.  Updated to always include the 4 most recent versions posted on tak.gov.
+
 ### v1.3.1 - 4/28/26
 🐛 `Bug Fix` - Fixes issue with long load times on the Access Control page for servers with large amounts of users.
 
