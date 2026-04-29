@@ -60,13 +60,7 @@
       <div class="row" style="flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px;">
         <label>ATAK version
           <select id="takgovVersion" style="min-width: 120px;">
-            <option value="5.6.0" selected>5.6.0</option>
-            <option value="5.5.0">5.5.0</option>
-            <option value="5.4.0">5.4.0</option>
-            <option value="5.3.0">5.3.0</option>
-            <option value="5.2.0">5.2.0</option>
-            <option value="5.1.0">5.1.0</option>
-            <option value="5.0.0">5.0.0</option>
+            <option value="5.7.0" selected>5.7.0</option>
           </select>
         </label>
         <label style="flex: 1; min-width: 200px;">Search
@@ -185,6 +179,7 @@
   let downloadedPluginsCache = [];
   let updateStatusCache = {};
   let downloadedVersionFilterValue = "";
+  let takgovVersionsLoaded = false;
 
   function esc(s) {
     if (s == null || s === undefined) return "";
@@ -465,8 +460,12 @@
         })();
       }
 
-      if (link.linked) loadTakgovPlugins();
-      else if (takgovPluginsCache.length > 0) renderTakgovMarketplace(getTakgovDisplayList());
+      if (link.linked) {
+        if (!takgovVersionsLoaded) await loadTakgovVersions();
+        loadTakgovPlugins();
+      } else if (takgovPluginsCache.length > 0) {
+        renderTakgovMarketplace(getTakgovDisplayList());
+      }
     } catch (err) {
       if (pluginsLoading) pluginsLoading.style.display = "none";
       setPluginsMsg(err.message || "Failed to load plugins", false);
@@ -477,6 +476,25 @@
     if (!marketplaceMsg) return;
     marketplaceMsg.textContent = text || "";
     marketplaceMsg.style.color = ok === false ? "var(--danger)" : "";
+  }
+
+  async function loadTakgovVersions() {
+    if (!takgovVersion) return;
+    const previous = (takgovVersion.value || "").trim();
+    try {
+      const res = await fetch("/api/plugins/takgov/versions?product=ATAK-CIV");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load ATAK versions");
+      const versions = Array.isArray(data.versions) ? data.versions.filter(Boolean) : [];
+      if (versions.length === 0) return;
+      takgovVersion.innerHTML = versions.map(function (v) {
+        return "<option value=\"" + esc(v) + "\">" + esc(v) + "</option>";
+      }).join("");
+      takgovVersion.value = versions.includes(previous) ? previous : versions[0];
+      takgovVersionsLoaded = true;
+    } catch (_) {
+      // Keep fallback option if dynamic discovery fails.
+    }
   }
 
   function getTakgovDisplayList() {
@@ -569,7 +587,7 @@
   }
 
   async function loadTakgovPlugins() {
-    const version = (takgovVersion && takgovVersion.value || "5.5.0").trim();
+    const version = (takgovVersion && takgovVersion.value || "5.7.0").trim();
     setMarketplaceMsg("Loading…", true);
     try {
       const res = await fetch("/api/plugins/takgov/plugins?product=ATAK-CIV&product_version=" + encodeURIComponent(version));

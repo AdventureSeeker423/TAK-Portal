@@ -148,6 +148,26 @@ router.get("/", (req, res) => {
 });
 
 /**
+ * GET /api/plugins/takgov/versions
+ * Discover ATAK versions currently available from TAK.gov for plugin browsing.
+ */
+router.get("/takgov/versions", async (req, res) => {
+  try {
+    const product = (req.query.product || "ATAK-CIV").trim();
+    if (!product) {
+      return res.status(400).json({ error: "product is required." });
+    }
+    const result = await pluginsSvc.listTakGovAvailableVersions(product);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error || "Failed to fetch versions." });
+    }
+    return res.json({ success: true, versions: result.versions || [] });
+  } catch (err) {
+    return res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
+/**
  * GET /api/plugins/takgov/plugins
  * Query TAK.gov for plugin list (requires linked account). Query: product, product_version.
  */

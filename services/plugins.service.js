@@ -237,6 +237,8 @@ const TAK_GOV_PLUGINS_URL = "https://tak.gov/eud_api/software/v1/plugins";
 
 const TAKGOV_PLUGINS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const takgovPluginsCache = new Map(); // key: "product|product_version", value: { plugins, expiry }
+const TAKGOV_VERSIONS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const takgovVersionsCache = new Map(); // key: product, value: { versions, expiry }
 
 function getAtakVersionValue(plugin) {
   if (!plugin || typeof plugin !== "object") return null;
@@ -261,27 +263,30 @@ function getAtakCompatibilityKey(version) {
   return `${match[1]}.${match[2]}`;
 }
 
-/**
- * Fetch plugin list from TAK.gov (requires linked account). Cached per product/version for 1 hour.
- * @param {string} product - e.g. ATAK-CIV, ATAK-GOV, ATAK-MIL
- * @param {string} product_version - e.g. 5.5.0
- * @returns {Promise<{ success: boolean, plugins?: array, error?: string }>}
- */
-async function fetchTakGovPlugins(product, product_version) {
+function compareVersionDesc(a, b) {
+  const ap = String(a || "").split(".").map((n) => parseInt(n, 10) || 0);
+  const bp = String(b || "").split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(ap.length, bp.length); i++) {
+    const av = ap[i] || 0;
+    const bv = bp[i] || 0;
+    if (bv !== av) return bv - av;
+  }
+  return 0;
+}
+
+async function fetchTakGovPluginsWithAccessToken(product, product_version, accessToken) {
   const key = `${product}|${product_version}`;
   const cached = takgovPluginsCache.get(key);
   if (cached && cached.expiry > Date.now()) {
     return { success: true, plugins: cached.plugins };
   }
-  const token = await getTakGovAccessToken();
-  if (!token.success) return { success: false, error: token.error };
   const u = new URL(TAK_GOV_PLUGINS_URL);
   u.searchParams.set("product", product);
   u.searchParams.set("product_version", product_version);
   try {
-    const { statusCode, data } = await takGovHttp2Get(u.toString(), token.access_token, { responseType: "json" });
+    const { statusCode, data } = await takGovHttp2Get(u.toString(), accessToken, { responseType: "json" });
     if (statusCode !== 200) {
-      return { success: false, error: data?.error_description || data?.error || `TAK.gov returned ${statusCode}` };
+      return { success: false, statusCode, error: data?.error_description || data?.error || `TAK.gov returned ${statusCode}` };
     }
     const plugins = Array.isArray(data) ? data : (data.plugins || data.items || []);
     takgovPluginsCache.set(key, { plugins, expiry: Date.now() + TAKGOV_PLUGINS_CACHE_TTL_MS });
@@ -289,6 +294,65 @@ async function fetchTakGovPlugins(product, product_version) {
   } catch (err) {
     return { success: false, error: err?.message || "Failed to fetch plugins from TAK.gov." };
   }
+}
+
+/**
+ * Fetch plugin list from TAK.gov (requires linked account). Cached per product/version for 1 hour.
+ * @param {string} product - e.g. ATAK-CIV, ATAK-GOV, ATAK-MIL
+ * @param {string} product_version - e.g. 5.5.0
+ * @returns {Promise<{ success: boolean, plugins?: array, error?: string }>}
+ */
+async function fetchTakGovPlugins(product, product_version) {
+  const token = await getTakGovAccessToken();
+  if (!token.success) return { success: false, error: token.error };
+  return fetchTakGovPluginsWithAccessToken(product, product_version, token.access_token);
+}
+
+/**
+ * Discover ATAK product versions currently accepted by TAK.gov for plugin browsing.
+ * This is cached and probed from a rolling candidate list so new versions appear without code changes.
+ * @param {string} product - e.g. ATAK-CIV
+ * @returns {Promise<{ success: boolean, versions?: string[], error?: string }>}
+ */
+async function listTakGovAvailableVersions(product = "ATAK-CIV") {
+  const productKey = String(product || "ATAK-CIV").trim() || "ATAK-CIV";
+  const cached = takgovVersionsCache.get(productKey);
+  if (cached && cached.expiry > Date.now()) {
+    return { success: true, versions: cached.versions };
+  }
+  const token = await getTakGovAccessToken();
+  if (!token.success) return { success: false, error: token.error };
+
+  const candidates = new Set();
+  // Probe a rolling window first so newer versions are picked up automatically.
+  for (let minor = 12; minor >= 0; minor--) candidates.add(`5.${minor}.0`);
+  for (let minor = 6; minor >= 0; minor--) candidates.add(`6.${minor}.0`);
+  // Include versions seen in existing plugin metadata to preserve continuity.
+  const existing = listPlugins();
+  existing.forEach((p) => {
+    const v = getAtakVersionValue(p);
+    if (v) candidates.add(v);
+  });
+
+  const checks = await Promise.all(
+    Array.from(candidates).map(async (v) => {
+      const out = await fetchTakGovPluginsWithAccessToken(productKey, v, token.access_token);
+      return { version: v, success: out.success };
+    })
+  );
+  const versions = checks
+    .filter((x) => x.success)
+    .map((x) => x.version)
+    .sort(compareVersionDesc);
+
+  if (versions.length === 0) {
+    // Safe fallback for UI behavior if discovery fails unexpectedly.
+    const fallback = ["5.7.0", "5.6.0", "5.5.0"];
+    takgovVersionsCache.set(productKey, { versions: fallback, expiry: Date.now() + TAKGOV_VERSIONS_CACHE_TTL_MS });
+    return { success: true, versions: fallback };
+  }
+  takgovVersionsCache.set(productKey, { versions, expiry: Date.now() + TAKGOV_VERSIONS_CACHE_TTL_MS });
+  return { success: true, versions };
 }
 
 /**
@@ -901,6 +965,7 @@ module.exports = {
   unlinkTakGovAccount,
   getTakGovAccessToken,
   fetchTakGovPlugins,
+  listTakGovAvailableVersions,
   downloadTakGovPlugin,
   listPlugins,
   addPluginFromFile,
