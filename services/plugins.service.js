@@ -239,6 +239,7 @@ const TAKGOV_PLUGINS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const takgovPluginsCache = new Map(); // key: "product|product_version", value: { plugins, expiry }
 const TAKGOV_VERSIONS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const takgovVersionsCache = new Map(); // key: product, value: { versions, expiry }
+const TAKGOV_MAX_BROWSE_VERSIONS = 4;
 
 function getAtakVersionValue(plugin) {
   if (!plugin || typeof plugin !== "object") return null;
@@ -343,7 +344,8 @@ async function listTakGovAvailableVersions(product = "ATAK-CIV") {
   const versions = checks
     .filter((x) => x.success)
     .map((x) => x.version)
-    .sort(compareVersionDesc);
+    .sort(compareVersionDesc)
+    .slice(0, TAKGOV_MAX_BROWSE_VERSIONS);
 
   if (versions.length === 0) {
     // Safe fallback for UI behavior if discovery fails unexpectedly.
