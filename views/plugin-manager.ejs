@@ -36,6 +36,13 @@
   <!-- Downloaded plugins: cards (above Plugin Browser) -->
   <div class="card">
     <h2 style="margin-top: 0;">Downloaded Plugins</h2>
+    <div class="row" style="flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px;">
+      <label>Filter by ATAK version
+        <select id="downloadedVersionFilter" style="min-width: 160px;">
+          <option value="" selected>All versions</option>
+        </select>
+      </label>
+    </div>
     <div id="pluginsMsg" class="msg"></div>
     <div id="pluginsLoading" class="muted" style="margin-top: 16px;">Loading Plugins...</div>
     <div id="pluginCards" class="plugin-cards" style="display: none; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 16px;">
@@ -164,6 +171,7 @@
   const pluginCards = document.getElementById("pluginCards");
   const pluginsEmpty = document.getElementById("pluginsEmpty");
   const pluginsMsg = document.getElementById("pluginsMsg");
+  const downloadedVersionFilter = document.getElementById("downloadedVersionFilter");
   const marketplaceIntro = document.getElementById("marketplaceIntro");
   const marketplaceBrowse = document.getElementById("marketplaceBrowse");
   const takgovVersion = document.getElementById("takgovVersion");
@@ -176,6 +184,7 @@
   let takgovSearchText = "";
   let downloadedPluginsCache = [];
   let updateStatusCache = {};
+  let downloadedVersionFilterValue = "";
 
   function esc(s) {
     if (s == null || s === undefined) return "";
@@ -214,9 +223,49 @@
     } catch (_) { return iso; }
   }
 
+  function getAtakVersionValue(p) {
+    if (!p) return "";
+    const raw = p.atakVersion || p.atak_version || "";
+    return String(raw || "").trim();
+  }
+
+  function getAtakVersionKey(p) {
+    const s = getAtakVersionValue(p);
+    const m = s.match(/^(\d+)\.(\d+)/);
+    return m ? (m[1] + "." + m[2]) : s;
+  }
+
+  function refreshDownloadedVersionFilterOptions(plugins) {
+    if (!downloadedVersionFilter) return;
+    const current = downloadedVersionFilterValue || "";
+    const versions = Array.from(new Set(
+      (Array.isArray(plugins) ? plugins : [])
+        .map(function (p) { return getAtakVersionKey(p); })
+        .filter(Boolean)
+    )).sort(function (a, b) {
+      const ap = a.split(".").map(function (n) { return parseInt(n, 10) || 0; });
+      const bp = b.split(".").map(function (n) { return parseInt(n, 10) || 0; });
+      if ((bp[0] || 0) !== (ap[0] || 0)) return (bp[0] || 0) - (ap[0] || 0);
+      return (bp[1] || 0) - (ap[1] || 0);
+    });
+    const allowed = new Set([""]);
+    versions.forEach(function (v) { allowed.add(v); });
+    downloadedVersionFilterValue = allowed.has(current) ? current : "";
+    downloadedVersionFilter.innerHTML =
+      "<option value=\"\">All versions</option>" +
+      versions.map(function (v) {
+        return "<option value=\"" + esc(v) + "\"" + (downloadedVersionFilterValue === v ? " selected" : "") + ">" + esc(v) + ".x</option>";
+      }).join("");
+  }
+
   function renderPluginCards(plugins) {
     if (pluginsLoading) pluginsLoading.style.display = "none";
-    const list = (Array.isArray(plugins) ? plugins : []).slice().sort(function (a, b) {
+    refreshDownloadedVersionFilterOptions(plugins);
+    const filtered = (Array.isArray(plugins) ? plugins : []).filter(function (p) {
+      if (!downloadedVersionFilterValue) return true;
+      return getAtakVersionKey(p) === downloadedVersionFilterValue;
+    });
+    const list = filtered.slice().sort(function (a, b) {
       const na = (a.name || a.filename || a.id || "").toLowerCase();
       const nb = (b.name || b.filename || b.id || "").toLowerCase();
       return na.localeCompare(nb);
@@ -543,6 +592,12 @@
     takgovSearch.addEventListener("input", function () {
       takgovSearchText = takgovSearch.value || "";
       renderTakgovMarketplace(getTakgovDisplayList());
+    });
+  }
+  if (downloadedVersionFilter) {
+    downloadedVersionFilter.addEventListener("change", function () {
+      downloadedVersionFilterValue = downloadedVersionFilter.value || "";
+      renderPluginCards(downloadedPluginsCache);
     });
   }
 

@@ -238,6 +238,22 @@ const TAK_GOV_PLUGINS_URL = "https://tak.gov/eud_api/software/v1/plugins";
 const TAKGOV_PLUGINS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const takgovPluginsCache = new Map(); // key: "product|product_version", value: { plugins, expiry }
 
+function getAtakVersionValue(plugin) {
+  if (!plugin || typeof plugin !== "object") return null;
+  const raw = plugin.atakVersion ?? plugin.atak_version ?? plugin.product_version ?? null;
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  return s || null;
+}
+
+function getAtakCompatibilityKey(version) {
+  const raw = version == null ? "" : String(version).trim();
+  if (!raw) return "";
+  const match = raw.match(/^(\d+)\.(\d+)/);
+  if (!match) return raw.toLowerCase();
+  return `${match[1]}.${match[2]}`;
+}
+
 /**
  * Fetch plugin list from TAK.gov (requires linked account). Cached per product/version for 1 hour.
  * @param {string} product - e.g. ATAK-CIV, ATAK-GOV, ATAK-MIL
@@ -335,9 +351,19 @@ async function downloadTakGovPlugin(pluginItem) {
 
     const manifest = loadManifest();
     const packageName = pluginItem.package_name || null;
+    const incomingAtakVersion = getAtakVersionValue(pluginItem);
+    const incomingCompatKey = getAtakCompatibilityKey(incomingAtakVersion);
     let preservedFavorite = false;
-    // Remove existing by package_name (update scenario) or by same filename
-    const existingByPkg = packageName ? manifest.plugins.find((p) => p.package_name === packageName) : null;
+    // Remove existing by package_name + ATAK compatibility target (update scenario) or by same filename.
+    // This allows side-by-side plugin variants for different ATAK versions (e.g. 5.6 and 5.7).
+    const existingByPkg = packageName
+      ? manifest.plugins.find((p) => {
+        if (p.package_name !== packageName) return false;
+        const existingCompatKey = getAtakCompatibilityKey(getAtakVersionValue(p));
+        if (!incomingCompatKey) return !existingCompatKey;
+        return existingCompatKey === incomingCompatKey;
+      })
+      : null;
     const existingByFile = manifest.plugins.find((p) => p.filename === filename);
     const existing = existingByPkg || existingByFile;
     if (existing) {
@@ -360,7 +386,7 @@ async function downloadTakGovPlugin(pluginItem) {
       downloadedAt: new Date().toISOString(),
       source: "tak.gov",
       atakFlavor: pluginItem.product || null,
-      atakVersion: pluginItem.atak_version || pluginItem.product_version || null,
+      atakVersion: incomingAtakVersion,
       package_name: packageName,
       favorite: preservedFavorite,
       version: pluginItem.version || null,
@@ -795,7 +821,7 @@ async function updatePluginFromTakGov(id) {
   if (plugin.source !== "tak.gov" || !plugin.package_name) {
     return { success: false, error: "Only TAK.gov plugins with a package name can be updated." };
   }
-  const productVersion = plugin.atakVersion || plugin.atak_version || "5.5.0";
+  const productVersion = getAtakVersionValue(plugin) || "5.5.0";
   const token = await getTakGovAccessToken();
   if (!token.success) return { success: false, error: token.error };
   const listResult = await fetchTakGovPlugins("ATAK-CIV", productVersion);
@@ -841,7 +867,7 @@ async function getUpdateStatus() {
   if (takGovPlugins.length === 0) return {};
   const versions = new Set();
   takGovPlugins.forEach((p) => {
-    const v = p.atakVersion || p.atak_version || "5.5.0";
+    const v = getAtakVersionValue(p) || "5.5.0";
     versions.add(v);
   });
   const listByVersion = {};
@@ -851,7 +877,7 @@ async function getUpdateStatus() {
   }
   const out = {};
   for (const p of takGovPlugins) {
-    const productVersion = p.atakVersion || p.atak_version || "5.5.0";
+    const productVersion = getAtakVersionValue(p) || "5.5.0";
     const list = listByVersion[productVersion] || [];
     const remote = list.find((r) => r.package_name === p.package_name);
     out[p.id] = !!remote && isNewerVersion(p, remote);

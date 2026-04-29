@@ -575,7 +575,8 @@ app.get("/data-packages", requirePermission("page.data_package"), (req, res) =>
 app.get("/plugins", (req, res) => {
   const pluginsSvc = require("./services/plugins.service");
   const plugins = pluginsSvc.listPlugins();
-  return res.render("plugins", { plugins });
+  const selectedAtakVersion = String(req.query?.atak || "").trim();
+  return res.render("plugins", { plugins, selectedAtakVersion });
 });
 
 // Admin: audit log (GLOBAL ADMINS ONLY)

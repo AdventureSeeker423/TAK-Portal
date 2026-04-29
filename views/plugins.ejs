@@ -5,7 +5,30 @@
   <h1>ATAK Plugins</h1>
 
   <%
-    const pluginList = Array.isArray(plugins) ? plugins : [];
+    const pluginListRaw = Array.isArray(plugins) ? plugins : [];
+    const selectedVersionRaw = typeof selectedAtakVersion === "string" ? selectedAtakVersion.trim() : "";
+    function getAtakVersion(p) {
+      return (p && (p.atakVersion || p.atak_version)) ? String(p.atakVersion || p.atak_version).trim() : "";
+    }
+    function toVersionKey(v) {
+      const s = String(v || "").trim();
+      const m = s.match(/^(\d+)\.(\d+)/);
+      return m ? (m[1] + "." + m[2]) : s;
+    }
+    const versionOptions = Array.from(new Set(
+      pluginListRaw
+        .map((p) => toVersionKey(getAtakVersion(p)))
+        .filter(Boolean)
+    )).sort((a, b) => {
+      const ap = a.split(".").map((n) => parseInt(n, 10) || 0);
+      const bp = b.split(".").map((n) => parseInt(n, 10) || 0);
+      if (bp[0] !== ap[0]) return bp[0] - ap[0];
+      return (bp[1] || 0) - (ap[1] || 0);
+    });
+    const selectedVersion = versionOptions.includes(selectedVersionRaw) ? selectedVersionRaw : "";
+    const pluginList = selectedVersion
+      ? pluginListRaw.filter((p) => toVersionKey(getAtakVersion(p)) === selectedVersion)
+      : pluginListRaw;
     const recommended = pluginList.filter((p) => p.favorite === true).sort((a, b) => {
       const na = (a.name || a.filename || a.id || "").toLowerCase();
       const nb = (b.name || b.filename || b.id || "").toLowerCase();
@@ -57,6 +80,25 @@
         '</div></div>';
     }
   %>
+
+  <% if (versionOptions.length > 0) { %>
+  <div class="card" style="margin-top: 16px;">
+    <form method="get" action="/plugins" class="row" style="align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+      <label>ATAK version
+        <select name="atak" style="min-width: 140px;">
+          <option value="" <%= selectedVersion ? "" : "selected" %>>All versions</option>
+          <% versionOptions.forEach(function (v) { %>
+            <option value="<%= v %>" <%= selectedVersion === v ? "selected" : "" %>><%= v %>.x</option>
+          <% }); %>
+        </select>
+      </label>
+      <button type="submit" class="btn">Apply</button>
+      <% if (selectedVersion) { %>
+      <a class="btn" href="/plugins">Clear</a>
+      <% } %>
+    </form>
+  </div>
+  <% } %>
 
   <% if (recommended.length > 0) { %>
   <div class="card" style="margin-top: 20px;">
