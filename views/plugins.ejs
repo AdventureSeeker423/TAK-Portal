@@ -32,7 +32,11 @@
     });
     const selectedVersion = versionOptions.includes(selectedVersionRaw) ? selectedVersionRaw : "";
     const pluginList = selectedVersion
-      ? pluginListRaw.filter((p) => toVersionKey(getAtakVersion(p)) === selectedVersion)
+      ? pluginListRaw.filter((p) => {
+          const key = toVersionKey(getAtakVersion(p));
+          // On Plugins page, items without ATAK version stay visible across all filters.
+          return !key || key === selectedVersion;
+        })
       : pluginListRaw;
     const recommended = pluginList.filter((p) => p.favorite === true).sort((a, b) => {
       const na = (a.name || a.filename || a.id || "").toLowerCase();
@@ -88,19 +92,15 @@
 
   <% if (versionOptions.length > 0) { %>
   <div class="card" style="margin-top: 16px;">
-    <form method="get" action="/plugins" class="row" style="align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+    <form method="get" action="/plugins" id="pluginsVersionFilterForm" class="row" style="align-items: flex-end; gap: 12px; flex-wrap: wrap;">
       <label>ATAK version
-        <select name="atak" style="min-width: 140px;">
+        <select name="atak" id="pluginsVersionFilter" style="min-width: 140px;">
           <option value="" <%= selectedVersion ? "" : "selected" %>>All versions</option>
           <% versionOptions.forEach(function (v) { %>
             <option value="<%= v %>" <%= selectedVersion === v ? "selected" : "" %>><%= v %>.x</option>
           <% }); %>
         </select>
       </label>
-      <button type="submit" class="btn">Apply</button>
-      <% if (selectedVersion) { %>
-      <a class="btn" href="/plugins">Clear</a>
-      <% } %>
     </form>
   </div>
   <% } %>
@@ -160,3 +160,14 @@
   .plugin-cards.onboarding-plugin-cards .plugin-meta { font-size: 0.9rem; color: var(--muted); }
   .plugin-cards.onboarding-plugin-cards .plugin-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
 </style>
+
+<script>
+  (function () {
+    const selectEl = document.getElementById("pluginsVersionFilter");
+    const formEl = document.getElementById("pluginsVersionFilterForm");
+    if (!selectEl || !formEl) return;
+    selectEl.addEventListener("change", function () {
+      formEl.submit();
+    });
+  })();
+</script>
