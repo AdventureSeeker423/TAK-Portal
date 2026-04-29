@@ -240,7 +240,14 @@ const takgovPluginsCache = new Map(); // key: "product|product_version", value: 
 
 function getAtakVersionValue(plugin) {
   if (!plugin || typeof plugin !== "object") return null;
-  const raw = plugin.atakVersion ?? plugin.atak_version ?? plugin.product_version ?? null;
+  let raw = plugin.atakVersion ?? plugin.atak_version ?? plugin.product_version ?? null;
+  if (raw == null && typeof plugin.version === "string") {
+    // Backward compatibility: many existing entries encode ATAK target in version text,
+    // e.g. "3.7.4 (5874618) - [5.6.0]".
+    const versionText = plugin.version;
+    const bracket = versionText.match(/\[(\d+\.\d+(?:\.\d+)?)\]/);
+    if (bracket && bracket[1]) raw = bracket[1];
+  }
   if (raw == null) return null;
   const s = String(raw).trim();
   return s || null;

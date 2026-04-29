@@ -225,8 +225,12 @@
 
   function getAtakVersionValue(p) {
     if (!p) return "";
-    const raw = p.atakVersion || p.atak_version || "";
-    return String(raw || "").trim();
+    const direct = p.atakVersion || p.atak_version || "";
+    const directValue = String(direct || "").trim();
+    if (directValue) return directValue;
+    const versionText = typeof p.version === "string" ? p.version : "";
+    const bracket = versionText.match(/\[(\d+\.\d+(?:\.\d+)?)\]/);
+    return bracket && bracket[1] ? bracket[1] : "";
   }
 
   function getAtakVersionKey(p) {

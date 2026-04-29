@@ -8,7 +8,12 @@
     const pluginListRaw = Array.isArray(plugins) ? plugins : [];
     const selectedVersionRaw = typeof selectedAtakVersion === "string" ? selectedAtakVersion.trim() : "";
     function getAtakVersion(p) {
-      return (p && (p.atakVersion || p.atak_version)) ? String(p.atakVersion || p.atak_version).trim() : "";
+      if (!p) return "";
+      const direct = p.atakVersion || p.atak_version || "";
+      if (String(direct || "").trim()) return String(direct).trim();
+      const versionText = typeof p.version === "string" ? p.version : "";
+      const bracket = versionText.match(/\[(\d+\.\d+(?:\.\d+)?)\]/);
+      return bracket && bracket[1] ? bracket[1] : "";
     }
     function toVersionKey(v) {
       const s = String(v || "").trim();
