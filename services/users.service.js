@@ -282,7 +282,7 @@ function getPreferenceDataForUser(user) {
     agencyTypeCode,
   });
 
-  const roleLabel = normalizeTakRole(attrs.atak_role || attrs.role, DEFAULT_ATAK_ROLE);
+  const roleLabel = normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE);
 
   return {
     callsign: String(callsign || "").trim(),
@@ -511,7 +511,7 @@ async function emailUserCreated({ user, groups, hasPassword }) {
     stateAbbreviation,
     county,
     callsign,
-    atakRole: normalizeTakRole(attrs.atak_role || attrs.role, DEFAULT_ATAK_ROLE),
+    atakRole: normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
     takPortalPublicUrl, // keep available if any template uses it elsewhere
     takPortalBlock,     // NEW: injected HTML block used by {{{takPortalBlock}}}
   });
@@ -1085,7 +1085,6 @@ async function createUser(
     badge_number: normalizedBadge,
     agency_abbreviation: String(agency.groupPrefix || ""),
     agency_color: String(agency.color || ""),
-    atak_role: resolvedRole,
     role: resolvedRole,
   };
 
@@ -2542,12 +2541,11 @@ async function backfillMissingUserRoles({ dryRun = true } = {}) {
     }
 
     const attrs = user?.attributes || {};
-    const existing = String(attrs.atak_role || attrs.role || "").trim();
-    if (existing) continue;
+    const roleValue = String(attrs.role || "").trim();
+    if (roleValue) continue;
 
     const newAttrs = {
       ...attrs,
-      atak_role: DEFAULT_ATAK_ROLE,
       role: DEFAULT_ATAK_ROLE,
     };
 
@@ -2603,8 +2601,8 @@ async function getMissingUserRoleStats() {
     }
 
     const attrs = user?.attributes || {};
-    const existing = String(attrs.atak_role || attrs.role || "").trim();
-    if (existing) continue;
+    const roleValue = String(attrs.role || "").trim();
+    if (roleValue) continue;
     missing += 1;
     if (sampleUsers.length < 25) {
       sampleUsers.push(String(user?.username || user?.pk || ""));

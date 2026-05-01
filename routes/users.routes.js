@@ -1242,7 +1242,6 @@ router.put("/:userId/role", async (req, res) => {
     const authUser = req.authentikUser || null;
     const role = String(req.body?.role || "").trim() || "Team Member";
     await users.updateUserAttributes(req.params.userId, {
-      atak_role: role,
       role,
     });
     const user = await users.getUserById(req.params.userId).catch(() => null);

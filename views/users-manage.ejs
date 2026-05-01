@@ -1513,9 +1513,8 @@ async function loadTemplatesForAgency(agencySuffix){
 
     templateApplySelect.innerHTML = options.join("");
     agencyTemplatesCache = all;
-    if (Array.isArray(all) && all.length) {
-      renderRoleOptions(roleSelect, all[0]?.role || "Team Member");
-    }
+    const currentRoleFromUser = selectedUser?.attributes?.role;
+    renderRoleOptions(roleSelect, currentRoleFromUser || roleSelect?.value || "Team Member");
     if (applyTemplateBtn) applyTemplateBtn.disabled = false;
   } catch (err) {
     templateApplySelect.innerHTML = '<option value="">Failed to load templates</option>';
@@ -1939,7 +1938,7 @@ window.editUser = async (userPk) => {
     if (emailInput) emailInput.value = selectedUser.email || "";
     renderRoleOptions(
       roleSelect,
-      selectedUser?.attributes?.atak_role || selectedUser?.attributes?.role || "Team Member"
+      selectedUser?.attributes?.role || "Team Member"
     );
 
     const { first, last } = splitName(selectedUser.name || "");
@@ -2053,7 +2052,7 @@ if (applyRoleBtn) applyRoleBtn.addEventListener("click", async () => {
       setMsgEl(actionMsg, out.error || "Failed to update role.", false);
       return;
     }
-    selectedUser.attributes = { ...(selectedUser.attributes || {}), atak_role: role, role };
+    selectedUser.attributes = { ...(selectedUser.attributes || {}), role };
     setMsgEl(actionMsg, `Role updated: ${role}.`, true);
   } catch (err) {
     setMsgEl(actionMsg, err?.message || "Failed to update role.", false);
