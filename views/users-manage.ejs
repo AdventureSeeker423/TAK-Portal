@@ -2724,16 +2724,37 @@ searchForm.onsubmit = (e) => {
           if (!link || !banner) return;
           const missing = Number(body.missing || 0);
           banner.textContent = missing > 0
-            ? `${missing} user role migration${missing === 1 ? "" : "s"} pending. Click for command.`
+            ? `${missing} user role migration${missing === 1 ? "" : "s"} pending. Click to run now.`
             : "User role migration pending.";
           link.href = "#";
           link.onclick = (e) => {
             e.preventDefault();
-            alert(
-              "Run the role backfill:\\n\\n" +
-              "Preview:\\nPOST /api/users/roles/backfill { \\\"dryRun\\\": true }\\n\\n" +
-              "Apply:\\nPOST /api/users/roles/backfill { \\\"dryRun\\\": false }"
-            );
+            if (!confirm("Run user role backfill now? Missing roles will be set to Team Member.")) {
+              return;
+            }
+            banner.textContent = "Running user role migration...";
+            fetch("/api/users/roles/backfill", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dryRun: false }),
+            })
+              .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
+              .then(({ ok, body }) => {
+                if (!ok) {
+                  banner.textContent = (body && body.error) ? `Role migration failed: ${body.error}` : "Role migration failed.";
+                  return;
+                }
+                const updated = Number(body.updated || 0);
+                banner.textContent = updated > 0
+                  ? `User role migration complete. Updated ${updated} user${updated === 1 ? "" : "s"}.`
+                  : "User role migration complete. No users required updates.";
+                setTimeout(() => {
+                  link.style.display = "none";
+                }, 3000);
+              })
+              .catch((err) => {
+                banner.textContent = `Role migration failed: ${err?.message || "Unknown error"}`;
+              });
           };
           link.style.display = "block";
         })
