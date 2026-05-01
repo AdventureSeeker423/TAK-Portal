@@ -96,6 +96,12 @@ function normalizeTakRole(value, fallback = DEFAULT_ATAK_ROLE) {
   return role || fallback;
 }
 
+function shouldSkipRoleBackfillForUser(user) {
+  const type = String(user?.type || "").trim().toLowerCase();
+  // Authentik service accounts can reject profile/attribute writes.
+  return type === "service_account" || type === "internal_service_account";
+}
+
 async function resolveGroupNames(groupIds) {
   const ids = Array.isArray(groupIds)
     ? groupIds.map(x => String(x).trim()).filter(Boolean)
@@ -2522,9 +2528,19 @@ async function backfillMissingUserRoles({ dryRun = true } = {}) {
   const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
   const list = Array.isArray(users) ? users : [];
   const sampleUsers = [];
+  const skippedUsers = [];
   let updated = 0;
+  let skipped = 0;
 
   for (const user of list) {
+    if (shouldSkipRoleBackfillForUser(user)) {
+      skipped += 1;
+      if (skippedUsers.length < 100) {
+        skippedUsers.push(String(user?.username || user?.pk || ""));
+      }
+      continue;
+    }
+
     const attrs = user?.attributes || {};
     const existing = String(attrs.atak_role || attrs.role || "").trim();
     if (existing) continue;
@@ -2536,7 +2552,16 @@ async function backfillMissingUserRoles({ dryRun = true } = {}) {
     };
 
     if (!dryRun) {
-      await api.patch(`/core/users/${user.pk}/`, { attributes: newAttrs });
+      try {
+        await api.patch(`/core/users/${user.pk}/`, { attributes: newAttrs });
+      } catch (err) {
+        // Ignore accounts Authentik will not allow us to update (common for internal service accounts).
+        skipped += 1;
+        if (skippedUsers.length < 100) {
+          skippedUsers.push(String(user?.username || user?.pk || ""));
+        }
+        continue;
+      }
     }
 
     updated += 1;
@@ -2553,8 +2578,10 @@ async function backfillMissingUserRoles({ dryRun = true } = {}) {
     defaultRole: DEFAULT_ATAK_ROLE,
     scanned: list.length,
     updated,
+    skipped,
     dryRun: !!dryRun,
     sampleUsers,
+    skippedUsers,
   };
 }
 
@@ -2562,9 +2589,19 @@ async function getMissingUserRoleStats() {
   const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
   const list = Array.isArray(users) ? users : [];
   let missing = 0;
+  let skipped = 0;
   const sampleUsers = [];
+  const skippedUsers = [];
 
   for (const user of list) {
+    if (shouldSkipRoleBackfillForUser(user)) {
+      skipped += 1;
+      if (skippedUsers.length < 25) {
+        skippedUsers.push(String(user?.username || user?.pk || ""));
+      }
+      continue;
+    }
+
     const attrs = user?.attributes || {};
     const existing = String(attrs.atak_role || attrs.role || "").trim();
     if (existing) continue;
@@ -2577,8 +2614,10 @@ async function getMissingUserRoleStats() {
   return {
     scanned: list.length,
     missing,
+    skipped,
     needsBackfill: missing > 0,
     sampleUsers,
+    skippedUsers,
     defaultRole: DEFAULT_ATAK_ROLE,
   };
 }
