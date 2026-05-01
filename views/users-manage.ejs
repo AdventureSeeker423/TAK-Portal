@@ -2745,11 +2745,26 @@ searchForm.onsubmit = (e) => {
                 }
                 const updated = Number(body.updated || 0);
                 banner.textContent = updated > 0
-                  ? `User role migration complete. Updated ${updated} user${updated === 1 ? "" : "s"}.`
-                  : "User role migration complete. No users required updates.";
-                setTimeout(() => {
-                  link.style.display = "none";
-                }, 3000);
+                  ? `User role migration complete. Updated ${updated} user${updated === 1 ? "" : "s"}. Re-checking...`
+                  : "User role migration complete. Re-checking...";
+                return fetch("/api/users/roles/backfill-status")
+                  .then((res2) => res2.json().then((body2) => ({ ok: res2.ok, body: body2 })))
+                  .then(({ ok: ok2, body: body2 }) => {
+                    if (!ok2 || !body2) {
+                      banner.textContent = "Role migration finished, but status check failed. Refresh page.";
+                      return;
+                    }
+                    if (body2.needsBackfill) {
+                      const remaining = Number(body2.missing || 0);
+                      banner.textContent = `${remaining} user role migration${remaining === 1 ? "" : "s"} still pending. Click to run again.`;
+                      link.style.display = "block";
+                    } else {
+                      banner.textContent = "User role migration complete.";
+                      setTimeout(() => {
+                        link.style.display = "none";
+                      }, 2000);
+                    }
+                  });
               })
               .catch((err) => {
                 banner.textContent = `Role migration failed: ${err?.message || "Unknown error"}`;
