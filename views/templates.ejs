@@ -104,6 +104,7 @@
             <th class="sortable" data-key="agency">Agency <span class="sortIndicator"></span></th>
             <th class="sortable" data-key="name">Name <span class="sortIndicator"></span></th>
             <th class="sortable" data-key="color">Color <span class="sortIndicator"></span></th>
+            <th class="sortable" data-key="role">Role <span class="sortIndicator"></span></th>
             <th class="sortable" data-key="default">Default <span class="sortIndicator"></span></th>
             <th class="sortable" data-key="groups">Groups <span class="sortIndicator"></span></th>
             <th>Actions</th>
@@ -135,11 +136,28 @@ function displayGroupName(name){
   return String(name || "").replace(/^tak_/, "");
 }
 
+/** Abbreviations for Existing Templates table only */
+function abbrevRoleForTable(role){
+  const r = String(role || "").trim();
+  const map = {
+    "Team Member": "TM",
+    "Team Lead": "TL",
+    "HQ": "HQ",
+    "Sniper": "S",
+    "Medic": "M",
+    "Forward Observer": "FO",
+    "RTO": "RTO",
+    "K9": "K9",
+  };
+  return map[r] || (r ? esc(r) : "TM");
+}
+
 function getSortValue(pair, key){
   const t = (pair && pair.t) || {};
   if (key === "agency") return String(getAgencyDisplay(t) || "");
   if (key === "name") return String(t.name || "");
   if (key === "color") return String(t.colorOverride || "");
+  if (key === "role") return String((t.role || "Team Member").trim() || "Team Member");
   if (key === "default") return t.isDefault ? "1" : "";
   if (key === "groups") return String((t.groups || []).join(", "));
   return "";
@@ -180,6 +198,7 @@ function renderTemplates(list){
       <td>${t.agencySuffix ? esc(getAgencyDisplay(t) || t.agencySuffix) : "—"}</td>
       <td>${esc(t.name)}</td>
       <td>${t.colorOverride ? esc(t.colorOverride) : "—"}</td>
+      <td>${abbrevRoleForTable(t.role)}</td>
       <td>${t.isDefault ? "Yes" : ""}</td>
       <td class="groupsCell">${esc((t.groups || []).map(displayGroupName).join(", "))}</td>
       <td>
@@ -676,10 +695,11 @@ form.onsubmit = async (e) => {
 }
 
 @media (max-width: 768px) {
+  /* Hide Color + Default on small screens (columns shift after Role added) */
   .templatesTable th:nth-child(3),
   .templatesTable td:nth-child(3),
-  .templatesTable th:nth-child(4),
-  .templatesTable td:nth-child(4) {
+  .templatesTable th:nth-child(5),
+  .templatesTable td:nth-child(5) {
     display: none;
   }
 }
