@@ -28,10 +28,12 @@ function normalizeColorOverride(v) {
 }
 
 function normalizeTemplate(t) {
+  const role = String(t.role || "").trim();
   return {
     name: String(t.name || "").trim(),
     agencySuffix: String(t.agencySuffix || "").trim().toLowerCase(),
     colorOverride: normalizeColorOverride(t.colorOverride),
+    role: role || "Team Member",
     groups: Array.isArray(t.groups) ? t.groups.map(g => String(g).trim()).filter(Boolean) : [],
     isDefault: !!t.isDefault
   };
@@ -101,6 +103,7 @@ router.post("/", (req, res) => {
       isDefault: !!t.isDefault,
       groupsCount: t.groups.length,
       colorOverride: t.colorOverride || "",
+      role: t.role || "Team Member",
     },
   });
 
@@ -163,6 +166,7 @@ router.put("/:index", (req, res) => {
       isDefault: !!templates[idx]?.isDefault,
       groupsCount: Array.isArray(templates[idx]?.groups) ? templates[idx].groups.length : 0,
       colorOverride: templates[idx]?.colorOverride || "",
+      role: templates[idx]?.role || "Team Member",
     },
   });
 

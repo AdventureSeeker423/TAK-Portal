@@ -13,44 +13,50 @@
     </div>
 
     <form id="form" class="templatesGrid" autocomplete="off">
-      <label>Agency
-        <select id="agency">
-          <option value="">Select an agency</option>
-        </select>
-      </label>
+      <div class="templateTopRow">
+        <label>Agency
+          <select id="agency">
+            <option value="">Select an agency</option>
+          </select>
+        </label>
 
-      
+        <label>Template Name
+          <input id="name" placeholder="Template Name Here (ex. Patrol, Medic, etc...)" required />
+        </label>
+      </div>
 
-      <label>Template Name
-        <input id="name" placeholder="Template Name Here (ex. Patrol, Medic, etc...)" required />
-      </label>
+      <div class="templateSecondRow">
+        <label>Color Override (optional)
+          <select id="colorOverride">
+            <option value="">Use Default Agency Color</option>
+            <option value="Blue">Blue</option>
+            <option value="Dark Blue">Dark Blue</option>
+            <option value="Brown">Brown</option>
+            <option value="Cyan">Cyan</option>
+            <option value="Green">Green</option>
+            <option value="Dark Green">Dark Green</option>
+            <option value="Magenta">Magenta</option>
+            <option value="Maroon">Maroon</option>
+            <option value="Orange">Orange</option>
+            <option value="Purple">Purple</option>
+            <option value="Red">Red</option>
+            <option value="Teal">Teal</option>
+            <option value="White">White</option>
+            <option value="Yellow">Yellow</option>
+          </select>
+        </label>
 
-      <label>Color Override (optional)
-        <select id="colorOverride">
-          <option value="">Use Default Agency Color</option>
-          <option value="Blue">Blue</option>
-          <option value="Dark Blue">Dark Blue</option>
-          <option value="Brown">Brown</option>
-          <option value="Cyan">Cyan</option>
-          <option value="Green">Green</option>
-          <option value="Dark Green">Dark Green</option>
-          <option value="Magenta">Magenta</option>
-          <option value="Maroon">Maroon</option>
-          <option value="Orange">Orange</option>
-          <option value="Purple">Purple</option>
-          <option value="Red">Red</option>
-          <option value="Teal">Teal</option>
-          <option value="White">White</option>
-          <option value="Yellow">Yellow</option>
-        </select>
-      </label>
+        <label>Role
+          <select id="role"></select>
+        </label>
 
-      <label>Default Template
-        <select id="isDefault">
-          <option value="no">No</option>
-          <option value="yes">Yes</option>
-        </select>
-      </label>
+        <label>Default Template
+          <select id="isDefault">
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </label>
+      </div>
 
       <div style="grid-column:1/-1;">
         <label>Groups
@@ -236,6 +242,17 @@ const nameEl = document.getElementById("name");
 const agencyEl = document.getElementById("agency");
 const isDefaultEl = document.getElementById("isDefault");
 const colorOverrideEl = document.getElementById("colorOverride");
+const roleEl = document.getElementById("role");
+const ATAK_ROLE_OPTIONS = [
+  "Team Member",
+  "Team Lead",
+  "HQ",
+  "Sniper",
+  "Medic",
+  "Forward Observer",
+  "RTO",
+  "K9",
+];
 
 const groupSearch = document.getElementById("groupSearch");
 const groupsBox = document.getElementById("groupsBox");
@@ -271,6 +288,15 @@ function esc(s){
     .replaceAll(">","&gt;")
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#39;");
+}
+
+function renderRoleOptions(selectedRole){
+  if (!roleEl) return;
+  const role = String(selectedRole || "Team Member").trim() || "Team Member";
+  roleEl.innerHTML = ATAK_ROLE_OPTIONS
+    .map((r) => `<option value="${esc(r)}">${esc(r)}</option>`)
+    .join("");
+  roleEl.value = ATAK_ROLE_OPTIONS.includes(role) ? role : "Team Member";
 }
 
 function renderGroups(filterText = ""){
@@ -416,6 +442,7 @@ function setCreateMode(){
   nameEl.value = "";
   agencyEl.value = "";
   colorOverrideEl.value = "";
+  renderRoleOptions("Team Member");
   isDefaultEl.value = "no";
   groupSearch.value = "";
   pickedGroupNames.clear();
@@ -434,6 +461,7 @@ function setEditMode(idx){
   nameEl.value = t.name || "";
   agencyEl.value = t.agencySuffix || "";
   colorOverrideEl.value = t.colorOverride || "";
+  renderRoleOptions(t.role || "Team Member");
   isDefaultEl.value = t.isDefault ? "yes" : "no";
   groupSearch.value = "";
   pickedGroupNames = new Set(t.groups || []);
@@ -499,6 +527,7 @@ form.onsubmit = async (e) => {
     name: nameEl.value.trim(),
     agencySuffix: agencyEl.value,
     colorOverride: (colorOverrideEl.value || ""),
+    role: String(roleEl?.value || "Team Member").trim() || "Team Member",
     groups: Array.from(pickedGroupNames),
     isDefault: isDefaultEl.value === "yes"
   };
@@ -543,7 +572,21 @@ form.onsubmit = async (e) => {
 .templatesGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.templateTopRow{
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.templateSecondRow{
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 @media (max-width: 950px) {
@@ -562,6 +605,10 @@ form.onsubmit = async (e) => {
 
 @media (max-width: 560px) {
   .templatesGrid {
+    grid-template-columns: 1fr;
+  }
+  .templateTopRow,
+  .templateSecondRow{
     grid-template-columns: 1fr;
   }
 }

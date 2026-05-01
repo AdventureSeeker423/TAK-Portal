@@ -12,6 +12,14 @@
     </a>
   <% } %>
 
+  <% if (isGlobalAdmin) { %>
+    <a id="roleBackfillBannerLink" href="#" style="text-decoration:none; display:none;">
+      <div class="userReqBanner" id="roleBackfillBanner" style="margin: 10px 0 14px 0;">
+        User role migration pending.
+      </div>
+    </a>
+  <% } %>
+
 
   <!-- Create user (stacked above manage tools) -->
   <div class="card">
@@ -67,19 +75,25 @@
         </div>
       </label>
 
-      <label>Template
-        <select name="templateIndex" id="createTemplateSelect"></select>
-      </label>
+      <div class="createFinalRow">
+        <label>Template
+          <select name="templateIndex" id="createTemplateSelect"></select>
+        </label>
 
-      <label>Permissions
-        <select name="permissions" id="createPermissionsSelect" aria-label="User permissions">
-          <option value="user" selected>Standard User</option>
-          <option value="agency_admin">Agency Admin</option>
-          <% if (isGlobalAdmin) { %>
-            <option value="global_admin">Global Admin</option>
-          <% } %>
-        </select>
-      </label>
+        <label>Role
+          <select name="role" id="createRoleSelect"></select>
+        </label>
+
+        <label>Permissions
+          <select name="permissions" id="createPermissionsSelect" aria-label="User permissions">
+            <option value="user" selected>Standard User</option>
+            <option value="agency_admin">Agency Admin</option>
+            <% if (isGlobalAdmin) { %>
+              <option value="global_admin">Global Admin</option>
+            <% } %>
+          </select>
+        </label>
+      </div>
 
       <!-- Manual Groups (checkbox picker) -->
       <div id="createManualGroupsWrap" style="display:none; grid-column: 1 / -1;">
@@ -323,6 +337,16 @@
 
             <span class="templateBarDivider" aria-hidden="true"></span>
 
+            <span class="templateBarLabel">Role</span>
+
+            <select id="roleSelect"></select>
+
+            <button class="btn" id="applyRoleBtn" type="button">
+              Apply
+            </button>
+
+            <span class="templateBarDivider" aria-hidden="true"></span>
+
             <span class="templateBarLabel">Permissions</span>
 
             <select id="permissionsSelect">
@@ -377,6 +401,7 @@
 const agencySelect = document.getElementById("createAgencySelect");
 const filterAgencySelect = document.getElementById("filterAgencySelect");
 const templateSelect = document.getElementById("createTemplateSelect");
+const createRoleSelect = document.getElementById("createRoleSelect");
 
 const manualGroupsWrap = document.getElementById("createManualGroupsWrap");
 const groupFilter = document.getElementById("createGroupFilter");
@@ -395,6 +420,29 @@ const downloadCsvTemplateBtn = document.getElementById("downloadCsvTemplateBtn")
 let groupsCache = [];
 let templatesCache = [];
 let pickedManualGroupIds = new Set();
+const ATAK_ROLE_OPTIONS = [
+  "Team Member",
+  "Team Lead",
+  "HQ",
+  "Sniper",
+  "Medic",
+  "Forward Observer",
+  "RTO",
+  "K9",
+];
+
+function renderRoleOptions(selectEl, selectedRole) {
+  if (!selectEl) return;
+  const pick = String(selectedRole || "Team Member").trim() || "Team Member";
+  selectEl.innerHTML = ATAK_ROLE_OPTIONS
+    .map((role) => `<option value="${esc(role)}">${esc(role)}</option>`)
+    .join("");
+  if (ATAK_ROLE_OPTIONS.includes(pick)) {
+    selectEl.value = pick;
+  } else {
+    selectEl.value = "Team Member";
+  }
+}
 
 // PASSWORD TOGGLE
 const passwordInput = document.getElementById("createPasswordInput");
@@ -537,6 +585,8 @@ async function loadMeta() {
   }
 
   templateSelect.value = defaultName;
+  const defaultTemplate = templatesCache.find((t) => String(t.name || "") === String(defaultName || ""));
+  renderRoleOptions(createRoleSelect, defaultTemplate?.role || "Team Member");
 
   // Fire the existing onchange handler (which shows/hides Manual Groups)
   if (typeof templateSelect.onchange === "function") {
@@ -627,9 +677,13 @@ function getPickedManualGroupIds() {
 
 // -------------------- Template selection behavior --------------------
 templateSelect.onchange = () => {
-  const isManual =
-    String(templateSelect.value || "").trim().toLowerCase() === "manual group selection";
+  const selectedName = String(templateSelect.value || "").trim();
+  const selectedTemplate = templatesCache.find(
+    (t) => String(t.name || "").trim().toLowerCase() === selectedName.toLowerCase()
+  );
+  const isManual = selectedName.toLowerCase() === "manual group selection";
   manualGroupsWrap.style.display = isManual ? "block" : "none";
+  renderRoleOptions(createRoleSelect, selectedTemplate?.role || "Team Member");
 };
 
 // -------------------- Submit --------------------
@@ -971,10 +1025,31 @@ const selectAllBtn = document.getElementById("selectAllBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
 const templateApplySelect = document.getElementById("templateApplySelect");
 const applyTemplateBtn = document.getElementById("applyTemplateBtn");
+const roleSelect = document.getElementById("roleSelect");
+const applyRoleBtn = document.getElementById("applyRoleBtn");
 
 // Permissions controls
 const permissionsSelect = document.getElementById("permissionsSelect");
 const applyPermissionsBtn = document.getElementById("applyPermissionsBtn");
+const ATAK_ROLE_OPTIONS_MODAL = [
+  "Team Member",
+  "Team Lead",
+  "HQ",
+  "Sniper",
+  "Medic",
+  "Forward Observer",
+  "RTO",
+  "K9",
+];
+
+function renderRoleOptions(selectEl, selectedRole){
+  if (!selectEl) return;
+  const role = String(selectedRole || "Team Member").trim() || "Team Member";
+  selectEl.innerHTML = ATAK_ROLE_OPTIONS_MODAL
+    .map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`)
+    .join("");
+  selectEl.value = ATAK_ROLE_OPTIONS_MODAL.includes(role) ? role : "Team Member";
+}
 
 // These modal action buttons are NOT in the HTML anymore; keep as null and guard usage.
 const toggleBtn = document.getElementById("toggleBtn");
@@ -1392,6 +1467,7 @@ function closeModal(){
   pw1.value = ""; pw2.value = "";
   groupFilter.value = "";
   if (permissionsSelect) permissionsSelect.value = "user";
+  renderRoleOptions(roleSelect, "Team Member");
 }
 
 closeBtn.onclick = closeModal;
@@ -1437,11 +1513,22 @@ async function loadTemplatesForAgency(agencySuffix){
 
     templateApplySelect.innerHTML = options.join("");
     agencyTemplatesCache = all;
+    if (Array.isArray(all) && all.length) {
+      renderRoleOptions(roleSelect, all[0]?.role || "Team Member");
+    }
     if (applyTemplateBtn) applyTemplateBtn.disabled = false;
   } catch (err) {
     templateApplySelect.innerHTML = '<option value="">Failed to load templates</option>';
     console.error(err);
   }
+}
+
+if (templateApplySelect) {
+  templateApplySelect.addEventListener("change", () => {
+    const selectedKey = String(templateApplySelect.value || "");
+    const tpl = (agencyTemplatesCache || []).find(t => String(t.key) === selectedKey);
+    if (tpl) renderRoleOptions(roleSelect, tpl.role || "Team Member");
+  });
 }
 
 // Groups list
@@ -1850,6 +1937,10 @@ window.editUser = async (userPk) => {
     }
 
     if (emailInput) emailInput.value = selectedUser.email || "";
+    renderRoleOptions(
+      roleSelect,
+      selectedUser?.attributes?.atak_role || selectedUser?.attributes?.role || "Team Member"
+    );
 
     const { first, last } = splitName(selectedUser.name || "");
     if (firstNameInput) firstNameInput.value = first;
@@ -1946,6 +2037,28 @@ window.editUser = async (userPk) => {
     }
   }
 };
+
+if (applyRoleBtn) applyRoleBtn.addEventListener("click", async () => {
+  if (!selectedUser) return;
+  const role = String((roleSelect && roleSelect.value) || "Team Member").trim() || "Team Member";
+  setMsgEl(actionMsg, "Updating role...", true);
+  try {
+    const res = await fetch(`/api/users/${selectedUser.pk}/role`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMsgEl(actionMsg, out.error || "Failed to update role.", false);
+      return;
+    }
+    selectedUser.attributes = { ...(selectedUser.attributes || {}), atak_role: role, role };
+    setMsgEl(actionMsg, `Role updated: ${role}.`, true);
+  } catch (err) {
+    setMsgEl(actionMsg, err?.message || "Failed to update role.", false);
+  }
+});
 
 // ---------- Permissions apply ----------
 if (applyPermissionsBtn) applyPermissionsBtn.addEventListener("click", async () => {
@@ -2430,6 +2543,7 @@ if (applyTemplateBtn) applyTemplateBtn.addEventListener("click", async () => {
     setMsgEl(actionMsg, "Selected template not found.", false);
     return;
   }
+  renderRoleOptions(roleSelect, template.role || "Team Member");
 
   if (selectedKey === "manual") {
     setMsgEl(actionMsg, "Manual selection does not apply a template.", false);
@@ -2596,9 +2710,35 @@ searchForm.onsubmit = (e) => {
 
 (async () => {
   try {
+    renderRoleOptions(roleSelect, "Team Member");
     updateSortIndicators();
     // Load groups (for Create/Edit modals) and users table in parallel so the table appears faster
     await Promise.all([loadGroups(), loadAllUsers()]);
+    if (IS_GLOBAL_ADMIN) {
+      fetch("/api/users/roles/backfill-status")
+        .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
+        .then(({ ok, body }) => {
+          if (!ok || !body || !body.needsBackfill) return;
+          const link = document.getElementById("roleBackfillBannerLink");
+          const banner = document.getElementById("roleBackfillBanner");
+          if (!link || !banner) return;
+          const missing = Number(body.missing || 0);
+          banner.textContent = missing > 0
+            ? `${missing} user role migration${missing === 1 ? "" : "s"} pending. Click for command.`
+            : "User role migration pending.";
+          link.href = "#";
+          link.onclick = (e) => {
+            e.preventDefault();
+            alert(
+              "Run the role backfill:\\n\\n" +
+              "Preview:\\nPOST /api/users/roles/backfill { \\\"dryRun\\\": true }\\n\\n" +
+              "Apply:\\nPOST /api/users/roles/backfill { \\\"dryRun\\\": false }"
+            );
+          };
+          link.style.display = "block";
+        })
+        .catch(() => {});
+    }
     // Warm agency-admin group index for global admins so first "Edit" does not wait on a full hidden-groups fetch.
     if (IS_GLOBAL_ADMIN) {
       ensureAgencyAdminGroupIdIndex().catch(() => {});
@@ -2825,6 +2965,13 @@ th.sortable:hover{
   max-width: 420px;
 }
 
+.createFinalRow{
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .createTemplateDownloadBtn{
   white-space: nowrap;
 }
@@ -2890,6 +3037,9 @@ th.sortable:hover{
 
 /* Stack nicely on small screens */
 @media (max-width: 640px){
+  .createFinalRow{
+    grid-template-columns: 1fr;
+  }
   .templateBar{
     flex-wrap: wrap;
   }

@@ -17,6 +17,7 @@
 {{badgeNumber}} - The user's badge number formatted as `1234` <br>
 {{agencyAbbreviation}} - The user's agency formatted as `ABCD` <br>
 {{agencyColor}} - The user's agency color formatted as `Color` <br>
+{{atakRole}} - The user's ATAK role formatted as `Team Member`, `Team Lead`, etc. <br>
 {{stateAbbreviation}} - The two-letter state abbreviation for the user's agency (from Agencies config) <br>
 {{county}} - The county name for the user's agency (from Agencies config) <br>
 {{callsign}} - The user's callsign string, built from the configured Callsign Format in Server Settings <br>

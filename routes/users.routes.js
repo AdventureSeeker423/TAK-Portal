@@ -139,6 +139,7 @@ router.get("/meta", async (req, res) => {
         key: t.name || `tpl-${idx}`,
         label: t.name || `Template ${idx + 1}`,
         agencySuffix: t.agencySuffix,
+        role: String(t.role || "Team Member"),
         groups: t.groups,
         isDefault: t.isDefault,
       })),
@@ -1231,6 +1232,66 @@ router.put("/:userId/name", async (req, res) => {
       details: { username: user?.username ?? null, name: user?.name ?? null },
     });
     res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
+router.put("/:userId/role", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const role = String(req.body?.role || "").trim() || "Team Member";
+    await users.updateUserAttributes(req.params.userId, {
+      atak_role: role,
+      role,
+    });
+    const user = await users.getUserById(req.params.userId).catch(() => null);
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "UPDATE_USER_ROLE",
+      targetType: "user",
+      targetId: String(req.params.userId),
+      details: { username: user?.username ?? null, role },
+    });
+    res.json({ success: true, role });
+  } catch (err) {
+    res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
+router.post("/roles/backfill", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const dryRun = String(req.body?.dryRun ?? "true").toLowerCase() !== "false";
+    const out = await users.backfillMissingUserRoles({ dryRun });
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "BACKFILL_USER_ROLES",
+      targetType: "user",
+      targetId: "bulk",
+      details: out,
+    });
+    res.json({ success: true, ...out });
+  } catch (err) {
+    res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
+router.get("/roles/backfill-status", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const out = await users.getMissingUserRoleStats();
+    res.json({ success: true, ...out });
   } catch (err) {
     res.status(400).json({ error: toErrorPayload(err) });
   }

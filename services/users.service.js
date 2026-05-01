@@ -42,6 +42,7 @@ async function assertUserNotActionLocked(userId, { ignoreLocks } = {}) {
 const emailSvc = require("./email.service");
 const { renderTemplate, htmlToText } = require("./emailTemplates.service");
 const { toSafeApiError } = require("./apiErrorPayload.service");
+const DEFAULT_ATAK_ROLE = "Team Member";
 
 // Helpers
 function normalizePath(p) {
@@ -88,6 +89,11 @@ function validateEmailFormatIfPresent(email) {
     /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
   if (!re.test(m)) return "Enter a valid email address.";
   return null;
+}
+
+function normalizeTakRole(value, fallback = DEFAULT_ATAK_ROLE) {
+  const role = String(value || "").trim();
+  return role || fallback;
 }
 
 async function resolveGroupNames(groupIds) {
@@ -270,7 +276,7 @@ function getPreferenceDataForUser(user) {
     agencyTypeCode,
   });
 
-  const roleLabel = String(attrs.atak_role || attrs.role || "Team Member").trim() || "Team Member";
+  const roleLabel = normalizeTakRole(attrs.atak_role || attrs.role, DEFAULT_ATAK_ROLE);
 
   return {
     callsign: String(callsign || "").trim(),
@@ -499,6 +505,7 @@ async function emailUserCreated({ user, groups, hasPassword }) {
     stateAbbreviation,
     county,
     callsign,
+    atakRole: normalizeTakRole(attrs.atak_role || attrs.role, DEFAULT_ATAK_ROLE),
     takPortalPublicUrl, // keep available if any template uses it elsewhere
     takPortalBlock,     // NEW: injected HTML block used by {{{takPortalBlock}}}
   });
@@ -734,6 +741,7 @@ function getTemplatesForAgency(agencySuffix) {
   return filtered.map(t => ({
     name: String(t.name || "").trim(),
     agencySuffix: String(t.agencySuffix || "").trim().toLowerCase(),
+    role: normalizeTakRole(t.role, DEFAULT_ATAK_ROLE),
     groups: Array.isArray(t.groups)
       ? t.groups.map(g => String(g).trim()).filter(Boolean)
       : [],
@@ -891,6 +899,7 @@ async function createUser(
     password,
     templateIndex,
     manualGroupIds,
+    role,
     /** "user" | "agency_admin" | "global_admin" — extra groups applied after template groups */
     permissions,
     // Optional optimization: pass preloaded Authentik groups to avoid refetching for each user
@@ -906,6 +915,7 @@ async function createUser(
 
   const createdAt = new Date().toISOString();
   let templateNameUsed = null;
+  let templateRoleUsed = DEFAULT_ATAK_ROLE;
 
   // Normalize badge: trim, lowercase, remove all whitespace (including NBSP from Excel/CSV)
   const normalizedBadge = normalizeBadge(badge);
@@ -994,6 +1004,7 @@ async function createUser(
         "Manual group selection did not match any Authentik groups."
       );
     }
+    templateRoleUsed = DEFAULT_ATAK_ROLE;
 
   } else {
     const selectedTemplate = dynTemplates.find(t =>
@@ -1006,6 +1017,7 @@ async function createUser(
     }
 
     templateNameUsed = String(selectedTemplate.name || "").trim();
+    templateRoleUsed = normalizeTakRole(selectedTemplate.role, DEFAULT_ATAK_ROLE);
 
     selectedGroups = (selectedTemplate.groups || [])
       .map(n =>
@@ -1056,6 +1068,10 @@ async function createUser(
   }
 
   // Build payload
+  const resolvedRole = String(role || "").trim()
+    ? normalizeTakRole(role, DEFAULT_ATAK_ROLE)
+    : normalizeTakRole(templateRoleUsed, DEFAULT_ATAK_ROLE);
+
   const attributes = {
     agency: agency.suffix,
     agency_name: agency.name,
@@ -1063,6 +1079,8 @@ async function createUser(
     badge_number: normalizedBadge,
     agency_abbreviation: String(agency.groupPrefix || ""),
     agency_color: String(agency.color || ""),
+    atak_role: resolvedRole,
+    role: resolvedRole,
   };
 
   // who created the user
@@ -2500,6 +2518,71 @@ async function getUsersByUsernames(usernames, options = {}) {
   return all.filter((u) => nameSet.has(String(u?.username || "").trim()));
 }
 
+async function backfillMissingUserRoles({ dryRun = true } = {}) {
+  const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
+  const list = Array.isArray(users) ? users : [];
+  const sampleUsers = [];
+  let updated = 0;
+
+  for (const user of list) {
+    const attrs = user?.attributes || {};
+    const existing = String(attrs.atak_role || attrs.role || "").trim();
+    if (existing) continue;
+
+    const newAttrs = {
+      ...attrs,
+      atak_role: DEFAULT_ATAK_ROLE,
+      role: DEFAULT_ATAK_ROLE,
+    };
+
+    if (!dryRun) {
+      await api.patch(`/core/users/${user.pk}/`, { attributes: newAttrs });
+    }
+
+    updated += 1;
+    if (sampleUsers.length < 100) {
+      sampleUsers.push(String(user?.username || user?.pk || ""));
+    }
+  }
+
+  if (!dryRun && updated > 0) {
+    invalidateUsersCache();
+  }
+
+  return {
+    defaultRole: DEFAULT_ATAK_ROLE,
+    scanned: list.length,
+    updated,
+    dryRun: !!dryRun,
+    sampleUsers,
+  };
+}
+
+async function getMissingUserRoleStats() {
+  const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
+  const list = Array.isArray(users) ? users : [];
+  let missing = 0;
+  const sampleUsers = [];
+
+  for (const user of list) {
+    const attrs = user?.attributes || {};
+    const existing = String(attrs.atak_role || attrs.role || "").trim();
+    if (existing) continue;
+    missing += 1;
+    if (sampleUsers.length < 25) {
+      sampleUsers.push(String(user?.username || user?.pk || ""));
+    }
+  }
+
+  return {
+    scanned: list.length,
+    missing,
+    needsBackfill: missing > 0,
+    sampleUsers,
+    defaultRole: DEFAULT_ATAK_ROLE,
+  };
+}
+
 module.exports = {
   // meta/template support
   getTemplatesForAgency,
@@ -2535,6 +2618,8 @@ module.exports = {
   updateName,
   setUserGroups,
   updateUserAttributes,
+  backfillMissingUserRoles,
+  getMissingUserRoleStats,
   toggleUserActive,
   deleteUser,
   addUserGroups,
