@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.3 - 5/1/26
+🎉 `New Feature` - Roles have now been added to users and templates to aid in assisting users with device configuration.  Please update and then navigate to your users page to perform a quick user migration to default roles.
+
 ### v1.3.2 - 4/28/26
 ✨ `Enhancement` - Plugin Manager now allows multiple versions of a plugin to be downloaded for multiple versions of ATAK<br>
 🐛 `Bug Fix` - Fixes issue with Plugin Manager link to TAK.gov only allowing a fixed list of ATAK versions.  Updated to always include the 4 most recent versions posted on tak.gov.
