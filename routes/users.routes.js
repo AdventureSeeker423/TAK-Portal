@@ -1127,6 +1127,20 @@ router.get("/search", async (req, res) => {
   }
 });
 
+router.get("/roles/backfill-status", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const out = await users.getMissingUserRoleStats();
+    res.json({ success: true, ...out });
+  } catch (err) {
+    res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
 /**
  * Full user record (including group memberships) for the edit modal.
  * List/search endpoints often omit or strip groups; this avoids stale UI.
@@ -1276,20 +1290,6 @@ router.post("/roles/backfill", async (req, res) => {
       targetId: "bulk",
       details: out,
     });
-    res.json({ success: true, ...out });
-  } catch (err) {
-    res.status(400).json({ error: toErrorPayload(err) });
-  }
-});
-
-router.get("/roles/backfill-status", async (req, res) => {
-  try {
-    const authUser = req.authentikUser || null;
-    const access = accessSvc.getAgencyAccess(authUser);
-    if (!access.isGlobalAdmin) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    const out = await users.getMissingUserRoleStats();
     res.json({ success: true, ...out });
   } catch (err) {
     res.status(400).json({ error: toErrorPayload(err) });
