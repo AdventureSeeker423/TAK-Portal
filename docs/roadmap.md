@@ -10,8 +10,9 @@ Below you will find a comprehensive list of items planned for implementation in 
 
 ## 📌 Planned / Upcoming Features
 - Redefine TAK Portal Permissions - Access control per page rather than Agency/Global
-- Agency Import via CSV
 - Documents / MOU Page - A file archive of all drafts, unsigned, and signed documents
+- Add configurable role on user creation / edit / templates
+- Host local ATAK version rather than play store
 
 ## 🧠 Ideas / Long Term
 - Templated actions - Example: For each new state, automatically create a statewide group, data sync mission, etc...
