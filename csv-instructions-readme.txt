@@ -3,8 +3,8 @@ CSV User Creation Instructions
 
 Use this with: sample-users.csv
 
-CSV format (DO NOT change the header line):
-badge,agency,firstName,lastName,email,password,template
+CSV format (DO NOT change the header line except to optionally omit the last column):
+badge,agency,firstName,lastName,email,password,template,role
 
 What each column means:
 1) badge
@@ -42,14 +42,23 @@ What each column means:
    - Example from sample file: Patrol
    - The template must already exist for that agency, or that row will fail.
 
+8) role  (optional – last column)
+   - If this column is missing, left blank, or the value is empty, the new user's
+     role is taken from the selected template (same as creating a user in the UI
+     without overriding role).
+   - If you set a value, it must be one of:
+     Team Member, Team Lead, HQ, Sniper, Medic, Forward Observer, RTO, K9
+   - Matching is not case-sensitive (e.g. "team lead" and "Team Lead" are both ok).
+
 Quick rules:
-- Keep the first row (header) exactly as-is.
+- Keep the first row (header) as shown; you may omit the final "role" column
+  for older spreadsheets that only have seven columns.
 - One user per line.
-- Do not add extra columns.
+- Do not add other extra columns.
 - Save as .csv.
 
 Examples:
-- Good row:
-  1001,TEST,John,Doe,john.doe@example.org,Password!23456,Patrol
-- Good row with blank password:
-  1002,test,Jane,Smith,jane.smith@example.org,,Patrol
+- Good row (role from template):
+  1001,TEST,John,Doe,john.doe@example.org,Password!23456,Patrol,
+- Good row with blank password and explicit role:
+  1002,test,Jane,Smith,jane.smith@example.org,,Patrol,Team Lead

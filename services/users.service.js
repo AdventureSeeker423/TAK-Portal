@@ -44,6 +44,28 @@ const { renderTemplate, htmlToText } = require("./emailTemplates.service");
 const { toSafeApiError } = require("./apiErrorPayload.service");
 const DEFAULT_ATAK_ROLE = "Team Member";
 
+/** Recognized ATAK role labels (same set as templates / UI). Used for CSV import validation. */
+const ALLOWED_TAK_ROLES = [
+  "Team Member",
+  "Team Lead",
+  "HQ",
+  "Sniper",
+  "Medic",
+  "Forward Observer",
+  "RTO",
+  "K9",
+];
+
+/** Case-insensitive match to canonical role; null if non-empty but unknown. */
+function resolveAllowedTakRoleInput(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return { ok: true, role: "" };
+  const lower = s.toLowerCase();
+  const match = ALLOWED_TAK_ROLES.find((r) => r.toLowerCase() === lower);
+  if (match) return { ok: true, role: match };
+  return { ok: false, role: "" };
+}
+
 // Helpers
 function normalizePath(p) {
   // Remove leading/trailing slashes
@@ -1314,6 +1336,8 @@ async function fetchUsersForDashboardStats() {
 //   email
 //   password (may be blank)
 //   template (name must exist for the agency)
+// OPTIONAL column (last position if present):
+//   role — if blank or omitted, use the template's role (same as UI).
 // Rows that fail validation or Authentik creation are skipped; valid rows are still created.
 // Existing users are *skipped* but reported back (not counted as failures).
 async function importUsersFromCsvBuffer(buffer, opts = {}) {
@@ -1412,6 +1436,14 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
 
     const rowErrors = [];
 
+    const roleRaw = get(parts, "role");
+    const roleResolved = resolveAllowedTakRoleInput(roleRaw);
+    if (!roleResolved.ok) {
+      rowErrors.push(
+        `Invalid role "${roleRaw}". Expected one of: ${ALLOWED_TAK_ROLES.join(", ")}`
+      );
+    }
+
     if (!agencyRaw) rowErrors.push("Missing agency");
     if (!firstName) rowErrors.push("Missing first name");
     if (!lastName) rowErrors.push("Missing last name");
@@ -1499,6 +1531,8 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
       email,
       password,
       templateName,
+      /** Non-empty only when CSV specified a valid role; otherwise createUser uses template role */
+      roleCsv: roleResolved.ok ? roleResolved.role : "",
     });
 
     // Light progress during validation/parsing
@@ -1596,6 +1630,7 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
             templateIndex,
             manualGroupIds: [],
             allGroups,
+            role: row.roleCsv ? row.roleCsv : undefined,
           },
           {
             skipExistenceCheck: true,
