@@ -1004,6 +1004,9 @@
       const data = await fetchPreferenceData();
       const callsign = (data.callsign && escapeHtml(data.callsign)) || "";
       const team = (data.teamLabel && escapeHtml(data.teamLabel)) || "";
+      const role =
+        (data.roleLabel && escapeHtml(data.roleLabel)) ||
+        escapeHtml("your assigned role (see your welcome email)");
       preferenceManualInstructions.innerHTML = [
         "Open ATAK on your Android device.",
         "Tap the menu icon and navigate to 'Settings'.",
@@ -1011,6 +1014,7 @@
         "Select Callsign Preferences.",
         "Select My Callsign and enter: <strong>" + callsign + "</strong>",
         "Select My Team and enter: <strong>" + team + "</strong>",
+        "Select Role and enter: <strong>" + role + "</strong>",
         "Exit out of the settings menu after entering these settings."
       ].map(function (s) { return "<li>" + s + "</li>"; }).join("");
     } catch (err) {
