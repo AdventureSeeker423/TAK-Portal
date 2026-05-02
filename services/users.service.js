@@ -610,6 +610,7 @@ async function emailPasswordChanged(user) {
     badgeNumber,
     agencyAbbreviation,
     agencyColor,
+    atakRole: normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
     takPortalPublicUrl,
     stateAbbreviation,
     county,
@@ -623,7 +624,15 @@ async function emailPasswordChanged(user) {
 }
 
 async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
-  const to = safeMailTo(user);
+  let u = user;
+  try {
+    const pk = user?.pk ?? user?.id;
+    if (pk) u = await getUserById(pk);
+  } catch (_) {
+    // keep snapshot user
+  }
+
+  const to = safeMailTo(u);
   if (!to) return;
 
   const [beforeNames, afterNames] = await Promise.all([
@@ -631,7 +640,7 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
     resolveGroupNames(afterIds),
   ]);
 
-  const attrs = user?.attributes || {};
+  const attrs = u?.attributes || {};
   const agencies = agenciesStore.load();
 
   const agencySuffix = String(attrs.agency || "").toLowerCase();
@@ -659,7 +668,7 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
   const agencyTypeCode = getAgencyTypeCode(agency?.type);
 
   const subject = "TAK Groups Updated";
-  const displayName = String(user?.name || "").trim() || "there";
+  const displayName = String(u?.name || "").trim() || "there";
   const { lastName, lastNameUpper, firstName } = parseName(displayName);
   const beforeGroupsCsv = beforeNames.length ? beforeNames.join(", ") : "(none)";
   const afterGroupsCsv = afterNames.length ? afterNames.join(", ") : "(none)";
@@ -692,12 +701,13 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
     lastName,
     lastNameUpper,
     firstName,
-    username: String(user?.username || ""),
+    username: String(u?.username || ""),
     beforeGroupsCsv,
     afterGroupsCsv,
     badgeNumber,
     agencyAbbreviation,
     agencyColor,
+    atakRole: normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
     stateAbbreviation,
     county,
     callsign,
@@ -1144,7 +1154,7 @@ async function createUser(
 
   // Create user
   const res = await api.post("/core/users/", payload);
-  const user = res.data;
+  let user = res.data;
 
   // NOTE: Authentik's create-user endpoint may not reliably apply the provided
   // password field (depending on configuration / permissions). However, the
@@ -1162,6 +1172,16 @@ async function createUser(
     });
   }
 
+  // Re-fetch so onboarding email (atakRole, callsign fields, etc.) matches persisted attributes.
+  // Some Authentik versions return incomplete attributes on POST /core/users/.
+  try {
+    user = await getUserById(user.pk);
+  } catch (e) {
+    console.warn(
+      "[createUser] refetch before onboarding email failed:",
+      e?.message || e
+    );
+  }
 
   // Email notification (never includes the password)
   try {
