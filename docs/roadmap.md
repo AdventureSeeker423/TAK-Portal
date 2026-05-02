@@ -11,7 +11,6 @@ Below you will find a comprehensive list of items planned for implementation in 
 ## 📌 Planned / Upcoming Features
 - Redefine TAK Portal Permissions - Access control per page rather than Agency/Global
 - Documents / MOU Page - A file archive of all drafts, unsigned, and signed documents
-- Add configurable role on user creation / edit / templates
 - Host local ATAK version rather than play store
 
 ## 🧠 Ideas / Long Term

@@ -12,6 +12,11 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.4 - 5/1/26
+✨ `Enhancement` - Updates all email templates to include proper role display<br>
+✨ `Enhancement` - Updates all setup my device instructions to include proper callsign configurations<br>
+✨ `Enhancement` - Adds Role (optional column) to User CSV import (if left blank it uses the role defined in the template)
+
 ### v1.3.3 - 5/1/26
 🎉 `New Feature` - Roles have now been added to users and templates to aid in assisting users with device configuration.  Please update and then navigate to your users page to perform a quick user migration to default roles.
 
