@@ -124,7 +124,7 @@
           </th>
           <% if (isGlobalAdmin) { %>
           <th class="sortable" data-key="private">
-            Private <span class="sortIndicator" aria-hidden="true"></span>
+            Hidden <span class="sortIndicator" aria-hidden="true"></span>
           </th>
           <% } %>
           <th>Actions</th>
@@ -940,7 +940,7 @@ function renderGroups(){
         ${esc(stripTakPrefix(g.name))}
         ${desc ? `<div class="muted" style="font-size: 11px; margin-top:2px; white-space:normal;">${esc(desc)}</div>` : ""}
       </td>
-      ${IS_GLOBAL_ADMIN ? `<td>${isPrivate ? "Private" : ""}</td>` : ``}
+      ${IS_GLOBAL_ADMIN ? `<td>${isPrivate ? "Hidden" : ""}</td>` : ``}
       <td>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
           <button class="btn" type="button"
