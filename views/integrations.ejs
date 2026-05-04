@@ -972,4 +972,13 @@
 .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .status-connected { background: rgba(24, 179, 90, 0.2); color: var(--success, #18b35a); }
 .status-disconnected { background: rgba(255, 59, 59, 0.2); color: var(--danger, #ff3b3b); }
+
+@media (max-width: 640px){
+  .table th:nth-child(2),
+  .table td:nth-child(2),
+  .table th:nth-child(3),
+  .table td:nth-child(3){
+    display: none;
+  }
+}
 </style>
