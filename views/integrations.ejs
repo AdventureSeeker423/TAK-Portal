@@ -989,6 +989,15 @@
     display: none;
   }
 
+  /* Port column: keep compact, about 4 digits wide */
+  .table th:nth-child(4),
+  .table td:nth-child(4){
+    width: 4ch;
+    min-width: 4ch;
+    max-width: 4ch;
+    white-space: nowrap;
+  }
+
   .table tbody tr.row-status-connected{
     background: rgba(24, 179, 90, 0.08);
   }
