@@ -308,14 +308,14 @@
           <!-- Groups picker -->
           <label style="display:block;">
             Groups
-            <input id="groupFilter" placeholder="Search groups..." />
-
-            <div class="row" style="gap:10px; margin-top:8px; flex-wrap:wrap;">
-              <button class="btn" id="selectAllBtn" type="button">Select All</button>
-              <button class="btn" id="clearAllBtn" type="button">Clear All</button>
-              <small style="align-self:center; color: var(--muted);">
-                Checking adds; unchecking removes. Changes save automatically.
-              </small>
+            <div class="editGroupFilterRow">
+              <div class="editGroupFilterInputWrap">
+                <input id="groupFilter" placeholder="Search groups..." />
+              </div>
+              <div class="row" style="gap:10px; margin-top:8px; flex-wrap:wrap;">
+                <button class="btn" id="selectAllBtn" type="button">Select All</button>
+                <button class="btn" id="clearAllBtn" type="button">Clear All</button>
+              </div>
             </div>
 
             <div class="groupsBox" id="groupsBox">
@@ -331,19 +331,11 @@
               <option value="">Select…</option>
             </select>
 
-            <button class="btn" id="applyTemplateBtn" type="button">
-              Apply
-            </button>
-
             <span class="templateBarDivider" aria-hidden="true"></span>
 
             <span class="templateBarLabel">Role</span>
 
             <select id="roleSelect"></select>
-
-            <button class="btn" id="applyRoleBtn" type="button">
-              Apply
-            </button>
 
             <span class="templateBarDivider" aria-hidden="true"></span>
 
@@ -357,8 +349,8 @@
               <% } %>
             </select>
 
-            <button class="btn" id="applyPermissionsBtn" type="button">
-              Apply
+            <button class="btn success templateBarApplyBtn" id="applyChangesBtn" type="button">
+              Apply Changes
             </button>
           </div>
         </div>
@@ -1024,13 +1016,11 @@ const nameMsg = document.getElementById("nameMsg");
 const selectAllBtn = document.getElementById("selectAllBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
 const templateApplySelect = document.getElementById("templateApplySelect");
-const applyTemplateBtn = document.getElementById("applyTemplateBtn");
+const applyChangesBtn = document.getElementById("applyChangesBtn");
 const roleSelect = document.getElementById("roleSelect");
-const applyRoleBtn = document.getElementById("applyRoleBtn");
 
 // Permissions controls
 const permissionsSelect = document.getElementById("permissionsSelect");
-const applyPermissionsBtn = document.getElementById("applyPermissionsBtn");
 const ATAK_ROLE_OPTIONS_MODAL = [
   "Team Member",
   "Team Lead",
@@ -1483,7 +1473,7 @@ async function loadTemplatesForAgency(agencySuffix){
   if (!templateApplySelect) return;
 
   templateApplySelect.innerHTML = '<option value="">Loading templates...</option>';
-  if (applyTemplateBtn) applyTemplateBtn.disabled = true;
+  if (applyChangesBtn) applyChangesBtn.disabled = true;
 
   const sfx = String(agencySuffix || "").trim();
   if (!sfx) {
@@ -1515,7 +1505,7 @@ async function loadTemplatesForAgency(agencySuffix){
     agencyTemplatesCache = all;
     const currentRoleFromUser = selectedUser?.attributes?.role;
     renderRoleOptions(roleSelect, currentRoleFromUser || roleSelect?.value || "Team Member");
-    if (applyTemplateBtn) applyTemplateBtn.disabled = false;
+    if (applyChangesBtn) applyChangesBtn.disabled = false;
   } catch (err) {
     templateApplySelect.innerHTML = '<option value="">Failed to load templates</option>';
     console.error(err);
@@ -1965,14 +1955,12 @@ window.editUser = async (userPk) => {
           permissionsSelect.value = hasAdmin ? "agency_admin" : "user";
         }
         permissionsSelect.disabled = false;
-        if (applyPermissionsBtn) applyPermissionsBtn.disabled = false;
       } else {
         if (permissionsSelect.value !== "global_admin") {
           permissionsSelect.value = "user";
         }
         const canUse = IS_GLOBAL_ADMIN && !!permissionsSelect.querySelector('option[value="global_admin"]');
         permissionsSelect.disabled = !canUse;
-        if (applyPermissionsBtn) applyPermissionsBtn.disabled = !canUse;
       }
     }
 
@@ -2029,7 +2017,6 @@ window.editUser = async (userPk) => {
           if (hasGlobal) {
             permissionsSelect.value = "global_admin";
             permissionsSelect.disabled = false;
-            if (applyPermissionsBtn) applyPermissionsBtn.disabled = false;
           }
         })
         .catch(() => {});
@@ -2037,10 +2024,10 @@ window.editUser = async (userPk) => {
   }
 };
 
-if (applyRoleBtn) applyRoleBtn.addEventListener("click", async () => {
+async function applyRoleSelection({ silentSuccess = false } = {}) {
   if (!selectedUser) return;
   const role = String((roleSelect && roleSelect.value) || "Team Member").trim() || "Team Member";
-  setMsgEl(actionMsg, "Updating role...", true);
+  if (!silentSuccess) setMsgEl(actionMsg, "Updating role...", true);
   try {
     const res = await fetch(`/api/users/${selectedUser.pk}/role`, {
       method: "PUT",
@@ -2050,27 +2037,32 @@ if (applyRoleBtn) applyRoleBtn.addEventListener("click", async () => {
     const out = await res.json().catch(() => ({}));
     if (!res.ok) {
       setMsgEl(actionMsg, out.error || "Failed to update role.", false);
-      return;
+      return { ok: false };
     }
     selectedUser.attributes = { ...(selectedUser.attributes || {}), role };
-    setMsgEl(actionMsg, `Role updated: ${role}.`, true);
+    if (!silentSuccess) setMsgEl(actionMsg, `Role updated: ${role}.`, true);
+    return { ok: true, role };
   } catch (err) {
     setMsgEl(actionMsg, err?.message || "Failed to update role.", false);
+    return { ok: false };
   }
-});
+}
 
 // ---------- Permissions apply ----------
-if (applyPermissionsBtn) applyPermissionsBtn.addEventListener("click", async () => {
+async function applyPermissionsSelection({ silentSuccess = false } = {}) {
   if (!selectedUser) return;
+  if (!permissionsSelect || permissionsSelect.disabled) {
+    return { ok: true, skipped: true };
+  }
 
-  setMsgEl(actionMsg, "");
+  if (!silentSuccess) setMsgEl(actionMsg, "");
 
   const desired = (permissionsSelect && permissionsSelect.value) || "user";
 
   // Safety: never allow a non-global-admin viewer to attempt global-admin changes.
   if (desired === "global_admin" && !IS_GLOBAL_ADMIN) {
     setMsgEl(actionMsg, "You do not have permission to grant Global Admin.", false);
-    return;
+    return { ok: false };
   }
 
   const currentIds = new Set((selectedUser.groups || []).map(x => String(x)));
@@ -2097,7 +2089,7 @@ if (applyPermissionsBtn) applyPermissionsBtn.addEventListener("click", async () 
     const hasAdminGroup = Array.isArray(adminGroupId) ? adminGroupId.length > 0 : !!adminGroupId;
     if (!abbr || !hasAdminGroup) {
       setMsgEl(actionMsg, "Cannot set Agency Admin/User: user has no agency abbreviation (or group missing).", false);
-      return;
+      return { ok: false };
     }
   }
 
@@ -2142,11 +2134,11 @@ if (applyPermissionsBtn) applyPermissionsBtn.addEventListener("click", async () 
 
   if (!toAdd.size && !toRemove.size) {
     const label = desired === "global_admin" ? "Already a Global Admin." : desired === "agency_admin" ? "Already an Agency Admin." : "Already a User.";
-    setMsgEl(actionMsg, label, true);
-    return;
+    if (!silentSuccess) setMsgEl(actionMsg, label, true);
+    return { ok: true, unchanged: true, desired };
   }
 
-  setMsgEl(actionMsg, "Updating permissions...", true);
+  if (!silentSuccess) setMsgEl(actionMsg, "Updating permissions...", true);
 
   // Apply adds first, then removes (so you don't accidentally lock yourself out mid-change).
   const applyDelta = async (kind, idsArr) => {
@@ -2184,7 +2176,7 @@ if (applyPermissionsBtn) applyPermissionsBtn.addEventListener("click", async () 
     }
   } catch (err) {
     setMsgEl(actionMsg, err?.message || "Failed to update permissions.", false);
-    return;
+    return { ok: false };
   }
 
   pickedGroupIds = new Set((selectedUser.groups || []).map(x => String(x)));
@@ -2201,8 +2193,9 @@ if (applyPermissionsBtn) applyPermissionsBtn.addEventListener("click", async () 
   renderResults(updatedVisible);
 
   const doneLabel = desired === "global_admin" ? "Permissions updated: Global Admin." : desired === "agency_admin" ? "Permissions updated: Agency Admin." : "Permissions updated: Standard User.";
-  setMsgEl(actionMsg, doneLabel, true);
-});
+  if (!silentSuccess) setMsgEl(actionMsg, doneLabel, true);
+  return { ok: true, desired };
+}
 
 window.toggleUserFromTable = async (userPk) => {
   const u = (window.__lastUsers || []).find(x => String(x.pk) === String(userPk));
@@ -2523,15 +2516,14 @@ if (resendOnboardingBtn) resendOnboardingBtn.onclick = async () => {
 };
 
 // ---------- Template apply ----------
-if (applyTemplateBtn) applyTemplateBtn.addEventListener("click", async () => {
+async function applyTemplateSelection({ silentSuccess = false } = {}) {
   if (!selectedUser) return;
 
-  setMsgEl(actionMsg, "");
+  if (!silentSuccess) setMsgEl(actionMsg, "");
 
   const selectedKey = (templateApplySelect && templateApplySelect.value) || "";
   if (!selectedKey) {
-    setMsgEl(actionMsg, "Select a template first.", false);
-    return;
+    return { ok: true, skipped: true };
   }
 
   const template = Array.isArray(agencyTemplatesCache)
@@ -2540,13 +2532,12 @@ if (applyTemplateBtn) applyTemplateBtn.addEventListener("click", async () => {
 
   if (!template) {
     setMsgEl(actionMsg, "Selected template not found.", false);
-    return;
+    return { ok: false };
   }
   renderRoleOptions(roleSelect, template.role || "Team Member");
 
   if (selectedKey === "manual") {
-    setMsgEl(actionMsg, "Manual selection does not apply a template.", false);
-    return;
+    return { ok: true, skipped: true };
   }
 
   const nameToId = {};
@@ -2559,7 +2550,7 @@ if (applyTemplateBtn) applyTemplateBtn.addEventListener("click", async () => {
   const templateGroupNames = Array.isArray(template.groups) ? template.groups : [];
   if (!templateGroupNames.length) {
     setMsgEl(actionMsg, "This template has no groups configured.", false);
-    return;
+    return { ok: false };
   }
 
   const newGroupIds = templateGroupNames
@@ -2571,7 +2562,7 @@ if (applyTemplateBtn) applyTemplateBtn.addEventListener("click", async () => {
 
   if (!newGroupIds.length) {
     setMsgEl(actionMsg, "Template groups could not be matched to available Authentik groups.", false);
-    return;
+    return { ok: false };
   }
 
   // Preserve any groups the portal does NOT know about (e.g. internal authentik-* groups).
@@ -2580,7 +2571,7 @@ if (applyTemplateBtn) applyTemplateBtn.addEventListener("click", async () => {
   const preservedUnknownIds = currentIds.filter(id => !visibleGroupIds.has(String(id)));
   const finalGroupIds = Array.from(new Set([...preservedUnknownIds, ...newGroupIds]));
 
-  setMsgEl(actionMsg, "Applying template...", true);
+  if (!silentSuccess) setMsgEl(actionMsg, "Applying template...", true);
 
   let res;
   try {
@@ -2591,13 +2582,13 @@ if (applyTemplateBtn) applyTemplateBtn.addEventListener("click", async () => {
     });
   } catch (err) {
     setMsgEl(actionMsg, "Network error while applying template.", false);
-    return;
+    return { ok: false };
   }
 
   const out = await res.json();
   if (!res.ok) {
     setMsgEl(actionMsg, out.error || "Failed to apply template.", false);
-    return;
+    return { ok: false };
   }
 
   const applied = Array.isArray(out.groups) ? out.groups : finalGroupIds;
@@ -2619,7 +2610,28 @@ if (applyTemplateBtn) applyTemplateBtn.addEventListener("click", async () => {
   window.__lastUsers = updatedVisible.slice();
   renderResults(updatedVisible);
 
-  setMsgEl(actionMsg, "Template applied. Groups overwritten.", true);
+  if (!silentSuccess) setMsgEl(actionMsg, "Template applied. Groups overwritten.", true);
+  return { ok: true, templateApplied: true };
+}
+
+if (applyChangesBtn) applyChangesBtn.addEventListener("click", async () => {
+  if (!selectedUser) return;
+  setMsgEl(actionMsg, "Applying changes...", true);
+  applyChangesBtn.disabled = true;
+  try {
+    const templateRes = await applyTemplateSelection({ silentSuccess: true });
+    if (!templateRes?.ok) return;
+
+    const permRes = await applyPermissionsSelection({ silentSuccess: true });
+    if (!permRes?.ok) return;
+
+    const roleRes = await applyRoleSelection({ silentSuccess: true });
+    if (!roleRes?.ok) return;
+
+    setMsgEl(actionMsg, "Changes applied.", true);
+  } finally {
+    applyChangesBtn.disabled = false;
+  }
 });
 
   async function loadAllUsers(){
@@ -3000,6 +3012,30 @@ th.sortable:hover{
   max-width: 420px;
 }
 
+.editGroupFilterRow{
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.editGroupFilterInputWrap{
+  flex: 0 0 50%;
+  max-width: 50%;
+  min-width: 260px;
+}
+
+#groupFilter{
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.templateBarApplyBtn{
+  margin-left: auto;
+}
+
 .createFinalRow{
   grid-column: 1 / -1;
   display: grid;
@@ -3080,6 +3116,11 @@ th.sortable:hover{
   }
   .templateBar select{
     flex: 1;
+    min-width: 0;
+  }
+  .editGroupFilterInputWrap{
+    flex: 1 1 100%;
+    max-width: 100%;
     min-width: 0;
   }
 }
