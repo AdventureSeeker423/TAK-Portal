@@ -488,9 +488,16 @@ app.get("/users/create", (req, res) => res.render("users-create"));
 app.get("/users/manage", (req, res) => {
   const pendingUserRequestsCount =
     userRequestsSvc.countRequestsForUser(req.authentikUser);
+  const dashboardSnap = dashboardStatsCache.getDashboardStatsSnapshot();
+  const dashboardTotalUsers = Number(
+    dashboardSnap &&
+    dashboardSnap.stats &&
+    dashboardSnap.stats.totalUsers
+  );
 
   return res.render("users-manage", {
     pendingUserRequestsCount,
+    dashboardTotalUsers: Number.isFinite(dashboardTotalUsers) ? dashboardTotalUsers : null,
   });
 });
 app.get("/sample-users.csv", requirePermission("page.users"), (req, res) => {

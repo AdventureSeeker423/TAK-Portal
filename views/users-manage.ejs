@@ -151,6 +151,7 @@
     </form>
 
     <div id="msg" class="msg"></div>
+    <input type="hidden" id="dashboardTotalUsersSeed" value="<%= dashboardTotalUsers ?? '' %>" />
 
 
     <!-- Pagination controls (top) -->
@@ -1055,6 +1056,9 @@ const USERS_ACTIONS_HIDDEN_PREFIXES = String(USERS_ACTIONS_HIDDEN_PREFIXES_RAW |
 const IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
 const IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+const DASHBOARD_TOTAL_USERS = Number(
+  (document.getElementById("dashboardTotalUsersSeed") || {}).value || NaN
+);
 
 // Global admin groups (loaded from settings.json via server render)
 const PORTAL_GLOBAL_ADMIN_GROUPS_RAW = <%- JSON.stringify(
@@ -2684,6 +2688,9 @@ if (applyChangesBtn) applyChangesBtn.addEventListener("click", async () => {
   const users = Array.isArray(out.users) ? out.users : [];
   currentPage = Number(out.page || currentPage || 1);
   totalUsers = Number(out.total || users.length);
+  const displayTotalUsers = Number.isFinite(Number(DASHBOARD_TOTAL_USERS))
+    ? Number(DASHBOARD_TOTAL_USERS)
+    : totalUsers;
   hasNextPage = !!out.hasNext;
   hasPrevPage = !!out.hasPrev;
   currentPageUsers = users.slice();
@@ -2694,9 +2701,9 @@ if (applyChangesBtn) applyChangesBtn.addEventListener("click", async () => {
 
   if (totalUsers) {
     if (qVal) {
-      setMsgEl(msg, `Showing ${users.length} of ${totalUsers} user(s) for "${qVal}".`, true);
+      setMsgEl(msg, `Showing ${users.length} of ${displayTotalUsers} user(s) for "${qVal}".`, true);
     } else {
-      setMsgEl(msg, `Showing ${users.length} of ${totalUsers} user(s).`, true);
+      setMsgEl(msg, `Showing ${users.length} of ${displayTotalUsers} user(s).`, true);
     }
   } else {
     setMsgEl(msg, "No users found.", true);
