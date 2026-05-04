@@ -2847,19 +2847,6 @@ searchForm.onsubmit = (e) => {
   box-shadow: 0 12px 40px rgba(0,0,0,.45);
 }
 
-/* Give the Edit User modal more vertical workspace */
-#modalOverlay .modal{
-  max-height: 96dvh;
-  min-height: 78dvh;
-}
-
-/* Compensate modal height on desktop when global body zoom (0.8) is active */
-@media (min-width: 1024px){
-  #modalOverlay .modal{
-    max-height: calc(96dvh / 0.8);
-    min-height: calc(78dvh / 0.8);
-  }
-}
 .modalHeader{
   position: sticky;
   top: 0;

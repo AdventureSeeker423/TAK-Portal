@@ -103,6 +103,25 @@ body {
     .modal {
         max-height: calc(92dvh / 0.8);
     }
+    /* Page-specific modal sizing moved here from view files */
+    #modalOverlay .modal { /* Users edit modal */
+        max-height: calc(96dvh / 0.8) !important;
+        min-height: calc(78dvh / 0.8);
+    }
+    #missionModal .modal { /* Data Sync edit mission modal */
+        max-height: calc(96dvh / 0.8) !important;
+        min-height: calc(82dvh / 0.8);
+    }
+    #dataFeedModalOverlay .modal { /* Integrations create streaming feed modal */
+        max-height: calc(96dvh / 0.8) !important;
+        min-height: calc(82dvh / 0.8);
+    }
+    #locHistOverlay .modal { /* Locate history modal */
+        max-height: calc(85dvh / 0.8) !important;
+    }
+    .modalCard { /* Audit log details modal card */
+        max-height: calc(80dvh / 0.8) !important;
+    }
 }
 
 /* Theme toggle button (top-right, floating) */
