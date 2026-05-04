@@ -86,6 +86,13 @@ body {
     color: var(--text);
 }
 
+/* Desktop scale normalization to mimic ~80% browser zoom */
+@media (min-width: 1024px) {
+    body {
+        zoom: 0.8;
+    }
+}
+
 /* Theme toggle button (top-right, floating) */
 .theme-toggle {
     position: fixed;
