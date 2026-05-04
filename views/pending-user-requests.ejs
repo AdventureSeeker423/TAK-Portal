@@ -298,6 +298,10 @@ th.sortable:hover{
               <select name="templateIndex" class="templateSelect"></select>
             </label>
 
+            <label>Role
+              <select name="role" class="roleSelect" aria-label="ATAK role"></select>
+            </label>
+
             <label>Permissions
               <select name="permissions" class="requestPermissionsSelect" aria-label="User permissions">
                 <option value="user" selected>User</option>
@@ -359,6 +363,16 @@ th.sortable:hover{
     key: "submitted",   // default sort
     dir: "desc"         // newest first
   };
+  const ATAK_ROLE_OPTIONS = [
+    "Team Member",
+    "Team Lead",
+    "HQ",
+    "Sniper",
+    "Medic",
+    "Forward Observer",
+    "RTO",
+    "K9",
+  ];
 
   function setListMsg(text, ok = true) {
     listMsg.textContent = text || '';
@@ -391,6 +405,19 @@ th.sortable:hover{
     if (!pwd) return true;
     const re = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
     return re.test(pwd);
+  }
+
+  function renderRoleOptions(selectEl, selectedRole) {
+    if (!selectEl) return;
+    const pick = String(selectedRole || "Team Member").trim() || "Team Member";
+    selectEl.innerHTML = ATAK_ROLE_OPTIONS
+      .map((role) => `<option value="${esc(role)}">${esc(role)}</option>`)
+      .join("");
+    if (ATAK_ROLE_OPTIONS.includes(pick)) {
+      selectEl.value = pick;
+    } else {
+      selectEl.value = "Team Member";
+    }
   }
 
   function closeInlineApprove() {
@@ -636,6 +663,7 @@ th.sortable:hover{
 
     const agencySelect = form.querySelector('select.agencySelect');
     const templateSelect = form.querySelector('select.templateSelect');
+    const roleSelect = form.querySelector('select.roleSelect');
     const manualGroupsWrap = form.querySelector('.manualGroupsWrap');
     const groupFilter = form.querySelector('.groupFilter');
     const groupsBox = form.querySelector('.groupsBox');
@@ -761,14 +789,23 @@ th.sortable:hover{
     }
 
     templateSelect.value = defaultName;
+    const currentDefaultTemplate = templatesCache.find(
+      (t) => String(t.name || "").trim().toLowerCase() === String(defaultName || "").trim().toLowerCase()
+    );
+    renderRoleOptions(roleSelect, currentDefaultTemplate?.role || "Team Member");
     templateSelect.dispatchEvent(new Event('change'));
     }
 
     templateSelect.addEventListener('change', () => {
       const isManual =
         String(templateSelect.value || "").trim().toLowerCase() === "manual group selection";
+      const selectedName = String(templateSelect.value || "").trim();
+      const selectedTemplate = templatesCache.find(
+        (t) => String(t.name || "").trim().toLowerCase() === selectedName.toLowerCase()
+      );
 
       manualGroupsWrap.style.display = isManual ? 'block' : 'none';
+      renderRoleOptions(roleSelect, selectedTemplate?.role || "Team Member");
 
       if (isManual) renderGroupsBox();
     });
