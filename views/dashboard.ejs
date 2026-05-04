@@ -202,7 +202,19 @@
         const pieOptions = {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: {
+            mode: "nearest",
+            intersect: false
+          },
+          elements: {
+            arc: {
+              hoverOffset: 8
+            }
+          },
           plugins: {
+            tooltip: {
+              enabled: true
+            },
             legend: {
               position: "bottom",
               labels: {
