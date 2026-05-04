@@ -80,6 +80,44 @@
 
 		<div class="app">
 
+      <script>
+        (function () {
+          function isOverlayOpen(el) {
+            if (!el) return false;
+            const cs = window.getComputedStyle(el);
+            if (!cs) return false;
+            return cs.display !== "none" && cs.visibility !== "hidden";
+          }
+
+          function syncModalOpenClass() {
+            const overlays = document.querySelectorAll(".modalOverlay");
+            let anyOpen = false;
+            overlays.forEach((el) => {
+              if (!anyOpen && isOverlayOpen(el)) anyOpen = true;
+            });
+            document.body.classList.toggle("modal-open", anyOpen);
+          }
+
+          function initModalOpenWatcher() {
+            syncModalOpenClass();
+            const mo = new MutationObserver(syncModalOpenClass);
+            mo.observe(document.documentElement, {
+              attributes: true,
+              attributeFilter: ["style", "class"],
+              subtree: true,
+              childList: true,
+            });
+            window.addEventListener("resize", syncModalOpenClass);
+          }
+
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", initModalOpenWatcher);
+          } else {
+            initModalOpenWatcher();
+          }
+        })();
+      </script>
+
 			<script src="/sidebar.js" defer=""></script>
       <script src="/theme-toggle.js" defer></script>
 		

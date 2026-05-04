@@ -740,6 +740,8 @@ select:focus {
     width: min(1100px, 96vw);
     max-height: 92vh;
     overflow: auto;
+    position: relative;
+    isolation: isolate;
     border: 1px solid var(--line);
     background: var(--panel);
     border-radius: 16px;
@@ -750,6 +752,8 @@ select:focus {
     position: sticky;
     top: 0;
     background: var(--panel);
+    z-index: 5;
+    opacity: 1;
     border-bottom: 1px solid var(--line);
     padding: 14px;
     display: flex;
@@ -762,6 +766,13 @@ select:focus {
 
 .noScroll {
     overflow: hidden;
+}
+
+/* Hide floating top controls while any modal is open */
+body.modal-open .theme-toggle,
+body.modal-open .sidebarToggle {
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 /* =========================================================
