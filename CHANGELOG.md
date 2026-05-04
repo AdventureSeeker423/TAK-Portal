@@ -14,7 +14,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ### v1.3.5 - 5/4/26
 ✨ `Enhancement` - Role dropdown added to approve user requests<br>
-✨ `Enhancement` - User edit page cleaned up with enhancements to template and role application<br>
+✨ `Enhancement` - User edit page cleaned up with enhancements to template and role changes<br>
 
 ### v1.3.4 - 5/1/26
 ✨ `Enhancement` - Updates all email templates to include proper role display<br>
