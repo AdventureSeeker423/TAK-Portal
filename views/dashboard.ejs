@@ -199,6 +199,22 @@
           return agencyColorNameToHex[raw] || agencyColorNameToHex[raw.toLowerCase()] || raw;
         });
 
+        const pieOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: {
+                boxWidth: 12,
+                boxHeight: 12,
+                padding: 10,
+                font: { size: 11 }
+              }
+            }
+          }
+        };
+
         new Chart(document.getElementById("agencyChart"), {
           type: "pie",
           data: {
@@ -210,7 +226,7 @@
               borderWidth: 2
             }]
           },
-          options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+          options: pieOptions
         });
 
         const usersByType = <%- JSON.stringify((charts && charts.usersByType) || {}) %>;
@@ -241,7 +257,7 @@
               borderWidth: 2
             }]
           },
-          options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+          options: pieOptions
         });
       }
 
@@ -768,8 +784,14 @@
 
   /* Makes both charts smaller + centered */
   .chartWrap{
-    max-width: 320px;
+    max-width: 100%;
+    width: 100%;
+    height: 300px;
     margin: 0 auto;
+  }
+  .chartWrap canvas{
+    width: 100% !important;
+    height: 100% !important;
   }
 
   .maBanner{
