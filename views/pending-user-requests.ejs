@@ -87,6 +87,17 @@
   box-sizing: border-box;
 }
 
+.approveFinalRow{
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.approveFinalRow > label{
+  margin: 0;
+}
+
 /* Stack nicely on small screens */
 @media (max-width: 640px){
   .templateBar{
@@ -95,6 +106,9 @@
   .templateBar select{
     flex: 1;
     min-width: 0;
+  }
+  .approveFinalRow{
+    grid-template-columns: 1fr;
   }
 }
 
@@ -294,23 +308,25 @@ th.sortable:hover{
               </div>
             </label>
 
-            <label>Template
-              <select name="templateIndex" class="templateSelect"></select>
-            </label>
+            <div class="approveFinalRow">
+              <label>Template
+                <select name="templateIndex" class="templateSelect"></select>
+              </label>
 
-            <label>Role
-              <select name="role" class="roleSelect" aria-label="ATAK role"></select>
-            </label>
+              <label>Role
+                <select name="role" class="roleSelect" aria-label="ATAK role"></select>
+              </label>
 
-            <label>Permissions
-              <select name="permissions" class="requestPermissionsSelect" aria-label="User permissions">
-                <option value="user" selected>User</option>
-                <option value="agency_admin">Agency Admin</option>
-                <% if (isGlobalAdmin) { %>
-                  <option value="global_admin">Global Admin</option>
-                <% } %>
-              </select>
-            </label>
+              <label>Permissions
+                <select name="permissions" class="requestPermissionsSelect" aria-label="User permissions">
+                  <option value="user" selected>User</option>
+                  <option value="agency_admin">Agency Admin</option>
+                  <% if (isGlobalAdmin) { %>
+                    <option value="global_admin">Global Admin</option>
+                  <% } %>
+                </select>
+              </label>
+            </div>
 
             <!-- Manual Groups (checkbox picker) -->
             <div class="manualGroupsWrap" style="display:none; grid-column: 1 / -1;">
