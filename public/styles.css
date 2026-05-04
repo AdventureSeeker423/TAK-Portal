@@ -857,17 +857,41 @@ select:focus {
         max-width: 100%;
     }
 
+    /* Inline/flex form blocks often carry min-width via inline styles; relax on mobile */
+    .row > label,
+    .row > div,
+    .card label,
+    .card .col,
+    .card .row > * {
+        min-width: 0 !important;
+        max-width: 100%;
+    }
+
+    .row > label,
+    .card label {
+        flex: 1 1 100%;
+    }
+
     input,
     select,
     textarea,
     .btn {
+        width: 100%;
         max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    /* Keep button rows usable (buttons should size to content there) */
+    .row .btn,
+    .modalHeader .btn {
+        width: auto;
     }
 
     /* Keep wide tables usable but avoid expanding page width */
     .table {
         width: 100%;
-        table-layout: fixed;
+        table-layout: auto;
     }
     .table th,
     .table td {
