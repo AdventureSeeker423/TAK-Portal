@@ -284,7 +284,6 @@
 
             <div class="row" style="gap:10px; margin-top:10px;">
               <button class="btn" id="resetPwBtn" type="button">Reset Password</button>
-              <small class="muted" style="align-self:center;">Passwords must match.</small>
             </div>
             <div style="margin-top:10px;">
             <label>&nbsp;</label>
@@ -3113,20 +3112,68 @@ th.sortable:hover{
 
 /* Stack nicely on small screens */
 @media (max-width: 640px){
+  .modalOverlay{
+    padding: 8px;
+  }
+  #modalOverlay .modal{
+    width: 100%;
+    max-width: 100%;
+    max-height: 96dvh;
+    border-radius: 12px;
+  }
+  #modalOverlay .modalHeader{
+    padding: 10px;
+  }
+  #modalOverlay .modalBody{
+    padding: 10px;
+  }
+  .panel{
+    padding: 10px;
+  }
+  .topPanels{
+    gap: 10px;
+  }
+
   .createFinalRow{
     grid-template-columns: 1fr;
   }
+  .editGroupFilterRow > .row{
+    margin-top: 0 !important;
+    width: 100%;
+  }
   .templateBar{
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+  }
+  .templateBarDivider{
+    display: none;
+  }
+  .templateBarLabel{
+    margin-right: 0;
   }
   .templateBar select{
-    flex: 1;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
+  }
+  #permissionsSelect{
+    max-width: none;
+  }
+  .templateBarApplyBtn{
+    grid-column: 1 / -1;
+    margin-left: 0;
+    width: 100%;
   }
   .editGroupFilterInputWrap{
     flex: 1 1 100%;
     max-width: 100%;
     min-width: 0;
+  }
+  .groupsBox{
+    max-height: 280px;
   }
 }
 
