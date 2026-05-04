@@ -91,6 +91,13 @@ body {
     body {
         zoom: 0.8;
     }
+    /* Compensate viewport-sized containers when zoom is applied */
+    .app {
+        min-height: calc(100vh / 0.8);
+    }
+    .sidebar {
+        height: calc(100vh / 0.8);
+    }
 }
 
 /* Theme toggle button (top-right, floating) */
