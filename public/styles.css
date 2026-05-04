@@ -323,6 +323,14 @@ body.theme-light .theme-toggle__icon--moon {
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* IE/Edge legacy */
+}
+
+.nav-top::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;                  /* Chrome/Safari */
 }
 
 .nav-bottom {
