@@ -293,7 +293,7 @@
   let groupsCache = [];
   let usersCache = [];
   let connectedUsernamesSet = new Set();
-  let sortState = { key: "username", dir: 1 }; // asc by default
+  let sortState = { key: "group", dir: 1 }; // default: Group asc
 
   function stripTakPrefix(name) {
     if (name == null || name === undefined) return "";
