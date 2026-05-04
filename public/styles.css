@@ -93,10 +93,11 @@ body {
     }
     /* Compensate viewport-sized containers when zoom is applied */
     .app {
-        min-height: calc(100vh / 0.8);
+        min-height: calc(100dvh / 0.8);
     }
     .sidebar {
-        height: calc(100vh / 0.8);
+        min-height: calc(100dvh / 0.8);
+        height: calc(100dvh / 0.8) !important;
     }
 }
 
