@@ -153,7 +153,7 @@ body.theme-light .theme-toggle__icon--moon {
     border-right: 1px solid var(--line);
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
     -webkit-overflow-scrolling: touch;
 }
 
@@ -313,15 +313,21 @@ body.theme-light .theme-toggle__icon--moon {
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
 }
 
 .nav-top {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .nav-bottom {
-    margin-top: auto; /* pushes this section to the bottom of sidebar */
+    margin-top: auto; /* stays pinned at bottom while nav-top scrolls */
+    flex: 0 0 auto;
     padding-top: 1rem;
     border-top: 1px solid var(--line);
     text-align: center;
