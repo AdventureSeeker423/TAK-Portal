@@ -265,6 +265,21 @@
     .data-sync-table td:nth-child(6){
       display: none;
     }
+
+    /* Keep remaining columns readable; allow horizontal scroll inside table wrapper */
+    .data-sync-table{
+      min-width: 700px;
+    }
+    .data-sync-table th,
+    .data-sync-table td{
+      overflow-wrap: normal;
+      word-break: normal;
+      white-space: nowrap;
+    }
+    .data-sync-table th:last-child,
+    .data-sync-table td:last-child{
+      min-width: 260px !important;
+    }
   }
 
 </style>
