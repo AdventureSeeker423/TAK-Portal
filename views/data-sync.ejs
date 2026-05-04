@@ -266,19 +266,34 @@
       display: none;
     }
 
-    /* Keep remaining columns readable; allow horizontal scroll inside table wrapper */
+    /* Keep remaining columns readable without forcing extra width */
     .data-sync-table{
-      min-width: 700px;
+      min-width: 0;
+      table-layout: auto;
     }
     .data-sync-table th,
     .data-sync-table td{
-      overflow-wrap: normal;
+      overflow-wrap: break-word;
       word-break: normal;
-      white-space: nowrap;
+      white-space: normal;
     }
+
+    /* Override desktop inline min-width on Actions header for mobile */
+    .data-sync-table th[style*="min-width: 340px"]{
+      min-width: 0 !important;
+    }
+
     .data-sync-table th:last-child,
     .data-sync-table td:last-child{
-      min-width: 260px !important;
+      min-width: 0 !important;
+      white-space: nowrap;
+    }
+
+    .mission-action-row{
+      gap: 4px;
+    }
+    .mission-action-row .btn{
+      padding: 8px 10px;
     }
   }
 
