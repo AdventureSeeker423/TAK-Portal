@@ -834,6 +834,59 @@ select:focus {
 }
 
 /* ======================
+   GLOBAL MOBILE OVERFLOW HARDENING
+   Prevent page-level horizontal scrolling on small screens.
+   ====================== */
+@media (max-width: 990px) {
+    html,
+    body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    .app,
+    .main,
+    .card,
+    .row,
+    .grid2,
+    .grid3,
+    .modal,
+    .modalBody {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    input,
+    select,
+    textarea,
+    .btn {
+        max-width: 100%;
+    }
+
+    /* Keep wide tables usable but avoid expanding page width */
+    .table {
+        width: 100%;
+        table-layout: fixed;
+    }
+    .table th,
+    .table td {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    /* Long strings/URLs/code blocks should wrap instead of pushing layout wider */
+    pre,
+    code,
+    .msg,
+    .chips,
+    .muted {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+}
+
+/* ======================
    SETTINGS PAGE HELPERS
    ====================== */
 
