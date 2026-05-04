@@ -72,14 +72,14 @@
 
     <div id="tableMsg" class="msg"></div>
 
-    <table class="table">
+    <table class="table" id="integrationsTable">
       <thead>
         <tr>
-          <th>Username</th>
-          <th>Group</th>
-          <th>Data Feed</th>
-          <th>Port</th>
-          <th>Status</th>
+          <th data-sort="username" data-type="text">Username</th>
+          <th data-sort="group" data-type="text">Group</th>
+          <th data-sort="dataFeed" data-type="text">Data Feed</th>
+          <th data-sort="port" data-type="number">Port</th>
+          <th data-sort="status" data-type="text">Status</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -255,6 +255,7 @@
   const createMsg = document.getElementById("createMsg");
   const tableMsg = document.getElementById("tableMsg");
   const tbody = document.getElementById("tbody");
+  const integrationsTable = document.getElementById("integrationsTable");
   const integrationFilter = document.getElementById("integrationFilter");
   const integrationTitleInput = document.getElementById("integrationTitle");
   const makeDataFeedSelect = document.getElementById("makeDataFeed");
@@ -292,6 +293,7 @@
   let groupsCache = [];
   let usersCache = [];
   let connectedUsernamesSet = new Set();
+  let sortState = { key: "username", dir: 1 }; // asc by default
 
   function stripTakPrefix(name) {
     if (name == null || name === undefined) return "";
@@ -414,10 +416,54 @@
             groupNames.indexOf(needle) !== -1;
         })
       : usersCache;
-    if (list.length === 0) {
+    var rows = list.slice();
+
+    if (sortState && sortState.key) {
+      var key = sortState.key;
+      var dir = sortState.dir || 1;
+
+      rows = rows
+        .map(function (item, idx) { return { item: item, idx: idx }; })
+        .sort(function (aWrap, bWrap) {
+          var a = aWrap.item || {};
+          var b = bWrap.item || {};
+
+          var aUsername = String(a.username || "").trim();
+          var bUsername = String(b.username || "").trim();
+          var aGroup = (a.groupNames || []).join(", ");
+          var bGroup = (b.groupNames || []).join(", ");
+          var aDataFeed = a.dataFeedName ? "enabled" : "none";
+          var bDataFeed = b.dataFeedName ? "enabled" : "none";
+          var aPort = (a.dataFeedName && a.dataFeedPort != null && a.dataFeedPort !== "") ? Number(a.dataFeedPort) : -1;
+          var bPort = (b.dataFeedName && b.dataFeedPort != null && b.dataFeedPort !== "") ? Number(b.dataFeedPort) : -1;
+          var aConnected = connectedUsernamesSet.has(aUsername) ? "connected" : "disconnected";
+          var bConnected = connectedUsernamesSet.has(bUsername) ? "connected" : "disconnected";
+
+          var av;
+          var bv;
+          if (key === "username") { av = aUsername.toLowerCase(); bv = bUsername.toLowerCase(); }
+          else if (key === "group") { av = String(aGroup || "").toLowerCase(); bv = String(bGroup || "").toLowerCase(); }
+          else if (key === "dataFeed") { av = aDataFeed; bv = bDataFeed; }
+          else if (key === "port") { av = aPort; bv = bPort; }
+          else if (key === "status") { av = aConnected; bv = bConnected; }
+          else { av = aUsername.toLowerCase(); bv = bUsername.toLowerCase(); }
+
+          var cmp = 0;
+          if (typeof av === "number" && typeof bv === "number") {
+            cmp = av - bv;
+          } else {
+            cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+          }
+          if (cmp === 0) return aWrap.idx - bWrap.idx; // stable
+          return cmp * dir;
+        })
+        .map(function (x) { return x.item; });
+    }
+
+    if (rows.length === 0) {
       tbody.innerHTML = "<tr><td colspan=\"6\">" + (needle ? "No integrations match your search." : "No integration users found.") + "</td></tr>";
     } else {
-      tbody.innerHTML = list.map(function (u) {
+      tbody.innerHTML = rows.map(function (u) {
         var groupDisplay = (u.groupNames || []).join(", ") || "—";
         var currentGroupPk = (u.groups && u.groups[0]) ? String(u.groups[0]) : "";
         var username = String(u.username || "").trim();
@@ -454,6 +500,16 @@
           "</tr>";
       }).join("");
     }
+
+    if (integrationsTable) {
+      integrationsTable.querySelectorAll("thead th[data-sort]").forEach(function (th) {
+        th.classList.remove("sorted-asc", "sorted-desc");
+        if (th.dataset.sort === sortState.key) {
+          th.classList.add(sortState.dir === 1 ? "sorted-asc" : "sorted-desc");
+        }
+      });
+    }
+
     bindTableActions();
   }
 
@@ -496,6 +552,22 @@
   }
 
   if (integrationFilter) integrationFilter.addEventListener("input", renderIntegrations);
+
+  if (integrationsTable) {
+    integrationsTable.querySelectorAll("thead th[data-sort]").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var key = th.dataset.sort;
+        if (!key) return;
+        if (sortState.key === key) {
+          sortState.dir = sortState.dir * -1;
+        } else {
+          sortState.key = key;
+          sortState.dir = 1;
+        }
+        renderIntegrations();
+      });
+    });
+  }
 
   var editIntegrationOverlay = document.getElementById("editIntegrationOverlay");
   var editIntegrationCloseBtn = document.getElementById("editIntegrationCloseBtn");
@@ -974,6 +1046,26 @@
 .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .status-connected { background: rgba(24, 179, 90, 0.2); color: var(--success, #18b35a); }
 .status-disconnected { background: rgba(255, 59, 59, 0.2); color: var(--danger, #ff3b3b); }
+
+/* Sortable header style (matches Agencies pattern) */
+.table thead th[data-sort]{
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding-right: 1.25rem;
+}
+.table thead th[data-sort].sorted-asc::after{
+  content: "▲";
+  position: absolute;
+  right: 0.5rem;
+  opacity: 0.7;
+}
+.table thead th[data-sort].sorted-desc::after{
+  content: "▼";
+  position: absolute;
+  right: 0.5rem;
+  opacity: 0.7;
+}
 
 @media (max-width: 640px){
   .table th:nth-child(2),
