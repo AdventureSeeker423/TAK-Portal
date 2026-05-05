@@ -1,14 +1,29 @@
 :root {
-    --bg: #0b1220;
-    --panel: #111a2e;
-    --card: #0f1930;
-    --text: #e8eefc;
-    --muted: #a8b3cf;
-    --line: #1f2a44;
-    --btn: #2b6cff;
-    --warning: #ff6600;
-    --danger: #ff3b3b;
-    --success: #18b35a;
+    --bg: #0b0f18;
+    --panel: #131927;
+    --card: #191f2e;
+    --text: #dce6f5;
+    --muted: #8494ad;
+    --line: #1c2535;
+    --btn: #4488c7;
+    --btn-hover: #56a0df;
+    --font-body: IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --font-heading: IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --font-mono: IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --radius-1: 4px;
+    --radius-2: 8px;
+    --radius-3: 12px;
+    --radius-4: 16px;
+    --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.55);
+    --warning: #d4a047;
+    --warning-bg: #2e1d00;
+    --danger: #d94f4f;
+    --danger-bg: #2e0d0d;
+    --success: #38b26a;
+    --success-bg: #0d2e1a;
+    --info: #4488c7;
+    --info-bg: #0a2240;
     /* Sidebar link highlight (dark themes: lighter overlay so it stands out) */
     --sidebar-link-hover: rgba(255, 255, 255, 0.06);
     --sidebar-link-active: rgba(255, 255, 255, 0.12);
@@ -81,7 +96,7 @@ body.theme-light {
 
 body {
     margin: 0;
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family: var(--font-body);
     background: var(--bg);
     color: var(--text);
 }
@@ -450,12 +465,14 @@ body.theme-light .theme-toggle__icon--moon {
 
 h1 {
     margin: 0 0 14px 0;
+    font-family: var(--font-heading);
 }
 
 h2 {
     margin: 0 0 12px 0;
     font-size: 16px;
     color: var(--muted);
+    font-family: var(--font-heading);
 }
 
 /* ======================
@@ -549,7 +566,7 @@ select:focus {
 }
 
 .btn:hover {
-    filter: brightness(1.05);
+    background: var(--btn-hover);
 }
 
 .btn.danger {
@@ -590,8 +607,8 @@ select:focus {
 }
 
 .segBtn.active {
-    background: var(--primary);
-    border-color: var(--primary);
+    background: var(--btn);
+    border-color: var(--btn);
     color: #fff;
 }
 

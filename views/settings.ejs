@@ -137,6 +137,25 @@
         "EMAIL_FAIL_HARD",
         "BETA_MODE",
         "DEFAULT_THEME_MODE",
+        "BRAND_DARK_BG",
+        "BRAND_DARK_PANEL",
+        "BRAND_DARK_CARD",
+        "BRAND_DARK_TEXT",
+        "BRAND_DARK_MUTED",
+        "BRAND_DARK_LINE",
+        "BRAND_DARK_PRIMARY",
+        "BRAND_DARK_PRIMARY_HOVER",
+        "BRAND_LIGHT_BG",
+        "BRAND_LIGHT_PANEL",
+        "BRAND_LIGHT_CARD",
+        "BRAND_LIGHT_TEXT",
+        "BRAND_LIGHT_MUTED",
+        "BRAND_LIGHT_LINE",
+        "BRAND_LIGHT_PRIMARY",
+        "BRAND_LIGHT_PRIMARY_HOVER",
+        "BRAND_FONT_BODY",
+        "BRAND_FONT_HEADING",
+        "BRAND_FONT_MONO",
 
         "SMS_PROVIDER",
         "SMS_TWILIO_ACCOUNT_SID",
@@ -443,7 +462,7 @@
                   <span
                     class="email-template-badge"
                     data-badge="<%= tpl.idSafe %>"
-                    style="<%= tpl.overridden ? 'background:#2563eb;color:#fff;' : 'background:#e5e7eb;color:#374151;' %>padding:0.1rem 0.4rem;border-radius:999px;font-size:0.75rem;"
+                    style="<%= tpl.overridden ? 'background:var(--btn);color:#fff;' : 'background:var(--line);color:var(--text);' %>padding:0.1rem 0.4rem;border-radius:999px;font-size:0.75rem;"
                   >
                     <%= tpl.overridden ? "Custom" : "Default" %>
                   </span>
@@ -1101,6 +1120,42 @@
               <% } %>
             </label>
           </div>
+          <hr style="margin:1rem 0;opacity:.35;" />
+          <h3 style="margin:0 0 .5rem 0;">Branding (Core Tokens)</h3>
+          <p class="settings-help" style="margin-top:0;">
+            Core brand values are editable here. Semantic and spacing/shadow systems remain standardized for consistent UX.
+          </p>
+
+          <h4 style="margin:.5rem 0;">Dark Theme</h4>
+          <div class="grid2">
+            <% renderField("BRAND_DARK_BG","Dark Background",null,"#0b0f18"); %>
+            <% renderField("BRAND_DARK_PANEL","Dark Panel",null,"#131927"); %>
+            <% renderField("BRAND_DARK_CARD","Dark Card",null,"#191f2e"); %>
+            <% renderField("BRAND_DARK_TEXT","Dark Text",null,"#dce6f5"); %>
+            <% renderField("BRAND_DARK_MUTED","Dark Muted Text",null,"#8494ad"); %>
+            <% renderField("BRAND_DARK_LINE","Dark Border/Line",null,"#1c2535"); %>
+            <% renderField("BRAND_DARK_PRIMARY","Dark Primary Action",null,"#4488c7"); %>
+            <% renderField("BRAND_DARK_PRIMARY_HOVER","Dark Primary Hover",null,"#56a0df"); %>
+          </div>
+
+          <h4 style="margin:1rem 0 .5rem 0;">Light Theme</h4>
+          <div class="grid2">
+            <% renderField("BRAND_LIGHT_BG","Light Background",null,"#edf1f7"); %>
+            <% renderField("BRAND_LIGHT_PANEL","Light Panel",null,"#ffffff"); %>
+            <% renderField("BRAND_LIGHT_CARD","Light Card",null,"#f4f6fb"); %>
+            <% renderField("BRAND_LIGHT_TEXT","Light Text",null,"#0d1f38"); %>
+            <% renderField("BRAND_LIGHT_MUTED","Light Muted Text",null,"#4a5568"); %>
+            <% renderField("BRAND_LIGHT_LINE","Light Border/Line",null,"#d8e0ec"); %>
+            <% renderField("BRAND_LIGHT_PRIMARY","Light Primary Action",null,"#2f54a5"); %>
+            <% renderField("BRAND_LIGHT_PRIMARY_HOVER","Light Primary Hover",null,"#3d68c2"); %>
+          </div>
+
+          <h4 style="margin:1rem 0 .5rem 0;">Fonts</h4>
+          <div class="grid2">
+            <% renderField("BRAND_FONT_BODY","Body Font Stack",null,"IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"); %>
+            <% renderField("BRAND_FONT_HEADING","Heading Font Stack",null,"IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"); %>
+            <% renderField("BRAND_FONT_MONO","Monospace Font Stack",null,"IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"); %>
+          </div>
         </div>
       </details>
     </div>
@@ -1405,8 +1460,8 @@
           var badge = root.querySelector('.email-template-badge[data-badge="' + key + '"]');
           if (badge) {
             badge.textContent = "Default";
-            badge.style.background = "#e5e7eb";
-            badge.style.color = "#374151";
+            badge.style.background = "var(--line)";
+            badge.style.color = "var(--text)";
           }
         });
       });
@@ -1472,7 +1527,7 @@
     function setStatus(msg, isError) {
       if (!statusBox) return;
       statusBox.textContent = msg || "";
-      statusBox.style.color = isError ? "#dc2626" : "";
+      statusBox.style.color = isError ? "var(--danger)" : "";
     }
 
     async function getStatus() {
@@ -1604,7 +1659,7 @@
             .catch(function (err) {
               if (statusEl) {
                 statusEl.textContent = "Auto-save failed: " + (err.message || String(err));
-                statusEl.style.color = "#dc2626";
+                statusEl.style.color = "var(--danger)";
               }
             })
             .finally(function () {
@@ -1676,13 +1731,13 @@
   }
 
   .cert-status.installed {
-    background: #dcfce7;
-    color: #166534;
+    background: var(--success-bg);
+    color: var(--success);
   }
 
   .cert-status.missing {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--danger-bg);
+    color: var(--danger);
   }
   .passwordWrap {
     position: relative;
