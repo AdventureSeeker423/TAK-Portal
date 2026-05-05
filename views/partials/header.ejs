@@ -5,34 +5,6 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>TAK Portal</title>
     <link rel="stylesheet" href="/styles.css" />
-    <% const t = brandTokens || {}; %>
-    <style>
-      :root {
-        --font-body: <%= (t.fonts && t.fonts.body) || "IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" %>;
-        --font-heading: <%= (t.fonts && t.fonts.heading) || "IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" %>;
-        --font-mono: <%= (t.fonts && t.fonts.mono) || "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" %>;
-      }
-      body.theme-dark {
-        --bg: <%= (t.dark && t.dark.bg) || "#0b0b0b" %>;
-        --panel: <%= (t.dark && t.dark.panel) || "#121212" %>;
-        --card: <%= (t.dark && t.dark.card) || "#1c1c1e" %>;
-        --text: <%= (t.dark && t.dark.text) || "#ffffff" %>;
-        --muted: <%= (t.dark && t.dark.muted) || "#8e8e93" %>;
-        --line: <%= (t.dark && t.dark.line) || "#38383a" %>;
-        --btn: <%= (t.dark && t.dark.primary) || "#0a84ff" %>;
-        --btn-hover: <%= (t.dark && t.dark.primaryHover) || "#3b7cff" %>;
-      }
-      body.theme-light {
-        --bg: <%= (t.light && t.light.bg) || "#f3f4f6" %>;
-        --panel: <%= (t.light && t.light.panel) || "#ffffff" %>;
-        --card: <%= (t.light && t.light.card) || "#f9fafb" %>;
-        --text: <%= (t.light && t.light.text) || "#020617" %>;
-        --muted: <%= (t.light && t.light.muted) || "#4b5563" %>;
-        --line: <%= (t.light && t.light.line) || "#e5e7eb" %>;
-        --btn: <%= (t.light && t.light.primary) || "#2563eb" %>;
-        --btn-hover: <%= (t.light && t.light.primaryHover) || "#1d4ed8" %>;
-      }
-    </style>
 
     <% if (brandLogoUrl) { %>
       <link rel="icon" href="<%= brandLogoUrl %>" type="image/png" />
