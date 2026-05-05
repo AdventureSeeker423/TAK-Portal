@@ -116,7 +116,7 @@
 
     <div id="listMsg" class="msg"></div>
 
-    <table class="table groupsTable">
+    <table class="table">
       <thead>
         <tr>
           <th class="sortable" data-key="name">
@@ -124,7 +124,7 @@
           </th>
           <% if (isGlobalAdmin) { %>
           <th class="sortable" data-key="private">
-            Hidden <span class="sortIndicator" aria-hidden="true"></span>
+            Private <span class="sortIndicator" aria-hidden="true"></span>
           </th>
           <% } %>
           <th>Actions</th>
@@ -936,11 +936,11 @@ function renderGroups(){
 
     return `
     <tr>
-      <td class="groupNameCell" style="max-width:320px; white-space:normal; overflow:hidden; text-overflow:ellipsis; overflow-wrap:anywhere; word-break:break-word;">
+      <td style="max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
         ${esc(stripTakPrefix(g.name))}
         ${desc ? `<div class="muted" style="font-size: 11px; margin-top:2px; white-space:normal;">${esc(desc)}</div>` : ""}
       </td>
-      ${IS_GLOBAL_ADMIN ? `<td>${isPrivate ? "Hidden" : ""}</td>` : ``}
+      ${IS_GLOBAL_ADMIN ? `<td>${isPrivate ? "Private" : ""}</td>` : ``}
       <td>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
           <button class="btn" type="button"
@@ -1985,22 +1985,5 @@ if (reloadBtn) reloadBtn.onclick = loadGroups;
   await loadGroups();
 })();
 </script>
-
-<style>
-@media (max-width: 640px){
-  .groupsTable td.groupNameCell{
-    max-width: 42vw !important;
-    vertical-align: top;
-  }
-  .groupsTable td:last-child .row{
-    flex-direction: column;
-    align-items: stretch !important;
-    gap: 6px !important;
-  }
-  .groupsTable td:last-child .row .btn{
-    width: 100%;
-  }
-}
-</style>
 
 </div></body></html>
