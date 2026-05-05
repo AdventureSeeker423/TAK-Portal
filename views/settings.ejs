@@ -462,7 +462,7 @@
                   <span
                     class="email-template-badge"
                     data-badge="<%= tpl.idSafe %>"
-                    style="<%= tpl.overridden ? 'background:var(--btn);color:#fff;' : 'background:var(--line);color:var(--text);' %>padding:0.1rem 0.4rem;border-radius:999px;font-size:0.75rem;"
+                    style="<%= tpl.overridden ? 'background:#2563eb;color:#fff;' : 'background:#e5e7eb;color:#374151;' %>padding:0.1rem 0.4rem;border-radius:999px;font-size:0.75rem;"
                   >
                     <%= tpl.overridden ? "Custom" : "Default" %>
                   </span>
@@ -1128,26 +1128,26 @@
 
           <h4 style="margin:.5rem 0;">Dark Theme</h4>
           <div class="grid2">
-            <% renderField("BRAND_DARK_BG","Dark Background",null,"#0b0f18"); %>
-            <% renderField("BRAND_DARK_PANEL","Dark Panel",null,"#131927"); %>
-            <% renderField("BRAND_DARK_CARD","Dark Card",null,"#191f2e"); %>
-            <% renderField("BRAND_DARK_TEXT","Dark Text",null,"#dce6f5"); %>
-            <% renderField("BRAND_DARK_MUTED","Dark Muted Text",null,"#8494ad"); %>
-            <% renderField("BRAND_DARK_LINE","Dark Border/Line",null,"#1c2535"); %>
-            <% renderField("BRAND_DARK_PRIMARY","Dark Primary Action",null,"#4488c7"); %>
-            <% renderField("BRAND_DARK_PRIMARY_HOVER","Dark Primary Hover",null,"#56a0df"); %>
+            <% renderField("BRAND_DARK_BG","Dark Background",null,"#0b0b0b"); %>
+            <% renderField("BRAND_DARK_PANEL","Dark Panel",null,"#121212"); %>
+            <% renderField("BRAND_DARK_CARD","Dark Card",null,"#1c1c1e"); %>
+            <% renderField("BRAND_DARK_TEXT","Dark Text",null,"#ffffff"); %>
+            <% renderField("BRAND_DARK_MUTED","Dark Muted Text",null,"#8e8e93"); %>
+            <% renderField("BRAND_DARK_LINE","Dark Border/Line",null,"#38383a"); %>
+            <% renderField("BRAND_DARK_PRIMARY","Dark Primary Action",null,"#0a84ff"); %>
+            <% renderField("BRAND_DARK_PRIMARY_HOVER","Dark Primary Hover",null,"#3b7cff"); %>
           </div>
 
           <h4 style="margin:1rem 0 .5rem 0;">Light Theme</h4>
           <div class="grid2">
-            <% renderField("BRAND_LIGHT_BG","Light Background",null,"#edf1f7"); %>
+            <% renderField("BRAND_LIGHT_BG","Light Background",null,"#f3f4f6"); %>
             <% renderField("BRAND_LIGHT_PANEL","Light Panel",null,"#ffffff"); %>
-            <% renderField("BRAND_LIGHT_CARD","Light Card",null,"#f4f6fb"); %>
-            <% renderField("BRAND_LIGHT_TEXT","Light Text",null,"#0d1f38"); %>
-            <% renderField("BRAND_LIGHT_MUTED","Light Muted Text",null,"#4a5568"); %>
-            <% renderField("BRAND_LIGHT_LINE","Light Border/Line",null,"#d8e0ec"); %>
-            <% renderField("BRAND_LIGHT_PRIMARY","Light Primary Action",null,"#2f54a5"); %>
-            <% renderField("BRAND_LIGHT_PRIMARY_HOVER","Light Primary Hover",null,"#3d68c2"); %>
+            <% renderField("BRAND_LIGHT_CARD","Light Card",null,"#f9fafb"); %>
+            <% renderField("BRAND_LIGHT_TEXT","Light Text",null,"#020617"); %>
+            <% renderField("BRAND_LIGHT_MUTED","Light Muted Text",null,"#4b5563"); %>
+            <% renderField("BRAND_LIGHT_LINE","Light Border/Line",null,"#e5e7eb"); %>
+            <% renderField("BRAND_LIGHT_PRIMARY","Light Primary Action",null,"#2563eb"); %>
+            <% renderField("BRAND_LIGHT_PRIMARY_HOVER","Light Primary Hover",null,"#1d4ed8"); %>
           </div>
 
           <h4 style="margin:1rem 0 .5rem 0;">Fonts</h4>
@@ -1460,8 +1460,8 @@
           var badge = root.querySelector('.email-template-badge[data-badge="' + key + '"]');
           if (badge) {
             badge.textContent = "Default";
-            badge.style.background = "var(--line)";
-            badge.style.color = "var(--text)";
+            badge.style.background = "#e5e7eb";
+            badge.style.color = "#374151";
           }
         });
       });
@@ -1527,7 +1527,7 @@
     function setStatus(msg, isError) {
       if (!statusBox) return;
       statusBox.textContent = msg || "";
-      statusBox.style.color = isError ? "var(--danger)" : "";
+      statusBox.style.color = isError ? "#dc2626" : "";
     }
 
     async function getStatus() {
@@ -1659,7 +1659,7 @@
             .catch(function (err) {
               if (statusEl) {
                 statusEl.textContent = "Auto-save failed: " + (err.message || String(err));
-                statusEl.style.color = "var(--danger)";
+                statusEl.style.color = "#dc2626";
               }
             })
             .finally(function () {
@@ -1731,13 +1731,13 @@
   }
 
   .cert-status.installed {
-    background: var(--success-bg);
-    color: var(--success);
+    background: #dcfce7;
+    color: #166534;
   }
 
   .cert-status.missing {
-    background: var(--danger-bg);
-    color: var(--danger);
+    background: #fee2e2;
+    color: #991b1b;
   }
   .passwordWrap {
     position: relative;
