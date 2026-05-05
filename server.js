@@ -140,6 +140,86 @@ const uploadStorage = multer.diskStorage({
 
 const upload = multer({ storage: uploadStorage });
 
+const DEFAULT_BRAND_TOKENS = {
+  dark: {
+    bg: "#0b0b0b",
+    panel: "#121212",
+    card: "#1c1c1e",
+    text: "#ffffff",
+    muted: "#8e8e93",
+    line: "#38383a",
+    primary: "#0a84ff",
+    primaryHover: "#3b7cff",
+  },
+  light: {
+    bg: "#f3f4f6",
+    panel: "#ffffff",
+    card: "#f9fafb",
+    text: "#020617",
+    muted: "#4b5563",
+    line: "#e5e7eb",
+    primary: "#2563eb",
+    primaryHover: "#1d4ed8",
+  },
+  fonts: {
+    body: "IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    heading: "IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    mono: "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  },
+};
+
+function sanitizeHexColor(raw, fallback) {
+  const value = String(raw || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(value) || /^#[0-9a-fA-F]{3}$/.test(value)) {
+    return value.toLowerCase();
+  }
+  return fallback;
+}
+
+function sanitizeFontStack(raw, fallback) {
+  const value = String(raw || "").replace(/[\r\n]/g, " ").trim();
+  if (!value || value.length > 180) return fallback;
+  if (!/^[a-zA-Z0-9,\- "'._]+$/.test(value)) return fallback;
+  return value;
+}
+
+function buildBrandTokens(settings) {
+  const cfg = settings || {};
+  return {
+    dark: {
+      bg: sanitizeHexColor(cfg.BRAND_DARK_BG, DEFAULT_BRAND_TOKENS.dark.bg),
+      panel: sanitizeHexColor(cfg.BRAND_DARK_PANEL, DEFAULT_BRAND_TOKENS.dark.panel),
+      card: sanitizeHexColor(cfg.BRAND_DARK_CARD, DEFAULT_BRAND_TOKENS.dark.card),
+      text: sanitizeHexColor(cfg.BRAND_DARK_TEXT, DEFAULT_BRAND_TOKENS.dark.text),
+      muted: sanitizeHexColor(cfg.BRAND_DARK_MUTED, DEFAULT_BRAND_TOKENS.dark.muted),
+      line: sanitizeHexColor(cfg.BRAND_DARK_LINE, DEFAULT_BRAND_TOKENS.dark.line),
+      primary: sanitizeHexColor(cfg.BRAND_DARK_PRIMARY, DEFAULT_BRAND_TOKENS.dark.primary),
+      primaryHover: sanitizeHexColor(
+        cfg.BRAND_DARK_PRIMARY_HOVER,
+        DEFAULT_BRAND_TOKENS.dark.primaryHover
+      ),
+    },
+    light: {
+      bg: sanitizeHexColor(cfg.BRAND_LIGHT_BG, DEFAULT_BRAND_TOKENS.light.bg),
+      panel: sanitizeHexColor(cfg.BRAND_LIGHT_PANEL, DEFAULT_BRAND_TOKENS.light.panel),
+      card: sanitizeHexColor(cfg.BRAND_LIGHT_CARD, DEFAULT_BRAND_TOKENS.light.card),
+      text: sanitizeHexColor(cfg.BRAND_LIGHT_TEXT, DEFAULT_BRAND_TOKENS.light.text),
+      muted: sanitizeHexColor(cfg.BRAND_LIGHT_MUTED, DEFAULT_BRAND_TOKENS.light.muted),
+      line: sanitizeHexColor(cfg.BRAND_LIGHT_LINE, DEFAULT_BRAND_TOKENS.light.line),
+      primary: sanitizeHexColor(cfg.BRAND_LIGHT_PRIMARY, DEFAULT_BRAND_TOKENS.light.primary),
+      primaryHover: sanitizeHexColor(
+        cfg.BRAND_LIGHT_PRIMARY_HOVER,
+        DEFAULT_BRAND_TOKENS.light.primaryHover
+      ),
+    },
+    fonts: {
+      body: sanitizeFontStack(cfg.BRAND_FONT_BODY, DEFAULT_BRAND_TOKENS.fonts.body),
+      heading: sanitizeFontStack(cfg.BRAND_FONT_HEADING, DEFAULT_BRAND_TOKENS.fonts.heading),
+      mono: sanitizeFontStack(cfg.BRAND_FONT_MONO, DEFAULT_BRAND_TOKENS.fonts.mono),
+    },
+  };
+}
+
 // Expose settings + theme/logo + current path to all views (for sidebar active state)
 app.use((req, res, next) => {
   try {
@@ -151,12 +231,14 @@ app.use((req, res, next) => {
     // Server default is used when no per-device theme has been saved yet.
     res.locals.brandTheme = defaultTheme === "light" ? "light" : "dark";
     res.locals.brandLogoUrl = settings.BRAND_LOGO_URL || "";
+    res.locals.brandTokens = buildBrandTokens(settings);
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
   } catch (err) {
     console.warn("Failed to load settings for request:", err?.message || err);
     res.locals.settings = {};
     res.locals.brandTheme = "dark";
     res.locals.brandLogoUrl = "";
+    res.locals.brandTokens = buildBrandTokens({});
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
   }
   next();
