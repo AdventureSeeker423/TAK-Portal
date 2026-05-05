@@ -8,6 +8,12 @@ const agenciesStore = require("../services/agencies.service");
 const userRequestsSvc = require("../services/userRequests.service");
 
 router.get("/", async (req, res) => {
+  const user = req.authentikUser;
+  const isAdmin = !!(user && (user.isGlobalAdmin || user.isAgencyAdmin));
+  if (!isAdmin) {
+    return res.redirect("/setup-my-device");
+  }
+
   try {
     let snap = dashboardStatsCache.getDashboardStatsSnapshot();
     // First visit after process start used to read all zeros until the delayed background refresh ran.
