@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.6 - 5/5/26
+🐛 `Bug Fix` - Fixes issue with standard users being redirected to the dashboard upon login.
+
 ### v1.3.5 - 5/4/26
 ✨ `Enhancement` - All pages re-optimized for mobile <br>
 ✨ `Enhancement` - Role dropdown added to approve pending user requests<br>
