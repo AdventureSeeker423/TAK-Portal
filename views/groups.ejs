@@ -657,7 +657,8 @@ function agencyItems(){
     .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")))
     .map(a => {
       const sfx = String(a.suffix || "").trim().toLowerCase();
-      return { name: String(a.name || ""), suffix: sfx };
+      const prefix = String(a.groupPrefix || "").trim().toUpperCase();
+      return { name: String(a.name || ""), suffix: sfx, prefix };
     });
 }
 
@@ -855,7 +856,7 @@ function renderAgencyList(){
   });
 
   agencyList.innerHTML = items.map(x => {
-    const label = `${x.name} (${x.suffix})`;
+    const label = x.prefix ? `${x.name} (${x.prefix})` : `${x.name} (${x.suffix})`;
     return `
       <label class="groupItem">
         <input type="checkbox" class="agencyChk" value="${esc(x.suffix)}" />
