@@ -65,6 +65,9 @@
 
 <main class="main" style="max-width: 980px; margin: 0 auto;">
   <h1>Request TAK Portal Access</h1>
+  <%
+    const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Radio ID / Callsign";
+  %>
 
   <div class="card">
     <p>
@@ -89,7 +92,7 @@
         <input name="email" type="email" required value="<%= (form && form.email) ? form.email : '' %>" />
       </label>
 
-      <label>Badge Number / Radio ID / Callsign
+      <label><%= usernamePrefixLabel %>
         <input
           name="badgeNumber"
           required

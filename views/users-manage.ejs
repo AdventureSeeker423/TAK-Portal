@@ -3,6 +3,9 @@
 
 <main class="main">
   <h1>Users</h1>
+  <%
+    const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Radio ID / Callsign";
+  %>
 
   <% if (typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0) { %>
     <a href="/pending-user-requests" style="text-decoration:none;">
@@ -26,11 +29,11 @@
     <h2>Create User</h2>
 
     <form id="createForm" class="grid2" autocomplete="off">
-      <label>Badge Number / Radio ID / Callsign
+      <label><%= usernamePrefixLabel %>
         <input
           type="text"
           name="badge"
-          placeholder="Enter Badge Number / Radio ID / Callsign or Username"
+          placeholder="Enter <%= usernamePrefixLabel %> or Username"
           pattern="[A-Za-z0-9._-]+"
           title="Use letters, numbers, periods, dashes, and underscores only."
           required
