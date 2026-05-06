@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.9 - 5/6/26
+🐛 `Bug Fix` - Fixes issue with user roles bouncing back to Team Member upon editing<br>
+✨ `Enhancement` - Editing a user will now display the name of the template that is applied to users if their current user groups match a template
+
 ### v1.3.8 - 5/6/26
 ✨ `Enhancement` - Move server sided filtering based off suffix to query Authentik API user attributes<br>
 
