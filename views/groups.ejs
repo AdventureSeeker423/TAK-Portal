@@ -2036,6 +2036,8 @@ massApplyBtn.onclick = async () => {
       if (!res.ok) {
         return setMsg(massMsg, out.error || "Template update failed", false);
       }
+      await loadTemplatesForMassModal();
+      renderTemplateSourceList();
       return setMsg(
         massMsg,
         `Updated ${Number(out.updated || 0)} template(s). Skipped ${Number(out.skipped || 0)}.`,
