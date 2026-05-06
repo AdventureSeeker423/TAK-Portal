@@ -300,6 +300,15 @@ function setMsg(text, ok=true){
   msg.className = "msg " + (ok ? "ok" : "bad");
 }
 
+function formatTemplateSyncStatus(sync) {
+  const s = sync && typeof sync === "object" ? sync : {};
+  const matched = Number(s.matched || 0);
+  const updated = Number(s.updated || 0);
+  const groupsUpdated = Number(s.groupsUpdated || 0);
+  const templateAttrUpdated = Number(s.templateAttrUpdated || 0);
+  return `Users matched: ${matched}, updated: ${updated}, groups updated: ${groupsUpdated}, template tag updated: ${templateAttrUpdated}.`;
+}
+
 function esc(s){
   return String(s ?? "")
     .replaceAll("&","&amp;")
@@ -503,7 +512,8 @@ window.deleteTemplate = async (idx) => {
     return;
   }
 
-  setMsg("Template deleted", true);
+  const syncMsg = out?.currentTemplateSync ? ` ${formatTemplateSyncStatus(out.currentTemplateSync)}` : "";
+  setMsg(`Template deleted.${syncMsg}`, true);
 
   if (editingIndex === idx) setCreateMode();
 
@@ -570,7 +580,12 @@ form.onsubmit = async (e) => {
     return;
   }
 
-  setMsg(isEdit ? "Template updated" : "Template created", true);
+  if (isEdit) {
+    const syncMsg = out?.currentTemplateSync ? ` ${formatTemplateSyncStatus(out.currentTemplateSync)}` : "";
+    setMsg(`Template updated.${syncMsg}`, true);
+  } else {
+    setMsg("Template created", true);
+  }
   await loadTemplates();
   setCreateMode();
 };

@@ -2469,6 +2469,163 @@ async function bulkSetCurrentTemplateForAgencyUsers({
   };
 }
 
+function normalizeIdSet(arr) {
+  return new Set(
+    (Array.isArray(arr) ? arr : [])
+      .map((x) => String(x || "").trim())
+      .filter(Boolean)
+  );
+}
+
+function idSetsEqual(a, b) {
+  if (a.size !== b.size) return false;
+  for (const v of a) {
+    if (!b.has(v)) return false;
+  }
+  return true;
+}
+
+/**
+ * Sync users tied to a template after template save.
+ * Efficient path:
+ * - One paged Authentik query filtered by agency + current_template
+ * - One PATCH per matched user (attributes and/or groups)
+ */
+async function syncUsersForTemplateSave({
+  agencySuffix,
+  fromTemplateName,
+  toTemplateName,
+  templateGroupNames,
+  applyGroupOverwrite = false,
+} = {}) {
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  const fromName = String(fromTemplateName || "").trim();
+  const toName = String(toTemplateName || "").trim() || fromName;
+  if (!sfx || !fromName) {
+    return { matched: 0, updated: 0, groupsUpdated: 0, templateAttrUpdated: 0 };
+  }
+
+  let targetVisibleTemplateGroupIds = [];
+  let visibleGroupIdSet = new Set();
+  if (applyGroupOverwrite) {
+    const allVisibleGroups = await getAllGroups({ includeHidden: false });
+    const byName = new Map(
+      (Array.isArray(allVisibleGroups) ? allVisibleGroups : []).map((g) => [
+        String(g?.name || "").trim().toLowerCase(),
+        String(g?.pk || "").trim(),
+      ])
+    );
+    visibleGroupIdSet = new Set(
+      (Array.isArray(allVisibleGroups) ? allVisibleGroups : [])
+        .map((g) => String(g?.pk || "").trim())
+        .filter(Boolean)
+    );
+    targetVisibleTemplateGroupIds = Array.from(
+      new Set(
+        (Array.isArray(templateGroupNames) ? templateGroupNames : [])
+          .map((n) => byName.get(String(n || "").trim().toLowerCase()) || "")
+          .filter(Boolean)
+      )
+    );
+  }
+
+  let usersToSync = [];
+  let page = 1;
+  let hasNext = true;
+  const pageSize = 200;
+
+  while (hasNext) {
+    const params = {
+      page,
+      page_size: pageSize,
+      include_groups: "true",
+      include_roles: "false",
+      attributes: JSON.stringify({
+        agency: sfx,
+        current_template: fromName,
+      }),
+    };
+    const res = await api.get("/core/users/", { params });
+    const data = res?.data || {};
+    const rows = Array.isArray(data.results) ? data.results : [];
+    usersToSync = usersToSync.concat(rows);
+
+    const pagination = data.pagination || {};
+    if (pagination && pagination.next) {
+      page = pagination.next;
+      hasNext = true;
+    } else if (data.next) {
+      page += 1;
+      hasNext = true;
+    } else {
+      hasNext = false;
+    }
+  }
+
+  let updated = 0;
+  let groupsUpdated = 0;
+  let templateAttrUpdated = 0;
+
+  for (const u of usersToSync) {
+    const uid = String(u?.pk ?? u?.id ?? "").trim();
+    if (!uid) continue;
+
+    const attrs = u?.attributes && typeof u.attributes === "object" ? u.attributes : {};
+    const currentTemplate = String(attrs.current_template || "").trim();
+    const currentAgency = String(attrs.agency || "").trim().toLowerCase();
+    if (currentTemplate !== fromName || currentAgency !== sfx) continue;
+
+    const beforeGroups = Array.isArray(u?.groups) ? u.groups.map((x) => String(x)) : [];
+    const beforeSet = normalizeIdSet(beforeGroups);
+    let nextGroups = beforeGroups.slice();
+
+    if (applyGroupOverwrite) {
+      const preservedUnknown = beforeGroups.filter((id) => !visibleGroupIdSet.has(String(id)));
+      nextGroups = Array.from(new Set([...preservedUnknown, ...targetVisibleTemplateGroupIds]));
+    }
+
+    const nextSet = normalizeIdSet(nextGroups);
+    const attrsChanged = currentTemplate !== toName;
+    const groupsChanged = !idSetsEqual(beforeSet, nextSet);
+
+    if (!attrsChanged && !groupsChanged) continue;
+
+    const payload = {
+      attributes: {
+        ...attrs,
+        current_template: toName,
+      },
+    };
+    if (groupsChanged) {
+      payload.groups = nextGroups;
+    }
+
+    await api.patch(`/core/users/${uid}/`, payload);
+    updated += 1;
+    if (attrsChanged) templateAttrUpdated += 1;
+    if (groupsChanged) {
+      groupsUpdated += 1;
+      try {
+        scheduleDebouncedGroupsEmail({
+          user: u,
+          beforeIds: beforeGroups,
+          afterIds: nextGroups,
+        });
+      } catch (e) {
+        // Never fail template sync because an email enqueue failed.
+      }
+    }
+  }
+
+  invalidateUsersCache();
+  return {
+    matched: usersToSync.length,
+    updated,
+    groupsUpdated,
+    templateAttrUpdated,
+  };
+}
+
 // Add groups to a user (merge)
 async function addUserGroups(userId, groupIds, opts = {}) {
   await assertUserNotActionLocked(userId);
@@ -2806,4 +2963,5 @@ module.exports = {
   getUsersByGroups,
   getUsersByUsernames,
   bulkSetCurrentTemplateForAgencyUsers,
+  syncUsersForTemplateSave,
 };

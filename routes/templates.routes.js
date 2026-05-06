@@ -108,7 +108,7 @@ router.post("/", (req, res) => {
     },
   });
 
-  res.json({ success: true });
+  res.json({ success: true, currentTemplateSync });
 });
 
 router.put("/:index", async (req, res) => {
@@ -158,11 +158,26 @@ router.put("/:index", async (req, res) => {
     const oldName = String(existing?.name || "").trim();
     const newName = String(t?.name || "").trim();
     const oldAgency = String(existing?.agencySuffix || "").trim().toLowerCase();
-    if (oldName && newName && oldAgency && oldName !== newName) {
-      currentTemplateSync = await usersSvc.bulkSetCurrentTemplateForAgencyUsers({
+    const beforeGroups = Array.isArray(existing?.groups)
+      ? existing.groups.map((g) => String(g || "").trim()).filter(Boolean)
+      : [];
+    const afterGroups = Array.isArray(t?.groups)
+      ? t.groups.map((g) => String(g || "").trim()).filter(Boolean)
+      : [];
+    const beforeSet = new Set(beforeGroups);
+    const afterSet = new Set(afterGroups);
+    const groupsChanged =
+      beforeSet.size !== afterSet.size ||
+      Array.from(beforeSet).some((g) => !afterSet.has(g));
+    const nameChanged = oldName !== newName;
+
+    if (oldName && newName && oldAgency && (nameChanged || groupsChanged)) {
+      currentTemplateSync = await usersSvc.syncUsersForTemplateSave({
         agencySuffix: oldAgency,
-        fromTemplate: oldName,
-        toTemplate: newName,
+        fromTemplateName: oldName,
+        toTemplateName: newName,
+        templateGroupNames: afterGroups,
+        applyGroupOverwrite: groupsChanged,
       });
     } else {
       currentTemplateSync = { matched: 0, updated: 0 };
@@ -189,7 +204,7 @@ router.put("/:index", async (req, res) => {
     },
   });
 
-  res.json({ success: true });
+  res.json({ success: true, currentTemplateSync });
 });
 
 router.delete("/:index", async (req, res) => {
