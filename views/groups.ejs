@@ -233,6 +233,7 @@
       <div class="segmented" style="margin-top:4px;">
         <button class="segBtn active" type="button" data-mode="agency">Entire agencies (suffix)</button>
         <button class="segBtn" type="button" data-mode="group">Users with existing group(s)</button>
+        <button class="segBtn" type="button" data-mode="template">Templates</button>
         <button class="segBtn" type="button" data-mode="users">Specific users</button>
       </div>
 
@@ -268,6 +269,23 @@
         </div>
         <div id="sourceGroupList" class="groupsBox" style="margin-top:10px;"></div>
         <small>Select one or more existing groups; all users in any selected group will also get the target group.</small>
+      </div>
+
+      <!-- Template mode -->
+      <div id="massTemplatePane" style="display:none; margin-top:14px;">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <input
+            id="templateSearch"
+            placeholder="Search templates..."
+            style="flex: 1; min-width: 0;"
+          />
+          <div class="row" style="gap:10px;">
+            <button class="btn" id="templateSelectAll" type="button">Select All</button>
+            <button class="btn" id="templateClearAll" type="button">Clear</button>
+          </div>
+        </div>
+        <div id="templateList" class="groupsBox" style="margin-top:10px;"></div>
+        <small>Select templates to <span id="templateModeVerb">add</span> this group on each template.</small>
       </div>
 
       <!-- Users mode -->
@@ -455,6 +473,7 @@ const massApplyBtn = document.getElementById("massApplyBtn");
 
 const massAgencyPane = document.getElementById("massAgencyPane");
 const massGroupPane = document.getElementById("massGroupPane");
+const massTemplatePane = document.getElementById("massTemplatePane");
 const massUsersPane = document.getElementById("massUsersPane");
 
 const agencySearch = document.getElementById("agencySearch");
@@ -466,6 +485,12 @@ const sourceGroupSearch = document.getElementById("sourceGroupSearch");
 const sourceGroupList = document.getElementById("sourceGroupList");
 const groupSelectAll = document.getElementById("groupSelectAll");
 const groupClearAll = document.getElementById("groupClearAll");
+
+const templateSearch = document.getElementById("templateSearch");
+const templateList = document.getElementById("templateList");
+const templateSelectAll = document.getElementById("templateSelectAll");
+const templateClearAll = document.getElementById("templateClearAll");
+const templateModeVerb = document.getElementById("templateModeVerb");
 
 const userSearch = document.getElementById("userSearch");
 const userList = document.getElementById("userList");
@@ -507,9 +532,11 @@ let activeMassGroupId = "";
 let activeMassGroupName = "";
 let usersSearchCache = [];
 let massMode = "agency";
+let templatesCache = [];
 
 const selectedSourceGroupIds = new Set();
 const selectedUserIds = new Set();
+const selectedTemplateIndices = new Set();
 
 function setMsg(el, text, ok=true){
   el.textContent = text || "";
@@ -1321,6 +1348,7 @@ function setMassAction(next){
   const groupLabel = stripTakPrefix(String(activeMassGroupName || activeMassGroupId || ""));
   massTitle.textContent = `${actionLabel}: ${groupLabel}`.trim();
   massApplyBtn.textContent = actionLabel;
+  if (templateModeVerb) templateModeVerb.textContent = massAction === "assign" ? "add" : "remove";
   setMsg(massMsg, "");
 }
 
@@ -1332,8 +1360,69 @@ function updateMassPanes(){
   const mode = selectedMassMode();
   massAgencyPane.style.display = mode === "agency" ? "block" : "none";
   massGroupPane.style.display = mode === "group" ? "block" : "none";
+  massTemplatePane.style.display = mode === "template" ? "block" : "none";
   massUsersPane.style.display = mode === "users" ? "block" : "none";
   setMsg(massMsg, "");
+}
+
+async function loadTemplatesForMassModal(){
+  try {
+    const res = await fetch("/api/templates");
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error || "Failed to load templates");
+    templatesCache = (Array.isArray(out) ? out : [])
+      .map((t) => ({
+        idx: Number(t?._index),
+        name: String(t?.name || "").trim(),
+        agencySuffix: String(t?.agencySuffix || "").trim().toLowerCase(),
+      }))
+      .filter((t) => Number.isInteger(t.idx) && t.idx >= 0);
+  } catch (_) {
+    templatesCache = [];
+  }
+}
+
+function getAgencyLabelBySuffix(sfxRaw){
+  const sfx = String(sfxRaw || "").trim().toLowerCase();
+  const agency = (agenciesCache || []).find((a) =>
+    String(a?.suffix || "").trim().toLowerCase() === sfx
+  );
+  if (!agency) return sfx.toUpperCase();
+  const name = String(agency?.name || "").trim();
+  const prefix = String(agency?.groupPrefix || "").trim().toUpperCase();
+  return prefix ? `${name} (${prefix})` : name;
+}
+
+function renderTemplateSourceList(){
+  const needle = String(templateSearch?.value || "").trim().toLowerCase();
+  const items = (templatesCache || [])
+    .slice()
+    .sort((a, b) => {
+      const aa = getAgencyLabelBySuffix(a.agencySuffix);
+      const bb = getAgencyLabelBySuffix(b.agencySuffix);
+      const byAgency = aa.localeCompare(bb);
+      if (byAgency !== 0) return byAgency;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    })
+    .filter((t) => {
+      if (!needle) return true;
+      const n = String(t.name || "").toLowerCase();
+      const a = getAgencyLabelBySuffix(t.agencySuffix).toLowerCase();
+      const s = String(t.agencySuffix || "").toLowerCase();
+      return n.includes(needle) || a.includes(needle) || s.includes(needle);
+    });
+
+  templateList.innerHTML = items.map((t) => {
+    const id = String(t.idx);
+    const checked = selectedTemplateIndices.has(id) ? "checked" : "";
+    const label = `${getAgencyLabelBySuffix(t.agencySuffix)} - ${t.name}`;
+    return `
+      <label class="groupItem">
+        <input type="checkbox" class="srcTemplateChk" value="${esc(id)}" ${checked} />
+        <span>${esc(label)}</span>
+      </label>
+    `;
+  }).join("") || `<div style="padding:10px; color: var(--muted);">No templates found.</div>`;
 }
 
 function showEditGroupModal(show){
@@ -1694,10 +1783,13 @@ window.openMassAssign = async (groupId) => {
   usersSearchCache = [];
   selectedSourceGroupIds.clear();
   selectedUserIds.clear();
+  selectedTemplateIndices.clear();
   renderAgencyList();
   renderUserList([]);
   sourceGroupSearch.value = "";
   renderSourceGroupList();
+  if (templateSearch) templateSearch.value = "";
+  renderTemplateSourceList();
 
   setMassMode("agency");
   updateMassPanes();
@@ -1719,10 +1811,13 @@ window.openMassUnassign = async (groupId) => {
   usersSearchCache = [];
   selectedSourceGroupIds.clear();
   selectedUserIds.clear();
+  selectedTemplateIndices.clear();
   renderAgencyList();
   renderUserList([]);
   sourceGroupSearch.value = "";
   renderSourceGroupList();
+  if (templateSearch) templateSearch.value = "";
+  renderTemplateSourceList();
 
   setMassMode("agency");
   updateMassPanes();
@@ -1861,6 +1956,35 @@ sourceGroupList.addEventListener("change", (e) => {
   else selectedSourceGroupIds.delete(id);
 });
 
+if (templateSearch) {
+  templateSearch.oninput = renderTemplateSourceList;
+}
+if (templateSelectAll) {
+  templateSelectAll.onclick = () => {
+    templateList.querySelectorAll("input.srcTemplateChk").forEach((c) => {
+      const id = String(c.value || "").trim();
+      if (id) selectedTemplateIndices.add(id);
+    });
+    renderTemplateSourceList();
+  };
+}
+if (templateClearAll) {
+  templateClearAll.onclick = () => {
+    selectedTemplateIndices.clear();
+    renderTemplateSourceList();
+  };
+}
+if (templateList) {
+  templateList.addEventListener("change", (e) => {
+    const t = e.target;
+    if (!(t && t.classList && t.classList.contains("srcTemplateChk"))) return;
+    const id = String(t.value || "").trim();
+    if (!id) return;
+    if (t.checked) selectedTemplateIndices.add(id);
+    else selectedTemplateIndices.delete(id);
+  });
+}
+
 massApplyBtn.onclick = async () => {
   setMsg(massMsg, "");
   if (!activeMassGroupId) return setMsg(massMsg, "No target group selected.", false);
@@ -1895,6 +2019,36 @@ massApplyBtn.onclick = async () => {
     const actionVerb = massAction === "unassign" ? "unassign" : "assign";
     if (!confirm(`Mass ${actionVerb} "${activeMassGroupName}" ${actionVerb === "assign" ? "to" : "from"} ${userIds.length} user(s)?`)) return;
     payload.userIds = userIds;
+  }
+
+  if (mode === "template") {
+    const templateIndices = Array.from(selectedTemplateIndices);
+    if (!templateIndices.length) return setMsg(massMsg, "Select one or more templates.", false);
+    const actionVerb = massAction === "unassign" ? "remove" : "add";
+    if (!confirm(`${actionVerb === "add" ? "Add" : "Remove"} "${activeMassGroupName}" ${actionVerb === "add" ? "to" : "from"} ${templateIndices.length} template(s)?`)) return;
+
+    try {
+      const res = await fetch("/api/templates/bulk-group-update", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          action: actionVerb,
+          groupName: activeMassGroupName,
+          templateIndices,
+        })
+      });
+      const out = await res.json();
+      if (!res.ok) {
+        return setMsg(massMsg, out.error || "Template update failed", false);
+      }
+      return setMsg(
+        massMsg,
+        `Updated ${Number(out.updated || 0)} template(s). Skipped ${Number(out.skipped || 0)}.`,
+        true
+      );
+    } catch (e) {
+      return setMsg(massMsg, "Template update failed", false);
+    }
   }
 
   const startEndpoint = massAction === "unassign" ? "/api/groups/mass-unassign/start" : "/api/groups/mass-assign/start";
@@ -1981,6 +2135,7 @@ if (reloadBtn) reloadBtn.onclick = loadGroups;
   if (editType) editType.onchange();
   initGroupSort();
   await loadAgencies();
+  await loadTemplatesForMassModal();
   updateGroupScopeDetailOptions();
   await loadGroups();
 })();

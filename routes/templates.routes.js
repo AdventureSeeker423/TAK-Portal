@@ -203,4 +203,110 @@ router.delete("/:index", (req, res) => {
   res.json({ success: true });
 });
 
+router.post("/bulk-group-update", (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const actionRaw = String(req.body?.action || "").trim().toLowerCase();
+    const action = actionRaw === "remove" ? "remove" : actionRaw === "add" ? "add" : "";
+    if (!action) {
+      return res.status(400).json({ error: "Action must be 'add' or 'remove'." });
+    }
+
+    const groupName = String(req.body?.groupName || "").trim();
+    if (!groupName) {
+      return res.status(400).json({ error: "Group name is required." });
+    }
+
+    const indices = Array.isArray(req.body?.templateIndices)
+      ? req.body.templateIndices
+          .map((v) => Number(v))
+          .filter((n) => Number.isInteger(n) && n >= 0)
+      : [];
+    if (!indices.length) {
+      return res.status(400).json({ error: "Select one or more templates." });
+    }
+
+    const templates = store.load();
+    const uniqueIndices = Array.from(new Set(indices));
+    let updated = 0;
+    let skipped = 0;
+    const touched = [];
+
+    for (const idx of uniqueIndices) {
+      const tpl = templates[idx];
+      if (!tpl) {
+        skipped += 1;
+        continue;
+      }
+
+      const sfx = String(tpl.agencySuffix || "").trim().toLowerCase();
+      if (sfx && !accessSvc.isSuffixAllowed(authUser, sfx)) {
+        skipped += 1;
+        continue;
+      }
+
+      const groups = Array.isArray(tpl.groups)
+        ? tpl.groups.map((g) => String(g || "").trim()).filter(Boolean)
+        : [];
+
+      let nextGroups = groups.slice();
+      if (action === "add") {
+        if (nextGroups.includes(groupName)) {
+          skipped += 1;
+          continue;
+        }
+        nextGroups = Array.from(new Set([...nextGroups, groupName]));
+      } else {
+        if (!nextGroups.includes(groupName)) {
+          skipped += 1;
+          continue;
+        }
+        nextGroups = nextGroups.filter((g) => g !== groupName);
+        if (!nextGroups.length) {
+          skipped += 1;
+          continue;
+        }
+      }
+
+      templates[idx] = {
+        ...tpl,
+        groups: nextGroups,
+      };
+      updated += 1;
+      touched.push({
+        index: idx,
+        name: String(tpl.name || "").trim(),
+        agencySuffix: sfx,
+      });
+    }
+
+    if (updated > 0) {
+      store.save(templates);
+    }
+
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: action === "add" ? "BULK_ADD_GROUP_TO_TEMPLATES" : "BULK_REMOVE_GROUP_FROM_TEMPLATES",
+      targetType: "template",
+      targetId: "bulk",
+      details: {
+        groupName,
+        templateIndicesRequested: uniqueIndices.length,
+        templatesUpdated: updated,
+        templatesSkipped: skipped,
+        touched,
+      },
+    });
+
+    return res.json({
+      success: true,
+      updated,
+      skipped,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err?.message || "Bulk template update failed" });
+  }
+});
+
 module.exports = router;
