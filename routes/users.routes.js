@@ -7,7 +7,7 @@ const accessSvc = require("../services/access.service");
 const userRequestsSvc = require("../services/userRequests.service");
 const qrSvc = require("../services/qr.service");
 const tokensSvc = require("../services/authentikTokens.service");
-const { getString } = require("../services/env");
+const { getString, getBool } = require("../services/env");
 const auditSvc = require("../services/auditLog.service");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 
@@ -636,7 +636,7 @@ router.get("/import-csv/status/:jobId", (req, res) => {
  *
  * - Global admins: unchanged (still use users.searchUsersPaged -> Authentik pagination).
  * - Non-global (agency) admins: deterministic in-memory paging over the
- *   fully filtered set using users.findUsers + accessSvc.isUsernameInAllowedAgencies.
+ *   fully filtered set using users.findUsers + accessSvc.isUserInAllowedAgencies.
  *
  * This ensures:
  *   - total is exact for what the agency admin can see
@@ -813,10 +813,10 @@ router.get("/search", async (req, res) => {
           // Only run the extra check when the attribute-filtered total is
           // suspiciously small for the requested page size.
           if (!qVal && totalAgencyAll <= pageSize) {
-            // Validate against exact username-suffix visibility.
+            // Validate against full user visibility (Authentik attributes, then username tail).
             const allMatching = await users.findUsers({ q: "", forceRefresh: false });
             const visibleApprox = (Array.isArray(allMatching) ? allMatching : []).filter(
-              (u) => accessSvc.isUsernameInAllowedAgencies(authUser, u.username)
+              (u) => accessSvc.isUserInAllowedAgencies(authUser, u)
             );
             const totalApprox = visibleApprox.length;
 
@@ -1081,7 +1081,7 @@ router.get("/search", async (req, res) => {
     const allMatching = await users.findUsers({ q, forceRefresh: false });
 
     let visible = allMatching.filter((u) =>
-      accessSvc.isUsernameInAllowedAgencies(authUser, u.username)
+      accessSvc.isUserInAllowedAgencies(authUser, u)
     );
 
     if (access.isAgencyAdmin && globalAdminSet.size) {
@@ -1157,7 +1157,17 @@ router.get("/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (!accessSvc.isUsernameInAllowedAgencies(authUser, user.username)) {
+    if (getBool(accessSvc.SHADOW_ENV, false)) {
+      const cmp = accessSvc.compareAgencyResolutionToUsernameInference(user);
+      if (cmp.mismatch && (cmp.resolved || cmp.inferred)) {
+        console.warn(
+          "[ACCESS] GET /api/users/:id shadow: attribute resolution differs from username-only inference",
+          { userId: user.pk, username: user.username, resolved: cmp.resolved, inferred: cmp.inferred }
+        );
+      }
+    }
+
+    if (!accessSvc.isUserInAllowedAgencies(authUser, user)) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -1454,8 +1464,19 @@ router.post("/enroll-qr", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Missing userId or username" });
     }
 
+    const targetUser = await users.getUserById(userId).catch(() => null);
+    if (!targetUser || targetUser.pk == null) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+    if (String(targetUser.username || "").trim() !== username) {
+      return res.status(400).json({
+        ok: false,
+        error: "Username does not match the selected user.",
+      });
+    }
+
     // Enforce agency-scoped admins can only generate for their allowed agencies
-    if (!access.isGlobalAdmin && !accessSvc.isUsernameInAllowedAgencies(authUser, username)) {
+    if (!access.isGlobalAdmin && !accessSvc.isUserInAllowedAgencies(authUser, targetUser)) {
       return res.status(403).json({ ok: false, error: "You do not have access to that user." });
     }
 
@@ -1470,11 +1491,12 @@ router.post("/enroll-qr", async (req, res) => {
 
     const { identifier, key, expiresAt } =
       await tokensSvc.getOrCreateEnrollmentAppPassword({
-        username,
+        username: String(targetUser.username || "").trim(),
         userId,
       });
 
-    const enrollUrl = qrSvc.buildEnrollUrl({ username, token: key });
+    const canonicalUsername = String(targetUser.username || "").trim();
+    const enrollUrl = qrSvc.buildEnrollUrl({ username: canonicalUsername, token: key });
     const qrCode = await qrSvc.generateDisplayQrDataUrl(enrollUrl);
 
     // Audit (never store token/key)
@@ -1484,12 +1506,12 @@ router.post("/enroll-qr", async (req, res) => {
       action: "GENERATE_ENROLLMENT_QR",
       targetType: "user",
       targetId: String(userId),
-      details: { username, tokenIdentifier: identifier, expiresAt },
+      details: { username: canonicalUsername, tokenIdentifier: identifier, expiresAt },
     });
 
     return res.json({
       ok: true,
-      username,
+      username: canonicalUsername,
       tokenIdentifier: identifier,
       token: key,
       expiresAt,

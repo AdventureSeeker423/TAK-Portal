@@ -39,6 +39,7 @@ router.get("/subscriptions", async (req, res) => {
 
   try {
     const result = await getSubscriptionsAll();
+    // TAK subscription rows only include usernames (no Authentik attributes).
     if (result.data && result.configured && user && user.isAgencyAdmin && !user.isGlobalAdmin) {
       result.data = result.data.filter((item) =>
         accessSvc.isUsernameInAllowedAgencies(user, item && item.username)

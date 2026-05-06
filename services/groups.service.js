@@ -691,7 +691,7 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
   function restrictToAllowedAgencies(userList) {
     if (access.isGlobalAdmin) return userList;
     return userList.filter((u) =>
-      accessSvc.isUsernameInAllowedAgencies(authUser, u?.username)
+      accessSvc.isUserInAllowedAgencies(authUser, u)
     );
   }
   function dedupeUsersByPk(userList) {
@@ -816,7 +816,7 @@ async function getGroupMembers(groupId, { authUser, agencyAbbreviation } = {}) {
   const access = accessSvc.getAgencyAccess(authUser || null);
   if (!access.isGlobalAdmin) {
     members = members.filter((u) =>
-      accessSvc.isUsernameInAllowedAgencies(authUser || null, u?.username)
+      accessSvc.isUserInAllowedAgencies(authUser || null, u)
     );
   }
 
@@ -846,7 +846,7 @@ async function getGroupMembersPaged(groupId, { authUser, agencyAbbreviation, pag
   const access = accessSvc.getAgencyAccess(authUser || null);
   if (!access.isGlobalAdmin) {
     members = members.filter((u) =>
-      accessSvc.isUsernameInAllowedAgencies(authUser || null, u?.username)
+      accessSvc.isUserInAllowedAgencies(authUser || null, u)
     );
   }
 
@@ -885,7 +885,7 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
 
   function restrictToAllowedAgencies(userList) {
     if (access.isGlobalAdmin) return userList;
-    return userList.filter((u) => accessSvc.isUsernameInAllowedAgencies(authUser, u?.username));
+    return userList.filter((u) => accessSvc.isUserInAllowedAgencies(authUser, u));
   }
   function dedupeUsersByPk(userList) {
     const seen = new Set();

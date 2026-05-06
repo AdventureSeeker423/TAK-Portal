@@ -55,10 +55,9 @@ function distinctEmails(list) {
 async function resolveRecipients({ authUser, mode, agencies, groupIds, usernames }) {
   const access = accessSvc.getAgencyAccess(authUser);
 
-  // Agency filter utility
+  // Agency filter utility (Authentik user attributes, then username tail)
   function isUserInAllowedAgency(user) {
-    const username = user?.username || user?.name || "";
-    return accessSvc.isUsernameInAllowedAgencies(authUser, username);
+    return accessSvc.isUserInAllowedAgencies(authUser, user);
   }
 
   let users = [];
@@ -80,8 +79,9 @@ async function resolveRecipients({ authUser, mode, agencies, groupIds, usernames
       (suffixes || []).map((s) => String(s || "").trim().toLowerCase())
     );
     users = all.filter((u) => {
-      const inferredSuffix = accessSvc.inferAgencySuffixFromUsername(u?.username || "");
-      const match = inferredSuffix && suffixSet.has(String(inferredSuffix).toLowerCase());
+      const resolvedSuffix = accessSvc.resolveAgencySuffixFromUser(u);
+      const match =
+        resolvedSuffix && suffixSet.has(String(resolvedSuffix).toLowerCase());
       return match && isUserInAllowedAgency(u);
     });
   } else if (mode === "groups") {

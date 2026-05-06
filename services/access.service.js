@@ -10,6 +10,18 @@
 // Global admins still come from PORTAL_AUTH_REQUIRED_GROUP via portalAuth.middleware.
 
 const agenciesStore = require("./agencies.service");
+const { getBool } = require("./env");
+
+/**
+ * Set to true/1/yes/on (env or Settings key) to log when a user's agency suffix
+ * is inferred from username tail after attributes did not yield a match.
+ */
+const LOG_FALLBACK_ENV = "PORTAL_USER_ACCESS_LOG_FALLBACK";
+/**
+ * Set to true on GET /api/users/:id to log when resolveAgencySuffixFromUser(user)
+ * disagrees with inferAgencySuffixFromUsername(user.username) (rollout diagnostics).
+ */
+const SHADOW_ENV = "PORTAL_USER_ACCESS_SHADOW_COMPARE";
 
 function normalizeSuffix(value) {
   return String(value || "").trim().toLowerCase();
@@ -49,6 +61,69 @@ function inferAgencySuffixFromUsername(username) {
   }
 
   return bestSuffix;
+}
+
+/**
+ * Resolve the portal agency suffix for a user from Authentik attributes, then username.
+ * Order: attributes.agency (validated) → agency_name → agency_abbreviation → username tail.
+ *
+ * @param {object|null|undefined} user - Authentik user shape ({ username, attributes })
+ * @returns {string} normalized suffix or ""
+ */
+function resolveAgencySuffixFromUser(user) {
+  const agencies = agenciesStore.load();
+  const suffixSet = new Set(
+    agencies.map((a) => normalizeSuffix(a && a.suffix)).filter(Boolean)
+  );
+
+  const attrs =
+    user && typeof user === "object" && user.attributes && typeof user.attributes === "object"
+      ? user.attributes
+      : {};
+
+  const fromAgencyAttr = normalizeSuffix(attrs.agency);
+  if (fromAgencyAttr && suffixSet.has(fromAgencyAttr)) {
+    return fromAgencyAttr;
+  }
+
+  const nameVal = String(attrs.agency_name || "").trim();
+  if (nameVal) {
+    const lower = nameVal.toLowerCase();
+    for (const a of agencies) {
+      if (String(a.name || "").trim().toLowerCase() === lower) {
+        return normalizeSuffix(a.suffix);
+      }
+    }
+  }
+
+  const abbr = String(
+    attrs.agency_abbreviation ||
+      attrs.agencyAbbreviation ||
+      attrs.agencyAbbr ||
+      attrs.agencyabbr ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+  if (abbr) {
+    for (const a of agencies) {
+      if (String(a.groupPrefix || "").trim().toLowerCase() === abbr) {
+        return normalizeSuffix(a.suffix);
+      }
+    }
+  }
+
+  const username = user && typeof user === "object" ? user.username : "";
+  const inferred = inferAgencySuffixFromUsername(username);
+
+  if (inferred && getBool(LOG_FALLBACK_ENV, false)) {
+    console.warn(
+      "[ACCESS] resolveAgencySuffixFromUser: username-tail fallback",
+      { username: String(username || "").trim() || null, inferred }
+    );
+  }
+
+  return inferred;
 }
 
 function getAgencyAdminGroupName(agency) {
@@ -201,21 +276,32 @@ function isSuffixAllowed(authUser, suffix) {
 }
 
 /**
- * Does a username belong to any agency the current user can manage?
- * We infer agency from the username suffix: badge + agencySuffix.
+ * Whether the Authentik user object is in an agency the viewer may manage
+ * (attributes first, then username tail).
+ *
+ * @param {object|null} authUser - req.authentikUser
+ * @param {object|null|undefined} targetUser - Authentik user ({ username, attributes })
  */
-function isUsernameInAllowedAgencies(authUser, username) {
+function isUserInAllowedAgencies(authUser, targetUser) {
   const access = getAgencyAccess(authUser);
   if (access.isGlobalAdmin) return true;
 
   const allowed = access.allowedAgencySuffixes || [];
   if (!allowed.length) return false;
 
-  const inferredSuffix = inferAgencySuffixFromUsername(username);
-  if (!inferredSuffix) return false;
+  const suffix = resolveAgencySuffixFromUser(targetUser);
+  if (!suffix) return false;
 
   const allowedSet = new Set(allowed.map(normalizeSuffix).filter(Boolean));
-  return allowedSet.has(inferredSuffix);
+  return allowedSet.has(suffix);
+}
+
+/**
+ * Same as {@link isUserInAllowedAgencies} when only a username string is known
+ * (e.g. TAK subscription rows). Uses username-tail inference only.
+ */
+function isUsernameInAllowedAgencies(authUser, username) {
+  return isUserInAllowedAgencies(authUser, { username, attributes: {} });
 }
 
 /**
@@ -421,18 +507,39 @@ function filterGroupsForUser(authUser, groups) {
   });
 }
 
+/**
+ * Compare attribute-first resolution vs username-only (for rollout diagnostics).
+ * @returns {{ resolved: string, inferred: string, mismatch: boolean }}
+ */
+function compareAgencyResolutionToUsernameInference(user) {
+  const resolved = resolveAgencySuffixFromUser(user);
+  const inferred = inferAgencySuffixFromUsername(
+    user && typeof user === "object" ? user.username : ""
+  );
+  return {
+    resolved,
+    inferred,
+    mismatch: normalizeSuffix(resolved) !== normalizeSuffix(inferred),
+  };
+}
+
 module.exports = {
   normalizeSuffix,
   normalizeGroupList,
   getAgencyAdminGroupName,
   getAllAgencyAdminGroupNames,
   inferAgencySuffixFromUsername,
+  resolveAgencySuffixFromUser,
   getAllowedAgencySuffixesForGroups,
   hasAnyAgencyAdminsConfigured,
   getAgencyAccess,
   filterAgenciesForUser,
   isSuffixAllowed,
+  isUserInAllowedAgencies,
   isUsernameInAllowedAgencies,
+  compareAgencyResolutionToUsernameInference,
+  LOG_FALLBACK_ENV,
+  SHADOW_ENV,
   getAllowedAdminGroupIdsForUser,
   canUserModifyGroup,
   // Export both names; older routes use getAgencyAndCountyPrefixesForUser.

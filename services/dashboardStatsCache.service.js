@@ -2,6 +2,7 @@ const settingsSvc = require("./settings.service");
 const usersService = require("./users.service");
 const groupsService = require("./groups.service");
 const agenciesStore = require("./agencies.service");
+const accessSvc = require("./access.service");
 
 const DEFAULT_REFRESH_SECONDS = 300;
 const MIN_REFRESH_SECONDS = 30;
@@ -69,40 +70,13 @@ function buildCharts(users, agencies) {
   const bySuffix = new Map();
   for (const a of agenciesNorm) bySuffix.set(a.suffix, a);
 
-  // Optional: build a list of known suffixes for username fallback matching.
-  // Sort longest-first to avoid ".pd" matching before ".lpd", etc.
-  const knownSuffixes = Array.from(bySuffix.keys()).sort(
-    (a, b) => b.length - a.length
-  );
-
   const usersByAgency = {};
   const usersByType = {};
   let unknownAgency = 0;
   let unknownType = 0;
 
   for (const u of users || []) {
-    const username = String(u?.username || "").trim().toLowerCase();
-
-    // 1) Prefer explicit Authentik attribute (this is what the portal writes)
-    const attrs = (u && typeof u === "object" ? u.attributes : null) || {};
-    let suffix = String(attrs.agency || "").trim().toLowerCase();
-
-    // 2) Fallback: common username convention "name.suffix"
-    if (!suffix) {
-      const parts = username.split(".");
-      suffix = parts.length > 1 ? parts[parts.length - 1] : "";
-    }
-
-    // 3) Fallback: endsWith any known suffix (covers cases without dots, etc.)
-    if (!suffix && username) {
-      for (const s of knownSuffixes) {
-        if (username.endsWith(s)) {
-          suffix = s;
-          break;
-        }
-      }
-    }
-
+    const suffix = accessSvc.resolveAgencySuffixFromUser(u);
     const agency = suffix ? bySuffix.get(suffix) : null;
 
     if (!agency) {

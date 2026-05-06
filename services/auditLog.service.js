@@ -1,5 +1,6 @@
 const store = require("./auditLog.store");
 const agenciesSvc = require("./agencies.service");
+const accessSvc = require("./access.service");
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -84,8 +85,30 @@ function inferAgencyFromGroupName(groupName) {
 function inferAgency({ targetType, targetId, details }) {
   const t = safeStr(targetType).trim().toLowerCase();
   if (t === "user" || t === "authentik_user") {
-    // Prefer username if present in details.
-    const username = details && details.username ? details.username : targetId;
+    const username =
+      details && details.username != null && details.username !== ""
+        ? details.username
+        : targetId;
+    const attrs =
+      details && details.attributes && typeof details.attributes === "object"
+        ? details.attributes
+        : null;
+    if (attrs && Object.keys(attrs).length) {
+      const sfx = normalizeSuffix(
+        accessSvc.resolveAgencySuffixFromUser({ username, attributes: attrs })
+      );
+      if (sfx) {
+        const { bySuffix } = getAgenciesIndex();
+        const agency = bySuffix.get(sfx);
+        if (agency) {
+          return {
+            agencySuffix: normalizeSuffix(agency.suffix) || null,
+            agencyName: safeStr(agency.name) || null,
+            agencyPrefix: safeStr(agency.groupPrefix).trim().toUpperCase() || null,
+          };
+        }
+      }
+    }
     return inferAgencyFromUsername(username);
   }
   if (t === "group" || t === "authentik_group") {
