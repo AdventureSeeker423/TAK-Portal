@@ -1415,9 +1415,12 @@ function renderTemplateSourceList(){
     const id = String(t.idx);
     const checked = selectedTemplateIndices.has(id) ? "checked" : "";
     const hasGroup = !!(activeGroupName && Array.isArray(t.groups) && t.groups.includes(activeGroupName));
-    const label = `${getAgencyLabelBySuffix(t.agencySuffix)} - ${t.name}${hasGroup ? " (already includes group)" : ""}`;
+    const label = `${getAgencyLabelBySuffix(t.agencySuffix)} - ${t.name}`;
+    const rowStyle = hasGroup
+      ? "background: rgba(46, 160, 67, 0.18); border: 1px solid rgba(46, 160, 67, 0.45);"
+      : "background: rgba(248, 81, 73, 0.14); border: 1px solid rgba(248, 81, 73, 0.35);";
     return `
-      <label class="groupItem">
+      <label class="groupItem" style="${rowStyle}">
         <input type="checkbox" class="srcTemplateChk" value="${esc(id)}" ${checked} />
         <span>${esc(label)}</span>
       </label>
