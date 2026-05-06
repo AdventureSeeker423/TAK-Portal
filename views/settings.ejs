@@ -1118,6 +1118,8 @@
                   aria-label="Primary button color"
                 />
                 <code id="primaryButtonColorValue"><%= primaryButtonColor %></code>
+                <span id="primaryButtonColorPreview" class="btn" style="pointer-events:none;">Primary Button</span>
+                <button type="button" class="btn" id="resetPrimaryButtonColorBtn">Reset to default</button>
               </div>
               <small class="settings-help">
                 Sets the default color used for primary action buttons across the portal.
@@ -1151,35 +1153,95 @@
                 <% fontOptions.forEach(function (font) { %>
                   <option
                     value="<%= font.value %>"
-                    style="font-family:<%= font.value %>;"
                     <%= font.value === resolvedSiteFont ? "selected" : "" %>
                   >
                     <%= font.label %> - The quick brown fox
                   </option>
                 <% }); %>
               </select>
+              <div style="margin-top:.4rem;">
+                <button type="button" class="btn" id="resetSiteFontFamilyBtn">Reset to default</button>
+              </div>
               <small class="settings-help">
                 Applies globally to the portal UI. Preview: <span id="siteFontPreview" style="font-family:<%= resolvedSiteFont %>;"><%= selectedSiteFontLabel %> - The quick brown fox jumps over the lazy dog.</span>
               </small>
+              <div class="font-preview-list" id="siteFontPreviewList">
+                <% fontOptions.forEach(function (font) { %>
+                  <div
+                    class="font-preview-item <%= font.value === resolvedSiteFont ? 'active' : '' %>"
+                    data-font-value="<%= font.value %>"
+                    style="font-family:<%= font.value %>;"
+                  >
+                    <strong><%= font.label %></strong> - The quick brown fox jumps over the lazy dog.
+                  </div>
+                <% }); %>
+              </div>
             </label>
           </div>
           <script>
             (function () {
               var colorInput = document.getElementById("primaryButtonColorInput");
               var colorValue = document.getElementById("primaryButtonColorValue");
+              var colorPreview = document.getElementById("primaryButtonColorPreview");
+              var colorResetBtn = document.getElementById("resetPrimaryButtonColorBtn");
               var select = document.getElementById("siteFontFamilySelect");
+              var fontResetBtn = document.getElementById("resetSiteFontFamilyBtn");
               var preview = document.getElementById("siteFontPreview");
+              var fontPreviewList = document.getElementById("siteFontPreviewList");
+              var defaultPrimaryButtonColor = "#2563eb";
+              var defaultSiteFontFamily = <%- JSON.stringify(defaultSiteFont) %>;
               function updateColorValue() {
                 if (!colorInput || !colorValue) return;
                 colorValue.textContent = colorInput.value || "";
+                if (colorPreview) {
+                  var selectedColor = colorInput.value || defaultPrimaryButtonColor;
+                  colorPreview.style.background = selectedColor;
+                  colorPreview.style.borderColor = selectedColor;
+                }
+              }
+              function updateActiveFontPreview(value) {
+                if (!fontPreviewList) return;
+                var items = fontPreviewList.querySelectorAll(".font-preview-item");
+                items.forEach(function (item) {
+                  var isActive = item.getAttribute("data-font-value") === value;
+                  item.classList.toggle("active", isActive);
+                });
               }
               function updatePreview() {
                 if (!select || !preview) return;
                 var value = select.value || "";
                 preview.style.fontFamily = value;
+                updateActiveFontPreview(value);
               }
               if (colorInput) colorInput.addEventListener("input", updateColorValue);
+              if (colorResetBtn) {
+                colorResetBtn.addEventListener("click", function () {
+                  if (!colorInput) return;
+                  colorInput.value = defaultPrimaryButtonColor;
+                  colorInput.dispatchEvent(new Event("input", { bubbles: true }));
+                  colorInput.dispatchEvent(new Event("change", { bubbles: true }));
+                });
+              }
               if (select) select.addEventListener("change", updatePreview);
+              if (fontResetBtn) {
+                fontResetBtn.addEventListener("click", function () {
+                  if (!select) return;
+                  select.value = defaultSiteFontFamily;
+                  select.dispatchEvent(new Event("change", { bubbles: true }));
+                });
+              }
+              if (fontPreviewList) {
+                fontPreviewList.addEventListener("click", function (e) {
+                  var item = e.target && e.target.closest
+                    ? e.target.closest(".font-preview-item")
+                    : null;
+                  if (!item || !select) return;
+                  var value = item.getAttribute("data-font-value") || "";
+                  if (!value) return;
+                  select.value = value;
+                  select.dispatchEvent(new Event("change", { bubbles: true }));
+                });
+              }
               updateColorValue();
               updatePreview();
             })();
@@ -1793,6 +1855,35 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .font-preview-list {
+    margin-top: 0.5rem;
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card) 92%, #0000);
+  }
+
+  .font-preview-item {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+
+  .font-preview-item:last-child {
+    border-bottom: none;
+  }
+
+  .font-preview-item:hover {
+    background: rgba(37, 99, 235, 0.14);
+  }
+
+  .font-preview-item.active {
+    background: rgba(37, 99, 235, 0.24);
+    outline: 1px solid rgba(37, 99, 235, 0.55);
   }
   </style>
 </main>
