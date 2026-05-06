@@ -1800,7 +1800,10 @@ async function applyGroupChange(groupId, shouldBeMember){
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupIds: [String(groupId)] }),
+      body: JSON.stringify({
+        groupIds: [String(groupId)],
+        currentTemplate: "Manual Group Selection",
+      }),
     });
   } catch (err) {
     setMsgEl(actionMsg, "Network error while updating groups", false);
@@ -2636,7 +2639,10 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
     res = await fetch(`/api/users/${selectedUser.pk}/groups`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupIds: finalGroupIds }),
+      body: JSON.stringify({
+        groupIds: finalGroupIds,
+        currentTemplate: String(template.name || "").trim() || "Manual Group Selection",
+      }),
     });
   } catch (err) {
     setMsgEl(actionMsg, "Network error while applying template.", false);

@@ -1132,6 +1132,7 @@ async function createUser(
   attributes.created_at = createdAt;
   if (templateNameUsed) {
     attributes.created_template = templateNameUsed;
+    attributes.current_template = templateNameUsed;
   }
   if (creationMethod) {
     attributes.created_method = String(creationMethod);
@@ -2307,7 +2308,19 @@ async function setUserGroups(userId, groupIds, opts = {}) {
   const ids = Array.isArray(groupIds)
     ? groupIds.map(x => String(x).trim()).filter(Boolean)
     : [];
-  await api.patch(`/core/users/${userId}/`, { groups: ids });
+  const payload = { groups: ids };
+  if (Object.prototype.hasOwnProperty.call(opts || {}, "currentTemplate")) {
+    const currentTemplate = String(opts.currentTemplate || "").trim();
+    const beforeAttrs =
+      userBefore && userBefore.attributes && typeof userBefore.attributes === "object"
+        ? userBefore.attributes
+        : {};
+    payload.attributes = {
+      ...beforeAttrs,
+      current_template: currentTemplate || "Manual Group Selection",
+    };
+  }
+  await api.patch(`/core/users/${userId}/`, payload);
 
   // Notify user via debounced email (do not fail operation if email fails)
   try {
@@ -2384,7 +2397,7 @@ async function updateUserAttributes(userId, changes) {
 }
 
 // Add groups to a user (merge)
-async function addUserGroups(userId, groupIds) {
+async function addUserGroups(userId, groupIds, opts = {}) {
   await assertUserNotActionLocked(userId);
   const idsToAdd = Array.isArray(groupIds)
     ? groupIds.map(x => String(x).trim()).filter(Boolean)
@@ -2399,12 +2412,12 @@ async function addUserGroups(userId, groupIds) {
     : [];
 
   const merged = Array.from(new Set([...current, ...idsToAdd]));
-  await setUserGroups(userId, merged);
+  await setUserGroups(userId, merged, opts);
   return merged;
 }
 
 // Remove groups from a user
-async function removeUserGroups(userId, groupIds) {
+async function removeUserGroups(userId, groupIds, opts = {}) {
   await assertUserNotActionLocked(userId);
   const idsToRemove = new Set(
     Array.isArray(groupIds)
@@ -2418,7 +2431,7 @@ async function removeUserGroups(userId, groupIds) {
     : [];
 
   const remaining = current.filter(id => !idsToRemove.has(String(id)));
-  await setUserGroups(userId, remaining);
+  await setUserGroups(userId, remaining, opts);
   return remaining;
 }
 

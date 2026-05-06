@@ -1310,8 +1310,12 @@ router.post("/roles/backfill", async (req, res) => {
 router.put("/:userId/groups", async (req, res) => {
   try {
     const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
+    const hasCurrentTemplate = Object.prototype.hasOwnProperty.call(req.body || {}, "currentTemplate");
+    const currentTemplate = hasCurrentTemplate ? String(req.body?.currentTemplate || "").trim() : undefined;
     const authUser = req.authentikUser || null;
-    await users.setUserGroups(req.params.userId, groupIds);
+    await users.setUserGroups(req.params.userId, groupIds, {
+      ...(hasCurrentTemplate ? { currentTemplate } : {}),
+    });
     const user = await users.getUserById(req.params.userId).catch(() => null);
 
     auditSvc.logEvent({
@@ -1334,8 +1338,12 @@ router.put("/:userId/groups", async (req, res) => {
 router.post("/:userId/groups", async (req, res) => {
   try {
     const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
+    const hasCurrentTemplate = Object.prototype.hasOwnProperty.call(req.body || {}, "currentTemplate");
+    const currentTemplate = hasCurrentTemplate ? String(req.body?.currentTemplate || "").trim() : undefined;
     const authUser = req.authentikUser || null;
-    await users.setUserGroups(req.params.userId, groupIds);
+    await users.setUserGroups(req.params.userId, groupIds, {
+      ...(hasCurrentTemplate ? { currentTemplate } : {}),
+    });
     const user = await users.getUserById(req.params.userId).catch(() => null);
     auditSvc.logEvent({
       actor: authUser,
@@ -1358,8 +1366,12 @@ router.post("/:userId/groups", async (req, res) => {
 router.post("/:userId/groups/add", async (req, res) => {
   try {
     const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
+    const hasCurrentTemplate = Object.prototype.hasOwnProperty.call(req.body || {}, "currentTemplate");
+    const currentTemplate = hasCurrentTemplate ? String(req.body?.currentTemplate || "").trim() : undefined;
     const authUser = req.authentikUser || null;
-    const out = await users.addUserGroups(req.params.userId, groupIds);
+    const out = await users.addUserGroups(req.params.userId, groupIds, {
+      ...(hasCurrentTemplate ? { currentTemplate } : {}),
+    });
     const user = await users.getUserById(req.params.userId).catch(() => null);
 
     auditSvc.logEvent({
@@ -1383,8 +1395,12 @@ router.post("/:userId/groups/add", async (req, res) => {
 router.post("/:userId/groups/remove", async (req, res) => {
   try {
     const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
+    const hasCurrentTemplate = Object.prototype.hasOwnProperty.call(req.body || {}, "currentTemplate");
+    const currentTemplate = hasCurrentTemplate ? String(req.body?.currentTemplate || "").trim() : undefined;
     const authUser = req.authentikUser || null;
-    const out = await users.removeUserGroups(req.params.userId, groupIds);
+    const out = await users.removeUserGroups(req.params.userId, groupIds, {
+      ...(hasCurrentTemplate ? { currentTemplate } : {}),
+    });
     const user = await users.getUserById(req.params.userId).catch(() => null);
 
     auditSvc.logEvent({
