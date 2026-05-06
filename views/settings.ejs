@@ -1079,7 +1079,6 @@
 
         <div class="settings-body">
           <div class="grid2">
-            <% renderField("BETA_MODE","Enable Beta Features","If true, shows in-development features for global admins (e.g. Data Sync, Getting Started). Data Package and Locate Persons are available to global admins regardless of this setting."); %>
             <label class="settings-field">
               <span class="settings-label">Default Theme Mode</span>
               <%
@@ -1091,38 +1090,6 @@
               </select>
               <small class="settings-help">
                 Sets first-load appearance for users who have not toggled a saved theme on this device yet.
-              </small>
-            </label>
-            <label class="settings-field">
-              <span class="settings-label">Portal Logo</span>
-              <input type="file" name="BRAND_LOGO_UPLOAD" accept="image/*" />
-              <% if (settings.BRAND_LOGO_URL) { %>
-                <small class="settings-help">Current: <code><%= settings.BRAND_LOGO_URL %></code></small>
-              <% } else { %>
-                <small class="settings-help">Shown in sidebar and QR codes.</small>
-              <% } %>
-            </label>
-            <label class="settings-field">
-              <span class="settings-label">Primary Button Color</span>
-              <%
-                const primaryButtonColor = /^#[0-9a-fA-F]{6}$/.test(String(settings.PRIMARY_BUTTON_COLOR || ""))
-                  ? String(settings.PRIMARY_BUTTON_COLOR)
-                  : "#2563eb";
-              %>
-              <div class="branding-color-row">
-                <input
-                  id="primaryButtonColorInput"
-                  type="color"
-                  name="settings[PRIMARY_BUTTON_COLOR]"
-                  value="<%= primaryButtonColor %>"
-                  aria-label="Primary button color"
-                />
-                <code id="primaryButtonColorValue"><%= primaryButtonColor %></code>
-                <span id="primaryButtonColorPreview" class="btn" style="pointer-events:none;">Primary Button</span>
-                <button type="button" class="btn" id="resetPrimaryButtonColorBtn">Reset to default</button>
-              </div>
-              <small class="settings-help">
-                Sets the default color used for primary action buttons across the portal.
               </small>
             </label>
             <label class="settings-field">
@@ -1177,6 +1144,39 @@
                 <% }); %>
               </div>
             </label>
+            <label class="settings-field">
+              <span class="settings-label">Primary Button Color</span>
+              <%
+                const primaryButtonColor = /^#[0-9a-fA-F]{6}$/.test(String(settings.PRIMARY_BUTTON_COLOR || ""))
+                  ? String(settings.PRIMARY_BUTTON_COLOR)
+                  : "#2563eb";
+              %>
+              <div class="branding-color-row">
+                <input
+                  id="primaryButtonColorInput"
+                  type="color"
+                  name="settings[PRIMARY_BUTTON_COLOR]"
+                  value="<%= primaryButtonColor %>"
+                  aria-label="Primary button color"
+                />
+                <code id="primaryButtonColorValue"><%= primaryButtonColor %></code>
+                <span id="primaryButtonColorPreview" class="btn" style="pointer-events:none;">Primary Button</span>
+                <button type="button" class="btn" id="resetPrimaryButtonColorBtn">Reset to default</button>
+              </div>
+              <small class="settings-help">
+                Sets the default color used for primary action buttons across the portal.
+              </small>
+            </label>
+            <label class="settings-field">
+              <span class="settings-label">Portal Logo</span>
+              <input type="file" name="BRAND_LOGO_UPLOAD" accept="image/*" />
+              <% if (settings.BRAND_LOGO_URL) { %>
+                <small class="settings-help">Current: <code><%= settings.BRAND_LOGO_URL %></code></small>
+              <% } else { %>
+                <small class="settings-help">Shown in sidebar and QR codes.</small>
+              <% } %>
+            </label>
+            <% renderField("BETA_MODE","Enable Beta Features","If true, shows in-development features for global admins (e.g. Data Sync, Getting Started). Data Package and Locate Persons are available to global admins regardless of this setting."); %>
           </div>
           <script>
             (function () {
