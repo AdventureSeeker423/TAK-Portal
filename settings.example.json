@@ -29,6 +29,7 @@
   "TAK_SSH_ONBOARDED": "false",
   "TAK_SSH_LAST_HANDSHAKE_AT": "",
   "EMAIL_ENABLED": "false",
+  "EMAIL_GROUP_CHANGES_ENABLED": "true",
   "EMAIL_PROVIDER": "smtp",
   "SMTP_HOST": "smtp.email.com",
   "SMTP_PORT": "587",

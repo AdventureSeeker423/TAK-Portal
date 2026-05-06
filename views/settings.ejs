@@ -342,6 +342,20 @@
         <div class="settings-body">
           <div class="grid2">
             <% renderField("EMAIL_ENABLED","Email Enabled","true/false – whether email notifications are enabled."); %>
+            <label class="settings-field">
+              <span class="settings-label">Send Group-Change Emails</span>
+              <%
+                const groupChangeRaw = (settings && typeof settings.EMAIL_GROUP_CHANGES_ENABLED === "string")
+                  ? settings.EMAIL_GROUP_CHANGES_ENABLED.toLowerCase()
+                  : "";
+                const groupChangeEnabled = groupChangeRaw === "false" ? "false" : "true";
+              %>
+              <select name="settings[EMAIL_GROUP_CHANGES_ENABLED]">
+                <option value="true" <%= groupChangeEnabled === "true" ? "selected" : "" %>>yes</option>
+                <option value="false" <%= groupChangeEnabled === "false" ? "selected" : "" %>>no</option>
+              </select>
+              <small class="settings-help">When yes, group edits trigger user group-change email notifications.</small>
+            </label>
             <% renderField("EMAIL_PROVIDER","Email Provider","Currently only 'smtp' is supported."); %>
             <% renderField("SMTP_HOST","SMTP Host","SMTP server hostname."); %>
             <% renderField("SMTP_PORT","SMTP Port","SMTP port, e.g. 587."); %>

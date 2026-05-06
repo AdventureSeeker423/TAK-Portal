@@ -729,6 +729,7 @@ const GROUP_EMAIL_DEBOUNCE_MS = 3 * 60 * 1000;
 const groupEmailQueue = new Map();
 
 function scheduleDebouncedGroupsEmail({ user, beforeIds, afterIds }) {
+  if (!getBool("EMAIL_GROUP_CHANGES_ENABLED", true)) return;
   const userId = String(user?.pk || user?.id || "").trim();
   if (!userId) return;
 
