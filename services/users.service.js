@@ -3146,11 +3146,13 @@ async function getCurrentTemplateBackfillPreviewRows() {
       visibleGroupIds,
     });
     const username = String(user?.username || "").trim();
+    const displayName = String(user?.name || "").trim();
     const userId = String(user?.pk || user?.id || "").trim();
 
     if (desired == null) {
       rows.push({
         username,
+        displayName,
         userId,
         agencySuffix,
         currentTemplate: current,
@@ -3162,6 +3164,7 @@ async function getCurrentTemplateBackfillPreviewRows() {
 
     rows.push({
       username,
+      displayName,
       userId,
       agencySuffix,
       currentTemplate: current,

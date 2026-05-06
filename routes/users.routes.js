@@ -1358,6 +1358,7 @@ router.get("/current-template/backfill-preview.csv", async (req, res) => {
     };
     const header = [
       "username",
+      "display_name",
       "user_id",
       "agency_suffix",
       "current_template_existing",
@@ -1366,6 +1367,7 @@ router.get("/current-template/backfill-preview.csv", async (req, res) => {
     ].join(",");
     const body = rows.map((r) => ([
       csvEscape(r.username),
+      csvEscape(r.displayName),
       csvEscape(r.userId),
       csvEscape(r.agencySuffix),
       csvEscape(r.currentTemplate),
