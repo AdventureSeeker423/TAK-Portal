@@ -1195,13 +1195,29 @@
               var fontSettingInput = document.getElementById("siteFontFamilySettingValue");
               var fontResetBtn = document.getElementById("resetSiteFontFamilyBtn");
               var preview = document.getElementById("siteFontPreview");
-              var defaultPrimaryButtonColor = <%- JSON.stringify(defaultPrimaryButtonColor) %>;
               var defaultSiteFontFamily = <%- JSON.stringify(defaultSiteFont) %>;
+              function getThemeDefaultButtonColor() {
+                var body = document.body;
+                if (!body) return "#0a84ff";
+                if (body.classList.contains("theme-light")) return "#2563eb";
+                if (body.classList.contains("theme-dark-blue")) return "#2b6cff";
+                return "#0a84ff";
+              }
+              function syncThemeColorVisuals() {
+                var themeColor = getThemeDefaultButtonColor();
+                if (colorResetBtn) {
+                  colorResetBtn.style.background = themeColor;
+                  colorResetBtn.style.borderColor = themeColor;
+                }
+                if (colorSettingInput && !String(colorSettingInput.value || "").trim() && colorInput) {
+                  colorInput.value = themeColor;
+                }
+              }
               function updateColorValue() {
                 if (!colorInput || !colorValue) return;
                 colorValue.textContent = colorInput.value || "";
                 if (colorPreview) {
-                  var selectedColor = colorInput.value || defaultPrimaryButtonColor;
+                  var selectedColor = colorInput.value || getThemeDefaultButtonColor();
                   colorPreview.style.background = selectedColor;
                   colorPreview.style.borderColor = selectedColor;
                 }
@@ -1223,11 +1239,11 @@
               if (colorResetBtn) {
                 colorResetBtn.addEventListener("click", function () {
                   if (!colorInput) return;
-                  colorInput.value = defaultPrimaryButtonColor;
                   if (colorSettingInput) {
                     colorSettingInput.value = "";
                     colorSettingInput.dispatchEvent(new Event("change", { bubbles: true }));
                   }
+                  syncThemeColorVisuals();
                   updateColorValue();
                 });
               }
@@ -1251,6 +1267,14 @@
                   updatePreview();
                 });
               }
+              if (typeof MutationObserver !== "undefined" && document.body) {
+                var mo = new MutationObserver(function () {
+                  syncThemeColorVisuals();
+                  updateColorValue();
+                });
+                mo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+              }
+              syncThemeColorVisuals();
               updateColorValue();
               updatePreview();
             })();
@@ -1868,19 +1892,7 @@
   }
 
   .reset-default-btn {
-    background: #0a84ff;
-    border-color: #0a84ff;
     color: #fff;
-  }
-
-  body.theme-light .reset-default-btn {
-    background: #2563eb;
-    border-color: #2563eb;
-  }
-
-  body.theme-dark-blue .reset-default-btn {
-    background: #2b6cff;
-    border-color: #2b6cff;
   }
   </style>
 </main>
