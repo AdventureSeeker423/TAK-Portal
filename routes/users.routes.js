@@ -1343,6 +1343,48 @@ router.post("/current-template/backfill", async (req, res) => {
   }
 });
 
+router.get("/current-template/backfill-preview.csv", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const rows = await users.getCurrentTemplateBackfillPreviewRows();
+    const csvEscape = (v) => {
+      const s = String(v == null ? "" : v);
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const header = [
+      "username",
+      "user_id",
+      "agency_suffix",
+      "current_template_existing",
+      "current_template_computed",
+      "action",
+    ].join(",");
+    const body = rows.map((r) => ([
+      csvEscape(r.username),
+      csvEscape(r.userId),
+      csvEscape(r.agencySuffix),
+      csvEscape(r.currentTemplate),
+      csvEscape(r.computedTemplate),
+      csvEscape(r.action),
+    ].join(","))).join("\n");
+    const csv = `${header}\n${body}\n`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="current-template-backfill-preview-${Date.now()}.csv"`
+    );
+    return res.send(csv);
+  } catch (err) {
+    return res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
 // Overwrite groups
 router.put("/:userId/groups", async (req, res) => {
   try {

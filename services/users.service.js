@@ -3108,6 +3108,70 @@ async function backfillCurrentTemplateAttributes({ dryRun = true } = {}) {
   };
 }
 
+async function getCurrentTemplateBackfillPreviewRows() {
+  const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
+  const list = Array.isArray(users) ? users : [];
+  const templates = templatesStore.load();
+  const allGroups = await getAllGroups({ includeHidden: false });
+
+  const groupNameToId = new Map(
+    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+      String(g?.name || "").trim().toLowerCase(),
+      String(g?.pk || "").trim(),
+    ])
+  );
+  const visibleGroupIds = new Set(
+    (Array.isArray(allGroups) ? allGroups : [])
+      .map((g) => String(g?.pk || "").trim())
+      .filter(Boolean)
+  );
+
+  const templatesByAgencySuffix = new Map();
+  for (const t of Array.isArray(templates) ? templates : []) {
+    const sfx = String(t?.agencySuffix || "").trim().toLowerCase();
+    if (!sfx) continue;
+    if (!templatesByAgencySuffix.has(sfx)) templatesByAgencySuffix.set(sfx, []);
+    templatesByAgencySuffix.get(sfx).push(t);
+  }
+
+  const rows = [];
+  for (const user of list) {
+    const attrs = user?.attributes || {};
+    const agencySuffix = String(attrs.agency || "").trim().toLowerCase();
+    const current = String(attrs.current_template || "").trim();
+    const desired = computeCurrentTemplateForUser({
+      user,
+      templatesByAgencySuffix,
+      groupNameToId,
+      visibleGroupIds,
+    });
+    const username = String(user?.username || "").trim();
+    const userId = String(user?.pk || user?.id || "").trim();
+
+    if (desired == null) {
+      rows.push({
+        username,
+        userId,
+        agencySuffix,
+        currentTemplate: current,
+        computedTemplate: "",
+        action: "skipped_no_agency",
+      });
+      continue;
+    }
+
+    rows.push({
+      username,
+      userId,
+      agencySuffix,
+      currentTemplate: current,
+      computedTemplate: desired,
+      action: current === desired ? "no_change" : "would_update",
+    });
+  }
+  return rows;
+}
+
 module.exports = {
   // meta/template support
   getTemplatesForAgency,
@@ -3147,6 +3211,7 @@ module.exports = {
   getMissingUserRoleStats,
   backfillCurrentTemplateAttributes,
   getCurrentTemplateBackfillStats,
+  getCurrentTemplateBackfillPreviewRows,
   toggleUserActive,
   deleteUser,
   addUserGroups,

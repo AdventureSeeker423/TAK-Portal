@@ -2888,26 +2888,17 @@ searchForm.onsubmit = (e) => {
             ? `${total} user current-template migration${total === 1 ? "" : "s"} pending. Click to run now.`
             : "User current-template migration pending.";
           dryBtn.onclick = () => {
-            dryMsg.textContent = "Running dry run preview...";
-            fetch("/api/users/current-template/backfill", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ dryRun: true }),
-            })
-              .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
-              .then(({ ok, body }) => {
-                if (!ok || !body) {
-                  dryMsg.textContent = `Dry run failed: ${(body && body.error) ? body.error : "Unknown error"}`;
-                  return;
-                }
-                const scanned = Number(body.scanned || 0);
-                const updated = Number(body.updated || 0);
-                const skipped = Number(body.skipped || 0);
-                dryMsg.textContent = `Dry run: ${updated} would update, ${skipped} skipped, ${scanned} scanned.`;
-              })
-              .catch((err) => {
-                dryMsg.textContent = `Dry run failed: ${err?.message || "Unknown error"}`;
-              });
+            dryMsg.textContent = "Preparing preview download...";
+            const url = "/api/users/current-template/backfill-preview.csv";
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => {
+              dryMsg.textContent = "Preview CSV downloaded. Review before running migration.";
+            }, 250);
           };
           link.href = "#";
           link.onclick = (e) => {
