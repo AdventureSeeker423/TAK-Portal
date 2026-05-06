@@ -1506,6 +1506,8 @@ async function loadTemplatesForAgency(agencySuffix){
 
     templateApplySelect.innerHTML = options.join("");
     agencyTemplatesCache = all;
+    const matchingTemplateKey = findMatchingTemplateKeyForUser(selectedUser, all);
+    templateApplySelect.value = matchingTemplateKey || "manual";
     const currentRoleFromUser = selectedUser?.attributes?.role;
     renderRoleOptions(roleSelect, currentRoleFromUser || roleSelect?.value || "Team Member");
     if (applyChangesBtn) applyChangesBtn.disabled = false;
@@ -1538,6 +1540,61 @@ const groupNameToIdCache = new Map();
 // Cache of all Authentik groups including those hidden from the normal /api/users/groups list.
 // Only global admins can load this (enforced server-side).
 let allGroupsIncludingHiddenCache = null;
+
+function normalizeGroupNameKey(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+function getVisibleUserGroupIdSet(user) {
+  const ids = Array.isArray(user?.groups) ? user.groups.map((x) => String(x)) : [];
+  return new Set(ids.filter((id) => visibleGroupIds.has(String(id))));
+}
+
+function getTemplateVisibleGroupIdSet(template) {
+  const nameToId = new Map();
+  for (const [id, name] of groupIndex.entries()) {
+    const key = normalizeGroupNameKey(name);
+    if (!key) continue;
+    nameToId.set(key, String(id));
+  }
+
+  const ids = new Set();
+  const templateGroups = Array.isArray(template?.groups) ? template.groups : [];
+  for (const groupName of templateGroups) {
+    const key = normalizeGroupNameKey(groupName);
+    if (!key) continue;
+    const id = nameToId.get(key);
+    if (!id) continue;
+    if (!visibleGroupIds.has(String(id))) continue;
+    ids.add(String(id));
+  }
+  return ids;
+}
+
+function findMatchingTemplateKeyForUser(user, templates) {
+  const userVisibleIds = getVisibleUserGroupIdSet(user);
+  const candidates = Array.isArray(templates) ? templates : [];
+
+  for (const tpl of candidates) {
+    if (!tpl || String(tpl.key || "") === "manual") continue;
+
+    const tplIds = getTemplateVisibleGroupIdSet(tpl);
+    if (!tplIds.size) continue;
+    if (tplIds.size !== userVisibleIds.size) continue;
+
+    let allMatch = true;
+    for (const id of tplIds) {
+      if (!userVisibleIds.has(id)) {
+        allMatch = false;
+        break;
+      }
+    }
+
+    if (allMatch) return String(tpl.key || "");
+  }
+
+  return "";
+}
 
 function wirePasswordToggle(inputEl, toggleEl) {
   if (!inputEl || !toggleEl) return;
