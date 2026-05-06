@@ -1835,6 +1835,11 @@ async function applyGroupChange(groupId, shouldBeMember){
   window.__lastUsers = updatedVisible.slice();
   renderResults(updatedVisible);
 
+  // Manual checkbox edits mean this user is now in manual template mode.
+  if (templateApplySelect) {
+    templateApplySelect.value = "manual";
+  }
+
   setMsgEl(actionMsg, "Groups updated.", true);
 }
 
