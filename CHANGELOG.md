@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.8 - 5/6/26
+✨ `Enhancement` - Move server sided filtering based off suffix to query Authentik API user attributes<br>
+
 ### v1.3.7 - 5/6/26
 ✨ `Enhancement` - Began adding ability to change site wide fonts and primary button color<br>
 ✨ `Enhancement` - Added ability to edit text on Users, Pending User, and Request Access pages where it was originally hard coded to "Badge Number / Username / Radio Callsign"
