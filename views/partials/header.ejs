@@ -13,7 +13,9 @@
   </head>
   <body
     class="theme-<%= brandTheme || 'dark' %>"
-    style="--btn:<%= primaryButtonColor || '#2563eb' %>;--site-font:<%= siteFontFamily || 'system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif' %>;"
+    <% if (primaryButtonColor || siteFontFamily) { %>
+      style="<% if (primaryButtonColor) { %>--btn:<%= primaryButtonColor %>;<% } %><% if (siteFontFamily) { %>--site-font:<%= siteFontFamily %>;<% } %>"
+    <% } %>
   >
 
     <!-- Theme toggle (per-device) -->

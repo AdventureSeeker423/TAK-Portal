@@ -31,6 +31,7 @@ const { toSafeApiError } = require("./services/apiErrorPayload.service");
 const app = express();
 
 const FONT_FAMILY_OPTIONS = new Set([
+  "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
   'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
   "Arial, Helvetica, sans-serif",
   '"Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -46,7 +47,7 @@ const FONT_FAMILY_OPTIONS = new Set([
 ]);
 
 const DEFAULT_SITE_FONT_FAMILY =
-  'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  "system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
 
 // Expose version to all EJS views (e.g. sidebar)
 app.locals.APP_VERSION = pkg.version || "dev";
@@ -170,11 +171,11 @@ app.use((req, res, next) => {
     ).trim();
     const primaryButtonColor = /^#[0-9a-fA-F]{6}$/.test(rawPrimaryButtonColor)
       ? rawPrimaryButtonColor
-      : "#2563eb";
+      : "";
     const rawSiteFontFamily = String(settings?.SITE_FONT_FAMILY || "").trim();
     const siteFontFamily = FONT_FAMILY_OPTIONS.has(rawSiteFontFamily)
       ? rawSiteFontFamily
-      : DEFAULT_SITE_FONT_FAMILY;
+      : "";
     res.locals.settings = settings || {};
     // Server default is used when no per-device theme has been saved yet.
     res.locals.brandTheme = defaultTheme === "light" ? "light" : "dark";
@@ -187,8 +188,8 @@ app.use((req, res, next) => {
     res.locals.settings = {};
     res.locals.brandTheme = "dark";
     res.locals.brandLogoUrl = "";
-    res.locals.primaryButtonColor = "#2563eb";
-    res.locals.siteFontFamily = DEFAULT_SITE_FONT_FAMILY;
+    res.locals.primaryButtonColor = "";
+    res.locals.siteFontFamily = "";
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
   }
   next();

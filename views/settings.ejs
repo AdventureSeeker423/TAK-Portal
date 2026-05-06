@@ -1096,7 +1096,7 @@
               <span class="settings-label">Site-wide Font Family</span>
               <%
                 const fontOptions = [
-                  { label: "System UI", value: 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' },
+                  { label: "System UI", value: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" },
                   { label: "Arial", value: "Arial, Helvetica, sans-serif" },
                   { label: "Helvetica", value: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
                   { label: "Verdana", value: "Verdana, Geneva, sans-serif" },
@@ -1110,13 +1110,20 @@
                   { label: "Lucida Console", value: '"Lucida Console", Monaco, monospace' }
                 ];
                 const defaultSiteFont = fontOptions[0].value;
-                const siteFontFamily = String(settings.SITE_FONT_FAMILY || defaultSiteFont);
-                const resolvedSiteFont = fontOptions.some(function (f) { return f.value === siteFontFamily; })
-                  ? siteFontFamily
+                const configuredSiteFont = String(settings.SITE_FONT_FAMILY || "");
+                const hasCustomSiteFont = fontOptions.some(function (f) { return f.value === configuredSiteFont; });
+                const resolvedSiteFont = hasCustomSiteFont
+                  ? configuredSiteFont
                   : defaultSiteFont;
                 const selectedSiteFontLabel = (fontOptions.find(function (f) { return f.value === resolvedSiteFont; }) || fontOptions[0]).label;
               %>
-              <select id="siteFontFamilySelect" name="settings[SITE_FONT_FAMILY]">
+              <input
+                type="hidden"
+                id="siteFontFamilySettingValue"
+                name="settings[SITE_FONT_FAMILY]"
+                value="<%= hasCustomSiteFont ? configuredSiteFont : '' %>"
+              />
+              <select id="siteFontFamilySelect">
                 <% fontOptions.forEach(function (font) { %>
                   <option
                     value="<%= font.value %>"
@@ -1132,30 +1139,27 @@
               <small class="settings-help">
                 Applies globally to the portal UI. Preview: <span id="siteFontPreview" style="font-family:<%= resolvedSiteFont %>;"><%= selectedSiteFontLabel %> - The quick brown fox jumps over the lazy dog.</span>
               </small>
-              <div class="font-preview-list" id="siteFontPreviewList">
-                <% fontOptions.forEach(function (font) { %>
-                  <div
-                    class="font-preview-item <%= font.value === resolvedSiteFont ? 'active' : '' %>"
-                    data-font-value="<%= font.value %>"
-                    style="font-family:<%= font.value %>;"
-                  >
-                    <strong><%= font.label %></strong> - The quick brown fox jumps over the lazy dog.
-                  </div>
-                <% }); %>
-              </div>
             </label>
             <label class="settings-field">
               <span class="settings-label">Primary Button Color</span>
               <%
-                const primaryButtonColor = /^#[0-9a-fA-F]{6}$/.test(String(settings.PRIMARY_BUTTON_COLOR || ""))
-                  ? String(settings.PRIMARY_BUTTON_COLOR)
-                  : "#2563eb";
+                const defaultPrimaryButtonColor = defaultThemeMode === "light" ? "#2563eb" : "#0a84ff";
+                const configuredPrimaryButtonColor = String(settings.PRIMARY_BUTTON_COLOR || "").trim();
+                const hasCustomPrimaryButtonColor = /^#[0-9a-fA-F]{6}$/.test(configuredPrimaryButtonColor);
+                const primaryButtonColor = hasCustomPrimaryButtonColor
+                  ? configuredPrimaryButtonColor
+                  : defaultPrimaryButtonColor;
               %>
               <div class="branding-color-row">
                 <input
+                  type="hidden"
+                  id="primaryButtonColorSettingValue"
+                  name="settings[PRIMARY_BUTTON_COLOR]"
+                  value="<%= hasCustomPrimaryButtonColor ? configuredPrimaryButtonColor : '' %>"
+                />
+                <input
                   id="primaryButtonColorInput"
                   type="color"
-                  name="settings[PRIMARY_BUTTON_COLOR]"
                   value="<%= primaryButtonColor %>"
                   aria-label="Primary button color"
                 />
@@ -1181,14 +1185,15 @@
           <script>
             (function () {
               var colorInput = document.getElementById("primaryButtonColorInput");
+              var colorSettingInput = document.getElementById("primaryButtonColorSettingValue");
               var colorValue = document.getElementById("primaryButtonColorValue");
               var colorPreview = document.getElementById("primaryButtonColorPreview");
               var colorResetBtn = document.getElementById("resetPrimaryButtonColorBtn");
               var select = document.getElementById("siteFontFamilySelect");
+              var fontSettingInput = document.getElementById("siteFontFamilySettingValue");
               var fontResetBtn = document.getElementById("resetSiteFontFamilyBtn");
               var preview = document.getElementById("siteFontPreview");
-              var fontPreviewList = document.getElementById("siteFontPreviewList");
-              var defaultPrimaryButtonColor = "#2563eb";
+              var defaultPrimaryButtonColor = <%- JSON.stringify(defaultPrimaryButtonColor) %>;
               var defaultSiteFontFamily = <%- JSON.stringify(defaultSiteFont) %>;
               function updateColorValue() {
                 if (!colorInput || !colorValue) return;
@@ -1199,47 +1204,49 @@
                   colorPreview.style.borderColor = selectedColor;
                 }
               }
-              function updateActiveFontPreview(value) {
-                if (!fontPreviewList) return;
-                var items = fontPreviewList.querySelectorAll(".font-preview-item");
-                items.forEach(function (item) {
-                  var isActive = item.getAttribute("data-font-value") === value;
-                  item.classList.toggle("active", isActive);
-                });
-              }
               function updatePreview() {
                 if (!select || !preview) return;
                 var value = select.value || "";
                 preview.style.fontFamily = value;
-                updateActiveFontPreview(value);
               }
-              if (colorInput) colorInput.addEventListener("input", updateColorValue);
+              if (colorInput) {
+                colorInput.addEventListener("input", function () {
+                  if (colorSettingInput) {
+                    colorSettingInput.value = colorInput.value || "";
+                    colorSettingInput.dispatchEvent(new Event("change", { bubbles: true }));
+                  }
+                  updateColorValue();
+                });
+              }
               if (colorResetBtn) {
                 colorResetBtn.addEventListener("click", function () {
                   if (!colorInput) return;
                   colorInput.value = defaultPrimaryButtonColor;
-                  colorInput.dispatchEvent(new Event("input", { bubbles: true }));
-                  colorInput.dispatchEvent(new Event("change", { bubbles: true }));
+                  if (colorSettingInput) {
+                    colorSettingInput.value = "";
+                    colorSettingInput.dispatchEvent(new Event("change", { bubbles: true }));
+                  }
+                  updateColorValue();
                 });
               }
-              if (select) select.addEventListener("change", updatePreview);
+              if (select) {
+                select.addEventListener("change", function () {
+                  if (fontSettingInput) {
+                    fontSettingInput.value = select.value || "";
+                    fontSettingInput.dispatchEvent(new Event("change", { bubbles: true }));
+                  }
+                  updatePreview();
+                });
+              }
               if (fontResetBtn) {
                 fontResetBtn.addEventListener("click", function () {
                   if (!select) return;
                   select.value = defaultSiteFontFamily;
-                  select.dispatchEvent(new Event("change", { bubbles: true }));
-                });
-              }
-              if (fontPreviewList) {
-                fontPreviewList.addEventListener("click", function (e) {
-                  var item = e.target && e.target.closest
-                    ? e.target.closest(".font-preview-item")
-                    : null;
-                  if (!item || !select) return;
-                  var value = item.getAttribute("data-font-value") || "";
-                  if (!value) return;
-                  select.value = value;
-                  select.dispatchEvent(new Event("change", { bubbles: true }));
+                  if (fontSettingInput) {
+                    fontSettingInput.value = "";
+                    fontSettingInput.dispatchEvent(new Event("change", { bubbles: true }));
+                  }
+                  updatePreview();
                 });
               }
               updateColorValue();
@@ -1856,34 +1863,6 @@
     align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
-  }
-
-  .font-preview-list {
-    margin-top: 0.5rem;
-    max-height: 220px;
-    overflow: auto;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--card) 92%, #0000);
-  }
-
-  .font-preview-item {
-    padding: 0.45rem 0.6rem;
-    border-bottom: 1px solid var(--line);
-    cursor: pointer;
-  }
-
-  .font-preview-item:last-child {
-    border-bottom: none;
-  }
-
-  .font-preview-item:hover {
-    background: rgba(37, 99, 235, 0.14);
-  }
-
-  .font-preview-item.active {
-    background: rgba(37, 99, 235, 0.24);
-    outline: 1px solid rgba(37, 99, 235, 0.55);
   }
   </style>
 </main>
