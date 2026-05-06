@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.11 - 5/6/26
+✨ `Enhancement` - Added an option in settings to disable email updates upon editing user's groups
+
 ### v1.3.10 - 5/6/26
 🎉 `New Feature` - Editing Templates now also makes group changes to existing users with that same template<br>
 ✨ `Enhancement` - Groups can now be mass assigned / unassigned from multiple templates at one time
