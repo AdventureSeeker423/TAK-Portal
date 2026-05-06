@@ -182,6 +182,9 @@
           <th class="sortable" data-key="agency">
             Agency <span class="sortIndicator" aria-hidden="true"></span>
           </th>
+          <th>
+            Template
+          </th>
           <th class="sortable" data-key="name">
             Name <span class="sortIndicator" aria-hidden="true"></span>
           </th>
@@ -1388,10 +1391,15 @@ function renderResults(users){
     const pk = escapeHtml(u.pk);
     const toggleLabel = u.is_active ? "Disable" : "Enable";
     const locked = userActionsLocked(u.username);
+    const currentTemplateRaw = String(u?.attributes?.current_template || "").trim();
+    const currentTemplateDisplay = (!currentTemplateRaw || currentTemplateRaw === "Manual Group Selection")
+      ? "—"
+      : currentTemplateRaw;
     return `
       <tr class="${u.is_active ? "" : "row-disabled"}">
         <td>${escapeHtml(u.username)}</td>
         <td>${escapeHtml(getUserAgencyAbbreviation(u) || "—")}</td>
+        <td>${escapeHtml(currentTemplateDisplay)}</td>
         <td>${escapeHtml(u.name || "")}</td>
         <td>${escapeHtml(u.email || "")}</td>
         <td>${u.is_active ? "Enabled" : "Disabled"}</td>
@@ -3343,18 +3351,22 @@ th.sortable:hover{
 }
 
 
-/* Hide Agency, Email, Status columns on small screens */
+/* Hide Agency, Current Template, Email, Status columns on small screens */
 @media (max-width: 640px){
   .table th:nth-child(2),
   .table td:nth-child(2){
     display: none;
   }
-  .table th:nth-child(4),
-  .table td:nth-child(4){
+  .table th:nth-child(3),
+  .table td:nth-child(3){
     display: none;
   }
   .table th:nth-child(5),
   .table td:nth-child(5){
+    display: none;
+  }
+  .table th:nth-child(6),
+  .table td:nth-child(6){
     display: none;
   }
 }
