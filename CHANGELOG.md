@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.10 - 5/6/26
+🎉 `New Feature` - Editing Templates now also makes group changes to existing users with that same template<br>
+✨ `Enhancement` - Groups can now be mass assigned / unassigned from multiple templates at one time
+
 ### v1.3.9 - 5/6/26
 🐛 `Bug Fix` - Fixes issue with user roles bouncing back to Team Member upon editing<br>
 ✨ `Enhancement` - Editing a user will now display the name of the template that is applied to users if their current user groups match a template
