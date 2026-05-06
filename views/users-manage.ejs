@@ -2537,11 +2537,11 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
     setMsgEl(actionMsg, "Selected template not found.", false);
     return { ok: false };
   }
-  renderRoleOptions(roleSelect, template.role || "Team Member");
-
   if (selectedKey === "manual") {
     return { ok: true, skipped: true };
   }
+
+  renderRoleOptions(roleSelect, template.role || "Team Member");
 
   const nameToId = {};
   for (const [id, name] of groupIndex.entries()) {
