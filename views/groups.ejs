@@ -1370,6 +1370,9 @@ async function loadTemplatesForMassModal(){
         idx: Number(t?._index),
         name: String(t?.name || "").trim(),
         agencySuffix: String(t?.agencySuffix || "").trim().toLowerCase(),
+        groups: Array.isArray(t?.groups)
+          ? t.groups.map((g) => String(g || "").trim()).filter(Boolean)
+          : [],
       }))
       .filter((t) => Number.isInteger(t.idx) && t.idx >= 0);
   } catch (_) {
@@ -1390,6 +1393,7 @@ function getAgencyLabelBySuffix(sfxRaw){
 
 function renderTemplateSourceList(){
   const needle = String(templateSearch?.value || "").trim().toLowerCase();
+  const activeGroupName = String(activeMassGroupName || "").trim();
   const items = (templatesCache || [])
     .slice()
     .sort((a, b) => {
@@ -1410,7 +1414,8 @@ function renderTemplateSourceList(){
   templateList.innerHTML = items.map((t) => {
     const id = String(t.idx);
     const checked = selectedTemplateIndices.has(id) ? "checked" : "";
-    const label = `${getAgencyLabelBySuffix(t.agencySuffix)} - ${t.name}`;
+    const hasGroup = !!(activeGroupName && Array.isArray(t.groups) && t.groups.includes(activeGroupName));
+    const label = `${getAgencyLabelBySuffix(t.agencySuffix)} - ${t.name}${hasGroup ? " (already includes group)" : ""}`;
     return `
       <label class="groupItem">
         <input type="checkbox" class="srcTemplateChk" value="${esc(id)}" ${checked} />
