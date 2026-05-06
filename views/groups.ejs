@@ -2038,9 +2038,11 @@ massApplyBtn.onclick = async () => {
       }
       await loadTemplatesForMassModal();
       renderTemplateSourceList();
+      const sync = out && typeof out.currentTemplateSync === "object" ? out.currentTemplateSync : {};
+      const syncMsg = ` Users matched: ${Number(sync.matched || 0)}, updated: ${Number(sync.updated || 0)}, groups updated: ${Number(sync.groupsUpdated || 0)}.`;
       return setMsg(
         massMsg,
-        `Updated ${Number(out.updated || 0)} template(s). Skipped ${Number(out.skipped || 0)}.`,
+        `Updated ${Number(out.updated || 0)} template(s). Skipped ${Number(out.skipped || 0)}.${syncMsg}`,
         true
       );
     } catch (e) {

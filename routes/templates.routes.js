@@ -255,7 +255,7 @@ router.delete("/:index", async (req, res) => {
   res.json({ success: true });
 });
 
-router.post("/bulk-group-update", (req, res) => {
+router.post("/bulk-group-update", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const actionRaw = String(req.body?.action || "").trim().toLowerCase();
@@ -329,11 +329,40 @@ router.post("/bulk-group-update", (req, res) => {
         index: idx,
         name: String(tpl.name || "").trim(),
         agencySuffix: sfx,
+        beforeGroups: groups,
+        afterGroups: nextGroups,
       });
     }
 
     if (updated > 0) {
       store.save(templates);
+    }
+
+    let currentTemplateSync = {
+      matched: 0,
+      updated: 0,
+      groupsUpdated: 0,
+      templateAttrUpdated: 0,
+      templatesProcessed: 0,
+    };
+    if (updated > 0) {
+      for (const t of touched) {
+        const templateName = String(t?.name || "").trim();
+        const agencySuffix = String(t?.agencySuffix || "").trim().toLowerCase();
+        if (!templateName || !agencySuffix) continue;
+        const syncOut = await usersSvc.syncUsersForTemplateSave({
+          agencySuffix,
+          fromTemplateName: templateName,
+          toTemplateName: templateName,
+          templateGroupNames: Array.isArray(t?.afterGroups) ? t.afterGroups : [],
+          applyGroupOverwrite: true,
+        });
+        currentTemplateSync.matched += Number(syncOut?.matched || 0);
+        currentTemplateSync.updated += Number(syncOut?.updated || 0);
+        currentTemplateSync.groupsUpdated += Number(syncOut?.groupsUpdated || 0);
+        currentTemplateSync.templateAttrUpdated += Number(syncOut?.templateAttrUpdated || 0);
+        currentTemplateSync.templatesProcessed += 1;
+      }
     }
 
     auditSvc.logEvent({
@@ -347,6 +376,7 @@ router.post("/bulk-group-update", (req, res) => {
         templateIndicesRequested: uniqueIndices.length,
         templatesUpdated: updated,
         templatesSkipped: skipped,
+        currentTemplateSync,
         touched,
       },
     });
@@ -355,6 +385,7 @@ router.post("/bulk-group-update", (req, res) => {
       success: true,
       updated,
       skipped,
+      currentTemplateSync,
     });
   } catch (err) {
     return res.status(400).json({ error: err?.message || "Bulk template update failed" });
