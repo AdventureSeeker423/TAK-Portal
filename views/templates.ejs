@@ -568,26 +568,34 @@ form.onsubmit = async (e) => {
   const url = isEdit ? ("/api/templates/" + editingIndex) : "/api/templates";
   const method = isEdit ? "PUT" : "POST";
 
-  const res = await fetch(url, {
-    method,
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify(payload)
-  });
+  submitBtn.disabled = true;
+  setMsg(isEdit ? "Applying changes..." : "Creating template...");
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
 
-  const out = await res.json();
-  if(!res.ok){
-    setMsg(out.error || (isEdit ? "Update failed" : "Create failed"), false);
-    return;
-  }
+    const out = await res.json();
+    if(!res.ok){
+      setMsg(out.error || (isEdit ? "Update failed" : "Create failed"), false);
+      return;
+    }
 
-  if (isEdit) {
-    const syncMsg = out?.currentTemplateSync ? ` ${formatTemplateSyncStatus(out.currentTemplateSync)}` : "";
-    setMsg(`Template updated.${syncMsg}`, true);
-  } else {
-    setMsg("Template created", true);
+    if (isEdit) {
+      const syncMsg = out?.currentTemplateSync ? ` ${formatTemplateSyncStatus(out.currentTemplateSync)}` : "";
+      setMsg(`Template updated.${syncMsg}`, true);
+    } else {
+      setMsg("Template created", true);
+    }
+    await loadTemplates();
+    setCreateMode();
+  } catch (err) {
+    setMsg(err?.message || (isEdit ? "Update failed" : "Create failed"), false);
+  } finally {
+    submitBtn.disabled = false;
   }
-  await loadTemplates();
-  setCreateMode();
 };
 
 (async () => {
