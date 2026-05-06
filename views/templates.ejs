@@ -492,7 +492,7 @@ function setEditMode(idx){
 window.editTemplate = (idx) => setEditMode(idx);
 
 window.deleteTemplate = async (idx) => {
-  if(!confirm("Delete this template?")) return;
+  if(!confirm("Delete this template?\n\nThis will also unlink existing users currently tied to this template for current template tracking, and they will be treated as Manual Group Selection.")) return;
   setMsg("");
 
   const res = await fetch("/api/templates/" + idx, { method:"DELETE" });
