@@ -2597,6 +2597,10 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
     setMsgEl(actionMsg, "Selected template not found.", false);
     return { ok: false };
   }
+  const selectedTemplateName = String(
+    template?.name || template?.label || template?.key || ""
+  ).trim();
+
   if (selectedKey === "manual") {
     return { ok: true, skipped: true };
   }
@@ -2641,7 +2645,7 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         groupIds: finalGroupIds,
-        currentTemplate: String(template.name || "").trim() || "Manual Group Selection",
+        currentTemplate: selectedTemplateName || "Manual Group Selection",
       }),
     });
   } catch (err) {
