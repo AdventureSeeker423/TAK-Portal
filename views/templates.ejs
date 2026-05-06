@@ -60,8 +60,8 @@
 
       <div style="grid-column:1/-1;">
         <label>Groups
-          <input id="groupSearch" placeholder="Search groups..." />
-          <div class="row" style="gap:10px; margin-top:8px;">
+          <div class="row" style="gap:10px; margin-top:8px; align-items:center;">
+            <input id="groupSearch" placeholder="Search groups..." style="flex:1; min-width:0;" />
             <button class="btn" type="button" id="selectAllBtn">Select All</button>
             <button class="btn" type="button" id="clearAllBtn">Clear</button>
           </div>
@@ -72,9 +72,9 @@
         </label>
       </div>
 
-      <div style="grid-column:1/-1;" class="row">
-        <button class="btn" id="submitBtn" type="submit">Create Template</button>
+      <div style="grid-column:1/-1; justify-content:flex-end;" class="row">
         <span id="msg" class="msg"></span>
+        <button class="btn" id="submitBtn" type="submit">Create Template</button>
       </div>
     </form>
   </div>
