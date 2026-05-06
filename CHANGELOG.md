@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.7 - 5/6/26
+✨ `Enhancement` - Began adding ability to change site wide fonts and primary button color<br>
+✨ `Enhancement` - Added ability to edit text on Users, Pending User, and Request Access pages where it was originally hard coded to "Badge Number / Username / Radio Callsign"
+
 ### v1.3.6 - 5/5/26
 🐛 `Bug Fix` - Fixes issue with standard users being redirected to the dashboard upon login.
 
