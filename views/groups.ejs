@@ -231,10 +231,10 @@
 
     <div class="modalBody">
       <div class="segmented" style="margin-top:4px;">
-        <button class="segBtn active" type="button" data-mode="agency">Entire agencies (suffix)</button>
-        <button class="segBtn" type="button" data-mode="group">Users with existing group(s)</button>
+        <button class="segBtn active" type="button" data-mode="agency">Entire Agencies</button>
         <button class="segBtn" type="button" data-mode="template">Templates</button>
-        <button class="segBtn" type="button" data-mode="users">Specific users</button>
+        <button class="segBtn" type="button" data-mode="group">Users With An Existing Group</button>
+        <button class="segBtn" type="button" data-mode="users">Specific Users</button>
       </div>
 
       <!-- Agency mode -->
@@ -251,7 +251,6 @@
           </div>
         </div>
         <div id="agencyList" class="groupsBox" style="margin-top:10px;"></div>
-        <small>Select one or more agencies; users are matched by username suffix.</small>
       </div>
 
       <!-- Group mode -->
@@ -268,7 +267,6 @@
           </div>
         </div>
         <div id="sourceGroupList" class="groupsBox" style="margin-top:10px;"></div>
-        <small>Select one or more existing groups; all users in any selected group will also get the target group.</small>
       </div>
 
       <!-- Template mode -->
@@ -285,7 +283,6 @@
           </div>
         </div>
         <div id="templateList" class="groupsBox" style="margin-top:10px;"></div>
-        <small>Select templates to <span id="templateModeVerb">add</span> this group on each template.</small>
       </div>
 
       <!-- Users mode -->
@@ -303,7 +300,6 @@
           </div>
         </div>
         <div id="userList" class="groupsBox" style="margin-top:10px;"></div>
-        <small>Search and pick specific users to add the target group to.</small>
       </div>
 
       <div class="row" style="margin-top:16px; align-items:center;">
