@@ -2396,6 +2396,79 @@ async function updateUserAttributes(userId, changes) {
   return newAttrs;
 }
 
+/**
+ * Update users' `attributes.current_template` by exact agency + current_template match.
+ * Uses Authentik attribute filtering first (single paginated query path), then patches only matches.
+ */
+async function bulkSetCurrentTemplateForAgencyUsers({
+  agencySuffix,
+  fromTemplate,
+  toTemplate,
+} = {}) {
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  const from = String(fromTemplate || "").trim();
+  const to = String(toTemplate || "").trim() || "Manual Group Selection";
+  if (!sfx || !from) {
+    return { matched: 0, updated: 0 };
+  }
+
+  let usersToUpdate = [];
+  let page = 1;
+  let hasNext = true;
+  const pageSize = 200;
+
+  while (hasNext) {
+    const params = {
+      page,
+      page_size: pageSize,
+      include_groups: "false",
+      include_roles: "false",
+      attributes: JSON.stringify({
+        agency: sfx,
+        current_template: from,
+      }),
+    };
+    const res = await api.get("/core/users/", { params });
+    const data = res?.data || {};
+    const rows = Array.isArray(data.results) ? data.results : [];
+    usersToUpdate = usersToUpdate.concat(rows);
+
+    const pagination = data.pagination || {};
+    if (pagination && pagination.next) {
+      page = pagination.next;
+      hasNext = true;
+    } else if (data.next) {
+      page += 1;
+      hasNext = true;
+    } else {
+      hasNext = false;
+    }
+  }
+
+  let updated = 0;
+  for (const u of usersToUpdate) {
+    const userId = String(u?.pk ?? u?.id ?? "").trim();
+    if (!userId) continue;
+    const attrs = u?.attributes && typeof u.attributes === "object" ? u.attributes : {};
+    if (String(attrs.current_template || "").trim() !== from) continue;
+    if (String(attrs.agency || "").trim().toLowerCase() !== sfx) continue;
+
+    await api.patch(`/core/users/${userId}/`, {
+      attributes: {
+        ...attrs,
+        current_template: to,
+      },
+    });
+    updated += 1;
+  }
+
+  invalidateUsersCache();
+  return {
+    matched: usersToUpdate.length,
+    updated,
+  };
+}
+
 // Add groups to a user (merge)
 async function addUserGroups(userId, groupIds, opts = {}) {
   await assertUserNotActionLocked(userId);
@@ -2732,4 +2805,5 @@ module.exports = {
 
   getUsersByGroups,
   getUsersByUsernames,
+  bulkSetCurrentTemplateForAgencyUsers,
 };

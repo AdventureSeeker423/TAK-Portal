@@ -2,6 +2,7 @@ const router = require("express").Router();
 const store = require("../services/templates.service");
 const accessSvc = require("../services/access.service");
 const auditSvc = require("../services/auditLog.service");
+const usersSvc = require("../services/users.service");
 
 const ALLOWED_COLORS = new Set([
   "Blue",
@@ -110,7 +111,7 @@ router.post("/", (req, res) => {
   res.json({ success: true });
 });
 
-router.put("/:index", (req, res) => {
+router.put("/:index", async (req, res) => {
   const idx = Number(req.params.index);
   const templates = store.load();
   if (!Number.isInteger(idx) || !templates[idx]) return res.status(404).json({ error: "Not found" });
@@ -152,6 +153,23 @@ router.put("/:index", (req, res) => {
   };
 
   store.save(templates);
+  let currentTemplateSync = null;
+  try {
+    const oldName = String(existing?.name || "").trim();
+    const newName = String(t?.name || "").trim();
+    const oldAgency = String(existing?.agencySuffix || "").trim().toLowerCase();
+    if (oldName && newName && oldAgency && oldName !== newName) {
+      currentTemplateSync = await usersSvc.bulkSetCurrentTemplateForAgencyUsers({
+        agencySuffix: oldAgency,
+        fromTemplate: oldName,
+        toTemplate: newName,
+      });
+    } else {
+      currentTemplateSync = { matched: 0, updated: 0 };
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Template rename saved, but current_template sync failed" });
+  }
 
   auditSvc.logEvent({
     actor: authUser,
@@ -167,13 +185,14 @@ router.put("/:index", (req, res) => {
       groupsCount: Array.isArray(templates[idx]?.groups) ? templates[idx].groups.length : 0,
       colorOverride: templates[idx]?.colorOverride || "",
       role: templates[idx]?.role || "Team Member",
+      currentTemplateSync,
     },
   });
 
   res.json({ success: true });
 });
 
-router.delete("/:index", (req, res) => {
+router.delete("/:index", async (req, res) => {
   const idx = Number(req.params.index);
   const templates = store.load();
   if (!Number.isInteger(idx) || !templates[idx]) return res.status(404).json({ error: "Not found" });
@@ -183,6 +202,23 @@ router.delete("/:index", (req, res) => {
 
   if (existing && existing.agencySuffix && !accessSvc.isSuffixAllowed(authUser, existing.agencySuffix)) {
     return res.status(403).json({ error: "You do not have access to this template." });
+  }
+
+  let currentTemplateSync = null;
+  try {
+    const oldName = String(existing?.name || "").trim();
+    const oldAgency = String(existing?.agencySuffix || "").trim().toLowerCase();
+    if (oldName && oldAgency) {
+      currentTemplateSync = await usersSvc.bulkSetCurrentTemplateForAgencyUsers({
+        agencySuffix: oldAgency,
+        fromTemplate: oldName,
+        toTemplate: "Manual Group Selection",
+      });
+    } else {
+      currentTemplateSync = { matched: 0, updated: 0 };
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Template delete blocked: current_template sync failed" });
   }
 
   templates.splice(idx, 1);
@@ -197,6 +233,7 @@ router.delete("/:index", (req, res) => {
     details: {
       name: String(existing?.name || ""),
       agencySuffix: String(existing?.agencySuffix || "").trim().toLowerCase(),
+      currentTemplateSync,
     },
   });
 
