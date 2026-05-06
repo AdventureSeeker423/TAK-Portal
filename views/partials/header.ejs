@@ -11,7 +11,10 @@
       <link rel="shortcut icon" href="<%= brandLogoUrl %>" type="image/png" />
     <% } %>
   </head>
-  <body class="theme-<%= brandTheme || 'dark' %>">
+  <body
+    class="theme-<%= brandTheme || 'dark' %>"
+    style="--btn:<%= primaryButtonColor || '#2563eb' %>;--site-font:<%= siteFontFamily || 'system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif' %>;"
+  >
 
     <!-- Theme toggle (per-device) -->
     <button

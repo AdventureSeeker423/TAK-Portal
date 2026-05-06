@@ -30,6 +30,24 @@ const { toSafeApiError } = require("./services/apiErrorPayload.service");
 
 const app = express();
 
+const FONT_FAMILY_OPTIONS = new Set([
+  'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  "Arial, Helvetica, sans-serif",
+  '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  "Verdana, Geneva, sans-serif",
+  '"Trebuchet MS", Helvetica, sans-serif',
+  "Tahoma, Geneva, sans-serif",
+  "Georgia, serif",
+  '"Times New Roman", Times, serif',
+  "Garamond, serif",
+  '"Palatino Linotype", "Book Antiqua", Palatino, serif',
+  '"Courier New", Courier, monospace',
+  '"Lucida Console", Monaco, monospace',
+]);
+
+const DEFAULT_SITE_FONT_FAMILY =
+  'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
 // Expose version to all EJS views (e.g. sidebar)
 app.locals.APP_VERSION = pkg.version || "dev";
 app.locals.APP_LATEST_VERSION = pkg.version || "dev";
@@ -147,16 +165,30 @@ app.use((req, res, next) => {
     const defaultTheme = String(settings?.DEFAULT_THEME_MODE || "dark")
       .trim()
       .toLowerCase();
+    const rawPrimaryButtonColor = String(
+      settings?.PRIMARY_BUTTON_COLOR || ""
+    ).trim();
+    const primaryButtonColor = /^#[0-9a-fA-F]{6}$/.test(rawPrimaryButtonColor)
+      ? rawPrimaryButtonColor
+      : "#2563eb";
+    const rawSiteFontFamily = String(settings?.SITE_FONT_FAMILY || "").trim();
+    const siteFontFamily = FONT_FAMILY_OPTIONS.has(rawSiteFontFamily)
+      ? rawSiteFontFamily
+      : DEFAULT_SITE_FONT_FAMILY;
     res.locals.settings = settings || {};
     // Server default is used when no per-device theme has been saved yet.
     res.locals.brandTheme = defaultTheme === "light" ? "light" : "dark";
     res.locals.brandLogoUrl = settings.BRAND_LOGO_URL || "";
+    res.locals.primaryButtonColor = primaryButtonColor;
+    res.locals.siteFontFamily = siteFontFamily;
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
   } catch (err) {
     console.warn("Failed to load settings for request:", err?.message || err);
     res.locals.settings = {};
     res.locals.brandTheme = "dark";
     res.locals.brandLogoUrl = "";
+    res.locals.primaryButtonColor = "#2563eb";
+    res.locals.siteFontFamily = DEFAULT_SITE_FONT_FAMILY;
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
   }
   next();

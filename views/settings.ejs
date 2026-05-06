@@ -137,6 +137,8 @@
         "EMAIL_FAIL_HARD",
         "BETA_MODE",
         "DEFAULT_THEME_MODE",
+        "PRIMARY_BUTTON_COLOR",
+        "SITE_FONT_FAMILY",
 
         "SMS_PROVIDER",
         "SMS_TWILIO_ACCOUNT_SID",
@@ -1100,7 +1102,88 @@
                 <small class="settings-help">Shown in sidebar and QR codes.</small>
               <% } %>
             </label>
+            <label class="settings-field">
+              <span class="settings-label">Primary Button Color</span>
+              <%
+                const primaryButtonColor = /^#[0-9a-fA-F]{6}$/.test(String(settings.PRIMARY_BUTTON_COLOR || ""))
+                  ? String(settings.PRIMARY_BUTTON_COLOR)
+                  : "#2563eb";
+              %>
+              <div class="branding-color-row">
+                <input
+                  id="primaryButtonColorInput"
+                  type="color"
+                  name="settings[PRIMARY_BUTTON_COLOR]"
+                  value="<%= primaryButtonColor %>"
+                  aria-label="Primary button color"
+                />
+                <code id="primaryButtonColorValue"><%= primaryButtonColor %></code>
+              </div>
+              <small class="settings-help">
+                Sets the default color used for primary action buttons across the portal.
+              </small>
+            </label>
+            <label class="settings-field">
+              <span class="settings-label">Site-wide Font Family</span>
+              <%
+                const fontOptions = [
+                  { label: "System UI", value: 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' },
+                  { label: "Arial", value: "Arial, Helvetica, sans-serif" },
+                  { label: "Helvetica", value: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+                  { label: "Verdana", value: "Verdana, Geneva, sans-serif" },
+                  { label: "Trebuchet MS", value: '"Trebuchet MS", Helvetica, sans-serif' },
+                  { label: "Tahoma", value: "Tahoma, Geneva, sans-serif" },
+                  { label: "Georgia", value: "Georgia, serif" },
+                  { label: '"Times New Roman"', value: '"Times New Roman", Times, serif' },
+                  { label: "Garamond", value: "Garamond, serif" },
+                  { label: '"Palatino Linotype"', value: '"Palatino Linotype", "Book Antiqua", Palatino, serif' },
+                  { label: '"Courier New"', value: '"Courier New", Courier, monospace' },
+                  { label: "Lucida Console", value: '"Lucida Console", Monaco, monospace' }
+                ];
+                const defaultSiteFont = fontOptions[0].value;
+                const siteFontFamily = String(settings.SITE_FONT_FAMILY || defaultSiteFont);
+                const resolvedSiteFont = fontOptions.some(function (f) { return f.value === siteFontFamily; })
+                  ? siteFontFamily
+                  : defaultSiteFont;
+                const selectedSiteFontLabel = (fontOptions.find(function (f) { return f.value === resolvedSiteFont; }) || fontOptions[0]).label;
+              %>
+              <select id="siteFontFamilySelect" name="settings[SITE_FONT_FAMILY]">
+                <% fontOptions.forEach(function (font) { %>
+                  <option
+                    value="<%= font.value %>"
+                    style="font-family:<%= font.value %>;"
+                    <%= font.value === resolvedSiteFont ? "selected" : "" %>
+                  >
+                    <%= font.label %> - The quick brown fox
+                  </option>
+                <% }); %>
+              </select>
+              <small class="settings-help">
+                Applies globally to the portal UI. Preview: <span id="siteFontPreview" style="font-family:<%= resolvedSiteFont %>;"><%= selectedSiteFontLabel %> - The quick brown fox jumps over the lazy dog.</span>
+              </small>
+            </label>
           </div>
+          <script>
+            (function () {
+              var colorInput = document.getElementById("primaryButtonColorInput");
+              var colorValue = document.getElementById("primaryButtonColorValue");
+              var select = document.getElementById("siteFontFamilySelect");
+              var preview = document.getElementById("siteFontPreview");
+              function updateColorValue() {
+                if (!colorInput || !colorValue) return;
+                colorValue.textContent = colorInput.value || "";
+              }
+              function updatePreview() {
+                if (!select || !preview) return;
+                var value = select.value || "";
+                preview.style.fontFamily = value;
+              }
+              if (colorInput) colorInput.addEventListener("input", updateColorValue);
+              if (select) select.addEventListener("change", updatePreview);
+              updateColorValue();
+              updatePreview();
+            })();
+          </script>
         </div>
       </details>
     </div>
@@ -1704,6 +1787,12 @@
     font-size: 1rem;
     padding: 0;
     filter: invert(1);
+  }
+
+  .branding-color-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
   </style>
 </main>
