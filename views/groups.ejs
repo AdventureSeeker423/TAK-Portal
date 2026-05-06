@@ -347,7 +347,6 @@
         class="groupsBox"
         style="margin-top:10px; max-height: 320px; overflow:auto;"
       ></div>
-      <small id="membersHint" class="muted"></small>
     </div>
   </div>
 </div>
@@ -359,7 +358,6 @@ const membersCloseBtn = document.getElementById("membersCloseBtn");
 const membersSummary = document.getElementById("membersSummary");
 const membersFilter = document.getElementById("membersFilter");
 const membersList = document.getElementById("membersList");
-const membersHint = document.getElementById("membersHint");
 const membersPrevBtn = document.getElementById("membersPrevBtn");
 const membersNextBtn = document.getElementById("membersNextBtn");
 const membersPageInfo = document.getElementById("membersPageInfo");
@@ -1545,9 +1543,6 @@ async function loadMembersPage(page) {
     const groupLabel = stripTakPrefix(String(activeMembersGroupName || out.group?.name || activeMembersGroupId || ""));
   membersSummary.textContent = `${membersTotalCount} member${membersTotalCount === 1 ? "" : "s"} in group "${groupLabel}".`;
   membersSummary.className = "msg ok";
-  membersHint.textContent = membersTotalCount
-    ? "Showing current members of this group. Use Remove to strip this group from individual users."
-    : "No users are currently assigned to this group.";
 
   renderMembersList();
   renderMembersPagination();
@@ -1563,7 +1558,6 @@ window.openGroupMembers = async (groupId) => {
   membersSummary.textContent = "Loading members...";
   membersSummary.className = "msg";
   membersList.innerHTML = "";
-  membersHint.textContent = "";
   membersFilter.value = "";
   membersCurrentPage = 1;
   membersTotalCount = 0;
@@ -1579,7 +1573,6 @@ window.openGroupMembers = async (groupId) => {
     membersSummary.textContent = "Failed to load members.";
     membersSummary.className = "msg bad";
     membersList.innerHTML = "";
-    membersHint.textContent = "";
     activeMembers = [];
     membersTotalCount = 0;
     membersHasNext = false;
@@ -1618,9 +1611,6 @@ window.removeUserFromGroup = async (userPk) => {
       `${memberCount} member${memberCount === 1 ? "" : "s"} in group "${groupLabel}".`;
     membersSummary.className = "msg ok";
 
-    membersHint.textContent = memberCount
-      ? "Showing current members of this group. Use Remove to strip this group from individual users."
-      : "No users are currently assigned to this group.";
 
     renderMembersList();
     renderMembersPagination();
