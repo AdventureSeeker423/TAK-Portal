@@ -2598,8 +2598,6 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
     return { ok: true, skipped: true };
   }
 
-  renderRoleOptions(roleSelect, template.role || "Team Member");
-
   const nameToId = {};
   for (const [id, name] of groupIndex.entries()) {
     const n = String(name || "").trim().toLowerCase();
