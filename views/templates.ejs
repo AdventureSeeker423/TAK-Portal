@@ -107,6 +107,7 @@
             <th class="sortable" data-key="role">Role <span class="sortIndicator"></span></th>
             <th class="sortable" data-key="default">Default <span class="sortIndicator"></span></th>
             <th class="sortable" data-key="groups">Groups <span class="sortIndicator"></span></th>
+            <th>Users</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -201,6 +202,7 @@ function renderTemplates(list){
       <td>${abbrevRoleForTable(t.role)}</td>
       <td>${t.isDefault ? "Yes" : ""}</td>
       <td class="groupsCell">${esc((t.groups || []).map(displayGroupName).join(", "))}</td>
+      <td>${templateUserCountForRow(t)}</td>
       <td>
         <div class="actionsCell">
           <button class="btn" type="button" onclick="editTemplate(${idx})">Edit</button>
@@ -209,6 +211,14 @@ function renderTemplates(list){
       </td>
     </tr>
   `).join("");
+}
+
+function templateUserCountForRow(t){
+  const sfx = String(t?.agencySuffix || "").trim().toLowerCase();
+  const name = String(t?.name || "").trim().toLowerCase();
+  if (!sfx || !name) return "0";
+  const key = `${sfx}::${name}`;
+  return String(Number(currentTemplateUserCounts[key] || 0));
 }
 
 function updateSortIndicators(){
@@ -292,6 +302,7 @@ groupsBox.addEventListener("change", (e) => {
 let allGroups = [];
 let allTemplates = [];
 let allAgencies = [];
+let currentTemplateUserCounts = {};
 let editingIndex = null;
 let pickedGroupNames = new Set();
 
@@ -443,9 +454,16 @@ function getFilteredTemplatePairs(){
 }
 
 async function loadTemplates(){
-  const res = await fetch("/api/templates");
+  const [res, countsRes] = await Promise.all([
+    fetch("/api/templates"),
+    fetch("/api/templates/current-template-counts"),
+  ]);
   const templates = await res.json();
   if (!res.ok) throw new Error(templates.error || "Failed to load templates");
+  const countsOut = await countsRes.json().catch(() => ({}));
+  currentTemplateUserCounts = (countsRes.ok && countsOut && typeof countsOut.counts === "object" && countsOut.counts)
+    ? countsOut.counts
+    : {};
   allTemplates = templates;
 
   // Keep the real backing index (global templates array index) stable for Edit/Delete/Save.

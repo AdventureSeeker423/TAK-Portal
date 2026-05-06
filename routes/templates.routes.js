@@ -62,6 +62,22 @@ router.get("/", (req, res) => {
   res.json(filtered);
 });
 
+router.get("/current-template-counts", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    const allowed = access.isGlobalAdmin
+      ? null
+      : (Array.isArray(access.allowedAgencySuffixes) ? access.allowedAgencySuffixes : []);
+    const counts = await usersSvc.getCurrentTemplateCountsByTemplate({
+      allowedAgencySuffixes: allowed,
+    });
+    return res.json({ success: true, counts });
+  } catch (err) {
+    return res.status(400).json({ error: String(err?.message || err || "Failed to load template user counts") });
+  }
+});
+
 router.post("/", (req, res) => {
   const templates = store.load();
   const t = normalizeTemplate(req.body || {});

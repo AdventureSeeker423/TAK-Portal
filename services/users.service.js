@@ -3175,6 +3175,35 @@ async function getCurrentTemplateBackfillPreviewRows() {
   return rows;
 }
 
+async function getCurrentTemplateCountsByTemplate(options = {}) {
+  const { allowedAgencySuffixes = null } = options || {};
+  const allowedSet = Array.isArray(allowedAgencySuffixes)
+    ? new Set(
+        allowedAgencySuffixes
+          .map((s) => String(s || "").trim().toLowerCase())
+          .filter(Boolean)
+      )
+    : null;
+
+  const users = await getAllUsersLightweight({});
+  const list = Array.isArray(users) ? users : [];
+  const counts = Object.create(null);
+
+  for (const u of list) {
+    const attrs = (u && typeof u.attributes === "object" && u.attributes) ? u.attributes : {};
+    const agencySuffix = String(attrs.agency || "").trim().toLowerCase();
+    const currentTemplate = String(attrs.current_template || "").trim();
+    if (!agencySuffix || !currentTemplate) continue;
+    if (allowedSet && !allowedSet.has(agencySuffix)) continue;
+    if (currentTemplate === "Manual Group Selection") continue;
+
+    const key = `${agencySuffix}::${currentTemplate.toLowerCase()}`;
+    counts[key] = Number(counts[key] || 0) + 1;
+  }
+
+  return counts;
+}
+
 module.exports = {
   // meta/template support
   getTemplatesForAgency,
@@ -3215,6 +3244,7 @@ module.exports = {
   backfillCurrentTemplateAttributes,
   getCurrentTemplateBackfillStats,
   getCurrentTemplateBackfillPreviewRows,
+  getCurrentTemplateCountsByTemplate,
   toggleUserActive,
   deleteUser,
   addUserGroups,
