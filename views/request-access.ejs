@@ -96,6 +96,7 @@
         <input
           name="badgeNumber"
           required
+          placeholder="Enter <%= usernamePrefixLabel %>"
           pattern="[A-Za-z0-9._-]+"
           title="Use letters, numbers, periods, dashes, and underscores only."
           value="<%= (form && form.badgeNumber) ? form.badgeNumber : '' %>"
