@@ -21,6 +21,15 @@
         User role migration pending.
       </div>
     </a>
+    <a id="currentTemplateBackfillBannerLink" href="#" style="text-decoration:none; display:none;">
+      <div class="userReqBanner" id="currentTemplateBackfillBanner" style="margin: 10px 0 14px 0;">
+        User current template migration pending.
+      </div>
+    </a>
+    <div id="currentTemplateBackfillActions" style="display:none; margin: -6px 0 14px 0;">
+      <button class="btn" id="currentTemplateBackfillDryRunBtn" type="button">Dry Run Preview</button>
+      <span class="msg" id="currentTemplateBackfillDryRunMsg" style="margin-left:8px;"></span>
+    </div>
   <% } %>
 
 
@@ -2859,6 +2868,98 @@ searchForm.onsubmit = (e) => {
               });
           };
           link.style.display = "block";
+        })
+        .catch(() => {});
+
+      fetch("/api/users/current-template/backfill-status")
+        .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
+        .then(({ ok, body }) => {
+          if (!ok || !body || !body.needsBackfill) return;
+          const link = document.getElementById("currentTemplateBackfillBannerLink");
+          const banner = document.getElementById("currentTemplateBackfillBanner");
+          const actions = document.getElementById("currentTemplateBackfillActions");
+          const dryBtn = document.getElementById("currentTemplateBackfillDryRunBtn");
+          const dryMsg = document.getElementById("currentTemplateBackfillDryRunMsg");
+          if (!link || !banner || !actions || !dryBtn || !dryMsg) return;
+          const missing = Number(body.missing || 0);
+          const mismatch = Number(body.mismatch || 0);
+          const total = missing + mismatch;
+          banner.textContent = total > 0
+            ? `${total} user current-template migration${total === 1 ? "" : "s"} pending. Click to run now.`
+            : "User current-template migration pending.";
+          dryBtn.onclick = () => {
+            dryMsg.textContent = "Running dry run preview...";
+            fetch("/api/users/current-template/backfill", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dryRun: true }),
+            })
+              .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
+              .then(({ ok, body }) => {
+                if (!ok || !body) {
+                  dryMsg.textContent = `Dry run failed: ${(body && body.error) ? body.error : "Unknown error"}`;
+                  return;
+                }
+                const scanned = Number(body.scanned || 0);
+                const updated = Number(body.updated || 0);
+                const skipped = Number(body.skipped || 0);
+                dryMsg.textContent = `Dry run: ${updated} would update, ${skipped} skipped, ${scanned} scanned.`;
+              })
+              .catch((err) => {
+                dryMsg.textContent = `Dry run failed: ${err?.message || "Unknown error"}`;
+              });
+          };
+          link.href = "#";
+          link.onclick = (e) => {
+            e.preventDefault();
+            if (!confirm("Run current-template migration now? This will set each user's current_template based on existing template-prefill matching logic.")) {
+              return;
+            }
+            banner.textContent = "Running current-template migration...";
+            fetch("/api/users/current-template/backfill", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dryRun: false }),
+            })
+              .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
+              .then(({ ok, body }) => {
+                if (!ok) {
+                  banner.textContent = (body && body.error)
+                    ? `Current-template migration failed: ${body.error}`
+                    : "Current-template migration failed.";
+                  return;
+                }
+                const updated = Number(body.updated || 0);
+                banner.textContent = updated > 0
+                  ? `Current-template migration complete. Updated ${updated} user${updated === 1 ? "" : "s"}. Re-checking...`
+                  : "Current-template migration complete. Re-checking...";
+                return fetch("/api/users/current-template/backfill-status")
+                  .then((res2) => res2.json().then((body2) => ({ ok: res2.ok, body: body2 })))
+                  .then(({ ok: ok2, body: body2 }) => {
+                    if (!ok2 || !body2) {
+                      banner.textContent = "Current-template migration finished, but status check failed. Refresh page.";
+                      return;
+                    }
+                    if (body2.needsBackfill) {
+                      const remaining = Number(body2.missing || 0) + Number(body2.mismatch || 0);
+                      banner.textContent = `${remaining} user current-template migration${remaining === 1 ? "" : "s"} still pending. Click to run again.`;
+                      link.style.display = "block";
+                      actions.style.display = "block";
+                    } else {
+                      banner.textContent = "Current-template migration complete.";
+                      setTimeout(() => {
+                        link.style.display = "none";
+                        actions.style.display = "none";
+                      }, 2000);
+                    }
+                  });
+              })
+              .catch((err) => {
+                banner.textContent = `Current-template migration failed: ${err?.message || "Unknown error"}`;
+              });
+          };
+          link.style.display = "block";
+          actions.style.display = "block";
         })
         .catch(() => {});
     }

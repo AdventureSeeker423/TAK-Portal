@@ -1306,6 +1306,43 @@ router.post("/roles/backfill", async (req, res) => {
   }
 });
 
+router.get("/current-template/backfill-status", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const out = await users.getCurrentTemplateBackfillStats();
+    res.json({ success: true, ...out });
+  } catch (err) {
+    res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
+router.post("/current-template/backfill", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const dryRun = String(req.body?.dryRun ?? "true").toLowerCase() !== "false";
+    const out = await users.backfillCurrentTemplateAttributes({ dryRun });
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "BACKFILL_USER_CURRENT_TEMPLATE",
+      targetType: "user",
+      targetId: "bulk",
+      details: out,
+    });
+    res.json({ success: true, ...out });
+  } catch (err) {
+    res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
 // Overwrite groups
 router.put("/:userId/groups", async (req, res) => {
   try {
