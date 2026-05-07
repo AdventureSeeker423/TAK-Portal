@@ -78,7 +78,7 @@
   </div>
 
   <div class="row" style="margin-top:10px; justify-content:flex-end;">
-    <button class="btn" id="createBtn" type="button">Create New Group</button>
+    <button class="btn createGroupSubmitBtnAlignRight" id="createBtn" type="button">Create New Group</button>
   </div>
 
   <div id="createMsg" class="msg"></div>
@@ -2157,5 +2157,19 @@ if (reloadBtn) reloadBtn.onclick = loadGroups;
   await loadGroups();
 })();
 </script>
+
+<style>
+.createGroupSubmitBtnAlignRight{
+  margin-left: auto;
+}
+
+@media (max-width: 640px){
+  .createGroupSubmitBtnAlignRight{
+    margin-left: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+}
+</style>
 
 </div></body></html>
