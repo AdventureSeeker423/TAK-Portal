@@ -255,9 +255,9 @@ th.sortable:hover{
       <thead id="thead">
         <tr>
           <th class="sortable" data-key="submitted">Submitted <span class="sortIndicator" aria-hidden="true"></span></th>
+          <th class="sortable" data-key="badge"><%= usernamePrefixLabel %> <span class="sortIndicator" aria-hidden="true"></span></th>
           <th class="sortable" data-key="name">Name <span class="sortIndicator" aria-hidden="true"></span></th>
           <th class="sortable" data-key="email">Email <span class="sortIndicator" aria-hidden="true"></span></th>
-          <th class="sortable" data-key="badge"><%= usernamePrefixLabel %> <span class="sortIndicator" aria-hidden="true"></span></th>
           <th class="sortable" data-key="agency">Agency <span class="sortIndicator" aria-hidden="true"></span></th>
           <th>Actions</th>
         </tr>
@@ -573,9 +573,9 @@ th.sortable:hover{
       return `
         <tr data-request-row="1" data-request-id="${esc(r.id)}">
           <td>${esc(fmtDate(r.createdAt))}</td>
+          <td>${esc(r.badgeNumber||'')}</td>
           <td>${esc((r.lastName || '') + ', ' + (r.firstName || ''))}</td>  
           <td>${esc(r.email||'')}</td>
-          <td>${esc(r.badgeNumber||'')}</td>
           <td>${esc(agencyLabel)}</td>
           <td>
             <div class="row" style="gap:8px; flex-wrap:wrap;">
