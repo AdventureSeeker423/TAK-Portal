@@ -107,6 +107,7 @@ router.post("/", (req, res) => {
 
   templates.push(t);
   store.save(templates);
+  const currentTemplateSync = null;
 
   auditSvc.logEvent({
     actor: authUser,
