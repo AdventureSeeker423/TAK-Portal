@@ -8,20 +8,20 @@
   <h2>Create Group</h2>
 
   <div class="row">
+    <% if (isGlobalAdmin) { %>
     <label>Group Type
-      <% if (isGlobalAdmin) { %>
-        <select id="createType">
-          <option value="agency" selected>Agency-Specific Group</option>
-          <option value="county">County-Specific Group</option>
-          <option value="state">State-Specific Group</option>
-          <option value="generic">Global Group</option>
-        </select>
-      <% } else { %>
-        <select id="createType" disabled>
-          <option value="agency" selected>Agency-Specific Group</option>
-        </select>
-      <% } %>
+      <select id="createType">
+        <option value="agency" selected>Agency-Specific Group</option>
+        <option value="county">County-Specific Group</option>
+        <option value="state">State-Specific Group</option>
+        <option value="generic">Global Group</option>
+      </select>
     </label>
+    <% } else { %>
+    <select id="createType" disabled style="display:none;">
+      <option value="agency" selected>Agency-Specific Group</option>
+    </select>
+    <% } %>
 
     <label id="agencyPrefixWrap" style="display:none;">Select Agency
       <select id="agencyPrefixSelect">
@@ -148,16 +148,20 @@
 
         <!-- Row that mirrors Create Group -->
         <div class="row">
+          <% if (isGlobalAdmin) { %>
           <label>Group Type
             <select id="editType">
               <option value="agency">Agency-Specific Group</option>
-              <% if (isGlobalAdmin) { %>
               <option value="county">County-Specific Group</option>
               <option value="state">State-Specific Group</option>
               <option value="generic">Global Group</option>
-              <% } %>
             </select>
           </label>
+          <% } else { %>
+          <select id="editType" style="display:none;" disabled>
+            <option value="agency" selected>Agency-Specific Group</option>
+          </select>
+          <% } %>
 
           <label id="editAgencyPrefixWrap" style="display:none;">Select Agency
             <select id="editAgencyPrefixSelect">
@@ -866,6 +870,13 @@ function renderAgencyList(){
 
 // Show/hide agency / county selects based on type
 createType.onchange = () => {
+  if (!IS_GLOBAL_ADMIN) {
+    if (agencyPrefixWrap) agencyPrefixWrap.style.display = "none";
+    if (countyWrap) countyWrap.style.display = "none";
+    if (stateWrap) stateWrap.style.display = "none";
+    if (privateWrap) privateWrap.style.display = "none";
+    return;
+  }
   const v = createType.value;
   const isAgency = v === "agency";
   const isCounty = v === "county";
@@ -880,6 +891,13 @@ createType.onchange = () => {
 // Show/hide edit agency / county selects based on type
 if (editType) {
   editType.onchange = () => {
+    if (!IS_GLOBAL_ADMIN) {
+      if (editAgencyPrefixWrap) editAgencyPrefixWrap.style.display = "none";
+      if (editCountyWrap) editCountyWrap.style.display = "none";
+      if (editStateWrap) editStateWrap.style.display = "none";
+      if (editPrivateWrap) editPrivateWrap.style.display = "none";
+      return;
+    }
     const v = editType.value;
     const isAgency = v === "agency";
     const isCounty = v === "county";

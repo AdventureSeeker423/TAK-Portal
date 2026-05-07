@@ -13,8 +13,8 @@
     </div>
 
     <form id="form" class="templatesGrid" autocomplete="off">
-      <div class="templateTopRow">
-        <label>Agency
+      <div class="templateTopRow <%= (!isGlobalAdmin && isAgencyAdmin) ? 'agency-admin-locked' : '' %>">
+        <label class="<%= (!isGlobalAdmin && isAgencyAdmin) ? 'agency-hidden' : '' %>">Agency
           <select id="agency">
             <option value="">Select an agency</option>
           </select>
@@ -122,6 +122,8 @@ const msg = document.getElementById("msg");
 const tbody = document.getElementById("tbody");
 const form = document.getElementById("form");
 const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
+const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
+const AGENCY_ADMIN_SUFFIX = <%- JSON.stringify((!isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length === 1) ? String(allowedAgencySuffixes[0] || "").trim().toLowerCase() : "") %>;
 const templateNameSearch = document.getElementById("templateNameSearch");
 const templateAgencyFilterSelect = document.getElementById("templateAgencyFilterSelect");
 
@@ -388,6 +390,11 @@ async function loadAgencies(){
       </option>`;
     }).join("");
 
+  if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && AGENCY_ADMIN_SUFFIX) {
+    agencyEl.value = AGENCY_ADMIN_SUFFIX;
+    agencyEl.disabled = true;
+  }
+
   updateTemplateAgencyFilterOptions();
 }
 
@@ -486,7 +493,8 @@ function setCreateMode(){
   setMsg("");
 
   nameEl.value = "";
-  agencyEl.value = "";
+  agencyEl.value = (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && AGENCY_ADMIN_SUFFIX) ? AGENCY_ADMIN_SUFFIX : "";
+  agencyEl.disabled = (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN);
   colorOverrideEl.value = "";
   renderRoleOptions("Team Member");
   isDefaultEl.value = "no";
@@ -640,6 +648,14 @@ form.onsubmit = async (e) => {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.templateTopRow.agency-admin-locked{
+  grid-template-columns: 1fr;
+}
+
+.templateTopRow .agency-hidden{
+  display: none;
 }
 
 .templateSecondRow{

@@ -38,7 +38,7 @@
     <h2>Create User</h2>
 
     <form id="createForm" class="grid2" autocomplete="off">
-      <label><%= usernamePrefixLabel %>
+      <label class="<%= (!isGlobalAdmin && isAgencyAdmin) ? 'agency-admin-badge-full' : '' %>"><%= usernamePrefixLabel %>
         <input
           type="text"
           name="badge"
@@ -49,7 +49,7 @@
         />
       </label>
 
-      <label>Agency
+      <label style="<%= (!isGlobalAdmin && isAgencyAdmin) ? 'display:none;' : '' %>">Agency
         <select name="agencySuffix" id="createAgencySelect" placeholder="Select Agency" required></select>
       </label>
 
@@ -521,6 +521,11 @@ async function loadAgencies() {
         `<option value="${esc(a.suffix)}">${esc(a.name)} (${esc(a.suffix)})</option>`
     )
     .join("");
+
+  if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length === 1) {
+    agencySelect.value = String(ALLOWED_AGENCY_SUFFIXES[0] || "").trim().toLowerCase();
+    agencySelect.disabled = true;
+  }
 
   // Global-admin-only: filter dropdown for the results table.
   if (filterAgencySelect) {
@@ -2430,7 +2435,7 @@ function renderTemplateFilterOptions(){
       if (!name || !sfx) return null;
       const value = `sfx=${encodeURIComponent(sfx)}&name=${encodeURIComponent(name)}`;
       const agencyLabel = getAgencyTokenForTemplateFilter(sfx);
-      const label = selectedAgency ? name : `${agencyLabel} - ${name}`;
+      const label = (!IS_GLOBAL_ADMIN || selectedAgency) ? name : `${agencyLabel} - ${name}`;
       return { value, label };
     })
     .filter(Boolean)
@@ -3306,6 +3311,10 @@ th.sortable:hover{
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.agency-admin-badge-full{
+  grid-column: 1 / -1;
 }
 
 .createTemplateDownloadBtn{
