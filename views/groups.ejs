@@ -77,7 +77,7 @@
     </label>
   </div>
 
-  <div class="row" style="margin-top:10px; justify-content:flex-end;">
+  <div class="row createGroupActionRow" style="margin-top:10px; justify-content:flex-end;">
     <button class="btn createGroupSubmitBtnAlignRight" id="createBtn" type="button">Create New Group</button>
   </div>
 
@@ -2163,11 +2163,21 @@ if (reloadBtn) reloadBtn.onclick = loadGroups;
   margin-left: auto;
 }
 
+.createGroupActionRow{
+  width: 100%;
+}
+
 @media (max-width: 640px){
+  .createGroupActionRow{
+    display: flex;
+    justify-content: stretch !important;
+  }
   .createGroupSubmitBtnAlignRight{
     margin-left: 0;
-    width: 100%;
+    width: 100% !important;
     max-width: 100%;
+    flex: 1 1 100%;
+    display: block;
   }
 }
 </style>
