@@ -98,6 +98,10 @@
   margin: 0;
 }
 
+.agency-admin-badge-full{
+  grid-column: 1 / -1;
+}
+
 /* Stack nicely on small screens */
 @media (max-width: 640px){
   .templateBar{
@@ -273,7 +277,7 @@ th.sortable:hover{
           <form class="grid2 approveForm" autocomplete="off">
             <input type="hidden" name="requestId" />
 
-            <label><%= usernamePrefixLabel %>
+            <label class="<%= (!isGlobalAdmin && isAgencyAdmin) ? 'agency-admin-badge-full' : '' %>"><%= usernamePrefixLabel %>
               <input type="text" name="badge" placeholder="Enter <%= usernamePrefixLabel %>" required />
             </label>
 
