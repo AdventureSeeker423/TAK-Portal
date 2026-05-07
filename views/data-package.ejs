@@ -28,22 +28,20 @@
   <div class="card" style="margin-top:1.25rem;">
     <h2 style="margin-top:0;">Existing Data Packages</h2>
     <div class="row" style="flex-wrap:wrap; align-items:flex-end; gap:12px;">
-      <label style="min-width:280px;">
-        Bulk Action
+      <div id="bulkActionsWrap" style="min-width:280px; display:none;">
         <div class="row" style="gap:8px; align-items:center; margin-top:2px;">
           <select id="bulkActionSelect">
             <option value="">Choose action...</option>
-            <option value="download">Download all selected</option>
-            <option value="archive">Archive selected</option>
-            <option value="delete">Delete selected</option>
+            <option value="download">Download Selected</option>
+            <option value="archive">Archive Selected</option>
+            <option value="delete">Delete Selected</option>
           </select>
           <button type="button" class="btn" id="bulkActionApplyBtn">Apply</button>
         </div>
-      </label>
-      <label style="min-width:220px; flex:1 1 100%;">
-        Filter
+      </div>
+      <div style="min-width:220px; flex:1 1 100%;">
         <input type="search" id="packageFilter" placeholder="Filter by filename/creator..." autocomplete="off" />
-      </label>
+      </div>
     </div>
     <div id="packagesMsg" class="msg" style="margin:12px 0 0 0;"></div>
     <div class="data-packages-table-scroll">
@@ -186,6 +184,7 @@
   var archivedCount = document.getElementById("archivedCount");
   var bulkActionSelect = document.getElementById("bulkActionSelect");
   var bulkActionApplyBtn = document.getElementById("bulkActionApplyBtn");
+  var bulkActionsWrap = document.getElementById("bulkActionsWrap");
   var activeSelectAllChk = document.getElementById("activeSelectAllChk");
   var archivedSelectAllChk = document.getElementById("archivedSelectAllChk");
 
@@ -233,8 +232,9 @@
     return Object.keys(selectedPackages).length;
   }
   function updateBulkActionButtonState() {
-    if (!bulkActionApplyBtn) return;
     var count = selectedCount();
+    if (bulkActionsWrap) bulkActionsWrap.style.display = count > 0 ? "" : "none";
+    if (!bulkActionApplyBtn) return;
     bulkActionApplyBtn.disabled = count <= 0 || !bulkActionSelect || !String(bulkActionSelect.value || "");
     bulkActionApplyBtn.textContent = count > 0 ? ("Apply (" + count + ")") : "Apply";
   }

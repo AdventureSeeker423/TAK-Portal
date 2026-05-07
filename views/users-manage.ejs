@@ -2440,6 +2440,7 @@ function renderTemplateFilterOptions(){
 
   filterTemplateSelect.innerHTML =
     `<option value="">All Templates</option>` +
+    `<option value="name=${encodeURIComponent("Manual Group Selection")}">Manual Group Selection</option>` +
     options.map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
 
   if (prev && Array.from(filterTemplateSelect.options).some((o) => o.value === prev)) {
