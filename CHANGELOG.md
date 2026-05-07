@@ -15,6 +15,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ### v1.3.12 - 5/7/26
 ✨ `Enhancement` - Template dropdown filter added to users page<br>
 ✨ `Enhancement` - Added bulk actions to data package manager<br>
+✨ `Enhancement` - Hid non-relevant dropdowns from agency admins for User, Group, and Template creation<br>
 🐛 `Bug Fix` - Fixes issue with JSON error upon template creation
 
 ### v1.3.11 - 5/6/26

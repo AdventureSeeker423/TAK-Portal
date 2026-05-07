@@ -277,7 +277,7 @@ th.sortable:hover{
               <input type="text" name="badge" placeholder="Enter <%= usernamePrefixLabel %>" required />
             </label>
 
-            <label>Agency
+            <label style="<%= (!isGlobalAdmin && isAgencyAdmin) ? 'display:none;' : '' %>">Agency
               <select name="agencySuffix" class="agencySelect" required></select>
             </label>
 
@@ -350,10 +350,10 @@ th.sortable:hover{
               </label>
             </div>
 
-            <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap;">
-              <button class="btn" type="submit">Create User</button>
+            <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap; justify-content:flex-end;">
+              <span class="msg createMsg" style="margin-right:auto;"></span>
               <button class="btn cancelBtn" type="button">Cancel</button>
-              <span class="msg createMsg"></span>
+              <button class="btn success" type="submit">Create New User</button>
             </div>
           </form>
         </div>
@@ -365,6 +365,8 @@ th.sortable:hover{
 <script>
 (function(){
   window.IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
+  window.IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
+  window.ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
   const tbody = document.getElementById('reqTbody');
   const listMsg = document.getElementById('listMsg');
   const refreshBtn = document.getElementById('refreshBtn');
@@ -831,7 +833,10 @@ th.sortable:hover{
 
     // Agency select setup
     fillAgencySelect(agencySelect);
-    if (!isOther && agencySelect) {
+    if (!window.IS_GLOBAL_ADMIN && window.IS_AGENCY_ADMIN && Array.isArray(window.ALLOWED_AGENCY_SUFFIXES) && window.ALLOWED_AGENCY_SUFFIXES.length === 1) {
+      agencySelect.value = String(window.ALLOWED_AGENCY_SUFFIXES[0] || '').trim().toLowerCase();
+      agencySelect.disabled = true;
+    } else if (!isOther && agencySelect) {
       // best-effort preselect
       const desired = String(reqObj.agencySuffix || '');
       if (desired && Array.from(agencySelect.options).some(o => String(o.value) === desired)) {
