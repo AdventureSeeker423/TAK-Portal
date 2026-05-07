@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.12 - 5/7/26
+✨ `Enhancement` - Template dropdown filter added to users page<br>
+✨ `Enhancement` - Added checkbox 
+
 ### v1.3.11 - 5/6/26
 ✨ `Enhancement` - Added an option in settings to disable email updates upon editing user's groups
 

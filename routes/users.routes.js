@@ -664,6 +664,10 @@ router.get("/search", async (req, res) => {
     const requestedGlobalAgencySuffix = String(req.query.agencySuffix || "")
       .trim()
       .toLowerCase();
+    const requestedCurrentTemplate = String(req.query.currentTemplate || "").trim();
+    const requestedTemplateAgencySuffix = String(req.query.templateAgencySuffix || "")
+      .trim()
+      .toLowerCase();
     // Authentik can order by the underlying user fields, but our UI's "name"
     // sort uses a last-name-first derived value (see `lastNameForSort()` in
     // users-manage.ejs). For empty search we allow delegation (page order is
@@ -678,7 +682,12 @@ router.get("/search", async (req, res) => {
 
     // If global admin is filtering by agency, we must not delegate to
     // Authentik's pagination because it doesn't apply that attribute filter.
-    if (access.isGlobalAdmin && !requestedGlobalAgencySuffix && sortableKeysForAuthentik.has(sortKey)) {
+    if (
+      access.isGlobalAdmin &&
+      !requestedGlobalAgencySuffix &&
+      !requestedTemplateAgencySuffix &&
+      sortableKeysForAuthentik.has(sortKey)
+    ) {
       try {
         const delegated = await users.searchUsersPaged({
           q: qVal,
@@ -686,6 +695,7 @@ router.get("/search", async (req, res) => {
           pageSize,
           sortKey,
           sortDir,
+          currentTemplate: requestedCurrentTemplate,
         });
         return res.json(delegated);
       } catch (e) {
@@ -707,6 +717,19 @@ router.get("/search", async (req, res) => {
         const agencyNameToDelegate = agencyForSuffix
           ? String(agencyForSuffix.name || "").trim()
           : "";
+        if (
+          requestedTemplateAgencySuffix &&
+          requestedTemplateAgencySuffix !== requestedGlobalAgencySuffix
+        ) {
+          return res.json({
+            users: [],
+            total: 0,
+            page: 1,
+            pageSize,
+            hasNext: false,
+            hasPrev: false,
+          });
+        }
 
         if (agencyNameToDelegate) {
           const delegatedByAgency = await users.searchUsersByAgencyNamePaged({
@@ -718,6 +741,7 @@ router.get("/search", async (req, res) => {
             sortDir,
             includeRoles: false,
             includeGroups: true,
+            currentTemplate: requestedCurrentTemplate,
           });
           return res.json(delegatedByAgency);
         }
@@ -746,6 +770,16 @@ router.get("/search", async (req, res) => {
           : (allowedSuffixes.length === 1 ? allowedSuffixes[0] : "");
 
       if (agencySuffixToDelegate) {
+        if (requestedTemplateAgencySuffix && requestedTemplateAgencySuffix !== agencySuffixToDelegate) {
+          return res.json({
+            users: [],
+            total: 0,
+            page: 1,
+            pageSize,
+            hasNext: false,
+            hasPrev: false,
+          });
+        }
         try {
           const currentPageRequested = requestedPage < 1 ? 1 : requestedPage;
 
@@ -796,6 +830,7 @@ router.get("/search", async (req, res) => {
             sortKey,
             sortDir,
             includeRoles: false,
+            currentTemplate: requestedCurrentTemplate,
           });
           const tTotalAgencyAllMs = Date.now() - tTotalAgencyAllStart;
 
@@ -840,6 +875,7 @@ router.get("/search", async (req, res) => {
               sortDir,
               groupsByPk: globalAdminGroupPks,
               includeRoles: false,
+              currentTemplate: requestedCurrentTemplate,
             });
             const tGlobalMs = Date.now() - tGlobalStart;
 
@@ -865,6 +901,7 @@ router.get("/search", async (req, res) => {
               sortDir,
               includeRoles: false,
               includeGroups: true,
+              currentTemplate: requestedCurrentTemplate,
             });
             const tPageResMs = Date.now() - tPageResStart;
 
@@ -898,6 +935,7 @@ router.get("/search", async (req, res) => {
               sortKey,
               sortDir,
               includeRoles: false,
+              currentTemplate: requestedCurrentTemplate,
             });
 
             const rows = Array.isArray(pageRes?.users) ? pageRes.users : [];
@@ -1041,6 +1079,21 @@ router.get("/search", async (req, res) => {
           : [];
       }
 
+      if (requestedTemplateAgencySuffix) {
+        visible = visible.filter(
+          (u) =>
+            String((u?.attributes || {}).agency || "")
+              .trim()
+              .toLowerCase() === requestedTemplateAgencySuffix
+        );
+      }
+      if (requestedCurrentTemplate) {
+        const wanted = requestedCurrentTemplate.toLowerCase();
+        visible = visible.filter(
+          (u) => String((u?.attributes || {}).current_template || "").trim().toLowerCase() === wanted
+        );
+      }
+
       // Sort entire dataset BEFORE pagination
       applySort(visible);
 
@@ -1083,6 +1136,21 @@ router.get("/search", async (req, res) => {
     let visible = allMatching.filter((u) =>
       accessSvc.isUserInAllowedAgencies(authUser, u)
     );
+
+    if (requestedTemplateAgencySuffix) {
+      visible = visible.filter(
+        (u) =>
+          String((u?.attributes || {}).agency || "")
+            .trim()
+            .toLowerCase() === requestedTemplateAgencySuffix
+      );
+    }
+    if (requestedCurrentTemplate) {
+      const wanted = requestedCurrentTemplate.toLowerCase();
+      visible = visible.filter(
+        (u) => String((u?.attributes || {}).current_template || "").trim().toLowerCase() === wanted
+      );
+    }
 
     if (access.isAgencyAdmin && globalAdminSet.size) {
       visible = visible.filter((u) => {

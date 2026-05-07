@@ -154,6 +154,15 @@
           style="margin: 10px 0; min-width: 260px;"
         ></select>
       <% } %>
+      <% if (isGlobalAdmin || isAgencyAdmin) { %>
+        <select
+          id="filterTemplateSelect"
+          aria-label="Filter by template"
+          style="margin: 10px 0; min-width: 260px;"
+        >
+          <option value="">All Templates</option>
+        </select>
+      <% } %>
       <input
         id="q"
         placeholder="Search username, name, or email..."
@@ -984,6 +993,7 @@ const thead = document.getElementById("thead");
 const searchForm = document.getElementById("searchForm");
 const q = document.getElementById("q");
 const filterAgencySelect = document.getElementById("filterAgencySelect");
+const filterTemplateSelect = document.getElementById("filterTemplateSelect");
 
 // Pagination DOM
 const paginationTop = document.getElementById("paginationTop");
@@ -1098,6 +1108,7 @@ let sortState = {
 // ------- Users state (server-side pagination) -------
 let allUsers = [];
 let filterTimer = null;
+let tableTemplateFilters = [];
 /** Cancels an in-flight users search so older queries cannot overwrite newer results */
 let usersSearchAbort = null;
 /** Monotonic id; ignore responses from stale requests if abort is unsupported */
@@ -2380,7 +2391,73 @@ q.addEventListener("keydown", (e) => {
 });
 
 if (filterAgencySelect) {
-  filterAgencySelect.addEventListener("change", applyFilterSortRender);
+  filterAgencySelect.addEventListener("change", () => {
+    renderTemplateFilterOptions();
+    applyFilterSortRender();
+  });
+}
+
+if (filterTemplateSelect) {
+  filterTemplateSelect.addEventListener("change", applyFilterSortRender);
+}
+
+function getAgencyTokenForTemplateFilter(sfx){
+  const suffix = String(sfx || "").trim().toLowerCase();
+  if (!suffix) return "";
+  if (filterAgencySelect) {
+    const opt = Array.from(filterAgencySelect.options || []).find(
+      (o) => String(o.value || "").trim().toLowerCase() === suffix
+    );
+    if (opt) return String(opt.textContent || "").trim();
+  }
+  return suffix.toUpperCase();
+}
+
+function renderTemplateFilterOptions(){
+  if (!filterTemplateSelect) return;
+
+  const prev = String(filterTemplateSelect.value || "").trim();
+  const selectedAgency = String(filterAgencySelect?.value || "").trim().toLowerCase();
+  const source = Array.isArray(tableTemplateFilters) ? tableTemplateFilters : [];
+  const scoped = selectedAgency
+    ? source.filter((t) => String(t?.agencySuffix || "").trim().toLowerCase() === selectedAgency)
+    : source.slice();
+
+  const options = scoped
+    .map((t) => {
+      const name = String(t?.name || "").trim();
+      const sfx = String(t?.agencySuffix || "").trim().toLowerCase();
+      if (!name || !sfx) return null;
+      const value = `sfx=${encodeURIComponent(sfx)}&name=${encodeURIComponent(name)}`;
+      const agencyLabel = getAgencyTokenForTemplateFilter(sfx);
+      const label = selectedAgency ? name : `${agencyLabel} - ${name}`;
+      return { value, label };
+    })
+    .filter(Boolean)
+    .sort((a, b) =>
+      String(a.label || "").localeCompare(String(b.label || ""), undefined, { sensitivity: "base" })
+    );
+
+  filterTemplateSelect.innerHTML =
+    `<option value="">All Templates</option>` +
+    options.map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
+
+  if (prev && Array.from(filterTemplateSelect.options).some((o) => o.value === prev)) {
+    filterTemplateSelect.value = prev;
+  }
+}
+
+async function loadTemplateFiltersForTable(){
+  if (!filterTemplateSelect) return;
+  try {
+    const res = await fetch("/api/templates");
+    const out = await res.json();
+    if (!res.ok) throw new Error(out?.error || "Failed to load templates");
+    tableTemplateFilters = Array.isArray(out) ? out : [];
+  } catch {
+    tableTemplateFilters = [];
+  }
+  renderTemplateFilterOptions();
 }
 
 function renderCurrentPage() {
@@ -2752,6 +2829,15 @@ if (applyChangesBtn) applyChangesBtn.addEventListener("click", async () => {
     if (sel) params.set("agencySuffix", sel);
   }
 
+  const selectedTemplateRaw = String(filterTemplateSelect?.value || "").trim();
+  if (selectedTemplateRaw) {
+    const parsed = new URLSearchParams(selectedTemplateRaw);
+    const templateName = String(parsed.get("name") || "").trim();
+    const templateAgencySuffix = String(parsed.get("sfx") || "").trim().toLowerCase();
+    if (templateName) params.set("currentTemplate", templateName);
+    if (templateAgencySuffix) params.set("templateAgencySuffix", templateAgencySuffix);
+  }
+
   const qVal = String(currentSearch || "").trim();
   if (qVal) params.set("q", qVal);
 
@@ -2816,6 +2902,7 @@ searchForm.onsubmit = (e) => {
   try {
     renderRoleOptions(roleSelect, "Team Member");
     updateSortIndicators();
+    await loadTemplateFiltersForTable();
     // Load groups (for Create/Edit modals) and users table in parallel so the table appears faster
     await Promise.all([loadGroups(), loadAllUsers()]);
     if (IS_GLOBAL_ADMIN) {

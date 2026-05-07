@@ -28,6 +28,18 @@
   <div class="card" style="margin-top:1.25rem;">
     <h2 style="margin-top:0;">Existing Data Packages</h2>
     <div class="row" style="flex-wrap:wrap; align-items:flex-end; gap:12px;">
+      <label style="min-width:280px;">
+        Bulk Action
+        <div class="row" style="gap:8px; align-items:center; margin-top:2px;">
+          <select id="bulkActionSelect">
+            <option value="">Choose action...</option>
+            <option value="download">Download all selected</option>
+            <option value="archive">Archive selected</option>
+            <option value="delete">Delete selected</option>
+          </select>
+          <button type="button" class="btn" id="bulkActionApplyBtn">Apply</button>
+        </div>
+      </label>
       <label style="min-width:220px; flex:1 1 100%;">
         Filter
         <input type="search" id="packageFilter" placeholder="Filter by filename/creator..." autocomplete="off" />
@@ -38,6 +50,9 @@
       <table class="table data-packages-table">
         <thead>
           <tr>
+            <th style="width:42px;">
+              <input type="checkbox" id="activeSelectAllChk" aria-label="Select all active packages" />
+            </th>
             <th>Filename</th>
             <th>Size</th>
             <th class="data-packages-col-creator">Creator</th>
@@ -61,6 +76,9 @@
         <table class="table data-packages-table">
           <thead>
             <tr>
+            <th style="width:42px;">
+              <input type="checkbox" id="archivedSelectAllChk" aria-label="Select all archived packages" />
+            </th>
               <th>Filename</th>
               <th>Size</th>
               <th class="data-packages-col-creator">Creator</th>
@@ -166,9 +184,14 @@
   var packagesTbody = document.getElementById("packagesTbody");
   var archivedPackagesTbody = document.getElementById("archivedPackagesTbody");
   var archivedCount = document.getElementById("archivedCount");
+  var bulkActionSelect = document.getElementById("bulkActionSelect");
+  var bulkActionApplyBtn = document.getElementById("bulkActionApplyBtn");
+  var activeSelectAllChk = document.getElementById("activeSelectAllChk");
+  var archivedSelectAllChk = document.getElementById("archivedSelectAllChk");
 
   var packagesCache = [];
   var loadPackagesDebounceTimer = null;
+  var selectedPackages = {};
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -205,6 +228,35 @@
     if (Array.isArray(payload.data)) return payload.data;
     if (Array.isArray(payload)) return payload;
     return [];
+  }
+  function selectedCount() {
+    return Object.keys(selectedPackages).length;
+  }
+  function updateBulkActionButtonState() {
+    if (!bulkActionApplyBtn) return;
+    var count = selectedCount();
+    bulkActionApplyBtn.disabled = count <= 0 || !bulkActionSelect || !String(bulkActionSelect.value || "");
+    bulkActionApplyBtn.textContent = count > 0 ? ("Apply (" + count + ")") : "Apply";
+  }
+  function syncSelectAllCheckboxes() {
+    var activeRows = packagesTbody ? Array.from(packagesTbody.querySelectorAll("input.pkg-row-chk[data-archived='false']")) : [];
+    var archivedRows = archivedPackagesTbody ? Array.from(archivedPackagesTbody.querySelectorAll("input.pkg-row-chk[data-archived='true']")) : [];
+    if (activeSelectAllChk) {
+      activeSelectAllChk.checked = activeRows.length > 0 && activeRows.every(function (cb) { return cb.checked; });
+      activeSelectAllChk.indeterminate = activeRows.some(function (cb) { return cb.checked; }) && !activeSelectAllChk.checked;
+    }
+    if (archivedSelectAllChk) {
+      archivedSelectAllChk.checked = archivedRows.length > 0 && archivedRows.every(function (cb) { return cb.checked; });
+      archivedSelectAllChk.indeterminate = archivedRows.some(function (cb) { return cb.checked; }) && !archivedSelectAllChk.checked;
+    }
+    updateBulkActionButtonState();
+  }
+  function setSelection(hash, metaOrNull) {
+    var key = String(hash || "").trim();
+    if (!key) return;
+    if (metaOrNull) selectedPackages[key] = metaOrNull;
+    else delete selectedPackages[key];
+    syncSelectAllCheckboxes();
   }
   function normalizeKeywords(pkg) {
     if (Array.isArray(pkg.keywords)) {
@@ -256,6 +308,7 @@
 
     var tr = document.createElement("tr");
     tr.innerHTML =
+      "<td style='width:42px;'><input type='checkbox' class='pkg-row-chk' data-hash='" + esc(hash) + "' data-filename='" + esc(filename || "") + "' data-archived='" + (isArchived ? "true" : "false") + "' aria-label='Select package' /></td>" +
       "<td style='max-width:240px;'>" + esc(filename || "(unnamed)") + "</td>" +
       "<td style='white-space:nowrap;'>" + esc(fmtSize(size)) + "</td>" +
       "<td class=\"data-packages-col-creator\">" + esc(creator) + "</td>" +
@@ -265,6 +318,24 @@
 
     var tdAct = tr.querySelector("td:last-child");
     tdAct.className = "data-packages-actions-cell";
+    var rowChk = tr.querySelector("input.pkg-row-chk");
+    if (rowChk && hash) {
+      var key = String(hash).trim();
+      rowChk.checked = !!selectedPackages[key];
+      rowChk.addEventListener("change", function () {
+        if (rowChk.checked) {
+          setSelection(key, {
+            hash: key,
+            filename: filename || "",
+            isArchived: !!isArchived
+          });
+        } else {
+          setSelection(key, null);
+        }
+      });
+    } else if (rowChk) {
+      rowChk.disabled = true;
+    }
 
     var bDl = document.createElement("button");
     bDl.type = "button";
@@ -327,7 +398,7 @@
     if (!activeCount) {
       var trA = document.createElement("tr");
       var tdA = document.createElement("td");
-      tdA.colSpan = 6;
+      tdA.colSpan = 7;
       tdA.textContent = "No active mission packages.";
       trA.appendChild(tdA);
       packagesTbody.appendChild(trA);
@@ -335,12 +406,13 @@
     if (!archivedCountValue) {
       var trR = document.createElement("tr");
       var tdR = document.createElement("td");
-      tdR.colSpan = 6;
+      tdR.colSpan = 7;
       tdR.textContent = "No archived mission packages.";
       trR.appendChild(tdR);
       archivedPackagesTbody.appendChild(trR);
     }
     if (archivedCount) archivedCount.textContent = String(archivedCountValue);
+    syncSelectAllCheckboxes();
   }
 
   async function loadPackages() {
@@ -469,7 +541,141 @@
     }
   }
 
+  async function bulkApplyAction() {
+    var action = String((bulkActionSelect && bulkActionSelect.value) || "").trim();
+    var selectedKeys = Object.keys(selectedPackages);
+    if (!action) {
+      setMsg(packagesMsg, "Choose a bulk action first.", false);
+      return;
+    }
+    if (!selectedKeys.length) {
+      setMsg(packagesMsg, "Select at least one package.", false);
+      return;
+    }
+
+    if (action === "download") {
+      setMsg(packagesMsg, "Starting downloads for selected packages...", undefined);
+      var downloaded = 0;
+      for (var i = 0; i < selectedKeys.length; i++) {
+        var m = selectedPackages[selectedKeys[i]];
+        if (!m || !m.hash) continue;
+        try {
+          var res = await fetch(API + "/packages/download?hash=" + encodeURIComponent(m.hash));
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          var blob = await res.blob();
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = m.filename || ("data-package-" + m.hash + ".zip");
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          downloaded += 1;
+          (function (u) {
+            setTimeout(function () {
+              try { URL.revokeObjectURL(u); } catch (_) {}
+            }, 2500);
+          })(a.href);
+        } catch (_) {}
+      }
+      setMsg(packagesMsg, "Started " + downloaded + " download(s).", true);
+      return;
+    }
+
+    if (action === "archive") {
+      var toArchive = selectedKeys
+        .map(function (k) { return selectedPackages[k]; })
+        .filter(function (m) { return m && m.hash && !m.isArchived; });
+      if (!toArchive.length) {
+        setMsg(packagesMsg, "No active selected packages to archive.", false);
+        return;
+      }
+      if (!window.confirm("Archive " + toArchive.length + " selected package(s)?")) return;
+      setMsg(packagesMsg, "Archiving selected packages...", undefined);
+      var archivedOk = 0;
+      for (var j = 0; j < toArchive.length; j++) {
+        var x = toArchive[j];
+        try {
+          var r = await fetch(API + "/packages/" + encodeURIComponent(x.hash) + "/metadata", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ keywords: [ARCHIVED_KEYWORD] }),
+          });
+          if (r.ok) archivedOk += 1;
+        } catch (_) {}
+      }
+      selectedPackages = {};
+      setMsg(packagesMsg, "Archived " + archivedOk + " package(s).", true);
+      await loadPackages();
+      return;
+    }
+
+    if (action === "delete") {
+      if (!window.confirm("Permanently delete " + selectedKeys.length + " selected package(s)? This cannot be undone.")) return;
+      setMsg(packagesMsg, "Deleting selected packages...", undefined);
+      var deletedOk = 0;
+      for (var k = 0; k < selectedKeys.length; k++) {
+        var d = selectedPackages[selectedKeys[k]];
+        if (!d || !d.hash) continue;
+        try {
+          var delRes = await fetch(API + "/packages/" + encodeURIComponent(d.hash), { method: "DELETE" });
+          if (delRes.ok) deletedOk += 1;
+        } catch (_) {}
+      }
+      selectedPackages = {};
+      setMsg(packagesMsg, "Deleted " + deletedOk + " package(s).", true);
+      await loadPackages();
+    }
+  }
+
   if (btnUploadPackage) btnUploadPackage.addEventListener("click", uploadPackage);
+  if (bulkActionSelect) bulkActionSelect.addEventListener("change", updateBulkActionButtonState);
+  if (bulkActionApplyBtn) bulkActionApplyBtn.addEventListener("click", bulkApplyAction);
+  if (activeSelectAllChk) {
+    activeSelectAllChk.addEventListener("change", function () {
+      var checked = !!activeSelectAllChk.checked;
+      var rows = packagesTbody ? Array.from(packagesTbody.querySelectorAll("input.pkg-row-chk[data-archived='false']")) : [];
+      rows.forEach(function (cb) {
+        if (cb.disabled) return;
+        cb.checked = checked;
+        var key = String(cb.getAttribute("data-hash") || "").trim();
+        if (!key) return;
+        if (checked) {
+          var fileName = String(cb.getAttribute("data-filename") || "").trim();
+          selectedPackages[key] = {
+            hash: key,
+            filename: fileName,
+            isArchived: false
+          };
+        } else {
+          delete selectedPackages[key];
+        }
+      });
+      syncSelectAllCheckboxes();
+    });
+  }
+  if (archivedSelectAllChk) {
+    archivedSelectAllChk.addEventListener("change", function () {
+      var checked = !!archivedSelectAllChk.checked;
+      var rows = archivedPackagesTbody ? Array.from(archivedPackagesTbody.querySelectorAll("input.pkg-row-chk[data-archived='true']")) : [];
+      rows.forEach(function (cb) {
+        if (cb.disabled) return;
+        cb.checked = checked;
+        var key = String(cb.getAttribute("data-hash") || "").trim();
+        if (!key) return;
+        if (checked) {
+          var fileName = String(cb.getAttribute("data-filename") || "").trim();
+          selectedPackages[key] = {
+            hash: key,
+            filename: fileName,
+            isArchived: true
+          };
+        } else {
+          delete selectedPackages[key];
+        }
+      });
+      syncSelectAllCheckboxes();
+    });
+  }
   if (packageFilter) {
     packageFilter.addEventListener("input", function () {
       if (loadPackagesDebounceTimer) clearTimeout(loadPackagesDebounceTimer);
@@ -483,5 +689,6 @@
     if (!ok) return;
     loadPackages();
   });
+  updateBulkActionButtonState();
 })();
 </script>

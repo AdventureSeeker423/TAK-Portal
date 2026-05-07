@@ -1759,6 +1759,7 @@ async function searchUsersPaged({
   pageSize = 50,
   sortKey = "username",
   sortDir = "asc",
+  currentTemplate,
 } = {}) {
   const params = {
     page,
@@ -1799,6 +1800,10 @@ async function searchUsersPaged({
   if (q && String(q).trim()) {
     // Authentik supports "search" across username/email/etc.
     params.search = String(q).trim();
+  }
+  const templateName = String(currentTemplate || "").trim();
+  if (templateName) {
+    params.attributes = JSON.stringify({ current_template: templateName });
   }
 
   // Needed so the Manage Users UI can show roles and the edit modal can
@@ -1897,6 +1902,7 @@ async function searchUsersByAgencyAbbreviationPaged({
   groupsByPk,
   includeRoles = false,
   includeGroups = true,
+  currentTemplate,
 } = {}) {
   const abbr = String(agencyAbbreviation || "").trim();
   if (!abbr) {
@@ -1913,13 +1919,17 @@ async function searchUsersByAgencyAbbreviationPaged({
   const hiddenPrefixes = getHiddenUserPrefixes();
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
 
+  const attrsFilter = { agency_abbreviation: abbr };
+  const templateName = String(currentTemplate || "").trim();
+  if (templateName) attrsFilter.current_template = templateName;
+
   const params = {
     page,
     page_size: pageSize,
     ordering: getAuthentikOrderingForUserSort({ sortKey, sortDir }),
     // Authentik filters JSON attributes via `attributes=<json>`.
     // See authentik/core/api/users.py UsersFilter.filter_attributes().
-    attributes: JSON.stringify({ agency_abbreviation: abbr }),
+    attributes: JSON.stringify(attrsFilter),
     include_roles: includeRoles ? "true" : "false",
     include_groups: includeGroups ? "true" : "false",
   };
@@ -2021,6 +2031,7 @@ async function searchUsersByAgencySuffixPaged({
   groupsByPk,
   includeRoles = false,
   includeGroups = true,
+  currentTemplate,
 } = {}) {
   const sfx = String(agencySuffix || "").trim();
   if (!sfx) {
@@ -2037,13 +2048,17 @@ async function searchUsersByAgencySuffixPaged({
   const hiddenPrefixes = getHiddenUserPrefixes();
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
 
+  const attrsFilter = { agency: sfx };
+  const templateName = String(currentTemplate || "").trim();
+  if (templateName) attrsFilter.current_template = templateName;
+
   const params = {
     page,
     page_size: pageSize,
     ordering: getAuthentikOrderingForUserSort({ sortKey, sortDir }),
     // Authentik filters JSON attributes via `attributes=<json>`.
     // See authentik/core/api/users.py UsersFilter.filter_attributes().
-    attributes: JSON.stringify({ agency: sfx }),
+    attributes: JSON.stringify(attrsFilter),
     include_roles: includeRoles ? "true" : "false",
     include_groups: includeGroups ? "true" : "false",
   };
@@ -2142,6 +2157,7 @@ async function searchUsersByAgencyNamePaged({
   groupsByPk,
   includeRoles = false,
   includeGroups = true,
+  currentTemplate,
 } = {}) {
   const name = String(agencyName || "").trim();
   if (!name) {
@@ -2158,13 +2174,17 @@ async function searchUsersByAgencyNamePaged({
   const hiddenPrefixes = getHiddenUserPrefixes();
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
 
+  const attrsFilter = { agency_name: name };
+  const templateName = String(currentTemplate || "").trim();
+  if (templateName) attrsFilter.current_template = templateName;
+
   const params = {
     page,
     page_size: pageSize,
     ordering: getAuthentikOrderingForUserSort({ sortKey, sortDir }),
     // Authentik filters JSON attributes via `attributes=<json>`.
     // The create-user flow stores the full agency name under `attributes.agency_name`.
-    attributes: JSON.stringify({ agency_name: name }),
+    attributes: JSON.stringify(attrsFilter),
     include_roles: includeRoles ? "true" : "false",
     include_groups: includeGroups ? "true" : "false",
   };
