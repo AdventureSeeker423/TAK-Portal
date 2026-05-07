@@ -510,6 +510,12 @@ async function loadAgencies() {
   if (!res.ok) throw new Error(agencies.error || "Failed to load agencies");
 
   const list = Array.isArray(agencies) ? agencies : [];
+  agencyNameBySuffix = new Map(
+    list.map((a) => [
+      String(a?.suffix || "").trim().toLowerCase(),
+      String(a?.name || "").trim()
+    ])
+  );
   const sortedByName = list
     .slice()
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
@@ -1114,6 +1120,7 @@ let sortState = {
 let allUsers = [];
 let filterTimer = null;
 let tableTemplateFilters = [];
+let agencyNameBySuffix = new Map();
 /** Cancels an in-flight users search so older queries cannot overwrite newer results */
 let usersSearchAbort = null;
 /** Monotonic id; ignore responses from stale requests if abort is unsupported */
@@ -2409,6 +2416,10 @@ if (filterTemplateSelect) {
 function getAgencyTokenForTemplateFilter(sfx){
   const suffix = String(sfx || "").trim().toLowerCase();
   if (!suffix) return "";
+  if (IS_GLOBAL_ADMIN) {
+    const fullName = String(agencyNameBySuffix.get(suffix) || "").trim();
+    if (fullName) return fullName;
+  }
   if (filterAgencySelect) {
     const opt = Array.from(filterAgencySelect.options || []).find(
       (o) => String(o.value || "").trim().toLowerCase() === suffix
