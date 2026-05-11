@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.13 - 5/11/26
+🐛 `Bug Fix` - Fixes issue with agency admins unable to create users due to hidden agency field
+
 ### v1.3.12 - 5/7/26
 ✨ `Enhancement` - Template dropdown filter added to users page<br>
 ✨ `Enhancement` - Added bulk actions to data package manager<br>
