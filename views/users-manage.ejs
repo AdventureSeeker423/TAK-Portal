@@ -718,6 +718,12 @@ form.onsubmit = async (e) => {
   const fd = new FormData(form);
   const payload = Object.fromEntries(fd.entries());
 
+  // Disabled controls are omitted from FormData; locked agency <select> must still submit suffix.
+  if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length === 1) {
+    const sfx = String(ALLOWED_AGENCY_SUFFIXES[0] || "").trim().toLowerCase();
+    if (sfx) payload.agencySuffix = sfx;
+  }
+
   const permVal = String(payload.permissions || "user").trim().toLowerCase();
   payload.permissions = permVal || "user";
 

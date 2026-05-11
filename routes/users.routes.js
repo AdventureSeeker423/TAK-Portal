@@ -360,6 +360,18 @@ router.post("/", async (req, res) => {
     const payload = req.body || {};
     const authUser = req.authentikUser || null;
 
+    // Disabled <select name="agencySuffix"> is omitted from multipart FormData; default
+    // the sole agency for single-scope agency admins.
+    if (!String(payload.agencySuffix ?? "").trim()) {
+      const access = accessSvc.getAgencyAccess(authUser);
+      if (!access.isGlobalAdmin && access.isAgencyAdmin) {
+        const allowed = access.allowedAgencySuffixes || [];
+        if (allowed.length === 1) {
+          payload.agencySuffix = String(allowed[0] || "").trim();
+        }
+      }
+    }
+
     if (payload.agencySuffix && !accessSvc.isSuffixAllowed(authUser, payload.agencySuffix)) {
       return res.status(403).json({ error: "You do not have access to that agency." });
     }
