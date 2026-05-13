@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.14 - 5/12/26
+✨ `Enhancement` - Added email logic and email template to send when a user is re-enabled after being disabled.
+✨ `Enhancement` - Popup tooltip added on password field when creating users to detail password requirements
+
 ### v1.3.13 - 5/11/26
 🐛 `Bug Fix` - Fixes issue with agency admins unable to create users due to hidden agency field
 
