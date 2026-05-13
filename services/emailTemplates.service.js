@@ -31,6 +31,7 @@ function getTemplatesDir() {
  *
  * settings.EMAIL_TEMPLATES_OVERRIDES = {
  *   "user_created_password_set.html": "<custom html>",
+ *   "user_reenabled.html": "<custom html>",
  *   ...
  * }
  *

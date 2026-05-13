@@ -409,27 +409,33 @@ function buildTakPortalBlock({
 }
 
 /**
- * User-created email.
+ * Build Mustache variables shared by user-created and user re-enabled welcome emails.
  *
- * hasPassword === true  -> use "user_created_password_set.html"
- * hasPassword === false -> use "user_created_no_password.html"
- *
+ * @param {object} user - Authentik user object
+ * @param {Array<{name?: string}>|undefined} groupsOverride - When defined (including `[]`),
+ *   group CSV is built from these objects' names (create-user flow). When omitted, names are
+ *   resolved from `user.groups`.
+ * @returns {Promise<{ to: string, vars: object }|null>}
  */
-async function emailUserCreated({ user, groups, hasPassword }) {
+async function buildUserAccountWelcomeEmailVars(user, groupsOverride) {
   const to = safeMailTo(user);
-  if (!to) return;
+  if (!to) return null;
 
-  const groupNames = Array.isArray(groups)
-    ? groups
-        .map(g => String(g?.name || "").trim())
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-    : [];
+  let groupNames;
+  if (groupsOverride !== undefined) {
+    groupNames = Array.isArray(groupsOverride)
+      ? groupsOverride
+          .map(g => String(g?.name || "").trim())
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b))
+      : [];
+  } else {
+    groupNames = await resolveGroupNames(user?.groups || []);
+  }
+  const groupsCsv = groupNames.length ? groupNames.join(", ") : "(none)";
 
-  const subject = "TAK Account Created";
   const displayName = String(user?.name || "").trim() || "there";
   const { lastName, lastNameUpper, firstName } = parseName(displayName);
-  const groupsCsv = groupNames.length ? groupNames.join(", ") : "(none)";
 
   const attrs = user?.attributes || {};
   const agencies = agenciesStore.load();
@@ -458,9 +464,8 @@ async function emailUserCreated({ user, groups, hasPassword }) {
   const countyAbbreviation = String(agency?.countyAbbrev || "").trim().toUpperCase();
   const agencyTypeCode = getAgencyTypeCode(agency?.type);
 
-  // For user-created emails only: if the user was created from an agency template,
-  // prefer that template's color override (when present). Otherwise fall back to
-  // the agency color behavior above.
+  // If the user was created from an agency template, prefer that template's color override
+  // (when present). Otherwise fall back to the agency color behavior above.
   let agencyColorEffective = agencyColor;
   try {
     const createdTemplateName = String(attrs.created_template || "").trim();
@@ -482,11 +487,58 @@ async function emailUserCreated({ user, groups, hasPassword }) {
     // Never block email sending because of template lookup issues.
   }
 
+  const takPortalPublicUrl = getTakPortalPublicUrl();
+
+  const callsign = buildCallsign({
+    firstName,
+    lastName,
+    lastNameUpper,
+    badgeNumber,
+    agencyAbbreviation,
+    agencyColor: agencyColorEffective,
+    stateAbbreviation,
+    county,
+    countyAbbreviation,
+    agencyTypeCode,
+  });
+
+  return {
+    to,
+    vars: {
+      displayName,
+      lastName,
+      lastNameUpper,
+      firstName,
+      username: String(user?.username || ""),
+      groupsCsv,
+      badgeNumber,
+      agencyAbbreviation,
+      agencyColor: agencyColorEffective,
+      stateAbbreviation,
+      county,
+      callsign,
+      atakRole: normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
+      takPortalPublicUrl,
+    },
+  };
+}
+
+/**
+ * User-created email.
+ *
+ * hasPassword === true  -> use "user_created_password_set.html"
+ * hasPassword === false -> use "user_created_no_password.html"
+ *
+ */
+async function emailUserCreated({ user, groups, hasPassword }) {
+  const built = await buildUserAccountWelcomeEmailVars(user, groups);
+  if (!built) return;
+
   const templateKey = hasPassword
     ? "user_created_password_set.html"
     : "user_created_no_password.html";
 
-  const takPortalPublicUrl = getTakPortalPublicUrl();
+  const takPortalPublicUrl = built.vars.takPortalPublicUrl;
 
   const takPortalBlock = hasPassword
     ? buildTakPortalBlock({
@@ -506,41 +558,54 @@ async function emailUserCreated({ user, groups, hasPassword }) {
           "To set your password or get help setting up TAK on your device, contact your TAK Portal Administrator.",
       });
 
-  const callsign = buildCallsign({
-    firstName,
-    lastName,
-    lastNameUpper,
-    badgeNumber,
-    agencyAbbreviation,
-    agencyColor: agencyColorEffective,
-    stateAbbreviation,
-    county,
-    countyAbbreviation,
-    agencyTypeCode,
-  });
-
   const html = renderTemplate(templateKey, {
-    displayName,
-    lastName,
-    lastNameUpper,
-    firstName,
-    username: String(user?.username || ""),
-    groupsCsv,
+    ...built.vars,
     hasPassword: !!hasPassword,
-    badgeNumber,
-    agencyAbbreviation,
-    agencyColor: agencyColorEffective,
-    stateAbbreviation,
-    county,
-    callsign,
-    atakRole: normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
-    takPortalPublicUrl, // keep available if any template uses it elsewhere
-    takPortalBlock,     // NEW: injected HTML block used by {{{takPortalBlock}}}
+    takPortalBlock,
   });
 
   const text = htmlToText(html);
 
-  await emailSvc.sendMail({ to, subject, text, html });
+  await emailSvc.sendMail({
+    to: built.to,
+    subject: "TAK Account Created",
+    text,
+    html,
+  });
+}
+
+/**
+ * Sent when an administrator re-enables a previously disabled user (same portal block as
+ * "user created with password" — user keeps their existing password).
+ */
+async function emailUserReenabled(user) {
+  const built = await buildUserAccountWelcomeEmailVars(user, undefined);
+  if (!built) return;
+
+  const takPortalPublicUrl = built.vars.takPortalPublicUrl;
+  const takPortalBlock = buildTakPortalBlock({
+    takPortalPublicUrl,
+    introHtml:
+      "Use the TAK Portal to access device setup instructions, reset your password, or generate a QR code for faster sign-in on your mobile device.",
+    buttonText: "Open TAK Portal",
+    elseHtml:
+      "If you forget your password or need help setting up TAK on your device, contact your TAK Portal Administrator.",
+  });
+
+  const html = renderTemplate("user_reenabled.html", {
+    ...built.vars,
+    hasPassword: true,
+    takPortalBlock,
+  });
+
+  const text = htmlToText(html);
+
+  await emailSvc.sendMail({
+    to: built.to,
+    subject: "TAK Account Re-Enabled",
+    text,
+    html,
+  });
 }
 
 async function emailPasswordChanged(user) {
@@ -2361,12 +2426,21 @@ async function setUserGroups(userId, groupIds, opts = {}) {
 
 async function toggleUserActive(userId, isActive) {
   await assertUserNotActionLocked(userId);
+
+  let userBefore;
+  try {
+    userBefore = await getUserById(userId);
+  } catch (e) {
+    throw e;
+  }
+  const wasActive = !!userBefore?.is_active;
+
   // If disabling, revoke + VERIFY TAK certs first (if enabled)
   if (!isActive) {
     const shouldRevoke = getBool("TAK_REVOKE_ON_DISABLE", true);
 
     if (shouldRevoke) {
-      const user = await getUserById(userId);
+      const user = userBefore;
 
       // Hard stop if revocation cannot be verified.
       // tak.service.js already no-ops safely if TAK_URL isn't set.
@@ -2379,6 +2453,16 @@ async function toggleUserActive(userId, isActive) {
   });
 
   invalidateUsersCache();
+
+  if (isActive && !wasActive) {
+    try {
+      const userAfter = await getUserById(userId);
+      await emailUserReenabled(userAfter);
+    } catch (e) {
+      console.error("[EMAIL] user re-enabled notice failed:", e?.message || e);
+    }
+  }
+
   return true;
 }
 
