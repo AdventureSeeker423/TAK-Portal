@@ -1551,15 +1551,12 @@
 
   </form>
 
-  <!-- Action row (outside the main form to avoid nested forms) -->
+  <!-- Action row (outside the main form to avoid nested forms) — same pattern as Users: secondary actions left, primary success right -->
   <div class="settings-actions-row">
-    <button type="submit" class="btn settings-action-btn" form="settingsForm">Save Settings</button>
-    <a href="/settings/export-data" class="btn settings-action-btn">Export Configuration</a>
-
-    <!-- Separate form: Import Configuration -->
+    <a href="/settings/export-data" class="btn">Export Configuration</a>
     <form
       id="importConfigForm"
-      class="settings-action-form"
+      class="settings-import-inline-form"
       action="/settings/import-data"
       method="post"
       enctype="multipart/form-data"
@@ -1572,11 +1569,11 @@
         style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;"
       />
 
-      <!-- Label opens the file picker reliably on Windows -->
-      <label for="configZipInput" class="btn settings-action-btn" style="cursor:pointer;">
+      <label for="configZipInput" class="btn" style="cursor:pointer;">
         Import Configuration
       </label>
     </form>
+    <button type="submit" class="btn success settings-action-save" form="settingsForm">Save Settings</button>
   </div>
 
   <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
@@ -2099,55 +2096,45 @@
   <% } %>
 
   <style>
-    /* Bottom bar: Save / Export / Import — equal width & height on desktop, full-width stack on small screens */
+    /* Bottom bar: Export + Import left (content-sized), Save Settings success + right — mirrors Users create row */
     .settings-actions-row {
       margin-top: 1rem;
       display: flex;
       flex-wrap: wrap;
-      gap: 0.75rem;
-      align-items: stretch;
-    }
-
-    .settings-actions-row > button.settings-action-btn,
-    .settings-actions-row > a.settings-action-btn,
-    .settings-actions-row > .settings-action-form {
-      flex: 1 1 0;
-      min-width: 0;
-      box-sizing: border-box;
-      min-height: 2.75rem;
-    }
-
-    .settings-actions-row > button.settings-action-btn,
-    .settings-actions-row > a.settings-action-btn {
-      display: flex;
       align-items: center;
-      justify-content: center;
+      gap: 0.75rem;
     }
 
-    .settings-actions-row > .settings-action-form {
-      display: flex;
+    .settings-import-inline-form {
+      display: inline-flex;
       margin: 0;
     }
 
-    .settings-actions-row .settings-action-form .settings-action-btn {
-      flex: 1 1 auto;
-      width: 100%;
-      min-height: 2.75rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .settings-action-save {
+      margin-left: auto;
     }
 
     @media (max-width: 640px) {
       .settings-actions-row {
         flex-direction: column;
+        align-items: stretch;
       }
 
-      .settings-actions-row > button.settings-action-btn,
-      .settings-actions-row > a.settings-action-btn,
-      .settings-actions-row > .settings-action-form {
-        flex: 1 1 auto;
+      .settings-action-save {
+        margin-left: 0;
+      }
+
+      .settings-actions-row > a,
+      .settings-import-inline-form,
+      .settings-actions-row > .settings-action-save {
         width: 100%;
+        box-sizing: border-box;
+      }
+
+      .settings-import-inline-form label.btn {
+        width: 100%;
+        box-sizing: border-box;
+        justify-content: center;
       }
     }
 
