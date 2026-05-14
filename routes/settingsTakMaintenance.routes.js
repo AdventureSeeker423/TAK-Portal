@@ -71,9 +71,24 @@ router.get("/stream", ensureSsh, (req, res) => {
 
   send({ type: "stream_open", at: new Date().toISOString() });
 
+  const tailOnly =
+    String(req.query.tailOnly || req.query.logs || "").trim() === "1" ||
+    String(req.query.mode || "")
+      .trim()
+      .toLowerCase() === "tail";
+
   (async () => {
     try {
-      await takMaint.streamHealthWaitAndTail({ send, signal: ac.signal });
+      if (tailOnly) {
+        send({
+          type: "tail_only",
+          at: new Date().toISOString(),
+          message: "Live tail of /opt/tak/logs/takserver-api.log (no restart).",
+        });
+        await takMaint.streamTakApiLogTail({ send, signal: ac.signal });
+      } else {
+        await takMaint.streamHealthWaitAndTail({ send, signal: ac.signal });
+      }
     } catch (e) {
       if (!ac.signal.aborted) {
         send({ type: "error", message: e?.message || String(e) });

@@ -1577,6 +1577,7 @@
   <div class="card" style="margin-top:1.25rem;">
     <h2 style="margin-top:0;font-size:1.125rem;">TAK Server Maintenance</h2>
     <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center;">
+      <button type="button" class="btn" id="takMaintShowLogsBtn">Show TAK Logs</button>
       <button type="button" class="btn warning" id="takMaintRestartServiceBtn">Restart TAK Service</button>
       <button type="button" class="btn danger" id="takMaintRebootServerBtn">Restart TAK Server</button>
     </div>
@@ -1879,6 +1880,7 @@
   <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
   <script>
     (function () {
+      var showLogsBtn = document.getElementById("takMaintShowLogsBtn");
       var restartBtn = document.getElementById("takMaintRestartServiceBtn");
       var rebootBtn = document.getElementById("takMaintRebootServerBtn");
       var panel = document.getElementById("takMaintPanel");
@@ -1933,11 +1935,17 @@
         pollLi = null;
       }
 
-      function startWatchStream() {
+      function startWatchStream(opts) {
+        opts = opts || {};
+        var tailOnly = !!opts.tailOnly;
         stopStream();
         resetPanel();
-        appendStatus("Live stream connected — waiting for TAK API and log tail.");
-        maintEs = new EventSource("/api/settings/tak-maintenance/stream");
+        if (!tailOnly) {
+          appendStatus("Live stream connected — waiting for TAK API and log tail.");
+        }
+        var streamUrl =
+          "/api/settings/tak-maintenance/stream" + (tailOnly ? "?tailOnly=1" : "");
+        maintEs = new EventSource(streamUrl);
         maintEs.onmessage = function (ev) {
           var d = null;
           try {
@@ -1947,6 +1955,10 @@
           }
           if (!d || typeof d !== "object") return;
           if (d.type === "stream_open") {
+            return;
+          }
+          if (d.type === "tail_only") {
+            appendStatus(String(d.message || "Live tail of takserver-api.log (no restart)."));
             return;
           }
           if (d.type === "health_poll") {
@@ -2011,6 +2023,12 @@
         });
       }
 
+      if (showLogsBtn) {
+        showLogsBtn.addEventListener("click", function () {
+          startWatchStream({ tailOnly: true });
+        });
+      }
+
       if (restartBtn) {
         restartBtn.addEventListener("click", function () {
           var ok = window.confirm(
@@ -2023,6 +2041,7 @@
           );
           restartBtn.disabled = true;
           if (rebootBtn) rebootBtn.disabled = true;
+          if (showLogsBtn) showLogsBtn.disabled = true;
           postJson("/api/settings/tak-maintenance/restart-service")
             .then(function () {
               startWatchStream();
@@ -2034,6 +2053,7 @@
             .finally(function () {
               restartBtn.disabled = false;
               if (rebootBtn) rebootBtn.disabled = false;
+              if (showLogsBtn) showLogsBtn.disabled = false;
             });
         });
       }
@@ -2052,6 +2072,7 @@
           );
           if (restartBtn) restartBtn.disabled = true;
           rebootBtn.disabled = true;
+          if (showLogsBtn) showLogsBtn.disabled = true;
           postJson("/api/settings/tak-maintenance/reboot-server")
             .then(function () {
               startWatchStream();
@@ -2063,6 +2084,7 @@
             .finally(function () {
               if (restartBtn) restartBtn.disabled = false;
               rebootBtn.disabled = false;
+              if (showLogsBtn) showLogsBtn.disabled = false;
             });
         });
       }

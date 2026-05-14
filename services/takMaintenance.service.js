@@ -48,41 +48,11 @@ function sleep(ms, signal) {
 }
 
 /**
+ * Stream `sudo tail -n 150 -f` of takserver-api.log over SSH (no Marti health checks).
  * @param {(obj: Record<string, unknown>) => void} send
  * @param {AbortSignal} signal
  */
-async function streamHealthWaitAndTail({ send, signal }) {
-  const deadline = Date.now() + HEALTH_MAX_WAIT_MS;
-  let attempt = 0;
-  let sawHealthy = false;
-
-  while (Date.now() < deadline && !signal.aborted) {
-    attempt += 1;
-    const h = await checkTakApiHealthyOnce();
-    send({ type: "health_poll", attempt, ok: h.ok, detail: h.detail });
-    if (h.ok) {
-      sawHealthy = true;
-      send({ type: "healthy", at: new Date().toISOString(), attempts: attempt });
-      break;
-    }
-    try {
-      await sleep(HEALTH_POLL_MS, signal);
-    } catch {
-      return;
-    }
-  }
-
-  if (signal.aborted) return;
-
-  if (!sawHealthy) {
-    send({
-      type: "health_timeout",
-      at: new Date().toISOString(),
-      message:
-        "TAK Marti API did not respond as healthy within the wait window. Tailing the log anyway so you can inspect takserver-api activity.",
-    });
-  }
-
+async function streamTakApiLogTail({ send, signal }) {
   const outState = { buf: "" };
   const errState = { buf: "" };
 
@@ -130,8 +100,49 @@ async function streamHealthWaitAndTail({ send, signal }) {
   });
 }
 
+/**
+ * Poll TAK Marti health, then stream takserver-api.log.
+ * @param {(obj: Record<string, unknown>) => void} send
+ * @param {AbortSignal} signal
+ */
+async function streamHealthWaitAndTail({ send, signal }) {
+  const deadline = Date.now() + HEALTH_MAX_WAIT_MS;
+  let attempt = 0;
+  let sawHealthy = false;
+
+  while (Date.now() < deadline && !signal.aborted) {
+    attempt += 1;
+    const h = await checkTakApiHealthyOnce();
+    send({ type: "health_poll", attempt, ok: h.ok, detail: h.detail });
+    if (h.ok) {
+      sawHealthy = true;
+      send({ type: "healthy", at: new Date().toISOString(), attempts: attempt });
+      break;
+    }
+    try {
+      await sleep(HEALTH_POLL_MS, signal);
+    } catch {
+      return;
+    }
+  }
+
+  if (signal.aborted) return;
+
+  if (!sawHealthy) {
+    send({
+      type: "health_timeout",
+      at: new Date().toISOString(),
+      message:
+        "TAK Marti API did not respond as healthy within the wait window. Tailing the log anyway so you can inspect takserver-api activity.",
+    });
+  }
+
+  await streamTakApiLogTail({ send, signal });
+}
+
 module.exports = {
   checkTakApiHealthyOnce,
   streamHealthWaitAndTail,
+  streamTakApiLogTail,
   TAKSERVER_API_LOG,
 };
