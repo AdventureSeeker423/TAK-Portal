@@ -1580,6 +1580,12 @@
       <button type="button" class="btn warning" id="takMaintRestartServiceBtn">Restart TAK Service</button>
       <button type="button" class="btn danger" id="takMaintRebootServerBtn">Restart TAK Server</button>
     </div>
+    <div
+      id="takMaintInProgress"
+      role="status"
+      aria-live="polite"
+      style="display:none;margin-top:.75rem;padding:.65rem .85rem;border-radius:8px;border:1px solid var(--line, #374151);background:rgba(255,102,0,0.14);font-weight:600;font-size:14px;line-height:1.4;"
+    ></div>
     <div id="takMaintPanel" style="display:none;margin-top:1rem;">
       <div class="settings-label" style="margin-bottom:.35rem;">Status</div>
       <ul id="takMaintStatusList" style="margin:0 0 .75rem 1.1rem;font-size:13px;line-height:1.45;"></ul>
@@ -1878,8 +1884,20 @@
       var panel = document.getElementById("takMaintPanel");
       var listEl = document.getElementById("takMaintStatusList");
       var logPre = document.getElementById("takMaintLogPre");
+      var inProgressEl = document.getElementById("takMaintInProgress");
       var maintEs = null;
       var pollLi = null;
+
+      function setInProgress(message) {
+        if (!inProgressEl) return;
+        if (message) {
+          inProgressEl.textContent = message;
+          inProgressEl.style.display = "block";
+        } else {
+          inProgressEl.textContent = "";
+          inProgressEl.style.display = "none";
+        }
+      }
 
       function stopStream() {
         if (maintEs) {
@@ -1908,6 +1926,7 @@
 
       function resetPanel() {
         if (!panel || !listEl || !logPre) return;
+        setInProgress("");
         panel.style.display = "block";
         listEl.innerHTML = "";
         logPre.textContent = "";
@@ -1994,6 +2013,9 @@
               "Connected ATAK / TAK clients may drop briefly while the service restarts.\n\nContinue?"
           );
           if (!ok) return;
+          setInProgress(
+            "Restart in progress — sending sudo systemctl restart takserver to the TAK Server over SSH. This can take up to a minute."
+          );
           restartBtn.disabled = true;
           if (rebootBtn) rebootBtn.disabled = true;
           postJson("/api/settings/tak-maintenance/restart-service")
@@ -2001,6 +2023,7 @@
               startWatchStream();
             })
             .catch(function (err) {
+              setInProgress("");
               window.alert(err && err.message ? err.message : String(err));
             })
             .finally(function () {
@@ -2019,6 +2042,9 @@
           if (!ok) return;
           var ok2 = window.confirm("Confirm full host reboot?");
           if (!ok2) return;
+          setInProgress(
+            "Restart in progress — sending sudo reboot to the TAK Server host over SSH. The machine will go down briefly."
+          );
           if (restartBtn) restartBtn.disabled = true;
           rebootBtn.disabled = true;
           postJson("/api/settings/tak-maintenance/reboot-server")
@@ -2026,6 +2052,7 @@
               startWatchStream();
             })
             .catch(function (err) {
+              setInProgress("");
               window.alert(err && err.message ? err.message : String(err));
             })
             .finally(function () {
