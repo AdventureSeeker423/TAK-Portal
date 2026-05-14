@@ -1552,12 +1552,18 @@
   </form>
 
   <!-- Action row (outside the main form to avoid nested forms) -->
-  <div style="margin-top:1rem;display:flex;gap:.75rem;flex-wrap:wrap;align-items:center;">
-    <button type="submit" class="btn" form="settingsForm">Save Settings</button>
-    <a href="/settings/export-data" class="btn">Export Configuration</a>
+  <div class="settings-actions-row">
+    <button type="submit" class="btn settings-action-btn" form="settingsForm">Save Settings</button>
+    <a href="/settings/export-data" class="btn settings-action-btn">Export Configuration</a>
 
     <!-- Separate form: Import Configuration -->
-    <form id="importConfigForm" action="/settings/import-data" method="post" enctype="multipart/form-data" style="display:inline-block; margin:0;">
+    <form
+      id="importConfigForm"
+      class="settings-action-form"
+      action="/settings/import-data"
+      method="post"
+      enctype="multipart/form-data"
+    >
       <input
         id="configZipInput"
         type="file"
@@ -1567,7 +1573,7 @@
       />
 
       <!-- Label opens the file picker reliably on Windows -->
-      <label for="configZipInput" class="btn btn-warning" style="cursor:pointer;">
+      <label for="configZipInput" class="btn settings-action-btn" style="cursor:pointer;">
         Import Configuration
       </label>
     </form>
@@ -2093,6 +2099,58 @@
   <% } %>
 
   <style>
+    /* Bottom bar: Save / Export / Import — equal width & height on desktop, full-width stack on small screens */
+    .settings-actions-row {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: stretch;
+    }
+
+    .settings-actions-row > button.settings-action-btn,
+    .settings-actions-row > a.settings-action-btn,
+    .settings-actions-row > .settings-action-form {
+      flex: 1 1 0;
+      min-width: 0;
+      box-sizing: border-box;
+      min-height: 2.75rem;
+    }
+
+    .settings-actions-row > button.settings-action-btn,
+    .settings-actions-row > a.settings-action-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .settings-actions-row > .settings-action-form {
+      display: flex;
+      margin: 0;
+    }
+
+    .settings-actions-row .settings-action-form .settings-action-btn {
+      flex: 1 1 auto;
+      width: 100%;
+      min-height: 2.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @media (max-width: 640px) {
+      .settings-actions-row {
+        flex-direction: column;
+      }
+
+      .settings-actions-row > button.settings-action-btn,
+      .settings-actions-row > a.settings-action-btn,
+      .settings-actions-row > .settings-action-form {
+        flex: 1 1 auto;
+        width: 100%;
+      }
+    }
+
     .settings-label {
     display: flex;
     align-items: center;

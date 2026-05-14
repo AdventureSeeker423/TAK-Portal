@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.15 - 5/14/26
+✨ `Enhancement` - Added buttons to show TAK logs, Restart TAK Service, and Restart TAK Server to the server settings page to give basic commands for non-infraTAK environments.  Buttons will be hidden if SSH is not configured in TAK Portal.
+
 ### v1.3.14 - 5/12/26
 ✨ `Enhancement` - Added email logic and email template to send when a user is re-enabled after being disabled.<br>
 ✨ `Enhancement` - Popup tooltip added on password field when creating users to detail password requirements
