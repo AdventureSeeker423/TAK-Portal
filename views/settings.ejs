@@ -1999,7 +1999,12 @@
               j = text ? JSON.parse(text) : null;
             } catch (e) {}
             if (!res.ok || !j || j.ok !== true) {
-              throw new Error((j && j.error) || text.slice(0, 400) || res.statusText || "Request failed");
+              var hint =
+                (j && j.error) ||
+                (text && String(text).trim().slice(0, 400)) ||
+                (res.status ? "HTTP " + res.status + " " + (res.statusText || "").trim() : "") ||
+                "Request failed";
+              throw new Error(hint);
             }
             return j;
           });
@@ -2014,7 +2019,7 @@
           );
           if (!ok) return;
           setInProgress(
-            "Restart in progress — sending sudo systemctl restart takserver to the TAK Server over SSH. This can take up to a minute."
+            "Restart in progress — sudo systemctl restart takserver is running on the TAK Server over SSH (often up to about a minute). The status panel below will open automatically."
           );
           restartBtn.disabled = true;
           if (rebootBtn) rebootBtn.disabled = true;

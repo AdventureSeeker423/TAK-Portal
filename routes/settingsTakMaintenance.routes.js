@@ -10,19 +10,29 @@ function ensureSsh(req, res, next) {
   return next();
 }
 
-router.post("/restart-service", ensureSsh, async (req, res) => {
-  try {
-    const result = await takSshSvc.runRemoteSshCommand("sudo systemctl restart takserver", 120000);
-    if (!result.ok) {
-      return res.status(400).json({ ok: false, error: result.message || "Restart failed." });
-    }
-    return res.json({
-      ok: true,
-      message: "TAK Server service restart was requested over SSH (sudo systemctl restart takserver).",
+/**
+ * Do not await the full `systemctl restart` over SSH in this request: it can run 30–120s,
+ * and reverse proxies (Caddy, nginx, cloud load balancers) often return 502/504 with an
+ * empty body before Node responds—clients then see "Request failed" while the restart
+ * still completes. Respond immediately and run the SSH command in the background.
+ */
+router.post("/restart-service", ensureSsh, (req, res) => {
+  void takSshSvc
+    .runRemoteSshCommand("sudo systemctl restart takserver", 120000)
+    .then((result) => {
+      if (!result.ok) {
+        console.error("[tak-maintenance] restart-service SSH failed:", result.message);
+      }
+    })
+    .catch((err) => {
+      console.error("[tak-maintenance] restart-service SSH error:", err?.message || err);
     });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err?.message || String(err) });
-  }
+
+  return res.json({
+    ok: true,
+    message:
+      "TAK Server service restart has been queued over SSH (sudo systemctl restart takserver). It may take up to about a minute on the host; the status panel tracks API health and the log tail.",
+  });
 });
 
 router.post("/reboot-server", ensureSsh, async (req, res) => {
