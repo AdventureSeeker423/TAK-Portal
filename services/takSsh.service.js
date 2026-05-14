@@ -664,6 +664,185 @@ async function runRemoteSshCommand(command, timeoutMs = 30000) {
 }
 
 /**
+ * Issue `sudo reboot` over SSH. The session often drops before a clean exit; treat timeout
+ * or abrupt disconnect as "reboot likely started" when appropriate.
+ * @returns {Promise<{ ok: boolean, initiated?: boolean, message?: string, exitCode?: number | null }>}
+ */
+async function runRemoteRebootFireAndForget() {
+  const cfg = getTakSshConfig();
+  if (!cfg) {
+    return {
+      ok: false,
+      message: "SSH is not configured. Complete the SSH handshake in Settings first.",
+    };
+  }
+
+  return new Promise((resolve) => {
+    const conn = new Client();
+    let settled = false;
+    const settle = (payload) => {
+      if (settled) return;
+      settled = true;
+      try {
+        clearTimeout(timer);
+      } catch (_) {}
+      try {
+        conn.end();
+      } catch (_) {}
+      resolve(payload);
+    };
+
+    const timer = setTimeout(() => {
+      settle({
+        ok: true,
+        initiated: true,
+        message:
+          "Reboot was requested; the SSH session did not return a final status (this is normal while the host restarts).",
+      });
+    }, 12000);
+
+    conn
+      .on("keyboard-interactive", (_n, _i, _il, _prompts, finish) => {
+        finish([]);
+      })
+      .on("ready", () => {
+        conn.exec("sudo reboot", (err, stream) => {
+          if (err) {
+            return settle({ ok: false, message: err.message || String(err) });
+          }
+          stream.on("data", () => {});
+          stream.stderr.on("data", () => {});
+          stream.on("close", (code) => {
+            settle({
+              ok: true,
+              initiated: true,
+              message: "Reboot command finished on the SSH channel.",
+              exitCode: Number.isInteger(code) ? code : null,
+            });
+          });
+        });
+      })
+      .on("error", (err) => {
+        const msg = err?.message || String(err);
+        if (/ECONNRESET|ECONNABORTED|Connection closed|Socket closed|disconnected/i.test(msg)) {
+          settle({
+            ok: true,
+            initiated: true,
+            message: "SSH disconnected; the host is likely rebooting.",
+          });
+        } else {
+          settle({ ok: false, message: msg });
+        }
+      })
+      .connect({
+        host: cfg.host,
+        port: cfg.port,
+        username: cfg.username,
+        privateKey: cfg.privateKey,
+        passphrase: cfg.passphrase,
+        readyTimeout: 20000,
+      });
+  });
+}
+
+/**
+ * Long-running remote command: stream stdout/stderr as UTF-8 chunks until the channel closes.
+ * @param {string} command
+ * @param {{
+ *   onStdoutChunk?: (chunk: string) => void;
+ *   onStderrChunk?: (chunk: string) => void;
+ *   onClose?: () => void;
+ *   onError?: (err: Error) => void;
+ *   signal?: AbortSignal;
+ * }} handlers
+ * @returns {{ close: () => void }}
+ */
+function streamRemoteSshExec(command, handlers = {}) {
+  const { onStdoutChunk, onStderrChunk, onClose, onError, signal } = handlers;
+  const notifyError = (err) => {
+    if (typeof onError === "function") onError(err instanceof Error ? err : new Error(String(err)));
+  };
+  const notifyClose = () => {
+    if (typeof onClose === "function") onClose();
+  };
+
+  const cfg = getTakSshConfig();
+  if (!cfg) {
+    process.nextTick(() => {
+      notifyError(new Error("SSH is not configured. Complete the SSH handshake in Settings first."));
+      notifyClose();
+    });
+    return { close() {} };
+  }
+
+  const conn = new Client();
+  let finished = false;
+  const fireClose = () => {
+    if (finished) return;
+    finished = true;
+    try {
+      conn.end();
+    } catch (_) {}
+    notifyClose();
+  };
+
+  const close = () => {
+    try {
+      conn.end();
+    } catch (_) {}
+    fireClose();
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      process.nextTick(() => {
+        notifyError(new Error("aborted"));
+        fireClose();
+      });
+      return { close };
+    }
+    signal.addEventListener("abort", close, { once: true });
+  }
+
+  conn
+    .on("keyboard-interactive", (_n, _i, _il, _prompts, finish) => {
+      finish([]);
+    })
+    .on("ready", () => {
+      conn.exec(String(command || ""), (err, stream) => {
+        if (err) {
+          notifyError(err);
+          return fireClose();
+        }
+        stream.on("data", (buf) => {
+          if (onStdoutChunk) onStdoutChunk(buf.toString("utf8"));
+        });
+        stream.stderr.on("data", (buf) => {
+          if (onStderrChunk) onStderrChunk(buf.toString("utf8"));
+        });
+        stream.on("close", () => {
+          fireClose();
+        });
+      });
+    })
+    .on("error", (err) => {
+      if (finished) return;
+      notifyError(err);
+      fireClose();
+    })
+    .connect({
+      host: cfg.host,
+      port: cfg.port,
+      username: cfg.username,
+      privateKey: cfg.privateKey,
+      passphrase: cfg.passphrase,
+      readyTimeout: 20000,
+    });
+
+  return { close };
+}
+
+/**
  * Run on TAK server: sudo -u tak bash -c 'cd /opt/tak/certs && ./makeCert.sh client <username>'
  * @param {string} username - Integration username (e.g. nodered-aircraft-all)
  * @returns { Promise<{ ok: boolean, skipped?: boolean, message?: string }> }
@@ -715,6 +894,8 @@ module.exports = {
   ensureLocalSshKeyPair,
   onboardTakSshWithPassword,
   runRemoteSshCommand,
+  runRemoteRebootFireAndForget,
+  streamRemoteSshExec,
   writeRemoteFileViaSudoTee,
   hasStoredIntegrationCertFiles,
   provisionIntegrationCertFiles,

@@ -556,6 +556,10 @@ select:focus {
     background: var(--danger);
 }
 
+.btn.warning {
+    background: var(--warning);
+}
+
 .btn.success {
     background: var(--success);
 }

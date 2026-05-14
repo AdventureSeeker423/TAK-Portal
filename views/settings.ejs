@@ -1573,6 +1573,25 @@
     </form>
   </div>
 
+  <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
+  <div class="card" style="margin-top:1.25rem;">
+    <h2 style="margin-top:0;font-size:1.125rem;">TAK Server maintenance (SSH)</h2>
+    <p class="muted" style="margin:0 0 .75rem;">
+      Shown when SSH to your TAK Server is configured (same requirement as Locate “Apply”). Commands run on the remote host over that SSH session.
+    </p>
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center;">
+      <button type="button" class="btn warning" id="takMaintRestartServiceBtn">Restart TAK Service</button>
+      <button type="button" class="btn danger" id="takMaintRebootServerBtn">Restart TAK Server</button>
+    </div>
+    <div id="takMaintPanel" style="display:none;margin-top:1rem;">
+      <div class="settings-label" style="margin-bottom:.35rem;">Status</div>
+      <ul id="takMaintStatusList" style="margin:0 0 .75rem 1.1rem;font-size:13px;line-height:1.45;"></ul>
+      <div class="settings-label" style="margin-bottom:.35rem;">tail -f /opt/tak/logs/takserver-api.log</div>
+      <pre id="takMaintLogPre" style="margin:0;max-height:360px;overflow:auto;padding:.75rem;background:var(--panel, #111827);border:1px solid var(--line, #374151);border-radius:8px;font-size:12px;line-height:1.35;white-space:pre-wrap;word-break:break-word;"></pre>
+    </div>
+  </div>
+  <% } %>
+
   <script>
     (function () {
       var root = document.querySelector(".email-templates-section") || document;
@@ -1853,6 +1872,174 @@
       );
     })();
   </script>
+
+  <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
+  <script>
+    (function () {
+      var restartBtn = document.getElementById("takMaintRestartServiceBtn");
+      var rebootBtn = document.getElementById("takMaintRebootServerBtn");
+      var panel = document.getElementById("takMaintPanel");
+      var listEl = document.getElementById("takMaintStatusList");
+      var logPre = document.getElementById("takMaintLogPre");
+      var maintEs = null;
+      var pollLi = null;
+
+      function stopStream() {
+        if (maintEs) {
+          try {
+            maintEs.close();
+          } catch (e) {}
+          maintEs = null;
+        }
+      }
+
+      function appendStatus(text) {
+        if (!listEl) return;
+        var li = document.createElement("li");
+        li.textContent = text;
+        listEl.appendChild(li);
+      }
+
+      function setPollStatus(text) {
+        if (!listEl) return;
+        if (!pollLi) {
+          pollLi = document.createElement("li");
+          listEl.appendChild(pollLi);
+        }
+        pollLi.textContent = text;
+      }
+
+      function resetPanel() {
+        if (!panel || !listEl || !logPre) return;
+        panel.style.display = "block";
+        listEl.innerHTML = "";
+        logPre.textContent = "";
+        pollLi = null;
+      }
+
+      function startWatchStream() {
+        stopStream();
+        resetPanel();
+        appendStatus("Live stream connected — waiting for TAK API and log tail.");
+        maintEs = new EventSource("/api/settings/tak-maintenance/stream");
+        maintEs.onmessage = function (ev) {
+          var d = null;
+          try {
+            d = JSON.parse(ev.data);
+          } catch (e) {
+            return;
+          }
+          if (!d || typeof d !== "object") return;
+          if (d.type === "stream_open") {
+            return;
+          }
+          if (d.type === "health_poll") {
+            var st = d.ok ? "responding" : "not ready";
+            setPollStatus(
+              "Health check #" +
+                String(d.attempt || "") +
+                ": " +
+                st +
+                (d.detail ? " (" + String(d.detail) + ")" : "")
+            );
+          } else if (d.type === "healthy") {
+            pollLi = null;
+            appendStatus("Server healthy — " + String(d.at || ""));
+          } else if (d.type === "health_timeout") {
+            appendStatus(String(d.message || "Health wait timed out."));
+          } else if (d.type === "log_line") {
+            var prefix = d.stream === "stderr" ? "[stderr] " : "";
+            logPre.textContent += prefix + String(d.line || "") + "\n";
+            logPre.scrollTop = logPre.scrollHeight;
+          } else if (d.type === "tail_error") {
+            appendStatus("Log tail error: " + String(d.message || ""));
+          } else if (d.type === "tail_end") {
+            appendStatus("Log stream ended — " + String(d.at || ""));
+            stopStream();
+          } else if (d.type === "error") {
+            appendStatus("Stream error: " + String(d.message || ""));
+            stopStream();
+          }
+        };
+        maintEs.onerror = function () {
+          appendStatus("EventSource connection closed or failed (reload the page to try again).");
+          stopStream();
+        };
+      }
+
+      function postJson(url) {
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          credentials: "same-origin",
+          body: "{}",
+        }).then(function (res) {
+          return res.text().then(function (text) {
+            var j = null;
+            try {
+              j = text ? JSON.parse(text) : null;
+            } catch (e) {}
+            if (!res.ok || !j || j.ok !== true) {
+              throw new Error((j && j.error) || text.slice(0, 400) || res.statusText || "Request failed");
+            }
+            return j;
+          });
+        });
+      }
+
+      if (restartBtn) {
+        restartBtn.addEventListener("click", function () {
+          var ok = window.confirm(
+            "Run on the TAK Server over SSH:\n\n  sudo systemctl restart takserver\n\n" +
+              "Connected ATAK / TAK clients may drop briefly while the service restarts.\n\nContinue?"
+          );
+          if (!ok) return;
+          restartBtn.disabled = true;
+          if (rebootBtn) rebootBtn.disabled = true;
+          postJson("/api/settings/tak-maintenance/restart-service")
+            .then(function () {
+              startWatchStream();
+            })
+            .catch(function (err) {
+              window.alert(err && err.message ? err.message : String(err));
+            })
+            .finally(function () {
+              restartBtn.disabled = false;
+              if (rebootBtn) rebootBtn.disabled = false;
+            });
+        });
+      }
+
+      if (rebootBtn) {
+        rebootBtn.addEventListener("click", function () {
+          var ok = window.confirm(
+            "This will reboot the entire TAK Server host over SSH:\n\n  sudo reboot\n\n" +
+              "All services on that machine will restart. The portal will wait for the TAK Marti API to respond again, then show takserver-api.log.\n\nContinue?"
+          );
+          if (!ok) return;
+          var ok2 = window.confirm("Confirm full host reboot?");
+          if (!ok2) return;
+          if (restartBtn) restartBtn.disabled = true;
+          rebootBtn.disabled = true;
+          postJson("/api/settings/tak-maintenance/reboot-server")
+            .then(function () {
+              startWatchStream();
+            })
+            .catch(function (err) {
+              window.alert(err && err.message ? err.message : String(err));
+            })
+            .finally(function () {
+              if (restartBtn) restartBtn.disabled = false;
+              rebootBtn.disabled = false;
+            });
+        });
+      }
+    })();
+  </script>
+  <% } %>
 
   <style>
     .settings-label {

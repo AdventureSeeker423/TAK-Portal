@@ -168,6 +168,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/tak")) return ["page.dashboard"];
   if (p.startsWith("/api/user-requests")) return ["page.users"];
   if (p.startsWith("/api/email")) return ["page.email"];
+  if (p.startsWith("/api/settings/tak-maintenance")) return ["page.settings"];
   // Getting-started is role-gated in server.js, not permission-toggled.
 
   // Pages

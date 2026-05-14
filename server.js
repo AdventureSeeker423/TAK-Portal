@@ -325,6 +325,11 @@ app.use("/api/audit-log", requirePermission("page.audit_log"), require("./routes
 app.use("/api/plugins", requirePermission("page.plugin_manager"), require("./routes/plugins.routes"));
 app.use("/api/integrations", requirePermission("page.integrations"), require("./routes/integrations.routes"));
 app.use("/api/ssh", requirePermission("page.integrations"), require("./routes/ssh.routes"));
+app.use(
+  "/api/settings/tak-maintenance",
+  requirePermission("page.settings"),
+  require("./routes/settingsTakMaintenance.routes")
+);
 // Locate + data packages (admin + JSON APIs): page-aligned capability.
 app.use("/api/locate", requirePermission("page.locate"), require("./routes/locate.routes"));
 
@@ -1125,6 +1130,9 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
     emailTemplates = [];
   }
 
+  const locateConfigSvc = require("./services/locateConfig.service");
+  const takSshMaintenanceVisible = locateConfigSvc.isSshConfigured().configured;
+
   res.render("settings", {
   settings,
   keys,
@@ -1134,7 +1142,8 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   smsTest: req.query.smsTest || "",
   smsErr: req.query.smsErr || "",
   p12Exists,
-  caExists
+  caExists,
+  takSshMaintenanceVisible
   });
 });
 
