@@ -541,11 +541,18 @@ select:focus {
     cursor: pointer;
     font-weight: 600;
     line-height: 1;
+    font-size: 14px;
     text-decoration: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
+}
+
+/* <label class="btn"> file pickers etc.: global `label` uses smaller type + column layout — match real buttons */
+label.btn {
+    flex-direction: row;
+    gap: 0;
 }
 
 .btn:hover {
