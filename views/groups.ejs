@@ -116,8 +116,8 @@
 
     <div id="listMsg" class="msg"></div>
 
-    <div class="tableWrap">
-      <table class="table groupsListTable">
+    <div class="listCardTableWrap">
+      <table class="table listCardTable groupsListTable">
         <thead>
           <tr>
             <th class="sortable" data-key="name">
@@ -998,14 +998,14 @@ function renderGroups(){
 
     return `
     <tr>
-      <td class="groupNameCell">
-        <div class="groupNameText">${esc(stripTakPrefix(g.name))}</div>
+      <td class="groupNameCell cardTitleCell">
+        <div class="groupNameText cardTitleText">${esc(stripTakPrefix(g.name))}</div>
         ${desc ? `<div class="muted groupDescText">${esc(desc)}</div>` : ""}
-        ${IS_GLOBAL_ADMIN && isPrivate ? `<span class="groupPrivateBadge">Private</span>` : ""}
+        ${IS_GLOBAL_ADMIN && isPrivate ? `<span class="groupPrivateBadge cardMetaBadge">Private</span>` : ""}
       </td>
       ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell">${isPrivate ? "Private" : ""}</td>` : ``}
-      <td class="groupActionsCell">
-        <div class="groupActionsRow">
+      <td class="groupActionsCell cardActionsCell">
+        <div class="groupActionsRow cardActionsRow">
           <button class="btn" type="button"
             onclick="openGroupMembers('${esc(g.pk)}')">View Members</button>
           ${locked ? `<span class="muted">Actions Hidden</span>` : `
@@ -2412,11 +2412,9 @@ if (adminAccessOverlay) {
   width: 100%;
 }
 
-/* Existing groups table (match templates page mobile pattern) */
-.tableWrap {
+/* Existing groups list */
+.listCardTableWrap {
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .groupsListTable td {
@@ -2424,13 +2422,13 @@ if (adminAccessOverlay) {
 }
 
 .groupsListTable .groupNameCell {
-  min-width: 160px;
   max-width: 320px;
 }
 
 .groupsListTable .groupNameText {
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .groupsListTable .groupDescText {
@@ -2439,7 +2437,8 @@ if (adminAccessOverlay) {
   white-space: normal;
 }
 
-.groupsListTable .groupPrivateBadge {
+.groupsListTable .groupPrivateBadge,
+.groupsListTable .cardMetaBadge {
   display: none;
 }
 
@@ -2448,7 +2447,6 @@ if (adminAccessOverlay) {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  min-width: 280px;
 }
 
 .groupsListTable .groupActionsRow .btn {
@@ -2472,40 +2470,105 @@ if (adminAccessOverlay) {
   }
 }
 
+/* Mobile: stacked cards, no horizontal scroll */
 @media (max-width: 990px) {
-  .groupsListTable {
-    min-width: 520px;
+  .listCardTableWrap {
+    overflow-x: hidden;
   }
 
-  .groupsListTable th,
-  .groupsListTable td {
+  .listCardTable {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .listCardTable thead {
+    display: none;
+  }
+
+  .listCardTable tbody tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .groupsListTable .cardTitleCell { order: 1; }
+  .groupsListTable .cardActionsCell { order: 2; }
+  .groupsListTable .groupPrivateCell { order: 99; display: none !important; }
+
+  .listCardTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 8px 12px;
     word-break: normal;
     overflow-wrap: normal;
+    min-width: 0 !important;
+    max-width: none !important;
   }
 
-  /* Hide Private column on narrow screens (badge shown under name) */
+  .listCardTable .cardTitleCell {
+    padding-top: 12px;
+    padding-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleText {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
   .groupsListTable th.groupPrivateCol,
   .groupsListTable .groupPrivateCell {
     display: none;
   }
 
-  .groupsListTable .groupPrivateBadge {
+  .groupsListTable .groupPrivateBadge,
+  .groupsListTable .cardMetaBadge {
     display: inline-block;
-    margin-top: 6px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid var(--line);
-    color: var(--muted);
   }
 
-  .groupsListTable .groupActionsCell,
-  .groupsListTable .groupActionsRow,
-  .groupsListTable .groupActionsRow .btn {
-    word-break: normal;
-    overflow-wrap: normal;
+  .listCardTable .cardActionsCell {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .listCardTable .cardActionsRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .listCardTable .cardActionsRow .btn,
+  .listCardTable .cardActionsRow .muted {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .listCardTable .cardActionsRow .muted {
+    grid-column: 1 / -1;
+    padding: 8px 0;
+  }
+}
+
+@media (max-width: 400px) {
+  .listCardTable .cardActionsRow {
+    grid-template-columns: 1fr;
   }
 }
 </style>

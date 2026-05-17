@@ -97,8 +97,8 @@
       />
     </div>
 
-    <div class="tableWrap">
-      <table class="table templatesTable">
+    <div class="listCardTableWrap">
+      <table class="table listCardTable templatesTable">
         <thead>
           <tr>
             <th class="sortable" data-key="agency">Agency <span class="sortIndicator"></span></th>
@@ -200,18 +200,18 @@ function renderTemplates(list){
     const groupsText = esc((t.groups || []).map(displayGroupName).join(", "));
     return `
     <tr>
-      <td class="tplAgencyCell">${t.agencySuffix ? esc(getAgencyDisplay(t) || t.agencySuffix) : "—"}</td>
-      <td class="tplNameCell">
-        <div class="tplNameText">${esc(t.name)}</div>
-        ${t.isDefault ? `<span class="tplDefaultBadge">Default</span>` : ""}
+      <td class="tplAgencyCell" data-label="Agency">${t.agencySuffix ? esc(getAgencyDisplay(t) || t.agencySuffix) : "—"}</td>
+      <td class="tplNameCell cardTitleCell">
+        <div class="tplNameText cardTitleText">${esc(t.name)}</div>
+        ${t.isDefault ? `<span class="tplDefaultBadge cardMetaBadge">Default</span>` : ""}
       </td>
       <td class="tplColorCell">${t.colorOverride ? esc(t.colorOverride) : "—"}</td>
-      <td class="tplRoleCell">${abbrevRoleForTable(t.role)}</td>
+      <td class="tplRoleCell" data-label="Role">${abbrevRoleForTable(t.role)}</td>
       <td class="tplDefaultCell">${t.isDefault ? "Yes" : ""}</td>
-      <td class="groupsCell tplGroupsCell">${groupsText || "—"}</td>
-      <td class="tplUsersCell">${templateUserCountForRow(t)}</td>
-      <td class="tplActionsCell">
-        <div class="actionsCell">
+      <td class="groupsCell tplGroupsCell" data-label="Groups">${groupsText || "—"}</td>
+      <td class="tplUsersCell" data-label="Users">${templateUserCountForRow(t)}</td>
+      <td class="tplActionsCell cardActionsCell">
+        <div class="actionsCell cardActionsRow">
           <button class="btn" type="button" onclick="editTemplate(${idx})">Edit</button>
           <button class="btn danger" type="button" onclick="deleteTemplate(${idx})">Delete</button>
         </div>
@@ -752,35 +752,24 @@ form.onsubmit = async (e) => {
   text-overflow: ellipsis;
 }
 
-.tableWrap {
+.listCardTableWrap {
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .templatesTable td {
   vertical-align: top;
 }
 
-.templatesTable .tplNameCell {
-  min-width: 120px;
-}
-
 .templatesTable .tplNameText {
-  white-space: normal;
-  word-break: break-word;
   font-weight: 600;
 }
 
-.templatesTable .tplDefaultBadge {
+.templatesTable .tplDefaultBadge,
+.templatesTable .cardMetaBadge {
   display: none;
 }
 
-.templatesTable .tplAgencyCell {
-  min-width: 100px;
-  white-space: nowrap;
-}
-
+.templatesTable .tplAgencyCell,
 .templatesTable .tplRoleCell,
 .templatesTable .tplUsersCell {
   white-space: nowrap;
@@ -791,7 +780,6 @@ form.onsubmit = async (e) => {
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-  min-width: 140px;
 }
 
 .actionsCell .btn {
@@ -804,30 +792,89 @@ form.onsubmit = async (e) => {
 .groupsCell {
   white-space: normal;
   word-break: break-word;
-  min-width: 140px;
-  max-width: 240px;
+  max-width: 320px;
 }
 
+/* Mobile: stacked cards, no horizontal scroll */
 @media (max-width: 990px) {
-  .templatesTable {
-    min-width: 720px;
+  .listCardTableWrap {
+    overflow-x: hidden;
   }
 
-  .templatesTable th,
-  .templatesTable td {
-    word-break: normal;
-    overflow-wrap: normal;
+  .listCardTable {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 12px;
   }
 
-  /* Hide Color + Default columns; show default badge under name */
-  .templatesTable th:nth-child(3),
-  .templatesTable td:nth-child(3),
-  .templatesTable th:nth-child(5),
-  .templatesTable td:nth-child(5) {
+  .listCardTable thead {
     display: none;
   }
 
-  .templatesTable .tplDefaultBadge {
+  .listCardTable tbody tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .templatesTable .cardTitleCell { order: 1; }
+  .templatesTable .tplAgencyCell { order: 2; }
+  .templatesTable .tplRoleCell { order: 3; }
+  .templatesTable .tplUsersCell { order: 4; }
+  .templatesTable .tplGroupsCell { order: 5; }
+  .templatesTable .cardActionsCell { order: 6; }
+  .templatesTable .tplColorCell,
+  .templatesTable .tplDefaultCell { order: 99; display: none !important; }
+
+  .listCardTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 8px 12px;
+    word-break: normal;
+    overflow-wrap: normal;
+    min-width: 0 !important;
+    max-width: none !important;
+    white-space: normal;
+  }
+
+  .listCardTable tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleCell::before {
+    display: none;
+  }
+
+  .listCardTable .cardTitleCell {
+    padding-top: 12px;
+    padding-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleText {
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
+  .templatesTable .tplColorCell,
+  .templatesTable .tplDefaultCell,
+  .templatesTable thead th:nth-child(3),
+  .templatesTable thead th:nth-child(5) {
+    display: none;
+  }
+
+  .templatesTable .tplDefaultBadge,
+  .templatesTable .cardMetaBadge {
     display: inline-block;
     margin-top: 6px;
     padding: 2px 8px;
@@ -839,11 +886,45 @@ form.onsubmit = async (e) => {
     color: var(--muted);
   }
 
-  .templatesTable .tplActionsCell,
-  .templatesTable .actionsCell,
-  .templatesTable .actionsCell .btn {
-    word-break: normal;
-    overflow-wrap: normal;
+  .templatesTable .tplGroupsCell {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .listCardTable .cardActionsCell::before {
+    display: none;
+  }
+
+  .listCardTable .cardActionsCell {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .listCardTable .cardActionsRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .listCardTable .cardActionsRow .btn {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    box-sizing: border-box;
+    text-align: center;
+  }
+}
+
+@media (max-width: 400px) {
+  .listCardTable .cardActionsRow {
+    grid-template-columns: 1fr;
   }
 }
 </style>
