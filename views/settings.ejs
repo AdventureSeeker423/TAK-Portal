@@ -862,7 +862,7 @@
                 { value: "lastNameUpper", label: "Last Name (UPPER)" },
                 { value: "lastName", label: "Last Name" },
                 { value: "lastInitial", label: "Last Initial" },
-                { value: "badgeNumber", label: "Badge Number / Radio ID / Callsign" },
+                { value: "badgeNumber", label: "Radio Callsign / Username" },
                 { value: "_dash", label: "— (dash)" }
               ];
 
@@ -928,7 +928,7 @@
                   lastName: "Last",
                   lastNameUpper: "LAST",
                   lastInitial: "L",
-                  badgeNumber: "1234"
+                  badgeNumber: "T05"
                 };
 
                 var rendered = expr.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, function (_, key) {
@@ -1197,7 +1197,7 @@
                 <small class="settings-help">Shown in sidebar and QR codes.</small>
               <% } %>
             </label>
-            <% renderField("USERNAME_PREFIX_LABEL","Username Descriptor Text","Displayed on Users, Pending User Requests, and Request Access pages. Default: Badge Number / Radio ID / Callsign","Badge Number / Radio ID / Callsign"); %>
+            <% renderField("USERNAME_PREFIX_LABEL","Username Descriptor Text","Displayed on Users, Pending User Requests, and Request Access pages. Default: Badge Number / Username","Badge Number / Username"); %>
             <% renderField("BETA_MODE","Enable Beta Features","If true, shows in-development features for global admins (e.g. Data Sync, Getting Started). Data Package and Locate Persons are available to global admins regardless of this setting."); %>
           </div>
           <script>

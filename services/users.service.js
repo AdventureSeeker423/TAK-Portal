@@ -186,6 +186,15 @@ function getAgencyTypeCode(agencyTypeString) {
 }
 
 /**
+ * {{badgeNumber}} in callsign format: radio_callsign attribute when set, else username.
+ */
+function resolveCallsignRadioOrUsername({ radioCallsign, username } = {}) {
+  const radio = String(radioCallsign ?? "").trim();
+  if (radio) return radio;
+  return String(username ?? "").trim();
+}
+
+/**
  * Build a callsign string from settings + user context.
  * Falls back to "{{agencyAbbreviation}}-{{lastNameUpper}}-{{badgeNumber}}" when unset/invalid.
  */
@@ -193,7 +202,8 @@ function buildCallsign({
   firstName,
   lastName,
   lastNameUpper,
-  badgeNumber,
+  radioCallsign,
+  username,
   agencyAbbreviation,
   agencyColor,
   stateAbbreviation,
@@ -221,7 +231,7 @@ function buildCallsign({
     lastNameUpper: lastNameUpper || "",
     firstInitial: fnTrim ? fnTrim.charAt(0).toUpperCase() : "",
     lastInitial: lnTrim ? lnTrim.charAt(0).toUpperCase() : "",
-    badgeNumber: badgeNumber || "",
+    badgeNumber: resolveCallsignRadioOrUsername({ radioCallsign, username }),
     agencyAbbreviation: agencyAbbreviation || "",
     agencyColor: agencyColor || "",
     stateAbbreviation: stateAbbreviation || "",
@@ -257,6 +267,8 @@ function getPreferenceDataForUser(user) {
     ) || null;
 
   const badgeNumber = String(attrs.badge_number || "");
+  const radioCallsign = String(attrs.radio_callsign || "");
+  const username = String(user?.username || "");
   const agencyAbbreviation = String(
     agency?.groupPrefix || attrs.agency_abbreviation || ""
   );
@@ -295,7 +307,8 @@ function getPreferenceDataForUser(user) {
     firstName,
     lastName,
     lastNameUpper,
-    badgeNumber,
+    radioCallsign,
+    username,
     agencyAbbreviation,
     agencyColor: agencyColorEffective,
     stateAbbreviation,
@@ -447,6 +460,8 @@ async function buildUserAccountWelcomeEmailVars(user, groupsOverride) {
     ) || null;
 
   const badgeNumber = String(attrs.badge_number || "");
+  const radioCallsign = String(attrs.radio_callsign || "");
+  const username = String(user?.username || "");
   const agencyAbbreviation =
     String(
       agency?.groupPrefix ||
@@ -493,7 +508,8 @@ async function buildUserAccountWelcomeEmailVars(user, groupsOverride) {
     firstName,
     lastName,
     lastNameUpper,
-    badgeNumber,
+    radioCallsign,
+    username,
     agencyAbbreviation,
     agencyColor: agencyColorEffective,
     stateAbbreviation,
@@ -509,7 +525,7 @@ async function buildUserAccountWelcomeEmailVars(user, groupsOverride) {
       lastName,
       lastNameUpper,
       firstName,
-      username: String(user?.username || ""),
+      username,
       groupsCsv,
       badgeNumber,
       agencyAbbreviation,
@@ -622,6 +638,8 @@ async function emailPasswordChanged(user) {
     ) || null;
 
   const badgeNumber = String(attrs.badge_number || "");
+  const radioCallsign = String(attrs.radio_callsign || "");
+  const username = String(user?.username || "");
   const agencyAbbreviation =
     String(
       agency?.groupPrefix ||
@@ -657,7 +675,8 @@ async function emailPasswordChanged(user) {
     firstName,
     lastName,
     lastNameUpper,
-    badgeNumber,
+    radioCallsign,
+    username,
     agencyAbbreviation,
     agencyColor,
     stateAbbreviation,
@@ -715,6 +734,8 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
     ) || null;
 
   const badgeNumber = String(attrs.badge_number || "");
+  const radioCallsign = String(attrs.radio_callsign || "");
+  const username = String(u?.username || "");
   const agencyAbbreviation =
     String(
       agency?.groupPrefix ||
@@ -752,7 +773,8 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
     firstName,
     lastName,
     lastNameUpper,
-    badgeNumber,
+    radioCallsign,
+    username,
     agencyAbbreviation,
     agencyColor,
     stateAbbreviation,

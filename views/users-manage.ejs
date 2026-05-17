@@ -4,7 +4,7 @@
 <main class="main">
   <h1>Users</h1>
   <%
-    const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Radio ID / Callsign";
+    const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Username";
   %>
 
   <% if (typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0) { %>
