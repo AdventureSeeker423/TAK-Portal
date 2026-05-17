@@ -371,9 +371,6 @@
       <div id="adminAccessBox" class="groupsBox" style="margin-top:10px; max-height:320px; overflow:auto;">
         <div id="adminAccessInner" class="groupsInner"></div>
       </div>
-      <div style="margin-top:14px; text-align:right;">
-        <button class="btn success" type="button" id="adminAccessSaveBtn">Save</button>
-      </div>
     </div>
   </div>
 </div>
@@ -2177,7 +2174,6 @@ if (reloadBtn) reloadBtn.onclick = loadGroups;
 // ---- Admin Access modal (global admins: which agencies can see this group) ----
 const adminAccessOverlay = document.getElementById("adminAccessOverlay");
 const adminAccessCloseBtn = document.getElementById("adminAccessCloseBtn");
-const adminAccessSaveBtn = document.getElementById("adminAccessSaveBtn");
 const adminAccessSummary = document.getElementById("adminAccessSummary");
 const adminAccessInner = document.getElementById("adminAccessInner");
 const adminAccessSelectAllBtn = document.getElementById("adminAccessSelectAllBtn");
@@ -2186,6 +2182,19 @@ const adminAccessClearBtn = document.getElementById("adminAccessClearBtn");
 let adminAccessGroupId = null;
 let adminAccessSelectable = [];
 let adminAccessPickedIds = new Set();
+let adminAccessSaving = false;
+let adminAccessSaveTimer = null;
+let adminAccessSaveQueued = false;
+
+function setAdminAccessControlsDisabled(disabled) {
+  if (adminAccessSelectAllBtn) adminAccessSelectAllBtn.disabled = !!disabled;
+  if (adminAccessClearBtn) adminAccessClearBtn.disabled = !!disabled;
+  if (adminAccessInner) {
+    adminAccessInner.querySelectorAll("input.adminAccessChk").forEach(cb => {
+      cb.disabled = !!disabled;
+    });
+  }
+}
 
 function showAdminAccessModal(on) {
   if (!adminAccessOverlay) return;
@@ -2227,8 +2236,83 @@ function renderAdminAccessGrid() {
       if (cb.checked) adminAccessPickedIds.add(id);
       else adminAccessPickedIds.delete(id);
       renderAdminAccessGrid();
+      scheduleAdminAccessSave();
     });
   });
+}
+
+function scheduleAdminAccessSave() {
+  if (adminAccessSaving) {
+    adminAccessSaveQueued = true;
+    return;
+  }
+  if (adminAccessSaveTimer) clearTimeout(adminAccessSaveTimer);
+  adminAccessSaveTimer = setTimeout(() => {
+    adminAccessSaveTimer = null;
+    saveAdminAccess();
+  }, 200);
+}
+
+async function saveAdminAccess() {
+  if (!adminAccessGroupId || adminAccessSaving) {
+    if (adminAccessGroupId && adminAccessSaving) adminAccessSaveQueued = true;
+    return;
+  }
+
+  adminAccessSaving = true;
+  setAdminAccessControlsDisabled(true);
+  adminAccessSummary.textContent = "Saving...";
+  adminAccessSummary.className = "msg";
+
+  const agencyIds = Array.from(adminAccessPickedIds)
+    .map(x => Number(x))
+    .filter(n => Number.isInteger(n) && n >= 0);
+
+  try {
+    const res = await fetch(`/api/groups/${encodeURIComponent(adminAccessGroupId)}/admin-access`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agencyIds })
+    });
+    const out = await res.json();
+    if (!res.ok) {
+      const errMsg = typeof out.error === "string" ? out.error : (out.error?.message || "Save failed");
+      throw new Error(errMsg);
+    }
+
+    adminAccessSelectable.forEach(a => {
+      const id = String(a.id ?? "");
+      a.hasAccess = adminAccessPickedIds.has(id);
+    });
+    adminAccessSummary.textContent = "Changes saved.";
+    adminAccessSummary.className = "msg ok";
+  } catch (e) {
+    try {
+      const res = await fetch(`/api/groups/${encodeURIComponent(adminAccessGroupId)}/admin-access`);
+      const data = await res.json();
+      if (res.ok) {
+        adminAccessSelectable = (Array.isArray(data.agencies) ? data.agencies : []).filter(a => a.selectable !== false);
+        adminAccessPickedIds = new Set(
+          adminAccessSelectable
+            .filter(a => a.hasAccess)
+            .map(a => String(a.id ?? ""))
+            .filter(Boolean)
+        );
+        renderAdminAccessGrid();
+      }
+    } catch (_) {
+      // ignore reload failure
+    }
+    adminAccessSummary.textContent = e.message || "Save failed";
+    adminAccessSummary.className = "msg bad";
+  } finally {
+    adminAccessSaving = false;
+    setAdminAccessControlsDisabled(false);
+    if (adminAccessSaveQueued) {
+      adminAccessSaveQueued = false;
+      saveAdminAccess();
+    }
+  }
 }
 
 window.openGroupAdminAccess = async (groupId) => {
@@ -2241,6 +2325,11 @@ window.openGroupAdminAccess = async (groupId) => {
   if (adminAccessInner) adminAccessInner.innerHTML = "";
   adminAccessPickedIds = new Set();
   adminAccessSelectable = [];
+  adminAccessSaveQueued = false;
+  if (adminAccessSaveTimer) {
+    clearTimeout(adminAccessSaveTimer);
+    adminAccessSaveTimer = null;
+  }
   showAdminAccessModal(true);
 
   try {
@@ -2258,8 +2347,8 @@ window.openGroupAdminAccess = async (groupId) => {
     );
 
     adminAccessSummary.textContent = groupLabel
-      ? `Select agencies whose administrators can access "${groupLabel}". Agencies that own this group prefix already have access.`
-      : "Select agencies whose administrators can access this group.";
+      ? `Select agencies whose administrators can access "${groupLabel}". Changes save automatically. Agencies that own this group prefix already have access.`
+      : "Select agencies whose administrators can access this group. Changes save automatically.";
     adminAccessSummary.className = "msg ok";
     renderAdminAccessGrid();
   } catch (e) {
@@ -2270,14 +2359,18 @@ window.openGroupAdminAccess = async (groupId) => {
 
 if (adminAccessSelectAllBtn) {
   adminAccessSelectAllBtn.onclick = () => {
+    if (adminAccessSaving) return;
     adminAccessSelectable.forEach(a => adminAccessPickedIds.add(String(a.id ?? "")));
     renderAdminAccessGrid();
+    saveAdminAccess();
   };
 }
 if (adminAccessClearBtn) {
   adminAccessClearBtn.onclick = () => {
+    if (adminAccessSaving) return;
     adminAccessPickedIds.clear();
     renderAdminAccessGrid();
+    saveAdminAccess();
   };
 }
 if (adminAccessCloseBtn) adminAccessCloseBtn.onclick = () => showAdminAccessModal(false);
@@ -2285,31 +2378,6 @@ if (adminAccessOverlay) {
   adminAccessOverlay.addEventListener("click", e => {
     if (e.target === adminAccessOverlay) showAdminAccessModal(false);
   });
-}
-if (adminAccessSaveBtn) {
-  adminAccessSaveBtn.onclick = async () => {
-    if (!adminAccessGroupId) return;
-    adminAccessSaveBtn.disabled = true;
-    try {
-      const agencyIds = Array.from(adminAccessPickedIds)
-        .map(x => Number(x))
-        .filter(n => Number.isInteger(n) && n >= 0);
-      const res = await fetch(`/api/groups/${encodeURIComponent(adminAccessGroupId)}/admin-access`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agencyIds })
-      });
-      const out = await res.json();
-      if (!res.ok) throw new Error(out.error || "Save failed");
-      setMsg(listMsg, "Admin access updated.", true);
-      showAdminAccessModal(false);
-    } catch (e) {
-      adminAccessSummary.textContent = e.message || "Save failed";
-      adminAccessSummary.className = "msg bad";
-    } finally {
-      adminAccessSaveBtn.disabled = false;
-    }
-  };
 }
 
 (async () => {
