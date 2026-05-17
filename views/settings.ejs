@@ -1593,7 +1593,10 @@
     <div id="takMaintPanel" style="display:none;margin-top:1rem;">
       <div class="settings-label" style="margin-bottom:.35rem;">Status</div>
       <ul id="takMaintStatusList" style="margin:0 0 .75rem 1.1rem;font-size:13px;line-height:1.45;"></ul>
-      <div class="settings-label" style="margin-bottom:.35rem;">tail -f /opt/tak/logs/takserver-api.log</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.35rem;">
+        <div class="settings-label" style="margin:0;">tail -f /opt/tak/logs/takserver-api.log</div>
+        <button type="button" class="btn" id="takMaintCopyLogsBtn">Copy log</button>
+      </div>
       <pre id="takMaintLogPre" style="margin:0;max-height:360px;overflow:auto;padding:.75rem;background:var(--panel, #111827);border:1px solid var(--line, #374151);border-radius:8px;font-size:12px;line-height:1.35;white-space:pre-wrap;word-break:break-word;"></pre>
     </div>
   </div>
@@ -1889,7 +1892,9 @@
       var panel = document.getElementById("takMaintPanel");
       var listEl = document.getElementById("takMaintStatusList");
       var logPre = document.getElementById("takMaintLogPre");
+      var copyLogsBtn = document.getElementById("takMaintCopyLogsBtn");
       var inProgressEl = document.getElementById("takMaintInProgress");
+      var copyLogsBtnDefaultLabel = copyLogsBtn ? copyLogsBtn.textContent : "";
       var maintEs = null;
       var pollLi = null;
 
@@ -1936,6 +1941,36 @@
         listEl.innerHTML = "";
         logPre.textContent = "";
         pollLi = null;
+      }
+
+      function copyTextToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+          var ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            document.execCommand("copy");
+            resolve();
+          } catch (e) {
+            reject(e);
+          } finally {
+            document.body.removeChild(ta);
+          }
+        });
+      }
+
+      function flashCopyLogsBtn(ok) {
+        if (!copyLogsBtn) return;
+        copyLogsBtn.textContent = ok ? "Copied!" : "Copy failed";
+        window.setTimeout(function () {
+          copyLogsBtn.textContent = copyLogsBtnDefaultLabel;
+        }, 1600);
       }
 
       function startWatchStream(opts) {
@@ -2029,6 +2064,23 @@
       if (showLogsBtn) {
         showLogsBtn.addEventListener("click", function () {
           startWatchStream({ tailOnly: true });
+        });
+      }
+
+      if (copyLogsBtn && logPre) {
+        copyLogsBtn.addEventListener("click", function () {
+          var text = logPre.textContent || "";
+          if (!text.trim()) {
+            flashCopyLogsBtn(false);
+            return;
+          }
+          copyTextToClipboard(text)
+            .then(function () {
+              flashCopyLogsBtn(true);
+            })
+            .catch(function () {
+              flashCopyLogsBtn(false);
+            });
         });
       }
 
