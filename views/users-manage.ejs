@@ -269,9 +269,9 @@
           </div>
 
           <div class="panel editTopPanel editPasswordPanel">
-            <label>Reset Password</label>
             <div class="grid2 editTopPanelGrid editPasswordFields">
-              <div class="passwordWrap">
+              <label>New password
+                <div class="passwordWrap">
                 <input
                   id="pw1"
                   name="newPassword"
@@ -287,8 +287,10 @@
                 >
                   👁
                 </button>
-              </div>
-              <div class="passwordWrap">
+                </div>
+              </label>
+              <label>Confirm password
+                <div class="passwordWrap">
                 <input
                   id="pw2"
                   name="confirmPassword"
@@ -305,13 +307,17 @@
                   👁
                 </button>
               </div>
+              </label>
             </div>
 
-            <div class="editPasswordPanelActions">
-              <button class="btn" id="resendOnboardingBtn" type="button">
-                Resend Onboarding Email
-              </button>
-              <button class="btn editPasswordResetBtn" id="resetPwBtn" type="button">Reset Password</button>
+            <div class="editTopPanelEmail">
+              <label class="editTopPanelSpacerLabel" aria-hidden="true">&nbsp;</label>
+              <div class="row editTopPanelEmailRow editPasswordPanelActions">
+                <button class="btn" id="resendOnboardingBtn" type="button">
+                  Resend Onboarding Email
+                </button>
+                <button class="btn editPasswordResetBtn" id="resetPwBtn" type="button">Reset Password</button>
+              </div>
             </div>
           </div>
         </div>
@@ -3232,13 +3238,12 @@ searchForm.onsubmit = (e) => {
   margin-top: 6px;
 }
 
-.editPasswordPanel > label{
-  display: block;
-  margin-bottom: 4px;
+.editTopPanelSpacerLabel{
+  visibility: hidden;
 }
 
-.editPasswordFields{
-  margin-top: 0;
+.editPasswordFields .passwordWrap{
+  width: 100%;
 }
 
 .editPasswordPanelActions{
@@ -3246,7 +3251,8 @@ searchForm.onsubmit = (e) => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 8px;
+  flex: 1;
+  min-width: 0;
   flex-wrap: wrap;
 }
 
