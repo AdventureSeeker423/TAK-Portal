@@ -1363,6 +1363,29 @@ router.put("/:userId/role", async (req, res) => {
   }
 });
 
+router.put("/:userId/radio-callsign", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const radioCallsign = String(req.body?.radioCallsign ?? "").trim();
+    await users.updateRadioCallsign(req.params.userId, radioCallsign);
+    const user = await users.getUserById(req.params.userId).catch(() => null);
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "UPDATE_USER_RADIO_CALLSIGN",
+      targetType: "user",
+      targetId: String(req.params.userId),
+      details: {
+        username: user?.username ?? null,
+        radio_callsign: radioCallsign || null,
+      },
+    });
+    res.json({ success: true, radioCallsign: radioCallsign || null });
+  } catch (err) {
+    res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
 router.post("/roles/backfill", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;

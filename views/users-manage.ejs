@@ -351,6 +351,16 @@
             </div>
           </label>
 
+          <div class="editRadioCallsignRow">
+            <span class="templateBarLabel">Radio Callsign</span>
+            <input
+              type="text"
+              id="radioCallsignInput"
+              placeholder="Optional"
+              autocomplete="off"
+            />
+          </div>
+
           <!-- Compact template bar -->
           <div class="templateBar">
             <span class="templateBarLabel">Template</span>
@@ -1062,6 +1072,7 @@ const nameMsg = document.getElementById("nameMsg");
 const selectAllBtn = document.getElementById("selectAllBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
 const templateApplySelect = document.getElementById("templateApplySelect");
+const radioCallsignInput = document.getElementById("radioCallsignInput");
 const applyChangesBtn = document.getElementById("applyChangesBtn");
 const roleSelect = document.getElementById("roleSelect");
 
@@ -2047,6 +2058,9 @@ window.editUser = async (userPk) => {
     }
 
     if (emailInput) emailInput.value = selectedUser.email || "";
+    if (radioCallsignInput) {
+      radioCallsignInput.value = String(selectedUser?.attributes?.radio_callsign || "").trim();
+    }
     renderRoleOptions(
       roleSelect,
       selectedUser?.attributes?.role || "Team Member"
@@ -2094,6 +2108,7 @@ window.editUser = async (userPk) => {
   if (firstNameInput) firstNameInput.value = "";
   if (lastNameInput) lastNameInput.value = "";
   if (emailInput) emailInput.value = "";
+  if (radioCallsignInput) radioCallsignInput.value = "";
   if (groupChips) groupChips.innerHTML = "";
   if (groupsInner) groupsInner.innerHTML = "";
   pickedGroupIds = new Set();
@@ -2144,6 +2159,42 @@ window.editUser = async (userPk) => {
     }
   }
 };
+
+async function applyRadioCallsignSelection({ silentSuccess = false } = {}) {
+  if (!selectedUser) return;
+  const radioCallsign = String((radioCallsignInput && radioCallsignInput.value) || "").trim();
+  if (!silentSuccess) setMsgEl(actionMsg, "Updating radio callsign...", true);
+  try {
+    const res = await fetch(`/api/users/${selectedUser.pk}/radio-callsign`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ radioCallsign }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMsgEl(actionMsg, out.error || "Failed to update radio callsign.", false);
+      return { ok: false };
+    }
+    const attrs = { ...(selectedUser.attributes || {}) };
+    if (radioCallsign) {
+      attrs.radio_callsign = radioCallsign;
+    } else {
+      delete attrs.radio_callsign;
+    }
+    selectedUser.attributes = attrs;
+    if (!silentSuccess) {
+      setMsgEl(
+        actionMsg,
+        radioCallsign ? `Radio callsign updated: ${radioCallsign}.` : "Radio callsign cleared.",
+        true
+      );
+    }
+    return { ok: true, radioCallsign };
+  } catch (err) {
+    setMsgEl(actionMsg, err?.message || "Failed to update radio callsign.", false);
+    return { ok: false };
+  }
+}
 
 async function applyRoleSelection({ silentSuccess = false } = {}) {
   if (!selectedUser) return;
@@ -2825,6 +2876,9 @@ if (applyChangesBtn) applyChangesBtn.addEventListener("click", async () => {
     const roleRes = await applyRoleSelection({ silentSuccess: true });
     if (!roleRes?.ok) return;
 
+    const radioRes = await applyRadioCallsignSelection({ silentSuccess: true });
+    if (!radioRes?.ok) return;
+
     setMsgEl(actionMsg, "Changes applied.", true);
   } finally {
     applyChangesBtn.disabled = false;
@@ -3276,6 +3330,23 @@ th.sortable:hover{
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.editRadioCallsignRow{
+  margin-top: 10px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+}
+
+.editRadioCallsignRow input{
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+}
+
 /* Compact template bar under Modify Groups */
 .templateBar{
   margin-top: 10px;

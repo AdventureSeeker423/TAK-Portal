@@ -2519,6 +2519,21 @@ async function updateUserAttributes(userId, changes) {
   return newAttrs;
 }
 
+async function updateRadioCallsign(userId, radioCallsign) {
+  await assertUserNotActionLocked(userId, { ignoreLocks: true });
+  const user = await getUserById(userId);
+  const newAttrs = { ...(user.attributes || {}) };
+  const v = String(radioCallsign ?? "").trim();
+  if (v) {
+    newAttrs.radio_callsign = v;
+  } else {
+    delete newAttrs.radio_callsign;
+  }
+  await api.patch(`/core/users/${userId}/`, { attributes: newAttrs });
+  invalidateUsersCache();
+  return newAttrs;
+}
+
 /**
  * Update users' `attributes.current_template` by exact agency + current_template match.
  * Uses Authentik attribute filtering first (single paginated query path), then patches only matches.
@@ -3362,6 +3377,7 @@ module.exports = {
   updateName,
   setUserGroups,
   updateUserAttributes,
+  updateRadioCallsign,
   backfillMissingUserRoles,
   getMissingUserRoleStats,
   backfillCurrentTemplateAttributes,
