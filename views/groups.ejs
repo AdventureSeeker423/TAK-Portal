@@ -116,22 +116,24 @@
 
     <div id="listMsg" class="msg"></div>
 
-    <table class="table">
-      <thead>
-        <tr>
-          <th class="sortable" data-key="name">
-            Group Name <span class="sortIndicator" aria-hidden="true"></span>
-          </th>
-          <% if (isGlobalAdmin) { %>
-          <th class="sortable" data-key="private">
-            Private <span class="sortIndicator" aria-hidden="true"></span>
-          </th>
-          <% } %>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
+    <div class="groupsListTableWrap">
+      <table class="table groupsListTable">
+        <thead>
+          <tr>
+            <th class="sortable" data-key="name">
+              Group Name <span class="sortIndicator" aria-hidden="true"></span>
+            </th>
+            <% if (isGlobalAdmin) { %>
+            <th class="sortable" data-key="private">
+              Private <span class="sortIndicator" aria-hidden="true"></span>
+            </th>
+            <% } %>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
   </div>
 </main>
 
@@ -996,13 +998,14 @@ function renderGroups(){
 
     return `
     <tr>
-      <td style="max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-        ${esc(stripTakPrefix(g.name))}
-        ${desc ? `<div class="muted" style="font-size: 11px; margin-top:2px; white-space:normal;">${esc(desc)}</div>` : ""}
+      <td class="groupNameCell">
+        <div class="groupNameText">${esc(stripTakPrefix(g.name))}</div>
+        ${desc ? `<div class="muted groupDescText">${esc(desc)}</div>` : ""}
+        ${IS_GLOBAL_ADMIN && isPrivate ? `<span class="groupPrivateBadge">Private</span>` : ""}
       </td>
-      ${IS_GLOBAL_ADMIN ? `<td>${isPrivate ? "Private" : ""}</td>` : ``}
-      <td>
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+      ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell">${isPrivate ? "Private" : ""}</td>` : ``}
+      <td class="groupActionsCell">
+        <div class="groupActionsRow">
           <button class="btn" type="button"
             onclick="openGroupMembers('${esc(g.pk)}')">View Members</button>
           ${locked ? `<span class="muted">Actions Hidden</span>` : `
@@ -2409,6 +2412,47 @@ if (adminAccessOverlay) {
   width: 100%;
 }
 
+/* Existing groups table */
+.groupsListTableWrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.groupsListTable .groupNameCell {
+  max-width: 320px;
+}
+
+.groupsListTable .groupNameText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.groupsListTable .groupDescText {
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: normal;
+}
+
+.groupsListTable .groupPrivateBadge {
+  display: none;
+}
+
+.groupsListTable .groupActionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.groupsListTable .groupActionsRow .btn {
+  width: auto;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
 @media (max-width: 900px){
   .createGroupActionRow{
     display: flex;
@@ -2420,6 +2464,110 @@ if (adminAccessOverlay) {
     max-width: 100%;
     flex: 1 1 100%;
     display: block;
+  }
+}
+
+/* Mobile / narrow: card layout so action buttons stay readable (matches app 990px breakpoint) */
+@media (max-width: 990px) {
+  .groupsListTable .groupActionsCell,
+  .groupsListTable .groupActionsCell .btn {
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+
+  .groupsListTableWrap {
+    overflow-x: visible;
+  }
+
+  .groupsListTable {
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .groupsListTable thead {
+    display: none;
+  }
+
+  .groupsListTable tbody tr {
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .groupsListTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 10px 12px;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+
+  .groupsListTable .groupNameCell {
+    max-width: none;
+    padding-bottom: 6px;
+  }
+
+  .groupsListTable .groupNameText {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
+  .groupsListTable .groupPrivateCell {
+    display: none;
+  }
+
+  .groupsListTable .groupPrivateBadge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+
+  .groupsListTable .groupActionsCell {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .groupsListTable .groupActionsRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .groupsListTable .groupActionsRow .btn,
+  .groupsListTable .groupActionsRow .muted {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    justify-content: center;
+    text-align: center;
+    box-sizing: border-box;
+  }
+
+  .groupsListTable .groupActionsRow .muted {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 8px 0;
+  }
+}
+
+@media (max-width: 400px) {
+  .groupsListTable .groupActionsRow {
+    grid-template-columns: 1fr;
   }
 }
 </style>
