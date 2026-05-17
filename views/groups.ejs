@@ -364,8 +364,7 @@
     </div>
     <div class="modalBody">
       <p id="adminAccessSummary" class="msg"></p>
-      <input id="adminAccessSearch" placeholder="Search agencies..." style="width:100%; box-sizing:border-box; margin-top:6px;" />
-      <div class="row" style="gap:10px; margin-top:8px;">
+      <div class="row" style="justify-content:flex-end; align-items:center; gap:10px; margin-top:8px;">
         <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
         <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
       </div>
@@ -373,7 +372,6 @@
         <div id="adminAccessInner" class="groupsInner"></div>
       </div>
       <div style="margin-top:14px; text-align:right;">
-        <button class="btn" type="button" id="adminAccessCancelBtn">Cancel</button>
         <button class="btn success" type="button" id="adminAccessSaveBtn">Save</button>
       </div>
     </div>
@@ -2179,10 +2177,8 @@ if (reloadBtn) reloadBtn.onclick = loadGroups;
 // ---- Admin Access modal (global admins: which agencies can see this group) ----
 const adminAccessOverlay = document.getElementById("adminAccessOverlay");
 const adminAccessCloseBtn = document.getElementById("adminAccessCloseBtn");
-const adminAccessCancelBtn = document.getElementById("adminAccessCancelBtn");
 const adminAccessSaveBtn = document.getElementById("adminAccessSaveBtn");
 const adminAccessSummary = document.getElementById("adminAccessSummary");
-const adminAccessSearch = document.getElementById("adminAccessSearch");
 const adminAccessInner = document.getElementById("adminAccessInner");
 const adminAccessSelectAllBtn = document.getElementById("adminAccessSelectAllBtn");
 const adminAccessClearBtn = document.getElementById("adminAccessClearBtn");
@@ -2203,37 +2199,34 @@ function adminAccessAgencyLabel(a) {
   return prefix ? `${name} (${prefix})` : name;
 }
 
-function renderAdminAccessGrid(filterText) {
+function renderAdminAccessGrid() {
   if (!adminAccessInner) return;
-  const q = String(filterText || "").trim().toLowerCase();
-  const list = q
-    ? adminAccessSelectable.filter(a => {
-        const label = adminAccessAgencyLabel(a).toLowerCase();
-        const sfx = String(a.suffix || "").toLowerCase();
-        return label.includes(q) || sfx.includes(q);
-      })
-    : adminAccessSelectable;
 
-  const sorted = [...list].sort((a, b) =>
+  const sorted = [...adminAccessSelectable].sort((a, b) =>
     adminAccessAgencyLabel(a).localeCompare(adminAccessAgencyLabel(b), undefined, { sensitivity: "base" })
   );
 
   adminAccessInner.innerHTML = sorted.map(a => {
     const id = String(a.id ?? "");
     const checked = adminAccessPickedIds.has(id) ? "checked" : "";
+    const hasAccess = adminAccessPickedIds.has(id);
+    const rowStyle = hasAccess
+      ? "background: rgba(46, 160, 67, 0.18); border: 1px solid rgba(46, 160, 67, 0.45);"
+      : "background: rgba(248, 81, 73, 0.14); border: 1px solid rgba(248, 81, 73, 0.35);";
     return `
-      <label class="groupItem">
-        <input type="checkbox" value="${esc(id)}" ${checked} />
+      <label class="groupItem" style="${rowStyle}">
+        <input type="checkbox" class="adminAccessChk" value="${esc(id)}" ${checked} />
         <span>${esc(adminAccessAgencyLabel(a))}</span>
       </label>
     `;
   }).join("") || `<div style="padding:10px; color: var(--muted);">No agencies found.</div>`;
 
-  adminAccessInner.querySelectorAll("input[type=checkbox]").forEach(cb => {
+  adminAccessInner.querySelectorAll("input.adminAccessChk").forEach(cb => {
     cb.addEventListener("change", () => {
       const id = String(cb.value);
       if (cb.checked) adminAccessPickedIds.add(id);
       else adminAccessPickedIds.delete(id);
+      renderAdminAccessGrid();
     });
   });
 }
@@ -2246,7 +2239,6 @@ window.openGroupAdminAccess = async (groupId) => {
   adminAccessSummary.textContent = "Loading agencies...";
   adminAccessSummary.className = "msg";
   if (adminAccessInner) adminAccessInner.innerHTML = "";
-  if (adminAccessSearch) adminAccessSearch.value = "";
   adminAccessPickedIds = new Set();
   adminAccessSelectable = [];
   showAdminAccessModal(true);
@@ -2269,30 +2261,26 @@ window.openGroupAdminAccess = async (groupId) => {
       ? `Select agencies whose administrators can access "${groupLabel}". Agencies that own this group prefix already have access.`
       : "Select agencies whose administrators can access this group.";
     adminAccessSummary.className = "msg ok";
-    renderAdminAccessGrid("");
+    renderAdminAccessGrid();
   } catch (e) {
     adminAccessSummary.textContent = e.message || "Failed to load.";
     adminAccessSummary.className = "msg bad";
   }
 };
 
-if (adminAccessSearch) {
-  adminAccessSearch.addEventListener("input", () => renderAdminAccessGrid(adminAccessSearch.value));
-}
 if (adminAccessSelectAllBtn) {
   adminAccessSelectAllBtn.onclick = () => {
     adminAccessSelectable.forEach(a => adminAccessPickedIds.add(String(a.id ?? "")));
-    renderAdminAccessGrid(adminAccessSearch?.value || "");
+    renderAdminAccessGrid();
   };
 }
 if (adminAccessClearBtn) {
   adminAccessClearBtn.onclick = () => {
     adminAccessPickedIds.clear();
-    renderAdminAccessGrid(adminAccessSearch?.value || "");
+    renderAdminAccessGrid();
   };
 }
 if (adminAccessCloseBtn) adminAccessCloseBtn.onclick = () => showAdminAccessModal(false);
-if (adminAccessCancelBtn) adminAccessCancelBtn.onclick = () => showAdminAccessModal(false);
 if (adminAccessOverlay) {
   adminAccessOverlay.addEventListener("click", e => {
     if (e.target === adminAccessOverlay) showAdminAccessModal(false);
