@@ -330,13 +330,8 @@
         <div style="grid-column:1/-1;">
           <h3>Current Groups</h3>
           <div id="groupChips" class="chips"></div>
-        </div>
 
-        <div style="grid-column:1/-1;">
-          <h3>Modify Groups</h3>
-
-          <!-- Groups picker -->
-            <div class="editGroupFilterRow">
+          <div class="editGroupFilterRow">
               <div class="editGroupFilterInputWrap">
                 <input id="groupFilter" placeholder="Search groups..." />
               </div>
@@ -346,23 +341,22 @@
               </div>
             </div>
 
-            <div class="groupsBox" id="groupsBox">
-              <div class="groupsInner" id="groupsInner"></div>
-            </div>
-          </label>
+          <div class="groupsBox" id="groupsBox">
+            <div class="groupsInner" id="groupsInner"></div>
+          </div>
 
-          <div class="editRadioCallsignRow">
+          <div class="templateBar">
             <span class="templateBarLabel">Radio Callsign</span>
             <input
               type="text"
               id="radioCallsignInput"
+              class="templateBarRadioCallsignInput"
               placeholder="Optional"
               autocomplete="off"
             />
-          </div>
 
-          <!-- Compact template bar -->
-          <div class="templateBar">
+            <span class="templateBarDivider" aria-hidden="true"></span>
+
             <span class="templateBarLabel">Template</span>
 
             <select id="templateApplySelect">
@@ -3330,24 +3324,7 @@ th.sortable:hover{
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.editRadioCallsignRow{
-  margin-top: 10px;
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.03);
-}
-
-.editRadioCallsignRow input{
-  flex: 1;
-  min-width: 0;
-  max-width: 420px;
-}
-
-/* Compact template bar under Modify Groups */
+/* Compact template bar under group picker */
 .templateBar{
   margin-top: 10px;
   padding: 8px 10px;
@@ -3370,6 +3347,12 @@ th.sortable:hover{
   font-size: 12px;
   opacity: .8;
   margin-right: 4px;
+}
+
+.templateBar select,
+.templateBarRadioCallsignInput{
+  min-width: 140px;
+  max-width: 220px;
 }
 
 .templateBar select{
@@ -3521,7 +3504,8 @@ th.sortable:hover{
   .templateBarLabel{
     margin-right: 0;
   }
-  .templateBar select{
+  .templateBar select,
+  .templateBarRadioCallsignInput{
     width: 100%;
     max-width: 100%;
     min-width: 0;
