@@ -196,23 +196,29 @@ function stableSort(arr, key, dir){
 }
 
 function renderTemplates(list){
-  tbody.innerHTML = (list || []).map(({t, idx}) => `
+  tbody.innerHTML = (list || []).map(({t, idx}) => {
+    const groupsText = esc((t.groups || []).map(displayGroupName).join(", "));
+    return `
     <tr>
-      <td>${t.agencySuffix ? esc(getAgencyDisplay(t) || t.agencySuffix) : "—"}</td>
-      <td>${esc(t.name)}</td>
-      <td>${t.colorOverride ? esc(t.colorOverride) : "—"}</td>
-      <td>${abbrevRoleForTable(t.role)}</td>
-      <td>${t.isDefault ? "Yes" : ""}</td>
-      <td class="groupsCell">${esc((t.groups || []).map(displayGroupName).join(", "))}</td>
-      <td>${templateUserCountForRow(t)}</td>
-      <td>
+      <td class="tplAgencyCell">${t.agencySuffix ? esc(getAgencyDisplay(t) || t.agencySuffix) : "—"}</td>
+      <td class="tplNameCell">
+        <div class="tplNameText">${esc(t.name)}</div>
+        ${t.isDefault ? `<span class="tplDefaultBadge">Default</span>` : ""}
+      </td>
+      <td class="tplColorCell">${t.colorOverride ? esc(t.colorOverride) : "—"}</td>
+      <td class="tplRoleCell">${abbrevRoleForTable(t.role)}</td>
+      <td class="tplDefaultCell">${t.isDefault ? "Yes" : ""}</td>
+      <td class="groupsCell tplGroupsCell">${groupsText || "—"}</td>
+      <td class="tplUsersCell">${templateUserCountForRow(t)}</td>
+      <td class="tplActionsCell">
         <div class="actionsCell">
           <button class="btn" type="button" onclick="editTemplate(${idx})">Edit</button>
           <button class="btn danger" type="button" onclick="deleteTemplate(${idx})">Delete</button>
         </div>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function templateUserCountForRow(t){
@@ -749,32 +755,96 @@ form.onsubmit = async (e) => {
 .tableWrap {
   width: 100%;
   overflow-x: auto;
-}
-
-@media (max-width: 768px) {
-  /* Hide Color + Default on small screens (columns shift after Role added) */
-  .templatesTable th:nth-child(3),
-  .templatesTable td:nth-child(3),
-  .templatesTable th:nth-child(5),
-  .templatesTable td:nth-child(5) {
-    display: none;
-  }
+  -webkit-overflow-scrolling: touch;
 }
 
 .templatesTable td {
   vertical-align: top;
 }
 
-.actionsCell{
+.templatesTable .tplNameCell {
+  min-width: 120px;
+}
+
+.templatesTable .tplNameText {
+  white-space: normal;
+  word-break: break-word;
+  font-weight: 600;
+}
+
+.templatesTable .tplDefaultBadge {
+  display: none;
+}
+
+.templatesTable .tplAgencyCell {
+  min-width: 100px;
+  white-space: nowrap;
+}
+
+.templatesTable .tplRoleCell,
+.templatesTable .tplUsersCell {
+  white-space: nowrap;
+}
+
+.actionsCell {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+  min-width: 140px;
 }
 
-.groupsCell{
+.actionsCell .btn {
+  width: auto;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.groupsCell {
   white-space: normal;
   word-break: break-word;
+  min-width: 140px;
+  max-width: 240px;
+}
+
+@media (max-width: 990px) {
+  .templatesTable {
+    min-width: 720px;
+  }
+
+  .templatesTable th,
+  .templatesTable td {
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+
+  /* Hide Color + Default columns; show default badge under name */
+  .templatesTable th:nth-child(3),
+  .templatesTable td:nth-child(3),
+  .templatesTable th:nth-child(5),
+  .templatesTable td:nth-child(5) {
+    display: none;
+  }
+
+  .templatesTable .tplDefaultBadge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+
+  .templatesTable .tplActionsCell,
+  .templatesTable .actionsCell,
+  .templatesTable .actionsCell .btn {
+    word-break: normal;
+    overflow-wrap: normal;
+  }
 }
 </style>
 
