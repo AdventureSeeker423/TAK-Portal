@@ -16,7 +16,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ✨ `Enhancement` - Added a dedicated field for radio callsign<br>
 ✨ `Enhancement` - Cleaned up edit user modal<br>
 ✨ `Enhancement` - Added button to groups page to allow setting agency admin access for multiple agencies at once<br>
-✨ `Enhancement` - Added dedicated mode for groups and templates pages on mobile
+✨ `Enhancement` - Added dedicated mode for groups and templates pages on mobile 
 
 ### v1.3.15 - 5/14/26
 ✨ `Enhancement` - Added buttons to show TAK logs, Restart TAK Service, and Restart TAK Server to the server settings page to give basic commands for non-infraTAK environments.  Buttons will be hidden if SSH is not configured in TAK Portal.
