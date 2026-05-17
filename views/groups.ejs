@@ -355,6 +355,31 @@
   </div>
 </div>
 
+<!-- Admin Access Modal (which agencies' admins can see this group) -->
+<div class="modalOverlay" id="adminAccessOverlay" style="display:none;">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="adminAccessTitle">
+    <div class="modalHeader">
+      <h2 id="adminAccessTitle" style="margin:0;">Group Admin Access</h2>
+      <button class="btn" id="adminAccessCloseBtn" type="button">Close</button>
+    </div>
+    <div class="modalBody">
+      <p id="adminAccessSummary" class="msg"></p>
+      <input id="adminAccessSearch" placeholder="Search agencies..." style="width:100%; box-sizing:border-box; margin-top:6px;" />
+      <div class="row" style="gap:10px; margin-top:8px;">
+        <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
+        <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
+      </div>
+      <div id="adminAccessBox" class="groupsBox" style="margin-top:10px; max-height:320px; overflow:auto;">
+        <div id="adminAccessInner" class="groupsInner"></div>
+      </div>
+      <div style="margin-top:14px; text-align:right;">
+        <button class="btn" type="button" id="adminAccessCancelBtn">Cancel</button>
+        <button class="btn success" type="button" id="adminAccessSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <script>
 const membersOverlay = document.getElementById("membersOverlay");
@@ -990,6 +1015,10 @@ function renderGroups(){
               onclick="openMassAssign('${esc(g.pk)}')">Assign</button>
             <button class="btn" type="button"
               onclick="openMassUnassign('${esc(g.pk)}')">Unassign</button>
+            ${IS_GLOBAL_ADMIN ? `
+            <button class="btn btn-access" type="button"
+              onclick="openGroupAdminAccess('${esc(g.pk)}')">Admin Access</button>
+            ` : ``}
             ${editable ? `
             <button class="btn" type="button"
               onclick="editGroupName('${esc(g.pk)}')">Edit</button>
@@ -2147,6 +2176,154 @@ massApplyBtn.onclick = async () => {
 
 if (reloadBtn) reloadBtn.onclick = loadGroups;
 
+// ---- Admin Access modal (global admins: which agencies can see this group) ----
+const adminAccessOverlay = document.getElementById("adminAccessOverlay");
+const adminAccessCloseBtn = document.getElementById("adminAccessCloseBtn");
+const adminAccessCancelBtn = document.getElementById("adminAccessCancelBtn");
+const adminAccessSaveBtn = document.getElementById("adminAccessSaveBtn");
+const adminAccessSummary = document.getElementById("adminAccessSummary");
+const adminAccessSearch = document.getElementById("adminAccessSearch");
+const adminAccessInner = document.getElementById("adminAccessInner");
+const adminAccessSelectAllBtn = document.getElementById("adminAccessSelectAllBtn");
+const adminAccessClearBtn = document.getElementById("adminAccessClearBtn");
+
+let adminAccessGroupId = null;
+let adminAccessSelectable = [];
+let adminAccessPickedIds = new Set();
+
+function showAdminAccessModal(on) {
+  if (!adminAccessOverlay) return;
+  adminAccessOverlay.style.display = on ? "flex" : "none";
+  document.body.style.overflow = on ? "hidden" : "";
+}
+
+function adminAccessAgencyLabel(a) {
+  const prefix = String(a.groupPrefix || "").trim().toUpperCase();
+  const name = String(a.name || "").trim();
+  return prefix ? `${name} (${prefix})` : name;
+}
+
+function renderAdminAccessGrid(filterText) {
+  if (!adminAccessInner) return;
+  const q = String(filterText || "").trim().toLowerCase();
+  const list = q
+    ? adminAccessSelectable.filter(a => {
+        const label = adminAccessAgencyLabel(a).toLowerCase();
+        const sfx = String(a.suffix || "").toLowerCase();
+        return label.includes(q) || sfx.includes(q);
+      })
+    : adminAccessSelectable;
+
+  const sorted = [...list].sort((a, b) =>
+    adminAccessAgencyLabel(a).localeCompare(adminAccessAgencyLabel(b), undefined, { sensitivity: "base" })
+  );
+
+  adminAccessInner.innerHTML = sorted.map(a => {
+    const id = String(a.id ?? "");
+    const checked = adminAccessPickedIds.has(id) ? "checked" : "";
+    return `
+      <label class="groupItem">
+        <input type="checkbox" value="${esc(id)}" ${checked} />
+        <span>${esc(adminAccessAgencyLabel(a))}</span>
+      </label>
+    `;
+  }).join("") || `<div style="padding:10px; color: var(--muted);">No agencies found.</div>`;
+
+  adminAccessInner.querySelectorAll("input[type=checkbox]").forEach(cb => {
+    cb.addEventListener("change", () => {
+      const id = String(cb.value);
+      if (cb.checked) adminAccessPickedIds.add(id);
+      else adminAccessPickedIds.delete(id);
+    });
+  });
+}
+
+window.openGroupAdminAccess = async (groupId) => {
+  if (!IS_GLOBAL_ADMIN) return;
+  adminAccessGroupId = String(groupId || "").trim();
+  if (!adminAccessGroupId) return;
+
+  adminAccessSummary.textContent = "Loading agencies...";
+  adminAccessSummary.className = "msg";
+  if (adminAccessInner) adminAccessInner.innerHTML = "";
+  if (adminAccessSearch) adminAccessSearch.value = "";
+  adminAccessPickedIds = new Set();
+  adminAccessSelectable = [];
+  showAdminAccessModal(true);
+
+  try {
+    const res = await fetch(`/api/groups/${encodeURIComponent(adminAccessGroupId)}/admin-access`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load admin access");
+
+    const groupLabel = stripTakPrefix(data.groupName || "");
+    adminAccessSelectable = (Array.isArray(data.agencies) ? data.agencies : []).filter(a => a.selectable !== false);
+    adminAccessPickedIds = new Set(
+      adminAccessSelectable
+        .filter(a => a.hasAccess)
+        .map(a => String(a.id ?? ""))
+        .filter(Boolean)
+    );
+
+    adminAccessSummary.textContent = groupLabel
+      ? `Select agencies whose administrators can access "${groupLabel}". Agencies that own this group prefix already have access.`
+      : "Select agencies whose administrators can access this group.";
+    adminAccessSummary.className = "msg ok";
+    renderAdminAccessGrid("");
+  } catch (e) {
+    adminAccessSummary.textContent = e.message || "Failed to load.";
+    adminAccessSummary.className = "msg bad";
+  }
+};
+
+if (adminAccessSearch) {
+  adminAccessSearch.addEventListener("input", () => renderAdminAccessGrid(adminAccessSearch.value));
+}
+if (adminAccessSelectAllBtn) {
+  adminAccessSelectAllBtn.onclick = () => {
+    adminAccessSelectable.forEach(a => adminAccessPickedIds.add(String(a.id ?? "")));
+    renderAdminAccessGrid(adminAccessSearch?.value || "");
+  };
+}
+if (adminAccessClearBtn) {
+  adminAccessClearBtn.onclick = () => {
+    adminAccessPickedIds.clear();
+    renderAdminAccessGrid(adminAccessSearch?.value || "");
+  };
+}
+if (adminAccessCloseBtn) adminAccessCloseBtn.onclick = () => showAdminAccessModal(false);
+if (adminAccessCancelBtn) adminAccessCancelBtn.onclick = () => showAdminAccessModal(false);
+if (adminAccessOverlay) {
+  adminAccessOverlay.addEventListener("click", e => {
+    if (e.target === adminAccessOverlay) showAdminAccessModal(false);
+  });
+}
+if (adminAccessSaveBtn) {
+  adminAccessSaveBtn.onclick = async () => {
+    if (!adminAccessGroupId) return;
+    adminAccessSaveBtn.disabled = true;
+    try {
+      const agencyIds = Array.from(adminAccessPickedIds)
+        .map(x => Number(x))
+        .filter(n => Number.isInteger(n) && n >= 0);
+      const res = await fetch(`/api/groups/${encodeURIComponent(adminAccessGroupId)}/admin-access`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agencyIds })
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "Save failed");
+      setMsg(listMsg, "Admin access updated.", true);
+      showAdminAccessModal(false);
+    } catch (e) {
+      adminAccessSummary.textContent = e.message || "Save failed";
+      adminAccessSummary.className = "msg bad";
+    } finally {
+      adminAccessSaveBtn.disabled = false;
+    }
+  };
+}
+
 (async () => {
   createType.onchange();
   if (editType) editType.onchange();
@@ -2159,6 +2336,15 @@ if (reloadBtn) reloadBtn.onclick = loadGroups;
 </script>
 
 <style>
+.btn-access {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #fff;
+}
+.btn-access:hover {
+  filter: brightness(0.95);
+}
+
 .createGroupSubmitBtnAlignRight{
   margin-left: auto;
 }

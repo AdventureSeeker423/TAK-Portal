@@ -624,6 +624,123 @@ router.get("/mass-jobs/:jobId", (req, res) => {
   });
 });
 
+function getGroupPrefixFromName(groupName) {
+  const n = String(groupName || "").trim();
+  const withoutTak = n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
+  const spaceIdx = withoutTak.toUpperCase().indexOf(" ");
+  if (spaceIdx <= 0) return "";
+  return withoutTak.slice(0, spaceIdx).trim().toUpperCase();
+}
+
+function isGroupOwnedByAgency(groupName, agency) {
+  const prefix = getGroupPrefixFromName(groupName);
+  if (!prefix) return false;
+  const gp = String(agency?.groupPrefix || "").trim().toUpperCase();
+  return prefix === gp;
+}
+
+// Which agencies' admins can access this group (inverse of agency access-groups).
+router.get("/:groupId/admin-access", async (req, res) => {
+  try {
+    const access = accessSvc.getAgencyAccess(req.authentikUser || null);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Only global admins can manage group admin access." });
+    }
+
+    const groupId = String(req.params.groupId || "").trim();
+    if (!groupId) return res.status(400).json({ error: "Group id is required" });
+
+    let group;
+    try {
+      group = await groups.getGroupById(groupId);
+    } catch (_) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    const groupName = String(group?.name || "").trim();
+    const allAgencies = agencies.load();
+    const agenciesOut = allAgencies.map((a, idx) => {
+      const ids = Array.isArray(a.allowedAdminGroupIds) ? a.allowedAdminGroupIds : [];
+      const hasExplicit = ids.map((id) => String(id).trim()).includes(groupId);
+      const implicitAccess = isGroupOwnedByAgency(groupName, a);
+      return {
+        id: idx,
+        name: String(a.name || "").trim(),
+        groupPrefix: String(a.groupPrefix || "").trim().toUpperCase(),
+        suffix: String(a.suffix || "").trim().toLowerCase(),
+        hasAccess: hasExplicit,
+        implicitAccess,
+        selectable: !implicitAccess,
+      };
+    });
+
+    return res.json({
+      groupId,
+      groupName,
+      agencies: agenciesOut,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
+router.put("/:groupId/admin-access", async (req, res) => {
+  try {
+    const access = accessSvc.getAgencyAccess(req.authentikUser || null);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Only global admins can manage group admin access." });
+    }
+
+    const groupId = String(req.params.groupId || "").trim();
+    if (!groupId) return res.status(400).json({ error: "Group id is required" });
+
+    let groupName = "";
+    try {
+      const g = await groups.getGroupById(groupId);
+      groupName = String(g?.name || "").trim();
+    } catch (_) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    const raw = req.body?.agencyIds;
+    const selected = new Set(
+      Array.isArray(raw)
+        ? raw.map((x) => Number(x)).filter((n) => Number.isInteger(n) && n >= 0)
+        : []
+    );
+
+    const allAgencies = agencies.load();
+    let updated = 0;
+
+    for (let idx = 0; idx < allAgencies.length; idx++) {
+      const agency = allAgencies[idx];
+      if (isGroupOwnedByAgency(groupName, agency)) continue;
+
+      let ids = Array.isArray(agency.allowedAdminGroupIds)
+        ? agency.allowedAdminGroupIds.map((id) => String(id).trim()).filter(Boolean)
+        : [];
+      const had = ids.includes(groupId);
+      const want = selected.has(idx);
+
+      if (want && !had) {
+        ids.push(groupId);
+        updated++;
+      } else if (!want && had) {
+        ids = ids.filter((id) => id !== groupId);
+        updated++;
+      }
+
+      agency.allowedAdminGroupIds = ids;
+    }
+
+    agencies.save(allAgencies);
+
+    return res.json({ success: true, agenciesUpdated: updated });
+  } catch (err) {
+    return res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
 // Fetch members of a single group, plus related mutual-aid entries
 router.get("/:groupId/members", async (req, res) => {
   try {
