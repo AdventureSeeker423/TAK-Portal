@@ -3,8 +3,8 @@ CSV User Creation Instructions
 
 Use this with: sample-users.csv
 
-CSV format (DO NOT change the header line except to optionally omit the last column):
-badge,agency,firstName,lastName,email,password,template,role
+CSV format (DO NOT change the header line except to optionally omit optional columns):
+badge,agency,firstName,lastName,email,password,radioCallsign,template,role
 
 What each column means:
 1) badge
@@ -37,12 +37,17 @@ What each column means:
      - at least 1 number
      - at least 1 symbol
 
-7) template
+7) radioCallsign  (optional)
+   - Optional (can be blank or column omitted entirely).
+   - If set, stored on the Authentik user as attribute radio_callsign.
+   - Place before template when included in the header row.
+
+8) template
    - This is the user group template name to apply to the new user.
    - Example from sample file: Patrol
    - The template must already exist for that agency, or that row will fail.
 
-8) role  (optional – last column)
+9) role  (optional – last column)
    - If this column is missing, left blank, or the value is empty, the new user's
      role is taken from the selected template (same as creating a user in the UI
      without overriding role).
@@ -51,14 +56,14 @@ What each column means:
    - Matching is not case-sensitive (e.g. "team lead" and "Team Lead" are both ok).
 
 Quick rules:
-- Keep the first row (header) as shown; you may omit the final "role" column
-  for older spreadsheets that only have seven columns.
+- Keep the first row (header) as shown; you may omit optional columns
+  (radioCallsign and/or role) for older spreadsheets.
 - One user per line.
 - Do not add other extra columns.
 - Save as .csv.
 
 Examples:
-- Good row (role from template):
-  1001,TEST,John,Doe,john.doe@example.org,Password!23456,Patrol,
-- Good row with blank password and explicit role:
-  1002,test,Jane,Smith,jane.smith@example.org,,Patrol,Team Lead
+- Good row (role from template, with radio callsign):
+  1001,TEST,John,Doe,john.doe@example.org,Password!23456,HCSO-1001,Patrol,
+- Good row with blank password and explicit role (no radio callsign):
+  1002,test,Jane,Smith,jane.smith@example.org,,,Patrol,Team Lead

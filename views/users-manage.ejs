@@ -61,11 +61,12 @@
         <input name="lastName" placeholder="Doe" required />
       </label>
 
-      <label>Email (optional)
-        <input name="email" type="email" placeholder="example@agency.gov" />
-      </label>
+      <div class="createEmailPwdRow">
+        <label>Email (optional)
+          <input name="email" type="email" placeholder="example@agency.gov" />
+        </label>
 
-      <label>Password (optional)
+        <label>Password (optional)
         <div class="passwordWrap">
           <input
             id="createPasswordInput"
@@ -86,7 +87,12 @@
             👁
           </button>
         </div>
-      </label>
+        </label>
+
+        <label>Radio Callsign (optional)
+          <input name="radioCallsign" type="text" placeholder="e.g. HCSO-123" autocomplete="off" />
+        </label>
+      </div>
 
       <div class="createFinalRow">
         <label>Template
@@ -3324,6 +3330,7 @@ th.sortable:hover{
   margin-left: auto;
 }
 
+.createEmailPwdRow,
 .createFinalRow{
   grid-column: 1 / -1;
   display: grid;
@@ -3422,6 +3429,7 @@ th.sortable:hover{
     gap: 10px;
   }
 
+  .createEmailPwdRow,
   .createFinalRow{
     grid-template-columns: 1fr;
   }

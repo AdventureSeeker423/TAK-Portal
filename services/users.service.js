@@ -1001,6 +1001,7 @@ async function createUser(
     firstName,
     lastName,
     password,
+    radioCallsign,
     templateIndex,
     manualGroupIds,
     role,
@@ -1202,6 +1203,11 @@ async function createUser(
   }
   if (creationMethod) {
     attributes.created_method = String(creationMethod);
+  }
+
+  const radioCall = String(radioCallsign || "").trim();
+  if (radioCall) {
+    attributes.radio_callsign = radioCall;
   }
 
   const payload = {
@@ -1423,7 +1429,8 @@ async function fetchUsersForDashboardStats() {
 //   email
 //   password (may be blank)
 //   template (name must exist for the agency)
-// OPTIONAL column (last position if present):
+// OPTIONAL columns (may be omitted entirely):
+//   radioCallsign — if non-blank, sets Authentik attribute radio_callsign
 //   role — if blank or omitted, use the template's role (same as UI).
 // Rows that fail validation or Authentik creation are skipped; valid rows are still created.
 // Existing users are *skipped* but reported back (not counted as failures).
@@ -1493,6 +1500,14 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
     return idx >= 0 ? String(parts[idx] ?? "").trim() : "";
   }
 
+  function getRadioCallsign(parts) {
+    for (const key of ["radiocallsign", "radio_callsign", "radio callsign"]) {
+      const v = get(parts, key);
+      if (v) return v;
+    }
+    return "";
+  }
+
   const agencies = agenciesStore.load();
   const rows = [];
   /** @type {Array<{ line: number, phase: string, messages: string[], badge?: string, email?: string, username?: string }>} */
@@ -1519,6 +1534,7 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
     const lastName = get(parts, "lastname");
     const email = get(parts, "email");
     const password = get(parts, "password");
+    const radioCallsign = getRadioCallsign(parts);
     const templateName = get(parts, "template");
 
     const rowErrors = [];
@@ -1617,6 +1633,7 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
       lastName,
       email,
       password,
+      radioCallsign,
       templateName,
       /** Non-empty only when CSV specified a valid role; otherwise createUser uses template role */
       roleCsv: roleResolved.ok ? roleResolved.role : "",
@@ -1714,6 +1731,7 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
             firstName: row.firstName,
             lastName: row.lastName,
             password: row.password || undefined, // <- per-row password / no-password
+            radioCallsign: row.radioCallsign || undefined,
             templateIndex,
             manualGroupIds: [],
             allGroups,

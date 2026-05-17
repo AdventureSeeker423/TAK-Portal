@@ -87,6 +87,7 @@
   box-sizing: border-box;
 }
 
+.approveEmailPwdRow,
 .approveFinalRow{
   grid-column: 1 / -1;
   display: grid;
@@ -111,6 +112,7 @@
     flex: 1;
     min-width: 0;
   }
+  .approveEmailPwdRow,
   .approveFinalRow{
     grid-template-columns: 1fr;
   }
@@ -293,11 +295,12 @@ th.sortable:hover{
               <input name="lastName" placeholder="Doe" required />
             </label>
 
-            <label>Email (optional)
-              <input name="email" type="email" placeholder="example@agency.gov" />
-            </label>
+            <div class="approveEmailPwdRow">
+              <label>Email (optional)
+                <input name="email" type="email" placeholder="example@agency.gov" />
+              </label>
 
-            <label>Password (optional)
+              <label>Password (optional)
               <div class="passwordWrap">
                 <input
                   class="passwordInput"
@@ -314,7 +317,12 @@ th.sortable:hover{
                   aria-label="Show password"
                 >👁</button>
               </div>
-            </label>
+              </label>
+
+              <label>Radio Callsign (optional)
+                <input name="radioCallsign" type="text" placeholder="e.g. HCSO-123" autocomplete="off" />
+              </label>
+            </div>
 
             <div class="approveFinalRow">
               <label>Template
