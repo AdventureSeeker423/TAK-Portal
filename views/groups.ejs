@@ -2347,7 +2347,7 @@ window.openGroupAdminAccess = async (groupId) => {
     );
 
     adminAccessSummary.textContent = groupLabel
-      ? `Select agencies whose administrators can access "${groupLabel}". Changes save automatically. Agencies that own this group prefix already have access.`
+      ? `Select agencies whose administrators can access "${groupLabel}". Changes save automatically.`
       : "Select agencies whose administrators can access this group. Changes save automatically.";
     adminAccessSummary.className = "msg ok";
     renderAdminAccessGrid();
