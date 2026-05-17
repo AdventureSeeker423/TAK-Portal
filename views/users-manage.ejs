@@ -247,9 +247,8 @@
       <div class="grid2">
         <!-- Top section: organized panels -->
         <div class="topPanels" style="grid-column:1/-1;">
-          <div class="panel">
-
-            <div class="grid2">
+          <div class="panel editTopPanel">
+            <div class="grid2 editTopPanelGrid">
               <label>First Name
                 <input id="firstNameInput" />
               </label>
@@ -259,20 +258,19 @@
               </label>
             </div>
 
-            <div style="margin-top:10px;">
+            <div class="editTopPanelEmail">
               <label>Email</label>
-              <div class="row" style="gap:10px; align-items:center;">
-                <input id="emailInput" type="email" style="flex:1; min-width: 240px;" />
+              <div class="row editTopPanelEmailRow">
+                <input id="emailInput" type="email" />
                 <button class="btn" id="saveUserDetailsBtn" type="button">Update User Details</button>
               </div>
-              <span class="msg" id="nameMsg" style="display:block; margin-top:8px;"></span>
+              <span class="msg" id="nameMsg"></span>
             </div>
           </div>
 
-          <div class="panel">
-
+          <div class="panel editTopPanel editPasswordPanel">
             <label>Reset Password</label>
-            <div class="grid2" style="margin-top:6px;">
+            <div class="grid2 editTopPanelGrid editPasswordFields">
               <div class="passwordWrap">
                 <input
                   id="pw1"
@@ -309,16 +307,11 @@
               </div>
             </div>
 
-            <div class="row" style="gap:10px; margin-top:10px;">
-              <button class="btn" id="resetPwBtn" type="button">Reset Password</button>
-            </div>
-            <div style="margin-top:10px;">
-            <label>&nbsp;</label>
-            <div class="row" style="gap:10px; align-items:center;">
+            <div class="editPasswordPanelActions">
               <button class="btn" id="resendOnboardingBtn" type="button">
                 Resend Onboarding Email
               </button>
-            </div>
+              <button class="btn editPasswordResetBtn" id="resetPwBtn" type="button">Reset Password</button>
             </div>
           </div>
         </div>
@@ -3198,7 +3191,7 @@ searchForm.onsubmit = (e) => {
 .topPanels{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 8px;
 }
 @media (max-width: 900px){
   .topPanels{ grid-template-columns: 1fr; }
@@ -3208,6 +3201,57 @@ searchForm.onsubmit = (e) => {
   background: rgba(255,255,255,.03);
   border-radius: 14px;
   padding: 12px;
+}
+
+.topPanels .panel.editTopPanel{
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.editTopPanelGrid{
+  gap: 8px;
+}
+
+.editTopPanelEmail{
+  margin-top: 6px;
+}
+
+.editTopPanelEmailRow{
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.editTopPanelEmailRow input{
+  flex: 1;
+  min-width: 0;
+}
+
+.editTopPanelEmail .msg{
+  display: block;
+  margin-top: 6px;
+}
+
+.editPasswordPanel > label{
+  display: block;
+  margin-bottom: 4px;
+}
+
+.editPasswordFields{
+  margin-top: 0;
+}
+
+.editPasswordPanelActions{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.editPasswordResetBtn{
+  margin-left: auto;
 }
 .panelTitle{
   margin:0 0 10px 0;
@@ -3450,11 +3494,19 @@ th.sortable:hover{
   #modalOverlay .modalBody{
     padding: 10px;
   }
-  .panel{
-    padding: 10px;
+  .topPanels .panel.editTopPanel{
+    padding: 8px;
   }
   .topPanels{
-    gap: 10px;
+    gap: 8px;
+  }
+  .editPasswordPanelActions{
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .editPasswordResetBtn{
+    margin-left: 0;
+    width: 100%;
   }
 
   .createEmailPwdRow,
