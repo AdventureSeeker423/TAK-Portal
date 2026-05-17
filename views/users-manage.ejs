@@ -259,17 +259,13 @@
               </label>
             </div>
 
-            <div class="row" style="gap:10px; margin-top:10px; align-items:center;">
-              <button class="btn" id="saveNameBtn" type="button">Update Name</button>
-              <span class="msg" id="nameMsg"></span>
-            </div>
-
             <div style="margin-top:10px;">
               <label>Email</label>
               <div class="row" style="gap:10px; align-items:center;">
-                <input id="emailInput" style="flex:1; min-width: 240px;" />
-                <button class="btn" id="saveEmailBtn" type="button">Update Email</button>
+                <input id="emailInput" type="email" style="flex:1; min-width: 240px;" />
+                <button class="btn" id="saveUserDetailsBtn" type="button">Update User Details</button>
               </div>
+              <span class="msg" id="nameMsg" style="display:block; margin-top:8px;"></span>
             </div>
           </div>
 
@@ -328,7 +324,7 @@
         </div>
 
         <div style="grid-column:1/-1;">
-          <h3>Current Groups</h3>
+          <h3>Groups</h3>
           <div id="groupChips" class="chips"></div>
 
           <div class="editGroupFilterRow">
@@ -1044,7 +1040,7 @@ const userTitle = document.getElementById("userTitle");
 const usernameSpan = document.getElementById("usernameSpan");
 
 const emailInput = document.getElementById("emailInput");
-const saveEmailBtn = document.getElementById("saveEmailBtn");
+const saveUserDetailsBtn = document.getElementById("saveUserDetailsBtn");
 const pw1 = document.getElementById("pw1");
 const pw2 = document.getElementById("pw2");
 const pw1Toggle = document.getElementById("pw1Toggle");
@@ -1059,7 +1055,6 @@ const groupsInner = document.getElementById("groupsInner");
 // Name edit
 const firstNameInput = document.getElementById("firstNameInput");
 const lastNameInput = document.getElementById("lastNameInput");
-const saveNameBtn = document.getElementById("saveNameBtn");
 const nameMsg = document.getElementById("nameMsg");
 
 // Template apply controls
@@ -2613,102 +2608,81 @@ thead.addEventListener("click", (e) => {
   loadAllUsers();
 });
 
-// ---------- Update name ----------
-saveNameBtn.onclick = async () => {
-  if (!selectedUser) return;
+// ---------- Update name + email ----------
+if (saveUserDetailsBtn) {
+  saveUserDetailsBtn.onclick = async () => {
+    if (!selectedUser) return;
 
-  setMsgEl(nameMsg, "");
-  setMsgEl(actionMsg, "");
+    setMsgEl(nameMsg, "");
+    setMsgEl(actionMsg, "");
 
-  const first = String(firstNameInput.value || "").trim();
-  const last  = String(lastNameInput.value || "").trim();
-  if (!first && !last) {
-    return setMsgEl(nameMsg, "Enter a name or cancel.", false);
-  }
-
-  const newName = last ? `${last}, ${first}` : first;
-
-  let res;
-  try {
-    res = await fetch(`/api/users/${selectedUser.pk}/name`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName })
-    });
-  } catch {
-    return setMsgEl(nameMsg, "Network error.", false);
-  }
-
-  const { json } = await readJsonSafe(res);
-
-  if (!res.ok) {
-    return setMsgEl(
-      nameMsg,
-      (json && json.error) || `Update failed (HTTP ${res.status})`,
-      false
-    );
-  }
-
-  selectedUser.name = newName;
-
-  const patch = u =>
-    String(u.pk) === String(selectedUser.pk) ? { ...u, name: newName } : u;
-
-  allUsers = (allUsers || []).map(patch);
-  const updatedVisible = (window.__lastUsers || []).map(patch);
-  window.__lastUsers = updatedVisible.slice();
-  renderResults(updatedVisible);
-
-  setMsgEl(nameMsg, "Name updated.", true);
-};
-
-
-// ---------- Update email ----------
-saveEmailBtn.onclick = async () => {
-  if (!selectedUser) return;
-
-  setMsgEl(nameMsg, "");
-
-  const email = String(emailInput.value || "").trim();
-
-  // If provided, must be valid format
-  if (email && !emailInput.checkValidity()) {
-    return setMsgEl(nameMsg, "Invalid email format.", false);
-  }
-
-  let res;
-  try {
-    res = await fetch(`/api/users/${selectedUser.pk}/email`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email })
-    });
-    } catch {
-      return setMsgEl(nameMsg, "Network error.", false);
+    const first = String(firstNameInput.value || "").trim();
+    const last = String(lastNameInput.value || "").trim();
+    if (!first && !last) {
+      return setMsgEl(nameMsg, "Enter a first or last name.", false);
     }
 
-  const { json } = await readJsonSafe(res);
+    const newName = last ? `${last}, ${first}` : first;
+    const email = String(emailInput.value || "").trim();
 
-  if (!res.ok) {
-    return setMsgEl(
-      nameMsg,
-      (json && json.error) || `Update failed (HTTP ${res.status})`,
-      false
-    );
-  }
+    if (email && !emailInput.checkValidity()) {
+      return setMsgEl(nameMsg, "Invalid email format.", false);
+    }
 
-  selectedUser.email = email;
+    let nameRes;
+    try {
+      nameRes = await fetch(`/api/users/${selectedUser.pk}/name`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+    } catch {
+      return setMsgEl(nameMsg, "Network error while updating name.", false);
+    }
 
-  const patch = u =>
-    String(u.pk) === String(selectedUser.pk) ? { ...u, email } : u;
+    const nameOut = await readJsonSafe(nameRes);
+    if (!nameRes.ok) {
+      return setMsgEl(
+        nameMsg,
+        (nameOut.json && nameOut.json.error) || `Name update failed (HTTP ${nameRes.status})`,
+        false
+      );
+    }
 
-  allUsers = (allUsers || []).map(patch);
-  const updatedVisible = (window.__lastUsers || []).map(patch);
-  window.__lastUsers = updatedVisible.slice();
-  renderResults(updatedVisible);
+    let emailRes;
+    try {
+      emailRes = await fetch(`/api/users/${selectedUser.pk}/email`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      return setMsgEl(nameMsg, "Name updated, but network error while updating email.", false);
+    }
 
-  setMsgEl(nameMsg, "Email updated.", true);
-};
+    const emailOut = await readJsonSafe(emailRes);
+    if (!emailRes.ok) {
+      return setMsgEl(
+        nameMsg,
+        (emailOut.json && emailOut.json.error) || `Email update failed (HTTP ${emailRes.status})`,
+        false
+      );
+    }
+
+    selectedUser.name = newName;
+    selectedUser.email = email;
+
+    const patch = (u) =>
+      String(u.pk) === String(selectedUser.pk) ? { ...u, name: newName, email } : u;
+
+    allUsers = (allUsers || []).map(patch);
+    const updatedVisible = (window.__lastUsers || []).map(patch);
+    window.__lastUsers = updatedVisible.slice();
+    renderResults(updatedVisible);
+
+    setMsgEl(nameMsg, "User details updated.", true);
+  };
+}
 
 
 // ---------- Reset password ----------
