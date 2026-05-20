@@ -50,10 +50,26 @@ function getSmtpConfig() {
 }
 
 let _transport = null;
+let _transportFingerprint = null;
+
+function smtpTransportFingerprint(cfg) {
+  return JSON.stringify({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    user: cfg.user,
+    pass: cfg.pass,
+  });
+}
+
+function closeTransportAsync(transport) {
+  if (!transport || typeof transport.close !== "function") return;
+  Promise.resolve(transport.close()).catch((err) => {
+    console.warn("[EMAIL] transport close failed:", err?.message || err);
+  });
+}
 
 function getTransport() {
-  if (_transport) return _transport;
-
   const provider = getEmailProvider();
   if (provider !== "smtp") {
     throw new Error(`Unsupported EMAIL_PROVIDER: ${provider}`);
@@ -65,6 +81,17 @@ function getTransport() {
   }
   if (!cfg.from) {
     throw new Error("EMAIL_ENABLED is true but SMTP_FROM is empty");
+  }
+
+  const fingerprint = smtpTransportFingerprint(cfg);
+  if (_transport && _transportFingerprint === fingerprint) {
+    return _transport;
+  }
+
+  if (_transport) {
+    closeTransportAsync(_transport);
+    _transport = null;
+    _transportFingerprint = null;
   }
 
   const auth = cfg.user
@@ -86,6 +113,7 @@ function getTransport() {
       rejectUnauthorized: false,
     },
   });
+  _transportFingerprint = fingerprint;
 
   return _transport;
 }
