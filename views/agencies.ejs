@@ -326,9 +326,10 @@ const adminsList = document.getElementById("adminsList");
 const adminsHint = document.getElementById("adminsHint");
 
 let agencies = [];
-/** When true, Type, Color, and Abbreviation columns are editable. */
+/** When true, Name, Type, Color, and Abbreviation columns are editable. */
 let agencyAttributesEditMode = false;
-/** groupPrefix snapshot per agency id when entering edit mode (Done Editing applies diffs). */
+/** Snapshots per agency id when entering edit mode (Done Editing applies diffs). */
+let nameSnapshotById = {};
 let abbrevSnapshotById = {};
 let sortState = { key: "name", dir: 1 }; // default: Agency asc
 
@@ -432,6 +433,17 @@ const AGENCY_COLOR_OPTIONS = [
   "Blue", "Dark Blue", "Brown", "Cyan", "Green", "Dark Green", "Magenta", "Maroon",
   "Orange", "Purple", "Red", "Teal", "White", "Yellow",
 ];
+
+function buildAgencyNameCellHtml(a) {
+  const idx = a._id ?? a.id;
+  const val = String(a.name || "").trim();
+  return `<input type="text" class="agency-name-input" aria-label="Agency full name" value="${esc(val)}" maxlength="200" oninput="updateAgencyNameLocal(${Number(idx)}, this.value)" />`;
+}
+
+function updateAgencyNameLocal(agencyIndex, raw) {
+  const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
+  if (row) row.name = String(raw || "").trim();
+}
 
 function buildAgencyAbbrCellHtml(a) {
   const idx = a._id ?? a.id;
@@ -645,8 +657,12 @@ function renderAgencies(){
 
   tbody.innerHTML = rows.map((a)=>`
     <tr>
-      <td class="agencyNameCell cardTitleCell">
-        <div class="agencyNameText cardTitleText">${esc(a.name)}</div>
+      <td class="agencyNameCell cardTitleCell" data-label="Agency">
+        ${
+          agencyAttributesEditMode
+            ? buildAgencyNameCellHtml(a)
+            : `<div class="agencyNameText cardTitleText">${esc(a.name)}</div>`
+        }
       </td>
       <td class="agencyAbbrCell" data-label="Abbreviation">${
         agencyAttributesEditMode ? buildAgencyAbbrCellHtml(a) : esc(a.groupPrefix)
@@ -1213,74 +1229,133 @@ addForm.onsubmit = async (e) => {
 
 if (refreshBtn) refreshBtn.onclick = () => loadAgenciesWithCounts();
 
-function getAgencyAbbrevChanges() {
-  return agencies.filter((a) => {
-    const id = String(a._id ?? a.id ?? "");
-    if (!id || !(id in abbrevSnapshotById)) return false;
-    const oldAbbr = String(abbrevSnapshotById[id] || "").trim().toUpperCase();
-    const newAbbr = String(a.groupPrefix || "").trim().toUpperCase();
-    return oldAbbr && newAbbr && oldAbbr !== newAbbr;
-  });
+function agencyNameChanged(a) {
+  const id = String(a._id ?? a.id ?? "");
+  if (!id || !(id in nameSnapshotById)) return false;
+  const oldName = String(nameSnapshotById[id] || "").trim();
+  const newName = String(a.name || "").trim();
+  return oldName && newName && oldName !== newName;
+}
+
+function agencyAbbrevChanged(a) {
+  const id = String(a._id ?? a.id ?? "");
+  if (!id || !(id in abbrevSnapshotById)) return false;
+  const oldAbbr = String(abbrevSnapshotById[id] || "").trim().toUpperCase();
+  const newAbbr = String(a.groupPrefix || "").trim().toUpperCase();
+  return oldAbbr && newAbbr && oldAbbr !== newAbbr;
+}
+
+function getAgenciesWithAttributeChanges() {
+  return agencies.filter((a) => agencyNameChanged(a) || agencyAbbrevChanged(a));
 }
 
 async function finishAgencyAttributesEditing() {
-  const changes = getAgencyAbbrevChanges();
-  if (changes.length) {
-    const lines = changes
+  const agenciesToUpdate = getAgenciesWithAttributeChanges();
+  const hasWork = agenciesToUpdate.length > 0;
+
+  if (hasWork) {
+    const lines = agenciesToUpdate
       .map((a) => {
         const id = String(a._id ?? a.id ?? "");
-        const oldAbbr = abbrevSnapshotById[id] || "";
-        const newAbbr = String(a.groupPrefix || "").trim().toUpperCase();
-        return `${a.name}: ${oldAbbr} → ${newAbbr}`;
+        const parts = [];
+        if (agencyNameChanged(a)) {
+          parts.push(`name: ${nameSnapshotById[id]} → ${String(a.name || "").trim()}`);
+        }
+        if (agencyAbbrevChanged(a)) {
+          parts.push(
+            `abbrev: ${abbrevSnapshotById[id]} → ${String(a.groupPrefix || "").trim().toUpperCase()}`
+          );
+        }
+        const label = String(nameSnapshotById[id] || a.name || "Agency");
+        return `${label}: ${parts.join("; ")}`;
       })
       .join("\n");
     const ok = confirm(
-      `Apply abbreviation changes for ${changes.length} agenc${changes.length === 1 ? "y" : "ies"}?\n\n${lines}\n\nThis updates users, admin groups, TAK groups, and templates for each agency listed.`
+      `Apply agency changes for ${agenciesToUpdate.length} agenc${agenciesToUpdate.length === 1 ? "y" : "ies"}?\n\n${lines}\n\nFull name changes update users and group metadata. Abbreviation changes also rename groups and templates.`
     );
     if (!ok) return;
   }
 
   const btn = agencyAttributesEditBtn;
   const prevLabel = "Edit Agency Attributes";
-  if (changes.length) {
+  if (hasWork) {
     btn.disabled = true;
-    btn.textContent = "Applying abbreviation changes…";
-    setMsg("Applying abbreviation changes…", true);
+    btn.textContent = "Applying agency changes…";
+    setMsg("Applying agency changes…", true);
   }
 
   const errors = [];
   const summaries = [];
-  for (const a of changes) {
+
+  for (const a of agenciesToUpdate) {
     const idx = a._id ?? a.id;
-    const gp = String(a.groupPrefix || "").trim().toUpperCase();
-    if (!/^[A-Z0-9_-]+$/.test(gp)) {
-      errors.push(`${a.name}: invalid abbreviation`);
-      continue;
-    }
-    try {
-      const res = await fetch(
-        `/api/agencies/${encodeURIComponent(idx)}/rename-group-prefix`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ groupPrefix: gp }),
+    const displayName = String(nameSnapshotById[String(idx)] || a.name || "Agency");
+
+    if (agencyNameChanged(a)) {
+      const newName = String(a.name || "").trim();
+      if (!newName) {
+        errors.push(`${displayName}: agency name is required`);
+        continue;
+      }
+      try {
+        const res = await fetch(
+          `/api/agencies/${encodeURIComponent(idx)}/rename-agency-name`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: newName }),
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof data.error === "string"
+              ? data.error
+              : data.error?.detail || data.error || "Name rename failed"
+          );
         }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          typeof data.error === "string"
-            ? data.error
-            : data.error?.detail || data.error || "Rename failed"
-        );
+        if (!data.skipped) {
+          summaries.push(
+            `${newName} (name): ${data.usersUpdated ?? 0} user(s), ${data.groupsUpdated ?? 0} group(s)`
+          );
+        }
+      } catch (e) {
+        errors.push(`${displayName} (name): ${e.message || String(e)}`);
+        continue;
       }
-      if (!data.skipped) {
-        summaries.push(
-          `${a.name}: ${data.usersUpdated ?? 0} user(s), ${data.groupsRenamed ?? 0} group(s), ${data.templatesUpdated ?? 0} template(s)`
-        );
+    }
+
+    if (agencyAbbrevChanged(a)) {
+      const gp = String(a.groupPrefix || "").trim().toUpperCase();
+      if (!/^[A-Z0-9_-]+$/.test(gp)) {
+        errors.push(`${String(a.name || displayName)}: invalid abbreviation`);
+        continue;
       }
-    } catch (e) {
-      errors.push(`${a.name}: ${e.message || String(e)}`);
+      try {
+        const res = await fetch(
+          `/api/agencies/${encodeURIComponent(idx)}/rename-group-prefix`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ groupPrefix: gp }),
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof data.error === "string"
+              ? data.error
+              : data.error?.detail || data.error || "Abbreviation rename failed"
+          );
+        }
+        if (!data.skipped) {
+          summaries.push(
+            `${String(a.name || displayName)} (abbrev): ${data.usersUpdated ?? 0} user(s), ${data.groupsRenamed ?? 0} group(s), ${data.templatesUpdated ?? 0} template(s)`
+          );
+        }
+      } catch (e) {
+        errors.push(`${String(a.name || displayName)} (abbrev): ${e.message || String(e)}`);
+      }
     }
   }
 
@@ -1292,12 +1367,13 @@ async function finishAgencyAttributesEditing() {
   }
 
   agencyAttributesEditMode = false;
+  nameSnapshotById = {};
   abbrevSnapshotById = {};
   btn.textContent = prevLabel;
   btn.setAttribute("aria-pressed", "false");
 
   if (summaries.length) {
-    setMsg(`Abbreviation updates applied. ${summaries.join("; ")}`, true);
+    setMsg(`Agency updates applied. ${summaries.join("; ")}`, true);
   }
 
   await loadAgenciesWithCounts();
@@ -1309,10 +1385,12 @@ if (agencyAttributesEditBtn) {
       await finishAgencyAttributesEditing();
       return;
     }
+    nameSnapshotById = {};
     abbrevSnapshotById = {};
     for (const a of agencies) {
       const id = String(a._id ?? a.id ?? "");
       if (!id) continue;
+      nameSnapshotById[id] = String(a.name || "").trim();
       abbrevSnapshotById[id] = String(a.groupPrefix || "").trim().toUpperCase();
     }
     agencyAttributesEditMode = true;
