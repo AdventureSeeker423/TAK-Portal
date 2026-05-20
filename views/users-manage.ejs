@@ -1551,8 +1551,18 @@ async function loadTemplatesForAgency(agencySuffix){
       all = Array.isArray(meta.templates) ? meta.templates : [];
       agencyTemplatesBySuffixCache.set(sfx, all);
     }
-    const rest = all.slice(1);
     const manual = all[0];
+    const rest = all
+      .slice(1)
+      .slice()
+      .sort((a, b) =>
+        String(a.label || a.name || "").localeCompare(String(b.label || b.name || ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+      );
+
+    const sortedTemplates = manual ? [manual, ...rest] : rest;
 
     const options = [];
     if (manual) {
@@ -1563,8 +1573,8 @@ async function loadTemplatesForAgency(agencySuffix){
     });
 
     templateApplySelect.innerHTML = options.join("");
-    agencyTemplatesCache = all;
-    const matchingTemplateKey = findMatchingTemplateKeyForUser(selectedUser, all);
+    agencyTemplatesCache = sortedTemplates;
+    const matchingTemplateKey = resolveTemplateApplyValueForUser(selectedUser, sortedTemplates);
     templateApplySelect.value = matchingTemplateKey || "manual";
     const currentRoleFromUser = selectedUser?.attributes?.role;
     renderRoleOptions(roleSelect, currentRoleFromUser || roleSelect?.value || "Team Member");
@@ -1652,6 +1662,29 @@ function findMatchingTemplateKeyForUser(user, templates) {
   }
 
   return "";
+}
+
+function resolveTemplateApplyValueForUser(user, templates) {
+  const candidates = Array.isArray(templates) ? templates : [];
+  const current = String(user?.attributes?.current_template || "").trim();
+
+  if (current) {
+    const lower = current.toLowerCase();
+    if (lower === "manual group selection") return "manual";
+
+    const hit = candidates.find((t) => {
+      const label = String(t.label || t.name || "").trim();
+      const key = String(t.key || "").trim();
+      const name = String(t.name || "").trim();
+      return label === current || key === current || name === current;
+    });
+    if (hit) return String(hit.key || "");
+  }
+
+  const fromGroups = findMatchingTemplateKeyForUser(user, templates);
+  if (fromGroups) return fromGroups;
+
+  return "manual";
 }
 
 function wirePasswordToggle(inputEl, toggleEl) {
