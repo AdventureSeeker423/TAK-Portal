@@ -3430,6 +3430,25 @@ function stripTakPrefixForUserExport(name) {
   return n;
 }
 
+function getHiddenGroupPrefixes() {
+  return String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
+    .split(",")
+    .map((p) => String(p || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isGroupNameHiddenByPrefix(groupName, hiddenPrefixes) {
+  const prefixes = Array.isArray(hiddenPrefixes) ? hiddenPrefixes : getHiddenGroupPrefixes();
+  if (!prefixes.length) return false;
+
+  const raw = String(groupName || "").trim().toLowerCase();
+  const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
+
+  return prefixes.some(
+    (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
+  );
+}
+
 function resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }) {
   const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
   const globalSet = new Set((globalAdminGroupPks || []).map(String));
@@ -3445,12 +3464,16 @@ function resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk
   return "Standard User";
 }
 
-function formatUserGroupMemberships(user, groupNameByPk) {
+function formatUserGroupMemberships(user, groupNameByPk, hiddenGroupPrefixes) {
   const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
+  const hiddenPrefixes =
+    hiddenGroupPrefixes === undefined ? getHiddenGroupPrefixes() : hiddenGroupPrefixes;
+
   return groups
     .map((gid) => {
       const raw = groupNameByPk.get(String(gid));
-      return raw ? stripTakPrefixForUserExport(raw) : "";
+      if (!raw || isGroupNameHiddenByPrefix(raw, hiddenPrefixes)) return "";
+      return stripTakPrefixForUserExport(raw);
     })
     .filter(Boolean)
     .sort((a, b) =>
@@ -3467,6 +3490,7 @@ function buildUsersExportCsv(users, options = {}) {
     groupNameByPk = new Map(),
     globalAdminGroupPks = [],
     agencyNameByAbbr = new Map(),
+    hiddenGroupPrefixes = getHiddenGroupPrefixes(),
   } = options;
 
   const header = [
@@ -3513,7 +3537,7 @@ function buildUsersExportCsv(users, options = {}) {
       normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
       resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }),
       user?.is_active ? "Active" : "Disabled",
-      formatUserGroupMemberships(user, groupNameByPk),
+      formatUserGroupMemberships(user, groupNameByPk, hiddenGroupPrefixes),
     ];
 
     lines.push(row.map(csvEscapeCell).join(","));
