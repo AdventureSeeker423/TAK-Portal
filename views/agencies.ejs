@@ -6,7 +6,8 @@
 
   <div class="card">
     <h2>Create Agency</h2>
-    <form id="addForm" class="row">
+    <form id="addForm">
+      <div class="row agencyCreateFieldsRow">
       <!-- 1) Agency name -->
       <label>Agency Full Name
         <input name="name" placeholder="Agency Name" required style="flex: 2;" />
@@ -135,19 +136,16 @@
           <option value="Yellow">Yellow</option>
         </select>
       </label>
-      
-      <label><br>
-        <button class="btn" type="submit">Create Agency</button>
-      </label>
-      <label><br>
-        <button class="btn success" type="button" id="agencyCsvBtn">Create from CSV</button>
-      </label>
-      <label><br>
-        <button class="btn btn-access" type="button" id="agencyCsvTemplateBtn">Download CSV Template</button>
-      </label>
-      <input type="file" id="agencyCsvFileInput" accept=".csv" style="display:none" />
+      </div>
+
+      <div class="createActionsRow">
+        <button class="btn btn-access createTemplateDownloadBtn" type="button" id="agencyCsvTemplateBtn">Download CSV Template</button>
+        <button class="btn" type="button" id="agencyCsvBtn">Create from CSV</button>
+        <button class="btn success createAgencySubmitBtnAlignRight" type="submit">Create Agency</button>
+        <input type="file" id="agencyCsvFileInput" accept=".csv" style="display:none" />
+        <span id="msg" class="msg"></span>
+      </div>
     </form>
-    <div id="msg" class="msg"></div>
   </div>
 
   <div class="card">
@@ -1474,6 +1472,26 @@ if (addForm) {
 }
 .btn-access:hover {
   filter: brightness(0.95);
+}
+
+.agencyCreateFieldsRow {
+  flex-wrap: wrap;
+}
+
+.createActionsRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.createTemplateDownloadBtn {
+  white-space: nowrap;
+}
+
+.createAgencySubmitBtnAlignRight {
+  margin-left: auto;
 }
 
 /* Action buttons: vertical spacing when stacked on small screens */
