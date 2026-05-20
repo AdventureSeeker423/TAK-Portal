@@ -1064,69 +1064,71 @@ function csvEscapeCell(value) {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
-function formatGroupSettingsForExport(group) {
+function getGroupExportColumns(group) {
   const attrs = group?.attributes || {};
-  const parts = [];
-
-  const desc = String(attrs.description || "").trim();
-  if (desc) parts.push(`Description: ${desc}`);
-
   const priv = String(attrs.private || "no").trim().toLowerCase();
-  parts.push(`Hide From Agency Admins: ${priv === "yes" ? "Yes" : "No"}`);
-  parts.push(`Channel Behavior: ${parseChannelBehaviorFromGroupName(group?.name)}`);
 
-  const createdType = String(attrs.created_type || "").trim();
-  if (createdType) parts.push(`Created Type: ${createdType}`);
-
-  const detail = String(attrs.created_type_detail || "").trim();
-  if (detail) parts.push(`Created Type Detail: ${detail}`);
-
-  const cn = String(attrs.CN || attrs.cn || "").trim();
-  if (cn) parts.push(`CN: ${cn}`);
-
-  const createdAt = String(attrs.created_at || "").trim();
-  if (createdAt) parts.push(`Created At: ${createdAt}`);
-
-  const createdBy = String(attrs.created_by_display_name || attrs.created_by_username || "").trim();
-  if (createdBy) parts.push(`Created By: ${createdBy}`);
-
-  return parts.join("; ");
-}
-
-function formatGroupMembersForExport(members) {
-  const list = Array.isArray(members) ? members : [];
-  return list
-    .map((m) => {
-      const username = String(m?.username || "").trim();
-      if (!username) return "";
-      const display = String(m?.name || "").trim();
-      return display ? `${username} (${display})` : username;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
-    .join("; ");
+  return {
+    groupName: stripTakPrefixForExport(group?.name || ""),
+    behavior: parseChannelBehaviorFromGroupName(group?.name),
+    private: priv === "yes" ? "Yes" : "No",
+    type: String(attrs.created_type || "").trim(),
+  };
 }
 
 /**
- * Build CSV rows for accessible groups (one row per group).
+ * Build CSV: one row per member; group columns only on the first member row.
  * @param {Array<{ group: object, members: object[] }>} rows
  */
 function buildGroupsExportCsv(rows) {
-  const header = ["Group Name", "Settings", "Members"];
+  const header = ["Group Name", "Behavior", "Private", "Type", "Username", "Name"];
   const lines = [header.map(csvEscapeCell).join(",")];
 
   for (const row of Array.isArray(rows) ? rows : []) {
     const group = row?.group || {};
-    const groupName = stripTakPrefixForExport(group?.name || "");
-    lines.push(
-      [
-        groupName,
-        formatGroupSettingsForExport(group),
-        formatGroupMembersForExport(row?.members),
-      ]
-        .map(csvEscapeCell)
-        .join(",")
-    );
+    const cols = getGroupExportColumns(group);
+    const members = (Array.isArray(row?.members) ? row.members : [])
+      .map((m) => ({
+        username: String(m?.username || "").trim(),
+        name: String(m?.name || "").trim(),
+      }))
+      .filter((m) => m.username)
+      .sort((a, b) =>
+        a.username.localeCompare(b.username, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+      );
+
+    if (!members.length) {
+      lines.push(
+        [cols.groupName, cols.behavior, cols.private, cols.type, "", ""]
+          .map(csvEscapeCell)
+          .join(",")
+      );
+      continue;
+    }
+
+    members.forEach((member, idx) => {
+      if (idx === 0) {
+        lines.push(
+          [
+            cols.groupName,
+            cols.behavior,
+            cols.private,
+            cols.type,
+            member.username,
+            member.name,
+          ]
+            .map(csvEscapeCell)
+            .join(",")
+        );
+      } else {
+        lines.push(
+          ["", "", "", "", member.username, member.name].map(csvEscapeCell).join(",")
+        );
+      }
+    });
   }
 
   return `${lines.join("\n")}\n`;
