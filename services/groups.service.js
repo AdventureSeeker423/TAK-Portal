@@ -74,6 +74,23 @@ function stripTakPrefix(name) {
   return n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
 }
 
+function isAgencyAdminGroupName(name) {
+  return /-AgencyAdmin$/i.test(String(name || "").trim());
+}
+
+/** Portal TAK groups get tak_; agency admin groups keep authentik-* names as-is. */
+function resolveAuthentikGroupName(raw) {
+  const n = String(raw || "").trim();
+  if (!n) return "";
+  return isAgencyAdminGroupName(n) ? n : ensureTakPrefix(n);
+}
+
+function cnBasisForGroupName(resolvedName) {
+  const n = String(resolvedName || "").trim();
+  if (!n) return "";
+  return isAgencyAdminGroupName(n) ? n : stripTakPrefix(n);
+}
+
 // Normalize the Authentik CN attribute:
 // - attribute key must be "CN" (uppercase)
 // - value must be exactly "CN: <nameWithoutTak>" (no surrounding quotes)
@@ -324,12 +341,7 @@ async function getUsersByGroupIdPagedRaw({ groupId, agencyAbbreviation, page = 1
 async function createGroup(name, opts = {}) {
   const raw = String(name || "").trim();
 
-  // Do NOT add tak_ for AgencyAdmin groups
-  const isAgencyAdminGroup = /-AgencyAdmin$/i.test(raw);
-
-  const n = isAgencyAdminGroup
-    ? raw
-    : ensureTakPrefix(raw);
+  const n = resolveAuthentikGroupName(raw);
   if (!n) throw new Error("Group name is required");
 
   const payload = { name: n };
@@ -347,7 +359,7 @@ async function createGroup(name, opts = {}) {
   delete attributes.cn;
   attributes.CN = normalizeCNValue(
     Object.prototype.hasOwnProperty.call(attributes, "CN") ? attributes.CN : "",
-    stripTakPrefix(n)
+    cnBasisForGroupName(n)
   );
 
   if (Object.keys(attributes).length > 0) {
@@ -474,7 +486,7 @@ async function patchGroupNameAndCn(groupId, newName, opts = {}) {
     ? await getGroupById(id)
     : await assertGroupNotActionLocked(id, opts);
 
-  const n = ensureTakPrefix(String(newName || "").trim());
+  const n = resolveAuthentikGroupName(newName);
   if (!n) throw new Error("Group name is required");
 
   const existingAttrs =
@@ -501,7 +513,7 @@ async function patchGroupNameAndCn(groupId, newName, opts = {}) {
       ? opts.CN
       : opts.cn
     : "";
-  nextAttrs.CN = normalizeCNValue(provided, stripTakPrefix(n));
+  nextAttrs.CN = normalizeCNValue(provided, cnBasisForGroupName(n));
 
   const res = await api.patch(`/core/groups/${id}/`, {
     name: n,

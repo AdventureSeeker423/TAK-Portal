@@ -977,16 +977,19 @@ function renderGroups(){
         filteredRaw = filteredRaw.filter(g => getPortalGroupScope(g) === "global");
       } else if (scope === "state") {
         filteredRaw = filteredRaw.filter(g => {
+          if (!detail) return getPortalGroupScope(g) === "state";
           const parsed = parseGroupName(g?.name || "");
           return parsed.type === "state" && parsed.state === detail;
         });
       } else if (scope === "county") {
         filteredRaw = filteredRaw.filter(g => {
+          if (!detail) return getPortalGroupScope(g) === "county";
           const parsed = parseGroupName(g?.name || "");
           return parsed.type === "county" && parsed.county === detail;
         });
       } else if (scope === "agency") {
         filteredRaw = filteredRaw.filter(g => {
+          if (!detail) return getPortalGroupScope(g) === "agency";
           const parsed = parseGroupName(g?.name || "");
           return parsed.type === "agency" && parsed.agencyPrefix === detail;
         });
@@ -1061,12 +1064,11 @@ function updateGroupScopeDetailOptions() {
     const stateList = Array.from(stateSet).sort((a, b) => a.localeCompare(b));
 
     groupScopeDetailSelect.innerHTML =
-      `<option value="">Select State</option>` +
+      `<option value="">All State Groups</option>` +
       stateList.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
 
     groupScopeDetailWrap.style.display = "flex";
-
-    if (stateList.length) groupScopeDetailSelect.value = stateList[0];
+    groupScopeDetailSelect.value = "";
   } else if (scope === "county") {
     const countySet = new Set(
       agenciesCache
@@ -1077,14 +1079,13 @@ function updateGroupScopeDetailOptions() {
     const countyList = Array.from(countySet).sort((a, b) => a.localeCompare(b));
 
     groupScopeDetailSelect.innerHTML =
-      `<option value="">Select County</option>` +
+      `<option value="">All County Groups</option>` +
       countyList
         .map(c => `<option value="${esc(c)}">${esc(c)}</option>`)
         .join("");
 
     groupScopeDetailWrap.style.display = "flex";
-
-    if (countyList.length) groupScopeDetailSelect.value = countyList[0];
+    groupScopeDetailSelect.value = "";
   } else if (scope === "agency") {
     const prefixSet = new Set(
       agenciesCache
@@ -1104,11 +1105,10 @@ function updateGroupScopeDetailOptions() {
     }).join("");
 
     groupScopeDetailSelect.innerHTML =
-      `<option value="">Select Agency</option>${options}`;
+      `<option value="">All Agency Groups</option>${options}`;
 
     groupScopeDetailWrap.style.display = "flex";
-
-    if (prefixList.length) groupScopeDetailSelect.value = prefixList[0];
+    groupScopeDetailSelect.value = "";
   }
 }
 
