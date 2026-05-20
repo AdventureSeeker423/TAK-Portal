@@ -326,8 +326,10 @@ const adminsList = document.getElementById("adminsList");
 const adminsHint = document.getElementById("adminsHint");
 
 let agencies = [];
-/** When true, Type and Color columns use dropdowns; otherwise plain text. */
+/** When true, Type, Color, and Abbreviation columns are editable. */
 let agencyAttributesEditMode = false;
+/** groupPrefix snapshot per agency id when entering edit mode (Done Editing applies diffs). */
+let abbrevSnapshotById = {};
 let sortState = { key: "name", dir: 1 }; // default: Agency asc
 
 function setMsg(text, ok=true){
@@ -430,6 +432,18 @@ const AGENCY_COLOR_OPTIONS = [
   "Blue", "Dark Blue", "Brown", "Cyan", "Green", "Dark Green", "Magenta", "Maroon",
   "Orange", "Purple", "Red", "Teal", "White", "Yellow",
 ];
+
+function buildAgencyAbbrCellHtml(a) {
+  const idx = a._id ?? a.id;
+  const val = String(a.groupPrefix || "").trim().toUpperCase();
+  const aria = esc(a.name || "Agency");
+  return `<input type="text" class="agency-abbr-input" aria-label="Abbreviation for ${aria}" value="${esc(val)}" pattern="[A-Z0-9_-]+" title="Letters, numbers, dashes, and underscores" oninput="this.value = this.value.toUpperCase(); updateAgencyAbbrLocal(${Number(idx)}, this.value)" />`;
+}
+
+function updateAgencyAbbrLocal(agencyIndex, raw) {
+  const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
+  if (row) row.groupPrefix = String(raw || "").trim().toUpperCase();
+}
 
 function buildAgencyColorCellHtml(a) {
   const idx = a._id ?? a.id;
@@ -634,7 +648,9 @@ function renderAgencies(){
       <td class="agencyNameCell cardTitleCell">
         <div class="agencyNameText cardTitleText">${esc(a.name)}</div>
       </td>
-      <td class="agencyAbbrCell" data-label="Abbreviation">${esc(a.groupPrefix)}</td>
+      <td class="agencyAbbrCell" data-label="Abbreviation">${
+        agencyAttributesEditMode ? buildAgencyAbbrCellHtml(a) : esc(a.groupPrefix)
+      }</td>
       <td class="agencySuffixCell" data-label="Username Suffix">${esc(a.suffix)}</td>
       <td class="agencyCountyCell" data-label="County">${esc(a.county)}</td>
       <td class="agencyCountyAbbrevCell" data-label="County Abbrev">${
@@ -1197,13 +1213,111 @@ addForm.onsubmit = async (e) => {
 
 if (refreshBtn) refreshBtn.onclick = () => loadAgenciesWithCounts();
 
+function getAgencyAbbrevChanges() {
+  return agencies.filter((a) => {
+    const id = String(a._id ?? a.id ?? "");
+    if (!id || !(id in abbrevSnapshotById)) return false;
+    const oldAbbr = String(abbrevSnapshotById[id] || "").trim().toUpperCase();
+    const newAbbr = String(a.groupPrefix || "").trim().toUpperCase();
+    return oldAbbr && newAbbr && oldAbbr !== newAbbr;
+  });
+}
+
+async function finishAgencyAttributesEditing() {
+  const changes = getAgencyAbbrevChanges();
+  if (changes.length) {
+    const lines = changes
+      .map((a) => {
+        const id = String(a._id ?? a.id ?? "");
+        const oldAbbr = abbrevSnapshotById[id] || "";
+        const newAbbr = String(a.groupPrefix || "").trim().toUpperCase();
+        return `${a.name}: ${oldAbbr} → ${newAbbr}`;
+      })
+      .join("\n");
+    const ok = confirm(
+      `Apply abbreviation changes for ${changes.length} agenc${changes.length === 1 ? "y" : "ies"}?\n\n${lines}\n\nThis updates users, admin groups, TAK groups, and templates for each agency listed.`
+    );
+    if (!ok) return;
+  }
+
+  const btn = agencyAttributesEditBtn;
+  const prevLabel = "Edit Agency Attributes";
+  if (changes.length) {
+    btn.disabled = true;
+    btn.textContent = "Applying abbreviation changes…";
+    setMsg("Applying abbreviation changes…", true);
+  }
+
+  const errors = [];
+  const summaries = [];
+  for (const a of changes) {
+    const idx = a._id ?? a.id;
+    const gp = String(a.groupPrefix || "").trim().toUpperCase();
+    if (!/^[A-Z0-9_-]+$/.test(gp)) {
+      errors.push(`${a.name}: invalid abbreviation`);
+      continue;
+    }
+    try {
+      const res = await fetch(
+        `/api/agencies/${encodeURIComponent(idx)}/rename-group-prefix`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ groupPrefix: gp }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : data.error?.detail || data.error || "Rename failed"
+        );
+      }
+      if (!data.skipped) {
+        summaries.push(
+          `${a.name}: ${data.usersUpdated ?? 0} user(s), ${data.groupsRenamed ?? 0} group(s), ${data.templatesUpdated ?? 0} template(s)`
+        );
+      }
+    } catch (e) {
+      errors.push(`${a.name}: ${e.message || String(e)}`);
+    }
+  }
+
+  btn.disabled = false;
+  if (errors.length) {
+    setMsg(errors.join(" | "), false);
+    btn.textContent = "Done Editing";
+    return;
+  }
+
+  agencyAttributesEditMode = false;
+  abbrevSnapshotById = {};
+  btn.textContent = prevLabel;
+  btn.setAttribute("aria-pressed", "false");
+
+  if (summaries.length) {
+    setMsg(`Abbreviation updates applied. ${summaries.join("; ")}`, true);
+  }
+
+  await loadAgenciesWithCounts();
+}
+
 if (agencyAttributesEditBtn) {
-  agencyAttributesEditBtn.addEventListener("click", function () {
-    agencyAttributesEditMode = !agencyAttributesEditMode;
-    agencyAttributesEditBtn.textContent = agencyAttributesEditMode
-      ? "Done Editing"
-      : "Edit Agency Attributes";
-    agencyAttributesEditBtn.setAttribute("aria-pressed", agencyAttributesEditMode ? "true" : "false");
+  agencyAttributesEditBtn.addEventListener("click", async function () {
+    if (agencyAttributesEditMode) {
+      await finishAgencyAttributesEditing();
+      return;
+    }
+    abbrevSnapshotById = {};
+    for (const a of agencies) {
+      const id = String(a._id ?? a.id ?? "");
+      if (!id) continue;
+      abbrevSnapshotById[id] = String(a.groupPrefix || "").trim().toUpperCase();
+    }
+    agencyAttributesEditMode = true;
+    agencyAttributesEditBtn.textContent = "Done Editing";
+    agencyAttributesEditBtn.setAttribute("aria-pressed", "true");
     renderAgencies();
   });
 }

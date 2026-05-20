@@ -7,6 +7,7 @@ const usersService = require("../services/users.service");
 const groupsService = require("../services/groups.service");
 const api = require("../services/authentik");
 const auditSvc = require("../services/auditLog.service");
+const agencyAbbrevRenameSvc = require("../services/agencyAbbrevRename.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -532,6 +533,69 @@ router.patch("/:index/type", (req, res) => {
   });
 
   res.json({ success: true, type: raw });
+});
+
+router.post("/:index/rename-group-prefix", async (req, res) => {
+  try {
+    const idx = Number(req.params.index);
+    const agencies = store.load();
+    if (!Number.isInteger(idx) || !agencies[idx]) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const agency = agencies[idx];
+    if (!accessSvc.isSuffixAllowed(req.authentikUser, agency.suffix)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const validationErr = agencyAbbrevRenameSvc.validateNewGroupPrefix(req.body?.groupPrefix);
+    if (validationErr) {
+      return res.status(400).json({ error: validationErr });
+    }
+
+    const beforeAbbr = String(agency.groupPrefix || "").trim().toUpperCase();
+    const result = await agencyAbbrevRenameSvc.renameAgencyGroupPrefix(
+      idx,
+      req.body.groupPrefix
+    );
+
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "RENAME_AGENCY_GROUP_PREFIX",
+      targetType: "agency",
+      targetId: String(agency.suffix || ""),
+      details: {
+        agencyName: result.agencyName || agency.name,
+        before: beforeAbbr,
+        after: result.newPrefix,
+        usersUpdated: result.usersUpdated,
+        adminGroupRenamed: result.adminGroupRenamed,
+        groupsRenamed: result.groupsRenamed,
+        templatesUpdated: result.templatesUpdated,
+        skipped: !!result.skipped,
+      },
+    });
+
+    return res.json({
+      success: true,
+      usersUpdated: result.usersUpdated,
+      usersMatched: result.usersMatched,
+      adminGroupRenamed: result.adminGroupRenamed,
+      groupsRenamed: result.groupsRenamed,
+      templatesUpdated: result.templatesUpdated,
+      oldPrefix: result.oldPrefix,
+      newPrefix: result.newPrefix,
+      skipped: !!result.skipped,
+    });
+  } catch (err) {
+    const msg =
+      err?.response?.data?.detail ||
+      err?.response?.data ||
+      err?.message ||
+      "Failed to rename agency abbreviation";
+    return res.status(500).json({ error: msg });
+  }
 });
 
 router.put("/:index", async (req, res) => {

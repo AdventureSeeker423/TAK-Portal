@@ -1,0 +1,353 @@
+/**
+ * Orchestrates agency abbreviation (groupPrefix) renames for a single agency row.
+ * Scoped by agency full name — not by shared abbreviation or username suffix.
+ */
+
+const api = require("./authentik");
+const { getString } = require("./env");
+const agenciesStore = require("./agencies.service");
+const templatesStore = require("./templates.service");
+const groupsService = require("./groups.service");
+const accessSvc = require("./access.service");
+const usersService = require("./users.service");
+
+function getAgencyAdminGroupName(agency) {
+  const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
+  const countyAbbrev = String(agency?.countyAbbrev || "").trim().toUpperCase();
+  if (!abbr) return null;
+  if (countyAbbrev) {
+    return `authentik-${countyAbbrev}-${abbr}-AgencyAdmin`;
+  }
+  return `authentik-${abbr}-AgencyAdmin`;
+}
+
+function isAgencyAdminGroupName(name) {
+  return /-agencyadmin$/i.test(String(name || "").trim());
+}
+
+async function getGroupByNameUnfiltered(groupName) {
+  const name = String(groupName || "").trim();
+  if (!name) return null;
+
+  try {
+    const res = await api.get(`/core/groups/?name=${encodeURIComponent(name)}`);
+    const results = Array.isArray(res?.data?.results) ? res.data.results : [];
+    const exact = results.find(
+      (g) => String(g?.name || "").trim().toLowerCase() === name.toLowerCase()
+    );
+    if (exact) return exact;
+  } catch (_) {
+    // fall through
+  }
+
+  const res2 = await api.get(`/core/groups/?search=${encodeURIComponent(name)}`);
+  const results2 = Array.isArray(res2?.data?.results) ? res2.data.results : [];
+  return (
+    results2.find(
+      (g) => String(g?.name || "").trim().toLowerCase() === name.toLowerCase()
+    ) || null
+  );
+}
+
+async function ensureAgencyAdminGroupExists(agency) {
+  const name = getAgencyAdminGroupName(agency);
+  if (!name) throw new Error("Agency abbreviation (groupPrefix) is required");
+
+  const attributes = {
+    created_at: new Date().toISOString(),
+    created_type: "Agency",
+    created_type_detail: String(agency?.name || "").trim() || null,
+    description: `Agency admin group for ${String(agency?.name || "").trim()}`,
+  };
+
+  try {
+    await groupsService.createGroup(name, { attributes });
+    return { created: true, name };
+  } catch (err) {
+    const msg = String(err?.response?.data?.detail || err?.response?.data || err?.message || "");
+    const lower = msg.toLowerCase();
+    if (lower.includes("already") || lower.includes("exists") || lower.includes("unique")) {
+      return { created: false, name };
+    }
+    throw err;
+  }
+}
+
+function validateNewGroupPrefix(raw) {
+  const gp = String(raw || "").trim().toUpperCase();
+  if (!gp) return "Agency abbreviation is required";
+  if (!/^[A-Z0-9_-]+$/.test(gp)) {
+    return "Agency abbreviation can only contain letters, numbers, dashes, and underscores";
+  }
+  return null;
+}
+
+async function updateUsersAgencyAbbreviation(agencyName, newAbbrev) {
+  const name = String(agencyName || "").trim();
+  const abbr = String(newAbbrev || "").trim().toUpperCase();
+  if (!name || !abbr) return { matched: 0, updated: 0 };
+
+  const hiddenPrefixes = String(getString("USERS_HIDDEN_PREFIXES", "") || "")
+    .split(",")
+    .map((p) => String(p || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "") || "").trim();
+
+  let page = 1;
+  let hasNext = true;
+  let matched = 0;
+  let updated = 0;
+
+  while (hasNext) {
+    const params = {
+      page,
+      page_size: 200,
+      include_groups: "false",
+      include_roles: "false",
+      attributes: JSON.stringify({ agency_name: name }),
+    };
+
+    if (hiddenPrefixes.length) {
+      params.type = ["external", "internal"];
+    }
+
+    if (folderRaw) {
+      params.path_startswith = folderRaw.replace(/^\/+|\/+$/g, "");
+    }
+
+    const res = await api.get("/core/users/", { params });
+    const data = res?.data || {};
+    let rows = Array.isArray(data.results) ? data.results : [];
+
+    if (hiddenPrefixes.length) {
+      rows = rows.filter((u) => {
+        const username = String(u?.username || "").trim().toLowerCase();
+        return !hiddenPrefixes.some((p) => username.startsWith(p));
+      });
+    }
+
+    for (const u of rows) {
+      const attrs = u?.attributes && typeof u.attributes === "object" ? u.attributes : {};
+      const agencyNameAttr = String(attrs.agency_name || "").trim();
+      if (agencyNameAttr !== name) continue;
+
+      matched += 1;
+      const currentAbbr = String(
+        attrs.agency_abbreviation ||
+          attrs.agencyAbbreviation ||
+          attrs.agencyAbbr ||
+          attrs.agencyabbr ||
+          ""
+      )
+        .trim()
+        .toUpperCase();
+
+      if (currentAbbr === abbr) continue;
+
+      const userId = String(u?.pk ?? u?.id ?? "").trim();
+      if (!userId) continue;
+
+      await api.patch(`/core/users/${userId}/`, {
+        attributes: {
+          ...attrs,
+          agency_abbreviation: abbr,
+        },
+      });
+      updated += 1;
+    }
+
+    const pagination = data.pagination || {};
+    if (pagination && pagination.next) {
+      page = pagination.next;
+      hasNext = true;
+    } else if (data.next) {
+      page += 1;
+      hasNext = true;
+    } else {
+      hasNext = false;
+    }
+  }
+
+  if (updated > 0) {
+    usersService.invalidateUsersCache();
+  }
+
+  return { matched, updated };
+}
+
+async function renameAgencyAdminGroup(agencyOld, agencyNew) {
+  const desiredName = getAgencyAdminGroupName(agencyNew);
+  if (!desiredName) {
+    throw new Error("Could not compute agency admin group name");
+  }
+
+  const candidateNames = accessSvc.getAllAgencyAdminGroupNames(agencyOld);
+  let renamed = false;
+
+  for (const oldName of candidateNames) {
+    const g = await getGroupByNameUnfiltered(oldName);
+    if (!g || g.pk == null) continue;
+
+    const detail = String(agencyNew?.name || "").trim();
+    await api.patch(`/core/groups/${encodeURIComponent(g.pk)}/`, {
+      name: desiredName,
+      attributes: {
+        ...(g.attributes || {}),
+        created_type: "Agency",
+        created_type_detail: detail || null,
+      },
+    });
+    groupsService.invalidateGroupsCache();
+    renamed = true;
+    break;
+  }
+
+  if (!renamed) {
+    await ensureAgencyAdminGroupExists(agencyNew);
+  }
+
+  return { adminGroupRenamed: renamed, adminGroupName: desiredName };
+}
+
+async function renameAgencyTakGroups(agencyName, oldPrefix, newPrefix) {
+  const targetName = String(agencyName || "").trim();
+  const allGroups = await groupsService.getAllGroups({ includeHidden: true });
+
+  const candidates = (Array.isArray(allGroups) ? allGroups : []).filter((g) => {
+    const gn = String(g?.name || "").trim();
+    if (isAgencyAdminGroupName(gn)) return false;
+
+    const attrs = g?.attributes && typeof g.attributes === "object" ? g.attributes : {};
+    const detail = String(attrs.created_type_detail || "").trim();
+    // Portal agency groups use full agency name on created_type_detail.
+    // Legacy rows with only the abbreviation are out of scope for this migration.
+    if (detail !== targetName) return false;
+    return true;
+  });
+
+  let groupsRenamed = 0;
+
+  for (const g of candidates) {
+    const oldGroupName = String(g?.name || "").trim();
+    const newGroupName = groupsService.rewriteTakGroupNamePrefix(
+      oldGroupName,
+      oldPrefix,
+      newPrefix
+    );
+    if (!newGroupName || newGroupName === oldGroupName) continue;
+
+    const gid = String(g?.pk ?? g?.id ?? "").trim();
+    if (!gid) continue;
+
+    await groupsService.patchGroupNameAndCn(gid, newGroupName, {
+      skipActionLock: true,
+      attributes: {
+        ...(g.attributes || {}),
+        created_type_detail: targetName,
+      },
+    });
+    groupsRenamed += 1;
+  }
+
+  return { groupsRenamed };
+}
+
+function updateAgencyTemplatesGroupNames(agencySuffix, oldPrefix, newPrefix) {
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  const templates = templatesStore.load();
+  let templatesUpdated = 0;
+
+  const next = templates.map((t) => {
+    if (String(t.agencySuffix || "").trim().toLowerCase() !== sfx) return t;
+
+    const groupsArr = Array.isArray(t.groups) ? t.groups : [];
+    let rowChanged = false;
+    const nextGroups = groupsArr.map((g) => {
+      const rewritten = groupsService.rewriteTakGroupNamePrefix(g, oldPrefix, newPrefix);
+      if (rewritten !== g) rowChanged = true;
+      return rewritten;
+    });
+
+    if (rowChanged) templatesUpdated += 1;
+    return rowChanged ? { ...t, groups: nextGroups } : t;
+  });
+
+  if (templatesUpdated > 0) {
+    templatesStore.save(next);
+  }
+
+  return { templatesUpdated };
+}
+
+/**
+ * @param {number} agencyIndex - index in agencies.json
+ * @param {string} newGroupPrefix - new abbreviation (uppercased)
+ */
+async function renameAgencyGroupPrefix(agencyIndex, newGroupPrefix) {
+  const idx = Number(agencyIndex);
+  const agencies = agenciesStore.load();
+  if (!Number.isInteger(idx) || !agencies[idx]) {
+    throw new Error("Agency not found");
+  }
+
+  const err = validateNewGroupPrefix(newGroupPrefix);
+  if (err) throw new Error(err);
+
+  const agency = agencies[idx];
+  const oldPrefix = String(agency.groupPrefix || "").trim().toUpperCase();
+  const newPrefix = String(newGroupPrefix || "").trim().toUpperCase();
+
+  if (oldPrefix === newPrefix) {
+    return {
+      success: true,
+      skipped: true,
+      oldPrefix,
+      newPrefix,
+      usersUpdated: 0,
+      usersMatched: 0,
+      adminGroupRenamed: false,
+      groupsRenamed: 0,
+      templatesUpdated: 0,
+    };
+  }
+
+  const agencyName = String(agency.name || "").trim();
+  const agencyOld = { ...agency, groupPrefix: oldPrefix };
+  const agencyNew = { ...agency, groupPrefix: newPrefix };
+
+  const userStats = await updateUsersAgencyAbbreviation(agencyName, newPrefix);
+  const adminStats = await renameAgencyAdminGroup(agencyOld, agencyNew);
+  const groupStats = await renameAgencyTakGroups(agencyName, oldPrefix, newPrefix);
+
+  agencies[idx] = { ...agency, groupPrefix: newPrefix };
+  agenciesStore.save(agencies);
+
+  const templateStats = updateAgencyTemplatesGroupNames(
+    agency.suffix,
+    oldPrefix,
+    newPrefix
+  );
+
+  usersService.invalidateUsersCache();
+  groupsService.invalidateGroupsCache();
+
+  return {
+    success: true,
+    skipped: false,
+    agencyName,
+    oldPrefix,
+    newPrefix,
+    usersMatched: userStats.matched,
+    usersUpdated: userStats.updated,
+    adminGroupRenamed: adminStats.adminGroupRenamed,
+    adminGroupName: adminStats.adminGroupName,
+    groupsRenamed: groupStats.groupsRenamed,
+    templatesUpdated: templateStats.templatesUpdated,
+  };
+}
+
+module.exports = {
+  validateNewGroupPrefix,
+  renameAgencyGroupPrefix,
+};

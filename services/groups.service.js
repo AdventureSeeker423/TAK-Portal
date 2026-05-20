@@ -462,6 +462,83 @@ async function renameGroup(groupId, newName, opts = {}) {
   };
 }
 
+/**
+ * Rename a group in Authentik (name + CN). Does not update agency-templates.json
+ * (caller batches template updates separately).
+ */
+async function patchGroupNameAndCn(groupId, newName, opts = {}) {
+  const id = normalizeId(groupId);
+  if (!id) throw new Error("Group id is required");
+
+  const current = opts.skipActionLock
+    ? await getGroupById(id)
+    : await assertGroupNotActionLocked(id, opts);
+
+  const n = ensureTakPrefix(String(newName || "").trim());
+  if (!n) throw new Error("Group name is required");
+
+  const existingAttrs =
+    current && typeof current.attributes === "object" && current.attributes
+      ? { ...current.attributes }
+      : {};
+
+  const nextAttrs = { ...existingAttrs };
+  delete nextAttrs.cn;
+  nextAttrs.CN = normalizeCNValue("", stripTakPrefix(n));
+
+  if (opts.attributes && typeof opts.attributes === "object") {
+    Object.assign(nextAttrs, opts.attributes);
+  }
+
+  const res = await api.patch(`/core/groups/${id}/`, {
+    name: n,
+    attributes: nextAttrs,
+  });
+  invalidateGroupsCache();
+  return res.data;
+}
+
+function rewriteTakGroupNamePrefix(groupName, oldPrefix, newPrefix) {
+  const oldP = String(oldPrefix || "").trim().toUpperCase();
+  const newP = String(newPrefix || "").trim().toUpperCase();
+  const original = String(groupName || "").trim();
+  if (!oldP || !newP || oldP === newP) return original;
+
+  let n = stripTakPrefix(original);
+  let behavior = "";
+  if (n.endsWith("_READ")) {
+    behavior = "_READ";
+    n = n.slice(0, -5);
+  } else if (n.endsWith("_WRITE")) {
+    behavior = "_WRITE";
+    n = n.slice(0, -6);
+  }
+
+  const dashIdx = n.indexOf(" - ");
+  if (dashIdx > 0) {
+    const left = n.slice(0, dashIdx).trim().toUpperCase();
+    const right = n.slice(dashIdx + 3);
+    if (left === oldP) {
+      return ensureTakPrefix(`${newP} - ${right}${behavior}`);
+    }
+  }
+
+  const spaceIdx = n.indexOf(" ");
+  if (spaceIdx > 0) {
+    const left = n.slice(0, spaceIdx).trim().toUpperCase();
+    const right = n.slice(spaceIdx + 1);
+    if (left === oldP) {
+      return ensureTakPrefix(`${newP} ${right}${behavior}`);
+    }
+  }
+
+  if (n.trim().toUpperCase() === oldP) {
+    return ensureTakPrefix(`${newP}${behavior}`);
+  }
+
+  return original;
+}
+
 // ---------- impact + cleanup ----------
 async function getDeleteImpact(groupId) {
   const id = normalizeId(groupId);
@@ -1159,6 +1236,11 @@ module.exports = {
   deleteGroup,
 
   renameGroup,
+  patchGroupNameAndCn,
+  rewriteTakGroupNamePrefix,
+  stripTakPrefix,
+  ensureTakPrefix,
+  invalidateGroupsCache,
 
   getDeleteImpact,
   deleteGroupWithCleanup,
