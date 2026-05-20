@@ -158,22 +158,24 @@
       </button>
     </div>
 
-    <table class="table" id="agencyTable">
-      <thead>
-        <tr>
-          <th data-sort="name" role="button" tabindex="0" title="Sort by Agency">Agency</th>
-          <th data-sort="groupPrefix" role="button" tabindex="0" title="Sort by Abbreviation">Abbreviation</th>
-          <th data-sort="suffix" role="button" tabindex="0" title="Sort by Username Suffix">Username Suffix</th>
-          <th data-sort="county" role="button" tabindex="0" title="Sort by County">County</th>
-          <th data-sort="countyAbbrev" role="button" tabindex="0" title="Sort by County Abbreviation">County Abbrev</th>
-          <th data-sort="state" role="button" tabindex="0">State</th>
-          <th data-sort="type" role="button" tabindex="0" title="Sort by Type">Type</th>
-          <th data-sort="color" role="button" tabindex="0" title="Sort by Color">Color</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
+    <div class="listCardTableWrap">
+      <table class="table listCardTable agenciesTable" id="agencyTable">
+        <thead>
+          <tr>
+            <th data-sort="name" role="button" tabindex="0" title="Sort by Agency">Agency</th>
+            <th data-sort="groupPrefix" role="button" tabindex="0" title="Sort by Abbreviation">Abbreviation</th>
+            <th data-sort="suffix" role="button" tabindex="0" title="Sort by Username Suffix">Username Suffix</th>
+            <th data-sort="county" role="button" tabindex="0" title="Sort by County">County</th>
+            <th data-sort="countyAbbrev" role="button" tabindex="0" title="Sort by County Abbreviation">County Abbrev</th>
+            <th data-sort="state" role="button" tabindex="0">State</th>
+            <th data-sort="type" role="button" tabindex="0" title="Sort by Type">Type</th>
+            <th data-sort="color" role="button" tabindex="0" title="Sort by Color">Color</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
   </div>
 </main>
 
@@ -629,24 +631,26 @@ function renderAgencies(){
 
   tbody.innerHTML = rows.map((a)=>`
     <tr>
-      <td>${esc(a.name)}</td>
-      <td>${esc(a.groupPrefix)}</td>
-      <td>${esc(a.suffix)}</td>
-      <td>${esc(a.county)}</td>
-      <td>${
+      <td class="agencyNameCell cardTitleCell">
+        <div class="agencyNameText cardTitleText">${esc(a.name)}</div>
+      </td>
+      <td class="agencyAbbrCell" data-label="Abbreviation">${esc(a.groupPrefix)}</td>
+      <td class="agencySuffixCell" data-label="Username Suffix">${esc(a.suffix)}</td>
+      <td class="agencyCountyCell" data-label="County">${esc(a.county)}</td>
+      <td class="agencyCountyAbbrevCell" data-label="County Abbrev">${
         a.countyAbbrev
           ? esc(a.countyAbbrev)
           : `<button class="btn" type="button" onclick="openCountyAbbrevModal('${esc(a._id ?? a.id ?? "")}')">Update</button>`
       }</td>
-      <td>${esc(a.state || "")}</td>
-      <td${agencyAttributesEditMode ? " class=\"agency-type-td\"" : ""}>${
+      <td class="agencyStateCell" data-label="State">${esc(a.state || "")}</td>
+      <td class="agencyTypeCell${agencyAttributesEditMode ? " agency-type-td" : ""}" data-label="Type">${
         agencyAttributesEditMode ? buildAgencyTypeCellHtml(a) : esc(a.type || "")
       }</td>
-      <td>${
+      <td class="agencyColorCell" data-label="Color">${
         agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(a.color || "")
       }</td>
-      <td>
-        <div class="row agencyActionsCell" style="gap: 10px; flex-wrap: wrap;">
+      <td class="agencyActionsCell cardActionsCell">
+        <div class="agencyActionsRow cardActionsRow">
           <button class="btn" type="button"
             onclick="openAgencyAdmins('${esc(a._id ?? a.id ?? "")}')">
             View Admins
@@ -1386,29 +1390,41 @@ if (addForm) {
 </script>
 
 <style>
-/* Hide columns on small screens */
-@media (max-width: 640px){
-  /* Hide Username Suffix, County, County Abbrev, State */
-  .table th:nth-child(3),
-  .table td:nth-child(3),
-  .table th:nth-child(4),
-  .table td:nth-child(4),
-  .table th:nth-child(5),
-  .table td:nth-child(5),
-  .table th:nth-child(6),
-  .table td:nth-child(6){
-    display: none;
-  }
+/* Existing agencies list */
+.listCardTableWrap {
+  width: 100%;
 }
-@media (max-width: 835px){
-  /* Also hide Type column on medium screens */
-  .table th:nth-child(7),
-  .table td:nth-child(7){
-    display: none;
-  }
+
+.agenciesTable td {
+  vertical-align: top;
+}
+
+.agenciesTable .agencyNameCell {
+  max-width: 320px;
+}
+
+.agenciesTable .agencyNameText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agenciesTable .agencyActionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.agenciesTable .agencyActionsRow .btn {
+  width: auto;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 /* Make sortable headers look clickable */
+.agenciesTable thead th[data-sort],
 .table thead th[data-sort]{
   cursor: pointer;
   user-select: none;
@@ -1417,12 +1433,14 @@ if (addForm) {
 }
 
 /* Sort indicator */
+.agenciesTable thead th[data-sort].sorted-asc::after,
 .table thead th[data-sort].sorted-asc::after{
   content: "▲";
   position: absolute;
   right: 0.5rem;
   opacity: 0.7;
 }
+.agenciesTable thead th[data-sort].sorted-desc::after,
 .table thead th[data-sort].sorted-desc::after{
   content: "▼";
   position: absolute;
@@ -1518,10 +1536,131 @@ if (addForm) {
   margin-left: auto;
 }
 
-/* Action buttons: vertical spacing when stacked on small screens */
-.agencyActionsCell {
-  display: flex;
-  align-items: center;
+@media (max-width: 900px) {
+  .createAgencySubmitBtnAlignRight {
+    margin-left: 0;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+}
+
+/* Mobile: stacked cards, no horizontal scroll */
+@media (max-width: 990px) {
+  .listCardTableWrap {
+    overflow-x: hidden;
+  }
+
+  .listCardTable {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .listCardTable thead {
+    display: none;
+  }
+
+  .listCardTable tbody tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .agenciesTable .cardTitleCell { order: 1; }
+  .agenciesTable .agencyAbbrCell { order: 2; }
+  .agenciesTable .agencySuffixCell { order: 3; }
+  .agenciesTable .agencyCountyCell { order: 4; }
+  .agenciesTable .agencyCountyAbbrevCell { order: 5; }
+  .agenciesTable .agencyStateCell { order: 6; }
+  .agenciesTable .agencyTypeCell { order: 7; }
+  .agenciesTable .agencyColorCell { order: 8; }
+  .agenciesTable .cardActionsCell { order: 9; }
+
+  .listCardTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 8px 12px;
+    word-break: normal;
+    overflow-wrap: normal;
+    min-width: 0 !important;
+    max-width: none !important;
+    white-space: normal;
+  }
+
+  .listCardTable tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleCell::before {
+    display: none;
+  }
+
+  .listCardTable .cardTitleCell {
+    padding-top: 12px;
+    padding-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleText {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
+  .listCardTable .cardActionsCell::before {
+    display: none;
+  }
+
+  .listCardTable .cardActionsCell {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .listCardTable .cardActionsRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .listCardTable .cardActionsRow .btn {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .agenciesTable .agency-type-td select,
+  .agenciesTable .agencyColorCell select {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 400px) {
+  .listCardTable .cardActionsRow {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Access Groups modal checkbox grid (match templates page) */
