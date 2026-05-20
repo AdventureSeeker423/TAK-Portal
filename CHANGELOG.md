@@ -14,7 +14,8 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ### v1.3.17 - 5/20/26
 🐛 `Bug Fix` - Fixes issue with email service caching old credentials till a restart<br>
-✨ `Enhancement` - Adds a button to Users and to Groups pages to export csv lists
+🐛 `Bug Fix` - Fixes issue with sort order of templates on user edit modal<br>
+✨ `Enhancement` - Adds a button to Users and to Groups pages to export csv lists (filtered for agency admins as well)
 
 ### v1.3.16 - 5/17/26
 ✨ `Enhancement` - Added a dedicated field for radio callsign<br>
