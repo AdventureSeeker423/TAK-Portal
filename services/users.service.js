@@ -3424,17 +3424,39 @@ function csvEscapeCell(value) {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
+function stripTakPrefixForUserExport(name) {
+  const n = String(name || "").trim();
+  if (n.toLowerCase().startsWith("tak_")) return n.slice(4);
+  return n;
+}
+
 function resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }) {
   const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
   const globalSet = new Set((globalAdminGroupPks || []).map(String));
   if (groups.some((gid) => globalSet.has(gid))) return "Global Admin";
 
   for (const gid of groups) {
-    const name = groupNameByPk.get(String(gid));
+    const name = String(groupNameByPk.get(String(gid)) || "")
+      .trim()
+      .toLowerCase();
     if (name && name.endsWith("-agencyadmin")) return "Agency Admin";
   }
 
   return "Standard User";
+}
+
+function formatUserGroupMemberships(user, groupNameByPk) {
+  const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
+  return groups
+    .map((gid) => {
+      const raw = groupNameByPk.get(String(gid));
+      return raw ? stripTakPrefixForUserExport(raw) : "";
+    })
+    .filter(Boolean)
+    .sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    )
+    .join("; ");
 }
 
 /**
@@ -3458,6 +3480,7 @@ function buildUsersExportCsv(users, options = {}) {
     "Role",
     "Permissions",
     "Status",
+    "Groups",
   ];
 
   const lines = [header.map(csvEscapeCell).join(",")];
@@ -3490,6 +3513,7 @@ function buildUsersExportCsv(users, options = {}) {
       normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
       resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }),
       user?.is_active ? "Active" : "Disabled",
+      formatUserGroupMemberships(user, groupNameByPk),
     ];
 
     lines.push(row.map(csvEscapeCell).join(","));

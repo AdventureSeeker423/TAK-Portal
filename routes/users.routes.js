@@ -1240,7 +1240,7 @@ router.get("/export-csv", async (req, res) => {
     const groupNameByPk = new Map(
       (Array.isArray(allGroups) ? allGroups : []).map((g) => [
         String(g.pk),
-        String(g.name || "").toLowerCase(),
+        String(g.name || "").trim(),
       ])
     );
 

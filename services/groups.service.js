@@ -1054,9 +1054,9 @@ function stripTakPrefixForExport(name) {
 
 function parseChannelBehaviorFromGroupName(fullName) {
   let name = stripTakPrefixForExport(fullName);
-  if (name.endsWith("_READ")) return "READ - Receive Only";
-  if (name.endsWith("_WRITE")) return "WRITE - Send Only";
-  return "BOTH - Send and Receive";
+  if (name.endsWith("_READ")) return "READ";
+  if (name.endsWith("_WRITE")) return "WRITE";
+  return "BOTH";
 }
 
 function csvEscapeCell(value) {
