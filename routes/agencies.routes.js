@@ -634,6 +634,7 @@ router.post("/:index/rename-group-prefix", async (req, res) => {
         adminGroupRenamed: result.adminGroupRenamed,
         groupsRenamed: result.groupsRenamed,
         templatesUpdated: result.templatesUpdated,
+        currentTemplatesReconciled: result.currentTemplatesReconciled,
         skipped: !!result.skipped,
       },
     });
@@ -645,6 +646,7 @@ router.post("/:index/rename-group-prefix", async (req, res) => {
       adminGroupRenamed: result.adminGroupRenamed,
       groupsRenamed: result.groupsRenamed,
       templatesUpdated: result.templatesUpdated,
+      currentTemplatesReconciled: result.currentTemplatesReconciled,
       oldPrefix: result.oldPrefix,
       newPrefix: result.newPrefix,
       skipped: !!result.skipped,

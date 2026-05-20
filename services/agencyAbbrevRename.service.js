@@ -226,6 +226,7 @@ async function renameAgencyTakGroups(agencyName, oldPrefix, newPrefix) {
   });
 
   let groupsRenamed = 0;
+  const groupNameMap = new Map();
 
   for (const g of candidates) {
     const oldGroupName = String(g?.name || "").trim();
@@ -250,13 +251,24 @@ async function renameAgencyTakGroups(agencyName, oldPrefix, newPrefix) {
         private: attrs.private,
       },
     });
+    groupNameMap.set(oldGroupName, newGroupName);
+    groupNameMap.set(oldGroupName.toLowerCase(), newGroupName);
     groupsRenamed += 1;
   }
 
-  return { groupsRenamed };
+  return { groupsRenamed, groupNameMap };
 }
 
-function updateAgencyTemplatesGroupNames(agencySuffix, oldPrefix, newPrefix) {
+function mapTemplateGroupName(groupName, oldPrefix, newPrefix, groupNameMap) {
+  const raw = String(groupName || "").trim();
+  if (!raw) return raw;
+  const fromMap =
+    groupNameMap.get(raw) || groupNameMap.get(raw.toLowerCase());
+  if (fromMap) return fromMap;
+  return groupsService.rewriteTakGroupNamePrefix(raw, oldPrefix, newPrefix);
+}
+
+function updateAgencyTemplatesGroupNames(agencySuffix, oldPrefix, newPrefix, groupNameMap) {
   const sfx = String(agencySuffix || "").trim().toLowerCase();
   const templates = templatesStore.load();
   let templatesUpdated = 0;
@@ -267,7 +279,7 @@ function updateAgencyTemplatesGroupNames(agencySuffix, oldPrefix, newPrefix) {
     const groupsArr = Array.isArray(t.groups) ? t.groups : [];
     let rowChanged = false;
     const nextGroups = groupsArr.map((g) => {
-      const rewritten = groupsService.rewriteTakGroupNamePrefix(g, oldPrefix, newPrefix);
+      const rewritten = mapTemplateGroupName(g, oldPrefix, newPrefix, groupNameMap);
       if (rewritten !== g) rowChanged = true;
       return rewritten;
     });
@@ -319,18 +331,27 @@ async function renameAgencyGroupPrefix(agencyIndex, newGroupPrefix) {
   const agencyOld = { ...agency, groupPrefix: oldPrefix };
   const agencyNew = { ...agency, groupPrefix: newPrefix };
 
-  const userStats = await updateUsersAgencyAbbreviation(agencyName, newPrefix);
+  // Authentik groups first, then templates (names must exist in Authentik before template JSON references them).
   const adminStats = await renameAgencyAdminGroup(agencyOld, agencyNew);
   const groupStats = await renameAgencyTakGroups(agencyName, oldPrefix, newPrefix);
 
-  agencies[idx] = { ...agency, groupPrefix: newPrefix };
-  agenciesStore.save(agencies);
+  groupsService.invalidateGroupsCache();
 
   const templateStats = updateAgencyTemplatesGroupNames(
     agency.suffix,
     oldPrefix,
-    newPrefix
+    newPrefix,
+    groupStats.groupNameMap
   );
+
+  const templateReconcile = await usersService.reconcileCurrentTemplateForAgencySuffix(
+    agency.suffix
+  );
+
+  const userStats = await updateUsersAgencyAbbreviation(agencyName, newPrefix);
+
+  agencies[idx] = { ...agency, groupPrefix: newPrefix };
+  agenciesStore.save(agencies);
 
   usersService.invalidateUsersCache();
   groupsService.invalidateGroupsCache();
@@ -347,6 +368,7 @@ async function renameAgencyGroupPrefix(agencyIndex, newGroupPrefix) {
     adminGroupName: adminStats.adminGroupName,
     groupsRenamed: groupStats.groupsRenamed,
     templatesUpdated: templateStats.templatesUpdated,
+    currentTemplatesReconciled: templateReconcile.updated,
   };
 }
 

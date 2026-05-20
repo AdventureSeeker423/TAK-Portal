@@ -3170,6 +3170,98 @@ function computeCurrentTemplateForUser({
   return "Manual Group Selection";
 }
 
+/**
+ * Recompute attributes.current_template for users in an agency after group/template renames.
+ * Uses fresh group list + template definitions so template-prefill matching stays consistent.
+ */
+async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  if (!sfx) return { scanned: 0, updated: 0 };
+
+  const templates = templatesStore.load();
+  const templatesByAgencySuffix = new Map();
+  for (const t of Array.isArray(templates) ? templates : []) {
+    const ts = String(t?.agencySuffix || "").trim().toLowerCase();
+    if (ts !== sfx) continue;
+    if (!templatesByAgencySuffix.has(ts)) templatesByAgencySuffix.set(ts, []);
+    templatesByAgencySuffix.get(ts).push(t);
+  }
+
+  const allGroups = await getAllGroups({ includeHidden: false });
+  const groupNameToId = new Map(
+    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+      String(g?.name || "").trim().toLowerCase(),
+      String(g?.pk || "").trim(),
+    ])
+  );
+  const visibleGroupIds = new Set(
+    (Array.isArray(allGroups) ? allGroups : [])
+      .map((g) => String(g?.pk || "").trim())
+      .filter(Boolean)
+  );
+
+  let scanned = 0;
+  let updated = 0;
+  let page = 1;
+  let hasNext = true;
+
+  while (hasNext) {
+    const params = {
+      page,
+      page_size: 200,
+      include_groups: "true",
+      include_roles: "false",
+      attributes: JSON.stringify({ agency: sfx }),
+    };
+
+    const res = await api.get("/core/users/", { params });
+    const data = res?.data || {};
+    const rows = Array.isArray(data.results) ? data.results : [];
+
+    for (const user of rows) {
+      const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
+      if (String(attrs.agency || "").trim().toLowerCase() !== sfx) continue;
+
+      scanned += 1;
+      const desired = computeCurrentTemplateForUser({
+        user,
+        templatesByAgencySuffix,
+        groupNameToId,
+        visibleGroupIds,
+      });
+      if (desired == null) continue;
+
+      const current = String(attrs.current_template || "").trim();
+      if (current === desired) continue;
+
+      const uid = String(user?.pk ?? user?.id ?? "").trim();
+      if (!uid) continue;
+
+      await api.patch(`/core/users/${uid}/`, {
+        attributes: {
+          ...attrs,
+          current_template: desired,
+        },
+      });
+      updated += 1;
+    }
+
+    const pagination = data.pagination || {};
+    if (pagination && pagination.next) {
+      page = pagination.next;
+      hasNext = true;
+    } else if (data.next) {
+      page += 1;
+      hasNext = true;
+    } else {
+      hasNext = false;
+    }
+  }
+
+  if (updated > 0) invalidateUsersCache();
+  return { scanned, updated };
+}
+
 async function getCurrentTemplateBackfillStats() {
   const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
   const list = Array.isArray(users) ? users : [];
@@ -3598,4 +3690,5 @@ module.exports = {
   buildUsersExportCsv,
   bulkSetCurrentTemplateForAgencyUsers,
   syncUsersForTemplateSave,
+  reconcileCurrentTemplateForAgencySuffix,
 };

@@ -147,15 +147,33 @@
   <div class="card">
     <div class="row" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
       <h2 style="margin:0;">Existing Agencies</h2>
-      <button
-        type="button"
-        class="btn"
-        id="agencyAttributesEditBtn"
-        aria-pressed="false"
-        aria-controls="agencyTable"
-      >
-        Edit Agency Attributes
-      </button>
+      <div class="agencyAttributesEditActions" id="agencyAttributesEditActions">
+        <button
+          type="button"
+          class="btn"
+          id="agencyAttributesEditBtn"
+          aria-pressed="false"
+          aria-controls="agencyTable"
+        >
+          Edit Agency Attributes
+        </button>
+        <button
+          type="button"
+          class="btn success"
+          id="agencyAttributesDoneBtn"
+          hidden
+        >
+          Done Editing
+        </button>
+        <button
+          type="button"
+          class="btn"
+          id="agencyAttributesCancelBtn"
+          hidden
+        >
+          Cancel
+        </button>
+      </div>
     </div>
 
     <div class="listCardTableWrap">
@@ -315,6 +333,8 @@ const agencyCsvFileInput = document.getElementById("agencyCsvFileInput");
 const agencyCsvTemplateBtn = document.getElementById("agencyCsvTemplateBtn");
 const refreshBtn = document.getElementById("refreshBtn");
 const agencyAttributesEditBtn = document.getElementById("agencyAttributesEditBtn");
+const agencyAttributesDoneBtn = document.getElementById("agencyAttributesDoneBtn");
+const agencyAttributesCancelBtn = document.getElementById("agencyAttributesCancelBtn");
 const agencyTable = document.getElementById("agencyTable");
 
 // Admins modal (mirrors Groups page View Members)
@@ -336,6 +356,12 @@ let sortState = { key: "name", dir: 1 }; // default: Agency asc
 function setMsg(text, ok=true){
   msg.textContent = text || "";
   msg.className = "msg " + (ok ? "ok" : "bad");
+}
+
+function setAgencyAttributesEditControlsVisible(editing) {
+  if (agencyAttributesEditBtn) agencyAttributesEditBtn.hidden = !!editing;
+  if (agencyAttributesDoneBtn) agencyAttributesDoneBtn.hidden = !editing;
+  if (agencyAttributesCancelBtn) agencyAttributesCancelBtn.hidden = !editing;
 }
 
 if (agencyCsvTemplateBtn) {
@@ -1271,16 +1297,16 @@ async function finishAgencyAttributesEditing() {
       })
       .join("\n");
     const ok = confirm(
-      `Apply agency changes for ${agenciesToUpdate.length} agenc${agenciesToUpdate.length === 1 ? "y" : "ies"}?\n\n${lines}\n\nFull name changes update users and group metadata. Abbreviation changes also rename groups and templates.`
+      `Apply agency changes for ${agenciesToUpdate.length} agenc${agenciesToUpdate.length === 1 ? "y" : "ies"}?\n\n${lines}\n\nAbbreviation changes run first (groups and templates), then full name changes. This keeps user template matching in sync.`
     );
     if (!ok) return;
   }
 
-  const btn = agencyAttributesEditBtn;
-  const prevLabel = "Edit Agency Attributes";
+  const doneBtn = agencyAttributesDoneBtn;
+  const cancelBtn = agencyAttributesCancelBtn;
   if (hasWork) {
-    btn.disabled = true;
-    btn.textContent = "Applying agency changes…";
+    if (doneBtn) doneBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
     setMsg("Applying agency changes…", true);
   }
 
@@ -1290,40 +1316,6 @@ async function finishAgencyAttributesEditing() {
   for (const a of agenciesToUpdate) {
     const idx = a._id ?? a.id;
     const displayName = String(nameSnapshotById[String(idx)] || a.name || "Agency");
-
-    if (agencyNameChanged(a)) {
-      const newName = String(a.name || "").trim();
-      if (!newName) {
-        errors.push(`${displayName}: agency name is required`);
-        continue;
-      }
-      try {
-        const res = await fetch(
-          `/api/agencies/${encodeURIComponent(idx)}/rename-agency-name`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: newName }),
-          }
-        );
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            typeof data.error === "string"
-              ? data.error
-              : data.error?.detail || data.error || "Name rename failed"
-          );
-        }
-        if (!data.skipped) {
-          summaries.push(
-            `${newName} (name): ${data.usersUpdated ?? 0} user(s), ${data.groupsUpdated ?? 0} group(s)`
-          );
-        }
-      } catch (e) {
-        errors.push(`${displayName} (name): ${e.message || String(e)}`);
-        continue;
-      }
-    }
 
     if (agencyAbbrevChanged(a)) {
       const gp = String(a.groupPrefix || "").trim().toUpperCase();
@@ -1355,22 +1347,56 @@ async function finishAgencyAttributesEditing() {
         }
       } catch (e) {
         errors.push(`${String(a.name || displayName)} (abbrev): ${e.message || String(e)}`);
+        continue;
+      }
+    }
+
+    if (agencyNameChanged(a)) {
+      const newName = String(a.name || "").trim();
+      if (!newName) {
+        errors.push(`${displayName}: agency name is required`);
+        continue;
+      }
+      try {
+        const res = await fetch(
+          `/api/agencies/${encodeURIComponent(idx)}/rename-agency-name`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: newName }),
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof data.error === "string"
+              ? data.error
+              : data.error?.detail || data.error || "Name rename failed"
+          );
+        }
+        if (!data.skipped) {
+          summaries.push(
+            `${newName} (name): ${data.usersUpdated ?? 0} user(s), ${data.groupsUpdated ?? 0} group(s)`
+          );
+        }
+      } catch (e) {
+        errors.push(`${displayName} (name): ${e.message || String(e)}`);
       }
     }
   }
 
-  btn.disabled = false;
+  if (doneBtn) doneBtn.disabled = false;
+  if (cancelBtn) cancelBtn.disabled = false;
   if (errors.length) {
     setMsg(errors.join(" | "), false);
-    btn.textContent = "Done Editing";
     return;
   }
 
   agencyAttributesEditMode = false;
   nameSnapshotById = {};
   abbrevSnapshotById = {};
-  btn.textContent = prevLabel;
-  btn.setAttribute("aria-pressed", "false");
+  if (agencyAttributesEditBtn) agencyAttributesEditBtn.setAttribute("aria-pressed", "false");
+  setAgencyAttributesEditControlsVisible(false);
 
   if (summaries.length) {
     setMsg(`Agency updates applied. ${summaries.join("; ")}`, true);
@@ -1379,12 +1405,27 @@ async function finishAgencyAttributesEditing() {
   await loadAgenciesWithCounts();
 }
 
-if (agencyAttributesEditBtn) {
-  agencyAttributesEditBtn.addEventListener("click", async function () {
-    if (agencyAttributesEditMode) {
-      await finishAgencyAttributesEditing();
-      return;
+function cancelAgencyAttributesEditing() {
+  for (const a of agencies) {
+    const id = String(a._id ?? a.id ?? "");
+    if (!id) continue;
+    if (id in nameSnapshotById) {
+      a.name = nameSnapshotById[id];
     }
+    if (id in abbrevSnapshotById) {
+      a.groupPrefix = abbrevSnapshotById[id];
+    }
+  }
+  agencyAttributesEditMode = false;
+  nameSnapshotById = {};
+  abbrevSnapshotById = {};
+  if (agencyAttributesEditBtn) agencyAttributesEditBtn.setAttribute("aria-pressed", "false");
+  setAgencyAttributesEditControlsVisible(false);
+  renderAgencies();
+}
+
+if (agencyAttributesEditBtn) {
+  agencyAttributesEditBtn.addEventListener("click", function () {
     nameSnapshotById = {};
     abbrevSnapshotById = {};
     for (const a of agencies) {
@@ -1394,10 +1435,18 @@ if (agencyAttributesEditBtn) {
       abbrevSnapshotById[id] = String(a.groupPrefix || "").trim().toUpperCase();
     }
     agencyAttributesEditMode = true;
-    agencyAttributesEditBtn.textContent = "Done Editing";
     agencyAttributesEditBtn.setAttribute("aria-pressed", "true");
+    setAgencyAttributesEditControlsVisible(true);
     renderAgencies();
   });
+}
+
+if (agencyAttributesDoneBtn) {
+  agencyAttributesDoneBtn.addEventListener("click", () => finishAgencyAttributesEditing());
+}
+
+if (agencyAttributesCancelBtn) {
+  agencyAttributesCancelBtn.addEventListener("click", () => cancelAgencyAttributesEditing());
 }
 
 // ---- Access Groups modal ----
@@ -1591,8 +1640,23 @@ if (addForm) {
   vertical-align: top;
 }
 
+.agencyAttributesEditActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .agenciesTable .agencyNameCell {
-  max-width: 320px;
+  width: 100%;
+  max-width: none;
+}
+
+.agenciesTable .agencyNameCell .agency-name-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: block;
 }
 
 .agenciesTable .agencyNameText {
