@@ -190,15 +190,14 @@ async function renameAgencyAdminGroup(agencyOld, agencyNew) {
     if (!g || g.pk == null) continue;
 
     const detail = String(agencyNew?.name || "").trim();
-    await api.patch(`/core/groups/${encodeURIComponent(g.pk)}/`, {
-      name: desiredName,
+    await groupsService.patchGroupNameAndCn(g.pk, desiredName, {
+      skipActionLock: true,
       attributes: {
-        ...(g.attributes || {}),
         created_type: "Agency",
         created_type_detail: detail || null,
+        description: `Agency admin group for ${detail}`,
       },
     });
-    groupsService.invalidateGroupsCache();
     renamed = true;
     break;
   }
@@ -240,11 +239,15 @@ async function renameAgencyTakGroups(agencyName, oldPrefix, newPrefix) {
     const gid = String(g?.pk ?? g?.id ?? "").trim();
     if (!gid) continue;
 
+    const attrs =
+      g?.attributes && typeof g.attributes === "object" ? g.attributes : {};
     await groupsService.patchGroupNameAndCn(gid, newGroupName, {
       skipActionLock: true,
       attributes: {
-        ...(g.attributes || {}),
+        created_type: attrs.created_type,
         created_type_detail: targetName,
+        description: attrs.description,
+        private: attrs.private,
       },
     });
     groupsRenamed += 1;

@@ -484,11 +484,24 @@ async function patchGroupNameAndCn(groupId, newName, opts = {}) {
 
   const nextAttrs = { ...existingAttrs };
   delete nextAttrs.cn;
-  nextAttrs.CN = normalizeCNValue("", stripTakPrefix(n));
+  delete nextAttrs.CN;
 
   if (opts.attributes && typeof opts.attributes === "object") {
-    Object.assign(nextAttrs, opts.attributes);
+    const merged = { ...opts.attributes };
+    delete merged.cn;
+    delete merged.CN;
+    Object.assign(nextAttrs, merged);
   }
+
+  const wantsCN =
+    Object.prototype.hasOwnProperty.call(opts, "CN") ||
+    Object.prototype.hasOwnProperty.call(opts, "cn");
+  const provided = wantsCN
+    ? Object.prototype.hasOwnProperty.call(opts, "CN")
+      ? opts.CN
+      : opts.cn
+    : "";
+  nextAttrs.CN = normalizeCNValue(provided, stripTakPrefix(n));
 
   const res = await api.patch(`/core/groups/${id}/`, {
     name: n,

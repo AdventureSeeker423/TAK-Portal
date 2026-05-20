@@ -193,16 +193,14 @@ async function updateAgencyAdminGroupMetadata(agency) {
     if (!g || g.pk == null) continue;
 
     adminGroupName = String(g.name || groupName).trim();
-    await api.patch(`/core/groups/${encodeURIComponent(g.pk)}/`, {
-      name: adminGroupName,
+    await groupsService.patchGroupNameAndCn(g.pk, adminGroupName, {
+      skipActionLock: true,
       attributes: {
-        ...(g.attributes || {}),
         created_type: "Agency",
         created_type_detail: fullName || null,
         description: `Agency admin group for ${fullName}`,
       },
     });
-    groupsService.invalidateGroupsCache();
     adminGroupUpdated = true;
     break;
   }
@@ -253,8 +251,10 @@ async function updateAgencyTakGroupsCreatedTypeDetail(oldName, newName, groupPre
     await groupsService.patchGroupNameAndCn(gid, groupName, {
       skipActionLock: true,
       attributes: {
-        ...attrs,
+        created_type: attrs.created_type,
         created_type_detail: newN,
+        description: attrs.description,
+        private: attrs.private,
       },
     });
     groupsUpdated += 1;
