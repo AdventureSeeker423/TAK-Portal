@@ -1046,7 +1046,109 @@ async function getAllUsers(options = {}) {
   return await getAllUsersRaw();
 }
 
+function stripTakPrefixForExport(name) {
+  const n = String(name || "").trim();
+  if (n.toLowerCase().startsWith("tak_")) return n.slice(4);
+  return n;
+}
 
+function parseChannelBehaviorFromGroupName(fullName) {
+  let name = stripTakPrefixForExport(fullName);
+  if (name.endsWith("_READ")) return "READ - Receive Only";
+  if (name.endsWith("_WRITE")) return "WRITE - Send Only";
+  return "BOTH - Send and Receive";
+}
+
+function csvEscapeCell(value) {
+  const s = String(value == null ? "" : value);
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+function formatGroupSettingsForExport(group) {
+  const attrs = group?.attributes || {};
+  const parts = [];
+
+  const desc = String(attrs.description || "").trim();
+  if (desc) parts.push(`Description: ${desc}`);
+
+  const priv = String(attrs.private || "no").trim().toLowerCase();
+  parts.push(`Hide From Agency Admins: ${priv === "yes" ? "Yes" : "No"}`);
+  parts.push(`Channel Behavior: ${parseChannelBehaviorFromGroupName(group?.name)}`);
+
+  const createdType = String(attrs.created_type || "").trim();
+  if (createdType) parts.push(`Created Type: ${createdType}`);
+
+  const detail = String(attrs.created_type_detail || "").trim();
+  if (detail) parts.push(`Created Type Detail: ${detail}`);
+
+  const cn = String(attrs.CN || attrs.cn || "").trim();
+  if (cn) parts.push(`CN: ${cn}`);
+
+  const createdAt = String(attrs.created_at || "").trim();
+  if (createdAt) parts.push(`Created At: ${createdAt}`);
+
+  const createdBy = String(attrs.created_by_display_name || attrs.created_by_username || "").trim();
+  if (createdBy) parts.push(`Created By: ${createdBy}`);
+
+  return parts.join("; ");
+}
+
+function formatGroupMembersForExport(members) {
+  const list = Array.isArray(members) ? members : [];
+  return list
+    .map((m) => {
+      const username = String(m?.username || "").trim();
+      if (!username) return "";
+      const display = String(m?.name || "").trim();
+      return display ? `${username} (${display})` : username;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+    .join("; ");
+}
+
+/**
+ * Build CSV rows for accessible groups (one row per group).
+ * @param {Array<{ group: object, members: object[] }>} rows
+ */
+function buildGroupsExportCsv(rows) {
+  const header = ["Group Name", "Settings", "Members"];
+  const lines = [header.map(csvEscapeCell).join(",")];
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const group = row?.group || {};
+    const groupName = stripTakPrefixForExport(group?.name || "");
+    lines.push(
+      [
+        groupName,
+        formatGroupSettingsForExport(group),
+        formatGroupMembersForExport(row?.members),
+      ]
+        .map(csvEscapeCell)
+        .join(",")
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Collect member lists for export (sequential Authentik calls per group).
+ */
+async function collectGroupsExportRows(groups, { authUser, agencyAbbreviation } = {}) {
+  const out = [];
+  const list = Array.isArray(groups) ? groups : [];
+
+  for (const group of list) {
+    const gid = normalizeId(group?.pk ?? group?.id);
+    if (!gid) continue;
+
+    const members = await getGroupMembers(gid, { authUser, agencyAbbreviation });
+    out.push({ group, members });
+  }
+
+  return out;
+}
 
 module.exports = {
   getAllGroups,
@@ -1062,6 +1164,8 @@ module.exports = {
   getGroupMembers,
   getGroupMembersPaged,
   massUnassignUsersFromGroup,
+  buildGroupsExportCsv,
+  collectGroupsExportRows,
 
   // shared for other services if needed
   getAllUsers,

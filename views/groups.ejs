@@ -135,6 +135,12 @@
       </table>
     </div>
   </div>
+
+  <div class="card groupsExportCard">
+    <div class="groupsExportCardActions">
+      <button type="button" class="btn" id="exportGroupsCsvBtn">Export Groups CSV</button>
+    </div>
+  </div>
 </main>
 
 <!-- Edit Group Modal -->
@@ -1119,6 +1125,47 @@ async function loadGroups(){
   groupsCache = out || [];
   setMsg(listMsg, `Loaded ${groupsCache.length} group(s).`, true);
   renderGroups();
+}
+
+const exportGroupsCsvBtn = document.getElementById("exportGroupsCsvBtn");
+if (exportGroupsCsvBtn) {
+  exportGroupsCsvBtn.addEventListener("click", async () => {
+    const prevLabel = exportGroupsCsvBtn.textContent;
+    exportGroupsCsvBtn.disabled = true;
+    exportGroupsCsvBtn.textContent = "Exporting…";
+    try {
+      const res = await fetch("/api/groups/export-csv");
+      if (!res.ok) {
+        let errText = "Export failed";
+        try {
+          const body = await res.json();
+          errText = body?.error || errText;
+        } catch (_) {
+          // ignore
+        }
+        setMsg(listMsg, errText, false);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = /filename="([^"]+)"/i.exec(cd);
+      const filename = match ? match[1] : "tak-portal-groups.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMsg(listMsg, `Exported ${filename}.`, true);
+    } catch (err) {
+      setMsg(listMsg, err?.message || "Export failed", false);
+    } finally {
+      exportGroupsCsvBtn.disabled = false;
+      exportGroupsCsvBtn.textContent = prevLabel;
+    }
+  });
 }
 
 filter.oninput = renderGroups;
@@ -2570,6 +2617,15 @@ if (adminAccessOverlay) {
   .listCardTable .cardActionsRow {
     grid-template-columns: 1fr;
   }
+}
+
+.groupsExportCard {
+  padding: 14px 16px;
+}
+
+.groupsExportCardActions {
+  display: flex;
+  justify-content: flex-end;
 }
 </style>
 

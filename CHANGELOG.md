@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.17 - 5/20/26
+🐛 `Bug Fix` - Fixes issue with email service caching old credentials till a restart<br>
+✨ `Enhancement` - Adds a button to Users and to Groups pages to export csv lists
+
 ### v1.3.16 - 5/17/26
 ✨ `Enhancement` - Added a dedicated field for radio callsign<br>
 ✨ `Enhancement` - Cleaned up edit user modal<br>

@@ -47,30 +47,106 @@ router.get("/", async (req, res) => {
     const all = await groups.getAllGroups({ forceRefresh });
     const authUser = req.authentikUser || null;
 
-    const access = accessSvc.getAgencyAccess(authUser);
-
-    let filtered = accessSvc.filterGroupsForUser(authUser, all);
-
-    // Then apply hidden prefix filtering
-    const hiddenPrefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
-      .split(",")
-      .map(p => String(p || "").trim().toLowerCase())
-      .filter(Boolean);
-
-    if (hiddenPrefixes.length) {
-      filtered = filtered.filter(g => {
-        const raw = String(g.name || "").trim().toLowerCase();
-        const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
-
-        return !hiddenPrefixes.some(prefix =>
-          raw.startsWith(prefix) || withoutTak.startsWith(prefix)
-        );
-      });
-    }
+    const filtered = filterGroupsVisibleToUser(authUser, all);
 
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
+async function resolveAgencyAbbreviationForExport(authUser, access) {
+  if (!authUser || access.isGlobalAdmin) return null;
+
+  const allowed = access.allowedAgencySuffixes || [];
+  if (allowed.length !== 1 || !authUser.uid) return null;
+
+  try {
+    const attrs = authUser?.attributes || {};
+    const fallbackMe =
+      !attrs || !Object.keys(attrs).length
+        ? await usersService.getUserById(authUser.uid).catch(() => null)
+        : null;
+    const attrsResolved =
+      fallbackMe && fallbackMe.attributes ? fallbackMe.attributes : attrs;
+    const abbr = String(attrsResolved?.agency_abbreviation || attrs.agency_abbreviation || "").trim();
+    return abbr || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function filterGroupsVisibleToUser(authUser, all) {
+  let filtered = accessSvc.filterGroupsForUser(authUser, all);
+
+  const hiddenPrefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
+    .split(",")
+    .map((p) => String(p || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (hiddenPrefixes.length) {
+    filtered = filtered.filter((g) => {
+      const raw = String(g.name || "").trim().toLowerCase();
+      const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
+
+      return !hiddenPrefixes.some(
+        (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
+      );
+    });
+  }
+
+  return filtered;
+}
+
+router.get("/export-csv", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    if (!authUser) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin && !access.isAgencyAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const all = await groups.getAllGroups({ forceRefresh: false });
+    let visible = filterGroupsVisibleToUser(authUser, all);
+
+    visible.sort((a, b) => {
+      const an = stripTakPrefix(String(a?.name || "")).toLowerCase();
+      const bn = stripTakPrefix(String(b?.name || "")).toLowerCase();
+      return an.localeCompare(bn, undefined, { numeric: true, sensitivity: "base" });
+    });
+
+    const agencyAbbreviation = await resolveAgencyAbbreviationForExport(authUser, access);
+    const exportRows = await groups.collectGroupsExportRows(visible, {
+      authUser,
+      agencyAbbreviation,
+    });
+    const csv = groups.buildGroupsExportCsv(exportRows);
+
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "EXPORT_GROUPS_CSV",
+      targetType: "group",
+      targetId: "bulk",
+      details: {
+        groupCount: visible.length,
+        scope: access.isGlobalAdmin ? "global" : "agency",
+      },
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="tak-portal-groups-${stamp}.csv"`
+    );
+    return res.send(csv);
+  } catch (err) {
+    return res.status(500).json({ error: toErrorPayload(err) });
   }
 });
 
