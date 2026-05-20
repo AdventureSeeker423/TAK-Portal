@@ -169,7 +169,7 @@
           class="btn success agency-edit-mode-only"
           id="agencyAttributesDoneBtn"
         >
-          Done Editing
+          Save Changes
         </button>
       </div>
     </div>
@@ -346,7 +346,7 @@ const adminsHint = document.getElementById("adminsHint");
 let agencies = [];
 /** When true, Name, Type, Color, and Abbreviation columns are editable. */
 let agencyAttributesEditMode = false;
-/** Snapshots per agency id when entering edit mode (Done Editing applies diffs). */
+/** Snapshots per agency id when entering edit mode (Save Changes applies diffs). */
 let nameSnapshotById = {};
 let abbrevSnapshotById = {};
 let sortState = { key: "name", dir: 1 }; // default: Agency asc
