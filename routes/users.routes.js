@@ -1221,6 +1221,86 @@ router.get("/roles/backfill-status", async (req, res) => {
   }
 });
 
+router.get("/export-csv", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    if (!authUser) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin && !access.isAgencyAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const globalAdminGroupPks = await getGlobalAdminGroupPks();
+    const globalAdminSet = new Set(globalAdminGroupPks.map(String));
+
+    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const groupNameByPk = new Map(
+      (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+        String(g.pk),
+        String(g.name || "").toLowerCase(),
+      ])
+    );
+
+    let visible = await users.findUsers({ q: "", forceRefresh: false });
+
+    if (!access.isGlobalAdmin) {
+      visible = visible.filter((u) => accessSvc.isUserInAllowedAgencies(authUser, u));
+      if (globalAdminSet.size) {
+        visible = visible.filter((u) => {
+          const gs = Array.isArray(u?.groups) ? u.groups.map(String) : [];
+          return !gs.some((gid) => globalAdminSet.has(gid));
+        });
+      }
+    }
+
+    visible.sort((a, b) =>
+      String(a?.username || "").localeCompare(String(b?.username || ""), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      })
+    );
+
+    const agencies = require("../services/agencies.service").load();
+    const agencyNameByAbbr = new Map();
+    for (const agency of Array.isArray(agencies) ? agencies : []) {
+      const abbr = String(agency?.groupPrefix || "").trim().toLowerCase();
+      if (!abbr) continue;
+      agencyNameByAbbr.set(abbr, String(agency?.name || "").trim());
+    }
+
+    const csv = users.buildUsersExportCsv(visible, {
+      groupNameByPk,
+      globalAdminGroupPks,
+      agencyNameByAbbr,
+    });
+
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "EXPORT_USERS_CSV",
+      targetType: "user",
+      targetId: "bulk",
+      details: {
+        rowCount: visible.length,
+        scope: access.isGlobalAdmin ? "global" : "agency",
+      },
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="tak-portal-users-${stamp}.csv"`
+    );
+    return res.send(csv);
+  } catch (err) {
+    return res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
 /**
  * Full user record (including group memberships) for the edit modal.
  * List/search endpoints often omit or strip groups; this avoids stale UI.

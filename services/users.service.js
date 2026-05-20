@@ -3403,6 +3403,101 @@ async function getCurrentTemplateCountsByTemplate(options = {}) {
   return counts;
 }
 
+function splitDisplayName(full) {
+  const t = String(full || "").trim();
+  if (!t) return { first: "", last: "" };
+
+  if (t.includes(",")) {
+    const [last, first] = t.split(",").map((x) => String(x || "").trim());
+    return { first, last };
+  }
+
+  const parts = t.split(/\s+/);
+  if (parts.length === 1) return { first: parts[0], last: "" };
+  const last = parts.pop();
+  const first = parts.join(" ");
+  return { first, last };
+}
+
+function csvEscapeCell(value) {
+  const s = String(value == null ? "" : value);
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+function resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }) {
+  const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
+  const globalSet = new Set((globalAdminGroupPks || []).map(String));
+  if (groups.some((gid) => globalSet.has(gid))) return "Global Admin";
+
+  for (const gid of groups) {
+    const name = groupNameByPk.get(String(gid));
+    if (name && name.endsWith("-agencyadmin")) return "Agency Admin";
+  }
+
+  return "Standard User";
+}
+
+/**
+ * Build a CSV export for the users list (RFC 4180-style quoted fields).
+ */
+function buildUsersExportCsv(users, options = {}) {
+  const {
+    groupNameByPk = new Map(),
+    globalAdminGroupPks = [],
+    agencyNameByAbbr = new Map(),
+  } = options;
+
+  const header = [
+    "Username",
+    "First",
+    "Last",
+    "Radio Callsign",
+    "Email",
+    "Agency",
+    "Template",
+    "Role",
+    "Permissions",
+    "Status",
+  ];
+
+  const lines = [header.map(csvEscapeCell).join(",")];
+
+  for (const user of Array.isArray(users) ? users : []) {
+    const attrs = user?.attributes || {};
+    const { first, last } = splitDisplayName(user?.name || "");
+    const abbr = String(
+      attrs.agency_abbreviation ||
+        attrs.agencyAbbreviation ||
+        attrs.agencyAbbr ||
+        attrs.agencyabbr ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+    const agency =
+      agencyNameByAbbr.get(abbr) ||
+      String(attrs.agency_name || "").trim() ||
+      (abbr ? abbr.toUpperCase() : "");
+
+    const row = [
+      user?.username || "",
+      first,
+      last,
+      String(attrs.radio_callsign || "").trim(),
+      user?.email || "",
+      agency,
+      String(attrs.current_template || "").trim() || "Manual Group Selection",
+      normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
+      resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }),
+      user?.is_active ? "Active" : "Disabled",
+    ];
+
+    lines.push(row.map(csvEscapeCell).join(","));
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
 module.exports = {
   // meta/template support
   getTemplatesForAgency,
@@ -3452,6 +3547,7 @@ module.exports = {
 
   getUsersByGroups,
   getUsersByUsernames,
+  buildUsersExportCsv,
   bulkSetCurrentTemplateForAgencyUsers,
   syncUsersForTemplateSave,
 };

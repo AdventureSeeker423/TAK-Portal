@@ -223,6 +223,12 @@
       <button class="btn" id="nextPageBtnBottom" type="button">Next</button>
     </div>
   </div>
+
+  <div class="card usersExportCard">
+    <div class="usersExportCardActions">
+      <button type="button" class="btn" id="exportUsersCsvBtn">Export User CSV</button>
+    </div>
+  </div>
 </main>
 
 <!-- User Edit Modal -->
@@ -2949,6 +2955,47 @@ searchForm.onsubmit = (e) => {
   applyFilterSortRender();
 };
 
+const exportUsersCsvBtn = document.getElementById("exportUsersCsvBtn");
+if (exportUsersCsvBtn) {
+  exportUsersCsvBtn.addEventListener("click", async () => {
+    const prevLabel = exportUsersCsvBtn.textContent;
+    exportUsersCsvBtn.disabled = true;
+    exportUsersCsvBtn.textContent = "Exporting…";
+    try {
+      const res = await fetch("/api/users/export-csv");
+      if (!res.ok) {
+        let errText = "Export failed";
+        try {
+          const body = await res.json();
+          errText = body?.error || errText;
+        } catch (_) {
+          // ignore
+        }
+        setMsgEl(msg, errText, false);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = /filename="([^"]+)"/i.exec(cd);
+      const filename = match ? match[1] : "tak-portal-users.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMsgEl(msg, `Exported ${filename}.`, true);
+    } catch (err) {
+      setMsgEl(msg, err?.message || "Export failed", false);
+    } finally {
+      exportUsersCsvBtn.disabled = false;
+      exportUsersCsvBtn.textContent = prevLabel;
+    }
+  });
+}
+
 (async () => {
   try {
     renderRoleOptions(roleSelect, "Team Member");
@@ -3588,6 +3635,15 @@ tr.row-disabled {
 
 tr.row-disabled td {
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+.usersExportCard {
+  padding: 14px 16px;
+}
+
+.usersExportCardActions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* Pagination controls */
