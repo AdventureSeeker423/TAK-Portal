@@ -1294,7 +1294,7 @@ async function finishAgencyAttributesEditing() {
       })
       .join("\n");
     const ok = confirm(
-      `Apply agency changes for ${agenciesToUpdate.length} agenc${agenciesToUpdate.length === 1 ? "y" : "ies"}?\n\n${lines}\n\nAbbreviation changes run first (groups and templates), then full name changes.`
+      `Apply agency changes for ${agenciesToUpdate.length} agenc${agenciesToUpdate.length === 1 ? "y" : "ies"}?\n\n${lines}`
     );
     if (!ok) return;
   }
