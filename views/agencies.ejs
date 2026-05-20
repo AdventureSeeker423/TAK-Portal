@@ -150,7 +150,7 @@
       <div class="agencyAttributesEditActions" id="agencyAttributesEditActions">
         <button
           type="button"
-          class="btn"
+          class="btn agency-view-mode-only"
           id="agencyAttributesEditBtn"
           aria-pressed="false"
           aria-controls="agencyTable"
@@ -159,17 +159,15 @@
         </button>
         <button
           type="button"
-          class="btn success"
+          class="btn success agency-edit-mode-only"
           id="agencyAttributesDoneBtn"
-          hidden
         >
           Done Editing
         </button>
         <button
           type="button"
-          class="btn"
+          class="btn agency-edit-mode-only"
           id="agencyAttributesCancelBtn"
-          hidden
         >
           Cancel
         </button>
@@ -359,9 +357,8 @@ function setMsg(text, ok=true){
 }
 
 function setAgencyAttributesEditControlsVisible(editing) {
-  if (agencyAttributesEditBtn) agencyAttributesEditBtn.hidden = !!editing;
-  if (agencyAttributesDoneBtn) agencyAttributesDoneBtn.hidden = !editing;
-  if (agencyAttributesCancelBtn) agencyAttributesCancelBtn.hidden = !editing;
+  const wrap = document.getElementById("agencyAttributesEditActions");
+  if (wrap) wrap.classList.toggle("is-editing", !!editing);
 }
 
 if (agencyCsvTemplateBtn) {
@@ -1614,6 +1611,7 @@ agencyTable.querySelectorAll("thead th[data-sort]").forEach(th => {
 });
 
 // Initialize last county + data on page load
+setAgencyAttributesEditControlsVisible(false);
 loadLastCounty();
 loadAgenciesWithCounts();
 
@@ -1647,16 +1645,20 @@ if (addForm) {
   align-items: center;
 }
 
-.agenciesTable .agencyNameCell {
-  width: 100%;
-  max-width: none;
+.agencyAttributesEditActions .agency-edit-mode-only {
+  display: none;
 }
 
-.agenciesTable .agencyNameCell .agency-name-input {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  display: block;
+.agencyAttributesEditActions.is-editing .agency-edit-mode-only {
+  display: inline-flex;
+}
+
+.agencyAttributesEditActions.is-editing .agency-view-mode-only {
+  display: none;
+}
+
+.agenciesTable .agencyNameCell {
+  max-width: 320px;
 }
 
 .agenciesTable .agencyNameText {
