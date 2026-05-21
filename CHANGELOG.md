@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.19 - 5/20/26
+✨ `Enhancement` - Dashboard redesigned and all headers are now customized to better fit the needs of agency admins<br>
+✨ `Enhancement` - Edits to agencies now trigger a server stats refresh for dashboards
+
 ### v1.3.18 - 5/20/26
 ✨ `Enhancement` - Added the ability to rename agency's full names and abbreviations. (Please be patient with large user count servers).<br>
 ✨ `Enhancement` - Cleaned up group filtering on the groups page for agency admins
