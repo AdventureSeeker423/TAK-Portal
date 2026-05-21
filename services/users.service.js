@@ -2455,8 +2455,8 @@ async function buildUsersByTemplateForAgencyName(agencyName, { expectedAgencySuf
       if (!userPassesAgencySuffixSafety(u, expectedAgencySuffix)) continue;
       const attrs =
         u && typeof u.attributes === "object" && u.attributes ? u.attributes : {};
-      const tmpl = String(attrs.current_template || "").trim();
-      if (!tmpl || tmpl === "Manual Group Selection") continue;
+      let tmpl = String(attrs.current_template || "").trim();
+      if (!tmpl) tmpl = "Manual Group Selection";
       counts[tmpl] = (counts[tmpl] || 0) + 1;
     }
 
