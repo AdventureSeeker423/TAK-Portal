@@ -1,6 +1,10 @@
 const router = require("express").Router();
 const dashboardStatsCache = require("../services/dashboardStatsCache.service");
 const takDashboardCache = require("../services/takDashboardCache.service");
+const {
+  getSubscriptionsAll,
+  applySubscriptionMetricsSplit,
+} = require("../services/takMetrics.service");
 const mutualAidService = require("../services/mutualAid.service");
 const bookmarksService = require("../services/bookmarks.service");
 const agenciesStore = require("../services/agencies.service");
@@ -17,7 +21,7 @@ router.get("/", async (req, res) => {
   try {
     const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
     const bookmarks = bookmarksService.loadBookmarks();
-    const { takMetrics } = takDashboardCache.getDashboardTakSnapshot();
+    let { takMetrics } = takDashboardCache.getDashboardTakSnapshot();
 
     const pendingUserRequestsCount = userRequestsSvc.countRequestsForUser(req.authentikUser);
     let activeIncidentCount = 0;
@@ -111,6 +115,18 @@ router.get("/", async (req, res) => {
           }
         }
         if (bestColor) typeColors[typeTrim] = bestColor;
+      }
+    }
+
+    if (isAgencyOnly && takMetrics) {
+      try {
+        const sub = await getSubscriptionsAll();
+        takMetrics = applySubscriptionMetricsSplit(takMetrics, sub, {
+          authUser: req.authentikUser,
+          agencyOnly: true,
+        });
+      } catch (e) {
+        console.warn("[DASHBOARD] Agency TAK metrics adjustment failed:", e?.message || e);
       }
     }
 

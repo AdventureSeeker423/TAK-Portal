@@ -492,20 +492,21 @@ function isExcludedConnectedUserSubscription(item) {
   return isNoderedUsername(username) || isFederationTokenUsername(username);
 }
 
-function filterConnectedUserSubscriptions(list, options = {}) {
+function subscriptionMatchesAgencyScope(authUser, username, agencyOnly) {
+  if (!agencyOnly || !authUser) return true;
   const accessSvc = require("./access.service");
+  return accessSvc.isUsernameInAllowedAgencySuffixes(authUser, username);
+}
+
+function filterConnectedUserSubscriptions(list, options = {}) {
   const { authUser = null, agencyOnly = false } = options;
   return (Array.isArray(list) ? list : []).filter((item) => {
     if (isExcludedConnectedUserSubscription(item)) return false;
-    if (agencyOnly && authUser) {
-      return accessSvc.isUsernameInAllowedAgencies(authUser, item && item.username);
-    }
-    return true;
+    return subscriptionMatchesAgencyScope(authUser, item && item.username, agencyOnly);
   });
 }
 
 function computeSubscriptionExclusionCounts(list, options = {}) {
-  const accessSvc = require("./access.service");
   const { authUser = null, agencyOnly = false } = options;
   let noderedCount = 0;
   let federationCount = 0;
@@ -513,14 +514,10 @@ function computeSubscriptionExclusionCounts(list, options = {}) {
   for (const item of Array.isArray(list) ? list : []) {
     const username = item && item.username;
     if (isNoderedUsername(username)) {
-      if (
-        !agencyOnly ||
-        !authUser ||
-        accessSvc.isUsernameInAllowedAgencies(authUser, username)
-      ) {
+      if (subscriptionMatchesAgencyScope(authUser, username, agencyOnly)) {
         noderedCount += 1;
       }
-    } else if (isFederationTokenUsername(username)) {
+    } else if (!agencyOnly && isFederationTokenUsername(username)) {
       federationCount += 1;
     }
   }
@@ -531,7 +528,22 @@ function computeSubscriptionExclusionCounts(list, options = {}) {
 function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = {}) {
   if (!takMetricsBase || !subscriptions) return takMetricsBase;
   const list = Array.isArray(subscriptions.data) ? subscriptions.data : [];
+  const { authUser = null, agencyOnly = false } = options;
   const { noderedCount, federationCount } = computeSubscriptionExclusionCounts(list, options);
+
+  // Agency dashboard: count only subscriptions whose username matches allowed agency suffixes.
+  if (agencyOnly && authUser) {
+    const connectedClients = filterConnectedUserSubscriptions(list, {
+      authUser,
+      agencyOnly: true,
+    }).length;
+    return {
+      ...takMetricsBase,
+      connectedClients,
+      connectedIntegrations: noderedCount,
+    };
+  }
+
   const total =
     typeof takMetricsBase.connectedClients === "number" ? takMetricsBase.connectedClients : 0;
 

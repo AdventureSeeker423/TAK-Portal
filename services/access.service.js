@@ -305,6 +305,27 @@ function isUsernameInAllowedAgencies(authUser, username) {
 }
 
 /**
+ * TAK subscription rows: match username tail against the viewer's allowed agency suffixes
+ * (longest suffix first to avoid partial overlaps).
+ */
+function isUsernameInAllowedAgencySuffixes(authUser, username) {
+  const access = getAgencyAccess(authUser);
+  if (access.isGlobalAdmin) return true;
+  const allowed = access.allowedAgencySuffixes || [];
+  if (!allowed.length) return false;
+
+  const u = String(username || "").trim().toLowerCase();
+  if (!u) return false;
+
+  const sorted = allowed
+    .map(normalizeSuffix)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  return sorted.some((sfx) => u.endsWith(sfx));
+}
+
+/**
  * Compute the agency, county, and state prefixes that the current user is allowed to see.
  *
  * agencyPrefixes: e.g. ["CPD", "CFD"]
@@ -537,6 +558,7 @@ module.exports = {
   isSuffixAllowed,
   isUserInAllowedAgencies,
   isUsernameInAllowedAgencies,
+  isUsernameInAllowedAgencySuffixes,
   compareAgencyResolutionToUsernameInference,
   LOG_FALLBACK_ENV,
   SHADOW_ENV,

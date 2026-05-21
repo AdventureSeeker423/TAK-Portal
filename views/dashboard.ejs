@@ -360,6 +360,7 @@
   <script>
     (function(){
       const $ = (id) => document.getElementById(id);
+      const IS_AGENCY_DASHBOARD_TAK = <%- JSON.stringify(!!(typeof isAgencyDashboard !== "undefined" && isAgencyDashboard)) %>;
       window.__latestConnectedClients = window.__latestConnectedClients || null;
       window.__latestConnectedIntegrations = window.__latestConnectedIntegrations || null;
 
@@ -402,7 +403,13 @@
         var ccStr;
         if (rawCc === null || !isFinite(rawCc)) {
           ccStr = prevCcStr || "--";
-        } else if (rawCc === 0 && prevCcStr && isFinite(Number(prevCcStr)) && Number(prevCcStr) > 0) {
+        } else if (
+          !IS_AGENCY_DASHBOARD_TAK &&
+          rawCc === 0 &&
+          prevCcStr &&
+          isFinite(Number(prevCcStr)) &&
+          Number(prevCcStr) > 0
+        ) {
           ccStr = prevCcStr;
         } else {
           ccStr = String(rawCc);
@@ -411,7 +418,13 @@
         var ciStr;
         if (rawCi === null || !isFinite(rawCi)) {
           ciStr = prevCiStr || "--";
-        } else if (rawCi === 0 && prevCiStr && isFinite(Number(prevCiStr)) && Number(prevCiStr) > 0) {
+        } else if (
+          !IS_AGENCY_DASHBOARD_TAK &&
+          rawCi === 0 &&
+          prevCiStr &&
+          isFinite(Number(prevCiStr)) &&
+          Number(prevCiStr) > 0
+        ) {
           ciStr = prevCiStr;
         } else {
           ciStr = String(rawCi);
