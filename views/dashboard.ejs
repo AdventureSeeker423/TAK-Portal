@@ -70,7 +70,7 @@
 
   <!-- Top stats -->
   <% const agencyDash = typeof isAgencyDashboard !== "undefined" && isAgencyDashboard; %>
-  <div class="<%= agencyDash ? 'grid2' : 'grid3' %>">
+  <div class="<%= agencyDash ? 'grid2 dashboardAgencyStats' : 'grid3' %>">
     <a href="/users/manage" class="statCardLink">
       <div class="card stat">
         <div class="statLabel">Total Users</div>
@@ -810,15 +810,15 @@
     grid-template-columns: 1fr;
     gap: 5px;
     align-items: flex-start;
-    max-width: 50%;
+    width: 100%;
   }
-  @media (max-width: 1100px){
-    .gridTakStatsAgencyOnly{ max-width: none; }
+  .dashboardAgencyStats{
+    gap: 5px;
   }
   .grid1{
     display: grid;
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 5px;
   }
   .gridTakStats.connected-clients-row-expanded{
     grid-template-columns: 3fr 1fr 1fr 1fr;
@@ -850,7 +850,9 @@
   .main .grid3 .card,
   .main .grid4 .card,
   .main .grid2 .card,
-  .main .gridTakStats .card{
+  .main .grid1 .card,
+  .main .gridTakStats .card,
+  .main .gridTakStatsAgencyOnly .card{
     margin: 0;
   }
 
