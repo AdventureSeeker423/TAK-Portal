@@ -351,6 +351,21 @@ function mergeAgencySnapshots(snapshots) {
   };
 }
 
+function invalidateAgencyDashboardSnapshots() {
+  _agencySnapshots.clear();
+}
+
+/**
+ * Call after agencies.json changes (create, edit, delete, rename).
+ * Clears per-agency dashboard cache and refreshes global dashboard stats in the background.
+ */
+function refreshAfterAgenciesChanged() {
+  invalidateAgencyDashboardSnapshots();
+  void refreshNow().catch((err) => {
+    console.warn("[DASHBOARD] refresh after agencies change failed:", err?.message || err);
+  });
+}
+
 async function getAgencyDashboardForUser(authUser) {
   const managed = resolveManagedAgenciesForUser(authUser);
   if (!managed.length) {
@@ -390,6 +405,8 @@ module.exports = {
   stopDashboardStatsRefresher,
   restartDashboardStatsRefresher,
   refreshNow,
+  refreshAfterAgenciesChanged,
+  invalidateAgencyDashboardSnapshots,
   getDashboardStatsSnapshot,
   normalizeAgencyNameKey,
   resolveManagedAgenciesForUser,

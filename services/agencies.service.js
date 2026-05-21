@@ -51,6 +51,15 @@ function load() {
 
 function save(data) {
   fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+  try {
+    const dashboardStatsCache = require("./dashboardStatsCache.service");
+    dashboardStatsCache.refreshAfterAgenciesChanged();
+  } catch (err) {
+    console.warn(
+      "[AGENCIES] Dashboard stats refresh after save failed:",
+      err?.message || err
+    );
+  }
 }
 
 module.exports = {
