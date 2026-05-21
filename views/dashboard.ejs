@@ -102,26 +102,22 @@
     </a>
   </div>
 
-  <!-- TAK stats row: 4-wide global; 2-wide agency admin -->
-  <div class="<%= agencyDash ? 'gridTakStatsAgency' : 'gridTakStats' %> gridTight" id="takStatsRow" style="margin-top:8px;" <%= (isGlobalAdmin || isAgencyAdmin) ? 'data-can-expand-clients="true"' : '' %>>
+  <!-- TAK stats row: 4-wide global; agency admin shows connected users only -->
+  <div class="<%= agencyDash ? 'gridTakStatsAgencyOnly' : 'gridTakStats' %> gridTight" id="takStatsRow" style="margin-top:8px;" <%= (isGlobalAdmin || isAgencyAdmin) ? 'data-can-expand-clients="true"' : '' %>>
     <div class="card stat" id="connectedClientsStatCard" role="<%= (isGlobalAdmin || isAgencyAdmin) ? 'button' : '' %>" tabindex="<%= (isGlobalAdmin || isAgencyAdmin) ? '0' : '-1' %>">
       <div class="statLabel">Connected Users</div>
       <div class="statValue" id="takClients">--</div>
       <div class="statHint"></div>
     </div>
 
-    <% if (isGlobalAdmin || agencyDash) { %>
     <% if (isGlobalAdmin) { %>
     <a href="/integrations" class="statCardLink">
-    <% } %>
     <div class="card stat">
       <div class="statLabel">Connected Integrations</div>
       <div class="statValue" id="takConnectedIntegrations">--</div>
       <div class="statHint"></div>
     </div>
-    <% if (isGlobalAdmin) { %>
     </a>
-    <% } %>
     <% } %>
 
     <% if (!agencyDash) { %>
@@ -809,14 +805,15 @@
     gap: 5px;
     align-items: flex-start;
   }
-  .gridTakStatsAgency{
+  .gridTakStatsAgencyOnly{
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 5px;
     align-items: flex-start;
+    max-width: 50%;
   }
   @media (max-width: 1100px){
-    .gridTakStatsAgency{ grid-template-columns: 1fr; }
+    .gridTakStatsAgencyOnly{ max-width: none; }
   }
   .grid1{
     display: grid;

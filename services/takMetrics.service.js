@@ -498,10 +498,18 @@ function subscriptionMatchesAgencyScope(authUser, username, agencyOnly) {
   return accessSvc.isUsernameInAllowedAgencySuffixes(authUser, username);
 }
 
+/** Remove federation hub token rows; keep nodered (needed by integrations page). */
+function filterFederationSubscriptions(list) {
+  return (Array.isArray(list) ? list : []).filter(
+    (item) => !isFederationTokenUsername(item && item.username)
+  );
+}
+
+/** Human connected users for dashboard list/count (no nodered, no federation). */
 function filterConnectedUserSubscriptions(list, options = {}) {
   const { authUser = null, agencyOnly = false } = options;
-  return (Array.isArray(list) ? list : []).filter((item) => {
-    if (isExcludedConnectedUserSubscription(item)) return false;
+  return filterFederationSubscriptions(list).filter((item) => {
+    if (isNoderedUsername(item && item.username)) return false;
     return subscriptionMatchesAgencyScope(authUser, item && item.username, agencyOnly);
   });
 }
@@ -540,7 +548,6 @@ function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = 
     return {
       ...takMetricsBase,
       connectedClients,
-      connectedIntegrations: noderedCount,
     };
   }
 
@@ -614,6 +621,7 @@ module.exports = {
   isFederationTokenUsername,
   isNoderedUsername,
   isExcludedConnectedUserSubscription,
+  filterFederationSubscriptions,
   filterConnectedUserSubscriptions,
   applySubscriptionMetricsSplit,
 };

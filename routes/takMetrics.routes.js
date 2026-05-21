@@ -4,6 +4,7 @@ const {
   getSubscriptionsAll,
   applySubscriptionMetricsSplit,
   filterConnectedUserSubscriptions,
+  filterFederationSubscriptions,
 } = require("../services/takMetrics.service");
 
 router.get("/metrics", async (req, res) => {
@@ -40,10 +41,12 @@ router.get("/subscriptions", async (req, res) => {
     const result = await getSubscriptionsAll();
     if (result.data && result.configured) {
       const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
-      result.data = filterConnectedUserSubscriptions(result.data, {
-        authUser: user,
-        agencyOnly: isAgencyOnly,
-      });
+      result.data = isAgencyOnly
+        ? filterConnectedUserSubscriptions(result.data, {
+            authUser: user,
+            agencyOnly: true,
+          })
+        : filterFederationSubscriptions(result.data);
     }
     return res.json(result);
   } catch (err) {
