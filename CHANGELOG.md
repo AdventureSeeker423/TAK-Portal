@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.18 - 5/20/26
+✨ `Enhancement` - Added the ability to rename agency's full names and abbreviations. (Please be patient with large user count servers).<br>
+✨ `Enhancement` - Cleaned up group filtering on the groups page for agency admins
+
 ### v1.3.17 - 5/20/26
 🐛 `Bug Fix` - Fixes issue with email service caching old credentials till a restart<br>
 🐛 `Bug Fix` - Fixes issue with sort order of templates on user edit modal<br>
