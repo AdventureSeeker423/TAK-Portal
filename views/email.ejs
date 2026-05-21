@@ -2,7 +2,13 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1>Email Users</h1>
+  <% const agencyOnlyEmailPage = !isGlobalAdmin && isAgencyAdmin; %>
+  <h1><%
+    const emailPageAbbrev = typeof agencyPageTitleAbbrev !== "undefined" ? agencyPageTitleAbbrev : null;
+    if (agencyOnlyEmailPage && emailPageAbbrev) { %>Email <%= emailPageAbbrev %> Users<% }
+    else if (agencyOnlyEmailPage) { %>Email Agency Users<% }
+    else { %>Email Users<% }
+  %></h1>
 
   <div class="card">
     <h2 style="margin-top:0;">Choose Recipients</h2>
@@ -21,7 +27,7 @@
 
     <label style="display:block; margin-bottom:6px;">Send to</label>
     <div class="segmented" style="margin-bottom:14px;">
-      <button class="segBtn active" type="button" data-mode="agency">Agency</button>
+      <button class="segBtn active" type="button" data-mode="agency"><%= agencyOnlyEmailPage ? "Entire Agency" : "Agency" %></button>
       <button class="segBtn" type="button" data-mode="groups">Groups</button>
       <button class="segBtn" type="button" data-mode="users">Users</button>
       <% if (isGlobalAdmin) { %>
@@ -29,8 +35,8 @@
       <% } %>
     </div>
 
-    <!-- Agency: dropdown with checkboxes (audit-log style) -->
-    <div id="emailAgencyPane" style="margin-top:8px;">
+    <!-- Agency: dropdown with checkboxes (global admins); agency admins use Entire Agency (auto-selected) -->
+    <div id="emailAgencyPane" style="<%= agencyOnlyEmailPage ? 'display:none;' : 'margin-top:8px;' %>">
       <label class="email-dropdown-label">Agencies</label>
       <div id="emailAgencyDropdown" class="email-dropdown filter-multiselect">
         <button type="button" class="btn filter-toggle email-dropdown-toggle" id="emailAgencyToggle">Select agencies ▾</button>
@@ -193,6 +199,8 @@
 <script>
   (function () {
     const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
+    const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
+    const AGENCY_ONLY_EMAIL = !IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN;
 
     const emailAgencyPane = document.getElementById("emailAgencyPane");
     const emailGroupsPane = document.getElementById("emailGroupsPane");
@@ -249,8 +257,17 @@
       updateEmailDropdownLabels();
     }
 
+    function autoSelectAgencyAdminAgencies() {
+      if (!AGENCY_ONLY_EMAIL) return;
+      selectedAgencySuffixesSet.clear();
+      emailAgencyItems().forEach((x) => {
+        if (x.suffix) selectedAgencySuffixesSet.add(x.suffix);
+      });
+      updateEmailDropdownLabels();
+    }
+
     function updateEmailDropdownLabels() {
-      if (emailAgencyToggle) {
+      if (emailAgencyToggle && !AGENCY_ONLY_EMAIL) {
         const n = selectedAgencySuffixesSet.size;
         emailAgencyToggle.textContent = n ? n + " agency" + (n === 1 ? "" : " agencies") + " selected ▾" : "Select agencies ▾";
       }
@@ -349,6 +366,7 @@
         const res = await fetch("/api/agencies");
         const out = await res.json();
         agenciesCache = res.ok && Array.isArray(out) ? out : [];
+        autoSelectAgencyAdminAgencies();
         renderEmailAgencyList();
       } catch (e) {
         agenciesCache = [];
@@ -473,11 +491,14 @@
       }
 
       if (emailMode === "agency") {
+        if (AGENCY_ONLY_EMAIL) autoSelectAgencyAdminAgencies();
         payload.agencies = selectedAgencySuffixes();
         if (payload.agencies.length === 0) {
           if (emailStatus) {
             emailStatus.className = "msg bad";
-            emailStatus.textContent = "Select at least one agency.";
+            emailStatus.textContent = AGENCY_ONLY_EMAIL
+              ? "No agency is configured for your account."
+              : "Select at least one agency.";
           }
           return;
         }
@@ -572,6 +593,7 @@
       selectedAgencySuffixesSet.clear();
       selectedGroupIdsSet.clear();
       selectedUsernamesSet.clear();
+      autoSelectAgencyAdminAgencies();
       if (emailAgencySearch) emailAgencySearch.value = "";
       if (emailGroupSearch) emailGroupSearch.value = "";
       if (emailUserSearch) emailUserSearch.value = "";
