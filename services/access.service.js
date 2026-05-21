@@ -547,6 +547,35 @@ function filterGroupsForUser(authUser, groups) {
 }
 
 /**
+ * Agency-only page titles (Users, Groups, Templates): single managed agency → groupPrefix (e.g. "HCSO").
+ * Multiple agencies or global admin → null (views use generic "Agency …" or default title).
+ */
+function getAgencyPageTitleAbbrev(authUser) {
+  const access = getAgencyAccess(authUser);
+  if (access.isGlobalAdmin) return null;
+
+  const allowed = access.allowedAgencySuffixes || [];
+  if (!allowed.length) return null;
+
+  const agencies = agenciesStore.load();
+  const prefixes = [];
+  const seen = new Set();
+
+  for (const sfx of allowed) {
+    const norm = normalizeSuffix(sfx);
+    if (!norm) continue;
+    const agency = agencies.find((a) => normalizeSuffix(a && a.suffix) === norm);
+    if (!agency) continue;
+    const gp = String(agency.groupPrefix || "").trim().toUpperCase();
+    if (!gp || seen.has(gp)) continue;
+    seen.add(gp);
+    prefixes.push(gp);
+  }
+
+  return prefixes.length === 1 ? prefixes[0] : null;
+}
+
+/**
  * Compare attribute-first resolution vs username-only (for rollout diagnostics).
  * @returns {{ resolved: string, inferred: string, mismatch: boolean }}
  */
@@ -589,4 +618,5 @@ module.exports = {
   isGroupMarkedPrivate,
   getGroupNamePrefixUpper,
   filterAgencySpecificGroupsForDashboard,
+  getAgencyPageTitleAbbrev,
 };

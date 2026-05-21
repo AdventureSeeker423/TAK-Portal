@@ -2,7 +2,13 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1>Templates</h1>
+  <h1><%
+    const agencyOnlyTemplatesPage = !isGlobalAdmin && isAgencyAdmin;
+    const templatesPageAbbrev = typeof agencyPageTitleAbbrev !== "undefined" ? agencyPageTitleAbbrev : null;
+    if (agencyOnlyTemplatesPage && templatesPageAbbrev) { %><%= templatesPageAbbrev %> Templates<% }
+    else if (agencyOnlyTemplatesPage) { %>Agency Templates<% }
+    else { %>Templates<% }
+  %></h1>
   
   <div class="card">
     <div class="row" style="justify-content: space-between; align-items: center;">
