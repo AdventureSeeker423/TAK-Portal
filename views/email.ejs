@@ -35,8 +35,9 @@
       <% } %>
     </div>
 
-    <!-- Agency: dropdown with checkboxes (global admins); agency admins use Entire Agency (auto-selected) -->
-    <div id="emailAgencyPane" style="<%= agencyOnlyEmailPage ? 'display:none;' : 'margin-top:8px;' %>">
+    <% if (!agencyOnlyEmailPage) { %>
+    <!-- Agency: dropdown (global admins only) -->
+    <div id="emailAgencyPane" style="margin-top:8px;">
       <label class="email-dropdown-label">Agencies</label>
       <div id="emailAgencyDropdown" class="email-dropdown filter-multiselect">
         <button type="button" class="btn filter-toggle email-dropdown-toggle" id="emailAgencyToggle">Select agencies ▾</button>
@@ -52,6 +53,7 @@
         </div>
       </div>
     </div>
+    <% } %>
 
     <!-- Groups: dropdown with checkboxes -->
     <div id="emailGroupsPane" style="display:none; margin-top:8px;">
@@ -249,7 +251,9 @@
       document.querySelectorAll(".segBtn[data-mode]").forEach((b) => {
         b.classList.toggle("active", b.dataset.mode === mode);
       });
-      if (emailAgencyPane) emailAgencyPane.style.display = mode === "agency" ? "block" : "none";
+      if (emailAgencyPane && !AGENCY_ONLY_EMAIL) {
+        emailAgencyPane.style.display = mode === "agency" ? "block" : "none";
+      }
       if (emailGroupsPane) emailGroupsPane.style.display = mode === "groups" ? "block" : "none";
       if (emailUsersPane) emailUsersPane.style.display = mode === "users" ? "block" : "none";
       if (emailAllPane) emailAllPane.style.display = mode === "all" ? "block" : "none";
@@ -598,7 +602,7 @@
       if (emailGroupSearch) emailGroupSearch.value = "";
       if (emailUserSearch) emailUserSearch.value = "";
       document.querySelectorAll(".email-dropdown.open").forEach((el) => el.classList.remove("open"));
-      renderEmailAgencyList();
+      if (!AGENCY_ONLY_EMAIL) renderEmailAgencyList();
       renderEmailGroupList();
       renderEmailUserList();
       updateEmailDropdownLabels();
@@ -621,7 +625,7 @@
       );
 
     // Filters
-    if (emailAgencySearch) {
+    if (emailAgencySearch && !AGENCY_ONLY_EMAIL) {
       emailAgencySearch.addEventListener("input", renderEmailAgencyList);
     }
     if (emailGroupSearch) {
@@ -632,7 +636,7 @@
     }
 
     // Keep selection in sync when checkboxes change (event delegation)
-    if (emailAgencyDropdown) {
+    if (emailAgencyDropdown && !AGENCY_ONLY_EMAIL) {
       emailAgencyDropdown.addEventListener("change", (e) => {
         const ch = e.target;
         if (!ch || ch.type !== "checkbox" || !ch.classList.contains("agencyChk")) return;
@@ -664,7 +668,9 @@
     }
 
     // Dropdown open/close
-    setupEmailDropdown(emailAgencyDropdown, emailAgencyToggle);
+    if (!AGENCY_ONLY_EMAIL) {
+      setupEmailDropdown(emailAgencyDropdown, emailAgencyToggle);
+    }
     setupEmailDropdown(emailGroupDropdown, emailGroupToggle);
     setupEmailDropdown(emailUserDropdown, emailUserToggle);
     document.querySelectorAll(".email-dropdown .filter-menu").forEach((menu) => {
@@ -675,7 +681,7 @@
     });
 
     // Select All: add all visible (filtered) items to set and re-render
-    if (emailAgencySelectAll) {
+    if (emailAgencySelectAll && !AGENCY_ONLY_EMAIL) {
       emailAgencySelectAll.onclick = () => {
         const needle = String(emailAgencySearch.value || "").trim().toLowerCase();
         const items = emailAgencyItems().filter((x) => {
@@ -686,7 +692,7 @@
         renderEmailAgencyList();
       };
     }
-    if (emailAgencyClearAll) {
+    if (emailAgencyClearAll && !AGENCY_ONLY_EMAIL) {
       emailAgencyClearAll.onclick = () => {
         selectedAgencySuffixesSet.clear();
         renderEmailAgencyList();
