@@ -2,7 +2,7 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1>Dashboard</h1>
+  <h1><%= (typeof isAgencyDashboard !== "undefined" && isAgencyDashboard && agencyDisplayName) ? (agencyDisplayName + " Dashboard") : "Dashboard" %></h1>
 
   <% 
     const hasMutualAid = isGlobalAdmin && mutualAid && (mutualAid.activeIncidents > 0 || mutualAid.activeEvents > 0);
@@ -69,7 +69,8 @@
   <% } %>
 
   <!-- Top stats -->
-  <div class="grid3">
+  <% const agencyDash = typeof isAgencyDashboard !== "undefined" && isAgencyDashboard; %>
+  <div class="<%= agencyDash ? 'grid2' : 'grid3' %>">
     <a href="/users/manage" class="statCardLink">
       <div class="card stat">
         <div class="statLabel">Total Users</div>
@@ -78,6 +79,7 @@
       </div>
     </a>
 
+    <% if (!agencyDash) { %>
     <% if (isGlobalAdmin) { %>
     <a href="/agencies" class="statCardLink">
     <% } %>
@@ -89,6 +91,7 @@
     <% if (isGlobalAdmin) { %>
     </a>
     <% } %>
+    <% } %>
 
     <a href="/groups" class="statCardLink">
       <div class="card stat">
@@ -99,14 +102,15 @@
     </a>
   </div>
 
-  <!-- TAK stats row: 4-wide; when expanded, Connected Clients uses half -->
-  <div class="gridTakStats gridTight" id="takStatsRow" style="margin-top:8px;" <%= (isGlobalAdmin || isAgencyAdmin) ? 'data-can-expand-clients="true"' : '' %>>
+  <!-- TAK stats row: 4-wide global; 2-wide agency admin -->
+  <div class="<%= agencyDash ? 'gridTakStatsAgency' : 'gridTakStats' %> gridTight" id="takStatsRow" style="margin-top:8px;" <%= (isGlobalAdmin || isAgencyAdmin) ? 'data-can-expand-clients="true"' : '' %>>
     <div class="card stat" id="connectedClientsStatCard" role="<%= (isGlobalAdmin || isAgencyAdmin) ? 'button' : '' %>" tabindex="<%= (isGlobalAdmin || isAgencyAdmin) ? '0' : '-1' %>">
       <div class="statLabel">Connected Users</div>
       <div class="statValue" id="takClients">--</div>
       <div class="statHint"></div>
     </div>
 
+    <% if (isGlobalAdmin || agencyDash) { %>
     <% if (isGlobalAdmin) { %>
     <a href="/integrations" class="statCardLink">
     <% } %>
@@ -118,7 +122,9 @@
     <% if (isGlobalAdmin) { %>
     </a>
     <% } %>
+    <% } %>
 
+    <% if (!agencyDash) { %>
     <div class="card stat">
       <div class="statLabel">TAK Server Uptime</div>
       <div class="statValue" id="takUptime">--</div>
@@ -130,8 +136,19 @@
       <div class="statValue" id="takDisk">--</div>
       <div class="statHint"></div>
     </div>
+    <% } %>
   </div>
 
+  <% if (agencyDash) { %>
+  <div class="grid1 gridTight" style="margin-top:8px;">
+    <div class="card">
+      <h2 class="cardTitle">Users by Template</h2>
+      <div class="chartWrap">
+        <canvas id="templateChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <% } else { %>
   <!-- Two pies side by side -->
   <div class="grid2 gridTight" style="margin-top:8px;">
     <div class="card">
@@ -148,6 +165,7 @@
       </div>
     </div>
   </div>
+  <% } %>
 
   <% if (isGlobalAdmin) { %>
     <div class="card" style="margin-top:8px;">
@@ -164,7 +182,69 @@
 
   <script>
     (function() {
+      const IS_AGENCY_DASHBOARD = <%- JSON.stringify(!!(typeof isAgencyDashboard !== "undefined" && isAgencyDashboard)) %>;
+
       function initCharts() {
+        if (IS_AGENCY_DASHBOARD) {
+          const usersByTemplate = <%- JSON.stringify((charts && charts.usersByTemplate) || {}) %>;
+          const templateChartColor = <%- JSON.stringify(typeof templateChartColor !== "undefined" ? templateChartColor : null) %>;
+          const defaultColor = "#9ca3af";
+          var agencyColorNameToHex = {
+            "Blue": "#1e88e5",
+            "Dark Blue": "#0d47a1",
+            "Brown": "#6d4c41",
+            "Cyan": "#00acc1",
+            "Green": "#43a047",
+            "Dark Green": "#1b5e20",
+            "Magenta": "#d81b60",
+            "Maroon": "#800000",
+            "Orange": "#ff7b00",
+            "Purple": "#8e24aa",
+            "Red": "#e53935",
+            "Teal": "#00897b",
+            "White": "#ffffff",
+            "Yellow": "#fdd835"
+          };
+          function resolveColor(c) {
+            if (!c || typeof c !== "string") return defaultColor;
+            const raw = c.trim();
+            if (!raw) return defaultColor;
+            if (raw.charAt(0) === "#") return raw;
+            return agencyColorNameToHex[raw] || agencyColorNameToHex[raw.toLowerCase()] || raw;
+          }
+          const baseColor = resolveColor(templateChartColor);
+          const labels = Object.keys(usersByTemplate);
+          const data = Object.values(usersByTemplate);
+          const palette = ["#1e88e5", "#43a047", "#e53935", "#8e24aa", "#ff7b00", "#00acc1", "#6d4c41", "#d81b60"];
+          const backgroundColors = labels.map(function(_, i) {
+            return labels.length === 1 ? baseColor : palette[i % palette.length];
+          });
+          const pieOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: { boxWidth: 14, boxHeight: 14, padding: 12, font: { size: 15 } }
+              }
+            }
+          };
+          new Chart(document.getElementById("templateChart"), {
+            type: "pie",
+            data: {
+              labels: labels,
+              datasets: [{
+                data: data,
+                backgroundColor: backgroundColors,
+                borderColor: "#ffffff",
+                borderWidth: 2
+              }]
+            },
+            options: pieOptions
+          });
+          return;
+        }
+
         const usersByAgency = <%- JSON.stringify((charts && charts.usersByAgency) || {}) %>;
         const unknownAgency = <%- JSON.stringify((charts && charts.unknownAgency) || 0) %>;
         const agencyColors = <%- JSON.stringify(typeof agencyColors !== "undefined" ? agencyColors : {}) %>;
@@ -310,8 +390,11 @@
         var prevCcStr = typeof window.__latestConnectedClients === "string" ? window.__latestConnectedClients : null;
         var prevCiStr = typeof window.__latestConnectedIntegrations === "string" ? window.__latestConnectedIntegrations : null;
 
-        var nextDisk = data && typeof data.diskUsagePercent === "number" ? data.diskUsagePercent : null;
-        $("takDisk").textContent = fmtPct(nextDisk);
+        var diskEl = $("takDisk");
+        if (diskEl) {
+          var nextDisk = data && typeof data.diskUsagePercent === "number" ? data.diskUsagePercent : null;
+          diskEl.textContent = fmtPct(nextDisk);
+        }
 
         var rawCc = data && typeof data.connectedClients === "number" ? data.connectedClients : null;
         var rawCi = data && typeof data.connectedIntegrations === "number" ? data.connectedIntegrations : null;
@@ -341,8 +424,10 @@
         if (ciEl) ciEl.textContent = ciStr;
         window.__latestConnectedIntegrations = ciStr;
 
-        $("takUptime").textContent = fmtUptime(data && data.uptimeSeconds);
-        $("takUptimeHint").textContent = "";
+        var uptimeEl = $("takUptime");
+        if (uptimeEl) uptimeEl.textContent = fmtUptime(data && data.uptimeSeconds);
+        var uptimeHintEl = $("takUptimeHint");
+        if (uptimeHintEl) uptimeHintEl.textContent = "";
       }
 
       async function refresh(){
@@ -709,7 +794,21 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 5px;
-  align-items: flex-start;
+    align-items: flex-start;
+  }
+  .gridTakStatsAgency{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    align-items: flex-start;
+  }
+  @media (max-width: 1100px){
+    .gridTakStatsAgency{ grid-template-columns: 1fr; }
+  }
+  .grid1{
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
   .gridTakStats.connected-clients-row-expanded{
     grid-template-columns: 3fr 1fr 1fr 1fr;

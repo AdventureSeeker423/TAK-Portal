@@ -14,9 +14,14 @@ router.get("/metrics", async (req, res) => {
     try {
       const sub = await getSubscriptionsAll();
       const list = Array.isArray(sub.data) ? sub.data : [];
+      const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
       const noderedCount = list.filter((item) => {
         const u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
-        return u.indexOf(NODERED_PREFIX) === 0;
+        if (u.indexOf(NODERED_PREFIX) !== 0) return false;
+        if (isAgencyOnly) {
+          return accessSvc.isUsernameInAllowedAgencies(user, item && item.username);
+        }
+        return true;
       }).length;
       const total = typeof metrics.connectedClients === "number" ? metrics.connectedClients : 0;
       metrics.connectedClients = Math.max(0, total - noderedCount);

@@ -11,6 +11,12 @@ const DEFAULT_INITIAL_DELAY_SECONDS = 8;
 /** Coalesces concurrent refreshNow() calls so waiters get the same result, not stale zeros. */
 let _refreshInFlight = null;
 
+/** Per normalized agency name: coalesced refresh promises. */
+const _agencyRefreshInFlight = new Map();
+
+/** @type {Map<string, object>} */
+const _agencySnapshots = new Map();
+
 const _state = {
   timer: null,
   lastError: null,
@@ -191,10 +197,199 @@ function getDashboardStatsSnapshot() {
   };
 }
 
+function normalizeAgencyNameKey(agencyName) {
+  return String(agencyName || "").trim().toLowerCase();
+}
+
+function isAgencySnapshotStale(entry) {
+  if (!entry || !entry.refreshedAt) return true;
+  const ageMs = Date.now() - entry.refreshedAt.getTime();
+  return ageMs > parseRefreshSeconds() * 1000;
+}
+
+function resolveManagedAgenciesForUser(authUser) {
+  const access = accessSvc.getAgencyAccess(authUser);
+  const allowed = access.allowedAgencySuffixes || [];
+  const all = agenciesStore.load() || [];
+  const byNameKey = new Map();
+
+  for (const sfx of allowed) {
+    const norm = String(sfx || "").trim().toLowerCase();
+    if (!norm) continue;
+    const agency = all.find((a) => String(a.suffix || "").trim().toLowerCase() === norm);
+    if (!agency) continue;
+    const name = String(agency.name || "").trim();
+    if (!name) continue;
+    const key = normalizeAgencyNameKey(name);
+    if (byNameKey.has(key)) continue;
+    byNameKey.set(key, {
+      name,
+      suffix: norm,
+      color: String(agency.color || "").trim() || null,
+    });
+  }
+
+  return Array.from(byNameKey.values());
+}
+
+async function refreshAgencyNow(agencyName, { expectedAgencySuffix, authUser } = {}) {
+  const name = String(agencyName || "").trim();
+  const key = normalizeAgencyNameKey(name);
+  if (!key) {
+    throw new Error("Agency name is required for agency dashboard refresh");
+  }
+
+  if (_agencyRefreshInFlight.has(key)) {
+    return _agencyRefreshInFlight.get(key);
+  }
+
+  const refreshPromise = (async () => {
+    const prev = _agencySnapshots.get(key);
+    try {
+      const [totalUsers, usersByTemplate, groups] = await Promise.all([
+        usersService.countUsersByAgencyName(name),
+        usersService.buildUsersByTemplateForAgencyName(name, { expectedAgencySuffix }),
+        groupsService.getAllGroups(),
+      ]);
+
+      const filteredGroups = authUser
+        ? accessSvc.filterGroupsForUser(authUser, groups || [])
+        : groups || [];
+
+      const entry = {
+        agencyName: name,
+        expectedAgencySuffix: String(expectedAgencySuffix || "").trim().toLowerCase(),
+        stats: {
+          totalUsers: Number(totalUsers) || 0,
+          totalGroups: Array.isArray(filteredGroups) ? filteredGroups.length : 0,
+        },
+        charts: {
+          usersByTemplate: usersByTemplate || {},
+        },
+        refreshedAt: new Date(),
+        error: null,
+      };
+      _agencySnapshots.set(key, entry);
+      return entry;
+    } catch (err) {
+      console.warn(
+        `[DASHBOARD] Agency stats cache refresh failed (${name}):`,
+        err?.message || err
+      );
+      const entry = {
+        agencyName: name,
+        expectedAgencySuffix: String(expectedAgencySuffix || "").trim().toLowerCase(),
+        stats: prev?.stats || { totalUsers: 0, totalGroups: 0 },
+        charts: prev?.charts || { usersByTemplate: {} },
+        refreshedAt: new Date(),
+        error: err?.message || String(err),
+      };
+      _agencySnapshots.set(key, entry);
+      return entry;
+    } finally {
+      _agencyRefreshInFlight.delete(key);
+    }
+  })();
+
+  _agencyRefreshInFlight.set(key, refreshPromise);
+  return refreshPromise;
+}
+
+async function getAgencyDashboardSnapshot(agencyName, { expectedAgencySuffix, authUser } = {}) {
+  const name = String(agencyName || "").trim();
+  const key = normalizeAgencyNameKey(name);
+  if (!key) {
+    return {
+      agencyName: "",
+      stats: { totalUsers: 0, totalGroups: 0 },
+      charts: { usersByTemplate: {} },
+      refreshedAt: null,
+      error: "Missing agency name",
+    };
+  }
+
+  const cached = _agencySnapshots.get(key);
+  if (!isAgencySnapshotStale(cached)) {
+    return cached;
+  }
+
+  return refreshAgencyNow(name, { expectedAgencySuffix, authUser });
+}
+
+function mergeAgencySnapshots(snapshots) {
+  const list = Array.isArray(snapshots) ? snapshots.filter(Boolean) : [];
+  let totalUsers = 0;
+  const usersByTemplate = {};
+  let totalGroups = 0;
+  let refreshedAt = null;
+  const errors = [];
+
+  for (const snap of list) {
+    totalUsers += Number(snap?.stats?.totalUsers) || 0;
+    const tmplMap = snap?.charts?.usersByTemplate || {};
+    for (const [label, count] of Object.entries(tmplMap)) {
+      usersByTemplate[label] = (usersByTemplate[label] || 0) + (Number(count) || 0);
+    }
+    if (snap?.refreshedAt) {
+      const t = snap.refreshedAt instanceof Date ? snap.refreshedAt : new Date(snap.refreshedAt);
+      if (!refreshedAt || t > refreshedAt) refreshedAt = t;
+    }
+    if (snap?.stats?.totalGroups != null) {
+      totalGroups = Number(snap.stats.totalGroups) || 0;
+    }
+    if (snap?.error) errors.push(snap.error);
+  }
+
+  return {
+    stats: { totalUsers, totalGroups },
+    charts: { usersByTemplate },
+    refreshedAt,
+    error: errors.length ? errors.join("; ") : null,
+  };
+}
+
+async function getAgencyDashboardForUser(authUser) {
+  const managed = resolveManagedAgenciesForUser(authUser);
+  if (!managed.length) {
+    return {
+      managedAgencies: [],
+      agencyDisplayName: "Agency Dashboard",
+      stats: { totalUsers: 0, totalGroups: 0 },
+      charts: { usersByTemplate: {} },
+      refreshedAt: null,
+      error: null,
+    };
+  }
+
+  const snapshots = await Promise.all(
+    managed.map((agency) =>
+      getAgencyDashboardSnapshot(agency.name, {
+        expectedAgencySuffix: agency.suffix,
+        authUser,
+      })
+    )
+  );
+
+  const merged = mergeAgencySnapshots(snapshots);
+  const agencyDisplayName =
+    managed.length === 1 ? managed[0].name : "Agency Dashboard";
+
+  return {
+    managedAgencies: managed,
+    agencyDisplayName,
+    ...merged,
+  };
+}
+
 module.exports = {
   startDashboardStatsRefresher,
   stopDashboardStatsRefresher,
   restartDashboardStatsRefresher,
   refreshNow,
   getDashboardStatsSnapshot,
+  normalizeAgencyNameKey,
+  resolveManagedAgenciesForUser,
+  refreshAgencyNow,
+  getAgencyDashboardSnapshot,
+  getAgencyDashboardForUser,
 };

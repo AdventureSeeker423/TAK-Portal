@@ -15,19 +15,10 @@ router.get("/", async (req, res) => {
   }
 
   try {
-    let snap = dashboardStatsCache.getDashboardStatsSnapshot();
-    // First visit after process start used to read all zeros until the delayed background refresh ran.
-    if (!snap.refreshedAt) {
-      await dashboardStatsCache.refreshNow();
-      snap = dashboardStatsCache.getDashboardStatsSnapshot();
-    }
-    const { stats, charts } = snap;
+    const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
     const bookmarks = bookmarksService.loadBookmarks();
-
-    // TAK metrics: read server-side background cache (no await on TAK HTTP; client still polls /api/tak/metrics).
     const { takMetrics } = takDashboardCache.getDashboardTakSnapshot();
 
-    // --- Mutual Aid active banners ---
     const pendingUserRequestsCount = userRequestsSvc.countRequestsForUser(req.authentikUser);
     let activeIncidentCount = 0;
     let activeEventCount = 0;
@@ -47,61 +38,97 @@ router.get("/", async (req, res) => {
       console.error("[DASHBOARD] MutualAid stats failed:", e?.message || e);
     }
 
-    const agencies = agenciesStore.load() || [];
-    const agencyColors = {};
-    for (const a of agencies) {
-      const name = String(a.name || "").trim();
-      const suffix = String(a.suffix || "").trim().toUpperCase();
-      const key = name || suffix;
-      if (key) agencyColors[key] = String(a.color || "").trim() || null;
-    }
+    let stats;
+    let charts;
+    let agencyColors = {};
+    let typeColors = {};
+    let isAgencyDashboard = false;
+    let agencyDisplayName = null;
+    let templateChartColor = null;
 
-    const usersByAgency = (charts && charts.usersByAgency) || {};
-    const typeColors = {};
-    for (const type of Object.keys(charts?.usersByType || {})) {
-      const typeTrim = String(type || "").trim();
-      if (!typeTrim) continue;
-      const agenciesOfType = (agencies || []).filter(
-        (a) => String(a.type || "").trim() === typeTrim
-      );
-      let bestColor = null;
-      let bestCount = -1;
-      for (const a of agenciesOfType) {
-        const name = String(a.name || "").trim();
-        const suffix = String(a.suffix || "").trim().toUpperCase();
-        const key = name || suffix;
-        if (!key) continue;
-        const count = usersByAgency[key] || 0;
-        if (count > bestCount) {
-          bestCount = count;
-          bestColor = String(a.color || "").trim() || null;
-        }
+    if (isAgencyOnly) {
+      isAgencyDashboard = true;
+      const agencySnap = await dashboardStatsCache.getAgencyDashboardForUser(req.authentikUser);
+      agencyDisplayName = agencySnap.agencyDisplayName || "Agency Dashboard";
+      stats = {
+        totalUsers: agencySnap.stats?.totalUsers ?? 0,
+        totalGroups: agencySnap.stats?.totalGroups ?? 0,
+        totalAgencies: 0,
+        totalIntegrations: 0,
+      };
+      charts = {
+        usersByTemplate: agencySnap.charts?.usersByTemplate || {},
+      };
+      const managed = agencySnap.managedAgencies || [];
+      if (managed.length === 1 && managed[0].color) {
+        templateChartColor = managed[0].color;
       }
-      if (bestColor) typeColors[typeTrim] = bestColor;
-    }
-
-    const viewModel = {
-      stats: {
-        totalUsers: stats?.totalUsers ?? 0,
-        totalGroups: stats?.totalGroups ?? 0,
-        totalAgencies: stats?.totalAgencies ?? 0,
-        totalIntegrations: stats?.totalIntegrations ?? 0,
-      },
-      mutualAid: {
-        activeIncidents: activeIncidentCount,
-        activeEvents: activeEventCount,
-      },
-      charts: charts || {
+    } else {
+      let snap = dashboardStatsCache.getDashboardStatsSnapshot();
+      if (!snap.refreshedAt) {
+        await dashboardStatsCache.refreshNow();
+        snap = dashboardStatsCache.getDashboardStatsSnapshot();
+      }
+      stats = {
+        totalUsers: snap.stats?.totalUsers ?? 0,
+        totalGroups: snap.stats?.totalGroups ?? 0,
+        totalAgencies: snap.stats?.totalAgencies ?? 0,
+        totalIntegrations: snap.stats?.totalIntegrations ?? 0,
+      };
+      charts = snap.charts || {
         usersByAgency: {},
         unknownAgency: 0,
         usersByType: {},
         unknownType: 0,
+      };
+
+      const agencies = agenciesStore.load() || [];
+      for (const a of agencies) {
+        const name = String(a.name || "").trim();
+        const suffix = String(a.suffix || "").trim().toUpperCase();
+        const key = name || suffix;
+        if (key) agencyColors[key] = String(a.color || "").trim() || null;
+      }
+
+      const usersByAgency = charts.usersByAgency || {};
+      for (const type of Object.keys(charts.usersByType || {})) {
+        const typeTrim = String(type || "").trim();
+        if (!typeTrim) continue;
+        const agenciesOfType = (agencies || []).filter(
+          (a) => String(a.type || "").trim() === typeTrim
+        );
+        let bestColor = null;
+        let bestCount = -1;
+        for (const a of agenciesOfType) {
+          const name = String(a.name || "").trim();
+          const suffix = String(a.suffix || "").trim().toUpperCase();
+          const key = name || suffix;
+          if (!key) continue;
+          const count = usersByAgency[key] || 0;
+          if (count > bestCount) {
+            bestCount = count;
+            bestColor = String(a.color || "").trim() || null;
+          }
+        }
+        if (bestColor) typeColors[typeTrim] = bestColor;
+      }
+    }
+
+    const viewModel = {
+      stats,
+      mutualAid: {
+        activeIncidents: activeIncidentCount,
+        activeEvents: activeEventCount,
       },
+      charts,
       agencyColors,
       typeColors,
       bookmarks,
       takMetrics,
-      pendingUserRequestsCount, 
+      pendingUserRequestsCount,
+      isAgencyDashboard,
+      agencyDisplayName,
+      templateChartColor,
     };
 
     res.render("dashboard", viewModel);
@@ -110,6 +137,7 @@ router.get("/", async (req, res) => {
 
     const bookmarks = bookmarksService.loadBookmarks();
     const { takMetrics: cachedTak } = takDashboardCache.getDashboardTakSnapshot();
+    const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
     const viewModel = {
       stats: {
         totalUsers: 0,
@@ -121,17 +149,22 @@ router.get("/", async (req, res) => {
         activeIncidents: 0,
         activeEvents: 0,
       },
-      charts: {
-        usersByAgency: {},
-        unknownAgency: 0,
-        usersByType: {},
-        unknownType: 0,
-      },
+      charts: isAgencyOnly
+        ? { usersByTemplate: {} }
+        : {
+            usersByAgency: {},
+            unknownAgency: 0,
+            usersByType: {},
+            unknownType: 0,
+          },
       agencyColors: {},
       typeColors: {},
       bookmarks,
       takMetrics: cachedTak,
-      pendingUserRequestsCount: userRequestsSvc.countRequestsForUser(req.authentikUser), 
+      pendingUserRequestsCount: userRequestsSvc.countRequestsForUser(req.authentikUser),
+      isAgencyDashboard: isAgencyOnly,
+      agencyDisplayName: isAgencyOnly ? "Agency Dashboard" : null,
+      templateChartColor: null,
       error: err?.response?.data || err?.message || "Failed to load dashboard",
     };
 

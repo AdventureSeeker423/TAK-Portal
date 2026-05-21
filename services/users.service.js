@@ -2411,6 +2411,62 @@ async function searchUsersByAgencyNamePaged({
   };
 }
 
+const AGENCY_DASHBOARD_USER_PAGE_SIZE = 300;
+
+function userPassesAgencySuffixSafety(user, expectedAgencySuffix) {
+  const expected = String(expectedAgencySuffix || "").trim().toLowerCase();
+  if (!expected) return true;
+  const attrs =
+    user && typeof user.attributes === "object" && user.attributes ? user.attributes : {};
+  const agency = String(attrs.agency || "").trim().toLowerCase();
+  if (!agency) return true;
+  return agency === expected;
+}
+
+async function countUsersByAgencyName(agencyName) {
+  const name = String(agencyName || "").trim();
+  if (!name) return 0;
+  const page = await searchUsersByAgencyNamePaged({
+    agencyName: name,
+    page: 1,
+    pageSize: 1,
+    includeGroups: false,
+  });
+  return Number(page.total) || 0;
+}
+
+async function buildUsersByTemplateForAgencyName(agencyName, { expectedAgencySuffix } = {}) {
+  const name = String(agencyName || "").trim();
+  if (!name) return {};
+
+  const counts = Object.create(null);
+  let page = 1;
+  let hasNext = true;
+
+  while (hasNext) {
+    const result = await searchUsersByAgencyNamePaged({
+      agencyName: name,
+      page,
+      pageSize: AGENCY_DASHBOARD_USER_PAGE_SIZE,
+      includeGroups: false,
+    });
+
+    for (const u of result.users || []) {
+      if (!userPassesAgencySuffixSafety(u, expectedAgencySuffix)) continue;
+      const attrs =
+        u && typeof u.attributes === "object" && u.attributes ? u.attributes : {};
+      const tmpl = String(attrs.current_template || "").trim();
+      if (!tmpl || tmpl === "Manual Group Selection") continue;
+      counts[tmpl] = (counts[tmpl] || 0) + 1;
+    }
+
+    hasNext = result.hasNext;
+    page += 1;
+  }
+
+  return counts;
+}
+
 async function resetPassword(userId, password) {
   await assertUserNotActionLocked(userId);
   const err = validatePassword(password);
@@ -3667,6 +3723,8 @@ module.exports = {
   searchUsersByAgencyAbbreviationPaged,
   searchUsersByAgencySuffixPaged,
   searchUsersByAgencyNamePaged,
+  countUsersByAgencyName,
+  buildUsersByTemplateForAgencyName,
   resetPassword,
   resendOnboardingEmail,
   updateEmail,
