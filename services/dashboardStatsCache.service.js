@@ -225,6 +225,7 @@ function resolveManagedAgenciesForUser(authUser) {
     byNameKey.set(key, {
       name,
       suffix: norm,
+      groupPrefix: String(agency.groupPrefix || "").trim().toUpperCase(),
       color: String(agency.color || "").trim() || null,
     });
   }
@@ -232,7 +233,7 @@ function resolveManagedAgenciesForUser(authUser) {
   return Array.from(byNameKey.values());
 }
 
-async function refreshAgencyNow(agencyName, { expectedAgencySuffix, authUser } = {}) {
+async function refreshAgencyNow(agencyName, { expectedAgencySuffix, groupPrefix, authUser } = {}) {
   const name = String(agencyName || "").trim();
   const key = normalizeAgencyNameKey(name);
   if (!key) {
@@ -252,9 +253,10 @@ async function refreshAgencyNow(agencyName, { expectedAgencySuffix, authUser } =
         groupsService.getAllGroups(),
       ]);
 
-      const filteredGroups = authUser
-        ? accessSvc.filterGroupsForUser(authUser, groups || [])
-        : groups || [];
+      const filteredGroups = accessSvc.filterAgencySpecificGroupsForDashboard(
+        groups || [],
+        groupPrefix
+      );
 
       const entry = {
         agencyName: name,
@@ -295,7 +297,10 @@ async function refreshAgencyNow(agencyName, { expectedAgencySuffix, authUser } =
   return refreshPromise;
 }
 
-async function getAgencyDashboardSnapshot(agencyName, { expectedAgencySuffix, authUser } = {}) {
+async function getAgencyDashboardSnapshot(
+  agencyName,
+  { expectedAgencySuffix, groupPrefix, authUser } = {}
+) {
   const name = String(agencyName || "").trim();
   const key = normalizeAgencyNameKey(name);
   if (!key) {
@@ -313,7 +318,7 @@ async function getAgencyDashboardSnapshot(agencyName, { expectedAgencySuffix, au
     return cached;
   }
 
-  return refreshAgencyNow(name, { expectedAgencySuffix, authUser });
+  return refreshAgencyNow(name, { expectedAgencySuffix, groupPrefix, authUser });
 }
 
 function mergeAgencySnapshots(snapshots) {
@@ -334,9 +339,7 @@ function mergeAgencySnapshots(snapshots) {
       const t = snap.refreshedAt instanceof Date ? snap.refreshedAt : new Date(snap.refreshedAt);
       if (!refreshedAt || t > refreshedAt) refreshedAt = t;
     }
-    if (snap?.stats?.totalGroups != null) {
-      totalGroups = Number(snap.stats.totalGroups) || 0;
-    }
+    totalGroups += Number(snap?.stats?.totalGroups) || 0;
     if (snap?.error) errors.push(snap.error);
   }
 
@@ -365,6 +368,7 @@ async function getAgencyDashboardForUser(authUser) {
     managed.map((agency) =>
       getAgencyDashboardSnapshot(agency.name, {
         expectedAgencySuffix: agency.suffix,
+        groupPrefix: agency.groupPrefix,
         authUser,
       })
     )
