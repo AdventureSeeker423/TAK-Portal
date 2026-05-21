@@ -5,9 +5,11 @@
  */
 
 const settingsSvc = require("./settings.service");
-const { getTakMetricsSnapshot, getSubscriptionsAll } = require("./takMetrics.service");
-
-const NODERED_PREFIX = "nodered-";
+const {
+  getTakMetricsSnapshot,
+  getSubscriptionsAll,
+  applySubscriptionMetricsSplit,
+} = require("./takMetrics.service");
 
 const DEFAULT_REFRESH_SECONDS = 15;
 const MIN_REFRESH_SECONDS = 5;
@@ -34,24 +36,6 @@ function parseRefreshSeconds() {
   return Math.floor(seconds);
 }
 
-function applyNoderedSplit(takMetricsBase, subscriptions) {
-  let takMetrics = takMetricsBase;
-  if (takMetrics && takMetrics.configured && subscriptions) {
-    const list = Array.isArray(subscriptions.data) ? subscriptions.data : [];
-    const noderedCount = list.filter((item) => {
-      const u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
-      return u.indexOf(NODERED_PREFIX) === 0;
-    }).length;
-    const total = typeof takMetrics.connectedClients === "number" ? takMetrics.connectedClients : 0;
-    takMetrics = {
-      ...takMetrics,
-      connectedClients: Math.max(0, total - noderedCount),
-      connectedIntegrations: noderedCount,
-    };
-  }
-  return takMetrics;
-}
-
 async function refreshNow() {
   if (_refreshInFlight) return _refreshInFlight;
 
@@ -62,7 +46,7 @@ async function refreshNow() {
         getTakMetricsSnapshot().catch(() => null),
         getSubscriptionsAll().catch(() => null),
       ]);
-      _state.takMetrics = applyNoderedSplit(takMetricsBase, subscriptions);
+      _state.takMetrics = applySubscriptionMetricsSplit(takMetricsBase, subscriptions);
       _state.refreshedAt = new Date();
       return _state.takMetrics;
     } catch (err) {

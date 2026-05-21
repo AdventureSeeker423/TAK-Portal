@@ -468,6 +468,80 @@ async function getTakMetricsSnapshot() {
 
 // ---- Marti subscriptions (connected clients list) ----
 
+const NODERED_PREFIX = "nodered-";
+
+/**
+ * Federation hubs often appear with long colon-separated hex token usernames
+ * (not portal/TAK usernames). Hide these from Connected Users and exclude from counts.
+ */
+function isFederationTokenUsername(username) {
+  const u = String(username || "").trim();
+  if (!u || u.indexOf(":") < 0) return false;
+  const parts = u.split(":");
+  if (parts.length < 6) return false;
+  return parts.every((part) => /^[0-9a-f]{2}$/i.test(part));
+}
+
+function isNoderedUsername(username) {
+  const u = String(username || "").trim().toLowerCase();
+  return u.indexOf(NODERED_PREFIX) === 0;
+}
+
+function isExcludedConnectedUserSubscription(item) {
+  const username = item && item.username;
+  return isNoderedUsername(username) || isFederationTokenUsername(username);
+}
+
+function filterConnectedUserSubscriptions(list, options = {}) {
+  const accessSvc = require("./access.service");
+  const { authUser = null, agencyOnly = false } = options;
+  return (Array.isArray(list) ? list : []).filter((item) => {
+    if (isExcludedConnectedUserSubscription(item)) return false;
+    if (agencyOnly && authUser) {
+      return accessSvc.isUsernameInAllowedAgencies(authUser, item && item.username);
+    }
+    return true;
+  });
+}
+
+function computeSubscriptionExclusionCounts(list, options = {}) {
+  const accessSvc = require("./access.service");
+  const { authUser = null, agencyOnly = false } = options;
+  let noderedCount = 0;
+  let federationCount = 0;
+
+  for (const item of Array.isArray(list) ? list : []) {
+    const username = item && item.username;
+    if (isNoderedUsername(username)) {
+      if (
+        !agencyOnly ||
+        !authUser ||
+        accessSvc.isUsernameInAllowedAgencies(authUser, username)
+      ) {
+        noderedCount += 1;
+      }
+    } else if (isFederationTokenUsername(username)) {
+      federationCount += 1;
+    }
+  }
+
+  return { noderedCount, federationCount };
+}
+
+function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = {}) {
+  if (!takMetricsBase || !subscriptions) return takMetricsBase;
+  const list = Array.isArray(subscriptions.data) ? subscriptions.data : [];
+  const { noderedCount, federationCount } = computeSubscriptionExclusionCounts(list, options);
+  const total =
+    typeof takMetricsBase.connectedClients === "number" ? takMetricsBase.connectedClients : 0;
+
+  return {
+    ...takMetricsBase,
+    connectedClients: Math.max(0, total - noderedCount - federationCount),
+    connectedIntegrations: noderedCount,
+  };
+}
+
 async function fetchSubscriptionsAll() {
   const takUrl = getString("TAK_URL", "");
   if (!String(takUrl || "").trim()) {
@@ -525,4 +599,9 @@ module.exports = {
   getTakMetricsSnapshot,
   getSubscriptionsAll,
   buildTakMtlsHttpsAgent,
+  isFederationTokenUsername,
+  isNoderedUsername,
+  isExcludedConnectedUserSubscription,
+  filterConnectedUserSubscriptions,
+  applySubscriptionMetricsSplit,
 };

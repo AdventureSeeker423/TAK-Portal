@@ -1,8 +1,10 @@
 const router = require("express").Router();
-const { getTakMetricsSnapshot, getSubscriptionsAll } = require("../services/takMetrics.service");
-const accessSvc = require("../services/access.service");
-
-const NODERED_PREFIX = "nodered-";
+const {
+  getTakMetricsSnapshot,
+  getSubscriptionsAll,
+  applySubscriptionMetricsSplit,
+  filterConnectedUserSubscriptions,
+} = require("../services/takMetrics.service");
 
 router.get("/metrics", async (req, res) => {
   const user = req.authentikUser;
@@ -10,22 +12,14 @@ router.get("/metrics", async (req, res) => {
   if (!isAdmin) return res.status(403).json({ error: "Forbidden" });
 
   try {
-    const metrics = await getTakMetricsSnapshot();
+    let metrics = await getTakMetricsSnapshot();
     try {
       const sub = await getSubscriptionsAll();
-      const list = Array.isArray(sub.data) ? sub.data : [];
       const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
-      const noderedCount = list.filter((item) => {
-        const u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
-        if (u.indexOf(NODERED_PREFIX) !== 0) return false;
-        if (isAgencyOnly) {
-          return accessSvc.isUsernameInAllowedAgencies(user, item && item.username);
-        }
-        return true;
-      }).length;
-      const total = typeof metrics.connectedClients === "number" ? metrics.connectedClients : 0;
-      metrics.connectedClients = Math.max(0, total - noderedCount);
-      metrics.connectedIntegrations = noderedCount;
+      metrics = applySubscriptionMetricsSplit(metrics, sub, {
+        authUser: user,
+        agencyOnly: isAgencyOnly,
+      });
     } catch (_) {
       // leave metrics.connectedClients as-is if subscriptions fetch fails
     }
@@ -44,11 +38,12 @@ router.get("/subscriptions", async (req, res) => {
 
   try {
     const result = await getSubscriptionsAll();
-    // TAK subscription rows only include usernames (no Authentik attributes).
-    if (result.data && result.configured && user && user.isAgencyAdmin && !user.isGlobalAdmin) {
-      result.data = result.data.filter((item) =>
-        accessSvc.isUsernameInAllowedAgencies(user, item && item.username)
-      );
+    if (result.data && result.configured) {
+      const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
+      result.data = filterConnectedUserSubscriptions(result.data, {
+        authUser: user,
+        agencyOnly: isAgencyOnly,
+      });
     }
     return res.json(result);
   } catch (err) {
