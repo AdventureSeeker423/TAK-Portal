@@ -746,8 +746,10 @@ app.get("/audit-log", requirePermission("page.audit_log"), async (req, res) => {
   }
 
   const pageLinks = {
+    first: buildLink(1),
     prev: buildLink(Math.max(1, result.page - 1)),
     next: buildLink(Math.min(result.pageCount, result.page + 1)),
+    last: buildLink(result.pageCount),
   };
 
   return res.render("audit-log", {

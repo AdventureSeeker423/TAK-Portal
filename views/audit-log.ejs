@@ -202,12 +202,17 @@
     </table>
 
     <!-- Pagination -->
-    <% if (result && result.pageCount > 1) { %>
-      <div class="pagination">
-        <a class="btn" href="<%= pageLinks.prev %>" <%= result.page <= 1 ? 'disabled' : '' %>>Prev</a>
-        <span id="pageInfoTop">Page <%= result.page %> of <%= result.pageCount %></span>
-        <a class="btn" href="<%= pageLinks.next %>" <%= result.page >= result.pageCount ? 'disabled' : '' %>>Next</a>
-      </div>
+    <% if (result && result.pageCount > 1) {
+      const atFirst = result.page <= 1;
+      const atLast = result.page >= result.pageCount;
+    %>
+      <nav class="audit-pagination" aria-label="Audit log pages">
+        <% if (atFirst) { %><span class="btn disabled" aria-disabled="true">First</span><% } else { %><a class="btn" href="<%= pageLinks.first %>">First</a><% } %>
+        <% if (atFirst) { %><span class="btn disabled" aria-disabled="true">Prev</span><% } else { %><a class="btn" href="<%= pageLinks.prev %>">Prev</a><% } %>
+        <span class="audit-page-info" id="auditPageInfo">Page <%= result.page %> of <%= result.pageCount %></span>
+        <% if (atLast) { %><span class="btn disabled" aria-disabled="true">Next</span><% } else { %><a class="btn" href="<%= pageLinks.next %>">Next</a><% } %>
+        <% if (atLast) { %><span class="btn disabled" aria-disabled="true">Last</span><% } else { %><a class="btn" href="<%= pageLinks.last %>">Last</a><% } %>
+      </nav>
     <% } %>
 
   </div>
@@ -305,6 +310,37 @@
 .audit-date-input{
   width:auto;
   min-width:140px;
+}
+
+.audit-pagination{
+  margin:16px 0 8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:8px;
+  width:100%;
+  font-size:14px;
+}
+.audit-pagination .btn{
+  padding:4px 14px;
+  border-radius:999px;
+  min-width:4.5rem;
+  text-align:center;
+  text-decoration:none;
+}
+.audit-pagination .btn.disabled{
+  opacity:0.45;
+  cursor:default;
+  pointer-events:none;
+}
+.audit-page-info{
+  padding:4px 12px;
+  border-radius:999px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+  font-size:13px;
+  white-space:nowrap;
 }
 
 .modalOverlay{
