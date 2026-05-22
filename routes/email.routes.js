@@ -8,8 +8,101 @@ const auditSvc = require("../services/auditLog.service");
 const { renderTemplate, htmlToText } = require("../services/emailTemplates.service");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 
+const AGENCY_ADMIN_GROUP_NAME_PK_CACHE_TTL_MS =
+  parseInt(process.env.AGENCY_ADMIN_GROUP_NAME_PK_CACHE_TTL_MS, 10) ||
+  5 * 60 * 1000;
+let _agencyAdminGroupsNameLowerToPkCache = {
+  loadedAt: 0,
+  map: new Map(),
+};
+
 function toErrorPayload(err) {
   return toSafeApiError(err);
+}
+
+function normalizeLegacyAdminGroupList(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(/[;,]/)
+    .map((g) => String(g || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function getAgencyAdminGroupNamesForAgency(agency) {
+  const names = new Set();
+  for (const n of accessSvc.getAllAgencyAdminGroupNames(agency)) {
+    const t = String(n || "").trim().toLowerCase();
+    if (t) names.add(t);
+  }
+  const rawAdmin =
+    agency.adminGroups != null ? agency.adminGroups : agency.adminGroup;
+  for (const n of normalizeLegacyAdminGroupList(rawAdmin)) {
+    names.add(n);
+  }
+  return Array.from(names);
+}
+
+async function getAllHiddenGroupsNameLowerToPk() {
+  const now = Date.now();
+  const cacheValid =
+    _agencyAdminGroupsNameLowerToPkCache &&
+    _agencyAdminGroupsNameLowerToPkCache.loadedAt &&
+    now - _agencyAdminGroupsNameLowerToPkCache.loadedAt <
+      AGENCY_ADMIN_GROUP_NAME_PK_CACHE_TTL_MS &&
+    _agencyAdminGroupsNameLowerToPkCache.map &&
+    _agencyAdminGroupsNameLowerToPkCache.map.size > 0;
+
+  if (cacheValid) return _agencyAdminGroupsNameLowerToPkCache.map;
+
+  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  const nameLowerToPk = new Map(
+    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+      String(g?.name || "").trim().toLowerCase(),
+      String(g?.pk ?? g?.id ?? "").trim() || null,
+    ])
+  );
+
+  _agencyAdminGroupsNameLowerToPkCache = {
+    loadedAt: now,
+    map: nameLowerToPk,
+  };
+
+  return nameLowerToPk;
+}
+
+async function resolveAgencyAdminGroupPks({ access, agencySuffixes }) {
+  const suffixSet = new Set(
+    (Array.isArray(agencySuffixes) ? agencySuffixes : [])
+      .map((s) => String(s || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  if (!suffixSet.size) return [];
+
+  const allowedSuffixes = access.isGlobalAdmin
+    ? null
+    : (access.allowedAgencySuffixes || [])
+        .map((s) => String(s || "").trim().toLowerCase())
+        .filter(Boolean);
+
+  const agencies = agenciesStore.load();
+  const matching = agencies.filter((a) => {
+    const sfx = String(a?.suffix || "").trim().toLowerCase();
+    if (!sfx || !suffixSet.has(sfx)) return false;
+    if (!access.isGlobalAdmin) {
+      if (!allowedSuffixes || !allowedSuffixes.includes(sfx)) return false;
+    }
+    return true;
+  });
+
+  const nameLowerToPk = await getAllHiddenGroupsNameLowerToPk();
+  const pks = new Set();
+  for (const agency of matching) {
+    for (const nameLower of getAgencyAdminGroupNamesForAgency(agency)) {
+      const pk = nameLowerToPk.get(nameLower);
+      if (pk) pks.add(pk);
+    }
+  }
+  return Array.from(pks);
 }
 
 // GET /api/email/meta
@@ -84,6 +177,44 @@ async function resolveRecipients({ authUser, mode, agencies, groupIds, usernames
         resolvedSuffix && suffixSet.has(String(resolvedSuffix).toLowerCase());
       return match && isUserInAllowedAgency(u);
     });
+  } else if (mode === "agency_admins") {
+    if (!access.isGlobalAdmin) {
+      const err = new Error("Forbidden");
+      err.statusCode = 403;
+      throw err;
+    }
+    const suffixes =
+      Array.isArray(agencies) && agencies.length
+        ? agencies.map((a) => String(a || "").trim().toLowerCase())
+        : [];
+    const groupPks = await resolveAgencyAdminGroupPks({
+      access,
+      agencySuffixes: suffixes,
+    });
+    if (!groupPks.length) return [];
+    users = await usersSvc.getUsersByGroups(groupPks, {
+      includeHiddenPrefixes: false,
+    });
+    users = users.filter((u) => isUserInAllowedAgency(u));
+  } else if (mode === "all_agency_admins") {
+    if (!access.isGlobalAdmin) {
+      const err = new Error("Forbidden");
+      err.statusCode = 403;
+      throw err;
+    }
+    const allSuffixes = agenciesStore
+      .load()
+      .map((a) => String(a?.suffix || "").trim().toLowerCase())
+      .filter(Boolean);
+    const groupPks = await resolveAgencyAdminGroupPks({
+      access,
+      agencySuffixes: allSuffixes,
+    });
+    if (!groupPks.length) return [];
+    users = await usersSvc.getUsersByGroups(groupPks, {
+      includeHiddenPrefixes: false,
+    });
+    users = users.filter((u) => isUserInAllowedAgency(u));
   } else if (mode === "groups") {
     const groupList = Array.isArray(groupIds) ? groupIds : [];
     if (!groupList.length) return [];
