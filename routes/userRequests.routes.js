@@ -17,13 +17,22 @@ router.post("/", async (req, res) => {
   try {
     const created = await userRequestsSvc.createRequest(req.body || {});
 
+    const body = req.body || {};
     auditSvc.logEvent({
       actor: req.authentikUser || null,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "CREATE_ACCESS_REQUEST",
       targetType: "user_request",
       targetId: String(created?.id || ""),
-      details: req.body || {},
+      details: {
+        source: "api",
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        badgeNumber: body.badgeNumber,
+        agencySuffix: body.agencySuffix,
+        otherAgency: body.otherAgency,
+      },
     });
 
     return res.json({ success: true, request: created });
@@ -50,10 +59,15 @@ router.delete("/:id", requireUserRequestsApi, (req, res) => {
   auditSvc.logEvent({
     actor: req.authentikUser || null,
     request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
-    action: "DELETE_ACCESS_REQUEST",
+    action: "REJECT_ACCESS_REQUEST",
     targetType: "user_request",
     targetId: String(req.params.id),
-    details: before,
+    details: {
+      request: before,
+      summary: before
+        ? `Rejected access request for ${before.firstName || ""} ${before.lastName || ""} (${before.email || "no email"}).`
+        : "Rejected access request.",
+    },
   });
 
   return res.json({ success: true });

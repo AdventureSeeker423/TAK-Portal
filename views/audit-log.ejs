@@ -752,6 +752,7 @@
     while (page <= pageCount) {
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
+      if (page === 1) params.set("export", "1");
 
       const res = await fetch(`/api/audit-log?${params.toString()}`);
       const out = await res.json().catch(() => ({}));

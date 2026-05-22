@@ -479,6 +479,19 @@ router.post("/:username/datafeed", async (req, res) => {
       tak_data_feed_port: dataFeedPayload.port,
     });
 
+    auditSvc.auditFromRequest(req, {
+      action: "CREATE_INTEGRATION_DATAFEED",
+      targetType: "user",
+      targetId: String(user.pk || ""),
+      details: {
+        username: user.username,
+        dataFeedName,
+        port: dataFeedPayload.port,
+        protocol: dataFeedPayload.protocol,
+        summary: `Created TAK data feed "${dataFeedName}" for integration ${user.username}.`,
+      },
+    });
+
     res.json({ message: "Data Feed successfully created and bound to Integration." });
   } catch (err) {
     const upstreamError = err?.response?.data?.message || err?.message || String(err);

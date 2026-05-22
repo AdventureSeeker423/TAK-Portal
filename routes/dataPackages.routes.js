@@ -3,6 +3,7 @@ const multer = require("multer");
 const { isTakConfigured } = require("../services/tak.service");
 const { getBool, getString } = require("../services/env");
 const dataPackagesSvc = require("../services/dataPackages.service");
+const auditSvc = require("../services/auditLog.service");
 
 const router = express.Router();
 
@@ -88,6 +89,16 @@ router.post("/packages/upload", upload.single("file"), async (req, res) => {
       tool: "public",
       creator_uid: req.body && req.body.creator_uid ? String(req.body.creator_uid) : "",
     });
+    auditSvc.auditFromRequest(req, {
+      action: "DATA_PACKAGE_UPLOADED",
+      targetType: "data_package",
+      targetId: String(out?.hash || out?.uid || file.originalname || ""),
+      details: {
+        fileName: String(file.originalname || ""),
+        sizeBytes: file.size,
+        summary: `Uploaded data package ${file.originalname || "(unnamed)"}.`,
+      },
+    });
     return res.json(out);
   } catch (err) {
     return sendTakError(res, err);
@@ -117,6 +128,12 @@ router.get("/packages/download", async (req, res) => {
     if (cd) res.setHeader("Content-Disposition", cd);
     const cl = r.headers["content-length"];
     if (cl) res.setHeader("Content-Length", cl);
+    auditSvc.auditFromRequest(req, {
+      action: "DATA_PACKAGE_DOWNLOADED",
+      targetType: "data_package",
+      targetId: hash,
+      details: { summary: `Downloaded data package ${hash}.` },
+    });
     r.data.pipe(res);
   } catch (err) {
     return sendTakError(res, err);
@@ -127,6 +144,12 @@ router.delete("/packages/:hash", async (req, res) => {
   try {
     const hash = req.params.hash;
     const out = await dataPackagesSvc.deleteDataPackage(hash);
+    auditSvc.auditFromRequest(req, {
+      action: "DATA_PACKAGE_DELETED",
+      targetType: "data_package",
+      targetId: hash,
+      details: { summary: `Deleted data package ${hash}.` },
+    });
     return res.json(out || { ok: true });
   } catch (err) {
     return sendTakError(res, err);
@@ -136,11 +159,24 @@ router.delete("/packages/:hash", async (req, res) => {
 router.put("/packages/:hash/metadata", async (req, res) => {
   try {
     const body = req.body && typeof req.body === "object" ? req.body : {};
-    const out = await dataPackagesSvc.updateDataPackageMetadata(req.params.hash, {
+    const hash = req.params.hash;
+    const out = await dataPackagesSvc.updateDataPackageMetadata(hash, {
       tool: body.tool,
       keywords: body.keywords,
       installOnEnrollment: body.installOnEnrollment,
       installOnConnection: body.installOnConnection,
+    });
+    auditSvc.auditFromRequest(req, {
+      action: "DATA_PACKAGE_METADATA_UPDATED",
+      targetType: "data_package",
+      targetId: hash,
+      details: {
+        tool: body.tool,
+        keywords: body.keywords,
+        installOnEnrollment: body.installOnEnrollment,
+        installOnConnection: body.installOnConnection,
+        summary: `Updated metadata for data package ${hash}.`,
+      },
     });
     return res.json(out);
   } catch (err) {

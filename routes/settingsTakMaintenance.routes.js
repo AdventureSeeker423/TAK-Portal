@@ -2,6 +2,7 @@ const router = require("express").Router();
 const locateConfig = require("../services/locateConfig.service");
 const takSshSvc = require("../services/takSsh.service");
 const takMaint = require("../services/takMaintenance.service");
+const auditSvc = require("../services/auditLog.service");
 
 function ensureSsh(req, res, next) {
   if (!locateConfig.isSshConfigured().configured) {
@@ -17,6 +18,15 @@ function ensureSsh(req, res, next) {
  * still completes. Respond immediately and run the SSH command in the background.
  */
 router.post("/restart-service", ensureSsh, (req, res) => {
+  auditSvc.auditFromRequest(req, {
+    action: "TAK_SERVER_RESTART_QUEUED",
+    targetType: "tak_server",
+    targetId: "takserver",
+    details: {
+      command: "sudo systemctl restart takserver",
+      summary: "Queued TAK Server service restart over SSH.",
+    },
+  });
   void takSshSvc
     .runRemoteSshCommand("sudo systemctl restart takserver", 120000)
     .then((result) => {
@@ -41,6 +51,15 @@ router.post("/reboot-server", ensureSsh, async (req, res) => {
     if (!result.ok) {
       return res.status(400).json({ ok: false, error: result.message || "Reboot failed." });
     }
+    auditSvc.auditFromRequest(req, {
+      action: "TAK_SERVER_REBOOT_REQUESTED",
+      targetType: "tak_server",
+      targetId: "host",
+      details: {
+        initiated: !!result.initiated,
+        summary: result.message || "TAK Server host reboot requested over SSH.",
+      },
+    });
     return res.json({
       ok: true,
       initiated: !!result.initiated,

@@ -4,6 +4,7 @@ const router = express.Router();
 const qrSvc = require("../services/qr.service");
 const tokensSvc = require("../services/authentikTokens.service");
 const usersSvc = require("../services/users.service");
+const auditSvc = require("../services/auditLog.service");
 
 function requireLoggedIn(req, res) {
   const u = req.authentikUser;
@@ -58,6 +59,19 @@ router.post("/enroll-qr", async (req, res) => {
     }
 
     const qrCode = await qrSvc.generateDisplayQrDataUrl(enrollUrl);
+
+    auditSvc.auditFromRequest(req, {
+      action: "SELF_SERVICE_ENROLLMENT_QR",
+      targetType: "user",
+      targetId: String(user.username || "").trim().toLowerCase(),
+      details: {
+        username: user.username,
+        tokenIdentifier: identifier,
+        expiresAt,
+        ott: isOtt,
+        summary: `User generated own enrollment QR (${isOtt ? "OTT" : "standard"}).`,
+      },
+    });
 
     return res.json({
       ok: true,

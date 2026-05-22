@@ -528,6 +528,19 @@ router.post("/mass-assign/start", async (req, res) => {
           job.durationMs = durationMs;
           job.durationSeconds = Math.round((durationMs / 1000) * 10) / 10;
         }
+        auditSvc.logEvent({
+          actor: authUser,
+          request: { method: "JOB", path: "/api/groups/mass-assign/start", ip: req.ip },
+          action: "MASS_ASSIGN_USERS_TO_GROUP_FAILED",
+          targetType: "group",
+          targetId: String(payload.groupId || ""),
+          details: {
+            jobId,
+            groupName: targetGroupName || undefined,
+            error: toErrorPayload(err),
+            durationMs,
+          },
+        });
       }
     })();
 
@@ -680,6 +693,19 @@ router.post("/mass-unassign/start", async (req, res) => {
           job.durationMs = durationMs;
           job.durationSeconds = Math.round((durationMs / 1000) * 10) / 10;
         }
+        auditSvc.logEvent({
+          actor: authUser,
+          request: { method: "JOB", path: "/api/groups/mass-unassign/start", ip: req.ip },
+          action: "MASS_UNASSIGN_USERS_FROM_GROUP_FAILED",
+          targetType: "group",
+          targetId: String(payload.groupId || ""),
+          details: {
+            jobId,
+            groupName: targetGroupName || undefined,
+            error: toErrorPayload(err),
+            durationMs,
+          },
+        });
       }
     })();
 
@@ -810,6 +836,27 @@ router.put("/:groupId/admin-access", async (req, res) => {
     }
 
     agencies.save(allAgencies);
+
+    const selectedAgencyNames = [];
+    for (const i of selected) {
+      const ag = allAgencies[i];
+      if (ag) selectedAgencyNames.push(String(ag.name || ag.suffix || i));
+    }
+
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "UPDATE_GROUP_ADMIN_ACCESS",
+      targetType: "group",
+      targetId: groupId,
+      details: {
+        groupName,
+        agenciesUpdated: updated,
+        selectedAgencyIndices: Array.from(selected),
+        selectedAgencyNames,
+        summary: `Updated which agencies can manage group "${groupName}" (${updated} agency record(s) changed).`,
+      },
+    });
 
     return res.json({ success: true, agenciesUpdated: updated });
   } catch (err) {

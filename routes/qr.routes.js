@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const qrSvc = require("../services/qr.service");
+const auditSvc = require("../services/auditLog.service");
 
 /**
  * Generate QR for on-page display (medium resolution)
@@ -28,6 +29,16 @@ router.post("/", async (req, res) => {
     }
 
     const qrCode = await qrSvc.generateDisplayQrDataUrl(enrollUrl);
+
+    auditSvc.auditFromRequest(req, {
+      action: "QR_GENERATED",
+      targetType: "user",
+      targetId: String(username).trim().toLowerCase(),
+      details: {
+        username: String(username).trim(),
+        summary: "Generated on-screen enrollment QR (admin tool).",
+      },
+    });
 
     return res.json({
       qrCode,
@@ -78,6 +89,17 @@ router.get("/download", async (req, res) => {
       "Content-Disposition",
       `attachment; filename="${filename}"`
     );
+
+    auditSvc.auditFromRequest(req, {
+      action: "QR_DOWNLOADED",
+      targetType: "user",
+      targetId: username.toLowerCase(),
+      details: {
+        username,
+        filename,
+        summary: `Downloaded enrollment QR image for ${username}.`,
+      },
+    });
 
     return res.send(finalPng);
   } catch (err) {

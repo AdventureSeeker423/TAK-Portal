@@ -65,6 +65,22 @@ function parseGroupList(raw) {
     .filter(Boolean);
 }
 
+async function resolveGroupLabels(groupIds) {
+  const ids = (Array.isArray(groupIds) ? groupIds : [])
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  if (!ids.length) return { ids: [], names: [] };
+  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  const byPk = new Map(
+    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+      String(g?.pk),
+      String(g?.name || "").trim(),
+    ])
+  );
+  const names = ids.map((id) => byPk.get(id) || id);
+  return { ids, names };
+}
+
 async function getGlobalAdminGroupPks() {
   const raw = String(getString("PORTAL_AUTH_REQUIRED_GROUP", "").trim());
   const namesLower = parseGroupList(raw);
@@ -1384,7 +1400,9 @@ router.post("/:userId/resend-onboarding", async (req, res) => {
 router.put("/:userId/email", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    await users.updateEmail(req.params.userId, req.body?.email);
+    const beforeUser = await users.getUserById(req.params.userId).catch(() => null);
+    const newEmail = String(req.body?.email || "").trim();
+    await users.updateEmail(req.params.userId, newEmail);
     const user = await users.getUserById(req.params.userId).catch(() => null);
 
     auditSvc.logEvent({
@@ -1393,7 +1411,11 @@ router.put("/:userId/email", async (req, res) => {
       action: "UPDATE_USER_EMAIL",
       targetType: "user",
       targetId: String(req.params.userId),
-      details: { username: user?.username ?? null, email: user?.email ?? null },
+      details: {
+        username: user?.username ?? beforeUser?.username ?? null,
+        beforeEmail: beforeUser?.email ?? null,
+        afterEmail: user?.email ?? newEmail ?? null,
+      },
     });
     res.json({ success: true });
   } catch (err) {
@@ -1405,7 +1427,9 @@ router.put("/:userId/email", async (req, res) => {
 router.put("/:userId/name", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    await users.updateName(req.params.userId, req.body?.name);
+    const beforeUser = await users.getUserById(req.params.userId).catch(() => null);
+    const newName = String(req.body?.name || "").trim();
+    await users.updateName(req.params.userId, newName);
     const user = await users.getUserById(req.params.userId).catch(() => null);
     auditSvc.logEvent({
       actor: authUser,
@@ -1413,7 +1437,11 @@ router.put("/:userId/name", async (req, res) => {
       action: "UPDATE_USER_NAME",
       targetType: "user",
       targetId: String(req.params.userId),
-      details: { username: user?.username ?? null, name: user?.name ?? null },
+      details: {
+        username: user?.username ?? beforeUser?.username ?? null,
+        beforeName: beforeUser?.name ?? null,
+        afterName: user?.name ?? newName ?? null,
+      },
     });
     res.json({ success: true });
   } catch (err) {
@@ -1424,6 +1452,11 @@ router.put("/:userId/name", async (req, res) => {
 router.put("/:userId/role", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
+    const beforeUser = await users.getUserById(req.params.userId).catch(() => null);
+    const beforeRole =
+      beforeUser?.attributes?.role != null
+        ? String(beforeUser.attributes.role)
+        : null;
     const role = String(req.body?.role || "").trim() || "Team Member";
     await users.updateUserAttributes(req.params.userId, {
       role,
@@ -1435,7 +1468,11 @@ router.put("/:userId/role", async (req, res) => {
       action: "UPDATE_USER_ROLE",
       targetType: "user",
       targetId: String(req.params.userId),
-      details: { username: user?.username ?? null, role },
+      details: {
+        username: user?.username ?? beforeUser?.username ?? null,
+        beforeRole,
+        afterRole: role,
+      },
     });
     res.json({ success: true, role });
   } catch (err) {
@@ -1446,6 +1483,13 @@ router.put("/:userId/role", async (req, res) => {
 router.put("/:userId/radio-callsign", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
+    const beforeUser = await users.getUserById(req.params.userId).catch(() => null);
+    const beforeCallsign =
+      beforeUser?.attributes?.radio_callsign != null
+        ? String(beforeUser.attributes.radio_callsign)
+        : beforeUser?.attributes?.radioCallsign != null
+          ? String(beforeUser.attributes.radioCallsign)
+          : null;
     const radioCallsign = String(req.body?.radioCallsign ?? "").trim();
     await users.updateRadioCallsign(req.params.userId, radioCallsign);
     const user = await users.getUserById(req.params.userId).catch(() => null);
@@ -1456,8 +1500,9 @@ router.put("/:userId/radio-callsign", async (req, res) => {
       targetType: "user",
       targetId: String(req.params.userId),
       details: {
-        username: user?.username ?? null,
-        radio_callsign: radioCallsign || null,
+        username: user?.username ?? beforeUser?.username ?? null,
+        beforeCallsign,
+        afterCallsign: radioCallsign || null,
       },
     });
     res.json({ success: true, radioCallsign: radioCallsign || null });
@@ -1577,10 +1622,16 @@ router.put("/:userId/groups", async (req, res) => {
     const hasCurrentTemplate = Object.prototype.hasOwnProperty.call(req.body || {}, "currentTemplate");
     const currentTemplate = hasCurrentTemplate ? String(req.body?.currentTemplate || "").trim() : undefined;
     const authUser = req.authentikUser || null;
+    const beforeUser = await users.getUserById(req.params.userId).catch(() => null);
+    const beforeIds = Array.isArray(beforeUser?.groups)
+      ? beforeUser.groups.map(String)
+      : [];
+    const beforeLabels = await resolveGroupLabels(beforeIds);
     await users.setUserGroups(req.params.userId, groupIds, {
       ...(hasCurrentTemplate ? { currentTemplate } : {}),
     });
     const user = await users.getUserById(req.params.userId).catch(() => null);
+    const afterLabels = await resolveGroupLabels(groupIds);
 
     auditSvc.logEvent({
       actor: authUser,
@@ -1589,8 +1640,12 @@ router.put("/:userId/groups", async (req, res) => {
       targetType: "user",
       targetId: String(req.params.userId),
       details: {
-        username: user?.username ?? null,
-        groups: groupIds,
+        username: user?.username ?? beforeUser?.username ?? null,
+        beforeGroupIds: beforeLabels.ids,
+        beforeGroupNames: beforeLabels.names,
+        afterGroupIds: afterLabels.ids,
+        afterGroupNames: afterLabels.names,
+        currentTemplate: hasCurrentTemplate ? currentTemplate : undefined,
       },
     });
     res.json({ success: true, groups: groupIds });
@@ -1605,10 +1660,16 @@ router.post("/:userId/groups", async (req, res) => {
     const hasCurrentTemplate = Object.prototype.hasOwnProperty.call(req.body || {}, "currentTemplate");
     const currentTemplate = hasCurrentTemplate ? String(req.body?.currentTemplate || "").trim() : undefined;
     const authUser = req.authentikUser || null;
+    const beforeUser = await users.getUserById(req.params.userId).catch(() => null);
+    const beforeIds = Array.isArray(beforeUser?.groups)
+      ? beforeUser.groups.map(String)
+      : [];
+    const beforeLabels = await resolveGroupLabels(beforeIds);
     await users.setUserGroups(req.params.userId, groupIds, {
       ...(hasCurrentTemplate ? { currentTemplate } : {}),
     });
     const user = await users.getUserById(req.params.userId).catch(() => null);
+    const afterLabels = await resolveGroupLabels(groupIds);
     auditSvc.logEvent({
       actor: authUser,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
@@ -1616,8 +1677,12 @@ router.post("/:userId/groups", async (req, res) => {
       targetType: "user",
       targetId: String(req.params.userId),
       details: {
-        username: user?.username ?? null,
-        groups: groupIds,
+        username: user?.username ?? beforeUser?.username ?? null,
+        beforeGroupIds: beforeLabels.ids,
+        beforeGroupNames: beforeLabels.names,
+        afterGroupIds: afterLabels.ids,
+        afterGroupNames: afterLabels.names,
+        currentTemplate: hasCurrentTemplate ? currentTemplate : undefined,
       },
     });
     res.json({ success: true, groups: groupIds });
@@ -1633,10 +1698,13 @@ router.post("/:userId/groups/add", async (req, res) => {
     const hasCurrentTemplate = Object.prototype.hasOwnProperty.call(req.body || {}, "currentTemplate");
     const currentTemplate = hasCurrentTemplate ? String(req.body?.currentTemplate || "").trim() : undefined;
     const authUser = req.authentikUser || null;
+    const addedLabels = await resolveGroupLabels(groupIds);
     const out = await users.addUserGroups(req.params.userId, groupIds, {
       ...(hasCurrentTemplate ? { currentTemplate } : {}),
     });
     const user = await users.getUserById(req.params.userId).catch(() => null);
+    const finalIds = Array.isArray(out) ? out.map(String) : groupIds.map(String);
+    const finalLabels = await resolveGroupLabels(finalIds);
 
     auditSvc.logEvent({
       actor: authUser,
@@ -1646,7 +1714,10 @@ router.post("/:userId/groups/add", async (req, res) => {
       targetId: String(req.params.userId),
       details: {
         username: user?.username ?? null,
-        groups: Array.isArray(out) ? out : groupIds,
+        addedGroupIds: addedLabels.ids,
+        addedGroupNames: addedLabels.names,
+        afterGroupIds: finalLabels.ids,
+        afterGroupNames: finalLabels.names,
       },
     });
     res.json({ success: true, groups: out });
@@ -1662,10 +1733,13 @@ router.post("/:userId/groups/remove", async (req, res) => {
     const hasCurrentTemplate = Object.prototype.hasOwnProperty.call(req.body || {}, "currentTemplate");
     const currentTemplate = hasCurrentTemplate ? String(req.body?.currentTemplate || "").trim() : undefined;
     const authUser = req.authentikUser || null;
+    const removedLabels = await resolveGroupLabels(groupIds);
     const out = await users.removeUserGroups(req.params.userId, groupIds, {
       ...(hasCurrentTemplate ? { currentTemplate } : {}),
     });
     const user = await users.getUserById(req.params.userId).catch(() => null);
+    const finalIds = Array.isArray(out) ? out.map(String) : [];
+    const finalLabels = await resolveGroupLabels(finalIds);
 
     auditSvc.logEvent({
       actor: authUser,
@@ -1675,7 +1749,10 @@ router.post("/:userId/groups/remove", async (req, res) => {
       targetId: String(req.params.userId),
       details: {
         username: user?.username ?? null,
-        groups: Array.isArray(out) ? out : groupIds,
+        removedGroupIds: removedLabels.ids,
+        removedGroupNames: removedLabels.names,
+        afterGroupIds: finalLabels.ids,
+        afterGroupNames: finalLabels.names,
       },
     });
     res.json({ success: true, groups: out });
@@ -1688,6 +1765,7 @@ router.put("/:userId/active", async (req, res) => {
   try {
     const isActive = !!req.body?.is_active;
     const authUser = req.authentikUser || null;
+    const beforeUser = await users.getUserById(req.params.userId).catch(() => null);
     await users.toggleUserActive(req.params.userId, isActive);
     const user = await users.getUserById(req.params.userId).catch(() => null);
 
@@ -1697,7 +1775,11 @@ router.put("/:userId/active", async (req, res) => {
       action: "SET_USER_ACTIVE",
       targetType: "user",
       targetId: String(req.params.userId),
-      details: { username: user?.username ?? null, is_active: !!isActive },
+      details: {
+        username: user?.username ?? beforeUser?.username ?? null,
+        beforeActive: !!beforeUser?.is_active,
+        afterActive: !!isActive,
+      },
     });
     res.json({ success: true });
   } catch (err) {
@@ -1717,7 +1799,12 @@ router.delete("/:userId", async (req, res) => {
       action: "DELETE_USER",
       targetType: "user",
       targetId: String(req.params.userId),
-      details: { username: before?.username || null },
+      details: {
+        username: before?.username || null,
+        email: before?.email || null,
+        name: before?.name || null,
+        wasActive: !!before?.is_active,
+      },
     });
     res.json({ success: true });
   } catch (err) {

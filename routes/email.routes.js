@@ -363,6 +363,16 @@ router.post("/send", async (req, res) => {
         .json({ error: result.error || "Email send failed" });
     }
 
+    const agencyList = Array.isArray(agencies)
+      ? agencies.map((a) => String(a || "").trim().toLowerCase()).filter(Boolean)
+      : [];
+    const groupIdList = Array.isArray(groupIds)
+      ? groupIds.map((g) => String(g || "").trim()).filter(Boolean)
+      : [];
+    const usernameList = Array.isArray(usernames)
+      ? usernames.map((u) => String(u || "").trim()).filter(Boolean)
+      : [];
+
     auditSvc.logEvent({
       actor: authUser,
       request: {
@@ -377,6 +387,16 @@ router.post("/send", async (req, res) => {
         mode,
         count: targets.length,
         testOnly,
+        subject: subject.slice(0, 200),
+        agencyCount: agencyList.length,
+        agencies: agencyList.length <= 20 ? agencyList : agencyList.slice(0, 20),
+        groupIdCount: groupIdList.length,
+        groupIds: groupIdList.length <= 15 ? groupIdList : undefined,
+        usernameCount: usernameList.length,
+        usernames: usernameList.length <= 15 ? usernameList : undefined,
+        summary: testOnly
+          ? "Sent bulk email test to self only."
+          : `Sent bulk email (${mode}) to ${targets.length} recipient(s): "${subject.slice(0, 80)}${subject.length > 80 ? "…" : ""}".`,
       },
     });
 

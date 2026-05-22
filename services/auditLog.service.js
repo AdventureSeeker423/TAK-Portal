@@ -130,19 +130,64 @@ function inferAgency({ targetType, targetId, details }) {
   return { agencySuffix: null, agencyName: null, agencyPrefix: null };
 }
 
+const SENSITIVE_DETAIL_KEYS = new Set([
+  "password",
+  "pass",
+  "token",
+  "secret",
+  "key",
+  "pdfbase64",
+  "h-captcha-response",
+  "hcaptcha",
+  "authentik_token",
+  "tak_api_p12_password",
+  "sms_twilio_auth_token",
+  "sms_brevo_api_key",
+  "hcaptcha_secret_key",
+]);
+
 function pruneDetails(details) {
   // Keep logs safe & lightweight: avoid accidentally persisting secrets.
-  // (Passwords should never be logged.)
   if (!details || typeof details !== "object") return null;
+  if (Array.isArray(details)) return details;
   const out = { ...details };
-  // Common sensitive keys
-  delete out.password;
-  delete out.pass;
-  delete out.token;
-  delete out.secret;
-  delete out.AUTHENTIK_TOKEN;
-  delete out.TAK_API_P12_PASSWORD;
+  for (const k of Object.keys(out)) {
+    if (SENSITIVE_DETAIL_KEYS.has(String(k).trim().toLowerCase())) {
+      delete out[k];
+    }
+  }
   return out;
+}
+
+function requestMeta(req) {
+  if (!req) return null;
+  return {
+    method: safeStr(req.method) || "",
+    path: safeStr(req.originalUrl || req.path) || "",
+    ip: safeStr(req.ip) || "",
+  };
+}
+
+/**
+ * Standard audit entry from an Express request (non-throwing).
+ */
+function auditFromRequest(req, payload = {}) {
+  try {
+    logEvent({
+      actor:
+        payload.actor !== undefined ? payload.actor : req?.authentikUser || null,
+      request: payload.request || requestMeta(req),
+      action: payload.action,
+      targetType: payload.targetType,
+      targetId: payload.targetId,
+      details: payload.details,
+      agencySuffix: payload.agencySuffix,
+      agencyName: payload.agencyName,
+      maxItems: payload.maxItems,
+    });
+  } catch (_) {
+    /* logEvent already catches */
+  }
 }
 
 function logEvent(payload) {
@@ -372,6 +417,9 @@ function listDistinctActors({ limit = 250 } = {}) {
 
 module.exports = {
   logEvent,
+  auditFromRequest,
+  requestMeta,
+  pruneDetails,
   queryLogs,
   listDistinctValues,
   listDistinctActors,

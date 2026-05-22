@@ -69,6 +69,26 @@ router.get("/", (req, res) => {
       });
     }
 
+    if (String(req.query.export || "").trim() === "1") {
+      auditSvc.auditFromRequest(req, {
+        action: "AUDIT_LOG_EXPORTED",
+        targetType: "audit_log",
+        targetId: "filtered",
+        details: {
+          filters: {
+            q: query.q,
+            actor: query.actor,
+            action: query.action,
+            targetType: query.targetType,
+            agencySuffix: query.agencySuffix,
+            from: query.from,
+            to: query.to,
+          },
+          summary: "Exported filtered audit log as CSV from the Audit Log page.",
+        },
+      });
+    }
+
     const result = auditSvc.queryLogs(query);
     return res.json(result);
   } catch (err) {

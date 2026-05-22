@@ -186,8 +186,27 @@ router.put("/:index/access-groups", (req, res) => {
   const list = Array.isArray(raw)
     ? raw.map((id) => String(id).trim()).filter(Boolean)
     : [];
+  const before = Array.isArray(agencies[idx].allowedAdminGroupIds)
+    ? agencies[idx].allowedAdminGroupIds.slice()
+    : [];
   agencies[idx].allowedAdminGroupIds = list;
   store.save(agencies);
+  const agency = agencies[idx];
+  auditSvc.logEvent({
+    actor: req.authentikUser || null,
+    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    action: "UPDATE_AGENCY_ACCESS_GROUPS",
+    targetType: "agency",
+    targetId: String(agency?.suffix || ""),
+    details: {
+      agencyName: String(agency?.name || ""),
+      beforeCount: before.length,
+      afterCount: list.length,
+      beforeGroupIds: before,
+      afterGroupIds: list,
+      summary: `Updated extra admin-access groups for agency ${agency?.name || agency?.suffix || ""}.`,
+    },
+  });
   return res.json({ allowedAdminGroupIds: list });
 });
 
@@ -892,9 +911,24 @@ router.post("/:index/lookup/domain", (req, res) => {
     return res.status(400).json({ error: e?.message || "Invalid domain list" });
   }
 
+  const agency = agencies[idx];
+  const beforeDomain = String(agency.lookupDomain || "");
   agencies[idx].lookupDomain = normalized;
 
   store.save(agencies);
+
+  auditSvc.logEvent({
+    actor: req.authentikUser || null,
+    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    action: "UPDATE_AGENCY_LOOKUP_DOMAIN",
+    targetType: "agency",
+    targetId: String(agency?.suffix || ""),
+    details: {
+      beforeDomain,
+      afterDomain: normalized,
+      lookupEnabled: agency.lookupEnabled === true,
+    },
+  });
 
   return res.json({ success: true, lookupDomain: normalized });
 });
@@ -925,10 +959,23 @@ router.post("/:index/lookup/enable", (req, res) => {
     return res.status(404).json({ error: "Agency not found" });
   }
 
+  const agency = agencies[idx];
   agencies[idx].lookupEnabled = true;
   agencies[idx].lookupDomain = normalized;
 
   store.save(agencies);
+
+  auditSvc.logEvent({
+    actor: req.authentikUser || null,
+    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    action: "ENABLE_AGENCY_LOOKUP",
+    targetType: "agency",
+    targetId: String(agency?.suffix || ""),
+    details: {
+      lookupDomain: normalized,
+      summary: `Enabled enrollment lookup for agency ${agency?.name || agency?.suffix || ""}.`,
+    },
+  });
 
   return res.json({ success: true });
 });
@@ -948,9 +995,22 @@ router.post("/:index/lookup/disable", (req, res) => {
     return res.status(404).json({ error: "Agency not found" });
   }
 
+  const agency = agencies[idx];
   agencies[idx].lookupEnabled = false;
 
   store.save(agencies);
+
+  auditSvc.logEvent({
+    actor: req.authentikUser || null,
+    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    action: "DISABLE_AGENCY_LOOKUP",
+    targetType: "agency",
+    targetId: String(agency?.suffix || ""),
+    details: {
+      lookupDomain: String(agency.lookupDomain || ""),
+      summary: `Disabled enrollment lookup for agency ${agency?.name || agency?.suffix || ""}.`,
+    },
+  });
 
   return res.json({ success: true });
 });

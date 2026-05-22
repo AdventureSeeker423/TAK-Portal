@@ -182,7 +182,17 @@ Sent from TAK Portal.
       action: "EMAIL_MUTUAL_AID_PACKET",
       targetType: "mutual_aid",
       targetId: String(id),
-      details: { to: String(toRaw), filename: String(filename) },
+      details: {
+        to: String(toRaw),
+        filename: String(filename),
+        mutualAidType: item?.type,
+        mutualAidTitle: item?.title,
+        groupName: item?.groupName,
+        username: item?.username,
+        summary: item
+          ? `Emailed mutual aid packet for ${item.type} — ${item.title}.`
+          : "Emailed mutual aid deployment packet.",
+      },
     });
 
     res.json({ success: true });
