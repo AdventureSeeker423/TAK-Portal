@@ -5,9 +5,9 @@ const path = require("path");
 // plain JSON array persisted under /data.
 const FILE = path.join(__dirname, "../data/audit-log.json");
 
-/** Max on-disk size for audit-log.json before oldest entries are dropped. */
+/** Max on-disk size for audit-log.json before oldest entries are dropped (default 5 GB). */
 const MAX_FILE_BYTES =
-  parseInt(process.env.AUDIT_LOG_MAX_FILE_BYTES, 10) || 2 * 1024 * 1024 * 1024;
+  parseInt(process.env.AUDIT_LOG_MAX_FILE_BYTES, 10) || 5 * 1024 * 1024 * 1024;
 
 /** Trim target — stay under max so we do not re-trim on every write. */
 const TRIM_TARGET_BYTES = Math.floor(MAX_FILE_BYTES * 0.92);
