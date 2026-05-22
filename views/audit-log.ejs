@@ -1,5 +1,12 @@
 <%- include("partials/header") %>
 <%- include("partials/sidebar") %>
+<%
+  function formatAuditAction(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "—";
+    return s.replace(/_/g, " ");
+  }
+%>
 
 <main class="main">
 
@@ -56,7 +63,7 @@
               <% (actionOptions || []).forEach(function(a) { %>
                 <label class="filter-option">
                   <input type="checkbox" value="<%= a %>" data-filter-value="<%= a %>">
-                  <span><%= a %></span>
+                  <span><%= formatAuditAction(a) %></span>
                 </label>
               <% }); %>
             </div>
@@ -125,7 +132,7 @@
 
             <!-- Action -->
             <td>
-              <span class="badge"><%= log.action || '—' %></span>
+              <span class="badge"><%= formatAuditAction(log.action) %></span>
             </td>
 
           <!-- Target (names from details or userMap/groupMap, fallback to ID) -->
@@ -532,6 +539,12 @@
     return div.innerHTML;
   }
 
+  function formatAuditAction(raw) {
+    const s = String(raw || "").trim();
+    if (!s || s === "—") return "—";
+    return s.replace(/_/g, " ");
+  }
+
   function closeModal(){
     const existing = document.querySelector('.modalOverlay');
     if (existing) existing.remove();
@@ -543,7 +556,7 @@
 
     const tr = btn.closest('tr');
     const raw = tr.getAttribute('data-details');
-    const action = tr.getAttribute('data-action') || '—';
+    const action = formatAuditAction(tr.getAttribute('data-action') || '');
     const targetType = tr.getAttribute('data-target-type') || '—';
     const targetId = tr.getAttribute('data-target-id') || '—';
 
@@ -723,6 +736,12 @@
     return displayName || username || "—";
   }
 
+  function formatAuditAction(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "—";
+    return s.replace(/_/g, " ");
+  }
+
   function targetLabel(item) {
     const type = String(item?.targetType || "").trim().toLowerCase();
     const targetTypeOut = String(item?.targetType || "").trim() || "—";
@@ -803,7 +822,7 @@
         rows.push([
           formatTimestamp(item?.timestamp || ""),
           actorLabel(item?.actor),
-          String(item?.action || "—"),
+          formatAuditAction(item?.action),
           targetLabel(item),
           agencyLabel(item),
           JSON.stringify(item?.details || {}),
