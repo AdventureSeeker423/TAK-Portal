@@ -12,6 +12,11 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.20 - 5/22/26
+✨ `Enhancement` - Updated logging service to include more events<br>
+✨ `Enhancement` - Limited log file to 5gb max<br>
+✨ `Enhancement` - Added ability for global admins to email agency admins
+
 ### v1.3.19 - 5/20/26
 ✨ `Enhancement` - Dashboard redesigned and all headers are now customized to better fit the needs of agency admins<br>
 ✨ `Enhancement` - Edits to agencies now trigger a server stats refresh for dashboards
