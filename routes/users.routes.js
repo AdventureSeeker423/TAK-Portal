@@ -1897,5 +1897,72 @@ router.post("/enroll-qr", async (req, res) => {
   }
 });
 
+// Device preferences QR for a specific user (admin-only; ATAK / TAK Aware Step 3)
+router.post("/preference-qr", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!authUser || (!access.isGlobalAdmin && !access.isAgencyAdmin)) {
+      return res.status(403).json({ ok: false, error: "Admin access required" });
+    }
+
+    const userId = String(req.body?.userId || req.body?.pk || "").trim();
+    if (!userId) {
+      return res.status(400).json({ ok: false, error: "Missing userId" });
+    }
+
+    const targetUser = await users.getUserById(userId).catch(() => null);
+    if (!targetUser || targetUser.pk == null) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    if (!access.isGlobalAdmin && !accessSvc.isUserInAllowedAgencies(authUser, targetUser)) {
+      return res.status(403).json({ ok: false, error: "You do not have access to that user." });
+    }
+
+    const pref = users.getPreferenceDataForUser(targetUser);
+    const preferenceUrl = qrSvc.buildPreferenceUrl({
+      callsign: pref.callsign,
+      teamLabel: pref.teamLabel,
+      roleLabel: pref.roleLabel,
+    });
+
+    let qrCode = null;
+    if (preferenceUrl) {
+      qrCode = await qrSvc.generateDisplayQrDataUrl(preferenceUrl);
+    }
+
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "GENERATE_PREFERENCE_QR",
+      targetType: "user",
+      targetId: String(userId),
+      details: {
+        username: String(targetUser.username || "").trim(),
+        callsign: pref.callsign || null,
+        teamLabel: pref.teamLabel || null,
+        roleLabel: pref.roleLabel || null,
+      },
+    });
+
+    return res.json({
+      ok: true,
+      username: String(targetUser.username || "").trim(),
+      callsign: pref.callsign,
+      teamLabel: pref.teamLabel,
+      roleLabel: pref.roleLabel,
+      preferenceUrl: preferenceUrl || "",
+      qrCode,
+    });
+  } catch (err) {
+    console.error("[users] Failed to create preference QR:", err?.message || err);
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || "Failed to generate preference QR",
+    });
+  }
+});
+
 
 module.exports = router;
