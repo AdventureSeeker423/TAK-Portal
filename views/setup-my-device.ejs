@@ -66,11 +66,17 @@
         </section>
 
         <section class="iosStep">
-          <h3 class="iosStepHeading">Step 3: Configure device Preferences</h3>
-          <button type="button" class="btn tile" id="iosPreferenceManualBtn">
-            <span class="title">Recommended Preferences</span>
-            <span class="desc">Tune map display options for clearer labels and terrain (recommended).</span>
-          </button>
+          <h3 class="iosStepHeading">Step 3: Configure device preferences</h3>
+          <div class="grid2">
+            <button type="button" class="btn tile" id="preferenceScanQrBtnTakAware">
+              <span class="title">Scan QR Code (Recommended)</span>
+              <span class="desc">Scan a QR code to automatically configure TAK Aware preferences.</span>
+            </button>
+            <button type="button" class="btn tile" id="preferenceManualBtnTakAware">
+              <span class="title">Manual Configuration</span>
+              <span class="desc">Manually configure TAK Aware preferences.</span>
+            </button>
+          </div>
         </section>
       </div>
 
@@ -319,23 +325,8 @@
     </div>
     <div class="modalBody">
       <div style="max-width: 600px;">
-        <h3 style="margin-top:0;">Configure callsign and team in ATAK</h3>
+        <h3 id="preferenceManualSubtitle" style="margin-top:0;">Configure callsign and team in ATAK</h3>
         <ol id="preferenceManualInstructions" style="margin-top: 6px;"></ol>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- iOS Step 3: Recommended Preferences (TAK Aware) -->
-<div class="modalOverlay" id="iosPreferenceManualOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="iosPreferenceManualTitle">
-    <div class="modalHeader">
-      <h2 id="iosPreferenceManualTitle" style="margin:0;">Recommended Preferences</h2>
-      <button class="btn" id="iosPreferenceManualCloseBtn" type="button">Close</button>
-    </div>
-    <div class="modalBody">
-      <div style="max-width: 600px;">
-        <ol id="iosPreferenceManualInstructions" style="margin-top: 6px;"></ol>
       </div>
     </div>
   </div>
@@ -898,20 +889,26 @@
     openManualLoginModal();
   }
 
-  // --- Android Step 3: Configure Device Preferences ---
+  // --- Step 3: Configure Device Preferences (ATAK + TAK Aware) ---
+  let preferenceConfigMode = "atak"; // "atak" | "takaware"
   const preferenceScanQrBtn = document.getElementById("preferenceScanQrBtn");
   const preferenceManualBtn = document.getElementById("preferenceManualBtn");
+  const preferenceScanQrBtnTakAware = document.getElementById("preferenceScanQrBtnTakAware");
+  const preferenceManualBtnTakAware = document.getElementById("preferenceManualBtnTakAware");
   const preferenceQrOverlay = document.getElementById("preferenceQrOverlay");
   const preferenceQrCloseBtn = document.getElementById("preferenceQrCloseBtn");
+  const preferenceQrTitle = document.getElementById("preferenceQrTitle");
   const preferenceQrImg = document.getElementById("preferenceQrImg");
   const preferenceQrUrlHolder = document.getElementById("preferenceQrUrlHolder");
   const preferenceQrOpenBtn = document.getElementById("preferenceQrOpenBtn");
   const preferenceQrCopyBtn = document.getElementById("preferenceQrCopyBtn");
   const preferenceQrSaveBtn = document.getElementById("preferenceQrSaveBtn");
+  const preferenceQrInstructions = document.getElementById("preferenceQrInstructions");
   const preferenceQrDetails = document.getElementById("preferenceQrDetails");
   const preferenceQrMsg = document.getElementById("preferenceQrMsg");
   const preferenceManualOverlay = document.getElementById("preferenceManualOverlay");
   const preferenceManualCloseBtn = document.getElementById("preferenceManualCloseBtn");
+  const preferenceManualSubtitle = document.getElementById("preferenceManualSubtitle");
   const preferenceManualInstructions = document.getElementById("preferenceManualInstructions");
 
   function setPreferenceMsg(text, ok = true) {
@@ -963,7 +960,36 @@
     return String(preferenceQrUrlHolder.dataset.preferenceUrl).trim();
   }
 
-  async function handlePreferenceScanClick() {
+  function setPreferenceConfigMode(mode) {
+    preferenceConfigMode = mode === "takaware" ? "takaware" : "atak";
+    if (preferenceQrTitle) {
+      preferenceQrTitle.textContent = preferenceConfigMode === "takaware"
+        ? "Configure TAK Aware Preferences"
+        : "Configure Device Preferences";
+    }
+    if (preferenceManualSubtitle) {
+      preferenceManualSubtitle.textContent = preferenceConfigMode === "takaware"
+        ? "Configure callsign and team in TAK Aware"
+        : "Configure callsign and team in ATAK";
+    }
+    if (preferenceQrInstructions) {
+      const steps = preferenceConfigMode === "takaware"
+        ? [
+            "Open the camera on your iPhone or iPad.",
+            "Point your camera at the QR code and select the notification to open the link.",
+            "Confirm opening TAK Aware and accept the preference configuration when prompted."
+          ]
+        : [
+            "Open the camera on your Android device.",
+            "Point your camera at the QR code and select the notification to open the link.",
+            "Select Yes to apply the configuration inside ATAK."
+          ];
+      preferenceQrInstructions.innerHTML = steps.map(function (s) { return "<li>" + s + "</li>"; }).join("");
+    }
+  }
+
+  async function handlePreferenceScanClick(mode) {
+    setPreferenceConfigMode(mode);
     setPreferenceMsg("Loading...", true);
     preferenceQrImg.src = "";
     preferenceQrDetails.innerHTML = "";
@@ -997,7 +1023,8 @@
     return div.innerHTML;
   }
 
-  async function handlePreferenceManualClick() {
+  async function handlePreferenceManualClick(mode) {
+    setPreferenceConfigMode(mode);
     preferenceManualInstructions.innerHTML = "";
     openPreferenceManualModal();
     try {
@@ -1007,56 +1034,39 @@
       const role =
         (data.roleLabel && escapeHtml(data.roleLabel)) ||
         escapeHtml("your assigned role (see your welcome email)");
-      preferenceManualInstructions.innerHTML = [
-        "Open ATAK on your Android device.",
-        "Tap the menu icon and navigate to 'Settings'.",
-        "Select callsign and device preferences.",
-        "Select Callsign Preferences.",
-        "Select My Callsign and enter: <strong>" + callsign + "</strong>",
-        "Select My Team and enter: <strong>" + team + "</strong>",
-        "Select Role and enter: <strong>" + role + "</strong>",
-        "Exit out of the settings menu after entering these settings."
-      ].map(function (s) { return "<li>" + s + "</li>"; }).join("");
+      const steps = preferenceConfigMode === "takaware"
+        ? [
+            "Open TAK Aware on your iOS device.",
+            "Select the menu icon in the top right.",
+            "Select Callsign and enter: <strong>" + callsign + "</strong>",
+            "Select Team and enter: <strong>" + team + "</strong>",
+            "Select Role and select: <strong>" + role + "</strong>",
+            "Return to the map after entering these settings."
+          ]
+        : [
+            "Open ATAK on your Android device.",
+            "Tap the menu icon and navigate to 'Settings'.",
+            "Select callsign and device preferences.",
+            "Select Callsign Preferences.",
+            "Select My Callsign and enter: <strong>" + callsign + "</strong>",
+            "Select My Team and enter: <strong>" + team + "</strong>",
+            "Select Role and enter: <strong>" + role + "</strong>",
+            "Exit out of the settings menu after entering these settings."
+          ];
+      preferenceManualInstructions.innerHTML = steps.map(function (s) { return "<li>" + s + "</li>"; }).join("");
     } catch (err) {
       preferenceManualInstructions.innerHTML = "<li class=\"msg bad\">" + escapeHtml(err?.message || "Failed to load preference data") + "</li>";
     }
   }
 
-  preferenceScanQrBtn.addEventListener("click", handlePreferenceScanClick);
-  preferenceManualBtn.addEventListener("click", handlePreferenceManualClick);
+  if (preferenceScanQrBtn) preferenceScanQrBtn.addEventListener("click", () => handlePreferenceScanClick("atak"));
+  if (preferenceManualBtn) preferenceManualBtn.addEventListener("click", () => handlePreferenceManualClick("atak"));
+  if (preferenceScanQrBtnTakAware) preferenceScanQrBtnTakAware.addEventListener("click", () => handlePreferenceScanClick("takaware"));
+  if (preferenceManualBtnTakAware) preferenceManualBtnTakAware.addEventListener("click", () => handlePreferenceManualClick("takaware"));
   preferenceQrCloseBtn.addEventListener("click", closePreferenceQrModal);
   preferenceManualCloseBtn.addEventListener("click", closePreferenceManualModal);
   preferenceQrOverlay.addEventListener("click", (e) => { if (e.target === preferenceQrOverlay) closePreferenceQrModal(); });
   preferenceManualOverlay.addEventListener("click", (e) => { if (e.target === preferenceManualOverlay) closePreferenceManualModal(); });
-
-  // iOS Step 3: Optional display settings (TAK Aware)
-  const iosPreferenceManualBtn = document.getElementById("iosPreferenceManualBtn");
-  const iosPreferenceManualOverlay = document.getElementById("iosPreferenceManualOverlay");
-  const iosPreferenceManualCloseBtn = document.getElementById("iosPreferenceManualCloseBtn");
-  const iosPreferenceManualInstructions = document.getElementById("iosPreferenceManualInstructions");
-
-  function openIosPreferenceManualModal() {
-    iosPreferenceManualOverlay.style.display = "flex";
-    document.body.classList.add("noScroll");
-  }
-
-  function closeIosPreferenceManualModal() {
-    iosPreferenceManualOverlay.style.display = "none";
-    document.body.classList.remove("noScroll");
-  }
-
-  function handleIosPreferenceManualClick() {
-    iosPreferenceManualInstructions.innerHTML = [
-      "In TAK Aware, open the menu from the icon in the top-right corner.",
-      "Open <strong>Display Settings</strong>. Set <strong>Base Map</strong> to <strong>Flyover</strong> to display a hybrid map with satellite imagery and street names.",
-      "On the same screen, scroll to <strong>Map Label Display</strong> and choose <strong>Show Full Label</strong> so COT callsigns are fully visible."
-    ].map(function (s) { return "<li>" + s + "</li>"; }).join("");
-    openIosPreferenceManualModal();
-  }
-
-  iosPreferenceManualBtn.addEventListener("click", handleIosPreferenceManualClick);
-  iosPreferenceManualCloseBtn.addEventListener("click", closeIosPreferenceManualModal);
-  iosPreferenceManualOverlay.addEventListener("click", (e) => { if (e.target === iosPreferenceManualOverlay) closeIosPreferenceManualModal(); });
 
   preferenceQrOpenBtn.addEventListener("click", () => {
     var url = getCurrentPreferenceUrl();
@@ -1118,7 +1128,6 @@
       if (manualLoginOverlay.style.display !== "none") closeManualLoginModal();
       if (preferenceQrOverlay.style.display !== "none") closePreferenceQrModal();
       if (preferenceManualOverlay.style.display !== "none") closePreferenceManualModal();
-      if (iosPreferenceManualOverlay.style.display !== "none") closeIosPreferenceManualModal();
     }
   });
 
