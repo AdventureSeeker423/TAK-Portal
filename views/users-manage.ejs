@@ -1437,6 +1437,7 @@ function renderResults(users){
   tbody.innerHTML = users.map(u=>{
     const pk = escapeHtml(u.pk);
     const toggleLabel = u.is_active ? "Disable" : "Enable";
+    const toggleBtnClass = u.is_active ? "btn caution" : "btn";
     const locked = userActionsLocked(u.username);
     const currentTemplateRaw = String(u?.attributes?.current_template || "").trim();
     const currentTemplateDisplay = (!currentTemplateRaw || currentTemplateRaw === "Manual Group Selection")
@@ -1458,7 +1459,7 @@ function renderResults(users){
                 <button class="btn qr userQrBtn" type="button"
                   data-pk="${pk}" data-username="${escapeHtml(u.username)}">QR</button>
               ` : ""}
-              <button class="btn" onclick="toggleUserFromTable('${pk}')">${toggleLabel}</button>
+              <button class="${toggleBtnClass}" onclick="toggleUserFromTable('${pk}')">${toggleLabel}</button>
               <button class="btn danger" onclick="deleteUserFromTable('${pk}')">Delete</button>
             </div>
           `}

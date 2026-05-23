@@ -164,12 +164,6 @@
     box-sizing: border-box;
     display: block;
   }
-  .data-packages-page .btn.archive {
-    background: var(--warning);
-    border-color: var(--warning);
-    color: #fff;
-  }
-  .data-packages-page .btn.archive:hover { filter: brightness(1.08); }
 </style>
 
 <script>
@@ -365,7 +359,7 @@
       bArchiveRestore.textContent = "Restore";
       bArchiveRestore.addEventListener("click", function () { restorePackage(hash, filename); });
     } else {
-      bArchiveRestore.className = "btn archive";
+      bArchiveRestore.className = "btn caution";
       bArchiveRestore.textContent = "Archive";
       bArchiveRestore.addEventListener("click", function () { archivePackage(hash, filename); });
     }

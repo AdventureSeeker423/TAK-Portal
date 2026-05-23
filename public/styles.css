@@ -7,6 +7,7 @@
     --line: #1f2a44;
     --btn: #2b6cff;
     --warning: #ff6600;
+    --caution: #ff6600;
     --danger: #ff3b3b;
     --success: #18b35a;
     /* Sidebar link highlight (dark themes: lighter overlay so it stands out) */
@@ -565,6 +566,12 @@ label.btn {
 
 .btn.warning {
     background: var(--warning);
+}
+
+.btn.caution {
+    background: var(--caution);
+    border-color: var(--caution);
+    color: #fff;
 }
 
 .btn.success {
