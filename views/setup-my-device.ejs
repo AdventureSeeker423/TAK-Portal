@@ -424,12 +424,23 @@
           ? "Open TAK Tracker: How to Scan"
           : "ATAK (Android): How to Scan";
 
-    if ((isTakAware || isTakTracker) && prefData && prefData.ok) {
+    if (isTakAware && prefData && prefData.ok) {
+      const steps = [
+        "Open TAK Aware on your iOS device.",
+        "When prompted, allow Location access and set it to 'Always Allow'.",
+        "Tap 'Connect to a TAK Server', then choose 'Scan QR Code'.",
+        "Allow camera access and scan the QR until you see 'Status: Succeeded'."
+      ];
+      instructionsList.innerHTML = steps.map(s => `<li>${s}</li>`).join("");
+      return;
+    }
+
+    if (isTakTracker && prefData && prefData.ok) {
       const c = (prefData.callsign && escapeHtml(prefData.callsign)) || "";
       const t = (prefData.teamLabel && escapeHtml(prefData.teamLabel)) || "";
       const r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
       const steps = [
-        isTakTracker ? "Open TAK Tracker on your iOS device." : "Open TAK Aware on your iOS device.",
+        "Open TAK Tracker on your iOS device.",
         "When prompted, allow Location access and set it to 'Always Allow'.",
         "Select the menu icon in the top right.",
         "Select Callsign and enter: <strong>" + c + "</strong>",
@@ -442,9 +453,16 @@
       return;
     }
 
-    const steps = isTakAware || isTakTracker
+    const steps = isTakAware
       ? [
-          isTakTracker ? "Open TAK Tracker on your iOS device." : "Open TAK Aware on your iOS device.",
+          "Open TAK Aware on your iOS device.",
+          "When prompted, allow Location access and set it to 'Always Allow'.",
+          "Tap 'Connect to a TAK Server', then choose 'Scan QR Code'.",
+          "Allow camera access and scan the QR until you see 'Status: Succeeded'."
+        ]
+      : isTakTracker
+      ? [
+          "Open TAK Tracker on your iOS device.",
           "When prompted, allow Location access and set it to 'Always Allow'.",
           "Enter your assigned Call Sign / Team / Role (per your welcome email).",
           "Tap 'Connect to a TAK Server', then choose 'Scan QR Code'.",
@@ -535,7 +553,21 @@
       ? "Open TAK Tracker on your iOS device."
       : "Open TAK Aware on your iOS device.";
 
-    if ((isTakAware || isTakTracker) && prefData && prefData.ok) {
+    if (isTakAware && prefData && prefData.ok) {
+      const steps = [
+        iosOpenLine,
+        "When prompted, allow Location access and set it to 'Always Allow'.",
+        "Tap 'Connect to a TAK Server', then choose 'Certificate Enrollment'.",
+        "Enter the hostname: <strong><%= takHost || 'your TAK server hostname' %></strong>",
+        `Enter your username and password: <strong>${CURRENT_USERNAME}</strong>`,
+        "Tap 'Start Enrollment', if successful, you should see 'Status: Succeeded'.",
+        "You can then tap 'Close'."
+      ];
+      manualLoginInstructions.innerHTML = steps.map(s => "<li>" + s + "</li>").join("");
+      return;
+    }
+
+    if (isTakTracker && prefData && prefData.ok) {
       const c = (prefData.callsign && escapeHtml(prefData.callsign)) || "";
       const t = (prefData.teamLabel && escapeHtml(prefData.teamLabel)) || "";
       const r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
@@ -556,7 +588,17 @@
       return;
     }
 
-    const steps = (isTakAware || isTakTracker)
+    const steps = isTakAware
+      ? [
+          iosOpenLine,
+          "When prompted, allow Location access and set it to 'Always Allow'.",
+          "Tap 'Connect to a TAK Server', then choose 'Certificate Enrollment'.",
+          "Enter the hostname: <strong><%= takHost || 'your TAK server hostname' %></strong>",
+          `Enter your username and password: <strong>${CURRENT_USERNAME}</strong>`,
+          "Tap 'Start Enrollment', if successful, you should see 'Status: Succeeded'.",
+          "You can then tap 'Close'."
+        ]
+      : isTakTracker
       ? [
           iosOpenLine,
           "When prompted, allow Location access and set it to 'Always Allow'.",
