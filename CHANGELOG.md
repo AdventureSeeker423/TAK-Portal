@@ -12,6 +12,11 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.21 - 5/23/26
+✨ `Enhancement` - Radio Callsign added to Request Access page<br>
+✨ `Enhancement` - QR Code for callsign, team, and role preferences added to TAK Aware instructions<br>
+✨ `Enhancement` - Users page now displays onboarding qr and pref qr for users in admin views
+
 ### v1.3.20 - 5/22/26
 ✨ `Enhancement` - Updated logging service to include more events<br>
 ✨ `Enhancement` - Limited log file to 5gb max<br>
