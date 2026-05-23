@@ -204,11 +204,11 @@
           <th class="sortable" data-key="agency">
             Agency <span class="sortIndicator" aria-hidden="true"></span>
           </th>
-          <th>
-            Template
-          </th>
           <th class="sortable" data-key="name">
             Name <span class="sortIndicator" aria-hidden="true"></span>
+          </th>
+          <th>
+            Template
           </th>
           <th class="sortable" data-key="email">
             Email <span class="sortIndicator" aria-hidden="true"></span>
@@ -1529,8 +1529,8 @@ function renderResults(users){
       <tr class="${u.is_active ? "" : "row-disabled"}">
         <td>${escapeHtml(u.username)}</td>
         <td>${escapeHtml(getUserAgencyAbbreviation(u) || "—")}</td>
-        <td>${escapeHtml(currentTemplateDisplay)}</td>
         <td>${escapeHtml(u.name || "")}</td>
+        <td>${escapeHtml(currentTemplateDisplay)}</td>
         <td>${escapeHtml(u.email || "")}</td>
         <td>${u.is_active ? "Enabled" : "Disabled"}</td>
         <td>
