@@ -94,16 +94,16 @@
     <form method="POST" action="/request-access" class="grid2" autocomplete="off">
 
       <label>First Name
-        <input name="firstName" required value="<%= (form && form.firstName) ? form.firstName : '' %>" />
+        <input name="firstName" placeholder="John" required value="<%= (form && form.firstName) ? form.firstName : '' %>" />
       </label>
 
       <label>Last Name
-        <input name="lastName" required value="<%= (form && form.lastName) ? form.lastName : '' %>" />
+        <input name="lastName" placeholder="Doe" required value="<%= (form && form.lastName) ? form.lastName : '' %>" />
       </label>
 
       <div class="requestAccessContactRow">
         <label>Email Address
-          <input name="email" type="email" required value="<%= (form && form.email) ? form.email : '' %>" />
+          <input name="email" type="email" placeholder="example@agency.gov" required value="<%= (form && form.email) ? form.email : '' %>" />
         </label>
 
         <label><%= usernamePrefixLabel %>
