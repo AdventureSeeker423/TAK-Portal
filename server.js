@@ -1035,6 +1035,7 @@ app.post("/request-access", async (req, res) => {
       lastName: body.lastName,
       email: body.email,
       badgeNumber: body.badgeNumber,
+      radioCallsign: body.radioCallsign,
       agencySuffix: body.agencySuffix,
       otherAgency: body.otherAgency,
       otherReason: body.otherReason,

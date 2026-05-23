@@ -694,6 +694,8 @@ th.sortable:hover{
     form.firstName.value = reqObj.firstName || '';
     form.lastName.value = reqObj.lastName || '';
     form.email.value = reqObj.email || '';
+    const radioCallsignInput = form.querySelector('[name="radioCallsign"]');
+    if (radioCallsignInput) radioCallsignInput.value = String(reqObj.radioCallsign || '').trim();
 
     const agencySelect = form.querySelector('select.agencySelect');
     const templateSelect = form.querySelector('select.templateSelect');

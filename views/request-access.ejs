@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>TAK Portal</title>
     <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .requestAccessContactRow {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+      @media (max-width: 640px) {
+        .requestAccessContactRow {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
 
     <% if (brandLogoUrl) { %>
       <link rel="icon" href="<%= brandLogoUrl %>" type="image/png" />
@@ -88,20 +101,32 @@
         <input name="lastName" required value="<%= (form && form.lastName) ? form.lastName : '' %>" />
       </label>
 
-      <label>Email Address
-        <input name="email" type="email" required value="<%= (form && form.email) ? form.email : '' %>" />
-      </label>
+      <div class="requestAccessContactRow">
+        <label>Email Address
+          <input name="email" type="email" required value="<%= (form && form.email) ? form.email : '' %>" />
+        </label>
 
-      <label><%= usernamePrefixLabel %>
-        <input
-          name="badgeNumber"
-          required
-          placeholder="Enter <%= usernamePrefixLabel %>"
-          pattern="[A-Za-z0-9._-]+"
-          title="Use letters, numbers, periods, dashes, and underscores only."
-          value="<%= (form && form.badgeNumber) ? form.badgeNumber : '' %>"
-        />
-      </label>
+        <label><%= usernamePrefixLabel %>
+          <input
+            name="badgeNumber"
+            required
+            placeholder="Enter <%= usernamePrefixLabel %>"
+            pattern="[A-Za-z0-9._-]+"
+            title="Use letters, numbers, periods, dashes, and underscores only."
+            value="<%= (form && form.badgeNumber) ? form.badgeNumber : '' %>"
+          />
+        </label>
+
+        <label>Radio Callsign (optional)
+          <input
+            name="radioCallsign"
+            type="text"
+            placeholder="ex. T05 or C10 or B01G"
+            autocomplete="off"
+            value="<%= (form && form.radioCallsign) ? form.radioCallsign : '' %>"
+          />
+        </label>
+      </div>
 
       <label style="grid-column: 1 / -1;">Agency
         <select name="agencySuffix" id="agencySelect" required>

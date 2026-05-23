@@ -24,6 +24,7 @@ function validateCreate(input) {
   const lastName = normalizeStr(input.lastName);
   const email = normalizeEmail(input.email);
   const badgeNumber = normalizeStr(input.badgeNumber);
+  const radioCallsign = normalizeStr(input.radioCallsign);
   const agencySuffix = normalizeStr(input.agencySuffix);
   const otherAgency = normalizeStr(input.otherAgency);
   const otherReason = normalizeStr(input.otherReason);
@@ -61,7 +62,7 @@ function validateCreate(input) {
     }
   }
 
-  return { firstName, lastName, email, badgeNumber, agencySuffix, otherAgency, otherReason };
+  return { firstName, lastName, email, badgeNumber, radioCallsign, agencySuffix, otherAgency, otherReason };
 }
 
 function listRequests() {
@@ -108,6 +109,7 @@ async function createRequest(input) {
     lastName: v.lastName,
     email: v.email,
     badgeNumber: v.badgeNumber,
+    radioCallsign: v.radioCallsign || null,
     agencySuffix: v.agencySuffix,
     agencyName: agency ? String(agency.name || "").trim() : null,
     otherAgency: v.agencySuffix === "__other__" ? v.otherAgency : null,
@@ -188,7 +190,7 @@ await emailSvc.sendMail({
 Name: ${reqObj.lastName}, ${reqObj.firstName}
 Email: ${reqObj.email}
 Badge: ${reqObj.badgeNumber}
-Agency: ${
+${reqObj.radioCallsign ? `Radio Callsign: ${reqObj.radioCallsign}\n` : ""}Agency: ${
     reqObj.agencyName ||
     reqObj.otherAgency ||
     reqObj.agencySuffix
