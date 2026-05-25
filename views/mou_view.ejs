@@ -97,6 +97,7 @@
   </section>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (function () {
@@ -125,6 +126,7 @@
     var jsPDF = window.jspdf && window.jspdf.jsPDF;
     var pdfSource = getPdfSourceElement();
     if (!jsPDF) throw new Error("PDF library failed to load.");
+    if (!window.html2canvas) throw new Error("Could not load html2canvas.");
     if (!pdfSource) throw new Error("Document content was not found.");
     var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
     await doc.html(pdfSource, {

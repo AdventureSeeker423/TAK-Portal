@@ -189,6 +189,7 @@
   </div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (function () {
@@ -278,6 +279,9 @@
     var jsPDF = window.jspdf && window.jspdf.jsPDF;
     if (!jsPDF) {
       throw new Error("PDF library failed to load.");
+    }
+    if (!window.html2canvas) {
+      throw new Error("Could not load html2canvas.");
     }
     var pdfSource = getPdfSourceElement();
     if (!pdfSource) {
