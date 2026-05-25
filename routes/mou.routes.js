@@ -540,7 +540,7 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
       agencySuffix,
       agencyNameAtSign: agency?.name || agency?.groupPrefix || agency?.suffix || agencySuffix,
       signerUserId: req.authentikUser?.uid || req.authentikUser?.username,
-      signerDisplayName: req.authentikUser?.displayName || req.authentikUser?.username,
+      signerDisplayName: req.body?.attestationText || req.authentikUser?.displayName || req.authentikUser?.username,
       signerStatusAtSign: req.body?.signerRole || signerStatus,
       attestationText: req.body?.attestationText,
       signatureDataUrl: req.body?.signatureDataUrl,

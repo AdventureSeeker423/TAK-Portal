@@ -70,12 +70,12 @@
 <main class="main">
   <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div>
-      <h1 style="margin-bottom:6px;">View / Sign Document</h1>
+      <h1 style="margin-bottom:6px;"><%= showSignedEvidence ? "View Document" : "View / Sign Document" %></h1>
       <div class="muted"><%= showSignedEvidence ? "Your agency has already signed the current version." : "Review the current version, then sign on behalf of your agency." %></div>
     </div>
     <div class="mouActionRow">
-      <% if (showSignedEvidence && activeDownloadUrl) { %>
-        <a class="btn secondary" href="<%= activeDownloadUrl %>">Download</a>
+      <% if (showSignedEvidence) { %>
+        <button class="btn secondary" type="button" id="downloadDocumentBtn">Download</button>
         <button class="btn secondary" type="button" id="printDocumentBtn">Print</button>
       <% } else if (activeDownloadUrl) { %>
         <button class="btn secondary" type="button" id="downloadDocumentBtn">Download</button>
@@ -231,6 +231,10 @@
       .toLowerCase() || "document";
   }
 
+  function getPdfSourceElement() {
+    return (documentSection && documentSection.querySelector(".signed-shell")) || documentShell || documentSection;
+  }
+
   function getSignerNameValue() {
     return signerNameInput ? String(signerNameInput.value || "").trim() : "";
   }
@@ -266,10 +270,6 @@
   }
 
   async function downloadDocumentPdf() {
-    if (isSignedView && activeDownloadUrl) {
-      window.location.href = activeDownloadUrl;
-      return;
-    }
     if (String(contentType || "").toLowerCase() === "pdf") {
       window.location.href = activeDownloadUrl;
       return;
@@ -279,8 +279,26 @@
     if (!jsPDF) {
       throw new Error("PDF library failed to load.");
     }
-    if (!documentShell) {
+    var pdfSource = getPdfSourceElement();
+    if (!pdfSource) {
       throw new Error("Document content was not found.");
+    }
+
+    if (isSignedView) {
+      var signedDoc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+      await signedDoc.html(pdfSource, {
+        margin: [24, 24, 24, 24],
+        autoPaging: "text",
+        html2canvas: {
+          scale: 0.6,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+        },
+        callback: function (doc) {
+          doc.save(sanitizeFileName(documentTitle) + "-signed.pdf");
+        },
+      });
+      return;
     }
 
     var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
@@ -357,20 +375,6 @@
     drawing = false;
   }
 
-  canvas.addEventListener("mousedown", begin);
-  canvas.addEventListener("mousemove", draw);
-  window.addEventListener("mouseup", end);
-  canvas.addEventListener("touchstart", begin, { passive: false });
-  canvas.addEventListener("touchmove", draw, { passive: false });
-  canvas.addEventListener("touchend", end, { passive: false });
-
-  clearBtn.addEventListener("click", function () {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    hasInk = false;
-    hidden.value = "";
-    setSignatureMessage("");
-  });
-
   if (printBtn) {
     printBtn.addEventListener("click", function () {
       updatePrintableFooterFields();
@@ -388,6 +392,20 @@
   }
 
   if (!canvas || !form || !hidden || !ctx) return;
+
+  canvas.addEventListener("mousedown", begin);
+  canvas.addEventListener("mousemove", draw);
+  window.addEventListener("mouseup", end);
+  canvas.addEventListener("touchstart", begin, { passive: false });
+  canvas.addEventListener("touchmove", draw, { passive: false });
+  canvas.addEventListener("touchend", end, { passive: false });
+
+  clearBtn.addEventListener("click", function () {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasInk = false;
+    hidden.value = "";
+    setSignatureMessage("");
+  });
 
   if (signerNameInput) signerNameInput.addEventListener("input", updatePrintableFooterFields);
   if (signerRoleInput) signerRoleInput.addEventListener("input", updatePrintableFooterFields);

@@ -1184,10 +1184,10 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
       : signatureRecord.uploadedSignedCopyPath
         ? '      <div class="signature-image" style="padding:12px 0;">Uploaded signed document provided.</div>'
         : '      <div class="signature-image" style="padding:12px 0;">Typed attestation used.</div>',
-    `      <div class="signature-line"><strong>${escapeHtml(signatureRecord.signerDisplayName)}</strong></div>`,
+    `      <div class="signature-line"><strong>${escapeHtml(signatureRecord.attestationText || signatureRecord.signerDisplayName)}</strong></div>`,
     `      <div class="signature-line">${escapeHtml(signatureRecord.signerStatusAtSign || "Agency Administrator")}</div>`,
     `      <div class="signature-line">${escapeHtml(signatureRecord.agencyNameAtSign)}</div>`,
-    `      <div class="signature-line">Signed ${escapeHtml(signatureRecord.signedAt)} from ${escapeHtml(signatureRecord.ip || "unknown")}</div>`,
+    `      <div class="signature-line">Signed ${escapeHtml(signatureRecord.signedAt)}</div>`,
     "    </div>",
     "  </div>",
     "</div>",
@@ -1313,12 +1313,15 @@ function getAgencyEvidence({ mouId, agencyId, version }) {
       (entry) => normalizeAgencySuffix(entry?.agencyId) === normalizeAgencySuffix(agencyId)
     );
     if (!signature) continue;
-    const fullPath = path.join(__dirname, "..", "data", signature.signedHtmlPath);
     return {
       stream,
       version: clone(versionRecord),
       signature: clone(signature),
-      html: store.readHtml(fullPath),
+      html: buildSignedHtml({
+        stream,
+        versionRecord,
+        signatureRecord: signature,
+      }),
       uploadedSignedCopyAbsPath: getAbsoluteDataPath(signature?.uploadedSignedCopyPath),
     };
   }
@@ -1338,7 +1341,7 @@ function listSignaturesForStream(stream) {
         agencyName: signature.agencyNameAtSign,
         currentVersion: getCurrentVersion(stream)?.version || null,
         signedVersion: versionRecord.version,
-        signerDisplayName: signature.signerDisplayName,
+        signerDisplayName: signature.attestationText || signature.signerDisplayName,
         signerStatusAtSign: signature.signerStatusAtSign,
         signedAt: signature.signedAt,
         needsNewSignature:
@@ -1396,7 +1399,7 @@ function getAgencySignatureStatusRows() {
         agencyName: agency.name || agency.groupPrefix || agency.suffix,
         signedVersion: latestSignature ? latestSignature.versionRecord.version : null,
         signerDisplayName: latestSignature
-          ? latestSignature.entry.signerDisplayName
+          ? (latestSignature.entry.attestationText || latestSignature.entry.signerDisplayName)
           : null,
         signedAt: latestSignature ? latestSignature.entry.signedAt : null,
         needsSignature:

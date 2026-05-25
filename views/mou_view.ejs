@@ -56,12 +56,14 @@
       </div>
       <% if (mode === "signed_evidence" && signature) { %>
         <div class="muted" style="margin-top:8px;">
-          Signed by <%= signature.signerDisplayName %> for <%= signature.agencyNameAtSign %> on <%= signature.signedAt %>.
+          Signed by <%= signature.attestationText || signature.signerDisplayName %> for <%= signature.agencyNameAtSign %> on <%= signature.signedAt %>.
         </div>
       <% } %>
     </div>
     <div class="mouActionRow">
-      <% if (downloadUrl) { %>
+      <% if (contentType === "signed_html") { %>
+        <button class="btn secondary" type="button" id="downloadDocumentBtn">Download</button>
+      <% } else if (downloadUrl) { %>
         <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
       <% } %>
       <button class="btn secondary" type="button" id="printDocumentBtn">Print</button>
@@ -95,12 +97,62 @@
   </section>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (function () {
   var printBtn = document.getElementById("printDocumentBtn");
-  if (!printBtn) return;
-  printBtn.addEventListener("click", function () {
-    window.print();
-  });
+  var downloadBtn = document.getElementById("downloadDocumentBtn");
+  var documentSection = document.getElementById("mouViewDocumentSection");
+  var contentType = <%- JSON.stringify(contentType || "") %>;
+  var documentTitle = <%- JSON.stringify(stream && stream.title ? stream.title : "document") %>;
+
+  function sanitizeFileName(value) {
+    return String(value || "document")
+      .trim()
+      .replace(/[^a-z0-9_-]+/gi, "-")
+      .replace(/-+/g, "-")
+      .replace(/^[-_]+|[-_]+$/g, "")
+      .toLowerCase() || "document";
+  }
+
+  function getPdfSourceElement() {
+    return (documentSection && documentSection.querySelector(".signed-shell")) ||
+      (documentSection && documentSection.querySelector(".mouDocumentShell")) ||
+      documentSection;
+  }
+
+  async function downloadSignedPdf() {
+    var jsPDF = window.jspdf && window.jspdf.jsPDF;
+    var pdfSource = getPdfSourceElement();
+    if (!jsPDF) throw new Error("PDF library failed to load.");
+    if (!pdfSource) throw new Error("Document content was not found.");
+    var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+    await doc.html(pdfSource, {
+      margin: [24, 24, 24, 24],
+      autoPaging: "text",
+      html2canvas: {
+        scale: 0.6,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      },
+      callback: function (pdf) {
+        pdf.save(sanitizeFileName(documentTitle) + "-signed.pdf");
+      },
+    });
+  }
+
+  if (printBtn) {
+    printBtn.addEventListener("click", function () {
+      window.print();
+    });
+  }
+
+  if (downloadBtn && String(contentType || "").toLowerCase() === "signed_html") {
+    downloadBtn.addEventListener("click", function () {
+      downloadSignedPdf().catch(function (err) {
+        console.error("[MOU_VIEW][download]", err);
+      });
+    });
+  }
 })();
 </script>

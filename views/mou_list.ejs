@@ -139,7 +139,7 @@
                     <% card.signatures.forEach(function (entry) { %>
                       <div style="margin-bottom:6px;">
                         <strong><%= entry.agency.name %></strong>
-                        <div class="muted"><%= entry.signature ? ("Signed by " + entry.signature.signerDisplayName) : "Pending agency signature" %></div>
+                        <div class="muted"><%= entry.signature ? ("Signed by " + (entry.signature.attestationText || entry.signature.signerDisplayName)) : "Pending agency signature" %></div>
                       </div>
                     <% }); %>
                   <% } else if (card.targetAgencies && card.targetAgencies.length) { %>
@@ -156,7 +156,7 @@
                     <% if (card.currentVersion) { %>
                       <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
                         <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
-                          View / Sign
+                          <%= card.allSigned ? "View Document" : "View / Sign" %>
                         </a>
                       <% } %>
                     <% } %>
