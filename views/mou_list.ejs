@@ -33,11 +33,11 @@
               <input type="text" name="title" placeholder="Document Title Here" required />
             </label>
             <label>
-              Content type
+              Content Type
               <select name="contentType" data-mou-content-select>
                 <option value="markdown" selected>Markdown</option>
                 <option value="html">HTML</option>
-                <option value="pdf">PDF upload</option>
+                <option value="pdf">PDF Upload</option>
               </select>
             </label>
           </div>
@@ -181,17 +181,34 @@
           <p class="muted">Create your first document using the form above.</p>
         </div>
       <% } else { %>
-        <table class="table">
+        <div class="row" style="align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+          <input
+            type="search"
+            id="mouDocumentsSearch"
+            placeholder="Search documents..."
+            autocomplete="off"
+            style="width:100%; box-sizing:border-box;"
+          />
+        </div>
+        <table class="table" id="mouDocumentsTable">
           <thead>
             <tr>
-              <th>Document</th>
-              <th>Current Version</th>
-              <th>Assignment</th>
-              <th>Signatures</th>
+              <th class="sortable" data-key="title">
+                Document <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="version">
+                Current Version <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="assignment">
+                Assignment <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="signatures">
+                Signatures <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="mouDocumentsTbody">
             <% adminStreams.forEach(function (stream) { %>
               <% const currentVersion = stream.currentVersion; %>
               <% const adminRowClass = currentVersion && stream.targetAgencies && stream.targetAgencies.length
@@ -199,21 +216,31 @@
                 : ""; %>
               <% const editorOverlayId = currentVersion ? ("mouEditOverlay-" + stream.mouId + "-" + currentVersion.version) : ""; %>
               <% const assignOverlayId = currentVersion ? ("mouAssignOverlay-" + stream.mouId) : ""; %>
-              <% const assignmentLabel = currentVersion ? (stream.targetAgencies && stream.targetAgencies.length ? stream.scopeLabel : "Inactive") : "Create version first"; %>
+              <% const assignmentLabel = !currentVersion
+                ? "Create version first"
+                : !(stream.targetAgencies && stream.targetAgencies.length)
+                  ? "Inactive"
+                  : stream.assignments && stream.assignments.serverwide
+                    ? "Serverwide"
+                    : stream.targetAgencies.length === 1
+                      ? (stream.targetAgencies[0].name || stream.scopeLabel)
+                      : "Multiple Agencies"; %>
               <% const adminViewHref = currentVersion && String(currentVersion.contentType || "").toLowerCase() === "pdf"
                 ? ("/mou/file/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version))
                 : ("/mou/view/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version)); %>
-              <tr class="<%= adminRowClass %>">
+              <tr
+                class="<%= adminRowClass %>"
+                data-table-row="documents"
+                data-title="<%= stream.title %>"
+                data-version="<%= currentVersion ? currentVersion.version : 0 %>"
+                data-assignment="<%= assignmentLabel %>"
+                data-signatures="<%= currentVersion ? stream.signedCount : -1 %>"
+              >
                 <td>
                   <strong><%= stream.title %></strong>
                 </td>
                 <td><%= currentVersion ? ("v" + currentVersion.version) : "None" %></td>
-                <td>
-                  <%= assignmentLabel %>
-                  <% if (stream.targetAgencies && stream.targetAgencies.length) { %>
-                    <div class="muted"><%= stream.targetAgencies.map(function (agency) { return agency.name; }).join(", ") %></div>
-                  <% } %>
-                </td>
+                <td><%= assignmentLabel %></td>
                 <td>
                   <% if (currentVersion) { %>
                     <%= stream.signedCount %>/<%= stream.targetAgencies.length %> signed
@@ -263,31 +290,96 @@
           <p class="muted">Active documents will appear here once they target agencies.</p>
         </div>
       <% } else { %>
-        <table class="table">
+        <% const signatureAgencyMap = new Map();
+           signatureRows.forEach(function (row) {
+             const agencyKey = String(row.agencyId || "").trim().toLowerCase();
+             if (!agencyKey || signatureAgencyMap.has(agencyKey)) return;
+             signatureAgencyMap.set(agencyKey, {
+               agencyId: row.agencyId,
+               agencyName: row.agencyName
+             });
+           });
+           const signatureAgencyOptions = Array.from(signatureAgencyMap.values()).sort(function (a, b) {
+             return String(a.agencyName || "").localeCompare(String(b.agencyName || ""), undefined, { sensitivity: "base" });
+           });
+        %>
+        <div class="row" style="align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+          <label style="min-width:220px;">
+            <select id="mouSignatureAgencyFilter" aria-label="Agency filter">
+              <option value="all" selected>All Agencies</option>
+              <% signatureAgencyOptions.forEach(function (agency) { %>
+                <option value="<%= agency.agencyId %>"><%= agency.agencyName %></option>
+              <% }); %>
+            </select>
+          </label>
+          <label style="min-width:220px;">
+            <select id="mouSignatureStatusFilter" aria-label="Status filter">
+              <option value="all" selected>All Statuses</option>
+              <option value="needs-signature">Needs Signature</option>
+              <option value="current">Current</option>
+            </select>
+          </label>
+          <input
+            type="search"
+            id="mouSignatureSearch"
+            placeholder="Search document name..."
+            autocomplete="off"
+            style="flex:1; min-width:260px; width:auto; box-sizing:border-box;"
+          />
+        </div>
+        <table class="table" id="mouSignatureTable">
           <thead>
             <tr>
-              <th>Document</th>
-              <th>Scope</th>
-              <th>Agency</th>
-              <th>Current Version</th>
-              <th>Signed Version</th>
-              <th>Signer</th>
-              <th>Status</th>
+              <th class="sortable" data-key="title">
+                Document <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="scope">
+                Scope <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="agency">
+                Agency <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="currentversion">
+                Current Version <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="signedversion">
+                Signed Version <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="signer">
+                Signer <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" data-key="statuslabel">
+                Status <span class="sortIndicator" aria-hidden="true"></span>
+              </th>
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="mouSignatureTbody">
             <% signatureRows.forEach(function (row) { %>
               <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
-              <tr class="<%= signatureRowClass %>">
+              <% const scopeDisplay = row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel; %>
+              <% const statusLabel = row.needsSignature ? "Needs signature" : "Current"; %>
+              <tr
+                class="<%= signatureRowClass %>"
+                data-table-row="signatures"
+                data-title="<%= row.mouTitle %>"
+                data-scope="<%= scopeDisplay %>"
+                data-agency="<%= row.agencyName %>"
+                data-agencyid="<%= row.agencyId %>"
+                data-currentversion="<%= row.currentVersion %>"
+                data-signedversion="<%= row.signedVersion ? row.signedVersion : 0 %>"
+                data-signer="<%= row.signerDisplayName || '' %>"
+                data-status="<%= row.needsSignature ? 'needs-signature' : 'current' %>"
+                data-statuslabel="<%= statusLabel %>"
+              >
                 <td><%= row.mouTitle %></td>
-                <td><%= row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel %></td>
+                <td><%= scopeDisplay %></td>
                 <td><%= row.agencyName %></td>
                 <td>v<%= row.currentVersion %></td>
                 <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
                 <td><%= row.signerDisplayName || "-" %></td>
                 <td>
-                  <%= row.needsSignature ? "Needs signature" : "Current" %>
+                  <%= statusLabel %>
                 </td>
                 <td>
                   <div class="mouActionRow">
@@ -842,6 +934,110 @@
     sync();
   }
 
+  function parseSortableValue(value) {
+    var raw = String(value == null ? "" : value).trim();
+    if (!raw) return "";
+    if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+    return raw.toLowerCase();
+  }
+
+  function stableSortRows(rows, key, dir) {
+    return rows
+      .map(function (row, index) {
+        return { row: row, index: index };
+      })
+      .sort(function (a, b) {
+        var aValue = parseSortableValue(a.row.getAttribute("data-" + key));
+        var bValue = parseSortableValue(b.row.getAttribute("data-" + key));
+        if (aValue < bValue) return -1 * dir;
+        if (aValue > bValue) return 1 * dir;
+        return a.index - b.index;
+      })
+      .map(function (entry) {
+        return entry.row;
+      });
+  }
+
+  function initSortableTable(config) {
+    if (!config || !config.tableId || !config.tbodyId) return;
+    var table = document.getElementById(config.tableId);
+    var tbody = document.getElementById(config.tbodyId);
+    if (!table || !tbody) return;
+
+    var rows = Array.from(tbody.querySelectorAll("tr[data-table-row]"));
+    var headers = Array.from(table.querySelectorAll("th.sortable"));
+    var searchInput = config.searchInputId ? document.getElementById(config.searchInputId) : null;
+    var agencyFilter = config.agencyFilterId ? document.getElementById(config.agencyFilterId) : null;
+    var statusFilter = config.statusFilterId ? document.getElementById(config.statusFilterId) : null;
+    var sortKey = "";
+    var sortDir = 1;
+
+    function updateSortIndicators() {
+      headers.forEach(function (th) {
+        th.style.cursor = "pointer";
+        var indicator = th.querySelector(".sortIndicator");
+        var key = th.getAttribute("data-key");
+        if (!indicator) return;
+        indicator.textContent = key && key === sortKey ? (sortDir === 1 ? "▲" : "▼") : "";
+      });
+    }
+
+    function rowMatchesFilters(row) {
+      var searchValue = searchInput ? String(searchInput.value || "").trim().toLowerCase() : "";
+      var titleValue = String(row.getAttribute("data-title") || "").toLowerCase();
+      if (searchValue && titleValue.indexOf(searchValue) === -1) return false;
+
+      if (agencyFilter) {
+        var selectedAgency = String(agencyFilter.value || "all").trim().toLowerCase();
+        var rowAgency = String(row.getAttribute("data-agencyid") || "").trim().toLowerCase();
+        if (selectedAgency !== "all" && rowAgency !== selectedAgency) return false;
+      }
+
+      if (statusFilter) {
+        var selectedStatus = String(statusFilter.value || "all").trim().toLowerCase();
+        var rowStatus = String(row.getAttribute("data-status") || "").trim().toLowerCase();
+        if (selectedStatus !== "all" && rowStatus !== selectedStatus) return false;
+      }
+
+      return true;
+    }
+
+    function render() {
+      var orderedRows = sortKey ? stableSortRows(rows, sortKey, sortDir) : rows.slice();
+      orderedRows.forEach(function (row) {
+        row.style.display = rowMatchesFilters(row) ? "" : "none";
+        tbody.appendChild(row);
+      });
+      updateSortIndicators();
+    }
+
+    headers.forEach(function (th) {
+      th.addEventListener("click", function () {
+        var key = th.getAttribute("data-key");
+        if (!key) return;
+        if (sortKey === key) {
+          sortDir *= -1;
+        } else {
+          sortKey = key;
+          sortDir = 1;
+        }
+        render();
+      });
+    });
+
+    if (searchInput) {
+      searchInput.addEventListener("input", render);
+    }
+    if (agencyFilter) {
+      agencyFilter.addEventListener("change", render);
+    }
+    if (statusFilter) {
+      statusFilter.addEventListener("change", render);
+    }
+
+    render();
+  }
+
   document.querySelectorAll("[data-overlay-target]").forEach(function (button) {
     button.addEventListener("click", function () {
       var overlay = document.getElementById(button.getAttribute("data-overlay-target"));
@@ -873,6 +1069,18 @@
   document.querySelectorAll("[data-mou-editor-form]").forEach(syncEditorForm);
   document.querySelectorAll("[data-mou-assignment-form]").forEach(syncAssignmentForm);
   document.querySelectorAll("[data-user-agreement-form]").forEach(syncUserAgreementForm);
+  initSortableTable({
+    tableId: "mouDocumentsTable",
+    tbodyId: "mouDocumentsTbody",
+    searchInputId: "mouDocumentsSearch"
+  });
+  initSortableTable({
+    tableId: "mouSignatureTable",
+    tbodyId: "mouSignatureTbody",
+    searchInputId: "mouSignatureSearch",
+    agencyFilterId: "mouSignatureAgencyFilter",
+    statusFilterId: "mouSignatureStatusFilter"
+  });
 
   var editVersionKey = new URLSearchParams(window.location.search).get("editVersion");
   if (editVersionKey) {
