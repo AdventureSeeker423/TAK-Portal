@@ -7,9 +7,13 @@
   <% 
     const hasMutualAid = isGlobalAdmin && mutualAid && (mutualAid.activeIncidents > 0 || mutualAid.activeEvents > 0);
     const hasUserRequests = typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0;
+    const hasPendingMouDocs =
+      !!(typeof isAgencyDashboard !== "undefined" && isAgencyDashboard) &&
+      typeof pendingMouDocumentsCount !== "undefined" &&
+      pendingMouDocumentsCount > 0;
   %>
 
-  <% if (hasMutualAid || hasUserRequests) { %>
+  <% if (hasMutualAid || hasUserRequests || hasPendingMouDocs) { %>
     <div style="margin: 10px 0 14px 0;">
 
       <!-- Mutual Aid Incident -->
@@ -57,6 +61,15 @@
         <% if (isGlobalAdmin || isAgencyAdmin) { %>
           </a>
         <% } %>
+      <% } %>
+
+      <!-- Pending MOU Signatures -->
+      <% if (hasPendingMouDocs) { %>
+        <a href="/mou" style="text-decoration:none;">
+          <div class="mouPendingBanner">
+            <%= pendingMouDocumentsCount %> Document<%= pendingMouDocumentsCount === 1 ? "" : "s" %> Awaiting Signature
+          </div>
+        </a>
       <% } %>
 
     </div>
@@ -938,6 +951,14 @@
     color: #ffffff;
     background: #1a49af;
     display:block;
+  }
+  .mouPendingBanner{
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-weight: 800;
+    color: #ffffff;
+    background: #995725;
+    display: block;
   }
 
   #connectedClientsStatCard[role="button"]:hover { border-color: rgba(255,255,255,0.15); }

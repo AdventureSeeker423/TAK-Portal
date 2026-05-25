@@ -8,6 +8,8 @@ const {
 const mutualAidService = require("../services/mutualAid.service");
 const bookmarksService = require("../services/bookmarks.service");
 const agenciesStore = require("../services/agencies.service");
+const accessSvc = require("../services/access.service");
+const mouService = require("../services/mouService");
 
 const userRequestsSvc = require("../services/userRequests.service");
 
@@ -24,6 +26,16 @@ router.get("/", async (req, res) => {
     let { takMetrics } = takDashboardCache.getDashboardTakSnapshot();
 
     const pendingUserRequestsCount = userRequestsSvc.countRequestsForUser(req.authentikUser);
+    const pendingMouDocumentsCount =
+      user?.isAgencyAdmin && mouService.isEnabled()
+        ? mouService
+            .getAgencySignatureStatusRows()
+            .filter(
+              (row) =>
+                row?.needsSignature &&
+                accessSvc.isSuffixAllowed(req.authentikUser, row?.agencyId)
+            ).length
+        : 0;
     let activeIncidentCount = 0;
     let activeEventCount = 0;
     try {
@@ -142,6 +154,7 @@ router.get("/", async (req, res) => {
       bookmarks,
       takMetrics,
       pendingUserRequestsCount,
+      pendingMouDocumentsCount,
       isAgencyDashboard,
       agencyDisplayName,
       templateChartColor,
@@ -178,6 +191,16 @@ router.get("/", async (req, res) => {
       bookmarks,
       takMetrics: cachedTak,
       pendingUserRequestsCount: userRequestsSvc.countRequestsForUser(req.authentikUser),
+      pendingMouDocumentsCount:
+        user?.isAgencyAdmin && mouService.isEnabled()
+          ? mouService
+              .getAgencySignatureStatusRows()
+              .filter(
+                (row) =>
+                  row?.needsSignature &&
+                  accessSvc.isSuffixAllowed(req.authentikUser, row?.agencyId)
+              ).length
+          : 0,
       isAgencyDashboard: isAgencyOnly,
       agencyDisplayName: isAgencyOnly ? "Agency Dashboard" : null,
       templateChartColor: null,
