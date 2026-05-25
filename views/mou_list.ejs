@@ -63,28 +63,32 @@
       </section>
 
       <section class="card mouWorkspace__sidebar">
-        <div class="mouSectionHeader">
-          <div>
-            <h2>Serverwide User Agreement Prompt</h2>
-          </div>
-        </div>
-
         <% const currentAgreement = adminAgreement && adminAgreement.current ? adminAgreement.current : null; %>
         <% const agreementDefaults = defaultUserAgreement || { title: "User Agreement", markdown: "I understand that use of this TAK environment is subject to my agency's current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security." }; %>
-        <form method="post" action="/admin/mou/user-agreement/save" class="mouAdminForm">
-          <label class="mouCheckboxLabel">
-            <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> />
-            Enable serverwide user agreement popup
-          </label>
-          <label>
-            Title
-            <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : agreementDefaults.title %>" required />
-          </label>
-          <label>
-            Agreement Text (Markdown supported)
-            <textarea name="markdown" rows="14" required><%- currentAgreement ? currentAgreement.bodyMarkdown : agreementDefaults.markdown %></textarea>
-          </label>
-          <div class="mouFormFooter">
+        <form method="post" action="/admin/mou/user-agreement/save" class="mouAdminForm" data-user-agreement-form>
+          <div class="mouSectionHeader">
+            <div>
+              <h2>Serverwide User Agreement Prompt</h2>
+            </div>
+            <label class="mouSectionHeader__toggle" aria-label="Enable serverwide user agreement popup">
+              <span class="muted">Enabled</span>
+              <span class="mouSwitch">
+                <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> data-user-agreement-toggle />
+                <span class="mouSwitch__slider"></span>
+              </span>
+            </label>
+          </div>
+          <div data-user-agreement-fields <%= adminAgreement && adminAgreement.enabled ? "" : 'style="display:none;"' %>>
+            <label>
+              Title
+              <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : agreementDefaults.title %>" required />
+            </label>
+            <label>
+              Agreement Text (Markdown supported)
+              <textarea name="markdown" rows="14" required><%- currentAgreement ? currentAgreement.bodyMarkdown : agreementDefaults.markdown %></textarea>
+            </label>
+          </div>
+          <div class="mouFormFooter" data-user-agreement-footer <%= adminAgreement && adminAgreement.enabled ? "" : 'style="display:none;"' %>>
             <button class="btn qr mouFormFooter__leftAction" type="submit" name="resetToDefault" value="true">Reset To Default</button>
             <button class="btn success" type="submit">Save User Agreement</button>
           </div>
@@ -98,13 +102,11 @@
       <div class="mouSectionHeader">
         <div>
           <h2>Active Documents</h2>
-          <p class="muted">Only documents visible to your role and agency access are shown here.</p>
         </div>
       </div>
       <% if (!cards || !cards.length) { %>
         <div class="mouEmptyState">
           <h3>No documents available</h3>
-          <p class="muted">There are no active documents in scope for your account right now.</p>
         </div>
       <% } else { %>
         <table class="table">
@@ -693,6 +695,34 @@
     sync();
   }
 
+  function syncUserAgreementForm(form) {
+    if (!form) return;
+    var toggle = form.querySelector("[data-user-agreement-toggle]");
+    var fields = form.querySelector("[data-user-agreement-fields]");
+    var footer = form.querySelector("[data-user-agreement-footer]");
+    if (!toggle) return;
+
+    function sync() {
+      var enabled = !!toggle.checked;
+      setFieldVisible(fields, enabled);
+      setFieldVisible(footer, enabled);
+    }
+
+    toggle.addEventListener("change", function () {
+      var enabled = !!toggle.checked;
+      sync();
+      if (!enabled) {
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+      }
+    });
+
+    sync();
+  }
+
   document.querySelectorAll("[data-overlay-target]").forEach(function (button) {
     button.addEventListener("click", function () {
       var overlay = document.getElementById(button.getAttribute("data-overlay-target"));
@@ -723,6 +753,7 @@
   document.querySelectorAll("[data-mou-create-form]").forEach(syncContentFields);
   document.querySelectorAll("[data-mou-editor-form]").forEach(syncEditorForm);
   document.querySelectorAll("[data-mou-assignment-form]").forEach(syncAssignmentForm);
+  document.querySelectorAll("[data-user-agreement-form]").forEach(syncUserAgreementForm);
 
   var editVersionKey = new URLSearchParams(window.location.search).get("editVersion");
   if (editVersionKey) {
