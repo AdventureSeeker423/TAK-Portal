@@ -193,30 +193,32 @@
         <input type="hidden" name="agencySuffix" value="<%= firstPendingAgency ? firstPendingAgency.suffix : '' %>" <%= hasPendingAgency ? "" : "disabled" %> />
         <input type="hidden" name="signMethodMode" id="signMethodMode" value="" />
 
-        <div class="mouSignSection" style="margin-top:0;">
-          <div class="mouSignSectionTitle">Choose Signing Method</div>
-          <div class="mouSignMethodSwitch" role="tablist" aria-label="Signing method">
-            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="esign" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>E-Sign Here</button>
-            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="upload" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>Upload Signed Copy</button>
-          </div>
-          <div class="msg" id="signMethodMsg" style="margin-top:10px;"></div>
-        </div>
-
         <div class="mouSignSection">
           <div class="mouSignSectionTitle">Signer Details</div>
           <div class="mouSignerIntro">
             By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
           </div>
 
-          <label style="display:block;">
-            Full Name
-            <input type="text" name="attestationText" placeholder="Enter Full Name" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
-          </label>
+          <div data-signer-fields hidden>
+            <label style="display:block;">
+              Full Name
+              <input type="text" name="attestationText" placeholder="Enter Full Name" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
+            </label>
 
-          <label style="margin-top:12px;display:block;">
-            Position / Role
-            <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
-          </label>
+            <label style="margin-top:12px;display:block;">
+              Position / Role
+              <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
+            </label>
+          </div>
+        </div>
+
+        <div class="mouSignSection">
+          <div class="mouSignSectionTitle">Choose Signing Method</div>
+          <div class="mouSignMethodSwitch" role="tablist" aria-label="Signing method">
+            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="esign" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>E-Sign Here</button>
+            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="upload" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>Upload Signed Copy</button>
+          </div>
+          <div class="msg" id="signMethodMsg" style="margin-top:10px;"></div>
         </div>
 
         <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
@@ -267,6 +269,7 @@
   var printBtn = document.getElementById("printDocumentBtn");
   var downloadBtn = document.getElementById("downloadDocumentBtn");
   var signMethodMsg = document.getElementById("signMethodMsg");
+  var signerFieldsWrap = form ? form.querySelector("[data-signer-fields]") : null;
   var signerNameInput = form ? form.querySelector("input[name='attestationText']") : null;
   var signerRoleInput = form ? form.querySelector("input[name='signerRole']") : null;
   var signedCopyInput = document.getElementById("signedCopyFile");
@@ -307,6 +310,16 @@
     signMethodPanels.forEach(function (panel) {
       panel.hidden = panel.getAttribute("data-sign-method-panel") !== activeSignMethod;
     });
+    if (signerFieldsWrap) {
+      var showSignerFields = !!activeSignMethod;
+      signerFieldsWrap.hidden = !showSignerFields;
+      if (signerNameInput && signerNameInput.hasAttribute("required")) {
+        signerNameInput.disabled = !showSignerFields;
+      }
+      if (signerRoleInput && signerRoleInput.hasAttribute("required")) {
+        signerRoleInput.disabled = !showSignerFields;
+      }
+    }
     updateSignerFieldPlaceholders();
     setSignMethodMessage("");
   }
