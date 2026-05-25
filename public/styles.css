@@ -640,6 +640,14 @@ label.btn {
     font-size: 12px;
 }
 
+.table tbody tr.mouRow--signed td {
+    background: rgba(24, 179, 90, 0.14);
+}
+
+.table tbody tr.mouRow--pending td {
+    background: rgba(255, 102, 0, 0.12);
+}
+
 /* ======================
    CHECKLIST BOX (reused)
    ====================== */

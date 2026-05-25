@@ -1,6 +1,48 @@
 <%- include("partials/header") %>
 <%- include("partials/sidebar") %>
 
+<style>
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #mouViewDocumentSection,
+  #mouViewDocumentSection * {
+    visibility: visible !important;
+  }
+
+  #mouViewDocumentSection {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: #fff;
+    overflow: visible;
+  }
+
+  #mouViewDocumentSection .mouViewerToolbar {
+    display: none !important;
+  }
+
+  #mouViewDocumentSection,
+  #mouViewDocumentSection *,
+  #mouViewDocumentSection .muted {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+  }
+
+  #mouViewDocumentSection .mouPdfFrame {
+    min-height: 100vh;
+    height: 100vh;
+  }
+}
+</style>
+
 <main class="main">
   <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div>
@@ -22,6 +64,7 @@
       <% if (downloadUrl) { %>
         <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
       <% } %>
+      <button class="btn secondary" type="button" id="printDocumentBtn">Print</button>
       <a class="btn" href="/mou">Back to MOU / Documents</a>
     </div>
   </div>
@@ -32,7 +75,7 @@
     </div>
   <% } %>
 
-  <section class="card mouViewerCard">
+  <section class="card mouViewerCard" id="mouViewDocumentSection">
     <% if (contentType === "pdf") { %>
       <div class="mouViewerToolbar">
         <div class="muted">Viewing <%= fileName || "MOU PDF" %></div>
@@ -51,3 +94,13 @@
     <% } %>
   </section>
 </main>
+
+<script>
+(function () {
+  var printBtn = document.getElementById("printDocumentBtn");
+  if (!printBtn) return;
+  printBtn.addEventListener("click", function () {
+    window.print();
+  });
+})();
+</script>

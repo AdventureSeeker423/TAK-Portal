@@ -74,7 +74,10 @@
       <div class="muted"><%= showSignedEvidence ? "Your agency has already signed the current version." : "Review the current version, then sign on behalf of your agency." %></div>
     </div>
     <div class="mouActionRow">
-      <% if (activeDownloadUrl) { %>
+      <% if (showSignedEvidence && activeDownloadUrl) { %>
+        <a class="btn secondary" href="<%= activeDownloadUrl %>">Download</a>
+        <button class="btn secondary" type="button" id="printDocumentBtn">Print</button>
+      <% } else if (activeDownloadUrl) { %>
         <button class="btn secondary" type="button" id="downloadDocumentBtn">Download</button>
         <button class="btn secondary" type="button" id="printDocumentBtn">Print</button>
       <% } %>

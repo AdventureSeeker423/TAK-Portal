@@ -111,7 +111,6 @@
           <thead>
             <tr>
               <th>Document</th>
-              <th>Scope</th>
               <th>Version</th>
               <th>Agencies / Signatures</th>
               <th>Status</th>
@@ -121,14 +120,14 @@
           <tbody>
             <% cards.forEach(function (card) { %>
               <% const documentStatusLabel = card.signatures && card.signatures.length ? (card.allSigned ? "Signed" : "Pending signature") : "Active"; %>
+              <% const cardRowClass = card.signatures && card.signatures.length ? (card.allSigned ? "mouRow--signed" : "mouRow--pending") : ""; %>
               <% const cardViewHref = card.currentVersion && String(card.currentVersion.contentType || "").toLowerCase() === "pdf"
                 ? ("/mou/file/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version))
                 : ("/mou/view/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version)); %>
-              <tr>
+              <tr class="<%= cardRowClass %>">
                 <td>
                   <strong><%= card.stream.title %></strong>
                 </td>
-                <td><%= card.scopeLabel %></td>
                 <td>
                   v<%= card.currentVersion ? card.currentVersion.version : "-" %>
                   <% if (card.currentVersion && card.currentVersion.activeAt) { %>
@@ -198,13 +197,16 @@
           <tbody>
             <% adminStreams.forEach(function (stream) { %>
               <% const currentVersion = stream.currentVersion; %>
+              <% const adminRowClass = currentVersion && stream.targetAgencies && stream.targetAgencies.length
+                ? (stream.pendingSignatureCount ? "mouRow--pending" : "mouRow--signed")
+                : ""; %>
               <% const editorOverlayId = currentVersion ? ("mouEditOverlay-" + stream.mouId + "-" + currentVersion.version) : ""; %>
               <% const assignOverlayId = currentVersion ? ("mouAssignOverlay-" + stream.mouId) : ""; %>
               <% const assignmentLabel = currentVersion ? (stream.targetAgencies && stream.targetAgencies.length ? stream.scopeLabel : "Inactive") : "Create version first"; %>
               <% const adminViewHref = currentVersion && String(currentVersion.contentType || "").toLowerCase() === "pdf"
                 ? ("/mou/file/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version))
                 : ("/mou/view/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version)); %>
-              <tr>
+              <tr class="<%= adminRowClass %>">
                 <td>
                   <strong><%= stream.title %></strong>
                 </td>
@@ -277,7 +279,8 @@
           </thead>
           <tbody>
             <% signatureRows.forEach(function (row) { %>
-              <tr>
+              <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
+              <tr class="<%= signatureRowClass %>">
                 <td><%= row.mouTitle %></td>
                 <td><%= row.scopeLabel %></td>
                 <td><%= row.agencyName %></td>

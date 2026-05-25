@@ -414,7 +414,7 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
       html: evidence.html,
       contentType: "signed_html",
       fileUrl: null,
-      downloadUrl: null,
+      downloadUrl: `/mou/agency/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(agencyId)}?version=${encodeURIComponent(evidence.version.version)}&download=1`,
       fileName: null,
       signature: evidence.signature,
       scopeLabel: mouService.getScopeLabel(evidence.stream),
