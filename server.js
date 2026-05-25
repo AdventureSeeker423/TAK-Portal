@@ -52,6 +52,13 @@ const DEFAULT_SITE_FONT_FAMILY =
   "system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
 const USER_AGREEMENT_SESSION_COOKIE = "mou_user_agreement_session";
 
+function buildAgreementSessionValue(user, agreement) {
+  const userKey = String(user?.uid || user?.username || "").trim().toLowerCase();
+  const version = Number(agreement?.version || 0) || 0;
+  if (!userKey || !version) return "";
+  return `${userKey}:${version}`;
+}
+
 // Expose version to all EJS views (e.g. sidebar)
 app.locals.APP_VERSION = pkg.version || "dev";
 app.locals.APP_LATEST_VERSION = pkg.version || "dev";
@@ -226,13 +233,14 @@ app.use((req, res, next) => {
     const user = req.authentikUser;
     const normalizedPath = (req.path || "").replace(/\/+$/, "") || "/";
     const isApi = normalizedPath.startsWith("/api/");
-    const hasAcceptedAgreementForSession = String(req.headers.cookie || "")
+    const agreementCookieValue = String(req.headers.cookie || "")
       .split(/;\s*/)
       .map((entry) => entry.split("="))
-      .some(([key, value]) =>
-        String(key || "").trim() === USER_AGREEMENT_SESSION_COOKIE &&
-        String(value || "").trim() === "1"
-      );
+      .find(([key]) => String(key || "").trim() === USER_AGREEMENT_SESSION_COOKIE);
+    const currentAgreement = mouSvc.getCurrentUserAgreement().current;
+    const hasAcceptedAgreementForSession =
+      !!agreementCookieValue &&
+      String(agreementCookieValue[1] || "").trim() === buildAgreementSessionValue(user, currentAgreement);
     const isAgreementTargetUser =
       !!(user && user.username) && !user.isGlobalAdmin && !user.isAgencyAdmin;
     const isAgreementExemptPath =
@@ -869,13 +877,18 @@ app.get("/setup-my-device", async (req, res) => {
     takHost,
     enrollQrBootstrap,
     agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser, {
-      acceptedForSession: String(req.headers.cookie || "")
+      acceptedForSession: (function () {
+        const agreementCookieValue = String(req.headers.cookie || "")
         .split(/;\s*/)
         .map((entry) => entry.split("="))
-        .some(([key, value]) =>
-          String(key || "").trim() === USER_AGREEMENT_SESSION_COOKIE &&
-          String(value || "").trim() === "1"
-        ),
+        .find(([key]) => String(key || "").trim() === USER_AGREEMENT_SESSION_COOKIE);
+        const currentAgreement = mouSvc.getCurrentUserAgreement().current;
+        return (
+          !!agreementCookieValue &&
+          String(agreementCookieValue[1] || "").trim() ===
+            buildAgreementSessionValue(req.authentikUser, currentAgreement)
+        );
+      })(),
     }),
   });
 });

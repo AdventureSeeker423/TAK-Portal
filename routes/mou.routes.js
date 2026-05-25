@@ -14,6 +14,13 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 const USER_AGREEMENT_SESSION_COOKIE = "mou_user_agreement_session";
 
+function buildAgreementSessionValue(user, agreement) {
+  const userKey = String(user?.uid || user?.username || "").trim().toLowerCase();
+  const version = Number(agreement?.version || 0) || 0;
+  if (!userKey || !version) return "";
+  return `${userKey}:${version}`;
+}
+
 function renderNotFound(req, res) {
   if ((req.originalUrl || req.path || "").startsWith("/api/")) {
     return res.status(404).json({ error: "Not found" });
@@ -504,7 +511,8 @@ router.post("/api/mou/user-agreement/accept", requireMouEnabled, requireMouPermi
     if (!mouService.shouldRequireUserAgreement(req.authentikUser, { acceptedForSession: false })) {
       return res.json({ success: true });
     }
-    res.cookie(USER_AGREEMENT_SESSION_COOKIE, "1", {
+    const agreement = mouService.getCurrentUserAgreement().current;
+    res.cookie(USER_AGREEMENT_SESSION_COOKIE, buildAgreementSessionValue(req.authentikUser, agreement), {
       httpOnly: true,
       sameSite: "lax",
       path: "/",

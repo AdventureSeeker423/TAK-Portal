@@ -2,7 +2,7 @@
   <div class="modalOverlay" id="userAgreementOverlay">
     <div class="modal userAgreementModal" role="dialog" aria-modal="true" aria-labelledby="userAgreementTitle">
       <div class="modalHeader">
-        <h2 id="userAgreementTitle" style="margin:0;">End-User Agreement</h2>
+        <h2 id="userAgreementTitle" style="margin:0;"><%= agreementSummary.agreement.title || "End-User Agreement" %></h2>
       </div>
       <div class="modalBody">
         <div class="mouDocumentShell">

@@ -652,10 +652,14 @@
       event.preventDefault();
       if (submitBtn) submitBtn.disabled = true;
       setStatus("pending", "Saving assignment...");
+      var payload = new URLSearchParams(new FormData(form));
       fetch(form.getAttribute("action") + "?format=json", {
         method: "POST",
-        headers: { Accept: "application/json" },
-        body: new FormData(form)
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+        },
+        body: payload.toString()
       }).then(async function (res) {
         var out = await res.json().catch(function () { return {}; });
         if (!res.ok) {
