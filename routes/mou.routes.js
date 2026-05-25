@@ -589,6 +589,127 @@ router.get("/admin/mou/:mouId/:version/edit", requireMouEnabled, requireMouPermi
   return res.redirect(`/mou?editVersion=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`);
 });
 
+router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, async (req, res) => {
+  const debugContext = {
+    mouId: String(req.params.mouId || ""),
+    username: req.authentikUser?.username || req.authentikUser?.uid || "unknown",
+    serverwide: !!req.body?.serverwide,
+    agencySuffixes: [],
+  };
+  try {
+    const previousStream = mouService.getStreamById(req.params.mouId);
+    const rawAgencySuffixes = req.body?.agencySuffixes;
+    const agencySuffixes = Array.isArray(rawAgencySuffixes)
+      ? rawAgencySuffixes
+      : rawAgencySuffixes
+        ? [rawAgencySuffixes]
+        : [];
+    debugContext.agencySuffixes = agencySuffixes;
+    console.info("[MOU_ASSIGN] Save requested", debugContext);
+
+    const stream = mouService.updateStreamAssignments({
+      mouId: req.params.mouId,
+      serverwide: req.body?.serverwide,
+      agencySuffixes,
+      actor: req.authentikUser,
+    });
+
+    console.info("[MOU_ASSIGN] Assignments updated", {
+      ...debugContext,
+      savedAssignments: stream.assignments || null,
+    });
+
+    const previousAssignmentKey = JSON.stringify(previousStream.assignments || {});
+    const currentAssignmentKey = JSON.stringify(stream.assignments || {});
+    const currentVersion = mouService.getCurrentVersion(stream);
+    const targetAgencies = mouService.getTargetAgenciesForStream(stream);
+    const successUrl = `/mou?success=${encodeURIComponent("Document assignment updated.")}`;
+    const wantsJson =
+      String(req.headers.accept || "").includes("application/json") ||
+      req.query.format === "json";
+
+    console.info("[MOU_ASSIGN] Post-save state", {
+      ...debugContext,
+      currentVersion: currentVersion?.version || null,
+      targetAgencyCount: targetAgencies.length,
+      targetAgencySuffixes: targetAgencies.map((agency) => agency?.suffix).filter(Boolean),
+    });
+    if (wantsJson) {
+      res.json({ success: true, redirectUrl: successUrl });
+    } else {
+      res.redirect(successUrl);
+    }
+
+    void Promise.resolve().then(async () => {
+      if (currentVersion && previousAssignmentKey !== currentAssignmentKey && targetAgencies.length) {
+        try {
+          await mouScheduler.sendAssignmentNotificationsForVersion({
+            stream,
+            version: currentVersion,
+            actor: req.authentikUser,
+          });
+        } catch (notifyErr) {
+          console.error("[MOU_ASSIGN] Notification failure", {
+            ...debugContext,
+            currentVersion: currentVersion.version,
+            error: notifyErr?.message || String(notifyErr || "Unknown notification error"),
+            stack: notifyErr?.stack || null,
+          });
+          auditRequest(req, {
+            action: "MOU_ASSIGNMENT_NOTIFICATION_FAILED",
+            targetType: "mou",
+            targetId: String(req.params.mouId),
+            details: {
+              mouId: req.params.mouId,
+              version: currentVersion.version,
+              error: notifyErr?.message || String(notifyErr || "Failed to send assignment notifications."),
+            },
+          });
+        }
+      }
+      try {
+        auditRequest(req, {
+          action: "MOU_ASSIGNMENTS_UPDATED",
+          targetType: "mou",
+          targetId: String(req.params.mouId),
+          details: {
+            mouId: req.params.mouId,
+            assignment: mouService.getScopeLabel(stream),
+            targetAgencyCount: targetAgencies.length,
+          },
+        });
+      } catch (auditErr) {
+        console.error("[MOU_ASSIGN] Audit logging failure", {
+          ...debugContext,
+          error: auditErr?.message || String(auditErr || "Unknown audit error"),
+          stack: auditErr?.stack || null,
+        });
+      }
+    }).catch((backgroundErr) => {
+      console.error("[MOU_ASSIGN] Background follow-up failure", {
+        ...debugContext,
+        error: backgroundErr?.message || String(backgroundErr || "Unknown background error"),
+        stack: backgroundErr?.stack || null,
+      });
+    });
+    return;
+  } catch (err) {
+    console.error("[MOU_ASSIGN] Fatal failure", {
+      ...debugContext,
+      error: err?.message || String(err || "Unknown assignment error"),
+      stack: err?.stack || null,
+      body: req.body || null,
+    });
+    if (
+      String(req.headers.accept || "").includes("application/json") ||
+      req.query.format === "json"
+    ) {
+      return res.status(400).json({ error: err?.message || "Failed to save assignment." });
+    }
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
 router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
     mouService.updateVersion({
@@ -782,127 +903,6 @@ router.post("/admin/mou/:mouId/delete", requireMouEnabled, requireMouPermission,
     });
     return res.redirect(`/mou?success=${encodeURIComponent("MOU deleted.")}`);
   } catch (err) {
-    return toErrorRedirect(res, "/mou", err);
-  }
-});
-
-router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, async (req, res) => {
-  const debugContext = {
-    mouId: String(req.params.mouId || ""),
-    username: req.authentikUser?.username || req.authentikUser?.uid || "unknown",
-    serverwide: !!req.body?.serverwide,
-    agencySuffixes: [],
-  };
-  try {
-    const previousStream = mouService.getStreamById(req.params.mouId);
-    const rawAgencySuffixes = req.body?.agencySuffixes;
-    const agencySuffixes = Array.isArray(rawAgencySuffixes)
-      ? rawAgencySuffixes
-      : rawAgencySuffixes
-        ? [rawAgencySuffixes]
-        : [];
-    debugContext.agencySuffixes = agencySuffixes;
-    console.info("[MOU_ASSIGN] Save requested", debugContext);
-
-    const stream = mouService.updateStreamAssignments({
-      mouId: req.params.mouId,
-      serverwide: req.body?.serverwide,
-      agencySuffixes,
-      actor: req.authentikUser,
-    });
-
-    console.info("[MOU_ASSIGN] Assignments updated", {
-      ...debugContext,
-      savedAssignments: stream.assignments || null,
-    });
-
-    const previousAssignmentKey = JSON.stringify(previousStream.assignments || {});
-    const currentAssignmentKey = JSON.stringify(stream.assignments || {});
-    const currentVersion = mouService.getCurrentVersion(stream);
-    const targetAgencies = mouService.getTargetAgenciesForStream(stream);
-    const successUrl = `/mou?success=${encodeURIComponent("Document assignment updated.")}`;
-    const wantsJson =
-      String(req.headers.accept || "").includes("application/json") ||
-      req.query.format === "json";
-
-    console.info("[MOU_ASSIGN] Post-save state", {
-      ...debugContext,
-      currentVersion: currentVersion?.version || null,
-      targetAgencyCount: targetAgencies.length,
-      targetAgencySuffixes: targetAgencies.map((agency) => agency?.suffix).filter(Boolean),
-    });
-    if (wantsJson) {
-      res.json({ success: true, redirectUrl: successUrl });
-    } else {
-      res.redirect(successUrl);
-    }
-
-    void Promise.resolve().then(async () => {
-      if (currentVersion && previousAssignmentKey !== currentAssignmentKey && targetAgencies.length) {
-        try {
-          await mouScheduler.sendAssignmentNotificationsForVersion({
-            stream,
-            version: currentVersion,
-            actor: req.authentikUser,
-          });
-        } catch (notifyErr) {
-          console.error("[MOU_ASSIGN] Notification failure", {
-            ...debugContext,
-            currentVersion: currentVersion.version,
-            error: notifyErr?.message || String(notifyErr || "Unknown notification error"),
-            stack: notifyErr?.stack || null,
-          });
-          auditRequest(req, {
-            action: "MOU_ASSIGNMENT_NOTIFICATION_FAILED",
-            targetType: "mou",
-            targetId: String(req.params.mouId),
-            details: {
-              mouId: req.params.mouId,
-              version: currentVersion.version,
-              error: notifyErr?.message || String(notifyErr || "Failed to send assignment notifications."),
-            },
-          });
-        }
-      }
-      try {
-        auditRequest(req, {
-          action: "MOU_ASSIGNMENTS_UPDATED",
-          targetType: "mou",
-          targetId: String(req.params.mouId),
-          details: {
-            mouId: req.params.mouId,
-            assignment: mouService.getScopeLabel(stream),
-            targetAgencyCount: targetAgencies.length,
-          },
-        });
-      } catch (auditErr) {
-        console.error("[MOU_ASSIGN] Audit logging failure", {
-          ...debugContext,
-          error: auditErr?.message || String(auditErr || "Unknown audit error"),
-          stack: auditErr?.stack || null,
-        });
-      }
-    }).catch((backgroundErr) => {
-      console.error("[MOU_ASSIGN] Background follow-up failure", {
-        ...debugContext,
-        error: backgroundErr?.message || String(backgroundErr || "Unknown background error"),
-        stack: backgroundErr?.stack || null,
-      });
-    });
-    return;
-  } catch (err) {
-    console.error("[MOU_ASSIGN] Fatal failure", {
-      ...debugContext,
-      error: err?.message || String(err || "Unknown assignment error"),
-      stack: err?.stack || null,
-      body: req.body || null,
-    });
-    if (
-      String(req.headers.accept || "").includes("application/json") ||
-      req.query.format === "json"
-    ) {
-      return res.status(400).json({ error: err?.message || "Failed to save assignment." });
-    }
     return toErrorRedirect(res, "/mou", err);
   }
 });
