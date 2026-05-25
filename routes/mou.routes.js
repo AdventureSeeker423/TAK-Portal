@@ -786,6 +786,40 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
   }
 });
 
+router.post("/admin/mou/:mouId/assignments/revoke/:agencyId", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+  try {
+    const stream = mouService.getStreamById(req.params.mouId);
+    const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
+    const remainingAgencySuffixes = mouService
+      .getTargetAgenciesForStream(stream)
+      .map((agency) => String(agency?.suffix || "").trim().toLowerCase())
+      .filter(Boolean)
+      .filter((suffix) => suffix !== agencyId);
+
+    mouService.updateStreamAssignments({
+      mouId: req.params.mouId,
+      serverwide: false,
+      agencySuffixes: remainingAgencySuffixes,
+      actor: req.authentikUser,
+    });
+
+    auditRequest(req, {
+      action: "MOU_ASSIGNMENT_REVOKED",
+      targetType: "mou",
+      targetId: String(req.params.mouId),
+      agencySuffix: agencyId,
+      details: {
+        mouId: req.params.mouId,
+        agencyId,
+      },
+    });
+
+    return res.redirect(`/mou?success=${encodeURIComponent("Agency assignment revoked.")}`);
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
 router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
     mouService.updateVersion({
@@ -880,8 +914,7 @@ router.post("/admin/mou/:mouId/:version/save-as-new", requireMouEnabled, require
       });
       const payload = {
         success: true,
-        editVersion: `${req.params.mouId}:${currentVersion.version}`,
-        redirectUrl: `/mou?success=${encodeURIComponent("New version created.")}&editVersion=${encodeURIComponent(`${req.params.mouId}:${currentVersion.version}`)}`,
+        redirectUrl: `/mou?success=${encodeURIComponent("New version created.")}`,
       };
       if (
         String(req.headers.accept || "").includes("application/json") ||

@@ -175,7 +175,6 @@
       <div class="mouSectionHeader">
         <div>
           <h2>Documents</h2>
-          <p class="muted">Edit the current version in a modal, create new versions when needed, and assign active documents.</p>
         </div>
       </div>
       <% if (!adminStreams || !adminStreams.length) { %>
@@ -254,7 +253,6 @@
       <div class="mouSectionHeader">
         <div>
           <h2>Agency Signature Status</h2>
-          <p class="muted">Track required agency signatures for currently assigned documents.</p>
         </div>
         <a class="btn secondary" href="/mou?export=signatures">Export CSV</a>
       </div>
@@ -274,7 +272,7 @@
               <th>Signed Version</th>
               <th>Signer</th>
               <th>Status</th>
-              <th>Evidence</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -282,7 +280,7 @@
               <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
               <tr class="<%= signatureRowClass %>">
                 <td><%= row.mouTitle %></td>
-                <td><%= row.scopeLabel %></td>
+                <td><%= row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel %></td>
                 <td><%= row.agencyName %></td>
                 <td>v<%= row.currentVersion %></td>
                 <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
@@ -291,11 +289,19 @@
                   <%= row.needsSignature ? "Needs signature" : "Current" %>
                 </td>
                 <td>
-                  <% if (row.signedVersion) { %>
-                    <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Evidence</a>
-                  <% } else { %>
-                    <span class="muted">-</span>
-                  <% } %>
+                  <div class="mouActionRow">
+                    <% if (row.signedVersion) { %>
+                      <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
+                    <% } %>
+                    <% if (row.needsSignature) { %>
+                      <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/assignments/revoke/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Revoke this agency assignment?');">
+                        <button class="btn danger" type="submit">Revoke</button>
+                      </form>
+                    <% } %>
+                    <% if (!row.signedVersion && !row.needsSignature) { %>
+                      <span class="muted">-</span>
+                    <% } %>
+                  </div>
                 </td>
               </tr>
             <% }); %>
