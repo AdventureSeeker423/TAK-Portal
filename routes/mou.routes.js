@@ -212,17 +212,30 @@ router.get("/mou/file/:mouId/:version", requireMouEnabled, requireMouPermission,
       });
     }
 
+    const fileName = String(content.fileName || "mou").replace(/"/g, "");
+
     if (content.contentType === "pdf") {
       res.setHeader("Content-Type", "application/pdf");
       const disposition = req.query.download === "1" ? "attachment" : "inline";
       res.setHeader(
         "Content-Disposition",
-        `${disposition}; filename="${content.fileName.replace(/"/g, "")}"`
+        `${disposition}; filename="${fileName}"`
       );
       return res.send(content.contentBuffer);
     }
 
+    if (content.contentType === "markdown") {
+      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      if (req.query.download === "1") {
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      }
+      return res.send(content.contentBuffer.toString("utf8"));
+    }
+
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (req.query.download === "1") {
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    }
     return res.send(content.html);
   } catch (err) {
     return renderNotFound(req, res);
@@ -485,7 +498,7 @@ router.get("/admin/mou/:mouId/:version/edit", requireMouEnabled, requireMouPermi
     res.render("admin/mou_admin_edit", {
       stream,
       version,
-      html: content.contentType === "html" ? content.html : "",
+      html: content.contentType === "pdf" ? "" : content.sourceText,
       contentType: content.contentType,
       fileName: content.fileName,
       fileUrl: contentUrls.fileUrl,
@@ -546,7 +559,7 @@ router.get("/admin/mou/:mouId/:version/preview", requireMouEnabled, requireMouPe
     res.render("admin/mou_admin_preview", {
       stream,
       version,
-      html: content.contentType === "html" ? content.html : "",
+      html: content.contentType === "pdf" ? "" : content.html,
       contentType: content.contentType,
       fileUrl: contentUrls.fileUrl,
       downloadUrl: contentUrls.downloadUrl,

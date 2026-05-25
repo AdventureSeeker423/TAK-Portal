@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { marked } = require("marked");
 const agenciesStore = require("./agencies.service");
 const accessSvc = require("./access.service");
 const { getBool, getInt } = require("./env");
@@ -174,11 +175,16 @@ function normalizeScopeType(value) {
 }
 
 function normalizeContentType(value) {
-  return normalizeLower(value) === "pdf" ? "pdf" : "html";
+  const normalized = normalizeLower(value);
+  if (normalized === "pdf") return "pdf";
+  if (normalized === "markdown") return "markdown";
+  return "html";
 }
 
 function getFileExtensionForContentType(contentType) {
-  return contentType === "pdf" ? "pdf" : "html";
+  if (contentType === "pdf") return "pdf";
+  if (contentType === "markdown") return "md";
+  return "html";
 }
 
 function normalizeAgencySuffix(value) {
@@ -230,7 +236,12 @@ function ensureVersionShape(versionRecord) {
   const contentPath = normalizeText(
     versionRecord?.contentPath || versionRecord?.contentHtmlPath || ""
   );
-  const contentType = normalizeContentType(versionRecord?.contentType || (contentPath.endsWith(".pdf") ? "pdf" : "html"));
+  const inferredContentType = contentPath.endsWith(".pdf")
+    ? "pdf"
+    : contentPath.endsWith(".md")
+      ? "markdown"
+      : "html";
+  const contentType = normalizeContentType(versionRecord?.contentType || inferredContentType);
   return {
     version: normalizeVersion(versionRecord?.version),
     state: normalizeText(versionRecord?.state || "draft") || "draft",
@@ -458,6 +469,15 @@ function readHtmlContent(versionRecord) {
   return buffer.length ? buffer.toString("utf8") : "";
 }
 
+function renderDocumentHtml(versionRecord) {
+  const rawContent = readHtmlContent(versionRecord);
+  const contentType = normalizeContentType(versionRecord?.contentType);
+  if (contentType === "markdown") {
+    return sanitizeMouHtml(marked.parse(rawContent || ""));
+  }
+  return rawContent;
+}
+
 function persistDraftContent({ mouId, version, contentType, html, file }) {
   const ext = getFileExtensionForContentType(contentType);
   const draftPath = store.getDraftContentPath(mouId, version, ext);
@@ -472,8 +492,20 @@ function persistDraftContent({ mouId, version, contentType, html, file }) {
     };
   }
 
+  if (contentType === "markdown") {
+    const safeMarkdown = String(html || "");
+    requireNonEmpty(safeMarkdown, "Draft Markdown");
+    enforceHtmlSize(safeMarkdown);
+    store.writeHtml(draftPath, safeMarkdown);
+    return {
+      absPath: draftPath,
+      contentSha256: computeSha256(safeMarkdown),
+      originalFileName: normalizeText(file?.originalname || ""),
+    };
+  }
+
   const safeHtml = sanitizeMouHtml(html || "");
-  requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "MOU HTML");
+  requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "Draft HTML");
   enforceHtmlSize(safeHtml);
   store.writeHtml(draftPath, safeHtml);
   return {
@@ -496,8 +528,11 @@ function buildDraftInput(input, existingVersionRecord) {
 
   const existingContentType = normalizeContentType(existingVersionRecord?.contentType);
 
-  if (contentType === "html") {
-    requireNonEmpty(input?.html, "Draft HTML");
+  if (contentType === "html" || contentType === "markdown") {
+    requireNonEmpty(
+      input?.html,
+      contentType === "markdown" ? "Draft Markdown" : "Draft HTML"
+    );
   } else if ((!existingVersionRecord || existingContentType !== "pdf") && !input?.file) {
     throw new Error("A PDF file is required.");
   }
@@ -685,7 +720,12 @@ function updateDraft({
   stream.updatedAt = now;
   stream.updatedBy = actor?.uid || actor?.username || null;
 
-  if (update.file || update.contentType !== normalizeContentType(versionRecord.contentType) || update.contentType === "html") {
+  if (
+    update.file ||
+    update.contentType !== normalizeContentType(versionRecord.contentType) ||
+    update.contentType === "html" ||
+    update.contentType === "markdown"
+  ) {
     const oldAbsPath = getAbsoluteContentPath(versionRecord);
     const persisted = persistDraftContent({
       mouId,
@@ -829,6 +869,11 @@ function deployDraft({ mouId, version, actor, confirmText }) {
   if (contentType === "pdf") {
     enforcePdfSize(draftBuffer);
     store.writeBinary(deployedAbsPath, draftBuffer);
+  } else if (contentType === "markdown") {
+    const markdown = draftBuffer.toString("utf8");
+    requireNonEmpty(markdown, "MOU Markdown");
+    enforceHtmlSize(markdown);
+    store.writeHtml(deployedAbsPath, markdown);
   } else {
     const safeHtml = sanitizeMouHtml(draftBuffer.toString("utf8"));
     requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "MOU HTML");
@@ -887,7 +932,7 @@ function getDeployedVersionOrLatest(mouId, version) {
     targetVersion: clone(target),
     latestVersion: clone(deployed),
     contentType,
-    html: contentType === "html" ? contentBuffer.toString("utf8") : "",
+    html: contentType === "pdf" ? "" : renderDocumentHtml(target),
     fileName: normalizeText(target.originalFileName || `${stream.slug || "mou"}-${target.version}.${getFileExtensionForContentType(contentType)}`),
     redirectedToLatest:
       normalizeVersion(target.version) !== normalizeVersion(requested.version),
@@ -909,7 +954,8 @@ function getVersionContent(mouId, version) {
     stream,
     version: clone(versionRecord),
     contentType,
-    html: contentType === "html" ? contentBuffer.toString("utf8") : "",
+    sourceText: contentType === "pdf" ? "" : readHtmlContent(versionRecord),
+    html: contentType === "pdf" ? "" : renderDocumentHtml(versionRecord),
     fileName: normalizeText(
       versionRecord.originalFileName ||
         `${stream.slug || "mou"}-${versionRecord.version}.${getFileExtensionForContentType(contentType)}`
@@ -1043,7 +1089,7 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
           `  <iframe src="${fileHref}" title="MOU PDF" style="width:100%;min-height:780px;border:1px solid #d1d5db;border-radius:12px;background:#fff;"></iframe>`,
           "</div>",
         ].join("\n")
-      : readHtmlContent(versionRecord);
+      : renderDocumentHtml(versionRecord);
 
   return [
     "<style>",

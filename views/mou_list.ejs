@@ -28,77 +28,76 @@
   <% } %>
 
   <% if (isGlobalAdmin) { %>
-    <section class="card" style="margin-bottom:14px;">
-      <div class="mouSectionHeader">
-        <div>
-          <h2>Create New MOU Draft</h2>
-          <p class="muted">Create the document first. Once deployed, you can activate it serverwide or assign it to specific agencies.</p>
+    <div class="mouWorkspace mouWorkspace--draftSplit" style="margin-bottom:14px;">
+      <section class="card mouWorkspace__document">
+        <div class="mouSectionHeader">
+          <div>
+            <h2>Create New MOU Draft</h2>
+            <p class="muted">Create the document first. Once deployed, you can activate it serverwide or assign it to specific agencies.</p>
+          </div>
         </div>
-      </div>
 
-      <form method="post" action="/admin/mou" enctype="multipart/form-data" class="mouAdminForm" data-mou-draft-form="create">
-        <input type="hidden" name="mandatory" value="true" />
-        <div class="grid2">
+        <form method="post" action="/admin/mou" enctype="multipart/form-data" class="mouAdminForm" data-mou-draft-form="create">
+          <input type="hidden" name="mandatory" value="true" />
+          <div class="grid2">
+            <label>
+              Title
+              <input type="text" name="title" required />
+            </label>
+            <label>
+              Content type
+              <select name="contentType" data-mou-content-select>
+                <option value="html">HTML</option>
+                <option value="markdown">Markdown</option>
+                <option value="pdf">PDF upload</option>
+              </select>
+            </label>
+          </div>
+
+          <label data-mou-richtext-field>
+            <span data-mou-richtext-label>Draft HTML</span>
+            <textarea name="html" rows="16" placeholder="<p>Paste MOU HTML here.</p>" data-mou-richtext-input></textarea>
+          </label>
+
+          <label data-mou-file-field hidden>
+            Upload PDF
+            <input type="file" name="contentFile" accept="application/pdf,.pdf" />
+          </label>
+
+          <div class="mouFormFooter">
+            <button class="btn success" type="submit">Create Draft</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card mouWorkspace__sidebar">
+        <div class="mouSectionHeader">
+          <div>
+            <h2>Serverwide User Agreement</h2>
+            <p class="muted">Enable or disable the login popup for all non-global-admin users. Responses are not stored.</p>
+          </div>
+        </div>
+
+        <% const currentAgreement = adminAgreement && adminAgreement.current ? adminAgreement.current : null; %>
+        <form method="post" action="/admin/mou/user-agreement/save" class="mouAdminForm">
+          <label class="mouCheckboxLabel">
+            <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> />
+            Enable serverwide user agreement popup
+          </label>
           <label>
             Title
-            <input type="text" name="title" required />
+            <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : 'User Agreement' %>" required />
           </label>
           <label>
-            Content type
-            <select name="contentType" data-mou-content-select>
-              <option value="html">HTML</option>
-              <option value="pdf">PDF upload</option>
-            </select>
+            Agreement Text
+            <textarea name="html" rows="14" required><%- currentAgreement ? currentAgreement.bodyHtml : '<p>I understand that use of this TAK environment is subject to my agency\'s current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.</p>' %></textarea>
           </label>
-          <label>
-            Reminder days
-            <input type="number" min="1" name="reminderDays" value="7" />
-          </label>
-        </div>
-
-        <label data-mou-html-field>
-          Draft HTML
-          <textarea name="html" rows="16" placeholder="<p>Paste MOU HTML here.</p>"></textarea>
-        </label>
-
-        <label data-mou-file-field hidden>
-          Upload PDF
-          <input type="file" name="contentFile" accept="application/pdf,.pdf" />
-        </label>
-
-        <div class="mouFormFooter">
-          <button class="btn success" type="submit">Create Draft</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="card" style="margin-bottom:14px;">
-      <div class="mouSectionHeader">
-        <div>
-          <h2>Serverwide User Agreement</h2>
-          <p class="muted">Enable or disable the login popup for all non-global-admin users. Responses are not stored.</p>
-        </div>
-      </div>
-
-      <% const currentAgreement = adminAgreement && adminAgreement.current ? adminAgreement.current : null; %>
-      <form method="post" action="/admin/mou/user-agreement/save" class="mouAdminForm">
-        <label class="mouCheckboxLabel">
-          <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> />
-          Enable serverwide user agreement popup
-        </label>
-        <label>
-          Title
-          <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : 'User Agreement' %>" required />
-        </label>
-        <label>
-          Agreement Text
-          <textarea name="html" rows="14" required><%- currentAgreement ? currentAgreement.bodyHtml : '<p>I understand that use of this TAK environment is subject to my agency\'s current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.</p>' %></textarea>
-        </label>
-        <div class="mouFormFooter">
-          <button class="btn success" type="submit">Save User Agreement</button>
-        </div>
-      </form>
-    </section>
+          <div class="mouFormFooter">
+            <button class="btn success" type="submit">Save User Agreement</button>
+          </div>
+        </form>
+      </section>
+    </div>
   <% } %>
 
   <section class="mouSectionHeader">
@@ -137,7 +136,7 @@
             <% if (card.targetAgencies && card.targetAgencies.length) { %>
               <div class="mouMetaPill">
                 <strong><%= card.targetAgencies.length %></strong>
-                <span><%= card.stream.scopeType === "global" ? "target agencies" : "target agency" %></span>
+                <span><%= card.targetAgencies.length === 1 ? "target agency" : "target agencies" %></span>
               </div>
             <% } %>
           </div>
@@ -287,8 +286,9 @@
     var agencyField = form.querySelector("[data-mou-agency-field]");
     var agencySelect = agencyField ? agencyField.querySelector("select") : null;
     var contentSelect = form.querySelector("[data-mou-content-select]");
-    var htmlField = form.querySelector("[data-mou-html-field]");
-    var htmlArea = htmlField ? htmlField.querySelector("textarea") : null;
+    var richtextField = form.querySelector("[data-mou-richtext-field]");
+    var richtextArea = form.querySelector("[data-mou-richtext-input]");
+    var richtextLabel = form.querySelector("[data-mou-richtext-label]");
     var fileField = form.querySelector("[data-mou-file-field]");
     var fileInput = fileField ? fileField.querySelector("input[type='file']") : null;
 
@@ -297,12 +297,21 @@
 
       if (agencyField) agencyField.hidden = true;
       if (agencySelect) agencySelect.required = false;
-      if (htmlField) htmlField.hidden = contentValue !== "html";
-      if (htmlArea) htmlArea.required = contentValue === "html";
+      if (richtextField) richtextField.hidden = contentValue === "pdf";
+      if (richtextArea) {
+        richtextArea.required = contentValue !== "pdf";
+        richtextArea.placeholder = contentValue === "markdown"
+          ? "# Paste MOU Markdown here"
+          : "<p>Paste MOU HTML here.</p>";
+      }
+      if (richtextLabel) {
+        richtextLabel.textContent = contentValue === "markdown" ? "Draft Markdown" : "Draft HTML";
+      }
       if (fileField) fileField.hidden = contentValue !== "pdf";
       if (fileInput) {
         fileInput.required = contentValue === "pdf";
         if (contentValue === "html") fileInput.value = "";
+        if (contentValue === "markdown") fileInput.value = "";
       }
     }
 

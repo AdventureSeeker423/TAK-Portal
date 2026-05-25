@@ -985,6 +985,10 @@ label.btn {
     gap: 14px;
 }
 
+.mouWorkspace--draftSplit {
+    grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+}
+
 .mouWorkspace__document,
 .mouWorkspace__sidebar {
     min-width: 0;

@@ -49,6 +49,7 @@
           Content type
           <select name="contentType" data-mou-content-select>
             <option value="html" <%= (contentType || version.contentType) === "html" ? "selected" : "" %>>HTML</option>
+            <option value="markdown" <%= (contentType || version.contentType) === "markdown" ? "selected" : "" %>>Markdown</option>
             <option value="pdf" <%= (contentType || version.contentType) === "pdf" ? "selected" : "" %>>PDF upload</option>
           </select>
         </label>
@@ -59,9 +60,9 @@
         </label>
       </div>
 
-      <label data-mou-html-field style="margin-top:12px;display:block;" <%= (contentType || version.contentType) === "html" ? "" : "hidden" %>>
-        Draft HTML
-        <textarea name="html" rows="24"><%- html %></textarea>
+      <label data-mou-richtext-field style="margin-top:12px;display:block;" <%= (contentType || version.contentType) === "pdf" ? "hidden" : "" %>>
+        <span data-mou-richtext-label><%= (contentType || version.contentType) === "markdown" ? "Draft Markdown" : "Draft HTML" %></span>
+        <textarea name="html" rows="24" data-mou-richtext-input placeholder="<%= (contentType || version.contentType) === 'markdown' ? '# Paste MOU Markdown here' : '<p>Paste MOU HTML here.</p>' %>"><%- html %></textarea>
       </label>
 
       <label data-mou-file-field style="margin-top:12px;display:block;" <%= (contentType || version.contentType) === "pdf" ? "" : "hidden" %>>
@@ -134,17 +135,26 @@
   if (!form) return;
 
   var contentSelect = form.querySelector("[data-mou-content-select]");
-  var htmlField = form.querySelector("[data-mou-html-field]");
-  var htmlArea = htmlField ? htmlField.querySelector("textarea") : null;
+  var richtextField = form.querySelector("[data-mou-richtext-field]");
+  var richtextArea = form.querySelector("[data-mou-richtext-input]");
+  var richtextLabel = form.querySelector("[data-mou-richtext-label]");
   var fileField = form.querySelector("[data-mou-file-field]");
 
   function sync() {
     var contentValue = contentSelect ? contentSelect.value : "html";
-    if (htmlField) htmlField.hidden = contentValue !== "html";
-    if (htmlArea) htmlArea.required = contentValue === "html";
+    if (richtextField) richtextField.hidden = contentValue === "pdf";
+    if (richtextArea) {
+      richtextArea.required = contentValue !== "pdf";
+      richtextArea.placeholder = contentValue === "markdown"
+        ? "# Paste MOU Markdown here"
+        : "<p>Paste MOU HTML here.</p>";
+    }
+    if (richtextLabel) {
+      richtextLabel.textContent = contentValue === "markdown" ? "Draft Markdown" : "Draft HTML";
+    }
     if (fileField) fileField.hidden = contentValue !== "pdf";
     var fileInput = fileField ? fileField.querySelector("input[type='file']") : null;
-    if (fileInput && contentValue === "html") fileInput.value = "";
+    if (fileInput && contentValue !== "pdf") fileInput.value = "";
   }
 
   if (contentSelect) contentSelect.addEventListener("change", sync);
