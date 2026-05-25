@@ -2,6 +2,10 @@
 <%- include("partials/sidebar") %>
 
 <style>
+.mouPrintSignatureBlock {
+  display: none;
+}
+
 @media print {
   body * {
     visibility: hidden !important;
@@ -37,6 +41,14 @@
     min-height: 100vh;
     height: 100vh;
   }
+
+  #mouDocumentSection .mouPrintSignatureBlock {
+    display: block;
+    margin-top: 28px;
+    padding-top: 18px;
+    border-top: 1px solid #d1d5db;
+    color: #111827;
+  }
 }
 </style>
 
@@ -48,7 +60,7 @@
     </div>
     <div class="mouActionRow">
       <% if (downloadUrl) { %>
-        <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
+        <button class="btn secondary" type="button" id="downloadDocumentBtn">Download</button>
         <button class="btn secondary" type="button" id="printDocumentBtn">Print</button>
       <% } %>
       <a class="btn" href="/mou">Back to MOU / Documents</a>
@@ -66,6 +78,10 @@
       <div class="msg ok"><%= success %></div>
     </div>
   <% } %>
+
+  <% const hasPendingAgency = agencyChoices.some(function (agency) { return !agency.currentSignature; }); %>
+  <% const firstPendingAgency = agencyChoices.find(function (agency) { return !agency.currentSignature; }); %>
+  <% const signingAgencyName = firstPendingAgency ? firstPendingAgency.name : (agencyChoices[0] ? agencyChoices[0].name : "your agency"); %>
 
   <div class="mouWorkspace">
     <section class="card mouWorkspace__document" id="mouDocumentSection">
@@ -85,14 +101,18 @@
           <%- html %>
         </div>
       <% } %>
+      <div class="mouPrintSignatureBlock" id="mouPrintSignatureBlock">
+        <p style="margin:0 0 16px 0;">
+          By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
+        </p>
+        <div style="margin:0 0 12px 0;">Signature: ________________________________________________</div>
+        <div style="margin:0 0 12px 0;">Printed Name: _____________________________________________</div>
+        <div style="margin:0;">Date: ________________________________</div>
+      </div>
     </section>
 
     <section class="card mouWorkspace__sidebar">
       <h2 style="margin-top:0;">View / Sign Document</h2>
-      <% const hasPendingAgency = agencyChoices.some(function (agency) { return !agency.currentSignature; }); %>
-      <% const firstPendingAgency = agencyChoices.find(function (agency) { return !agency.currentSignature; }); %>
-      <% const signingAgencyName = firstPendingAgency ? firstPendingAgency.name : (agencyChoices[0] ? agencyChoices[0].name : "your agency"); %>
-
       <% if (!hasPendingAgency) { %>
         <div class="msg ok" style="margin-bottom: 14px;">All agencies available to you have already signed this version.</div>
       <% } %>
@@ -129,6 +149,7 @@
   </div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (function () {
   var canvas = document.getElementById("signatureCanvas");
@@ -136,7 +157,14 @@
   var hidden = document.getElementById("signatureDataUrl");
   var clearBtn = document.getElementById("clearSignatureBtn");
   var printBtn = document.getElementById("printDocumentBtn");
+  var downloadBtn = document.getElementById("downloadDocumentBtn");
   var signatureMsg = document.getElementById("signatureMsg");
+  var documentSection = document.getElementById("mouDocumentSection");
+  var documentShell = documentSection ? documentSection.querySelector(".mouDocumentShell") : null;
+  var downloadUrl = <%- JSON.stringify(downloadUrl || "") %>;
+  var contentType = <%- JSON.stringify(contentType || "") %>;
+  var documentTitle = <%- JSON.stringify(stream.title || "document") %>;
+  var signingAgencyName = <%- JSON.stringify(signingAgencyName) %>;
   if (!canvas || !form || !hidden) return;
 
   var ctx = canvas.getContext("2d");
@@ -147,6 +175,81 @@
     if (!signatureMsg) return;
     signatureMsg.className = "msg " + (text ? "bad" : "");
     signatureMsg.textContent = text || "";
+  }
+
+  function sanitizeFileName(value) {
+    return String(value || "document")
+      .trim()
+      .replace(/[^a-z0-9_-]+/gi, "-")
+      .replace(/-+/g, "-")
+      .replace(/^[-_]+|[-_]+$/g, "")
+      .toLowerCase() || "document";
+  }
+
+  function drawPdfFooter(doc, margin, y, pageWidth) {
+    var maxWidth = pageWidth - margin * 2;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    var disclaimer = "By signing this document, I affirm that I am authorized to sign on behalf of the " + signingAgencyName + " and attest that this acknowledgment is made for my entire agency.";
+    var lines = doc.splitTextToSize(disclaimer, maxWidth);
+    doc.text(lines, margin, y);
+    y += lines.length * 14 + 14;
+    doc.text("Signature: ________________________________________________", margin, y);
+    y += 20;
+    doc.text("Printed Name: _____________________________________________", margin, y);
+    y += 20;
+    doc.text("Date: ________________________________", margin, y);
+  }
+
+  async function downloadDocumentPdf() {
+    if (String(contentType || "").toLowerCase() === "pdf") {
+      window.location.href = downloadUrl;
+      return;
+    }
+
+    var jsPDF = window.jspdf && window.jspdf.jsPDF;
+    if (!jsPDF) {
+      throw new Error("PDF library failed to load.");
+    }
+    if (!documentShell) {
+      throw new Error("Document content was not found.");
+    }
+
+    var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+    var pageWidth = doc.internal.pageSize.getWidth();
+    var pageHeight = doc.internal.pageSize.getHeight();
+    var margin = 54;
+    var maxWidth = pageWidth - margin * 2;
+    var y = margin;
+    var title = String(documentTitle || "Document").trim() || "Document";
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text(title, margin, y);
+    y += 28;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    var bodyText = String(documentShell.innerText || "").replace(/\r/g, "");
+    var paragraphs = bodyText.split(/\n{2,}/).map(function (part) { return part.trim(); }).filter(Boolean);
+
+    paragraphs.forEach(function (paragraph) {
+      var lines = doc.splitTextToSize(paragraph, maxWidth);
+      var neededHeight = lines.length * 14 + 10;
+      if (y + neededHeight > pageHeight - margin - 110) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(lines, margin, y);
+      y += lines.length * 14 + 10;
+    });
+
+    if (y > pageHeight - margin - 110) {
+      doc.addPage();
+      y = margin;
+    }
+    drawPdfFooter(doc, margin, y + 8, pageWidth);
+    doc.save(sanitizeFileName(title) + ".pdf");
   }
 
   function pointFromEvent(evt) {
@@ -203,6 +306,15 @@
   if (printBtn) {
     printBtn.addEventListener("click", function () {
       window.print();
+    });
+  }
+
+  if (downloadBtn) {
+    downloadBtn.addEventListener("click", function () {
+      downloadDocumentPdf().catch(function (err) {
+        console.error("[MOU_SIGN][download]", err);
+        setSignatureMessage(err && err.message ? err.message : "Failed to download document.");
+      });
     });
   }
 
