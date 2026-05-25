@@ -1018,6 +1018,12 @@ label.btn {
     min-width: 0;
 }
 
+.mouWorkspace > .card,
+.mouWorkspace > .mouWorkspace__document,
+.mouWorkspace > .mouWorkspace__sidebar {
+    margin: 0;
+}
+
 .mouWorkspace__sidebar--sticky {
     align-self: start;
 }
