@@ -2,19 +2,16 @@
 <%- include("../partials/sidebar") %>
 
 <main class="main">
-  <section class="mouHero">
-    <div class="mouHero__copy">
-      <span class="mouEyebrow">Compliance</span>
-      <h1>MOU Compliance</h1>
-      <p class="muted">
-        Track required agency signatures and current user-agreement acceptance from a single audit view.
-      </p>
+  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div>
+      <h1 style="margin-bottom:6px;">MOU Compliance</h1>
+      <div class="muted">Track required agency signatures and current user-agreement acceptance.</div>
     </div>
-    <div class="mouHero__actions">
-      <a class="btn secondary" href="/admin/mou">Back to admin</a>
+    <div class="mouActionRow">
+      <a class="btn secondary" href="/mou">Back to MOU / Documents</a>
       <a class="btn" href="/admin/mou/compliance?export=signatures">Export signatures CSV</a>
     </div>
-  </section>
+  </div>
 
   <div class="card">
     <div class="mouSectionHeader">

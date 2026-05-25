@@ -2,21 +2,20 @@
 <%- include("../partials/sidebar") %>
 
 <main class="main">
-  <section class="mouHero">
-    <div class="mouHero__copy">
-      <span class="mouEyebrow">Draft Editor</span>
-      <h1>Edit MOU Draft</h1>
+  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div>
+      <h1 style="margin-bottom:6px;">Edit MOU Draft</h1>
       <div class="mouBadgeRow">
         <span class="mouBadge"><%= stream.scopeType === "agency" ? "Agency specific" : "Serverwide" %></span>
         <span class="mouBadge mouBadge--soft">v<%= version.version %></span>
         <span class="mouBadge mouBadge--soft"><%= String(contentType || version.contentType || "html").toUpperCase() %></span>
       </div>
     </div>
-    <div class="mouHero__actions">
-      <a class="btn secondary" href="/admin/mou">Back</a>
+    <div class="mouActionRow">
+      <a class="btn secondary" href="/mou">Back</a>
       <a class="btn" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/preview">Preview</a>
     </div>
-  </section>
+  </div>
 
   <% if (error) { %>
     <div class="card mouCallout mouCallout--danger">
@@ -35,20 +34,16 @@
       <div class="mouSectionHeader">
         <div>
           <h2>Draft content</h2>
-          <p class="muted">Switch between serverwide and agency-specific scope, and between HTML and PDF-backed content.</p>
+          <p class="muted">Choose scope and content type, then edit the current draft version.</p>
         </div>
       </div>
 
       <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/save" enctype="multipart/form-data" data-mou-draft-form="edit">
+      <input type="hidden" name="mandatory" value="true" />
       <div class="grid2">
         <label>
           Title
           <input type="text" name="title" value="<%= stream.title %>" required />
-        </label>
-
-        <label>
-          Slug
-          <input type="text" name="slug" value="<%= stream.slug || '' %>" />
         </label>
 
         <label>
@@ -80,14 +75,6 @@
         <label>
           Reminder Days
           <input type="number" min="1" name="reminderDays" value="<%= stream.reminderDays || 7 %>" />
-        </label>
-
-        <label>
-          Mandatory
-          <select name="mandatory">
-            <option value="false" <%= stream.mandatory ? "" : "selected" %>>false</option>
-            <option value="true" <%= stream.mandatory ? "selected" : "" %>>true</option>
-          </select>
         </label>
       </div>
 
@@ -188,6 +175,8 @@
     if (htmlField) htmlField.hidden = contentValue !== "html";
     if (htmlArea) htmlArea.required = contentValue === "html";
     if (fileField) fileField.hidden = contentValue !== "pdf";
+    var fileInput = fileField ? fileField.querySelector("input[type='file']") : null;
+    if (fileInput && contentValue === "html") fileInput.value = "";
   }
 
   if (scopeSelect) scopeSelect.addEventListener("change", sync);

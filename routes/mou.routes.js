@@ -173,9 +173,22 @@ router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
   const cards = mouService
     .listDeployedStreamsForUser(req.authentikUser)
     .map((stream) => buildStreamCard(req.authentikUser, stream));
+  const isGlobalAdmin = !!req.authentikUser?.isGlobalAdmin;
+  const adminStreams = isGlobalAdmin
+    ? mouService.listStreams().map((stream) => ({
+        ...stream,
+        currentDeployed: mouService.getCurrentDeployedVersion(stream),
+        scopeLabel: mouService.getScopeLabel(stream),
+      }))
+    : [];
 
   res.render("mou_list", {
     cards,
+    adminStreams,
+    adminAgreement: isGlobalAdmin ? mouService.getCurrentUserAgreement() : null,
+    agencies: isGlobalAdmin ? getAgencyOptions() : [],
+    error: req.query.error || "",
+    success: req.query.success || "",
     agreementSummary: mouService.getAgreementSummaryForUser(req.authentikUser),
     publicListVisibleToAll: getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true),
   });
@@ -423,32 +436,20 @@ router.post("/api/mou/user-agreement/decline", requireMouEnabled, requireMouPerm
 });
 
 router.get("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
-  const streams = mouService.listStreams().map((stream) => ({
-    ...stream,
-    currentDeployed: mouService.getCurrentDeployedVersion(stream),
-    scopeLabel: mouService.getScopeLabel(stream),
-  }));
-  res.render("admin/mou_admin_list", {
-    streams,
-    agreement: mouService.getCurrentUserAgreement(),
-    agencies: getAgencyOptions(),
-    error: req.query.error || "",
-    success: req.query.success || "",
-  });
+  return res.redirect("/mou");
 });
 
 router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
     const stream = mouService.createDraftStream({
       title: req.body?.title,
-      slug: req.body?.slug,
       html: req.body?.html,
       file: req.file || null,
       contentType: req.body?.contentType,
       scopeType: req.body?.scopeType,
       agencySuffix: req.body?.agencySuffix,
       reminderDays: req.body?.reminderDays,
-      mandatory: req.body?.mandatory,
+      mandatory: true,
       actor: req.authentikUser,
     });
     auditRequest(req, {
@@ -467,7 +468,7 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
       `/admin/mou/${encodeURIComponent(stream.mouId)}/1/edit?success=${encodeURIComponent("Draft created.")}`
     );
   } catch (err) {
-    return toErrorRedirect(res, "/admin/mou", err);
+    return toErrorRedirect(res, "/mou", err);
   }
 });
 
@@ -482,7 +483,7 @@ router.post("/admin/mou/:mouId/new-version", requireMouEnabled, requireMouPermis
       `/admin/mou/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(draft.version)}/edit?success=${encodeURIComponent("New draft created.")}`
     );
   } catch (err) {
-    return toErrorRedirect(res, "/admin/mou", err);
+    return toErrorRedirect(res, "/mou", err);
   }
 });
 
@@ -510,7 +511,7 @@ router.get("/admin/mou/:mouId/:version/edit", requireMouEnabled, requireMouPermi
       success: req.query.success || "",
     });
   } catch (err) {
-    return toErrorRedirect(res, "/admin/mou", err);
+    return toErrorRedirect(res, "/mou", err);
   }
 });
 
@@ -527,7 +528,7 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
       scopeType: req.body?.scopeType,
       agencySuffix: req.body?.agencySuffix,
       reminderDays: req.body?.reminderDays,
-      mandatory: req.body?.mandatory,
+      mandatory: true,
       actor: req.authentikUser,
     });
     auditRequest(req, {
@@ -572,7 +573,7 @@ router.get("/admin/mou/:mouId/:version/preview", requireMouEnabled, requireMouPe
       scopeLabel: mouService.getScopeLabel(stream),
     });
   } catch (err) {
-    return toErrorRedirect(res, "/admin/mou", err);
+    return toErrorRedirect(res, "/mou", err);
   }
 });
 
@@ -602,7 +603,7 @@ router.post("/admin/mou/:mouId/:version/deploy", requireMouEnabled, requireMouPe
       version: deployed.version,
       actor: req.authentikUser,
     });
-    return res.redirect(`/admin/mou?success=${encodeURIComponent("MOU deployed.")}`);
+    return res.redirect(`/mou?success=${encodeURIComponent("MOU deployed.")}`);
   } catch (err) {
     return toErrorRedirect(
       res,
@@ -627,9 +628,28 @@ router.post("/admin/mou/:mouId/:version/discard", requireMouEnabled, requireMouP
         version: Number(req.params.version),
       },
     });
-    return res.redirect(`/admin/mou?success=${encodeURIComponent("Draft discarded.")}`);
+    return res.redirect(`/mou?success=${encodeURIComponent("Draft discarded.")}`);
   } catch (err) {
-    return toErrorRedirect(res, "/admin/mou", err);
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
+router.post("/admin/mou/:mouId/delete", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+  try {
+    mouService.deleteStream({
+      mouId: req.params.mouId,
+    });
+    auditRequest(req, {
+      action: "MOU_STREAM_DELETED",
+      targetType: "mou",
+      targetId: String(req.params.mouId),
+      details: {
+        mouId: req.params.mouId,
+      },
+    });
+    return res.redirect(`/mou?success=${encodeURIComponent("MOU deleted.")}`);
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
   }
 });
 
@@ -649,9 +669,9 @@ router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermi
         changed: result.changed,
       },
     });
-    return res.redirect(`/admin/mou?success=${encodeURIComponent("User agreement saved.")}`);
+    return res.redirect(`/mou?success=${encodeURIComponent("User agreement saved.")}`);
   } catch (err) {
-    return toErrorRedirect(res, "/admin/mou", err);
+    return toErrorRedirect(res, "/mou", err);
   }
 });
 

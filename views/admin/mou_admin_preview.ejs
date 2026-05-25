@@ -2,23 +2,22 @@
 <%- include("../partials/sidebar") %>
 
 <main class="main">
-  <section class="mouHero">
-    <div class="mouHero__copy">
-      <span class="mouEyebrow">Draft Preview</span>
-      <h1><%= stream.title %></h1>
+  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div>
+      <h1 style="margin-bottom:6px;"><%= stream.title %></h1>
       <div class="mouBadgeRow">
         <span class="mouBadge"><%= scopeLabel || "Serverwide" %></span>
         <span class="mouBadge mouBadge--soft">v<%= version.version %></span>
         <span class="mouBadge mouBadge--soft"><%= String(contentType || "html").toUpperCase() %></span>
       </div>
     </div>
-    <div class="mouHero__actions">
+    <div class="mouActionRow">
       <% if (downloadUrl) { %>
         <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
       <% } %>
       <a class="btn" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/edit">Back to Edit</a>
     </div>
-  </section>
+  </div>
 
   <section class="card mouViewerCard">
     <% if (contentType === "pdf") { %>

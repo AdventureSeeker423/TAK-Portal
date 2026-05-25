@@ -421,7 +421,7 @@ function buildDraftInput(input, existingVersionRecord) {
   const title = normalizeText(input?.title);
   const slug = slugify(input?.slug || title);
   const reminderDays = normalizedReminderDays(input?.reminderDays);
-  const mandatory = normalizedMandatory(input?.mandatory);
+  const mandatory = true;
   const scopeType = normalizeScopeType(input?.scopeType);
   const agencySuffix = normalizeAgencySuffix(input?.agencySuffix);
   const contentType = normalizeContentType(
@@ -679,6 +679,53 @@ function discardDraft({ mouId, version }) {
     );
   }
   saveIndex(index);
+  return true;
+}
+
+function getAbsoluteDataPath(relativePath) {
+  const rel = normalizeText(relativePath);
+  return rel ? path.join(__dirname, "..", "data", rel) : "";
+}
+
+function deleteStream({ mouId }) {
+  requireEnabled();
+  const index = getIndex();
+  const stream = findStream(index, mouId);
+  if (!stream) {
+    throw new Error("MOU stream not found.");
+  }
+
+  for (const versionRecord of stream.versions || []) {
+    const contentPath = getAbsoluteContentPath(versionRecord);
+    if (contentPath) {
+      store.deleteFile(contentPath);
+    }
+    for (const signature of versionRecord.signatures || []) {
+      const signedHtmlPath = getAbsoluteDataPath(signature?.signedHtmlPath);
+      const signaturePngPath = getAbsoluteDataPath(signature?.signaturePngPath);
+      if (signedHtmlPath) store.deleteFile(signedHtmlPath);
+      if (signaturePngPath) store.deleteFile(signaturePngPath);
+    }
+  }
+
+  index.streams = (index.streams || []).filter(
+    (entry) => String(entry?.mouId || "") !== String(mouId)
+  );
+  saveIndex(index);
+
+  const views = getViewsStore();
+  views.items = (views.items || []).filter(
+    (item) => String(item?.mouId || "") !== String(mouId)
+  );
+  saveViewsStore(views);
+
+  const reminders = getRemindersStore();
+  for (const key of Object.keys(reminders.agency || {})) {
+    if (String(key).startsWith(`${normalizeText(mouId)}:`)) {
+      delete reminders.agency[key];
+    }
+  }
+  saveRemindersStore(reminders);
   return true;
 }
 
@@ -1312,6 +1359,7 @@ module.exports = {
   createNextDraft,
   updateDraft,
   discardDraft,
+  deleteStream,
   deployDraft,
   recordMouView,
   getCurrentUserAgreement,

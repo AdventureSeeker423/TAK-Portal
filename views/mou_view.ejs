@@ -2,10 +2,9 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <section class="mouHero">
-    <div class="mouHero__copy">
-      <span class="mouEyebrow"><%= mode === "signed_evidence" ? "Signed Evidence" : "MOU Viewer" %></span>
-      <h1><%= stream && stream.title ? stream.title : "MOU" %></h1>
+  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div>
+      <h1 style="margin-bottom:6px;"><%= stream && stream.title ? stream.title : "MOU" %></h1>
       <div class="mouBadgeRow">
         <span class="mouBadge"><%= scopeLabel || "Serverwide" %></span>
         <span class="mouBadge mouBadge--soft">v<%= version && version.version ? version.version : "-" %></span>
@@ -14,18 +13,18 @@
         <% } %>
       </div>
       <% if (mode === "signed_evidence" && signature) { %>
-        <p class="muted">
+        <div class="muted" style="margin-top:8px;">
           Signed by <%= signature.signerDisplayName %> for <%= signature.agencyNameAtSign %> on <%= signature.signedAt %>.
-        </p>
+        </div>
       <% } %>
     </div>
-    <div class="mouHero__actions">
+    <div class="mouActionRow">
       <% if (downloadUrl) { %>
         <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
       <% } %>
-      <a class="btn" href="/mou">Back to MOUs</a>
+      <a class="btn" href="/mou">Back to MOU / Documents</a>
     </div>
-  </section>
+  </div>
 
   <% if (updatedFromOlderVersion) { %>
     <div class="card mouCallout">

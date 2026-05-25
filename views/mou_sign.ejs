@@ -2,27 +2,23 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <section class="mouHero">
-    <div class="mouHero__copy">
-      <span class="mouEyebrow">Agency Signature</span>
-      <h1>Sign MOU</h1>
-      <p class="muted">
-        Review the deployed document, choose the agency you are signing for, and capture
-        a signature or typed attestation.
-      </p>
+  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div>
+      <h1 style="margin-bottom:6px;">Sign MOU</h1>
+      <div class="muted">Review the current deployed version, then sign for the appropriate agency.</div>
       <div class="mouBadgeRow">
         <span class="mouBadge"><%= scopeLabel || "Serverwide" %></span>
         <span class="mouBadge mouBadge--soft">v<%= version.version %></span>
         <span class="mouBadge mouBadge--soft"><%= String(contentType || "html").toUpperCase() %></span>
       </div>
     </div>
-    <div class="mouHero__actions">
+    <div class="mouActionRow">
       <% if (downloadUrl) { %>
         <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
       <% } %>
-      <a class="btn" href="/mou">Back to MOUs</a>
+      <a class="btn" href="/mou">Back to MOU / Documents</a>
     </div>
-  </section>
+  </div>
 
   <% if (error) { %>
     <div class="card mouCallout mouCallout--danger">

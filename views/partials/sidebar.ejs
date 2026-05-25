@@ -109,10 +109,7 @@
               <a href="/mutual-aid" class="<%= isActive('/mutual-aid') ? 'active' : '' %>">Mutual Aid</a>
             <% } %>
             <% if (_perm("page.mou") && mouEnabled) { %>
-              <a href="/mou" class="<%= isActive('/mou') ? 'active' : '' %>">MOUs</a>
-              <% if (_isGlobalAdmin) { %>
-                <a href="/admin/mou" class="<%= isActive('/admin/mou') ? 'active' : '' %>">MOU Admin</a>
-              <% } %>
+              <a href="/mou" class="<%= isActive('/mou') || isActive('/admin/mou') ? 'active' : '' %>">MOU / Documents</a>
             <% } %>
           </div>
         </div>
