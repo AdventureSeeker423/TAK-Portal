@@ -297,9 +297,14 @@
                   <div class="mouActionRow">
                     <% if (row.signedVersion) { %>
                       <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
+                      <% if (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0)) { %>
+                        <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resign/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Clear the current signed evidence and require this agency to sign again?');">
+                          <button class="btn secondary" type="submit">Re-Sign</button>
+                        </form>
+                      <% } %>
                     <% } %>
-                    <% if (Number(row.currentVersion || 0) > 1) { %>
-                      <a class="btn secondary" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip">Download Historical</a>
+                    <% if (row.historicalSignedVersions && row.historicalSignedVersions.length) { %>
+                      <a class="btn secondary" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip?agencyId=<%= encodeURIComponent(row.agencyId) %>">Download Historical</a>
                     <% } %>
                     <% if (row.needsSignature) { %>
                       <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
@@ -469,11 +474,11 @@
             <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/upload/<%= encodeURIComponent(row.agencyId) %>" enctype="multipart/form-data" class="mouAdminForm">
               <label>
                 Full Name
-                <input type="text" name="attestationText" placeholder="Enter Your Full Name" required />
+                <input type="text" name="attestationText" placeholder="Enter Signer's Full Name" required />
               </label>
               <label>
                 Position / Role
-                <input type="text" name="signerRole" placeholder="Enter Your Position / Role" required />
+                <input type="text" name="signerRole" placeholder="Enter Signer's Position / Role" required />
               </label>
               <label>
                 Signed Document File

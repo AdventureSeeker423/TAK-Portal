@@ -1018,6 +1018,48 @@ function updateStreamAssignments({ mouId, serverwide, agencySuffixes, actor }) {
   saveIndex(index);
   return clone(stream);
 }
+
+function clearAgencySignatureForCurrentVersion({ mouId, agencyId, actor }) {
+  requireEnabled();
+  const index = getIndex();
+  const stream = findStream(index, mouId);
+  if (!stream) {
+    throw new Error("MOU stream not found.");
+  }
+  const currentVersion = getCurrentVersion(stream);
+  if (!currentVersion) {
+    throw new Error("MOU version not found.");
+  }
+
+  const safeAgencyId = normalizeAgencySuffix(agencyId);
+  const signatures = Array.isArray(currentVersion.signatures) ? currentVersion.signatures : [];
+  const existing = signatures.find(
+    (entry) => normalizeAgencySuffix(entry?.agencyId) === safeAgencyId
+  );
+  if (!existing) {
+    throw new Error("Current signature not found for this agency.");
+  }
+
+  const signedHtmlPath = getAbsoluteDataPath(existing?.signedHtmlPath);
+  const signaturePngPath = getAbsoluteDataPath(existing?.signaturePngPath);
+  const uploadedSignedCopyPath = getAbsoluteDataPath(existing?.uploadedSignedCopyPath);
+  if (signedHtmlPath) store.deleteFile(signedHtmlPath);
+  if (signaturePngPath) store.deleteFile(signaturePngPath);
+  if (uploadedSignedCopyPath) store.deleteFile(uploadedSignedCopyPath);
+
+  currentVersion.signatures = signatures.filter(
+    (entry) => normalizeAgencySuffix(entry?.agencyId) !== safeAgencyId
+  );
+  stream.updatedAt = nowIso();
+  stream.updatedBy = actor?.uid || actor?.username || null;
+  saveIndex(index);
+  return {
+    stream: clone(stream),
+    version: clone(currentVersion),
+    removedSignature: clone(existing),
+  };
+}
+
 function getCurrentVersionOrLatest(mouId, version) {
   const index = getIndex();
   const stream = findStream(index, mouId);
@@ -1650,6 +1692,18 @@ function getAgencySignatureStatusRows() {
           ? (latestSignature.entry.attestationText || latestSignature.entry.signerDisplayName)
           : null,
         signedAt: latestSignature ? latestSignature.entry.signedAt : null,
+        historicalSignedVersions: sortVersions(stream.versions || [])
+          .filter(
+            (versionRecord) =>
+              normalizeVersion(versionRecord?.version) <
+              normalizeVersion(currentVersion.version)
+          )
+          .filter((versionRecord) =>
+            (versionRecord.signatures || []).some(
+              (entry) => normalizeAgencySuffix(entry?.agencyId) === agencyId
+            )
+          )
+          .map((versionRecord) => normalizeVersion(versionRecord.version)),
         needsSignature:
           requireAgencySignature &&
           (!latestSignature ||
@@ -1754,6 +1808,7 @@ module.exports = {
   updateVersion,
   deleteStream,
   updateStreamAssignments,
+  clearAgencySignatureForCurrentVersion,
   recordMouView,
   getCurrentUserAgreement,
   getDefaultUserAgreementTemplate,
