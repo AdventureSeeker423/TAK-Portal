@@ -71,7 +71,7 @@
               <h2>Serverwide User Agreement Prompt</h2>
             </div>
             <label class="mouSectionHeader__toggle" aria-label="Enable serverwide user agreement popup">
-              <span class="muted">Enabled</span>
+              <span class="muted" data-user-agreement-toggle-label><%= adminAgreement && adminAgreement.enabled ? "Enabled" : "Disabled" %></span>
               <span class="mouSwitch">
                 <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> data-user-agreement-toggle />
                 <span class="mouSwitch__slider"></span>
@@ -698,25 +698,24 @@
   function syncUserAgreementForm(form) {
     if (!form) return;
     var toggle = form.querySelector("[data-user-agreement-toggle]");
+    var label = form.querySelector("[data-user-agreement-toggle-label]");
     var fields = form.querySelector("[data-user-agreement-fields]");
     var footer = form.querySelector("[data-user-agreement-footer]");
     if (!toggle) return;
 
     function sync() {
       var enabled = !!toggle.checked;
+      if (label) label.textContent = enabled ? "Enabled" : "Disabled";
       setFieldVisible(fields, enabled);
       setFieldVisible(footer, enabled);
     }
 
     toggle.addEventListener("change", function () {
-      var enabled = !!toggle.checked;
       sync();
-      if (!enabled) {
-        if (typeof form.requestSubmit === "function") {
-          form.requestSubmit();
-        } else {
-          form.submit();
-        }
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.submit();
       }
     });
 
