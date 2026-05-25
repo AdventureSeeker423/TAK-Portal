@@ -77,7 +77,7 @@ function slugify(value) {
 }
 
 function isEnabled() {
-  return getBool("MOU_ENABLED", false);
+  return getBool("MOU_ENABLED", true);
 }
 
 function requireEnabled() {

@@ -1254,19 +1254,31 @@ label.btn {
 
 .mouAssignAgencyRow {
     display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
     align-items: center;
-    gap: 10px;
-    padding: 6px 10px;
+    gap: 8px;
+    padding: 5px 10px;
     border-radius: 10px;
     border: 1px solid rgba(248, 81, 73, 0.35);
     background: rgba(248, 81, 73, 0.14);
     cursor: pointer;
     user-select: none;
-    min-height: 34px;
+    min-height: 30px;
+    text-align: left;
 }
 
 .mouAssignAgencyRow input[type="checkbox"] {
     margin: 0;
+    flex: 0 0 auto;
+}
+
+.mouAssignAgencyRow span {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .mouAssignAgencyRow--selected {

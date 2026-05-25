@@ -136,6 +136,16 @@ function buildSignatureComplianceCsv(signatureRows) {
   );
 }
 
+function safeArchiveSegment(value, fallback) {
+  return (
+    String(value || "")
+      .trim()
+      .replace(/[^a-z0-9._-]+/gi, "-")
+      .replace(/-+/g, "-")
+      .replace(/^[-_.]+|[-_.]+$/g, "") || String(fallback || "file")
+  );
+}
+
 function getAgencyOptions() {
   return (mouService.getTargetAgenciesForStream({ scopeType: "global" }) || [])
     .map((agency) => ({
@@ -654,6 +664,61 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
   }
 });
 
+router.post("/admin/mou/:mouId/signatures/upload/:agencyId", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("signedCopyFile"), async (req, res) => {
+  try {
+    const stream = mouService.getStreamById(req.params.mouId);
+    const currentVersion = mouService.getCurrentVersion(stream);
+    if (!currentVersion) {
+      throw new Error("MOU version not found.");
+    }
+
+    const agencySuffix = String(req.params.agencyId || "").trim().toLowerCase();
+    const targetAgency = mouService
+      .getTargetAgenciesForStream(stream)
+      .find((agency) => String(agency?.suffix || "").trim().toLowerCase() === agencySuffix);
+    if (!targetAgency) {
+      throw new Error("This document is not assigned to the selected agency.");
+    }
+    if (!req.file) {
+      throw new Error("Attach a PDF or image of the signed document.");
+    }
+
+    const agency = mouService.getAgencyBySuffix(agencySuffix);
+    const signerStatus = await resolveSignerStatus(req.authentikUser);
+    const result = mouService.signVersion({
+      mouId: req.params.mouId,
+      version: currentVersion.version,
+      agencySuffix,
+      agencyNameAtSign: agency?.name || targetAgency?.name || agency?.groupPrefix || agencySuffix,
+      signerUserId: req.authentikUser?.uid || req.authentikUser?.username,
+      signerDisplayName: req.body?.attestationText || req.authentikUser?.displayName || req.authentikUser?.username,
+      signerStatusAtSign: req.body?.signerRole || signerStatus,
+      attestationText: req.body?.attestationText,
+      signatureDataUrl: "",
+      uploadedSignedCopyFile: req.file,
+      ...requestMeta(req),
+    });
+
+    auditRequest(req, {
+      action: "MOU_AGENCY_SIGNED",
+      targetType: "mou",
+      targetId: String(result.stream.mouId),
+      agencySuffix,
+      details: {
+        mouId: result.stream.mouId,
+        version: result.version.version,
+        agencyId: agencySuffix,
+        signerDisplayName: result.signature.signerDisplayName,
+        signMethod: "upload_admin",
+      },
+    });
+
+    return res.redirect(`/mou?success=${encodeURIComponent("Signed document uploaded successfully.")}`);
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
 router.post("/api/mou/user-agreement/accept", requireMouEnabled, (req, res) => {
   try {
     if (!mouService.shouldRequireUserAgreement(req.authentikUser, { acceptedForSession: false })) {
@@ -677,6 +742,63 @@ router.post("/api/mou/user-agreement/decline", requireMouEnabled, (req, res) => 
 
 router.get("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
   return res.redirect("/mou");
+});
+
+router.get("/admin/mou/:mouId/history.zip", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+  try {
+    const stream = mouService.getStreamById(req.params.mouId);
+    const currentVersion = mouService.getCurrentVersion(stream);
+    const historicalVersions = (stream.versions || [])
+      .filter((entry) => String(entry?.state || "") !== "current")
+      .sort((a, b) => Number(a?.version || 0) - Number(b?.version || 0));
+
+    if (!historicalVersions.length) {
+      return res.redirect(`/mou?error=${encodeURIComponent("No historical versions are available for this document.")}`);
+    }
+
+    auditRequest(req, {
+      action: "MOU_HISTORY_EXPORTED",
+      targetType: "mou",
+      targetId: String(stream.mouId),
+      details: {
+        mouId: stream.mouId,
+        currentVersion: currentVersion?.version || null,
+        historicalVersionCount: historicalVersions.length,
+        summary: `Exported ${historicalVersions.length} historical MOU version(s) as zip.`,
+      },
+    });
+
+    const baseName = safeArchiveSegment(stream.title || stream.slug || "mou", "mou");
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      buildContentDisposition("attachment", `${baseName}-historical-versions.zip`)
+    );
+
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("error", (err) => {
+      console.error("MOU history zip export error:", err);
+      if (!res.headersSent) {
+        res.status(500).end("Failed to export historical versions zip");
+      } else {
+        res.end();
+      }
+    });
+    archive.pipe(res);
+
+    for (const versionRecord of historicalVersions) {
+      const content = mouService.getVersionContent(stream.mouId, versionRecord.version);
+      const ext =
+        String(path.extname(content.fileName || "") || "").replace(/^\./, "") ||
+        (content.contentType === "pdf" ? "pdf" : content.contentType === "markdown" ? "md" : "html");
+      const archiveName = `${baseName}/v${versionRecord.version}/${baseName}-v${versionRecord.version}.${ext}`;
+      archive.append(content.contentBuffer, { name: archiveName });
+    }
+
+    return archive.finalize();
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
 });
 
 router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {

@@ -238,6 +238,9 @@
                     <% if (currentVersion) { %>
                       <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
                       <a class="btn secondary" href="<%= adminViewHref %>" <%= String(currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
+                      <% if (Array.isArray(stream.versions) && stream.versions.length > 1) { %>
+                        <a class="btn secondary" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/history.zip">Download Historical</a>
+                      <% } %>
                     <% } %>
                     <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and evidence files?');">
                       <button class="btn danger" type="submit">Delete</button>
@@ -299,6 +302,8 @@
                       <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
                     <% } %>
                     <% if (row.needsSignature) { %>
+                      <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
+                      <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
                       <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/assignments/revoke/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Revoke this agency assignment?');">
                         <button class="btn danger" type="submit">Revoke</button>
                       </form>
@@ -438,6 +443,44 @@
               <div class="msg" data-assignment-status></div>
               <div class="mouFormFooter">
                 <button class="btn success" type="submit">Save Assignment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    <% } %>
+  <% }); %>
+<% } %>
+
+<% if (isGlobalAdmin && signatureRows && signatureRows.length) { %>
+  <% signatureRows.forEach(function (row) { %>
+    <% if (row.needsSignature) { %>
+      <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
+      <div class="modalOverlay" id="<%= uploadOverlayId %>" style="display:none;">
+        <div class="modal mouAssignModal" role="dialog" aria-modal="true" aria-labelledby="<%= uploadOverlayId %>-title">
+          <div class="modalHeader">
+            <div>
+              <h2 id="<%= uploadOverlayId %>-title" style="margin:0;">Upload Signed Document</h2>
+              <div class="muted" style="margin-top:4px;"><%= row.mouTitle %> • <%= row.agencyName %> • current version v<%= row.currentVersion %></div>
+            </div>
+            <button class="btn" type="button" data-close-overlay>Close</button>
+          </div>
+          <div class="modalBody">
+            <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/upload/<%= encodeURIComponent(row.agencyId) %>" enctype="multipart/form-data" class="mouAdminForm">
+              <label>
+                Full Name
+                <input type="text" name="attestationText" placeholder="Enter Your Full Name" required />
+              </label>
+              <label>
+                Position / Role
+                <input type="text" name="signerRole" placeholder="Enter Your Position / Role" required />
+              </label>
+              <label>
+                Signed Document File
+                <input type="file" name="signedCopyFile" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" required />
+              </label>
+              <div class="mouFormFooter">
+                <button class="btn success" type="submit">Upload Signed Document</button>
               </div>
             </form>
           </div>

@@ -40,7 +40,7 @@
   "EMAIL_ALWAYS_CC": "",
   "EMAIL_SEND_COPY_TO": "",
   "EMAIL_FAIL_HARD": "false",
-  "MOU_ENABLED": "false",
+  "MOU_ENABLED": "true",
   "MOU_REQUIRE_AGENCY_SIGNATURE": "true",
   "MOU_DEFAULT_REMINDER_DAYS": "7",
   "MOU_PUBLIC_LIST_VISIBLE_TO_ALL": "true",
