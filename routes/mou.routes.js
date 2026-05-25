@@ -171,17 +171,54 @@ function buildStreamCard(authUser, stream) {
   };
 }
 
+function buildAdminStreamRow(stream) {
+  const currentDeployed = mouService.getCurrentDeployedVersion(stream);
+  const draft =
+    (stream.versions || []).find((entry) => String(entry?.state || "") === "draft") || null;
+  const targetAgencies = mouService.getTargetAgenciesForStream(stream).map((agency) => ({
+    suffix: String(agency.suffix || "").trim().toLowerCase(),
+    name: agency.name || agency.groupPrefix || agency.suffix,
+  }));
+  const signatures = currentDeployed
+    ? targetAgencies.map((agency) => ({
+        agency,
+        signature: mouService.getCurrentAgencySignatureForStream(stream, agency.suffix),
+      }))
+    : [];
+  const draftContent = draft ? mouService.getVersionContent(stream.mouId, draft.version) : null;
+  const draftUrls = draft ? mouService.buildContentUrls(stream, draft) : null;
+
+  return {
+    ...stream,
+    currentDeployed,
+    draft,
+    scopeLabel: mouService.getScopeLabel(stream),
+    targetAgencies,
+    signedCount: signatures.filter((entry) => !!entry.signature).length,
+    pendingSignatureCount: signatures.filter((entry) => !entry.signature).length,
+    draftEditor:
+      draft && draftContent
+        ? {
+            version: draft.version,
+            title: stream.title,
+            contentType: draftContent.contentType,
+            sourceText: draftContent.contentType === "pdf" ? "" : draftContent.sourceText,
+            fileName: draftContent.fileName,
+            fileUrl: draftUrls?.fileUrl || "",
+            downloadUrl: draftUrls?.downloadUrl || "",
+            previewUrl: `/admin/mou/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(draft.version)}/preview`,
+          }
+        : null,
+  };
+}
+
 router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
   const isGlobalAdmin = !!req.authentikUser?.isGlobalAdmin;
   const cards = mouService
     .listDeployedStreamsForUser(req.authentikUser)
     .map((stream) => buildStreamCard(req.authentikUser, stream));
   const adminStreams = isGlobalAdmin
-    ? mouService.listStreams().map((stream) => ({
-        ...stream,
-        currentDeployed: mouService.getCurrentDeployedVersion(stream),
-        scopeLabel: mouService.getScopeLabel(stream),
-      }))
+    ? mouService.listStreams().map((stream) => buildAdminStreamRow(stream))
     : [];
   const signatureRows = isGlobalAdmin
     ? mouService.getAgencySignatureStatusRows()
@@ -495,7 +532,7 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
       },
     });
     return res.redirect(
-      `/admin/mou/${encodeURIComponent(stream.mouId)}/1/edit?success=${encodeURIComponent("Draft created.")}`
+      `/mou?success=${encodeURIComponent("Draft created.")}&openDraft=${encodeURIComponent(`${stream.mouId}:1`)}`
     );
   } catch (err) {
     return toErrorRedirect(res, "/mou", err);
@@ -510,7 +547,7 @@ router.post("/admin/mou/:mouId/new-version", requireMouEnabled, requireMouPermis
     });
     const draft = (stream.versions || []).find((entry) => String(entry.state || "") === "draft");
     return res.redirect(
-      `/admin/mou/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(draft.version)}/edit?success=${encodeURIComponent("New draft created.")}`
+      `/mou?success=${encodeURIComponent("New draft created.")}&openDraft=${encodeURIComponent(`${stream.mouId}:${draft.version}`)}`
     );
   } catch (err) {
     return toErrorRedirect(res, "/mou", err);
@@ -518,30 +555,7 @@ router.post("/admin/mou/:mouId/new-version", requireMouEnabled, requireMouPermis
 });
 
 router.get("/admin/mou/:mouId/:version/edit", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
-  try {
-    const stream = mouService.getStreamById(req.params.mouId);
-    const version =
-      (stream.versions || []).find(
-        (entry) => Number(entry.version) === Number(req.params.version)
-      ) || null;
-    if (!version) throw new Error("MOU version not found.");
-
-    const content = mouService.getVersionContent(req.params.mouId, req.params.version);
-    const contentUrls = mouService.buildContentUrls(stream, version);
-    res.render("admin/mou_admin_edit", {
-      stream,
-      version,
-      html: content.contentType === "pdf" ? "" : content.sourceText,
-      contentType: content.contentType,
-      fileName: content.fileName,
-      fileUrl: contentUrls.fileUrl,
-      downloadUrl: contentUrls.downloadUrl,
-      error: req.query.error || "",
-      success: req.query.success || "",
-    });
-  } catch (err) {
-    return toErrorRedirect(res, "/mou", err);
-  }
+  return res.redirect(`/mou?openDraft=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`);
 });
 
 router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
@@ -568,12 +582,12 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
       },
     });
     return res.redirect(
-      `/admin/mou/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}/edit?success=${encodeURIComponent("Draft saved.")}`
+      `/mou?success=${encodeURIComponent("Draft saved.")}&openDraft=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`
     );
   } catch (err) {
     return toErrorRedirect(
       res,
-      `/admin/mou/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}/edit`,
+      `/mou?openDraft=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`,
       err
     );
   }
@@ -609,7 +623,6 @@ router.post("/admin/mou/:mouId/:version/deploy", requireMouEnabled, requireMouPe
     const deployed = mouService.deployDraft({
       mouId: req.params.mouId,
       version: req.params.version,
-      confirmText: req.body?.confirmText,
       actor: req.authentikUser,
     });
     auditRequest(req, {
@@ -628,7 +641,7 @@ router.post("/admin/mou/:mouId/:version/deploy", requireMouEnabled, requireMouPe
   } catch (err) {
     return toErrorRedirect(
       res,
-      `/admin/mou/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}/edit`,
+      `/mou?openDraft=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`,
       err
     );
   }

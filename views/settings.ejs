@@ -40,8 +40,7 @@
         "BETA_MODE",
         "MOU_ENABLED",
         "MOU_REQUIRE_AGENCY_SIGNATURE",
-        "MOU_PUBLIC_LIST_VISIBLE_TO_ALL",
-        "MOU_DEPLOY_REQUIRES_TYPED_CONFIRM"
+        "MOU_PUBLIC_LIST_VISIBLE_TO_ALL"
       ]);
 
       function renderField(key, label, helpText, defaultValue) {
@@ -144,7 +143,6 @@
         "MOU_DEFAULT_REMINDER_DAYS",
         "MOU_PUBLIC_LIST_VISIBLE_TO_ALL",
         "MOU_HTML_MAX_KB",
-        "MOU_DEPLOY_REQUIRES_TYPED_CONFIRM",
         "MOU_REMINDER_SWEEP_HOURS",
         "BETA_MODE",
         "DEFAULT_THEME_MODE",
@@ -410,7 +408,6 @@
             <% renderField("MOU_DEFAULT_REMINDER_DAYS","Default Reminder Days","Days between agency-admin reminder emails for unsigned deployed MOUs."); %>
             <% renderField("MOU_PUBLIC_LIST_VISIBLE_TO_ALL","Public MOU List Visible To All","When true, authenticated users can browse the MOU section and signed evidence links."); %>
             <% renderField("MOU_HTML_MAX_KB","MOU HTML Max KB","Maximum allowed size for stored MOU HTML, Markdown source, and rendered user-agreement content."); %>
-            <% renderField("MOU_DEPLOY_REQUIRES_TYPED_CONFIRM","Require Typed DEPLOY","When true, Global Admins must type DEPLOY before an MOU deploy is accepted."); %>
             <% renderField("MOU_REMINDER_SWEEP_HOURS","Reminder Sweep Hours","How often the reminder scheduler checks for unsigned agency MOUs. Server restart required for changes to take effect."); %>
           </div>
         </div>

@@ -786,6 +786,14 @@ label.btn {
     width: min(760px, 96vw);
 }
 
+.mouEditorModal {
+    width: min(1040px, 96vw);
+}
+
+.mouAssignModal {
+    width: min(920px, 96vw);
+}
+
 .mouHero {
     display: flex;
     justify-content: space-between;
@@ -971,6 +979,10 @@ label.btn {
 
 .mouActionRow .btn {
     width: auto;
+}
+
+.table .mouActionRow {
+    align-items: center;
 }
 
 .mouTargetList {

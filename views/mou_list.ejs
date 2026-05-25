@@ -91,89 +91,177 @@
     </div>
   <% } %>
 
-  <section class="mouSectionHeader">
-    <div>
-      <h2>Active documents</h2>
-      <p class="muted">Only MOUs visible to your role and agency access are shown here.</p>
-    </div>
-  </section>
-
-  <% if (!cards || !cards.length) { %>
-    <div class="card mouEmptyState">
-      <h3>No MOUs available</h3>
-      <p class="muted">There are no deployed MOUs in scope for your account right now.</p>
-    </div>
-  <% } else { %>
-    <div class="mouCardGrid">
-      <% cards.forEach(function (card) { %>
-        <article class="card mouSummaryCard">
-          <div class="mouSummaryCard__top">
-            <div>
-              <div class="mouBadgeRow">
-                <span class="mouBadge"><%= card.scopeLabel %></span>
-                <span class="mouBadge mouBadge--soft"><%= String(card.deployed && card.deployed.contentType || "html").toUpperCase() %></span>
-                <% if (card.stream.mandatory) { %>
-                  <span class="mouBadge mouBadge--accent">Required</span>
-                <% } %>
-              </div>
-              <h3><%= card.stream.title %></h3>
-              <p class="muted">
-                Version v<%= card.deployed ? card.deployed.version : "-" %>
-                <% if (card.deployed && card.deployed.deployedAt) { %>
-                  • Deployed <%= card.deployed.deployedAt %>
-                <% } %>
-              </p>
-            </div>
-            <% if (card.targetAgencies && card.targetAgencies.length) { %>
-              <div class="mouMetaPill">
-                <strong><%= card.targetAgencies.length %></strong>
-                <span><%= card.targetAgencies.length === 1 ? "target agency" : "target agencies" %></span>
-              </div>
-            <% } %>
-          </div>
-
-          <% if (card.signatures && card.signatures.length) { %>
-            <div class="mouAgencyList">
-              <% card.signatures.forEach(function (entry) { %>
-                <div class="mouAgencyList__row">
-                  <div>
-                    <strong><%= entry.agency.name %></strong>
-                    <% if (entry.signature) { %>
-                      <div class="muted">Signed by <%= entry.signature.signerDisplayName %></div>
-                    <% } else { %>
-                      <div class="muted">Pending agency signature</div>
+  <% if (!isGlobalAdmin) { %>
+    <section class="card" style="margin-top:14px;">
+      <div class="mouSectionHeader">
+        <div>
+          <h2>Active Documents</h2>
+          <p class="muted">Only documents visible to your role and agency access are shown here.</p>
+        </div>
+      </div>
+      <% if (!cards || !cards.length) { %>
+        <div class="mouEmptyState">
+          <h3>No documents available</h3>
+          <p class="muted">There are no deployed documents in scope for your account right now.</p>
+        </div>
+      <% } else { %>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Document</th>
+              <th>Scope</th>
+              <th>Version</th>
+              <th>Agencies / Signatures</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% cards.forEach(function (card) { %>
+              <% const documentStatusLabel = card.signatures && card.signatures.length ? (card.allSigned ? "Signed" : "Pending signature") : "Active"; %>
+              <% const documentStatusClass = card.signatures && card.signatures.length && !card.allSigned ? "mouStatus--pending" : "mouStatus--ok"; %>
+              <tr>
+                <td>
+                  <strong><%= card.stream.title %></strong>
+                  <div class="mouBadgeRow" style="margin-top:8px;">
+                    <span class="mouBadge mouBadge--soft"><%= String(card.deployed && card.deployed.contentType || "html").toUpperCase() %></span>
+                    <% if (card.stream.mandatory) { %>
+                      <span class="mouBadge mouBadge--accent">Required</span>
                     <% } %>
                   </div>
-                  <span class="mouStatus <%= entry.signature ? 'mouStatus--ok' : 'mouStatus--pending' %>">
-                    <%= entry.signature ? "Signed" : "Pending" %>
-                  </span>
-                </div>
-              <% }); %>
-            </div>
-          <% } else if (card.targetAgencies && card.targetAgencies.length) { %>
-            <div class="mouTargetList muted">
-              Applies to
-              <%= card.targetAgencies.map(function (agency) { return agency.name; }).join(", ") %>
-            </div>
-          <% } %>
-
-          <div class="mouActionRow">
-            <% if (card.deployed) { %>
-              <a class="btn" href="/mou/view/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>">Open</a>
-              <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>?download=1">Download</a>
-              <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
-                <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>">
-                  <%= card.allSigned ? "Review Signatures" : "Sign / Review" %>
-                </a>
-              <% } %>
-            <% } %>
-          </div>
-        </article>
-      <% }); %>
-    </div>
+                </td>
+                <td><%= card.scopeLabel %></td>
+                <td>
+                  v<%= card.deployed ? card.deployed.version : "-" %>
+                  <% if (card.deployed && card.deployed.deployedAt) { %>
+                    <div class="muted">Deployed <%= card.deployed.deployedAt %></div>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (card.signatures && card.signatures.length) { %>
+                    <% card.signatures.forEach(function (entry) { %>
+                      <div style="margin-bottom:6px;">
+                        <strong><%= entry.agency.name %></strong>
+                        <div class="muted"><%= entry.signature ? ("Signed by " + entry.signature.signerDisplayName) : "Pending agency signature" %></div>
+                      </div>
+                    <% }); %>
+                  <% } else if (card.targetAgencies && card.targetAgencies.length) { %>
+                    <div class="muted"><%= card.targetAgencies.map(function (agency) { return agency.name; }).join(", ") %></div>
+                  <% } else { %>
+                    <span class="muted">-</span>
+                  <% } %>
+                </td>
+                <td>
+                  <span class="mouStatus <%= documentStatusClass %>"><%= documentStatusLabel %></span>
+                </td>
+                <td>
+                  <div class="mouActionRow">
+                    <% if (card.deployed) { %>
+                      <a class="btn" href="/mou/view/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>">Open</a>
+                      <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>?download=1">Download</a>
+                      <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
+                        <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>">
+                          <%= card.allSigned ? "Review Signatures" : "Sign / Review" %>
+                        </a>
+                      <% } %>
+                    <% } %>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
   <% } %>
 
   <% if (isGlobalAdmin) { %>
+    <section class="card" style="margin-top:14px;">
+      <div class="mouSectionHeader">
+        <div>
+          <h2>Documents</h2>
+          <p class="muted">Create drafts, edit them in a modal, deploy when ready, and assign active documents.</p>
+        </div>
+      </div>
+      <% if (!adminStreams || !adminStreams.length) { %>
+        <div class="mouEmptyState">
+          <h3>No documents yet</h3>
+          <p class="muted">Create your first draft using the form above.</p>
+        </div>
+      <% } else { %>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Document</th>
+              <th>Draft</th>
+              <th>Deployed</th>
+              <th>Assignment</th>
+              <th>Signatures</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% adminStreams.forEach(function (stream) { %>
+              <% const draft = stream.draft; %>
+              <% const draftOverlayId = draft ? ("mouDraftOverlay-" + stream.mouId + "-" + draft.version) : ""; %>
+              <% const assignOverlayId = stream.currentDeployed ? ("mouAssignOverlay-" + stream.mouId) : ""; %>
+              <% const assignmentLabel = stream.currentDeployed ? (stream.targetAgencies && stream.targetAgencies.length ? stream.scopeLabel : "Inactive") : "Deploy first"; %>
+              <tr>
+                <td>
+                  <strong><%= stream.title %></strong>
+                  <div class="mouBadgeRow" style="margin-top:8px;">
+                    <span class="mouBadge"><%= stream.scopeLabel %></span>
+                    <% if (stream.currentDeployed && stream.currentDeployed.contentType) { %>
+                      <span class="mouBadge mouBadge--soft"><%= String(stream.currentDeployed.contentType).toUpperCase() %></span>
+                    <% } else if (draft && draft.contentType) { %>
+                      <span class="mouBadge mouBadge--soft"><%= String(draft.contentType).toUpperCase() %></span>
+                    <% } %>
+                    <span class="mouBadge mouBadge--accent">Required</span>
+                  </div>
+                </td>
+                <td><%= draft ? ("v" + draft.version) : "None" %></td>
+                <td><%= stream.currentDeployed ? ("v" + stream.currentDeployed.version) : "None" %></td>
+                <td>
+                  <%= assignmentLabel %>
+                  <% if (stream.targetAgencies && stream.targetAgencies.length) { %>
+                    <div class="muted"><%= stream.targetAgencies.map(function (agency) { return agency.name; }).join(", ") %></div>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (stream.currentDeployed) { %>
+                    <%= stream.signedCount %>/<%= stream.targetAgencies.length %> signed
+                    <% if (stream.pendingSignatureCount) { %>
+                      <div class="muted"><%= stream.pendingSignatureCount %> pending</div>
+                    <% } %>
+                  <% } else { %>
+                    <span class="muted">-</span>
+                  <% } %>
+                </td>
+                <td>
+                  <div class="mouActionRow">
+                    <% if (draft) { %>
+                      <button class="btn" type="button" data-overlay-target="<%= draftOverlayId %>">Edit Draft</button>
+                    <% } else { %>
+                      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/new-version" style="display:inline;">
+                        <button class="btn" type="submit">New Draft</button>
+                      </form>
+                    <% } %>
+                    <% if (stream.currentDeployed) { %>
+                      <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
+                      <a class="btn secondary" href="/mou/view/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(stream.currentDeployed.version) %>">Open</a>
+                    <% } %>
+                    <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and evidence files?');">
+                      <button class="btn danger" type="submit">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+
     <section class="card" style="margin-top:14px;">
       <div class="mouSectionHeader">
         <div>
@@ -185,13 +273,13 @@
       <% if (!signatureRows || !signatureRows.length) { %>
         <div class="mouEmptyState">
           <h3>No signature data yet</h3>
-          <p class="muted">Deployed MOUs will appear here once they target agencies.</p>
+          <p class="muted">Deployed documents will appear here once they target agencies.</p>
         </div>
       <% } else { %>
         <table class="table">
           <thead>
             <tr>
-              <th>MOU</th>
+              <th>Document</th>
               <th>Scope</th>
               <th>Agency</th>
               <th>Current Version</th>
@@ -228,106 +316,172 @@
         </table>
       <% } %>
     </section>
-
-    <section class="card" style="margin-top:14px;">
-      <div class="mouSectionHeader">
-        <div>
-          <h2>Manage MOU Streams</h2>
-          <p class="muted">Edit drafts, deploy versions, assign active documents, or delete entire streams.</p>
-        </div>
-      </div>
-      <% if (!adminStreams || !adminStreams.length) { %>
-        <div class="mouEmptyState">
-          <h3>No MOU streams yet</h3>
-          <p class="muted">Create your first draft using the form above.</p>
-        </div>
-      <% } else { %>
-        <div class="mouCardGrid">
-          <% adminStreams.forEach(function (stream) { %>
-            <% const draft = (stream.versions || []).find(function (entry) { return entry.state === "draft"; }); %>
-            <article class="card mouSummaryCard">
-              <div class="mouSummaryCard__top">
-                <div>
-                  <div class="mouBadgeRow">
-                    <span class="mouBadge"><%= stream.scopeLabel %></span>
-                    <% if (stream.currentDeployed && stream.currentDeployed.contentType) { %>
-                      <span class="mouBadge mouBadge--soft"><%= String(stream.currentDeployed.contentType).toUpperCase() %></span>
-                    <% } else if (draft && draft.contentType) { %>
-                      <span class="mouBadge mouBadge--soft"><%= String(draft.contentType).toUpperCase() %></span>
-                    <% } %>
-                    <span class="mouBadge mouBadge--accent">Required</span>
-                  </div>
-                  <h3><%= stream.title %></h3>
-                  <p class="muted">Current deployed: <%= stream.currentDeployed ? ("v" + stream.currentDeployed.version) : "None" %> • <%= stream.scopeLabel %></p>
-                </div>
-                <div class="mouMetaPill">
-                  <strong><%= draft ? ("v" + draft.version) : "None" %></strong>
-                  <span>draft</span>
-                </div>
-              </div>
-
-              <% if (stream.currentDeployed) { %>
-                <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/assignments/save" class="mouAdminForm" data-mou-assignment-form>
-                  <label class="mouCheckboxLabel">
-                    <input type="checkbox" name="serverwide" value="true" <%= stream.assignments && stream.assignments.serverwide ? "checked" : "" %> data-mou-serverwide-toggle />
-                    Make active for the whole server
-                  </label>
-
-                  <div data-mou-agency-assignment-block <%= stream.assignments && stream.assignments.serverwide ? "hidden" : "" %>>
-                    <div class="muted" style="margin-bottom:8px;">Or activate it only for selected agencies:</div>
-                    <div class="mouAgencyCheckboxGrid">
-                      <% agencies.forEach(function (agency) { %>
-                        <label class="mouAgencyCheckbox">
-                          <input
-                            type="checkbox"
-                            name="agencySuffixes"
-                            value="<%= agency.suffix %>"
-                            <%= stream.assignments && stream.assignments.agencySuffixes && stream.assignments.agencySuffixes.includes(agency.suffix) ? "checked" : "" %>
-                          />
-                          <span><%= agency.name %></span>
-                        </label>
-                      <% }); %>
-                    </div>
-                  </div>
-
-                  <div class="mouFormFooter">
-                    <button class="btn success" type="submit">Save Assignment</button>
-                  </div>
-                </form>
-              <% } else { %>
-                <div class="mouTargetList muted">Deploy a version before assigning this document.</div>
-              <% } %>
-
-              <div class="mouActionRow">
-                <% if (draft) { %>
-                  <a class="btn" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(draft.version) %>/edit">Edit Draft</a>
-                <% } else { %>
-                  <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/new-version" style="display:inline;">
-                    <button class="btn" type="submit">New Version Draft</button>
-                  </form>
-                <% } %>
-                <% if (stream.currentDeployed) { %>
-                  <a class="btn secondary" href="/mou/view/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(stream.currentDeployed.version) %>">Open Deployed</a>
-                <% } %>
-                <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this MOU and all of its versions, signatures, and evidence files?');">
-                  <button class="btn danger" type="submit">Delete</button>
-                </form>
-              </div>
-            </article>
-          <% }); %>
-        </div>
-      <% } %>
-    </section>
   <% } %>
 </main>
 
+<% if (isGlobalAdmin && adminStreams && adminStreams.length) { %>
+  <% adminStreams.forEach(function (stream) { %>
+    <% const draft = stream.draft; %>
+    <% const draftEditor = stream.draftEditor; %>
+    <% if (draft && draftEditor) { %>
+      <% const draftOverlayId = "mouDraftOverlay-" + stream.mouId + "-" + draft.version; %>
+      <div class="modalOverlay" id="<%= draftOverlayId %>" style="display:none;" data-draft-key="<%= stream.mouId %>:<%= draft.version %>">
+        <div class="modal mouEditorModal" role="dialog" aria-modal="true" aria-labelledby="<%= draftOverlayId %>-title">
+          <div class="modalHeader">
+            <div>
+              <h2 id="<%= draftOverlayId %>-title" style="margin:0;">Edit Draft</h2>
+              <div class="muted" style="margin-top:4px;"><%= stream.title %> • v<%= draft.version %></div>
+            </div>
+            <button class="btn" type="button" data-close-overlay>Close</button>
+          </div>
+          <div class="modalBody">
+            <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(draft.version) %>/save" enctype="multipart/form-data" class="mouAdminForm" data-mou-draft-form="edit">
+              <input type="hidden" name="mandatory" value="true" />
+              <div class="grid2">
+                <label>
+                  Title
+                  <input type="text" name="title" value="<%= stream.title %>" required />
+                </label>
+                <label>
+                  Content type
+                  <select name="contentType" data-mou-content-select>
+                    <option value="markdown" <%= draftEditor.contentType === "markdown" ? "selected" : "" %>>Markdown</option>
+                    <option value="html" <%= draftEditor.contentType === "html" ? "selected" : "" %>>HTML</option>
+                    <option value="pdf" <%= draftEditor.contentType === "pdf" ? "selected" : "" %>>PDF upload</option>
+                  </select>
+                </label>
+              </div>
+
+              <label data-mou-richtext-field <% if (draftEditor.contentType === "pdf") { %>style="display:none;"<% } %>>
+                <span data-mou-richtext-label><%= draftEditor.contentType === "markdown" ? "Draft Markdown" : "Draft HTML" %></span>
+                <textarea name="html" rows="20" data-mou-richtext-input placeholder="<%= draftEditor.contentType === 'markdown' ? '# Paste Document Markdown here' : '<p>Paste Document HTML here.</p>' %>"><%- draftEditor.sourceText %></textarea>
+              </label>
+
+              <label data-mou-file-field <% if (draftEditor.contentType !== "pdf") { %>style="display:none;"<% } %>>
+                Replace PDF
+                <input type="file" name="contentFile" accept="application/pdf,.pdf" />
+                <% if (draftEditor.contentType === "pdf" && draftEditor.fileName) { %>
+                  <div class="muted" style="margin-top:6px;">Current file: <%= draftEditor.fileName %></div>
+                <% } %>
+              </label>
+
+              <div class="mouFormFooter">
+                <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= draftEditor.previewUrl %>">Preview</a>
+                <% if (draftEditor.contentType === "pdf" && draftEditor.fileUrl) { %>
+                  <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= draftEditor.fileUrl %>">Open PDF</a>
+                <% } %>
+                <button class="btn success" type="submit">Save Draft</button>
+              </div>
+            </form>
+
+            <div class="card" style="margin:14px 0 0 0;">
+              <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div>
+                  <strong>Deploy or discard this draft</strong>
+                  <div class="muted">Deploy makes this version live. Discard removes only this draft version.</div>
+                </div>
+                <div class="mouActionRow">
+                  <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(draft.version) %>/deploy">
+                    <button class="btn success" type="submit">Deploy</button>
+                  </form>
+                  <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(draft.version) %>/discard" onsubmit="return confirm('Discard this draft?');">
+                    <button class="btn danger" type="submit">Discard Draft</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (stream.currentDeployed) { %>
+      <% const assignOverlayId = "mouAssignOverlay-" + stream.mouId; %>
+      <div class="modalOverlay" id="<%= assignOverlayId %>" style="display:none;">
+        <div class="modal mouAssignModal" role="dialog" aria-modal="true" aria-labelledby="<%= assignOverlayId %>-title">
+          <div class="modalHeader">
+            <div>
+              <h2 id="<%= assignOverlayId %>-title" style="margin:0;">Assign Document</h2>
+              <div class="muted" style="margin-top:4px;"><%= stream.title %> • live version v<%= stream.currentDeployed.version %></div>
+            </div>
+            <button class="btn" type="button" data-close-overlay>Close</button>
+          </div>
+          <div class="modalBody">
+            <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/assignments/save" class="mouAdminForm" data-mou-assignment-form>
+              <label class="mouCheckboxLabel">
+                <input type="checkbox" name="serverwide" value="true" <%= stream.assignments && stream.assignments.serverwide ? "checked" : "" %> data-mou-serverwide-toggle />
+                Make active for the whole server
+              </label>
+
+              <div class="mouTargetList muted">
+                Leave serverwide off to assign this document only to selected agencies.
+              </div>
+
+              <div data-mou-agency-assignment-block <%= stream.assignments && stream.assignments.serverwide ? "hidden" : "" %>>
+                <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                  <input type="text" placeholder="Search agencies..." data-mou-agency-search style="flex:1;min-width:240px;" />
+                  <div class="mouActionRow">
+                    <button class="btn secondary" type="button" data-mou-agency-select-all>Select All</button>
+                    <button class="btn secondary" type="button" data-mou-agency-clear-all>Clear</button>
+                  </div>
+                </div>
+                <div class="groupsBox" style="margin-top:10px;">
+                  <div class="mouAgencyCheckboxGrid">
+                    <% agencies.forEach(function (agency) { %>
+                      <label
+                        class="mouAgencyCheckbox"
+                        data-mou-agency-option
+                        data-agency-label="<%= String(agency.name || '').toLowerCase() %> <%= String(agency.suffix || '').toLowerCase() %>"
+                      >
+                        <input
+                          type="checkbox"
+                          name="agencySuffixes"
+                          value="<%= agency.suffix %>"
+                          <%= stream.assignments && stream.assignments.agencySuffixes && stream.assignments.agencySuffixes.includes(agency.suffix) ? "checked" : "" %>
+                        />
+                        <span><%= agency.name %></span>
+                      </label>
+                    <% }); %>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mouFormFooter">
+                <button class="btn success" type="submit">Save Assignment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    <% } %>
+  <% }); %>
+<% } %>
+
 <script>
 (function () {
+  function setFieldVisible(field, visible) {
+    if (!field) return;
+    field.hidden = !visible;
+    field.style.display = visible ? "" : "none";
+  }
+
+  function openOverlay(overlay) {
+    if (!overlay) return;
+    overlay.style.display = "flex";
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeOverlay(overlay) {
+    if (!overlay) return;
+    overlay.style.display = "none";
+    var anyOpen = Array.from(document.querySelectorAll(".modalOverlay")).some(function (item) {
+      return item.style.display !== "none";
+    });
+    if (!anyOpen) document.body.style.overflow = "";
+  }
+
   function syncDraftForm(form) {
     if (!form) return;
-    var scopeSelect = form.querySelector("[data-mou-scope-select]");
-    var agencyField = form.querySelector("[data-mou-agency-field]");
-    var agencySelect = agencyField ? agencyField.querySelector("select") : null;
     var contentSelect = form.querySelector("[data-mou-content-select]");
     var richtextField = form.querySelector("[data-mou-richtext-field]");
     var richtextArea = form.querySelector("[data-mou-richtext-input]");
@@ -335,17 +489,8 @@
     var fileField = form.querySelector("[data-mou-file-field]");
     var fileInput = fileField ? fileField.querySelector("input[type='file']") : null;
 
-    function setFieldVisible(field, visible) {
-      if (!field) return;
-      field.hidden = !visible;
-      field.style.display = visible ? "" : "none";
-    }
-
     function sync() {
       var contentValue = contentSelect ? contentSelect.value : "markdown";
-
-      if (agencyField) agencyField.hidden = true;
-      if (agencySelect) agencySelect.required = false;
       setFieldVisible(richtextField, contentValue !== "pdf");
       if (richtextArea) {
         richtextArea.required = contentValue !== "pdf";
@@ -359,12 +504,10 @@
       setFieldVisible(fileField, contentValue === "pdf");
       if (fileInput) {
         fileInput.required = contentValue === "pdf";
-        if (contentValue === "html") fileInput.value = "";
-        if (contentValue === "markdown") fileInput.value = "";
+        if (contentValue !== "pdf") fileInput.value = "";
       }
     }
 
-    if (scopeSelect) scopeSelect.addEventListener("change", sync);
     if (contentSelect) contentSelect.addEventListener("change", sync);
     sync();
   }
@@ -373,17 +516,82 @@
     if (!form) return;
     var serverwideToggle = form.querySelector("[data-mou-serverwide-toggle]");
     var agencyBlock = form.querySelector("[data-mou-agency-assignment-block]");
+    var agencySearch = form.querySelector("[data-mou-agency-search]");
+    var agencyOptions = Array.from(form.querySelectorAll("[data-mou-agency-option]"));
+    var selectAllBtn = form.querySelector("[data-mou-agency-select-all]");
+    var clearAllBtn = form.querySelector("[data-mou-agency-clear-all]");
+
+    function filterOptions() {
+      var query = agencySearch ? String(agencySearch.value || "").trim().toLowerCase() : "";
+      agencyOptions.forEach(function (option) {
+        var label = String(option.getAttribute("data-agency-label") || "").toLowerCase();
+        option.style.display = !query || label.indexOf(query) !== -1 ? "" : "none";
+      });
+    }
 
     function sync() {
       var checked = !!(serverwideToggle && serverwideToggle.checked);
       if (agencyBlock) agencyBlock.hidden = checked;
+      filterOptions();
     }
 
     if (serverwideToggle) serverwideToggle.addEventListener("change", sync);
+    if (agencySearch) agencySearch.addEventListener("input", filterOptions);
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", function () {
+        agencyOptions.forEach(function (option) {
+          if (option.style.display === "none") return;
+          var input = option.querySelector("input[type='checkbox']");
+          if (input) input.checked = true;
+        });
+      });
+    }
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener("click", function () {
+        agencyOptions.forEach(function (option) {
+          if (option.style.display === "none") return;
+          var input = option.querySelector("input[type='checkbox']");
+          if (input) input.checked = false;
+        });
+      });
+    }
     sync();
   }
 
+  document.querySelectorAll("[data-overlay-target]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var overlay = document.getElementById(button.getAttribute("data-overlay-target"));
+      openOverlay(overlay);
+    });
+  });
+
+  document.querySelectorAll("[data-close-overlay]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      closeOverlay(button.closest(".modalOverlay"));
+    });
+  });
+
+  document.querySelectorAll(".modalOverlay").forEach(function (overlay) {
+    overlay.addEventListener("click", function (event) {
+      if (event.target === overlay) closeOverlay(overlay);
+    });
+  });
+
+  window.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") return;
+    var openOverlayEl = Array.from(document.querySelectorAll(".modalOverlay")).find(function (overlay) {
+      return overlay.style.display !== "none";
+    });
+    if (openOverlayEl) closeOverlay(openOverlayEl);
+  });
+
   document.querySelectorAll("[data-mou-draft-form]").forEach(syncDraftForm);
   document.querySelectorAll("[data-mou-assignment-form]").forEach(syncAssignmentForm);
+
+  var openDraftKey = new URLSearchParams(window.location.search).get("openDraft");
+  if (openDraftKey) {
+    var draftOverlay = document.querySelector('[data-draft-key="' + openDraftKey.replace(/"/g, '\\"') + '"]');
+    if (draftOverlay) openOverlay(draftOverlay);
+  }
 })();
 </script>

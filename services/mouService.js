@@ -885,15 +885,8 @@ function updateStreamAssignments({ mouId, serverwide, agencySuffixes, actor }) {
   return clone(stream);
 }
 
-function deployDraft({ mouId, version, actor, confirmText }) {
+function deployDraft({ mouId, version, actor }) {
   requireEnabled();
-  if (
-    getBool("MOU_DEPLOY_REQUIRES_TYPED_CONFIRM", true) &&
-    normalizeText(confirmText) !== "DEPLOY"
-  ) {
-    throw new Error('Typed confirmation must equal "DEPLOY".');
-  }
-
   const { index, stream, versionRecord } = getStreamAndVersion(mouId, version);
   if (String(versionRecord.state || "") !== "draft") {
     throw new Error("Only draft versions can be deployed.");
