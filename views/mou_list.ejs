@@ -124,7 +124,7 @@
                 : ("/mou/view/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version)); %>
               <tr class="<%= cardRowClass %>">
                 <td>
-                  <strong><%= card.stream.title %></strong>
+                  <%= card.stream.title %>
                 </td>
                 <td>
                   v<%= card.currentVersion ? card.currentVersion.version : "-" %>
@@ -316,7 +316,7 @@
             <select id="mouSignatureStatusFilter" aria-label="Status filter">
               <option value="all" selected>All Statuses</option>
               <option value="needs-signature">Needs Signature</option>
-              <option value="current">Current</option>
+              <option value="signed">Signed</option>
             </select>
           </label>
           <input
@@ -358,7 +358,7 @@
             <% signatureRows.forEach(function (row) { %>
               <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
               <% const scopeDisplay = row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel; %>
-              <% const statusLabel = row.needsSignature ? "Needs signature" : "Current"; %>
+              <% const statusLabel = row.needsSignature ? "Needs signature" : "Signed"; %>
               <tr
                 class="<%= signatureRowClass %>"
                 data-table-row="signatures"
@@ -369,14 +369,14 @@
                 data-currentversion="<%= row.currentVersion %>"
                 data-signedversion="<%= row.signedVersion ? row.signedVersion : 0 %>"
                 data-signer="<%= row.signerDisplayName || '' %>"
-                data-status="<%= row.needsSignature ? 'needs-signature' : 'current' %>"
+                data-status="<%= row.needsSignature ? 'needs-signature' : 'signed' %>"
                 data-statuslabel="<%= statusLabel %>"
               >
                 <td><%= row.mouTitle %></td>
                 <td><%= scopeDisplay %></td>
                 <td><%= row.agencyName %></td>
                 <td>v<%= row.currentVersion %></td>
-                <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
+                <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not Signed" %></td>
                 <td><%= row.signerDisplayName || "-" %></td>
                 <td>
                   <%= statusLabel %>
@@ -446,7 +446,7 @@
                   <td><%= row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel %></td>
                   <td><%= row.agencyName %></td>
                   <td><%= row.currentVersion ? ("v" + row.currentVersion) : "-" %></td>
-                  <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
+                  <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not Signed" %></td>
                   <td><%= row.status || "Archived" %></td>
                   <td><%= row.archivedAt ? new Date(row.archivedAt).toLocaleString() : "-" %></td>
                   <td>

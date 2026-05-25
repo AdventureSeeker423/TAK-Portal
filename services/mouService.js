@@ -501,6 +501,7 @@ function deleteSignatureArtifacts(signature) {
 }
 
 function normalizeArchivedDocumentRecord(record) {
+  const normalizedStatus = normalizeText(record?.status);
   return {
     archiveId: normalizeText(record?.archiveId) || makeId(),
     mouId: normalizeText(record?.mouId),
@@ -518,7 +519,7 @@ function normalizeArchivedDocumentRecord(record) {
           .map((value) => normalizeVersion(value))
           .filter(Boolean)
       : [],
-    status: normalizeText(record?.status) || "Archived",
+    status: normalizedStatus === "Current" ? "Signed" : (normalizedStatus || "Archived"),
     archivedAt: record?.archivedAt || null,
     archivedBy: normalizeText(record?.archivedBy),
   };
@@ -1220,7 +1221,7 @@ function archiveDocumentForAgency({ mouId, agencyId, actor }) {
         safeAgencyId,
         currentVersion.version
       ),
-      status: needsSignature ? "Needs signature" : "Current",
+      status: needsSignature ? "Needs signature" : "Signed",
       archivedAt: nowIso(),
       archivedBy: actor?.uid || actor?.username || null,
     })
