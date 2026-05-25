@@ -392,21 +392,22 @@
           <div class="modalBody">
             <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/assignments/save" class="mouAdminForm" data-mou-assignment-form>
               <div class="mouAssignServerwideBox">
-                <label class="mouCheckboxLabel">
-                  <input type="checkbox" name="serverwide" value="true" <%= stream.assignments && stream.assignments.serverwide ? "checked" : "" %> data-mou-serverwide-toggle />
-                  Make active for the whole server
+                <label class="mouAssignServerwideLabel">
+                  <span class="mouSwitch">
+                    <input type="checkbox" name="serverwide" value="true" <%= stream.assignments && stream.assignments.serverwide ? "checked" : "" %> data-mou-serverwide-toggle />
+                    <span class="mouSwitch__slider"></span>
+                  </span>
+                  <span>
+                    <strong>Make active for the whole server</strong>
+                  </span>
                 </label>
-                <div class="muted" style="margin-top:8px;">
+                <div class="muted" style="margin-top:6px;">
                   Enable this to make the document active serverwide. Leave it off to assign only selected agencies below.
                 </div>
               </div>
 
               <div data-mou-agency-assignment-block <%= stream.assignments && stream.assignments.serverwide ? "hidden" : "" %>>
-                <div class="segmented" style="margin-top:14px;">
-                  <button class="segBtn active" type="button">Agencies</button>
-                </div>
-
-                <div class="row" style="margin-top:14px;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div class="row" style="margin-top:12px;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
                   <input type="text" placeholder="Search agencies..." data-mou-agency-search style="flex:1;min-width:240px;" />
                   <div class="row" style="gap:10px;">
                     <button class="btn" type="button" data-mou-agency-select-all>Select All</button>
