@@ -238,9 +238,6 @@
                     <% if (currentVersion) { %>
                       <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
                       <a class="btn secondary" href="<%= adminViewHref %>" <%= String(currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
-                      <% if (Array.isArray(stream.versions) && stream.versions.length > 1) { %>
-                        <a class="btn secondary" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/history.zip">Download Historical</a>
-                      <% } %>
                     <% } %>
                     <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and evidence files?');">
                       <button class="btn danger" type="submit">Delete</button>
@@ -300,6 +297,9 @@
                   <div class="mouActionRow">
                     <% if (row.signedVersion) { %>
                       <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
+                    <% } %>
+                    <% if (Number(row.currentVersion || 0) > 1) { %>
+                      <a class="btn secondary" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip">Download Historical</a>
                     <% } %>
                     <% if (row.needsSignature) { %>
                       <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
