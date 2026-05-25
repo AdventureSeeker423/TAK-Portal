@@ -2,11 +2,7 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-    <div>
-      <h1 style="margin-bottom:6px;">MOU Documents</h1>
-    </div>
-  </div>
+  <h1>MOU Documents</h1>
 
   <% if (error) { %>
     <div class="card mouCallout mouCallout--danger">
@@ -254,7 +250,7 @@
     <section class="card" style="margin-top:14px;">
       <div class="mouSectionHeader">
         <div>
-          <h2>Agency Signature Status</h2>
+          <h2>Agency Signatures</h2>
         </div>
         <div class="mouActionRow">
           <a class="btn secondary" href="/mou?export=signatures">Export CSV</a>
@@ -304,7 +300,7 @@
                       <% } %>
                     <% } %>
                     <% if (row.historicalSignedVersions && row.historicalSignedVersions.length) { %>
-                      <a class="btn secondary" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip?agencyId=<%= encodeURIComponent(row.agencyId) %>">Download Historical</a>
+                      <a class="btn qr" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip?agencyId=<%= encodeURIComponent(row.agencyId) %>">Download Historical</a>
                     <% } %>
                     <% if (row.needsSignature) { %>
                       <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
