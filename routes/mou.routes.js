@@ -820,6 +820,10 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
     const currentAssignmentKey = JSON.stringify(stream.assignments || {});
     const currentVersion = mouService.getCurrentVersion(stream);
     const targetAgencies = mouService.getTargetAgenciesForStream(stream);
+    const successUrl = `/mou?success=${encodeURIComponent("Document assignment updated.")}`;
+    const wantsJson =
+      String(req.headers.accept || "").includes("application/json") ||
+      req.query.format === "json";
 
     console.info("[MOU_ASSIGN] Post-save state", {
       ...debugContext,
@@ -827,7 +831,11 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
       targetAgencyCount: targetAgencies.length,
       targetAgencySuffixes: targetAgencies.map((agency) => agency?.suffix).filter(Boolean),
     });
-    res.redirect(`/mou?success=${encodeURIComponent("Document assignment updated.")}`);
+    if (wantsJson) {
+      res.json({ success: true, redirectUrl: successUrl });
+    } else {
+      res.redirect(successUrl);
+    }
 
     void Promise.resolve().then(async () => {
       if (currentVersion && previousAssignmentKey !== currentAssignmentKey && targetAgencies.length) {
@@ -889,6 +897,12 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
       stack: err?.stack || null,
       body: req.body || null,
     });
+    if (
+      String(req.headers.accept || "").includes("application/json") ||
+      req.query.format === "json"
+    ) {
+      return res.status(400).json({ error: err?.message || "Failed to save assignment." });
+    }
     return toErrorRedirect(res, "/mou", err);
   }
 });

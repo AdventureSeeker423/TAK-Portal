@@ -417,6 +417,7 @@
                 </div>
               </div>
 
+              <div class="msg" data-assignment-status></div>
               <div class="mouFormFooter">
                 <button class="btn success" type="submit">Save Assignment</button>
               </div>
@@ -604,6 +605,14 @@
     var agencyOptions = Array.from(form.querySelectorAll("[data-mou-agency-option]"));
     var selectAllBtn = form.querySelector("[data-mou-agency-select-all]");
     var clearAllBtn = form.querySelector("[data-mou-agency-clear-all]");
+    var statusEl = form.querySelector("[data-assignment-status]");
+    var submitBtn = form.querySelector("button[type='submit']");
+
+    function setStatus(kind, text) {
+      if (!statusEl) return;
+      statusEl.className = "msg " + (kind || "");
+      statusEl.textContent = text || "";
+    }
 
     function filterOptions() {
       var query = agencySearch ? String(agencySearch.value || "").trim().toLowerCase() : "";
@@ -639,6 +648,28 @@
         });
       });
     }
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (submitBtn) submitBtn.disabled = true;
+      setStatus("pending", "Saving assignment...");
+      fetch(form.getAttribute("action") + "?format=json", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: new FormData(form)
+      }).then(async function (res) {
+        var out = await res.json().catch(function () { return {}; });
+        if (!res.ok) {
+          throw new Error(out.error || "Failed to save assignment.");
+        }
+        setStatus("ok", "Assignment saved.");
+        window.location.href = out.redirectUrl || "/mou?success=" + encodeURIComponent("Document assignment updated.");
+      }).catch(function (err) {
+        console.error("[MOU_ASSIGN][client]", err);
+        setStatus("bad", err && err.message ? err.message : "Failed to save assignment.");
+      }).finally(function () {
+        if (submitBtn) submitBtn.disabled = false;
+      });
+    });
     sync();
   }
 
