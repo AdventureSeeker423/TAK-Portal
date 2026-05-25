@@ -119,16 +119,9 @@
           <tbody>
             <% cards.forEach(function (card) { %>
               <% const documentStatusLabel = card.signatures && card.signatures.length ? (card.allSigned ? "Signed" : "Pending signature") : "Active"; %>
-              <% const documentStatusClass = card.signatures && card.signatures.length && !card.allSigned ? "mouStatus--pending" : "mouStatus--ok"; %>
               <tr>
                 <td>
                   <strong><%= card.stream.title %></strong>
-                  <div class="mouBadgeRow" style="margin-top:8px;">
-                    <span class="mouBadge mouBadge--soft"><%= String(card.currentVersion && card.currentVersion.contentType || "html").toUpperCase() %></span>
-                    <% if (card.stream.mandatory) { %>
-                      <span class="mouBadge mouBadge--accent">Required</span>
-                    <% } %>
-                  </div>
                 </td>
                 <td><%= card.scopeLabel %></td>
                 <td>
@@ -152,12 +145,12 @@
                   <% } %>
                 </td>
                 <td>
-                  <span class="mouStatus <%= documentStatusClass %>"><%= documentStatusLabel %></span>
+                  <%= documentStatusLabel %>
                 </td>
                 <td>
                   <div class="mouActionRow">
                     <% if (card.currentVersion) { %>
-                      <a class="btn" href="/mou/view/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">Open</a>
+                      <a class="btn" href="/mou/view/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">View</a>
                       <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>?download=1">Download</a>
                       <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
                         <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
@@ -208,13 +201,6 @@
               <tr>
                 <td>
                   <strong><%= stream.title %></strong>
-                  <div class="mouBadgeRow" style="margin-top:8px;">
-                    <span class="mouBadge"><%= stream.scopeLabel %></span>
-                    <% if (currentVersion && currentVersion.contentType) { %>
-                      <span class="mouBadge mouBadge--soft"><%= String(currentVersion.contentType).toUpperCase() %></span>
-                    <% } %>
-                    <span class="mouBadge mouBadge--accent">Required</span>
-                  </div>
                 </td>
                 <td><%= currentVersion ? ("v" + currentVersion.version) : "None" %></td>
                 <td>
@@ -238,16 +224,11 @@
                     <% if (currentVersion) { %>
                       <button class="btn" type="button" data-overlay-target="<%= editorOverlayId %>">Edit</button>
                     <% } else { %>
-                      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/new-version" style="display:inline;">
-                        <button class="btn" type="submit">New Version</button>
-                      </form>
+                      <span class="muted">-</span>
                     <% } %>
                     <% if (currentVersion) { %>
-                      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/new-version" style="display:inline;">
-                        <button class="btn secondary" type="submit">New Version</button>
-                      </form>
                       <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
-                      <a class="btn secondary" href="/mou/view/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(currentVersion.version) %>">Open</a>
+                      <a class="btn secondary" href="/mou/view/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(currentVersion.version) %>">View</a>
                     <% } %>
                     <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and evidence files?');">
                       <button class="btn danger" type="submit">Delete</button>
@@ -298,9 +279,7 @@
                 <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
                 <td><%= row.signerDisplayName || "-" %></td>
                 <td>
-                  <span class="mouStatus <%= row.needsSignature ? 'mouStatus--pending' : 'mouStatus--ok' %>">
-                    <%= row.needsSignature ? "Needs signature" : "Current" %>
-                  </span>
+                  <%= row.needsSignature ? "Needs signature" : "Current" %>
                 </td>
                 <td>
                   <% if (row.signedVersion) { %>
@@ -368,9 +347,10 @@
               <div class="mouFormFooter">
                 <button class="btn secondary" type="button" data-mou-preview-button>Preview</button>
                 <% if (editor.contentType === "pdf" && editor.fileUrl) { %>
-                  <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= editor.fileUrl %>">Open PDF</a>
+                  <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= editor.fileUrl %>" data-current-pdf-url>Open PDF</a>
                 <% } %>
-                <button class="btn success" type="submit">Save</button>
+                <button class="btn success" type="button" data-save-current>Save As Current Version</button>
+                <button class="btn success" type="button" data-save-new-version data-save-new-url="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(currentVersion.version) %>/save-as-new">Save As New Version</button>
               </div>
             </form>
           </div>
@@ -500,8 +480,12 @@
     syncContentFields(form);
     var statusEl = form.querySelector("[data-editor-status]");
     var previewBtn = form.querySelector("[data-mou-preview-button]");
-    var saveTimer = null;
     var saveInFlight = null;
+    var saveCurrentBtn = form.querySelector("[data-save-current]");
+    var saveNewBtn = form.querySelector("[data-save-new-version]");
+    var currentPdfLink = form.querySelector("[data-current-pdf-url]");
+    var fileInput = form.querySelector("[data-mou-file-field] input[type='file']");
+    var contentSelect = form.querySelector("[data-mou-content-select]");
 
     function setStatus(kind, text) {
       if (!statusEl) return;
@@ -509,14 +493,18 @@
       statusEl.textContent = text || "";
     }
 
-    async function saveNow() {
+    function setBusy(isBusy) {
+      if (saveCurrentBtn) saveCurrentBtn.disabled = isBusy;
+      if (saveNewBtn) saveNewBtn.disabled = isBusy;
+      if (previewBtn) previewBtn.disabled = isBusy;
+    }
+
+    async function submitTo(url) {
       if (saveInFlight) return saveInFlight;
-      var action = form.getAttribute("action");
-      var submitButton = form.querySelector("button[type='submit']");
-      if (submitButton) submitButton.disabled = true;
-      if (previewBtn) previewBtn.disabled = true;
+      var requestUrl = url + (url.indexOf("?") === -1 ? "?format=json" : "&format=json");
+      setBusy(true);
       setStatus("pending", "Saving...");
-      saveInFlight = fetch(action + "?format=json", {
+      saveInFlight = fetch(requestUrl, {
         method: "POST",
         headers: { Accept: "application/json" },
         body: new FormData(form)
@@ -530,33 +518,72 @@
         throw err;
       }).finally(function () {
         saveInFlight = null;
-        if (submitButton) submitButton.disabled = false;
-        if (previewBtn) previewBtn.disabled = false;
+        setBusy(false);
       });
       return saveInFlight;
     }
 
-    function scheduleSave() {
-      window.clearTimeout(saveTimer);
-      setStatus("pending", "Saving soon...");
-      saveTimer = window.setTimeout(function () {
-        saveNow().catch(function () {});
-      }, 800);
+    function previewUnsaved() {
+      var contentValue = contentSelect ? contentSelect.value : "markdown";
+      if (contentValue === "pdf") {
+        var selectedFile = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+        if (selectedFile) {
+          window.open(URL.createObjectURL(selectedFile), "_blank");
+          return;
+        }
+        if (currentPdfLink && currentPdfLink.href) {
+          window.open(currentPdfLink.href, "_blank");
+          return;
+        }
+        setStatus("bad", "Choose a PDF file to preview.");
+        return;
+      }
+
+      var previewWindow = window.open("", "_blank");
+      if (!previewWindow) {
+        setStatus("bad", "Preview popup was blocked.");
+        return;
+      }
+      setStatus("pending", "Opening preview...");
+      fetch(form.getAttribute("action").replace(/\/save$/, "/preview"), {
+        method: "POST",
+        body: new FormData(form)
+      }).then(function (res) {
+        if (!res.ok) throw new Error("Failed to preview document.");
+        return res.text();
+      }).then(function (html) {
+        previewWindow.document.open();
+        previewWindow.document.write(html);
+        previewWindow.document.close();
+        setStatus("", "");
+      }).catch(function (err) {
+        previewWindow.close();
+        setStatus("bad", err && err.message ? err.message : "Failed to preview document.");
+      });
     }
 
-    form.addEventListener("input", scheduleSave);
-    form.addEventListener("change", scheduleSave);
     form.addEventListener("submit", function (event) {
       event.preventDefault();
-      saveNow().catch(function () {});
     });
-    if (previewBtn) {
-      previewBtn.addEventListener("click", function () {
-        saveNow()
+    if (saveCurrentBtn) {
+      saveCurrentBtn.addEventListener("click", function () {
+        submitTo(form.getAttribute("action")).catch(function () {});
+      });
+    }
+    if (saveNewBtn) {
+      saveNewBtn.addEventListener("click", function () {
+        submitTo(saveNewBtn.getAttribute("data-save-new-url"))
           .then(function (out) {
-            if (out && out.previewUrl) window.open(out.previewUrl, "_blank", "noopener");
+            if (out && out.redirectUrl) {
+              window.location.href = out.redirectUrl;
+            }
           })
           .catch(function () {});
+      });
+    }
+    if (previewBtn) {
+      previewBtn.addEventListener("click", function () {
+        previewUnsaved();
       });
     }
   }
@@ -580,7 +607,7 @@
 
     function sync() {
       var checked = !!(serverwideToggle && serverwideToggle.checked);
-      if (agencyBlock) agencyBlock.hidden = checked;
+      setFieldVisible(agencyBlock, !checked);
       filterOptions();
     }
 

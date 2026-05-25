@@ -483,6 +483,17 @@ function renderDocumentHtml(versionRecord) {
   return rawContent;
 }
 
+function renderContentPreview({ contentType, html }) {
+  const normalized = normalizeContentType(contentType);
+  if (normalized === "markdown") {
+    return sanitizeMouHtml(marked.parse(String(html || "")));
+  }
+  if (normalized === "html") {
+    return sanitizeMouHtml(String(html || ""));
+  }
+  return "";
+}
+
 function renderUserAgreementHtml(markdownSource) {
   return sanitizeUserAgreementHtml(marked.parse(String(markdownSource || "")));
 }
@@ -1405,5 +1416,6 @@ module.exports = {
   streamAppliesToUser,
   readContentBuffer,
   readHtmlContent,
+  renderContentPreview,
   buildContentUrls,
 };

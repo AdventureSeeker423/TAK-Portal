@@ -626,6 +626,75 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
   }
 });
 
+router.post("/admin/mou/:mouId/:version/save-as-new", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
+  Promise.resolve()
+    .then(async () => {
+      const stream = mouService.createNextVersion({
+        mouId: req.params.mouId,
+        actor: req.authentikUser,
+      });
+      const currentVersion = mouService.getCurrentVersion(stream);
+      if (!currentVersion) {
+        throw new Error("MOU version not found.");
+      }
+      mouService.updateVersion({
+        mouId: req.params.mouId,
+        version: currentVersion.version,
+        title: req.body?.title,
+        slug: req.body?.slug,
+        html: req.body?.html,
+        file: req.file || null,
+        contentType: req.body?.contentType,
+        reminderDays: req.body?.reminderDays,
+        mandatory: true,
+        actor: req.authentikUser,
+      });
+      if (mouService.getTargetAgenciesForStream(stream).length) {
+        const updatedStream = mouService.getStreamById(req.params.mouId);
+        const updatedVersion = mouService.getCurrentVersion(updatedStream);
+        await mouScheduler.sendAssignmentNotificationsForVersion({
+          stream: updatedStream,
+          version: updatedVersion,
+          actor: req.authentikUser,
+        });
+      }
+      auditRequest(req, {
+        action: "MOU_VERSION_CREATED",
+        targetType: "mou",
+        targetId: String(req.params.mouId),
+        details: {
+          mouId: req.params.mouId,
+          version: currentVersion.version,
+        },
+      });
+      const payload = {
+        success: true,
+        editVersion: `${req.params.mouId}:${currentVersion.version}`,
+        redirectUrl: `/mou?success=${encodeURIComponent("New version created.")}&editVersion=${encodeURIComponent(`${req.params.mouId}:${currentVersion.version}`)}`,
+      };
+      if (
+        String(req.headers.accept || "").includes("application/json") ||
+        req.query.format === "json"
+      ) {
+        return res.json(payload);
+      }
+      return res.redirect(payload.redirectUrl);
+    })
+    .catch((err) => {
+      if (
+        String(req.headers.accept || "").includes("application/json") ||
+        req.query.format === "json"
+      ) {
+        return res.status(400).json({ error: err?.message || "Failed to create new version." });
+      }
+      return toErrorRedirect(
+        res,
+        `/mou?editVersion=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`,
+        err
+      );
+    });
+});
+
 router.get("/admin/mou/:mouId/:version/preview", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
   try {
     const stream = mouService.getStreamById(req.params.mouId);
@@ -644,6 +713,39 @@ router.get("/admin/mou/:mouId/:version/preview", requireMouEnabled, requireMouPe
       fileUrl: contentUrls.fileUrl,
       downloadUrl: contentUrls.downloadUrl,
       fileName: content.fileName,
+      scopeLabel: mouService.getScopeLabel(stream),
+    });
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
+router.post("/admin/mou/:mouId/:version/preview", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
+  try {
+    const stream = mouService.getStreamById(req.params.mouId);
+    const version =
+      (stream.versions || []).find(
+        (entry) => Number(entry.version) === Number(req.params.version)
+      ) || null;
+    if (!version) throw new Error("MOU version not found.");
+
+    const contentType = String(req.body?.contentType || version.contentType || "markdown").trim().toLowerCase();
+    const html = mouService.renderContentPreview({
+      contentType,
+      html: req.body?.html,
+    });
+
+    return res.render("admin/mou_admin_preview", {
+      stream: {
+        ...stream,
+        title: String(req.body?.title || stream.title || "").trim() || stream.title,
+      },
+      version,
+      html,
+      contentType,
+      fileUrl: "",
+      downloadUrl: "",
+      fileName: req.file?.originalname || "",
       scopeLabel: mouService.getScopeLabel(stream),
     });
   } catch (err) {
