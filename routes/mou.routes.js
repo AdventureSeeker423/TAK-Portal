@@ -419,6 +419,44 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
   }
 });
 
+router.get("/mou/agency-file/:mouId/:agencyId", requireMouEnabled, requireMouPermission, (req, res) => {
+  try {
+    const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
+    const canSeeAll = !!req.authentikUser?.isGlobalAdmin;
+    const canSeeOwnAgency =
+      !!req.authentikUser?.isAgencyAdmin &&
+      accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
+    const canSeePublic = getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true);
+    if (!canSeeAll && !canSeeOwnAgency && !canSeePublic) {
+      return res.status(403).render("access-denied", {
+        username: req.authentikUser?.username || "",
+      });
+    }
+
+    const evidence = mouService.getAgencyEvidence({
+      mouId: req.params.mouId,
+      agencyId,
+      version: req.query.version,
+    });
+    if (!evidence.uploadedSignedCopyAbsPath) {
+      return renderNotFound(req, res);
+    }
+    const fileName =
+      evidence.signature?.uploadedSignedCopyFileName ||
+      `${evidence.stream?.title || "signed-document"}-signed-copy`;
+    if (evidence.signature?.uploadedSignedCopyContentType) {
+      res.type(evidence.signature.uploadedSignedCopyContentType);
+    }
+    res.setHeader(
+      "Content-Disposition",
+      buildContentDisposition(req.query.download === "1" ? "attachment" : "inline", fileName)
+    );
+    return res.sendFile(evidence.uploadedSignedCopyAbsPath);
+  } catch (err) {
+    return renderNotFound(req, res);
+  }
+});
+
 router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireAgencyAdmin, (req, res) => {
   try {
     const out = mouService.getCurrentVersionOrLatest(req.params.mouId, req.params.version);
@@ -455,15 +493,19 @@ router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission,
   }
 });
 
-router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireAgencyAdmin, async (req, res) => {
+router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireAgencyAdmin, upload.single("signedCopyFile"), async (req, res) => {
   try {
     const stream = mouService.getStreamById(req.params.mouId);
     const agencyChoices = resolveSignableAgencyChoices(req.authentikUser, stream);
     const agencySuffix = String(req.body?.agencySuffix || "").trim().toLowerCase();
+    const signMethod = String(req.body?.signMethod || "esign").trim().toLowerCase();
     if (!agencyChoices.some((agency) => agency.suffix === agencySuffix)) {
       return res.status(403).render("access-denied", {
         username: req.authentikUser?.username || "",
       });
+    }
+    if (signMethod === "upload" && !req.file) {
+      throw new Error("Attach a PDF or image of the signed document.");
     }
 
     const agency = mouService.getAgencyBySuffix(agencySuffix);
@@ -472,12 +514,13 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
       mouId: req.params.mouId,
       version: req.params.version,
       agencySuffix,
-      agencyNameAtSign: agency.name || agency.groupPrefix || agency.suffix,
+      agencyNameAtSign: agency?.name || agency?.groupPrefix || agency?.suffix || agencySuffix,
       signerUserId: req.authentikUser?.uid || req.authentikUser?.username,
       signerDisplayName: req.authentikUser?.displayName || req.authentikUser?.username,
       signerStatusAtSign: req.body?.signerRole || signerStatus,
       attestationText: req.body?.attestationText,
       signatureDataUrl: req.body?.signatureDataUrl,
+      uploadedSignedCopyFile: signMethod === "upload" ? req.file || null : null,
       ...requestMeta(req),
     });
 
@@ -491,11 +534,12 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
         version: result.version.version,
         agencyId: agencySuffix,
         signerDisplayName: result.signature.signerDisplayName,
+        signMethod,
       },
     });
 
     return res.redirect(
-      `/mou/sign/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}?success=${encodeURIComponent("MOU signed successfully.")}`
+      `/mou/sign/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}?success=${encodeURIComponent(signMethod === "upload" ? "Signed document uploaded successfully." : "MOU signed successfully.")}`
     );
   } catch (err) {
     return toErrorRedirect(

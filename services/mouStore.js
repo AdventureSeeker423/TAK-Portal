@@ -136,6 +136,15 @@ function getSignaturePngPath(mouId, agencyId, version) {
   );
 }
 
+function getSignedUploadPath(mouId, agencyId, version, extension) {
+  return path.join(
+    SIGNED_DIR,
+    normalizeSegment(mouId),
+    normalizeSegment(agencyId),
+    `${normalizeVersion(version)}-upload.${normalizeExtension(extension, "pdf")}`
+  );
+}
+
 function loadIndex() {
   ensureStorage();
   return readJsonFile(INDEX_PATH, { schemaVersion: 1, streams: [] });
@@ -238,6 +247,7 @@ module.exports = {
   getVersionContentPath,
   getSignedHtmlPath,
   getSignaturePngPath,
+  getSignedUploadPath,
   readHtml,
   writeHtml,
   writeBinary,

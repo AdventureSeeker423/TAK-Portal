@@ -125,7 +125,7 @@
         <div class="msg ok" style="margin-bottom: 14px;">All agencies available to you have already signed this version.</div>
       <% } %>
 
-      <form method="post" action="/mou/sign/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>" id="mouSignForm">
+      <form method="post" action="/mou/sign/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>" id="mouSignForm" enctype="multipart/form-data">
         <input type="hidden" name="agencySuffix" value="<%= firstPendingAgency ? firstPendingAgency.suffix : '' %>" <%= hasPendingAgency ? "" : "disabled" %> />
         <div class="card" style="margin:0 0 12px 0;padding:14px 16px;">
           By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
@@ -143,19 +143,33 @@
 
         <label style="margin-top:12px;display:block;">
           Full Name
-          <input type="text" name="attestationText" placeholder="Type Your Full Name" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
+          <input type="text" name="attestationText" placeholder="Enter Your Full Name" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
         </label>
 
         <label style="margin-top:12px;display:block;">
           Position / Role
-          <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
+          <input type="text" name="signerRole" placeholder="Enter Your Postion / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
         </label>
 
         <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
 
         <div class="row" style="margin-top:16px;justify-content:flex-end;">
           <a class="btn secondary" href="/mou">Cancel</a>
-          <button class="btn success" type="submit" <%= hasPendingAgency ? "" : "disabled" %>>E-Sign Document</button>
+          <button class="btn success" type="submit" name="signMethod" value="esign" <%= hasPendingAgency ? "" : "disabled" %>>E-Sign Document</button>
+        </div>
+
+        <div style="margin:18px 0;border-top:1px solid rgba(148,163,184,0.35);"></div>
+
+        <div style="font-weight:700;margin-bottom:6px;">Upload Signed Document</div>
+        <div class="muted" style="margin-bottom:12px;">Attach a scanned manually signed copy as a PDF or image file.</div>
+
+        <label style="display:block;">
+          Signed Document File
+          <input type="file" name="signedCopyFile" id="signedCopyFile" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" style="width:100%;" <%= hasPendingAgency ? "" : "disabled" %> />
+        </label>
+
+        <div class="row" style="margin-top:16px;justify-content:flex-end;">
+          <button class="btn secondary" type="submit" name="signMethod" value="upload" <%= hasPendingAgency ? "" : "disabled" %>>Upload Signed Document</button>
         </div>
       </form>
     </section>
@@ -174,6 +188,7 @@
   var signatureMsg = document.getElementById("signatureMsg");
   var signerNameInput = form.querySelector("input[name='attestationText']");
   var signerRoleInput = form.querySelector("input[name='signerRole']");
+  var signedCopyInput = document.getElementById("signedCopyFile");
   var printSignerName = document.getElementById("printSignerName");
   var printSignerRole = document.getElementById("printSignerRole");
   var documentSection = document.getElementById("mouDocumentSection");
@@ -360,6 +375,18 @@
   updatePrintableFooterFields();
 
   form.addEventListener("submit", function (event) {
+    var submitter = event.submitter;
+    var signMethod = submitter && submitter.value === "upload" ? "upload" : "esign";
+    if (signMethod === "upload") {
+      hidden.value = "";
+      if (!signedCopyInput || !signedCopyInput.files || !signedCopyInput.files.length) {
+        event.preventDefault();
+        setSignatureMessage("Attach a PDF or image of the signed document.");
+        return;
+      }
+      setSignatureMessage("");
+      return;
+    }
     if (!hasInk) {
       event.preventDefault();
       hidden.value = "";

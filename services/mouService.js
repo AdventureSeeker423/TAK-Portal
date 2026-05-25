@@ -15,6 +15,14 @@ const PDF_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_USER_AGREEMENT_TITLE = "User Agreement";
 const DEFAULT_USER_AGREEMENT_MARKDOWN =
   "I understand that use of this TAK environment is subject to my agency's current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.";
+const SIGNED_COPY_ALLOWED_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "webp"]);
+const SIGNED_COPY_CONTENT_TYPES = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+};
 
 function nowIso() {
   return new Date().toISOString();
@@ -823,8 +831,10 @@ function updateVersion({
     for (const signature of versionRecord.signatures) {
       const signedHtmlPath = getAbsoluteDataPath(signature?.signedHtmlPath);
       const signaturePngPath = getAbsoluteDataPath(signature?.signaturePngPath);
+      const uploadedSignedCopyPath = getAbsoluteDataPath(signature?.uploadedSignedCopyPath);
       if (signedHtmlPath) store.deleteFile(signedHtmlPath);
       if (signaturePngPath) store.deleteFile(signaturePngPath);
+      if (uploadedSignedCopyPath) store.deleteFile(uploadedSignedCopyPath);
     }
     versionRecord.signatures = [];
   }
@@ -856,8 +866,10 @@ function deleteStream({ mouId }) {
     for (const signature of versionRecord.signatures || []) {
       const signedHtmlPath = getAbsoluteDataPath(signature?.signedHtmlPath);
       const signaturePngPath = getAbsoluteDataPath(signature?.signaturePngPath);
+      const uploadedSignedCopyPath = getAbsoluteDataPath(signature?.uploadedSignedCopyPath);
       if (signedHtmlPath) store.deleteFile(signedHtmlPath);
       if (signaturePngPath) store.deleteFile(signaturePngPath);
+      if (uploadedSignedCopyPath) store.deleteFile(uploadedSignedCopyPath);
     }
   }
 
@@ -1078,9 +1090,44 @@ function parseSignatureDataUrl(dataUrl) {
   return Buffer.from(match[1], "base64");
 }
 
+function getSignedCopyExtension(file) {
+  const fromMime = normalizeLower(file?.mimetype);
+  if (fromMime === "application/pdf") return "pdf";
+  if (fromMime === "image/png") return "png";
+  if (fromMime === "image/jpeg" || fromMime === "image/jpg") return "jpg";
+  if (fromMime === "image/webp") return "webp";
+
+  const fromName = normalizeLower(String(path.extname(file?.originalname || "") || "").replace(/^\./, ""));
+  if (SIGNED_COPY_ALLOWED_EXTENSIONS.has(fromName)) {
+    return fromName === "jpeg" ? "jpg" : fromName;
+  }
+  throw new Error("Signed document must be a PDF, PNG, JPG, or WEBP file.");
+}
+
+function persistSignedCopy({ mouId, agencySuffix, version, file }) {
+  const buffer = Buffer.isBuffer(file?.buffer) ? file.buffer : Buffer.alloc(0);
+  if (!buffer.length) {
+    throw new Error("Signed document file is empty.");
+  }
+  if (buffer.length > PDF_MAX_BYTES) {
+    throw new Error("Signed document exceeds the maximum supported upload size.");
+  }
+  const extension = getSignedCopyExtension(file);
+  const targetPath = store.getSignedUploadPath(mouId, agencySuffix, version, extension);
+  store.writeBinary(targetPath, buffer);
+  return {
+    absPath: targetPath,
+    fileName: normalizeText(file?.originalname || `signed-document.${extension}`),
+    contentType: SIGNED_COPY_CONTENT_TYPES[extension] || "application/octet-stream",
+  };
+}
+
 function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
   const scopeLabel = getScopeLabel(stream);
   const fileHref = `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(versionRecord.version)}`;
+  const uploadedSignedCopyHref = signatureRecord.uploadedSignedCopyPath
+    ? `/mou/agency-file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(signatureRecord.agencyId)}?version=${encodeURIComponent(versionRecord.version)}`
+    : "";
   const renderedBody =
     normalizeContentType(versionRecord.contentType) === "pdf"
       ? [
@@ -1090,6 +1137,27 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
           "</div>",
         ].join("\n")
       : renderDocumentHtml(versionRecord);
+  const uploadedSignedCopyBlock = !uploadedSignedCopyHref
+    ? ""
+    : signatureRecord.uploadedSignedCopyContentType === "application/pdf"
+      ? [
+          '<div class="signed-uploaded-copy">',
+          `  <p><a href="${uploadedSignedCopyHref}" target="_blank" rel="noopener noreferrer">Open uploaded signed document</a></p>`,
+          `  <iframe src="${uploadedSignedCopyHref}" title="Uploaded signed document" style="width:100%;min-height:780px;border:1px solid #d1d5db;border-radius:12px;background:#fff;"></iframe>`,
+          "</div>",
+        ].join("\n")
+      : String(signatureRecord.uploadedSignedCopyContentType || "").startsWith("image/")
+        ? [
+            '<div class="signed-uploaded-copy">',
+            `  <p><a href="${uploadedSignedCopyHref}" target="_blank" rel="noopener noreferrer">Open uploaded signed document</a></p>`,
+            `  <img src="${uploadedSignedCopyHref}" alt="Uploaded signed document" style="max-width:100%;height:auto;border:1px solid #d1d5db;border-radius:12px;background:#fff;" />`,
+            "</div>",
+          ].join("\n")
+        : [
+            '<div class="signed-uploaded-copy">',
+            `  <p><a href="${uploadedSignedCopyHref}" target="_blank" rel="noopener noreferrer">Download uploaded signed document</a></p>`,
+            "</div>",
+          ].join("\n");
 
   return [
     "<style>",
@@ -1097,6 +1165,7 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
     "  .signed-header { margin-bottom: 24px; background: #ffffff; padding: 20px 24px; border-radius: 16px; border: 1px solid #dbe4f0; }",
     "  .signed-header h1 { margin: 0 0 8px 0; }",
     "  .signed-body { background: #ffffff; border-radius: 16px; padding: 24px; border: 1px solid #dbe4f0; }",
+    "  .signed-uploaded-copy { margin-top: 24px; border-top: 2px solid #0f172a; padding-top: 16px; }",
     "  .signature-card { margin-top: 24px; border-top: 2px solid #0f172a; padding-top: 16px; }",
     "  .signature-image { max-width: 360px; max-height: 160px; display: block; margin-bottom: 12px; border-bottom: 1px solid #94a3b8; padding-bottom: 10px; }",
     "  .signature-line { margin: 4px 0; }",
@@ -1106,11 +1175,13 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
     `    <h1>${escapeHtml(stream.title)}</h1>`,
     `    <div>Version ${escapeHtml(String(versionRecord.version))} | ${escapeHtml(scopeLabel)}</div>`,
     "  </div>",
-    `  <div class="signed-body">${renderedBody}`,
+    `  <div class="signed-body">${renderedBody}${uploadedSignedCopyBlock}`,
     '    <div class="signature-card">',
     signatureRecord.signatureImageDataUrl
       ? `      <img class="signature-image" src="${signatureRecord.signatureImageDataUrl}" alt="Signature" />`
-      : '      <div class="signature-image" style="padding:12px 0;">Typed attestation used.</div>',
+      : signatureRecord.uploadedSignedCopyPath
+        ? '      <div class="signature-image" style="padding:12px 0;">Uploaded signed document provided.</div>'
+        : '      <div class="signature-image" style="padding:12px 0;">Typed attestation used.</div>',
     `      <div class="signature-line"><strong>${escapeHtml(signatureRecord.signerDisplayName)}</strong></div>`,
     `      <div class="signature-line">${escapeHtml(signatureRecord.signerStatusAtSign || "Agency Administrator")}</div>`,
     `      <div class="signature-line">${escapeHtml(signatureRecord.agencyNameAtSign)}</div>`,
@@ -1131,6 +1202,7 @@ function signVersion({
   signerStatusAtSign,
   attestationText,
   signatureDataUrl,
+  uploadedSignedCopyFile,
   ip,
   userAgent,
 }) {
@@ -1155,8 +1227,8 @@ function signVersion({
   requireNonEmpty(safeAgencySuffix, "Agency");
   requireNonEmpty(safeAgencyName, "Agency name");
   requireNonEmpty(safeSigner, "Signer name");
-  if (!pngBuffer && !safeAttestation) {
-    throw new Error("Provide a drawn signature or typed attestation.");
+  if (!pngBuffer && !uploadedSignedCopyFile && !safeAttestation) {
+    throw new Error("Provide a drawn signature, uploaded signed document, or typed attestation.");
   }
 
   if (!Array.isArray(versionRecord.signatures)) versionRecord.signatures = [];
@@ -1176,6 +1248,14 @@ function signVersion({
   if (pngBuffer) {
     store.writeBinary(signaturePath, pngBuffer);
   }
+  const uploadedSignedCopy = uploadedSignedCopyFile
+    ? persistSignedCopy({
+        mouId,
+        agencySuffix: safeAgencySuffix,
+        version: versionRecord.version,
+        file: uploadedSignedCopyFile,
+      })
+    : null;
 
   const signedAt = nowIso();
   const signatureRecord = {
@@ -1188,6 +1268,9 @@ function signVersion({
     ip: normalizeText(ip) || null,
     userAgent: normalizeText(userAgent) || null,
     signaturePngPath: pngBuffer ? buildRelativeDataPath(signaturePath) : null,
+    uploadedSignedCopyPath: uploadedSignedCopy ? buildRelativeDataPath(uploadedSignedCopy.absPath) : null,
+    uploadedSignedCopyFileName: uploadedSignedCopy ? uploadedSignedCopy.fileName : null,
+    uploadedSignedCopyContentType: uploadedSignedCopy ? uploadedSignedCopy.contentType : null,
     signedHtmlPath: buildRelativeDataPath(
       store.getSignedHtmlPath(mouId, safeAgencySuffix, versionRecord.version)
     ),
@@ -1234,6 +1317,7 @@ function getAgencyEvidence({ mouId, agencyId, version }) {
       version: clone(versionRecord),
       signature: clone(signature),
       html: store.readHtml(fullPath),
+      uploadedSignedCopyAbsPath: getAbsoluteDataPath(signature?.uploadedSignedCopyPath),
     };
   }
   throw new Error("Signed evidence not found.");
