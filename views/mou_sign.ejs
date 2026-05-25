@@ -26,12 +26,6 @@
   color: var(--text);
 }
 
-.mouSignSectionHelp {
-  margin: 0 0 12px 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .mouSignMethodSwitch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -197,41 +191,38 @@
 
       <form method="post" action="/mou/sign/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>" id="mouSignForm" enctype="multipart/form-data">
         <input type="hidden" name="agencySuffix" value="<%= firstPendingAgency ? firstPendingAgency.suffix : '' %>" <%= hasPendingAgency ? "" : "disabled" %> />
-        <input type="hidden" name="signMethodMode" id="signMethodMode" value="esign" />
+        <input type="hidden" name="signMethodMode" id="signMethodMode" value="" />
 
         <div class="mouSignSection" style="margin-top:0;">
+          <div class="mouSignSectionTitle">Choose Signing Method</div>
+          <div class="mouSignMethodSwitch" role="tablist" aria-label="Signing method">
+            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="esign" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>E-Sign Here</button>
+            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="upload" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>Upload Signed Copy</button>
+          </div>
+          <div class="msg" id="signMethodMsg" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="mouSignSection">
           <div class="mouSignSectionTitle">Signer Details</div>
-          <div class="mouSignSectionHelp">These details are required whether you e-sign here or upload a manually signed copy.</div>
           <div class="mouSignerIntro">
             By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
           </div>
 
           <label style="display:block;">
             Full Name
-            <input type="text" name="attestationText" placeholder="Enter Your Full Name" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
+            <input type="text" name="attestationText" placeholder="Enter Full Name" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
           </label>
 
           <label style="margin-top:12px;display:block;">
             Position / Role
-            <input type="text" name="signerRole" placeholder="Enter Your Postion / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
+            <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
           </label>
-        </div>
-
-        <div class="mouSignSection">
-          <div class="mouSignSectionTitle">Choose Signing Method</div>
-          <div class="mouSignSectionHelp">Pick how you want to complete this document for your agency.</div>
-          <div class="mouSignMethodSwitch" role="tablist" aria-label="Signing method">
-            <button class="btn mouSignMethodButton is-active" type="button" data-sign-method-toggle data-method="esign" aria-pressed="true" <%= hasPendingAgency ? "" : "disabled" %>>E-Sign Here</button>
-            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="upload" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>Upload Signed Copy</button>
-          </div>
-          <div class="msg" id="signMethodMsg" style="margin-top:10px;"></div>
         </div>
 
         <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
 
-        <div class="mouSignSection mouSignMethodPanel" data-sign-method-panel="esign">
+        <div class="mouSignSection mouSignMethodPanel" data-sign-method-panel="esign" hidden>
           <div class="mouSignSectionTitle">E-Sign Here</div>
-          <div class="mouSignSectionHelp">Draw your signature below, then submit the signed document.</div>
 
           <label style="display:block;">
             Draw Signature
@@ -249,7 +240,6 @@
 
         <div class="mouSignSection mouSignMethodPanel" data-sign-method-panel="upload" hidden>
           <div class="mouSignSectionTitle">Upload Signed Copy</div>
-          <div class="mouSignSectionHelp">Attach a scanned manually signed copy as a PDF or image file.</div>
 
           <label style="display:block;">
             Signed Document File
@@ -291,7 +281,10 @@
   var contentType = mainEl ? String(mainEl.getAttribute("data-content-type") || "") : "";
   var documentTitle = mainEl ? String(mainEl.getAttribute("data-document-title") || "document") : "document";
   var signingAgencyName = mainEl ? String(mainEl.getAttribute("data-signing-agency-name") || "") : "";
-  var activeSignMethod = signMethodModeInput && signMethodModeInput.value === "upload" ? "upload" : "esign";
+  var activeSignMethod =
+    signMethodModeInput && /^(esign|upload)$/.test(String(signMethodModeInput.value || ""))
+      ? String(signMethodModeInput.value || "")
+      : "";
 
   var ctx = canvas ? canvas.getContext("2d") : null;
   var drawing = false;
@@ -304,7 +297,7 @@
   }
 
   function setActiveSignMethod(mode) {
-    activeSignMethod = mode === "upload" ? "upload" : "esign";
+    activeSignMethod = mode === "upload" || mode === "esign" ? mode : "";
     if (signMethodModeInput) signMethodModeInput.value = activeSignMethod;
     signMethodToggleButtons.forEach(function (button) {
       var isActive = button.getAttribute("data-method") === activeSignMethod;
@@ -314,6 +307,7 @@
     signMethodPanels.forEach(function (panel) {
       panel.hidden = panel.getAttribute("data-sign-method-panel") !== activeSignMethod;
     });
+    updateSignerFieldPlaceholders();
     setSignMethodMessage("");
   }
 
@@ -336,6 +330,25 @@
 
   function getSignerRoleValue() {
     return signerRoleInput ? String(signerRoleInput.value || "").trim() : "";
+  }
+
+  function updateSignerFieldPlaceholders() {
+    if (signerNameInput) {
+      signerNameInput.placeholder =
+        activeSignMethod === "esign"
+          ? "Enter Your Full Name"
+          : activeSignMethod === "upload"
+            ? "Enter Signer's Full Name"
+            : "Enter Full Name";
+    }
+    if (signerRoleInput) {
+      signerRoleInput.placeholder =
+        activeSignMethod === "esign"
+          ? "Enter Your Position / Role"
+          : activeSignMethod === "upload"
+            ? "Enter Signer's Position / Role"
+            : "Enter Position / Role";
+    }
   }
 
   function updatePrintableFooterFields() {
@@ -467,6 +480,7 @@
 
   if (signerNameInput) signerNameInput.addEventListener("input", updatePrintableFooterFields);
   if (signerRoleInput) signerRoleInput.addEventListener("input", updatePrintableFooterFields);
+  updateSignerFieldPlaceholders();
   updatePrintableFooterFields();
 
   if (!form) return;
@@ -501,6 +515,12 @@
   form.addEventListener("submit", function (event) {
     var submitter = event.submitter;
     var signMethod = submitter && submitter.value ? submitter.value : activeSignMethod;
+    if (signMethod !== "upload" && signMethod !== "esign") {
+      event.preventDefault();
+      if (hidden) hidden.value = "";
+      setSignMethodMessage('Select "E-Sign Here" or "Upload Signed Copy" first.');
+      return;
+    }
     if (signMethod === "upload") {
       if (hidden) hidden.value = "";
       if (!signedCopyInput || !signedCopyInput.files || !signedCopyInput.files.length) {
