@@ -487,6 +487,7 @@
   function syncEditorForm(form) {
     if (!form) return;
     syncContentFields(form);
+    var overlay = form.closest(".modalOverlay");
     var statusEl = form.querySelector("[data-editor-status]");
     var previewBtn = form.querySelector("[data-mou-preview-button]");
     var saveInFlight = null;
@@ -576,13 +577,18 @@
     });
     if (saveCurrentBtn) {
       saveCurrentBtn.addEventListener("click", function () {
-        submitTo(form.getAttribute("action")).catch(function () {});
+        submitTo(form.getAttribute("action"))
+          .then(function () {
+            closeOverlay(overlay);
+          })
+          .catch(function () {});
       });
     }
     if (saveNewBtn) {
       saveNewBtn.addEventListener("click", function () {
         submitTo(saveNewBtn.getAttribute("data-save-new-url"))
           .then(function (out) {
+            closeOverlay(overlay);
             if (out && out.redirectUrl) {
               window.location.href = out.redirectUrl;
             }
