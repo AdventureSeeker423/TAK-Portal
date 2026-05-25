@@ -78,6 +78,17 @@ function toErrorRedirect(res, url, err) {
   return res.redirect(`${url}${url.includes("?") ? "&" : "?"}error=${message}`);
 }
 
+function buildContentDisposition(disposition, fileName) {
+  const original = String(fileName || "mou").trim() || "mou";
+  const asciiFallback = original
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/["\\\r\n]/g, "_");
+  const encoded = encodeURIComponent(original).replace(/[!'()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 function csvEscape(value) {
   const str = String(value ?? "");
   if (/[",\n]/.test(str)) {
@@ -256,6 +267,7 @@ router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
     cards,
     adminStreams,
     adminAgreement: isGlobalAdmin ? mouService.getCurrentUserAgreement() : null,
+    defaultUserAgreement: isGlobalAdmin ? mouService.getDefaultUserAgreementTemplate() : null,
     signatureRows,
     agencies: isGlobalAdmin ? getAgencyOptions() : [],
     error: req.query.error || "",
@@ -285,10 +297,9 @@ router.get("/mou/file/:mouId/:version", requireMouEnabled, requireMouPermission,
 
     if (content.contentType === "pdf") {
       res.setHeader("Content-Type", "application/pdf");
-      const disposition = req.query.download === "1" ? "attachment" : "inline";
       res.setHeader(
         "Content-Disposition",
-        `${disposition}; filename="${fileName}"`
+        buildContentDisposition(req.query.download === "1" ? "attachment" : "inline", fileName)
       );
       return res.send(content.contentBuffer);
     }
@@ -296,14 +307,14 @@ router.get("/mou/file/:mouId/:version", requireMouEnabled, requireMouPermission,
     if (content.contentType === "markdown") {
       res.setHeader("Content-Type", "text/markdown; charset=utf-8");
       if (req.query.download === "1") {
-        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+        res.setHeader("Content-Disposition", buildContentDisposition("attachment", fileName));
       }
       return res.send(content.contentBuffer.toString("utf8"));
     }
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     if (req.query.download === "1") {
-      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.setHeader("Content-Disposition", buildContentDisposition("attachment", fileName));
     }
     return res.send(content.html);
   } catch (err) {
@@ -344,6 +355,9 @@ router.get("/mou/view/:mouId/:version", requireMouEnabled, requireMouPermission,
     });
 
     const contentUrls = mouService.buildContentUrls(out.stream, out.targetVersion);
+    if (out.contentType === "pdf" && contentUrls.fileUrl) {
+      return res.redirect(contentUrls.fileUrl);
+    }
     res.render("mou_view", {
       mode: "current",
       stream: out.stream,
@@ -787,19 +801,33 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
       agencySuffixes,
       actor: req.authentikUser,
     });
-    const currentVersion = mouService.getCurrentVersion(stream);
+    const updatedStream = mouService.getStreamById(req.params.mouId);
+    const currentVersion = mouService.getCurrentVersion(updatedStream);
     const previousAssignmentKey = JSON.stringify(previousStream.assignments || {});
-    const currentAssignmentKey = JSON.stringify(stream.assignments || {});
+    const currentAssignmentKey = JSON.stringify(updatedStream.assignments || {});
     if (
       currentVersion &&
       previousAssignmentKey !== currentAssignmentKey &&
-      mouService.getTargetAgenciesForStream(stream).length
+      mouService.getTargetAgenciesForStream(updatedStream).length
     ) {
-      await mouScheduler.sendAssignmentNotificationsForVersion({
-        stream,
-        version: currentVersion,
-        actor: req.authentikUser,
-      });
+      try {
+        await mouScheduler.sendAssignmentNotificationsForVersion({
+          stream: updatedStream,
+          version: currentVersion,
+          actor: req.authentikUser,
+        });
+      } catch (notifyErr) {
+        auditRequest(req, {
+          action: "MOU_ASSIGNMENT_NOTIFICATION_FAILED",
+          targetType: "mou",
+          targetId: String(req.params.mouId),
+          details: {
+            mouId: req.params.mouId,
+            version: currentVersion.version,
+            error: notifyErr?.message || String(notifyErr || "Failed to send assignment notifications."),
+          },
+        });
+      }
     }
     auditRequest(req, {
       action: "MOU_ASSIGNMENTS_UPDATED",
@@ -807,8 +835,8 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
       targetId: String(req.params.mouId),
       details: {
         mouId: req.params.mouId,
-        assignment: mouService.getScopeLabel(stream),
-        targetAgencyCount: mouService.getTargetAgenciesForStream(stream).length,
+        assignment: mouService.getScopeLabel(updatedStream),
+        targetAgencyCount: mouService.getTargetAgenciesForStream(updatedStream).length,
       },
     });
     return res.redirect(`/mou?success=${encodeURIComponent("Document assignment updated.")}`);
@@ -819,11 +847,13 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
 
 router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
   try {
+    const resetToDefault = String(req.body?.resetToDefault || "").toLowerCase() === "true";
+    const defaults = mouService.getDefaultUserAgreementTemplate();
     const result = mouService.saveUserAgreement({
-      title: req.body?.title,
-      markdown: req.body?.markdown,
+      title: resetToDefault ? defaults.title : req.body?.title,
+      markdown: resetToDefault ? defaults.markdown : req.body?.markdown,
       html: req.body?.html,
-      enabled: req.body?.enabled,
+      enabled: resetToDefault ? false : req.body?.enabled,
       actor: req.authentikUser,
     });
     auditRequest(req, {
@@ -836,7 +866,9 @@ router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermi
         enabled: result.enabled,
       },
     });
-    return res.redirect(`/mou?success=${encodeURIComponent("User agreement saved.")}`);
+    return res.redirect(
+      `/mou?success=${encodeURIComponent(resetToDefault ? "User agreement reset to default." : "User agreement saved.")}`
+    );
   } catch (err) {
     return toErrorRedirect(res, "/mou", err);
   }

@@ -1113,6 +1113,10 @@ label.btn {
     width: auto;
 }
 
+.mouFormFooter__leftAction {
+    margin-right: auto;
+}
+
 .mouAgencyCheckboxGrid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

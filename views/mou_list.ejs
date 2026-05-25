@@ -34,7 +34,7 @@
           <div class="grid2">
             <label>
               Title
-              <input type="text" name="title" required />
+              <input type="text" name="title" placeholder="Document Title Here" required />
             </label>
             <label>
               Content type
@@ -70,6 +70,7 @@
         </div>
 
         <% const currentAgreement = adminAgreement && adminAgreement.current ? adminAgreement.current : null; %>
+        <% const agreementDefaults = defaultUserAgreement || { title: "User Agreement", markdown: "I understand that use of this TAK environment is subject to my agency's current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security." }; %>
         <form method="post" action="/admin/mou/user-agreement/save" class="mouAdminForm">
           <label class="mouCheckboxLabel">
             <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> />
@@ -77,13 +78,14 @@
           </label>
           <label>
             Title
-            <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : 'User Agreement' %>" required />
+            <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : agreementDefaults.title %>" required />
           </label>
           <label>
             Agreement Text (Markdown supported)
-            <textarea name="markdown" rows="14" required><%- currentAgreement ? currentAgreement.bodyMarkdown : 'I understand that use of this TAK environment is subject to my agency\'s current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.' %></textarea>
+            <textarea name="markdown" rows="14" required><%- currentAgreement ? currentAgreement.bodyMarkdown : agreementDefaults.markdown %></textarea>
           </label>
           <div class="mouFormFooter">
+            <button class="btn qr mouFormFooter__leftAction" type="submit" name="resetToDefault" value="true">Reset To Default</button>
             <button class="btn success" type="submit">Save User Agreement</button>
           </div>
         </form>
@@ -119,6 +121,9 @@
           <tbody>
             <% cards.forEach(function (card) { %>
               <% const documentStatusLabel = card.signatures && card.signatures.length ? (card.allSigned ? "Signed" : "Pending signature") : "Active"; %>
+              <% const cardViewHref = card.currentVersion && String(card.currentVersion.contentType || "").toLowerCase() === "pdf"
+                ? ("/mou/file/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version))
+                : ("/mou/view/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version)); %>
               <tr>
                 <td>
                   <strong><%= card.stream.title %></strong>
@@ -150,7 +155,7 @@
                 <td>
                   <div class="mouActionRow">
                     <% if (card.currentVersion) { %>
-                      <a class="btn" href="/mou/view/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">View</a>
+                      <a class="btn" href="<%= cardViewHref %>" <%= String(card.currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
                       <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>?download=1">Download</a>
                       <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
                         <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
@@ -198,6 +203,9 @@
               <% const editorOverlayId = currentVersion ? ("mouEditOverlay-" + stream.mouId + "-" + currentVersion.version) : ""; %>
               <% const assignOverlayId = currentVersion ? ("mouAssignOverlay-" + stream.mouId) : ""; %>
               <% const assignmentLabel = currentVersion ? (stream.targetAgencies && stream.targetAgencies.length ? stream.scopeLabel : "Inactive") : "Create version first"; %>
+              <% const adminViewHref = currentVersion && String(currentVersion.contentType || "").toLowerCase() === "pdf"
+                ? ("/mou/file/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version))
+                : ("/mou/view/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version)); %>
               <tr>
                 <td>
                   <strong><%= stream.title %></strong>
@@ -228,7 +236,7 @@
                     <% } %>
                     <% if (currentVersion) { %>
                       <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
-                      <a class="btn secondary" href="/mou/view/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(currentVersion.version) %>">View</a>
+                      <a class="btn secondary" href="<%= adminViewHref %>" <%= String(currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
                     <% } %>
                     <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and evidence files?');">
                       <button class="btn danger" type="submit">Delete</button>
@@ -318,7 +326,7 @@
               <div class="grid2">
                 <label>
                   Title
-                  <input type="text" name="title" value="<%= stream.title %>" required />
+                  <input type="text" name="title" value="<%= stream.title %>" placeholder="Document Title Here" required />
                 </label>
                 <label>
                   Content type
@@ -349,8 +357,8 @@
                 <% if (editor.contentType === "pdf" && editor.fileUrl) { %>
                   <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= editor.fileUrl %>" data-current-pdf-url>Open PDF</a>
                 <% } %>
-                <button class="btn success" type="button" data-save-current>Save As Current Version</button>
-                <button class="btn success" type="button" data-save-new-version data-save-new-url="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(currentVersion.version) %>/save-as-new">Save As New Version</button>
+                <button class="btn success" type="button" data-save-current>Save As Current Version (v<%= currentVersion.version %>)</button>
+                <button class="btn success" type="button" data-save-new-version data-save-new-url="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(currentVersion.version) %>/save-as-new">Save As New Version (v<%= Number(currentVersion.version) + 1 %>)</button>
               </div>
             </form>
           </div>

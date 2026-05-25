@@ -12,6 +12,9 @@ const {
 } = require("./mouHtmlSanitizer");
 
 const PDF_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_USER_AGREEMENT_TITLE = "User Agreement";
+const DEFAULT_USER_AGREEMENT_MARKDOWN =
+  "I understand that use of this TAK environment is subject to my agency's current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.";
 
 function nowIso() {
   return new Date().toISOString();
@@ -994,9 +997,16 @@ function getCurrentUserAgreement() {
   };
 }
 
+function getDefaultUserAgreementTemplate() {
+  return {
+    title: DEFAULT_USER_AGREEMENT_TITLE,
+    markdown: DEFAULT_USER_AGREEMENT_MARKDOWN,
+  };
+}
+
 function saveUserAgreement({ title, markdown, html, actor, enabled }) {
   requireEnabled();
-  const safeTitle = normalizeText(title) || "User Agreement";
+  const safeTitle = normalizeText(title) || DEFAULT_USER_AGREEMENT_TITLE;
   const safeMarkdown = normalizeText(markdown || html || "");
   const safeHtml = renderUserAgreementHtml(safeMarkdown);
   const safeEnabled = normalizedMandatory(enabled);
@@ -1366,9 +1376,13 @@ function getSidebarListForUser(authUser) {
       contentType: normalizeContentType(currentVersion?.contentType),
       viewHref:
         currentVersion
-          ? `/mou/view/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
-              currentVersion.version
-            )}`
+          ? normalizeContentType(currentVersion?.contentType) === "pdf"
+            ? `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+                currentVersion.version
+              )}`
+            : `/mou/view/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+                currentVersion.version
+              )}`
           : null,
       fileUrl: contentUrls?.fileUrl || null,
       downloadUrl: contentUrls?.downloadUrl || null,
@@ -1398,6 +1412,7 @@ module.exports = {
   updateStreamAssignments,
   recordMouView,
   getCurrentUserAgreement,
+  getDefaultUserAgreementTemplate,
   saveUserAgreement,
   shouldRequireUserAgreement,
   getAgreementSummaryForUser,
