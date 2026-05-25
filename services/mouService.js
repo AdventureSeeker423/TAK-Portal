@@ -1125,6 +1125,13 @@ function persistSignedCopy({ mouId, agencySuffix, version, file }) {
 function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
   const scopeLabel = getScopeLabel(stream);
   const fileHref = `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(versionRecord.version)}`;
+  const storedSignaturePng = signatureRecord.signaturePngPath
+    ? readBufferSafe(getAbsoluteDataPath(signatureRecord.signaturePngPath))
+    : Buffer.alloc(0);
+  const signatureImageDataUrl = signatureRecord.signatureImageDataUrl
+    || (storedSignaturePng.length
+      ? `data:image/png;base64,${storedSignaturePng.toString("base64")}`
+      : "");
   const uploadedSignedCopyHref = signatureRecord.uploadedSignedCopyPath
     ? `/mou/agency-file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(signatureRecord.agencyId)}?version=${encodeURIComponent(versionRecord.version)}`
     : "";
@@ -1179,11 +1186,11 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
     "  </div>",
     `  <div class="signed-body">${renderedBody}${uploadedSignedCopyBlock}`,
     '    <div class="signature-card">',
-    signatureRecord.signatureImageDataUrl
-      ? `      <img class="signature-image" src="${signatureRecord.signatureImageDataUrl}" alt="Signature" />`
+    signatureImageDataUrl
+      ? `      <img class="signature-image" src="${signatureImageDataUrl}" alt="Signature" />`
       : signatureRecord.uploadedSignedCopyPath
-        ? '      <div class="signature-image" style="padding:12px 0;">Uploaded signed document provided.</div>'
-        : '      <div class="signature-image" style="padding:12px 0;">Typed attestation used.</div>',
+        ? '      <div class="signature-image" style="padding:12px 0;">Uploaded signed document.</div>'
+        : '      <div class="signature-image" style="padding:12px 0;">E-signed document.</div>',
     `      <div class="signature-line"><strong>${escapeHtml(signatureRecord.attestationText || signatureRecord.signerDisplayName)}</strong></div>`,
     `      <div class="signature-line">${escapeHtml(signatureRecord.signerStatusAtSign || "Agency Administrator")}</div>`,
     `      <div class="signature-line">${escapeHtml(signatureRecord.agencyNameAtSign)}</div>`,
