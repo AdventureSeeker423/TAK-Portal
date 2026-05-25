@@ -159,6 +159,7 @@ function loadUserAgreement() {
   ensureStorage();
   return readJsonFile(USER_AGREEMENT_PATH, {
     schemaVersion: 1,
+    enabled: false,
     currentVersion: 0,
     versions: [],
   });

@@ -344,7 +344,6 @@ router.get("/mou", requireMouEnabled, requireMouPermission, async (req, res) => 
     agencies: isGlobalAdmin ? getAgencyOptions() : [],
     error: req.query.error || "",
     success: req.query.success || "",
-    publicListVisibleToAll: getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true),
   });
 });
 
@@ -454,8 +453,7 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
     const canSeeOwnAgency =
       !!req.authentikUser?.isAgencyAdmin &&
       accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
-    const canSeePublic = getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true);
-    if (!canSeeAll && !canSeeOwnAgency && !canSeePublic) {
+    if (!canSeeAll && !canSeeOwnAgency) {
       return res.status(403).render("access-denied", {
         username: req.authentikUser?.username || "",
       });
@@ -491,8 +489,7 @@ router.get("/mou/agency/:mouId/:agencyId/pdf", requireMouEnabled, requireMouPerm
     const canSeeOwnAgency =
       !!req.authentikUser?.isAgencyAdmin &&
       accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
-    const canSeePublic = getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true);
-    if (!canSeeAll && !canSeeOwnAgency && !canSeePublic) {
+    if (!canSeeAll && !canSeeOwnAgency) {
       return res.status(403).render("access-denied", {
         username: req.authentikUser?.username || "",
       });
@@ -518,8 +515,7 @@ router.get("/mou/agency-file/:mouId/:agencyId", requireMouEnabled, requireMouPer
     const canSeeOwnAgency =
       !!req.authentikUser?.isAgencyAdmin &&
       accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
-    const canSeePublic = getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true);
-    if (!canSeeAll && !canSeeOwnAgency && !canSeePublic) {
+    if (!canSeeAll && !canSeeOwnAgency) {
       return res.status(403).render("access-denied", {
         username: req.authentikUser?.username || "",
       });

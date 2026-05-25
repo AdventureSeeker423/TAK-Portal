@@ -156,7 +156,7 @@ function getUserAgreementStore() {
   if (!Array.isArray(agreement.versions)) agreement.versions = [];
   if (!Number.isFinite(Number(agreement.currentVersion))) agreement.currentVersion = 0;
   if (typeof agreement.enabled !== "boolean") {
-    agreement.enabled = normalizeVersion(agreement.currentVersion) > 0;
+    agreement.enabled = false;
   }
   return agreement;
 }
