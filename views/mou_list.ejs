@@ -27,104 +27,78 @@
     </div>
   <% } %>
 
-  <% if (agreementSummary && agreementSummary.shouldRequire && agreementSummary.agreement) { %>
-    <div class="card mouCallout mouCallout--warning">
-      <div class="msg pending">
-        You must accept the current user agreement before using standard self-service pages.
-        Continue through <a href="/setup-my-device">Setup My Device</a> to review it.
-      </div>
-    </div>
-  <% } %>
-
   <% if (isGlobalAdmin) { %>
-    <div class="mouWorkspace" style="margin-bottom:14px;">
-      <section class="card mouWorkspace__document">
-        <div class="mouSectionHeader">
-          <div>
-            <h2>Create New MOU Draft</h2>
-            <p class="muted">New MOUs are always mandatory. Choose whether the document is serverwide or tied to one agency.</p>
-          </div>
+    <section class="card" style="margin-bottom:14px;">
+      <div class="mouSectionHeader">
+        <div>
+          <h2>Create New MOU Draft</h2>
+          <p class="muted">Create the document first. Once deployed, you can activate it serverwide or assign it to specific agencies.</p>
         </div>
+      </div>
 
-        <form method="post" action="/admin/mou" enctype="multipart/form-data" class="mouAdminForm" data-mou-draft-form="create">
-          <input type="hidden" name="mandatory" value="true" />
-          <div class="grid2">
-            <label>
-              Title
-              <input type="text" name="title" required />
-            </label>
-            <label>
-              Scope
-              <select name="scopeType" data-mou-scope-select>
-                <option value="global">Serverwide</option>
-                <option value="agency">Agency specific</option>
-              </select>
-            </label>
-            <label data-mou-agency-field hidden>
-              Target agency
-              <select name="agencySuffix">
-                <option value="">Select agency</option>
-                <% agencies.forEach(function (agency) { %>
-                  <option value="<%= agency.suffix %>"><%= agency.name %></option>
-                <% }); %>
-              </select>
-            </label>
-            <label>
-              Content type
-              <select name="contentType" data-mou-content-select>
-                <option value="html">HTML</option>
-                <option value="pdf">PDF upload</option>
-              </select>
-            </label>
-            <label>
-              Reminder days
-              <input type="number" min="1" name="reminderDays" value="7" />
-            </label>
-          </div>
-
-          <label data-mou-html-field>
-            Draft HTML
-            <textarea name="html" rows="16" placeholder="<p>Paste MOU HTML here.</p>"></textarea>
-          </label>
-
-          <label data-mou-file-field hidden>
-            Upload PDF
-            <input type="file" name="contentFile" accept="application/pdf,.pdf" />
-          </label>
-
-          <div class="mouActionRow">
-            <button class="btn" type="submit">Create Draft</button>
-          </div>
-        </form>
-      </section>
-
-      <section class="card mouWorkspace__sidebar">
-        <h2 style="margin-top:0;">Serverwide User Agreement</h2>
-        <p class="muted">
-          This short access statement is shown to standard users and stays separate from full MOUs.
-        </p>
-        <% const currentAgreement = adminAgreement && adminAgreement.current ? adminAgreement.current : null; %>
-        <% if (currentAgreement) { %>
-          <div class="mouMetaPill" style="margin-bottom:12px;">
-            <strong>v<%= currentAgreement.version %></strong>
-            <span>current agreement</span>
-          </div>
-        <% } %>
-        <form method="post" action="/admin/mou/user-agreement/save">
+      <form method="post" action="/admin/mou" enctype="multipart/form-data" class="mouAdminForm" data-mou-draft-form="create">
+        <input type="hidden" name="mandatory" value="true" />
+        <div class="grid2">
           <label>
             Title
-            <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : 'User Agreement' %>" required />
+            <input type="text" name="title" required />
           </label>
-          <label style="margin-top:12px;display:block;">
-            Agreement Text
-            <textarea name="html" rows="12" required><%- currentAgreement ? currentAgreement.bodyHtml : '<p>I understand that use of this TAK environment is subject to my agency\'s current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.</p>' %></textarea>
+          <label>
+            Content type
+            <select name="contentType" data-mou-content-select>
+              <option value="html">HTML</option>
+              <option value="pdf">PDF upload</option>
+            </select>
           </label>
-          <div class="mouActionRow" style="margin-top:14px;">
-            <button class="btn" type="submit">Save User Agreement</button>
-          </div>
-        </form>
-      </section>
-    </div>
+          <label>
+            Reminder days
+            <input type="number" min="1" name="reminderDays" value="7" />
+          </label>
+        </div>
+
+        <label data-mou-html-field>
+          Draft HTML
+          <textarea name="html" rows="16" placeholder="<p>Paste MOU HTML here.</p>"></textarea>
+        </label>
+
+        <label data-mou-file-field hidden>
+          Upload PDF
+          <input type="file" name="contentFile" accept="application/pdf,.pdf" />
+        </label>
+
+        <div class="mouFormFooter">
+          <button class="btn success" type="submit">Create Draft</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" style="margin-bottom:14px;">
+      <div class="mouSectionHeader">
+        <div>
+          <h2>Serverwide User Agreement</h2>
+          <p class="muted">Enable or disable the login popup for all non-global-admin users. Responses are not stored.</p>
+        </div>
+      </div>
+
+      <% const currentAgreement = adminAgreement && adminAgreement.current ? adminAgreement.current : null; %>
+      <form method="post" action="/admin/mou/user-agreement/save" class="mouAdminForm">
+        <label class="mouCheckboxLabel">
+          <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> />
+          Enable serverwide user agreement popup
+        </label>
+        <label>
+          Title
+          <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : 'User Agreement' %>" required />
+        </label>
+        <label>
+          Agreement Text
+          <textarea name="html" rows="14" required><%- currentAgreement ? currentAgreement.bodyHtml : '<p>I understand that use of this TAK environment is subject to my agency\'s current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.</p>' %></textarea>
+        </label>
+        <div class="mouFormFooter">
+          <button class="btn success" type="submit">Save User Agreement</button>
+        </div>
+      </form>
+    </section>
   <% } %>
 
   <section class="mouSectionHeader">
@@ -217,7 +191,7 @@
       <div class="mouSectionHeader">
         <div>
           <h2>Manage MOU Streams</h2>
-          <p class="muted">Edit drafts, create new versions, or delete entire MOU streams.</p>
+          <p class="muted">Edit drafts, deploy versions, assign active documents, or delete entire streams.</p>
         </div>
       </div>
       <% if (!adminStreams || !adminStreams.length) { %>
@@ -242,13 +216,45 @@
                     <span class="mouBadge mouBadge--accent">Required</span>
                   </div>
                   <h3><%= stream.title %></h3>
-                  <p class="muted">Current deployed: <%= stream.currentDeployed ? ("v" + stream.currentDeployed.version) : "None" %></p>
+                  <p class="muted">Current deployed: <%= stream.currentDeployed ? ("v" + stream.currentDeployed.version) : "None" %> • <%= stream.scopeLabel %></p>
                 </div>
                 <div class="mouMetaPill">
                   <strong><%= draft ? ("v" + draft.version) : "None" %></strong>
                   <span>draft</span>
                 </div>
               </div>
+
+              <% if (stream.currentDeployed) { %>
+                <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/assignments/save" class="mouAdminForm" data-mou-assignment-form>
+                  <label class="mouCheckboxLabel">
+                    <input type="checkbox" name="serverwide" value="true" <%= stream.assignments && stream.assignments.serverwide ? "checked" : "" %> data-mou-serverwide-toggle />
+                    Make active for the whole server
+                  </label>
+
+                  <div data-mou-agency-assignment-block <%= stream.assignments && stream.assignments.serverwide ? "hidden" : "" %>>
+                    <div class="muted" style="margin-bottom:8px;">Or activate it only for selected agencies:</div>
+                    <div class="mouAgencyCheckboxGrid">
+                      <% agencies.forEach(function (agency) { %>
+                        <label class="mouAgencyCheckbox">
+                          <input
+                            type="checkbox"
+                            name="agencySuffixes"
+                            value="<%= agency.suffix %>"
+                            <%= stream.assignments && stream.assignments.agencySuffixes && stream.assignments.agencySuffixes.includes(agency.suffix) ? "checked" : "" %>
+                          />
+                          <span><%= agency.name %></span>
+                        </label>
+                      <% }); %>
+                    </div>
+                  </div>
+
+                  <div class="mouFormFooter">
+                    <button class="btn success" type="submit">Save Assignment</button>
+                  </div>
+                </form>
+              <% } else { %>
+                <div class="mouTargetList muted">Deploy a version before assigning this document.</div>
+              <% } %>
 
               <div class="mouActionRow">
                 <% if (draft) { %>
@@ -287,11 +293,10 @@
     var fileInput = fileField ? fileField.querySelector("input[type='file']") : null;
 
     function sync() {
-      var scopeValue = scopeSelect ? scopeSelect.value : "global";
       var contentValue = contentSelect ? contentSelect.value : "html";
 
-      if (agencyField) agencyField.hidden = scopeValue !== "agency";
-      if (agencySelect) agencySelect.required = scopeValue === "agency";
+      if (agencyField) agencyField.hidden = true;
+      if (agencySelect) agencySelect.required = false;
       if (htmlField) htmlField.hidden = contentValue !== "html";
       if (htmlArea) htmlArea.required = contentValue === "html";
       if (fileField) fileField.hidden = contentValue !== "pdf";
@@ -306,6 +311,21 @@
     sync();
   }
 
+  function syncAssignmentForm(form) {
+    if (!form) return;
+    var serverwideToggle = form.querySelector("[data-mou-serverwide-toggle]");
+    var agencyBlock = form.querySelector("[data-mou-agency-assignment-block]");
+
+    function sync() {
+      var checked = !!(serverwideToggle && serverwideToggle.checked);
+      if (agencyBlock) agencyBlock.hidden = checked;
+    }
+
+    if (serverwideToggle) serverwideToggle.addEventListener("change", sync);
+    sync();
+  }
+
   document.querySelectorAll("[data-mou-draft-form]").forEach(syncDraftForm);
+  document.querySelectorAll("[data-mou-assignment-form]").forEach(syncAssignmentForm);
 })();
 </script>

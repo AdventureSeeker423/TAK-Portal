@@ -5,7 +5,7 @@
   <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div>
       <h1 style="margin-bottom:6px;">MOU Compliance</h1>
-      <div class="muted">Track required agency signatures and current user-agreement acceptance.</div>
+      <div class="muted">Track required agency signatures for currently assigned documents.</div>
     </div>
     <div class="mouActionRow">
       <a class="btn secondary" href="/mou">Back to MOU / Documents</a>
@@ -65,45 +65,6 @@
                   <% } %>
                 </td>
               <% } %>
-            </tr>
-          <% }); %>
-        </tbody>
-      </table>
-    <% } %>
-  </div>
-
-  <div class="card" style="margin-top:12px;">
-    <div class="mouSectionHeader">
-      <div>
-        <h2>Standard User Agreement Acceptance</h2>
-        <p class="muted">This is the separate serverwide access statement accepted by standard users.</p>
-      </div>
-      <a class="btn secondary" href="/admin/mou/compliance?export=agreement">Export CSV</a>
-    </div>
-    <% if (!agreementRows || !agreementRows.length) { %>
-      <div class="mouEmptyState">
-        <h3>No acceptance data yet</h3>
-        <p class="muted">User agreement acknowledgments will appear after users accept the current statement.</p>
-      </div>
-    <% } else { %>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>User</th>
-            <th>Username</th>
-            <th>Agreement Version</th>
-            <th>Accepted</th>
-            <th>Accepted At</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% agreementRows.forEach(function (row) { %>
-            <tr>
-              <td><%= row.displayName || "-" %></td>
-              <td><%= row.username || "-" %></td>
-              <td><%= row.version ? ("v" + row.version) : "-" %></td>
-              <td><%= row.accepted ? "Yes" : "No" %></td>
-              <td><%= row.acceptedAt || "-" %></td>
             </tr>
           <% }); %>
         </tbody>

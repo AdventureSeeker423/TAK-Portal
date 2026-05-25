@@ -1072,11 +1072,45 @@ label.btn {
     gap: 12px;
 }
 
+.mouAdminForm textarea {
+    width: 100%;
+    min-height: 220px;
+    box-sizing: border-box;
+}
+
 .mouCheckboxLabel {
     display: inline-flex;
     align-items: center;
     gap: 10px;
     font-weight: 600;
+}
+
+.mouFormFooter {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.mouFormFooter .btn {
+    width: auto;
+}
+
+.mouAgencyCheckboxGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.mouAgencyCheckbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--panel) 93%, #020617 7%);
 }
 
 .noScroll {

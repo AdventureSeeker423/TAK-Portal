@@ -12,6 +12,7 @@ const { getBool } = require("../services/env");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const USER_AGREEMENT_SESSION_COOKIE = "mou_user_agreement_session";
 
 function renderNotFound(req, res) {
   if ((req.originalUrl || req.path || "").startsWith("/api/")) {
@@ -103,6 +104,7 @@ function getAgencyOptions() {
 }
 
 function canSeeStream(authUser, stream) {
+  if (authUser?.isGlobalAdmin) return true;
   return mouService.streamAppliesToUser(stream, authUser);
 }
 
@@ -189,7 +191,6 @@ router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
     agencies: isGlobalAdmin ? getAgencyOptions() : [],
     error: req.query.error || "",
     success: req.query.success || "",
-    agreementSummary: mouService.getAgreementSummaryForUser(req.authentikUser),
     publicListVisibleToAll: getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true),
   });
 });
@@ -404,34 +405,21 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
 
 router.post("/api/mou/user-agreement/accept", requireMouEnabled, requireMouPermission, (req, res) => {
   try {
-    const ack = mouService.acceptCurrentUserAgreement({
-      authUser: req.authentikUser,
-      ...requestMeta(req),
+    if (!mouService.shouldRequireUserAgreement(req.authentikUser, { acceptedForSession: false })) {
+      return res.json({ success: true });
+    }
+    res.cookie(USER_AGREEMENT_SESSION_COOKIE, "1", {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
     });
-    auditRequest(req, {
-      action: "MOU_USER_AGREEMENT_ACCEPTED",
-      targetType: "user_agreement",
-      targetId: String(ack.version),
-      details: {
-        version: ack.version,
-        userId: ack.userId,
-      },
-    });
-    res.json({ success: true, version: ack.version });
+    res.json({ success: true });
   } catch (err) {
-    res.status(400).json({ error: err?.message || "Failed to accept agreement." });
+    res.status(400).json({ error: err?.message || "Failed to continue." });
   }
 });
 
 router.post("/api/mou/user-agreement/decline", requireMouEnabled, requireMouPermission, (req, res) => {
-  auditRequest(req, {
-    action: "MOU_USER_AGREEMENT_DECLINED",
-    targetType: "user_agreement",
-    targetId: String(mouService.getCurrentUserAgreement().currentVersion || ""),
-    details: {
-      userId: req.authentikUser?.uid || req.authentikUser?.username || null,
-    },
-  });
   res.json({ success: true, logoutUrl: "/logout" });
 });
 
@@ -446,8 +434,6 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
       html: req.body?.html,
       file: req.file || null,
       contentType: req.body?.contentType,
-      scopeType: req.body?.scopeType,
-      agencySuffix: req.body?.agencySuffix,
       reminderDays: req.body?.reminderDays,
       mandatory: true,
       actor: req.authentikUser,
@@ -460,8 +446,6 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
         mouId: stream.mouId,
         version: 1,
         title: stream.title,
-        scopeType: stream.scopeType,
-        agencySuffix: stream.agencySuffix || null,
       },
     });
     return res.redirect(
@@ -501,7 +485,6 @@ router.get("/admin/mou/:mouId/:version/edit", requireMouEnabled, requireMouPermi
     res.render("admin/mou_admin_edit", {
       stream,
       version,
-      agencies: getAgencyOptions(),
       html: content.contentType === "html" ? content.html : "",
       contentType: content.contentType,
       fileName: content.fileName,
@@ -525,8 +508,6 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
       html: req.body?.html,
       file: req.file || null,
       contentType: req.body?.contentType,
-      scopeType: req.body?.scopeType,
-      agencySuffix: req.body?.agencySuffix,
       reminderDays: req.body?.reminderDays,
       mandatory: true,
       actor: req.authentikUser,
@@ -594,14 +575,8 @@ router.post("/admin/mou/:mouId/:version/deploy", requireMouEnabled, requireMouPe
         version: deployed.version.version,
         contentSha256: deployed.contentSha256,
         supersededVersion: deployed.supersededVersion,
-        scopeType: deployed.stream.scopeType,
-        agencySuffix: deployed.stream.agencySuffix || null,
+        assignment: mouService.getScopeLabel(deployed.stream),
       },
-    });
-    await mouScheduler.sendDeployNotificationsForVersion({
-      stream: deployed.stream,
-      version: deployed.version,
-      actor: req.authentikUser,
     });
     return res.redirect(`/mou?success=${encodeURIComponent("MOU deployed.")}`);
   } catch (err) {
@@ -653,11 +628,57 @@ router.post("/admin/mou/:mouId/delete", requireMouEnabled, requireMouPermission,
   }
 });
 
+router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, async (req, res) => {
+  try {
+    const previousStream = mouService.getStreamById(req.params.mouId);
+    const rawAgencySuffixes = req.body?.agencySuffixes;
+    const agencySuffixes = Array.isArray(rawAgencySuffixes)
+      ? rawAgencySuffixes
+      : rawAgencySuffixes
+        ? [rawAgencySuffixes]
+        : [];
+    const stream = mouService.updateStreamAssignments({
+      mouId: req.params.mouId,
+      serverwide: req.body?.serverwide,
+      agencySuffixes,
+      actor: req.authentikUser,
+    });
+    const deployed = mouService.getCurrentDeployedVersion(stream);
+    const previousAssignmentKey = JSON.stringify(previousStream.assignments || {});
+    const currentAssignmentKey = JSON.stringify(stream.assignments || {});
+    if (
+      deployed &&
+      previousAssignmentKey !== currentAssignmentKey &&
+      mouService.getTargetAgenciesForStream(stream).length
+    ) {
+      await mouScheduler.sendDeployNotificationsForVersion({
+        stream,
+        version: deployed,
+        actor: req.authentikUser,
+      });
+    }
+    auditRequest(req, {
+      action: "MOU_ASSIGNMENTS_UPDATED",
+      targetType: "mou",
+      targetId: String(req.params.mouId),
+      details: {
+        mouId: req.params.mouId,
+        assignment: mouService.getScopeLabel(stream),
+        targetAgencyCount: mouService.getTargetAgenciesForStream(stream).length,
+      },
+    });
+    return res.redirect(`/mou?success=${encodeURIComponent("Document assignment updated.")}`);
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
 router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
   try {
     const result = mouService.saveUserAgreement({
       title: req.body?.title,
       html: req.body?.html,
+      enabled: req.body?.enabled,
       actor: req.authentikUser,
     });
     auditRequest(req, {
@@ -667,6 +688,7 @@ router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermi
       details: {
         version: result.version.version,
         changed: result.changed,
+        enabled: result.enabled,
       },
     });
     return res.redirect(`/mou?success=${encodeURIComponent("User agreement saved.")}`);
@@ -684,18 +706,10 @@ router.get("/admin/mou/compliance", requireMouEnabled, requireMouPermission, (re
 
   Promise.resolve()
     .then(async () => {
-      const allUsers = await usersSvc.getAllUsersLightweight();
-      const visibleUsers = req.authentikUser.isGlobalAdmin
-        ? allUsers
-        : allUsers.filter((user) =>
-            accessSvc.isUserInAllowedAgencies(req.authentikUser, user)
-          );
-
       const signatureRows = mouService.getAgencySignatureStatusRows().filter((row) =>
         req.authentikUser.isGlobalAdmin ||
         accessSvc.isSuffixAllowed(req.authentikUser, row.agencyId)
       );
-      const agreementRows = mouService.getAgreementAcceptanceRowsForUsers(visibleUsers);
 
       if (req.query.export === "signatures") {
         const csv = rowsToCsv(
@@ -725,28 +739,9 @@ router.get("/admin/mou/compliance", requireMouEnabled, requireMouPermission, (re
         );
         return res.send(csv);
       }
-      if (req.query.export === "agreement") {
-        const csv = rowsToCsv(
-          ["display_name", "username", "agreement_version", "accepted", "accepted_at"],
-          agreementRows.map((row) => [
-            row.displayName || "",
-            row.username || "",
-            row.version || "",
-            row.accepted ? "yes" : "no",
-            row.acceptedAt || "",
-          ])
-        );
-        res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader(
-          "Content-Disposition",
-          'attachment; filename="mou-user-agreement-compliance.csv"'
-        );
-        return res.send(csv);
-      }
 
       res.render("admin/mou_compliance", {
         signatureRows,
-        agreementRows,
       });
     })
     .catch(() => {

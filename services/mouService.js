@@ -128,6 +128,9 @@ function getUserAgreementStore() {
   const agreement = store.loadUserAgreement();
   if (!Array.isArray(agreement.versions)) agreement.versions = [];
   if (!Number.isFinite(Number(agreement.currentVersion))) agreement.currentVersion = 0;
+  if (typeof agreement.enabled !== "boolean") {
+    agreement.enabled = normalizeVersion(agreement.currentVersion) > 0;
+  }
   return agreement;
 }
 
@@ -180,6 +183,20 @@ function getFileExtensionForContentType(contentType) {
 
 function normalizeAgencySuffix(value) {
   return normalizeLower(value);
+}
+
+function normalizeAgencySuffixList(values) {
+  const list = Array.isArray(values) ? values : [values];
+  const seen = new Set();
+  const out = [];
+  for (const value of list) {
+    const suffix = normalizeAgencySuffix(value);
+    if (!suffix || seen.has(suffix)) continue;
+    if (!getAgencyBySuffix(suffix)) continue;
+    seen.add(suffix);
+    out.push(suffix);
+  }
+  return out;
 }
 
 function normalizedReminderDays(value) {
@@ -235,14 +252,19 @@ function ensureVersionShape(versionRecord) {
 }
 
 function ensureStreamShape(stream) {
+  const legacyScopeType = normalizeScopeType(stream?.scopeType);
+  const legacyAgencySuffix = normalizeAgencySuffix(stream?.agencySuffix);
+  const assignments = normalizeAssignments(stream?.assignments, {
+    scopeType: legacyScopeType,
+    agencySuffix: legacyAgencySuffix,
+  });
   return {
     mouId: normalizeText(stream?.mouId),
     title: normalizeText(stream?.title),
     slug: normalizeText(stream?.slug || slugify(stream?.title)),
     mandatory: normalizedMandatory(stream?.mandatory),
     reminderDays: normalizedReminderDays(stream?.reminderDays),
-    scopeType: normalizeScopeType(stream?.scopeType),
-    agencySuffix: normalizeAgencySuffix(stream?.agencySuffix),
+    assignments,
     createdAt: stream?.createdAt || null,
     createdBy: stream?.createdBy || null,
     updatedAt: stream?.updatedAt || null,
@@ -292,31 +314,74 @@ function getAllAgencies() {
   return agenciesStore.load() || [];
 }
 
+function normalizeAssignments(assignments, legacyStream) {
+  if (assignments && typeof assignments === "object") {
+    const serverwide = normalizedMandatory(assignments.serverwide);
+    return {
+      serverwide,
+      agencySuffixes: serverwide
+        ? []
+        : normalizeAgencySuffixList(assignments.agencySuffixes),
+    };
+  }
+
+  const legacyScopeType = normalizeScopeType(legacyStream?.scopeType);
+  if (legacyScopeType === "global") {
+    return {
+      serverwide: true,
+      agencySuffixes: [],
+    };
+  }
+
+  return {
+    serverwide: false,
+    agencySuffixes: normalizeAgencySuffixList(legacyStream?.agencySuffix),
+  };
+}
+
+function getAssignments(stream) {
+  return normalizeAssignments(stream?.assignments, stream);
+}
+
+function hasActiveAssignments(stream) {
+  const assignments = getAssignments(stream);
+  return assignments.serverwide || assignments.agencySuffixes.length > 0;
+}
+
 function getTargetAgenciesForStream(stream) {
-  if (normalizeScopeType(stream?.scopeType) === "global") {
+  const assignments = getAssignments(stream);
+  if (assignments.serverwide) {
     return getAllAgencies();
   }
-  const agency = getAgencyBySuffix(stream?.agencySuffix);
-  return agency ? [agency] : [];
+  return assignments.agencySuffixes
+    .map((suffix) => getAgencyBySuffix(suffix))
+    .filter(Boolean);
 }
 
 function getScopeLabel(stream) {
-  if (normalizeScopeType(stream?.scopeType) === "agency") {
-    const agency = getAgencyBySuffix(stream?.agencySuffix);
-    return agency ? `Agency: ${agency.name || agency.groupPrefix || agency.suffix}` : "Agency specific";
+  const assignments = getAssignments(stream);
+  if (assignments.serverwide) {
+    return "Serverwide";
   }
-  return "Serverwide";
+  const agencies = getTargetAgenciesForStream(stream);
+  if (!agencies.length) {
+    return "Inactive";
+  }
+  if (agencies.length === 1) {
+    const agency = agencies[0];
+    return `Agency: ${agency.name || agency.groupPrefix || agency.suffix}`;
+  }
+  return `${agencies.length} agencies`;
 }
 
 function getStreamAgencySuffixes(stream) {
-  if (normalizeScopeType(stream?.scopeType) === "global") {
+  const assignments = getAssignments(stream);
+  if (assignments.serverwide) {
     return getAllAgencies()
       .map((agency) => normalizeAgencySuffix(agency?.suffix))
       .filter(Boolean);
   }
-  return normalizeAgencySuffix(stream?.agencySuffix)
-    ? [normalizeAgencySuffix(stream.agencySuffix)]
-    : [];
+  return assignments.agencySuffixes.slice();
 }
 
 function resolveUserAgencySuffix(authUser) {
@@ -326,15 +391,16 @@ function resolveUserAgencySuffix(authUser) {
 
 function streamAppliesToUser(stream, authUser) {
   if (!authUser) return false;
-  if (authUser.isGlobalAdmin) return true;
-  const scopeType = normalizeScopeType(stream?.scopeType);
-  if (scopeType === "global") return true;
-  const targetAgency = normalizeAgencySuffix(stream?.agencySuffix);
-  if (!targetAgency) return false;
+  if (!hasActiveAssignments(stream)) return false;
+  if (getAssignments(stream).serverwide) return true;
+  const targetAgencySuffixes = getStreamAgencySuffixes(stream);
+  if (!targetAgencySuffixes.length) return false;
   if (authUser.isAgencyAdmin) {
-    return accessSvc.isSuffixAllowed(authUser, targetAgency);
+    return targetAgencySuffixes.some((suffix) =>
+      accessSvc.isSuffixAllowed(authUser, suffix)
+    );
   }
-  return resolveUserAgencySuffix(authUser) === targetAgency;
+  return targetAgencySuffixes.includes(resolveUserAgencySuffix(authUser));
 }
 
 function getVisibleStreamsForUser(authUser) {
@@ -422,19 +488,11 @@ function buildDraftInput(input, existingVersionRecord) {
   const slug = slugify(input?.slug || title);
   const reminderDays = normalizedReminderDays(input?.reminderDays);
   const mandatory = true;
-  const scopeType = normalizeScopeType(input?.scopeType);
-  const agencySuffix = normalizeAgencySuffix(input?.agencySuffix);
   const contentType = normalizeContentType(
     input?.contentType || existingVersionRecord?.contentType
   );
 
   requireNonEmpty(title, "Title");
-  if (scopeType === "agency") {
-    requireNonEmpty(agencySuffix, "Agency");
-    if (!getAgencyBySuffix(agencySuffix)) {
-      throw new Error("Selected agency is not valid.");
-    }
-  }
 
   const existingContentType = normalizeContentType(existingVersionRecord?.contentType);
 
@@ -449,8 +507,6 @@ function buildDraftInput(input, existingVersionRecord) {
     slug,
     reminderDays,
     mandatory,
-    scopeType,
-    agencySuffix: scopeType === "agency" ? agencySuffix : "",
     contentType,
     html: input?.html || "",
     file: input?.file || null,
@@ -510,8 +566,6 @@ function createDraftStream({
   html,
   file,
   contentType,
-  scopeType,
-  agencySuffix,
   reminderDays,
   mandatory,
   actor,
@@ -523,8 +577,6 @@ function createDraftStream({
     html,
     file,
     contentType,
-    scopeType,
-    agencySuffix,
     reminderDays,
     mandatory,
   });
@@ -545,8 +597,10 @@ function createDraftStream({
     slug: draft.slug,
     mandatory: draft.mandatory,
     reminderDays: draft.reminderDays,
-    scopeType: draft.scopeType,
-    agencySuffix: draft.agencySuffix,
+    assignments: {
+      serverwide: false,
+      agencySuffixes: [],
+    },
     createdAt: now,
     createdBy: actor?.uid || actor?.username || null,
     updatedAt: now,
@@ -603,8 +657,6 @@ function updateDraft({
   html,
   file,
   contentType,
-  scopeType,
-  agencySuffix,
   reminderDays,
   mandatory,
   actor,
@@ -621,8 +673,6 @@ function updateDraft({
     html,
     file,
     contentType,
-    scopeType,
-    agencySuffix,
     reminderDays,
     mandatory,
   }, versionRecord);
@@ -632,8 +682,6 @@ function updateDraft({
   stream.slug = update.slug;
   stream.reminderDays = update.reminderDays;
   stream.mandatory = update.mandatory;
-  stream.scopeType = update.scopeType;
-  stream.agencySuffix = update.agencySuffix;
   stream.updatedAt = now;
   stream.updatedBy = actor?.uid || actor?.username || null;
 
@@ -727,6 +775,29 @@ function deleteStream({ mouId }) {
   }
   saveRemindersStore(reminders);
   return true;
+}
+
+function updateStreamAssignments({ mouId, serverwide, agencySuffixes, actor }) {
+  requireEnabled();
+  const index = getIndex();
+  const stream = findStream(index, mouId);
+  if (!stream) {
+    throw new Error("MOU stream not found.");
+  }
+  if (!getCurrentDeployedVersion(stream)) {
+    throw new Error("Deploy a document before assigning it.");
+  }
+
+  const assignments = normalizeAssignments({
+    serverwide,
+    agencySuffixes,
+  });
+
+  stream.assignments = assignments;
+  stream.updatedAt = nowIso();
+  stream.updatedBy = actor?.uid || actor?.username || null;
+  saveIndex(index);
+  return clone(stream);
 }
 
 function deployDraft({ mouId, version, actor, confirmText }) {
@@ -887,16 +958,18 @@ function getCurrentUserAgreement() {
       (entry) => normalizeVersion(entry?.version) === currentVersion
     ) || null;
   return {
+    enabled: data.enabled === true,
     currentVersion,
     current: current ? clone(current) : null,
     versions: clone(data.versions || []),
   };
 }
 
-function saveUserAgreement({ title, html, actor }) {
+function saveUserAgreement({ title, html, actor, enabled }) {
   requireEnabled();
   const safeTitle = normalizeText(title) || "User Agreement";
   const safeHtml = sanitizeUserAgreementHtml(html || "");
+  const safeEnabled = normalizedMandatory(enabled);
   requireNonEmpty(
     safeHtml.replace(/<[^>]+>/g, "").trim(),
     "User agreement text"
@@ -904,9 +977,11 @@ function saveUserAgreement({ title, html, actor }) {
   enforceHtmlSize(safeHtml);
 
   const data = getUserAgreementStore();
+  data.enabled = safeEnabled;
   const current = getCurrentUserAgreement().current;
   if (current && current.title === safeTitle && current.bodyHtml === safeHtml) {
-    return { changed: false, version: clone(current) };
+    saveUserAgreementStore(data);
+    return { changed: false, version: clone(current), enabled: data.enabled };
   }
 
   const nextVersion = normalizeVersion(data.currentVersion) + 1 || 1;
@@ -923,65 +998,21 @@ function saveUserAgreement({ title, html, actor }) {
   data.currentVersion = nextVersion;
   data.versions.push(versionRecord);
   saveUserAgreementStore(data);
-  return { changed: true, version: clone(versionRecord) };
+  return { changed: true, version: clone(versionRecord), enabled: data.enabled };
 }
 
-function isStandardUser(authUser) {
-  return !!(authUser && !authUser.isGlobalAdmin && !authUser.isAgencyAdmin);
+function isUserAgreementTargetUser(authUser) {
+  return !!(authUser && !authUser.isGlobalAdmin);
 }
 
-function getCurrentAgreementAckForUser(authUser) {
-  const userId = getUserKey(authUser);
-  if (!userId) return null;
-  const agreement = getCurrentUserAgreement();
-  if (!agreement.current) return null;
-  const data = getAcksStore();
-  return (
-    data.items.find(
-      (item) =>
-        String(item?.type || "") === "user_agreement" &&
-        String(item?.userId || "") === userId &&
-        normalizeVersion(item?.version) === agreement.currentVersion
-    ) || null
-  );
-}
-
-function shouldRequireUserAgreement(authUser) {
+function shouldRequireUserAgreement(authUser, options) {
+  const acceptedForSession = options?.acceptedForSession === true;
   if (!isEnabled()) return false;
-  if (!isStandardUser(authUser)) return false;
+  if (!isUserAgreementTargetUser(authUser)) return false;
   const agreement = getCurrentUserAgreement();
   if (!agreement.current) return false;
-  return !getCurrentAgreementAckForUser(authUser);
-}
-
-function acceptCurrentUserAgreement({ authUser, ip, userAgent }) {
-  if (!isStandardUser(authUser)) {
-    throw new Error("Only standard users can accept the user agreement.");
-  }
-  const agreement = getCurrentUserAgreement();
-  if (!agreement.current) {
-    throw new Error("No user agreement is currently configured.");
-  }
-
-  const userId = getUserKey(authUser);
-  if (!userId) throw new Error("Authenticated user not found.");
-  const existing = getCurrentAgreementAckForUser(authUser);
-  if (existing) return clone(existing);
-
-  const data = getAcksStore();
-  const row = {
-    type: "user_agreement",
-    key: `${userId}|agreement|${agreement.currentVersion}`,
-    userId,
-    username: authUser?.username || null,
-    version: agreement.currentVersion,
-    acceptedAt: nowIso(),
-    ip: ip || null,
-    userAgent: userAgent || null,
-  };
-  data.items.push(row);
-  saveAcksStore(data);
-  return clone(row);
+  if (!agreement.enabled) return false;
+  return !acceptedForSession;
 }
 
 function escapeHtml(value) {
@@ -1247,36 +1278,12 @@ function getAgencySignatureStatusRows() {
   return rows;
 }
 
-function getAgreementAcceptanceRowsForUsers(users) {
-  const agreement = getCurrentUserAgreement();
-  const currentVersion = agreement.currentVersion;
-  const items = getAcksStore().items.filter(
-    (item) =>
-      String(item?.type || "") === "user_agreement" &&
-      normalizeVersion(item?.version) === currentVersion
-  );
-  const byUser = new Map(items.map((item) => [String(item.userId), item]));
-  return (Array.isArray(users) ? users : []).map((user) => {
-    const userId = normalizeText(
-      user?.username || user?.uid || user?.pk || user?.id
-    );
-    const ack = byUser.get(userId) || null;
-    return {
-      userId,
-      username: user?.username || null,
-      displayName: user?.name || user?.displayName || user?.username || null,
-      accepted: !!ack,
-      acceptedAt: ack?.acceptedAt || null,
-      version: currentVersion,
-    };
-  });
-}
-
-function getAgreementSummaryForUser(authUser) {
+function getAgreementSummaryForUser(authUser, options) {
+  const currentAgreement = getCurrentUserAgreement();
   return {
-    shouldRequire: shouldRequireUserAgreement(authUser),
-    agreement: getCurrentUserAgreement().current,
-    accepted: !!getCurrentAgreementAckForUser(authUser),
+    enabled: currentAgreement.enabled,
+    shouldRequire: shouldRequireUserAgreement(authUser, options),
+    agreement: currentAgreement.current,
   };
 }
 
@@ -1325,7 +1332,7 @@ function getSidebarListForUser(authUser) {
       mouId: stream.mouId,
       title: stream.title,
       version: deployed?.version || null,
-      scopeType: normalizeScopeType(stream.scopeType),
+      scopeType: getAssignments(stream).serverwide ? "global" : "agency",
       scopeLabel: getScopeLabel(stream),
       contentType: normalizeContentType(deployed?.contentType),
       viewHref:
@@ -1360,18 +1367,17 @@ module.exports = {
   updateDraft,
   discardDraft,
   deleteStream,
+  updateStreamAssignments,
   deployDraft,
   recordMouView,
   getCurrentUserAgreement,
   saveUserAgreement,
   shouldRequireUserAgreement,
-  acceptCurrentUserAgreement,
   getAgreementSummaryForUser,
   signVersion,
   getAgencyEvidence,
   listSignatureRows,
   getAgencySignatureStatusRows,
-  getAgreementAcceptanceRowsForUsers,
   getAgencyReminderRows,
   markAgencyReminderSent,
   getAgencyBySuffix,

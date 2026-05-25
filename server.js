@@ -50,6 +50,7 @@ const FONT_FAMILY_OPTIONS = new Set([
 
 const DEFAULT_SITE_FONT_FAMILY =
   "system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+const USER_AGREEMENT_SESSION_COOKIE = "mou_user_agreement_session";
 
 // Expose version to all EJS views (e.g. sidebar)
 app.locals.APP_VERSION = pkg.version || "dev";
@@ -225,15 +226,28 @@ app.use((req, res, next) => {
     const user = req.authentikUser;
     const normalizedPath = (req.path || "").replace(/\/+$/, "") || "/";
     const isApi = normalizedPath.startsWith("/api/");
-    const isStandardUser =
-      !!(user && user.username) && !user.isGlobalAdmin && !user.isAgencyAdmin;
+    const hasAcceptedAgreementForSession = String(req.headers.cookie || "")
+      .split(/;\s*/)
+      .map((entry) => entry.split("="))
+      .some(([key, value]) =>
+        String(key || "").trim() === USER_AGREEMENT_SESSION_COOKIE &&
+        String(value || "").trim() === "1"
+      );
+    const isAgreementTargetUser =
+      !!(user && user.username) && !user.isGlobalAdmin;
     const isAgreementExemptPath =
       normalizedPath === "/logout" ||
       normalizedPath === "/setup-my-device" ||
       normalizedPath === "/api/mou/user-agreement/accept" ||
       normalizedPath === "/api/mou/user-agreement/decline";
 
-    if (!isStandardUser || !mouSvc.isEnabled() || !mouSvc.shouldRequireUserAgreement(user)) {
+    if (
+      !isAgreementTargetUser ||
+      !mouSvc.isEnabled() ||
+      !mouSvc.shouldRequireUserAgreement(user, {
+        acceptedForSession: hasAcceptedAgreementForSession,
+      })
+    ) {
       return next();
     }
 
@@ -314,6 +328,9 @@ app.get("/logout", (req, res) => {
   const portalUrlRaw =
     getString("TAK_PORTAL_PUBLIC_URL", "") ||
     `${req.protocol}://${req.get("host")}/`;
+  res.clearCookie(USER_AGREEMENT_SESSION_COOKIE, {
+    path: "/",
+  });
   try {
     // Canonicalize so rd is always a full normalized URL (includes trailing slash on host roots).
     const portalUrl = new URL(portalUrlRaw).toString();
@@ -851,7 +868,15 @@ app.get("/setup-my-device", async (req, res) => {
   return res.render("setup-my-device", {
     takHost,
     enrollQrBootstrap,
-    agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser),
+    agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser, {
+      acceptedForSession: String(req.headers.cookie || "")
+        .split(/;\s*/)
+        .map((entry) => entry.split("="))
+        .some(([key, value]) =>
+          String(key || "").trim() === USER_AGREEMENT_SESSION_COOKIE &&
+          String(value || "").trim() === "1"
+        ),
+    }),
   });
 });
 

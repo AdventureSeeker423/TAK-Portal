@@ -8,8 +8,8 @@
         <div class="mouDocumentShell">
           <%- agreementSummary.agreement.bodyHtml %>
         </div>
-        <div class="row" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
-          <button class="btn" type="button" id="userAgreementAcceptBtn">Accept</button>
+        <div class="row" style="margin-top:16px;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+          <button class="btn success" type="button" id="userAgreementAcceptBtn">Continue</button>
           <button class="btn danger" type="button" id="userAgreementDeclineBtn">Decline and Log Out</button>
         </div>
         <div class="msg" id="userAgreementMsg" style="margin-top:12px;"></div>
@@ -33,7 +33,7 @@
 
     acceptBtn.addEventListener("click", async function () {
       try {
-        setBusy(true, "Saving acceptance...", null);
+        setBusy(true, "Continuing...", null);
         var res = await fetch("/api/mou/user-agreement/accept", {
           method: "POST",
           headers: {
@@ -42,11 +42,11 @@
           body: "{}"
         });
         var out = await res.json();
-        if (!res.ok) throw new Error(out.error || "Failed to accept agreement.");
-        setBusy(true, "Accepted. Reloading...", true);
+        if (!res.ok) throw new Error(out.error || "Failed to continue.");
+        setBusy(true, "Reloading...", true);
         window.location.reload();
       } catch (err) {
-        setBusy(false, err && err.message ? err.message : "Failed to accept agreement.", false);
+        setBusy(false, err && err.message ? err.message : "Failed to continue.", false);
       }
     });
 
