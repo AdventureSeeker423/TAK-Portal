@@ -384,35 +384,40 @@
         <div class="modal mouAssignModal" role="dialog" aria-modal="true" aria-labelledby="<%= assignOverlayId %>-title">
           <div class="modalHeader">
             <div>
-              <h2 id="<%= assignOverlayId %>-title" style="margin:0;">Assign Document</h2>
-              <div class="muted" style="margin-top:4px;"><%= stream.title %> • current version v<%= stream.currentVersion.version %></div>
+              <h2 id="<%= assignOverlayId %>-title" style="margin:0;">Assign Document: <%= stream.title %></h2>
+              <div class="muted" style="margin-top:4px;">Current version v<%= stream.currentVersion.version %></div>
             </div>
             <button class="btn" type="button" data-close-overlay>Close</button>
           </div>
           <div class="modalBody">
             <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/assignments/save" class="mouAdminForm" data-mou-assignment-form>
-              <label class="mouCheckboxLabel">
-                <input type="checkbox" name="serverwide" value="true" <%= stream.assignments && stream.assignments.serverwide ? "checked" : "" %> data-mou-serverwide-toggle />
-                Make active for the whole server
-              </label>
-
-              <div class="mouTargetList muted">
-                Leave serverwide off to assign this document only to selected agencies.
+              <div class="mouAssignServerwideBox">
+                <label class="mouCheckboxLabel">
+                  <input type="checkbox" name="serverwide" value="true" <%= stream.assignments && stream.assignments.serverwide ? "checked" : "" %> data-mou-serverwide-toggle />
+                  Make active for the whole server
+                </label>
+                <div class="muted" style="margin-top:8px;">
+                  Enable this to make the document active serverwide. Leave it off to assign only selected agencies below.
+                </div>
               </div>
 
               <div data-mou-agency-assignment-block <%= stream.assignments && stream.assignments.serverwide ? "hidden" : "" %>>
-                <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div class="segmented" style="margin-top:14px;">
+                  <button class="segBtn active" type="button">Agencies</button>
+                </div>
+
+                <div class="row" style="margin-top:14px;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
                   <input type="text" placeholder="Search agencies..." data-mou-agency-search style="flex:1;min-width:240px;" />
-                  <div class="mouActionRow">
-                    <button class="btn secondary" type="button" data-mou-agency-select-all>Select All</button>
-                    <button class="btn secondary" type="button" data-mou-agency-clear-all>Clear</button>
+                  <div class="row" style="gap:10px;">
+                    <button class="btn" type="button" data-mou-agency-select-all>Select All</button>
+                    <button class="btn" type="button" data-mou-agency-clear-all>Clear</button>
                   </div>
                 </div>
                 <div class="groupsBox" style="margin-top:10px;">
-                  <div class="mouAgencyCheckboxGrid">
+                  <div class="mouAssignAgencyList">
                     <% agencies.forEach(function (agency) { %>
                       <label
-                        class="mouAgencyCheckbox"
+                        class="mouAssignAgencyRow"
                         data-mou-agency-option
                         data-agency-label="<%= String(agency.name || '').toLowerCase() %> <%= String(agency.suffix || '').toLowerCase() %>"
                       >
@@ -422,7 +427,7 @@
                           value="<%= agency.suffix %>"
                           <%= stream.assignments && stream.assignments.agencySuffixes && stream.assignments.agencySuffixes.includes(agency.suffix) ? "checked" : "" %>
                         />
-                        <span><%= agency.name %></span>
+                        <span><%= agency.name %> (<%= String(agency.suffix || "").toUpperCase() %>)</span>
                       </label>
                     <% }); %>
                   </div>
@@ -640,14 +645,28 @@
       });
     }
 
+    function syncRowState() {
+      agencyOptions.forEach(function (option) {
+        var input = option.querySelector("input[type='checkbox']");
+        option.classList.toggle("mouAssignAgencyRow--selected", !!(input && input.checked));
+      });
+    }
+
     function sync() {
       var checked = !!(serverwideToggle && serverwideToggle.checked);
       setFieldVisible(agencyBlock, !checked);
       filterOptions();
+      syncRowState();
     }
 
     if (serverwideToggle) serverwideToggle.addEventListener("change", sync);
     if (agencySearch) agencySearch.addEventListener("input", filterOptions);
+    agencyOptions.forEach(function (option) {
+      var input = option.querySelector("input[type='checkbox']");
+      if (input) {
+        input.addEventListener("change", syncRowState);
+      }
+    });
     if (selectAllBtn) {
       selectAllBtn.addEventListener("click", function () {
         agencyOptions.forEach(function (option) {
@@ -655,6 +674,7 @@
           var input = option.querySelector("input[type='checkbox']");
           if (input) input.checked = true;
         });
+        syncRowState();
       });
     }
     if (clearAllBtn) {
@@ -664,6 +684,7 @@
           var input = option.querySelector("input[type='checkbox']");
           if (input) input.checked = false;
         });
+        syncRowState();
       });
     }
     form.addEventListener("submit", function (event) {
