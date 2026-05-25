@@ -1615,7 +1615,7 @@ function getAgencyEvidence({ mouId, agencyId, version }) {
       uploadedSignedCopyAbsPath: getAbsoluteDataPath(signature?.uploadedSignedCopyPath),
     };
   }
-  throw new Error("Signed evidence not found.");
+  throw new Error("Signed document not found.");
 }
 
 function listSignaturesForStream(stream) {

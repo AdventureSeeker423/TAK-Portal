@@ -239,7 +239,7 @@
                       <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
                       <a class="btn secondary" href="<%= adminViewHref %>" <%= String(currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
                     <% } %>
-                    <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and evidence files?');">
+                    <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and signed document files?');">
                       <button class="btn danger" type="submit">Delete</button>
                     </form>
                   </div>
@@ -298,7 +298,7 @@
                     <% if (row.signedVersion) { %>
                       <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
                       <% if (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0)) { %>
-                        <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resign/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Clear the current signed evidence and require this agency to sign again?');">
+                        <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resign/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Clear the current signed document and require this agency to sign again?');">
                           <button class="btn secondary" type="submit">Re-Sign</button>
                         </form>
                       <% } %>

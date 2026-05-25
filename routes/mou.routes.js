@@ -782,22 +782,20 @@ router.get("/admin/mou/:mouId/history.zip", requireMouEnabled, requireMouPermiss
         throw new Error("Agency is required for historical signed export.");
       }
 
-      const historicalVersions = (stream.versions || [])
-        .filter(
-          (entry) =>
-            Number(entry?.version || 0) < Number(currentVersion?.version || 0) &&
-            (entry.signatures || []).some(
-              (signature) => String(signature?.agencyId || "").trim().toLowerCase() === agencyId
-            )
+      const signedVersions = (stream.versions || [])
+        .filter((entry) =>
+          (entry.signatures || []).some(
+            (signature) => String(signature?.agencyId || "").trim().toLowerCase() === agencyId
+          )
         )
         .sort((a, b) => Number(a?.version || 0) - Number(b?.version || 0));
 
-      if (!historicalVersions.length) {
-        throw new Error("No historical signed versions are available for this agency.");
+      if (!signedVersions.length) {
+        throw new Error("No signed versions are available for this agency.");
       }
 
       const pdfExports = [];
-      for (const versionRecord of historicalVersions) {
+      for (const versionRecord of signedVersions) {
         pdfExports.push(
           await mouService.getSignedPdfExport({
             mouId: stream.mouId,
@@ -817,7 +815,7 @@ router.get("/admin/mou/:mouId/history.zip", requireMouEnabled, requireMouPermiss
           agencyId,
           currentVersion: currentVersion?.version || null,
           historicalVersionCount: pdfExports.length,
-          summary: `Exported ${pdfExports.length} historical signed MOU PDF(s) for agency ${agencyId}.`,
+          summary: `Exported ${pdfExports.length} signed MOU PDF(s) for agency ${agencyId}, including the current signed version when available.`,
         },
       });
 
@@ -825,7 +823,7 @@ router.get("/admin/mou/:mouId/history.zip", requireMouEnabled, requireMouPermiss
       res.setHeader("Content-Type", "application/zip");
       res.setHeader(
         "Content-Disposition",
-        buildContentDisposition("attachment", `${baseName}-${agencyId}-historical-signed.zip`)
+        buildContentDisposition("attachment", `${baseName}-${agencyId}-signed-history.zip`)
       );
 
       const archive = archiver("zip", { zlib: { level: 9 } });
