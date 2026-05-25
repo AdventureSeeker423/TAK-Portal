@@ -123,24 +123,39 @@
   }
 
   async function downloadSignedPdf() {
-    var jsPDF = window.jspdf && window.jspdf.jsPDF;
     var pdfSource = getPdfSourceElement();
+    var jsPDF = window.jspdf && window.jspdf.jsPDF;
     if (!jsPDF) throw new Error("PDF library failed to load.");
     if (!window.html2canvas) throw new Error("Could not load html2canvas.");
     if (!pdfSource) throw new Error("Document content was not found.");
-    var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
-    await doc.html(pdfSource, {
-      margin: [24, 24, 24, 24],
-      autoPaging: "text",
-      html2canvas: {
-        scale: 0.6,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-      },
-      callback: function (pdf) {
-        pdf.save(sanitizeFileName(documentTitle) + "-signed.pdf");
-      },
+    var canvas = await window.html2canvas(pdfSource, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
     });
+    var imageData = canvas.toDataURL("image/png");
+    var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+    var pageWidth = doc.internal.pageSize.getWidth();
+    var pageHeight = doc.internal.pageSize.getHeight();
+    var margin = 24;
+    var renderWidth = pageWidth - margin * 2;
+    var renderHeight = (canvas.height * renderWidth) / canvas.width;
+    var pageContentHeight = pageHeight - margin * 2;
+    var remainingHeight = renderHeight;
+    var offsetY = margin;
+
+    doc.addImage(imageData, "PNG", margin, offsetY, renderWidth, renderHeight, undefined, "FAST");
+    remainingHeight -= pageContentHeight;
+
+    while (remainingHeight > 0) {
+      doc.addPage();
+      offsetY = margin - (renderHeight - remainingHeight);
+      doc.addImage(imageData, "PNG", margin, offsetY, renderWidth, renderHeight, undefined, "FAST");
+      remainingHeight -= pageContentHeight;
+    }
+
+    doc.save(sanitizeFileName(documentTitle) + "-signed.pdf");
   }
 
   if (printBtn) {

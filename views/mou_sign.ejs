@@ -236,6 +236,49 @@
     return (documentSection && documentSection.querySelector(".signed-shell")) || documentShell || documentSection;
   }
 
+  async function downloadElementPdf(pdfSource, fileName) {
+    var jsPDF = window.jspdf && window.jspdf.jsPDF;
+    if (!jsPDF) {
+      throw new Error("PDF library failed to load.");
+    }
+    if (!window.html2canvas) {
+      throw new Error("Could not load html2canvas.");
+    }
+    if (!pdfSource) {
+      throw new Error("Document content was not found.");
+    }
+
+    var canvas = await window.html2canvas(pdfSource, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+    });
+
+    var imageData = canvas.toDataURL("image/png");
+    var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+    var pageWidth = doc.internal.pageSize.getWidth();
+    var pageHeight = doc.internal.pageSize.getHeight();
+    var margin = 24;
+    var renderWidth = pageWidth - margin * 2;
+    var renderHeight = (canvas.height * renderWidth) / canvas.width;
+    var pageContentHeight = pageHeight - margin * 2;
+    var remainingHeight = renderHeight;
+    var offsetY = margin;
+
+    doc.addImage(imageData, "PNG", margin, offsetY, renderWidth, renderHeight, undefined, "FAST");
+    remainingHeight -= pageContentHeight;
+
+    while (remainingHeight > 0) {
+      doc.addPage();
+      offsetY = margin - (renderHeight - remainingHeight);
+      doc.addImage(imageData, "PNG", margin, offsetY, renderWidth, renderHeight, undefined, "FAST");
+      remainingHeight -= pageContentHeight;
+    }
+
+    doc.save(fileName);
+  }
+
   function getSignerNameValue() {
     return signerNameInput ? String(signerNameInput.value || "").trim() : "";
   }
@@ -276,33 +319,14 @@
       return;
     }
 
+    if (isSignedView) {
+      await downloadElementPdf(getPdfSourceElement(), sanitizeFileName(documentTitle) + "-signed.pdf");
+      return;
+    }
+
     var jsPDF = window.jspdf && window.jspdf.jsPDF;
     if (!jsPDF) {
       throw new Error("PDF library failed to load.");
-    }
-    if (!window.html2canvas) {
-      throw new Error("Could not load html2canvas.");
-    }
-    var pdfSource = getPdfSourceElement();
-    if (!pdfSource) {
-      throw new Error("Document content was not found.");
-    }
-
-    if (isSignedView) {
-      var signedDoc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
-      await signedDoc.html(pdfSource, {
-        margin: [24, 24, 24, 24],
-        autoPaging: "text",
-        html2canvas: {
-          scale: 0.6,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-        },
-        callback: function (doc) {
-          doc.save(sanitizeFileName(documentTitle) + "-signed.pdf");
-        },
-      });
-      return;
     }
 
     var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
