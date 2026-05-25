@@ -506,7 +506,7 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
   }
 });
 
-router.post("/api/mou/user-agreement/accept", requireMouEnabled, requireMouPermission, (req, res) => {
+router.post("/api/mou/user-agreement/accept", requireMouEnabled, (req, res) => {
   try {
     if (!mouService.shouldRequireUserAgreement(req.authentikUser, { acceptedForSession: false })) {
       return res.json({ success: true });
@@ -523,7 +523,7 @@ router.post("/api/mou/user-agreement/accept", requireMouEnabled, requireMouPermi
   }
 });
 
-router.post("/api/mou/user-agreement/decline", requireMouEnabled, requireMouPermission, (req, res) => {
+router.post("/api/mou/user-agreement/decline", requireMouEnabled, (req, res) => {
   res.json({ success: true, logoutUrl: "/logout" });
 });
 

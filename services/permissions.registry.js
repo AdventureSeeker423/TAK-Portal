@@ -131,7 +131,7 @@ const AGENCY_DEFAULT = new Set([
 ]);
 
 /** Standard defaults are now handled by always-on routes (plugins/setup), not configurable keys. */
-const STANDARD_DEFAULT = new Set(["page.mou"]);
+const STANDARD_DEFAULT = new Set([]);
 
 function normalizePath(p) {
   const out = String(p || "").replace(/\/+$/, "");
@@ -175,6 +175,9 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/tak")) return ["page.dashboard"];
   if (p.startsWith("/api/user-requests")) return ["page.users"];
   if (p.startsWith("/api/email")) return ["page.email"];
+  if (p === "/api/mou/user-agreement/accept" || p === "/api/mou/user-agreement/decline") {
+    return [];
+  }
   if (p.startsWith("/api/mou")) return ["page.mou"];
   if (p.startsWith("/api/settings/tak-maintenance")) return ["page.settings"];
   // Getting-started is role-gated in server.js, not permission-toggled.
