@@ -1,0 +1,92 @@
+<%- include("../partials/header") %>
+<%- include("../partials/sidebar") %>
+
+<main class="main">
+  <h1>Edit MOU Draft</h1>
+
+  <% if (error) { %>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="msg bad"><%= error %></div>
+    </div>
+  <% } %>
+
+  <% if (success) { %>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="msg ok"><%= success %></div>
+    </div>
+  <% } %>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <div>
+        <strong><%= stream.title %></strong><br />
+        <span class="muted">Draft version v<%= version.version %></span>
+      </div>
+      <a class="btn" href="/admin/mou">Back</a>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px;">
+    <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/save">
+      <div class="grid2">
+        <label>
+          Title
+          <input type="text" name="title" value="<%= stream.title %>" required />
+        </label>
+
+        <label>
+          Slug
+          <input type="text" name="slug" value="<%= stream.slug || '' %>" />
+        </label>
+
+        <label>
+          Reminder Days
+          <input type="number" min="1" name="reminderDays" value="<%= stream.reminderDays || 7 %>" />
+        </label>
+
+        <label>
+          Mandatory
+          <select name="mandatory">
+            <option value="false" <%= stream.mandatory ? "" : "selected" %>>false</option>
+            <option value="true" <%= stream.mandatory ? "selected" : "" %>>true</option>
+          </select>
+        </label>
+      </div>
+
+      <label style="margin-top:12px;display:block;">
+        Draft HTML
+        <textarea name="html" rows="24" required><%- html %></textarea>
+      </label>
+
+      <div class="row" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
+        <button class="btn" type="submit">Save Draft</button>
+        <a class="btn secondary" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/preview">Preview</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="grid2" style="margin-top:12px;">
+    <div class="card">
+      <h2 style="margin-top:0;">Deploy</h2>
+      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/deploy">
+        <label>
+          Type DEPLOY to confirm
+          <input type="text" name="confirmText" placeholder="DEPLOY" />
+        </label>
+        <div class="row" style="margin-top:14px;">
+          <button class="btn" type="submit">Deploy To Agencies</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Discard Draft</h2>
+      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/discard" onsubmit="return confirm('Discard this draft?');">
+        <div class="muted">Discarding removes only this draft version.</div>
+        <div class="row" style="margin-top:14px;">
+          <button class="btn danger" type="submit">Discard Draft</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</main>

@@ -20,6 +20,8 @@ const agenciesStore = require("./services/agencies.service");
 const userRequestsSvc = require("./services/userRequests.service");
 const auditSvc = require("./services/auditLog.service");
 const permsSvc = require("./services/permissions.service");
+const mouSvc = require("./services/mouService");
+const mouScheduler = require("./services/mouScheduler");
 const accessControlRoutes = require("./routes/accessControl.routes");
 const usersSvc = require("./services/users.service");
 const groupsSvc = require("./services/groups.service");
@@ -216,6 +218,40 @@ app.use((req, res, next) => {
     // fall through
   }
   return portalAuth(req, res, next);
+});
+
+app.use((req, res, next) => {
+  try {
+    const user = req.authentikUser;
+    const normalizedPath = (req.path || "").replace(/\/+$/, "") || "/";
+    const isApi = normalizedPath.startsWith("/api/");
+    const isStandardUser =
+      !!(user && user.username) && !user.isGlobalAdmin && !user.isAgencyAdmin;
+    const isAgreementExemptPath =
+      normalizedPath === "/logout" ||
+      normalizedPath === "/setup-my-device" ||
+      normalizedPath === "/api/mou/user-agreement/accept" ||
+      normalizedPath === "/api/mou/user-agreement/decline";
+
+    if (!isStandardUser || !mouSvc.isEnabled() || !mouSvc.shouldRequireUserAgreement(user)) {
+      return next();
+    }
+
+    if (isAgreementExemptPath) {
+      return next();
+    }
+
+    if (isApi) {
+      return res.status(423).json({
+        error: "You must accept the current user agreement before continuing.",
+      });
+    }
+
+    return res.redirect("/setup-my-device");
+  } catch (err) {
+    console.warn("[mou-gate] Failed to evaluate user agreement gate:", err?.message || err);
+    return next();
+  }
 });
 
 function isApiRequest(req) {
@@ -527,6 +563,7 @@ app.post("/locate/:slug/ping", publicLocateApiCors, handlePublicLocatePing);
 app.options("/locate/:slug/stop-sharing", publicLocateApiCors);
 app.post("/locate/:slug/stop-sharing", publicLocateApiCors, handlePublicLocateStopSharing);
 app.use("/api/email", requirePermission("page.email"), require("./routes/email.routes"));
+app.use("/", require("./routes/mou.routes"));
 app.use("/dashboard", require("./routes/dashboard.routes"));
 
 // Access control (per-user permission deny overrides)
@@ -811,7 +848,11 @@ app.get("/setup-my-device", async (req, res) => {
       enrollQrBootstrap = null;
     }
   }
-  return res.render("setup-my-device", { takHost, enrollQrBootstrap });
+  return res.render("setup-my-device", {
+    takHost,
+    enrollQrBootstrap,
+    agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser),
+  });
 });
 
 
@@ -1743,6 +1784,12 @@ app.listen(port, () => {
       "⚠️ Mutual aid expiration scheduler init failed",
       e?.message || e
     );
+  }
+
+  try {
+    mouScheduler.startScheduler();
+  } catch (e) {
+    console.log("⚠️ MOU reminder scheduler init failed", e?.message || e);
   }
 
   try {

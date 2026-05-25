@@ -37,7 +37,11 @@
         "SMTP_SECURE",
         "EMAIL_FAIL_HARD",
         "PORTAL_AUTH_ENABLED",
-        "BETA_MODE"
+        "BETA_MODE",
+        "MOU_ENABLED",
+        "MOU_REQUIRE_AGENCY_SIGNATURE",
+        "MOU_PUBLIC_LIST_VISIBLE_TO_ALL",
+        "MOU_DEPLOY_REQUIRES_TYPED_CONFIRM"
       ]);
 
       function renderField(key, label, helpText, defaultValue) {
@@ -135,6 +139,13 @@
         "EMAIL_ALWAYS_CC",
         "EMAIL_SEND_COPY_TO",
         "EMAIL_FAIL_HARD",
+        "MOU_ENABLED",
+        "MOU_REQUIRE_AGENCY_SIGNATURE",
+        "MOU_DEFAULT_REMINDER_DAYS",
+        "MOU_PUBLIC_LIST_VISIBLE_TO_ALL",
+        "MOU_HTML_MAX_KB",
+        "MOU_DEPLOY_REQUIRES_TYPED_CONFIRM",
+        "MOU_REMINDER_SWEEP_HOURS",
         "BETA_MODE",
         "DEFAULT_THEME_MODE",
         "PRIMARY_BUTTON_COLOR",
@@ -387,6 +398,25 @@
       </details>
     </div>
 
+    <!-- MOU -->
+    <div class="card">
+      <details class="settings-section">
+        <summary class="settings-summary">MOU</summary>
+
+        <div class="settings-body">
+          <div class="grid2">
+            <% renderField("MOU_ENABLED","MOU Enabled","Turn the MOU and standard-user agreement workflows on or off."); %>
+            <% renderField("MOU_REQUIRE_AGENCY_SIGNATURE","Require Agency Signature","When true, current deployed MOUs stay pending until an Agency Admin signs."); %>
+            <% renderField("MOU_DEFAULT_REMINDER_DAYS","Default Reminder Days","Days between agency-admin reminder emails for unsigned deployed MOUs."); %>
+            <% renderField("MOU_PUBLIC_LIST_VISIBLE_TO_ALL","Public MOU List Visible To All","When true, authenticated users can browse the MOU section and signed evidence links."); %>
+            <% renderField("MOU_HTML_MAX_KB","MOU HTML Max KB","Maximum allowed size for stored MOU HTML and user-agreement HTML."); %>
+            <% renderField("MOU_DEPLOY_REQUIRES_TYPED_CONFIRM","Require Typed DEPLOY","When true, Global Admins must type DEPLOY before an MOU deploy is accepted."); %>
+            <% renderField("MOU_REMINDER_SWEEP_HOURS","Reminder Sweep Hours","How often the reminder scheduler checks for unsigned agency MOUs. Server restart required for changes to take effect."); %>
+          </div>
+        </div>
+      </details>
+    </div>
+
     <%
       const emailTemplatesList = Array.isArray(
         typeof emailTemplates !== "undefined" ? emailTemplates : []
@@ -402,7 +432,9 @@
         "groups_updated.html",
         "password_changed.html",
         "mutual_aid_created.html",
-        "bulk_email.html"
+        "bulk_email.html",
+        "mou_deployed_to_agencies.html",
+        "mou_reminder_agency.html"
       ];
 
       const friendlyNames = {
@@ -412,7 +444,9 @@
         "groups_updated.html": "Groups Updated",
         "password_changed.html": "Password Changed by Admin",
         "mutual_aid_created.html": "Mutual Aid",
-        "bulk_email.html": "Bulk Email"
+        "bulk_email.html": "Bulk Email",
+        "mou_deployed_to_agencies.html": "MOU Deployed To Agency Admins",
+        "mou_reminder_agency.html": "MOU Agency Reminder"
       };
 
       function templateSortIndex(filename) {

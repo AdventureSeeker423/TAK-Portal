@@ -1,0 +1,110 @@
+<%- include("../partials/header") %>
+<%- include("../partials/sidebar") %>
+
+<main class="main">
+  <h1>MOU Administration</h1>
+
+  <% if (error) { %>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="msg bad"><%= error %></div>
+    </div>
+  <% } %>
+
+  <% if (success) { %>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="msg ok"><%= success %></div>
+    </div>
+  <% } %>
+
+  <div class="grid2">
+    <div class="card">
+      <h2 style="margin-top:0;">Create New MOU Draft</h2>
+      <form method="post" action="/admin/mou">
+        <label>
+          Title
+          <input type="text" name="title" required />
+        </label>
+        <label style="margin-top:12px;display:block;">
+          Slug
+          <input type="text" name="slug" placeholder="optional-slug" />
+        </label>
+        <label style="margin-top:12px;display:block;">
+          Reminder Days
+          <input type="number" min="1" name="reminderDays" value="7" />
+        </label>
+        <label style="margin-top:12px;display:block;">
+          <input type="checkbox" name="mandatory" value="true" />
+          Mandatory
+        </label>
+        <label style="margin-top:12px;display:block;">
+          Draft HTML
+          <textarea name="html" rows="16" required placeholder="<p>Paste MOU HTML here.</p>"></textarea>
+        </label>
+        <div class="row" style="margin-top:14px;">
+          <button class="btn" type="submit">Create Draft</button>
+          <a class="btn secondary" href="/admin/mou/compliance">Compliance</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Standard User Agreement</h2>
+      <% const currentAgreement = agreement && agreement.current ? agreement.current : null; %>
+      <% if (currentAgreement) { %>
+        <div class="muted" style="margin-bottom:8px;">
+          Current version: v<%= currentAgreement.version %>
+        </div>
+      <% } %>
+      <form method="post" action="/admin/mou/user-agreement/save">
+        <label>
+          Title
+          <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : 'User Agreement' %>" required />
+        </label>
+        <label style="margin-top:12px;display:block;">
+          Agreement Text
+          <textarea name="html" rows="12" required><%- currentAgreement ? currentAgreement.bodyHtml : '<p>I understand that use of this TAK environment is subject to my agency\'s current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.</p>' %></textarea>
+        </label>
+        <div class="row" style="margin-top:14px;">
+          <button class="btn" type="submit">Save User Agreement</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px;">
+    <h2 style="margin-top:0;">MOU Streams</h2>
+    <% if (!streams || !streams.length) { %>
+      <div class="muted">No MOU streams created yet.</div>
+    <% } else { %>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Current Deployed</th>
+            <th>Draft</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% streams.forEach(function (stream) { %>
+            <% const draft = (stream.versions || []).find(function (entry) { return entry.state === "draft"; }); %>
+            <tr>
+              <td><%= stream.title %></td>
+              <td><%= stream.currentDeployed ? ("v" + stream.currentDeployed.version) : "None" %></td>
+              <td><%= draft ? ("v" + draft.version) : "None" %></td>
+              <td>
+                <% if (draft) { %>
+                  <a class="btn" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(draft.version) %>/edit">Edit Draft</a>
+                <% } else { %>
+                  <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/new-version" style="display:inline;">
+                    <button class="btn" type="submit">New Version Draft</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</main>

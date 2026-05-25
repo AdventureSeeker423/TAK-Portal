@@ -1,0 +1,74 @@
+<%- include("../partials/header") %>
+<%- include("../partials/sidebar") %>
+
+<main class="main">
+  <h1>MOU Compliance</h1>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h2 style="margin-top:0;">Agency Signature Status</h2>
+      <a class="btn" href="/admin/mou/compliance?export=signatures">Export CSV</a>
+    </div>
+    <% if (!signatureRows || !signatureRows.length) { %>
+      <div class="muted">No deployed MOU signature data yet.</div>
+    <% } else { %>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>MOU</th>
+            <th>Agency</th>
+            <th>Current Version</th>
+            <th>Signed Version</th>
+            <th>Signer</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% signatureRows.forEach(function (row) { %>
+            <tr>
+              <td><%= row.mouTitle %></td>
+              <td><%= row.agencyName %></td>
+              <td>v<%= row.deployedVersion %></td>
+              <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
+              <td><%= row.signerDisplayName || "-" %></td>
+              <td><%= row.needsSignature ? "Needs signature" : "Current" %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+
+  <div class="card" style="margin-top:12px;">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h2 style="margin-top:0;">Standard User Agreement Acceptance</h2>
+      <a class="btn" href="/admin/mou/compliance?export=agreement">Export CSV</a>
+    </div>
+    <% if (!agreementRows || !agreementRows.length) { %>
+      <div class="muted">No user agreement acceptance data available yet.</div>
+    <% } else { %>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Username</th>
+            <th>Agreement Version</th>
+            <th>Accepted</th>
+            <th>Accepted At</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% agreementRows.forEach(function (row) { %>
+            <tr>
+              <td><%= row.displayName || "-" %></td>
+              <td><%= row.username || "-" %></td>
+              <td><%= row.version ? ("v" + row.version) : "-" %></td>
+              <td><%= row.accepted ? "Yes" : "No" %></td>
+              <td><%= row.acceptedAt || "-" %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</main>

@@ -1,0 +1,20 @@
+<%- include("../partials/header") %>
+<%- include("../partials/sidebar") %>
+
+<main class="main">
+  <h1>MOU Preview</h1>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <div>
+        <strong><%= stream.title %></strong><br />
+        <span class="muted">Draft version v<%= version.version %></span>
+      </div>
+      <a class="btn" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/edit">Back to Edit</a>
+    </div>
+  </div>
+
+  <div class="card mouDocumentShell" style="margin-top:12px;">
+    <%- html %>
+  </div>
+</main>

@@ -1,0 +1,127 @@
+<%- include("partials/header") %>
+<%- include("partials/sidebar") %>
+
+<main class="main">
+  <h1>Sign MOU</h1>
+
+  <% if (error) { %>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="msg bad"><%= error %></div>
+    </div>
+  <% } %>
+
+  <% if (success) { %>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="msg ok"><%= success %></div>
+    </div>
+  <% } %>
+
+  <div class="grid2">
+    <div class="card">
+      <h2 style="margin-top:0;"><%= stream.title %> (v<%= version.version %>)</h2>
+      <div class="mouDocumentShell">
+        <%- html %>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Agency Signature</h2>
+      <form method="post" action="/mou/sign/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>" id="mouSignForm">
+        <label>
+          Agency
+          <select name="agencySuffix" required>
+            <% agencyChoices.forEach(function (agency) { %>
+              <option value="<%= agency.suffix %>"><%= agency.name %></option>
+            <% }); %>
+          </select>
+        </label>
+
+        <label style="margin-top:12px;display:block;">
+          Draw signature
+          <canvas id="signatureCanvas" width="520" height="180" class="mouSignatureCanvas" aria-label="Signature canvas"></canvas>
+        </label>
+
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" type="button" id="clearSignatureBtn">Clear Signature</button>
+        </div>
+
+        <label style="margin-top:12px;display:block;">
+          Typed attestation fallback
+          <input type="text" name="attestationText" placeholder="Type your full name if drawing is unavailable" />
+        </label>
+
+        <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
+
+        <div class="row" style="margin-top:16px;">
+          <button class="btn" type="submit">Sign MOU</button>
+          <a class="btn secondary" href="/mou">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var canvas = document.getElementById("signatureCanvas");
+  var form = document.getElementById("mouSignForm");
+  var hidden = document.getElementById("signatureDataUrl");
+  var clearBtn = document.getElementById("clearSignatureBtn");
+  if (!canvas || !form || !hidden) return;
+
+  var ctx = canvas.getContext("2d");
+  var drawing = false;
+  var hasInk = false;
+
+  function pointFromEvent(evt) {
+    var rect = canvas.getBoundingClientRect();
+    var source = evt.touches && evt.touches[0] ? evt.touches[0] : evt;
+    return {
+      x: source.clientX - rect.left,
+      y: source.clientY - rect.top,
+    };
+  }
+
+  function begin(evt) {
+    evt.preventDefault();
+    drawing = true;
+    var point = pointFromEvent(evt);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  }
+
+  function draw(evt) {
+    if (!drawing) return;
+    evt.preventDefault();
+    var point = pointFromEvent(evt);
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#111827";
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    hasInk = true;
+  }
+
+  function end(evt) {
+    if (evt) evt.preventDefault();
+    drawing = false;
+  }
+
+  canvas.addEventListener("mousedown", begin);
+  canvas.addEventListener("mousemove", draw);
+  window.addEventListener("mouseup", end);
+  canvas.addEventListener("touchstart", begin, { passive: false });
+  canvas.addEventListener("touchmove", draw, { passive: false });
+  canvas.addEventListener("touchend", end, { passive: false });
+
+  clearBtn.addEventListener("click", function () {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasInk = false;
+    hidden.value = "";
+  });
+
+  form.addEventListener("submit", function () {
+    hidden.value = hasInk ? canvas.toDataURL("image/png") : "";
+  });
+})();
+</script>

@@ -1,0 +1,61 @@
+<%- include("partials/header") %>
+<%- include("partials/sidebar") %>
+
+<main class="main">
+  <h1>MOUs</h1>
+
+  <% if (agreementSummary && agreementSummary.shouldRequire && agreementSummary.agreement) { %>
+    <div class="card" style="border-color: var(--warning); margin-bottom: 12px;">
+      <div class="msg pending">
+        You must accept the current user agreement before using standard self-service pages.
+        Continue through <a href="/setup-my-device">Setup My Device</a> to review it.
+      </div>
+    </div>
+  <% } %>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Deployed Agency MOUs</h2>
+    <% if (!streams || !streams.length) { %>
+      <div class="muted">No MOUs have been deployed yet.</div>
+    <% } else { %>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Version</th>
+            <th>Agency Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% streams.forEach(function (item) { %>
+            <tr>
+              <td><%= item.stream.title %></td>
+              <td>v<%= item.deployed ? item.deployed.version : "-" %></td>
+              <td>
+                <% if (item.currentAgencySignature) { %>
+                  Signed by <%= item.currentAgencySignature.signature.signerDisplayName %>
+                  on <%= item.currentAgencySignature.signature.signedAt %>
+                <% } else if (isAgencyAdmin) { %>
+                  Pending signature
+                <% } else { %>
+                  View only
+                <% } %>
+              </td>
+              <td>
+                <% if (item.deployed) { %>
+                  <a class="btn" href="/mou/view/<%= encodeURIComponent(item.stream.mouId) %>/<%= encodeURIComponent(item.deployed.version) %>">View</a>
+                  <% if (item.currentAgencySignature) { %>
+                    <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(item.stream.mouId) %>/<%= encodeURIComponent(item.currentAgencySignature.agency.suffix) %>?version=<%= encodeURIComponent(item.deployed.version) %>">Signed Evidence</a>
+                  <% } else if (isAgencyAdmin && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
+                    <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(item.stream.mouId) %>/<%= encodeURIComponent(item.deployed.version) %>">Sign</a>
+                  <% } %>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</main>

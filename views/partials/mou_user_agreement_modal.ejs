@@ -1,0 +1,72 @@
+<% if (agreementSummary && agreementSummary.shouldRequire && agreementSummary.agreement) { %>
+  <div class="modalOverlay" id="userAgreementOverlay">
+    <div class="modal userAgreementModal" role="dialog" aria-modal="true" aria-labelledby="userAgreementTitle">
+      <div class="modalHeader">
+        <h2 id="userAgreementTitle" style="margin:0;"><%= agreementSummary.agreement.title || "User Agreement" %></h2>
+      </div>
+      <div class="modalBody">
+        <div class="mouDocumentShell">
+          <%- agreementSummary.agreement.bodyHtml %>
+        </div>
+        <div class="row" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
+          <button class="btn" type="button" id="userAgreementAcceptBtn">Accept</button>
+          <button class="btn danger" type="button" id="userAgreementDeclineBtn">Decline and Log Out</button>
+        </div>
+        <div class="msg" id="userAgreementMsg" style="margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var acceptBtn = document.getElementById("userAgreementAcceptBtn");
+    var declineBtn = document.getElementById("userAgreementDeclineBtn");
+    var msg = document.getElementById("userAgreementMsg");
+    if (!acceptBtn || !declineBtn || !msg) return;
+
+    function setBusy(isBusy, text, ok) {
+      acceptBtn.disabled = isBusy;
+      declineBtn.disabled = isBusy;
+      msg.className = "msg " + (ok === false ? "bad" : ok === true ? "ok" : "pending");
+      msg.textContent = text || "";
+    }
+
+    acceptBtn.addEventListener("click", async function () {
+      try {
+        setBusy(true, "Saving acceptance...", null);
+        var res = await fetch("/api/mou/user-agreement/accept", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: "{}"
+        });
+        var out = await res.json();
+        if (!res.ok) throw new Error(out.error || "Failed to accept agreement.");
+        setBusy(true, "Accepted. Reloading...", true);
+        window.location.reload();
+      } catch (err) {
+        setBusy(false, err && err.message ? err.message : "Failed to accept agreement.", false);
+      }
+    });
+
+    declineBtn.addEventListener("click", async function () {
+      try {
+        setBusy(true, "Logging out...", null);
+        var res = await fetch("/api/mou/user-agreement/decline", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: "{}"
+        });
+        var out = await res.json();
+        if (!res.ok) throw new Error(out.error || "Failed to log out.");
+        window.location.href = out.logoutUrl || "/logout";
+      } catch (err) {
+        setBusy(false, err && err.message ? err.message : "Failed to log out.", false);
+      }
+    });
+  })();
+  </script>
+<% } %>

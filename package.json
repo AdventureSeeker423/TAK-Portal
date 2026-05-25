@@ -26,6 +26,7 @@
     "nodemailer": "^7.0.12",
     "p12-pem": "^1.0.5",
     "qrcode": "^1.5.4",
+    "sanitize-html": "^2.17.4",
     "ssh2": "^1.17.0",
     "undici": "^7.24.4",
     "unzipper": "^0.10.11"

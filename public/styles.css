@@ -782,6 +782,42 @@ label.btn {
     padding: 14px;
 }
 
+.userAgreementModal {
+    width: min(760px, 96vw);
+}
+
+.mouDocumentShell {
+    line-height: 1.6;
+}
+
+.mouDocumentShell table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.mouDocumentShell th,
+.mouDocumentShell td {
+    border: 1px solid var(--line);
+    padding: 8px;
+    text-align: left;
+}
+
+.mouDocumentShell blockquote {
+    margin: 1rem 0;
+    padding-left: 1rem;
+    border-left: 4px solid var(--line);
+    color: var(--muted);
+}
+
+.mouSignatureCanvas {
+    width: 100%;
+    max-width: 520px;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    touch-action: none;
+}
+
 .noScroll {
     overflow: hidden;
 }

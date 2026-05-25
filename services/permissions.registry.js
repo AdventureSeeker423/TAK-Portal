@@ -34,6 +34,12 @@ const PERMISSIONS = {
       description: "Send email to users from the portal.",
       section: "administration",
     },
+    mou: {
+      id: "page.mou",
+      label: "MOUs",
+      description: "View MOUs, user agreement, and compliance workflows.",
+      section: "administration",
+    },
     agencies: {
       id: "page.agencies",
       label: "Agencies",
@@ -121,10 +127,11 @@ const AGENCY_DEFAULT = new Set([
   "page.groups",
   "page.templates",
   "page.email",
+  "page.mou",
 ]);
 
 /** Standard defaults are now handled by always-on routes (plugins/setup), not configurable keys. */
-const STANDARD_DEFAULT = new Set([]);
+const STANDARD_DEFAULT = new Set(["page.mou"]);
 
 function normalizePath(p) {
   const out = String(p || "").replace(/\/+$/, "");
@@ -168,6 +175,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/tak")) return ["page.dashboard"];
   if (p.startsWith("/api/user-requests")) return ["page.users"];
   if (p.startsWith("/api/email")) return ["page.email"];
+  if (p.startsWith("/api/mou")) return ["page.mou"];
   if (p.startsWith("/api/settings/tak-maintenance")) return ["page.settings"];
   // Getting-started is role-gated in server.js, not permission-toggled.
 
@@ -179,6 +187,8 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/groups")) return ["page.groups"];
   if (p.startsWith("/templates")) return ["page.templates"];
   if (p === "/email" || p.startsWith("/email/")) return ["page.email"];
+  if (p === "/mou" || p.startsWith("/mou/")) return ["page.mou"];
+  if (p === "/admin/mou" || p.startsWith("/admin/mou/")) return ["page.mou"];
   if (p === "/pending-user-requests" || p.startsWith("/pending-user-requests/")) return ["page.users"];
   if (p === "/agencies" || p.startsWith("/agencies/")) return ["page.agencies"];
   if (p === "/settings" || p.startsWith("/settings/")) return ["page.settings"];

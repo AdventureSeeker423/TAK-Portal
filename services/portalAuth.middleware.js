@@ -173,6 +173,9 @@ function portalAuthMiddleware(req, res, next) {
       const isAllowedNonAdminPath =
         normalizedPath === "/setup-my-device" ||
         normalizedPath.startsWith("/api/setup-my-device") ||
+        normalizedPath === "/mou" ||
+        normalizedPath.startsWith("/mou/") ||
+        normalizedPath.startsWith("/api/mou/") ||
         normalizedPath === "/plugins" ||
         isPluginDownloadApi;
       if (!isAllowedNonAdminPath) {
