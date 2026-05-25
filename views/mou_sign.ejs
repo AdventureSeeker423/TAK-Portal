@@ -57,23 +57,7 @@
       <h2 style="margin-top:0;">View / Sign Document</h2>
       <% const hasPendingAgency = agencyChoices.some(function (agency) { return !agency.currentSignature; }); %>
       <% const firstPendingAgency = agencyChoices.find(function (agency) { return !agency.currentSignature; }); %>
-      <div class="mouAgencyList" style="margin-bottom: 16px;">
-        <% agencyChoices.forEach(function (agency) { %>
-          <div class="mouAgencyList__row">
-            <div>
-              <strong><%= agency.name %></strong>
-              <% if (agency.currentSignature) { %>
-                <div class="muted">Already signed by <%= agency.currentSignature.signerDisplayName %></div>
-              <% } else { %>
-                <div class="muted">Awaiting signature</div>
-              <% } %>
-            </div>
-            <span class="mouStatus <%= agency.currentSignature ? 'mouStatus--ok' : 'mouStatus--pending' %>">
-              <%= agency.currentSignature ? "Signed" : "Pending" %>
-            </span>
-          </div>
-        <% }); %>
-      </div>
+      <% const signingAgencyName = firstPendingAgency ? firstPendingAgency.name : (agencyChoices[0] ? agencyChoices[0].name : "your agency"); %>
 
       <% if (!hasPendingAgency) { %>
         <div class="msg ok" style="margin-bottom: 14px;">All agencies available to you have already signed this version.</div>
@@ -81,13 +65,8 @@
 
       <form method="post" action="/mou/sign/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>" id="mouSignForm">
         <input type="hidden" name="agencySuffix" value="<%= firstPendingAgency ? firstPendingAgency.suffix : '' %>" <%= hasPendingAgency ? "" : "disabled" %> />
-        <div style="margin-bottom:12px;">
-          <div class="muted">Agency</div>
-          <strong><%= firstPendingAgency ? firstPendingAgency.name : (agencyChoices[0] ? agencyChoices[0].name : '-') %></strong>
-        </div>
-
         <div class="card" style="margin:0 0 12px 0;padding:14px 16px;">
-          By signing this document, I affirm that I am authorized to sign on behalf of my agency and attest that this acknowledgment is made for my agency.
+          By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
         </div>
 
         <label style="margin-top:12px;display:block;">
@@ -100,8 +79,8 @@
         </div>
 
         <label style="margin-top:12px;display:block;">
-          Type Your Full Name
-          <input type="text" name="attestationText" placeholder="Type your full name if drawing is unavailable" <%= hasPendingAgency ? "" : "disabled" %> />
+          Full Name
+          <input type="text" name="attestationText" placeholder="Type your full name if drawing is unavailable" style="width:100%;" <%= hasPendingAgency ? "" : "disabled" %> />
         </label>
 
         <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
@@ -130,9 +109,11 @@
   function pointFromEvent(evt) {
     var rect = canvas.getBoundingClientRect();
     var source = evt.touches && evt.touches[0] ? evt.touches[0] : evt;
+    var scaleX = rect.width ? canvas.width / rect.width : 1;
+    var scaleY = rect.height ? canvas.height / rect.height : 1;
     return {
-      x: source.clientX - rect.left,
-      y: source.clientY - rect.top,
+      x: (source.clientX - rect.left) * scaleX,
+      y: (source.clientY - rect.top) * scaleY,
     };
   }
 
