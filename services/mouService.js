@@ -1002,7 +1002,7 @@ function saveUserAgreement({ title, html, actor, enabled }) {
 }
 
 function isUserAgreementTargetUser(authUser) {
-  return !!(authUser && !authUser.isGlobalAdmin);
+  return !!(authUser && !authUser.isGlobalAdmin && !authUser.isAgencyAdmin);
 }
 
 function shouldRequireUserAgreement(authUser, options) {

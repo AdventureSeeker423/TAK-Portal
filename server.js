@@ -234,7 +234,7 @@ app.use((req, res, next) => {
         String(value || "").trim() === "1"
       );
     const isAgreementTargetUser =
-      !!(user && user.username) && !user.isGlobalAdmin;
+      !!(user && user.username) && !user.isGlobalAdmin && !user.isAgencyAdmin;
     const isAgreementExemptPath =
       normalizedPath === "/logout" ||
       normalizedPath === "/setup-my-device" ||
