@@ -59,14 +59,22 @@
 }
 </style>
 
+<% const hasPendingAgency = agencyChoices.some(function (agency) { return !agency.currentSignature; }); %>
+<% const firstPendingAgency = agencyChoices.find(function (agency) { return !agency.currentSignature; }); %>
+<% const currentAgency = agencyChoices[0] || null; %>
+<% const currentAgencySignature = currentAgency ? currentAgency.currentSignature : null; %>
+<% const signingAgencyName = firstPendingAgency ? firstPendingAgency.name : (currentAgency ? currentAgency.name : "your agency"); %>
+<% const showSignedEvidence = !!(currentAgencySignature && signedEvidenceHtml); %>
+<% const activeDownloadUrl = showSignedEvidence ? signedEvidenceDownloadUrl : downloadUrl; %>
+
 <main class="main">
   <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div>
       <h1 style="margin-bottom:6px;">View / Sign Document</h1>
-      <div class="muted">Review the current version, then sign on behalf of your agency.</div>
+      <div class="muted"><%= showSignedEvidence ? "Your agency has already signed the current version." : "Review the current version, then sign on behalf of your agency." %></div>
     </div>
     <div class="mouActionRow">
-      <% if (downloadUrl) { %>
+      <% if (activeDownloadUrl) { %>
         <button class="btn secondary" type="button" id="downloadDocumentBtn">Download</button>
         <button class="btn secondary" type="button" id="printDocumentBtn">Print</button>
       <% } %>
@@ -86,39 +94,40 @@
     </div>
   <% } %>
 
-  <% const hasPendingAgency = agencyChoices.some(function (agency) { return !agency.currentSignature; }); %>
-  <% const firstPendingAgency = agencyChoices.find(function (agency) { return !agency.currentSignature; }); %>
-  <% const signingAgencyName = firstPendingAgency ? firstPendingAgency.name : (agencyChoices[0] ? agencyChoices[0].name : "your agency"); %>
-
-  <div class="mouWorkspace">
-    <section class="card mouWorkspace__document" id="mouDocumentSection">
-      <div class="mouViewerToolbar">
-        <div>
-          <h2 style="margin:0;"><%= stream.title %></h2>
-          <div class="muted">Review the exact current version before signing.</div>
+  <div class="mouWorkspace <%= showSignedEvidence ? "mouWorkspace--single" : "" %>">
+    <section class="card mouWorkspace__document <%= showSignedEvidence ? "mouViewerCard" : "" %>" id="mouDocumentSection">
+      <% if (showSignedEvidence) { %>
+        <%- signedEvidenceHtml %>
+      <% } else { %>
+        <div class="mouViewerToolbar">
+          <div>
+            <h2 style="margin:0;"><%= stream.title %></h2>
+            <div class="muted">Review the exact current version before signing.</div>
+          </div>
+          <% if (contentType === "pdf") { %>
+            <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= fileUrl %>">Open PDF</a>
+          <% } %>
         </div>
         <% if (contentType === "pdf") { %>
-          <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= fileUrl %>">Open PDF</a>
+          <iframe class="mouPdfFrame" src="<%= fileUrl %>" title="<%= stream.title %>"></iframe>
+        <% } else { %>
+          <div class="mouDocumentShell">
+            <%- html %>
+          </div>
         <% } %>
-      </div>
-      <% if (contentType === "pdf") { %>
-        <iframe class="mouPdfFrame" src="<%= fileUrl %>" title="<%= stream.title %>"></iframe>
-      <% } else { %>
-        <div class="mouDocumentShell">
-          <%- html %>
+        <div class="mouPrintSignatureBlock" id="mouPrintSignatureBlock">
+          <p style="margin:0 0 16px 0;">
+            By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
+          </p>
+          <div style="margin:0 0 12px 0;">Signature: ________________________________________________</div>
+          <div style="margin:0 0 12px 0;">Printed Name: <span id="printSignerName">_____________________________________________</span></div>
+          <div style="margin:0 0 12px 0;">Position / Role: <span id="printSignerRole">____________________________________________</span></div>
+          <div style="margin:0;">Date: ________________________________</div>
         </div>
       <% } %>
-      <div class="mouPrintSignatureBlock" id="mouPrintSignatureBlock">
-        <p style="margin:0 0 16px 0;">
-          By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
-        </p>
-        <div style="margin:0 0 12px 0;">Signature: ________________________________________________</div>
-        <div style="margin:0 0 12px 0;">Printed Name: <span id="printSignerName">_____________________________________________</span></div>
-        <div style="margin:0 0 12px 0;">Position / Role: <span id="printSignerRole">____________________________________________</span></div>
-        <div style="margin:0;">Date: ________________________________</div>
-      </div>
     </section>
 
+    <% if (!showSignedEvidence) { %>
     <section class="card mouWorkspace__sidebar">
       <h2 style="margin-top:0;">View / Sign Document</h2>
       <% if (!hasPendingAgency) { %>
@@ -173,6 +182,7 @@
         </div>
       </form>
     </section>
+    <% } %>
   </div>
 </main>
 
@@ -186,20 +196,20 @@
   var printBtn = document.getElementById("printDocumentBtn");
   var downloadBtn = document.getElementById("downloadDocumentBtn");
   var signatureMsg = document.getElementById("signatureMsg");
-  var signerNameInput = form.querySelector("input[name='attestationText']");
-  var signerRoleInput = form.querySelector("input[name='signerRole']");
+  var signerNameInput = form ? form.querySelector("input[name='attestationText']") : null;
+  var signerRoleInput = form ? form.querySelector("input[name='signerRole']") : null;
   var signedCopyInput = document.getElementById("signedCopyFile");
   var printSignerName = document.getElementById("printSignerName");
   var printSignerRole = document.getElementById("printSignerRole");
   var documentSection = document.getElementById("mouDocumentSection");
   var documentShell = documentSection ? documentSection.querySelector(".mouDocumentShell") : null;
-  var downloadUrl = <%- JSON.stringify(downloadUrl || "") %>;
+  var activeDownloadUrl = <%- JSON.stringify(activeDownloadUrl || "") %>;
+  var isSignedView = <%- JSON.stringify(showSignedEvidence) %>;
   var contentType = <%- JSON.stringify(contentType || "") %>;
   var documentTitle = <%- JSON.stringify(stream.title || "document") %>;
   var signingAgencyName = <%- JSON.stringify(signingAgencyName) %>;
-  if (!canvas || !form || !hidden) return;
 
-  var ctx = canvas.getContext("2d");
+  var ctx = canvas ? canvas.getContext("2d") : null;
   var drawing = false;
   var hasInk = false;
 
@@ -253,8 +263,12 @@
   }
 
   async function downloadDocumentPdf() {
+    if (isSignedView && activeDownloadUrl) {
+      window.location.href = activeDownloadUrl;
+      return;
+    }
     if (String(contentType || "").toLowerCase() === "pdf") {
-      window.location.href = downloadUrl;
+      window.location.href = activeDownloadUrl;
       return;
     }
 
@@ -369,6 +383,8 @@
       });
     });
   }
+
+  if (!canvas || !form || !hidden || !ctx) return;
 
   if (signerNameInput) signerNameInput.addEventListener("input", updatePrintableFooterFields);
   if (signerRoleInput) signerRoleInput.addEventListener("input", updatePrintableFooterFields);

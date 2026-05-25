@@ -401,6 +401,12 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
       agencyId,
       version: req.query.version,
     });
+    if (req.query.download === "1") {
+      const fileName = `${evidence.stream?.title || "mou"}-${agencyId}-v${evidence.version?.version || "signed"}-signed.html`;
+      res.type("text/html; charset=utf-8");
+      res.setHeader("Content-Disposition", buildContentDisposition("attachment", fileName));
+      return res.sendFile(path.join(__dirname, "..", "data", evidence.signature.signedHtmlPath));
+    }
     res.render("mou_view", {
       mode: "signed_evidence",
       stream: evidence.stream,
@@ -475,6 +481,20 @@ router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission,
       });
     }
     const contentUrls = mouService.buildContentUrls(out.stream, out.targetVersion);
+    const currentAgency = agencyChoices[0] || null;
+    const currentAgencySignature = currentAgency?.currentSignature || null;
+    const signedEvidence =
+      currentAgency && currentAgencySignature
+        ? mouService.getAgencyEvidence({
+            mouId: out.stream.mouId,
+            agencyId: currentAgency.suffix,
+            version: out.targetVersion.version,
+          })
+        : null;
+    const signedEvidenceViewUrl =
+      currentAgency && currentAgencySignature
+        ? `/mou/agency/${encodeURIComponent(out.stream.mouId)}/${encodeURIComponent(currentAgency.suffix)}?version=${encodeURIComponent(out.targetVersion.version)}`
+        : "";
     res.render("mou_sign", {
       stream: out.stream,
       version: out.targetVersion,
@@ -482,6 +502,10 @@ router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission,
       contentType: out.contentType,
       fileUrl: contentUrls.fileUrl,
       downloadUrl: contentUrls.downloadUrl,
+      signedEvidenceHtml: signedEvidence?.html || "",
+      signedEvidenceSignature: signedEvidence?.signature || null,
+      signedEvidenceViewUrl,
+      signedEvidenceDownloadUrl: signedEvidenceViewUrl ? `${signedEvidenceViewUrl}&download=1` : "",
       fileName: out.fileName,
       scopeLabel: mouService.getScopeLabel(out.stream),
       agencyChoices,

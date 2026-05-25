@@ -1001,6 +1001,10 @@ label.btn {
     grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
 }
 
+.mouWorkspace--single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .mouWorkspace__document,
 .mouWorkspace__sidebar {
     min-width: 0;
@@ -1042,6 +1046,24 @@ label.btn {
     padding-left: 1rem;
     border-left: 4px solid var(--line);
     color: var(--muted);
+}
+
+.signed-shell .signed-header,
+.signed-shell .signed-header *,
+.signed-shell .signed-body,
+.signed-shell .signed-body * {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
+
+.signed-shell .signed-header,
+.signed-shell .signed-body {
+    background: #ffffff;
+}
+
+.signed-shell .signed-header a,
+.signed-shell .signed-body a {
+    color: #2563eb !important;
 }
 
 .mouSignatureCanvas {

@@ -1162,9 +1162,11 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
   return [
     "<style>",
     "  .signed-shell { max-width: 1180px; margin: 0 auto; }",
-    "  .signed-header { margin-bottom: 24px; background: #ffffff; padding: 20px 24px; border-radius: 16px; border: 1px solid #dbe4f0; }",
+    "  .signed-header { margin-bottom: 24px; background: #ffffff; color: #111827 !important; padding: 20px 24px; border-radius: 16px; border: 1px solid #dbe4f0; }",
     "  .signed-header h1 { margin: 0 0 8px 0; }",
-    "  .signed-body { background: #ffffff; border-radius: 16px; padding: 24px; border: 1px solid #dbe4f0; }",
+    "  .signed-header *, .signed-body, .signed-body * { color: #111827 !important; -webkit-text-fill-color: #111827 !important; }",
+    "  .signed-body { background: #ffffff; color: #111827 !important; border-radius: 16px; padding: 24px; border: 1px solid #dbe4f0; }",
+    "  .signed-body a, .signed-header a { color: #2563eb !important; }",
     "  .signed-uploaded-copy { margin-top: 24px; border-top: 2px solid #0f172a; padding-top: 16px; }",
     "  .signature-card { margin-top: 24px; border-top: 2px solid #0f172a; padding-top: 16px; }",
     "  .signature-image { max-width: 360px; max-height: 160px; display: block; margin-bottom: 12px; border-bottom: 1px solid #94a3b8; padding-bottom: 10px; }",
