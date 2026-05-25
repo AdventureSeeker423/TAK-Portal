@@ -194,6 +194,15 @@
         <input type="hidden" name="signMethodMode" id="signMethodMode" value="" />
 
         <div class="mouSignSection">
+          <div class="mouSignSectionTitle">Choose Signing Method</div>
+          <div class="mouSignMethodSwitch" role="tablist" aria-label="Signing method">
+            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="esign" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>E-Sign Here</button>
+            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="upload" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>Upload Signed Copy</button>
+          </div>
+          <div class="msg" id="signMethodMsg" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="mouSignSection">
           <div class="mouSignSectionTitle">Signer Details</div>
           <div class="mouSignerIntro">
             By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
@@ -210,15 +219,6 @@
               <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
             </label>
           </div>
-        </div>
-
-        <div class="mouSignSection">
-          <div class="mouSignSectionTitle">Choose Signing Method</div>
-          <div class="mouSignMethodSwitch" role="tablist" aria-label="Signing method">
-            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="esign" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>E-Sign Here</button>
-            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="upload" aria-pressed="false" <%= hasPendingAgency ? "" : "disabled" %>>Upload Signed Copy</button>
-          </div>
-          <div class="msg" id="signMethodMsg" style="margin-top:10px;"></div>
         </div>
 
         <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
