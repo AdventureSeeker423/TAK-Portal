@@ -2,32 +2,44 @@
 <%- include("../partials/sidebar") %>
 
 <main class="main">
-  <h1>Edit MOU Draft</h1>
+  <section class="mouHero">
+    <div class="mouHero__copy">
+      <span class="mouEyebrow">Draft Editor</span>
+      <h1>Edit MOU Draft</h1>
+      <div class="mouBadgeRow">
+        <span class="mouBadge"><%= stream.scopeType === "agency" ? "Agency specific" : "Serverwide" %></span>
+        <span class="mouBadge mouBadge--soft">v<%= version.version %></span>
+        <span class="mouBadge mouBadge--soft"><%= String(contentType || version.contentType || "html").toUpperCase() %></span>
+      </div>
+    </div>
+    <div class="mouHero__actions">
+      <a class="btn secondary" href="/admin/mou">Back</a>
+      <a class="btn" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/preview">Preview</a>
+    </div>
+  </section>
 
   <% if (error) { %>
-    <div class="card" style="margin-bottom:12px;">
+    <div class="card mouCallout mouCallout--danger">
       <div class="msg bad"><%= error %></div>
     </div>
   <% } %>
 
   <% if (success) { %>
-    <div class="card" style="margin-bottom:12px;">
+    <div class="card mouCallout">
       <div class="msg ok"><%= success %></div>
     </div>
   <% } %>
 
-  <div class="card">
-    <div class="row" style="justify-content:space-between;align-items:center;">
-      <div>
-        <strong><%= stream.title %></strong><br />
-        <span class="muted">Draft version v<%= version.version %></span>
+  <div class="mouWorkspace">
+    <section class="card mouWorkspace__document">
+      <div class="mouSectionHeader">
+        <div>
+          <h2>Draft content</h2>
+          <p class="muted">Switch between serverwide and agency-specific scope, and between HTML and PDF-backed content.</p>
+        </div>
       </div>
-      <a class="btn" href="/admin/mou">Back</a>
-    </div>
-  </div>
 
-  <div class="card" style="margin-top:12px;">
-    <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/save">
+      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/save" enctype="multipart/form-data" data-mou-draft-form="edit">
       <div class="grid2">
         <label>
           Title
@@ -37,6 +49,32 @@
         <label>
           Slug
           <input type="text" name="slug" value="<%= stream.slug || '' %>" />
+        </label>
+
+        <label>
+          Scope
+          <select name="scopeType" data-mou-scope-select>
+            <option value="global" <%= stream.scopeType === "global" ? "selected" : "" %>>Serverwide</option>
+            <option value="agency" <%= stream.scopeType === "agency" ? "selected" : "" %>>Agency specific</option>
+          </select>
+        </label>
+
+        <label data-mou-agency-field <%= stream.scopeType === "agency" ? "" : "hidden" %>>
+          Target agency
+          <select name="agencySuffix">
+            <option value="">Select agency</option>
+            <% agencies.forEach(function (agency) { %>
+              <option value="<%= agency.suffix %>" <%= agency.suffix === stream.agencySuffix ? "selected" : "" %>><%= agency.name %></option>
+            <% }); %>
+          </select>
+        </label>
+
+        <label>
+          Content type
+          <select name="contentType" data-mou-content-select>
+            <option value="html" <%= (contentType || version.contentType) === "html" ? "selected" : "" %>>HTML</option>
+            <option value="pdf" <%= (contentType || version.contentType) === "pdf" ? "selected" : "" %>>PDF upload</option>
+          </select>
         </label>
 
         <label>
@@ -53,16 +91,54 @@
         </label>
       </div>
 
-      <label style="margin-top:12px;display:block;">
+      <label data-mou-html-field style="margin-top:12px;display:block;" <%= (contentType || version.contentType) === "html" ? "" : "hidden" %>>
         Draft HTML
-        <textarea name="html" rows="24" required><%- html %></textarea>
+        <textarea name="html" rows="24"><%- html %></textarea>
+      </label>
+
+      <label data-mou-file-field style="margin-top:12px;display:block;" <%= (contentType || version.contentType) === "pdf" ? "" : "hidden" %>>
+        Replace PDF
+        <input type="file" name="contentFile" accept="application/pdf,.pdf" />
+        <% if ((contentType || version.contentType) === "pdf" && fileName) { %>
+          <div class="muted" style="margin-top:6px;">Current file: <%= fileName %></div>
+        <% } %>
       </label>
 
       <div class="row" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
         <button class="btn" type="submit">Save Draft</button>
         <a class="btn secondary" href="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>/preview">Preview</a>
       </div>
-    </form>
+      </form>
+    </section>
+
+    <section class="card mouWorkspace__sidebar">
+      <h2 style="margin-top:0;">Draft summary</h2>
+      <div class="mouAgencyList">
+        <div class="mouAgencyList__row">
+          <div>
+            <strong>Scope</strong>
+            <div class="muted"><%= stream.scopeType === "agency" ? "Agency specific" : "Serverwide" %></div>
+          </div>
+          <span class="mouStatus mouStatus--soft"><%= stream.scopeType === "agency" ? (stream.agencySuffix || "agency") : "all agencies" %></span>
+        </div>
+        <div class="mouAgencyList__row">
+          <div>
+            <strong>Content</strong>
+            <div class="muted"><%= String(contentType || version.contentType || "html").toUpperCase() %> source</div>
+          </div>
+          <span class="mouStatus mouStatus--soft"><%= fileName || "authored in portal" %></span>
+        </div>
+      </div>
+
+      <% if ((contentType || version.contentType) === "pdf" && fileUrl) { %>
+        <div class="mouActionRow" style="margin-top: 14px;">
+          <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= fileUrl %>">Open draft PDF</a>
+          <% if (downloadUrl) { %>
+            <a class="btn secondary" href="<%= downloadUrl %>">Download draft PDF</a>
+          <% } %>
+        </div>
+      <% } %>
+    </section>
   </div>
 
   <div class="grid2" style="margin-top:12px;">
@@ -90,3 +166,32 @@
     </div>
   </div>
 </main>
+
+<script>
+(function () {
+  var form = document.querySelector("[data-mou-draft-form='edit']");
+  if (!form) return;
+
+  var scopeSelect = form.querySelector("[data-mou-scope-select]");
+  var agencyField = form.querySelector("[data-mou-agency-field]");
+  var agencySelect = agencyField ? agencyField.querySelector("select") : null;
+  var contentSelect = form.querySelector("[data-mou-content-select]");
+  var htmlField = form.querySelector("[data-mou-html-field]");
+  var htmlArea = htmlField ? htmlField.querySelector("textarea") : null;
+  var fileField = form.querySelector("[data-mou-file-field]");
+
+  function sync() {
+    var scopeValue = scopeSelect ? scopeSelect.value : "global";
+    var contentValue = contentSelect ? contentSelect.value : "html";
+    if (agencyField) agencyField.hidden = scopeValue !== "agency";
+    if (agencySelect) agencySelect.required = scopeValue === "agency";
+    if (htmlField) htmlField.hidden = contentValue !== "html";
+    if (htmlArea) htmlArea.required = contentValue === "html";
+    if (fileField) fileField.hidden = contentValue !== "pdf";
+  }
+
+  if (scopeSelect) scopeSelect.addEventListener("change", sync);
+  if (contentSelect) contentSelect.addEventListener("change", sync);
+  sync();
+})();
+</script>

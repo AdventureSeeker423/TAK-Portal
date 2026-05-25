@@ -1,25 +1,23 @@
 const crypto = require("crypto");
+const fs = require("fs");
 const path = require("path");
 const agenciesStore = require("./agencies.service");
 const accessSvc = require("./access.service");
-const {
-  getBool,
-  getInt,
-} = require("./env");
+const { getBool, getInt } = require("./env");
 const store = require("./mouStore");
 const {
   sanitizeMouHtml,
   sanitizeUserAgreementHtml,
 } = require("./mouHtmlSanitizer");
 
+const PDF_MAX_BYTES = 25 * 1024 * 1024;
+
 function nowIso() {
   return new Date().toISOString();
 }
 
 function makeId() {
-  if (typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
@@ -40,15 +38,15 @@ function getUserKey(authUser) {
   return normalizeText(authUser?.username || authUser?.uid);
 }
 
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function slugify(value) {
   const out = normalizeLower(value)
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return out || "mou";
-}
-
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
 }
 
 function isEnabled() {
@@ -80,8 +78,35 @@ function enforceHtmlSize(html) {
   }
 }
 
+function enforcePdfSize(buffer) {
+  const bytes = Buffer.isBuffer(buffer) ? buffer.length : 0;
+  if (!bytes) {
+    throw new Error("PDF content is empty.");
+  }
+  if (bytes > PDF_MAX_BYTES) {
+    throw new Error("PDF content exceeds the maximum supported upload size.");
+  }
+}
+
 function computeSha256(content) {
-  return crypto.createHash("sha256").update(String(content || ""), "utf8").digest("hex");
+  const value = Buffer.isBuffer(content)
+    ? content
+    : Buffer.from(String(content || ""), "utf8");
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function buildRelativeDataPath(absPath) {
+  const dataDir = path.join(__dirname, "..", "data");
+  const relative = path.relative(dataDir, absPath).replace(/\\/g, "/");
+  return relative.startsWith("../") ? "" : relative;
+}
+
+function readBufferSafe(filePath) {
+  try {
+    return fs.readFileSync(filePath);
+  } catch {
+    return Buffer.alloc(0);
+  }
 }
 
 function getIndex() {
@@ -90,6 +115,7 @@ function getIndex() {
   if (!Array.isArray(index.streams)) {
     index.streams = [];
   }
+  index.streams = index.streams.map(ensureStreamShape);
   return index;
 }
 
@@ -100,12 +126,8 @@ function saveIndex(index) {
 function getUserAgreementStore() {
   store.ensureStorage();
   const agreement = store.loadUserAgreement();
-  if (!Array.isArray(agreement.versions)) {
-    agreement.versions = [];
-  }
-  if (!Number.isFinite(Number(agreement.currentVersion))) {
-    agreement.currentVersion = 0;
-  }
+  if (!Array.isArray(agreement.versions)) agreement.versions = [];
+  if (!Number.isFinite(Number(agreement.currentVersion))) agreement.currentVersion = 0;
   return agreement;
 }
 
@@ -135,9 +157,7 @@ function saveViewsStore(data) {
 
 function getRemindersStore() {
   const data = store.loadReminders();
-  if (!data || typeof data !== "object") {
-    return { schemaVersion: 1, agency: {} };
-  }
+  if (!data || typeof data !== "object") return { schemaVersion: 1, agency: {} };
   if (!data.agency || typeof data.agency !== "object") data.agency = {};
   return data;
 }
@@ -146,40 +166,20 @@ function saveRemindersStore(data) {
   store.saveReminders(data);
 }
 
-function sortVersions(versions) {
-  return (Array.isArray(versions) ? versions : [])
-    .slice()
-    .sort((a, b) => normalizeVersion(a?.version) - normalizeVersion(b?.version));
+function normalizeScopeType(value) {
+  return normalizeLower(value) === "agency" ? "agency" : "global";
 }
 
-function findStream(index, mouId) {
-  return (index.streams || []).find((stream) => String(stream?.mouId || "") === String(mouId || ""));
+function normalizeContentType(value) {
+  return normalizeLower(value) === "pdf" ? "pdf" : "html";
 }
 
-function findVersion(stream, version) {
-  const numeric = normalizeVersion(version);
-  return (stream?.versions || []).find((entry) => normalizeVersion(entry?.version) === numeric) || null;
+function getFileExtensionForContentType(contentType) {
+  return contentType === "pdf" ? "pdf" : "html";
 }
 
-function getCurrentDeployedVersion(stream) {
-  return sortVersions(stream?.versions || []).find((entry) => String(entry?.state || "") === "deployed") || null;
-}
-
-function getLatestVersion(stream) {
-  const versions = sortVersions(stream?.versions || []);
-  return versions.length ? versions[versions.length - 1] : null;
-}
-
-function readContentForVersion(versionRecord) {
-  const rel = normalizeText(versionRecord?.contentHtmlPath);
-  if (!rel) return "";
-  return store.readHtml(path.join(__dirname, "..", "data", rel));
-}
-
-function buildRelativeDataPath(absPath) {
-  const dataDir = path.join(__dirname, "..", "data");
-  const relative = path.relative(dataDir, absPath).replace(/\\/g, "/");
-  return relative.startsWith("../") ? "" : relative;
+function normalizeAgencySuffix(value) {
+  return normalizeLower(value);
 }
 
 function normalizedReminderDays(value) {
@@ -193,23 +193,152 @@ function normalizedMandatory(value) {
   return value === true || String(value || "").toLowerCase() === "true";
 }
 
-function validateDraftFields(input) {
-  const title = normalizeText(input?.title);
-  const slug = slugify(input?.slug || title);
-  const reminderDays = normalizedReminderDays(input?.reminderDays);
-  const mandatory = normalizedMandatory(input?.mandatory);
-  const html = sanitizeMouHtml(input?.html || "");
+function sortVersions(versions) {
+  return (Array.isArray(versions) ? versions : [])
+    .slice()
+    .sort((a, b) => normalizeVersion(a?.version) - normalizeVersion(b?.version));
+}
 
-  requireNonEmpty(title, "Title");
-  enforceHtmlSize(html);
+function sortStreams(streams) {
+  return (Array.isArray(streams) ? streams : [])
+    .slice()
+    .sort((a, b) =>
+      String(a?.title || "").localeCompare(String(b?.title || ""), undefined, {
+        sensitivity: "base",
+      })
+    );
+}
 
+function ensureVersionShape(versionRecord) {
+  const contentPath = normalizeText(
+    versionRecord?.contentPath || versionRecord?.contentHtmlPath || ""
+  );
+  const contentType = normalizeContentType(versionRecord?.contentType || (contentPath.endsWith(".pdf") ? "pdf" : "html"));
   return {
-    title,
-    slug,
-    reminderDays,
-    mandatory,
-    html,
+    version: normalizeVersion(versionRecord?.version),
+    state: normalizeText(versionRecord?.state || "draft") || "draft",
+    contentType,
+    fileExtension: normalizeText(versionRecord?.fileExtension || getFileExtensionForContentType(contentType)),
+    originalFileName: normalizeText(versionRecord?.originalFileName || ""),
+    contentPath,
+    contentSha256: normalizeText(versionRecord?.contentSha256 || ""),
+    createdAt: versionRecord?.createdAt || null,
+    createdBy: versionRecord?.createdBy || null,
+    updatedAt: versionRecord?.updatedAt || null,
+    updatedBy: versionRecord?.updatedBy || null,
+    deployedAt: versionRecord?.deployedAt || null,
+    deployedBy: versionRecord?.deployedBy || null,
+    supersededAt: versionRecord?.supersededAt || null,
+    supersededBy: versionRecord?.supersededBy || null,
+    signatures: Array.isArray(versionRecord?.signatures) ? versionRecord.signatures : [],
   };
+}
+
+function ensureStreamShape(stream) {
+  return {
+    mouId: normalizeText(stream?.mouId),
+    title: normalizeText(stream?.title),
+    slug: normalizeText(stream?.slug || slugify(stream?.title)),
+    mandatory: normalizedMandatory(stream?.mandatory),
+    reminderDays: normalizedReminderDays(stream?.reminderDays),
+    scopeType: normalizeScopeType(stream?.scopeType),
+    agencySuffix: normalizeAgencySuffix(stream?.agencySuffix),
+    createdAt: stream?.createdAt || null,
+    createdBy: stream?.createdBy || null,
+    updatedAt: stream?.updatedAt || null,
+    updatedBy: stream?.updatedBy || null,
+    versions: sortVersions((stream?.versions || []).map(ensureVersionShape)),
+  };
+}
+
+function findStream(index, mouId) {
+  return (index.streams || []).find(
+    (stream) => String(stream?.mouId || "") === String(mouId || "")
+  );
+}
+
+function findVersion(stream, version) {
+  const numeric = normalizeVersion(version);
+  return (
+    (stream?.versions || []).find(
+      (entry) => normalizeVersion(entry?.version) === numeric
+    ) || null
+  );
+}
+
+function getCurrentDeployedVersion(stream) {
+  return (
+    sortVersions(stream?.versions || []).find(
+      (entry) => String(entry?.state || "") === "deployed"
+    ) || null
+  );
+}
+
+function getLatestVersion(stream) {
+  const versions = sortVersions(stream?.versions || []);
+  return versions.length ? versions[versions.length - 1] : null;
+}
+
+function getAgencyBySuffix(agencySuffix) {
+  const suffix = normalizeAgencySuffix(agencySuffix);
+  return (
+    (agenciesStore.load() || []).find(
+      (agency) => normalizeAgencySuffix(agency?.suffix) === suffix
+    ) || null
+  );
+}
+
+function getAllAgencies() {
+  return agenciesStore.load() || [];
+}
+
+function getTargetAgenciesForStream(stream) {
+  if (normalizeScopeType(stream?.scopeType) === "global") {
+    return getAllAgencies();
+  }
+  const agency = getAgencyBySuffix(stream?.agencySuffix);
+  return agency ? [agency] : [];
+}
+
+function getScopeLabel(stream) {
+  if (normalizeScopeType(stream?.scopeType) === "agency") {
+    const agency = getAgencyBySuffix(stream?.agencySuffix);
+    return agency ? `Agency: ${agency.name || agency.groupPrefix || agency.suffix}` : "Agency specific";
+  }
+  return "Serverwide";
+}
+
+function getStreamAgencySuffixes(stream) {
+  if (normalizeScopeType(stream?.scopeType) === "global") {
+    return getAllAgencies()
+      .map((agency) => normalizeAgencySuffix(agency?.suffix))
+      .filter(Boolean);
+  }
+  return normalizeAgencySuffix(stream?.agencySuffix)
+    ? [normalizeAgencySuffix(stream.agencySuffix)]
+    : [];
+}
+
+function resolveUserAgencySuffix(authUser) {
+  if (!authUser) return "";
+  return normalizeAgencySuffix(accessSvc.resolveAgencySuffixFromUser(authUser));
+}
+
+function streamAppliesToUser(stream, authUser) {
+  if (!authUser) return false;
+  if (authUser.isGlobalAdmin) return true;
+  const scopeType = normalizeScopeType(stream?.scopeType);
+  if (scopeType === "global") return true;
+  const targetAgency = normalizeAgencySuffix(stream?.agencySuffix);
+  if (!targetAgency) return false;
+  if (authUser.isAgencyAdmin) {
+    return accessSvc.isSuffixAllowed(authUser, targetAgency);
+  }
+  return resolveUserAgencySuffix(authUser) === targetAgency;
+}
+
+function getVisibleStreamsForUser(authUser) {
+  return listStreams().filter((stream) => streamAppliesToUser(stream, authUser));
 }
 
 function listStreams() {
@@ -217,16 +346,20 @@ function listStreams() {
   return sortStreams(index.streams || []);
 }
 
-function sortStreams(streams) {
-  return (Array.isArray(streams) ? streams : [])
-    .slice()
-    .sort((a, b) => String(a?.title || "").localeCompare(String(b?.title || ""), undefined, { sensitivity: "base" }));
+function listDeployedStreams() {
+  return sortStreams(listStreams().filter((stream) => !!getCurrentDeployedVersion(stream)));
+}
+
+function listDeployedStreamsForUser(authUser) {
+  return sortStreams(
+    listDeployedStreams().filter((stream) => streamAppliesToUser(stream, authUser))
+  );
 }
 
 function getStreamById(mouId) {
   const index = getIndex();
-  const stream = findStream(index, mouId);
-  if (!stream) throw new Error("MOU stream not found.");
+  const stream = ensureStreamShape(findStream(index, mouId));
+  if (!stream?.mouId) throw new Error("MOU stream not found.");
   return clone(stream);
 }
 
@@ -243,45 +376,192 @@ function getStreamAndVersion(mouId, version) {
   };
 }
 
-function createDraftStream({ title, slug, html, reminderDays, mandatory, actor }) {
+function getAbsoluteContentPath(versionRecord) {
+  const rel = normalizeText(versionRecord?.contentPath || versionRecord?.contentHtmlPath);
+  if (!rel) return "";
+  return path.join(__dirname, "..", "data", rel);
+}
+
+function readContentBuffer(versionRecord) {
+  const absPath = getAbsoluteContentPath(versionRecord);
+  return absPath ? readBufferSafe(absPath) : Buffer.alloc(0);
+}
+
+function readHtmlContent(versionRecord) {
+  const buffer = readContentBuffer(versionRecord);
+  return buffer.length ? buffer.toString("utf8") : "";
+}
+
+function persistDraftContent({ mouId, version, contentType, html, file }) {
+  const ext = getFileExtensionForContentType(contentType);
+  const draftPath = store.getDraftContentPath(mouId, version, ext);
+  if (contentType === "pdf") {
+    const buffer = Buffer.isBuffer(file?.buffer) ? file.buffer : Buffer.alloc(0);
+    enforcePdfSize(buffer);
+    store.writeBinary(draftPath, buffer);
+    return {
+      absPath: draftPath,
+      contentSha256: computeSha256(buffer),
+      originalFileName: normalizeText(file?.originalname || `mou-${version}.pdf`),
+    };
+  }
+
+  const safeHtml = sanitizeMouHtml(html || "");
+  requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "MOU HTML");
+  enforceHtmlSize(safeHtml);
+  store.writeHtml(draftPath, safeHtml);
+  return {
+    absPath: draftPath,
+    contentSha256: computeSha256(safeHtml),
+    originalFileName: normalizeText(file?.originalname || ""),
+  };
+}
+
+function buildDraftInput(input, existingVersionRecord) {
+  const title = normalizeText(input?.title);
+  const slug = slugify(input?.slug || title);
+  const reminderDays = normalizedReminderDays(input?.reminderDays);
+  const mandatory = normalizedMandatory(input?.mandatory);
+  const scopeType = normalizeScopeType(input?.scopeType);
+  const agencySuffix = normalizeAgencySuffix(input?.agencySuffix);
+  const contentType = normalizeContentType(
+    input?.contentType || existingVersionRecord?.contentType
+  );
+
+  requireNonEmpty(title, "Title");
+  if (scopeType === "agency") {
+    requireNonEmpty(agencySuffix, "Agency");
+    if (!getAgencyBySuffix(agencySuffix)) {
+      throw new Error("Selected agency is not valid.");
+    }
+  }
+
+  const existingContentType = normalizeContentType(existingVersionRecord?.contentType);
+
+  if (contentType === "html") {
+    requireNonEmpty(input?.html, "Draft HTML");
+  } else if ((!existingVersionRecord || existingContentType !== "pdf") && !input?.file) {
+    throw new Error("A PDF file is required.");
+  }
+
+  return {
+    title,
+    slug,
+    reminderDays,
+    mandatory,
+    scopeType,
+    agencySuffix: scopeType === "agency" ? agencySuffix : "",
+    contentType,
+    html: input?.html || "",
+    file: input?.file || null,
+  };
+}
+
+function createDraftVersionRecord({
+  version,
+  contentType,
+  contentPath,
+  contentSha256,
+  originalFileName,
+  actor,
+}) {
+  const now = nowIso();
+  return ensureVersionShape({
+    version,
+    state: "draft",
+    contentType,
+    fileExtension: getFileExtensionForContentType(contentType),
+    originalFileName,
+    contentPath,
+    contentSha256,
+    createdAt: now,
+    createdBy: actor?.uid || actor?.username || null,
+    updatedAt: now,
+    updatedBy: actor?.uid || actor?.username || null,
+    signatures: [],
+  });
+}
+
+function copyVersionContentToDraft(mouId, targetVersion, sourceVersion) {
+  const contentType = normalizeContentType(sourceVersion?.contentType);
+  const extension = getFileExtensionForContentType(contentType);
+  const sourceAbs = getAbsoluteContentPath(sourceVersion);
+  const draftAbs = store.getDraftContentPath(mouId, targetVersion, extension);
+  const contentBuffer = readBufferSafe(sourceAbs);
+  if (!contentBuffer.length) {
+    throw new Error("The previous version content could not be read.");
+  }
+  if (contentType === "pdf") {
+    store.writeBinary(draftAbs, contentBuffer);
+  } else {
+    store.writeHtml(draftAbs, contentBuffer.toString("utf8"));
+  }
+  return {
+    absPath: draftAbs,
+    contentType,
+    contentSha256: computeSha256(contentBuffer),
+    originalFileName: normalizeText(sourceVersion?.originalFileName || ""),
+  };
+}
+
+function createDraftStream({
+  title,
+  slug,
+  html,
+  file,
+  contentType,
+  scopeType,
+  agencySuffix,
+  reminderDays,
+  mandatory,
+  actor,
+}) {
   requireEnabled();
-  const draft = validateDraftFields({ title, slug, html, reminderDays, mandatory });
+  const draft = buildDraftInput({
+    title,
+    slug,
+    html,
+    file,
+    contentType,
+    scopeType,
+    agencySuffix,
+    reminderDays,
+    mandatory,
+  });
   const index = getIndex();
   const mouId = makeId();
   const version = 1;
-  const timestamp = nowIso();
-  const draftPath = store.getDraftPath(mouId, version);
-  store.writeHtml(draftPath, draft.html);
-
-  const stream = {
+  const persisted = persistDraftContent({
+    mouId,
+    version,
+    contentType: draft.contentType,
+    html: draft.html,
+    file: draft.file,
+  });
+  const now = nowIso();
+  const stream = ensureStreamShape({
     mouId,
     title: draft.title,
     slug: draft.slug,
     mandatory: draft.mandatory,
     reminderDays: draft.reminderDays,
-    createdAt: timestamp,
+    scopeType: draft.scopeType,
+    agencySuffix: draft.agencySuffix,
+    createdAt: now,
     createdBy: actor?.uid || actor?.username || null,
-    updatedAt: timestamp,
+    updatedAt: now,
     updatedBy: actor?.uid || actor?.username || null,
     versions: [
-      {
+      createDraftVersionRecord({
         version,
-        state: "draft",
-        contentHtmlPath: buildRelativeDataPath(draftPath),
-        contentSha256: null,
-        createdAt: timestamp,
-        createdBy: actor?.uid || actor?.username || null,
-        updatedAt: timestamp,
-        updatedBy: actor?.uid || actor?.username || null,
-        deployedAt: null,
-        deployedBy: null,
-        supersededAt: null,
-        supersededBy: null,
-        signatures: [],
-      },
+        contentType: draft.contentType,
+        contentPath: buildRelativeDataPath(persisted.absPath),
+        contentSha256: persisted.contentSha256,
+        originalFileName: persisted.originalFileName,
+        actor,
+      }),
     ],
-  };
-
+  });
   index.streams.push(stream);
   saveIndex(index);
   return clone(stream);
@@ -296,60 +576,88 @@ function createNextDraft({ mouId, actor }) {
   if (existingDraft) {
     throw new Error("A draft already exists for this stream.");
   }
-
   const latest = getLatestVersion(stream);
   const nextVersion = normalizeVersion(latest?.version) + 1;
-  const timestamp = nowIso();
-  const sourceHtml = latest ? readContentForVersion(latest) : "";
-  const sanitizedHtml = sanitizeMouHtml(sourceHtml);
-  enforceHtmlSize(sanitizedHtml);
-  const draftPath = store.getDraftPath(mouId, nextVersion);
-  store.writeHtml(draftPath, sanitizedHtml);
-
-  stream.versions.push({
-    version: nextVersion,
-    state: "draft",
-    contentHtmlPath: buildRelativeDataPath(draftPath),
-    contentSha256: null,
-    createdAt: timestamp,
-    createdBy: actor?.uid || actor?.username || null,
-    updatedAt: timestamp,
-    updatedBy: actor?.uid || actor?.username || null,
-    deployedAt: null,
-    deployedBy: null,
-    supersededAt: null,
-    supersededBy: null,
-    signatures: [],
-  });
-  stream.updatedAt = timestamp;
+  const copied = copyVersionContentToDraft(mouId, nextVersion, latest);
+  stream.versions.push(
+    createDraftVersionRecord({
+      version: nextVersion,
+      contentType: copied.contentType,
+      contentPath: buildRelativeDataPath(copied.absPath),
+      contentSha256: copied.contentSha256,
+      originalFileName: copied.originalFileName,
+      actor,
+    })
+  );
+  stream.updatedAt = nowIso();
   stream.updatedBy = actor?.uid || actor?.username || null;
   saveIndex(index);
   return clone(stream);
 }
 
-function updateDraft({ mouId, version, title, slug, html, reminderDays, mandatory, actor }) {
+function updateDraft({
+  mouId,
+  version,
+  title,
+  slug,
+  html,
+  file,
+  contentType,
+  scopeType,
+  agencySuffix,
+  reminderDays,
+  mandatory,
+  actor,
+}) {
   requireEnabled();
-  const update = validateDraftFields({ title, slug, html, reminderDays, mandatory });
   const { index, stream, versionRecord } = getStreamAndVersion(mouId, version);
   if (String(versionRecord.state || "") !== "draft") {
     throw new Error("Only draft versions can be edited.");
   }
 
-  const timestamp = nowIso();
-  const draftPath = store.getDraftPath(mouId, versionRecord.version);
-  store.writeHtml(draftPath, update.html);
+  const update = buildDraftInput({
+    title,
+    slug,
+    html,
+    file,
+    contentType,
+    scopeType,
+    agencySuffix,
+    reminderDays,
+    mandatory,
+  }, versionRecord);
 
+  const now = nowIso();
   stream.title = update.title;
   stream.slug = update.slug;
   stream.reminderDays = update.reminderDays;
   stream.mandatory = update.mandatory;
-  stream.updatedAt = timestamp;
+  stream.scopeType = update.scopeType;
+  stream.agencySuffix = update.agencySuffix;
+  stream.updatedAt = now;
   stream.updatedBy = actor?.uid || actor?.username || null;
 
-  versionRecord.contentHtmlPath = buildRelativeDataPath(draftPath);
-  versionRecord.updatedAt = timestamp;
-  versionRecord.updatedBy = actor?.uid || actor?.username || null;
+  if (update.file || update.contentType !== normalizeContentType(versionRecord.contentType) || update.contentType === "html") {
+    const oldAbsPath = getAbsoluteContentPath(versionRecord);
+    const persisted = persistDraftContent({
+      mouId,
+      version: versionRecord.version,
+      contentType: update.contentType,
+      html: update.html,
+      file: update.file,
+    });
+    if (oldAbsPath && oldAbsPath !== persisted.absPath) {
+      store.deleteFile(oldAbsPath);
+    }
+    versionRecord.contentType = update.contentType;
+    versionRecord.fileExtension = getFileExtensionForContentType(update.contentType);
+    versionRecord.contentPath = buildRelativeDataPath(persisted.absPath);
+    versionRecord.originalFileName = persisted.originalFileName;
+    versionRecord.contentSha256 = persisted.contentSha256;
+  }
 
+  versionRecord.updatedAt = now;
+  versionRecord.updatedBy = actor?.uid || actor?.username || null;
   saveIndex(index);
   return clone(stream);
 }
@@ -360,11 +668,15 @@ function discardDraft({ mouId, version }) {
   if (String(versionRecord.state || "") !== "draft") {
     throw new Error("Only draft versions can be discarded.");
   }
-
-  store.deleteFile(store.getDraftPath(mouId, versionRecord.version));
-  stream.versions = (stream.versions || []).filter((entry) => normalizeVersion(entry?.version) !== normalizeVersion(version));
+  const absPath = getAbsoluteContentPath(versionRecord);
+  if (absPath) store.deleteFile(absPath);
+  stream.versions = (stream.versions || []).filter(
+    (entry) => normalizeVersion(entry?.version) !== normalizeVersion(version)
+  );
   if (!stream.versions.length) {
-    index.streams = (index.streams || []).filter((entry) => String(entry?.mouId || "") !== String(mouId));
+    index.streams = (index.streams || []).filter(
+      (entry) => String(entry?.mouId || "") !== String(mouId)
+    );
   }
   saveIndex(index);
   return true;
@@ -372,7 +684,10 @@ function discardDraft({ mouId, version }) {
 
 function deployDraft({ mouId, version, actor, confirmText }) {
   requireEnabled();
-  if (getBool("MOU_DEPLOY_REQUIRES_TYPED_CONFIRM", true) && normalizeText(confirmText) !== "DEPLOY") {
+  if (
+    getBool("MOU_DEPLOY_REQUIRES_TYPED_CONFIRM", true) &&
+    normalizeText(confirmText) !== "DEPLOY"
+  ) {
     throw new Error('Typed confirmation must equal "DEPLOY".');
   }
 
@@ -381,17 +696,30 @@ function deployDraft({ mouId, version, actor, confirmText }) {
     throw new Error("Only draft versions can be deployed.");
   }
 
-  const draftPath = store.getDraftPath(mouId, versionRecord.version);
-  const html = sanitizeMouHtml(store.readHtml(draftPath));
-  requireNonEmpty(html.replace(/<[^>]+>/g, "").trim(), "MOU HTML");
-  enforceHtmlSize(html);
+  const contentType = normalizeContentType(versionRecord.contentType);
+  const draftAbsPath = getAbsoluteContentPath(versionRecord);
+  const deployedAbsPath = store.getDeployedContentPath(
+    mouId,
+    versionRecord.version,
+    getFileExtensionForContentType(contentType)
+  );
+  const draftBuffer = readBufferSafe(draftAbsPath);
+  if (!draftBuffer.length) {
+    throw new Error("Draft content is missing.");
+  }
 
-  const deployedPath = store.getDeployedPath(mouId, versionRecord.version);
-  store.writeHtml(deployedPath, html);
-  store.deleteFile(draftPath);
+  if (contentType === "pdf") {
+    enforcePdfSize(draftBuffer);
+    store.writeBinary(deployedAbsPath, draftBuffer);
+  } else {
+    const safeHtml = sanitizeMouHtml(draftBuffer.toString("utf8"));
+    requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "MOU HTML");
+    enforceHtmlSize(safeHtml);
+    store.writeHtml(deployedAbsPath, safeHtml);
+  }
+  store.deleteFile(draftAbsPath);
 
   const now = nowIso();
-  const contentSha256 = computeSha256(html);
   const previous = getCurrentDeployedVersion(stream);
   if (previous) {
     previous.state = "superseded";
@@ -400,15 +728,14 @@ function deployDraft({ mouId, version, actor, confirmText }) {
   }
 
   versionRecord.state = "deployed";
-  versionRecord.contentHtmlPath = buildRelativeDataPath(deployedPath);
-  versionRecord.contentSha256 = contentSha256;
+  versionRecord.contentPath = buildRelativeDataPath(deployedAbsPath);
+  versionRecord.contentSha256 = computeSha256(draftBuffer);
   versionRecord.updatedAt = now;
   versionRecord.updatedBy = actor?.uid || actor?.username || null;
   versionRecord.deployedAt = now;
   versionRecord.deployedBy = actor?.uid || actor?.username || null;
-  if (!Array.isArray(versionRecord.signatures)) {
-    versionRecord.signatures = [];
-  }
+  versionRecord.fileExtension = getFileExtensionForContentType(contentType);
+  if (!Array.isArray(versionRecord.signatures)) versionRecord.signatures = [];
 
   stream.updatedAt = now;
   stream.updatedBy = actor?.uid || actor?.username || null;
@@ -418,15 +745,8 @@ function deployDraft({ mouId, version, actor, confirmText }) {
     stream: clone(stream),
     version: clone(versionRecord),
     supersededVersion: previous ? previous.version : null,
-    html,
-    contentSha256,
+    contentSha256: versionRecord.contentSha256,
   };
-}
-
-function listDeployedStreams() {
-  return sortStreams(
-    listStreams().filter((stream) => !!getCurrentDeployedVersion(stream))
-  );
 }
 
 function getDeployedVersionOrLatest(mouId, version) {
@@ -441,13 +761,42 @@ function getDeployedVersionOrLatest(mouId, version) {
     String(requested.state || "") !== "deployed" &&
     String(requested.state || "") !== "superseded";
   const target = shouldRedirectToLatest ? deployed : requested;
+  const contentType = normalizeContentType(target.contentType);
+  const contentBuffer = readContentBuffer(target);
   return {
     stream: clone(stream),
     requestedVersion: clone(requested),
     targetVersion: clone(target),
     latestVersion: clone(deployed),
-    html: readContentForVersion(target),
-    redirectedToLatest: normalizeVersion(target.version) !== normalizeVersion(requested.version),
+    contentType,
+    html: contentType === "html" ? contentBuffer.toString("utf8") : "",
+    fileName: normalizeText(target.originalFileName || `${stream.slug || "mou"}-${target.version}.${getFileExtensionForContentType(contentType)}`),
+    redirectedToLatest:
+      normalizeVersion(target.version) !== normalizeVersion(requested.version),
+  };
+}
+
+function getVersionContent(mouId, version) {
+  const stream = getStreamById(mouId);
+  const versionRecord =
+    (stream.versions || []).find(
+      (entry) => normalizeVersion(entry.version) === normalizeVersion(version)
+    ) || null;
+  if (!versionRecord) {
+    throw new Error("MOU version not found.");
+  }
+  const contentType = normalizeContentType(versionRecord.contentType);
+  const contentBuffer = readContentBuffer(versionRecord);
+  return {
+    stream,
+    version: clone(versionRecord),
+    contentType,
+    html: contentType === "html" ? contentBuffer.toString("utf8") : "",
+    fileName: normalizeText(
+      versionRecord.originalFileName ||
+        `${stream.slug || "mou"}-${versionRecord.version}.${getFileExtensionForContentType(contentType)}`
+    ),
+    contentBuffer,
   };
 }
 
@@ -486,7 +835,10 @@ function recordMouView({ authUser, mouId, version, ip, userAgent }) {
 function getCurrentUserAgreement() {
   const data = getUserAgreementStore();
   const currentVersion = normalizeVersion(data.currentVersion);
-  const current = (data.versions || []).find((entry) => normalizeVersion(entry?.version) === currentVersion) || null;
+  const current =
+    (data.versions || []).find(
+      (entry) => normalizeVersion(entry?.version) === currentVersion
+    ) || null;
   return {
     currentVersion,
     current: current ? clone(current) : null,
@@ -498,16 +850,16 @@ function saveUserAgreement({ title, html, actor }) {
   requireEnabled();
   const safeTitle = normalizeText(title) || "User Agreement";
   const safeHtml = sanitizeUserAgreementHtml(html || "");
-  requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "User agreement text");
+  requireNonEmpty(
+    safeHtml.replace(/<[^>]+>/g, "").trim(),
+    "User agreement text"
+  );
   enforceHtmlSize(safeHtml);
 
   const data = getUserAgreementStore();
   const current = getCurrentUserAgreement().current;
   if (current && current.title === safeTitle && current.bodyHtml === safeHtml) {
-    return {
-      changed: false,
-      version: clone(current),
-    };
+    return { changed: false, version: clone(current) };
   }
 
   const nextVersion = normalizeVersion(data.currentVersion) + 1 || 1;
@@ -524,10 +876,7 @@ function saveUserAgreement({ title, html, actor }) {
   data.currentVersion = nextVersion;
   data.versions.push(versionRecord);
   saveUserAgreementStore(data);
-  return {
-    changed: true,
-    version: clone(versionRecord),
-  };
+  return { changed: true, version: clone(versionRecord) };
 }
 
 function isStandardUser(authUser) {
@@ -540,11 +889,14 @@ function getCurrentAgreementAckForUser(authUser) {
   const agreement = getCurrentUserAgreement();
   if (!agreement.current) return null;
   const data = getAcksStore();
-  return data.items.find((item) =>
-    String(item?.type || "") === "user_agreement" &&
-    String(item?.userId || "") === userId &&
-    normalizeVersion(item?.version) === agreement.currentVersion
-  ) || null;
+  return (
+    data.items.find(
+      (item) =>
+        String(item?.type || "") === "user_agreement" &&
+        String(item?.userId || "") === userId &&
+        normalizeVersion(item?.version) === agreement.currentVersion
+    ) || null
+  );
 }
 
 function shouldRequireUserAgreement(authUser) {
@@ -566,11 +918,10 @@ function acceptCurrentUserAgreement({ authUser, ip, userAgent }) {
 
   const userId = getUserKey(authUser);
   if (!userId) throw new Error("Authenticated user not found.");
-
-  const data = getAcksStore();
   const existing = getCurrentAgreementAckForUser(authUser);
   if (existing) return clone(existing);
 
+  const data = getAcksStore();
   const row = {
     type: "user_agreement",
     key: `${userId}|agreement|${agreement.currentVersion}`,
@@ -586,49 +937,6 @@ function acceptCurrentUserAgreement({ authUser, ip, userAgent }) {
   return clone(row);
 }
 
-function getAgencyBySuffix(agencySuffix) {
-  const suffix = normalizeLower(agencySuffix);
-  return (agenciesStore.load() || []).find((agency) => normalizeLower(agency?.suffix) === suffix) || null;
-}
-
-function buildSignedHtml({ stream, versionRecord, deployedHtml, signatureRecord }) {
-  return [
-    "<!doctype html>",
-    "<html lang=\"en\">",
-    "<head>",
-    "  <meta charset=\"utf-8\" />",
-    `  <title>${escapeHtml(stream.title)} - Signed Evidence</title>`,
-    "  <style>",
-    "    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; color: #111827; }",
-    "    .signed-shell { max-width: 1100px; margin: 0 auto; }",
-    "    .signed-header { margin-bottom: 24px; }",
-    "    .signature-card { margin-top: 32px; border-top: 2px solid #111827; padding-top: 16px; }",
-    "    .signature-image { max-width: 360px; max-height: 160px; display: block; margin-bottom: 12px; border-bottom: 1px solid #6b7280; padding-bottom: 10px; }",
-    "    .signature-line { margin: 4px 0; }",
-    "  </style>",
-    "</head>",
-    "<body>",
-    "  <div class=\"signed-shell\">",
-    "    <div class=\"signed-header\">",
-    `      <h1>${escapeHtml(stream.title)}</h1>`,
-    `      <p>Signed evidence for version ${escapeHtml(String(versionRecord.version))}</p>`,
-    "    </div>",
-    `    <div class=\"signed-body\">${deployedHtml}</div>`,
-    "    <div class=\"signature-card\">",
-    signatureRecord.signatureImageDataUrl
-      ? `      <img class="signature-image" src="${signatureRecord.signatureImageDataUrl}" alt="Signature" />`
-      : "      <div class=\"signature-image\" style=\"padding:12px 0;\">Typed attestation used.</div>",
-    `      <div class="signature-line"><strong>${escapeHtml(signatureRecord.signerDisplayName)}</strong></div>`,
-    `      <div class="signature-line">${escapeHtml(signatureRecord.signerStatusAtSign || "Agency Administrator")}</div>`,
-    `      <div class="signature-line">${escapeHtml(signatureRecord.agencyNameAtSign)}</div>`,
-    `      <div class="signature-line">Signed ${escapeHtml(signatureRecord.signedAt)} from ${escapeHtml(signatureRecord.ip || "unknown")}</div>`,
-    "    </div>",
-    "  </div>",
-    "</body>",
-    "</html>",
-  ].join("\n");
-}
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -642,10 +950,51 @@ function parseSignatureDataUrl(dataUrl) {
   const raw = normalizeText(dataUrl);
   if (!raw) return null;
   const match = raw.match(/^data:image\/png;base64,(.+)$/i);
-  if (!match) {
-    throw new Error("Signature must be a PNG data URL.");
-  }
+  if (!match) throw new Error("Signature must be a PNG data URL.");
   return Buffer.from(match[1], "base64");
+}
+
+function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
+  const scopeLabel = getScopeLabel(stream);
+  const fileHref = `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(versionRecord.version)}`;
+  const renderedBody =
+    normalizeContentType(versionRecord.contentType) === "pdf"
+      ? [
+          '<div class="signed-pdf-wrap">',
+          `  <p><a href="${fileHref}" target="_blank" rel="noopener noreferrer">Open attached PDF</a></p>`,
+          `  <iframe src="${fileHref}" title="MOU PDF" style="width:100%;min-height:780px;border:1px solid #d1d5db;border-radius:12px;background:#fff;"></iframe>`,
+          "</div>",
+        ].join("\n")
+      : readHtmlContent(versionRecord);
+
+  return [
+    "<style>",
+    "  .signed-shell { max-width: 1180px; margin: 0 auto; }",
+    "  .signed-header { margin-bottom: 24px; background: #ffffff; padding: 20px 24px; border-radius: 16px; border: 1px solid #dbe4f0; }",
+    "  .signed-header h1 { margin: 0 0 8px 0; }",
+    "  .signed-body { background: #ffffff; border-radius: 16px; padding: 24px; border: 1px solid #dbe4f0; }",
+    "  .signature-card { margin-top: 24px; border-top: 2px solid #0f172a; padding-top: 16px; }",
+    "  .signature-image { max-width: 360px; max-height: 160px; display: block; margin-bottom: 12px; border-bottom: 1px solid #94a3b8; padding-bottom: 10px; }",
+    "  .signature-line { margin: 4px 0; }",
+    "</style>",
+    '<div class="signed-shell">',
+    '  <div class="signed-header">',
+    `    <h1>${escapeHtml(stream.title)}</h1>`,
+    `    <div>Version ${escapeHtml(String(versionRecord.version))} | ${escapeHtml(scopeLabel)}</div>`,
+    "  </div>",
+    `  <div class="signed-body">${renderedBody}`,
+    '    <div class="signature-card">',
+    signatureRecord.signatureImageDataUrl
+      ? `      <img class="signature-image" src="${signatureRecord.signatureImageDataUrl}" alt="Signature" />`
+      : '      <div class="signature-image" style="padding:12px 0;">Typed attestation used.</div>',
+    `      <div class="signature-line"><strong>${escapeHtml(signatureRecord.signerDisplayName)}</strong></div>`,
+    `      <div class="signature-line">${escapeHtml(signatureRecord.signerStatusAtSign || "Agency Administrator")}</div>`,
+    `      <div class="signature-line">${escapeHtml(signatureRecord.agencyNameAtSign)}</div>`,
+    `      <div class="signature-line">Signed ${escapeHtml(signatureRecord.signedAt)} from ${escapeHtml(signatureRecord.ip || "unknown")}</div>`,
+    "    </div>",
+    "  </div>",
+    "</div>",
+  ].join("\n");
 }
 
 function signVersion({
@@ -667,7 +1016,12 @@ function signVersion({
     throw new Error("Only deployed versions can be signed.");
   }
 
-  const safeAgencySuffix = normalizeLower(agencySuffix);
+  const safeAgencySuffix = normalizeAgencySuffix(agencySuffix);
+  const targetAgencySuffixes = getStreamAgencySuffixes(stream);
+  if (!targetAgencySuffixes.includes(safeAgencySuffix)) {
+    throw new Error("This MOU does not apply to the selected agency.");
+  }
+
   const safeAgencyName = normalizeText(agencyNameAtSign);
   const safeSigner = normalizeText(signerDisplayName);
   const safeStatus = normalizeText(signerStatusAtSign) || "Agency Administrator";
@@ -681,19 +1035,24 @@ function signVersion({
     throw new Error("Provide a drawn signature or typed attestation.");
   }
 
-  if (!Array.isArray(versionRecord.signatures)) {
-    versionRecord.signatures = [];
-  }
-  if (versionRecord.signatures.some((entry) => normalizeLower(entry?.agencyId) === safeAgencySuffix)) {
+  if (!Array.isArray(versionRecord.signatures)) versionRecord.signatures = [];
+  if (
+    versionRecord.signatures.some(
+      (entry) => normalizeAgencySuffix(entry?.agencyId) === safeAgencySuffix
+    )
+  ) {
     throw new Error("This agency has already signed the current version.");
   }
 
-  const signaturePath = store.getSignaturePngPath(mouId, safeAgencySuffix, versionRecord.version);
+  const signaturePath = store.getSignaturePngPath(
+    mouId,
+    safeAgencySuffix,
+    versionRecord.version
+  );
   if (pngBuffer) {
     store.writeBinary(signaturePath, pngBuffer);
   }
 
-  const deployedHtml = readContentForVersion(versionRecord);
   const signedAt = nowIso();
   const signatureRecord = {
     agencyId: safeAgencySuffix,
@@ -709,16 +1068,20 @@ function signVersion({
       store.getSignedHtmlPath(mouId, safeAgencySuffix, versionRecord.version)
     ),
     attestationText: safeAttestation,
-    signatureImageDataUrl: pngBuffer ? `data:image/png;base64,${pngBuffer.toString("base64")}` : "",
+    signatureImageDataUrl: pngBuffer
+      ? `data:image/png;base64,${pngBuffer.toString("base64")}`
+      : "",
   };
 
   const signedHtml = buildSignedHtml({
     stream,
     versionRecord,
-    deployedHtml,
     signatureRecord,
   });
-  store.writeHtml(path.join(__dirname, "..", "data", signatureRecord.signedHtmlPath), signedHtml);
+  store.writeHtml(
+    path.join(__dirname, "..", "data", signatureRecord.signedHtmlPath),
+    signedHtml
+  );
   delete signatureRecord.signatureImageDataUrl;
 
   versionRecord.signatures.push(signatureRecord);
@@ -730,30 +1093,6 @@ function signVersion({
   };
 }
 
-function listSignaturesForStream(stream) {
-  const rows = [];
-  for (const version of sortVersions(stream?.versions || [])) {
-    for (const signature of version.signatures || []) {
-      rows.push({
-        mouId: stream.mouId,
-        mouTitle: stream.title,
-        streamSlug: stream.slug,
-        deployedVersion: getCurrentDeployedVersion(stream)?.version || null,
-        versionSigned: version.version,
-        agencyId: signature.agencyId,
-        agencyName: signature.agencyNameAtSign,
-        signerDisplayName: signature.signerDisplayName,
-        signerStatusAtSign: signature.signerStatusAtSign,
-        signedAt: signature.signedAt,
-        signedHtmlPath: signature.signedHtmlPath,
-        needsNewSignature: !!(getCurrentDeployedVersion(stream) &&
-          normalizeVersion(getCurrentDeployedVersion(stream).version) > normalizeVersion(version.version)),
-      });
-    }
-  }
-  return rows;
-}
-
 function getAgencyEvidence({ mouId, agencyId, version }) {
   const stream = getStreamById(mouId);
   const versions = version
@@ -762,7 +1101,7 @@ function getAgencyEvidence({ mouId, agencyId, version }) {
 
   for (const versionRecord of versions) {
     const signature = (versionRecord.signatures || []).find(
-      (entry) => normalizeLower(entry?.agencyId) === normalizeLower(agencyId)
+      (entry) => normalizeAgencySuffix(entry?.agencyId) === normalizeAgencySuffix(agencyId)
     );
     if (!signature) continue;
     const fullPath = path.join(__dirname, "..", "data", signature.signedHtmlPath);
@@ -776,40 +1115,85 @@ function getAgencyEvidence({ mouId, agencyId, version }) {
   throw new Error("Signed evidence not found.");
 }
 
+function listSignaturesForStream(stream) {
+  const rows = [];
+  for (const versionRecord of sortVersions(stream?.versions || [])) {
+    for (const signature of versionRecord.signatures || []) {
+      rows.push({
+        mouId: stream.mouId,
+        mouTitle: stream.title,
+        scopeType: normalizeScopeType(stream.scopeType),
+        scopeLabel: getScopeLabel(stream),
+        agencyId: signature.agencyId,
+        agencyName: signature.agencyNameAtSign,
+        deployedVersion: getCurrentDeployedVersion(stream)?.version || null,
+        signedVersion: versionRecord.version,
+        signerDisplayName: signature.signerDisplayName,
+        signerStatusAtSign: signature.signerStatusAtSign,
+        signedAt: signature.signedAt,
+        needsNewSignature:
+          !!getCurrentDeployedVersion(stream) &&
+          normalizeVersion(getCurrentDeployedVersion(stream).version) >
+            normalizeVersion(versionRecord.version),
+      });
+    }
+  }
+  return rows;
+}
+
 function listSignatureRows() {
-  const streams = listStreams();
-  return streams.flatMap((stream) => listSignaturesForStream(stream));
+  return listStreams().flatMap((stream) => listSignaturesForStream(stream));
+}
+
+function getCurrentAgencySignatureForStream(stream, agencySuffix) {
+  const deployed = getCurrentDeployedVersion(stream);
+  if (!deployed) return null;
+  return (
+    (deployed.signatures || []).find(
+      (entry) => normalizeAgencySuffix(entry?.agencyId) === normalizeAgencySuffix(agencySuffix)
+    ) || null
+  );
 }
 
 function getAgencySignatureStatusRows() {
-  const agencies = agenciesStore.load() || [];
   const requireAgencySignature = getBool("MOU_REQUIRE_AGENCY_SIGNATURE", true);
   const rows = [];
   for (const stream of listDeployedStreams()) {
     const deployed = getCurrentDeployedVersion(stream);
     if (!deployed) continue;
-    for (const agency of agencies) {
-      const agencyId = normalizeLower(agency?.suffix);
+    for (const agency of getTargetAgenciesForStream(stream)) {
+      const agencyId = normalizeAgencySuffix(agency?.suffix);
       if (!agencyId) continue;
-      const latestSignature = sortVersions(stream.versions || [])
-        .reverse()
-        .flatMap((versionRecord) =>
-          (versionRecord.signatures || [])
-            .filter((entry) => normalizeLower(entry?.agencyId) === agencyId)
-            .map((entry) => ({ versionRecord, entry }))
-        )[0] || null;
+      const latestSignature =
+        sortVersions(stream.versions || [])
+          .reverse()
+          .flatMap((versionRecord) =>
+            (versionRecord.signatures || [])
+              .filter(
+                (entry) =>
+                  normalizeAgencySuffix(entry?.agencyId) === agencyId
+              )
+              .map((entry) => ({ versionRecord, entry }))
+          )[0] || null;
 
       rows.push({
         mouId: stream.mouId,
         mouTitle: stream.title,
+        scopeType: normalizeScopeType(stream.scopeType),
+        scopeLabel: getScopeLabel(stream),
         deployedVersion: deployed.version,
         agencyId,
         agencyName: agency.name || agency.groupPrefix || agency.suffix,
         signedVersion: latestSignature ? latestSignature.versionRecord.version : null,
-        signerDisplayName: latestSignature ? latestSignature.entry.signerDisplayName : null,
+        signerDisplayName: latestSignature
+          ? latestSignature.entry.signerDisplayName
+          : null,
         signedAt: latestSignature ? latestSignature.entry.signedAt : null,
-        needsSignature: requireAgencySignature &&
-          (!latestSignature || normalizeVersion(latestSignature.versionRecord.version) < normalizeVersion(deployed.version)),
+        needsSignature:
+          requireAgencySignature &&
+          (!latestSignature ||
+            normalizeVersion(latestSignature.versionRecord.version) <
+              normalizeVersion(deployed.version)),
       });
     }
   }
@@ -819,13 +1203,16 @@ function getAgencySignatureStatusRows() {
 function getAgreementAcceptanceRowsForUsers(users) {
   const agreement = getCurrentUserAgreement();
   const currentVersion = agreement.currentVersion;
-  const items = getAcksStore().items.filter((item) =>
-    String(item?.type || "") === "user_agreement" &&
-    normalizeVersion(item?.version) === currentVersion
+  const items = getAcksStore().items.filter(
+    (item) =>
+      String(item?.type || "") === "user_agreement" &&
+      normalizeVersion(item?.version) === currentVersion
   );
   const byUser = new Map(items.map((item) => [String(item.userId), item]));
   return (Array.isArray(users) ? users : []).map((user) => {
-    const userId = normalizeText(user?.username || user?.uid || user?.pk || user?.id);
+    const userId = normalizeText(
+      user?.username || user?.uid || user?.pk || user?.id
+    );
     const ack = byUser.get(userId) || null;
     return {
       userId,
@@ -851,48 +1238,62 @@ function getAgencyReminderRows() {
   const byKey = reminders.agency || {};
   return getAgencySignatureStatusRows()
     .filter((row) => row.needsSignature)
-    .map((row) => {
-      const key = `${row.mouId}:${row.agencyId}:${row.deployedVersion}`;
-      return {
-        ...row,
-        reminderDays: normalizedReminderDays(
-          getStreamById(row.mouId).reminderDays
-        ),
-        lastReminderSentAt: byKey[key]?.lastSentAt || null,
-        reminderKey: key,
-      };
-    });
+    .map((row) => ({
+      ...row,
+      reminderDays: normalizedReminderDays(getStreamById(row.mouId).reminderDays),
+      lastReminderSentAt:
+        byKey[`${row.mouId}:${row.agencyId}:${row.deployedVersion}`]?.lastSentAt ||
+        null,
+      reminderKey: `${row.mouId}:${row.agencyId}:${row.deployedVersion}`,
+    }));
 }
 
 function markAgencyReminderSent({ mouId, agencyId, version, sentAt }) {
   const data = getRemindersStore();
-  const key = `${normalizeText(mouId)}:${normalizeLower(agencyId)}:${normalizeVersion(version)}`;
-  data.agency[key] = {
-    lastSentAt: sentAt || nowIso(),
-  };
+  const key = `${normalizeText(mouId)}:${normalizeAgencySuffix(
+    agencyId
+  )}:${normalizeVersion(version)}`;
+  data.agency[key] = { lastSentAt: sentAt || nowIso() };
   saveRemindersStore(data);
 }
 
-function getCurrentAgencySignatureForStream(stream, agencySuffix) {
-  const deployed = getCurrentDeployedVersion(stream);
-  if (!deployed) return null;
-  return (deployed.signatures || []).find(
-    (entry) => normalizeLower(entry?.agencyId) === normalizeLower(agencySuffix)
-  ) || null;
+function buildContentUrls(stream, versionRecord) {
+  const fileUrl = `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(versionRecord.version)}`;
+  return {
+    fileUrl,
+    downloadUrl: `${fileUrl}?download=1`,
+  };
 }
 
 function getSidebarListForUser(authUser) {
-  const access = accessSvc.getAgencyAccess(authUser);
-  return listDeployedStreams().map((stream) => {
+  return listDeployedStreamsForUser(authUser).map((stream) => {
     const deployed = getCurrentDeployedVersion(stream);
+    const contentUrls = deployed ? buildContentUrls(stream, deployed) : null;
+    const availableAgencySuffixes = authUser?.isAgencyAdmin
+      ? getStreamAgencySuffixes(stream).filter((suffix) =>
+          accessSvc.isSuffixAllowed(authUser, suffix)
+        )
+      : [];
     return {
       mouId: stream.mouId,
       title: stream.title,
       version: deployed?.version || null,
-      viewHref: deployed ? `/mou/view/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(deployed.version)}` : null,
+      scopeType: normalizeScopeType(stream.scopeType),
+      scopeLabel: getScopeLabel(stream),
+      contentType: normalizeContentType(deployed?.contentType),
+      viewHref:
+        deployed
+          ? `/mou/view/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+              deployed.version
+            )}`
+          : null,
+      fileUrl: contentUrls?.fileUrl || null,
+      downloadUrl: contentUrls?.downloadUrl || null,
       signHref:
-        deployed && access.isAgencyAdmin && access.allowedAgencySuffixes && access.allowedAgencySuffixes[0]
-          ? `/mou/sign/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(deployed.version)}`
+        deployed && availableAgencySuffixes.length
+          ? `/mou/sign/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+              deployed.version
+            )}`
           : null,
     };
   });
@@ -902,8 +1303,11 @@ module.exports = {
   isEnabled,
   listStreams,
   listDeployedStreams,
+  listDeployedStreamsForUser,
+  getVisibleStreamsForUser,
   getStreamById,
   getDeployedVersionOrLatest,
+  getVersionContent,
   createDraftStream,
   createNextDraft,
   updateDraft,
@@ -926,4 +1330,10 @@ module.exports = {
   getCurrentDeployedVersion,
   getCurrentAgencySignatureForStream,
   getSidebarListForUser,
+  getScopeLabel,
+  getTargetAgenciesForStream,
+  streamAppliesToUser,
+  readContentBuffer,
+  readHtmlContent,
+  buildContentUrls,
 };

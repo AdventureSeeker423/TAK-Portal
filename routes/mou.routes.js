@@ -1,8 +1,8 @@
 const path = require("path");
 const express = require("express");
+const multer = require("multer");
 const mouService = require("../services/mouService");
 const mouScheduler = require("../services/mouScheduler");
-const mouStore = require("../services/mouStore");
 const auditSvc = require("../services/auditLog.service");
 const permsSvc = require("../services/permissions.service");
 const accessSvc = require("../services/access.service");
@@ -11,6 +11,7 @@ const tokensSvc = require("../services/authentikTokens.service");
 const { getBool } = require("../services/env");
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 function renderNotFound(req, res) {
   if ((req.originalUrl || req.path || "").startsWith("/api/")) {
@@ -22,9 +23,7 @@ function renderNotFound(req, res) {
 }
 
 function requireMouEnabled(req, res, next) {
-  if (!mouService.isEnabled()) {
-    return renderNotFound(req, res);
-  }
+  if (!mouService.isEnabled()) return renderNotFound(req, res);
   return next();
 }
 
@@ -94,12 +93,29 @@ function rowsToCsv(headers, rows) {
   return `${lines.join("\n")}\n`;
 }
 
-function resolveManagedAgencyChoices(authUser) {
+function getAgencyOptions() {
+  return (mouService.getTargetAgenciesForStream({ scopeType: "global" }) || [])
+    .map((agency) => ({
+      suffix: String(agency?.suffix || "").trim().toLowerCase(),
+      name: agency?.name || agency?.groupPrefix || agency?.suffix,
+    }))
+    .filter((agency) => agency.suffix);
+}
+
+function canSeeStream(authUser, stream) {
+  return mouService.streamAppliesToUser(stream, authUser);
+}
+
+function resolveSignableAgencyChoices(authUser, stream) {
+  const targetSuffixes = mouService.getTargetAgenciesForStream(stream).map((agency) =>
+    String(agency?.suffix || "").trim().toLowerCase()
+  );
   const access = accessSvc.getAgencyAccess(authUser);
-  const allowed = Array.isArray(access.allowedAgencySuffixes)
-    ? access.allowedAgencySuffixes
+  const managed = Array.isArray(access.allowedAgencySuffixes)
+    ? access.allowedAgencySuffixes.map((suffix) => String(suffix || "").trim().toLowerCase())
     : [];
-  return allowed
+  return managed
+    .filter((suffix) => targetSuffixes.includes(suffix))
     .map((suffix) => mouService.getAgencyBySuffix(suffix))
     .filter(Boolean)
     .map((agency) => ({
@@ -127,39 +143,87 @@ async function resolveSignerStatus(authUser) {
   }
 }
 
-router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
-  const streams = mouService.listDeployedStreams().map((stream) => {
-    const deployed = mouService.getCurrentDeployedVersion(stream);
-    const currentAgencySignature = req.authentikUser?.isAgencyAdmin
-      ? resolveManagedAgencyChoices(req.authentikUser)
-          .map((agency) => ({
-            agency,
-            signature: mouService.getCurrentAgencySignatureForStream(stream, agency.suffix),
-          }))
-          .find((entry) => !!entry.signature) || null
-      : null;
+function buildStreamCard(authUser, stream) {
+  const deployed = mouService.getCurrentDeployedVersion(stream);
+  const agencyChoices = authUser?.isAgencyAdmin
+    ? resolveSignableAgencyChoices(authUser, stream)
+    : [];
+  const signatures = agencyChoices.map((agency) => ({
+    agency,
+    signature: mouService.getCurrentAgencySignatureForStream(stream, agency.suffix),
+  }));
 
-    return {
-      stream,
-      deployed,
-      currentAgencySignature,
-    };
-  });
+  return {
+    stream,
+    deployed,
+    scopeLabel: mouService.getScopeLabel(stream),
+    targetAgencies: mouService.getTargetAgenciesForStream(stream).map((agency) => ({
+      suffix: agency.suffix,
+      name: agency.name || agency.groupPrefix || agency.suffix,
+    })),
+    signableAgencyChoices: agencyChoices,
+    signatures,
+    allSigned:
+      !agencyChoices.length ||
+      signatures.every((entry) => !!entry.signature),
+  };
+}
+
+router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
+  const cards = mouService
+    .listDeployedStreamsForUser(req.authentikUser)
+    .map((stream) => buildStreamCard(req.authentikUser, stream));
 
   res.render("mou_list", {
-    streams,
+    cards,
     agreementSummary: mouService.getAgreementSummaryForUser(req.authentikUser),
     publicListVisibleToAll: getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true),
   });
 });
 
+router.get("/mou/file/:mouId/:version", requireMouEnabled, requireMouPermission, (req, res) => {
+  try {
+    const content = mouService.getVersionContent(req.params.mouId, req.params.version);
+    if (!canSeeStream(req.authentikUser, content.stream)) {
+      return res.status(403).render("access-denied", {
+        username: req.authentikUser?.username || "",
+      });
+    }
+    if (
+      !req.authentikUser?.isGlobalAdmin &&
+      !["deployed", "superseded"].includes(String(content.version?.state || ""))
+    ) {
+      return res.status(403).render("access-denied", {
+        username: req.authentikUser?.username || "",
+      });
+    }
+
+    if (content.contentType === "pdf") {
+      res.setHeader("Content-Type", "application/pdf");
+      const disposition = req.query.download === "1" ? "attachment" : "inline";
+      res.setHeader(
+        "Content-Disposition",
+        `${disposition}; filename="${content.fileName.replace(/"/g, "")}"`
+      );
+      return res.send(content.contentBuffer);
+    }
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(content.html);
+  } catch (err) {
+    return renderNotFound(req, res);
+  }
+});
+
 router.get("/mou/view/:mouId/:version", requireMouEnabled, requireMouPermission, (req, res) => {
   try {
     const out = mouService.getDeployedVersionOrLatest(req.params.mouId, req.params.version);
-    if (
-      out.redirectedToLatest ||
-      String(out.requestedVersion?.state || "") === "superseded"
-    ) {
+    if (!canSeeStream(req.authentikUser, out.stream)) {
+      return res.status(403).render("access-denied", {
+        username: req.authentikUser?.username || "",
+      });
+    }
+    if (out.redirectedToLatest || String(out.requestedVersion?.state || "") === "superseded") {
       return res.redirect(
         `/mou/view/${encodeURIComponent(out.stream.mouId)}/${encodeURIComponent(out.latestVersion.version)}?updated=1`
       );
@@ -183,17 +247,21 @@ router.get("/mou/view/:mouId/:version", requireMouEnabled, requireMouPermission,
       },
     });
 
+    const contentUrls = mouService.buildContentUrls(out.stream, out.targetVersion);
     res.render("mou_view", {
       mode: "deployed",
       stream: out.stream,
       version: out.targetVersion,
       html: out.html,
+      contentType: out.contentType,
+      fileUrl: contentUrls.fileUrl,
+      downloadUrl: contentUrls.downloadUrl,
+      fileName: out.fileName,
+      scopeLabel: mouService.getScopeLabel(out.stream),
       updatedFromOlderVersion: req.query.updated === "1",
     });
   } catch (err) {
-    res.status(404).render("access-denied", {
-      username: req.authentikUser?.username || "",
-    });
+    return renderNotFound(req, res);
   }
 });
 
@@ -201,7 +269,9 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
   try {
     const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
     const canSeeAll = !!req.authentikUser?.isGlobalAdmin;
-    const canSeeOwnAgency = !!req.authentikUser?.isAgencyAdmin && accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
+    const canSeeOwnAgency =
+      !!req.authentikUser?.isAgencyAdmin &&
+      accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
     const canSeePublic = getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true);
     if (!canSeeAll && !canSeeOwnAgency && !canSeePublic) {
       return res.status(403).render("access-denied", {
@@ -214,60 +284,72 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
       agencyId,
       version: req.query.version,
     });
-
     res.render("mou_view", {
       mode: "signed_evidence",
       stream: evidence.stream,
       version: evidence.version,
       html: evidence.html,
+      contentType: "signed_html",
+      fileUrl: null,
+      downloadUrl: null,
+      fileName: null,
       signature: evidence.signature,
+      scopeLabel: mouService.getScopeLabel(evidence.stream),
       updatedFromOlderVersion: false,
     });
   } catch (err) {
-    res.status(404).render("access-denied", {
-      username: req.authentikUser?.username || "",
-    });
+    return renderNotFound(req, res);
   }
 });
 
 router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireAgencyAdmin, (req, res) => {
   try {
     const out = mouService.getDeployedVersionOrLatest(req.params.mouId, req.params.version);
-    if (String(out.targetVersion?.state || "") !== "deployed") {
-      return res.redirect(
-        `/mou/sign/${encodeURIComponent(out.stream.mouId)}/${encodeURIComponent(out.latestVersion.version)}`
-      );
+    if (!canSeeStream(req.authentikUser, out.stream)) {
+      return res.status(403).render("access-denied", {
+        username: req.authentikUser?.username || "",
+      });
     }
-    const agencyChoices = resolveManagedAgencyChoices(req.authentikUser);
+    const agencyChoices = resolveSignableAgencyChoices(req.authentikUser, out.stream).map((agency) => ({
+      ...agency,
+      currentSignature: mouService.getCurrentAgencySignatureForStream(out.stream, agency.suffix),
+    }));
+    if (!agencyChoices.length) {
+      return res.status(403).render("access-denied", {
+        username: req.authentikUser?.username || "",
+      });
+    }
+    const contentUrls = mouService.buildContentUrls(out.stream, out.targetVersion);
     res.render("mou_sign", {
       stream: out.stream,
       version: out.targetVersion,
       html: out.html,
+      contentType: out.contentType,
+      fileUrl: contentUrls.fileUrl,
+      downloadUrl: contentUrls.downloadUrl,
+      fileName: out.fileName,
+      scopeLabel: mouService.getScopeLabel(out.stream),
       agencyChoices,
       error: req.query.error || "",
       success: req.query.success || "",
     });
   } catch (err) {
-    res.status(404).render("access-denied", {
-      username: req.authentikUser?.username || "",
-    });
+    return renderNotFound(req, res);
   }
 });
 
 router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireAgencyAdmin, async (req, res) => {
   try {
+    const stream = mouService.getStreamById(req.params.mouId);
+    const agencyChoices = resolveSignableAgencyChoices(req.authentikUser, stream);
     const agencySuffix = String(req.body?.agencySuffix || "").trim().toLowerCase();
-    if (!accessSvc.isSuffixAllowed(req.authentikUser, agencySuffix)) {
+    if (!agencyChoices.some((agency) => agency.suffix === agencySuffix)) {
       return res.status(403).render("access-denied", {
         username: req.authentikUser?.username || "",
       });
     }
 
     const agency = mouService.getAgencyBySuffix(agencySuffix);
-    if (!agency) {
-      throw new Error("Selected agency not found.");
-    }
-
     const signerStatus = await resolveSignerStatus(req.authentikUser);
     const result = mouService.signVersion({
       mouId: req.params.mouId,
@@ -286,7 +368,7 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
       action: "MOU_AGENCY_SIGNED",
       targetType: "mou",
       targetId: String(result.stream.mouId),
-      agencySuffix: agencySuffix,
+      agencySuffix,
       details: {
         mouId: result.stream.mouId,
         version: result.version.version,
@@ -344,22 +426,27 @@ router.get("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalA
   const streams = mouService.listStreams().map((stream) => ({
     ...stream,
     currentDeployed: mouService.getCurrentDeployedVersion(stream),
+    scopeLabel: mouService.getScopeLabel(stream),
   }));
-  const agreement = mouService.getCurrentUserAgreement();
   res.render("admin/mou_admin_list", {
     streams,
-    agreement,
+    agreement: mouService.getCurrentUserAgreement(),
+    agencies: getAgencyOptions(),
     error: req.query.error || "",
     success: req.query.success || "",
   });
 });
 
-router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
     const stream = mouService.createDraftStream({
       title: req.body?.title,
       slug: req.body?.slug,
       html: req.body?.html,
+      file: req.file || null,
+      contentType: req.body?.contentType,
+      scopeType: req.body?.scopeType,
+      agencySuffix: req.body?.agencySuffix,
       reminderDays: req.body?.reminderDays,
       mandatory: req.body?.mandatory,
       actor: req.authentikUser,
@@ -372,9 +459,13 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
         mouId: stream.mouId,
         version: 1,
         title: stream.title,
+        scopeType: stream.scopeType,
+        agencySuffix: stream.agencySuffix || null,
       },
     });
-    return res.redirect(`/admin/mou/${encodeURIComponent(stream.mouId)}/1/edit?success=${encodeURIComponent("Draft created.")}`);
+    return res.redirect(
+      `/admin/mou/${encodeURIComponent(stream.mouId)}/1/edit?success=${encodeURIComponent("Draft created.")}`
+    );
   } catch (err) {
     return toErrorRedirect(res, "/admin/mou", err);
   }
@@ -387,7 +478,9 @@ router.post("/admin/mou/:mouId/new-version", requireMouEnabled, requireMouPermis
       actor: req.authentikUser,
     });
     const draft = (stream.versions || []).find((entry) => String(entry.state || "") === "draft");
-    return res.redirect(`/admin/mou/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(draft.version)}/edit?success=${encodeURIComponent("New draft created.")}`);
+    return res.redirect(
+      `/admin/mou/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(draft.version)}/edit?success=${encodeURIComponent("New draft created.")}`
+    );
   } catch (err) {
     return toErrorRedirect(res, "/admin/mou", err);
   }
@@ -396,18 +489,23 @@ router.post("/admin/mou/:mouId/new-version", requireMouEnabled, requireMouPermis
 router.get("/admin/mou/:mouId/:version/edit", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
   try {
     const stream = mouService.getStreamById(req.params.mouId);
-    const version = (stream.versions || []).find(
-      (entry) => Number(entry.version) === Number(req.params.version)
-    );
+    const version =
+      (stream.versions || []).find(
+        (entry) => Number(entry.version) === Number(req.params.version)
+      ) || null;
     if (!version) throw new Error("MOU version not found.");
+
+    const content = mouService.getVersionContent(req.params.mouId, req.params.version);
+    const contentUrls = mouService.buildContentUrls(stream, version);
     res.render("admin/mou_admin_edit", {
       stream,
       version,
-      html: version.contentHtmlPath
-        ? mouStore.readHtml(
-            path.join(__dirname, "..", "data", version.contentHtmlPath)
-          )
-        : "",
+      agencies: getAgencyOptions(),
+      html: content.contentType === "html" ? content.html : "",
+      contentType: content.contentType,
+      fileName: content.fileName,
+      fileUrl: contentUrls.fileUrl,
+      downloadUrl: contentUrls.downloadUrl,
       error: req.query.error || "",
       success: req.query.success || "",
     });
@@ -416,7 +514,7 @@ router.get("/admin/mou/:mouId/:version/edit", requireMouEnabled, requireMouPermi
   }
 });
 
-router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
     mouService.updateDraft({
       mouId: req.params.mouId,
@@ -424,6 +522,10 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
       title: req.body?.title,
       slug: req.body?.slug,
       html: req.body?.html,
+      file: req.file || null,
+      contentType: req.body?.contentType,
+      scopeType: req.body?.scopeType,
+      agencySuffix: req.body?.agencySuffix,
       reminderDays: req.body?.reminderDays,
       mandatory: req.body?.mandatory,
       actor: req.authentikUser,
@@ -437,7 +539,9 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
         version: Number(req.params.version),
       },
     });
-    return res.redirect(`/admin/mou/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}/edit?success=${encodeURIComponent("Draft saved.")}`);
+    return res.redirect(
+      `/admin/mou/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}/edit?success=${encodeURIComponent("Draft saved.")}`
+    );
   } catch (err) {
     return toErrorRedirect(
       res,
@@ -450,19 +554,22 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
 router.get("/admin/mou/:mouId/:version/preview", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
   try {
     const stream = mouService.getStreamById(req.params.mouId);
-    const version = (stream.versions || []).find(
-      (entry) => Number(entry.version) === Number(req.params.version)
-    );
+    const version =
+      (stream.versions || []).find(
+        (entry) => Number(entry.version) === Number(req.params.version)
+      ) || null;
     if (!version) throw new Error("MOU version not found.");
-    const html = version.contentHtmlPath
-      ? mouStore.readHtml(
-          path.join(__dirname, "..", "data", version.contentHtmlPath)
-        )
-      : "";
+    const content = mouService.getVersionContent(req.params.mouId, req.params.version);
+    const contentUrls = mouService.buildContentUrls(stream, version);
     res.render("admin/mou_admin_preview", {
       stream,
       version,
-      html,
+      html: content.contentType === "html" ? content.html : "",
+      contentType: content.contentType,
+      fileUrl: contentUrls.fileUrl,
+      downloadUrl: contentUrls.downloadUrl,
+      fileName: content.fileName,
+      scopeLabel: mouService.getScopeLabel(stream),
     });
   } catch (err) {
     return toErrorRedirect(res, "/admin/mou", err);
@@ -486,6 +593,8 @@ router.post("/admin/mou/:mouId/:version/deploy", requireMouEnabled, requireMouPe
         version: deployed.version.version,
         contentSha256: deployed.contentSha256,
         supersededVersion: deployed.supersededVersion,
+        scopeType: deployed.stream.scopeType,
+        agencySuffix: deployed.stream.agencySuffix || null,
       },
     });
     await mouScheduler.sendDeployNotificationsForVersion({
@@ -558,21 +667,30 @@ router.get("/admin/mou/compliance", requireMouEnabled, requireMouPermission, (re
       const allUsers = await usersSvc.getAllUsersLightweight();
       const visibleUsers = req.authentikUser.isGlobalAdmin
         ? allUsers
-        : allUsers.filter((user) => accessSvc.isUserInAllowedAgencies(req.authentikUser, user));
+        : allUsers.filter((user) =>
+            accessSvc.isUserInAllowedAgencies(req.authentikUser, user)
+          );
 
-      const signatureRows = mouService
-        .getAgencySignatureStatusRows()
-        .filter((row) =>
-          req.authentikUser.isGlobalAdmin ||
-          accessSvc.isSuffixAllowed(req.authentikUser, row.agencyId)
-        );
-
+      const signatureRows = mouService.getAgencySignatureStatusRows().filter((row) =>
+        req.authentikUser.isGlobalAdmin ||
+        accessSvc.isSuffixAllowed(req.authentikUser, row.agencyId)
+      );
       const agreementRows = mouService.getAgreementAcceptanceRowsForUsers(visibleUsers);
+
       if (req.query.export === "signatures") {
         const csv = rowsToCsv(
-          ["mou_title", "agency_name", "deployed_version", "signed_version", "signer_name", "status"],
+          [
+            "mou_title",
+            "scope",
+            "agency_name",
+            "deployed_version",
+            "signed_version",
+            "signer_name",
+            "status",
+          ],
           signatureRows.map((row) => [
             row.mouTitle,
+            row.scopeLabel,
             row.agencyName,
             row.deployedVersion,
             row.signedVersion || "",
@@ -581,7 +699,10 @@ router.get("/admin/mou/compliance", requireMouEnabled, requireMouPermission, (re
           ])
         );
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader("Content-Disposition", 'attachment; filename="mou-signature-compliance.csv"');
+        res.setHeader(
+          "Content-Disposition",
+          'attachment; filename="mou-signature-compliance.csv"'
+        );
         return res.send(csv);
       }
       if (req.query.export === "agreement") {
@@ -596,15 +717,19 @@ router.get("/admin/mou/compliance", requireMouEnabled, requireMouPermission, (re
           ])
         );
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader("Content-Disposition", 'attachment; filename="mou-user-agreement-compliance.csv"');
+        res.setHeader(
+          "Content-Disposition",
+          'attachment; filename="mou-user-agreement-compliance.csv"'
+        );
         return res.send(csv);
       }
+
       res.render("admin/mou_compliance", {
         signatureRows,
         agreementRows,
       });
     })
-    .catch((err) => {
+    .catch(() => {
       res.status(500).render("access-denied", {
         username: req.authentikUser?.username || "",
       });

@@ -2,10 +2,26 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1>MOUs</h1>
+  <section class="mouHero">
+    <div class="mouHero__copy">
+      <span class="mouEyebrow">Memorandums & Access Terms</span>
+      <h1>MOUs</h1>
+      <p class="muted">
+        Review active serverwide and agency-specific agreements, open the current version,
+        and complete any required agency signatures from one place.
+      </p>
+    </div>
+    <div class="mouHero__actions">
+      <% if (isGlobalAdmin) { %>
+        <a class="btn" href="/admin/mou">MOU Admin</a>
+        <a class="btn secondary" href="/admin/mou/compliance">Compliance</a>
+      <% } %>
+      <a class="btn secondary" href="/setup-my-device">Setup My Device</a>
+    </div>
+  </section>
 
   <% if (agreementSummary && agreementSummary.shouldRequire && agreementSummary.agreement) { %>
-    <div class="card" style="border-color: var(--warning); margin-bottom: 12px;">
+    <div class="card mouCallout mouCallout--warning">
       <div class="msg pending">
         You must accept the current user agreement before using standard self-service pages.
         Continue through <a href="/setup-my-device">Setup My Device</a> to review it.
@@ -13,49 +29,91 @@
     </div>
   <% } %>
 
-  <div class="card">
-    <h2 style="margin-top:0;">Deployed Agency MOUs</h2>
-    <% if (!streams || !streams.length) { %>
-      <div class="muted">No MOUs have been deployed yet.</div>
-    <% } else { %>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Version</th>
-            <th>Agency Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% streams.forEach(function (item) { %>
-            <tr>
-              <td><%= item.stream.title %></td>
-              <td>v<%= item.deployed ? item.deployed.version : "-" %></td>
-              <td>
-                <% if (item.currentAgencySignature) { %>
-                  Signed by <%= item.currentAgencySignature.signature.signerDisplayName %>
-                  on <%= item.currentAgencySignature.signature.signedAt %>
-                <% } else if (isAgencyAdmin) { %>
-                  Pending signature
-                <% } else { %>
-                  View only
+  <section class="mouSectionHeader">
+    <div>
+      <h2>Active documents</h2>
+      <p class="muted">Only MOUs visible to your role and agency access are shown here.</p>
+    </div>
+  </section>
+
+  <% if (!cards || !cards.length) { %>
+    <div class="card mouEmptyState">
+      <h3>No MOUs available</h3>
+      <p class="muted">There are no deployed MOUs in scope for your account right now.</p>
+      <% if (isGlobalAdmin) { %>
+        <a class="btn" href="/admin/mou">Create first draft</a>
+      <% } %>
+    </div>
+  <% } else { %>
+    <div class="mouCardGrid">
+      <% cards.forEach(function (card) { %>
+        <article class="card mouSummaryCard">
+          <div class="mouSummaryCard__top">
+            <div>
+              <div class="mouBadgeRow">
+                <span class="mouBadge"><%= card.scopeLabel %></span>
+                <span class="mouBadge mouBadge--soft"><%= String(card.deployed && card.deployed.contentType || "html").toUpperCase() %></span>
+                <% if (card.stream.mandatory) { %>
+                  <span class="mouBadge mouBadge--accent">Required</span>
                 <% } %>
-              </td>
-              <td>
-                <% if (item.deployed) { %>
-                  <a class="btn" href="/mou/view/<%= encodeURIComponent(item.stream.mouId) %>/<%= encodeURIComponent(item.deployed.version) %>">View</a>
-                  <% if (item.currentAgencySignature) { %>
-                    <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(item.stream.mouId) %>/<%= encodeURIComponent(item.currentAgencySignature.agency.suffix) %>?version=<%= encodeURIComponent(item.deployed.version) %>">Signed Evidence</a>
-                  <% } else if (isAgencyAdmin && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
-                    <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(item.stream.mouId) %>/<%= encodeURIComponent(item.deployed.version) %>">Sign</a>
-                  <% } %>
+              </div>
+              <h3><%= card.stream.title %></h3>
+              <p class="muted">
+                Version v<%= card.deployed ? card.deployed.version : "-" %>
+                <% if (card.deployed && card.deployed.deployedAt) { %>
+                  • Deployed <%= card.deployed.deployedAt %>
                 <% } %>
-              </td>
-            </tr>
-          <% }); %>
-        </tbody>
-      </table>
-    <% } %>
-  </div>
+              </p>
+            </div>
+            <% if (card.targetAgencies && card.targetAgencies.length) { %>
+              <div class="mouMetaPill">
+                <strong><%= card.targetAgencies.length %></strong>
+                <span><%= card.stream.scopeType === "global" ? "target agencies" : "target agency" %></span>
+              </div>
+            <% } %>
+          </div>
+
+          <% if (card.signatures && card.signatures.length) { %>
+            <div class="mouAgencyList">
+              <% card.signatures.forEach(function (entry) { %>
+                <div class="mouAgencyList__row">
+                  <div>
+                    <strong><%= entry.agency.name %></strong>
+                    <% if (entry.signature) { %>
+                      <div class="muted">Signed by <%= entry.signature.signerDisplayName %></div>
+                    <% } else { %>
+                      <div class="muted">Pending agency signature</div>
+                    <% } %>
+                  </div>
+                  <span class="mouStatus <%= entry.signature ? 'mouStatus--ok' : 'mouStatus--pending' %>">
+                    <%= entry.signature ? "Signed" : "Pending" %>
+                  </span>
+                </div>
+              <% }); %>
+            </div>
+          <% } else if (card.targetAgencies && card.targetAgencies.length) { %>
+            <div class="mouTargetList muted">
+              Applies to
+              <%= card.targetAgencies.map(function (agency) { return agency.name; }).join(", ") %>
+            </div>
+          <% } %>
+
+          <div class="mouActionRow">
+            <% if (card.deployed) { %>
+              <a class="btn" href="/mou/view/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>">Open</a>
+              <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>?download=1">Download</a>
+              <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
+                <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>">
+                  <%= card.allSigned ? "Review Signatures" : "Sign / Review" %>
+                </a>
+              <% } %>
+              <% if (isGlobalAdmin) { %>
+                <a class="btn secondary" href="/admin/mou/compliance">Compliance</a>
+              <% } %>
+            <% } %>
+          </div>
+        </article>
+      <% }); %>
+    </div>
+  <% } %>
 </main>

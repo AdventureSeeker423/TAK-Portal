@@ -1,6 +1,5 @@
 const authentik = require("./authentik");
 const accessSvc = require("./access.service");
-const agenciesStore = require("./agencies.service");
 const emailSvc = require("./email.service");
 const mouService = require("./mouService");
 const auditSvc = require("./auditLog.service");
@@ -90,11 +89,10 @@ async function sendDeployNotificationsForVersion({ stream, version, actor }) {
     return { sent: 0, skipped: true };
   }
 
-  const agencies = agenciesStore.load() || [];
   const baseUrl = getPortalBaseUrl();
   let sent = 0;
 
-  for (const agency of agencies) {
+  for (const agency of mouService.getTargetAgenciesForStream(stream)) {
     const agencySuffix = String(agency?.suffix || "").trim().toLowerCase();
     if (!agencySuffix) continue;
     const signUrl = baseUrl
@@ -163,15 +161,10 @@ async function runReminderSweep() {
   }
 
   const baseUrl = getPortalBaseUrl();
-  const agencies = agenciesStore.load() || [];
-  const agenciesBySuffix = new Map(
-    agencies.map((agency) => [String(agency?.suffix || "").trim().toLowerCase(), agency])
-  );
-
   let sent = 0;
   for (const row of mouService.getAgencyReminderRows()) {
     if (!shouldSendReminder(row)) continue;
-    const agency = agenciesBySuffix.get(String(row.agencyId || "").trim().toLowerCase());
+    const agency = mouService.getAgencyBySuffix(row.agencyId);
     if (!agency) continue;
 
     const signUrl = baseUrl

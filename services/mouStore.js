@@ -111,6 +111,27 @@ function getDeployedPath(mouId, version) {
   return path.join(DEPLOYED_DIR, normalizeSegment(mouId), `${normalizeVersion(version)}.html`);
 }
 
+function normalizeExtension(extension, fallback) {
+  const ext = String(extension || "").trim().replace(/^\.+/, "").toLowerCase();
+  return ext || String(fallback || "html").trim().replace(/^\.+/, "").toLowerCase();
+}
+
+function getDraftContentPath(mouId, version, extension) {
+  return path.join(
+    DRAFTS_DIR,
+    normalizeSegment(mouId),
+    `${normalizeVersion(version)}.${normalizeExtension(extension, "html")}`
+  );
+}
+
+function getDeployedContentPath(mouId, version, extension) {
+  return path.join(
+    DEPLOYED_DIR,
+    normalizeSegment(mouId),
+    `${normalizeVersion(version)}.${normalizeExtension(extension, "html")}`
+  );
+}
+
 function getSignedHtmlPath(mouId, agencyId, version) {
   return path.join(
     SIGNED_DIR,
@@ -229,6 +250,8 @@ module.exports = {
   saveReminders,
   getDraftPath,
   getDeployedPath,
+  getDraftContentPath,
+  getDeployedContentPath,
   getSignedHtmlPath,
   getSignaturePngPath,
   readHtml,

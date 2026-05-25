@@ -2,36 +2,92 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1>Sign MOU</h1>
+  <section class="mouHero">
+    <div class="mouHero__copy">
+      <span class="mouEyebrow">Agency Signature</span>
+      <h1>Sign MOU</h1>
+      <p class="muted">
+        Review the deployed document, choose the agency you are signing for, and capture
+        a signature or typed attestation.
+      </p>
+      <div class="mouBadgeRow">
+        <span class="mouBadge"><%= scopeLabel || "Serverwide" %></span>
+        <span class="mouBadge mouBadge--soft">v<%= version.version %></span>
+        <span class="mouBadge mouBadge--soft"><%= String(contentType || "html").toUpperCase() %></span>
+      </div>
+    </div>
+    <div class="mouHero__actions">
+      <% if (downloadUrl) { %>
+        <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
+      <% } %>
+      <a class="btn" href="/mou">Back to MOUs</a>
+    </div>
+  </section>
 
   <% if (error) { %>
-    <div class="card" style="margin-bottom:12px;">
+    <div class="card mouCallout mouCallout--danger">
       <div class="msg bad"><%= error %></div>
     </div>
   <% } %>
 
   <% if (success) { %>
-    <div class="card" style="margin-bottom:12px;">
+    <div class="card mouCallout">
       <div class="msg ok"><%= success %></div>
     </div>
   <% } %>
 
-  <div class="grid2">
-    <div class="card">
-      <h2 style="margin-top:0;"><%= stream.title %> (v<%= version.version %>)</h2>
-      <div class="mouDocumentShell">
-        <%- html %>
+  <div class="mouWorkspace">
+    <section class="card mouWorkspace__document">
+      <div class="mouViewerToolbar">
+        <div>
+          <h2 style="margin:0;"><%= stream.title %></h2>
+          <div class="muted">Review the exact deployed version before signing.</div>
+        </div>
+        <% if (contentType === "pdf") { %>
+          <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= fileUrl %>">Open PDF</a>
+        <% } %>
       </div>
-    </div>
+      <% if (contentType === "pdf") { %>
+        <iframe class="mouPdfFrame" src="<%= fileUrl %>" title="<%= stream.title %>"></iframe>
+      <% } else { %>
+        <div class="mouDocumentShell">
+          <%- html %>
+        </div>
+      <% } %>
+    </section>
 
-    <div class="card">
-      <h2 style="margin-top:0;">Agency Signature</h2>
+    <section class="card mouWorkspace__sidebar">
+      <h2 style="margin-top:0;">Signature details</h2>
+      <% const hasPendingAgency = agencyChoices.some(function (agency) { return !agency.currentSignature; }); %>
+      <% const firstPendingAgency = agencyChoices.find(function (agency) { return !agency.currentSignature; }); %>
+      <div class="mouAgencyList" style="margin-bottom: 16px;">
+        <% agencyChoices.forEach(function (agency) { %>
+          <div class="mouAgencyList__row">
+            <div>
+              <strong><%= agency.name %></strong>
+              <% if (agency.currentSignature) { %>
+                <div class="muted">Already signed by <%= agency.currentSignature.signerDisplayName %></div>
+              <% } else { %>
+                <div class="muted">Awaiting signature</div>
+              <% } %>
+            </div>
+            <span class="mouStatus <%= agency.currentSignature ? 'mouStatus--ok' : 'mouStatus--pending' %>">
+              <%= agency.currentSignature ? "Signed" : "Pending" %>
+            </span>
+          </div>
+        <% }); %>
+      </div>
+
+      <% if (!hasPendingAgency) { %>
+        <div class="msg ok" style="margin-bottom: 14px;">All agencies available to you have already signed this version.</div>
+      <% } %>
+
       <form method="post" action="/mou/sign/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>" id="mouSignForm">
         <label>
           Agency
-          <select name="agencySuffix" required>
+          <select name="agencySuffix" required <%= hasPendingAgency ? "" : "disabled" %>>
             <% agencyChoices.forEach(function (agency) { %>
-              <option value="<%= agency.suffix %>"><%= agency.name %></option>
+              <option value="<%= agency.suffix %>" <%= agency.currentSignature ? "disabled" : "" %> <%= firstPendingAgency && firstPendingAgency.suffix === agency.suffix ? "selected" : "" %>><%= agency.name %><%= agency.currentSignature ? " (already signed)" : "" %></option>
             <% }); %>
           </select>
         </label>
@@ -47,17 +103,17 @@
 
         <label style="margin-top:12px;display:block;">
           Typed attestation fallback
-          <input type="text" name="attestationText" placeholder="Type your full name if drawing is unavailable" />
+          <input type="text" name="attestationText" placeholder="Type your full name if drawing is unavailable" <%= hasPendingAgency ? "" : "disabled" %> />
         </label>
 
         <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
 
         <div class="row" style="margin-top:16px;">
-          <button class="btn" type="submit">Sign MOU</button>
+          <button class="btn" type="submit" <%= hasPendingAgency ? "" : "disabled" %>>Sign MOU</button>
           <a class="btn secondary" href="/mou">Cancel</a>
         </div>
       </form>
-    </div>
+    </section>
   </div>
 </main>
 

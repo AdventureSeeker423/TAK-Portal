@@ -2,28 +2,53 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1><%= stream && stream.title ? stream.title : "MOU" %></h1>
+  <section class="mouHero">
+    <div class="mouHero__copy">
+      <span class="mouEyebrow"><%= mode === "signed_evidence" ? "Signed Evidence" : "MOU Viewer" %></span>
+      <h1><%= stream && stream.title ? stream.title : "MOU" %></h1>
+      <div class="mouBadgeRow">
+        <span class="mouBadge"><%= scopeLabel || "Serverwide" %></span>
+        <span class="mouBadge mouBadge--soft">v<%= version && version.version ? version.version : "-" %></span>
+        <% if (contentType && contentType !== "signed_html") { %>
+          <span class="mouBadge mouBadge--soft"><%= String(contentType).toUpperCase() %></span>
+        <% } %>
+      </div>
+      <% if (mode === "signed_evidence" && signature) { %>
+        <p class="muted">
+          Signed by <%= signature.signerDisplayName %> for <%= signature.agencyNameAtSign %> on <%= signature.signedAt %>.
+        </p>
+      <% } %>
+    </div>
+    <div class="mouHero__actions">
+      <% if (downloadUrl) { %>
+        <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
+      <% } %>
+      <a class="btn" href="/mou">Back to MOUs</a>
+    </div>
+  </section>
 
   <% if (updatedFromOlderVersion) { %>
-    <div class="card" style="margin-bottom:12px;">
+    <div class="card mouCallout">
       <div class="msg pending">This document has been updated. You are viewing the latest deployed version.</div>
     </div>
   <% } %>
 
-  <div class="card">
-    <div class="row" style="justify-content:space-between;align-items:center;">
-      <div>
-        <strong>Version:</strong> v<%= version && version.version ? version.version : "-" %>
-        <% if (mode === "signed_evidence" && signature) { %>
-          <br />
-          <span class="muted">Signed by <%= signature.signerDisplayName %> for <%= signature.agencyNameAtSign %> on <%= signature.signedAt %></span>
-        <% } %>
+  <section class="card mouViewerCard">
+    <% if (contentType === "pdf") { %>
+      <div class="mouViewerToolbar">
+        <div class="muted">Viewing <%= fileName || "MOU PDF" %></div>
+        <div class="mouActionRow">
+          <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= fileUrl %>">Open in new tab</a>
+          <% if (downloadUrl) { %>
+            <a class="btn secondary" href="<%= downloadUrl %>">Download PDF</a>
+          <% } %>
+        </div>
       </div>
-      <a class="btn" href="/mou">Back to MOUs</a>
-    </div>
-  </div>
-
-  <div class="card mouDocumentShell">
-    <%- html %>
-  </div>
+      <iframe class="mouPdfFrame" src="<%= fileUrl %>" title="<%= stream && stream.title ? stream.title : 'MOU PDF' %>"></iframe>
+    <% } else { %>
+      <div class="mouDocumentShell">
+        <%- html %>
+      </div>
+    <% } %>
+  </section>
 </main>
