@@ -404,8 +404,8 @@
         <div class="settings-body">
           <div class="grid2">
             <% renderField("MOU_ENABLED","MOU Enabled","Turn the MOU and standard-user agreement workflows on or off."); %>
-            <% renderField("MOU_REQUIRE_AGENCY_SIGNATURE","Require Agency Signature","When true, current deployed MOUs stay pending until an Agency Admin signs."); %>
-            <% renderField("MOU_DEFAULT_REMINDER_DAYS","Default Reminder Days","Days between agency-admin reminder emails for unsigned deployed MOUs."); %>
+            <% renderField("MOU_REQUIRE_AGENCY_SIGNATURE","Require Agency Signature","When true, current MOUs stay pending until an Agency Admin signs."); %>
+            <% renderField("MOU_DEFAULT_REMINDER_DAYS","Default Reminder Days","Days between agency-admin reminder emails for unsigned current MOUs."); %>
             <% renderField("MOU_PUBLIC_LIST_VISIBLE_TO_ALL","Public MOU List Visible To All","When true, authenticated users can browse the MOU section and signed evidence links."); %>
             <% renderField("MOU_HTML_MAX_KB","MOU HTML Max KB","Maximum allowed size for stored MOU HTML, Markdown source, and rendered user-agreement content."); %>
             <% renderField("MOU_REMINDER_SWEEP_HOURS","Reminder Sweep Hours","How often the reminder scheduler checks for unsigned agency MOUs. Server restart required for changes to take effect."); %>
@@ -430,7 +430,7 @@
         "password_changed.html",
         "mutual_aid_created.html",
         "bulk_email.html",
-        "mou_deployed_to_agencies.html",
+        "mou_document_updated_to_agencies.html",
         "mou_reminder_agency.html"
       ];
 
@@ -442,7 +442,7 @@
         "password_changed.html": "Password Changed by Admin",
         "mutual_aid_created.html": "Mutual Aid",
         "bulk_email.html": "Bulk Email",
-        "mou_deployed_to_agencies.html": "MOU Deployed To Agency Admins",
+        "mou_document_updated_to_agencies.html": "MOU Updated To Agency Admins",
         "mou_reminder_agency.html": "MOU Agency Reminder"
       };
 

@@ -146,7 +146,7 @@ async function resolveSignerStatus(authUser) {
 }
 
 function buildStreamCard(authUser, stream) {
-  const deployed = mouService.getCurrentDeployedVersion(stream);
+  const currentVersion = mouService.getCurrentVersion(stream);
   const agencyChoices = authUser?.isAgencyAdmin
     ? resolveSignableAgencyChoices(authUser, stream)
     : [];
@@ -157,7 +157,7 @@ function buildStreamCard(authUser, stream) {
 
   return {
     stream,
-    deployed,
+    currentVersion,
     scopeLabel: mouService.getScopeLabel(stream),
     targetAgencies: mouService.getTargetAgenciesForStream(stream).map((agency) => ({
       suffix: agency.suffix,
@@ -172,41 +172,40 @@ function buildStreamCard(authUser, stream) {
 }
 
 function buildAdminStreamRow(stream) {
-  const currentDeployed = mouService.getCurrentDeployedVersion(stream);
-  const draft =
-    (stream.versions || []).find((entry) => String(entry?.state || "") === "draft") || null;
+  const currentVersion = mouService.getCurrentVersion(stream);
   const targetAgencies = mouService.getTargetAgenciesForStream(stream).map((agency) => ({
     suffix: String(agency.suffix || "").trim().toLowerCase(),
     name: agency.name || agency.groupPrefix || agency.suffix,
   }));
-  const signatures = currentDeployed
+  const signatures = currentVersion
     ? targetAgencies.map((agency) => ({
         agency,
         signature: mouService.getCurrentAgencySignatureForStream(stream, agency.suffix),
       }))
     : [];
-  const draftContent = draft ? mouService.getVersionContent(stream.mouId, draft.version) : null;
-  const draftUrls = draft ? mouService.buildContentUrls(stream, draft) : null;
+  const editorContent = currentVersion
+    ? mouService.getVersionContent(stream.mouId, currentVersion.version)
+    : null;
+  const editorUrls = currentVersion ? mouService.buildContentUrls(stream, currentVersion) : null;
 
   return {
     ...stream,
-    currentDeployed,
-    draft,
+    currentVersion,
     scopeLabel: mouService.getScopeLabel(stream),
     targetAgencies,
     signedCount: signatures.filter((entry) => !!entry.signature).length,
     pendingSignatureCount: signatures.filter((entry) => !entry.signature).length,
-    draftEditor:
-      draft && draftContent
+    editor:
+      currentVersion && editorContent
         ? {
-            version: draft.version,
+            version: currentVersion.version,
             title: stream.title,
-            contentType: draftContent.contentType,
-            sourceText: draftContent.contentType === "pdf" ? "" : draftContent.sourceText,
-            fileName: draftContent.fileName,
-            fileUrl: draftUrls?.fileUrl || "",
-            downloadUrl: draftUrls?.downloadUrl || "",
-            previewUrl: `/admin/mou/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(draft.version)}/preview`,
+            contentType: editorContent.contentType,
+            sourceText: editorContent.contentType === "pdf" ? "" : editorContent.sourceText,
+            fileName: editorContent.fileName,
+            fileUrl: editorUrls?.fileUrl || "",
+            downloadUrl: editorUrls?.downloadUrl || "",
+            previewUrl: `/admin/mou/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(currentVersion.version)}/preview`,
           }
         : null,
   };
@@ -215,7 +214,7 @@ function buildAdminStreamRow(stream) {
 router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
   const isGlobalAdmin = !!req.authentikUser?.isGlobalAdmin;
   const cards = mouService
-    .listDeployedStreamsForUser(req.authentikUser)
+    .listCurrentStreamsForUser(req.authentikUser)
     .map((stream) => buildStreamCard(req.authentikUser, stream));
   const adminStreams = isGlobalAdmin
     ? mouService.listStreams().map((stream) => buildAdminStreamRow(stream))
@@ -230,7 +229,7 @@ router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
         "mou_title",
         "scope",
         "agency_name",
-        "deployed_version",
+        "current_version",
         "signed_version",
         "signer_name",
         "status",
@@ -239,7 +238,7 @@ router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
         row.mouTitle,
         row.scopeLabel,
         row.agencyName,
-        row.deployedVersion,
+        row.currentVersion,
         row.signedVersion || "",
         row.signerDisplayName || "",
         row.needsSignature ? "needs_signature" : "current",
@@ -275,7 +274,7 @@ router.get("/mou/file/:mouId/:version", requireMouEnabled, requireMouPermission,
     }
     if (
       !req.authentikUser?.isGlobalAdmin &&
-      !["deployed", "superseded"].includes(String(content.version?.state || ""))
+      !["current", "previous"].includes(String(content.version?.state || ""))
     ) {
       return res.status(403).render("access-denied", {
         username: req.authentikUser?.username || "",
@@ -314,13 +313,13 @@ router.get("/mou/file/:mouId/:version", requireMouEnabled, requireMouPermission,
 
 router.get("/mou/view/:mouId/:version", requireMouEnabled, requireMouPermission, (req, res) => {
   try {
-    const out = mouService.getDeployedVersionOrLatest(req.params.mouId, req.params.version);
+    const out = mouService.getCurrentVersionOrLatest(req.params.mouId, req.params.version);
     if (!canSeeStream(req.authentikUser, out.stream)) {
       return res.status(403).render("access-denied", {
         username: req.authentikUser?.username || "",
       });
     }
-    if (out.redirectedToLatest || String(out.requestedVersion?.state || "") === "superseded") {
+    if (out.redirectedToLatest || String(out.requestedVersion?.state || "") === "previous") {
       return res.redirect(
         `/mou/view/${encodeURIComponent(out.stream.mouId)}/${encodeURIComponent(out.latestVersion.version)}?updated=1`
       );
@@ -346,7 +345,7 @@ router.get("/mou/view/:mouId/:version", requireMouEnabled, requireMouPermission,
 
     const contentUrls = mouService.buildContentUrls(out.stream, out.targetVersion);
     res.render("mou_view", {
-      mode: "deployed",
+      mode: "current",
       stream: out.stream,
       version: out.targetVersion,
       html: out.html,
@@ -401,7 +400,7 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
 
 router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireAgencyAdmin, (req, res) => {
   try {
-    const out = mouService.getDeployedVersionOrLatest(req.params.mouId, req.params.version);
+    const out = mouService.getCurrentVersionOrLatest(req.params.mouId, req.params.version);
     if (!canSeeStream(req.authentikUser, out.stream)) {
       return res.status(403).render("access-denied", {
         username: req.authentikUser?.username || "",
@@ -512,7 +511,7 @@ router.get("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalA
 
 router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
-    const stream = mouService.createDraftStream({
+    const stream = mouService.createStream({
       title: req.body?.title,
       html: req.body?.html,
       file: req.file || null,
@@ -522,7 +521,7 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
       actor: req.authentikUser,
     });
     auditRequest(req, {
-      action: "MOU_DRAFT_CREATED",
+      action: "MOU_DOCUMENT_CREATED",
       targetType: "mou",
       targetId: String(stream.mouId),
       details: {
@@ -531,36 +530,54 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
         title: stream.title,
       },
     });
-    return res.redirect(
-      `/mou?success=${encodeURIComponent("Draft created.")}&openDraft=${encodeURIComponent(`${stream.mouId}:1`)}`
-    );
+    return res.redirect(`/mou?success=${encodeURIComponent("Document created.")}`);
   } catch (err) {
     return toErrorRedirect(res, "/mou", err);
   }
 });
 
 router.post("/admin/mou/:mouId/new-version", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
-  try {
-    const stream = mouService.createNextDraft({
-      mouId: req.params.mouId,
-      actor: req.authentikUser,
+  Promise.resolve()
+    .then(async () => {
+      const stream = mouService.createNextVersion({
+        mouId: req.params.mouId,
+        actor: req.authentikUser,
+      });
+      const currentVersion = mouService.getCurrentVersion(stream);
+      if (
+        currentVersion &&
+        mouService.getTargetAgenciesForStream(stream).length
+      ) {
+        await mouScheduler.sendAssignmentNotificationsForVersion({
+          stream,
+          version: currentVersion,
+          actor: req.authentikUser,
+        });
+      }
+      auditRequest(req, {
+        action: "MOU_VERSION_CREATED",
+        targetType: "mou",
+        targetId: String(stream.mouId),
+        details: {
+          mouId: stream.mouId,
+          version: currentVersion ? currentVersion.version : null,
+          title: stream.title,
+        },
+      });
+      return res.redirect(`/mou?success=${encodeURIComponent("New version created.")}`);
+    })
+    .catch((err) => {
+      return toErrorRedirect(res, "/mou", err);
     });
-    const draft = (stream.versions || []).find((entry) => String(entry.state || "") === "draft");
-    return res.redirect(
-      `/mou?success=${encodeURIComponent("New draft created.")}&openDraft=${encodeURIComponent(`${stream.mouId}:${draft.version}`)}`
-    );
-  } catch (err) {
-    return toErrorRedirect(res, "/mou", err);
-  }
 });
 
 router.get("/admin/mou/:mouId/:version/edit", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
-  return res.redirect(`/mou?openDraft=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`);
+  return res.redirect(`/mou?editVersion=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`);
 });
 
 router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
-    mouService.updateDraft({
+    mouService.updateVersion({
       mouId: req.params.mouId,
       version: req.params.version,
       title: req.body?.title,
@@ -572,8 +589,12 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
       mandatory: true,
       actor: req.authentikUser,
     });
+    const payload = {
+      success: true,
+      previewUrl: `/admin/mou/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}/preview`,
+    };
     auditRequest(req, {
-      action: "MOU_DRAFT_UPDATED",
+      action: "MOU_DOCUMENT_UPDATED",
       targetType: "mou",
       targetId: String(req.params.mouId),
       details: {
@@ -581,13 +602,25 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
         version: Number(req.params.version),
       },
     });
+    if (
+      String(req.headers.accept || "").includes("application/json") ||
+      req.query.format === "json"
+    ) {
+      return res.json(payload);
+    }
     return res.redirect(
-      `/mou?success=${encodeURIComponent("Draft saved.")}&openDraft=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`
+      `/mou?success=${encodeURIComponent("Document saved.")}&editVersion=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`
     );
   } catch (err) {
+    if (
+      String(req.headers.accept || "").includes("application/json") ||
+      req.query.format === "json"
+    ) {
+      return res.status(400).json({ error: err?.message || "Failed to save document." });
+    }
     return toErrorRedirect(
       res,
-      `/mou?openDraft=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`,
+      `/mou?editVersion=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`,
       err
     );
   }
@@ -613,56 +646,6 @@ router.get("/admin/mou/:mouId/:version/preview", requireMouEnabled, requireMouPe
       fileName: content.fileName,
       scopeLabel: mouService.getScopeLabel(stream),
     });
-  } catch (err) {
-    return toErrorRedirect(res, "/mou", err);
-  }
-});
-
-router.post("/admin/mou/:mouId/:version/deploy", requireMouEnabled, requireMouPermission, requireGlobalAdmin, async (req, res) => {
-  try {
-    const deployed = mouService.deployDraft({
-      mouId: req.params.mouId,
-      version: req.params.version,
-      actor: req.authentikUser,
-    });
-    auditRequest(req, {
-      action: "MOU_DEPLOYED",
-      targetType: "mou",
-      targetId: String(req.params.mouId),
-      details: {
-        mouId: req.params.mouId,
-        version: deployed.version.version,
-        contentSha256: deployed.contentSha256,
-        supersededVersion: deployed.supersededVersion,
-        assignment: mouService.getScopeLabel(deployed.stream),
-      },
-    });
-    return res.redirect(`/mou?success=${encodeURIComponent("MOU deployed.")}`);
-  } catch (err) {
-    return toErrorRedirect(
-      res,
-      `/mou?openDraft=${encodeURIComponent(`${req.params.mouId}:${req.params.version}`)}`,
-      err
-    );
-  }
-});
-
-router.post("/admin/mou/:mouId/:version/discard", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
-  try {
-    mouService.discardDraft({
-      mouId: req.params.mouId,
-      version: req.params.version,
-    });
-    auditRequest(req, {
-      action: "MOU_DRAFT_DISCARDED",
-      targetType: "mou",
-      targetId: String(req.params.mouId),
-      details: {
-        mouId: req.params.mouId,
-        version: Number(req.params.version),
-      },
-    });
-    return res.redirect(`/mou?success=${encodeURIComponent("Draft discarded.")}`);
   } catch (err) {
     return toErrorRedirect(res, "/mou", err);
   }
@@ -702,17 +685,17 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
       agencySuffixes,
       actor: req.authentikUser,
     });
-    const deployed = mouService.getCurrentDeployedVersion(stream);
+    const currentVersion = mouService.getCurrentVersion(stream);
     const previousAssignmentKey = JSON.stringify(previousStream.assignments || {});
     const currentAssignmentKey = JSON.stringify(stream.assignments || {});
     if (
-      deployed &&
+      currentVersion &&
       previousAssignmentKey !== currentAssignmentKey &&
       mouService.getTargetAgenciesForStream(stream).length
     ) {
-      await mouScheduler.sendDeployNotificationsForVersion({
+      await mouScheduler.sendAssignmentNotificationsForVersion({
         stream,
-        version: deployed,
+        version: currentVersion,
         actor: req.authentikUser,
       });
     }

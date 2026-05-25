@@ -5,7 +5,7 @@
   <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div>
       <h1 style="margin-bottom:6px;">Sign MOU</h1>
-      <div class="muted">Review the current deployed version, then sign for the appropriate agency.</div>
+      <div class="muted">Review the current version, then sign for the appropriate agency.</div>
       <div class="mouBadgeRow">
         <span class="mouBadge"><%= scopeLabel || "Serverwide" %></span>
         <span class="mouBadge mouBadge--soft">v<%= version.version %></span>
@@ -37,7 +37,7 @@
       <div class="mouViewerToolbar">
         <div>
           <h2 style="margin:0;"><%= stream.title %></h2>
-          <div class="muted">Review the exact deployed version before signing.</div>
+          <div class="muted">Review the exact current version before signing.</div>
         </div>
         <% if (contentType === "pdf") { %>
           <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= fileUrl %>">Open PDF</a>

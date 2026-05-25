@@ -997,7 +997,7 @@ label.btn {
     gap: 14px;
 }
 
-.mouWorkspace--draftSplit {
+.mouWorkspace--formSplit {
     grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
 }
 

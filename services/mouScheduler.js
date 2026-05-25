@@ -84,7 +84,7 @@ async function sendAgencyAdminEmail({ agency, subject, html, text }) {
   });
 }
 
-async function sendDeployNotificationsForVersion({ stream, version, actor }) {
+async function sendAssignmentNotificationsForVersion({ stream, version, actor }) {
   if (!getBool("EMAIL_ENABLED", false)) {
     return { sent: 0, skipped: true };
   }
@@ -98,7 +98,7 @@ async function sendDeployNotificationsForVersion({ stream, version, actor }) {
     const signUrl = baseUrl
       ? `${baseUrl}/mou/sign/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(version.version)}`
       : "";
-    const html = renderTemplate("mou_deployed_to_agencies.html", {
+    const html = renderTemplate("mou_document_updated_to_agencies.html", {
       mouTitle: stream.title,
       version: version.version,
       agencyName: agency.name || agency.groupPrefix || agency.suffix,
@@ -109,7 +109,7 @@ async function sendDeployNotificationsForVersion({ stream, version, actor }) {
     const text = htmlToText(html);
     const result = await sendAgencyAdminEmail({
       agency,
-      subject: `TAK Portal MOU Deployed - ${stream.title} (v${version.version})`,
+      subject: `TAK Portal MOU Updated - ${stream.title} (v${version.version})`,
       html,
       text,
     });
@@ -117,7 +117,7 @@ async function sendDeployNotificationsForVersion({ stream, version, actor }) {
       sent += 1;
       auditSvc.logEvent({
         actor: actor || null,
-        action: "MOU_DEPLOY_NOTIFICATION_SENT",
+        action: "MOU_ASSIGNMENT_NOTIFICATION_SENT",
         targetType: "mou",
         targetId: String(stream.mouId),
         agencySuffix: agencySuffix,
@@ -138,7 +138,7 @@ async function sendDeployNotificationsForVersion({ stream, version, actor }) {
           mouId: stream.mouId,
           version: version.version,
           agencyName: agency.name || agencySuffix,
-          error: result.error || "Failed to send deploy notification.",
+          error: result.error || "Failed to send document notification.",
         },
       });
     }
@@ -168,18 +168,18 @@ async function runReminderSweep() {
     if (!agency) continue;
 
     const signUrl = baseUrl
-      ? `${baseUrl}/mou/sign/${encodeURIComponent(row.mouId)}/${encodeURIComponent(row.deployedVersion)}`
+      ? `${baseUrl}/mou/sign/${encodeURIComponent(row.mouId)}/${encodeURIComponent(row.currentVersion)}`
       : "";
     const html = renderTemplate("mou_reminder_agency.html", {
       mouTitle: row.mouTitle,
-      version: row.deployedVersion,
+      version: row.currentVersion,
       agencyName: row.agencyName,
       signUrl,
     });
     const text = htmlToText(html);
     const result = await sendAgencyAdminEmail({
       agency,
-      subject: `Reminder: MOU signature required - ${row.mouTitle} (v${row.deployedVersion})`,
+      subject: `Reminder: MOU signature required - ${row.mouTitle} (v${row.currentVersion})`,
       html,
       text,
     });
@@ -188,7 +188,7 @@ async function runReminderSweep() {
       mouService.markAgencyReminderSent({
         mouId: row.mouId,
         agencyId: row.agencyId,
-        version: row.deployedVersion,
+        version: row.currentVersion,
         sentAt,
       });
       sent += 1;
@@ -200,7 +200,7 @@ async function runReminderSweep() {
         agencySuffix: row.agencyId,
         details: {
           mouId: row.mouId,
-          version: row.deployedVersion,
+          version: row.currentVersion,
           agencyName: row.agencyName,
           sentAt,
         },
@@ -227,7 +227,7 @@ function startScheduler() {
 }
 
 module.exports = {
-  sendDeployNotificationsForVersion,
+  sendAssignmentNotificationsForVersion,
   runReminderSweep,
   startScheduler,
 };

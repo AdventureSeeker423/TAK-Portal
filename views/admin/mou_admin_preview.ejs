@@ -22,7 +22,7 @@
   <section class="card mouViewerCard">
     <% if (contentType === "pdf") { %>
       <div class="mouViewerToolbar">
-        <div class="muted">Previewing <%= fileName || "draft PDF" %></div>
+        <div class="muted">Previewing <%= fileName || "document PDF" %></div>
         <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= fileUrl %>">Open PDF</a>
       </div>
       <iframe class="mouPdfFrame" src="<%= fileUrl %>" title="<%= stream.title %>"></iframe>

@@ -3,8 +3,7 @@ const path = require("path");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const ROOT_DIR = path.join(DATA_DIR, "mou");
-const DRAFTS_DIR = path.join(ROOT_DIR, "drafts");
-const DEPLOYED_DIR = path.join(ROOT_DIR, "deployed");
+const VERSIONS_DIR = path.join(ROOT_DIR, "versions");
 const SIGNED_DIR = path.join(ROOT_DIR, "signed");
 const SIGNATURES_DIR = path.join(ROOT_DIR, "signatures");
 
@@ -52,8 +51,7 @@ function atomicWriteJson(filePath, value) {
 
 function ensureStorage() {
   ensureDir(ROOT_DIR);
-  ensureDir(DRAFTS_DIR);
-  ensureDir(DEPLOYED_DIR);
+  ensureDir(VERSIONS_DIR);
   ensureDir(SIGNED_DIR);
   ensureDir(SIGNATURES_DIR);
 
@@ -103,12 +101,8 @@ function normalizeSegment(value) {
   return String(value || "").trim();
 }
 
-function getDraftPath(mouId, version) {
-  return path.join(DRAFTS_DIR, normalizeSegment(mouId), `${normalizeVersion(version)}.html`);
-}
-
-function getDeployedPath(mouId, version) {
-  return path.join(DEPLOYED_DIR, normalizeSegment(mouId), `${normalizeVersion(version)}.html`);
+function getVersionPath(mouId, version) {
+  return path.join(VERSIONS_DIR, normalizeSegment(mouId), `${normalizeVersion(version)}.html`);
 }
 
 function normalizeExtension(extension, fallback) {
@@ -116,17 +110,9 @@ function normalizeExtension(extension, fallback) {
   return ext || String(fallback || "html").trim().replace(/^\.+/, "").toLowerCase();
 }
 
-function getDraftContentPath(mouId, version, extension) {
+function getVersionContentPath(mouId, version, extension) {
   return path.join(
-    DRAFTS_DIR,
-    normalizeSegment(mouId),
-    `${normalizeVersion(version)}.${normalizeExtension(extension, "html")}`
-  );
-}
-
-function getDeployedContentPath(mouId, version, extension) {
-  return path.join(
-    DEPLOYED_DIR,
+    VERSIONS_DIR,
     normalizeSegment(mouId),
     `${normalizeVersion(version)}.${normalizeExtension(extension, "html")}`
   );
@@ -248,10 +234,8 @@ module.exports = {
   saveViews,
   loadReminders,
   saveReminders,
-  getDraftPath,
-  getDeployedPath,
-  getDraftContentPath,
-  getDeployedContentPath,
+  getVersionPath,
+  getVersionContentPath,
   getSignedHtmlPath,
   getSignaturePngPath,
   readHtml,

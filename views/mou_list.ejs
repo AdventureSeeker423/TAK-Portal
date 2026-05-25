@@ -21,7 +21,7 @@
   <% } %>
 
   <% if (isGlobalAdmin) { %>
-    <div class="mouWorkspace mouWorkspace--draftSplit" style="margin-bottom:14px;">
+    <div class="mouWorkspace mouWorkspace--formSplit" style="margin-bottom:14px;">
       <section class="card mouWorkspace__document">
         <div class="mouSectionHeader">
           <div>
@@ -29,7 +29,7 @@
           </div>
         </div>
 
-        <form method="post" action="/admin/mou" enctype="multipart/form-data" class="mouAdminForm" data-mou-draft-form="create">
+        <form method="post" action="/admin/mou" enctype="multipart/form-data" class="mouAdminForm" data-mou-create-form>
           <input type="hidden" name="mandatory" value="true" />
           <div class="grid2">
             <label>
@@ -47,7 +47,7 @@
           </div>
 
           <label data-mou-richtext-field>
-            <span data-mou-richtext-label>Draft Markdown</span>
+            <span data-mou-richtext-label>Document Markdown</span>
             <textarea name="html" rows="16" placeholder="# Paste Document Markdown here" data-mou-richtext-input></textarea>
           </label>
 
@@ -102,7 +102,7 @@
       <% if (!cards || !cards.length) { %>
         <div class="mouEmptyState">
           <h3>No documents available</h3>
-          <p class="muted">There are no deployed documents in scope for your account right now.</p>
+          <p class="muted">There are no active documents in scope for your account right now.</p>
         </div>
       <% } else { %>
         <table class="table">
@@ -124,7 +124,7 @@
                 <td>
                   <strong><%= card.stream.title %></strong>
                   <div class="mouBadgeRow" style="margin-top:8px;">
-                    <span class="mouBadge mouBadge--soft"><%= String(card.deployed && card.deployed.contentType || "html").toUpperCase() %></span>
+                    <span class="mouBadge mouBadge--soft"><%= String(card.currentVersion && card.currentVersion.contentType || "html").toUpperCase() %></span>
                     <% if (card.stream.mandatory) { %>
                       <span class="mouBadge mouBadge--accent">Required</span>
                     <% } %>
@@ -132,9 +132,9 @@
                 </td>
                 <td><%= card.scopeLabel %></td>
                 <td>
-                  v<%= card.deployed ? card.deployed.version : "-" %>
-                  <% if (card.deployed && card.deployed.deployedAt) { %>
-                    <div class="muted">Deployed <%= card.deployed.deployedAt %></div>
+                  v<%= card.currentVersion ? card.currentVersion.version : "-" %>
+                  <% if (card.currentVersion && card.currentVersion.activeAt) { %>
+                    <div class="muted">Active <%= card.currentVersion.activeAt %></div>
                   <% } %>
                 </td>
                 <td>
@@ -156,11 +156,11 @@
                 </td>
                 <td>
                   <div class="mouActionRow">
-                    <% if (card.deployed) { %>
-                      <a class="btn" href="/mou/view/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>">Open</a>
-                      <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>?download=1">Download</a>
+                    <% if (card.currentVersion) { %>
+                      <a class="btn" href="/mou/view/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">Open</a>
+                      <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>?download=1">Download</a>
                       <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
-                        <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.deployed.version) %>">
+                        <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
                           <%= card.allSigned ? "Review Signatures" : "Sign / Review" %>
                         </a>
                       <% } %>
@@ -180,21 +180,20 @@
       <div class="mouSectionHeader">
         <div>
           <h2>Documents</h2>
-          <p class="muted">Create drafts, edit them in a modal, deploy when ready, and assign active documents.</p>
+          <p class="muted">Edit the current version in a modal, create new versions when needed, and assign active documents.</p>
         </div>
       </div>
       <% if (!adminStreams || !adminStreams.length) { %>
         <div class="mouEmptyState">
           <h3>No documents yet</h3>
-          <p class="muted">Create your first draft using the form above.</p>
+          <p class="muted">Create your first document using the form above.</p>
         </div>
       <% } else { %>
         <table class="table">
           <thead>
             <tr>
               <th>Document</th>
-              <th>Draft</th>
-              <th>Deployed</th>
+              <th>Current Version</th>
               <th>Assignment</th>
               <th>Signatures</th>
               <th>Actions</th>
@@ -202,25 +201,22 @@
           </thead>
           <tbody>
             <% adminStreams.forEach(function (stream) { %>
-              <% const draft = stream.draft; %>
-              <% const draftOverlayId = draft ? ("mouDraftOverlay-" + stream.mouId + "-" + draft.version) : ""; %>
-              <% const assignOverlayId = stream.currentDeployed ? ("mouAssignOverlay-" + stream.mouId) : ""; %>
-              <% const assignmentLabel = stream.currentDeployed ? (stream.targetAgencies && stream.targetAgencies.length ? stream.scopeLabel : "Inactive") : "Deploy first"; %>
+              <% const currentVersion = stream.currentVersion; %>
+              <% const editorOverlayId = currentVersion ? ("mouEditOverlay-" + stream.mouId + "-" + currentVersion.version) : ""; %>
+              <% const assignOverlayId = currentVersion ? ("mouAssignOverlay-" + stream.mouId) : ""; %>
+              <% const assignmentLabel = currentVersion ? (stream.targetAgencies && stream.targetAgencies.length ? stream.scopeLabel : "Inactive") : "Create version first"; %>
               <tr>
                 <td>
                   <strong><%= stream.title %></strong>
                   <div class="mouBadgeRow" style="margin-top:8px;">
                     <span class="mouBadge"><%= stream.scopeLabel %></span>
-                    <% if (stream.currentDeployed && stream.currentDeployed.contentType) { %>
-                      <span class="mouBadge mouBadge--soft"><%= String(stream.currentDeployed.contentType).toUpperCase() %></span>
-                    <% } else if (draft && draft.contentType) { %>
-                      <span class="mouBadge mouBadge--soft"><%= String(draft.contentType).toUpperCase() %></span>
+                    <% if (currentVersion && currentVersion.contentType) { %>
+                      <span class="mouBadge mouBadge--soft"><%= String(currentVersion.contentType).toUpperCase() %></span>
                     <% } %>
                     <span class="mouBadge mouBadge--accent">Required</span>
                   </div>
                 </td>
-                <td><%= draft ? ("v" + draft.version) : "None" %></td>
-                <td><%= stream.currentDeployed ? ("v" + stream.currentDeployed.version) : "None" %></td>
+                <td><%= currentVersion ? ("v" + currentVersion.version) : "None" %></td>
                 <td>
                   <%= assignmentLabel %>
                   <% if (stream.targetAgencies && stream.targetAgencies.length) { %>
@@ -228,7 +224,7 @@
                   <% } %>
                 </td>
                 <td>
-                  <% if (stream.currentDeployed) { %>
+                  <% if (currentVersion) { %>
                     <%= stream.signedCount %>/<%= stream.targetAgencies.length %> signed
                     <% if (stream.pendingSignatureCount) { %>
                       <div class="muted"><%= stream.pendingSignatureCount %> pending</div>
@@ -239,16 +235,19 @@
                 </td>
                 <td>
                   <div class="mouActionRow">
-                    <% if (draft) { %>
-                      <button class="btn" type="button" data-overlay-target="<%= draftOverlayId %>">Edit Draft</button>
+                    <% if (currentVersion) { %>
+                      <button class="btn" type="button" data-overlay-target="<%= editorOverlayId %>">Edit</button>
                     <% } else { %>
                       <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/new-version" style="display:inline;">
-                        <button class="btn" type="submit">New Draft</button>
+                        <button class="btn" type="submit">New Version</button>
                       </form>
                     <% } %>
-                    <% if (stream.currentDeployed) { %>
+                    <% if (currentVersion) { %>
+                      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/new-version" style="display:inline;">
+                        <button class="btn secondary" type="submit">New Version</button>
+                      </form>
                       <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
-                      <a class="btn secondary" href="/mou/view/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(stream.currentDeployed.version) %>">Open</a>
+                      <a class="btn secondary" href="/mou/view/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(currentVersion.version) %>">Open</a>
                     <% } %>
                     <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and evidence files?');">
                       <button class="btn danger" type="submit">Delete</button>
@@ -273,7 +272,7 @@
       <% if (!signatureRows || !signatureRows.length) { %>
         <div class="mouEmptyState">
           <h3>No signature data yet</h3>
-          <p class="muted">Deployed documents will appear here once they target agencies.</p>
+          <p class="muted">Active documents will appear here once they target agencies.</p>
         </div>
       <% } else { %>
         <table class="table">
@@ -295,7 +294,7 @@
                 <td><%= row.mouTitle %></td>
                 <td><%= row.scopeLabel %></td>
                 <td><%= row.agencyName %></td>
-                <td>v<%= row.deployedVersion %></td>
+                <td>v<%= row.currentVersion %></td>
                 <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
                 <td><%= row.signerDisplayName || "-" %></td>
                 <td>
@@ -321,21 +320,21 @@
 
 <% if (isGlobalAdmin && adminStreams && adminStreams.length) { %>
   <% adminStreams.forEach(function (stream) { %>
-    <% const draft = stream.draft; %>
-    <% const draftEditor = stream.draftEditor; %>
-    <% if (draft && draftEditor) { %>
-      <% const draftOverlayId = "mouDraftOverlay-" + stream.mouId + "-" + draft.version; %>
-      <div class="modalOverlay" id="<%= draftOverlayId %>" style="display:none;" data-draft-key="<%= stream.mouId %>:<%= draft.version %>">
-        <div class="modal mouEditorModal" role="dialog" aria-modal="true" aria-labelledby="<%= draftOverlayId %>-title">
+    <% const currentVersion = stream.currentVersion; %>
+    <% const editor = stream.editor; %>
+    <% if (currentVersion && editor) { %>
+      <% const editorOverlayId = "mouEditOverlay-" + stream.mouId + "-" + currentVersion.version; %>
+      <div class="modalOverlay" id="<%= editorOverlayId %>" style="display:none;" data-edit-key="<%= stream.mouId %>:<%= currentVersion.version %>">
+        <div class="modal mouEditorModal" role="dialog" aria-modal="true" aria-labelledby="<%= editorOverlayId %>-title">
           <div class="modalHeader">
             <div>
-              <h2 id="<%= draftOverlayId %>-title" style="margin:0;">Edit Draft</h2>
-              <div class="muted" style="margin-top:4px;"><%= stream.title %> • v<%= draft.version %></div>
+              <h2 id="<%= editorOverlayId %>-title" style="margin:0;">Edit Document</h2>
+              <div class="muted" style="margin-top:4px;"><%= stream.title %> • v<%= currentVersion.version %></div>
             </div>
             <button class="btn" type="button" data-close-overlay>Close</button>
           </div>
           <div class="modalBody">
-            <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(draft.version) %>/save" enctype="multipart/form-data" class="mouAdminForm" data-mou-draft-form="edit">
+            <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(currentVersion.version) %>/save" enctype="multipart/form-data" class="mouAdminForm" data-mou-editor-form>
               <input type="hidden" name="mandatory" value="true" />
               <div class="grid2">
                 <label>
@@ -345,64 +344,48 @@
                 <label>
                   Content type
                   <select name="contentType" data-mou-content-select>
-                    <option value="markdown" <%= draftEditor.contentType === "markdown" ? "selected" : "" %>>Markdown</option>
-                    <option value="html" <%= draftEditor.contentType === "html" ? "selected" : "" %>>HTML</option>
-                    <option value="pdf" <%= draftEditor.contentType === "pdf" ? "selected" : "" %>>PDF upload</option>
+                    <option value="markdown" <%= editor.contentType === "markdown" ? "selected" : "" %>>Markdown</option>
+                    <option value="html" <%= editor.contentType === "html" ? "selected" : "" %>>HTML</option>
+                    <option value="pdf" <%= editor.contentType === "pdf" ? "selected" : "" %>>PDF upload</option>
                   </select>
                 </label>
               </div>
 
-              <label data-mou-richtext-field <% if (draftEditor.contentType === "pdf") { %>style="display:none;"<% } %>>
-                <span data-mou-richtext-label><%= draftEditor.contentType === "markdown" ? "Draft Markdown" : "Draft HTML" %></span>
-                <textarea name="html" rows="20" data-mou-richtext-input placeholder="<%= draftEditor.contentType === 'markdown' ? '# Paste Document Markdown here' : '<p>Paste Document HTML here.</p>' %>"><%- draftEditor.sourceText %></textarea>
+              <label data-mou-richtext-field <% if (editor.contentType === "pdf") { %>style="display:none;"<% } %>>
+                <span data-mou-richtext-label><%= editor.contentType === "markdown" ? "Document Markdown" : "Document HTML" %></span>
+                <textarea name="html" rows="20" data-mou-richtext-input placeholder="<%= editor.contentType === 'markdown' ? '# Paste Document Markdown here' : '<p>Paste Document HTML here.</p>' %>"><%- editor.sourceText %></textarea>
               </label>
 
-              <label data-mou-file-field <% if (draftEditor.contentType !== "pdf") { %>style="display:none;"<% } %>>
+              <label data-mou-file-field <% if (editor.contentType !== "pdf") { %>style="display:none;"<% } %>>
                 Replace PDF
                 <input type="file" name="contentFile" accept="application/pdf,.pdf" />
-                <% if (draftEditor.contentType === "pdf" && draftEditor.fileName) { %>
-                  <div class="muted" style="margin-top:6px;">Current file: <%= draftEditor.fileName %></div>
+                <% if (editor.contentType === "pdf" && editor.fileName) { %>
+                  <div class="muted" style="margin-top:6px;">Current file: <%= editor.fileName %></div>
                 <% } %>
               </label>
 
+              <div class="msg" data-editor-status></div>
               <div class="mouFormFooter">
-                <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= draftEditor.previewUrl %>">Preview</a>
-                <% if (draftEditor.contentType === "pdf" && draftEditor.fileUrl) { %>
-                  <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= draftEditor.fileUrl %>">Open PDF</a>
+                <button class="btn secondary" type="button" data-mou-preview-button>Preview</button>
+                <% if (editor.contentType === "pdf" && editor.fileUrl) { %>
+                  <a class="btn secondary" target="_blank" rel="noopener noreferrer" href="<%= editor.fileUrl %>">Open PDF</a>
                 <% } %>
-                <button class="btn success" type="submit">Save Draft</button>
+                <button class="btn success" type="submit">Save</button>
               </div>
             </form>
-
-            <div class="card" style="margin:14px 0 0 0;">
-              <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-                <div>
-                  <strong>Deploy or discard this draft</strong>
-                  <div class="muted">Deploy makes this version live. Discard removes only this draft version.</div>
-                </div>
-                <div class="mouActionRow">
-                  <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(draft.version) %>/deploy">
-                    <button class="btn success" type="submit">Deploy</button>
-                  </form>
-                  <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(draft.version) %>/discard" onsubmit="return confirm('Discard this draft?');">
-                    <button class="btn danger" type="submit">Discard Draft</button>
-                  </form>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
     <% } %>
 
-    <% if (stream.currentDeployed) { %>
+    <% if (stream.currentVersion) { %>
       <% const assignOverlayId = "mouAssignOverlay-" + stream.mouId; %>
       <div class="modalOverlay" id="<%= assignOverlayId %>" style="display:none;">
         <div class="modal mouAssignModal" role="dialog" aria-modal="true" aria-labelledby="<%= assignOverlayId %>-title">
           <div class="modalHeader">
             <div>
               <h2 id="<%= assignOverlayId %>-title" style="margin:0;">Assign Document</h2>
-              <div class="muted" style="margin-top:4px;"><%= stream.title %> • live version v<%= stream.currentDeployed.version %></div>
+              <div class="muted" style="margin-top:4px;"><%= stream.title %> • current version v<%= stream.currentVersion.version %></div>
             </div>
             <button class="btn" type="button" data-close-overlay>Close</button>
           </div>
@@ -480,7 +463,7 @@
     if (!anyOpen) document.body.style.overflow = "";
   }
 
-  function syncDraftForm(form) {
+  function syncContentFields(form) {
     if (!form) return;
     var contentSelect = form.querySelector("[data-mou-content-select]");
     var richtextField = form.querySelector("[data-mou-richtext-field]");
@@ -499,7 +482,7 @@
           : "<p>Paste Document HTML here.</p>";
       }
       if (richtextLabel) {
-        richtextLabel.textContent = contentValue === "markdown" ? "Draft Markdown" : "Draft HTML";
+        richtextLabel.textContent = contentValue === "markdown" ? "Document Markdown" : "Document HTML";
       }
       setFieldVisible(fileField, contentValue === "pdf");
       if (fileInput) {
@@ -510,6 +493,72 @@
 
     if (contentSelect) contentSelect.addEventListener("change", sync);
     sync();
+  }
+
+  function syncEditorForm(form) {
+    if (!form) return;
+    syncContentFields(form);
+    var statusEl = form.querySelector("[data-editor-status]");
+    var previewBtn = form.querySelector("[data-mou-preview-button]");
+    var saveTimer = null;
+    var saveInFlight = null;
+
+    function setStatus(kind, text) {
+      if (!statusEl) return;
+      statusEl.className = "msg " + (kind || "");
+      statusEl.textContent = text || "";
+    }
+
+    async function saveNow() {
+      if (saveInFlight) return saveInFlight;
+      var action = form.getAttribute("action");
+      var submitButton = form.querySelector("button[type='submit']");
+      if (submitButton) submitButton.disabled = true;
+      if (previewBtn) previewBtn.disabled = true;
+      setStatus("pending", "Saving...");
+      saveInFlight = fetch(action + "?format=json", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: new FormData(form)
+      }).then(async function (res) {
+        var out = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(out.error || "Failed to save document.");
+        setStatus("ok", "Saved.");
+        return out;
+      }).catch(function (err) {
+        setStatus("bad", err && err.message ? err.message : "Failed to save document.");
+        throw err;
+      }).finally(function () {
+        saveInFlight = null;
+        if (submitButton) submitButton.disabled = false;
+        if (previewBtn) previewBtn.disabled = false;
+      });
+      return saveInFlight;
+    }
+
+    function scheduleSave() {
+      window.clearTimeout(saveTimer);
+      setStatus("pending", "Saving soon...");
+      saveTimer = window.setTimeout(function () {
+        saveNow().catch(function () {});
+      }, 800);
+    }
+
+    form.addEventListener("input", scheduleSave);
+    form.addEventListener("change", scheduleSave);
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      saveNow().catch(function () {});
+    });
+    if (previewBtn) {
+      previewBtn.addEventListener("click", function () {
+        saveNow()
+          .then(function (out) {
+            if (out && out.previewUrl) window.open(out.previewUrl, "_blank", "noopener");
+          })
+          .catch(function () {});
+      });
+    }
   }
 
   function syncAssignmentForm(form) {
@@ -585,13 +634,14 @@
     if (openOverlayEl) closeOverlay(openOverlayEl);
   });
 
-  document.querySelectorAll("[data-mou-draft-form]").forEach(syncDraftForm);
+  document.querySelectorAll("[data-mou-create-form]").forEach(syncContentFields);
+  document.querySelectorAll("[data-mou-editor-form]").forEach(syncEditorForm);
   document.querySelectorAll("[data-mou-assignment-form]").forEach(syncAssignmentForm);
 
-  var openDraftKey = new URLSearchParams(window.location.search).get("openDraft");
-  if (openDraftKey) {
-    var draftOverlay = document.querySelector('[data-draft-key="' + openDraftKey.replace(/"/g, '\\"') + '"]');
-    if (draftOverlay) openOverlay(draftOverlay);
+  var editVersionKey = new URLSearchParams(window.location.search).get("editVersion");
+  if (editVersionKey) {
+    var editorOverlay = document.querySelector('[data-edit-key="' + editVersionKey.replace(/"/g, '\\"') + '"]');
+    if (editorOverlay) openOverlay(editorOverlay);
   }
 })();
 </script>

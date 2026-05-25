@@ -242,9 +242,14 @@ function ensureVersionShape(versionRecord) {
       ? "markdown"
       : "html";
   const contentType = normalizeContentType(versionRecord?.contentType || inferredContentType);
+  const rawState = normalizeText(versionRecord?.state || "").toLowerCase();
+  const state =
+    rawState === "previous" || rawState === "superseded"
+      ? "previous"
+      : "current";
   return {
     version: normalizeVersion(versionRecord?.version),
-    state: normalizeText(versionRecord?.state || "draft") || "draft",
+    state,
     contentType,
     fileExtension: normalizeText(versionRecord?.fileExtension || getFileExtensionForContentType(contentType)),
     originalFileName: normalizeText(versionRecord?.originalFileName || ""),
@@ -254,10 +259,10 @@ function ensureVersionShape(versionRecord) {
     createdBy: versionRecord?.createdBy || null,
     updatedAt: versionRecord?.updatedAt || null,
     updatedBy: versionRecord?.updatedBy || null,
-    deployedAt: versionRecord?.deployedAt || null,
-    deployedBy: versionRecord?.deployedBy || null,
-    supersededAt: versionRecord?.supersededAt || null,
-    supersededBy: versionRecord?.supersededBy || null,
+    activeAt: versionRecord?.activeAt || versionRecord?.createdAt || null,
+    activeBy: versionRecord?.activeBy || versionRecord?.createdBy || null,
+    previousAt: versionRecord?.previousAt || null,
+    previousBy: versionRecord?.previousBy || null,
     signatures: Array.isArray(versionRecord?.signatures) ? versionRecord.signatures : [],
   };
 }
@@ -299,10 +304,10 @@ function findVersion(stream, version) {
   );
 }
 
-function getCurrentDeployedVersion(stream) {
+function getCurrentVersion(stream) {
   return (
     sortVersions(stream?.versions || []).find(
-      (entry) => String(entry?.state || "") === "deployed"
+      (entry) => String(entry?.state || "") === "current"
     ) || null
   );
 }
@@ -423,13 +428,13 @@ function listStreams() {
   return sortStreams(index.streams || []);
 }
 
-function listDeployedStreams() {
-  return sortStreams(listStreams().filter((stream) => !!getCurrentDeployedVersion(stream)));
+function listCurrentStreams() {
+  return sortStreams(listStreams().filter((stream) => !!getCurrentVersion(stream)));
 }
 
-function listDeployedStreamsForUser(authUser) {
+function listCurrentStreamsForUser(authUser) {
   return sortStreams(
-    listDeployedStreams().filter((stream) => streamAppliesToUser(stream, authUser))
+    listCurrentStreams().filter((stream) => streamAppliesToUser(stream, authUser))
   );
 }
 
@@ -523,15 +528,15 @@ function normalizeUserAgreementVersion(versionRecord) {
   };
 }
 
-function persistDraftContent({ mouId, version, contentType, html, file }) {
+function persistVersionContent({ mouId, version, contentType, html, file }) {
   const ext = getFileExtensionForContentType(contentType);
-  const draftPath = store.getDraftContentPath(mouId, version, ext);
+  const targetPath = store.getVersionContentPath(mouId, version, ext);
   if (contentType === "pdf") {
     const buffer = Buffer.isBuffer(file?.buffer) ? file.buffer : Buffer.alloc(0);
     enforcePdfSize(buffer);
-    store.writeBinary(draftPath, buffer);
+    store.writeBinary(targetPath, buffer);
     return {
-      absPath: draftPath,
+      absPath: targetPath,
       contentSha256: computeSha256(buffer),
       originalFileName: normalizeText(file?.originalname || `mou-${version}.pdf`),
     };
@@ -539,28 +544,28 @@ function persistDraftContent({ mouId, version, contentType, html, file }) {
 
   if (contentType === "markdown") {
     const safeMarkdown = String(html || "");
-    requireNonEmpty(safeMarkdown, "Draft Markdown");
+    requireNonEmpty(safeMarkdown, "Document Markdown");
     enforceHtmlSize(safeMarkdown);
-    store.writeHtml(draftPath, safeMarkdown);
+    store.writeHtml(targetPath, safeMarkdown);
     return {
-      absPath: draftPath,
+      absPath: targetPath,
       contentSha256: computeSha256(safeMarkdown),
       originalFileName: normalizeText(file?.originalname || ""),
     };
   }
 
   const safeHtml = sanitizeMouHtml(html || "");
-  requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "Draft HTML");
+  requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "Document HTML");
   enforceHtmlSize(safeHtml);
-  store.writeHtml(draftPath, safeHtml);
+  store.writeHtml(targetPath, safeHtml);
   return {
-    absPath: draftPath,
+    absPath: targetPath,
     contentSha256: computeSha256(safeHtml),
     originalFileName: normalizeText(file?.originalname || ""),
   };
 }
 
-function buildDraftInput(input, existingVersionRecord) {
+function buildVersionInput(input, existingVersionRecord) {
   const title = normalizeText(input?.title);
   const slug = slugify(input?.slug || title);
   const reminderDays = normalizedReminderDays(input?.reminderDays);
@@ -576,7 +581,7 @@ function buildDraftInput(input, existingVersionRecord) {
   if (contentType === "html" || contentType === "markdown") {
     requireNonEmpty(
       input?.html,
-      contentType === "markdown" ? "Draft Markdown" : "Draft HTML"
+      contentType === "markdown" ? "Document Markdown" : "Document HTML"
     );
   } else if ((!existingVersionRecord || existingContentType !== "pdf") && !input?.file) {
     throw new Error("A PDF file is required.");
@@ -593,7 +598,7 @@ function buildDraftInput(input, existingVersionRecord) {
   };
 }
 
-function createDraftVersionRecord({
+function createVersionRecord({
   version,
   contentType,
   contentPath,
@@ -604,7 +609,7 @@ function createDraftVersionRecord({
   const now = nowIso();
   return ensureVersionShape({
     version,
-    state: "draft",
+    state: "current",
     contentType,
     fileExtension: getFileExtensionForContentType(contentType),
     originalFileName,
@@ -614,33 +619,35 @@ function createDraftVersionRecord({
     createdBy: actor?.uid || actor?.username || null,
     updatedAt: now,
     updatedBy: actor?.uid || actor?.username || null,
+    activeAt: now,
+    activeBy: actor?.uid || actor?.username || null,
     signatures: [],
   });
 }
 
-function copyVersionContentToDraft(mouId, targetVersion, sourceVersion) {
+function copyVersionContentToVersion(mouId, targetVersion, sourceVersion) {
   const contentType = normalizeContentType(sourceVersion?.contentType);
   const extension = getFileExtensionForContentType(contentType);
   const sourceAbs = getAbsoluteContentPath(sourceVersion);
-  const draftAbs = store.getDraftContentPath(mouId, targetVersion, extension);
+  const targetAbs = store.getVersionContentPath(mouId, targetVersion, extension);
   const contentBuffer = readBufferSafe(sourceAbs);
   if (!contentBuffer.length) {
     throw new Error("The previous version content could not be read.");
   }
   if (contentType === "pdf") {
-    store.writeBinary(draftAbs, contentBuffer);
+    store.writeBinary(targetAbs, contentBuffer);
   } else {
-    store.writeHtml(draftAbs, contentBuffer.toString("utf8"));
+    store.writeHtml(targetAbs, contentBuffer.toString("utf8"));
   }
   return {
-    absPath: draftAbs,
+    absPath: targetAbs,
     contentType,
     contentSha256: computeSha256(contentBuffer),
     originalFileName: normalizeText(sourceVersion?.originalFileName || ""),
   };
 }
 
-function createDraftStream({
+function createStream({
   title,
   slug,
   html,
@@ -651,7 +658,7 @@ function createDraftStream({
   actor,
 }) {
   requireEnabled();
-  const draft = buildDraftInput({
+  const versionInput = buildVersionInput({
     title,
     slug,
     html,
@@ -663,20 +670,20 @@ function createDraftStream({
   const index = getIndex();
   const mouId = makeId();
   const version = 1;
-  const persisted = persistDraftContent({
+  const persisted = persistVersionContent({
     mouId,
     version,
-    contentType: draft.contentType,
-    html: draft.html,
-    file: draft.file,
+    contentType: versionInput.contentType,
+    html: versionInput.html,
+    file: versionInput.file,
   });
   const now = nowIso();
   const stream = ensureStreamShape({
     mouId,
-    title: draft.title,
-    slug: draft.slug,
-    mandatory: draft.mandatory,
-    reminderDays: draft.reminderDays,
+    title: versionInput.title,
+    slug: versionInput.slug,
+    mandatory: versionInput.mandatory,
+    reminderDays: versionInput.reminderDays,
     assignments: {
       serverwide: false,
       agencySuffixes: [],
@@ -686,9 +693,9 @@ function createDraftStream({
     updatedAt: now,
     updatedBy: actor?.uid || actor?.username || null,
     versions: [
-      createDraftVersionRecord({
+      createVersionRecord({
         version,
-        contentType: draft.contentType,
+        contentType: versionInput.contentType,
         contentPath: buildRelativeDataPath(persisted.absPath),
         contentSha256: persisted.contentSha256,
         originalFileName: persisted.originalFileName,
@@ -701,20 +708,22 @@ function createDraftStream({
   return clone(stream);
 }
 
-function createNextDraft({ mouId, actor }) {
+function createNextVersion({ mouId, actor }) {
   requireEnabled();
   const index = getIndex();
   const stream = findStream(index, mouId);
   if (!stream) throw new Error("MOU stream not found.");
-  const existingDraft = (stream.versions || []).find((entry) => String(entry?.state || "") === "draft");
-  if (existingDraft) {
-    throw new Error("A draft already exists for this stream.");
-  }
   const latest = getLatestVersion(stream);
   const nextVersion = normalizeVersion(latest?.version) + 1;
-  const copied = copyVersionContentToDraft(mouId, nextVersion, latest);
+  const currentVersion = getCurrentVersion(stream);
+  if (currentVersion) {
+    currentVersion.state = "previous";
+    currentVersion.previousAt = nowIso();
+    currentVersion.previousBy = actor?.uid || actor?.username || null;
+  }
+  const copied = copyVersionContentToVersion(mouId, nextVersion, latest);
   stream.versions.push(
-    createDraftVersionRecord({
+    createVersionRecord({
       version: nextVersion,
       contentType: copied.contentType,
       contentPath: buildRelativeDataPath(copied.absPath),
@@ -729,7 +738,7 @@ function createNextDraft({ mouId, actor }) {
   return clone(stream);
 }
 
-function updateDraft({
+function updateVersion({
   mouId,
   version,
   title,
@@ -743,11 +752,11 @@ function updateDraft({
 }) {
   requireEnabled();
   const { index, stream, versionRecord } = getStreamAndVersion(mouId, version);
-  if (String(versionRecord.state || "") !== "draft") {
-    throw new Error("Only draft versions can be edited.");
+  if (String(versionRecord.state || "") !== "current") {
+    throw new Error("Only the current version can be edited.");
   }
 
-  const update = buildDraftInput({
+  const update = buildVersionInput({
     title,
     slug,
     html,
@@ -772,7 +781,7 @@ function updateDraft({
     update.contentType === "markdown"
   ) {
     const oldAbsPath = getAbsoluteContentPath(versionRecord);
-    const persisted = persistDraftContent({
+    const persisted = persistVersionContent({
       mouId,
       version: versionRecord.version,
       contentType: update.contentType,
@@ -789,30 +798,20 @@ function updateDraft({
     versionRecord.contentSha256 = persisted.contentSha256;
   }
 
+  if (Array.isArray(versionRecord.signatures) && versionRecord.signatures.length) {
+    for (const signature of versionRecord.signatures) {
+      const signedHtmlPath = getAbsoluteDataPath(signature?.signedHtmlPath);
+      const signaturePngPath = getAbsoluteDataPath(signature?.signaturePngPath);
+      if (signedHtmlPath) store.deleteFile(signedHtmlPath);
+      if (signaturePngPath) store.deleteFile(signaturePngPath);
+    }
+    versionRecord.signatures = [];
+  }
+
   versionRecord.updatedAt = now;
   versionRecord.updatedBy = actor?.uid || actor?.username || null;
   saveIndex(index);
   return clone(stream);
-}
-
-function discardDraft({ mouId, version }) {
-  requireEnabled();
-  const { index, stream, versionRecord } = getStreamAndVersion(mouId, version);
-  if (String(versionRecord.state || "") !== "draft") {
-    throw new Error("Only draft versions can be discarded.");
-  }
-  const absPath = getAbsoluteContentPath(versionRecord);
-  if (absPath) store.deleteFile(absPath);
-  stream.versions = (stream.versions || []).filter(
-    (entry) => normalizeVersion(entry?.version) !== normalizeVersion(version)
-  );
-  if (!stream.versions.length) {
-    index.streams = (index.streams || []).filter(
-      (entry) => String(entry?.mouId || "") !== String(mouId)
-    );
-  }
-  saveIndex(index);
-  return true;
 }
 
 function getAbsoluteDataPath(relativePath) {
@@ -869,8 +868,8 @@ function updateStreamAssignments({ mouId, serverwide, agencySuffixes, actor }) {
   if (!stream) {
     throw new Error("MOU stream not found.");
   }
-  if (!getCurrentDeployedVersion(stream)) {
-    throw new Error("Deploy a document before assigning it.");
+  if (!getCurrentVersion(stream)) {
+    throw new Error("Create a document version before assigning it.");
   }
 
   const assignments = normalizeAssignments({
@@ -884,91 +883,25 @@ function updateStreamAssignments({ mouId, serverwide, agencySuffixes, actor }) {
   saveIndex(index);
   return clone(stream);
 }
-
-function deployDraft({ mouId, version, actor }) {
-  requireEnabled();
-  const { index, stream, versionRecord } = getStreamAndVersion(mouId, version);
-  if (String(versionRecord.state || "") !== "draft") {
-    throw new Error("Only draft versions can be deployed.");
-  }
-
-  const contentType = normalizeContentType(versionRecord.contentType);
-  const draftAbsPath = getAbsoluteContentPath(versionRecord);
-  const deployedAbsPath = store.getDeployedContentPath(
-    mouId,
-    versionRecord.version,
-    getFileExtensionForContentType(contentType)
-  );
-  const draftBuffer = readBufferSafe(draftAbsPath);
-  if (!draftBuffer.length) {
-    throw new Error("Draft content is missing.");
-  }
-
-  if (contentType === "pdf") {
-    enforcePdfSize(draftBuffer);
-    store.writeBinary(deployedAbsPath, draftBuffer);
-  } else if (contentType === "markdown") {
-    const markdown = draftBuffer.toString("utf8");
-    requireNonEmpty(markdown, "MOU Markdown");
-    enforceHtmlSize(markdown);
-    store.writeHtml(deployedAbsPath, markdown);
-  } else {
-    const safeHtml = sanitizeMouHtml(draftBuffer.toString("utf8"));
-    requireNonEmpty(safeHtml.replace(/<[^>]+>/g, "").trim(), "MOU HTML");
-    enforceHtmlSize(safeHtml);
-    store.writeHtml(deployedAbsPath, safeHtml);
-  }
-  store.deleteFile(draftAbsPath);
-
-  const now = nowIso();
-  const previous = getCurrentDeployedVersion(stream);
-  if (previous) {
-    previous.state = "superseded";
-    previous.supersededAt = now;
-    previous.supersededBy = versionRecord.version;
-  }
-
-  versionRecord.state = "deployed";
-  versionRecord.contentPath = buildRelativeDataPath(deployedAbsPath);
-  versionRecord.contentSha256 = computeSha256(draftBuffer);
-  versionRecord.updatedAt = now;
-  versionRecord.updatedBy = actor?.uid || actor?.username || null;
-  versionRecord.deployedAt = now;
-  versionRecord.deployedBy = actor?.uid || actor?.username || null;
-  versionRecord.fileExtension = getFileExtensionForContentType(contentType);
-  if (!Array.isArray(versionRecord.signatures)) versionRecord.signatures = [];
-
-  stream.updatedAt = now;
-  stream.updatedBy = actor?.uid || actor?.username || null;
-  saveIndex(index);
-
-  return {
-    stream: clone(stream),
-    version: clone(versionRecord),
-    supersededVersion: previous ? previous.version : null,
-    contentSha256: versionRecord.contentSha256,
-  };
-}
-
-function getDeployedVersionOrLatest(mouId, version) {
+function getCurrentVersionOrLatest(mouId, version) {
   const index = getIndex();
   const stream = findStream(index, mouId);
   if (!stream) throw new Error("MOU stream not found.");
-  const deployed = getCurrentDeployedVersion(stream);
-  if (!deployed) throw new Error("This MOU has not been deployed yet.");
-  const requested = version ? findVersion(stream, version) : deployed;
+  const currentVersion = getCurrentVersion(stream);
+  if (!currentVersion) throw new Error("This document does not have a current version yet.");
+  const requested = version ? findVersion(stream, version) : currentVersion;
   if (!requested) throw new Error("MOU version not found.");
   const shouldRedirectToLatest =
-    String(requested.state || "") !== "deployed" &&
-    String(requested.state || "") !== "superseded";
-  const target = shouldRedirectToLatest ? deployed : requested;
+    String(requested.state || "") !== "current" &&
+    String(requested.state || "") !== "previous";
+  const target = shouldRedirectToLatest ? currentVersion : requested;
   const contentType = normalizeContentType(target.contentType);
   const contentBuffer = readContentBuffer(target);
   return {
     stream: clone(stream),
     requestedVersion: clone(requested),
     targetVersion: clone(target),
-    latestVersion: clone(deployed),
+    latestVersion: clone(currentVersion),
     contentType,
     html: contentType === "pdf" ? "" : renderDocumentHtml(target),
     fileName: normalizeText(target.originalFileName || `${stream.slug || "mou"}-${target.version}.${getFileExtensionForContentType(contentType)}`),
@@ -1077,8 +1010,8 @@ function saveUserAgreement({ title, markdown, html, actor, enabled }) {
     bodyHtml: safeHtml,
     createdAt: now,
     createdBy: actor?.uid || actor?.username || null,
-    deployedAt: now,
-    deployedBy: actor?.uid || actor?.username || null,
+    activeAt: now,
+    activeBy: actor?.uid || actor?.username || null,
   };
   data.currentVersion = nextVersion;
   data.versions.push(versionRecord);
@@ -1175,8 +1108,8 @@ function signVersion({
 }) {
   requireEnabled();
   const { index, stream, versionRecord } = getStreamAndVersion(mouId, version);
-  if (String(versionRecord.state || "") !== "deployed") {
-    throw new Error("Only deployed versions can be signed.");
+  if (String(versionRecord.state || "") !== "current") {
+    throw new Error("Only the current version can be signed.");
   }
 
   const safeAgencySuffix = normalizeAgencySuffix(agencySuffix);
@@ -1289,14 +1222,14 @@ function listSignaturesForStream(stream) {
         scopeLabel: getScopeLabel(stream),
         agencyId: signature.agencyId,
         agencyName: signature.agencyNameAtSign,
-        deployedVersion: getCurrentDeployedVersion(stream)?.version || null,
+        currentVersion: getCurrentVersion(stream)?.version || null,
         signedVersion: versionRecord.version,
         signerDisplayName: signature.signerDisplayName,
         signerStatusAtSign: signature.signerStatusAtSign,
         signedAt: signature.signedAt,
         needsNewSignature:
-          !!getCurrentDeployedVersion(stream) &&
-          normalizeVersion(getCurrentDeployedVersion(stream).version) >
+          !!getCurrentVersion(stream) &&
+          normalizeVersion(getCurrentVersion(stream).version) >
             normalizeVersion(versionRecord.version),
       });
     }
@@ -1309,10 +1242,10 @@ function listSignatureRows() {
 }
 
 function getCurrentAgencySignatureForStream(stream, agencySuffix) {
-  const deployed = getCurrentDeployedVersion(stream);
-  if (!deployed) return null;
+  const currentVersion = getCurrentVersion(stream);
+  if (!currentVersion) return null;
   return (
-    (deployed.signatures || []).find(
+    (currentVersion.signatures || []).find(
       (entry) => normalizeAgencySuffix(entry?.agencyId) === normalizeAgencySuffix(agencySuffix)
     ) || null
   );
@@ -1321,9 +1254,9 @@ function getCurrentAgencySignatureForStream(stream, agencySuffix) {
 function getAgencySignatureStatusRows() {
   const requireAgencySignature = getBool("MOU_REQUIRE_AGENCY_SIGNATURE", true);
   const rows = [];
-  for (const stream of listDeployedStreams()) {
-    const deployed = getCurrentDeployedVersion(stream);
-    if (!deployed) continue;
+  for (const stream of listCurrentStreams()) {
+    const currentVersion = getCurrentVersion(stream);
+    if (!currentVersion) continue;
     for (const agency of getTargetAgenciesForStream(stream)) {
       const agencyId = normalizeAgencySuffix(agency?.suffix);
       if (!agencyId) continue;
@@ -1344,7 +1277,7 @@ function getAgencySignatureStatusRows() {
         mouTitle: stream.title,
         scopeType: normalizeScopeType(stream.scopeType),
         scopeLabel: getScopeLabel(stream),
-        deployedVersion: deployed.version,
+        currentVersion: currentVersion.version,
         agencyId,
         agencyName: agency.name || agency.groupPrefix || agency.suffix,
         signedVersion: latestSignature ? latestSignature.versionRecord.version : null,
@@ -1356,7 +1289,7 @@ function getAgencySignatureStatusRows() {
           requireAgencySignature &&
           (!latestSignature ||
             normalizeVersion(latestSignature.versionRecord.version) <
-              normalizeVersion(deployed.version)),
+              normalizeVersion(currentVersion.version)),
       });
     }
   }
@@ -1381,9 +1314,9 @@ function getAgencyReminderRows() {
       ...row,
       reminderDays: normalizedReminderDays(getStreamById(row.mouId).reminderDays),
       lastReminderSentAt:
-        byKey[`${row.mouId}:${row.agencyId}:${row.deployedVersion}`]?.lastSentAt ||
+        byKey[`${row.mouId}:${row.agencyId}:${row.currentVersion}`]?.lastSentAt ||
         null,
-      reminderKey: `${row.mouId}:${row.agencyId}:${row.deployedVersion}`,
+      reminderKey: `${row.mouId}:${row.agencyId}:${row.currentVersion}`,
     }));
 }
 
@@ -1405,9 +1338,9 @@ function buildContentUrls(stream, versionRecord) {
 }
 
 function getSidebarListForUser(authUser) {
-  return listDeployedStreamsForUser(authUser).map((stream) => {
-    const deployed = getCurrentDeployedVersion(stream);
-    const contentUrls = deployed ? buildContentUrls(stream, deployed) : null;
+  return listCurrentStreamsForUser(authUser).map((stream) => {
+    const currentVersion = getCurrentVersion(stream);
+    const contentUrls = currentVersion ? buildContentUrls(stream, currentVersion) : null;
     const availableAgencySuffixes = authUser?.isAgencyAdmin
       ? getStreamAgencySuffixes(stream).filter((suffix) =>
           accessSvc.isSuffixAllowed(authUser, suffix)
@@ -1416,22 +1349,22 @@ function getSidebarListForUser(authUser) {
     return {
       mouId: stream.mouId,
       title: stream.title,
-      version: deployed?.version || null,
+      version: currentVersion?.version || null,
       scopeType: getAssignments(stream).serverwide ? "global" : "agency",
       scopeLabel: getScopeLabel(stream),
-      contentType: normalizeContentType(deployed?.contentType),
+      contentType: normalizeContentType(currentVersion?.contentType),
       viewHref:
-        deployed
+        currentVersion
           ? `/mou/view/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
-              deployed.version
+              currentVersion.version
             )}`
           : null,
       fileUrl: contentUrls?.fileUrl || null,
       downloadUrl: contentUrls?.downloadUrl || null,
       signHref:
-        deployed && availableAgencySuffixes.length
+        currentVersion && availableAgencySuffixes.length
           ? `/mou/sign/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
-              deployed.version
+              currentVersion.version
             )}`
           : null,
     };
@@ -1441,19 +1374,17 @@ function getSidebarListForUser(authUser) {
 module.exports = {
   isEnabled,
   listStreams,
-  listDeployedStreams,
-  listDeployedStreamsForUser,
+  listCurrentStreams,
+  listCurrentStreamsForUser,
   getVisibleStreamsForUser,
   getStreamById,
-  getDeployedVersionOrLatest,
+  getCurrentVersionOrLatest,
   getVersionContent,
-  createDraftStream,
-  createNextDraft,
-  updateDraft,
-  discardDraft,
+  createStream,
+  createNextVersion,
+  updateVersion,
   deleteStream,
   updateStreamAssignments,
-  deployDraft,
   recordMouView,
   getCurrentUserAgreement,
   saveUserAgreement,
@@ -1466,7 +1397,7 @@ module.exports = {
   getAgencyReminderRows,
   markAgencyReminderSent,
   getAgencyBySuffix,
-  getCurrentDeployedVersion,
+  getCurrentVersion,
   getCurrentAgencySignatureForStream,
   getSidebarListForUser,
   getScopeLabel,
