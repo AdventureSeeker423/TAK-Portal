@@ -20,6 +20,7 @@
     typeof _settings.MOU_ENABLED === "string"
       ? _settings.MOU_ENABLED.toLowerCase() === "true"
       : false;
+  const canSeeMouNav = (_isGlobalAdmin || _isAgencyAdmin) && _perm("page.mou") && mouEnabled;
 
   const canSeeConfigSection =
     _perm("page.agencies") ||
@@ -36,7 +37,7 @@
     _perm("page.email") ||
     _perm("page.locate") ||
     _perm("page.mutual_aid") ||
-    (_perm("page.mou") && mouEnabled);
+    canSeeMouNav;
   const canSeeOnboardingSection = true;
 
   const _path = (typeof currentPath !== "undefined" && currentPath) ? String(currentPath).replace(/\/+$/, "") || "/" : "/";
@@ -108,7 +109,7 @@
             <% if (_perm("page.mutual_aid")) { %>
               <a href="/mutual-aid" class="<%= isActive('/mutual-aid') ? 'active' : '' %>">Mutual Aid</a>
             <% } %>
-            <% if (_perm("page.mou") && mouEnabled) { %>
+            <% if (canSeeMouNav) { %>
               <a href="/mou" class="<%= isActive('/mou') || isActive('/admin/mou') ? 'active' : '' %>">MOU Documents</a>
             <% } %>
           </div>
