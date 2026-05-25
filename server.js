@@ -59,6 +59,20 @@ function buildAgreementSessionValue(user, agreement) {
   return `${userKey}:${version}`;
 }
 
+function getCookieValue(req, cookieName) {
+  const pair = String(req.headers.cookie || "")
+    .split(/;\s*/)
+    .map((entry) => entry.split("="))
+    .find(([key]) => String(key || "").trim() === cookieName);
+  if (!pair) return "";
+  const rawValue = String(pair[1] || "").trim();
+  try {
+    return decodeURIComponent(rawValue);
+  } catch {
+    return rawValue;
+  }
+}
+
 // Expose version to all EJS views (e.g. sidebar)
 app.locals.APP_VERSION = pkg.version || "dev";
 app.locals.APP_LATEST_VERSION = pkg.version || "dev";
@@ -233,14 +247,10 @@ app.use((req, res, next) => {
     const user = req.authentikUser;
     const normalizedPath = (req.path || "").replace(/\/+$/, "") || "/";
     const isApi = normalizedPath.startsWith("/api/");
-    const agreementCookieValue = String(req.headers.cookie || "")
-      .split(/;\s*/)
-      .map((entry) => entry.split("="))
-      .find(([key]) => String(key || "").trim() === USER_AGREEMENT_SESSION_COOKIE);
     const currentAgreement = mouSvc.getCurrentUserAgreement().current;
     const hasAcceptedAgreementForSession =
-      !!agreementCookieValue &&
-      String(agreementCookieValue[1] || "").trim() === buildAgreementSessionValue(user, currentAgreement);
+      getCookieValue(req, USER_AGREEMENT_SESSION_COOKIE) ===
+      buildAgreementSessionValue(user, currentAgreement);
     const isAgreementTargetUser =
       !!(user && user.username) && !user.isGlobalAdmin && !user.isAgencyAdmin;
     const isAgreementExemptPath =
@@ -877,18 +887,12 @@ app.get("/setup-my-device", async (req, res) => {
     takHost,
     enrollQrBootstrap,
     agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser, {
-      acceptedForSession: (function () {
-        const agreementCookieValue = String(req.headers.cookie || "")
-        .split(/;\s*/)
-        .map((entry) => entry.split("="))
-        .find(([key]) => String(key || "").trim() === USER_AGREEMENT_SESSION_COOKIE);
-        const currentAgreement = mouSvc.getCurrentUserAgreement().current;
-        return (
-          !!agreementCookieValue &&
-          String(agreementCookieValue[1] || "").trim() ===
-            buildAgreementSessionValue(req.authentikUser, currentAgreement)
-        );
-      })(),
+      acceptedForSession:
+        getCookieValue(req, USER_AGREEMENT_SESSION_COOKIE) ===
+        buildAgreementSessionValue(
+          req.authentikUser,
+          mouSvc.getCurrentUserAgreement().current
+        ),
     }),
   });
 });
