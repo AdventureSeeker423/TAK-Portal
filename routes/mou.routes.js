@@ -274,6 +274,9 @@ router.get("/mou", requireMouEnabled, requireMouPermission, async (req, res) => 
   const signatureRows = isGlobalAdmin
     ? mouService.getAgencySignatureStatusRows()
     : [];
+  const archivedRows = isGlobalAdmin
+    ? mouService.listArchivedDocumentRows()
+    : [];
 
   if (isGlobalAdmin && req.query.export === "signatures") {
     const csv = buildSignatureComplianceCsv(signatureRows);
@@ -341,6 +344,7 @@ router.get("/mou", requireMouEnabled, requireMouPermission, async (req, res) => 
     adminAgreement: isGlobalAdmin ? mouService.getCurrentUserAgreement() : null,
     defaultUserAgreement: isGlobalAdmin ? mouService.getDefaultUserAgreementTemplate() : null,
     signatureRows,
+    archivedRows,
     agencies: isGlobalAdmin ? getAgencyOptions() : [],
     error: req.query.error || "",
     success: req.query.success || "",
@@ -1060,6 +1064,78 @@ router.post("/admin/mou/:mouId/assignments/revoke/:agencyId", requireMouEnabled,
     });
 
     return res.redirect(`/mou?success=${encodeURIComponent("Agency assignment revoked.")}`);
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
+router.post("/admin/mou/:mouId/assignments/archive/:agencyId", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+  try {
+    const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
+    mouService.archiveDocumentForAgency({
+      mouId: req.params.mouId,
+      agencyId,
+      actor: req.authentikUser,
+    });
+
+    auditRequest(req, {
+      action: "MOU_ASSIGNMENT_ARCHIVED",
+      targetType: "mou",
+      targetId: String(req.params.mouId),
+      agencySuffix: agencyId,
+      details: {
+        mouId: req.params.mouId,
+        agencyId,
+      },
+    });
+
+    return res.redirect(`/mou?success=${encodeURIComponent("Document archived.")}`);
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
+router.post("/admin/mou/archive/:archiveId/restore", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+  try {
+    const archiveId = String(req.params.archiveId || "").trim();
+    mouService.restoreArchivedDocument({
+      archiveId,
+      actor: req.authentikUser,
+    });
+
+    auditRequest(req, {
+      action: "MOU_ARCHIVE_RESTORED",
+      targetType: "mou_archive",
+      targetId: archiveId,
+      details: {
+        archiveId,
+      },
+    });
+
+    return res.redirect(`/mou?success=${encodeURIComponent("Archived document restored.")}`);
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
+router.post("/admin/mou/archive/:archiveId/delete", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+  try {
+    const archiveId = String(req.params.archiveId || "").trim();
+    mouService.deleteArchivedDocument({
+      archiveId,
+      actor: req.authentikUser,
+    });
+
+    auditRequest(req, {
+      action: "MOU_ARCHIVE_DELETED",
+      targetType: "mou_archive",
+      targetId: archiveId,
+      details: {
+        archiveId,
+      },
+    });
+
+    return res.redirect(`/mou?success=${encodeURIComponent("Archived document permanently deleted.")}`);
   } catch (err) {
     return toErrorRedirect(res, "/mou", err);
   }

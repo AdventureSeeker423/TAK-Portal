@@ -4,6 +4,7 @@ const path = require("path");
 const SETTINGS_PATH = path.join(__dirname, "..", "data", "settings.json");
 // Example template at project root
 const TEMPLATE_PATH = path.join(__dirname, "..", "settings.example.json");
+const DEPRECATED_KEYS = new Set(["MOU_REQUIRE_AGENCY_SIGNATURE"]);
 
 function ensureDirExists(filePath) {
   const dir = path.dirname(filePath);
@@ -27,6 +28,18 @@ function readJsonSafe(filePath) {
   return {};
 }
 
+function stripDeprecatedKeys(settings) {
+  const next = { ...(settings || {}) };
+  let removed = false;
+  for (const key of DEPRECATED_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(next, key)) {
+      delete next[key];
+      removed = true;
+    }
+  }
+  return { settings: next, removed };
+}
+
 function mergeWithTemplate(existing) {
   const template = fs.existsSync(TEMPLATE_PATH)
     ? readJsonSafe(TEMPLATE_PATH)
@@ -37,7 +50,9 @@ function mergeWithTemplate(existing) {
     return { merged: existing || {}, needsSave: false };
   }
 
-  const current = existing || {};
+  const { settings: current, removed: removedDeprecated } = stripDeprecatedKeys(
+    existing || {}
+  );
 
   // template values are defaults; existing config overrides them
   const merged = { ...template, ...current };
@@ -45,7 +60,7 @@ function mergeWithTemplate(existing) {
   // Needs save if we’re missing any template keys
   const needsSave = Object.keys(template).some(
     key => !Object.prototype.hasOwnProperty.call(current, key)
-  );
+  ) || removedDeprecated;
 
   return { merged, needsSave };
 }
@@ -87,7 +102,7 @@ function getSettings() {
 }
 
 function saveSettings(newSettings) {
-  _settings = newSettings || {};
+  _settings = stripDeprecatedKeys(newSettings || {}).settings;
   ensureDirExists(SETTINGS_PATH);
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(_settings, null, 2));
 }

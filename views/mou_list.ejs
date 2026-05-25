@@ -156,7 +156,7 @@
                 <td>
                   <div class="mouActionRow">
                     <% if (card.currentVersion) { %>
-                      <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
+                      <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length) { %>
                         <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
                           <%= card.allSigned ? "View Document" : "View / Sign" %>
                         </a>
@@ -309,8 +309,10 @@
                     <% if (row.needsSignature) { %>
                       <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
                       <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
-                      <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/assignments/revoke/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Revoke this agency assignment?');">
-                        <button class="btn danger" type="submit">Revoke</button>
+                    <% } %>
+                    <% if (row.needsSignature || (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0))) { %>
+                      <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/assignments/archive/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Archive this document for this agency? You can restore it later from Archived Documents.');">
+                        <button class="btn danger" type="submit">Archive</button>
                       </form>
                     <% } %>
                     <% if (!row.signedVersion && !row.needsSignature) { %>
@@ -324,6 +326,58 @@
         </table>
       <% } %>
     </section>
+
+    <details class="card" style="margin-top:14px;">
+      <summary style="cursor:pointer; font-weight:600; user-select:none;">
+        Archived Documents (<%= Array.isArray(archivedRows) ? archivedRows.length : 0 %>)
+      </summary>
+      <div style="margin-top:12px;">
+        <% if (!archivedRows || !archivedRows.length) { %>
+          <div class="mouEmptyState">
+            <h3>No archived documents</h3>
+            <p class="muted">Archived agency documents can be restored or permanently deleted here.</p>
+          </div>
+        <% } else { %>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Document</th>
+                <th>Scope</th>
+                <th>Agency</th>
+                <th>Current Version</th>
+                <th>Signed Version</th>
+                <th>Status</th>
+                <th>Archived At</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% archivedRows.forEach(function (row) { %>
+                <tr class="<%= row.signedVersion ? 'mouRow--signed' : 'mouRow--pending' %>">
+                  <td><%= row.mouTitle %></td>
+                  <td><%= row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel %></td>
+                  <td><%= row.agencyName %></td>
+                  <td><%= row.currentVersion ? ("v" + row.currentVersion) : "-" %></td>
+                  <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
+                  <td><%= row.status || "Archived" %></td>
+                  <td><%= row.archivedAt ? new Date(row.archivedAt).toLocaleString() : "-" %></td>
+                  <td>
+                    <div class="mouActionRow">
+                      <form method="post" action="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/restore" style="display:inline;" onsubmit="return confirm('Restore this archived document?');">
+                        <button class="btn secondary" type="submit">Restore</button>
+                      </form>
+                      <form method="post" action="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/delete" style="display:inline;" onsubmit="return confirm('Permanently delete this archived document? This cannot be undone and will remove any stored signed document evidence for this agency.');">
+                        <button class="btn danger" type="submit">Delete Permanently</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    </details>
   <% } %>
 </main>
 

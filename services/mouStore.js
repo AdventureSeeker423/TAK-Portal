@@ -12,6 +12,7 @@ const USER_AGREEMENT_PATH = path.join(ROOT_DIR, "user-agreement.json");
 const ACKS_PATH = path.join(ROOT_DIR, "acks.json");
 const VIEWS_PATH = path.join(ROOT_DIR, "views.json");
 const REMINDERS_PATH = path.join(ROOT_DIR, "reminders.json");
+const ARCHIVED_DOCUMENTS_PATH = path.join(ROOT_DIR, "archived-documents.json");
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -88,6 +89,13 @@ function ensureStorage() {
     atomicWriteJson(REMINDERS_PATH, {
       schemaVersion: 1,
       agency: {},
+    });
+  }
+
+  if (!fs.existsSync(ARCHIVED_DOCUMENTS_PATH)) {
+    atomicWriteJson(ARCHIVED_DOCUMENTS_PATH, {
+      schemaVersion: 1,
+      items: [],
     });
   }
 }
@@ -200,6 +208,16 @@ function saveReminders(data) {
   atomicWriteJson(REMINDERS_PATH, data);
 }
 
+function loadArchivedDocuments() {
+  ensureStorage();
+  return readJsonFile(ARCHIVED_DOCUMENTS_PATH, { schemaVersion: 1, items: [] });
+}
+
+function saveArchivedDocuments(data) {
+  ensureStorage();
+  atomicWriteJson(ARCHIVED_DOCUMENTS_PATH, data);
+}
+
 function readHtml(filePath) {
   try {
     return fs.readFileSync(filePath, "utf8");
@@ -233,6 +251,7 @@ module.exports = {
   ACKS_PATH,
   VIEWS_PATH,
   REMINDERS_PATH,
+  ARCHIVED_DOCUMENTS_PATH,
   ensureStorage,
   loadIndex,
   saveIndex,
@@ -244,6 +263,8 @@ module.exports = {
   saveViews,
   loadReminders,
   saveReminders,
+  loadArchivedDocuments,
+  saveArchivedDocuments,
   getVersionPath,
   getVersionContentPath,
   getSignedHtmlPath,

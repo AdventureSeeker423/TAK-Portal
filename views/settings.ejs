@@ -39,7 +39,7 @@
         "PORTAL_AUTH_ENABLED",
         "BETA_MODE",
         "MOU_ENABLED",
-        "MOU_REQUIRE_AGENCY_SIGNATURE"
+        "MOU_SEND_EMAILS"
       ]);
 
       function renderField(key, label, helpText, defaultValue) {
@@ -138,7 +138,7 @@
         "EMAIL_SEND_COPY_TO",
         "EMAIL_FAIL_HARD",
         "MOU_ENABLED",
-        "MOU_REQUIRE_AGENCY_SIGNATURE",
+        "MOU_SEND_EMAILS",
         "MOU_DEFAULT_REMINDER_DAYS",
         "MOU_HTML_MAX_KB",
         "MOU_REMINDER_SWEEP_HOURS",
@@ -402,7 +402,7 @@
         <div class="settings-body">
           <div class="grid2">
             <% renderField("MOU_ENABLED","MOU Enabled","Turn the MOU and standard-user agreement workflows on or off."); %>
-            <% renderField("MOU_REQUIRE_AGENCY_SIGNATURE","Require Agency Signature","When true, current MOUs stay pending until an Agency Admin signs."); %>
+            <% renderField("MOU_SEND_EMAILS","Send MOU Emails","When true, MOU assignment/update and reminder emails are sent to agency admins."); %>
             <% renderField("MOU_DEFAULT_REMINDER_DAYS","Default Reminder Days","Days between agency-admin reminder emails for unsigned current MOUs."); %>
             <% renderField("MOU_HTML_MAX_KB","MOU HTML Max KB","Maximum allowed size for stored MOU HTML, Markdown source, and rendered user-agreement content."); %>
             <% renderField("MOU_REMINDER_SWEEP_HOURS","Reminder Sweep Hours","How often the reminder scheduler checks for unsigned agency MOUs. Server restart required for changes to take effect."); %>

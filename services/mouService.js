@@ -196,6 +196,19 @@ function saveRemindersStore(data) {
   store.saveReminders(data);
 }
 
+function getArchivedDocumentsStore() {
+  const data = store.loadArchivedDocuments();
+  if (!data || typeof data !== "object") {
+    return { schemaVersion: 1, items: [] };
+  }
+  if (!Array.isArray(data.items)) data.items = [];
+  return data;
+}
+
+function saveArchivedDocumentsStore(data) {
+  store.saveArchivedDocuments(data);
+}
+
 function normalizeScopeType(value) {
   return normalizeLower(value) === "agency" ? "agency" : "global";
 }
@@ -431,6 +444,101 @@ function getStreamAgencySuffixes(stream) {
       .filter(Boolean);
   }
   return assignments.agencySuffixes.slice();
+}
+
+function buildAssignmentsFromAgencySuffixes(agencySuffixes) {
+  const normalized = normalizeAgencySuffixList(agencySuffixes);
+  const allAgencySuffixes = normalizeAgencySuffixList(
+    getAllAgencies().map((agency) => agency?.suffix)
+  );
+  const allAssigned =
+    normalized.length > 0 &&
+    normalized.length === allAgencySuffixes.length &&
+    allAgencySuffixes.every((suffix) => normalized.includes(suffix));
+  return allAssigned
+    ? { serverwide: true, agencySuffixes: [] }
+    : { serverwide: false, agencySuffixes: normalized };
+}
+
+function getLatestSignatureForAgency(stream, agencyId) {
+  const safeAgencyId = normalizeAgencySuffix(agencyId);
+  return (
+    sortVersions(stream?.versions || [])
+      .reverse()
+      .flatMap((versionRecord) =>
+        (versionRecord.signatures || [])
+          .filter(
+            (entry) => normalizeAgencySuffix(entry?.agencyId) === safeAgencyId
+          )
+          .map((entry) => ({ versionRecord, entry }))
+      )[0] || null
+  );
+}
+
+function getHistoricalSignedVersionsForAgency(stream, agencyId, currentVersion) {
+  const safeAgencyId = normalizeAgencySuffix(agencyId);
+  const currentVersionNumber = normalizeVersion(currentVersion);
+  return sortVersions(stream?.versions || [])
+    .filter(
+      (versionRecord) =>
+        normalizeVersion(versionRecord?.version) < currentVersionNumber
+    )
+    .filter((versionRecord) =>
+      (versionRecord.signatures || []).some(
+        (entry) => normalizeAgencySuffix(entry?.agencyId) === safeAgencyId
+      )
+    )
+    .map((versionRecord) => normalizeVersion(versionRecord.version));
+}
+
+function deleteSignatureArtifacts(signature) {
+  const signedHtmlPath = getAbsoluteDataPath(signature?.signedHtmlPath);
+  const signaturePngPath = getAbsoluteDataPath(signature?.signaturePngPath);
+  const uploadedSignedCopyPath = getAbsoluteDataPath(signature?.uploadedSignedCopyPath);
+  if (signedHtmlPath) store.deleteFile(signedHtmlPath);
+  if (signaturePngPath) store.deleteFile(signaturePngPath);
+  if (uploadedSignedCopyPath) store.deleteFile(uploadedSignedCopyPath);
+}
+
+function normalizeArchivedDocumentRecord(record) {
+  return {
+    archiveId: normalizeText(record?.archiveId) || makeId(),
+    mouId: normalizeText(record?.mouId),
+    mouTitle: normalizeText(record?.mouTitle),
+    scopeType: normalizeScopeType(record?.scopeType),
+    scopeLabel: normalizeText(record?.scopeLabel),
+    currentVersion: normalizeVersion(record?.currentVersion),
+    agencyId: normalizeAgencySuffix(record?.agencyId),
+    agencyName: normalizeText(record?.agencyName),
+    signedVersion: normalizeVersion(record?.signedVersion) || null,
+    signerDisplayName: normalizeText(record?.signerDisplayName),
+    signedAt: record?.signedAt || null,
+    historicalSignedVersions: Array.isArray(record?.historicalSignedVersions)
+      ? record.historicalSignedVersions
+          .map((value) => normalizeVersion(value))
+          .filter(Boolean)
+      : [],
+    status: normalizeText(record?.status) || "Archived",
+    archivedAt: record?.archivedAt || null,
+    archivedBy: normalizeText(record?.archivedBy),
+  };
+}
+
+function listArchivedDocumentRows() {
+  return getArchivedDocumentsStore()
+    .items.map((record) => {
+      const normalized = normalizeArchivedDocumentRecord(record);
+      const agency = getAgencyBySuffix(normalized.agencyId);
+      return {
+        ...normalized,
+        agencyName:
+          agency?.name ||
+          agency?.groupPrefix ||
+          normalized.agencyName ||
+          normalized.agencyId,
+      };
+    })
+    .sort((a, b) => String(b.archivedAt || "").localeCompare(String(a.archivedAt || "")));
 }
 
 function resolveUserAgencySuffix(authUser) {
@@ -966,12 +1074,7 @@ function deleteStream({ mouId }) {
       store.deleteFile(contentPath);
     }
     for (const signature of versionRecord.signatures || []) {
-      const signedHtmlPath = getAbsoluteDataPath(signature?.signedHtmlPath);
-      const signaturePngPath = getAbsoluteDataPath(signature?.signaturePngPath);
-      const uploadedSignedCopyPath = getAbsoluteDataPath(signature?.uploadedSignedCopyPath);
-      if (signedHtmlPath) store.deleteFile(signedHtmlPath);
-      if (signaturePngPath) store.deleteFile(signaturePngPath);
-      if (uploadedSignedCopyPath) store.deleteFile(uploadedSignedCopyPath);
+      deleteSignatureArtifacts(signature);
     }
   }
 
@@ -993,6 +1096,12 @@ function deleteStream({ mouId }) {
     }
   }
   saveRemindersStore(reminders);
+
+  const archivedDocuments = getArchivedDocumentsStore();
+  archivedDocuments.items = archivedDocuments.items.filter(
+    (item) => normalizeText(item?.mouId) !== normalizeText(mouId)
+  );
+  saveArchivedDocumentsStore(archivedDocuments);
   return true;
 }
 
@@ -1040,12 +1149,7 @@ function clearAgencySignatureForCurrentVersion({ mouId, agencyId, actor }) {
     throw new Error("Current signature not found for this agency.");
   }
 
-  const signedHtmlPath = getAbsoluteDataPath(existing?.signedHtmlPath);
-  const signaturePngPath = getAbsoluteDataPath(existing?.signaturePngPath);
-  const uploadedSignedCopyPath = getAbsoluteDataPath(existing?.uploadedSignedCopyPath);
-  if (signedHtmlPath) store.deleteFile(signedHtmlPath);
-  if (signaturePngPath) store.deleteFile(signaturePngPath);
-  if (uploadedSignedCopyPath) store.deleteFile(uploadedSignedCopyPath);
+  deleteSignatureArtifacts(existing);
 
   currentVersion.signatures = signatures.filter(
     (entry) => normalizeAgencySuffix(entry?.agencyId) !== safeAgencyId
@@ -1058,6 +1162,172 @@ function clearAgencySignatureForCurrentVersion({ mouId, agencyId, actor }) {
     version: clone(currentVersion),
     removedSignature: clone(existing),
   };
+}
+
+function archiveDocumentForAgency({ mouId, agencyId, actor }) {
+  requireEnabled();
+  const index = getIndex();
+  const stream = findStream(index, mouId);
+  if (!stream) {
+    throw new Error("MOU stream not found.");
+  }
+  const currentVersion = getCurrentVersion(stream);
+  if (!currentVersion) {
+    throw new Error("MOU version not found.");
+  }
+
+  const safeAgencyId = normalizeAgencySuffix(agencyId);
+  const targetAgency = getTargetAgenciesForStream(stream).find(
+    (agency) => normalizeAgencySuffix(agency?.suffix) === safeAgencyId
+  );
+  if (!targetAgency) {
+    throw new Error("Agency assignment not found.");
+  }
+
+  const latestSignature = getLatestSignatureForAgency(stream, safeAgencyId);
+  const requireAgencySignature = true;
+  const needsSignature =
+    requireAgencySignature &&
+    (!latestSignature ||
+      normalizeVersion(latestSignature.versionRecord.version) <
+        normalizeVersion(currentVersion.version));
+
+  const archivedDocuments = getArchivedDocumentsStore();
+  archivedDocuments.items = archivedDocuments.items.filter(
+    (item) =>
+      !(
+        normalizeText(item?.mouId) === normalizeText(mouId) &&
+        normalizeAgencySuffix(item?.agencyId) === safeAgencyId
+      )
+  );
+  archivedDocuments.items.push(
+    normalizeArchivedDocumentRecord({
+      archiveId: makeId(),
+      mouId: stream.mouId,
+      mouTitle: stream.title,
+      scopeType: getAssignments(stream).serverwide ? "global" : "agency",
+      scopeLabel: getScopeLabel(stream),
+      currentVersion: currentVersion.version,
+      agencyId: safeAgencyId,
+      agencyName: targetAgency.name || targetAgency.groupPrefix || targetAgency.suffix,
+      signedVersion: latestSignature ? latestSignature.versionRecord.version : null,
+      signerDisplayName: latestSignature
+        ? latestSignature.entry.attestationText || latestSignature.entry.signerDisplayName
+        : null,
+      signedAt: latestSignature ? latestSignature.entry.signedAt : null,
+      historicalSignedVersions: getHistoricalSignedVersionsForAgency(
+        stream,
+        safeAgencyId,
+        currentVersion.version
+      ),
+      status: needsSignature ? "Needs signature" : "Current",
+      archivedAt: nowIso(),
+      archivedBy: actor?.uid || actor?.username || null,
+    })
+  );
+
+  const remainingAgencySuffixes = getStreamAgencySuffixes(stream).filter(
+    (suffix) => normalizeAgencySuffix(suffix) !== safeAgencyId
+  );
+  stream.assignments = buildAssignmentsFromAgencySuffixes(remainingAgencySuffixes);
+  stream.updatedAt = nowIso();
+  stream.updatedBy = actor?.uid || actor?.username || null;
+  saveIndex(index);
+  saveArchivedDocumentsStore(archivedDocuments);
+  return clone(stream);
+}
+
+function restoreArchivedDocument({ archiveId, actor }) {
+  requireEnabled();
+  const safeArchiveId = normalizeText(archiveId);
+  const archivedDocuments = getArchivedDocumentsStore();
+  const archivedRecord = archivedDocuments.items.find(
+    (item) => normalizeText(item?.archiveId) === safeArchiveId
+  );
+  if (!archivedRecord) {
+    throw new Error("Archived document not found.");
+  }
+
+  const index = getIndex();
+  const stream = findStream(index, archivedRecord.mouId);
+  if (!stream) {
+    throw new Error("MOU stream not found.");
+  }
+  if (!getCurrentVersion(stream)) {
+    throw new Error("MOU version not found.");
+  }
+
+  const nextAgencySuffixes = normalizeAgencySuffixList([
+    ...getStreamAgencySuffixes(stream),
+    archivedRecord.agencyId,
+  ]);
+  stream.assignments = buildAssignmentsFromAgencySuffixes(nextAgencySuffixes);
+  stream.updatedAt = nowIso();
+  stream.updatedBy = actor?.uid || actor?.username || null;
+  archivedDocuments.items = archivedDocuments.items.filter(
+    (item) => normalizeText(item?.archiveId) !== safeArchiveId
+  );
+  saveIndex(index);
+  saveArchivedDocumentsStore(archivedDocuments);
+  return clone(stream);
+}
+
+function deleteArchivedDocument({ archiveId, actor }) {
+  requireEnabled();
+  const safeArchiveId = normalizeText(archiveId);
+  const archivedDocuments = getArchivedDocumentsStore();
+  const archivedRecord = archivedDocuments.items.find(
+    (item) => normalizeText(item?.archiveId) === safeArchiveId
+  );
+  if (!archivedRecord) {
+    throw new Error("Archived document not found.");
+  }
+
+  const index = getIndex();
+  const stream = findStream(index, archivedRecord.mouId);
+  if (stream) {
+    for (const versionRecord of stream.versions || []) {
+      const signatures = Array.isArray(versionRecord.signatures)
+        ? versionRecord.signatures
+        : [];
+      const matchingSignatures = signatures.filter(
+        (entry) =>
+          normalizeAgencySuffix(entry?.agencyId) ===
+          normalizeAgencySuffix(archivedRecord.agencyId)
+      );
+      for (const signature of matchingSignatures) {
+        deleteSignatureArtifacts(signature);
+      }
+      versionRecord.signatures = signatures.filter(
+        (entry) =>
+          normalizeAgencySuffix(entry?.agencyId) !==
+          normalizeAgencySuffix(archivedRecord.agencyId)
+      );
+    }
+    stream.updatedAt = nowIso();
+    stream.updatedBy = actor?.uid || actor?.username || null;
+    saveIndex(index);
+  }
+
+  const reminders = getRemindersStore();
+  for (const key of Object.keys(reminders.agency || {})) {
+    if (
+      String(key).startsWith(
+        `${normalizeText(archivedRecord.mouId)}:${normalizeAgencySuffix(
+          archivedRecord.agencyId
+        )}:`
+      )
+    ) {
+      delete reminders.agency[key];
+    }
+  }
+  saveRemindersStore(reminders);
+
+  archivedDocuments.items = archivedDocuments.items.filter(
+    (item) => normalizeText(item?.archiveId) !== safeArchiveId
+  );
+  saveArchivedDocumentsStore(archivedDocuments);
+  return true;
 }
 
 function getCurrentVersionOrLatest(mouId, version) {
@@ -1625,7 +1895,7 @@ function listSignaturesForStream(stream) {
       rows.push({
         mouId: stream.mouId,
         mouTitle: stream.title,
-        scopeType: normalizeScopeType(stream.scopeType),
+        scopeType: getAssignments(stream).serverwide ? "global" : "agency",
         scopeLabel: getScopeLabel(stream),
         agencyId: signature.agencyId,
         agencyName: signature.agencyNameAtSign,
@@ -1659,7 +1929,7 @@ function getCurrentAgencySignatureForStream(stream, agencySuffix) {
 }
 
 function getAgencySignatureStatusRows() {
-  const requireAgencySignature = getBool("MOU_REQUIRE_AGENCY_SIGNATURE", true);
+  const requireAgencySignature = true;
   const rows = [];
   for (const stream of listCurrentStreams()) {
     const currentVersion = getCurrentVersion(stream);
@@ -1667,17 +1937,7 @@ function getAgencySignatureStatusRows() {
     for (const agency of getTargetAgenciesForStream(stream)) {
       const agencyId = normalizeAgencySuffix(agency?.suffix);
       if (!agencyId) continue;
-      const latestSignature =
-        sortVersions(stream.versions || [])
-          .reverse()
-          .flatMap((versionRecord) =>
-            (versionRecord.signatures || [])
-              .filter(
-                (entry) =>
-                  normalizeAgencySuffix(entry?.agencyId) === agencyId
-              )
-              .map((entry) => ({ versionRecord, entry }))
-          )[0] || null;
+      const latestSignature = getLatestSignatureForAgency(stream, agencyId);
 
       rows.push({
         mouId: stream.mouId,
@@ -1692,18 +1952,11 @@ function getAgencySignatureStatusRows() {
           ? (latestSignature.entry.attestationText || latestSignature.entry.signerDisplayName)
           : null,
         signedAt: latestSignature ? latestSignature.entry.signedAt : null,
-        historicalSignedVersions: sortVersions(stream.versions || [])
-          .filter(
-            (versionRecord) =>
-              normalizeVersion(versionRecord?.version) <
-              normalizeVersion(currentVersion.version)
-          )
-          .filter((versionRecord) =>
-            (versionRecord.signatures || []).some(
-              (entry) => normalizeAgencySuffix(entry?.agencyId) === agencyId
-            )
-          )
-          .map((versionRecord) => normalizeVersion(versionRecord.version)),
+        historicalSignedVersions: getHistoricalSignedVersionsForAgency(
+          stream,
+          agencyId,
+          currentVersion.version
+        ),
         needsSignature:
           requireAgencySignature &&
           (!latestSignature ||
@@ -1820,6 +2073,10 @@ module.exports = {
   getSignedPdfExport,
   listSignatureRows,
   getAgencySignatureStatusRows,
+  listArchivedDocumentRows,
+  archiveDocumentForAgency,
+  restoreArchivedDocument,
+  deleteArchivedDocument,
   getAgencyReminderRows,
   markAgencyReminderSent,
   getAgencyBySuffix,

@@ -16,6 +16,10 @@ const {
 const DEFAULT_SWEEP_HOURS = 6;
 let sweepTimer = null;
 
+function shouldSendMouEmails() {
+  return getBool("EMAIL_ENABLED", false) && getBool("MOU_SEND_EMAILS", true);
+}
+
 function getPortalBaseUrl() {
   return String(getString("TAK_PORTAL_PUBLIC_URL", "") || "").trim().replace(/\/+$/, "");
 }
@@ -85,7 +89,7 @@ async function sendAgencyAdminEmail({ agency, subject, html, text }) {
 }
 
 async function sendAssignmentNotificationsForVersion({ stream, version, actor }) {
-  if (!getBool("EMAIL_ENABLED", false)) {
+  if (!shouldSendMouEmails()) {
     return { sent: 0, skipped: true };
   }
 
@@ -156,7 +160,7 @@ function shouldSendReminder(row) {
 }
 
 async function runReminderSweep() {
-  if (!mouService.isEnabled() || !getBool("EMAIL_ENABLED", false)) {
+  if (!mouService.isEnabled() || !shouldSendMouEmails()) {
     return { sent: 0, skipped: true };
   }
 
