@@ -1,6 +1,9 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const PDFDocument = require("pdfkit");
+const { PDFDocument: PDFLibDocument, StandardFonts, rgb } = require("pdf-lib");
+const Jimp = require("jimp");
 const { marked } = require("marked");
 const agenciesStore = require("./agencies.service");
 const accessSvc = require("./access.service");
@@ -22,6 +25,18 @@ const SIGNED_COPY_CONTENT_TYPES = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   webp: "image/webp",
+};
+const PDF_FONT_PATHS = {
+  regular: [
+    "C:\\Windows\\Fonts\\arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+  ].find((candidate) => fs.existsSync(candidate)),
+  bold: [
+    "C:\\Windows\\Fonts\\arialbd.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+  ].find((candidate) => fs.existsSync(candidate)),
 };
 
 function nowIso() {
@@ -403,7 +418,7 @@ function getScopeLabel(stream) {
   }
   if (agencies.length === 1) {
     const agency = agencies[0];
-    return `Agency: ${agency.name || agency.groupPrefix || agency.suffix}`;
+    return agency.name || agency.groupPrefix || agency.suffix;
   }
   return `${agencies.length} agencies`;
 }
@@ -524,6 +539,93 @@ function decodeBasicHtmlEntities(value) {
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&#x27;/gi, "'");
+}
+
+function htmlToPlainText(value) {
+  return decodeBasicHtmlEntities(
+    String(value || "")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+      .replace(/<li[^>]*>/gi, "- ")
+      .replace(/<\/li>/gi, "\n")
+      .replace(/<(td|th)[^>]*>/gi, " ")
+      .replace(/<\/(div|p|h1|h2|h3|h4|h5|h6|blockquote|ul|ol|table|tr)>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function sanitizeFileSegment(value, fallback) {
+  return (
+    String(value || "")
+      .trim()
+      .replace(/[^a-z0-9._-]+/gi, "-")
+      .replace(/-+/g, "-")
+      .replace(/^[-_.]+|[-_.]+$/g, "") || String(fallback || "file")
+  );
+}
+
+function setPdfFont(doc, weight) {
+  const isBold = weight === "bold";
+  const customPath = isBold ? (PDF_FONT_PATHS.bold || PDF_FONT_PATHS.regular) : PDF_FONT_PATHS.regular;
+  if (customPath) {
+    doc.font(customPath);
+    return doc;
+  }
+  doc.font(isBold ? "Helvetica-Bold" : "Helvetica");
+  return doc;
+}
+
+function collectPdfBuffer(drawFn) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const doc = new PDFDocument({
+      autoFirstPage: false,
+      margin: 54,
+      size: "LETTER",
+      bufferPages: true,
+    });
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    Promise.resolve()
+      .then(() => drawFn(doc))
+      .then(() => doc.end())
+      .catch((err) => reject(err));
+  });
+}
+
+async function normalizeImageBufferForPdf(buffer, sourcePath, contentType) {
+  const ext = normalizeLower(path.extname(sourcePath || "").replace(/^\./, ""));
+  const mime = normalizeLower(contentType);
+  if (mime === "image/png" || ext === "png") {
+    return { buffer, kind: "png" };
+  }
+  if (mime === "image/jpeg" || mime === "image/jpg" || ext === "jpg" || ext === "jpeg") {
+    return { buffer, kind: "jpg" };
+  }
+  const image = await Jimp.read(buffer);
+  return {
+    buffer: await image.getBufferAsync(Jimp.MIME_PNG),
+    kind: "png",
+  };
+}
+
+function readSignatureImageBuffer(signatureRecord) {
+  const absPath = getAbsoluteDataPath(signatureRecord?.signaturePngPath);
+  return absPath ? readBufferSafe(absPath) : Buffer.alloc(0);
+}
+
+function buildSignedPdfFileName(stream, signatureRecord, versionRecord) {
+  const title = sanitizeFileSegment(stream?.title || stream?.slug || "mou", "mou");
+  const agency = sanitizeFileSegment(signatureRecord?.agencyId || "agency", "agency");
+  return `${title}-${agency}-v${normalizeVersion(versionRecord?.version) || 1}-signed.pdf`;
 }
 
 function deriveUserAgreementSource(versionRecord) {
@@ -1201,6 +1303,145 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
   ].join("\n");
 }
 
+function writePdfHeader(doc, stream, versionRecord) {
+  doc.addPage({ size: "LETTER", margin: 54 });
+  setPdfFont(doc, "bold").fontSize(20).fillColor("#111827").text(stream.title || "MOU");
+  doc.moveDown(0.25);
+  setPdfFont(doc, "regular")
+    .fontSize(11)
+    .fillColor("#4b5563")
+    .text(`Version ${normalizeVersion(versionRecord?.version) || 1} | ${getScopeLabel(stream)}`);
+  doc.moveDown(1);
+  doc.fillColor("#111827");
+}
+
+function writeSignatureSection(doc, signatureRecord) {
+  if (doc.y > doc.page.height - doc.page.margins.bottom - 220) {
+    doc.addPage({ size: "LETTER", margin: 54 });
+  }
+  const left = doc.page.margins.left;
+  const right = doc.page.width - doc.page.margins.right;
+  const dividerY = doc.y;
+  doc.lineWidth(1).strokeColor("#0f172a").moveTo(left, dividerY).lineTo(right, dividerY).stroke();
+  doc.moveDown(1);
+
+  const signatureImage = readSignatureImageBuffer(signatureRecord);
+  if (signatureImage.length) {
+    const imageTop = doc.y;
+    doc.image(signatureImage, left, imageTop, { fit: [260, 120], align: "left" });
+    doc.y = imageTop + 104;
+  }
+
+  setPdfFont(doc, "bold");
+  doc
+    .fontSize(12)
+    .fillColor("#111827")
+    .text(normalizeText(signatureRecord?.attestationText || signatureRecord?.signerDisplayName) || "Signer");
+  setPdfFont(doc, "regular");
+  doc
+    .fontSize(11)
+    .text(normalizeText(signatureRecord?.signerStatusAtSign) || "Agency Administrator");
+  doc.text(normalizeText(signatureRecord?.agencyNameAtSign) || "");
+  doc.text(`Signed ${normalizeText(signatureRecord?.signedAt) || ""}`);
+}
+
+async function buildUploadedSignedCopyPdfBuffer(signatureRecord) {
+  const absPath = getAbsoluteDataPath(signatureRecord?.uploadedSignedCopyPath);
+  const source = readBufferSafe(absPath);
+  if (!source.length) {
+    throw new Error("Uploaded signed document file was not found.");
+  }
+  if (normalizeLower(signatureRecord?.uploadedSignedCopyContentType) === "application/pdf") {
+    return source;
+  }
+  const normalized = await normalizeImageBufferForPdf(
+    source,
+    absPath,
+    signatureRecord?.uploadedSignedCopyContentType
+  );
+  return collectPdfBuffer((doc) => {
+    doc.addPage({ size: "LETTER", margin: 36 });
+    const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const height = doc.page.height - doc.page.margins.top - doc.page.margins.bottom;
+    doc.image(normalized.buffer, doc.page.margins.left, doc.page.margins.top, {
+      fit: [width, height],
+      align: "center",
+      valign: "center",
+    });
+  });
+}
+
+async function buildSignatureAppendixPdfBuffer({ stream, versionRecord, signatureRecord }) {
+  return collectPdfBuffer((doc) => {
+    writePdfHeader(doc, stream, versionRecord);
+    writeSignatureSection(doc, signatureRecord);
+  });
+}
+
+async function buildMergedSignedPdfBuffer({ stream, versionRecord, signatureRecord }) {
+  const sourcePdf = readContentBuffer(versionRecord);
+  if (!sourcePdf.length) {
+    throw new Error("Document PDF was not found.");
+  }
+  const appendixPdf = await buildSignatureAppendixPdfBuffer({
+    stream,
+    versionRecord,
+    signatureRecord,
+  });
+  const merged = await PDFLibDocument.create();
+  const original = await PDFLibDocument.load(sourcePdf);
+  const appendix = await PDFLibDocument.load(appendixPdf);
+  const originalPages = await merged.copyPages(original, original.getPageIndices());
+  for (const page of originalPages) merged.addPage(page);
+  const appendixPages = await merged.copyPages(appendix, appendix.getPageIndices());
+  for (const page of appendixPages) merged.addPage(page);
+  return Buffer.from(await merged.save());
+}
+
+async function buildSignedTextPdfBuffer({ stream, versionRecord, signatureRecord }) {
+  const plainText = htmlToPlainText(renderDocumentHtml(versionRecord));
+  return collectPdfBuffer((doc) => {
+    writePdfHeader(doc, stream, versionRecord);
+    const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const paragraphs = plainText.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+    setPdfFont(doc, "regular").fontSize(11).fillColor("#111827");
+    if (!paragraphs.length) {
+      doc.text("Document content unavailable.", { width });
+      doc.moveDown(1);
+    } else {
+      for (const paragraph of paragraphs) {
+        doc.text(paragraph, { width, lineGap: 2 });
+        doc.moveDown(0.7);
+      }
+    }
+    writeSignatureSection(doc, signatureRecord);
+  });
+}
+
+async function getSignedPdfExport({ mouId, agencyId, version }) {
+  const evidence = getAgencyEvidence({ mouId, agencyId, version });
+  const fileName = buildSignedPdfFileName(evidence.stream, evidence.signature, evidence.version);
+  const pdfBuffer = evidence.signature?.uploadedSignedCopyPath
+    ? await buildUploadedSignedCopyPdfBuffer(evidence.signature)
+    : normalizeContentType(evidence.version?.contentType) === "pdf"
+      ? await buildMergedSignedPdfBuffer({
+          stream: evidence.stream,
+          versionRecord: evidence.version,
+          signatureRecord: evidence.signature,
+        })
+      : await buildSignedTextPdfBuffer({
+          stream: evidence.stream,
+          versionRecord: evidence.version,
+          signatureRecord: evidence.signature,
+        });
+  return {
+    fileName,
+    contentType: "application/pdf",
+    buffer: pdfBuffer,
+    evidence,
+  };
+}
+
 function signVersion({
   mouId,
   version,
@@ -1521,6 +1762,7 @@ module.exports = {
   getAgreementSummaryForUser,
   signVersion,
   getAgencyEvidence,
+  getSignedPdfExport,
   listSignatureRows,
   getAgencySignatureStatusRows,
   getAgencyReminderRows,

@@ -61,9 +61,7 @@
       <% } %>
     </div>
     <div class="mouActionRow">
-      <% if (contentType === "signed_html") { %>
-        <button class="btn secondary" type="button" id="downloadDocumentBtn">Download</button>
-      <% } else if (downloadUrl) { %>
+      <% if (downloadUrl) { %>
         <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
       <% } %>
       <button class="btn secondary" type="button" id="printDocumentBtn">Print</button>
@@ -97,130 +95,12 @@
   </section>
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (function () {
   var printBtn = document.getElementById("printDocumentBtn");
-  var downloadBtn = document.getElementById("downloadDocumentBtn");
-  var documentSection = document.getElementById("mouViewDocumentSection");
-  var contentType = <%- JSON.stringify(contentType || "") %>;
-  var documentTitle = <%- JSON.stringify(stream && stream.title ? stream.title : "document") %>;
-
-  function sanitizeFileName(value) {
-    return String(value || "document")
-      .trim()
-      .replace(/[^a-z0-9_-]+/gi, "-")
-      .replace(/-+/g, "-")
-      .replace(/^[-_]+|[-_]+$/g, "")
-      .toLowerCase() || "document";
-  }
-
-  function getPdfSourceElement() {
-    return (documentSection && documentSection.querySelector(".signed-shell")) ||
-      (documentSection && documentSection.querySelector(".mouDocumentShell")) ||
-      documentSection;
-  }
-
-  function buildPdfSandbox(source) {
-    var sandbox = document.createElement("div");
-    var clone = source.cloneNode(true);
-    var measuredWidth = Math.max(
-      900,
-      Math.ceil(source.getBoundingClientRect().width || 0),
-      Math.ceil(source.scrollWidth || 0)
-    );
-
-    sandbox.style.position = "fixed";
-    sandbox.style.left = "-100000px";
-    sandbox.style.top = "0";
-    sandbox.style.width = measuredWidth + "px";
-    sandbox.style.padding = "0";
-    sandbox.style.margin = "0";
-    sandbox.style.background = "#ffffff";
-    sandbox.style.zIndex = "-1";
-    sandbox.style.overflow = "hidden";
-
-    clone.style.width = "100%";
-    clone.style.maxWidth = "none";
-    clone.style.margin = "0";
-
-    sandbox.appendChild(clone);
-    document.body.appendChild(sandbox);
-    return { sandbox: sandbox, clone: clone };
-  }
-
-  async function downloadSignedPdf() {
-    var pdfSource = getPdfSourceElement();
-    var jsPDF = window.jspdf && window.jspdf.jsPDF;
-    if (!jsPDF) throw new Error("PDF library failed to load.");
-    if (!window.html2canvas) throw new Error("Could not load html2canvas.");
-    if (!pdfSource) throw new Error("Document content was not found.");
-    var renderTarget = buildPdfSandbox(pdfSource);
-    try {
-      var canvas = await window.html2canvas(renderTarget.clone, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-      var doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
-      var pageWidth = doc.internal.pageSize.getWidth();
-      var pageHeight = doc.internal.pageSize.getHeight();
-      var margin = 24;
-      var renderWidth = pageWidth - margin * 2;
-      var pageContentHeight = pageHeight - margin * 2;
-      var pagePixelHeight = Math.max(1, Math.floor((pageContentHeight * canvas.width) / renderWidth));
-      var offset = 0;
-      var isFirstPage = true;
-
-      while (offset < canvas.height) {
-        var sliceHeight = Math.min(pagePixelHeight, canvas.height - offset);
-        var pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceHeight;
-        var pageCtx = pageCanvas.getContext("2d");
-        pageCtx.fillStyle = "#ffffff";
-        pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        pageCtx.drawImage(
-          canvas,
-          0,
-          offset,
-          canvas.width,
-          sliceHeight,
-          0,
-          0,
-          canvas.width,
-          sliceHeight
-        );
-
-        var imageData = pageCanvas.toDataURL("image/png");
-        var imageHeight = (sliceHeight * renderWidth) / canvas.width;
-        if (!isFirstPage) {
-          doc.addPage();
-        }
-        doc.addImage(imageData, "PNG", margin, margin, renderWidth, imageHeight, undefined, "FAST");
-        offset += sliceHeight;
-        isFirstPage = false;
-      }
-
-      doc.save(sanitizeFileName(documentTitle) + "-signed.pdf");
-    } finally {
-      renderTarget.sandbox.remove();
-    }
-  }
-
   if (printBtn) {
     printBtn.addEventListener("click", function () {
       window.print();
-    });
-  }
-
-  if (downloadBtn && String(contentType || "").toLowerCase() === "signed_html") {
-    downloadBtn.addEventListener("click", function () {
-      downloadSignedPdf().catch(function (err) {
-        console.error("[MOU_VIEW][download]", err);
-      });
     });
   }
 })();

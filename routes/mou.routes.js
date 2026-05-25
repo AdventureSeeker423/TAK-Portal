@@ -1,6 +1,7 @@
 const path = require("path");
 const express = require("express");
 const multer = require("multer");
+const archiver = require("archiver");
 const mouService = require("../services/mouService");
 const mouScheduler = require("../services/mouScheduler");
 const auditSvc = require("../services/auditLog.service");
@@ -110,6 +111,29 @@ function rowsToCsv(headers, rows) {
     lines.push(row.map(csvEscape).join(","));
   }
   return `${lines.join("\n")}\n`;
+}
+
+function buildSignatureComplianceCsv(signatureRows) {
+  return rowsToCsv(
+    [
+      "mou_title",
+      "scope",
+      "agency_name",
+      "current_version",
+      "signed_version",
+      "signer_name",
+      "status",
+    ],
+    signatureRows.map((row) => [
+      row.mouTitle,
+      row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel,
+      row.agencyName,
+      row.currentVersion,
+      row.signedVersion || "",
+      row.signerDisplayName || "",
+      row.needsSignature ? "needs_signature" : "current",
+    ])
+  );
 }
 
 function getAgencyOptions() {
@@ -229,7 +253,7 @@ function buildAdminStreamRow(stream) {
   };
 }
 
-router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
+router.get("/mou", requireMouEnabled, requireMouPermission, async (req, res) => {
   const isGlobalAdmin = !!req.authentikUser?.isGlobalAdmin;
   const cards = mouService
     .listCurrentStreamsForUser(req.authentikUser)
@@ -242,32 +266,63 @@ router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
     : [];
 
   if (isGlobalAdmin && req.query.export === "signatures") {
-    const csv = rowsToCsv(
-      [
-        "mou_title",
-        "scope",
-        "agency_name",
-        "current_version",
-        "signed_version",
-        "signer_name",
-        "status",
-      ],
-      signatureRows.map((row) => [
-        row.mouTitle,
-        row.scopeLabel,
-        row.agencyName,
-        row.currentVersion,
-        row.signedVersion || "",
-        row.signerDisplayName || "",
-        row.needsSignature ? "needs_signature" : "current",
-      ])
-    );
+    const csv = buildSignatureComplianceCsv(signatureRows);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
       'attachment; filename="mou-signature-compliance.csv"'
     );
     return res.send(csv);
+  }
+
+  if (isGlobalAdmin && req.query.export === "signatures-zip") {
+    const csv = buildSignatureComplianceCsv(signatureRows);
+    const signedRows = signatureRows.filter((row) => !!row.signedVersion);
+    const pdfExports = [];
+
+    for (const row of signedRows) {
+      pdfExports.push(
+        await mouService.getSignedPdfExport({
+          mouId: row.mouId,
+          agencyId: row.agencyId,
+          version: row.signedVersion,
+        })
+      );
+    }
+
+    auditRequest(req, {
+      action: "MOU_SIGNATURE_BUNDLE_EXPORTED",
+      targetType: "mou",
+      targetId: "signature_bundle",
+      details: {
+        documentsIncluded: signedRows.length,
+        summary: `Exported signed MOU PDF bundle (${signedRows.length} PDF(s) plus CSV).`,
+      },
+    });
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      buildContentDisposition("attachment", "mou-signed-documents.zip")
+    );
+
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("error", (err) => {
+      console.error("MOU signature zip export error:", err);
+      if (!res.headersSent) {
+        res.status(500).end("Failed to export signed documents zip");
+      } else {
+        res.end();
+      }
+    });
+    archive.pipe(res);
+    archive.append(csv, { name: "mou-signature-compliance.csv" });
+
+    for (const pdf of pdfExports) {
+      archive.append(pdf.buffer, { name: `signed-documents/${pdf.fileName}` });
+    }
+
+    return archive.finalize();
   }
 
   res.render("mou_list", {
@@ -401,12 +456,6 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
       agencyId,
       version: req.query.version,
     });
-    if (req.query.download === "1") {
-      const fileName = `${evidence.stream?.title || "mou"}-${agencyId}-v${evidence.version?.version || "signed"}-signed.html`;
-      res.type("text/html; charset=utf-8");
-      res.setHeader("Content-Disposition", buildContentDisposition("attachment", fileName));
-      return res.sendFile(path.join(__dirname, "..", "data", evidence.signature.signedHtmlPath));
-    }
     res.render("mou_view", {
       mode: "signed_evidence",
       stream: evidence.stream,
@@ -414,12 +463,39 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
       html: evidence.html,
       contentType: "signed_html",
       fileUrl: null,
-      downloadUrl: `/mou/agency/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(agencyId)}?version=${encodeURIComponent(evidence.version.version)}&download=1`,
+      downloadUrl: `/mou/agency/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(agencyId)}/pdf?version=${encodeURIComponent(evidence.version.version)}`,
       fileName: null,
       signature: evidence.signature,
       scopeLabel: mouService.getScopeLabel(evidence.stream),
       updatedFromOlderVersion: false,
     });
+  } catch (err) {
+    return renderNotFound(req, res);
+  }
+});
+
+router.get("/mou/agency/:mouId/:agencyId/pdf", requireMouEnabled, requireMouPermission, async (req, res) => {
+  try {
+    const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
+    const canSeeAll = !!req.authentikUser?.isGlobalAdmin;
+    const canSeeOwnAgency =
+      !!req.authentikUser?.isAgencyAdmin &&
+      accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
+    const canSeePublic = getBool("MOU_PUBLIC_LIST_VISIBLE_TO_ALL", true);
+    if (!canSeeAll && !canSeeOwnAgency && !canSeePublic) {
+      return res.status(403).render("access-denied", {
+        username: req.authentikUser?.username || "",
+      });
+    }
+
+    const pdf = await mouService.getSignedPdfExport({
+      mouId: req.params.mouId,
+      agencyId,
+      version: req.query.version,
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", buildContentDisposition("attachment", pdf.fileName));
+    return res.send(pdf.buffer);
   } catch (err) {
     return renderNotFound(req, res);
   }
@@ -495,6 +571,10 @@ router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission,
       currentAgency && currentAgencySignature
         ? `/mou/agency/${encodeURIComponent(out.stream.mouId)}/${encodeURIComponent(currentAgency.suffix)}?version=${encodeURIComponent(out.targetVersion.version)}`
         : "";
+    const signedEvidencePdfUrl =
+      currentAgency && currentAgencySignature
+        ? `/mou/agency/${encodeURIComponent(out.stream.mouId)}/${encodeURIComponent(currentAgency.suffix)}/pdf?version=${encodeURIComponent(out.targetVersion.version)}`
+        : "";
     res.render("mou_sign", {
       stream: out.stream,
       version: out.targetVersion,
@@ -505,7 +585,7 @@ router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission,
       signedEvidenceHtml: signedEvidence?.html || "",
       signedEvidenceSignature: signedEvidence?.signature || null,
       signedEvidenceViewUrl,
-      signedEvidenceDownloadUrl: signedEvidenceViewUrl ? `${signedEvidenceViewUrl}&download=1` : "",
+      signedEvidenceDownloadUrl: signedEvidencePdfUrl,
       fileName: out.fileName,
       scopeLabel: mouService.getScopeLabel(out.stream),
       agencyChoices,

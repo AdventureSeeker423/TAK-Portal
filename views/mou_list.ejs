@@ -254,7 +254,10 @@
         <div>
           <h2>Agency Signature Status</h2>
         </div>
-        <a class="btn secondary" href="/mou?export=signatures">Export CSV</a>
+        <div class="mouActionRow">
+          <a class="btn secondary" href="/mou?export=signatures">Export CSV</a>
+          <a class="btn secondary" href="/mou?export=signatures-zip">Export ZIP</a>
+        </div>
       </div>
       <% if (!signatureRows || !signatureRows.length) { %>
         <div class="mouEmptyState">
