@@ -475,7 +475,7 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
       agencyNameAtSign: agency.name || agency.groupPrefix || agency.suffix,
       signerUserId: req.authentikUser?.uid || req.authentikUser?.username,
       signerDisplayName: req.authentikUser?.displayName || req.authentikUser?.username,
-      signerStatusAtSign: signerStatus,
+      signerStatusAtSign: req.body?.signerRole || signerStatus,
       attestationText: req.body?.attestationText,
       signatureDataUrl: req.body?.signatureDataUrl,
       ...requestMeta(req),

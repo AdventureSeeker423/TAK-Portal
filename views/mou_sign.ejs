@@ -113,7 +113,8 @@
           By signing this document, I affirm that I am authorized to sign on behalf of the <%= signingAgencyName %> and attest that this acknowledgment is made for my entire agency.
         </p>
         <div style="margin:0 0 12px 0;">Signature: ________________________________________________</div>
-        <div style="margin:0 0 12px 0;">Printed Name: _____________________________________________</div>
+        <div style="margin:0 0 12px 0;">Printed Name: <span id="printSignerName">_____________________________________________</span></div>
+        <div style="margin:0 0 12px 0;">Position / Role: <span id="printSignerRole">____________________________________________</span></div>
         <div style="margin:0;">Date: ________________________________</div>
       </div>
     </section>
@@ -145,6 +146,11 @@
           <input type="text" name="attestationText" placeholder="Type Your Full Name" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
         </label>
 
+        <label style="margin-top:12px;display:block;">
+          Position / Role
+          <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
+        </label>
+
         <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
 
         <div class="row" style="margin-top:16px;justify-content:flex-end;">
@@ -166,6 +172,10 @@
   var printBtn = document.getElementById("printDocumentBtn");
   var downloadBtn = document.getElementById("downloadDocumentBtn");
   var signatureMsg = document.getElementById("signatureMsg");
+  var signerNameInput = form.querySelector("input[name='attestationText']");
+  var signerRoleInput = form.querySelector("input[name='signerRole']");
+  var printSignerName = document.getElementById("printSignerName");
+  var printSignerRole = document.getElementById("printSignerRole");
   var documentSection = document.getElementById("mouDocumentSection");
   var documentShell = documentSection ? documentSection.querySelector(".mouDocumentShell") : null;
   var downloadUrl = <%- JSON.stringify(downloadUrl || "") %>;
@@ -193,6 +203,23 @@
       .toLowerCase() || "document";
   }
 
+  function getSignerNameValue() {
+    return signerNameInput ? String(signerNameInput.value || "").trim() : "";
+  }
+
+  function getSignerRoleValue() {
+    return signerRoleInput ? String(signerRoleInput.value || "").trim() : "";
+  }
+
+  function updatePrintableFooterFields() {
+    if (printSignerName) {
+      printSignerName.textContent = getSignerNameValue() || "_____________________________________________";
+    }
+    if (printSignerRole) {
+      printSignerRole.textContent = getSignerRoleValue() || "____________________________________________";
+    }
+  }
+
   function drawPdfFooter(doc, margin, y, pageWidth) {
     var maxWidth = pageWidth - margin * 2;
     doc.setFont("helvetica", "normal");
@@ -203,7 +230,9 @@
     y += lines.length * 14 + 14;
     doc.text("Signature: ________________________________________________", margin, y);
     y += 20;
-    doc.text("Printed Name: _____________________________________________", margin, y);
+    doc.text("Printed Name: " + (getSignerNameValue() || "_____________________________________________"), margin, y);
+    y += 20;
+    doc.text("Position / Role: " + (getSignerRoleValue() || "____________________________________________"), margin, y);
     y += 20;
     doc.text("Date: ________________________________", margin, y);
   }
@@ -312,6 +341,7 @@
 
   if (printBtn) {
     printBtn.addEventListener("click", function () {
+      updatePrintableFooterFields();
       window.print();
     });
   }
@@ -324,6 +354,10 @@
       });
     });
   }
+
+  if (signerNameInput) signerNameInput.addEventListener("input", updatePrintableFooterFields);
+  if (signerRoleInput) signerRoleInput.addEventListener("input", updatePrintableFooterFields);
+  updatePrintableFooterFields();
 
   form.addEventListener("submit", function (event) {
     if (!hasInk) {
