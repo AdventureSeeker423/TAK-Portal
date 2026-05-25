@@ -201,7 +201,6 @@ function normalizeAgencySuffixList(values) {
   for (const value of list) {
     const suffix = normalizeAgencySuffix(value);
     if (!suffix || seen.has(suffix)) continue;
-    if (!getAgencyBySuffix(suffix)) continue;
     seen.add(suffix);
     out.push(suffix);
   }
@@ -373,7 +372,15 @@ function getTargetAgenciesForStream(stream) {
     return getAllAgencies();
   }
   return assignments.agencySuffixes
-    .map((suffix) => getAgencyBySuffix(suffix))
+    .map((suffix) => {
+      const agency = getAgencyBySuffix(suffix);
+      if (agency) return agency;
+      return {
+        suffix,
+        name: suffix,
+        groupPrefix: String(suffix || "").trim().toUpperCase(),
+      };
+    })
     .filter(Boolean);
 }
 
