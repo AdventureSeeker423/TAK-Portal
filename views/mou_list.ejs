@@ -7,12 +7,6 @@
       <h1 style="margin-bottom:6px;">MOU / Documents</h1>
       <div class="muted">Review documents, signatures, and user access terms in one place.</div>
     </div>
-    <div class="mouActionRow">
-      <% if (isGlobalAdmin) { %>
-        <a class="btn secondary" href="/admin/mou/compliance">Compliance</a>
-      <% } %>
-      <a class="btn secondary" href="/setup-my-device">Setup My Device</a>
-    </div>
   </div>
 
   <% if (error) { %>
@@ -47,19 +41,19 @@
             <label>
               Content type
               <select name="contentType" data-mou-content-select>
+                <option value="markdown" selected>Markdown</option>
                 <option value="html">HTML</option>
-                <option value="markdown">Markdown</option>
                 <option value="pdf">PDF upload</option>
               </select>
             </label>
           </div>
 
           <label data-mou-richtext-field>
-            <span data-mou-richtext-label>Draft HTML</span>
-            <textarea name="html" rows="16" placeholder="<p>Paste MOU HTML here.</p>" data-mou-richtext-input></textarea>
+            <span data-mou-richtext-label>Draft Markdown</span>
+            <textarea name="html" rows="16" placeholder="# Paste MOU Markdown here" data-mou-richtext-input></textarea>
           </label>
 
-          <label data-mou-file-field hidden>
+          <label data-mou-file-field style="display:none;">
             Upload PDF
             <input type="file" name="contentFile" accept="application/pdf,.pdf" />
           </label>
@@ -89,8 +83,8 @@
             <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : 'User Agreement' %>" required />
           </label>
           <label>
-            Agreement Text
-            <textarea name="html" rows="14" required><%- currentAgreement ? currentAgreement.bodyHtml : '<p>I understand that use of this TAK environment is subject to my agency\'s current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.</p>' %></textarea>
+            Agreement Text (Markdown supported)
+            <textarea name="markdown" rows="14" required><%- currentAgreement ? currentAgreement.bodyMarkdown : 'I understand that use of this TAK environment is subject to my agency\'s current MOU and local operating policies. I agree to use this access only for authorized mission purposes, to safeguard credentials and shared data, and to follow administrator direction regarding acceptable use and account security.' %></textarea>
           </label>
           <div class="mouFormFooter">
             <button class="btn success" type="submit">Save User Agreement</button>
@@ -175,9 +169,6 @@
                   <%= card.allSigned ? "Review Signatures" : "Sign / Review" %>
                 </a>
               <% } %>
-              <% if (isGlobalAdmin) { %>
-                <a class="btn secondary" href="/admin/mou/compliance">Compliance</a>
-              <% } %>
             <% } %>
           </div>
         </article>
@@ -186,6 +177,61 @@
   <% } %>
 
   <% if (isGlobalAdmin) { %>
+    <section class="card" style="margin-top:14px;">
+      <div class="mouSectionHeader">
+        <div>
+          <h2>Agency Signature Status</h2>
+          <p class="muted">Track required agency signatures for currently assigned documents.</p>
+        </div>
+        <a class="btn secondary" href="/mou?export=signatures">Export CSV</a>
+      </div>
+      <% if (!signatureRows || !signatureRows.length) { %>
+        <div class="mouEmptyState">
+          <h3>No signature data yet</h3>
+          <p class="muted">Deployed MOUs will appear here once they target agencies.</p>
+        </div>
+      <% } else { %>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>MOU</th>
+              <th>Scope</th>
+              <th>Agency</th>
+              <th>Current Version</th>
+              <th>Signed Version</th>
+              <th>Signer</th>
+              <th>Status</th>
+              <th>Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% signatureRows.forEach(function (row) { %>
+              <tr>
+                <td><%= row.mouTitle %></td>
+                <td><%= row.scopeLabel %></td>
+                <td><%= row.agencyName %></td>
+                <td>v<%= row.deployedVersion %></td>
+                <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not signed" %></td>
+                <td><%= row.signerDisplayName || "-" %></td>
+                <td>
+                  <span class="mouStatus <%= row.needsSignature ? 'mouStatus--pending' : 'mouStatus--ok' %>">
+                    <%= row.needsSignature ? "Needs signature" : "Current" %>
+                  </span>
+                </td>
+                <td>
+                  <% if (row.signedVersion) { %>
+                    <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Evidence</a>
+                  <% } else { %>
+                    <span class="muted">-</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+
     <section class="card" style="margin-top:14px;">
       <div class="mouSectionHeader">
         <div>
@@ -292,12 +338,18 @@
     var fileField = form.querySelector("[data-mou-file-field]");
     var fileInput = fileField ? fileField.querySelector("input[type='file']") : null;
 
+    function setFieldVisible(field, visible) {
+      if (!field) return;
+      field.hidden = !visible;
+      field.style.display = visible ? "" : "none";
+    }
+
     function sync() {
-      var contentValue = contentSelect ? contentSelect.value : "html";
+      var contentValue = contentSelect ? contentSelect.value : "markdown";
 
       if (agencyField) agencyField.hidden = true;
       if (agencySelect) agencySelect.required = false;
-      if (richtextField) richtextField.hidden = contentValue === "pdf";
+      setFieldVisible(richtextField, contentValue !== "pdf");
       if (richtextArea) {
         richtextArea.required = contentValue !== "pdf";
         richtextArea.placeholder = contentValue === "markdown"
@@ -307,7 +359,7 @@
       if (richtextLabel) {
         richtextLabel.textContent = contentValue === "markdown" ? "Draft Markdown" : "Draft HTML";
       }
-      if (fileField) fileField.hidden = contentValue !== "pdf";
+      setFieldVisible(fileField, contentValue === "pdf");
       if (fileInput) {
         fileInput.required = contentValue === "pdf";
         if (contentValue === "html") fileInput.value = "";

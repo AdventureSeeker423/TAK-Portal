@@ -172,10 +172,10 @@ function buildStreamCard(authUser, stream) {
 }
 
 router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
+  const isGlobalAdmin = !!req.authentikUser?.isGlobalAdmin;
   const cards = mouService
     .listDeployedStreamsForUser(req.authentikUser)
     .map((stream) => buildStreamCard(req.authentikUser, stream));
-  const isGlobalAdmin = !!req.authentikUser?.isGlobalAdmin;
   const adminStreams = isGlobalAdmin
     ? mouService.listStreams().map((stream) => ({
         ...stream,
@@ -183,11 +183,44 @@ router.get("/mou", requireMouEnabled, requireMouPermission, (req, res) => {
         scopeLabel: mouService.getScopeLabel(stream),
       }))
     : [];
+  const signatureRows = isGlobalAdmin
+    ? mouService.getAgencySignatureStatusRows()
+    : [];
+
+  if (isGlobalAdmin && req.query.export === "signatures") {
+    const csv = rowsToCsv(
+      [
+        "mou_title",
+        "scope",
+        "agency_name",
+        "deployed_version",
+        "signed_version",
+        "signer_name",
+        "status",
+      ],
+      signatureRows.map((row) => [
+        row.mouTitle,
+        row.scopeLabel,
+        row.agencyName,
+        row.deployedVersion,
+        row.signedVersion || "",
+        row.signerDisplayName || "",
+        row.needsSignature ? "needs_signature" : "current",
+      ])
+    );
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="mou-signature-compliance.csv"'
+    );
+    return res.send(csv);
+  }
 
   res.render("mou_list", {
     cards,
     adminStreams,
     adminAgreement: isGlobalAdmin ? mouService.getCurrentUserAgreement() : null,
+    signatureRows,
     agencies: isGlobalAdmin ? getAgencyOptions() : [],
     error: req.query.error || "",
     success: req.query.success || "",
@@ -690,6 +723,7 @@ router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermi
   try {
     const result = mouService.saveUserAgreement({
       title: req.body?.title,
+      markdown: req.body?.markdown,
       html: req.body?.html,
       enabled: req.body?.enabled,
       actor: req.authentikUser,
@@ -711,57 +745,10 @@ router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermi
 });
 
 router.get("/admin/mou/compliance", requireMouEnabled, requireMouPermission, (req, res) => {
-  if (!req.authentikUser || (!req.authentikUser.isGlobalAdmin && !req.authentikUser.isAgencyAdmin)) {
-    return res.status(403).render("access-denied", {
-      username: req.authentikUser?.username || "",
-    });
+  if (req.query.export === "signatures") {
+    return res.redirect("/mou?export=signatures");
   }
-
-  Promise.resolve()
-    .then(async () => {
-      const signatureRows = mouService.getAgencySignatureStatusRows().filter((row) =>
-        req.authentikUser.isGlobalAdmin ||
-        accessSvc.isSuffixAllowed(req.authentikUser, row.agencyId)
-      );
-
-      if (req.query.export === "signatures") {
-        const csv = rowsToCsv(
-          [
-            "mou_title",
-            "scope",
-            "agency_name",
-            "deployed_version",
-            "signed_version",
-            "signer_name",
-            "status",
-          ],
-          signatureRows.map((row) => [
-            row.mouTitle,
-            row.scopeLabel,
-            row.agencyName,
-            row.deployedVersion,
-            row.signedVersion || "",
-            row.signerDisplayName || "",
-            row.needsSignature ? "needs_signature" : "current",
-          ])
-        );
-        res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader(
-          "Content-Disposition",
-          'attachment; filename="mou-signature-compliance.csv"'
-        );
-        return res.send(csv);
-      }
-
-      res.render("admin/mou_compliance", {
-        signatureRows,
-      });
-    })
-    .catch(() => {
-      res.status(500).render("access-denied", {
-        username: req.authentikUser?.username || "",
-      });
-    });
+  return res.redirect("/mou");
 });
 
 module.exports = router;

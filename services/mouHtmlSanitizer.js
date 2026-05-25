@@ -54,7 +54,7 @@ function sanitizeMouHtml(html) {
 
 function sanitizeUserAgreementHtml(html) {
   return sanitizeHtml(String(html || ""), {
-    allowedTags: ["p", "br", "strong", "em", "u", "a"],
+    allowedTags: ["p", "br", "strong", "em", "u", "a", "ul", "ol", "li", "blockquote", "h1", "h2", "h3"],
     allowedAttributes: {
       a: ["href", "title", "target", "rel"],
     },

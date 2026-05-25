@@ -478,6 +478,51 @@ function renderDocumentHtml(versionRecord) {
   return rawContent;
 }
 
+function renderUserAgreementHtml(markdownSource) {
+  return sanitizeUserAgreementHtml(marked.parse(String(markdownSource || "")));
+}
+
+function decodeBasicHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'");
+}
+
+function deriveUserAgreementSource(versionRecord) {
+  const markdown = normalizeText(versionRecord?.bodyMarkdown || versionRecord?.bodyText);
+  if (markdown) return markdown;
+  const html = String(versionRecord?.bodyHtml || "");
+  return decodeBasicHtmlEntities(
+    html
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+      .replace(/<li[^>]*>/gi, "- ")
+      .replace(/<\/li>/gi, "\n")
+      .replace(/<\/(div|p|h1|h2|h3|blockquote|ul|ol)>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+  )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizeUserAgreementVersion(versionRecord) {
+  if (!versionRecord || typeof versionRecord !== "object") return null;
+  const bodyMarkdown = deriveUserAgreementSource(versionRecord);
+  const renderedHtml = normalizeText(versionRecord.bodyHtml)
+    ? sanitizeUserAgreementHtml(versionRecord.bodyHtml)
+    : renderUserAgreementHtml(bodyMarkdown);
+  return {
+    ...clone(versionRecord),
+    title: normalizeText(versionRecord.title) || "User Agreement",
+    bodyMarkdown,
+    bodyHtml: renderedHtml,
+  };
+}
+
 function persistDraftContent({ mouId, version, contentType, html, file }) {
   const ext = getFileExtensionForContentType(contentType);
   const draftPath = store.getDraftContentPath(mouId, version, ext);
@@ -521,7 +566,7 @@ function buildDraftInput(input, existingVersionRecord) {
   const reminderDays = normalizedReminderDays(input?.reminderDays);
   const mandatory = true;
   const contentType = normalizeContentType(
-    input?.contentType || existingVersionRecord?.contentType
+    input?.contentType || existingVersionRecord?.contentType || "markdown"
   );
 
   requireNonEmpty(title, "Title");
@@ -999,33 +1044,33 @@ function recordMouView({ authUser, mouId, version, ip, userAgent }) {
 function getCurrentUserAgreement() {
   const data = getUserAgreementStore();
   const currentVersion = normalizeVersion(data.currentVersion);
+  const versions = (data.versions || [])
+    .map(normalizeUserAgreementVersion)
+    .filter(Boolean);
   const current =
-    (data.versions || []).find(
-      (entry) => normalizeVersion(entry?.version) === currentVersion
-    ) || null;
+    versions.find((entry) => normalizeVersion(entry?.version) === currentVersion) || null;
   return {
     enabled: data.enabled === true,
     currentVersion,
     current: current ? clone(current) : null,
-    versions: clone(data.versions || []),
+    versions,
   };
 }
 
-function saveUserAgreement({ title, html, actor, enabled }) {
+function saveUserAgreement({ title, markdown, html, actor, enabled }) {
   requireEnabled();
   const safeTitle = normalizeText(title) || "User Agreement";
-  const safeHtml = sanitizeUserAgreementHtml(html || "");
+  const safeMarkdown = normalizeText(markdown || html || "");
+  const safeHtml = renderUserAgreementHtml(safeMarkdown);
   const safeEnabled = normalizedMandatory(enabled);
-  requireNonEmpty(
-    safeHtml.replace(/<[^>]+>/g, "").trim(),
-    "User agreement text"
-  );
+  requireNonEmpty(safeMarkdown, "User agreement text");
+  enforceHtmlSize(safeMarkdown);
   enforceHtmlSize(safeHtml);
 
   const data = getUserAgreementStore();
   data.enabled = safeEnabled;
   const current = getCurrentUserAgreement().current;
-  if (current && current.title === safeTitle && current.bodyHtml === safeHtml) {
+  if (current && current.title === safeTitle && current.bodyMarkdown === safeMarkdown) {
     saveUserAgreementStore(data);
     return { changed: false, version: clone(current), enabled: data.enabled };
   }
@@ -1035,6 +1080,7 @@ function saveUserAgreement({ title, html, actor, enabled }) {
   const versionRecord = {
     version: nextVersion,
     title: safeTitle,
+    bodyMarkdown: safeMarkdown,
     bodyHtml: safeHtml,
     createdAt: now,
     createdBy: actor?.uid || actor?.username || null,

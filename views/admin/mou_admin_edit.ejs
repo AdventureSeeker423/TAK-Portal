@@ -60,12 +60,12 @@
         </label>
       </div>
 
-      <label data-mou-richtext-field style="margin-top:12px;display:block;" <%= (contentType || version.contentType) === "pdf" ? "hidden" : "" %>>
+      <label data-mou-richtext-field style="margin-top:12px;<%= (contentType || version.contentType) === 'pdf' ? 'display:none;' : '' %>">
         <span data-mou-richtext-label><%= (contentType || version.contentType) === "markdown" ? "Draft Markdown" : "Draft HTML" %></span>
         <textarea name="html" rows="24" data-mou-richtext-input placeholder="<%= (contentType || version.contentType) === 'markdown' ? '# Paste MOU Markdown here' : '<p>Paste MOU HTML here.</p>' %>"><%- html %></textarea>
       </label>
 
-      <label data-mou-file-field style="margin-top:12px;display:block;" <%= (contentType || version.contentType) === "pdf" ? "" : "hidden" %>>
+      <label data-mou-file-field style="margin-top:12px;<%= (contentType || version.contentType) === 'pdf' ? '' : 'display:none;' %>">
         Replace PDF
         <input type="file" name="contentFile" accept="application/pdf,.pdf" />
         <% if ((contentType || version.contentType) === "pdf" && fileName) { %>
@@ -140,9 +140,15 @@
   var richtextLabel = form.querySelector("[data-mou-richtext-label]");
   var fileField = form.querySelector("[data-mou-file-field]");
 
+  function setFieldVisible(field, visible) {
+    if (!field) return;
+    field.hidden = !visible;
+    field.style.display = visible ? "" : "none";
+  }
+
   function sync() {
-    var contentValue = contentSelect ? contentSelect.value : "html";
-    if (richtextField) richtextField.hidden = contentValue === "pdf";
+    var contentValue = contentSelect ? contentSelect.value : "markdown";
+    setFieldVisible(richtextField, contentValue !== "pdf");
     if (richtextArea) {
       richtextArea.required = contentValue !== "pdf";
       richtextArea.placeholder = contentValue === "markdown"
@@ -152,7 +158,7 @@
     if (richtextLabel) {
       richtextLabel.textContent = contentValue === "markdown" ? "Draft Markdown" : "Draft HTML";
     }
-    if (fileField) fileField.hidden = contentValue !== "pdf";
+    setFieldVisible(fileField, contentValue === "pdf");
     var fileInput = fileField ? fileField.querySelector("input[type='file']") : null;
     if (fileInput && contentValue !== "pdf") fileInput.value = "";
   }
