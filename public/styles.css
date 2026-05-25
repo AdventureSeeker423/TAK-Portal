@@ -1018,6 +1018,19 @@ label.btn {
     min-width: 0;
 }
 
+.mouWorkspace__sidebar--sticky {
+    align-self: start;
+}
+
+@media (min-width: 992px) {
+    .mouWorkspace__sidebar--sticky {
+        position: sticky;
+        top: 12px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+    }
+}
+
 .mouViewerCard {
     padding: 0;
     overflow: hidden;
