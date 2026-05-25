@@ -358,7 +358,7 @@
             <% signatureRows.forEach(function (row) { %>
               <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
               <% const scopeDisplay = row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel; %>
-              <% const statusLabel = row.needsSignature ? "Needs signature" : "Signed"; %>
+              <% const statusLabel = row.needsSignature ? "Needs Signature" : "Signed"; %>
               <tr
                 class="<%= signatureRowClass %>"
                 data-table-row="signatures"

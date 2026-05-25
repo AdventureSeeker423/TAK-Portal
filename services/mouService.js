@@ -1221,7 +1221,7 @@ function archiveDocumentForAgency({ mouId, agencyId, actor }) {
         safeAgencyId,
         currentVersion.version
       ),
-      status: needsSignature ? "Needs signature" : "Signed",
+      status: needsSignature ? "Needs Signature" : "Signed",
       archivedAt: nowIso(),
       archivedBy: actor?.uid || actor?.username || null,
     })
