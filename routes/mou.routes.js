@@ -827,52 +827,61 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
       targetAgencyCount: targetAgencies.length,
       targetAgencySuffixes: targetAgencies.map((agency) => agency?.suffix).filter(Boolean),
     });
+    res.redirect(`/mou?success=${encodeURIComponent("Document assignment updated.")}`);
 
-    if (currentVersion && previousAssignmentKey !== currentAssignmentKey && targetAgencies.length) {
+    void Promise.resolve().then(async () => {
+      if (currentVersion && previousAssignmentKey !== currentAssignmentKey && targetAgencies.length) {
+        try {
+          await mouScheduler.sendAssignmentNotificationsForVersion({
+            stream,
+            version: currentVersion,
+            actor: req.authentikUser,
+          });
+        } catch (notifyErr) {
+          console.error("[MOU_ASSIGN] Notification failure", {
+            ...debugContext,
+            currentVersion: currentVersion.version,
+            error: notifyErr?.message || String(notifyErr || "Unknown notification error"),
+            stack: notifyErr?.stack || null,
+          });
+          auditRequest(req, {
+            action: "MOU_ASSIGNMENT_NOTIFICATION_FAILED",
+            targetType: "mou",
+            targetId: String(req.params.mouId),
+            details: {
+              mouId: req.params.mouId,
+              version: currentVersion.version,
+              error: notifyErr?.message || String(notifyErr || "Failed to send assignment notifications."),
+            },
+          });
+        }
+      }
       try {
-        await mouScheduler.sendAssignmentNotificationsForVersion({
-          stream,
-          version: currentVersion,
-          actor: req.authentikUser,
-        });
-      } catch (notifyErr) {
-        console.error("[MOU_ASSIGN] Notification failure", {
-          ...debugContext,
-          currentVersion: currentVersion.version,
-          error: notifyErr?.message || String(notifyErr || "Unknown notification error"),
-          stack: notifyErr?.stack || null,
-        });
         auditRequest(req, {
-          action: "MOU_ASSIGNMENT_NOTIFICATION_FAILED",
+          action: "MOU_ASSIGNMENTS_UPDATED",
           targetType: "mou",
           targetId: String(req.params.mouId),
           details: {
             mouId: req.params.mouId,
-            version: currentVersion.version,
-            error: notifyErr?.message || String(notifyErr || "Failed to send assignment notifications."),
+            assignment: mouService.getScopeLabel(stream),
+            targetAgencyCount: targetAgencies.length,
           },
         });
+      } catch (auditErr) {
+        console.error("[MOU_ASSIGN] Audit logging failure", {
+          ...debugContext,
+          error: auditErr?.message || String(auditErr || "Unknown audit error"),
+          stack: auditErr?.stack || null,
+        });
       }
-    }
-    try {
-      auditRequest(req, {
-        action: "MOU_ASSIGNMENTS_UPDATED",
-        targetType: "mou",
-        targetId: String(req.params.mouId),
-        details: {
-          mouId: req.params.mouId,
-          assignment: mouService.getScopeLabel(stream),
-          targetAgencyCount: targetAgencies.length,
-        },
-      });
-    } catch (auditErr) {
-      console.error("[MOU_ASSIGN] Audit logging failure", {
+    }).catch((backgroundErr) => {
+      console.error("[MOU_ASSIGN] Background follow-up failure", {
         ...debugContext,
-        error: auditErr?.message || String(auditErr || "Unknown audit error"),
-        stack: auditErr?.stack || null,
+        error: backgroundErr?.message || String(backgroundErr || "Unknown background error"),
+        stack: backgroundErr?.stack || null,
       });
-    }
-    return res.redirect(`/mou?success=${encodeURIComponent("Document assignment updated.")}`);
+    });
+    return;
   } catch (err) {
     console.error("[MOU_ASSIGN] Fatal failure", {
       ...debugContext,
