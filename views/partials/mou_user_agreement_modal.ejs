@@ -2,15 +2,15 @@
   <div class="modalOverlay" id="userAgreementOverlay">
     <div class="modal userAgreementModal" role="dialog" aria-modal="true" aria-labelledby="userAgreementTitle">
       <div class="modalHeader">
-        <h2 id="userAgreementTitle" style="margin:0;"><%= agreementSummary.agreement.title || "User Agreement" %></h2>
+        <h2 id="userAgreementTitle" style="margin:0;">End-User Agreement</h2>
       </div>
       <div class="modalBody">
         <div class="mouDocumentShell">
           <%- agreementSummary.agreement.bodyHtml %>
         </div>
         <div class="row" style="margin-top:16px;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          <button class="btn success" type="button" id="userAgreementAcceptBtn">Continue</button>
-          <button class="btn danger" type="button" id="userAgreementDeclineBtn">Decline and Log Out</button>
+          <button class="btn danger" type="button" id="userAgreementDeclineBtn">Decline</button>
+          <button class="btn success" type="button" id="userAgreementAcceptBtn">Agree</button>
         </div>
         <div class="msg" id="userAgreementMsg" style="margin-top:12px;"></div>
       </div>
