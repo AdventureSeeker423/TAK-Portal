@@ -4,8 +4,8 @@
 <main class="main">
   <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
     <div>
-      <h1 style="margin-bottom:6px;">Sign MOU</h1>
-      <div class="muted">Review the current version, then sign for the appropriate agency.</div>
+      <h1 style="margin-bottom:6px;">View / Sign Document</h1>
+      <div class="muted">Review the current version, then sign on behalf of your agency.</div>
       <div class="mouBadgeRow">
         <span class="mouBadge"><%= scopeLabel || "Serverwide" %></span>
         <span class="mouBadge mouBadge--soft">v<%= version.version %></span>
@@ -15,6 +15,7 @@
     <div class="mouActionRow">
       <% if (downloadUrl) { %>
         <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
+        <button class="btn secondary" type="button" onclick="window.print()">Print</button>
       <% } %>
       <a class="btn" href="/mou">Back to MOU / Documents</a>
     </div>
@@ -53,7 +54,7 @@
     </section>
 
     <section class="card mouWorkspace__sidebar">
-      <h2 style="margin-top:0;">Signature details</h2>
+      <h2 style="margin-top:0;">View / Sign Document</h2>
       <% const hasPendingAgency = agencyChoices.some(function (agency) { return !agency.currentSignature; }); %>
       <% const firstPendingAgency = agencyChoices.find(function (agency) { return !agency.currentSignature; }); %>
       <div class="mouAgencyList" style="margin-bottom: 16px;">
@@ -79,14 +80,15 @@
       <% } %>
 
       <form method="post" action="/mou/sign/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>" id="mouSignForm">
-        <label>
-          Agency
-          <select name="agencySuffix" required <%= hasPendingAgency ? "" : "disabled" %>>
-            <% agencyChoices.forEach(function (agency) { %>
-              <option value="<%= agency.suffix %>" <%= agency.currentSignature ? "disabled" : "" %> <%= firstPendingAgency && firstPendingAgency.suffix === agency.suffix ? "selected" : "" %>><%= agency.name %><%= agency.currentSignature ? " (already signed)" : "" %></option>
-            <% }); %>
-          </select>
-        </label>
+        <input type="hidden" name="agencySuffix" value="<%= firstPendingAgency ? firstPendingAgency.suffix : '' %>" <%= hasPendingAgency ? "" : "disabled" %> />
+        <div style="margin-bottom:12px;">
+          <div class="muted">Agency</div>
+          <strong><%= firstPendingAgency ? firstPendingAgency.name : (agencyChoices[0] ? agencyChoices[0].name : '-') %></strong>
+        </div>
+
+        <div class="card" style="margin:0 0 12px 0;padding:14px 16px;">
+          By signing this document, I affirm that I am authorized to sign on behalf of my agency and attest that this acknowledgment is made for my agency.
+        </div>
 
         <label style="margin-top:12px;display:block;">
           Draw signature
@@ -98,15 +100,15 @@
         </div>
 
         <label style="margin-top:12px;display:block;">
-          Typed attestation fallback
+          Type Your Full Name
           <input type="text" name="attestationText" placeholder="Type your full name if drawing is unavailable" <%= hasPendingAgency ? "" : "disabled" %> />
         </label>
 
         <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
 
-        <div class="row" style="margin-top:16px;">
-          <button class="btn" type="submit" <%= hasPendingAgency ? "" : "disabled" %>>Sign MOU</button>
+        <div class="row" style="margin-top:16px;justify-content:flex-end;">
           <a class="btn secondary" href="/mou">Cancel</a>
+          <button class="btn success" type="submit" <%= hasPendingAgency ? "" : "disabled" %>>Sign Document</button>
         </div>
       </form>
     </section>

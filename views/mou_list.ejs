@@ -155,11 +155,9 @@
                 <td>
                   <div class="mouActionRow">
                     <% if (card.currentVersion) { %>
-                      <a class="btn" href="<%= cardViewHref %>" <%= String(card.currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
-                      <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>?download=1">Download</a>
                       <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length && String((settings && settings.MOU_REQUIRE_AGENCY_SIGNATURE) || "true").toLowerCase() === "true") { %>
                         <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
-                          <%= card.allSigned ? "Review Signatures" : "Sign / Review" %>
+                          View / Sign
                         </a>
                       <% } %>
                     <% } %>
