@@ -29,6 +29,10 @@ const agencyTypesSvc = require("./services/agencyTypes.service");
 const locatorsSvc = require("./services/locators.service");
 const pluginsSvc = require("./services/plugins.service");
 const { toSafeApiError } = require("./services/apiErrorPayload.service");
+const {
+  USER_AGREEMENT_SESSION_COOKIE,
+  hasAcceptedAgreementForSession,
+} = require("./services/userAgreementSession.service");
 
 const app = express();
 
@@ -50,28 +54,6 @@ const FONT_FAMILY_OPTIONS = new Set([
 
 const DEFAULT_SITE_FONT_FAMILY =
   "system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
-const USER_AGREEMENT_SESSION_COOKIE = "mou_user_agreement_session";
-
-function buildAgreementSessionValue(user, agreement) {
-  const userKey = String(user?.uid || user?.username || "").trim().toLowerCase();
-  const version = Number(agreement?.version || 0) || 0;
-  if (!userKey || !version) return "";
-  return `${userKey}:${version}`;
-}
-
-function getCookieValue(req, cookieName) {
-  const pair = String(req.headers.cookie || "")
-    .split(/;\s*/)
-    .map((entry) => entry.split("="))
-    .find(([key]) => String(key || "").trim() === cookieName);
-  if (!pair) return "";
-  const rawValue = String(pair[1] || "").trim();
-  try {
-    return decodeURIComponent(rawValue);
-  } catch {
-    return rawValue;
-  }
-}
 
 // Expose version to all EJS views (e.g. sidebar)
 app.locals.APP_VERSION = pkg.version || "dev";
@@ -248,9 +230,8 @@ app.use((req, res, next) => {
     const normalizedPath = (req.path || "").replace(/\/+$/, "") || "/";
     const isApi = normalizedPath.startsWith("/api/");
     const currentAgreement = mouSvc.getCurrentUserAgreement().current;
-    const hasAcceptedAgreementForSession =
-      getCookieValue(req, USER_AGREEMENT_SESSION_COOKIE) ===
-      buildAgreementSessionValue(user, currentAgreement);
+    const hasAcceptedAgreement =
+      hasAcceptedAgreementForSession(req, user, currentAgreement);
     const isAgreementTargetUser =
       !!(user && user.username) && !user.isGlobalAdmin && !user.isAgencyAdmin;
     const isAgreementExemptPath =
@@ -263,7 +244,7 @@ app.use((req, res, next) => {
       !isAgreementTargetUser ||
       !mouSvc.isEnabled() ||
       !mouSvc.shouldRequireUserAgreement(user, {
-        acceptedForSession: hasAcceptedAgreementForSession,
+        acceptedForSession: hasAcceptedAgreement,
       })
     ) {
       return next();
@@ -887,12 +868,11 @@ app.get("/setup-my-device", async (req, res) => {
     takHost,
     enrollQrBootstrap,
     agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser, {
-      acceptedForSession:
-        getCookieValue(req, USER_AGREEMENT_SESSION_COOKIE) ===
-        buildAgreementSessionValue(
-          req.authentikUser,
-          mouSvc.getCurrentUserAgreement().current
-        ),
+      acceptedForSession: hasAcceptedAgreementForSession(
+        req,
+        req.authentikUser,
+        mouSvc.getCurrentUserAgreement().current
+      ),
     }),
   });
 });

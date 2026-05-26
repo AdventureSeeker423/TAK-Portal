@@ -10,17 +10,13 @@ const accessSvc = require("../services/access.service");
 const usersSvc = require("../services/users.service");
 const tokensSvc = require("../services/authentikTokens.service");
 const { getBool } = require("../services/env");
+const {
+  USER_AGREEMENT_SESSION_COOKIE,
+  buildAgreementSessionValue,
+} = require("../services/userAgreementSession.service");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
-const USER_AGREEMENT_SESSION_COOKIE = "mou_user_agreement_session";
-
-function buildAgreementSessionValue(user, agreement) {
-  const userKey = String(user?.uid || user?.username || "").trim().toLowerCase();
-  const version = Number(agreement?.version || 0) || 0;
-  if (!userKey || !version) return "";
-  return `${userKey}:${version}`;
-}
 
 function renderNotFound(req, res) {
   if ((req.originalUrl || req.path || "").startsWith("/api/")) {
@@ -838,7 +834,7 @@ router.post("/api/mou/user-agreement/accept", requireMouEnabled, (req, res) => {
       return res.json({ success: true });
     }
     const agreement = mouService.getCurrentUserAgreement().current;
-    res.cookie(USER_AGREEMENT_SESSION_COOKIE, buildAgreementSessionValue(req.authentikUser, agreement), {
+    res.cookie(USER_AGREEMENT_SESSION_COOKIE, buildAgreementSessionValue(req, req.authentikUser, agreement), {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
