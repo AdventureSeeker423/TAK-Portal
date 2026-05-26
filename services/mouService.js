@@ -333,6 +333,20 @@ function findStream(index, mouId) {
   );
 }
 
+function assertUniqueStreamTitle(index, title, excludeMouId) {
+  const normalizedTitle = normalizeLower(title);
+  if (!normalizedTitle) return;
+  const duplicate = (index?.streams || []).find((stream) => {
+    if (excludeMouId && String(stream?.mouId || "") === String(excludeMouId || "")) {
+      return false;
+    }
+    return normalizeLower(stream?.title) === normalizedTitle;
+  });
+  if (duplicate) {
+    throw new Error("A document with this title already exists.");
+  }
+}
+
 function findVersion(stream, version) {
   const numeric = normalizeVersion(version);
   return (
@@ -908,6 +922,7 @@ function createStream({
     mandatory,
   });
   const index = getIndex();
+  assertUniqueStreamTitle(index, versionInput.title);
   const mouId = makeId();
   const version = 1;
   const persisted = persistVersionContent({
@@ -1005,6 +1020,7 @@ function updateVersion({
     reminderDays,
     mandatory,
   }, versionRecord);
+  assertUniqueStreamTitle(index, update.title, mouId);
 
   const now = nowIso();
   stream.title = update.title;
