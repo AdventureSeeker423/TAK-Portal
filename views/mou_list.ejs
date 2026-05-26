@@ -395,6 +395,9 @@
                       <a class="btn qr" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip?agencyId=<%= encodeURIComponent(row.agencyId) %>">Download Historical</a>
                     <% } %>
                     <% if (row.needsSignature) { %>
+                      <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resend/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;">
+                        <button class="btn secondary" type="submit">Resend Email</button>
+                      </form>
                       <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
                       <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
                     <% } %>

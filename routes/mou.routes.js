@@ -86,6 +86,43 @@ function toErrorRedirect(res, url, err) {
   return res.redirect(`${url}${url.includes("?") ? "&" : "?"}error=${message}`);
 }
 
+function triggerSignedGlobalAdminNotification(req, result, signMethod) {
+  void Promise.resolve()
+    .then(async () => {
+      await mouScheduler.sendSignedNotificationToGlobalAdmins({
+        stream: result?.stream,
+        version: result?.version,
+        signature: result?.signature,
+        signMethod,
+      });
+    })
+    .catch((notifyErr) => {
+      console.error("[MOU_SIGN] Global admin notification failure", {
+        mouId: result?.stream?.mouId || null,
+        version: result?.version?.version || null,
+        agencyId: result?.signature?.agencyId || null,
+        signMethod,
+        error: notifyErr?.message || String(notifyErr || "Unknown notification error"),
+        stack: notifyErr?.stack || null,
+      });
+      auditRequest(req, {
+        action: "MOU_SIGNED_NOTIFICATION_FAILED",
+        targetType: "mou",
+        targetId: String(result?.stream?.mouId || ""),
+        agencySuffix: result?.signature?.agencyId || null,
+        details: {
+          mouId: result?.stream?.mouId || "",
+          version: result?.version?.version || null,
+          agencyId: result?.signature?.agencyId || null,
+          signMethod,
+          error:
+            notifyErr?.message ||
+            String(notifyErr || "Failed to notify global admins of signed document."),
+        },
+      });
+    });
+}
+
 function buildContentDisposition(disposition, fileName) {
   const original = String(fileName || "mou").trim() || "mou";
   const asciiFallback = original
@@ -652,6 +689,8 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
       },
     });
 
+    triggerSignedGlobalAdminNotification(req, result, signMethod);
+
     return res.redirect(
       `/mou/sign/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}?success=${encodeURIComponent(signMethod === "upload" ? "Signed document uploaded successfully." : "MOU signed successfully.")}`
     );
@@ -713,7 +752,53 @@ router.post("/admin/mou/:mouId/signatures/upload/:agencyId", requireMouEnabled, 
       },
     });
 
+    triggerSignedGlobalAdminNotification(req, result, "upload_admin");
+
     return res.redirect(`/mou?success=${encodeURIComponent("Signed document uploaded successfully.")}`);
+  } catch (err) {
+    return toErrorRedirect(res, "/mou", err);
+  }
+});
+
+router.post("/admin/mou/:mouId/signatures/resend/:agencyId", requireMouEnabled, requireMouPermission, requireGlobalAdmin, async (req, res) => {
+  try {
+    const stream = mouService.getStreamById(req.params.mouId);
+    const currentVersion = mouService.getCurrentVersion(stream);
+    if (!currentVersion) {
+      throw new Error("MOU version not found.");
+    }
+
+    const agencySuffix = String(req.params.agencyId || "").trim().toLowerCase();
+    const targetAgency = mouService
+      .getTargetAgenciesForStream(stream)
+      .find((agency) => String(agency?.suffix || "").trim().toLowerCase() === agencySuffix);
+    if (!targetAgency) {
+      throw new Error("This document is not assigned to the selected agency.");
+    }
+
+    const result = await mouScheduler.sendAssignmentNotificationForAgency({
+      stream,
+      version: currentVersion,
+      agency: targetAgency,
+      actor: req.authentikUser,
+    });
+    if (!result.sent) {
+      throw new Error(result.reason || result.error || "No agency admin recipients found for this email.");
+    }
+
+    auditRequest(req, {
+      action: "MOU_ASSIGNMENT_NOTIFICATION_RESENT",
+      targetType: "mou",
+      targetId: String(req.params.mouId),
+      agencySuffix,
+      details: {
+        mouId: req.params.mouId,
+        version: currentVersion.version,
+        agencyId: agencySuffix,
+      },
+    });
+
+    return res.redirect(`/mou?success=${encodeURIComponent("Email resent to agency administrators.")}`);
   } catch (err) {
     return toErrorRedirect(res, "/mou", err);
   }
