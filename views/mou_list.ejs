@@ -87,7 +87,7 @@
           </div>
           <div data-user-agreement-fields <%= adminAgreement && adminAgreement.enabled ? "" : 'style="display:none;"' %>>
             <label>
-              Agreement Text (Markdown supported)
+              Agreement Markdown
               <textarea name="markdown" rows="16" required><%- currentAgreement ? currentAgreement.bodyMarkdown : agreementDefaults.markdown %></textarea>
             </label>
           </div>
