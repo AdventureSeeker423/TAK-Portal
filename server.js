@@ -232,8 +232,7 @@ app.use((req, res, next) => {
     const currentAgreement = mouSvc.getCurrentUserAgreement().current;
     const hasAcceptedAgreement =
       hasAcceptedAgreementForSession(req, user, currentAgreement);
-    const isAgreementTargetUser =
-      !!(user && user.username) && !user.isGlobalAdmin && !user.isAgencyAdmin;
+    const isAgreementTargetUser = !!(user && user.username) && !user.isGlobalAdmin;
     const isAgreementExemptPath =
       normalizedPath === "/logout" ||
       normalizedPath === "/setup-my-device" ||

@@ -1491,7 +1491,7 @@ function saveUserAgreement({ title, markdown, html, actor, enabled }) {
 }
 
 function isUserAgreementTargetUser(authUser) {
-  return !!(authUser && !authUser.isGlobalAdmin && !authUser.isAgencyAdmin);
+  return !!(authUser && authUser.username && !authUser.isGlobalAdmin);
 }
 
 function shouldRequireUserAgreement(authUser, options) {
