@@ -66,19 +66,26 @@
             <div>
               <h2>Serverwide User Agreement Prompt</h2>
             </div>
-            <label class="mouSectionHeader__toggle" aria-label="Enable serverwide user agreement popup">
-              <span class="muted" data-user-agreement-toggle-label><%= adminAgreement && adminAgreement.enabled ? "Enabled" : "Disabled" %></span>
-              <span class="mouSwitch">
-                <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> data-user-agreement-toggle />
-                <span class="mouSwitch__slider"></span>
+          </div>
+          <div class="mouAgreementTopRow">
+            <div data-user-agreement-title-wrap <%= adminAgreement && adminAgreement.enabled ? "" : 'style="display:none;"' %>>
+              <label>
+              Title
+              <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : agreementDefaults.title %>" required />
+              </label>
+            </div>
+            <label class="mouToggleField" aria-label="Enable serverwide user agreement popup">
+              <span>Enabled</span>
+              <span class="mouToggleField__control">
+                <span class="muted" data-user-agreement-toggle-label><%= adminAgreement && adminAgreement.enabled ? "Enabled" : "Disabled" %></span>
+                <span class="mouSwitch">
+                  <input type="checkbox" name="enabled" value="true" <%= adminAgreement && adminAgreement.enabled ? "checked" : "" %> data-user-agreement-toggle />
+                  <span class="mouSwitch__slider"></span>
+                </span>
               </span>
             </label>
           </div>
           <div data-user-agreement-fields <%= adminAgreement && adminAgreement.enabled ? "" : 'style="display:none;"' %>>
-            <label>
-              Title
-              <input type="text" name="title" value="<%= currentAgreement ? currentAgreement.title : agreementDefaults.title %>" required />
-            </label>
             <label>
               Agreement Text (Markdown supported)
               <textarea name="markdown" rows="16" required><%- currentAgreement ? currentAgreement.bodyMarkdown : agreementDefaults.markdown %></textarea>
@@ -1009,6 +1016,7 @@
     if (!form) return;
     var toggle = form.querySelector("[data-user-agreement-toggle]");
     var label = form.querySelector("[data-user-agreement-toggle-label]");
+    var titleWrap = form.querySelector("[data-user-agreement-title-wrap]");
     var fields = form.querySelector("[data-user-agreement-fields]");
     var footer = form.querySelector("[data-user-agreement-footer]");
     if (!toggle) return;
@@ -1016,6 +1024,7 @@
     function sync() {
       var enabled = !!toggle.checked;
       if (label) label.textContent = enabled ? "Enabled" : "Disabled";
+      setFieldVisible(titleWrap, enabled);
       setFieldVisible(fields, enabled);
       setFieldVisible(footer, enabled);
     }

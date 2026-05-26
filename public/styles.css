@@ -1043,6 +1043,10 @@ label.btn {
     flex: 1 1 auto;
 }
 
+.mouWorkspace--formSplit [data-user-agreement-title-wrap] {
+    min-width: 0;
+}
+
 .mouWorkspace--formSplit [data-user-agreement-fields][hidden] {
     display: none !important;
 }
@@ -1186,12 +1190,45 @@ label.btn {
     font-weight: 600;
 }
 
+.mouAgreementTopRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
+    gap: 12px;
+    align-items: end;
+}
+
+.mouToggleField {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.mouToggleField__control {
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    box-sizing: border-box;
+}
+
 .mouSwitch {
     position: relative;
     display: inline-flex;
     width: 46px;
     height: 26px;
     flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+    .mouAgreementTopRow {
+        grid-template-columns: 1fr;
+    }
 }
 
 .mouSwitch input {
