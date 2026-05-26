@@ -44,8 +44,8 @@
 </style>
 
 <main class="main">
-  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-    <div>
+  <div class="mouPageHeader">
+    <div class="mouPageHeader__intro">
       <h1 style="margin-bottom:6px;"><%= stream && stream.title ? stream.title : "MOU" %></h1>
       <div class="mouBadgeRow">
         <span class="mouBadge"><%= scopeLabel || "Serverwide" %></span>
@@ -60,7 +60,7 @@
         </div>
       <% } %>
     </div>
-    <div class="mouActionRow">
+    <div class="mouActionRow mouPageHeader__actions">
       <% if (downloadUrl) { %>
         <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
       <% } %>

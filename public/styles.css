@@ -1147,6 +1147,70 @@ label.btn {
     margin-bottom: 12px;
 }
 
+.mouListCardTableWrap {
+    width: 100%;
+}
+
+.mouListCardTable td {
+    vertical-align: top;
+}
+
+.mouListCardTable .cardTitleText {
+    display: block;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.mouListCardTable .cardTitleMeta {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.mouListCardTable .cardActionsRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.mouListCardTable .cardActionsRow form {
+    display: inline-flex;
+}
+
+.mouListCardTable .cardActionsRow .btn,
+.mouListCardTable .cardActionsRow .muted {
+    width: auto;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+}
+
+.mouPageHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.mouPageHeader__intro {
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
+.mouPageHeader__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.mouPageHeader__actions .btn {
+    width: auto;
+}
+
 .mouCallout--warning {
     border-color: var(--warning);
 }
@@ -1518,8 +1582,160 @@ body.modal-open .sidebarToggle {
         grid-template-columns: 1fr;
     }
 
+    .mouListCardTableWrap {
+        overflow-x: hidden;
+    }
+
+    .mouListCardTable {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0 12px;
+    }
+
+    .mouListCardTable thead {
+        display: none;
+    }
+
+    .mouListCardTable tbody tr {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        overflow: hidden;
+    }
+
+    .mouActiveDocsTable .cardTitleCell { order: 1; }
+    .mouActiveDocsTable .mouVersionCell { order: 2; }
+    .mouActiveDocsTable .mouAgencyCell { order: 3; }
+    .mouActiveDocsTable .mouStatusCell { order: 4; }
+    .mouActiveDocsTable .cardActionsCell { order: 5; }
+
+    .mouDocumentsTable .cardTitleCell { order: 1; }
+    .mouDocumentsTable .mouVersionCell { order: 2; }
+    .mouDocumentsTable .mouAssignmentCell { order: 3; }
+    .mouDocumentsTable .mouSignatureCountCell { order: 4; }
+    .mouDocumentsTable .cardActionsCell { order: 5; }
+
+    .mouSignatureTable .cardTitleCell { order: 1; }
+    .mouSignatureTable .mouStatusCell { order: 2; }
+    .mouSignatureTable .mouAgencyCell { order: 3; }
+    .mouSignatureTable .mouSignerCell { order: 4; }
+    .mouSignatureTable .mouSignedVersionCell { order: 5; }
+    .mouSignatureTable .mouCurrentVersionCell { order: 6; }
+    .mouSignatureTable .mouScopeCell { order: 7; }
+    .mouSignatureTable .cardActionsCell { order: 8; }
+
+    .mouArchivedTable .cardTitleCell { order: 1; }
+    .mouArchivedTable .mouStatusCell { order: 2; }
+    .mouArchivedTable .mouAgencyCell { order: 3; }
+    .mouArchivedTable .mouSignedVersionCell { order: 4; }
+    .mouArchivedTable .mouCurrentVersionCell { order: 5; }
+    .mouArchivedTable .mouScopeCell { order: 6; }
+    .mouArchivedTable .mouArchivedAtCell { order: 7; }
+    .mouArchivedTable .cardActionsCell { order: 8; }
+
+    .mouListCardTable tbody td {
+        display: block;
+        border-top: none;
+        padding: 8px 12px;
+        word-break: normal;
+        overflow-wrap: normal;
+        min-width: 0 !important;
+        max-width: none !important;
+        white-space: normal;
+    }
+
+    .mouListCardTable tbody td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        margin-bottom: 4px;
+    }
+
+    .mouListCardTable .cardTitleCell::before,
+    .mouListCardTable .cardActionsCell::before {
+        display: none;
+    }
+
+    .mouListCardTable .cardTitleCell {
+        padding-top: 12px;
+        padding-bottom: 4px;
+    }
+
+    .mouListCardTable .cardActionsCell {
+        border-top: 1px solid var(--line);
+        padding-top: 10px;
+        padding-bottom: 12px;
+    }
+
+    .mouListCardTable .cardActionsRow {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .mouListCardTable .cardActionsRow .btn,
+    .mouListCardTable .cardActionsRow .muted {
+        width: 100% !important;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        white-space: nowrap;
+        word-break: normal !important;
+        overflow-wrap: normal !important;
+        box-sizing: border-box;
+        text-align: center;
+    }
+
+    .mouListCardTable .cardActionsRow .muted {
+        grid-column: 1 / -1;
+        padding: 8px 0;
+    }
+
+    .mouListCardTable .cardActionsRow form {
+        display: block !important;
+        width: 100%;
+    }
+
+    .mouPageHeader {
+        align-items: stretch;
+    }
+
+    .mouPageHeader__actions,
+    .mouViewerToolbar .mouActionRow {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .mouPageHeader__actions .btn,
+    .mouViewerToolbar .mouActionRow .btn {
+        width: 100%;
+    }
+
+    .mouViewerToolbar {
+        padding: 16px;
+    }
+
+    .mouDocumentShell {
+        padding: 16px;
+    }
+
+    .mouDocumentShell table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
     .mouPdfFrame {
-        min-height: 520px;
+        min-height: 68vh;
     }
 
     /* Long strings/URLs/code blocks should wrap instead of pushing layout wider */
@@ -1530,6 +1746,14 @@ body.modal-open .sidebarToggle {
     .muted {
         overflow-wrap: anywhere;
         word-break: break-word;
+    }
+}
+
+@media (max-width: 640px) {
+    .mouPageHeader__actions,
+    .mouViewerToolbar .mouActionRow,
+    .mouListCardTable .cardActionsRow {
+        grid-template-columns: 1fr;
     }
 }
 

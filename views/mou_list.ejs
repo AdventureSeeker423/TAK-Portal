@@ -112,65 +112,67 @@
           <h3>No documents available</h3>
         </div>
       <% } else { %>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Document</th>
-              <th>Version</th>
-              <th>Agencies / Signatures</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% cards.forEach(function (card) { %>
-              <% const documentStatusLabel = card.signatures && card.signatures.length ? (card.allSigned ? "Signed" : "Pending signature") : "Active"; %>
-              <% const cardRowClass = card.signatures && card.signatures.length ? (card.allSigned ? "mouRow--signed" : "mouRow--pending") : ""; %>
-              <% const cardViewHref = card.currentVersion && String(card.currentVersion.contentType || "").toLowerCase() === "pdf"
-                ? ("/mou/file/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version))
-                : ("/mou/view/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version)); %>
-              <tr class="<%= cardRowClass %>">
-                <td>
-                  <%= card.stream.title %>
-                </td>
-                <td>
-                  v<%= card.currentVersion ? card.currentVersion.version : "-" %>
-                  <% if (card.currentVersion && card.currentVersion.activeAt) { %>
-                    <div class="muted">Active <%= card.currentVersion.activeAt %></div>
-                  <% } %>
-                </td>
-                <td>
-                  <% if (card.signatures && card.signatures.length) { %>
-                    <% card.signatures.forEach(function (entry) { %>
-                      <div style="margin-bottom:6px;">
-                        <strong><%= entry.agency.name %></strong>
-                        <div class="muted"><%= entry.signature ? ("Signed by " + (entry.signature.attestationText || entry.signature.signerDisplayName)) : "Pending agency signature" %></div>
-                      </div>
-                    <% }); %>
-                  <% } else if (card.targetAgencies && card.targetAgencies.length) { %>
-                    <div class="muted"><%= card.targetAgencies.map(function (agency) { return agency.name; }).join(", ") %></div>
-                  <% } else { %>
-                    <span class="muted">-</span>
-                  <% } %>
-                </td>
-                <td>
-                  <%= documentStatusLabel %>
-                </td>
-                <td>
-                  <div class="mouActionRow">
-                    <% if (card.currentVersion) { %>
-                      <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length) { %>
-                        <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
-                          <%= card.allSigned ? "View Document" : "View / Sign" %>
-                        </a>
-                      <% } %>
-                    <% } %>
-                  </div>
-                </td>
+        <div class="mouListCardTableWrap">
+          <table class="table mouListCardTable mouActiveDocsTable">
+            <thead>
+              <tr>
+                <th>Document</th>
+                <th>Version</th>
+                <th>Agencies / Signatures</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
-            <% }); %>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <% cards.forEach(function (card) { %>
+                <% const documentStatusLabel = card.signatures && card.signatures.length ? (card.allSigned ? "Signed" : "Pending signature") : "Active"; %>
+                <% const cardRowClass = card.signatures && card.signatures.length ? (card.allSigned ? "mouRow--signed" : "mouRow--pending") : ""; %>
+                <% const cardViewHref = card.currentVersion && String(card.currentVersion.contentType || "").toLowerCase() === "pdf"
+                  ? ("/mou/file/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version))
+                  : ("/mou/view/" + encodeURIComponent(card.stream.mouId) + "/" + encodeURIComponent(card.currentVersion.version)); %>
+                <tr class="<%= cardRowClass %>">
+                  <td class="cardTitleCell">
+                    <span class="cardTitleText"><%= card.stream.title %></span>
+                  </td>
+                  <td class="mouVersionCell" data-label="Version">
+                    v<%= card.currentVersion ? card.currentVersion.version : "-" %>
+                    <% if (card.currentVersion && card.currentVersion.activeAt) { %>
+                      <div class="cardTitleMeta">Active <%= card.currentVersion.activeAt %></div>
+                    <% } %>
+                  </td>
+                  <td class="mouAgencyCell" data-label="Agencies / Signatures">
+                    <% if (card.signatures && card.signatures.length) { %>
+                      <% card.signatures.forEach(function (entry) { %>
+                        <div style="margin-bottom:6px;">
+                          <strong><%= entry.agency.name %></strong>
+                          <div class="muted"><%= entry.signature ? ("Signed by " + (entry.signature.attestationText || entry.signature.signerDisplayName)) : "Pending agency signature" %></div>
+                        </div>
+                      <% }); %>
+                    <% } else if (card.targetAgencies && card.targetAgencies.length) { %>
+                      <div class="muted"><%= card.targetAgencies.map(function (agency) { return agency.name; }).join(", ") %></div>
+                    <% } else { %>
+                      <span class="muted">-</span>
+                    <% } %>
+                  </td>
+                  <td class="mouStatusCell" data-label="Status">
+                    <%= documentStatusLabel %>
+                  </td>
+                  <td class="cardActionsCell" data-label="Actions">
+                    <div class="mouActionRow cardActionsRow">
+                      <% if (card.currentVersion) { %>
+                        <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length) { %>
+                          <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
+                            <%= card.allSigned ? "View Document" : "View / Sign" %>
+                          </a>
+                        <% } %>
+                      <% } %>
+                    </div>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
       <% } %>
     </section>
   <% } %>
@@ -197,87 +199,89 @@
             style="width:100%; box-sizing:border-box;"
           />
         </div>
-        <table class="table" id="mouDocumentsTable">
-          <thead>
-            <tr>
-              <th class="sortable" data-key="title">
-                Document <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="version">
-                Current Version <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="assignment">
-                Assignment <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="signatures">
-                Signatures <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="mouDocumentsTbody">
-            <% adminStreams.forEach(function (stream) { %>
-              <% const currentVersion = stream.currentVersion; %>
-              <% const adminRowClass = currentVersion && stream.targetAgencies && stream.targetAgencies.length
-                ? (stream.pendingSignatureCount ? "mouRow--pending" : "mouRow--signed")
-                : ""; %>
-              <% const editorOverlayId = currentVersion ? ("mouEditOverlay-" + stream.mouId + "-" + currentVersion.version) : ""; %>
-              <% const assignOverlayId = currentVersion ? ("mouAssignOverlay-" + stream.mouId) : ""; %>
-              <% const assignmentLabel = !currentVersion
-                ? "Create version first"
-                : !(stream.targetAgencies && stream.targetAgencies.length)
-                  ? "Inactive"
-                  : stream.assignments && stream.assignments.serverwide
-                    ? "Serverwide"
-                    : stream.targetAgencies.length === 1
-                      ? (stream.targetAgencies[0].name || stream.scopeLabel)
-                      : "Multiple Agencies"; %>
-              <% const adminViewHref = currentVersion && String(currentVersion.contentType || "").toLowerCase() === "pdf"
-                ? ("/mou/file/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version))
-                : ("/mou/view/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version)); %>
-              <tr
-                class="<%= adminRowClass %>"
-                data-table-row="documents"
-                data-title="<%= stream.title %>"
-                data-version="<%= currentVersion ? currentVersion.version : 0 %>"
-                data-assignment="<%= assignmentLabel %>"
-                data-signatures="<%= currentVersion ? stream.signedCount : -1 %>"
-              >
-                <td>
-                  <strong><%= stream.title %></strong>
-                </td>
-                <td><%= currentVersion ? ("v" + currentVersion.version) : "None" %></td>
-                <td><%= assignmentLabel %></td>
-                <td>
-                  <% if (currentVersion) { %>
-                    <%= stream.signedCount %>/<%= stream.targetAgencies.length %> signed
-                    <% if (stream.pendingSignatureCount) { %>
-                      <div class="muted"><%= stream.pendingSignatureCount %> pending</div>
-                    <% } %>
-                  <% } else { %>
-                    <span class="muted">-</span>
-                  <% } %>
-                </td>
-                <td>
-                  <div class="mouActionRow">
+        <div class="mouListCardTableWrap">
+          <table class="table mouListCardTable mouDocumentsTable" id="mouDocumentsTable">
+            <thead>
+              <tr>
+                <th class="sortable" data-key="title">
+                  Document <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="version">
+                  Current Version <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="assignment">
+                  Assignment <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="signatures">
+                  Signatures <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="mouDocumentsTbody">
+              <% adminStreams.forEach(function (stream) { %>
+                <% const currentVersion = stream.currentVersion; %>
+                <% const adminRowClass = currentVersion && stream.targetAgencies && stream.targetAgencies.length
+                  ? (stream.pendingSignatureCount ? "mouRow--pending" : "mouRow--signed")
+                  : ""; %>
+                <% const editorOverlayId = currentVersion ? ("mouEditOverlay-" + stream.mouId + "-" + currentVersion.version) : ""; %>
+                <% const assignOverlayId = currentVersion ? ("mouAssignOverlay-" + stream.mouId) : ""; %>
+                <% const assignmentLabel = !currentVersion
+                  ? "Create version first"
+                  : !(stream.targetAgencies && stream.targetAgencies.length)
+                    ? "Inactive"
+                    : stream.assignments && stream.assignments.serverwide
+                      ? "Serverwide"
+                      : stream.targetAgencies.length === 1
+                        ? (stream.targetAgencies[0].name || stream.scopeLabel)
+                        : "Multiple Agencies"; %>
+                <% const adminViewHref = currentVersion && String(currentVersion.contentType || "").toLowerCase() === "pdf"
+                  ? ("/mou/file/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version))
+                  : ("/mou/view/" + encodeURIComponent(stream.mouId) + "/" + encodeURIComponent(currentVersion.version)); %>
+                <tr
+                  class="<%= adminRowClass %>"
+                  data-table-row="documents"
+                  data-title="<%= stream.title %>"
+                  data-version="<%= currentVersion ? currentVersion.version : 0 %>"
+                  data-assignment="<%= assignmentLabel %>"
+                  data-signatures="<%= currentVersion ? stream.signedCount : -1 %>"
+                >
+                  <td class="cardTitleCell">
+                    <span class="cardTitleText"><%= stream.title %></span>
+                  </td>
+                  <td class="mouVersionCell" data-label="Current Version"><%= currentVersion ? ("v" + currentVersion.version) : "None" %></td>
+                  <td class="mouAssignmentCell" data-label="Assignment"><%= assignmentLabel %></td>
+                  <td class="mouSignatureCountCell" data-label="Signatures">
                     <% if (currentVersion) { %>
-                      <button class="btn" type="button" data-overlay-target="<%= editorOverlayId %>">Edit</button>
+                      <%= stream.signedCount %>/<%= stream.targetAgencies.length %> signed
+                      <% if (stream.pendingSignatureCount) { %>
+                        <div class="muted"><%= stream.pendingSignatureCount %> pending</div>
+                      <% } %>
                     <% } else { %>
                       <span class="muted">-</span>
                     <% } %>
-                    <% if (currentVersion) { %>
-                      <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
-                      <a class="btn secondary" href="<%= adminViewHref %>" <%= String(currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
-                    <% } %>
-                    <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and signed document files?');">
-                      <button class="btn danger" type="submit">Delete</button>
-                    </form>
-                  </div>
-                </td>
-              </tr>
-            <% }); %>
-          </tbody>
-        </table>
+                  </td>
+                  <td class="cardActionsCell" data-label="Actions">
+                    <div class="mouActionRow cardActionsRow">
+                      <% if (currentVersion) { %>
+                        <button class="btn" type="button" data-overlay-target="<%= editorOverlayId %>">Edit</button>
+                      <% } else { %>
+                        <span class="muted">-</span>
+                      <% } %>
+                      <% if (currentVersion) { %>
+                        <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
+                        <a class="btn secondary" href="<%= adminViewHref %>" <%= String(currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
+                      <% } %>
+                      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and signed document files?');">
+                        <button class="btn danger" type="submit">Delete</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
       <% } %>
     </section>
 
@@ -334,94 +338,96 @@
             style="flex:1; min-width:260px; width:auto; box-sizing:border-box;"
           />
         </div>
-        <table class="table" id="mouSignatureTable">
-          <thead>
-            <tr>
-              <th class="sortable" data-key="title">
-                Document <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="scope">
-                Scope <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="agency">
-                Agency <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="currentversion">
-                Current Version <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="signedversion">
-                Signed Version <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="signer">
-                Signer <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th class="sortable" data-key="statuslabel">
-                Status <span class="sortIndicator" aria-hidden="true"></span>
-              </th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="mouSignatureTbody">
-            <% signatureRows.forEach(function (row) { %>
-              <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
-              <% const scopeDisplay = row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel; %>
-              <% const statusLabel = row.needsSignature ? "Needs Signature" : "Signed"; %>
-              <tr
-                class="<%= signatureRowClass %>"
-                data-table-row="signatures"
-                data-title="<%= row.mouTitle %>"
-                data-scope="<%= scopeDisplay %>"
-                data-agency="<%= row.agencyName %>"
-                data-agencyid="<%= row.agencyId %>"
-                data-currentversion="<%= row.currentVersion %>"
-                data-signedversion="<%= row.signedVersion ? row.signedVersion : 0 %>"
-                data-signer="<%= row.signerDisplayName || '' %>"
-                data-status="<%= row.needsSignature ? 'needs-signature' : 'signed' %>"
-                data-statuslabel="<%= statusLabel %>"
-              >
-                <td><%= row.mouTitle %></td>
-                <td><%= scopeDisplay %></td>
-                <td><%= row.agencyName %></td>
-                <td>v<%= row.currentVersion %></td>
-                <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not Signed" %></td>
-                <td><%= row.signerDisplayName || "-" %></td>
-                <td>
-                  <%= statusLabel %>
-                </td>
-                <td>
-                  <div class="mouActionRow">
-                    <% if (row.signedVersion) { %>
-                      <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
-                      <% if (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0)) { %>
-                        <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resign/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Clear the current signed document and require this agency to sign again?');">
-                          <button class="btn warning" type="submit">Re-Sign</button>
+        <div class="mouListCardTableWrap">
+          <table class="table mouListCardTable mouSignatureTable" id="mouSignatureTable">
+            <thead>
+              <tr>
+                <th class="sortable" data-key="title">
+                  Document <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="scope">
+                  Scope <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="agency">
+                  Agency <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="currentversion">
+                  Current Version <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="signedversion">
+                  Signed Version <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="signer">
+                  Signer <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th class="sortable" data-key="statuslabel">
+                  Status <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="mouSignatureTbody">
+              <% signatureRows.forEach(function (row) { %>
+                <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
+                <% const scopeDisplay = row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel; %>
+                <% const statusLabel = row.needsSignature ? "Needs Signature" : "Signed"; %>
+                <tr
+                  class="<%= signatureRowClass %>"
+                  data-table-row="signatures"
+                  data-title="<%= row.mouTitle %>"
+                  data-scope="<%= scopeDisplay %>"
+                  data-agency="<%= row.agencyName %>"
+                  data-agencyid="<%= row.agencyId %>"
+                  data-currentversion="<%= row.currentVersion %>"
+                  data-signedversion="<%= row.signedVersion ? row.signedVersion : 0 %>"
+                  data-signer="<%= row.signerDisplayName || '' %>"
+                  data-status="<%= row.needsSignature ? 'needs-signature' : 'signed' %>"
+                  data-statuslabel="<%= statusLabel %>"
+                >
+                  <td class="cardTitleCell"><span class="cardTitleText"><%= row.mouTitle %></span></td>
+                  <td class="mouScopeCell" data-label="Scope"><%= scopeDisplay %></td>
+                  <td class="mouAgencyCell" data-label="Agency"><%= row.agencyName %></td>
+                  <td class="mouCurrentVersionCell" data-label="Current Version">v<%= row.currentVersion %></td>
+                  <td class="mouSignedVersionCell" data-label="Signed Version"><%= row.signedVersion ? ("v" + row.signedVersion) : "Not Signed" %></td>
+                  <td class="mouSignerCell" data-label="Signer"><%= row.signerDisplayName || "-" %></td>
+                  <td class="mouStatusCell" data-label="Status">
+                    <%= statusLabel %>
+                  </td>
+                  <td class="cardActionsCell" data-label="Actions">
+                    <div class="mouActionRow cardActionsRow">
+                      <% if (row.signedVersion) { %>
+                        <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
+                        <% if (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0)) { %>
+                          <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resign/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Clear the current signed document and require this agency to sign again?');">
+                            <button class="btn warning" type="submit">Re-Sign</button>
+                          </form>
+                        <% } %>
+                      <% } %>
+                      <% if (row.historicalSignedVersions && row.historicalSignedVersions.length) { %>
+                        <a class="btn qr" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip?agencyId=<%= encodeURIComponent(row.agencyId) %>">Download Historical</a>
+                      <% } %>
+                      <% if (row.needsSignature) { %>
+                        <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resend/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;">
+                          <button class="btn secondary" type="submit">Resend Email</button>
+                        </form>
+                        <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
+                        <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
+                      <% } %>
+                      <% if (row.needsSignature || (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0))) { %>
+                        <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/assignments/archive/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Archive this document for this agency? You can restore it later from Archived Documents.');">
+                          <button class="btn danger" type="submit">Archive</button>
                         </form>
                       <% } %>
-                    <% } %>
-                    <% if (row.historicalSignedVersions && row.historicalSignedVersions.length) { %>
-                      <a class="btn qr" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip?agencyId=<%= encodeURIComponent(row.agencyId) %>">Download Historical</a>
-                    <% } %>
-                    <% if (row.needsSignature) { %>
-                      <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resend/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;">
-                        <button class="btn secondary" type="submit">Resend Email</button>
-                      </form>
-                      <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
-                      <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
-                    <% } %>
-                    <% if (row.needsSignature || (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0))) { %>
-                      <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/assignments/archive/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Archive this document for this agency? You can restore it later from Archived Documents.');">
-                        <button class="btn danger" type="submit">Archive</button>
-                      </form>
-                    <% } %>
-                    <% if (!row.signedVersion && !row.needsSignature) { %>
-                      <span class="muted">-</span>
-                    <% } %>
-                  </div>
-                </td>
-              </tr>
-            <% }); %>
-          </tbody>
-        </table>
+                      <% if (!row.signedVersion && !row.needsSignature) { %>
+                        <span class="muted">-</span>
+                      <% } %>
+                    </div>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
       <% } %>
     </section>
 
@@ -436,43 +442,45 @@
             <p class="muted">Archived agency documents can be restored or permanently deleted here.</p>
           </div>
         <% } else { %>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Document</th>
-                <th>Scope</th>
-                <th>Agency</th>
-                <th>Current Version</th>
-                <th>Signed Version</th>
-                <th>Status</th>
-                <th>Archived At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% archivedRows.forEach(function (row) { %>
-                <tr class="<%= row.signedVersion ? 'mouRow--signed' : 'mouRow--pending' %>">
-                  <td><%= row.mouTitle %></td>
-                  <td><%= row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel %></td>
-                  <td><%= row.agencyName %></td>
-                  <td><%= row.currentVersion ? ("v" + row.currentVersion) : "-" %></td>
-                  <td><%= row.signedVersion ? ("v" + row.signedVersion) : "Not Signed" %></td>
-                  <td><%= row.status || "Archived" %></td>
-                  <td><%= row.archivedAt ? new Date(row.archivedAt).toLocaleString() : "-" %></td>
-                  <td>
-                    <div class="mouActionRow">
-                      <form method="post" action="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/restore" style="display:inline;" onsubmit="return confirm('Restore this archived document?');">
-                        <button class="btn secondary" type="submit">Restore</button>
-                      </form>
-                      <form method="post" action="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/delete" style="display:inline;" onsubmit="return confirm('Permanently delete this archived document? This cannot be undone and will remove any stored signed document evidence for this agency.');">
-                        <button class="btn danger" type="submit">Delete Permanently</button>
-                      </form>
-                    </div>
-                  </td>
+          <div class="mouListCardTableWrap">
+            <table class="table mouListCardTable mouArchivedTable">
+              <thead>
+                <tr>
+                  <th>Document</th>
+                  <th>Scope</th>
+                  <th>Agency</th>
+                  <th>Current Version</th>
+                  <th>Signed Version</th>
+                  <th>Status</th>
+                  <th>Archived At</th>
+                  <th>Actions</th>
                 </tr>
-              <% }); %>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                <% archivedRows.forEach(function (row) { %>
+                  <tr class="<%= row.signedVersion ? 'mouRow--signed' : 'mouRow--pending' %>">
+                    <td class="cardTitleCell"><span class="cardTitleText"><%= row.mouTitle %></span></td>
+                    <td class="mouScopeCell" data-label="Scope"><%= row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel %></td>
+                    <td class="mouAgencyCell" data-label="Agency"><%= row.agencyName %></td>
+                    <td class="mouCurrentVersionCell" data-label="Current Version"><%= row.currentVersion ? ("v" + row.currentVersion) : "-" %></td>
+                    <td class="mouSignedVersionCell" data-label="Signed Version"><%= row.signedVersion ? ("v" + row.signedVersion) : "Not Signed" %></td>
+                    <td class="mouStatusCell" data-label="Status"><%= row.status || "Archived" %></td>
+                    <td class="mouArchivedAtCell" data-label="Archived At"><%= row.archivedAt ? new Date(row.archivedAt).toLocaleString() : "-" %></td>
+                    <td class="cardActionsCell" data-label="Actions">
+                      <div class="mouActionRow cardActionsRow">
+                        <form method="post" action="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/restore" style="display:inline;" onsubmit="return confirm('Restore this archived document?');">
+                          <button class="btn secondary" type="submit">Restore</button>
+                        </form>
+                        <form method="post" action="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/delete" style="display:inline;" onsubmit="return confirm('Permanently delete this archived document? This cannot be undone and will remove any stored signed document evidence for this agency.');">
+                          <button class="btn danger" type="submit">Delete Permanently</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          </div>
         <% } %>
       </div>
     </details>
