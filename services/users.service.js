@@ -3697,6 +3697,7 @@ function buildUsersExportCsv(users, options = {}) {
 module.exports = {
   // meta/template support
   getTemplatesForAgency,
+  buildTakPortalBlock,
 
   // shared data
   getAllGroups,

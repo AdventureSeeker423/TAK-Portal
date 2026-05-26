@@ -3,6 +3,7 @@ const accessSvc = require("./access.service");
 const emailSvc = require("./email.service");
 const mouService = require("./mouService");
 const auditSvc = require("./auditLog.service");
+const usersSvc = require("./users.service");
 const {
   renderTemplate,
   htmlToText,
@@ -94,21 +95,27 @@ async function sendAssignmentNotificationsForVersion({ stream, version, actor })
   }
 
   const baseUrl = getPortalBaseUrl();
+  const portalMouUrl = baseUrl ? `${baseUrl}/mou` : "";
   let sent = 0;
 
   for (const agency of mouService.getTargetAgenciesForStream(stream)) {
     const agencySuffix = String(agency?.suffix || "").trim().toLowerCase();
     if (!agencySuffix) continue;
-    const signUrl = baseUrl
-      ? `${baseUrl}/mou/sign/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(version.version)}`
-      : "";
+    const takPortalBlock = usersSvc.buildTakPortalBlock({
+      takPortalPublicUrl: portalMouUrl,
+      introHtml:
+        "To review and sign pending agency documents, use the button below to open TAK Portal.",
+      buttonText: "Open TAK Portal",
+      elseHtml:
+        "To review and sign pending agency documents, open TAK Portal and navigate to MOU / Documents.",
+    });
     const html = renderTemplate("mou_document_updated_to_agencies.html", {
       mouTitle: stream.title,
       version: version.version,
       agencyName: agency.name || agency.groupPrefix || agency.suffix,
-      signUrl,
       operatorName: actor?.displayName || actor?.username || "TAK Portal",
       portalBaseUrl: baseUrl,
+      takPortalBlock,
     });
     const text = htmlToText(html);
     const result = await sendAgencyAdminEmail({
@@ -165,20 +172,26 @@ async function runReminderSweep() {
   }
 
   const baseUrl = getPortalBaseUrl();
+  const portalMouUrl = baseUrl ? `${baseUrl}/mou` : "";
   let sent = 0;
   for (const row of mouService.getAgencyReminderRows()) {
     if (!shouldSendReminder(row)) continue;
     const agency = mouService.getAgencyBySuffix(row.agencyId);
     if (!agency) continue;
 
-    const signUrl = baseUrl
-      ? `${baseUrl}/mou/sign/${encodeURIComponent(row.mouId)}/${encodeURIComponent(row.currentVersion)}`
-      : "";
+    const takPortalBlock = usersSvc.buildTakPortalBlock({
+      takPortalPublicUrl: portalMouUrl,
+      introHtml:
+        "To review and sign pending agency documents, use the button below to open TAK Portal.",
+      buttonText: "Open TAK Portal",
+      elseHtml:
+        "To review and sign pending agency documents, open TAK Portal and navigate to MOU / Documents.",
+    });
     const html = renderTemplate("mou_reminder_agency.html", {
       mouTitle: row.mouTitle,
       version: row.currentVersion,
       agencyName: row.agencyName,
-      signUrl,
+      takPortalBlock,
     });
     const text = htmlToText(html);
     const result = await sendAgencyAdminEmail({
