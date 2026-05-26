@@ -642,10 +642,62 @@
 
 <script>
 (function () {
+  var MOU_CREATE_DRAFT_KEY = "mouCreateDraft";
+
   function setFieldVisible(field, visible) {
     if (!field) return;
     field.hidden = !visible;
     field.style.display = visible ? "" : "none";
+  }
+
+  function getCurrentUrlWithoutFlashParams() {
+    try {
+      var url = new URL(window.location.href);
+      var hadFlash = false;
+      ["error", "success"].forEach(function (key) {
+        if (url.searchParams.has(key)) {
+          url.searchParams.delete(key);
+          hadFlash = true;
+        }
+      });
+      if (!hadFlash) return "";
+      return url.pathname + (url.searchParams.toString() ? "?" + url.searchParams.toString() : "") + (url.hash || "");
+    } catch (_err) {
+      return "";
+    }
+  }
+
+  function clearFlashQueryParams() {
+    if (!window.history || typeof window.history.replaceState !== "function") return;
+    var nextUrl = getCurrentUrlWithoutFlashParams();
+    if (!nextUrl) return;
+    window.history.replaceState({}, document.title, nextUrl);
+  }
+
+  function readCreateDraft() {
+    try {
+      if (!window.sessionStorage) return null;
+      var raw = window.sessionStorage.getItem(MOU_CREATE_DRAFT_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function writeCreateDraft(value) {
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.setItem(MOU_CREATE_DRAFT_KEY, JSON.stringify(value || {}));
+    } catch (_err) {}
+  }
+
+  function clearCreateDraft() {
+    try {
+      if (!window.sessionStorage) return;
+      window.sessionStorage.removeItem(MOU_CREATE_DRAFT_KEY);
+    } catch (_err) {}
   }
 
   function openOverlay(overlay) {
@@ -693,6 +745,49 @@
 
     if (contentSelect) contentSelect.addEventListener("change", sync);
     sync();
+  }
+
+  function syncCreateFormDraft(form) {
+    if (!form) return;
+    var titleInput = form.querySelector('input[name="title"]');
+    var contentSelect = form.querySelector("[data-mou-content-select]");
+    var richtextArea = form.querySelector("[data-mou-richtext-input]");
+    var successVisible = !!document.querySelector(".mouCallout .msg.ok");
+    var errorVisible = !!document.querySelector(".mouCallout--danger .msg.bad");
+
+    function saveDraft() {
+      writeCreateDraft({
+        title: titleInput ? String(titleInput.value || "") : "",
+        contentType: contentSelect ? String(contentSelect.value || "markdown") : "markdown",
+        html: richtextArea ? String(richtextArea.value || "") : "",
+      });
+    }
+
+    if (successVisible) {
+      clearCreateDraft();
+    } else {
+      var draft = readCreateDraft();
+      if (draft) {
+        if (titleInput && !String(titleInput.value || "").trim()) {
+          titleInput.value = String(draft.title || "");
+        }
+        if (contentSelect && draft.contentType) {
+          contentSelect.value = String(draft.contentType || "markdown");
+          contentSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (richtextArea && !String(richtextArea.value || "")) {
+          richtextArea.value = String(draft.html || "");
+        }
+      }
+      if (errorVisible || draft) {
+        saveDraft();
+      }
+    }
+
+    if (titleInput) titleInput.addEventListener("input", saveDraft);
+    if (contentSelect) contentSelect.addEventListener("change", saveDraft);
+    if (richtextArea) richtextArea.addEventListener("input", saveDraft);
+    form.addEventListener("submit", saveDraft);
   }
 
   function syncEditorForm(form) {
@@ -1068,7 +1163,10 @@
     if (openOverlayEl) closeOverlay(openOverlayEl);
   });
 
-  document.querySelectorAll("[data-mou-create-form]").forEach(syncContentFields);
+  document.querySelectorAll("[data-mou-create-form]").forEach(function (form) {
+    syncContentFields(form);
+    syncCreateFormDraft(form);
+  });
   document.querySelectorAll("[data-mou-editor-form]").forEach(syncEditorForm);
   document.querySelectorAll("[data-mou-assignment-form]").forEach(syncAssignmentForm);
   document.querySelectorAll("[data-user-agreement-form]").forEach(syncUserAgreementForm);
@@ -1090,5 +1188,7 @@
     var editorOverlay = document.querySelector('[data-edit-key="' + editVersionKey.replace(/"/g, '\\"') + '"]');
     if (editorOverlay) openOverlay(editorOverlay);
   }
+
+  clearFlashQueryParams();
 })();
 </script>
