@@ -1007,6 +1007,7 @@ label.btn {
 
 .mouWorkspace--formSplit {
     grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+    align-items: stretch;
 }
 
 .mouWorkspace--single {
@@ -1016,6 +1017,34 @@ label.btn {
 .mouWorkspace__document,
 .mouWorkspace__sidebar {
     min-width: 0;
+}
+
+.mouWorkspace--formSplit > .mouWorkspace__document,
+.mouWorkspace--formSplit > .mouWorkspace__sidebar {
+    display: flex;
+    flex-direction: column;
+}
+
+.mouWorkspace--formSplit .mouAdminForm {
+    flex: 1 1 auto;
+}
+
+.mouWorkspace--formSplit .mouSectionHeader {
+    min-height: 34px;
+    align-items: center;
+}
+
+.mouWorkspace--formSplit .mouSectionHeader > div {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.mouWorkspace--formSplit [data-user-agreement-fields] {
+    flex: 1 1 auto;
+}
+
+.mouWorkspace--formSplit [data-user-agreement-fields][hidden] {
+    display: none !important;
 }
 
 .mouWorkspace > .card,

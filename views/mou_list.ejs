@@ -81,7 +81,7 @@
             </label>
             <label>
               Agreement Text (Markdown supported)
-              <textarea name="markdown" rows="14" required><%- currentAgreement ? currentAgreement.bodyMarkdown : agreementDefaults.markdown %></textarea>
+              <textarea name="markdown" rows="16" required><%- currentAgreement ? currentAgreement.bodyMarkdown : agreementDefaults.markdown %></textarea>
             </label>
           </div>
           <div class="mouFormFooter" data-user-agreement-footer <%= adminAgreement && adminAgreement.enabled ? "" : 'style="display:none;"' %>>
