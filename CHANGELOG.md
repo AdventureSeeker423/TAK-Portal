@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.22 - 5/25/26
+🎉 `New Feature` - Added a fully functional MOU Documents section where global admins can create, edit, and manage serverwide and agency specific documents.  Agency admins can then e-sign or upload digial copies of the signed documents. If a document is set to be "serverwide" the document will automatically be assigned to new agencies as agency admins are created! Global admins can also set a serverwide user agreement prompt for every login.  (More enhancements and improvements in the next few days!)
+
 ### v1.3.21 - 5/23/26
 ✨ `Enhancement` - Radio Callsign added to Request Access page<br>
 ✨ `Enhancement` - QR Code for callsign, team, and role preferences added to TAK Aware instructions<br>
