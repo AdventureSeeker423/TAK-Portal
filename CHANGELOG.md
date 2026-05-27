@@ -12,6 +12,15 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.24 - 5/27/26
+✨ `Enhancement` - Added the ability to create custom fields on MOU Documents<br>
+✨ `Enhancement` - Removed group prefixes from group update emails<br>
+✨ `Enhancement` - Added the ability for admins to approve or decline user requests from one-time links sent to their email without the need to fully login<br>
+✨ `Enhancement` - Added loading notification to Pending User Requests Page when user creation is in progress<br>
+✨ `Enhancement` - MOU Auditing is more detailed now<br>
+🐛 `Bug Fix` - Fixes issue with Audit Log claiming users were rejected after being approved and created from the pending user requests page<br>
+🐛 `Bug Fix` - Fixes issue with global admins not being notified after MOU Document is signed by agency
+
 ### v1.3.23 - 5/25/26
 🐛 `Bug Fix` - Fixes issue with user agreement prompt not always prompting upon session change
 
