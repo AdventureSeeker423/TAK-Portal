@@ -44,20 +44,49 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .requestAccessContactRow{
-        grid-column: 1 / -1;
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 10px;
-      }
+      .approveEmailPwdRow,
       .approveFinalRow{
         grid-column: 1 / -1;
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 10px;
       }
+      .approveFinalRow > label{
+        margin: 0;
+      }
+      .requestPermissionsSelect{
+        width: 100%;
+        max-width: none;
+        box-sizing: border-box;
+      }
+      .passwordWrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      .passwordWrap input {
+        width: 100%;
+        padding-right: 2.5rem;
+      }
+      .passwordToggle {
+        position: absolute;
+        right: 8px;
+        background: none;
+        border: none;
+        color: #fff;
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .passwordToggle:focus-visible {
+        outline: 2px solid var(--accent, #fff);
+        outline-offset: 2px;
+      }
       @media (max-width: 640px) {
-        .requestAccessContactRow,
+        .approveEmailPwdRow,
         .approveFinalRow{
           grid-template-columns: 1fr;
         }
@@ -72,60 +101,83 @@
     <div class="app">
       <main class="main" style="max-width: 980px; margin: 0 auto;">
         <h1>Review Access Request</h1>
+        <%
+          const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Username";
+        %>
         <div class="card">
+          <h2 style="margin-top:0;">Create User (Approve Request)</h2>
+          <p class="muted approveNote" id="approveNote"></p>
           <p class="muted" id="reviewInfo">Loading request...</p>
-          <form id="reviewForm" class="grid2" autocomplete="off" style="display:none;">
-            <label>First Name
-              <input name="firstName" required />
-            </label>
-            <label>Last Name
-              <input name="lastName" required />
+
+          <form id="reviewForm" class="grid2 approveForm" autocomplete="off" style="display:none;">
+            <label><%= usernamePrefixLabel %>
+              <input type="text" name="badge" placeholder="Enter <%= usernamePrefixLabel %>" required />
             </label>
 
-            <div class="requestAccessContactRow">
-              <label>Email
-                <input name="email" type="email" required />
+            <label>Agency
+              <select name="agencySuffix" id="agencySelect" class="agencySelect" required></select>
+            </label>
+
+            <label>First Name
+              <input name="firstName" placeholder="John" required />
+            </label>
+
+            <label>Last Name
+              <input name="lastName" placeholder="Doe" required />
+            </label>
+
+            <div class="approveEmailPwdRow">
+              <label>Email (optional)
+                <input name="email" type="email" placeholder="example@agency.gov" />
               </label>
-              <label>Badge Number / Username
-                <input name="badge" required pattern="[A-Za-z0-9._-]+" />
+
+              <label>Password (optional)
+                <div class="passwordWrap">
+                  <input
+                    class="passwordInput"
+                    name="password"
+                    type="password"
+                    placeholder="Min 12 characters: upper, lower, number, and symbol"
+                    minlength="12"
+                    pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}"
+                    title="Password must contain a minimum of 12 characters, upper, lower, number, and symbol"
+                  />
+                  <button
+                    type="button"
+                    class="passwordToggle"
+                    id="passwordToggle"
+                    aria-label="Show password"
+                  >👁</button>
+                </div>
               </label>
+
               <label>Radio Callsign (optional)
-                <input name="radioCallsign" type="text" />
+                <input name="radioCallsign" type="text" placeholder="ex. T05 or C10 or B01G" autocomplete="off" />
               </label>
             </div>
 
-            <label style="grid-column: 1 / -1;">Agency
-              <select name="agencySuffix" id="agencySelect" required></select>
-            </label>
+            <div class="approveFinalRow">
+              <label>Template
+                <select name="templateIndex" id="templateSelect" class="templateSelect"></select>
+              </label>
 
-            <label>Template
-              <select name="templateIndex" id="templateSelect"></select>
-            </label>
+              <label>Role
+                <select name="role" id="roleSelect" class="roleSelect" aria-label="ATAK role"></select>
+              </label>
 
-            <label>Role
-              <select name="role" id="roleSelect"></select>
-            </label>
-
-            <label>Permissions
-              <select name="permissions" id="permissionsSelect">
-                <option value="user" selected>User</option>
-                <option value="agency_admin">Agency Admin</option>
-              </select>
-            </label>
-
-            <label>Password (optional)
-              <input
-                name="password"
-                type="password"
-                placeholder="Min 12 chars: upper, lower, number, symbol"
-              />
-            </label>
+              <label>Permissions
+                <select name="permissions" id="permissionsSelect" class="requestPermissionsSelect" aria-label="User permissions">
+                  <option value="user" selected>User</option>
+                  <option value="agency_admin">Agency Admin</option>
+                </select>
+              </label>
+            </div>
 
             <div class="manualGroupsWrap" id="manualGroupsWrap" style="display:none; grid-column: 1 / -1;">
               <h3 style="margin-top:0;">Manual Groups</h3>
               <label style="display:block;">
                 Groups
-                <input id="groupFilter" placeholder="Search groups..." />
+                <input id="groupFilter" class="groupFilter" placeholder="Search groups..." />
                 <div class="row" style="gap:10px; margin-top:8px;">
                   <button class="btn" id="selectAllBtn" type="button">Select All</button>
                   <button class="btn" id="clearAllBtn" type="button">Clear</button>
@@ -136,14 +188,10 @@
               </label>
             </div>
 
-            <div class="approveFinalRow">
-              <div class="muted" id="requestSummary"></div>
-            </div>
-
             <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap; justify-content:flex-end;">
               <button class="btn danger" id="rejectBtn" type="button">Reject</button>
               <button class="btn success" id="approveBtn" type="submit">Create New User</button>
-              <span class="msg" id="actionMsg"></span>
+              <span class="msg createMsg" id="actionMsg"></span>
             </div>
           </form>
         </div>
@@ -155,7 +203,7 @@
       const token = <%- JSON.stringify(reviewToken || "") %>;
       const form = document.getElementById("reviewForm");
       const reviewInfo = document.getElementById("reviewInfo");
-      const requestSummary = document.getElementById("requestSummary");
+      const approveNote = document.getElementById("approveNote");
       const actionMsg = document.getElementById("actionMsg");
       const rejectBtn = document.getElementById("rejectBtn");
       const approveBtn = document.getElementById("approveBtn");
@@ -167,6 +215,8 @@
       const groupFilter = document.getElementById("groupFilter");
       const selectAllBtn = document.getElementById("selectAllBtn");
       const clearAllBtn = document.getElementById("clearAllBtn");
+      const passwordInput = form.querySelector(".passwordInput");
+      const passwordToggle = document.getElementById("passwordToggle");
 
       const pickedManualGroupIds = new Set();
       const ATAK_ROLE_OPTIONS = ["Team Member", "Team Lead", "HQ", "Sniper", "Medic", "Forward Observer", "RTO", "K9"];
@@ -184,9 +234,9 @@
           .replaceAll("'", "&#39;");
       }
 
-      function setMsg(text, type) {
+      function setMsg(text, ok) {
         actionMsg.textContent = text || "";
-        actionMsg.className = "msg" + (type ? (" " + type) : "");
+        actionMsg.className = "msg createMsg " + (ok === false ? "bad" : ok === "pending" ? "pending" : "ok");
       }
 
       function isValidPassword(pwd) {
@@ -200,6 +250,18 @@
           .join("");
         const pick = String(selectedRole || "Team Member").trim();
         roleSelect.value = ATAK_ROLE_OPTIONS.includes(pick) ? pick : "Team Member";
+      }
+
+      function renderApproveNote(reqObj) {
+        if (!reqObj || String(reqObj.agencySuffix || "") !== "__other__") {
+          approveNote.textContent = "";
+          return;
+        }
+        const agencyName = esc(reqObj.otherAgency || "Other");
+        const reason = esc(reqObj.otherReason || "");
+        approveNote.innerHTML =
+          "<strong>Requested Agency:</strong> " + agencyName + "<br>" +
+          (reason ? "<strong>Reason for Access:</strong> " + reason : "");
       }
 
       function renderGroupsBox() {
@@ -225,11 +287,10 @@
         const agencySuffix = String(agencySelect.value || "").trim().toLowerCase();
         const res = await fetch("/request-access/" + encodeURIComponent(token) + "/meta?agencySuffix=" + encodeURIComponent(agencySuffix));
         const out = await res.json();
-        if (!res.ok) throw new Error(out.error || "Failed to load templates/groups.");
+        if (!res.ok) throw new Error(out.error || "Failed to load templates.");
 
         templatesCache = Array.isArray(out.templates) ? out.templates : [];
         groupsCache = Array.isArray(out.groups) ? out.groups : [];
-        agenciesCache = Array.isArray(out.agencies) ? out.agencies : [];
 
         const manual = { name: "Manual Group Selection", role: "Team Member", groups: [] };
         const rest = templatesCache
@@ -241,27 +302,54 @@
           .map((t) => '<option value="' + esc(t.name) + '">' + esc(t.name) + "</option>")
           .join("");
 
-        const defaultTpl = templatesCache.find((t) => !!t.isDefault) || templatesCache[0] || manual;
-        templateSelect.value = String(defaultTpl.name || "Manual Group Selection");
-        renderRoleOptions(defaultTpl.role || "Team Member");
+        let defaultName = "Manual Group Selection";
+        const defaultTpl = templatesCache.find((t) => !!t.isDefault && String(t.name || "").trim());
+        if (defaultTpl) {
+          defaultName = String(defaultTpl.name).trim();
+        } else {
+          const firstNonManual = templatesCache.find(
+            (t) => String(t.name || "").trim().toLowerCase() !== "manual group selection"
+          );
+          if (firstNonManual) defaultName = String(firstNonManual.name).trim();
+        }
+
+        templateSelect.value = defaultName;
+        const currentDefaultTemplate = templatesCache.find(
+          (t) => String(t.name || "").trim().toLowerCase() === String(defaultName || "").trim().toLowerCase()
+        );
+        renderRoleOptions(currentDefaultTemplate?.role || "Team Member");
         templateSelect.dispatchEvent(new Event("change"));
       }
 
+      if (passwordInput && passwordToggle) {
+        passwordToggle.addEventListener("click", () => {
+          const isHidden = passwordInput.type === "password";
+          passwordInput.type = isHidden ? "text" : "password";
+          passwordToggle.setAttribute("aria-label", isHidden ? "Hide password" : "Show password");
+        });
+      }
+
       templateSelect.addEventListener("change", function () {
-        const selectedName = String(templateSelect.value || "").trim().toLowerCase();
-        const isManual = selectedName === "manual group selection";
-        const selectedTemplate = templatesCache.find((t) =>
-          String(t.name || "").trim().toLowerCase() === selectedName
+        const isManual =
+          String(templateSelect.value || "").trim().toLowerCase() === "manual group selection";
+        const selectedName = String(templateSelect.value || "").trim();
+        const selectedTemplate = templatesCache.find(
+          (t) => String(t.name || "").trim().toLowerCase() === selectedName.toLowerCase()
         );
         manualGroupsWrap.style.display = isManual ? "block" : "none";
-        renderRoleOptions(selectedTemplate && selectedTemplate.role ? selectedTemplate.role : "Team Member");
+        renderRoleOptions(selectedTemplate?.role || "Team Member");
         if (isManual) renderGroupsBox();
       });
 
       agencySelect.addEventListener("change", async function () {
         pickedManualGroupIds.clear();
         groupFilter.value = "";
-        await refreshMetaForAgency();
+        renderGroupsBox();
+        try {
+          await refreshMetaForAgency();
+        } catch (err) {
+          setMsg(err.message || "Failed to load templates", false);
+        }
       });
 
       groupFilter.addEventListener("input", renderGroupsBox);
@@ -286,7 +374,7 @@
       });
 
       rejectBtn.addEventListener("click", async function () {
-        if (!confirm("Reject this request?")) return;
+        if (!confirm("Reject this request? This will delete it.")) return;
         rejectBtn.disabled = true;
         approveBtn.disabled = true;
         setMsg("Rejecting request...", "pending");
@@ -296,11 +384,11 @@
           });
           const out = await res.json();
           if (!res.ok) throw new Error(out.error || "Failed to reject request.");
-          setMsg("Request rejected.", "ok");
+          setMsg("Request rejected.", true);
           form.style.display = "none";
           reviewInfo.textContent = "This request has been reviewed.";
         } catch (err) {
-          setMsg(err && err.message ? err.message : "Failed to reject request.", "bad");
+          setMsg(err.message || "Failed to reject request.", false);
           rejectBtn.disabled = false;
           approveBtn.disabled = false;
         }
@@ -308,20 +396,23 @@
 
       form.addEventListener("submit", async function (e) {
         e.preventDefault();
-        setMsg("", "");
+        setMsg("");
+
         const fd = new FormData(form);
         const payload = Object.fromEntries(fd.entries());
         const pwd = String(payload.password || "").trim();
         if (!isValidPassword(pwd)) {
-          setMsg("Password must be at least 12 characters with upper, lower, number, and symbol.", "bad");
+          setMsg("Password must be at least 12 characters with upper, lower, number, and symbol.", false);
           return;
         }
         if (String(payload.templateIndex || "").trim().toLowerCase() === "manual group selection") {
           payload.manualGroupIds = Array.from(pickedManualGroupIds);
         }
+
         approveBtn.disabled = true;
         rejectBtn.disabled = true;
         setMsg("User creation in progress...", "pending");
+
         try {
           const res = await fetch("/request-access/" + encodeURIComponent(token) + "/approve", {
             method: "POST",
@@ -330,12 +421,13 @@
           });
           const out = await res.json();
           if (!res.ok) throw new Error(out.error || "Failed to create user.");
-          const username = (out.user && out.user.username) || "";
-          setMsg(username ? ("User created: " + username) : "User created.", "ok");
+
+          const username = (out.user && out.user.username) || out.username || payload.badge || "";
+          setMsg(username ? "User created: " + username : "User created.", true);
           form.style.display = "none";
           reviewInfo.textContent = "This request has been reviewed.";
         } catch (err) {
-          setMsg(err && err.message ? err.message : "Failed to create user.", "bad");
+          setMsg(err.message || "Failed to create user.", false);
           approveBtn.disabled = false;
           rejectBtn.disabled = false;
         }
@@ -349,21 +441,19 @@
           reviewRequest = out.request || null;
           if (!reviewRequest) throw new Error("Request not found.");
 
-          reviewInfo.textContent = "Approve or reject this request.";
-          requestSummary.innerHTML =
-            "<strong>Requested:</strong> " + esc(reviewRequest.lastName || "") + ", " + esc(reviewRequest.firstName || "") +
-            " | <strong>Email:</strong> " + esc(reviewRequest.email || "") +
-            " | <strong>Agency:</strong> " + esc(reviewRequest.agencyName || reviewRequest.otherAgency || reviewRequest.agencySuffix || "");
+          reviewInfo.textContent = "";
+          renderApproveNote(reviewRequest);
 
+          form.badge.value = reviewRequest.badgeNumber || "";
           form.firstName.value = reviewRequest.firstName || "";
           form.lastName.value = reviewRequest.lastName || "";
           form.email.value = reviewRequest.email || "";
-          form.badge.value = reviewRequest.badgeNumber || "";
           form.radioCallsign.value = reviewRequest.radioCallsign || "";
 
           const metaRes = await fetch("/request-access/" + encodeURIComponent(token) + "/meta");
           const metaOut = await metaRes.json();
           if (!metaRes.ok) throw new Error(metaOut.error || "Failed to load metadata.");
+
           agenciesCache = Array.isArray(metaOut.agencies) ? metaOut.agencies : [];
           agencySelect.innerHTML = agenciesCache
             .slice()
@@ -372,16 +462,26 @@
             .join("");
 
           const requestedAgency = String(reviewRequest.agencySuffix || "").trim().toLowerCase();
-          if (requestedAgency && Array.from(agencySelect.options).some((o) => String(o.value) === requestedAgency)) {
+          if (requestedAgency === "__other__") {
+            const opt = document.createElement("option");
+            opt.value = "__other__";
+            opt.textContent = "Other / Not Listed";
+            opt.selected = true;
+            agencySelect.insertBefore(opt, agencySelect.firstChild);
+          } else if (
+            requestedAgency &&
+            Array.from(agencySelect.options).some((o) => String(o.value) === requestedAgency)
+          ) {
             agencySelect.value = requestedAgency;
           } else if (agencySelect.options.length) {
             agencySelect.selectedIndex = 0;
           }
 
+          renderGroupsBox();
           await refreshMetaForAgency();
           form.style.display = "";
         } catch (err) {
-          reviewInfo.textContent = err && err.message ? err.message : "Request not found.";
+          reviewInfo.textContent = err.message || "Request not found.";
           form.style.display = "none";
         }
       }
@@ -389,5 +489,9 @@
       init();
     })();
     </script>
+    <script>
+      try { localStorage.removeItem("tak-portal-theme"); } catch (e) {}
+    </script>
+    <script src="/theme-toggle.js" defer></script>
   </body>
 </html>
