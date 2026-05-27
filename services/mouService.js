@@ -1696,8 +1696,8 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
       : signatureRecord.uploadedSignedCopyPath
         ? '      <div class="signature-image" style="padding:12px 0;">Uploaded signed document.</div>'
         : '      <div class="signature-image" style="padding:12px 0;">E-signed document.</div>',
-    `      <div class="signature-line"><strong>${escapeHtml(signatureRecord.attestationText || signatureRecord.signerDisplayName)}</strong></div>`,
-    `      <div class="signature-line">${escapeHtml(signatureRecord.signerStatusAtSign || "Agency Administrator")}</div>`,
+    `      <div class="signature-line"><strong>Full Name:</strong> ${escapeHtml(signatureRecord.attestationText || signatureRecord.signerDisplayName || "")}</div>`,
+    `      <div class="signature-line"><strong>Position / Role:</strong> ${escapeHtml(signatureRecord.signerStatusAtSign || "Agency Administrator")}</div>`,
     ...customFieldLines,
     `      <div class="signature-line">${escapeHtml(signatureRecord.agencyNameAtSign)}</div>`,
     `      <div class="signature-line">Signed ${escapeHtml(signatureRecord.signedAt)}</div>`,
@@ -1719,6 +1719,16 @@ function writePdfHeader(doc, stream, versionRecord) {
   doc.fillColor("#111827");
 }
 
+function writePdfLabeledLine(doc, label, value) {
+  setPdfFont(doc, "bold");
+  doc
+    .fontSize(11)
+    .fillColor("#111827")
+    .text(`${label}: `, { continued: true });
+  setPdfFont(doc, "regular");
+  doc.text(value || "______________________________");
+}
+
 function writeSignatureSection(doc, signatureRecord) {
   if (doc.y > doc.page.height - doc.page.margins.bottom - 220) {
     doc.addPage({ size: "LETTER", margin: 54 });
@@ -1736,15 +1746,16 @@ function writeSignatureSection(doc, signatureRecord) {
     doc.y = imageTop + 104;
   }
 
-  setPdfFont(doc, "bold");
-  doc
-    .fontSize(12)
-    .fillColor("#111827")
-    .text(normalizeText(signatureRecord?.attestationText || signatureRecord?.signerDisplayName) || "Signer");
-  setPdfFont(doc, "regular");
-  doc
-    .fontSize(11)
-    .text(normalizeText(signatureRecord?.signerStatusAtSign) || "Agency Administrator");
+  writePdfLabeledLine(
+    doc,
+    "Full Name",
+    normalizeText(signatureRecord?.attestationText || signatureRecord?.signerDisplayName) || "Signer"
+  );
+  writePdfLabeledLine(
+    doc,
+    "Position / Role",
+    normalizeText(signatureRecord?.signerStatusAtSign) || "Agency Administrator"
+  );
   const customFieldValues = Array.isArray(signatureRecord?.customFieldValues)
     ? signatureRecord.customFieldValues
     : [];
@@ -1752,7 +1763,7 @@ function writeSignatureSection(doc, signatureRecord) {
     const label = normalizeText(customField?.label);
     if (!label) continue;
     const value = normalizeText(customField?.value);
-    doc.text(`${label}: ${value || "______________________________"}`);
+    writePdfLabeledLine(doc, label, value);
   }
   doc.text(normalizeText(signatureRecord?.agencyNameAtSign) || "");
   doc.text(`Signed ${normalizeText(signatureRecord?.signedAt) || ""}`);

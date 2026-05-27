@@ -3009,7 +3009,7 @@ async function getAllGroups(options = {}) {
 async function fetchUsersByGroupId(groupId, options = {}) {
   const gid = String(groupId || "").trim();
   if (!gid) return [];
-  const { includeHiddenPrefixes = false } = options;
+  const { includeHiddenPrefixes = false, ignoreUserPathFilter = false } = options;
   let users = [];
   const pageSize = 200;
   let page = 1;
@@ -3042,7 +3042,7 @@ async function fetchUsersByGroupId(groupId, options = {}) {
   }
 
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
-  if (folderRaw) {
+  if (folderRaw && !ignoreUserPathFilter) {
     const target = normalizePath(folderRaw);
     users = users.filter((u) => {
       const up = normalizePath(u.path);

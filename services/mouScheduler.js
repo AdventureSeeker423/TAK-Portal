@@ -175,7 +175,10 @@ async function getGlobalAdminUsers() {
   const groupPks = await getGlobalAdminGroupPks();
   if (!groupPks.length) return [];
 
-  const users = await usersSvc.getUsersByGroups(groupPks);
+  // Global admins may live outside AUTHENTIK_USER_PATH; do not apply that filter here.
+  const users = await usersSvc.getUsersByGroups(groupPks, {
+    ignoreUserPathFilter: true,
+  });
   return (Array.isArray(users) ? users : []).filter((user) =>
     String(user?.email || "").trim()
   );
@@ -213,11 +216,27 @@ async function sendGlobalAdminEmail({ subject, html, text }) {
     .map((user) => String(user.email || "").trim())
     .filter(Boolean);
   if (!recipients.length) {
+    const allMembers = await usersSvc.getUsersByGroups(groupPks, {
+      ignoreUserPathFilter: true,
+    });
+    const memberCount = Array.isArray(allMembers) ? allMembers.length : 0;
+    const withoutEmailCount = (Array.isArray(allMembers) ? allMembers : []).filter(
+      (user) => !String(user?.email || "").trim()
+    ).length;
+    console.warn("[mou-scheduler] global admin email recipients unavailable", {
+      groupPkCount: groupPks.length,
+      memberCount,
+      withoutEmailCount,
+    });
     return {
       sent: false,
       skipped: true,
       reason:
-        "No global admin users with email addresses found in the configured group(s).",
+        memberCount > 0 && withoutEmailCount === memberCount
+          ? "Global admin group members were found, but none have email addresses in Authentik."
+          : memberCount > 0
+            ? "No global admin users with email addresses found in the configured group(s)."
+            : "No users found in the configured global admin group(s).",
     };
   }
   return emailSvc.sendMail({

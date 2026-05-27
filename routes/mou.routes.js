@@ -869,9 +869,22 @@ router.post("/admin/mou/:mouId/signatures/resend/:agencyId", requireMouEnabled, 
   }
 });
 
-router.post("/admin/mou/:mouId/signatures/resign/:agencyId", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+router.post("/admin/mou/:mouId/signatures/resign/:agencyId", requireMouEnabled, requireMouPermission, requireGlobalAdmin, async (req, res) => {
   try {
     const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
+    const stream = mouService.getStreamById(req.params.mouId);
+    const currentVersion = mouService.getCurrentVersion(stream);
+    if (!currentVersion) {
+      throw new Error("MOU version not found.");
+    }
+
+    const targetAgency = mouService
+      .getTargetAgenciesForStream(stream)
+      .find((agency) => String(agency?.suffix || "").trim().toLowerCase() === agencyId);
+    if (!targetAgency) {
+      throw new Error("This document is not assigned to the selected agency.");
+    }
+
     const result = mouService.clearAgencySignatureForCurrentVersion({
       mouId: req.params.mouId,
       agencyId,
@@ -891,7 +904,47 @@ router.post("/admin/mou/:mouId/signatures/resign/:agencyId", requireMouEnabled, 
       },
     });
 
-    return res.redirect(`/mou?success=${encodeURIComponent("Agency signature reset. Re-sign is now required.")}`);
+    let successMessage = "Agency signature reset. Re-sign is now required.";
+    try {
+      const notifyResult = await mouScheduler.sendAssignmentNotificationForAgency({
+        stream,
+        version: currentVersion,
+        agency: targetAgency,
+        actor: req.authentikUser,
+      });
+      if (notifyResult.sent) {
+        auditRequest(req, {
+          action: "MOU_ASSIGNMENT_NOTIFICATION_SENT",
+          targetType: "mou",
+          targetId: String(req.params.mouId),
+          agencySuffix: agencyId,
+          details: {
+            mouId: req.params.mouId,
+            version: currentVersion.version,
+            agencyId,
+            trigger: "resign",
+          },
+        });
+        successMessage =
+          "Agency signature reset. Re-sign is required, and agency administrators were notified by email.";
+      } else if (!notifyResult.skipped) {
+        console.warn("[MOU_RESIGN] Assignment notification failed", {
+          mouId: req.params.mouId,
+          agencyId,
+          version: currentVersion.version,
+          error: notifyResult.error || "Unknown error",
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[MOU_RESIGN] Assignment notification failure", {
+        mouId: req.params.mouId,
+        agencyId,
+        version: currentVersion.version,
+        error: notifyErr?.message || String(notifyErr || "Unknown notification error"),
+      });
+    }
+
+    return res.redirect(`/mou?success=${encodeURIComponent(successMessage)}`);
   } catch (err) {
     return toErrorRedirect(res, "/mou", err);
   }
