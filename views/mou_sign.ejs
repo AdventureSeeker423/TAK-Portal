@@ -234,7 +234,7 @@
                   data-custom-index="<%= customFieldIndex %>"
                   placeholder="Enter <%= customFieldLabel %>"
                   style="width:100%;"
-                  <%= hasPendingAgency ? "" : "disabled" %>
+                  <%= hasPendingAgency ? "required" : "disabled" %>
                 />
               </label>
             <% }); %>
@@ -581,6 +581,25 @@
     }
     if (signMethod === "upload") {
       if (hidden) hidden.value = "";
+      if (signerNameInput && !String(signerNameInput.value || "").trim()) {
+        event.preventDefault();
+        setSignMethodMessage("Signer full name is required.");
+        return;
+      }
+      if (signerRoleInput && !String(signerRoleInput.value || "").trim()) {
+        event.preventDefault();
+        setSignMethodMessage("Signer position / role is required.");
+        return;
+      }
+      for (var i = 0; i < customSignerInputs.length; i += 1) {
+        var uploadCustomInput = customSignerInputs[i];
+        var uploadCustomLabel = String(uploadCustomInput.getAttribute("data-custom-label") || "Custom field").trim();
+        if (!String(uploadCustomInput.value || "").trim()) {
+          event.preventDefault();
+          setSignMethodMessage(uploadCustomLabel + " is required.");
+          return;
+        }
+      }
       if (!signedCopyInput || !signedCopyInput.files || !signedCopyInput.files.length) {
         event.preventDefault();
         setSignMethodMessage("Attach a PDF or image of the signed document.");
@@ -600,6 +619,25 @@
       hidden.value = "";
       setSignMethodMessage("A drawn signature is required.");
       return;
+    }
+    if (signerNameInput && !String(signerNameInput.value || "").trim()) {
+      event.preventDefault();
+      setSignMethodMessage("Signer full name is required.");
+      return;
+    }
+    if (signerRoleInput && !String(signerRoleInput.value || "").trim()) {
+      event.preventDefault();
+      setSignMethodMessage("Signer position / role is required.");
+      return;
+    }
+    for (var j = 0; j < customSignerInputs.length; j += 1) {
+      var customInput = customSignerInputs[j];
+      var customLabel = String(customInput.getAttribute("data-custom-label") || "Custom field").trim();
+      if (!String(customInput.value || "").trim()) {
+        event.preventDefault();
+        setSignMethodMessage(customLabel + " is required.");
+        return;
+      }
     }
     setSignMethodMessage("");
     hidden.value = hasInk ? canvas.toDataURL("image/png") : "";

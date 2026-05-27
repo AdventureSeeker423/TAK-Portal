@@ -291,6 +291,17 @@ function normalizeCustomFieldValues(value, labels) {
   return out;
 }
 
+function requireCustomFieldValues(values) {
+  const list = Array.isArray(values) ? values : [];
+  for (const entry of list) {
+    const label = normalizeText(entry?.label) || "Custom field";
+    const fieldValue = normalizeText(entry?.value);
+    if (!fieldValue) {
+      throw new Error(`${label} is required.`);
+    }
+  }
+}
+
 function sortVersions(versions) {
   return (Array.isArray(versions) ? versions : [])
     .slice()
@@ -1884,6 +1895,9 @@ function signVersion({
   requireNonEmpty(safeAgencySuffix, "Agency");
   requireNonEmpty(safeAgencyName, "Agency name");
   requireNonEmpty(safeSigner, "Signer name");
+  requireNonEmpty(safeAttestation, "Signer full name");
+  requireNonEmpty(safeStatus, "Signer position / role");
+  requireCustomFieldValues(normalizedCustomFieldValues);
   if (!pngBuffer && !uploadedSignedCopyFile && !safeAttestation) {
     throw new Error("Provide a drawn signature, uploaded signed document, or typed attestation.");
   }
