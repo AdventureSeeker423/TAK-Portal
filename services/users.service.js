@@ -752,17 +752,29 @@ async function emailPasswordChanged(user) {
   await emailSvc.sendMail({ to, subject, text, html });
 }
 
+function normalizeGroupIdList(raw) {
+  const list = Array.isArray(raw) ? raw : raw === undefined || raw === null ? [] : [raw];
+  return list
+    .map((entry) => {
+      if (entry && typeof entry === "object") {
+        return String(entry.pk ?? entry.id ?? "").trim();
+      }
+      return String(entry || "").trim();
+    })
+    .filter(Boolean);
+}
+
+function formatGroupLabelsCsv(groupNames) {
+  const labels = (Array.isArray(groupNames) ? groupNames : [])
+    .map(stripGroupNamePrefixesForDisplay)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return labels.length ? labels.join(", ") : "(none)";
+}
+
 function diffGroupIds(beforeIds, afterIds) {
-  const beforeSet = new Set(
-    (Array.isArray(beforeIds) ? beforeIds : [])
-      .map((id) => String(id || "").trim())
-      .filter(Boolean)
-  );
-  const afterSet = new Set(
-    (Array.isArray(afterIds) ? afterIds : [])
-      .map((id) => String(id || "").trim())
-      .filter(Boolean)
-  );
+  const beforeSet = new Set(normalizeGroupIdList(beforeIds));
+  const afterSet = new Set(normalizeGroupIdList(afterIds));
   const addedIds = [...afterSet].filter((id) => !beforeSet.has(id));
   const removedIds = [...beforeSet].filter((id) => !afterSet.has(id));
   return { addedIds, removedIds };
@@ -820,18 +832,8 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
   const subject = "TAK Groups Updated";
   const displayName = String(u?.name || "").trim() || "there";
   const { lastName, lastNameUpper, firstName } = parseName(displayName);
-  const addedGroupLabels = addedNames
-    .map(stripGroupNamePrefixesForDisplay)
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  const removedGroupLabels = removedNames
-    .map(stripGroupNamePrefixesForDisplay)
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  const addedGroupsCsv = addedGroupLabels.length ? addedGroupLabels.join(", ") : "(none)";
-  const removedGroupsCsv = removedGroupLabels.length
-    ? removedGroupLabels.join(", ")
-    : "(none)";
+  const addedGroupsCsv = formatGroupLabelsCsv(addedNames);
+  const removedGroupsCsv = formatGroupLabelsCsv(removedNames);
 
   const takPortalPublicUrl = getTakPortalPublicUrl();
   const takPortalBlock = buildTakPortalBlock({
@@ -878,7 +880,20 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
     takPortalBlock,
   });
 
-  const text = htmlToText(html);
+  const text = [
+    `Hi ${firstName} ${lastName},`,
+    "",
+    "Your TAK account access groups were recently changed by your agency administrator.",
+    "",
+    `Removed Groups: ${removedGroupsCsv}`,
+    `Added Groups: ${addedGroupsCsv}`,
+    "",
+    takPortalPublicUrl
+      ? `Open TAK Portal: ${takPortalPublicUrl}`
+      : "Open TAK Portal to review your access.",
+    "",
+    "If you do not recognize these changes, contact your TAK agency administrator.",
+  ].join("\n");
 
   await emailSvc.sendMail({ to, subject, text, html });
 }
@@ -905,10 +920,9 @@ function scheduleDebouncedGroupsEmail({ user, beforeIds, afterIds }) {
     // Keep the very first snapshot of "before" so the email shows all changes.
     user: existing?.user || user,
     beforeIds:
-      existing?.beforeIds ||
-      (Array.isArray(beforeIds) ? beforeIds.slice() : []),
+      existing?.beforeIds || normalizeGroupIdList(beforeIds),
     // Always use the latest "after" set so we reflect the final state.
-    afterIds: Array.isArray(afterIds) ? afterIds.slice() : [],
+    afterIds: normalizeGroupIdList(afterIds),
   };
 
   entry.timeout = setTimeout(async () => {

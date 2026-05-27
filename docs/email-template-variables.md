@@ -11,8 +11,8 @@
 {{groupsCsv}} <br>
 {{hasPassword}} <br>
 
-{{beforeGroupsCsv}} <br>
-{{afterGroupsCsv}} <br>
+{{removedGroupsCsv}} — comma-separated group names removed during the change window <br>
+{{addedGroupsCsv}} — comma-separated group names added during the change window <br>
 
 {{badgeNumber}} - The user's badge number formatted as `1234` <br>
 {{agencyAbbreviation}} - The user's agency formatted as `ABCD` <br>

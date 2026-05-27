@@ -26,6 +26,27 @@ function getTemplatesDir() {
   return path.join(__dirname, "..", "email_templates");
 }
 
+function readBuiltinTemplateFile(filename) {
+  const safeName = path.basename(String(filename || ""));
+  const fullPath = path.join(getTemplatesDir(), safeName);
+  return fs.readFileSync(fullPath, "utf8");
+}
+
+function isDeprecatedGroupsUpdatedTemplate(html) {
+  const source = String(html || "");
+  if (!source.trim()) return false;
+  const hasNewPlaceholders =
+    /\{\{\s*addedGroupsCsv\s*\}\}/i.test(source) ||
+    /\{\{\s*removedGroupsCsv\s*\}\}/i.test(source);
+  if (hasNewPlaceholders) return false;
+  return (
+    /\{\{\s*beforeGroupsCsv\s*\}\}/i.test(source) ||
+    /\{\{\s*afterGroupsCsv\s*\}\}/i.test(source) ||
+    /Previous\s+Groups/i.test(source) ||
+    /New\s+Groups/i.test(source)
+  );
+}
+
 /**
  * Load a template, preferring any override stored in settings.json:
  *
@@ -50,7 +71,16 @@ function loadTemplateFile(filename) {
         if (Object.prototype.hasOwnProperty.call(overrides, key)) {
           const overrideHtml = overrides[key];
           if (typeof overrideHtml === "string" && overrideHtml.trim()) {
-            return overrideHtml;
+            if (
+              key === "groups_updated.html" &&
+              isDeprecatedGroupsUpdatedTemplate(overrideHtml)
+            ) {
+              console.warn(
+                "[emailTemplates] Ignoring deprecated groups_updated.html override (uses Previous/New Groups placeholders). Using built-in Added/Removed Groups template. Reset this template under Server Settings → Email Templates to customize."
+              );
+            } else {
+              return overrideHtml;
+            }
           }
         }
       }
@@ -62,10 +92,7 @@ function loadTemplateFile(filename) {
     );
   }
 
-  // Fallback to the built-in template file on disk.
-  const safeName = path.basename(String(filename || ""));
-  const fullPath = path.join(getTemplatesDir(), safeName);
-  return fs.readFileSync(fullPath, "utf8");
+  return readBuiltinTemplateFile(filename);
 }
 
 function escapeHtml(value) {
