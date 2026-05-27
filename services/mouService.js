@@ -950,6 +950,7 @@ function createStream({
   html,
   file,
   contentType,
+  customFieldLabels,
   reminderDays,
   mandatory,
   actor,
@@ -961,6 +962,7 @@ function createStream({
     html,
     file,
     contentType,
+    customFieldLabels,
     reminderDays,
     mandatory,
   });
@@ -1046,6 +1048,7 @@ function updateVersion({
   html,
   file,
   contentType,
+  customFieldLabels,
   reminderDays,
   mandatory,
   actor,
@@ -1062,6 +1065,7 @@ function updateVersion({
     html,
     file,
     contentType,
+    customFieldLabels,
     reminderDays,
     mandatory,
   }, versionRecord);
