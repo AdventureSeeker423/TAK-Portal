@@ -68,6 +68,11 @@ function portalAuthMiddleware(req, res, next) {
   // admin-only listing endpoint.
   const isPublicAccessRequestSubmit =
     normalizedPath === "/api/user-requests" && method === "POST";
+  const isPublicAccessRequestReviewPage =
+    method === "GET" && /^\/request-access\/[a-f0-9]{32,64}$/i.test(normalizedPath);
+  const isPublicAccessRequestReviewApi =
+    normalizedPath.startsWith("/api/user-requests/review/") &&
+    (method === "GET" || method === "POST");
 
   const isPluginDownloadApi =
     method === "GET" &&
@@ -115,7 +120,15 @@ function portalAuthMiddleware(req, res, next) {
   const groupsHeader = req.headers["x-authentik-groups"] || "";
 
   // Allow completely anonymous access to public paths
-  if (!username && (isPublicPath || isPublicAccessRequestSubmit)) {
+  if (
+    !username &&
+    (
+      isPublicPath ||
+      isPublicAccessRequestSubmit ||
+      isPublicAccessRequestReviewPage ||
+      isPublicAccessRequestReviewApi
+    )
+  ) {
     return next();
   }
 

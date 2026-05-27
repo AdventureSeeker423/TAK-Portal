@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>TAK Portal - Review Access Request</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .groupsBox{
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 10px;
+        max-height: 320px;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      .groupsInner{
+        column-width: 310px;
+        column-gap: 14px;
+        column-count: 4;
+      }
+      .groupItem{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 10px;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+      }
+      .groupItem:hover{ background: rgba(255,255,255,.06); }
+      .groupItem input{
+        margin: 0;
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+      .groupItem span{
+        display: inline-block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .requestAccessContactRow{
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .approveFinalRow{
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      @media (max-width: 640px) {
+        .requestAccessContactRow,
+        .approveFinalRow{
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+    <% if (brandLogoUrl) { %>
+      <link rel="icon" href="<%= brandLogoUrl %>" type="image/png" />
+      <link rel="shortcut icon" href="<%= brandLogoUrl %>" type="image/png" />
+    <% } %>
+  </head>
+  <body class="theme-<%= brandTheme || 'dark' %>" data-theme-default-only="true">
+    <div class="app">
+      <main class="main" style="max-width: 980px; margin: 0 auto;">
+        <h1>Review Access Request</h1>
+        <div class="card">
+          <p class="muted" id="reviewInfo">Loading request...</p>
+          <form id="reviewForm" class="grid2" autocomplete="off" style="display:none;">
+            <label>First Name
+              <input name="firstName" required />
+            </label>
+            <label>Last Name
+              <input name="lastName" required />
+            </label>
+
+            <div class="requestAccessContactRow">
+              <label>Email
+                <input name="email" type="email" required />
+              </label>
+              <label>Badge Number / Username
+                <input name="badge" required pattern="[A-Za-z0-9._-]+" />
+              </label>
+              <label>Radio Callsign (optional)
+                <input name="radioCallsign" type="text" />
+              </label>
+            </div>
+
+            <label style="grid-column: 1 / -1;">Agency
+              <select name="agencySuffix" id="agencySelect" required></select>
+            </label>
+
+            <label>Template
+              <select name="templateIndex" id="templateSelect"></select>
+            </label>
+
+            <label>Role
+              <select name="role" id="roleSelect"></select>
+            </label>
+
+            <label>Permissions
+              <select name="permissions" id="permissionsSelect">
+                <option value="user" selected>User</option>
+                <option value="agency_admin">Agency Admin</option>
+              </select>
+            </label>
+
+            <label>Password (optional)
+              <input
+                name="password"
+                type="password"
+                placeholder="Min 12 chars: upper, lower, number, symbol"
+              />
+            </label>
+
+            <div class="manualGroupsWrap" id="manualGroupsWrap" style="display:none; grid-column: 1 / -1;">
+              <h3 style="margin-top:0;">Manual Groups</h3>
+              <label style="display:block;">
+                Groups
+                <input id="groupFilter" placeholder="Search groups..." />
+                <div class="row" style="gap:10px; margin-top:8px;">
+                  <button class="btn" id="selectAllBtn" type="button">Select All</button>
+                  <button class="btn" id="clearAllBtn" type="button">Clear</button>
+                </div>
+                <div class="groupsBox">
+                  <div class="groupsInner" id="groupsInner"></div>
+                </div>
+              </label>
+            </div>
+
+            <div class="approveFinalRow">
+              <div class="muted" id="requestSummary"></div>
+            </div>
+
+            <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap; justify-content:flex-end;">
+              <button class="btn danger" id="rejectBtn" type="button">Reject</button>
+              <button class="btn success" id="approveBtn" type="submit">Create New User</button>
+              <span class="msg" id="actionMsg"></span>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
+
+    <script>
+    (function () {
+      const token = <%- JSON.stringify(reviewToken || "") %>;
+      const form = document.getElementById("reviewForm");
+      const reviewInfo = document.getElementById("reviewInfo");
+      const requestSummary = document.getElementById("requestSummary");
+      const actionMsg = document.getElementById("actionMsg");
+      const rejectBtn = document.getElementById("rejectBtn");
+      const approveBtn = document.getElementById("approveBtn");
+      const agencySelect = document.getElementById("agencySelect");
+      const templateSelect = document.getElementById("templateSelect");
+      const roleSelect = document.getElementById("roleSelect");
+      const manualGroupsWrap = document.getElementById("manualGroupsWrap");
+      const groupsInner = document.getElementById("groupsInner");
+      const groupFilter = document.getElementById("groupFilter");
+      const selectAllBtn = document.getElementById("selectAllBtn");
+      const clearAllBtn = document.getElementById("clearAllBtn");
+
+      const pickedManualGroupIds = new Set();
+      const ATAK_ROLE_OPTIONS = ["Team Member", "Team Lead", "HQ", "Sniper", "Medic", "Forward Observer", "RTO", "K9"];
+      let reviewRequest = null;
+      let groupsCache = [];
+      let templatesCache = [];
+      let agenciesCache = [];
+
+      function esc(s) {
+        return String(s ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function setMsg(text, type) {
+        actionMsg.textContent = text || "";
+        actionMsg.className = "msg" + (type ? (" " + type) : "");
+      }
+
+      function isValidPassword(pwd) {
+        if (!pwd) return true;
+        return /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(String(pwd || ""));
+      }
+
+      function renderRoleOptions(selectedRole) {
+        roleSelect.innerHTML = ATAK_ROLE_OPTIONS
+          .map((role) => '<option value="' + esc(role) + '">' + esc(role) + "</option>")
+          .join("");
+        const pick = String(selectedRole || "Team Member").trim();
+        roleSelect.value = ATAK_ROLE_OPTIONS.includes(pick) ? pick : "Team Member";
+      }
+
+      function renderGroupsBox() {
+        const needle = String(groupFilter.value || "").trim().toLowerCase();
+        const sorted = groupsCache.slice().sort((a, b) =>
+          String(a.name || "").localeCompare(String(b.name || ""))
+        );
+        const filtered = needle
+          ? sorted.filter((g) => String(g.name || "").toLowerCase().includes(needle))
+          : sorted;
+        groupsInner.innerHTML = filtered.map((g) => {
+          const id = String(g.pk);
+          const name = String(g.name || "").replace(/^tak_/i, "");
+          return '<label class="groupItem"><input type="checkbox" value="' + esc(id) + '" /><span>' + esc(name) + "</span></label>";
+        }).join("");
+
+        Array.from(groupsInner.querySelectorAll('input[type="checkbox"]')).forEach((cb) => {
+          cb.checked = pickedManualGroupIds.has(String(cb.value));
+        });
+      }
+
+      async function refreshMetaForAgency() {
+        const agencySuffix = String(agencySelect.value || "").trim().toLowerCase();
+        const res = await fetch("/api/user-requests/review/" + encodeURIComponent(token) + "/meta?agencySuffix=" + encodeURIComponent(agencySuffix));
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || "Failed to load templates/groups.");
+
+        templatesCache = Array.isArray(out.templates) ? out.templates : [];
+        groupsCache = Array.isArray(out.groups) ? out.groups : [];
+        agenciesCache = Array.isArray(out.agencies) ? out.agencies : [];
+
+        const manual = { name: "Manual Group Selection", role: "Team Member", groups: [] };
+        const rest = templatesCache
+          .filter((t) => String(t.name || "").trim().toLowerCase() !== "manual group selection")
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+        templatesCache = [manual, ...rest];
+
+        templateSelect.innerHTML = templatesCache
+          .map((t) => '<option value="' + esc(t.name) + '">' + esc(t.name) + "</option>")
+          .join("");
+
+        const defaultTpl = templatesCache.find((t) => !!t.isDefault) || templatesCache[0] || manual;
+        templateSelect.value = String(defaultTpl.name || "Manual Group Selection");
+        renderRoleOptions(defaultTpl.role || "Team Member");
+        templateSelect.dispatchEvent(new Event("change"));
+      }
+
+      templateSelect.addEventListener("change", function () {
+        const selectedName = String(templateSelect.value || "").trim().toLowerCase();
+        const isManual = selectedName === "manual group selection";
+        const selectedTemplate = templatesCache.find((t) =>
+          String(t.name || "").trim().toLowerCase() === selectedName
+        );
+        manualGroupsWrap.style.display = isManual ? "block" : "none";
+        renderRoleOptions(selectedTemplate && selectedTemplate.role ? selectedTemplate.role : "Team Member");
+        if (isManual) renderGroupsBox();
+      });
+
+      agencySelect.addEventListener("change", async function () {
+        pickedManualGroupIds.clear();
+        groupFilter.value = "";
+        await refreshMetaForAgency();
+      });
+
+      groupFilter.addEventListener("input", renderGroupsBox);
+      groupsInner.addEventListener("change", function (e) {
+        const cb = e.target;
+        if (!cb || cb.tagName !== "INPUT" || cb.type !== "checkbox") return;
+        const id = String(cb.value);
+        if (cb.checked) pickedManualGroupIds.add(id);
+        else pickedManualGroupIds.delete(id);
+      });
+      selectAllBtn.addEventListener("click", function () {
+        Array.from(groupsInner.querySelectorAll('input[type="checkbox"]')).forEach((cb) => {
+          cb.checked = true;
+          pickedManualGroupIds.add(String(cb.value));
+        });
+      });
+      clearAllBtn.addEventListener("click", function () {
+        Array.from(groupsInner.querySelectorAll('input[type="checkbox"]')).forEach((cb) => {
+          cb.checked = false;
+        });
+        pickedManualGroupIds.clear();
+      });
+
+      rejectBtn.addEventListener("click", async function () {
+        if (!confirm("Reject this request?")) return;
+        rejectBtn.disabled = true;
+        approveBtn.disabled = true;
+        setMsg("Rejecting request...", "pending");
+        try {
+          const res = await fetch("/api/user-requests/review/" + encodeURIComponent(token) + "/reject", {
+            method: "POST",
+          });
+          const out = await res.json();
+          if (!res.ok) throw new Error(out.error || "Failed to reject request.");
+          setMsg("Request rejected.", "ok");
+          form.style.display = "none";
+          reviewInfo.textContent = "This request has been reviewed.";
+        } catch (err) {
+          setMsg(err && err.message ? err.message : "Failed to reject request.", "bad");
+          rejectBtn.disabled = false;
+          approveBtn.disabled = false;
+        }
+      });
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        setMsg("", "");
+        const fd = new FormData(form);
+        const payload = Object.fromEntries(fd.entries());
+        const pwd = String(payload.password || "").trim();
+        if (!isValidPassword(pwd)) {
+          setMsg("Password must be at least 12 characters with upper, lower, number, and symbol.", "bad");
+          return;
+        }
+        if (String(payload.templateIndex || "").trim().toLowerCase() === "manual group selection") {
+          payload.manualGroupIds = Array.from(pickedManualGroupIds);
+        }
+        approveBtn.disabled = true;
+        rejectBtn.disabled = true;
+        setMsg("User creation in progress...", "pending");
+        try {
+          const res = await fetch("/api/user-requests/review/" + encodeURIComponent(token) + "/approve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const out = await res.json();
+          if (!res.ok) throw new Error(out.error || "Failed to create user.");
+          const username = (out.user && out.user.username) || "";
+          setMsg(username ? ("User created: " + username) : "User created.", "ok");
+          form.style.display = "none";
+          reviewInfo.textContent = "This request has been reviewed.";
+        } catch (err) {
+          setMsg(err && err.message ? err.message : "Failed to create user.", "bad");
+          approveBtn.disabled = false;
+          rejectBtn.disabled = false;
+        }
+      });
+
+      async function init() {
+        try {
+          const res = await fetch("/api/user-requests/review/" + encodeURIComponent(token));
+          const out = await res.json();
+          if (!res.ok) throw new Error(out.error || "Request not found.");
+          reviewRequest = out.request || null;
+          if (!reviewRequest) throw new Error("Request not found.");
+
+          reviewInfo.textContent = "Approve or reject this request.";
+          requestSummary.innerHTML =
+            "<strong>Requested:</strong> " + esc(reviewRequest.lastName || "") + ", " + esc(reviewRequest.firstName || "") +
+            " | <strong>Email:</strong> " + esc(reviewRequest.email || "") +
+            " | <strong>Agency:</strong> " + esc(reviewRequest.agencyName || reviewRequest.otherAgency || reviewRequest.agencySuffix || "");
+
+          form.firstName.value = reviewRequest.firstName || "";
+          form.lastName.value = reviewRequest.lastName || "";
+          form.email.value = reviewRequest.email || "";
+          form.badge.value = reviewRequest.badgeNumber || "";
+          form.radioCallsign.value = reviewRequest.radioCallsign || "";
+
+          const metaRes = await fetch("/api/user-requests/review/" + encodeURIComponent(token) + "/meta");
+          const metaOut = await metaRes.json();
+          if (!metaRes.ok) throw new Error(metaOut.error || "Failed to load metadata.");
+          agenciesCache = Array.isArray(metaOut.agencies) ? metaOut.agencies : [];
+          agencySelect.innerHTML = agenciesCache
+            .slice()
+            .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
+            .map((a) => '<option value="' + esc(a.suffix) + '">' + esc(a.name) + " (" + esc(a.groupPrefix) + ")</option>")
+            .join("");
+
+          const requestedAgency = String(reviewRequest.agencySuffix || "").trim().toLowerCase();
+          if (requestedAgency && Array.from(agencySelect.options).some((o) => String(o.value) === requestedAgency)) {
+            agencySelect.value = requestedAgency;
+          } else if (agencySelect.options.length) {
+            agencySelect.selectedIndex = 0;
+          }
+
+          await refreshMetaForAgency();
+          form.style.display = "";
+        } catch (err) {
+          reviewInfo.textContent = err && err.message ? err.message : "Request not found.";
+          form.style.display = "none";
+        }
+      }
+
+      init();
+    })();
+    </script>
+  </body>
+</html>

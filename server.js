@@ -1144,6 +1144,14 @@ app.get("/request-access/confirmation", (req, res) => {
   return res.render("request-access-confirmation");
 });
 
+app.get("/request-access/:reviewToken", (req, res, next) => {
+  const token = String(req.params.reviewToken || "").trim();
+  if (!/^[a-f0-9]{32,64}$/i.test(token)) return next();
+  return res.render("request-access-review", {
+    reviewToken: token,
+  });
+});
+
 // Admin: review pending access requests
 app.get("/pending-user-requests", requirePermission("page.users"), (req, res) => {
   return res.render("pending-user-requests");

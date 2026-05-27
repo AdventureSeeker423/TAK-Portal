@@ -11,12 +11,36 @@ function genId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function genReviewToken() {
+  return crypto.randomBytes(24).toString("hex");
+}
+
 function normalizeEmail(v) {
   return String(v || "").trim().toLowerCase();
 }
 
 function normalizeStr(v) {
   return String(v || "").trim();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getPortalBaseUrl() {
+  try {
+    const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
+    const direct = String(settings.TAK_PORTAL_PUBLIC_URL || "").trim();
+    if (direct) return direct.replace(/\/+$/, "");
+  } catch (_) {
+    // ignore and fall back
+  }
+  return "";
 }
 
 function validateCreate(input) {
@@ -104,6 +128,7 @@ async function createRequest(input) {
 
   const reqObj = {
     id: genId(),
+    reviewToken: genReviewToken(),
     createdAt: now,
     firstName: v.firstName,
     lastName: v.lastName,
@@ -181,11 +206,17 @@ async function createRequest(input) {
 const reasonLine = reqObj.otherReason
   ? `Reason for requesting access: ${reqObj.otherReason}\n`
   : "";
+const portalBaseUrl = getPortalBaseUrl();
+const reviewPath = `/request-access/${reqObj.reviewToken}`;
+const reviewUrl = portalBaseUrl ? `${portalBaseUrl}${reviewPath}` : reviewPath;
+const safeReviewUrl = escapeHtml(reviewUrl);
 
 await emailSvc.sendMail({
   to: recipients.join(","),
   subject: "New TAK Portal Access Request",
-  text: `A new user has requested access to TAK Portal. Please login to TAK Portal to review the request and approve or deny access as appropriate.
+  text: `A new user has requested access to TAK Portal.
+
+Review Request: ${reviewUrl}
 
 Name: ${reqObj.lastName}, ${reqObj.firstName}
 Email: ${reqObj.email}
@@ -196,6 +227,32 @@ ${reqObj.radioCallsign ? `Radio Callsign: ${reqObj.radioCallsign}\n` : ""}Agency
     reqObj.agencySuffix
   }
 ${reasonLine}`,
+  html: `
+<p>A new user has requested access to TAK Portal.</p>
+<p><strong><a href="${safeReviewUrl}">Review Request</a></strong></p>
+<p>
+  <strong>Name:</strong> ${escapeHtml(reqObj.lastName)}, ${escapeHtml(reqObj.firstName)}<br/>
+  <strong>Email:</strong> ${escapeHtml(reqObj.email)}<br/>
+  <strong>Badge:</strong> ${escapeHtml(reqObj.badgeNumber)}<br/>
+  ${
+    reqObj.radioCallsign
+      ? `<strong>Radio Callsign:</strong> ${escapeHtml(reqObj.radioCallsign)}<br/>`
+      : ""
+  }
+  <strong>Agency:</strong> ${
+    escapeHtml(
+      reqObj.agencyName ||
+      reqObj.otherAgency ||
+      reqObj.agencySuffix
+    )
+  }<br/>
+  ${
+    reqObj.otherReason
+      ? `<strong>Reason for requesting access:</strong> ${escapeHtml(reqObj.otherReason)}`
+      : ""
+  }
+</p>
+`,
 });
 
       console.log("Access request notification sent to:", recipients);
@@ -245,6 +302,13 @@ function getById(id) {
   return all.find((r) => String(r.id || "") === rid) || null;
 }
 
+function getByReviewToken(token) {
+  const value = String(token || "").trim();
+  if (!value) return null;
+  const all = store.load();
+  return all.find((r) => String(r?.reviewToken || "") === value) || null;
+}
+
 module.exports = {
   listRequests,
   listRequestsForUser,
@@ -253,4 +317,5 @@ module.exports = {
   deleteRequest,
   deleteRequestForUser,
   getById,
+  getByReviewToken,
 };
