@@ -419,6 +419,12 @@ th.sortable:hover{
     el.className = 'msg createMsg ' + (ok ? 'ok' : 'bad');
   }
 
+  function setInlinePendingMsg(el, text) {
+    if (!el) return;
+    el.textContent = text || '';
+    el.className = 'msg createMsg pending';
+  }
+
   function esc(s) {
     return String(s ?? '')
       .replaceAll('&', '&amp;')
@@ -707,6 +713,7 @@ th.sortable:hover{
     const selectAllBtn = form.querySelector('.selectAllBtn');
     const clearAllBtn = form.querySelector('.clearAllBtn');
     const cancelBtn = form.querySelector('.cancelBtn');
+    const createUserSubmitBtn = form.querySelector('button[type="submit"]');
 
     // Password toggle
     const passwordInput = form.querySelector('.passwordInput');
@@ -896,6 +903,8 @@ th.sortable:hover{
       delete payload.requestId;
 
       try {
+        if (createUserSubmitBtn) createUserSubmitBtn.disabled = true;
+        setInlinePendingMsg(msg, 'User creation in progress…');
         const res = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -917,6 +926,8 @@ th.sortable:hover{
         await loadRequests();
       } catch (err) {
         setInlineMsg(msg, err.message || 'Failed to create user', false);
+      } finally {
+        if (createUserSubmitBtn) createUserSubmitBtn.disabled = false;
       }
     });
   }
