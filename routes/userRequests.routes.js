@@ -30,8 +30,10 @@ router.post("/", async (req, res) => {
         lastName: body.lastName,
         email: body.email,
         badgeNumber: body.badgeNumber,
+        radioCallsign: body.radioCallsign,
         agencySuffix: body.agencySuffix,
         otherAgency: body.otherAgency,
+        otherReason: body.otherReason,
       },
     });
 
@@ -49,6 +51,11 @@ router.get("/", requireUserRequestsApi, (req, res) => {
 
 // Admin: delete a request (reject)
 router.delete("/:id", requireUserRequestsApi, (req, res) => {
+  const deleteReason = String(req.query.reason || "").trim().toLowerCase();
+  const isApproveCleanup =
+    deleteReason === "approved" ||
+    deleteReason === "approve" ||
+    deleteReason === "created";
   const before = userRequestsSvc
     .listRequestsForUser(req.authentikUser)
     .find((x) => String(x?.id) === String(req.params.id)) || null;
@@ -56,19 +63,21 @@ router.delete("/:id", requireUserRequestsApi, (req, res) => {
   const ok = userRequestsSvc.deleteRequestForUser(req.params.id, req.authentikUser);
   if (!ok) return res.status(404).json({ error: "Not found" });
 
-  auditSvc.logEvent({
-    actor: req.authentikUser || null,
-    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
-    action: "REJECT_ACCESS_REQUEST",
-    targetType: "user_request",
-    targetId: String(req.params.id),
-    details: {
-      request: before,
-      summary: before
-        ? `Rejected access request for ${before.firstName || ""} ${before.lastName || ""} (${before.email || "no email"}).`
-        : "Rejected access request.",
-    },
-  });
+  if (!isApproveCleanup) {
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "REJECT_ACCESS_REQUEST",
+      targetType: "user_request",
+      targetId: String(req.params.id),
+      details: {
+        request: before,
+        summary: before
+          ? `Rejected access request for ${before.firstName || ""} ${before.lastName || ""} (${before.email || "no email"}).`
+          : "Rejected access request.",
+      },
+    });
+  }
 
   return res.json({ success: true });
 });

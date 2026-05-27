@@ -914,7 +914,10 @@ th.sortable:hover{
         if (!res.ok) throw new Error(out.error?.message || out.error || 'Failed to create user');
 
         if (requestId) {
-          await fetch('/api/user-requests/' + encodeURIComponent(requestId), { method: 'DELETE' });
+          await fetch(
+            '/api/user-requests/' + encodeURIComponent(requestId) + '?reason=approved',
+            { method: 'DELETE' }
+          );
         }
 
         // Confirmation message
