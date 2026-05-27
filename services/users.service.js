@@ -752,6 +752,22 @@ async function emailPasswordChanged(user) {
   await emailSvc.sendMail({ to, subject, text, html });
 }
 
+function diffGroupIds(beforeIds, afterIds) {
+  const beforeSet = new Set(
+    (Array.isArray(beforeIds) ? beforeIds : [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean)
+  );
+  const afterSet = new Set(
+    (Array.isArray(afterIds) ? afterIds : [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean)
+  );
+  const addedIds = [...afterSet].filter((id) => !beforeSet.has(id));
+  const removedIds = [...beforeSet].filter((id) => !afterSet.has(id));
+  return { addedIds, removedIds };
+}
+
 async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
   let u = user;
   try {
@@ -764,9 +780,12 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
   const to = safeMailTo(u);
   if (!to) return;
 
-  const [beforeNames, afterNames] = await Promise.all([
-    resolveGroupNames(beforeIds),
-    resolveGroupNames(afterIds),
+  const { addedIds, removedIds } = diffGroupIds(beforeIds, afterIds);
+  if (!addedIds.length && !removedIds.length) return;
+
+  const [addedNames, removedNames] = await Promise.all([
+    resolveGroupNames(addedIds),
+    resolveGroupNames(removedIds),
   ]);
 
   const attrs = u?.attributes || {};
@@ -801,10 +820,18 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
   const subject = "TAK Groups Updated";
   const displayName = String(u?.name || "").trim() || "there";
   const { lastName, lastNameUpper, firstName } = parseName(displayName);
-  const beforeGroupLabels = beforeNames.map(stripGroupNamePrefixesForDisplay);
-  const afterGroupLabels = afterNames.map(stripGroupNamePrefixesForDisplay);
-  const beforeGroupsCsv = beforeGroupLabels.length ? beforeGroupLabels.join(", ") : "(none)";
-  const afterGroupsCsv = afterGroupLabels.length ? afterGroupLabels.join(", ") : "(none)";
+  const addedGroupLabels = addedNames
+    .map(stripGroupNamePrefixesForDisplay)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  const removedGroupLabels = removedNames
+    .map(stripGroupNamePrefixesForDisplay)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  const addedGroupsCsv = addedGroupLabels.length ? addedGroupLabels.join(", ") : "(none)";
+  const removedGroupsCsv = removedGroupLabels.length
+    ? removedGroupLabels.join(", ")
+    : "(none)";
 
   const takPortalPublicUrl = getTakPortalPublicUrl();
   const takPortalBlock = buildTakPortalBlock({
@@ -838,8 +865,8 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
     lastNameUpper,
     firstName,
     username: String(u?.username || ""),
-    beforeGroupsCsv,
-    afterGroupsCsv,
+    addedGroupsCsv,
+    removedGroupsCsv,
     badgeNumber,
     agencyAbbreviation,
     agencyColor,
