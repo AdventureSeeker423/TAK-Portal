@@ -254,6 +254,43 @@ function normalizedMandatory(value) {
   return value === true || String(value || "").toLowerCase() === "true";
 }
 
+function normalizeCustomSignerFields(value) {
+  const rawList = Array.isArray(value)
+    ? value
+    : value === undefined || value === null
+      ? []
+      : [value];
+  const seen = new Set();
+  const out = [];
+  for (const entry of rawList) {
+    const label = normalizeText(entry);
+    if (!label) continue;
+    const normalizedKey = label.toLowerCase();
+    if (seen.has(normalizedKey)) continue;
+    seen.add(normalizedKey);
+    out.push(label.slice(0, 80));
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function normalizeCustomFieldValues(value, labels) {
+  const rawList = Array.isArray(value)
+    ? value
+    : value === undefined || value === null
+      ? []
+      : [value];
+  const out = [];
+  const safeLabels = normalizeCustomSignerFields(labels);
+  for (let index = 0; index < safeLabels.length; index += 1) {
+    out.push({
+      label: safeLabels[index],
+      value: normalizeText(rawList[index]).slice(0, 200),
+    });
+  }
+  return out;
+}
+
 function sortVersions(versions) {
   return (Array.isArray(versions) ? versions : [])
     .slice()
@@ -301,6 +338,7 @@ function ensureVersionShape(versionRecord) {
     activeBy: versionRecord?.activeBy || versionRecord?.createdBy || null,
     previousAt: versionRecord?.previousAt || null,
     previousBy: versionRecord?.previousBy || null,
+    customSignerFields: normalizeCustomSignerFields(versionRecord?.customSignerFields),
     signatures: Array.isArray(versionRecord?.signatures) ? versionRecord.signatures : [],
   };
 }
@@ -849,6 +887,9 @@ function buildVersionInput(input, existingVersionRecord) {
     contentType,
     html: input?.html || "",
     file: input?.file || null,
+    customSignerFields: normalizeCustomSignerFields(
+      input?.customFieldLabels ?? existingVersionRecord?.customSignerFields
+    ),
   };
 }
 
@@ -858,6 +899,7 @@ function createVersionRecord({
   contentPath,
   contentSha256,
   originalFileName,
+  customSignerFields,
   actor,
 }) {
   const now = nowIso();
@@ -875,6 +917,7 @@ function createVersionRecord({
     updatedBy: actor?.uid || actor?.username || null,
     activeAt: now,
     activeBy: actor?.uid || actor?.username || null,
+    customSignerFields: normalizeCustomSignerFields(customSignerFields),
     signatures: [],
   });
 }
@@ -954,6 +997,7 @@ function createStream({
         contentPath: buildRelativeDataPath(persisted.absPath),
         contentSha256: persisted.contentSha256,
         originalFileName: persisted.originalFileName,
+        customSignerFields: versionInput.customSignerFields,
         actor,
       }),
     ],
@@ -984,6 +1028,7 @@ function createNextVersion({ mouId, actor }) {
       contentPath: buildRelativeDataPath(copied.absPath),
       contentSha256: copied.contentSha256,
       originalFileName: copied.originalFileName,
+      customSignerFields: latest?.customSignerFields,
       actor,
     })
   );
@@ -1029,6 +1074,7 @@ function updateVersion({
   stream.mandatory = update.mandatory;
   stream.updatedAt = now;
   stream.updatedBy = actor?.uid || actor?.username || null;
+  versionRecord.customSignerFields = update.customSignerFields;
 
   if (
     update.file ||
@@ -1391,6 +1437,7 @@ function getVersionContent(mouId, version) {
     contentType,
     sourceText: contentType === "pdf" ? "" : readHtmlContent(versionRecord),
     html: contentType === "pdf" ? "" : renderDocumentHtml(versionRecord),
+    customSignerFields: normalizeCustomSignerFields(versionRecord.customSignerFields),
     fileName: normalizeText(
       versionRecord.originalFileName ||
         `${stream.slug || "mou"}-${versionRecord.version}.${getFileExtensionForContentType(contentType)}`
@@ -1596,6 +1643,18 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
             `  <p><a href="${uploadedSignedCopyHref}" target="_blank" rel="noopener noreferrer">Download uploaded signed document</a></p>`,
             "</div>",
           ].join("\n");
+  const customFieldLines = Array.isArray(signatureRecord?.customFieldValues)
+    ? signatureRecord.customFieldValues
+        .map((entry) => ({
+          label: escapeHtml(entry?.label || ""),
+          value: escapeHtml(entry?.value || ""),
+        }))
+        .filter((entry) => entry.label)
+        .map(
+          (entry) =>
+            `      <div class="signature-line"><strong>${entry.label}:</strong> ${entry.value || "______________________________"}</div>`
+        )
+    : [];
 
   return [
     "<style>",
@@ -1624,6 +1683,7 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
         : '      <div class="signature-image" style="padding:12px 0;">E-signed document.</div>',
     `      <div class="signature-line"><strong>${escapeHtml(signatureRecord.attestationText || signatureRecord.signerDisplayName)}</strong></div>`,
     `      <div class="signature-line">${escapeHtml(signatureRecord.signerStatusAtSign || "Agency Administrator")}</div>`,
+    ...customFieldLines,
     `      <div class="signature-line">${escapeHtml(signatureRecord.agencyNameAtSign)}</div>`,
     `      <div class="signature-line">Signed ${escapeHtml(signatureRecord.signedAt)}</div>`,
     "    </div>",
@@ -1670,6 +1730,15 @@ function writeSignatureSection(doc, signatureRecord) {
   doc
     .fontSize(11)
     .text(normalizeText(signatureRecord?.signerStatusAtSign) || "Agency Administrator");
+  const customFieldValues = Array.isArray(signatureRecord?.customFieldValues)
+    ? signatureRecord.customFieldValues
+    : [];
+  for (const customField of customFieldValues) {
+    const label = normalizeText(customField?.label);
+    if (!label) continue;
+    const value = normalizeText(customField?.value);
+    doc.text(`${label}: ${value || "______________________________"}`);
+  }
   doc.text(normalizeText(signatureRecord?.agencyNameAtSign) || "");
   doc.text(`Signed ${normalizeText(signatureRecord?.signedAt) || ""}`);
 }
@@ -1780,6 +1849,7 @@ function signVersion({
   signerDisplayName,
   signerStatusAtSign,
   attestationText,
+  customFieldValues,
   signatureDataUrl,
   uploadedSignedCopyFile,
   ip,
@@ -1801,6 +1871,10 @@ function signVersion({
   const safeSigner = normalizeText(signerDisplayName);
   const safeStatus = normalizeText(signerStatusAtSign) || "Agency Administrator";
   const safeAttestation = normalizeText(attestationText);
+  const normalizedCustomFieldValues = normalizeCustomFieldValues(
+    customFieldValues,
+    versionRecord?.customSignerFields
+  );
   const pngBuffer = parseSignatureDataUrl(signatureDataUrl);
 
   requireNonEmpty(safeAgencySuffix, "Agency");
@@ -1854,6 +1928,7 @@ function signVersion({
       store.getSignedHtmlPath(mouId, safeAgencySuffix, versionRecord.version)
     ),
     attestationText: safeAttestation,
+    customFieldValues: normalizedCustomFieldValues,
     signatureImageDataUrl: pngBuffer
       ? `data:image/png;base64,${pngBuffer.toString("base64")}`
       : "",

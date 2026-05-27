@@ -1352,6 +1352,47 @@ label.btn {
     margin-right: auto;
 }
 
+.mouCustomFieldEditor {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px;
+    background: color-mix(in srgb, var(--panel) 94%, #0f172a 6%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mouCustomFieldEditor__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.mouCustomFieldEditor__rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mouCustomFieldEditor__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.mouCustomFieldEditor__row .btn {
+    width: auto;
+}
+
+@media (max-width: 900px) {
+    .mouCustomFieldEditor__row {
+        grid-template-columns: 1fr;
+    }
+}
+
 .mouAgencyCheckboxGrid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

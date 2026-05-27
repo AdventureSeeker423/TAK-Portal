@@ -85,12 +85,26 @@ function toErrorRedirect(res, url, err) {
 function triggerSignedGlobalAdminNotification(req, result, signMethod) {
   void Promise.resolve()
     .then(async () => {
-      await mouScheduler.sendSignedNotificationToGlobalAdmins({
+      const notifyResult = await mouScheduler.sendSignedNotificationToGlobalAdmins({
         stream: result?.stream,
         version: result?.version,
         signature: result?.signature,
         signMethod,
       });
+      if (notifyResult?.sent) return;
+      if (notifyResult?.skipped) {
+        console.warn("[MOU_SIGN] Global admin notification skipped", {
+          mouId: result?.stream?.mouId || null,
+          version: result?.version?.version || null,
+          agencyId: result?.signature?.agencyId || null,
+          signMethod,
+          reason: notifyResult.reason || "Unknown reason",
+        });
+        return;
+      }
+      throw new Error(
+        notifyResult?.error || "Failed to send signed document notification to global admins."
+      );
     })
     .catch((notifyErr) => {
       console.error("[MOU_SIGN] Global admin notification failure", {
@@ -337,6 +351,9 @@ function buildAdminStreamRow(stream) {
             title: stream.title,
             contentType: editorContent.contentType,
             sourceText: editorContent.contentType === "pdf" ? "" : editorContent.sourceText,
+            customSignerFields: Array.isArray(editorContent.customSignerFields)
+              ? editorContent.customSignerFields
+              : [],
             fileName: editorContent.fileName,
             fileUrl: editorUrls?.fileUrl || "",
             downloadUrl: editorUrls?.downloadUrl || "",
@@ -716,6 +733,7 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
       signerDisplayName: req.body?.attestationText || req.authentikUser?.displayName || req.authentikUser?.username,
       signerStatusAtSign: req.body?.signerRole || signerStatus,
       attestationText: req.body?.attestationText,
+      customFieldValues: req.body?.customFieldValues,
       signatureDataUrl: req.body?.signatureDataUrl,
       uploadedSignedCopyFile: signMethod === "upload" ? req.file || null : null,
       ...requestMeta(req),
@@ -779,6 +797,7 @@ router.post("/admin/mou/:mouId/signatures/upload/:agencyId", requireMouEnabled, 
       signerDisplayName: req.body?.attestationText || req.authentikUser?.displayName || req.authentikUser?.username,
       signerStatusAtSign: req.body?.signerRole || signerStatus,
       attestationText: req.body?.attestationText,
+      customFieldValues: req.body?.customFieldValues,
       signatureDataUrl: "",
       uploadedSignedCopyFile: req.file,
       ...requestMeta(req),
@@ -986,6 +1005,7 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
       html: req.body?.html,
       file: req.file || null,
       contentType: req.body?.contentType,
+      customFieldLabels: req.body?.customFieldLabels,
       reminderDays: req.body?.reminderDays,
       mandatory: true,
       actor: req.authentikUser,
@@ -1296,6 +1316,7 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
       html: req.body?.html,
       file: req.file || null,
       contentType: req.body?.contentType,
+      customFieldLabels: req.body?.customFieldLabels,
       reminderDays: req.body?.reminderDays,
       mandatory: true,
       actor: req.authentikUser,
@@ -1369,6 +1390,7 @@ router.post("/admin/mou/:mouId/:version/save-as-new", requireMouEnabled, require
         html: req.body?.html,
         file: req.file || null,
         contentType: req.body?.contentType,
+        customFieldLabels: req.body?.customFieldLabels,
         reminderDays: req.body?.reminderDays,
         mandatory: true,
         actor: req.authentikUser,

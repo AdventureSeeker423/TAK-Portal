@@ -112,6 +112,7 @@
 <% const signingAgencyName = firstPendingAgency ? firstPendingAgency.name : (currentAgency ? currentAgency.name : "your agency"); %>
 <% const showSignedEvidence = !!(currentAgencySignature && signedEvidenceHtml); %>
 <% const activeDownloadUrl = showSignedEvidence ? signedEvidenceDownloadUrl : downloadUrl; %>
+<% const customSignerFields = Array.isArray(version && version.customSignerFields) ? version.customSignerFields : []; %>
 
 <main
   class="main"
@@ -177,6 +178,9 @@
           <div style="margin:0 0 12px 0;">Signature: ________________________________________________</div>
           <div style="margin:0 0 12px 0;">Printed Name: <span id="printSignerName">_____________________________________________</span></div>
           <div style="margin:0 0 12px 0;">Position / Role: <span id="printSignerRole">____________________________________________</span></div>
+          <% customSignerFields.forEach(function (customFieldLabel, customFieldIndex) { %>
+            <div style="margin:0 0 12px 0;"><%= customFieldLabel %>: <span data-print-custom-value="<%= customFieldIndex %>">____________________________________________</span></div>
+          <% }); %>
           <div style="margin:0;">Date: ________________________________</div>
         </div>
       <% } %>
@@ -218,6 +222,22 @@
               Position / Role
               <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" <%= hasPendingAgency ? "required" : "disabled" %> />
             </label>
+
+            <% customSignerFields.forEach(function (customFieldLabel, customFieldIndex) { %>
+              <label style="margin-top:12px;display:block;">
+                <%= customFieldLabel %>
+                <input
+                  type="text"
+                  name="customFieldValues"
+                  data-custom-signer-input
+                  data-custom-label="<%= customFieldLabel %>"
+                  data-custom-index="<%= customFieldIndex %>"
+                  placeholder="Enter <%= customFieldLabel %>"
+                  style="width:100%;"
+                  <%= hasPendingAgency ? "" : "disabled" %>
+                />
+              </label>
+            <% }); %>
           </div>
         </div>
 
@@ -272,12 +292,18 @@
   var signerFieldsWrap = form ? form.querySelector("[data-signer-fields]") : null;
   var signerNameInput = form ? form.querySelector("input[name='attestationText']") : null;
   var signerRoleInput = form ? form.querySelector("input[name='signerRole']") : null;
+  var customSignerInputs = form
+    ? Array.from(form.querySelectorAll("[data-custom-signer-input]"))
+    : [];
   var signedCopyInput = document.getElementById("signedCopyFile");
   var signMethodModeInput = document.getElementById("signMethodMode");
   var signMethodToggleButtons = form ? Array.from(form.querySelectorAll("[data-sign-method-toggle]")) : [];
   var signMethodPanels = form ? Array.from(form.querySelectorAll("[data-sign-method-panel]")) : [];
   var printSignerName = document.getElementById("printSignerName");
   var printSignerRole = document.getElementById("printSignerRole");
+  var printCustomValueFields = Array.from(
+    document.querySelectorAll("[data-print-custom-value]")
+  );
   var documentSection = document.getElementById("mouDocumentSection");
   var documentShell = documentSection ? documentSection.querySelector(".mouDocumentShell") : null;
   var activeDownloadUrl = mainEl ? String(mainEl.getAttribute("data-active-download-url") || "") : "";
@@ -319,6 +345,9 @@
       if (signerRoleInput && signerRoleInput.hasAttribute("required")) {
         signerRoleInput.disabled = !showSignerFields;
       }
+      customSignerInputs.forEach(function (input) {
+        input.disabled = !showSignerFields;
+      });
     }
     updateSignerFieldPlaceholders();
     setSignMethodMessage("");
@@ -371,6 +400,12 @@
     if (printSignerRole) {
       printSignerRole.textContent = getSignerRoleValue() || "____________________________________________";
     }
+    printCustomValueFields.forEach(function (field) {
+      var idx = Number.parseInt(String(field.getAttribute("data-print-custom-value") || "-1"), 10);
+      var input = Number.isFinite(idx) && idx >= 0 ? customSignerInputs[idx] : null;
+      var value = input ? String(input.value || "").trim() : "";
+      field.textContent = value || "____________________________________________";
+    });
   }
 
   function drawPdfFooter(doc, margin, y, pageWidth) {
@@ -387,6 +422,13 @@
     y += 20;
     doc.text("Position / Role: " + (getSignerRoleValue() || "____________________________________________"), margin, y);
     y += 20;
+    customSignerInputs.forEach(function (input) {
+      var label = String(input.getAttribute("data-custom-label") || "").trim();
+      if (!label) return;
+      var value = String(input.value || "").trim();
+      doc.text(label + ": " + (value || "____________________________________________"), margin, y);
+      y += 20;
+    });
     doc.text("Date: ________________________________", margin, y);
   }
 
@@ -493,6 +535,9 @@
 
   if (signerNameInput) signerNameInput.addEventListener("input", updatePrintableFooterFields);
   if (signerRoleInput) signerRoleInput.addEventListener("input", updatePrintableFooterFields);
+  customSignerInputs.forEach(function (input) {
+    input.addEventListener("input", updatePrintableFooterFields);
+  });
   updateSignerFieldPlaceholders();
   updatePrintableFooterFields();
 

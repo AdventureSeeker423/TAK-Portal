@@ -52,6 +52,21 @@
             <input type="file" name="contentFile" accept="application/pdf,.pdf" />
           </label>
 
+          <div class="mouCustomFieldEditor" data-custom-field-editor>
+            <div class="mouCustomFieldEditor__header">
+              <strong>Additional Signer Fields</strong>
+              <button class="btn secondary" type="button" data-custom-field-add>Add Field</button>
+            </div>
+            <div class="mouCustomFieldEditor__rows" data-custom-field-rows></div>
+            <p class="muted" style="margin:0;">Each field adds an extra text input on the sign form and a line in signed/printable output.</p>
+            <template data-custom-field-template>
+              <div class="mouCustomFieldEditor__row" data-custom-field-row>
+                <input type="text" name="customFieldLabels" placeholder="Field label (e.g. Badge Number)" maxlength="80" />
+                <button class="btn danger" type="button" data-custom-field-remove>Remove</button>
+              </div>
+            </template>
+          </div>
+
           <div class="mouFormFooter">
             <button class="btn success" type="submit">Create New Document</button>
           </div>
@@ -533,6 +548,28 @@
                 <% } %>
               </label>
 
+              <div class="mouCustomFieldEditor" data-custom-field-editor>
+                <div class="mouCustomFieldEditor__header">
+                  <strong>Additional Signer Fields</strong>
+                  <button class="btn secondary" type="button" data-custom-field-add>Add Field</button>
+                </div>
+                <div class="mouCustomFieldEditor__rows" data-custom-field-rows>
+                  <% (Array.isArray(editor.customSignerFields) ? editor.customSignerFields : []).forEach(function (customFieldLabel) { %>
+                    <div class="mouCustomFieldEditor__row" data-custom-field-row>
+                      <input type="text" name="customFieldLabels" value="<%= customFieldLabel %>" placeholder="Field label (e.g. Badge Number)" maxlength="80" />
+                      <button class="btn danger" type="button" data-custom-field-remove>Remove</button>
+                    </div>
+                  <% }); %>
+                </div>
+                <p class="muted" style="margin:0;">Each field adds an extra text input on the sign form and a line in signed/printable output.</p>
+                <template data-custom-field-template>
+                  <div class="mouCustomFieldEditor__row" data-custom-field-row>
+                    <input type="text" name="customFieldLabels" placeholder="Field label (e.g. Badge Number)" maxlength="80" />
+                    <button class="btn danger" type="button" data-custom-field-remove>Remove</button>
+                  </div>
+                </template>
+              </div>
+
               <div class="msg" data-editor-status></div>
               <div class="mouFormFooter">
                 <button class="btn secondary" type="button" data-mou-preview-button>Preview</button>
@@ -762,19 +799,74 @@
     sync();
   }
 
+  function getCustomFieldLabels(editorRoot) {
+    if (!editorRoot) return [];
+    return Array.from(
+      editorRoot.querySelectorAll("[data-custom-field-row] input[name='customFieldLabels']")
+    )
+      .map(function (input) { return String(input.value || "").trim(); })
+      .filter(Boolean);
+  }
+
+  function initCustomFieldEditor(editorRoot, options) {
+    if (!editorRoot || editorRoot.__mouCustomFieldBound) return;
+    editorRoot.__mouCustomFieldBound = true;
+    var rowsWrap = editorRoot.querySelector("[data-custom-field-rows]");
+    var addBtn = editorRoot.querySelector("[data-custom-field-add]");
+    var template = editorRoot.querySelector("[data-custom-field-template]");
+    var onChange = options && typeof options.onChange === "function"
+      ? options.onChange
+      : function () {};
+
+    function bindRow(row) {
+      if (!row) return;
+      var input = row.querySelector("input[name='customFieldLabels']");
+      var removeBtn = row.querySelector("[data-custom-field-remove]");
+      if (input) input.addEventListener("input", onChange);
+      if (removeBtn) {
+        removeBtn.addEventListener("click", function () {
+          row.remove();
+          onChange();
+        });
+      }
+    }
+
+    function addRow(value) {
+      if (!rowsWrap || !template || !template.content.firstElementChild) return;
+      var row = template.content.firstElementChild.cloneNode(true);
+      var input = row.querySelector("input[name='customFieldLabels']");
+      if (input && value) input.value = String(value);
+      rowsWrap.appendChild(row);
+      bindRow(row);
+      onChange();
+    }
+
+    Array.from(rowsWrap ? rowsWrap.querySelectorAll("[data-custom-field-row]") : []).forEach(bindRow);
+    if (addBtn) {
+      addBtn.addEventListener("click", function () {
+        addRow("");
+      });
+    }
+    editorRoot.__mouAddCustomFieldRow = addRow;
+  }
+
   function syncCreateFormDraft(form) {
     if (!form) return;
     var titleInput = form.querySelector('input[name="title"]');
     var contentSelect = form.querySelector("[data-mou-content-select]");
     var richtextArea = form.querySelector("[data-mou-richtext-input]");
+    var customFieldEditor = form.querySelector("[data-custom-field-editor]");
     var successVisible = !!document.querySelector(".mouCallout .msg.ok");
     var errorVisible = !!document.querySelector(".mouCallout--danger .msg.bad");
+
+    initCustomFieldEditor(customFieldEditor, { onChange: saveDraft });
 
     function saveDraft() {
       writeCreateDraft({
         title: titleInput ? String(titleInput.value || "") : "",
         contentType: contentSelect ? String(contentSelect.value || "markdown") : "markdown",
         html: richtextArea ? String(richtextArea.value || "") : "",
+        customFieldLabels: getCustomFieldLabels(customFieldEditor),
       });
     }
 
@@ -793,6 +885,17 @@
         if (richtextArea && !String(richtextArea.value || "")) {
           richtextArea.value = String(draft.html || "");
         }
+        if (customFieldEditor && Array.isArray(draft.customFieldLabels)) {
+          var addCustomFieldRow = customFieldEditor.__mouAddCustomFieldRow;
+          if (typeof addCustomFieldRow === "function") {
+            Array.from(customFieldEditor.querySelectorAll("[data-custom-field-row]")).forEach(function (row) {
+              row.remove();
+            });
+            draft.customFieldLabels.forEach(function (label) {
+              addCustomFieldRow(label);
+            });
+          }
+        }
       }
       if (errorVisible || draft) {
         saveDraft();
@@ -808,6 +911,7 @@
   function syncEditorForm(form) {
     if (!form) return;
     syncContentFields(form);
+    initCustomFieldEditor(form.querySelector("[data-custom-field-editor]"), { onChange: function () {} });
     var overlay = form.closest(".modalOverlay");
     var statusEl = form.querySelector("[data-editor-status]");
     var previewBtn = form.querySelector("[data-mou-preview-button]");
