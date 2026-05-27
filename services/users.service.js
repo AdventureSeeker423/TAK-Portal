@@ -140,6 +140,14 @@ async function resolveGroupNames(groupIds) {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function stripGroupNamePrefixesForDisplay(groupName) {
+  let out = String(groupName || "").trim();
+  if (!out) return out;
+  out = out.replace(/^tak[_-]/i, "");
+  out = out.replace(/^authentik[_-]/i, "");
+  return out.trim();
+}
+
 function safeMailTo(user) {
   const to = String(user?.email || "").trim();
   return to || null;
@@ -793,8 +801,10 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
   const subject = "TAK Groups Updated";
   const displayName = String(u?.name || "").trim() || "there";
   const { lastName, lastNameUpper, firstName } = parseName(displayName);
-  const beforeGroupsCsv = beforeNames.length ? beforeNames.join(", ") : "(none)";
-  const afterGroupsCsv = afterNames.length ? afterNames.join(", ") : "(none)";
+  const beforeGroupLabels = beforeNames.map(stripGroupNamePrefixesForDisplay);
+  const afterGroupLabels = afterNames.map(stripGroupNamePrefixesForDisplay);
+  const beforeGroupsCsv = beforeGroupLabels.length ? beforeGroupLabels.join(", ") : "(none)";
+  const afterGroupsCsv = afterGroupLabels.length ? afterGroupLabels.join(", ") : "(none)";
 
   const takPortalPublicUrl = getTakPortalPublicUrl();
   const takPortalBlock = buildTakPortalBlock({
