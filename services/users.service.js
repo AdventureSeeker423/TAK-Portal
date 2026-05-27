@@ -3013,10 +3013,12 @@ async function fetchUsersByGroupId(groupId, options = {}) {
   let users = [];
   const pageSize = 200;
   let page = 1;
-  let hasNext = true;
+  let url =
+    `/core/users/?page=${page}&page_size=${pageSize}` +
+    `&groups_by_pk=${encodeURIComponent(gid)}` +
+    "&include_groups=false&include_roles=false";
 
-  while (hasNext) {
-    const url = `${getString("AUTHENTIK_URL", "")}/api/v3/core/users/?page=${page}&page_size=${pageSize}&groups_by_pk=${encodeURIComponent(gid)}&include_groups=false&include_roles=false`;
+  while (url) {
     const res = await api.get(url);
     const data = res?.data || {};
     const results = Array.isArray(data.results) ? data.results : [];
@@ -3025,9 +3027,14 @@ async function fetchUsersByGroupId(groupId, options = {}) {
     const pagination = data.pagination || {};
     if (pagination && pagination.next) {
       page = pagination.next;
-      hasNext = true;
+      url =
+        `/core/users/?page=${page}&page_size=${pageSize}` +
+        `&groups_by_pk=${encodeURIComponent(gid)}` +
+        "&include_groups=false&include_roles=false";
+    } else if (data.next) {
+      url = String(data.next).replace(`${getString("AUTHENTIK_URL", "")}/api/v3`, "");
     } else {
-      hasNext = false;
+      url = null;
     }
   }
 
