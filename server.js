@@ -18,6 +18,7 @@ const emailTemplatesSvc = require("./services/emailTemplates.service");
 const qrSvc = require("./services/qr.service");
 const agenciesStore = require("./services/agencies.service");
 const userRequestsSvc = require("./services/userRequests.service");
+const userRequestsRoutes = require("./routes/userRequests.routes");
 const auditSvc = require("./services/auditLog.service");
 const permsSvc = require("./services/permissions.service");
 const mouSvc = require("./services/mouService");
@@ -209,15 +210,28 @@ const PUBLIC_PATHS = new Set([
   "/request-access/confirmation",
 ]);
 
+function isPublicPortalBypass(req) {
+  const p = (req.path || "").replace(/\/+$/, "") || "/";
+  const method = String(req.method || "").toUpperCase();
+  if (PUBLIC_PATHS.has(p)) return true;
+  // Public missing-person locator pages (not the admin /locate console)
+  if (p.startsWith("/locate/") && p !== "/locate") return true;
+  // Anonymous ping API for locator share links
+  if (p.startsWith("/api/public/locate/")) return true;
+  // Tokenized access-request review (under /request-access* for Caddy public bypass)
+  if (method === "GET" && /^\/request-access\/[a-f0-9]{32,64}$/i.test(p)) return true;
+  if (method === "GET" && /^\/request-access\/[a-f0-9]{32,64}\/(data|meta)$/i.test(p)) {
+    return true;
+  }
+  if (method === "POST" && /^\/request-access\/[a-f0-9]{32,64}\/(approve|reject)$/i.test(p)) {
+    return true;
+  }
+  return false;
+}
+
 app.use((req, res, next) => {
   try {
-    // Normalize path (strip trailing slash except root)
-    const p = (req.path || "").replace(/\/+$/, "") || "/";
-    if (PUBLIC_PATHS.has(p)) return next();
-    // Public missing-person locator pages (not the admin /locate console)
-    if (p.startsWith("/locate/") && p !== "/locate") return next();
-    // Anonymous ping API for locator share links
-    if (p.startsWith("/api/public/locate/")) return next();
+    if (isPublicPortalBypass(req)) return next();
   } catch (_) {
     // fall through
   }
@@ -356,7 +370,7 @@ app.use("/api/qr", require("./routes/qr.routes"));
 app.use("/api/setup-my-device", require("./routes/setupDevice.routes"));
 app.use("/api/mutual-aid", require("./routes/mutualAid.routes"));
 app.use("/api/tak", require("./routes/takMetrics.routes"));
-app.use("/api/user-requests", require("./routes/userRequests.routes"));
+app.use("/api/user-requests", userRequestsRoutes);
 // Allow authenticated users on the Plugins page to download plugin files.
 app.get("/api/plugins/:id/download", (req, res) => {
   try {
@@ -1144,9 +1158,11 @@ app.get("/request-access/confirmation", (req, res) => {
   return res.render("request-access-confirmation");
 });
 
+userRequestsRoutes.registerPublicReviewRoutes(app);
+
 app.get("/request-access/:reviewToken", (req, res, next) => {
   const token = String(req.params.reviewToken || "").trim();
-  if (!/^[a-f0-9]{32,64}$/i.test(token)) return next();
+  if (!userRequestsRoutes.isValidReviewToken(token)) return next();
   return res.render("request-access-review", {
     reviewToken: token,
   });

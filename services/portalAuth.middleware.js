@@ -68,11 +68,12 @@ function portalAuthMiddleware(req, res, next) {
   // admin-only listing endpoint.
   const isPublicAccessRequestSubmit =
     normalizedPath === "/api/user-requests" && method === "POST";
-  const isPublicAccessRequestReviewPage =
-    method === "GET" && /^\/request-access\/[a-f0-9]{32,64}$/i.test(normalizedPath);
-  const isPublicAccessRequestReviewApi =
-    normalizedPath.startsWith("/api/user-requests/review/") &&
-    (method === "GET" || method === "POST");
+  const isPublicAccessRequestReview =
+    (method === "GET" && /^\/request-access\/[a-f0-9]{32,64}$/i.test(normalizedPath)) ||
+    (method === "GET" &&
+      /^\/request-access\/[a-f0-9]{32,64}\/(data|meta)$/i.test(normalizedPath)) ||
+    (method === "POST" &&
+      /^\/request-access\/[a-f0-9]{32,64}\/(approve|reject)$/i.test(normalizedPath));
 
   const isPluginDownloadApi =
     method === "GET" &&
@@ -119,16 +120,13 @@ function portalAuthMiddleware(req, res, next) {
 
   const groupsHeader = req.headers["x-authentik-groups"] || "";
 
+  // Tokenized review links work without portal login (even if a session exists).
+  if (isPublicAccessRequestReview) {
+    return next();
+  }
+
   // Allow completely anonymous access to public paths
-  if (
-    !username &&
-    (
-      isPublicPath ||
-      isPublicAccessRequestSubmit ||
-      isPublicAccessRequestReviewPage ||
-      isPublicAccessRequestReviewApi
-    )
-  ) {
+  if (!username && (isPublicPath || isPublicAccessRequestSubmit)) {
     return next();
   }
 
@@ -181,7 +179,7 @@ function portalAuthMiddleware(req, res, next) {
   }
 
   // —— Minimum portal membership: must be in an admin group (when configured) ——
-  if (!isPublicPath) {
+  if (!isPublicPath && !isPublicAccessRequestReview) {
     if (!hasAnyRequired) {
       const isAllowedNonAdminPath =
         normalizedPath === "/setup-my-device" ||

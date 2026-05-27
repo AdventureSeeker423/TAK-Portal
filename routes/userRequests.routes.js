@@ -51,17 +51,25 @@ router.get("/", requireUserRequestsApi, (req, res) => {
   return res.json(list);
 });
 
-router.get("/review/:token", (req, res) => {
-  const request = userRequestsSvc.getByReviewToken(req.params.token);
+function isValidReviewToken(value) {
+  return /^[a-f0-9]{32,64}$/i.test(String(value || "").trim());
+}
+
+function getReviewRequestHandler(req, res) {
+  const token = String(req.params.token || req.params.reviewToken || "").trim();
+  const request = userRequestsSvc.getByReviewToken(token);
   if (!request) return res.status(404).json({ error: "Not found" });
   return res.json({ request });
-});
+}
 
-router.get("/review/:token/meta", async (req, res) => {
+async function getReviewMetaHandler(req, res) {
   try {
-    const request = userRequestsSvc.getByReviewToken(req.params.token);
+    const token = String(req.params.token || req.params.reviewToken || "").trim();
+    const request = userRequestsSvc.getByReviewToken(token);
     if (!request) return res.status(404).json({ error: "Not found" });
-    const agencySuffix = String(req.query.agencySuffix || request.agencySuffix || "").trim().toLowerCase();
+    const agencySuffix = String(req.query.agencySuffix || request.agencySuffix || "")
+      .trim()
+      .toLowerCase();
     const templates = usersSvc.getTemplatesForAgency(agencySuffix);
     const groups = await usersSvc.getAllGroups({ includeHidden: false });
     const agencies = agenciesSvc.load();
@@ -69,11 +77,12 @@ router.get("/review/:token/meta", async (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err?.message || "Failed to load metadata." });
   }
-});
+}
 
-router.post("/review/:token/approve", async (req, res) => {
+async function postReviewApproveHandler(req, res) {
   try {
-    const request = userRequestsSvc.getByReviewToken(req.params.token);
+    const token = String(req.params.token || req.params.reviewToken || "").trim();
+    const request = userRequestsSvc.getByReviewToken(token);
     if (!request) return res.status(404).json({ error: "Not found" });
 
     const payload = req.body || {};
@@ -119,10 +128,11 @@ router.post("/review/:token/approve", async (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err?.message || "Failed to create user." });
   }
-});
+}
 
-router.post("/review/:token/reject", (req, res) => {
-  const request = userRequestsSvc.getByReviewToken(req.params.token);
+function postReviewRejectHandler(req, res) {
+  const token = String(req.params.token || req.params.reviewToken || "").trim();
+  const request = userRequestsSvc.getByReviewToken(token);
   if (!request) return res.status(404).json({ error: "Not found" });
 
   const ok = userRequestsSvc.deleteRequest(request.id);
@@ -144,7 +154,31 @@ router.post("/review/:token/reject", (req, res) => {
   });
 
   return res.json({ success: true });
-});
+}
+
+function requireValidReviewTokenParam(req, res, next) {
+  const token = String(req.params.reviewToken || "").trim();
+  if (!isValidReviewToken(token)) {
+    return res.status(404).json({ error: "Not found" });
+  }
+  return next();
+}
+
+/**
+ * Public review API under /request-access/<token>/… so Caddy's existing
+ * `/request-access*` bypass applies (no /api path in the reverse proxy).
+ */
+function registerPublicReviewRoutes(app) {
+  app.get("/request-access/:reviewToken/data", requireValidReviewTokenParam, getReviewRequestHandler);
+  app.get("/request-access/:reviewToken/meta", requireValidReviewTokenParam, getReviewMetaHandler);
+  app.post("/request-access/:reviewToken/approve", requireValidReviewTokenParam, postReviewApproveHandler);
+  app.post("/request-access/:reviewToken/reject", requireValidReviewTokenParam, postReviewRejectHandler);
+}
+
+router.get("/review/:token", getReviewRequestHandler);
+router.get("/review/:token/meta", getReviewMetaHandler);
+router.post("/review/:token/approve", postReviewApproveHandler);
+router.post("/review/:token/reject", postReviewRejectHandler);
 
 // Admin: delete a request (reject)
 router.delete("/:id", requireUserRequestsApi, (req, res) => {
@@ -180,3 +214,5 @@ router.delete("/:id", requireUserRequestsApi, (req, res) => {
 });
 
 module.exports = router;
+module.exports.registerPublicReviewRoutes = registerPublicReviewRoutes;
+module.exports.isValidReviewToken = isValidReviewToken;

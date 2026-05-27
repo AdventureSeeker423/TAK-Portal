@@ -223,7 +223,7 @@
 
       async function refreshMetaForAgency() {
         const agencySuffix = String(agencySelect.value || "").trim().toLowerCase();
-        const res = await fetch("/api/user-requests/review/" + encodeURIComponent(token) + "/meta?agencySuffix=" + encodeURIComponent(agencySuffix));
+        const res = await fetch("/request-access/" + encodeURIComponent(token) + "/meta?agencySuffix=" + encodeURIComponent(agencySuffix));
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Failed to load templates/groups.");
 
@@ -291,7 +291,7 @@
         approveBtn.disabled = true;
         setMsg("Rejecting request...", "pending");
         try {
-          const res = await fetch("/api/user-requests/review/" + encodeURIComponent(token) + "/reject", {
+          const res = await fetch("/request-access/" + encodeURIComponent(token) + "/reject", {
             method: "POST",
           });
           const out = await res.json();
@@ -323,7 +323,7 @@
         rejectBtn.disabled = true;
         setMsg("User creation in progress...", "pending");
         try {
-          const res = await fetch("/api/user-requests/review/" + encodeURIComponent(token) + "/approve", {
+          const res = await fetch("/request-access/" + encodeURIComponent(token) + "/approve", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -343,7 +343,7 @@
 
       async function init() {
         try {
-          const res = await fetch("/api/user-requests/review/" + encodeURIComponent(token));
+          const res = await fetch("/request-access/" + encodeURIComponent(token) + "/data");
           const out = await res.json();
           if (!res.ok) throw new Error(out.error || "Request not found.");
           reviewRequest = out.request || null;
@@ -361,7 +361,7 @@
           form.badge.value = reviewRequest.badgeNumber || "";
           form.radioCallsign.value = reviewRequest.radioCallsign || "";
 
-          const metaRes = await fetch("/api/user-requests/review/" + encodeURIComponent(token) + "/meta");
+          const metaRes = await fetch("/request-access/" + encodeURIComponent(token) + "/meta");
           const metaOut = await metaRes.json();
           if (!metaRes.ok) throw new Error(metaOut.error || "Failed to load metadata.");
           agenciesCache = Array.isArray(metaOut.agencies) ? metaOut.agencies : [];
