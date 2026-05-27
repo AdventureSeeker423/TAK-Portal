@@ -146,6 +146,56 @@ function rowsToCsv(headers, rows) {
   return `${lines.join("\n")}\n`;
 }
 
+const MAX_AUDIT_TEXT_LENGTH = 20000;
+
+function truncateAuditText(value, maxLength = MAX_AUDIT_TEXT_LENGTH) {
+  const text = String(value || "");
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}\n...[truncated ${text.length - maxLength} chars]`;
+}
+
+function normalizeAuditContentType(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "pdf") return "pdf";
+  if (normalized === "markdown") return "markdown";
+  return "html";
+}
+
+function summarizeFileUpload(file) {
+  if (!file) return null;
+  return {
+    fileName: String(file.originalname || "").trim() || "",
+    mimeType: String(file.mimetype || "").trim() || "application/octet-stream",
+    sizeBytes: Number(file.size || 0) || 0,
+  };
+}
+
+function summarizeMouContent(content) {
+  if (!content) return null;
+  return {
+    contentType: normalizeAuditContentType(content.contentType),
+    fileName: String(content.fileName || "").trim() || "",
+    text: truncateAuditText(content.contentType === "pdf" ? "" : content.sourceText || ""),
+  };
+}
+
+function summarizeEditorInput({ contentType, html }) {
+  const normalizedType = normalizeAuditContentType(contentType);
+  return {
+    contentType: normalizedType,
+    text: truncateAuditText(normalizedType === "pdf" ? "" : String(html || "")),
+  };
+}
+
+function buildMouAuditContentChange({ beforeContent, afterContent, inputContent, uploadFile }) {
+  return {
+    uploadedFile: summarizeFileUpload(uploadFile),
+    before: summarizeMouContent(beforeContent),
+    submitted: summarizeEditorInput(inputContent || {}),
+    after: summarizeMouContent(afterContent),
+  };
+}
+
 function buildSignatureComplianceCsv(signatureRows) {
   return rowsToCsv(
     [
@@ -940,14 +990,27 @@ router.post("/admin/mou", requireMouEnabled, requireMouPermission, requireGlobal
       mandatory: true,
       actor: req.authentikUser,
     });
+    const currentVersion = mouService.getCurrentVersion(stream);
+    const createdContent = currentVersion
+      ? mouService.getVersionContent(stream.mouId, currentVersion.version)
+      : null;
     auditRequest(req, {
       action: "MOU_DOCUMENT_CREATED",
       targetType: "mou",
       targetId: String(stream.mouId),
       details: {
         mouId: stream.mouId,
-        version: 1,
+        version: currentVersion?.version || 1,
         title: stream.title,
+        changes: buildMouAuditContentChange({
+          beforeContent: null,
+          inputContent: {
+            contentType: req.body?.contentType,
+            html: req.body?.html,
+          },
+          uploadFile: req.file || null,
+          afterContent: createdContent,
+        }),
       },
     });
     return res.redirect(`/mou?success=${encodeURIComponent("Document created.")}`);
@@ -1224,6 +1287,7 @@ router.post("/admin/mou/archive/:archiveId/delete", requireMouEnabled, requireMo
 
 router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
+    const beforeContent = mouService.getVersionContent(req.params.mouId, req.params.version);
     mouService.updateVersion({
       mouId: req.params.mouId,
       version: req.params.version,
@@ -1240,6 +1304,7 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
       success: true,
       previewUrl: `/admin/mou/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}/preview`,
     };
+    const afterContent = mouService.getVersionContent(req.params.mouId, req.params.version);
     auditRequest(req, {
       action: "MOU_DOCUMENT_UPDATED",
       targetType: "mou",
@@ -1247,6 +1312,17 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
       details: {
         mouId: req.params.mouId,
         version: Number(req.params.version),
+        titleBefore: beforeContent?.stream?.title || "",
+        titleAfter: afterContent?.stream?.title || "",
+        changes: buildMouAuditContentChange({
+          beforeContent,
+          inputContent: {
+            contentType: req.body?.contentType || beforeContent?.contentType,
+            html: req.body?.html,
+          },
+          uploadFile: req.file || null,
+          afterContent,
+        }),
       },
     });
     if (
@@ -1276,6 +1352,7 @@ router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPerm
 router.post("/admin/mou/:mouId/:version/save-as-new", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   Promise.resolve()
     .then(async () => {
+      const sourceVersionContent = mouService.getVersionContent(req.params.mouId, req.params.version);
       const stream = mouService.createNextVersion({
         mouId: req.params.mouId,
         actor: req.authentikUser,
@@ -1305,6 +1382,7 @@ router.post("/admin/mou/:mouId/:version/save-as-new", requireMouEnabled, require
           actor: req.authentikUser,
         });
       }
+      const savedContent = mouService.getVersionContent(req.params.mouId, currentVersion.version);
       auditRequest(req, {
         action: "MOU_VERSION_CREATED",
         targetType: "mou",
@@ -1312,6 +1390,18 @@ router.post("/admin/mou/:mouId/:version/save-as-new", requireMouEnabled, require
         details: {
           mouId: req.params.mouId,
           version: currentVersion.version,
+          sourceVersion: Number(req.params.version),
+          titleBefore: sourceVersionContent?.stream?.title || "",
+          titleAfter: savedContent?.stream?.title || "",
+          changes: buildMouAuditContentChange({
+            beforeContent: sourceVersionContent,
+            inputContent: {
+              contentType: req.body?.contentType || sourceVersionContent?.contentType,
+              html: req.body?.html,
+            },
+            uploadFile: req.file || null,
+            afterContent: savedContent,
+          }),
         },
       });
       const payload = {
@@ -1420,6 +1510,8 @@ router.post("/admin/mou/:mouId/delete", requireMouEnabled, requireMouPermission,
 
 router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
   try {
+    const beforeAgreement = mouService.getCurrentUserAgreement();
+    const beforeCurrent = beforeAgreement?.current || null;
     const resetToDefault = String(req.body?.resetToDefault || "").toLowerCase() === "true";
     const defaults = mouService.getDefaultUserAgreementTemplate();
     const result = mouService.saveUserAgreement({
@@ -1436,7 +1528,13 @@ router.post("/admin/mou/user-agreement/save", requireMouEnabled, requireMouPermi
       details: {
         version: result.version.version,
         changed: result.changed,
-        enabled: result.enabled,
+        enabledBefore: beforeAgreement?.enabled === true,
+        enabledAfter: result.enabled,
+        resetToDefault,
+        titleBefore: beforeCurrent?.title || "",
+        titleAfter: result.version?.title || "",
+        markdownBefore: truncateAuditText(beforeCurrent?.bodyMarkdown || ""),
+        markdownAfter: truncateAuditText(result.version?.bodyMarkdown || ""),
       },
     });
     return res.redirect(
