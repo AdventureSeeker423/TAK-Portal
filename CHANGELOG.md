@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.25 - 5/29/26
+🐛 `Bug Fix` - Fixes issue with SSH service not functioning properly for non-root users<br>
+🐛 `Bug Fix` - Fixes issue with Locate returning a 404 error due to incorrect API permissions
+
 ### v1.3.24 - 5/27/26
 ✨ `Enhancement` - Added the ability to create custom fields on MOU Documents<br>
 ✨ `Enhancement` - Removed group prefixes from group update emails<br>
