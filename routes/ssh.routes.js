@@ -171,7 +171,10 @@ router.post("/test-connection", async (req, res) => {
     if (!result.ok) {
       return res.status(400).json(result);
     }
-    const priv = await takSshSvc.runRemotePrivilegedCommand("true", 20000);
+    const priv = await takSshSvc.runRemotePrivilegedCommand(
+      "head -c 1 /opt/tak/CoreConfig.xml >/dev/null",
+      20000
+    );
     if (!priv.ok) {
       return res.status(400).json({
         ok: false,

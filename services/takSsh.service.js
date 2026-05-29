@@ -46,6 +46,22 @@ function quoteForSingleQuotedShell(str) {
 const PRIVILEGED_UNAVAILABLE_MSG =
   "SSH connected but privileged commands are not available. In Server Settings, run Generate Key + Handshake again with an account that can sudo (the portal installs passwordless sudo automatically).";
 
+const TAK_CORE_CONFIG_PATH = "/opt/tak/CoreConfig.xml";
+
+/** Shell checks that match commands granted in /etc/sudoers.d/tak-portal (not bare `sudo true`). */
+function shellProbeNopasswdRootAccess() {
+  return `sudo -n cat ${TAK_CORE_CONFIG_PATH} >/dev/null 2>&1`;
+}
+
+function shellProbeNopasswdAsTakUser() {
+  return "sudo -n -u tak id >/dev/null 2>&1";
+}
+
+function shellProbePasswordSudoAccess(password) {
+  const safePass = quoteForSingleQuotedShell(password);
+  return `printf '%s\\n' '${safePass}' | sudo -S -p '' cat ${TAK_CORE_CONFIG_PATH} >/dev/null 2>&1`;
+}
+
 let privilegedModeCache = null;
 
 function clearPrivilegedModeCache() {
@@ -85,6 +101,14 @@ function buildPrivilegedCommand(innerCommand, mode, options = {}) {
     throw new Error(PRIVILEGED_UNAVAILABLE_MSG);
   }
 
+  if (mode.mode === "direct") {
+    if (runAsUser) {
+      throw new Error(
+        "SSH user can access CoreConfig directly but cannot run commands as the tak user. Use an account with sudo or re-run Configure Sudo Access."
+      );
+    }
+    return innerCommand;
+  }
   if (mode.mode === "root") {
     if (runAsUser) return `sudo -u ${runAsUser} ${innerCommand}`;
     return innerCommand;
@@ -121,19 +145,25 @@ async function probePrivilegedMode(connectConfig) {
     return { mode: "root" };
   }
 
-  const nopassRes = await execOverSsh(connectConfig, "sudo -n true", 15000);
-  if (nopassRes.ok) {
+  const canRead = await execOverSsh(connectConfig, `test -r ${TAK_CORE_CONFIG_PATH}`, 15000);
+  const canWrite = await execOverSsh(connectConfig, `test -w ${TAK_CORE_CONFIG_PATH}`, 15000);
+  if (canRead.ok && canWrite.ok) {
+    return { mode: "direct" };
+  }
+
+  const nopassRoot = await execOverSsh(connectConfig, shellProbeNopasswdRootAccess(), 15000);
+  if (nopassRoot.ok) {
+    return { mode: "nopasswd" };
+  }
+
+  const nopassTak = await execOverSsh(connectConfig, shellProbeNopasswdAsTakUser(), 15000);
+  if (nopassTak.ok) {
     return { mode: "nopasswd" };
   }
 
   const sudoPassword = getSudoPasswordFromSettings();
   if (sudoPassword) {
-    const safePass = quoteForSingleQuotedShell(sudoPassword);
-    const passRes = await execOverSsh(
-      connectConfig,
-      `printf '%s\\n' '${safePass}' | sudo -S -p '' true`,
-      20000
-    );
+    const passRes = await execOverSsh(connectConfig, shellProbePasswordSudoAccess(sudoPassword), 20000);
     if (passRes.ok) {
       return { mode: "password", password: sudoPassword };
     }
@@ -236,24 +266,39 @@ async function configureRemoteSudoAccessAfterHandshake({ host, port, username, p
   const install = await installPortalSudoersOnRemote(connect, password, portalUser);
   if (install.ok) {
     clearPrivilegedModeCache();
-    return { ok: true, method: "sudoers" };
+    let verifyConnect = connect;
+    const keyCfg = getTakSshConfig();
+    if (keyCfg && keyCfg.username === portalUser && keyCfg.host === String(host || "").trim()) {
+      verifyConnect = toConnectConfig(keyCfg);
+    }
+    const verified = await execOverSsh(verifyConnect, shellProbeNopasswdRootAccess(), 20000);
+    if (verified.ok) {
+      return { ok: true, method: "sudoers" };
+    }
+    console.warn(
+      "[TAK SSH] sudoers install exited 0 but passwordless verify failed:",
+      verified.message || verified.stderr || install.stderr || "unknown"
+    );
   }
 
-  const safePass = quoteForSingleQuotedShell(password);
-  const passRes = await execOverSsh(
-    connect,
-    `printf '%s\\n' '${safePass}' | sudo -S -p '' true`,
-    20000
-  );
+  const passRes = await execOverSsh(connect, shellProbePasswordSudoAccess(password), 20000);
   if (passRes.ok) {
     return { ok: true, method: "password", sudoPassword: password };
   }
 
   console.warn(
     "[TAK SSH] Could not configure passwordless sudo for portal user:",
-    install.message || install.stderr || "unknown"
+    install.message || install.stderr || passRes.message || passRes.stderr || "unknown"
   );
-  return { ok: false, method: "none", message: install.message || "sudo configuration failed" };
+  return {
+    ok: false,
+    method: "none",
+    message:
+      install.message ||
+      passRes.message ||
+      passRes.stderr ||
+      "sudo configuration failed (install and password sudo checks both failed)",
+  };
 }
 
 function sanitizeIntegrationUsername(username) {
