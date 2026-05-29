@@ -1130,7 +1130,20 @@
 
         <div class="settings-body">
           <div class="grid2">
-            <% renderField("SERVER_NAME","Server Name Abbreviation","Server Abbreviation to add custom branding to the portal."); %>
+            <label class="settings-field">
+              <span class="settings-label">Server Name Abbreviation</span>
+              <input
+                type="text"
+                id="serverNameAbbrevInput"
+                name="settings[SERVER_NAME]"
+                value="<%= (typeof settings.SERVER_NAME === 'string' ? settings.SERVER_NAME : '').toUpperCase() %>"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                style="text-transform: uppercase;"
+              />
+              <small class="settings-help">Server Abbreviation to add custom branding to the portal.</small>
+            </label>
             <label class="settings-field">
               <span class="settings-label">Portal Logo</span>
               <input type="file" name="BRAND_LOGO_UPLOAD" accept="image/*" />
@@ -1237,6 +1250,24 @@
           </div>
           <script>
             (function () {
+              var serverNameInput = document.getElementById("serverNameAbbrevInput");
+              if (serverNameInput) {
+                serverNameInput.addEventListener("input", function () {
+                  var start = serverNameInput.selectionStart;
+                  var end = serverNameInput.selectionEnd;
+                  var upper = String(serverNameInput.value || "").toUpperCase();
+                  if (serverNameInput.value !== upper) {
+                    serverNameInput.value = upper;
+                    try {
+                      serverNameInput.setSelectionRange(start, end);
+                    } catch (_) {}
+                  }
+                });
+                serverNameInput.addEventListener("blur", function () {
+                  serverNameInput.value = String(serverNameInput.value || "").toUpperCase();
+                });
+              }
+
               var colorInput = document.getElementById("primaryButtonColorInput");
               var colorSettingInput = document.getElementById("primaryButtonColorSettingValue");
               var colorValue = document.getElementById("primaryButtonColorValue");

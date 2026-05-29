@@ -187,7 +187,10 @@ app.use((req, res, next) => {
     // Server default is used when no per-device theme has been saved yet.
     res.locals.brandTheme = defaultTheme === "light" ? "light" : "dark";
     res.locals.brandLogoUrl = settings.BRAND_LOGO_URL || "";
-    const serverAbbrev = String(settings.SERVER_NAME || "").trim() || "TAK";
+    const serverAbbrev =
+      String(settings.SERVER_NAME || "")
+        .trim()
+        .toUpperCase() || "TAK";
     res.locals.serverAbbrev = serverAbbrev;
     res.locals.portalTitle = `${serverAbbrev} Portal`;
     res.locals.primaryButtonColor = primaryButtonColor;
@@ -1349,6 +1352,11 @@ app.post(
         key === "EMAIL_TEMPLATES_OVERRIDES" ||
         key === "EMAIL_TEMPLATES_OVERRIDES_RESET"
       ) {
+        return;
+      }
+      if (key === "SERVER_NAME") {
+        const raw = String(bodySettings[key] || "").trim();
+        merged[key] = raw ? raw.toUpperCase() : "";
         return;
       }
       merged[key] = bodySettings[key];
