@@ -259,13 +259,14 @@ app.use((req, res, next) => {
     const isAgreementApiPath =
       normalizedPath === "/api/mou/user-agreement/accept" ||
       normalizedPath === "/api/mou/user-agreement/decline";
+    const isSetupMyDevicePath =
+      normalizedPath === "/setup-my-device" ||
+      normalizedPath.startsWith("/api/setup-my-device");
     const isAgreementExemptPath =
       normalizedPath === "/logout" ||
       isAgreementApiPath ||
       (isPortalAdmin && normalizedPath === "/dashboard") ||
-      (!isPortalAdmin &&
-        (normalizedPath === "/setup-my-device" ||
-          normalizedPath.startsWith("/api/setup-my-device/")));
+      isSetupMyDevicePath;
 
     if (
       !isAgreementTargetUser ||
@@ -851,14 +852,6 @@ app.get("/audit-log", requirePermission("page.audit_log"), async (req, res) => {
 });
 
 app.get("/setup-my-device", async (req, res) => {
-  const portalUser = req.authentikUser;
-  const isPortalAdmin = !!(
-    portalUser && (portalUser.isGlobalAdmin || portalUser.isAgencyAdmin)
-  );
-  if (isPortalAdmin) {
-    return res.redirect("/dashboard");
-  }
-
   // Used by the Setup My Device page to display the correct TAK server hostname.
   const takHost = qrSvc.getTakHost();
   let enrollQrBootstrap = null;
