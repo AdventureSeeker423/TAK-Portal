@@ -191,6 +191,9 @@ router.post("/test-connection", async (req, res) => {
       ok: true,
       message: test.message,
       remoteUser: test.remoteUser,
+      testPassed: true,
+      loginOk: true,
+      privilegedOk: true,
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
@@ -264,6 +267,9 @@ router.post("/setup", async (req, res) => {
       remoteUser: test.remoteUser,
       keyStatus,
       sudoSetup: handshake.sudoSetup,
+      testPassed: true,
+      loginOk: true,
+      privilegedOk: true,
     });
   } catch (err) {
     return res.status(400).json({ ok: false, error: err?.message || String(err) });
