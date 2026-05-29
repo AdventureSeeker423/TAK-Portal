@@ -187,8 +187,9 @@ app.use((req, res, next) => {
     // Server default is used when no per-device theme has been saved yet.
     res.locals.brandTheme = defaultTheme === "light" ? "light" : "dark";
     res.locals.brandLogoUrl = settings.BRAND_LOGO_URL || "";
-    const serverName = String(settings.SERVER_NAME || "").trim();
-    res.locals.serverName = serverName || "TAK Portal";
+    const serverAbbrev = String(settings.SERVER_NAME || "").trim() || "TAK";
+    res.locals.serverAbbrev = serverAbbrev;
+    res.locals.portalTitle = `${serverAbbrev} Portal`;
     res.locals.primaryButtonColor = primaryButtonColor;
     res.locals.siteFontFamily = siteFontFamily;
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
@@ -197,7 +198,8 @@ app.use((req, res, next) => {
     res.locals.settings = {};
     res.locals.brandTheme = "dark";
     res.locals.brandLogoUrl = "";
-    res.locals.serverName = "TAK Portal";
+    res.locals.serverAbbrev = "TAK";
+    res.locals.portalTitle = "TAK Portal";
     res.locals.primaryButtonColor = "";
     res.locals.siteFontFamily = "";
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";

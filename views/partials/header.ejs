@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>TAK Portal</title>
+    <title><%= typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal" %></title>
     <link rel="stylesheet" href="/styles.css" />
 
     <% if (brandLogoUrl) { %>
