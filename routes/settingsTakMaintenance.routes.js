@@ -28,7 +28,7 @@ router.post("/restart-service", ensureSsh, (req, res) => {
     },
   });
   void takSshSvc
-    .runRemoteSshCommand("sudo systemctl restart takserver", 120000)
+    .runRemotePrivilegedCommand("systemctl restart takserver", 120000)
     .then((result) => {
       if (!result.ok) {
         console.error("[tak-maintenance] restart-service SSH failed:", result.message);

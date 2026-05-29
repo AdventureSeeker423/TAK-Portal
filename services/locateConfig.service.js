@@ -103,7 +103,7 @@ function isSshConfigured() {
 }
 
 async function readRemoteCoreConfigXml() {
-  const result = await takSshSvc.runRemoteSshCommand(`sudo cat ${CORE_CONFIG_PATH}`, 90000);
+  const result = await takSshSvc.runRemotePrivilegedCommand(`cat ${CORE_CONFIG_PATH}`, 90000);
   if (!result.ok) {
     throw new Error(result.message || "Failed to read CoreConfig.xml over SSH.");
   }
@@ -137,7 +137,7 @@ async function applyLocateConfiguration({ enabled, groupDisplayName, missionName
     throw new Error(writeResult.message || "Failed to write CoreConfig.xml.");
   }
 
-  const restartResult = await takSshSvc.runRemoteSshCommand("sudo systemctl restart takserver", 120000);
+  const restartResult = await takSshSvc.runRemotePrivilegedCommand("systemctl restart takserver", 120000);
   if (!restartResult.ok) {
     throw new Error(restartResult.message || "CoreConfig.xml was updated but TAK Server restart failed.");
   }

@@ -333,8 +333,13 @@
 
           <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;">
             <button type="button" class="btn" id="sshHandshakeBtn">Generate Key + Run One-Time Handshake</button>
+            <button type="button" class="btn" id="sshConfigureSudoBtn">Configure Sudo Access</button>
             <button type="button" class="btn" id="sshTestConnectionBtn">Test SSH Connection</button>
           </div>
+          <p class="settings-help" style="margin-top:.5rem;">
+            Handshake installs the portal SSH key and configures passwordless sudo for Locate, CoreConfig, cert scripts, and maintenance.
+            If SSH already works but privileged actions fail, enter the account password above and click Configure Sudo Access (no need to regenerate keys).
+          </p>
 
           <div id="sshStatusBox" class="settings-help" style="margin-top:.5rem;"></div>
         </div>
@@ -1718,6 +1723,7 @@
     const userInput = document.getElementById("sshUserInput");
     const passInput = document.getElementById("sshPasswordInput");
     const btnHandshake = document.getElementById("sshHandshakeBtn");
+    const btnConfigureSudo = document.getElementById("sshConfigureSudoBtn");
     const btnTestConnection = document.getElementById("sshTestConnectionBtn");
 
     function setStatus(msg, isError) {
@@ -1769,14 +1775,40 @@
           btnHandshake.disabled = true;
           setStatus("Generating SSH key...", false);
           await postJson("/api/ssh/generate-key", {});
-          setStatus("Running one-time handshake...", false);
-          await postJson("/api/ssh/handshake", { host, port, username, password });
+          setStatus("Running one-time handshake (key + sudo setup)...", false);
+          const handshakeData = await postJson("/api/ssh/handshake", { host, port, username, password });
           if (passInput) passInput.value = "";
+          setStatus(String(handshakeData.message || "Handshake complete."), false);
           await getStatus();
         } catch (err) {
           setStatus(err.message || String(err), true);
         } finally {
           btnHandshake.disabled = false;
+        }
+      });
+    }
+
+    if (btnConfigureSudo) {
+      btnConfigureSudo.addEventListener("click", async function () {
+        const host = (hostInput && hostInput.value || "").trim();
+        const port = (portInput && portInput.value || "22").trim();
+        const username = (userInput && userInput.value || "").trim();
+        const password = (passInput && passInput.value || "");
+        if (!host || !username || !password) {
+          setStatus("Host, username, and password are required to configure sudo.", true);
+          return;
+        }
+        try {
+          btnConfigureSudo.disabled = true;
+          setStatus("Configuring passwordless sudo on the TAK Server...", false);
+          const data = await postJson("/api/ssh/reconfigure-sudo", { host, port, username, password });
+          if (passInput) passInput.value = "";
+          setStatus(String(data.message || "Sudo configured."), false);
+          await getStatus();
+        } catch (err) {
+          setStatus(err.message || String(err), true);
+        } finally {
+          btnConfigureSudo.disabled = false;
         }
       });
     }

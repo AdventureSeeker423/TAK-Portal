@@ -682,7 +682,7 @@
     } catch (e) {
       var errText = e && e.message ? e.message : String(e);
       setMsg(
-        "Apply failed: " + errText + " If SSH works in Server Settings, check portal logs and that the portal user can sudo on the TAK Server.",
+        "Apply failed: " + errText + " In Server Settings, run Test SSH Connection or Configure Sudo Access (or re-run handshake) so privileged commands work for the portal SSH user.",
         "error"
       );
     } finally {

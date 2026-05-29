@@ -71,7 +71,7 @@ async function streamTakApiLogTail({ send, signal }) {
     if (tail) send({ type: "log_line", stream: tag, line: tail });
   };
 
-  const cmd = `sudo tail -n 150 -f ${TAKSERVER_API_LOG}`;
+  const cmd = await takSshSvc.resolvePrivilegedRemoteCommand(`tail -n 150 -f ${TAKSERVER_API_LOG}`);
 
   await new Promise((resolve) => {
     let settled = false;
