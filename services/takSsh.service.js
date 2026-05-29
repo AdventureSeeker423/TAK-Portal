@@ -1212,11 +1212,46 @@ function createTakClientCertForIntegration(username) {
   });
 }
 
+/**
+ * Verify key-based login and a sudoers-allowed privileged command (cat CoreConfig.xml).
+ */
+async function testSshConnectionAndPrivilegedAccess() {
+  clearPrivilegedModeCache();
+  const login = await runRemoteSshCommand("whoami");
+  if (!login.ok) {
+    return {
+      ok: false,
+      loginOk: false,
+      message: login.message || "SSH login failed. Run full SSH setup with host, user, and password.",
+    };
+  }
+
+  const priv = await runRemotePrivilegedCommand(`cat ${TAK_CORE_CONFIG_PATH} >/dev/null`, 20000);
+  if (!priv.ok) {
+    return {
+      ok: false,
+      loginOk: true,
+      remoteUser: String(login.stdout || "").trim(),
+      message:
+        priv.message ||
+        "SSH login works but privileged commands failed. Re-run full SSH setup with an account that can sudo.",
+    };
+  }
+
+  return {
+    ok: true,
+    loginOk: true,
+    remoteUser: String(login.stdout || "").trim(),
+    message: "SSH setup verified: key login and privileged access (CoreConfig read) both succeeded.",
+  };
+}
+
 module.exports = {
   getLocalKeyStatus,
   ensureLocalSshKeyPair,
   onboardTakSshWithPassword,
   configureRemoteSudoAccessAfterHandshake,
+  testSshConnectionAndPrivilegedAccess,
   runRemoteSshCommand,
   runRemotePrivilegedCommand,
   resolvePrivilegedRemoteCommand,

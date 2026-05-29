@@ -316,7 +316,7 @@
                   type="password"
                   value=""
                   autocomplete="new-password"
-                  placeholder="Used once for handshake"
+                  placeholder="Account password (used once for full SSH setup)"
                 />
                 <button
                   type="button"
@@ -331,14 +331,13 @@
             </label>
           </div>
 
-          <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;">
-            <button type="button" class="btn" id="sshHandshakeBtn">Generate Key + Run One-Time Handshake</button>
-            <button type="button" class="btn" id="sshConfigureSudoBtn">Configure Sudo Access</button>
-            <button type="button" class="btn" id="sshTestConnectionBtn">Test SSH Connection</button>
+          <div style="margin-top:.75rem;">
+            <button type="button" class="btn" id="sshSetupBtn">Set Up SSH (Generate Key, Install on Server, Configure Sudo, and Test)</button>
           </div>
           <p class="settings-help" style="margin-top:.5rem;">
-            Handshake installs the portal SSH key and configures passwordless sudo for Locate, CoreConfig, cert scripts, and maintenance.
-            If SSH already works but privileged actions fail, enter the account password above and click Configure Sudo Access (no need to regenerate keys).
+            Enter the TAK Server SSH host, port, username, and that user&apos;s password above, then run setup once.
+            The portal generates a key pair, installs it on the server, configures passwordless sudo for Locate and maintenance, and verifies access automatically.
+            The account must be allowed to run <code>sudo</code> with its password during setup.
           </p>
 
           <div id="sshStatusBox" class="settings-help" style="margin-top:.5rem;"></div>
@@ -1722,9 +1721,7 @@
     const portInput = document.getElementById("sshPortInput");
     const userInput = document.getElementById("sshUserInput");
     const passInput = document.getElementById("sshPasswordInput");
-    const btnHandshake = document.getElementById("sshHandshakeBtn");
-    const btnConfigureSudo = document.getElementById("sshConfigureSudoBtn");
-    const btnTestConnection = document.getElementById("sshTestConnectionBtn");
+    const btnSetup = document.getElementById("sshSetupBtn");
 
     function setStatus(msg, isError) {
       if (!statusBox) return;
@@ -1742,7 +1739,8 @@
         " | User: " + (s.username || "(not set)") +
         " | Port: " + (s.port || "22") +
         " | Keypair: " + (s.hasKeyPair ? "present" : "missing") +
-        " | Handshake: " + (s.onboarded ? "complete" : "pending") +
+        " | Setup: " + (s.onboarded ? "complete" : "not run yet") +
+        (s.sudoersConfigured ? " | Sudo: passwordless" : "") +
         (s.lastHandshakeAt ? " | Last: " + s.lastHandshakeAt : ""),
         false
       );
@@ -1761,73 +1759,35 @@
       return data;
     }
 
-    if (btnHandshake) {
-      btnHandshake.addEventListener("click", async function () {
+    if (btnSetup) {
+      btnSetup.addEventListener("click", async function () {
         const host = (hostInput && hostInput.value || "").trim();
         const port = (portInput && portInput.value || "22").trim();
         const username = (userInput && userInput.value || "").trim();
         const password = (passInput && passInput.value || "");
         if (!host || !username || !password) {
-          setStatus("Host, username, and one-time password are required.", true);
+          setStatus("Host, username, and password are required for SSH setup.", true);
           return;
         }
         try {
-          btnHandshake.disabled = true;
-          setStatus("Generating SSH key...", false);
-          await postJson("/api/ssh/generate-key", {});
-          setStatus("Running one-time handshake (key + sudo setup)...", false);
-          const handshakeData = await postJson("/api/ssh/handshake", { host, port, username, password });
-          if (passInput) passInput.value = "";
-          setStatus(String(handshakeData.message || "Handshake complete."), false);
-          await getStatus();
-        } catch (err) {
-          setStatus(err.message || String(err), true);
-        } finally {
-          btnHandshake.disabled = false;
-        }
-      });
-    }
-
-    if (btnConfigureSudo) {
-      btnConfigureSudo.addEventListener("click", async function () {
-        const host = (hostInput && hostInput.value || "").trim();
-        const port = (portInput && portInput.value || "22").trim();
-        const username = (userInput && userInput.value || "").trim();
-        const password = (passInput && passInput.value || "");
-        if (!host || !username || !password) {
-          setStatus("Host, username, and password are required to configure sudo.", true);
-          return;
-        }
-        try {
-          btnConfigureSudo.disabled = true;
-          setStatus("Configuring passwordless sudo on the TAK Server...", false);
-          const data = await postJson("/api/ssh/reconfigure-sudo", { host, port, username, password });
-          if (passInput) passInput.value = "";
-          setStatus(String(data.message || "Sudo configured."), false);
-          await getStatus();
-        } catch (err) {
-          setStatus(err.message || String(err), true);
-        } finally {
-          btnConfigureSudo.disabled = false;
-        }
-      });
-    }
-
-    if (btnTestConnection) {
-      btnTestConnection.addEventListener("click", async function () {
-        try {
-          btnTestConnection.disabled = true;
-          setStatus("Testing SSH connection...", false);
-          const data = await postJson("/api/ssh/test-connection", {});
-          const remoteUser = String(data.remoteUser || "").trim();
+          btnSetup.disabled = true;
           setStatus(
-            "SSH connection successful" + (remoteUser ? " (whoami: " + remoteUser + ")" : "."),
+            "Running full SSH setup: generate key, install on server, configure sudo, and test…",
             false
           );
+          const data = await postJson("/api/ssh/setup", { host, port, username, password });
+          if (passInput) passInput.value = "";
+          const remoteUser = String(data.remoteUser || "").trim();
+          setStatus(
+            String(data.message || "SSH setup complete.") +
+              (remoteUser ? " Logged in as: " + remoteUser + "." : ""),
+            false
+          );
+          await getStatus();
         } catch (err) {
-          setStatus("SSH test failed: " + (err.message || String(err)), true);
+          setStatus("SSH setup failed: " + (err.message || String(err)), true);
         } finally {
-          btnTestConnection.disabled = false;
+          btnSetup.disabled = false;
         }
       });
     }
