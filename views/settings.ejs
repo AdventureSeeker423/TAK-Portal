@@ -160,6 +160,7 @@
         ...additionalAgencyTypeKeys,
 
         "BRAND_THEME",
+        "SERVER_NAME",
         "BRAND_LOGO_URL",
 
         "CALLSIGN_FORMAT_EXPRESSION"
@@ -1122,13 +1123,23 @@
       </details>
     </div>
 
-    <!-- Appearance & Beta -->
+    <!-- Branding, Appearance & Beta -->
     <div class="card">
       <details class="settings-section">
-        <summary class="settings-summary">Appearance &amp; Beta</summary>
+        <summary class="settings-summary">Branding, Appearance, and Beta</summary>
 
         <div class="settings-body">
           <div class="grid2">
+            <% renderField("SERVER_NAME","Server Name / Abbreviation","Displayed in the browser tab title and sidebar (defaults to TAK Portal when empty)."); %>
+            <label class="settings-field">
+              <span class="settings-label">Portal Logo</span>
+              <input type="file" name="BRAND_LOGO_UPLOAD" accept="image/*" />
+              <% if (settings.BRAND_LOGO_URL) { %>
+                <small class="settings-help">Current: <code><%= settings.BRAND_LOGO_URL %></code></small>
+              <% } else { %>
+                <small class="settings-help">Shown in sidebar and QR codes.</small>
+              <% } %>
+            </label>
             <label class="settings-field">
               <span class="settings-label">Default Theme Mode</span>
               <%
@@ -1220,15 +1231,6 @@
               <small class="settings-help">
                 Sets the default color used for primary action buttons across the portal.
               </small>
-            </label>
-            <label class="settings-field">
-              <span class="settings-label">Portal Logo</span>
-              <input type="file" name="BRAND_LOGO_UPLOAD" accept="image/*" />
-              <% if (settings.BRAND_LOGO_URL) { %>
-                <small class="settings-help">Current: <code><%= settings.BRAND_LOGO_URL %></code></small>
-              <% } else { %>
-                <small class="settings-help">Shown in sidebar and QR codes.</small>
-              <% } %>
             </label>
             <% renderField("USERNAME_PREFIX_LABEL","Username Descriptor Text","Displayed on Users, Pending User Requests, and Request Access pages. Default: Badge Number / Username","Badge Number / Username"); %>
             <% renderField("BETA_MODE","Enable Beta Features","If true, shows in-development features for global admins (e.g. Data Sync, Getting Started). Data Package and Locate Persons are available to global admins regardless of this setting."); %>

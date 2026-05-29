@@ -56,6 +56,7 @@
   "SMS_BREVO_SENDER": "",
   "SMS_TEST_TO": "",
   "BETA_MODE": "false",
+  "SERVER_NAME": "",
   "DEFAULT_THEME_MODE": "dark",
   "BRAND_LOGO_URL": "",
   "BOOKMARK1_TITLE": "TAK Portal GitHub",
