@@ -2,7 +2,20 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1><%= (typeof isAgencyDashboard !== "undefined" && isAgencyDashboard && agencyDisplayName) ? (agencyDisplayName + " Dashboard") : "Dashboard" %></h1>
+  <%
+    let dashboardHeading = "Dashboard";
+    if (typeof isAgencyDashboard !== "undefined" && isAgencyDashboard && agencyDisplayName) {
+      dashboardHeading = agencyDisplayName + " Dashboard";
+    } else if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) {
+      const customServerAbbrev = String(
+        (typeof settings !== "undefined" && settings && settings.SERVER_NAME) || ""
+      ).trim();
+      if (customServerAbbrev) {
+        dashboardHeading = customServerAbbrev.toUpperCase() + " Dashboard";
+      }
+    }
+  %>
+  <h1><%= dashboardHeading %></h1>
 
   <% 
     const hasMutualAid = isGlobalAdmin && mutualAid && (mutualAid.activeIncidents > 0 || mutualAid.activeEvents > 0);
