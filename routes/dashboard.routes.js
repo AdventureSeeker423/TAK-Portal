@@ -10,8 +10,22 @@ const bookmarksService = require("../services/bookmarks.service");
 const agenciesStore = require("../services/agencies.service");
 const accessSvc = require("../services/access.service");
 const mouService = require("../services/mouService");
+const { hasAcceptedAgreementForSession } = require("../services/userAgreementSession.service");
 
 const userRequestsSvc = require("../services/userRequests.service");
+
+function agreementLocalsForRequest(req) {
+  const currentAgreement = mouService.getCurrentUserAgreement().current;
+  return {
+    agreementSummary: mouService.getAgreementSummaryForUser(req.authentikUser, {
+      acceptedForSession: hasAcceptedAgreementForSession(
+        req,
+        req.authentikUser,
+        currentAgreement
+      ),
+    }),
+  };
+}
 
 router.get("/", async (req, res) => {
   const user = req.authentikUser;
@@ -158,6 +172,7 @@ router.get("/", async (req, res) => {
       isAgencyDashboard,
       agencyDisplayName,
       templateChartColor,
+      ...agreementLocalsForRequest(req),
     };
 
     res.render("dashboard", viewModel);
@@ -205,6 +220,7 @@ router.get("/", async (req, res) => {
       agencyDisplayName: isAgencyOnly ? "Agency Dashboard" : null,
       templateChartColor: null,
       error: err?.response?.data || err?.message || "Failed to load dashboard",
+      ...agreementLocalsForRequest(req),
     };
 
     res.status(500).render("dashboard", viewModel);

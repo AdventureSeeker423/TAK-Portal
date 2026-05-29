@@ -255,11 +255,17 @@ app.use((req, res, next) => {
     const hasAcceptedAgreement =
       hasAcceptedAgreementForSession(req, user, currentAgreement);
     const isAgreementTargetUser = !!(user && user.username) && !user.isGlobalAdmin;
-    const isAgreementExemptPath =
-      normalizedPath === "/logout" ||
-      normalizedPath === "/setup-my-device" ||
+    const isPortalAdmin = !!(user && (user.isGlobalAdmin || user.isAgencyAdmin));
+    const isAgreementApiPath =
       normalizedPath === "/api/mou/user-agreement/accept" ||
       normalizedPath === "/api/mou/user-agreement/decline";
+    const isAgreementExemptPath =
+      normalizedPath === "/logout" ||
+      isAgreementApiPath ||
+      (isPortalAdmin && normalizedPath === "/dashboard") ||
+      (!isPortalAdmin &&
+        (normalizedPath === "/setup-my-device" ||
+          normalizedPath.startsWith("/api/setup-my-device/")));
 
     if (
       !isAgreementTargetUser ||
@@ -281,7 +287,7 @@ app.use((req, res, next) => {
       });
     }
 
-    return res.redirect("/setup-my-device");
+    return res.redirect(isPortalAdmin ? "/dashboard" : "/setup-my-device");
   } catch (err) {
     console.warn("[mou-gate] Failed to evaluate user agreement gate:", err?.message || err);
     return next();
@@ -845,6 +851,14 @@ app.get("/audit-log", requirePermission("page.audit_log"), async (req, res) => {
 });
 
 app.get("/setup-my-device", async (req, res) => {
+  const portalUser = req.authentikUser;
+  const isPortalAdmin = !!(
+    portalUser && (portalUser.isGlobalAdmin || portalUser.isAgencyAdmin)
+  );
+  if (isPortalAdmin) {
+    return res.redirect("/dashboard");
+  }
+
   // Used by the Setup My Device page to display the correct TAK server hostname.
   const takHost = qrSvc.getTakHost();
   let enrollQrBootstrap = null;

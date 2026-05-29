@@ -22,6 +22,12 @@
     var acceptBtn = document.getElementById("userAgreementAcceptBtn");
     var declineBtn = document.getElementById("userAgreementDeclineBtn");
     var msg = document.getElementById("userAgreementMsg");
+    var postAcceptUrl = <%- JSON.stringify(
+      (typeof isAgencyAdmin !== "undefined" && isAgencyAdmin) ||
+      (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin)
+        ? "/dashboard"
+        : "/setup-my-device"
+    ) %>;
     if (!acceptBtn || !declineBtn || !msg) return;
 
     function setBusy(isBusy, text, ok) {
@@ -43,8 +49,8 @@
         });
         var out = await res.json();
         if (!res.ok) throw new Error(out.error || "Failed to continue.");
-        setBusy(true, "Reloading...", true);
-        window.location.reload();
+        setBusy(true, "Continuing...", true);
+        window.location.href = postAcceptUrl;
       } catch (err) {
         setBusy(false, err && err.message ? err.message : "Failed to continue.", false);
       }
