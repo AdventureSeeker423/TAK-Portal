@@ -424,7 +424,7 @@
     if (!name) {
       groupSelect.innerHTML = "";
       groupSelect.disabled = true;
-      return;
+      return { groups: [] };
     }
     groupSelect.disabled = false;
     var res = await fetch("/api/locate/mission-groups/" + encodeURIComponent(name));
@@ -437,6 +437,9 @@
     }
     if (!res.ok || !data.ok) {
       throw new Error((data && data.error) || "Failed to load groups for mission.");
+    }
+    if (data.missionNotFound && data.warning) {
+      return { groups: [], warning: data.warning };
     }
     var groups = Array.isArray(data.groups) ? data.groups : [];
     groupSelect.innerHTML = "";
@@ -451,24 +454,25 @@
     } else if (groups.length) {
       groupSelect.value = groups[0];
     }
+    return { groups: groups, warning: data.warning || "" };
   }
 
   async function refreshAllTakShortNames() {
-    var res = await fetch("/api/groups");
-    if (!res.ok) {
-      throw new Error(await readApiError(res));
+    var res = await fetch("/api/locate/tak-channel-groups");
+    var text = await res.text();
+    var data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error("Invalid response from /api/locate/tak-channel-groups.");
     }
-    var data = await res.json();
-    if (!Array.isArray(data)) throw new Error("Invalid groups response from server.");
-    var takGroups = data.filter(function (g) {
-      return String(g.name || "").toLowerCase().indexOf("tak_") === 0;
-    });
-    takGroups.sort(function (a, b) {
-      return stripTakPrefix(a.name).localeCompare(stripTakPrefix(b.name));
-    });
-    cachedAllTakShorts = takGroups.map(function (g) {
-      return stripTakPrefix(g.name);
-    });
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) || text.slice(0, 600) || "Failed to load TAK channel groups.");
+    }
+    cachedAllTakShorts = Array.isArray(data.groups) ? data.groups.slice() : [];
+    if (data.warning) {
+      console.warn("Locate: TAK channel groups:", data.warning);
+    }
     return cachedAllTakShorts;
   }
 
@@ -550,7 +554,20 @@
       if (savedMission) {
         ensureMissionInDropdown(savedMission);
         missionSelect.value = savedMission;
-        await fillGroupSelectForMission(savedMission, data.group || "");
+        try {
+          var mg = await fillGroupSelectForMission(savedMission, data.group || "");
+          if (mg && mg.warning) {
+            setMsg(mg.warning, "error");
+          }
+        } catch (mgErr) {
+          groupSelect.innerHTML = "";
+          groupSelect.disabled = true;
+          setMsg(
+            (mgErr && mgErr.message ? mgErr.message : String(mgErr)) +
+              " Locate is still enabled on the TAK Server; pick a valid mission or switch to Group only.",
+            "error"
+          );
+        }
       } else {
         missionSelect.value = "";
         groupSelect.innerHTML = "";
@@ -691,17 +708,33 @@
   });
 
   (async function init() {
+    var warnings = [];
     try {
-      await refreshAllTakShortNames();
+      try {
+        await refreshAllTakShortNames();
+      } catch (eGroups) {
+        cachedAllTakShorts = [];
+        warnings.push(
+          (eGroups && eGroups.message ? eGroups.message : String(eGroups)) +
+            " (group dropdown may be empty until TAK groups load.)"
+        );
+        console.warn("Locate: could not load TAK channel groups", eGroups);
+      }
       try {
         await loadPublicDataSyncMissions();
       } catch (e2) {
         missionSelect.innerHTML = '<option value="">Select a mission…</option>';
+        warnings.push(
+          (e2 && e2.message ? e2.message : String(e2)) + " (mission list may be incomplete.)"
+        );
         console.warn("Locate: could not load public Data Sync missions", e2);
       }
       await loadConfig();
       syncLocateModeUi();
       syncLocatorCardsVisibility();
+      if (warnings.length) {
+        setMsg(warnings.join(" "), "error");
+      }
     } catch (e) {
       var errText = e && e.message ? e.message : String(e);
       setMsg("Could not load this page: " + errText, "error");

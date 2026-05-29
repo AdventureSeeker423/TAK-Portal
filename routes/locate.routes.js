@@ -2,6 +2,8 @@ const router = require("express").Router();
 const locateConfig = require("../services/locateConfig.service");
 const locatorsSvc = require("../services/locators.service");
 const dataSyncSvc = require("../services/dataSync.service");
+const groupsSvc = require("../services/groups.service");
+const accessSvc = require("../services/access.service");
 const emailSvc = require("../services/email.service");
 const auditSvc = require("../services/auditLog.service");
 const { renderTemplate, htmlToText } = require("../services/emailTemplates.service");
@@ -76,6 +78,38 @@ function groupAllowedForMission(shortName, allowedShorts) {
   return allowedShorts.some((x) => String(x || "").trim().toLowerCase() === sl);
 }
 
+function stripTakPrefix(name) {
+  const n = String(name || "").trim();
+  if (n.toLowerCase().startsWith("tak_")) return n.slice(4);
+  return n;
+}
+
+function isTakUpstreamNotFound(err) {
+  const st = err?.response?.status;
+  return st === 404 || st === 410;
+}
+
+/** TAK channel groups (short names) for Locate — does not require page.groups. */
+router.get("/tak-channel-groups", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const all = await groupsSvc.getAllGroups({ forceRefresh: false });
+    const filtered = accessSvc.filterGroupsForUser(authUser, all);
+    const shorts = filtered
+      .map((g) => stripTakPrefix(g?.name))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    res.json({ ok: true, groups: shorts });
+  } catch (err) {
+    const code = err?.code;
+    if (code === "TAK_NOT_CONFIGURED" || code === "TAK_BYPASS") {
+      return res.json({ ok: true, groups: [], takUnavailable: true });
+    }
+    console.warn("[locate] tak-channel-groups failed:", err?.message || err);
+    res.json({ ok: true, groups: [], warning: toSafeApiError(err) });
+  }
+});
+
 /** Groups with access to a mission (short names, A–Z) — for locate Data Sync mode group dropdown. */
 router.get("/mission-groups/:missionName", async (req, res) => {
   try {
@@ -90,6 +124,15 @@ router.get("/mission-groups/:missionName", async (req, res) => {
     const code = err?.code;
     if (code === "TAK_NOT_CONFIGURED" || code === "TAK_BYPASS") {
       return res.json({ ok: true, groups: [], takUnavailable: true });
+    }
+    if (isTakUpstreamNotFound(err)) {
+      const missionLabel = String(req.params.missionName || "").trim() || "unknown";
+      return res.json({
+        ok: true,
+        groups: [],
+        missionNotFound: true,
+        warning: `Mission "${missionLabel}" was not found on the TAK Server (it may have been renamed or removed).`,
+      });
     }
     res.status(500).json({ ok: false, error: toSafeApiError(err) });
   }
@@ -114,7 +157,15 @@ router.get("/data-sync-missions", async (req, res) => {
     if (code === "TAK_NOT_CONFIGURED" || code === "TAK_BYPASS") {
       return res.json({ ok: true, missions: [], takUnavailable: true });
     }
-    res.status(500).json({ ok: false, error: toSafeApiError(err) });
+    if (isTakUpstreamNotFound(err)) {
+      return res.json({
+        ok: true,
+        missions: [],
+        warning: "TAK mission list API returned not found; check TAK_URL and Marti API path.",
+      });
+    }
+    console.warn("[locate] data-sync-missions failed:", err?.message || err);
+    res.json({ ok: true, missions: [], warning: toSafeApiError(err) });
   }
 });
 
@@ -151,7 +202,16 @@ router.get("/config", async (req, res) => {
       addToMission: !!parsed.addToMission,
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: toSafeApiError(err) });
+    const ssh = locateConfig.isSshConfigured();
+    console.warn("[locate] config load failed:", err?.message || err);
+    res.status(500).json({
+      ok: false,
+      error: toSafeApiError(err),
+      sshConfigured: !!ssh.configured,
+      hint: ssh.configured
+        ? "SSH is configured but reading CoreConfig.xml failed. Check Server Settings SSH setup and sudo access."
+        : "Configure SSH under Server Settings before loading locate configuration from the TAK Server.",
+    });
   }
 });
 
