@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.26 - 5/29/26
+✨ `Enhancement` - Added a server abbreviation field in branding settings to better customize page titles.  Recommended layout is (XZYTAK)<br>
+🐛 `Bug Fix` - Fixes issue with agency admins loading into "Setup My Device" page rather than dashboard upon login
+
 ### v1.3.25 - 5/29/26
 🐛 `Bug Fix` - Fixes issue with SSH service not functioning properly for non-root users<br>
 🐛 `Bug Fix` - Fixes issue with Locate returning a 404 error due to incorrect API permissions
