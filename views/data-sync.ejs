@@ -11,33 +11,35 @@
   <div class="card">
     <h2 style="margin-top: 0;">Create Data Sync Mission</h2>
     <div class="grid2">
-      <label>Mission Name
-        <input type="text" id="createMissionName" autocomplete="off" placeholder="e.g. Incident Alpha" />
-      </label>
-      <label>Default Role For Subscribers
-        <select id="createMissionDefaultRole" style="width: 100%; box-sizing: border-box;">
-          <option value="MISSION_SUBSCRIBER">Mission subscriber (MISSION_SUBSCRIBER)</option>
-          <option value="MISSION_OWNER">Mission owner (MISSION_OWNER)</option>
-          <option value="MISSION_READONLY_SUBSCRIBER">Read-only (MISSION_READONLY_SUBSCRIBER)</option>
-        </select>
-      </label>
+      <div class="grid3 data-sync-create-top" style="grid-column: 1 / -1;">
+        <label>Data Sync Name
+          <input type="text" id="createMissionName" autocomplete="off" placeholder="e.g. Incident Alpha" />
+        </label>
+        <label>Default Role
+          <select id="createMissionDefaultRole" style="width: 100%; box-sizing: border-box;">
+            <option value="MISSION_SUBSCRIBER">Mission subscriber (MISSION_SUBSCRIBER)</option>
+            <option value="MISSION_OWNER">Mission owner (MISSION_OWNER)</option>
+            <option value="MISSION_READONLY_SUBSCRIBER">Read-only (MISSION_READONLY_SUBSCRIBER)</option>
+          </select>
+        </label>
+        <label>Group
+          <select id="createMissionGroup" style="width: 100%; box-sizing: border-box;">
+            <option value="">Select a group…</option>
+          </select>
+        </label>
+      </div>
       <label style="grid-column: 1 / -1;">Description
         <textarea id="createMissionDescription" rows="2" placeholder="Mission description" style="width: 100%; box-sizing: border-box; resize: vertical;"></textarea>
       </label>
-      <label style="grid-column: 1 / -1;">Group With Access
-        <select id="createMissionGroup" style="width: 100%; box-sizing: border-box;">
-          <option value="">Select a group…</option>
-        </select>
-      </label>
-      <label>Password (Optional)
+      <label style="grid-column: 1 / -1;">Password (Optional)
         <div class="passwordWrap">
           <input type="password" id="createMissionPw" autocomplete="new-password" />
           <button type="button" id="createMissionPwToggle" class="passwordToggle" aria-label="Show password" title="Show password">👁</button>
         </div>
       </label>
-      <div style="grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-        <button type="button" class="btn success" id="btnCreateMissionSubmit">Create mission</button>
-        <span id="createMissionMsg" class="msg"></span>
+      <div class="data-sync-create-actions" style="grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span id="createMissionMsg" class="msg" style="margin-right: auto;"></span>
+        <button type="button" class="btn success" id="btnCreateMissionSubmit">Create New Data Sync</button>
       </div>
     </div>
   </div>
@@ -45,13 +47,7 @@
   <div class="card">
     <h2 style="margin-top: 0;">Existing Data Sync Missions</h2>
 
-    <div class="data-sync-toolbar row" style="flex-wrap: wrap; align-items: flex-end; gap: 12px;">
-      <label style="min-width: 140px;">
-        List Filter
-        <input type="search" id="missionTableFilter" placeholder="Filter by name…" style="width: 100%; box-sizing: border-box;" autocomplete="off" />
-      </label>
-      <button type="button" class="btn" id="btnRefreshMissions">Refresh</button>
-    </div>
+    <input type="search" id="missionTableFilter" class="data-sync-list-filter" placeholder="Filter by name…" autocomplete="off" />
 
     <div id="missionsMsg" class="msg" style="margin: 12px 0 0 0;"></div>
 
@@ -177,6 +173,15 @@
   .mission-action-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .muted { color: var(--muted); }
 
+  .data-sync-page .data-sync-list-filter {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .data-sync-page .data-sync-create-top label {
+    display: block;
+  }
+
   @media (max-width: 640px){
     .data-sync-table th:nth-child(2),
     .data-sync-table td:nth-child(2),
@@ -228,7 +233,6 @@
   var missionsMsg = document.getElementById("missionsMsg");
   var missionsTbody = document.getElementById("missionsTbody");
   var missionTableFilter = document.getElementById("missionTableFilter");
-  var btnRefreshMissions = document.getElementById("btnRefreshMissions");
   var createMissionName = document.getElementById("createMissionName");
   var createMissionDescription = document.getElementById("createMissionDescription");
   var createMissionDefaultRole = document.getElementById("createMissionDefaultRole");
@@ -976,7 +980,6 @@
   if (mBtnSetPw) mBtnSetPw.addEventListener("click", setMissionPassword);
   if (mBtnClearPw) mBtnClearPw.addEventListener("click", clearMissionPassword);
 
-  if (btnRefreshMissions) btnRefreshMissions.addEventListener("click", loadMissions);
   if (missionTableFilter) missionTableFilter.addEventListener("input", renderMissionsTable);
   if (btnCreateMissionSubmit) btnCreateMissionSubmit.addEventListener("click", submitCreateMission);
 
