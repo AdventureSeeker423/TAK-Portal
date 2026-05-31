@@ -85,7 +85,7 @@ const PERMISSIONS = {
     data_sync: {
       id: "page.data_sync",
       label: "Data Sync",
-      description: "Data sync mission manager (beta).",
+      description: "Data sync mission manager.",
       section: "administration",
     },
     data_package: {

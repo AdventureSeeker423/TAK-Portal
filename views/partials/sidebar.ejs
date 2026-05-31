@@ -97,7 +97,7 @@
             <% if (_perm("page.data_package")) { %>
               <a href="/data-package" class="<%= isActive('/data-package') ? 'active' : '' %>">Data Package</a>
             <% } %>
-            <% if (_perm("page.data_sync") && betaModeEnabled) { %>
+            <% if (_perm("page.data_sync")) { %>
               <a href="/data-sync" class="<%= isActive('/data-sync') ? 'active' : '' %>">Data Sync</a>
             <% } %>
             <% if (_perm("page.email")) { %>

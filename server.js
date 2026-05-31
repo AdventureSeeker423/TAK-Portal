@@ -425,7 +425,6 @@ app.use("/api/locate", requirePermission("page.locate"), require("./routes/locat
 app.use(
   "/api/data-sync",
   requirePermission("page.data_sync"),
-  requireBetaModeApi,
   require("./routes/dataSync.routes")
 );
 app.use(
@@ -682,7 +681,7 @@ app.get("/locate-persons", (req, res) => {
 // Locate admin page: global admins only (not beta-gated).
 app.get("/locate", requirePermission("page.locate"), (req, res) => res.render("locate"));
 
-app.get("/data-sync", requirePermission("page.data_sync"), requireBetaMode, (req, res) =>
+app.get("/data-sync", requirePermission("page.data_sync"), (req, res) =>
   res.render("data-sync")
 );
 
