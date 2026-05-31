@@ -1,6 +1,6 @@
 /**
  * Data Sync / Marti mission manager — proxies to TAK Server using portal mTLS credentials.
- * Requires global admin + beta (enforced in server.js).
+ * Global admins: all single-group missions. Agency admins: agency-specific groups only.
  */
 
 const express = require("express");
@@ -8,6 +8,7 @@ const multer = require("multer");
 const { buildTakAxios, isTakConfigured } = require("../services/tak.service");
 const { getBool } = require("../services/env");
 const dataSyncSvc = require("../services/dataSync.service");
+const dataSyncAccess = require("../services/dataSyncAccess.service");
 const auditSvc = require("../services/auditLog.service");
 
 const router = express.Router();
@@ -105,28 +106,65 @@ router.get("/status", (req, res) => {
   });
 });
 
+function sendAccessError(res, err) {
+  const code = err?.code;
+  if (code === "FORBIDDEN" || code === "MISSION_ACCESS_DENIED") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  if (code === "MULTIPLE_GROUPS") {
+    return res.status(400).json({ error: err.message });
+  }
+  return null;
+}
+
+function handleRouteError(res, err) {
+  const handled = sendAccessError(res, err);
+  if (handled) return handled;
+  return sendTakError(res, err);
+}
+
+async function prepareMissionWrite(req, res) {
+  const authUser = req.authentikUser || null;
+  const allowedSet = await dataSyncAccess.getAllowedTakGroupNameSet(authUser);
+  try {
+    dataSyncAccess.assertSingleGroupBody(req.body);
+    dataSyncAccess.assertGroupAllowed(req.body, allowedSet);
+  } catch (err) {
+    const handled = sendAccessError(res, err);
+    if (handled) return { ok: false };
+    throw err;
+  }
+  return { ok: true, body: sanitizeMissionWriteBody(req.body) };
+}
+
 router.get("/groups", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
+    const allowedSet = await dataSyncAccess.getAllowedTakGroupNameSet(authUser);
     const data = await dataSyncSvc.listGroupsAll();
-    return res.json(data);
+    return res.json(dataSyncAccess.filterGroupsPayload(data, allowedSet));
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.get("/missions", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
+    const allowedSet = await dataSyncAccess.getAllowedTakGroupNameSet(authUser);
     const data = await dataSyncSvc.listPagedMissions(req.query);
-    return res.json(data);
+    return res.json(dataSyncAccess.filterMissionsPayload(data, allowedSet));
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 /** Full Data Sync / mission export as KML (TAK GET /Marti/api/missions/:name/kml?download=true). Extra query params forwarded (e.g. password). */
 router.get("/missions/:missionName/export-kml", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
     const missionName = req.params.missionName;
+    await dataSyncAccess.assertMissionReadable(authUser, missionName);
     const q = { ...req.query };
     const r = await dataSyncSvc.exportMissionKmlStream(missionName, q);
 
@@ -168,14 +206,16 @@ router.get("/missions/:missionName/export-kml", async (req, res) => {
     if (cl) res.setHeader("Content-Length", cl);
     r.data.pipe(res);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 /** Mission HTML archive — TAK GET /Marti/api/missions/:name/archive */
 router.get("/missions/:missionName/export-archive", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
     const missionName = req.params.missionName;
+    await dataSyncAccess.assertMissionReadable(authUser, missionName);
     const q = { ...req.query };
     const r = await dataSyncSvc.exportMissionArchiveStream(missionName, q);
 
@@ -217,47 +257,56 @@ router.get("/missions/:missionName/export-archive", async (req, res) => {
     if (cl) res.setHeader("Content-Length", cl);
     r.data.pipe(res);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.get("/missions/:missionName", async (req, res) => {
   try {
-    const data = await dataSyncSvc.getMission(req.params.missionName);
+    const authUser = req.authentikUser || null;
+    const data = await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.put("/missions/:missionName", async (req, res) => {
   try {
-    const body = sanitizeMissionWriteBody(req.body);
+    const prepared = await prepareMissionWrite(req, res);
+    if (!prepared.ok) return;
+    const body = prepared.body;
     const data = await dataSyncSvc.putMission(req.params.missionName, body);
     auditDataSync(req, "DATA_SYNC_MISSION_UPDATED", req.params.missionName, {
       fields: Object.keys(body || {}),
     });
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.post("/missions/:missionName", async (req, res) => {
   try {
-    const body = sanitizeMissionWriteBody(req.body);
+    const authUser = req.authentikUser || null;
+    await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
+    const prepared = await prepareMissionWrite(req, res);
+    if (!prepared.ok) return;
+    const body = prepared.body;
     const data = await dataSyncSvc.changeMission(req.params.missionName, body);
     auditDataSync(req, "DATA_SYNC_MISSION_CHANGED", req.params.missionName, {
       fields: Object.keys(body || {}),
     });
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.delete("/missions/:missionName", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
+    await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
     const data = await dataSyncSvc.deleteMission(req.params.missionName);
     auditDataSync(req, "DATA_SYNC_MISSION_DELETED", req.params.missionName);
     if (data === undefined || data === null || data === "") {
@@ -265,12 +314,14 @@ router.delete("/missions/:missionName", async (req, res) => {
     }
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.put("/missions/:missionName/password", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
+    await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
     const pw = req.body && req.body.password != null ? String(req.body.password) : "";
     const data = await dataSyncSvc.setMissionPassword(req.params.missionName, pw);
     auditDataSync(req, "DATA_SYNC_MISSION_PASSWORD_SET", req.params.missionName, {
@@ -278,37 +329,43 @@ router.put("/missions/:missionName/password", async (req, res) => {
     });
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.delete("/missions/:missionName/password", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
+    await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
     const data = await dataSyncSvc.clearMissionPassword(req.params.missionName);
     auditDataSync(req, "DATA_SYNC_MISSION_PASSWORD_CLEARED", req.params.missionName);
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.put("/missions/:missionName/keywords", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
+    await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
     const data = await dataSyncSvc.putMissionKeywords(req.params.missionName, req.body);
     auditDataSync(req, "DATA_SYNC_MISSION_KEYWORDS_UPDATED", req.params.missionName);
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
 router.put("/missions/:missionName/contents", async (req, res) => {
   try {
+    const authUser = req.authentikUser || null;
+    await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
     const data = await dataSyncSvc.putMissionContents(req.params.missionName, req.body);
     auditDataSync(req, "DATA_SYNC_MISSION_CONTENTS_UPDATED", req.params.missionName);
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
@@ -317,7 +374,7 @@ router.get("/sync/search", async (req, res) => {
     const data = await dataSyncSvc.getSyncSearch(req.query);
     return res.json(data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
@@ -358,7 +415,7 @@ router.get("/sync/content", async (req, res) => {
     if (cl) res.setHeader("Content-Length", cl);
     r.data.pipe(res);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 
@@ -407,7 +464,7 @@ router.post("/sync/upload", upload.any(), async (req, res) => {
     });
     return res.status(r.status || 200).json(r.data);
   } catch (err) {
-    return sendTakError(res, err);
+    return handleRouteError(res, err);
   }
 });
 

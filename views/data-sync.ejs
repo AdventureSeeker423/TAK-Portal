@@ -24,14 +24,11 @@
       <label style="grid-column: 1 / -1;">Description
         <textarea id="createMissionDescription" rows="2" placeholder="Mission description" style="width: 100%; box-sizing: border-box; resize: vertical;"></textarea>
       </label>
-      <div class="create-mission-groups-wrap" style="grid-column: 1 / -1;">
-        <label class="create-mission-groups-label">Groups With Access
-          <input type="search" id="createGroupFilter" placeholder="Search groups..." autocomplete="off" />
-          <div id="createMissionGroupsBox" class="groupsBox">
-            <div id="createMissionGroupsInner" class="groupsInner"></div>
-          </div>
-        </label>
-      </div>
+      <label style="grid-column: 1 / -1;">Group With Access
+        <select id="createMissionGroup" style="width: 100%; box-sizing: border-box;">
+          <option value="">Select a group…</option>
+        </select>
+      </label>
       <label>Password (Optional)
         <div class="passwordWrap">
           <input type="password" id="createMissionPw" autocomplete="new-password" />
@@ -65,7 +62,7 @@
             <th>Name</th>
             <th>Description</th>
             <th>Default Role</th>
-            <th>Groups</th>
+            <th>Group</th>
             <th>Password</th>
             <th>Created</th>
             <th style="min-width: 340px;">Actions</th>
@@ -74,27 +71,6 @@
         <tbody id="missionsTbody"></tbody>
       </table>
     </div>
-  </div>
-
-  <div class="card">
-    <h2 style="margin-top: 0;">KML Data Sync Packages</h2>
-    <div class="row" style="flex-wrap: wrap; align-items: flex-end; gap: 14px;">
-      <label style="min-width: 220px;">
-        Mission
-        <select id="kmlMissionSelect" style="min-width: 200px;">
-          <option value="">Select a mission…</option>
-        </select>
-      </label>
-      <label style="min-width: 240px;">
-        KML package (.kml)
-        <input type="file" id="kmlUploadInput" accept=".kml,application/vnd.google-earth.kml+xml,text/xml,application/xml" />
-      </label>
-      <label>
-        &nbsp;
-        <button type="button" class="btn success" id="btnKmlUpload">Upload KML</button>
-      </label>
-    </div>
-    <div id="kmlUploadMsg" class="msg" style="margin-top: 10px;"></div>
   </div>
 </main>
 
@@ -128,13 +104,12 @@
       </label>
       <p class="muted" style="margin: 6px 0 0 0; font-size: 12px;">Tool is always <code>public</code> for Data Sync missions (not shown).</p>
 
-      <div style="margin-top: 14px;">
-        <div class="row" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-          <strong>Groups With Access</strong>
-          <input type="search" id="groupFilter" placeholder="Filter groups…" style="max-width: 260px; width: 100%; box-sizing: border-box;" />
-        </div>
-        <div id="mGroupsBox" class="groupsBox" style="margin-top: 8px;"></div>
-      </div>
+      <label style="display: block; margin-top: 14px;">
+        Group With Access
+        <select id="mGroup" style="width: 100%; box-sizing: border-box;">
+          <option value="">Select a group…</option>
+        </select>
+      </label>
 
       <div class="card" style="margin-top: 16px; background: var(--card);">
         <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Password (optional)</h3>
@@ -202,60 +177,6 @@
   .mission-action-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .muted { color: var(--muted); }
 
-  /* Create card: manual groups picker — match users-manage.ejs (outer scroll + inner multicolumn) */
-  .data-sync-page .create-mission-groups-label {
-    display: block;
-    font-weight: 600;
-  }
-  .data-sync-page .create-mission-groups-label input[type="search"] {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-    margin-top: 6px;
-  }
-  .data-sync-page .create-mission-groups-wrap .groupsBox {
-    margin-top: 10px;
-    border: 1px solid var(--line);
-    background: var(--panel);
-    border-radius: 12px;
-    padding: 10px;
-    max-height: 320px;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-  .data-sync-page .create-mission-groups-wrap .groupsInner {
-    column-width: 310px;
-    column-gap: 14px;
-    column-count: 4;
-  }
-  .data-sync-page .create-mission-groups-wrap .groupItem {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    border-radius: 10px;
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
-    break-inside: avoid;
-  }
-  .data-sync-page .create-mission-groups-wrap .groupItem:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .data-sync-page .create-mission-groups-wrap .groupItem input {
-    margin: 0;
-    width: 16px;
-    height: 16px;
-    flex: 0 0 auto;
-  }
-  .data-sync-page .create-mission-groups-wrap .groupItem span {
-    display: inline-block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   @media (max-width: 640px){
     .data-sync-table th:nth-child(2),
     .data-sync-table td:nth-child(2),
@@ -311,17 +232,11 @@
   var createMissionName = document.getElementById("createMissionName");
   var createMissionDescription = document.getElementById("createMissionDescription");
   var createMissionDefaultRole = document.getElementById("createMissionDefaultRole");
-  var createGroupFilter = document.getElementById("createGroupFilter");
-  var createMissionGroupsBox = document.getElementById("createMissionGroupsBox");
-  var createMissionGroupsInner = document.getElementById("createMissionGroupsInner");
+  var createMissionGroup = document.getElementById("createMissionGroup");
   var createMissionPw = document.getElementById("createMissionPw");
   var btnCreateMissionSubmit = document.getElementById("btnCreateMissionSubmit");
   var createMissionMsg = document.getElementById("createMissionMsg");
 
-  var kmlMissionSelect = document.getElementById("kmlMissionSelect");
-  var kmlUploadInput = document.getElementById("kmlUploadInput");
-  var btnKmlUpload = document.getElementById("btnKmlUpload");
-  var kmlUploadMsg = document.getElementById("kmlUploadMsg");
   var missionModal = document.getElementById("missionModal");
   var missionModalClose = document.getElementById("missionModalClose");
   var missionModalTitle = document.getElementById("missionModalTitle");
@@ -329,8 +244,7 @@
   var mName = document.getElementById("mName");
   var mDescription = document.getElementById("mDescription");
   var mDefaultRole = document.getElementById("mDefaultRole");
-  var mGroupsBox = document.getElementById("mGroupsBox");
-  var groupFilter = document.getElementById("groupFilter");
+  var mGroup = document.getElementById("mGroup");
   var mNewPw = document.getElementById("mNewPw");
   var mBtnSetPw = document.getElementById("mBtnSetPw");
   var mBtnClearPw = document.getElementById("mBtnClearPw");
@@ -349,8 +263,6 @@
   var missionDetail = null;
   var editingOriginalName = "";
   var pendingDeleteName = "";
-  var selectedGroupSet = new Set();
-  var createSelectedGroupSet = new Set();
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -363,11 +275,6 @@
   function setMissionsMsg(text, ok) {
     missionsMsg.textContent = text || "";
     missionsMsg.className = "msg " + (ok === true ? "ok" : ok === false ? "bad" : "");
-  }
-
-  function setKmlUploadMsg(text, ok) {
-    kmlUploadMsg.textContent = text || "";
-    kmlUploadMsg.className = "msg " + (ok === true ? "ok" : ok === false ? "bad" : "");
   }
 
   function setMissionModalMsg(text, ok) {
@@ -468,7 +375,7 @@
     return out;
   }
 
-  /** Map a TAK group name to the canonical string in groupsCache (for checkbox value match). */
+  /** Map a TAK group name to the canonical string in groupsCache (for select value match). */
   function resolveToGroupsCache(name) {
     var n = String(name || "").trim();
     if (!n) return null;
@@ -489,13 +396,39 @@
     return null;
   }
 
-  function applyMissionGroupsToSelection(rawGroupsArray) {
-    selectedGroupSet = new Set();
-    var names = extractGroupNames(rawGroupsArray);
-    for (var j = 0; j < names.length; j++) {
-      var canon = resolveToGroupsCache(names[j]);
-      if (canon) selectedGroupSet.add(canon);
+  function missionSingleGroupName(mission) {
+    var names = extractGroupNames(Array.isArray(mission && mission.groups) ? mission.groups : []);
+    if (names.length !== 1) return "";
+    return names[0];
+  }
+
+  function fillGroupSelect(selectEl, selectedValue) {
+    if (!selectEl) return;
+    var prev = selectedValue !== undefined ? selectedValue : selectEl.value;
+    selectEl.innerHTML = "";
+    var opt0 = document.createElement("option");
+    opt0.value = "";
+    opt0.textContent = "Select a group…";
+    selectEl.appendChild(opt0);
+    for (var i = 0; i < groupsCache.length; i++) {
+      var g = groupsCache[i];
+      var opt = document.createElement("option");
+      opt.value = g;
+      opt.textContent = g;
+      selectEl.appendChild(opt);
     }
+    if (prev) {
+      var canon = resolveToGroupsCache(prev);
+      selectEl.value = canon || prev;
+    }
+  }
+
+  function renderCreateGroupSelect() {
+    fillGroupSelect(createMissionGroup);
+  }
+
+  function renderEditGroupSelect(selectedName) {
+    fillGroupSelect(mGroup, selectedName || "");
   }
 
   async function loadStatus() {
@@ -530,7 +463,7 @@
     var j = await res.json();
     if (!res.ok) throw new Error((j && j.error) || "Failed to load groups");
     groupsCache = normalizeGroupNames(j);
-    renderCreateGroupCheckboxes();
+    renderCreateGroupSelect();
     return groupsCache;
   }
 
@@ -562,7 +495,6 @@
       if (!res.ok) throw new Error((j && j.error) || text.slice(0, 400));
       missionsCache = unwrapList(j);
       renderMissionsTable();
-      populateKmlMissionSelects();
       setMissionsMsg(missionsCache.length ? "" : "No missions.", true);
     } catch (e) {
       setMissionsMsg(e.message || "Failed to load missions", false);
@@ -577,8 +509,10 @@
       var name = m && m.name != null ? String(m.name) : "";
       if (filter && name.toLowerCase().indexOf(filter) === -1) continue;
 
+      var groupName = missionSingleGroupName(m);
+      if (!groupName) continue;
+
       var tr = document.createElement("tr");
-      var groups = Array.isArray(m.groups) ? m.groups : [];
       var pw = m.passwordProtected === true ? "Yes" : "No";
       var ct = m.createTime ? String(m.createTime) : "";
       var desc = m.description != null ? String(m.description) : "";
@@ -590,7 +524,7 @@
         "<td><strong>" + esc(name) + "</strong></td>" +
         "<td style=\"max-width:220px;font-size:13px;\">" + esc(desc) + "</td>" +
         "<td style=\"font-size:13px;white-space:nowrap;\">" + esc(defaultRoleLabel) + "</td>" +
-        "<td>" + groups.length + "</td>" +
+        "<td style=\"font-size:13px;\">" + esc(groupName) + "</td>" +
         "<td>" + esc(pw) + "</td>" +
         "<td style=\"font-size:12px;white-space:nowrap;\">" + esc(ct) + "</td>" +
         "<td></td>";
@@ -663,32 +597,7 @@
     }
   }
 
-  function fillMissionSelect(selectEl, previousValue) {
-    if (!selectEl) return;
-    var v = previousValue !== undefined ? previousValue : selectEl.value;
-    selectEl.innerHTML = "";
-    var opt0 = document.createElement("option");
-    opt0.value = "";
-    opt0.textContent = "Select a mission…";
-    selectEl.appendChild(opt0);
-    for (var i = 0; i < missionsCache.length; i++) {
-      var m = missionsCache[i];
-      var name = m && m.name != null ? String(m.name) : "";
-      if (!name) continue;
-      var opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
-      selectEl.appendChild(opt);
-    }
-    if (v) selectEl.value = v;
-  }
-
-  function populateKmlMissionSelects() {
-    var uv = kmlMissionSelect ? kmlMissionSelect.value : "";
-    fillMissionSelect(kmlMissionSelect, uv);
-  }
-
-  function sanitizeKmlFilename(name) {
+  function sanitizeDownloadFilename(name) {
     var s = String(name || "mission")
       .replace(/[^\w.\- ()\[\]]+/g, "_")
       .trim()
@@ -720,7 +629,7 @@
   function triggerBrowserHtmlDownload(blob, missionName) {
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = sanitizeKmlFilename(missionName) + ".html";
+    a.download = sanitizeDownloadFilename(missionName) + ".html";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -757,7 +666,7 @@
   function triggerBrowserKmlDownload(blob, missionName) {
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = sanitizeKmlFilename(missionName) + ".kml";
+    a.download = sanitizeDownloadFilename(missionName) + ".kml";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -770,50 +679,8 @@
     }, 2500);
   }
 
-  function renderGroupCheckboxes() {
-    var filt = (groupFilter && groupFilter.value || "").trim().toLowerCase();
-    mGroupsBox.innerHTML = "";
-    for (var i = 0; i < groupsCache.length; i++) {
-      var g = groupsCache[i];
-      if (filt && g.toLowerCase().indexOf(filt) === -1) continue;
-      var label = document.createElement("label");
-      label.className = "groupItem";
-      var cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.value = g;
-      cb.checked = selectedGroupSet.has(g);
-      var span = document.createElement("span");
-      span.textContent = g;
-      label.appendChild(cb);
-      label.appendChild(span);
-      mGroupsBox.appendChild(label);
-    }
-  }
-
-  function getSelectedGroupsFromBox() {
-    return Array.from(selectedGroupSet);
-  }
-
-  function renderCreateGroupCheckboxes() {
-    var host = createMissionGroupsInner || createMissionGroupsBox;
-    if (!host) return;
-    var filt = (createGroupFilter && createGroupFilter.value || "").trim().toLowerCase();
-    host.innerHTML = "";
-    for (var i = 0; i < groupsCache.length; i++) {
-      var g = groupsCache[i];
-      if (filt && g.toLowerCase().indexOf(filt) === -1) continue;
-      var label = document.createElement("label");
-      label.className = "groupItem";
-      var cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.value = g;
-      cb.checked = createSelectedGroupSet.has(g);
-      var span = document.createElement("span");
-      span.textContent = g;
-      label.appendChild(cb);
-      label.appendChild(span);
-      host.appendChild(label);
-    }
+  function getSelectedGroupName() {
+    return mGroup ? String(mGroup.value || "").trim() : "";
   }
 
   function clearCreateMissionForm() {
@@ -821,15 +688,19 @@
     if (createMissionDescription) createMissionDescription.value = "";
     if (createMissionDefaultRole) createMissionDefaultRole.value = "MISSION_SUBSCRIBER";
     if (createMissionPw) createMissionPw.value = "";
-    if (createGroupFilter) createGroupFilter.value = "";
-    createSelectedGroupSet = new Set();
-    renderCreateGroupCheckboxes();
+    if (createMissionGroup) createMissionGroup.value = "";
+    renderCreateGroupSelect();
   }
 
   async function submitCreateMission() {
     var name = (createMissionName && createMissionName.value || "").trim();
+    var groupName = createMissionGroup ? String(createMissionGroup.value || "").trim() : "";
     if (!name) {
       setCreateMissionMsg("Mission name is required.", false);
+      return;
+    }
+    if (!groupName) {
+      setCreateMissionMsg("Select a group.", false);
       return;
     }
     setCreateMissionMsg("Creating…", undefined);
@@ -839,7 +710,7 @@
         tool: "public",
         description: createMissionDescription ? String(createMissionDescription.value || "") : "",
         defaultRole: buildDefaultRoleObject(createMissionDefaultRole && createMissionDefaultRole.value),
-        groups: Array.from(createSelectedGroupSet),
+        groups: [groupName],
         keywords: [],
         inviteOnly: false,
       };
@@ -921,14 +792,12 @@
 
       /* GET /missions/:name often returns groups as {name:"…"} objects; list endpoint uses strings. */
       var mg = Array.isArray(missionDetail.groups) ? missionDetail.groups : [];
-      applyMissionGroupsToSelection(mg);
-      if (selectedGroupSet.size === 0) {
+      var selectedGroup = missionSingleGroupName({ groups: mg });
+      if (!selectedGroup) {
         var row = missionRowFromCache(name);
-        if (row && Array.isArray(row.groups)) applyMissionGroupsToSelection(row.groups);
+        if (row) selectedGroup = missionSingleGroupName(row);
       }
-
-      groupFilter.value = "";
-      renderGroupCheckboxes();
+      renderEditGroupSelect(selectedGroup);
 
       mContentsTbody.innerHTML = "";
       var contents = Array.isArray(missionDetail.contents) ? missionDetail.contents : [];
@@ -965,13 +834,14 @@
 
   function buildSavePayload() {
     var name = (mName.value || "").trim();
+    var groupName = getSelectedGroupName();
     var kw = missionDetail && Array.isArray(missionDetail.keywords) ? missionDetail.keywords.slice() : [];
     return {
       name: name,
       tool: "public",
       description: mDescription ? String(mDescription.value || "") : "",
       defaultRole: buildDefaultRoleObject(mDefaultRole && mDefaultRole.value),
-      groups: getSelectedGroupsFromBox(),
+      groups: groupName ? [groupName] : [],
       keywords: kw,
       inviteOnly: false,
     };
@@ -982,6 +852,7 @@
     try {
       var payload = buildSavePayload();
       if (!payload.name) throw new Error("Mission name is required.");
+      if (!payload.groups.length) throw new Error("Select a group.");
 
       var url = API + "/missions/" + encodeURIComponent(payload.name);
       /* TAK Marti: POST is used for changing an existing mission; fat GET payloads on PUT caused
@@ -1095,40 +966,6 @@
     }
   }
 
-  async function doKmlUpload() {
-    setKmlUploadMsg("Uploading…", undefined);
-    try {
-      var missionName = (kmlMissionSelect && kmlMissionSelect.value) || "";
-      var file = kmlUploadInput && kmlUploadInput.files && kmlUploadInput.files[0];
-      if (!missionName) throw new Error("Select a mission.");
-      if (!file) throw new Error("Choose a .kml Data Sync package.");
-      var fn = (file.name || "").toLowerCase();
-      if (!fn.endsWith(".kml")) throw new Error("Only .kml files are allowed.");
-
-      var fd = new FormData();
-      fd.append("file", file, file.name);
-      fd.append("mission", missionName);
-
-      var res = await fetch(API + "/sync/upload", {
-        method: "POST",
-        body: fd,
-      });
-      var text = await res.text();
-      var j;
-      try {
-        j = JSON.parse(text);
-      } catch (_) {
-        j = { raw: text };
-      }
-      if (!res.ok) throw new Error((j && j.error) || text.slice(0, 600) || "Upload failed");
-      setKmlUploadMsg("KML package uploaded.", true);
-      kmlUploadInput.value = "";
-      await loadMissions();
-    } catch (e) {
-      setKmlUploadMsg(e.message || "Upload failed", false);
-    }
-  }
-
   if (missionModalClose) missionModalClose.addEventListener("click", closeModal);
   if (missionModal) {
     missionModal.addEventListener("click", function (e) {
@@ -1138,39 +975,10 @@
   if (mBtnSave) mBtnSave.addEventListener("click", saveMission);
   if (mBtnSetPw) mBtnSetPw.addEventListener("click", setMissionPassword);
   if (mBtnClearPw) mBtnClearPw.addEventListener("click", clearMissionPassword);
-  if (groupFilter) {
-    groupFilter.addEventListener("input", function () {
-      renderGroupCheckboxes();
-    });
-  }
-
-  if (mGroupsBox) {
-    mGroupsBox.addEventListener("change", function (e) {
-      var t = e.target;
-      if (!t || t.type !== "checkbox") return;
-      if (t.checked) selectedGroupSet.add(t.value);
-      else selectedGroupSet.delete(t.value);
-    });
-  }
 
   if (btnRefreshMissions) btnRefreshMissions.addEventListener("click", loadMissions);
   if (missionTableFilter) missionTableFilter.addEventListener("input", renderMissionsTable);
   if (btnCreateMissionSubmit) btnCreateMissionSubmit.addEventListener("click", submitCreateMission);
-  if (createGroupFilter) {
-    createGroupFilter.addEventListener("input", function () {
-      renderCreateGroupCheckboxes();
-    });
-  }
-  if (createMissionGroupsBox) {
-    createMissionGroupsBox.addEventListener("change", function (e) {
-      var t = e.target;
-      if (!t || t.type !== "checkbox") return;
-      if (t.checked) createSelectedGroupSet.add(t.value);
-      else createSelectedGroupSet.delete(t.value);
-    });
-  }
-
-  if (btnKmlUpload) btnKmlUpload.addEventListener("click", doKmlUpload);
 
   function wirePasswordToggle(inputEl, toggleEl) {
     if (!inputEl || !toggleEl) return;

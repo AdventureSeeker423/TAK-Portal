@@ -85,7 +85,7 @@ const PERMISSIONS = {
     data_sync: {
       id: "page.data_sync",
       label: "Data Sync",
-      description: "Data sync (beta, global).",
+      description: "Data sync mission manager (beta).",
       section: "administration",
     },
     data_package: {
@@ -128,6 +128,7 @@ const AGENCY_DEFAULT = new Set([
   "page.templates",
   "page.email",
   "page.mou",
+  "page.data_sync",
 ]);
 
 /** Standard defaults are now handled by always-on routes (plugins/setup), not configurable keys. */
