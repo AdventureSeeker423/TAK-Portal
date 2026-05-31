@@ -470,17 +470,36 @@
     }
   }
 
+  function debugQuerySuffix() {
+    try {
+      return new URLSearchParams(window.location.search).get("debug") === "1" ? "?debug=1" : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function logDataSyncDebug(label, payload) {
+    if (!payload || !payload._debug) return;
+    try {
+      console.info("[data-sync] " + label, payload._debug);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
   async function loadGroups() {
-    var res = await fetch(API + "/groups");
+    var res = await fetch(API + "/groups" + debugQuerySuffix());
     var j = await res.json();
     if (!res.ok) throw new Error((j && j.error) || "Failed to load groups");
+    logDataSyncDebug("groups", j);
     groupsCache = normalizeGroupNames(j);
     renderCreateGroupSelect();
     return groupsCache;
   }
 
   function missionQueryParams() {
-    return {};
+    var dbg = debugQuerySuffix();
+    return dbg ? { debug: "1" } : {};
   }
 
   function buildQueryString(obj) {
@@ -505,6 +524,7 @@
         throw new Error("Invalid JSON from server");
       }
       if (!res.ok) throw new Error((j && j.error) || text.slice(0, 400));
+      logDataSyncDebug("missions", j);
       missionsCache = unwrapList(j);
       renderMissionsTable();
       setMissionsMsg(missionsCache.length ? "" : "No missions.", true);

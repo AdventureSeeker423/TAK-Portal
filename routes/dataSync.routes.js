@@ -125,10 +125,10 @@ function handleRouteError(res, err) {
 
 async function prepareMissionWrite(req, res) {
   const authUser = req.authentikUser || null;
-  const allowedSet = await dataSyncAccess.getAllowedTakGroupNameSet(authUser);
+  const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(authUser);
   try {
     dataSyncAccess.assertSingleGroupBody(req.body);
-    dataSyncAccess.assertGroupAllowed(req.body, allowedSet);
+    dataSyncAccess.assertGroupAllowed(req.body, allowedKeySet);
   } catch (err) {
     const handled = sendAccessError(res, err);
     if (handled) return { ok: false };
@@ -140,9 +140,12 @@ async function prepareMissionWrite(req, res) {
 router.get("/groups", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    const allowedSet = await dataSyncAccess.getAllowedTakGroupNameSet(authUser);
     const data = await dataSyncSvc.listGroupsAll();
-    return res.json(dataSyncAccess.filterGroupsPayload(data, allowedSet));
+    const resolved = await dataSyncAccess.resolveGroupsForUser(authUser, data);
+    if (String(req.query.debug || "") === "1") {
+      return res.json({ data: resolved.groups, _debug: resolved.debug });
+    }
+    return res.json(resolved.groups);
   } catch (err) {
     return handleRouteError(res, err);
   }
@@ -151,9 +154,37 @@ router.get("/groups", async (req, res) => {
 router.get("/missions", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    const allowedSet = await dataSyncAccess.getAllowedTakGroupNameSet(authUser);
+    const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(authUser);
     const data = await dataSyncSvc.listPagedMissions(req.query);
-    return res.json(dataSyncAccess.filterMissionsPayload(data, allowedSet));
+    const filtered = dataSyncAccess.filterMissionsPayload(data, allowedKeySet);
+    if (String(req.query.debug || "") === "1") {
+      const allowed = await dataSyncAccess.buildAgencyAllowedGroups(authUser);
+      const list = Array.isArray(filtered?.data)
+        ? filtered.data
+        : Array.isArray(filtered)
+          ? filtered
+          : [];
+      return res.json({
+        ...filtered,
+        data: list,
+        _debug: {
+          allowedAgencySuffixes: authUser?.allowedAgencySuffixes || [],
+          authentikAllowedGroups: allowed,
+          visibleMissionCount: list.length,
+        },
+      });
+    }
+    return res.json(filtered);
+  } catch (err) {
+    return handleRouteError(res, err);
+  }
+});
+
+router.get("/access-debug", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const debug = await dataSyncAccess.buildAccessDebug(authUser);
+    return res.json(debug);
   } catch (err) {
     return handleRouteError(res, err);
   }

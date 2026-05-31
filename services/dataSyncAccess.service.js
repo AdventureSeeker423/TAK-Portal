@@ -1,6 +1,9 @@
 /**
  * Access rules for Data Sync missions — single-group missions only;
  * agency admins scoped to agency-specific groups (not county/state extras).
+ *
+ * TAK Marti uses LDAP CN (no tak_ prefix). Authentik stores tak_<CN>.
+ * All matching compares canonical keys after stripping tak_.
  */
 
 const accessSvc = require("./access.service");
@@ -8,8 +11,14 @@ const agenciesSvc = require("./agencies.service");
 const groupsSvc = require("./groups.service");
 const dataSyncSvc = require("./dataSync.service");
 
-function normalizeTakGroupName(name) {
-  return String(name || "").trim().toLowerCase();
+function canonicalGroupKey(name) {
+  let n = String(name || "").trim().toLowerCase();
+  if (n.startsWith("tak_")) n = n.slice(4);
+  return n.replace(/\s+/g, " ").trim();
+}
+
+function takDisplayName(name) {
+  return groupsSvc.stripTakPrefix(String(name || "").trim());
 }
 
 function entryToGroupName(entry) {
@@ -17,10 +26,30 @@ function entryToGroupName(entry) {
   if (typeof entry === "string") return String(entry).trim();
   if (typeof entry === "object") {
     return String(
-      entry.name || entry.groupName || entry.group || entry.title || ""
+      entry.name || entry.groupName || entry.group || entry.title || entry.cn || ""
     ).trim();
   }
   return String(entry).trim();
+}
+
+function extractGroupEntries(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (typeof payload !== "object") return [];
+
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.groups)) return payload.groups;
+
+  const inner = payload.data;
+  if (inner && typeof inner === "object" && Array.isArray(inner.groups)) {
+    return inner.groups;
+  }
+
+  return [];
+}
+
+function extractTakGroupNameList(payload) {
+  return extractGroupEntries(payload).map(entryToGroupName).filter(Boolean);
 }
 
 function extractMissionGroupNames(mission) {
@@ -44,30 +73,27 @@ function unwrapMission(payload) {
   return payload;
 }
 
-function unwrapMissionList(payload) {
-  if (!payload) return [];
-  if (Array.isArray(payload.data)) return payload.data;
-  if (Array.isArray(payload)) return payload;
-  return [];
+function takGroupNameAllowed(name, allowedKeySet) {
+  if (allowedKeySet === null) return true;
+  const key = canonicalGroupKey(name);
+  if (!key) return false;
+  return allowedKeySet.has(key);
 }
 
-function takGroupNameAllowed(name, allowedSet) {
-  if (allowedSet === null) return true;
-  const n = normalizeTakGroupName(name);
-  if (allowedSet.has(n)) return true;
-  const stripped = n.startsWith("tak_") ? n.slice(4) : n;
-  const prefixed = n.startsWith("tak_") ? n : `tak_${n}`;
-  return allowedSet.has(stripped) || allowedSet.has(prefixed);
-}
-
-async function getAllowedTakGroupNameSet(authUser) {
+/**
+ * Agency-specific Authentik groups the user may use for Data Sync.
+ * @returns {null} global admin — all groups
+ * @returns {Array<{ authentikName, takDisplayName, canonicalKey, agencySuffix, groupPrefix }>}
+ */
+async function buildAgencyAllowedGroups(authUser) {
   const access = accessSvc.getAgencyAccess(authUser);
   if (access.isGlobalAdmin) return null;
 
   const authentikGroups = await groupsSvc.getAllGroups({});
   const allowedSuffixes = access.allowedAgencySuffixes || [];
   const agencies = agenciesSvc.load();
-  const nameSet = new Set();
+  const out = [];
+  const seenKeys = new Set();
 
   for (const sfx of allowedSuffixes) {
     const norm = accessSvc.normalizeSuffix(sfx);
@@ -77,31 +103,101 @@ async function getAllowedTakGroupNameSet(authUser) {
     if (!gp) continue;
     const filtered = accessSvc.filterAgencySpecificGroupsForDashboard(authentikGroups, gp);
     for (const g of filtered) {
-      const raw = String(g?.name || "").trim();
-      if (!raw) continue;
-      nameSet.add(normalizeTakGroupName(raw));
-      nameSet.add(normalizeTakGroupName(groupsSvc.ensureTakPrefix(raw)));
-      nameSet.add(normalizeTakGroupName(groupsSvc.stripTakPrefix(raw)));
+      const authentikName = String(g?.name || "").trim();
+      if (!authentikName) continue;
+      const canonicalKey = canonicalGroupKey(authentikName);
+      if (!canonicalKey || seenKeys.has(canonicalKey)) continue;
+      seenKeys.add(canonicalKey);
+      out.push({
+        authentikName,
+        takDisplayName: takDisplayName(authentikName),
+        canonicalKey,
+        agencySuffix: norm,
+        groupPrefix: gp.toUpperCase(),
+      });
     }
   }
-  return nameSet;
+
+  return out;
 }
 
-function filterMissionsForAccess(missions, allowedSet) {
+async function getAllowedCanonicalKeySet(authUser) {
+  const allowed = await buildAgencyAllowedGroups(authUser);
+  if (allowed === null) return null;
+  return new Set(allowed.map((g) => g.canonicalKey));
+}
+
+/** @deprecated name retained for callers — returns canonical key Set */
+async function getAllowedTakGroupNameSet(authUser) {
+  return getAllowedCanonicalKeySet(authUser);
+}
+
+/**
+ * Group names for the create/edit dropdown.
+ * Agency admins: agency-specific groups; prefer TAK server spelling when present.
+ */
+async function resolveGroupsForUser(authUser, takPayload) {
+  const access = accessSvc.getAgencyAccess(authUser);
+  const takNames = extractTakGroupNameList(takPayload);
+  const takByKey = new Map();
+  for (const t of takNames) {
+    const k = canonicalGroupKey(t);
+    if (k && !takByKey.has(k)) takByKey.set(k, t);
+  }
+
+  if (access.isGlobalAdmin) {
+    const groups = [...new Set(takNames)].sort((a, b) => a.localeCompare(b));
+    return { groups, debug: { scope: "global", takGroupCount: takNames.length } };
+  }
+
+  const allowed = await buildAgencyAllowedGroups(authUser);
+  const resolved = [];
+  const matchDetails = [];
+
+  for (const ag of allowed) {
+    const fromTak = takByKey.get(ag.canonicalKey);
+    const chosen = fromTak || ag.takDisplayName;
+    resolved.push(chosen);
+    matchDetails.push({
+      authentikName: ag.authentikName,
+      takDisplayName: ag.takDisplayName,
+      canonicalKey: ag.canonicalKey,
+      matchedTakName: fromTak || null,
+      chosenForUi: chosen,
+    });
+  }
+
+  const groups = [...new Set(resolved)].sort((a, b) => a.localeCompare(b));
+
+  return {
+    groups,
+    debug: {
+      scope: "agency",
+      allowedAgencySuffixes: access.allowedAgencySuffixes || [],
+      authentikAllowedCount: allowed.length,
+      takGroupCount: takNames.length,
+      takSample: takNames.slice(0, 12),
+      resolvedGroupCount: groups.length,
+      matches: matchDetails,
+    },
+  };
+}
+
+function filterMissionsForAccess(missions, allowedKeySet) {
   const list = Array.isArray(missions) ? missions : [];
   return list.filter((m) => {
     const g = missionSingleGroupName(m);
     if (!g) return false;
-    return takGroupNameAllowed(g, allowedSet);
+    return takGroupNameAllowed(g, allowedKeySet);
   });
 }
 
-function filterGroupsPayload(payload, allowedSet) {
-  if (allowedSet === null) return payload;
+function filterGroupsPayload(payload, allowedKeySet) {
+  if (allowedKeySet === null) return payload;
 
   const keepEntry = (entry) => {
     const n = entryToGroupName(entry);
-    return n && takGroupNameAllowed(n, allowedSet);
+    return n && takGroupNameAllowed(n, allowedKeySet);
   };
 
   if (Array.isArray(payload)) {
@@ -110,11 +206,14 @@ function filterGroupsPayload(payload, allowedSet) {
   if (payload && typeof payload === "object" && Array.isArray(payload.data)) {
     return { ...payload, data: payload.data.filter(keepEntry) };
   }
-  return payload;
+  if (payload && typeof payload === "object" && Array.isArray(payload.groups)) {
+    return { ...payload, groups: payload.groups.filter(keepEntry) };
+  }
+  return [];
 }
 
-function filterMissionsPayload(payload, allowedSet) {
-  if (allowedSet === null) {
+function filterMissionsPayload(payload, allowedKeySet) {
+  if (allowedKeySet === null) {
     if (Array.isArray(payload)) return filterMissionsForAccess(payload, null);
     if (payload && Array.isArray(payload.data)) {
       return { ...payload, data: filterMissionsForAccess(payload.data, null) };
@@ -122,9 +221,9 @@ function filterMissionsPayload(payload, allowedSet) {
     return payload;
   }
 
-  if (Array.isArray(payload)) return filterMissionsForAccess(payload, allowedSet);
+  if (Array.isArray(payload)) return filterMissionsForAccess(payload, allowedKeySet);
   if (payload && Array.isArray(payload.data)) {
-    return { ...payload, data: filterMissionsForAccess(payload.data, allowedSet) };
+    return { ...payload, data: filterMissionsForAccess(payload.data, allowedKeySet) };
   }
   return payload;
 }
@@ -138,13 +237,13 @@ function assertSingleGroupBody(body) {
   }
 }
 
-function assertGroupAllowed(body, allowedSet) {
-  if (allowedSet === null) return;
+function assertGroupAllowed(body, allowedKeySet) {
+  if (allowedKeySet === null) return;
   const groups = Array.isArray(body?.groups) ? body.groups : [];
   if (!groups.length) return;
   for (const g of groups) {
     const name = entryToGroupName(g);
-    if (!takGroupNameAllowed(name, allowedSet)) {
+    if (!takGroupNameAllowed(name, allowedKeySet)) {
       const err = new Error("Forbidden");
       err.code = "FORBIDDEN";
       throw err;
@@ -153,11 +252,11 @@ function assertGroupAllowed(body, allowedSet) {
 }
 
 async function assertMissionReadable(authUser, missionName) {
-  const allowedSet = await getAllowedTakGroupNameSet(authUser);
+  const allowedKeySet = await getAllowedCanonicalKeySet(authUser);
   const raw = await dataSyncSvc.getMission(missionName);
   const mission = unwrapMission(raw);
   const g = missionSingleGroupName(mission);
-  if (!g || !takGroupNameAllowed(g, allowedSet)) {
+  if (!g || !takGroupNameAllowed(g, allowedKeySet)) {
     const err = new Error("Forbidden");
     err.code = "FORBIDDEN";
     throw err;
@@ -165,11 +264,75 @@ async function assertMissionReadable(authUser, missionName) {
   return raw;
 }
 
+async function buildAccessDebug(authUser) {
+  const access = accessSvc.getAgencyAccess(authUser);
+  let takGroupsRaw = [];
+  let takError = null;
+  try {
+    const data = await dataSyncSvc.listGroupsAll();
+    takGroupsRaw = extractTakGroupNameList(data);
+  } catch (err) {
+    takError = err?.message || String(err);
+  }
+
+  let missionsRaw = [];
+  let missionsError = null;
+  try {
+    const data = await dataSyncSvc.listPagedMissions({});
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+    missionsRaw = list.map((m) => ({
+      name: m?.name,
+      groups: extractMissionGroupNames(m),
+      singleGroup: missionSingleGroupName(m),
+      singleGroupKey: canonicalGroupKey(missionSingleGroupName(m) || ""),
+    }));
+  } catch (err) {
+    missionsError = err?.message || String(err);
+  }
+
+  const allowed = await buildAgencyAllowedGroups(authUser);
+  const allowedKeySet = allowed === null ? null : new Set(allowed.map((g) => g.canonicalKey));
+  const resolved = await resolveGroupsForUser(authUser, takGroupsRaw);
+
+  const missionFilterPreview = missionsRaw.map((m) => ({
+    ...m,
+    allowed: takGroupNameAllowed(m.singleGroup || "", allowedKeySet),
+  }));
+
+  return {
+    user: {
+      username: authUser?.username || null,
+      isGlobalAdmin: access.isGlobalAdmin,
+      isAgencyAdmin: access.isAgencyAdmin,
+      allowedAgencySuffixes: access.allowedAgencySuffixes,
+    },
+    takGroups: {
+      count: takGroupsRaw.length,
+      sample: takGroupsRaw.slice(0, 20),
+      error: takError,
+    },
+    authentikAllowedGroups: allowed,
+    resolvedUiGroups: resolved.groups,
+    resolvedDebug: resolved.debug,
+    missions: {
+      count: missionsRaw.length,
+      preview: missionFilterPreview,
+      error: missionsError,
+    },
+  };
+}
+
 module.exports = {
+  canonicalGroupKey,
+  takDisplayName,
   entryToGroupName,
+  extractTakGroupNameList,
   extractMissionGroupNames,
   missionSingleGroupName,
+  buildAgencyAllowedGroups,
   getAllowedTakGroupNameSet,
+  getAllowedCanonicalKeySet,
+  resolveGroupsForUser,
   filterMissionsForAccess,
   filterGroupsPayload,
   filterMissionsPayload,
@@ -177,4 +340,5 @@ module.exports = {
   assertGroupAllowed,
   assertMissionReadable,
   takGroupNameAllowed,
+  buildAccessDebug,
 };
