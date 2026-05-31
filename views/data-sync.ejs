@@ -13,7 +13,7 @@
     <div class="grid2">
       <div class="grid3 data-sync-create-top" style="grid-column: 1 / -1;">
         <label>Data Sync Name
-          <input type="text" id="createMissionName" autocomplete="off" placeholder="e.g. Incident Alpha" />
+          <input type="text" id="createMissionName" autocomplete="off" placeholder="e.g. Incident Alpha" style="width: 100%; box-sizing: border-box;" />
         </label>
         <label>Default Role
           <select id="createMissionDefaultRole" style="width: 100%; box-sizing: border-box;">
@@ -179,7 +179,15 @@
     box-sizing: border-box;
   }
   .data-sync-page .data-sync-create-top label {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .data-sync-page .data-sync-create-top input,
+  .data-sync-page .data-sync-create-top select {
+    width: 100%;
+    box-sizing: border-box;
   }
 
   @media (max-width: 640px){
