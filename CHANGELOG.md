@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.27 - 5/31/26
+✨ `Enhancement` - Data Sync moved out of beta and can now be accessed by global and agency admins (more features to be added soon)<br>
+🐛 `Bug Fix` - Fixes issue with tak_ naming showing up in random sections of the UI of the Groups and Mutual Aid page modals/popups
+
 ### v1.3.26 - 5/29/26
 ✨ `Enhancement` - Added a server abbreviation field in branding settings to better customize page titles.  Recommended layout is (XZYTAK)<br>
 🐛 `Bug Fix` - Fixes issue with agency admins loading into "Setup My Device" page rather than dashboard upon login
