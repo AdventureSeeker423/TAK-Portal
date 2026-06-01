@@ -6,11 +6,9 @@ Below you will find a comprehensive list of items planned for implementation in 
 
 ## 🚧 In Development
 - TAK Server Data Sync Management
-- TAK Server Data Package Management
 
 ## 📌 Planned / Upcoming Features
 - Redefine TAK Portal Permissions - Access control per page rather than Agency/Global
-- Documents / MOU Page - A file archive of all drafts, unsigned, and signed documents
 - Host local ATAK version rather than play store
 
 ## 🧠 Ideas / Long Term
