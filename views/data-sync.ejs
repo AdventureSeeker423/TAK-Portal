@@ -3,7 +3,13 @@
 
 <main class="main data-sync-page">
   <div class="data-sync-hero">
-    <h1>Data Sync Mission Manager</h1>
+    <h1><%
+      const agencyOnlyDataSyncPage = !isGlobalAdmin && isAgencyAdmin;
+      const dataSyncPageAbbrev = typeof agencyPageTitleAbbrev !== "undefined" ? agencyPageTitleAbbrev : null;
+      if (agencyOnlyDataSyncPage && dataSyncPageAbbrev) { %><%= dataSyncPageAbbrev %> Data Sync Mission Manager<% }
+      else if (agencyOnlyDataSyncPage) { %>Agency Data Sync Mission Manager<% }
+      else { %>Data Sync Mission Manager<% }
+    %></h1>
   </div>
 
   <div id="statusBanner" class="card data-sync-status" style="display: none;" role="status"></div>
