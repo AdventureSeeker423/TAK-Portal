@@ -33,6 +33,33 @@ function filterGlobalAdminGroupNames(names) {
   return (Array.isArray(names) ? names : []).filter((n) => !isHiddenGlobalAdminGroupName(n));
 }
 
+function isAgencyPrefixedAuthentikGroup(group) {
+  const prefix = accessSvc.getGroupNamePrefixUpper(group);
+  if (!prefix) return false;
+  const agencies = agenciesSvc.load();
+  return (Array.isArray(agencies) ? agencies : []).some(
+    (a) => String(a?.groupPrefix || "").trim().toUpperCase() === prefix
+  );
+}
+
+/** Private agency groups (hidden from agency admins on Groups page). Global admin only. */
+async function getPrivateAgencyGroupDisplayNames() {
+  const authentikGroups = await groupsSvc.getAllGroups({});
+  const out = [];
+  const seen = new Set();
+  for (const g of authentikGroups) {
+    if (!accessSvc.isGroupMarkedPrivate(g)) continue;
+    if (!isAgencyPrefixedAuthentikGroup(g)) continue;
+    const display = takDisplayName(g?.name);
+    if (!display || display.startsWith("_")) continue;
+    const key = canonicalGroupKey(display);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(display);
+  }
+  return out;
+}
+
 function entryToGroupName(entry) {
   if (entry == null) return "";
   if (typeof entry === "string") return String(entry).trim();
@@ -158,15 +185,31 @@ async function resolveGroupsForUser(authUser, takPayload) {
   }
 
   if (access.isGlobalAdmin) {
-    const visible = filterGlobalAdminGroupNames(takNames);
-    const groups = [...new Set(visible)].sort((a, b) => a.localeCompare(b));
+    const visibleTak = filterGlobalAdminGroupNames(takNames);
+    const byKey = new Map();
+    for (const t of visibleTak) {
+      const k = canonicalGroupKey(t);
+      if (k && !byKey.has(k)) byKey.set(k, t);
+    }
+
+    const privateAgencyNames = await getPrivateAgencyGroupDisplayNames();
+    for (const name of privateAgencyNames) {
+      const k = canonicalGroupKey(name);
+      if (!k || byKey.has(k)) continue;
+      const fromTak = takByKey.get(k);
+      byKey.set(k, fromTak || name);
+    }
+
+    const groups = Array.from(byKey.values()).sort((a, b) => a.localeCompare(b));
     return {
       groups,
       debug: {
         scope: "global",
         takGroupCount: takNames.length,
+        visibleTakGroupCount: visibleTak.length,
+        privateAgencyGroupCount: privateAgencyNames.length,
         visibleGroupCount: groups.length,
-        hiddenGroupCount: takNames.length - visible.length,
+        hiddenGroupCount: takNames.length - visibleTak.length,
       },
     };
   }
