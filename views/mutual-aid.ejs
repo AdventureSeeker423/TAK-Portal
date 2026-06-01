@@ -305,7 +305,8 @@ function esc(s){
 }
 
 function displayGroupName(name){
-  return String(name || "").replace(/^tak_/, "");
+  const n = String(name || "").trim();
+  return n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
 }
 
 function setMsg(el, text, ok=true){
@@ -603,7 +604,7 @@ function renderExistingGroupSelect() {
   const current = String(maExistingGroup.value || "");
   const items = (groupsCache || [])
     .slice()
-    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
+    .sort((a,b)=>displayGroupName(a.name).localeCompare(displayGroupName(b.name)));
 
   const opts = [`<option value="">-- Select A Group --</option>`]
   .concat(items.map(g => {
@@ -1375,15 +1376,20 @@ function renderSourceGroupList(){
   const needle = String(sourceGroupSearch.value||"").trim().toLowerCase();
   const items = groupsCache
     .slice()
-    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")))
-    .filter(g => !needle || String(g.name||"").toLowerCase().includes(needle));
+    .sort((a,b)=>displayGroupName(a.name).localeCompare(displayGroupName(b.name)))
+    .filter(g => {
+      if (!needle) return true;
+      const label = displayGroupName(g.name).toLowerCase();
+      return label.includes(needle) || String(g.name||"").toLowerCase().includes(needle);
+    });
 
   sourceGroupList.innerHTML = items.map(g => {
     const id = String(g.pk);
+    const label = displayGroupName(g.name);
     return `
       <label class="groupItem">
         <input type="checkbox" class="srcGroupChk" value="${esc(id)}" />
-        <span>${esc(g.name||"")}</span>
+        <span>${esc(label)}</span>
       </label>
     `;
   }).join("") || `<div style="padding:10px; color: var(--muted);">No groups found.</div>`;
