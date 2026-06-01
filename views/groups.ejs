@@ -1402,7 +1402,7 @@ window.deleteGroup = async (groupId) => {
   }
 
   const ok = confirm(
-    `DELETE GROUP: "${impact.groupName}"?\n\n` +
+    `DELETE GROUP: "${stripTakPrefix(impact.groupName || name)}"?\n\n` +
     `This will:\n` +
     `• Remove this group from ${userCount} user(s)\n` +
     `• Remove this group from ${tmplCount} template(s)\n\n` +
@@ -1423,7 +1423,7 @@ window.deleteGroup = async (groupId) => {
 
   setMsg(
     listMsg,
-    `Deleted "${out.groupName}". Removed from ${out.usersUpdated} user(s), updated ${out.templatesUpdated} template(s).`,
+    `Deleted "${stripTakPrefix(out.groupName || name)}". Removed from ${out.usersUpdated} user(s), updated ${out.templatesUpdated} template(s).`,
     true
   );
 
@@ -1800,7 +1800,7 @@ editGroupSaveBtn.onclick = async () => {
     return;
   }
 
-  if (!confirm(`Save changes to "${editGroupCurrentName}"?`)) return;
+  if (!confirm(`Save changes to "${stripTakPrefix(editGroupCurrentName)}"?`)) return;
 
   const res = await fetch(`/api/groups/${encodeURIComponent(editGroupCurrentId)}`, {
     method: "PATCH",
@@ -1822,7 +1822,7 @@ editGroupSaveBtn.onclick = async () => {
     return;
   }
 
-  setMsg(editGroupMsg, `Updated "${editGroupCurrentName}"`, true);
+  setMsg(editGroupMsg, `Updated "${stripTakPrefix(newName)}"`, true);
   editGroupCurrentName = newName;
   editGroupCurrentDescription = newDescription;
   if (newPrivate !== null) editGroupCurrentPrivate = newPrivate;
