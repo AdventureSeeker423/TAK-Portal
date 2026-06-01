@@ -21,6 +21,18 @@ function takDisplayName(name) {
   return groupsSvc.stripTakPrefix(String(name || "").trim());
 }
 
+/** Global admin dropdown: hide internal / LDAP-prefixed TAK group names. */
+function isHiddenGlobalAdminGroupName(name) {
+  const n = String(name || "").trim();
+  if (!n) return true;
+  if (n.startsWith("_")) return true;
+  return n.toLowerCase().startsWith("tak_");
+}
+
+function filterGlobalAdminGroupNames(names) {
+  return (Array.isArray(names) ? names : []).filter((n) => !isHiddenGlobalAdminGroupName(n));
+}
+
 function entryToGroupName(entry) {
   if (entry == null) return "";
   if (typeof entry === "string") return String(entry).trim();
@@ -146,8 +158,17 @@ async function resolveGroupsForUser(authUser, takPayload) {
   }
 
   if (access.isGlobalAdmin) {
-    const groups = [...new Set(takNames)].sort((a, b) => a.localeCompare(b));
-    return { groups, debug: { scope: "global", takGroupCount: takNames.length } };
+    const visible = filterGlobalAdminGroupNames(takNames);
+    const groups = [...new Set(visible)].sort((a, b) => a.localeCompare(b));
+    return {
+      groups,
+      debug: {
+        scope: "global",
+        takGroupCount: takNames.length,
+        visibleGroupCount: groups.length,
+        hiddenGroupCount: takNames.length - visible.length,
+      },
+    };
   }
 
   const allowed = await buildAgencyAllowedGroups(authUser);
@@ -341,4 +362,6 @@ module.exports = {
   assertMissionReadable,
   takGroupNameAllowed,
   buildAccessDebug,
+  isHiddenGlobalAdminGroupName,
+  filterGlobalAdminGroupNames,
 };
