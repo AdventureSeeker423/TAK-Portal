@@ -10,6 +10,7 @@ const accessSvc = require("./access.service");
 const agenciesSvc = require("./agencies.service");
 const groupsSvc = require("./groups.service");
 const dataSyncSvc = require("./dataSync.service");
+const { getString } = require("./env");
 
 function canonicalGroupKey(name) {
   let n = String(name || "").trim().toLowerCase();
@@ -33,30 +34,53 @@ function filterGlobalAdminGroupNames(names) {
   return (Array.isArray(names) ? names : []).filter((n) => !isHiddenGlobalAdminGroupName(n));
 }
 
-function isAgencyPrefixedAuthentikGroup(group) {
-  const prefix = accessSvc.getGroupNamePrefixUpper(group);
-  if (!prefix) return false;
-  const agencies = agenciesSvc.load();
-  return (Array.isArray(agencies) ? agencies : []).some(
-    (a) => String(a?.groupPrefix || "").trim().toUpperCase() === prefix
-  );
+function isAuthentikAgencyAdminGroupName(name) {
+  return /-AgencyAdmin$/i.test(String(name || "").trim());
 }
 
-/** Private agency groups (hidden from agency admins on Groups page). Global admin only. */
-async function getPrivateAgencyGroupDisplayNames() {
+/** Match Groups page visibility for global admins (all portal group types). */
+function filterAuthentikGroupsForGlobalAdminDataSync(authUser, allGroups) {
+  let filtered = accessSvc.filterGroupsForUser(authUser, allGroups);
+
+  const hiddenPrefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
+    .split(",")
+    .map((p) => String(p || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (hiddenPrefixes.length) {
+    filtered = filtered.filter((g) => {
+      const raw = String(g?.name || "").trim().toLowerCase();
+      const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
+      return !hiddenPrefixes.some(
+        (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
+      );
+    });
+  }
+
+  return filtered;
+}
+
+/**
+ * All portal-managed groups for global admin (agency, county, state, global, private agency).
+ * Uses Authentik as source of truth; TAK CN display names (no tak_ prefix).
+ */
+async function getGlobalAdminGroupDisplayNames(authUser) {
   const authentikGroups = await groupsSvc.getAllGroups({});
+  const visible = filterAuthentikGroupsForGlobalAdminDataSync(authUser, authentikGroups);
   const out = [];
   const seen = new Set();
-  for (const g of authentikGroups) {
-    if (!accessSvc.isGroupMarkedPrivate(g)) continue;
-    if (!isAgencyPrefixedAuthentikGroup(g)) continue;
-    const display = takDisplayName(g?.name);
+
+  for (const g of visible) {
+    const authentikName = String(g?.name || "").trim();
+    if (!authentikName || isAuthentikAgencyAdminGroupName(authentikName)) continue;
+    const display = takDisplayName(authentikName);
     if (!display || display.startsWith("_")) continue;
     const key = canonicalGroupKey(display);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(display);
   }
+
   return out;
 }
 
@@ -185,19 +209,19 @@ async function resolveGroupsForUser(authUser, takPayload) {
   }
 
   if (access.isGlobalAdmin) {
-    const visibleTak = filterGlobalAdminGroupNames(takNames);
+    const authentikNames = await getGlobalAdminGroupDisplayNames(authUser);
     const byKey = new Map();
-    for (const t of visibleTak) {
-      const k = canonicalGroupKey(t);
-      if (k && !byKey.has(k)) byKey.set(k, t);
+
+    for (const name of authentikNames) {
+      const k = canonicalGroupKey(name);
+      if (!k) continue;
+      byKey.set(k, takByKey.get(k) || name);
     }
 
-    const privateAgencyNames = await getPrivateAgencyGroupDisplayNames();
-    for (const name of privateAgencyNames) {
-      const k = canonicalGroupKey(name);
-      if (!k || byKey.has(k)) continue;
-      const fromTak = takByKey.get(k);
-      byKey.set(k, fromTak || name);
+    // Include any TAK-only groups not mirrored in Authentik (exclude _ / tak_ raw names).
+    for (const t of filterGlobalAdminGroupNames(takNames)) {
+      const k = canonicalGroupKey(t);
+      if (k && !byKey.has(k)) byKey.set(k, t);
     }
 
     const groups = Array.from(byKey.values()).sort((a, b) => a.localeCompare(b));
@@ -205,11 +229,9 @@ async function resolveGroupsForUser(authUser, takPayload) {
       groups,
       debug: {
         scope: "global",
+        authentikGroupCount: authentikNames.length,
         takGroupCount: takNames.length,
-        visibleTakGroupCount: visibleTak.length,
-        privateAgencyGroupCount: privateAgencyNames.length,
         visibleGroupCount: groups.length,
-        hiddenGroupCount: takNames.length - visibleTak.length,
       },
     };
   }
