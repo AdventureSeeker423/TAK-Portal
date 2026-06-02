@@ -42,6 +42,7 @@ async function assertUserNotActionLocked(userId, { ignoreLocks } = {}) {
 const emailSvc = require("./email.service");
 const { renderTemplate, htmlToText } = require("./emailTemplates.service");
 const { toSafeApiError } = require("./apiErrorPayload.service");
+const mutualAidStore = require("./mutualAid.store");
 const DEFAULT_ATAK_ROLE = "Team Member";
 
 /** Recognized ATAK role labels (same set as templates / UI). Used for CSV import validation. */
@@ -118,10 +119,38 @@ function normalizeTakRole(value, fallback = DEFAULT_ATAK_ROLE) {
   return role || fallback;
 }
 
+function isMutualAidUser(user) {
+  const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
+  if (attrs.mutual_aid === true) return true;
+  const raw = String(attrs.mutual_aid ?? "").trim().toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
+/** Group IDs for channels created by mutual aid (not linked existing groups). */
+function loadMutualAidCreatedGroupIdSet() {
+  const items = mutualAidStore.load();
+  const ids = new Set();
+  for (const item of Array.isArray(items) ? items : []) {
+    const mode = String(item?.groupMode || "new").trim().toLowerCase();
+    const groupWasCreated = item?.groupWasCreated === true || mode !== "existing";
+    if (!groupWasCreated) continue;
+    const gid = String(item?.groupId || "").trim();
+    if (gid) ids.add(gid);
+  }
+  return ids;
+}
+
 function shouldSkipRoleBackfillForUser(user) {
   const type = String(user?.type || "").trim().toLowerCase();
   // Authentik service accounts can reject profile/attribute writes.
-  return type === "service_account" || type === "internal_service_account";
+  if (type === "service_account" || type === "internal_service_account") return true;
+  // Mutual aid deployment users are managed separately.
+  if (isMutualAidUser(user)) return true;
+  return false;
+}
+
+function shouldSkipCurrentTemplateBackfillForUser(user) {
+  return shouldSkipRoleBackfillForUser(user);
 }
 
 async function resolveGroupNames(groupIds) {
@@ -3252,6 +3281,7 @@ function computeCurrentTemplateForUser({
   templatesByAgencySuffix,
   groupNameToId,
   visibleGroupIds,
+  ignoredGroupIds = null,
 } = {}) {
   const attrs = user?.attributes || {};
   const agencySuffix = String(attrs.agency || "").trim().toLowerCase();
@@ -3261,9 +3291,16 @@ function computeCurrentTemplateForUser({
     ? templatesByAgencySuffix.get(agencySuffix)
     : [];
 
+  const ignore =
+    ignoredGroupIds instanceof Set ? ignoredGroupIds : loadMutualAidCreatedGroupIdSet();
   const userGroupIds = idSetFromArray(user?.groups || []);
   const userVisible = new Set(
-    Array.from(userGroupIds).filter((id) => visibleGroupIds.has(String(id)))
+    Array.from(userGroupIds).filter((id) => {
+      const sid = String(id);
+      if (!visibleGroupIds.has(sid)) return false;
+      if (ignore.has(sid)) return false;
+      return true;
+    })
   );
 
   for (const t of templates) {
@@ -3313,6 +3350,7 @@ async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
       .map((g) => String(g?.pk || "").trim())
       .filter(Boolean)
   );
+  const mutualAidCreatedGroupIds = loadMutualAidCreatedGroupIdSet();
 
   let scanned = 0;
   let updated = 0;
@@ -3335,6 +3373,7 @@ async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
     for (const user of rows) {
       const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
       if (String(attrs.agency || "").trim().toLowerCase() !== sfx) continue;
+      if (shouldSkipCurrentTemplateBackfillForUser(user)) continue;
 
       scanned += 1;
       const desired = computeCurrentTemplateForUser({
@@ -3342,6 +3381,7 @@ async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
         templatesByAgencySuffix,
         groupNameToId,
         visibleGroupIds,
+        ignoredGroupIds: mutualAidCreatedGroupIds,
       });
       if (desired == null) continue;
 
@@ -3401,6 +3441,7 @@ async function getCurrentTemplateBackfillStats() {
     if (!templatesByAgencySuffix.has(sfx)) templatesByAgencySuffix.set(sfx, []);
     templatesByAgencySuffix.get(sfx).push(t);
   }
+  const mutualAidCreatedGroupIds = loadMutualAidCreatedGroupIdSet();
 
   let missing = 0;
   let mismatch = 0;
@@ -3408,11 +3449,16 @@ async function getCurrentTemplateBackfillStats() {
   const sampleUsers = [];
 
   for (const user of list) {
+    if (shouldSkipCurrentTemplateBackfillForUser(user)) {
+      skipped += 1;
+      continue;
+    }
     const desired = computeCurrentTemplateForUser({
       user,
       templatesByAgencySuffix,
       groupNameToId,
       visibleGroupIds,
+      ignoredGroupIds: mutualAidCreatedGroupIds,
     });
     if (desired == null) {
       skipped += 1;
@@ -3466,17 +3512,23 @@ async function backfillCurrentTemplateAttributes({ dryRun = true } = {}) {
     if (!templatesByAgencySuffix.has(sfx)) templatesByAgencySuffix.set(sfx, []);
     templatesByAgencySuffix.get(sfx).push(t);
   }
+  const mutualAidCreatedGroupIds = loadMutualAidCreatedGroupIdSet();
 
   let updated = 0;
   let skipped = 0;
   const sampleUsers = [];
 
   for (const user of list) {
+    if (shouldSkipCurrentTemplateBackfillForUser(user)) {
+      skipped += 1;
+      continue;
+    }
     const desired = computeCurrentTemplateForUser({
       user,
       templatesByAgencySuffix,
       groupNameToId,
       visibleGroupIds,
+      ignoredGroupIds: mutualAidCreatedGroupIds,
     });
     if (desired == null) {
       skipped += 1;
@@ -3538,21 +3590,37 @@ async function getCurrentTemplateBackfillPreviewRows() {
     if (!templatesByAgencySuffix.has(sfx)) templatesByAgencySuffix.set(sfx, []);
     templatesByAgencySuffix.get(sfx).push(t);
   }
+  const mutualAidCreatedGroupIds = loadMutualAidCreatedGroupIdSet();
 
   const rows = [];
   for (const user of list) {
     const attrs = user?.attributes || {};
     const agencySuffix = String(attrs.agency || "").trim().toLowerCase();
     const current = String(attrs.current_template || "").trim();
+    const username = String(user?.username || "").trim();
+    const displayName = String(user?.name || "").trim();
+    const userId = String(user?.pk || user?.id || "").trim();
+
+    if (shouldSkipCurrentTemplateBackfillForUser(user)) {
+      rows.push({
+        username,
+        displayName,
+        userId,
+        agencySuffix,
+        currentTemplate: current,
+        computedTemplate: "",
+        action: "skipped_mutual_aid_or_locked",
+      });
+      continue;
+    }
+
     const desired = computeCurrentTemplateForUser({
       user,
       templatesByAgencySuffix,
       groupNameToId,
       visibleGroupIds,
+      ignoredGroupIds: mutualAidCreatedGroupIds,
     });
-    const username = String(user?.username || "").trim();
-    const displayName = String(user?.name || "").trim();
-    const userId = String(user?.pk || user?.id || "").trim();
 
     if (desired == null) {
       rows.push({
