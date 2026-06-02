@@ -126,18 +126,8 @@ function isMutualAidUser(user) {
   return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
 }
 
-/** Group IDs for channels created by mutual aid (not linked existing groups). */
 function loadMutualAidCreatedGroupIdSet() {
-  const items = mutualAidStore.load();
-  const ids = new Set();
-  for (const item of Array.isArray(items) ? items : []) {
-    const mode = String(item?.groupMode || "new").trim().toLowerCase();
-    const groupWasCreated = item?.groupWasCreated === true || mode !== "existing";
-    if (!groupWasCreated) continue;
-    const gid = String(item?.groupId || "").trim();
-    if (gid) ids.add(gid);
-  }
-  return ids;
+  return mutualAidStore.getCreatedGroupIdSet();
 }
 
 function shouldSkipRoleBackfillForUser(user) {
@@ -2606,9 +2596,19 @@ async function updateEmail(userId, email) {
 
 async function setUserGroups(userId, groupIds, opts = {}) {
   const userBefore = await assertUserNotActionLocked(userId, opts);
-  const ids = Array.isArray(groupIds)
+  let ids = Array.isArray(groupIds)
     ? groupIds.map(x => String(x).trim()).filter(Boolean)
     : [];
+
+  if (opts.preserveMutualAidGroups) {
+    const mutualAidGroupIds = mutualAidStore.getMutualAidGroupIdSet();
+    const before = Array.isArray(userBefore?.groups)
+      ? userBefore.groups.map((x) => String(x).trim()).filter(Boolean)
+      : [];
+    const preserved = before.filter((id) => mutualAidGroupIds.has(id));
+    ids = Array.from(new Set([...ids, ...preserved]));
+  }
+
   const payload = { groups: ids };
   if (Object.prototype.hasOwnProperty.call(opts || {}, "currentTemplate")) {
     const currentTemplate = String(opts.currentTemplate || "").trim();
@@ -2915,8 +2915,16 @@ async function syncUsersForTemplateSave({
     let nextGroups = beforeGroups.slice();
 
     if (applyGroupOverwrite) {
+      const mutualAidGroupIds = mutualAidStore.getMutualAidGroupIdSet();
       const preservedUnknown = beforeGroups.filter((id) => !visibleGroupIdSet.has(String(id)));
-      nextGroups = Array.from(new Set([...preservedUnknown, ...targetVisibleTemplateGroupIds]));
+      const preservedMutualAid = beforeGroups.filter((id) => mutualAidGroupIds.has(String(id)));
+      nextGroups = Array.from(
+        new Set([
+          ...preservedUnknown,
+          ...preservedMutualAid,
+          ...targetVisibleTemplateGroupIds,
+        ])
+      );
     }
 
     const nextSet = normalizeIdSet(nextGroups);

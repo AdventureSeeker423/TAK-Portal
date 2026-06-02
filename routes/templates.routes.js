@@ -3,6 +3,7 @@ const store = require("../services/templates.service");
 const accessSvc = require("../services/access.service");
 const auditSvc = require("../services/auditLog.service");
 const usersSvc = require("../services/users.service");
+const mutualAidStore = require("../services/mutualAid.store");
 
 const ALLOWED_COLORS = new Set([
   "Blue",
@@ -30,14 +31,25 @@ function normalizeColorOverride(v) {
 
 function normalizeTemplate(t) {
   const role = String(t.role || "").trim();
+  const rawGroups = Array.isArray(t.groups) ? t.groups.map(g => String(g).trim()).filter(Boolean) : [];
   return {
     name: String(t.name || "").trim(),
     agencySuffix: String(t.agencySuffix || "").trim().toLowerCase(),
     colorOverride: normalizeColorOverride(t.colorOverride),
     role: role || "Team Member",
-    groups: Array.isArray(t.groups) ? t.groups.map(g => String(g).trim()).filter(Boolean) : [],
+    groups: mutualAidStore.stripCreatedGroupNames(rawGroups),
     isDefault: !!t.isDefault
   };
+}
+
+function assertTemplateGroupsAllowed(groups) {
+  const list = Array.isArray(groups) ? groups : [];
+  const blocked = list.filter((g) => mutualAidStore.isCreatedGroupName(g));
+  if (blocked.length) {
+    const err = new Error("Templates cannot include mutual aid groups.");
+    err.status = 400;
+    throw err;
+  }
 }
 
 router.get("/", (req, res) => {
@@ -80,7 +92,13 @@ router.get("/current-template-counts", async (req, res) => {
 
 router.post("/", (req, res) => {
   const templates = store.load();
-  const t = normalizeTemplate(req.body || {});
+  let t;
+  try {
+    t = normalizeTemplate(req.body || {});
+    assertTemplateGroupsAllowed(req.body?.groups);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message || "Invalid template groups" });
+  }
   const authUser = req.authentikUser || null;
 
   if (t.agencySuffix && !accessSvc.isSuffixAllowed(authUser, t.agencySuffix)) {
@@ -140,7 +158,13 @@ router.put("/:index", async (req, res) => {
     return res.status(403).json({ error: "You do not have access to this template." });
   }
 
-  const t = normalizeTemplate(req.body || {});
+  let t;
+  try {
+    t = normalizeTemplate(req.body || {});
+    assertTemplateGroupsAllowed(req.body?.groups);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message || "Invalid template groups" });
+  }
 
   if (t.agencySuffix && !accessSvc.isSuffixAllowed(authUser, t.agencySuffix)) {
     return res.status(403).json({ error: "You do not have access to that agency." });
@@ -284,6 +308,9 @@ router.post("/bulk-group-update", async (req, res) => {
     const groupName = String(req.body?.groupName || "").trim();
     if (!groupName) {
       return res.status(400).json({ error: "Group name is required." });
+    }
+    if (mutualAidStore.isCreatedGroupName(groupName)) {
+      return res.status(400).json({ error: "Mutual aid groups cannot be added to templates." });
     }
 
     const indices = Array.isArray(req.body?.templateIndices)

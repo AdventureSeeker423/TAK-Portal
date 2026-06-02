@@ -1690,6 +1690,9 @@ let pickedGroupIds = new Set();
 // Templates should only add/remove these. Anything outside this set is preserved.
 let visibleGroupIds = new Set();
 
+// Mutual aid channels created by the MA workflow — preserved when applying a template.
+let mutualAidGroupIds = new Set();
+
 // Name->id cache for groups that may be hidden from the UI list
 // (e.g. groups starting with "authentik-").
 const groupNameToIdCache = new Map();
@@ -1962,8 +1965,20 @@ async function loadGroups(){
   const groups = Array.isArray(meta.groups) ? meta.groups : [];
   visibleGroupIds = new Set(groups.map(g => String(g.pk)));
   groupIndex = new Map(groups.map(g => [String(g.pk), g.name || ("Group " + g.pk)]));
+  const maIds = Array.isArray(meta.mutualAidGroupIds)
+    ? meta.mutualAidGroupIds
+    : (Array.isArray(meta.mutualAidCreatedGroupIds) ? meta.mutualAidCreatedGroupIds : []);
+  mutualAidGroupIds = new Set(maIds.map((id) => String(id).trim()).filter(Boolean));
 
   renderGroupsBox();
+}
+
+function mergeTemplateApplyGroupIds(currentIds, templateGroupIds) {
+  const preservedUnknownIds = currentIds.filter((id) => !visibleGroupIds.has(String(id)));
+  const preservedMutualAidIds = currentIds.filter((id) => mutualAidGroupIds.has(String(id)));
+  return Array.from(
+    new Set([...preservedUnknownIds, ...preservedMutualAidIds, ...templateGroupIds])
+  );
 }
 
 async function applyGroupChange(groupId, shouldBeMember){
@@ -2905,11 +2920,9 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
     return { ok: false };
   }
 
-  // Preserve any groups the portal does NOT know about (e.g. internal authentik-* groups).
-  // Templates should only overwrite "known" portal groups.
+  // Preserve internal/hidden groups and mutual aid channels; templates only replace portal-visible agency groups.
   const currentIds = Array.isArray(selectedUser.groups) ? selectedUser.groups.map(x => String(x)) : [];
-  const preservedUnknownIds = currentIds.filter(id => !visibleGroupIds.has(String(id)));
-  const finalGroupIds = Array.from(new Set([...preservedUnknownIds, ...newGroupIds]));
+  const finalGroupIds = mergeTemplateApplyGroupIds(currentIds, newGroupIds);
 
   if (!silentSuccess) setMsgEl(actionMsg, "Applying template...", true);
 
@@ -2921,6 +2934,7 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
       body: JSON.stringify({
         groupIds: finalGroupIds,
         currentTemplate: selectedTemplateName || "Manual Group Selection",
+        preserveMutualAidGroups: true,
       }),
     });
   } catch (err) {

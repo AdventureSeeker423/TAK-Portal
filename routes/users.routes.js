@@ -10,6 +10,7 @@ const tokensSvc = require("../services/authentikTokens.service");
 const { getString, getBool } = require("../services/env");
 const auditSvc = require("../services/auditLog.service");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
+const mutualAidStore = require("../services/mutualAid.store");
 
 // Cache resolved Global Admin group PKs (from PORTAL_AUTH_REQUIRED_GROUP)
 // so we can cheaply hide global-admin users from agency-admin views.
@@ -187,6 +188,9 @@ router.get("/meta", async (req, res) => {
     res.json({
       groups,
       templates,
+      mutualAidCreatedGroupNames: mutualAidStore.getCreatedGroupNames(),
+      mutualAidCreatedGroupIds: Array.from(mutualAidStore.getCreatedGroupIdSet()),
+      mutualAidGroupIds: Array.from(mutualAidStore.getMutualAidGroupIdSet()),
     });
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });
@@ -1627,11 +1631,16 @@ router.put("/:userId/groups", async (req, res) => {
       ? beforeUser.groups.map(String)
       : [];
     const beforeLabels = await resolveGroupLabels(beforeIds);
+    const preserveMutualAidGroups = !!req.body?.preserveMutualAidGroups;
     await users.setUserGroups(req.params.userId, groupIds, {
       ...(hasCurrentTemplate ? { currentTemplate } : {}),
+      ...(preserveMutualAidGroups ? { preserveMutualAidGroups: true } : {}),
     });
     const user = await users.getUserById(req.params.userId).catch(() => null);
-    const afterLabels = await resolveGroupLabels(groupIds);
+    const appliedGroupIds = Array.isArray(user?.groups)
+      ? user.groups.map(String)
+      : groupIds.map(String);
+    const afterLabels = await resolveGroupLabels(appliedGroupIds);
 
     auditSvc.logEvent({
       actor: authUser,
@@ -1646,9 +1655,10 @@ router.put("/:userId/groups", async (req, res) => {
         afterGroupIds: afterLabels.ids,
         afterGroupNames: afterLabels.names,
         currentTemplate: hasCurrentTemplate ? currentTemplate : undefined,
+        preserveMutualAidGroups,
       },
     });
-    res.json({ success: true, groups: groupIds });
+    res.json({ success: true, groups: appliedGroupIds });
   } catch (err) {
     res.status(400).json({ error: toErrorPayload(err) });
   }
@@ -1665,11 +1675,16 @@ router.post("/:userId/groups", async (req, res) => {
       ? beforeUser.groups.map(String)
       : [];
     const beforeLabels = await resolveGroupLabels(beforeIds);
+    const preserveMutualAidGroups = !!req.body?.preserveMutualAidGroups;
     await users.setUserGroups(req.params.userId, groupIds, {
       ...(hasCurrentTemplate ? { currentTemplate } : {}),
+      ...(preserveMutualAidGroups ? { preserveMutualAidGroups: true } : {}),
     });
     const user = await users.getUserById(req.params.userId).catch(() => null);
-    const afterLabels = await resolveGroupLabels(groupIds);
+    const appliedGroupIds = Array.isArray(user?.groups)
+      ? user.groups.map(String)
+      : groupIds.map(String);
+    const afterLabels = await resolveGroupLabels(appliedGroupIds);
     auditSvc.logEvent({
       actor: authUser,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
@@ -1683,9 +1698,10 @@ router.post("/:userId/groups", async (req, res) => {
         afterGroupIds: afterLabels.ids,
         afterGroupNames: afterLabels.names,
         currentTemplate: hasCurrentTemplate ? currentTemplate : undefined,
+        preserveMutualAidGroups,
       },
     });
-    res.json({ success: true, groups: groupIds });
+    res.json({ success: true, groups: appliedGroupIds });
   } catch (err) {
     res.status(400).json({ error: toErrorPayload(err) });
   }
