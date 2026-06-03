@@ -12,6 +12,9 @@ const settingsSvc = require("./settings.service");
 const emailSvc = require("./email.service");
 const { renderTemplate, htmlToText } = require("./emailTemplates.service");
 
+const MA_LOGO_DIR = path.join(__dirname, "..", "data", "mutual-aid-logos");
+const MA_LOGO_ALLOWED_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+
 // ---- Expiration scheduler (in-memory) ----
 // Expiration settings are persisted in mutual-aid.json. Timers are best-effort
 // and rehydrated on server start.
@@ -203,24 +206,123 @@ function enrollUrlForCreds(username, token) {
   );
 }
 
+// ---- Deployment logo (master only; subs inherit from group anchor) ----
+
+function ensureMaLogoDir() {
+  if (!fs.existsSync(MA_LOGO_DIR)) {
+    fs.mkdirSync(MA_LOGO_DIR, { recursive: true });
+  }
+}
+
+function logoUrlToFsPath(logoUrl) {
+  const rel = String(logoUrl || "")
+    .trim()
+    .replace(/^\//, "");
+  if (!rel || rel.includes("..")) return null;
+  if (!rel.startsWith("mutual-aid-logos/")) return null;
+  return path.join(__dirname, "..", "data", rel);
+}
+
+function getBrandLogoFsPath() {
+  const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
+  const logoUrl = settings.BRAND_LOGO_URL;
+  if (!logoUrl || typeof logoUrl !== "string") return null;
+  const logoUrlPath = logoUrl.replace(/^\//, "");
+  const logoFsPath = path.join(__dirname, "..", "data", logoUrlPath);
+  return fs.existsSync(logoFsPath) ? logoFsPath : null;
+}
+
+function resolveLogoFsPathForItem(item) {
+  const items = store.load();
+  const anchor = findGroupAnchorItem(items, item?.groupId) || item;
+  if (anchor?.logoUrl) {
+    const custom = logoUrlToFsPath(anchor.logoUrl);
+    if (custom && fs.existsSync(custom)) return custom;
+  }
+  return getBrandLogoFsPath();
+}
+
+function deleteLogoFilesForDeployment(deploymentId) {
+  const id = String(deploymentId || "").trim();
+  if (!id) return;
+  ensureMaLogoDir();
+  try {
+    for (const name of fs.readdirSync(MA_LOGO_DIR)) {
+      if (name === id || name.startsWith(`${id}.`)) {
+        fs.unlinkSync(path.join(MA_LOGO_DIR, name));
+      }
+    }
+  } catch (err) {
+    console.warn("[MUTUAL AID] failed to delete logo files:", err?.message || err);
+  }
+}
+
+function getLogoOwnerItem(items, item) {
+  if (!item || isSubMutualAidType(item.type)) return null;
+  return findGroupAnchorItem(items, item.groupId) || item;
+}
+
+async function applyDeploymentLogo({ id, file, removeLogo }) {
+  const items = store.load();
+  const idx = items.findIndex((x) => String(x.id) === String(id));
+  if (idx < 0) throw new Error("Mutual aid item not found");
+
+  const current = items[idx];
+  if (isSubMutualAidType(current.type)) {
+    throw new Error("Sub deployments cannot set a custom logo");
+  }
+
+  const owner = getLogoOwnerItem(items, current);
+  if (!owner) throw new Error("Logo can only be set on a master deployment");
+
+  const ownerIdx = items.findIndex((x) => String(x.id) === String(owner.id));
+  if (ownerIdx < 0) throw new Error("Master deployment not found");
+
+  if (removeLogo) {
+    deleteLogoFilesForDeployment(owner.id);
+    const nextOwner = { ...items[ownerIdx] };
+    delete nextOwner.logoUrl;
+    nextOwner.updatedAt = nowIso();
+    items[ownerIdx] = nextOwner;
+    saveAll(items);
+    return nextOwner;
+  }
+
+  if (!file || !file.path) return items[ownerIdx];
+
+  const ext = path.extname(file.originalname || file.path || "").toLowerCase();
+  if (!MA_LOGO_ALLOWED_EXT.has(ext)) {
+    try {
+      fs.unlinkSync(file.path);
+    } catch {
+      /* ignore */
+    }
+    throw new Error("Logo must be PNG, JPEG, WebP, or GIF");
+  }
+
+  ensureMaLogoDir();
+  deleteLogoFilesForDeployment(owner.id);
+
+  const destName = `${owner.id}${ext}`;
+  const destPath = path.join(MA_LOGO_DIR, destName);
+  fs.renameSync(file.path, destPath);
+
+  const logoUrl = `/mutual-aid-logos/${destName}`;
+  const nextOwner = {
+    ...items[ownerIdx],
+    logoUrl,
+    updatedAt: nowIso(),
+  };
+  items[ownerIdx] = nextOwner;
+  saveAll(items);
+  return nextOwner;
+}
+
 // ---- Jimp helpers (Jimp 0.22.x) ----
 
-async function addLogoToPng(pngBuffer) {
+async function addLogoToPng(pngBuffer, logoFsPath) {
   try {
-    const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
-    const logoUrl = settings.BRAND_LOGO_URL;
-
-    if (!logoUrl || typeof logoUrl !== "string") {
-      return pngBuffer;
-    }
-
-    // BRAND_LOGO_URL is like "/branding/logo.png"
-    // Files are stored under /data/branding and served via app.use("/branding", ...)
-    const logoUrlPath = logoUrl.replace(/^\//, ""); // "branding/logo.png"
-    const logoFsPath = path.join(__dirname, "..", "data", logoUrlPath);
-
-    if (!fs.existsSync(logoFsPath)) {
-      console.warn("[MUTUAL AID] BRAND_LOGO_URL file not found at", logoFsPath);
+    if (!logoFsPath || !fs.existsSync(logoFsPath)) {
       return pngBuffer;
     }
 
@@ -318,7 +420,7 @@ async function addUsernameLabel(pngBuffer, username) {
 
 // ---- QR helpers ----
 
-async function qrDataUrl(username, token) {
+async function qrDataUrl(username, token, item) {
   const enrollUrl = enrollUrlForCreds(username, token);
   const basePng = await QRCode.toBuffer(enrollUrl, {
     errorCorrectionLevel: "H",
@@ -327,12 +429,13 @@ async function qrDataUrl(username, token) {
     margin: 2,
     color: { dark: "#000000", light: "#FFFFFF" },
   });
-  const finalPng = await addLogoToPng(basePng);
+  const logoPath = resolveLogoFsPathForItem(item);
+  const finalPng = await addLogoToPng(basePng, logoPath);
   const qrCode = "data:image/png;base64," + finalPng.toString("base64");
   return { enrollUrl, qrCode };
 }
 
-async function qrPngBuffer(username, token) {
+async function qrPngBuffer(username, token, item) {
   const enrollUrl = enrollUrlForCreds(username, token);
   const pngBuffer = await QRCode.toBuffer(enrollUrl, {
     errorCorrectionLevel: "H",
@@ -342,8 +445,9 @@ async function qrPngBuffer(username, token) {
     color: { dark: "#000000", light: "#FFFFFF" },
   });
 
+  const logoPath = resolveLogoFsPathForItem(item);
   // 1) Add logo in the center (with white badge)
-  let finalPng = await addLogoToPng(pngBuffer);
+  let finalPng = await addLogoToPng(pngBuffer, logoPath);
 
   // 2) Add username label underneath
   finalPng = await addUsernameLabel(finalPng, username);
@@ -476,12 +580,15 @@ function enrichItemForList(item, allItems) {
   const master = findGroupAnchorItem(allItems, gid);
   const siblings = itemsSharingGroup(allItems, gid);
   const isGroupMaster = !!(master && String(master.id) === String(item.id));
+  const logoUrl = master?.logoUrl || null;
   return {
     ...item,
     isGroupMaster,
     isLinkedDeployment: !isGroupCreatorItem(item) && siblings.length > 1,
     groupMasterId: master ? String(master.id) : null,
     sharedGroupDeploymentCount: siblings.length,
+    logoUrl,
+    hasCustomLogo: !!logoUrl,
   };
 }
 
@@ -744,7 +851,7 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt }) {
   });
 }
 
-async function update({ id, type, title, expireEnabled, expireAt }) {
+async function update({ id, type, title, expireEnabled, expireAt, logoFile, removeLogo }) {
   const items = store.load();
   const idx = items.findIndex((x) => String(x.id) === String(id));
   if (idx < 0) throw new Error("Mutual aid item not found");
@@ -826,7 +933,12 @@ async function update({ id, type, title, expireEnabled, expireAt }) {
 
   // Update expiration schedule
   scheduleExpiration(updated);
-  return updated;
+
+  if (logoFile || removeLogo) {
+    await applyDeploymentLogo({ id, file: logoFile, removeLogo: !!removeLogo });
+  }
+
+  return getById(id) || updated;
 }
 
 async function remove({ id }) {
@@ -859,6 +971,10 @@ async function remove({ id }) {
     await groupsSvc.deleteGroupWithCleanup(item.groupId, { ignoreLocks: true });
   }
 
+  if (isAnchor) {
+    deleteLogoFilesForDeployment(item.id);
+  }
+
   const removeIds = new Set(cascade.map((x) => String(x.id)));
   const next = items.filter((x) => !removeIds.has(String(x.id)));
   saveAll(next);
@@ -875,7 +991,9 @@ async function remove({ id }) {
 async function getQr({ id }) {
   const item = getById(id);
   if (!item) throw new Error("Mutual aid item not found");
-  const { enrollUrl, qrCode } = await qrDataUrl(item.username, item.password);
+  const { enrollUrl, qrCode } = await qrDataUrl(item.username, item.password, item);
+  const items = store.load();
+  const anchor = findGroupAnchorItem(items, item.groupId);
   return {
     id: item.id,
     type: item.type,
@@ -883,13 +1001,15 @@ async function getQr({ id }) {
     username: item.username,
     enrollUrl,
     qrCode,
+    hasCustomLogo: !!anchor?.logoUrl,
+    logoUrl: anchor?.logoUrl || null,
   };
 }
 
 async function getQrDownload({ id }) {
   const item = getById(id);
   if (!item) throw new Error("Mutual aid item not found");
-  const pngBuffer = await qrPngBuffer(item.username, item.password);
+  const pngBuffer = await qrPngBuffer(item.username, item.password, item);
   const safeUser = String(item.username || "")
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, "") || "mutual-aid";

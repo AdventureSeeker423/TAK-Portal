@@ -1,8 +1,40 @@
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
 const router = require("express").Router();
 const mutualAid = require("../services/mutualAid.service");
 const emailSvc = require("../services/email.service");
 const auditSvc = require("../services/auditLog.service");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
+
+const MA_LOGO_DIR = path.join(__dirname, "..", "data", "mutual-aid-logos");
+
+const uploadMaLogo = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      try {
+        if (!fs.existsSync(MA_LOGO_DIR)) {
+          fs.mkdirSync(MA_LOGO_DIR, { recursive: true });
+        }
+        cb(null, MA_LOGO_DIR);
+      } catch (err) {
+        cb(err);
+      }
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || "").toLowerCase() || ".png";
+      const safeExt = [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(ext)
+        ? ext
+        : ".png";
+      cb(null, `upload-${Date.now()}-${Math.random().toString(16).slice(2)}${safeExt}`);
+    },
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\/(png|jpe?g|webp|gif)$/i.test(String(file.mimetype || ""));
+    cb(null, ok);
+  },
+});
 
 function toErrorPayload(err) {
   return toSafeApiError(err);
@@ -82,15 +114,21 @@ router.post("/:id/additional-user", async (req, res) => {
   }
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", uploadMaLogo.single("logo"), async (req, res) => {
   try {
     const before = mutualAid.list().find((x) => String(x?.id) === String(req.params.id)) || null;
+    const removeLogo =
+      req.body?.removeLogo === true ||
+      req.body?.removeLogo === "true" ||
+      req.body?.removeLogo === "1";
     const out = await mutualAid.update({
       id: req.params.id,
       type: req.body?.type,
       title: req.body?.title,
       expireEnabled: req.body?.expireEnabled,
       expireAt: req.body?.expireAt,
+      logoFile: req.file || null,
+      removeLogo,
     });
 
     auditSvc.logEvent({
