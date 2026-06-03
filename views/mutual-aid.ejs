@@ -42,7 +42,8 @@
         <select id="maExistingGroup" style="min-width: 220px;"></select>
       </label>
 
-      
+      <div id="maCreateHelp" style="flex-basis:100%; color: var(--muted); font-size: 13px; margin-top: 4px;"></div>
+
       <label><br>
       <button class="btn" id="maCreateBtn" type="button">Create New Mutual Aid</button></label>
 
@@ -145,6 +146,22 @@
     border-left: 3px solid rgba(124, 58, 237, 0.45);
   }
 
+  .btn.maAddUser {
+    background: #ea580c;
+    border-color: #ea580c;
+    color: #fff;
+  }
+  .btn.maAddUser:hover {
+    filter: brightness(0.95);
+  }
+
+  #addMaUserOverlay #addMaExpireAt::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+  #addMaUserOverlay #addMaExpireAt {
+    color: #fff;
+  }
+
 </style>
 
 
@@ -235,6 +252,39 @@
           <button class="btn" id="editSaveBtn" type="button">Save</button>
           <span id="editMsg" class="msg"></span>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Additional MA User Modal -->
+<div class="modalOverlay" id="addMaUserOverlay" style="display:none;">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addMaUserTitle">
+    <div class="modalHeader">
+      <h2 id="addMaUserTitle" style="margin:0;">Create Additional MA User</h2>
+      <button class="btn" id="addMaUserCloseBtn" type="button">Close</button>
+    </div>
+    <div class="modalBody">
+      <p id="addMaUserTypeLine" style="margin-top:0; color: var(--muted);"></p>
+      <p id="addMaUserChannelLine" style="margin-top:0; color: var(--muted); font-size: 13px;"></p>
+      <div class="grid2">
+        <label>Title
+          <input id="addMaUserTitleInput" placeholder="Title for this deployment user" />
+        </label>
+        <label id="addMaUserExpireEnabledWrap" style="display:block;">
+          <span>Expires</span>
+          <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap;">
+            <select id="addMaUserExpireEnabled">
+              <option value="no" selected>No</option>
+              <option value="yes">Yes</option>
+            </select>
+            <input id="addMaExpireAt" type="datetime-local" style="min-width: 240px; display:none;" />
+          </div>
+        </label>
+      </div>
+      <div class="row" style="grid-column:1/-1; gap:10px; align-items:center; flex-wrap:wrap; margin-top: 8px;">
+        <button class="btn maAddUser" id="addMaUserSaveBtn" type="button">Create User</button>
+        <span id="addMaUserMsg" class="msg"></span>
       </div>
     </div>
   </div>
@@ -641,24 +691,30 @@ maType.onchange = updateCreateExpireUi;
 maExpireEnabled.onchange = updateCreateExpireUi;
 updateCreateExpireUi();
 
-// ----- Create: group mode controls -----
-/** Portal groups plus every group tied to an active mutual aid record (MA channels are hidden from /api/groups). */
+// Group IDs tied to mutual aid channels — excluded from "Use Existing Group" picker.
+let mutualAidExcludedGroupIds = new Set();
+
+function refreshMutualAidExcludedGroupIds() {
+  mutualAidExcludedGroupIds = new Set(
+    (allItems || [])
+      .map((it) => String(it?.groupId || "").trim())
+      .filter(Boolean)
+  );
+}
+
+function isMutualAidGroupName(name) {
+  const raw = String(name || "").trim().toLowerCase();
+  const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
+  return withoutTak.startsWith("ma -") || withoutTak.startsWith("ma-");
+}
+
 function groupsForExistingSelect() {
-  const byId = new Map();
-  for (const g of groupsCache || []) {
+  return (groupsCache || []).filter((g) => {
     const id = String(g?.pk || "").trim();
-    if (!id) continue;
-    byId.set(id, g);
-  }
-  for (const item of allItems || []) {
-    const id = String(item?.groupId || "").trim();
-    const name = String(item?.groupName || "").trim();
-    if (!id || !name) continue;
-    if (!byId.has(id)) {
-      byId.set(id, { pk: id, name });
-    }
-  }
-  return Array.from(byId.values());
+    if (id && mutualAidExcludedGroupIds.has(id)) return false;
+    if (isMutualAidGroupName(g?.name)) return false;
+    return true;
+  });
 }
 
 function renderExistingGroupSelect() {
@@ -666,42 +722,39 @@ function renderExistingGroupSelect() {
   const current = String(maExistingGroup.value || "");
   const items = groupsForExistingSelect()
     .slice()
-    .sort((a,b)=>displayGroupName(a.name).localeCompare(displayGroupName(b.name)));
+    .sort((a, b) => displayGroupName(a.name).localeCompare(displayGroupName(b.name)));
 
-  const opts = [`<option value="">-- Select A Group --</option>`]
-  .concat(items.map(g => {
-    const id = String(g.pk);
-    const rawName = String(g.name || "");
-    const label = displayGroupName(rawName);
-    return `<option value="${esc(id)}">${esc(label)}</option>`;
-  }));
-
+  const opts = [`<option value="">-- Select A Group --</option>`].concat(
+    items.map((g) => {
+      const id = String(g.pk);
+      const label = displayGroupName(g.name);
+      return `<option value="${esc(id)}">${esc(label)}</option>`;
+    })
+  );
 
   maExistingGroup.innerHTML = opts.join("");
   if (current) maExistingGroup.value = current;
 }
 
-function updateCreateGroupModeUi(){
+function updateCreateGroupModeUi() {
   const mode = String(maGroupMode?.value || "new").toLowerCase();
   const isExisting = mode === "existing";
-  // Use flex so the "Existing Group" label sits above the dropdown.
   if (maExistingGroupWrap) maExistingGroupWrap.style.display = isExisting ? "flex" : "none";
 
   if (maCreateHelp) {
     maCreateHelp.innerHTML = isExisting
-      ? `This will create a matching user with an auto-generated 18-character password and add it to the selected group.`
-      : `This will create a group named <strong>MA - TITLE</strong> and a matching user with an auto-generated 18-character password.`;
+      ? "This will create a matching user with an auto-generated 18-character password and add it to the selected group. Mutual aid channels cannot be selected here — use <strong>Create Additional MA User</strong> on an existing deployment to add users to the same MA channel."
+      : "This will create a group named <strong>MA - TITLE</strong> and a matching user with an auto-generated 18-character password.";
   }
 
   if (isExisting) {
-    // Ensure groups are loaded and dropdown is populated.
     if (!groupsCache || !groupsCache.length) {
-      loadGroups().catch(()=>{});
+      loadGroups().catch(() => {});
     } else {
       renderExistingGroupSelect();
     }
-  } else {
-    if (maExistingGroup) maExistingGroup.value = "";
+  } else if (maExistingGroup) {
+    maExistingGroup.value = "";
   }
 }
 
@@ -1206,7 +1259,11 @@ function openEdit(item){
   activeItem = item;
   editOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
-  editType.value = item.type || "INCIDENT";
+  const sub = isSubMutualAidType(item?.type);
+  if (editType) {
+    editType.value = item.type || "INCIDENT";
+    editType.disabled = sub;
+  }
   editName.value = item.title || "";
   // Expiration fields (EVENT + INCIDENT)
   editExpireEnabled.value = item.expireEnabled ? "yes" : "no";
@@ -1247,6 +1304,125 @@ function updateEditExpireUi(){
 editType.onchange = updateEditExpireUi;
 editExpireEnabled.onchange = updateEditExpireUi;
 editCloseBtn.onclick = () => { editOverlay.style.display = "none"; document.body.classList.remove("noScroll"); };
+
+// ----- Additional MA user modal -----
+const addMaUserOverlay = document.getElementById("addMaUserOverlay");
+const addMaUserCloseBtn = document.getElementById("addMaUserCloseBtn");
+const addMaUserTitleEl = document.getElementById("addMaUserTitle");
+const addMaUserTypeLine = document.getElementById("addMaUserTypeLine");
+const addMaUserChannelLine = document.getElementById("addMaUserChannelLine");
+const addMaUserTitleInput = document.getElementById("addMaUserTitleInput");
+const addMaUserExpireEnabled = document.getElementById("addMaUserExpireEnabled");
+const addMaExpireAt = document.getElementById("addMaExpireAt");
+const addMaUserSaveBtn = document.getElementById("addMaUserSaveBtn");
+const addMaUserMsg = document.getElementById("addMaUserMsg");
+let addMaUserParent = null;
+
+function isSubMutualAidType(type) {
+  return String(type || "").trim().toUpperCase().startsWith("SUB-");
+}
+
+function baseMutualAidType(type) {
+  return String(type || "").trim().toUpperCase().replace(/^SUB-/, "");
+}
+
+function formatMutualAidTypeLabel(type) {
+  const t = String(type || "").trim().toUpperCase();
+  if (!t) return "";
+  if (isSubMutualAidType(t)) {
+    const base = baseMutualAidType(t);
+    if (!base) return "Sub";
+    return `Sub-${base.charAt(0)}${base.slice(1).toLowerCase()}`;
+  }
+  return `${t.charAt(0)}${t.slice(1).toLowerCase()}`;
+}
+
+function updateAddMaUserExpireUi() {
+  const enabled = String(addMaUserExpireEnabled?.value || "").toLowerCase() === "yes";
+  if (addMaExpireAt) {
+    addMaExpireAt.disabled = !enabled;
+    addMaExpireAt.style.display = enabled ? "block" : "none";
+    if (!enabled) addMaExpireAt.value = "";
+  }
+}
+
+function openAddMaUserModal(parentItem) {
+  addMaUserParent = parentItem;
+  if (addMaUserTitleEl) {
+    addMaUserTitleEl.textContent = "Create Additional MA User";
+  }
+  const parentType = baseMutualAidType(parentItem?.type);
+  const subLabel = parentType
+    ? `Sub-${parentType.charAt(0)}${parentType.slice(1).toLowerCase()}`
+    : "Sub deployment";
+  if (addMaUserTypeLine) {
+    addMaUserTypeLine.textContent = `Type: ${subLabel} (inherits from ${formatMutualAidTypeLabel(parentItem?.type)})`;
+  }
+  if (addMaUserChannelLine) {
+    addMaUserChannelLine.textContent = `Shared channel: ${displayGroupName(parentItem?.groupName || "")}`;
+  }
+  if (addMaUserTitleInput) addMaUserTitleInput.value = "";
+  if (addMaUserExpireEnabled) addMaUserExpireEnabled.value = "no";
+  if (addMaExpireAt) addMaExpireAt.value = "";
+  updateAddMaUserExpireUi();
+  setMsg(addMaUserMsg, "", true);
+  addMaUserOverlay.style.display = "flex";
+  document.body.classList.add("noScroll");
+}
+
+function closeAddMaUserModal() {
+  addMaUserOverlay.style.display = "none";
+  document.body.classList.remove("noScroll");
+  addMaUserParent = null;
+}
+
+if (addMaUserCloseBtn) addMaUserCloseBtn.onclick = closeAddMaUserModal;
+if (addMaUserExpireEnabled) addMaUserExpireEnabled.onchange = updateAddMaUserExpireUi;
+if (addMaUserSaveBtn) {
+  addMaUserSaveBtn.onclick = async () => {
+    if (!addMaUserParent) return;
+    const title = String(addMaUserTitleInput?.value || "").trim();
+    if (!title) {
+      setMsg(addMaUserMsg, "Title is required.", false);
+      return;
+    }
+
+    let expireEnabled = false;
+    let expireAt = null;
+    expireEnabled = String(addMaUserExpireEnabled?.value || "").toLowerCase() === "yes";
+    if (expireEnabled) {
+      const raw = String(addMaExpireAt?.value || "").trim();
+      if (!raw) {
+        setMsg(addMaUserMsg, "Expiration date/time is required.", false);
+        return;
+      }
+      expireAt = new Date(raw).toISOString();
+    }
+
+    addMaUserSaveBtn.disabled = true;
+    setMsg(addMaUserMsg, "Creating...", true);
+    try {
+      const res = await fetch(
+        `/api/mutual-aid/${encodeURIComponent(addMaUserParent.id)}/additional-user`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, expireEnabled, expireAt }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Create failed");
+      closeAddMaUserModal();
+      setMsg(maListMsg, `Additional user created (${data.item?.username || "ok"}).`, true);
+      await loadList();
+    } catch (e) {
+      setMsg(addMaUserMsg, e?.message || String(e), false);
+    } finally {
+      addMaUserSaveBtn.disabled = false;
+    }
+  };
+}
+
 editSaveBtn.onclick = async () => {
   if(!activeItem) return;
   const type = String(editType.value || "").trim().toUpperCase();
@@ -1641,6 +1817,7 @@ massApplyBtn.onclick = async () => {
 
 // ----- List rendering -----
 function isGroupCreatorItem(it) {
+  if (isSubMutualAidType(it?.type)) return false;
   if (it?.groupWasCreated === true) return true;
   return String(it?.groupMode || "new").toLowerCase() !== "existing";
 }
@@ -1710,7 +1887,9 @@ function renderMutualAidRow(it, opts = {}) {
   const isMaster = !!opts.isMaster;
   const totalCount = Number(opts.totalCount || 0);
   const isLastChild = !!opts.isLastChild;
-  const isExistingGroup = String(it.groupMode || "new").toLowerCase() === "existing";
+  const isSub = isSubMutualAidType(it.type);
+  const isGroupMaster = isGroupCreatorItem(it);
+  const typeLabel = formatMutualAidTypeLabel(it.type);
   const rowClass = [
     isMaster ? "ma-unit-master" : "",
     isChild ? "ma-unit-child" : "",
@@ -1719,9 +1898,9 @@ function renderMutualAidRow(it, opts = {}) {
     .filter(Boolean)
     .join(" ");
 
-  const titleBlock = isChild
+  const titleBlock = isChild || isSub
     ? `<div class="ma-child-indent">
-         <span class="ma-linked-pill">Linked</span>
+         <span class="ma-linked-pill">${isSub ? "Additional" : "Linked"}</span>
          <span style="font-weight:600;">${esc(it.title || "")}</span>
        </div>`
     : `<div style="font-weight:600;">${esc(it.title || "")}${isMaster ? ` <span class="ma-linked-pill">Master</span>` : ""}</div>`;
@@ -1733,7 +1912,7 @@ function renderMutualAidRow(it, opts = {}) {
 
   return `
     <tr class="${rowClass}">
-      <td>${esc(it.type || "")}</td>
+      <td>${esc(typeLabel)}</td>
       <td>
         ${titleBlock}
         ${channelLine}
@@ -1742,10 +1921,11 @@ function renderMutualAidRow(it, opts = {}) {
       <td>
         <div class="row" style="gap:10px; flex-wrap: wrap;">
           <button class="btn" type="button" data-act="members" data-id="${esc(it.id)}">View Members</button>
-          ${isExistingGroup && !isMaster ? "" : `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>`}
-          ${isExistingGroup && !isMaster ? "" : `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>`}
+          ${isGroupMaster ? `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>` : ""}
+          ${isGroupMaster ? `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>` : ""}
           <button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>
           <button class="btn qr" type="button" data-act="qr" data-id="${esc(it.id)}">Show QR</button>
+          ${isGroupMaster ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">Create Additional MA User</button>` : ""}
           <button class="btn danger" type="button" data-act="del" data-id="${esc(it.id)}">Delete</button>
         </div>
       </td>
@@ -1807,6 +1987,7 @@ function renderList(){
       if(act === "unassign") return openMassUnassign({ groupId: it.groupId, groupName: it.groupName });
       if(act === "edit") return openEdit(it);
       if(act === "qr") return openQrModal(it);
+      if(act === "adduser") return openAddMaUserModal(it);
       if(act === "del") return deleteItem(it);
     };
   });
@@ -1823,6 +2004,7 @@ async function loadList(){
     return;
   }
   allItems = Array.isArray(data) ? data : [];
+  refreshMutualAidExcludedGroupIds();
   renderExistingGroupSelect();
   renderList();
   setMsg(maListMsg, `Loaded ${allItems.length} item(s).`, true);
@@ -1883,9 +2065,10 @@ maCreateBtn.onclick = async () => {
       }
       expireAt = new Date(raw).toISOString();
     }
-    // Group mode payload
-    const groupMode = String(maGroupMode?.value || "new").toLowerCase() === "existing" ? "existing" : "new";
-    const existingGroupId = groupMode === "existing" ? String(maExistingGroup?.value || "").trim() : "";
+    const groupMode =
+      String(maGroupMode?.value || "new").toLowerCase() === "existing" ? "existing" : "new";
+    const existingGroupId =
+      groupMode === "existing" ? String(maExistingGroup?.value || "").trim() : "";
     if (groupMode === "existing" && !existingGroupId) {
       setMsg(maCreateMsg, "Please select an existing group.", false);
       maCreateBtn.disabled = false;
@@ -1895,7 +2078,7 @@ maCreateBtn.onclick = async () => {
     const res = await fetch("/api/mutual-aid", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, title, expireEnabled, expireAt, groupMode, existingGroupId })
+      body: JSON.stringify({ type, title, expireEnabled, expireAt, groupMode, existingGroupId }),
     });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || "Create failed");
@@ -1911,7 +2094,6 @@ maCreateBtn.onclick = async () => {
     updateCreateExpireUi();
     await loadList();
 
-    // Immediately offer mass-assign (optional) ONLY when we created a new group.
     if (groupMode !== "existing") {
       openMassAssign({ groupId: item.groupId, groupName: displayGroupName(item.groupName) });
     }

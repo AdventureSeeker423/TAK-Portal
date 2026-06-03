@@ -51,6 +51,37 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.post("/:id/additional-user", async (req, res) => {
+  try {
+    const out = await mutualAid.createLinkedUser({
+      parentId: req.params.id,
+      title: req.body?.title,
+      expireEnabled: req.body?.expireEnabled,
+      expireAt: req.body?.expireAt,
+    });
+
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "CREATE_MUTUAL_AID_LINKED_USER",
+      targetType: "mutual_aid",
+      targetId: String(out?.id || ""),
+      details: {
+        parentId: String(req.params.id),
+        type: out?.type,
+        title: out?.title,
+        groupId: out?.groupId,
+        groupName: out?.groupName,
+        groupMasterId: out?.groupMasterId,
+      },
+    });
+
+    res.json({ success: true, item: out });
+  } catch (err) {
+    res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
 router.patch("/:id", async (req, res) => {
   try {
     const before = mutualAid.list().find((x) => String(x?.id) === String(req.params.id)) || null;

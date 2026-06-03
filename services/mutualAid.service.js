@@ -343,7 +343,33 @@ async function qrPngBuffer(username, token) {
   return finalPng;
 }
 
+function isSubMutualAidType(type) {
+  return String(type || "")
+    .trim()
+    .toUpperCase()
+    .startsWith("SUB-");
+}
+
+function baseMutualAidType(type) {
+  return String(type || "")
+    .trim()
+    .toUpperCase()
+    .replace(/^SUB-/, "");
+}
+
+function formatMutualAidTypeLabel(type) {
+  const t = String(type || "").trim().toUpperCase();
+  if (!t) return "";
+  if (isSubMutualAidType(t)) {
+    const base = baseMutualAidType(t);
+    if (!base) return "Sub";
+    return `Sub-${base.charAt(0)}${base.slice(1).toLowerCase()}`;
+  }
+  return `${t.charAt(0)}${t.slice(1).toLowerCase()}`;
+}
+
 function isGroupCreatorItem(item) {
+  if (isSubMutualAidType(item?.type)) return false;
   if (item?.groupWasCreated === true) return true;
   const mode = String(item?.groupMode || "new").trim().toLowerCase();
   return mode !== "existing";
@@ -453,7 +479,32 @@ function parseExpireAt(value) {
   return d.toISOString();
 }
 
-async function create({ type, title, expireEnabled, expireAt, groupMode, existingGroupId }) {
+function assertNotMutualAidChannelGroup(group, { allowMutualAidGroup = false } = {}) {
+  if (allowMutualAidGroup || !group) return;
+  const gid = String(group.pk || "").trim();
+  if (gid && store.getMutualAidGroupIdSet().has(gid)) {
+    throw new Error(
+      "Mutual aid channels cannot be selected as an existing group. Use Create Additional MA User on an existing deployment instead."
+    );
+  }
+  const raw = String(group.name || "").trim().toLowerCase();
+  const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
+  if (withoutTak.startsWith("ma -") || withoutTak.startsWith("ma-")) {
+    throw new Error(
+      "Mutual aid channels cannot be selected as an existing group. Use Create Additional MA User on an existing deployment instead."
+    );
+  }
+}
+
+async function create({
+  type,
+  title,
+  expireEnabled,
+  expireAt,
+  groupMode,
+  existingGroupId,
+  allowMutualAidGroup = false,
+} = {}) {
   const t = String(type || "").trim().toUpperCase();
   const name = sanitizeTitle(title);
   const desiredGroupName = buildGroupName(t, name);
@@ -486,6 +537,7 @@ async function create({ type, title, expireEnabled, expireAt, groupMode, existin
     if (!gid) throw new Error("Existing group is required when using an existing group");
     group = await groupsSvc.getGroupById(gid);
     if (!group || !group.pk) throw new Error("Group not found");
+    assertNotMutualAidChannelGroup(group, { allowMutualAidGroup });
   } else {
     // 1) Create group
     group = await groupsSvc.createGroup(desiredGroupName);
@@ -575,6 +627,28 @@ async function create({ type, title, expireEnabled, expireAt, groupMode, existin
   return item;
 }
 
+/**
+ * Add another deployment user on the same channel as an existing master MA record.
+ */
+async function createLinkedUser({ parentId, title, expireEnabled, expireAt }) {
+  const parent = getById(parentId);
+  if (!parent) throw new Error("Parent mutual aid item not found");
+
+  const parentType = baseMutualAidType(parent.type);
+  if (!parentType) throw new Error("Parent mutual aid type is invalid");
+
+  const subType = `SUB-${parentType}`;
+  return create({
+    type: subType,
+    title,
+    expireEnabled,
+    expireAt,
+    groupMode: "existing",
+    existingGroupId: parent.groupId,
+    allowMutualAidGroup: true,
+  });
+}
+
 async function update({ id, type, title, expireEnabled, expireAt }) {
   const items = store.load();
   const idx = items.findIndex((x) => String(x.id) === String(id));
@@ -583,7 +657,8 @@ async function update({ id, type, title, expireEnabled, expireAt }) {
   const current = items[idx];
   const currentMode = String(current.groupMode || "new").toLowerCase();
   const groupWasCreated = current.groupWasCreated === true;
-  const canModifyGroup = groupWasCreated || currentMode !== "existing";
+  const isSub = isSubMutualAidType(current.type);
+  const canModifyGroup = !isSub && (groupWasCreated || currentMode !== "existing");
 
   const nextType = String(type || current.type || "").trim().toUpperCase();
   const nextTitle = sanitizeTitle(title ?? current.title);
@@ -736,8 +811,11 @@ module.exports = {
   initExpirationScheduler,
   list,
   create,
+  createLinkedUser,
   update,
   remove,
   getQr,
   getQrDownload,
+  formatMutualAidTypeLabel,
+  isSubMutualAidType,
 };
