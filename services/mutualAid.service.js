@@ -418,7 +418,7 @@ function itemsSharingGroupId(items, groupId) {
   return (Array.isArray(items) ? items : []).filter((x) => String(x?.groupId || "") === gid);
 }
 
-async function syncLinkedSubDeployments(items, parentItem, { nextBaseType, nextMasterTitle } = {}) {
+async function syncLinkedSubDeployments(items, parentItem, { nextBaseType } = {}) {
   const gid = String(parentItem?.groupId || "").trim();
   if (!gid) return 0;
 
@@ -427,7 +427,6 @@ async function syncLinkedSubDeployments(items, parentItem, { nextBaseType, nextM
     .toUpperCase();
   if (!baseType) return 0;
 
-  const masterTitle = sanitizeTitle(nextMasterTitle ?? parentItem?.title);
   const subType = `SUB-${baseType}`;
   let updated = 0;
 
@@ -437,20 +436,10 @@ async function syncLinkedSubDeployments(items, parentItem, { nextBaseType, nextM
     if (!isSubMutualAidType(entry?.type)) continue;
 
     const childTitle = sanitizeTitle(entry?.title);
-    const nextUsername = buildLinkedMutualAidUsername(masterTitle, childTitle);
-    if (!nextUsername) continue;
 
     if (String(entry?.userId || "").trim()) {
-      if (String(entry.username || "") !== String(nextUsername)) {
-        const taken = await usersSvc.userExists(nextUsername);
-        if (taken) {
-          throw new Error(`Username already exists: ${nextUsername}`);
-        }
-      }
-
       await api
         .patch(`/core/users/${entry.userId}/`, {
-          username: nextUsername,
           name: childTitle,
           attributes: {
             ...(entry.attributes || {}),
@@ -465,7 +454,6 @@ async function syncLinkedSubDeployments(items, parentItem, { nextBaseType, nextM
     const nextEntry = {
       ...entry,
       type: subType,
-      username: nextUsername,
       groupMasterId: String(parentItem?.id || entry?.groupMasterId || ""),
       updatedAt: nowIso(),
     };
@@ -775,15 +763,9 @@ async function update({ id, type, title, expireEnabled, expireAt }) {
     ? buildGroupName(nextType, nextTitle)
     : String(current.groupName || "");
 
-  let nextUsername;
-  if (isSub) {
-    const master = findGroupAnchorItem(items, current.groupId);
-    const masterTitle = sanitizeTitle(master?.title || current.title);
-    nextUsername = buildLinkedMutualAidUsername(masterTitle, nextTitle);
-  } else {
-    nextUsername = buildMutualAidUsername(nextType, nextTitle);
-  }
-  if (!nextUsername) throw new Error("Name must contain at least one letter/number for username");
+  // Username is assigned at creation and never changed on edit (needed for cert revocation on delete).
+  const nextUsername = String(current.username || "").trim();
+  if (!nextUsername) throw new Error("Mutual aid deployment username is missing");
 
   // Expiration options (EVENT + INCIDENT)
   const nextExpireEnabled = coerceBool(expireEnabled ?? current.expireEnabled);
@@ -802,17 +784,10 @@ async function update({ id, type, title, expireEnabled, expireAt }) {
     await groupsSvc.renameGroup(current.groupId, nextGroupName, { ignoreLocks: true });
   }
 
-  // Update user display name + username to match formatting rules.
+  // Update display name and MA metadata only; username stays fixed.
   if (String(current.userId || "").trim()) {
-    // If username is changing, ensure it isn't already taken (except by this user).
-    if (String(current.username || "") !== String(nextUsername)) {
-      const taken = await usersSvc.userExists(nextUsername);
-      if (taken) throw new Error(`Username already exists: ${nextUsername}`);
-    }
-
     await api
       .patch(`/core/users/${current.userId}/`, {
-        username: nextUsername,
         name: nextTitle,
         attributes: {
           ...(current.attributes || {}),
@@ -842,13 +817,8 @@ async function update({ id, type, title, expireEnabled, expireAt }) {
   if (!isSub) {
     const prevBase = baseMutualAidType(current.type);
     const nextBase = baseMutualAidType(nextType);
-    const typeChanged = prevBase !== nextBase;
-    const titleChanged = String(current.title || "") !== String(nextTitle || "");
-    if (typeChanged || titleChanged) {
-      await syncLinkedSubDeployments(items, updated, {
-        nextBaseType: nextBase,
-        nextMasterTitle: nextTitle,
-      });
+    if (prevBase !== nextBase) {
+      await syncLinkedSubDeployments(items, updated, { nextBaseType: nextBase });
     }
   }
 
