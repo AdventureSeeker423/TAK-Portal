@@ -2063,12 +2063,12 @@ function renderMutualAidRow(it, opts = {}) {
   const isChild = !!opts.isChild;
   const isLastChild = !!opts.isLastChild;
   const isSub = isSubMutualAidType(it.type);
-  const master = opts.master || null;
+  const groupAnchor = getGroupAnchorForGroup(it?.groupId);
+  const master = opts.master || groupAnchor || null;
   const canCreateSub = !isSub;
   const typeLabel = formatMutualAidTypeLabel(it.type);
   const displayTitle = displayTitleForRow(it, master);
-  const isAnchor =
-    master && String(master.id) === String(it.id);
+  const isAnchor = !!(groupAnchor && String(groupAnchor.id) === String(it.id));
   const rowClass = [
     isAnchor && !isSub ? "ma-unit-master" : "",
     isChild || isSub ? "ma-unit-child" : "",
