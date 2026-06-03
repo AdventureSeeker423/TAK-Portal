@@ -1346,9 +1346,8 @@ function updateAddMaUserExpireUi() {
 function openAddMaUserModal(parentItem) {
   addMaUserParent = parentItem;
   const subBtnLabel = createSubButtonLabel(parentItem?.type);
-  if (addMaUserTitleEl) {
-    addMaUserTitleEl.textContent = subBtnLabel;
-  }
+  if (addMaUserTitleEl) addMaUserTitleEl.textContent = subBtnLabel;
+  if (addMaUserSaveBtn) addMaUserSaveBtn.textContent = subBtnLabel;
   const parentType = baseMutualAidType(parentItem?.type);
   const subLabel = parentType
     ? `Sub-${parentType.charAt(0)}${parentType.slice(1).toLowerCase()}`
