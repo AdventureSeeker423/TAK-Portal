@@ -149,17 +149,14 @@
     min-width: 0;
   }
 
-  #editLogoWrap .edit-logo-label {
-    display: block;
-    margin-bottom: 6px;
-  }
   #editLogoWrap .edit-logo-row {
     gap: 10px;
     align-items: center;
     flex-wrap: wrap;
+    margin-top: 0;
   }
   #editLogoWrap #editLogoFile {
-    max-width: 280px;
+    max-width: 220px;
     width: auto;
   }
 
@@ -238,8 +235,8 @@
           <input id="editName" />
         </label>
 
-        <label id="editExpireEnabledWrap" style="display:block; align-items:center; gap:8px;">
-          <span>Expires</span>
+        <label id="editExpireEnabledWrap" style="display:block;">
+          Expires
           <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap;">
             <select id="editExpireEnabled">
               <option value="no">No</option>
@@ -249,13 +246,13 @@
           </div>
         </label>
 
-        <div id="editLogoWrap" style="grid-column:1/-1; display:none;">
-          <span class="edit-logo-label">Custom Logo</span>
+        <label id="editLogoWrap" style="display:none;">
+          Custom Logo
           <div class="row edit-logo-row">
             <input type="file" id="editLogoFile" accept="image/png,image/jpeg,image/webp,image/gif" />
             <button type="button" class="btn" id="editLogoRemoveBtn" style="display:none;">Remove custom logo</button>
           </div>
-        </div>
+        </label>
 
         <div class="row maModalActions" style="grid-column:1/-1;">
           <span id="editMsg" class="msg"></span>
