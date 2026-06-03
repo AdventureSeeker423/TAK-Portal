@@ -961,24 +961,13 @@
       const out = await res.json();
       if (!res.ok) {
         setCreateMsg(out.error || "Create failed", false);
+        await loadIntegrations();
         return;
       }
       const username = (out.user && out.user.username) || "";
-      
-      let msgStr = "Integration \"" + username + "\" created successfully.";
-      if (out.certError) {
-        msgStr += " Cert automation failed: " + out.certError + ".";
-      }
-      if (out.dataFeedError) {
-        msgStr += " Data feed creation failed: " + out.dataFeedError + ".";
-      }
 
-      if (out.certError || out.dataFeedError) {
-        setCreateMsg(msgStr, false);
-      } else {
-        setCreateMsg(msgStr + " Downloading cert bundle...", true);
-      }
-      
+      setCreateMsg("Integration \"" + username + "\" created successfully. Downloading cert bundle...", true);
+
       createForm.reset();
       groupSelect.value = "";
       integrationType.value = "global";
@@ -986,7 +975,7 @@
       updateIntegrationTitleConstraints();
       await loadGroups();
       await loadIntegrations();
-      if (out.user && out.user.pk && !out.certError) {
+      if (out.user && out.user.pk) {
         try {
           await downloadIntegrationCertBundle(out.user.pk, username);
         } catch (downloadErr) {

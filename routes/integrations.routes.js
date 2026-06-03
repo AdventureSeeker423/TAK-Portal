@@ -25,6 +25,45 @@ function parseStoredDataFeedPort(raw) {
 }
 
 /**
+ * Undo a failed integration create: data feed (if any), TAK client cert artifacts, Authentik user.
+ */
+async function rollbackIntegrationCreation({ userId, username, dataFeedName }) {
+  const un = String(username || "").toLowerCase();
+
+  if (dataFeedName && takSvc.isTakConfigured()) {
+    try {
+      const takClient = takSvc.buildTakAxios();
+      await takClient.delete(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`);
+    } catch (err) {
+      console.warn(
+        `[integrations] Rollback: could not delete data feed "${dataFeedName}" for "${un}":`,
+        err?.message || err
+      );
+    }
+  }
+
+  if (un.startsWith("nodered-")) {
+    try {
+      await takSshSvc.revokeIntegrationCertViaSshScript(un);
+    } catch (err) {
+      console.warn(
+        `[integrations] Rollback: could not revoke TAK cert files for "${un}":`,
+        err?.message || err
+      );
+    }
+    try {
+      takSshSvc.deleteStoredIntegrationCertFiles(un);
+    } catch (_) {
+      // ignore local cache cleanup errors
+    }
+  }
+
+  if (userId) {
+    await users.deleteUser(userId, { ignoreLocks: true, skipTakCertRevoke: true });
+  }
+}
+
+/**
  * GET /api/integrations
  * List all users whose username starts with "nodered-".
  * Mounted with requirePermission("page.integrations") in server.js.
@@ -110,6 +149,10 @@ router.get("/", async (req, res) => {
  * Mounted with requirePermission("page.integrations") in server.js.
  */
 router.post("/", async (req, res) => {
+  let createdUserId = null;
+  let createdUsername = null;
+  let createdDataFeedName = null;
+
   try {
     const { type, title, groupId, state, county, agencySuffix, skipDataFeed, protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags, filterGroups } = req.body || {};
     const authUser = req.authentikUser || null;
@@ -139,63 +182,51 @@ router.post("/", async (req, res) => {
       { createdBy }
     );
 
-    let certBundleReady = false;
-    let certError = "";
-    try {
-      await takSshSvc.provisionIntegrationCertFiles(result?.user?.username || "");
-      certBundleReady = true;
-    } catch (certErr) {
-      certError = certErr?.message || String(certErr);
-    }
+    createdUserId = result?.user?.pk;
+    createdUsername = result?.user?.username || "";
 
-    let dataFeedError = "";
+    await takSshSvc.provisionIntegrationCertFiles(createdUsername);
+
     const finalDataFeedName =
       !isSkipDataFeed && takSvc.isTakConfigured() ? streamingDataFeedName : null;
 
     if (!isSkipDataFeed && finalDataFeedName && takSvc.isTakConfigured()) {
+      const payloadTags = tags ? tags.split(/[\n,]+/).map(t => t.trim()).filter(Boolean) : [];
+      const strippedGroups = Array.isArray(filterGroups) ? filterGroups.map(stripTakPrefix) : [];
+
+      const dataFeedPayload = {
+        type: "Streaming",
+        name: finalDataFeedName,
+        protocol: protocol || "tls",
+        auth: authType || "X_509",
+        port: port ? parseInt(port, 10) : 8089,
+        coreVersion: coreVersion || "2",
+        coreVersion2TlsVersions: coreVersion2TlsVersions || "",
+        group: multicastGroup || "",
+        iface: iface || "",
+        syncCacheRetentionSeconds: syncCacheRetention ? String(syncCacheRetention) : "3600",
+        archive: archive === "true",
+        anongroup: anongroup === "true",
+        archiveOnly: archiveOnly === "true",
+        sync: sync === "true",
+        federated: federated === "true",
+        tag: payloadTags,
+        filtergroup: strippedGroups,
+      };
+
+      const takClient = takSvc.buildTakAxios();
+      await takClient.post("/api/datafeeds", dataFeedPayload);
+      createdDataFeedName = finalDataFeedName;
+
       try {
-        const payloadTags = tags ? tags.split(/[\n,]+/).map(t => t.trim()).filter(Boolean) : [];
-        const strippedGroups = Array.isArray(filterGroups) ? filterGroups.map(stripTakPrefix) : [];
-        
-        const dataFeedPayload = {
-          type: "Streaming",
-          name: finalDataFeedName,
-          protocol: protocol || "tls",
-          auth: authType || "X_509",
-          port: port ? parseInt(port, 10) : 8089,
-          coreVersion: coreVersion || "2",
-          coreVersion2TlsVersions: coreVersion2TlsVersions || "",
-          group: multicastGroup || "",
-          iface: iface || "",
-          syncCacheRetentionSeconds: syncCacheRetention ? String(syncCacheRetention) : "3600",
-          archive: archive === "true",
-          anongroup: anongroup === "true",
-          archiveOnly: archiveOnly === "true",
-          sync: sync === "true",
-          federated: federated === "true",
-          tag: payloadTags,
-          filtergroup: strippedGroups
-        };
-
-        const takClient = takSvc.buildTakAxios();
-        await takClient.post("/api/datafeeds", dataFeedPayload);
-
-        try {
-          if (result && result.user && result.user.pk) {
-            await users.updateUserAttributes(result.user.pk, {
-              tak_data_feed_name: finalDataFeedName,
-              tak_data_feed_port: dataFeedPayload.port,
-            });
-          }
-        } catch (attrsErr) {
-           console.warn("Failed to securely hook data feed name into Authentik attributes:", attrsErr);
+        if (result && result.user && result.user.pk) {
+          await users.updateUserAttributes(result.user.pk, {
+            tak_data_feed_name: finalDataFeedName,
+            tak_data_feed_port: dataFeedPayload.port,
+          });
         }
-      } catch (feedErr) {
-        let det = null;
-        if (feedErr.response && feedErr.response.data) {
-           det = typeof feedErr.response.data === 'object' ? JSON.stringify(feedErr.response.data) : String(feedErr.response.data);
-        }
-        dataFeedError = (feedErr.message || "TAK API failed") + (det ? " | " + det : "");
+      } catch (attrsErr) {
+        console.warn("Failed to securely hook data feed name into Authentik attributes:", attrsErr);
       }
     }
 
@@ -212,19 +243,52 @@ router.post("/", async (req, res) => {
       details: {
         username: result?.user?.username,
         group: groupName,
-        certBundleReady,
-        certError: certError || undefined,
+        certBundleReady: true,
         summary: `Created integration user ${result?.user?.username || ""}${
           groupName ? ` in group ${groupName}` : ""
-        }. Client certificate bundle ${
-          certBundleReady ? "was prepared successfully" : "could not be fully prepared"
-        }${certError ? `: ${certError}` : ""}.`,
+        }. Client certificate bundle was prepared successfully.`,
       },
     });
 
-    res.json({ success: true, certBundleReady, certError, dataFeedError, ...result });
+    res.json({ success: true, certBundleReady: true, dataFeedError: "", ...result });
   } catch (err) {
-    res.status(400).json({ error: toErrorPayload(err) });
+    let rollbackError = "";
+    if (createdUserId) {
+      try {
+        await rollbackIntegrationCreation({
+          userId: createdUserId,
+          username: createdUsername,
+          dataFeedName: createdDataFeedName,
+        });
+        auditSvc.logEvent({
+          actor: req.authentikUser || null,
+          request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+          action: "CREATE_INTEGRATION_ROLLBACK",
+          targetType: "user",
+          targetId: String(createdUserId),
+          details: {
+            username: createdUsername,
+            reason: err?.message || String(err),
+            summary: `Rolled back failed integration create for ${createdUsername || createdUserId} after an error during setup.`,
+          },
+        });
+      } catch (rollbackErr) {
+        rollbackError = rollbackErr?.message || String(rollbackErr);
+        console.error(
+          `[integrations] Rollback failed for ${createdUsername || createdUserId}:`,
+          rollbackError
+        );
+      }
+    }
+
+    const baseError = toErrorPayload(err);
+    const message = rollbackError
+      ? `${baseError} Rollback also failed: ${rollbackError}`
+      : createdUserId
+        ? `${baseError} The integration was not created (changes were reverted).`
+        : baseError;
+
+    res.status(400).json({ error: message, rolledBack: !!createdUserId && !rollbackError });
   }
 });
 
@@ -354,7 +418,7 @@ router.delete("/:userId", async (req, res) => {
     }
 
     await takSshSvc.revokeIntegrationCertViaSshScript(username);
-    await users.deleteUser(userId, { ignoreLocks: true });
+    await users.deleteUser(userId, { ignoreLocks: true, skipTakCertRevoke: true });
     const authUser = req.authentikUser || null;
     auditSvc.logEvent({
       actor: authUser,

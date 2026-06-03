@@ -2686,7 +2686,9 @@ async function deleteUser(userId, opts = {}) {
   const user = await assertUserNotActionLocked(userId, opts);
   // Revoke + VERIFY TAK certs BEFORE deleting the Authentik user
   // requireVerified defaults to true, but making it explicit is good.
-  await tak.revokeCertsForUser(user?.username, { requireVerified: true });
+  if (!opts.skipTakCertRevoke) {
+    await tak.revokeCertsForUser(user?.username, { requireVerified: true });
+  }
 
   await api.delete(`/core/users/${userId}/`);
   invalidateUsersCache();
