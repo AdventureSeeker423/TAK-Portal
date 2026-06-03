@@ -667,12 +667,9 @@ app.get("/agencies", requirePermission("page.agencies"), (req, res) =>
   })
 ); //require Global Admin
 app.get("/templates", (req, res) => res.render("templates"));
-app.get("/mutual-aid", requirePermission("page.mutual_aid"), (req, res) => {
-  const settings = settingsSvc.getSettings() || {};
-  res.render("mutual-aid", {
-    defaultBrandLogoUrl: settings.BRAND_LOGO_URL || "",
-  });
-}); //require Global Admin
+app.get("/mutual-aid", requirePermission("page.mutual_aid"), (req, res) =>
+  res.render("mutual-aid")
+); //require Global Admin
 app.get("/integrations", requirePermission("page.integrations"), (req, res) =>
   res.render("integrations")
 );

@@ -320,11 +320,13 @@ async function applyDeploymentLogo({ id, file, removeLogo }) {
 
 // ---- Jimp helpers (Jimp 0.22.x) ----
 
-async function addLogoToPng(pngBuffer, logoFsPath) {
+async function addLogoToPng(pngBuffer, logoFsPath, options = {}) {
   try {
     if (!logoFsPath || !fs.existsSync(logoFsPath)) {
       return pngBuffer;
     }
+
+    const logoRatio = Number(options.logoRatio) > 0 ? Number(options.logoRatio) : 0.28;
 
     const [qrImage, logoImageOriginal] = await Promise.all([
       Jimp.read(pngBuffer),
@@ -334,15 +336,24 @@ async function addLogoToPng(pngBuffer, logoFsPath) {
     const qrWidth = qrImage.getWidth();
     const qrHeight = qrImage.getHeight();
 
-    // Max logo size: 25% of QR's smaller dimension (safe for error-correction H)
-    const logoMaxSize = Math.floor(Math.min(qrWidth, qrHeight) * 0.25);
+    const targetMax = Math.floor(Math.min(qrWidth, qrHeight) * logoRatio);
+    const nativeW = logoImageOriginal.getWidth();
+    const nativeH = logoImageOriginal.getHeight();
 
-    // Clone and resize logo
+    let logoW = targetMax;
+    let logoH = targetMax;
+    if (nativeW > 0 && nativeH > 0) {
+      const fitScale = Math.min(targetMax / nativeW, targetMax / nativeH);
+      const scale = Math.min(fitScale, 1);
+      logoW = Math.max(1, Math.round(nativeW * scale));
+      logoH = Math.max(1, Math.round(nativeH * scale));
+    }
+
     const logoImage = logoImageOriginal.clone();
-    logoImage.contain(logoMaxSize, logoMaxSize);
+    const resizeMode = Jimp.RESIZE_BICUBIC || Jimp.RESIZE_BEZIER;
+    logoImage.resize(logoW, logoH, resizeMode);
 
-    // White background "badge" behind logo
-    const padding = Math.floor(logoMaxSize * 0.12); // 12% padding around logo
+    const padding = Math.floor(Math.max(logoW, logoH) * 0.12);
     const bgWidth = logoImage.getWidth() + padding * 2;
     const bgHeight = logoImage.getHeight() + padding * 2;
 
@@ -425,12 +436,12 @@ async function qrDataUrl(username, token, item) {
   const basePng = await QRCode.toBuffer(enrollUrl, {
     errorCorrectionLevel: "H",
     type: "png",
-    width: 512,
+    width: 1024,
     margin: 2,
     color: { dark: "#000000", light: "#FFFFFF" },
   });
   const logoPath = resolveLogoFsPathForItem(item);
-  const finalPng = await addLogoToPng(basePng, logoPath);
+  const finalPng = await addLogoToPng(basePng, logoPath, { logoRatio: 0.28 });
   const qrCode = "data:image/png;base64," + finalPng.toString("base64");
   return { enrollUrl, qrCode };
 }
@@ -440,14 +451,14 @@ async function qrPngBuffer(username, token, item) {
   const pngBuffer = await QRCode.toBuffer(enrollUrl, {
     errorCorrectionLevel: "H",
     type: "png",
-    width: 1200,
+    width: 1800,
     margin: 3,
     color: { dark: "#000000", light: "#FFFFFF" },
   });
 
   const logoPath = resolveLogoFsPathForItem(item);
   // 1) Add logo in the center (with white badge)
-  let finalPng = await addLogoToPng(pngBuffer, logoPath);
+  let finalPng = await addLogoToPng(pngBuffer, logoPath, { logoRatio: 0.28 });
 
   // 2) Add username label underneath
   finalPng = await addUsernameLabel(finalPng, username);

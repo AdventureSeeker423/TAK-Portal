@@ -149,6 +149,20 @@
     min-width: 0;
   }
 
+  #editLogoWrap .edit-logo-label {
+    display: block;
+    margin-bottom: 6px;
+  }
+  #editLogoWrap .edit-logo-row {
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  #editLogoWrap #editLogoFile {
+    max-width: 280px;
+    width: auto;
+  }
+
 </style>
 
 
@@ -236,14 +250,9 @@
         </label>
 
         <div id="editLogoWrap" style="grid-column:1/-1; display:none;">
-          <label style="display:block;">QR / packet logo
-            <input type="file" id="editLogoFile" accept="image/png,image/jpeg,image/webp,image/gif" style="width:100%; box-sizing:border-box;" />
-          </label>
-          <p class="muted" style="margin:8px 0 0 0; font-size:12px;">
-            Optional. Replaces the portal logo on enrollment QR codes for this master deployment and all sub-users on the same channel.
-          </p>
-          <div class="row" style="gap:14px; align-items:center; margin-top:10px; flex-wrap:wrap;">
-            <img id="editLogoPreview" alt="Logo preview" style="max-width:120px; max-height:120px; border-radius:8px; background:#fff; padding:6px; display:none;" />
+          <span class="edit-logo-label">Custom Logo</span>
+          <div class="row edit-logo-row">
+            <input type="file" id="editLogoFile" accept="image/png,image/jpeg,image/webp,image/gif" />
             <button type="button" class="btn" id="editLogoRemoveBtn" style="display:none;">Remove custom logo</button>
           </div>
         </div>
@@ -385,8 +394,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
-const DEFAULT_BRAND_LOGO_URL = <%- JSON.stringify(typeof defaultBrandLogoUrl !== "undefined" ? defaultBrandLogoUrl : "") %>;
-
 // ----- Shared helpers -----
 function esc(s){
   return String(s ?? "")
@@ -1040,9 +1047,30 @@ function drawNumberedList(doc, items, x, y, maxWidth, lineHeight = 16, indent = 
 }
 
 
+async function loadHiResEnrollmentQrDataUrl(itemId) {
+  const res = await fetch(`/api/mutual-aid/${encodeURIComponent(itemId)}/qr/download`);
+  if (!res.ok) {
+    let msg = "Failed to load enrollment QR";
+    try {
+      const t = await res.text();
+      if (t) msg = t;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read enrollment QR"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 async function buildDeploymentPacketPdf() {
   try {
-    if (!qrEnrollUrl || !qrImg?.src) {
+    if (!qrEnrollUrl || !qrActiveId) {
       throw new Error("QR not ready yet.");
     }
 
@@ -1145,11 +1173,12 @@ async function buildDeploymentPacketPdf() {
     doc.setTextColor(0);
     doc.text(callsignText, pageW / 2, margin + 42, { align: "center" });
 
-    // Main enrollment QR
+    // Main enrollment QR (high-res download — not the modal preview image)
     const qrSize2 = Math.min(pageW - margin * 2, pageH - (margin * 2 + 120));
     const qrY2 = margin + 70;
+    const hiResEnrollmentQr = await loadHiResEnrollmentQrDataUrl(qrActiveId);
 
-    doc.addImage(qrImg.src, "PNG", (pageW - qrSize2) / 2, qrY2, qrSize2, qrSize2);
+    doc.addImage(hiResEnrollmentQr, "PNG", (pageW - qrSize2) / 2, qrY2, qrSize2, qrSize2);
 
     // Username label
     const userLabel = String(qrActiveItem?.username || "").trim();
@@ -1259,30 +1288,12 @@ const editSaveBtn = document.getElementById("editSaveBtn");
 const editMsg = document.getElementById("editMsg");
 const editLogoWrap = document.getElementById("editLogoWrap");
 const editLogoFile = document.getElementById("editLogoFile");
-const editLogoPreview = document.getElementById("editLogoPreview");
 const editLogoRemoveBtn = document.getElementById("editLogoRemoveBtn");
 let editLogoRemovePending = false;
-let editLogoObjectUrl = "";
 
-function clearEditLogoObjectUrl() {
-  if (editLogoObjectUrl) {
-    URL.revokeObjectURL(editLogoObjectUrl);
-    editLogoObjectUrl = "";
-  }
-}
-
-function setEditLogoPreview(src, showRemove) {
-  if (!editLogoPreview) return;
-  if (src) {
-    editLogoPreview.src = src;
-    editLogoPreview.style.display = "block";
-  } else {
-    editLogoPreview.removeAttribute("src");
-    editLogoPreview.style.display = "none";
-  }
-  if (editLogoRemoveBtn) {
-    editLogoRemoveBtn.style.display = showRemove ? "inline-block" : "none";
-  }
+function updateEditLogoRemoveBtn(hasCustom) {
+  if (!editLogoRemoveBtn) return;
+  editLogoRemoveBtn.style.display = hasCustom ? "inline-block" : "none";
 }
 
 function openEdit(item){
@@ -1319,7 +1330,6 @@ function openEdit(item){
 
   editLogoRemovePending = false;
   if (editLogoFile) editLogoFile.value = "";
-  clearEditLogoObjectUrl();
 
   const anchor = getGroupAnchorForGroup(item?.groupId);
   const isAnchor = !!(anchor && String(anchor.id) === String(item.id));
@@ -1327,15 +1337,9 @@ function openEdit(item){
   if (editLogoWrap) editLogoWrap.style.display = showLogo ? "block" : "none";
   if (showLogo) {
     const customLogo = String(anchor?.logoUrl || item?.logoUrl || "").trim();
-    if (customLogo) {
-      setEditLogoPreview(customLogo, true);
-    } else if (DEFAULT_BRAND_LOGO_URL) {
-      setEditLogoPreview(DEFAULT_BRAND_LOGO_URL, false);
-    } else {
-      setEditLogoPreview("", false);
-    }
+    updateEditLogoRemoveBtn(!!customLogo);
   } else {
-    setEditLogoPreview("", false);
+    updateEditLogoRemoveBtn(false);
   }
 
   setMsg(editMsg, "", true);
@@ -1344,11 +1348,8 @@ function openEdit(item){
 if (editLogoFile) {
   editLogoFile.onchange = () => {
     editLogoRemovePending = false;
-    clearEditLogoObjectUrl();
     const file = editLogoFile.files && editLogoFile.files[0];
-    if (!file) return;
-    editLogoObjectUrl = URL.createObjectURL(file);
-    setEditLogoPreview(editLogoObjectUrl, true);
+    updateEditLogoRemoveBtn(!!file);
   };
 }
 
@@ -1356,12 +1357,7 @@ if (editLogoRemoveBtn) {
   editLogoRemoveBtn.onclick = () => {
     editLogoRemovePending = true;
     if (editLogoFile) editLogoFile.value = "";
-    clearEditLogoObjectUrl();
-    if (DEFAULT_BRAND_LOGO_URL) {
-      setEditLogoPreview(DEFAULT_BRAND_LOGO_URL, false);
-    } else {
-      setEditLogoPreview("", false);
-    }
+    updateEditLogoRemoveBtn(false);
   };
 }
 
@@ -1386,7 +1382,6 @@ editCloseBtn.onclick = () => {
   document.body.classList.remove("noScroll");
   editLogoRemovePending = false;
   if (editLogoFile) editLogoFile.value = "";
-  clearEditLogoObjectUrl();
 };
 
 // ----- Additional MA user modal -----
@@ -1545,7 +1540,6 @@ editSaveBtn.onclick = async () => {
   }
   editLogoRemovePending = false;
   if (editLogoFile) editLogoFile.value = "";
-  clearEditLogoObjectUrl();
   setMsg(editMsg, "Saved.", true);
   editOverlay.style.display = "none";
   document.body.classList.remove("noScroll");
