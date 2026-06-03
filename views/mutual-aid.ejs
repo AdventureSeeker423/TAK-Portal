@@ -241,7 +241,7 @@
       <p id="addMaUserTypeLine" style="margin-top:0; color: var(--muted);"></p>
       <div class="grid2">
         <label>Title
-          <input id="addMaUserTitleInput" placeholder="Title for this deployment user" />
+          <input id="addMaUserTitleInput" placeholder="Title For Sub-User" />
         </label>
         <label id="addMaUserExpireEnabledWrap" style="display:block;">
           <span>Expires</span>
@@ -2015,15 +2015,21 @@ async function deleteItem(item){
   ).length;
 
   let extra;
-  if (isCreator && isAnchor && linkedCount > 1) {
+  if (isAnchor && isCreator && linkedCount > 1) {
     extra =
-      `This is the master deployment for a shared channel.\n\n` +
-      `This will delete all ${linkedCount} linked deployment(s), revoke TAK certs for each user, and delete the shared group.`;
-  } else if (isCreator && isAnchor) {
+      `This is the master deployment for this channel.\n\n` +
+      `This will delete all ${linkedCount} deployment(s) (including sub-users), revoke TAK certs for each user, and delete the shared group.`;
+  } else if (isAnchor && isCreator) {
     extra = "This will revoke TAK certs, delete the user, and delete the group.";
+  } else if (isAnchor && linkedCount > 1) {
+    extra =
+      `This is the master deployment for this channel.\n\n` +
+      `This will delete all ${linkedCount} deployment(s) (including sub-users) and revoke TAK certs for each user. The shared group will remain.`;
+  } else if (isAnchor) {
+    extra = "This will revoke TAK certs and delete the user.";
   } else {
     extra =
-      "This will revoke TAK certs and delete this deployment user only. (The shared group and other linked deployments will remain.)";
+      "This will revoke TAK certs and delete this deployment user only. (Other deployments on this channel will remain.)";
   }
 
   const ok = confirm(`Delete ${item.type} "${item.title}"?\n\n${extra}`);

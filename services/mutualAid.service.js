@@ -865,11 +865,14 @@ async function remove({ id }) {
   if (idx < 0) throw new Error("Mutual aid item not found");
 
   const item = items[idx];
-  const cascade = isGroupCreatorItem(item)
-    ? itemsSharingGroup(items, item.groupId)
-    : [item];
+  const anchor = findGroupAnchorItem(items, item.groupId);
+  const isAnchor = !!(anchor && String(anchor.id) === String(item.id));
+
+  // Deleting the anchor removes every deployment on the same group (master + all subs).
+  const cascade = isAnchor ? itemsSharingGroup(items, item.groupId) : [item];
 
   const deleteSharedGroup =
+    isAnchor &&
     isGroupCreatorItem(item) &&
     (item.groupWasCreated === true ||
       String(item.groupMode || "new").toLowerCase() !== "existing");
