@@ -127,7 +127,7 @@ router.post("/reconfigure-sudo", async (req, res) => {
     const nextSettings = { ...current };
     if (sudoSetup.method === "sudoers") {
       nextSettings.TAK_SSH_SUDOERS_CONFIGURED = "true";
-      nextSettings.TAK_SSH_SUDO_PASSWORD = "";
+      if (password) nextSettings.TAK_SSH_SUDO_PASSWORD = password;
     } else if (sudoSetup.method === "password" && sudoSetup.sudoPassword) {
       nextSettings.TAK_SSH_SUDO_PASSWORD = sudoSetup.sudoPassword;
       nextSettings.TAK_SSH_SUDOERS_CONFIGURED = "false";
