@@ -10,7 +10,11 @@ const accessSvc = require("./access.service");
 const agenciesSvc = require("./agencies.service");
 const groupsSvc = require("./groups.service");
 const dataSyncSvc = require("./dataSync.service");
+const mutualAidStore = require("./mutualAid.store");
 const { getString } = require("./env");
+
+/** Authentik / TAK display prefix for MA-created channels (not hidden on Data Sync for global admins). */
+const MUTUAL_AID_GROUP_PREFIX = "ma -";
 
 function canonicalGroupKey(name) {
   let n = String(name || "").trim().toLowerCase();
@@ -38,14 +42,19 @@ function isAuthentikAgencyAdminGroupName(name) {
   return /-AgencyAdmin$/i.test(String(name || "").trim());
 }
 
-/** Match Groups page visibility for global admins (all portal group types). */
+function getDataSyncHiddenPrefixes() {
+  return String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
+    .split(",")
+    .map((p) => String(p || "").trim().toLowerCase())
+    .filter(Boolean)
+    .filter((p) => p !== MUTUAL_AID_GROUP_PREFIX);
+}
+
+/** Match Groups page visibility for global admins; MA channels remain selectable on Data Sync. */
 function filterAuthentikGroupsForGlobalAdminDataSync(authUser, allGroups) {
   let filtered = accessSvc.filterGroupsForUser(authUser, allGroups);
 
-  const hiddenPrefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
+  const hiddenPrefixes = getDataSyncHiddenPrefixes();
 
   if (hiddenPrefixes.length) {
     filtered = filtered.filter((g) => {
@@ -82,6 +91,23 @@ async function getGlobalAdminGroupDisplayNames(authUser) {
   }
 
   return out;
+}
+
+/** Ensure every group referenced by mutual aid appears in the global-admin Data Sync dropdown. */
+function mergeMutualAidGroupNames(byKey, takByKey) {
+  const seenNames = new Set();
+  for (const item of mutualAidStore.load()) {
+    const name = String(item?.groupName || "").trim();
+    if (!name) continue;
+    const nameKey = name.toLowerCase();
+    if (seenNames.has(nameKey)) continue;
+    seenNames.add(nameKey);
+
+    const k = canonicalGroupKey(name);
+    if (!k || byKey.has(k)) continue;
+    const display = takByKey.get(k) || takDisplayName(name) || name;
+    byKey.set(k, display);
+  }
 }
 
 function entryToGroupName(entry) {
@@ -224,6 +250,9 @@ async function resolveGroupsForUser(authUser, takPayload) {
       if (k && !byKey.has(k)) byKey.set(k, t);
     }
 
+    const beforeMaMerge = byKey.size;
+    mergeMutualAidGroupNames(byKey, takByKey);
+
     const groups = Array.from(byKey.values()).sort((a, b) => a.localeCompare(b));
     return {
       groups,
@@ -231,6 +260,7 @@ async function resolveGroupsForUser(authUser, takPayload) {
         scope: "global",
         authentikGroupCount: authentikNames.length,
         takGroupCount: takNames.length,
+        mutualAidGroupsAdded: byKey.size - beforeMaMerge,
         visibleGroupCount: groups.length,
       },
     };
