@@ -327,6 +327,8 @@ async function addLogoToPng(pngBuffer, logoFsPath, options = {}) {
     }
 
     const logoRatio = Number(options.logoRatio) > 0 ? Number(options.logoRatio) : 0.28;
+    const padRatio =
+      Number(options.logoPadRatio) >= 0 ? Number(options.logoPadRatio) : 0.04;
 
     const [qrImage, logoImageOriginal] = await Promise.all([
       Jimp.read(pngBuffer),
@@ -336,14 +338,18 @@ async function addLogoToPng(pngBuffer, logoFsPath, options = {}) {
     const qrWidth = qrImage.getWidth();
     const qrHeight = qrImage.getHeight();
 
-    const targetMax = Math.floor(Math.min(qrWidth, qrHeight) * logoRatio);
+    // White badge footprint (fixed); logo fills inside with a thin margin.
+    const badgeMax = Math.floor(Math.min(qrWidth, qrHeight) * logoRatio);
+    const padding = Math.max(2, Math.floor(badgeMax * padRatio));
+    const innerMax = Math.max(1, badgeMax - padding * 2);
+
     const nativeW = logoImageOriginal.getWidth();
     const nativeH = logoImageOriginal.getHeight();
 
-    let logoW = targetMax;
-    let logoH = targetMax;
+    let logoW = innerMax;
+    let logoH = innerMax;
     if (nativeW > 0 && nativeH > 0) {
-      const fitScale = Math.min(targetMax / nativeW, targetMax / nativeH);
+      const fitScale = Math.min(innerMax / nativeW, innerMax / nativeH);
       const scale = Math.min(fitScale, 1);
       logoW = Math.max(1, Math.round(nativeW * scale));
       logoH = Math.max(1, Math.round(nativeH * scale));
@@ -353,7 +359,6 @@ async function addLogoToPng(pngBuffer, logoFsPath, options = {}) {
     const resizeMode = Jimp.RESIZE_BICUBIC || Jimp.RESIZE_BEZIER;
     logoImage.resize(logoW, logoH, resizeMode);
 
-    const padding = Math.floor(Math.max(logoW, logoH) * 0.12);
     const bgWidth = logoImage.getWidth() + padding * 2;
     const bgHeight = logoImage.getHeight() + padding * 2;
 
