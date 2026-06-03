@@ -135,6 +135,20 @@
     color: #fff;
   }
 
+  /* Modal footer actions: secondary left, primary/success on the far right */
+  .maModalActions {
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .maModalActions .msg {
+    margin-right: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
 </style>
 
 
@@ -182,9 +196,9 @@
         To
         <textarea id="emailPacketTo" rows="3" placeholder="name@example.com, other@example.com" style="width:100%;"></textarea>
       </label>
-      <div id="emailPacketMsg" class="msg"></div>
-      <div class="row" style="justify-content:flex-end; gap:10px; margin-top:12px;">
-        <button class="btn" type="button" id="emailPacketSendBtn" style="background:#2e7d32;border-color:#2e7d32;">Send</button>
+      <div class="row maModalActions">
+        <span id="emailPacketMsg" class="msg"></span>
+        <button class="btn success" type="button" id="emailPacketSendBtn">Send</button>
       </div>
     </div>
   </div>
@@ -221,9 +235,9 @@
           </div>
         </label>
 
-        <div class="row" style="grid-column:1/-1; gap:10px; align-items:center; flex-wrap:wrap;">
-          <button class="btn" id="editSaveBtn" type="button">Save</button>
+        <div class="row maModalActions" style="grid-column:1/-1;">
           <span id="editMsg" class="msg"></span>
+          <button class="btn success" id="editSaveBtn" type="button">Save</button>
         </div>
       </div>
     </div>
@@ -254,9 +268,9 @@
           </div>
         </label>
       </div>
-      <div class="row" style="grid-column:1/-1; gap:10px; align-items:center; flex-wrap:wrap; margin-top: 8px;">
-        <button class="btn maAddUser" id="addMaUserSaveBtn" type="button">Create User</button>
+      <div class="row maModalActions">
         <span id="addMaUserMsg" class="msg"></span>
+        <button class="btn maAddUser" id="addMaUserSaveBtn" type="button">Create User</button>
       </div>
     </div>
   </div>
@@ -313,10 +327,10 @@
         <small>Search and pick specific users to add the target group to.</small>
       </div>
 
-      <div class="row" style="margin-top:16px; align-items:center; flex-wrap:wrap; gap:10px;">
-        <button class="btn success" id="massApplyBtn" type="button">Mass Assign</button>
-        <button class="btn" id="massSkipBtn" type="button">Skip Group Assignment</button>
+      <div class="row maModalActions" style="margin-top:16px;">
         <span id="massMsg" class="msg"></span>
+        <button class="btn" id="massSkipBtn" type="button">Skip Group Assignment</button>
+        <button class="btn success" id="massApplyBtn" type="button">Mass Assign</button>
       </div>
     </div>
   </div>
