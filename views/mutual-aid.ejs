@@ -1193,17 +1193,28 @@ async function buildDeploymentPacketPdf() {
     doc.setTextColor(0);
     doc.text(callsignText, pageW / 2, margin + 42, { align: "center" });
 
-    // Main enrollment QR (high-res download — not the modal preview image)
-    const qrSize2 = Math.min(pageW - margin * 2, pageH - (margin * 2 + 120));
+    // Main enrollment QR (high-res download — preserve aspect ratio; includes username strip)
+    const maxQrBox = Math.min(pageW - margin * 2, pageH - (margin * 2 + 120));
     const qrY2 = margin + 70;
     const hiResEnrollmentQr = await loadHiResEnrollmentQrDataUrl(qrActiveId);
+    const qrProps = doc.getImageProperties(hiResEnrollmentQr);
+    const qrScale = Math.min(maxQrBox / qrProps.width, maxQrBox / qrProps.height);
+    const drawQrW = qrProps.width * qrScale;
+    const drawQrH = qrProps.height * qrScale;
 
-    doc.addImage(hiResEnrollmentQr, "PNG", (pageW - qrSize2) / 2, qrY2, qrSize2, qrSize2);
+    doc.addImage(
+      hiResEnrollmentQr,
+      "PNG",
+      (pageW - drawQrW) / 2,
+      qrY2,
+      drawQrW,
+      drawQrH
+    );
 
     // Username label
     const userLabel = String(qrActiveItem?.username || "").trim();
     if (userLabel) {
-      const userY = Math.min(pageH - margin, qrY2 + qrSize2 + 32);
+      const userY = Math.min(pageH - margin, qrY2 + drawQrH + 32);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(24);
       doc.text(userLabel, pageW / 2, userY, { align: "center" });

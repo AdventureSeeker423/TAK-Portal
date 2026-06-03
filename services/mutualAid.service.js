@@ -11,6 +11,7 @@ const store = require("./mutualAid.store");
 const settingsSvc = require("./settings.service");
 const emailSvc = require("./email.service");
 const { renderTemplate, htmlToText } = require("./emailTemplates.service");
+const { addLogoToQrPng } = require("./qrLogoOverlay.service");
 
 const MA_LOGO_DIR = path.join(__dirname, "..", "data", "mutual-aid-logos");
 const MA_LOGO_ALLOWED_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
@@ -321,71 +322,8 @@ async function applyDeploymentLogo({ id, file, removeLogo }) {
 // ---- Jimp helpers (Jimp 0.22.x) ----
 
 async function addLogoToPng(pngBuffer, logoFsPath, options = {}) {
-  try {
-    if (!logoFsPath || !fs.existsSync(logoFsPath)) {
-      return pngBuffer;
-    }
-
-    const logoRatio = Number(options.logoRatio) > 0 ? Number(options.logoRatio) : 0.28;
-    const padRatio =
-      Number(options.logoPadRatio) >= 0 ? Number(options.logoPadRatio) : 0.04;
-
-    const [qrImage, logoImageOriginal] = await Promise.all([
-      Jimp.read(pngBuffer),
-      Jimp.read(logoFsPath),
-    ]);
-
-    const qrWidth = qrImage.getWidth();
-    const qrHeight = qrImage.getHeight();
-
-    // White badge footprint (fixed); logo fills inside with a thin margin.
-    const badgeMax = Math.floor(Math.min(qrWidth, qrHeight) * logoRatio);
-    const padding = Math.max(2, Math.floor(badgeMax * padRatio));
-    const innerMax = Math.max(1, badgeMax - padding * 2);
-
-    const nativeW = logoImageOriginal.getWidth();
-    const nativeH = logoImageOriginal.getHeight();
-
-    let logoW = innerMax;
-    let logoH = innerMax;
-    if (nativeW > 0 && nativeH > 0) {
-      const fitScale = Math.min(innerMax / nativeW, innerMax / nativeH);
-      const scale = Math.min(fitScale, 1);
-      logoW = Math.max(1, Math.round(nativeW * scale));
-      logoH = Math.max(1, Math.round(nativeH * scale));
-    }
-
-    const logoImage = logoImageOriginal.clone();
-    const resizeMode = Jimp.RESIZE_BICUBIC || Jimp.RESIZE_BEZIER;
-    logoImage.resize(logoW, logoH, resizeMode);
-
-    const bgWidth = logoImage.getWidth() + padding * 2;
-    const bgHeight = logoImage.getHeight() + padding * 2;
-
-    // Position of the white background (centered)
-    const bgX = Math.floor((qrWidth - bgWidth) / 2);
-    const bgY = Math.floor((qrHeight - bgHeight) / 2);
-
-    // Fill a white rectangle directly onto the QR image
-    qrImage.scan(bgX, bgY, bgWidth, bgHeight, function (x, y, idx) {
-      // RGBA = 255, 255, 255, 255
-      this.bitmap.data[idx + 0] = 255; // R
-      this.bitmap.data[idx + 1] = 255; // G
-      this.bitmap.data[idx + 2] = 255; // B
-      this.bitmap.data[idx + 3] = 255; // A
-    });
-
-    // Now center the logo on top of that white rectangle
-    const logoX = bgX + padding;
-    const logoY = bgY + padding;
-
-    qrImage.composite(logoImage, logoX, logoY);
-
-    return await qrImage.getBufferAsync(Jimp.MIME_PNG);
-  } catch (err) {
-    console.error("[MUTUAL AID] Failed to add logo to QR:", err);
-    return pngBuffer;
-  }
+  if (!logoFsPath || !fs.existsSync(logoFsPath)) return pngBuffer;
+  return addLogoToQrPng(pngBuffer, logoFsPath, options);
 }
 
 async function addUsernameLabel(pngBuffer, username) {
