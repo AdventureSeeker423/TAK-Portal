@@ -343,12 +343,52 @@ async function qrPngBuffer(username, token) {
   return finalPng;
 }
 
+function isGroupCreatorItem(item) {
+  if (item?.groupWasCreated === true) return true;
+  const mode = String(item?.groupMode || "new").trim().toLowerCase();
+  return mode !== "existing";
+}
+
+function findGroupMasterItem(items, groupId) {
+  const gid = String(groupId || "").trim();
+  if (!gid) return null;
+  const creators = (Array.isArray(items) ? items : []).filter(
+    (x) => String(x?.groupId || "") === gid && isGroupCreatorItem(x)
+  );
+  if (!creators.length) return null;
+  creators.sort((a, b) =>
+    String(a?.createdAt || "").localeCompare(String(b?.createdAt || ""))
+  );
+  return creators[0];
+}
+
+function itemsSharingGroup(items, groupId) {
+  const gid = String(groupId || "").trim();
+  if (!gid) return [];
+  return (Array.isArray(items) ? items : []).filter((x) => String(x?.groupId || "") === gid);
+}
+
+function enrichItemForList(item, allItems) {
+  const gid = String(item?.groupId || "");
+  const master = findGroupMasterItem(allItems, gid);
+  const siblings = itemsSharingGroup(allItems, gid);
+  const isGroupMaster = !!(master && String(master.id) === String(item.id));
+  return {
+    ...item,
+    isGroupMaster,
+    isLinkedDeployment: !isGroupCreatorItem(item) && siblings.length > 1,
+    groupMasterId: master ? String(master.id) : null,
+    sharedGroupDeploymentCount: siblings.length,
+  };
+}
+
 function list() {
   const items = store.load();
+  const enriched = items.map((it) => enrichItemForList(it, items));
   // newest first
-  return items
-    .slice()
-    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  return enriched.sort((a, b) =>
+    String(b.createdAt || "").localeCompare(String(a.createdAt || ""))
+  );
 }
 
 function getById(id) {
@@ -453,6 +493,8 @@ async function create({ type, title, expireEnabled, expireAt, groupMode, existin
   }
 
   const groupName = String(group?.name || desiredGroupName);
+  const existingItems = store.load();
+  const groupMaster = mode === "existing" ? findGroupMasterItem(existingItems, String(group.pk)) : null;
 
   // 2) Create user (minimal fields; password is numeric as requested)
   const password = randomPassword(18);
@@ -500,6 +542,7 @@ async function create({ type, title, expireEnabled, expireAt, groupMode, existin
     groupName,
     groupMode: mode,
     groupWasCreated,
+    groupMasterId: groupMaster ? String(groupMaster.id) : null,
     userId: String(user.pk),
     username,
     password,
@@ -620,33 +663,38 @@ async function remove({ id }) {
   if (idx < 0) throw new Error("Mutual aid item not found");
 
   const item = items[idx];
+  const cascade = isGroupCreatorItem(item)
+    ? itemsSharingGroup(items, item.groupId)
+    : [item];
 
-  // If this item had an expiration timer, clear it.
-  clearExpirationTimer(item.id);
+  const deleteSharedGroup =
+    isGroupCreatorItem(item) &&
+    (item.groupWasCreated === true ||
+      String(item.groupMode || "new").toLowerCase() !== "existing");
 
-  // Deletion semantics: like deleting a user
-  // - revoke all client certs with matching creatorDn (done by usersSvc.deleteUser)
-  // - delete the user in Authentik
-  // - delete the group
-  if (item.userId) {
-    await usersSvc.deleteUser(item.userId, { ignoreLocks: true });
-  }
-
-  if (item.groupId) {
-    // Only delete the group if this mutual aid created it.
-    // When using an existing group, we must not delete shared groups.
-    const mode = String(item.groupMode || "new").toLowerCase();
-    const shouldDelete = item.groupWasCreated === true || mode !== "existing";
-    if (shouldDelete) {
-      // Use cleanup delete to keep templates consistent (safest)
-      await groupsSvc.deleteGroupWithCleanup(item.groupId, { ignoreLocks: true });
+  // Delete linked deployment users first, then remove shared group once.
+  for (const entry of cascade) {
+    clearExpirationTimer(entry.id);
+    if (entry.userId) {
+      await usersSvc.deleteUser(entry.userId, { ignoreLocks: true });
     }
   }
 
-  // Remove from store
-  items.splice(idx, 1);
-  saveAll(items);
-  return { success: true };
+  if (deleteSharedGroup && item.groupId) {
+    await groupsSvc.deleteGroupWithCleanup(item.groupId, { ignoreLocks: true });
+  }
+
+  const removeIds = new Set(cascade.map((x) => String(x.id)));
+  const next = items.filter((x) => !removeIds.has(String(x.id)));
+  saveAll(next);
+
+  return {
+    success: true,
+    deletedCount: cascade.length,
+    deletedIds: cascade.map((x) => String(x.id)),
+    cascade: cascade.length > 1,
+    groupDeleted: !!deleteSharedGroup,
+  };
 }
 
 async function getQr({ id }) {
