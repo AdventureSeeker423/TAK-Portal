@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.31 - 6/3/26
+🐛 `Bug Fix` - Fixes issue with Integrations failing to download certs<br>
+🐛 `Bug Fix` - Fixes issue with Mutual Aid not populating the Assign/Unassign buttons
+
 ### v1.3.30 - 6/2/26
 ✨ `Enhancement` - Custom logos added to mutual aid events to reflect special logs for special events<br>
 ✨ `Enhancement` - Logo sizing, padding, and scaling cleaned across TAK Portal
