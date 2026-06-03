@@ -396,6 +396,87 @@ function findGroupMasterItem(items, groupId) {
   return creators[0];
 }
 
+/** MA-created group master, or earliest non-sub deployment on the shared group. */
+function findGroupAnchorItem(items, groupId) {
+  const master = findGroupMasterItem(items, groupId);
+  if (master) return master;
+  const gid = String(groupId || "").trim();
+  if (!gid) return null;
+  const primaries = (Array.isArray(items) ? items : []).filter(
+    (x) => String(x?.groupId || "") === gid && !isSubMutualAidType(x?.type)
+  );
+  if (!primaries.length) return null;
+  primaries.sort((a, b) =>
+    String(a?.createdAt || "").localeCompare(String(b?.createdAt || ""))
+  );
+  return primaries[0];
+}
+
+function itemsSharingGroupId(items, groupId) {
+  const gid = String(groupId || "").trim();
+  if (!gid) return [];
+  return (Array.isArray(items) ? items : []).filter((x) => String(x?.groupId || "") === gid);
+}
+
+async function syncLinkedSubDeployments(items, parentItem, { nextBaseType, nextMasterTitle } = {}) {
+  const gid = String(parentItem?.groupId || "").trim();
+  if (!gid) return 0;
+
+  const baseType = String(nextBaseType || baseMutualAidType(parentItem?.type) || "")
+    .trim()
+    .toUpperCase();
+  if (!baseType) return 0;
+
+  const masterTitle = sanitizeTitle(nextMasterTitle ?? parentItem?.title);
+  const subType = `SUB-${baseType}`;
+  let updated = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i];
+    if (String(entry?.groupId || "") !== gid) continue;
+    if (!isSubMutualAidType(entry?.type)) continue;
+
+    const childTitle = sanitizeTitle(entry?.title);
+    const nextUsername = buildLinkedMutualAidUsername(masterTitle, childTitle);
+    if (!nextUsername) continue;
+
+    if (String(entry?.userId || "").trim()) {
+      if (String(entry.username || "") !== String(nextUsername)) {
+        const taken = await usersSvc.userExists(nextUsername);
+        if (taken) {
+          throw new Error(`Username already exists: ${nextUsername}`);
+        }
+      }
+
+      await api
+        .patch(`/core/users/${entry.userId}/`, {
+          username: nextUsername,
+          name: childTitle,
+          attributes: {
+            ...(entry.attributes || {}),
+            mutual_aid: true,
+            mutual_aid_type: subType,
+            mutual_aid_group: String(parentItem?.groupName || entry?.groupName || ""),
+          },
+        })
+        .catch(() => null);
+    }
+
+    const nextEntry = {
+      ...entry,
+      type: subType,
+      username: nextUsername,
+      groupMasterId: String(parentItem?.id || entry?.groupMasterId || ""),
+      updatedAt: nowIso(),
+    };
+    items[i] = nextEntry;
+    scheduleExpiration(nextEntry);
+    updated += 1;
+  }
+
+  return updated;
+}
+
 function itemsSharingGroup(items, groupId) {
   const gid = String(groupId || "").trim();
   if (!gid) return [];
@@ -404,7 +485,7 @@ function itemsSharingGroup(items, groupId) {
 
 function enrichItemForList(item, allItems) {
   const gid = String(item?.groupId || "");
-  const master = findGroupMasterItem(allItems, gid);
+  const master = findGroupAnchorItem(allItems, gid);
   const siblings = itemsSharingGroup(allItems, gid);
   const isGroupMaster = !!(master && String(master.id) === String(item.id));
   return {
@@ -559,7 +640,8 @@ async function create({
 
   const groupName = String(group?.name || desiredGroupName);
   const existingItems = store.load();
-  const groupMaster = mode === "existing" ? findGroupMasterItem(existingItems, String(group.pk)) : null;
+  const groupMaster =
+    mode === "existing" ? findGroupAnchorItem(existingItems, String(group.pk)) : null;
 
   // 2) Create user (minimal fields; password is numeric as requested)
   const password = randomPassword(18);
@@ -654,7 +736,7 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt }) {
   if (!childTitle) throw new Error("Name is required");
 
   const items = store.load();
-  const master = findGroupMasterItem(items, parent.groupId) || parent;
+  const master = findGroupAnchorItem(items, parent.groupId) || parent;
   const masterTitle = sanitizeTitle(master.title);
   const username = buildLinkedMutualAidUsername(masterTitle, childTitle);
   if (!username) {
@@ -695,7 +777,7 @@ async function update({ id, type, title, expireEnabled, expireAt }) {
 
   let nextUsername;
   if (isSub) {
-    const master = findGroupMasterItem(items, current.groupId);
+    const master = findGroupAnchorItem(items, current.groupId);
     const masterTitle = sanitizeTitle(master?.title || current.title);
     nextUsername = buildLinkedMutualAidUsername(masterTitle, nextTitle);
   } else {
@@ -756,6 +838,20 @@ async function update({ id, type, title, expireEnabled, expireAt }) {
     updatedAt: nowIso(),
   };
   items[idx] = updated;
+
+  if (!isSub) {
+    const prevBase = baseMutualAidType(current.type);
+    const nextBase = baseMutualAidType(nextType);
+    const typeChanged = prevBase !== nextBase;
+    const titleChanged = String(current.title || "") !== String(nextTitle || "");
+    if (typeChanged || titleChanged) {
+      await syncLinkedSubDeployments(items, updated, {
+        nextBaseType: nextBase,
+        nextMasterTitle: nextTitle,
+      });
+    }
+  }
+
   saveAll(items);
 
   // Update expiration schedule

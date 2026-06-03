@@ -199,7 +199,7 @@
     </div>
     <div class="modalBody">
       <div class="grid2">
-        <label>Type
+        <label id="editTypeWrap">Type
           <select id="editType">
             <option value="INCIDENT">Incident</option>
             <option value="EVENT">Event</option>
@@ -1222,6 +1222,7 @@ if (qrPacketBtn) {
 // ----- Edit modal -----
 const editOverlay = document.getElementById("editOverlay");
 const editCloseBtn = document.getElementById("editCloseBtn");
+const editTypeWrap = document.getElementById("editTypeWrap");
 const editType = document.getElementById("editType");
 const editName = document.getElementById("editName");
 const editExpireEnabledWrap = document.getElementById("editExpireEnabledWrap");
@@ -1236,9 +1237,11 @@ function openEdit(item){
   editOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
   const sub = isSubMutualAidType(item?.type);
+  if (editTypeWrap) editTypeWrap.style.display = sub ? "none" : "";
   if (editType) {
-    editType.value = item.type || "INCIDENT";
-    editType.disabled = sub;
+    const base = baseMutualAidType(item?.type) || "INCIDENT";
+    editType.value = base;
+    editType.disabled = false;
   }
   editName.value = item.title || "";
   // Expiration fields (EVENT + INCIDENT)
@@ -1313,6 +1316,12 @@ function formatMutualAidTypeLabel(type) {
   return `${t.charAt(0)}${t.slice(1).toLowerCase()}`;
 }
 
+function createSubButtonLabel(type) {
+  const base = baseMutualAidType(type);
+  if (!base) return "Create Sub";
+  return `Create Sub-${base.charAt(0)}${base.slice(1).toLowerCase()}`;
+}
+
 function updateAddMaUserExpireUi() {
   const enabled = String(addMaUserExpireEnabled?.value || "").toLowerCase() === "yes";
   if (addMaExpireAt) {
@@ -1324,15 +1333,16 @@ function updateAddMaUserExpireUi() {
 
 function openAddMaUserModal(parentItem) {
   addMaUserParent = parentItem;
+  const subBtnLabel = createSubButtonLabel(parentItem?.type);
   if (addMaUserTitleEl) {
-    addMaUserTitleEl.textContent = "Create Additional MA User";
+    addMaUserTitleEl.textContent = subBtnLabel;
   }
   const parentType = baseMutualAidType(parentItem?.type);
   const subLabel = parentType
     ? `Sub-${parentType.charAt(0)}${parentType.slice(1).toLowerCase()}`
     : "Sub deployment";
   if (addMaUserTypeLine) {
-    addMaUserTypeLine.textContent = `Type: ${subLabel} (inherits from ${formatMutualAidTypeLabel(parentItem?.type)})`;
+    addMaUserTypeLine.textContent = `Type: ${subLabel}`;
   }
   if (addMaUserChannelLine) {
     addMaUserChannelLine.textContent = `Shared channel: ${displayGroupName(parentItem?.groupName || "")}`;
@@ -1401,7 +1411,10 @@ if (addMaUserSaveBtn) {
 
 editSaveBtn.onclick = async () => {
   if(!activeItem) return;
-  const type = String(editType.value || "").trim().toUpperCase();
+  const sub = isSubMutualAidType(activeItem?.type);
+  const type = sub
+    ? String(activeItem.type || "").trim().toUpperCase()
+    : String(editType?.value || "").trim().toUpperCase();
   const title = String(editName.value || "").trim();
   if(!title){ setMsg(editMsg, "Name is required.", false); return; }
 
@@ -1798,21 +1811,30 @@ function isGroupCreatorItem(it) {
   return String(it?.groupMode || "new").toLowerCase() !== "existing";
 }
 
-function getMasterForGroup(groupId) {
+function getGroupAnchorForGroup(groupId) {
   const gid = String(groupId || "");
-  const creators = (allItems || []).filter(
+  const master = (allItems || []).filter(
     (x) => String(x.groupId || "") === gid && isGroupCreatorItem(x)
   );
-  creators.sort((a, b) =>
+  if (master.length) {
+    master.sort((a, b) =>
+      String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+    );
+    return master[0];
+  }
+  const primaries = (allItems || []).filter(
+    (x) => String(x.groupId || "") === gid && !isSubMutualAidType(x?.type)
+  );
+  primaries.sort((a, b) =>
     String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
   );
-  return creators[0] || null;
+  return primaries[0] || null;
 }
 
 function displayTitleForRow(it, masterOpt) {
   const title = String(it?.title || "").trim();
   if (!isSubMutualAidType(it?.type)) return title;
-  const master = masterOpt || getMasterForGroup(it?.groupId);
+  const master = masterOpt || getGroupAnchorForGroup(it?.groupId);
   const masterTitle = String(master?.title || "").trim();
   if (masterTitle && title) return `${masterTitle} - ${title}`;
   return title || masterTitle;
@@ -1825,20 +1847,20 @@ function buildDisplayUnits(filteredItems) {
 
   for (const gid of groupIds) {
     const allInGroup = (allItems || []).filter((x) => String(x.groupId || "") === gid);
-    const master = getMasterForGroup(gid);
+    const anchor = getGroupAnchorForGroup(gid);
     const visible = allInGroup.filter((x) => filteredIdSet.has(String(x.id)));
     if (!visible.length) continue;
 
-    if (master && allInGroup.length > 1) {
+    if (anchor && allInGroup.length > 1) {
       const children = visible
-        .filter((x) => String(x.id) !== String(master.id))
+        .filter((x) => String(x.id) !== String(anchor.id))
         .sort((a, b) =>
           String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
         );
-      if (!filteredIdSet.has(String(master.id)) && !children.length) continue;
+      if (!filteredIdSet.has(String(anchor.id)) && !children.length) continue;
       units.push({
         kind: "unit",
-        master,
+        master: anchor,
         children,
         totalCount: allInGroup.length,
       });
@@ -1871,12 +1893,14 @@ function renderMutualAidRow(it, opts = {}) {
   const isChild = !!opts.isChild;
   const isLastChild = !!opts.isLastChild;
   const isSub = isSubMutualAidType(it.type);
-  const isGroupMaster = isGroupCreatorItem(it);
   const master = opts.master || null;
+  const canCreateSub = !isSub;
   const typeLabel = formatMutualAidTypeLabel(it.type);
   const displayTitle = displayTitleForRow(it, master);
+  const isAnchor =
+    master && String(master.id) === String(it.id);
   const rowClass = [
-    isGroupMaster && !isSub ? "ma-unit-master" : "",
+    isAnchor && !isSub ? "ma-unit-master" : "",
     isChild || isSub ? "ma-unit-child" : "",
     (isChild || isSub) && isLastChild ? "ma-unit-child-last" : "",
   ]
@@ -1897,11 +1921,11 @@ function renderMutualAidRow(it, opts = {}) {
       <td>
         <div class="row" style="gap:10px; flex-wrap: wrap;">
           ${isSub ? "" : `<button class="btn" type="button" data-act="members" data-id="${esc(it.id)}">View Members</button>`}
-          ${isGroupMaster ? `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>` : ""}
-          ${isGroupMaster ? `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>` : ""}
+          ${isAnchor ? `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>` : ""}
+          ${isAnchor ? `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>` : ""}
           <button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>
           <button class="btn qr" type="button" data-act="qr" data-id="${esc(it.id)}">Show QR</button>
-          ${isGroupMaster ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">Create Additional MA User</button>` : ""}
+          ${canCreateSub ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">${esc(createSubButtonLabel(it.type))}</button>` : ""}
           <button class="btn danger" type="button" data-act="del" data-id="${esc(it.id)}">Delete</button>
         </div>
       </td>
@@ -1913,7 +1937,7 @@ function renderList(){
   const needle = String(maFilter.value||"").trim().toLowerCase();
   let items = allItems.filter(it => {
     if(!needle) return true;
-    const master = getMasterForGroup(it.groupId);
+    const master = getGroupAnchorForGroup(it.groupId);
     const rowTitle = displayTitleForRow(it, master).toLowerCase();
     return (
       String(it.type||"").toLowerCase().includes(needle) ||
@@ -1988,18 +2012,19 @@ async function loadList(){
 maFilter.oninput = () => renderList();
 
 async function deleteItem(item){
-  const master = getMasterForGroup(item.groupId);
-  const isMaster = !!(master && String(master.id) === String(item.id));
+  const anchor = getGroupAnchorForGroup(item.groupId);
+  const isAnchor = !!(anchor && String(anchor.id) === String(item.id));
+  const isCreator = isGroupCreatorItem(item);
   const linkedCount = (allItems || []).filter(
     (x) => String(x.groupId || "") === String(item.groupId || "")
   ).length;
 
   let extra;
-  if (isMaster && linkedCount > 1) {
+  if (isCreator && isAnchor && linkedCount > 1) {
     extra =
       `This is the master deployment for a shared channel.\n\n` +
       `This will delete all ${linkedCount} linked deployment(s), revoke TAK certs for each user, and delete the shared group.`;
-  } else if (isMaster) {
+  } else if (isCreator && isAnchor) {
     extra = "This will revoke TAK certs, delete the user, and delete the group.";
   } else {
     extra =
