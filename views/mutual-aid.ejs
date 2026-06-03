@@ -155,9 +155,28 @@
     flex-wrap: wrap;
     margin-top: 0;
   }
+  #editLogoWrap .edit-logo-file-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
   #editLogoWrap #editLogoFile {
-    max-width: 220px;
-    width: auto;
+    position: absolute;
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    z-index: -1;
+  }
+  #editLogoWrap .edit-logo-current {
+    font-size: 13px;
+    opacity: 0.85;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
 </style>
@@ -249,7 +268,11 @@
         <label id="editLogoWrap" style="display:none;">
           Custom Logo
           <div class="row edit-logo-row">
-            <input type="file" id="editLogoFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+            <div class="edit-logo-file-wrap">
+              <input type="file" id="editLogoFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+              <button type="button" class="btn" id="editLogoChooseBtn">Choose file</button>
+              <span id="editLogoCurrent" class="edit-logo-current muted">No file chosen</span>
+            </div>
             <button type="button" class="btn" id="editLogoRemoveBtn" style="display:none;">Remove custom logo</button>
           </div>
         </label>
@@ -1285,8 +1308,28 @@ const editSaveBtn = document.getElementById("editSaveBtn");
 const editMsg = document.getElementById("editMsg");
 const editLogoWrap = document.getElementById("editLogoWrap");
 const editLogoFile = document.getElementById("editLogoFile");
+const editLogoChooseBtn = document.getElementById("editLogoChooseBtn");
+const editLogoCurrent = document.getElementById("editLogoCurrent");
 const editLogoRemoveBtn = document.getElementById("editLogoRemoveBtn");
 let editLogoRemovePending = false;
+
+function logoUrlToDisplayName(logoUrl) {
+  const path = String(logoUrl || "").trim();
+  if (!path) return "";
+  const base = path.split("/").pop() || path;
+  try {
+    return decodeURIComponent(base);
+  } catch {
+    return base;
+  }
+}
+
+function setEditLogoCurrentLabel(text) {
+  if (!editLogoCurrent) return;
+  const label = String(text || "").trim() || "No file chosen";
+  editLogoCurrent.textContent = label;
+  editLogoCurrent.title = label;
+}
 
 function updateEditLogoRemoveBtn(hasCustom) {
   if (!editLogoRemoveBtn) return;
@@ -1334,19 +1377,35 @@ function openEdit(item){
   if (editLogoWrap) editLogoWrap.style.display = showLogo ? "block" : "none";
   if (showLogo) {
     const customLogo = String(anchor?.logoUrl || item?.logoUrl || "").trim();
+    if (customLogo) {
+      setEditLogoCurrentLabel(logoUrlToDisplayName(customLogo));
+    } else {
+      setEditLogoCurrentLabel("No file chosen");
+    }
     updateEditLogoRemoveBtn(!!customLogo);
   } else {
+    setEditLogoCurrentLabel("No file chosen");
     updateEditLogoRemoveBtn(false);
   }
 
   setMsg(editMsg, "", true);
 }
 
+if (editLogoChooseBtn && editLogoFile) {
+  editLogoChooseBtn.onclick = () => editLogoFile.click();
+}
+
 if (editLogoFile) {
   editLogoFile.onchange = () => {
     editLogoRemovePending = false;
     const file = editLogoFile.files && editLogoFile.files[0];
-    updateEditLogoRemoveBtn(!!file);
+    if (file) {
+      setEditLogoCurrentLabel(file.name);
+      updateEditLogoRemoveBtn(true);
+    } else {
+      setEditLogoCurrentLabel("No file chosen");
+      updateEditLogoRemoveBtn(false);
+    }
   };
 }
 
@@ -1354,6 +1413,7 @@ if (editLogoRemoveBtn) {
   editLogoRemoveBtn.onclick = () => {
     editLogoRemovePending = true;
     if (editLogoFile) editLogoFile.value = "";
+    setEditLogoCurrentLabel("No file chosen");
     updateEditLogoRemoveBtn(false);
   };
 }
@@ -1379,6 +1439,7 @@ editCloseBtn.onclick = () => {
   document.body.classList.remove("noScroll");
   editLogoRemovePending = false;
   if (editLogoFile) editLogoFile.value = "";
+  setEditLogoCurrentLabel("No file chosen");
 };
 
 // ----- Additional MA user modal -----
