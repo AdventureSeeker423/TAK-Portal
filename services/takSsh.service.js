@@ -12,7 +12,7 @@
  *   TAK_SSH_PRIVATE_KEY_PATH   Path to PEM private key file
  *   TAK_SSH_PASSPHRASE Optional passphrase for encrypted key
  *
- * Command run on server: sudo -u tak bash -c 'cd /opt/tak/certs && ./makeCert.sh client <username>'
+ * Command run on server: sudo -u tak bash -c 'cd /opt/tak/certs && bash makeCert.sh client <username>'
  */
 
 const fs = require("fs");
@@ -215,8 +215,14 @@ function buildTakPortalCertsRepairScriptContent() {
 set -euo pipefail
 CERTS='${TAK_CERTS_DIR}'
 mkdir -p "$CERTS/files"
-chmod -R u+rwX,go+rX "$CERTS"/*.sh 2>/dev/null || true
-chmod 644 "$CERTS/cert-metadata.sh" "$CERTS/makeCert.sh" 2>/dev/null || true
+chmod 644 "$CERTS/cert-metadata.sh" 2>/dev/null || true
+for f in "$CERTS"/*.sh; do
+  [ -f "$f" ] || continue
+  case "$(basename "$f")" in
+    cert-metadata.sh) chmod 644 "$f" ;;
+    *) chmod 755 "$f" ;;
+  esac
+done
 chown -R tak:tak "$CERTS"
 `;
 }
@@ -271,8 +277,8 @@ async function installPortalSudoersOnRemote(connectConfig, sshPassword, portalUs
 function buildInlineTakCertsRepairCommand() {
   return (
     `bash -lc 'set -e; mkdir -p ${TAK_CERTS_DIR}/files; ` +
-    `chmod -R u+rwX,go+rX ${TAK_CERTS_DIR}/*.sh 2>/dev/null || true; ` +
-    `chmod 644 ${TAK_CERTS_DIR}/cert-metadata.sh ${TAK_CERTS_DIR}/makeCert.sh 2>/dev/null || true; ` +
+    `chmod 644 ${TAK_CERTS_DIR}/cert-metadata.sh 2>/dev/null || true; ` +
+    `chmod 755 ${TAK_CERTS_DIR}/makeCert.sh ${TAK_CERTS_DIR}/makeRootCa.sh ${TAK_CERTS_DIR}/revokeCert.sh 2>/dev/null || true; ` +
     `chown -R tak:tak ${TAK_CERTS_DIR}'`
   );
 }
@@ -622,7 +628,7 @@ async function revokeIntegrationCertViaSshScript(username) {
   const safeName = quoteForSingleQuotedShell(un);
   const revokeInner =
     "bash -lc 'set -e; cd /opt/tak/certs; " +
-    `./revokeCert.sh files/${safeName} files/ca-do-not-share files/ca'`;
+    `bash revokeCert.sh files/${safeName} files/ca-do-not-share files/ca'`;
 
   const connect = toConnectConfig(cfg);
   const mode = await getPrivilegedMode(connect);
@@ -1347,8 +1353,8 @@ async function ensureRemoteTakCertEnvironment(connect, _mode, portalUsername) {
 
   const mode = await getPrivilegedMode(connect, { forceRefresh: true });
   const verifyAsTak =
-    `bash -lc 'set -e; cd ${TAK_CERTS_DIR}; test -r cert-metadata.sh; . ./cert-metadata.sh; ` +
-    '[ -n "$DIR" ] || DIR=files; export DIR; mkdir -p "$DIR"\'';
+    `bash -lc 'set -e; cd ${TAK_CERTS_DIR}; test -r cert-metadata.sh; test -r makeCert.sh; . ./cert-metadata.sh; ` +
+    '[ -n "$DIR" ] || DIR=files; export DIR; mkdir -p "$DIR"; bash -n makeCert.sh\'';
 
   const verifyCmd = buildPrivilegedCommand(verifyAsTak, mode, { runAsUser: "tak" });
   const result = await execOverSsh(connect, verifyCmd, 30000);
@@ -1364,7 +1370,7 @@ async function ensureRemoteTakCertEnvironment(connect, _mode, portalUsername) {
 }
 
 /**
- * Run on TAK server: sudo -u tak bash -c 'cd /opt/tak/certs && ./makeCert.sh client <username>'
+ * Run on TAK server: sudo -u tak bash -c 'cd /opt/tak/certs && bash makeCert.sh client <username>'
  * @param {string} username - Integration username (e.g. nodered-aircraft-all)
  * @returns { Promise<{ ok: boolean, skipped?: boolean, message?: string }> }
  */
@@ -1389,7 +1395,7 @@ async function createTakClientCertForIntegration(username) {
 
   // Safe for shell: single-quote wrapped; username is alphanumeric + hyphens only for integrations
   const safeName = un.replace(/'/g, "'\"'\"'");
-  const inner = `bash -lc 'cd ${TAK_CERTS_DIR} && ./makeCert.sh client ${safeName}'`;
+  const inner = `bash -lc 'cd ${TAK_CERTS_DIR} && bash makeCert.sh client ${safeName}'`;
 
   if (TAK_DEBUG) console.log("[TAK SSH] Connecting to", config.host + ":" + config.port, "as", config.username);
 
