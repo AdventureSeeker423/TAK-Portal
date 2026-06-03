@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.30 - 6/2/26
+✨ `Enhancement` - Custom logos added to mutual aid events to reflect special logs for special events<br>
+✨ `Enhancement` - Logo sizing, padding, and scaling cleaned across TAK Portal
+
 ### v1.3.29 - 6/2/26
 ✨ `Enhancement` - Adds mutual aid groups to Data Sync groups dropdown for global admins
 
