@@ -104,6 +104,14 @@ function buildMutualAidUsername(type, title) {
   return `ma-${slug}`;
 }
 
+/** Additional MA user on a shared channel: ma-{masterTitleSlug}-{childTitleSlug} */
+function buildLinkedMutualAidUsername(masterTitle, childTitle) {
+  const masterSlug = sanitizeUsernameSlug(masterTitle);
+  const childSlug = sanitizeUsernameSlug(childTitle);
+  if (!masterSlug || !childSlug) return "";
+  return `ma-${masterSlug}-${childSlug}`;
+}
+
 function buildGroupName(type, title) {
   const name = sanitizeTitle(title);
   if (!name) throw new Error("Name is required");
@@ -504,13 +512,18 @@ async function create({
   groupMode,
   existingGroupId,
   allowMutualAidGroup = false,
+  usernameOverride = null,
 } = {}) {
   const t = String(type || "").trim().toUpperCase();
   const name = sanitizeTitle(title);
   const desiredGroupName = buildGroupName(t, name);
-  // Username should be incident-xxx / event-xxx.
-  const username = buildMutualAidUsername(t, name);
+  const username = usernameOverride
+    ? String(usernameOverride).trim()
+    : buildMutualAidUsername(t, name);
   if (!username) throw new Error("Name must contain at least one letter/number for username");
+
+  const taken = await usersSvc.userExists(username);
+  if (taken) throw new Error(`Username already exists: ${username}`);
 
   // Expiration options (EVENT + INCIDENT)
   const wantExpire = coerceBool(expireEnabled);
@@ -637,15 +650,27 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt }) {
   const parentType = baseMutualAidType(parent.type);
   if (!parentType) throw new Error("Parent mutual aid type is invalid");
 
+  const childTitle = sanitizeTitle(title);
+  if (!childTitle) throw new Error("Name is required");
+
+  const items = store.load();
+  const master = findGroupMasterItem(items, parent.groupId) || parent;
+  const masterTitle = sanitizeTitle(master.title);
+  const username = buildLinkedMutualAidUsername(masterTitle, childTitle);
+  if (!username) {
+    throw new Error("Name must contain at least one letter/number for username");
+  }
+
   const subType = `SUB-${parentType}`;
   return create({
     type: subType,
-    title,
+    title: childTitle,
     expireEnabled,
     expireAt,
     groupMode: "existing",
     existingGroupId: parent.groupId,
     allowMutualAidGroup: true,
+    usernameOverride: username,
   });
 }
 
@@ -668,8 +693,14 @@ async function update({ id, type, title, expireEnabled, expireAt }) {
     ? buildGroupName(nextType, nextTitle)
     : String(current.groupName || "");
 
-  // Username should follow the same formatting rules as creation.
-  const nextUsername = buildMutualAidUsername(nextType, nextTitle);
+  let nextUsername;
+  if (isSub) {
+    const master = findGroupMasterItem(items, current.groupId);
+    const masterTitle = sanitizeTitle(master?.title || current.title);
+    nextUsername = buildLinkedMutualAidUsername(masterTitle, nextTitle);
+  } else {
+    nextUsername = buildMutualAidUsername(nextType, nextTitle);
+  }
   if (!nextUsername) throw new Error("Name must contain at least one letter/number for username");
 
   // Expiration options (EVENT + INCIDENT)
