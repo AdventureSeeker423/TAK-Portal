@@ -113,36 +113,10 @@
   .ma-unit-child td {
     background: rgba(255, 255, 255, 0.02);
     border-top: 1px dashed rgba(255, 255, 255, 0.08);
+    padding-left: 28px;
   }
   .ma-unit-child-last td {
     border-bottom: 2px solid var(--line);
-  }
-  .ma-unit-badge {
-    display: inline-block;
-    margin-top: 4px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    color: #c4b5fd;
-    background: rgba(124, 58, 237, 0.18);
-    border: 1px solid rgba(124, 58, 237, 0.35);
-  }
-  .ma-linked-pill {
-    display: inline-block;
-    margin-left: 6px;
-    padding: 1px 7px;
-    border-radius: 999px;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--muted);
-    border: 1px solid var(--line);
-  }
-  .ma-child-indent {
-    padding-left: 18px;
-    border-left: 3px solid rgba(124, 58, 237, 0.45);
   }
 
   .btn.maAddUser {
@@ -1835,6 +1809,15 @@ function getMasterForGroup(groupId) {
   return creators[0] || null;
 }
 
+function displayTitleForRow(it, masterOpt) {
+  const title = String(it?.title || "").trim();
+  if (!isSubMutualAidType(it?.type)) return title;
+  const master = masterOpt || getMasterForGroup(it?.groupId);
+  const masterTitle = String(master?.title || "").trim();
+  if (masterTitle && title) return `${masterTitle} - ${title}`;
+  return title || masterTitle;
+}
+
 function buildDisplayUnits(filteredItems) {
   const filteredIdSet = new Set(filteredItems.map((x) => String(x.id)));
   const groupIds = [...new Set(filteredItems.map((x) => String(x.groupId || "")))];
@@ -1886,31 +1869,22 @@ function sortDisplayUnits(units, key, dir) {
 
 function renderMutualAidRow(it, opts = {}) {
   const isChild = !!opts.isChild;
-  const isMaster = !!opts.isMaster;
-  const totalCount = Number(opts.totalCount || 0);
   const isLastChild = !!opts.isLastChild;
   const isSub = isSubMutualAidType(it.type);
   const isGroupMaster = isGroupCreatorItem(it);
+  const master = opts.master || null;
   const typeLabel = formatMutualAidTypeLabel(it.type);
+  const displayTitle = displayTitleForRow(it, master);
   const rowClass = [
-    isMaster ? "ma-unit-master" : "",
-    isChild ? "ma-unit-child" : "",
-    isChild && isLastChild ? "ma-unit-child-last" : "",
+    isGroupMaster && !isSub ? "ma-unit-master" : "",
+    isChild || isSub ? "ma-unit-child" : "",
+    (isChild || isSub) && isLastChild ? "ma-unit-child-last" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
-  const titleBlock = isChild || isSub
-    ? `<div class="ma-child-indent">
-         <span class="ma-linked-pill">${isSub ? "Additional" : "Linked"}</span>
-         <span style="font-weight:600;">${esc(it.title || "")}</span>
-       </div>`
-    : `<div style="font-weight:600;">${esc(it.title || "")}${isMaster ? ` <span class="ma-linked-pill">Master</span>` : ""}</div>`;
-
-  const channelLine = isChild
-    ? `<div style="color: var(--muted); font-size: 12px;">${esc(displayGroupName(it.groupName || ""))}</div>`
-    : `<div style="color: var(--muted); font-size: 12px;">${esc(displayGroupName(it.groupName || ""))}</div>
-       ${isMaster && totalCount > 1 ? `<span class="ma-unit-badge">Shared channel · ${totalCount} deployments</span>` : ""}`;
+  const titleBlock = `<div style="font-weight:600;">${esc(displayTitle)}</div>`;
+  const channelLine = `<div style="color: var(--muted); font-size: 12px;">${esc(displayGroupName(it.groupName || ""))}</div>`;
 
   return `
     <tr class="${rowClass}">
@@ -1922,7 +1896,7 @@ function renderMutualAidRow(it, opts = {}) {
       </td>
       <td>
         <div class="row" style="gap:10px; flex-wrap: wrap;">
-          <button class="btn" type="button" data-act="members" data-id="${esc(it.id)}">View Members</button>
+          ${isSub ? "" : `<button class="btn" type="button" data-act="members" data-id="${esc(it.id)}">View Members</button>`}
           ${isGroupMaster ? `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>` : ""}
           ${isGroupMaster ? `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>` : ""}
           <button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>
@@ -1939,9 +1913,12 @@ function renderList(){
   const needle = String(maFilter.value||"").trim().toLowerCase();
   let items = allItems.filter(it => {
     if(!needle) return true;
+    const master = getMasterForGroup(it.groupId);
+    const rowTitle = displayTitleForRow(it, master).toLowerCase();
     return (
       String(it.type||"").toLowerCase().includes(needle) ||
       String(it.title||"").toLowerCase().includes(needle) ||
+      rowTitle.includes(needle) ||
       String(it.groupName||"").toLowerCase().includes(needle) ||
       displayGroupName(it.groupName||"").toLowerCase().includes(needle) ||
       String(it.username||"").toLowerCase().includes(needle)
@@ -1957,17 +1934,13 @@ function renderList(){
         return renderMutualAidRow(unit.item, {});
       }
       const parts = [];
-      parts.push(
-        renderMutualAidRow(unit.master, {
-          isMaster: true,
-          totalCount: unit.totalCount,
-        })
-      );
+      parts.push(renderMutualAidRow(unit.master, { master: unit.master }));
       unit.children.forEach((child, idx) => {
         parts.push(
           renderMutualAidRow(child, {
             isChild: true,
             isLastChild: idx === unit.children.length - 1,
+            master: unit.master,
           })
         );
       });
