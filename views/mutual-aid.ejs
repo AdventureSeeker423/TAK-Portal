@@ -239,7 +239,6 @@
     </div>
     <div class="modalBody">
       <p id="addMaUserTypeLine" style="margin-top:0; color: var(--muted);"></p>
-      <p id="addMaUserChannelLine" style="margin-top:0; color: var(--muted); font-size: 13px;"></p>
       <div class="grid2">
         <label>Title
           <input id="addMaUserTitleInput" placeholder="Title for this deployment user" />
@@ -1289,7 +1288,6 @@ const addMaUserOverlay = document.getElementById("addMaUserOverlay");
 const addMaUserCloseBtn = document.getElementById("addMaUserCloseBtn");
 const addMaUserTitleEl = document.getElementById("addMaUserTitle");
 const addMaUserTypeLine = document.getElementById("addMaUserTypeLine");
-const addMaUserChannelLine = document.getElementById("addMaUserChannelLine");
 const addMaUserTitleInput = document.getElementById("addMaUserTitleInput");
 const addMaUserExpireEnabled = document.getElementById("addMaUserExpireEnabled");
 const addMaExpireAt = document.getElementById("addMaExpireAt");
@@ -1343,9 +1341,6 @@ function openAddMaUserModal(parentItem) {
     : "Sub deployment";
   if (addMaUserTypeLine) {
     addMaUserTypeLine.textContent = `Type: ${subLabel}`;
-  }
-  if (addMaUserChannelLine) {
-    addMaUserChannelLine.textContent = `Shared channel: ${displayGroupName(parentItem?.groupName || "")}`;
   }
   if (addMaUserTitleInput) addMaUserTitleInput.value = "";
   if (addMaUserExpireEnabled) addMaUserExpireEnabled.value = "no";
