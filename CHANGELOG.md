@@ -14,7 +14,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ### v1.3.28 - 6/2/26
 🐛 `Bug Fix` - Fixes issue with role and template migrations attempting to run after assigning users a mutual aid group<br>
-✨ `Enhancement` - Allow mutual aid incidents and events to have additional logins/sub-events.  (My use case: Have a "Master" MA group for a big event, and then create additional /sub incidents and events using the existing mutual aid group to control access for each operational period, agency, etc...  Users needing access throughout the entire event will get the "master" group, but then others needing access only for a day or such can use the "sub" event user that feeds the same group.)
+✨ `Enhancement` - Allow mutual aid incidents and events to have additional logins/sub-events.  (My use case: Have a "Master" MA group for a big event, and then create sub-incidents and sub-events using the existing mutual aid group to control access for each operational period, agency, etc...  Users needing access throughout the entire event will get the "master" group, but then others needing access only for a day or such can use the "sub" event user that feeds the same group for better access control.)
 
 ### v1.3.27 - 5/31/26
 ✨ `Enhancement` - Data Sync moved out of beta and can now be accessed by global and agency admins (more features to be added soon)<br>
