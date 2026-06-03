@@ -101,7 +101,7 @@ function buildPreferenceUrl({ callsign, teamLabel, roleLabel }) {
 }
 
 // Overlay branding logo (if configured) onto the center of a QR PNG buffer.
-async function addLogoToPng(pngBuffer) {
+async function addLogoToPng(pngBuffer, options = {}) {
   try {
     const settings = settingsSvc.getSettings() || {};
     const logoUrl = settings.BRAND_LOGO_URL;
@@ -119,6 +119,10 @@ async function addLogoToPng(pngBuffer) {
       return pngBuffer;
     }
 
+    const logoRatio = Number(options.logoRatio) > 0 ? Number(options.logoRatio) : 0.25;
+    const padRatio =
+      Number(options.logoPadRatio) >= 0 ? Number(options.logoPadRatio) : 0.04;
+
     const [qrImage, logoImageOriginal] = await Promise.all([
       Jimp.read(pngBuffer),
       Jimp.read(logoFsPath),
@@ -127,32 +131,39 @@ async function addLogoToPng(pngBuffer) {
     const qrWidth = qrImage.getWidth();
     const qrHeight = qrImage.getHeight();
 
-    // Max logo size: 25% of QR's smaller dimension (safe for error-correction H)
-    const logoMaxSize = Math.floor(Math.min(qrWidth, qrHeight) * 0.25);
+    const badgeMax = Math.floor(Math.min(qrWidth, qrHeight) * logoRatio);
+    const padding = Math.max(2, Math.floor(badgeMax * padRatio));
+    const innerMax = Math.max(1, badgeMax - padding * 2);
 
-    // Clone and resize logo
+    const nativeW = logoImageOriginal.getWidth();
+    const nativeH = logoImageOriginal.getHeight();
+
+    let logoW = innerMax;
+    let logoH = innerMax;
+    if (nativeW > 0 && nativeH > 0) {
+      const fitScale = Math.min(innerMax / nativeW, innerMax / nativeH);
+      const scale = Math.min(fitScale, 1);
+      logoW = Math.max(1, Math.round(nativeW * scale));
+      logoH = Math.max(1, Math.round(nativeH * scale));
+    }
+
     const logoImage = logoImageOriginal.clone();
-    logoImage.contain(logoMaxSize, logoMaxSize);
+    const resizeMode = Jimp.RESIZE_BICUBIC || Jimp.RESIZE_BEZIER;
+    logoImage.resize(logoW, logoH, resizeMode);
 
-    // White background "badge" behind logo
-    const padding = Math.floor(logoMaxSize * 0.12); // 12% padding around logo
     const bgWidth = logoImage.getWidth() + padding * 2;
     const bgHeight = logoImage.getHeight() + padding * 2;
 
-    // Position of the white background (centered)
     const bgX = Math.floor((qrWidth - bgWidth) / 2);
     const bgY = Math.floor((qrHeight - bgHeight) / 2);
 
-    // Fill a white rectangle directly onto the QR image
     qrImage.scan(bgX, bgY, bgWidth, bgHeight, function (x, y, idx) {
-      // RGBA = 255, 255, 255, 255
-      this.bitmap.data[idx + 0] = 255; // R
-      this.bitmap.data[idx + 1] = 255; // G
-      this.bitmap.data[idx + 2] = 255; // B
-      this.bitmap.data[idx + 3] = 255; // A
+      this.bitmap.data[idx + 0] = 255;
+      this.bitmap.data[idx + 1] = 255;
+      this.bitmap.data[idx + 2] = 255;
+      this.bitmap.data[idx + 3] = 255;
     });
 
-    // Now center the logo on top of that white rectangle
     const logoX = bgX + padding;
     const logoY = bgY + padding;
 
