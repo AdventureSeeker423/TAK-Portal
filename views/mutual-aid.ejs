@@ -2069,6 +2069,7 @@ function renderMutualAidRow(it, opts = {}) {
   const typeLabel = formatMutualAidTypeLabel(it.type);
   const displayTitle = displayTitleForRow(it, master);
   const isAnchor = !!(groupAnchor && String(groupAnchor.id) === String(it.id));
+  const showMassAssign = isAnchor && isGroupCreatorItem(it);
   const rowClass = [
     isAnchor && !isSub ? "ma-unit-master" : "",
     isChild || isSub ? "ma-unit-child" : "",
@@ -2091,8 +2092,8 @@ function renderMutualAidRow(it, opts = {}) {
       <td>
         <div class="row" style="gap:10px; flex-wrap: wrap;">
           ${isSub ? "" : `<button class="btn" type="button" data-act="members" data-id="${esc(it.id)}">View Members</button>`}
-          ${isAnchor ? `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>` : ""}
-          ${isAnchor ? `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>` : ""}
+          ${showMassAssign ? `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>` : ""}
+          ${showMassAssign ? `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>` : ""}
           <button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>
           <button class="btn qr" type="button" data-act="qr" data-id="${esc(it.id)}">Show QR</button>
           ${canCreateSub ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">${esc(createSubButtonLabel(it.type))}</button>` : ""}
