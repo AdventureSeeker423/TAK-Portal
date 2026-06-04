@@ -7,6 +7,9 @@ const usersService = require("../services/users.service");
 const auditSvc = require("../services/auditLog.service");
 const { getString } = require("../services/env");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
+const mutualAidStore = require("../services/mutualAid.store");
+
+const MUTUAL_AID_GROUP_PREFIX = "ma -";
 
 function ensureTakPrefix(name) {
   const n = String(name || "").trim();
@@ -47,7 +50,12 @@ router.get("/", async (req, res) => {
     const all = await groups.getAllGroups({ forceRefresh });
     const authUser = req.authentikUser || null;
 
-    const filtered = filterGroupsVisibleToUser(authUser, all);
+    const access = accessSvc.getAgencyAccess(authUser);
+    const includeMutualAid =
+      access.isGlobalAdmin && String(req.query.includeMutualAid || "") === "1";
+    const filtered = filterGroupsVisibleToUser(authUser, all, {
+      includeMutualAid,
+    });
 
     res.json(filtered);
   } catch (err) {
@@ -76,13 +84,53 @@ async function resolveAgencyAbbreviationForExport(authUser, access) {
   }
 }
 
-function filterGroupsVisibleToUser(authUser, all) {
-  let filtered = accessSvc.filterGroupsForUser(authUser, all);
-
-  const hiddenPrefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
+function getGroupsHiddenPrefixes({ includeMutualAid = false } = {}) {
+  let hiddenPrefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
     .split(",")
     .map((p) => String(p || "").trim().toLowerCase())
     .filter(Boolean);
+  if (includeMutualAid) {
+    hiddenPrefixes = hiddenPrefixes.filter((p) => p !== MUTUAL_AID_GROUP_PREFIX);
+  }
+  return hiddenPrefixes;
+}
+
+function appendMutualAidGroupsFromStore(filtered, allGroups) {
+  const list = Array.isArray(filtered) ? filtered : [];
+  const all = Array.isArray(allGroups) ? allGroups : [];
+  const seen = new Set(
+    list.map((g) => String(g?.pk ?? g?.id ?? "").trim()).filter(Boolean)
+  );
+  const byName = new Map();
+  for (const g of all) {
+    const raw = String(g?.name || "").trim().toLowerCase();
+    if (!raw) continue;
+    byName.set(raw, g);
+    const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
+    if (!byName.has(withoutTak)) byName.set(withoutTak, g);
+  }
+
+  for (const item of mutualAidStore.load()) {
+    const name = String(item?.groupName || "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const match = byName.get(key) || byName.get(`tak_${key}`);
+    if (!match) continue;
+    const pk = String(match?.pk ?? match?.id ?? "").trim();
+    if (!pk || seen.has(pk)) continue;
+    seen.add(pk);
+    list.push(match);
+  }
+
+  return list;
+}
+
+function filterGroupsVisibleToUser(authUser, all, options = {}) {
+  let filtered = accessSvc.filterGroupsForUser(authUser, all);
+
+  const hiddenPrefixes = getGroupsHiddenPrefixes({
+    includeMutualAid: !!options.includeMutualAid,
+  });
 
   if (hiddenPrefixes.length) {
     filtered = filtered.filter((g) => {
@@ -93,6 +141,10 @@ function filterGroupsVisibleToUser(authUser, all) {
         (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
       );
     });
+  }
+
+  if (options.includeMutualAid) {
+    filtered = appendMutualAidGroupsFromStore(filtered, all);
   }
 
   return filtered;
@@ -937,3 +989,4 @@ router.get("/:groupId/members", async (req, res) => {
 });
 
 module.exports = router;
+module.exports.filterGroupsVisibleToUser = filterGroupsVisibleToUser;

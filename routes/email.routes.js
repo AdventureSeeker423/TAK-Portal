@@ -2,6 +2,7 @@ const router = require("express").Router();
 const agenciesStore = require("../services/agencies.service");
 const usersSvc = require("../services/users.service");
 const groupsSvc = require("../services/groups.service");
+const groupsRoutes = require("./groups.routes");
 const accessSvc = require("../services/access.service");
 const emailSvc = require("../services/email.service");
 const auditSvc = require("../services/auditLog.service");
@@ -118,7 +119,9 @@ router.get("/meta", async (req, res) => {
     );
 
     const allGroups = await groupsSvc.getAllGroups({});
-    const groups = accessSvc.filterGroupsForUser(authUser, allGroups);
+    const groups = groupsRoutes.filterGroupsVisibleToUser(authUser, allGroups, {
+      includeMutualAid: access.isGlobalAdmin,
+    });
 
     res.json({
       isGlobalAdmin: access.isGlobalAdmin,

@@ -405,7 +405,10 @@
 
     async function loadEmailGroups() {
       try {
-        const res = await fetch("/api/groups");
+        const groupsUrl = IS_GLOBAL_ADMIN
+          ? "/api/groups?includeMutualAid=1"
+          : "/api/groups";
+        const res = await fetch(groupsUrl);
         const out = await res.json();
         groupsCache = res.ok && Array.isArray(out) ? out : [];
         renderEmailGroupList();
