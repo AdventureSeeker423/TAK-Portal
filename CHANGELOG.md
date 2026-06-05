@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.32 - 6/5/26
+✨ `Enhancement` - Added a new option in the callsign configurator for "Radio Callsign / Blank".  This allows a callsign to use a radio callsign if entered, but if not, it falls back to blank text and removes the leading dash if present.<br>
+✨ `Enhancement` - Adds the ability for global admins to email members of a mutual aid group through the standard Email Users page.
+
 ### v1.3.31 - 6/3/26
 🐛 `Bug Fix` - Fixes issue with Integrations failing to download certs<br>
 🐛 `Bug Fix` - Fixes issue with Mutual Aid not populating the Assign/Unassign buttons
