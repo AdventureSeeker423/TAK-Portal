@@ -897,6 +897,7 @@
                 { value: "lastName", label: "Last Name" },
                 { value: "lastInitial", label: "Last Initial" },
                 { value: "badgeNumber", label: "Radio Callsign / Username" },
+                { value: "radioCallsignOrBlank", label: "Radio Callsign / Blank" },
                 { value: "_dash", label: "— (dash)" }
               ];
 
@@ -962,7 +963,8 @@
                   lastName: "Last",
                   lastNameUpper: "LAST",
                   lastInitial: "L",
-                  badgeNumber: "T05"
+                  badgeNumber: "T05",
+                  radioCallsignOrBlank: ""
                 };
 
                 var rendered = expr.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, function (_, key) {
@@ -971,6 +973,15 @@
                   }
                   return "";
                 });
+
+                if (expr.indexOf("radioCallsignOrBlank") >= 0) {
+                  rendered = String(rendered || "").trim();
+                  while (rendered.charAt(0) === "-") rendered = rendered.slice(1).trim();
+                  while (rendered.charAt(rendered.length - 1) === "-") {
+                    rendered = rendered.slice(0, -1).trim();
+                  }
+                  rendered = rendered.replace(/-{2,}/g, "-");
+                }
 
                 preview.textContent = rendered || "AGENCY-LASTNAME-BADGE";
               }

@@ -245,6 +245,20 @@ function resolveCallsignRadioOrUsername({
   return user;
 }
 
+/** Radio callsign only — blank when unset (no badge or username fallback). */
+function resolveCallsignRadioOrBlank({ radioCallsign } = {}) {
+  return String(radioCallsign ?? "").trim();
+}
+
+/** Strip orphan dashes left when optional callsign segments are empty. */
+function cleanupCallsignOutput(str) {
+  let s = String(str || "").trim();
+  while (s.startsWith("-")) s = s.slice(1).trim();
+  while (s.endsWith("-")) s = s.slice(0, -1).trim();
+  s = s.replace(/-{2,}/g, "-");
+  return s;
+}
+
 /**
  * Build a callsign string from settings + user context.
  * Falls back to "{{agencyAbbreviation}}-{{lastNameUpper}}-{{badgeNumber}}" when unset/invalid.
@@ -290,6 +304,7 @@ function buildCallsign({
       username,
       agencySuffix,
     }),
+    radioCallsignOrBlank: resolveCallsignRadioOrBlank({ radioCallsign }),
     agencyAbbreviation: agencyAbbreviation || "",
     agencyColor: agencyColor || "",
     stateAbbreviation: stateAbbreviation || "",
@@ -298,7 +313,7 @@ function buildCallsign({
     agencyTypeCode: agencyTypeCode || "",
   };
 
-  return expr.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
+  const rendered = expr.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
     if (Object.prototype.hasOwnProperty.call(ctx, key)) {
       const v = ctx[key];
       return v != null ? String(v) : "";
@@ -306,6 +321,10 @@ function buildCallsign({
     // Unknown tokens are left as-is so misconfigurations are visible.
     return match;
   });
+
+  return expr.includes("radioCallsignOrBlank")
+    ? cleanupCallsignOutput(rendered)
+    : rendered;
 }
 
 /**
