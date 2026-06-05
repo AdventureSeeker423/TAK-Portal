@@ -94,9 +94,9 @@
       <label>County Abbreviation
         <input
           name="countyAbbrev"
-          placeholder="(ex. HML or MAR)"
+          placeholder="(ex. HM or HML)"
           required
-          minlength="3"
+          minlength="2"
           oninput="this.value = this.value.toUpperCase().replace(/[^A-Z]/g, '')"
         />
       </label>
@@ -301,15 +301,15 @@
         County Abbreviation
         <input
           id="countyAbbrevInput"
-          placeholder="(ex. HML or MAR)"
+          placeholder="(ex. HM or HML)"
           required
-          minlength="3"
+          minlength="2"
           style="width:100%; box-sizing:border-box; margin-top:4px;"
           oninput="this.value = this.value.toUpperCase().replace(/[^A-Z]/g, '')"
         />
       </label>
       <small class="muted">
-        Must be at least 3 letters.
+        Must be at least 2 letters.
       </small>
       <div style="margin-top:14px; text-align:right;">
         <button class="btn" type="button" id="countyAbbrevCancelBtn">Cancel</button>
@@ -1167,9 +1167,9 @@ if (countyAbbrevSaveBtn) {
     const summary = document.getElementById("countyAbbrevSummary");
     const raw = (input && input.value) || "";
     const value = String(raw).trim().toUpperCase().replace(/[^A-Z]/g, "");
-    if (!value || value.length < 3) {
+    if (!value || value.length < 2) {
       if (summary) {
-        summary.textContent = "County abbreviation must be at least 3 letters.";
+        summary.textContent = "County abbreviation must be at least 2 letters.";
         summary.className = "msg bad";
       }
       return;

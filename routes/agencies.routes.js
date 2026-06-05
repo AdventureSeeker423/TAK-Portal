@@ -104,7 +104,7 @@ function validateAgency(a) {
   if (!a.groupPrefix) return "Group prefix is required";
   if (!a.color) return "Agency color is required";
   if (!a.countyAbbrev) return "County abbreviation is required";
-  if (a.countyAbbrev.length < 3) return "County abbreviation must be at least 3 characters";
+  if (a.countyAbbrev.length < 2) return "County abbreviation must be at least 2 characters";
   return null;
 }
 
@@ -742,8 +742,8 @@ router.put("/:index/county-abbrev", async (req, res) => {
     if (!raw) {
       return res.status(400).json({ error: "County abbreviation is required" });
     }
-    if (raw.length < 3) {
-      return res.status(400).json({ error: "County abbreviation must be at least 3 characters" });
+    if (raw.length < 2) {
+      return res.status(400).json({ error: "County abbreviation must be at least 2 characters" });
     }
     if (!/^[A-Z]+$/.test(raw)) {
       return res.status(400).json({ error: "County abbreviation must contain only letters" });
