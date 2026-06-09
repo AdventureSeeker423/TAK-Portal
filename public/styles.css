@@ -1966,3 +1966,109 @@ body.modal-open .sidebarToggle {
     line-height: 1.25;
 }
 
+/* Managed agencies: compact checkbox dropdown (Access Control, Users) */
+.ma-multiselect-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+}
+.ma-multiselect-label {
+  display: block;
+  font-weight: 500;
+  font-size: 0.92rem;
+}
+.ma-multiselect.filter-multiselect {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.ma-multiselect .filter-toggle {
+  width: 100%;
+  text-align: left;
+  justify-content: space-between;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ma-multiselect .filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  min-width: 0;
+  max-width: none;
+  max-height: 280px;
+  overflow: hidden;
+  flex-direction: column;
+  background: var(--card, #111827);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+  padding: 0;
+  display: none;
+}
+.ma-multiselect.open .filter-menu {
+  display: flex;
+}
+.ma-multiselect .filter-menu-inner {
+  padding: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ma-multiselect-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: var(--input-bg, rgba(0, 0, 0, 0.2));
+  color: inherit;
+  font-size: 13px;
+}
+.ma-multiselect-list {
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.ma-multiselect .filter-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.ma-multiselect .filter-option:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.ma-multiselect .filter-option input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  width: 1.125em;
+  height: 1.125em;
+}
+.ma-multiselect .filter-option span {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.ma-multiselect-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.ma-multiselect-actions .link-btn {
+  padding: 4px 0;
+  font-size: 12px;
+}
+.ma-multiselect-summary {
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+

@@ -66,35 +66,20 @@
 
     .ac-managed-agencies {
       margin-bottom: 14px;
-      padding: 12px;
+      padding: 12px 14px;
       border: 1px solid var(--line);
       border-radius: 10px;
       background: rgba(255,255,255,.02);
     }
-    .ac-managed-agencies-list {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-      gap: 8px;
-      margin-top: 10px;
-      max-height: 220px;
-      overflow: auto;
-    }
-    .ac-managed-agency-item {
+    .ac-managed-header {
       display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid transparent;
-      cursor: pointer;
-      user-select: none;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
     }
-    .ac-managed-agency-item:hover {
-      background: rgba(255,255,255,.04);
-    }
-    .ac-managed-summary {
-      margin-top: 6px;
-      font-size: 0.9rem;
+    .ac-managed-header-actions {
+      flex-shrink: 0;
     }
 
     .ac-state-legend {
@@ -215,15 +200,34 @@
       </div>
 
       <div id="acManagedAgenciesWrap" class="ac-managed-agencies" style="display:none;">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-          <strong>Managed Agencies</strong>
-          <button type="button" class="btn" id="acSaveManagedAgenciesBtn">Save Managed Agencies</button>
+        <div class="ac-managed-header">
+          <div style="flex:1; min-width: 240px;">
+            <strong>Managed Agencies</strong>
+            <div class="muted" style="margin-top:4px; margin-bottom:8px; font-size:0.9rem;">
+              Select which agencies this user can administer. Each adds the corresponding Agency Admin group in Authentik.
+            </div>
+            <div id="acManagedAgenciesPickerRoot" class="ma-multiselect-wrap">
+              <label class="ma-multiselect-label">Agencies</label>
+              <div class="ma-multiselect filter-multiselect">
+                <button type="button" class="btn filter-toggle ma-multiselect-toggle">Select agencies ▾</button>
+                <div class="filter-menu">
+                  <div class="filter-menu-inner">
+                    <input type="text" class="ma-multiselect-search" placeholder="Search agencies…" autocomplete="off" />
+                    <div class="ma-multiselect-list"></div>
+                    <div class="ma-multiselect-actions">
+                      <button type="button" class="btn link-btn ma-multiselect-select-all">Select all</button>
+                      <button type="button" class="btn link-btn ma-multiselect-clear">Clear</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="ma-multiselect-summary muted"></div>
+            </div>
+          </div>
+          <div class="ac-managed-header-actions">
+            <button type="button" class="btn" id="acSaveManagedAgenciesBtn">Save Managed Agencies</button>
+          </div>
         </div>
-        <div class="muted" style="margin-top:6px;">
-          Select which agencies this user can administer. Each selected agency adds the corresponding Agency Admin group in Authentik.
-        </div>
-        <div id="acManagedAgenciesSummary" class="ac-managed-summary muted"></div>
-        <div id="acManagedAgenciesList" class="ac-managed-agencies-list"></div>
       </div>
 
       <div id="acGroups"></div>
@@ -238,6 +242,7 @@
 
 </main>
 
+<script src="/managed-agencies-picker.js"></script>
 <script>
 (function () {
   const SECTION_LABELS = {
@@ -284,6 +289,27 @@
   let registryFlat = [];
   let allAgenciesCache = [];
   let selectedManagedSuffixes = new Set();
+  let acManagedPicker = null;
+
+  function initAcManagedPicker() {
+    const root = el("acManagedAgenciesPickerRoot");
+    if (!root || !window.ManagedAgenciesPicker || acManagedPicker) return;
+    acManagedPicker = ManagedAgenciesPicker.bind(root, {
+      inputName: "managedAgencySuffix",
+      getAgencies: function () { return allAgenciesCache; },
+      onChange: function (set) { selectedManagedSuffixes = set; },
+    });
+  }
+
+  function renderManagedAgenciesPicker() {
+    initAcManagedPicker();
+    if (acManagedPicker) acManagedPicker.setSelected(selectedManagedSuffixes);
+  }
+
+  function getSelectedManagedSuffixesArray() {
+    if (acManagedPicker) return acManagedPicker.getSelectedArray();
+    return Array.from(selectedManagedSuffixes).filter(Boolean).sort();
+  }
   let selectedUsername = null;
   let selectedUserId = null;
   let currentEditorRole = "user";
@@ -346,61 +372,6 @@
     const wrap = el("acManagedAgenciesWrap");
     if (!wrap) return;
     wrap.style.display = showsManagedAgenciesPicker(uiRole) ? "block" : "none";
-  }
-
-  function renderManagedAgenciesPicker() {
-    const host = el("acManagedAgenciesList");
-    const summary = el("acManagedAgenciesSummary");
-    if (!host) return;
-
-    const sorted = (Array.isArray(allAgenciesCache) ? allAgenciesCache : [])
-      .slice()
-      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
-
-    host.innerHTML = sorted.map((a) => {
-      const sfx = String(a?.suffix || "").trim().toLowerCase();
-      const abbr = String(a?.groupPrefix || a?.suffix || "").trim().toUpperCase();
-      const name = String(a?.name || sfx || "Agency");
-      const checked = selectedManagedSuffixes.has(sfx) ? "checked" : "";
-      return (
-        '<label class="ac-managed-agency-item">' +
-        '<input type="checkbox" class="ac-managed-agency-cb" value="' + sfx + '" ' + checked + ' />' +
-        "<span>" + name + (abbr ? " (" + abbr + ")" : "") + "</span>" +
-        "</label>"
-      );
-    }).join("");
-
-    if (summary) {
-      const labels = sorted
-        .filter((a) => selectedManagedSuffixes.has(String(a?.suffix || "").trim().toLowerCase()))
-        .map((a) => String(a?.groupPrefix || a?.suffix || "").trim().toUpperCase() || String(a?.name || "").trim())
-        .filter(Boolean);
-      summary.textContent = labels.length
-        ? "Currently manages: " + labels.join(", ")
-        : "No agencies selected.";
-    }
-
-    host.querySelectorAll(".ac-managed-agency-cb").forEach((cb) => {
-      cb.addEventListener("change", function () {
-        const sfx = String(this.value || "").trim().toLowerCase();
-        if (!sfx) return;
-        if (this.checked) selectedManagedSuffixes.add(sfx);
-        else selectedManagedSuffixes.delete(sfx);
-        if (summary) {
-          const labels = sorted
-            .filter((a) => selectedManagedSuffixes.has(String(a?.suffix || "").trim().toLowerCase()))
-            .map((a) => String(a?.groupPrefix || a?.suffix || "").trim().toUpperCase() || String(a?.name || "").trim())
-            .filter(Boolean);
-          summary.textContent = labels.length
-            ? "Currently manages: " + labels.join(", ")
-            : "No agencies selected.";
-        }
-      });
-    });
-  }
-
-  function getSelectedManagedSuffixesArray() {
-    return Array.from(selectedManagedSuffixes).filter(Boolean).sort();
   }
 
   async function loadAgencies() {

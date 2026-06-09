@@ -126,11 +126,26 @@
       </div>
 
       <div id="createManagedAgenciesWrap" class="managed-agencies-wrap" hidden style="grid-column: 1 / -1;">
-        <strong>Managed Agencies</strong>
-        <div class="muted" style="margin-top:4px; margin-bottom:8px;">
+        <label class="ma-multiselect-label" style="font-weight:600;">Managed Agencies</label>
+        <div class="muted" style="margin:4px 0 8px; font-size:0.9rem;">
           Select which agencies this user can administer as Agency Admin.
         </div>
-        <div id="createManagedAgenciesList" class="managed-agencies-list"></div>
+        <div id="createManagedAgenciesPickerRoot" class="ma-multiselect-wrap">
+          <div class="ma-multiselect filter-multiselect">
+            <button type="button" class="btn filter-toggle ma-multiselect-toggle">Select agencies ▾</button>
+            <div class="filter-menu">
+              <div class="filter-menu-inner">
+                <input type="text" class="ma-multiselect-search" placeholder="Search agencies…" autocomplete="off" />
+                <div class="ma-multiselect-list"></div>
+                <div class="ma-multiselect-actions">
+                  <button type="button" class="btn link-btn ma-multiselect-select-all">Select all</button>
+                  <button type="button" class="btn link-btn ma-multiselect-clear">Clear</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="ma-multiselect-summary muted"></div>
+        </div>
       </div>
 
       <!-- Manual Groups (checkbox picker) -->
@@ -408,11 +423,26 @@
           </div>
 
           <div id="editManagedAgenciesWrap" class="managed-agencies-wrap" hidden>
-            <strong>Managed Agencies</strong>
+            <label class="ma-multiselect-label" style="font-weight:600;">Managed Agencies</label>
             <div class="muted managed-agencies-help">
               Select at least two agencies this user can administer.
             </div>
-            <div id="editManagedAgenciesList" class="managed-agencies-list"></div>
+            <div id="editManagedAgenciesPickerRoot" class="ma-multiselect-wrap">
+              <div class="ma-multiselect filter-multiselect">
+                <button type="button" class="btn filter-toggle ma-multiselect-toggle">Select agencies ▾</button>
+                <div class="filter-menu">
+                  <div class="filter-menu-inner">
+                    <input type="text" class="ma-multiselect-search" placeholder="Search agencies…" autocomplete="off" />
+                    <div class="ma-multiselect-list"></div>
+                    <div class="ma-multiselect-actions">
+                      <button type="button" class="btn link-btn ma-multiselect-select-all">Select all</button>
+                      <button type="button" class="btn link-btn ma-multiselect-clear">Clear</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="ma-multiselect-summary muted"></div>
+            </div>
           </div>
         </div>
       </div><!-- /grid2 -->
@@ -459,6 +489,7 @@
 </div>
 
 
+<script src="/managed-agencies-picker.js"></script>
 <script>
 (function(){
 const IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
@@ -490,7 +521,30 @@ let allAgenciesCache = [];
 let pickedManualGroupIds = new Set();
 const createPermissionsSelect = document.getElementById("createPermissionsSelect");
 const createManagedAgenciesWrap = document.getElementById("createManagedAgenciesWrap");
-const createManagedAgenciesList = document.getElementById("createManagedAgenciesList");
+const createManagedAgenciesPickerRoot = document.getElementById("createManagedAgenciesPickerRoot");
+let createManagedPicker = null;
+
+function initCreateManagedPicker() {
+  if (!createManagedAgenciesPickerRoot || !window.ManagedAgenciesPicker || createManagedPicker) return;
+  createManagedPicker = ManagedAgenciesPicker.bind(createManagedAgenciesPickerRoot, {
+    inputName: "managedAgencySuffix",
+    getAgencies: agenciesForManagedPicker,
+  });
+}
+
+function getCreateManagedSuffixes() {
+  if (createManagedPicker) return createManagedPicker.getSelectedArray();
+  return [];
+}
+
+function syncCreateManagedAgenciesDefault() {
+  initCreateManagedPicker();
+  if (!createManagedPicker) return;
+  const createSfx = String(agencySelect?.value || "").trim().toLowerCase();
+  const next = new Set(createManagedPicker.getSelectedArray());
+  if (createSfx && !next.size) next.add(createSfx);
+  createManagedPicker.setSelected(next);
+}
 
 function canAssignManagedAgencies() {
   return IS_GLOBAL_ADMIN || (IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 0);
@@ -503,41 +557,6 @@ function agenciesForManagedPicker() {
     (ALLOWED_AGENCY_SUFFIXES || []).map((s) => String(s || "").trim().toLowerCase())
   );
   return list.filter((a) => allowed.has(String(a?.suffix || "").trim().toLowerCase()));
-}
-
-function renderManagedAgenciesList(containerEl, selectedSet, { inputName = "managedAgencySuffix" } = {}) {
-  if (!containerEl) return;
-  const agencies = agenciesForManagedPicker()
-    .slice()
-    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
-  containerEl.innerHTML = agencies
-    .map((a) => {
-      const sfx = String(a.suffix || "").trim().toLowerCase();
-      const abbr = String(a.groupPrefix || a.suffix || "").trim();
-      const checked = selectedSet.has(sfx) ? " checked" : "";
-      return (
-        `<label class="managed-agency-option">` +
-        `<input type="checkbox" name="${esc(inputName)}" value="${esc(sfx)}"${checked} />` +
-        `<span>${esc(a.name || sfx)}${abbr ? ` (${esc(abbr)})` : ""}</span>` +
-        `</label>`
-      );
-    })
-    .join("");
-}
-
-function getManagedSuffixesFromContainer(containerEl) {
-  if (!containerEl) return [];
-  return Array.from(containerEl.querySelectorAll('input[type="checkbox"]:checked'))
-    .map((el) => String(el.value || "").trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function syncCreateManagedAgenciesDefault() {
-  if (!createManagedAgenciesList) return;
-  const createSfx = String(agencySelect?.value || "").trim().toLowerCase();
-  const next = new Set(getManagedSuffixesFromContainer(createManagedAgenciesList));
-  if (createSfx && !next.size) next.add(createSfx);
-  renderManagedAgenciesList(createManagedAgenciesList, next, { inputName: "managedAgencySuffix" });
 }
 
 function updateCreateManagedAgenciesVisibility() {
@@ -897,7 +916,7 @@ form.onsubmit = async (e) => {
   }
 
   if (payload.permissions === "multi_agency_admin" && IS_GLOBAL_ADMIN) {
-    const suffixes = getManagedSuffixesFromContainer(createManagedAgenciesList);
+    const suffixes = getCreateManagedSuffixes();
     if (suffixes.length < 2) {
       setMsg("Multi-Agency Admin requires at least two managed agencies.", false);
       return;
@@ -905,7 +924,7 @@ form.onsubmit = async (e) => {
     payload.managedAgencySuffixes = suffixes;
     payload.permissions = "agency_admin";
   } else if (payload.permissions === "agency_admin" && canAssignManagedAgencies()) {
-    const suffixes = getManagedSuffixesFromContainer(createManagedAgenciesList);
+    const suffixes = getCreateManagedSuffixes();
     if (suffixes.length) payload.managedAgencySuffixes = suffixes;
   }
 
@@ -1217,8 +1236,18 @@ const roleSelect = document.getElementById("roleSelect");
 // Permissions controls
 const permissionsSelect = document.getElementById("permissionsSelect");
 const editManagedAgenciesWrap = document.getElementById("editManagedAgenciesWrap");
-const editManagedAgenciesList = document.getElementById("editManagedAgenciesList");
+const editManagedAgenciesPickerRoot = document.getElementById("editManagedAgenciesPickerRoot");
 let editManagedSuffixes = new Set();
+let editManagedPicker = null;
+
+function initEditManagedPicker() {
+  if (!editManagedAgenciesPickerRoot || !window.ManagedAgenciesPicker || editManagedPicker) return;
+  editManagedPicker = ManagedAgenciesPicker.bind(editManagedAgenciesPickerRoot, {
+    inputName: "editManagedAgencySuffix",
+    getAgencies: agenciesForManagedPickerEdit,
+    onChange: function (set) { editManagedSuffixes = set; },
+  });
+}
 
 function canAssignManagedAgenciesForEdit() {
   return IS_GLOBAL_ADMIN || (IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 0);
@@ -1251,31 +1280,9 @@ function agenciesForManagedPickerEdit() {
   return list.filter((a) => allowed.has(String(a?.suffix || "").trim().toLowerCase()));
 }
 
-function renderEditManagedAgenciesList(containerEl, selectedSet) {
-  if (!containerEl) return;
-  const agencies = agenciesForManagedPickerEdit()
-    .slice()
-    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
-  containerEl.innerHTML = agencies
-    .map((a) => {
-      const sfx = String(a.suffix || "").trim().toLowerCase();
-      const abbr = String(a.groupPrefix || a.suffix || "").trim();
-      const checked = selectedSet.has(sfx) ? " checked" : "";
-      return (
-        `<label class="managed-agency-option">` +
-        `<input type="checkbox" name="editManagedAgencySuffix" value="${escapeHtml(sfx)}"${checked} />` +
-        `<span>${escapeHtml(a.name || sfx)}${abbr ? ` (${escapeHtml(abbr)})` : ""}</span>` +
-        `</label>`
-      );
-    })
-    .join("");
-}
-
 function getEditManagedSuffixesFromContainer() {
-  if (!editManagedAgenciesList) return [];
-  return Array.from(editManagedAgenciesList.querySelectorAll('input[type="checkbox"]:checked'))
-    .map((el) => String(el.value || "").trim().toLowerCase())
-    .filter(Boolean);
+  if (editManagedPicker) return editManagedPicker.getSelectedArray();
+  return Array.from(editManagedSuffixes).filter(Boolean).sort();
 }
 
 function updateEditManagedAgenciesVisibility() {
@@ -1285,8 +1292,9 @@ function updateEditManagedAgenciesVisibility() {
     editManagedAgenciesWrap.hidden = !show;
     editManagedAgenciesWrap.style.display = show ? "block" : "none";
   }
-  if (show && editManagedAgenciesList) {
-    renderEditManagedAgenciesList(editManagedAgenciesList, editManagedSuffixes);
+  if (show) {
+    initEditManagedPicker();
+    if (editManagedPicker) editManagedPicker.setSelected(editManagedSuffixes);
   }
 }
 
@@ -3884,10 +3892,7 @@ th.sortable:hover{
   border: none !important;
 }
 .managed-agencies-wrap:not([hidden]) {
-  padding: 12px;
-  border: 1px solid var(--line, rgba(255,255,255,0.1));
-  border-radius: 8px;
-  background: rgba(255,255,255,0.02);
+  margin-top: 4px;
 }
 #editManagedAgenciesWrap:not([hidden]) {
   margin-top: 12px;
@@ -3895,22 +3900,6 @@ th.sortable:hover{
 .managed-agencies-help {
   margin-top: 4px;
   margin-bottom: 8px;
-}
-.managed-agencies-list{
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 8px 16px;
-}
-.managed-agency-option{
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.managed-agency-option input[type="checkbox"]{
-  margin: 0;
-  flex-shrink: 0;
 }
 
 /* Edit user: block interaction until Authentik user + group data is loaded */
