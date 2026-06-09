@@ -44,7 +44,7 @@ function buildUsernameForAgency(badgeNumber, agencySuffix) {
 
 function userAlreadyExistsError() {
   const err = new Error(
-    "An account with this badge number already exists. If you already have access, please log in to the portal."
+    "An account with this badge number already exists. To login or to reset your password, visit the portal."
   );
   err.code = "USER_ALREADY_EXISTS";
   return err;

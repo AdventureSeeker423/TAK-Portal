@@ -89,11 +89,10 @@
 
     <% if (typeof error !== "undefined" && error) { %>
       <div class="msg bad" style="margin-bottom: 12px;">
-        <%= error %>
         <% if (showLoginLink) { %>
-          <div style="margin-top: 10px;">
-            <a href="<%= loginUrl || '/' %>" class="btn success" style="text-decoration: none;">Log in to TAK Portal</a>
-          </div>
+          An account with this badge number already exists. To login or to reset your password <a href="<%= loginUrl || '/' %>">click here</a>.
+        <% } else { %>
+          <%= error %>
         <% } %>
       </div>
     <% } %>
