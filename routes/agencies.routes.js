@@ -164,6 +164,86 @@ router.get("/with-counts", async (req, res) => {
   }
 });
 
+function csvEscapeCell(value) {
+  const s = String(value ?? "");
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function buildAgenciesExportCsv(agencies) {
+  const header = [
+    "Agency Full Name",
+    "Agency Abbreviation",
+    "Username Suffix",
+    "State",
+    "County",
+    "County Abbreviation",
+    "Agency Type",
+    "Agency Color",
+  ];
+  const lines = [header.map(csvEscapeCell).join(",")];
+  const sorted = (Array.isArray(agencies) ? agencies : [])
+    .slice()
+    .sort((a, b) =>
+      String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+        sensitivity: "base",
+      })
+    );
+
+  for (const a of sorted) {
+    lines.push(
+      [
+        a?.name || "",
+        a?.groupPrefix || "",
+        a?.suffix || "",
+        a?.state || "",
+        a?.county || "",
+        a?.countyAbbrev || "",
+        a?.type || "",
+        a?.color || "",
+      ]
+        .map(csvEscapeCell)
+        .join(",")
+    );
+  }
+
+  return `${lines.join("\r\n")}\r\n`;
+}
+
+router.get("/export-csv", (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    if (!authUser) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const all = store.load();
+    const visible = accessSvc.filterAgenciesForUser(authUser, all);
+    const csv = buildAgenciesExportCsv(visible);
+
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "EXPORT_AGENCIES_CSV",
+      targetType: "agency",
+      targetId: "bulk",
+      details: {
+        agencyCount: visible.length,
+      },
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="tak-portal-agencies-${stamp}.csv"`
+    );
+    return res.send(csv);
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Export failed" });
+  }
+});
+
 // Get/set extra groups that this agency's admins can access (besides their own agency groups).
 router.get("/:index/access-groups", (req, res) => {
   const idx = Number(req.params.index);

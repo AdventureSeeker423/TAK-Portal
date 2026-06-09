@@ -193,6 +193,12 @@
       </table>
     </div>
   </div>
+
+  <div class="card agenciesExportCard">
+    <div class="agenciesExportCardActions">
+      <button type="button" class="btn" id="exportAgenciesCsvBtn">Export Agencies CSV</button>
+    </div>
+  </div>
 </main>
 
 <!-- Agency Admins Modal (same behavior as Groups -> View Members) -->
@@ -1589,6 +1595,47 @@ if (accessGroupsSaveBtn) accessGroupsSaveBtn.onclick = async () => {
   }
 };
 
+const exportAgenciesCsvBtn = document.getElementById("exportAgenciesCsvBtn");
+if (exportAgenciesCsvBtn) {
+  exportAgenciesCsvBtn.addEventListener("click", async () => {
+    const prevLabel = exportAgenciesCsvBtn.textContent;
+    exportAgenciesCsvBtn.disabled = true;
+    exportAgenciesCsvBtn.textContent = "Exporting…";
+    try {
+      const res = await fetch("/api/agencies/export-csv");
+      if (!res.ok) {
+        let errText = "Export failed";
+        try {
+          const body = await res.json();
+          errText = body?.error || errText;
+        } catch (_) {
+          // ignore
+        }
+        setMsg(errText, false);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = /filename="([^"]+)"/i.exec(cd);
+      const filename = match ? match[1] : "tak-portal-agencies.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMsg(`Exported ${filename}.`, true);
+    } catch (err) {
+      setMsg(err?.message || "Export failed", false);
+    } finally {
+      exportAgenciesCsvBtn.disabled = false;
+      exportAgenciesCsvBtn.textContent = prevLabel;
+    }
+  });
+}
+
 // click-to-sort + keyboard support (Enter/Space)
 agencyTable.querySelectorAll("thead th[data-sort]").forEach(th => {
   th.addEventListener("click", () => {
@@ -1968,6 +2015,15 @@ input.readonly {
 }
 @media (max-width: 480px) {
   #accessGroupsInner.groupsInner { column-count: 1; }
+}
+
+.agenciesExportCard {
+  padding: 14px 16px;
+}
+
+.agenciesExportCardActions {
+  display: flex;
+  justify-content: flex-end;
 }
 </style>
 
