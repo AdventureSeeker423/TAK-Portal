@@ -321,19 +321,28 @@ async function getAgencyDashboardSnapshot(
   return refreshAgencyNow(name, { expectedAgencySuffix, groupPrefix, authUser });
 }
 
-function mergeAgencySnapshots(snapshots) {
+function mergeAgencySnapshots(snapshots, managedAgencies) {
   const list = Array.isArray(snapshots) ? snapshots.filter(Boolean) : [];
+  const managed = Array.isArray(managedAgencies) ? managedAgencies : [];
   let totalUsers = 0;
   const usersByTemplate = {};
+  const usersByAgency = {};
   let totalGroups = 0;
   let refreshedAt = null;
   const errors = [];
 
-  for (const snap of list) {
+  for (let i = 0; i < list.length; i++) {
+    const snap = list[i];
     totalUsers += Number(snap?.stats?.totalUsers) || 0;
     const tmplMap = snap?.charts?.usersByTemplate || {};
     for (const [label, count] of Object.entries(tmplMap)) {
       usersByTemplate[label] = (usersByTemplate[label] || 0) + (Number(count) || 0);
+    }
+    const agencyName = String(
+      managed[i]?.name || snap?.agencyName || ""
+    ).trim();
+    if (agencyName) {
+      usersByAgency[agencyName] = Number(snap?.stats?.totalUsers) || 0;
     }
     if (snap?.refreshedAt) {
       const t = snap.refreshedAt instanceof Date ? snap.refreshedAt : new Date(snap.refreshedAt);
@@ -345,7 +354,7 @@ function mergeAgencySnapshots(snapshots) {
 
   return {
     stats: { totalUsers, totalGroups },
-    charts: { usersByTemplate },
+    charts: { usersByTemplate, usersByAgency },
     refreshedAt,
     error: errors.length ? errors.join("; ") : null,
   };
@@ -400,9 +409,9 @@ async function getAgencyDashboardForUser(authUser) {
     )
   );
 
-  const merged = mergeAgencySnapshots(snapshots);
+  const merged = mergeAgencySnapshots(snapshots, managed);
   const agencyDisplayName =
-    managed.length === 1 ? managed[0].name : "Agency Dashboard";
+    managed.length === 1 ? managed[0].name : "Multi-Agency";
 
   return {
     managedAgencies: managed,

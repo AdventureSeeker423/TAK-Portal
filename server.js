@@ -12,6 +12,7 @@ const { URL } = require("url");
 const pkg = require("./package.json");
 const mutualAidSvc = require("./services/mutualAid.service");
 const portalAuth = require("./services/portalAuth.middleware");
+const portalAuthEnrich = require("./services/portalAuthEnrich.middleware");
 const emailSvc = require("./services/email.service");
 const smsSvc = require("./services/sms.service");
 const emailTemplatesSvc = require("./services/emailTemplates.service");
@@ -248,6 +249,15 @@ app.use((req, res, next) => {
     // fall through
   }
   return portalAuth(req, res, next);
+});
+
+app.use((req, res, next) => {
+  try {
+    if (isPublicPortalBypass(req)) return next();
+  } catch (_) {
+    // fall through
+  }
+  return portalAuthEnrich(req, res, next);
 });
 
 app.use((req, res, next) => {

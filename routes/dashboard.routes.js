@@ -84,17 +84,22 @@ router.get("/", async (req, res) => {
         : [];
       isMultiAgencyDashboard = allowedSuffixes.length > 1;
       const agencySnap = await dashboardStatsCache.getAgencyDashboardForUser(req.authentikUser);
-      agencyDisplayName = agencySnap.agencyDisplayName || "Agency Dashboard";
+      agencyDisplayName = agencySnap.agencyDisplayName || "Agency";
+      const managed = agencySnap.managedAgencies || [];
       stats = {
         totalUsers: agencySnap.stats?.totalUsers ?? 0,
         totalGroups: agencySnap.stats?.totalGroups ?? 0,
-        totalAgencies: 0,
+        totalAgencies: isMultiAgencyDashboard ? managed.length : 0,
         totalIntegrations: 0,
       };
       charts = {
         usersByTemplate: agencySnap.charts?.usersByTemplate || {},
+        usersByAgency: agencySnap.charts?.usersByAgency || {},
       };
-      const managed = agencySnap.managedAgencies || [];
+      for (const a of managed) {
+        const name = String(a.name || "").trim();
+        if (name) agencyColors[name] = a.color || null;
+      }
       if (managed.length === 1 && managed[0].color) {
         templateChartColor = managed[0].color;
       }
@@ -203,7 +208,7 @@ router.get("/", async (req, res) => {
         activeEvents: 0,
       },
       charts: isAgencyOnly
-        ? { usersByTemplate: {} }
+        ? { usersByTemplate: {}, usersByAgency: {} }
         : {
             usersByAgency: {},
             unknownAgency: 0,

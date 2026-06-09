@@ -814,6 +814,53 @@ function getManagedAgencySuffixesFromGroupNames(groupNames) {
   return getAllowedAgencySuffixesForGroups(groupNames);
 }
 
+/**
+ * Refresh agency-admin scope from live Authentik group membership.
+ * Forward-auth headers can lag after managed-agency changes; the API is authoritative.
+ */
+async function enrichAuthUserFromAuthentik(authUser) {
+  if (!authUser || authUser.isGlobalAdmin) return authUser;
+
+  const uid = String(authUser.uid || "").trim();
+  if (!uid) return authUser;
+
+  const usersSvc = require("./users.service");
+  const groupsSvc = require("./groups.service");
+
+  const liveUser = await usersSvc.getUserById(uid).catch(() => null);
+  if (!liveUser) return authUser;
+
+  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  const { groupNameById } = buildGroupLookupMaps(allGroups);
+
+  const groupIds = Array.isArray(liveUser.groups) ? liveUser.groups.map(String) : [];
+  const namesFromIds = groupIds
+    .map((id) => groupNameById.get(id))
+    .filter(Boolean);
+
+  const headerNames = Array.isArray(authUser.groups) ? authUser.groups : [];
+  const mergedNames = [];
+  const seen = new Set();
+  for (const raw of [...headerNames, ...namesFromIds]) {
+    const name = String(raw || "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    mergedNames.push(name);
+  }
+
+  const allowedAgencySuffixes = getAllowedAgencySuffixesForGroups(
+    mergedNames.map((n) => n.toLowerCase())
+  );
+
+  authUser.groups = mergedNames;
+  authUser.allowedAgencySuffixes = allowedAgencySuffixes;
+  authUser.isAgencyAdmin = allowedAgencySuffixes.length > 0;
+
+  return authUser;
+}
+
 module.exports = {
   normalizeSuffix,
   normalizeGroupList,
@@ -850,4 +897,5 @@ module.exports = {
   computePortalRoleGroupDelta,
   syncPortalRoleGroups,
   getManagedAgencySuffixesFromGroupNames,
+  enrichAuthUserFromAuthentik,
 };

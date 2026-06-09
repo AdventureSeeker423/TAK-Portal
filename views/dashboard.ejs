@@ -102,7 +102,8 @@
 
   <!-- Top stats -->
   <% const agencyDash = typeof isAgencyDashboard !== "undefined" && isAgencyDashboard; %>
-  <div class="<%= agencyDash ? 'grid2 dashboardAgencyStats' : 'grid3' %>">
+  <% const multiAgencyDash = agencyDash && typeof isMultiAgencyDashboard !== "undefined" && isMultiAgencyDashboard; %>
+  <div class="<%= multiAgencyDash ? 'grid3' : (agencyDash ? 'grid2 dashboardAgencyStats' : 'grid3') %>">
     <a href="/users/manage" class="statCardLink">
       <div class="card stat">
         <div class="statLabel">Total Users</div>
@@ -111,7 +112,13 @@
       </div>
     </a>
 
-    <% if (!agencyDash) { %>
+    <% if (multiAgencyDash) { %>
+    <div class="card stat">
+      <div class="statLabel">Managed Agencies</div>
+      <div class="statValue"><%= stats.totalAgencies %></div>
+      <div class="statHint"></div>
+    </div>
+    <% } else if (!agencyDash) { %>
     <% if (isGlobalAdmin) { %>
     <a href="/agencies" class="statCardLink">
     <% } %>
@@ -167,7 +174,22 @@
     <% } %>
   </div>
 
-  <% if (agencyDash) { %>
+  <% if (multiAgencyDash) { %>
+  <div class="grid2 gridTight" style="margin-top:8px;">
+    <div class="card">
+      <h2 class="cardTitle">Users by Agency</h2>
+      <div class="chartWrap">
+        <canvas id="agencyChart"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h2 class="cardTitle">Users by Template</h2>
+      <div class="chartWrap">
+        <canvas id="templateChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <% } else if (agencyDash) { %>
   <div class="grid1 gridTight" style="margin-top:8px;">
     <div class="card">
       <h2 class="cardTitle">Users by Template</h2>
@@ -211,89 +233,9 @@
   <script>
     (function() {
       const IS_AGENCY_DASHBOARD = <%- JSON.stringify(!!(typeof isAgencyDashboard !== "undefined" && isAgencyDashboard)) %>;
+      const IS_MULTI_AGENCY_DASHBOARD = <%- JSON.stringify(!!(typeof isMultiAgencyDashboard !== "undefined" && isMultiAgencyDashboard)) %>;
 
       function initCharts() {
-        if (IS_AGENCY_DASHBOARD) {
-          const usersByTemplate = <%- JSON.stringify((charts && charts.usersByTemplate) || {}) %>;
-          const templateChartColor = <%- JSON.stringify(typeof templateChartColor !== "undefined" ? templateChartColor : null) %>;
-          const defaultColor = "#9ca3af";
-          var agencyColorNameToHex = {
-            "Blue": "#1e88e5",
-            "Dark Blue": "#0d47a1",
-            "Brown": "#6d4c41",
-            "Cyan": "#00acc1",
-            "Green": "#43a047",
-            "Dark Green": "#1b5e20",
-            "Magenta": "#d81b60",
-            "Maroon": "#800000",
-            "Orange": "#ff7b00",
-            "Purple": "#8e24aa",
-            "Red": "#e53935",
-            "Teal": "#00897b",
-            "White": "#ffffff",
-            "Yellow": "#fdd835"
-          };
-          function resolveColor(c) {
-            if (!c || typeof c !== "string") return defaultColor;
-            const raw = c.trim();
-            if (!raw) return defaultColor;
-            if (raw.charAt(0) === "#") return raw;
-            return agencyColorNameToHex[raw] || agencyColorNameToHex[raw.toLowerCase()] || raw;
-          }
-          const baseColor = resolveColor(templateChartColor);
-          const labels = Object.keys(usersByTemplate);
-          const data = Object.values(usersByTemplate);
-          const templateChartPalette = [
-            "#1e88e5", "#43a047", "#e53935", "#8e24aa", "#ff7b00", "#00acc1",
-            "#6d4c41", "#d81b60", "#0d47a1", "#1b5e20", "#800000", "#fdd835",
-            "#00897b", "#5e35b1", "#f4511e", "#26a69a", "#7cb342", "#ec407a",
-            "#ab47bc", "#29b6f6", "#8d6e63", "#78909c", "#ff7043", "#9ccc65"
-          ];
-          function templateChartColors(count) {
-            if (count <= 0) return [];
-            if (count === 1) return [baseColor];
-            const colors = [];
-            for (var i = 0; i < count; i++) {
-              if (i < templateChartPalette.length) {
-                colors.push(templateChartPalette[i]);
-              } else {
-                var hue = Math.round((i * 137.508) % 360);
-                colors.push("hsl(" + hue + ", 62%, 50%)");
-              }
-            }
-            return colors;
-          }
-          const backgroundColors = templateChartColors(labels.length);
-          const pieOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                position: "bottom",
-                labels: { boxWidth: 14, boxHeight: 14, padding: 12, font: { size: 15 } }
-              }
-            }
-          };
-          new Chart(document.getElementById("templateChart"), {
-            type: "pie",
-            data: {
-              labels: labels,
-              datasets: [{
-                data: data,
-                backgroundColor: backgroundColors,
-                borderColor: "#ffffff",
-                borderWidth: 2
-              }]
-            },
-            options: pieOptions
-          });
-          return;
-        }
-
-        const usersByAgency = <%- JSON.stringify((charts && charts.usersByAgency) || {}) %>;
-        const unknownAgency = <%- JSON.stringify((charts && charts.unknownAgency) || 0) %>;
-        const agencyColors = <%- JSON.stringify(typeof agencyColors !== "undefined" ? agencyColors : {}) %>;
-        const defaultAgencyColor = "#9ca3af";
         var agencyColorNameToHex = {
           "Blue": "#1e88e5",
           "Dark Blue": "#0d47a1",
@@ -310,6 +252,95 @@
           "White": "#ffffff",
           "Yellow": "#fdd835"
         };
+        const defaultColor = "#9ca3af";
+        function resolveColor(c) {
+          if (!c || typeof c !== "string") return defaultColor;
+          const raw = c.trim();
+          if (!raw) return defaultColor;
+          if (raw.charAt(0) === "#") return raw;
+          return agencyColorNameToHex[raw] || agencyColorNameToHex[raw.toLowerCase()] || raw;
+        }
+        const pieOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: { boxWidth: 14, boxHeight: 14, padding: 12, font: { size: 15 } }
+            }
+          }
+        };
+        const templateChartPalette = [
+          "#1e88e5", "#43a047", "#e53935", "#8e24aa", "#ff7b00", "#00acc1",
+          "#6d4c41", "#d81b60", "#0d47a1", "#1b5e20", "#800000", "#fdd835",
+          "#00897b", "#5e35b1", "#f4511e", "#26a69a", "#7cb342", "#ec407a",
+          "#ab47bc", "#29b6f6", "#8d6e63", "#78909c", "#ff7043", "#9ccc65"
+        ];
+        function chartPaletteColors(count, baseColor) {
+          if (count <= 0) return [];
+          if (count === 1 && baseColor) return [baseColor];
+          const colors = [];
+          for (var i = 0; i < count; i++) {
+            if (i < templateChartPalette.length) {
+              colors.push(templateChartPalette[i]);
+            } else {
+              var hue = Math.round((i * 137.508) % 360);
+              colors.push("hsl(" + hue + ", 62%, 50%)");
+            }
+          }
+          return colors;
+        }
+
+        if (IS_AGENCY_DASHBOARD) {
+          const usersByTemplate = <%- JSON.stringify((charts && charts.usersByTemplate) || {}) %>;
+          const templateChartColor = <%- JSON.stringify(typeof templateChartColor !== "undefined" ? templateChartColor : null) %>;
+          const baseColor = resolveColor(templateChartColor);
+          const templateLabels = Object.keys(usersByTemplate);
+          const templateData = Object.values(usersByTemplate);
+
+          if (IS_MULTI_AGENCY_DASHBOARD) {
+            const usersByAgency = <%- JSON.stringify((charts && charts.usersByAgency) || {}) %>;
+            const agencyColors = <%- JSON.stringify(typeof agencyColors !== "undefined" ? agencyColors : {}) %>;
+            const agencyLabels = Object.keys(usersByAgency);
+            const agencyData = Object.values(usersByAgency);
+            const agencyBackgroundColors = agencyLabels.map(function(label) {
+              return resolveColor(agencyColors[label]);
+            });
+            new Chart(document.getElementById("agencyChart"), {
+              type: "pie",
+              data: {
+                labels: agencyLabels,
+                datasets: [{
+                  data: agencyData,
+                  backgroundColor: agencyBackgroundColors,
+                  borderColor: "#ffffff",
+                  borderWidth: 2
+                }]
+              },
+              options: pieOptions
+            });
+          }
+
+          new Chart(document.getElementById("templateChart"), {
+            type: "pie",
+            data: {
+              labels: templateLabels,
+              datasets: [{
+                data: templateData,
+                backgroundColor: chartPaletteColors(templateLabels.length, baseColor),
+                borderColor: "#ffffff",
+                borderWidth: 2
+              }]
+            },
+            options: pieOptions
+          });
+          return;
+        }
+
+        const usersByAgency = <%- JSON.stringify((charts && charts.usersByAgency) || {}) %>;
+        const unknownAgency = <%- JSON.stringify((charts && charts.unknownAgency) || 0) %>;
+        const agencyColors = <%- JSON.stringify(typeof agencyColors !== "undefined" ? agencyColors : {}) %>;
+        const defaultAgencyColor = "#9ca3af";
 
         const agencyLabels = Object.keys(usersByAgency);
         const agencyData = Object.values(usersByAgency);
@@ -323,22 +354,6 @@
           if (raw.charAt(0) === "#") return raw;
           return agencyColorNameToHex[raw] || agencyColorNameToHex[raw.toLowerCase()] || raw;
         });
-
-        const pieOptions = {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: "bottom",
-              labels: {
-                boxWidth: 14,
-                boxHeight: 14,
-                padding: 12,
-                font: { size: 15 }
-              }
-            }
-          }
-        };
 
         new Chart(document.getElementById("agencyChart"), {
           type: "pie",
