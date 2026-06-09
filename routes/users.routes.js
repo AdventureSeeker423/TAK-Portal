@@ -404,9 +404,14 @@ router.post("/", async (req, res) => {
     if (Array.isArray(permRaw)) permRaw = permRaw[0];
     permRaw = String(permRaw ?? "user").trim().toLowerCase();
     if (!permRaw) permRaw = "user";
+    const requestedMultiAgencyAdmin = permRaw === "multi_agency_admin";
+    if (requestedMultiAgencyAdmin) permRaw = "agency_admin";
     const allowedPerm = ["user", "agency_admin", "global_admin"];
     if (!allowedPerm.includes(permRaw)) {
       return res.status(400).json({ error: "Invalid permissions value." });
+    }
+    if (requestedMultiAgencyAdmin && !authUser?.isGlobalAdmin) {
+      return res.status(403).json({ error: "You do not have permission to create Multi-Agency Admins." });
     }
     if (permRaw === "global_admin" && !authUser?.isGlobalAdmin) {
       return res.status(403).json({ error: "You do not have permission to create Global Admins." });
@@ -422,6 +427,9 @@ router.post("/", async (req, res) => {
       );
       if (!payload.managedAgencySuffixes.length) {
         return res.status(400).json({ error: "Select at least one valid managed agency." });
+      }
+      if (requestedMultiAgencyAdmin && payload.managedAgencySuffixes.length < 2) {
+        return res.status(400).json({ error: "Multi-Agency Admin requires at least two managed agencies." });
       }
     }
 
