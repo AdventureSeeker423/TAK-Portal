@@ -366,6 +366,17 @@ function refreshAfterAgenciesChanged() {
   });
 }
 
+/**
+ * Call after bulk user changes (e.g. CSV import).
+ * Clears per-agency dashboard cache and refreshes global dashboard stats in the background.
+ */
+function refreshAfterUsersChanged() {
+  invalidateAgencyDashboardSnapshots();
+  void refreshNow().catch((err) => {
+    console.warn("[DASHBOARD] refresh after users change failed:", err?.message || err);
+  });
+}
+
 async function getAgencyDashboardForUser(authUser) {
   const managed = resolveManagedAgenciesForUser(authUser);
   if (!managed.length) {
@@ -406,6 +417,7 @@ module.exports = {
   restartDashboardStatsRefresher,
   refreshNow,
   refreshAfterAgenciesChanged,
+  refreshAfterUsersChanged,
   invalidateAgencyDashboardSnapshots,
   getDashboardStatsSnapshot,
   normalizeAgencyNameKey,

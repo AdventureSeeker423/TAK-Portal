@@ -1931,6 +1931,15 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
   failed.sort((a, b) => Number(a.line) - Number(b.line));
 
   invalidateUsersCache();
+  try {
+    const dashboardStatsCache = require("./dashboardStatsCache.service");
+    dashboardStatsCache.refreshAfterUsersChanged();
+  } catch (err) {
+    console.warn(
+      "[USERS] Dashboard stats refresh after CSV import failed:",
+      err?.message || err
+    );
+  }
   return { count: created.length, created, skipped, failed };
 }
 
