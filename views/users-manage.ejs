@@ -485,9 +485,6 @@ let pickedManualGroupIds = new Set();
 const createPermissionsSelect = document.getElementById("createPermissionsSelect");
 const createManagedAgenciesWrap = document.getElementById("createManagedAgenciesWrap");
 const createManagedAgenciesList = document.getElementById("createManagedAgenciesList");
-const editManagedAgenciesWrap = document.getElementById("editManagedAgenciesWrap");
-const editManagedAgenciesList = document.getElementById("editManagedAgenciesList");
-let editManagedSuffixes = new Set();
 
 function canAssignManagedAgencies() {
   return IS_GLOBAL_ADMIN || (IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 0);
@@ -544,66 +541,6 @@ function updateCreateManagedAgenciesVisibility() {
     createManagedAgenciesWrap.style.display = show ? "block" : "none";
   }
   if (show) syncCreateManagedAgenciesDefault();
-}
-
-function updateEditManagedAgenciesVisibility() {
-  const perm = String(permissionsSelect?.value || "user").trim().toLowerCase();
-  const show = perm === "agency_admin" && canAssignManagedAgencies();
-  if (editManagedAgenciesWrap) {
-    editManagedAgenciesWrap.style.display = show ? "block" : "none";
-  }
-  if (show && editManagedAgenciesList) {
-    renderManagedAgenciesList(editManagedAgenciesList, editManagedSuffixes, {
-      inputName: "editManagedAgencySuffix",
-    });
-  }
-}
-
-function getEditManagedSuffixesArray() {
-  if (editManagedAgenciesWrap && editManagedAgenciesWrap.style.display !== "none") {
-    return getManagedSuffixesFromContainer(editManagedAgenciesList);
-  }
-  return Array.from(editManagedSuffixes);
-}
-
-async function resolveManagedSuffixesForUser(user) {
-  await ensureAgencyAdminGroupIdIndex();
-  const groups = new Set((user?.groups || []).map((x) => String(x)));
-  const suffixes = [];
-  for (const a of allAgenciesCache) {
-    const abbr = String(a?.groupPrefix || "").trim().toUpperCase();
-    const ids = agencyAdminGroupIdIndexByAbbr?.get(abbr) || [];
-    if (ids.some((id) => groups.has(String(id)))) {
-      suffixes.push(String(a.suffix || "").trim().toLowerCase());
-    }
-  }
-  return suffixes;
-}
-
-function userHasAnyAgencyAdminGroup(user) {
-  const groups = new Set((user?.groups || []).map((x) => String(x)));
-  if (agencyAdminGroupIdIndexByAbbr && agencyAdminGroupIdIndexByAbbr.size) {
-    for (const ids of agencyAdminGroupIdIndexByAbbr.values()) {
-      if ((ids || []).some((id) => groups.has(String(id)))) return true;
-    }
-    return false;
-  }
-  const abbr = String(getUserAgencyAbbreviation(user) || "").trim().toUpperCase();
-  const adminIds = abbr ? agencyAdminGroupIdByAbbr.get(abbr) : null;
-  if (Array.isArray(adminIds)) return adminIds.some((id) => groups.has(String(id)));
-  return adminIds ? groups.has(String(adminIds)) : false;
-}
-
-function getHomeSuffixForUser(user) {
-  const attrs = user?.attributes || {};
-  const direct = String(attrs.agency || "").trim().toLowerCase();
-  if (direct) return direct;
-  const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
-  if (!abbr) return "";
-  const a = allAgenciesCache.find(
-    (x) => String(x?.groupPrefix || "").trim().toUpperCase() === abbr
-  );
-  return a ? String(a.suffix || "").trim().toLowerCase() : "";
 }
 
 if (createPermissionsSelect) {
@@ -694,12 +631,6 @@ async function loadAgencies() {
 
   const list = Array.isArray(agencies) ? agencies : [];
   allAgenciesCache = list;
-  agencyNameBySuffix = new Map(
-    list.map((a) => [
-      String(a?.suffix || "").trim().toLowerCase(),
-      String(a?.name || "").trim()
-    ])
-  );
   const sortedByName = list
     .slice()
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
@@ -1270,6 +1201,108 @@ const roleSelect = document.getElementById("roleSelect");
 
 // Permissions controls
 const permissionsSelect = document.getElementById("permissionsSelect");
+const editManagedAgenciesWrap = document.getElementById("editManagedAgenciesWrap");
+const editManagedAgenciesList = document.getElementById("editManagedAgenciesList");
+let editManagedSuffixes = new Set();
+
+function canAssignManagedAgenciesForEdit() {
+  return IS_GLOBAL_ADMIN || (IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 0);
+}
+
+function agenciesForManagedPickerEdit() {
+  const list = Array.isArray(allAgenciesCache) ? allAgenciesCache.slice() : [];
+  if (IS_GLOBAL_ADMIN) return list;
+  const allowed = new Set(
+    (ALLOWED_AGENCY_SUFFIXES || []).map((s) => String(s || "").trim().toLowerCase())
+  );
+  return list.filter((a) => allowed.has(String(a?.suffix || "").trim().toLowerCase()));
+}
+
+function renderEditManagedAgenciesList(containerEl, selectedSet) {
+  if (!containerEl) return;
+  const agencies = agenciesForManagedPickerEdit()
+    .slice()
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  containerEl.innerHTML = agencies
+    .map((a) => {
+      const sfx = String(a.suffix || "").trim().toLowerCase();
+      const abbr = String(a.groupPrefix || a.suffix || "").trim();
+      const checked = selectedSet.has(sfx) ? " checked" : "";
+      return (
+        `<label class="managed-agency-option">` +
+        `<input type="checkbox" name="editManagedAgencySuffix" value="${escapeHtml(sfx)}"${checked} />` +
+        `<span>${escapeHtml(a.name || sfx)}${abbr ? ` (${escapeHtml(abbr)})` : ""}</span>` +
+        `</label>`
+      );
+    })
+    .join("");
+}
+
+function getEditManagedSuffixesFromContainer() {
+  if (!editManagedAgenciesList) return [];
+  return Array.from(editManagedAgenciesList.querySelectorAll('input[type="checkbox"]:checked'))
+    .map((el) => String(el.value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function updateEditManagedAgenciesVisibility() {
+  const perm = String(permissionsSelect?.value || "user").trim().toLowerCase();
+  const show = perm === "agency_admin" && canAssignManagedAgenciesForEdit();
+  if (editManagedAgenciesWrap) {
+    editManagedAgenciesWrap.style.display = show ? "block" : "none";
+  }
+  if (show && editManagedAgenciesList) {
+    renderEditManagedAgenciesList(editManagedAgenciesList, editManagedSuffixes);
+  }
+}
+
+function getEditManagedSuffixesArray() {
+  if (editManagedAgenciesWrap && editManagedAgenciesWrap.style.display !== "none") {
+    return getEditManagedSuffixesFromContainer();
+  }
+  return Array.from(editManagedSuffixes);
+}
+
+async function resolveManagedSuffixesForUser(user) {
+  await ensureAgencyAdminGroupIdIndex();
+  const groups = new Set((user?.groups || []).map((x) => String(x)));
+  const suffixes = [];
+  for (const a of allAgenciesCache) {
+    const abbr = String(a?.groupPrefix || "").trim().toUpperCase();
+    const ids = agencyAdminGroupIdIndexByAbbr?.get(abbr) || [];
+    if (ids.some((id) => groups.has(String(id)))) {
+      suffixes.push(String(a.suffix || "").trim().toLowerCase());
+    }
+  }
+  return suffixes;
+}
+
+function userHasAnyAgencyAdminGroup(user) {
+  const groups = new Set((user?.groups || []).map((x) => String(x)));
+  if (agencyAdminGroupIdIndexByAbbr && agencyAdminGroupIdIndexByAbbr.size) {
+    for (const ids of agencyAdminGroupIdIndexByAbbr.values()) {
+      if ((ids || []).some((id) => groups.has(String(id)))) return true;
+    }
+    return false;
+  }
+  const abbr = String(getUserAgencyAbbreviation(user) || "").trim().toUpperCase();
+  const adminIds = abbr ? agencyAdminGroupIdByAbbr.get(abbr) : null;
+  if (Array.isArray(adminIds)) return adminIds.some((id) => groups.has(String(id)));
+  return adminIds ? groups.has(String(adminIds)) : false;
+}
+
+function getHomeSuffixForUser(user) {
+  const attrs = user?.attributes || {};
+  const direct = String(attrs.agency || "").trim().toLowerCase();
+  if (direct) return direct;
+  const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+  if (!abbr) return "";
+  const a = allAgenciesCache.find(
+    (x) => String(x?.groupPrefix || "").trim().toUpperCase() === abbr
+  );
+  return a ? String(a.suffix || "").trim().toLowerCase() : "";
+}
+
 if (permissionsSelect) {
   permissionsSelect.addEventListener("change", updateEditManagedAgenciesVisibility);
 }
@@ -1339,6 +1372,7 @@ let sortState = {
 let allUsers = [];
 let filterTimer = null;
 let tableTemplateFilters = [];
+let allAgenciesCache = [];
 let agencyNameBySuffix = new Map();
 /** Cancels an in-flight users search so older queries cannot overwrite newer results */
 let usersSearchAbort = null;
@@ -2745,10 +2779,8 @@ if (filterTemplateSelect) {
 function getAgencyTokenForTemplateFilter(sfx){
   const suffix = String(sfx || "").trim().toLowerCase();
   if (!suffix) return "";
-  if (IS_GLOBAL_ADMIN) {
-    const fullName = String(agencyNameBySuffix.get(suffix) || "").trim();
-    if (fullName) return fullName;
-  }
+  const fullName = String(agencyNameBySuffix.get(suffix) || "").trim();
+  if (fullName) return fullName;
   if (filterAgencySelect) {
     const opt = Array.from(filterAgencySelect.options || []).find(
       (o) => String(o.value || "").trim().toLowerCase() === suffix
@@ -2790,6 +2822,45 @@ function renderTemplateFilterOptions(){
 
   if (prev && Array.from(filterTemplateSelect.options).some((o) => o.value === prev)) {
     filterTemplateSelect.value = prev;
+  }
+}
+
+async function loadAgenciesForUsersPage() {
+  const res = await fetch("/api/agencies");
+  const agencies = await res.json();
+  if (!res.ok) throw new Error(agencies.error || "Failed to load agencies");
+
+  const list = Array.isArray(agencies) ? agencies : [];
+  allAgenciesCache = list;
+  agencyNameBySuffix = new Map(
+    list.map((a) => [
+      String(a?.suffix || "").trim().toLowerCase(),
+      String(a?.name || "").trim(),
+    ])
+  );
+
+  if (filterAgencySelect) {
+    const prevVal = String(filterAgencySelect.value || "");
+    const sortedByName = list
+      .slice()
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    let filterSource = sortedByName;
+    if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 1) {
+      const allowed = new Set(
+        ALLOWED_AGENCY_SUFFIXES.map((s) => String(s || "").trim().toLowerCase())
+      );
+      filterSource = sortedByName.filter((a) =>
+        allowed.has(String(a?.suffix || "").trim().toLowerCase())
+      );
+    }
+    const filterOptions = filterSource
+      .map((a) => {
+        const abbr = a.groupPrefix || a.suffix || "";
+        return `<option value="${escapeHtml(a.suffix)}">${escapeHtml(a.name)} (${escapeHtml(abbr)})</option>`;
+      })
+      .join("");
+    filterAgencySelect.innerHTML = `<option value="">All Agencies</option>${filterOptions}`;
+    if (prevVal) filterAgencySelect.value = prevVal;
   }
 }
 
@@ -3270,6 +3341,7 @@ if (exportUsersCsvBtn) {
   try {
     renderRoleOptions(roleSelect, "Team Member");
     updateSortIndicators();
+    await loadAgenciesForUsersPage();
     await loadTemplateFiltersForTable();
     // Load groups (for Create/Edit modals) and users table in parallel so the table appears faster
     await Promise.all([loadGroups(), loadAllUsers()]);
