@@ -121,6 +121,12 @@
       </table>
     </div>
   </div>
+
+  <div class="card templatesExportCard">
+    <div class="templatesExportCardActions">
+      <button type="button" class="btn" id="exportTemplatesCsvBtn">Export Templates CSV</button>
+    </div>
+  </div>
 </main>
 
 <script>
@@ -708,6 +714,47 @@ form.onsubmit = async (e) => {
   }
 };
 
+const exportTemplatesCsvBtn = document.getElementById("exportTemplatesCsvBtn");
+if (exportTemplatesCsvBtn) {
+  exportTemplatesCsvBtn.addEventListener("click", async () => {
+    const prevLabel = exportTemplatesCsvBtn.textContent;
+    exportTemplatesCsvBtn.disabled = true;
+    exportTemplatesCsvBtn.textContent = "Exporting…";
+    try {
+      const res = await fetch("/api/templates/export-csv");
+      if (!res.ok) {
+        let errText = "Export failed";
+        try {
+          const body = await res.json();
+          errText = body?.error || errText;
+        } catch (_) {
+          // ignore
+        }
+        setMsg(errText, false);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = /filename="([^"]+)"/i.exec(cd);
+      const filename = match ? match[1] : "tak-portal-templates.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMsg(`Exported ${filename}.`, true);
+    } catch (err) {
+      setMsg(err?.message || "Export failed", false);
+    } finally {
+      exportTemplatesCsvBtn.disabled = false;
+      exportTemplatesCsvBtn.textContent = prevLabel;
+    }
+  });
+}
+
 (async () => {
   try {
     await loadAgencies();
@@ -1014,6 +1061,15 @@ form.onsubmit = async (e) => {
   .listCardTable .cardActionsRow {
     grid-template-columns: 1fr;
   }
+}
+
+.templatesExportCard {
+  padding: 14px 16px;
+}
+
+.templatesExportCardActions {
+  display: flex;
+  justify-content: flex-end;
 }
 </style>
 

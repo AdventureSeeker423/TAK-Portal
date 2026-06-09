@@ -90,6 +90,107 @@ router.get("/current-template-counts", async (req, res) => {
   }
 });
 
+function csvEscapeCell(value) {
+  const s = String(value ?? "");
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function listTemplatesVisibleToUser(authUser) {
+  const templates = store.load();
+  const access = accessSvc.getAgencyAccess(authUser);
+
+  if (access.isGlobalAdmin) {
+    return templates.slice();
+  }
+
+  const allowed = access.allowedAgencySuffixes || [];
+  if (!allowed.length) return [];
+
+  const allowedSet = new Set(allowed.map((s) => String(s || "").trim().toLowerCase()));
+  return templates.filter((t) =>
+    allowedSet.has(String(t.agencySuffix || "").trim().toLowerCase())
+  );
+}
+
+function buildTemplatesExportCsv(templates) {
+  const header = [
+    "Template Name",
+    "Username Suffix",
+    "Color Override",
+    "Role",
+    "Default Template",
+    "Groups",
+  ];
+  const lines = [header.map(csvEscapeCell).join(",")];
+  const sorted = (Array.isArray(templates) ? templates : [])
+    .slice()
+    .sort((a, b) => {
+      const agencyCmp = String(a?.agencySuffix || "").localeCompare(
+        String(b?.agencySuffix || ""),
+        undefined,
+        { sensitivity: "base" }
+      );
+      if (agencyCmp !== 0) return agencyCmp;
+      return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+        sensitivity: "base",
+      });
+    });
+
+  for (const t of sorted) {
+    const groups = Array.isArray(t?.groups)
+      ? t.groups.map((g) => String(g || "").trim()).filter(Boolean)
+      : [];
+    lines.push(
+      [
+        t?.name || "",
+        t?.agencySuffix || "",
+        t?.colorOverride || "",
+        t?.role || "Team Member",
+        t?.isDefault ? "Yes" : "No",
+        groups.join("; "),
+      ]
+        .map(csvEscapeCell)
+        .join(",")
+    );
+  }
+
+  return `${lines.join("\r\n")}\r\n`;
+}
+
+router.get("/export-csv", (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    if (!authUser) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const visible = listTemplatesVisibleToUser(authUser);
+    const csv = buildTemplatesExportCsv(visible);
+
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "EXPORT_TEMPLATES_CSV",
+      targetType: "template",
+      targetId: "bulk",
+      details: {
+        templateCount: visible.length,
+      },
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="tak-portal-templates-${stamp}.csv"`
+    );
+    return res.send(csv);
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Export failed" });
+  }
+});
+
 router.post("/", (req, res) => {
   const templates = store.load();
   let t;
