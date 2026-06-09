@@ -73,11 +73,16 @@ router.get("/", async (req, res) => {
     let agencyColors = {};
     let typeColors = {};
     let isAgencyDashboard = false;
+    let isMultiAgencyDashboard = false;
     let agencyDisplayName = null;
     let templateChartColor = null;
 
     if (isAgencyOnly) {
       isAgencyDashboard = true;
+      const allowedSuffixes = Array.isArray(user?.allowedAgencySuffixes)
+        ? user.allowedAgencySuffixes
+        : [];
+      isMultiAgencyDashboard = allowedSuffixes.length > 1;
       const agencySnap = await dashboardStatsCache.getAgencyDashboardForUser(req.authentikUser);
       agencyDisplayName = agencySnap.agencyDisplayName || "Agency Dashboard";
       stats = {
@@ -170,6 +175,7 @@ router.get("/", async (req, res) => {
       pendingUserRequestsCount,
       pendingMouDocumentsCount,
       isAgencyDashboard,
+      isMultiAgencyDashboard,
       agencyDisplayName,
       templateChartColor,
       ...agreementLocalsForRequest(req),
@@ -182,6 +188,9 @@ router.get("/", async (req, res) => {
     const bookmarks = bookmarksService.loadBookmarks();
     const { takMetrics: cachedTak } = takDashboardCache.getDashboardTakSnapshot();
     const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
+    const allowedSuffixes = Array.isArray(user?.allowedAgencySuffixes)
+      ? user.allowedAgencySuffixes
+      : [];
     const viewModel = {
       stats: {
         totalUsers: 0,
@@ -217,6 +226,7 @@ router.get("/", async (req, res) => {
               ).length
           : 0,
       isAgencyDashboard: isAgencyOnly,
+      isMultiAgencyDashboard: isAgencyOnly && allowedSuffixes.length > 1,
       agencyDisplayName: isAgencyOnly ? "Agency Dashboard" : null,
       templateChartColor: null,
       error: err?.response?.data || err?.message || "Failed to load dashboard",

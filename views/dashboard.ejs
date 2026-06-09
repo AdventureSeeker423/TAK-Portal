@@ -4,12 +4,18 @@
 <main class="main">
   <%
     let dashboardHeading = "Dashboard";
-    if (typeof isAgencyDashboard !== "undefined" && isAgencyDashboard && agencyDisplayName) {
-      dashboardHeading = agencyDisplayName + " Dashboard";
+    const customServerAbbrev = String(
+      (typeof settings !== "undefined" && settings && settings.SERVER_NAME) || ""
+    ).trim();
+    if (typeof isAgencyDashboard !== "undefined" && isAgencyDashboard) {
+      if (typeof isMultiAgencyDashboard !== "undefined" && isMultiAgencyDashboard) {
+        dashboardHeading = customServerAbbrev
+          ? customServerAbbrev.toUpperCase() + " Multi-Agency Dashboard"
+          : "Multi-Agency Dashboard";
+      } else if (agencyDisplayName) {
+        dashboardHeading = agencyDisplayName + " Dashboard";
+      }
     } else if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) {
-      const customServerAbbrev = String(
-        (typeof settings !== "undefined" && settings && settings.SERVER_NAME) || ""
-      ).trim();
       if (customServerAbbrev) {
         dashboardHeading = customServerAbbrev.toUpperCase() + " Dashboard";
       }
