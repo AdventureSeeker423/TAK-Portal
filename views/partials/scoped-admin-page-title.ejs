@@ -1,11 +1,16 @@
 <%
-  const _globalTitle = String(typeof globalTitle !== "undefined" ? globalTitle : (scopedSuffix || "Page"));
+  const _globalTitle = String(
+    typeof globalTitle !== "undefined"
+      ? globalTitle
+      : (typeof scopedSuffix !== "undefined" ? scopedSuffix : "Page")
+  );
   const _scopedSuffix = String(typeof scopedSuffix !== "undefined" ? scopedSuffix : _globalTitle);
   const _singleFallback = String(
     typeof singleFallbackTitle !== "undefined" ? singleFallbackTitle : ("Agency " + _scopedSuffix)
   );
-  const _emailMode = !!emailMode;
-  const _useGlobalServerPrefix = !!useGlobalServerPrefix;
+  const _emailMode = typeof emailMode !== "undefined" && !!emailMode;
+  const _useGlobalServerPrefix =
+    typeof useGlobalServerPrefix !== "undefined" && !!useGlobalServerPrefix;
   const _singleAgencyCustomTitle =
     typeof singleAgencyCustomTitle === "string" ? singleAgencyCustomTitle.trim() : "";
 
