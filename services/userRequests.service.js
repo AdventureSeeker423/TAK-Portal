@@ -23,6 +23,22 @@ function normalizeStr(v) {
   return String(v || "").trim();
 }
 
+/**
+ * If the badge ends with the agency username suffix (exact match), remove it
+ * so the stored badge is suffix-free (username is badge + suffix on approval).
+ */
+function stripMatchingAgencySuffixFromBadge(badgeNumber, agencySuffix) {
+  const badge = normalizeStr(badgeNumber);
+  const suffix = normalizeStr(agencySuffix).toLowerCase();
+  if (!badge || !suffix || suffix === "__other__") return badge;
+
+  if (badge.toLowerCase().endsWith(suffix)) {
+    const trimmed = badge.slice(0, badge.length - suffix.length);
+    if (trimmed) return trimmed;
+  }
+  return badge;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -47,9 +63,12 @@ function validateCreate(input) {
   const firstName = normalizeStr(input.firstName);
   const lastName = normalizeStr(input.lastName);
   const email = normalizeEmail(input.email);
-  const badgeNumber = normalizeStr(input.badgeNumber);
-  const radioCallsign = normalizeStr(input.radioCallsign);
   const agencySuffix = normalizeStr(input.agencySuffix);
+  const badgeNumber = stripMatchingAgencySuffixFromBadge(
+    input.badgeNumber,
+    agencySuffix
+  );
+  const radioCallsign = normalizeStr(input.radioCallsign);
   const otherAgency = normalizeStr(input.otherAgency);
   const otherReason = normalizeStr(input.otherReason);
 
