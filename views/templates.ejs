@@ -236,6 +236,7 @@ function renderTemplates(list){
       <td class="tplActionsCell cardActionsCell">
         <div class="actionsCell cardActionsRow">
           <button class="btn" type="button" onclick="editTemplate(${idx})">Edit</button>
+          <button class="btn btn-duplicate" type="button" onclick="duplicateTemplate(${idx})">Duplicate</button>
           <button class="btn danger" type="button" onclick="deleteTemplate(${idx})">Delete</button>
         </div>
       </td>
@@ -546,7 +547,7 @@ function setCreateMode(){
 
 function setEditMode(idx){
   editingIndex = idx;
-  const t = allTemplates.find(x => x && (x._index === idx)) || allTemplates[idx];
+  const t = findTemplateByIndex(idx);
 
   formTitle.textContent = "Edit Template";
   submitBtn.textContent = "Save Changes";
@@ -565,7 +566,47 @@ function setEditMode(idx){
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function findTemplateByIndex(idx) {
+  return allTemplates.find((x) => x && x._index === idx) || allTemplates[idx];
+}
+
 window.editTemplate = (idx) => setEditMode(idx);
+
+window.duplicateTemplate = async (idx) => {
+  const t = findTemplateByIndex(idx);
+  if (!t) return;
+
+  editingIndex = null;
+  formTitle.textContent = "Create New Template";
+  submitBtn.textContent = "Create Template";
+  cancelEditBtn.style.display = "none";
+  setMsg("");
+
+  const prevAgency = agencyEl.value || "";
+  const targetAgency = t.agencySuffix || "";
+  agencyEl.value = targetAgency;
+  agencyEl.disabled = (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN);
+
+  if (targetAgency !== prevAgency) {
+    try {
+      await loadGroups();
+    } catch (err) {
+      setMsg(err?.message || "Failed to load groups for selected agency", false);
+      return;
+    }
+  }
+
+  const baseName = String(t.name || "").trim();
+  nameEl.value = baseName ? `${baseName} Copy` : "Copy";
+  colorOverrideEl.value = t.colorOverride || "";
+  renderRoleOptions(t.role || "Team Member");
+  isDefaultEl.value = t.isDefault ? "yes" : "no";
+  groupSearch.value = "";
+  pickedGroupNames = new Set(stripMutualAidGroupNames(t.groups || []));
+  renderGroups("");
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
 window.deleteTemplate = async (idx) => {
   if(!confirm("Delete this template?\n\nThis will also unlink existing users currently tied to this template for current template tracking, and they will be treated as Manual Group Selection.")) return;
@@ -826,6 +867,16 @@ form.onsubmit = async (e) => {
   overflow-wrap: normal;
 }
 
+.btn-duplicate {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #fff;
+}
+
+.btn-duplicate:hover {
+  filter: brightness(0.95);
+}
+
 .groupsCell {
   white-space: normal;
   word-break: break-word;
@@ -940,7 +991,7 @@ form.onsubmit = async (e) => {
 
   .listCardTable .cardActionsRow {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     width: 100%;
     min-width: 0;
