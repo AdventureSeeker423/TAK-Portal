@@ -12,6 +12,12 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.34 - 6/9/26
+✨ `Enhancement` - Request access page now checks for existing users and existing access requests before submitting a new one<br>
+✨ `Enhancement` - Request access page will automatically remove an agency suffix if one is found on the badge number<br>
+✨ `Enhancement` - Added export to CSV button to Agencies and Templates pages for better visibility<br>
+🐛 `Bug Fix` - Fixes issue with User CSV Imports failing due to blank email fields
+
 ### v1.3.33 - 6/5/26
 ✨ `Enhancement` - Allow two letter county codes when creating agencies
 
