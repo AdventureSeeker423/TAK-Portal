@@ -50,6 +50,36 @@ function userAlreadyExistsError() {
   return err;
 }
 
+function pendingRequestExistsError() {
+  const err = new Error(
+    "An access request is already pending. Please check your email for updates from your administrator."
+  );
+  err.code = "ACCESS_REQUEST_PENDING";
+  return err;
+}
+
+function findPendingDuplicateRequest(validated) {
+  const all = store.load();
+  const email = normalizeEmail(validated.email);
+  const agencySuffix = normalizeStr(validated.agencySuffix).toLowerCase();
+  const badgeNumber = normalizeBadgeForUsername(validated.badgeNumber);
+
+  return (
+    all.find((r) => {
+      const rEmail = normalizeEmail(r.email);
+      if (email && rEmail && email === rEmail) return true;
+
+      if (agencySuffix && agencySuffix !== "__other__" && badgeNumber) {
+        const rSuffix = normalizeStr(r.agencySuffix).toLowerCase();
+        const rBadge = normalizeBadgeForUsername(r.badgeNumber);
+        if (rSuffix === agencySuffix && rBadge === badgeNumber) return true;
+      }
+
+      return false;
+    }) || null
+  );
+}
+
 function stripMatchingAgencySuffixFromBadge(badgeNumber, agencySuffix) {
   const badge = normalizeStr(badgeNumber);
   const suffix = normalizeStr(agencySuffix).toLowerCase();
@@ -165,6 +195,10 @@ async function createRequest(input) {
   const agency = agencies.find(
     (a) => String(a?.suffix || "").toLowerCase() === v.agencySuffix.toLowerCase()
   );
+
+  if (findPendingDuplicateRequest(v)) {
+    throw pendingRequestExistsError();
+  }
 
   if (v.agencySuffix !== "__other__" && agency) {
     const username = buildUsernameForAgency(v.badgeNumber, agency.suffix);
