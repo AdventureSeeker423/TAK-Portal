@@ -4,6 +4,7 @@ const accessSvc = require("./access.service");
 const store = require("./userRequests.store");
 const emailSvc = require("./email.service");
 const settingsSvc = require("./settings.service");
+const usersSvc = require("./users.service");
 const authentik = require("./authentik");
 
 function genId() {
@@ -27,6 +28,28 @@ function normalizeStr(v) {
  * If the badge ends with the agency username suffix (exact match), remove it
  * so the stored badge is suffix-free (username is badge + suffix on approval).
  */
+function normalizeBadgeForUsername(badgeNumber) {
+  return String(badgeNumber || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\p{White_Space}+/gu, "");
+}
+
+function buildUsernameForAgency(badgeNumber, agencySuffix) {
+  const badge = normalizeBadgeForUsername(badgeNumber);
+  const suffix = normalizeStr(agencySuffix);
+  if (!badge || !suffix) return "";
+  return `${badge}${suffix}`;
+}
+
+function userAlreadyExistsError() {
+  const err = new Error(
+    "An account with this badge number already exists. If you already have access, please log in to the portal."
+  );
+  err.code = "USER_ALREADY_EXISTS";
+  return err;
+}
+
 function stripMatchingAgencySuffixFromBadge(badgeNumber, agencySuffix) {
   const badge = normalizeStr(badgeNumber);
   const suffix = normalizeStr(agencySuffix).toLowerCase();
@@ -142,6 +165,13 @@ async function createRequest(input) {
   const agency = agencies.find(
     (a) => String(a?.suffix || "").toLowerCase() === v.agencySuffix.toLowerCase()
   );
+
+  if (v.agencySuffix !== "__other__" && agency) {
+    const username = buildUsernameForAgency(v.badgeNumber, agency.suffix);
+    if (username && (await usersSvc.userExists(username))) {
+      throw userAlreadyExistsError();
+    }
+  }
 
   const now = new Date().toISOString();
 

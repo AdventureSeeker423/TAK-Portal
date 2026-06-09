@@ -1165,6 +1165,8 @@ app.post("/request-access", async (req, res) => {
     return res.status(400).render("request-access", {
       agencies,
       error: err?.message || "Failed to submit request",
+      showLoginLink: err?.code === "USER_ALREADY_EXISTS",
+      loginUrl: "/",
       form: req.body || {},
       hcaptchaEnabled,
       hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : "",

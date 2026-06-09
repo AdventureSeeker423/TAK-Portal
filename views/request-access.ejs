@@ -88,7 +88,14 @@
     </p>
 
     <% if (typeof error !== "undefined" && error) { %>
-      <div class="msg bad" style="margin-bottom: 12px;"><%= error %></div>
+      <div class="msg bad" style="margin-bottom: 12px;">
+        <%= error %>
+        <% if (showLoginLink) { %>
+          <div style="margin-top: 10px;">
+            <a href="<%= loginUrl || '/' %>" class="btn success" style="text-decoration: none;">Log in to TAK Portal</a>
+          </div>
+        <% } %>
+      </div>
     <% } %>
 
     <form method="POST" action="/request-access" class="grid2" autocomplete="off">

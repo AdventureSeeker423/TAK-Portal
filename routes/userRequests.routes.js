@@ -41,7 +41,9 @@ router.post("/", async (req, res) => {
 
     return res.json({ success: true, request: created });
   } catch (err) {
-    return res.status(400).json({ error: err?.message || "Invalid request" });
+    const payload = { error: err?.message || "Invalid request" };
+    if (err?.code === "USER_ALREADY_EXISTS") payload.loginUrl = "/";
+    return res.status(400).json(payload);
   }
 });
 
