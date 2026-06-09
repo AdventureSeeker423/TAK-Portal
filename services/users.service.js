@@ -1576,10 +1576,10 @@ async function fetchUsersForDashboardStats() {
 //   agency   (suffix or prefix)
 //   firstName
 //   lastName
-//   email
 //   password (may be blank)
 //   template (name must exist for the agency)
 // OPTIONAL columns (may be omitted entirely):
+//   email — if non-blank, must be a valid email address
 //   radioCallsign — if non-blank, sets Authentik attribute radio_callsign
 //   role — if blank or omitted, use the template's role (same as UI).
 // Rows that fail validation or Authentik creation are skipped; valid rows are still created.
@@ -1634,7 +1634,6 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
     "agency",
     "firstname",
     "lastname",
-    "email",
     "password",
     "template",
   ];
@@ -1702,12 +1701,8 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
     if (!lastName) rowErrors.push("Missing last name");
     if (!templateName) rowErrors.push("Missing template");
 
-    if (!String(email || "").trim()) {
-      rowErrors.push("Missing email");
-    } else {
-      const emailErr = validateEmailFormatIfPresent(email);
-      if (emailErr) rowErrors.push(emailErr);
-    }
+    const emailErr = validateEmailFormatIfPresent(email);
+    if (emailErr) rowErrors.push(emailErr);
 
     // Badge/username base must match the same allowed characters as UI/backend validation.
     const badgeErr = validateBadgeNumber(badge);

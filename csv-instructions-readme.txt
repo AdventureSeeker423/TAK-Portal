@@ -57,7 +57,7 @@ What each column means:
 
 Quick rules:
 - Keep the first row (header) as shown; you may omit optional columns
-  (radioCallsign and/or role) for older spreadsheets.
+  (email, radioCallsign, and/or role) for older spreadsheets.
 - One user per line.
 - Do not add other extra columns.
 - Save as .csv.
