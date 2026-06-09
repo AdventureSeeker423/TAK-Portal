@@ -83,14 +83,16 @@
 <div class="app">
 
 <main class="main" style="max-width: 980px; margin: 0 auto;">
-  <h1>Request <%= typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal" %> Access</h1>
   <%
+    const brandedPortalTitle =
+      typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal";
     const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Username";
   %>
+  <h1>Request <%= brandedPortalTitle %> Access</h1>
 
   <div class="card">
     <p>
-      Please use this form to request access to TAK Portal. Once submitted, an administrator will review your request. After it has been approved, you will receive an email with instructions on how to access your account.
+      Please use this form to request access to <%= brandedPortalTitle %>. Once submitted, an administrator will review your request. After it has been approved, you will receive an email with instructions on how to access your account.
     </p>
 
     <% if (typeof error !== "undefined" && error) { %>
