@@ -39,6 +39,13 @@
       <% } %>
     </div>
 
+    <% if (agencyOnlyEmailPage && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length > 1) { %>
+    <div id="emailManagedScopeRow" style="margin-bottom:12px;">
+      <span class="muted">Entire Agency includes users from:</span>
+      <span id="emailManagedAgencyChips" class="email-managed-chips"></span>
+    </div>
+    <% } %>
+
     <% if (!agencyOnlyEmailPage) { %>
     <!-- Agency: dropdown (global admins only) -->
     <div id="emailAgencyPane" style="margin-top:8px;">
@@ -211,6 +218,20 @@
 .email-dropdown .filter-option span { flex: 1; min-width: 0; text-align: left; }
 .email-dropdown-actions { display: flex; gap: 10px; flex-shrink: 0; }
 .email-dropdown-actions .link-btn { padding: 4px 0; font-size: 12px; }
+.email-managed-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.email-scope-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  font-size: 12px;
+}
 </style>
 
 <script>
@@ -218,6 +239,31 @@
     const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
     const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
     const AGENCY_ONLY_EMAIL = !IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN;
+    const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+
+    function emailEsc(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function renderEmailManagedAgencyChips() {
+      const el = document.getElementById("emailManagedAgencyChips");
+      if (!el) return;
+      el.innerHTML = (ALLOWED_AGENCY_SUFFIXES || [])
+        .map((sfx) => {
+          const s = String(sfx || "").trim().toLowerCase();
+          const a = (agenciesCache || []).find(
+            (x) => String(x.suffix || "").trim().toLowerCase() === s
+          );
+          const label = a
+            ? String(a.groupPrefix || a.name || s).trim()
+            : s;
+          return `<span class="email-scope-chip">${emailEsc(label)}</span>`;
+        })
+        .join("");
+    }
 
     const emailAgencyPane = document.getElementById("emailAgencyPane");
     const emailGroupsPane = document.getElementById("emailGroupsPane");
@@ -397,6 +443,7 @@
         agenciesCache = res.ok && Array.isArray(out) ? out : [];
         autoSelectAgencyAdminAgencies();
         renderEmailAgencyList();
+        renderEmailManagedAgencyChips();
       } catch (e) {
         agenciesCache = [];
         renderEmailAgencyList();

@@ -1,9 +1,12 @@
-const router = require("express").Router();
+const express = require("express");
+const router = express.Router();
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 const users = require("../services/users.service");
 const groupsSvc = require("../services/groups.service");
 const accessSvc = require("../services/access.service");
+const authzRoles = require("../services/authzRoles.service");
+const agenciesSvc = require("../services/agencies.service");
 const userRequestsSvc = require("../services/userRequests.service");
 const qrSvc = require("../services/qr.service");
 const tokensSvc = require("../services/authentikTokens.service");
@@ -410,6 +413,18 @@ router.post("/", async (req, res) => {
     }
     payload.permissions = permRaw;
 
+    if (permRaw === "agency_admin" && Array.isArray(payload.managedAgencySuffixes)) {
+      const access = accessSvc.getAgencyAccess(authUser);
+      const scope = access.isGlobalAdmin ? null : access.allowedAgencySuffixes || [];
+      payload.managedAgencySuffixes = accessSvc.normalizeManagedAgencySuffixes(
+        payload.managedAgencySuffixes,
+        { allowedForActor: scope && scope.length ? scope : null }
+      );
+      if (!payload.managedAgencySuffixes.length) {
+        return res.status(400).json({ error: "Select at least one valid managed agency." });
+      }
+    }
+
     const createdBy = authUser
       ? {
           username: authUser.username,
@@ -420,6 +435,11 @@ router.post("/", async (req, res) => {
     const result = await users.createUser(payload, {
       createdBy,
       creationMethod: "manual",
+      allowedAgencySuffixesForAssign: (() => {
+        const access = accessSvc.getAgencyAccess(authUser);
+        if (access.isGlobalAdmin) return null;
+        return access.allowedAgencySuffixes || [];
+      })(),
     });
 
     auditSvc.logEvent({
@@ -1354,6 +1374,121 @@ router.get("/:userId", async (req, res) => {
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
+function resolveDefaultManagedSuffixesForUser(user) {
+  const attrs = user?.attributes || {};
+  const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+  const agency = (agenciesSvc.load() || []).find(
+    (a) => String(a?.groupPrefix || "").trim().toUpperCase() === abbr
+  );
+  const sfx = agency ? String(agency.suffix || "").trim().toLowerCase() : "";
+  return sfx ? [sfx] : [];
+}
+
+async function loadGroupNamesForUserId(userId) {
+  const user = await users.getUserById(userId);
+  const ids = Array.isArray(user?.groups) ? user.groups : [];
+  const names = [];
+  for (const gid of ids) {
+    try {
+      const g = await groupsSvc.getGroupById(gid);
+      if (g && g.name) names.push(g.name);
+    } catch (_) {
+      // ignore
+    }
+  }
+  return { user, groupNames: names };
+}
+
+router.post("/:userId/portal-role", express.json({ limit: "1mb" }), async (req, res) => {
+  try {
+    const actor = req.authentikUser || null;
+    if (!actor || (!actor.isGlobalAdmin && !actor.isAgencyAdmin)) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+
+    const desiredRole = String(req.body?.role || "").trim().toLowerCase();
+    if (!["user", "agency_admin", "global_admin"].includes(desiredRole)) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+    if (desiredRole === "global_admin" && !actor.isGlobalAdmin) {
+      return res.status(403).json({ error: "You do not have permission to grant Global Admin." });
+    }
+
+    const userId = String(req.params.userId || "").trim();
+    if (!userId) return res.status(400).json({ error: "Missing user id." });
+
+    const target = await users.getUserById(userId);
+    if (!target) return res.status(404).json({ error: "User not found." });
+
+    if (!actor.isGlobalAdmin && !accessSvc.isUserInAllowedAgencies(actor, target)) {
+      return res.status(403).json({ error: "You do not have access to that user." });
+    }
+
+    let managedAgencySuffixes = [];
+    if (desiredRole === "agency_admin") {
+      const access = accessSvc.getAgencyAccess(actor);
+      const scope = access.isGlobalAdmin ? null : access.allowedAgencySuffixes || [];
+      const raw = req.body?.managedAgencySuffixes;
+      if (Array.isArray(raw) && raw.length) {
+        managedAgencySuffixes = accessSvc.normalizeManagedAgencySuffixes(raw, {
+          allowedForActor: scope && scope.length ? scope : null,
+        });
+      } else {
+        managedAgencySuffixes = resolveDefaultManagedSuffixesForUser(target);
+      }
+      if (!managedAgencySuffixes.length) {
+        return res.status(400).json({
+          error:
+            "Select at least one managed agency, or ensure the user has a home agency abbreviation.",
+        });
+      }
+    }
+
+    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const delta = await accessSvc.syncPortalRoleGroups(userId, {
+      role: desiredRole,
+      managedAgencySuffixes,
+      allGroups,
+    });
+
+    const { user: updatedUser, groupNames } = await loadGroupNamesForUserId(userId);
+    const roles = authzRoles.computePortalRolesFromGroupNames(groupNames);
+    const resultingRole = roles.isGlobalAdmin
+      ? "global_admin"
+      : roles.isAgencyAdmin
+      ? "agency_admin"
+      : "user";
+    const managed = accessSvc.getManagedAgencySuffixesFromGroupNames(groupNames);
+
+    auditSvc.logEvent({
+      actor,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: desiredRole === "agency_admin" ? "MULTI_AGENCY_ADMIN_SYNC" : "USER_PORTAL_ROLE_CHANGE",
+      targetType: "user",
+      targetId: String(updatedUser?.username || userId).trim().toLowerCase(),
+      details: {
+        username: String(updatedUser?.username || "").trim().toLowerCase(),
+        requestedRole: desiredRole,
+        resultingRole,
+        userId,
+        managedAgencySuffixes: managed,
+        groupsAdded: delta.toAdd,
+        groupsRemoved: delta.toRemove,
+        summary: `Updated portal role for ${String(updatedUser?.username || "user").trim()} to ${resultingRole}.`,
+      },
+    });
+
+    return res.json({
+      ok: true,
+      role: resultingRole,
+      managedAgencySuffixes: managed,
+      groups: Array.isArray(updatedUser?.groups) ? updatedUser.groups : [],
+    });
+  } catch (err) {
+    return res.status(500).json({ error: toErrorPayload(err) });
   }
 });
 

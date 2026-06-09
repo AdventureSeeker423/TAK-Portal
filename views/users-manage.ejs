@@ -55,7 +55,7 @@
         />
       </label>
 
-      <label style="<%= (!isGlobalAdmin && isAgencyAdmin) ? 'display:none;' : '' %>">Agency
+      <label style="<%= (!isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length === 1) ? 'display:none;' : '' %>">Agency
         <select name="agencySuffix" id="createAgencySelect" placeholder="Select Agency" required></select>
       </label>
 
@@ -120,6 +120,14 @@
         </label>
       </div>
 
+      <div id="createManagedAgenciesWrap" class="managed-agencies-wrap" style="display:none; grid-column: 1 / -1;">
+        <strong>Managed Agencies</strong>
+        <div class="muted" style="margin-top:4px; margin-bottom:8px;">
+          Select which agencies this user can administer as Agency Admin.
+        </div>
+        <div id="createManagedAgenciesList" class="managed-agencies-list"></div>
+      </div>
+
       <!-- Manual Groups (checkbox picker) -->
       <div id="createManualGroupsWrap" style="display:none; grid-column: 1 / -1;">
         <h3 style="margin-top:0;">Manual Groups</h3>
@@ -155,12 +163,12 @@
       <h2 style="margin:0;">Existing Users</h2>
     </div>
 
-    <!-- Search input + (global-admin-only) agency filter -->
+    <!-- Search input + agency filter (global admin or multi-agency admin) -->
     <form
       id="searchForm"
       style="margin:0; display:flex; align-items:center; gap:12px; flex-wrap:wrap;"
     >
-      <% if (isGlobalAdmin) { %>
+      <% if (isGlobalAdmin || (isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length > 1)) { %>
         <select
           id="filterAgencySelect"
           aria-label="Filter by agency"
@@ -392,6 +400,14 @@
               Apply Changes
             </button>
           </div>
+
+          <div id="editManagedAgenciesWrap" class="managed-agencies-wrap" style="display:none; margin-top:12px;">
+            <strong>Managed Agencies</strong>
+            <div class="muted" style="margin-top:4px; margin-bottom:8px;">
+              Agencies this user can administer. Applies when permissions are Agency Admin.
+            </div>
+            <div id="editManagedAgenciesList" class="managed-agencies-list"></div>
+          </div>
         </div>
       </div><!-- /grid2 -->
     </div><!-- /modalBody -->
@@ -439,6 +455,10 @@
 
 <script>
 (function(){
+const IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
+const IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
+const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+
 const agencySelect = document.getElementById("createAgencySelect");
 const filterAgencySelect = document.getElementById("filterAgencySelect");
 const templateSelect = document.getElementById("createTemplateSelect");
@@ -460,7 +480,142 @@ const downloadCsvTemplateBtn = document.getElementById("downloadCsvTemplateBtn")
 
 let groupsCache = [];
 let templatesCache = [];
+let allAgenciesCache = [];
 let pickedManualGroupIds = new Set();
+const createPermissionsSelect = document.getElementById("createPermissionsSelect");
+const createManagedAgenciesWrap = document.getElementById("createManagedAgenciesWrap");
+const createManagedAgenciesList = document.getElementById("createManagedAgenciesList");
+const editManagedAgenciesWrap = document.getElementById("editManagedAgenciesWrap");
+const editManagedAgenciesList = document.getElementById("editManagedAgenciesList");
+let editManagedSuffixes = new Set();
+
+function canAssignManagedAgencies() {
+  return IS_GLOBAL_ADMIN || (IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 0);
+}
+
+function agenciesForManagedPicker() {
+  const list = Array.isArray(allAgenciesCache) ? allAgenciesCache.slice() : [];
+  if (IS_GLOBAL_ADMIN) return list;
+  const allowed = new Set(
+    (ALLOWED_AGENCY_SUFFIXES || []).map((s) => String(s || "").trim().toLowerCase())
+  );
+  return list.filter((a) => allowed.has(String(a?.suffix || "").trim().toLowerCase()));
+}
+
+function renderManagedAgenciesList(containerEl, selectedSet, { inputName = "managedAgencySuffix" } = {}) {
+  if (!containerEl) return;
+  const agencies = agenciesForManagedPicker()
+    .slice()
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  containerEl.innerHTML = agencies
+    .map((a) => {
+      const sfx = String(a.suffix || "").trim().toLowerCase();
+      const abbr = String(a.groupPrefix || a.suffix || "").trim();
+      const checked = selectedSet.has(sfx) ? " checked" : "";
+      return (
+        `<label class="managed-agency-option">` +
+        `<input type="checkbox" name="${esc(inputName)}" value="${esc(sfx)}"${checked} />` +
+        `<span>${esc(a.name || sfx)}${abbr ? ` (${esc(abbr)})` : ""}</span>` +
+        `</label>`
+      );
+    })
+    .join("");
+}
+
+function getManagedSuffixesFromContainer(containerEl) {
+  if (!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('input[type="checkbox"]:checked'))
+    .map((el) => String(el.value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function syncCreateManagedAgenciesDefault() {
+  if (!createManagedAgenciesList) return;
+  const createSfx = String(agencySelect?.value || "").trim().toLowerCase();
+  const next = new Set(getManagedSuffixesFromContainer(createManagedAgenciesList));
+  if (createSfx && !next.size) next.add(createSfx);
+  renderManagedAgenciesList(createManagedAgenciesList, next, { inputName: "managedAgencySuffix" });
+}
+
+function updateCreateManagedAgenciesVisibility() {
+  const perm = String(createPermissionsSelect?.value || "user").trim().toLowerCase();
+  const show = perm === "agency_admin" && canAssignManagedAgencies();
+  if (createManagedAgenciesWrap) {
+    createManagedAgenciesWrap.style.display = show ? "block" : "none";
+  }
+  if (show) syncCreateManagedAgenciesDefault();
+}
+
+function updateEditManagedAgenciesVisibility() {
+  const perm = String(permissionsSelect?.value || "user").trim().toLowerCase();
+  const show = perm === "agency_admin" && canAssignManagedAgencies();
+  if (editManagedAgenciesWrap) {
+    editManagedAgenciesWrap.style.display = show ? "block" : "none";
+  }
+  if (show && editManagedAgenciesList) {
+    renderManagedAgenciesList(editManagedAgenciesList, editManagedSuffixes, {
+      inputName: "editManagedAgencySuffix",
+    });
+  }
+}
+
+function getEditManagedSuffixesArray() {
+  if (editManagedAgenciesWrap && editManagedAgenciesWrap.style.display !== "none") {
+    return getManagedSuffixesFromContainer(editManagedAgenciesList);
+  }
+  return Array.from(editManagedSuffixes);
+}
+
+async function resolveManagedSuffixesForUser(user) {
+  await ensureAgencyAdminGroupIdIndex();
+  const groups = new Set((user?.groups || []).map((x) => String(x)));
+  const suffixes = [];
+  for (const a of allAgenciesCache) {
+    const abbr = String(a?.groupPrefix || "").trim().toUpperCase();
+    const ids = agencyAdminGroupIdIndexByAbbr?.get(abbr) || [];
+    if (ids.some((id) => groups.has(String(id)))) {
+      suffixes.push(String(a.suffix || "").trim().toLowerCase());
+    }
+  }
+  return suffixes;
+}
+
+function userHasAnyAgencyAdminGroup(user) {
+  const groups = new Set((user?.groups || []).map((x) => String(x)));
+  if (agencyAdminGroupIdIndexByAbbr && agencyAdminGroupIdIndexByAbbr.size) {
+    for (const ids of agencyAdminGroupIdIndexByAbbr.values()) {
+      if ((ids || []).some((id) => groups.has(String(id)))) return true;
+    }
+    return false;
+  }
+  const abbr = String(getUserAgencyAbbreviation(user) || "").trim().toUpperCase();
+  const adminIds = abbr ? agencyAdminGroupIdByAbbr.get(abbr) : null;
+  if (Array.isArray(adminIds)) return adminIds.some((id) => groups.has(String(id)));
+  return adminIds ? groups.has(String(adminIds)) : false;
+}
+
+function getHomeSuffixForUser(user) {
+  const attrs = user?.attributes || {};
+  const direct = String(attrs.agency || "").trim().toLowerCase();
+  if (direct) return direct;
+  const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+  if (!abbr) return "";
+  const a = allAgenciesCache.find(
+    (x) => String(x?.groupPrefix || "").trim().toUpperCase() === abbr
+  );
+  return a ? String(a.suffix || "").trim().toLowerCase() : "";
+}
+
+if (createPermissionsSelect) {
+  createPermissionsSelect.addEventListener("change", updateCreateManagedAgenciesVisibility);
+}
+if (agencySelect) {
+  agencySelect.addEventListener("change", () => {
+    if (createManagedAgenciesWrap?.style.display !== "none") {
+      syncCreateManagedAgenciesDefault();
+    }
+  });
+}
 const ATAK_ROLE_OPTIONS = [
   "Team Member",
   "Team Lead",
@@ -538,6 +693,7 @@ async function loadAgencies() {
   if (!res.ok) throw new Error(agencies.error || "Failed to load agencies");
 
   const list = Array.isArray(agencies) ? agencies : [];
+  allAgenciesCache = list;
   agencyNameBySuffix = new Map(
     list.map((a) => [
       String(a?.suffix || "").trim().toLowerCase(),
@@ -559,12 +715,32 @@ async function loadAgencies() {
   if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length === 1) {
     agencySelect.value = String(ALLOWED_AGENCY_SUFFIXES[0] || "").trim().toLowerCase();
     agencySelect.disabled = true;
+  } else if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 1) {
+    const allowed = new Set(
+      ALLOWED_AGENCY_SUFFIXES.map((s) => String(s || "").trim().toLowerCase())
+    );
+    agencySelect.innerHTML = sortedByName
+      .filter((a) => allowed.has(String(a?.suffix || "").trim().toLowerCase()))
+      .map(
+        (a) =>
+          `<option value="${esc(a.suffix)}">${esc(a.name)} (${esc(a.suffix)})</option>`
+      )
+      .join("");
   }
 
-  // Global-admin-only: filter dropdown for the results table.
+  // Agency filter for results table (global admin or multi-agency admin).
   if (filterAgencySelect) {
     const prevVal = String(filterAgencySelect.value || "");
-    const filterOptions = sortedByName
+    let filterSource = sortedByName;
+    if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 1) {
+      const allowed = new Set(
+        ALLOWED_AGENCY_SUFFIXES.map((s) => String(s || "").trim().toLowerCase())
+      );
+      filterSource = sortedByName.filter((a) =>
+        allowed.has(String(a?.suffix || "").trim().toLowerCase())
+      );
+    }
+    const filterOptions = filterSource
       .map((a) => {
         const abbr = a.groupPrefix || a.suffix || "";
         // IMPORTANT: option value is still the agency `suffix` because the
@@ -782,6 +958,11 @@ form.onsubmit = async (e) => {
     payload.manualGroupIds = ids;
   }
 
+  if (payload.permissions === "agency_admin" && canAssignManagedAgencies()) {
+    const suffixes = getManagedSuffixesFromContainer(createManagedAgenciesList);
+    if (suffixes.length) payload.managedAgencySuffixes = suffixes;
+  }
+
   if (createUserSubmitBtn) createUserSubmitBtn.disabled = true;
   createMsg.textContent = "User creation in progress…";
   createMsg.className = "msg pending";
@@ -833,6 +1014,7 @@ form.onsubmit = async (e) => {
   try {
     await loadAgencies();
     await loadMeta();
+    updateCreateManagedAgenciesVisibility();
   } catch (err) {
     setMsg(err.message || "Failed to load page", false);
   }
@@ -1088,6 +1270,9 @@ const roleSelect = document.getElementById("roleSelect");
 
 // Permissions controls
 const permissionsSelect = document.getElementById("permissionsSelect");
+if (permissionsSelect) {
+  permissionsSelect.addEventListener("change", updateEditManagedAgenciesVisibility);
+}
 const ATAK_ROLE_OPTIONS_MODAL = [
   "Team Member",
   "Team Lead",
@@ -1939,14 +2124,20 @@ function roleForUser(user){
     }
   }
 
-  // 2 Agency Admin
-  const abbr = String(getUserAgencyAbbreviation(user) || '').trim().toUpperCase();
-  const adminIds = abbr ? agencyAdminGroupIdByAbbr.get(abbr) : null;
-  const hasAgencyAdmin = Array.isArray(adminIds)
-    ? adminIds.some(id => groups.includes(String(id)))
-    : (adminIds ? groups.includes(String(adminIds)) : false);
-
-  if (hasAgencyAdmin) {
+  // 2 Agency Admin (any managed agency admin group)
+  if (userHasAnyAgencyAdminGroup(user)) {
+    const managed = [];
+    if (agencyAdminGroupIdIndexByAbbr) {
+      const groupSet = new Set(groups);
+      for (const a of allAgenciesCache) {
+        const abbr = String(a?.groupPrefix || "").trim().toUpperCase();
+        const ids = agencyAdminGroupIdIndexByAbbr.get(abbr) || [];
+        if (ids.some((id) => groupSet.has(String(id)))) {
+          managed.push(String(a.suffix || "").trim().toLowerCase());
+        }
+      }
+    }
+    if (managed.length > 1) return "Multi-Agency Admin";
     return "Agency Admin";
   }
 
@@ -2180,8 +2371,6 @@ window.editUser = async (userPk) => {
   }
 
   function paintEditModalFromSelectedUser() {
-    const abbrForSelected = String(getUserAgencyAbbreviation(selectedUser) || "").trim().toUpperCase();
-    const adminGroupId = abbrForSelected ? agencyAdminGroupIdByAbbr.get(abbrForSelected) : null;
     if (userTitle) userTitle.textContent = `User ${selectedUser.username}`;
 
     if (usernameSpan) {
@@ -2210,25 +2399,21 @@ window.editUser = async (userPk) => {
     renderGroupsBox();
 
     if (permissionsSelect) {
-      if (abbrForSelected) {
-        const adminIds = adminGroupId;
-        const hasAdmin = Array.isArray(adminIds)
-          ? adminIds.some(id => (selectedUser.groups || []).some(gid => String(gid) === String(id)))
-          : (adminIds
-              ? (selectedUser.groups || []).some(gid => String(gid) === String(adminIds))
-              : false);
-        if (permissionsSelect.value !== "global_admin") {
-          permissionsSelect.value = hasAdmin ? "agency_admin" : "user";
-        }
+      const hasAdmin = userHasAnyAgencyAdminGroup(selectedUser);
+      if (permissionsSelect.value !== "global_admin") {
+        permissionsSelect.value = hasAdmin ? "agency_admin" : "user";
+      }
+      const abbrOk = !!String(getUserAgencyAbbreviation(selectedUser) || "").trim();
+      if (hasAdmin || abbrOk || IS_GLOBAL_ADMIN) {
         permissionsSelect.disabled = false;
       } else {
-        if (permissionsSelect.value !== "global_admin") {
-          permissionsSelect.value = "user";
-        }
-        const canUse = IS_GLOBAL_ADMIN && !!permissionsSelect.querySelector('option[value="global_admin"]');
+        const canUse =
+          IS_GLOBAL_ADMIN && !!permissionsSelect.querySelector('option[value="global_admin"]');
         permissionsSelect.disabled = !canUse;
       }
     }
+
+    updateEditManagedAgenciesVisibility();
 
     if (toggleBtn) {
       toggleBtn.textContent = selectedUser.is_active ? "Disable User" : "Enable User";
@@ -2261,7 +2446,10 @@ window.editUser = async (userPk) => {
         }
       })(),
       ensureAgencyAdminIdsForUsers([u]),
+      ensureAgencyAdminGroupIdIndex(),
     ]);
+    const managed = await resolveManagedSuffixesForUser(merged);
+    editManagedSuffixes = new Set(managed);
   } catch (e) {
     console.warn("editUser: failed to refresh user or resolve admin groups", e);
   }
@@ -2362,142 +2550,88 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
 
   const desired = (permissionsSelect && permissionsSelect.value) || "user";
 
-  // Safety: never allow a non-global-admin viewer to attempt global-admin changes.
   if (desired === "global_admin" && !IS_GLOBAL_ADMIN) {
     setMsgEl(actionMsg, "You do not have permission to grant Global Admin.", false);
     return { ok: false };
   }
 
-  const currentIds = new Set((selectedUser.groups || []).map(x => String(x)));
-
-  // Agency Admin group (per-user, derived from agency abbreviation, using cached ids)
-  const abbr = String(getUserAgencyAbbreviation(selectedUser) || "").trim().toUpperCase();
-  let adminGroupId = abbr ? agencyAdminGroupIdByAbbr.get(abbr) : null;
-  const adminGroupIdsEmpty = Array.isArray(adminGroupId) ? !adminGroupId.length : !adminGroupId;
-  if (adminGroupIdsEmpty && abbr) {
-    // Try to resolve once more from Authentik if cache is empty
-    await ensureAgencyAdminIdsForUsers([selectedUser]);
-    adminGroupId = agencyAdminGroupIdByAbbr.get(abbr) || null;
-  }
-
-  // Global Admin group(s) (portal-wide)
-  const globalIds = await getGlobalAdminGroupIds();
-
-  // Build desired add/remove set
-  const toAdd = new Set();
-  const toRemove = new Set();
-
-  if (desired === "agency_admin" || desired === "user") {
-    // Agency-admin changes require a resolvable agency admin group.
-    const hasAdminGroup = Array.isArray(adminGroupId) ? adminGroupId.length > 0 : !!adminGroupId;
-    if (!abbr || !hasAdminGroup) {
-      setMsgEl(actionMsg, "Cannot set Agency Admin/User: user has no agency abbreviation (or group missing).", false);
+  let managedSuffixes = getEditManagedSuffixesArray();
+  if (desired === "agency_admin") {
+    if (!managedSuffixes.length) {
+      const home = getHomeSuffixForUser(selectedUser);
+      if (home) managedSuffixes = [home];
+    }
+    if (!managedSuffixes.length) {
+      setMsgEl(actionMsg, "Cannot set Agency Admin: select at least one managed agency.", false);
       return { ok: false };
     }
   }
 
-  if (desired === "user") {
-    if (Array.isArray(adminGroupId)) {
-      adminGroupId.forEach(id => toRemove.add(String(id)));
-    } else if (adminGroupId) {
-      toRemove.add(String(adminGroupId));
-    }
-    globalIds.forEach(id => toRemove.add(String(id)));
-  } else if (desired === "agency_admin") {
-    if (Array.isArray(adminGroupId)) {
-      adminGroupId.forEach(id => toAdd.add(String(id)));
-    } else if (adminGroupId) {
-      toAdd.add(String(adminGroupId));
-    }
-    globalIds.forEach(id => toRemove.add(String(id)));
-  } else if (desired === "global_admin") {
-    if (!globalIds.length) {
-      setMsgEl(actionMsg, "Global admin groups are not configured on the server.", false);
-      return;
-    }
-
-    // Add global admin group(s)
-    globalIds.forEach(id => toAdd.add(String(id)));
-
-    // If user is currently an agency admin, remove that group
-    if (Array.isArray(adminGroupId)) {
-      adminGroupId.forEach(id => toRemove.add(String(id)));
-    } else if (adminGroupId) {
-      toRemove.add(String(adminGroupId));
-    }
-  }
-
-  // Remove anything already satisfied
-  for (const id of Array.from(toAdd)) {
-    if (currentIds.has(String(id))) toAdd.delete(id);
-  }
-  for (const id of Array.from(toRemove)) {
-    if (!currentIds.has(String(id))) toRemove.delete(id);
-  }
-
-  if (!toAdd.size && !toRemove.size) {
-    const label = desired === "global_admin" ? "Already a Global Admin." : desired === "agency_admin" ? "Already an Agency Admin." : "Already a User.";
-    if (!silentSuccess) setMsgEl(actionMsg, label, true);
-    return { ok: true, unchanged: true, desired };
-  }
-
   if (!silentSuccess) setMsgEl(actionMsg, "Updating permissions...", true);
 
-  // Apply adds first, then removes (so you don't accidentally lock yourself out mid-change).
-  const applyDelta = async (kind, idsArr) => {
-    const url = kind === "add"
-      ? `/api/users/${selectedUser.pk}/groups/add`
-      : `/api/users/${selectedUser.pk}/groups/remove`;
+  try {
+    const payload = { role: desired };
+    if (desired === "agency_admin") payload.managedAgencySuffixes = managedSuffixes;
+
+    const url = IS_GLOBAL_ADMIN
+      ? `/api/access-control/user-role/${encodeURIComponent(selectedUser.pk)}`
+      : `/api/users/${encodeURIComponent(selectedUser.pk)}/portal-role`;
 
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupIds: idsArr.map(String) }),
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
     });
-
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error || "Failed to update permissions.");
-    return Array.isArray(out.groups) ? out.groups : null;
-  };
 
-  try {
-    let latestGroups = null;
-    if (toAdd.size) {
-      latestGroups = await applyDelta("add", Array.from(toAdd));
-    }
-    if (toRemove.size) {
-      latestGroups = await applyDelta("remove", Array.from(toRemove));
+    const freshRes = await fetch(`/api/users/${encodeURIComponent(selectedUser.pk)}`);
+    const fresh = await freshRes.json().catch(() => ({}));
+    if (freshRes.ok && fresh && fresh.pk != null) {
+      selectedUser = { ...selectedUser, ...fresh };
+    } else if (Array.isArray(out.groups)) {
+      selectedUser.groups = out.groups;
     }
 
-    if (latestGroups) {
-      selectedUser.groups = latestGroups;
+    if (Array.isArray(out.managedAgencySuffixes)) {
+      editManagedSuffixes = new Set(
+        out.managedAgencySuffixes.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean)
+      );
+    } else if (desired === "agency_admin") {
+      editManagedSuffixes = new Set(managedSuffixes);
     } else {
-      // Fallback (shouldn't happen): patch local set
-      Array.from(toAdd).forEach(id => currentIds.add(String(id)));
-      Array.from(toRemove).forEach(id => currentIds.delete(String(id)));
-      selectedUser.groups = Array.from(currentIds);
+      editManagedSuffixes = new Set();
     }
+
+    pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
+    selectedUser.__role = roleForUser(selectedUser);
+    renderGroupChips(selectedUser);
+    renderGroupsBox();
+    updateEditManagedAgenciesVisibility();
+
+    const patch = (u) =>
+      String(u.pk) === String(selectedUser.pk)
+        ? { ...u, groups: selectedUser.groups, __role: selectedUser.__role }
+        : u;
+    allUsers = (allUsers || []).map(patch);
+    const updatedVisible = (window.__lastUsers || []).map(patch);
+    window.__lastUsers = updatedVisible.slice();
+    renderResults(updatedVisible);
+
+    const doneLabel =
+      desired === "global_admin"
+        ? "Permissions updated: Global Admin."
+        : desired === "agency_admin"
+        ? managedSuffixes.length > 1
+          ? "Permissions updated: Multi-Agency Admin."
+          : "Permissions updated: Agency Admin."
+        : "Permissions updated: Standard User.";
+    if (!silentSuccess) setMsgEl(actionMsg, doneLabel, true);
+    return { ok: true, desired };
   } catch (err) {
     setMsgEl(actionMsg, err?.message || "Failed to update permissions.", false);
     return { ok: false };
   }
-
-  pickedGroupIds = new Set((selectedUser.groups || []).map(x => String(x)));
-
-  selectedUser.__role = roleForUser(selectedUser);
-  renderGroupChips(selectedUser);
-  renderGroupsBox();
-
-  const patch = (u) =>
-    String(u.pk) === String(selectedUser.pk) ? { ...u, groups: selectedUser.groups, __role: selectedUser.__role } : u;
-  allUsers = (allUsers || []).map(patch);
-  const updatedVisible = (window.__lastUsers || []).map(patch);
-  window.__lastUsers = updatedVisible.slice();
-  renderResults(updatedVisible);
-
-  const doneLabel = desired === "global_admin" ? "Permissions updated: Global Admin." : desired === "agency_admin" ? "Permissions updated: Agency Admin." : "Permissions updated: Standard User.";
-  if (!silentSuccess) setMsgEl(actionMsg, doneLabel, true);
-  return { ok: true, desired };
 }
 
 window.toggleUserFromTable = async (userPk) => {
@@ -3011,13 +3145,13 @@ if (applyChangesBtn) applyChangesBtn.addEventListener("click", async () => {
     sortDir: sortState.dir
   });
 
-  // If agency admin, force their agency suffix
+  // If agency admin with one agency, force their agency suffix
   if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length === 1) {
     params.set("agencySuffix", ALLOWED_AGENCY_SUFFIXES[0]);
   }
 
-  // If global admin, allow explicit agency filtering via dropdown.
-  if (IS_GLOBAL_ADMIN && filterAgencySelect) {
+  // Multi-agency admin or global admin: optional agency filter via dropdown.
+  if (filterAgencySelect) {
     const sel = String(filterAgencySelect.value || "").trim();
     if (sel) params.set("agencySuffix", sel);
   }
@@ -3619,6 +3753,30 @@ th.sortable:hover{
 }
 .btn-access:hover{
   filter: brightness(0.95);
+}
+
+/* Multi-agency admin managed-agencies picker */
+.managed-agencies-wrap{
+  padding: 12px;
+  border: 1px solid var(--line, rgba(255,255,255,0.1));
+  border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+}
+.managed-agencies-list{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 16px;
+}
+.managed-agency-option{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.managed-agency-option input[type="checkbox"]{
+  margin: 0;
+  flex-shrink: 0;
 }
 
 /* Edit user: block interaction until Authentik user + group data is loaded */

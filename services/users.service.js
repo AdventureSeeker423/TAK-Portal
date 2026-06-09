@@ -1157,6 +1157,8 @@ async function createUser(
     role,
     /** "user" | "agency_admin" | "global_admin" — extra groups applied after template groups */
     permissions,
+    /** Agency suffixes to grant agency-admin groups (defaults to user's create agency) */
+    managedAgencySuffixes,
     // Optional optimization: pass preloaded Authentik groups to avoid refetching for each user
     allGroups,
   },
@@ -1288,10 +1290,24 @@ async function createUser(
   if (perm === "agency_admin" || perm === "global_admin") {
     const extra = [];
     if (perm === "agency_admin") {
-      const names = accessSvc.getAllAgencyAdminGroupNames(agency);
-      for (const n of names) {
-        const g = byNameLower.get(String(n).trim().toLowerCase());
-        if (g) extra.push(g);
+      const actorScope = Array.isArray(opts.allowedAgencySuffixesForAssign)
+        ? opts.allowedAgencySuffixesForAssign
+        : null;
+      let suffixes = accessSvc.normalizeManagedAgencySuffixes(
+        Array.isArray(managedAgencySuffixes) && managedAgencySuffixes.length
+          ? managedAgencySuffixes
+          : [agency.suffix],
+        { allowedForActor: actorScope }
+      );
+      if (!suffixes.includes(String(agency.suffix || "").trim().toLowerCase())) {
+        suffixes = [...suffixes, String(agency.suffix || "").trim().toLowerCase()];
+      }
+      const adminPkSet = accessSvc.resolveAgencyAdminGroupIdsForSuffixes(
+        suffixes,
+        allGroupsLocal
+      );
+      for (const g of allGroupsLocal) {
+        if (adminPkSet.has(String(g.pk))) extra.push(g);
       }
       if (!extra.length) {
         throw new Error(

@@ -64,6 +64,39 @@
     .ac-pill-agency { background: rgba(70,140,255,.12); border-color: rgba(70,140,255,.35); }
     .ac-pill-global { background: rgba(35,180,95,.12); border-color: rgba(35,180,95,.35); }
 
+    .ac-managed-agencies {
+      margin-bottom: 14px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255,255,255,.02);
+    }
+    .ac-managed-agencies-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      max-height: 220px;
+      overflow: auto;
+    }
+    .ac-managed-agency-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      user-select: none;
+    }
+    .ac-managed-agency-item:hover {
+      background: rgba(255,255,255,.04);
+    }
+    .ac-managed-summary {
+      margin-top: 6px;
+      font-size: 0.9rem;
+    }
+
     .ac-state-legend {
       display: flex;
       gap: 8px;
@@ -180,6 +213,18 @@
         </label>
       </div>
 
+      <div id="acManagedAgenciesWrap" class="ac-managed-agencies" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <strong>Managed Agencies</strong>
+          <button type="button" class="btn" id="acSaveManagedAgenciesBtn">Save Managed Agencies</button>
+        </div>
+        <div class="muted" style="margin-top:6px;">
+          Select which agencies this user can administer. Each selected agency adds the corresponding Agency Admin group in Authentik.
+        </div>
+        <div id="acManagedAgenciesSummary" class="ac-managed-summary muted"></div>
+        <div id="acManagedAgenciesList" class="ac-managed-agencies-list"></div>
+      </div>
+
       <div id="acGroups"></div>
 
       <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
@@ -217,8 +262,11 @@
   }
 
   let registryFlat = [];
+  let allAgenciesCache = [];
+  let selectedManagedSuffixes = new Set();
   let selectedUsername = null;
   let selectedUserId = null;
+  let currentEditorRole = "user";
   let currentDeny = new Set();
   let currentBaseAllowed = new Set();
   let searchTimer = null;
@@ -269,13 +317,80 @@
     registryFlat = j.permissions || [];
   }
 
+  function roleDisplayLabel(role, managedCount) {
+    if (role === "agency_admin" && managedCount > 1) return "Multi-Agency Admin";
+    return roleLabel[role] || role;
+  }
+
+  function updateManagedAgenciesVisibility(role) {
+    const wrap = el("acManagedAgenciesWrap");
+    if (!wrap) return;
+    wrap.style.display = role === "agency_admin" ? "block" : "none";
+  }
+
+  function renderManagedAgenciesPicker() {
+    const host = el("acManagedAgenciesList");
+    const summary = el("acManagedAgenciesSummary");
+    if (!host) return;
+
+    const sorted = (Array.isArray(allAgenciesCache) ? allAgenciesCache : [])
+      .slice()
+      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
+
+    host.innerHTML = sorted.map((a) => {
+      const sfx = String(a?.suffix || "").trim().toLowerCase();
+      const abbr = String(a?.groupPrefix || a?.suffix || "").trim().toUpperCase();
+      const name = String(a?.name || sfx || "Agency");
+      const checked = selectedManagedSuffixes.has(sfx) ? "checked" : "";
+      return (
+        '<label class="ac-managed-agency-item">' +
+        '<input type="checkbox" class="ac-managed-agency-cb" value="' + sfx + '" ' + checked + ' />' +
+        "<span>" + name + (abbr ? " (" + abbr + ")" : "") + "</span>" +
+        "</label>"
+      );
+    }).join("");
+
+    if (summary) {
+      const labels = sorted
+        .filter((a) => selectedManagedSuffixes.has(String(a?.suffix || "").trim().toLowerCase()))
+        .map((a) => String(a?.groupPrefix || a?.suffix || "").trim().toUpperCase() || String(a?.name || "").trim())
+        .filter(Boolean);
+      summary.textContent = labels.length
+        ? "Currently manages: " + labels.join(", ")
+        : "No agencies selected.";
+    }
+
+    host.querySelectorAll(".ac-managed-agency-cb").forEach((cb) => {
+      cb.addEventListener("change", function () {
+        const sfx = String(this.value || "").trim().toLowerCase();
+        if (!sfx) return;
+        if (this.checked) selectedManagedSuffixes.add(sfx);
+        else selectedManagedSuffixes.delete(sfx);
+        if (summary) {
+          const labels = sorted
+            .filter((a) => selectedManagedSuffixes.has(String(a?.suffix || "").trim().toLowerCase()))
+            .map((a) => String(a?.groupPrefix || a?.suffix || "").trim().toUpperCase() || String(a?.name || "").trim())
+            .filter(Boolean);
+          summary.textContent = labels.length
+            ? "Currently manages: " + labels.join(", ")
+            : "No agencies selected.";
+        }
+      });
+    });
+  }
+
+  function getSelectedManagedSuffixesArray() {
+    return Array.from(selectedManagedSuffixes).filter(Boolean).sort();
+  }
+
   async function loadAgencies() {
     try {
       const r = await fetch("/api/agencies", { headers: { Accept: "application/json" } });
       if (!r.ok) return;
       const list = await r.json();
+      allAgenciesCache = Array.isArray(list) ? list : [];
       const sel = el("acAgencyFilter");
-      (Array.isArray(list) ? list : []).forEach((a) => {
+      (allAgenciesCache).forEach((a) => {
         const opt = document.createElement("option");
         opt.value = String(a?.suffix || "").trim().toLowerCase();
         opt.textContent = `${String(a?.name || "Agency")} (${String(a?.suffix || "").trim()})`;
@@ -387,15 +502,35 @@
     currentDeny = new Set(oj.deny || []);
 
     const role = normalizeRole(j.baseRole);
+    currentEditorRole = role;
+    selectedManagedSuffixes = new Set(
+      (Array.isArray(j.managedAgencySuffixes) ? j.managedAgencySuffixes : [])
+        .map((s) => String(s || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+    if (role === "agency_admin" && !selectedManagedSuffixes.size) {
+      const homeAbbr = String(user?.attributes?.agency_abbreviation || "").trim().toUpperCase();
+      const homeAgency = allAgenciesCache.find(
+        (a) => String(a?.groupPrefix || "").trim().toUpperCase() === homeAbbr
+      );
+      const homeSuffix = homeAgency ? String(homeAgency.suffix || "").trim().toLowerCase() : "";
+      if (homeSuffix) selectedManagedSuffixes.add(homeSuffix);
+    }
+
     el("acSelName").textContent = j.displayName || j.username;
     el("acSelMeta").textContent = j.username;
     const rolePill = el("acPillRole");
     rolePill.className = roleToPillClass(role);
-    rolePill.textContent = roleLabel[role] || role;
+    rolePill.textContent = roleDisplayLabel(role, selectedManagedSuffixes.size);
     const roleSel = el("acEditorRoleSelect");
     roleSel.value = role;
     roleSel.setAttribute("data-prev", role);
     roleSel.disabled = !selectedUserId;
+
+    updateManagedAgenciesVisibility(role);
+    renderManagedAgenciesPicker();
+
+    if (j.userId) selectedUserId = String(j.userId);
 
     el("acEditor").style.display = "block";
     buildEditor();
@@ -464,27 +599,44 @@
     if (!selectedUserId || !selectedUsername) return;
     const role = this.value;
     const prev = this.getAttribute("data-prev") || "user";
+    updateManagedAgenciesVisibility(role);
+    if (role === "agency_admin") renderManagedAgenciesPicker();
     setMsg("Updating access level...", false);
     this.disabled = true;
     try {
+      const payload = { role };
+      if (role === "agency_admin") {
+        const suffixes = getSelectedManagedSuffixesArray();
+        if (suffixes.length) payload.managedAgencySuffixes = suffixes;
+      }
       const r = await fetch("/api/access-control/user-role/" + encodeURIComponent(selectedUserId), {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify(payload),
       });
       const out = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(out.error || "Failed to update access level.");
       const resolvedRole = normalizeRole(out.role || role);
+      currentEditorRole = resolvedRole;
+      if (Array.isArray(out.managedAgencySuffixes)) {
+        selectedManagedSuffixes = new Set(
+          out.managedAgencySuffixes.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean)
+        );
+      }
       this.value = resolvedRole;
       this.setAttribute("data-prev", resolvedRole);
       const rolePill = el("acPillRole");
       rolePill.className = roleToPillClass(resolvedRole);
-      rolePill.textContent = roleLabel[resolvedRole] || resolvedRole;
+      rolePill.textContent = roleDisplayLabel(resolvedRole, selectedManagedSuffixes.size);
+      updateManagedAgenciesVisibility(resolvedRole);
+      renderManagedAgenciesPicker();
       setMsg(
         resolvedRole === "global_admin"
           ? "Permissions updated: Global Admin."
           : resolvedRole === "agency_admin"
-          ? "Permissions updated: Agency Admin."
+          ? (selectedManagedSuffixes.size > 1
+              ? "Permissions updated: Multi-Agency Admin."
+              : "Permissions updated: Agency Admin.")
           : "Permissions updated: Standard User.",
         false
       );
@@ -493,6 +645,40 @@
     } catch (e) {
       this.value = prev;
       setMsg(e?.message || "Failed to update access level.", true);
+    } finally {
+      this.disabled = false;
+    }
+  });
+
+  el("acSaveManagedAgenciesBtn").addEventListener("click", async function () {
+    if (!selectedUserId || currentEditorRole !== "agency_admin") return;
+    const suffixes = getSelectedManagedSuffixesArray();
+    if (!suffixes.length) {
+      setMsg("Select at least one managed agency.", true);
+      return;
+    }
+    setMsg("Saving managed agencies...", false);
+    this.disabled = true;
+    try {
+      const r = await fetch("/api/access-control/managed-agencies/" + encodeURIComponent(selectedUserId), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ managedAgencySuffixes: suffixes }),
+      });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(out.error || "Failed to save managed agencies.");
+      selectedManagedSuffixes = new Set(
+        (Array.isArray(out.managedAgencySuffixes) ? out.managedAgencySuffixes : suffixes)
+          .map((s) => String(s || "").trim().toLowerCase())
+          .filter(Boolean)
+      );
+      renderManagedAgenciesPicker();
+      const rolePill = el("acPillRole");
+      rolePill.textContent = roleDisplayLabel("agency_admin", selectedManagedSuffixes.size);
+      setMsg("Managed agencies saved.", false);
+      await runSearch();
+    } catch (e) {
+      setMsg(e?.message || "Failed to save managed agencies.", true);
     } finally {
       this.disabled = false;
     }

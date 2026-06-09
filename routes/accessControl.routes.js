@@ -11,7 +11,7 @@ const registry = require("../services/permissions.registry");
 const auditSvc = require("../services/auditLog.service");
 const accessSvc = require("../services/access.service");
 const agenciesSvc = require("../services/agencies.service");
-const { getBool, getString } = require("../services/env");
+const { getBool } = require("../services/env");
 const api = require("../services/authentik");
 
 const router = express.Router();
@@ -48,6 +48,37 @@ async function loadGroupNamesForUserId(userId) {
   return { user, groupNames: names };
 }
 
+function resolveDefaultManagedSuffixesForUser(user) {
+  const attrs = user?.attributes || {};
+  const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+  const agency = (agenciesSvc.load() || []).find(
+    (a) => String(a?.groupPrefix || "").trim().toUpperCase() === abbr
+  );
+  const sfx = agency ? String(agency.suffix || "").trim().toLowerCase() : "";
+  return sfx ? [sfx] : [];
+}
+
+function getAssignableAgencyScope(actor) {
+  const access = accessSvc.getAgencyAccess(actor);
+  if (access.isGlobalAdmin) return null;
+  if (access.isAgencyAdmin && Array.isArray(access.allowedAgencySuffixes)) {
+    return access.allowedAgencySuffixes;
+  }
+  return [];
+}
+
+async function assertCanAssignManagedAgencies(actor, suffixes) {
+  const scope = getAssignableAgencyScope(actor);
+  if (scope === null) return accessSvc.normalizeManagedAgencySuffixes(suffixes);
+  const normalized = accessSvc.normalizeManagedAgencySuffixes(suffixes, {
+    allowedForActor: scope,
+  });
+  if (!normalized.length) {
+    throw new Error("You do not have permission to assign those agencies.");
+  }
+  return normalized;
+}
+
 router.get("/registry", (req, res) => {
   const flat = registry.listAllPermissionMeta().slice().sort((a, b) => {
     const ai = PERMISSION_UI_ORDER.indexOf(a.id);
@@ -81,17 +112,8 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
 
     const target = await usersSvc.getUserById(userId);
     if (!target) return res.status(404).json({ error: "User not found." });
-    const currentGroups = new Set((target.groups || []).map((x) => String(x)));
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
-    const groupNameById = new Map(
-      (allGroups || []).map((g) => [String(g?.pk || ""), String(g?.name || "")])
-    );
-    const groupsByNameLower = new Map(
-      (allGroups || []).map((g) => [String(g?.name || "").trim().toLowerCase(), String(g?.pk || "")])
-    );
-    const currentGroupNames = Array.from(currentGroups)
-      .map((id) => groupNameById.get(String(id)) || "")
-      .filter(Boolean);
+
+    const { groupNames: currentGroupNames } = await loadGroupNamesForUserId(userId);
     const currentRoles = authzRoles.computePortalRolesFromGroupNames(currentGroupNames);
     const previousRole = currentRoles.isGlobalAdmin
       ? "global_admin"
@@ -99,53 +121,29 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
       ? "agency_admin"
       : "user";
 
-    const globalGroupNames = String(getString("PORTAL_AUTH_REQUIRED_GROUP", ""))
-      .split(",")
-      .map((x) => String(x || "").trim().toLowerCase())
-      .filter(Boolean);
-    const globalIds = globalGroupNames
-      .map((n) => groupsByNameLower.get(n))
-      .filter(Boolean);
-
-    const attrs = target.attributes || {};
-    const userAbbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
-    const agency = (agenciesSvc.load() || []).find(
-      (a) => String(a?.groupPrefix || "").trim().toUpperCase() === userAbbr
-    );
-    const agencyAdminGroupNames = agency
-      ? accessSvc.getAllAgencyAdminGroupNames(agency).map((n) => String(n || "").trim().toLowerCase())
-      : [];
-    const agencyAdminIds = agencyAdminGroupNames
-      .map((n) => groupsByNameLower.get(n))
-      .filter(Boolean);
-
-    if ((desiredRole === "agency_admin" || desiredRole === "user") && !agencyAdminIds.length) {
-      return res.status(400).json({
-        error: "Cannot change role: agency admin group not resolvable for this user.",
-      });
-    }
-    if (desiredRole === "global_admin" && !globalIds.length) {
-      return res.status(400).json({ error: "Global admin groups are not configured." });
+    let managedAgencySuffixes = [];
+    if (desiredRole === "agency_admin") {
+      const raw = req.body?.managedAgencySuffixes;
+      if (Array.isArray(raw) && raw.length) {
+        managedAgencySuffixes = await assertCanAssignManagedAgencies(actor, raw);
+      } else {
+        managedAgencySuffixes = resolveDefaultManagedSuffixesForUser(target);
+      }
+      if (!managedAgencySuffixes.length) {
+        return res.status(400).json({
+          error:
+            "Cannot assign Agency Admin: select at least one managed agency, or ensure the user has a home agency abbreviation.",
+        });
+      }
     }
 
-    const toAdd = new Set();
-    const toRemove = new Set();
-    if (desiredRole === "user") {
-      agencyAdminIds.forEach((id) => toRemove.add(id));
-      globalIds.forEach((id) => toRemove.add(id));
-    } else if (desiredRole === "agency_admin") {
-      agencyAdminIds.forEach((id) => toAdd.add(id));
-      globalIds.forEach((id) => toRemove.add(id));
-    } else {
-      globalIds.forEach((id) => toAdd.add(id));
-      agencyAdminIds.forEach((id) => toRemove.add(id));
-    }
-    for (const id of Array.from(toAdd)) if (currentGroups.has(id)) toAdd.delete(id);
-    for (const id of Array.from(toRemove)) if (!currentGroups.has(id)) toRemove.delete(id);
+    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const delta = await accessSvc.syncPortalRoleGroups(userId, {
+      role: desiredRole,
+      managedAgencySuffixes,
+      allGroups,
+    });
 
-    if (toAdd.size) await usersSvc.addUserGroups(userId, Array.from(toAdd));
-    if (toRemove.size) await usersSvc.removeUserGroups(userId, Array.from(toRemove));
-    // Any explicit per-user permission customizations must be cleared when base role changes.
     permsSvc.saveOverridesForUser(String(target.username || "").trim().toLowerCase(), {
       deny: [],
       allow: [],
@@ -171,15 +169,85 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
         requestedRole: desiredRole,
         resultingRole,
         userId,
-        groupsAdded: Array.from(toAdd),
-        groupsRemoved: Array.from(toRemove),
+        managedAgencySuffixes: delta.managedAgencySuffixes || [],
+        groupsAdded: delta.toAdd,
+        groupsRemoved: delta.toRemove,
         summary: `Changed access role for ${String(target.username || "user").trim()} from ${previousRole} to ${resultingRole}. Cleared granular permission overrides.`,
       },
     });
 
-    return res.json({ ok: true, role: resultingRole });
+    return res.json({
+      ok: true,
+      role: resultingRole,
+      managedAgencySuffixes: accessSvc.getManagedAgencySuffixesFromGroupNames(groupNames),
+    });
   } catch (e) {
     return res.status(500).json({ error: e?.message || "Failed to update role." });
+  }
+});
+
+router.put("/managed-agencies/:userId", express.json({ limit: "1mb" }), async (req, res) => {
+  try {
+    const actor = req.authentikUser || null;
+    if (!actor || (!actor.isGlobalAdmin && !actor.isAgencyAdmin)) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+
+    const userId = String(req.params.userId || "").trim();
+    if (!userId) return res.status(400).json({ error: "Missing user id." });
+
+    const target = await usersSvc.getUserById(userId);
+    if (!target) return res.status(404).json({ error: "User not found." });
+
+    const { groupNames: beforeGroupNames } = await loadGroupNamesForUserId(userId);
+    const beforeRoles = authzRoles.computePortalRolesFromGroupNames(beforeGroupNames);
+    if (!beforeRoles.isAgencyAdmin && !beforeRoles.isGlobalAdmin) {
+      return res.status(400).json({
+        error: "Managed agencies can only be updated for agency admins.",
+      });
+    }
+    if (beforeRoles.isGlobalAdmin) {
+      return res.status(400).json({
+        error: "Global admins do not use managed agency scope.",
+      });
+    }
+
+    const managedAgencySuffixes = await assertCanAssignManagedAgencies(
+      actor,
+      req.body?.managedAgencySuffixes
+    );
+    if (!managedAgencySuffixes.length) {
+      return res.status(400).json({ error: "Select at least one managed agency." });
+    }
+
+    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const delta = await accessSvc.syncPortalRoleGroups(userId, {
+      role: "agency_admin",
+      managedAgencySuffixes,
+      allGroups,
+    });
+
+    const { groupNames } = await loadGroupNamesForUserId(userId);
+    const managed = accessSvc.getManagedAgencySuffixesFromGroupNames(groupNames);
+
+    auditSvc.logEvent({
+      actor,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "MULTI_AGENCY_ADMIN_SYNC",
+      targetType: "user",
+      targetId: String(target.username || userId).trim().toLowerCase(),
+      details: {
+        username: String(target.username || "").trim().toLowerCase(),
+        managedAgencySuffixes: managed,
+        groupsAdded: delta.toAdd,
+        groupsRemoved: delta.toRemove,
+        summary: `Updated managed agencies for ${String(target.username || "user").trim()}: ${managed.join(", ") || "none"}.`,
+      },
+    });
+
+    return res.json({ ok: true, managedAgencySuffixes: managed });
+  } catch (e) {
+    return res.status(500).json({ error: e?.message || "Failed to update managed agencies." });
   }
 });
 
@@ -198,6 +266,8 @@ router.get("/effective", async (req, res) => {
 
     const { user, groupNames } = await loadGroupNamesForUserId(row.pk);
     const roles = authzRoles.computePortalRolesFromGroupNames(groupNames);
+    const managedAgencySuffixes =
+      accessSvc.getManagedAgencySuffixesFromGroupNames(groupNames);
     const userStub = {
       username: user.username,
       isGlobalAdmin: roles.isGlobalAdmin,
@@ -216,9 +286,11 @@ router.get("/effective", async (req, res) => {
 
     return res.json({
       username: user.username,
+      userId: String(user.pk || row.pk || ""),
       displayName: String(user.name || user.username),
       isGlobalAdmin: roles.isGlobalAdmin,
       isAgencyAdmin: roles.isAgencyAdmin,
+      managedAgencySuffixes,
       baseRole: desc.baseRole,
       baseIds,
       allow: desc.allow,

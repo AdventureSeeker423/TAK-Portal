@@ -19,8 +19,9 @@
     </div>
 
     <form id="form" class="templatesGrid" autocomplete="off">
-      <div class="templateTopRow <%= (!isGlobalAdmin && isAgencyAdmin) ? 'agency-admin-locked' : '' %>">
-        <label class="<%= (!isGlobalAdmin && isAgencyAdmin) ? 'agency-hidden' : '' %>">Agency
+      <% const singleAgencyTemplatesAdmin = !isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length === 1; %>
+      <div class="templateTopRow <%= singleAgencyTemplatesAdmin ? 'agency-admin-locked' : '' %>">
+        <label class="<%= singleAgencyTemplatesAdmin ? 'agency-hidden' : '' %>">Agency
           <select id="agency">
             <option value="">Select an agency</option>
           </select>
@@ -135,6 +136,7 @@ const tbody = document.getElementById("tbody");
 const form = document.getElementById("form");
 const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
 const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
+const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
 const AGENCY_ADMIN_SUFFIX = <%- JSON.stringify((!isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length === 1) ? String(allowedAgencySuffixes[0] || "").trim().toLowerCase() : "") %>;
 const templateNameSearch = document.getElementById("templateNameSearch");
 const templateAgencyFilterSelect = document.getElementById("templateAgencyFilterSelect");
@@ -430,6 +432,21 @@ async function loadAgencies(){
   if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && AGENCY_ADMIN_SUFFIX) {
     agencyEl.value = AGENCY_ADMIN_SUFFIX;
     agencyEl.disabled = true;
+  } else if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 1) {
+    const allowed = new Set(
+      ALLOWED_AGENCY_SUFFIXES.map((s) => String(s || "").trim().toLowerCase())
+    );
+    agencyEl.innerHTML =
+      `<option value="">Select an agency</option>` +
+      allAgencies
+        .filter((a) => allowed.has(String(a?.suffix || "").trim().toLowerCase()))
+        .map((a) => {
+          const abbr = (a.groupPrefix || "").trim();
+          const suffix = (a.suffix || "").trim();
+          const name = (a.name || "").trim();
+          return `<option value="${esc(suffix)}">${esc(name)}${abbr ? ` (${esc(abbr)})` : ""}</option>`;
+        })
+        .join("");
   }
 
   updateTemplateAgencyFilterOptions();
