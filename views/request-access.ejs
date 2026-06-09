@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>TAK Portal</title>
+    <title><%= typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal" %></title>
     <link rel="stylesheet" href="/styles.css" />
     <style>
       .requestAccessContactRow {
@@ -24,7 +24,13 @@
       <link rel="shortcut icon" href="<%= brandLogoUrl %>" type="image/png" />
     <% } %>
   </head>
-  <body class="theme-<%= brandTheme || 'dark' %>" data-theme-default-only="true">
+  <body
+    class="theme-<%= brandTheme || 'dark' %>"
+    data-theme-default-only="true"
+    <% if (primaryButtonColor || siteFontFamily) { %>
+      style="<% if (primaryButtonColor) { %>--btn:<%= primaryButtonColor %>;<% } %><% if (siteFontFamily) { %>--site-font:<%= siteFontFamily %>;<% } %>"
+    <% } %>
+  >
 
 <button
   id="themeToggle"
@@ -77,7 +83,7 @@
 <div class="app">
 
 <main class="main" style="max-width: 980px; margin: 0 auto;">
-  <h1>Request TAK Portal Access</h1>
+  <h1>Request <%= typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal" %> Access</h1>
   <%
     const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Username";
   %>
