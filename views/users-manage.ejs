@@ -11,6 +11,10 @@
   %></h1>
   <%
     const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Username";
+    const isSingleAgencyUsersAdmin =
+      !isGlobalAdmin &&
+      isAgencyAdmin &&
+      (!Array.isArray(allowedAgencySuffixes) || allowedAgencySuffixes.length <= 1);
   %>
 
   <% if (typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0) { %>
@@ -44,7 +48,7 @@
     <h2>Create User</h2>
 
     <form id="createForm" class="grid2" autocomplete="off">
-      <label class="<%= (!isGlobalAdmin && isAgencyAdmin) ? 'agency-admin-badge-full' : '' %>"><%= usernamePrefixLabel %>
+      <label class="<%= isSingleAgencyUsersAdmin ? 'agency-admin-badge-full' : '' %>"><%= usernamePrefixLabel %>
         <input
           type="text"
           name="badge"
@@ -55,7 +59,7 @@
         />
       </label>
 
-      <label style="<%= (!isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length === 1) ? 'display:none;' : '' %>">Agency
+      <label style="<%= isSingleAgencyUsersAdmin ? 'display:none;' : '' %>">Agency
         <select name="agencySuffix" id="createAgencySelect" placeholder="Select Agency" required></select>
       </label>
 

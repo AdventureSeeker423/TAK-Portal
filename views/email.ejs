@@ -3,6 +3,12 @@
 
 <main class="main">
   <% const agencyOnlyEmailPage = !isGlobalAdmin && isAgencyAdmin; %>
+  <% const isMultiAgencyAdminEmail =
+    agencyOnlyEmailPage &&
+    Array.isArray(allowedAgencySuffixes) &&
+    allowedAgencySuffixes.length > 1; %>
+  <% const isSingleAgencyAdminEmail =
+    agencyOnlyEmailPage && !isMultiAgencyAdminEmail; %>
   <h1><%
     const emailPageAbbrev = typeof agencyPageTitleAbbrev !== "undefined" ? agencyPageTitleAbbrev : null;
     if (agencyOnlyEmailPage && emailPageAbbrev) { %>Email <%= emailPageAbbrev %> Users<% }
@@ -27,7 +33,7 @@
 
     <label style="display:block; margin-bottom:6px;">Send to</label>
     <div class="segmented" style="margin-bottom:14px;">
-      <button class="segBtn active" type="button" data-mode="agency"><%= agencyOnlyEmailPage ? "Entire Agency" : "Agency" %></button>
+      <button class="segBtn active" type="button" data-mode="agency"><%= isSingleAgencyAdminEmail ? "Entire Agency" : "Agency" %></button>
       <% if (isGlobalAdmin) { %>
         <button class="segBtn" type="button" data-mode="agency_admins">Agency Admins</button>
       <% } %>
@@ -39,15 +45,8 @@
       <% } %>
     </div>
 
-    <% if (agencyOnlyEmailPage && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length > 1) { %>
-    <div id="emailManagedScopeRow" style="margin-bottom:12px;">
-      <span class="muted">Entire Agency includes users from:</span>
-      <span id="emailManagedAgencyChips" class="email-managed-chips"></span>
-    </div>
-    <% } %>
-
-    <% if (!agencyOnlyEmailPage) { %>
-    <!-- Agency: dropdown (global admins only) -->
+    <% if (isGlobalAdmin || isMultiAgencyAdminEmail) { %>
+    <!-- Agency: dropdown (global admins and multi-agency admins) -->
     <div id="emailAgencyPane" style="margin-top:8px;">
       <label class="email-dropdown-label">Agencies</label>
       <div id="emailAgencyDropdown" class="email-dropdown filter-multiselect">
@@ -238,31 +237,21 @@
   (function () {
     const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
     const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
-    const AGENCY_ONLY_EMAIL = !IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN;
     const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+    const IS_MULTI_AGENCY_ADMIN =
+      IS_AGENCY_ADMIN &&
+      !IS_GLOBAL_ADMIN &&
+      Array.isArray(ALLOWED_AGENCY_SUFFIXES) &&
+      ALLOWED_AGENCY_SUFFIXES.length > 1;
+    const SINGLE_AGENCY_EMAIL =
+      IS_AGENCY_ADMIN && !IS_GLOBAL_ADMIN && !IS_MULTI_AGENCY_ADMIN;
+    const USE_AGENCY_PICKER = IS_GLOBAL_ADMIN || IS_MULTI_AGENCY_ADMIN;
 
     function emailEsc(s) {
       return String(s || "")
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/"/g, "&quot;");
-    }
-
-    function renderEmailManagedAgencyChips() {
-      const el = document.getElementById("emailManagedAgencyChips");
-      if (!el) return;
-      el.innerHTML = (ALLOWED_AGENCY_SUFFIXES || [])
-        .map((sfx) => {
-          const s = String(sfx || "").trim().toLowerCase();
-          const a = (agenciesCache || []).find(
-            (x) => String(x.suffix || "").trim().toLowerCase() === s
-          );
-          const label = a
-            ? String(a.groupPrefix || a.name || s).trim()
-            : s;
-          return `<span class="email-scope-chip">${emailEsc(label)}</span>`;
-        })
-        .join("");
     }
 
     const emailAgencyPane = document.getElementById("emailAgencyPane");
@@ -317,7 +306,7 @@
       document.querySelectorAll(".segBtn[data-mode]").forEach((b) => {
         b.classList.toggle("active", b.dataset.mode === mode);
       });
-      if (emailAgencyPane && !AGENCY_ONLY_EMAIL) {
+      if (emailAgencyPane && USE_AGENCY_PICKER) {
         emailAgencyPane.style.display =
           mode === "agency" || mode === "agency_admins" ? "block" : "none";
       }
@@ -333,7 +322,7 @@
     }
 
     function autoSelectAgencyAdminAgencies() {
-      if (!AGENCY_ONLY_EMAIL) return;
+      if (!SINGLE_AGENCY_EMAIL) return;
       selectedAgencySuffixesSet.clear();
       emailAgencyItems().forEach((x) => {
         if (x.suffix) selectedAgencySuffixesSet.add(x.suffix);
@@ -342,7 +331,7 @@
     }
 
     function updateEmailDropdownLabels() {
-      if (emailAgencyToggle && !AGENCY_ONLY_EMAIL) {
+      if (emailAgencyToggle && USE_AGENCY_PICKER) {
         const n = selectedAgencySuffixesSet.size;
         emailAgencyToggle.textContent = n ? n + " agency" + (n === 1 ? "" : " agencies") + " selected ▾" : "Select agencies ▾";
       }
@@ -368,8 +357,20 @@
     }
 
     function emailAgencyItems() {
+      const allowed =
+        IS_MULTI_AGENCY_ADMIN
+          ? new Set(
+              (ALLOWED_AGENCY_SUFFIXES || []).map((s) =>
+                String(s || "").trim().toLowerCase()
+              )
+            )
+          : null;
       return (agenciesCache || [])
         .filter((a) => String(a.suffix || "").trim())
+        .filter((a) => {
+          if (!allowed) return true;
+          return allowed.has(String(a.suffix || "").trim().toLowerCase());
+        })
         .slice()
         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
         .map((a) => ({
@@ -443,7 +444,6 @@
         agenciesCache = res.ok && Array.isArray(out) ? out : [];
         autoSelectAgencyAdminAgencies();
         renderEmailAgencyList();
-        renderEmailManagedAgencyChips();
       } catch (e) {
         agenciesCache = [];
         renderEmailAgencyList();
@@ -578,12 +578,12 @@
           }
           return;
         }
-        if (AGENCY_ONLY_EMAIL) autoSelectAgencyAdminAgencies();
+        if (SINGLE_AGENCY_EMAIL) autoSelectAgencyAdminAgencies();
         payload.agencies = selectedAgencySuffixes();
         if (payload.agencies.length === 0) {
           if (emailStatus) {
             emailStatus.className = "msg bad";
-            emailStatus.textContent = AGENCY_ONLY_EMAIL
+            emailStatus.textContent = SINGLE_AGENCY_EMAIL
               ? "No agency is configured for your account."
               : "Select at least one agency.";
           }
@@ -703,7 +703,7 @@
       if (emailGroupSearch) emailGroupSearch.value = "";
       if (emailUserSearch) emailUserSearch.value = "";
       document.querySelectorAll(".email-dropdown.open").forEach((el) => el.classList.remove("open"));
-      if (!AGENCY_ONLY_EMAIL) renderEmailAgencyList();
+      if (USE_AGENCY_PICKER) renderEmailAgencyList();
       renderEmailGroupList();
       renderEmailUserList();
       updateEmailDropdownLabels();
@@ -726,7 +726,7 @@
       );
 
     // Filters
-    if (emailAgencySearch && !AGENCY_ONLY_EMAIL) {
+    if (emailAgencySearch && USE_AGENCY_PICKER) {
       emailAgencySearch.addEventListener("input", renderEmailAgencyList);
     }
     if (emailGroupSearch) {
@@ -737,7 +737,7 @@
     }
 
     // Keep selection in sync when checkboxes change (event delegation)
-    if (emailAgencyDropdown && !AGENCY_ONLY_EMAIL) {
+    if (emailAgencyDropdown && USE_AGENCY_PICKER) {
       emailAgencyDropdown.addEventListener("change", (e) => {
         const ch = e.target;
         if (!ch || ch.type !== "checkbox" || !ch.classList.contains("agencyChk")) return;
@@ -769,7 +769,7 @@
     }
 
     // Dropdown open/close
-    if (!AGENCY_ONLY_EMAIL) {
+    if (USE_AGENCY_PICKER) {
       setupEmailDropdown(emailAgencyDropdown, emailAgencyToggle);
     }
     setupEmailDropdown(emailGroupDropdown, emailGroupToggle);
@@ -782,7 +782,7 @@
     });
 
     // Select All: add all visible (filtered) items to set and re-render
-    if (emailAgencySelectAll && !AGENCY_ONLY_EMAIL) {
+    if (emailAgencySelectAll && USE_AGENCY_PICKER) {
       emailAgencySelectAll.onclick = () => {
         const needle = String(emailAgencySearch.value || "").trim().toLowerCase();
         const items = emailAgencyItems().filter((x) => {
@@ -793,7 +793,7 @@
         renderEmailAgencyList();
       };
     }
-    if (emailAgencyClearAll && !AGENCY_ONLY_EMAIL) {
+    if (emailAgencyClearAll && USE_AGENCY_PICKER) {
       emailAgencyClearAll.onclick = () => {
         selectedAgencySuffixesSet.clear();
         renderEmailAgencyList();

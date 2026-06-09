@@ -10,10 +10,6 @@
     else { %>Groups<% }
   %></h1>
 
-  <% if (agencyOnlyGroupsPage && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length > 1) { %>
-  <div id="groupsManagedScopeRow" class="groups-managed-scope muted" style="margin-bottom:12px;"></div>
-  <% } %>
-
   <div class="card">
   <h2>Create Group</h2>
 
@@ -546,21 +542,18 @@ const editPrivateWrap = document.getElementById("editPrivateWrap");
 
 // Global admin flag for JS logic
 const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
+const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+const IS_MULTI_AGENCY_ADMIN =
+  IS_AGENCY_ADMIN &&
+  !IS_GLOBAL_ADMIN &&
+  Array.isArray(ALLOWED_AGENCY_SUFFIXES) &&
+  ALLOWED_AGENCY_SUFFIXES.length > 1;
 
-function renderGroupsManagedScopeChips() {
-  const row = document.getElementById("groupsManagedScopeRow");
-  if (!row || !ALLOWED_AGENCY_SUFFIXES || ALLOWED_AGENCY_SUFFIXES.length <= 1) return;
-  const chips = ALLOWED_AGENCY_SUFFIXES.map((sfx) => {
-    const s = String(sfx || "").trim().toLowerCase();
-    const a = (agenciesCache || []).find(
-      (x) => String(x.suffix || "").trim().toLowerCase() === s
-    );
-    const label = a ? String(a.groupPrefix || a.name || s).trim() : s;
-    return `<span class="groups-scope-chip">${esc(label)}</span>`;
-  });
-  row.innerHTML =
-    `<span>Your managed agencies:</span> <span class="groups-scope-chips">${chips.join("")}</span>`;
+function allowedAgencySuffixSet() {
+  return new Set(
+    (ALLOWED_AGENCY_SUFFIXES || []).map((s) => String(s || "").trim().toLowerCase())
+  );
 }
 
 let groupsCache = [];
@@ -638,11 +631,16 @@ async function loadAgencies(){
   }
 
   agenciesCache = Array.isArray(out) ? out : [];
-  renderGroupsManagedScopeChips();
 
   // --- Agency prefix dropdown (groupPrefix) ---
+  const allowedSuffixes = !IS_GLOBAL_ADMIN ? allowedAgencySuffixSet() : null;
   const prefixList = agenciesCache
     .filter(a => String(a.groupPrefix || "").trim())
+    .filter(a => {
+      if (!allowedSuffixes) return true;
+      const sfx = String(a.suffix || "").trim().toLowerCase();
+      return allowedSuffixes.has(sfx);
+    })
     .slice()
     .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
 
@@ -654,7 +652,7 @@ async function loadAgencies(){
       return `<option value="${esc(prefix)}">${esc(label)}</option>`;
     }).join("");
 
-  // 🔹 If NOT global admin, auto-select and lock to their only agency
+  // If NOT global admin, auto-select and lock when only one managed agency.
   if (!IS_GLOBAL_ADMIN) {
     const options = Array.from(agencyPrefixSelect.querySelectorAll("option"))
       .filter(o => o.value);
@@ -662,6 +660,8 @@ async function loadAgencies(){
     if (options.length === 1) {
       agencyPrefixSelect.value = options[0].value;
       agencyPrefixSelect.disabled = true;
+    } else if (IS_MULTI_AGENCY_ADMIN) {
+      agencyPrefixSelect.disabled = false;
     }
   }
 // --- State dropdown (unique states from agencies) ---
@@ -926,7 +926,11 @@ function renderAgencyList(){
 // Show/hide agency / county selects based on type
 createType.onchange = () => {
   if (!IS_GLOBAL_ADMIN) {
-    if (agencyPrefixWrap) agencyPrefixWrap.style.display = "none";
+    if (IS_MULTI_AGENCY_ADMIN) {
+      if (agencyPrefixWrap) agencyPrefixWrap.style.display = "flex";
+    } else if (agencyPrefixWrap) {
+      agencyPrefixWrap.style.display = "none";
+    }
     if (countyWrap) countyWrap.style.display = "none";
     if (stateWrap) stateWrap.style.display = "none";
     if (privateWrap) privateWrap.style.display = "none";
@@ -947,7 +951,11 @@ createType.onchange = () => {
 if (editType) {
   editType.onchange = () => {
     if (!IS_GLOBAL_ADMIN) {
-      if (editAgencyPrefixWrap) editAgencyPrefixWrap.style.display = "none";
+      if (IS_MULTI_AGENCY_ADMIN) {
+        if (editAgencyPrefixWrap) editAgencyPrefixWrap.style.display = "flex";
+      } else if (editAgencyPrefixWrap) {
+        editAgencyPrefixWrap.style.display = "none";
+      }
       if (editCountyWrap) editCountyWrap.style.display = "none";
       if (editStateWrap) editStateWrap.style.display = "none";
       if (editPrivateWrap) editPrivateWrap.style.display = "none";
@@ -2653,21 +2661,6 @@ if (adminAccessOverlay) {
 .groupsExportCardActions {
   display: flex;
   justify-content: flex-end;
-}
-
-.groups-scope-chips {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-left: 8px;
-}
-.groups-scope-chip {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.08);
-  font-size: 12px;
-  color: inherit;
 }
 </style>
 
