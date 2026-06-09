@@ -224,6 +224,8 @@ function portalAuthMiddleware(req, res, next) {
   res.locals.isAgencyAdmin = isAgencyAdmin;
   res.locals.allowedAgencySuffixes = agencySuffixesForUser || [];
   res.locals.agencyPageTitleAbbrev = accessSvc.getAgencyPageTitleAbbrev(authUser);
+  res.locals.isMultiAgencyAdmin =
+    isAgencyAdmin && !isGlobalAdmin && (agencySuffixesForUser || []).length > 1;
   attachPermissions(req, res, authUser, authEnabled);
 
   return next();

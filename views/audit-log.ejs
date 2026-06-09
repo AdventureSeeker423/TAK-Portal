@@ -10,7 +10,11 @@
 
 <main class="main">
 
-  <h1>Audit Log</h1>
+  <%- include("partials/scoped-admin-page-title", {
+    globalTitle: "Audit Log",
+    scopedSuffix: "Audit Log",
+    singleFallbackTitle: "Agency Audit Log"
+  }) %>
 
   <div class="card">
 

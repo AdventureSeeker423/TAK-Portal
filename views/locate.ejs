@@ -2,7 +2,11 @@
 <%- include("partials/sidebar") %>
 
 <main class="main locate-page">
-  <h1>Locate Missing Persons</h1>
+  <%- include("partials/scoped-admin-page-title", {
+    globalTitle: "Locate Missing Persons",
+    scopedSuffix: "Locate Missing Persons",
+    singleFallbackTitle: "Agency Locate Missing Persons"
+  }) %>
 
   <div class="card">
     <h2 style="margin-top:0;">TAK Server Locate Configuration</h2>

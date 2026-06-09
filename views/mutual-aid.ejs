@@ -2,7 +2,11 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1>Mutual Aid</h1>
+  <%- include("partials/scoped-admin-page-title", {
+    globalTitle: "Mutual Aid",
+    scopedSuffix: "Mutual Aid",
+    singleFallbackTitle: "Agency Mutual Aid"
+  }) %>
 
   <div class="card">
     <h2>Create Mutual Aid</h2>

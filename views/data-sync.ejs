@@ -3,13 +3,11 @@
 
 <main class="main data-sync-page">
   <div class="data-sync-hero">
-    <h1><%
-      const agencyOnlyDataSyncPage = !isGlobalAdmin && isAgencyAdmin;
-      const dataSyncPageAbbrev = typeof agencyPageTitleAbbrev !== "undefined" ? agencyPageTitleAbbrev : null;
-      if (agencyOnlyDataSyncPage && dataSyncPageAbbrev) { %><%= dataSyncPageAbbrev %> Data Sync Mission Manager<% }
-      else if (agencyOnlyDataSyncPage) { %>Agency Data Sync Mission Manager<% }
-      else { %>Data Sync Mission Manager<% }
-    %></h1>
+    <%- include("partials/scoped-admin-page-title", {
+      globalTitle: "Data Sync Mission Manager",
+      scopedSuffix: "Data Sync Mission Manager",
+      singleFallbackTitle: "Agency Data Sync Mission Manager"
+    }) %>
   </div>
 
   <div id="statusBanner" class="card data-sync-status" style="display: none;" role="status"></div>

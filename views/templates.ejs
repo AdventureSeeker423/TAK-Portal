@@ -2,13 +2,11 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1><%
-    const agencyOnlyTemplatesPage = !isGlobalAdmin && isAgencyAdmin;
-    const templatesPageAbbrev = typeof agencyPageTitleAbbrev !== "undefined" ? agencyPageTitleAbbrev : null;
-    if (agencyOnlyTemplatesPage && templatesPageAbbrev) { %><%= templatesPageAbbrev %> Templates<% }
-    else if (agencyOnlyTemplatesPage) { %>Agency Templates<% }
-    else { %>Templates<% }
-  %></h1>
+  <%- include("partials/scoped-admin-page-title", {
+    globalTitle: "Templates",
+    scopedSuffix: "Templates",
+    singleFallbackTitle: "Agency Templates"
+  }) %>
   
   <div class="card">
     <div class="row" style="justify-content: space-between; align-items: center;">

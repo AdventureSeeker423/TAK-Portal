@@ -1,0 +1,63 @@
+<%
+  const _globalTitle = String(typeof globalTitle !== "undefined" ? globalTitle : (scopedSuffix || "Page"));
+  const _scopedSuffix = String(typeof scopedSuffix !== "undefined" ? scopedSuffix : _globalTitle);
+  const _singleFallback = String(
+    typeof singleFallbackTitle !== "undefined" ? singleFallbackTitle : ("Agency " + _scopedSuffix)
+  );
+  const _emailMode = !!emailMode;
+  const _useGlobalServerPrefix = !!useGlobalServerPrefix;
+  const _singleAgencyCustomTitle =
+    typeof singleAgencyCustomTitle === "string" ? singleAgencyCustomTitle.trim() : "";
+
+  const _agencyOnly =
+    typeof isGlobalAdmin !== "undefined" &&
+    typeof isAgencyAdmin !== "undefined" &&
+    !isGlobalAdmin &&
+    isAgencyAdmin;
+
+  const _allowed = Array.isArray(
+    typeof allowedAgencySuffixes !== "undefined" ? allowedAgencySuffixes : null
+  )
+    ? allowedAgencySuffixes
+    : [];
+
+  const _multiAgency =
+    typeof isMultiAgencyAdmin !== "undefined"
+      ? !!isMultiAgencyAdmin
+      : _agencyOnly && _allowed.length > 1;
+
+  const _abbrev =
+    typeof agencyPageTitleAbbrev !== "undefined" && agencyPageTitleAbbrev
+      ? String(agencyPageTitleAbbrev).trim()
+      : null;
+
+  const _serverName = String(
+    (typeof settings !== "undefined" && settings && settings.SERVER_NAME) ||
+      (typeof serverAbbrev !== "undefined" && serverAbbrev) ||
+      ""
+  )
+    .trim()
+    .toUpperCase();
+
+  let _heading = _globalTitle;
+
+  if (_agencyOnly) {
+    if (_multiAgency) {
+      const subject = _emailMode ? ("Email " + _scopedSuffix) : _scopedSuffix;
+      _heading = _serverName
+        ? _serverName + " Multi-Agency " + subject
+        : "Multi-Agency " + subject;
+    } else if (_singleAgencyCustomTitle) {
+      _heading = _singleAgencyCustomTitle;
+    } else if (_abbrev) {
+      _heading = _emailMode
+        ? "Email " + _abbrev + " " + _scopedSuffix
+        : _abbrev + " " + _scopedSuffix;
+    } else {
+      _heading = _singleFallback;
+    }
+  } else if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin && _useGlobalServerPrefix && _serverName) {
+    _heading = _serverName + " " + _scopedSuffix;
+  }
+%>
+<h1><%= _heading %></h1>

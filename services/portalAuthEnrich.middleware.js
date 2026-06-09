@@ -16,6 +16,9 @@ async function portalAuthEnrichMiddleware(req, res, next) {
     res.locals.isAgencyAdmin = !!authUser.isAgencyAdmin;
     res.locals.allowedAgencySuffixes = authUser.allowedAgencySuffixes || [];
     res.locals.agencyPageTitleAbbrev = accessSvc.getAgencyPageTitleAbbrev(authUser);
+    const allowed = authUser.allowedAgencySuffixes || [];
+    res.locals.isMultiAgencyAdmin =
+      !!authUser.isAgencyAdmin && !authUser.isGlobalAdmin && allowed.length > 1;
   } catch (_) {
     // Non-fatal: fall back to header-derived scope.
   }

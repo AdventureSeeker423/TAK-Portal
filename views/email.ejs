@@ -3,18 +3,12 @@
 
 <main class="main">
   <% const agencyOnlyEmailPage = !isGlobalAdmin && isAgencyAdmin; %>
-  <% const isMultiAgencyAdminEmail =
-    agencyOnlyEmailPage &&
-    Array.isArray(allowedAgencySuffixes) &&
-    allowedAgencySuffixes.length > 1; %>
-  <% const isSingleAgencyAdminEmail =
-    agencyOnlyEmailPage && !isMultiAgencyAdminEmail; %>
-  <h1><%
-    const emailPageAbbrev = typeof agencyPageTitleAbbrev !== "undefined" ? agencyPageTitleAbbrev : null;
-    if (agencyOnlyEmailPage && emailPageAbbrev) { %>Email <%= emailPageAbbrev %> Users<% }
-    else if (agencyOnlyEmailPage) { %>Email Agency Users<% }
-    else { %>Email Users<% }
-  %></h1>
+  <%- include("partials/scoped-admin-page-title", {
+    globalTitle: "Email Users",
+    scopedSuffix: "Users",
+    singleFallbackTitle: "Email Agency Users",
+    emailMode: true
+  }) %>
 
   <div class="card">
     <h2 style="margin-top:0;">Choose Recipients</h2>
@@ -33,7 +27,7 @@
 
     <label style="display:block; margin-bottom:6px;">Send to</label>
     <div class="segmented" style="margin-bottom:14px;">
-      <button class="segBtn active" type="button" data-mode="agency"><%= isSingleAgencyAdminEmail ? "Entire Agency" : "Agency" %></button>
+      <button class="segBtn active" type="button" data-mode="agency"><%= (agencyOnlyEmailPage && !(typeof isMultiAgencyAdmin !== "undefined" && isMultiAgencyAdmin)) ? "Entire Agency" : "Agency" %></button>
       <% if (isGlobalAdmin) { %>
         <button class="segBtn" type="button" data-mode="agency_admins">Agency Admins</button>
       <% } %>
@@ -45,7 +39,7 @@
       <% } %>
     </div>
 
-    <% if (isGlobalAdmin || isMultiAgencyAdminEmail) { %>
+    <% if (isGlobalAdmin || (agencyOnlyEmailPage && typeof isMultiAgencyAdmin !== "undefined" && isMultiAgencyAdmin)) { %>
     <!-- Agency: dropdown (global admins and multi-agency admins) -->
     <div id="emailAgencyPane" style="margin-top:8px;">
       <label class="email-dropdown-label">Agencies</label>

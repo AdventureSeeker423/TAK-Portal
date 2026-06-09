@@ -3,7 +3,11 @@
 
 <main class="main data-packages-page">
   <div class="data-packages-hero">
-    <h1>Data Package Manager</h1>
+    <%- include("partials/scoped-admin-page-title", {
+      globalTitle: "Data Package Manager",
+      scopedSuffix: "Data Package Manager",
+      singleFallbackTitle: "Agency Data Package Manager"
+    }) %>
   </div>
 
   <div id="statusBanner" class="card data-packages-status" style="display:none;" role="status"></div>

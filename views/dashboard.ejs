@@ -2,26 +2,16 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <%
-    let dashboardHeading = "Dashboard";
-    const customServerAbbrev = String(
-      (typeof settings !== "undefined" && settings && settings.SERVER_NAME) || ""
-    ).trim();
-    if (typeof isAgencyDashboard !== "undefined" && isAgencyDashboard) {
-      if (typeof isMultiAgencyDashboard !== "undefined" && isMultiAgencyDashboard) {
-        dashboardHeading = customServerAbbrev
-          ? customServerAbbrev.toUpperCase() + " Multi-Agency Dashboard"
-          : "Multi-Agency Dashboard";
-      } else if (agencyDisplayName) {
-        dashboardHeading = agencyDisplayName + " Dashboard";
-      }
-    } else if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) {
-      if (customServerAbbrev) {
-        dashboardHeading = customServerAbbrev.toUpperCase() + " Dashboard";
-      }
-    }
-  %>
-  <h1><%= dashboardHeading %></h1>
+  <%- include("partials/scoped-admin-page-title", {
+    globalTitle: "Dashboard",
+    scopedSuffix: "Dashboard",
+    singleFallbackTitle: "Agency Dashboard",
+    singleAgencyCustomTitle:
+      typeof agencyDisplayName !== "undefined" && agencyDisplayName
+        ? String(agencyDisplayName) + " Dashboard"
+        : "",
+    useGlobalServerPrefix: true
+  }) %>
 
   <% 
     const hasMutualAid = isGlobalAdmin && mutualAid && (mutualAid.activeIncidents > 0 || mutualAid.activeEvents > 0);
