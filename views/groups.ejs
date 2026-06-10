@@ -95,7 +95,7 @@
     </div>
 
     <div class="row" style="align-items:center; gap:12px; flex-wrap:wrap;">
-      <% if (isGlobalAdmin) { %>
+      <% if (isGlobalAdmin || isAgencyAdmin) { %>
         <label style="min-width: 220px;">
           <select id="groupScopeSelect" aria-label="Group scope filter">
             <option value="all" selected>All Groups</option>
@@ -554,6 +554,17 @@ function allowedAgencySuffixSet() {
   );
 }
 
+/** Agencies visible in group scope sub-filters (all for global admin). */
+function agenciesForScopeFilter() {
+  const list = Array.isArray(agenciesCache) ? agenciesCache : [];
+  if (IS_GLOBAL_ADMIN) return list;
+  const allowed = allowedAgencySuffixSet();
+  if (!allowed.size) return [];
+  return list.filter((a) =>
+    allowed.has(String(a?.suffix || "").trim().toLowerCase())
+  );
+}
+
 let groupsCache = [];
 let agenciesCache = [];
 
@@ -703,6 +714,7 @@ if (editStateSelect && stateSelect) {
   }
 
   renderAgencyList();
+  updateGroupScopeDetailOptions();
 }
 
 function agencyItems(){
@@ -984,8 +996,8 @@ function renderGroups(){
       })
     : groupsCache;
 
-  // Global-admin-only type filtering
-  if (IS_GLOBAL_ADMIN && groupScopeSelect && groupScopeDetailSelect) {
+  // Scope + sub-filter (global admin and agency / multi-agency admin)
+  if ((IS_GLOBAL_ADMIN || IS_AGENCY_ADMIN) && groupScopeSelect && groupScopeDetailSelect) {
     const scope = String(groupScopeSelect.value || "all").trim().toLowerCase();
     const detail = String(groupScopeDetailSelect.value || "").trim();
 
@@ -1079,16 +1091,17 @@ function updateGroupScopeDetailOptions() {
   if (!groupScopeSelect || !groupScopeDetailWrap || !groupScopeDetailSelect) return;
 
   const scope = String(groupScopeSelect.value || "all").trim().toLowerCase();
+  const scopedAgencies = agenciesForScopeFilter();
 
   // Default: hide detail selector
   groupScopeDetailWrap.style.display = "none";
   groupScopeDetailSelect.innerHTML = "";
 
-  if (!Array.isArray(agenciesCache) || !agenciesCache.length) return;
+  if (!scopedAgencies.length) return;
 
   if (scope === "state") {
     const stateSet = new Set(
-      agenciesCache
+      scopedAgencies
         .map(a => String(a.state || "").trim())
         .filter(Boolean)
         .map(s => s.toUpperCase())
@@ -1104,7 +1117,7 @@ function updateGroupScopeDetailOptions() {
     groupScopeDetailSelect.value = "";
   } else if (scope === "county") {
     const countySet = new Set(
-      agenciesCache
+      scopedAgencies
         .map(a => String(a.county || "").trim())
         .filter(Boolean)
     );
@@ -1121,7 +1134,7 @@ function updateGroupScopeDetailOptions() {
     groupScopeDetailSelect.value = "";
   } else if (scope === "agency") {
     const prefixSet = new Set(
-      agenciesCache
+      scopedAgencies
         .map(a => String(a.groupPrefix || "").trim().toUpperCase())
         .filter(Boolean)
     );
@@ -1129,7 +1142,7 @@ function updateGroupScopeDetailOptions() {
     const prefixList = Array.from(prefixSet).sort((a, b) => a.localeCompare(b));
 
     const options = prefixList.map(prefix => {
-      const agency = agenciesCache.find(
+      const agency = scopedAgencies.find(
         a => String(a.groupPrefix || "").trim().toUpperCase() === prefix
       );
       const name = agency?.name ? String(agency.name).trim() : "";
@@ -1142,6 +1155,11 @@ function updateGroupScopeDetailOptions() {
 
     groupScopeDetailWrap.style.display = "flex";
     groupScopeDetailSelect.value = "";
+
+    // Single-agency admin: default sub-filter to their only managed agency.
+    if (!IS_GLOBAL_ADMIN && prefixList.length === 1) {
+      groupScopeDetailSelect.value = prefixList[0];
+    }
   }
 }
 

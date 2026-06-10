@@ -87,7 +87,8 @@
   <div class="card">
     <h2>Existing Templates</h2>
     <div class="row" style="align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
-      <% if (isGlobalAdmin) { %>
+      <% const multiAgencyTemplatesAdmin = !isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length > 1; %>
+      <% if (isGlobalAdmin || multiAgencyTemplatesAdmin) { %>
         <label style="min-width: 220px;">
           <select id="templateAgencyFilterSelect" aria-label="Template agency filter">
             <option value="">All Agencies</option>
@@ -135,6 +136,11 @@ const form = document.getElementById("form");
 const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
 const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+const IS_MULTI_AGENCY_ADMIN =
+  IS_AGENCY_ADMIN &&
+  !IS_GLOBAL_ADMIN &&
+  Array.isArray(ALLOWED_AGENCY_SUFFIXES) &&
+  ALLOWED_AGENCY_SUFFIXES.length > 1;
 const AGENCY_ADMIN_SUFFIX = <%- JSON.stringify((!isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length === 1) ? String(allowedAgencySuffixes[0] || "").trim().toLowerCase() : "") %>;
 const templateNameSearch = document.getElementById("templateNameSearch");
 const templateAgencyFilterSelect = document.getElementById("templateAgencyFilterSelect");
@@ -480,13 +486,23 @@ function agencyAbbrFromSuffix(suffix){
 }
 
 function updateTemplateAgencyFilterOptions(){
-  if (!templateAgencyFilterSelect || !IS_GLOBAL_ADMIN) return;
+  if (!templateAgencyFilterSelect) return;
+  if (!IS_GLOBAL_ADMIN && !IS_MULTI_AGENCY_ADMIN) return;
 
   const prevVal = String(templateAgencyFilterSelect.value || "").trim().toLowerCase();
-  const agencies = allAgencies
+  let agencies = allAgencies
     .slice()
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
     .filter(a => String(a.suffix || "").trim());
+
+  if (IS_MULTI_AGENCY_ADMIN) {
+    const allowed = new Set(
+      ALLOWED_AGENCY_SUFFIXES.map((s) => String(s || "").trim().toLowerCase())
+    );
+    agencies = agencies.filter((a) =>
+      allowed.has(String(a?.suffix || "").trim().toLowerCase())
+    );
+  }
 
   templateAgencyFilterSelect.innerHTML =
     `<option value="">All Agencies</option>` +
@@ -514,8 +530,8 @@ function getFilteredTemplatePairs(){
     // Name search
     if (needle && !name.includes(needle)) return false;
 
-    // Agency filter (global-admin only)
-    if (IS_GLOBAL_ADMIN && templateAgencyFilterSelect && agencyFilter) {
+    // Agency filter (global admin or multi-agency admin)
+    if ((IS_GLOBAL_ADMIN || IS_MULTI_AGENCY_ADMIN) && templateAgencyFilterSelect && agencyFilter) {
       return sfx === agencyFilter;
     }
 
@@ -557,7 +573,7 @@ function setCreateMode(){
 
   nameEl.value = "";
   agencyEl.value = (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && AGENCY_ADMIN_SUFFIX) ? AGENCY_ADMIN_SUFFIX : "";
-  agencyEl.disabled = (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN);
+  agencyEl.disabled = Boolean(AGENCY_ADMIN_SUFFIX);
   colorOverrideEl.value = "";
   renderRoleOptions("Team Member");
   isDefaultEl.value = "no";
@@ -606,7 +622,7 @@ window.duplicateTemplate = async (idx) => {
   const prevAgency = agencyEl.value || "";
   const targetAgency = t.agencySuffix || "";
   agencyEl.value = targetAgency;
-  agencyEl.disabled = (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN);
+  agencyEl.disabled = Boolean(AGENCY_ADMIN_SUFFIX);
 
   if (targetAgency !== prevAgency) {
     try {
