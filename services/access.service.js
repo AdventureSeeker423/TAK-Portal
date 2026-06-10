@@ -702,6 +702,38 @@ function normalizeManagedAgencySuffixes(raw, { allowedForActor = null } = {}) {
 }
 
 /**
+ * User's home agency is always included for multi-agency admins; picker lists only additional agencies.
+ */
+function mergeManagedAgencySuffixesWithHome(rawSuffixes, userOrHomeSuffix) {
+  const home =
+    typeof userOrHomeSuffix === "string"
+      ? normalizeSuffix(userOrHomeSuffix)
+      : resolveAgencySuffixFromUser(userOrHomeSuffix);
+  const merged = normalizeManagedAgencySuffixes(rawSuffixes);
+  if (!home) return merged;
+  const out = [];
+  const seen = new Set();
+  const push = (sfx) => {
+    const norm = normalizeSuffix(sfx);
+    if (!norm || seen.has(norm)) return;
+    seen.add(norm);
+    out.push(norm);
+  };
+  push(home);
+  merged.forEach(push);
+  return out;
+}
+
+function additionalManagedAgencySuffixes(rawSuffixes, userOrHomeSuffix) {
+  const home =
+    typeof userOrHomeSuffix === "string"
+      ? normalizeSuffix(userOrHomeSuffix)
+      : resolveAgencySuffixFromUser(userOrHomeSuffix);
+  if (!home) return normalizeManagedAgencySuffixes(rawSuffixes);
+  return normalizeManagedAgencySuffixes(rawSuffixes).filter((s) => s !== home);
+}
+
+/**
  * Compute Authentik group add/remove sets for a portal role change.
  */
 function computePortalRoleGroupDelta({
@@ -894,6 +926,8 @@ module.exports = {
   getAllKnownAgencyAdminGroupIds,
   resolveAgencyAdminGroupIdsForSuffixes,
   normalizeManagedAgencySuffixes,
+  mergeManagedAgencySuffixesWithHome,
+  additionalManagedAgencySuffixes,
   computePortalRoleGroupDelta,
   syncPortalRoleGroups,
   getManagedAgencySuffixesFromGroupNames,

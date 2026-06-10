@@ -203,8 +203,11 @@
         <div class="ac-managed-header">
           <div style="flex:1; min-width: 240px;">
             <strong>Managed Agencies</strong>
+            <div class="muted" style="margin:4px 0 8px; font-size:0.9rem;">
+              The user's home agency is always included. Select additional agencies below (changes save automatically).
+            </div>
             <div id="acManagedAgenciesPickerRoot" class="ma-multiselect-wrap">
-              <label class="ma-multiselect-label">Agencies</label>
+              <label class="ma-multiselect-label">Additional Agencies</label>
               <div class="ma-multiselect filter-multiselect">
                 <button type="button" class="btn filter-toggle ma-multiselect-toggle">Select agencies ▾</button>
                 <div class="filter-menu">
@@ -220,9 +223,6 @@
               </div>
               <div class="ma-multiselect-summary muted"></div>
             </div>
-          </div>
-          <div class="ac-managed-header-actions">
-            <button type="button" class="btn" id="acSaveManagedAgenciesBtn">Save Managed Agencies</button>
           </div>
         </div>
       </div>
@@ -286,16 +286,119 @@
   let registryFlat = [];
   let allAgenciesCache = [];
   let selectedManagedSuffixes = new Set();
+  let selectedUserHomeSuffix = "";
+  let selectedUserRecord = null;
   let acManagedPicker = null;
+  let acManagedSaveTimer = null;
+  let acManagedSaveInflight = false;
+
+  function getHomeSuffixForAcUser(user) {
+    const attrs = user?.attributes || {};
+    const direct = String(attrs.agency || "").trim().toLowerCase();
+    if (direct) return direct;
+    const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+    if (!abbr) return "";
+    const a = allAgenciesCache.find(
+      (x) => String(x?.groupPrefix || "").trim().toUpperCase() === abbr
+    );
+    return a ? String(a.suffix || "").trim().toLowerCase() : "";
+  }
+
+  function agenciesForAcManagedPicker() {
+    const home = selectedUserHomeSuffix;
+    return allAgenciesCache.filter((a) => {
+      const sfx = String(a?.suffix || "").trim().toLowerCase();
+      return !home || sfx !== home;
+    });
+  }
+
+  function getManagedSuffixesForSave() {
+    if (acManagedPicker) return acManagedPicker.getSelectedWithHomeArray();
+    return ManagedAgenciesPicker.mergeWithHome(
+      Array.from(selectedManagedSuffixes),
+      selectedUserHomeSuffix
+    );
+  }
 
   function initAcManagedPicker() {
     const root = el("acManagedAgenciesPickerRoot");
     if (!root || !window.ManagedAgenciesPicker || acManagedPicker) return;
     acManagedPicker = ManagedAgenciesPicker.bind(root, {
       inputName: "managedAgencySuffix",
-      getAgencies: function () { return allAgenciesCache; },
-      onChange: function (set) { selectedManagedSuffixes = set; },
+      getAgencies: agenciesForAcManagedPicker,
+      getAllAgencies: function () { return allAgenciesCache; },
+      homeSuffix: function () { return selectedUserHomeSuffix; },
+      onChange: function (set) {
+        selectedManagedSuffixes = set;
+        scheduleAcManagedSave();
+      },
     });
+  }
+
+  async function saveManagedAgenciesAuto() {
+    if (!selectedUserId || acManagedSaveInflight) return;
+    const uiRole = String(el("acEditorRoleSelect")?.value || "").trim().toLowerCase();
+    if (uiRole !== "multi_agency_admin") return;
+
+    const additional = getSelectedManagedSuffixesArray();
+    if (!selectedUserHomeSuffix) {
+      setMsg("Cannot save managed agencies: user has no home agency.", true);
+      return;
+    }
+    if (additional.length < 1) {
+      setMsg("Select at least one additional agency beyond the user's home agency.", true);
+      return;
+    }
+
+    const suffixes = getManagedSuffixesForSave();
+    acManagedSaveInflight = true;
+    setMsg("Saving managed agencies...", false);
+    try {
+      let out = null;
+      if (currentEditorRole === "agency_admin") {
+        const r = await fetch("/api/access-control/managed-agencies/" + encodeURIComponent(selectedUserId), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ managedAgencySuffixes: suffixes }),
+        });
+        out = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(out.error || "Failed to save managed agencies.");
+      } else {
+        const r = await fetch("/api/access-control/user-role/" + encodeURIComponent(selectedUserId), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ role: "agency_admin", managedAgencySuffixes: suffixes }),
+        });
+        out = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(out.error || "Failed to update access level.");
+        currentEditorRole = normalizeRole(out.role || "agency_admin");
+      }
+
+      const managed = Array.isArray(out?.managedAgencySuffixes) ? out.managedAgencySuffixes : suffixes;
+      selectedManagedSuffixes = new Set(
+        ManagedAgenciesPicker.stripHomeFromManaged(managed, selectedUserHomeSuffix)
+      );
+      renderManagedAgenciesPicker();
+      const rolePill = el("acPillRole");
+      rolePill.className = roleToPillClass("agency_admin");
+      rolePill.textContent = roleDisplayLabel("agency_admin", managed.length);
+      const roleSel = el("acEditorRoleSelect");
+      const resolvedUiRole = uiRoleFromBackend("agency_admin", managed.length);
+      roleSel.value = resolvedUiRole;
+      roleSel.setAttribute("data-prev", resolvedUiRole);
+      roleSel.setAttribute("data-prev-ui", resolvedUiRole);
+      updateManagedAgenciesVisibility(resolvedUiRole);
+      setMsg("Managed agencies saved.", false);
+    } catch (e) {
+      setMsg(e?.message || "Failed to save managed agencies.", true);
+    } finally {
+      acManagedSaveInflight = false;
+    }
+  }
+
+  function scheduleAcManagedSave() {
+    clearTimeout(acManagedSaveTimer);
+    acManagedSaveTimer = setTimeout(saveManagedAgenciesAuto, 450);
   }
 
   function renderManagedAgenciesPicker() {
@@ -475,6 +578,22 @@
     selectedUserId = user?.pk ? String(user.pk) : null;
     setMsg("");
 
+    if (user?.attributes) {
+      selectedUserRecord = user;
+    } else if (selectedUserId) {
+      try {
+        const ur = await fetch("/api/users/" + encodeURIComponent(selectedUserId), {
+          headers: { Accept: "application/json" },
+        });
+        const uj = await ur.json().catch(() => null);
+        if (ur.ok && uj) selectedUserRecord = uj;
+      } catch (_) {
+        selectedUserRecord = user;
+      }
+    } else {
+      selectedUserRecord = user;
+    }
+
     const r = await fetch("/api/access-control/effective?user=" + encodeURIComponent(username), { headers: { Accept: "application/json" } });
     if (!r.ok) {
       setMsg("User not found or not accessible.", true);
@@ -491,27 +610,24 @@
 
     const role = normalizeRole(j.baseRole);
     currentEditorRole = role;
+    selectedUserHomeSuffix = getHomeSuffixForAcUser(selectedUserRecord || user);
+    const managedAll = (Array.isArray(j.managedAgencySuffixes) ? j.managedAgencySuffixes : [])
+      .map((s) => String(s || "").trim().toLowerCase())
+      .filter(Boolean);
     selectedManagedSuffixes = new Set(
-      (Array.isArray(j.managedAgencySuffixes) ? j.managedAgencySuffixes : [])
-        .map((s) => String(s || "").trim().toLowerCase())
-        .filter(Boolean)
+      ManagedAgenciesPicker.stripHomeFromManaged(managedAll, selectedUserHomeSuffix)
     );
-    if (role === "agency_admin" && !selectedManagedSuffixes.size) {
-      const homeAbbr = String(user?.attributes?.agency_abbreviation || "").trim().toUpperCase();
-      const homeAgency = allAgenciesCache.find(
-        (a) => String(a?.groupPrefix || "").trim().toUpperCase() === homeAbbr
-      );
-      const homeSuffix = homeAgency ? String(homeAgency.suffix || "").trim().toLowerCase() : "";
-      if (homeSuffix) selectedManagedSuffixes.add(homeSuffix);
+    if (role === "agency_admin" && !managedAll.length && selectedUserHomeSuffix) {
+      selectedManagedSuffixes = new Set();
     }
 
     el("acSelName").textContent = j.displayName || j.username;
     el("acSelMeta").textContent = j.username;
     const rolePill = el("acPillRole");
     rolePill.className = roleToPillClass(role);
-    rolePill.textContent = roleDisplayLabel(role, selectedManagedSuffixes.size);
+    rolePill.textContent = roleDisplayLabel(role, managedAll.length);
     const roleSel = el("acEditorRoleSelect");
-    const uiRole = uiRoleFromBackend(role, selectedManagedSuffixes.size);
+    const uiRole = uiRoleFromBackend(role, managedAll.length);
     roleSel.value = uiRole;
     roleSel.setAttribute("data-prev", uiRole);
     roleSel.setAttribute("data-prev-ui", uiRole);
@@ -545,14 +661,10 @@
         "<td>" + (name || "-") + "</td>" +
         "<td>" + (email || "-") + "</td>" +
         "<td>" + (agency || "-") + "</td>" +
-        "<td><button type=\"button\" class=\"btn success ac-edit-btn\" data-user=\"" + username + "\" data-user-id=\"" + String(u?.pk || "") + "\">Edit Permissions</button></td>";
+        "<td><button type=\"button\" class=\"btn success ac-edit-btn\">Edit Permissions</button></td>";
       body.appendChild(tr);
-    });
-
-    body.querySelectorAll(".ac-edit-btn").forEach((btn) => {
-      btn.addEventListener("click", function () {
-        const user = { username: this.getAttribute("data-user"), pk: this.getAttribute("data-user-id") };
-        selectUser(user);
+      tr.querySelector(".ac-edit-btn").addEventListener("click", function () {
+        selectUser(u);
         window.scrollTo(0, 220);
       });
     });
@@ -594,9 +706,9 @@
     if (showsManagedAgenciesPicker(uiRole)) renderManagedAgenciesPicker();
 
     if (uiRole === "multi_agency_admin") {
-      const suffixes = getSelectedManagedSuffixesArray();
-      if (suffixes.length < 2) {
-        setMsg("Select at least two agencies below, then click Save Managed Agencies.", false);
+      const additional = getSelectedManagedSuffixesArray();
+      if (!selectedUserHomeSuffix || additional.length < 1) {
+        setMsg("Select at least one additional agency beyond the user's home agency.", false);
         return;
       }
     }
@@ -606,9 +718,9 @@
     try {
       const payload = { role };
       if (role === "agency_admin") {
-        let suffixes = getSelectedManagedSuffixesArray();
-        if (uiRole === "agency_admin" && suffixes.length > 1) {
-          suffixes = suffixes.slice(0, 1);
+        let suffixes = getManagedSuffixesForSave();
+        if (uiRole === "agency_admin") {
+          suffixes = selectedUserHomeSuffix ? [selectedUserHomeSuffix] : suffixes.slice(0, 1);
         }
         if (suffixes.length) payload.managedAgencySuffixes = suffixes;
       }
@@ -623,23 +735,24 @@
       currentEditorRole = resolvedRole;
       if (Array.isArray(out.managedAgencySuffixes)) {
         selectedManagedSuffixes = new Set(
-          out.managedAgencySuffixes.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean)
+          ManagedAgenciesPicker.stripHomeFromManaged(out.managedAgencySuffixes, selectedUserHomeSuffix)
         );
       }
-      const resolvedUiRole = uiRoleFromBackend(resolvedRole, selectedManagedSuffixes.size);
+      const managedCount = getManagedSuffixesForSave().length;
+      const resolvedUiRole = uiRoleFromBackend(resolvedRole, managedCount);
       this.value = resolvedUiRole;
       this.setAttribute("data-prev", resolvedUiRole);
       this.setAttribute("data-prev-ui", resolvedUiRole);
       const rolePill = el("acPillRole");
       rolePill.className = roleToPillClass(resolvedRole);
-      rolePill.textContent = roleDisplayLabel(resolvedRole, selectedManagedSuffixes.size);
+      rolePill.textContent = roleDisplayLabel(resolvedRole, managedCount);
       updateManagedAgenciesVisibility(resolvedUiRole);
       renderManagedAgenciesPicker();
       setMsg(
         resolvedRole === "global_admin"
           ? "Permissions updated: Global Admin."
           : resolvedRole === "agency_admin"
-          ? (selectedManagedSuffixes.size > 1
+          ? (managedCount > 1
               ? "Permissions updated: Multi-Agency Admin."
               : "Permissions updated: Agency Admin.")
           : "Permissions updated: Standard User.",
@@ -650,61 +763,6 @@
     } catch (e) {
       this.value = prevUi;
       setMsg(e?.message || "Failed to update access level.", true);
-    } finally {
-      this.disabled = false;
-    }
-  });
-
-  el("acSaveManagedAgenciesBtn").addEventListener("click", async function () {
-    if (!selectedUserId) return;
-    const uiRole = String(el("acEditorRoleSelect")?.value || "").trim().toLowerCase();
-    if (uiRole !== "multi_agency_admin") return;
-    const suffixes = getSelectedManagedSuffixesArray();
-    if (suffixes.length < 2) {
-      setMsg("Multi-Agency Admin requires at least two managed agencies.", true);
-      return;
-    }
-    setMsg("Saving managed agencies...", false);
-    this.disabled = true;
-    try {
-      let out = null;
-      if (currentEditorRole === "agency_admin") {
-        const r = await fetch("/api/access-control/managed-agencies/" + encodeURIComponent(selectedUserId), {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ managedAgencySuffixes: suffixes }),
-        });
-        out = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(out.error || "Failed to save managed agencies.");
-      } else {
-        const r = await fetch("/api/access-control/user-role/" + encodeURIComponent(selectedUserId), {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ role: "agency_admin", managedAgencySuffixes: suffixes }),
-        });
-        out = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(out.error || "Failed to update access level.");
-        currentEditorRole = normalizeRole(out.role || "agency_admin");
-      }
-      selectedManagedSuffixes = new Set(
-        (Array.isArray(out?.managedAgencySuffixes) ? out.managedAgencySuffixes : suffixes)
-          .map((s) => String(s || "").trim().toLowerCase())
-          .filter(Boolean)
-      );
-      renderManagedAgenciesPicker();
-      const rolePill = el("acPillRole");
-      rolePill.className = roleToPillClass("agency_admin");
-      rolePill.textContent = roleDisplayLabel("agency_admin", selectedManagedSuffixes.size);
-      const roleSel = el("acEditorRoleSelect");
-      const resolvedUiRole = uiRoleFromBackend("agency_admin", selectedManagedSuffixes.size);
-      roleSel.value = resolvedUiRole;
-      roleSel.setAttribute("data-prev", resolvedUiRole);
-      roleSel.setAttribute("data-prev-ui", resolvedUiRole);
-      updateManagedAgenciesVisibility(resolvedUiRole);
-      setMsg("Managed agencies saved.", false);
-      await runSearch();
-    } catch (e) {
-      setMsg(e?.message || "Failed to save managed agencies.", true);
     } finally {
       this.disabled = false;
     }

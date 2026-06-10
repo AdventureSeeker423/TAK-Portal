@@ -20,6 +20,46 @@
     return String(a?.name || "").trim();
   }
 
+  function normalizeSuffixValue(raw) {
+    return String(raw || "").trim().toLowerCase();
+  }
+
+  function resolveHomeSuffix(opts) {
+    if (typeof opts.homeSuffix === "function") return normalizeSuffixValue(opts.homeSuffix());
+    return normalizeSuffixValue(opts.homeSuffix);
+  }
+
+  function mergeWithHome(additional, homeSuffix) {
+    const home = normalizeSuffixValue(homeSuffix);
+    const out = [];
+    const seen = new Set();
+    function push(sfx) {
+      const norm = normalizeSuffixValue(sfx);
+      if (!norm || seen.has(norm)) return;
+      seen.add(norm);
+      out.push(norm);
+    }
+    if (home) push(home);
+    (Array.isArray(additional) ? additional : []).forEach(push);
+    return out.sort();
+  }
+
+  function stripHomeFromManaged(allSuffixes, homeSuffix) {
+    const home = normalizeSuffixValue(homeSuffix);
+    return (Array.isArray(allSuffixes) ? allSuffixes : [])
+      .map(normalizeSuffixValue)
+      .filter(Boolean)
+      .filter((s) => !home || s !== home);
+  }
+
+  function findAgencyBySuffix(agencies, suffix) {
+    const needle = normalizeSuffixValue(suffix);
+    if (!needle) return null;
+    return (Array.isArray(agencies) ? agencies : []).find(
+      (a) => normalizeSuffixValue(a?.suffix) === needle
+    );
+  }
+
   /**
    * Compact checkbox dropdown for managed-agency selection.
    * @param {HTMLElement} root - element containing .ma-multiselect
@@ -40,9 +80,20 @@
 
     function sortedAgencies() {
       const source = typeof opts.getAgencies === "function" ? opts.getAgencies() : agencies;
+      const home = resolveHomeSuffix(opts);
       return (Array.isArray(source) ? source : [])
+        .filter((a) => {
+          const sfx = normalizeSuffixValue(a?.suffix);
+          return !home || sfx !== home;
+        })
         .slice()
         .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
+    }
+
+    function allAgenciesForLookup() {
+      if (typeof opts.getAllAgencies === "function") return opts.getAllAgencies();
+      const source = typeof opts.getAgencies === "function" ? opts.getAgencies() : agencies;
+      return Array.isArray(source) ? source.slice() : [];
     }
 
     function updateToggleLabel() {
@@ -55,13 +106,23 @@
 
     function updateSummary() {
       if (!summary) return;
+      const home = resolveHomeSuffix(opts);
       const labels = sortedAgencies()
-        .filter((a) => selected.has(String(a?.suffix || "").trim().toLowerCase()))
+        .filter((a) => selected.has(normalizeSuffixValue(a?.suffix)))
         .map(formatSummaryLabel)
         .filter(Boolean);
-      summary.textContent = labels.length
-        ? "Selected: " + labels.join(", ")
-        : "No agencies selected.";
+      const parts = [];
+      if (home) {
+        const homeAgency = findAgencyBySuffix(allAgenciesForLookup(), home);
+        const homeLabel = homeAgency ? formatSummaryLabel(homeAgency) : home.toUpperCase();
+        parts.push("Includes home agency " + homeLabel);
+      }
+      if (labels.length) {
+        parts.push(home ? "Additional: " + labels.join(", ") : "Selected: " + labels.join(", "));
+      } else if (home) {
+        parts.push("No additional agencies selected.");
+      }
+      summary.textContent = parts.length ? parts.join(" · ") : "No agencies selected.";
     }
 
     function renderList() {
@@ -106,10 +167,12 @@
     }
 
     function setSelected(next) {
+      const home = resolveHomeSuffix(opts);
       selected = new Set(
         (next instanceof Set ? Array.from(next) : Array.isArray(next) ? next : [])
-          .map((s) => String(s || "").trim().toLowerCase())
+          .map(normalizeSuffixValue)
           .filter(Boolean)
+          .filter((s) => !home || s !== home)
       );
       renderList();
       notifyChange();
@@ -117,6 +180,10 @@
 
     function getSelectedArray() {
       return Array.from(selected).filter(Boolean).sort();
+    }
+
+    function getSelectedWithHomeArray() {
+      return mergeWithHome(getSelectedArray(), resolveHomeSuffix(opts));
     }
 
     if (toggle && dropdown) {
@@ -180,6 +247,7 @@
       setSelected: setSelected,
       getSelected: function () { return new Set(selected); },
       getSelectedArray: getSelectedArray,
+      getSelectedWithHomeArray: getSelectedWithHomeArray,
       refresh: renderList,
     };
   }
@@ -193,5 +261,9 @@
     });
   }
 
-  global.ManagedAgenciesPicker = { bind: bindManagedAgenciesPicker };
+  global.ManagedAgenciesPicker = {
+    bind: bindManagedAgenciesPicker,
+    mergeWithHome: mergeWithHome,
+    stripHomeFromManaged: stripHomeFromManaged,
+  };
 })(window);

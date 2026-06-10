@@ -126,6 +126,10 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
       const raw = req.body?.managedAgencySuffixes;
       if (Array.isArray(raw) && raw.length) {
         managedAgencySuffixes = await assertCanAssignManagedAgencies(actor, raw);
+        managedAgencySuffixes = accessSvc.mergeManagedAgencySuffixesWithHome(
+          managedAgencySuffixes,
+          target
+        );
       } else {
         managedAgencySuffixes = resolveDefaultManagedSuffixesForUser(target);
       }
@@ -212,9 +216,13 @@ router.put("/managed-agencies/:userId", express.json({ limit: "1mb" }), async (r
       });
     }
 
-    const managedAgencySuffixes = await assertCanAssignManagedAgencies(
+    let managedAgencySuffixes = await assertCanAssignManagedAgencies(
       actor,
       req.body?.managedAgencySuffixes
+    );
+    managedAgencySuffixes = accessSvc.mergeManagedAgencySuffixesWithHome(
+      managedAgencySuffixes,
+      target
     );
     if (!managedAgencySuffixes.length) {
       return res.status(400).json({ error: "Select at least one managed agency." });

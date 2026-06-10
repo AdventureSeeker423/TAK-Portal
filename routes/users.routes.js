@@ -425,11 +425,29 @@ router.post("/", async (req, res) => {
         payload.managedAgencySuffixes,
         { allowedForActor: scope && scope.length ? scope : null }
       );
+      const homeSuffix = accessSvc.normalizeSuffix(payload.agencySuffix || "");
+      if (homeSuffix) {
+        payload.managedAgencySuffixes = accessSvc.mergeManagedAgencySuffixesWithHome(
+          payload.managedAgencySuffixes,
+          homeSuffix
+        );
+      }
       if (!payload.managedAgencySuffixes.length) {
         return res.status(400).json({ error: "Select at least one valid managed agency." });
       }
-      if (requestedMultiAgencyAdmin && payload.managedAgencySuffixes.length < 2) {
-        return res.status(400).json({ error: "Multi-Agency Admin requires at least two managed agencies." });
+      if (requestedMultiAgencyAdmin) {
+        const additional = homeSuffix
+          ? accessSvc.additionalManagedAgencySuffixes(
+              payload.managedAgencySuffixes,
+              homeSuffix
+            )
+          : payload.managedAgencySuffixes;
+        if (!homeSuffix || additional.length < 1) {
+          return res.status(400).json({
+            error:
+              "Multi-Agency Admin requires the user's home agency plus at least one additional agency.",
+          });
+        }
       }
     }
 
@@ -1444,6 +1462,10 @@ router.post("/:userId/portal-role", express.json({ limit: "1mb" }), async (req, 
         managedAgencySuffixes = accessSvc.normalizeManagedAgencySuffixes(raw, {
           allowedForActor: scope && scope.length ? scope : null,
         });
+        managedAgencySuffixes = accessSvc.mergeManagedAgencySuffixesWithHome(
+          managedAgencySuffixes,
+          target
+        );
       } else {
         managedAgencySuffixes = resolveDefaultManagedSuffixesForUser(target);
       }

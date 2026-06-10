@@ -126,7 +126,7 @@
       <div id="createManagedAgenciesWrap" class="managed-agencies-wrap" hidden style="grid-column: 1 / -1;">
         <label class="ma-multiselect-label" style="font-weight:600;">Managed Agencies</label>
         <div class="muted" style="margin:4px 0 8px; font-size:0.9rem;">
-          Select which agencies this user can administer as Agency Admin.
+          The user's selected agency is always included. Choose at least one additional agency below.
         </div>
         <div id="createManagedAgenciesPickerRoot" class="ma-multiselect-wrap">
           <div class="ma-multiselect filter-multiselect">
@@ -524,7 +524,18 @@ function initCreateManagedPicker() {
   createManagedPicker = ManagedAgenciesPicker.bind(createManagedAgenciesPickerRoot, {
     inputName: "managedAgencySuffix",
     getAgencies: agenciesForManagedPicker,
+    getAllAgencies: function () { return allAgenciesCache; },
+    homeSuffix: function () { return getCreateHomeSuffix(); },
   });
+}
+
+function getCreateHomeSuffix() {
+  return String(agencySelect?.value || "").trim().toLowerCase();
+}
+
+function getCreateManagedSuffixesForSave() {
+  if (createManagedPicker) return createManagedPicker.getSelectedWithHomeArray();
+  return ManagedAgenciesPicker.mergeWithHome(getCreateManagedSuffixes(), getCreateHomeSuffix());
 }
 
 function getCreateManagedSuffixes() {
@@ -535,10 +546,8 @@ function getCreateManagedSuffixes() {
 function syncCreateManagedAgenciesDefault() {
   initCreateManagedPicker();
   if (!createManagedPicker) return;
-  const createSfx = String(agencySelect?.value || "").trim().toLowerCase();
-  const next = new Set(createManagedPicker.getSelectedArray());
-  if (createSfx && !next.size) next.add(createSfx);
-  createManagedPicker.setSelected(next);
+  const current = createManagedPicker.getSelectedArray();
+  createManagedPicker.setSelected(new Set(current));
 }
 
 function canAssignManagedAgencies() {
@@ -546,12 +555,19 @@ function canAssignManagedAgencies() {
 }
 
 function agenciesForManagedPicker() {
+  const home = getCreateHomeSuffix();
   const list = Array.isArray(allAgenciesCache) ? allAgenciesCache.slice() : [];
-  if (IS_GLOBAL_ADMIN) return list;
-  const allowed = new Set(
-    (ALLOWED_AGENCY_SUFFIXES || []).map((s) => String(s || "").trim().toLowerCase())
-  );
-  return list.filter((a) => allowed.has(String(a?.suffix || "").trim().toLowerCase()));
+  const scoped = IS_GLOBAL_ADMIN
+    ? list
+    : list.filter((a) =>
+        new Set((ALLOWED_AGENCY_SUFFIXES || []).map((s) => String(s || "").trim().toLowerCase())).has(
+          String(a?.suffix || "").trim().toLowerCase()
+        )
+      );
+  return scoped.filter((a) => {
+    const sfx = String(a?.suffix || "").trim().toLowerCase();
+    return !home || sfx !== home;
+  });
 }
 
 function updateCreateManagedAgenciesVisibility() {
@@ -911,15 +927,20 @@ form.onsubmit = async (e) => {
   }
 
   if (payload.permissions === "multi_agency_admin" && IS_GLOBAL_ADMIN) {
-    const suffixes = getCreateManagedSuffixes();
-    if (suffixes.length < 2) {
-      setMsg("Multi-Agency Admin requires at least two managed agencies.", false);
+    const home = getCreateHomeSuffix();
+    const additional = getCreateManagedSuffixes();
+    if (!home) {
+      setMsg("Select an agency for the user before assigning Multi-Agency Admin.", false);
       return;
     }
-    payload.managedAgencySuffixes = suffixes;
+    if (additional.length < 1) {
+      setMsg("Multi-Agency Admin requires at least one additional agency beyond the user's home agency.", false);
+      return;
+    }
+    payload.managedAgencySuffixes = getCreateManagedSuffixesForSave();
     payload.permissions = "agency_admin";
   } else if (payload.permissions === "agency_admin" && canAssignManagedAgencies()) {
-    const suffixes = getCreateManagedSuffixes();
+    const suffixes = getCreateManagedSuffixesForSave();
     if (suffixes.length) payload.managedAgencySuffixes = suffixes;
   }
 
@@ -1232,14 +1253,22 @@ const roleSelect = document.getElementById("roleSelect");
 const permissionsSelect = document.getElementById("permissionsSelect");
 const editManagedAgenciesWrap = document.getElementById("editManagedAgenciesWrap");
 let editManagedSuffixes = new Set();
+let editManagedHomeSuffix = "";
 let editManagedPicker = null;
+let editManagedSaveTimer = null;
+let editManagedSaveInflight = false;
 
 function initEditManagedPicker() {
   if (!editManagedAgenciesWrap || !window.ManagedAgenciesPicker || editManagedPicker) return;
   editManagedPicker = ManagedAgenciesPicker.bind(editManagedAgenciesWrap, {
     inputName: "editManagedAgencySuffix",
     getAgencies: agenciesForManagedPickerEdit,
-    onChange: function (set) { editManagedSuffixes = set; },
+    getAllAgencies: function () { return allAgenciesCache; },
+    homeSuffix: function () { return editManagedHomeSuffix || getHomeSuffixForUser(selectedUser); },
+    onChange: function (set) {
+      editManagedSuffixes = set;
+      scheduleEditManagedSave();
+    },
   });
 }
 
@@ -1266,17 +1295,84 @@ function showsEditManagedAgenciesPicker(uiRole) {
 }
 
 function agenciesForManagedPickerEdit() {
+  const home = editManagedHomeSuffix || getHomeSuffixForUser(selectedUser);
   const list = Array.isArray(allAgenciesCache) ? allAgenciesCache.slice() : [];
-  if (IS_GLOBAL_ADMIN) return list;
-  const allowed = new Set(
-    (ALLOWED_AGENCY_SUFFIXES || []).map((s) => String(s || "").trim().toLowerCase())
+  const scoped = IS_GLOBAL_ADMIN
+    ? list
+    : list.filter((a) =>
+        new Set((ALLOWED_AGENCY_SUFFIXES || []).map((s) => String(s || "").trim().toLowerCase())).has(
+          String(a?.suffix || "").trim().toLowerCase()
+        )
+      );
+  return scoped.filter((a) => {
+    const sfx = String(a?.suffix || "").trim().toLowerCase();
+    return !home || sfx !== home;
+  });
+}
+
+function getEditManagedSuffixesForSave() {
+  const home = editManagedHomeSuffix || getHomeSuffixForUser(selectedUser);
+  if (editManagedPicker) return editManagedPicker.getSelectedWithHomeArray();
+  return ManagedAgenciesPicker.mergeWithHome(
+    Array.from(editManagedSuffixes),
+    home
   );
-  return list.filter((a) => allowed.has(String(a?.suffix || "").trim().toLowerCase()));
 }
 
 function getEditManagedSuffixesFromContainer() {
   if (editManagedPicker) return editManagedPicker.getSelectedArray();
   return Array.from(editManagedSuffixes).filter(Boolean).sort();
+}
+
+async function saveEditManagedAgenciesAuto() {
+  if (!selectedUser || editManagedSaveInflight) return;
+  if (!showsEditManagedAgenciesPicker(permissionsSelect?.value)) return;
+
+  const home = editManagedHomeSuffix || getHomeSuffixForUser(selectedUser);
+  const additional = getEditManagedSuffixesFromContainer();
+  if (!home) {
+    setMsgEl(actionMsg, "Cannot save managed agencies: user has no home agency.", false);
+    return;
+  }
+  if (additional.length < 1) {
+    setMsgEl(actionMsg, "Select at least one additional agency beyond the user's home agency.", false);
+    return;
+  }
+
+  const suffixes = getEditManagedSuffixesForSave();
+  editManagedSaveInflight = true;
+  setMsgEl(actionMsg, "Saving managed agencies...", true);
+  try {
+    const r = await fetch(
+      "/api/access-control/managed-agencies/" + encodeURIComponent(selectedUser.pk),
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ managedAgencySuffixes: suffixes }),
+      }
+    );
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(out.error || "Failed to save managed agencies.");
+
+    const managed = Array.isArray(out.managedAgencySuffixes) ? out.managedAgencySuffixes : suffixes;
+    editManagedSuffixes = new Set(
+      ManagedAgenciesPicker.stripHomeFromManaged(managed, home)
+    );
+    if (editManagedPicker) editManagedPicker.setSelected(editManagedSuffixes);
+    if (permissionsSelect) {
+      permissionsSelect.value = permissionsUiFromManagedCount(true, managed.length);
+    }
+    setMsgEl(actionMsg, "Managed agencies saved.", true);
+  } catch (err) {
+    setMsgEl(actionMsg, err?.message || "Failed to save managed agencies.", false);
+  } finally {
+    editManagedSaveInflight = false;
+  }
+}
+
+function scheduleEditManagedSave() {
+  clearTimeout(editManagedSaveTimer);
+  editManagedSaveTimer = setTimeout(saveEditManagedAgenciesAuto, 450);
 }
 
 function updateEditManagedAgenciesVisibility() {
@@ -1295,7 +1391,7 @@ function updateEditManagedAgenciesVisibility() {
 function getEditManagedSuffixesArray() {
   const perm = String(permissionsSelect?.value || "user").trim().toLowerCase();
   if (showsEditManagedAgenciesPicker(perm)) {
-    return getEditManagedSuffixesFromContainer();
+    return getEditManagedSuffixesForSave();
   }
   return Array.from(editManagedSuffixes);
 }
@@ -2472,7 +2568,9 @@ window.editUser = async (userPk) => {
     if (permissionsSelect) {
       const hasAdmin = userHasAnyAgencyAdminGroup(selectedUser);
       if (permissionsSelect.value !== "global_admin") {
-        const managedCount = hasAdmin ? Math.max(editManagedSuffixes.size, 1) : 0;
+        const managedCount = hasAdmin
+          ? Math.max(getEditManagedSuffixesForSave().length, 1)
+          : 0;
         permissionsSelect.value = permissionsUiFromManagedCount(hasAdmin, managedCount);
       }
       const abbrOk = !!String(getUserAgencyAbbreviation(selectedUser) || "").trim();
@@ -2521,7 +2619,10 @@ window.editUser = async (userPk) => {
       ensureAgencyAdminGroupIdIndex(),
     ]);
     const managed = await resolveManagedSuffixesForUser(merged);
-    editManagedSuffixes = new Set(managed);
+    editManagedHomeSuffix = getHomeSuffixForUser(merged);
+    editManagedSuffixes = new Set(
+      ManagedAgenciesPicker.stripHomeFromManaged(managed, editManagedHomeSuffix)
+    );
   } catch (e) {
     console.warn("editUser: failed to refresh user or resolve admin groups", e);
   }
@@ -2630,10 +2731,17 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
 
   let managedSuffixes = getEditManagedSuffixesArray();
   if (desiredUi === "multi_agency_admin") {
-    if (managedSuffixes.length < 2) {
-      setMsgEl(actionMsg, "Multi-Agency Admin requires at least two managed agencies.", false);
+    const home = editManagedHomeSuffix || getHomeSuffixForUser(selectedUser);
+    const additional = getEditManagedSuffixesFromContainer();
+    if (!home) {
+      setMsgEl(actionMsg, "Cannot set Multi-Agency Admin: user has no home agency.", false);
       return { ok: false };
     }
+    if (additional.length < 1) {
+      setMsgEl(actionMsg, "Multi-Agency Admin requires at least one additional agency beyond the user's home agency.", false);
+      return { ok: false };
+    }
+    managedSuffixes = ManagedAgenciesPicker.mergeWithHome(additional, home);
   } else if (desired === "agency_admin") {
     if (!managedSuffixes.length) {
       const home = getHomeSuffixForUser(selectedUser);
@@ -2673,11 +2781,15 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
     }
 
     if (Array.isArray(out.managedAgencySuffixes)) {
+      const home = editManagedHomeSuffix || getHomeSuffixForUser(selectedUser);
       editManagedSuffixes = new Set(
-        out.managedAgencySuffixes.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean)
+        ManagedAgenciesPicker.stripHomeFromManaged(out.managedAgencySuffixes, home)
       );
     } else if (desired === "agency_admin") {
-      editManagedSuffixes = new Set(managedSuffixes);
+      const home = editManagedHomeSuffix || getHomeSuffixForUser(selectedUser);
+      editManagedSuffixes = new Set(
+        ManagedAgenciesPicker.stripHomeFromManaged(managedSuffixes, home)
+      );
     } else {
       editManagedSuffixes = new Set();
     }
