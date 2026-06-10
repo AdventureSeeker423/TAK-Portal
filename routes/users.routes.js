@@ -119,6 +119,299 @@ async function getGlobalAdminGroupPks() {
   return pks.slice();
 }
 
+function resolveAgencyRecordBySuffix(suffix, agencies) {
+  const normalized = String(suffix || "").trim().toLowerCase();
+  if (!normalized) return null;
+  return (
+    (Array.isArray(agencies) ? agencies : []).find(
+      (a) => String(a?.suffix || "").trim().toLowerCase() === normalized
+    ) || null
+  );
+}
+
+function buildAgencySearchConfig(suffix, agency) {
+  if (!agency) return null;
+  const agencyName = String(agency.name || "").trim();
+  if (!agencyName) return null;
+  return {
+    suffix: String(suffix || "").trim().toLowerCase(),
+    name: agencyName,
+    abbreviation: String(agency.groupPrefix || "").trim(),
+  };
+}
+
+function normalizeQForAgencyDelegatedSearch(qVal, cfg) {
+  const qLower = String(qVal || "").trim().toLowerCase();
+  const tokens = [
+    String(cfg?.suffix || "").trim().toLowerCase(),
+    String(cfg?.abbreviation || "").trim().toLowerCase(),
+    String(cfg?.name || "").trim().toLowerCase(),
+  ].filter(Boolean);
+  return qLower && tokens.includes(qLower) ? "" : qVal;
+}
+
+function userIsGlobalAdminUser(user, globalAdminSet) {
+  const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
+  return groups.some((gid) => globalAdminSet.has(gid));
+}
+
+async function loadGroupNameByPkForRoleSort(sortKey) {
+  if (sortKey !== "role") return new Map();
+  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  return new Map(
+    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+      String(g.pk),
+      String(g.name || "").toLowerCase(),
+    ])
+  );
+}
+
+function createUserSortHelpers(sortKey, sortDir, groupNameByPk, globalAdminSet) {
+  function getAgencyAbbr(user) {
+    const attrs = user?.attributes || {};
+    const raw =
+      attrs.agency_abbreviation ||
+      attrs.agencyAbbreviation ||
+      attrs.agencyAbbr ||
+      attrs.agencyabbr ||
+      "";
+    return String(raw || "").trim().toLowerCase();
+  }
+
+  function computeRole(user) {
+    const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
+    if (groups.some((g) => globalAdminSet.has(g))) return "0-global";
+    for (const gid of groups) {
+      const name = groupNameByPk.get(gid);
+      if (name && name.endsWith("-agencyadmin")) return "1-agency";
+    }
+    return "2-user";
+  }
+
+  function getSortValue(user) {
+    if (!user) return "";
+    if (sortKey === "username") return String(user.username || "").toLowerCase();
+    if (sortKey === "agency") return getAgencyAbbr(user);
+    if (sortKey === "name") return String(user.name || "").toLowerCase();
+    if (sortKey === "email") return String(user.email || "").toLowerCase();
+    if (sortKey === "status") return user.is_active ? "enabled" : "disabled";
+    if (sortKey === "role") {
+      return computeRole(user) + "-" + String(user.name || "").toLowerCase();
+    }
+    return String(user.name || "").toLowerCase();
+  }
+
+  function compareUsers(a, b) {
+    const av = getSortValue(a);
+    const bv = getSortValue(b);
+    let cmp = String(av).localeCompare(String(bv), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    if (cmp === 0 && sortKey === "agency") {
+      cmp = String(a?.name || "")
+        .toLowerCase()
+        .localeCompare(String(b?.name || "").toLowerCase(), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+    }
+    return sortDir === "desc" ? -cmp : cmp;
+  }
+
+  return { compareUsers };
+}
+
+/**
+ * Multi-agency admin fast path: merge Authentik attribute-filtered pages per
+ * managed agency (same as single-agency delegated search, combined).
+ */
+async function delegatedMultiAgencyUsersSearch({
+  allowedSuffixes,
+  qVal,
+  requestedPage,
+  pageSize,
+  sortKey,
+  sortDir,
+  requestedCurrentTemplate,
+  requestedTemplateAgencySuffix,
+  globalAdminGroupPks,
+  globalAdminSet,
+}) {
+  const agencies = agenciesSvc.load();
+  let configs = (Array.isArray(allowedSuffixes) ? allowedSuffixes : [])
+    .map((sfx) =>
+      buildAgencySearchConfig(sfx, resolveAgencyRecordBySuffix(sfx, agencies))
+    )
+    .filter(Boolean);
+
+  if (requestedTemplateAgencySuffix) {
+    const wanted = String(requestedTemplateAgencySuffix).trim().toLowerCase();
+    configs = configs.filter((c) => c.suffix === wanted);
+  }
+
+  if (!configs.length) {
+    throw new Error("No managed agencies available for delegated search");
+  }
+
+  const searchBase = {
+    sortKey,
+    sortDir,
+    includeRoles: false,
+    currentTemplate: requestedCurrentTemplate,
+  };
+
+  const totalEntries = await Promise.all(
+    configs.map(async (cfg) => {
+      const qForAuthentik = normalizeQForAgencyDelegatedSearch(qVal, cfg);
+      const totalAgencyRes = await users.searchUsersByAgencyNamePaged({
+        agencyName: cfg.name,
+        q: qForAuthentik,
+        page: 1,
+        pageSize: 1,
+        includeGroups: false,
+        ...searchBase,
+      });
+      let total = Number(totalAgencyRes?.total || 0);
+      if (globalAdminGroupPks.length && total > 0) {
+        const globalRes = await users.searchUsersByAgencyNamePaged({
+          agencyName: cfg.name,
+          q: qForAuthentik,
+          page: 1,
+          pageSize: 1,
+          groupsByPk: globalAdminGroupPks,
+          includeGroups: false,
+          ...searchBase,
+        });
+        total = Math.max(0, total - Number(globalRes?.total || 0));
+      }
+      return total;
+    })
+  );
+
+  const totalVisible = totalEntries.reduce((sum, n) => sum + n, 0);
+  if (totalVisible === 0) {
+    throw new Error("Delegated multi-agency filter returned no results");
+  }
+
+  const groupNameByPk = await loadGroupNameByPkForRoleSort(sortKey);
+  const { compareUsers } = createUserSortHelpers(
+    sortKey,
+    sortDir,
+    groupNameByPk,
+    globalAdminSet
+  );
+
+  const currentPageRequested = requestedPage < 1 ? 1 : requestedPage;
+  const totalPages = Math.max(1, Math.ceil(totalVisible / pageSize));
+  const page = Math.min(currentPageRequested, totalPages);
+  const startFiltered = (page - 1) * pageSize;
+  const endFilteredExclusive = startFiltered + pageSize;
+
+  const cursors = configs.map((cfg) => ({
+    cfg,
+    qForAuthentik: normalizeQForAgencyDelegatedSearch(qVal, cfg),
+    page: 1,
+    rows: [],
+    idx: 0,
+    done: false,
+    loading: null,
+  }));
+
+  async function loadNextBatch(cursor) {
+    if (cursor.done) return;
+    if (cursor.loading) {
+      await cursor.loading;
+      return;
+    }
+    cursor.loading = (async () => {
+      while (!cursor.done) {
+        const res = await users.searchUsersByAgencyNamePaged({
+          agencyName: cursor.cfg.name,
+          q: cursor.qForAuthentik,
+          page: cursor.page,
+          pageSize: Math.max(pageSize, 50),
+          includeGroups: true,
+          ...searchBase,
+        });
+        cursor.page += 1;
+        const batch = (Array.isArray(res?.users) ? res.users : []).filter(
+          (u) => !userIsGlobalAdminUser(u, globalAdminSet)
+        );
+        if (batch.length) {
+          cursor.rows = batch;
+          cursor.idx = 0;
+          return;
+        }
+        if (!res?.hasNext) {
+          cursor.done = true;
+          return;
+        }
+      }
+    })();
+    try {
+      await cursor.loading;
+    } finally {
+      cursor.loading = null;
+    }
+  }
+
+  async function peekCursor(cursor) {
+    if (cursor.idx >= cursor.rows.length && !cursor.done) {
+      await loadNextBatch(cursor);
+    }
+    if (cursor.idx >= cursor.rows.length) return null;
+    return cursor.rows[cursor.idx];
+  }
+
+  async function takeCursor(cursor) {
+    const user = await peekCursor(cursor);
+    if (!user) return null;
+    cursor.idx += 1;
+    return user;
+  }
+
+  let filteredIndex = 0;
+  const returned = [];
+  const seenPk = new Set();
+
+  while (filteredIndex < endFilteredExclusive) {
+    let bestCursor = null;
+    let bestUser = null;
+
+    for (const cursor of cursors) {
+      const candidate = await peekCursor(cursor);
+      if (!candidate) continue;
+      if (!bestUser || compareUsers(candidate, bestUser) < 0) {
+        bestUser = candidate;
+        bestCursor = cursor;
+      }
+    }
+
+    if (!bestCursor || !bestUser) break;
+
+    const picked = await takeCursor(bestCursor);
+    if (!picked) break;
+    const pk = String(picked?.pk ?? picked?.id ?? picked?.username ?? "");
+    if (pk && seenPk.has(pk)) continue;
+    if (pk) seenPk.add(pk);
+
+    if (filteredIndex >= startFiltered && filteredIndex < endFilteredExclusive) {
+      returned.push(picked);
+    }
+    filteredIndex += 1;
+  }
+
+  return {
+    users: returned,
+    total: totalVisible,
+    page,
+    pageSize,
+    hasNext: page < totalPages,
+    hasPrev: page > 1,
+  };
+}
+
 // -------------------- CSV import progress (in-memory) --------------------
 // Lightweight job store for progress reporting.
 // Polling this does NOT tax the system (just reads memory).
@@ -713,13 +1006,11 @@ router.get("/import-csv/status/:jobId", (req, res) => {
  * FIXED: /search
  *
  * - Global admins: unchanged (still use users.searchUsersPaged -> Authentik pagination).
- * - Non-global (agency) admins: deterministic in-memory paging over the
- *   fully filtered set using users.findUsers + accessSvc.isUserInAllowedAgencies.
- *
- * This ensures:
- *   - total is exact for what the agency admin can see
- *   - there are no blank pages beyond the last page with data
- *   - hasNext / hasPrev are accurate
+ * - Non-global agency admins with one managed agency: Authentik attribute
+ *   filter via `searchUsersByAgencyNamePaged` (attributes.agency_name).
+ * - Multi-agency admins: same attribute-filtered delegated path per managed
+ *   agency, merged server-side (no full `findUsers` scan unless fallback).
+ * - Legacy fallback: in-memory paging over findUsers + isUserInAllowedAgencies.
  */
 router.get("/search", async (req, res) => {
   try {
@@ -1044,6 +1335,42 @@ router.get("/search", async (req, res) => {
             hasNext: page < totalPages,
             hasPrev: page > 1,
           });
+        } catch (e) {
+          // Fall back to the legacy in-memory implementation below.
+        }
+      } else if (allowedSuffixes.length > 1) {
+        try {
+          if (
+            requestedTemplateAgencySuffix &&
+            !allowedSuffixes.includes(requestedTemplateAgencySuffix)
+          ) {
+            return res.json({
+              users: [],
+              total: 0,
+              page: 1,
+              pageSize,
+              hasNext: false,
+              hasPrev: false,
+            });
+          }
+
+          const globalAdminGroupPks = await getGlobalAdminGroupPks();
+          const globalAdminSet = new Set(globalAdminGroupPks.map(String));
+
+          const merged = await delegatedMultiAgencyUsersSearch({
+            allowedSuffixes,
+            qVal,
+            requestedPage,
+            pageSize,
+            sortKey,
+            sortDir,
+            requestedCurrentTemplate,
+            requestedTemplateAgencySuffix,
+            globalAdminGroupPks,
+            globalAdminSet,
+          });
+
+          return res.json(merged);
         } catch (e) {
           // Fall back to the legacy in-memory implementation below.
         }
