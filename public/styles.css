@@ -2012,6 +2012,11 @@ body.modal-open .sidebarToggle {
 .ma-multiselect.open .filter-menu {
   display: flex;
 }
+.ma-multiselect .filter-menu.ma-menu-floating {
+  position: fixed;
+  right: auto;
+  max-width: calc(100vw - 16px);
+}
 .ma-multiselect .filter-menu-inner {
   padding: 8px;
   overflow: hidden;

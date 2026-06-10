@@ -4037,6 +4037,10 @@ th.sortable:hover{
   width: auto;
   min-width: 180px;
   max-width: 280px;
+  overflow: visible;
+}
+.managedAgenciesBar:not([hidden]) {
+  overflow: visible;
 }
 .managedAgenciesBarToggle {
   width: 100%;
@@ -4078,6 +4082,7 @@ th.sortable:hover{
 .managedAgenciesBar .filter-menu {
   min-width: 280px;
 }
+/* filter-menu uses fixed positioning via managed-agencies-picker.js in modals */
 
 /* Edit user: block interaction until Authentik user + group data is loaded */
 .editUserModalLoading{

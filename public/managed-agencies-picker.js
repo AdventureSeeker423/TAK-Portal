@@ -61,9 +61,89 @@
   }
 
   /**
-   * Compact checkbox dropdown for managed-agency selection.
-   * @param {HTMLElement} root - element containing .ma-multiselect
+   * Floating menu positioning — keeps dropdown out of scrollable modal overflow.
    */
+  const MA_MENU_MAX_HEIGHT = 280;
+  const MA_MENU_Z_INDEX = 1200;
+
+  function clearFloatingMenu(dropdownEl) {
+    if (!dropdownEl) return;
+    const menuEl = dropdownEl.querySelector(".filter-menu");
+    if (menuEl) {
+      menuEl.classList.remove("ma-menu-floating");
+      menuEl.style.position = "";
+      menuEl.style.left = "";
+      menuEl.style.top = "";
+      menuEl.style.bottom = "";
+      menuEl.style.width = "";
+      menuEl.style.maxHeight = "";
+      menuEl.style.right = "";
+      menuEl.style.zIndex = "";
+    }
+    const handler = dropdownEl.__maFloatHandler;
+    if (handler) {
+      window.removeEventListener("scroll", handler, true);
+      window.removeEventListener("resize", handler);
+      dropdownEl.__maFloatHandler = null;
+    }
+  }
+
+  function positionFloatingMenu(dropdownEl) {
+    const menuEl = dropdownEl && dropdownEl.querySelector(".filter-menu");
+    const toggleEl =
+      dropdownEl &&
+      dropdownEl.querySelector(".ma-multiselect-toggle, .filter-toggle");
+    if (!menuEl || !toggleEl) return;
+
+    const rect = toggleEl.getBoundingClientRect();
+    const gap = 4;
+    const minWidth = 280;
+    const width = Math.max(rect.width, minWidth);
+    const spaceBelow = window.innerHeight - rect.bottom - gap;
+    const spaceAbove = rect.top - gap;
+    const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(
+      MA_MENU_MAX_HEIGHT,
+      Math.max(120, openUp ? spaceAbove : spaceBelow)
+    );
+
+    let left = rect.left;
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+
+    menuEl.classList.add("ma-menu-floating");
+    menuEl.style.position = "fixed";
+    menuEl.style.left = left + "px";
+    menuEl.style.width = width + "px";
+    menuEl.style.maxHeight = maxHeight + "px";
+    menuEl.style.zIndex = String(MA_MENU_Z_INDEX);
+    menuEl.style.right = "auto";
+
+    if (openUp) {
+      menuEl.style.top = "auto";
+      menuEl.style.bottom = window.innerHeight - rect.top + gap + "px";
+    } else {
+      menuEl.style.top = rect.bottom + gap + "px";
+      menuEl.style.bottom = "auto";
+    }
+  }
+
+  function bindFloatingMenuListeners(dropdownEl) {
+    clearFloatingMenu(dropdownEl);
+    const handler = function () {
+      if (dropdownEl.classList.contains("open")) positionFloatingMenu(dropdownEl);
+    };
+    dropdownEl.__maFloatHandler = handler;
+    window.addEventListener("scroll", handler, true);
+    window.addEventListener("resize", handler);
+  }
+
+  function closeAllMaMultiselects(except) {
+    document.querySelectorAll(".ma-multiselect.open").forEach(function (el) {
+      if (except && el === except) return;
+      el.classList.remove("open");
+      clearFloatingMenu(el);
+    });
+  }
   function bindManagedAgenciesPicker(root, opts) {
     opts = opts || {};
     const dropdown = root.querySelector(".ma-multiselect");
@@ -188,12 +268,18 @@
     }
 
     if (toggle && dropdown) {
+      const menu = dropdown.querySelector(".filter-menu");
+      if (menu) menu.addEventListener("click", function (e) { e.stopPropagation(); });
+
       toggle.addEventListener("click", function (e) {
         e.stopPropagation();
-        document.querySelectorAll(".ma-multiselect.open").forEach(function (el) {
-          if (el !== dropdown) el.classList.remove("open");
-        });
-        dropdown.classList.toggle("open");
+        const willOpen = !dropdown.classList.contains("open");
+        closeAllMaMultiselects();
+        if (willOpen) {
+          dropdown.classList.add("open");
+          positionFloatingMenu(dropdown);
+          bindFloatingMenuListeners(dropdown);
+        }
       });
     }
 
@@ -237,9 +323,6 @@
       });
     }
 
-    const menu = dropdown ? dropdown.querySelector(".filter-menu") : null;
-    if (menu) menu.addEventListener("click", function (e) { e.stopPropagation(); });
-
     return {
       setAgencies: function (arr) {
         agencies = Array.isArray(arr) ? arr : [];
@@ -256,9 +339,7 @@
   if (!global.__maMultiselectDocClick) {
     global.__maMultiselectDocClick = true;
     document.addEventListener("click", function () {
-      document.querySelectorAll(".ma-multiselect.open").forEach(function (el) {
-        el.classList.remove("open");
-      });
+      closeAllMaMultiselects();
     });
   }
 
