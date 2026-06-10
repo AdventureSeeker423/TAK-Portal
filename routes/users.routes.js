@@ -1216,7 +1216,9 @@ router.get("/search", async (req, res) => {
           // In that case, fall back to the legacy in-memory paging for correctness.
           // Only run the extra check when the attribute-filtered total is
           // suspiciously small for the requested page size.
-          if (!qVal && totalAgencyAll <= pageSize) {
+          // Skip when a specific agency is selected — totalApprox across all
+          // managed agencies would always exceed a single-agency slice.
+          if (!qVal && totalAgencyAll <= pageSize && !requestedAgencySuffix) {
             // Validate against full user visibility (Authentik attributes, then username tail).
             const allMatching = await users.findUsers({ q: "", forceRefresh: false });
             const visibleApprox = (Array.isArray(allMatching) ? allMatching : []).filter(
@@ -1541,6 +1543,22 @@ router.get("/search", async (req, res) => {
     let visible = allMatching.filter((u) =>
       accessSvc.isUserInAllowedAgencies(authUser, u)
     );
+
+    if (requestedGlobalAgencySuffix) {
+      const agencies = require("../services/agencies.service").load();
+      const agencyForSuffix = (Array.isArray(agencies) ? agencies : []).find(
+        (a) =>
+          String(a?.suffix || "")
+            .trim()
+            .toLowerCase() === String(requestedGlobalAgencySuffix).trim().toLowerCase()
+      );
+      const agencyAbbreviationToMatch = agencyForSuffix
+        ? String(agencyForSuffix.groupPrefix || "").trim().toLowerCase()
+        : "";
+      visible = agencyAbbreviationToMatch
+        ? visible.filter((u) => getAgencyAbbr(u) === agencyAbbreviationToMatch)
+        : [];
+    }
 
     if (requestedTemplateAgencySuffix) {
       visible = visible.filter(

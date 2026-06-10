@@ -2947,6 +2947,7 @@ q.addEventListener("keydown", (e) => {
 
 if (filterAgencySelect) {
   filterAgencySelect.addEventListener("change", () => {
+    if (filterTemplateSelect) filterTemplateSelect.value = "";
     renderTemplateFilterOptions();
     applyFilterSortRender();
   });
@@ -3403,7 +3404,7 @@ if (applyChangesBtn) applyChangesBtn.addEventListener("click", async () => {
 
   // Multi-agency admin or global admin: optional agency filter via dropdown.
   if (filterAgencySelect) {
-    const sel = String(filterAgencySelect.value || "").trim();
+    const sel = String(filterAgencySelect.value || "").trim().toLowerCase();
     if (sel) params.set("agencySuffix", sel);
   }
 
