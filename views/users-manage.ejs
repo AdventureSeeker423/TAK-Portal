@@ -420,7 +420,7 @@
             </button>
           </div>
 
-          <div id="editManagedAgenciesWrap" class="managedAgenciesBar" hidden>
+          <div id="editManagedAgenciesWrap" class="templateBar managedAgenciesBar" hidden>
             <span class="templateBarLabel">Managed Agencies</span>
 
             <div id="editManagedAgenciesPickerRoot" class="managedAgenciesBarPicker">
@@ -3891,33 +3891,14 @@ th.sortable:hover{
   margin-top: 4px;
 }
 
-/* Edit modal: managed agencies bar matches templateBar above */
+/* Edit modal: managed agencies inline in templateBar row */
 .managedAgenciesBar[hidden] {
   display: none !important;
 }
-.managedAgenciesBar:not([hidden]) {
-  margin-top: 8px;
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.03);
-}
-.managedAgenciesBar > .templateBarLabel {
-  flex: 0 0 auto;
-  margin-right: 0;
-  white-space: nowrap;
-}
 .managedAgenciesBarPicker {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1 1 auto;
-  min-width: 0;
+  display: contents;
 }
-.managedAgenciesBarPicker .ma-multiselect.filter-multiselect {
+.managedAgenciesBar .ma-multiselect.filter-multiselect {
   flex: 0 0 auto;
   width: auto;
   min-width: 180px;
@@ -4076,24 +4057,15 @@ th.sortable:hover{
     margin-left: 0;
     width: 100%;
   }
-  .managedAgenciesBar:not([hidden]){
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: center;
-    gap: 8px;
-    padding: 10px;
-  }
-  .managedAgenciesBarPicker{
-    grid-column: 2;
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .managedAgenciesBarPicker .ma-multiselect.filter-multiselect{
+  .managedAgenciesBar .ma-multiselect.filter-multiselect{
     max-width: none;
     width: 100%;
+    grid-column: 2;
   }
   .managedAgenciesBarSummary{
+    grid-column: 1 / -1;
     white-space: normal;
+    margin-left: 0;
   }
   .editGroupFilterInputWrap{
     flex: 1 1 100%;
