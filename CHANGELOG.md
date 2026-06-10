@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.35 - 6/9/26
+🎉 `New Feature` - Introduction of a new access level "Multi-Agency Admin." This is designed for users that may need access to manage multiple agencies, without the need for full, global admin access.
+
 ### v1.3.34 - 6/9/26
 ✨ `Enhancement` - Request access page now checks for existing users and existing access requests before submitting a new one<br>
 ✨ `Enhancement` - Request access page will automatically remove an agency suffix if one is found on the badge number<br>
