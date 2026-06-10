@@ -864,6 +864,58 @@ function parseGroupName(fullName) {
   return { type, agencyPrefix, county, state, baseName, behavior };
 }
 
+function normalizeCreatedType(raw) {
+  return String(raw || "").trim().toLowerCase();
+}
+
+/** Scope bucket for Existing Groups filters (agency / county / state / global). */
+function getPortalGroupScope(g) {
+  const parsed = parseGroupName(g?.name || "");
+  const createdType = normalizeCreatedType(g?.attributes?.created_type);
+
+  // Name patterns win for scoped types (fixes legacy groups mis-tagged as Global).
+  if (parsed.type === "agency" || parsed.type === "county" || parsed.type === "state") {
+    return parsed.type;
+  }
+
+  if (createdType === "agency" || createdType === "county" || createdType === "state") {
+    return createdType;
+  }
+  if (createdType === "global") return "global";
+
+  return "global";
+}
+
+function getPortalGroupStateDetail(g) {
+  const parsed = parseGroupName(g?.name || "");
+  if (parsed.type === "state" && parsed.state) {
+    return String(parsed.state).trim().toUpperCase();
+  }
+  if (normalizeCreatedType(g?.attributes?.created_type) === "state") {
+    return String(g?.attributes?.created_type_detail || "").trim().toUpperCase();
+  }
+  return "";
+}
+
+function getPortalGroupCountyDetail(g) {
+  const parsed = parseGroupName(g?.name || "");
+  if (parsed.type === "county" && parsed.county) {
+    return String(parsed.county).trim();
+  }
+  if (normalizeCreatedType(g?.attributes?.created_type) === "county") {
+    return String(g?.attributes?.created_type_detail || "").trim();
+  }
+  return "";
+}
+
+function getPortalGroupAgencyPrefixDetail(g) {
+  const parsed = parseGroupName(g?.name || "");
+  if (parsed.type === "agency" && parsed.agencyPrefix) {
+    return String(parsed.agencyPrefix).trim().toUpperCase();
+  }
+  return "";
+}
+
 // Build a full group name from broken-out fields
 function buildGroupNameFromParts({ type, baseName, behavior, prefix, county, state }) {
   let name = String(baseName || "").trim();
@@ -1002,41 +1054,28 @@ function renderGroups(){
     const detail = String(groupScopeDetailSelect.value || "").trim();
 
     if (scope !== "all") {
-      const getPortalGroupScope = (g) => {
-        const createdType = String(g?.attributes?.created_type || "").trim().toLowerCase();
-        if (createdType === "global") return "global";
-        if (createdType === "state") return "state";
-        if (createdType === "county") return "county";
-        if (createdType === "agency") return "agency";
-
-        // Fallback: infer from group name patterns.
-        const parsed = parseGroupName(g?.name || "");
-        if (parsed.type === "generic") return "global";
-        if (parsed.type === "state") return "state";
-        if (parsed.type === "county") return "county";
-        if (parsed.type === "agency") return "agency";
-        return "global";
-      };
-
       if (scope === "global") {
         filteredRaw = filteredRaw.filter(g => getPortalGroupScope(g) === "global");
       } else if (scope === "state") {
         filteredRaw = filteredRaw.filter(g => {
-          if (!detail) return getPortalGroupScope(g) === "state";
-          const parsed = parseGroupName(g?.name || "");
-          return parsed.type === "state" && parsed.state === detail;
+          if (getPortalGroupScope(g) !== "state") return false;
+          if (!detail) return true;
+          return getPortalGroupStateDetail(g) === String(detail).trim().toUpperCase();
         });
       } else if (scope === "county") {
         filteredRaw = filteredRaw.filter(g => {
-          if (!detail) return getPortalGroupScope(g) === "county";
-          const parsed = parseGroupName(g?.name || "");
-          return parsed.type === "county" && parsed.county === detail;
+          if (getPortalGroupScope(g) !== "county") return false;
+          if (!detail) return true;
+          return (
+            getPortalGroupCountyDetail(g).toUpperCase() ===
+            String(detail).trim().toUpperCase()
+          );
         });
       } else if (scope === "agency") {
         filteredRaw = filteredRaw.filter(g => {
-          if (!detail) return getPortalGroupScope(g) === "agency";
-          const parsed = parseGroupName(g?.name || "");
-          return parsed.type === "agency" && parsed.agencyPrefix === detail;
+          if (getPortalGroupScope(g) !== "agency") return false;
+          if (!detail) return true;
+          return getPortalGroupAgencyPrefixDetail(g) === String(detail).trim().toUpperCase();
         });
       }
     }

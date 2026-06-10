@@ -270,7 +270,10 @@ router.post("/", async (req, res) => {
 
     const rawGroupType = String(req.body?.groupType || "").trim();
     const groupType =
-      rawGroupType === "Agency" || rawGroupType === "County" || rawGroupType === "Global"
+      rawGroupType === "Agency" ||
+      rawGroupType === "County" ||
+      rawGroupType === "State" ||
+      rawGroupType === "Global"
         ? rawGroupType
         : "Global";
 
