@@ -423,22 +423,21 @@
           <div id="editManagedAgenciesWrap" class="templateBar managedAgenciesBar" hidden>
             <span class="templateBarLabel">Managed Agencies</span>
 
-            <div id="editManagedAgenciesPickerRoot" class="managedAgenciesBarPicker">
-              <div class="ma-multiselect filter-multiselect">
-                <button type="button" class="managedAgenciesBarToggle ma-multiselect-toggle">Select agencies ▾</button>
-                <div class="filter-menu">
-                  <div class="filter-menu-inner">
-                    <input type="text" class="ma-multiselect-search" placeholder="Search agencies…" autocomplete="off" />
-                    <div class="ma-multiselect-list"></div>
-                    <div class="ma-multiselect-actions">
-                      <button type="button" class="btn link-btn ma-multiselect-select-all">Select all</button>
-                      <button type="button" class="btn link-btn ma-multiselect-clear">Clear</button>
-                    </div>
+            <div class="ma-multiselect filter-multiselect">
+              <button type="button" class="managedAgenciesBarToggle ma-multiselect-toggle">Select agencies ▾</button>
+              <div class="filter-menu">
+                <div class="filter-menu-inner">
+                  <input type="text" class="ma-multiselect-search" placeholder="Search agencies…" autocomplete="off" />
+                  <div class="ma-multiselect-list"></div>
+                  <div class="ma-multiselect-actions">
+                    <button type="button" class="btn link-btn ma-multiselect-select-all">Select all</button>
+                    <button type="button" class="btn link-btn ma-multiselect-clear">Clear</button>
                   </div>
                 </div>
               </div>
-              <div class="ma-multiselect-summary managedAgenciesBarSummary muted" title="Select at least two agencies"></div>
             </div>
+
+            <div class="ma-multiselect-summary managedAgenciesBarSummary muted" title="Select at least two agencies"></div>
           </div>
         </div>
       </div><!-- /grid2 -->
@@ -1232,13 +1231,12 @@ const roleSelect = document.getElementById("roleSelect");
 // Permissions controls
 const permissionsSelect = document.getElementById("permissionsSelect");
 const editManagedAgenciesWrap = document.getElementById("editManagedAgenciesWrap");
-const editManagedAgenciesPickerRoot = document.getElementById("editManagedAgenciesPickerRoot");
 let editManagedSuffixes = new Set();
 let editManagedPicker = null;
 
 function initEditManagedPicker() {
-  if (!editManagedAgenciesPickerRoot || !window.ManagedAgenciesPicker || editManagedPicker) return;
-  editManagedPicker = ManagedAgenciesPicker.bind(editManagedAgenciesPickerRoot, {
+  if (!editManagedAgenciesWrap || !window.ManagedAgenciesPicker || editManagedPicker) return;
+  editManagedPicker = ManagedAgenciesPicker.bind(editManagedAgenciesWrap, {
     inputName: "editManagedAgencySuffix",
     getAgencies: agenciesForManagedPickerEdit,
     onChange: function (set) { editManagedSuffixes = set; },
@@ -1286,7 +1284,7 @@ function updateEditManagedAgenciesVisibility() {
   const show = showsEditManagedAgenciesPicker(perm);
   if (editManagedAgenciesWrap) {
     editManagedAgenciesWrap.hidden = !show;
-    editManagedAgenciesWrap.style.display = show ? "block" : "none";
+    editManagedAgenciesWrap.style.removeProperty("display");
   }
   if (show) {
     initEditManagedPicker();
@@ -3895,11 +3893,18 @@ th.sortable:hover{
 .managedAgenciesBar[hidden] {
   display: none !important;
 }
-.managedAgenciesBarPicker {
-  display: contents;
+.managedAgenciesBar:not([hidden]) {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.managedAgenciesBar > .templateBarLabel {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .managedAgenciesBar .ma-multiselect.filter-multiselect {
   flex: 0 0 auto;
+  display: block;
   width: auto;
   min-width: 180px;
   max-width: 280px;
@@ -4057,13 +4062,18 @@ th.sortable:hover{
     margin-left: 0;
     width: 100%;
   }
+  .managedAgenciesBar:not([hidden]){
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
   .managedAgenciesBar .ma-multiselect.filter-multiselect{
     max-width: none;
     width: 100%;
-    grid-column: 2;
+    flex: 1 1 180px;
   }
   .managedAgenciesBarSummary{
-    grid-column: 1 / -1;
+    flex: 1 1 100%;
     white-space: normal;
     margin-left: 0;
   }
