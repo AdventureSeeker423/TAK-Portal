@@ -3,6 +3,7 @@ const api = require("./authentik");
 const usersService = require("./users.service");
 const templatesStore = require("./templates.service");
 const accessSvc = require("./access.service");
+const agenciesStore = require("./agencies.service");
 
 // ---------------- Action-lock helpers ----------------
 // If a group name starts with any prefix in GROUPS_ACTIONS_HIDDEN_PREFIXES,
@@ -184,19 +185,348 @@ async function getAllGroupsRaw(options = {}) {
   // We read GROUPS_HIDDEN_PREFIXES via getString so settings.json and env both work.
   // Example: GROUPS_HIDDEN_PREFIXES=authentik-,internal-
   const includeHidden = !!options.includeHidden;
-  if (!includeHidden) {
-    const prefixes = String(getString("GROUPS_HIDDEN_PREFIXES", ""))
-      .split(",")
-      .map(p => String(p || "").trim().toLowerCase())
-      .filter(Boolean);
+  return applyGroupsHiddenPrefixFilter(groups, { includeHidden });
+}
 
-    groups = groups.filter(g => {
-      const name = String(g?.name || "").trim().toLowerCase();
-      return !prefixes.some(p => name.startsWith(p));
-    });
+function applyGroupsHiddenPrefixFilter(groups, { includeHidden = false } = {}) {
+  const list = Array.isArray(groups) ? groups : [];
+  if (includeHidden) return list;
+
+  const prefixes = String(getString("GROUPS_HIDDEN_PREFIXES", ""))
+    .split(",")
+    .map((p) => String(p || "").trim().toLowerCase())
+    .filter(Boolean);
+  if (!prefixes.length) return list;
+
+  return list.filter((g) => {
+    const name = String(g?.name || "").trim().toLowerCase();
+    return !prefixes.some((p) => name.startsWith(p));
+  });
+}
+
+async function searchGroupsRaw(searchTerm, { includeHidden = false } = {}) {
+  const term = String(searchTerm || "").trim();
+  if (!term) return [];
+
+  let groups = [];
+  const pageSize = 200;
+  let page = 1;
+  let url = `/core/groups/?page=${page}&page_size=${pageSize}&search=${encodeURIComponent(term)}`;
+
+  while (url) {
+    const res = await api.get(url);
+    const data = res?.data || {};
+    const results = Array.isArray(data.results) ? data.results : [];
+    groups = groups.concat(results);
+
+    const pagination = data.pagination || {};
+    if (pagination && pagination.next) {
+      page = pagination.next;
+      url = `/core/groups/?page=${page}&page_size=${pageSize}&search=${encodeURIComponent(term)}`;
+    } else if (data.next) {
+      url = data.next.replace(`${getString("AUTHENTIK_URL", "")}/api/v3`, "");
+    } else {
+      url = null;
+    }
   }
 
-  return groups;
+  return applyGroupsHiddenPrefixFilter(groups, { includeHidden });
+}
+
+async function getGroupsByPrefix(groupPrefix) {
+  const prefix = String(groupPrefix || "").trim().toUpperCase();
+  if (!prefix) return [];
+
+  const searchTerms = [`tak_${prefix}`, prefix];
+  const seen = new Set();
+  const matches = [];
+
+  for (const term of searchTerms) {
+    const batch = await searchGroupsRaw(term);
+    for (const g of batch) {
+      const pk = String(g?.pk ?? g?.id ?? "").trim();
+      if (!pk || seen.has(pk)) continue;
+      if (accessSvc.isGroupMarkedPrivate(g)) continue;
+      if (accessSvc.getGroupNamePrefixUpper(g) !== prefix) continue;
+      seen.add(pk);
+      matches.push(g);
+    }
+  }
+
+  return matches;
+}
+
+/**
+ * Agency / multi-agency admin fast path: prefix-scoped Authentik search per
+ * managed agency plus explicitly granted groups (allowedAdminGroupIds).
+ */
+async function getGroupsForAuthUser(authUser, { forceRefresh = false } = {}) {
+  const access = accessSvc.getAgencyAccess(authUser);
+  if (access.isGlobalAdmin) {
+    return getAllGroups({ forceRefresh });
+  }
+
+  const { agencyPrefixes } = accessSvc.getAgencyAndCountyPrefixesForUser(authUser);
+  const prefixes = Array.isArray(agencyPrefixes) ? agencyPrefixes : [];
+  if (!prefixes.length) return [];
+
+  const byPrefix = await Promise.all(prefixes.map((p) => getGroupsByPrefix(p)));
+  const merged = byPrefix.flat();
+
+  const havePks = new Set(
+    merged
+      .map((g) => String(g?.pk ?? g?.id ?? "").trim())
+      .filter(Boolean)
+  );
+
+  const extraIds = accessSvc.getAllowedAdminGroupIdsForUser(authUser);
+  if (extraIds && extraIds.size) {
+    const toFetch = [...extraIds].filter((id) => !havePks.has(id));
+    const extras = await Promise.all(
+      toFetch.map((id) => getGroupById(id).catch(() => null))
+    );
+    for (const g of extras) {
+      if (!g || accessSvc.isGroupMarkedPrivate(g)) continue;
+      const pk = String(g?.pk ?? g?.id ?? "").trim();
+      if (!pk || havePks.has(pk)) continue;
+      havePks.add(pk);
+      merged.push(g);
+    }
+  }
+
+  return accessSvc.filterGroupsForUser(authUser, merged);
+}
+
+function normalizeAgencyAbbreviations(agencyAbbreviations, agencyAbbreviation) {
+  const fromList = Array.isArray(agencyAbbreviations) ? agencyAbbreviations : [];
+  const fromSingle = agencyAbbreviation ? [agencyAbbreviation] : [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of [...fromList, ...fromSingle]) {
+    const abbr = String(raw || "").trim();
+    if (!abbr) continue;
+    const key = abbr.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(abbr);
+  }
+  return out;
+}
+
+function resolveAgencyAbbreviationsForAuthUser(authUser) {
+  const access = accessSvc.getAgencyAccess(authUser);
+  if (access.isGlobalAdmin) return [];
+
+  const allowed = access.allowedAgencySuffixes || [];
+  if (!allowed.length) return [];
+
+  const allowedSet = new Set(allowed.map(accessSvc.normalizeSuffix).filter(Boolean));
+  const agencies = agenciesStore.load();
+  const abbrs = [];
+  const seen = new Set();
+
+  for (const agency of agencies) {
+    const sfx = accessSvc.normalizeSuffix(agency?.suffix);
+    if (!sfx || !allowedSet.has(sfx)) continue;
+    const abbr = String(agency.groupPrefix || "").trim();
+    if (!abbr) continue;
+    const key = abbr.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    abbrs.push(abbr);
+  }
+
+  return abbrs;
+}
+
+function compareGroupMembersByName(a, b) {
+  const av = String(a?.name || a?.username || "").toLowerCase();
+  const bv = String(b?.name || b?.username || "").toLowerCase();
+  return av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function projectGroupMember(u) {
+  return {
+    pk: u.pk,
+    username: u.username,
+    name: u.name,
+    email: u.email,
+    is_active: u.is_active,
+    path: u.path,
+    attributes: u.attributes || {},
+  };
+}
+
+async function getGroupMembersMultiAgencyPaged(
+  groupId,
+  { authUser, agencyAbbreviations, page = 1, pageSize = 100 } = {}
+) {
+  const gid = normalizeId(groupId);
+  const abbrs = normalizeAgencyAbbreviations(agencyAbbreviations);
+  if (!gid || !abbrs.length) {
+    throw new Error("Group id and agency abbreviations are required");
+  }
+
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePageSize = Math.min(500, Math.max(1, Number(pageSize) || 100));
+
+  const totalEntries = await Promise.all(
+    abbrs.map((abbr) =>
+      getUsersByGroupIdPagedRaw({
+        groupId: gid,
+        agencyAbbreviation: abbr,
+        page: 1,
+        pageSize: 1,
+      })
+    )
+  );
+  const totalVisible = totalEntries.reduce(
+    (sum, r) => sum + Number(r?.total || 0),
+    0
+  );
+
+  if (totalVisible === 0) {
+    return {
+      users: [],
+      total: 0,
+      page: safePage,
+      pageSize: safePageSize,
+      hasNext: false,
+      hasPrev: false,
+    };
+  }
+
+  const totalPages = Math.max(1, Math.ceil(totalVisible / safePageSize));
+  const currentPage = Math.min(safePage, totalPages);
+  const startFiltered = (currentPage - 1) * safePageSize;
+  const endFilteredExclusive = startFiltered + safePageSize;
+
+  const cursors = abbrs.map((abbr) => ({
+    abbr,
+    page: 1,
+    rows: [],
+    idx: 0,
+    done: false,
+    loading: null,
+  }));
+
+  async function loadNextBatch(cursor) {
+    if (cursor.done) return;
+    if (cursor.loading) {
+      await cursor.loading;
+      return;
+    }
+    cursor.loading = (async () => {
+      while (!cursor.done) {
+        const res = await getUsersByGroupIdPagedRaw({
+          groupId: gid,
+          agencyAbbreviation: cursor.abbr,
+          page: cursor.page,
+          pageSize: Math.max(safePageSize, 50),
+        });
+        cursor.page += 1;
+        const batch = Array.isArray(res?.users) ? res.users : [];
+        if (batch.length) {
+          cursor.rows = batch;
+          cursor.idx = 0;
+          return;
+        }
+        if (!res?.hasNext) {
+          cursor.done = true;
+          return;
+        }
+      }
+    })();
+    await cursor.loading;
+    cursor.loading = null;
+  }
+
+  async function popNext(cursor) {
+    if (cursor.idx >= cursor.rows.length && !cursor.done) {
+      await loadNextBatch(cursor);
+    }
+    if (cursor.idx >= cursor.rows.length) return null;
+    return cursor.rows[cursor.idx++];
+  }
+
+  async function peekNext(cursor) {
+    if (cursor.idx >= cursor.rows.length && !cursor.done) {
+      await loadNextBatch(cursor);
+    }
+    if (cursor.idx >= cursor.rows.length) return null;
+    return cursor.rows[cursor.idx];
+  }
+
+  const pageUsers = [];
+  let filteredIndex = 0;
+  const seenPk = new Set();
+
+  while (filteredIndex < endFilteredExclusive) {
+    let bestCursor = null;
+    let bestUser = null;
+
+    for (const cursor of cursors) {
+      const candidate = await peekNext(cursor);
+      if (!candidate) continue;
+      if (!bestUser || compareGroupMembersByName(candidate, bestUser) < 0) {
+        bestUser = candidate;
+        bestCursor = cursor;
+      }
+    }
+
+    if (!bestCursor || !bestUser) break;
+
+    await popNext(bestCursor);
+    const pk = String(bestUser?.pk ?? bestUser?.id ?? "").trim();
+    if (pk && seenPk.has(pk)) continue;
+    if (pk) seenPk.add(pk);
+
+    if (!accessSvc.isUserInAllowedAgencies(authUser || null, bestUser)) continue;
+
+    if (filteredIndex >= startFiltered && filteredIndex < endFilteredExclusive) {
+      pageUsers.push(projectGroupMember(bestUser));
+    }
+    filteredIndex += 1;
+  }
+
+  return {
+    users: pageUsers,
+    total: totalVisible,
+    page: currentPage,
+    pageSize: safePageSize,
+    hasNext: currentPage < totalPages,
+    hasPrev: currentPage > 1,
+  };
+}
+
+async function getGroupMembersMultiAgencyAll(
+  groupId,
+  { authUser, agencyAbbreviations } = {}
+) {
+  const gid = normalizeId(groupId);
+  const abbrs = normalizeAgencyAbbreviations(agencyAbbreviations);
+  if (!gid || !abbrs.length) return [];
+
+  const batches = await Promise.all(
+    abbrs.map((abbr) =>
+      getUsersByGroupIdRaw({ groupId: gid, agencyAbbreviation: abbr })
+    )
+  );
+
+  const seenPk = new Set();
+  const merged = [];
+  for (const batch of batches) {
+    for (const u of Array.isArray(batch) ? batch : []) {
+      const pk = String(u?.pk ?? u?.id ?? "").trim();
+      if (!pk || seenPk.has(pk)) continue;
+      if (!accessSvc.isUserInAllowedAgencies(authUser || null, u)) continue;
+      seenPk.add(pk);
+      merged.push(u);
+    }
+  }
+
+  merged.sort(compareGroupMembersByName);
+  return merged.map(projectGroupMember);
 }
 
 async function getGroupById(groupId) {
@@ -902,15 +1232,20 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
 }
 
 // Fetch all members of a single group (lightweight projection)
-async function getGroupMembers(groupId, { authUser, agencyAbbreviation } = {}) {
+async function getGroupMembers(groupId, { authUser, agencyAbbreviation, agencyAbbreviations } = {}) {
   const gid = normalizeId(groupId);
   if (!gid) throw new Error("Group id is required");
+
+  const abbrs = normalizeAgencyAbbreviations(agencyAbbreviations, agencyAbbreviation);
+  if (abbrs.length > 1) {
+    return getGroupMembersMultiAgencyAll(gid, { authUser, agencyAbbreviations: abbrs });
+  }
 
   // Try the fast path: server-side filter by group membership
   // and (for agency admins) by agency_abbreviation.
   let members = await getUsersByGroupIdRaw({
     groupId: gid,
-    agencyAbbreviation,
+    agencyAbbreviation: abbrs[0] || null,
   });
 
   // Safety: for agency admins, ensure they don't see users outside of allowed agencies.
@@ -922,24 +1257,26 @@ async function getGroupMembers(groupId, { authUser, agencyAbbreviation } = {}) {
     );
   }
 
-  return members.map((u) => ({
-    pk: u.pk,
-    username: u.username,
-    name: u.name,
-    email: u.email,
-    is_active: u.is_active,
-    path: u.path,
-    attributes: u.attributes || {},
-  }));
+  return members.map(projectGroupMember);
 }
 
-async function getGroupMembersPaged(groupId, { authUser, agencyAbbreviation, page = 1, pageSize = 100 } = {}) {
+async function getGroupMembersPaged(groupId, { authUser, agencyAbbreviation, agencyAbbreviations, page = 1, pageSize = 100 } = {}) {
   const gid = normalizeId(groupId);
   if (!gid) throw new Error("Group id is required");
 
+  const abbrs = normalizeAgencyAbbreviations(agencyAbbreviations, agencyAbbreviation);
+  if (abbrs.length > 1) {
+    return getGroupMembersMultiAgencyPaged(gid, {
+      authUser,
+      agencyAbbreviations: abbrs,
+      page,
+      pageSize,
+    });
+  }
+
   const result = await getUsersByGroupIdPagedRaw({
     groupId: gid,
-    agencyAbbreviation,
+    agencyAbbreviation: abbrs[0] || null,
     page,
     pageSize,
   });
@@ -952,15 +1289,7 @@ async function getGroupMembersPaged(groupId, { authUser, agencyAbbreviation, pag
     );
   }
 
-  const projected = members.map((u) => ({
-    pk: u.pk,
-    username: u.username,
-    name: u.name,
-    email: u.email,
-    is_active: u.is_active,
-    path: u.path,
-    attributes: u.attributes || {},
-  }));
+  const projected = members.map(projectGroupMember);
 
   return {
     users: projected,
@@ -1239,15 +1568,20 @@ function buildGroupsExportCsv(rows) {
 /**
  * Collect member lists for export (sequential Authentik calls per group).
  */
-async function collectGroupsExportRows(groups, { authUser, agencyAbbreviation } = {}) {
+async function collectGroupsExportRows(groups, { authUser, agencyAbbreviation, agencyAbbreviations } = {}) {
   const out = [];
   const list = Array.isArray(groups) ? groups : [];
+  const abbrs = normalizeAgencyAbbreviations(agencyAbbreviations, agencyAbbreviation);
+  const memberOpts =
+    abbrs.length > 1
+      ? { authUser, agencyAbbreviations: abbrs }
+      : { authUser, agencyAbbreviation: abbrs[0] || agencyAbbreviation || null };
 
   for (const group of list) {
     const gid = normalizeId(group?.pk ?? group?.id);
     if (!gid) continue;
 
-    const members = await getGroupMembers(gid, { authUser, agencyAbbreviation });
+    const members = await getGroupMembers(gid, memberOpts);
     out.push({ group, members });
   }
 
@@ -1256,6 +1590,8 @@ async function collectGroupsExportRows(groups, { authUser, agencyAbbreviation } 
 
 module.exports = {
   getAllGroups,
+  getGroupsForAuthUser,
+  resolveAgencyAbbreviationsForAuthUser,
   getGroupById,
   createGroup,
   deleteGroup,
