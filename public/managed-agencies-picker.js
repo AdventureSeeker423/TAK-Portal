@@ -166,7 +166,8 @@
       if (typeof opts.onChange === "function") opts.onChange(selected);
     }
 
-    function setSelected(next) {
+    function setSelected(next, setOpts) {
+      setOpts = setOpts || {};
       const home = resolveHomeSuffix(opts);
       selected = new Set(
         (next instanceof Set ? Array.from(next) : Array.isArray(next) ? next : [])
@@ -175,7 +176,7 @@
           .filter((s) => !home || s !== home)
       );
       renderList();
-      notifyChange();
+      if (!setOpts.silent) notifyChange();
     }
 
     function getSelectedArray() {

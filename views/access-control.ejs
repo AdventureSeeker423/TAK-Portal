@@ -288,6 +288,15 @@
   let acManagedPicker = null;
   let acManagedSaveTimer = null;
   let acManagedSaveInflight = false;
+  let acManagedLastSavedKey = "";
+
+  function managedSuffixesKey(suffixes) {
+    return (Array.isArray(suffixes) ? suffixes : [])
+      .map((s) => String(s || "").trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join("|");
+  }
 
   function getHomeSuffixForAcUser(user) {
     const attrs = user?.attributes || {};
@@ -348,6 +357,9 @@
     }
 
     const suffixes = getManagedSuffixesForSave();
+    const saveKey = managedSuffixesKey(suffixes);
+    if (saveKey === acManagedLastSavedKey) return;
+
     acManagedSaveInflight = true;
     setMsg("Saving managed agencies...", false);
     try {
@@ -375,7 +387,8 @@
       selectedManagedSuffixes = new Set(
         ManagedAgenciesPicker.stripHomeFromManaged(managed, selectedUserHomeSuffix)
       );
-      renderManagedAgenciesPicker();
+      acManagedLastSavedKey = managedSuffixesKey(managed);
+      renderManagedAgenciesPicker(true);
       const rolePill = el("acPillRole");
       rolePill.className = roleToPillClass("agency_admin");
       rolePill.textContent = roleDisplayLabel("agency_admin", managed.length);
@@ -398,9 +411,9 @@
     acManagedSaveTimer = setTimeout(saveManagedAgenciesAuto, 450);
   }
 
-  function renderManagedAgenciesPicker() {
+  function renderManagedAgenciesPicker(silent) {
     initAcManagedPicker();
-    if (acManagedPicker) acManagedPicker.setSelected(selectedManagedSuffixes);
+    if (acManagedPicker) acManagedPicker.setSelected(selectedManagedSuffixes, { silent: !!silent });
   }
 
   function getSelectedManagedSuffixesArray() {
@@ -614,6 +627,7 @@
     selectedManagedSuffixes = new Set(
       ManagedAgenciesPicker.stripHomeFromManaged(managedAll, selectedUserHomeSuffix)
     );
+    acManagedLastSavedKey = managedSuffixesKey(managedAll);
     if (role === "agency_admin" && !managedAll.length && selectedUserHomeSuffix) {
       selectedManagedSuffixes = new Set();
     }
@@ -631,7 +645,7 @@
     roleSel.disabled = !selectedUserId;
 
     updateManagedAgenciesVisibility(uiRole);
-    renderManagedAgenciesPicker();
+    renderManagedAgenciesPicker(true);
 
     if (j.userId) selectedUserId = String(j.userId);
 
@@ -700,7 +714,7 @@
     const prevUi = this.getAttribute("data-prev-ui") || "user";
     const role = backendRoleFromUi(uiRole);
     updateManagedAgenciesVisibility(uiRole);
-    if (showsManagedAgenciesPicker(uiRole)) renderManagedAgenciesPicker();
+    if (showsManagedAgenciesPicker(uiRole)) renderManagedAgenciesPicker(true);
 
     if (uiRole === "multi_agency_admin") {
       const additional = getSelectedManagedSuffixesArray();
@@ -734,6 +748,7 @@
         selectedManagedSuffixes = new Set(
           ManagedAgenciesPicker.stripHomeFromManaged(out.managedAgencySuffixes, selectedUserHomeSuffix)
         );
+        acManagedLastSavedKey = managedSuffixesKey(out.managedAgencySuffixes);
       }
       const managedCount = getManagedSuffixesForSave().length;
       const resolvedUiRole = uiRoleFromBackend(resolvedRole, managedCount);
@@ -744,7 +759,7 @@
       rolePill.className = roleToPillClass(resolvedRole);
       rolePill.textContent = roleDisplayLabel(resolvedRole, managedCount);
       updateManagedAgenciesVisibility(resolvedUiRole);
-      renderManagedAgenciesPicker();
+      renderManagedAgenciesPicker(true);
       setMsg(
         resolvedRole === "global_admin"
           ? "Permissions updated: Global Admin."

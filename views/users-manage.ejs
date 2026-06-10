@@ -547,7 +547,7 @@ function syncCreateManagedAgenciesDefault() {
   initCreateManagedPicker();
   if (!createManagedPicker) return;
   const current = createManagedPicker.getSelectedArray();
-  createManagedPicker.setSelected(new Set(current));
+  createManagedPicker.setSelected(new Set(current), { silent: true });
 }
 
 function canAssignManagedAgencies() {
@@ -1257,6 +1257,15 @@ let editManagedHomeSuffix = "";
 let editManagedPicker = null;
 let editManagedSaveTimer = null;
 let editManagedSaveInflight = false;
+let editManagedLastSavedKey = "";
+
+function managedSuffixesKey(suffixes) {
+  return (Array.isArray(suffixes) ? suffixes : [])
+    .map((s) => String(s || "").trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join("|");
+}
 
 function initEditManagedPicker() {
   if (!editManagedAgenciesWrap || !window.ManagedAgenciesPicker || editManagedPicker) return;
@@ -1340,6 +1349,9 @@ async function saveEditManagedAgenciesAuto() {
   }
 
   const suffixes = getEditManagedSuffixesForSave();
+  const saveKey = managedSuffixesKey(suffixes);
+  if (saveKey === editManagedLastSavedKey) return;
+
   editManagedSaveInflight = true;
   setMsgEl(actionMsg, "Saving managed agencies...", true);
   try {
@@ -1358,7 +1370,8 @@ async function saveEditManagedAgenciesAuto() {
     editManagedSuffixes = new Set(
       ManagedAgenciesPicker.stripHomeFromManaged(managed, home)
     );
-    if (editManagedPicker) editManagedPicker.setSelected(editManagedSuffixes);
+    editManagedLastSavedKey = managedSuffixesKey(managed);
+    if (editManagedPicker) editManagedPicker.setSelected(editManagedSuffixes, { silent: true });
     if (permissionsSelect) {
       permissionsSelect.value = permissionsUiFromManagedCount(true, managed.length);
     }
@@ -1384,7 +1397,7 @@ function updateEditManagedAgenciesVisibility() {
   }
   if (show) {
     initEditManagedPicker();
-    if (editManagedPicker) editManagedPicker.setSelected(editManagedSuffixes);
+    if (editManagedPicker) editManagedPicker.setSelected(editManagedSuffixes, { silent: true });
   }
 }
 
@@ -2623,6 +2636,7 @@ window.editUser = async (userPk) => {
     editManagedSuffixes = new Set(
       ManagedAgenciesPicker.stripHomeFromManaged(managed, editManagedHomeSuffix)
     );
+    editManagedLastSavedKey = managedSuffixesKey(managed);
   } catch (e) {
     console.warn("editUser: failed to refresh user or resolve admin groups", e);
   }
@@ -2785,13 +2799,16 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
       editManagedSuffixes = new Set(
         ManagedAgenciesPicker.stripHomeFromManaged(out.managedAgencySuffixes, home)
       );
+      editManagedLastSavedKey = managedSuffixesKey(out.managedAgencySuffixes);
     } else if (desired === "agency_admin") {
       const home = editManagedHomeSuffix || getHomeSuffixForUser(selectedUser);
       editManagedSuffixes = new Set(
         ManagedAgenciesPicker.stripHomeFromManaged(managedSuffixes, home)
       );
+      editManagedLastSavedKey = managedSuffixesKey(managedSuffixes);
     } else {
       editManagedSuffixes = new Set();
+      editManagedLastSavedKey = "";
     }
 
     pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
