@@ -469,6 +469,7 @@ async function getTakMetricsSnapshot() {
 // ---- Marti subscriptions (connected clients list) ----
 
 const NODERED_PREFIX = "nodered-";
+const TLS_CALLSIGN_PREFIX = "tls:";
 
 /**
  * Federation hubs often appear with long colon-separated hex token usernames
@@ -487,9 +488,22 @@ function isNoderedUsername(username) {
   return u.indexOf(NODERED_PREFIX) === 0;
 }
 
+function isTlsCallsign(callsign) {
+  const c = String(callsign || "").trim().toLowerCase();
+  return c.indexOf(TLS_CALLSIGN_PREFIX) === 0;
+}
+
+function isTlsCallsignSubscription(item) {
+  return isTlsCallsign(item && item.callsign);
+}
+
 function isExcludedConnectedUserSubscription(item) {
   const username = item && item.username;
-  return isNoderedUsername(username) || isFederationTokenUsername(username);
+  return (
+    isNoderedUsername(username) ||
+    isFederationTokenUsername(username) ||
+    isTlsCallsignSubscription(item)
+  );
 }
 
 function subscriptionMatchesAgencyScope(authUser, username, agencyOnly) {
@@ -510,6 +524,7 @@ function filterConnectedUserSubscriptions(list, options = {}) {
   const { authUser = null, agencyOnly = false } = options;
   return filterFederationSubscriptions(list).filter((item) => {
     if (isNoderedUsername(item && item.username)) return false;
+    if (isTlsCallsignSubscription(item)) return false;
     return subscriptionMatchesAgencyScope(authUser, item && item.username, agencyOnly);
   });
 }
@@ -518,6 +533,7 @@ function computeSubscriptionExclusionCounts(list, options = {}) {
   const { authUser = null, agencyOnly = false } = options;
   let noderedCount = 0;
   let federationCount = 0;
+  let tlsCallsignCount = 0;
 
   for (const item of Array.isArray(list) ? list : []) {
     const username = item && item.username;
@@ -527,17 +543,20 @@ function computeSubscriptionExclusionCounts(list, options = {}) {
       }
     } else if (!agencyOnly && isFederationTokenUsername(username)) {
       federationCount += 1;
+    } else if (!agencyOnly && isTlsCallsignSubscription(item)) {
+      tlsCallsignCount += 1;
     }
   }
 
-  return { noderedCount, federationCount };
+  return { noderedCount, federationCount, tlsCallsignCount };
 }
 
 function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = {}) {
   if (!takMetricsBase || !subscriptions) return takMetricsBase;
   const list = Array.isArray(subscriptions.data) ? subscriptions.data : [];
   const { authUser = null, agencyOnly = false } = options;
-  const { noderedCount, federationCount } = computeSubscriptionExclusionCounts(list, options);
+  const { noderedCount, federationCount, tlsCallsignCount } =
+    computeSubscriptionExclusionCounts(list, options);
 
   // Agency dashboard: count only subscriptions whose username matches allowed agency suffixes.
   if (agencyOnly && authUser) {
@@ -556,7 +575,7 @@ function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = 
 
   return {
     ...takMetricsBase,
-    connectedClients: Math.max(0, total - noderedCount - federationCount),
+    connectedClients: Math.max(0, total - noderedCount - federationCount - tlsCallsignCount),
     connectedIntegrations: noderedCount,
   };
 }
@@ -620,6 +639,8 @@ module.exports = {
   buildTakMtlsHttpsAgent,
   isFederationTokenUsername,
   isNoderedUsername,
+  isTlsCallsign,
+  isTlsCallsignSubscription,
   isExcludedConnectedUserSubscription,
   filterFederationSubscriptions,
   filterConnectedUserSubscriptions,

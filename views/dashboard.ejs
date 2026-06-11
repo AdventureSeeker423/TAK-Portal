@@ -534,6 +534,15 @@
       if (!row || !card || !row.getAttribute("data-can-expand-clients")) return;
 
       var NODERED_PREFIX = "nodered-";
+      var TLS_CALLSIGN_PREFIX = "tls:";
+
+      function isExcludedConnectedClient(item) {
+        var u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
+        if (u.indexOf(NODERED_PREFIX) === 0) return true;
+        var c = (item.callsign != null ? String(item.callsign).trim() : "").toLowerCase();
+        return c.indexOf(TLS_CALLSIGN_PREFIX) === 0;
+      }
+
       var TEAM_COLORS = {
         "Blue": "#1e88e5", "Dark Blue": "#0d47a1", "Brown": "#6d4c41", "Cyan": "#00acc1",
         "Green": "#43a047", "Dark Green": "#1b5e20", "Magenta": "#d81b60", "Maroon": "#800000",
@@ -714,8 +723,7 @@
             .then(function (data) {
               if (!data.configured || !Array.isArray(data.data)) return;
               var list = data.data.filter(function (item) {
-                var u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
-                return u.indexOf(NODERED_PREFIX) !== 0;
+                return !isExcludedConnectedClient(item);
               });
               var nextRows = list.map(function (item) {
                 return {
@@ -763,8 +771,7 @@
               return;
             }
             var list = data.data.filter(function (item) {
-              var u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
-              return u.indexOf(NODERED_PREFIX) !== 0;
+              return !isExcludedConnectedClient(item);
             });
             var rows = list.map(function (item) {
               return {
