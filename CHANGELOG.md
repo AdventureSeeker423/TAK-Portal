@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.36 - PENDING
+✨ `Enhancement` - Data Sync - Cleaned up wording and layouts page<br>
+✨ `Enhancement` - Dashboard - Hid tls connections from connected clients
+
 ### v1.3.35 - 6/9/26
 🎉 `New Feature` - Introduction of a new access level "Multi-Agency Admin." This is designed for users that may need access to manage multiple agencies, without the need for full, global admin access.
 
