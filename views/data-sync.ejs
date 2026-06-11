@@ -78,7 +78,7 @@
 <div class="modalOverlay" id="missionModal" style="display: none;">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="missionModalTitle" style="width: min(900px, 96vw);">
     <div class="modalHeader">
-      <h2 id="missionModalTitle" style="margin: 0;">Edit Mission</h2>
+      <h2 id="missionModalTitle" style="margin: 0;">Edit Data Sync Mission</h2>
       <button type="button" class="btn" id="missionModalClose">Close</button>
     </div>
     <div class="modalBody">
@@ -94,15 +94,14 @@
         <textarea id="mDescription" rows="3" placeholder="Mission description" style="width: 100%; box-sizing: border-box; resize: vertical;"></textarea>
       </label>
 
-      <label style="display: block; margin-top: 12px;">
+      <label style="margin-top: 12px;">
         Default Role For Subscribers
-        <select id="mDefaultRole" style="min-width: 280px;">
+        <select id="mDefaultRole" style="width: 100%; box-sizing: border-box;">
           <option value="MISSION_SUBSCRIBER">Mission Subscriber (MISSION_SUBSCRIBER)</option>
           <option value="MISSION_OWNER">Mission Owner (MISSION_OWNER)</option>
           <option value="MISSION_READONLY_SUBSCRIBER">Read-only Subscriber (MISSION_READONLY_SUBSCRIBER)</option>
         </select>
       </label>
-      <p class="muted" style="margin: 6px 0 0 0; font-size: 12px;">Tool is always <code>public</code> for Data Sync missions (not shown).</p>
 
       <label style="display: block; margin-top: 14px;">
         Group With Access
@@ -141,9 +140,9 @@
         </div>
       </div>
 
-      <div class="row" style="margin-top: 18px; gap: 10px; flex-wrap: wrap;">
-        <button type="button" class="btn success" id="mBtnSave">Save Mission</button>
-        <span id="mSaveHint" class="muted" style="font-size: 13px;"></span>
+      <div style="margin-top: 18px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span id="mSaveHint" class="muted" style="font-size: 13px; margin-right: auto;"></span>
+        <button type="button" class="btn success" id="mBtnSave">Save Data Sync Mission</button>
       </div>
     </div>
   </div>
@@ -806,7 +805,7 @@
   }
 
   async function openEditMission(name) {
-    missionModalTitle.textContent = "Edit mission";
+    missionModalTitle.textContent = "Edit Data Sync Mission";
     mName.readOnly = true;
     setMissionModalMsg("Loading…", undefined);
     mSaveHint.textContent = "";
