@@ -391,6 +391,117 @@ function listDistinctValues({ field, limit = 250 } = {}) {
     .sort((a, b) => a.localeCompare(b));
 }
 
+const LOOKUP_FAILURE_LABELS = {
+  captcha_missing: "Captcha was not completed.",
+  captcha_failed: "Captcha verification failed.",
+  missing_fields: "Email address or username was missing.",
+  invalid_email: "Email address format was invalid.",
+  agency_not_eligible: "No agency with account lookup enabled matched the email domain.",
+  user_not_found: "Username was not found or the account already has an email on file.",
+  email_send_failed: "Account matched but the enrollment QR email could not be sent.",
+};
+
+function summarizeLookupEvent(payload = {}) {
+  const form = payload.form && typeof payload.form === "object" ? payload.form : {};
+  const email = safeStr(form.email).trim().toLowerCase();
+  const username = safeStr(form.username).trim().toLowerCase();
+  const domain =
+    safeStr(form.emailDomain).trim().toLowerCase() ||
+    (email.includes("@") ? email.split("@")[1] : "");
+
+  if (payload.outcome === "success") {
+    const agency = safeStr(payload.agencyName || payload.agencySuffix).trim() || "agency";
+    return `Account lookup succeeded: enrollment QR emailed for username "${username}" to ${email} (${agency}).`;
+  }
+
+  const reason =
+    LOOKUP_FAILURE_LABELS[safeStr(payload.failureReason).trim()] ||
+    safeStr(payload.failureReason).trim() ||
+    "Lookup failed.";
+  const domainPart = domain ? ` (domain ${domain})` : "";
+  return `Account lookup failed for email "${email}" and username "${username}"${domainPart}: ${reason}`;
+}
+
+/**
+ * Audit every account lookup form submission (public /lookup page).
+ * Logs all submitted form fields plus outcome-specific context.
+ */
+function logLookupEvent(req, payload = {}) {
+  const form = payload.form && typeof payload.form === "object" ? payload.form : {};
+  const email = safeStr(form.email).trim().toLowerCase();
+  const username = safeStr(form.username).trim().toLowerCase();
+  const emailDomain =
+    safeStr(form.emailDomain).trim().toLowerCase() ||
+    (email.includes("@") ? email.split("@")[1] : "") ||
+    null;
+
+  const outcome =
+    safeStr(payload.outcome).trim().toLowerCase() === "success" ? "success" : "failure";
+  const failureReason =
+    outcome === "failure" ? safeStr(payload.failureReason).trim() || "unknown" : undefined;
+
+  const details = pruneDetails({
+    source: "account-lookup-form",
+    outcome,
+    failureReason,
+    form: {
+      email: email || null,
+      username: username || null,
+      emailDomain,
+    },
+    hcaptchaEnabled: payload.hcaptchaEnabled === true,
+    hcaptchaPassed:
+      payload.hcaptchaPassed === true
+        ? true
+        : payload.hcaptchaPassed === false
+          ? false
+          : null,
+    agencySuffix:
+      payload.agencySuffix != null && String(payload.agencySuffix).trim() !== ""
+        ? normalizeSuffix(payload.agencySuffix)
+        : undefined,
+    agencyName: safeStr(payload.agencyName).trim() || undefined,
+    matchedUsername: safeStr(payload.matchedUsername).trim() || undefined,
+    matchedUserId: safeStr(payload.matchedUserId).trim() || undefined,
+    usernameExists:
+      payload.usernameExists === true
+        ? true
+        : payload.usernameExists === false
+          ? false
+          : undefined,
+    userHasEmailOnFile:
+      payload.userHasEmailOnFile === true
+        ? true
+        : payload.userHasEmailOnFile === false
+          ? false
+          : undefined,
+    notificationEmail: outcome === "success" ? email || undefined : undefined,
+    lookupEnabledAgencyCount: Number.isFinite(Number(payload.lookupEnabledAgencyCount))
+      ? Number(payload.lookupEnabledAgencyCount)
+      : undefined,
+    errorMessage: safeStr(payload.errorMessage).trim() || undefined,
+    summary: summarizeLookupEvent({
+      ...payload,
+      form: { email, username, emailDomain },
+      outcome,
+      failureReason,
+    }),
+  });
+
+  const action = outcome === "success" ? "LOOKUP_QR_EMAIL_SENT" : "LOOKUP_ACCOUNT_FAILED";
+
+  logEvent({
+    actor: payload.actor !== undefined ? payload.actor : req?.authentikUser || null,
+    request: payload.request || requestMeta(req),
+    action,
+    targetType: "user",
+    targetId: safeStr(payload.matchedUsername || username).trim().toLowerCase() || "lookup",
+    agencySuffix: payload.agencySuffix,
+    agencyName: payload.agencyName,
+    details,
+  });
+}
+
 function listDistinctActors({ limit = 250 } = {}) {
   const logs = store.load();
   const byUsername = new Map();
@@ -417,6 +528,7 @@ function listDistinctActors({ limit = 250 } = {}) {
 
 module.exports = {
   logEvent,
+  logLookupEvent,
   auditFromRequest,
   requestMeta,
   pruneDetails,

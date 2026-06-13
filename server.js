@@ -939,25 +939,49 @@ app.get("/lookup", (req, res) => {
 });
 
 app.post("/lookup", async (req, res) => {
+  const body = req.body || {};
+  const form = {
+    email: String(body.email || "").trim().toLowerCase(),
+    username: String(body.username || "").trim().toLowerCase(),
+  };
+
+  const settings = (res.locals && res.locals.settings)
+    ? res.locals.settings
+    : (settingsSvc.getSettings() || {});
+
+  const hcaptchaSiteKey = String(settings.HCAPTCHA_SITE_KEY || "").trim();
+  const hcaptchaSecretKey = String(settings.HCAPTCHA_SECRET_KEY || "").trim();
+  const hcaptchaEnabled = !!(hcaptchaSiteKey && hcaptchaSecretKey);
+  let hcaptchaPassed = !hcaptchaEnabled;
+  let lookupAuditLogged = false;
+
+  function renderLookupError() {
+    return res.status(400).render("lookup", {
+      form: req.body || {},
+      error: "Email address or Username Not Found",
+      success: null,
+      hcaptchaEnabled,
+      hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : "",
+    });
+  }
+
+  function logLookupFailure(failureReason, extra = {}) {
+    lookupAuditLogged = true;
+    auditSvc.logLookupEvent(req, {
+      form,
+      outcome: "failure",
+      failureReason,
+      hcaptchaEnabled,
+      hcaptchaPassed,
+      ...extra,
+    });
+  }
+
   try {
-    const body = req.body || {};
-    const email = String(body.email || "").trim().toLowerCase();
-    const username = String(body.username || "")
-      .trim()
-      .toLowerCase();
-
-    const settings = (res.locals && res.locals.settings)
-      ? res.locals.settings
-      : (settingsSvc.getSettings() || {});
-
-    const hcaptchaSiteKey = String(settings.HCAPTCHA_SITE_KEY || "").trim();
-    const hcaptchaSecretKey = String(settings.HCAPTCHA_SECRET_KEY || "").trim();
-    const hcaptchaEnabled = !!(hcaptchaSiteKey && hcaptchaSecretKey);
-
-    // Enforce hCaptcha only if BOTH keys are configured
     if (hcaptchaEnabled) {
       const token = body["h-captcha-response"];
       if (!token) {
+        logLookupFailure("captcha_missing");
         throw new Error("Captcha verification failed.");
       }
 
@@ -972,119 +996,143 @@ app.post("/lookup", async (req, res) => {
       );
 
       if (!verifyResp?.data?.success) {
+        logLookupFailure("captcha_failed");
         throw new Error("Captcha verification failed.");
       }
+      hcaptchaPassed = true;
     }
 
-    if (!email || !username) {
+    if (!form.email || !form.username) {
+      logLookupFailure("missing_fields");
       throw new Error("Agency Domain or Username Not Found");
     }
 
-    const emailParts = email.split("@");
-    if (emailParts.length !== 2) {
+    const emailParts = form.email.split("@");
+    if (emailParts.length !== 2 || !emailParts[0] || !emailParts[1]) {
+      logLookupFailure("invalid_email", {
+        form: { ...form, emailDomain: null },
+      });
       throw new Error("Agency Domain or Username Not Found");
     }
 
     const domain = emailParts[1].toLowerCase();
+    const formWithDomain = { ...form, emailDomain: domain };
 
     const agencies = agenciesStore.load() || [];
+    const lookupEnabledAgencyCount = agencies.filter((a) => a && a.lookupEnabled === true).length;
 
-    // Domain-to-agency validation:
-    // - Agency must explicitly allow lookup (lookupEnabled === true)
-    // - Email domain must match one of the comma-separated domains in lookupDomain
     const agency = agencies.find((a) => {
       if (!a) return false;
       if (a.lookupEnabled !== true) return false;
-      return agenciesStore.emailDomainInAgencyList(email, a.lookupDomain);
+      return agenciesStore.emailDomainInAgencyList(form.email, a.lookupDomain);
     });
 
     if (!agency) {
+      logLookupFailure("agency_not_eligible", {
+        form: formWithDomain,
+        lookupEnabledAgencyCount,
+      });
       throw new Error("Email address or Username Not Found");
     }
 
-    const usersSvc = require("./services/users.service");
     const allUsers = await usersSvc.getAllUsers({ forceRefresh: true });
-
-    const user = allUsers.find(u =>
-      String(u.username || "")
-        .trim()
-        .toLowerCase() === username &&
-      (!u.email || !String(u.email).trim())
+    const usernameMatches = allUsers.filter(
+      (u) => String(u.username || "").trim().toLowerCase() === form.username
+    );
+    const user = usernameMatches.find(
+      (u) => !u.email || !String(u.email).trim()
+    );
+    const userHasEmailOnFile = usernameMatches.some(
+      (u) => u.email && String(u.email).trim()
     );
 
     if (!user) {
+      logLookupFailure("user_not_found", {
+        form: formWithDomain,
+        agencySuffix: String(agency?.suffix || "").trim().toLowerCase() || undefined,
+        agencyName: String(agency?.name || "") || undefined,
+        lookupEnabledAgencyCount,
+        usernameExists: usernameMatches.length > 0,
+        userHasEmailOnFile,
+      });
       throw new Error("Email address or Username Not Found");
     }
 
     const tokensSvc = require("./services/authentikTokens.service");
-    const qrSvc = require("./services/qr.service");
 
     const { key } = await tokensSvc.getOrCreateEnrollmentAppPassword({
       username: user.username,
-      userId: user.pk || user.id
+      userId: user.pk || user.id,
     });
 
     const enrollUrl = qrSvc.buildEnrollUrl({
       username: user.username,
-      token: key
+      token: key,
     });
 
-    const pngBuffer = await qrSvc.generateDownloadPng(
-      enrollUrl,
-      user.username
-    );
+    const pngBuffer = await qrSvc.generateDownloadPng(enrollUrl, user.username);
 
-    await emailSvc.sendMail({
-      to: email,
-      subject: "Your TAK Enrollment QR Code",
-      text: "Attached is your TAK enrollment QR code. Please note that this QR code is valid only for 15 minutes.",
-      attachments: [
-        {
-          filename: `tak-${user.username}-enrollment-qr.png`,
-          content: pngBuffer
-        }
-      ]
-    });
-
-    auditSvc.logEvent({
-      actor: null,
-      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
-      action: "LOOKUP_QR_EMAIL_SENT",
-      targetType: "user",
-      targetId: String(user.username || "").trim().toLowerCase(),
-      details: {
-        username: user.username,
+    try {
+      await emailSvc.sendMail({
+        to: form.email,
+        subject: "Your TAK Enrollment QR Code",
+        text: "Attached is your TAK enrollment QR code. Please note that this QR code is valid only for 15 minutes.",
+        attachments: [
+          {
+            filename: `tak-${user.username}-enrollment-qr.png`,
+            content: pngBuffer,
+          },
+        ],
+      });
+    } catch (mailErr) {
+      logLookupFailure("email_send_failed", {
+        form: formWithDomain,
         agencySuffix: String(agency?.suffix || "").trim().toLowerCase() || undefined,
         agencyName: String(agency?.name || "") || undefined,
-        emailDomain: domain,
-        summary: `Enrollment lookup sent QR email to user ${user.username}.`,
-      },
+        matchedUsername: user.username,
+        matchedUserId: String(user.pk || user.id || "").trim() || undefined,
+        usernameExists: true,
+        userHasEmailOnFile: false,
+        errorMessage: mailErr?.message || String(mailErr),
+      });
+      throw mailErr;
+    }
+
+    auditSvc.logLookupEvent(req, {
+      form: formWithDomain,
+      outcome: "success",
+      hcaptchaEnabled,
+      hcaptchaPassed,
+      agencySuffix: String(agency?.suffix || "").trim().toLowerCase() || undefined,
+      agencyName: String(agency?.name || "") || undefined,
+      matchedUsername: user.username,
+      matchedUserId: String(user.pk || user.id || "").trim() || undefined,
+      usernameExists: true,
+      userHasEmailOnFile: false,
+      lookupEnabledAgencyCount,
     });
+    lookupAuditLogged = true;
 
     return res.render("lookup", {
       form: {},
       error: null,
-      success: "Your account has been found and a QR code has been sent to your email address. Please note that this QR code is valid only for 15 minutes.",
+      success:
+        "Your account has been found and a QR code has been sent to your email address. Please note that this QR code is valid only for 15 minutes.",
       hcaptchaEnabled,
-      hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : ""
+      hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : "",
     });
-
   } catch (err) {
-    const settings = (res.locals && res.locals.settings)
-      ? res.locals.settings
-      : (settingsSvc.getSettings() || {});
-
-    const hcaptchaSiteKey = String(settings.HCAPTCHA_SITE_KEY || "").trim();
-    const hcaptchaSecretKey = String(settings.HCAPTCHA_SECRET_KEY || "").trim();
-    const hcaptchaEnabled = !!(hcaptchaSiteKey && hcaptchaSecretKey);
-
-    return res.status(400).render("lookup", {
-      form: req.body || {},
-      error: "Email address or Username Not Found",
-      success: null,
-      hcaptchaEnabled,
-      hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : ""
-    });
+    if (!lookupAuditLogged) {
+      auditSvc.logLookupEvent(req, {
+        form,
+        outcome: "failure",
+        failureReason: "unknown",
+        hcaptchaEnabled,
+        hcaptchaPassed,
+        errorMessage: err?.message || String(err),
+      });
+    }
+    return renderLookupError();
   }
 });
 
