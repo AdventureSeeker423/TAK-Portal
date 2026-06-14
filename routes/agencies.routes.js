@@ -10,6 +10,7 @@ const auditSvc = require("../services/auditLog.service");
 const agencyAbbrevRenameSvc = require("../services/agencyAbbrevRename.service");
 const agencyNameRenameSvc = require("../services/agencyNameRename.service");
 const countyNameRenameSvc = require("../services/countyNameRename.service");
+const stateCodeRenameSvc = require("../services/stateCodeRename.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -1000,6 +1001,46 @@ router.put("/:index/county-name", async (req, res) => {
   } catch (err) {
     return res.status(400).json({
       error: err?.response?.data || err?.message || "Failed to update county name",
+    });
+  }
+});
+
+// Update state code for all agencies in that state and rename state TAK groups.
+router.put("/:index/state", async (req, res) => {
+  try {
+    const idx = Number(req.params.index);
+    const agencies = store.load();
+    if (!Number.isInteger(idx) || !agencies[idx]) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const result = await stateCodeRenameSvc.renameStateCode(idx, req.body?.state);
+
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "UPDATE_AGENCY_STATE",
+      targetType: "agency",
+      targetId: String(agencies[idx]?.suffix || ""),
+      details: {
+        before: { state: result.oldState || null },
+        after: { state: result.newState || null },
+        groupsRenamed: result.groupsRenamed ?? 0,
+        updatedIndexes: result.updatedIndexes || [],
+        skipped: !!result.skipped,
+      },
+    });
+
+    return res.json({
+      success: true,
+      skipped: !!result.skipped,
+      state: result.newState,
+      groupsRenamed: result.groupsRenamed ?? 0,
+      updatedIndexes: result.updatedIndexes || [],
+    });
+  } catch (err) {
+    return res.status(400).json({
+      error: err?.response?.data || err?.message || "Failed to update state",
     });
   }
 });
