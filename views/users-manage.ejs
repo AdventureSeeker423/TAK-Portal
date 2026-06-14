@@ -270,7 +270,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="userTitle">
     <div class="modalHeader">
       <div class="modalHeaderLeft">
-        <h2 id="userTitle" style="margin:0;">User</h2>
+        <h2 id="userTitle" style="margin:0;">Edit User</h2>
         <span id="actionMsg" class="msg modalStatus"></span>
       </div>
       <button class="btn" id="closeBtn" type="button">Close</button>
@@ -1234,6 +1234,19 @@ const editUserModalLoading = document.getElementById("editUserModalLoading");
 const closeBtn = document.getElementById("closeBtn");
 const userTitle = document.getElementById("userTitle");
 
+function formatUserModalTitle(baseLabel, username, name) {
+  const u = String(username || "").trim();
+  const n = String(name || "").trim();
+  if (u && n) return `${baseLabel} - ${u} - ${n}`;
+  if (u) return `${baseLabel} - ${u}`;
+  return baseLabel;
+}
+
+function setEditUserModalTitle(user) {
+  if (!userTitle || !user) return;
+  userTitle.textContent = formatUserModalTitle("Edit User", user.username, user.name);
+}
+
 // Note: usernameSpan is optional (not present in this template), keep guarded usage only
 const usernameSpan = document.getElementById("usernameSpan");
 
@@ -1595,10 +1608,24 @@ const userPrefQrDetails = document.getElementById("userPrefQrDetails");
 const userQrCountdown = document.getElementById("userQrCountdown");
 const userEnrollQrMsg = document.getElementById("userEnrollQrMsg");
 const userPrefQrMsg = document.getElementById("userPrefQrMsg");
+const userEnrollQrTitle = document.getElementById("userEnrollQrTitle");
+const userPrefQrTitle = document.getElementById("userPrefQrTitle");
 
 let userQrCountdownTimer = null;
 let userEnrollQrCurrent = null;
 let userPrefQrCurrent = null;
+
+function setUserEnrollQrModalTitle(name, username) {
+  if (userEnrollQrTitle) {
+    userEnrollQrTitle.textContent = formatUserModalTitle("Enrollment QR", username, name);
+  }
+}
+
+function setUserPrefQrModalTitle(name, username) {
+  if (userPrefQrTitle) {
+    userPrefQrTitle.textContent = formatUserModalTitle("Device Preferences QR", username, name);
+  }
+}
 
 function openUserEnrollQrModal(){
   if (!userEnrollQrOverlay) return;
@@ -1697,6 +1724,7 @@ function resetUserEnrollQrModal() {
   if (userQrSaveBtn) userQrSaveBtn.disabled = true;
   if (userQrCountdown) userQrCountdown.textContent = "";
   userEnrollQrCurrent = null;
+  setUserEnrollQrModalTitle("", "");
 }
 
 function resetUserPrefQrModal() {
@@ -1705,6 +1733,7 @@ function resetUserPrefQrModal() {
   if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = true;
   if (userPrefQrSaveBtn) userPrefQrSaveBtn.disabled = true;
   userPrefQrCurrent = null;
+  setUserPrefQrModalTitle("", "");
 }
 
 function renderUserEnrollQr(obj) {
@@ -1802,9 +1831,11 @@ tbody.addEventListener("click", async (e) => {
 
   const userId = (enrollBtn || prefBtn).dataset.pk || (enrollBtn || prefBtn).dataset.userId || "";
   const username = (enrollBtn || prefBtn).dataset.username || "";
+  const displayName = (enrollBtn || prefBtn).dataset.name || "";
 
   if (enrollBtn) {
     resetUserEnrollQrModal();
+    setUserEnrollQrModalTitle(displayName, username);
     setMsgEl(userEnrollQrMsg, "Generating enrollment QR...", true);
     openUserEnrollQrModal();
     try {
@@ -1817,6 +1848,7 @@ tbody.addEventListener("click", async (e) => {
   }
 
   resetUserPrefQrModal();
+  setUserPrefQrModalTitle(displayName, username);
   setMsgEl(userPrefQrMsg, "Generating preferences QR...", true);
   openUserPrefQrModal();
   try {
@@ -1972,9 +2004,11 @@ function renderResults(users){
               <button class="btn" onclick="editUser('${pk}')">Edit</button>
               ${u.is_active ? `
                 <button class="btn success userEnrollQrBtn" type="button"
-                  data-pk="${pk}" data-username="${escapeHtml(u.username)}">Enroll QR</button>
+                  data-pk="${pk}" data-username="${escapeHtml(u.username)}"
+                  data-name="${escapeHtml(String(u.name || "").trim())}">Enroll QR</button>
                 <button class="btn btn-access userPrefQrBtn" type="button"
-                  data-pk="${pk}" data-username="${escapeHtml(u.username)}">Pref QR</button>
+                  data-pk="${pk}" data-username="${escapeHtml(u.username)}"
+                  data-name="${escapeHtml(String(u.name || "").trim())}">Pref QR</button>
               ` : ""}
               <button class="${toggleBtnClass}" onclick="toggleUserFromTable('${pk}')">${toggleLabel}</button>
               <button class="btn danger" onclick="deleteUserFromTable('${pk}')">Delete</button>
@@ -2621,7 +2655,7 @@ window.editUser = async (userPk) => {
   }
 
   function paintEditModalFromSelectedUser() {
-    if (userTitle) userTitle.textContent = `User ${selectedUser.username}`;
+    if (userTitle) setEditUserModalTitle(selectedUser);
 
     if (usernameSpan) {
       usernameSpan.textContent = `${selectedUser.username} — ${selectedUser.name || ""}`;
@@ -2683,7 +2717,7 @@ window.editUser = async (userPk) => {
   pickedGroupIds = new Set();
 
   selectedUser = { ...u };
-  if (userTitle) userTitle.textContent = `User ${u.username}`;
+  setEditUserModalTitle(u);
 
   setEditUserModalLoading(true);
   openModal();
