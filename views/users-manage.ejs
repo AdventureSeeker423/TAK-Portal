@@ -4361,10 +4361,10 @@ tr.row-disabled td {
   .usersListTable .cardTitleCell { order: 1; }
   .usersListTable .userAgencyCell { order: 2; }
   .usersListTable .userNameCell { order: 3; }
-  .usersListTable .userTemplateCell { order: 4; }
-  .usersListTable .userEmailCell { order: 5; }
-  .usersListTable .userStatusCell { order: 6; }
-  .usersListTable .cardActionsCell { order: 7; }
+  .usersListTable .cardActionsCell { order: 4; }
+  .usersListTable .userTemplateCell,
+  .usersListTable .userEmailCell,
+  .usersListTable .userStatusCell { order: 99; display: none !important; }
 
   .listCardTable tbody td {
     display: block;
