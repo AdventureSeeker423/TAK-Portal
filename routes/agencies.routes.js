@@ -1005,7 +1005,7 @@ router.put("/:index/county-name", async (req, res) => {
   }
 });
 
-// Update state code for all agencies in that state and rename state TAK groups.
+// Update state code for agencies matching the same state, county, and county abbreviation.
 router.put("/:index/state", async (req, res) => {
   try {
     const idx = Number(req.params.index);
@@ -1023,9 +1023,12 @@ router.put("/:index/state", async (req, res) => {
       targetType: "agency",
       targetId: String(agencies[idx]?.suffix || ""),
       details: {
-        before: { state: result.oldState || null },
+        before: {
+          state: result.oldState || null,
+          county: result.county || null,
+          countyAbbrev: result.countyAbbrev || null,
+        },
         after: { state: result.newState || null },
-        groupsRenamed: result.groupsRenamed ?? 0,
         updatedIndexes: result.updatedIndexes || [],
         skipped: !!result.skipped,
       },
@@ -1035,7 +1038,8 @@ router.put("/:index/state", async (req, res) => {
       success: true,
       skipped: !!result.skipped,
       state: result.newState,
-      groupsRenamed: result.groupsRenamed ?? 0,
+      county: result.county,
+      countyAbbrev: result.countyAbbrev,
       updatedIndexes: result.updatedIndexes || [],
     });
   } catch (err) {
