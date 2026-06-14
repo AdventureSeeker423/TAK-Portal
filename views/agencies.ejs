@@ -468,6 +468,10 @@ function esc(s){
     .replaceAll(">","&gt;");
 }
 
+function isAgencyActive(a) {
+  return a?.isActive !== false;
+}
+
 /** Same list as create-agency form and PATCH /api/agencies/:index/color */
 const AGENCY_COLOR_OPTIONS = [
   "Blue", "Dark Blue", "Brown", "Cyan", "Green", "Dark Green", "Magenta", "Maroon",
@@ -831,13 +835,20 @@ function renderAgencies(){
     }
   });
 
-  tbody.innerHTML = rows.map((a)=>`
-    <tr>
+  tbody.innerHTML = rows.map((a)=>{
+    const agencyId = esc(a._id ?? a.id ?? "");
+    const active = isAgencyActive(a);
+    const toggleBtnClass = active ? "btn caution" : "btn";
+    const toggleLabel = active ? "Disable" : "Enable";
+    return `
+    <tr class="${active ? "" : "row-disabled"}">
       <td class="agencyNameCell cardTitleCell" data-label="Agency">
         ${
           agencyAttributesEditMode
             ? buildAgencyNameCellHtml(a)
-            : `<div class="agencyNameText cardTitleText">${esc(a.name)}</div>`
+            : `<div class="agencyNameText cardTitleText">${esc(a.name)}</div>${
+                !active ? `<span class="agencyStatusBadge cardMetaBadge">Disabled</span>` : ""
+              }`
         }
       </td>
       <td class="agencyAbbrCell" data-label="Abbreviation">${
@@ -866,27 +877,30 @@ function renderAgencies(){
       <td class="agencyActionsCell cardActionsCell">
         <div class="agencyActionsRow cardActionsRow">
           <button class="btn" type="button"
-            onclick="openAgencyAdmins('${esc(a._id ?? a.id ?? "")}')">
+            onclick="openAgencyAdmins('${agencyId}')">
             Agency Admins
           </button>
           <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
           <button class="btn btn-access" type="button"
-            onclick="openAccessGroupsModal('${esc(a._id ?? a.id ?? "")}')">
+            onclick="openAccessGroupsModal('${agencyId}')">
             Manage Groups
           </button>
           <% } %>
           <button class="btn" type="button"
-            onclick="openDomainModal('${esc(a._id ?? a.id ?? "")}')">
+            onclick="openDomainModal('${agencyId}')">
             Domain
           </button>
+          <button class="${toggleBtnClass}" type="button"
+            onclick="toggleAgencyActive('${agencyId}', ${active ? "false" : "true"})">${toggleLabel}</button>
           <button class="btn danger" type="button"
-            onclick="delAgency('${esc(a._id ?? a.id ?? "")}')">
+            onclick="delAgency('${agencyId}')">
             Delete
           </button>
         </div>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 }
 
 // Open admins modal for the agency's computed admin group.
@@ -1000,6 +1014,49 @@ async function loadAgenciesWithCounts(){
 
 // Prefer deleting by real id.
 // If your API currently deletes by index, update the backend route to delete by id.
+window.toggleAgencyActive = async (agencyId, isActive) => {
+  const a = (agencies || []).find((x) => String(x._id ?? x.id) === String(agencyId));
+  if (!a) {
+    setMsg("Could not find agency.", false);
+    return;
+  }
+
+  const label = String(a.name || a.suffix || "Agency");
+  const enabling = !!isActive;
+  const ok = confirm(
+    enabling
+      ? `Enable agency "${label}"?\n\nUsers disabled with this agency will be re-enabled.`
+      : `Disable agency "${label}"?\n\nAll active users for this agency will be disabled. TAK certificates may be revoked per portal settings.`
+  );
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`/api/agencies/${encodeURIComponent(agencyId)}/active`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: enabling }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMsg(out.error || "Failed to update agency status.", false);
+      return;
+    }
+    const count = Number(out.usersUpdated || 0);
+    const userPart = count
+      ? ` ${count} user${count === 1 ? "" : "s"} updated.`
+      : "";
+    setMsg(
+      enabling
+        ? `Agency "${label}" enabled.${userPart}`
+        : `Agency "${label}" disabled.${userPart}`,
+      true
+    );
+    await loadAgenciesWithCounts();
+  } catch (e) {
+    setMsg(e?.message || "Failed to update agency status.", false);
+  }
+};
+
 window.delAgency = async (id) => {
   if(!confirm("Delete this agency?")) return;
 
@@ -2101,6 +2158,19 @@ if (addForm) {
   text-overflow: ellipsis;
 }
 
+.agenciesTable .agencyStatusBadge {
+  display: none;
+}
+
+.agenciesTable tr.row-disabled {
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.agenciesTable tr.row-disabled td {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
 .agenciesTable .agencyActionsRow {
   display: flex;
   flex-wrap: wrap;
@@ -2261,7 +2331,12 @@ if (addForm) {
     overflow: hidden;
   }
 
-  .agenciesTable .cardTitleCell { order: 1; }
+  .agenciesTable .agencyNameCell { order: 1; }
+  .agenciesTable .agencyStatusBadge,
+  .agenciesTable .cardMetaBadge.agencyStatusBadge {
+    display: inline-block;
+    margin-top: 4px;
+  }
   .agenciesTable .agencyAbbrCell { order: 2; }
   .agenciesTable .agencySuffixCell { order: 3; }
   .agenciesTable .agencyCountyCell { order: 4; }

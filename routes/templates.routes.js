@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const store = require("../services/templates.service");
 const accessSvc = require("../services/access.service");
+const agenciesSvc = require("../services/agencies.service");
 const auditSvc = require("../services/auditLog.service");
 const usersSvc = require("../services/users.service");
 const mutualAidStore = require("../services/mutualAid.store");
@@ -206,6 +207,14 @@ router.post("/", (req, res) => {
     return res.status(403).json({ error: "You do not have access to that agency." });
   }
 
+  if (t.agencySuffix) {
+    try {
+      agenciesSvc.assertAgencyActiveBySuffix(t.agencySuffix);
+    } catch (err) {
+      return res.status(403).json({ error: err.message || "Agency is disabled." });
+    }
+  }
+
   if (!t.name) return res.status(400).json({ error: "Template name is required" });
   if (!t.groups.length) return res.status(400).json({ error: "At least one group is required" });
 
@@ -269,6 +278,13 @@ router.put("/:index", async (req, res) => {
 
   if (t.agencySuffix && !accessSvc.isSuffixAllowed(authUser, t.agencySuffix)) {
     return res.status(403).json({ error: "You do not have access to that agency." });
+  }
+  if (t.agencySuffix) {
+    try {
+      agenciesSvc.assertAgencyActiveBySuffix(t.agencySuffix);
+    } catch (err) {
+      return res.status(403).json({ error: err.message || "Agency is disabled." });
+    }
   }
   if (!t.name) return res.status(400).json({ error: "Template name is required" });
   if (!t.groups.length) return res.status(400).json({ error: "At least one group is required" });

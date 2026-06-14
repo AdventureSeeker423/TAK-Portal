@@ -11,6 +11,7 @@ const agencyAbbrevRenameSvc = require("../services/agencyAbbrevRename.service");
 const agencyNameRenameSvc = require("../services/agencyNameRename.service");
 const countyNameRenameSvc = require("../services/countyNameRename.service");
 const stateCodeRenameSvc = require("../services/stateCodeRename.service");
+const agencyActiveSvc = require("../services/agencyActive.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -95,6 +96,14 @@ function normalizeAgency(a) {
     normalized.allowedAdminGroupIds = raw.map((id) => String(id).trim()).filter(Boolean);
   } else {
     normalized.allowedAdminGroupIds = [];
+  }
+  if (a?.isActive === false) {
+    normalized.isActive = false;
+  }
+  if (Array.isArray(a?.agencyDisabledUserIds)) {
+    normalized.agencyDisabledUserIds = a.agencyDisabledUserIds
+      .map((id) => String(id).trim())
+      .filter(Boolean);
   }
   return normalized;
 }
@@ -776,6 +785,12 @@ router.put("/:index", async (req, res) => {
   const body = req.body || {};
   if (!("lookupEnabled" in body)) a.lookupEnabled = existing.lookupEnabled;
   if (!("lookupDomain" in body)) a.lookupDomain = existing.lookupDomain;
+  if (!("isActive" in body)) a.isActive = existing.isActive;
+  if (!("agencyDisabledUserIds" in body)) {
+    a.agencyDisabledUserIds = Array.isArray(existing.agencyDisabledUserIds)
+      ? existing.agencyDisabledUserIds
+      : [];
+  }
   const err = validateAgency(a);
   if (err) return res.status(400).json({ error: err });
 
@@ -1001,6 +1016,46 @@ router.put("/:index/county-name", async (req, res) => {
   } catch (err) {
     return res.status(400).json({
       error: err?.response?.data || err?.message || "Failed to update county name",
+    });
+  }
+});
+
+router.put("/:index/active", async (req, res) => {
+  try {
+    const idx = Number(req.params.index);
+    const agencies = store.load();
+    if (!Number.isInteger(idx) || !agencies[idx]) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const isActive = !!req.body?.is_active;
+    const before = agencies[idx];
+    const result = await agencyActiveSvc.setAgencyActive(idx, isActive);
+
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: isActive ? "ENABLE_AGENCY" : "DISABLE_AGENCY",
+      targetType: "agency",
+      targetId: String(before?.suffix || ""),
+      details: {
+        agencyName: String(before?.name || "").trim(),
+        beforeActive: store.isAgencyActive(before),
+        afterActive: !!result.isActive,
+        usersUpdated: result.usersUpdated ?? 0,
+        skipped: !!result.skipped,
+      },
+    });
+
+    return res.json({
+      success: true,
+      skipped: !!result.skipped,
+      is_active: !!result.isActive,
+      usersUpdated: result.usersUpdated ?? 0,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      error: err?.response?.data || err?.message || "Failed to update agency status",
     });
   }
 });

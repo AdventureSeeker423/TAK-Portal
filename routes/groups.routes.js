@@ -227,6 +227,8 @@ router.post("/", async (req, res) => {
       return res.status(403).json({ error: "You do not have permission to set group privacy." });
     }
 
+    const allAgencies = agencies.load();
+
     if (!access.isGlobalAdmin) {
       const allowedSuffixes = access.allowedAgencySuffixes || [];
       if (!allowedSuffixes.length) {
@@ -235,7 +237,6 @@ router.post("/", async (req, res) => {
           .json({ error: "You do not have permission to create groups." });
       }
 
-      const allAgencies = agencies.load();
       const allowedPrefixes = allAgencies
         .filter((a) =>
           allowedSuffixes.includes(
@@ -264,6 +265,13 @@ router.post("/", async (req, res) => {
             "You may only create agency-specific groups for your own agency.",
         });
       }
+    }
+
+    const matchedAgency = agencies.findAgencyForGroupName(nameWithoutTak, allAgencies);
+    if (matchedAgency && !agencies.isAgencyActive(matchedAgency)) {
+      return res.status(403).json({
+        error: `Agency "${matchedAgency.name || matchedAgency.suffix}" is disabled. Enable the agency before creating groups for it.`,
+      });
     }
 
     const description = String(req.body?.description || "").trim() || null;

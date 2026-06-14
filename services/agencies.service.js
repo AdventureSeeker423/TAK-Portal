@@ -49,6 +49,54 @@ function load() {
     : [];
 }
 
+function isAgencyActive(agency) {
+  return agency?.isActive !== false;
+}
+
+function findAgencyBySuffix(suffix, agencies) {
+  const sfx = String(suffix || "").trim().toLowerCase();
+  if (!sfx) return null;
+  const list = Array.isArray(agencies) ? agencies : load();
+  return (
+    list.find((a) => String(a?.suffix || "").trim().toLowerCase() === sfx) || null
+  );
+}
+
+function assertAgencyActiveBySuffix(suffix, agencies) {
+  const ag = findAgencyBySuffix(suffix, agencies);
+  if (!ag) throw new Error("Invalid agency");
+  if (!isAgencyActive(ag)) {
+    const label = String(ag.name || ag.suffix || "Agency").trim();
+    throw new Error(
+      `Agency "${label}" is disabled. Enable the agency on the Agencies page before performing this action.`
+    );
+  }
+  return ag;
+}
+
+function findAgencyForGroupName(nameWithoutTak, agencies) {
+  const upper = String(nameWithoutTak || "").trim().toUpperCase();
+  if (!upper) return null;
+  const list = Array.isArray(agencies) ? agencies : load();
+  const prefixes = list
+    .map((a) => ({
+      agency: a,
+      prefix: String(a?.groupPrefix || "").trim().toUpperCase(),
+    }))
+    .filter((x) => x.prefix)
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+  for (const { agency, prefix } of prefixes) {
+    if (
+      upper.startsWith(prefix + " ") ||
+      upper.startsWith(prefix + "-") ||
+      upper.startsWith(prefix + " -")
+    ) {
+      return agency;
+    }
+  }
+  return null;
+}
+
 function save(data) {
   fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
   try {
@@ -69,4 +117,8 @@ module.exports = {
   normalizeLookupDomainString,
   domainsListFromStored,
   emailDomainInAgencyList,
+  isAgencyActive,
+  findAgencyBySuffix,
+  assertAgencyActiveBySuffix,
+  findAgencyForGroupName,
 };

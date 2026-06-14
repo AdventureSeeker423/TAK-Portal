@@ -1195,6 +1195,7 @@ async function createUser(
       a.suffix.toLowerCase() === String(agencySuffix || "").toLowerCase()
   );
   if (!agency) throw new Error("Invalid agency");
+  agenciesStore.assertAgencyActiveBySuffix(agency.suffix, agencies);
 
   const username = `${normalizedBadge}${agency.suffix}`;
   if (!skipExistenceCheck && await userExists(username)) {
@@ -2274,6 +2275,28 @@ async function searchUsersByAgencyAbbreviationPaged({
   };
 }
 
+async function listAllUsersByAgencySuffix(agencySuffix) {
+  const sfx = String(agencySuffix || "").trim();
+  if (!sfx) return [];
+
+  const all = [];
+  let page = 1;
+  let hasNext = true;
+  while (hasNext) {
+    const batch = await searchUsersByAgencySuffixPaged({
+      agencySuffix: sfx,
+      page,
+      pageSize: 200,
+      includeGroups: false,
+      includeRoles: false,
+    });
+    all.push(...(Array.isArray(batch.users) ? batch.users : []));
+    hasNext = !!batch.hasNext;
+    page += 1;
+  }
+  return all;
+}
+
 async function searchUsersByAgencySuffixPaged({
   agencySuffix,
   q,
@@ -2520,6 +2543,28 @@ async function searchUsersByAgencyNamePaged({
   };
 }
 
+async function listAllUsersByAgencyName(agencyName) {
+  const name = String(agencyName || "").trim();
+  if (!name) return [];
+
+  const all = [];
+  let page = 1;
+  let hasNext = true;
+  while (hasNext) {
+    const batch = await searchUsersByAgencyNamePaged({
+      agencyName: name,
+      page,
+      pageSize: 200,
+      includeGroups: false,
+      includeRoles: false,
+    });
+    all.push(...(Array.isArray(batch.users) ? batch.users : []));
+    hasNext = !!batch.hasNext;
+    page += 1;
+  }
+  return all;
+}
+
 const AGENCY_DASHBOARD_USER_PAGE_SIZE = 300;
 
 function userPassesAgencySuffixSafety(user, expectedAgencySuffix) {
@@ -2688,6 +2733,13 @@ async function toggleUserActive(userId, isActive) {
     throw e;
   }
   const wasActive = !!userBefore?.is_active;
+
+  if (isActive && !wasActive) {
+    const suffix = accessSvc.resolveAgencySuffixFromUser(userBefore);
+    if (suffix) {
+      agenciesStore.assertAgencyActiveBySuffix(suffix);
+    }
+  }
 
   // If disabling, revoke + VERIFY TAK certs first (if enabled)
   if (!isActive) {
@@ -3898,7 +3950,9 @@ module.exports = {
   searchUsersPaged,
   searchUsersByAgencyAbbreviationPaged,
   searchUsersByAgencySuffixPaged,
+  listAllUsersByAgencySuffix,
   searchUsersByAgencyNamePaged,
+  listAllUsersByAgencyName,
   countUsersByAgencyName,
   buildUsersByTemplateForAgencyName,
   resetPassword,
