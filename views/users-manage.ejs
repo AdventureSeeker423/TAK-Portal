@@ -4592,8 +4592,15 @@ tr.row-disabled td {
 }
 
 .userQrDetailsSection {
-  margin-top: 20px;
+  margin-top: 12px;
   min-width: 280px;
+}
+
+/* Details kept in DOM for now; hidden on Users page QR modals */
+.userQrDetailsSection > h3,
+.userQrDetailsSection #userQrDetails,
+.userQrDetailsSection #userPrefQrDetails {
+  display: none !important;
 }
 
 .userPrefQrDetails {
