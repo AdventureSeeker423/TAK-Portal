@@ -53,6 +53,17 @@ function isAgencyActive(agency) {
   return agency?.isActive !== false;
 }
 
+/** Agencies shown on public forms and eligible for lookup / request access. */
+function isAgencyPublicEnrollmentEligible(agency) {
+  return isAgencyActive(agency);
+}
+
+function filterPublicEnrollmentAgencies(agencies) {
+  return (Array.isArray(agencies) ? agencies : load()).filter(
+    isAgencyPublicEnrollmentEligible
+  );
+}
+
 function findAgencyBySuffix(suffix, agencies) {
   const sfx = String(suffix || "").trim().toLowerCase();
   if (!sfx) return null;
@@ -118,6 +129,8 @@ module.exports = {
   domainsListFromStored,
   emailDomainInAgencyList,
   isAgencyActive,
+  isAgencyPublicEnrollmentEligible,
+  filterPublicEnrollmentAgencies,
   findAgencyBySuffix,
   assertAgencyActiveBySuffix,
   findAgencyForGroupName,

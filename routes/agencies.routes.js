@@ -1236,6 +1236,12 @@ router.post("/:index/lookup/enable", (req, res) => {
   }
 
   const agency = agencies[idx];
+  if (!store.isAgencyPublicEnrollmentEligible(agency)) {
+    return res.status(400).json({
+      error: "Enable the agency before enabling account lookup.",
+    });
+  }
+
   agencies[idx].lookupEnabled = true;
   agencies[idx].lookupDomain = normalized;
 

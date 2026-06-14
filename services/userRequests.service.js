@@ -149,6 +149,11 @@ function validateCreate(input) {
       (a) => String(a?.suffix || "").toLowerCase() === agencySuffix.toLowerCase()
     );
     if (!agency) throw new Error("Selected agency is not valid");
+    if (!agenciesStore.isAgencyPublicEnrollmentEligible(agency)) {
+      throw new Error(
+        "The selected agency is not currently accepting access requests."
+      );
+    }
 
     const list = agenciesStore.domainsListFromStored(agency.lookupDomain);
     if (list.length > 0 && !agenciesStore.emailDomainInAgencyList(email, agency.lookupDomain)) {

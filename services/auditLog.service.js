@@ -397,6 +397,7 @@ const LOOKUP_FAILURE_LABELS = {
   missing_fields: "Email address or username was missing.",
   invalid_email: "Email address format was invalid.",
   agency_not_eligible: "No agency with account lookup enabled matched the email domain.",
+  agency_disabled: "The matching agency is disabled and account lookup is unavailable.",
   user_not_found: "Username was not found or the account already has an email on file.",
   email_send_failed: "Account matched but the enrollment QR email could not be sent.",
 };

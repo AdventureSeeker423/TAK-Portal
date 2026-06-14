@@ -1019,13 +1019,29 @@ app.post("/lookup", async (req, res) => {
     const formWithDomain = { ...form, emailDomain: domain };
 
     const agencies = agenciesStore.load() || [];
-    const lookupEnabledAgencyCount = agencies.filter((a) => a && a.lookupEnabled === true).length;
+    const lookupEnabledAgencyCount = agencies.filter(
+      (a) => a && a.lookupEnabled === true && agenciesStore.isAgencyPublicEnrollmentEligible(a)
+    ).length;
 
-    const agency = agencies.find((a) => {
+    const domainMatch = agencies.find((a) => {
       if (!a) return false;
       if (a.lookupEnabled !== true) return false;
       return agenciesStore.emailDomainInAgencyList(form.email, a.lookupDomain);
     });
+
+    if (domainMatch && !agenciesStore.isAgencyPublicEnrollmentEligible(domainMatch)) {
+      logLookupFailure("agency_disabled", {
+        form: formWithDomain,
+        agencySuffix: String(domainMatch?.suffix || "").trim().toLowerCase() || undefined,
+        agencyName: String(domainMatch?.name || "") || undefined,
+        lookupEnabledAgencyCount,
+      });
+      throw new Error("Email address or Username Not Found");
+    }
+
+    const agency = domainMatch && agenciesStore.isAgencyPublicEnrollmentEligible(domainMatch)
+      ? domainMatch
+      : null;
 
     if (!agency) {
       logLookupFailure("agency_not_eligible", {
@@ -1138,7 +1154,7 @@ app.post("/lookup", async (req, res) => {
 
 // Public: request access form (must remain reachable by non-authenticated users)
 app.get("/request-access", (req, res) => {
-  const agencies = agenciesStore.load();
+  const agencies = agenciesStore.filterPublicEnrollmentAgencies(agenciesStore.load());
   const settings = (res.locals && res.locals.settings) ? res.locals.settings : (settingsSvc.getSettings() || {});
   const hcaptchaSiteKey = String(settings.HCAPTCHA_SITE_KEY || "").trim();
   const hcaptchaSecretKey = String(settings.HCAPTCHA_SECRET_KEY || "").trim();
@@ -1214,7 +1230,7 @@ app.post("/request-access", async (req, res) => {
 
     return res.redirect("/request-access/confirmation");
   } catch (err) {
-    const agencies = agenciesStore.load();
+    const agencies = agenciesStore.filterPublicEnrollmentAgencies(agenciesStore.load());
     const settings = (res.locals && res.locals.settings) ? res.locals.settings : (settingsSvc.getSettings() || {});
     const hcaptchaSiteKey = String(settings.HCAPTCHA_SITE_KEY || "").trim();
     const hcaptchaSecretKey = String(settings.HCAPTCHA_SECRET_KEY || "").trim();
