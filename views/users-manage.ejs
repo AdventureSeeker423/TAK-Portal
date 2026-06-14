@@ -4333,7 +4333,7 @@ tr.row-disabled td {
   border-color: rgba(255, 255, 255, 0.08);
 }
 
-/* Mobile: stacked cards with labeled fields (matches Groups/Templates) */
+/* Mobile: stacked cards with 2-column detail grid */
 @media (max-width: 990px) {
   .listCardTableWrap {
     overflow-x: hidden;
@@ -4349,22 +4349,27 @@ tr.row-disabled td {
     display: none;
   }
 
-  .listCardTable tbody tr {
-    display: flex;
-    flex-direction: column;
+  .usersListTable tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title title"
+      "agency template"
+      "name email"
+      "actions actions";
     border: 1px solid var(--line);
     border-radius: 12px;
     background: var(--panel);
     overflow: hidden;
   }
 
-  .usersListTable .cardTitleCell { order: 1; }
-  .usersListTable .userAgencyCell { order: 2; }
-  .usersListTable .userNameCell { order: 3; }
-  .usersListTable .cardActionsCell { order: 4; }
-  .usersListTable .userTemplateCell,
-  .usersListTable .userEmailCell,
-  .usersListTable .userStatusCell { order: 99; display: none !important; }
+  .usersListTable .cardTitleCell { grid-area: title; }
+  .usersListTable .userAgencyCell { grid-area: agency; }
+  .usersListTable .userTemplateCell { grid-area: template; }
+  .usersListTable .userNameCell { grid-area: name; }
+  .usersListTable .userEmailCell { grid-area: email; }
+  .usersListTable .cardActionsCell { grid-area: actions; }
+  .usersListTable .userStatusCell { display: none !important; }
 
   .listCardTable tbody td {
     display: block;
@@ -4406,6 +4411,21 @@ tr.row-disabled td {
     font-size: 15px;
     line-height: 1.3;
     word-break: break-word;
+  }
+
+  .usersListTable .userTemplateCell,
+  .usersListTable .userEmailCell {
+    border-left: 1px solid var(--line);
+  }
+
+  .usersListTable .userAgencyCell,
+  .usersListTable .userNameCell {
+    padding-right: 10px;
+  }
+
+  .usersListTable .userNameCell,
+  .usersListTable .userEmailCell {
+    border-top: 1px solid var(--line);
   }
 
   .usersListTable .userStatusBadge,
