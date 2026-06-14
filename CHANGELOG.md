@@ -12,7 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
-### v1.3.36 - PENDING
+### v1.3.36 - 6/14/26
+✨ `Enhancement` - Users - Improved formatting for mobile and adjusted modal titles<br>
+✨ `Enhancement` - Users - Split QR into two buttons, allowing for better visibility/scanning<br>
 ✨ `Enhancement` - Data Sync - Cleaned up wording and layouts page<br>
 ✨ `Enhancement` - Dashboard - Hid tls connections from connected clients<br>
 ✨ `Enhancement` - Lookup - Enhanced logging service to capture better details
