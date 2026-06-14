@@ -13,7 +13,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ## Version History
 
 ### v1.3.37 - PENDING
-✨ `Enhancement` - Agencies - Agency County Names, County Codes, and States can now be edited.  Changing a county's full name or state also updates the county name for all "county" specific groups.<br>
+✨ `Enhancement` - Agencies - Agency County Names, County Codes, and States can now be edited.  Changing a county's full name or state also updates the name for all specific groups (State groups are only renamed if no other agency depends on that state).<br>
 
 ### v1.3.36 - 6/14/26
 ✨ `Enhancement` - Users - Improved formatting for mobile and adjusted modal titles<br>
