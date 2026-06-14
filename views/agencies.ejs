@@ -1180,7 +1180,7 @@ window.delAgency = async (id) => {
   if (!ok) return;
 
   const finalOk = confirm(
-    `FINAL CONFIRMATION\n\nPermanently delete agency "${label}" and ALL items listed above?\n\nThis action CANNOT be undone.`
+    `FINAL CONFIRMATION\n\nPermanently delete agency "${label}" and ALL items listed previously?\n\nThis action CANNOT be undone.`
   );
   if (!finalOk) return;
 
