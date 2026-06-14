@@ -221,7 +221,8 @@
       <button class="btn" id="nextPageBtnTop" type="button">Next</button>
     </div>
 
-    <table class="table">
+    <div class="listCardTableWrap">
+    <table class="table listCardTable usersListTable">
       <thead id="thead">
         <tr>
           <th class="sortable" data-key="username">
@@ -247,6 +248,7 @@
       </thead>
       <tbody id="tbody"></tbody>
     </table>
+    </div>
 
     <!-- Pagination controls (bottom) -->
     <div class="pagination" id="paginationBottom">
@@ -1949,17 +1951,24 @@ function renderResults(users){
     const currentTemplateDisplay = (!currentTemplateRaw || currentTemplateRaw === "Manual Group Selection")
       ? "—"
       : currentTemplateRaw;
+    const agencyAbbrev = escapeHtml(getUserAgencyAbbreviation(u) || "—");
+    const displayName = escapeHtml(u.name || "");
+    const email = escapeHtml(u.email || "");
+    const statusLabel = u.is_active ? "Enabled" : "Disabled";
     return `
       <tr class="${u.is_active ? "" : "row-disabled"}">
-        <td>${escapeHtml(u.username)}</td>
-        <td>${escapeHtml(getUserAgencyAbbreviation(u) || "—")}</td>
-        <td>${escapeHtml(u.name || "")}</td>
-        <td>${escapeHtml(currentTemplateDisplay)}</td>
-        <td>${escapeHtml(u.email || "")}</td>
-        <td>${u.is_active ? "Enabled" : "Disabled"}</td>
-        <td>
+        <td class="userUsernameCell cardTitleCell">
+          <div class="userUsernameText cardTitleText">${escapeHtml(u.username)}</div>
+          ${!u.is_active ? `<span class="userStatusBadge cardMetaBadge">${statusLabel}</span>` : ""}
+        </td>
+        <td class="userAgencyCell" data-label="Agency">${agencyAbbrev}</td>
+        <td class="userNameCell" data-label="Name">${displayName || "—"}</td>
+        <td class="userTemplateCell" data-label="Template">${escapeHtml(currentTemplateDisplay)}</td>
+        <td class="userEmailCell" data-label="Email">${email || "—"}</td>
+        <td class="userStatusCell" data-label="Status">${statusLabel}</td>
+        <td class="userActionsCell cardActionsCell">
           ${locked ? `<span class="muted">Actions Hidden</span>` : `
-            <div class="row" style="gap:8px; flex-wrap:wrap;">
+            <div class="userActionsRow cardActionsRow">
               <button class="btn" onclick="editUser('${pk}')">Edit</button>
               ${u.is_active ? `
                 <button class="btn success userEnrollQrBtn" type="button"
@@ -4279,24 +4288,40 @@ th.sortable:hover{
 }
 
 
-/* Hide Agency, Current Template, Email, Status columns on small screens */
-@media (max-width: 640px){
-  .table th:nth-child(2),
-  .table td:nth-child(2){
-    display: none;
-  }
-  .table th:nth-child(3),
-  .table td:nth-child(3){
-    display: none;
-  }
-  .table th:nth-child(5),
-  .table td:nth-child(5){
-    display: none;
-  }
-  .table th:nth-child(6),
-  .table td:nth-child(6){
-    display: none;
-  }
+/* Existing users list */
+.listCardTableWrap {
+  width: 100%;
+}
+
+.usersListTable td {
+  vertical-align: top;
+}
+
+.usersListTable .userUsernameText {
+  font-weight: 600;
+}
+
+.usersListTable .userStatusBadge,
+.usersListTable .cardMetaBadge {
+  display: none;
+}
+
+.usersListTable .userEmailCell {
+  word-break: break-word;
+}
+
+.usersListTable .userActionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.usersListTable .userActionsRow .btn {
+  width: auto;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 tr.row-disabled {
@@ -4306,6 +4331,144 @@ tr.row-disabled {
 
 tr.row-disabled td {
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Mobile: stacked cards with labeled fields (matches Groups/Templates) */
+@media (max-width: 990px) {
+  .listCardTableWrap {
+    overflow-x: hidden;
+  }
+
+  .listCardTable {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .listCardTable thead {
+    display: none;
+  }
+
+  .listCardTable tbody tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .usersListTable .cardTitleCell { order: 1; }
+  .usersListTable .userAgencyCell { order: 2; }
+  .usersListTable .userNameCell { order: 3; }
+  .usersListTable .userTemplateCell { order: 4; }
+  .usersListTable .userEmailCell { order: 5; }
+  .usersListTable .userStatusCell { order: 6; }
+  .usersListTable .cardActionsCell { order: 7; }
+
+  .listCardTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 8px 12px;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    min-width: 0 !important;
+    max-width: none !important;
+    white-space: normal;
+  }
+
+  .listCardTable tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleCell::before,
+  .listCardTable .cardActionsCell::before {
+    display: none;
+  }
+
+  .listCardTable .cardTitleCell {
+    padding-top: 12px;
+    padding-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleText {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+
+  .usersListTable .userStatusBadge,
+  .usersListTable .cardMetaBadge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+
+  .listCardTable .cardActionsCell {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .listCardTable .cardActionsRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .listCardTable .cardActionsRow .btn,
+  .listCardTable .cardActionsRow .muted {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .listCardTable .cardActionsRow .muted {
+    grid-column: 1 / -1;
+    padding: 8px 0;
+  }
+
+  #searchForm select,
+  #searchForm input#q {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  #searchForm {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .listCardTable .cardActionsRow {
+    grid-template-columns: 1fr;
+  }
 }
 
 .usersExportCard {
