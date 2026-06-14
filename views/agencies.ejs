@@ -1023,10 +1023,38 @@ window.toggleAgencyActive = async (agencyId, isActive) => {
 
   const label = String(a.name || a.suffix || "Agency");
   const enabling = !!isActive;
+
+  let userCount = 0;
+  try {
+    const previewRes = await fetch(`/api/agencies/${encodeURIComponent(agencyId)}/active-preview`);
+    const preview = await previewRes.json().catch(() => ({}));
+    if (!previewRes.ok) {
+      setMsg(preview.error || "Could not load user count for this agency.", false);
+      return;
+    }
+    userCount = Number(preview.userCount) || 0;
+  } catch (e) {
+    setMsg(e?.message || "Could not load user count for this agency.", false);
+    return;
+  }
+
+  const userCountLine =
+    userCount === 0
+      ? enabling
+        ? "No users are queued to be re-enabled."
+        : "No active users will be disabled."
+      : userCount === 1
+        ? enabling
+          ? "1 user will be re-enabled."
+          : "1 active user will be disabled."
+        : enabling
+          ? `${userCount} users will be re-enabled.`
+          : `${userCount} active users will be disabled.`;
+
   const ok = confirm(
     enabling
-      ? `Enable agency "${label}"?\n\nUsers disabled with this agency will be re-enabled.`
-      : `Disable agency "${label}"?\n\nAll active users for this agency will be disabled. TAK certificates may be revoked per portal settings.`
+      ? `Enable agency "${label}"?\n\n${userCountLine}`
+      : `Disable agency "${label}"?\n\n${userCountLine}`
   );
   if (!ok) return;
 

@@ -150,6 +150,42 @@ async function setAgencyActive(agencyIndex, isActive) {
   };
 }
 
+async function getAgencyActiveChangePreview(agencyIndex) {
+  const idx = Number(agencyIndex);
+  const agencies = agenciesStore.load();
+  if (!Number.isInteger(idx) || !agencies[idx]) {
+    throw new Error("Agency not found");
+  }
+
+  const agency = agencies[idx];
+  const agencyName = String(agency.name || "").trim();
+  const enabling = !agenciesStore.isAgencyActive(agency);
+
+  if (enabling) {
+    const ids = Array.isArray(agency.agencyDisabledUserIds)
+      ? agency.agencyDisabledUserIds.map(String).filter(Boolean)
+      : [];
+    return {
+      enabling: true,
+      userCount: ids.length,
+      agencyName,
+    };
+  }
+
+  if (!agencyName) {
+    return { enabling: false, userCount: 0, agencyName: "" };
+  }
+
+  const users = await usersService.listAllUsersByAgencyName(agencyName);
+  const userCount = users.filter((u) => u?.is_active).length;
+  return {
+    enabling: false,
+    userCount,
+    agencyName,
+  };
+}
+
 module.exports = {
   setAgencyActive,
+  getAgencyActiveChangePreview,
 };

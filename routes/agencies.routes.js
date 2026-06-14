@@ -1020,6 +1020,23 @@ router.put("/:index/county-name", async (req, res) => {
   }
 });
 
+router.get("/:index/active-preview", async (req, res) => {
+  try {
+    const idx = Number(req.params.index);
+    const agencies = store.load();
+    if (!Number.isInteger(idx) || !agencies[idx]) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const preview = await agencyActiveSvc.getAgencyActiveChangePreview(idx);
+    return res.json(preview);
+  } catch (err) {
+    return res.status(400).json({
+      error: err?.response?.data || err?.message || "Failed to preview agency status change",
+    });
+  }
+});
+
 router.put("/:index/active", async (req, res) => {
   try {
     const idx = Number(req.params.index);
