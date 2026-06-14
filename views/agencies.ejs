@@ -890,7 +890,7 @@ function renderAgencies(){
             onclick="openDomainModal('${agencyId}')">
             Domain
           </button>
-          <button class="${toggleBtnClass}" type="button"
+          <button class="${toggleBtnClass} agency-active-toggle-btn" type="button"
             onclick="toggleAgencyActive('${agencyId}', ${active ? "false" : "true"})">${toggleLabel}</button>
           <button class="btn danger" type="button"
             onclick="delAgency('${agencyId}')">
@@ -1058,6 +1058,28 @@ window.toggleAgencyActive = async (agencyId, isActive) => {
   );
   if (!ok) return;
 
+  const toggleButtons = document.querySelectorAll(".agency-active-toggle-btn");
+  toggleButtons.forEach((btn) => {
+    btn.disabled = true;
+  });
+
+  const progressUserPart =
+    userCount === 1
+      ? "1 user"
+      : userCount > 1
+        ? `${userCount} users`
+        : "";
+  setMsg(
+    enabling
+      ? progressUserPart
+        ? `Enabling agency "${label}"… Updating ${progressUserPart}.`
+        : `Enabling agency "${label}"…`
+      : progressUserPart
+        ? `Disabling agency "${label}"… Updating ${progressUserPart}.`
+        : `Disabling agency "${label}"…`,
+    true
+  );
+
   try {
     const res = await fetch(`/api/agencies/${encodeURIComponent(agencyId)}/active`, {
       method: "PUT",
@@ -1082,6 +1104,10 @@ window.toggleAgencyActive = async (agencyId, isActive) => {
     await loadAgenciesWithCounts();
   } catch (e) {
     setMsg(e?.message || "Failed to update agency status.", false);
+  } finally {
+    toggleButtons.forEach((btn) => {
+      btn.disabled = false;
+    });
   }
 };
 
