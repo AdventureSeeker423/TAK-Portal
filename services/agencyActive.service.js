@@ -91,6 +91,14 @@ async function setAgencyActive(agencyIndex, isActive) {
   let usersUpdated = 0;
   const failures = [];
 
+  // Mark the agency active before re-enabling users so toggleUserActive checks pass.
+  agencies[idx] = {
+    ...agency,
+    isActive: true,
+    agencyDisabledUserIds: storedIds,
+  };
+  agenciesStore.save(agencies);
+
   for (const userId of storedIds) {
     try {
       const user = await usersService.getUserById(userId);
@@ -107,6 +115,13 @@ async function setAgencyActive(agencyIndex, isActive) {
   }
 
   if (failures.length) {
+    agencies[idx] = {
+      ...agencies[idx],
+      isActive: false,
+      agencyDisabledUserIds: storedIds,
+    };
+    agenciesStore.save(agencies);
+
     const detail = failures
       .slice(0, 5)
       .map((f) => `${f.userId}: ${f.error}`)
@@ -119,8 +134,7 @@ async function setAgencyActive(agencyIndex, isActive) {
   }
 
   agencies[idx] = {
-    ...agency,
-    isActive: true,
+    ...agencies[idx],
     agencyDisabledUserIds: [],
   };
   agenciesStore.save(agencies);
