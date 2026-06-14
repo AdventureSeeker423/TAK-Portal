@@ -33,6 +33,119 @@ function agencyMatchesScope(ag, targetState, targetCounty, targetCountyAbbrev) {
   );
 }
 
+function stripTakPrefix(name) {
+  const n = String(name || "").trim();
+  return n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
+}
+
+function withTakPrefix(name, hadTak) {
+  const n = String(name || "").trim();
+  if (!n) return "";
+  if (!hadTak) return n;
+  return n.toLowerCase().startsWith("tak_") ? n : `tak_${n}`;
+}
+
+function computeRenamedStateGroupName(groupName, oldState, newState) {
+  const raw = String(groupName || "").trim();
+  if (!raw) return null;
+
+  const hadTak = raw.toLowerCase().startsWith("tak_");
+  const withoutTak = stripTakPrefix(raw);
+
+  let behaviorSuffix = "";
+  let base = withoutTak;
+  if (base.endsWith("_READ")) {
+    behaviorSuffix = "_READ";
+    base = base.slice(0, -5);
+  } else if (base.endsWith("_WRITE")) {
+    behaviorSuffix = "_WRITE";
+    base = base.slice(0, -6);
+  }
+
+  const oldS = normalizeStateCode(oldState);
+  const newS = normalizeStateCode(newState);
+  if (!oldS || !newS) return null;
+
+  const legacyPrefix = `${oldS} - `;
+  if (base.toUpperCase().startsWith(legacyPrefix)) {
+    const rest = base.slice(legacyPrefix.length);
+    return withTakPrefix(`${newS} - ${rest}${behaviorSuffix}`, hadTak);
+  }
+
+  const modernPrefix = `${oldS} `;
+  if (base.toUpperCase().startsWith(modernPrefix)) {
+    const rest = base.slice(modernPrefix.length);
+    if (rest.toLowerCase().startsWith("co ") || rest.toLowerCase().startsWith("co -")) {
+      return null;
+    }
+    return withTakPrefix(`${newS} ${rest}${behaviorSuffix}`, hadTak);
+  }
+
+  return null;
+}
+
+function isAgencyAdminGroupName(name) {
+  return /-agencyadmin$/i.test(String(name || "").trim());
+}
+
+async function renameStateTakGroups(oldState, newState) {
+  const oldS = normalizeStateCode(oldState);
+  const newS = normalizeStateCode(newState);
+  if (!oldS || !newS || oldS === newS) {
+    return { groupsRenamed: 0 };
+  }
+
+  const allGroups = await groupsService.getAllGroups({ includeHidden: true });
+  let groupsRenamed = 0;
+
+  for (const g of Array.isArray(allGroups) ? allGroups : []) {
+    const gn = String(g?.name || "").trim();
+    const gid = String(g?.pk ?? g?.id ?? "").trim();
+    if (!gn || !gid) continue;
+    if (isAgencyAdminGroupName(gn)) continue;
+
+    const attrs = g?.attributes && typeof g.attributes === "object" ? g.attributes : {};
+    const createdType = String(attrs.created_type || "").trim().toLowerCase();
+    const detail = normalizeStateCode(attrs.created_type_detail);
+    const nextName = computeRenamedStateGroupName(gn, oldS, newS);
+    const isStateByAttr = createdType === "state" && detail === oldS;
+    const isStateByName = !!nextName;
+
+    if (!isStateByAttr && !isStateByName) continue;
+
+    const finalName = nextName || gn;
+    const nextAttrs = { ...attrs };
+    if (isStateByAttr) {
+      nextAttrs.created_type = attrs.created_type || "State";
+      nextAttrs.created_type_detail = newS;
+    }
+
+    const nameChanged = finalName !== gn;
+    const detailChanged = isStateByAttr && detail !== newS;
+    if (!nameChanged && !detailChanged) continue;
+
+    await groupsService.patchGroupNameAndCn(gid, finalName, {
+      skipActionLock: true,
+      attributes: {
+        created_type: nextAttrs.created_type,
+        created_type_detail: nextAttrs.created_type_detail,
+        description: nextAttrs.description,
+        private: nextAttrs.private,
+      },
+    });
+    groupsRenamed += 1;
+  }
+
+  return { groupsRenamed };
+}
+
+function anyAgencyUsesState(agencies, stateCode) {
+  const code = normalizeStateCode(stateCode);
+  return (Array.isArray(agencies) ? agencies : []).some(
+    (ag) => normalizeStateCode(ag?.state) === code
+  );
+}
+
 /**
  * @param {number} agencyIndex - index in agencies.json
  * @param {string} newStateRaw - new state code
@@ -91,12 +204,22 @@ async function renameStateCode(agencyIndex, newStateRaw) {
       county: targetCounty,
       countyAbbrev: targetCountyAbbrev,
       updatedIndexes: matchingIndexes,
+      groupsRenamed: 0,
+      stateGroupsRenamed: false,
     };
   }
 
   for (const i of matchingIndexes) {
     agencies[i] = { ...agencies[i], state: newState };
   }
+
+  const renameStateGroups = !anyAgencyUsesState(agencies, oldState) && oldState !== newState;
+  let groupsRenamed = 0;
+  if (renameStateGroups) {
+    const groupStats = await renameStateTakGroups(oldState, newState);
+    groupsRenamed = groupStats.groupsRenamed;
+  }
+
   agenciesStore.save(agencies);
   groupsService.invalidateGroupsCache();
 
@@ -108,6 +231,8 @@ async function renameStateCode(agencyIndex, newStateRaw) {
     county: targetCounty,
     countyAbbrev: targetCountyAbbrev,
     updatedIndexes: matchingIndexes,
+    groupsRenamed,
+    stateGroupsRenamed: renameStateGroups && groupsRenamed > 0,
   };
 }
 

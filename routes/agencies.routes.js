@@ -1029,6 +1029,8 @@ router.put("/:index/state", async (req, res) => {
           countyAbbrev: result.countyAbbrev || null,
         },
         after: { state: result.newState || null },
+        groupsRenamed: result.groupsRenamed ?? 0,
+        stateGroupsRenamed: !!result.stateGroupsRenamed,
         updatedIndexes: result.updatedIndexes || [],
         skipped: !!result.skipped,
       },
@@ -1040,6 +1042,8 @@ router.put("/:index/state", async (req, res) => {
       state: result.newState,
       county: result.county,
       countyAbbrev: result.countyAbbrev,
+      groupsRenamed: result.groupsRenamed ?? 0,
+      stateGroupsRenamed: !!result.stateGroupsRenamed,
       updatedIndexes: result.updatedIndexes || [],
     });
   } catch (err) {

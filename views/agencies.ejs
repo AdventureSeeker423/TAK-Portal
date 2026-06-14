@@ -534,7 +534,7 @@ function buildAgencyStateCellHtml(a) {
     current && !AGENCY_STATE_OPTIONS.includes(current)
       ? `<option value="${esc(current)}" selected>${esc(current)} (current)</option>`
       : "";
-  return `<select class="agency-state-select" data-edit-key="${esc(editKey)}" aria-label="State for ${aria}" title="Updates agencies matching this state, county, and county abbreviation" onchange="updateAgencyStateLocal(${Number(idx)}, this.value)">${legacyExtra}${opts}</select>`;
+  return `<select class="agency-state-select" data-edit-key="${esc(editKey)}" aria-label="State for ${aria}" title="Updates agencies matching this state, county, and county abbreviation; renames state groups only if no agencies remain on the old state" onchange="updateAgencyStateLocal(${Number(idx)}, this.value)">${legacyExtra}${opts}</select>`;
 }
 
 function syncStateInputsForEditKey(editKey, value) {
@@ -1532,7 +1532,7 @@ async function finishAgencyAttributesEditing() {
     const lines = [];
     for (const ch of stateChanges) {
       lines.push(
-        `${ch.oldState || "State"}, ${ch.oldCounty || "County"}, ${ch.oldCountyAbbrev || "abbrev"}: state ${ch.oldState || "(none)"} → ${ch.newVal} (matching agencies only)`
+        `${ch.oldState || "State"}, ${ch.oldCounty || "County"}, ${ch.oldCountyAbbrev || "abbrev"}: state ${ch.oldState || "(none)"} → ${ch.newVal} (matching agencies; state groups renamed only if no agencies remain on ${ch.oldState})`
       );
     }
     for (const ch of countyNameChanges) {
@@ -1605,9 +1605,11 @@ async function finishAgencyAttributesEditing() {
       }
       if (!data.skipped) {
         const updatedCount = Array.isArray(data.updatedIndexes) ? data.updatedIndexes.length : 0;
-        summaries.push(
-          `${label} (state): ${updatedCount || 1} agenc${updatedCount === 1 ? "y" : "ies"} updated`
-        );
+        let summary = `${label} (state): ${updatedCount || 1} agenc${updatedCount === 1 ? "y" : "ies"} updated`;
+        if (data.stateGroupsRenamed) {
+          summary += `, ${data.groupsRenamed ?? 0} state group(s) renamed`;
+        }
+        summaries.push(summary);
       }
     } catch (e) {
       errors.push(`${label} (state): ${e.message || String(e)}`);
