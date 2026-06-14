@@ -2720,6 +2720,54 @@ async function bulkEnableUsersForAgency(userIds) {
   return { usersUpdated: reenabledIds.length };
 }
 
+/**
+ * Delete many agency users: bulk TAK cert revoke, then concurrent Authentik DELETE.
+ */
+async function bulkDeleteUsersForAgency(users) {
+  const list = (Array.isArray(users) ? users : []).filter((u) => {
+    const pk = u?.pk ?? u?.id;
+    return pk != null;
+  });
+
+  const usernames = list.map((u) => u.username).filter(Boolean);
+  if (usernames.length) {
+    await tak.revokeCertsForUsersBulk(usernames, { requireVerified: true });
+  }
+
+  const deletedIds = [];
+  const failures = [];
+  const concurrency = getAgencyActiveConcurrency();
+
+  await runWithConcurrencyLimit(list, concurrency, async (user) => {
+    const userId = String(user.pk ?? user.id);
+    try {
+      await api.delete(`/core/users/${userId}/`);
+      deletedIds.push(userId);
+    } catch (err) {
+      failures.push({
+        userId,
+        error: err?.message || String(err),
+      });
+    }
+  });
+
+  if (deletedIds.length > 0) invalidateUsersCache();
+
+  if (failures.length) {
+    const detail = failures
+      .slice(0, 5)
+      .map((f) => `${f.userId}: ${f.error}`)
+      .join(" | ");
+    throw new Error(
+      `Failed to delete ${failures.length} user(s) for this agency. ${detail}${
+        failures.length > 5 ? " | …" : ""
+      }`
+    );
+  }
+
+  return { deletedIds };
+}
+
 const AGENCY_DASHBOARD_USER_PAGE_SIZE = 300;
 
 function userPassesAgencySuffixSafety(user, expectedAgencySuffix) {
@@ -4126,6 +4174,7 @@ module.exports = {
   toggleUserActive,
   bulkDisableUsersForAgency,
   bulkEnableUsersForAgency,
+  bulkDeleteUsersForAgency,
   deleteUser,
   addUserGroups,
   removeUserGroups,

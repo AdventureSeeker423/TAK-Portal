@@ -193,6 +193,27 @@ function countRequestsForUser(authUser) {
   return listRequestsForUser(authUser).length;
 }
 
+function countPendingRequestsForAgencySuffix(suffix) {
+  const sfx = String(suffix || "").trim().toLowerCase();
+  if (!sfx) return 0;
+  return store.load().filter(
+    (r) => String(r?.agencySuffix || "").trim().toLowerCase() === sfx
+  ).length;
+}
+
+function deleteRequestsForAgencySuffix(suffix) {
+  const sfx = String(suffix || "").trim().toLowerCase();
+  if (!sfx) return 0;
+
+  const all = store.load();
+  const next = all.filter(
+    (r) => String(r?.agencySuffix || "").trim().toLowerCase() !== sfx
+  );
+  const removed = all.length - next.length;
+  if (removed > 0) store.save(next);
+  return removed;
+}
+
 async function createRequest(input) {
   const v = validateCreate(input || {});
   const agencies = agenciesStore.load();
@@ -401,6 +422,8 @@ module.exports = {
   listRequests,
   listRequestsForUser,
   countRequestsForUser,
+  countPendingRequestsForAgencySuffix,
+  deleteRequestsForAgencySuffix,
   createRequest,
   deleteRequest,
   deleteRequestForUser,

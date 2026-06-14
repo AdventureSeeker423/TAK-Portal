@@ -12,6 +12,7 @@ const agencyNameRenameSvc = require("../services/agencyNameRename.service");
 const countyNameRenameSvc = require("../services/countyNameRename.service");
 const stateCodeRenameSvc = require("../services/stateCodeRename.service");
 const agencyActiveSvc = require("../services/agencyActive.service");
+const agencyDeleteSvc = require("../services/agencyDelete.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -1125,45 +1126,59 @@ router.put("/:index/state", async (req, res) => {
   }
 });
 
+router.get("/:index/delete-preview", async (req, res) => {
+  try {
+    const idx = Number(req.params.index);
+    const agencies = store.load();
+    if (!Number.isInteger(idx) || !agencies[idx]) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const preview = await agencyDeleteSvc.getAgencyDeletePreview(idx);
+    return res.json(preview);
+  } catch (err) {
+    return res.status(400).json({
+      error: err?.response?.data || err?.message || "Failed to preview agency deletion",
+    });
+  }
+});
+
 router.delete("/:index", async (req, res) => {
   try {
     const idx = Number(req.params.index);
     const agencies = store.load();
-    if (!Number.isInteger(idx) || !agencies[idx]) return res.status(404).json({ error: "Not found" });
-
-    // Delete the computed Agency Admin group in Authentik (best-effort).
-    // We bypass the portal's hidden-group filtering, because these groups
-    // typically start with "authentik-".
-    const a = agencies[idx];
-    const groupName = getAgencyAdminGroupName(a);
-    if (groupName) {
-      const g = await getGroupByNameUnfiltered(groupName);
-      if (g?.pk) {
-        try {
-          await groupsService.deleteGroup(g.pk);
-        } catch (e) {
-          // If the group is already gone or cannot be deleted, we still allow
-          // agency deletion to proceed.
-          // (Returning a hard failure here would strand the agency record.)
-        }
-      }
+    if (!Number.isInteger(idx) || !agencies[idx]) {
+      return res.status(404).json({ error: "Not found" });
     }
 
-    agencies.splice(idx, 1);
-    store.save(agencies);
+    const before = agencies[idx];
+    const result = await agencyDeleteSvc.deleteAgency(idx);
 
     auditSvc.logEvent({
       actor: req.authentikUser || null,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "DELETE_AGENCY",
       targetType: "agency",
-      targetId: String(a?.suffix || ""),
-      details: a,
+      targetId: String(before?.suffix || ""),
+      details: {
+        agencyName: result.agencyName,
+        usersDeleted: result.usersDeleted,
+        agencyGroupsDeleted: result.agencyGroupsDeleted,
+        countyGroupsDeleted: result.countyGroupsDeleted,
+        stateGroupsDeleted: result.stateGroupsDeleted,
+        templatesRemoved: result.templatesRemoved,
+        pendingRequestsRemoved: result.pendingRequestsRemoved,
+        deletedCountyGroups: result.deletedCountyGroups,
+        deletedStateGroups: result.deletedStateGroups,
+        before,
+      },
     });
 
-    return res.json({ success: true });
+    return res.json({ success: true, ...result });
   } catch (err) {
-    return res.status(500).json({ error: err?.response?.data || err?.message || "Failed to delete agency" });
+    return res.status(500).json({
+      error: err?.response?.data || err?.message || "Failed to delete agency",
+    });
   }
 });
 

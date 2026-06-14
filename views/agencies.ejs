@@ -896,7 +896,7 @@ function renderAgencies(){
           </button>
           <button class="${toggleBtnClass} agency-active-toggle-btn" type="button"
             onclick="toggleAgencyActive('${agencyId}', ${active ? "false" : "true"})">${toggleLabel}</button>
-          <button class="btn danger" type="button"
+          <button class="btn danger agency-delete-btn" type="button"
             onclick="delAgency('${agencyId}')">
             Delete
           </button>
@@ -1116,23 +1116,103 @@ window.toggleAgencyActive = async (agencyId, isActive) => {
 };
 
 window.delAgency = async (id) => {
-  if(!confirm("Delete this agency?")) return;
-
   if(!id){
     setMsg("Missing agency id (API should return _id/id).", false);
     return;
   }
 
-  const res = await fetch("/api/agencies/" + encodeURIComponent(id), { method:"DELETE" });
-  const out = await res.json();
-
-  if(!res.ok){
-    setMsg(out.error || "Delete failed", false);
+  const a = (agencies || []).find((x) => String(x._id ?? x.id) === String(id));
+  if (!a) {
+    setMsg("Could not find agency.", false);
     return;
   }
 
-  setMsg("Agency deleted", true);
-  loadAgenciesWithCounts();
+  const label = String(a.name || a.suffix || "Agency");
+  let preview = null;
+
+  try {
+    const previewRes = await fetch(`/api/agencies/${encodeURIComponent(id)}/delete-preview`);
+    preview = await previewRes.json().catch(() => ({}));
+    if (!previewRes.ok) {
+      setMsg(preview.error || "Could not load delete preview for this agency.", false);
+      return;
+    }
+  } catch (e) {
+    setMsg(e?.message || "Could not load delete preview for this agency.", false);
+    return;
+  }
+
+  const countLine = (count, singular, plural) => {
+    const n = Number(count) || 0;
+    const word = n === 1 ? singular : plural;
+    return `- ${n} ${word}`;
+  };
+
+  const lines = [
+    "WARNING!!! DELETING THIS AGENCY IS IRREVERSIBLE. PLEASE SEE THE FOLLOWING ITEMS TO BE DELETED...",
+    "",
+    countLine(preview.userCount, "User", "Users"),
+    countLine(preview.agencyGroupCount, "Agency Specific Group", "Agency Specific Groups"),
+  ];
+
+  if (preview.willDeleteCountyGroups) {
+    lines.push(countLine(preview.countyGroupCount, "County Specific Group", "County Specific Groups"));
+  } else {
+    lines.push("- 0 County Specific Groups (other agencies remain in this county)");
+  }
+
+  if (preview.willDeleteStateGroups) {
+    lines.push(countLine(preview.stateGroupCount, "State Specific Group", "State Specific Groups"));
+  } else {
+    lines.push("- 0 State Specific Groups (other agencies remain in this state)");
+  }
+
+  lines.push(countLine(preview.templateCount, "Template", "Templates"));
+
+  if ((Number(preview.pendingRequestCount) || 0) > 0) {
+    lines.push(countLine(preview.pendingRequestCount, "Pending Access Request", "Pending Access Requests"));
+  }
+
+  lines.push("");
+  lines.push(`Agency: ${label}`);
+
+  const ok = confirm(lines.join("\n"));
+  if (!ok) return;
+
+  const finalOk = confirm(
+    `FINAL CONFIRMATION\n\nPermanently delete agency "${label}" and ALL items listed above?\n\nThis action CANNOT be undone.`
+  );
+  if (!finalOk) return;
+
+  const deleteButtons = document.querySelectorAll(".agency-delete-btn");
+  deleteButtons.forEach((btn) => {
+    btn.disabled = true;
+  });
+
+  const userPart =
+    (Number(preview.userCount) || 0) > 0
+      ? ` Removing ${preview.userCount} user${preview.userCount === 1 ? "" : "s"}…`
+      : "";
+  setMsg(`Deleting agency "${label}"…${userPart}`, "progress");
+
+  try {
+    const res = await fetch("/api/agencies/" + encodeURIComponent(id), { method: "DELETE" });
+    const out = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      setMsg(out.error || "Delete failed", false);
+      return;
+    }
+
+    setMsg(`Agency "${label}" deleted.`, true);
+    await loadAgenciesWithCounts();
+  } catch (e) {
+    setMsg(e?.message || "Delete failed", false);
+  } finally {
+    deleteButtons.forEach((btn) => {
+      btn.disabled = false;
+    });
+  }
 };
 
 // === County normalization helpers ===
