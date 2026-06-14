@@ -9,6 +9,7 @@ const api = require("../services/authentik");
 const auditSvc = require("../services/auditLog.service");
 const agencyAbbrevRenameSvc = require("../services/agencyAbbrevRename.service");
 const agencyNameRenameSvc = require("../services/agencyNameRename.service");
+const countyNameRenameSvc = require("../services/countyNameRename.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -958,6 +959,47 @@ router.put("/:index/county-abbrev", async (req, res) => {
   } catch (err) {
     return res.status(500).json({
       error: err?.response?.data || err?.message || "Failed to update county abbreviation",
+    });
+  }
+});
+
+// Update county full name for all agencies in the same state and rename county TAK groups.
+router.put("/:index/county-name", async (req, res) => {
+  try {
+    const idx = Number(req.params.index);
+    const agencies = store.load();
+    if (!Number.isInteger(idx) || !agencies[idx]) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const result = await countyNameRenameSvc.renameCountyName(idx, req.body?.county);
+
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "UPDATE_AGENCY_COUNTY_NAME",
+      targetType: "agency",
+      targetId: String(agencies[idx]?.suffix || ""),
+      details: {
+        before: { county: result.oldCounty || null, state: result.state || null },
+        after: { county: result.newCounty || null, state: result.state || null },
+        groupsRenamed: result.groupsRenamed ?? 0,
+        updatedIndexes: result.updatedIndexes || [],
+        skipped: !!result.skipped,
+      },
+    });
+
+    return res.json({
+      success: true,
+      skipped: !!result.skipped,
+      county: result.newCounty,
+      state: result.state,
+      groupsRenamed: result.groupsRenamed ?? 0,
+      updatedIndexes: result.updatedIndexes || [],
+    });
+  } catch (err) {
+    return res.status(400).json({
+      error: err?.response?.data || err?.message || "Failed to update county name",
     });
   }
 });
