@@ -477,7 +477,7 @@
 <div class="modalOverlay" id="userPrefQrOverlay" style="display:none;">
   <div class="modal userQrModal" role="dialog" aria-modal="true" aria-labelledby="userPrefQrTitle">
     <div class="modalHeader">
-      <h2 id="userPrefQrTitle" style="margin:0;">Device Preferences QR</h2>
+      <h2 id="userPrefQrTitle" style="margin:0;">Preferences QR</h2>
       <button class="btn" id="userPrefQrCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
@@ -1623,7 +1623,7 @@ function setUserEnrollQrModalTitle(name, username) {
 
 function setUserPrefQrModalTitle(name, username) {
   if (userPrefQrTitle) {
-    userPrefQrTitle.textContent = formatUserModalTitle("Device Preferences QR", username, name);
+    userPrefQrTitle.textContent = formatUserModalTitle("Preferences QR", username, name);
   }
 }
 
