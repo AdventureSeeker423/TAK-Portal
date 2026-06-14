@@ -1962,7 +1962,7 @@ function renderResults(users){
             <div class="row" style="gap:8px; flex-wrap:wrap;">
               <button class="btn" onclick="editUser('${pk}')">Edit</button>
               ${u.is_active ? `
-                <button class="btn btn-access userEnrollQrBtn" type="button"
+                <button class="btn success userEnrollQrBtn" type="button"
                   data-pk="${pk}" data-username="${escapeHtml(u.username)}">Enroll QR</button>
                 <button class="btn btn-access userPrefQrBtn" type="button"
                   data-pk="${pk}" data-username="${escapeHtml(u.username)}">Pref QR</button>
