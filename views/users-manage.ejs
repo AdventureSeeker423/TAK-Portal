@@ -4468,6 +4468,11 @@ tr.row-disabled td {
     padding: 8px 0;
   }
 
+  /* Edit full width; QR pair + toggle/delete share rows below */
+  .usersListTable .cardActionsRow > .btn:first-child {
+    grid-column: 1 / -1;
+  }
+
   #searchForm select,
   #searchForm input#q {
     min-width: 0 !important;
@@ -4481,7 +4486,7 @@ tr.row-disabled td {
 }
 
 @media (max-width: 400px) {
-  .listCardTable .cardActionsRow {
+  .listCardTable:not(.usersListTable) .cardActionsRow {
     grid-template-columns: 1fr;
   }
 }
