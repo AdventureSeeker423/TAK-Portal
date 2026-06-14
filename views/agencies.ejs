@@ -867,17 +867,17 @@ function renderAgencies(){
         <div class="agencyActionsRow cardActionsRow">
           <button class="btn" type="button"
             onclick="openAgencyAdmins('${esc(a._id ?? a.id ?? "")}')">
-            View Admins
+            Agency Admins
           </button>
           <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
           <button class="btn btn-access" type="button"
             onclick="openAccessGroupsModal('${esc(a._id ?? a.id ?? "")}')">
-            Manage Access
+            Manage Groups
           </button>
           <% } %>
           <button class="btn" type="button"
             onclick="openDomainModal('${esc(a._id ?? a.id ?? "")}')">
-            Configure Domain
+            Domain
           </button>
           <button class="btn danger" type="button"
             onclick="delAgency('${esc(a._id ?? a.id ?? "")}')">
