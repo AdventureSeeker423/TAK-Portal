@@ -164,12 +164,20 @@ function portalAuthMiddleware(req, res, next) {
   const isAgencyAdmin =
     Array.isArray(agencySuffixesForUser) && agencySuffixesForUser.length > 0;
 
+  // CloudTAK (or other internal) bridge may inject member groups via X-Authentik-Groups
+  // without granting global/agency admin. See PORTAL_BRIDGE_MEMBER_GROUPS.
+  const bridgeMemberGroupsStr = getString("PORTAL_BRIDGE_MEMBER_GROUPS", "").trim();
+  const bridgeMemberGroups = parseGroupList(bridgeMemberGroupsStr);
+  const isBridgeMember =
+    bridgeMemberGroups.length > 0 &&
+    bridgeMemberGroups.some((needed) => userGroupsLower.includes(needed));
+
   const anyAdminGroupConfigured =
     globalGroups.length > 0 || accessSvc.hasAnyAgencyAdminsConfigured();
 
   // If no admin groups are configured at all, any authenticated user is allowed.
   const hasAnyRequired =
-    !anyAdminGroupConfigured || isGlobalAdmin || isAgencyAdmin;
+    !anyAdminGroupConfigured || isGlobalAdmin || isAgencyAdmin || isBridgeMember;
 
   function deny() {
     if (normalizedPath.startsWith("/api/")) {
@@ -195,7 +203,7 @@ function portalAuthMiddleware(req, res, next) {
 
     // —— Capability / path table (replaces per-role allowlists) ——
     const eff = permsSvc.getEffectivePermissionSet(
-      { username, isGlobalAdmin, isAgencyAdmin },
+      { username, isGlobalAdmin, isAgencyAdmin, isBridgeMember },
       false
     );
     if (!permsSvc.canAccessPath(eff, normalizedPath, method)) {
@@ -215,6 +223,7 @@ function portalAuthMiddleware(req, res, next) {
     groups: userGroups,
     isGlobalAdmin,
     isAgencyAdmin,
+    isBridgeMember,
     allowedAgencySuffixes: agencySuffixesForUser || [],
   };
 

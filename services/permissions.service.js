@@ -5,6 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const registry = require("./permissions.registry");
+const { getString } = require("./env");
 
 const DATA_FILE = path.join(__dirname, "..", "data", "permission-overrides.json");
 
@@ -51,6 +52,14 @@ function getRoleType(user) {
  * @param {boolean} authDisabled - PORTAL_AUTH_ENABLED false: full access
  * @returns {Set<string>}
  */
+function getBridgeMemberPermissions() {
+  const permsRaw = getString("PORTAL_BRIDGE_MEMBER_PERMISSIONS", "page.locate");
+  return String(permsRaw || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter((id) => registry.isValidPermissionId(id));
+}
+
 function getEffectivePermissionSet(user, authDisabled) {
   if (authDisabled) {
     return new Set(registry.ALL_PERMISSION_IDS);
@@ -60,10 +69,17 @@ function getEffectivePermissionSet(user, authDisabled) {
   const un = normalizeUsername(user && user.username);
   const all = loadOverridesFromDisk();
   const entry = un && all[un] ? all[un] : null;
-  if (!entry) {
-    return new Set(base);
-  }
   const out = new Set(base);
+
+  if (user && user.isBridgeMember) {
+    for (const id of getBridgeMemberPermissions()) {
+      out.add(id);
+    }
+  }
+
+  if (!entry) {
+    return out;
+  }
   const allow = Array.isArray(entry.allow) ? entry.allow : [];
   for (const id of allow) {
     if (registry.isValidPermissionId(id)) {
