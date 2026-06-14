@@ -2434,6 +2434,7 @@ async function searchUsersByAgencyNamePaged({
   includeRoles = false,
   includeGroups = true,
   currentTemplate,
+  activeOnly = false,
 } = {}) {
   const name = String(agencyName || "").trim();
   if (!name) {
@@ -2464,6 +2465,8 @@ async function searchUsersByAgencyNamePaged({
     include_roles: includeRoles ? "true" : "false",
     include_groups: includeGroups ? "true" : "false",
   };
+
+  if (activeOnly) params.is_active = true;
 
   if (hiddenPrefixes.length) {
     params.type = ["external", "internal"];
@@ -2543,7 +2546,7 @@ async function searchUsersByAgencyNamePaged({
   };
 }
 
-async function listAllUsersByAgencyName(agencyName) {
+async function listAllUsersByAgencyName(agencyName, { activeOnly = false } = {}) {
   const name = String(agencyName || "").trim();
   if (!name) return [];
 
@@ -2557,12 +2560,164 @@ async function listAllUsersByAgencyName(agencyName) {
       pageSize: 200,
       includeGroups: false,
       includeRoles: false,
+      activeOnly,
     });
     all.push(...(Array.isArray(batch.users) ? batch.users : []));
     hasNext = !!batch.hasNext;
     page += 1;
   }
   return all;
+}
+
+function getAgencyActiveConcurrency() {
+  const defaultLimit = 5;
+  const envVal = getInt("AGENCY_ACTIVE_CONCURRENCY", defaultLimit);
+  return Number.isFinite(envVal) && envVal > 0 && envVal <= 25 ? envVal : defaultLimit;
+}
+
+async function runWithConcurrencyLimit(items, limit, worker) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return;
+
+  let index = 0;
+  const workers = [];
+  const maxWorkers = Math.max(1, Math.min(Number(limit) || 1, list.length));
+
+  for (let i = 0; i < maxWorkers; i++) {
+    workers.push(
+      (async () => {
+        while (true) {
+          const current = index++;
+          if (current >= list.length) break;
+          await worker(list[current], current);
+        }
+      })()
+    );
+  }
+
+  await Promise.all(workers);
+}
+
+/**
+ * Disable many agency users efficiently: one TAK cert fetch/verify pass, then
+ * concurrent Authentik PATCH calls (no redundant GET per user).
+ */
+async function bulkDisableUsersForAgency(users) {
+  const active = (Array.isArray(users) ? users : []).filter((u) => {
+    const pk = u?.pk ?? u?.id;
+    return pk != null && u?.is_active;
+  });
+
+  const toDisable = [];
+  const failures = [];
+
+  for (const user of active) {
+    const userId = String(user.pk ?? user.id);
+    if (isUserActionLocked(user?.username)) {
+      failures.push({
+        userId,
+        error: `Actions are locked for user ${user?.username || userId}`,
+      });
+      continue;
+    }
+    toDisable.push(user);
+  }
+
+  const usernames = toDisable.map((u) => u.username).filter(Boolean);
+  if (getBool("TAK_REVOKE_ON_DISABLE", true) && usernames.length) {
+    await tak.revokeCertsForUsersBulk(usernames, { requireVerified: true });
+  }
+
+  const affectedIds = [];
+  const concurrency = getAgencyActiveConcurrency();
+
+  await runWithConcurrencyLimit(toDisable, concurrency, async (user) => {
+    const userId = String(user.pk ?? user.id);
+    try {
+      await api.patch(`/core/users/${userId}/`, { is_active: false });
+      affectedIds.push(userId);
+    } catch (err) {
+      failures.push({
+        userId,
+        error: err?.message || String(err),
+      });
+    }
+  });
+
+  invalidateUsersCache();
+
+  if (failures.length) {
+    const detail = failures
+      .slice(0, 5)
+      .map((f) => `${f.userId}: ${f.error}`)
+      .join(" | ");
+    throw new Error(
+      `Failed to disable ${failures.length} user(s) for this agency. ${detail}${
+        failures.length > 5 ? " | …" : ""
+      }`
+    );
+  }
+
+  return { affectedIds };
+}
+
+/**
+ * Re-enable users previously disabled with an agency. Uses concurrent GET/PATCH
+ * and sends re-enable emails for users that were inactive.
+ */
+async function bulkEnableUsersForAgency(userIds) {
+  const ids = (Array.isArray(userIds) ? userIds : [])
+    .map((id) => String(id).trim())
+    .filter(Boolean);
+
+  if (!ids.length) return { usersUpdated: 0 };
+
+  const failures = [];
+  const reenabledIds = [];
+  const concurrency = getAgencyActiveConcurrency();
+
+  await runWithConcurrencyLimit(ids, concurrency, async (userId) => {
+    try {
+      const user = await getUserById(userId);
+      if (!user) return;
+
+      if (isUserActionLocked(user?.username)) {
+        throw new Error(`Actions are locked for user ${user?.username || userId}`);
+      }
+
+      if (user.is_active) return;
+
+      await api.patch(`/core/users/${userId}/`, { is_active: true });
+      reenabledIds.push(String(userId));
+
+      try {
+        await emailUserReenabled(user);
+      } catch (e) {
+        console.error("[EMAIL] user re-enabled notice failed:", e?.message || e);
+      }
+    } catch (err) {
+      failures.push({
+        userId: String(userId),
+        error: err?.message || String(err),
+      });
+    }
+  });
+
+  if (reenabledIds.length > 0) invalidateUsersCache();
+
+  if (failures.length) {
+    const detail = failures
+      .slice(0, 5)
+      .map((f) => `${f.userId}: ${f.error}`)
+      .join(" | ");
+    throw new Error(
+      `Failed to re-enable ${failures.length} user(s) for this agency. ${detail}${
+        failures.length > 5 ? " | …" : ""
+      }`
+    );
+  }
+
+  return { usersUpdated: reenabledIds.length };
 }
 
 const AGENCY_DASHBOARD_USER_PAGE_SIZE = 300;
@@ -3969,6 +4124,8 @@ module.exports = {
   getCurrentTemplateBackfillPreviewRows,
   getCurrentTemplateCountsByTemplate,
   toggleUserActive,
+  bulkDisableUsersForAgency,
+  bulkEnableUsersForAgency,
   deleteUser,
   addUserGroups,
   removeUserGroups,

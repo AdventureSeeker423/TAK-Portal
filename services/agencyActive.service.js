@@ -5,11 +5,8 @@
 const agenciesStore = require("./agencies.service");
 const usersService = require("./users.service");
 
-async function listActiveUserIdsForAgencyName(agencyName) {
-  const users = await usersService.listAllUsersByAgencyName(agencyName);
-  return users
-    .filter((u) => u?.is_active && (u?.pk != null || u?.id != null))
-    .map((u) => String(u.pk ?? u.id));
+async function listActiveUsersForAgencyName(agencyName) {
+  return usersService.listAllUsersByAgencyName(agencyName, { activeOnly: true });
 }
 
 async function setAgencyActive(agencyIndex, isActive) {
@@ -39,33 +36,8 @@ async function setAgencyActive(agencyIndex, isActive) {
   }
 
   if (!targetActive) {
-    const userIds = await listActiveUserIdsForAgencyName(agencyName);
-    const affectedIds = [];
-    const failures = [];
-
-    for (const userId of userIds) {
-      try {
-        await usersService.toggleUserActive(userId, false);
-        affectedIds.push(String(userId));
-      } catch (err) {
-        failures.push({
-          userId: String(userId),
-          error: err?.message || String(err),
-        });
-      }
-    }
-
-    if (failures.length) {
-      const detail = failures
-        .slice(0, 5)
-        .map((f) => `${f.userId}: ${f.error}`)
-        .join(" | ");
-      throw new Error(
-        `Failed to disable ${failures.length} user(s) for this agency. ${detail}${
-          failures.length > 5 ? " | …" : ""
-        }`
-      );
-    }
+    const users = await listActiveUsersForAgencyName(agencyName);
+    const { affectedIds } = await usersService.bulkDisableUsersForAgency(users);
 
     agencies[idx] = {
       ...agency,
@@ -88,10 +60,8 @@ async function setAgencyActive(agencyIndex, isActive) {
   const storedIds = Array.isArray(agency.agencyDisabledUserIds)
     ? agency.agencyDisabledUserIds.map(String).filter(Boolean)
     : [];
-  let usersUpdated = 0;
-  const failures = [];
 
-  // Mark the agency active before re-enabling users so toggleUserActive checks pass.
+  // Mark the agency active before re-enabling users so enable checks pass.
   agencies[idx] = {
     ...agency,
     isActive: true,
@@ -99,38 +69,18 @@ async function setAgencyActive(agencyIndex, isActive) {
   };
   agenciesStore.save(agencies);
 
-  for (const userId of storedIds) {
-    try {
-      const user = await usersService.getUserById(userId);
-      if (user && !user.is_active) {
-        await usersService.toggleUserActive(userId, true);
-        usersUpdated += 1;
-      }
-    } catch (err) {
-      failures.push({
-        userId: String(userId),
-        error: err?.message || String(err),
-      });
-    }
-  }
-
-  if (failures.length) {
+  let usersUpdated = 0;
+  try {
+    const out = await usersService.bulkEnableUsersForAgency(storedIds);
+    usersUpdated = out.usersUpdated;
+  } catch (err) {
     agencies[idx] = {
       ...agencies[idx],
       isActive: false,
       agencyDisabledUserIds: storedIds,
     };
     agenciesStore.save(agencies);
-
-    const detail = failures
-      .slice(0, 5)
-      .map((f) => `${f.userId}: ${f.error}`)
-      .join(" | ");
-    throw new Error(
-      `Failed to re-enable ${failures.length} user(s) for this agency. ${detail}${
-        failures.length > 5 ? " | …" : ""
-      }`
-    );
+    throw err;
   }
 
   agencies[idx] = {
@@ -176,11 +126,10 @@ async function getAgencyActiveChangePreview(agencyIndex) {
     return { enabling: false, userCount: 0, agencyName: "" };
   }
 
-  const users = await usersService.listAllUsersByAgencyName(agencyName);
-  const userCount = users.filter((u) => u?.is_active).length;
+  const users = await listActiveUsersForAgencyName(agencyName);
   return {
     enabling: false,
-    userCount,
+    userCount: users.length,
     agencyName,
   };
 }

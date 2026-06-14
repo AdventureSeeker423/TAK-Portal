@@ -370,7 +370,11 @@ let sortState = { key: "name", dir: 1 }; // default: Agency asc
 
 function setMsg(text, ok=true){
   msg.textContent = text || "";
-  msg.className = "msg " + (ok ? "ok" : "bad");
+  if (ok === "progress") {
+    msg.className = "msg progress";
+  } else {
+    msg.className = "msg " + (ok ? "ok" : "bad");
+  }
 }
 
 function setAgencyAttributesEditControlsVisible(editing) {
@@ -1077,7 +1081,7 @@ window.toggleAgencyActive = async (agencyId, isActive) => {
       : progressUserPart
         ? `Disabling agency "${label}"… Updating ${progressUserPart}.`
         : `Disabling agency "${label}"…`,
-    true
+    "progress"
   );
 
   try {
@@ -2174,6 +2178,10 @@ if (addForm) {
 </script>
 
 <style>
+.msg.progress {
+  color: var(--warning, #ff6600);
+}
+
 /* Existing agencies list */
 .listCardTableWrap {
   width: 100%;

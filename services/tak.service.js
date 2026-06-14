@@ -346,6 +346,167 @@ async function verifyRevoked(client, ids, TAK_DEBUG) {
   }
 }
 
+function certIdsForUsername(allCerts, username) {
+  const u = toLowerTrim(username);
+  if (!u) return [];
+
+  const matches = allCerts.filter((c) => {
+    if (toLowerTrim(c?.creatorDn) !== u) return false;
+    return !isRevokedGeneric(c);
+  });
+
+  return Array.from(
+    new Set(matches.map((c) => String(c?.id ?? "").trim()).filter(Boolean))
+  );
+}
+
+function buildCertIdsByUsername(allCerts, usernames) {
+  const byUsername = new Map();
+  for (const username of usernames || []) {
+    const ids = certIdsForUsername(allCerts, username);
+    if (ids.length) byUsername.set(toLowerTrim(username), ids);
+  }
+  return byUsername;
+}
+
+async function revokeCertIds(client, ids, TAK_DEBUG) {
+  const unique = Array.from(
+    new Set((Array.isArray(ids) ? ids : []).map((id) => String(id).trim()).filter(Boolean))
+  );
+  if (!unique.length) return { attempted: 0, ids: [] };
+
+  const idsPath = encodeURIComponent(unique.join(","));
+  await client.delete(`/api/certadmin/cert/revoke/${idsPath}`);
+
+  if (TAK_DEBUG) {
+    console.log("[TAK CERT REVOKE] IDs:", unique);
+  }
+
+  return { attempted: unique.length, ids: unique };
+}
+
+const TAK_REVOKE_ID_CHUNK_SIZE = 100;
+
+async function revokeCertIdsInChunks(client, ids, TAK_DEBUG) {
+  const unique = Array.from(
+    new Set((Array.isArray(ids) ? ids : []).map((id) => String(id).trim()).filter(Boolean))
+  );
+  if (!unique.length) return { attempted: 0, ids: [] };
+
+  for (let i = 0; i < unique.length; i += TAK_REVOKE_ID_CHUNK_SIZE) {
+    const chunk = unique.slice(i, i + TAK_REVOKE_ID_CHUNK_SIZE);
+    await revokeCertIds(client, chunk, TAK_DEBUG);
+  }
+
+  return { attempted: unique.length, ids: unique };
+}
+
+/**
+ * Revoke certificates for many users with a single cert-catalog fetch and one final verify pass.
+ * Used by agency disable to avoid O(users) full cert list downloads.
+ */
+async function revokeCertsForUsersBulk(usernames, options = {}) {
+  const requireVerified = options.requireVerified !== false;
+  const TAK_DEBUG = getBool("TAK_DEBUG", false);
+  const list = Array.isArray(usernames)
+    ? usernames.map((u) => String(u || "").trim()).filter(Boolean)
+    : [];
+
+  if (!list.length) {
+    return {
+      revoked: 0,
+      attempted: 0,
+      skipped: true,
+      verified: true,
+      byUsername: new Map(),
+    };
+  }
+
+  if (isTakBypassed()) {
+    if (TAK_DEBUG) {
+      console.log(
+        "[TAK] BYPASS enabled (TAK_BYPASS_ENABLED=true) — skipping certificate operations."
+      );
+    }
+    return {
+      revoked: 0,
+      attempted: 0,
+      skipped: true,
+      bypassed: true,
+      verified: true,
+      byUsername: new Map(),
+    };
+  }
+
+  if (!isTakConfigured()) {
+    return {
+      revoked: 0,
+      attempted: 0,
+      skipped: true,
+      verified: true,
+      byUsername: new Map(),
+    };
+  }
+
+  const client = buildTakAxios();
+  const allCerts = await getAllCerts(client, TAK_DEBUG);
+  if (!allCerts.length) {
+    if (requireVerified) {
+      throw new Error(
+        "TAK: Unable to list certificates from /api/certadmin/cert; refusing to proceed."
+      );
+    }
+    return {
+      revoked: 0,
+      attempted: 0,
+      skipped: false,
+      verified: false,
+      byUsername: new Map(),
+    };
+  }
+
+  const byUsername = buildCertIdsByUsername(allCerts, list);
+  const allIds = Array.from(
+    new Set(Array.from(byUsername.values()).flatMap((ids) => ids))
+  );
+
+  if (TAK_DEBUG) {
+    console.log("\n[TAK CERT BULK DISCOVERY] usernames:", list.length);
+    console.log("[TAK CERT BULK DISCOVERY] total certs considered:", allCerts.length);
+    console.log("[TAK CERT BULK DISCOVERY] matched cert IDs:", allIds.length);
+  }
+
+  if (!allIds.length) {
+    return {
+      revoked: 0,
+      attempted: 0,
+      skipped: false,
+      verified: true,
+      byUsername,
+    };
+  }
+
+  await revokeCertIdsInChunks(client, allIds, TAK_DEBUG);
+  const vr = await verifyRevoked(client, allIds, TAK_DEBUG);
+
+  if (!vr.ok && requireVerified) {
+    throw new Error(
+      `TAK: Revoke attempted but could not verify revoked state for cert ID(s): ${vr.pending.join(
+        ", "
+      )}`
+    );
+  }
+
+  return {
+    revoked: allIds.length,
+    attempted: allIds.length,
+    skipped: false,
+    verified: vr.ok,
+    pending: vr.pending || [],
+    byUsername,
+  };
+}
+
 async function revokeCertsForUser(username, options = {}) {
   const requireVerified = options.requireVerified !== false; // default true for safety
   const TAK_DEBUG = getBool("TAK_DEBUG", false);
@@ -383,15 +544,12 @@ async function revokeCertsForUser(username, options = {}) {
     return { revoked: 0, attempted: 0, skipped: false, verified: false };
   }
 
-  const matches = allCerts.filter((c) => toLowerTrim(c?.creatorDn) === u);
-  const ids = Array.from(
-    new Set(matches.map((c) => String(c?.id ?? "").trim()).filter(Boolean))
-  );
+  const ids = certIdsForUsername(allCerts, u);
 
   if (TAK_DEBUG) {
     console.log("\n[TAK CERT DISCOVERY] username:", u);
     console.log("[TAK CERT DISCOVERY] total certs considered:", allCerts.length);
-    console.log("[TAK CERT DISCOVERY] matched cert count:", matches.length);
+    console.log("[TAK CERT DISCOVERY] matched cert count:", ids.length);
     console.log("[TAK CERT DISCOVERY] IDs to revoke:", ids);
   }
 
@@ -399,9 +557,7 @@ async function revokeCertsForUser(username, options = {}) {
     return { revoked: 0, attempted: 0, skipped: false, verified: true };
   }
 
-  const idsPath = encodeURIComponent(ids.join(","));
-  await client.delete(`/api/certadmin/cert/revoke/${idsPath}`);
-
+  await revokeCertIds(client, ids, TAK_DEBUG);
   const vr = await verifyRevoked(client, ids, TAK_DEBUG);
 
   if (!vr.ok && requireVerified) {
@@ -424,6 +580,7 @@ async function revokeCertsForUser(username, options = {}) {
 module.exports = {
   isTakConfigured,
   revokeCertsForUser,
+  revokeCertsForUsersBulk,
   buildTakAxios,
   getTakBaseUrl,
 };
