@@ -446,38 +446,50 @@
 </div><!-- /modalOverlay -->
 
 
-<!-- User enrollment + preferences QR modal -->
-<div class="modalOverlay" id="userQrOverlay" style="display:none;">
-  <div class="modal userQrModal" role="dialog" aria-modal="true" aria-labelledby="userQrTitle">
+<!-- User enrollment QR modal -->
+<div class="modalOverlay" id="userEnrollQrOverlay" style="display:none;">
+  <div class="modal userQrModal" role="dialog" aria-modal="true" aria-labelledby="userEnrollQrTitle">
     <div class="modalHeader">
-      <h2 id="userQrTitle" style="margin:0;">User QR Codes</h2>
-      <button class="btn" id="userQrCloseBtn" type="button">Close</button>
+      <h2 id="userEnrollQrTitle" style="margin:0;">Enrollment QR</h2>
+      <button class="btn" id="userEnrollQrCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div class="userQrPairRow">
-        <div class="userQrPairCol">
-          <div class="userQrPairLabel">Enrollment QR</div>
-          <img id="userQrImg" alt="Enrollment QR Code" class="userQrPairImg" />
-          <div class="row userQrPairActions">
-            <button class="btn" type="button" id="userQrCopyBtn" disabled>Copy URL</button>
-            <button class="btn" type="button" id="userQrSaveBtn" disabled>Save Image</button>
-          </div>
-          <div id="userQrCountdown" class="msg userQrPairCountdown"></div>
+      <div class="userQrSingleCol">
+        <img id="userQrImg" alt="Enrollment QR Code" class="userQrPairImg" />
+        <div class="row userQrPairActions">
+          <button class="btn" type="button" id="userQrCopyBtn" disabled>Copy URL</button>
+          <button class="btn" type="button" id="userQrSaveBtn" disabled>Save Image</button>
         </div>
-        <div class="userQrPairCol">
-          <div class="userQrPairLabel">Device Preferences QR</div>
-          <img id="userPrefQrImg" alt="Device preferences QR Code" class="userQrPairImg" />
-          <div class="row userQrPairActions">
-            <button class="btn" type="button" id="userPrefQrCopyBtn" disabled>Copy URL</button>
-            <button class="btn" type="button" id="userPrefQrSaveBtn" disabled>Save Image</button>
-          </div>
-        </div>
+        <div id="userQrCountdown" class="msg userQrPairCountdown"></div>
       </div>
       <div class="userQrDetailsSection">
         <h3 style="margin-top:0;">Details</h3>
         <div class="chips" id="userQrDetails"></div>
+        <div id="userEnrollQrMsg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- User device preferences QR modal -->
+<div class="modalOverlay" id="userPrefQrOverlay" style="display:none;">
+  <div class="modal userQrModal" role="dialog" aria-modal="true" aria-labelledby="userPrefQrTitle">
+    <div class="modalHeader">
+      <h2 id="userPrefQrTitle" style="margin:0;">Device Preferences QR</h2>
+      <button class="btn" id="userPrefQrCloseBtn" type="button">Close</button>
+    </div>
+    <div class="modalBody">
+      <div class="userQrSingleCol">
+        <img id="userPrefQrImg" alt="Device preferences QR Code" class="userQrPairImg" />
+        <div class="row userQrPairActions">
+          <button class="btn" type="button" id="userPrefQrCopyBtn" disabled>Copy URL</button>
+          <button class="btn" type="button" id="userPrefQrSaveBtn" disabled>Save Image</button>
+        </div>
+      </div>
+      <div class="userQrDetailsSection">
+        <h3 style="margin-top:0;">Details</h3>
         <div id="userPrefQrDetails" class="userPrefQrDetails"></div>
-        <div id="userQrMsg" class="msg"></div>
+        <div id="userPrefQrMsg" class="msg"></div>
       </div>
     </div>
   </div>
@@ -1565,9 +1577,11 @@ async function readJsonSafe(res) {
 }
 
 
-// -------------------- Enrollment QR (per-user) --------------------
-const userQrOverlay = document.getElementById("userQrOverlay");
-const userQrCloseBtn = document.getElementById("userQrCloseBtn");
+// -------------------- Enrollment + preferences QR (per-user) --------------------
+const userEnrollQrOverlay = document.getElementById("userEnrollQrOverlay");
+const userEnrollQrCloseBtn = document.getElementById("userEnrollQrCloseBtn");
+const userPrefQrOverlay = document.getElementById("userPrefQrOverlay");
+const userPrefQrCloseBtn = document.getElementById("userPrefQrCloseBtn");
 const userQrImg = document.getElementById("userQrImg");
 const userPrefQrImg = document.getElementById("userPrefQrImg");
 const userQrCopyBtn = document.getElementById("userQrCopyBtn");
@@ -1577,24 +1591,42 @@ const userPrefQrSaveBtn = document.getElementById("userPrefQrSaveBtn");
 const userQrDetails = document.getElementById("userQrDetails");
 const userPrefQrDetails = document.getElementById("userPrefQrDetails");
 const userQrCountdown = document.getElementById("userQrCountdown");
-const userQrMsg = document.getElementById("userQrMsg");
+const userEnrollQrMsg = document.getElementById("userEnrollQrMsg");
+const userPrefQrMsg = document.getElementById("userPrefQrMsg");
 
 let userQrCountdownTimer = null;
-let userQrCurrent = null;
+let userEnrollQrCurrent = null;
+let userPrefQrCurrent = null;
 
-function openUserQrModal(){
-  if (!userQrOverlay) return;
-  userQrOverlay.style.display = "flex";
+function openUserEnrollQrModal(){
+  if (!userEnrollQrOverlay) return;
+  userEnrollQrOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
 }
 
-function closeUserQrModal(){
-  if (!userQrOverlay) return;
-  userQrOverlay.style.display = "none";
-  document.body.classList.remove("noScroll");
+function closeUserEnrollQrModal(){
+  if (!userEnrollQrOverlay) return;
+  userEnrollQrOverlay.style.display = "none";
+  if (!userPrefQrOverlay || userPrefQrOverlay.style.display === "none") {
+    document.body.classList.remove("noScroll");
+  }
   if (userQrCountdownTimer) {
     clearInterval(userQrCountdownTimer);
     userQrCountdownTimer = null;
+  }
+}
+
+function openUserPrefQrModal(){
+  if (!userPrefQrOverlay) return;
+  userPrefQrOverlay.style.display = "flex";
+  document.body.classList.add("noScroll");
+}
+
+function closeUserPrefQrModal(){
+  if (!userPrefQrOverlay) return;
+  userPrefQrOverlay.style.display = "none";
+  if (!userEnrollQrOverlay || userEnrollQrOverlay.style.display === "none") {
+    document.body.classList.remove("noScroll");
   }
 }
 
@@ -1625,7 +1657,7 @@ function startUserQrCountdown(expiresAt){
       userQrCountdown.textContent = "QR Code Expired";
       if (userQrCopyBtn) userQrCopyBtn.disabled = true;
       if (userQrSaveBtn) userQrSaveBtn.disabled = true;
-      setMsgEl(userQrMsg, "This enrollment QR has expired. Click QR again to generate a new one.", false);
+      setMsgEl(userEnrollQrMsg, "This enrollment QR has expired. Click Enroll QR again to generate a new one.", false);
       if (userQrCountdownTimer) {
         clearInterval(userQrCountdownTimer);
         userQrCountdownTimer = null;
@@ -1639,10 +1671,10 @@ function startUserQrCountdown(expiresAt){
   userQrCountdownTimer = setInterval(tick, 1000);
 }
 
-async function copyToClipboard(text) {
+async function copyToClipboard(text, msgEl) {
   try {
     await navigator.clipboard.writeText(text);
-    setMsgEl(userQrMsg, "Copied!", true);
+    setMsgEl(msgEl, "Copied!", true);
   } catch (e) {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -1652,52 +1684,63 @@ async function copyToClipboard(text) {
     ta.select();
     document.execCommand("copy");
     document.body.removeChild(ta);
-    setMsgEl(userQrMsg, "Copied!", true);
+    setMsgEl(msgEl, "Copied!", true);
   }
 }
 
-function resetUserQrModal() {
+function resetUserEnrollQrModal() {
   if (userQrImg) userQrImg.src = "";
-  if (userPrefQrImg) userPrefQrImg.src = "";
   if (userQrDetails) userQrDetails.innerHTML = "";
-  if (userPrefQrDetails) userPrefQrDetails.innerHTML = "";
   if (userQrCopyBtn) userQrCopyBtn.disabled = true;
   if (userQrSaveBtn) userQrSaveBtn.disabled = true;
-  if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = true;
-  if (userPrefQrSaveBtn) userPrefQrSaveBtn.disabled = true;
   if (userQrCountdown) userQrCountdown.textContent = "";
+  userEnrollQrCurrent = null;
 }
 
-function renderUserQr(obj) {
-  userQrCurrent = obj;
+function resetUserPrefQrModal() {
+  if (userPrefQrImg) userPrefQrImg.src = "";
+  if (userPrefQrDetails) userPrefQrDetails.innerHTML = "";
+  if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = true;
+  if (userPrefQrSaveBtn) userPrefQrSaveBtn.disabled = true;
+  userPrefQrCurrent = null;
+}
+
+function renderUserEnrollQr(obj) {
+  userEnrollQrCurrent = obj;
 
   if (userQrImg) userQrImg.src = obj.qrCode || "";
-
-  const pref = obj.preference || {};
-  if (userPrefQrImg) userPrefQrImg.src = pref.qrCode || "";
 
   const chips = [];
   if (obj.username) chips.push(`<span class="chip">User: ${escapeHtml(obj.username)}</span>`);
   if (obj.tokenIdentifier) chips.push(`<span class="chip">Token: ${escapeHtml(obj.tokenIdentifier)}</span>`);
   if (userQrDetails) userQrDetails.innerHTML = chips.join(" ");
 
+  if (userQrCopyBtn) userQrCopyBtn.disabled = !obj.enrollUrl;
+  if (userQrSaveBtn) userQrSaveBtn.disabled = !(obj.username && obj.token);
+
+  setMsgEl(userEnrollQrMsg, "Enrollment QR ready.", true);
+  startUserQrCountdown(obj.expiresAt);
+}
+
+function renderUserPrefQr(obj) {
+  userPrefQrCurrent = obj;
+
+  if (userPrefQrImg) userPrefQrImg.src = obj.qrCode || "";
+
   const prefLines = [];
-  if (pref.callsign) prefLines.push(`<div><strong>Callsign:</strong> ${escapeHtml(pref.callsign)}</div>`);
-  if (pref.teamLabel) prefLines.push(`<div><strong>Team:</strong> ${escapeHtml(pref.teamLabel)}</div>`);
-  if (pref.roleLabel) prefLines.push(`<div><strong>Role:</strong> ${escapeHtml(pref.roleLabel)}</div>`);
+  if (obj.callsign) prefLines.push(`<div><strong>Callsign:</strong> ${escapeHtml(obj.callsign)}</div>`);
+  if (obj.teamLabel) prefLines.push(`<div><strong>Team:</strong> ${escapeHtml(obj.teamLabel)}</div>`);
+  if (obj.roleLabel) prefLines.push(`<div><strong>Role:</strong> ${escapeHtml(obj.roleLabel)}</div>`);
   if (userPrefQrDetails) {
     userPrefQrDetails.innerHTML = prefLines.length
       ? prefLines.join("")
       : "<span class=\"muted\">No preference data available for this user.</span>";
   }
 
-  if (userQrCopyBtn) userQrCopyBtn.disabled = !obj.enrollUrl;
-  if (userQrSaveBtn) userQrSaveBtn.disabled = !(obj.username && obj.token);
-  if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = !pref.preferenceUrl;
-  if (userPrefQrSaveBtn) userPrefQrSaveBtn.disabled = !pref.qrCode;
+  if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = !obj.preferenceUrl;
+  if (userPrefQrSaveBtn) userPrefQrSaveBtn.disabled = !obj.qrCode;
 
-  setMsgEl(userQrMsg, "QR codes ready.", true);
-  startUserQrCountdown(obj.expiresAt);
+  setMsgEl(userPrefQrMsg, "Preferences QR ready.", true);
 }
 
 async function fetchUserEnrollQrData(userId, username) {
@@ -1751,44 +1794,60 @@ async function fetchUserPreferenceQrData(userId) {
 
 // Event delegation for QR buttons in table
 tbody.addEventListener("click", async (e) => {
-  const btn = e.target && e.target.closest ? e.target.closest(".userQrBtn") : null;
-  if (!btn) return;
+  const enrollBtn = e.target && e.target.closest ? e.target.closest(".userEnrollQrBtn") : null;
+  const prefBtn = e.target && e.target.closest ? e.target.closest(".userPrefQrBtn") : null;
+  if (!enrollBtn && !prefBtn) return;
 
-  const userId = btn.dataset.pk || btn.dataset.userId || "";
-  const username = btn.dataset.username || "";
+  const userId = (enrollBtn || prefBtn).dataset.pk || (enrollBtn || prefBtn).dataset.userId || "";
+  const username = (enrollBtn || prefBtn).dataset.username || "";
 
-  resetUserQrModal();
-  setMsgEl(userQrMsg, "Generating QR codes...", true);
-  openUserQrModal();
+  if (enrollBtn) {
+    resetUserEnrollQrModal();
+    setMsgEl(userEnrollQrMsg, "Generating enrollment QR...", true);
+    openUserEnrollQrModal();
+    try {
+      const enroll = await fetchUserEnrollQrData(userId, username);
+      renderUserEnrollQr(enroll);
+    } catch (err) {
+      setMsgEl(userEnrollQrMsg, err?.message || String(err), false);
+    }
+    return;
+  }
 
+  resetUserPrefQrModal();
+  setMsgEl(userPrefQrMsg, "Generating preferences QR...", true);
+  openUserPrefQrModal();
   try {
-    const [enroll, preference] = await Promise.all([
-      fetchUserEnrollQrData(userId, username),
-      fetchUserPreferenceQrData(userId),
-    ]);
-    renderUserQr({ ...enroll, preference });
+    const preference = await fetchUserPreferenceQrData(userId);
+    renderUserPrefQr(preference);
   } catch (err) {
-    setMsgEl(userQrMsg, err?.message || String(err), false);
+    setMsgEl(userPrefQrMsg, err?.message || String(err), false);
   }
 });
 
-if (userQrCloseBtn) userQrCloseBtn.addEventListener("click", closeUserQrModal);
-if (userQrOverlay) userQrOverlay.addEventListener("click", (e) => { if (e.target === userQrOverlay) closeUserQrModal(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && userQrOverlay && userQrOverlay.style.display !== "none") closeUserQrModal(); });
+if (userEnrollQrCloseBtn) userEnrollQrCloseBtn.addEventListener("click", closeUserEnrollQrModal);
+if (userEnrollQrOverlay) userEnrollQrOverlay.addEventListener("click", (e) => { if (e.target === userEnrollQrOverlay) closeUserEnrollQrModal(); });
+if (userPrefQrCloseBtn) userPrefQrCloseBtn.addEventListener("click", closeUserPrefQrModal);
+if (userPrefQrOverlay) userPrefQrOverlay.addEventListener("click", (e) => { if (e.target === userPrefQrOverlay) closeUserPrefQrModal(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (userEnrollQrOverlay && userEnrollQrOverlay.style.display !== "none") closeUserEnrollQrModal();
+  if (userPrefQrOverlay && userPrefQrOverlay.style.display !== "none") closeUserPrefQrModal();
+});
 
 if (userQrCopyBtn) userQrCopyBtn.addEventListener("click", () => {
-  if (userQrCurrent && userQrCurrent.enrollUrl) copyToClipboard(userQrCurrent.enrollUrl);
+  if (userEnrollQrCurrent && userEnrollQrCurrent.enrollUrl) copyToClipboard(userEnrollQrCurrent.enrollUrl, userEnrollQrMsg);
 });
 
 if (userQrSaveBtn) userQrSaveBtn.addEventListener("click", () => {
-  if (!userQrCurrent || !userQrCurrent.username || !userQrCurrent.token) {
-    setMsgEl(userQrMsg, "Generate a QR first.", false);
+  if (!userEnrollQrCurrent || !userEnrollQrCurrent.username || !userEnrollQrCurrent.token) {
+    setMsgEl(userEnrollQrMsg, "Generate a QR first.", false);
     return;
   }
 
   const url =
-    `/api/qr/download?username=${encodeURIComponent(userQrCurrent.username)}` +
-    `&token=${encodeURIComponent(userQrCurrent.token)}`;
+    `/api/qr/download?username=${encodeURIComponent(userEnrollQrCurrent.username)}` +
+    `&token=${encodeURIComponent(userEnrollQrCurrent.token)}`;
 
   const a = document.createElement("a");
   a.href = url;
@@ -1797,18 +1856,18 @@ if (userQrSaveBtn) userQrSaveBtn.addEventListener("click", () => {
   a.click();
   document.body.removeChild(a);
 
-  setMsgEl(userQrMsg, "Downloading high-res enrollment QR...", true);
+  setMsgEl(userEnrollQrMsg, "Downloading high-res enrollment QR...", true);
 });
 
 if (userPrefQrCopyBtn) userPrefQrCopyBtn.addEventListener("click", () => {
-  const url = userQrCurrent?.preference?.preferenceUrl;
-  if (url) copyToClipboard(url);
+  const url = userPrefQrCurrent?.preferenceUrl;
+  if (url) copyToClipboard(url, userPrefQrMsg);
 });
 
 if (userPrefQrSaveBtn) userPrefQrSaveBtn.addEventListener("click", () => {
   const src = userPrefQrImg && userPrefQrImg.src;
   if (!src || !src.startsWith("data:")) {
-    setMsgEl(userQrMsg, "No preferences QR to save.", false);
+    setMsgEl(userPrefQrMsg, "No preferences QR to save.", false);
     return;
   }
   const a = document.createElement("a");
@@ -1817,7 +1876,7 @@ if (userPrefQrSaveBtn) userPrefQrSaveBtn.addEventListener("click", () => {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setMsgEl(userQrMsg, "Downloading preferences QR...", true);
+  setMsgEl(userPrefQrMsg, "Downloading preferences QR...", true);
 });
 // ------------------ end Enrollment QR ------------------
 
@@ -1903,8 +1962,10 @@ function renderResults(users){
             <div class="row" style="gap:8px; flex-wrap:wrap;">
               <button class="btn" onclick="editUser('${pk}')">Edit</button>
               ${u.is_active ? `
-                <button class="btn qr userQrBtn" type="button"
-                  data-pk="${pk}" data-username="${escapeHtml(u.username)}">QR</button>
+                <button class="btn btn-access userEnrollQrBtn" type="button"
+                  data-pk="${pk}" data-username="${escapeHtml(u.username)}">Enroll QR</button>
+                <button class="btn btn-access userPrefQrBtn" type="button"
+                  data-pk="${pk}" data-username="${escapeHtml(u.username)}">Pref QR</button>
               ` : ""}
               <button class="${toggleBtnClass}" onclick="toggleUserFromTable('${pk}')">${toggleLabel}</button>
               <button class="btn danger" onclick="deleteUserFromTable('${pk}')">Delete</button>
@@ -4298,7 +4359,13 @@ tr.row-disabled td {
 }
 
 .userQrModal {
-  max-width: 920px;
+  max-width: 480px;
+}
+
+.userQrSingleCol {
+  text-align: center;
+  margin: 0 auto;
+  max-width: 320px;
 }
 
 .userQrPairRow {
