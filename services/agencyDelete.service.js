@@ -194,8 +194,18 @@ async function buildAgencyDeletePlan(agencyIndex) {
   const remainingAgencies = remainingAgenciesAfterDelete(agencies, idx);
   const allGroups = await groupsService.getAllGroups({ includeHidden: true });
   const groupPlan = classifyGroupsForAgencyDelete(agency, allGroups, remainingAgencies);
-  const users = await usersService.listAllUsersByAgencyName(agencyName);
   const suffix = String(agency.suffix || "").trim().toLowerCase();
+  const allAgencyUsers = await usersService.listAllUsersByAgencyName(agencyName);
+  const agencyIntegrations = await usersService.findAgencyIntegrationUsersForSuffix(suffix);
+  const integrationIds = new Set(
+    agencyIntegrations
+      .map((u) => String(u?.pk ?? u?.id ?? "").trim())
+      .filter(Boolean)
+  );
+  const users = allAgencyUsers.filter((u) => {
+    const id = String(u?.pk ?? u?.id ?? "").trim();
+    return id && !integrationIds.has(id);
+  });
 
   return {
     agencyIndex: idx,
@@ -203,6 +213,7 @@ async function buildAgencyDeletePlan(agencyIndex) {
     agencyName,
     agencySuffix: suffix,
     userCount: users.length,
+    integrationCount: agencyIntegrations.length,
     agencyGroupCount: groupPlan.agencyGroups.length,
     countyGroupCount: groupPlan.countyGroups.length,
     stateGroupCount: groupPlan.stateGroups.length,
@@ -213,6 +224,7 @@ async function buildAgencyDeletePlan(agencyIndex) {
     county: normalizeCountyName(agency.county),
     state: normalizeStateCode(agency.state),
     users,
+    agencyIntegrations,
     ...groupPlan,
   };
 }
@@ -223,6 +235,7 @@ async function getAgencyDeletePreview(agencyIndex) {
     agencyName: plan.agencyName,
     agencySuffix: plan.agencySuffix,
     userCount: plan.userCount,
+    integrationCount: plan.integrationCount,
     agencyGroupCount: plan.agencyGroupCount,
     countyGroupCount: plan.countyGroupCount,
     stateGroupCount: plan.stateGroupCount,
@@ -271,6 +284,43 @@ async function deleteGroupsInPlan(groups) {
   return deleted;
 }
 
+async function deleteAgencyIntegrations(integrations) {
+  const list = Array.isArray(integrations) ? integrations : [];
+  if (!list.length) return 0;
+
+  const failures = [];
+  let deleted = 0;
+
+  for (const user of list) {
+    const userId = String(user?.pk ?? user?.id ?? "").trim();
+    const username = String(user?.username || "").trim();
+    try {
+      await usersService.deleteIntegrationUser(user);
+      deleted += 1;
+    } catch (err) {
+      failures.push({
+        userId,
+        username,
+        error: err?.message || String(err),
+      });
+    }
+  }
+
+  if (failures.length) {
+    const detail = failures
+      .slice(0, 5)
+      .map((f) => `${f.username || f.userId}: ${f.error}`)
+      .join(" | ");
+    throw new Error(
+      `Failed to delete ${failures.length} integration(s). ${detail}${
+        failures.length > 5 ? " | …" : ""
+      }`
+    );
+  }
+
+  return deleted;
+}
+
 async function deleteAgency(agencyIndex) {
   const plan = await buildAgencyDeletePlan(agencyIndex);
   const idx = plan.agencyIndex;
@@ -279,6 +329,7 @@ async function deleteAgency(agencyIndex) {
   if (!agency) throw new Error("Agency not found");
 
   const userResult = await usersService.bulkDeleteUsersForAgency(plan.users);
+  const integrationsDeleted = await deleteAgencyIntegrations(plan.agencyIntegrations);
 
   const groupsDeleted =
     (await deleteGroupsInPlan(plan.agencyGroups)) +
@@ -300,6 +351,7 @@ async function deleteAgency(agencyIndex) {
     agencyName: plan.agencyName,
     agencySuffix: plan.agencySuffix,
     usersDeleted: userResult.deletedIds.length,
+    integrationsDeleted,
     agencyGroupsDeleted: plan.agencyGroups.length,
     countyGroupsDeleted: plan.countyGroups.length,
     stateGroupsDeleted: plan.stateGroups.length,

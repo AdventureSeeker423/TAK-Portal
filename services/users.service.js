@@ -1570,6 +1570,68 @@ async function findIntegrationUsers() {
   );
 }
 
+function agencyIntegrationUsernamePrefix(agencySuffix) {
+  const sfx = toSlug(agencySuffix);
+  if (!sfx) return "";
+  return `${INTEGRATION_PREFIX}agency-${sfx}-`.toLowerCase();
+}
+
+function isAgencyIntegrationUser(user, agencySuffix) {
+  const username = String(user?.username || "").trim().toLowerCase();
+  if (!username.startsWith(INTEGRATION_PREFIX.toLowerCase())) return false;
+
+  const prefix = agencyIntegrationUsernamePrefix(agencySuffix);
+  if (!prefix || !username.startsWith(prefix)) return false;
+
+  const scope = String(user?.attributes?.integration_scope || "")
+    .trim()
+    .toLowerCase();
+  return !scope || scope === "agency";
+}
+
+async function findAgencyIntegrationUsersForSuffix(agencySuffix) {
+  const integrations = await findIntegrationUsers();
+  return integrations.filter((u) => isAgencyIntegrationUser(u, agencySuffix));
+}
+
+async function deleteIntegrationUser(userOrId) {
+  const takSshSvc = require("./takSsh.service");
+
+  const user =
+    userOrId && typeof userOrId === "object" && (userOrId.pk != null || userOrId.id != null)
+      ? userOrId
+      : await getUserById(userOrId);
+
+  const userId = String(user?.pk ?? user?.id ?? "").trim();
+  const username = String(user?.username || "").trim().toLowerCase();
+  if (!userId || !username.startsWith(INTEGRATION_PREFIX.toLowerCase())) {
+    throw new Error("Not an integration user.");
+  }
+
+  const dataFeedName = user?.attributes?.tak_data_feed_name;
+  if (dataFeedName && tak.isTakConfigured()) {
+    try {
+      const takClient = tak.buildTakAxios();
+      await takClient.delete(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`);
+    } catch (err) {
+      console.warn(
+        `[integrations] Could not delete data feed "${dataFeedName}" for "${username}":`,
+        err?.message || err
+      );
+    }
+  }
+
+  await takSshSvc.revokeIntegrationCertViaSshScript(username);
+  try {
+    takSshSvc.deleteStoredIntegrationCertFiles(username);
+  } catch (_) {
+    // ignore local cache cleanup errors
+  }
+
+  await deleteUser(userId, { ignoreLocks: true, skipTakCertRevoke: true });
+  return { userId, username };
+}
+
 /**
  * One Authentik user-directory pass for dashboard stats (4000+ users: avoids doubling HTTP work).
  * Fetches with hidden-prefix accounts included, then derives visible totals + integration count in memory.
@@ -4147,6 +4209,8 @@ module.exports = {
   getStreamingDataFeedNameForTitle,
   STREAMING_DATA_FEED_NAME_MAX_LEN,
   findIntegrationUsers,
+  findAgencyIntegrationUsersForSuffix,
+  deleteIntegrationUser,
   importUsersFromCsvBuffer,
   getUserById,
   findUsers,

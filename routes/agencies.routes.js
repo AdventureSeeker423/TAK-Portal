@@ -1163,6 +1163,7 @@ router.delete("/:index", async (req, res) => {
       details: {
         agencyName: result.agencyName,
         usersDeleted: result.usersDeleted,
+        integrationsDeleted: result.integrationsDeleted,
         agencyGroupsDeleted: result.agencyGroupsDeleted,
         countyGroupsDeleted: result.countyGroupsDeleted,
         stateGroupsDeleted: result.stateGroupsDeleted,

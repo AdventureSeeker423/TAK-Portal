@@ -1168,6 +1168,9 @@ window.delAgency = async (id) => {
   }
 
   lines.push(countLine(preview.templateCount, "Template", "Templates"));
+  lines.push(
+    countLine(preview.integrationCount, "Agency Integration", "Agency Integrations")
+  );
 
   if ((Number(preview.pendingRequestCount) || 0) > 0) {
     lines.push(countLine(preview.pendingRequestCount, "Pending Access Request", "Pending Access Requests"));
