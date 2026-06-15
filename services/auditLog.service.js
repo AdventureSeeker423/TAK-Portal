@@ -127,6 +127,15 @@ function inferAgency({ targetType, targetId, details }) {
       agencyPrefix: safeStr(a.groupPrefix).trim().toUpperCase() || null,
     };
   }
+  if (t === "data_package" || t === "data_sync_mission" || t === "data_sync_file") {
+    const groupRaw =
+      details && details.group != null && details.group !== ""
+        ? details.group
+        : details && Array.isArray(details.groups) && details.groups.length
+          ? details.groups[0]
+          : "";
+    if (groupRaw) return inferAgencyFromGroupName(groupRaw);
+  }
   return { agencySuffix: null, agencyName: null, agencyPrefix: null };
 }
 

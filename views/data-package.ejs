@@ -481,7 +481,7 @@
     if (!window.confirm(warning)) return;
     setMsg(isArchived ? archivedPackagesMsg : packagesMsg, "Deleting package…", undefined);
     try {
-      var res = await fetch(API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
+      var res = await fetch(API + "/packages/" + encodeURIComponent(hash) + "?fileName=" + encodeURIComponent(filename || ""), { method: "DELETE" });
       var text = await res.text();
       var j = {};
       try { j = JSON.parse(text); } catch (_) {}
@@ -536,7 +536,7 @@
   async function downloadPackage(hash, filename) {
     setMsg(packagesMsg, "Downloading package…", undefined);
     try {
-      var res = await fetch(API + "/packages/download?hash=" + encodeURIComponent(hash));
+      var res = await fetch(API + "/packages/download?hash=" + encodeURIComponent(hash) + "&fileName=" + encodeURIComponent(filename || ""));
       if (!res.ok) throw new Error("Download failed (HTTP " + res.status + ")");
       var blob = await res.blob();
       var a = document.createElement("a");
@@ -573,7 +573,10 @@
         var m = selectedPackages[selectedKeys[i]];
         if (!m || !m.hash) continue;
         try {
-          var res = await fetch(API + "/packages/download?hash=" + encodeURIComponent(m.hash));
+          var res = await fetch(
+            API + "/packages/download?hash=" + encodeURIComponent(m.hash) +
+              "&fileName=" + encodeURIComponent(m.filename || "")
+          );
           if (!res.ok) throw new Error("HTTP " + res.status);
           var blob = await res.blob();
           var a = document.createElement("a");
@@ -633,7 +636,11 @@
         var d = selectedPackages[selectedKeys[k]];
         if (!d || !d.hash) continue;
         try {
-          var delRes = await fetch(API + "/packages/" + encodeURIComponent(d.hash), { method: "DELETE" });
+          var delRes = await fetch(
+            API + "/packages/" + encodeURIComponent(d.hash) +
+              "?fileName=" + encodeURIComponent(d.filename || ""),
+            { method: "DELETE" }
+          );
           if (delRes.ok) deletedOk += 1;
         } catch (_) {}
       }

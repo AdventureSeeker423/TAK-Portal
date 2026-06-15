@@ -1043,7 +1043,7 @@
         keywords: [],
         inviteOnly: false,
       };
-      var missionRes = await fetch(API + "/missions/" + encodeURIComponent(missionName), {
+      var missionRes = await fetch(API + "/missions/" + encodeURIComponent(missionName) + "?auditIntent=restore", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(payload),
@@ -1053,7 +1053,10 @@
       try { missionJson = JSON.parse(missionText); } catch (_) { missionJson = { raw: missionText }; }
       if (!missionRes.ok) throw new Error((missionJson && missionJson.error) || missionText.slice(0, 500) || "Failed to recreate active mission");
 
-      var delRes = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
+      var delRes = await fetch(
+        FILE_SYNC_API + "/packages/" + encodeURIComponent(hash) + "?auditIntent=restore&fileName=" + encodeURIComponent(filename || ""),
+        { method: "DELETE" }
+      );
       var delJson = await delRes.json().catch(function () { return {}; });
       if (!delRes.ok && delRes.status !== 404) {
         throw new Error(
@@ -1072,7 +1075,10 @@
   async function downloadArchivedPackage(hash, filename) {
     setArchivedMissionsMsg("Downloading archived package…", undefined);
     try {
-      var res = await fetch(FILE_SYNC_API + "/packages/download?hash=" + encodeURIComponent(hash));
+      var res = await fetch(
+        FILE_SYNC_API + "/packages/download?hash=" + encodeURIComponent(hash) +
+          "&fileName=" + encodeURIComponent(filename || "")
+      );
       if (!res.ok) throw new Error("Download failed (HTTP " + res.status + ")");
       var blob = await res.blob();
       var a = document.createElement("a");
@@ -1207,7 +1213,7 @@
         keywords: [],
         inviteOnly: false,
       };
-      var url = API + "/missions/" + encodeURIComponent(payload.name);
+      var url = API + "/missions/" + encodeURIComponent(payload.name) + "?auditIntent=create";
       var res = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -1446,7 +1452,11 @@
     if (!window.confirm(warning)) return;
     setArchivedMissionsMsg("Deleting archived file…", undefined);
     try {
-      var resPkg = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
+      var resPkg = await fetch(
+        FILE_SYNC_API + "/packages/" + encodeURIComponent(hash) +
+          "?fileName=" + encodeURIComponent(filename || ""),
+        { method: "DELETE" }
+      );
       var jPkg = await resPkg.json().catch(function () { return {}; });
       if (!resPkg.ok) throw new Error((jPkg && jPkg.error) || "Delete failed");
       setArchivedMissionsMsg("Archived file permanently deleted.", true);
@@ -1476,7 +1486,10 @@
         if (!m) continue;
         try {
           if (m.isArchived && m.hash) {
-            var res = await fetch(FILE_SYNC_API + "/packages/download?hash=" + encodeURIComponent(m.hash));
+            var res = await fetch(
+              FILE_SYNC_API + "/packages/download?hash=" + encodeURIComponent(m.hash) +
+                "&fileName=" + encodeURIComponent(m.filename || "")
+            );
             if (!res.ok) throw new Error("HTTP " + res.status);
             var blob = await res.blob();
             var a = document.createElement("a");
@@ -1538,7 +1551,11 @@
         if (!d) continue;
         try {
           if (d.isArchived && d.hash) {
-            var delPkgRes = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(d.hash), { method: "DELETE" });
+            var delPkgRes = await fetch(
+              FILE_SYNC_API + "/packages/" + encodeURIComponent(d.hash) +
+                "?fileName=" + encodeURIComponent(d.filename || ""),
+              { method: "DELETE" }
+            );
             if (delPkgRes.ok) deletedOk += 1;
           } else if (d.name) {
             var delMissionRes = await fetch(API + "/missions/" + encodeURIComponent(d.name) + "/permanent", {
