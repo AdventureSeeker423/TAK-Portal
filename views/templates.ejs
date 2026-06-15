@@ -258,6 +258,7 @@ function renderTemplates(list){
 }
 
 function templateUserCountForRow(t){
+  if (!templateUserCountsLoaded) return "—";
   const sfx = String(t?.agencySuffix || "").trim().toLowerCase();
   const name = String(t?.name || "").trim().toLowerCase();
   if (!sfx || !name) return "0";
@@ -347,6 +348,10 @@ let allGroups = [];
 let allTemplates = [];
 let allAgencies = [];
 let currentTemplateUserCounts = {};
+let templateUserCountsLoaded = false;
+let templateUserCountsLoading = false;
+let groupsLoadedForAgency = "";
+let groupsLoadingForAgency = false;
 let editingIndex = null;
 let pickedGroupNames = new Set();
 
@@ -383,6 +388,17 @@ function renderRoleOptions(selectedRole){
 }
 
 function renderGroups(filterText = ""){
+  const agencySuffix = String(agencyEl.value || "").trim();
+  if (!agencySuffix) {
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">Select an agency above to load groups.</p>';
+    return;
+  }
+  const agencyKey = agencySuffix.toLowerCase();
+  if (!allGroups.length && (groupsLoadingForAgency || groupsLoadedForAgency !== agencyKey)) {
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">Loading groups…</p>';
+    return;
+  }
+
   const q = String(filterText || "").trim().toLowerCase();
 
   const list = allGroups
@@ -457,26 +473,56 @@ async function loadAgencies(){
 }
 
 async function loadGroups(){
-  const sfx = agencyEl.value || "";
-  const res = await fetch(
-    "/api/users/meta?agencySuffix=" + encodeURIComponent(sfx)
-  );
-  const meta = await res.json();
-  if (!res.ok) throw new Error(meta.error || "Failed to load groups");
-
-  mutualAidGroupNamesLower = new Set(
-    (Array.isArray(meta.mutualAidCreatedGroupNames) ? meta.mutualAidCreatedGroupNames : [])
-      .map((n) => String(n || "").trim().toLowerCase())
-      .filter(Boolean)
-  );
-
-  allGroups = (Array.isArray(meta.groups) ? meta.groups : [])
-    .filter((g) => !isMutualAidGroupName(g?.name));
-
-  for (const name of [...pickedGroupNames]) {
-    if (isMutualAidGroupName(name)) pickedGroupNames.delete(name);
+  const sfx = String(agencyEl.value || "").trim();
+  if (!sfx) {
+    allGroups = [];
+    groupsLoadedForAgency = "";
+    renderGroups("");
+    return;
   }
-  renderGroups("");
+
+  groupsLoadingForAgency = true;
+  allGroups = [];
+  renderGroups(groupSearch.value);
+  try {
+    const res = await fetch(
+      "/api/users/meta?agencySuffix=" + encodeURIComponent(sfx)
+    );
+    const meta = await res.json();
+    if (!res.ok) throw new Error(meta.error || "Failed to load groups");
+
+    mutualAidGroupNamesLower = new Set(
+      (Array.isArray(meta.mutualAidCreatedGroupNames) ? meta.mutualAidCreatedGroupNames : [])
+        .map((n) => String(n || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    allGroups = (Array.isArray(meta.groups) ? meta.groups : [])
+      .filter((g) => !isMutualAidGroupName(g?.name));
+
+    for (const name of [...pickedGroupNames]) {
+      if (isMutualAidGroupName(name)) pickedGroupNames.delete(name);
+    }
+    groupsLoadedForAgency = sfx.toLowerCase();
+    renderGroups(groupSearch.value);
+  } finally {
+    groupsLoadingForAgency = false;
+  }
+}
+
+async function ensureGroupsLoaded(){
+  const sfx = String(agencyEl.value || "").trim().toLowerCase();
+  if (!sfx) {
+    allGroups = [];
+    groupsLoadedForAgency = "";
+    renderGroups("");
+    return;
+  }
+  if (groupsLoadedForAgency === sfx && allGroups.length) {
+    renderGroups(groupSearch.value);
+    return;
+  }
+  await loadGroups();
 }
 
 function agencyAbbrFromSuffix(suffix){
@@ -539,17 +585,11 @@ function getFilteredTemplatePairs(){
   });
 }
 
-async function loadTemplates(){
-  const [res, countsRes] = await Promise.all([
-    fetch("/api/templates"),
-    fetch("/api/templates/current-template-counts"),
-  ]);
+async function loadTemplatesList(){
+  const res = await fetch("/api/templates");
   const templates = await res.json();
   if (!res.ok) throw new Error(templates.error || "Failed to load templates");
-  const countsOut = await countsRes.json().catch(() => ({}));
-  currentTemplateUserCounts = (countsRes.ok && countsOut && typeof countsOut.counts === "object" && countsOut.counts)
-    ? countsOut.counts
-    : {};
+
   allTemplates = templates;
 
   // Keep the real backing index (global templates array index) stable for Edit/Delete/Save.
@@ -562,6 +602,31 @@ async function loadTemplates(){
   sortState.key = "agency";
   sortState.dir = "asc";
   applySortAndRender();
+}
+
+async function loadTemplateUserCounts(){
+  if (templateUserCountsLoading) return;
+  templateUserCountsLoading = true;
+  templateUserCountsLoaded = false;
+  applySortAndRender();
+  try {
+    const countsRes = await fetch("/api/templates/current-template-counts");
+    const countsOut = await countsRes.json().catch(() => ({}));
+    currentTemplateUserCounts = (countsRes.ok && countsOut && typeof countsOut.counts === "object" && countsOut.counts)
+      ? countsOut.counts
+      : {};
+  } catch (_) {
+    currentTemplateUserCounts = {};
+  } finally {
+    templateUserCountsLoaded = true;
+    templateUserCountsLoading = false;
+    applySortAndRender();
+  }
+}
+
+async function loadTemplates(){
+  await loadTemplatesList();
+  loadTemplateUserCounts();
 }
 
 function setCreateMode(){
@@ -582,7 +647,7 @@ function setCreateMode(){
   renderGroups("");
 }
 
-function setEditMode(idx){
+async function setEditMode(idx){
   editingIndex = idx;
   const t = findTemplateByIndex(idx);
 
@@ -598,7 +663,12 @@ function setEditMode(idx){
   isDefaultEl.value = t.isDefault ? "yes" : "no";
   groupSearch.value = "";
   pickedGroupNames = new Set(stripMutualAidGroupNames(t.groups || []));
-  renderGroups("");
+  try {
+    await ensureGroupsLoaded();
+  } catch (err) {
+    setMsg(err?.message || "Failed to load groups for selected agency", false);
+    return;
+  }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -607,7 +677,9 @@ function findTemplateByIndex(idx) {
   return allTemplates.find((x) => x && x._index === idx) || allTemplates[idx];
 }
 
-window.editTemplate = (idx) => setEditMode(idx);
+window.editTemplate = async (idx) => {
+  await setEditMode(idx);
+};
 
 window.duplicateTemplate = async (idx) => {
   const t = findTemplateByIndex(idx);
@@ -626,11 +698,13 @@ window.duplicateTemplate = async (idx) => {
 
   if (targetAgency !== prevAgency) {
     try {
-      await loadGroups();
+      await ensureGroupsLoaded();
     } catch (err) {
       setMsg(err?.message || "Failed to load groups for selected agency", false);
       return;
     }
+  } else {
+    renderGroups(groupSearch.value);
   }
 
   const baseName = String(t.name || "").trim();
@@ -668,6 +742,16 @@ window.deleteTemplate = async (idx) => {
 groupSearch.oninput = () => {
   renderGroups(groupSearch.value);
 };
+
+agencyEl.addEventListener("change", async () => {
+  pickedGroupNames.clear();
+  groupSearch.value = "";
+  try {
+    await ensureGroupsLoaded();
+  } catch (err) {
+    setMsg(err?.message || "Failed to load groups", false);
+  }
+});
 
 if (templateNameSearch) {
   templateNameSearch.addEventListener("input", applySortAndRender);
@@ -788,10 +872,17 @@ if (exportTemplatesCsvBtn) {
 
 (async () => {
   try {
-    await loadAgencies();
-    await loadGroups();
-    await loadTemplates();
+    await Promise.all([
+      loadAgencies(),
+      loadTemplatesList(),
+    ]);
     setCreateMode();
+    if (agencyEl.value) {
+      ensureGroupsLoaded().catch((err) => {
+        setMsg(err?.message || "Failed to load groups", false);
+      });
+    }
+    loadTemplateUserCounts();
   } catch (err) {
     setMsg(err.message || "Failed to load page", false);
   }

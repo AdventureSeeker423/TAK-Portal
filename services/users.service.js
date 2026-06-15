@@ -3370,15 +3370,24 @@ let USERS_CACHE = null;
 let USERS_CACHE_TS = 0;
 let USERS_LIGHTWEIGHT_CACHE = null;
 let USERS_LIGHTWEIGHT_CACHE_TS = 0;
+let TEMPLATE_COUNTS_CACHE = null;
+let TEMPLATE_COUNTS_CACHE_KEY = "";
+let TEMPLATE_COUNTS_CACHE_TS = 0;
 // TTL in seconds; defaults to 60s. Use 0 to disable caching and always hit Authentik.
 // Cache is invalidated on create/delete/update so paging/sorting stays fast without stale data.
 const USERS_CACHE_TTL_MS = (getInt("USERS_CACHE_TTL_SECONDS", 60) || 0) * 1000;
+// Template user counts change less often than the full user list; longer TTL keeps Templates page snappy.
+const TEMPLATE_COUNTS_CACHE_TTL_MS =
+  (getInt("TEMPLATE_COUNTS_CACHE_TTL_SECONDS", 300) || 0) * 1000;
 
 function invalidateUsersCache() {
   USERS_CACHE = null;
   USERS_CACHE_TS = 0;
   USERS_LIGHTWEIGHT_CACHE = null;
   USERS_LIGHTWEIGHT_CACHE_TS = 0;
+  TEMPLATE_COUNTS_CACHE = null;
+  TEMPLATE_COUNTS_CACHE_KEY = "";
+  TEMPLATE_COUNTS_CACHE_TS = 0;
 }
 
 function invalidateGroupsCache() {
@@ -4023,6 +4032,21 @@ async function getCurrentTemplateCountsByTemplate(options = {}) {
           .filter(Boolean)
       )
     : null;
+  const cacheKey = allowedSet
+    ? Array.from(allowedSet).sort().join("|")
+    : "*global*";
+
+  if (TEMPLATE_COUNTS_CACHE_TTL_MS > 0) {
+    const now = Date.now();
+    const cacheValid =
+      TEMPLATE_COUNTS_CACHE &&
+      TEMPLATE_COUNTS_CACHE_KEY === cacheKey &&
+      TEMPLATE_COUNTS_CACHE_TS &&
+      now - TEMPLATE_COUNTS_CACHE_TS < TEMPLATE_COUNTS_CACHE_TTL_MS;
+    if (cacheValid) {
+      return TEMPLATE_COUNTS_CACHE;
+    }
+  }
 
   const users = await getAllUsersLightweight({});
   const list = Array.isArray(users) ? users : [];
@@ -4038,6 +4062,12 @@ async function getCurrentTemplateCountsByTemplate(options = {}) {
 
     const key = `${agencySuffix}::${currentTemplate.toLowerCase()}`;
     counts[key] = Number(counts[key] || 0) + 1;
+  }
+
+  if (TEMPLATE_COUNTS_CACHE_TTL_MS > 0) {
+    TEMPLATE_COUNTS_CACHE = counts;
+    TEMPLATE_COUNTS_CACHE_KEY = cacheKey;
+    TEMPLATE_COUNTS_CACHE_TS = Date.now();
   }
 
   return counts;
