@@ -175,6 +175,7 @@
   var API = "/api/data-packages";
   var ACTIVE_KEYWORD = "missionpackage";
   var ARCHIVED_KEYWORD = "ARCHIVED_MISSION";
+  var DATA_SYNC_KIND = "data_sync";
 
   var statusBanner = document.getElementById("statusBanner");
   var uploadFile = document.getElementById("uploadFile");
@@ -277,6 +278,14 @@
       if (String(list[i]).toLowerCase() === target) return true;
     }
     return false;
+  }
+
+  function isDataPackageRow(pkg) {
+    if (!pkg) return false;
+    if (pkg.portalKindIsDataSync || String(pkg.portalKind || "").toLowerCase() === DATA_SYNC_KIND) {
+      return false;
+    }
+    return true;
   }
 
   async function loadStatus() {
@@ -390,10 +399,10 @@
       ).toLowerCase();
       if (filt && hay.indexOf(filt) === -1) continue;
 
-      if (hasKeyword(p, ACTIVE_KEYWORD)) {
+      if (hasKeyword(p, ACTIVE_KEYWORD) && isDataPackageRow(p)) {
         activeCount += 1;
         renderOneRow(p, packagesTbody, false);
-      } else if (hasKeyword(p, ARCHIVED_KEYWORD)) {
+      } else if (hasKeyword(p, ARCHIVED_KEYWORD) && isDataPackageRow(p)) {
         archivedCountValue += 1;
         renderOneRow(p, archivedPackagesTbody, true);
       }

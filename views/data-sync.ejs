@@ -264,7 +264,8 @@
   var API = "/api/data-sync";
   var PACKAGES_API = "/api/data-packages";
   var ARCHIVED_KEYWORD = "ARCHIVED_MISSION";
-  var ACTIVE_PACKAGE_KEYWORD = "missionpackage";
+  var DATA_SYNC_KEYWORD = "datasync";
+  var DATA_SYNC_KIND = "data_sync";
 
   var statusBanner = document.getElementById("statusBanner");
   var missionsMsg = document.getElementById("missionsMsg");
@@ -379,6 +380,14 @@
     var list = normalizePackageKeywords(pkg);
     for (var i = 0; i < list.length; i++) {
       if (String(list[i]).toLowerCase() === target) return true;
+    }
+    return false;
+  }
+
+  function isDataSyncFileRow(pkg) {
+    if (!pkg) return false;
+    if (pkg.portalKindIsDataSync || String(pkg.portalKind || "").toLowerCase() === DATA_SYNC_KIND) {
+      return true;
     }
     return false;
   }
@@ -658,7 +667,7 @@
 
       allPackagesCache = normalizePackageList(pkgJson);
       archivedPackagesCache = allPackagesCache.filter(function (p) {
-        return packageHasKeyword(p, ARCHIVED_KEYWORD);
+        return packageHasKeyword(p, ARCHIVED_KEYWORD) && isDataSyncFileRow(p);
       });
 
       renderMissionsTable();
@@ -899,6 +908,7 @@
       if (want && fileKey && (fileKey === want || fileKey.indexOf(want) === 0 || want.indexOf(fileKey) === 0)) match = true;
       if (!match || !hash || seen[hash]) continue;
       if (packageHasKeyword(pkg, ARCHIVED_KEYWORD)) continue;
+      if (!isDataSyncFileRow(pkg)) continue;
       seen[hash] = true;
       out.push(pkg);
     }
@@ -938,7 +948,7 @@
         var metaRes = await fetch(PACKAGES_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
           method: "PUT",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ keywords: [ARCHIVED_KEYWORD] }),
+          body: JSON.stringify({ keywords: [ARCHIVED_KEYWORD, DATA_SYNC_KEYWORD] }),
         });
         var metaText = await metaRes.text();
         var metaJson = {};

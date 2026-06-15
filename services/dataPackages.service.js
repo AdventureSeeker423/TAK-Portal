@@ -1,11 +1,12 @@
 /**
  * Data package service for TAK/OpenTAK.
- * Prefers OpenTAK `/api/data_packages` endpoints and falls back to Marti upload.
+ * Lists packages via Marti `/Marti/api/files/metadata` (Data Packages + archived Data Sync).
  */
 const crypto = require("crypto");
 const util = require("util");
 const { buildTakAxios, getTakBaseUrl, isTakConfigured } = require("./tak.service");
 const { getBool } = require("./env");
+const packageKind = require("./packageKind.service");
 
 function isDebugEnabled() {
   return getBool("TAK_DEBUG", false);
@@ -306,96 +307,21 @@ async function listDataPackages(query = {}) {
   assertTakAvailable();
   const client = buildTakOriginAxios({ timeout: 60000 });
   dbg("list start", { query });
-  try {
-    const res = await client.get("/api/data_packages", { params: query || {} });
-    dbg("endpoint /api/data_packages", {
-      status: res.status,
-      topKeys: res.data && typeof res.data === "object" ? Object.keys(res.data).slice(0, 20) : [],
-    });
-    const rawList = normalizeDataPackageList(res.data);
-    dbg("raw sample /api/data_packages", rawList.slice(0, 2));
-    dbgVerbose("raw payload /api/data_packages", res.data);
-    dbg("deep keys /api/data_packages", Array.from(listKeysDeep(res.data)).slice(0, 250));
-    const list = normalizeDataPackageList(res.data)
-      .map(normalizePackageRecord)
-      .filter((x) => x.hash || x.filename);
-    dbgVerbose("normalized records /api/data_packages", list);
-    dbg("normalized /api/data_packages", {
-      rawCount: rawList.length,
-      normalizedCount: list.length,
-      sample: list.slice(0, 3).map((x) => ({ hash: x.hash, filename: x.filename })),
-    });
-    return {
-      items: list,
-      raw: res.data,
-      source: "api_data_packages",
-    };
-  } catch (err) {
-    const status = err?.response?.status;
-    dbg("endpoint /api/data_packages failed", {
-      status,
-      message: err?.message,
-      dataSnippet:
-        typeof err?.response?.data === "string"
-          ? err.response.data.slice(0, 200)
-          : undefined,
-    });
-    if (status && status !== 404 && status !== 405) throw err;
-  }
-
-  // Fallback for Marti-only builds: file metadata endpoint.
-  try {
-    const res = await client.get("/Marti/api/files/metadata", { params: query || {} });
-    dbg("endpoint /Marti/api/files/metadata", {
-      status: res.status,
-      topKeys: res.data && typeof res.data === "object" ? Object.keys(res.data).slice(0, 20) : [],
-    });
-    const rawList = normalizeDataPackageList(res.data);
-    dbg("raw sample /Marti/api/files/metadata", rawList.slice(0, 2));
-    dbgVerbose("raw payload /Marti/api/files/metadata", res.data);
-    dbg("deep keys /Marti/api/files/metadata", Array.from(listKeysDeep(res.data)).slice(0, 250));
-    const list = normalizeDataPackageList(res.data)
-      .map(normalizePackageRecord)
-      .filter((x) => x.hash || x.filename);
-    dbgVerbose("normalized records /Marti/api/files/metadata", list);
-    dbg("normalized /Marti/api/files/metadata", {
-      rawCount: rawList.length,
-      normalizedCount: list.length,
-      sample: list.slice(0, 3).map((x) => ({ hash: x.hash, filename: x.filename })),
-    });
-    return {
-      items: list,
-      raw: res.data,
-      source: "marti_files_metadata",
-    };
-  } catch (err) {
-    const status = err?.response?.status;
-    dbg("endpoint /Marti/api/files/metadata failed", {
-      status,
-      message: err?.message,
-      dataSnippet:
-        typeof err?.response?.data === "string"
-          ? err.response.data.slice(0, 200)
-          : undefined,
-    });
-    if (status && status !== 404 && status !== 405) throw err;
-  }
-
-  // Last fallback: sync search endpoint often includes package/file metadata.
-  const res = await client.get("/Marti/sync/search", { params: query || {} });
-  dbg("endpoint /Marti/sync/search", {
+  const res = await client.get("/Marti/api/files/metadata", { params: query || {} });
+  dbg("endpoint /Marti/api/files/metadata", {
     status: res.status,
     topKeys: res.data && typeof res.data === "object" ? Object.keys(res.data).slice(0, 20) : [],
   });
   const rawList = normalizeDataPackageList(res.data);
-  dbg("raw sample /Marti/sync/search", rawList.slice(0, 2));
-  dbgVerbose("raw payload /Marti/sync/search", res.data);
-  dbg("deep keys /Marti/sync/search", Array.from(listKeysDeep(res.data)).slice(0, 250));
+  dbg("raw sample /Marti/api/files/metadata", rawList.slice(0, 2));
+  dbgVerbose("raw payload /Marti/api/files/metadata", res.data);
+  dbg("deep keys /Marti/api/files/metadata", Array.from(listKeysDeep(res.data)).slice(0, 250));
   const list = normalizeDataPackageList(res.data)
     .map(normalizePackageRecord)
-    .filter((x) => x.hash || x.filename);
-  dbgVerbose("normalized records /Marti/sync/search", list);
-  dbg("normalized /Marti/sync/search", {
+    .filter((x) => x.hash || x.filename)
+    .map(packageKind.annotatePackageRecord);
+  dbgVerbose("normalized records /Marti/api/files/metadata", list);
+  dbg("normalized /Marti/api/files/metadata", {
     rawCount: rawList.length,
     normalizedCount: list.length,
     sample: list.slice(0, 3).map((x) => ({ hash: x.hash, filename: x.filename })),
@@ -403,7 +329,7 @@ async function listDataPackages(query = {}) {
   return {
     items: list,
     raw: res.data,
-    source: "marti_sync_search",
+    source: "marti_files_metadata",
   };
 }
 
@@ -416,21 +342,11 @@ async function deleteDataPackage(hash) {
     throw e;
   }
   const client = buildTakOriginAxios({ timeout: 60000 });
-  const res = await client.delete("/api/data_packages", {
-    params: { hash: h },
-    validateStatus: (s) => (s >= 200 && s < 300) || s === 404 || s === 405,
+  const res = await client.delete(`/Marti/api/files/${encodeURIComponent(h)}`, {
+    validateStatus: (s) => (s >= 200 && s < 300) || s === 404,
   });
-
-  // Some TAK/Marti builds only expose file deletion via /Marti/api/files/{hash}.
-  if (res.status === 404 || res.status === 405) {
-    const fallback = await client.delete(`/Marti/api/files/${encodeURIComponent(h)}`, {
-      validateStatus: (s) => (s >= 200 && s < 300) || s === 404,
-    });
-    if (fallback.status === 404) return { ok: true, alreadyGone: true };
-    return fallback.data || { ok: true };
-  }
-
-  return res.data;
+  if (res.status === 404) return { ok: true, alreadyGone: true };
+  return res.data || { ok: true };
 }
 
 async function downloadDataPackageStream(hash) {
@@ -447,12 +363,9 @@ async function downloadDataPackageStream(hash) {
     responseType: "stream",
     validateStatus: () => true,
   };
-  const primary = await client.get("/api/data_packages/download", reqOpts);
-  dbg("download primary", { hash: h, status: primary.status });
-  if (primary.status !== 404 && primary.status !== 405) return primary;
-  const fallback = await client.get("/Marti/sync/content", reqOpts);
-  dbg("download fallback /Marti/sync/content", { hash: h, status: fallback.status });
-  return fallback;
+  const res = await client.get("/Marti/sync/content", reqOpts);
+  dbg("download /Marti/sync/content", { hash: h, status: res.status });
+  return res;
 }
 
 function safeFilename(name, fallback) {
@@ -540,27 +453,6 @@ async function getDataPackageMetadata(hash) {
     else if (d && typeof d === "object") out.tool = String(d.tool || d.value || "").trim();
   } catch (_) {
     // optional endpoint by TAK build
-  }
-
-  try {
-    const listRes = await client.get("/api/data_packages", { params: { hash: h } });
-    const list = normalizeDataPackageList(listRes.data);
-    if (list.length) {
-      const item = list[0] || {};
-      const kws = item.keywords || item.keyword || item.tags;
-      if (Array.isArray(kws)) out.keywords = kws.map((x) => String(x)).filter(Boolean);
-      else if (typeof kws === "string") {
-        out.keywords = kws
-          .split(",")
-          .map((x) => x.trim())
-          .filter(Boolean);
-      }
-      if (!out.tool) out.tool = String(item.tool || "").trim();
-      out.installOnEnrollment = item.install_on_enrollment ?? item.installOnEnrollment;
-      out.installOnConnection = item.install_on_connection ?? item.installOnConnection;
-    }
-  } catch (_) {
-    // optional metadata source
   }
 
   try {
