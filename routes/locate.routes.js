@@ -141,7 +141,7 @@ router.get("/mission-groups/:missionName", async (req, res) => {
 /** Data Sync missions with tool=public (for locate CoreConfig mission dropdown), A–Z by name. */
 router.get("/data-sync-missions", async (req, res) => {
   try {
-    const data = await dataSyncSvc.listPagedMissions({});
+    const data = await dataSyncSvc.listMissions({});
     const list = unwrapPagedMissions(data);
     const publicOnes = list.filter((m) => {
       const t = m && m.tool != null ? String(m.tool).toLowerCase().trim() : "";

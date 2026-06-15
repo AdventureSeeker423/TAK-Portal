@@ -29,10 +29,11 @@ function missionPath(missionName) {
   return `/api/missions/${encodeURIComponent(n)}`;
 }
 
-async function listPagedMissions(params) {
+/** List all missions — TAK GET /Marti/api/missions (full list; same shape as legacy pagedmissions). */
+async function listMissions(params) {
   assertTakAvailable();
   const client = buildTakAxios({ timeout: 60000 });
-  const res = await client.get("/api/pagedmissions", { params: params || {} });
+  const res = await client.get("/api/missions", { params: params || {} });
   return res.data;
 }
 
@@ -188,7 +189,9 @@ async function exportMissionArchiveStream(missionName, queryParams = {}) {
 module.exports = {
   assertTakAvailable,
   missionPath,
-  listPagedMissions,
+  listMissions,
+  /** @deprecated use listMissions */
+  listPagedMissions: listMissions,
   getMission,
   putMission,
   postMission,

@@ -155,7 +155,7 @@ router.get("/missions", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(authUser);
-    const data = await dataSyncSvc.listPagedMissions(req.query);
+    const data = await dataSyncSvc.listMissions(req.query);
     const filtered = dataSyncAccess.filterMissionsPayload(data, allowedKeySet);
     if (String(req.query.debug || "") === "1") {
       const allowed = await dataSyncAccess.buildAgencyAllowedGroups(authUser);

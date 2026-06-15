@@ -364,7 +364,7 @@
     return extractGroupNames(raw).sort(function (a, b) { return a.localeCompare(b); });
   }
 
-  /** One entry from TAK: string or { name, groupName, … } — same shape as pagedmissions vs GET mission. */
+  /** One entry from TAK: string or { name, groupName, … } — list vs GET mission may differ slightly. */
   function entryToGroupName(entry) {
     if (entry == null) return "";
     if (typeof entry === "string") return entry.trim();

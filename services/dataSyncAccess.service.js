@@ -394,7 +394,7 @@ async function buildAccessDebug(authUser) {
   let missionsRaw = [];
   let missionsError = null;
   try {
-    const data = await dataSyncSvc.listPagedMissions({});
+    const data = await dataSyncSvc.listMissions({});
     const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
     missionsRaw = list.map((m) => ({
       name: m?.name,
