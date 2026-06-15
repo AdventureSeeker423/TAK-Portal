@@ -171,22 +171,6 @@
   </div>
 </div>
 
-<!-- Delete confirm -->
-<div class="modalOverlay" id="deleteModal" style="display: none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deleteTitle" style="width: min(480px, 94vw);">
-    <div class="modalHeader">
-      <h2 id="deleteTitle" style="margin: 0;">Delete Mission</h2>
-    </div>
-    <div class="modalBody">
-      <p id="deleteModalText" style="margin-top: 0;"></p>
-      <div class="modalFooter">
-        <button type="button" class="btn" id="deleteModalClose">Cancel</button>
-        <button type="button" class="btn danger" id="deleteModalConfirm">Delete</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <style>
   .data-sync-page .data-sync-lead { color: var(--muted); max-width: 72ch; line-height: 1.45; margin: 0.35rem 0 0 0; }
   .data-sync-page .data-sync-lead a { color: var(--btn); }
@@ -198,15 +182,6 @@
   .data-sync-table code { font-size: 11px; }
   .mission-action-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .muted { color: var(--muted); }
-  .data-sync-page .modalFooter {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 14px;
-  }
-  .data-sync-page .modalFooter .btn { width: auto; }
 
   .data-sync-page .data-sync-list-filter {
     display: block;
@@ -307,19 +282,11 @@
   var mBtnSave = document.getElementById("mBtnSave");
   var mSaveHint = document.getElementById("mSaveHint");
 
-  var deleteModal = document.getElementById("deleteModal");
-  var deleteModalClose = document.getElementById("deleteModalClose");
-  var deleteModalText = document.getElementById("deleteModalText");
-  var deleteModalConfirm = document.getElementById("deleteModalConfirm");
-
   var missionsCache = [];
   var archivedPackagesCache = [];
   var allPackagesCache = [];
   var groupsCache = [];
   var missionDetail = null;
-  var pendingDeleteName = "";
-  var pendingDeleteHash = "";
-  var pendingDeleteArchived = false;
   var editingOriginalName = "";
 
   function esc(s) {
@@ -781,7 +748,7 @@
     bDel.className = "btn danger";
     bDel.textContent = "Delete";
     bDel.addEventListener("click", function (nm) {
-      return function () { openDeleteMission(nm); };
+      return function () { deleteActiveMission(nm); };
     }(name));
 
     wrap.appendChild(bEdit);
@@ -837,7 +804,7 @@
     bDel.textContent = "Delete";
     bDel.disabled = !hash;
     bDel.addEventListener("click", function (h, fn) {
-      return function () { openDeleteArchivedPackage(h, fn); };
+      return function () { deleteArchivedPackage(h, fn); };
     }(hash, filename));
 
     wrap.appendChild(bDl);
@@ -1346,59 +1313,29 @@
     }
   }
 
-  function openDeleteMission(name) {
-    pendingDeleteName = name;
-    pendingDeleteHash = "";
-    pendingDeleteArchived = false;
-    deleteModalText.textContent =
+  async function deleteActiveMission(name) {
+    var warning =
       "Permanently delete data sync \"" + name + "\"?\n\n" +
       "This is PERMANENT and cannot be undone.\n" +
       "Use Archive if you may need this mission later.";
-    deleteModal.style.display = "flex";
-    document.body.classList.add("noScroll");
+    if (!window.confirm(warning)) return;
+    await permanentlyDeleteActiveMission(name);
   }
 
-  function openDeleteArchivedPackage(hash, filename) {
-    pendingDeleteName = filename || hash;
-    pendingDeleteHash = String(hash || "").trim();
-    pendingDeleteArchived = true;
-    deleteModalText.textContent =
+  async function deleteArchivedPackage(hash, filename) {
+    var warning =
       "Permanently delete archived data sync \"" + (filename || hash) + "\"?\n\n" +
       "This is PERMANENT and cannot be undone.";
-    deleteModal.style.display = "flex";
-    document.body.classList.add("noScroll");
-  }
-
-  function closeDeleteModal() {
-    deleteModal.style.display = "none";
-    document.body.classList.remove("noScroll");
-    pendingDeleteName = "";
-    pendingDeleteHash = "";
-    pendingDeleteArchived = false;
-  }
-
-  async function confirmDelete() {
-    var name = pendingDeleteName;
-    var hash = pendingDeleteHash;
-    var wasArchived = pendingDeleteArchived;
-    if (!name && !hash) return;
-    closeDeleteModal();
-    if (wasArchived && hash) {
-      var msgFn = setArchivedMissionsMsg;
-      setArchivedMissionsMsg("Deleting archived file…", undefined);
-      try {
-        var resPkg = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
-        var jPkg = await resPkg.json().catch(function () { return {}; });
-        if (!resPkg.ok) throw new Error((jPkg && jPkg.error) || "Delete failed");
-        msgFn("Archived file permanently deleted.", true);
-        await loadMissions({ silent: true });
-      } catch (e) {
-        msgFn(e.message || "Delete failed", false);
-      }
-      return;
-    }
-    if (name) {
-      await permanentlyDeleteActiveMission(name);
+    if (!window.confirm(warning)) return;
+    setArchivedMissionsMsg("Deleting archived file…", undefined);
+    try {
+      var resPkg = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
+      var jPkg = await resPkg.json().catch(function () { return {}; });
+      if (!resPkg.ok) throw new Error((jPkg && jPkg.error) || "Delete failed");
+      setArchivedMissionsMsg("Archived file permanently deleted.", true);
+      await loadMissions({ silent: true });
+    } catch (e) {
+      setArchivedMissionsMsg(e.message || "Delete failed", false);
     }
   }
 
@@ -1434,14 +1371,6 @@
   }
   wirePasswordToggle(document.getElementById("createMissionPw"), document.getElementById("createMissionPwToggle"));
   wirePasswordToggle(document.getElementById("mNewPw"), document.getElementById("mNewPwToggle"));
-
-  if (deleteModalClose) deleteModalClose.addEventListener("click", closeDeleteModal);
-  if (deleteModalConfirm) deleteModalConfirm.addEventListener("click", confirmDelete);
-  if (deleteModal) {
-    deleteModal.addEventListener("click", function (e) {
-      if (e.target === deleteModal) closeDeleteModal();
-    });
-  }
 
   loadStatus().then(function (ok) {
     if (ok) {
