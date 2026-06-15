@@ -9,6 +9,7 @@ const { buildTakAxios, isTakConfigured } = require("../services/tak.service");
 const { getBool } = require("../services/env");
 const dataSyncSvc = require("../services/dataSync.service");
 const dataSyncAccess = require("../services/dataSyncAccess.service");
+const dataPackagesSvc = require("../services/dataPackages.service");
 const auditSvc = require("../services/auditLog.service");
 
 const router = express.Router();
@@ -455,6 +456,80 @@ router.get("/sync/content", async (req, res) => {
     const cl = r.headers["content-length"];
     if (cl) res.setHeader("Content-Length", cl);
     r.data.pipe(res);
+  } catch (err) {
+    return handleRouteError(res, err);
+  }
+});
+
+/** File-sync metadata for archived Data Sync missions (page.data_sync — not page.data_package). */
+router.get("/file-sync/packages", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const data = await dataSyncAccess.listFileSyncPackagesForUser(authUser);
+    return res.json(data);
+  } catch (err) {
+    return handleRouteError(res, err);
+  }
+});
+
+router.get("/file-sync/packages/download", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const hash = req.query && req.query.hash ? String(req.query.hash) : "";
+    await dataSyncAccess.assertFileSyncPackageAllowed(authUser, hash);
+    const r = await dataPackagesSvc.downloadDataPackageStream(hash);
+
+    if (r.status >= 400) {
+      const chunks = [];
+      await new Promise((resolve, reject) => {
+        r.data.on("data", (c) => chunks.push(c));
+        r.data.on("end", resolve);
+        r.data.on("error", reject);
+      });
+      const msg = Buffer.concat(chunks).toString("utf8").slice(0, 2000) || "Download failed";
+      return res.status(r.status).json({ error: msg });
+    }
+
+    res.status(r.status);
+    const ct = r.headers["content-type"];
+    if (ct) res.setHeader("Content-Type", ct);
+    const cd = r.headers["content-disposition"];
+    if (cd) res.setHeader("Content-Disposition", cd);
+    const cl = r.headers["content-length"];
+    if (cl) res.setHeader("Content-Length", cl);
+    r.data.pipe(res);
+  } catch (err) {
+    return handleRouteError(res, err);
+  }
+});
+
+router.put("/file-sync/packages/:hash/metadata", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const hash = req.params.hash;
+    await dataSyncAccess.assertFileSyncPackageAllowed(authUser, hash);
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const out = await dataPackagesSvc.updateDataPackageMetadata(hash, {
+      tool: body.tool,
+      keywords: body.keywords,
+    });
+    auditDataSync(req, "DATA_SYNC_FILE_METADATA_UPDATED", hash, {
+      keywords: body.keywords,
+    });
+    return res.json(out);
+  } catch (err) {
+    return handleRouteError(res, err);
+  }
+});
+
+router.delete("/file-sync/packages/:hash", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const hash = req.params.hash;
+    await dataSyncAccess.assertFileSyncPackageAllowed(authUser, hash);
+    const out = await dataPackagesSvc.deleteDataPackage(hash);
+    auditDataSync(req, "DATA_SYNC_FILE_DELETED", hash);
+    return res.json(out || { ok: true });
   } catch (err) {
     return handleRouteError(res, err);
   }

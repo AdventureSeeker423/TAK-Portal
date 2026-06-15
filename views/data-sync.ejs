@@ -262,7 +262,7 @@
 <script>
 (function () {
   var API = "/api/data-sync";
-  var PACKAGES_API = "/api/data-packages";
+  var FILE_SYNC_API = API + "/file-sync";
   var ARCHIVED_KEYWORD = "ARCHIVED_MISSION";
   var DATA_SYNC_KEYWORD = "datasync";
   var DATA_SYNC_KIND = "data_sync";
@@ -638,13 +638,16 @@
     }
     try {
       var qs = buildQueryString(missionQueryParams());
-      var results = await Promise.all([
-        fetch(API + "/missions" + qs).then(function (res) { return res.text().then(function (text) { return { res: res, text: text }; }); }),
-        fetch(PACKAGES_API + "/packages").then(function (res) { return res.text().then(function (text) { return { res: res, text: text }; }); }),
-      ]);
+      var missionFetch = fetch(API + "/missions" + qs).then(function (res) {
+        return res.text().then(function (text) { return { res: res, text: text }; });
+      });
+      var fileSyncFetch = fetch(FILE_SYNC_API + "/packages").then(function (res) {
+        return res.text().then(function (text) { return { res: res, text: text }; });
+      });
 
-      var missionRes = results[0].res;
-      var missionText = results[0].text;
+      var missionResult = await missionFetch;
+      var missionRes = missionResult.res;
+      var missionText = missionResult.text;
       var missionJson;
       try {
         missionJson = JSON.parse(missionText);
@@ -654,26 +657,34 @@
       if (!missionRes.ok) throw new Error((missionJson && missionJson.error) || missionText.slice(0, 400));
       logDataSyncDebug("missions", missionJson);
       missionsCache = unwrapList(missionJson);
-
-      var pkgRes = results[1].res;
-      var pkgText = results[1].text;
-      var pkgJson = {};
-      try {
-        pkgJson = JSON.parse(pkgText);
-      } catch (_) {
-        throw new Error("Invalid JSON from data packages server");
-      }
-      if (!pkgRes.ok) throw new Error((pkgJson && pkgJson.error) || "Failed to load archived missions from file sync");
-
-      allPackagesCache = normalizePackageList(pkgJson);
-      archivedPackagesCache = allPackagesCache.filter(function (p) {
-        return packageHasKeyword(p, ARCHIVED_KEYWORD) && isDataSyncFileRow(p);
-      });
-
       renderMissionsTable();
-      renderArchivedPackagesTable();
       setMissionsMsg("", true);
-      setArchivedMissionsMsg("", true);
+
+      try {
+        var fileSyncResult = await fileSyncFetch;
+        var pkgRes = fileSyncResult.res;
+        var pkgText = fileSyncResult.text;
+        var pkgJson = {};
+        try {
+          pkgJson = JSON.parse(pkgText);
+        } catch (_) {
+          throw new Error("Invalid JSON from file sync server");
+        }
+        if (!pkgRes.ok) throw new Error((pkgJson && pkgJson.error) || "Failed to load archived missions from file sync");
+
+        allPackagesCache = normalizePackageList(pkgJson);
+        archivedPackagesCache = allPackagesCache.filter(function (p) {
+          return packageHasKeyword(p, ARCHIVED_KEYWORD) && isDataSyncFileRow(p);
+        });
+
+        renderArchivedPackagesTable();
+        setArchivedMissionsMsg("", true);
+      } catch (archivedErr) {
+        allPackagesCache = [];
+        archivedPackagesCache = [];
+        renderArchivedPackagesTable();
+        setArchivedMissionsMsg(archivedErr.message || "Failed to load archived missions", false);
+      }
     } catch (e) {
       setMissionsMsg(e.message || "Failed to load missions", false);
       setArchivedMissionsMsg(e.message || "Failed to load archived missions", false);
@@ -929,7 +940,7 @@
 
       var mission = unwrapMission(missionJson);
       if (!allPackagesCache.length) {
-        var pkgRes = await fetch(PACKAGES_API + "/packages");
+        var pkgRes = await fetch(FILE_SYNC_API + "/packages");
         var pkgJson = await pkgRes.json().catch(function () { return {}; });
         if (!pkgRes.ok) throw new Error((pkgJson && pkgJson.error) || "Failed to load file sync packages");
         allPackagesCache = normalizePackageList(pkgJson);
@@ -945,7 +956,7 @@
       for (var i = 0; i < targets.length; i++) {
         var hash = firstVal(targets[i], ["hash", "sha256", "uid", "id"]);
         if (!hash) continue;
-        var metaRes = await fetch(PACKAGES_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
+        var metaRes = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
           method: "PUT",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({ keywords: [ARCHIVED_KEYWORD, DATA_SYNC_KEYWORD] }),
@@ -984,7 +995,7 @@
         throw new Error("Restore requires exactly one group on the archived file entry.");
       }
 
-      var metaRes = await fetch(PACKAGES_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
+      var metaRes = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ keywords: [] }),
@@ -1023,7 +1034,7 @@
   async function downloadArchivedPackage(hash, filename) {
     setArchivedMissionsMsg("Downloading archived package…", undefined);
     try {
-      var res = await fetch(PACKAGES_API + "/packages/download?hash=" + encodeURIComponent(hash));
+      var res = await fetch(FILE_SYNC_API + "/packages/download?hash=" + encodeURIComponent(hash));
       if (!res.ok) throw new Error("Download failed (HTTP " + res.status + ")");
       var blob = await res.blob();
       var a = document.createElement("a");
@@ -1417,7 +1428,7 @@
     var msgFn = wasArchived ? setArchivedMissionsMsg : setMissionsMsg;
     try {
       if (hash) {
-        var resPkg = await fetch(PACKAGES_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
+        var resPkg = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
         var jPkg = await resPkg.json().catch(function () { return {}; });
         if (!resPkg.ok) throw new Error((jPkg && jPkg.error) || "Delete failed");
       } else {

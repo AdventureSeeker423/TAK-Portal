@@ -10,6 +10,8 @@ const accessSvc = require("./access.service");
 const agenciesSvc = require("./agencies.service");
 const groupsSvc = require("./groups.service");
 const dataSyncSvc = require("./dataSync.service");
+const dataPackagesSvc = require("./dataPackages.service");
+const packageKind = require("./packageKind.service");
 const mutualAidStore = require("./mutualAid.store");
 const { getString } = require("./env");
 
@@ -380,6 +382,75 @@ async function assertMissionReadable(authUser, missionName) {
   return raw;
 }
 
+function parsePackageGroupsField(groupsRaw) {
+  const raw = String(groupsRaw || "").trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((g) => g.trim())
+    .filter(Boolean);
+}
+
+function extractPackageGroupNames(record) {
+  if (!record || typeof record !== "object") return [];
+  const raw =
+    record.groups != null && record.groups !== ""
+      ? record.groups
+      : record.Groups != null && record.Groups !== ""
+        ? record.Groups
+        : record.group != null && record.group !== ""
+          ? record.group
+          : record.Group;
+  if (Array.isArray(raw)) {
+    return raw.map(entryToGroupName).filter(Boolean);
+  }
+  return parsePackageGroupsField(raw);
+}
+
+function packageAllowedForAccess(record, allowedKeySet) {
+  if (allowedKeySet === null) return true;
+  const groups = extractPackageGroupNames(record);
+  if (!groups.length) return false;
+  return groups.some((g) => takGroupNameAllowed(g, allowedKeySet));
+}
+
+function filterFileSyncPackagesForAccess(packages, allowedKeySet) {
+  const list = Array.isArray(packages) ? packages : [];
+  return list.filter((pkg) => {
+    if (!packageKind.isDataSyncRecord(pkg)) return false;
+    return packageAllowedForAccess(pkg, allowedKeySet);
+  });
+}
+
+async function listFileSyncPackagesForUser(authUser) {
+  const allowedKeySet = await getAllowedCanonicalKeySet(authUser);
+  const data = await dataPackagesSvc.listDataPackages({});
+  const items = filterFileSyncPackagesForAccess(data.items || [], allowedKeySet);
+  return {
+    items,
+    source: data.source || "marti_files_metadata",
+  };
+}
+
+async function assertFileSyncPackageAllowed(authUser, hash) {
+  const h = String(hash || "").trim();
+  if (!h) {
+    const err = new Error("Forbidden");
+    err.code = "FORBIDDEN";
+    throw err;
+  }
+  const data = await listFileSyncPackagesForUser(authUser);
+  const record = (data.items || []).find(
+    (x) => String(x.hash || "").trim().toLowerCase() === h.toLowerCase()
+  );
+  if (!record) {
+    const err = new Error("Forbidden");
+    err.code = "FORBIDDEN";
+    throw err;
+  }
+  return record;
+}
+
 async function buildAccessDebug(authUser) {
   const access = accessSvc.getAgencyAccess(authUser);
   let takGroupsRaw = [];
@@ -452,6 +523,10 @@ module.exports = {
   filterMissionsForAccess,
   filterGroupsPayload,
   filterMissionsPayload,
+  filterFileSyncPackagesForAccess,
+  listFileSyncPackagesForUser,
+  assertFileSyncPackageAllowed,
+  extractPackageGroupNames,
   assertSingleGroupBody,
   assertGroupAllowed,
   assertMissionReadable,
