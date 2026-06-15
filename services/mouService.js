@@ -27,6 +27,7 @@ const SIGNED_COPY_CONTENT_TYPES = {
   webp: "image/webp",
 };
 const AGENCY_SIGNING_MODE_AGENCY_ADMINS = "agency_admins";
+const AGENCY_SIGNING_MODE_SPECIFIC_ADMIN = "specific_agency_admin";
 const AGENCY_SIGNING_MODE_EXTERNAL_LINK = "external_link";
 const SIGN_INVITE_EXPIRY_DAYS = 30;
 const PDF_FONT_PATHS = {
@@ -235,9 +236,13 @@ function genSignInviteToken() {
 
 function normalizeAgencySigningMode(value) {
   const mode = normalizeLower(value);
-  return mode === AGENCY_SIGNING_MODE_EXTERNAL_LINK
-    ? AGENCY_SIGNING_MODE_EXTERNAL_LINK
-    : AGENCY_SIGNING_MODE_AGENCY_ADMINS;
+  if (mode === AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+    return AGENCY_SIGNING_MODE_EXTERNAL_LINK;
+  }
+  if (mode === AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
+    return AGENCY_SIGNING_MODE_SPECIFIC_ADMIN;
+  }
+  return AGENCY_SIGNING_MODE_AGENCY_ADMINS;
 }
 
 function normalizeAgencySigningConfig(raw) {
@@ -248,9 +253,15 @@ function normalizeAgencySigningConfig(raw) {
     if (!suffix) continue;
     const mode = normalizeAgencySigningMode(entry?.mode);
     const inviteEmail = normalizeText(entry?.inviteEmail);
+    const assignedAdminEmail = normalizeText(entry?.assignedAdminEmail);
+    const assignedAdminUsername = normalizeText(entry?.assignedAdminUsername);
+    const assignedAdminName = normalizeText(entry?.assignedAdminName);
     out[suffix] = {
       mode,
       ...(inviteEmail ? { inviteEmail } : {}),
+      ...(assignedAdminEmail ? { assignedAdminEmail } : {}),
+      ...(assignedAdminUsername ? { assignedAdminUsername } : {}),
+      ...(assignedAdminName ? { assignedAdminName } : {}),
     };
   }
   return out;
@@ -267,6 +278,18 @@ function getAgencySigningInviteEmail(stream, agencySuffix) {
   const suffix = normalizeAgencySuffix(agencySuffix);
   const assignments = getAssignments(stream);
   return normalizeText(assignments.agencySigning?.[suffix]?.inviteEmail);
+}
+
+function getAgencySigningAssignedAdminEmail(stream, agencySuffix) {
+  const suffix = normalizeAgencySuffix(agencySuffix);
+  const assignments = getAssignments(stream);
+  return normalizeText(assignments.agencySigning?.[suffix]?.assignedAdminEmail);
+}
+
+function getAgencySigningAssignedAdminUsername(stream, agencySuffix) {
+  const suffix = normalizeAgencySuffix(agencySuffix);
+  const assignments = getAssignments(stream);
+  return normalizeText(assignments.agencySigning?.[suffix]?.assignedAdminUsername);
 }
 
 function buildExternalSignPath(token) {
@@ -368,11 +391,90 @@ function createSignInvite({ mouId, agencyId, version, recipientEmail, actor }) {
 
 function markSignInviteUsed(token) {
   const safeToken = normalizeText(token);
-  if (!safeToken) return;
+  if (!safeToken) return null;
   const data = getSignInvitesStore();
   const item = data.items.find((entry) => normalizeText(entry?.token) === safeToken);
-  if (!item || item.usedAt) return;
+  if (!item || item.usedAt) return item?.completionToken || null;
   item.usedAt = nowIso();
+  item.completionToken = genSignInviteToken();
+  item.completionViewedAt = null;
+  saveSignInvitesStore(data);
+  return item.completionToken;
+}
+
+function getSignInviteByCompletionToken(completionToken) {
+  const safeToken = normalizeText(completionToken);
+  if (!safeToken) return null;
+  return (
+    getSignInvitesStore().items.find(
+      (item) => normalizeText(item?.completionToken) === safeToken
+    ) || null
+  );
+}
+
+function resolveSignInviteCompletion(completionToken) {
+  const invite = getSignInviteByCompletionToken(completionToken);
+  if (!invite || !invite.usedAt) {
+    throw new Error("This confirmation link is invalid.");
+  }
+  if (invite.completionViewedAt) {
+    throw new Error("This confirmation link has expired.");
+  }
+
+  const stream = getStreamById(invite.mouId);
+  const currentVersion = getCurrentVersion(stream);
+  if (!currentVersion) {
+    throw new Error("This document is no longer available.");
+  }
+  if (normalizeVersion(currentVersion.version) !== normalizeVersion(invite.version)) {
+    throw new Error("This confirmation link is no longer valid.");
+  }
+
+  const signature = getCurrentAgencySignatureForStream(stream, invite.agencyId);
+  if (!signature) {
+    throw new Error("Signed document evidence was not found.");
+  }
+
+  const evidence = getAgencyEvidence({
+    mouId: stream.mouId,
+    agencyId: invite.agencyId,
+    version: currentVersion.version,
+  });
+
+  return { stream, currentVersion, invite, signature, evidence };
+}
+
+function resolveSignInviteCompletionPdf(completionToken) {
+  const invite = getSignInviteByCompletionToken(completionToken);
+  if (!invite || !invite.usedAt) {
+    throw new Error("This download link is invalid.");
+  }
+  const stream = getStreamById(invite.mouId);
+  const currentVersion = getCurrentVersion(stream);
+  if (!currentVersion) {
+    throw new Error("This document is no longer available.");
+  }
+  const signature = getCurrentAgencySignatureForStream(stream, invite.agencyId);
+  if (!signature) {
+    throw new Error("Signed document evidence was not found.");
+  }
+  return {
+    stream,
+    currentVersion,
+    invite,
+    signature,
+  };
+}
+
+function markSignInviteCompletionViewed(completionToken) {
+  const safeToken = normalizeText(completionToken);
+  if (!safeToken) return;
+  const data = getSignInvitesStore();
+  const item = data.items.find(
+    (entry) => normalizeText(entry?.completionToken) === safeToken
+  );
+  if (!item || item.completionViewedAt) return;
+  item.completionViewedAt = nowIso();
   saveSignInvitesStore(data);
 }
 
@@ -847,6 +949,29 @@ function buildAssignmentsFromAgencySuffixes(agencySuffixes, previousAssignments)
   };
 }
 
+function validateAgencySigningForAssignments(assignments) {
+  const suffixes = getStreamAgencySuffixes({ assignments });
+  for (const suffix of suffixes) {
+    const entry = assignments?.agencySigning?.[suffix];
+    const mode = normalizeAgencySigningMode(entry?.mode);
+    const agencyLabel = String(suffix || "").trim().toUpperCase() || "agency";
+    if (mode === AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+      if (!normalizeText(entry?.inviteEmail)) {
+        throw new Error(
+          `Recipient Email is required for External One-Time Link signing (${agencyLabel}).`
+        );
+      }
+    }
+    if (mode === AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
+      if (!normalizeText(entry?.assignedAdminEmail)) {
+        throw new Error(
+          `Agency Admin selection is required for Specific Agency Admin signing (${agencyLabel}).`
+        );
+      }
+    }
+  }
+}
+
 function buildAssignmentsWithSigning({
   mouId,
   serverwide,
@@ -883,7 +1008,7 @@ function buildAssignmentsWithSigning({
     const nextMode = normalizeAgencySigningMode(mergedSigning[suffix]?.mode);
     if (
       prevMode === AGENCY_SIGNING_MODE_EXTERNAL_LINK &&
-      nextMode === AGENCY_SIGNING_MODE_AGENCY_ADMINS
+      nextMode !== AGENCY_SIGNING_MODE_EXTERNAL_LINK
     ) {
       revokeActiveSignInvitesForAgency({
         mouId,
@@ -1604,6 +1729,7 @@ function updateStreamAssignments({
     agencySigning,
     previousAssignments: stream.assignments || {},
   });
+  validateAgencySigningForAssignments(assignments);
 
   stream.assignments = assignments;
   stream.updatedAt = nowIso();
@@ -2643,12 +2769,19 @@ module.exports = {
   getAgencySigningMode,
   getAgencySigningInviteEmail,
   AGENCY_SIGNING_MODE_AGENCY_ADMINS,
+  AGENCY_SIGNING_MODE_SPECIFIC_ADMIN,
   AGENCY_SIGNING_MODE_EXTERNAL_LINK,
   buildExternalSignPath,
   createSignInvite,
   getActiveSignInviteForAgency,
   getSignInviteByToken,
+  getSignInviteByCompletionToken,
   resolveValidSignInvite,
+  resolveSignInviteCompletion,
+  resolveSignInviteCompletionPdf,
+  markSignInviteCompletionViewed,
+  getAgencySigningAssignedAdminEmail,
+  getAgencySigningAssignedAdminUsername,
   syncExternalSignInvitesForStream,
   refreshExternalSignInvitesAfterVersionChange,
   revokeActiveSignInvitesForAgency,

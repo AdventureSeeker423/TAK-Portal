@@ -80,7 +80,11 @@ function portalAuthMiddleware(req, res, next) {
     (method === "GET" &&
       /^\/request-access\/mou\/[a-f0-9]{32,64}\/file$/i.test(normalizedPath)) ||
     (method === "POST" &&
-      /^\/request-access\/mou\/[a-f0-9]{32,64}\/sign$/i.test(normalizedPath));
+      /^\/request-access\/mou\/[a-f0-9]{32,64}\/sign$/i.test(normalizedPath)) ||
+    (method === "GET" &&
+      /^\/request-access\/mou\/complete\/[a-f0-9]{32,64}$/i.test(normalizedPath)) ||
+    (method === "GET" &&
+      /^\/request-access\/mou\/complete\/[a-f0-9]{32,64}\/pdf$/i.test(normalizedPath));
 
   const isPluginDownloadApi =
     method === "GET" &&

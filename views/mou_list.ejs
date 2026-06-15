@@ -428,7 +428,7 @@
                           <button class="btn secondary" type="button" data-copy-external-sign-link data-sign-path="<%= row.externalSignPath %>">Copy Link</button>
                         <% } %>
                         <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resend/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;">
-                          <button class="btn secondary" type="submit"><%= row.signingMode === "external_link" ? "Resend Link Email" : "Resend Email" %></button>
+                          <button class="btn secondary" type="submit"><%= row.signingMode === "external_link" ? "Resend Link Email" : (row.signingMode === "specific_agency_admin" ? "Resend Admin Email" : "Resend Email") %></button>
                         </form>
                         <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
                         <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
@@ -633,10 +633,15 @@
                   <div class="mouAssignAgencyList">
                     <% agencies.forEach(function (agency) { %>
                       <% const agencySigningConfig = stream.assignments && stream.assignments.agencySigning && stream.assignments.agencySigning[agency.suffix] ? stream.assignments.agencySigning[agency.suffix] : null; %>
-                      <% const agencySigningMode = agencySigningConfig && agencySigningConfig.mode === "external_link" ? "external_link" : "agency_admins"; %>
+                      <% const agencySigningMode = agencySigningConfig && agencySigningConfig.mode === "external_link"
+                        ? "external_link"
+                        : (agencySigningConfig && agencySigningConfig.mode === "specific_agency_admin"
+                          ? "specific_agency_admin"
+                          : "agency_admins"); %>
                       <div
                         class="mouAssignAgencyRow"
                         data-mou-agency-option
+                        data-agency-suffix="<%= agency.suffix %>"
                         data-agency-label="<%= String(agency.name || '').toLowerCase() %> <%= String(agency.suffix || '').toLowerCase() %>"
                       >
                         <label class="mouAssignAgencyRow__check">
@@ -649,16 +654,28 @@
                           />
                           <span><%= agency.name %> (<%= String(agency.suffix || "").toUpperCase() %>)</span>
                         </label>
-                        <div class="mouAssignAgencyRow__signing" data-mou-agency-signing>
-                          <label class="mouAssignSigningField">
-                            <span class="muted">Signing method</span>
+                        <div class="mouAssignAgencyRow__signing" data-mou-agency-signing hidden>
+                          <label class="mouAssignSigningField mouAssignSigningField--wide">
+                            <span class="muted">Signing Method</span>
                             <select name="signingMode_<%= agency.suffix %>" data-mou-signing-mode>
-                              <option value="agency_admins" <%= agencySigningMode === "agency_admins" ? "selected" : "" %>>Agency admins</option>
-                              <option value="external_link" <%= agencySigningMode === "external_link" ? "selected" : "" %>>External one-time link</option>
+                              <option value="agency_admins" <%= agencySigningMode === "agency_admins" ? "selected" : "" %>>All Agency Admins</option>
+                              <option value="specific_agency_admin" <%= agencySigningMode === "specific_agency_admin" ? "selected" : "" %>>Specific Agency Admin</option>
+                              <option value="external_link" <%= agencySigningMode === "external_link" ? "selected" : "" %>>External One-Time Link</option>
                             </select>
                           </label>
-                          <label class="mouAssignSigningField" data-mou-signing-email <%= agencySigningMode === "external_link" ? "" : "hidden" %>>
-                            <span class="muted">Recipient email (optional)</span>
+                          <label class="mouAssignSigningField" data-mou-signing-admin hidden>
+                            <span class="muted">Agency Admin</span>
+                            <select name="signingAdminEmail_<%= agency.suffix %>" data-mou-signing-admin-select disabled>
+                              <option value="">Select agency admin...</option>
+                              <% if (agencySigningConfig && agencySigningConfig.assignedAdminEmail) { %>
+                                <option value="<%= agencySigningConfig.assignedAdminEmail %>" data-admin-username="<%= agencySigningConfig.assignedAdminUsername || '' %>" data-admin-name="<%= agencySigningConfig.assignedAdminName || '' %>" selected><%= agencySigningConfig.assignedAdminName || agencySigningConfig.assignedAdminUsername || agencySigningConfig.assignedAdminEmail %></option>
+                              <% } %>
+                            </select>
+                            <input type="hidden" name="signingAdminUsername_<%= agency.suffix %>" data-mou-signing-admin-username value="<%= agencySigningConfig && agencySigningConfig.assignedAdminUsername ? agencySigningConfig.assignedAdminUsername : '' %>" />
+                            <input type="hidden" name="signingAdminName_<%= agency.suffix %>" data-mou-signing-admin-name value="<%= agencySigningConfig && agencySigningConfig.assignedAdminName ? agencySigningConfig.assignedAdminName : '' %>" />
+                          </label>
+                          <label class="mouAssignSigningField" data-mou-signing-email hidden>
+                            <span class="muted">Recipient Email</span>
                             <input type="email" name="signingEmail_<%= agency.suffix %>" value="<%= agencySigningConfig && agencySigningConfig.inviteEmail ? agencySigningConfig.inviteEmail : "" %>" placeholder="signer@example.com" />
                           </label>
                         </div>
@@ -1085,6 +1102,9 @@
         option.classList.toggle("mouAssignAgencyRow--selected", !!(input && input.checked));
         var signingBlock = option.querySelector("[data-mou-agency-signing]");
         if (signingBlock) signingBlock.hidden = !(input && input.checked);
+        if (input && input.checked) {
+          syncSigningModeFields(option);
+        }
       });
     }
 
@@ -1092,17 +1112,80 @@
       if (!option) return;
       var modeSelect = option.querySelector("[data-mou-signing-mode]");
       var emailWrap = option.querySelector("[data-mou-signing-email]");
-      if (!modeSelect || !emailWrap) return;
-      emailWrap.hidden = String(modeSelect.value || "") !== "external_link";
+      var adminWrap = option.querySelector("[data-mou-signing-admin]");
+      var adminSelect = option.querySelector("[data-mou-signing-admin-select]");
+      if (!modeSelect) return;
+      var mode = String(modeSelect.value || "");
+      if (emailWrap) emailWrap.hidden = mode !== "external_link";
+      if (adminWrap) adminWrap.hidden = mode !== "specific_agency_admin";
+      if (adminSelect) {
+        adminSelect.disabled = mode !== "specific_agency_admin";
+        if (mode === "specific_agency_admin") {
+          loadAgencyAdminOptions(option);
+        }
+      }
+    }
+
+    function loadAgencyAdminOptions(option) {
+      var adminSelect = option.querySelector("[data-mou-signing-admin-select]");
+      if (!adminSelect || adminSelect.dataset.loaded === "true") return;
+      var suffix = option.getAttribute("data-agency-suffix") || "";
+      if (!suffix) return;
+      adminSelect.dataset.loaded = "loading";
+      var preserved = adminSelect.value;
+      fetch("/admin/mou/agency-admins/" + encodeURIComponent(suffix), {
+        headers: { Accept: "application/json" },
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (out) {
+          var users = Array.isArray(out.users) ? out.users : [];
+          var selectedEmail = preserved;
+          adminSelect.innerHTML = '<option value="">Select agency admin...</option>';
+          users.forEach(function (user) {
+            var opt = document.createElement("option");
+            opt.value = user.email || "";
+            opt.textContent = (user.name || user.username || user.email) + (user.email ? (" (" + user.email + ")") : "");
+            opt.setAttribute("data-admin-username", user.username || "");
+            opt.setAttribute("data-admin-name", user.name || user.username || "");
+            if (selectedEmail && String(opt.value) === String(selectedEmail)) {
+              opt.selected = true;
+            }
+            adminSelect.appendChild(opt);
+          });
+          adminSelect.dataset.loaded = "true";
+        })
+        .catch(function () {
+          adminSelect.dataset.loaded = "error";
+        });
+    }
+
+    function syncAdminHiddenFields(option) {
+      var adminSelect = option.querySelector("[data-mou-signing-admin-select]");
+      var usernameInput = option.querySelector("[data-mou-signing-admin-username]");
+      var nameInput = option.querySelector("[data-mou-signing-admin-name]");
+      if (!adminSelect) return;
+      var selected = adminSelect.options[adminSelect.selectedIndex];
+      if (usernameInput) {
+        usernameInput.value = selected ? (selected.getAttribute("data-admin-username") || "") : "";
+      }
+      if (nameInput) {
+        nameInput.value = selected ? (selected.getAttribute("data-admin-name") || "") : "";
+      }
     }
 
     agencyOptions.forEach(function (option) {
       var modeSelect = option.querySelector("[data-mou-signing-mode]");
+      var adminSelect = option.querySelector("[data-mou-signing-admin-select]");
       if (modeSelect) {
         modeSelect.addEventListener("change", function () {
           syncSigningModeFields(option);
         });
         syncSigningModeFields(option);
+      }
+      if (adminSelect) {
+        adminSelect.addEventListener("change", function () {
+          syncAdminHiddenFields(option);
+        });
       }
     });
 
@@ -1143,8 +1226,42 @@
         syncRowState();
       });
     }
+    function validateSigningSelections() {
+      var invalid = null;
+      agencyOptions.forEach(function (option) {
+        if (invalid) return;
+        if (option.style.display === "none") return;
+        var input = option.querySelector("[data-mou-agency-checkbox]");
+        if (!input || !input.checked) return;
+        var modeSelect = option.querySelector("[data-mou-signing-mode]");
+        var mode = modeSelect ? String(modeSelect.value || "") : "";
+        var agencyLabel = option.querySelector(".mouAssignAgencyRow__check span");
+        var agencyName = agencyLabel ? agencyLabel.textContent.trim() : "selected agency";
+        if (mode === "external_link") {
+          var emailInput = option.querySelector("[data-mou-signing-email] input");
+          if (!emailInput || !String(emailInput.value || "").trim()) {
+            invalid = "Recipient Email is required for External One-Time Link on " + agencyName + ".";
+          }
+        } else if (mode === "specific_agency_admin") {
+          var adminSelect = option.querySelector("[data-mou-signing-admin-select]");
+          if (!adminSelect || !String(adminSelect.value || "").trim()) {
+            invalid = "Agency Admin selection is required for Specific Agency Admin on " + agencyName + ".";
+          }
+        }
+      });
+      return invalid;
+    }
+
     form.addEventListener("submit", function (event) {
       event.preventDefault();
+      var signingError = validateSigningSelections();
+      if (signingError) {
+        setStatus("bad", signingError);
+        return;
+      }
+      agencyOptions.forEach(function (option) {
+        syncAdminHiddenFields(option);
+      });
       if (submitBtn) submitBtn.disabled = true;
       setStatus("pending", "Saving assignment...");
       var payload = new URLSearchParams(new FormData(form));

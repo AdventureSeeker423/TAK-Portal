@@ -275,6 +275,35 @@ async function sendAgencyAdminEmail({ agency, subject, html, text }) {
   });
 }
 
+async function sendAssignmentEmailToAddress({ to, subject, html, text }) {
+  const recipient = String(to || "").trim();
+  if (!recipient) {
+    return { sent: false, skipped: true, reason: "No recipient email configured." };
+  }
+  return emailSvc.sendMail({
+    to: recipient,
+    subject,
+    html,
+    text,
+  });
+}
+
+async function listAgencyAdminUsersForAssign(agency) {
+  const users = await getAgencyAdminUsers(agency);
+  return users
+    .map((user) => {
+      const username = String(user.username || user.uid || "").trim();
+      const email = String(user.email || "").trim();
+      const name =
+        String(user.name || "").trim() ||
+        String(user.display_name || "").trim() ||
+        username;
+      return { username, email, name };
+    })
+    .filter((user) => user.email)
+    .sort((a, b) => String(a.name || a.username).localeCompare(String(b.name || b.username)));
+}
+
 async function sendGlobalAdminEmail({ subject, html, text }) {
   const lookup = await getGlobalAdminRecipientLookup();
   if (!lookup.configuredGroupNames.length) {
@@ -332,7 +361,8 @@ async function sendAssignmentNotificationForAgency({ stream, version, agency, ac
   if (!agencySuffix) {
     return { sent: false, skipped: true, reason: "Agency suffix was missing." };
   }
-  if (mouService.getAgencySigningMode(stream, agencySuffix) === mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+  const signingMode = mouService.getAgencySigningMode(stream, agencySuffix);
+  if (signingMode === mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
     return { sent: false, skipped: true, reason: "Agency uses external sign link." };
   }
 
@@ -347,9 +377,25 @@ async function sendAssignmentNotificationForAgency({ stream, version, agency, ac
     takPortalBlock,
   });
   const text = htmlToText(html);
+  const subject = `TAK Portal MOU Updated - ${stream.title} (v${version.version})`;
+
+  if (signingMode === mouService.AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
+    const assignedEmail = mouService.getAgencySigningAssignedAdminEmail(stream, agencySuffix);
+    const result = await sendAssignmentEmailToAddress({
+      to: assignedEmail,
+      subject,
+      html,
+      text,
+    });
+    return {
+      ...result,
+      agencySuffix,
+    };
+  }
+
   const result = await sendAgencyAdminEmail({
     agency,
-    subject: `TAK Portal MOU Updated - ${stream.title} (v${version.version})`,
+    subject,
     html,
     text,
   });
@@ -391,6 +437,51 @@ async function sendExternalSignInviteEmail({ stream, version, agency, invite, ac
     ...result,
     agencySuffix: String(agency?.suffix || "").trim().toLowerCase(),
   };
+}
+
+async function sendExternalSignedPdfEmail({
+  stream,
+  version,
+  agency,
+  signerEmail,
+  signature,
+}) {
+  if (!shouldSendMouEmails()) {
+    return { sent: false, skipped: true, reason: "MOU emails are disabled." };
+  }
+  const recipient = String(signerEmail || "").trim();
+  if (!recipient) {
+    return { sent: false, skipped: true, reason: "No signer email provided." };
+  }
+
+  const pdfExport = await mouService.getSignedPdfExport({
+    mouId: stream.mouId,
+    agencyId: signature?.agencyId || agency?.suffix,
+    version: version?.version,
+  });
+
+  const html = renderTemplate("mou_external_signed_copy.html", {
+    mouTitle: stream.title,
+    version: version.version,
+    agencyName: agency?.name || agency?.groupPrefix || agency?.suffix || "",
+    signerDisplayName:
+      signature?.attestationText || signature?.signerDisplayName || "Signer",
+  });
+  const text = htmlToText(html);
+
+  return emailSvc.sendMail({
+    to: recipient,
+    subject: `Signed Copy: ${stream.title} (v${version.version})`,
+    html,
+    text,
+    attachments: [
+      {
+        filename: pdfExport.fileName,
+        content: pdfExport.buffer,
+        contentType: pdfExport.contentType,
+      },
+    ],
+  });
 }
 
 async function sendAssignmentNotificationsForVersion({ stream, version, actor }) {
@@ -653,6 +744,37 @@ async function runReminderSweep() {
       continue;
     }
 
+    if (row.signingMode === mouService.AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
+      const stream = mouService.getStreamById(row.mouId);
+      const assignedEmail = mouService.getAgencySigningAssignedAdminEmail(stream, row.agencyId);
+      if (!assignedEmail) continue;
+      const takPortalBlock = buildMouPortalBlock(baseUrl);
+      const html = renderTemplate("mou_reminder_agency.html", {
+        mouTitle: row.mouTitle,
+        version: row.currentVersion,
+        agencyName: row.agencyName,
+        takPortalBlock,
+      });
+      const text = htmlToText(html);
+      const result = await sendAssignmentEmailToAddress({
+        to: assignedEmail,
+        subject: `Reminder: MOU signature required - ${row.mouTitle} (v${row.currentVersion})`,
+        html,
+        text,
+      });
+      if (result.sent) {
+        const sentAt = new Date().toISOString();
+        mouService.markAgencyReminderSent({
+          mouId: row.mouId,
+          agencyId: row.agencyId,
+          version: row.currentVersion,
+          sentAt,
+        });
+        sent += 1;
+      }
+      continue;
+    }
+
     const takPortalBlock = buildMouPortalBlock(baseUrl);
     const html = renderTemplate("mou_reminder_agency.html", {
       mouTitle: row.mouTitle,
@@ -714,7 +836,9 @@ module.exports = {
   sendAssignmentNotificationForAgency,
   sendAssignmentNotificationsForVersion,
   sendExternalSignInviteEmail,
+  sendExternalSignedPdfEmail,
   sendSignedNotificationToGlobalAdmins,
+  listAgencyAdminUsersForAssign,
   runReminderSweep,
   startScheduler,
   getPortalBaseUrl,

@@ -12,28 +12,47 @@
     .mouSignMethodSwitch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .mouSignMethodButton.is-active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
     .mouSignMethodPanel[hidden] { display: none !important; }
+    .mouExternalSuccessActions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
     @media (max-width: 900px) { .mouExternalGrid { grid-template-columns: 1fr !important; } }
+    @media print {
+      .mouExternalSuccessActions, .mouExternalHeader, .mouCallout { display: none !important; }
+      .mouExternalEvidence { box-shadow: none !important; border: 0 !important; }
+    }
   </style>
 </head>
 <body class="theme-dark">
   <div class="mouExternalWrap">
-    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px;">
+    <div class="mouExternalHeader" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px;">
       <div>
-        <h1 style="margin:0 0 6px;"><%= alreadySigned ? "Document Signed" : "Sign Document" %></h1>
+        <h1 style="margin:0 0 6px;">
+          <%= signedComplete ? "Document Successfully Signed" : (alreadySigned ? "Document Signed" : "Sign Document") %>
+        </h1>
         <div class="muted"><%= stream ? stream.title : "TAK Portal Document" %><% if (version) { %> · v<%= version.version %><% } %></div>
         <% if (agencyName) { %><div class="muted" style="margin-top:4px;">Agency: <%= agencyName %></div><% } %>
       </div>
     </div>
 
-    <% if (error) { %><div class="card mouCallout mouCallout--danger"><div class="msg bad"><%= error %></div></div><% } %>
+    <% if (error && !signedComplete) { %><div class="card mouCallout mouCallout--danger"><div class="msg bad"><%= error %></div></div><% } %>
     <% if (success) { %><div class="card mouCallout"><div class="msg ok"><%= success %></div></div><% } %>
 
     <% if (!stream || !version) { %>
-      <div class="card"><div class="mouEmptyState"><h3>Sign link unavailable</h3><p class="muted">This link may be expired, already used, or invalid.</p></div></div>
-    <% } else if (alreadySigned) { %>
-      <section class="card">
+      <div class="card"><div class="mouEmptyState"><h3>Sign Link Unavailable</h3><p class="muted">This link may be expired, already used, or invalid.</p></div></div>
+    <% } else if (signedComplete || alreadySigned) { %>
+      <% if (signedComplete) { %>
+        <div class="card mouCallout" style="margin-bottom:16px;">
+          <div class="msg ok">This document has been successfully signed. You can print or download your signed copy below.</div>
+        </div>
+      <% } %>
+      <section class="card mouExternalEvidence">
         <%- signedEvidenceHtml %>
       </section>
+      <% if (signedComplete && signedPdfUrl) { %>
+        <div class="mouExternalSuccessActions">
+          <a class="btn secondary" href="<%= signedPdfUrl %>?download=1">Download Signed Copy</a>
+          <button class="btn secondary" type="button" id="printSignedDocumentBtn">Print Signed Copy</button>
+        </div>
+        <p class="muted" style="margin-top:12px;line-height:1.5;">A PDF copy has also been emailed to you when an email address was provided.</p>
+      <% } %>
     <% } else { %>
       <div class="mouExternalGrid" style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,0.8fr);gap:16px;align-items:start;">
         <section class="card">
@@ -55,6 +74,7 @@
             <div data-signer-fields hidden style="margin-top:12px;">
               <label style="display:block;">Full Name<input type="text" name="attestationText" required style="width:100%;" /></label>
               <label style="display:block;margin-top:12px;">Position / Role<input type="text" name="signerRole" required style="width:100%;" /></label>
+              <label style="display:block;margin-top:12px;">Email Address<input type="email" name="signerEmail" value="<%= defaultSignerEmail || '' %>" placeholder="you@example.com" style="width:100%;" /></label>
               <% (customSignerFields || []).forEach(function (customFieldLabel) { %>
                 <label style="display:block;margin-top:12px;"><%= customFieldLabel %><input type="text" name="customFieldValues" required style="width:100%;" /></label>
               <% }); %>
@@ -77,6 +97,13 @@
   </div>
   <script>
   (function () {
+    var printBtn = document.getElementById("printSignedDocumentBtn");
+    if (printBtn) {
+      printBtn.addEventListener("click", function () {
+        window.print();
+      });
+    }
+
     var form = document.getElementById("mouExternalSignForm");
     if (!form) return;
     var canvas = document.getElementById("signatureCanvas");

@@ -247,6 +247,12 @@ function isPublicPortalBypass(req) {
   if (method === "POST" && /^\/request-access\/mou\/[a-f0-9]{32,64}\/sign$/i.test(p)) {
     return true;
   }
+  if (method === "GET" && /^\/request-access\/mou\/complete\/[a-f0-9]{32,64}$/i.test(p)) {
+    return true;
+  }
+  if (method === "GET" && /^\/request-access\/mou\/complete\/[a-f0-9]{32,64}\/pdf$/i.test(p)) {
+    return true;
+  }
   return false;
 }
 
