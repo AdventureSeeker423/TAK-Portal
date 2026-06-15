@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TAK Portal - Sign Document</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    body { margin: 0; }
+    .mouExternalWrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 40px; }
+    .mouSignatureCanvas { width: 100%; max-width: 520px; border: 1px solid rgba(148,163,184,.35); border-radius: 12px; background: #fff; touch-action: none; }
+    .mouSignMethodSwitch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .mouSignMethodButton.is-active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+    .mouSignMethodPanel[hidden] { display: none !important; }
+    @media (max-width: 900px) { .mouExternalGrid { grid-template-columns: 1fr !important; } }
+  </style>
+</head>
+<body class="theme-dark">
+  <div class="mouExternalWrap">
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px;">
+      <div>
+        <h1 style="margin:0 0 6px;"><%= alreadySigned ? "Document Signed" : "Sign Document" %></h1>
+        <div class="muted"><%= stream ? stream.title : "TAK Portal Document" %><% if (version) { %> · v<%= version.version %><% } %></div>
+        <% if (agencyName) { %><div class="muted" style="margin-top:4px;">Agency: <%= agencyName %></div><% } %>
+      </div>
+    </div>
+
+    <% if (error) { %><div class="card mouCallout mouCallout--danger"><div class="msg bad"><%= error %></div></div><% } %>
+    <% if (success) { %><div class="card mouCallout"><div class="msg ok"><%= success %></div></div><% } %>
+
+    <% if (!stream || !version) { %>
+      <div class="card"><div class="mouEmptyState"><h3>Sign link unavailable</h3><p class="muted">This link may be expired, already used, or invalid.</p></div></div>
+    <% } else if (alreadySigned) { %>
+      <section class="card">
+        <%- signedEvidenceHtml %>
+      </section>
+    <% } else { %>
+      <div class="mouExternalGrid" style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,0.8fr);gap:16px;align-items:start;">
+        <section class="card">
+          <h2 style="margin-top:0;"><%= stream.title %></h2>
+          <% if (String(contentType || "").toLowerCase() === "pdf") { %>
+            <iframe class="mouPdfFrame" src="<%= fileUrl %>" title="<%= stream.title %>" style="width:100%;min-height:70vh;border:0;border-radius:12px;"></iframe>
+          <% } else { %>
+            <div class="mouDocumentShell"><%- html %></div>
+          <% } %>
+        </section>
+        <section class="card">
+          <h2 style="margin-top:0;">Signer Action</h2>
+          <form method="post" action="/request-access/mou/<%= encodeURIComponent(token) %>/sign" id="mouExternalSignForm" enctype="multipart/form-data">
+            <div class="mouSignMethodSwitch" style="margin-bottom:12px;">
+              <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="esign">E-Sign Here</button>
+              <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="upload">Upload Signed Copy</button>
+            </div>
+            <div class="msg" id="signMethodMsg"></div>
+            <div data-signer-fields hidden style="margin-top:12px;">
+              <label style="display:block;">Full Name<input type="text" name="attestationText" required style="width:100%;" /></label>
+              <label style="display:block;margin-top:12px;">Position / Role<input type="text" name="signerRole" required style="width:100%;" /></label>
+              <% (customSignerFields || []).forEach(function (customFieldLabel) { %>
+                <label style="display:block;margin-top:12px;"><%= customFieldLabel %><input type="text" name="customFieldValues" required style="width:100%;" /></label>
+              <% }); %>
+              <p class="muted" style="margin-top:12px;line-height:1.5;">By signing, you affirm that you are authorized to sign on behalf of <%= agencyName || "this agency" %>.</p>
+            </div>
+            <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
+            <div class="mouSignMethodPanel" data-sign-method-panel="esign" hidden style="margin-top:14px;">
+              <label style="display:block;">Draw Signature<canvas id="signatureCanvas" width="520" height="180" class="mouSignatureCanvas"></canvas></label>
+              <button class="btn" type="button" id="clearSignatureBtn" style="margin-top:8px;">Clear Signature</button>
+              <div style="margin-top:14px;text-align:right;"><button class="btn success" type="submit" name="signMethod" value="esign">E-Sign Document</button></div>
+            </div>
+            <div class="mouSignMethodPanel" data-sign-method-panel="upload" hidden style="margin-top:14px;">
+              <label style="display:block;">Signed Document File<input type="file" name="signedCopyFile" id="signedCopyFile" accept=".pdf,.png,.jpg,.jpeg,.webp" style="width:100%;" /></label>
+              <div style="margin-top:14px;text-align:right;"><button class="btn success" type="submit" name="signMethod" value="upload">Upload Signed Document</button></div>
+            </div>
+          </form>
+        </section>
+      </div>
+    <% } %>
+  </div>
+  <script>
+  (function () {
+    var form = document.getElementById("mouExternalSignForm");
+    if (!form) return;
+    var canvas = document.getElementById("signatureCanvas");
+    var hidden = document.getElementById("signatureDataUrl");
+    var clearBtn = document.getElementById("clearSignatureBtn");
+    var signMethodMsg = document.getElementById("signMethodMsg");
+    var signerFieldsWrap = form.querySelector("[data-signer-fields]");
+    var signMethodToggleButtons = Array.from(form.querySelectorAll("[data-sign-method-toggle]"));
+    var signMethodPanels = Array.from(form.querySelectorAll("[data-sign-method-panel]"));
+    var signedCopyInput = document.getElementById("signedCopyFile");
+    var activeSignMethod = "";
+    var ctx = canvas ? canvas.getContext("2d") : null;
+    var drawing = false;
+    var hasInk = false;
+    function setSignMethodMessage(text) {
+      if (!signMethodMsg) return;
+      signMethodMsg.className = "msg " + (text ? "bad" : "");
+      signMethodMsg.textContent = text || "";
+    }
+    function setActiveSignMethod(mode) {
+      activeSignMethod = mode === "upload" || mode === "esign" ? mode : "";
+      signMethodToggleButtons.forEach(function (button) {
+        var isActive = button.getAttribute("data-method") === activeSignMethod;
+        button.classList.toggle("is-active", isActive);
+      });
+      signMethodPanels.forEach(function (panel) {
+        panel.hidden = panel.getAttribute("data-sign-method-panel") !== activeSignMethod;
+      });
+      if (signerFieldsWrap) signerFieldsWrap.hidden = !activeSignMethod;
+      setSignMethodMessage("");
+    }
+    signMethodToggleButtons.forEach(function (button) {
+      button.addEventListener("click", function () { setActiveSignMethod(button.getAttribute("data-method")); });
+    });
+    setActiveSignMethod("");
+    function pointFromEvent(evt) {
+      var rect = canvas.getBoundingClientRect();
+      var source = evt.touches && evt.touches[0] ? evt.touches[0] : evt;
+      var scaleX = rect.width ? canvas.width / rect.width : 1;
+      var scaleY = rect.height ? canvas.height / rect.height : 1;
+      return { x: (source.clientX - rect.left) * scaleX, y: (source.clientY - rect.top) * scaleY };
+    }
+    if (canvas && ctx) {
+      canvas.addEventListener("mousedown", function (evt) { evt.preventDefault(); drawing = true; var p = pointFromEvent(evt); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+      canvas.addEventListener("mousemove", function (evt) { if (!drawing) return; evt.preventDefault(); var p = pointFromEvent(evt); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#111827"; ctx.lineTo(p.x, p.y); ctx.stroke(); hasInk = true; });
+      window.addEventListener("mouseup", function () { drawing = false; });
+    }
+    if (clearBtn && canvas && hidden) {
+      clearBtn.addEventListener("click", function () { ctx.clearRect(0, 0, canvas.width, canvas.height); hasInk = false; hidden.value = ""; });
+    }
+    form.addEventListener("submit", function (event) {
+      var submitter = event.submitter;
+      var signMethod = submitter && submitter.value ? submitter.value : activeSignMethod;
+      if (signMethod === "upload") {
+        if (hidden) hidden.value = "";
+        if (!signedCopyInput || !signedCopyInput.files || !signedCopyInput.files.length) {
+          event.preventDefault(); setSignMethodMessage("Attach a PDF or image of the signed document."); return;
+        }
+        return;
+      }
+      if (!hasInk) { event.preventDefault(); setSignMethodMessage("A drawn signature is required."); return; }
+      if (hidden) hidden.value = canvas.toDataURL("image/png");
+    });
+  })();
+  </script>
+</body>
+</html>

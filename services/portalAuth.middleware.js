@@ -74,6 +74,13 @@ function portalAuthMiddleware(req, res, next) {
       /^\/request-access\/[a-f0-9]{32,64}\/(data|meta)$/i.test(normalizedPath)) ||
     (method === "POST" &&
       /^\/request-access\/[a-f0-9]{32,64}\/(approve|reject)$/i.test(normalizedPath));
+  const isPublicMouExternalSign =
+    (method === "GET" &&
+      /^\/request-access\/mou\/[a-f0-9]{32,64}$/i.test(normalizedPath)) ||
+    (method === "GET" &&
+      /^\/request-access\/mou\/[a-f0-9]{32,64}\/file$/i.test(normalizedPath)) ||
+    (method === "POST" &&
+      /^\/request-access\/mou\/[a-f0-9]{32,64}\/sign$/i.test(normalizedPath));
 
   const isPluginDownloadApi =
     method === "GET" &&
@@ -121,7 +128,7 @@ function portalAuthMiddleware(req, res, next) {
   const groupsHeader = req.headers["x-authentik-groups"] || "";
 
   // Tokenized review links work without portal login (even if a session exists).
-  if (isPublicAccessRequestReview) {
+  if (isPublicAccessRequestReview || isPublicMouExternalSign) {
     return next();
   }
 

@@ -180,6 +180,9 @@ function getRequiredPermissionsForRequest(path, method) {
   if (/^\/request-access\/[a-f0-9]{32,64}(\/(data|meta|approve|reject))?\/?$/i.test(p)) {
     return [];
   }
+  if (/^\/request-access\/mou\/[a-f0-9]{32,64}(\/(sign|file))?\/?$/i.test(p)) {
+    return [];
+  }
   if (p.startsWith("/api/email")) return ["page.email"];
   if (p === "/api/mou/user-agreement/accept" || p === "/api/mou/user-agreement/decline") {
     return [];

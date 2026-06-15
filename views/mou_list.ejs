@@ -114,11 +114,11 @@
     </div>
   <% } %>
 
-  <% if (!isGlobalAdmin) { %>
+  <% if (!isGlobalAdmin || (cards && cards.length)) { %>
     <section class="card" style="margin-top:14px;">
       <div class="mouSectionHeader">
         <div>
-          <h2>Active Documents</h2>
+          <h2><%= isGlobalAdmin ? "Your Agency Documents" : "Active Documents" %></h2>
         </div>
       </div>
       <% if (!cards || !cards.length) { %>
@@ -286,9 +286,12 @@
                         <button class="btn secondary" type="button" data-overlay-target="<%= assignOverlayId %>">Assign</button>
                         <a class="btn secondary" href="<%= adminViewHref %>" <%= String(currentVersion.contentType || "").toLowerCase() === "pdf" ? 'target="_blank" rel="noopener noreferrer"' : "" %>>View</a>
                       <% } %>
-                      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions, signatures, and signed document files?');">
-                        <button class="btn danger" type="submit">Delete</button>
+                      <form method="post" action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/delete" style="display:inline;" onsubmit="return confirm('Delete this document and all of its versions? Signed agency copies must be removed first.');">
+                        <button class="btn danger" type="submit" <%= stream.signatureSummary && stream.signatureSummary.hasSignatures ? "disabled title=\"Remove all signed agency copies before deleting this document.\"" : "" %>>Delete</button>
                       </form>
+                      <% if (stream.signatureSummary && stream.signatureSummary.hasSignatures) { %>
+                        <div class="muted" style="margin-top:6px;max-width:280px;">Cannot delete while <%= stream.signatureSummary.signatureCount %> signed cop<%= stream.signatureSummary.signatureCount === 1 ? "y" : "ies" %> exist. Archive agencies, then Delete Permanently from Archived Documents.</div>
+                      <% } %>
                     </div>
                   </td>
                 </tr>
@@ -421,11 +424,18 @@
                         <a class="btn qr" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/history.zip?agencyId=<%= encodeURIComponent(row.agencyId) %>">Download Historical</a>
                       <% } %>
                       <% if (row.needsSignature) { %>
+                        <% if (row.signingMode === "external_link" && row.externalSignPath) { %>
+                          <button class="btn secondary" type="button" data-copy-external-sign-link data-sign-path="<%= row.externalSignPath %>">Copy Link</button>
+                        <% } %>
                         <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resend/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;">
-                          <button class="btn secondary" type="submit">Resend Email</button>
+                          <button class="btn secondary" type="submit"><%= row.signingMode === "external_link" ? "Resend Link Email" : "Resend Email" %></button>
                         </form>
                         <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
                         <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
+                        <% const managedSuffixSet = new Set((managedAgencySuffixes || []).map(function (suffix) { return String(suffix || "").trim().toLowerCase(); })); %>
+                        <% if (managedSuffixSet.has(String(row.agencyId || "").trim().toLowerCase())) { %>
+                          <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.currentVersion) %>">View / Sign</a>
+                        <% } %>
                       <% } %>
                       <% if (row.needsSignature || (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0))) { %>
                         <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/assignments/archive/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Archive this document for this agency? You can restore it later from Archived Documents.');">
@@ -622,19 +632,37 @@
                 <div class="groupsBox" style="margin-top:10px;">
                   <div class="mouAssignAgencyList">
                     <% agencies.forEach(function (agency) { %>
-                      <label
+                      <% const agencySigningConfig = stream.assignments && stream.assignments.agencySigning && stream.assignments.agencySigning[agency.suffix] ? stream.assignments.agencySigning[agency.suffix] : null; %>
+                      <% const agencySigningMode = agencySigningConfig && agencySigningConfig.mode === "external_link" ? "external_link" : "agency_admins"; %>
+                      <div
                         class="mouAssignAgencyRow"
                         data-mou-agency-option
                         data-agency-label="<%= String(agency.name || '').toLowerCase() %> <%= String(agency.suffix || '').toLowerCase() %>"
                       >
-                        <input
-                          type="checkbox"
-                          name="agencySuffixes"
-                          value="<%= agency.suffix %>"
-                          <%= stream.assignments && stream.assignments.agencySuffixes && stream.assignments.agencySuffixes.includes(agency.suffix) ? "checked" : "" %>
-                        />
-                        <span><%= agency.name %> (<%= String(agency.suffix || "").toUpperCase() %>)</span>
-                      </label>
+                        <label class="mouAssignAgencyRow__check">
+                          <input
+                            type="checkbox"
+                            name="agencySuffixes"
+                            value="<%= agency.suffix %>"
+                            data-mou-agency-checkbox
+                            <%= stream.assignments && stream.assignments.agencySuffixes && stream.assignments.agencySuffixes.includes(agency.suffix) ? "checked" : "" %>
+                          />
+                          <span><%= agency.name %> (<%= String(agency.suffix || "").toUpperCase() %>)</span>
+                        </label>
+                        <div class="mouAssignAgencyRow__signing" data-mou-agency-signing>
+                          <label class="mouAssignSigningField">
+                            <span class="muted">Signing method</span>
+                            <select name="signingMode_<%= agency.suffix %>" data-mou-signing-mode>
+                              <option value="agency_admins" <%= agencySigningMode === "agency_admins" ? "selected" : "" %>>Agency admins</option>
+                              <option value="external_link" <%= agencySigningMode === "external_link" ? "selected" : "" %>>External one-time link</option>
+                            </select>
+                          </label>
+                          <label class="mouAssignSigningField" data-mou-signing-email <%= agencySigningMode === "external_link" ? "" : "hidden" %>>
+                            <span class="muted">Recipient email (optional)</span>
+                            <input type="email" name="signingEmail_<%= agency.suffix %>" value="<%= agencySigningConfig && agencySigningConfig.inviteEmail ? agencySigningConfig.inviteEmail : "" %>" placeholder="signer@example.com" />
+                          </label>
+                        </div>
+                      </div>
                     <% }); %>
                   </div>
                 </div>
@@ -1053,10 +1081,30 @@
 
     function syncRowState() {
       agencyOptions.forEach(function (option) {
-        var input = option.querySelector("input[type='checkbox']");
+        var input = option.querySelector("[data-mou-agency-checkbox]");
         option.classList.toggle("mouAssignAgencyRow--selected", !!(input && input.checked));
+        var signingBlock = option.querySelector("[data-mou-agency-signing]");
+        if (signingBlock) signingBlock.hidden = !(input && input.checked);
       });
     }
+
+    function syncSigningModeFields(option) {
+      if (!option) return;
+      var modeSelect = option.querySelector("[data-mou-signing-mode]");
+      var emailWrap = option.querySelector("[data-mou-signing-email]");
+      if (!modeSelect || !emailWrap) return;
+      emailWrap.hidden = String(modeSelect.value || "") !== "external_link";
+    }
+
+    agencyOptions.forEach(function (option) {
+      var modeSelect = option.querySelector("[data-mou-signing-mode]");
+      if (modeSelect) {
+        modeSelect.addEventListener("change", function () {
+          syncSigningModeFields(option);
+        });
+        syncSigningModeFields(option);
+      }
+    });
 
     function sync() {
       var checked = !!(serverwideToggle && serverwideToggle.checked);
@@ -1068,16 +1116,18 @@
     if (serverwideToggle) serverwideToggle.addEventListener("change", sync);
     if (agencySearch) agencySearch.addEventListener("input", filterOptions);
     agencyOptions.forEach(function (option) {
-      var input = option.querySelector("input[type='checkbox']");
+      var input = option.querySelector("[data-mou-agency-checkbox]");
       if (input) {
-        input.addEventListener("change", syncRowState);
+        input.addEventListener("change", function () {
+          syncRowState();
+        });
       }
     });
     if (selectAllBtn) {
       selectAllBtn.addEventListener("click", function () {
         agencyOptions.forEach(function (option) {
           if (option.style.display === "none") return;
-          var input = option.querySelector("input[type='checkbox']");
+          var input = option.querySelector("[data-mou-agency-checkbox]");
           if (input) input.checked = true;
         });
         syncRowState();
@@ -1087,7 +1137,7 @@
       clearAllBtn.addEventListener("click", function () {
         agencyOptions.forEach(function (option) {
           if (option.style.display === "none") return;
-          var input = option.querySelector("input[type='checkbox']");
+          var input = option.querySelector("[data-mou-agency-checkbox]");
           if (input) input.checked = false;
         });
         syncRowState();
@@ -1309,5 +1359,23 @@
   }
 
   clearFlashQueryParams();
+
+  document.querySelectorAll("[data-copy-external-sign-link]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var path = String(button.getAttribute("data-sign-path") || "").trim();
+      if (!path) return;
+      var fullUrl = path.indexOf("http") === 0 ? path : (window.location.origin + path);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(fullUrl).then(function () {
+          button.textContent = "Copied";
+          window.setTimeout(function () { button.textContent = "Copy Link"; }, 1800);
+        }).catch(function () {
+          window.prompt("Copy this sign link:", fullUrl);
+        });
+      } else {
+        window.prompt("Copy this sign link:", fullUrl);
+      }
+    });
+  });
 })();
 </script>

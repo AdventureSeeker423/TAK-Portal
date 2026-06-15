@@ -246,6 +246,19 @@ function getAgencyAccess(authUser) {
 }
 
 /**
+ * Agency suffixes the user manages via agency-admin group membership,
+ * regardless of global-admin status (used for MOU signing scope).
+ */
+function getUserManagedAgencySuffixes(authUser) {
+  if (!authUser) return [];
+  if (Array.isArray(authUser.allowedAgencySuffixes)) {
+    return authUser.allowedAgencySuffixes.map(normalizeSuffix).filter(Boolean);
+  }
+  const groups = Array.isArray(authUser.groups) ? authUser.groups : [];
+  return getAllowedAgencySuffixesForGroups(groups);
+}
+
+/**
  * Filter a list of agencies down to those visible for the current user.
  */
 function filterAgenciesForUser(authUser, agencies) {
@@ -903,6 +916,7 @@ module.exports = {
   getAllowedAgencySuffixesForGroups,
   hasAnyAgencyAdminsConfigured,
   getAgencyAccess,
+  getUserManagedAgencySuffixes,
   filterAgenciesForUser,
   isSuffixAllowed,
   isUserInAllowedAgencies,

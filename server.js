@@ -239,6 +239,14 @@ function isPublicPortalBypass(req) {
   if (method === "POST" && /^\/request-access\/[a-f0-9]{32,64}\/(approve|reject)$/i.test(p)) {
     return true;
   }
+  // Tokenized external MOU signing (under /request-access* for Caddy public bypass)
+  if (method === "GET" && /^\/request-access\/mou\/[a-f0-9]{32,64}$/i.test(p)) return true;
+  if (method === "GET" && /^\/request-access\/mou\/[a-f0-9]{32,64}\/file$/i.test(p)) {
+    return true;
+  }
+  if (method === "POST" && /^\/request-access\/mou\/[a-f0-9]{32,64}\/sign$/i.test(p)) {
+    return true;
+  }
   return false;
 }
 
