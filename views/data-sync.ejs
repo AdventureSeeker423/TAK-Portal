@@ -176,11 +176,11 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deleteTitle" style="width: min(480px, 94vw);">
     <div class="modalHeader">
       <h2 id="deleteTitle" style="margin: 0;">Delete Mission</h2>
-      <button type="button" class="btn" id="deleteModalClose">Cancel</button>
     </div>
     <div class="modalBody">
       <p id="deleteModalText" style="margin-top: 0;"></p>
-      <div class="row" style="gap: 10px;">
+      <div class="modalFooter">
+        <button type="button" class="btn" id="deleteModalClose">Cancel</button>
         <button type="button" class="btn danger" id="deleteModalConfirm">Delete</button>
       </div>
     </div>
@@ -198,6 +198,15 @@
   .data-sync-table code { font-size: 11px; }
   .mission-action-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .muted { color: var(--muted); }
+  .data-sync-page .modalFooter {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .data-sync-page .modalFooter .btn { width: auto; }
 
   .data-sync-page .data-sync-list-filter {
     display: block;

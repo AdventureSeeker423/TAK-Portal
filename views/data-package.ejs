@@ -96,6 +96,21 @@
   </details>
 </main>
 
+<div class="modalOverlay" id="deleteModal" style="display: none;">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deleteTitle" style="width: min(480px, 94vw);">
+    <div class="modalHeader">
+      <h2 id="deleteTitle" style="margin: 0;">Delete Data Package</h2>
+    </div>
+    <div class="modalBody">
+      <p id="deleteModalText" style="margin-top: 0;"></p>
+      <div class="modalFooter">
+        <button type="button" class="btn" id="deleteModalClose">Cancel</button>
+        <button type="button" class="btn danger" id="deleteModalConfirm">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
   .data-packages-page.main { min-width: 0; max-width: 100%; box-sizing: border-box; }
   .data-packages-page .card, .data-packages-page .data-packages-table-scroll { min-width: 0; max-width: 100%; box-sizing: border-box; }
@@ -168,6 +183,15 @@
     box-sizing: border-box;
     display: block;
   }
+  .data-packages-page .modalFooter {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .data-packages-page .modalFooter .btn { width: auto; }
 </style>
 
 <script>
@@ -193,9 +217,15 @@
   var activeSelectAllChk = document.getElementById("activeSelectAllChk");
   var archivedSelectAllChk = document.getElementById("archivedSelectAllChk");
 
+  var deleteModal = document.getElementById("deleteModal");
+  var deleteModalClose = document.getElementById("deleteModalClose");
+  var deleteModalText = document.getElementById("deleteModalText");
+  var deleteModalConfirm = document.getElementById("deleteModalConfirm");
+
   var packagesCache = [];
   var loadPackagesDebounceTimer = null;
   var selectedPackages = {};
+  var pendingDelete = null;
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -474,11 +504,67 @@
   }
 
   async function deletePackage(hash, filename, isArchived) {
-    var warning =
-      "Permanently delete data package \"" + (filename || hash) + "\"?\n\n" +
-      "This is PERMANENT and cannot be undone.\n" +
-      "Use Archive if you may need this package later.";
-    if (!window.confirm(warning)) return;
+    openDeleteModal({
+      hash: hash,
+      filename: filename || hash,
+      isArchived: !!isArchived,
+      bulk: false,
+    });
+  }
+
+  function openDeleteModal(opts) {
+    opts = opts || {};
+    pendingDelete = opts;
+    if (deleteModalText) {
+      if (opts.bulk) {
+        deleteModalText.textContent =
+          "Permanently delete " + opts.count + " selected package(s)?\n\n" +
+          "This is PERMANENT and cannot be undone.";
+      } else {
+        deleteModalText.textContent =
+          "Permanently delete data package \"" + (opts.filename || opts.hash) + "\"?\n\n" +
+          "This is PERMANENT and cannot be undone.\n" +
+          "Use Archive if you may need this package later.";
+      }
+    }
+    if (deleteModal) {
+      deleteModal.style.display = "flex";
+      document.body.classList.add("noScroll");
+    }
+  }
+
+  function closeDeleteModal() {
+    if (deleteModal) deleteModal.style.display = "none";
+    document.body.classList.remove("noScroll");
+    pendingDelete = null;
+  }
+
+  async function confirmDeletePackage() {
+    var pending = pendingDelete;
+    if (!pending) return;
+    closeDeleteModal();
+
+    if (pending.bulk) {
+      var selectedKeys = Array.isArray(pending.keys) ? pending.keys : [];
+      setMsg(packagesMsg, "Deleting selected packages...", undefined);
+      var deletedOk = 0;
+      for (var k = 0; k < selectedKeys.length; k++) {
+        var d = selectedPackages[selectedKeys[k]];
+        if (!d || !d.hash) continue;
+        try {
+          var delRes = await fetch(API + "/packages/" + encodeURIComponent(d.hash), { method: "DELETE" });
+          if (delRes.ok) deletedOk += 1;
+        } catch (_) {}
+      }
+      selectedPackages = {};
+      setMsg(packagesMsg, "Deleted " + deletedOk + " package(s).", true);
+      await loadPackages();
+      return;
+    }
+
+    var hash = pending.hash;
+    var filename = pending.filename;
+    var isArchived = !!pending.isArchived;
     setMsg(isArchived ? archivedPackagesMsg : packagesMsg, "Deleting package…", undefined);
     try {
       var res = await fetch(API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
@@ -623,24 +709,23 @@
     }
 
     if (action === "delete") {
-      if (!window.confirm("Permanently delete " + selectedKeys.length + " selected package(s)? This cannot be undone.")) return;
-      setMsg(packagesMsg, "Deleting selected packages...", undefined);
-      var deletedOk = 0;
-      for (var k = 0; k < selectedKeys.length; k++) {
-        var d = selectedPackages[selectedKeys[k]];
-        if (!d || !d.hash) continue;
-        try {
-          var delRes = await fetch(API + "/packages/" + encodeURIComponent(d.hash), { method: "DELETE" });
-          if (delRes.ok) deletedOk += 1;
-        } catch (_) {}
-      }
-      selectedPackages = {};
-      setMsg(packagesMsg, "Deleted " + deletedOk + " package(s).", true);
-      await loadPackages();
+      openDeleteModal({
+        bulk: true,
+        count: selectedKeys.length,
+        keys: selectedKeys.slice(),
+      });
+      return;
     }
   }
 
   if (btnUploadPackage) btnUploadPackage.addEventListener("click", uploadPackage);
+  if (deleteModalClose) deleteModalClose.addEventListener("click", closeDeleteModal);
+  if (deleteModalConfirm) deleteModalConfirm.addEventListener("click", confirmDeletePackage);
+  if (deleteModal) {
+    deleteModal.addEventListener("click", function (e) {
+      if (e.target === deleteModal) closeDeleteModal();
+    });
+  }
   if (bulkActionSelect) bulkActionSelect.addEventListener("change", updateBulkActionButtonState);
   if (bulkActionApplyBtn) bulkActionApplyBtn.addEventListener("click", bulkApplyAction);
   if (activeSelectAllChk) {
