@@ -380,8 +380,18 @@ router.put("/missions/:missionName/keywords", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
-    const data = await dataSyncSvc.putMissionKeywords(req.params.missionName, req.body);
-    auditDataSync(req, "DATA_SYNC_MISSION_KEYWORDS_UPDATED", req.params.missionName);
+    const body = req.body;
+    const data = await dataSyncSvc.putMissionKeywords(req.params.missionName, body);
+    const kwList = Array.isArray(body)
+      ? body
+      : body && Array.isArray(body.keywords)
+        ? body.keywords
+        : [];
+    const kwLower = kwList.map((k) => String(k || "").trim().toLowerCase());
+    let action = "DATA_SYNC_MISSION_KEYWORDS_UPDATED";
+    if (kwLower.includes("archived_mission")) action = "DATA_SYNC_MISSION_ARCHIVED";
+    else if (kwList.length === 0) action = "DATA_SYNC_MISSION_RESTORED";
+    auditDataSync(req, action, req.params.missionName, { keywords: kwList });
     return res.json(data);
   } catch (err) {
     return handleRouteError(res, err);

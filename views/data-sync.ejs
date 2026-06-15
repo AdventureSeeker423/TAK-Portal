@@ -72,6 +72,31 @@
       </table>
     </div>
   </div>
+
+  <details class="card" style="margin-top:1.25rem;">
+    <summary style="cursor:pointer;font-weight:600;user-select:none;">
+      Archived Data Sync Missions <span id="archivedMissionCountWrap">(<span id="archivedMissionCount">0</span>)</span>
+    </summary>
+    <div style="margin-top:12px;">
+      <div id="archivedMissionsMsg" class="msg" style="margin-left:0;"></div>
+      <div style="overflow-x: auto; margin-top: 12px;">
+        <table class="table data-sync-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Default Role</th>
+              <th>Group</th>
+              <th>Password</th>
+              <th>Created</th>
+              <th style="min-width: 340px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="archivedMissionsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </details>
 </main>
 
 <!-- Create / Edit mission -->
@@ -239,10 +264,14 @@
 <script>
 (function () {
   var API = "/api/data-sync";
+  var ARCHIVED_KEYWORD = "ARCHIVED_MISSION";
 
   var statusBanner = document.getElementById("statusBanner");
   var missionsMsg = document.getElementById("missionsMsg");
+  var archivedMissionsMsg = document.getElementById("archivedMissionsMsg");
   var missionsTbody = document.getElementById("missionsTbody");
+  var archivedMissionsTbody = document.getElementById("archivedMissionsTbody");
+  var archivedMissionCount = document.getElementById("archivedMissionCount");
   var missionTableFilter = document.getElementById("missionTableFilter");
   var createMissionName = document.getElementById("createMissionName");
   var createMissionDescription = document.getElementById("createMissionDescription");
@@ -276,8 +305,9 @@
   var missionsCache = [];
   var groupsCache = [];
   var missionDetail = null;
-  var editingOriginalName = "";
   var pendingDeleteName = "";
+  var pendingDeleteArchived = false;
+  var editingOriginalName = "";
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -290,6 +320,32 @@
   function setMissionsMsg(text, ok) {
     missionsMsg.textContent = text || "";
     missionsMsg.className = "msg " + (ok === true ? "ok" : ok === false ? "bad" : "");
+  }
+
+  function setArchivedMissionsMsg(text, ok) {
+    if (!archivedMissionsMsg) return;
+    archivedMissionsMsg.textContent = text || "";
+    archivedMissionsMsg.className = "msg " + (ok === true ? "ok" : ok === false ? "bad" : "");
+  }
+
+  function normalizeMissionKeywords(mission) {
+    if (Array.isArray(mission && mission.keywords)) {
+      return mission.keywords.map(function (k) { return String(k || "").trim(); }).filter(Boolean);
+    }
+    return [];
+  }
+
+  function missionHasKeyword(mission, keyword) {
+    var target = String(keyword || "").trim().toLowerCase();
+    var list = normalizeMissionKeywords(mission);
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i]).toLowerCase() === target) return true;
+    }
+    return false;
+  }
+
+  function isArchivedMission(mission) {
+    return missionHasKeyword(mission, ARCHIVED_KEYWORD);
   }
 
   function setMissionModalMsg(text, ok) {
@@ -530,105 +586,197 @@
       logDataSyncDebug("missions", j);
       missionsCache = unwrapList(j);
       renderMissionsTable();
-      setMissionsMsg(missionsCache.length ? "" : "No missions.", true);
+      setMissionsMsg("", true);
+      setArchivedMissionsMsg("", true);
     } catch (e) {
       setMissionsMsg(e.message || "Failed to load missions", false);
+      setArchivedMissionsMsg(e.message || "Failed to load archived missions", false);
     }
+  }
+
+  function renderMissionRow(m, tbody, isArchived) {
+    var name = m && m.name != null ? String(m.name) : "";
+    var groupName = missionSingleGroupName(m);
+    if (!groupName) return false;
+
+    var pw = m.passwordProtected === true ? "Yes" : "No";
+    var ct = m.createTime ? String(m.createTime) : "";
+    var desc = m.description != null ? String(m.description) : "";
+    if (desc.length > 48) desc = desc.slice(0, 45) + "…";
+    var dr = m && m.defaultRole;
+    var defaultRoleLabel = defaultRoleTypeToLabel(dr && dr.type ? String(dr.type) : "MISSION_SUBSCRIBER");
+
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td><strong>" + esc(name) + "</strong></td>" +
+      "<td style=\"max-width:220px;font-size:13px;\">" + esc(desc) + "</td>" +
+      "<td style=\"font-size:13px;white-space:nowrap;\">" + esc(defaultRoleLabel) + "</td>" +
+      "<td style=\"font-size:13px;\">" + esc(groupName) + "</td>" +
+      "<td>" + esc(pw) + "</td>" +
+      "<td style=\"font-size:12px;white-space:nowrap;\">" + esc(ct) + "</td>" +
+      "<td></td>";
+
+    var tdAct = tr.querySelector("td:last-child");
+    var wrap = document.createElement("div");
+    wrap.className = "mission-action-row";
+
+    var bEdit = document.createElement("button");
+    bEdit.type = "button";
+    bEdit.className = "btn";
+    bEdit.textContent = "Edit";
+    bEdit.addEventListener("click", function (nm) {
+      return function () { openEditMission(nm); };
+    }(name));
+
+    var bArchiveRestore = document.createElement("button");
+    bArchiveRestore.type = "button";
+    if (isArchived) {
+      bArchiveRestore.className = "btn success";
+      bArchiveRestore.textContent = "Restore";
+      bArchiveRestore.addEventListener("click", function (nm) {
+        return function () { restoreMission(nm); };
+      }(name));
+    } else {
+      bArchiveRestore.className = "btn caution";
+      bArchiveRestore.textContent = "Archive";
+      bArchiveRestore.addEventListener("click", function (nm) {
+        return function () { archiveMission(nm); };
+      }(name));
+    }
+
+    var bHtml = document.createElement("button");
+    bHtml.type = "button";
+    bHtml.className = "btn";
+    bHtml.textContent = "HTML";
+    bHtml.title = "Download mission archive (HTML)";
+    bHtml.addEventListener("click", function (nm, archived) {
+      return function () {
+        var msgFn = archived ? setArchivedMissionsMsg : setMissionsMsg;
+        msgFn("Downloading HTML archive…", undefined);
+        fetchMissionArchiveBlob(nm, "")
+          .then(function (blob) {
+            triggerBrowserHtmlDownload(blob, nm);
+            msgFn("HTML download started.", true);
+          })
+          .catch(function (e) {
+            msgFn(e.message || "HTML download failed", false);
+          });
+      };
+    }(name, isArchived));
+
+    var bKml = document.createElement("button");
+    bKml.type = "button";
+    bKml.className = "btn";
+    bKml.textContent = "KML";
+    bKml.title = "Download Data Sync package as KML";
+    bKml.addEventListener("click", function (nm, archived) {
+      return function () {
+        var msgFn = archived ? setArchivedMissionsMsg : setMissionsMsg;
+        msgFn("Downloading KML…", undefined);
+        fetchMissionKmlBlob(nm, "")
+          .then(function (blob) {
+            triggerBrowserKmlDownload(blob, nm);
+            msgFn("KML download started.", true);
+          })
+          .catch(function (e) {
+            msgFn(e.message || "KML download failed", false);
+          });
+      };
+    }(name, isArchived));
+
+    var bDel = document.createElement("button");
+    bDel.type = "button";
+    bDel.className = "btn danger";
+    bDel.textContent = "Delete";
+    bDel.addEventListener("click", function (nm, archived) {
+      return function () { openDeleteMission(nm, archived); };
+    }(name, isArchived));
+
+    wrap.appendChild(bEdit);
+    wrap.appendChild(bArchiveRestore);
+    wrap.appendChild(bHtml);
+    wrap.appendChild(bKml);
+    wrap.appendChild(bDel);
+    tdAct.appendChild(wrap);
+    tbody.appendChild(tr);
+    return true;
   }
 
   function renderMissionsTable() {
     var filter = (missionTableFilter && missionTableFilter.value || "").trim().toLowerCase();
     missionsTbody.innerHTML = "";
+    if (archivedMissionsTbody) archivedMissionsTbody.innerHTML = "";
+
+    var activeCount = 0;
+    var archivedCount = 0;
     for (var i = 0; i < missionsCache.length; i++) {
       var m = missionsCache[i];
       var name = m && m.name != null ? String(m.name) : "";
       if (filter && name.toLowerCase().indexOf(filter) === -1) continue;
 
-      var groupName = missionSingleGroupName(m);
-      if (!groupName) continue;
+      if (isArchivedMission(m)) {
+        if (renderMissionRow(m, archivedMissionsTbody, true)) archivedCount += 1;
+      } else if (renderMissionRow(m, missionsTbody, false)) {
+        activeCount += 1;
+      }
+    }
 
-      var tr = document.createElement("tr");
-      var pw = m.passwordProtected === true ? "Yes" : "No";
-      var ct = m.createTime ? String(m.createTime) : "";
-      var desc = m.description != null ? String(m.description) : "";
-      if (desc.length > 48) desc = desc.slice(0, 45) + "…";
-      var dr = m && m.defaultRole;
-      var defaultRoleLabel = defaultRoleTypeToLabel(dr && dr.type ? String(dr.type) : "MISSION_SUBSCRIBER");
+    if (!activeCount) {
+      var trA = document.createElement("tr");
+      var tdA = document.createElement("td");
+      tdA.colSpan = 7;
+      tdA.textContent = filter ? "No active missions match the filter." : "No active data sync missions.";
+      trA.appendChild(tdA);
+      missionsTbody.appendChild(trA);
+    }
+    if (archivedMissionsTbody && !archivedCount) {
+      var trR = document.createElement("tr");
+      var tdR = document.createElement("td");
+      tdR.colSpan = 7;
+      tdR.textContent = filter ? "No archived missions match the filter." : "No archived data sync missions.";
+      trR.appendChild(tdR);
+      archivedMissionsTbody.appendChild(trR);
+    }
+    if (archivedMissionCount) archivedMissionCount.textContent = String(archivedCount);
+  }
 
-      tr.innerHTML =
-        "<td><strong>" + esc(name) + "</strong></td>" +
-        "<td style=\"max-width:220px;font-size:13px;\">" + esc(desc) + "</td>" +
-        "<td style=\"font-size:13px;white-space:nowrap;\">" + esc(defaultRoleLabel) + "</td>" +
-        "<td style=\"font-size:13px;\">" + esc(groupName) + "</td>" +
-        "<td>" + esc(pw) + "</td>" +
-        "<td style=\"font-size:12px;white-space:nowrap;\">" + esc(ct) + "</td>" +
-        "<td></td>";
+  async function archiveMission(name) {
+    if (!window.confirm("Archive data sync \"" + name + "\"?\n\nIt will move to the archived section but can be restored later.")) return;
+    setMissionsMsg("Archiving mission…", undefined);
+    try {
+      var res = await fetch(API + "/missions/" + encodeURIComponent(name) + "/keywords", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify([ARCHIVED_KEYWORD]),
+      });
+      var text = await res.text();
+      var j = {};
+      try { j = JSON.parse(text); } catch (_) {}
+      if (!res.ok) throw new Error((j && j.error) || text.slice(0, 400) || "Archive failed");
+      setMissionsMsg("Mission archived.", true);
+      await loadMissions({ silent: true });
+    } catch (e) {
+      setMissionsMsg(e.message || "Archive failed", false);
+    }
+  }
 
-      var tdAct = tr.querySelector("td:last-child");
-      var wrap = document.createElement("div");
-      wrap.className = "mission-action-row";
-
-      var bEdit = document.createElement("button");
-      bEdit.type = "button";
-      bEdit.className = "btn";
-      bEdit.textContent = "Edit";
-      bEdit.addEventListener("click", function (nm) {
-        return function () { openEditMission(nm); };
-      }(name));
-
-      var bDel = document.createElement("button");
-      bDel.type = "button";
-      bDel.className = "btn danger";
-      bDel.textContent = "Delete";
-      bDel.addEventListener("click", function (nm) {
-        return function () { openDeleteMission(nm); };
-      }(name));
-
-      var bHtml = document.createElement("button");
-      bHtml.type = "button";
-      bHtml.className = "btn";
-      bHtml.textContent = "HTML";
-      bHtml.title = "Download mission archive (HTML)";
-      bHtml.addEventListener("click", function (nm) {
-        return function () {
-          setMissionsMsg("Downloading HTML archive…", undefined);
-          fetchMissionArchiveBlob(nm, "")
-            .then(function (blob) {
-              triggerBrowserHtmlDownload(blob, nm);
-              setMissionsMsg("HTML download started.", true);
-            })
-            .catch(function (e) {
-              setMissionsMsg(e.message || "HTML download failed", false);
-            });
-        };
-      }(name));
-
-      var bKml = document.createElement("button");
-      bKml.type = "button";
-      bKml.className = "btn";
-      bKml.textContent = "KML";
-      bKml.title = "Download Data Sync package as KML";
-      bKml.addEventListener("click", function (nm) {
-        return function () {
-          setMissionsMsg("Downloading KML…", undefined);
-          fetchMissionKmlBlob(nm, "")
-            .then(function (blob) {
-              triggerBrowserKmlDownload(blob, nm);
-              setMissionsMsg("KML download started.", true);
-            })
-            .catch(function (e) {
-              setMissionsMsg(e.message || "KML download failed", false);
-            });
-        };
-      }(name));
-
-      wrap.appendChild(bEdit);
-      wrap.appendChild(bHtml);
-      wrap.appendChild(bKml);
-      wrap.appendChild(bDel);
-      tdAct.appendChild(wrap);
-
-      missionsTbody.appendChild(tr);
+  async function restoreMission(name) {
+    if (!window.confirm("Restore data sync \"" + name + "\" to active missions?")) return;
+    setArchivedMissionsMsg("Restoring mission…", undefined);
+    try {
+      var res = await fetch(API + "/missions/" + encodeURIComponent(name) + "/keywords", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify([]),
+      });
+      var text = await res.text();
+      var j = {};
+      try { j = JSON.parse(text); } catch (_) {}
+      if (!res.ok) throw new Error((j && j.error) || text.slice(0, 400) || "Restore failed");
+      setArchivedMissionsMsg("Mission restored.", true);
+      await loadMissions({ silent: true });
+    } catch (e) {
+      setArchivedMissionsMsg(e.message || "Restore failed", false);
     }
   }
 
@@ -972,9 +1120,16 @@
     }
   }
 
-  function openDeleteMission(name) {
+  function openDeleteMission(name, isArchived) {
     pendingDeleteName = name;
-    deleteModalText.textContent = "Delete mission \"" + name + "\" on the TAK Server? This cannot be undone.";
+    pendingDeleteArchived = !!isArchived;
+    if (pendingDeleteArchived) {
+      deleteModalText.textContent =
+        "Permanently delete archived mission \"" + name + "\" on the TAK Server? This cannot be undone.";
+    } else {
+      deleteModalText.textContent =
+        "Permanently delete mission \"" + name + "\" on the TAK Server? This cannot be undone. Use Archive if you may need this mission later.";
+    }
     deleteModal.style.display = "flex";
     document.body.classList.add("noScroll");
   }
@@ -983,20 +1138,23 @@
     deleteModal.style.display = "none";
     document.body.classList.remove("noScroll");
     pendingDeleteName = "";
+    pendingDeleteArchived = false;
   }
 
   async function confirmDelete() {
     var name = pendingDeleteName;
+    var wasArchived = pendingDeleteArchived;
     if (!name) return;
+    var msgFn = wasArchived ? setArchivedMissionsMsg : setMissionsMsg;
     try {
       var res = await fetch(API + "/missions/" + encodeURIComponent(name), { method: "DELETE" });
       var j = await res.json().catch(function () { return {}; });
       if (!res.ok) throw new Error((j && j.error) || "Delete failed");
       closeDeleteModal();
-      setMissionsMsg("Mission deleted.", true);
+      msgFn("Mission deleted.", true);
       await loadMissions();
     } catch (e) {
-      setMissionsMsg(e.message || "Delete failed", false);
+      msgFn(e.message || "Delete failed", false);
       closeDeleteModal();
     }
   }
