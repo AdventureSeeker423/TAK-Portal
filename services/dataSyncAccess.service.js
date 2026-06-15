@@ -451,6 +451,161 @@ async function assertFileSyncPackageAllowed(authUser, hash) {
   return record;
 }
 
+function normalizeArchiveName(name) {
+  return String(name || "")
+    .trim()
+    .replace(/\.zip$/i, "")
+    .toLowerCase();
+}
+
+function normalizePackageKeywords(record) {
+  if (Array.isArray(record && record.keywords)) {
+    return record.keywords.map((k) => String(k || "").trim()).filter(Boolean);
+  }
+  const raw =
+    record && record.Keywords != null && record.Keywords !== ""
+      ? record.Keywords
+      : record && record.keyword != null
+        ? record.keyword
+        : "";
+  if (!raw) return [];
+  return String(raw)
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+function packageHasKeyword(record, keyword) {
+  const target = String(keyword || "").trim().toLowerCase();
+  return normalizePackageKeywords(record).some(
+    (k) => String(k).trim().toLowerCase() === target
+  );
+}
+
+function packageFilename(record) {
+  return String(
+    record?.filename ||
+      record?.Filename ||
+      record?.name ||
+      record?.Name ||
+      record?.original_filename ||
+      ""
+  ).trim();
+}
+
+function packageHash(record) {
+  return String(
+    record?.hash || record?.Hash || record?.sha256 || record?.uid || record?.id || ""
+  ).trim();
+}
+
+function isPermanentDeleteFileSyncRecord(record) {
+  return (
+    packageKind.isDataSyncRecord(record) ||
+    packageHasKeyword(record, packageKind.ARCHIVED_KEYWORD) ||
+    packageHasKeyword(record, packageKind.DATA_SYNC_KEYWORD)
+  );
+}
+
+function findMatchingFileSyncPackagesForMission(missionName, mission, packages, allowedKeySet) {
+  const want = normalizeArchiveName(missionName);
+  const hashes = new Set();
+  const contents = mission && Array.isArray(mission.contents) ? mission.contents : [];
+  for (const item of contents) {
+    const data = item && item.data ? item.data : item;
+    const h = data && (data.hash || data.Hash || data.uid)
+      ? String(data.hash || data.Hash || data.uid).trim().toLowerCase()
+      : "";
+    if (h) hashes.add(h);
+  }
+
+  const out = [];
+  const seen = new Set();
+  for (const pkg of Array.isArray(packages) ? packages : []) {
+    const hash = packageHash(pkg).toLowerCase();
+    const filename = packageFilename(pkg);
+    const fileKey = normalizeArchiveName(filename);
+    if (!hash || seen.has(hash)) continue;
+    if (!packageAllowedForAccess(pkg, allowedKeySet)) continue;
+    if (!isPermanentDeleteFileSyncRecord(pkg)) continue;
+
+    let match = false;
+    if (hashes.has(hash)) match = true;
+    if (
+      want &&
+      fileKey &&
+      (fileKey === want || fileKey.startsWith(want) || want.startsWith(fileKey))
+    ) {
+      match = true;
+    }
+    if (!match) continue;
+    seen.add(hash);
+    out.push(pkg);
+  }
+  return out;
+}
+
+async function permanentlyDeleteMissionForUser(authUser, missionName) {
+  const name = String(missionName || "").trim();
+  if (!name) {
+    const err = new Error("Mission name is required.");
+    err.code = "INVALID_MISSION_NAME";
+    throw err;
+  }
+
+  const allowedKeySet = await getAllowedCanonicalKeySet(authUser);
+  let mission = null;
+  let missionExisted = false;
+
+  try {
+    const raw = await dataSyncSvc.getMission(name);
+    mission = unwrapMission(raw);
+    missionExisted = !!mission;
+    const g = missionSingleGroupName(mission);
+    if (!g || !takGroupNameAllowed(g, allowedKeySet)) {
+      const err = new Error("Forbidden");
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+  } catch (err) {
+    const status = err?.response?.status;
+    if (err?.code === "FORBIDDEN") throw err;
+    if (status && status !== 404) throw err;
+  }
+
+  const data = await dataPackagesSvc.listDataPackages({});
+  const targets = findMatchingFileSyncPackagesForMission(
+    name,
+    mission,
+    data.items || [],
+    allowedKeySet
+  );
+
+  let deletedFiles = 0;
+  for (const pkg of targets) {
+    const hash = packageHash(pkg);
+    if (!hash) continue;
+    await dataPackagesSvc.deleteDataPackage(hash);
+    deletedFiles += 1;
+  }
+
+  if (missionExisted) {
+    try {
+      await dataSyncSvc.deleteMission(name);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (!status || status !== 404) throw err;
+    }
+  }
+
+  return {
+    ok: true,
+    missionName: name,
+    deletedFiles,
+    deletedMission: missionExisted,
+  };
+}
+
 async function buildAccessDebug(authUser) {
   const access = accessSvc.getAgencyAccess(authUser);
   let takGroupsRaw = [];
@@ -526,6 +681,7 @@ module.exports = {
   filterFileSyncPackagesForAccess,
   listFileSyncPackagesForUser,
   assertFileSyncPackageAllowed,
+  permanentlyDeleteMissionForUser,
   extractPackageGroupNames,
   assertSingleGroupBody,
   assertGroupAllowed,

@@ -335,6 +335,23 @@ router.post("/missions/:missionName", async (req, res) => {
   }
 });
 
+router.delete("/missions/:missionName/permanent", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const out = await dataSyncAccess.permanentlyDeleteMissionForUser(
+      authUser,
+      req.params.missionName
+    );
+    auditDataSync(req, "DATA_SYNC_MISSION_PERMANENTLY_DELETED", req.params.missionName, {
+      deletedFiles: out.deletedFiles,
+      deletedMission: out.deletedMission,
+    });
+    return res.json(out);
+  } catch (err) {
+    return handleRouteError(res, err);
+  }
+});
+
 router.delete("/missions/:missionName", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
