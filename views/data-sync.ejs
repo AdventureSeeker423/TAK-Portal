@@ -1012,16 +1012,6 @@
         throw new Error("Restore requires exactly one group on the archived file entry.");
       }
 
-      var metaRes = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ keywords: [] }),
-      });
-      var metaText = await metaRes.text();
-      var metaJson = {};
-      try { metaJson = JSON.parse(metaText); } catch (_) {}
-      if (!metaRes.ok) throw new Error((metaJson && metaJson.error) || "Failed to update archived file metadata");
-
       var payload = {
         name: missionName,
         tool: "public",
@@ -1041,7 +1031,16 @@
       try { missionJson = JSON.parse(missionText); } catch (_) { missionJson = { raw: missionText }; }
       if (!missionRes.ok) throw new Error((missionJson && missionJson.error) || missionText.slice(0, 500) || "Failed to recreate active mission");
 
-      setArchivedMissionsMsg("Mission restored to active list.", true);
+      var delRes = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
+      var delJson = await delRes.json().catch(function () { return {}; });
+      if (!delRes.ok && delRes.status !== 404) {
+        throw new Error(
+          (delJson && delJson.error) ||
+            "Active mission restored, but the archived file-sync copy could not be removed from TAK."
+        );
+      }
+
+      setArchivedMissionsMsg("Mission restored to active list and removed from file sync.", true);
       await loadMissions({ silent: true });
     } catch (e) {
       setArchivedMissionsMsg(e.message || "Restore failed", false);
