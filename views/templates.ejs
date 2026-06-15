@@ -350,7 +350,7 @@ let allAgencies = [];
 let currentTemplateUserCounts = {};
 let templateUserCountsLoaded = false;
 let templateUserCountsLoading = false;
-let groupsLoadedForAgency = "";
+let groupsLoaded = false;
 let groupsLoadingForAgency = false;
 let editingIndex = null;
 let pickedGroupNames = new Set();
@@ -388,14 +388,12 @@ function renderRoleOptions(selectedRole){
 }
 
 function renderGroups(filterText = ""){
-  const agencySuffix = String(agencyEl.value || "").trim();
-  if (!agencySuffix) {
-    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">Select an agency above to load groups.</p>';
+  if (groupsLoadingForAgency && !allGroups.length) {
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">Loading groups…</p>';
     return;
   }
-  const agencyKey = agencySuffix.toLowerCase();
-  if (!allGroups.length && (groupsLoadingForAgency || groupsLoadedForAgency !== agencyKey)) {
-    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">Loading groups…</p>';
+  if (!allGroups.length) {
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">No groups available.</p>';
     return;
   }
 
@@ -472,22 +470,17 @@ async function loadAgencies(){
   updateTemplateAgencyFilterOptions();
 }
 
-async function loadGroups(){
-  const sfx = String(agencyEl.value || "").trim();
-  if (!sfx) {
-    allGroups = [];
-    groupsLoadedForAgency = "";
-    renderGroups("");
+async function loadGroups(options = {}){
+  const { force = false } = options || {};
+  if (groupsLoaded && !force) {
+    renderGroups(groupSearch.value);
     return;
   }
 
   groupsLoadingForAgency = true;
-  allGroups = [];
   renderGroups(groupSearch.value);
   try {
-    const res = await fetch(
-      "/api/users/meta?agencySuffix=" + encodeURIComponent(sfx)
-    );
+    const res = await fetch("/api/users/meta");
     const meta = await res.json();
     if (!res.ok) throw new Error(meta.error || "Failed to load groups");
 
@@ -503,26 +496,11 @@ async function loadGroups(){
     for (const name of [...pickedGroupNames]) {
       if (isMutualAidGroupName(name)) pickedGroupNames.delete(name);
     }
-    groupsLoadedForAgency = sfx.toLowerCase();
+    groupsLoaded = true;
     renderGroups(groupSearch.value);
   } finally {
     groupsLoadingForAgency = false;
   }
-}
-
-async function ensureGroupsLoaded(){
-  const sfx = String(agencyEl.value || "").trim().toLowerCase();
-  if (!sfx) {
-    allGroups = [];
-    groupsLoadedForAgency = "";
-    renderGroups("");
-    return;
-  }
-  if (groupsLoadedForAgency === sfx && allGroups.length) {
-    renderGroups(groupSearch.value);
-    return;
-  }
-  await loadGroups();
 }
 
 function agencyAbbrFromSuffix(suffix){
@@ -647,7 +625,7 @@ function setCreateMode(){
   renderGroups("");
 }
 
-async function setEditMode(idx){
+function setEditMode(idx){
   editingIndex = idx;
   const t = findTemplateByIndex(idx);
 
@@ -663,12 +641,7 @@ async function setEditMode(idx){
   isDefaultEl.value = t.isDefault ? "yes" : "no";
   groupSearch.value = "";
   pickedGroupNames = new Set(stripMutualAidGroupNames(t.groups || []));
-  try {
-    await ensureGroupsLoaded();
-  } catch (err) {
-    setMsg(err?.message || "Failed to load groups for selected agency", false);
-    return;
-  }
+  renderGroups("");
 
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -677,9 +650,7 @@ function findTemplateByIndex(idx) {
   return allTemplates.find((x) => x && x._index === idx) || allTemplates[idx];
 }
 
-window.editTemplate = async (idx) => {
-  await setEditMode(idx);
-};
+window.editTemplate = (idx) => setEditMode(idx);
 
 window.duplicateTemplate = async (idx) => {
   const t = findTemplateByIndex(idx);
@@ -691,21 +662,9 @@ window.duplicateTemplate = async (idx) => {
   cancelEditBtn.style.display = "none";
   setMsg("");
 
-  const prevAgency = agencyEl.value || "";
   const targetAgency = t.agencySuffix || "";
   agencyEl.value = targetAgency;
   agencyEl.disabled = Boolean(AGENCY_ADMIN_SUFFIX);
-
-  if (targetAgency !== prevAgency) {
-    try {
-      await ensureGroupsLoaded();
-    } catch (err) {
-      setMsg(err?.message || "Failed to load groups for selected agency", false);
-      return;
-    }
-  } else {
-    renderGroups(groupSearch.value);
-  }
 
   const baseName = String(t.name || "").trim();
   nameEl.value = baseName ? `${baseName} Copy` : "Copy";
@@ -743,14 +702,10 @@ groupSearch.oninput = () => {
   renderGroups(groupSearch.value);
 };
 
-agencyEl.addEventListener("change", async () => {
+agencyEl.addEventListener("change", () => {
   pickedGroupNames.clear();
   groupSearch.value = "";
-  try {
-    await ensureGroupsLoaded();
-  } catch (err) {
-    setMsg(err?.message || "Failed to load groups", false);
-  }
+  renderGroups("");
 });
 
 if (templateNameSearch) {
@@ -875,13 +830,9 @@ if (exportTemplatesCsvBtn) {
     await Promise.all([
       loadAgencies(),
       loadTemplatesList(),
+      loadGroups(),
     ]);
     setCreateMode();
-    if (agencyEl.value) {
-      ensureGroupsLoaded().catch((err) => {
-        setMsg(err?.message || "Failed to load groups", false);
-      });
-    }
     loadTemplateUserCounts();
   } catch (err) {
     setMsg(err.message || "Failed to load page", false);
