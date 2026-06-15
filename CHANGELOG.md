@@ -17,6 +17,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ✨ `Enhancement`- Agencies - Agency County Names, County Codes, and States can now be edited.  Changing a county's full name or state also updates the name for all specific groups (State groups are only renamed if no other agency depends on that state).<br>
 ✨ `Enhancement` - Agencies - Deleting an agency now deletes & revokes all users, deletes agency specific groups, templates, integrations, and state and county groups if other agencies don't rely on it<br>
 ✨ `Enhancement` - Data Sync - Data Sync now allows for archive and restoration of old Data Sync Missions<br>
+✨ `Enhancement` - Groups - Renamed page to "Groups / Channels" to help with naming confusion<br>
 🐛 `Bug Fix` - Data Sync - Fixes issue with an incorrect Marti API call to TAK Server, limiting the amount of shown missions
 
 ### v1.3.36 - 6/14/26

@@ -18,8 +18,8 @@ const PERMISSIONS = {
     },
     groups: {
       id: "page.groups",
-      label: "Groups",
-      description: "Manage Authentik groups.",
+      label: "Groups / Channels",
+      description: "Manage Authentik groups and TAK channels.",
       section: "usersGroups",
     },
     templates: {
