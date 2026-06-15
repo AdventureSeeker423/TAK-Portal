@@ -507,8 +507,29 @@ function isPermanentDeleteFileSyncRecord(record) {
   );
 }
 
-function findMatchingFileSyncPackagesForMission(missionName, mission, packages, allowedKeySet) {
+function fileSyncNameMatchesMission(missionName, filename) {
   const want = normalizeArchiveName(missionName);
+  const fileKey = normalizeArchiveName(filename);
+  if (!want || !fileKey) return false;
+  if (fileKey === want) return true;
+  if (fileKey.startsWith(want) || want.startsWith(fileKey)) return true;
+  const rawWant = String(missionName || "")
+    .trim()
+    .replace(/\.zip$/i, "")
+    .toLowerCase();
+  const rawFile = String(filename || "")
+    .trim()
+    .replace(/\.zip$/i, "")
+    .toLowerCase();
+  if (rawWant && rawFile && (rawFile.includes(rawWant) || rawWant.includes(rawFile))) {
+    return true;
+  }
+  return false;
+}
+
+function findMatchingFileSyncPackagesForMission(missionName, mission, packages, allowedKeySet, opts) {
+  opts = opts || {};
+  const broad = !!opts.broad;
   const hashes = new Set();
   const contents = mission && Array.isArray(mission.contents) ? mission.contents : [];
   for (const item of contents) {
@@ -524,25 +545,38 @@ function findMatchingFileSyncPackagesForMission(missionName, mission, packages, 
   for (const pkg of Array.isArray(packages) ? packages : []) {
     const hash = packageHash(pkg).toLowerCase();
     const filename = packageFilename(pkg);
-    const fileKey = normalizeArchiveName(filename);
     if (!hash || seen.has(hash)) continue;
     if (!packageAllowedForAccess(pkg, allowedKeySet)) continue;
-    if (!isPermanentDeleteFileSyncRecord(pkg)) continue;
 
     let match = false;
     if (hashes.has(hash)) match = true;
-    if (
-      want &&
-      fileKey &&
-      (fileKey === want || fileKey.startsWith(want) || want.startsWith(fileKey))
-    ) {
-      match = true;
-    }
+    if (fileSyncNameMatchesMission(missionName, filename)) match = true;
+
     if (!match) continue;
+    if (!broad && !isPermanentDeleteFileSyncRecord(pkg)) continue;
     seen.add(hash);
     out.push(pkg);
   }
   return out;
+}
+
+async function deleteMatchingFileSyncPackages(missionName, mission, allowedKeySet, opts) {
+  const data = await dataPackagesSvc.listDataPackages({});
+  const targets = findMatchingFileSyncPackagesForMission(
+    missionName,
+    mission,
+    data.items || [],
+    allowedKeySet,
+    opts
+  );
+  let deletedFiles = 0;
+  for (const pkg of targets) {
+    const hash = packageHash(pkg);
+    if (!hash) continue;
+    await dataPackagesSvc.deleteDataPackage(hash);
+    deletedFiles += 1;
+  }
+  return deletedFiles;
 }
 
 async function permanentlyDeleteMissionForUser(authUser, missionName) {
@@ -573,21 +607,10 @@ async function permanentlyDeleteMissionForUser(authUser, missionName) {
     if (status && status !== 404) throw err;
   }
 
-  const data = await dataPackagesSvc.listDataPackages({});
-  const targets = findMatchingFileSyncPackagesForMission(
-    name,
-    mission,
-    data.items || [],
-    allowedKeySet
-  );
-
   let deletedFiles = 0;
-  for (const pkg of targets) {
-    const hash = packageHash(pkg);
-    if (!hash) continue;
-    await dataPackagesSvc.deleteDataPackage(hash);
-    deletedFiles += 1;
-  }
+
+  // Remove any existing file-sync copies before deleting the active mission.
+  deletedFiles += await deleteMatchingFileSyncPackages(name, mission, allowedKeySet, { broad: true });
 
   if (missionExisted) {
     try {
@@ -597,6 +620,9 @@ async function permanentlyDeleteMissionForUser(authUser, missionName) {
       if (!status || status !== 404) throw err;
     }
   }
+
+  // TAK often writes a new ARCHIVED_MISSION file-sync row when a mission is deleted.
+  deletedFiles += await deleteMatchingFileSyncPackages(name, mission, allowedKeySet, { broad: true });
 
   return {
     ok: true,
