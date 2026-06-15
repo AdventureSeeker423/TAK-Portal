@@ -216,9 +216,11 @@
 
     <!-- Pagination controls (top) -->
     <div class="pagination" id="paginationTop">
+      <button class="btn pagination-first-last" id="firstPageBtnTop" type="button">First</button>
       <button class="btn" id="prevPageBtnTop" type="button">Previous</button>
       <span id="pageInfoTop"></span>
       <button class="btn" id="nextPageBtnTop" type="button">Next</button>
+      <button class="btn pagination-first-last" id="lastPageBtnTop" type="button">Last</button>
     </div>
 
     <div class="listCardTableWrap">
@@ -252,9 +254,11 @@
 
     <!-- Pagination controls (bottom) -->
     <div class="pagination" id="paginationBottom">
+      <button class="btn pagination-first-last" id="firstPageBtnBottom" type="button">First</button>
       <button class="btn" id="prevPageBtnBottom" type="button">Previous</button>
       <span id="pageInfoBottom"></span>
       <button class="btn" id="nextPageBtnBottom" type="button">Next</button>
+      <button class="btn pagination-first-last" id="lastPageBtnBottom" type="button">Last</button>
     </div>
   </div>
 
@@ -1220,11 +1224,15 @@ const filterTemplateSelect = document.getElementById("filterTemplateSelect");
 // Pagination DOM
 const paginationTop = document.getElementById("paginationTop");
 const paginationBottom = document.getElementById("paginationBottom");
+const firstPageBtnTop = document.getElementById("firstPageBtnTop");
 const prevPageBtnTop = document.getElementById("prevPageBtnTop");
 const nextPageBtnTop = document.getElementById("nextPageBtnTop");
+const lastPageBtnTop = document.getElementById("lastPageBtnTop");
 const pageInfoTop = document.getElementById("pageInfoTop");
+const firstPageBtnBottom = document.getElementById("firstPageBtnBottom");
 const prevPageBtnBottom = document.getElementById("prevPageBtnBottom");
 const nextPageBtnBottom = document.getElementById("nextPageBtnBottom");
+const lastPageBtnBottom = document.getElementById("lastPageBtnBottom");
 const pageInfoBottom = document.getElementById("pageInfoBottom");
 
 // Modal elements
@@ -3193,7 +3201,20 @@ function updatePaginationControls() {
 
   const disablePrev = !hasPrevPage && currentPage <= 1;
   const disableNext = !hasNextPage;
+  const showFirstLast = totalPages > 1;
+  const disableFirst = currentPage <= 1;
+  const disableLast = currentPage >= totalPages;
 
+  [firstPageBtnTop, firstPageBtnBottom].forEach(btn => {
+    if (!btn) return;
+    btn.style.display = showFirstLast ? "" : "none";
+    btn.disabled = disableFirst;
+  });
+  [lastPageBtnTop, lastPageBtnBottom].forEach(btn => {
+    if (!btn) return;
+    btn.style.display = showFirstLast ? "" : "none";
+    btn.disabled = disableLast;
+  });
   [prevPageBtnTop, prevPageBtnBottom].forEach(btn => {
     if (btn) btn.disabled = disablePrev;
   });
@@ -3201,6 +3222,15 @@ function updatePaginationControls() {
     if (btn) btn.disabled = disableNext;
   });
 }
+
+[firstPageBtnTop, firstPageBtnBottom].forEach(btn => {
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    if (currentPage <= 1) return;
+    currentPage = 1;
+    loadAllUsers();
+  });
+});
 
 [prevPageBtnTop, prevPageBtnBottom].forEach(btn => {
   if (!btn) return;
@@ -3219,6 +3249,16 @@ function updatePaginationControls() {
       currentPage++;
       loadAllUsers();
     }
+  });
+});
+
+[lastPageBtnTop, lastPageBtnBottom].forEach(btn => {
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const totalPages = Math.max(1, Math.ceil((totalUsers || 0) / PAGE_SIZE));
+    if (currentPage >= totalPages) return;
+    currentPage = totalPages;
+    loadAllUsers();
   });
 });
 
