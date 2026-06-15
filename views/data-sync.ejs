@@ -780,9 +780,9 @@
     }(name));
 
     wrap.appendChild(bEdit);
-    wrap.appendChild(bArchive);
     wrap.appendChild(bHtml);
     wrap.appendChild(bKml);
+    wrap.appendChild(bArchive);
     wrap.appendChild(bDel);
     tdAct.appendChild(wrap);
     tbody.appendChild(tr);
@@ -894,9 +894,14 @@
     if (archivedMissionCount) archivedMissionCount.textContent = String(archivedCount);
   }
 
-  function findPackagesForMission(mission, packages) {
+  function findPackagesForMission(mission, packages, opts) {
+    opts = opts || {};
+    var includeArchived = !!opts.includeArchived;
     var list = Array.isArray(packages) ? packages : [];
-    var missionName = mission && mission.name != null ? String(mission.name) : "";
+    var missionName =
+      mission && mission.name != null
+        ? String(mission.name)
+        : String(opts.missionName || "");
     var want = normalizeArchiveName(missionName);
     var hashes = {};
     var contents = mission && Array.isArray(mission.contents) ? mission.contents : [];
@@ -918,7 +923,7 @@
       if (hash && hashes[hash]) match = true;
       if (want && fileKey && (fileKey === want || fileKey.indexOf(want) === 0 || want.indexOf(fileKey) === 0)) match = true;
       if (!match || !hash || seen[hash]) continue;
-      if (packageHasKeyword(pkg, ARCHIVED_KEYWORD)) continue;
+      if (!includeArchived && packageHasKeyword(pkg, ARCHIVED_KEYWORD)) continue;
       if (!isDataSyncFileRow(pkg)) continue;
       seen[hash] = true;
       out.push(pkg);
@@ -928,53 +933,65 @@
 
   async function archiveMission(name) {
     if (!window.confirm(
-      "Archive data sync \"" + name + "\"?\n\nThe active mission will be removed and an archived copy will appear under Archived Data Sync Missions (TAK file sync)."
+      "Archive data sync \"" + name + "\"?\n\nThis removes the mission from the active list on the TAK Server."
     )) return;
     setMissionsMsg("Archiving mission…", undefined);
     try {
+      var delRes = await fetch(API + "/missions/" + encodeURIComponent(name), { method: "DELETE" });
+      var delJson = await delRes.json().catch(function () { return {}; });
+      if (!delRes.ok) throw new Error((delJson && delJson.error) || "Failed to remove active mission");
+      setMissionsMsg("Mission archived (removed from active list).", true);
+      await loadMissions({ silent: true });
+    } catch (e) {
+      setMissionsMsg(e.message || "Archive failed", false);
+    }
+  }
+
+  async function permanentlyDeleteActiveMission(name) {
+    setMissionsMsg("Deleting mission permanently…", undefined);
+    try {
+      var mission = null;
       var missionRes = await fetch(API + "/missions/" + encodeURIComponent(name));
       var missionText = await missionRes.text();
       var missionJson = {};
       try { missionJson = JSON.parse(missionText); } catch (_) {}
-      if (!missionRes.ok) throw new Error((missionJson && missionJson.error) || "Could not load mission");
+      if (missionRes.ok) {
+        mission = unwrapMission(missionJson);
+      }
 
-      var mission = unwrapMission(missionJson);
       if (!allPackagesCache.length) {
         var pkgRes = await fetch(FILE_SYNC_API + "/packages");
         var pkgJson = await pkgRes.json().catch(function () { return {}; });
-        if (!pkgRes.ok) throw new Error((pkgJson && pkgJson.error) || "Failed to load file sync packages");
-        allPackagesCache = normalizePackageList(pkgJson);
+        if (pkgRes.ok) allPackagesCache = normalizePackageList(pkgJson);
       }
 
-      var targets = findPackagesForMission(mission, allPackagesCache);
-      if (!targets.length) {
-        throw new Error(
-          "No matching file-sync package found for this mission. TAK keeps archived missions in file sync (same source as Archived Data Packages)."
-        );
-      }
+      var targets = findPackagesForMission(mission, allPackagesCache, {
+        includeArchived: true,
+        missionName: name,
+      });
 
+      var deletedFiles = 0;
       for (var i = 0; i < targets.length; i++) {
         var hash = firstVal(targets[i], ["hash", "sha256", "uid", "id"]);
         if (!hash) continue;
-        var metaRes = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ keywords: [ARCHIVED_KEYWORD, DATA_SYNC_KEYWORD] }),
-        });
-        var metaText = await metaRes.text();
-        var metaJson = {};
-        try { metaJson = JSON.parse(metaText); } catch (_) {}
-        if (!metaRes.ok) throw new Error((metaJson && metaJson.error) || "Failed to archive mission file");
+        var resPkg = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
+        var jPkg = await resPkg.json().catch(function () { return {}; });
+        if (!resPkg.ok) throw new Error((jPkg && jPkg.error) || "Failed to delete file-sync copy");
+        deletedFiles += 1;
       }
 
       var delRes = await fetch(API + "/missions/" + encodeURIComponent(name), { method: "DELETE" });
       var delJson = await delRes.json().catch(function () { return {}; });
-      if (!delRes.ok) throw new Error((delJson && delJson.error) || "Failed to remove active mission");
+      if (!delRes.ok && delRes.status !== 404) {
+        throw new Error((delJson && delJson.error) || "Failed to remove active mission");
+      }
 
-      setMissionsMsg("Mission archived (" + targets.length + " file(s) tagged, active mission removed).", true);
+      var msg = "Mission permanently deleted.";
+      if (deletedFiles) msg += " Removed " + deletedFiles + " file-sync cop" + (deletedFiles === 1 ? "y" : "ies") + ".";
+      setMissionsMsg(msg, true);
       await loadMissions({ silent: true });
     } catch (e) {
-      setMissionsMsg(e.message || "Archive failed", false);
+      setMissionsMsg(e.message || "Delete failed", false);
     }
   }
 
@@ -1397,7 +1414,7 @@
     pendingDeleteHash = "";
     pendingDeleteArchived = false;
     deleteModalText.textContent =
-      "Permanently delete mission \"" + name + "\" on the TAK Server? This cannot be undone. Use Archive if you may need this mission later.";
+      "Permanently delete data sync \"" + name + "\"?\n\nThis removes the active mission and all matching file-sync copies from TAK. This cannot be undone.";
     deleteModal.style.display = "flex";
     document.body.classList.add("noScroll");
   }
@@ -1425,23 +1442,23 @@
     var hash = pendingDeleteHash;
     var wasArchived = pendingDeleteArchived;
     if (!name && !hash) return;
-    var msgFn = wasArchived ? setArchivedMissionsMsg : setMissionsMsg;
-    try {
-      if (hash) {
+    closeDeleteModal();
+    if (wasArchived && hash) {
+      var msgFn = setArchivedMissionsMsg;
+      setArchivedMissionsMsg("Deleting archived file…", undefined);
+      try {
         var resPkg = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
         var jPkg = await resPkg.json().catch(function () { return {}; });
         if (!resPkg.ok) throw new Error((jPkg && jPkg.error) || "Delete failed");
-      } else {
-        var res = await fetch(API + "/missions/" + encodeURIComponent(name), { method: "DELETE" });
-        var j = await res.json().catch(function () { return {}; });
-        if (!res.ok) throw new Error((j && j.error) || "Delete failed");
+        msgFn("Archived file permanently deleted.", true);
+        await loadMissions({ silent: true });
+      } catch (e) {
+        msgFn(e.message || "Delete failed", false);
       }
-      closeDeleteModal();
-      msgFn("Deleted.", true);
-      await loadMissions({ silent: true });
-    } catch (e) {
-      msgFn(e.message || "Delete failed", false);
-      closeDeleteModal();
+      return;
+    }
+    if (name) {
+      await permanentlyDeleteActiveMission(name);
     }
   }
 
