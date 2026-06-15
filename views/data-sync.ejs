@@ -51,7 +51,22 @@
   <div class="card">
     <h2 style="margin-top: 0;">Existing Data Sync Missions</h2>
 
-    <input type="search" id="missionTableFilter" class="data-sync-list-filter" placeholder="Filter by name…" autocomplete="off" />
+    <div class="row" style="flex-wrap:wrap; align-items:flex-end; gap:12px;">
+      <div id="bulkActionsWrap" style="min-width:280px; display:none;">
+        <div class="row" style="gap:8px; align-items:center; margin-top:2px;">
+          <select id="bulkActionSelect">
+            <option value="">Choose action...</option>
+            <option value="download">Download Selected</option>
+            <option value="archive">Archive Selected</option>
+            <option value="delete">Delete Selected</option>
+          </select>
+          <button type="button" class="btn" id="bulkActionApplyBtn">Apply</button>
+        </div>
+      </div>
+      <div style="flex:1 1 100%; width:100%;">
+        <input type="search" id="missionTableFilter" class="data-sync-list-filter" placeholder="Filter by name…" autocomplete="off" />
+      </div>
+    </div>
 
     <div id="missionsMsg" class="msg" style="margin: 12px 0 0 0;"></div>
 
@@ -59,6 +74,9 @@
       <table class="table data-sync-table">
         <thead>
           <tr>
+            <th style="width:42px;">
+              <input type="checkbox" id="activeSelectAllChk" aria-label="Select all active missions" />
+            </th>
             <th>Name</th>
             <th>Description</th>
             <th>Default Role</th>
@@ -83,6 +101,9 @@
         <table class="table data-sync-table">
           <thead>
             <tr>
+              <th style="width:42px;">
+                <input type="checkbox" id="archivedSelectAllChk" aria-label="Select all archived missions" />
+              </th>
               <th>Name</th>
               <th>Group</th>
               <th>Size</th>
@@ -201,12 +222,12 @@
   }
 
   @media (max-width: 640px){
-    .data-sync-table th:nth-child(2),
-    .data-sync-table td:nth-child(2),
-    .data-sync-table th:nth-child(4),
-    .data-sync-table td:nth-child(4),
-    .data-sync-table th:nth-child(6),
-    .data-sync-table td:nth-child(6){
+    .data-sync-table th:nth-child(3),
+    .data-sync-table td:nth-child(3),
+    .data-sync-table th:nth-child(5),
+    .data-sync-table td:nth-child(5),
+    .data-sync-table th:nth-child(7),
+    .data-sync-table td:nth-child(7){
       display: none;
     }
 
@@ -258,6 +279,11 @@
   var archivedMissionsTbody = document.getElementById("archivedMissionsTbody");
   var archivedMissionCount = document.getElementById("archivedMissionCount");
   var missionTableFilter = document.getElementById("missionTableFilter");
+  var bulkActionSelect = document.getElementById("bulkActionSelect");
+  var bulkActionApplyBtn = document.getElementById("bulkActionApplyBtn");
+  var bulkActionsWrap = document.getElementById("bulkActionsWrap");
+  var activeSelectAllChk = document.getElementById("activeSelectAllChk");
+  var archivedSelectAllChk = document.getElementById("archivedSelectAllChk");
   var createMissionName = document.getElementById("createMissionName");
   var createMissionDescription = document.getElementById("createMissionDescription");
   var createMissionDefaultRole = document.getElementById("createMissionDefaultRole");
@@ -288,6 +314,57 @@
   var groupsCache = [];
   var missionDetail = null;
   var editingOriginalName = "";
+  var selectedMissions = {};
+
+  function selectionKey(meta) {
+    if (!meta) return "";
+    if (meta.isArchived) {
+      var hash = String(meta.hash || "").trim();
+      return hash ? ("archived:" + hash) : "";
+    }
+    var name = String(meta.name || "").trim();
+    return name ? ("active:" + name) : "";
+  }
+
+  function selectedCount() {
+    return Object.keys(selectedMissions).length;
+  }
+
+  function updateBulkActionButtonState() {
+    var count = selectedCount();
+    if (bulkActionsWrap) bulkActionsWrap.style.display = count > 0 ? "" : "none";
+    if (!bulkActionApplyBtn) return;
+    bulkActionApplyBtn.disabled = count <= 0 || !bulkActionSelect || !String(bulkActionSelect.value || "");
+    bulkActionApplyBtn.textContent = count > 0 ? ("Apply (" + count + ")") : "Apply";
+  }
+
+  function syncSelectAllCheckboxes() {
+    var activeRows = missionsTbody
+      ? Array.from(missionsTbody.querySelectorAll("input.ds-row-chk[data-archived='false']"))
+      : [];
+    var archivedRows = archivedMissionsTbody
+      ? Array.from(archivedMissionsTbody.querySelectorAll("input.ds-row-chk[data-archived='true']"))
+      : [];
+    if (activeSelectAllChk) {
+      activeSelectAllChk.checked = activeRows.length > 0 && activeRows.every(function (cb) { return cb.checked; });
+      activeSelectAllChk.indeterminate =
+        activeRows.some(function (cb) { return cb.checked; }) && !activeSelectAllChk.checked;
+    }
+    if (archivedSelectAllChk) {
+      archivedSelectAllChk.checked = archivedRows.length > 0 && archivedRows.every(function (cb) { return cb.checked; });
+      archivedSelectAllChk.indeterminate =
+        archivedRows.some(function (cb) { return cb.checked; }) && !archivedSelectAllChk.checked;
+    }
+    updateBulkActionButtonState();
+  }
+
+  function setSelection(key, metaOrNull) {
+    var k = String(key || "").trim();
+    if (!k) return;
+    if (metaOrNull) selectedMissions[k] = metaOrNull;
+    else delete selectedMissions[k];
+    syncSelectAllCheckboxes();
+  }
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -677,6 +754,7 @@
 
     var tr = document.createElement("tr");
     tr.innerHTML =
+      "<td style=\"width:42px;\"><input type=\"checkbox\" class=\"ds-row-chk\" data-archived=\"false\" data-mission-name=\"" + esc(name) + "\" aria-label=\"Select mission\" /></td>" +
       "<td><strong>" + esc(name) + "</strong></td>" +
       "<td style=\"max-width:220px;font-size:13px;\">" + esc(desc) + "</td>" +
       "<td style=\"font-size:13px;white-space:nowrap;\">" + esc(defaultRoleLabel) + "</td>" +
@@ -686,6 +764,21 @@
       "<td></td>";
 
     var tdAct = tr.querySelector("td:last-child");
+    var rowChk = tr.querySelector("input.ds-row-chk");
+    if (rowChk && name) {
+      var selKey = selectionKey({ name: name, isArchived: false });
+      rowChk.checked = !!selectedMissions[selKey];
+      rowChk.addEventListener("change", function () {
+        if (rowChk.checked) {
+          setSelection(selKey, { name: name, isArchived: false });
+        } else {
+          setSelection(selKey, null);
+        }
+      });
+    } else if (rowChk) {
+      rowChk.disabled = true;
+    }
+
     var wrap = document.createElement("div");
     wrap.className = "mission-action-row";
 
@@ -770,6 +863,7 @@
 
     var tr = document.createElement("tr");
     tr.innerHTML =
+      "<td style=\"width:42px;\"><input type=\"checkbox\" class=\"ds-row-chk\" data-archived=\"true\" data-hash=\"" + esc(hash) + "\" data-filename=\"" + esc(filename || "") + "\" aria-label=\"Select archived mission\" /></td>" +
       "<td><strong>" + esc(filename || "(unnamed)") + "</strong></td>" +
       "<td style=\"font-size:13px;\">" + esc(groupLabel) + "</td>" +
       "<td style=\"white-space:nowrap;\">" + esc(fmtSize(size)) + "</td>" +
@@ -777,6 +871,27 @@
       "<td></td>";
 
     var tdAct = tr.querySelector("td:last-child");
+    var rowChk = tr.querySelector("input.ds-row-chk");
+    if (rowChk && hash) {
+      var selKey = selectionKey({ hash: hash, isArchived: true });
+      rowChk.checked = !!selectedMissions[selKey];
+      rowChk.addEventListener("change", function () {
+        if (rowChk.checked) {
+          setSelection(selKey, {
+            hash: hash,
+            filename: filename || "",
+            name: String(filename || "").trim().replace(/\.zip$/i, ""),
+            isArchived: true,
+            pkg: pkg,
+          });
+        } else {
+          setSelection(selKey, null);
+        }
+      });
+    } else if (rowChk) {
+      rowChk.disabled = true;
+    }
+
     var wrap = document.createElement("div");
     wrap.className = "mission-action-row";
 
@@ -830,11 +945,12 @@
     if (!activeCount) {
       var trA = document.createElement("tr");
       var tdA = document.createElement("td");
-      tdA.colSpan = 7;
+      tdA.colSpan = 8;
       tdA.textContent = filter ? "No active missions match the filter." : "No active data sync missions.";
       trA.appendChild(tdA);
       missionsTbody.appendChild(trA);
     }
+    syncSelectAllCheckboxes();
   }
 
   function renderArchivedPackagesTable() {
@@ -858,12 +974,13 @@
     if (!archivedCount) {
       var trR = document.createElement("tr");
       var tdR = document.createElement("td");
-      tdR.colSpan = 5;
+      tdR.colSpan = 6;
       tdR.textContent = filter ? "No archived missions match the filter." : "No archived data sync missions.";
       trR.appendChild(tdR);
       archivedMissionsTbody.appendChild(trR);
     }
     if (archivedMissionCount) archivedMissionCount.textContent = String(archivedCount);
+    syncSelectAllCheckboxes();
   }
 
   async function permanentlyDeleteActiveMission(name) {
@@ -1339,6 +1456,104 @@
     }
   }
 
+  async function bulkApplyAction() {
+    var action = String((bulkActionSelect && bulkActionSelect.value) || "").trim();
+    var selectedKeys = Object.keys(selectedMissions);
+    if (!action) {
+      setMissionsMsg("Choose a bulk action first.", false);
+      return;
+    }
+    if (!selectedKeys.length) {
+      setMissionsMsg("Select at least one mission.", false);
+      return;
+    }
+
+    if (action === "download") {
+      setMissionsMsg("Starting downloads for selected missions…", undefined);
+      var downloaded = 0;
+      for (var i = 0; i < selectedKeys.length; i++) {
+        var m = selectedMissions[selectedKeys[i]];
+        if (!m) continue;
+        try {
+          if (m.isArchived && m.hash) {
+            var res = await fetch(FILE_SYNC_API + "/packages/download?hash=" + encodeURIComponent(m.hash));
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            var blob = await res.blob();
+            var a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = m.filename || ("data-sync-archived-" + m.hash + ".zip");
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            downloaded += 1;
+            (function (u) {
+              setTimeout(function () {
+                try { URL.revokeObjectURL(u); } catch (_) {}
+              }, 2500);
+            })(a.href);
+          } else if (m.name) {
+            var htmlBlob = await fetchMissionArchiveBlob(m.name, "");
+            triggerBrowserHtmlDownload(htmlBlob, m.name);
+            downloaded += 1;
+          }
+        } catch (_) {}
+      }
+      setMissionsMsg("Started " + downloaded + " download(s).", true);
+      return;
+    }
+
+    if (action === "archive") {
+      var toArchive = selectedKeys
+        .map(function (k) { return selectedMissions[k]; })
+        .filter(function (m) { return m && m.name && !m.isArchived; });
+      if (!toArchive.length) {
+        setMissionsMsg("No active selected missions to archive.", false);
+        return;
+      }
+      if (!window.confirm("Archive " + toArchive.length + " selected mission(s)?")) return;
+      setMissionsMsg("Archiving selected missions…", undefined);
+      var archivedOk = 0;
+      for (var j = 0; j < toArchive.length; j++) {
+        var item = toArchive[j];
+        try {
+          var delRes = await fetch(API + "/missions/" + encodeURIComponent(item.name), { method: "DELETE" });
+          if (delRes.ok) archivedOk += 1;
+        } catch (_) {}
+      }
+      selectedMissions = {};
+      setMissionsMsg("Archived " + archivedOk + " mission(s).", true);
+      await loadMissions({ silent: true });
+      return;
+    }
+
+    if (action === "delete") {
+      if (!window.confirm(
+        "Permanently delete " + selectedKeys.length + " selected mission(s)?\n\n" +
+        "This is PERMANENT and cannot be undone."
+      )) return;
+      setMissionsMsg("Deleting selected missions…", undefined);
+      var deletedOk = 0;
+      for (var k = 0; k < selectedKeys.length; k++) {
+        var d = selectedMissions[selectedKeys[k]];
+        if (!d) continue;
+        try {
+          if (d.isArchived && d.hash) {
+            var delPkgRes = await fetch(FILE_SYNC_API + "/packages/" + encodeURIComponent(d.hash), { method: "DELETE" });
+            if (delPkgRes.ok) deletedOk += 1;
+          } else if (d.name) {
+            var delMissionRes = await fetch(API + "/missions/" + encodeURIComponent(d.name) + "/permanent", {
+              method: "DELETE",
+            });
+            if (delMissionRes.ok) deletedOk += 1;
+          }
+        } catch (_) {}
+      }
+      selectedMissions = {};
+      setMissionsMsg("Deleted " + deletedOk + " mission(s).", true);
+      await loadMissions({ silent: true });
+    }
+  }
+
   if (missionModalClose) missionModalClose.addEventListener("click", closeModal);
   if (missionModal) {
     missionModal.addEventListener("click", function (e) {
@@ -1356,6 +1571,57 @@
     });
   }
   if (btnCreateMissionSubmit) btnCreateMissionSubmit.addEventListener("click", submitCreateMission);
+
+  if (bulkActionSelect) bulkActionSelect.addEventListener("change", updateBulkActionButtonState);
+  if (bulkActionApplyBtn) bulkActionApplyBtn.addEventListener("click", bulkApplyAction);
+  if (activeSelectAllChk) {
+    activeSelectAllChk.addEventListener("change", function () {
+      var checked = !!activeSelectAllChk.checked;
+      var rows = missionsTbody
+        ? Array.from(missionsTbody.querySelectorAll("input.ds-row-chk[data-archived='false']"))
+        : [];
+      rows.forEach(function (cb) {
+        if (cb.disabled) return;
+        cb.checked = checked;
+        var missionName = String(cb.getAttribute("data-mission-name") || "").trim();
+        if (!missionName) return;
+        var key = selectionKey({ name: missionName, isArchived: false });
+        if (checked) {
+          setSelection(key, { name: missionName, isArchived: false });
+        } else {
+          setSelection(key, null);
+        }
+      });
+      syncSelectAllCheckboxes();
+    });
+  }
+  if (archivedSelectAllChk) {
+    archivedSelectAllChk.addEventListener("change", function () {
+      var checked = !!archivedSelectAllChk.checked;
+      var rows = archivedMissionsTbody
+        ? Array.from(archivedMissionsTbody.querySelectorAll("input.ds-row-chk[data-archived='true']"))
+        : [];
+      rows.forEach(function (cb) {
+        if (cb.disabled) return;
+        cb.checked = checked;
+        var hash = String(cb.getAttribute("data-hash") || "").trim();
+        if (!hash) return;
+        var key = selectionKey({ hash: hash, isArchived: true });
+        if (checked) {
+          var fileName = String(cb.getAttribute("data-filename") || "").trim();
+          setSelection(key, {
+            hash: hash,
+            filename: fileName,
+            name: fileName.replace(/\.zip$/i, ""),
+            isArchived: true,
+          });
+        } else {
+          setSelection(key, null);
+        }
+      });
+      syncSelectAllCheckboxes();
+    });
+  }
 
   function wirePasswordToggle(inputEl, toggleEl) {
     if (!inputEl || !toggleEl) return;
@@ -1381,5 +1647,6 @@
         });
     }
   });
+  updateBulkActionButtonState();
 })();
 </script>
