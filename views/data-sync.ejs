@@ -84,12 +84,10 @@
           <thead>
             <tr>
               <th>Name</th>
-              <th>Description</th>
-              <th>Default Role</th>
               <th>Group</th>
-              <th>Password</th>
-              <th>Created</th>
-              <th style="min-width: 340px;">Actions</th>
+              <th>Size</th>
+              <th>Last Updated</th>
+              <th style="min-width: 220px;">Actions</th>
             </tr>
           </thead>
           <tbody id="archivedMissionsTbody"></tbody>
@@ -264,7 +262,9 @@
 <script>
 (function () {
   var API = "/api/data-sync";
+  var PACKAGES_API = "/api/data-packages";
   var ARCHIVED_KEYWORD = "ARCHIVED_MISSION";
+  var ACTIVE_PACKAGE_KEYWORD = "missionpackage";
 
   var statusBanner = document.getElementById("statusBanner");
   var missionsMsg = document.getElementById("missionsMsg");
@@ -303,9 +303,12 @@
   var deleteModalConfirm = document.getElementById("deleteModalConfirm");
 
   var missionsCache = [];
+  var archivedPackagesCache = [];
+  var allPackagesCache = [];
   var groupsCache = [];
   var missionDetail = null;
   var pendingDeleteName = "";
+  var pendingDeleteHash = "";
   var pendingDeleteArchived = false;
   var editingOriginalName = "";
 
@@ -335,17 +338,66 @@
     return [];
   }
 
-  function missionHasKeyword(mission, keyword) {
+  function firstVal(obj, keys) {
+    if (!obj || typeof obj !== "object") return "";
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (obj[k] != null && obj[k] !== "") return String(obj[k]);
+    }
+    return "";
+  }
+
+  function fmtSize(v) {
+    var raw = String(v == null ? "" : v).trim();
+    if (!raw) return "";
+    var n = Number(v);
+    if (!Number.isFinite(n) || n < 0) return raw;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function normalizePackageList(payload) {
+    if (!payload) return [];
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.data)) return payload.data;
+    if (Array.isArray(payload)) return payload;
+    return [];
+  }
+
+  function normalizePackageKeywords(pkg) {
+    if (Array.isArray(pkg && pkg.keywords)) {
+      return pkg.keywords.map(function (k) { return String(k || "").trim(); }).filter(Boolean);
+    }
+    var raw = firstVal(pkg, ["keywords", "Keywords", "keyword", "tags"]);
+    if (!raw) return [];
+    return String(raw).split(",").map(function (k) { return k.trim(); }).filter(Boolean);
+  }
+
+  function packageHasKeyword(pkg, keyword) {
     var target = String(keyword || "").trim().toLowerCase();
-    var list = normalizeMissionKeywords(mission);
+    var list = normalizePackageKeywords(pkg);
     for (var i = 0; i < list.length; i++) {
       if (String(list[i]).toLowerCase() === target) return true;
     }
     return false;
   }
 
-  function isArchivedMission(mission) {
-    return missionHasKeyword(mission, ARCHIVED_KEYWORD);
+  function parsePackageGroupsField(groupsRaw) {
+    var raw = String(groupsRaw || "").trim();
+    if (!raw) return [];
+    return raw.split(",").map(function (g) { return g.trim(); }).filter(Boolean);
+  }
+
+  function packageDisplayGroup(pkg) {
+    var groups = parsePackageGroupsField(firstVal(pkg, ["groups", "Groups", "group", "Group"]));
+    if (groups.length === 1) return groups[0];
+    if (groups.length > 1) return groups[0] + " (+" + (groups.length - 1) + ")";
+    return "";
+  }
+
+  function normalizeArchiveName(name) {
+    return String(name || "").trim().replace(/\.zip$/i, "").toLowerCase();
   }
 
   function setMissionModalMsg(text, ok) {
@@ -571,21 +623,46 @@
 
   async function loadMissions(opts) {
     opts = opts || {};
-    if (!opts.silent) setMissionsMsg("Loading missions…", undefined);
+    if (!opts.silent) {
+      setMissionsMsg("Loading missions…", undefined);
+      setArchivedMissionsMsg("Loading archived missions…", undefined);
+    }
     try {
       var qs = buildQueryString(missionQueryParams());
-      var res = await fetch(API + "/missions" + qs);
-      var text = await res.text();
-      var j;
+      var results = await Promise.all([
+        fetch(API + "/missions" + qs).then(function (res) { return res.text().then(function (text) { return { res: res, text: text }; }); }),
+        fetch(PACKAGES_API + "/packages").then(function (res) { return res.text().then(function (text) { return { res: res, text: text }; }); }),
+      ]);
+
+      var missionRes = results[0].res;
+      var missionText = results[0].text;
+      var missionJson;
       try {
-        j = JSON.parse(text);
+        missionJson = JSON.parse(missionText);
       } catch (_) {
-        throw new Error("Invalid JSON from server");
+        throw new Error("Invalid JSON from missions server");
       }
-      if (!res.ok) throw new Error((j && j.error) || text.slice(0, 400));
-      logDataSyncDebug("missions", j);
-      missionsCache = unwrapList(j);
+      if (!missionRes.ok) throw new Error((missionJson && missionJson.error) || missionText.slice(0, 400));
+      logDataSyncDebug("missions", missionJson);
+      missionsCache = unwrapList(missionJson);
+
+      var pkgRes = results[1].res;
+      var pkgText = results[1].text;
+      var pkgJson = {};
+      try {
+        pkgJson = JSON.parse(pkgText);
+      } catch (_) {
+        throw new Error("Invalid JSON from data packages server");
+      }
+      if (!pkgRes.ok) throw new Error((pkgJson && pkgJson.error) || "Failed to load archived missions from file sync");
+
+      allPackagesCache = normalizePackageList(pkgJson);
+      archivedPackagesCache = allPackagesCache.filter(function (p) {
+        return packageHasKeyword(p, ARCHIVED_KEYWORD);
+      });
+
       renderMissionsTable();
+      renderArchivedPackagesTable();
       setMissionsMsg("", true);
       setArchivedMissionsMsg("", true);
     } catch (e) {
@@ -594,7 +671,7 @@
     }
   }
 
-  function renderMissionRow(m, tbody, isArchived) {
+  function renderMissionRow(m, tbody) {
     var name = m && m.name != null ? String(m.name) : "";
     var groupName = missionSingleGroupName(m);
     if (!groupName) return false;
@@ -628,74 +705,118 @@
       return function () { openEditMission(nm); };
     }(name));
 
-    var bArchiveRestore = document.createElement("button");
-    bArchiveRestore.type = "button";
-    if (isArchived) {
-      bArchiveRestore.className = "btn success";
-      bArchiveRestore.textContent = "Restore";
-      bArchiveRestore.addEventListener("click", function (nm) {
-        return function () { restoreMission(nm); };
-      }(name));
-    } else {
-      bArchiveRestore.className = "btn caution";
-      bArchiveRestore.textContent = "Archive";
-      bArchiveRestore.addEventListener("click", function (nm) {
-        return function () { archiveMission(nm); };
-      }(name));
-    }
+    var bArchive = document.createElement("button");
+    bArchive.type = "button";
+    bArchive.className = "btn caution";
+    bArchive.textContent = "Archive";
+    bArchive.addEventListener("click", function (nm) {
+      return function () { archiveMission(nm); };
+    }(name));
 
     var bHtml = document.createElement("button");
     bHtml.type = "button";
     bHtml.className = "btn";
     bHtml.textContent = "HTML";
     bHtml.title = "Download mission archive (HTML)";
-    bHtml.addEventListener("click", function (nm, archived) {
+    bHtml.addEventListener("click", function (nm) {
       return function () {
-        var msgFn = archived ? setArchivedMissionsMsg : setMissionsMsg;
-        msgFn("Downloading HTML archive…", undefined);
+        setMissionsMsg("Downloading HTML archive…", undefined);
         fetchMissionArchiveBlob(nm, "")
           .then(function (blob) {
             triggerBrowserHtmlDownload(blob, nm);
-            msgFn("HTML download started.", true);
+            setMissionsMsg("HTML download started.", true);
           })
           .catch(function (e) {
-            msgFn(e.message || "HTML download failed", false);
+            setMissionsMsg(e.message || "HTML download failed", false);
           });
       };
-    }(name, isArchived));
+    }(name));
 
     var bKml = document.createElement("button");
     bKml.type = "button";
     bKml.className = "btn";
     bKml.textContent = "KML";
     bKml.title = "Download Data Sync package as KML";
-    bKml.addEventListener("click", function (nm, archived) {
+    bKml.addEventListener("click", function (nm) {
       return function () {
-        var msgFn = archived ? setArchivedMissionsMsg : setMissionsMsg;
-        msgFn("Downloading KML…", undefined);
+        setMissionsMsg("Downloading KML…", undefined);
         fetchMissionKmlBlob(nm, "")
           .then(function (blob) {
             triggerBrowserKmlDownload(blob, nm);
-            msgFn("KML download started.", true);
+            setMissionsMsg("KML download started.", true);
           })
           .catch(function (e) {
-            msgFn(e.message || "KML download failed", false);
+            setMissionsMsg(e.message || "KML download failed", false);
           });
       };
-    }(name, isArchived));
+    }(name));
 
     var bDel = document.createElement("button");
     bDel.type = "button";
     bDel.className = "btn danger";
     bDel.textContent = "Delete";
-    bDel.addEventListener("click", function (nm, archived) {
-      return function () { openDeleteMission(nm, archived); };
-    }(name, isArchived));
+    bDel.addEventListener("click", function (nm) {
+      return function () { openDeleteMission(nm); };
+    }(name));
 
     wrap.appendChild(bEdit);
-    wrap.appendChild(bArchiveRestore);
+    wrap.appendChild(bArchive);
     wrap.appendChild(bHtml);
     wrap.appendChild(bKml);
+    wrap.appendChild(bDel);
+    tdAct.appendChild(wrap);
+    tbody.appendChild(tr);
+    return true;
+  }
+
+  function renderArchivedPackageRow(pkg, tbody) {
+    var filename = firstVal(pkg, ["filename", "name", "original_filename"]);
+    var hash = firstVal(pkg, ["hash", "sha256", "uid", "id"]);
+    var size = firstVal(pkg, ["size", "content_length", "contentLength"]);
+    var created = firstVal(pkg, ["created_at", "createTime", "created", "timestamp", "Time"]);
+    var groupLabel = packageDisplayGroup(pkg);
+
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td><strong>" + esc(filename || "(unnamed)") + "</strong></td>" +
+      "<td style=\"font-size:13px;\">" + esc(groupLabel) + "</td>" +
+      "<td style=\"white-space:nowrap;\">" + esc(fmtSize(size)) + "</td>" +
+      "<td style=\"font-size:12px;white-space:nowrap;\">" + esc(created) + "</td>" +
+      "<td></td>";
+
+    var tdAct = tr.querySelector("td:last-child");
+    var wrap = document.createElement("div");
+    wrap.className = "mission-action-row";
+
+    var bDl = document.createElement("button");
+    bDl.type = "button";
+    bDl.className = "btn";
+    bDl.textContent = "Download";
+    bDl.disabled = !hash;
+    bDl.addEventListener("click", function (h, fn) {
+      return function () { downloadArchivedPackage(h, fn); };
+    }(hash, filename));
+
+    var bRestore = document.createElement("button");
+    bRestore.type = "button";
+    bRestore.className = "btn success";
+    bRestore.textContent = "Restore";
+    bRestore.disabled = !hash;
+    bRestore.addEventListener("click", function (p) {
+      return function () { restoreArchivedPackage(p); };
+    }(pkg));
+
+    var bDel = document.createElement("button");
+    bDel.type = "button";
+    bDel.className = "btn danger";
+    bDel.textContent = "Delete";
+    bDel.disabled = !hash;
+    bDel.addEventListener("click", function (h, fn) {
+      return function () { openDeleteArchivedPackage(h, fn); };
+    }(hash, filename));
+
+    wrap.appendChild(bDl);
+    wrap.appendChild(bRestore);
     wrap.appendChild(bDel);
     tdAct.appendChild(wrap);
     tbody.appendChild(tr);
@@ -705,20 +826,13 @@
   function renderMissionsTable() {
     var filter = (missionTableFilter && missionTableFilter.value || "").trim().toLowerCase();
     missionsTbody.innerHTML = "";
-    if (archivedMissionsTbody) archivedMissionsTbody.innerHTML = "";
 
     var activeCount = 0;
-    var archivedCount = 0;
     for (var i = 0; i < missionsCache.length; i++) {
       var m = missionsCache[i];
       var name = m && m.name != null ? String(m.name) : "";
       if (filter && name.toLowerCase().indexOf(filter) === -1) continue;
-
-      if (isArchivedMission(m)) {
-        if (renderMissionRow(m, archivedMissionsTbody, true)) archivedCount += 1;
-      } else if (renderMissionRow(m, missionsTbody, false)) {
-        activeCount += 1;
-      }
+      if (renderMissionRow(m, missionsTbody)) activeCount += 1;
     }
 
     if (!activeCount) {
@@ -729,10 +843,30 @@
       trA.appendChild(tdA);
       missionsTbody.appendChild(trA);
     }
-    if (archivedMissionsTbody && !archivedCount) {
+  }
+
+  function renderArchivedPackagesTable() {
+    if (!archivedMissionsTbody) return;
+    var filter = (missionTableFilter && missionTableFilter.value || "").trim().toLowerCase();
+    archivedMissionsTbody.innerHTML = "";
+
+    var archivedCount = 0;
+    for (var i = 0; i < archivedPackagesCache.length; i++) {
+      var pkg = archivedPackagesCache[i] || {};
+      var filename = firstVal(pkg, ["filename", "name", "original_filename"]);
+      var hay = (
+        filename + " " +
+        packageDisplayGroup(pkg) + " " +
+        normalizePackageKeywords(pkg).join(" ")
+      ).toLowerCase();
+      if (filter && hay.indexOf(filter) === -1) continue;
+      if (renderArchivedPackageRow(pkg, archivedMissionsTbody)) archivedCount += 1;
+    }
+
+    if (!archivedCount) {
       var trR = document.createElement("tr");
       var tdR = document.createElement("td");
-      tdR.colSpan = 7;
+      tdR.colSpan = 5;
       tdR.textContent = filter ? "No archived missions match the filter." : "No archived data sync missions.";
       trR.appendChild(tdR);
       archivedMissionsTbody.appendChild(trR);
@@ -740,43 +874,160 @@
     if (archivedMissionCount) archivedMissionCount.textContent = String(archivedCount);
   }
 
+  function findPackagesForMission(mission, packages) {
+    var list = Array.isArray(packages) ? packages : [];
+    var missionName = mission && mission.name != null ? String(mission.name) : "";
+    var want = normalizeArchiveName(missionName);
+    var hashes = {};
+    var contents = mission && Array.isArray(mission.contents) ? mission.contents : [];
+    for (var i = 0; i < contents.length; i++) {
+      var item = contents[i];
+      var data = item && item.data ? item.data : item;
+      var h = data && (data.hash || data.Hash || data.uid) ? String(data.hash || data.Hash || data.uid).trim() : "";
+      if (h) hashes[h.toLowerCase()] = true;
+    }
+
+    var out = [];
+    var seen = {};
+    for (var j = 0; j < list.length; j++) {
+      var pkg = list[j] || {};
+      var hash = firstVal(pkg, ["hash", "sha256", "uid", "id"]).toLowerCase();
+      var filename = firstVal(pkg, ["filename", "name", "original_filename"]);
+      var fileKey = normalizeArchiveName(filename);
+      var match = false;
+      if (hash && hashes[hash]) match = true;
+      if (want && fileKey && (fileKey === want || fileKey.indexOf(want) === 0 || want.indexOf(fileKey) === 0)) match = true;
+      if (!match || !hash || seen[hash]) continue;
+      if (packageHasKeyword(pkg, ARCHIVED_KEYWORD)) continue;
+      seen[hash] = true;
+      out.push(pkg);
+    }
+    return out;
+  }
+
   async function archiveMission(name) {
-    if (!window.confirm("Archive data sync \"" + name + "\"?\n\nIt will move to the archived section but can be restored later.")) return;
+    if (!window.confirm(
+      "Archive data sync \"" + name + "\"?\n\nThe active mission will be removed and an archived copy will appear under Archived Data Sync Missions (TAK file sync)."
+    )) return;
     setMissionsMsg("Archiving mission…", undefined);
     try {
-      var res = await fetch(API + "/missions/" + encodeURIComponent(name) + "/keywords", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify([ARCHIVED_KEYWORD]),
-      });
-      var text = await res.text();
-      var j = {};
-      try { j = JSON.parse(text); } catch (_) {}
-      if (!res.ok) throw new Error((j && j.error) || text.slice(0, 400) || "Archive failed");
-      setMissionsMsg("Mission archived.", true);
+      var missionRes = await fetch(API + "/missions/" + encodeURIComponent(name));
+      var missionText = await missionRes.text();
+      var missionJson = {};
+      try { missionJson = JSON.parse(missionText); } catch (_) {}
+      if (!missionRes.ok) throw new Error((missionJson && missionJson.error) || "Could not load mission");
+
+      var mission = unwrapMission(missionJson);
+      if (!allPackagesCache.length) {
+        var pkgRes = await fetch(PACKAGES_API + "/packages");
+        var pkgJson = await pkgRes.json().catch(function () { return {}; });
+        if (!pkgRes.ok) throw new Error((pkgJson && pkgJson.error) || "Failed to load file sync packages");
+        allPackagesCache = normalizePackageList(pkgJson);
+      }
+
+      var targets = findPackagesForMission(mission, allPackagesCache);
+      if (!targets.length) {
+        throw new Error(
+          "No matching file-sync package found for this mission. TAK keeps archived missions in file sync (same source as Archived Data Packages)."
+        );
+      }
+
+      for (var i = 0; i < targets.length; i++) {
+        var hash = firstVal(targets[i], ["hash", "sha256", "uid", "id"]);
+        if (!hash) continue;
+        var metaRes = await fetch(PACKAGES_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ keywords: [ARCHIVED_KEYWORD] }),
+        });
+        var metaText = await metaRes.text();
+        var metaJson = {};
+        try { metaJson = JSON.parse(metaText); } catch (_) {}
+        if (!metaRes.ok) throw new Error((metaJson && metaJson.error) || "Failed to archive mission file");
+      }
+
+      var delRes = await fetch(API + "/missions/" + encodeURIComponent(name), { method: "DELETE" });
+      var delJson = await delRes.json().catch(function () { return {}; });
+      if (!delRes.ok) throw new Error((delJson && delJson.error) || "Failed to remove active mission");
+
+      setMissionsMsg("Mission archived (" + targets.length + " file(s) tagged, active mission removed).", true);
       await loadMissions({ silent: true });
     } catch (e) {
       setMissionsMsg(e.message || "Archive failed", false);
     }
   }
 
-  async function restoreMission(name) {
-    if (!window.confirm("Restore data sync \"" + name + "\" to active missions?")) return;
+  async function restoreArchivedPackage(pkg) {
+    var hash = firstVal(pkg, ["hash", "sha256", "uid", "id"]);
+    var filename = firstVal(pkg, ["filename", "name", "original_filename"]);
+    var missionName = String(filename || "").trim().replace(/\.zip$/i, "");
+    if (!hash || !missionName) {
+      setArchivedMissionsMsg("Archived entry is missing hash or name.", false);
+      return;
+    }
+    if (!window.confirm("Restore archived data sync \"" + (filename || missionName) + "\" as an active mission?")) return;
+
     setArchivedMissionsMsg("Restoring mission…", undefined);
     try {
-      var res = await fetch(API + "/missions/" + encodeURIComponent(name) + "/keywords", {
+      var groups = parsePackageGroupsField(firstVal(pkg, ["groups", "Groups", "group", "Group"]));
+      if (groups.length !== 1) {
+        throw new Error("Restore requires exactly one group on the archived file entry.");
+      }
+
+      var metaRes = await fetch(PACKAGES_API + "/packages/" + encodeURIComponent(hash) + "/metadata", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify([]),
+        body: JSON.stringify({ keywords: [] }),
       });
-      var text = await res.text();
-      var j = {};
-      try { j = JSON.parse(text); } catch (_) {}
-      if (!res.ok) throw new Error((j && j.error) || text.slice(0, 400) || "Restore failed");
-      setArchivedMissionsMsg("Mission restored.", true);
+      var metaText = await metaRes.text();
+      var metaJson = {};
+      try { metaJson = JSON.parse(metaText); } catch (_) {}
+      if (!metaRes.ok) throw new Error((metaJson && metaJson.error) || "Failed to update archived file metadata");
+
+      var payload = {
+        name: missionName,
+        tool: "public",
+        description: "",
+        defaultRole: buildDefaultRoleObject("MISSION_SUBSCRIBER"),
+        groups: [groups[0]],
+        keywords: [],
+        inviteOnly: false,
+      };
+      var missionRes = await fetch(API + "/missions/" + encodeURIComponent(missionName), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload),
+      });
+      var missionText = await missionRes.text();
+      var missionJson = {};
+      try { missionJson = JSON.parse(missionText); } catch (_) { missionJson = { raw: missionText }; }
+      if (!missionRes.ok) throw new Error((missionJson && missionJson.error) || missionText.slice(0, 500) || "Failed to recreate active mission");
+
+      setArchivedMissionsMsg("Mission restored to active list.", true);
       await loadMissions({ silent: true });
     } catch (e) {
       setArchivedMissionsMsg(e.message || "Restore failed", false);
+    }
+  }
+
+  async function downloadArchivedPackage(hash, filename) {
+    setArchivedMissionsMsg("Downloading archived package…", undefined);
+    try {
+      var res = await fetch(PACKAGES_API + "/packages/download?hash=" + encodeURIComponent(hash));
+      if (!res.ok) throw new Error("Download failed (HTTP " + res.status + ")");
+      var blob = await res.blob();
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename || ("data-sync-archived-" + hash + ".zip");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () {
+        try { URL.revokeObjectURL(a.href); } catch (_) {}
+      }, 2500);
+      setArchivedMissionsMsg("Download started.", true);
+    } catch (e) {
+      setArchivedMissionsMsg(e.message || "Download failed", false);
     }
   }
 
@@ -1120,16 +1371,22 @@
     }
   }
 
-  function openDeleteMission(name, isArchived) {
+  function openDeleteMission(name) {
     pendingDeleteName = name;
-    pendingDeleteArchived = !!isArchived;
-    if (pendingDeleteArchived) {
-      deleteModalText.textContent =
-        "Permanently delete archived mission \"" + name + "\" on the TAK Server? This cannot be undone.";
-    } else {
-      deleteModalText.textContent =
-        "Permanently delete mission \"" + name + "\" on the TAK Server? This cannot be undone. Use Archive if you may need this mission later.";
-    }
+    pendingDeleteHash = "";
+    pendingDeleteArchived = false;
+    deleteModalText.textContent =
+      "Permanently delete mission \"" + name + "\" on the TAK Server? This cannot be undone. Use Archive if you may need this mission later.";
+    deleteModal.style.display = "flex";
+    document.body.classList.add("noScroll");
+  }
+
+  function openDeleteArchivedPackage(hash, filename) {
+    pendingDeleteName = filename || hash;
+    pendingDeleteHash = String(hash || "").trim();
+    pendingDeleteArchived = true;
+    deleteModalText.textContent =
+      "Permanently delete archived file \"" + (filename || hash) + "\" from TAK file sync? This cannot be undone.";
     deleteModal.style.display = "flex";
     document.body.classList.add("noScroll");
   }
@@ -1138,21 +1395,29 @@
     deleteModal.style.display = "none";
     document.body.classList.remove("noScroll");
     pendingDeleteName = "";
+    pendingDeleteHash = "";
     pendingDeleteArchived = false;
   }
 
   async function confirmDelete() {
     var name = pendingDeleteName;
+    var hash = pendingDeleteHash;
     var wasArchived = pendingDeleteArchived;
-    if (!name) return;
+    if (!name && !hash) return;
     var msgFn = wasArchived ? setArchivedMissionsMsg : setMissionsMsg;
     try {
-      var res = await fetch(API + "/missions/" + encodeURIComponent(name), { method: "DELETE" });
-      var j = await res.json().catch(function () { return {}; });
-      if (!res.ok) throw new Error((j && j.error) || "Delete failed");
+      if (hash) {
+        var resPkg = await fetch(PACKAGES_API + "/packages/" + encodeURIComponent(hash), { method: "DELETE" });
+        var jPkg = await resPkg.json().catch(function () { return {}; });
+        if (!resPkg.ok) throw new Error((jPkg && jPkg.error) || "Delete failed");
+      } else {
+        var res = await fetch(API + "/missions/" + encodeURIComponent(name), { method: "DELETE" });
+        var j = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error((j && j.error) || "Delete failed");
+      }
       closeDeleteModal();
-      msgFn("Mission deleted.", true);
-      await loadMissions();
+      msgFn("Deleted.", true);
+      await loadMissions({ silent: true });
     } catch (e) {
       msgFn(e.message || "Delete failed", false);
       closeDeleteModal();
@@ -1169,7 +1434,12 @@
   if (mBtnSetPw) mBtnSetPw.addEventListener("click", setMissionPassword);
   if (mBtnClearPw) mBtnClearPw.addEventListener("click", clearMissionPassword);
 
-  if (missionTableFilter) missionTableFilter.addEventListener("input", renderMissionsTable);
+  if (missionTableFilter) {
+    missionTableFilter.addEventListener("input", function () {
+      renderMissionsTable();
+      renderArchivedPackagesTable();
+    });
+  }
   if (btnCreateMissionSubmit) btnCreateMissionSubmit.addEventListener("click", submitCreateMission);
 
   function wirePasswordToggle(inputEl, toggleEl) {
