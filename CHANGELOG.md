@@ -13,7 +13,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 ## Version History
 
 ### v1.3.37 - PENDING
-✨ `Enhancement` - Agencies - Agency County Names, County Codes, and States can now be edited.  Changing a county's full name or state also updates the name for all specific groups (State groups are only renamed if no other agency depends on that state).<br>
+🎉 `New Feature` - Agencies - Entire agencies can be Disabled/Enabled through the agencies page, allowing global admins to prevent access and revoke certs for an entire agency, while leaving users intact (examples of use include internal investigations, breach of security, etc)<br>
+✨ `Enhancement`- Agencies - Agency County Names, County Codes, and States can now be edited.  Changing a county's full name or state also updates the name for all specific groups (State groups are only renamed if no other agency depends on that state).<br>
+✨ `Enhancement` - Agencies - Deleting an agency now deletes & revokes all users, deletes agency specific groups, templates, and state and county groups if other agencies don't rely on it
 
 ### v1.3.36 - 6/14/26
 ✨ `Enhancement` - Users - Improved formatting for mobile and adjusted modal titles<br>
