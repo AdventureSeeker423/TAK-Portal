@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.38 - 6/15/26
+✨ `Enhancement` - MOU Documents - Added ability for MOUs to be signed by a specific agency/global admin or provide an external link via email or copy/paste<br>
+✨ `Enhancement` - MOU Documents - Added better protection against accidental deletion of signed MOUs
+
 ### v1.3.37 - 6/14/26
 🎉 `New Feature` - Agencies - Entire agencies can be Disabled/Enabled through the agencies page, allowing global admins to prevent access and revoke certs for an entire agency, while leaving users intact (examples of use include internal investigations, breach of security, etc)<br>
 ✨ `Enhancement`- Agencies - Agency County Names, County Codes, and States can now be edited.  Changing a county's full name or state also updates the name for all specific groups (State groups are only renamed if no other agency depends on that state).<br>
