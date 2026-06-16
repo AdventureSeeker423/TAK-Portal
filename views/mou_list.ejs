@@ -384,6 +384,9 @@
                 <th class="sortable" data-key="statuslabel">
                   Status <span class="sortIndicator" aria-hidden="true"></span>
                 </th>
+                <th class="sortable" data-key="signingmethod">
+                  Signing Method <span class="sortIndicator" aria-hidden="true"></span>
+                </th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -392,9 +395,16 @@
                 <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
                 <% const scopeDisplay = row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel; %>
                 <% const statusLabel = row.needsSignature ? "Needs Signature" : "Signed"; %>
+                <% const signingMethodLabel = row.signingMode === "external_link"
+                  ? "External Link"
+                  : (row.signingMode === "specific_agency_admin" ? "Specific Agency Admin" : "All Agency Admins"); %>
                 <tr
                   class="<%= signatureRowClass %>"
                   data-table-row="signatures"
+                  data-mou-signature-row="true"
+                  data-mou-id="<%= row.mouId %>"
+                  data-agency-suffix="<%= row.agencyId %>"
+                  data-external-sign-path="<%= row.externalSignPath || '' %>"
                   data-title="<%= row.mouTitle %>"
                   data-scope="<%= scopeDisplay %>"
                   data-agency="<%= row.agencyName %>"
@@ -404,6 +414,7 @@
                   data-signer="<%= row.signerDisplayName || '' %>"
                   data-status="<%= row.needsSignature ? 'needs-signature' : 'signed' %>"
                   data-statuslabel="<%= statusLabel %>"
+                  data-signingmethod="<%= signingMethodLabel %>"
                 >
                   <td class="cardTitleCell"><span class="cardTitleText"><%= row.mouTitle %></span></td>
                   <td class="mouScopeCell" data-label="Scope"><%= scopeDisplay %></td>
@@ -413,6 +424,19 @@
                   <td class="mouSignerCell" data-label="Signer"><%= row.signerDisplayName || "-" %></td>
                   <td class="mouStatusCell" data-label="Status">
                     <%= statusLabel %>
+                  </td>
+                  <td class="mouSigningMethodCell" data-label="Signing Method">
+                    <div class="mouSigningMethodCell__content">
+                      <% if (row.signingMode === "external_link") { %>
+                        <button
+                          class="btn qr"
+                          type="button"
+                          data-mou-copy-sign-link
+                          data-sign-path="<%= row.externalSignPath || '' %>"
+                        >Copy Link</button>
+                      <% } %>
+                      <span><%= signingMethodLabel %></span>
+                    </div>
                   </td>
                   <td class="cardActionsCell" data-label="Actions">
                     <div class="mouActionRow cardActionsRow">
@@ -932,14 +956,18 @@
     var mouId = resolveMouIdFromContainer(container);
     if (!mouId || !suffix) {
       return Promise.reject(
-        new Error("Save the assignment with External One-Time Link before copying the sign link.")
+        new Error("Unable to resolve document/agency for this sign link.")
       );
     }
 
     var emailInput = container.querySelector("[data-mou-signing-email] input");
     var body = new URLSearchParams();
     var modeSelect = container.querySelector("[data-mou-signing-mode]");
-    if (modeSelect) body.set("signingMode", String(modeSelect.value || ""));
+    if (modeSelect) {
+      body.set("signingMode", String(modeSelect.value || ""));
+    } else if (container.getAttribute("data-mou-signature-row") === "true") {
+      body.set("signingMode", "external_link");
+    }
     if (emailInput && String(emailInput.value || "").trim()) {
       body.set("signingEmail", String(emailInput.value || "").trim());
     }
@@ -975,7 +1003,7 @@
 
   function copyExternalSignLink(button) {
     if (!button) return;
-    var container = button.closest("[data-mou-agency-option], [data-mou-signing-form]");
+    var container = button.closest("[data-mou-agency-option], [data-mou-signing-form], tr[data-mou-signature-row]");
     var defaultLabel = button.textContent || "Copy Link";
     button.disabled = true;
     var prepare = container && container.closest("[data-mou-assignment-form]")

@@ -1477,6 +1477,13 @@ label.btn {
   white-space: nowrap;
 }
 
+.mouSigningMethodCell__content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .mouAssignSigningField input,
 .mouAssignSigningField select {
     width: 100%;
@@ -1696,12 +1703,13 @@ body.modal-open .sidebarToggle {
 
     .mouSignatureTable .cardTitleCell { order: 1; }
     .mouSignatureTable .mouStatusCell { order: 2; }
-    .mouSignatureTable .mouAgencyCell { order: 3; }
-    .mouSignatureTable .mouSignerCell { order: 4; }
-    .mouSignatureTable .mouSignedVersionCell { order: 5; }
-    .mouSignatureTable .mouCurrentVersionCell { order: 6; }
-    .mouSignatureTable .mouScopeCell { order: 7; }
-    .mouSignatureTable .cardActionsCell { order: 8; }
+    .mouSignatureTable .mouSigningMethodCell { order: 3; }
+    .mouSignatureTable .mouAgencyCell { order: 4; }
+    .mouSignatureTable .mouSignerCell { order: 5; }
+    .mouSignatureTable .mouSignedVersionCell { order: 6; }
+    .mouSignatureTable .mouCurrentVersionCell { order: 7; }
+    .mouSignatureTable .mouScopeCell { order: 8; }
+    .mouSignatureTable .cardActionsCell { order: 9; }
 
     .mouArchivedTable .cardTitleCell { order: 1; }
     .mouArchivedTable .mouStatusCell { order: 2; }
