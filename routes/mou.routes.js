@@ -399,7 +399,19 @@ function buildAdminStreamRow(stream) {
     targetAgencies,
     signedCount: signatures.filter((entry) => !!entry.signature).length,
     pendingSignatureCount: signatures.filter((entry) => !entry.signature).length,
-    signatureSummary: mouService.getStreamSignatureSummary(stream),
+    signatureSummary: mouService.getStreamActiveAssignmentSignatureSummary(stream),
+    externalSignPaths: Object.fromEntries(
+      targetAgencies.map((agency) => {
+        const invite = mouService.getActiveSignInviteForAgency({
+          mouId: stream.mouId,
+          agencyId: agency.suffix,
+        });
+        return [
+          agency.suffix,
+          invite ? mouService.buildExternalSignPath(invite.token) : "",
+        ];
+      })
+    ),
     editor:
       currentVersion && editorContent
         ? {
@@ -1571,6 +1583,133 @@ router.post("/admin/mou/archive/:archiveId/delete", requireMouEnabled, requireMo
     return toErrorRedirect(res, "/mou", err);
   }
 });
+
+router.get("/admin/mou/archive/:archiveId/view", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+  try {
+    const out = mouService.getArchivedDocumentView(req.params.archiveId);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(out.html || "<p>Signed document not found.</p>");
+  } catch (err) {
+    return res.status(404).send(err?.message || "Archived document not found.");
+  }
+});
+
+router.get("/admin/mou/archive/:archiveId/pdf", requireMouEnabled, requireMouPermission, requireGlobalAdmin, async (req, res) => {
+  try {
+    const pdf = await mouService.getArchivedSignedPdfExport(req.params.archiveId);
+    res.setHeader("Content-Type", pdf.contentType || "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      buildContentDisposition(
+        req.query.download === "1" ? "attachment" : "inline",
+        pdf.fileName
+      )
+    );
+    return res.send(pdf.buffer);
+  } catch (err) {
+    return res.status(404).send(err?.message || "Archived signed PDF not found.");
+  }
+});
+
+router.post(
+  "/admin/mou/:mouId/signing/:agencyId/update",
+  requireMouEnabled,
+  requireMouPermission,
+  requireGlobalAdmin,
+  async (req, res) => {
+    try {
+      const agencySuffix = String(req.params.agencyId || "").trim().toLowerCase();
+      const stream = mouService.updateAgencySigningConfig({
+        mouId: req.params.mouId,
+        agencySuffix,
+        signingPatch: {
+          mode: req.body?.signingMode,
+          inviteEmail: req.body?.signingEmail,
+          assignedAdminEmail: req.body?.signingAdminEmail,
+          assignedAdminUsername: req.body?.signingAdminUsername,
+          assignedAdminName: req.body?.signingAdminName,
+        },
+        actor: req.authentikUser,
+      });
+      const signingMode = mouService.getAgencySigningMode(stream, agencySuffix);
+      let externalSignPath = "";
+      if (signingMode === mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+        const invites = mouService.syncExternalSignInvitesForStream({
+          stream,
+          actor: req.authentikUser,
+          agencySuffixes: [agencySuffix],
+        });
+        const invite = invites[0];
+        if (invite?.token) {
+          externalSignPath = mouService.buildExternalSignPath(invite.token);
+        }
+      }
+
+      const shouldResend =
+        String(req.body?.action || "").trim().toLowerCase() === "save_resend" ||
+        String(req.body?.resend || "").trim().toLowerCase() === "true";
+      if (shouldResend) {
+        const currentVersion = mouService.getCurrentVersion(stream);
+        const targetAgency = mouService
+          .getTargetAgenciesForStream(stream)
+          .find((agency) => String(agency?.suffix || "").trim().toLowerCase() === agencySuffix);
+        if (!currentVersion || !targetAgency) {
+          throw new Error("Unable to send signing notification.");
+        }
+        let result;
+        if (signingMode === mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+          const invite = mouService.getActiveSignInviteForAgency({
+            mouId: stream.mouId,
+            agencyId: agencySuffix,
+          });
+          if (!invite) {
+            throw new Error("Unable to create an external sign link for this agency.");
+          }
+          result = await mouScheduler.sendExternalSignInviteEmail({
+            stream,
+            version: currentVersion,
+            agency: targetAgency,
+            invite,
+            actor: req.authentikUser,
+          });
+        } else {
+          result = await mouScheduler.sendAssignmentNotificationForAgency({
+            stream,
+            version: currentVersion,
+            agency: targetAgency,
+            actor: req.authentikUser,
+          });
+        }
+        if (!result.sent) {
+          throw new Error(result.reason || result.error || "No recipients found for this notification.");
+        }
+      }
+
+      const wantsJson =
+        String(req.headers.accept || "").includes("application/json") ||
+        req.query.format === "json";
+      const successUrl = `/mou?success=${encodeURIComponent(
+        shouldResend ? "Signing method updated and notification sent." : "Signing method updated."
+      )}`;
+      if (wantsJson) {
+        return res.json({
+          success: true,
+          redirectUrl: successUrl,
+          externalSignPath,
+        });
+      }
+      return res.redirect(successUrl);
+    } catch (err) {
+      const wantsJson =
+        String(req.headers.accept || "").includes("application/json") ||
+        req.query.format === "json";
+      if (wantsJson) {
+        return res.status(400).json({ error: err?.message || "Failed to update signing method." });
+      }
+      return toErrorRedirect(res, "/mou", err);
+    }
+  }
+);
 
 router.post("/admin/mou/:mouId/:version/save", requireMouEnabled, requireMouPermission, requireGlobalAdmin, upload.single("contentFile"), (req, res) => {
   try {
