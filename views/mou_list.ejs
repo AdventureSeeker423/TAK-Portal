@@ -426,7 +426,10 @@
                     <%= statusLabel %>
                   </td>
                   <td class="mouSigningMethodCell" data-label="Signing Method">
-                    <div class="mouSigningMethodCell__content">
+                    <%= signingMethodLabel %>
+                  </td>
+                  <td class="cardActionsCell" data-label="Actions">
+                    <div class="mouActionRow cardActionsRow">
                       <% if (row.signingMode === "external_link") { %>
                         <button
                           class="btn qr"
@@ -435,11 +438,6 @@
                           data-sign-path="<%= row.externalSignPath || '' %>"
                         >Copy Link</button>
                       <% } %>
-                      <span><%= signingMethodLabel %></span>
-                    </div>
-                  </td>
-                  <td class="cardActionsCell" data-label="Actions">
-                    <div class="mouActionRow cardActionsRow">
                       <% if (row.signedVersion) { %>
                         <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
                         <% if (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0)) { %>
