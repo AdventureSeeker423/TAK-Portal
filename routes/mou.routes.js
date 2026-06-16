@@ -297,9 +297,14 @@ function parseAgencySigningPayload(body, agencySuffixes) {
     const assignedAdminUsername = String(body?.[`signingAdminUsername_${safeSuffix}`] || "")
       .trim();
     const assignedAdminName = String(body?.[`signingAdminName_${safeSuffix}`] || "").trim();
+    const externalLinkAcknowledged =
+      String(body?.[`signingLinkCopied_${safeSuffix}`] || "").trim() === "1";
     agencySigning[safeSuffix] = { mode };
-    if (mode === mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK && inviteEmail) {
-      agencySigning[safeSuffix].inviteEmail = inviteEmail;
+    if (mode === mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+      if (inviteEmail) agencySigning[safeSuffix].inviteEmail = inviteEmail;
+      if (externalLinkAcknowledged) {
+        agencySigning[safeSuffix].externalLinkAcknowledged = true;
+      }
     }
     if (mode === mouService.AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
       if (assignedAdminEmail) agencySigning[safeSuffix].assignedAdminEmail = assignedAdminEmail;
@@ -1611,6 +1616,39 @@ router.get("/admin/mou/archive/:archiveId/pdf", requireMouEnabled, requireMouPer
   }
 });
 
+router.get("/admin/mou/archive/:archiveId/document", requireMouEnabled, requireMouPermission, requireGlobalAdmin, (req, res) => {
+  try {
+    const out = mouService.getArchivedDocumentContentExport(req.params.archiveId);
+    const fileName = String(out.fileName || "mou").replace(/"/g, "");
+    const download = req.query.download === "1";
+
+    if (out.contentType === "pdf") {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        buildContentDisposition(download ? "attachment" : "inline", fileName)
+      );
+      return res.send(out.contentBuffer);
+    }
+
+    if (out.contentType === "markdown") {
+      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      if (download) {
+        res.setHeader("Content-Disposition", buildContentDisposition("attachment", fileName));
+      }
+      return res.send(out.contentBuffer.toString("utf8"));
+    }
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (download) {
+      res.setHeader("Content-Disposition", buildContentDisposition("attachment", fileName));
+    }
+    return res.send(out.html);
+  } catch (err) {
+    return res.status(404).send(err?.message || "Archived document not found.");
+  }
+});
+
 router.post(
   "/admin/mou/:mouId/signing/:agencyId/update",
   requireMouEnabled,
@@ -1625,6 +1663,9 @@ router.post(
         signingPatch: {
           mode: req.body?.signingMode,
           inviteEmail: req.body?.signingEmail,
+          externalLinkAcknowledged:
+            String(req.body?.signingLinkCopied || req.body?.externalLinkCopied || "").trim() ===
+            "1",
           assignedAdminEmail: req.body?.signingAdminEmail,
           assignedAdminUsername: req.body?.signingAdminUsername,
           assignedAdminName: req.body?.signingAdminName,

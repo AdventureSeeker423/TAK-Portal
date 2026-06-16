@@ -496,7 +496,7 @@
                           <a class="btn secondary" href="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/view" target="_blank" rel="noopener noreferrer">View Signed</a>
                           <a class="btn secondary" href="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/pdf?download=1">Download Signed</a>
                         <% } else { %>
-                          <a class="btn secondary" href="/mou/file/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.currentVersion) %>?download=1">Download Document</a>
+                          <a class="btn secondary" href="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/document?download=1">Download Document</a>
                         <% } %>
                         <form method="post" action="/admin/mou/archive/<%= encodeURIComponent(row.archiveId) %>/restore" style="display:inline;" onsubmit="return confirm('Restore this archived document?');">
                           <button class="btn secondary" type="submit">Restore</button>
@@ -687,6 +687,7 @@
                               <input type="email" name="signingEmail_<%= agency.suffix %>" value="<%= agencySigningConfig && agencySigningConfig.inviteEmail ? agencySigningConfig.inviteEmail : "" %>" placeholder="signer@example.com" />
                             </label>
                             <button type="button" class="btn secondary mouAssignCopyLinkBtn" data-mou-copy-sign-link hidden style="display:none;" data-sign-path="<%= stream.externalSignPaths && stream.externalSignPaths[agency.suffix] ? stream.externalSignPaths[agency.suffix] : '' %>">Copy Link</button>
+                            <input type="hidden" name="signingLinkCopied_<%= agency.suffix %>" data-mou-signing-link-copied value="0" />
                           </div>
                         </div>
                       </div>
@@ -795,6 +796,7 @@
                   <input type="email" name="signingEmail" value="<%= row.inviteEmail || '' %>" placeholder="signer@example.com" />
                 </label>
                 <button type="button" class="btn secondary mouAssignCopyLinkBtn" data-mou-copy-sign-link hidden style="display:none;" data-sign-path="<%= row.externalSignPath || '' %>">Copy Link</button>
+                <input type="hidden" name="signingLinkCopied" data-mou-signing-link-copied value="0" />
               </div>
               <div class="msg" data-signing-status></div>
               <div class="mouFormFooter">
@@ -819,6 +821,20 @@
     field.style.display = visible ? "" : "none";
   }
 
+  function markExternalLinkCopied(container) {
+    if (!container) return;
+    container.setAttribute("data-external-link-copied", "true");
+    var hidden = container.querySelector("[data-mou-signing-link-copied]");
+    if (hidden) hidden.value = "1";
+  }
+
+  function resetExternalLinkCopied(container) {
+    if (!container) return;
+    container.removeAttribute("data-external-link-copied");
+    var hidden = container.querySelector("[data-mou-signing-link-copied]");
+    if (hidden) hidden.value = "0";
+  }
+
   function copyExternalSignLink(button) {
     if (!button) return;
     var path = String(button.getAttribute("data-sign-path") || "").trim();
@@ -828,15 +844,20 @@
     }
     var fullUrl = path.indexOf("http") === 0 ? path : (window.location.origin + path);
     var defaultLabel = button.textContent || "Copy Link";
+    var container = button.closest("[data-mou-agency-option], [data-mou-signing-form]");
+    function onCopied() {
+      markExternalLinkCopied(container);
+      button.textContent = "Copied";
+      window.setTimeout(function () { button.textContent = defaultLabel; }, 1800);
+    }
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(fullUrl).then(function () {
-        button.textContent = "Copied";
-        window.setTimeout(function () { button.textContent = defaultLabel; }, 1800);
-      }).catch(function () {
+      navigator.clipboard.writeText(fullUrl).then(onCopied).catch(function () {
         window.prompt("Copy this sign link:", fullUrl);
+        onCopied();
       });
     } else {
       window.prompt("Copy this sign link:", fullUrl);
+      onCopied();
     }
   }
 
@@ -869,17 +890,24 @@
         var users = Array.isArray(out.users) ? out.users : [];
         var selectedEmail = preserved;
         adminSelect.innerHTML = '<option value="">Select agency admin...</option>';
-        users.forEach(function (user) {
-          var opt = document.createElement("option");
-          opt.value = user.email || "";
-          opt.textContent = (user.name || user.username || user.email) + (user.email ? (" (" + user.email + ")") : "");
-          opt.setAttribute("data-admin-username", user.username || "");
-          opt.setAttribute("data-admin-name", user.name || user.username || "");
-          if (selectedEmail && String(opt.value) === String(selectedEmail)) {
-            opt.selected = true;
-          }
-          adminSelect.appendChild(opt);
-        });
+          users.forEach(function (user) {
+            var opt = document.createElement("option");
+            opt.value = user.email || "";
+            var label = (user.name || user.username || user.email || "Agency Admin");
+            if (user.email) {
+              label += " (" + user.email + ")";
+            } else {
+              label += " (no email)";
+            }
+            opt.textContent = label;
+            opt.disabled = !user.email;
+            opt.setAttribute("data-admin-username", user.username || "");
+            opt.setAttribute("data-admin-name", user.name || user.username || "");
+            if (selectedEmail && String(opt.value) === String(selectedEmail)) {
+              opt.selected = true;
+            }
+            adminSelect.appendChild(opt);
+          });
         adminSelect.dataset.loaded = "true";
       })
       .catch(function () {
@@ -909,6 +937,9 @@
       copyBtn.setAttribute("data-sign-path", path);
       setFieldVisible(copyBtn, mode === "external_link");
       copyBtn.disabled = !path;
+      if (mode !== "external_link") {
+        resetExternalLinkCopied(container);
+      }
     }
   }
 
@@ -942,8 +973,12 @@
     var label = labelText || "this agency";
     if (mode === "external_link") {
       var emailInput = container.querySelector("[data-mou-signing-email] input");
-      if (!emailInput || !String(emailInput.value || "").trim()) {
-        return "Recipient Email is required for External One-Time Link on " + label + ".";
+      var hasEmail = emailInput && String(emailInput.value || "").trim();
+      var linkCopied =
+        container.getAttribute("data-external-link-copied") === "true" ||
+        String((container.querySelector("[data-mou-signing-link-copied]") || {}).value || "") === "1";
+      if (!hasEmail && !linkCopied) {
+        return "Copy the sign link or enter a Recipient Email for External One-Time Link on " + label + ".";
       }
     }
     if (mode === "specific_agency_admin") {

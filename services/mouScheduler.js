@@ -208,11 +208,13 @@ async function getUsersInGroup(groupName) {
 async function getAgencyAdminUsers(agency) {
   const seen = new Set();
   const out = [];
-  const groupNames = accessSvc.getAllAgencyAdminGroupNames(agency);
+  const groupNames = accessSvc.getAgencyAdminGroupNamesForAgency(agency);
   for (const groupName of groupNames) {
-    const users = await getUsersInGroup(groupName);
-    for (const user of users) {
-      const key = String(user.email || "").trim().toLowerCase();
+    const result = await getUsersForConfiguredGroup(groupName);
+    for (const user of result.users) {
+      const username = String(user.username || user.uid || "").trim();
+      const email = String(user.email || "").trim();
+      const key = (email || username).toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.add(key);
       out.push(user);
@@ -300,7 +302,7 @@ async function listAgencyAdminUsersForAssign(agency) {
         username;
       return { username, email, name };
     })
-    .filter((user) => user.email)
+    .filter((user) => user.username || user.email)
     .sort((a, b) => String(a.name || a.username).localeCompare(String(b.name || b.username)));
 }
 

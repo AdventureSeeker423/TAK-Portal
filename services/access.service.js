@@ -127,7 +127,7 @@ function resolveAgencySuffixFromUser(user) {
 }
 
 function getAgencyAdminGroupName(agency) {
-  const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
+  const abbr = String(agency?.groupPrefix || agency?.suffix || "").trim().toUpperCase();
   const countyAbbrev = String(agency?.countyAbbrev || "").trim().toUpperCase();
   if (!abbr) return null;
   if (countyAbbrev) {
@@ -139,7 +139,7 @@ function getAgencyAdminGroupName(agency) {
 
 function getAllAgencyAdminGroupNames(agency) {
   const names = [];
-  const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
+  const abbr = String(agency?.groupPrefix || agency?.suffix || "").trim().toUpperCase();
   const countyAbbrev = String(agency?.countyAbbrev || "").trim().toUpperCase();
   if (!abbr) return names;
   if (countyAbbrev) {
@@ -148,6 +148,19 @@ function getAllAgencyAdminGroupNames(agency) {
   // Always include legacy pattern as a fallback for backwards compatibility
   names.push(`authentik-${abbr}-AgencyAdmin`);
   return names;
+}
+
+function getAgencyAdminGroupNamesForAgency(agency) {
+  const names = new Set();
+  for (const name of getAllAgencyAdminGroupNames(agency)) {
+    if (name) names.add(name);
+  }
+  const rawAdmin =
+    agency?.adminGroups != null ? agency.adminGroups : agency?.adminGroup;
+  for (const name of normalizeGroupList(rawAdmin)) {
+    if (name) names.add(name);
+  }
+  return Array.from(names);
 }
 
 /**
@@ -911,6 +924,7 @@ module.exports = {
   normalizeGroupList,
   getAgencyAdminGroupName,
   getAllAgencyAdminGroupNames,
+  getAgencyAdminGroupNamesForAgency,
   inferAgencySuffixFromUsername,
   resolveAgencySuffixFromUser,
   getAllowedAgencySuffixesForGroups,

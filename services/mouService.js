@@ -259,6 +259,7 @@ function normalizeAgencySigningConfig(raw) {
     out[suffix] = {
       mode,
       ...(inviteEmail ? { inviteEmail } : {}),
+      ...(entry?.externalLinkAcknowledged === true ? { externalLinkAcknowledged: true } : {}),
       ...(assignedAdminEmail ? { assignedAdminEmail } : {}),
       ...(assignedAdminUsername ? { assignedAdminUsername } : {}),
       ...(assignedAdminName ? { assignedAdminName } : {}),
@@ -787,6 +788,34 @@ async function getArchivedSignedPdfExport(archiveId) {
   throw new Error("Signed PDF is unavailable for this archived document.");
 }
 
+function getArchivedDocumentContentExport(archiveId) {
+  const archivedRecord = getArchivedDocumentById(archiveId);
+  if (!archivedRecord) {
+    throw new Error("Archived document not found.");
+  }
+  if (!archivedRecord.currentVersion) {
+    throw new Error("Archived document version was not recorded.");
+  }
+
+  try {
+    const content = getVersionContent(archivedRecord.mouId, archivedRecord.currentVersion);
+    return {
+      archivedRecord,
+      stream: content.stream,
+      version: content.version,
+      contentType: content.contentType,
+      fileName: content.fileName,
+      contentBuffer: content.contentBuffer,
+      html: content.html,
+    };
+  } catch (err) {
+    throw new Error(
+      err?.message ||
+        "The source document file is no longer available. Only signed archived copies can be downloaded."
+    );
+  }
+}
+
 function normalizeScopeType(value) {
   return normalizeLower(value) === "agency" ? "agency" : "global";
 }
@@ -1143,9 +1172,11 @@ function validateAgencySigningForAssignments(assignments) {
     const mode = normalizeAgencySigningMode(entry?.mode);
     const agencyLabel = String(suffix || "").trim().toUpperCase() || "agency";
     if (mode === AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
-      if (!normalizeText(entry?.inviteEmail)) {
+      const hasEmail = !!normalizeText(entry?.inviteEmail);
+      const linkAcknowledged = entry?.externalLinkAcknowledged === true;
+      if (!hasEmail && !linkAcknowledged) {
         throw new Error(
-          `Recipient Email is required for External One-Time Link signing (${agencyLabel}).`
+          `Copy the sign link or enter a Recipient Email for External One-Time Link signing (${agencyLabel}).`
         );
       }
     }
@@ -2989,6 +3020,7 @@ module.exports = {
   getSignedPdfExport,
   getArchivedDocumentView,
   getArchivedSignedPdfExport,
+  getArchivedDocumentContentExport,
   listSignatureRows,
   getAgencySignatureStatusRows,
   listArchivedDocumentRows,
