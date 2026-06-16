@@ -2,7 +2,11 @@
 <%- include("partials/sidebar") %>
 
 <main class="main">
-  <h1>MOU Documents</h1>
+  <%- include("partials/scoped-admin-page-title", {
+    globalTitle: "MOU Documents",
+    scopedSuffix: "MOU Documents",
+    singleFallbackTitle: "Agency MOU Documents"
+  }) %>
 
   <% if (error) { %>
     <div class="card mouCallout mouCallout--danger">
