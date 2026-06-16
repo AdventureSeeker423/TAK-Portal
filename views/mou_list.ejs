@@ -292,7 +292,7 @@
                         style="display:inline;"
                         data-mou-delete-form
                         data-has-blocking-signatures="<%= stream.signatureSummary && stream.signatureSummary.hasSignatures ? 'true' : 'false' %>"
-                        data-blocking-message="Cannot delete while <%= stream.signatureSummary ? stream.signatureSummary.signatureCount : 0 %> signed cop<%= stream.signatureSummary && stream.signatureSummary.signatureCount === 1 ? 'y' : 'ies' %> exist. Archive agencies, then Delete Permanently from Archived Documents."
+                        data-blocking-message="Cannot delete while <%= stream.signatureSummary ? stream.signatureSummary.signatureCount : 0 %> signed cop<%= stream.signatureSummary && stream.signatureSummary.signatureCount === 1 ? 'y' : 'ies' %> exist. Archive agency signatures before deleting the master document."
                       >
                         <button class="btn danger" type="submit">Delete</button>
                       </form>
