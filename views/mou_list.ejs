@@ -1085,6 +1085,9 @@
             var opt = document.createElement("option");
             opt.value = user.email || ("user:" + (user.username || ""));
             var label = user.name || user.username || user.email || "Agency Admin";
+            if (user.isGlobalAdmin) {
+              label += " (Global Admin)";
+            }
             if (user.email) {
               label += " (" + user.email + ")";
             } else if (user.username) {

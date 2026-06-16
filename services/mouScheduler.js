@@ -223,6 +223,51 @@ async function getAgencyAdminUsers(agency) {
   return out;
 }
 
+function userBelongsToAgency(user, agency) {
+  const agencySuffix = accessSvc.normalizeSuffix(agency?.suffix);
+  if (!agencySuffix) return false;
+  const userSuffix = accessSvc.normalizeSuffix(
+    accessSvc.resolveAgencySuffixFromUser(user)
+  );
+  return !!userSuffix && userSuffix === agencySuffix;
+}
+
+async function getGlobalAdminUsersForAgency(agency) {
+  const configuredGroupNames = parseConfiguredGroupNames(
+    getString("PORTAL_AUTH_REQUIRED_GROUP", "")
+  );
+  const seen = new Set();
+  const out = [];
+  for (const groupName of configuredGroupNames) {
+    const result = await getUsersForConfiguredGroup(groupName);
+    for (const user of result.users) {
+      if (!userBelongsToAgency(user, agency)) continue;
+      const username = String(user.username || user.uid || "").trim();
+      const email = String(user.email || "").trim();
+      const key = (username || email).toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(user);
+    }
+  }
+  return out;
+}
+
+function normalizeUserForAssignList(user, { isGlobalAdmin = false } = {}) {
+  const username = String(user.username || user.uid || "").trim();
+  const email = String(user.email || "").trim();
+  const name =
+    String(user.name || "").trim() ||
+    String(user.display_name || "").trim() ||
+    username;
+  return {
+    username,
+    email,
+    name,
+    ...(isGlobalAdmin ? { isGlobalAdmin: true } : {}),
+  };
+}
+
 async function getGlobalAdminRecipientLookup() {
   const configuredGroupNames = parseConfiguredGroupNames(
     getString("PORTAL_AUTH_REQUIRED_GROUP", "")
@@ -291,17 +336,25 @@ async function sendAssignmentEmailToAddress({ to, subject, html, text }) {
 }
 
 async function listAgencyAdminUsersForAssign(agency) {
-  const users = await getAgencyAdminUsers(agency);
-  return users
-    .map((user) => {
-      const username = String(user.username || user.uid || "").trim();
-      const email = String(user.email || "").trim();
-      const name =
-        String(user.name || "").trim() ||
-        String(user.display_name || "").trim() ||
-        username;
-      return { username, email, name };
-    })
+  const seen = new Set();
+  const out = [];
+
+  function appendUsers(users, { isGlobalAdmin = false } = {}) {
+    for (const user of users) {
+      const normalized = normalizeUserForAssignList(user, { isGlobalAdmin });
+      const key = String(normalized.username || normalized.email || "")
+        .trim()
+        .toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(normalized);
+    }
+  }
+
+  appendUsers(await getAgencyAdminUsers(agency));
+  appendUsers(await getGlobalAdminUsersForAgency(agency), { isGlobalAdmin: true });
+
+  return out
     .filter((user) => user.username || user.email)
     .sort((a, b) => String(a.name || a.username).localeCompare(String(b.name || b.username)));
 }
