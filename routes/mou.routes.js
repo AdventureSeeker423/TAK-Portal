@@ -1430,14 +1430,21 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
     }
 
     void Promise.resolve().then(async () => {
-      if (currentVersion && previousAssignmentKey !== currentAssignmentKey && targetAgencies.length) {
-        try {
-          await mouScheduler.sendAssignmentNotificationsForVersion({
-            stream,
-            version: currentVersion,
-            actor: req.authentikUser,
-          });
-        } catch (notifyErr) {
+      if (
+        req.query.skipNotifications === "1" ||
+        !currentVersion ||
+        previousAssignmentKey === currentAssignmentKey ||
+        !targetAgencies.length
+      ) {
+        return;
+      }
+      try {
+        await mouScheduler.sendAssignmentNotificationsForVersion({
+          stream,
+          version: currentVersion,
+          actor: req.authentikUser,
+        });
+      } catch (notifyErr) {
           console.error("[MOU_ASSIGN] Notification failure", {
             ...debugContext,
             currentVersion: currentVersion.version,
@@ -1454,7 +1461,6 @@ router.post("/admin/mou/:mouId/assignments/save", requireMouEnabled, requireMouP
               error: notifyErr?.message || String(notifyErr || "Failed to send assignment notifications."),
             },
           });
-        }
       }
       try {
         auditRequest(req, {

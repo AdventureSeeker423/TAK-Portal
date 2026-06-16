@@ -839,6 +839,74 @@
     if (hidden) hidden.value = "0";
   }
 
+  function applyExternalInvitePaths(assignForm, externalInvites) {
+    if (!assignForm || !Array.isArray(externalInvites)) return;
+    var bySuffix = {};
+    externalInvites.forEach(function (row) {
+      bySuffix[String(row.agencySuffix || "").trim().toLowerCase()] = String(row.signPath || "").trim();
+    });
+    assignForm.querySelectorAll("[data-mou-agency-option]").forEach(function (option) {
+      var suffix = String(option.getAttribute("data-agency-suffix") || "").trim().toLowerCase();
+      if (!suffix || !bySuffix[suffix]) return;
+      option.setAttribute("data-external-sign-path", bySuffix[suffix]);
+      var copyBtn = option.querySelector("[data-mou-copy-sign-link]");
+      if (copyBtn) copyBtn.setAttribute("data-sign-path", bySuffix[suffix]);
+      syncSigningModeFields(option);
+    });
+  }
+
+  function prepareAssignModalCopy(container) {
+    var assignForm = container ? container.closest("[data-mou-assignment-form]") : null;
+    if (!assignForm) return Promise.resolve();
+
+    var checkbox = container.querySelector("[data-mou-agency-checkbox]");
+    if (!checkbox || !checkbox.checked) {
+      return Promise.reject(new Error("Select this agency before copying a sign link."));
+    }
+
+    var modeSelect = container.querySelector("[data-mou-signing-mode]");
+    if (!modeSelect || String(modeSelect.value || "") !== "external_link") {
+      return Promise.reject(new Error("Set signing method to External One-Time Link for this agency."));
+    }
+
+    markExternalLinkCopied(container);
+
+    assignForm.querySelectorAll("[data-mou-agency-option]").forEach(function (option) {
+      syncAdminHiddenFields(option);
+    });
+
+    var invalid = null;
+    assignForm.querySelectorAll("[data-mou-agency-option]").forEach(function (option) {
+      if (invalid) return;
+      if (option.style.display === "none") return;
+      var input = option.querySelector("[data-mou-agency-checkbox]");
+      if (!input || !input.checked) return;
+      var agencyLabel = option.querySelector(".mouAssignAgencyRow__check span");
+      var agencyName = agencyLabel ? agencyLabel.textContent.trim() : "selected agency";
+      invalid = validateSigningContainer(option, agencyName) || null;
+    });
+    if (invalid) return Promise.reject(new Error(invalid));
+
+    var payload = new URLSearchParams(new FormData(assignForm));
+    return fetch(assignForm.getAttribute("action") + "?format=json&skipNotifications=1", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      },
+      body: payload.toString(),
+    }).then(async function (res) {
+      var out = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) {
+        throw new Error(out.error || "Failed to save assignment.");
+      }
+      applyExternalInvitePaths(assignForm, out.externalInvites);
+      return out;
+    });
+  }
+
   function resolveMouIdFromContainer(container) {
     if (!container) return "";
     var explicit = String(container.getAttribute("data-mou-id") || "").trim();
@@ -910,7 +978,13 @@
     var container = button.closest("[data-mou-agency-option], [data-mou-signing-form]");
     var defaultLabel = button.textContent || "Copy Link";
     button.disabled = true;
-    ensureExternalSignLink(container, button)
+    var prepare = container && container.closest("[data-mou-assignment-form]")
+      ? prepareAssignModalCopy(container)
+      : Promise.resolve();
+    prepare
+      .then(function () {
+        return ensureExternalSignLink(container, button);
+      })
       .then(function (path) {
         if (!path) {
           throw new Error("Unable to create sign link.");
