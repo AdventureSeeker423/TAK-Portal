@@ -1181,7 +1181,10 @@ function validateAgencySigningForAssignments(assignments) {
       }
     }
     if (mode === AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
-      if (!normalizeText(entry?.assignedAdminEmail)) {
+      if (
+        !normalizeText(entry?.assignedAdminEmail) &&
+        !normalizeText(entry?.assignedAdminUsername)
+      ) {
         throw new Error(
           `Agency Admin selection is required for Specific Agency Admin signing (${agencyLabel}).`
         );
@@ -1957,7 +1960,7 @@ function updateStreamAssignments({
   return clone(stream);
 }
 
-function updateAgencySigningConfig({ mouId, agencySuffix, signingPatch, actor }) {
+function updateAgencySigningConfig({ mouId, agencySuffix, signingPatch, actor, skipValidation = false }) {
   requireEnabled();
   const index = getIndex();
   const stream = findStream(index, mouId);
@@ -1990,7 +1993,9 @@ function updateAgencySigningConfig({ mouId, agencySuffix, signingPatch, actor })
     agencySigning: mergedSigning,
     previousAssignments: previous,
   });
-  validateAgencySigningForAssignments(stream.assignments);
+  if (!skipValidation) {
+    validateAgencySigningForAssignments(stream.assignments);
+  }
   stream.updatedAt = nowIso();
   stream.updatedBy = actor?.uid || actor?.username || null;
   saveIndex(index);

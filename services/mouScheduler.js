@@ -383,6 +383,14 @@ async function sendAssignmentNotificationForAgency({ stream, version, agency, ac
 
   if (signingMode === mouService.AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
     const assignedEmail = mouService.getAgencySigningAssignedAdminEmail(stream, agencySuffix);
+    if (!assignedEmail) {
+      return {
+        sent: false,
+        skipped: true,
+        agencySuffix,
+        reason: "Assigned admin has no email; they can sign in through the portal.",
+      };
+    }
     const result = await sendAssignmentEmailToAddress({
       to: assignedEmail,
       subject,

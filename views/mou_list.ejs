@@ -675,9 +675,11 @@
                               <span class="muted">Agency Admin</span>
                               <select name="signingAdminEmail_<%= agency.suffix %>" data-mou-signing-admin-select disabled>
                                 <option value="">Select agency admin...</option>
-                                <% if (agencySigningConfig && agencySigningConfig.assignedAdminEmail) { %>
-                                  <option value="<%= agencySigningConfig.assignedAdminEmail %>" data-admin-username="<%= agencySigningConfig.assignedAdminUsername || '' %>" data-admin-name="<%= agencySigningConfig.assignedAdminName || '' %>" selected><%= agencySigningConfig.assignedAdminName || agencySigningConfig.assignedAdminUsername || agencySigningConfig.assignedAdminEmail %></option>
-                                <% } %>
+                              <% if (agencySigningConfig && agencySigningConfig.assignedAdminEmail) { %>
+                                <option value="<%= agencySigningConfig.assignedAdminEmail %>" data-admin-username="<%= agencySigningConfig.assignedAdminUsername || '' %>" data-admin-name="<%= agencySigningConfig.assignedAdminName || '' %>" selected><%= agencySigningConfig.assignedAdminName || agencySigningConfig.assignedAdminUsername || agencySigningConfig.assignedAdminEmail %></option>
+                              <% } else if (agencySigningConfig && agencySigningConfig.assignedAdminUsername) { %>
+                                <option value="user:<%= agencySigningConfig.assignedAdminUsername %>" data-admin-username="<%= agencySigningConfig.assignedAdminUsername %>" data-admin-name="<%= agencySigningConfig.assignedAdminName || agencySigningConfig.assignedAdminUsername %>" selected><%= agencySigningConfig.assignedAdminName || agencySigningConfig.assignedAdminUsername %></option>
+                              <% } %>
                               </select>
                               <input type="hidden" name="signingAdminUsername_<%= agency.suffix %>" data-mou-signing-admin-username value="<%= agencySigningConfig && agencySigningConfig.assignedAdminUsername ? agencySigningConfig.assignedAdminUsername : '' %>" />
                               <input type="hidden" name="signingAdminName_<%= agency.suffix %>" data-mou-signing-admin-name value="<%= agencySigningConfig && agencySigningConfig.assignedAdminName ? agencySigningConfig.assignedAdminName : '' %>" />
@@ -768,6 +770,7 @@
               action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signing/<%= encodeURIComponent(row.agencyId) %>/update"
               class="mouAdminForm"
               data-mou-signing-form
+              data-mou-id="<%= row.mouId %>"
               data-agency-suffix="<%= row.agencyId %>"
               data-external-sign-path="<%= row.externalSignPath || '' %>"
             >
@@ -786,6 +789,8 @@
                     <option value="">Select agency admin...</option>
                     <% if (row.assignedAdminEmail) { %>
                       <option value="<%= row.assignedAdminEmail %>" data-admin-username="<%= row.assignedAdminUsername || '' %>" data-admin-name="<%= row.assignedAdminName || '' %>" selected><%= row.assignedAdminName || row.assignedAdminUsername || row.assignedAdminEmail %></option>
+                    <% } else if (row.assignedAdminUsername) { %>
+                      <option value="user:<%= row.assignedAdminUsername %>" data-admin-username="<%= row.assignedAdminUsername %>" data-admin-name="<%= row.assignedAdminName || row.assignedAdminUsername %>" selected><%= row.assignedAdminName || row.assignedAdminUsername %></option>
                     <% } %>
                   </select>
                   <input type="hidden" name="signingAdminUsername" data-mou-signing-admin-username value="<%= row.assignedAdminUsername || '' %>" />
@@ -800,8 +805,7 @@
               </div>
               <div class="msg" data-signing-status></div>
               <div class="mouFormFooter">
-                <button class="btn success" type="submit" name="action" value="save">Save Method</button>
-                <button class="btn secondary" type="submit" name="action" value="save_resend">Save &amp; Resend</button>
+                <button class="btn success" type="submit" name="action" value="save_resend">Save &amp; Resend</button>
               </div>
             </form>
           </div>
@@ -835,30 +839,110 @@
     if (hidden) hidden.value = "0";
   }
 
+  function resolveMouIdFromContainer(container) {
+    if (!container) return "";
+    var explicit = String(container.getAttribute("data-mou-id") || "").trim();
+    if (explicit) return explicit;
+    var form = container.closest("[data-mou-assignment-form], [data-mou-signing-form]");
+    if (!form) return "";
+    var fromForm = String(form.getAttribute("data-mou-id") || "").trim();
+    if (fromForm) return fromForm;
+    var action = form.getAttribute("action") || "";
+    var match = action.match(/\/admin\/mou\/([^/]+)\//);
+    return match ? decodeURIComponent(match[1]) : "";
+  }
+
+  function ensureExternalSignLink(container, button) {
+    var path = String(
+      (button && button.getAttribute("data-sign-path")) ||
+        container.getAttribute("data-external-sign-path") ||
+        ""
+    ).trim();
+    if (path) return Promise.resolve(path);
+
+    var suffix = String(container.getAttribute("data-agency-suffix") || "").trim().toLowerCase();
+    var mouId = resolveMouIdFromContainer(container);
+    if (!mouId || !suffix) {
+      return Promise.reject(
+        new Error("Save the assignment with External One-Time Link before copying the sign link.")
+      );
+    }
+
+    var emailInput = container.querySelector("[data-mou-signing-email] input");
+    var body = new URLSearchParams();
+    var modeSelect = container.querySelector("[data-mou-signing-mode]");
+    if (modeSelect) body.set("signingMode", String(modeSelect.value || ""));
+    if (emailInput && String(emailInput.value || "").trim()) {
+      body.set("signingEmail", String(emailInput.value || "").trim());
+    }
+    var copiedInput = container.querySelector("[data-mou-signing-link-copied]");
+    if (copiedInput && String(copiedInput.value || "").trim() === "1") {
+      body.set("signingLinkCopied", "1");
+    }
+
+    return fetch(
+      "/admin/mou/" +
+        encodeURIComponent(mouId) +
+        "/signing/" +
+        encodeURIComponent(suffix) +
+        "/ensure-link",
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        },
+        body: body.toString(),
+      }
+    ).then(async function (res) {
+      var out = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) {
+        throw new Error(out.error || "Unable to create sign link.");
+      }
+      return String(out.externalSignPath || "").trim();
+    });
+  }
+
   function copyExternalSignLink(button) {
     if (!button) return;
-    var path = String(button.getAttribute("data-sign-path") || "").trim();
-    if (!path) {
-      window.alert("Save the external link settings first to generate a sign link.");
-      return;
-    }
-    var fullUrl = path.indexOf("http") === 0 ? path : (window.location.origin + path);
-    var defaultLabel = button.textContent || "Copy Link";
     var container = button.closest("[data-mou-agency-option], [data-mou-signing-form]");
-    function onCopied() {
-      markExternalLinkCopied(container);
-      button.textContent = "Copied";
-      window.setTimeout(function () { button.textContent = defaultLabel; }, 1800);
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(fullUrl).then(onCopied).catch(function () {
+    var defaultLabel = button.textContent || "Copy Link";
+    button.disabled = true;
+    ensureExternalSignLink(container, button)
+      .then(function (path) {
+        if (!path) {
+          throw new Error("Unable to create sign link.");
+        }
+        button.setAttribute("data-sign-path", path);
+        if (container) {
+          container.setAttribute("data-external-sign-path", path);
+          syncSigningModeFields(container);
+        }
+        var fullUrl = path.indexOf("http") === 0 ? path : window.location.origin + path;
+        function onCopied() {
+          markExternalLinkCopied(container);
+          button.textContent = "Copied";
+          window.setTimeout(function () {
+            button.textContent = defaultLabel;
+          }, 1800);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(fullUrl).then(onCopied).catch(function () {
+            window.prompt("Copy this sign link:", fullUrl);
+            onCopied();
+          });
+        }
         window.prompt("Copy this sign link:", fullUrl);
         onCopied();
+      })
+      .catch(function (err) {
+        window.alert(err && err.message ? err.message : "Unable to copy sign link.");
+      })
+      .finally(function () {
+        button.disabled = false;
       });
-    } else {
-      window.prompt("Copy this sign link:", fullUrl);
-      onCopied();
-    }
   }
 
   function syncAdminHiddenFields(container) {
@@ -867,8 +951,12 @@
     var nameInput = container.querySelector("[data-mou-signing-admin-name]");
     if (!adminSelect) return;
     var selected = adminSelect.options[adminSelect.selectedIndex];
+    var selectedValue = selected ? String(selected.value || "") : "";
     if (usernameInput) {
-      usernameInput.value = selected ? (selected.getAttribute("data-admin-username") || "") : "";
+      usernameInput.value = selected
+        ? selected.getAttribute("data-admin-username") ||
+          (selectedValue.indexOf("user:") === 0 ? selectedValue.slice(5) : "")
+        : "";
     }
     if (nameInput) {
       nameInput.value = selected ? (selected.getAttribute("data-admin-name") || "") : "";
@@ -882,28 +970,36 @@
     if (!suffix) return;
     adminSelect.dataset.loaded = "loading";
     var preserved = adminSelect.value;
+    var preservedUsernameInput = container.querySelector("[data-mou-signing-admin-username]");
+    var preservedUsername = preservedUsernameInput
+      ? String(preservedUsernameInput.value || "").trim()
+      : "";
     fetch("/admin/mou/agency-admins/" + encodeURIComponent(suffix), {
       headers: { Accept: "application/json" },
     })
       .then(function (res) { return res.json(); })
       .then(function (out) {
         var users = Array.isArray(out.users) ? out.users : [];
-        var selectedEmail = preserved;
         adminSelect.innerHTML = '<option value="">Select agency admin...</option>';
           users.forEach(function (user) {
             var opt = document.createElement("option");
-            opt.value = user.email || "";
-            var label = (user.name || user.username || user.email || "Agency Admin");
+            opt.value = user.email || ("user:" + (user.username || ""));
+            var label = user.name || user.username || user.email || "Agency Admin";
             if (user.email) {
               label += " (" + user.email + ")";
-            } else {
-              label += " (no email)";
+            } else if (user.username) {
+              label += " (portal login)";
             }
             opt.textContent = label;
-            opt.disabled = !user.email;
             opt.setAttribute("data-admin-username", user.username || "");
             opt.setAttribute("data-admin-name", user.name || user.username || "");
-            if (selectedEmail && String(opt.value) === String(selectedEmail)) {
+            if (preserved && String(opt.value) === String(preserved)) {
+              opt.selected = true;
+            } else if (
+              !preserved &&
+              preservedUsername &&
+              opt.value === ("user:" + preservedUsername)
+            ) {
               opt.selected = true;
             }
             adminSelect.appendChild(opt);
@@ -936,7 +1032,6 @@
       var path = String(container.getAttribute("data-external-sign-path") || copyBtn.getAttribute("data-sign-path") || "").trim();
       copyBtn.setAttribute("data-sign-path", path);
       setFieldVisible(copyBtn, mode === "external_link");
-      copyBtn.disabled = !path;
       if (mode !== "external_link") {
         resetExternalLinkCopied(container);
       }
@@ -957,12 +1052,6 @@
     if (adminSelect) {
       adminSelect.addEventListener("change", function () {
         syncAdminHiddenFields(container);
-      });
-    }
-    var copyBtn = container.querySelector("[data-mou-copy-sign-link]");
-    if (copyBtn) {
-      copyBtn.addEventListener("click", function () {
-        copyExternalSignLink(copyBtn);
       });
     }
   }
@@ -1006,11 +1095,8 @@
         }
         return;
       }
-      var submitter = event.submitter;
       var payload = new URLSearchParams(new FormData(form));
-      if (submitter && submitter.name === "action") {
-        payload.set("action", submitter.value);
-      }
+      payload.set("action", "save_resend");
       if (statusEl) {
         statusEl.className = "msg";
         statusEl.textContent = "Saving signing method...";
@@ -1701,10 +1787,11 @@
     });
   });
 
-  document.querySelectorAll("[data-copy-external-sign-link]").forEach(function (button) {
-    button.addEventListener("click", function () {
-      copyExternalSignLink(button);
-    });
+  document.addEventListener("click", function (event) {
+    var copyBtn = event.target.closest("[data-mou-copy-sign-link]");
+    if (!copyBtn) return;
+    event.preventDefault();
+    copyExternalSignLink(copyBtn);
   });
 })();
 </script>

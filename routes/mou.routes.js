@@ -291,12 +291,11 @@ function parseAgencySigningPayload(body, agencySuffixes) {
       mode = mouService.AGENCY_SIGNING_MODE_SPECIFIC_ADMIN;
     }
     const inviteEmail = normalizeAssignmentEmail(body?.[`signingEmail_${safeSuffix}`]);
-    const assignedAdminEmail = normalizeAssignmentEmail(
-      body?.[`signingAdminEmail_${safeSuffix}`]
+    const adminSelection = parseSigningAdminSelection(
+      body?.[`signingAdminEmail_${safeSuffix}`],
+      body?.[`signingAdminUsername_${safeSuffix}`],
+      body?.[`signingAdminName_${safeSuffix}`]
     );
-    const assignedAdminUsername = String(body?.[`signingAdminUsername_${safeSuffix}`] || "")
-      .trim();
-    const assignedAdminName = String(body?.[`signingAdminName_${safeSuffix}`] || "").trim();
     const externalLinkAcknowledged =
       String(body?.[`signingLinkCopied_${safeSuffix}`] || "").trim() === "1";
     agencySigning[safeSuffix] = { mode };
@@ -307,11 +306,15 @@ function parseAgencySigningPayload(body, agencySuffixes) {
       }
     }
     if (mode === mouService.AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
-      if (assignedAdminEmail) agencySigning[safeSuffix].assignedAdminEmail = assignedAdminEmail;
-      if (assignedAdminUsername) {
-        agencySigning[safeSuffix].assignedAdminUsername = assignedAdminUsername;
+      if (adminSelection.assignedAdminEmail) {
+        agencySigning[safeSuffix].assignedAdminEmail = adminSelection.assignedAdminEmail;
       }
-      if (assignedAdminName) agencySigning[safeSuffix].assignedAdminName = assignedAdminName;
+      if (adminSelection.assignedAdminUsername) {
+        agencySigning[safeSuffix].assignedAdminUsername = adminSelection.assignedAdminUsername;
+      }
+      if (adminSelection.assignedAdminName) {
+        agencySigning[safeSuffix].assignedAdminName = adminSelection.assignedAdminName;
+      }
     }
   }
   return agencySigning;
@@ -319,6 +322,19 @@ function parseAgencySigningPayload(body, agencySuffixes) {
 
 function normalizeAssignmentEmail(value) {
   return String(value || "").trim();
+}
+
+function parseSigningAdminSelection(rawValue, hiddenUsername, hiddenName) {
+  const selection = String(rawValue || "").trim();
+  let assignedAdminEmail = "";
+  let assignedAdminUsername = String(hiddenUsername || "").trim();
+  let assignedAdminName = String(hiddenName || "").trim();
+  if (selection.startsWith("user:")) {
+    assignedAdminUsername = selection.slice(5).trim() || assignedAdminUsername;
+  } else if (selection) {
+    assignedAdminEmail = normalizeAssignmentEmail(selection);
+  }
+  return { assignedAdminEmail, assignedAdminUsername, assignedAdminName };
 }
 
 function buildExternalInviteResponseRows(stream, invites) {
@@ -1650,6 +1666,79 @@ router.get("/admin/mou/archive/:archiveId/document", requireMouEnabled, requireM
 });
 
 router.post(
+  "/admin/mou/:mouId/signing/:agencyId/ensure-link",
+  requireMouEnabled,
+  requireMouPermission,
+  requireGlobalAdmin,
+  async (req, res) => {
+    try {
+      const agencySuffix = String(req.params.agencyId || "").trim().toLowerCase();
+      let stream = mouService.getStreamById(req.params.mouId);
+      const targetedSuffixes = mouService.getStreamAgencySuffixes(stream).map((suffix) =>
+        String(suffix || "").trim().toLowerCase()
+      );
+      if (!targetedSuffixes.includes(agencySuffix)) {
+        throw new Error("Assign this agency before copying a sign link.");
+      }
+
+      const signingMode = mouService.getAgencySigningMode(stream, agencySuffix);
+      const inviteEmail = normalizeAssignmentEmail(req.body?.signingEmail);
+      const requestedMode = String(req.body?.signingMode || "").trim().toLowerCase();
+      if (requestedMode === mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+        stream = mouService.updateAgencySigningConfig({
+          mouId: req.params.mouId,
+          agencySuffix,
+          signingPatch: {
+            mode: mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK,
+            ...(inviteEmail ? { inviteEmail } : {}),
+            externalLinkAcknowledged:
+              String(req.body?.signingLinkCopied || "").trim() === "1",
+          },
+          actor: req.authentikUser,
+          skipValidation: true,
+        });
+      } else if (signingMode !== mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+        throw new Error("Set signing method to External One-Time Link before copying a sign link.");
+      } else if (inviteEmail) {
+        stream = mouService.updateAgencySigningConfig({
+          mouId: req.params.mouId,
+          agencySuffix,
+          signingPatch: {
+            mode: mouService.AGENCY_SIGNING_MODE_EXTERNAL_LINK,
+            inviteEmail,
+          },
+          actor: req.authentikUser,
+          skipValidation: true,
+        });
+      }
+
+      const invites = mouService.syncExternalSignInvitesForStream({
+        stream,
+        actor: req.authentikUser,
+        agencySuffixes: [agencySuffix],
+      });
+      const invite = invites[0];
+      if (!invite?.token) {
+        throw new Error("Unable to create an external sign link for this agency.");
+      }
+
+      const externalSignPath = mouService.buildExternalSignPath(invite.token);
+      const { getString } = require("../services/env");
+      const baseUrl = String(getString("TAK_PORTAL_PUBLIC_URL", "") || "")
+        .trim()
+        .replace(/\/+$/, "");
+      return res.json({
+        success: true,
+        externalSignPath,
+        signUrl: baseUrl ? `${baseUrl}${externalSignPath}` : externalSignPath,
+      });
+    } catch (err) {
+      return res.status(400).json({ error: err?.message || "Unable to create sign link." });
+    }
+  }
+);
+
+router.post(
   "/admin/mou/:mouId/signing/:agencyId/update",
   requireMouEnabled,
   requireMouPermission,
@@ -1657,6 +1746,11 @@ router.post(
   async (req, res) => {
     try {
       const agencySuffix = String(req.params.agencyId || "").trim().toLowerCase();
+      const adminSelection = parseSigningAdminSelection(
+        req.body?.signingAdminEmail,
+        req.body?.signingAdminUsername,
+        req.body?.signingAdminName
+      );
       const stream = mouService.updateAgencySigningConfig({
         mouId: req.params.mouId,
         agencySuffix,
@@ -1666,9 +1760,9 @@ router.post(
           externalLinkAcknowledged:
             String(req.body?.signingLinkCopied || req.body?.externalLinkCopied || "").trim() ===
             "1",
-          assignedAdminEmail: req.body?.signingAdminEmail,
-          assignedAdminUsername: req.body?.signingAdminUsername,
-          assignedAdminName: req.body?.signingAdminName,
+          assignedAdminEmail: adminSelection.assignedAdminEmail,
+          assignedAdminUsername: adminSelection.assignedAdminUsername,
+          assignedAdminName: adminSelection.assignedAdminName,
         },
         actor: req.authentikUser,
       });
@@ -1721,7 +1815,7 @@ router.post(
             actor: req.authentikUser,
           });
         }
-        if (!result.sent) {
+        if (!result.sent && !result.skipped) {
           throw new Error(result.reason || result.error || "No recipients found for this notification.");
         }
       }
@@ -1730,7 +1824,9 @@ router.post(
         String(req.headers.accept || "").includes("application/json") ||
         req.query.format === "json";
       const successUrl = `/mou?success=${encodeURIComponent(
-        shouldResend ? "Signing method updated and notification sent." : "Signing method updated."
+        shouldResend
+          ? "Signing method updated and notification sent."
+          : "Signing method updated."
       )}`;
       if (wantsJson) {
         return res.json({
