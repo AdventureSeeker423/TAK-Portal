@@ -1674,9 +1674,9 @@ router.post(
     try {
       const agencySuffix = String(req.params.agencyId || "").trim().toLowerCase();
       let stream = mouService.getStreamById(req.params.mouId);
-      const targetedSuffixes = mouService.getStreamAgencySuffixes(stream).map((suffix) =>
-        String(suffix || "").trim().toLowerCase()
-      );
+      const targetedSuffixes = mouService
+        .getTargetAgenciesForStream(stream)
+        .map((agency) => String(agency?.suffix || "").trim().toLowerCase());
       if (!targetedSuffixes.includes(agencySuffix)) {
         throw new Error("Assign this agency before copying a sign link.");
       }
