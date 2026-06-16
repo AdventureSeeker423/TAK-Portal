@@ -1171,15 +1171,6 @@ function validateAgencySigningForAssignments(assignments) {
     const entry = assignments?.agencySigning?.[suffix];
     const mode = normalizeAgencySigningMode(entry?.mode);
     const agencyLabel = String(suffix || "").trim().toUpperCase() || "agency";
-    if (mode === AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
-      const hasEmail = !!normalizeText(entry?.inviteEmail);
-      const linkAcknowledged = entry?.externalLinkAcknowledged === true;
-      if (!hasEmail && !linkAcknowledged) {
-        throw new Error(
-          `Copy the sign link or enter a Recipient Email for External One-Time Link signing (${agencyLabel}).`
-        );
-      }
-    }
     if (mode === AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
       if (
         !normalizeText(entry?.assignedAdminEmail) &&

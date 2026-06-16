@@ -1160,16 +1160,6 @@
     var modeSelect = container.querySelector("[data-mou-signing-mode]");
     var mode = modeSelect ? String(modeSelect.value || "") : "";
     var label = labelText || "this agency";
-    if (mode === "external_link") {
-      var emailInput = container.querySelector("[data-mou-signing-email] input");
-      var hasEmail = emailInput && String(emailInput.value || "").trim();
-      var linkCopied =
-        container.getAttribute("data-external-link-copied") === "true" ||
-        String((container.querySelector("[data-mou-signing-link-copied]") || {}).value || "") === "1";
-      if (!hasEmail && !linkCopied) {
-        return "Copy the sign link or enter a Recipient Email for External One-Time Link on " + label + ".";
-      }
-    }
     if (mode === "specific_agency_admin") {
       var adminSelect = container.querySelector("[data-mou-signing-admin-select]");
       if (!adminSelect || !String(adminSelect.value || "").trim()) {
