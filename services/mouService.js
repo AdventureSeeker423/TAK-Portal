@@ -2005,6 +2005,14 @@ function deleteStream({ mouId }) {
   return true;
 }
 
+function getSignedAgencySuffixesForCurrentVersion(stream) {
+  const currentVersion = getCurrentVersion(stream);
+  if (!currentVersion) return [];
+  return (Array.isArray(currentVersion.signatures) ? currentVersion.signatures : [])
+    .map((entry) => normalizeAgencySuffix(entry?.agencyId))
+    .filter(Boolean);
+}
+
 function updateStreamAssignments({
   mouId,
   serverwide,
@@ -2022,11 +2030,33 @@ function updateStreamAssignments({
     throw new Error("Create a document version before assigning it.");
   }
 
+  const signedSuffixes = getSignedAgencySuffixesForCurrentVersion(stream);
+  const previousAssignments = getAssignments(stream);
+  let normalizedSuffixes = normalizeAgencySuffixList(agencySuffixes);
+  const isServerwide = !!serverwide;
+  if (!isServerwide && signedSuffixes.length) {
+    const suffixSet = new Set(normalizedSuffixes);
+    for (const suffix of signedSuffixes) {
+      suffixSet.add(suffix);
+    }
+    normalizedSuffixes = Array.from(suffixSet);
+  }
+
+  let signingPayload = agencySigning;
+  if (signedSuffixes.length && previousAssignments?.agencySigning) {
+    signingPayload = { ...(agencySigning || {}) };
+    for (const suffix of signedSuffixes) {
+      if (previousAssignments.agencySigning[suffix]) {
+        signingPayload[suffix] = previousAssignments.agencySigning[suffix];
+      }
+    }
+  }
+
   const assignments = buildAssignmentsWithSigning({
     mouId,
-    serverwide,
-    agencySuffixes,
-    agencySigning,
+    serverwide: isServerwide,
+    agencySuffixes: normalizedSuffixes,
+    agencySigning: signingPayload,
     previousAssignments: stream.assignments || {},
   });
   validateAgencySigningForAssignments(assignments);

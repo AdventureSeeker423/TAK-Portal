@@ -662,17 +662,20 @@
                   <div class="mouAssignAgencyList">
                     <% agencies.forEach(function (agency) { %>
                       <% const agencySigningConfig = stream.assignments && stream.assignments.agencySigning && stream.assignments.agencySigning[agency.suffix] ? stream.assignments.agencySigning[agency.suffix] : null; %>
+                      <% const agencyHasSigned = Array.isArray(stream.signedAgencySuffixes) && stream.signedAgencySuffixes.includes(agency.suffix); %>
+                      <% const agencyIsAssigned = !!(stream.assignments && stream.assignments.agencySuffixes && stream.assignments.agencySuffixes.includes(agency.suffix)); %>
                       <% const agencySigningMode = agencySigningConfig && agencySigningConfig.mode === "external_link"
                         ? "external_link"
                         : (agencySigningConfig && agencySigningConfig.mode === "specific_agency_admin"
                           ? "specific_agency_admin"
                           : "agency_admins"); %>
                       <div
-                        class="mouAssignAgencyRow"
+                        class="mouAssignAgencyRow<%= agencyHasSigned ? ' mouAssignAgencyRow--locked' : '' %>"
                         data-mou-agency-option
                         data-agency-suffix="<%= agency.suffix %>"
                         data-agency-label="<%= String(agency.name || '').toLowerCase() %> <%= String(agency.suffix || '').toLowerCase() %>"
                         data-external-sign-path="<%= stream.externalSignPaths && stream.externalSignPaths[agency.suffix] ? stream.externalSignPaths[agency.suffix] : '' %>"
+                        <%= agencyHasSigned ? 'data-mou-agency-locked="true"' : '' %>
                       >
                         <label class="mouAssignAgencyRow__check">
                           <input
@@ -680,10 +683,15 @@
                             name="agencySuffixes"
                             value="<%= agency.suffix %>"
                             data-mou-agency-checkbox
-                            <%= stream.assignments && stream.assignments.agencySuffixes && stream.assignments.agencySuffixes.includes(agency.suffix) ? "checked" : "" %>
+                            <%= (agencyIsAssigned || agencyHasSigned) ? "checked" : "" %>
+                            <%= agencyHasSigned ? "disabled" : "" %>
                           />
-                          <span><%= agency.name %> (<%= String(agency.suffix || "").toUpperCase() %>)</span>
+                          <span><%= agency.name %> (<%= String(agency.suffix || "").toUpperCase() %>)<% if (agencyHasSigned) { %> <span class="mouAssignAgencyRow__signedBadge">Signed</span><% } %></span>
                         </label>
+                        <% if (agencyHasSigned) { %>
+                          <input type="hidden" name="agencySuffixes" value="<%= agency.suffix %>" data-mou-agency-locked-input />
+                        <% } %>
+                        <% if (!agencyHasSigned) { %>
                         <div class="mouAssignAgencyRow__signing" data-mou-agency-signing hidden>
                           <div class="mouAssignSigningRow">
                             <label class="mouAssignSigningField">
@@ -715,6 +723,7 @@
                             <input type="hidden" name="signingLinkCopied_<%= agency.suffix %>" data-mou-signing-link-copied value="0" />
                           </div>
                         </div>
+                        <% } %>
                       </div>
                     <% }); %>
                   </div>
@@ -1574,20 +1583,32 @@
       });
     }
 
+    function isLockedAgency(option) {
+      return option && option.getAttribute("data-mou-agency-locked") === "true";
+    }
+
     function syncRowState() {
       agencyOptions.forEach(function (option) {
         var input = option.querySelector("[data-mou-agency-checkbox]");
+        var locked = isLockedAgency(option);
+        if (locked && input) {
+          input.checked = true;
+          input.disabled = true;
+        }
         option.classList.toggle("mouAssignAgencyRow--selected", !!(input && input.checked));
+        option.classList.toggle("mouAssignAgencyRow--locked", locked);
         var signingBlock = option.querySelector("[data-mou-agency-signing]");
-        if (signingBlock) signingBlock.hidden = !(input && input.checked);
-        if (input && input.checked) {
+        if (signingBlock) signingBlock.hidden = locked || !(input && input.checked);
+        if (input && input.checked && !locked) {
           syncSigningModeFields(option);
         }
       });
     }
 
     agencyOptions.forEach(function (option) {
-      initSigningControls(option);
+      if (!isLockedAgency(option)) {
+        initSigningControls(option);
+      }
     });
 
     function sync() {
@@ -1603,6 +1624,10 @@
       var input = option.querySelector("[data-mou-agency-checkbox]");
       if (input) {
         input.addEventListener("change", function () {
+          if (isLockedAgency(option)) {
+            input.checked = true;
+            return;
+          }
           syncRowState();
         });
       }
@@ -1621,6 +1646,7 @@
       clearAllBtn.addEventListener("click", function () {
         agencyOptions.forEach(function (option) {
           if (option.style.display === "none") return;
+          if (isLockedAgency(option)) return;
           var input = option.querySelector("[data-mou-agency-checkbox]");
           if (input) input.checked = false;
         });
@@ -1631,6 +1657,7 @@
       var invalid = null;
       agencyOptions.forEach(function (option) {
         if (invalid) return;
+        if (isLockedAgency(option)) return;
         if (option.style.display === "none") return;
         var input = option.querySelector("[data-mou-agency-checkbox]");
         if (!input || !input.checked) return;

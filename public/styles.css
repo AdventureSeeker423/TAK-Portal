@@ -1500,6 +1500,21 @@ label.btn {
     background: rgba(46, 160, 67, 0.18);
 }
 
+.mouAssignAgencyRow--locked {
+    border-color: rgba(46, 160, 67, 0.35);
+    background: rgba(46, 160, 67, 0.1);
+}
+
+.mouAssignAgencyRow--locked .mouAssignAgencyRow__check {
+    cursor: not-allowed;
+}
+
+.mouAssignAgencyRow__signedBadge {
+    font-size: 12px;
+    font-weight: 600;
+    color: #3fb950;
+}
+
 .noScroll {
     overflow: hidden;
 }

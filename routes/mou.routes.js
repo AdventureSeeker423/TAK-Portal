@@ -441,6 +441,9 @@ function buildAdminStreamRow(stream) {
     targetAgencies,
     signedCount: signatures.filter((entry) => !!entry.signature).length,
     pendingSignatureCount: signatures.filter((entry) => !entry.signature).length,
+    signedAgencySuffixes: signatures
+      .filter((entry) => !!entry.signature)
+      .map((entry) => entry.agency.suffix),
     signatureSummary: mouService.getStreamActiveAssignmentSignatureSummary(stream),
     externalSignPaths: Object.fromEntries(
       targetAgencies.map((agency) => {
