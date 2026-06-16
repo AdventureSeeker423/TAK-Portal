@@ -174,10 +174,10 @@
                   <td class="cardActionsCell" data-label="Actions">
                     <div class="mouActionRow cardActionsRow">
                       <% if (card.currentVersion) { %>
-                        <% if (isAgencyAdmin && card.signableAgencyChoices && card.signableAgencyChoices.length) { %>
-                          <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">
-                            <%= card.allSigned ? "View Document" : "View / Sign" %>
-                          </a>
+                        <% if (isAgencyAdmin && card.canSign) { %>
+                          <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">View / Sign</a>
+                        <% } else if (isAgencyAdmin && card.viewDocumentHref) { %>
+                          <a class="btn secondary" href="<%= card.viewDocumentHref %>">View Document</a>
                         <% } %>
                       <% } %>
                     </div>
@@ -454,9 +454,10 @@
                         <button class="btn secondary" type="button" data-overlay-target="<%= signingOverlayId %>">Signing Method</button>
                         <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
                         <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
-                        <% const managedSuffixSet = new Set((managedAgencySuffixes || []).map(function (suffix) { return String(suffix || "").trim().toLowerCase(); })); %>
-                        <% if (managedSuffixSet.has(String(row.agencyId || "").trim().toLowerCase())) { %>
+                        <% if (row.userCanSign) { %>
                           <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.currentVersion) %>">View / Sign</a>
+                        <% } else if (row.documentViewHref) { %>
+                          <a class="btn secondary" href="<%= row.documentViewHref %>">View Document</a>
                         <% } %>
                       <% } %>
                       <% if (row.needsSignature || (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0))) { %>

@@ -258,17 +258,15 @@ function canSeeStream(authUser, stream) {
 }
 
 function resolveSignableAgencyChoices(authUser, stream) {
-  const targetSuffixes = mouService.getTargetAgenciesForStream(stream).map((agency) =>
-    String(agency?.suffix || "").trim().toLowerCase()
-  );
-  const managed = accessSvc
-    .getUserManagedAgencySuffixes(authUser)
-    .map((suffix) => String(suffix || "").trim().toLowerCase())
-    .filter(Boolean);
-  return managed
-    .filter((suffix) => targetSuffixes.includes(suffix))
-    .map((suffix) => mouService.getAgencyBySuffix(suffix))
-    .filter(Boolean)
+  return mouService
+    .getTargetAgenciesForStream(stream)
+    .filter((agency) =>
+      mouService.canUserSignAgencyForStream(
+        authUser,
+        stream,
+        String(agency?.suffix || "").trim().toLowerCase()
+      )
+    )
     .map((agency) => ({
       suffix: String(agency.suffix || "").trim().toLowerCase(),
       name: agency.name || agency.groupPrefix || agency.suffix,
@@ -379,6 +377,25 @@ function buildStreamCard(authUser, stream) {
     agency,
     signature: mouService.getCurrentAgencySignatureForStream(stream, agency.suffix),
   }));
+  const canSign =
+    !!agencyChoices.length && signatures.some((entry) => !entry.signature);
+  const documentViewHref = currentVersion
+    ? mouService.buildDocumentViewHref(stream, currentVersion)
+    : null;
+  const primaryAgencySuffix = mouService.resolvePrimaryAgencySuffixForUser(
+    authUser,
+    stream
+  );
+  const primarySignature = primaryAgencySuffix
+    ? mouService.getCurrentAgencySignatureForStream(stream, primaryAgencySuffix)
+    : null;
+  const signedViewHref =
+    primarySignature && currentVersion && primaryAgencySuffix
+      ? `/mou/agency/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+          primaryAgencySuffix
+        )}?version=${encodeURIComponent(currentVersion.version)}`
+      : null;
+  const viewDocumentHref = signedViewHref || documentViewHref;
 
   return {
     stream,
@@ -390,6 +407,10 @@ function buildStreamCard(authUser, stream) {
     })),
     signableAgencyChoices: agencyChoices,
     signatures,
+    canSign,
+    documentViewHref,
+    signedViewHref,
+    viewDocumentHref,
     allSigned:
       !agencyChoices.length ||
       signatures.every((entry) => !!entry.signature),
@@ -461,7 +482,32 @@ router.get("/mou", requireMouEnabled, requireMouPermission, async (req, res) => 
     ? mouService.listStreams().map((stream) => buildAdminStreamRow(stream))
     : [];
   const signatureRows = isGlobalAdmin
-    ? mouService.getAgencySignatureStatusRows()
+    ? mouService.getAgencySignatureStatusRows().map((row) => {
+        let userCanSign = false;
+        try {
+          const stream = mouService.getStreamById(row.mouId);
+          userCanSign = mouService.canUserSignAgencyForStream(
+            req.authentikUser,
+            stream,
+            row.agencyId
+          );
+        } catch {
+          userCanSign = false;
+        }
+        return {
+          ...row,
+          userCanSign,
+          documentViewHref: (() => {
+            try {
+              const stream = mouService.getStreamById(row.mouId);
+              const version = mouService.getCurrentVersion(stream);
+              return version ? mouService.buildDocumentViewHref(stream, version) : null;
+            } catch {
+              return null;
+            }
+          })(),
+        };
+      })
     : [];
   const archivedRows = isGlobalAdmin
     ? mouService.listArchivedDocumentRows()

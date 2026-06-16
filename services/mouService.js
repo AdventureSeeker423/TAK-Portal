@@ -293,6 +293,93 @@ function getAgencySigningAssignedAdminUsername(stream, agencySuffix) {
   return normalizeText(assignments.agencySigning?.[suffix]?.assignedAdminUsername);
 }
 
+function userMatchesAssignedSigningAdmin(authUser, stream, agencySuffix) {
+  if (!authUser || !stream) return false;
+  const suffix = normalizeAgencySuffix(agencySuffix);
+  const assignedEmail = getAgencySigningAssignedAdminEmail(stream, suffix);
+  const assignedUsername = getAgencySigningAssignedAdminUsername(stream, suffix);
+  const userEmail = String(authUser.email || "").trim().toLowerCase();
+  const userUsername = String(authUser.username || "").trim().toLowerCase();
+  if (assignedUsername && userUsername === assignedUsername.toLowerCase()) {
+    return true;
+  }
+  if (assignedEmail && userEmail && userEmail === assignedEmail.toLowerCase()) {
+    return true;
+  }
+  return false;
+}
+
+function canUserSignAgencyForStream(authUser, stream, agencySuffix) {
+  if (!authUser || !stream) return false;
+  const suffix = normalizeAgencySuffix(agencySuffix);
+  if (!suffix) return false;
+  if (!getStreamAgencySuffixes(stream).includes(suffix)) return false;
+
+  const mode = getAgencySigningMode(stream, suffix);
+  if (mode === AGENCY_SIGNING_MODE_EXTERNAL_LINK) {
+    return false;
+  }
+  if (mode === AGENCY_SIGNING_MODE_SPECIFIC_ADMIN) {
+    return userMatchesAssignedSigningAdmin(authUser, stream, suffix);
+  }
+
+  const managed = accessSvc
+    .getUserManagedAgencySuffixes(authUser)
+    .map(normalizeAgencySuffix)
+    .filter(Boolean);
+  if (managed.length) {
+    return managed.includes(suffix);
+  }
+  if (authUser.isAgencyAdmin) {
+    return accessSvc.isSuffixAllowed(authUser, suffix);
+  }
+  return normalizeAgencySuffix(resolveUserAgencySuffix(authUser)) === suffix;
+}
+
+function buildDocumentViewHref(stream, versionRecord) {
+  if (!stream?.mouId || !versionRecord?.version) return null;
+  if (normalizeContentType(versionRecord.contentType) === "pdf") {
+    return `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+      versionRecord.version
+    )}`;
+  }
+  return `/mou/view/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+    versionRecord.version
+  )}`;
+}
+
+function resolvePrimaryAgencySuffixForUser(authUser, stream) {
+  const targetSuffixes = getStreamAgencySuffixes(stream);
+  if (!targetSuffixes.length) return "";
+
+  const signable = targetSuffixes.filter((suffix) =>
+    canUserSignAgencyForStream(authUser, stream, suffix)
+  );
+  if (signable.length) return normalizeAgencySuffix(signable[0]);
+
+  const managed = accessSvc
+    .getUserManagedAgencySuffixes(authUser)
+    .map(normalizeAgencySuffix)
+    .filter(Boolean);
+  if (managed.length) {
+    const managedSet = new Set(managed);
+    const match = targetSuffixes.find((suffix) =>
+      managedSet.has(normalizeAgencySuffix(suffix))
+    );
+    if (match) return normalizeAgencySuffix(match);
+  }
+  if (authUser?.isAgencyAdmin) {
+    const match = targetSuffixes.find((suffix) =>
+      accessSvc.isSuffixAllowed(authUser, suffix)
+    );
+    if (match) return normalizeAgencySuffix(match);
+  }
+
+  const home = normalizeAgencySuffix(resolveUserAgencySuffix(authUser));
+  if (home && targetSuffixes.includes(home)) return home;
+  return normalizeAgencySuffix(targetSuffixes[0]);
+}
+
 function buildExternalSignPath(token) {
   return `/request-access/mou/${encodeURIComponent(String(token || "").trim())}`;
 }
@@ -2960,6 +3047,10 @@ function getSidebarListForUser(authUser) {
             accessSvc.isSuffixAllowed(authUser, suffix)
           )
         : [];
+    const signableAgencySuffixes = availableAgencySuffixes.filter((suffix) =>
+      canUserSignAgencyForStream(authUser, stream, suffix)
+    );
+    const viewHref = currentVersion ? buildDocumentViewHref(stream, currentVersion) : null;
     return {
       mouId: stream.mouId,
       title: stream.title,
@@ -2967,20 +3058,11 @@ function getSidebarListForUser(authUser) {
       scopeType: getAssignments(stream).serverwide ? "global" : "agency",
       scopeLabel: getScopeLabel(stream),
       contentType: normalizeContentType(currentVersion?.contentType),
-      viewHref:
-        currentVersion
-          ? normalizeContentType(currentVersion?.contentType) === "pdf"
-            ? `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
-                currentVersion.version
-              )}`
-            : `/mou/view/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
-                currentVersion.version
-              )}`
-          : null,
+      viewHref,
       fileUrl: contentUrls?.fileUrl || null,
       downloadUrl: contentUrls?.downloadUrl || null,
       signHref:
-        currentVersion && availableAgencySuffixes.length
+        currentVersion && signableAgencySuffixes.length
           ? `/mou/sign/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
               currentVersion.version
             )}`
@@ -3052,6 +3134,10 @@ module.exports = {
   markSignInviteCompletionViewed,
   getAgencySigningAssignedAdminEmail,
   getAgencySigningAssignedAdminUsername,
+  userMatchesAssignedSigningAdmin,
+  canUserSignAgencyForStream,
+  buildDocumentViewHref,
+  resolvePrimaryAgencySuffixForUser,
   syncExternalSignInvitesForStream,
   refreshExternalSignInvitesAfterVersionChange,
   revokeActiveSignInvitesForAgency,
