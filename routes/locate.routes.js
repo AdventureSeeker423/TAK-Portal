@@ -9,8 +9,36 @@ const auditSvc = require("../services/auditLog.service");
 const { renderTemplate, htmlToText } = require("../services/emailTemplates.service");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 const smsSvc = require("../services/sms.service");
+const settingsSvc = require("../services/settings.service");
+const { getString } = require("../services/env");
 
 const EMAIL_RE = /^\S+@\S+\.[A-Za-z]{2,}$/;
+
+/** Public share URL for /locate/:slug — prefers TAK_PORTAL_PUBLIC_URL (required for CloudTAK bridge). */
+function buildPublicLocateUrl(req, slug) {
+  let base = "";
+  try {
+    const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
+    if (settings.TAK_PORTAL_PUBLIC_URL && String(settings.TAK_PORTAL_PUBLIC_URL).trim()) {
+      base = String(settings.TAK_PORTAL_PUBLIC_URL).trim().replace(/\/+$/, "");
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  if (!base) {
+    const env = getString("TAK_PORTAL_PUBLIC_URL", "").trim().replace(/\/+$/, "");
+    if (env) base = env;
+  }
+  if (base) {
+    return `${base}/locate/${encodeURIComponent(slug)}`;
+  }
+  const proto =
+    String(req.get("x-forwarded-proto") || req.protocol || "https")
+      .split(",")[0]
+      .trim() || "https";
+  const host = String(req.get("x-forwarded-host") || req.get("host") || "").trim();
+  return `${proto}://${host}/locate/${encodeURIComponent(slug)}`;
+}
 
 function auditRequest(req) {
   return {
@@ -560,11 +588,7 @@ router.post("/locators/:id/send-link-email", async (req, res) => {
       });
     }
 
-    const proto = String(req.get("x-forwarded-proto") || req.protocol || "https")
-      .split(",")[0]
-      .trim() || "https";
-    const host = req.get("host") || "";
-    const url = `${proto}://${host}/locate/${encodeURIComponent(loc.slug)}`;
+    const url = buildPublicLocateUrl(req, loc.slug);
 
     const subject = "Share your location";
     const message = `Please open this link on your phone to share your location with responders:\n\n${url}\n`;
@@ -641,11 +665,7 @@ router.post("/locators/:id/send-link-sms", async (req, res) => {
       });
     }
 
-    const proto = String(req.get("x-forwarded-proto") || req.protocol || "https")
-      .split(",")[0]
-      .trim() || "https";
-    const host = req.get("host") || "";
-    const url = `${proto}://${host}/locate/${encodeURIComponent(loc.slug)}`;
+    const url = buildPublicLocateUrl(req, loc.slug);
     const text = `Please open this link on your phone to share your location with responders:\n\n${url}`;
 
     for (const phone of parsed.phones) {
