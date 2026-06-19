@@ -635,6 +635,14 @@
     );
   }
 
+  function imageDataToDataUrl(imageData) {
+    const canvas = document.createElement("canvas");
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    canvas.getContext("2d").putImageData(imageData, 0, 0);
+    return canvas.toDataURL("image/png");
+  }
+
   function installMapImageSync(imageName, source) {
     if (!map.isStyleLoaded() || !source || map.hasImage(imageName)) {
       return map.hasImage(imageName);
@@ -1468,7 +1476,6 @@
         kind: "contact",
         id: "contact:" + m.uid,
         title: m.callsign || m.uid,
-        meta: String(m.type || "Contact"),
         marker: m,
       };
     });
@@ -1508,6 +1515,72 @@
       out.push(addresses[i]);
     }
     return out;
+  }
+
+  function fillGoToMarkerPreview(container, m) {
+    container.innerHTML = "";
+    if (markerUsesMapIcon(m)) {
+      const img = document.createElement("img");
+      img.className = "map-goto-marker-icon";
+      img.alt = "";
+      img.decoding = "async";
+      img.addEventListener("error", function () {
+        const dot = document.createElement("span");
+        dot.className = "map-aff-dot map-goto-marker-dot";
+        dot.style.cssText = markerDotStyle(m);
+        if (img.parentNode === container) {
+          img.replaceWith(dot);
+        }
+      });
+      container.appendChild(img);
+      hydrateGoToMarkerPreviewImg(img, m);
+      return;
+    }
+    const dot = document.createElement("span");
+    dot.className = "map-aff-dot map-goto-marker-dot";
+    dot.style.cssText = markerDotStyle(m);
+    container.appendChild(dot);
+  }
+
+  function hydrateGoToMarkerPreviewImg(img, m) {
+    const apiIconId = String(m.iconId);
+    const baseMapImageId = registerMapImageId(apiIconId);
+    const color = markerDisplayColor(m);
+
+    function applyImageData(imageData) {
+      if (!imageData || !img.isConnected) return;
+      img.src = imageDataToDataUrl(imageData);
+    }
+
+    if (color && !iconSkipsRecolor(m, apiIconId)) {
+      const cached = buildColoredImageData(baseMapImageId, color);
+      if (cached) {
+        applyImageData(cached);
+        return;
+      }
+      loadColoredMapIcon(apiIconId, baseMapImageId, color)
+        .then(function () {
+          applyImageData(buildColoredImageData(baseMapImageId, color));
+        })
+        .catch(function () {
+          img.src = iconApiUrl(apiIconId);
+        });
+      return;
+    }
+
+    const base = baseIconPixelCache.get(baseMapImageId);
+    if (base) {
+      applyImageData(base);
+      return;
+    }
+
+    loadMapIcon(apiIconId, baseMapImageId)
+      .then(function () {
+        applyImageData(baseIconPixelCache.get(baseMapImageId));
+      })
+      .catch(function () {
+        img.src = iconApiUrl(apiIconId);
+      });
   }
 
   function renderGoToResults() {
@@ -1567,21 +1640,25 @@
       btn.setAttribute("aria-selected", i === goToActiveIndex ? "true" : "false");
       btn.dataset.index = String(i);
 
-      let nameHtml = escapeHtml(item.title);
+      const nameEl = document.createElement("div");
+      nameEl.className = "name";
       if (item.kind === "contact" && item.marker) {
-        nameHtml =
-          '<span class="map-aff-dot" style="' +
-          markerDotStyle(item.marker) +
-          '"></span>' +
-          escapeHtml(item.title);
+        const previewEl = document.createElement("span");
+        previewEl.className = "map-goto-marker-preview";
+        fillGoToMarkerPreview(previewEl, item.marker);
+        nameEl.appendChild(previewEl);
+        nameEl.appendChild(document.createTextNode(item.title || ""));
+      } else {
+        nameEl.textContent = item.title || "";
       }
+      btn.appendChild(nameEl);
 
-      btn.innerHTML =
-        '<div class="name">' +
-        nameHtml +
-        '</div><div class="meta">' +
-        escapeHtml(item.meta || "") +
-        "</div>";
+      if (item.meta) {
+        const metaEl = document.createElement("div");
+        metaEl.className = "meta";
+        metaEl.textContent = item.meta;
+        btn.appendChild(metaEl);
+      }
 
       btn.addEventListener("mousedown", function (ev) {
         ev.preventDefault();
@@ -1745,7 +1822,7 @@
         kind: "address",
         id: "address:" + idx + ":" + hit.lat + "," + hit.lon,
         title: String(hit.label || query),
-        meta: "Address",
+        meta: hit.source ? String(hit.source) : "Address",
         lat: Number(hit.lat),
         lon: Number(hit.lon),
       };

@@ -194,11 +194,11 @@ body {
 .map-basemap-picker {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   border: 1px solid var(--map-border);
   background: rgba(0, 0, 0, 0.35);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 7px 12px 7px 11px;
   color-scheme: dark;
 }
 
@@ -207,12 +207,13 @@ body {
   color: var(--map-accent);
   opacity: 0.9;
   pointer-events: none;
+  margin-left: 1px;
 }
 
 .map-basemap-picker .map-select {
   border: none;
   background-color: transparent;
-  padding: 0 16px 0 0;
+  padding: 1px 20px 1px 2px;
   min-width: 0;
   color: var(--map-text);
   color-scheme: dark;
@@ -224,6 +225,7 @@ body {
 .map-basemap-picker .map-select option {
   color: var(--map-text);
   background-color: #121820;
+  padding: 8px 12px;
 }
 
 .map-select {
@@ -242,6 +244,7 @@ body {
 .map-select option {
   color: var(--map-text);
   background-color: #121820;
+  padding: 8px 12px;
 }
 
 .map-status {
@@ -1010,7 +1013,29 @@ body.map-detail-resizing .map-panel-resize-handle {
   font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+}
+
+.map-goto-marker-preview {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-goto-marker-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.map-goto-marker-dot {
+  width: 10px;
+  height: 10px;
 }
 
 .map-goto-result .meta {
