@@ -1,7 +1,7 @@
 (function (global) {
   "use strict";
 
-  const COT2525_RE = /^a-[PUAFNSHJKOXpuafnshjkox]-[PAGSUFXZ](-\w+)*$/;
+  const COT2525_RE = /^a-[PUAFNSHJKOXpuafnshjkox]-[PAGSUFXZpag-sufxz](-\w+)*$/;
 
   function is2525Convertable(cotType) {
     return COT2525_RE.test(String(cotType || "").trim());
@@ -25,6 +25,8 @@
 
   function resolveSymbolSidc(cotType, options) {
     const opts = options || {};
+    const sidc2525B = String(opts.sidc2525B || "").trim();
+    if (sidc2525B) return sidc2525B;
     const sidc2525D = String(opts.sidc2525D || "").trim();
     if (/^\d{10,}$/.test(sidc2525D)) return sidc2525D;
     return cotTypeTo2525B(cotType);

@@ -102,8 +102,9 @@ function parseMarkerFromCoT(cot) {
       updatedAt: new Date().toISOString(),
     };
 
-    base.groups = mapMeta.resolveGroupsForMarker(base, detail);
+    base.relatedUids = mapMeta.parseRelatedUids(detail);
     base.cotRouteGroups = mapMeta.parseGroupsFromCoTDetail(detail);
+    base.groups = mapMeta.resolveGroupsForMarker(base, detail);
 
     const usericon = mapIcon.parseUserIcon(detail);
     base.iconsetpath = usericon.iconsetpath || null;
@@ -120,7 +121,7 @@ function parseMarkerFromCoT(cot) {
       base.iconSource = icon.source;
     }
 
-    mapSymbol.enrichMarkerSymbol(base);
+    mapSymbol.applySymbolIcon(base);
 
     return base;
   } catch {
@@ -194,9 +195,10 @@ function sweepStaleMarkers(notify = true) {
 function refreshAllMarkerSymbols() {
   const at = new Date().toISOString();
   for (const marker of markers.values()) {
-    const prev = marker.symbolSidc2525D || null;
-    mapSymbol.enrichMarkerSymbol(marker);
-    if (marker.symbolSidc2525D === prev) continue;
+    const prevId = marker.iconId || null;
+    const prevSource = marker.iconSource || null;
+    mapSymbol.applySymbolIcon(marker);
+    if (marker.iconId === prevId && marker.iconSource === prevSource) continue;
     marker.updatedAt = at;
     broadcast({ type: "update", marker, at });
   }

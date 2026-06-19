@@ -191,8 +191,12 @@
     return mapped;
   }
 
-  function iconApiUrl(iconId) {
-    return "/api/map/icons?id=" + encodeURIComponent(iconId);
+  function iconApiUrl(iconId, course) {
+    let url = "/api/map/icons?id=" + encodeURIComponent(iconId);
+    if (Number.isFinite(course) && course >= 0) {
+      url += "&course=" + encodeURIComponent(String(course));
+    }
+    return url;
   }
 
   function milIconCacheKey(plan) {
@@ -204,10 +208,14 @@
     if (m.iconId && (m.iconSource === "path" || m.iconSource === "usericon")) {
       return { kind: "png", apiIconId: m.iconId };
     }
-    if (window.MapSymbology && MapSymbology.is2525Convertable(m.type)) {
+    if (m.iconSource === "symbol2525" && m.iconId) {
+      return { kind: "png", apiIconId: m.iconId };
+    }
+    if (m.milSymbol || (window.MapSymbology && MapSymbology.is2525Convertable(m.type))) {
       return {
         kind: "mil",
         cotType: m.type,
+        sidc2525B: m.symbolSidc2525B || null,
         sidc2525D: m.symbolSidc2525D || null,
       };
     }
@@ -233,6 +241,7 @@
         const canvas = MapSymbology.renderMilSymbolCanvas(plan.cotType, {
           size: 48,
           course: Number.isFinite(course) ? course : undefined,
+          sidc2525B: plan.sidc2525B || undefined,
           sidc2525D: plan.sidc2525D || undefined,
         });
         if (!canvas) throw new Error("invalid symbol");
@@ -250,13 +259,13 @@
     return promise;
   }
 
-  function loadMapIcon(iconId, mapImageId) {
+  function loadMapIcon(iconId, mapImageId, course) {
     const imageName = mapImageId || registerMapImageId(iconId);
     if (!iconId || map.hasImage(imageName)) return Promise.resolve();
     const pendingKey = imageName;
     if (iconLoadPending.has(pendingKey)) return iconLoadPending.get(pendingKey);
 
-    const promise = fetch(iconApiUrl(iconId))
+    const promise = fetch(iconApiUrl(iconId, course))
       .then((resp) => {
         if (!resp.ok) throw new Error("icon " + resp.status);
         return resp.blob();
@@ -299,7 +308,7 @@
       return loadMilSymbolIcon(plan, mapImageId, m.course);
     }
     if (plan.kind === "png" && plan.apiIconId) {
-      return loadMapIcon(plan.apiIconId, mapImageId);
+      return loadMapIcon(plan.apiIconId, mapImageId, m.course);
     }
     return Promise.resolve();
   }
@@ -335,7 +344,7 @@
       });
       return;
     }
-    loadMapIcon(raw, mapImageId).then(() => {
+    loadMapIcon(raw, mapImageId, undefined).then(() => {
       if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
     });
   }
@@ -817,16 +826,18 @@
 
   function markerGeoJsonFeature(m) {
     const color = markerDisplayColor(m);
-    const visible = markerVisible(m);
     const coords = [m.lon, m.lat];
     const features = [];
-    const plan = visible ? resolveMarkerIconPlan(m) : { kind: "circle" };
+    const plan = resolveMarkerIconPlan(m);
     let mapImageId = "";
     if (plan.kind === "mil") {
       mapImageId = registerMapImageId(milIconCacheKey(plan));
     } else if (plan.kind === "png" && plan.apiIconId) {
       mapImageId = registerMapImageId(plan.apiIconId);
     }
+
+    const showCircle = plan.kind === "circle" ? 1 : 0;
+    const opacity = markerOpacity(m);
 
     const pointFeature = {
       type: "Feature",
@@ -839,18 +850,18 @@
         affiliation: m.affiliation || "other",
         color,
         iconId: mapImageId,
-        showCircle: plan.kind === "circle" ? 1 : 0,
-        opacity: visible ? markerOpacity(m) : 0,
-        labelOpacity: visible ? markerOpacity(m) : 0,
+        showCircle,
+        opacity,
+        labelOpacity: opacity,
         selected: m.uid === selectedUid,
         course: Number.isFinite(m.course) && m.course >= 0 ? m.course : 0,
       },
     };
     features.push(pointFeature);
 
-    if (visible && mapImageId) ensureMarkerIcon(m, mapImageId);
+    if (mapImageId) ensureMarkerIcon(m, mapImageId);
 
-    if (visible && Number.isFinite(m.course) && m.course >= 0) {
+    if (Number.isFinite(m.course) && m.course >= 0) {
       const rad = (m.course * Math.PI) / 180;
       const len = 0.02 / Math.max(map.getZoom(), 4);
       features.push({
@@ -875,6 +886,7 @@
     if (!src) return;
     const features = [];
     for (const m of markersByUid.values()) {
+      if (!markerVisible(m)) continue;
       features.push(...markerGeoJsonFeature(m));
     }
     src.setData({ type: "FeatureCollection", features });
@@ -927,6 +939,15 @@
       "<dt>Type</dt><dd>" + escapeHtml(m.type || "—") + "</dd>" +
       "<dt>Affiliation</dt><dd>" + escapeHtml(m.affiliation || "other") + "</dd>" +
       "<dt>Groups</dt><dd class=\"map-chips\">" + (groupHtml || "—") + "</dd>" +
+      (Array.isArray(m.cotRouteGroups) && m.cotRouteGroups.length
+        ? "<dt>CoT route</dt><dd class=\"map-chips\">" +
+          m.cotRouteGroups.map((g) => '<span class="map-chip">' + escapeHtml(g) + "</span>").join(" ") +
+          "</dd>"
+        : "") +
+      (Array.isArray(m.relatedUids) && m.relatedUids.length
+        ? "<dt>Linked UIDs</dt><dd>" + escapeHtml(m.relatedUids.join(", ")) + "</dd>"
+        : "") +
+      "<dt>Icon</dt><dd>" + escapeHtml(m.iconSource || "—") + (m.iconId ? " · " + escapeHtml(m.iconId) : "") + "</dd>" +
       "<dt>Team</dt><dd>" + escapeHtml(m.team || "—") + "</dd>" +
       "<dt>Lat / Lon</dt><dd>" + fmtCoord(m.lat) + ", " + fmtCoord(m.lon) + "</dd>" +
       "<dt>HAE</dt><dd>" + (m.hae != null ? escapeHtml(String(m.hae)) : "—") + "</dd>" +
