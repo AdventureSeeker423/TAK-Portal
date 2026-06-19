@@ -146,6 +146,12 @@ body {
   border-color: var(--map-panel-border);
 }
 
+.map-btn.active {
+  background: var(--map-accent-dim);
+  border-color: rgba(34, 211, 238, 0.35);
+  color: var(--map-accent);
+}
+
 .map-btn-check {
   gap: 4px;
 }

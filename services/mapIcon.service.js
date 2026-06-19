@@ -25,7 +25,19 @@ const ICONSET_ARCHIVES = [
 ];
 
 const DEFAULT_ICONSET_UID = "34ae1613-9645-4222-a9d2-e5f243dea2865";
+/** Generic Icons — ATAK paths missing from CloudTAK-Data zip. */
+const GENERIC_ICONS_UID = "ad78aafb-83a6-4c07-b2b9-a897a8b6a38f";
 const DATA_ROOT = path.join(__dirname, "..", "data", "map-icons");
+const SUPPLEMENT_ROOT = path.join(__dirname, "..", "data", "map-icon-supplement");
+
+/** iconsetUid|relPath or basename -> alternate icon location */
+const ICON_PATH_ALIASES = new Map([
+  [
+    `${GENERIC_ICONS_UID}|Shapes/walkingpersonnel.png`,
+    { iconsetUid: DEFAULT_ICONSET_UID, relPath: "People/walk.png" },
+  ],
+  ["walkingpersonnel.png", { iconsetUid: DEFAULT_ICONSET_UID, relPath: "People/walk.png" }],
+]);
 
 /** @type {Map<string, object>} */
 const iconsetsByUid = new Map();
@@ -224,12 +236,37 @@ function resolveFromIconset(iconset, { cotType, iconName, groupHint, affiliation
   return null;
 }
 
+function resolveIconPathAlias(iconsetUid, relPath) {
+  const normalized = String(relPath || "").replace(/\\/g, "/");
+  const uid = String(iconsetUid || "");
+  const keyed = ICON_PATH_ALIASES.get(`${uid}|${normalized}`);
+  if (keyed) return keyed;
+  const base = path.basename(normalized).toLowerCase();
+  return ICON_PATH_ALIASES.get(base) || null;
+}
+
+function resolveAliasedIcon(alias) {
+  if (!alias) return null;
+  const iconset = iconsetsByUid.get(alias.iconsetUid);
+  if (!iconset) return null;
+  const rel = String(alias.relPath || "").replace(/\\/g, "/");
+  return buildIconResult(iconset, rel, "alias");
+}
+
 function parseUserIcon(detail) {
   const attrs = detail?.usericon?._attributes || detail?.usericon || {};
+  const iconsetpath = attrs.iconsetpath || attrs.iconsetPath || "";
+  let name = attrs.name || "";
+  if (!name && iconsetpath) {
+    const parsed = parseIconsetPath(iconsetpath);
+    if (parsed?.mode === "path") {
+      name = path.basename(parsed.relPath);
+    }
+  }
   return {
-    iconsetpath: attrs.iconsetpath || attrs.iconsetPath || "",
+    iconsetpath,
     group: attrs.group || attrs.groupName || "",
-    name: attrs.name || "",
+    name,
   };
 }
 
@@ -238,7 +275,7 @@ function resolveIcon({ type, affiliation, detail, usericon }) {
   let cotType = String(type || "").trim();
   let directPath = null;
 
-  const parsedPath = parseIconsetPath(usericon.iconsetpath);
+  const parsedPath = parseIconsetPath(ui.iconsetpath);
   if (parsedPath?.mode === "type") {
     cotType = parsedPath.cotType || cotType;
   } else if (parsedPath?.mode === "path") {
@@ -257,6 +294,15 @@ function resolveIcon({ type, affiliation, detail, usericon }) {
       const resolved = resolveRelativePath(iconset, base, path.dirname(rel));
       const hit = buildIconResult(iconset, resolved, "path");
       if (hit) return hit;
+      const aliasHit = resolveAliasedIcon(
+        resolveIconPathAlias(directPath.iconsetUid, rel)
+      );
+      if (aliasHit) return aliasHit;
+    } else {
+      const aliasHit = resolveAliasedIcon(
+        resolveIconPathAlias(directPath.iconsetUid, directPath.relPath)
+      );
+      if (aliasHit) return aliasHit;
     }
   }
 
@@ -273,8 +319,8 @@ function resolveIcon({ type, affiliation, detail, usericon }) {
   if (defaultIconset) {
     const hit = resolveFromIconset(defaultIconset, {
       cotType,
-      iconName: usericon.name,
-      groupHint: usericon.group,
+      iconName: ui.name,
+      groupHint: ui.group,
       affiliation,
     });
     if (hit) return hit;
@@ -284,8 +330,8 @@ function resolveIcon({ type, affiliation, detail, usericon }) {
     if (iconset.uid === DEFAULT_ICONSET_UID) continue;
     const hit = resolveFromIconset(iconset, {
       cotType,
-      iconName: usericon.name,
-      groupHint: usericon.group,
+      iconName: ui.name,
+      groupHint: ui.group,
       affiliation,
     });
     if (hit) return hit;
@@ -375,6 +421,33 @@ async function loadIconsetDir(dirName) {
   return iconset;
 }
 
+async function mergeIconSupplements() {
+  if (!fs.existsSync(SUPPLEMENT_ROOT)) return;
+  let entries;
+  try {
+    entries = await fsp.readdir(SUPPLEMENT_ROOT, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dirName = entry.name;
+    const iconset = [...iconsetsByUid.values()].find((set) => set.dirName === dirName);
+    if (!iconset) continue;
+    const supplementDir = path.join(SUPPLEMENT_ROOT, dirName);
+    const files = await walkPngFiles(supplementDir);
+    for (const abs of files) {
+      const rel = path.relative(supplementDir, abs).replace(/\\/g, "/");
+      const dest = path.join(iconset.rootDir, rel);
+      await fsp.mkdir(path.dirname(dest), { recursive: true });
+      try {
+        await fsp.copyFile(abs, dest);
+      } catch (_) {}
+    }
+    await buildFileIndex(iconset);
+  }
+}
+
 async function ensureIconsets() {
   if (initPromise.current) return initPromise.current;
 
@@ -403,6 +476,8 @@ async function ensureIconsets() {
         console.warn("[map-icon] failed to load iconset", dirName, err?.message || err);
       }
     }
+
+    await mergeIconSupplements();
   })();
 
   return initPromise.current;

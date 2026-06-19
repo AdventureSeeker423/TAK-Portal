@@ -386,7 +386,8 @@
         recomputeGroupCounts();
       });
   }
-  let followSelected = false;
+  let lockedUid = null;
+  let lockMoveFromCode = false;
   let activeTab = "channels";
   let popup = null;
   let stackPickerEl = null;
@@ -858,7 +859,6 @@
   const elLayerSearch = document.getElementById("mapLayerSearch");
   const elFit = document.getElementById("mapFitBtn");
   const elBasemapSelect = document.getElementById("mapBasemapSelect");
-  const elFollowCheck = document.getElementById("mapFollowCheck");
   const elZulu = document.getElementById("mapZulu");
   const elOffline = document.getElementById("mapOfflineBanner");
   const elPanelLeft = document.getElementById("mapPanelLeft");
@@ -866,6 +866,7 @@
   const elExpandLeft = document.getElementById("mapExpandLeft");
   const elExpandRight = document.getElementById("mapExpandRight");
   const elCenterBtn = document.getElementById("mapCenterBtn");
+  const elLockBtn = document.getElementById("mapLockBtn");
   const elCopyRawBtn = document.getElementById("mapCopyRawBtn");
 
   const savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark";
@@ -1628,6 +1629,39 @@
     detailAgeTimer = setInterval(tick, 1000);
   }
 
+  function clearLock() {
+    lockedUid = null;
+    updateLockButtonUi();
+  }
+
+  function updateLockButtonUi() {
+    if (!elLockBtn) return;
+    const m = selectedUid ? markersByUid.get(selectedUid) : null;
+    const active = !!(m && lockedUid === m.uid);
+    elLockBtn.classList.toggle("active", active);
+    elLockBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+
+  function toggleLock() {
+    const m = selectedUid ? markersByUid.get(selectedUid) : null;
+    if (!m || !Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return;
+    if (lockedUid === m.uid) {
+      clearLock();
+      return;
+    }
+    lockedUid = m.uid;
+    lockMoveFromCode = true;
+    map.easeTo({ center: [m.lon, m.lat], duration: 400 });
+    updateLockButtonUi();
+  }
+
+  function trackLockedMarker(m) {
+    if (!lockedUid || !m || m.uid !== lockedUid) return;
+    if (!Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return;
+    lockMoveFromCode = true;
+    map.easeTo({ center: [m.lon, m.lat], duration: 300 });
+  }
+
   function renderDetail(m) {
     if (!m) {
       clearDetailAgeTimer();
@@ -1707,6 +1741,7 @@
       });
     }
     startDetailAgeTimer(m);
+    updateLockButtonUi();
     syncDetailPaneVisibility();
   }
 
@@ -1828,9 +1863,6 @@
     renderDetail(m);
     syncMapSource();
     if (m && Number.isFinite(m.lon) && Number.isFinite(m.lat)) {
-      if (followSelected) {
-        map.easeTo({ center: [m.lon, m.lat], duration: 400 });
-      }
       if (showPopupFlag) {
         if (isDetailPaneOpen()) closeMapPopup();
         else showPopup(m);
@@ -1841,6 +1873,9 @@
   function applyBatch(msg) {
     for (const uid of msg.removes || []) {
       markersByUid.delete(String(uid));
+      if (lockedUid === uid) {
+        clearLock();
+      }
       if (selectedUid === uid) {
         selectedUid = null;
         renderDetail(null);
@@ -1854,6 +1889,10 @@
     else recomputeGroupCounts();
     syncMapSource();
     scheduleLayerListRefresh();
+    if (lockedUid) {
+      const locked = markersByUid.get(lockedUid);
+      if (locked) trackLockedMarker(locked);
+    }
   }
 
   function upsertMarker(m) {
@@ -1862,9 +1901,6 @@
     maybeFitVisibleOnLoad();
     if (selectedUid === m.uid) {
       renderDetail(m);
-      if (followSelected && Number.isFinite(m.lon)) {
-        map.easeTo({ center: [m.lon, m.lat], duration: 300 });
-      }
     }
   }
 
@@ -2029,24 +2065,24 @@
     elZoom.textContent = map.getZoom().toFixed(1);
   });
 
-  map.on("movestart", closeStackPicker);
+  map.on("movestart", function (e) {
+    closeStackPicker();
+    if (lockMoveFromCode) return;
+    if (e.originalEvent && lockedUid) {
+      clearLock();
+    }
+  });
+
+  map.on("moveend", () => {
+    lockMoveFromCode = false;
+    elZoom.textContent = map.getZoom().toFixed(1);
+  });
 
   map.on("mousedown", function (e) {
     mapPointerDown = { x: e.point.x, y: e.point.y };
   });
 
   map.on("click", onMapBackgroundClick);
-
-  document.addEventListener("keydown", function (ev) {
-    if (ev.key === "Escape") {
-      closeStackPicker();
-      deselectMarker();
-    }
-  });
-
-  map.on("moveend", () => {
-    elZoom.textContent = map.getZoom().toFixed(1);
-  });
 
   map.on("mousemove", (e) => {
     if (copyToastTimer) return;
@@ -2064,10 +2100,6 @@
 
   elBasemapSelect.addEventListener("change", () => {
     setBasemap(elBasemapSelect.value);
-  });
-
-  elFollowCheck.addEventListener("change", () => {
-    followSelected = elFollowCheck.checked;
   });
 
   elSearch.addEventListener("input", () => {
@@ -2098,6 +2130,7 @@
   });
 
   elFit.addEventListener("click", () => {
+    if (lockedUid) clearLock();
     fitVisibleMarkers(true);
   });
 
@@ -2131,7 +2164,13 @@
 
   elCenterBtn.addEventListener("click", () => {
     const m = selectedUid ? markersByUid.get(selectedUid) : null;
-    if (m) map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12) });
+    if (!m) return;
+    lockMoveFromCode = true;
+    map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12) });
+  });
+
+  elLockBtn.addEventListener("click", () => {
+    toggleLock();
   });
 
   elCopyRawBtn.addEventListener("click", () => {
@@ -2159,11 +2198,8 @@
       else elLayerSearch.focus();
     }
     if (ev.key === "Escape") {
-      selectedUid = null;
-      closeMapPopup();
-      renderList();
-      renderDetail(null);
-      syncMapSource();
+      closeStackPicker();
+      deselectMarker();
     }
   });
 
