@@ -12,6 +12,10 @@ const { getString } = require("./env");
 const FETCH_TIMEOUT_MS = 9000;
 const USER_AGENT = "TAK-Portal/1.0 (live map geocoding)";
 const PROVIDER_FETCH_LIMIT = 10;
+/** ~120 m — treat as the same rooftop/interpolation point. */
+const DEDUPE_RADIUS_KM = 0.12;
+/** Drop street-only hits when a numbered address is nearby on the same road. */
+const VAGUE_SUPPRESS_RADIUS_KM = 0.35;
 
 /** Rough CONUS bbox bias for OSM providers (Alaska/Hawaii still allowed via country filter). */
 const US_PHOTON_BBOX = "-125.0,24.0,-66.0,49.5";
@@ -53,13 +57,128 @@ function normalizeHit(hit) {
   };
 }
 
+function extractHouseNumber(label) {
+  const match = String(label || "").match(/\b(\d+[a-z0-9-]*)\b/i);
+  return match ? match[1].toLowerCase() : "";
+}
+
+function normalizeStreetKey(label) {
+  return String(label || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(
+      /\b(street|st|avenue|ave|boulevard|blvd|drive|dr|road|rd|lane|ln|court|ct|place|pl|parkway|pkwy|highway|hwy|way|pike)\b/g,
+      " "
+    )
+    .replace(/\b(united states|usa|tennessee|tn|county|east tennessee|north|south|east|west)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isVagueStreetLabel(label) {
+  const text = String(label || "").trim();
+  if (!text || extractHouseNumber(text)) return false;
+  return /\b(st|street|ave|avenue|blvd|boulevard|dr|drive|rd|road|ln|lane|ct|court|pl|place|pkwy|parkway|hwy|highway|way|pike)\b/i.test(
+    text
+  );
+}
+
+function labelQualityScore(hit) {
+  let quality = hit.score;
+  if (hit.source === "geocod.io") quality += 6;
+  if (hit.source === "census") quality += 5;
+  if (extractHouseNumber(hit.label)) quality += 4;
+  if (isVagueStreetLabel(hit.label)) quality -= 12;
+  if (hit.label.length > 90) quality -= 4;
+  if (hit.label.length <= 64) quality += 2;
+  return quality;
+}
+
+function pickClusterLabel(cluster) {
+  const ordered = cluster.slice().sort(function (a, b) {
+    const qa = labelQualityScore(a);
+    const qb = labelQualityScore(b);
+    if (qa !== qb) return qb - qa;
+    return a.label.length - b.label.length;
+  });
+  const census = ordered.find(function (hit) {
+    return hit.source === "census";
+  });
+  if (census) return census.label;
+  const geocodio = ordered.find(function (hit) {
+    return hit.source === "geocod.io";
+  });
+  if (geocodio) return geocodio.label;
+  return ordered[0].label;
+}
+
+function shouldSuppressVagueHit(hit, allHits) {
+  if (!isVagueStreetLabel(hit.label)) return false;
+  const vagueStreet = normalizeStreetKey(hit.label);
+  for (const other of allHits) {
+    if (other === hit) continue;
+    const house = extractHouseNumber(other.label);
+    if (!house) continue;
+    if (haversineKm(hit.lat, hit.lon, other.lat, other.lon) > VAGUE_SUPPRESS_RADIUS_KM) {
+      continue;
+    }
+    const otherStreet = normalizeStreetKey(other.label);
+    if (!otherStreet || !vagueStreet) continue;
+    if (
+      otherStreet.includes(vagueStreet) ||
+      vagueStreet.includes(otherStreet)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function clusterHits(hits) {
+  const clusters = [];
+  for (const hit of hits) {
+    let placed = false;
+    for (const cluster of clusters) {
+      const rep = cluster[0];
+      if (haversineKm(hit.lat, hit.lon, rep.lat, rep.lon) <= DEDUPE_RADIUS_KM) {
+        cluster.push(hit);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) clusters.push([hit]);
+  }
+
+  const representatives = [];
+  for (const cluster of clusters) {
+    const best = cluster.slice().sort(function (a, b) {
+      return labelQualityScore(b) - labelQualityScore(a);
+    })[0];
+    representatives.push({
+      lat: best.lat,
+      lon: best.lon,
+      label: pickClusterLabel(cluster),
+      source: best.source,
+      score: Math.max.apply(
+        null,
+        cluster.map(function (h) {
+          return labelQualityScore(h);
+        })
+      ),
+    });
+  }
+  return representatives;
+}
+
 function dedupeKey(hit) {
   return (
-    hit.label.toLowerCase().replace(/\s+/g, " ").slice(0, 80) +
+    extractHouseNumber(hit.label) +
     "|" +
-    hit.lat.toFixed(4) +
+    normalizeStreetKey(hit.label).slice(0, 48) +
+    "|" +
+    hit.lat.toFixed(3) +
     "," +
-    hit.lon.toFixed(4)
+    hit.lon.toFixed(3)
   );
 }
 
@@ -91,24 +210,48 @@ function sortHits(hits, options = {}) {
   });
 }
 
+function collapseDuplicateLabels(hits) {
+  const out = [];
+  const seen = new Set();
+  for (const hit of hits) {
+    const key = String(hit.label || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(hit);
+  }
+  return out;
+}
+
 function mergeHits(lists, limit, options = {}) {
-  const best = new Map();
+  const raw = [];
   for (const list of lists) {
     if (!Array.isArray(list)) continue;
-    for (const raw of list) {
-      const hit = normalizeHit(raw);
-      if (!hit) continue;
-      const key = dedupeKey(hit);
-      const prev = best.get(key);
-      if (!prev || hit.score > prev.score) {
-        best.set(key, hit);
-      }
+    for (const item of list) {
+      const hit = normalizeHit(item);
+      if (hit) raw.push(hit);
     }
   }
-  return sortHits(Array.from(best.values()), options)
+
+  const clustered = clusterHits(raw).filter(function (hit) {
+    return !shouldSuppressVagueHit(hit, raw);
+  });
+
+  const best = new Map();
+  for (const hit of clustered) {
+    const key = dedupeKey(hit);
+    const prev = best.get(key);
+    if (!prev || hit.score > prev.score) {
+      best.set(key, hit);
+    }
+  }
+
+  return collapseDuplicateLabels(sortHits(Array.from(best.values()), options))
     .slice(0, limit)
     .map(function (hit) {
-      return { lat: hit.lat, lon: hit.lon, label: hit.label, source: hit.source };
+      return { lat: hit.lat, lon: hit.lon, label: hit.label };
     });
 }
 
@@ -428,16 +571,14 @@ async function geocodeSearch(query, options = {}) {
     }
   }
 
-  const settled = await Promise.allSettled([
-    searchPhoton(q, providerLimit, near),
-    searchNominatim(q, providerLimit, near),
-    variants.length > 1
-      ? searchPhoton(variants[1], providerLimit, near)
-      : Promise.resolve([]),
-    variants.length > 1
-      ? searchNominatim(variants[1], providerLimit, near)
-      : Promise.resolve([]),
-  ]);
+  const settled = await Promise.allSettled(
+    variants.flatMap(function (variant) {
+      return [
+        searchPhoton(variant, providerLimit, near),
+        searchNominatim(variant, providerLimit, near),
+      ];
+    })
+  );
 
   for (const entry of settled) {
     if (entry.status === "fulfilled" && Array.isArray(entry.value)) {
@@ -456,4 +597,6 @@ module.exports = {
   buildQueryVariants,
   haversineKm,
   sortHits,
+  clusterHits,
+  labelQualityScore,
 };

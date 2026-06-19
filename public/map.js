@@ -1816,7 +1816,6 @@
         kind: "address",
         id: "address:" + idx + ":" + hit.lat + "," + hit.lon,
         title: String(hit.label || query),
-        meta: hit.source ? String(hit.source) : "Address",
         lat: Number(hit.lat),
         lon: Number(hit.lon),
       };

@@ -20,22 +20,67 @@ const merged = geocode.mergeHits(
   5
 );
 
-assert.strictEqual(merged.length, 3);
-assert.strictEqual(merged[0].source, "geocod.io");
-assert.ok(merged.some(function (r) { return r.source === "census"; }));
-assert.ok(merged.some(function (r) { return r.source === "photon"; }));
+assert.strictEqual(merged.length, 2);
+assert.ok(merged[0].label.includes("123"));
+assert.ok(merged.some(function (r) { return /Nashville/i.test(r.label); }));
 
-const deduped = geocode.mergeHits(
+const samePlace = geocode.mergeHits(
   [
     [
-      { lat: 35.04, lon: -85.2, label: "123 Main St, Chattanooga, TN", source: "census", score: 82 },
-      { lat: 35.04, lon: -85.2, label: "123 Main St, Chattanooga, TN", source: "geocod.io", score: 98 },
+      {
+        lat: 35.049627,
+        lon: -85.309474,
+        label:
+          "6125, Preservation Drive, Brentwood, Chattanooga, Hamilton County, East Tennessee, Tennessee, 37416, United States",
+        source: "nominatim",
+        score: 70,
+      },
+      {
+        lat: 35.049628,
+        lon: -85.309475,
+        label: "6125 PRESERVATION DR, CHATTANOOGA, TN, 37416",
+        source: "census",
+        score: 92,
+      },
+      {
+        lat: 35.04962,
+        lon: -85.30948,
+        label: "6125 Preservation Drive, Chattanooga, Tennessee, 37416",
+        source: "photon",
+        score: 80,
+      },
     ],
   ],
   5
 );
-assert.strictEqual(deduped.length, 1);
-assert.strictEqual(deduped[0].source, "geocod.io");
+assert.strictEqual(samePlace.length, 1);
+assert.strictEqual(
+  samePlace[0].label,
+  "6125 PRESERVATION DR, CHATTANOOGA, TN, 37416"
+);
+
+const suppressVague = geocode.mergeHits(
+  [
+    [
+      {
+        lat: 35.049627,
+        lon: -85.309474,
+        label: "6125 PRESERVATION DR, CHATTANOOGA, TN, 37416",
+        source: "census",
+        score: 92,
+      },
+      {
+        lat: 35.04961,
+        lon: -85.30946,
+        label: "Preservation Drive, Chattanooga, Tennessee",
+        source: "photon",
+        score: 72,
+      },
+    ],
+  ],
+  5
+);
+assert.strictEqual(suppressVague.length, 1);
 
 const byDistance = geocode.sortHits(
   [
