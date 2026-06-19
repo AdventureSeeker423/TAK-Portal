@@ -1,0 +1,14 @@
+<iconset version="1" name="Incident Management Icons" defaultGroup="Incident Management" skipResize="false" uid="db450cbe-2fec-47fb-bd2b-ba2db89b035e">
+   <icon name="decon area.png" type2525b="a-n-G"/>
+   <icon name="aircraft crash.png" type2525b="a-n-G"/>
+   <icon name="helicopter landing area.png" type2525b="a-n-G"/>
+   <icon name="emergency operations center.png" type2525b="a-n-G"/>
+   <icon name="staging area.png" type2525b="a-n-G"/>
+   <icon name="fire hazard.png" type2525b="a-n-G"/>
+   <icon name="incident.png" type2525b="a-n-G"/>
+   <icon name="water point.png" type2525b="a-n-G"/>
+   <icon name="casualty collection point.png" type2525b="a-n-G"/>
+   <icon name="incident command post.png" type2525b="a-n-G"/>
+   <icon name="medical triage area.png" type2525b="a-n-G"/>
+   <icon name="road blocked.png" type2525b="a-n-G"/>
+</iconset>

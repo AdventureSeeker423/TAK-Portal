@@ -13,10 +13,11 @@ certs/*.p12
 certs/*.pem
 certs/*.key
 
-# Data Files
+# Data Files (runtime overrides; vendored iconsets live in assets/map-icons/)
 data/
 data/*.txt
 data/*.json
+data/map-icon-supplement/
 
 # Data backups and zips
 *.zip
@@ -26,6 +27,7 @@ data/*.json
 # Logs
 logs/
 *.log
+reports/
 
 # OS / editor cruft
 .DS_Store

@@ -83,9 +83,10 @@ function isAirCotType(type) {
   return parts.length >= 3 && parts[2].toUpperCase() === "A";
 }
 
-/** PNG map icons: explicit usericon/path, air 2525 matches, and feed symbology. */
+/** PNG map icons: feeds and explicit usericon/path; EUD tracks always use team dots. */
 function markerUsesMapIcon(marker) {
   if (!marker?.iconId) return false;
+  if (String(marker.origin || "").toLowerCase() === "eud") return false;
   const src = String(marker.iconSource || "").toLowerCase();
   if (src === "usericon" || src === "path" || src === "alias") {
     return true;

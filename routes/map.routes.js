@@ -224,4 +224,82 @@ router.get("/stream", (req, res) => {
   });
 });
 
+/** Debug icon resolution for a live marker or synthetic inputs. */
+router.get("/debug/icon", async (req, res) => {
+  await mapIcon.ensureIconsets();
+
+  const uid = String(req.query.uid || "").trim();
+  const type = String(req.query.type || "").trim();
+  const affiliation = String(req.query.affiliation || "friend").trim();
+  const origin = String(req.query.origin || "").trim();
+
+  let marker = uid ? cotStream.getMarkerByUid(uid) : null;
+  const cotType = marker?.type || type;
+  if (!cotType) {
+    return res.status(400).json({
+      error: "Pass ?uid= while marker is live, or ?type=a-f-A-C-H",
+    });
+  }
+
+  const usericon = marker
+    ? {
+        iconsetpath: marker.iconsetpath || "",
+        group: marker.iconGroup || "",
+        name: marker.iconName || "",
+      }
+    : req.query.iconsetpath
+      ? {
+          iconsetpath: String(req.query.iconsetpath),
+          group: String(req.query.group || ""),
+          name: String(req.query.name || ""),
+        }
+      : null;
+
+  const trace = mapIcon.explainIconResolution({
+    type: cotType,
+    affiliation: marker?.affiliation || affiliation,
+    usericon,
+    origin: marker?.origin || origin || null,
+  });
+
+  const displayMarker = marker || {
+    type: cotType,
+    affiliation: affiliation || "friend",
+    origin: origin || "feed",
+    iconId: trace.resolved?.iconId || null,
+    iconSource: trace.resolved?.source || null,
+  };
+  if (trace.resolved && !marker) {
+    displayMarker.iconId = trace.resolved.iconId;
+    displayMarker.iconSource = trace.resolved.source;
+  }
+
+  res.setHeader("Cache-Control", "no-cache");
+  return res.json({
+    marker: marker
+      ? {
+          uid: marker.uid,
+          callsign: marker.callsign,
+          type: marker.type,
+          origin: marker.origin,
+          storedIconId: marker.iconId,
+          storedIconSource: marker.iconSource,
+        }
+      : null,
+    trace,
+    display: {
+      markerUsesMapIcon: mapRender.markerUsesMapIcon(displayMarker),
+      rules: [
+        "EUD origin always renders team dot",
+        "feed + resolved icon uses PNG for type2525b",
+        "air types use PNG when not EUD",
+      ],
+    },
+    indexes: {
+      iconsets: mapIcon.listIconsets(),
+      typeMappingCount: mapIcon.getStatus().typeMappings,
+    },
+  });
+});
+
 module.exports = router;

@@ -827,7 +827,7 @@
     return "/api/map/icons?id=" + encodeURIComponent(iconId);
   }
 
-  /** PNG icons for explicit usericon/path feeds, and 2525 sprites for air (a-*-A-*) types. */
+  /** PNG icons for feeds and explicit usericon/path; EUD tracks always use team dots. */
   function isAirCotType(type) {
     const parts = String(type || "")
       .trim()
@@ -837,6 +837,7 @@
 
   function markerUsesMapIcon(m) {
     if (!m || !m.iconId) return false;
+    if (String(m.origin || "").toLowerCase() === "eud") return false;
     const src = String(m.iconSource || "").toLowerCase();
     if (src === "usericon" || src === "path" || src === "alias") {
       return true;
@@ -846,7 +847,6 @@
     }
     if (src === "type2525b") {
       if (isAirCotType(m.type)) return true;
-      // Live EUD ground tracks use team-colored dots, not symbology PNGs.
       return String(m.origin || "").toLowerCase() === "feed";
     }
     return false;

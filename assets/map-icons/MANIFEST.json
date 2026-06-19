@@ -1,0 +1,77 @@
+{
+  "source": "https://github.com/dfpc-coe/CloudTAK-Data",
+  "tag": "v1.1.0",
+  "vendoredAt": "2026-06-19T22:56:12.801Z",
+  "iconsets": [
+    {
+      "dirName": "Public Safety Air",
+      "zipName": "Public Safety Air.zip",
+      "uid": "66f14976-4b62-4023-8edb-d8d2ebeaa336",
+      "name": "Public Safety Air",
+      "iconsetXmlSha256": "37dd020ab9a04cd581e474de4652e9c33f601534a1f5ae5813f6533b92cbac77"
+    },
+    {
+      "dirName": "Responder Icons",
+      "zipName": "Responder Icons.zip",
+      "uid": "de450cbf-2ffc-47fb-bd2b-ba2db89b035e",
+      "name": "Responder Icons",
+      "iconsetXmlSha256": "218e12e74f9b267825b076c66d047f3e021a47d2ba33d339b3e5a513cac0d174"
+    },
+    {
+      "dirName": "FEMA Icons",
+      "zipName": "FEMA Icons.zip",
+      "uid": "f8f7f666-8b28-4b57-9fbb-e48e61d33b79",
+      "name": "FEMA Icons",
+      "iconsetXmlSha256": "9bb38e39b260b8f4855117bf9a726740308096bacee9ce54e8fbf37c0c5150a8"
+    },
+    {
+      "dirName": "Incident Management Icons",
+      "zipName": "Incident Management Icons.zip",
+      "uid": "db450cbe-2fec-47fb-bd2b-ba2db89b035e",
+      "name": "Incident Management Icons",
+      "iconsetXmlSha256": "6d1c9798e6616f7d161413c6e2cb364661866e4a7b4281e387e7df473691ecd3"
+    },
+    {
+      "dirName": "FalconView",
+      "zipName": "FalconView.zip",
+      "uid": "6d180afb-89a6-4c07-b2b3-a89748b6a38f",
+      "name": "FalconView",
+      "iconsetXmlSha256": "a2741e9ddc9845fb44579e0df9effb1fc9899499ed5851f973047ec74f2fd432"
+    },
+    {
+      "dirName": "Generic Icons",
+      "zipName": "Generic Icons.zip",
+      "uid": "ad78aafb-83a6-4c07-b2b9-a897a8b6a38f",
+      "name": "Generic Icons",
+      "iconsetXmlSha256": "bebc37118ec5a7ce8640990c055dfd15b403d7f92645dfead33de9fe9d6bc72a"
+    },
+    {
+      "dirName": "GeoOps",
+      "zipName": "GeoOps.zip",
+      "uid": "83198b4872a8c34eb9c549da8a4de5a28f07821185b39a2277948f66c24ac17a",
+      "name": "GeoOps",
+      "iconsetXmlSha256": "47c4034ce3eb442fc9ad8e048b826508ec3569c2ff5fde2205728c4fb9ede721"
+    },
+    {
+      "dirName": "Google",
+      "zipName": "Google.zip",
+      "uid": "f7f71666-8b28-4b57-9fbb-e38e61d33b79",
+      "name": "Google",
+      "iconsetXmlSha256": "8eb6018c06ad4a9881638214c0f7bece948ebb54e8cdde1e50ac281d68f7950b"
+    },
+    {
+      "dirName": "OSM",
+      "zipName": "OSM.zip",
+      "uid": "6d781afb-89a6-4c07-b2b9-a89748b6a38f",
+      "name": "OSM",
+      "iconsetXmlSha256": "09eb51ae86deafae202924a5b41d0cd663567b1f8806cebca32d2e87ba1093ce"
+    },
+    {
+      "dirName": "Default",
+      "zipName": "Default.zip",
+      "uid": "34ae1613-9645-4222-a9d2-e5f243dea2865",
+      "name": "Default",
+      "iconsetXmlSha256": "16ac761e154d9bdd80351b15b849818c67973a89b03c87c183ec38103f1ca0f8"
+    }
+  ]
+}

@@ -1,42 +1,78 @@
 /**
- * TAK icon resolution using CloudTAK-Data iconsets.
- * @see https://github.com/dfpc-coe/CloudTAK-Data
+ * TAK icon resolution using bundled CloudTAK-Data iconsets.
+ * @see assets/map-icons/ATTRIBUTION.md
  */
 const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
-const axios = require("axios");
-const unzipper = require("unzipper");
 
-const CLOUDTAK_RAW =
-  "https://raw.githubusercontent.com/dfpc-coe/CloudTAK-Data/main";
-
-const ICONSET_ARCHIVES = [
-  "Public Safety Air.zip",
-  "Responder Icons.zip",
-  "FEMA Icons.zip",
-  "Incident Management Icons.zip",
-  "FalconView.zip",
-  "Generic Icons.zip",
-  "GeoOps.zip",
-  "Google.zip",
-  "OSM.zip",
-  "Default.zip",
-];
+const DATA_ROOT = path.join(__dirname, "..", "assets", "map-icons");
+const SUPPLEMENT_ROOT = path.join(__dirname, "..", "data", "map-icon-supplement");
 
 const DEFAULT_ICONSET_UID = "34ae1613-9645-4222-a9d2-e5f243dea2865";
-/** Generic Icons — ATAK paths missing from CloudTAK-Data zip. */
 const GENERIC_ICONS_UID = "ad78aafb-83a6-4c07-b2b9-a897a8b6a38f";
 const PUBLIC_SAFETY_AIR_UID = "66f14976-4b62-4023-8edb-d8d2ebeaa336";
+const RESPONDER_ICONS_UID = "de450cbf-2ffc-47fb-bd2b-ba2db89b035e";
+const FEMA_ICONS_UID = "f8f7f666-8b28-4b57-9fbb-e48e61d33b79";
+const INCIDENT_MGMT_UID = "db450cbe-2fec-47fb-bd2b-ba2db89b035e";
+const FALCONVIEW_UID = "6d180afb-89a6-4c07-b2b3-a89748b6a38f";
+const GEOOPS_UID = "83198b4872a8c34eb9c549da8a4de5a28f07821185b39a2277948f66c24ac17a";
+const GOOGLE_UID = "f7f71666-8b28-4b57-9fbb-e48e61d33b79";
+const OSM_UID = "6d781afb-89a6-4c07-b2b9-a89748b6a38f";
 
-/** Lower index = preferred when multiple iconsets share a type2525b mapping. */
-const ICONSET_LOOKUP_PRIORITY = [
-  GENERIC_ICONS_UID,
-  DEFAULT_ICONSET_UID,
-  PUBLIC_SAFETY_AIR_UID,
+/** Bundled iconset directory names (must match assets/map-icons/). */
+const REQUIRED_ICONSET_DIRS = [
+  "Public Safety Air",
+  "Responder Icons",
+  "FEMA Icons",
+  "Incident Management Icons",
+  "FalconView",
+  "Generic Icons",
+  "GeoOps",
+  "Google",
+  "OSM",
+  "Default",
 ];
-const DATA_ROOT = path.join(__dirname, "..", "data", "map-icons");
-const SUPPLEMENT_ROOT = path.join(__dirname, "..", "data", "map-icon-supplement");
+
+/** Domain-specific lookup order (first match wins for duplicate type2525b). */
+const DOMAIN_ICONSET_PRIORITY = {
+  air: [
+    PUBLIC_SAFETY_AIR_UID,
+    GENERIC_ICONS_UID,
+    DEFAULT_ICONSET_UID,
+    RESPONDER_ICONS_UID,
+    FEMA_ICONS_UID,
+    INCIDENT_MGMT_UID,
+    FALCONVIEW_UID,
+    GEOOPS_UID,
+    GOOGLE_UID,
+    OSM_UID,
+  ],
+  ground: [
+    RESPONDER_ICONS_UID,
+    GENERIC_ICONS_UID,
+    DEFAULT_ICONSET_UID,
+    FEMA_ICONS_UID,
+    INCIDENT_MGMT_UID,
+    OSM_UID,
+    GOOGLE_UID,
+    FALCONVIEW_UID,
+    GEOOPS_UID,
+    PUBLIC_SAFETY_AIR_UID,
+  ],
+  other: [
+    GENERIC_ICONS_UID,
+    RESPONDER_ICONS_UID,
+    DEFAULT_ICONSET_UID,
+    FEMA_ICONS_UID,
+    INCIDENT_MGMT_UID,
+    OSM_UID,
+    GOOGLE_UID,
+    FALCONVIEW_UID,
+    GEOOPS_UID,
+    PUBLIC_SAFETY_AIR_UID,
+  ],
+};
 
 /** iconsetUid|relPath or basename -> alternate icon location */
 const ICON_PATH_ALIASES = new Map([
@@ -51,7 +87,7 @@ const ICON_PATH_ALIASES = new Map([
 const iconsetsByUid = new Map();
 /** @type {Map<string, { iconsetUid: string, iconName: string, relPath: string, type2525b: string }[]>} */
 const typesByPrefix = new Map();
-/** @type {Map<string, Promise<void>>} */
+/** @type {{ current: Promise<void>|null }} */
 const initPromise = { current: null };
 
 function decodeXmlAttr(tag, name) {
@@ -67,7 +103,7 @@ function parseIconsetXml(xml, dirName) {
   const uid = decodeXmlAttr(tag, "uid");
   if (!uid) return null;
 
-  const iconset = {
+  return {
     uid,
     name: decodeXmlAttr(tag, "name") || dirName,
     dirName,
@@ -80,19 +116,6 @@ function parseIconsetXml(xml, dirName) {
     icons: [],
     fileByBase: new Map(),
   };
-
-  for (const m of xml.matchAll(/<icon\s+([^>]+?)\/?>/gi)) {
-    const attrs = m[1];
-    const name = decodeXmlAttr(attrs, "name");
-    if (!name) continue;
-    iconset.icons.push({
-      name,
-      type2525b: decodeXmlAttr(attrs, "type2525b") || "",
-      group: decodeXmlAttr(attrs, "group") || "",
-    });
-  }
-
-  return iconset;
 }
 
 async function walkPngFiles(dir, out = []) {
@@ -131,50 +154,6 @@ function registerTypeIndex(iconset, iconName, relPath, type2525b) {
   typesByPrefix.set(key, list);
 }
 
-function iconsetLookupRank(iconsetUid) {
-  const idx = ICONSET_LOOKUP_PRIORITY.indexOf(String(iconsetUid || ""));
-  if (idx >= 0) return ICONSET_LOOKUP_PRIORITY.length - idx;
-  return 1;
-}
-
-/** Preferred icon basenames when specialty icons share one type2525b (common in PSA air). */
-const PREFERRED_TYPE2525B_ICONS = {
-  "a-f-a-c-f": [
-    "a-f-a-c-f.png",
-    "civ_fixed_cap.png",
-    "civ_fixed_isr.png",
-    "ems_fixed_wing.png",
-    "fed_fixed_wing.png",
-  ],
-  "a-f-a-c-h": [
-    "a-f-a-c-h.png",
-    "civ_rotor_isr.png",
-    "ems_rotor.png",
-    "fed_rotor.png",
-    "fire_rotor.png",
-  ],
-  "a-f-a-c-l": [
-    "a-f-a-c-l.png",
-    "civ_lta_tethered.png",
-    "civ_lta_airship.png",
-    "civ_lta_balloon.png",
-  ],
-  "a-f-a-m-f": [
-    "a-f-a-m-f.png",
-    "a-f-a-m-f-wx.png",
-    "a-f-a-m-f-v.png",
-    "fed_fixed_wing.png",
-    "fed_fixed_wing_isr.png",
-  ],
-  "a-f-a-m-h": [
-    "a-f-a-m-h.png",
-    "a-f-a-m-f-wx.png",
-    "fed_rotor.png",
-    "fire_rotor.png",
-    "ems_rotor.png",
-  ],
-};
-
 function cotTypeSegments(cotType) {
   return String(cotType || "")
     .trim()
@@ -190,62 +169,103 @@ function iconBaseName(iconName) {
     .toLowerCase();
 }
 
-function scoreTypeEntry(entry, cotType) {
-  const t = String(cotType || "").trim().toLowerCase();
-  const segments = cotTypeSegments(t);
-  const base = iconBaseName(entry.iconName);
-  const iconNameLower = String(entry.iconName || "").toLowerCase();
-
-  let score = iconsetLookupRank(entry.iconsetUid) * 100;
-
-  if (entry.type2525b === t) score += 500;
-
-  if (base === t) score += 5000;
-  else if (base.replace(/_/g, "-") === t) score += 4500;
-
-  const preferred = PREFERRED_TYPE2525B_ICONS[t];
-  if (preferred) {
-    const prefIdx = preferred.indexOf(iconNameLower);
-    if (prefIdx >= 0) score += 3000 - prefIdx * 10;
-  }
-
-  const dimension = segments[3] || "";
-  const role = segments[4] || "";
-  if (dimension === "c") {
-    if (/^civ_/i.test(entry.iconName)) score += 400;
-    if (/^(fire_|ems_|fed_|le_)/i.test(entry.iconName)) score -= 700;
-  } else if (dimension === "m") {
-    if (/^a-f-a-m/i.test(base)) score += 600;
-    if (/^fed_/i.test(entry.iconName)) score += 200;
-    if (/^(fire_|ems_|civ_)/i.test(entry.iconName)) score -= 400;
-  }
-
-  if (role === "f" && /fixed/i.test(entry.iconName)) score += 150;
-  if (role === "h" && /rotor|helo/i.test(entry.iconName)) score += 150;
-
-  return score;
+function cotDomain(cotType) {
+  const segments = cotTypeSegments(cotType);
+  if (segments.length >= 3 && segments[2] === "a") return "air";
+  if (segments.length >= 3 && segments[2] === "g") return "ground";
+  return "other";
 }
 
-function pickBestTypeEntry(entries, cotType) {
+function domainPriorityList(cotType) {
+  const domain = cotDomain(cotType);
+  const list = DOMAIN_ICONSET_PRIORITY[domain] || DOMAIN_ICONSET_PRIORITY.other;
+  const seen = new Set();
+  const out = [];
+  for (const uid of list) {
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+    out.push(uid);
+  }
+  for (const iconset of iconsetsByUid.values()) {
+    if (!seen.has(iconset.uid)) out.push(iconset.uid);
+  }
+  return out;
+}
+
+function iconsetPriorityRank(iconsetUid, cotType) {
+  const list = domainPriorityList(cotType);
+  const idx = list.indexOf(String(iconsetUid || ""));
+  return idx >= 0 ? idx : list.length + 1;
+}
+
+/** Pick one icon when multiple XML entries share the same type2525b within an iconset. */
+function pickBestWithinIconset(entries, cotType) {
+  const t = String(cotType || "").trim().toLowerCase();
+  const segments = cotTypeSegments(t);
+  const dimension = segments[3] || "";
+  const role = segments[4] || "";
+
   let best = null;
   for (const entry of entries || []) {
-    const score = scoreTypeEntry(entry, cotType);
+    const base = iconBaseName(entry.iconName);
+    const nameLower = String(entry.iconName || "").toLowerCase();
+    let score = 0;
+
+    if (base === t) score += 5000;
+    else if (base.replace(/_/g, "-") === t) score += 4500;
+
+    if (dimension === "c") {
+      if (/^civ_/i.test(entry.iconName)) score += 800;
+      if (/^(fire_|ems_|fed_|le_|mil_)/i.test(entry.iconName)) score -= 600;
+    } else if (dimension === "m") {
+      if (/^fed_/i.test(entry.iconName)) score += 400;
+      if (/^mil_/i.test(entry.iconName)) score += 300;
+      if (/^a-f-a-m/i.test(base)) score += 500;
+      if (/^(fire_|ems_|civ_)/i.test(entry.iconName)) score -= 300;
+    }
+
+    if (role === "f" && /fixed/i.test(entry.iconName)) score += 150;
+    if (role === "h" && /rotor|helo/i.test(entry.iconName)) score += 150;
+    if (role === "l" && /lta|balloon|airship/i.test(entry.iconName)) score += 150;
+    if (role === "q" && /uas|uav/i.test(entry.iconName)) score += 150;
+
+    // Prefer generic type-named art over specialty when no dimension hint.
+    if (!dimension && /^a-[a-z]-a-/i.test(base)) score += 200;
+
     if (
       !best ||
       score > best.score ||
-      (score === best.score && String(entry.iconName) < String(best.entry.iconName))
+      (score === best.score && nameLower < best.nameLower)
     ) {
-      best = { score, entry };
+      best = { score, entry, nameLower };
     }
   }
-  return best?.entry || null;
+  return best?.entry || entries?.[0] || null;
+}
+
+function pickBestFromEntries(entries, cotType) {
+  if (!entries || !entries.length) return null;
+  const priority = domainPriorityList(cotType);
+  const byIconset = new Map();
+  for (const entry of entries) {
+    const list = byIconset.get(entry.iconsetUid) || [];
+    list.push(entry);
+    byIconset.set(entry.iconsetUid, list);
+  }
+  for (const uid of priority) {
+    const list = byIconset.get(uid);
+    if (!list || !list.length) continue;
+    const picked = pickBestWithinIconset(list, cotType);
+    if (picked) return picked;
+  }
+  return pickBestWithinIconset(entries, cotType);
 }
 
 function inferType2525bFromIconName(iconName) {
   const base = String(iconName || "")
     .trim()
     .replace(/\.png$/i, "");
-  if (/^a-[a-z]-/i.test(base)) return base;
+  if (/^a-[a-z]-/i.test(base)) return base.toLowerCase();
   return "";
 }
 
@@ -304,20 +324,26 @@ function findBestTypeMatch(cotType) {
 
   const exactList = typesByPrefix.get(t);
   if (exactList && exactList.length) {
-    return pickBestTypeEntry(exactList, t);
+    return pickBestFromEntries(exactList, t);
   }
 
-  let best = null;
+  let bestPrefix = null;
+  let bestEntry = null;
   for (const [prefix, entries] of typesByPrefix) {
     if (!t.startsWith(prefix)) continue;
-    const entry = pickBestTypeEntry(entries, t);
+    if (bestPrefix && prefix.length < bestPrefix.length) continue;
+    const entry = pickBestFromEntries(entries, t);
     if (!entry) continue;
-    const score = prefix.length * 1000 + iconsetLookupRank(entry.iconsetUid);
-    if (!best || score > best.score) {
-      best = { score, entry };
+    if (!bestPrefix || prefix.length > bestPrefix.length) {
+      bestPrefix = prefix;
+      bestEntry = entry;
+    } else if (prefix.length === bestPrefix.length) {
+      const curRank = iconsetPriorityRank(entry.iconsetUid, t);
+      const bestRank = iconsetPriorityRank(bestEntry.iconsetUid, t);
+      if (curRank < bestRank) bestEntry = entry;
     }
   }
-  return best?.entry || null;
+  return bestEntry;
 }
 
 function defaultIconNameForAffiliation(iconset, affiliation) {
@@ -474,6 +500,40 @@ function resolveIcon({ type, affiliation, detail, usericon }) {
   return null;
 }
 
+function explainIconResolution({ type, affiliation, detail, usericon, origin }) {
+  const ui = usericon || parseUserIcon(detail);
+  const cotType = String(type || "").trim();
+  const resolved = resolveIcon({ type, affiliation, detail, usericon });
+  const typeHit = findBestTypeMatch(cotType);
+  const filePath = resolved?.iconId ? getIconFilePath(resolved.iconId) : null;
+
+  return {
+    inputs: {
+      type: cotType,
+      affiliation: affiliation || null,
+      origin: origin || null,
+      usericon: ui,
+    },
+    domain: cotDomain(cotType),
+    domainPriority: domainPriorityList(cotType),
+    typeMatch: typeHit
+      ? {
+          iconsetUid: typeHit.iconsetUid,
+          iconName: typeHit.iconName,
+          relPath: typeHit.relPath,
+          type2525b: typeHit.type2525b,
+        }
+      : null,
+    resolved: resolved
+      ? {
+          ...resolved,
+          fileExists: !!filePath,
+          filePath: filePath || null,
+        }
+      : null,
+  };
+}
+
 function getIconFilePath(iconId) {
   const raw = String(iconId || "").trim();
   const colon = raw.indexOf(":");
@@ -501,38 +561,6 @@ function getDefaultIconIds() {
   return out;
 }
 
-async function downloadAndExtract(zipName) {
-  const dirName = zipName.replace(/\.zip$/i, "");
-  const destDir = path.join(DATA_ROOT, dirName);
-  const xmlPath = path.join(destDir, "iconset.xml");
-  if (fs.existsSync(xmlPath)) return destDir;
-
-  await fsp.mkdir(destDir, { recursive: true });
-  const url = `${CLOUDTAK_RAW}/iconsets/${encodeURIComponent(zipName)}`;
-  const resp = await axios.get(url, { responseType: "arraybuffer", timeout: 120000 });
-  const buf = Buffer.from(resp.data);
-
-  await new Promise((resolve, reject) => {
-    const stream = unzipper.Parse();
-    stream.on("entry", (entry) => {
-      const name = entry.path.replace(/\\/g, "/");
-      const outPath = path.join(destDir, name);
-      if (entry.type === "Directory") {
-        entry.autodrain();
-        return;
-      }
-      const dir = path.dirname(outPath);
-      fs.mkdirSync(dir, { recursive: true });
-      entry.pipe(fs.createWriteStream(outPath));
-    });
-    stream.on("close", resolve);
-    stream.on("error", reject);
-    stream.end(buf);
-  });
-
-  return destDir;
-}
-
 async function loadIconsetDir(dirName) {
   const rootDir = path.join(DATA_ROOT, dirName);
   const xmlPath = path.join(rootDir, "iconset.xml");
@@ -541,6 +569,17 @@ async function loadIconsetDir(dirName) {
   const xml = await fsp.readFile(xmlPath, "utf8");
   const iconset = parseIconsetXml(xml, dirName);
   if (!iconset) return null;
+
+  for (const m of xml.matchAll(/<icon\s+([^>]+?)\/?>/gi)) {
+    const attrs = m[1];
+    const name = decodeXmlAttr(attrs, "name");
+    if (!name) continue;
+    iconset.icons.push({
+      name,
+      type2525b: decodeXmlAttr(attrs, "type2525b") || "",
+      group: decodeXmlAttr(attrs, "group") || "",
+    });
+  }
 
   await buildFileIndex(iconset);
   iconsetsByUid.set(iconset.uid, iconset);
@@ -584,47 +623,29 @@ async function mergeIconSupplements() {
   }
 }
 
-async function countIconsetDirsOnDisk() {
-  let count = 0;
-  try {
-    const entries = await fsp.readdir(DATA_ROOT, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      if (fs.existsSync(path.join(DATA_ROOT, entry.name, "iconset.xml"))) count++;
-    }
-  } catch (_) {}
-  return count;
-}
-
 async function ensureIconsets() {
-  const dirsOnDisk = await countIconsetDirsOnDisk();
-  if (
-    initPromise.current &&
-    iconsetsByUid.size > 0 &&
-    (dirsOnDisk === 0 || iconsetsByUid.size >= dirsOnDisk)
-  ) {
+  if (initPromise.current && iconsetsByUid.size > 0) {
     return initPromise.current;
   }
 
   initPromise.current = (async () => {
-    await fsp.mkdir(DATA_ROOT, { recursive: true });
-
-    for (const zip of ICONSET_ARCHIVES) {
-      const dirName = zip.replace(/\.zip$/i, "");
-      const xmlPath = path.join(DATA_ROOT, dirName, "iconset.xml");
-      if (fs.existsSync(xmlPath)) continue;
-      try {
-        await downloadAndExtract(zip);
-      } catch (err) {
-        console.warn("[map-icon] failed to fetch iconset", zip, err?.message || err);
-      }
-    }
-
     typesByPrefix.clear();
     iconsetsByUid.clear();
 
-    for (const zip of ICONSET_ARCHIVES) {
-      const dirName = zip.replace(/\.zip$/i, "");
+    const missing = [];
+    for (const dirName of REQUIRED_ICONSET_DIRS) {
+      const xmlPath = path.join(DATA_ROOT, dirName, "iconset.xml");
+      if (!fs.existsSync(xmlPath)) missing.push(dirName);
+    }
+    if (missing.length) {
+      console.error(
+        "[map-icon] Missing bundled iconsets:",
+        missing.join(", "),
+        "— run node --use-system-ca scripts/vendor-cloudtak-icons.js"
+      );
+    }
+
+    for (const dirName of REQUIRED_ICONSET_DIRS) {
       try {
         await loadIconsetDir(dirName);
       } catch (err) {
@@ -642,17 +663,55 @@ function getStatus() {
   return {
     ready: iconsetsByUid.size > 0,
     iconsetCount: iconsetsByUid.size,
+    requiredIconsetCount: REQUIRED_ICONSET_DIRS.length,
     typeMappings: typesByPrefix.size,
+    dataRoot: DATA_ROOT,
     defaultIcons: getDefaultIconIds(),
   };
+}
+
+function getTypeIndexSnapshot() {
+  const out = [];
+  for (const [key, entries] of typesByPrefix) {
+    out.push({
+      type2525b: key,
+      entries: entries.map((e) => ({
+        iconsetUid: e.iconsetUid,
+        iconName: e.iconName,
+        relPath: e.relPath,
+      })),
+    });
+  }
+  return out.sort((a, b) => a.type2525b.localeCompare(b.type2525b));
+}
+
+function listIconsets() {
+  return [...iconsetsByUid.values()].map((set) => ({
+    uid: set.uid,
+    name: set.name,
+    dirName: set.dirName,
+    iconCount: set.icons.length,
+    pngCount: set.fileByBase.size,
+  }));
 }
 
 module.exports = {
   ensureIconsets,
   resolveIcon,
+  explainIconResolution,
   parseUserIcon,
+  parseIconsetPath,
   getIconFilePath,
   getDefaultIconIds,
   getStatus,
+  getTypeIndexSnapshot,
+  listIconsets,
+  findBestTypeMatch,
+  cotDomain,
+  domainPriorityList,
+  ICON_PATH_ALIASES,
+  REQUIRED_ICONSET_DIRS,
   DEFAULT_ICONSET_UID,
+  PUBLIC_SAFETY_AIR_UID,
+  DATA_ROOT,
 };
