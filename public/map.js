@@ -404,6 +404,7 @@
 
   function resetMapIconCache() {
     iconLoadPending.clear();
+    iconsKeepOriginal.clear();
   }
 
   function pushMarkerGeoJsonToSource() {
@@ -504,26 +505,45 @@
       if (!ctx) return false;
       ctx.drawImage(source, 0, 0, sampleW, sampleH);
       const data = ctx.getImageData(0, 0, sampleW, sampleH).data;
-      const colors = new Set();
+      let hasDark = false;
+      let hasLight = false;
+      const hueBuckets = new Set();
       for (let i = 0; i < data.length; i += 4) {
         if (data[i + 3] < 40) continue;
-        const key =
-          (data[i] >> 3) * 8192 + (data[i + 1] >> 3) * 64 + (data[i + 2] >> 3);
-        colors.add(key);
-        if (colors.size > 6) return true;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const lum = (r * 299 + g * 587 + b * 114) / 1000;
+        if (lum < 55) hasDark = true;
+        if (lum > 210) hasLight = true;
+        const spread = Math.max(r, g, b) - Math.min(r, g, b);
+        if (spread > 45) {
+          hueBuckets.add(Math.round((Math.atan2(g - b, r - g) * 180) / Math.PI / 30));
+        }
       }
+      if (hasDark && hasLight) return true;
+      if (hueBuckets.size > 1) return true;
       return false;
     } catch (_) {
       return false;
     }
   }
 
+  function markerSkipIconTint(m) {
+    if (!m) return true;
+    const uid = String(m.uid || "");
+    if (uid.startsWith("incident-")) return true;
+    return false;
+  }
+
   function markerIconTint(m) {
-    if (!markerUsesMapIcon(m)) return null;
+    if (!markerUsesMapIcon(m) || markerSkipIconTint(m)) return null;
     const src = String(m.iconSource || "").toLowerCase();
     if (src === "type2525b" || isAirCotType(m.type)) return null;
     if (iconsKeepOriginal.has(String(m.iconId))) return null;
-    return markerDisplayColor(m);
+    const color = markerDisplayColor(m);
+    if (!color || isLightMarkerColor(color)) return null;
+    return color;
   }
 
   function formatMarkerGroupNames(m) {
@@ -680,6 +700,7 @@
   const elExpandRight = document.getElementById("mapExpandRight");
   const elCenterBtn = document.getElementById("mapCenterBtn");
   const elCopyCoordsBtn = document.getElementById("mapCopyCoordsBtn");
+  const elCopyRawBtn = document.getElementById("mapCopyRawBtn");
 
   const savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark";
   elBasemapSelect.innerHTML = Object.entries(BASEMAPS)
@@ -821,10 +842,15 @@
     localStorage.setItem(LS_PANEL_LEFT, collapsed ? "collapsed" : "open");
   }
 
+  function isDetailPaneOpen() {
+    return elPanelRight && !elPanelRight.classList.contains("collapsed");
+  }
+
   function setPanelRightCollapsed(collapsed) {
     elPanelRight.classList.toggle("collapsed", collapsed);
     elExpandRight.hidden = !collapsed;
     localStorage.setItem(LS_PANEL_RIGHT, collapsed ? "collapsed" : "open");
+    if (!collapsed) closeMapPopup();
   }
 
   function restorePanelState() {
@@ -1244,11 +1270,8 @@
     const remarksText = m.remarks ? String(m.remarks).trim() : "";
     elDetail.innerHTML =
       '<div class="map-detail-wrap">' +
-      '<dl class="map-kv">' +
+      '<dl class="map-kv map-kv-compact">' +
       "<dt>Callsign</dt><dd>" + escapeHtml(m.callsign) + "</dd>" +
-      "<dt>UID</dt><dd>" + escapeHtml(m.uid) + "</dd>" +
-      "<dt>Type</dt><dd>" + escapeHtml(m.type || "—") + "</dd>" +
-      "<dt>Affiliation</dt><dd>" + escapeHtml(m.affiliation || "other") + "</dd>" +
       "<dt>Groups</dt><dd class=\"map-chips\">" + (groupHtml || "—") + "</dd>" +
       "<dt>Team</dt><dd>" + escapeHtml(m.team || "—") + "</dd>" +
       "<dt>Lat / Lon</dt><dd>" + fmtCoord(m.lat) + ", " + fmtCoord(m.lon) + "</dd>" +
@@ -1386,7 +1409,10 @@
       if (followSelected) {
         map.easeTo({ center: [m.lon, m.lat], duration: 400 });
       }
-      if (showPopupFlag) showPopup(m);
+      if (showPopupFlag) {
+        if (isDetailPaneOpen()) closeMapPopup();
+        else showPopup(m);
+      }
     }
   }
 
@@ -1431,6 +1457,7 @@
     }
     loadMarkersFromServer()
       .then(function () {
+        resetMapIconCache();
         syncMapSource();
         renderLayerList();
         renderList();
@@ -1470,7 +1497,7 @@
     if (styleRestoreTimer) clearTimeout(styleRestoreTimer);
     styleRestoreTimer = setTimeout(function () {
       styleRestoreTimer = null;
-      iconLoadPending.clear();
+      resetMapIconCache();
       markerLayersReady = false;
       mapRefreshPending = true;
 
@@ -1624,6 +1651,24 @@
       () => showCopyToast("Copied " + text),
       () => showCopyToast(text)
     );
+  });
+
+  elCopyRawBtn.addEventListener("click", () => {
+    const m = selectedUid ? markersByUid.get(selectedUid) : null;
+    if (!m) return;
+    fetch("/api/map/cot-raw?uid=" + encodeURIComponent(m.uid))
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("raw " + resp.status);
+        return resp.text();
+      })
+      .then(function (text) {
+        return copyTextToClipboard(text).then(function () {
+          showCopyToast("Copied raw CoT");
+        });
+      })
+      .catch(function () {
+        showCopyToast("Raw CoT not available");
+      });
   });
 
   document.addEventListener("keydown", (ev) => {

@@ -27,6 +27,19 @@ router.get("/markers", (req, res) => {
   });
 });
 
+router.get("/cot-raw", (req, res) => {
+  cotStream.ensureBridgeStarted();
+  const uid = String(req.query.uid || "").trim();
+  if (!uid) return res.status(400).json({ error: "Missing uid" });
+  const raw = cotStream.getMarkerRawCot(uid);
+  if (raw == null) {
+    return res.status(404).json({ error: "Marker or raw CoT not found" });
+  }
+  res.setHeader("Cache-Control", "no-cache");
+  res.type("application/json");
+  return res.send(JSON.stringify(raw, null, 2));
+});
+
 router.get("/geojson", (req, res) => {
   cotStream.ensureBridgeStarted();
   const options = mapRender.parseGeoJsonQuery(req.query);

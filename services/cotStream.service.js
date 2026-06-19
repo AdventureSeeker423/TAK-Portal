@@ -160,6 +160,12 @@ function parseMarkerFromCoT(cot) {
       updatedAt: new Date().toISOString(),
     };
 
+    try {
+      base.cotRaw = JSON.parse(JSON.stringify(cot.raw));
+    } catch (_) {
+      base.cotRaw = cot.raw || null;
+    }
+
     base.relatedUids = mapMeta.parseRelatedUids(detail);
     base.cotRouteGroups = mapMeta.parseGroupsFromCoTDetail(detail);
     base.flowTagUids = mapMeta.parseFlowTagUids(detail);
@@ -462,6 +468,12 @@ function getMarkerByUid(uid) {
   return markers.get(id) || null;
 }
 
+function getMarkerRawCot(uid) {
+  const marker = getMarkerByUid(uid);
+  if (!marker || marker.cotRaw == null) return null;
+  return marker.cotRaw;
+}
+
 function findMarkersByCallsign(callsign) {
   const q = String(callsign || "").trim().toLowerCase();
   if (!q) return [];
@@ -478,6 +490,7 @@ module.exports = {
   getStateSnapshot,
   getMarkerList,
   getMarkerByUid,
+  getMarkerRawCot,
   findMarkersByCallsign,
   getMarkersSlimList,
   getMarkersGeoJson,

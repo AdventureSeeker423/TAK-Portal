@@ -471,7 +471,7 @@ body {
 
 .map-detail-body {
   padding: 12px;
-  overflow: auto;
+  overflow: hidden;
   flex: 1;
   min-height: 0;
   font-size: 0.82rem;
@@ -485,14 +485,20 @@ body {
   flex: 1;
   min-height: 0;
   gap: 12px;
+  overflow: hidden;
+}
+
+.map-kv-compact {
+  flex-shrink: 0;
 }
 
 .map-remarks-section {
   flex: 1;
-  min-height: 140px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: hidden;
 }
 
 .map-remarks-title {
@@ -502,12 +508,12 @@ body {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .map-remarks-box {
   flex: 1;
-  min-height: 120px;
-  max-height: 280px;
+  min-height: 0;
   overflow: auto;
   padding: 8px 10px;
   background: rgba(0, 0, 0, 0.35);
@@ -527,10 +533,12 @@ body {
 
 .map-detail-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 0 12px 12px;
   border-top: 1px solid var(--map-border);
   padding-top: 10px;
+  flex-shrink: 0;
 }
 
 .map-detail-empty {
