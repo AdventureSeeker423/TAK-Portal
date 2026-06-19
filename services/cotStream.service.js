@@ -290,11 +290,11 @@ function getMarkerList() {
   );
 }
 
-function getStateSnapshot() {
+function getStateSnapshot(options = {}) {
   sweepStaleMarkers(false);
   mapMeta.ensureRefreshLoop();
   const markerList = getMarkerList();
-  return {
+  const snapshot = {
     ok: true,
     connected: bridgeState.connected,
     connecting: bridgeState.connecting,
@@ -304,9 +304,12 @@ function getStateSnapshot() {
     host: bridgeState.host,
     port: bridgeState.port,
     markerCount: markerList.length,
-    groupsCatalog: mapMeta.buildGroupsCatalogWithCounts(markerList),
     updatedAt: new Date().toISOString(),
   };
+  if (options.includeGroupsCatalog !== false) {
+    snapshot.groupsCatalog = mapMeta.buildGroupsCatalogWithCounts(markerList);
+  }
+  return snapshot;
 }
 
 function getMarkersSlimList() {
@@ -450,7 +453,10 @@ function subscribe(sendFn) {
       `data: ${JSON.stringify({ type: "stream_open", at: new Date().toISOString() })}\n\n`
     );
     sendFn(
-      `data: ${JSON.stringify({ type: "snapshot", state: getStateSnapshot() })}\n\n`
+      `data: ${JSON.stringify({
+        type: "snapshot",
+        state: getStateSnapshot({ includeGroupsCatalog: false }),
+      })}\n\n`
     );
   } catch (_) {}
 

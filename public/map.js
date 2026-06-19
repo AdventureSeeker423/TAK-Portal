@@ -3499,9 +3499,36 @@
     applyBatch({ removes: [String(uid)] });
   }
 
+  function refreshScopedGroupsCatalog() {
+    return fetch("/api/map/groups")
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (data) {
+        applyMapChannelScope(data.channelScope, data.allowedChannelKeys);
+        mergeGroupsCatalog(data.groups || []);
+        renderLayerList();
+      })
+      .catch(function () {});
+  }
+
   function applySnapshot(state) {
-    applyMapChannelScope(state?.channelScope, state?.allowedChannelKeys);
-    mergeGroupsCatalog(state?.groupsCatalog || []);
+    const hasChannelScope =
+      state?.channelScope === "member" || state?.channelScope === "all";
+
+    if (hasChannelScope) {
+      applyMapChannelScope(state.channelScope, state.allowedChannelKeys);
+      mergeGroupsCatalog(state?.groupsCatalog || []);
+    } else if (mapChannelScope === "member") {
+      // SSE reconnect snapshots are not user-scoped — keep agency channel list.
+      recomputeGroupCounts();
+      refreshScopedGroupsCatalog();
+    } else if (state?.groupsCatalog) {
+      mergeGroupsCatalog(state.groupsCatalog);
+    } else {
+      recomputeGroupCounts();
+    }
+
     if (state && state.icons && state.icons.defaultIcons) {
       defaultIconIds = state.icons.defaultIcons;
     }
@@ -3916,10 +3943,6 @@
 
   fetch("/api/map/groups")
     .then((r) => r.json())
-    .then((data) => {
-      applyMapChannelScope(data.channelScope, data.allowedChannelKeys);
-      mergeGroupsCatalog(data.groups || []);
-      renderLayerList();
-    })
+    .then((data) => refreshScopedGroupsCatalog())
     .catch(() => {});
 })();
