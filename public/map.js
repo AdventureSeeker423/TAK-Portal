@@ -4,6 +4,12 @@
   const LS_BASEMAP = "tak-portal-map-basemap";
   const LS_GROUPS = "tak-portal-map-groups";
   const LS_PANEL_LEFT = "tak-portal-map-panel-left";
+  const LS_DETAIL_PANEL_WIDTH = "tak-portal-map-detail-panel-width";
+  const DETAIL_PANEL_MIN_PX = 340;
+  const DETAIL_PANEL_MIN_VW = 0.38;
+  const DETAIL_PANEL_MAX_VW = 0.5;
+  const DETAIL_PANEL_RIGHT_OFFSET = 12;
+  const MAX_DETAIL_SLOTS = 2;
 
   const AFFILIATION_COLORS = {
     friend: "#22c55e",
@@ -65,26 +71,6 @@
   }
 
   const BASEMAPS = {
-    dark: {
-      label: "Dark",
-      style: withMapGlyphs({
-        version: 8,
-        sources: {
-          basemap: {
-            type: "raster",
-            tiles: [
-              "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-              "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-              "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-            ],
-            tileSize: 256,
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-          },
-        },
-        layers: [{ id: "basemap", type: "raster", source: "basemap" }],
-      }),
-    },
     "dark-matter": {
       label: "Dark Matter",
       style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
@@ -160,6 +146,15 @@
         22
       ),
     },
+    "google-hybrid": {
+      label: "Google Hybrid",
+      style: rasterBasemapStyle(
+        "Google Hybrid",
+        "https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}",
+        "Google",
+        22
+      ),
+    },
     "google-terrain": {
       label: "Google Terrain",
       style: rasterBasemapStyle(
@@ -193,6 +188,8 @@
   let groupsCatalog = [];
   let enabledGroups = loadEnabledGroups();
   let selectedUid = null;
+  let detailSlots = [];
+  let focusedDetailIndex = 0;
   let detailPaneUserCollapsed = false;
   let mapRefreshTimer = null;
   let uiTimer = null;
@@ -290,6 +287,9 @@
           showCircle:
             displayIconId && map.hasImage(displayIconId) ? 0 : 1,
           selected: m.uid === selectedUid,
+          locked: m.uid === lockedUid,
+          labelSort:
+            m.uid === selectedUid ? 0 : m.uid === lockedUid ? 1 : 2,
         },
       },
     ];
@@ -844,9 +844,7 @@
 
   const elLayerList = document.getElementById("mapLayerList");
   const elList = document.getElementById("mapMarkerList");
-  const elDetail = document.getElementById("mapDetail");
-  const elDetailTitle = document.getElementById("mapDetailTitle");
-  const elDetailActions = document.getElementById("mapDetailActions");
+  const elDetailStack = document.getElementById("mapDetailStack");
   const elVisibleCounts = document.getElementById("mapVisibleCounts");
   const elConnLabel = document.getElementById("mapConnLabel");
   const elConnDot = document.getElementById("mapConnDot");
@@ -862,20 +860,21 @@
   const elZulu = document.getElementById("mapZulu");
   const elOffline = document.getElementById("mapOfflineBanner");
   const elPanelLeft = document.getElementById("mapPanelLeft");
-  const elPanelRight = document.getElementById("mapPanelRight");
+  const elDetailResize = document.getElementById("mapDetailResize");
   const elExpandLeft = document.getElementById("mapExpandLeft");
   const elExpandRight = document.getElementById("mapExpandRight");
-  const elCenterBtn = document.getElementById("mapCenterBtn");
-  const elLockBtn = document.getElementById("mapLockBtn");
-  const elCopyRawBtn = document.getElementById("mapCopyRawBtn");
 
-  const savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark";
+  let savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark-matter";
+  if (savedBasemap === "dark" || !BASEMAPS[savedBasemap]) {
+    savedBasemap = "dark-matter";
+    localStorage.setItem(LS_BASEMAP, savedBasemap);
+  }
   elBasemapSelect.innerHTML = Object.entries(BASEMAPS)
     .map(([id, def]) => `<option value="${id}">${def.label}</option>`)
     .join("");
-  if (BASEMAPS[savedBasemap]) elBasemapSelect.value = savedBasemap;
+  elBasemapSelect.value = savedBasemap;
 
-  const initialBasemap = BASEMAPS[elBasemapSelect.value] || BASEMAPS.dark;
+  const initialBasemap = BASEMAPS[savedBasemap] || BASEMAPS["dark-matter"];
   elBasemapLabel.textContent = initialBasemap.label;
 
   const map = new maplibregl.Map({
@@ -889,11 +888,14 @@
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
 
   restorePanelState();
+  loadDetailPanelWidth();
+  initDetailPanelResize();
 
   const SOURCE_ID = "tak-markers";
   const ICON_LAYER = "tak-markers-icon";
   const CIRCLE_LAYER = "tak-markers-circle";
   const LABEL_LAYER = "tak-markers-label";
+  const LABEL_PRIORITY_LAYER = "tak-markers-label-priority";
   const COURSE_LAYER = "tak-markers-course";
 
   function loadEnabledGroups() {
@@ -956,7 +958,13 @@
   }
 
   function removeMarkerLayers() {
-    for (const id of [LABEL_LAYER, ICON_LAYER, CIRCLE_LAYER, COURSE_LAYER]) {
+    for (const id of [
+      LABEL_PRIORITY_LAYER,
+      LABEL_LAYER,
+      ICON_LAYER,
+      CIRCLE_LAYER,
+      COURSE_LAYER,
+    ]) {
       if (map.getLayer(id)) {
         try {
           map.removeLayer(id);
@@ -1010,37 +1018,147 @@
   }
 
   function isDetailPaneOpen() {
-    return elPanelRight && !elPanelRight.classList.contains("collapsed");
+    return elDetailStack && !elDetailStack.classList.contains("collapsed");
   }
 
-  function syncDetailPaneVisibility() {
-    if (!selectedUid) {
-      elPanelRight.classList.add("collapsed");
+  function syncDetailStackVisibility() {
+    if (!elDetailStack) return;
+    const hasSlots = detailSlots.length > 0;
+    const hasPinned = detailSlots.some(function (s) {
+      return s.pinned;
+    });
+
+    if (!hasSlots) {
+      elDetailStack.classList.add("collapsed");
       elExpandRight.hidden = true;
       detailPaneUserCollapsed = false;
       return;
     }
+
     if (detailPaneUserCollapsed) {
-      elPanelRight.classList.add("collapsed");
-      elExpandRight.hidden = false;
+      elDetailStack.classList.add("collapsed");
+      elExpandRight.hidden = !hasPinned && !hasSlots;
     } else {
-      elPanelRight.classList.remove("collapsed");
+      elDetailStack.classList.remove("collapsed");
       elExpandRight.hidden = true;
     }
   }
 
-  function setPanelRightCollapsed(collapsed) {
-    if (!selectedUid) {
-      collapsed = true;
-    }
+  function setDetailStackCollapsed(collapsed) {
+    if (!detailSlots.length && collapsed) return;
     detailPaneUserCollapsed = collapsed;
-    syncDetailPaneVisibility();
+    syncDetailStackVisibility();
     if (!collapsed) closeMapPopup();
+  }
+
+  function detailPanelDefaultWidth() {
+    return Math.min(DETAIL_PANEL_MIN_PX, window.innerWidth * DETAIL_PANEL_MIN_VW);
+  }
+
+  function detailPanelMinWidth() {
+    const count = Math.max(1, detailSlots.length || 1);
+    const perPaneMax = Math.floor(
+      (window.innerWidth * DETAIL_PANEL_MAX_VW) / count
+    );
+    return Math.min(detailPanelDefaultWidth(), perPaneMax);
+  }
+
+  function detailPanelMaxWidth() {
+    const count = Math.max(1, detailSlots.length || 1);
+    return Math.floor((window.innerWidth * DETAIL_PANEL_MAX_VW) / count);
+  }
+
+  function clampDetailPanelWidth(width) {
+    return Math.max(
+      detailPanelMinWidth(),
+      Math.min(detailPanelMaxWidth(), Math.round(width))
+    );
+  }
+
+  function applyDetailPanelWidth(width, persist) {
+    if (!elDetailStack || window.innerWidth <= 900) return;
+    const clamped = clampDetailPanelWidth(width);
+    elDetailStack.style.setProperty("--map-detail-pane-width", clamped + "px");
+    if (persist !== false) {
+      localStorage.setItem(LS_DETAIL_PANEL_WIDTH, String(clamped));
+    }
+    if (map && typeof map.resize === "function") {
+      map.resize();
+    }
+    return clamped;
+  }
+
+  function loadDetailPanelWidth() {
+    if (!elDetailStack || window.innerWidth <= 900) return;
+    const stored = Number(localStorage.getItem(LS_DETAIL_PANEL_WIDTH));
+    const initial = Number.isFinite(stored)
+      ? stored
+      : detailPanelDefaultWidth();
+    applyDetailPanelWidth(initial, false);
+  }
+
+  function initDetailPanelResize() {
+    if (!elDetailResize || !elDetailStack) return;
+
+    let dragging = false;
+
+    function onPointerMove(e) {
+      if (!dragging) return;
+      const totalWidth =
+        window.innerWidth - DETAIL_PANEL_RIGHT_OFFSET - e.clientX;
+      const count = Math.max(1, detailSlots.length || 1);
+      const gap = 8 * (count - 1);
+      const perPane = (totalWidth - gap) / count;
+      applyDetailPanelWidth(perPane);
+    }
+
+    function stopDrag() {
+      if (!dragging) return;
+      dragging = false;
+      elDetailResize.classList.remove("is-dragging");
+      elDetailStack.classList.remove("is-resizing");
+      document.body.classList.remove("map-detail-resizing");
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", stopDrag);
+      document.removeEventListener("pointercancel", stopDrag);
+      if (map && typeof map.resize === "function") {
+        map.resize();
+      }
+    }
+
+    elDetailResize.addEventListener("pointerdown", function (e) {
+      if (elDetailStack.classList.contains("collapsed") || window.innerWidth <= 900) {
+        return;
+      }
+      e.preventDefault();
+      dragging = true;
+      elDetailResize.classList.add("is-dragging");
+      elDetailStack.classList.add("is-resizing");
+      document.body.classList.add("map-detail-resizing");
+      document.addEventListener("pointermove", onPointerMove);
+      document.addEventListener("pointerup", stopDrag);
+      document.addEventListener("pointercancel", stopDrag);
+    });
+
+    elDetailResize.addEventListener("dblclick", function () {
+      if (detailSlots.length) setDetailStackCollapsed(true);
+    });
+
+    window.addEventListener("resize", function () {
+      if (window.innerWidth <= 900) {
+        elDetailStack.style.removeProperty("--map-detail-pane-width");
+        return;
+      }
+      const stored = Number(localStorage.getItem(LS_DETAIL_PANEL_WIDTH));
+      applyDetailPanelWidth(
+        Number.isFinite(stored) ? stored : detailPanelDefaultWidth()
+      );
+    });
   }
 
   function restorePanelState() {
     setPanelLeftCollapsed(localStorage.getItem(LS_PANEL_LEFT) === "collapsed");
-    syncDetailPaneVisibility();
+    syncDetailStackVisibility();
   }
 
   function affiliationColor(aff) {
@@ -1266,8 +1384,49 @@
       map.getSource(SOURCE_ID) &&
       map.getLayer(CIRCLE_LAYER) &&
       map.getLayer(ICON_LAYER) &&
-      map.getLayer(LABEL_LAYER)
+      map.getLayer(LABEL_LAYER) &&
+      map.getLayer(LABEL_PRIORITY_LAYER)
     );
+  }
+
+  const LABEL_PRIORITY_FILTER = [
+    "all",
+    MARKER_FILTER,
+    ["any", ["==", ["get", "selected"], true], ["==", ["get", "locked"], true]],
+  ];
+
+  const LABEL_STANDARD_FILTER = [
+    "all",
+    MARKER_FILTER,
+    [
+      "!",
+      ["any", ["==", ["get", "selected"], true], ["==", ["get", "locked"], true]],
+    ],
+  ];
+
+  function markerLabelLayout(allowOverlap) {
+    return {
+      "text-field": ["get", "callsign"],
+      "text-font": MAP_LABEL_FONT,
+      "text-size": 11,
+      "text-anchor": "bottom",
+      "text-offset": [0, -2],
+      "text-allow-overlap": allowOverlap,
+      "text-ignore-placement": allowOverlap,
+      "text-optional": true,
+      "text-max-width": 14,
+      "text-padding": 2,
+      "symbol-sort-key": ["get", "labelSort"],
+    };
+  }
+
+  function markerLabelPaint() {
+    return {
+      "text-color": "#ffffff",
+      "text-halo-color": "rgba(0, 0, 0, 0.75)",
+      "text-halo-width": 1.25,
+      "text-opacity": 1,
+    };
   }
 
   function addMarkerLayers() {
@@ -1344,23 +1503,18 @@
       id: LABEL_LAYER,
       type: "symbol",
       source: SOURCE_ID,
-      filter: MARKER_FILTER,
-      layout: {
-        "text-field": ["get", "callsign"],
-        "text-font": MAP_LABEL_FONT,
-        "text-size": 11,
-        "text-anchor": "bottom",
-        "text-offset": [0, -2],
-        "text-allow-overlap": true,
-        "text-ignore-placement": true,
-        "text-optional": true,
-        "text-max-width": 14,
-      },
-      paint: {
-        "text-color": "#ffffff",
-        "text-halo-width": 0,
-        "text-opacity": 1,
-      },
+      filter: LABEL_STANDARD_FILTER,
+      layout: markerLabelLayout(false),
+      paint: markerLabelPaint(),
+    });
+
+    map.addLayer({
+      id: LABEL_PRIORITY_LAYER,
+      type: "symbol",
+      source: SOURCE_ID,
+      filter: LABEL_PRIORITY_FILTER,
+      layout: markerLabelLayout(true),
+      paint: markerLabelPaint(),
     });
 
     markerLayersReady = true;
@@ -1570,19 +1724,353 @@
     return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) : "—";
   }
 
+  function isUnknownHae(n) {
+    return Math.round(Number(n)) === 9999999;
+  }
+
   const COPY_COORDS_ICON =
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>' +
     '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>' +
     "</svg>";
 
-  let detailAgeTimer = null;
+  const PIN_ICON =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M12 17v5"></path>' +
+    '<path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a3 3 0 0 0-6 0z"></path>' +
+    "</svg>";
 
-  function clearDetailAgeTimer() {
-    if (detailAgeTimer) {
-      clearInterval(detailAgeTimer);
-      detailAgeTimer = null;
+  const detailAgeTimers = new Map();
+
+  function clearDetailAgeTimer(uid) {
+    if (uid) {
+      const t = detailAgeTimers.get(uid);
+      if (t) clearInterval(t);
+      detailAgeTimers.delete(uid);
+      return;
     }
+    for (const t of detailAgeTimers.values()) {
+      clearInterval(t);
+    }
+    detailAgeTimers.clear();
+  }
+
+  function startDetailAgeTimer(paneEl, marker) {
+    if (!paneEl || !marker) return;
+    clearDetailAgeTimer(marker.uid);
+    const el = paneEl.querySelector(".map-detail-updated");
+    if (!el) return;
+
+    function tick() {
+      const current = markersByUid.get(marker.uid);
+      if (!current) {
+        clearDetailAgeTimer(marker.uid);
+        return;
+      }
+      el.textContent = updatedAgeLabel(current.updatedAt);
+    }
+
+    tick();
+    detailAgeTimers.set(marker.uid, setInterval(tick, 1000));
+  }
+
+  function pinnedDetailCount() {
+    let n = 0;
+    for (let i = 0; i < detailSlots.length; i++) {
+      if (detailSlots[i].pinned) n++;
+    }
+    return n;
+  }
+
+  function ensureDetailSlotForUid(uid) {
+    const id = String(uid);
+    let idx = detailSlots.findIndex(function (s) {
+      return s.uid === id;
+    });
+    if (idx >= 0) {
+      focusedDetailIndex = idx;
+      return idx;
+    }
+
+    if (detailSlots.length === 0) {
+      detailSlots.push({ uid: id, pinned: false });
+      focusedDetailIndex = 0;
+      return 0;
+    }
+
+    if (detailSlots.length === 1) {
+      if (detailSlots[0].pinned) {
+        detailSlots.push({ uid: id, pinned: false });
+        focusedDetailIndex = 1;
+        return 1;
+      }
+      detailSlots[0].uid = id;
+      focusedDetailIndex = 0;
+      return 0;
+    }
+
+    const unpinnedIdx = detailSlots.findIndex(function (s) {
+      return !s.pinned;
+    });
+    if (unpinnedIdx >= 0) {
+      detailSlots[unpinnedIdx].uid = id;
+      focusedDetailIndex = unpinnedIdx;
+      return unpinnedIdx;
+    }
+
+    showCopyToast("Unpin a details pane to view another marker");
+    return -1;
+  }
+
+  function removeDetailSlotAt(index) {
+    if (index < 0 || index >= detailSlots.length) return;
+    const removed = detailSlots[index];
+    clearDetailAgeTimer(removed.uid);
+    detailSlots.splice(index, 1);
+    if (selectedUid === removed.uid) {
+      selectedUid = null;
+    }
+    if (focusedDetailIndex >= detailSlots.length) {
+      focusedDetailIndex = Math.max(0, detailSlots.length - 1);
+    }
+    if (lockedUid === removed.uid) {
+      clearLock();
+    }
+    syncDetailStackDom();
+    syncDetailStackVisibility();
+    renderList();
+    syncMapSource();
+    applyDetailPanelWidth(
+      Number(localStorage.getItem(LS_DETAIL_PANEL_WIDTH)) ||
+        detailPanelDefaultWidth(),
+      false
+    );
+  }
+
+  function toggleDetailPin(index) {
+    const slot = detailSlots[index];
+    if (!slot) return;
+    if (slot.pinned) {
+      slot.pinned = false;
+      if (selectedUid !== slot.uid) {
+        removeDetailSlotAt(index);
+      } else {
+        syncDetailStackDom();
+      }
+      return;
+    }
+    if (pinnedDetailCount() >= MAX_DETAIL_SLOTS) {
+      showCopyToast("At most 2 pinned details panes");
+      return;
+    }
+    slot.pinned = true;
+    syncDetailStackDom();
+  }
+
+  function buildDetailPaneElement(slotIndex, slot) {
+    const pane = document.createElement("aside");
+    pane.className = "map-detail-pane";
+    pane.setAttribute("data-slot-index", String(slotIndex));
+    pane.setAttribute("aria-label", "Marker details");
+    pane.innerHTML =
+      '<div class="map-panel-head">' +
+      '<button type="button" class="map-detail-pin-btn' +
+      (slot.pinned ? " active" : "") +
+      '" title="' +
+      (slot.pinned ? "Unpin details" : "Pin details") +
+      '" aria-pressed="' +
+      (slot.pinned ? "true" : "false") +
+      '" aria-label="' +
+      (slot.pinned ? "Unpin details" : "Pin details") +
+      '">' +
+      PIN_ICON +
+      "</button>" +
+      '<h2 class="map-detail-title">Details</h2>' +
+      '<button type="button" class="map-panel-collapse map-detail-close-btn" title="Close details">›</button>' +
+      "</div>" +
+      '<div class="map-detail-body"></div>' +
+      '<div class="map-detail-actions">' +
+      '<button type="button" class="map-btn map-btn-sm map-detail-center-btn">Center</button>' +
+      '<button type="button" class="map-btn map-btn-sm map-detail-lock-btn">Lock</button>' +
+      '<button type="button" class="map-btn map-btn-sm map-detail-copy-raw-btn">Copy RAW</button>' +
+      "</div>";
+
+    pane.querySelector(".map-detail-pin-btn").addEventListener("click", function () {
+      toggleDetailPin(slotIndex);
+    });
+    pane.querySelector(".map-detail-close-btn").addEventListener("click", function () {
+      removeDetailSlotAt(slotIndex);
+    });
+    pane.querySelector(".map-detail-center-btn").addEventListener("click", function () {
+      const m = markersByUid.get(slot.uid);
+      if (!m) return;
+      lockMoveFromCode = true;
+      map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12) });
+    });
+    pane.querySelector(".map-detail-lock-btn").addEventListener("click", function () {
+      toggleLock(slot.uid);
+    });
+    pane.querySelector(".map-detail-copy-raw-btn").addEventListener("click", function () {
+      fetch("/api/map/cot-raw?uid=" + encodeURIComponent(slot.uid))
+        .then(function (resp) {
+          if (!resp.ok) throw new Error("raw " + resp.status);
+          return resp.text();
+        })
+        .then(function (text) {
+          return copyTextToClipboard(text).then(function () {
+            showCopyToast("Copied raw CoT");
+          });
+        })
+        .catch(function () {
+          showCopyToast("Raw CoT not available");
+        });
+    });
+
+    return pane;
+  }
+
+  function syncDetailStackDom() {
+    if (!elDetailStack) return;
+    const resizeHandle = elDetailResize;
+    elDetailStack.innerHTML = "";
+    if (resizeHandle) elDetailStack.appendChild(resizeHandle);
+
+    detailSlots.forEach(function (slot, index) {
+      const pane = buildDetailPaneElement(index, slot);
+      elDetailStack.appendChild(pane);
+      renderDetailPane(index);
+    });
+  }
+
+  function renderDetailPane(slotIndex) {
+    if (!elDetailStack) return;
+    const slot = detailSlots[slotIndex];
+    if (!slot) return;
+    const pane = elDetailStack.querySelector(
+      '.map-detail-pane[data-slot-index="' + slotIndex + '"]'
+    );
+    if (!pane) return;
+    const m = markersByUid.get(slot.uid);
+    const titleEl = pane.querySelector(".map-detail-title");
+    const bodyEl = pane.querySelector(".map-detail-body");
+    const actionsEl = pane.querySelector(".map-detail-actions");
+    const pinBtn = pane.querySelector(".map-detail-pin-btn");
+    const lockBtn = pane.querySelector(".map-detail-lock-btn");
+
+    if (!m) {
+      if (titleEl) titleEl.textContent = "Details";
+      if (bodyEl) {
+        bodyEl.innerHTML =
+          '<div class="map-detail-empty">Marker no longer available.</div>';
+      }
+      if (actionsEl) actionsEl.hidden = true;
+      clearDetailAgeTimer(slot.uid);
+      return;
+    }
+
+    if (titleEl) titleEl.textContent = m.callsign || "Details";
+    if (actionsEl) actionsEl.hidden = false;
+    if (pinBtn) {
+      pinBtn.classList.toggle("active", !!slot.pinned);
+      pinBtn.setAttribute("aria-pressed", slot.pinned ? "true" : "false");
+      pinBtn.title = slot.pinned ? "Unpin details" : "Pin details";
+    }
+    if (lockBtn) {
+      const lockActive = lockedUid === m.uid;
+      lockBtn.classList.toggle("active", lockActive);
+      lockBtn.setAttribute("aria-pressed", lockActive ? "true" : "false");
+    }
+
+    const groups = markerGroups(m);
+    const groupHtml = groups
+      .map(function (g) {
+        return '<span class="map-chip">' + escapeHtml(stripTakPrefix(g)) + "</span>";
+      })
+      .join(" ");
+    const remarksText = m.remarks ? String(m.remarks).trim() : "";
+    const coordText = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
+    const team = m.team ? String(m.team).trim() : "";
+    const role = m.role ? String(m.role).trim() : "";
+    const kvRows = [
+      detailKvRow(groups.length === 1 ? "Group" : "Groups", groupHtml || "—", "map-chips"),
+    ];
+    if (team) kvRows.push(detailKvRow("Team", escapeHtml(team)));
+    if (role) kvRows.push(detailKvRow("Role", escapeHtml(role)));
+    kvRows.push(
+      detailKvRow(
+        "Lat / Lon",
+        "<span>" +
+          coordText +
+          "</span>" +
+          '<button type="button" class="map-copy-btn map-copy-coords-btn" title="Copy coordinates" aria-label="Copy coordinates">' +
+          COPY_COORDS_ICON +
+          "</button>",
+        "map-coords-row"
+      )
+    );
+    if (!isUnknownHae(m.hae)) {
+      kvRows.push(detailKvRow("HAE", fmtHae(m.hae)));
+    }
+    kvRows.push(
+      detailKvRow(
+        "Course",
+        m.course != null ? escapeHtml(String(m.course)) + "°" : "—"
+      ),
+      detailKvRow("Speed", m.speed != null ? escapeHtml(String(m.speed)) : "—"),
+      detailKvRow(
+        "Last updated",
+        '<span class="map-detail-updated">' +
+          escapeHtml(updatedAgeLabel(m.updatedAt)) +
+          "</span>"
+      )
+    );
+
+    if (bodyEl) {
+      bodyEl.innerHTML =
+        '<div class="map-detail-wrap">' +
+        '<dl class="map-kv map-kv-compact">' +
+        kvRows.join("") +
+        "</dl>" +
+        '<section class="map-remarks-section">' +
+        '<h3 class="map-remarks-title">Remarks</h3>' +
+        '<div class="map-remarks-box' +
+        (remarksText ? "" : " empty") +
+        '">' +
+        escapeHtml(remarksText || "No remarks.") +
+        "</div></section></div>";
+
+      const copyBtn = bodyEl.querySelector(".map-copy-coords-btn");
+      if (copyBtn) {
+        copyBtn.addEventListener("click", function () {
+          const current = markersByUid.get(slot.uid);
+          if (!current) return;
+          const text = current.lat.toFixed(5) + ", " + current.lon.toFixed(5);
+          copyTextToClipboard(text).then(
+            function () {
+              showCopyToast("Copied " + text);
+            },
+            function () {
+              showCopyToast(text);
+            }
+          );
+        });
+      }
+    }
+
+    startDetailAgeTimer(pane, m);
+  }
+
+  function renderAllDetailSlots() {
+    if (!detailSlots.length) {
+      clearDetailAgeTimer();
+      syncDetailStackDom();
+      syncDetailStackVisibility();
+      return;
+    }
+    detailSlots.forEach(function (_slot, index) {
+      renderDetailPane(index);
+    });
+    syncDetailStackVisibility();
   }
 
   function updatedAgeLabel(updatedAt) {
@@ -1611,24 +2099,6 @@
     return "<dt>" + escapeHtml(label) + "</dt><dd" + cls + ">" + valueHtml + "</dd>";
   }
 
-  function startDetailAgeTimer(marker) {
-    clearDetailAgeTimer();
-    const el = document.getElementById("mapDetailUpdated");
-    if (!el || !marker) return;
-
-    function tick() {
-      const current = selectedUid ? markersByUid.get(selectedUid) : null;
-      if (!current || current.uid !== marker.uid) {
-        clearDetailAgeTimer();
-        return;
-      }
-      el.textContent = updatedAgeLabel(current.updatedAt);
-    }
-
-    tick();
-    detailAgeTimer = setInterval(tick, 1000);
-  }
-
   function lockedMarkerCoords() {
     const m = lockedUid ? markersByUid.get(lockedUid) : null;
     if (!m || !Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return null;
@@ -1637,19 +2107,28 @@
 
   function clearLock() {
     lockedUid = null;
-    updateLockButtonUi();
+    updateLockButtonsUi();
+    syncMapSource();
   }
 
-  function updateLockButtonUi() {
-    if (!elLockBtn) return;
-    const m = selectedUid ? markersByUid.get(selectedUid) : null;
-    const active = !!(m && lockedUid === m.uid);
-    elLockBtn.classList.toggle("active", active);
-    elLockBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  function updateLockButtonsUi() {
+    if (!elDetailStack) return;
+    detailSlots.forEach(function (slot, index) {
+      const pane = elDetailStack.querySelector(
+        '.map-detail-pane[data-slot-index="' + index + '"]'
+      );
+      if (!pane) return;
+      const lockBtn = pane.querySelector(".map-detail-lock-btn");
+      if (!lockBtn) return;
+      const lockActive = lockedUid === slot.uid;
+      lockBtn.classList.toggle("active", lockActive);
+      lockBtn.setAttribute("aria-pressed", lockActive ? "true" : "false");
+    });
   }
 
-  function toggleLock() {
-    const m = selectedUid ? markersByUid.get(selectedUid) : null;
+  function toggleLock(uid) {
+    const id = uid != null ? String(uid) : selectedUid;
+    const m = id ? markersByUid.get(id) : null;
     if (!m || !Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return;
     if (lockedUid === m.uid) {
       clearLock();
@@ -1658,7 +2137,8 @@
     lockedUid = m.uid;
     lockMoveFromCode = true;
     map.easeTo({ center: [m.lon, m.lat], zoom: map.getZoom(), duration: 400 });
-    updateLockButtonUi();
+    updateLockButtonsUi();
+    syncMapSource();
   }
 
   function trackLockedMarker(m) {
@@ -1711,89 +2191,6 @@
     if (!coords) return;
     lockMoveFromCode = true;
     map.easeTo({ center: coords, zoom: map.getZoom(), duration: 0 });
-  }
-
-  function renderDetail(m) {
-    if (!m) {
-      clearDetailAgeTimer();
-      elDetailTitle.textContent = "Details";
-      elDetail.innerHTML =
-        '<div class="map-detail-empty">Select a marker to view details.</div>';
-      elDetailActions.hidden = true;
-      syncDetailPaneVisibility();
-      return;
-    }
-    elDetailTitle.textContent = m.callsign || "Details";
-    elDetailActions.hidden = false;
-    const groups = markerGroups(m);
-    const groupHtml = groups
-      .map(function (g) {
-        return '<span class="map-chip">' + escapeHtml(stripTakPrefix(g)) + "</span>";
-      })
-      .join(" ");
-    const remarksText = m.remarks ? String(m.remarks).trim() : "";
-    const coordText = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
-    const team = m.team ? String(m.team).trim() : "";
-    const role = m.role ? String(m.role).trim() : "";
-    const kvRows = [
-      detailKvRow(groups.length === 1 ? "Group" : "Groups", groupHtml || "—", "map-chips"),
-    ];
-    if (team) kvRows.push(detailKvRow("Team", escapeHtml(team)));
-    if (role) kvRows.push(detailKvRow("Role", escapeHtml(role)));
-    kvRows.push(
-      detailKvRow(
-        "Lat / Lon",
-        "<span>" +
-          coordText +
-          "</span>" +
-          '<button type="button" class="map-copy-btn map-copy-coords-btn" title="Copy coordinates" aria-label="Copy coordinates">' +
-          COPY_COORDS_ICON +
-          "</button>",
-        "map-coords-row"
-      ),
-      detailKvRow("HAE", fmtHae(m.hae)),
-      detailKvRow(
-        "Course",
-        m.course != null ? escapeHtml(String(m.course)) + "°" : "—"
-      ),
-      detailKvRow("Speed", m.speed != null ? escapeHtml(String(m.speed)) : "—"),
-      detailKvRow(
-        "Last updated",
-        '<span id="mapDetailUpdated">' + escapeHtml(updatedAgeLabel(m.updatedAt)) + "</span>"
-      )
-    );
-    elDetail.innerHTML =
-      '<div class="map-detail-wrap">' +
-      '<dl class="map-kv map-kv-compact">' +
-      kvRows.join("") +
-      "</dl>" +
-      '<section class="map-remarks-section">' +
-      '<h3 class="map-remarks-title">Remarks</h3>' +
-      '<div class="map-remarks-box' +
-      (remarksText ? "" : " empty") +
-      '">' +
-      escapeHtml(remarksText || "No remarks.") +
-      "</div></section></div>";
-
-    const copyBtn = elDetail.querySelector(".map-copy-coords-btn");
-    if (copyBtn) {
-      copyBtn.addEventListener("click", function () {
-        const current = selectedUid ? markersByUid.get(selectedUid) : null;
-        if (!current) return;
-        const text = current.lat.toFixed(5) + ", " + current.lon.toFixed(5);
-        copyTextToClipboard(text).then(
-          function () {
-            showCopyToast("Copied " + text);
-          },
-          function () {
-            showCopyToast(text);
-          }
-        );
-      });
-    }
-    startDetailAgeTimer(m);
-    updateLockButtonUi();
-    syncDetailPaneVisibility();
   }
 
   function renderLayerList() {
@@ -1907,12 +2304,28 @@
   }
 
   function selectMarker(uid, showPopupFlag) {
-    selectedUid = uid;
+    const id = String(uid);
+    const hadSlot = detailSlots.some(function (s) {
+      return s.uid === id;
+    });
+    const prevLen = detailSlots.length;
+    const idx = ensureDetailSlotForUid(id);
+
+    selectedUid = id;
     detailPaneUserCollapsed = false;
-    const m = markersByUid.get(uid);
+
+    if (idx >= 0) {
+      if (detailSlots.length !== prevLen || !hadSlot) {
+        syncDetailStackDom();
+      } else {
+        renderDetailPane(idx);
+      }
+      syncDetailStackVisibility();
+    }
+
     renderList();
-    renderDetail(m);
     syncMapSource();
+    const m = markersByUid.get(id);
     if (m && Number.isFinite(m.lon) && Number.isFinite(m.lat)) {
       if (showPopupFlag) {
         if (isDetailPaneOpen()) closeMapPopup();
@@ -1922,15 +2335,23 @@
   }
 
   function applyBatch(msg) {
+    let slotsChanged = false;
     for (const uid of msg.removes || []) {
-      markersByUid.delete(String(uid));
-      if (lockedUid === uid) {
+      const id = String(uid);
+      markersByUid.delete(id);
+      if (lockedUid === id) {
         clearLock();
       }
-      if (selectedUid === uid) {
+      if (selectedUid === id) {
         selectedUid = null;
-        renderDetail(null);
         closeMapPopup();
+      }
+      for (let i = detailSlots.length - 1; i >= 0; i--) {
+        if (detailSlots[i].uid === id) {
+          clearDetailAgeTimer(id);
+          detailSlots.splice(i, 1);
+          slotsChanged = true;
+        }
       }
     }
     for (const m of msg.updates || []) {
@@ -1940,6 +2361,18 @@
     else recomputeGroupCounts();
     syncMapSource();
     scheduleLayerListRefresh();
+    if (slotsChanged) {
+      syncDetailStackDom();
+      syncDetailStackVisibility();
+    } else if (msg.updates && msg.updates.length && detailSlots.length) {
+      for (const m of msg.updates) {
+        const idx = detailSlots.findIndex(function (s) {
+          return s.uid === m.uid;
+        });
+        if (idx >= 0) renderDetailPane(idx);
+      }
+      updateLockButtonsUi();
+    }
     if (lockedUid) {
       const locked = markersByUid.get(lockedUid);
       if (locked) trackLockedMarker(locked);
@@ -1950,9 +2383,6 @@
     if (!m || !m.uid) return;
     applyBatch({ updates: [m] });
     maybeFitVisibleOnLoad();
-    if (selectedUid === m.uid) {
-      renderDetail(m);
-    }
   }
 
   function removeMarker(uid) {
@@ -2063,7 +2493,7 @@
   }
 
   function setBasemap(id) {
-    const def = BASEMAPS[id] || BASEMAPS.dark;
+    const def = BASEMAPS[id] || BASEMAPS["dark-matter"];
     localStorage.setItem(LS_BASEMAP, id);
     elBasemapLabel.textContent = def.label;
     styleRestoreGen++;
@@ -2077,8 +2507,15 @@
   function deselectMarker() {
     if (!selectedUid) return;
     selectedUid = null;
+    for (let i = detailSlots.length - 1; i >= 0; i--) {
+      if (!detailSlots[i].pinned) {
+        clearDetailAgeTimer(detailSlots[i].uid);
+        detailSlots.splice(i, 1);
+      }
+    }
+    syncDetailStackDom();
+    syncDetailStackVisibility();
     renderList();
-    renderDetail(null);
     syncMapSource();
     closeStackPicker();
     closeMapPopup();
@@ -2099,6 +2536,7 @@
     const layers = [];
     if (map.getLayer(CIRCLE_LAYER)) layers.push(CIRCLE_LAYER);
     if (map.getLayer(ICON_LAYER)) layers.push(ICON_LAYER);
+    if (map.getLayer(LABEL_PRIORITY_LAYER)) layers.push(LABEL_PRIORITY_LAYER);
     if (map.getLayer(LABEL_LAYER)) layers.push(LABEL_LAYER);
     if (layers.length) {
       const hit = map.queryRenderedFeatures(e.point, { layers: layers });
@@ -2213,45 +2651,12 @@
     setPanelLeftCollapsed(!elPanelLeft.classList.contains("collapsed"));
   });
 
-  document.getElementById("mapCollapseRight").addEventListener("click", () => {
-    setPanelRightCollapsed(!elPanelRight.classList.contains("collapsed"));
-  });
-
   elExpandLeft.addEventListener("click", () => {
     setPanelLeftCollapsed(false);
   });
 
   elExpandRight.addEventListener("click", () => {
-    setPanelRightCollapsed(false);
-  });
-
-  elCenterBtn.addEventListener("click", () => {
-    const m = selectedUid ? markersByUid.get(selectedUid) : null;
-    if (!m) return;
-    lockMoveFromCode = true;
-    map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12) });
-  });
-
-  elLockBtn.addEventListener("click", () => {
-    toggleLock();
-  });
-
-  elCopyRawBtn.addEventListener("click", () => {
-    const m = selectedUid ? markersByUid.get(selectedUid) : null;
-    if (!m) return;
-    fetch("/api/map/cot-raw?uid=" + encodeURIComponent(m.uid))
-      .then(function (resp) {
-        if (!resp.ok) throw new Error("raw " + resp.status);
-        return resp.text();
-      })
-      .then(function (text) {
-        return copyTextToClipboard(text).then(function () {
-          showCopyToast("Copied raw CoT");
-        });
-      })
-      .catch(function () {
-        showCopyToast("Raw CoT not available");
-      });
+    setDetailStackCollapsed(false);
   });
 
   document.addEventListener("keydown", (ev) => {
