@@ -45,7 +45,13 @@ function markerChannelKeys(marker) {
     Array.isArray(marker?.groups) && marker.groups.length
       ? marker.groups
       : [mapMeta.UNASSIGNED_GROUP];
-  return groups.map((g) => mapMeta.channelBaseKey(g)).filter(Boolean);
+  const keys = new Set();
+  for (const g of groups) {
+    const channelName = mapMeta.toChannelGroupName(g) || g;
+    const key = mapMeta.channelBaseKey(channelName);
+    if (key) keys.add(key);
+  }
+  return Array.from(keys);
 }
 
 function parseGeoJsonQuery(query) {
@@ -58,7 +64,14 @@ function parseGeoJsonQuery(query) {
   } else if (channelsRaw) {
     enabledChannelKeys = new Set();
     for (const part of channelsRaw.split(",")) {
-      const key = mapMeta.channelBaseKey(decodeURIComponent(part.trim()));
+      const decoded = decodeURIComponent(part.trim());
+      const key =
+        mapMeta.channelBaseKey(decoded) ||
+        String(decoded || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
       if (key) enabledChannelKeys.add(key);
     }
   }

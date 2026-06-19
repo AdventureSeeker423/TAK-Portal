@@ -613,6 +613,7 @@ module.exports = {
   isMapChannelGroupName,
   channelGroupKey,
   channelBaseKey,
+  toChannelGroupName,
   stripChannelBehaviorSuffix,
   ensureRefreshLoop,
   parseGroupsFromCoTDetail,

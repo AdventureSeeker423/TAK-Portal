@@ -175,12 +175,35 @@
   let filterText = "";
   let layerFilterText = "";
   let layerListTimer = null;
+  let geoJsonFetchId = 0;
+
+  function channelBaseKeyForName(name) {
+    const key = channelGroupKey(name);
+    if (!key) return "";
+    const match = groupsCatalog.find((g) => {
+      if (g.baseKey && g.baseKey === key) return true;
+      return channelGroupKey(g.name) === key;
+    });
+    return match && match.baseKey ? match.baseKey : key;
+  }
+
+  function enabledChannelKeysForFilter() {
+    if (enabledGroups === null) return null;
+    if (enabledGroups.size === 0) return new Set();
+    const keys = new Set();
+    for (const name of enabledGroups) {
+      const key = channelBaseKeyForName(name);
+      if (key) keys.add(key);
+    }
+    return keys;
+  }
 
   function buildGeoJsonQuery() {
     const params = new URLSearchParams();
-    if (enabledGroups) {
-      if (enabledGroups.size === 0) params.set("channels", "__none__");
-      else if (isChannelFilterActive()) params.set("channels", Array.from(enabledGroups).join(","));
+    const enabledKeys = enabledChannelKeysForFilter();
+    if (enabledKeys !== null) {
+      if (!enabledKeys.size) params.set("channels", "__none__");
+      else params.set("channels", Array.from(enabledKeys).join(","));
     }
     if (filterText) params.set("q", filterText);
     if (selectedUid) params.set("selected", selectedUid);
@@ -212,12 +235,15 @@
       return;
     }
     geoJsonInFlight = true;
-    fetch("/api/map/geojson" + buildGeoJsonQuery())
+    const fetchId = ++geoJsonFetchId;
+    const query = buildGeoJsonQuery();
+    fetch("/api/map/geojson" + query)
       .then(function (resp) {
         if (!resp.ok) throw new Error("geojson " + resp.status);
         return resp.json();
       })
       .then(function (data) {
+        if (fetchId !== geoJsonFetchId) return;
         lastGeoMeta = data.meta || lastGeoMeta;
         applyGeoJsonToMap(data);
         updateVisibleCounts();
@@ -610,16 +636,7 @@
   }
 
   function isChannelFilterActive() {
-    if (!enabledGroups) return false;
-    if (enabledGroups.size === 0) return true;
-    const allKeys = new Set(catalogChannelKeys());
-    if (!allKeys.size) return false;
-    const enabledKeys = new Set(
-      Array.from(enabledGroups)
-        .map((n) => channelGroupKey(n))
-        .filter(Boolean)
-    );
-    return enabledKeys.size < allKeys.size;
+    return enabledGroups !== null;
   }
 
   function ensureEnabledGroupsInitialized() {
@@ -636,7 +653,16 @@
   }
 
   function markerChannelKeys(m) {
-    return markerGroups(m).map(channelGroupKey).filter(Boolean);
+    return markerGroups(m)
+      .map((g) => {
+        const key = channelGroupKey(g);
+        if (!key) return "";
+        const match = groupsCatalog.find(
+          (entry) => entry.baseKey === key || channelGroupKey(entry.name) === key
+        );
+        return match && match.baseKey ? match.baseKey : key;
+      })
+      .filter(Boolean);
   }
 
   function markerGroups(m) {
@@ -647,19 +673,19 @@
   function isChannelKeyEnabled(key) {
     if (!enabledGroups) return true;
     if (!key) return false;
-    for (const enabled of enabledGroups) {
-      if (channelGroupKey(enabled) === key) return true;
-    }
-    return false;
+    const enabledKeys = enabledChannelKeysForFilter();
+    if (!enabledKeys) return true;
+    return enabledKeys.has(key);
   }
 
   function isGroupEnabled(groupName) {
     if (!enabledGroups) return true;
-    return isChannelKeyEnabled(channelGroupKey(groupName));
+    return isChannelKeyEnabled(channelBaseKeyForName(groupName));
   }
 
   function markerVisible(m) {
     if (isChannelFilterActive()) {
+      if (enabledGroups.size === 0) return false;
       const keys = markerChannelKeys(m);
       if (!keys.length) return false;
       if (!keys.some((k) => isChannelKeyEnabled(k))) return false;
