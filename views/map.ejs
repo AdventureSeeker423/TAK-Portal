@@ -54,7 +54,25 @@
             <span class="map-status-dot" id="mapConnDot"></span>
             <span id="mapConnLabel">Connecting</span>
           </div>
-          <select class="map-select" id="mapBasemapSelect" title="Basemap"></select>
+          <label class="map-basemap-picker" for="mapBasemapSelect" title="Basemap">
+            <svg
+              class="map-basemap-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3-6-3V6z" />
+              <path d="M9 3v15" />
+              <path d="M15 6v15" />
+            </svg>
+            <select class="map-select" id="mapBasemapSelect" title="Basemap" aria-label="Basemap"></select>
+          </label>
           <a class="map-btn" href="/dashboard">Dashboard</a>
         </div>
       </header>

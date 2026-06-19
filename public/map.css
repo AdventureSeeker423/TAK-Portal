@@ -191,6 +191,30 @@ body {
   margin: 0;
 }
 
+.map-basemap-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--map-border);
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.map-basemap-icon {
+  flex: 0 0 auto;
+  color: var(--map-accent);
+  opacity: 0.9;
+}
+
+.map-basemap-picker .map-select {
+  border: none;
+  background: transparent;
+  padding: 0;
+  min-width: 0;
+}
+
 .map-select {
   appearance: none;
   border: 1px solid var(--map-border);
