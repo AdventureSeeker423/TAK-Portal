@@ -176,6 +176,31 @@
   let layerListTimer = null;
   const MAP_MAX_ICONS = 120;
 
+  function normalizeMarkerRecord(m) {
+    if (!m || !m.uid) return null;
+    const lon = Number(m.lon);
+    const lat = Number(m.lat);
+    return {
+      ...m,
+      uid: String(m.uid),
+      lon: Number.isFinite(lon) ? lon : m.lon,
+      lat: Number.isFinite(lat) ? lat : m.lat,
+    };
+  }
+
+  function markerCoords(m) {
+    const lon = Number(m && m.lon);
+    const lat = Number(m && m.lat);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+    return { lon, lat };
+  }
+
+  function storeMarker(m) {
+    const normalized = normalizeMarkerRecord(m);
+    if (!normalized) return;
+    markersByUid.set(String(normalized.uid), normalized);
+  }
+
   function channelBaseKeyForName(name) {
     const key = channelGroupKey(name);
     if (!key) return "";
@@ -211,9 +236,10 @@
   }
 
   function markerGeoJsonFeatures(m, useIcons) {
-    if (!Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return [];
+    const pos = markerCoords(m);
+    if (!pos) return [];
     const color = markerDisplayColor(m);
-    const coords = [m.lon, m.lat];
+    const coords = [pos.lon, pos.lat];
     const opacity = markerOpacity(m);
     const apiIconId = useIcons ? resolveMarkerIconId(m) : "";
     const mapImageId = apiIconId ? registerMapImageId(apiIconId) : "";
@@ -238,8 +264,9 @@
 
     if (mapImageId && apiIconId) loadMapIcon(apiIconId, mapImageId);
 
-    if (Number.isFinite(m.course) && m.course >= 0) {
-      const rad = (m.course * Math.PI) / 180;
+    const course = Number(m.course);
+    if (Number.isFinite(course) && course >= 0) {
+      const rad = (course * Math.PI) / 180;
       const len = 0.02 / Math.max(map.getZoom(), 4);
       features.push({
         type: "Feature",
@@ -247,7 +274,7 @@
           type: "LineString",
           coordinates: [
             coords,
-            [m.lon + Math.sin(rad) * len, m.lat + Math.cos(rad) * len],
+            [pos.lon + Math.sin(rad) * len, pos.lat + Math.cos(rad) * len],
           ],
         },
         properties: { uid: m.uid, color, kind: "course-line" },
@@ -273,13 +300,21 @@
       features.push.apply(features, markerGeoJsonFeatures(visible[i], useIcons));
     }
     src.setData({ type: "FeatureCollection", features: features });
-    lastGeoMeta = { total: markersByUid.size, visible: visible.length };
+    lastGeoMeta = {
+      total: markersByUid.size,
+      visible: visible.length,
+      mapped: features.filter(function (f) {
+        return f && f.properties && f.properties.kind === "marker";
+      }).length,
+    };
     updateVisibleCounts();
+    if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
   }
 
   function syncMapSource() {
     scheduleMapRefresh();
     scheduleUiRefresh();
+    if (markerLayersReady) refreshMapFromMarkers();
   }
 
   function scheduleLayerListRefresh() {
@@ -300,8 +335,7 @@
         markersByUid.clear();
         const list = Array.isArray(data.markers) ? data.markers : [];
         for (let i = 0; i < list.length; i++) {
-          const m = list[i];
-          if (m && m.uid) markersByUid.set(String(m.uid), m);
+          storeMarker(list[i]);
         }
         recomputeGroupCounts();
       });
@@ -527,8 +561,13 @@
 
   function fitVisibleMarkers(animate) {
     const coords = getVisibleMarkers()
-      .filter((m) => Number.isFinite(m.lon) && Number.isFinite(m.lat))
-      .map((m) => [m.lon, m.lat]);
+      .map(function (m) {
+        return markerCoords(m);
+      })
+      .filter(Boolean)
+      .map(function (pos) {
+        return [pos.lon, pos.lat];
+      });
     if (!coords.length) return false;
 
     pendingFitVisible = false;
@@ -782,7 +821,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: ["all", MARKER_FILTER, ["==", ["get", "iconId"], ""]],
+      filter: MARKER_FILTER,
       paint: {
         "circle-radius": [
           "case",
@@ -832,7 +871,7 @@
         "text-offset": [0, -1.35],
         "text-allow-overlap": true,
         "text-ignore-placement": true,
-        "text-optional": false,
+        "text-optional": true,
         "text-max-width": 14,
       },
       paint: {
@@ -848,7 +887,7 @@
     if (mapRefreshPending) {
       mapRefreshPending = false;
     }
-    scheduleMapRefresh();
+    refreshMapFromMarkers();
     preloadMarkerIcons();
   }
 
@@ -895,9 +934,15 @@
 
   function updateVisibleCounts() {
     const total = lastGeoMeta.total || markersByUid.size;
+    const mapped =
+      lastGeoMeta.mapped != null
+        ? lastGeoMeta.mapped
+        : getVisibleMarkers().filter(function (m) {
+            return markerCoords(m);
+          }).length;
     const visible =
       lastGeoMeta.visible != null ? lastGeoMeta.visible : getVisibleMarkers().length;
-    elVisibleCounts.textContent = visible + " / " + total + " visible";
+    elVisibleCounts.textContent = mapped + " / " + total + " visible";
   }
 
   function fmtCoord(n) {
@@ -1081,7 +1126,7 @@
       }
     }
     for (const m of msg.updates || []) {
-      if (m && m.uid) markersByUid.set(String(m.uid), m);
+      storeMarker(m);
     }
     if (msg.groupsCatalog) mergeGroupsCatalog(msg.groupsCatalog);
     else recomputeGroupCounts();
