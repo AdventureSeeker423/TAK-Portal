@@ -204,7 +204,7 @@ function sortHits(hits, options = {}) {
     if (hasNear) {
       const da = haversineKm(nearLat, nearLon, a.lat, a.lon);
       const db = haversineKm(nearLat, nearLon, b.lat, b.lon);
-      if (Math.abs(da - db) > 0.05) return da - db;
+      if (da !== db) return da - db;
     }
     return b.score - a.score || a.label.localeCompare(b.label);
   });

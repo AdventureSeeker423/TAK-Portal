@@ -157,7 +157,12 @@ router.get("/geocode", async (req, res) => {
     if (!results.length) {
       return res.status(404).json({ error: "No results" });
     }
-    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader(
+      "Cache-Control",
+      Number.isFinite(nearLat) && Number.isFinite(nearLon)
+        ? "private, max-age=30"
+        : "private, max-age=300"
+    );
     if (limit === 1) {
       return res.json(results[0]);
     }

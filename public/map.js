@@ -1514,6 +1514,65 @@
     }
   }
 
+  function mapViewportCenter() {
+    if (!map || typeof map.getCenter !== "function") return null;
+    const center = map.getCenter();
+    if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lng)) {
+      return null;
+    }
+    return { lat: center.lat, lon: center.lng };
+  }
+
+  function distanceKm(lat1, lon1, lat2, lon2) {
+    const toRad = Math.PI / 180;
+    const dLat = (lat2 - lat1) * toRad;
+    const dLon = (lon2 - lon1) * toRad;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * toRad) *
+        Math.cos(lat2 * toRad) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function sortGoToAddressesByViewport(addresses) {
+    const center = mapViewportCenter();
+    if (!center || !Array.isArray(addresses) || addresses.length < 2) {
+      return addresses;
+    }
+    return addresses.slice().sort(function (a, b) {
+      const da = distanceKm(center.lat, center.lon, a.lat, a.lon);
+      const db = distanceKm(center.lat, center.lon, b.lat, b.lon);
+      return da - db;
+    });
+  }
+
+  function resortGoToAddressesByViewport() {
+    if (!goToPaletteOpen || !goToResults.length) return;
+    const addressIdx = [];
+    const addressItems = [];
+    for (let i = 0; i < goToResults.length; i++) {
+      if (goToResults[i].kind === "address") {
+        addressIdx.push(i);
+        addressItems.push(goToResults[i]);
+      }
+    }
+    if (addressItems.length < 2) return;
+    const sorted = sortGoToAddressesByViewport(addressItems);
+    let changed = false;
+    for (let i = 0; i < addressIdx.length; i++) {
+      if (goToResults[addressIdx[i]] !== sorted[i]) {
+        goToResults[addressIdx[i]] = sorted[i];
+        changed = true;
+      }
+    }
+    if (changed) {
+      syncGoToActiveIndex();
+      renderGoToResults();
+    }
+  }
+
   function flattenGoToResults(contacts, coordResult, addresses) {
     const out = contacts.slice();
     if (coordResult) out.push(coordResult);
@@ -1714,7 +1773,11 @@
         .then(function (addresses) {
           if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
           if (String(elGoToInput?.value || "").trim() !== q) return;
-          goToResults = flattenGoToResults(contacts, coordResult, addresses);
+          goToResults = flattenGoToResults(
+            contacts,
+            coordResult,
+            sortGoToAddressesByViewport(addresses)
+          );
           syncGoToActiveIndex();
           if (!goToResults.length) {
             setGoToHint("No results found", true);
@@ -1785,15 +1848,13 @@
       encodeURIComponent(String(query || "").trim()) +
       "&limit=" +
       GO_TO_ADDRESS_LIMIT;
-    if (map && typeof map.getCenter === "function") {
-      const center = map.getCenter();
-      if (center && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
-        url +=
-          "&nearLat=" +
-          encodeURIComponent(String(center.lat)) +
-          "&nearLon=" +
-          encodeURIComponent(String(center.lng));
-      }
+    const center = mapViewportCenter();
+    if (center) {
+      url +=
+        "&nearLat=" +
+        encodeURIComponent(String(center.lat)) +
+        "&nearLon=" +
+        encodeURIComponent(String(center.lon));
     }
     const r = await fetch(url);
     if (r.status === 404) return [];
@@ -1811,15 +1872,17 @@
       : Number.isFinite(Number(data.lat))
         ? [data]
         : [];
-    return hits.map(function (hit, idx) {
-      return {
-        kind: "address",
-        id: "address:" + idx + ":" + hit.lat + "," + hit.lon,
-        title: String(hit.label || query),
-        lat: Number(hit.lat),
-        lon: Number(hit.lon),
-      };
-    });
+    return sortGoToAddressesByViewport(
+      hits.map(function (hit, idx) {
+        return {
+          kind: "address",
+          id: "address:" + idx + ":" + hit.lat + "," + hit.lon,
+          title: String(hit.label || query),
+          lat: Number(hit.lat),
+          lon: Number(hit.lon),
+        };
+      })
+    );
   }
 
   async function geocodeAddress(query) {
@@ -3744,6 +3807,7 @@
 
   map.on("moveend", () => {
     lockMoveFromCode = false;
+    resortGoToAddressesByViewport();
   });
 
   map.on("zoomend", () => {
@@ -3752,6 +3816,7 @@
     }
     labelDeclutterKey = "";
     if (markerLayersReady) refreshMapFromMarkers();
+    resortGoToAddressesByViewport();
   });
 
   map.getCanvasContainer().addEventListener("wheel", onLockedMapWheel, {

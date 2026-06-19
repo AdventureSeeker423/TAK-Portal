@@ -91,6 +91,15 @@ const byDistance = geocode.sortHits(
 );
 assert.strictEqual(byDistance[0].label, "Near");
 
+const distanceBeatsScore = geocode.sortHits(
+  [
+    { lat: 36.16, lon: -86.78, label: "Far", source: "photon", score: 99 },
+    { lat: 35.05, lon: -85.31, label: "Near", source: "census", score: 50 },
+  ],
+  { nearLat: 35.0456, nearLon: -85.3097 }
+);
+assert.strictEqual(distanceBeatsScore[0].label, "Near");
+
 const variants = geocode.buildQueryVariants("600 market street chattanooga");
 assert.ok(variants.some(function (v) { return /Chattanooga,\s*TN/i.test(v); }));
 
