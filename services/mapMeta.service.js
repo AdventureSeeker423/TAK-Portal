@@ -24,6 +24,11 @@ let subscriptionIndex = {
   error: null,
 };
 
+/** Publish groups from feed integrations (ADS-B, etc.), keyed by traffic kind. */
+let feedGroupsByKind = {
+  aircraft: [],
+};
+
 let refreshTimer = null;
 /** @type {Set<() => void>} */
 const subscriptionRefreshListeners = new Set();
@@ -32,11 +37,25 @@ function normalizeGroupName(name) {
   return String(name || "").trim();
 }
 
-/** Map channels list: LDAP groups managed in Authentik with tak_ prefix. */
+/** Map channels list: Authentik-managed tak_* groups (Hamilton Co / HCSO channels). */
 function isMapChannelGroupName(name) {
   const n = normalizeGroupName(name);
   if (!n || n.startsWith("_")) return false;
-  return n.toLowerCase().startsWith("tak_");
+  if (!n.toLowerCase().startsWith("tak_")) return false;
+  const display = stripChannelBehaviorSuffix(n).toLowerCase();
+  if (display.startsWith("__")) return false;
+  if (display.includes("authentik")) return false;
+  if (display.startsWith("cn=")) return false;
+  return true;
+}
+
+function isPortalChannelBaseKey(baseKey) {
+  const key = String(baseKey || "").trim().toLowerCase();
+  if (!key || key === UNASSIGNED_GROUP.toLowerCase()) return false;
+  if (key.startsWith("__")) return false;
+  if (key.includes("authentik")) return false;
+  if (key.includes("cn=")) return false;
+  return true;
 }
 
 function channelGroupKey(name) {
@@ -130,9 +149,43 @@ function toChannelGroupName(name) {
 function isTakChannelGroupName(name) {
   const n = normalizeGroupName(name);
   if (!n || n === UNASSIGNED_GROUP) return false;
-  if (n.startsWith("_")) return false;
+  if (n.startsWith("_") || n.toLowerCase() === "__anon__") return false;
   if (/^cn=/i.test(n)) return false;
+  if (/authentik/i.test(n)) return false;
   return true;
+}
+
+function subscriptionGroupName(entry) {
+  return normalizeGroupName(
+    entry?.name || entry?.groupName || entry?.group || entry?.cn || ""
+  );
+}
+
+function rebuildFeedGroupCache(subList) {
+  feedGroupsByKind = { aircraft: [] };
+  for (const sub of Array.isArray(subList) ? subList : []) {
+    const groups = subscriptionPublishGroups(sub);
+    if (!groups.length) continue;
+    for (const g of groups) {
+      const lower = g.toLowerCase();
+      if (/aircraft|ads-?b|airplanes\.live|planes\.live/i.test(lower)) {
+        feedGroupsByKind.aircraft = groups;
+        break;
+      }
+    }
+    const label = `${sub.callsign || ""} ${sub.username || ""}`.toLowerCase();
+    if (/ads-?b|aircraft|airplanes|plane\s*feed|dump1090/i.test(label)) {
+      feedGroupsByKind.aircraft = groups;
+    }
+  }
+}
+
+function inferGroupsFromMarker(marker) {
+  const type = String(marker?.type || "").trim();
+  if (/^a-[a-z]-A-/i.test(type) && feedGroupsByKind.aircraft.length) {
+    return feedGroupsByKind.aircraft;
+  }
+  return null;
 }
 
 function isGroupActive(entry) {
@@ -152,7 +205,7 @@ function subscriptionPublishGroups(sub) {
 
   for (const g of raw) {
     if (!isGroupActive(g)) continue;
-    const name = normalizeGroupName(g.name);
+    const name = subscriptionGroupName(g);
     if (!name || !isTakChannelGroupName(name)) continue;
     any.add(name);
     const dir = String(g.direction || "").trim().toUpperCase();
@@ -240,6 +293,9 @@ function parseGroupsFromCoTDetail(detail) {
   appendFilterGroupNodes(detail.filtergroup, names);
   appendFilterGroupNodes(detail.FilterGroup, names);
   appendFilterGroupNodes(detail.filterGroup, names);
+  for (const [key, val] of Object.entries(detail)) {
+    if (/filtergroup/i.test(key)) appendFilterGroupNodes(val, names);
+  }
 
   const flowTag =
     detail.flow_tag?._attributes?.group ||
@@ -402,6 +458,7 @@ async function refreshSubscriptionIndex() {
       fetchedAt: Date.now(),
       error: null,
     };
+    rebuildFeedGroupCache(list);
     notifySubscriptionIndexRefreshed();
   } catch (err) {
     subscriptionIndex = {
@@ -476,7 +533,14 @@ function resolveGroupsForMarker(marker, cotDetail) {
       ? marker.cotRouteGroups
       : [];
   if (fromCot.length) return fromCot;
-  return resolveGroupsFromSubscription(marker);
+
+  const fromSub = resolveGroupsFromSubscription(marker);
+  if (fromSub[0] !== UNASSIGNED_GROUP) return fromSub;
+
+  const inferred = inferGroupsFromMarker(marker);
+  if (inferred?.length) return inferred;
+
+  return [UNASSIGNED_GROUP];
 }
 
 function buildGroupsCatalogWithCounts(markers) {
@@ -510,7 +574,9 @@ function buildGroupsCatalogWithCounts(markers) {
 
   for (const [baseKey, count] of counts.entries()) {
     if (seen.has(baseKey)) continue;
+    if (!isPortalChannelBaseKey(baseKey)) continue;
     const displayName = stripChannelBehaviorSuffix(groupsSvc.ensureTakPrefix(baseKey));
+    if (!isMapChannelGroupName(channelCatalogName(displayName))) continue;
     groups.push({
       name: channelCatalogName(displayName),
       displayName,

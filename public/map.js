@@ -342,7 +342,10 @@
   }
 
   function saveEnabledGroups() {
-    if (!enabledGroups) return;
+    if (!enabledGroups) {
+      localStorage.removeItem(LS_GROUPS);
+      return;
+    }
     localStorage.setItem(LS_GROUPS, JSON.stringify(Array.from(enabledGroups)));
   }
 
@@ -478,8 +481,38 @@
   function isMapChannelName(name) {
     const n = String(name || "").trim();
     if (!n.toLowerCase().startsWith("tak_") || n.startsWith("_")) return false;
-    if (/^tak_cn=/i.test(n)) return false;
+    const display = stripChannelBehaviorSuffix(n).toLowerCase();
+    if (display.startsWith("__")) return false;
+    if (display.includes("authentik")) return false;
+    if (display.startsWith("cn=")) return false;
     return true;
+  }
+
+  function catalogChannelKeys() {
+    return groupsCatalog
+      .filter((g) => isMapChannelName(g.name))
+      .map((g) => channelGroupKey(g.name))
+      .filter(Boolean);
+  }
+
+  function isChannelFilterActive() {
+    if (!enabledGroups) return false;
+    if (enabledGroups.size === 0) return true;
+    const allKeys = new Set(catalogChannelKeys());
+    if (!allKeys.size) return false;
+    const enabledKeys = new Set(
+      Array.from(enabledGroups)
+        .map((n) => channelGroupKey(n))
+        .filter(Boolean)
+    );
+    return enabledKeys.size < allKeys.size;
+  }
+
+  function ensureEnabledGroupsInitialized() {
+    if (enabledGroups) return;
+    enabledGroups = new Set(
+      groupsCatalog.filter((g) => isMapChannelName(g.name)).map((g) => g.name)
+    );
   }
 
   function channelGroupKey(name) {
@@ -492,26 +525,31 @@
     return markerGroups(m).map(channelGroupKey).filter(Boolean);
   }
 
+  function markerGroups(m) {
+    if (Array.isArray(m.groups) && m.groups.length) return m.groups;
+    return ["Unassigned"];
+  }
+
   function isChannelKeyEnabled(key) {
-    if (!enabledGroups || !key) return true;
+    if (!enabledGroups) return true;
+    if (!key) return false;
     for (const enabled of enabledGroups) {
       if (channelGroupKey(enabled) === key) return true;
     }
     return false;
   }
 
-  function markerGroups(m) {
-    if (Array.isArray(m.groups) && m.groups.length) return m.groups;
-    return ["Unassigned"];
-  }
-
   function isGroupEnabled(groupName) {
+    if (!enabledGroups) return true;
     return isChannelKeyEnabled(channelGroupKey(groupName));
   }
 
   function markerVisible(m) {
-    const keys = markerChannelKeys(m);
-    if (enabledGroups && (!keys.length || !keys.some((k) => isChannelKeyEnabled(k)))) return false;
+    if (isChannelFilterActive()) {
+      const keys = markerChannelKeys(m);
+      if (!keys.length) return false;
+      if (!keys.some((k) => isChannelKeyEnabled(k))) return false;
+    }
     if (!markerMatchesSearch(m)) return false;
     return true;
   }
@@ -532,17 +570,7 @@
   }
 
   function ensureDefaultGroupsEnabled() {
-    if (enabledGroups) return;
-    enabledGroups = new Set();
-    for (const g of groupsCatalog) {
-      if (isMapChannelName(g.name)) enabledGroups.add(g.name);
-    }
-    for (const m of markersByUid.values()) {
-      for (const gn of markerGroups(m)) {
-        if (isMapChannelName(gn)) enabledGroups.add(gn);
-      }
-    }
-    saveEnabledGroups();
+    // null enabledGroups = show all markers until the user narrows the filter
   }
 
   function mergeGroupsCatalog(incoming) {
@@ -890,10 +918,11 @@
         String(g.markerCount || 0) +
         "</span>";
       row.querySelector("input").addEventListener("change", (ev) => {
-        if (!enabledGroups) enabledGroups = new Set(groupsCatalog.map((x) => x.name));
+        if (!enabledGroups) ensureEnabledGroupsInitialized();
         if (ev.target.checked) enabledGroups.add(g.name);
         else enabledGroups.delete(g.name);
         saveEnabledGroups();
+        renderLayerList();
         syncMapSource();
         renderList();
       });
