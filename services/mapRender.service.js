@@ -106,7 +106,10 @@ function toSlimMarker(marker) {
     how: marker.how,
     team: marker.team,
     updatedAt: marker.updatedAt,
-    iconId: marker.iconId || null,
+    iconId:
+      marker.iconSource === "usericon" || marker.iconSource === "path"
+        ? marker.iconId || null
+        : null,
     iconSource: marker.iconSource || null,
   };
 }
@@ -128,7 +131,12 @@ function buildGeoJson(markers, options = {}) {
   for (const marker of visible) {
     const color = markerDisplayColor(marker);
     const labelOpacity = markerOpacity(marker, now);
-    const apiIconId = marker.iconId ? String(marker.iconId) : "";
+    const apiIconId =
+      marker.iconSource === "usericon" || marker.iconSource === "path"
+        ? marker.iconId
+          ? String(marker.iconId)
+          : ""
+        : "";
     const coords = [marker.lon, marker.lat];
 
     features.push({
@@ -142,7 +150,7 @@ function buildGeoJson(markers, options = {}) {
         affiliation: marker.affiliation || "other",
         color,
         apiIconId,
-        showCircle: apiIconId ? 0 : 1,
+        showCircle: 1,
         opacity: 1,
         labelOpacity,
         selected: marker.uid === selectedUid,

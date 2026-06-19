@@ -265,7 +265,7 @@
     const color = markerDisplayColor(m);
     const coords = [pos.lon, pos.lat];
     const labelOpacity = markerOpacity(m);
-    const apiIconId = m && m.iconId ? String(m.iconId) : "";
+    const apiIconId = markerUsesMapIcon(m) ? String(m.iconId) : "";
     const mapImageId = apiIconId ? registerMapImageId(apiIconId) : "";
     const features = [
       {
@@ -279,7 +279,7 @@
           affiliation: m.affiliation || "other",
           color,
           iconId: mapImageId,
-          showCircle: mapImageId ? 0 : 1,
+          showCircle: 1,
           opacity: 1,
           labelOpacity,
           selected: m.uid === selectedUid,
@@ -290,7 +290,13 @@
     if (mapImageId && apiIconId) loadMapIcon(apiIconId, mapImageId);
 
     const course = Number(m.course);
-    if (Number.isFinite(course) && course >= 0) {
+    const speed = Number(m.speed);
+    if (
+      Number.isFinite(course) &&
+      course >= 0 &&
+      Number.isFinite(speed) &&
+      speed > 2
+    ) {
       const rad = (course * Math.PI) / 180;
       const len = 0.02 / Math.max(map.getZoom(), 4);
       features.push({
@@ -391,6 +397,13 @@
     return "/api/map/icons?id=" + encodeURIComponent(iconId);
   }
 
+  /** Only render PNG icons for explicit CoT usericon/path — not auto 2525 sprites. */
+  function markerUsesMapIcon(m) {
+    if (!m || !m.iconId) return false;
+    const src = String(m.iconSource || "").toLowerCase();
+    return src === "usericon" || src === "path";
+  }
+
   function loadMapIcon(iconId, mapImageId) {
     const imageName = mapImageId || registerMapImageId(iconId);
     if (!iconId || map.hasImage(imageName)) return Promise.resolve();
@@ -405,14 +418,14 @@
       .then((blob) => {
         if (typeof createImageBitmap === "function") {
           return createImageBitmap(blob).then((bitmap) => {
-            if (!map.hasImage(imageName)) map.addImage(imageName, bitmap, { pixelRatio: 2 });
+            if (!map.hasImage(imageName)) map.addImage(imageName, bitmap, { pixelRatio: 1 });
           });
         }
         return new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
             try {
-              if (!map.hasImage(imageName)) map.addImage(imageName, img, { pixelRatio: 2 });
+              if (!map.hasImage(imageName)) map.addImage(imageName, img, { pixelRatio: 1 });
               resolve();
             } catch (err) {
               reject(err);
@@ -437,7 +450,7 @@
   function preloadMarkerIcons() {
     const ids = new Set();
     for (const m of markersByUid.values()) {
-      if (m && m.iconId) ids.add(String(m.iconId));
+      if (markerUsesMapIcon(m)) ids.add(String(m.iconId));
     }
     return Promise.all(
       Array.from(ids, (id) => loadMapIcon(id, registerMapImageId(id)))
@@ -875,8 +888,8 @@
         "circle-radius": [
           "case",
           ["==", ["get", "selected"], true],
-          ["interpolate", ["linear"], ["zoom"], 8, 7, 12, 11, 16, 14],
-          ["interpolate", ["linear"], ["zoom"], 8, 5, 12, 9, 16, 12],
+          11,
+          8,
         ],
         "circle-color": ["get", "color"],
         "circle-stroke-width": 0,
@@ -894,12 +907,12 @@
         "icon-size": [
           "case",
           ["==", ["get", "selected"], true],
-          ["interpolate", ["linear"], ["zoom"], 8, 0.65, 12, 0.95, 16, 1.15],
-          ["interpolate", ["linear"], ["zoom"], 8, 0.55, 12, 0.85, 16, 1.05],
+          1,
+          0.85,
         ],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
-        "icon-optional": false,
+        "icon-optional": true,
       },
       paint: {
         "icon-opacity": ["get", "labelOpacity"],
