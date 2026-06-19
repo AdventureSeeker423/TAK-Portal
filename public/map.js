@@ -321,16 +321,19 @@
   function loadEnabledGroups() {
     try {
       const raw = localStorage.getItem(LS_GROUPS);
-      if (!raw) return null;
+      if (raw === null) return null;
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? new Set(parsed) : null;
+      if (!Array.isArray(parsed)) return null;
+      if (parsed.length === 0) return new Set();
+      return new Set(parsed);
     } catch (_) {
       return null;
     }
   }
 
   function normalizeEnabledGroups(set) {
-    if (!set) return set;
+    if (!set) return null;
+    if (set.size === 0) return new Set();
     const out = new Set();
     for (const name of set) {
       const key = channelGroupKey(name);
@@ -338,7 +341,7 @@
       const match = groupsCatalog.find((g) => channelGroupKey(g.name) === key);
       out.add(match ? match.name : name);
     }
-    return out.size ? out : null;
+    return out.size ? out : new Set();
   }
 
   function saveEnabledGroups() {
