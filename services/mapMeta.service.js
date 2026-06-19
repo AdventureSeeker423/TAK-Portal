@@ -779,6 +779,17 @@ function parseTeamName(detail) {
   );
 }
 
+function parseTeamRole(detail) {
+  const raw =
+    detail?.__group?._attributes?.role ||
+    detail?.team?._attributes?.role ||
+    detail?.__group?.role ||
+    detail?.team?.role ||
+    "";
+  const s = String(raw || "").trim();
+  return s || null;
+}
+
 function teamNameToColor(name) {
   const n = normalizeGroupName(name);
   if (!n) return null;
@@ -1219,6 +1230,7 @@ module.exports = {
   onSubscriptionIndexRefreshed,
   parseAffiliationFromType,
   parseTeamName,
+  parseTeamRole,
   parseTeamColor,
   parseRemarks,
   parseDetailColor,

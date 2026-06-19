@@ -145,10 +145,8 @@ function parseMarkerFromCoT(cot) {
 
     const detail = cot.raw?.event?.detail || {};
     const type = String(attrs.type || cot.type() || "");
-    const team =
-      detail?.__group?._attributes?.name ||
-      detail?.team?._attributes?.name ||
-      null;
+    const team = mapMeta.parseTeamName(detail) || null;
+    const role = mapMeta.parseTeamRole(detail);
 
     const base = {
       uid: String(uid),
@@ -164,6 +162,7 @@ function parseMarkerFromCoT(cot) {
       stale: attrs.stale || null,
       how: attrs.how || null,
       team,
+      role,
       teamColor: mapMeta.parseTeamColor(detail),
       affiliation: mapMeta.parseAffiliationFromType(type),
       remarks: mapMeta.parseRemarks(detail),

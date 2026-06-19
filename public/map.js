@@ -4,7 +4,6 @@
   const LS_BASEMAP = "tak-portal-map-basemap";
   const LS_GROUPS = "tak-portal-map-groups";
   const LS_PANEL_LEFT = "tak-portal-map-panel-left";
-  const LS_PANEL_RIGHT = "tak-portal-map-panel-right";
 
   const AFFILIATION_COLORS = {
     friend: "#22c55e",
@@ -194,6 +193,7 @@
   let groupsCatalog = [];
   let enabledGroups = loadEnabledGroups();
   let selectedUid = null;
+  let detailPaneUserCollapsed = false;
   let mapRefreshTimer = null;
   let uiTimer = null;
   let mapRefreshPending = false;
@@ -1012,16 +1012,34 @@
     return elPanelRight && !elPanelRight.classList.contains("collapsed");
   }
 
+  function syncDetailPaneVisibility() {
+    if (!selectedUid) {
+      elPanelRight.classList.add("collapsed");
+      elExpandRight.hidden = true;
+      detailPaneUserCollapsed = false;
+      return;
+    }
+    if (detailPaneUserCollapsed) {
+      elPanelRight.classList.add("collapsed");
+      elExpandRight.hidden = false;
+    } else {
+      elPanelRight.classList.remove("collapsed");
+      elExpandRight.hidden = true;
+    }
+  }
+
   function setPanelRightCollapsed(collapsed) {
-    elPanelRight.classList.toggle("collapsed", collapsed);
-    elExpandRight.hidden = !collapsed;
-    localStorage.setItem(LS_PANEL_RIGHT, collapsed ? "collapsed" : "open");
+    if (!selectedUid) {
+      collapsed = true;
+    }
+    detailPaneUserCollapsed = collapsed;
+    syncDetailPaneVisibility();
     if (!collapsed) closeMapPopup();
   }
 
   function restorePanelState() {
     setPanelLeftCollapsed(localStorage.getItem(LS_PANEL_LEFT) === "collapsed");
-    setPanelRightCollapsed(localStorage.getItem(LS_PANEL_RIGHT) === "collapsed");
+    syncDetailPaneVisibility();
   }
 
   function affiliationColor(aff) {
@@ -1570,11 +1588,26 @@
     if (!updatedAt) return "—";
     const t = Date.parse(updatedAt);
     if (!Number.isFinite(t)) return "—";
-    const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
-    if (sec < 60) return sec + "s ago";
-    if (sec < 3600) return Math.floor(sec / 60) + "m ago";
-    if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
-    return Math.floor(sec / 86400) + "d ago";
+    const totalSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (totalSec < 60) return totalSec + "sec ago";
+    if (totalSec < 3600) {
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+      return min + "m " + sec + "sec ago";
+    }
+    if (totalSec < 86400) {
+      const hr = Math.floor(totalSec / 3600);
+      const min = Math.floor((totalSec % 3600) / 60);
+      return min > 0 ? hr + "h " + min + "m ago" : hr + "h ago";
+    }
+    const days = Math.floor(totalSec / 86400);
+    const hr = Math.floor((totalSec % 86400) / 3600);
+    return hr > 0 ? days + "d " + hr + "h ago" : days + "d ago";
+  }
+
+  function detailKvRow(label, valueHtml, ddClass) {
+    const cls = ddClass ? ' class="' + ddClass + '"' : "";
+    return "<dt>" + escapeHtml(label) + "</dt><dd" + cls + ">" + valueHtml + "</dd>";
   }
 
   function startDetailAgeTimer(marker) {
@@ -1602,33 +1635,52 @@
       elDetail.innerHTML =
         '<div class="map-detail-empty">Select a marker to view details.</div>';
       elDetailActions.hidden = true;
+      syncDetailPaneVisibility();
       return;
     }
     elDetailTitle.textContent = m.callsign || "Details";
     elDetailActions.hidden = false;
-    const groupHtml = markerGroups(m)
+    const groups = markerGroups(m);
+    const groupHtml = groups
       .map(function (g) {
         return '<span class="map-chip">' + escapeHtml(stripTakPrefix(g)) + "</span>";
       })
       .join(" ");
     const remarksText = m.remarks ? String(m.remarks).trim() : "";
     const coordText = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
+    const team = m.team ? String(m.team).trim() : "";
+    const role = m.role ? String(m.role).trim() : "";
+    const kvRows = [
+      detailKvRow(groups.length === 1 ? "Group" : "Groups", groupHtml || "—", "map-chips"),
+    ];
+    if (team) kvRows.push(detailKvRow("Team", escapeHtml(team)));
+    if (role) kvRows.push(detailKvRow("Role", escapeHtml(role)));
+    kvRows.push(
+      detailKvRow(
+        "Lat / Lon",
+        "<span>" +
+          coordText +
+          "</span>" +
+          '<button type="button" class="map-copy-btn map-copy-coords-btn" title="Copy coordinates" aria-label="Copy coordinates">' +
+          COPY_COORDS_ICON +
+          "</button>",
+        "map-coords-row"
+      ),
+      detailKvRow("HAE", fmtHae(m.hae)),
+      detailKvRow(
+        "Course",
+        m.course != null ? escapeHtml(String(m.course)) + "°" : "—"
+      ),
+      detailKvRow("Speed", m.speed != null ? escapeHtml(String(m.speed)) : "—"),
+      detailKvRow(
+        "Last updated",
+        '<span id="mapDetailUpdated">' + escapeHtml(updatedAgeLabel(m.updatedAt)) + "</span>"
+      )
+    );
     elDetail.innerHTML =
       '<div class="map-detail-wrap">' +
       '<dl class="map-kv map-kv-compact">' +
-      "<dt>Groups</dt><dd class=\"map-chips\">" + (groupHtml || "—") + "</dd>" +
-      "<dt>Team</dt><dd>" + escapeHtml(m.team || "—") + "</dd>" +
-      "<dt>Lat / Lon</dt><dd class=\"map-coords-row\">" +
-      "<span>" + coordText + "</span>" +
-      '<button type="button" class="map-copy-btn map-copy-coords-btn" title="Copy coordinates" aria-label="Copy coordinates">' +
-      COPY_COORDS_ICON +
-      "</button></dd>" +
-      "<dt>HAE</dt><dd>" + fmtHae(m.hae) + "</dd>" +
-      "<dt>Course</dt><dd>" + (m.course != null ? escapeHtml(String(m.course)) + "°" : "—") + "</dd>" +
-      "<dt>Speed</dt><dd>" + (m.speed != null ? escapeHtml(String(m.speed)) : "—") + "</dd>" +
-      '<dt>Updated</dt><dd id="mapDetailUpdated">' +
-      escapeHtml(updatedAgeLabel(m.updatedAt)) +
-      "</dd>" +
+      kvRows.join("") +
       "</dl>" +
       '<section class="map-remarks-section">' +
       '<h3 class="map-remarks-title">Remarks</h3>' +
@@ -1655,6 +1707,7 @@
       });
     }
     startDetailAgeTimer(m);
+    syncDetailPaneVisibility();
   }
 
   function renderLayerList() {
@@ -1769,6 +1822,7 @@
 
   function selectMarker(uid, showPopupFlag) {
     selectedUid = uid;
+    detailPaneUserCollapsed = false;
     const m = markersByUid.get(uid);
     renderList();
     renderDetail(m);
