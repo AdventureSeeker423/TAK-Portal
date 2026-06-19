@@ -177,6 +177,19 @@
   let copyToastTimer = null;
   let defaultIconIds = {};
   const iconLoadPending = new Map();
+  const mapImageIdByIconId = new Map();
+  const iconIdByMapImageId = new Map();
+
+  function registerMapImageId(iconId) {
+    if (!iconId) return "";
+    let mapped = mapImageIdByIconId.get(iconId);
+    if (!mapped) {
+      mapped = "tak-icon-" + mapImageIdByIconId.size;
+      mapImageIdByIconId.set(iconId, mapped);
+      iconIdByMapImageId.set(mapped, iconId);
+    }
+    return mapped;
+  }
 
   function iconApiUrl(iconId) {
     return "/api/map/icons?id=" + encodeURIComponent(iconId);
@@ -188,9 +201,11 @@
     return defaultIconIds[aff] || defaultIconIds.friend || defaultIconIds.unknown || "";
   }
 
-  function loadMapIcon(iconId) {
-    if (!iconId || map.hasImage(iconId)) return Promise.resolve();
-    if (iconLoadPending.has(iconId)) return iconLoadPending.get(iconId);
+  function loadMapIcon(iconId, mapImageId) {
+    const imageName = mapImageId || registerMapImageId(iconId);
+    if (!iconId || map.hasImage(imageName)) return Promise.resolve();
+    const pendingKey = imageName;
+    if (iconLoadPending.has(pendingKey)) return iconLoadPending.get(pendingKey);
 
     const promise = fetch(iconApiUrl(iconId))
       .then((resp) => {
@@ -200,14 +215,14 @@
       .then((blob) => {
         if (typeof createImageBitmap === "function") {
           return createImageBitmap(blob).then((bitmap) => {
-            if (!map.hasImage(iconId)) map.addImage(iconId, bitmap, { pixelRatio: 2 });
+            if (!map.hasImage(imageName)) map.addImage(imageName, bitmap, { pixelRatio: 2 });
           });
         }
         return new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
             try {
-              if (!map.hasImage(iconId)) map.addImage(iconId, img, { pixelRatio: 2 });
+              if (!map.hasImage(imageName)) map.addImage(imageName, img, { pixelRatio: 2 });
               resolve();
             } catch (err) {
               reject(err);
@@ -222,10 +237,10 @@
       })
       .catch(() => {})
       .finally(() => {
-        iconLoadPending.delete(iconId);
+        iconLoadPending.delete(pendingKey);
       });
 
-    iconLoadPending.set(iconId, promise);
+    iconLoadPending.set(pendingKey, promise);
     return promise;
   }
 
@@ -235,13 +250,16 @@
       const id = resolveMarkerIconId(m);
       if (id) ids.add(id);
     }
-    return Promise.all(Array.from(ids, (id) => loadMapIcon(id)));
+    return Promise.all(
+      Array.from(ids, (id) => loadMapIcon(id, registerMapImageId(id)))
+    );
   }
 
   function onStyleImageMissing(e) {
-    const iconId = e.id;
-    if (!iconId || iconLoadPending.has(iconId)) return;
-    loadMapIcon(iconId).then(() => {
+    const mapImageId = e.id;
+    const iconId = iconIdByMapImageId.get(mapImageId) || mapImageId;
+    if (!iconId || iconLoadPending.has(mapImageId)) return;
+    loadMapIcon(iconId, mapImageId).then(() => {
       if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
     });
   }
@@ -267,6 +285,8 @@
   const elOffline = document.getElementById("mapOfflineBanner");
   const elPanelLeft = document.getElementById("mapPanelLeft");
   const elPanelRight = document.getElementById("mapPanelRight");
+  const elExpandLeft = document.getElementById("mapExpandLeft");
+  const elExpandRight = document.getElementById("mapExpandRight");
   const elCenterBtn = document.getElementById("mapCenterBtn");
   const elCopyCoordsBtn = document.getElementById("mapCopyCoordsBtn");
 
@@ -394,17 +414,52 @@
     fitVisibleMarkers(true);
   }
 
+  function setPanelLeftCollapsed(collapsed) {
+    elPanelLeft.classList.toggle("collapsed", collapsed);
+    elExpandLeft.hidden = !collapsed;
+    localStorage.setItem(LS_PANEL_LEFT, collapsed ? "collapsed" : "open");
+  }
+
+  function setPanelRightCollapsed(collapsed) {
+    elPanelRight.classList.toggle("collapsed", collapsed);
+    elExpandRight.hidden = !collapsed;
+    localStorage.setItem(LS_PANEL_RIGHT, collapsed ? "collapsed" : "open");
+  }
+
   function restorePanelState() {
-    if (localStorage.getItem(LS_PANEL_LEFT) === "collapsed") {
-      elPanelLeft.classList.add("collapsed");
-    }
-    if (localStorage.getItem(LS_PANEL_RIGHT) === "collapsed") {
-      elPanelRight.classList.add("collapsed");
-    }
+    setPanelLeftCollapsed(localStorage.getItem(LS_PANEL_LEFT) === "collapsed");
+    setPanelRightCollapsed(localStorage.getItem(LS_PANEL_RIGHT) === "collapsed");
   }
 
   function affiliationColor(aff) {
     return AFFILIATION_COLORS[aff] || AFFILIATION_COLORS.other;
+  }
+
+  function normalizeMarkerColor(raw, fallback) {
+    if (raw == null || raw === "") return fallback;
+    const s = String(raw).trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(s)) {
+      if (s.length === 4 || s.length === 7) return s;
+      return s.slice(0, 7);
+    }
+    const n = Number(s);
+    if (!Number.isFinite(n)) return fallback;
+    const argb = n >>> 0;
+    const a = (argb >>> 24) & 0xff;
+    if (a === 0) return fallback;
+    const r = (argb >>> 16) & 0xff;
+    const g = (argb >>> 8) & 0xff;
+    const b = argb & 0xff;
+    return (
+      "#" +
+      r.toString(16).padStart(2, "0") +
+      g.toString(16).padStart(2, "0") +
+      b.toString(16).padStart(2, "0")
+    );
+  }
+
+  function markerDisplayColor(m) {
+    return normalizeMarkerColor(m.teamColor, affiliationColor(m.affiliation));
   }
 
   function stripTakPrefix(name) {
@@ -684,11 +739,12 @@
   }
 
   function markerGeoJsonFeature(m) {
-    const color = m.teamColor || affiliationColor(m.affiliation);
+    const color = markerDisplayColor(m);
     const visible = markerVisible(m);
     const coords = [m.lon, m.lat];
     const features = [];
     const iconId = visible ? resolveMarkerIconId(m) : "";
+    const mapImageId = iconId ? registerMapImageId(iconId) : "";
 
     const pointFeature = {
       type: "Feature",
@@ -700,7 +756,7 @@
         type: m.type,
         affiliation: m.affiliation || "other",
         color,
-        iconId,
+        iconId: mapImageId,
         opacity: visible ? markerOpacity(m) : 0,
         labelOpacity: visible ? markerOpacity(m) : 0,
         selected: m.uid === selectedUid,
@@ -709,7 +765,7 @@
     };
     features.push(pointFeature);
 
-    if (iconId) loadMapIcon(iconId);
+    if (iconId) loadMapIcon(iconId, mapImageId);
 
     if (visible && Number.isFinite(m.course) && m.course >= 0) {
       const rad = (m.course * Math.PI) / 180;
@@ -996,7 +1052,10 @@
   map.on("styleimagemissing", onStyleImageMissing);
 
   map.on("style.load", () => {
-    map.once("idle", ensureMarkerLayers);
+    map.once("idle", () => {
+      ensureMarkerLayers();
+      syncMapSource();
+    });
   });
 
   map.on("load", () => {
@@ -1079,19 +1138,19 @@
   });
 
   document.getElementById("mapCollapseLeft").addEventListener("click", () => {
-    elPanelLeft.classList.toggle("collapsed");
-    localStorage.setItem(
-      LS_PANEL_LEFT,
-      elPanelLeft.classList.contains("collapsed") ? "collapsed" : "open"
-    );
+    setPanelLeftCollapsed(!elPanelLeft.classList.contains("collapsed"));
   });
 
   document.getElementById("mapCollapseRight").addEventListener("click", () => {
-    elPanelRight.classList.toggle("collapsed");
-    localStorage.setItem(
-      LS_PANEL_RIGHT,
-      elPanelRight.classList.contains("collapsed") ? "collapsed" : "open"
-    );
+    setPanelRightCollapsed(!elPanelRight.classList.contains("collapsed"));
+  });
+
+  elExpandLeft.addEventListener("click", () => {
+    setPanelLeftCollapsed(false);
+  });
+
+  elExpandRight.addEventListener("click", () => {
+    setPanelRightCollapsed(false);
   });
 
   elCenterBtn.addEventListener("click", () => {

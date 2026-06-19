@@ -175,7 +175,33 @@ function parseTeamColor(detail) {
     detail?.__group?._attributes?.color ||
     detail?.team?._attributes?.color ||
     null;
-  return color ? String(color).trim() : null;
+  return normalizeTakColor(color);
+}
+
+/** ATAK/TAK team colors are often signed 32-bit ARGB integers, not CSS hex. */
+function normalizeTakColor(raw) {
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(s)) {
+    if (s.length === 4 || s.length === 7) return s;
+    return s.slice(0, 7);
+  }
+
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+
+  const argb = n >>> 0;
+  const a = (argb >>> 24) & 0xff;
+  if (a === 0) return null;
+  const r = (argb >>> 16) & 0xff;
+  const g = (argb >>> 8) & 0xff;
+  const b = argb & 0xff;
+  return (
+    "#" +
+    r.toString(16).padStart(2, "0") +
+    g.toString(16).padStart(2, "0") +
+    b.toString(16).padStart(2, "0")
+  );
 }
 
 async function refreshSubscriptionIndex() {
@@ -369,6 +395,7 @@ module.exports = {
   parseGroupsFromCoTDetail,
   parseAffiliationFromType,
   parseTeamColor,
+  normalizeTakColor,
   resolveGroupsForMarker,
   getTakGroupCatalog,
   refreshGroupCatalog,

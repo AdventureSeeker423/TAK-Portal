@@ -222,6 +222,42 @@ body {
   pointer-events: none;
 }
 
+.map-panel-expand {
+  position: absolute;
+  top: 72px;
+  z-index: 4;
+  appearance: none;
+  border: 1px solid var(--map-panel-border);
+  background: var(--map-panel);
+  color: var(--map-accent);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 8px 10px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.map-panel-expand:hover {
+  background: rgba(14, 22, 32, 0.98);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.map-panel-expand-left {
+  left: 0;
+  border-left: none;
+  border-radius: 0 10px 10px 0;
+}
+
+.map-panel-expand-right {
+  right: 0;
+  border-right: none;
+  border-radius: 10px 0 0 10px;
+}
+
 .map-panel-right {
   right: 12px;
   width: min(340px, 38vw);
