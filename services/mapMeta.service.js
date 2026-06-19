@@ -703,6 +703,76 @@ function resolveGroupsForMarker(marker, cotDetail) {
   return [UNASSIGNED_GROUP];
 }
 
+/**
+ * Diagnostic trace for why a marker landed in its assigned group(s).
+ * Compare a working EUD vs a data-feed marker side by side.
+ */
+function explainGroupAssignment(marker) {
+  const cotRouteGroups = Array.isArray(marker?.cotRouteGroups) ? marker.cotRouteGroups : [];
+  const flowTagUids = Array.isArray(marker?.flowTagUids) ? marker.flowTagUids : [];
+  const relatedUids = Array.isArray(marker?.relatedUids) ? marker.relatedUids : [];
+
+  const flowTagLookups = flowTagUids.map((uid) => ({
+    uid,
+    connectionGroups: lookupConnectionGroups(uid),
+    subscriptionGroups: lookupSubscriptionGroupsByKey(String(uid).toLowerCase()),
+  }));
+
+  const subscriptionKeys = [];
+  const markerUid = String(marker?.uid || "").trim();
+  if (markerUid) subscriptionKeys.push({ kind: "marker.uid", key: markerUid });
+  for (const rel of relatedUids) {
+    const rk = String(rel || "").trim();
+    if (rk) subscriptionKeys.push({ kind: "relatedUid", key: rk });
+  }
+  const callsign = normalizeGroupName(marker?.callsign);
+  if (callsign) subscriptionKeys.push({ kind: "callsign", key: callsign });
+
+  const subscriptionLookups = subscriptionKeys.map(({ kind, key }) => ({
+    kind,
+    key,
+    connectionGroups: lookupConnectionGroups(String(key).toLowerCase()),
+    subscriptionGroups: lookupSubscriptionGroupsByKey(String(key).toLowerCase()),
+  }));
+
+  const recomputed = resolveGroupsForMarker(marker, null);
+
+  return {
+    marker: {
+      uid: marker?.uid || null,
+      callsign: marker?.callsign || null,
+      type: marker?.type || null,
+      how: marker?.how || null,
+      storedGroups: Array.isArray(marker?.groups) ? marker.groups : [],
+      cotRouteGroups,
+      flowTagUids,
+      relatedUids,
+    },
+    indexes: {
+      subscription: getSubscriptionIndexSnapshot(),
+      connectionUidCount: connectionGroupsByUid.size,
+      dataFeedKeyCount: dataFeedGroupsByKey.size,
+      dataFeedFetchedAt: dataFeedCache.fetchedAt || null,
+      dataFeedError: dataFeedCache.error || null,
+      catalogChannelCount: catalogCache.names.length,
+    },
+    trace: {
+      step1_cotRouting: cotRouteGroups,
+      step2_flowTagLookups: flowTagLookups,
+      step2_flowGroups: resolveGroupsFromFlowTags({ flowTagUids }),
+      step3_subscriptionLookups: subscriptionLookups,
+      step3_subscriptionGroups: resolveGroupsFromSubscription(marker),
+      recomputedGroups: recomputed,
+    },
+    notes: [
+      "EUD clients usually match via step3 (subscription by uid/callsign).",
+      "Data feeds usually need step1 (marti/filtergroup in CoT) or step2 (flow_tag UID -> feed connection groups).",
+      "If step2 flowTagUids is empty, the streamed CoT may not include flow provenance.",
+      "If flowTagLookups.connectionGroups is empty, the feed UUID is missing from subscriptions/datafeeds index.",
+    ],
+  };
+}
+
 function buildGroupsCatalogWithCounts(markers) {
   ensureRefreshLoop();
   const counts = new Map();
@@ -784,6 +854,7 @@ module.exports = {
   parseTeamColor,
   normalizeTakColor,
   resolveGroupsForMarker,
+  explainGroupAssignment,
   getTakGroupCatalog,
   refreshGroupCatalog,
   refreshSubscriptionIndex,

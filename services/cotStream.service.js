@@ -453,6 +453,20 @@ function refreshAllMarkerGroups() {
   if (changed) queueGroupsCatalogRefresh();
 }
 
+function getMarkerByUid(uid) {
+  const id = String(uid || "").trim();
+  if (!id) return null;
+  return markers.get(id) || null;
+}
+
+function findMarkersByCallsign(callsign) {
+  const q = String(callsign || "").trim().toLowerCase();
+  if (!q) return [];
+  return getMarkerList().filter(
+    (m) => String(m?.callsign || "").trim().toLowerCase() === q
+  );
+}
+
 mapMeta.onSubscriptionIndexRefreshed(() => {
   refreshAllMarkerGroups();
 });
@@ -460,6 +474,8 @@ mapMeta.onSubscriptionIndexRefreshed(() => {
 module.exports = {
   getStateSnapshot,
   getMarkerList,
+  getMarkerByUid,
+  findMarkersByCallsign,
   getMarkersSlimList,
   getMarkersGeoJson,
   subscribe,
