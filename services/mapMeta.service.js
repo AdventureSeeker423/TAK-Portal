@@ -34,6 +34,10 @@ let dataFeedCache = {
   error: null,
 };
 
+/** Latest Marti payloads used to cross-link feed config with live connections. */
+let subscriptionListCache = [];
+let dataFeedListCache = [];
+
 let refreshTimer = null;
 /** @type {Set<() => void>} */
 const subscriptionRefreshListeners = new Set();
@@ -166,18 +170,33 @@ function subscriptionGroupName(entry) {
   );
 }
 
-function dedupeGroupNames(names) {
+function isFlowProvenanceId(name) {
+  return /^TAK-Server-/i.test(String(name || "").trim());
+}
+
+/** True when the name is a TAK channel/group, not a server flow-tag connection id. */
+function isAssignableChannelGroupName(name) {
+  if (!isTakChannelGroupName(name)) return false;
+  if (isFlowProvenanceId(name)) return false;
+  return true;
+}
+
+function filterAssignableChannelGroups(names) {
   const seen = new Set();
   const out = [];
   for (const raw of names || []) {
     const name = normalizeGroupName(raw);
-    if (!name || !isTakChannelGroupName(name)) continue;
+    if (!isAssignableChannelGroupName(name)) continue;
     const key = channelBaseKey(name);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(name);
   }
   return out;
+}
+
+function dedupeGroupNames(names) {
+  return filterAssignableChannelGroups(names);
 }
 
 function normalizeDataFeedGroupList(raw) {
@@ -204,10 +223,14 @@ function registerConnectionGroups(ids, groups) {
   for (const rawId of ids || []) {
     const id = normalizeGroupName(rawId);
     if (!id) continue;
-    connectionGroupsByUid.set(id.toLowerCase(), list);
-    const bare = id.replace(/^TAK-Server-/i, "").toLowerCase();
-    if (bare && bare !== id.toLowerCase()) {
+    const lower = id.toLowerCase();
+    connectionGroupsByUid.set(lower, list);
+    const bare = lower.replace(/^tak-server-/, "");
+    if (bare && bare !== lower) {
       connectionGroupsByUid.set(bare, list);
+      connectionGroupsByUid.set(`tak-server-${bare}`, list);
+    } else if (/^[0-9a-f-]{32,36}$/i.test(bare)) {
+      connectionGroupsByUid.set(`tak-server-${bare}`, list);
     }
   }
 }
@@ -234,7 +257,7 @@ function registerDataFeedGroups(feed) {
   if (!groups.length) return;
 
   const keys = new Set();
-  for (const field of [feed.uuid, feed.uid, feed.id, feed.name, feed.tag]) {
+  for (const field of [feed.uuid, feed.uid, feed.id, feed.name]) {
     const val = normalizeGroupName(field);
     if (!val) continue;
     keys.add(val.toLowerCase());
@@ -242,10 +265,55 @@ function registerDataFeedGroups(feed) {
     if (bare) keys.add(bare);
   }
 
+  const tags = feed.tag;
+  const tagList = Array.isArray(tags) ? tags : tags ? [tags] : [];
+  for (const tag of tagList) {
+    const val = normalizeGroupName(tag);
+    if (!val) continue;
+    keys.add(val.toLowerCase());
+  }
+
+  if (feed.port != null && feed.port !== "") {
+    keys.add(String(feed.port).trim());
+  }
+
   for (const key of keys) {
     dataFeedGroupsByKey.set(key, groups);
     registerConnectionGroups([key], groups);
   }
+}
+
+function crossLinkFeedsAndSubscriptions(feeds, subList) {
+  for (const feed of Array.isArray(feeds) ? feeds : []) {
+    const feedName = normalizeGroupName(feed?.name).toLowerCase();
+    const groups = normalizeDataFeedGroupList(
+      feed?.filtergroup || feed?.filterGroup || feed?.filterGroups || feed?.groups
+    );
+    if (!feedName || !groups.length) continue;
+
+    for (const sub of Array.isArray(subList) ? subList : []) {
+      const callsign = normalizeGroupName(sub?.callsign).toLowerCase();
+      const username = normalizeGroupName(sub?.username).toLowerCase();
+      const matchesFeed =
+        callsign === feedName ||
+        username === feedName ||
+        (callsign && callsign.includes(feedName)) ||
+        (username && username.includes(feedName));
+      if (!matchesFeed) continue;
+
+      registerConnectionGroups(
+        [sub.uid, sub.clientUid, sub.clientUuid, sub.connectionUid, sub.deviceUid],
+        groups
+      );
+    }
+  }
+}
+
+function mergeDataFeedConnectionIndex() {
+  for (const feed of dataFeedListCache) {
+    registerDataFeedGroups(feed);
+  }
+  crossLinkFeedsAndSubscriptions(dataFeedListCache, subscriptionListCache);
 }
 
 async function refreshDataFeedIndex() {
@@ -272,6 +340,8 @@ async function refreshDataFeedIndex() {
     for (const feed of feeds) {
       registerDataFeedGroups(feed);
     }
+    dataFeedListCache = feeds;
+    mergeDataFeedConnectionIndex();
 
     dataFeedCache = {
       fetchedAt: Date.now(),
@@ -340,11 +410,14 @@ function parseFlowTagUids(detail) {
 function lookupConnectionGroups(uid) {
   const id = normalizeGroupName(uid).toLowerCase();
   if (!id) return [];
+  const bare = id.replace(/^tak-server-/, "");
   return (
     connectionGroupsByUid.get(id) ||
-    connectionGroupsByUid.get(id.replace(/^tak-server-/, "")) ||
+    connectionGroupsByUid.get(bare) ||
+    connectionGroupsByUid.get(`tak-server-${bare}`) ||
     dataFeedGroupsByKey.get(id) ||
-    dataFeedGroupsByKey.get(id.replace(/^tak-server-/, "")) ||
+    dataFeedGroupsByKey.get(bare) ||
+    dataFeedGroupsByKey.get(`tak-server-${bare}`) ||
     []
   );
 }
@@ -363,9 +436,29 @@ function resolveGroupsFromFlowTags(source) {
     : parseFlowTagUids(source);
   const out = [];
   for (const uid of uids) {
-    out.push(...lookupConnectionGroups(uid));
+    const groups = lookupConnectionGroups(uid);
+    if (!groups.length && isFlowProvenanceId(uid)) continue;
+    out.push(...groups);
   }
   return dedupeGroupNames(out);
+}
+
+function extractConnectionIdsFromText(text) {
+  const out = new Set();
+  const s = String(text || "");
+  if (!s.trim()) return [];
+
+  const patterns = [
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+    /TAK-Server-[0-9a-f]{32}/gi,
+  ];
+  for (const re of patterns) {
+    for (const match of s.matchAll(re)) {
+      const id = normalizeGroupName(match[0]);
+      if (id) out.add(id);
+    }
+  }
+  return Array.from(out);
 }
 
 function isGroupActive(entry) {
@@ -442,20 +535,115 @@ function appendMartiDest(marti, names) {
   }
 }
 
-function parseRelatedUids(detail) {
+function parseSourceHints(detail) {
   if (!detail || typeof detail !== "object") return [];
-  const uids = new Set();
+  const hints = [];
+
+  function pushHint(raw) {
+    const n = normalizeGroupName(raw);
+    if (n) hints.push(n);
+  }
+
+  function pushFromAttrs(attrs) {
+    if (!attrs || typeof attrs !== "object") return;
+    for (const field of ["uid", "callsign", "name", "platform", "type", "version", "feed", "url"]) {
+      pushHint(attrs[field]);
+    }
+    const urlText = attrs.url || attrs.href || attrs.link || "";
+    for (const id of extractConnectionIdsFromText(urlText)) {
+      pushHint(id);
+    }
+    const portMatch = String(urlText).match(/:(\d{2,5})(?:\/|$|\?)/);
+    if (portMatch) pushHint(portMatch[1]);
+  }
+
+  const source = detail.source;
+  const list = Array.isArray(source) ? source : source ? [source] : [];
+  for (const item of list) {
+    if (typeof item === "string" || typeof item === "number") {
+      pushHint(item);
+      for (const id of extractConnectionIdsFromText(item)) pushHint(id);
+      continue;
+    }
+    pushFromAttrs(item?._attributes || item);
+  }
 
   const links = detail.link;
   const linkList = Array.isArray(links) ? links : links ? [links] : [];
   for (const link of linkList) {
-    const uid = normalizeGroupName(link?._attributes?.uid || link?.uid);
-    if (uid) uids.add(uid);
+    if (typeof link === "string" || typeof link === "number") {
+      pushHint(link);
+      for (const id of extractConnectionIdsFromText(link)) pushHint(id);
+      continue;
+    }
+    pushFromAttrs(link?._attributes || link);
+  }
+
+  return hints;
+}
+
+function resolveGroupsFromSourceHints(hints) {
+  for (const hint of hints || []) {
+    const groups = lookupGroupsByConnectionKey(String(hint).toLowerCase());
+    const out = dedupeGroupNames(groups);
+    if (out.length) return out;
+  }
+  return [];
+}
+
+function parseRelatedUids(detail) {
+  if (!detail || typeof detail !== "object") return [];
+  const uids = new Set();
+
+  function addUid(raw) {
+    const n = normalizeGroupName(raw);
+    if (!n || n.length <= 4) return;
+    if (/^https?:\/\//i.test(n) || /^tcp:\/\//i.test(n)) return;
+    uids.add(n);
+  }
+
+  function addFromAttrs(attrs) {
+    if (!attrs || typeof attrs !== "object") return;
+    addUid(attrs.uid);
+    addUid(attrs.callsign);
+    addUid(attrs.name);
+    for (const id of extractConnectionIdsFromText(attrs.url || attrs.href || attrs.link)) {
+      addUid(id);
+    }
+  }
+
+  const links = detail.link;
+  const linkList = Array.isArray(links) ? links : links ? [links] : [];
+  for (const link of linkList) {
+    if (typeof link === "string" || typeof link === "number") {
+      for (const id of extractConnectionIdsFromText(link)) addUid(id);
+      continue;
+    }
+    addFromAttrs(link?._attributes || link);
+    addUid(link?.uid);
+  }
+
+  const source = detail.source;
+  const sourceList = Array.isArray(source) ? source : source ? [source] : [];
+  for (const item of sourceList) {
+    if (typeof item === "string" || typeof item === "number") {
+      for (const id of extractConnectionIdsFromText(item)) addUid(id);
+      continue;
+    }
+    addFromAttrs(item?._attributes || item);
+  }
+
+  const uidNode = detail.uid || detail._uid_;
+  const uidNodes = Array.isArray(uidNode) ? uidNode : uidNode ? [uidNode] : [];
+  for (const item of uidNodes) {
+    const attrs = item?._attributes || item || {};
+    for (const val of Object.values(attrs)) {
+      addUid(val);
+    }
   }
 
   const creator = detail.creator?._attributes || detail.creator;
-  const creatorUid = normalizeGroupName(creator?.uid);
-  if (creatorUid) uids.add(creatorUid);
+  addUid(creator?.uid);
 
   const endpoint = detail.contact?._attributes?.endpoint || "";
   const endpointParts = String(endpoint).split(":");
@@ -481,19 +669,9 @@ function parseGroupsFromCoTDetail(detail) {
     detail.flow_tag?._attributes?.group ||
     detail.flow_tag?._attributes?.name ||
     detail.flow_tag?._attributes?.value;
-  if (flowTag && isTakChannelGroupName(flowTag)) names.add(normalizeGroupName(flowTag));
+  if (flowTag && isAssignableChannelGroupName(flowTag)) names.add(normalizeGroupName(flowTag));
 
-  const flowTagsBlock = detail["_flow-tags_"] || detail["flow-tags"];
-  const flowTagsAttrs = flowTagsBlock?._attributes || flowTagsBlock;
-  if (flowTagsAttrs && typeof flowTagsAttrs === "object") {
-    for (const [key, val] of Object.entries(flowTagsAttrs)) {
-      if (key === "version" || val == null) continue;
-      const groupName = normalizeGroupName(key);
-      if (groupName && isTakChannelGroupName(groupName)) names.add(groupName);
-    }
-  }
-
-  return Array.from(names).filter(Boolean);
+  return filterAssignableChannelGroups(Array.from(names));
 }
 
 function lookupSubscriptionGroupsByKey(key) {
@@ -510,14 +688,15 @@ function lookupSubscriptionGroupsByKey(key) {
 
 function resolveGroupsFromSubscription(marker) {
   const keys = [];
-  const uid = String(marker?.uid || "").trim();
-  if (uid) keys.push(uid.toLowerCase());
 
   const related = Array.isArray(marker?.relatedUids) ? marker.relatedUids : [];
   for (const rel of related) {
     const rk = String(rel || "").trim().toLowerCase();
     if (rk) keys.push(rk);
   }
+
+  const uid = String(marker?.uid || "").trim();
+  if (uid) keys.push(uid.toLowerCase());
 
   for (const key of keys) {
     const groups = lookupGroupsByConnectionKey(key);
@@ -643,7 +822,9 @@ async function refreshSubscriptionIndex() {
       fetchedAt: Date.now(),
       error: null,
     };
+    subscriptionListCache = list;
     rebuildConnectionGroupIndex(list);
+    mergeDataFeedConnectionIndex();
     notifySubscriptionIndexRefreshed();
   } catch (err) {
     subscriptionIndex = {
@@ -716,11 +897,17 @@ function ensureRefreshLoop() {
 function resolveGroupsForMarker(marker, cotDetail) {
   const detail = cotDetail && typeof cotDetail === "object" ? cotDetail : null;
 
-  const fromCot = detail
-    ? parseGroupsFromCoTDetail(detail)
-    : Array.isArray(marker?.cotRouteGroups)
-      ? marker.cotRouteGroups
-      : [];
+  // EUD clients: marker uid matches a live subscription connection uid.
+  const fromSub = resolveGroupsFromSubscription(marker);
+  if (fromSub[0] !== UNASSIGNED_GROUP) return fromSub;
+
+  const fromCot = filterAssignableChannelGroups(
+    detail
+      ? parseGroupsFromCoTDetail(detail)
+      : Array.isArray(marker?.cotRouteGroups)
+        ? marker.cotRouteGroups
+        : []
+  );
 
   const fromFlow = resolveGroupsFromFlowTags(
     detail || { flowTagUids: marker?.flowTagUids || [] }
@@ -729,8 +916,10 @@ function resolveGroupsForMarker(marker, cotDetail) {
   const routed = dedupeGroupNames([...fromCot, ...fromFlow]);
   if (routed.length) return routed;
 
-  const fromSub = resolveGroupsFromSubscription(marker);
-  if (fromSub[0] !== UNASSIGNED_GROUP) return fromSub;
+  const fromSource = resolveGroupsFromSourceHints(
+    detail ? parseSourceHints(detail) : marker?.sourceHints || []
+  );
+  if (fromSource.length) return fromSource;
 
   return [UNASSIGNED_GROUP];
 }
@@ -740,7 +929,9 @@ function resolveGroupsForMarker(marker, cotDetail) {
  * Compare a working EUD vs a data-feed marker side by side.
  */
 function explainGroupAssignment(marker) {
-  const cotRouteGroups = Array.isArray(marker?.cotRouteGroups) ? marker.cotRouteGroups : [];
+  const cotRouteGroups = filterAssignableChannelGroups(
+    Array.isArray(marker?.cotRouteGroups) ? marker.cotRouteGroups : []
+  );
   const flowTagUids = Array.isArray(marker?.flowTagUids) ? marker.flowTagUids : [];
   const relatedUids = Array.isArray(marker?.relatedUids) ? marker.relatedUids : [];
 
@@ -768,6 +959,7 @@ function explainGroupAssignment(marker) {
   }));
 
   const recomputed = resolveGroupsForMarker(marker, null);
+  const sourceHints = Array.isArray(marker?.sourceHints) ? marker.sourceHints : [];
 
   return {
     marker: {
@@ -779,6 +971,7 @@ function explainGroupAssignment(marker) {
       cotRouteGroups,
       flowTagUids,
       relatedUids,
+      sourceHints,
       detailKeys: Array.isArray(marker?.detailKeys) ? marker.detailKeys : [],
     },
     indexes: {
@@ -795,14 +988,16 @@ function explainGroupAssignment(marker) {
       step2_flowGroups: resolveGroupsFromFlowTags({ flowTagUids }),
       step3_subscriptionLookups: subscriptionLookups,
       step3_subscriptionGroups: resolveGroupsFromSubscription(marker),
+      step4_sourceHints: sourceHints,
+      step4_sourceGroups: resolveGroupsFromSourceHints(sourceHints),
       recomputedGroups: recomputed,
     },
     notes: [
       "EUD clients usually match via step3 (subscription by uid/callsign).",
-      "Data feeds usually need step1 (marti/filtergroup in CoT) or step2 (_flow-tags_ / flow_tag -> feed connection groups).",
-      "TAK Server uses detail._flow-tags_ with TAK-Server-<uuid> attribute names, not flow_tag.uid.",
-      "If step2 flowTagUids is empty, the streamed CoT may not include flow provenance.",
-      "If flowTagLookups.connectionGroups is empty, the feed UUID is missing from subscriptions/datafeeds index.",
+      "TAK-Server-<uuid> in _flow-tags_ is the server instance fingerprint on every event, not a channel name.",
+      "Data feeds match via CoT filtergroup/marti, feed connection uid in link/source, or feed name/tag in the datafeeds index.",
+      "If step2 flowTagUids only contains TAK-Server-<uuid> with empty connectionGroups, that is expected — look at step4 sourceHints and relatedUids.",
+      "If step4_sourceGroups is empty, paste sourceHints from the marker block so link/source attrs can be wired up.",
     ],
   };
 }
@@ -882,12 +1077,14 @@ module.exports = {
   ensureRefreshLoop,
   parseGroupsFromCoTDetail,
   parseFlowTagUids,
+  parseSourceHints,
   parseRelatedUids,
   onSubscriptionIndexRefreshed,
   parseAffiliationFromType,
   parseTeamColor,
   normalizeTakColor,
   resolveGroupsForMarker,
+  filterAssignableChannelGroups,
   explainGroupAssignment,
   getTakGroupCatalog,
   refreshGroupCatalog,

@@ -162,6 +162,7 @@ function parseMarkerFromCoT(cot) {
     base.relatedUids = mapMeta.parseRelatedUids(detail);
     base.cotRouteGroups = mapMeta.parseGroupsFromCoTDetail(detail);
     base.flowTagUids = mapMeta.parseFlowTagUids(detail);
+    base.sourceHints = mapMeta.parseSourceHints(detail);
     base.detailKeys = Object.keys(detail || {});
     base.groups = mapMeta.resolveGroupsForMarker(base, detail);
 
