@@ -167,8 +167,124 @@
   let groupsCatalog = [];
   let enabledGroups = loadEnabledGroups();
   let selectedUid = null;
+  let geoJsonTimer = null;
+  let uiTimer = null;
+  let geoJsonInFlight = false;
+  let geoJsonPending = false;
+  let lastGeoMeta = { total: 0, visible: 0 };
   let filterText = "";
   let layerFilterText = "";
+  let layerListTimer = null;
+
+  function buildGeoJsonQuery() {
+    const params = new URLSearchParams();
+    if (enabledGroups) {
+      if (enabledGroups.size === 0) params.set("channels", "__none__");
+      else if (isChannelFilterActive()) params.set("channels", Array.from(enabledGroups).join(","));
+    }
+    if (filterText) params.set("q", filterText);
+    if (selectedUid) params.set("selected", selectedUid);
+    const qs = params.toString();
+    return qs ? "?" + qs : "";
+  }
+
+  function scheduleGeoJsonRefresh() {
+    if (geoJsonTimer) clearTimeout(geoJsonTimer);
+    geoJsonTimer = setTimeout(refreshGeoJsonFromServer, 250);
+  }
+
+  function scheduleUiRefresh() {
+    if (uiTimer) clearTimeout(uiTimer);
+    uiTimer = setTimeout(function () {
+      renderList();
+      updateVisibleCounts();
+    }, 120);
+  }
+
+  function refreshGeoJsonFromServer() {
+    geoJsonTimer = null;
+    if (!markerLayersReady) {
+      geoJsonPending = true;
+      return;
+    }
+    if (geoJsonInFlight) {
+      geoJsonPending = true;
+      return;
+    }
+    geoJsonInFlight = true;
+    fetch("/api/map/geojson" + buildGeoJsonQuery())
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("geojson " + resp.status);
+        return resp.json();
+      })
+      .then(function (data) {
+        lastGeoMeta = data.meta || lastGeoMeta;
+        applyGeoJsonToMap(data);
+        updateVisibleCounts();
+      })
+      .catch(function () {})
+      .finally(function () {
+        geoJsonInFlight = false;
+        if (geoJsonPending) {
+          geoJsonPending = false;
+          scheduleGeoJsonRefresh();
+        }
+      });
+  }
+
+  function applyGeoJsonToMap(data) {
+    const src = map.getSource(SOURCE_ID);
+    if (!src) return;
+    const features = Array.isArray(data.features) ? data.features : [];
+    for (let i = 0; i < features.length; i++) {
+      const f = features[i];
+      if (!f || !f.properties || f.properties.kind !== "marker") continue;
+      const apiIconId = f.properties.apiIconId;
+      if (!apiIconId) {
+        f.properties.iconId = "";
+        continue;
+      }
+      f.properties.iconId = registerMapImageId(apiIconId);
+    }
+    src.setData({ type: "FeatureCollection", features: features });
+    for (let j = 0; j < features.length; j++) {
+      const feat = features[j];
+      if (!feat || !feat.properties || feat.properties.kind !== "marker") continue;
+      if (feat.properties.apiIconId) {
+        loadMapIcon(feat.properties.apiIconId, feat.properties.iconId);
+      }
+    }
+  }
+
+  function syncMapSource() {
+    scheduleGeoJsonRefresh();
+    scheduleUiRefresh();
+  }
+
+  function scheduleLayerListRefresh() {
+    if (layerListTimer) clearTimeout(layerListTimer);
+    layerListTimer = setTimeout(function () {
+      layerListTimer = null;
+      renderLayerList();
+    }, 300);
+  }
+
+  function loadMarkersFromServer() {
+    return fetch("/api/map/markers")
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("markers " + resp.status);
+        return resp.json();
+      })
+      .then(function (data) {
+        markersByUid.clear();
+        const list = Array.isArray(data.markers) ? data.markers : [];
+        for (let i = 0; i < list.length; i++) {
+          const m = list[i];
+          if (m && m.uid) markersByUid.set(String(m.uid), m);
+        }
+        recomputeGroupCounts();
+      });
+  }
   let followSelected = false;
   let activeTab = "channels";
   let popup = null;
@@ -246,10 +362,6 @@
 
   function preloadMarkerIcons() {
     const ids = new Set(Object.values(defaultIconIds).filter(Boolean));
-    for (const m of markersByUid.values()) {
-      const id = resolveMarkerIconId(m);
-      if (id) ids.add(id);
-    }
     return Promise.all(
       Array.from(ids, (id) => loadMapIcon(id, registerMapImageId(id)))
     );
@@ -316,7 +428,6 @@
   const CIRCLE_LAYER = "tak-markers-circle";
   const LABEL_LAYER = "tak-markers-label";
   const COURSE_LAYER = "tak-markers-course";
-  const TAG_LAYER = "tak-markers-tag";
 
   function loadEnabledGroups() {
     try {
@@ -378,7 +489,7 @@
   }
 
   function removeMarkerLayers() {
-    for (const id of [TAG_LAYER, LABEL_LAYER, ICON_LAYER, CIRCLE_LAYER, COURSE_LAYER]) {
+    for (const id of [LABEL_LAYER, ICON_LAYER, CIRCLE_LAYER, COURSE_LAYER]) {
       if (map.getLayer(id)) {
         try {
           map.removeLayer(id);
@@ -637,7 +748,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: MARKER_FILTER,
+      filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
       paint: {
         "circle-radius": [
           "case",
@@ -674,32 +785,6 @@
       },
     });
 
-    // Dark pill behind callsign text (always visible above marker)
-    map.addLayer({
-      id: TAG_LAYER,
-      type: "symbol",
-      source: SOURCE_ID,
-      filter: MARKER_FILTER,
-      layout: {
-        "text-field": ["get", "callsign"],
-        "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
-        "text-size": 11,
-        "text-anchor": "bottom",
-        "text-offset": [0, -1.35],
-        "text-allow-overlap": true,
-        "text-ignore-placement": true,
-        "text-optional": false,
-        "text-max-width": 14,
-      },
-      paint: {
-        "text-color": "rgba(0,0,0,0)",
-        "text-halo-color": "rgba(8, 12, 18, 0.94)",
-        "text-halo-width": 7,
-        "text-halo-blur": 0,
-        "text-opacity": ["get", "labelOpacity"],
-      },
-    });
-
     map.addLayer({
       id: LABEL_LAYER,
       type: "symbol",
@@ -726,7 +811,12 @@
     });
 
     markerLayersReady = true;
-    syncMapSource();
+    if (geoJsonPending) {
+      geoJsonPending = false;
+      scheduleGeoJsonRefresh();
+    } else {
+      scheduleGeoJsonRefresh();
+    }
     preloadMarkerIcons();
   }
 
@@ -771,70 +861,10 @@
     return 1;
   }
 
-  function markerGeoJsonFeature(m) {
-    const color = markerDisplayColor(m);
-    const coords = [m.lon, m.lat];
-    const features = [];
-    const iconId = resolveMarkerIconId(m);
-    const mapImageId = iconId ? registerMapImageId(iconId) : "";
-    const opacity = markerOpacity(m);
-
-    const pointFeature = {
-      type: "Feature",
-      geometry: { type: "Point", coordinates: coords },
-      properties: {
-        kind: "marker",
-        uid: m.uid,
-        callsign: m.callsign,
-        type: m.type,
-        affiliation: m.affiliation || "other",
-        color,
-        iconId: mapImageId,
-        opacity,
-        labelOpacity: opacity,
-        selected: m.uid === selectedUid,
-        course: m.course,
-      },
-    };
-    features.push(pointFeature);
-
-    if (iconId) loadMapIcon(iconId, mapImageId);
-
-    if (Number.isFinite(m.course) && m.course >= 0) {
-      const rad = (m.course * Math.PI) / 180;
-      const len = 0.02 / Math.max(map.getZoom(), 4);
-      features.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            coords,
-            [m.lon + Math.sin(rad) * len, m.lat + Math.cos(rad) * len],
-          ],
-        },
-        properties: { uid: m.uid, color, kind: "course-line" },
-      });
-    }
-
-    return features;
-  }
-
-  function syncMapSource() {
-    if (!markerLayersReady) return;
-    const src = map.getSource(SOURCE_ID);
-    if (!src) return;
-    const features = [];
-    for (const m of markersByUid.values()) {
-      if (!markerVisible(m)) continue;
-      features.push(...markerGeoJsonFeature(m));
-    }
-    src.setData({ type: "FeatureCollection", features });
-    updateVisibleCounts();
-  }
-
   function updateVisibleCounts() {
-    const total = markersByUid.size;
-    const visible = getVisibleMarkers().length;
+    const total = lastGeoMeta.total || markersByUid.size;
+    const visible =
+      lastGeoMeta.visible != null ? lastGeoMeta.visible : getVisibleMarkers().length;
     elVisibleCounts.textContent = visible + " / " + total + " visible";
   }
 
@@ -1008,13 +1038,27 @@
     }
   }
 
+  function applyBatch(msg) {
+    for (const uid of msg.removes || []) {
+      markersByUid.delete(String(uid));
+      if (selectedUid === uid) {
+        selectedUid = null;
+        renderDetail(null);
+        if (popup) popup.remove();
+      }
+    }
+    for (const m of msg.updates || []) {
+      if (m && m.uid) markersByUid.set(String(m.uid), m);
+    }
+    if (msg.groupsCatalog) mergeGroupsCatalog(msg.groupsCatalog);
+    else recomputeGroupCounts();
+    syncMapSource();
+    scheduleLayerListRefresh();
+  }
+
   function upsertMarker(m) {
     if (!m || !m.uid) return;
-    markersByUid.set(String(m.uid), m);
-    mergeGroupsCatalog([]);
-    syncMapSource();
-    renderLayerList();
-    renderList();
+    applyBatch({ updates: [m] });
     maybeFitVisibleOnLoad();
     if (selectedUid === m.uid) {
       renderDetail(m);
@@ -1025,31 +1069,23 @@
   }
 
   function removeMarker(uid) {
-    markersByUid.delete(String(uid));
-    if (selectedUid === uid) {
-      selectedUid = null;
-      renderDetail(null);
-      if (popup) popup.remove();
-    }
-    recomputeGroupCounts();
-    syncMapSource();
-    renderLayerList();
-    renderList();
+    applyBatch({ removes: [String(uid)] });
   }
 
   function applySnapshot(state) {
-    markersByUid.clear();
-    const list = (state && state.markers) || [];
-    for (const m of list) markersByUid.set(String(m.uid), m);
     mergeGroupsCatalog(state?.groupsCatalog || []);
-    syncMapSource();
-    renderLayerList();
-    renderList();
-    maybeFitVisibleOnLoad();
     if (state && state.icons && state.icons.defaultIcons) {
       defaultIconIds = state.icons.defaultIcons;
-      preloadMarkerIcons();
     }
+    loadMarkersFromServer()
+      .then(function () {
+        syncMapSource();
+        renderLayerList();
+        renderList();
+        maybeFitVisibleOnLoad();
+        preloadMarkerIcons();
+      })
+      .catch(function () {});
     if (state && state.host) {
       elHost.textContent =
         "TAK stream " +
@@ -1233,6 +1269,9 @@
     }
     if (msg.type === "snapshot" && msg.state) {
       applySnapshot(msg.state);
+    } else if (msg.type === "batch") {
+      applyBatch(msg);
+      if (msg.at) elUpdated.textContent = "Updated " + msg.at;
     } else if (msg.type === "update" && msg.marker) {
       upsertMarker(msg.marker);
       elUpdated.textContent = "Updated " + (msg.at || new Date().toISOString());

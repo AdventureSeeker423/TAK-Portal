@@ -9,10 +9,12 @@ const {
 } = require("./tak.service");
 const mapMeta = require("./mapMeta.service");
 const mapIcon = require("./mapIcon.service");
+const mapRender = require("./mapRender.service");
 
 const STALE_SWEEP_MS = 5000;
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 30000;
+const SSE_BATCH_MS = 400;
 
 /** @type {Map<string, object>} */
 const markers = new Map();
@@ -33,6 +35,62 @@ let reconnectTimer = null;
 let reconnectDelay = RECONNECT_MIN_MS;
 let staleTimer = null;
 let started = false;
+let batchTimer = null;
+
+const pendingBroadcast = {
+  updates: new Map(),
+  removes: new Set(),
+  groupsCatalog: false,
+};
+
+function scheduleBatchFlush() {
+  if (batchTimer) return;
+  batchTimer = setTimeout(flushBroadcastBatch, SSE_BATCH_MS);
+  if (typeof batchTimer.unref === "function") batchTimer.unref();
+}
+
+function flushBroadcastBatch() {
+  batchTimer = null;
+  const updates = Array.from(pendingBroadcast.updates.values());
+  const removes = Array.from(pendingBroadcast.removes);
+  const includeGroups = pendingBroadcast.groupsCatalog;
+  pendingBroadcast.updates.clear();
+  pendingBroadcast.removes.clear();
+  pendingBroadcast.groupsCatalog = false;
+
+  if (!updates.length && !removes.length && !includeGroups) return;
+
+  const payload = {
+    type: "batch",
+    at: new Date().toISOString(),
+    updates,
+    removes,
+  };
+  if (includeGroups) {
+    payload.groupsCatalog = mapMeta.buildGroupsCatalogWithCounts(getMarkerList());
+  }
+  broadcast(payload);
+}
+
+function queueMarkerUpdate(marker) {
+  if (!marker?.uid) return;
+  pendingBroadcast.removes.delete(marker.uid);
+  pendingBroadcast.updates.set(marker.uid, mapRender.toSlimMarker(marker));
+  scheduleBatchFlush();
+}
+
+function queueMarkerRemove(uid) {
+  const id = String(uid || "").trim();
+  if (!id) return;
+  pendingBroadcast.updates.delete(id);
+  pendingBroadcast.removes.add(id);
+  scheduleBatchFlush();
+}
+
+function queueGroupsCatalogRefresh() {
+  pendingBroadcast.groupsCatalog = true;
+  scheduleBatchFlush();
+}
 
 function getStreamEndpoint() {
   const raw = String(getString("TAK_URL", "")).trim();
@@ -129,9 +187,7 @@ function parseMarkerFromCoT(cot) {
 function removeMarker(uid, notify = true) {
   if (!markers.has(uid)) return;
   markers.delete(uid);
-  if (notify) {
-    broadcast({ type: "remove", uid, at: new Date().toISOString() });
-  }
+  if (notify) queueMarkerRemove(uid);
 }
 
 function handleDeleteCot(cot) {
@@ -161,11 +217,7 @@ function handleCot(cot) {
   const marker = parseMarkerFromCoT(cot);
   if (!marker || isMarkerStale(marker)) return;
   markers.set(marker.uid, marker);
-  broadcast({
-    type: "update",
-    marker,
-    at: new Date().toISOString(),
-  });
+  queueMarkerUpdate(marker);
 }
 
 function broadcast(obj) {
@@ -191,7 +243,6 @@ function sweepStaleMarkers(notify = true) {
 
 function refreshAllMarkerIcons() {
   if (!mapIcon.getStatus().ready) return;
-  const at = new Date().toISOString();
   for (const marker of markers.values()) {
     const icon = mapIcon.resolveIcon({
       type: marker.type,
@@ -207,8 +258,8 @@ function refreshAllMarkerIcons() {
     if (marker.iconId === nextId && marker.iconSource === nextSource) continue;
     marker.iconId = nextId;
     marker.iconSource = nextSource;
-    marker.updatedAt = at;
-    broadcast({ type: "update", marker, at });
+    marker.updatedAt = new Date().toISOString();
+    queueMarkerUpdate(marker);
   }
 }
 
@@ -232,10 +283,17 @@ function getStateSnapshot() {
     host: bridgeState.host,
     port: bridgeState.port,
     markerCount: markerList.length,
-    markers: markerList,
     groupsCatalog: mapMeta.buildGroupsCatalogWithCounts(markerList),
     updatedAt: new Date().toISOString(),
   };
+}
+
+function getMarkersSlimList() {
+  return getMarkerList().map((m) => mapRender.toSlimMarker(m));
+}
+
+function getMarkersGeoJson(options) {
+  return mapRender.buildGeoJson(getMarkerList(), options);
 }
 
 function clearConnection() {
@@ -381,15 +439,17 @@ function subscribe(sendFn) {
 }
 
 function refreshAllMarkerGroups() {
-  const at = new Date().toISOString();
+  let changed = false;
   for (const marker of markers.values()) {
     const next = mapMeta.resolveGroupsForMarker(marker, null);
     const prev = Array.isArray(marker.groups) ? marker.groups : [];
     if (next.length === prev.length && next.every((g, i) => g === prev[i])) continue;
     marker.groups = next;
-    marker.updatedAt = at;
-    broadcast({ type: "update", marker, at });
+    marker.updatedAt = new Date().toISOString();
+    queueMarkerUpdate(marker);
+    changed = true;
   }
+  if (changed) queueGroupsCatalogRefresh();
 }
 
 mapMeta.onSubscriptionIndexRefreshed(() => {
@@ -399,6 +459,8 @@ mapMeta.onSubscriptionIndexRefreshed(() => {
 module.exports = {
   getStateSnapshot,
   getMarkerList,
+  getMarkersSlimList,
+  getMarkersGeoJson,
   subscribe,
   ensureBridgeStarted,
   refreshAllMarkerIcons,

@@ -3,6 +3,7 @@ const path = require("path");
 const cotStream = require("../services/cotStream.service");
 const mapMeta = require("../services/mapMeta.service");
 const mapIcon = require("../services/mapIcon.service");
+const mapRender = require("../services/mapRender.service");
 
 mapIcon.ensureIconsets().then(() => {
   cotStream.refreshAllMarkerIcons();
@@ -15,6 +16,23 @@ router.get("/state", (req, res) => {
   const snapshot = cotStream.getStateSnapshot();
   snapshot.icons = mapIcon.getStatus();
   return res.json(snapshot);
+});
+
+router.get("/markers", (req, res) => {
+  cotStream.ensureBridgeStarted();
+  res.setHeader("Cache-Control", "no-cache");
+  return res.json({
+    markers: cotStream.getMarkersSlimList(),
+    updatedAt: new Date().toISOString(),
+  });
+});
+
+router.get("/geojson", (req, res) => {
+  cotStream.ensureBridgeStarted();
+  const options = mapRender.parseGeoJsonQuery(req.query);
+  const geojson = cotStream.getMarkersGeoJson(options);
+  res.setHeader("Cache-Control", "no-cache");
+  return res.json(geojson);
 });
 
 router.get("/icons", (req, res) => {
