@@ -197,16 +197,20 @@ function isBareCivilianAirType(cotType) {
   return segments.length === 5 && segments[2] === "a" && segments[3] === "c";
 }
 
-/** Default iconset generic symbology for ADSB-style bare civilian air roles. */
-function civilianAirGenericType(cotType) {
-  if (!isBareCivilianAirType(cotType)) return null;
-  const segments = cotTypeSegments(cotType);
-  return `a-u-a-c-${segments[4]}`;
-}
+/** Standard 2525-framed PSA icons for bare ADSB civilian air types (matches CloudTAK). */
+const BARE_CIVILIAN_AIR_PREFERRED_ICONS = {
+  "a-f-a-c-f": ["fed_fixed_wing.png"],
+  "a-f-a-c-h": ["fed_rotor.png"],
+  "a-f-a-c-l": [
+    "civ_lta_tethered.png",
+    "civ_lta_airship.png",
+    "civ_lta_balloon.png",
+  ],
+};
 
-/** PSA specialty icons that should not represent generic ADSB traffic. */
+/** Mission-specific art — not generic ADSB traffic. */
 function isSpecialtyAirIconName(iconName) {
-  return /^(CIV_FIXED_(CAP|ISR)|CIV_ROTOR_ISR|FIRE_|EMS_|FED_|LE_|MIL_)/i.test(
+  return /^(CIV_FIXED_(CAP|ISR)|CIV_ROTOR_ISR|FIRE_|EMS_|LE_|MIL_)/i.test(
     String(iconName || "")
   );
 }
@@ -233,12 +237,19 @@ function pickBestWithinIconset(entries, cotType) {
     if (base === t) score += 5000;
     else if (base.replace(/_/g, "-") === t) score += 4500;
 
-    if (dimension === "c") {
+    if (isBareCivilianAirType(t)) {
+      const preferred = BARE_CIVILIAN_AIR_PREFERRED_ICONS[t];
+      if (preferred) {
+        const prefIdx = preferred.indexOf(nameLower);
+        if (prefIdx >= 0) score += 4000 - prefIdx * 10;
+      }
+      if (isSpecialtyAirIconName(entry.iconName)) score -= 1500;
+    } else if (dimension === "c") {
       if (/^civ_/i.test(entry.iconName) && !isSpecialtyAirIconName(entry.iconName)) {
         score += 800;
       }
       if (isSpecialtyAirIconName(entry.iconName)) score -= 1200;
-      if (/^(fire_|ems_|fed_|le_|mil_)/i.test(entry.iconName)) score -= 600;
+      if (/^(fire_|ems_|le_|mil_)/i.test(entry.iconName)) score -= 600;
     } else if (dimension === "m") {
       if (/^fed_/i.test(entry.iconName)) score += 400;
       if (/^mil_/i.test(entry.iconName)) score += 300;
@@ -343,15 +354,6 @@ function parseIconsetPath(iconsetpath) {
 function findBestTypeMatch(cotType) {
   const t = String(cotType || "").trim().toLowerCase();
   if (!t) return null;
-
-  const genericCivType = civilianAirGenericType(t);
-  if (genericCivType) {
-    const genericList = typesByPrefix.get(genericCivType);
-    if (genericList?.length) {
-      const hit = pickBestFromEntries(genericList, genericCivType);
-      if (hit) return hit;
-    }
-  }
 
   const exactList = typesByPrefix.get(t);
   if (exactList && exactList.length) {

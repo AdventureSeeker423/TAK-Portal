@@ -17,7 +17,7 @@ const REQUIRED_FIXTURES = [
     type: "a-f-A-C-F",
     affiliation: "friend",
     origin: "feed",
-    expectIconFragment: "Plane",
+    expectIconFragment: "FED_FIXED_WING",
     expectUsesMapIcon: true,
   },
   {
@@ -25,7 +25,7 @@ const REQUIRED_FIXTURES = [
     type: "a-f-A-C-H",
     affiliation: "friend",
     origin: "feed",
-    expectIconFragment: "Helicopter",
+    expectIconFragment: "FED_ROTOR",
     expectUsesMapIcon: true,
   },
   {
@@ -33,7 +33,7 @@ const REQUIRED_FIXTURES = [
     type: "a-f-A-C-L",
     affiliation: "friend",
     origin: "feed",
-    expectIconFragment: "Balloon",
+    expectIconFragment: "CIV_LTA",
     expectUsesMapIcon: true,
   },
   {
@@ -80,7 +80,7 @@ const REQUIRED_FIXTURES = [
     origin: "feed",
     usericon: { iconsetpath: "COT_MAPPING_2525B/a/f/A/C/H" },
     expectUsesMapIcon: true,
-    expectIconFragment: "Helicopter",
+    expectIconFragment: "FED_ROTOR",
   },
 ];
 

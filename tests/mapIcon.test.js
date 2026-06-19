@@ -20,8 +20,8 @@ async function runTests() {
   const fixed = mapIcon.resolveIcon({ type: "a-f-A-C-F", affiliation: "friend" });
   assert.ok(fixed, "a-f-A-C-F should resolve");
   assert.ok(
-    /plane/i.test(fixed.relPath || fixed.iconId),
-    "civilian fixed-wing should use generic Plane art, got " + fixed.iconId
+    /fed_fixed_wing/i.test(fixed.relPath || fixed.iconId),
+    "civilian fixed-wing should use 2525 FED_FIXED_WING art, got " + fixed.iconId
   );
   assert.ok(mapIcon.getIconFilePath(fixed.iconId), "icon file must exist");
 
@@ -29,17 +29,17 @@ async function runTests() {
   const rotor = mapIcon.resolveIcon({ type: "a-f-A-C-H", affiliation: "friend" });
   assert.ok(rotor, "a-f-A-C-H should resolve");
   assert.ok(
-    /helicopter/i.test(rotor.relPath || rotor.iconId),
-    "civilian rotor should use generic Helicopter art, got " + rotor.iconId
+    /fed_rotor/i.test(rotor.relPath || rotor.iconId),
+    "civilian rotor should use 2525 FED_ROTOR art, got " + rotor.iconId
   );
 
-  // Bare civilian air uses Default generic symbology, not PSA specialty.
   const airHit = mapIcon.findBestTypeMatch("a-f-A-C-F");
   assert.strictEqual(
     airHit.iconsetUid,
-    mapIcon.DEFAULT_ICONSET_UID,
-    "bare a-f-A-C-F should use Default generic plane"
+    mapIcon.PUBLIC_SAFETY_AIR_UID,
+    "bare a-f-A-C-F should use Public Safety Air framed symbology"
   );
+  assert.ok(/fed_fixed_wing/i.test(airHit.iconName || airHit.relPath || ""));
 
   // EUD always dots
   const eudAir = {
@@ -74,7 +74,7 @@ async function runTests() {
     usericon: { iconsetpath: "COT_MAPPING_2525B/a/f/A/C/H" },
   });
   assert.ok(mapped, "COT_MAPPING_2525B path should resolve");
-  assert.ok(/helicopter/i.test(mapped.relPath || mapped.iconId));
+  assert.ok(/fed_rotor/i.test(mapped.relPath || mapped.iconId));
 
   // Default affiliation icons
   const defaults = mapIcon.getDefaultIconIds();
