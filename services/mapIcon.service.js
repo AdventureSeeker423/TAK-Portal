@@ -31,9 +31,9 @@ const PUBLIC_SAFETY_AIR_UID = "66f14976-4b62-4023-8edb-d8d2ebeaa336";
 
 /** Lower index = preferred when multiple iconsets share a type2525b mapping. */
 const ICONSET_LOOKUP_PRIORITY = [
-  PUBLIC_SAFETY_AIR_UID,
   GENERIC_ICONS_UID,
   DEFAULT_ICONSET_UID,
+  PUBLIC_SAFETY_AIR_UID,
 ];
 const DATA_ROOT = path.join(__dirname, "..", "data", "map-icons");
 const SUPPLEMENT_ROOT = path.join(__dirname, "..", "data", "map-icon-supplement");
@@ -137,13 +137,106 @@ function iconsetLookupRank(iconsetUid) {
   return 1;
 }
 
-function pickBestTypeEntry(entries, cotType) {
+/** Preferred icon basenames when specialty icons share one type2525b (common in PSA air). */
+const PREFERRED_TYPE2525B_ICONS = {
+  "a-f-a-c-f": [
+    "a-f-a-c-f.png",
+    "civ_fixed_cap.png",
+    "civ_fixed_isr.png",
+    "ems_fixed_wing.png",
+    "fed_fixed_wing.png",
+  ],
+  "a-f-a-c-h": [
+    "a-f-a-c-h.png",
+    "civ_rotor_isr.png",
+    "ems_rotor.png",
+    "fed_rotor.png",
+    "fire_rotor.png",
+  ],
+  "a-f-a-c-l": [
+    "a-f-a-c-l.png",
+    "civ_lta_tethered.png",
+    "civ_lta_airship.png",
+    "civ_lta_balloon.png",
+  ],
+  "a-f-a-m-f": [
+    "a-f-a-m-f.png",
+    "a-f-a-m-f-wx.png",
+    "a-f-a-m-f-v.png",
+    "fed_fixed_wing.png",
+    "fed_fixed_wing_isr.png",
+  ],
+  "a-f-a-m-h": [
+    "a-f-a-m-h.png",
+    "a-f-a-m-f-wx.png",
+    "fed_rotor.png",
+    "fire_rotor.png",
+    "ems_rotor.png",
+  ],
+};
+
+function cotTypeSegments(cotType) {
+  return String(cotType || "")
+    .trim()
+    .toLowerCase()
+    .split("-")
+    .filter(Boolean);
+}
+
+function iconBaseName(iconName) {
+  return String(iconName || "")
+    .trim()
+    .replace(/\.png$/i, "")
+    .toLowerCase();
+}
+
+function scoreTypeEntry(entry, cotType) {
   const t = String(cotType || "").trim().toLowerCase();
+  const segments = cotTypeSegments(t);
+  const base = iconBaseName(entry.iconName);
+  const iconNameLower = String(entry.iconName || "").toLowerCase();
+
+  let score = iconsetLookupRank(entry.iconsetUid) * 100;
+
+  if (entry.type2525b === t) score += 500;
+
+  if (base === t) score += 5000;
+  else if (base.replace(/_/g, "-") === t) score += 4500;
+
+  const preferred = PREFERRED_TYPE2525B_ICONS[t];
+  if (preferred) {
+    const prefIdx = preferred.indexOf(iconNameLower);
+    if (prefIdx >= 0) score += 3000 - prefIdx * 10;
+  }
+
+  const dimension = segments[3] || "";
+  const role = segments[4] || "";
+  if (dimension === "c") {
+    if (/^civ_/i.test(entry.iconName)) score += 400;
+    if (/^(fire_|ems_|fed_|le_)/i.test(entry.iconName)) score -= 700;
+  } else if (dimension === "m") {
+    if (/^a-f-a-m/i.test(base)) score += 600;
+    if (/^fed_/i.test(entry.iconName)) score += 200;
+    if (/^(fire_|ems_|civ_)/i.test(entry.iconName)) score -= 400;
+  }
+
+  if (role === "f" && /fixed/i.test(entry.iconName)) score += 150;
+  if (role === "h" && /rotor|helo/i.test(entry.iconName)) score += 150;
+
+  return score;
+}
+
+function pickBestTypeEntry(entries, cotType) {
   let best = null;
   for (const entry of entries || []) {
-    const exact = entry.type2525b === t;
-    const score = iconsetLookupRank(entry.iconsetUid) * 100 + (exact ? 50 : 0);
-    if (!best || score > best.score) best = { score, entry };
+    const score = scoreTypeEntry(entry, cotType);
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score && String(entry.iconName) < String(best.entry.iconName))
+    ) {
+      best = { score, entry };
+    }
   }
   return best?.entry || null;
 }

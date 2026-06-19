@@ -48,18 +48,30 @@
   const MAP_LABEL_FONT = ["Open Sans Semibold"];
   const MARKER_FILTER = ["==", ["get", "kind"], "marker"];
   const SOURCE_ID = "tak-markers";
-  const ICON_LAYER = "tak-markers-icon";
-  const CIRCLE_LAYER = "tak-markers-circle";
+  const CIRCLE_LAYER_LOW = "tak-markers-circle-low";
+  const ICON_LAYER_LOW = "tak-markers-icon-low";
+  const CIRCLE_LAYER_HIGH = "tak-markers-circle-high";
+  const ICON_LAYER_HIGH = "tak-markers-icon-high";
   const LABEL_LAYER = "tak-markers-label";
   const LABEL_PRIORITY_LAYER = "tak-markers-label-priority";
   const COURSE_LAYER = "tak-markers-course";
+  const MARKER_HIT_LAYER_IDS = [
+    CIRCLE_LAYER_LOW,
+    ICON_LAYER_LOW,
+    CIRCLE_LAYER_HIGH,
+    ICON_LAYER_HIGH,
+  ];
   const MARKER_LAYER_IDS = [
     COURSE_LAYER,
-    CIRCLE_LAYER,
-    ICON_LAYER,
+    CIRCLE_LAYER_LOW,
+    ICON_LAYER_LOW,
+    CIRCLE_LAYER_HIGH,
+    ICON_LAYER_HIGH,
     LABEL_LAYER,
     LABEL_PRIORITY_LAYER,
   ];
+  /** Legacy layer ids removed during style restore. */
+  const LEGACY_MARKER_LAYER_IDS = ["tak-markers-circle", "tak-markers-icon"];
   /** Must match cotStream.service.js STALE_GRACE_MS */
   const STALE_GRACE_MS = 30000;
 
@@ -281,6 +293,22 @@
     );
   }
 
+  /** 0 = feed/unknown (draw below), 1 = live EUD (draw above feeds). */
+  function markerDrawTier(m) {
+    return markerOriginRank(m) >= 2 ? 1 : 0;
+  }
+
+  function markerHitLayers() {
+    return MARKER_HIT_LAYER_IDS.filter(function (id) {
+      return map.getLayer(id);
+    });
+  }
+
+  function triggerMarkerRepaint() {
+    if (!map) return;
+    map.triggerRepaint();
+  }
+
   function markerLabelDeclutterPriority(m) {
     if (m.uid === selectedUid) return 0;
     if (m.uid === lockedUid) return 1;
@@ -350,6 +378,7 @@
       loadMapIcon(apiIconId, baseMapImageId);
     }
     const renderSort = markerRenderSort(m);
+    const drawTier = markerDrawTier(m);
     const iconReady = !!(displayIconId && map.hasImage(displayIconId));
     const features = [
       {
@@ -364,6 +393,7 @@
           color,
           iconId: iconReady ? displayIconId : "",
           showCircle: iconReady ? 0 : 1,
+          drawTier: drawTier,
           selected: m.uid === selectedUid,
           locked: m.uid === lockedUid,
           renderSort: renderSort,
@@ -727,7 +757,7 @@
         return createColoredMapIcon(baseMapImageId, colorHex);
       })
       .then(function () {
-        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+        triggerMarkerRepaint();
         scheduleMapRefresh();
       })
       .catch(function (err) {
@@ -879,7 +909,7 @@
         return installMapImage(imageName, imageData);
       })
       .then(function () {
-        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+        triggerMarkerRepaint();
         scheduleMapRefresh();
       })
       .catch(function (err) {
@@ -922,7 +952,7 @@
     if (parsed) {
       registerColoredMapImageId(parsed.baseMapImageId, parsed.colorHex);
       if (tryInstallColoredIconSync(parsed.baseMapImageId, parsed.colorHex)) {
-        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+        triggerMarkerRepaint();
         return;
       }
       const info =
@@ -935,7 +965,7 @@
       if (iconLoadPending.has(mapImageId)) return;
       loadColoredMapIcon(info.apiIconId, parsed.baseMapImageId, parsed.colorHex).then(
         function () {
-          if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+          triggerMarkerRepaint();
           scheduleMapRefresh();
         }
       );
@@ -948,7 +978,7 @@
     }
     if (iconLoadPending.has(mapImageId)) return;
     loadMapIcon(info.apiIconId, mapImageId).then(function () {
-      if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+      triggerMarkerRepaint();
       scheduleMapRefresh();
     });
   }
@@ -1799,8 +1829,11 @@
     for (const id of [
       LABEL_PRIORITY_LAYER,
       LABEL_LAYER,
-      ICON_LAYER,
-      CIRCLE_LAYER,
+      ICON_LAYER_HIGH,
+      CIRCLE_LAYER_HIGH,
+      ICON_LAYER_LOW,
+      CIRCLE_LAYER_LOW,
+      ...LEGACY_MARKER_LAYER_IDS,
       COURSE_LAYER,
     ]) {
       if (map.getLayer(id)) {
@@ -2291,8 +2324,10 @@
     return (
       map.getSource(SOURCE_ID) &&
       map.getLayer(COURSE_LAYER) &&
-      map.getLayer(CIRCLE_LAYER) &&
-      map.getLayer(ICON_LAYER) &&
+      map.getLayer(CIRCLE_LAYER_LOW) &&
+      map.getLayer(ICON_LAYER_LOW) &&
+      map.getLayer(CIRCLE_LAYER_HIGH) &&
+      map.getLayer(ICON_LAYER_HIGH) &&
       map.getLayer(LABEL_LAYER) &&
       map.getLayer(LABEL_PRIORITY_LAYER)
     );
@@ -2343,6 +2378,72 @@
     };
   }
 
+  function markerCircleLayerSpec(id, drawTier) {
+    return {
+      id: id,
+      type: "circle",
+      source: SOURCE_ID,
+      filter: [
+        "all",
+        MARKER_FILTER,
+        ["==", ["get", "showCircle"], 1],
+        ["==", ["get", "drawTier"], drawTier],
+      ],
+      layout: {
+        "circle-sort-key": ["get", "renderSort"],
+      },
+      paint: {
+        "circle-radius": [
+          "case",
+          ["==", ["get", "selected"], true],
+          13,
+          10,
+        ],
+        "circle-color": ["get", "color"],
+        "circle-stroke-width": [
+          "case",
+          ["==", ["get", "selected"], true],
+          2,
+          1.5,
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-opacity": 1,
+      },
+    };
+  }
+
+  function markerIconLayerSpec(id, drawTier) {
+    return {
+      id: id,
+      type: "symbol",
+      source: SOURCE_ID,
+      filter: [
+        "all",
+        MARKER_FILTER,
+        ["!=", ["get", "iconId"], ""],
+        ["==", ["get", "drawTier"], drawTier],
+      ],
+      layout: {
+        "icon-image": ["get", "iconId"],
+        "icon-size": [
+          "case",
+          ["==", ["get", "selected"], true],
+          1.05,
+          0.88,
+        ],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "icon-optional": true,
+        "symbol-sort-key": ["get", "renderSort"],
+      },
+      paint: {
+        "icon-opacity": 1,
+        "icon-halo-color": "#ffffff",
+        "icon-halo-width": 4,
+      },
+    };
+  }
+
   function addMarkerLayers() {
     if (!map.isStyleLoaded()) return false;
     if (markerLayersComplete()) return true;
@@ -2370,57 +2471,10 @@
         },
       });
 
-      map.addLayer({
-        id: CIRCLE_LAYER,
-        type: "circle",
-        source: SOURCE_ID,
-        filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
-        layout: {
-          "circle-sort-key": ["get", "renderSort"],
-        },
-        paint: {
-          "circle-radius": [
-            "case",
-            ["==", ["get", "selected"], true],
-            13,
-            10,
-          ],
-          "circle-color": ["get", "color"],
-          "circle-stroke-width": [
-            "case",
-            ["==", ["get", "selected"], true],
-            2,
-            1.5,
-          ],
-          "circle-stroke-color": "#ffffff",
-          "circle-opacity": 1,
-        },
-      });
-
-      map.addLayer({
-        id: ICON_LAYER,
-        type: "symbol",
-        source: SOURCE_ID,
-        filter: ["all", MARKER_FILTER, ["!=", ["get", "iconId"], ""]],
-        layout: {
-          "icon-image": ["get", "iconId"],
-          "icon-size": [
-            "case",
-            ["==", ["get", "selected"], true],
-            1.05,
-            0.88,
-          ],
-          "icon-allow-overlap": true,
-          "icon-ignore-placement": true,
-          "icon-optional": true,
-          "symbol-sort-key": ["get", "renderSort"],
-        },
-        paint: {
-          "icon-opacity": 1,
-          "icon-halo-color": "#ffffff",
-          "icon-halo-width": 4,
-        },
-      });
+      map.addLayer(markerCircleLayerSpec(CIRCLE_LAYER_LOW, 0));
+      map.addLayer(markerIconLayerSpec(ICON_LAYER_LOW, 0));
+      map.addLayer(markerCircleLayerSpec(CIRCLE_LAYER_HIGH, 1));
+      map.addLayer(markerIconLayerSpec(ICON_LAYER_HIGH, 1));
 
       map.addLayer({
         id: LABEL_LAYER,
@@ -2494,9 +2548,7 @@
 
   function queryMarkersAtPoint(point, radiusPx) {
     const r = radiusPx == null ? 18 : radiusPx;
-    const layers = [];
-    if (map.getLayer(CIRCLE_LAYER)) layers.push(CIRCLE_LAYER);
-    if (map.getLayer(ICON_LAYER)) layers.push(ICON_LAYER);
+    const layers = markerHitLayers();
     if (!layers.length) return [];
 
     const bbox = [
@@ -2516,6 +2568,8 @@
       if (m) markers.push(m);
     }
     markers.sort(function (a, b) {
+      const rankDiff = markerOriginRank(b) - markerOriginRank(a);
+      if (rankDiff !== 0) return rankDiff;
       return String(a.callsign).localeCompare(String(b.callsign));
     });
     return markers;
@@ -2600,7 +2654,7 @@
   }
 
   function bindMarkerLayerHandlers() {
-    for (const layer of [ICON_LAYER, CIRCLE_LAYER]) {
+    for (const layer of MARKER_HIT_LAYER_IDS) {
       map.off("click", layer, onMarkerIconClick);
       map.off("mouseenter", layer, onMarkerIconEnter);
       map.off("mouseleave", layer, onMarkerIconLeave);
@@ -3405,7 +3459,7 @@
           reinstallMapIconsFromCache();
           preloadMarkerIcons().finally(function () {
             pushMarkerGeoJsonToSource();
-            if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+            triggerMarkerRepaint();
           });
         }
       })
@@ -3452,8 +3506,7 @@
         preloadMarkerIcons().finally(function () {
           if (gen !== styleRestoreGen) return;
           refreshMapFromMarkers();
-          if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
-          if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
+          triggerMarkerRepaint();
         });
       }
 
@@ -3547,9 +3600,7 @@
   function onMapBackgroundClick(e) {
     if (Date.now() < suppressMapBackgroundClickUntil) return;
     if (!isMapClickNotDrag(e)) return;
-    const layers = [];
-    if (map.getLayer(CIRCLE_LAYER)) layers.push(CIRCLE_LAYER);
-    if (map.getLayer(ICON_LAYER)) layers.push(ICON_LAYER);
+    const layers = markerHitLayers();
     if (map.getLayer(LABEL_PRIORITY_LAYER)) layers.push(LABEL_PRIORITY_LAYER);
     if (map.getLayer(LABEL_LAYER)) layers.push(LABEL_LAYER);
     if (layers.length) {
