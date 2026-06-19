@@ -739,12 +739,72 @@ function parseAffiliationFromType(type) {
   return "other";
 }
 
+/** Standard ATAK team color names (matches portal dashboard / device prefs). */
+const ATAK_TEAM_COLORS = {
+  Blue: "#1e88e5",
+  "Dark Blue": "#0d47a1",
+  Brown: "#6d4c41",
+  Cyan: "#00acc1",
+  Green: "#43a047",
+  "Dark Green": "#1b5e20",
+  Magenta: "#d81b60",
+  Maroon: "#800000",
+  Orange: "#ff7b00",
+  Purple: "#8e24aa",
+  Red: "#e53935",
+  Teal: "#00897b",
+  White: "#ffffff",
+  Yellow: "#fdd835",
+};
+
+const ATAK_TEAM_COLORS_LC = Object.fromEntries(
+  Object.entries(ATAK_TEAM_COLORS).map(([name, hex]) => [name.toLowerCase(), hex])
+);
+
+const AFFILIATION_COLORS = {
+  friend: "#22c55e",
+  hostile: "#ef4444",
+  neutral: "#eab308",
+  unknown: "#f97316",
+  other: "#38bdf8",
+};
+
+function parseTeamName(detail) {
+  return normalizeGroupName(
+    detail?.__group?._attributes?.name ||
+      detail?.team?._attributes?.name ||
+      detail?.__group?.name ||
+      detail?.team?.name ||
+      ""
+  );
+}
+
+function teamNameToColor(name) {
+  const n = normalizeGroupName(name);
+  if (!n) return null;
+  if (ATAK_TEAM_COLORS[n]) return ATAK_TEAM_COLORS[n];
+  return ATAK_TEAM_COLORS_LC[n.toLowerCase()] || null;
+}
+
 function parseTeamColor(detail) {
   const color =
     detail?.__group?._attributes?.color ||
     detail?.team?._attributes?.color ||
     null;
   return normalizeTakColor(color);
+}
+
+/** Map marker fill: ATAK team name, then CoT color attr, then affiliation. */
+function resolveMarkerDisplayColor(marker) {
+  const team = normalizeGroupName(marker?.team);
+  const fromTeam = teamNameToColor(team);
+  if (fromTeam) return fromTeam;
+
+  const fromAttr = normalizeTakColor(marker?.teamColor);
+  if (fromAttr) return fromAttr;
+
+  const aff = String(marker?.affiliation || "other").trim();
+  return AFFILIATION_COLORS[aff] || AFFILIATION_COLORS.other;
 }
 
 /** ATAK/TAK team colors are often signed 32-bit ARGB integers, not CSS hex. */
@@ -1081,7 +1141,10 @@ module.exports = {
   parseRelatedUids,
   onSubscriptionIndexRefreshed,
   parseAffiliationFromType,
+  parseTeamName,
   parseTeamColor,
+  teamNameToColor,
+  resolveMarkerDisplayColor,
   normalizeTakColor,
   resolveGroupsForMarker,
   filterAssignableChannelGroups,

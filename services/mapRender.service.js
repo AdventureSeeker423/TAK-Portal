@@ -4,30 +4,8 @@
 const { getInt } = require("./env");
 const mapMeta = require("./mapMeta.service");
 
-const AFFILIATION_COLORS = {
-  friend: "#22c55e",
-  hostile: "#ef4444",
-  neutral: "#eab308",
-  unknown: "#f97316",
-  other: "#38bdf8",
-};
-
-function normalizeMarkerColor(raw, fallback) {
-  if (raw == null || raw === "") return fallback;
-  const s = String(raw).trim();
-  if (/^#[0-9a-f]{3,8}$/i.test(s)) {
-    if (s.length === 4 || s.length === 7) return s;
-    return s.slice(0, 7);
-  }
-  return mapMeta.normalizeTakColor(raw) || fallback;
-}
-
 function markerDisplayColor(marker) {
-  const aff = marker?.affiliation || "other";
-  return normalizeMarkerColor(
-    marker?.teamColor,
-    AFFILIATION_COLORS[aff] || AFFILIATION_COLORS.other
-  );
+  return mapMeta.resolveMarkerDisplayColor(marker);
 }
 
 function markerOpacity(marker, now = Date.now()) {
@@ -149,7 +127,7 @@ function buildGeoJson(markers, options = {}) {
 
   for (const marker of visible) {
     const color = markerDisplayColor(marker);
-    const opacity = markerOpacity(marker, now);
+    const labelOpacity = markerOpacity(marker, now);
     const apiIconId = useIcons && marker.iconId ? String(marker.iconId) : "";
     const coords = [marker.lon, marker.lat];
 
@@ -165,8 +143,8 @@ function buildGeoJson(markers, options = {}) {
         color,
         apiIconId,
         showCircle: apiIconId ? 0 : 1,
-        opacity,
-        labelOpacity: opacity,
+        opacity: 1,
+        labelOpacity,
         selected: marker.uid === selectedUid,
         course: Number.isFinite(marker.course) && marker.course >= 0 ? marker.course : 0,
       },

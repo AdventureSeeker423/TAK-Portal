@@ -14,6 +14,30 @@
     other: "#38bdf8",
   };
 
+  /** ATAK team palette — same as dashboard / ATAK device prefs. */
+  const ATAK_TEAM_COLORS = {
+    Blue: "#1e88e5",
+    "Dark Blue": "#0d47a1",
+    Brown: "#6d4c41",
+    Cyan: "#00acc1",
+    Green: "#43a047",
+    "Dark Green": "#1b5e20",
+    Magenta: "#d81b60",
+    Maroon: "#800000",
+    Orange: "#ff7b00",
+    Purple: "#8e24aa",
+    Red: "#e53935",
+    Teal: "#00897b",
+    White: "#ffffff",
+    Yellow: "#fdd835",
+  };
+
+  const ATAK_TEAM_COLORS_LC = Object.fromEntries(
+    Object.entries(ATAK_TEAM_COLORS).map(function (entry) {
+      return [entry[0].toLowerCase(), entry[1]];
+    })
+  );
+
   const MAP_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
   const MAP_LABEL_FONT = ["Open Sans Semibold"];
   const MARKER_FILTER = ["==", ["get", "kind"], "marker"];
@@ -241,7 +265,7 @@
     if (!pos) return [];
     const color = markerDisplayColor(m);
     const coords = [pos.lon, pos.lat];
-    const opacity = markerOpacity(m);
+    const labelOpacity = markerOpacity(m);
     const apiIconId = useIcons ? resolveMarkerIconId(m) : "";
     const mapImageId = apiIconId ? registerMapImageId(apiIconId) : "";
     const features = [
@@ -256,8 +280,9 @@
           affiliation: m.affiliation || "other",
           color,
           iconId: mapImageId,
-          opacity,
-          labelOpacity: opacity,
+          showCircle: mapImageId ? 0 : 1,
+          opacity: 1,
+          labelOpacity,
           selected: m.uid === selectedUid,
         },
       },
@@ -613,6 +638,13 @@
     return AFFILIATION_COLORS[aff] || AFFILIATION_COLORS.other;
   }
 
+  function teamNameToColor(name) {
+    const n = String(name || "").trim();
+    if (!n) return null;
+    if (ATAK_TEAM_COLORS[n]) return ATAK_TEAM_COLORS[n];
+    return ATAK_TEAM_COLORS_LC[n.toLowerCase()] || null;
+  }
+
   function normalizeMarkerColor(raw, fallback) {
     if (raw == null || raw === "") return fallback;
     const s = String(raw).trim();
@@ -637,7 +669,27 @@
   }
 
   function markerDisplayColor(m) {
-    return normalizeMarkerColor(m.teamColor, affiliationColor(m.affiliation));
+    const fromTeam = teamNameToColor(m && m.team);
+    if (fromTeam) return fromTeam;
+    return normalizeMarkerColor(m && m.teamColor, affiliationColor(m && m.affiliation));
+  }
+
+  function isLightMarkerColor(hex) {
+    const s = String(hex || "").trim();
+    if (!/^#[0-9a-f]{6}$/i.test(s)) return false;
+    const r = parseInt(s.slice(1, 3), 16);
+    const g = parseInt(s.slice(3, 5), 16);
+    const b = parseInt(s.slice(5, 7), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 > 210;
+  }
+
+  function markerDotStyle(m) {
+    const color = markerDisplayColor(m);
+    let style = "background:" + color;
+    if (isLightMarkerColor(color)) {
+      style += ";box-shadow:inset 0 0 0 1px rgba(100,116,139,0.75)";
+    }
+    return style;
   }
 
   function stripTakPrefix(name) {
@@ -822,7 +874,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: MARKER_FILTER,
+      filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
       paint: {
         "circle-radius": [
           "case",
@@ -831,9 +883,8 @@
           7,
         ],
         "circle-color": ["get", "color"],
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#f8fafc",
-        "circle-opacity": ["get", "opacity"],
+        "circle-stroke-width": 0,
+        "circle-opacity": 1,
       },
     });
 
@@ -855,7 +906,7 @@
         "icon-optional": true,
       },
       paint: {
-        "icon-opacity": ["get", "opacity"],
+        "icon-opacity": ["get", "labelOpacity"],
       },
     });
 
@@ -1070,8 +1121,8 @@
         .join(" · ");
       btn.innerHTML =
         '<div class="name">' +
-        '<span class="map-aff-dot" style="background:' +
-        affiliationColor(m.affiliation) +
+        '<span class="map-aff-dot" style="' +
+        markerDotStyle(m) +
         '"></span>' +
         escapeHtml(m.callsign) +
         "</div>" +
