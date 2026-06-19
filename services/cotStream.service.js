@@ -9,7 +9,6 @@ const {
 } = require("./tak.service");
 const mapMeta = require("./mapMeta.service");
 const mapIcon = require("./mapIcon.service");
-const mapSymbol = require("./mapSymbol.service");
 
 const STALE_SWEEP_MS = 5000;
 const RECONNECT_MIN_MS = 2000;
@@ -102,8 +101,6 @@ function parseMarkerFromCoT(cot) {
       updatedAt: new Date().toISOString(),
     };
 
-    base.relatedUids = mapMeta.parseRelatedUids(detail);
-    base.cotRouteGroups = mapMeta.parseGroupsFromCoTDetail(detail);
     base.groups = mapMeta.resolveGroupsForMarker(base, detail);
 
     const usericon = mapIcon.parseUserIcon(detail);
@@ -120,8 +117,6 @@ function parseMarkerFromCoT(cot) {
       base.iconId = icon.iconId;
       base.iconSource = icon.source;
     }
-
-    mapSymbol.applySymbolIcon(base);
 
     return base;
   } catch {
@@ -189,30 +184,6 @@ function sweepStaleMarkers(notify = true) {
         broadcast({ type: "remove", uid, at: new Date().toISOString() });
       }
     }
-  }
-}
-
-function refreshAllMarkerSymbols() {
-  const at = new Date().toISOString();
-  for (const marker of markers.values()) {
-    const prevId = marker.iconId || null;
-    const prevSource = marker.iconSource || null;
-    mapSymbol.applySymbolIcon(marker);
-    if (marker.iconId === prevId && marker.iconSource === prevSource) continue;
-    marker.updatedAt = at;
-    broadcast({ type: "update", marker, at });
-  }
-}
-
-function refreshAllMarkerGroups() {
-  const at = new Date().toISOString();
-  for (const marker of markers.values()) {
-    const next = mapMeta.resolveGroupsForMarker(marker, null);
-    const prev = Array.isArray(marker.groups) ? marker.groups : [];
-    if (next.length === prev.length && next.every((g, i) => g === prev[i])) continue;
-    marker.groups = next;
-    marker.updatedAt = at;
-    broadcast({ type: "update", marker, at });
   }
 }
 
@@ -407,22 +378,10 @@ function subscribe(sendFn) {
   };
 }
 
-mapMeta.onSubscriptionIndexRefreshed(() => {
-  refreshAllMarkerGroups();
-});
-
-void mapSymbol.ensureType2525().then(() => {
-  refreshAllMarkerSymbols();
-}).catch((err) => {
-  console.warn("[map-cot] symbol preload failed:", err?.message || err);
-});
-
 module.exports = {
   getStateSnapshot,
   getMarkerList,
   subscribe,
   ensureBridgeStarted,
   refreshAllMarkerIcons,
-  refreshAllMarkerSymbols,
-  refreshAllMarkerGroups,
 };

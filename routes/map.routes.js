@@ -3,16 +3,12 @@ const path = require("path");
 const cotStream = require("../services/cotStream.service");
 const mapMeta = require("../services/mapMeta.service");
 const mapIcon = require("../services/mapIcon.service");
-const mapSymbol = require("../services/mapSymbol.service");
 
-Promise.all([mapIcon.ensureIconsets(), mapSymbol.ensureType2525()])
-  .then(() => {
-    cotStream.refreshAllMarkerSymbols();
-    cotStream.refreshAllMarkerIcons();
-  })
-  .catch((err) => {
-    console.warn("[map] icon/symbol init failed:", err?.message || err);
-  });
+mapIcon.ensureIconsets().then(() => {
+  cotStream.refreshAllMarkerIcons();
+}).catch((err) => {
+  console.warn("[map] iconset init failed:", err?.message || err);
+});
 
 router.get("/state", (req, res) => {
   cotStream.ensureBridgeStarted();
@@ -24,19 +20,6 @@ router.get("/state", (req, res) => {
 router.get("/icons", (req, res) => {
   const iconId = String(req.query.id || "").trim();
   if (!iconId) return res.status(400).json({ error: "Missing id" });
-
-  const symbolType = mapSymbol.parseSymbolIconId(iconId);
-  if (symbolType) {
-    const course = Number(req.query.course);
-    const png = mapSymbol.renderSymbolPng(symbolType, {
-      course: Number.isFinite(course) ? course : undefined,
-    });
-    if (!png) return res.status(404).end();
-    res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    return res.send(png);
-  }
-
   const filePath = mapIcon.getIconFilePath(iconId);
   if (!filePath) return res.status(404).end();
   res.setHeader("Cache-Control", "public, max-age=86400");

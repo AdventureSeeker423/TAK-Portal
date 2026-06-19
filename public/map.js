@@ -191,81 +191,23 @@
     return mapped;
   }
 
-  function iconApiUrl(iconId, course) {
-    let url = "/api/map/icons?id=" + encodeURIComponent(iconId);
-    if (Number.isFinite(course) && course >= 0) {
-      url += "&course=" + encodeURIComponent(String(course));
-    }
-    return url;
-  }
-
-  function milIconCacheKey(plan) {
-    if (plan.sidc2525D) return "mil:" + plan.sidc2525D;
-    return "mil:" + plan.cotType;
-  }
-
-  function resolveMarkerIconPlan(m) {
-    if (m.iconId && (m.iconSource === "path" || m.iconSource === "usericon")) {
-      return { kind: "png", apiIconId: m.iconId };
-    }
-    if (m.iconSource === "symbol2525" && m.iconId) {
-      return { kind: "png", apiIconId: m.iconId };
-    }
-    if (m.milSymbol || (window.MapSymbology && MapSymbology.is2525Convertable(m.type))) {
-      return {
-        kind: "mil",
-        cotType: m.type,
-        sidc2525B: m.symbolSidc2525B || null,
-        sidc2525D: m.symbolSidc2525D || null,
-      };
-    }
-    if (m.iconId) return { kind: "png", apiIconId: m.iconId };
-    const aff = m.affiliation || "other";
-    const fallback =
-      defaultIconIds[aff] || defaultIconIds.friend || defaultIconIds.unknown || "";
-    if (fallback) return { kind: "png", apiIconId: fallback };
-    return { kind: "circle" };
+  function iconApiUrl(iconId) {
+    return "/api/map/icons?id=" + encodeURIComponent(iconId);
   }
 
   function resolveMarkerIconId(m) {
-    return resolveMarkerIconPlan(m).apiIconId || "";
+    if (m.iconId) return m.iconId;
+    const aff = m.affiliation || "other";
+    return defaultIconIds[aff] || defaultIconIds.friend || defaultIconIds.unknown || "";
   }
 
-  function loadMilSymbolIcon(plan, mapImageId, course) {
-    if (!window.MapSymbology || !plan.cotType) return Promise.resolve();
-    if (map.hasImage(mapImageId)) return Promise.resolve();
-    if (iconLoadPending.has(mapImageId)) return iconLoadPending.get(mapImageId);
-
-    const promise = Promise.resolve()
-      .then(() => {
-        const canvas = MapSymbology.renderMilSymbolCanvas(plan.cotType, {
-          size: 48,
-          course: Number.isFinite(course) ? course : undefined,
-          sidc2525B: plan.sidc2525B || undefined,
-          sidc2525D: plan.sidc2525D || undefined,
-        });
-        if (!canvas) throw new Error("invalid symbol");
-        if (!map.hasImage(mapImageId)) map.addImage(mapImageId, canvas, { pixelRatio: 2 });
-      })
-      .then(() => {
-        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
-      })
-      .catch(() => {})
-      .finally(() => {
-        iconLoadPending.delete(mapImageId);
-      });
-
-    iconLoadPending.set(mapImageId, promise);
-    return promise;
-  }
-
-  function loadMapIcon(iconId, mapImageId, course) {
+  function loadMapIcon(iconId, mapImageId) {
     const imageName = mapImageId || registerMapImageId(iconId);
     if (!iconId || map.hasImage(imageName)) return Promise.resolve();
     const pendingKey = imageName;
     if (iconLoadPending.has(pendingKey)) return iconLoadPending.get(pendingKey);
 
-    const promise = fetch(iconApiUrl(iconId, course))
+    const promise = fetch(iconApiUrl(iconId))
       .then((resp) => {
         if (!resp.ok) throw new Error("icon " + resp.status);
         return resp.blob();
@@ -302,49 +244,22 @@
     return promise;
   }
 
-  function ensureMarkerIcon(m, mapImageId) {
-    const plan = resolveMarkerIconPlan(m);
-    if (plan.kind === "mil") {
-      return loadMilSymbolIcon(plan, mapImageId, m.course);
-    }
-    if (plan.kind === "png" && plan.apiIconId) {
-      return loadMapIcon(plan.apiIconId, mapImageId, m.course);
-    }
-    return Promise.resolve();
-  }
-
   function preloadMarkerIcons() {
-    const jobs = [];
+    const ids = new Set(Object.values(defaultIconIds).filter(Boolean));
     for (const m of markersByUid.values()) {
-      const plan = resolveMarkerIconPlan(m);
-      if (plan.kind === "circle") continue;
-      const mapImageId = registerMapImageId(
-        plan.kind === "mil" ? milIconCacheKey(plan) : plan.apiIconId
-      );
-      jobs.push(ensureMarkerIcon(m, mapImageId));
+      const id = resolveMarkerIconId(m);
+      if (id) ids.add(id);
     }
-    for (const id of Object.values(defaultIconIds).filter(Boolean)) {
-      jobs.push(loadMapIcon(id, registerMapImageId(id)));
-    }
-    return Promise.all(jobs);
+    return Promise.all(
+      Array.from(ids, (id) => loadMapIcon(id, registerMapImageId(id)))
+    );
   }
 
   function onStyleImageMissing(e) {
     const mapImageId = e.id;
-    if (!mapImageId || iconLoadPending.has(mapImageId)) return;
-    const raw = iconIdByMapImageId.get(mapImageId) || mapImageId;
-    if (String(raw).startsWith("mil:")) {
-      const payload = raw.slice(4);
-      const plan =
-        /^\d{10,}$/.test(payload)
-          ? { kind: "mil", cotType: "", sidc2525D: payload }
-          : { kind: "mil", cotType: payload };
-      loadMilSymbolIcon(plan, mapImageId).then(() => {
-        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
-      });
-      return;
-    }
-    loadMapIcon(raw, mapImageId, undefined).then(() => {
+    const iconId = iconIdByMapImageId.get(mapImageId) || mapImageId;
+    if (!iconId || iconLoadPending.has(mapImageId)) return;
+    loadMapIcon(iconId, mapImageId).then(() => {
       if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
     });
   }
@@ -689,7 +604,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
+      filter: MARKER_FILTER,
       paint: {
         "circle-radius": [
           "case",
@@ -714,10 +629,9 @@
         "icon-size": [
           "case",
           ["==", ["get", "selected"], true],
-          0.95,
-          0.82,
+          0.55,
+          0.45,
         ],
-        "icon-rotate": ["coalesce", ["get", "course"], 0],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
         "icon-optional": true,
@@ -826,18 +740,11 @@
 
   function markerGeoJsonFeature(m) {
     const color = markerDisplayColor(m);
+    const visible = markerVisible(m);
     const coords = [m.lon, m.lat];
     const features = [];
-    const plan = resolveMarkerIconPlan(m);
-    let mapImageId = "";
-    if (plan.kind === "mil") {
-      mapImageId = registerMapImageId(milIconCacheKey(plan));
-    } else if (plan.kind === "png" && plan.apiIconId) {
-      mapImageId = registerMapImageId(plan.apiIconId);
-    }
-
-    const showCircle = plan.kind === "circle" ? 1 : 0;
-    const opacity = markerOpacity(m);
+    const iconId = visible ? resolveMarkerIconId(m) : "";
+    const mapImageId = iconId ? registerMapImageId(iconId) : "";
 
     const pointFeature = {
       type: "Feature",
@@ -850,18 +757,17 @@
         affiliation: m.affiliation || "other",
         color,
         iconId: mapImageId,
-        showCircle,
-        opacity,
-        labelOpacity: opacity,
+        opacity: visible ? markerOpacity(m) : 0,
+        labelOpacity: visible ? markerOpacity(m) : 0,
         selected: m.uid === selectedUid,
-        course: Number.isFinite(m.course) && m.course >= 0 ? m.course : 0,
+        course: m.course,
       },
     };
     features.push(pointFeature);
 
-    if (mapImageId) ensureMarkerIcon(m, mapImageId);
+    if (iconId) loadMapIcon(iconId, mapImageId);
 
-    if (Number.isFinite(m.course) && m.course >= 0) {
+    if (visible && Number.isFinite(m.course) && m.course >= 0) {
       const rad = (m.course * Math.PI) / 180;
       const len = 0.02 / Math.max(map.getZoom(), 4);
       features.push({
@@ -886,7 +792,6 @@
     if (!src) return;
     const features = [];
     for (const m of markersByUid.values()) {
-      if (!markerVisible(m)) continue;
       features.push(...markerGeoJsonFeature(m));
     }
     src.setData({ type: "FeatureCollection", features });
@@ -939,15 +844,6 @@
       "<dt>Type</dt><dd>" + escapeHtml(m.type || "—") + "</dd>" +
       "<dt>Affiliation</dt><dd>" + escapeHtml(m.affiliation || "other") + "</dd>" +
       "<dt>Groups</dt><dd class=\"map-chips\">" + (groupHtml || "—") + "</dd>" +
-      (Array.isArray(m.cotRouteGroups) && m.cotRouteGroups.length
-        ? "<dt>CoT route</dt><dd class=\"map-chips\">" +
-          m.cotRouteGroups.map((g) => '<span class="map-chip">' + escapeHtml(g) + "</span>").join(" ") +
-          "</dd>"
-        : "") +
-      (Array.isArray(m.relatedUids) && m.relatedUids.length
-        ? "<dt>Linked UIDs</dt><dd>" + escapeHtml(m.relatedUids.join(", ")) + "</dd>"
-        : "") +
-      "<dt>Icon</dt><dd>" + escapeHtml(m.iconSource || "—") + (m.iconId ? " · " + escapeHtml(m.iconId) : "") + "</dd>" +
       "<dt>Team</dt><dd>" + escapeHtml(m.team || "—") + "</dd>" +
       "<dt>Lat / Lon</dt><dd>" + fmtCoord(m.lat) + ", " + fmtCoord(m.lon) + "</dd>" +
       "<dt>HAE</dt><dd>" + (m.hae != null ? escapeHtml(String(m.hae)) : "—") + "</dd>" +
