@@ -47,6 +47,19 @@
   const MAP_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
   const MAP_LABEL_FONT = ["Open Sans Semibold"];
   const MARKER_FILTER = ["==", ["get", "kind"], "marker"];
+  const SOURCE_ID = "tak-markers";
+  const ICON_LAYER = "tak-markers-icon";
+  const CIRCLE_LAYER = "tak-markers-circle";
+  const LABEL_LAYER = "tak-markers-label";
+  const LABEL_PRIORITY_LAYER = "tak-markers-label-priority";
+  const COURSE_LAYER = "tak-markers-course";
+  const MARKER_LAYER_IDS = [
+    COURSE_LAYER,
+    CIRCLE_LAYER,
+    ICON_LAYER,
+    LABEL_LAYER,
+    LABEL_PRIORITY_LAYER,
+  ];
   /** Must match cotStream.service.js STALE_GRACE_MS */
   const STALE_GRACE_MS = 30000;
 
@@ -55,19 +68,41 @@
     return { ...style, glyphs: MAP_GLYPHS };
   }
 
-  function applyBasemapStyle(style) {
-    if (typeof style === "string") {
-      map.setStyle(style, {
-        transformStyle: function (_previous, next) {
-          if (next && typeof next === "object" && !next.glyphs) {
-            return { ...next, glyphs: MAP_GLYPHS };
-          }
-          return next;
-        },
+  function preserveMarkerLayersInStyle(prev, next) {
+    if (!next || typeof next !== "object") return next;
+    const out = { ...next, glyphs: next.glyphs || MAP_GLYPHS };
+    if (!prev || typeof prev !== "object") return out;
+    if (prev.sources && prev.sources[SOURCE_ID]) {
+      out.sources = { ...(out.sources || {}), [SOURCE_ID]: prev.sources[SOURCE_ID] };
+    }
+    const markerLayers = (prev.layers || []).filter(function (layer) {
+      return MARKER_LAYER_IDS.includes(layer.id);
+    });
+    if (markerLayers.length) {
+      const baseIds = new Set((out.layers || []).map(function (layer) {
+        return layer.id;
+      }));
+      const extra = markerLayers.filter(function (layer) {
+        return !baseIds.has(layer.id);
       });
+      if (extra.length) {
+        out.layers = [...(out.layers || []), ...extra];
+      }
+    }
+    return out;
+  }
+
+  function applyBasemapStyle(style) {
+    const opts = {
+      transformStyle: function (prev, next) {
+        return preserveMarkerLayersInStyle(prev, next);
+      },
+    };
+    if (typeof style === "string") {
+      map.setStyle(style, opts);
       return;
     }
-    map.setStyle(withMapGlyphs(style));
+    map.setStyle(withMapGlyphs(style), opts);
   }
 
   function rasterBasemapStyle(label, tileUrl, attribution, maxzoom) {
@@ -227,9 +262,44 @@
     return { lon, lat };
   }
 
+  /** Higher rank = draw above data feeds (EUD on top). */
+  function markerOriginRank(m) {
+    const origin = String(m?.origin || "").toLowerCase();
+    if (origin === "eud") return 2;
+    if (origin === "feed") return 0;
+    if (origin === "unknown") return 1;
+    const type = String(m?.type || "");
+    if (/^a-f-G-/i.test(type)) return 2;
+    if (/^a-[fnhu]-A-/i.test(type)) return 0;
+    if (/^a-f-[GUS]-/i.test(type)) return 2;
+    return 1;
+  }
+
+  function markerRenderSort(m) {
+    return (
+      markerOriginRank(m) * 100 +
+      (m.uid === selectedUid ? 50 : m.uid === lockedUid ? 25 : 0)
+    );
+  }
+
+  function markerLabelDeclutterPriority(m) {
+    if (m.uid === selectedUid) return 0;
+    if (m.uid === lockedUid) return 1;
+    if (markerOriginRank(m) === 2) return 2;
+    if (markerOriginRank(m) === 1) return 3;
+    return 4;
+  }
+
+  function isMarkerStaleAtIngest(m) {
+    if (!m || !m.stale) return false;
+    const t = Date.parse(m.stale);
+    return Number.isFinite(t) && t <= Date.now();
+  }
+
   function storeMarker(m) {
     const normalized = normalizeMarkerRecord(m);
     if (!normalized) return;
+    if (isMarkerStaleAtIngest(normalized)) return;
     markersByUid.set(String(normalized.uid), normalized);
   }
 
@@ -281,6 +351,7 @@
     } else if (baseMapImageId && apiIconId) {
       loadMapIcon(apiIconId, baseMapImageId);
     }
+    const renderSort = markerRenderSort(m);
     const features = [
       {
         type: "Feature",
@@ -297,8 +368,8 @@
             displayIconId && map.hasImage(displayIconId) ? 0 : 1,
           selected: m.uid === selectedUid,
           locked: m.uid === lockedUid,
-          labelSort:
-            m.uid === selectedUid ? 0 : m.uid === lockedUid ? 1 : 2,
+          renderSort: renderSort,
+          labelSort: renderSort,
           showLabel: markerShowLabel(m),
         },
       },
@@ -323,7 +394,7 @@
             [pos.lon + Math.sin(rad) * len, pos.lat + Math.cos(rad) * len],
           ],
         },
-        properties: { uid: m.uid, color, kind: "course-line" },
+        properties: { uid: m.uid, color, kind: "course-line", renderSort: renderSort },
       });
     }
 
@@ -406,6 +477,7 @@
   let stackPickerEl = null;
   let stackPickerOutsideListener = null;
   let markerLayersReady = false;
+  let suppressMapBackgroundClickUntil = 0;
   let pendingFitVisible = true;
   let copyToastTimer = null;
   let lastCursorLngLat = null;
@@ -967,13 +1039,6 @@
   restorePanelState();
   loadDetailPanelWidth();
   initDetailPanelResize();
-
-  const SOURCE_ID = "tak-markers";
-  const ICON_LAYER = "tak-markers-icon";
-  const CIRCLE_LAYER = "tak-markers-circle";
-  const LABEL_LAYER = "tak-markers-label";
-  const LABEL_PRIORITY_LAYER = "tak-markers-label-priority";
-  const COURSE_LAYER = "tak-markers-course";
 
   function loadEnabledGroups() {
     try {
@@ -1866,10 +1931,16 @@
   }
 
   function labelDeclutterSignature(visible) {
+    let originWeight = 0;
+    for (let i = 0; i < visible.length; i++) {
+      originWeight += markerOriginRank(visible[i]);
+    }
     return (
       String(Math.round(map.getZoom() * 4)) +
       "|" +
       visible.length +
+      "|" +
+      originWeight +
       "|" +
       (selectedUid || "") +
       "|" +
@@ -1891,8 +1962,8 @@
   function recomputeLabelVisibility(visible) {
     const placed = [];
     const sorted = visible.slice().sort(function (a, b) {
-      const aPri = a.uid === selectedUid ? 0 : a.uid === lockedUid ? 1 : 2;
-      const bPri = b.uid === selectedUid ? 0 : b.uid === lockedUid ? 1 : 2;
+      const aPri = markerLabelDeclutterPriority(a);
+      const bPri = markerLabelDeclutterPriority(b);
       if (aPri !== bPri) return aPri - bPri;
       return String(a.callsign).localeCompare(String(b.callsign));
     });
@@ -1986,6 +2057,7 @@
   function markerLayersComplete() {
     return (
       map.getSource(SOURCE_ID) &&
+      map.getLayer(COURSE_LAYER) &&
       map.getLayer(CIRCLE_LAYER) &&
       map.getLayer(ICON_LAYER) &&
       map.getLayer(LABEL_LAYER) &&
@@ -2055,6 +2127,9 @@
         type: "line",
         source: SOURCE_ID,
         filter: ["==", ["get", "kind"], "course-line"],
+        layout: {
+          "line-sort-key": ["get", "renderSort"],
+        },
         paint: {
           "line-color": ["get", "color"],
           "line-width": 2,
@@ -2067,6 +2142,9 @@
         type: "circle",
         source: SOURCE_ID,
         filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
+        layout: {
+          "circle-sort-key": ["get", "renderSort"],
+        },
         paint: {
           "circle-radius": [
             "case",
@@ -2102,6 +2180,7 @@
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
           "icon-optional": true,
+          "symbol-sort-key": ["get", "renderSort"],
         },
         paint: {
           "icon-opacity": 1,
@@ -2251,7 +2330,7 @@
       btn.addEventListener("click", function (ev) {
         ev.stopPropagation();
         closeStackPicker();
-        selectMarker(m.uid, true);
+        selectMarker(m.uid, false);
       });
       list.appendChild(btn);
     }
@@ -2268,11 +2347,12 @@
 
   function onMarkerIconClick(e) {
     if (e.originalEvent) e.originalEvent.stopPropagation();
+    suppressMapBackgroundClickUntil = Date.now() + 150;
     const markers = queryMarkersAtPoint(e.point);
     if (!markers.length) return;
     if (markers.length === 1) {
       closeStackPicker();
-      selectMarker(markers[0].uid, true);
+      selectMarker(markers[0].uid, false);
       return;
     }
     showStackPicker(markers, e.point);
@@ -3010,7 +3090,9 @@
         escapeHtml(m.type || "unknown") +
         (chips ? " · " + chips : "") +
         "</div>";
-      btn.addEventListener("click", () => selectMarker(m.uid, true));
+      btn.addEventListener("click", function () {
+        selectMarker(m.uid, false);
+      });
       elList.appendChild(btn);
     }
   }
@@ -3047,6 +3129,7 @@
 
     selectedUid = id;
     detailPaneUserCollapsed = false;
+    closeMapPopup();
 
     if (idx >= 0) {
       if (detailSlots.length !== prevLen || !hadSlot) {
@@ -3055,17 +3138,15 @@
         renderDetailPane(idx);
       }
       syncDetailStackVisibility();
+    } else if (showPopupFlag) {
+      const m = markersByUid.get(id);
+      if (m && Number.isFinite(m.lon) && Number.isFinite(m.lat)) {
+        showPopup(m);
+      }
     }
 
     renderList();
     syncMapSource();
-    const m = markersByUid.get(id);
-    if (m && Number.isFinite(m.lon) && Number.isFinite(m.lat)) {
-      if (showPopupFlag) {
-        if (isDetailPaneOpen()) closeMapPopup();
-        else showPopup(m);
-      }
-    }
   }
 
   function applyBatch(msg) {
@@ -3165,75 +3246,80 @@
   let styleRestoreTimer = null;
   let styleRestoreFallbackTimer = null;
   let styleRestoreGen = 0;
-  let styleRestoreCompleteGen = -1;
 
   function restoreMapAfterStyleChange() {
     const gen = styleRestoreGen;
     if (styleRestoreTimer) clearTimeout(styleRestoreTimer);
     if (styleRestoreFallbackTimer) clearTimeout(styleRestoreFallbackTimer);
 
-    function finishRestore() {
-      if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
-      styleRestoreCompleteGen = gen;
-      reinstallMapIconsFromCache();
-      markerLayersReady = true;
-      labelDeclutterKey = "";
-      refreshMapFromMarkers();
-      preloadMarkerIcons().finally(function () {
-        if (gen !== styleRestoreGen) return;
-        refreshMapFromMarkers();
-        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
-        if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
-      });
-    }
-
-    function attemptRestore(retry) {
-      if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
-      if (!map.isStyleLoaded()) {
-        if (retry < 240) {
-          setTimeout(function () {
-            attemptRestore(retry + 1);
-          }, 50);
-        }
-        return;
-      }
-      try {
-        removeMarkerLayers();
-      } catch (err) {
-        console.warn("[map] removeMarkerLayers failed during style restore", err);
-      }
-      if (!ensureMarkerLayers()) {
-        if (retry < 240) {
-          setTimeout(function () {
-            attemptRestore(retry + 1);
-          }, 50);
-        }
-        return;
-      }
-      finishRestore();
-    }
-
-    function kickRestore() {
-      if (gen !== styleRestoreGen) return;
-      markerLayersReady = false;
-      mapRefreshPending = true;
-      attemptRestore(0);
-    }
-
     styleRestoreTimer = setTimeout(function () {
       styleRestoreTimer = null;
       if (gen !== styleRestoreGen) return;
-      kickRestore();
+
+      function finalizeRestore() {
+        if (gen !== styleRestoreGen) return;
+        markerLayersReady = true;
+        mapRefreshPending = false;
+        labelDeclutterKey = "";
+        reinstallMapIconsFromCache();
+        bindMarkerLayerHandlers();
+        refreshMapFromMarkers();
+        preloadMarkerIcons().finally(function () {
+          if (gen !== styleRestoreGen) return;
+          refreshMapFromMarkers();
+          if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+          if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
+        });
+      }
+
+      function tryRestore(attempt) {
+        if (gen !== styleRestoreGen) return;
+        if (!map.isStyleLoaded()) {
+          if (attempt < 400) {
+            setTimeout(function () {
+              tryRestore(attempt + 1);
+            }, 50);
+          }
+          return;
+        }
+
+        if (!markerLayersComplete()) {
+          try {
+            removeMarkerLayers();
+          } catch (err) {
+            console.warn("[map] removeMarkerLayers failed during style restore", err);
+          }
+          if (!ensureMarkerLayers()) {
+            if (attempt < 400) {
+              setTimeout(function () {
+                tryRestore(attempt + 1);
+              }, 50);
+            }
+            return;
+          }
+        } else {
+          bindMarkerLayerHandlers();
+        }
+
+        finalizeRestore();
+      }
+
+      markerLayersReady = false;
+      mapRefreshPending = true;
+      closeMapPopup();
+      tryRestore(0);
+
       map.once("idle", function () {
-        if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
-        attemptRestore(0);
+        if (gen !== styleRestoreGen || markerLayersReady) return;
+        tryRestore(0);
       });
+
       styleRestoreFallbackTimer = setTimeout(function () {
         styleRestoreFallbackTimer = null;
-        if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
+        if (gen !== styleRestoreGen || markerLayersReady) return;
         console.warn("[map] style restore fallback — forcing marker layer rebuild");
-        attemptRestore(0);
-      }, 2500);
+        tryRestore(0);
+      }, 3000);
     }, 0);
   }
 
@@ -3241,9 +3327,9 @@
     const def = BASEMAPS[id] || BASEMAPS["dark-matter"];
     localStorage.setItem(LS_BASEMAP, id);
     styleRestoreGen++;
-    styleRestoreCompleteGen = -1;
     markerLayersReady = false;
     mapRefreshPending = true;
+    closeMapPopup();
     applyBasemapStyle(def.style);
   }
 
@@ -3275,6 +3361,7 @@
   }
 
   function onMapBackgroundClick(e) {
+    if (Date.now() < suppressMapBackgroundClickUntil) return;
     if (!isMapClickNotDrag(e)) return;
     const layers = [];
     if (map.getLayer(CIRCLE_LAYER)) layers.push(CIRCLE_LAYER);
@@ -3498,6 +3585,12 @@
   }
   tickZulu();
   setInterval(tickZulu, 1000);
+
+  setInterval(function () {
+    if (mapRefreshPending && markerLayersReady) {
+      refreshMapFromMarkers();
+    }
+  }, 2000);
 
   setInterval(function () {
     if (!markersByUid.size) return;

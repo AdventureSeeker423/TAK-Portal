@@ -1152,6 +1152,72 @@ function ensureRefreshLoop() {
   if (typeof refreshTimer.unref === "function") refreshTimer.unref();
 }
 
+function isDataFeedConnectionKey(key) {
+  const k = String(key || "").trim().toLowerCase();
+  if (!k) return false;
+  const bare = k.replace(/^tak-server-/, "");
+  return !!(
+    dataFeedGroupsByKey.get(k) ||
+    dataFeedGroupsByKey.get(bare) ||
+    dataFeedGroupsByKey.get(`tak-server-${bare}`)
+  );
+}
+
+function isLiveEudSubscription(marker) {
+  const uid = String(marker?.uid || "").trim().toLowerCase();
+  if (uid && subscriptionIndex.byUid.has(uid)) return true;
+
+  const callsign = normalizeGroupName(marker?.callsign).toLowerCase();
+  if (callsign && subscriptionIndex.byCallsign.has(callsign)) return true;
+  if (callsign && subscriptionIndex.byUsername.has(callsign)) return true;
+
+  return false;
+}
+
+function markerHasDataFeedProvenance(marker) {
+  const keys = new Set();
+  const uid = String(marker?.uid || "").trim();
+  if (uid) keys.add(uid);
+  const callsign = normalizeGroupName(marker?.callsign);
+  if (callsign) keys.add(callsign);
+
+  for (const rel of marker?.relatedUids || []) {
+    const r = String(rel || "").trim();
+    if (r) keys.add(r);
+  }
+  for (const hint of marker?.sourceHints || []) {
+    const h = String(hint || "").trim();
+    if (h) keys.add(h);
+  }
+  for (const ft of marker?.flowTagUids || []) {
+    const f = String(ft || "").trim();
+    if (f && !isFlowProvenanceId(f)) keys.add(f);
+  }
+
+  for (const raw of keys) {
+    if (isDataFeedConnectionKey(raw)) return true;
+  }
+  return false;
+}
+
+/**
+ * Classify marker provenance for map draw priority (EUD above data feeds).
+ * @returns {"eud"|"feed"|"unknown"}
+ */
+function classifyMarkerOrigin(marker) {
+  if (!marker) return "unknown";
+
+  if (isLiveEudSubscription(marker)) return "eud";
+  if (markerHasDataFeedProvenance(marker)) return "feed";
+
+  const type = String(marker.type || "").trim();
+  if (/^a-f-G-/i.test(type)) return "eud";
+  if (/^a-[fnhu]-A-/i.test(type)) return "feed";
+  if (/^a-f-[GUS]-/i.test(type)) return "eud";
+
+  return "unknown";
+}
+
 function resolveGroupsForMarker(marker, cotDetail) {
   const detail = cotDetail && typeof cotDetail === "object" ? cotDetail : null;
 
@@ -1349,6 +1415,7 @@ module.exports = {
   resolveMarkerDisplayColor,
   normalizeTakColor,
   resolveGroupsForMarker,
+  classifyMarkerOrigin,
   filterAssignableChannelGroups,
   explainGroupAssignment,
   getTakGroupCatalog,

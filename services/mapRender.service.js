@@ -123,6 +123,7 @@ function toSlimMarker(marker) {
     time: marker.time,
     start: marker.start,
     how: marker.how,
+    origin: marker.origin || null,
     team: marker.team,
     role: marker.role || null,
     updatedAt: marker.updatedAt,

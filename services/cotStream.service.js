@@ -182,6 +182,7 @@ function parseMarkerFromCoT(cot) {
     base.sourceHints = mapMeta.parseSourceHints(detail);
     base.detailKeys = Object.keys(detail || {});
     base.groups = mapMeta.resolveGroupsForMarker(base, detail);
+    base.origin = mapMeta.classifyMarkerOrigin(base);
 
     const usericon = mapIcon.parseUserIcon(detail);
     base.iconsetpath = usericon.iconsetpath || null;
@@ -461,10 +462,18 @@ function subscribe(sendFn) {
 function refreshAllMarkerGroups() {
   let changed = false;
   for (const marker of markers.values()) {
-    const next = mapMeta.resolveGroupsForMarker(marker, null);
-    const prev = Array.isArray(marker.groups) ? marker.groups : [];
-    if (next.length === prev.length && next.every((g, i) => g === prev[i])) continue;
-    marker.groups = next;
+    const nextGroups = mapMeta.resolveGroupsForMarker(marker, null);
+    const prevGroups = Array.isArray(marker.groups) ? marker.groups : [];
+    const groupsChanged =
+      nextGroups.length !== prevGroups.length ||
+      !nextGroups.every((g, i) => g === prevGroups[i]);
+    const nextOrigin = mapMeta.classifyMarkerOrigin(marker);
+    const originChanged = marker.origin !== nextOrigin;
+
+    if (!groupsChanged && !originChanged) continue;
+
+    if (groupsChanged) marker.groups = nextGroups;
+    if (originChanged) marker.origin = nextOrigin;
     marker.updatedAt = new Date().toISOString();
     queueMarkerUpdate(marker);
     changed = true;
