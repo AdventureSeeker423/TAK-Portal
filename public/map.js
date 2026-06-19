@@ -167,15 +167,14 @@
   let groupsCatalog = [];
   let enabledGroups = loadEnabledGroups();
   let selectedUid = null;
-  let geoJsonTimer = null;
+  let mapRefreshTimer = null;
   let uiTimer = null;
-  let geoJsonInFlight = false;
-  let geoJsonPending = false;
+  let mapRefreshPending = false;
   let lastGeoMeta = { total: 0, visible: 0 };
   let filterText = "";
   let layerFilterText = "";
   let layerListTimer = null;
-  let geoJsonFetchId = 0;
+  const MAP_MAX_ICONS = 120;
 
   function channelBaseKeyForName(name) {
     const key = channelGroupKey(name);
@@ -198,22 +197,9 @@
     return keys;
   }
 
-  function buildGeoJsonQuery() {
-    const params = new URLSearchParams();
-    const enabledKeys = enabledChannelKeysForFilter();
-    if (enabledKeys !== null) {
-      if (!enabledKeys.size) params.set("channels", "__none__");
-      else params.set("channels", Array.from(enabledKeys).join(","));
-    }
-    if (filterText) params.set("q", filterText);
-    if (selectedUid) params.set("selected", selectedUid);
-    const qs = params.toString();
-    return qs ? "?" + qs : "";
-  }
-
-  function scheduleGeoJsonRefresh() {
-    if (geoJsonTimer) clearTimeout(geoJsonTimer);
-    geoJsonTimer = setTimeout(refreshGeoJsonFromServer, 250);
+  function scheduleMapRefresh() {
+    if (mapRefreshTimer) clearTimeout(mapRefreshTimer);
+    mapRefreshTimer = setTimeout(refreshMapFromMarkers, 150);
   }
 
   function scheduleUiRefresh() {
@@ -224,66 +210,75 @@
     }, 120);
   }
 
-  function refreshGeoJsonFromServer() {
-    geoJsonTimer = null;
-    if (!markerLayersReady) {
-      geoJsonPending = true;
-      return;
-    }
-    if (geoJsonInFlight) {
-      geoJsonPending = true;
-      return;
-    }
-    geoJsonInFlight = true;
-    const fetchId = ++geoJsonFetchId;
-    const query = buildGeoJsonQuery();
-    fetch("/api/map/geojson" + query)
-      .then(function (resp) {
-        if (!resp.ok) throw new Error("geojson " + resp.status);
-        return resp.json();
-      })
-      .then(function (data) {
-        if (fetchId !== geoJsonFetchId) return;
-        lastGeoMeta = data.meta || lastGeoMeta;
-        applyGeoJsonToMap(data);
-        updateVisibleCounts();
-      })
-      .catch(function () {})
-      .finally(function () {
-        geoJsonInFlight = false;
-        if (geoJsonPending) {
-          geoJsonPending = false;
-          scheduleGeoJsonRefresh();
-        }
+  function markerGeoJsonFeatures(m, useIcons) {
+    if (!Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return [];
+    const color = markerDisplayColor(m);
+    const coords = [m.lon, m.lat];
+    const opacity = markerOpacity(m);
+    const apiIconId = useIcons ? resolveMarkerIconId(m) : "";
+    const mapImageId = apiIconId ? registerMapImageId(apiIconId) : "";
+    const features = [
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: coords },
+        properties: {
+          kind: "marker",
+          uid: m.uid,
+          callsign: m.callsign,
+          type: m.type,
+          affiliation: m.affiliation || "other",
+          color,
+          iconId: mapImageId,
+          opacity,
+          labelOpacity: opacity,
+          selected: m.uid === selectedUid,
+        },
+      },
+    ];
+
+    if (mapImageId && apiIconId) loadMapIcon(apiIconId, mapImageId);
+
+    if (Number.isFinite(m.course) && m.course >= 0) {
+      const rad = (m.course * Math.PI) / 180;
+      const len = 0.02 / Math.max(map.getZoom(), 4);
+      features.push({
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            coords,
+            [m.lon + Math.sin(rad) * len, m.lat + Math.cos(rad) * len],
+          ],
+        },
+        properties: { uid: m.uid, color, kind: "course-line" },
       });
+    }
+
+    return features;
   }
 
-  function applyGeoJsonToMap(data) {
+  function refreshMapFromMarkers() {
+    mapRefreshTimer = null;
+    if (!markerLayersReady) {
+      mapRefreshPending = true;
+      return;
+    }
     const src = map.getSource(SOURCE_ID);
     if (!src) return;
-    const features = Array.isArray(data.features) ? data.features : [];
-    for (let i = 0; i < features.length; i++) {
-      const f = features[i];
-      if (!f || !f.properties || f.properties.kind !== "marker") continue;
-      const apiIconId = f.properties.apiIconId;
-      if (!apiIconId) {
-        f.properties.iconId = "";
-        continue;
-      }
-      f.properties.iconId = registerMapImageId(apiIconId);
+
+    const visible = getVisibleMarkers();
+    const useIcons = visible.length <= MAP_MAX_ICONS;
+    const features = [];
+    for (let i = 0; i < visible.length; i++) {
+      features.push.apply(features, markerGeoJsonFeatures(visible[i], useIcons));
     }
     src.setData({ type: "FeatureCollection", features: features });
-    for (let j = 0; j < features.length; j++) {
-      const feat = features[j];
-      if (!feat || !feat.properties || feat.properties.kind !== "marker") continue;
-      if (feat.properties.apiIconId) {
-        loadMapIcon(feat.properties.apiIconId, feat.properties.iconId);
-      }
-    }
+    lastGeoMeta = { total: markersByUid.size, visible: visible.length };
+    updateVisibleCounts();
   }
 
   function syncMapSource() {
-    scheduleGeoJsonRefresh();
+    scheduleMapRefresh();
     scheduleUiRefresh();
   }
 
@@ -636,7 +631,19 @@
   }
 
   function isChannelFilterActive() {
-    return enabledGroups !== null;
+    if (enabledGroups === null) return false;
+    return true;
+  }
+
+  function syncEnabledGroupsWithCatalog() {
+    if (!enabledGroups || enabledGroups.size === 0) return;
+    const names = groupsCatalog.filter((g) => isMapChannelName(g.name)).map((g) => g.name);
+    if (!names.length) return;
+    for (let i = 0; i < names.length; i++) {
+      if (!isGroupEnabled(names[i])) return;
+    }
+    enabledGroups = null;
+    saveEnabledGroups();
   }
 
   function ensureEnabledGroupsInitialized() {
@@ -732,6 +739,7 @@
     );
     recomputeGroupCounts();
     enabledGroups = normalizeEnabledGroups(enabledGroups);
+    syncEnabledGroupsWithCatalog();
     ensureDefaultGroupsEnabled();
   }
 
@@ -746,7 +754,7 @@
       .filter((g) => isMapChannelName(g.name))
       .map((g) => ({
         ...g,
-        markerCount: counts.get(channelGroupKey(g.name)) || 0,
+        markerCount: counts.get(channelBaseKeyForName(g.name)) || 0,
       }));
   }
 
@@ -774,7 +782,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
+      filter: ["all", MARKER_FILTER, ["==", ["get", "iconId"], ""]],
       paint: {
         "circle-radius": [
           "case",
@@ -837,12 +845,10 @@
     });
 
     markerLayersReady = true;
-    if (geoJsonPending) {
-      geoJsonPending = false;
-      scheduleGeoJsonRefresh();
-    } else {
-      scheduleGeoJsonRefresh();
+    if (mapRefreshPending) {
+      mapRefreshPending = false;
     }
+    scheduleMapRefresh();
     preloadMarkerIcons();
   }
 
@@ -980,6 +986,7 @@
         if (!enabledGroups) ensureEnabledGroupsInitialized();
         if (ev.target.checked) enabledGroups.add(g.name);
         else enabledGroups.delete(g.name);
+        syncEnabledGroupsWithCatalog();
         saveEnabledGroups();
         renderLayerList();
         syncMapSource();
