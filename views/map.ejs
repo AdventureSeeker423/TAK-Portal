@@ -14,6 +14,10 @@
       const _mapHeading = _serverName ? _serverName + " LIVE MAP" : "LIVE MAP";
     %>
     <title><%= _mapHeading %></title>
+    <% if (typeof brandLogoUrl !== "undefined" && brandLogoUrl) { %>
+      <link rel="icon" href="<%= brandLogoUrl %>" type="image/png" />
+      <link rel="shortcut icon" href="<%= brandLogoUrl %>" type="image/png" />
+    <% } %>
     <link
       href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
       rel="stylesheet"
@@ -30,6 +34,9 @@
 
       <header class="map-hud">
         <div class="map-hud-title">
+          <% if (typeof brandLogoUrl !== "undefined" && brandLogoUrl) { %>
+            <img src="<%= brandLogoUrl %>" alt="" class="map-hud-logo" />
+          <% } %>
           <h1><%= _mapHeading %></h1>
         </div>
         <div class="map-hud-center">

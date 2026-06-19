@@ -74,8 +74,17 @@ body {
 
 .map-hud-title {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.map-hud-logo {
+  max-height: 28px;
+  width: auto;
+  flex-shrink: 0;
+  display: block;
 }
 
 .map-hud-title h1 {
@@ -85,11 +94,7 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--map-accent);
-}
-
-.map-hud-title .sub {
-  font-size: 0.74rem;
-  color: var(--map-muted);
+  min-width: 0;
 }
 
 .map-hud-center {
