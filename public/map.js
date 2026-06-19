@@ -1629,6 +1629,12 @@
     detailAgeTimer = setInterval(tick, 1000);
   }
 
+  function lockedMarkerCoords() {
+    const m = lockedUid ? markersByUid.get(lockedUid) : null;
+    if (!m || !Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return null;
+    return [m.lon, m.lat];
+  }
+
   function clearLock() {
     lockedUid = null;
     updateLockButtonUi();
@@ -1651,7 +1657,7 @@
     }
     lockedUid = m.uid;
     lockMoveFromCode = true;
-    map.easeTo({ center: [m.lon, m.lat], duration: 400 });
+    map.easeTo({ center: [m.lon, m.lat], zoom: map.getZoom(), duration: 400 });
     updateLockButtonUi();
   }
 
@@ -1659,7 +1665,52 @@
     if (!lockedUid || !m || m.uid !== lockedUid) return;
     if (!Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return;
     lockMoveFromCode = true;
-    map.easeTo({ center: [m.lon, m.lat], duration: 300 });
+    map.easeTo({ center: [m.lon, m.lat], zoom: map.getZoom(), duration: 300 });
+  }
+
+  function isLockBreakingMove(e) {
+    const oe = e.originalEvent;
+    if (!oe) return false;
+    if (oe.type === "wheel") return false;
+    if (oe.type === "touchmove" || oe.type === "touchstart") {
+      if (oe.touches && oe.touches.length > 1) return false;
+    }
+    return true;
+  }
+
+  function onLockedMapWheel(e) {
+    if (!lockedUid) return;
+    const coords = lockedMarkerCoords();
+    if (!coords) {
+      clearLock();
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    lockMoveFromCode = true;
+    const zoom = map.getZoom();
+    let delta = 0;
+    if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+      delta = -e.deltaY * 0.25;
+    } else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+      delta = -e.deltaY * 0.5;
+    } else {
+      delta = -e.deltaY * 0.0025;
+    }
+    const newZoom = Math.min(
+      map.getMaxZoom(),
+      Math.max(map.getMinZoom(), zoom + delta)
+    );
+    map.zoomTo(newZoom, { around: coords, duration: 0 });
+  }
+
+  function recenterLockedMarkerAtCurrentZoom() {
+    const coords = lockedMarkerCoords();
+    if (!coords) return;
+    lockMoveFromCode = true;
+    map.easeTo({ center: coords, zoom: map.getZoom(), duration: 0 });
   }
 
   function renderDetail(m) {
@@ -2068,7 +2119,7 @@
   map.on("movestart", function (e) {
     closeStackPicker();
     if (lockMoveFromCode) return;
-    if (e.originalEvent && lockedUid) {
+    if (lockedUid && isLockBreakingMove(e)) {
       clearLock();
     }
   });
@@ -2076,6 +2127,18 @@
   map.on("moveend", () => {
     lockMoveFromCode = false;
     elZoom.textContent = map.getZoom().toFixed(1);
+  });
+
+  map.on("zoomend", () => {
+    if (lockedUid && !lockMoveFromCode) {
+      recenterLockedMarkerAtCurrentZoom();
+    }
+    elZoom.textContent = map.getZoom().toFixed(1);
+  });
+
+  map.getCanvasContainer().addEventListener("wheel", onLockedMapWheel, {
+    passive: false,
+    capture: true,
   });
 
   map.on("mousedown", function (e) {
