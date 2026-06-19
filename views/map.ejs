@@ -142,7 +142,12 @@
             autocomplete="off"
             spellcheck="false"
             placeholder="Callsign, address, or coordinates…"
+            aria-controls="mapGoToResults"
+            aria-autocomplete="list"
           />
+          <div class="map-goto-results-wrap" id="mapGoToResultsWrap" hidden>
+            <ul class="map-goto-results" id="mapGoToResults" role="listbox"></ul>
+          </div>
           <p class="map-goto-hint" id="mapGoToHint" aria-live="polite"></p>
         </div>
       </div>

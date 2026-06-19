@@ -106,10 +106,11 @@ router.get("/debug/groups", async (req, res) => {
 router.get("/geocode", async (req, res) => {
   const q = String(req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "Missing q" });
+  const limit = Math.min(10, Math.max(1, Number.parseInt(req.query.limit, 10) || 1));
   try {
     const url = new URL("https://nominatim.openstreetmap.org/search");
     url.searchParams.set("format", "json");
-    url.searchParams.set("limit", "1");
+    url.searchParams.set("limit", String(limit));
     url.searchParams.set("q", q);
     const r = await fetch(url, {
       headers: {
@@ -124,18 +125,26 @@ router.get("/geocode", async (req, res) => {
     if (!Array.isArray(data) || !data.length) {
       return res.status(404).json({ error: "No results" });
     }
-    const hit = data[0];
-    const lat = Number(hit.lat);
-    const lon = Number(hit.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    const results = data
+      .map(function (hit) {
+        const lat = Number(hit.lat);
+        const lon = Number(hit.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return {
+          lat,
+          lon,
+          label: String(hit.display_name || q),
+        };
+      })
+      .filter(Boolean);
+    if (!results.length) {
       return res.status(502).json({ error: "Invalid geocoding response" });
     }
     res.setHeader("Cache-Control", "private, max-age=300");
-    return res.json({
-      lat,
-      lon,
-      label: String(hit.display_name || q),
-    });
+    if (limit === 1) {
+      return res.json(results[0]);
+    }
+    return res.json({ results });
   } catch (err) {
     return res.status(500).json({
       error: err?.message || "Geocoding failed",

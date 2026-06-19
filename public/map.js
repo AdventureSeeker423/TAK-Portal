@@ -483,6 +483,12 @@
   let lastCursorLngLat = null;
   let goToPaletteOpen = false;
   let goToSubmitting = false;
+  let goToResults = [];
+  let goToActiveIndex = -1;
+  let goToGeocodeTimer = null;
+  let goToGeocodeSeq = 0;
+  const GO_TO_CONTACT_LIMIT = 8;
+  const GO_TO_ADDRESS_LIMIT = 5;
   const CURSOR_COORD_FORMATS = [
     { id: "decimal_degrees", label: "Decimal Degrees" },
     { id: "degrees_minutes", label: "Degrees, Minutes" },
@@ -959,6 +965,8 @@
   const elCursorBtn = document.getElementById("mapCursorBtn");
   const elGoToOverlay = document.getElementById("mapGoToOverlay");
   const elGoToInput = document.getElementById("mapGoToInput");
+  const elGoToResultsWrap = document.getElementById("mapGoToResultsWrap");
+  const elGoToResults = document.getElementById("mapGoToResults");
   const elGoToHint = document.getElementById("mapGoToHint");
   const elGoToBackdrop = document.getElementById("mapGoToBackdrop");
   const elZoomIn = document.getElementById("mapZoomIn");
@@ -1388,23 +1396,57 @@
     return null;
   }
 
-  function findCallsignMatches(query) {
+  function findCallsignMatches(query, maxResults) {
+    const limit = maxResults == null ? GO_TO_CONTACT_LIMIT : maxResults;
     const q = String(query || "").trim().toLowerCase();
     if (!q) return [];
     const all = Array.from(markersByUid.values());
-    const exact = all.filter(function (m) {
-      return String(m.callsign || "").trim().toLowerCase() === q;
-    });
-    if (exact.length) return exact;
-    const prefix = all.filter(function (m) {
-      return String(m.callsign || "").trim().toLowerCase().startsWith(q);
-    });
-    if (prefix.length) return prefix;
-    return all.filter(function (m) {
+    const scored = [];
+    for (let i = 0; i < all.length; i++) {
+      const m = all[i];
       const cs = String(m.callsign || "").trim().toLowerCase();
       const uid = String(m.uid || "").trim().toLowerCase();
-      return cs.includes(q) || uid.includes(q);
+      let rank = -1;
+      if (cs === q || uid === q) rank = 0;
+      else if (cs.startsWith(q) || uid.startsWith(q)) rank = 1;
+      else if (cs.includes(q) || uid.includes(q)) rank = 2;
+      if (rank < 0) continue;
+      scored.push({ m: m, rank: rank, label: cs || uid });
+    }
+    scored.sort(function (a, b) {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      return a.label.localeCompare(b.label);
     });
+    const out = [];
+    for (let i = 0; i < scored.length && out.length < limit; i++) {
+      out.push(scored[i].m);
+    }
+    return out;
+  }
+
+  function buildGoToContactResults(query) {
+    return findCallsignMatches(query, GO_TO_CONTACT_LIMIT).map(function (m) {
+      return {
+        kind: "contact",
+        id: "contact:" + m.uid,
+        title: m.callsign || m.uid,
+        meta: String(m.type || "Contact"),
+        marker: m,
+      };
+    });
+  }
+
+  function buildGoToCoordResult(query) {
+    const coords = parseGoToCoords(query);
+    if (!coords) return null;
+    return {
+      kind: "coords",
+      id: "coords",
+      title: coords.lat.toFixed(5) + ", " + coords.lon.toFixed(5),
+      meta: "Coordinates",
+      lat: coords.lat,
+      lon: coords.lon,
+    };
   }
 
   function setGoToHint(text, isError) {
@@ -1413,41 +1455,193 @@
     elGoToHint.classList.toggle("is-error", !!isError);
   }
 
-  function updateGoToHint(query) {
+  function cancelGoToGeocode() {
+    if (goToGeocodeTimer) {
+      clearTimeout(goToGeocodeTimer);
+      goToGeocodeTimer = null;
+    }
+    goToGeocodeSeq++;
+  }
+
+  function flattenGoToResults(contacts, coordResult, addresses) {
+    const out = contacts.slice();
+    if (coordResult) out.push(coordResult);
+    for (let i = 0; i < addresses.length; i++) {
+      out.push(addresses[i]);
+    }
+    return out;
+  }
+
+  function renderGoToResults() {
+    if (!elGoToResults || !elGoToResultsWrap) return;
+    elGoToResults.innerHTML = "";
+
+    if (!goToResults.length) {
+      elGoToResultsWrap.hidden = true;
+      return;
+    }
+
+    elGoToResultsWrap.hidden = false;
+    let contactHeaderAdded = false;
+    let addressHeaderAdded = false;
+
+    for (let i = 0; i < goToResults.length; i++) {
+      const item = goToResults[i];
+      if (item.kind === "loading") {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "map-goto-result is-loading";
+        btn.disabled = true;
+        btn.textContent = item.title;
+        li.appendChild(btn);
+        elGoToResults.appendChild(li);
+        continue;
+      }
+
+      if (item.kind === "contact" && !contactHeaderAdded) {
+        contactHeaderAdded = true;
+        const head = document.createElement("li");
+        head.className = "map-goto-section";
+        head.textContent = "Contacts";
+        elGoToResults.appendChild(head);
+      }
+      if (item.kind === "address" && !addressHeaderAdded) {
+        addressHeaderAdded = true;
+        const head = document.createElement("li");
+        head.className = "map-goto-section";
+        head.textContent = "Addresses";
+        elGoToResults.appendChild(head);
+      }
+      if (item.kind === "coords" && !contactHeaderAdded) {
+        contactHeaderAdded = true;
+        const head = document.createElement("li");
+        head.className = "map-goto-section";
+        head.textContent = "Location";
+        elGoToResults.appendChild(head);
+      }
+
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "map-goto-result" + (i === goToActiveIndex ? " active" : "");
+      btn.setAttribute("role", "option");
+      btn.setAttribute("aria-selected", i === goToActiveIndex ? "true" : "false");
+      btn.dataset.index = String(i);
+
+      let nameHtml = escapeHtml(item.title);
+      if (item.kind === "contact" && item.marker) {
+        nameHtml =
+          '<span class="map-aff-dot" style="' +
+          markerDotStyle(item.marker) +
+          '"></span>' +
+          escapeHtml(item.title);
+      }
+
+      btn.innerHTML =
+        '<div class="name">' +
+        nameHtml +
+        '</div><div class="meta">' +
+        escapeHtml(item.meta || "") +
+        "</div>";
+
+      btn.addEventListener("mousedown", function (ev) {
+        ev.preventDefault();
+      });
+      btn.addEventListener("click", function () {
+        activateGoToResult(item);
+      });
+
+      li.appendChild(btn);
+      elGoToResults.appendChild(li);
+    }
+
+    if (goToActiveIndex >= 0) {
+      const activeEl = elGoToResults.querySelector(".map-goto-result.active");
+      if (activeEl && typeof activeEl.scrollIntoView === "function") {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }
+
+  function syncGoToActiveIndex() {
+    if (!goToResults.length) {
+      goToActiveIndex = -1;
+      return;
+    }
+    if (goToActiveIndex < 0) goToActiveIndex = 0;
+    if (goToActiveIndex >= goToResults.length) {
+      goToActiveIndex = goToResults.length - 1;
+    }
+  }
+
+  function updateGoToResults(query) {
+    cancelGoToGeocode();
     const q = String(query || "").trim();
     if (!q) {
+      goToResults = [];
+      goToActiveIndex = -1;
       setGoToHint("");
+      renderGoToResults();
       return;
     }
-    const coords = parseGoToCoords(q);
-    if (coords) {
-      setGoToHint(
-        "Coordinates: " + coords.lat.toFixed(5) + ", " + coords.lon.toFixed(5)
-      );
-      return;
-    }
-    const matches = findCallsignMatches(q);
-    if (matches.length === 1) {
-      setGoToHint("Contact: " + (matches[0].callsign || matches[0].uid));
-      return;
-    }
-    if (matches.length > 1) {
-      setGoToHint(matches.length + " contacts match — refine or press Enter for first");
-      return;
-    }
-    if (q.length >= 3) {
-      setGoToHint("Press Enter to search address");
-      return;
-    }
+
+    const contacts = buildGoToContactResults(q);
+    const coordResult = buildGoToCoordResult(q);
+    goToResults = flattenGoToResults(contacts, coordResult, []);
+    syncGoToActiveIndex();
     setGoToHint("");
+    renderGoToResults();
+
+    const shouldGeocode = q.length >= 3 && !coordResult;
+    if (!shouldGeocode) return;
+
+    const seq = goToGeocodeSeq;
+    goToGeocodeTimer = setTimeout(function () {
+      goToGeocodeTimer = null;
+      if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
+
+      goToResults = flattenGoToResults(contacts, coordResult, [
+        {
+          kind: "loading",
+          id: "loading",
+          title: "Searching addresses…",
+        },
+      ]);
+      syncGoToActiveIndex();
+      renderGoToResults();
+
+      fetchGoToAddressResults(q)
+        .then(function (addresses) {
+          if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
+          if (String(elGoToInput?.value || "").trim() !== q) return;
+          goToResults = flattenGoToResults(contacts, coordResult, addresses);
+          syncGoToActiveIndex();
+          if (!goToResults.length) {
+            setGoToHint("No results found", true);
+          } else {
+            setGoToHint("");
+          }
+          renderGoToResults();
+        })
+        .catch(function (err) {
+          if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
+          if (String(elGoToInput?.value || "").trim() !== q) return;
+          goToResults = flattenGoToResults(contacts, coordResult, []);
+          syncGoToActiveIndex();
+          setGoToHint(err?.message || "Address lookup failed", true);
+          renderGoToResults();
+        });
+    }, 300);
   }
 
   function openGoToPalette(initialChar) {
     if (!elGoToOverlay || !elGoToInput) return;
     goToPaletteOpen = true;
+    goToSubmitting = false;
     elGoToOverlay.hidden = false;
     elGoToInput.value = initialChar || "";
-    updateGoToHint(elGoToInput.value);
+    updateGoToResults(elGoToInput.value);
     requestAnimationFrame(function () {
       elGoToInput.focus();
       const len = elGoToInput.value.length;
@@ -1459,9 +1653,13 @@
     if (!elGoToOverlay || !elGoToInput) return;
     goToPaletteOpen = false;
     goToSubmitting = false;
+    cancelGoToGeocode();
+    goToResults = [];
+    goToActiveIndex = -1;
     elGoToOverlay.hidden = true;
     elGoToInput.value = "";
     setGoToHint("");
+    renderGoToResults();
   }
 
   function flyToLocation(lat, lon) {
@@ -1482,11 +1680,14 @@
     return flyToLocation(m.lat, m.lon);
   }
 
-  async function geocodeAddress(query) {
+  async function fetchGoToAddressResults(query) {
     const r = await fetch(
-      "/api/map/geocode?q=" + encodeURIComponent(String(query || "").trim())
+      "/api/map/geocode?q=" +
+        encodeURIComponent(String(query || "").trim()) +
+        "&limit=" +
+        GO_TO_ADDRESS_LIMIT
     );
-    if (r.status === 404) return null;
+    if (r.status === 404) return [];
     if (!r.ok) {
       let msg = "Address lookup failed";
       try {
@@ -1495,7 +1696,63 @@
       } catch (_) {}
       throw new Error(msg);
     }
-    return r.json();
+    const data = await r.json();
+    const hits = Array.isArray(data.results)
+      ? data.results
+      : Number.isFinite(Number(data.lat))
+        ? [data]
+        : [];
+    return hits.map(function (hit, idx) {
+      return {
+        kind: "address",
+        id: "address:" + idx + ":" + hit.lat + "," + hit.lon,
+        title: String(hit.label || query),
+        meta: "Address",
+        lat: Number(hit.lat),
+        lon: Number(hit.lon),
+      };
+    });
+  }
+
+  async function geocodeAddress(query) {
+    const hits = await fetchGoToAddressResults(query);
+    if (!hits.length) return null;
+    return hits[0];
+  }
+
+  function activateGoToResult(item) {
+    if (!item || item.kind === "loading") return;
+    if (item.kind === "contact" && item.marker) {
+      goToMarker(item.marker);
+      closeGoToPalette();
+      return;
+    }
+    if (
+      (item.kind === "coords" || item.kind === "address") &&
+      Number.isFinite(item.lat) &&
+      Number.isFinite(item.lon)
+    ) {
+      flyToLocation(item.lat, item.lon);
+      closeGoToPalette();
+    }
+  }
+
+  function moveGoToSelection(delta) {
+    const selectable = goToResults.filter(function (item) {
+      return item.kind !== "loading";
+    });
+    if (!selectable.length) return;
+    let idx = goToActiveIndex;
+    if (idx < 0) idx = delta > 0 ? 0 : selectable.length - 1;
+    else {
+      const current = goToResults[idx];
+      let pos = selectable.indexOf(current);
+      if (pos < 0) pos = 0;
+      pos = Math.max(0, Math.min(selectable.length - 1, pos + delta));
+      idx = goToResults.indexOf(selectable[pos]);
+    }
+    goToActiveIndex = idx;
+    renderGoToResults();
   }
 
   async function submitGoToQuery() {
@@ -1506,6 +1763,11 @@
       return;
     }
 
+    if (goToActiveIndex >= 0 && goToResults[goToActiveIndex]) {
+      activateGoToResult(goToResults[goToActiveIndex]);
+      return;
+    }
+
     const coords = parseGoToCoords(q);
     if (coords) {
       flyToLocation(coords.lat, coords.lon);
@@ -1513,21 +1775,8 @@
       return;
     }
 
-    const matches = findCallsignMatches(q);
+    const matches = findCallsignMatches(q, 1);
     if (matches.length === 1) {
-      goToMarker(matches[0]);
-      closeGoToPalette();
-      return;
-    }
-    if (matches.length > 1) {
-      const exact = matches.filter(function (m) {
-        return String(m.callsign || "").trim().toLowerCase() === q.toLowerCase();
-      });
-      if (exact.length === 1) {
-        goToMarker(exact[0]);
-        closeGoToPalette();
-        return;
-      }
       goToMarker(matches[0]);
       closeGoToPalette();
       return;
@@ -3535,6 +3784,16 @@
         closeGoToPalette();
         return;
       }
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        moveGoToSelection(1);
+        return;
+      }
+      if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        moveGoToSelection(-1);
+        return;
+      }
       if (ev.key === "Enter") {
         ev.preventDefault();
         submitGoToQuery();
@@ -3569,7 +3828,7 @@
 
   if (elGoToInput) {
     elGoToInput.addEventListener("input", function () {
-      updateGoToHint(elGoToInput.value);
+      updateGoToResults(elGoToInput.value);
     });
   }
   if (elGoToBackdrop) {
