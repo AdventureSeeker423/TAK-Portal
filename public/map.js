@@ -491,9 +491,16 @@
 
   function markerIconTint(m) {
     if (!markerUsesMapIcon(m)) return null;
-    const src = String(m.iconSource || "").toLowerCase();
-    if (src === "type2525b" || isAirCotType(m.type)) return null;
-    return markerDisplayColor(m);
+    // Full-icon source-in tint destroys multi-color badge/letter icons (CFS, incidents).
+    return null;
+  }
+
+  function formatMarkerGroupNames(m) {
+    return markerGroups(m)
+      .map(function (g) {
+        return stripTakPrefix(g);
+      })
+      .join(", ");
   }
 
   function installMapImage(imageName, source) {
@@ -1058,8 +1065,8 @@
         "icon-size": [
           "case",
           ["==", ["get", "selected"], true],
-          1,
-          0.85,
+          0.72,
+          0.58,
         ],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
@@ -1297,10 +1304,8 @@
       .setHTML(
         "<strong>" +
           escapeHtml(m.callsign) +
-          "</strong><br/>" +
-          escapeHtml(m.type || "") +
-          "<br/><span class=\"map-popup-groups\">" +
-          escapeHtml(markerGroups(m).join(", ")) +
+          "</strong><br/><span class=\"map-popup-groups\">" +
+          escapeHtml(formatMarkerGroupNames(m)) +
           "</span>"
       )
       .addTo(map);
