@@ -104,23 +104,12 @@ function getStringAllowEmpty(name) {
   if (!Object.prototype.hasOwnProperty.call(process.env, name)) return undefined;
   return String(process.env[name] ?? "");
 }
-
 /**
- * @param {{
- *   allowInsecureServer?: boolean;
- *   baseURL?: string;
- *   timeout?: number;
- * }} [options] - allowInsecureServer: skip server cert verify (locate relay). baseURL/timeout: optional overrides (locate relay uses locate API origin, not Marti).
+ * Load mutual-TLS client materials for TAK (PEM cert/key, optional CA).
  */
-function buildTakAxios(options = {}) {
-  const TAK_DEBUG = getBool("TAK_DEBUG", false);
-
+function loadTakClientTlsMaterials() {
   const p12Path = resolvePathMaybe(getString("TAK_API_P12_PATH", ""));
 
-  // ✅ Robust passphrase selection:
-  // - Prefer TAK_API_P12_PASSPHRASE if explicitly present (even if empty string).
-  // - Otherwise fall back to TAK_API_KEY_PASSPHRASE (legacy).
-  // - If neither present, leave undefined and we'll use "" when calling getPemFromP12.
   let p12Pass;
   if (hasSettingOrEnvKey("TAK_API_P12_PASSPHRASE")) {
     p12Pass = getStringAllowEmpty("TAK_API_P12_PASSPHRASE");
@@ -128,14 +117,6 @@ function buildTakAxios(options = {}) {
     p12Pass = String(getString("TAK_API_KEY_PASSPHRASE", ""));
   } else {
     p12Pass = undefined;
-  }
-
-  if (TAK_DEBUG) {
-    const present = hasSettingOrEnvKey("TAK_API_P12_PASSPHRASE");
-    const len = typeof p12Pass === "string" ? p12Pass.length : -1;
-    console.log(
-      `[TAK TLS] p12Path=${p12Path ? "set" : "unset"} p12PassphrasePresent=${present} p12PassphraseLen=${len}`
-    );
   }
 
   const certPath = resolvePathMaybe(getString("TAK_API_CERT_PATH", ""));
@@ -148,21 +129,15 @@ function buildTakAxios(options = {}) {
     );
   }
 
-  const allowInsecureServer = options.allowInsecureServer === true;
-
-  const agentOptions = {
-    ca: caPath ? fs.readFileSync(caPath) : undefined,
-    rejectUnauthorized: !allowInsecureServer,
-
-    // Keep your previous behavior (skip hostname verification)
-    checkServerIdentity: () => undefined,
-  };
+  const ca = caPath ? fs.readFileSync(caPath) : undefined;
+  let cert;
+  let key;
+  let passphrase;
 
   if (p12Path) {
-    // Parse legacy PKCS#12 (incl RC2-40-CBC) -> PEM using node-tak’s approach via p12-pem
     const { getPemFromP12 } = require("p12-pem");
 
-    const pass = p12Pass ?? ""; // allow intentionally-empty passphrases
+    const pass = p12Pass ?? "";
     const certs = getPemFromP12(p12Path, pass);
 
     if (!certs?.pemCertificate) {
@@ -172,17 +147,14 @@ function buildTakAxios(options = {}) {
       throw new Error("Unable to extract private key from P12");
     }
 
-    // Normalize formatting (ensure newlines around PEM markers)
-    const cert = String(certs.pemCertificate)
+    cert = String(certs.pemCertificate)
       .split("-----BEGIN CERTIFICATE-----")
       .join("-----BEGIN CERTIFICATE-----\n")
       .split("-----END CERTIFICATE-----")
       .join("\n-----END CERTIFICATE-----");
 
-    // p12-pem often returns RSA PRIVATE KEY; keep formatting robust either way
-    let key = String(certs.pemKey);
+    key = String(certs.pemKey);
 
-    // If RSA marker exists, normalize around it
     if (key.includes("-----BEGIN RSA PRIVATE KEY-----")) {
       key = key
         .split("-----BEGIN RSA PRIVATE KEY-----")
@@ -191,7 +163,6 @@ function buildTakAxios(options = {}) {
         .join("\n-----END RSA PRIVATE KEY-----");
     }
 
-    // If PKCS8 marker exists, normalize around it too
     if (key.includes("-----BEGIN PRIVATE KEY-----")) {
       key = key
         .split("-----BEGIN PRIVATE KEY-----")
@@ -199,16 +170,64 @@ function buildTakAxios(options = {}) {
         .split("-----END PRIVATE KEY-----")
         .join("\n-----END PRIVATE KEY-----");
     }
-
-    agentOptions.cert = cert;
-    agentOptions.key = key;
-
-    // Note: no agentOptions.passphrase here — we extracted an unencrypted PEM key for Node TLS
   } else {
-    agentOptions.cert = fs.readFileSync(certPath);
-    agentOptions.key = fs.readFileSync(keyPath);
-    agentOptions.passphrase =
-      getString("TAK_API_KEY_PASSPHRASE", "") || undefined;
+    cert = fs.readFileSync(certPath);
+    key = fs.readFileSync(keyPath);
+    passphrase = getString("TAK_API_KEY_PASSPHRASE", "") || undefined;
+  }
+
+  return { cert, key, ca, passphrase };
+}
+
+/**
+ * @param {{ allowInsecureServer?: boolean }} [options]
+ */
+function getTakTlsAuth(options = {}) {
+  const allowInsecureServer = options.allowInsecureServer === true;
+  const { cert, key, ca, passphrase } = loadTakClientTlsMaterials();
+  return {
+    cert,
+    key,
+    ca,
+    passphrase,
+    rejectUnauthorized: !allowInsecureServer,
+  };
+}
+
+
+/**
+ * @param {{
+ *   allowInsecureServer?: boolean;
+ *   baseURL?: string;
+ *   timeout?: number;
+ * }} [options] - allowInsecureServer: skip server cert verify (locate relay). baseURL/timeout: optional overrides (locate relay uses locate API origin, not Marti).
+ */
+function buildTakAxios(options = {}) {
+  const TAK_DEBUG = getBool("TAK_DEBUG", false);
+
+  if (TAK_DEBUG) {
+    const p12Path = resolvePathMaybe(getString("TAK_API_P12_PATH", ""));
+    const present = hasSettingOrEnvKey("TAK_API_P12_PASSPHRASE");
+    let p12PassLen = -1;
+    if (hasSettingOrEnvKey("TAK_API_P12_PASSPHRASE")) {
+      p12PassLen = getStringAllowEmpty("TAK_API_P12_PASSPHRASE").length;
+    }
+    console.log(
+      `[TAK TLS] p12Path=${p12Path ? "set" : "unset"} p12PassphrasePresent=${present} p12PassphraseLen=${p12PassLen}`
+    );
+  }
+
+  const tlsAuth = getTakTlsAuth(options);
+
+  const agentOptions = {
+    ca: tlsAuth.ca,
+    rejectUnauthorized: tlsAuth.rejectUnauthorized !== false,
+    checkServerIdentity: () => undefined,
+    cert: tlsAuth.cert,
+    key: tlsAuth.key,
+  };
+  if (tlsAuth.passphrase) {
+    agentOptions.passphrase = tlsAuth.passphrase;
   }
 
   const httpsAgent = new https.Agent(agentOptions);
@@ -579,8 +598,10 @@ async function revokeCertsForUser(username, options = {}) {
 
 module.exports = {
   isTakConfigured,
+  isTakBypassed,
   revokeCertsForUser,
   revokeCertsForUsersBulk,
   buildTakAxios,
+  getTakTlsAuth,
   getTakBaseUrl,
 };

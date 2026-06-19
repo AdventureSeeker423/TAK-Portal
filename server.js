@@ -442,6 +442,7 @@ app.use("/api/audit-log", requirePermission("page.audit_log"), require("./routes
 app.use("/api/plugins", requirePermission("page.plugin_manager"), require("./routes/plugins.routes"));
 app.use("/api/integrations", requirePermission("page.integrations"), require("./routes/integrations.routes"));
 app.use("/api/ssh", requirePermission("page.integrations"), require("./routes/ssh.routes"));
+app.use("/api/map", requireGlobalAdminRole, require("./routes/map.routes"));
 app.use(
   "/api/settings/tak-maintenance",
   requirePermission("page.settings"),
@@ -738,6 +739,7 @@ app.get("/plugin-manager", requirePermission("page.plugin_manager"), async (req,
 });
 
 // Beta: Getting Started (global admins only, beta mode)
+app.get("/map", requireGlobalAdminRole, (req, res) => res.render("map"));
 app.get("/getting-started", requireGlobalAdminRole, requireBetaMode, (req, res) =>
   res.render("getting-started")
 );

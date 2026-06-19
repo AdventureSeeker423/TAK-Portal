@@ -218,6 +218,9 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p === "/sample-users.csv" || p === "/sample-agencies.csv" || p === "/csv-instructions-readme.txt")
     return ["page.users"];
 
+  if (p === "/map" || p.startsWith("/map/")) return [];
+  if (p.startsWith("/api/map")) return [];
+
   // Unknown: deny at middleware (safe)
   return null;
 }
