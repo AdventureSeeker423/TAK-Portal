@@ -387,19 +387,46 @@
     return AFFILIATION_COLORS[aff] || AFFILIATION_COLORS.other;
   }
 
+  function stripTakPrefix(name) {
+    const n = String(name || "").trim();
+    return n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
+  }
+
+  function isMapChannelName(name) {
+    const n = String(name || "").trim();
+    return n.toLowerCase().startsWith("tak_") && !n.startsWith("_");
+  }
+
+  function channelGroupKey(name) {
+    const n = String(name || "").trim().toLowerCase();
+    if (!n || n === "unassigned") return "";
+    return n.startsWith("tak_") ? n.slice(4) : n;
+  }
+
+  function markerChannelKeys(m) {
+    return markerGroups(m).map(channelGroupKey).filter(Boolean);
+  }
+
+  function isChannelKeyEnabled(key) {
+    if (!enabledGroups || !key) return true;
+    for (const enabled of enabledGroups) {
+      if (channelGroupKey(enabled) === key) return true;
+    }
+    return false;
+  }
+
   function markerGroups(m) {
     if (Array.isArray(m.groups) && m.groups.length) return m.groups;
     return ["Unassigned"];
   }
 
   function isGroupEnabled(groupName) {
-    if (!enabledGroups) return true;
-    return enabledGroups.has(groupName);
+    return isChannelKeyEnabled(channelGroupKey(groupName));
   }
 
   function markerVisible(m) {
-    const groups = markerGroups(m);
-    if (enabledGroups && !groups.some((g) => enabledGroups.has(g))) return false;
+    const keys = markerChannelKeys(m);
+    if (enabledGroups && (!keys.length || !keys.some((k) => isChannelKeyEnabled(k)))) return false;
     if (!markerMatchesSearch(m)) return false;
     return true;
   }
@@ -422,9 +449,13 @@
   function ensureDefaultGroupsEnabled() {
     if (enabledGroups) return;
     enabledGroups = new Set();
-    for (const g of groupsCatalog) enabledGroups.add(g.name);
+    for (const g of groupsCatalog) {
+      if (isMapChannelName(g.name)) enabledGroups.add(g.name);
+    }
     for (const m of markersByUid.values()) {
-      for (const gn of markerGroups(m)) enabledGroups.add(gn);
+      for (const gn of markerGroups(m)) {
+        if (isMapChannelName(gn)) enabledGroups.add(gn);
+      }
     }
     saveEnabledGroups();
   }
@@ -433,12 +464,18 @@
     const byName = new Map();
     for (const g of groupsCatalog) byName.set(g.name, g);
     for (const g of incoming || []) {
+      if (!isMapChannelName(g.name)) continue;
       byName.set(g.name, { ...byName.get(g.name), ...g });
     }
     for (const m of markersByUid.values()) {
       for (const gn of markerGroups(m)) {
+        if (!isMapChannelName(gn)) continue;
         if (!byName.has(gn)) {
-          byName.set(gn, { name: gn, displayName: gn, markerCount: 0 });
+          byName.set(gn, {
+            name: gn,
+            displayName: stripTakPrefix(gn),
+            markerCount: 0,
+          });
         }
       }
     }
@@ -452,14 +489,16 @@
   function recomputeGroupCounts() {
     const counts = new Map();
     for (const m of markersByUid.values()) {
-      for (const gn of markerGroups(m)) {
-        counts.set(gn, (counts.get(gn) || 0) + 1);
+      for (const key of markerChannelKeys(m)) {
+        counts.set(key, (counts.get(key) || 0) + 1);
       }
     }
-    groupsCatalog = groupsCatalog.map((g) => ({
-      ...g,
-      markerCount: counts.get(g.name) || 0,
-    }));
+    groupsCatalog = groupsCatalog
+      .filter((g) => isMapChannelName(g.name))
+      .map((g) => ({
+        ...g,
+        markerCount: counts.get(channelGroupKey(g.name)) || 0,
+      }));
   }
 
   function addMarkerLayers() {
@@ -740,6 +779,7 @@
     elLayerList.innerHTML = "";
     const q = layerFilterText.toLowerCase();
     const items = groupsCatalog.filter((g) => {
+      if (!isMapChannelName(g.name)) return false;
       if (!q) return true;
       const label = String(g.displayName || g.name).toLowerCase();
       return label.includes(q) || String(g.name).toLowerCase().includes(q);
@@ -978,9 +1018,11 @@
   });
 
   document.getElementById("mapGroupsAll").addEventListener("click", () => {
-    enabledGroups = new Set(groupsCatalog.map((g) => g.name));
+    enabledGroups = new Set(groupsCatalog.filter((g) => isMapChannelName(g.name)).map((g) => g.name));
     for (const m of markersByUid.values()) {
-      for (const gn of markerGroups(m)) enabledGroups.add(gn);
+      for (const gn of markerGroups(m)) {
+        if (isMapChannelName(gn)) enabledGroups.add(gn);
+      }
     }
     saveEnabledGroups();
     renderLayerList();

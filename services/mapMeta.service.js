@@ -1,8 +1,8 @@
 /**
  * Map metadata: TAK Server group catalog + subscription index for marker enrichment.
  */
-const dataSyncSvc = require("./dataSync.service");
 const dataSyncAccess = require("./dataSyncAccess.service");
+const groupsSvc = require("./groups.service");
 const takMetrics = require("./takMetrics.service");
 const { isTakBypassed, isTakConfigured } = require("./tak.service");
 
@@ -26,6 +26,26 @@ let refreshTimer = null;
 
 function normalizeGroupName(name) {
   return String(name || "").trim();
+}
+
+/** Map channels list: LDAP groups managed in Authentik with tak_ prefix. */
+function isMapChannelGroupName(name) {
+  const n = normalizeGroupName(name);
+  if (!n || n.startsWith("_")) return false;
+  return n.toLowerCase().startsWith("tak_");
+}
+
+function channelGroupKey(name) {
+  const n = normalizeGroupName(name).toLowerCase();
+  if (!n || n === UNASSIGNED_GROUP.toLowerCase()) return "";
+  return n.startsWith("tak_") ? n.slice(4) : n;
+}
+
+function toChannelGroupName(name) {
+  const n = normalizeGroupName(name);
+  if (!n || n === UNASSIGNED_GROUP) return null;
+  if (isMapChannelGroupName(n)) return n;
+  return groupsSvc.ensureTakPrefix(n);
 }
 
 function subscriptionGroupsToNames(sub) {
@@ -138,12 +158,13 @@ async function refreshGroupCatalog() {
   }
 
   try {
-    const payload = await dataSyncSvc.listGroupsAll();
-    let names = dataSyncAccess.extractTakGroupNameList(payload);
-    names = dataSyncAccess.filterGlobalAdminGroupNames(names);
+    const all = await groupsSvc.getAllGroups({ forceRefresh: false });
+    const names = (Array.isArray(all) ? all : [])
+      .map((g) => normalizeGroupName(g?.name))
+      .filter(isMapChannelGroupName);
     catalogCache = {
-      names: Array.from(new Set(names.map(normalizeGroupName).filter(Boolean))).sort((a, b) =>
-        a.localeCompare(b)
+      names: Array.from(new Set(names)).sort((a, b) =>
+        dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
       ),
       fetchedAt: Date.now(),
       error: null,
@@ -209,8 +230,11 @@ function buildGroupsCatalogWithCounts(markers) {
   for (const m of markerList) {
     const groups = Array.isArray(m.groups) && m.groups.length ? m.groups : [UNASSIGNED_GROUP];
     for (const g of groups) {
-      const name = normalizeGroupName(g) || UNASSIGNED_GROUP;
-      counts.set(name, (counts.get(name) || 0) + 1);
+      const channelName = toChannelGroupName(g);
+      if (!channelName || !isMapChannelGroupName(channelName)) continue;
+      const key = channelGroupKey(channelName);
+      if (!key) continue;
+      counts.set(key, (counts.get(key) || 0) + 1);
     }
   }
 
@@ -218,16 +242,18 @@ function buildGroupsCatalogWithCounts(markers) {
   const groups = [];
 
   for (const name of catalogCache.names) {
+    if (!isMapChannelGroupName(name)) continue;
     seen.add(name);
     groups.push({
       name,
       displayName: dataSyncAccess.takDisplayName(name) || name,
-      markerCount: counts.get(name) || 0,
+      markerCount: counts.get(channelGroupKey(name)) || 0,
     });
   }
 
-  for (const [name, count] of counts.entries()) {
-    if (seen.has(name)) continue;
+  for (const [key, count] of counts.entries()) {
+    const name = groupsSvc.ensureTakPrefix(key);
+    if (!isMapChannelGroupName(name) || seen.has(name)) continue;
     groups.push({
       name,
       displayName: dataSyncAccess.takDisplayName(name) || name,
@@ -259,6 +285,8 @@ function getSubscriptionIndexSnapshot() {
 
 module.exports = {
   UNASSIGNED_GROUP,
+  isMapChannelGroupName,
+  channelGroupKey,
   ensureRefreshLoop,
   parseGroupsFromCoTDetail,
   parseAffiliationFromType,
