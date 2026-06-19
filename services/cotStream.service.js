@@ -106,20 +106,16 @@ function getStreamEndpoint() {
   }
 }
 
-function isMarkerStale(marker, now = Date.now()) {
-  if (marker?.stale) {
-    const t = Date.parse(marker.stale);
-    if (Number.isFinite(t) && t <= now) return true;
-  }
-  return false;
-}
-
 function isMarkerExpired(marker, now = Date.now()) {
   if (marker?.stale) {
     const t = Date.parse(marker.stale);
     if (Number.isFinite(t) && now > t + STALE_GRACE_MS) return true;
   }
   return false;
+}
+
+function isFeedOriginMarker(marker) {
+  return String(marker?.origin || "").toLowerCase() === "feed";
 }
 
 function parseMarkerFromCoT(cot) {
@@ -211,15 +207,23 @@ function removeMarker(uid, notify = true) {
   if (notify) queueMarkerRemove(uid);
 }
 
+function tryRemoveMarker(uid, notify = true) {
+  const id = String(uid || "").trim();
+  if (!id) return;
+  const existing = markers.get(id);
+  if (existing && isFeedOriginMarker(existing)) return;
+  removeMarker(id, notify);
+}
+
 function handleDeleteCot(cot) {
   const uid = String(cot.uid?.() || cot.raw?.event?._attributes?.uid || "").trim();
-  if (uid) removeMarker(uid);
+  if (uid) tryRemoveMarker(uid);
 
   const links = cot.raw?.event?.detail?.link;
   const linkList = Array.isArray(links) ? links : links ? [links] : [];
   for (const link of linkList) {
     const linkUid = String(link?._attributes?.uid || link?.uid || "").trim();
-    if (linkUid) removeMarker(linkUid);
+    if (linkUid) tryRemoveMarker(linkUid);
   }
 }
 
@@ -231,12 +235,8 @@ function handleCot(cot) {
   }
   if (type.startsWith("t-x-")) return;
 
-  try {
-    if (typeof cot?.is_stale === "function" && cot.is_stale()) return;
-  } catch (_) {}
-
   const marker = parseMarkerFromCoT(cot);
-  if (!marker || isMarkerStale(marker)) return;
+  if (!marker) return;
   markers.set(marker.uid, marker);
   queueMarkerUpdate(marker);
 }

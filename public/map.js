@@ -330,16 +330,16 @@
     return 4;
   }
 
-  function isMarkerStaleAtIngest(m) {
+  function isMarkerExpiredAtIngest(m) {
     if (!m || !m.stale) return false;
     const t = Date.parse(m.stale);
-    return Number.isFinite(t) && t <= Date.now();
+    return Number.isFinite(t) && Date.now() > t + STALE_GRACE_MS;
   }
 
   function storeMarker(m) {
     const normalized = normalizeMarkerRecord(m);
     if (!normalized) return;
-    if (isMarkerStaleAtIngest(normalized)) return;
+    if (isMarkerExpiredAtIngest(normalized)) return;
     markersByUid.set(String(normalized.uid), normalized);
   }
 
