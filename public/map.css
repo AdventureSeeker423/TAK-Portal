@@ -330,6 +330,11 @@ body {
   font-size: 0.88rem;
   font-weight: 600;
   letter-spacing: 0.03em;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .map-search {
@@ -569,6 +574,35 @@ body {
 .map-kv dd {
   margin: 0;
   word-break: break-word;
+}
+
+.map-coords-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-copy-btn {
+  appearance: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--map-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.map-copy-btn:hover {
+  color: var(--map-accent);
+  background: var(--map-accent-dim);
+  border-color: rgba(34, 211, 238, 0.25);
 }
 
 .map-chips {

@@ -844,6 +844,7 @@
   const elLayerList = document.getElementById("mapLayerList");
   const elList = document.getElementById("mapMarkerList");
   const elDetail = document.getElementById("mapDetail");
+  const elDetailTitle = document.getElementById("mapDetailTitle");
   const elDetailActions = document.getElementById("mapDetailActions");
   const elVisibleCounts = document.getElementById("mapVisibleCounts");
   const elConnLabel = document.getElementById("mapConnLabel");
@@ -865,7 +866,6 @@
   const elExpandLeft = document.getElementById("mapExpandLeft");
   const elExpandRight = document.getElementById("mapExpandRight");
   const elCenterBtn = document.getElementById("mapCenterBtn");
-  const elCopyCoordsBtn = document.getElementById("mapCopyCoordsBtn");
   const elCopyRawBtn = document.getElementById("mapCopyRawBtn");
 
   const savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark";
@@ -1547,13 +1547,64 @@
     return "";
   }
 
+  function fmtHae(n) {
+    return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) : "—";
+  }
+
+  const COPY_COORDS_ICON =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>' +
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>' +
+    "</svg>";
+
+  let detailAgeTimer = null;
+
+  function clearDetailAgeTimer() {
+    if (detailAgeTimer) {
+      clearInterval(detailAgeTimer);
+      detailAgeTimer = null;
+    }
+  }
+
+  function updatedAgeLabel(updatedAt) {
+    if (!updatedAt) return "—";
+    const t = Date.parse(updatedAt);
+    if (!Number.isFinite(t)) return "—";
+    const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (sec < 60) return sec + "s ago";
+    if (sec < 3600) return Math.floor(sec / 60) + "m ago";
+    if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
+    return Math.floor(sec / 86400) + "d ago";
+  }
+
+  function startDetailAgeTimer(marker) {
+    clearDetailAgeTimer();
+    const el = document.getElementById("mapDetailUpdated");
+    if (!el || !marker) return;
+
+    function tick() {
+      const current = selectedUid ? markersByUid.get(selectedUid) : null;
+      if (!current || current.uid !== marker.uid) {
+        clearDetailAgeTimer();
+        return;
+      }
+      el.textContent = updatedAgeLabel(current.updatedAt);
+    }
+
+    tick();
+    detailAgeTimer = setInterval(tick, 1000);
+  }
+
   function renderDetail(m) {
     if (!m) {
+      clearDetailAgeTimer();
+      elDetailTitle.textContent = "Details";
       elDetail.innerHTML =
         '<div class="map-detail-empty">Select a marker to view details.</div>';
       elDetailActions.hidden = true;
       return;
     }
+    elDetailTitle.textContent = m.callsign || "Details";
     elDetailActions.hidden = false;
     const groupHtml = markerGroups(m)
       .map(function (g) {
@@ -1561,18 +1612,23 @@
       })
       .join(" ");
     const remarksText = m.remarks ? String(m.remarks).trim() : "";
+    const coordText = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
     elDetail.innerHTML =
       '<div class="map-detail-wrap">' +
       '<dl class="map-kv map-kv-compact">' +
-      "<dt>Callsign</dt><dd>" + escapeHtml(m.callsign) + "</dd>" +
       "<dt>Groups</dt><dd class=\"map-chips\">" + (groupHtml || "—") + "</dd>" +
       "<dt>Team</dt><dd>" + escapeHtml(m.team || "—") + "</dd>" +
-      "<dt>Lat / Lon</dt><dd>" + fmtCoord(m.lat) + ", " + fmtCoord(m.lon) + "</dd>" +
-      "<dt>HAE</dt><dd>" + (m.hae != null ? escapeHtml(String(m.hae)) : "—") + "</dd>" +
+      "<dt>Lat / Lon</dt><dd class=\"map-coords-row\">" +
+      "<span>" + coordText + "</span>" +
+      '<button type="button" class="map-copy-btn map-copy-coords-btn" title="Copy coordinates" aria-label="Copy coordinates">' +
+      COPY_COORDS_ICON +
+      "</button></dd>" +
+      "<dt>HAE</dt><dd>" + fmtHae(m.hae) + "</dd>" +
       "<dt>Course</dt><dd>" + (m.course != null ? escapeHtml(String(m.course)) + "°" : "—") + "</dd>" +
       "<dt>Speed</dt><dd>" + (m.speed != null ? escapeHtml(String(m.speed)) : "—") + "</dd>" +
-      "<dt>Stale</dt><dd>" + escapeHtml(m.stale || "—") + "</dd>" +
-      "<dt>Updated</dt><dd>" + escapeHtml(m.updatedAt || "—") + "</dd>" +
+      '<dt>Updated</dt><dd id="mapDetailUpdated">' +
+      escapeHtml(updatedAgeLabel(m.updatedAt)) +
+      "</dd>" +
       "</dl>" +
       '<section class="map-remarks-section">' +
       '<h3 class="map-remarks-title">Remarks</h3>' +
@@ -1581,6 +1637,24 @@
       '">' +
       escapeHtml(remarksText || "No remarks.") +
       "</div></section></div>";
+
+    const copyBtn = elDetail.querySelector(".map-copy-coords-btn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        const current = selectedUid ? markersByUid.get(selectedUid) : null;
+        if (!current) return;
+        const text = current.lat.toFixed(5) + ", " + current.lon.toFixed(5);
+        copyTextToClipboard(text).then(
+          function () {
+            showCopyToast("Copied " + text);
+          },
+          function () {
+            showCopyToast(text);
+          }
+        );
+      });
+    }
+    startDetailAgeTimer(m);
   }
 
   function renderLayerList() {
@@ -2004,16 +2078,6 @@
   elCenterBtn.addEventListener("click", () => {
     const m = selectedUid ? markersByUid.get(selectedUid) : null;
     if (m) map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12) });
-  });
-
-  elCopyCoordsBtn.addEventListener("click", () => {
-    const m = selectedUid ? markersByUid.get(selectedUid) : null;
-    if (!m) return;
-    const text = m.lat.toFixed(5) + ", " + m.lon.toFixed(5);
-    copyTextToClipboard(text).then(
-      () => showCopyToast("Copied " + text),
-      () => showCopyToast(text)
-    );
   });
 
   elCopyRawBtn.addEventListener("click", () => {
