@@ -5,7 +5,7 @@ const dataSyncAccess = require("./dataSyncAccess.service");
 const dataSyncSvc = require("./dataSync.service");
 const groupsSvc = require("./groups.service");
 const takMetrics = require("./takMetrics.service");
-const { isTakBypassed, isTakConfigured } = require("./tak.service");
+const { isTakBypassed, isTakConfigured, buildTakAxios } = require("./tak.service");
 
 const SUBSCRIPTION_REFRESH_MS = 30000;
 const UNASSIGNED_GROUP = "Unassigned";
@@ -24,9 +24,14 @@ let subscriptionIndex = {
   error: null,
 };
 
-/** Publish groups from feed integrations (ADS-B, etc.), keyed by traffic kind. */
-let feedGroupsByKind = {
-  aircraft: [],
+/** Connection UID (flow tag / subscription id) -> publish groups for that injector. */
+let connectionGroupsByUid = new Map();
+/** Data feed filtergroup targets keyed by uuid/name/id fragments. */
+let dataFeedGroupsByKey = new Map();
+
+let dataFeedCache = {
+  fetchedAt: 0,
+  error: null,
 };
 
 let refreshTimer = null;
@@ -161,31 +166,184 @@ function subscriptionGroupName(entry) {
   );
 }
 
-function rebuildFeedGroupCache(subList) {
-  feedGroupsByKind = { aircraft: [] };
-  for (const sub of Array.isArray(subList) ? subList : []) {
-    const groups = subscriptionPublishGroups(sub);
-    if (!groups.length) continue;
-    for (const g of groups) {
-      const lower = g.toLowerCase();
-      if (/aircraft|ads-?b|airplanes\.live|planes\.live/i.test(lower)) {
-        feedGroupsByKind.aircraft = groups;
-        break;
-      }
-    }
-    const label = `${sub.callsign || ""} ${sub.username || ""}`.toLowerCase();
-    if (/ads-?b|aircraft|airplanes|plane\s*feed|dump1090/i.test(label)) {
-      feedGroupsByKind.aircraft = groups;
+function dedupeGroupNames(names) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of names || []) {
+    const name = normalizeGroupName(raw);
+    if (!name || !isTakChannelGroupName(name)) continue;
+    const key = channelBaseKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+function normalizeDataFeedGroupList(raw) {
+  const items = Array.isArray(raw)
+    ? raw
+    : typeof raw === "string"
+      ? raw.split(/[,;]/)
+      : raw != null
+        ? [raw]
+        : [];
+  const out = [];
+  for (const item of items) {
+    const n = normalizeGroupName(item);
+    if (!n) continue;
+    const withPrefix = isMapChannelGroupName(n) ? n : groupsSvc.ensureTakPrefix(stripChannelBehaviorSuffix(n));
+    if (isTakChannelGroupName(withPrefix)) out.push(withPrefix);
+  }
+  return dedupeGroupNames(out);
+}
+
+function registerConnectionGroups(ids, groups) {
+  const list = dedupeGroupNames(groups);
+  if (!list.length) return;
+  for (const rawId of ids || []) {
+    const id = normalizeGroupName(rawId);
+    if (!id) continue;
+    connectionGroupsByUid.set(id.toLowerCase(), list);
+    const bare = id.replace(/^TAK-Server-/i, "").toLowerCase();
+    if (bare && bare !== id.toLowerCase()) {
+      connectionGroupsByUid.set(bare, list);
     }
   }
 }
 
-function inferGroupsFromMarker(marker) {
-  const type = String(marker?.type || "").trim();
-  if (/^a-[a-z]-A-/i.test(type) && feedGroupsByKind.aircraft.length) {
-    return feedGroupsByKind.aircraft;
+function rebuildConnectionGroupIndex(subList) {
+  connectionGroupsByUid = new Map();
+
+  for (const sub of Array.isArray(subList) ? subList : []) {
+    const groups = subscriptionPublishGroups(sub);
+    if (!groups.length) continue;
+
+    registerConnectionGroups(
+      [sub.uid, sub.clientUid, sub.clientUuid, sub.connectionUid, sub.deviceUid],
+      groups
+    );
   }
-  return null;
+}
+
+function registerDataFeedGroups(feed) {
+  if (!feed || typeof feed !== "object") return;
+  const groups = normalizeDataFeedGroupList(
+    feed.filtergroup || feed.filterGroup || feed.filterGroups || feed.groups
+  );
+  if (!groups.length) return;
+
+  const keys = new Set();
+  for (const field of [feed.uuid, feed.uid, feed.id, feed.name, feed.tag]) {
+    const val = normalizeGroupName(field);
+    if (!val) continue;
+    keys.add(val.toLowerCase());
+    const bare = val.replace(/^TAK-Server-/i, "").toLowerCase();
+    if (bare) keys.add(bare);
+  }
+
+  for (const key of keys) {
+    dataFeedGroupsByKey.set(key, groups);
+    registerConnectionGroups([key], groups);
+  }
+}
+
+async function refreshDataFeedIndex() {
+  if (isTakBypassed() || !isTakConfigured()) {
+    dataFeedGroupsByKey = new Map();
+    dataFeedCache = {
+      fetchedAt: Date.now(),
+      error: isTakBypassed() ? "TAK bypass enabled" : "TAK not configured",
+    };
+    return dataFeedCache;
+  }
+
+  try {
+    const client = buildTakAxios();
+    const res = await client.get("/api/datafeeds", { headers: { Accept: "application/json" } });
+    const payload = res?.data;
+    const feeds = Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload)
+        ? payload
+        : [];
+
+    dataFeedGroupsByKey = new Map();
+    for (const feed of feeds) {
+      registerDataFeedGroups(feed);
+    }
+
+    dataFeedCache = {
+      fetchedAt: Date.now(),
+      error: null,
+    };
+    notifySubscriptionIndexRefreshed();
+  } catch (err) {
+    dataFeedCache = {
+      fetchedAt: Date.now(),
+      error: err?.message || String(err),
+    };
+  }
+
+  return dataFeedCache;
+}
+
+function parseFlowTagUids(detail) {
+  if (!detail || typeof detail !== "object") return [];
+  const uids = new Set();
+
+  const flowTags = detail.flow_tag;
+  const flowList = Array.isArray(flowTags) ? flowTags : flowTags ? [flowTags] : [];
+  for (const item of flowList) {
+    const uid =
+      item?._attributes?.uid ||
+      item?._attributes?.id ||
+      item?.uid ||
+      item?.id;
+    if (uid) uids.add(String(uid).trim());
+  }
+
+  for (const [key, val] of Object.entries(detail)) {
+    if (/^TAK-Server-/i.test(key)) uids.add(key);
+    if (/^flow/i.test(key) && val && typeof val === "object" && !Array.isArray(val)) {
+      for (const subKey of Object.keys(val)) {
+        if (/^TAK-Server-/i.test(subKey)) uids.add(subKey);
+      }
+    }
+  }
+
+  return Array.from(uids).filter(Boolean);
+}
+
+function lookupConnectionGroups(uid) {
+  const id = normalizeGroupName(uid).toLowerCase();
+  if (!id) return [];
+  return (
+    connectionGroupsByUid.get(id) ||
+    connectionGroupsByUid.get(id.replace(/^tak-server-/, "")) ||
+    dataFeedGroupsByKey.get(id) ||
+    dataFeedGroupsByKey.get(id.replace(/^tak-server-/, "")) ||
+    []
+  );
+}
+
+function lookupGroupsByConnectionKey(key) {
+  const k = String(key || "").trim().toLowerCase();
+  if (!k) return [];
+  const fromConnection = lookupConnectionGroups(k);
+  if (fromConnection.length) return fromConnection;
+  return lookupSubscriptionGroupsByKey(k);
+}
+
+function resolveGroupsFromFlowTags(source) {
+  const uids = Array.isArray(source?.flowTagUids)
+    ? source.flowTagUids
+    : parseFlowTagUids(source);
+  const out = [];
+  for (const uid of uids) {
+    out.push(...lookupConnectionGroups(uid));
+  }
+  return dedupeGroupNames(out);
 }
 
 function isGroupActive(entry) {
@@ -323,27 +481,22 @@ function resolveGroupsFromSubscription(marker) {
   const uid = String(marker?.uid || "").trim();
   if (uid) keys.push(uid.toLowerCase());
 
-  const callsign = normalizeGroupName(marker?.callsign);
-  if (callsign) keys.push(callsign.toLowerCase());
-
   const related = Array.isArray(marker?.relatedUids) ? marker.relatedUids : [];
   for (const rel of related) {
     const rk = String(rel || "").trim().toLowerCase();
     if (rk) keys.push(rk);
   }
 
-  const seen = new Set();
   for (const key of keys) {
-    const groups = lookupSubscriptionGroupsByKey(key);
-    if (!groups.length) continue;
-    const out = [];
-    for (const g of groups) {
-      const name = normalizeGroupName(g);
-      const ck = channelBaseKey(name);
-      if (!name || !isTakChannelGroupName(name) || seen.has(ck)) continue;
-      seen.add(ck);
-      out.push(name);
-    }
+    const groups = lookupGroupsByConnectionKey(key);
+    const out = dedupeGroupNames(groups);
+    if (out.length) return out;
+  }
+
+  const callsign = normalizeGroupName(marker?.callsign);
+  if (callsign) {
+    const groups = lookupGroupsByConnectionKey(callsign.toLowerCase());
+    const out = dedupeGroupNames(groups);
     if (out.length) return out;
   }
 
@@ -458,7 +611,7 @@ async function refreshSubscriptionIndex() {
       fetchedAt: Date.now(),
       error: null,
     };
-    rebuildFeedGroupCache(list);
+    rebuildConnectionGroupIndex(list);
     notifySubscriptionIndexRefreshed();
   } catch (err) {
     subscriptionIndex = {
@@ -519,26 +672,33 @@ function ensureRefreshLoop() {
   if (refreshTimer) return;
   void refreshGroupCatalog();
   void refreshSubscriptionIndex();
+  void refreshDataFeedIndex();
   refreshTimer = setInterval(() => {
     void refreshGroupCatalog();
     void refreshSubscriptionIndex();
+    void refreshDataFeedIndex();
   }, SUBSCRIPTION_REFRESH_MS);
   if (typeof refreshTimer.unref === "function") refreshTimer.unref();
 }
 
 function resolveGroupsForMarker(marker, cotDetail) {
-  const fromCot = cotDetail
-    ? parseGroupsFromCoTDetail(cotDetail)
+  const detail = cotDetail && typeof cotDetail === "object" ? cotDetail : null;
+
+  const fromCot = detail
+    ? parseGroupsFromCoTDetail(detail)
     : Array.isArray(marker?.cotRouteGroups)
       ? marker.cotRouteGroups
       : [];
-  if (fromCot.length) return fromCot;
+
+  const fromFlow = resolveGroupsFromFlowTags(
+    detail || { flowTagUids: marker?.flowTagUids || [] }
+  );
+
+  const routed = dedupeGroupNames([...fromCot, ...fromFlow]);
+  if (routed.length) return routed;
 
   const fromSub = resolveGroupsFromSubscription(marker);
   if (fromSub[0] !== UNASSIGNED_GROUP) return fromSub;
-
-  const inferred = inferGroupsFromMarker(marker);
-  if (inferred?.length) return inferred;
 
   return [UNASSIGNED_GROUP];
 }
@@ -617,6 +777,7 @@ module.exports = {
   stripChannelBehaviorSuffix,
   ensureRefreshLoop,
   parseGroupsFromCoTDetail,
+  parseFlowTagUids,
   parseRelatedUids,
   onSubscriptionIndexRefreshed,
   parseAffiliationFromType,
@@ -626,6 +787,7 @@ module.exports = {
   getTakGroupCatalog,
   refreshGroupCatalog,
   refreshSubscriptionIndex,
+  refreshDataFeedIndex,
   getSubscriptionIndexSnapshot,
   buildGroupsCatalogWithCounts,
 };
