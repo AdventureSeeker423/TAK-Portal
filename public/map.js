@@ -195,10 +195,47 @@
     return "/api/map/icons?id=" + encodeURIComponent(iconId);
   }
 
-  function resolveMarkerIconId(m) {
-    if (m.iconId) return m.iconId;
+  function resolveMarkerIconPlan(m) {
+    const customSources = new Set(["path", "usericon", "type2525b"]);
+    if (m.iconId && customSources.has(m.iconSource)) {
+      return { kind: "png", apiIconId: m.iconId };
+    }
+    if (window.MapSymbology && MapSymbology.is2525Convertable(m.type)) {
+      return { kind: "mil", cotType: m.type };
+    }
+    if (m.iconId) return { kind: "png", apiIconId: m.iconId };
     const aff = m.affiliation || "other";
-    return defaultIconIds[aff] || defaultIconIds.friend || defaultIconIds.unknown || "";
+    const fallback =
+      defaultIconIds[aff] || defaultIconIds.friend || defaultIconIds.unknown || "";
+    if (fallback) return { kind: "png", apiIconId: fallback };
+    return { kind: "circle" };
+  }
+
+  function resolveMarkerIconId(m) {
+    return resolveMarkerIconPlan(m).apiIconId || "";
+  }
+
+  function loadMilSymbolIcon(plan, mapImageId, course) {
+    if (!window.MapSymbology || !plan.cotType) return Promise.resolve();
+    if (map.hasImage(mapImageId)) return Promise.resolve();
+    if (iconLoadPending.has(mapImageId)) return iconLoadPending.get(mapImageId);
+
+    const promise = Promise.resolve()
+      .then(() => {
+        const canvas = MapSymbology.renderMilSymbolCanvas(plan.cotType, { size: 48 });
+        if (!canvas) throw new Error("invalid symbol");
+        if (!map.hasImage(mapImageId)) map.addImage(mapImageId, canvas, { pixelRatio: 2 });
+      })
+      .then(() => {
+        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+      })
+      .catch(() => {})
+      .finally(() => {
+        iconLoadPending.delete(mapImageId);
+      });
+
+    iconLoadPending.set(mapImageId, promise);
+    return promise;
   }
 
   function loadMapIcon(iconId, mapImageId) {
@@ -244,22 +281,44 @@
     return promise;
   }
 
-  function preloadMarkerIcons() {
-    const ids = new Set(Object.values(defaultIconIds).filter(Boolean));
-    for (const m of markersByUid.values()) {
-      const id = resolveMarkerIconId(m);
-      if (id) ids.add(id);
+  function ensureMarkerIcon(m, mapImageId) {
+    const plan = resolveMarkerIconPlan(m);
+    if (plan.kind === "mil") {
+      return loadMilSymbolIcon(plan, mapImageId, m.course);
     }
-    return Promise.all(
-      Array.from(ids, (id) => loadMapIcon(id, registerMapImageId(id)))
-    );
+    if (plan.kind === "png" && plan.apiIconId) {
+      return loadMapIcon(plan.apiIconId, mapImageId);
+    }
+    return Promise.resolve();
+  }
+
+  function preloadMarkerIcons() {
+    const jobs = [];
+    for (const m of markersByUid.values()) {
+      const plan = resolveMarkerIconPlan(m);
+      if (plan.kind === "circle") continue;
+      const mapImageId = registerMapImageId(
+        plan.kind === "mil" ? "mil:" + plan.cotType : plan.apiIconId
+      );
+      jobs.push(ensureMarkerIcon(m, mapImageId));
+    }
+    for (const id of Object.values(defaultIconIds).filter(Boolean)) {
+      jobs.push(loadMapIcon(id, registerMapImageId(id)));
+    }
+    return Promise.all(jobs);
   }
 
   function onStyleImageMissing(e) {
     const mapImageId = e.id;
-    const iconId = iconIdByMapImageId.get(mapImageId) || mapImageId;
-    if (!iconId || iconLoadPending.has(mapImageId)) return;
-    loadMapIcon(iconId, mapImageId).then(() => {
+    if (!mapImageId || iconLoadPending.has(mapImageId)) return;
+    const raw = iconIdByMapImageId.get(mapImageId) || mapImageId;
+    if (String(raw).startsWith("mil:")) {
+      loadMilSymbolIcon({ kind: "mil", cotType: raw.slice(4) }, mapImageId).then(() => {
+        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+      });
+      return;
+    }
+    loadMapIcon(raw, mapImageId).then(() => {
       if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
     });
   }
@@ -604,7 +663,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: MARKER_FILTER,
+      filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
       paint: {
         "circle-radius": [
           "case",
@@ -629,9 +688,10 @@
         "icon-size": [
           "case",
           ["==", ["get", "selected"], true],
-          0.55,
-          0.45,
+          0.95,
+          0.82,
         ],
+        "icon-rotate": ["coalesce", ["get", "course"], 0],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
         "icon-optional": true,
@@ -743,8 +803,13 @@
     const visible = markerVisible(m);
     const coords = [m.lon, m.lat];
     const features = [];
-    const iconId = visible ? resolveMarkerIconId(m) : "";
-    const mapImageId = iconId ? registerMapImageId(iconId) : "";
+    const plan = visible ? resolveMarkerIconPlan(m) : { kind: "circle" };
+    let mapImageId = "";
+    if (plan.kind === "mil") {
+      mapImageId = registerMapImageId("mil:" + plan.cotType);
+    } else if (plan.kind === "png" && plan.apiIconId) {
+      mapImageId = registerMapImageId(plan.apiIconId);
+    }
 
     const pointFeature = {
       type: "Feature",
@@ -757,15 +822,16 @@
         affiliation: m.affiliation || "other",
         color,
         iconId: mapImageId,
+        showCircle: plan.kind === "circle" ? 1 : 0,
         opacity: visible ? markerOpacity(m) : 0,
         labelOpacity: visible ? markerOpacity(m) : 0,
         selected: m.uid === selectedUid,
-        course: m.course,
+        course: Number.isFinite(m.course) && m.course >= 0 ? m.course : 0,
       },
     };
     features.push(pointFeature);
 
-    if (iconId) loadMapIcon(iconId, mapImageId);
+    if (visible && mapImageId) ensureMarkerIcon(m, mapImageId);
 
     if (visible && Number.isFinite(m.course) && m.course >= 0) {
       const rad = (m.course * Math.PI) / 180;

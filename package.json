@@ -15,6 +15,7 @@
     "whatwg-url": "^14.2.0"
   },
   "dependencies": {
+    "@tak-ps/node-cot": "^14.28.0",
     "@tak-ps/node-tak": "^11.20.2",
     "archiver": "^7.0.1",
     "axios": "^1.13.2",
