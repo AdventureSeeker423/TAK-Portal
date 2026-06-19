@@ -128,7 +128,7 @@ function buildGeoJson(markers, options = {}) {
   for (const marker of visible) {
     const color = markerDisplayColor(marker);
     const labelOpacity = markerOpacity(marker, now);
-    const apiIconId = useIcons && marker.iconId ? String(marker.iconId) : "";
+    const apiIconId = marker.iconId ? String(marker.iconId) : "";
     const coords = [marker.lon, marker.lat];
 
     features.push({

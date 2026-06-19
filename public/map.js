@@ -266,7 +266,7 @@
     const color = markerDisplayColor(m);
     const coords = [pos.lon, pos.lat];
     const labelOpacity = markerOpacity(m);
-    const apiIconId = useIcons ? resolveMarkerIconId(m) : "";
+    const apiIconId = resolveMarkerIconForMap(m, useIcons);
     const mapImageId = apiIconId ? registerMapImageId(apiIconId) : "";
     const features = [
       {
@@ -335,6 +335,7 @@
     };
     updateVisibleCounts();
     if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
+    void preloadMarkerIcons();
   }
 
   function syncMapSource() {
@@ -398,6 +399,13 @@
     return defaultIconIds[aff] || defaultIconIds.friend || defaultIconIds.unknown || "";
   }
 
+  /** Feed / usericon markers always get their icon; default icons only under MAP_MAX_ICONS. */
+  function resolveMarkerIconForMap(m, useIcons) {
+    if (m && m.iconId) return String(m.iconId);
+    if (!useIcons) return "";
+    return resolveMarkerIconId(m);
+  }
+
   function loadMapIcon(iconId, mapImageId) {
     const imageName = mapImageId || registerMapImageId(iconId);
     if (!iconId || map.hasImage(imageName)) return Promise.resolve();
@@ -443,6 +451,9 @@
 
   function preloadMarkerIcons() {
     const ids = new Set(Object.values(defaultIconIds).filter(Boolean));
+    for (const m of markersByUid.values()) {
+      if (m && m.iconId) ids.add(String(m.iconId));
+    }
     return Promise.all(
       Array.from(ids, (id) => loadMapIcon(id, registerMapImageId(id)))
     );
@@ -903,7 +914,7 @@
         ],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
-        "icon-optional": true,
+        "icon-optional": false,
       },
       paint: {
         "icon-opacity": ["get", "labelOpacity"],
@@ -927,10 +938,8 @@
         "text-max-width": 14,
       },
       paint: {
-        "text-color": "#f1f5f9",
-        "text-halo-color": ["get", "color"],
-        "text-halo-width": 1,
-        "text-halo-blur": 0,
+        "text-color": "#ffffff",
+        "text-halo-width": 0,
         "text-opacity": ["get", "labelOpacity"],
       },
     });
