@@ -871,14 +871,14 @@ function parseTeamColor(detail) {
   return normalizeTakColor(fromGroup) || parseDetailColor(detail);
 }
 
-/** Map marker fill: ATAK team name, then CoT color attrs, then affiliation. */
+/** Map marker fill: CoT color attrs, then ATAK team name, then affiliation. */
 function resolveMarkerDisplayColor(marker) {
+  const fromAttr = normalizeTakColor(marker?.teamColor);
+  if (fromAttr) return fromAttr;
+
   const team = normalizeGroupName(marker?.team);
   const fromTeam = teamNameToColor(team);
   if (fromTeam) return fromTeam;
-
-  const fromAttr = normalizeTakColor(marker?.teamColor);
-  if (fromAttr) return fromAttr;
 
   const aff = String(marker?.affiliation || "other").trim();
   return AFFILIATION_COLORS[aff] || AFFILIATION_COLORS.other;
