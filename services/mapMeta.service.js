@@ -792,6 +792,40 @@ function clampColorByte(raw) {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
 
+function extractRemarksText(node) {
+  if (node == null) return "";
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node).trim();
+  }
+  if (typeof node !== "object") return "";
+  if (typeof node._text === "string") return node._text.trim();
+  for (const key of ["#text", "text", "value", "content"]) {
+    if (typeof node[key] === "string" && node[key].trim()) {
+      return node[key].trim();
+    }
+  }
+  return "";
+}
+
+/** CoT detail.remarks — free-text notes on markers and incidents. */
+function parseRemarks(detail) {
+  const parts = [];
+  const remarksNode = detail?.remarks ?? detail?.remark;
+  if (remarksNode != null) {
+    const list = Array.isArray(remarksNode) ? remarksNode : [remarksNode];
+    for (const item of list) {
+      const text = extractRemarksText(item);
+      if (text) parts.push(text);
+    }
+  }
+  const contact = detail?.contact?._attributes || detail?.contact;
+  if (contact && typeof contact.remarks === "string" && contact.remarks.trim()) {
+    parts.push(contact.remarks.trim());
+  }
+  const joined = parts.join("\n\n").trim();
+  return joined || null;
+}
+
 /** CoT detail.color — common on data-feed / AVL injected markers (no __group). */
 function parseDetailColor(detail) {
   const node = detail?.color;
@@ -1186,6 +1220,7 @@ module.exports = {
   parseAffiliationFromType,
   parseTeamName,
   parseTeamColor,
+  parseRemarks,
   parseDetailColor,
   teamNameToColor,
   resolveMarkerDisplayColor,

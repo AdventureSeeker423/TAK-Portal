@@ -382,6 +382,7 @@
   let copyToastTimer = null;
   let defaultIconIds = {};
   const iconLoadPending = new Map();
+  const iconsKeepOriginal = new Set();
   const mapImageIdByKey = new Map();
   const iconIdByMapImageId = new Map();
 
@@ -489,10 +490,40 @@
     return false;
   }
 
+  function iconPreservesOriginalColors(source) {
+    try {
+      const w = source.width;
+      const h = source.height;
+      if (!w || !h) return false;
+      const canvas = document.createElement("canvas");
+      const sampleW = Math.min(w, 64);
+      const sampleH = Math.min(h, 64);
+      canvas.width = sampleW;
+      canvas.height = sampleH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return false;
+      ctx.drawImage(source, 0, 0, sampleW, sampleH);
+      const data = ctx.getImageData(0, 0, sampleW, sampleH).data;
+      const colors = new Set();
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] < 40) continue;
+        const key =
+          (data[i] >> 3) * 8192 + (data[i + 1] >> 3) * 64 + (data[i + 2] >> 3);
+        colors.add(key);
+        if (colors.size > 6) return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function markerIconTint(m) {
     if (!markerUsesMapIcon(m)) return null;
-    // Full-icon source-in tint destroys multi-color badge/letter icons (CFS, incidents).
-    return null;
+    const src = String(m.iconSource || "").toLowerCase();
+    if (src === "type2525b" || isAirCotType(m.type)) return null;
+    if (iconsKeepOriginal.has(String(m.iconId))) return null;
+    return markerDisplayColor(m);
   }
 
   function formatMarkerGroupNames(m) {
@@ -552,6 +583,19 @@
     const pendingKey = imageName;
     if (iconLoadPending.has(pendingKey)) return iconLoadPending.get(pendingKey);
 
+    function installLoadedIcon(source) {
+      let tint = tintHex;
+      if (tint && iconPreservesOriginalColors(source)) {
+        iconsKeepOriginal.add(String(iconId));
+        tint = null;
+      }
+      const finalImageName = registerMapImageId(iconId, tint);
+      const finalSource = tint ? tintIconSource(source, tint) : source;
+      return installMapImage(finalImageName, finalSource).then(function () {
+        if (finalImageName !== imageName) scheduleMapRefresh();
+      });
+    }
+
     const promise = fetch(iconApiUrl(iconId))
       .then(function (resp) {
         if (!resp.ok) throw new Error("icon " + resp.status);
@@ -562,16 +606,14 @@
           return new Promise(function (resolve, reject) {
             const img = new Image();
             img.onload = function () {
-              const src = tintHex ? tintIconSource(img, tintHex) : img;
-              installMapImage(imageName, src).then(resolve).catch(reject);
+              installLoadedIcon(img).then(resolve).catch(reject);
             };
             img.onerror = reject;
             img.src = URL.createObjectURL(blob);
           });
         }
         return createImageBitmap(blob).then(function (bitmap) {
-          const src = tintHex ? tintIconSource(bitmap, tintHex) : bitmap;
-          return installMapImage(imageName, src);
+          return installLoadedIcon(bitmap);
         });
       })
       .then(function () {
@@ -1050,7 +1092,13 @@
           8,
         ],
         "circle-color": ["get", "color"],
-        "circle-stroke-width": 0,
+        "circle-stroke-width": [
+          "case",
+          ["==", ["get", "selected"], true],
+          2,
+          1.5,
+        ],
+        "circle-stroke-color": "#ffffff",
         "circle-opacity": 1,
       },
     });
@@ -1065,8 +1113,8 @@
         "icon-size": [
           "case",
           ["==", ["get", "selected"], true],
-          0.72,
-          0.58,
+          0.82,
+          0.68,
         ],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
@@ -1189,9 +1237,13 @@
     }
     elDetailActions.hidden = false;
     const groupHtml = markerGroups(m)
-      .map((g) => '<span class="map-chip">' + escapeHtml(g) + "</span>")
+      .map(function (g) {
+        return '<span class="map-chip">' + escapeHtml(stripTakPrefix(g)) + "</span>";
+      })
       .join(" ");
+    const remarksText = m.remarks ? String(m.remarks).trim() : "";
     elDetail.innerHTML =
+      '<div class="map-detail-wrap">' +
       '<dl class="map-kv">' +
       "<dt>Callsign</dt><dd>" + escapeHtml(m.callsign) + "</dd>" +
       "<dt>UID</dt><dd>" + escapeHtml(m.uid) + "</dd>" +
@@ -1205,7 +1257,14 @@
       "<dt>Speed</dt><dd>" + (m.speed != null ? escapeHtml(String(m.speed)) : "—") + "</dd>" +
       "<dt>Stale</dt><dd>" + escapeHtml(m.stale || "—") + "</dd>" +
       "<dt>Updated</dt><dd>" + escapeHtml(m.updatedAt || "—") + "</dd>" +
-      "</dl>";
+      "</dl>" +
+      '<section class="map-remarks-section">' +
+      '<h3 class="map-remarks-title">Remarks</h3>' +
+      '<div class="map-remarks-box' +
+      (remarksText ? "" : " empty") +
+      '">' +
+      escapeHtml(remarksText || "No remarks.") +
+      "</div></section></div>";
   }
 
   function renderLayerList() {
@@ -1296,8 +1355,14 @@
     }
   }
 
+  function closeMapPopup() {
+    if (!popup) return;
+    popup.remove();
+    popup = null;
+  }
+
   function showPopup(m) {
-    if (popup) popup.remove();
+    closeMapPopup();
     if (!m) return;
     popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, offset: 12 })
       .setLngLat([m.lon, m.lat])
@@ -1331,7 +1396,7 @@
       if (selectedUid === uid) {
         selectedUid = null;
         renderDetail(null);
-        if (popup) popup.remove();
+        closeMapPopup();
       }
     }
     for (const m of msg.updates || []) {
@@ -1438,6 +1503,18 @@
     map.setStyle(withMapGlyphs(def.style));
   }
 
+  function onMapBackgroundClick(e) {
+    const layers = [];
+    if (map.getLayer(CIRCLE_LAYER)) layers.push(CIRCLE_LAYER);
+    if (map.getLayer(ICON_LAYER)) layers.push(ICON_LAYER);
+    if (map.getLayer(LABEL_LAYER)) layers.push(LABEL_LAYER);
+    if (layers.length) {
+      const hit = map.queryRenderedFeatures(e.point, { layers: layers });
+      if (hit && hit.length) return;
+    }
+    closeMapPopup();
+  }
+
   map.on("styleimagemissing", onStyleImageMissing);
 
   map.on("style.load", restoreMapAfterStyleChange);
@@ -1446,6 +1523,8 @@
     restoreMapAfterStyleChange();
     elZoom.textContent = map.getZoom().toFixed(1);
   });
+
+  map.on("click", onMapBackgroundClick);
 
   map.on("moveend", () => {
     elZoom.textContent = map.getZoom().toFixed(1);
@@ -1555,7 +1634,7 @@
     }
     if (ev.key === "Escape") {
       selectedUid = null;
-      if (popup) popup.remove();
+      closeMapPopup();
       renderList();
       renderDetail(null);
       syncMapSource();

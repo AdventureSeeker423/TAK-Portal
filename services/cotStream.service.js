@@ -156,6 +156,7 @@ function parseMarkerFromCoT(cot) {
       team,
       teamColor: mapMeta.parseTeamColor(detail),
       affiliation: mapMeta.parseAffiliationFromType(type),
+      remarks: mapMeta.parseRemarks(detail),
       updatedAt: new Date().toISOString(),
     };
 

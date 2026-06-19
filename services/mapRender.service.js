@@ -131,6 +131,7 @@ function toSlimMarker(marker) {
     updatedAt: marker.updatedAt,
     iconId: marker.iconId || null,
     iconSource: marker.iconSource || null,
+    remarks: marker.remarks || null,
   };
 }
 
