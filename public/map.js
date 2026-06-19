@@ -858,7 +858,7 @@
   const elBasemapLabel = document.getElementById("mapBasemapLabel");
   const elSearch = document.getElementById("mapSearch");
   const elLayerSearch = document.getElementById("mapLayerSearch");
-  const elFit = document.getElementById("mapFitBtn");
+  const elHudFit = document.getElementById("mapHudFit");
   const elBasemapSelect = document.getElementById("mapBasemapSelect");
   const elZulu = document.getElementById("mapZulu");
   const elOffline = document.getElementById("mapOfflineBanner");
@@ -1820,6 +1820,12 @@
     '<path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a3 3 0 0 0-6 0z"></path>' +
     "</svg>";
 
+  const CLOSE_ICON =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M18 6 6 18"></path>' +
+    '<path d="m6 6 12 12"></path>' +
+    "</svg>";
+
   const detailAgeTimers = new Map();
 
   function clearDetailAgeTimer(uid) {
@@ -1970,7 +1976,9 @@
       PIN_ICON +
       "</button>" +
       '<h2 class="map-detail-title">Details</h2>' +
-      '<button type="button" class="map-panel-collapse map-detail-close-btn" title="Close details">›</button>' +
+      '<button type="button" class="map-detail-close-btn" title="Close details" aria-label="Close details">' +
+      CLOSE_ICON +
+      "</button>" +
       "</div>" +
       '<div class="map-detail-body"></div>' +
       '<div class="map-detail-actions">' +
@@ -2815,10 +2823,20 @@
     renderList();
   });
 
-  elFit.addEventListener("click", () => {
+  function triggerFitVisible() {
     if (lockedUid) clearLock();
     fitVisibleMarkers(true);
-  });
+  }
+
+  if (elHudFit) {
+    elHudFit.addEventListener("click", triggerFitVisible);
+    elHudFit.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        triggerFitVisible();
+      }
+    });
+  }
 
   document.querySelectorAll(".map-tab").forEach((tab) => {
     tab.addEventListener("click", () => {

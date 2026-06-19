@@ -33,7 +33,13 @@
       </div>
 
       <header class="map-hud">
-        <div class="map-hud-title">
+        <div
+          class="map-hud-title map-hud-fit-trigger"
+          id="mapHudFit"
+          role="button"
+          tabindex="0"
+          title="Fit visible markers"
+        >
           <% if (typeof brandLogoUrl !== "undefined" && brandLogoUrl) { %>
             <img src="<%= brandLogoUrl %>" alt="" class="map-hud-logo" />
           <% } %>
@@ -49,7 +55,6 @@
             <span id="mapConnLabel">Connecting</span>
           </div>
           <select class="map-select" id="mapBasemapSelect" title="Basemap"></select>
-          <button type="button" class="map-btn" id="mapFitBtn">Fit visible</button>
           <a class="map-btn" href="/dashboard">Dashboard</a>
         </div>
       </header>

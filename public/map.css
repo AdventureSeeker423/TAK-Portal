@@ -80,6 +80,29 @@ body {
   min-width: 0;
 }
 
+.map-hud-fit-trigger {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 4px 8px 4px 4px;
+  margin: -4px 0 -4px -4px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.map-hud-fit-trigger:hover {
+  opacity: 0.92;
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.map-hud-fit-trigger:focus-visible {
+  outline: 2px solid var(--map-accent);
+  outline-offset: 2px;
+}
+
 .map-hud-logo {
   max-height: 28px;
   width: auto;
@@ -354,6 +377,30 @@ body {
   color: var(--map-accent);
   background: var(--map-accent-dim);
   border-color: rgba(34, 211, 238, 0.35);
+}
+
+.map-detail-close-btn {
+  appearance: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--map-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.map-detail-close-btn:hover {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
 .map-panel-right.is-resizing {
