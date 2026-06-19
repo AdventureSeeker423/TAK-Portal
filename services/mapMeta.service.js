@@ -38,14 +38,89 @@ function isMapChannelGroupName(name) {
 function channelGroupKey(name) {
   const n = normalizeGroupName(name).toLowerCase();
   if (!n || n === UNASSIGNED_GROUP.toLowerCase()) return "";
-  return n.startsWith("tak_") ? n.slice(4) : n;
+  return channelBaseKey(name);
+}
+
+/** Strip tak_ prefix and _READ/_WRITE behavior suffix for one logical channel. */
+function stripChannelBehaviorSuffix(name) {
+  let n = dataSyncAccess.takDisplayName(name);
+  const lower = n.toLowerCase();
+  if (lower.endsWith("_read")) return n.slice(0, -5).trim();
+  if (lower.endsWith("_write")) return n.slice(0, -6).trim();
+  return n;
+}
+
+function channelBaseKey(name) {
+  const base = stripChannelBehaviorSuffix(name);
+  if (!base || base.toLowerCase() === UNASSIGNED_GROUP.toLowerCase()) return "";
+  return base.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function channelCatalogName(baseDisplay) {
+  const label = String(baseDisplay || "").trim();
+  if (!label) return "";
+  return groupsSvc.ensureTakPrefix(label);
+}
+
+function consolidateChannelCatalog(ldapNames) {
+  /** @type {Map<string, { baseKey: string, displayName: string, name: string, ldapNames: string[] }>} */
+  const byBase = new Map();
+
+  for (const raw of ldapNames) {
+    const ldapName = normalizeGroupName(raw);
+    if (!isMapChannelGroupName(ldapName)) continue;
+
+    const baseKey = channelBaseKey(ldapName);
+    if (!baseKey) continue;
+
+    const displayName = stripChannelBehaviorSuffix(ldapName);
+    let entry = byBase.get(baseKey);
+    if (!entry) {
+      entry = {
+        baseKey,
+        displayName,
+        name: channelCatalogName(displayName),
+        ldapNames: [ldapName],
+      };
+      byBase.set(baseKey, entry);
+      continue;
+    }
+
+    entry.ldapNames.push(ldapName);
+    const lower = displayName.toLowerCase();
+    const currentLower = entry.displayName.toLowerCase();
+    const entryHasSuffix =
+      currentLower.endsWith("_read") || currentLower.endsWith("_write");
+    const nextHasSuffix = lower.endsWith("_read") || lower.endsWith("_write");
+    if (entryHasSuffix && !nextHasSuffix) {
+      entry.displayName = displayName;
+      entry.name = channelCatalogName(displayName);
+    } else if (!entryHasSuffix && !nextHasSuffix) {
+      const entryAllLower = entry.displayName === currentLower;
+      const nextAllLower = displayName === lower;
+      if (entryAllLower && !nextAllLower) {
+        entry.displayName = displayName;
+        entry.name = channelCatalogName(displayName);
+      } else if (!entryAllLower && !nextAllLower && displayName.length > entry.displayName.length) {
+        entry.displayName = displayName;
+        entry.name = channelCatalogName(displayName);
+      }
+    } else if (displayName.length > entry.displayName.length && !nextHasSuffix) {
+      entry.displayName = displayName;
+      entry.name = channelCatalogName(displayName);
+    }
+  }
+
+  return Array.from(byBase.values()).sort((a, b) =>
+    a.displayName.localeCompare(b.displayName)
+  );
 }
 
 function toChannelGroupName(name) {
   const n = normalizeGroupName(name);
   if (!n || n === UNASSIGNED_GROUP) return null;
-  if (isMapChannelGroupName(n)) return n;
-  return groupsSvc.ensureTakPrefix(n);
+  const display = stripChannelBehaviorSuffix(isMapChannelGroupName(n) ? n : groupsSvc.ensureTakPrefix(n));
+  return channelCatalogName(display);
 }
 
 function subscriptionGroupsToNames(sub) {
@@ -231,8 +306,8 @@ function buildGroupsCatalogWithCounts(markers) {
     const groups = Array.isArray(m.groups) && m.groups.length ? m.groups : [UNASSIGNED_GROUP];
     for (const g of groups) {
       const channelName = toChannelGroupName(g);
-      if (!channelName || !isMapChannelGroupName(channelName)) continue;
-      const key = channelGroupKey(channelName);
+      if (!channelName) continue;
+      const key = channelBaseKey(channelName);
       if (!key) continue;
       counts.set(key, (counts.get(key) || 0) + 1);
     }
@@ -241,22 +316,23 @@ function buildGroupsCatalogWithCounts(markers) {
   const seen = new Set();
   const groups = [];
 
-  for (const name of catalogCache.names) {
-    if (!isMapChannelGroupName(name)) continue;
-    seen.add(name);
+  for (const entry of consolidateChannelCatalog(catalogCache.names)) {
+    seen.add(entry.baseKey);
     groups.push({
-      name,
-      displayName: dataSyncAccess.takDisplayName(name) || name,
-      markerCount: counts.get(channelGroupKey(name)) || 0,
+      name: entry.name,
+      displayName: entry.displayName,
+      baseKey: entry.baseKey,
+      markerCount: counts.get(entry.baseKey) || 0,
     });
   }
 
-  for (const [key, count] of counts.entries()) {
-    const name = groupsSvc.ensureTakPrefix(key);
-    if (!isMapChannelGroupName(name) || seen.has(name)) continue;
+  for (const [baseKey, count] of counts.entries()) {
+    if (seen.has(baseKey)) continue;
+    const displayName = stripChannelBehaviorSuffix(groupsSvc.ensureTakPrefix(baseKey));
     groups.push({
-      name,
-      displayName: dataSyncAccess.takDisplayName(name) || name,
+      name: channelCatalogName(displayName),
+      displayName,
+      baseKey,
       markerCount: count,
     });
   }
@@ -287,6 +363,8 @@ module.exports = {
   UNASSIGNED_GROUP,
   isMapChannelGroupName,
   channelGroupKey,
+  channelBaseKey,
+  stripChannelBehaviorSuffix,
   ensureRefreshLoop,
   parseGroupsFromCoTDetail,
   parseAffiliationFromType,

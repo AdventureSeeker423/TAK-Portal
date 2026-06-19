@@ -197,20 +197,28 @@
         if (!resp.ok) throw new Error("icon " + resp.status);
         return resp.blob();
       })
-      .then(
-        (blob) =>
-          new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = reject;
-            img.src = URL.createObjectURL(blob);
-          })
-      )
-      .then((img) => {
-        if (!map.hasImage(iconId)) {
-          map.addImage(iconId, img, { pixelRatio: 2 });
+      .then((blob) => {
+        if (typeof createImageBitmap === "function") {
+          return createImageBitmap(blob).then((bitmap) => {
+            if (!map.hasImage(iconId)) map.addImage(iconId, bitmap, { pixelRatio: 2 });
+          });
         }
-        URL.revokeObjectURL(img.src);
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              if (!map.hasImage(iconId)) map.addImage(iconId, img, { pixelRatio: 2 });
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          };
+          img.onerror = reject;
+          img.src = URL.createObjectURL(blob);
+        });
+      })
+      .then(() => {
+        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
       })
       .catch(() => {})
       .finally(() => {
@@ -299,6 +307,18 @@
     } catch (_) {
       return null;
     }
+  }
+
+  function normalizeEnabledGroups(set) {
+    if (!set) return set;
+    const out = new Set();
+    for (const name of set) {
+      const key = channelGroupKey(name);
+      if (!key) continue;
+      const match = groupsCatalog.find((g) => channelGroupKey(g.name) === key);
+      out.add(match ? match.name : name);
+    }
+    return out.size ? out : null;
   }
 
   function saveEnabledGroups() {
@@ -392,15 +412,23 @@
     return n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
   }
 
+  function stripChannelBehaviorSuffix(name) {
+    let n = stripTakPrefix(name);
+    const lower = n.toLowerCase();
+    if (lower.endsWith("_read")) n = n.slice(0, -5);
+    else if (lower.endsWith("_write")) n = n.slice(0, -6);
+    return n.trim();
+  }
+
   function isMapChannelName(name) {
     const n = String(name || "").trim();
     return n.toLowerCase().startsWith("tak_") && !n.startsWith("_");
   }
 
   function channelGroupKey(name) {
-    const n = String(name || "").trim().toLowerCase();
-    if (!n || n === "unassigned") return "";
-    return n.startsWith("tak_") ? n.slice(4) : n;
+    const base = stripChannelBehaviorSuffix(name);
+    if (!base || base.toLowerCase() === "unassigned") return "";
+    return base.toLowerCase().replace(/\s+/g, " ").trim();
   }
 
   function markerChannelKeys(m) {
@@ -461,28 +489,24 @@
   }
 
   function mergeGroupsCatalog(incoming) {
-    const byName = new Map();
-    for (const g of groupsCatalog) byName.set(g.name, g);
+    const byKey = new Map();
+    for (const g of groupsCatalog) {
+      const key = channelGroupKey(g.name);
+      if (key) byKey.set(key, g);
+    }
     for (const g of incoming || []) {
       if (!isMapChannelName(g.name)) continue;
-      byName.set(g.name, { ...byName.get(g.name), ...g });
+      const key = channelGroupKey(g.name);
+      if (!key) continue;
+      byKey.set(key, { ...byKey.get(key), ...g, name: g.name });
     }
-    for (const m of markersByUid.values()) {
-      for (const gn of markerGroups(m)) {
-        if (!isMapChannelName(gn)) continue;
-        if (!byName.has(gn)) {
-          byName.set(gn, {
-            name: gn,
-            displayName: stripTakPrefix(gn),
-            markerCount: 0,
-          });
-        }
-      }
-    }
-    groupsCatalog = Array.from(byName.values()).sort((a, b) =>
-      String(a.displayName || a.name).localeCompare(String(b.displayName || b.name))
+    groupsCatalog = Array.from(byKey.values()).sort((a, b) =>
+      String(a.displayName || stripChannelBehaviorSuffix(a.name)).localeCompare(
+        String(b.displayName || stripChannelBehaviorSuffix(b.name))
+      )
     );
     recomputeGroupCounts();
+    enabledGroups = normalizeEnabledGroups(enabledGroups);
     ensureDefaultGroupsEnabled();
   }
 
@@ -525,7 +549,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: ["all", MARKER_FILTER, ["==", ["get", "iconId"], ""]],
+      filter: MARKER_FILTER,
       paint: {
         "circle-radius": [
           "case",
@@ -555,7 +579,7 @@
         ],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
-        "icon-optional": false,
+        "icon-optional": true,
       },
       paint: {
         "icon-opacity": ["get", "opacity"],
@@ -801,7 +825,7 @@
         (checked ? "checked" : "") +
         " />" +
         '<span class="map-layer-name">' +
-        escapeHtml(g.displayName || g.name) +
+        escapeHtml(g.displayName || stripChannelBehaviorSuffix(g.name)) +
         "</span>" +
         '<span class="map-layer-count">' +
         String(g.markerCount || 0) +
