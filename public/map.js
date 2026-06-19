@@ -445,18 +445,30 @@
     };
   }
 
+  /**
+   * Luminance-preserving tint (canvas "color" blend): team/feed color on bright
+   * areas while dark detail (letters, linework) stays visible. Works for silhouettes,
+   * badge icons, and 2525 symbology without per-type skips.
+   */
   function tintIconSource(source, tintHex) {
     const rgb = hexToRgb(tintHex);
     if (!rgb || !source) return source;
+    const w = source.width;
+    const h = source.height;
+    if (!w || !h) return source;
     const canvas = document.createElement("canvas");
-    canvas.width = source.width;
-    canvas.height = source.height;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) return source;
+
     ctx.drawImage(source, 0, 0);
-    ctx.globalCompositeOperation = "source-in";
+    ctx.globalCompositeOperation = "color";
     ctx.fillStyle = tintHex;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.drawImage(source, 0, 0);
+
     return canvas;
   }
 
@@ -488,15 +500,8 @@
     return false;
   }
 
-  function markerSkipIconTint(m) {
-    if (!m) return true;
-    return String(m.uid || "").startsWith("incident-");
-  }
-
   function markerIconTint(m) {
-    if (!markerUsesMapIcon(m) || markerSkipIconTint(m)) return null;
-    const src = String(m.iconSource || "").toLowerCase();
-    if (src === "type2525b" || isAirCotType(m.type)) return null;
+    if (!markerUsesMapIcon(m)) return null;
     return markerDisplayColor(m);
   }
 
