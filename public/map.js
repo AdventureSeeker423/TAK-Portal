@@ -15,6 +15,7 @@
   };
 
   const MAP_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
+  const MAP_LABEL_FONT = ["Open Sans Semibold"];
   const MARKER_FILTER = ["==", ["get", "kind"], "marker"];
 
   function withMapGlyphs(style) {
@@ -865,7 +866,7 @@
       filter: MARKER_FILTER,
       layout: {
         "text-field": ["get", "callsign"],
-        "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+        "text-font": MAP_LABEL_FONT,
         "text-size": 11,
         "text-anchor": "bottom",
         "text-offset": [0, -1.35],
