@@ -1446,7 +1446,7 @@
     const limit = maxResults == null ? GO_TO_CONTACT_LIMIT : maxResults;
     const q = String(query || "").trim().toLowerCase();
     if (!q) return [];
-    const all = Array.from(markersByUid.values());
+    const all = getVisibleMarkers();
     const scored = [];
     for (let i = 0; i < all.length; i++) {
       const m = all[i];
@@ -1508,6 +1508,12 @@
     goToGeocodeSeq++;
   }
 
+  function refreshGoToIfOpen() {
+    if (goToPaletteOpen && elGoToInput) {
+      updateGoToResults(elGoToInput.value);
+    }
+  }
+
   function flattenGoToResults(contacts, coordResult, addresses) {
     const out = contacts.slice();
     if (coordResult) out.push(coordResult);
@@ -1519,67 +1525,45 @@
 
   function fillGoToMarkerPreview(container, m) {
     container.innerHTML = "";
-    if (markerUsesMapIcon(m)) {
-      const img = document.createElement("img");
-      img.className = "map-goto-marker-icon";
-      img.alt = "";
-      img.decoding = "async";
-      img.addEventListener("error", function () {
-        const dot = document.createElement("span");
-        dot.className = "map-aff-dot map-goto-marker-dot";
-        dot.style.cssText = markerDotStyle(m);
-        if (img.parentNode === container) {
-          img.replaceWith(dot);
-        }
-      });
-      container.appendChild(img);
-      hydrateGoToMarkerPreviewImg(img, m);
+
+    function showDot() {
+      container.innerHTML = "";
+      const dot = document.createElement("span");
+      dot.className = "map-aff-dot map-goto-marker-dot";
+      dot.style.cssText = markerDotStyle(m);
+      container.appendChild(dot);
+    }
+
+    if (!markerUsesMapIcon(m)) {
+      showDot();
       return;
     }
-    const dot = document.createElement("span");
-    dot.className = "map-aff-dot map-goto-marker-dot";
-    dot.style.cssText = markerDotStyle(m);
-    container.appendChild(dot);
-  }
 
-  function hydrateGoToMarkerPreviewImg(img, m) {
     const apiIconId = String(m.iconId);
-    const baseMapImageId = registerMapImageId(apiIconId);
+    const img = document.createElement("img");
+    img.className = "map-goto-marker-icon";
+    img.alt = "";
+    img.src = iconApiUrl(apiIconId);
+    img.addEventListener("error", showDot);
+    container.appendChild(img);
+
     const color = markerDisplayColor(m);
+    if (!color || iconSkipsRecolor(m, apiIconId)) return;
 
-    function applyImageData(imageData) {
-      if (!imageData || !img.isConnected) return;
-      img.src = imageDataToDataUrl(imageData);
-    }
-
-    if (color && !iconSkipsRecolor(m, apiIconId)) {
-      const cached = buildColoredImageData(baseMapImageId, color);
-      if (cached) {
-        applyImageData(cached);
-        return;
-      }
-      loadColoredMapIcon(apiIconId, baseMapImageId, color)
-        .then(function () {
-          applyImageData(buildColoredImageData(baseMapImageId, color));
-        })
-        .catch(function () {
-          img.src = iconApiUrl(apiIconId);
-        });
-      return;
-    }
-
-    const base = baseIconPixelCache.get(baseMapImageId);
-    if (base) {
-      applyImageData(base);
-      return;
-    }
-
-    loadMapIcon(apiIconId, baseMapImageId)
-      .then(function () {
-        applyImageData(baseIconPixelCache.get(baseMapImageId));
+    fetch(iconApiUrl(apiIconId))
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("icon " + resp.status);
+        return resp.blob();
+      })
+      .then(decodeIconBlob)
+      .then(function (imageData) {
+        if (!img.isConnected) return;
+        const tinted = cloneImageData(imageData);
+        recolorWhitePixels(tinted, color);
+        img.src = imageDataToDataUrl(tinted);
       })
       .catch(function () {
-        img.src = iconApiUrl(apiIconId);
+        /* keep untinted API icon */
       });
   }
 
@@ -1796,12 +1780,22 @@
   }
 
   async function fetchGoToAddressResults(query) {
-    const r = await fetch(
+    let url =
       "/api/map/geocode?q=" +
-        encodeURIComponent(String(query || "").trim()) +
-        "&limit=" +
-        GO_TO_ADDRESS_LIMIT
-    );
+      encodeURIComponent(String(query || "").trim()) +
+      "&limit=" +
+      GO_TO_ADDRESS_LIMIT;
+    if (map && typeof map.getCenter === "function") {
+      const center = map.getCenter();
+      if (center && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
+        url +=
+          "&nearLat=" +
+          encodeURIComponent(String(center.lat)) +
+          "&nearLon=" +
+          encodeURIComponent(String(center.lng));
+      }
+    }
+    const r = await fetch(url);
     if (r.status === 404) return [];
     if (!r.ok) {
       let msg = "Address lookup failed";
@@ -3423,6 +3417,7 @@
         saveEnabledGroups();
         renderLayerList();
         syncMapSource();
+        refreshGoToIfOpen();
       });
       elLayerList.appendChild(row);
     }
@@ -3829,6 +3824,7 @@
     saveEnabledGroups();
     renderLayerList();
     syncMapSource();
+    refreshGoToIfOpen();
   });
 
   document.getElementById("mapGroupsNone").addEventListener("click", () => {
@@ -3836,6 +3832,7 @@
     saveEnabledGroups();
     renderLayerList();
     syncMapSource();
+    refreshGoToIfOpen();
   });
 
   function triggerFitVisible() {

@@ -11,6 +11,7 @@ const { getString } = require("./env");
 
 const FETCH_TIMEOUT_MS = 9000;
 const USER_AGENT = "TAK-Portal/1.0 (live map geocoding)";
+const PROVIDER_FETCH_LIMIT = 10;
 
 /** Rough CONUS bbox bias for OSM providers (Alaska/Hawaii still allowed via country filter). */
 const US_PHOTON_BBOX = "-125.0,24.0,-66.0,49.5";
@@ -62,7 +63,35 @@ function dedupeKey(hit) {
   );
 }
 
-function mergeHits(lists, limit) {
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * toRad) *
+      Math.cos(lat2 * toRad) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function sortHits(hits, options = {}) {
+  const nearLat = Number(options.nearLat);
+  const nearLon = Number(options.nearLon);
+  const hasNear = Number.isFinite(nearLat) && Number.isFinite(nearLon);
+
+  return hits.slice().sort(function (a, b) {
+    if (hasNear) {
+      const da = haversineKm(nearLat, nearLon, a.lat, a.lon);
+      const db = haversineKm(nearLat, nearLon, b.lat, b.lon);
+      if (Math.abs(da - db) > 0.05) return da - db;
+    }
+    return b.score - a.score || a.label.localeCompare(b.label);
+  });
+}
+
+function mergeHits(lists, limit, options = {}) {
   const best = new Map();
   for (const list of lists) {
     if (!Array.isArray(list)) continue;
@@ -76,10 +105,7 @@ function mergeHits(lists, limit) {
       }
     }
   }
-  return Array.from(best.values())
-    .sort(function (a, b) {
-      return b.score - a.score || a.label.localeCompare(b.label);
-    })
+  return sortHits(Array.from(best.values()), options)
     .slice(0, limit)
     .map(function (hit) {
       return { lat: hit.lat, lon: hit.lon, label: hit.label, source: hit.source };
@@ -95,7 +121,68 @@ function isUnitedStatesHit(countryCode, countryName) {
   return cn === "united states" || cn === "united states of america";
 }
 
-async function searchGeocodio(query, limit) {
+function expandStreetAbbreviations(query) {
+  return String(query || "")
+    .replace(/\s+/g, " ")
+    .replace(/\bst\b\.?(?=\s|,|$)/gi, "Street")
+    .replace(/\bave\b\.?(?=\s|,|$)/gi, "Avenue")
+    .replace(/\bblvd\b\.?(?=\s|,|$)/gi, "Boulevard")
+    .replace(/\bdr\b\.?(?=\s|,|$)/gi, "Drive")
+    .replace(/\brd\b\.?(?=\s|,|$)/gi, "Road")
+    .replace(/\bln\b\.?(?=\s|,|$)/gi, "Lane")
+    .replace(/\bct\b\.?(?=\s|,|$)/gi, "Court")
+    .replace(/\bpl\b\.?(?=\s|,|$)/gi, "Place")
+    .replace(/\bpkwy\b\.?(?=\s|,|$)/gi, "Parkway")
+    .replace(/\bhwy\b\.?(?=\s|,|$)/gi, "Highway")
+    .trim();
+}
+
+function buildQueryVariants(query) {
+  const base = String(query || "").trim().replace(/\s+/g, " ");
+  if (!base) return [];
+
+  const variants = new Set([base]);
+  const expanded = expandStreetAbbreviations(base);
+  if (expanded) variants.add(expanded);
+
+  const cityStateSuffix = function (text, city, state) {
+    const re = new RegExp("\\b" + city + "\\b", "i");
+    if (re.test(text) && !new RegExp("\\b(" + state + "|tennessee|tn)\\b", "i").test(text)) {
+      variants.add(text.replace(re, city + ", " + state));
+    }
+  };
+
+  cityStateSuffix(base, "Chattanooga", "TN");
+  cityStateSuffix(expanded, "Chattanooga", "TN");
+
+  const commaMatch = base.match(/^(\d+\s+[^,]+?)\s+([A-Za-z .'-]+)$/);
+  if (commaMatch && !base.includes(",")) {
+    variants.add(commaMatch[1].trim() + ", " + commaMatch[2].trim());
+    variants.add(commaMatch[1].trim() + ", " + commaMatch[2].trim() + ", TN");
+  }
+
+  return Array.from(variants);
+}
+
+function nearOptions(options = {}) {
+  const nearLat = Number(options.nearLat);
+  const nearLon = Number(options.nearLon);
+  if (!Number.isFinite(nearLat) || !Number.isFinite(nearLon)) {
+    return null;
+  }
+  return { lat: nearLat, lon: nearLon };
+}
+
+function nominatimViewbox(near) {
+  const delta = 0.85;
+  const left = near.lon - delta;
+  const right = near.lon + delta;
+  const top = near.lat + delta;
+  const bottom = near.lat - delta;
+  return left + "," + top + "," + right + "," + bottom;
+}
+
+async function searchGeocodio(query, limit, near) {
   const apiKey = geocodioApiKey();
   if (!apiKey) return [];
 
@@ -103,6 +190,10 @@ async function searchGeocodio(query, limit) {
   url.searchParams.set("q", query);
   url.searchParams.set("api_key", apiKey);
   url.searchParams.set("limit", String(Math.max(limit, 5)));
+  if (near) {
+    url.searchParams.set("lat", String(near.lat));
+    url.searchParams.set("lon", String(near.lon));
+  }
 
   const data = await fetchJson(url.toString());
   const rows = Array.isArray(data?.results) ? data.results : [];
@@ -194,7 +285,7 @@ async function searchCensus(query, limit) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const label = String(row?.matchedAddress || query).trim();
     const score =
-      String(row?.matchCode || "").toUpperCase() === "Exact" ? 88 : 82;
+      String(row?.matchCode || "").toUpperCase() === "Exact" ? 92 : 86;
     out.push({ lat, lon, label, source: "census", score });
     if (out.length >= limit) break;
   }
@@ -204,6 +295,13 @@ async function searchCensus(query, limit) {
 
 function photonLabel(props) {
   if (!props || typeof props !== "object") return "";
+  if (props.housenumber && props.street) {
+    return (
+      [props.housenumber, props.street, props.city, props.state, props.postcode]
+        .filter(Boolean)
+        .join(", ")
+    );
+  }
   if (props.name && props.city && props.state) {
     return props.name + ", " + props.city + ", " + props.state;
   }
@@ -228,12 +326,16 @@ function photonLabel(props) {
     .join(", ");
 }
 
-async function searchPhoton(query, limit) {
+async function searchPhoton(query, limit, near) {
   const url = new URL("https://photon.komoot.io/api/");
   url.searchParams.set("q", query);
   url.searchParams.set("limit", String(Math.max(limit, 5)));
   url.searchParams.set("lang", "en");
   url.searchParams.set("bbox", US_PHOTON_BBOX);
+  if (near) {
+    url.searchParams.set("lat", String(near.lat));
+    url.searchParams.set("lon", String(near.lon));
+  }
 
   const data = await fetchJson(url.toString());
   const features = Array.isArray(data?.features) ? data.features : [];
@@ -253,7 +355,8 @@ async function searchPhoton(query, limit) {
       continue;
     }
     const label = photonLabel(props).trim() || query;
-    const score = 70 - Math.min(10, Number(props.importance || 0) * 10);
+    let score = 72 - Math.min(10, Number(props.importance || 0) * 10);
+    if (props.housenumber && props.street) score += 8;
     out.push({ lat, lon, label, source: "photon", score });
     if (out.length >= limit) break;
   }
@@ -261,13 +364,17 @@ async function searchPhoton(query, limit) {
   return out;
 }
 
-async function searchNominatim(query, limit) {
+async function searchNominatim(query, limit, near) {
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("format", "json");
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("countrycodes", "us");
   url.searchParams.set("limit", String(Math.max(limit, 5)));
   url.searchParams.set("q", query);
+  if (near) {
+    url.searchParams.set("viewbox", nominatimViewbox(near));
+    url.searchParams.set("bounded", "0");
+  }
 
   const data = await fetchJson(url.toString());
   if (!Array.isArray(data)) return [];
@@ -286,7 +393,8 @@ async function searchNominatim(query, limit) {
     }
     const label = String(row.display_name || query).trim();
     const importance = Number(row.importance);
-    const score = 55 + (Number.isFinite(importance) ? importance * 10 : 0);
+    let score = 58 + (Number.isFinite(importance) ? importance * 10 : 0);
+    if (row.type === "house" || row.class === "building") score += 10;
     out.push({ lat, lon, label, source: "nominatim", score });
     if (out.length >= limit) break;
   }
@@ -299,21 +407,45 @@ async function geocodeSearch(query, options = {}) {
   const limit = Math.min(10, Math.max(1, Number(options.limit) || 5));
   if (!q) return [];
 
-  const tasks = [searchCensus(q, limit), searchPhoton(q, limit), searchNominatim(q, limit)];
+  const near = nearOptions(options);
+  const variants = buildQueryVariants(q);
+  const lists = [];
+  const providerLimit = Math.max(limit, PROVIDER_FETCH_LIMIT);
+
   if (geocodioApiKey()) {
-    tasks.unshift(searchGeocodio(q, limit));
+    lists.push(await searchGeocodio(q, providerLimit, near).catch(function () {
+      return [];
+    }));
   }
 
-  const settled = await Promise.allSettled(tasks);
-  const lists = settled
-    .filter(function (entry) {
-      return entry.status === "fulfilled";
-    })
-    .map(function (entry) {
-      return entry.value;
-    });
+  const censusTasks = variants.map(function (variant) {
+    return searchCensus(variant, providerLimit);
+  });
+  const censusResults = await Promise.allSettled(censusTasks);
+  for (const entry of censusResults) {
+    if (entry.status === "fulfilled" && Array.isArray(entry.value)) {
+      lists.push(entry.value);
+    }
+  }
 
-  return mergeHits(lists, limit);
+  const settled = await Promise.allSettled([
+    searchPhoton(q, providerLimit, near),
+    searchNominatim(q, providerLimit, near),
+    variants.length > 1
+      ? searchPhoton(variants[1], providerLimit, near)
+      : Promise.resolve([]),
+    variants.length > 1
+      ? searchNominatim(variants[1], providerLimit, near)
+      : Promise.resolve([]),
+  ]);
+
+  for (const entry of settled) {
+    if (entry.status === "fulfilled" && Array.isArray(entry.value)) {
+      lists.push(entry.value);
+    }
+  }
+
+  return mergeHits(lists, limit, options);
 }
 
 module.exports = {
@@ -321,4 +453,7 @@ module.exports = {
   mergeHits,
   normalizeHit,
   isUnitedStatesHit,
+  buildQueryVariants,
+  haversineKm,
+  sortHits,
 };

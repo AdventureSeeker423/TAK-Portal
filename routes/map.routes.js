@@ -146,8 +146,14 @@ router.get("/geocode", async (req, res) => {
   const q = String(req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "Missing q" });
   const limit = Math.min(10, Math.max(1, Number.parseInt(req.query.limit, 10) || 5));
+  const nearLat = Number.parseFloat(req.query.nearLat);
+  const nearLon = Number.parseFloat(req.query.nearLon);
   try {
-    const results = await geocode.geocodeSearch(q, { limit });
+    const results = await geocode.geocodeSearch(q, {
+      limit,
+      nearLat: Number.isFinite(nearLat) ? nearLat : undefined,
+      nearLon: Number.isFinite(nearLon) ? nearLon : undefined,
+    });
     if (!results.length) {
       return res.status(404).json({ error: "No results" });
     }
