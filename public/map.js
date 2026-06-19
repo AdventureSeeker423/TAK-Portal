@@ -477,7 +477,9 @@
 
   function isMapChannelName(name) {
     const n = String(name || "").trim();
-    return n.toLowerCase().startsWith("tak_") && !n.startsWith("_");
+    if (!n.toLowerCase().startsWith("tak_") || n.startsWith("_")) return false;
+    if (/^tak_cn=/i.test(n)) return false;
+    return true;
   }
 
   function channelGroupKey(name) {
@@ -740,11 +742,11 @@
 
   function markerGeoJsonFeature(m) {
     const color = markerDisplayColor(m);
-    const visible = markerVisible(m);
     const coords = [m.lon, m.lat];
     const features = [];
-    const iconId = visible ? resolveMarkerIconId(m) : "";
+    const iconId = resolveMarkerIconId(m);
     const mapImageId = iconId ? registerMapImageId(iconId) : "";
+    const opacity = markerOpacity(m);
 
     const pointFeature = {
       type: "Feature",
@@ -757,8 +759,8 @@
         affiliation: m.affiliation || "other",
         color,
         iconId: mapImageId,
-        opacity: visible ? markerOpacity(m) : 0,
-        labelOpacity: visible ? markerOpacity(m) : 0,
+        opacity,
+        labelOpacity: opacity,
         selected: m.uid === selectedUid,
         course: m.course,
       },
@@ -767,7 +769,7 @@
 
     if (iconId) loadMapIcon(iconId, mapImageId);
 
-    if (visible && Number.isFinite(m.course) && m.course >= 0) {
+    if (Number.isFinite(m.course) && m.course >= 0) {
       const rad = (m.course * Math.PI) / 180;
       const len = 0.02 / Math.max(map.getZoom(), 4);
       features.push({
@@ -792,6 +794,7 @@
     if (!src) return;
     const features = [];
     for (const m of markersByUid.values()) {
+      if (!markerVisible(m)) continue;
       features.push(...markerGeoJsonFeature(m));
     }
     src.setData({ type: "FeatureCollection", features });

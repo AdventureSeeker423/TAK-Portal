@@ -2,6 +2,7 @@
  * Map metadata: TAK Server group catalog + subscription index for marker enrichment.
  */
 const dataSyncAccess = require("./dataSyncAccess.service");
+const dataSyncSvc = require("./dataSync.service");
 const groupsSvc = require("./groups.service");
 const takMetrics = require("./takMetrics.service");
 const { isTakBypassed, isTakConfigured } = require("./tak.service");
@@ -18,11 +19,14 @@ let catalogCache = {
 let subscriptionIndex = {
   byCallsign: new Map(),
   byUsername: new Map(),
+  byUid: new Map(),
   fetchedAt: 0,
   error: null,
 };
 
 let refreshTimer = null;
+/** @type {Set<() => void>} */
+const subscriptionRefreshListeners = new Set();
 
 function normalizeGroupName(name) {
   return String(name || "").trim();
@@ -123,42 +127,187 @@ function toChannelGroupName(name) {
   return channelCatalogName(display);
 }
 
-function subscriptionGroupsToNames(sub) {
+function isTakChannelGroupName(name) {
+  const n = normalizeGroupName(name);
+  if (!n || n === UNASSIGNED_GROUP) return false;
+  if (n.startsWith("_")) return false;
+  if (/^cn=/i.test(n)) return false;
+  return true;
+}
+
+function isGroupActive(entry) {
+  if (!entry) return false;
+  if (entry.active === false || String(entry.active).toLowerCase() === "false") return false;
+  return true;
+}
+
+/**
+ * TAK Server: IN = publish (send CoT to group). Use publish groups when inferring
+ * which channel a marker is on from its sender's subscription.
+ */
+function subscriptionPublishGroups(sub) {
   const raw = Array.isArray(sub?.groups) ? sub.groups : [];
-  const names = new Set();
+  const publish = new Set();
+  const any = new Set();
+
   for (const g of raw) {
-    if (!g || g.active === false) continue;
+    if (!isGroupActive(g)) continue;
     const name = normalizeGroupName(g.name);
-    if (name) names.add(name);
+    if (!name || !isTakChannelGroupName(name)) continue;
+    any.add(name);
+    const dir = String(g.direction || "").trim().toUpperCase();
+    if (dir === "IN" || dir === "") publish.add(name);
   }
-  return Array.from(names);
+
+  const filterGroups = normalizeGroupName(sub.filterGroups || sub.filtergroups || "");
+  if (filterGroups) {
+    for (const part of filterGroups.split(/[,;]/)) {
+      const name = normalizeGroupName(part);
+      if (name && isTakChannelGroupName(name)) publish.add(name);
+    }
+  }
+
+  if (publish.size) return Array.from(publish);
+  return Array.from(any);
+}
+
+function appendFilterGroupNodes(node, names) {
+  if (node == null) return;
+  const list = Array.isArray(node) ? node : [node];
+  for (const item of list) {
+    if (typeof item === "string" || typeof item === "number") {
+      const n = normalizeGroupName(item);
+      if (n && isTakChannelGroupName(n)) names.add(n);
+      continue;
+    }
+    if (!item || typeof item !== "object") continue;
+    const attrs = item._attributes || item;
+    const n =
+      normalizeGroupName(attrs.name) ||
+      normalizeGroupName(attrs.group) ||
+      normalizeGroupName(attrs.value);
+    if (n && isTakChannelGroupName(n)) names.add(n);
+  }
+}
+
+function appendMartiDest(marti, names) {
+  if (!marti) return;
+  const dest = marti.dest;
+  const destList = Array.isArray(dest) ? dest : dest ? [dest] : [];
+  for (const d of destList) {
+    if (typeof d === "string" || typeof d === "number") {
+      const n = normalizeGroupName(d);
+      if (n && isTakChannelGroupName(n)) names.add(n);
+      continue;
+    }
+    const attrs = d?._attributes || d || {};
+    const n =
+      normalizeGroupName(attrs.callsign) ||
+      normalizeGroupName(attrs.name) ||
+      normalizeGroupName(attrs.group);
+    if (n && isTakChannelGroupName(n)) names.add(n);
+  }
+}
+
+function parseRelatedUids(detail) {
+  if (!detail || typeof detail !== "object") return [];
+  const uids = new Set();
+
+  const links = detail.link;
+  const linkList = Array.isArray(links) ? links : links ? [links] : [];
+  for (const link of linkList) {
+    const uid = normalizeGroupName(link?._attributes?.uid || link?.uid);
+    if (uid) uids.add(uid);
+  }
+
+  const creator = detail.creator?._attributes || detail.creator;
+  const creatorUid = normalizeGroupName(creator?.uid);
+  if (creatorUid) uids.add(creatorUid);
+
+  const endpoint = detail.contact?._attributes?.endpoint || "";
+  const endpointParts = String(endpoint).split(":");
+  const machineId = endpointParts[endpointParts.length - 1];
+  if (machineId && machineId.length > 4) uids.add(machineId);
+
+  return Array.from(uids);
 }
 
 function parseGroupsFromCoTDetail(detail) {
   if (!detail || typeof detail !== "object") return [];
   const names = new Set();
 
-  const marti = detail.marti;
-  if (marti) {
-    const dest = marti.dest;
-    const destList = Array.isArray(dest) ? dest : dest ? [dest] : [];
-    for (const d of destList) {
-      const attrs = d?._attributes || d || {};
-      const n =
-        normalizeGroupName(attrs.callsign) ||
-        normalizeGroupName(attrs.name) ||
-        normalizeGroupName(attrs.group);
-      if (n) names.add(n);
-    }
-    const martiAttrs = marti._attributes || {};
-    const martiGroup = normalizeGroupName(martiAttrs.group || martiAttrs.name);
-    if (martiGroup) names.add(martiGroup);
-  }
+  appendMartiDest(detail.marti, names);
+  appendFilterGroupNodes(detail.filtergroup, names);
+  appendFilterGroupNodes(detail.FilterGroup, names);
+  appendFilterGroupNodes(detail.filterGroup, names);
 
-  const flowTag = detail.flow_tag?._attributes?.group || detail.flow_tag?._attributes?.name;
-  if (flowTag) names.add(normalizeGroupName(flowTag));
+  const flowTag =
+    detail.flow_tag?._attributes?.group ||
+    detail.flow_tag?._attributes?.name ||
+    detail.flow_tag?._attributes?.value;
+  if (flowTag && isTakChannelGroupName(flowTag)) names.add(normalizeGroupName(flowTag));
 
   return Array.from(names).filter(Boolean);
+}
+
+function lookupSubscriptionGroupsByKey(key) {
+  const k = String(key || "").trim().toLowerCase();
+  if (!k) return [];
+  const idx = subscriptionIndex;
+  return (
+    idx.byUid.get(k) ||
+    idx.byCallsign.get(k) ||
+    idx.byUsername.get(k) ||
+    []
+  );
+}
+
+function resolveGroupsFromSubscription(marker) {
+  const keys = [];
+  const uid = String(marker?.uid || "").trim();
+  if (uid) keys.push(uid.toLowerCase());
+
+  const callsign = normalizeGroupName(marker?.callsign);
+  if (callsign) keys.push(callsign.toLowerCase());
+
+  const related = Array.isArray(marker?.relatedUids) ? marker.relatedUids : [];
+  for (const rel of related) {
+    const rk = String(rel || "").trim().toLowerCase();
+    if (rk) keys.push(rk);
+  }
+
+  const seen = new Set();
+  for (const key of keys) {
+    const groups = lookupSubscriptionGroupsByKey(key);
+    if (!groups.length) continue;
+    const out = [];
+    for (const g of groups) {
+      const name = normalizeGroupName(g);
+      const ck = channelBaseKey(name);
+      if (!name || !isTakChannelGroupName(name) || seen.has(ck)) continue;
+      seen.add(ck);
+      out.push(name);
+    }
+    if (out.length) return out;
+  }
+
+  return [UNASSIGNED_GROUP];
+}
+
+function notifySubscriptionIndexRefreshed() {
+  for (const fn of subscriptionRefreshListeners) {
+    try {
+      fn();
+    } catch (err) {
+      console.warn("[map-meta] subscription refresh listener failed:", err?.message || err);
+    }
+  }
+}
+
+function onSubscriptionIndexRefreshed(fn) {
+  if (typeof fn !== "function") return () => {};
+  subscriptionRefreshListeners.add(fn);
+  return () => subscriptionRefreshListeners.delete(fn);
 }
 
 function parseAffiliationFromType(type) {
@@ -209,9 +358,11 @@ async function refreshSubscriptionIndex() {
     subscriptionIndex = {
       byCallsign: new Map(),
       byUsername: new Map(),
+      byUid: new Map(),
       fetchedAt: Date.now(),
       error: isTakBypassed() ? "TAK bypass enabled" : "TAK not configured",
     };
+    notifySubscriptionIndexRefreshed();
     return subscriptionIndex;
   }
 
@@ -220,23 +371,38 @@ async function refreshSubscriptionIndex() {
     const list = Array.isArray(result?.data) ? result.data : [];
     const byCallsign = new Map();
     const byUsername = new Map();
+    const byUid = new Map();
 
     for (const sub of list) {
-      const groups = subscriptionGroupsToNames(sub);
+      const groups = subscriptionPublishGroups(sub);
       if (!groups.length) continue;
 
       const callsign = normalizeGroupName(sub.callsign);
       const username = normalizeGroupName(sub.username);
+      const uidFields = [
+        sub.uid,
+        sub.clientUid,
+        sub.clientUuid,
+        sub.connectionUid,
+        sub.deviceUid,
+      ];
+
       if (callsign) byCallsign.set(callsign.toLowerCase(), groups);
       if (username) byUsername.set(username.toLowerCase(), groups);
+      for (const rawUid of uidFields) {
+        const uid = normalizeGroupName(rawUid);
+        if (uid) byUid.set(uid.toLowerCase(), groups);
+      }
     }
 
     subscriptionIndex = {
       byCallsign,
       byUsername,
+      byUid,
       fetchedAt: Date.now(),
       error: null,
     };
+    notifySubscriptionIndexRefreshed();
   } catch (err) {
     subscriptionIndex = {
       ...subscriptionIndex,
@@ -260,13 +426,24 @@ async function refreshGroupCatalog() {
 
   try {
     const all = await groupsSvc.getAllGroups({ forceRefresh: false });
-    const names = (Array.isArray(all) ? all : [])
+    const ldapNames = (Array.isArray(all) ? all : [])
       .map((g) => normalizeGroupName(g?.name))
       .filter(isMapChannelGroupName);
+
+    let takNames = [];
+    try {
+      const takPayload = await dataSyncSvc.listGroupsAll();
+      takNames = dataSyncAccess
+        .extractTakGroupNameList(takPayload)
+        .map((n) => groupsSvc.ensureTakPrefix(n))
+        .filter(isMapChannelGroupName);
+    } catch (_) {}
+
+    const names = Array.from(new Set([...ldapNames, ...takNames])).sort((a, b) =>
+      dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
+    );
     catalogCache = {
-      names: Array.from(new Set(names)).sort((a, b) =>
-        dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
-      ),
+      names,
       fetchedAt: Date.now(),
       error: null,
     };
@@ -293,34 +470,13 @@ function ensureRefreshLoop() {
 }
 
 function resolveGroupsForMarker(marker, cotDetail) {
-  const fromCot = parseGroupsFromCoTDetail(cotDetail);
+  const fromCot = cotDetail
+    ? parseGroupsFromCoTDetail(cotDetail)
+    : Array.isArray(marker?.cotRouteGroups)
+      ? marker.cotRouteGroups
+      : [];
   if (fromCot.length) return fromCot;
-
-  const callsign = normalizeGroupName(marker?.callsign);
-  const uid = String(marker?.uid || "");
-  const idx = subscriptionIndex;
-
-  if (callsign) {
-    const byCs = idx.byCallsign.get(callsign.toLowerCase());
-    if (byCs?.length) return byCs;
-  }
-
-  const uidLower = uid.toLowerCase();
-  for (const [username, groups] of idx.byUsername.entries()) {
-    if (uidLower.includes(username) || username.includes(uidLower.split("-")[0])) {
-      return groups;
-    }
-  }
-
-  if (callsign) {
-    for (const [username, groups] of idx.byUsername.entries()) {
-      if (callsign.toLowerCase().includes(username) || username.includes(callsign.toLowerCase())) {
-        return groups;
-      }
-    }
-  }
-
-  return [UNASSIGNED_GROUP];
+  return resolveGroupsFromSubscription(marker);
 }
 
 function buildGroupsCatalogWithCounts(markers) {
@@ -380,6 +536,7 @@ function getSubscriptionIndexSnapshot() {
   return {
     callsignCount: subscriptionIndex.byCallsign.size,
     usernameCount: subscriptionIndex.byUsername.size,
+    uidCount: subscriptionIndex.byUid.size,
     fetchedAt: subscriptionIndex.fetchedAt,
     error: subscriptionIndex.error,
   };
@@ -393,6 +550,8 @@ module.exports = {
   stripChannelBehaviorSuffix,
   ensureRefreshLoop,
   parseGroupsFromCoTDetail,
+  parseRelatedUids,
+  onSubscriptionIndexRefreshed,
   parseAffiliationFromType,
   parseTeamColor,
   normalizeTakColor,

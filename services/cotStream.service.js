@@ -101,6 +101,8 @@ function parseMarkerFromCoT(cot) {
       updatedAt: new Date().toISOString(),
     };
 
+    base.relatedUids = mapMeta.parseRelatedUids(detail);
+    base.cotRouteGroups = mapMeta.parseGroupsFromCoTDetail(detail);
     base.groups = mapMeta.resolveGroupsForMarker(base, detail);
 
     const usericon = mapIcon.parseUserIcon(detail);
@@ -378,10 +380,27 @@ function subscribe(sendFn) {
   };
 }
 
+function refreshAllMarkerGroups() {
+  const at = new Date().toISOString();
+  for (const marker of markers.values()) {
+    const next = mapMeta.resolveGroupsForMarker(marker, null);
+    const prev = Array.isArray(marker.groups) ? marker.groups : [];
+    if (next.length === prev.length && next.every((g, i) => g === prev[i])) continue;
+    marker.groups = next;
+    marker.updatedAt = at;
+    broadcast({ type: "update", marker, at });
+  }
+}
+
+mapMeta.onSubscriptionIndexRefreshed(() => {
+  refreshAllMarkerGroups();
+});
+
 module.exports = {
   getStateSnapshot,
   getMarkerList,
   subscribe,
   ensureBridgeStarted,
   refreshAllMarkerIcons,
+  refreshAllMarkerGroups,
 };
