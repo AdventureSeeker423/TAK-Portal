@@ -23,9 +23,16 @@
     return "S" + m2525bAffiliation + m2525bBattleDim + "P" + m2525bFuncId + "-----";
   }
 
+  function resolveSymbolSidc(cotType, options) {
+    const opts = options || {};
+    const sidc2525D = String(opts.sidc2525D || "").trim();
+    if (/^\d{10,}$/.test(sidc2525D)) return sidc2525D;
+    return cotTypeTo2525B(cotType);
+  }
+
   function renderMilSymbolCanvas(cotType, options) {
-    if (!global.ms || !is2525Convertable(cotType)) return null;
-    const sidc = cotTypeTo2525B(cotType);
+    if (!global.ms) return null;
+    const sidc = resolveSymbolSidc(cotType, options);
     if (!sidc) return null;
 
     const opts = options || {};
@@ -46,6 +53,7 @@
   global.MapSymbology = {
     is2525Convertable,
     cotTypeTo2525B,
+    resolveSymbolSidc,
     renderMilSymbolCanvas,
   };
 })(typeof window !== "undefined" ? window : globalThis);

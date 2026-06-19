@@ -18,11 +18,14 @@ let catalogCache = {
 let subscriptionIndex = {
   byCallsign: new Map(),
   byUsername: new Map(),
+  byUid: new Map(),
   fetchedAt: 0,
   error: null,
 };
 
 let refreshTimer = null;
+/** @type {Set<() => void>} */
+const subscriptionRefreshListeners = new Set();
 
 function normalizeGroupName(name) {
   return String(name || "").trim();
@@ -123,11 +126,17 @@ function toChannelGroupName(name) {
   return channelCatalogName(display);
 }
 
-function subscriptionGroupsToNames(sub) {
+/**
+ * TAK Server / OpenTAKServer: IN = publish (send CoT to group), OUT = receive only.
+ * Map channel filters should reflect where traffic is published, not receive-only groups.
+ */
+function subscriptionPublishGroups(sub) {
   const raw = Array.isArray(sub?.groups) ? sub.groups : [];
   const names = new Set();
   for (const g of raw) {
     if (!g || g.active === false) continue;
+    const dir = String(g.direction || "").trim().toUpperCase();
+    if (dir === "OUT") continue;
     const name = normalizeGroupName(g.name);
     if (name) names.add(name);
   }
@@ -150,15 +159,35 @@ function parseGroupsFromCoTDetail(detail) {
         normalizeGroupName(attrs.group);
       if (n) names.add(n);
     }
-    const martiAttrs = marti._attributes || {};
-    const martiGroup = normalizeGroupName(martiAttrs.group || martiAttrs.name);
-    if (martiGroup) names.add(martiGroup);
   }
 
   const flowTag = detail.flow_tag?._attributes?.group || detail.flow_tag?._attributes?.name;
   if (flowTag) names.add(normalizeGroupName(flowTag));
 
   return Array.from(names).filter(Boolean);
+}
+
+function resolveGroupsFromSubscription(marker) {
+  const idx = subscriptionIndex;
+  const uidKey = String(marker?.uid || "").trim().toLowerCase();
+  const callsignKey = normalizeGroupName(marker?.callsign).toLowerCase();
+
+  if (uidKey) {
+    const byUid = idx.byUid.get(uidKey);
+    if (byUid?.length) return byUid;
+  }
+
+  if (callsignKey) {
+    const byCs = idx.byCallsign.get(callsignKey);
+    if (byCs?.length) return byCs;
+  }
+
+  if (uidKey) {
+    const byUser = idx.byUsername.get(uidKey);
+    if (byUser?.length) return byUser;
+  }
+
+  return [UNASSIGNED_GROUP];
 }
 
 function parseAffiliationFromType(type) {
@@ -209,9 +238,11 @@ async function refreshSubscriptionIndex() {
     subscriptionIndex = {
       byCallsign: new Map(),
       byUsername: new Map(),
+      byUid: new Map(),
       fetchedAt: Date.now(),
       error: isTakBypassed() ? "TAK bypass enabled" : "TAK not configured",
     };
+    notifySubscriptionIndexRefreshed();
     return subscriptionIndex;
   }
 
@@ -220,23 +251,28 @@ async function refreshSubscriptionIndex() {
     const list = Array.isArray(result?.data) ? result.data : [];
     const byCallsign = new Map();
     const byUsername = new Map();
+    const byUid = new Map();
 
     for (const sub of list) {
-      const groups = subscriptionGroupsToNames(sub);
+      const groups = subscriptionPublishGroups(sub);
       if (!groups.length) continue;
 
       const callsign = normalizeGroupName(sub.callsign);
       const username = normalizeGroupName(sub.username);
+      const uid = normalizeGroupName(sub.uid || sub.clientUid || sub.clientUuid);
       if (callsign) byCallsign.set(callsign.toLowerCase(), groups);
       if (username) byUsername.set(username.toLowerCase(), groups);
+      if (uid) byUid.set(uid.toLowerCase(), groups);
     }
 
     subscriptionIndex = {
       byCallsign,
       byUsername,
+      byUid,
       fetchedAt: Date.now(),
       error: null,
     };
+    notifySubscriptionIndexRefreshed();
   } catch (err) {
     subscriptionIndex = {
       ...subscriptionIndex,
@@ -292,35 +328,30 @@ function ensureRefreshLoop() {
   if (typeof refreshTimer.unref === "function") refreshTimer.unref();
 }
 
+function notifySubscriptionIndexRefreshed() {
+  for (const fn of subscriptionRefreshListeners) {
+    try {
+      fn();
+    } catch (err) {
+      console.warn("[map-meta] subscription refresh listener failed:", err?.message || err);
+    }
+  }
+}
+
+function onSubscriptionIndexRefreshed(fn) {
+  if (typeof fn !== "function") return () => {};
+  subscriptionRefreshListeners.add(fn);
+  return () => subscriptionRefreshListeners.delete(fn);
+}
+
 function resolveGroupsForMarker(marker, cotDetail) {
-  const fromCot = parseGroupsFromCoTDetail(cotDetail);
+  const fromCot = cotDetail
+    ? parseGroupsFromCoTDetail(cotDetail)
+    : Array.isArray(marker?.cotRouteGroups)
+      ? marker.cotRouteGroups
+      : [];
   if (fromCot.length) return fromCot;
-
-  const callsign = normalizeGroupName(marker?.callsign);
-  const uid = String(marker?.uid || "");
-  const idx = subscriptionIndex;
-
-  if (callsign) {
-    const byCs = idx.byCallsign.get(callsign.toLowerCase());
-    if (byCs?.length) return byCs;
-  }
-
-  const uidLower = uid.toLowerCase();
-  for (const [username, groups] of idx.byUsername.entries()) {
-    if (uidLower.includes(username) || username.includes(uidLower.split("-")[0])) {
-      return groups;
-    }
-  }
-
-  if (callsign) {
-    for (const [username, groups] of idx.byUsername.entries()) {
-      if (callsign.toLowerCase().includes(username) || username.includes(callsign.toLowerCase())) {
-        return groups;
-      }
-    }
-  }
-
-  return [UNASSIGNED_GROUP];
+  return resolveGroupsFromSubscription(marker);
 }
 
 function buildGroupsCatalogWithCounts(markers) {
@@ -380,6 +411,7 @@ function getSubscriptionIndexSnapshot() {
   return {
     callsignCount: subscriptionIndex.byCallsign.size,
     usernameCount: subscriptionIndex.byUsername.size,
+    uidCount: subscriptionIndex.byUid.size,
     fetchedAt: subscriptionIndex.fetchedAt,
     error: subscriptionIndex.error,
   };
@@ -397,6 +429,8 @@ module.exports = {
   parseTeamColor,
   normalizeTakColor,
   resolveGroupsForMarker,
+  resolveGroupsFromSubscription,
+  onSubscriptionIndexRefreshed,
   getTakGroupCatalog,
   refreshGroupCatalog,
   refreshSubscriptionIndex,

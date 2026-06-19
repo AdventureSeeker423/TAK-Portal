@@ -195,13 +195,21 @@
     return "/api/map/icons?id=" + encodeURIComponent(iconId);
   }
 
+  function milIconCacheKey(plan) {
+    if (plan.sidc2525D) return "mil:" + plan.sidc2525D;
+    return "mil:" + plan.cotType;
+  }
+
   function resolveMarkerIconPlan(m) {
-    const customSources = new Set(["path", "usericon", "type2525b"]);
-    if (m.iconId && customSources.has(m.iconSource)) {
+    if (m.iconId && (m.iconSource === "path" || m.iconSource === "usericon")) {
       return { kind: "png", apiIconId: m.iconId };
     }
     if (window.MapSymbology && MapSymbology.is2525Convertable(m.type)) {
-      return { kind: "mil", cotType: m.type };
+      return {
+        kind: "mil",
+        cotType: m.type,
+        sidc2525D: m.symbolSidc2525D || null,
+      };
     }
     if (m.iconId) return { kind: "png", apiIconId: m.iconId };
     const aff = m.affiliation || "other";
@@ -222,7 +230,11 @@
 
     const promise = Promise.resolve()
       .then(() => {
-        const canvas = MapSymbology.renderMilSymbolCanvas(plan.cotType, { size: 48 });
+        const canvas = MapSymbology.renderMilSymbolCanvas(plan.cotType, {
+          size: 48,
+          course: Number.isFinite(course) ? course : undefined,
+          sidc2525D: plan.sidc2525D || undefined,
+        });
         if (!canvas) throw new Error("invalid symbol");
         if (!map.hasImage(mapImageId)) map.addImage(mapImageId, canvas, { pixelRatio: 2 });
       })
@@ -298,7 +310,7 @@
       const plan = resolveMarkerIconPlan(m);
       if (plan.kind === "circle") continue;
       const mapImageId = registerMapImageId(
-        plan.kind === "mil" ? "mil:" + plan.cotType : plan.apiIconId
+        plan.kind === "mil" ? milIconCacheKey(plan) : plan.apiIconId
       );
       jobs.push(ensureMarkerIcon(m, mapImageId));
     }
@@ -313,7 +325,12 @@
     if (!mapImageId || iconLoadPending.has(mapImageId)) return;
     const raw = iconIdByMapImageId.get(mapImageId) || mapImageId;
     if (String(raw).startsWith("mil:")) {
-      loadMilSymbolIcon({ kind: "mil", cotType: raw.slice(4) }, mapImageId).then(() => {
+      const payload = raw.slice(4);
+      const plan =
+        /^\d{10,}$/.test(payload)
+          ? { kind: "mil", cotType: "", sidc2525D: payload }
+          : { kind: "mil", cotType: payload };
+      loadMilSymbolIcon(plan, mapImageId).then(() => {
         if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
       });
       return;
@@ -806,7 +823,7 @@
     const plan = visible ? resolveMarkerIconPlan(m) : { kind: "circle" };
     let mapImageId = "";
     if (plan.kind === "mil") {
-      mapImageId = registerMapImageId("mil:" + plan.cotType);
+      mapImageId = registerMapImageId(milIconCacheKey(plan));
     } else if (plan.kind === "png" && plan.apiIconId) {
       mapImageId = registerMapImageId(plan.apiIconId);
     }
