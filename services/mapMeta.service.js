@@ -1372,10 +1372,38 @@ function buildGroupsCatalogWithCounts(markers) {
   return groups;
 }
 
-async function getTakGroupCatalog(markers) {
+function getUserMemberChannelBaseKeys(userGroupNames) {
+  const keys = new Set();
+  for (const raw of userGroupNames || []) {
+    const name = normalizeGroupName(raw);
+    if (!name || !isMapChannelGroupName(name)) continue;
+    const key = channelBaseKey(name);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+function filterMapGroupsForUserMembership(groups, userGroupNames) {
+  const memberKeys = getUserMemberChannelBaseKeys(userGroupNames);
+  if (!memberKeys.size) return [];
+  return (Array.isArray(groups) ? groups : []).filter((g) => {
+    const key = g.baseKey || channelBaseKey(g.name);
+    return key && memberKeys.has(key);
+  });
+}
+
+async function getTakGroupCatalog(markers, options = {}) {
   await refreshGroupCatalog();
+  let groups = buildGroupsCatalogWithCounts(markers);
+  if (options.scopeMemberGroups) {
+    groups = filterMapGroupsForUserMembership(groups, options.userGroupNames || []);
+  }
   return {
-    groups: buildGroupsCatalogWithCounts(markers),
+    groups,
+    channelScope: options.scopeMemberGroups ? "member" : "all",
+    allowedChannelKeys: options.scopeMemberGroups
+      ? Array.from(getUserMemberChannelBaseKeys(options.userGroupNames || []))
+      : null,
     error: catalogCache.error,
     updatedAt: new Date().toISOString(),
   };
@@ -1419,6 +1447,8 @@ module.exports = {
   filterAssignableChannelGroups,
   explainGroupAssignment,
   getTakGroupCatalog,
+  getUserMemberChannelBaseKeys,
+  filterMapGroupsForUserMembership,
   refreshGroupCatalog,
   refreshSubscriptionIndex,
   refreshDataFeedIndex,

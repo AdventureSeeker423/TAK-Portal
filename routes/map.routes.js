@@ -11,10 +11,42 @@ mapIcon.ensureIconsets().then(() => {
   console.warn("[map] iconset init failed:", err?.message || err);
 });
 
-router.get("/state", (req, res) => {
+function getMapAccessContext(req) {
+  const user = req.authentikUser || {};
+  const isGlobalAdmin = !!user.isGlobalAdmin;
+  const isAgencyAdmin = !!user.isAgencyAdmin && !isGlobalAdmin;
+  return {
+    isGlobalAdmin,
+    isAgencyAdmin,
+    scopeMemberGroups: isAgencyAdmin,
+    userGroups: Array.isArray(user.groups) ? user.groups : [],
+  };
+}
+
+async function attachScopedGroupCatalog(snapshot, ctx) {
+  const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
+    scopeMemberGroups: ctx.scopeMemberGroups,
+    userGroupNames: ctx.userGroups,
+  });
+  snapshot.groupsCatalog = catalog.groups;
+  snapshot.channelScope = catalog.channelScope;
+  snapshot.allowedChannelKeys = catalog.allowedChannelKeys;
+  return snapshot;
+}
+
+router.get("/state", async (req, res) => {
   cotStream.ensureBridgeStarted();
+  const ctx = getMapAccessContext(req);
   const snapshot = cotStream.getStateSnapshot();
   snapshot.icons = mapIcon.getStatus();
+  try {
+    await attachScopedGroupCatalog(snapshot, ctx);
+  } catch (err) {
+    snapshot.groupsCatalog = [];
+    snapshot.channelScope = ctx.scopeMemberGroups ? "member" : "all";
+    snapshot.allowedChannelKeys = ctx.scopeMemberGroups ? [] : null;
+    snapshot.groupsError = err?.message || String(err);
+  }
   return res.json(snapshot);
 });
 
@@ -59,12 +91,18 @@ router.get("/icons", (req, res) => {
 
 router.get("/groups", async (req, res) => {
   cotStream.ensureBridgeStarted();
+  const ctx = getMapAccessContext(req);
   try {
-    const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList());
+    const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
+      scopeMemberGroups: ctx.scopeMemberGroups,
+      userGroupNames: ctx.userGroups,
+    });
     return res.json(catalog);
   } catch (err) {
     return res.status(500).json({
       groups: [],
+      channelScope: ctx.scopeMemberGroups ? "member" : "all",
+      allowedChannelKeys: ctx.scopeMemberGroups ? [] : null,
       error: err?.message || String(err),
       updatedAt: new Date().toISOString(),
     });

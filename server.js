@@ -367,6 +367,18 @@ function requireGlobalAdminRole(req, res, next) {
   return next();
 }
 
+function requireMapAccess(req, res, next) {
+  const u = req.authentikUser;
+  if (!u || (!u.isGlobalAdmin && !u.isAgencyAdmin)) {
+    const username = u && u.username ? u.username : "";
+    if (isApiRequest(req)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    return res.status(403).render("access-denied", { username });
+  }
+  return next();
+}
+
 function requireBetaModeApi(req, res, next) {
   const cfg = settingsSvc.getSettings() || {};
   const beta = String(cfg.BETA_MODE || "").toLowerCase() === "true";
@@ -442,7 +454,7 @@ app.use("/api/audit-log", requirePermission("page.audit_log"), require("./routes
 app.use("/api/plugins", requirePermission("page.plugin_manager"), require("./routes/plugins.routes"));
 app.use("/api/integrations", requirePermission("page.integrations"), require("./routes/integrations.routes"));
 app.use("/api/ssh", requirePermission("page.integrations"), require("./routes/ssh.routes"));
-app.use("/api/map", requireGlobalAdminRole, require("./routes/map.routes"));
+app.use("/api/map", requireMapAccess, require("./routes/map.routes"));
 app.use(
   "/api/settings/tak-maintenance",
   requirePermission("page.settings"),
@@ -739,7 +751,7 @@ app.get("/plugin-manager", requirePermission("page.plugin_manager"), async (req,
 });
 
 // Beta: Getting Started (global admins only, beta mode)
-app.get("/map", requireGlobalAdminRole, (req, res) => res.render("map"));
+app.get("/map", requireMapAccess, (req, res) => res.render("map"));
 app.get("/getting-started", requireGlobalAdminRole, requireBetaMode, (req, res) =>
   res.render("getting-started")
 );

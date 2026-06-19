@@ -138,8 +138,28 @@
       label: "CARTO Dark Matter",
       style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
     },
+    "dark-matter-nolabels": {
+      label: "CARTO Dark Matter (no labels)",
+      style: "https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json",
+    },
+    positron: {
+      label: "CARTO Positron",
+      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    },
+    "positron-nolabels": {
+      label: "CARTO Positron (no labels)",
+      style: "https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json",
+    },
+    voyager: {
+      label: "CARTO Voyager",
+      style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+    },
+    "voyager-nolabels": {
+      label: "CARTO Voyager (no labels)",
+      style: "https://basemaps.cartocdn.com/gl/voyager-nolabels-gl-style/style.json",
+    },
     light: {
-      label: "CARTO Light",
+      label: "CARTO Voyager (raster)",
       style: withMapGlyphs({
         version: 8,
         sources: {
@@ -240,6 +260,8 @@
 
   const markersByUid = new Map();
   let groupsCatalog = [];
+  let mapChannelScope = "all";
+  let allowedMemberChannelKeys = null;
   let enabledGroups = loadEnabledGroups();
   let selectedUid = null;
   let detailSlots = [];
@@ -253,6 +275,29 @@
   let layerListTimer = null;
   const labelVisibleByUid = new Map();
   let labelDeclutterKey = "";
+
+  function applyMapChannelScope(scope, allowedKeys) {
+    mapChannelScope = scope === "member" ? "member" : "all";
+    if (mapChannelScope === "member" && Array.isArray(allowedKeys)) {
+      allowedMemberChannelKeys = new Set(
+        allowedKeys.map(function (k) {
+          return String(k || "").trim().toLowerCase();
+        }).filter(Boolean)
+      );
+    } else {
+      allowedMemberChannelKeys = null;
+    }
+    if (mapChannelScope === "member") {
+      ensureEnabledGroupsInitialized();
+      syncEnabledGroupsWithCatalog();
+    }
+  }
+
+  function isMemberChannelKeyAllowed(key) {
+    if (mapChannelScope !== "member" || !allowedMemberChannelKeys) return true;
+    const k = String(key || "").trim().toLowerCase();
+    return k && allowedMemberChannelKeys.has(k);
+  }
 
   function normalizeMarkerRecord(m) {
     if (!m || !m.uid) return null;
@@ -2128,8 +2173,19 @@
   }
 
   function syncEnabledGroupsWithCatalog() {
-    if (!enabledGroups || enabledGroups.size === 0) return;
     const names = groupsCatalog.filter((g) => isMapChannelName(g.name)).map((g) => g.name);
+    const nameSet = new Set(names);
+    if (enabledGroups && enabledGroups.size) {
+      let pruned = false;
+      for (const n of Array.from(enabledGroups)) {
+        if (!nameSet.has(n)) {
+          enabledGroups.delete(n);
+          pruned = true;
+        }
+      }
+      if (pruned) saveEnabledGroups();
+    }
+    if (!enabledGroups || enabledGroups.size === 0) return;
     if (!names.length) return;
     for (let i = 0; i < names.length; i++) {
       if (!isGroupEnabled(names[i])) return;
@@ -2183,6 +2239,11 @@
   }
 
   function markerVisible(m) {
+    if (mapChannelScope === "member" && allowedMemberChannelKeys) {
+      const memberKeys = markerChannelKeys(m);
+      if (!memberKeys.length) return false;
+      if (!memberKeys.some((k) => isMemberChannelKeyAllowed(k))) return false;
+    }
     if (isChannelFilterActive()) {
       if (enabledGroups.size === 0) return false;
       const keys = markerChannelKeys(m);
@@ -2283,6 +2344,25 @@
   }
 
   function mergeGroupsCatalog(incoming) {
+    const list = Array.isArray(incoming) ? incoming : [];
+    if (mapChannelScope === "member") {
+      groupsCatalog = list
+        .filter(function (g) {
+          return isMapChannelName(g.name);
+        })
+        .slice()
+        .sort(function (a, b) {
+          return String(a.displayName || stripChannelBehaviorSuffix(a.name)).localeCompare(
+            String(b.displayName || stripChannelBehaviorSuffix(b.name))
+          );
+        });
+      recomputeGroupCounts();
+      enabledGroups = normalizeEnabledGroups(enabledGroups);
+      syncEnabledGroupsWithCatalog();
+      ensureDefaultGroupsEnabled();
+      return;
+    }
+
     const byKey = new Map();
     for (const g of groupsCatalog) {
       const key = channelGroupKey(g.name);
@@ -3445,6 +3525,7 @@
   }
 
   function applySnapshot(state) {
+    applyMapChannelScope(state?.channelScope, state?.allowedChannelKeys);
     mergeGroupsCatalog(state?.groupsCatalog || []);
     if (state && state.icons && state.icons.defaultIcons) {
       defaultIconIds = state.icons.defaultIcons;
@@ -3861,6 +3942,7 @@
   fetch("/api/map/groups")
     .then((r) => r.json())
     .then((data) => {
+      applyMapChannelScope(data.channelScope, data.allowedChannelKeys);
       mergeGroupsCatalog(data.groups || []);
       renderLayerList();
     })
