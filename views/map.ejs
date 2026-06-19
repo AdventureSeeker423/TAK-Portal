@@ -131,6 +131,21 @@
           <span id="mapCursor">Decimal Degrees: —</span>
         </button>
       </footer>
+
+      <div class="map-goto-overlay" id="mapGoToOverlay" hidden>
+        <div class="map-goto-backdrop" id="mapGoToBackdrop"></div>
+        <div class="map-goto-panel" role="dialog" aria-modal="true" aria-label="Go to location">
+          <input
+            id="mapGoToInput"
+            class="map-goto-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Callsign, address, or coordinates…"
+          />
+          <p class="map-goto-hint" id="mapGoToHint" aria-live="polite"></p>
+        </div>
+      </div>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>

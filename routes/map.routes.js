@@ -103,6 +103,46 @@ router.get("/debug/groups", async (req, res) => {
   return res.json(mapMeta.explainGroupAssignment(marker));
 });
 
+router.get("/geocode", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.status(400).json({ error: "Missing q" });
+  try {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "1");
+    url.searchParams.set("q", q);
+    const r = await fetch(url, {
+      headers: {
+        "User-Agent": "TAK-Portal/1.0 (live map geocoding)",
+        Accept: "application/json",
+      },
+    });
+    if (!r.ok) {
+      return res.status(502).json({ error: "Geocoding service unavailable" });
+    }
+    const data = await r.json();
+    if (!Array.isArray(data) || !data.length) {
+      return res.status(404).json({ error: "No results" });
+    }
+    const hit = data[0];
+    const lat = Number(hit.lat);
+    const lon = Number(hit.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.status(502).json({ error: "Invalid geocoding response" });
+    }
+    res.setHeader("Cache-Control", "private, max-age=300");
+    return res.json({
+      lat,
+      lon,
+      label: String(hit.display_name || q),
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: err?.message || "Geocoding failed",
+    });
+  }
+});
+
 router.get("/stream", (req, res) => {
   req.socket.setTimeout(0);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");

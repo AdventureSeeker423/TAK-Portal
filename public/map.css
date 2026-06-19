@@ -927,6 +927,63 @@ body.map-detail-resizing .map-panel-resize-handle {
   opacity: 0.85;
 }
 
+.map-goto-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 18vh;
+}
+
+.map-goto-overlay[hidden] {
+  display: none;
+}
+
+.map-goto-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.map-goto-panel {
+  position: relative;
+  width: min(540px, calc(100vw - 32px));
+  padding: 16px 20px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1a1f27;
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.5);
+}
+
+.map-goto-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--map-text);
+  font: inherit;
+  font-size: 1.15rem;
+  line-height: 1.35;
+  outline: none;
+}
+
+.map-goto-input::placeholder {
+  color: var(--map-muted);
+  opacity: 0.75;
+}
+
+.map-goto-hint {
+  margin: 8px 0 0;
+  min-height: 1.1em;
+  font-size: 0.78rem;
+  color: var(--map-muted);
+}
+
+.map-goto-hint.is-error {
+  color: #fca5a5;
+}
+
 .map-popup-groups {
   font-size: 0.78rem;
   color: #94a3b8;
