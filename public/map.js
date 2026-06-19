@@ -1582,13 +1582,13 @@
     return out;
   }
 
-  function fillGoToMarkerPreview(container, m) {
+  function fillMarkerPreview(container, m) {
     container.innerHTML = "";
 
     function showDot() {
       container.innerHTML = "";
       const dot = document.createElement("span");
-      dot.className = "map-aff-dot map-goto-marker-dot";
+      dot.className = "map-aff-dot map-marker-preview-dot";
       dot.style.cssText = markerDotStyle(m);
       container.appendChild(dot);
     }
@@ -1600,7 +1600,7 @@
 
     const apiIconId = String(m.iconId);
     const img = document.createElement("img");
-    img.className = "map-goto-marker-icon";
+    img.className = "map-marker-preview-icon";
     img.alt = "";
     img.src = iconApiUrl(apiIconId);
     img.addEventListener("error", showDot);
@@ -1624,6 +1624,18 @@
       .catch(function () {
         /* keep untinted API icon */
       });
+  }
+
+  function appendMarkerListName(parent, m, label) {
+    const nameEl = document.createElement("div");
+    nameEl.className = "name";
+    const previewEl = document.createElement("span");
+    previewEl.className = "map-marker-preview";
+    fillMarkerPreview(previewEl, m);
+    nameEl.appendChild(previewEl);
+    nameEl.appendChild(document.createTextNode(label || m.callsign || m.uid || ""));
+    parent.appendChild(nameEl);
+    return nameEl;
   }
 
   function renderGoToResults() {
@@ -1687,20 +1699,20 @@
       nameEl.className = "name";
       if (item.kind === "contact" && item.marker) {
         const previewEl = document.createElement("span");
-        previewEl.className = "map-goto-marker-preview";
-        fillGoToMarkerPreview(previewEl, item.marker);
+        previewEl.className = "map-marker-preview";
+        fillMarkerPreview(previewEl, item.marker);
         nameEl.appendChild(previewEl);
         nameEl.appendChild(document.createTextNode(item.title || ""));
+        btn.appendChild(nameEl);
       } else {
         nameEl.textContent = item.title || "";
-      }
-      btn.appendChild(nameEl);
-
-      if (item.meta) {
-        const metaEl = document.createElement("div");
-        metaEl.className = "meta";
-        metaEl.textContent = item.meta;
-        btn.appendChild(metaEl);
+        btn.appendChild(nameEl);
+        if (item.meta) {
+          const metaEl = document.createElement("div");
+          metaEl.className = "meta";
+          metaEl.textContent = item.meta;
+          btn.appendChild(metaEl);
+        }
       }
 
       btn.addEventListener("mousedown", function (ev) {
@@ -2746,20 +2758,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "map-stack-picker-item";
-      const chips = markerGroups(m)
-        .slice(0, 2)
-        .map(function (g) {
-          return escapeHtml(stripTakPrefix(g));
-        })
-        .join(" · ");
-      btn.innerHTML =
-        '<div class="name">' +
-        '<span class="map-aff-dot" style="' +
-        markerDotStyle(m) +
-        '"></span>' +
-        escapeHtml(m.callsign) +
-        "</div>" +
-        (chips ? '<div class="meta">' + chips + "</div>" : "");
+      appendMarkerListName(btn, m, m.callsign || m.uid);
       btn.addEventListener("click", function (ev) {
         ev.stopPropagation();
         closeStackPicker();

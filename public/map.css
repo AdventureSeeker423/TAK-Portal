@@ -1016,7 +1016,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   gap: 8px;
 }
 
-.map-goto-marker-preview {
+.map-marker-preview {
   flex: 0 0 auto;
   width: 22px;
   height: 22px;
@@ -1025,7 +1025,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   justify-content: center;
 }
 
-.map-goto-marker-icon {
+.map-marker-preview-icon {
   width: 22px;
   height: 22px;
   object-fit: contain;
@@ -1033,7 +1033,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   pointer-events: none;
 }
 
-.map-goto-marker-dot {
+.map-marker-preview-dot {
   width: 10px;
   height: 10px;
 }
@@ -1137,13 +1137,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.map-stack-picker-item .meta {
-  margin-top: 2px;
-  font-size: 0.72rem;
-  color: var(--map-muted);
+  gap: 8px;
 }
 
 .maplibregl-popup-content {
