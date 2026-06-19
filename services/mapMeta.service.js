@@ -292,6 +292,28 @@ function parseFlowTagUids(detail) {
   if (!detail || typeof detail !== "object") return [];
   const uids = new Set();
 
+  // MITRE _flow-tags_: each attribute name is a system id (e.g. TAK-Server-<connection-uuid>).
+  const flowTagsNodes = [
+    detail["_flow-tags_"],
+    detail["flow-tags"],
+    detail._flowTags,
+    detail.flowTags,
+  ].filter(Boolean);
+
+  for (const node of flowTagsNodes) {
+    const list = Array.isArray(node) ? node : [node];
+    for (const item of list) {
+      if (!item || typeof item !== "object") continue;
+      const attrs = item._attributes || item;
+      for (const [key, val] of Object.entries(attrs)) {
+        if (key === "version" || val == null) continue;
+        const k = String(key || "").trim();
+        if (k) uids.add(k);
+      }
+    }
+  }
+
+  // Some parsers / variants use flow_tag element(s) with uid attr.
   const flowTags = detail.flow_tag;
   const flowList = Array.isArray(flowTags) ? flowTags : flowTags ? [flowTags] : [];
   for (const item of flowList) {
@@ -460,6 +482,16 @@ function parseGroupsFromCoTDetail(detail) {
     detail.flow_tag?._attributes?.name ||
     detail.flow_tag?._attributes?.value;
   if (flowTag && isTakChannelGroupName(flowTag)) names.add(normalizeGroupName(flowTag));
+
+  const flowTagsBlock = detail["_flow-tags_"] || detail["flow-tags"];
+  const flowTagsAttrs = flowTagsBlock?._attributes || flowTagsBlock;
+  if (flowTagsAttrs && typeof flowTagsAttrs === "object") {
+    for (const [key, val] of Object.entries(flowTagsAttrs)) {
+      if (key === "version" || val == null) continue;
+      const groupName = normalizeGroupName(key);
+      if (groupName && isTakChannelGroupName(groupName)) names.add(groupName);
+    }
+  }
 
   return Array.from(names).filter(Boolean);
 }
@@ -747,6 +779,7 @@ function explainGroupAssignment(marker) {
       cotRouteGroups,
       flowTagUids,
       relatedUids,
+      detailKeys: Array.isArray(marker?.detailKeys) ? marker.detailKeys : [],
     },
     indexes: {
       subscription: getSubscriptionIndexSnapshot(),
@@ -766,7 +799,8 @@ function explainGroupAssignment(marker) {
     },
     notes: [
       "EUD clients usually match via step3 (subscription by uid/callsign).",
-      "Data feeds usually need step1 (marti/filtergroup in CoT) or step2 (flow_tag UID -> feed connection groups).",
+      "Data feeds usually need step1 (marti/filtergroup in CoT) or step2 (_flow-tags_ / flow_tag -> feed connection groups).",
+      "TAK Server uses detail._flow-tags_ with TAK-Server-<uuid> attribute names, not flow_tag.uid.",
       "If step2 flowTagUids is empty, the streamed CoT may not include flow provenance.",
       "If flowTagLookups.connectionGroups is empty, the feed UUID is missing from subscriptions/datafeeds index.",
     ],
