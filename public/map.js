@@ -261,24 +261,10 @@
     }, 120);
   }
 
-  function markerMapOpacity(m) {
-    if (!m?.stale) return 1;
-    const staleMs = Date.parse(m.stale);
-    if (!Number.isFinite(staleMs)) return 1;
-    const remaining = staleMs - Date.now();
-    if (remaining > 0) {
-      if (remaining < 60000) return 0.55;
-      return 1;
-    }
-    if (Date.now() <= staleMs + STALE_GRACE_MS) return 0.4;
-    return 0;
-  }
-
   function markerGeoJsonFeatures(m) {
     const pos = markerCoords(m);
     if (!pos) return [];
     const color = markerDisplayColor(m);
-    const opacity = markerMapOpacity(m);
     const coords = [pos.lon, pos.lat];
     const apiIconId = markerUsesMapIcon(m) ? String(m.iconId) : "";
     const baseMapImageId = apiIconId ? registerMapImageId(apiIconId) : "";
@@ -300,7 +286,6 @@
           type: m.type,
           affiliation: m.affiliation || "other",
           color,
-          opacity,
           iconId: displayIconId || "",
           showCircle: displayIconId ? 0 : 1,
           selected: m.uid === selectedUid,
@@ -404,6 +389,7 @@
   let activeTab = "channels";
   let popup = null;
   let stackPickerEl = null;
+  let stackPickerOutsideListener = null;
   let markerLayersReady = false;
   let pendingFitVisible = true;
   let copyToastTimer = null;
@@ -1290,7 +1276,7 @@
           1.5,
         ],
         "circle-stroke-color": "#ffffff",
-        "circle-opacity": ["get", "opacity"],
+        "circle-opacity": 1,
       },
     });
 
@@ -1312,7 +1298,7 @@
         "icon-optional": true,
       },
       paint: {
-        "icon-opacity": ["get", "opacity"],
+        "icon-opacity": 1,
         "icon-halo-color": "#ffffff",
         "icon-halo-width": 4,
       },
@@ -1337,7 +1323,7 @@
       paint: {
         "text-color": "#ffffff",
         "text-halo-width": 0,
-        "text-opacity": ["get", "opacity"],
+        "text-opacity": 1,
       },
     });
 
@@ -1361,10 +1347,34 @@
     return true;
   }
 
+  function disarmStackPickerOutsideClose() {
+    if (!stackPickerOutsideListener) return;
+    document.removeEventListener("mousedown", stackPickerOutsideListener, true);
+    stackPickerOutsideListener = null;
+  }
+
+  function armStackPickerOutsideClose() {
+    disarmStackPickerOutsideClose();
+    stackPickerOutsideListener = function (ev) {
+      if (!stackPickerEl) {
+        disarmStackPickerOutsideClose();
+        return;
+      }
+      if (stackPickerEl.contains(ev.target)) return;
+      closeStackPicker();
+    };
+    setTimeout(function () {
+      if (stackPickerOutsideListener) {
+        document.addEventListener("mousedown", stackPickerOutsideListener, true);
+      }
+    }, 0);
+  }
+
   function closeStackPicker() {
     if (!stackPickerEl) return;
     stackPickerEl.remove();
     stackPickerEl = null;
+    disarmStackPickerOutsideClose();
   }
 
   function queryMarkersAtPoint(point, radiusPx) {
@@ -1414,12 +1424,6 @@
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-label", "Select marker");
 
-    const head = document.createElement("div");
-    head.className = "map-stack-picker-head";
-    head.textContent =
-      markers.length + " markers stacked — choose one";
-    el.appendChild(head);
-
     const list = document.createElement("div");
     list.className = "map-stack-picker-list";
     for (let i = 0; i < markers.length; i++) {
@@ -1440,10 +1444,7 @@
         '"></span>' +
         escapeHtml(m.callsign) +
         "</div>" +
-        '<div class="meta">' +
-        escapeHtml(m.type || "unknown") +
-        (chips ? " · " + chips : "") +
-        "</div>";
+        (chips ? '<div class="meta">' + chips + "</div>" : "");
       btn.addEventListener("click", function (ev) {
         ev.stopPropagation();
         closeStackPicker();
@@ -1459,6 +1460,7 @@
 
     positionStackPicker(el, point);
     stackPickerEl = el;
+    armStackPickerOutsideClose();
   }
 
   function onMarkerIconClick(e) {
@@ -2021,9 +2023,7 @@
         break;
       }
     }
-    if (!refresh) return;
-    renderList();
-    if (markerLayersReady) pushMarkerGeoJsonToSource();
+    if (refresh) renderList();
   }, 5000);
 
   const es = new EventSource("/api/map/stream");

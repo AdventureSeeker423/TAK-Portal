@@ -8,23 +8,6 @@ function markerDisplayColor(marker) {
   return mapMeta.resolveMarkerDisplayColor(marker);
 }
 
-const STALE_SWEEP_MS = 5000;
-/** Must match cotStream.service.js STALE_GRACE_MS */
-const STALE_GRACE_MS = 30000;
-
-function markerOpacity(marker, now = Date.now()) {
-  if (!marker?.stale) return 1;
-  const staleMs = Date.parse(marker.stale);
-  if (!Number.isFinite(staleMs)) return 1;
-  const remaining = staleMs - now;
-  if (remaining > 0) {
-    if (remaining < 60000) return 0.55;
-    return 1;
-  }
-  if (now <= staleMs + STALE_GRACE_MS) return 0.35;
-  return 0;
-}
-
 function markerChannelKeys(marker) {
   const groups =
     Array.isArray(marker?.groups) && marker.groups.length
@@ -144,7 +127,6 @@ function toSlimMarker(marker) {
 
 function buildGeoJson(markers, options = {}) {
   const list = Array.isArray(markers) ? markers : [];
-  const now = Date.now();
   const selectedUid = options.selectedUid || "";
   const maxIcons = getInt("MAP_MAX_ICONS", 120);
 
@@ -158,7 +140,6 @@ function buildGeoJson(markers, options = {}) {
 
   for (const marker of visible) {
     const color = markerDisplayColor(marker);
-    const labelOpacity = markerOpacity(marker, now);
     const apiIconId = markerUsesMapIcon(marker) ? String(marker.iconId) : "";
     const coords = [marker.lon, marker.lat];
 
@@ -174,8 +155,8 @@ function buildGeoJson(markers, options = {}) {
         color,
         apiIconId,
         showCircle: apiIconId ? 0 : 1,
-        opacity: labelOpacity,
-        labelOpacity,
+        opacity: 1,
+        labelOpacity: 1,
         selected: marker.uid === selectedUid,
         course: Number.isFinite(marker.course) && marker.course >= 0 ? marker.course : 0,
       },

@@ -444,8 +444,8 @@ body {
   border-color: rgba(34, 211, 238, 0.25);
 }
 
-.map-marker-item.stale {
-  opacity: 0.55;
+.map-marker-item.stale .meta {
+  color: var(--map-warn);
 }
 
 .map-marker-item .name {
@@ -627,20 +627,11 @@ body {
   background: rgba(10, 16, 24, 0.96);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   overflow: hidden;
-}
-
-.map-stack-picker-head {
-  padding: 8px 12px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--map-muted);
-  border-bottom: 1px solid var(--map-border);
-  flex-shrink: 0;
+  padding: 4px;
 }
 
 .map-stack-picker-list {
   overflow-y: auto;
-  padding: 4px;
 }
 
 .map-stack-picker-item {
