@@ -5,6 +5,7 @@
   const LS_GROUPS = "tak-portal-map-groups";
   const LS_PANEL_LEFT = "tak-portal-map-panel-left";
   const LS_DETAIL_PANEL_WIDTH = "tak-portal-map-detail-panel-width";
+  const LS_COORD_FORMAT = "tak-portal-map-coord-format";
   const DETAIL_PANEL_MIN_PX = 340;
   const DETAIL_PANEL_MIN_VW = 0.38;
   const DETAIL_PANEL_MAX_VW = 0.5;
@@ -398,6 +399,18 @@
   let markerLayersReady = false;
   let pendingFitVisible = true;
   let copyToastTimer = null;
+  let lastCursorLngLat = null;
+  const CURSOR_COORD_FORMATS = [
+    { id: "lat_lon", label: "Lat, Lon (decimal)" },
+    { id: "lon_lat", label: "Lon, Lat (decimal)" },
+    { id: "dms", label: "DMS" },
+    { id: "hemisphere", label: "Degrees + hemisphere" },
+  ];
+  let cursorCoordFormatIndex = (function () {
+    const stored = Number(localStorage.getItem(LS_COORD_FORMAT));
+    if (!Number.isFinite(stored)) return 0;
+    return Math.max(0, Math.min(CURSOR_COORD_FORMATS.length - 1, stored));
+  })();
   let defaultIconIds = {};
   const iconLoadPending = new Map();
   const mapImageIdByKey = new Map();
@@ -852,10 +865,8 @@
   const elVisibleCounts = document.getElementById("mapVisibleCounts");
   const elConnLabel = document.getElementById("mapConnLabel");
   const elConnDot = document.getElementById("mapConnDot");
-  const elUpdated = document.getElementById("mapUpdated");
   const elCursor = document.getElementById("mapCursor");
-  const elZoom = document.getElementById("mapZoom");
-  const elBasemapLabel = document.getElementById("mapBasemapLabel");
+  const elCursorBtn = document.getElementById("mapCursorBtn");
   const elSearch = document.getElementById("mapSearch");
   const elLayerSearch = document.getElementById("mapLayerSearch");
   const elHudFit = document.getElementById("mapHudFit");
@@ -878,7 +889,6 @@
   elBasemapSelect.value = savedBasemap;
 
   const initialBasemap = BASEMAPS[savedBasemap] || BASEMAPS["dark-matter"];
-  elBasemapLabel.textContent = initialBasemap.label;
 
   const map = new maplibregl.Map({
     container: "map",
@@ -953,11 +963,87 @@
   }
 
   function showCopyToast(text) {
+    if (!elCursor) return;
     elCursor.textContent = text;
     if (copyToastTimer) clearTimeout(copyToastTimer);
-    copyToastTimer = setTimeout(() => {
+    copyToastTimer = setTimeout(function () {
       copyToastTimer = null;
+      renderCursorCoords();
     }, 1500);
+  }
+
+  function coordHemisphere(deg, isLat) {
+    if (isLat) return deg >= 0 ? "N" : "S";
+    return deg >= 0 ? "E" : "W";
+  }
+
+  function toDmsPart(deg) {
+    const abs = Math.abs(deg);
+    const d = Math.floor(abs);
+    const mFloat = (abs - d) * 60;
+    const m = Math.floor(mFloat);
+    const s = (mFloat - m) * 60;
+    return (
+      String(d) +
+      "\u00B0" +
+      String(m).padStart(2, "0") +
+      "'" +
+      s.toFixed(1) +
+      '"'
+    );
+  }
+
+  function formatCursorCoords(lat, lon, formatId) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return "—";
+    const fmt = formatId || CURSOR_COORD_FORMATS[cursorCoordFormatIndex].id;
+    if (fmt === "lon_lat") {
+      return lon.toFixed(5) + ", " + lat.toFixed(5);
+    }
+    if (fmt === "dms") {
+      return (
+        toDmsPart(lat) +
+        coordHemisphere(lat, true) +
+        " " +
+        toDmsPart(lon) +
+        coordHemisphere(lon, false)
+      );
+    }
+    if (fmt === "hemisphere") {
+      return (
+        Math.abs(lat).toFixed(5) +
+        "\u00B0" +
+        coordHemisphere(lat, true) +
+        ", " +
+        Math.abs(lon).toFixed(5) +
+        "\u00B0" +
+        coordHemisphere(lon, false)
+      );
+    }
+    return lat.toFixed(5) + ", " + lon.toFixed(5);
+  }
+
+  function renderCursorCoords() {
+    if (!elCursor || copyToastTimer) return;
+    if (!lastCursorLngLat) {
+      elCursor.textContent = "—";
+      return;
+    }
+    elCursor.textContent = formatCursorCoords(
+      lastCursorLngLat.lat,
+      lastCursorLngLat.lng
+    );
+  }
+
+  function cycleCursorCoordFormat() {
+    cursorCoordFormatIndex =
+      (cursorCoordFormatIndex + 1) % CURSOR_COORD_FORMATS.length;
+    localStorage.setItem(LS_COORD_FORMAT, String(cursorCoordFormatIndex));
+    renderCursorCoords();
+    showCopyToast(CURSOR_COORD_FORMATS[cursorCoordFormatIndex].label);
+  }
+
+  function cursorCoordsCopyText(lat, lon) {
+    return formatCursorCoords(lat, lon);
   }
 
   function removeMarkerLayers() {
@@ -2609,7 +2695,6 @@
       })
       .catch(function () {});
     setConnStatus(!!state.connected, state.lastError);
-    elUpdated.textContent = "Updated " + (state.updatedAt || new Date().toISOString());
     elOffline.hidden = true;
   }
 
@@ -2686,7 +2771,6 @@
   function setBasemap(id) {
     const def = BASEMAPS[id] || BASEMAPS["dark-matter"];
     localStorage.setItem(LS_BASEMAP, id);
-    elBasemapLabel.textContent = def.label;
     styleRestoreGen++;
     styleRestoreCompleteGen = -1;
     markerLayersReady = false;
@@ -2742,7 +2826,6 @@
 
   map.on("load", function () {
     restoreMapAfterStyleChange();
-    elZoom.textContent = map.getZoom().toFixed(1);
   });
 
   map.on("movestart", function (e) {
@@ -2755,14 +2838,12 @@
 
   map.on("moveend", () => {
     lockMoveFromCode = false;
-    elZoom.textContent = map.getZoom().toFixed(1);
   });
 
   map.on("zoomend", () => {
     if (lockedUid && !lockMoveFromCode) {
       recenterLockedMarkerAtCurrentZoom();
     }
-    elZoom.textContent = map.getZoom().toFixed(1);
     labelDeclutterKey = "";
     if (markerLayersReady) refreshMapFromMarkers();
   });
@@ -2780,17 +2861,22 @@
 
   map.on("mousemove", (e) => {
     if (copyToastTimer) return;
-    elCursor.textContent = e.lngLat.lat.toFixed(5) + ", " + e.lngLat.lng.toFixed(5);
+    lastCursorLngLat = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+    renderCursorCoords();
   });
 
   map.on("contextmenu", (e) => {
     e.preventDefault();
-    const text = e.lngLat.lat.toFixed(5) + ", " + e.lngLat.lng.toFixed(5);
+    const text = cursorCoordsCopyText(e.lngLat.lat, e.lngLat.lng);
     copyTextToClipboard(text).then(
       () => showCopyToast("Copied " + text),
       () => showCopyToast(text)
     );
   });
+
+  if (elCursorBtn) {
+    elCursorBtn.addEventListener("click", cycleCursorCoordFormat);
+  }
 
   elBasemapSelect.addEventListener("change", () => {
     setBasemap(elBasemapSelect.value);
@@ -2912,10 +2998,8 @@
       applySnapshot(msg.state);
     } else if (msg.type === "batch") {
       applyBatch(msg);
-      if (msg.at) elUpdated.textContent = "Updated " + msg.at;
     } else if (msg.type === "update" && msg.marker) {
       upsertMarker(msg.marker);
-      elUpdated.textContent = "Updated " + (msg.at || new Date().toISOString());
     } else if (msg.type === "remove" && msg.uid) {
       removeMarker(msg.uid);
     } else if (msg.type === "status") {

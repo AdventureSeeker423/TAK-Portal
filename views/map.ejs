@@ -116,10 +116,14 @@
       </div>
 
       <footer class="map-coords-bar">
-        <span>Cursor: <strong id="mapCursor">—</strong> <span class="map-hint">(right-click to copy)</span></span>
-        <span>Zoom: <strong id="mapZoom">—</strong></span>
-        <span>Basemap: <strong id="mapBasemapLabel">Dark Matter</strong></span>
-        <span id="mapUpdated">Updated —</span>
+        <button
+          type="button"
+          class="map-cursor-coords"
+          id="mapCursorBtn"
+          title="Click to change coordinate format · right-click map to copy"
+        >
+          <strong id="mapCursor">—</strong>
+        </button>
       </footer>
     </div>
 
