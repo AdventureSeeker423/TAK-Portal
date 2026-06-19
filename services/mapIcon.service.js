@@ -192,6 +192,25 @@ function domainPriorityList(cotType) {
   return out;
 }
 
+function isBareCivilianAirType(cotType) {
+  const segments = cotTypeSegments(cotType);
+  return segments.length === 5 && segments[2] === "a" && segments[3] === "c";
+}
+
+/** Default iconset generic symbology for ADSB-style bare civilian air roles. */
+function civilianAirGenericType(cotType) {
+  if (!isBareCivilianAirType(cotType)) return null;
+  const segments = cotTypeSegments(cotType);
+  return `a-u-a-c-${segments[4]}`;
+}
+
+/** PSA specialty icons that should not represent generic ADSB traffic. */
+function isSpecialtyAirIconName(iconName) {
+  return /^(CIV_FIXED_(CAP|ISR)|CIV_ROTOR_ISR|FIRE_|EMS_|FED_|LE_|MIL_)/i.test(
+    String(iconName || "")
+  );
+}
+
 function iconsetPriorityRank(iconsetUid, cotType) {
   const list = domainPriorityList(cotType);
   const idx = list.indexOf(String(iconsetUid || ""));
@@ -215,7 +234,10 @@ function pickBestWithinIconset(entries, cotType) {
     else if (base.replace(/_/g, "-") === t) score += 4500;
 
     if (dimension === "c") {
-      if (/^civ_/i.test(entry.iconName)) score += 800;
+      if (/^civ_/i.test(entry.iconName) && !isSpecialtyAirIconName(entry.iconName)) {
+        score += 800;
+      }
+      if (isSpecialtyAirIconName(entry.iconName)) score -= 1200;
       if (/^(fire_|ems_|fed_|le_|mil_)/i.test(entry.iconName)) score -= 600;
     } else if (dimension === "m") {
       if (/^fed_/i.test(entry.iconName)) score += 400;
@@ -321,6 +343,15 @@ function parseIconsetPath(iconsetpath) {
 function findBestTypeMatch(cotType) {
   const t = String(cotType || "").trim().toLowerCase();
   if (!t) return null;
+
+  const genericCivType = civilianAirGenericType(t);
+  if (genericCivType) {
+    const genericList = typesByPrefix.get(genericCivType);
+    if (genericList?.length) {
+      const hit = pickBestFromEntries(genericList, genericCivType);
+      if (hit) return hit;
+    }
+  }
 
   const exactList = typesByPrefix.get(t);
   if (exactList && exactList.length) {
