@@ -86,8 +86,25 @@ function markerVisible(marker, options) {
   return true;
 }
 
+function isAirCotType(type) {
+  const parts = String(type || "")
+    .trim()
+    .split("-");
+  return parts.length >= 3 && parts[2].toUpperCase() === "A";
+}
+
+/** PNG map icons: explicit usericon/path, or 2525 sprites for air domain types. */
+function markerUsesMapIcon(marker) {
+  if (!marker?.iconId) return false;
+  const src = String(marker.iconSource || "").toLowerCase();
+  if (src === "usericon" || src === "path") return true;
+  if (src === "type2525b" && isAirCotType(marker.type)) return true;
+  return false;
+}
+
 function toSlimMarker(marker) {
   if (!marker) return null;
+  const useIcon = markerUsesMapIcon(marker);
   return {
     uid: marker.uid,
     callsign: marker.callsign,
@@ -106,11 +123,8 @@ function toSlimMarker(marker) {
     how: marker.how,
     team: marker.team,
     updatedAt: marker.updatedAt,
-    iconId:
-      marker.iconSource === "usericon" || marker.iconSource === "path"
-        ? marker.iconId || null
-        : null,
-    iconSource: marker.iconSource || null,
+    iconId: useIcon ? marker.iconId || null : null,
+    iconSource: useIcon ? marker.iconSource || null : null,
   };
 }
 
@@ -131,12 +145,7 @@ function buildGeoJson(markers, options = {}) {
   for (const marker of visible) {
     const color = markerDisplayColor(marker);
     const labelOpacity = markerOpacity(marker, now);
-    const apiIconId =
-      marker.iconSource === "usericon" || marker.iconSource === "path"
-        ? marker.iconId
-          ? String(marker.iconId)
-          : ""
-        : "";
+    const apiIconId = markerUsesMapIcon(marker) ? String(marker.iconId) : "";
     const coords = [marker.lon, marker.lat];
 
     features.push({
@@ -150,7 +159,7 @@ function buildGeoJson(markers, options = {}) {
         affiliation: marker.affiliation || "other",
         color,
         apiIconId,
-        showCircle: 1,
+        showCircle: apiIconId ? 0 : 1,
         opacity: 1,
         labelOpacity,
         selected: marker.uid === selectedUid,
@@ -197,6 +206,8 @@ module.exports = {
   parseGeoJsonQuery,
   markerVisible,
   markerChannelKeys,
+  isAirCotType,
+  markerUsesMapIcon,
   toSlimMarker,
   buildGeoJson,
 };

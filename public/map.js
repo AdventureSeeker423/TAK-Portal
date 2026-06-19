@@ -279,7 +279,7 @@
           affiliation: m.affiliation || "other",
           color,
           iconId: mapImageId,
-          showCircle: 1,
+          showCircle: mapImageId ? 0 : 1,
           opacity: 1,
           labelOpacity,
           selected: m.uid === selectedUid,
@@ -325,21 +325,33 @@
     if (!src) return;
 
     const visible = getVisibleMarkers();
-    const features = [];
+    const iconIds = new Set();
     for (let i = 0; i < visible.length; i++) {
-      features.push.apply(features, markerGeoJsonFeatures(visible[i]));
+      const m = visible[i];
+      if (markerUsesMapIcon(m)) iconIds.add(String(m.iconId));
     }
-    src.setData({ type: "FeatureCollection", features: features });
-    lastGeoMeta = {
-      total: markersByUid.size,
-      visible: visible.length,
-      mapped: features.filter(function (f) {
-        return f && f.properties && f.properties.kind === "marker";
-      }).length,
-    };
-    updateVisibleCounts();
-    if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
-    void preloadMarkerIcons();
+
+    const loadIcons = Array.from(iconIds, function (id) {
+      return loadMapIcon(id, registerMapImageId(id));
+    });
+
+    Promise.all(loadIcons).finally(function () {
+      if (!map.getSource(SOURCE_ID)) return;
+      const features = [];
+      for (let i = 0; i < visible.length; i++) {
+        features.push.apply(features, markerGeoJsonFeatures(visible[i]));
+      }
+      src.setData({ type: "FeatureCollection", features: features });
+      lastGeoMeta = {
+        total: markersByUid.size,
+        visible: visible.length,
+        mapped: features.filter(function (f) {
+          return f && f.properties && f.properties.kind === "marker";
+        }).length,
+      };
+      updateVisibleCounts();
+      if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
+    });
   }
 
   function syncMapSource() {
@@ -397,11 +409,20 @@
     return "/api/map/icons?id=" + encodeURIComponent(iconId);
   }
 
-  /** Only render PNG icons for explicit CoT usericon/path — not auto 2525 sprites. */
+  /** PNG icons for explicit usericon/path feeds, and 2525 sprites for air (a-*-A-*) types. */
+  function isAirCotType(type) {
+    const parts = String(type || "")
+      .trim()
+      .split("-");
+    return parts.length >= 3 && parts[2].toUpperCase() === "A";
+  }
+
   function markerUsesMapIcon(m) {
     if (!m || !m.iconId) return false;
     const src = String(m.iconSource || "").toLowerCase();
-    return src === "usericon" || src === "path";
+    if (src === "usericon" || src === "path") return true;
+    if (src === "type2525b" && isAirCotType(m.type)) return true;
+    return false;
   }
 
   function loadMapIcon(iconId, mapImageId) {
