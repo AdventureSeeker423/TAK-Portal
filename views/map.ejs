@@ -64,7 +64,7 @@
         type="button"
         class="map-panel-expand map-panel-expand-left"
         id="mapExpandLeft"
-        title="Show channels and contacts"
+        title="Show channels"
         hidden
       >
         Channels ›
@@ -79,14 +79,13 @@
         ‹ Details
       </button>
 
-      <aside class="map-panel map-panel-left" id="mapPanelLeft" aria-label="Channels and contacts">
+      <aside class="map-panel map-panel-left" id="mapPanelLeft" aria-label="Channels">
         <div class="map-panel-tabs">
-          <button type="button" class="map-tab active" data-tab="channels">Channels</button>
-          <button type="button" class="map-tab" data-tab="contacts">Contacts</button>
+          <span class="map-panel-title">Channels</span>
           <button type="button" class="map-panel-collapse" id="mapCollapseLeft" title="Collapse panel">‹</button>
         </div>
 
-        <div class="map-tab-panel active" data-panel="channels">
+        <div class="map-panel-body">
           <div class="map-search map-search-compact">
             <input id="mapLayerSearch" type="search" placeholder="Filter channels…" autocomplete="off" />
           </div>
@@ -95,13 +94,6 @@
             <button type="button" class="map-link-btn" id="mapGroupsNone">None</button>
           </div>
           <div class="map-layer-list" id="mapLayerList"></div>
-        </div>
-
-        <div class="map-tab-panel" data-panel="contacts">
-          <div class="map-search">
-            <input id="mapSearch" type="search" placeholder="Filter callsign or UID…" autocomplete="off" />
-          </div>
-          <div class="map-marker-list" id="mapMarkerList"></div>
         </div>
       </aside>
 

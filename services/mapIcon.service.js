@@ -12,21 +12,29 @@ const CLOUDTAK_RAW =
   "https://raw.githubusercontent.com/dfpc-coe/CloudTAK-Data/main";
 
 const ICONSET_ARCHIVES = [
-  "Default.zip",
   "Public Safety Air.zip",
+  "Responder Icons.zip",
   "FEMA Icons.zip",
+  "Incident Management Icons.zip",
   "FalconView.zip",
   "Generic Icons.zip",
   "GeoOps.zip",
   "Google.zip",
-  "Incident Management Icons.zip",
   "OSM.zip",
-  "Responder Icons.zip",
+  "Default.zip",
 ];
 
 const DEFAULT_ICONSET_UID = "34ae1613-9645-4222-a9d2-e5f243dea2865";
 /** Generic Icons — ATAK paths missing from CloudTAK-Data zip. */
 const GENERIC_ICONS_UID = "ad78aafb-83a6-4c07-b2b9-a897a8b6a38f";
+const PUBLIC_SAFETY_AIR_UID = "66f14976-4b62-4023-8edb-d8d2ebeaa336";
+
+/** Lower index = preferred when multiple iconsets share a type2525b mapping. */
+const ICONSET_LOOKUP_PRIORITY = [
+  PUBLIC_SAFETY_AIR_UID,
+  GENERIC_ICONS_UID,
+  DEFAULT_ICONSET_UID,
+];
 const DATA_ROOT = path.join(__dirname, "..", "data", "map-icons");
 const SUPPLEMENT_ROOT = path.join(__dirname, "..", "data", "map-icon-supplement");
 
@@ -123,6 +131,31 @@ function registerTypeIndex(iconset, iconName, relPath, type2525b) {
   typesByPrefix.set(key, list);
 }
 
+function iconsetLookupRank(iconsetUid) {
+  const idx = ICONSET_LOOKUP_PRIORITY.indexOf(String(iconsetUid || ""));
+  if (idx >= 0) return ICONSET_LOOKUP_PRIORITY.length - idx;
+  return 1;
+}
+
+function pickBestTypeEntry(entries, cotType) {
+  const t = String(cotType || "").trim().toLowerCase();
+  let best = null;
+  for (const entry of entries || []) {
+    const exact = entry.type2525b === t;
+    const score = iconsetLookupRank(entry.iconsetUid) * 100 + (exact ? 50 : 0);
+    if (!best || score > best.score) best = { score, entry };
+  }
+  return best?.entry || null;
+}
+
+function inferType2525bFromIconName(iconName) {
+  const base = String(iconName || "")
+    .trim()
+    .replace(/\.png$/i, "");
+  if (/^a-[a-z]-/i.test(base)) return base;
+  return "";
+}
+
 function resolveRelativePath(iconset, iconName, groupHint) {
   const base = String(iconName || "").trim();
   if (!base) return null;
@@ -154,13 +187,13 @@ function parseIconsetPath(iconsetpath) {
 
   if (/^COT_MAPPING_2525B\//i.test(raw)) {
     const parts = raw.split("/").filter(Boolean);
-    const cotType = parts[parts.length - 1] || parts[parts.length - 2] || "";
+    const cotType = parts.length > 1 ? parts.slice(1).join("-") : "";
     return { mode: "type", cotType };
   }
 
   if (/^COT_MAPPING_SPOTMAP\//i.test(raw)) {
     const parts = raw.split("/").filter(Boolean);
-    const cotType = parts.slice(1).join("-") || parts[parts.length - 1] || "";
+    const cotType = parts.length > 1 ? parts.slice(1).join("-") : "";
     return { mode: "type", cotType };
   }
 
@@ -176,11 +209,19 @@ function findBestTypeMatch(cotType) {
   const t = String(cotType || "").trim().toLowerCase();
   if (!t) return null;
 
+  const exactList = typesByPrefix.get(t);
+  if (exactList && exactList.length) {
+    return pickBestTypeEntry(exactList, t);
+  }
+
   let best = null;
   for (const [prefix, entries] of typesByPrefix) {
     if (!t.startsWith(prefix)) continue;
-    if (!best || prefix.length > best.prefix.length) {
-      best = { prefix, entry: entries[0] };
+    const entry = pickBestTypeEntry(entries, t);
+    if (!entry) continue;
+    const score = prefix.length * 1000 + iconsetLookupRank(entry.iconsetUid);
+    if (!best || score > best.score) {
+      best = { score, entry };
     }
   }
   return best?.entry || null;
@@ -413,8 +454,10 @@ async function loadIconsetDir(dirName) {
 
   for (const icon of iconset.icons) {
     const rel = resolveRelativePath(iconset, icon.name, icon.group || iconset.defaultGroup);
-    if (rel && icon.type2525b) {
-      registerTypeIndex(iconset, icon.name, rel, icon.type2525b);
+    if (!rel) continue;
+    const type2525b = icon.type2525b || inferType2525bFromIconName(icon.name);
+    if (type2525b) {
+      registerTypeIndex(iconset, icon.name, rel, type2525b);
     }
   }
 
@@ -448,8 +491,27 @@ async function mergeIconSupplements() {
   }
 }
 
+async function countIconsetDirsOnDisk() {
+  let count = 0;
+  try {
+    const entries = await fsp.readdir(DATA_ROOT, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (fs.existsSync(path.join(DATA_ROOT, entry.name, "iconset.xml"))) count++;
+    }
+  } catch (_) {}
+  return count;
+}
+
 async function ensureIconsets() {
-  if (initPromise.current) return initPromise.current;
+  const dirsOnDisk = await countIconsetDirsOnDisk();
+  if (
+    initPromise.current &&
+    iconsetsByUid.size > 0 &&
+    (dirsOnDisk === 0 || iconsetsByUid.size >= dirsOnDisk)
+  ) {
+    return initPromise.current;
+  }
 
   initPromise.current = (async () => {
     await fsp.mkdir(DATA_ROOT, { recursive: true });

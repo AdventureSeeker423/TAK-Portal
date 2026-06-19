@@ -237,7 +237,6 @@
   let uiTimer = null;
   let mapRefreshPending = false;
   let lastGeoMeta = { total: 0, visible: 0 };
-  let filterText = "";
   let layerFilterText = "";
   let layerListTimer = null;
   const labelVisibleByUid = new Map();
@@ -332,7 +331,6 @@
   function scheduleUiRefresh() {
     if (uiTimer) clearTimeout(uiTimer);
     uiTimer = setTimeout(function () {
-      renderList();
       updateVisibleCounts();
     }, 120);
   }
@@ -352,6 +350,7 @@
       loadMapIcon(apiIconId, baseMapImageId);
     }
     const renderSort = markerRenderSort(m);
+    const iconReady = !!(displayIconId && map.hasImage(displayIconId));
     const features = [
       {
         type: "Feature",
@@ -363,9 +362,8 @@
           type: m.type,
           affiliation: m.affiliation || "other",
           color,
-          iconId: displayIconId || "",
-          showCircle:
-            displayIconId && map.hasImage(displayIconId) ? 0 : 1,
+          iconId: iconReady ? displayIconId : "",
+          showCircle: iconReady ? 0 : 1,
           selected: m.uid === selectedUid,
           locked: m.uid === lockedUid,
           renderSort: renderSort,
@@ -472,7 +470,6 @@
   }
   let lockedUid = null;
   let lockMoveFromCode = false;
-  let activeTab = "channels";
   let popup = null;
   let stackPickerEl = null;
   let stackPickerOutsideListener = null;
@@ -785,15 +782,11 @@
   function markerUsesMapIcon(m) {
     if (!m || !m.iconId) return false;
     const src = String(m.iconSource || "").toLowerCase();
-    if (src === "usericon" || src === "path") return true;
-    if (isAirCotType(m.type)) {
-      return (
-        src === "type2525b" ||
-        src === "default" ||
-        src === "type" ||
-        src === "path" ||
-        !src
-      );
+    if (src === "usericon" || src === "path" || src === "type2525b" || src === "alias") {
+      return true;
+    }
+    if (src === "default" && isAirCotType(m.type)) {
+      return true;
     }
     return false;
   }
@@ -956,7 +949,6 @@
   }
 
   const elLayerList = document.getElementById("mapLayerList");
-  const elList = document.getElementById("mapMarkerList");
   const elDetailStack = document.getElementById("mapDetailStack");
   const elVisibleCounts = document.getElementById("mapVisibleCounts");
   const elConnLabel = document.getElementById("mapConnLabel");
@@ -971,7 +963,6 @@
   const elGoToBackdrop = document.getElementById("mapGoToBackdrop");
   const elZoomIn = document.getElementById("mapZoomIn");
   const elZoomOut = document.getElementById("mapZoomOut");
-  const elSearch = document.getElementById("mapSearch");
   const elLayerSearch = document.getElementById("mapLayerSearch");
   const elHudFit = document.getElementById("mapHudFit");
   const elBasemapSelect = document.getElementById("mapBasemapSelect");
@@ -1635,12 +1626,12 @@
     }, 300);
   }
 
-  function openGoToPalette(initialChar) {
+  function openGoToPalette(initialText) {
     if (!elGoToOverlay || !elGoToInput) return;
     goToPaletteOpen = true;
     goToSubmitting = false;
     elGoToOverlay.hidden = false;
-    elGoToInput.value = initialChar || "";
+    elGoToInput.value = initialText || "";
     updateGoToResults(elGoToInput.value);
     requestAnimationFrame(function () {
       elGoToInput.focus();
@@ -2160,19 +2151,7 @@
       if (!keys.length) return false;
       if (!keys.some((k) => isChannelKeyEnabled(k))) return false;
     }
-    if (!markerMatchesSearch(m)) return false;
     return true;
-  }
-
-  function markerMatchesSearch(m) {
-    if (!filterText) return true;
-    const q = filterText.toLowerCase();
-    return (
-      String(m.callsign || "").toLowerCase().includes(q) ||
-      String(m.uid || "").toLowerCase().includes(q) ||
-      String(m.type || "").toLowerCase().includes(q) ||
-      markerGroups(m).some((g) => String(g).toLowerCase().includes(q))
-    );
   }
 
   function getVisibleMarkers() {
@@ -2801,7 +2780,6 @@
     }
     syncDetailStackDom();
     syncDetailStackVisibility();
-    renderList();
     syncMapSource();
     applyDetailPanelWidth(
       Number(localStorage.getItem(LS_DETAIL_PANEL_WIDTH)) ||
@@ -3296,53 +3274,8 @@
         saveEnabledGroups();
         renderLayerList();
         syncMapSource();
-        renderList();
       });
       elLayerList.appendChild(row);
-    }
-  }
-
-  function renderList() {
-    const items = getVisibleMarkers().sort((a, b) =>
-      String(a.callsign).localeCompare(String(b.callsign))
-    );
-
-    elList.innerHTML = "";
-    if (!items.length) {
-      const empty = document.createElement("div");
-      empty.className = "map-detail-empty";
-      empty.textContent = markersByUid.size
-        ? "No contacts match current filters."
-        : "Waiting for CoT markers…";
-      elList.appendChild(empty);
-      return;
-    }
-
-    for (const m of items) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      const staleCls = staleAgeLabel(m) ? " stale" : "";
-      btn.className =
-        "map-marker-item" + (m.uid === selectedUid ? " active" : "") + staleCls;
-      const chips = markerGroups(m)
-        .slice(0, 3)
-        .map((g) => escapeHtml(g))
-        .join(" · ");
-      btn.innerHTML =
-        '<div class="name">' +
-        '<span class="map-aff-dot" style="' +
-        markerDotStyle(m) +
-        '"></span>' +
-        escapeHtml(m.callsign) +
-        "</div>" +
-        '<div class="meta">' +
-        escapeHtml(m.type || "unknown") +
-        (chips ? " · " + chips : "") +
-        "</div>";
-      btn.addEventListener("click", function () {
-        selectMarker(m.uid, false);
-      });
-      elList.appendChild(btn);
     }
   }
 
@@ -3394,7 +3327,6 @@
       }
     }
 
-    renderList();
     syncMapSource();
   }
 
@@ -3463,7 +3395,6 @@
         iconLoadPending.clear();
         syncMapSource();
         renderLayerList();
-        renderList();
         maybeFitVisibleOnLoad();
         if (markerLayersReady) {
           reinstallMapIconsFromCache();
@@ -3593,7 +3524,6 @@
     }
     syncDetailStackDom();
     syncDetailStackVisibility();
-    renderList();
     syncMapSource();
     closeStackPicker();
     closeMapPopup();
@@ -3711,12 +3641,6 @@
     setBasemap(elBasemapSelect.value);
   });
 
-  elSearch.addEventListener("input", () => {
-    filterText = elSearch.value.trim();
-    renderList();
-    syncMapSource();
-  });
-
   elLayerSearch.addEventListener("input", () => {
     layerFilterText = elLayerSearch.value.trim();
     renderLayerList();
@@ -3727,7 +3651,6 @@
     saveEnabledGroups();
     renderLayerList();
     syncMapSource();
-    renderList();
   });
 
   document.getElementById("mapGroupsNone").addEventListener("click", () => {
@@ -3735,7 +3658,6 @@
     saveEnabledGroups();
     renderLayerList();
     syncMapSource();
-    renderList();
   });
 
   function triggerFitVisible() {
@@ -3752,18 +3674,6 @@
       }
     });
   }
-
-  document.querySelectorAll(".map-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      activeTab = tab.getAttribute("data-tab");
-      document.querySelectorAll(".map-tab").forEach((t) => {
-        t.classList.toggle("active", t === tab);
-      });
-      document.querySelectorAll(".map-tab-panel").forEach((p) => {
-        p.classList.toggle("active", p.getAttribute("data-panel") === activeTab);
-      });
-    });
-  });
 
   document.getElementById("mapCollapseLeft").addEventListener("click", () => {
     setPanelLeftCollapsed(!elPanelLeft.classList.contains("collapsed"));
@@ -3814,10 +3724,9 @@
       return;
     }
 
-    if (ev.key === "/" && document.activeElement !== elSearch) {
+    if (ev.key === "/" && document.activeElement !== elLayerSearch) {
       ev.preventDefault();
-      if (activeTab === "contacts") elSearch.focus();
-      else elLayerSearch.focus();
+      elLayerSearch.focus();
     }
     if (ev.key === "Escape") {
       closeGoToPalette();
@@ -3835,6 +3744,18 @@
     elGoToBackdrop.addEventListener("click", closeGoToPalette);
   }
 
+  document.addEventListener("paste", function (ev) {
+    if (document.activeElement === elGoToInput) return;
+    if (isTypingTarget(document.activeElement)) return;
+    if (goToPaletteOpen) return;
+
+    const text = String(ev.clipboardData?.getData("text/plain") || "").trim();
+    if (!text) return;
+
+    ev.preventDefault();
+    openGoToPalette(text);
+  });
+
   function tickZulu() {
     const d = new Date();
     const hh = String(d.getUTCHours()).padStart(2, "0");
@@ -3850,22 +3771,6 @@
       refreshMapFromMarkers();
     }
   }, 2000);
-
-  setInterval(function () {
-    if (!markersByUid.size) return;
-    const now = Date.now();
-    let refresh = false;
-    for (const m of markersByUid.values()) {
-      if (!m.stale) continue;
-      const t = Date.parse(m.stale);
-      if (!Number.isFinite(t)) continue;
-      if (now >= t - 60000 && now <= t + STALE_GRACE_MS) {
-        refresh = true;
-        break;
-      }
-    }
-    if (refresh) renderList();
-  }, 5000);
 
   const es = new EventSource("/api/map/stream");
   es.onmessage = (ev) => {

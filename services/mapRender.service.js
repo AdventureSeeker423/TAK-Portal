@@ -83,19 +83,14 @@ function isAirCotType(type) {
   return parts.length >= 3 && parts[2].toUpperCase() === "A";
 }
 
-/** PNG map icons: explicit usericon/path, or any resolved icon for air domain types. */
+/** PNG map icons: explicit usericon/path, 2525 type matches, and air defaults. */
 function markerUsesMapIcon(marker) {
   if (!marker?.iconId) return false;
   const src = String(marker.iconSource || "").toLowerCase();
-  if (src === "usericon" || src === "path") return true;
-  if (isAirCotType(marker.type)) {
-    return (
-      src === "type2525b" ||
-      src === "default" ||
-      src === "type" ||
-      !src
-    );
+  if (src === "usericon" || src === "path" || src === "type2525b" || src === "alias") {
+    return true;
   }
+  if (isAirCotType(marker.type) && src === "default") return true;
   return false;
 }
 
