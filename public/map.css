@@ -829,6 +829,48 @@ body.map-detail-resizing .map-panel-resize-handle {
   border-top: 1px solid var(--map-panel-border);
 }
 
+.map-zoom-controls {
+  position: absolute;
+  left: 12px;
+  bottom: 34px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.map-zoom-btn {
+  appearance: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--map-panel-border);
+  border-radius: 8px;
+  background: #060a10;
+  color: var(--map-text);
+  font-size: 1.25rem;
+  line-height: 1;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.map-zoom-btn:hover {
+  background: rgba(34, 211, 238, 0.1);
+  border-color: rgba(34, 211, 238, 0.35);
+  color: var(--map-accent);
+}
+
+.map-zoom-btn:active {
+  transform: scale(0.96);
+}
+
+.map-zoom-btn:focus-visible {
+  outline: 2px solid var(--map-accent);
+  outline-offset: 2px;
+}
+
 .map-cursor-coords {
   appearance: none;
   border: none;
@@ -984,5 +1026,9 @@ body.map-detail-resizing .map-panel-resize-handle {
 
   .map-panel-resize-handle {
     display: none;
+  }
+
+  .map-zoom-controls {
+    bottom: calc(38vh + 44px);
   }
 }

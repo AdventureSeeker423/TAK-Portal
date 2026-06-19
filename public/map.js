@@ -250,7 +250,7 @@
 
   function scheduleMapRefresh() {
     if (mapRefreshTimer) clearTimeout(mapRefreshTimer);
-    mapRefreshTimer = setTimeout(refreshMapFromMarkers, 150);
+    mapRefreshTimer = setTimeout(refreshMapFromMarkers, 50);
   }
 
   function scheduleUiRefresh() {
@@ -364,7 +364,6 @@
   function syncMapSource() {
     scheduleMapRefresh();
     scheduleUiRefresh();
-    if (markerLayersReady) refreshMapFromMarkers();
   }
 
   function scheduleLayerListRefresh() {
@@ -652,11 +651,11 @@
     return promise;
   }
 
-  function pushMarkerGeoJsonToSource() {
+  function pushMarkerGeoJsonToSource(options) {
     const src = map.getSource(SOURCE_ID);
     if (!src) return false;
     const visible = getVisibleMarkers();
-    syncLabelVisibility(visible);
+    syncLabelVisibility(visible, options);
     const features = [];
     for (let i = 0; i < visible.length; i++) {
       features.push.apply(features, markerGeoJsonFeatures(visible[i]));
@@ -670,7 +669,6 @@
       }).length,
     };
     updateVisibleCounts();
-    if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
     return true;
   }
 
@@ -867,6 +865,8 @@
   const elConnDot = document.getElementById("mapConnDot");
   const elCursor = document.getElementById("mapCursor");
   const elCursorBtn = document.getElementById("mapCursorBtn");
+  const elZoomIn = document.getElementById("mapZoomIn");
+  const elZoomOut = document.getElementById("mapZoomOut");
   const elSearch = document.getElementById("mapSearch");
   const elLayerSearch = document.getElementById("mapLayerSearch");
   const elHudFit = document.getElementById("mapHudFit");
@@ -895,10 +895,50 @@
     style: withMapGlyphs(initialBasemap.style),
     center: [-98.5795, 39.8283],
     zoom: 4,
+    bearing: 0,
+    pitch: 0,
+    minPitch: 0,
+    maxPitch: 0,
+    dragRotate: false,
+    pitchWithRotate: false,
+    touchPitch: false,
+    rollEnabled: false,
     attributionControl: true,
   });
 
-  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+  function lockMapNorthUp() {
+    if (map.dragRotate) map.dragRotate.disable();
+    if (map.touchPitch) map.touchPitch.disable();
+    if (map.touchZoomRotate && typeof map.touchZoomRotate.disableRotation === "function") {
+      map.touchZoomRotate.disableRotation();
+    }
+    if (typeof map.setMinPitch === "function") map.setMinPitch(0);
+    if (typeof map.setMaxPitch === "function") map.setMaxPitch(0);
+    const bearing = map.getBearing();
+    const pitch = map.getPitch();
+    if (Math.abs(bearing) > 0.001 || Math.abs(pitch) > 0.001) {
+      map.jumpTo({
+        center: map.getCenter(),
+        zoom: map.getZoom(),
+        bearing: 0,
+        pitch: 0,
+      });
+    }
+  }
+
+  function clampMapNorthUp() {
+    if (Math.abs(map.getBearing()) > 0.001) map.setBearing(0);
+    if (Math.abs(map.getPitch()) > 0.001) map.setPitch(0);
+  }
+
+  lockMapNorthUp();
+
+  map.on("rotate", clampMapNorthUp);
+  map.on("pitch", clampMapNorthUp);
+  map.on("move", clampMapNorthUp);
+  map.on("moveend", lockMapNorthUp);
+  map.on("style.load", lockMapNorthUp);
+  map.on("load", lockMapNorthUp);
 
   restorePanelState();
   loadDetailPanelWidth();
@@ -1478,9 +1518,10 @@
     }
   }
 
-  function syncLabelVisibility(visible) {
+  function syncLabelVisibility(visible, options) {
+    const forceRecompute = !!(options && options.forceRecompute);
     const key = labelDeclutterSignature(visible);
-    if (key !== labelDeclutterKey) {
+    if (forceRecompute || key !== labelDeclutterKey) {
       recomputeLabelVisibility(visible);
       labelDeclutterKey = key;
       return;
@@ -1562,22 +1603,26 @@
   const LABEL_STANDARD_FILTER = [
     "all",
     MARKER_FILTER,
-    ["==", ["get", "showLabel"], 1],
     [
       "!",
       ["any", ["==", ["get", "selected"], true], ["==", ["get", "locked"], true]],
     ],
   ];
 
-  function markerLabelLayout(allowOverlap) {
+  function markerLabelLayout() {
     return {
-      "text-field": ["get", "callsign"],
+      "text-field": [
+        "case",
+        ["==", ["get", "showLabel"], 1],
+        ["get", "callsign"],
+        "",
+      ],
       "text-font": MAP_LABEL_FONT,
       "text-size": 11,
       "text-anchor": "bottom",
       "text-offset": [0, -2],
-      "text-allow-overlap": allowOverlap,
-      "text-ignore-placement": allowOverlap,
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
       "text-optional": false,
       "text-max-width": 14,
       "text-padding": 2,
@@ -1670,7 +1715,7 @@
       type: "symbol",
       source: SOURCE_ID,
       filter: LABEL_STANDARD_FILTER,
-      layout: markerLabelLayout(false),
+      layout: markerLabelLayout(),
       paint: markerLabelPaint(),
     });
 
@@ -1679,7 +1724,7 @@
       type: "symbol",
       source: SOURCE_ID,
       filter: LABEL_PRIORITY_FILTER,
-      layout: markerLabelLayout(true),
+      layout: markerLabelLayout(),
       paint: markerLabelPaint(),
     });
 
@@ -2876,6 +2921,31 @@
 
   if (elCursorBtn) {
     elCursorBtn.addEventListener("click", cycleCursorCoordFormat);
+  }
+
+  function zoomMapBy(delta) {
+    const newZoom = Math.min(
+      map.getMaxZoom(),
+      Math.max(map.getMinZoom(), map.getZoom() + delta)
+    );
+    const coords = lockedUid ? lockedMarkerCoords() : null;
+    if (coords) {
+      lockMoveFromCode = true;
+      map.zoomTo(newZoom, { around: coords, duration: 200 });
+      return;
+    }
+    map.zoomTo(newZoom, { duration: 200 });
+  }
+
+  if (elZoomIn) {
+    elZoomIn.addEventListener("click", function () {
+      zoomMapBy(1);
+    });
+  }
+  if (elZoomOut) {
+    elZoomOut.addEventListener("click", function () {
+      zoomMapBy(-1);
+    });
   }
 
   elBasemapSelect.addEventListener("change", () => {
