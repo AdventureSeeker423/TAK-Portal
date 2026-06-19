@@ -198,6 +198,8 @@
   let filterText = "";
   let layerFilterText = "";
   let layerListTimer = null;
+  const labelVisibleByUid = new Map();
+  let labelDeclutterKey = "";
 
   function normalizeMarkerRecord(m) {
     if (!m || !m.uid) return null;
@@ -290,6 +292,7 @@
           locked: m.uid === lockedUid,
           labelSort:
             m.uid === selectedUid ? 0 : m.uid === lockedUid ? 1 : 2,
+          showLabel: markerShowLabel(m),
         },
       },
     ];
@@ -640,6 +643,7 @@
     const src = map.getSource(SOURCE_ID);
     if (!src) return false;
     const visible = getVisibleMarkers();
+    syncLabelVisibility(visible);
     const features = [];
     for (let i = 0; i < visible.length; i++) {
       features.push.apply(features, markerGeoJsonFeatures(visible[i]));
@@ -848,7 +852,6 @@
   const elVisibleCounts = document.getElementById("mapVisibleCounts");
   const elConnLabel = document.getElementById("mapConnLabel");
   const elConnDot = document.getElementById("mapConnDot");
-  const elHost = document.getElementById("mapStreamHost");
   const elUpdated = document.getElementById("mapUpdated");
   const elCursor = document.getElementById("mapCursor");
   const elZoom = document.getElementById("mapZoom");
@@ -1337,6 +1340,81 @@
     return Array.from(markersByUid.values()).filter(markerVisible);
   }
 
+  function labelDeclutterSignature(visible) {
+    return (
+      String(Math.round(map.getZoom() * 4)) +
+      "|" +
+      visible.length +
+      "|" +
+      (selectedUid || "") +
+      "|" +
+      (lockedUid || "")
+    );
+  }
+
+  function labelBoxOverlaps(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  function estimateLabelBox(lon, lat, callsign) {
+    const pt = map.project([lon, lat]);
+    const w = Math.max(36, String(callsign || "").length * 6.5);
+    const h = 13;
+    return { x: pt.x - w / 2, y: pt.y - 28, w: w, h: h };
+  }
+
+  function recomputeLabelVisibility(visible) {
+    const placed = [];
+    const sorted = visible.slice().sort(function (a, b) {
+      const aPri = a.uid === selectedUid ? 0 : a.uid === lockedUid ? 1 : 2;
+      const bPri = b.uid === selectedUid ? 0 : b.uid === lockedUid ? 1 : 2;
+      if (aPri !== bPri) return aPri - bPri;
+      return String(a.callsign).localeCompare(String(b.callsign));
+    });
+    labelVisibleByUid.clear();
+    for (let i = 0; i < sorted.length; i++) {
+      const m = sorted[i];
+      if (m.uid === selectedUid || m.uid === lockedUid) {
+        labelVisibleByUid.set(m.uid, 1);
+        placed.push(estimateLabelBox(m.lon, m.lat, m.callsign));
+        continue;
+      }
+      const box = estimateLabelBox(m.lon, m.lat, m.callsign);
+      let overlap = false;
+      for (let j = 0; j < placed.length; j++) {
+        if (labelBoxOverlaps(box, placed[j])) {
+          overlap = true;
+          break;
+        }
+      }
+      labelVisibleByUid.set(m.uid, overlap ? 0 : 1);
+      if (!overlap) placed.push(box);
+    }
+  }
+
+  function syncLabelVisibility(visible) {
+    const key = labelDeclutterSignature(visible);
+    if (key !== labelDeclutterKey) {
+      recomputeLabelVisibility(visible);
+      labelDeclutterKey = key;
+      return;
+    }
+    for (const uid of labelVisibleByUid.keys()) {
+      if (!markersByUid.has(uid)) labelVisibleByUid.delete(uid);
+    }
+    for (let i = 0; i < visible.length; i++) {
+      const m = visible[i];
+      if (!labelVisibleByUid.has(m.uid)) {
+        labelVisibleByUid.set(m.uid, 1);
+      }
+    }
+  }
+
+  function markerShowLabel(m) {
+    if (m.uid === selectedUid || m.uid === lockedUid) return 1;
+    return labelVisibleByUid.has(m.uid) ? labelVisibleByUid.get(m.uid) : 1;
+  }
+
   function ensureDefaultGroupsEnabled() {
     // null enabledGroups = show all markers until the user narrows the filter
   }
@@ -1398,6 +1476,7 @@
   const LABEL_STANDARD_FILTER = [
     "all",
     MARKER_FILTER,
+    ["==", ["get", "showLabel"], 1],
     [
       "!",
       ["any", ["==", ["get", "selected"], true], ["==", ["get", "locked"], true]],
@@ -1413,7 +1492,7 @@
       "text-offset": [0, -2],
       "text-allow-overlap": allowOverlap,
       "text-ignore-placement": allowOverlap,
-      "text-optional": true,
+      "text-optional": false,
       "text-max-width": 14,
       "text-padding": 2,
       "symbol-sort-key": ["get", "labelSort"],
@@ -1436,6 +1515,7 @@
 
     map.addSource(SOURCE_ID, {
       type: "geojson",
+      promoteId: "uid",
       data: { type: "FeatureCollection", features: [] },
     });
 
@@ -1757,7 +1837,6 @@
 
   function startDetailAgeTimer(paneEl, marker) {
     if (!paneEl || !marker) return;
-    clearDetailAgeTimer(marker.uid);
     const el = paneEl.querySelector(".map-detail-updated");
     if (!el) return;
 
@@ -1768,6 +1847,11 @@
         return;
       }
       el.textContent = updatedAgeLabel(current.updatedAt);
+    }
+
+    if (detailAgeTimers.has(marker.uid)) {
+      tick();
+      return;
     }
 
     tick();
@@ -1929,6 +2013,173 @@
     return pane;
   }
 
+  function detailBodyStructureKey(m) {
+    const groups = markerGroups(m);
+    return [
+      groups.length === 1 ? "1g" : "ng",
+      m.team && String(m.team).trim() ? "t" : "",
+      m.role && String(m.role).trim() ? "r" : "",
+      isUnknownHae(m.hae) ? "" : "h",
+    ].join("|");
+  }
+
+  function buildDetailBodyHtml(m) {
+    const groups = markerGroups(m);
+    const groupHtml = groups
+      .map(function (g) {
+        return '<span class="map-chip">' + escapeHtml(stripTakPrefix(g)) + "</span>";
+      })
+      .join(" ");
+    const remarksText = m.remarks ? String(m.remarks).trim() : "";
+    const coordText = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
+    const team = m.team ? String(m.team).trim() : "";
+    const role = m.role ? String(m.role).trim() : "";
+    const kvRows = [
+      detailKvRow(
+        groups.length === 1 ? "Group" : "Groups",
+        '<span data-detail-key="groups">' + (groupHtml || "—") + "</span>",
+        "map-chips"
+      ),
+    ];
+    if (team) {
+      kvRows.push(
+        detailKvRow("Team", '<span data-detail-key="team">' + escapeHtml(team) + "</span>")
+      );
+    }
+    if (role) {
+      kvRows.push(
+        detailKvRow("Role", '<span data-detail-key="role">' + escapeHtml(role) + "</span>")
+      );
+    }
+    kvRows.push(
+      detailKvRow(
+        "Lat / Lon",
+        '<span class="map-detail-coords-val">' +
+          coordText +
+          "</span>" +
+          '<button type="button" class="map-copy-btn map-copy-coords-btn" title="Copy coordinates" aria-label="Copy coordinates">' +
+          COPY_COORDS_ICON +
+          "</button>",
+        "map-coords-row"
+      )
+    );
+    if (!isUnknownHae(m.hae)) {
+      kvRows.push(
+        detailKvRow(
+          "HAE",
+          '<span data-detail-key="hae">' + fmtHae(m.hae) + "</span>"
+        )
+      );
+    }
+    kvRows.push(
+      detailKvRow(
+        "Course",
+        '<span data-detail-key="course">' +
+          (m.course != null ? escapeHtml(String(m.course)) + "°" : "—") +
+          "</span>"
+      ),
+      detailKvRow(
+        "Speed",
+        '<span data-detail-key="speed">' +
+          (m.speed != null ? escapeHtml(String(m.speed)) : "—") +
+          "</span>"
+      ),
+      detailKvRow(
+        "Last updated",
+        '<span class="map-detail-updated">' +
+          escapeHtml(updatedAgeLabel(m.updatedAt)) +
+          "</span>"
+      )
+    );
+
+    return (
+      '<div class="map-detail-wrap" data-detail-structure="' +
+      escapeHtml(detailBodyStructureKey(m)) +
+      '">' +
+      '<dl class="map-kv map-kv-compact">' +
+      kvRows.join("") +
+      "</dl>" +
+      '<section class="map-remarks-section">' +
+      '<h3 class="map-remarks-title">Remarks</h3>' +
+      '<div class="map-remarks-box' +
+      (remarksText ? "" : " empty") +
+      '" data-detail-key="remarks">' +
+      escapeHtml(remarksText || "No remarks.") +
+      "</div></section></div>"
+    );
+  }
+
+  function wireDetailCoordsCopy(bodyEl, uid) {
+    const copyBtn = bodyEl.querySelector(".map-copy-coords-btn");
+    if (!copyBtn || copyBtn.dataset.wired === "1") return;
+    copyBtn.dataset.wired = "1";
+    copyBtn.addEventListener("click", function () {
+      const current = markersByUid.get(uid);
+      if (!current) return;
+      const text = current.lat.toFixed(5) + ", " + current.lon.toFixed(5);
+      copyTextToClipboard(text).then(
+        function () {
+          showCopyToast("Copied " + text);
+        },
+        function () {
+          showCopyToast(text);
+        }
+      );
+    });
+  }
+
+  function patchDetailPaneBody(bodyEl, m) {
+    const wrap = bodyEl.querySelector(".map-detail-wrap");
+    if (!wrap) return false;
+
+    const coordsEl = bodyEl.querySelector(".map-detail-coords-val");
+    if (coordsEl) {
+      coordsEl.textContent = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
+    }
+
+    const haeEl = bodyEl.querySelector('[data-detail-key="hae"]');
+    if (haeEl) haeEl.textContent = fmtHae(m.hae);
+
+    const courseEl = bodyEl.querySelector('[data-detail-key="course"]');
+    if (courseEl) {
+      courseEl.textContent = m.course != null ? String(m.course) + "°" : "—";
+    }
+
+    const speedEl = bodyEl.querySelector('[data-detail-key="speed"]');
+    if (speedEl) {
+      speedEl.textContent = m.speed != null ? String(m.speed) : "—";
+    }
+
+    const groupsEl = bodyEl.querySelector('[data-detail-key="groups"]');
+    if (groupsEl) {
+      const groups = markerGroups(m);
+      const groupHtml = groups
+        .map(function (g) {
+          return '<span class="map-chip">' + escapeHtml(stripTakPrefix(g)) + "</span>";
+        })
+        .join(" ");
+      groupsEl.innerHTML = groupHtml || "—";
+    }
+
+    const teamEl = bodyEl.querySelector('[data-detail-key="team"]');
+    if (teamEl) teamEl.textContent = m.team ? String(m.team).trim() : "";
+
+    const roleEl = bodyEl.querySelector('[data-detail-key="role"]');
+    if (roleEl) roleEl.textContent = m.role ? String(m.role).trim() : "";
+
+    const remarksEl = bodyEl.querySelector('[data-detail-key="remarks"]');
+    if (remarksEl) {
+      const remarksText = m.remarks ? String(m.remarks).trim() : "";
+      remarksEl.textContent = remarksText || "No remarks.";
+      remarksEl.classList.toggle("empty", !remarksText);
+    }
+
+    const updatedEl = bodyEl.querySelector(".map-detail-updated");
+    if (updatedEl) updatedEl.textContent = updatedAgeLabel(m.updatedAt);
+
+    return true;
+  }
+
   function syncDetailStackDom() {
     if (!elDetailStack) return;
     const resizeHandle = elDetailResize;
@@ -1981,79 +2232,18 @@
       lockBtn.setAttribute("aria-pressed", lockActive ? "true" : "false");
     }
 
-    const groups = markerGroups(m);
-    const groupHtml = groups
-      .map(function (g) {
-        return '<span class="map-chip">' + escapeHtml(stripTakPrefix(g)) + "</span>";
-      })
-      .join(" ");
-    const remarksText = m.remarks ? String(m.remarks).trim() : "";
-    const coordText = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
-    const team = m.team ? String(m.team).trim() : "";
-    const role = m.role ? String(m.role).trim() : "";
-    const kvRows = [
-      detailKvRow(groups.length === 1 ? "Group" : "Groups", groupHtml || "—", "map-chips"),
-    ];
-    if (team) kvRows.push(detailKvRow("Team", escapeHtml(team)));
-    if (role) kvRows.push(detailKvRow("Role", escapeHtml(role)));
-    kvRows.push(
-      detailKvRow(
-        "Lat / Lon",
-        "<span>" +
-          coordText +
-          "</span>" +
-          '<button type="button" class="map-copy-btn map-copy-coords-btn" title="Copy coordinates" aria-label="Copy coordinates">' +
-          COPY_COORDS_ICON +
-          "</button>",
-        "map-coords-row"
-      )
-    );
-    if (!isUnknownHae(m.hae)) {
-      kvRows.push(detailKvRow("HAE", fmtHae(m.hae)));
-    }
-    kvRows.push(
-      detailKvRow(
-        "Course",
-        m.course != null ? escapeHtml(String(m.course)) + "°" : "—"
-      ),
-      detailKvRow("Speed", m.speed != null ? escapeHtml(String(m.speed)) : "—"),
-      detailKvRow(
-        "Last updated",
-        '<span class="map-detail-updated">' +
-          escapeHtml(updatedAgeLabel(m.updatedAt)) +
-          "</span>"
-      )
-    );
-
     if (bodyEl) {
-      bodyEl.innerHTML =
-        '<div class="map-detail-wrap">' +
-        '<dl class="map-kv map-kv-compact">' +
-        kvRows.join("") +
-        "</dl>" +
-        '<section class="map-remarks-section">' +
-        '<h3 class="map-remarks-title">Remarks</h3>' +
-        '<div class="map-remarks-box' +
-        (remarksText ? "" : " empty") +
-        '">' +
-        escapeHtml(remarksText || "No remarks.") +
-        "</div></section></div>";
-
-      const copyBtn = bodyEl.querySelector(".map-copy-coords-btn");
-      if (copyBtn) {
-        copyBtn.addEventListener("click", function () {
-          const current = markersByUid.get(slot.uid);
-          if (!current) return;
-          const text = current.lat.toFixed(5) + ", " + current.lon.toFixed(5);
-          copyTextToClipboard(text).then(
-            function () {
-              showCopyToast("Copied " + text);
-            },
-            function () {
-              showCopyToast(text);
-            }
-          );
-        });
+      const wrap = bodyEl.querySelector(".map-detail-wrap");
+      const structureKey = detailBodyStructureKey(m);
+      if (
+        wrap &&
+        wrap.getAttribute("data-detail-structure") === structureKey &&
+        patchDetailPaneBody(bodyEl, m)
+      ) {
+        wireDetailCoordsCopy(bodyEl, slot.uid);
+      } else {
+        bodyEl.innerHTML = buildDetailBodyHtml(m);
+        wireDetailCoordsCopy(bodyEl, slot.uid);
       }
     }
 
@@ -2410,13 +2600,6 @@
         }
       })
       .catch(function () {});
-    if (state && state.host) {
-      elHost.textContent =
-        "TAK stream " +
-        state.host +
-        (state.port ? ":" + state.port : "") +
-        (state.connected ? " · connected" : state.connecting ? " · connecting" : " · offline");
-    }
     setConnStatus(!!state.connected, state.lastError);
     elUpdated.textContent = "Updated " + (state.updatedAt || new Date().toISOString());
     elOffline.hidden = true;
@@ -2572,6 +2755,8 @@
       recenterLockedMarkerAtCurrentZoom();
     }
     elZoom.textContent = map.getZoom().toFixed(1);
+    labelDeclutterKey = "";
+    if (markerLayersReady) refreshMapFromMarkers();
   });
 
   map.getCanvasContainer().addEventListener("wheel", onLockedMapWheel, {
@@ -2717,13 +2902,6 @@
       removeMarker(msg.uid);
     } else if (msg.type === "status") {
       setConnStatus(!!msg.connected, msg.lastError);
-      if (msg.host) {
-        elHost.textContent =
-          "TAK stream " +
-          msg.host +
-          (msg.port ? ":" + msg.port : "") +
-          (msg.connected ? " · connected" : " · offline");
-      }
     }
   };
   es.onerror = () => {

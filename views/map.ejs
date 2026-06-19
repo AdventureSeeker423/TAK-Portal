@@ -3,7 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Live TAK Map</title>
+    <%
+      const _serverName = String(
+        (typeof settings !== "undefined" && settings && settings.SERVER_NAME) ||
+          (typeof serverAbbrev !== "undefined" && serverAbbrev) ||
+          ""
+      )
+        .trim()
+        .toUpperCase();
+      const _mapHeading = _serverName ? _serverName + " LIVE MAP" : "LIVE MAP";
+    %>
+    <title><%= _mapHeading %></title>
     <link
       href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
       rel="stylesheet"
@@ -20,8 +30,7 @@
 
       <header class="map-hud">
         <div class="map-hud-title">
-          <h1>Live TAK Map</h1>
-          <div class="sub" id="mapStreamHost">Connecting to TAK stream…</div>
+          <h1><%= _mapHeading %></h1>
         </div>
         <div class="map-hud-center">
           <span class="map-zulu" id="mapZulu">— Z</span>
