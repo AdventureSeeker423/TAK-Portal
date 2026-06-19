@@ -287,7 +287,8 @@
           affiliation: m.affiliation || "other",
           color,
           iconId: displayIconId || "",
-          showCircle: displayIconId ? 0 : 1,
+          showCircle:
+            displayIconId && map.hasImage(displayIconId) ? 0 : 1,
           selected: m.uid === selectedUid,
         },
       },
@@ -419,17 +420,33 @@
   function resetMapIconCache() {
     iconLoadPending.clear();
     baseIconPixelCache.clear();
-    if (map && typeof map.listImages === "function") {
-      for (const name of map.listImages()) {
-        if (String(name).startsWith("tak-icon-")) {
-          try {
-            map.removeImage(name);
-          } catch (_) {}
-        }
-      }
-    }
     mapImageIdByKey.clear();
     iconIdByMapImageId.clear();
+    purgeMapIconImages();
+  }
+
+  function purgeMapIconImages() {
+    if (!map || typeof map.listImages !== "function") return;
+    for (const name of map.listImages()) {
+      if (String(name).startsWith("tak-icon-")) {
+        try {
+          map.removeImage(name);
+        } catch (_) {}
+      }
+    }
+  }
+
+  function reinstallMapIconsFromCache() {
+    if (!map || !map.isStyleLoaded()) return;
+    iconLoadPending.clear();
+    for (const [imageName, imageData] of baseIconPixelCache.entries()) {
+      installMapImageSync(imageName, cloneImageData(imageData));
+    }
+    for (const [imageId, info] of iconIdByMapImageId.entries()) {
+      if (!info || !info.colored || !info.baseMapImageId || !info.colorHex) continue;
+      if (map.hasImage(imageId)) continue;
+      tryInstallColoredIconSync(info.baseMapImageId, info.colorHex);
+    }
   }
 
   function decodeIconBlob(blob) {
@@ -1328,10 +1345,7 @@
     });
 
     markerLayersReady = true;
-    if (mapRefreshPending) {
-      mapRefreshPending = false;
-    }
-    refreshMapFromMarkers();
+    bindMarkerLayerHandlers();
     return true;
   }
 
@@ -1737,12 +1751,18 @@
     }
     loadMarkersFromServer()
       .then(function () {
-        resetMapIconCache();
+        iconLoadPending.clear();
         syncMapSource();
         renderLayerList();
         renderList();
         maybeFitVisibleOnLoad();
-        preloadMarkerIcons();
+        if (markerLayersReady) {
+          reinstallMapIconsFromCache();
+          preloadMarkerIcons().finally(function () {
+            pushMarkerGeoJsonToSource();
+            if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+          });
+        }
       })
       .catch(function () {});
     if (state && state.host) {
@@ -1772,41 +1792,70 @@
   }
 
   let styleRestoreTimer = null;
+  let styleRestoreGen = 0;
+  let styleRestoreCompleteGen = -1;
 
   function restoreMapAfterStyleChange() {
+    const gen = styleRestoreGen;
     if (styleRestoreTimer) clearTimeout(styleRestoreTimer);
+
+    function afterLayersReady() {
+      if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
+      styleRestoreCompleteGen = gen;
+      reinstallMapIconsFromCache();
+      markerLayersReady = true;
+      mapRefreshPending = false;
+      pushMarkerGeoJsonToSource();
+      preloadMarkerIcons().finally(function () {
+        if (gen !== styleRestoreGen) return;
+        pushMarkerGeoJsonToSource();
+        if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+        if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
+      });
+    }
+
+    function attemptRestore(retry) {
+      if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
+      if (!map.isStyleLoaded()) {
+        if (retry < 120) {
+          setTimeout(function () {
+            attemptRestore(retry + 1);
+          }, 50);
+        }
+        return;
+      }
+      removeMarkerLayers();
+      if (!ensureMarkerLayers()) {
+        if (retry < 120) {
+          setTimeout(function () {
+            attemptRestore(retry + 1);
+          }, 50);
+        }
+        return;
+      }
+      afterLayersReady();
+    }
+
     styleRestoreTimer = setTimeout(function () {
       styleRestoreTimer = null;
-      resetMapIconCache();
+      if (gen !== styleRestoreGen) return;
       markerLayersReady = false;
       mapRefreshPending = true;
-
-      function attempt(retry) {
-        if (!map.isStyleLoaded()) {
-          if (retry < 60) setTimeout(function () { attempt(retry + 1); }, 50);
-          return;
-        }
-        removeMarkerLayers();
-        if (!ensureMarkerLayers()) {
-          if (retry < 60) setTimeout(function () { attempt(retry + 1); }, 50);
-          return;
-        }
-        mapRefreshPending = false;
-        pushMarkerGeoJsonToSource();
-        preloadMarkerIcons().finally(function () {
-          pushMarkerGeoJsonToSource();
-        });
-      }
-      attempt(0);
-    }, 80);
+      map.once("idle", function () {
+        attemptRestore(0);
+      });
+    }, 50);
   }
 
   function setBasemap(id) {
     const def = BASEMAPS[id] || BASEMAPS.dark;
     localStorage.setItem(LS_BASEMAP, id);
     elBasemapLabel.textContent = def.label;
+    styleRestoreGen++;
+    styleRestoreCompleteGen = -1;
     markerLayersReady = false;
     mapRefreshPending = true;
+    iconLoadPending.clear();
     map.setStyle(withMapGlyphs(def.style));
   }
 

@@ -515,6 +515,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding: 8px 10px;
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--map-panel-border);
@@ -529,6 +531,10 @@ body {
 .map-remarks-box.empty {
   color: var(--map-muted);
   font-style: italic;
+}
+
+.map-remarks-box::-webkit-scrollbar {
+  display: none;
 }
 
 .map-detail-actions {
@@ -632,6 +638,12 @@ body {
 
 .map-stack-picker-list {
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.map-stack-picker-list::-webkit-scrollbar {
+  display: none;
 }
 
 .map-stack-picker-item {
