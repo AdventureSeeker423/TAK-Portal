@@ -3,7 +3,6 @@
 
   const LS_BASEMAP = "tak-portal-map-basemap";
   const LS_GROUPS = "tak-portal-map-groups";
-  const LS_VIEW = "tak-portal-map-view";
   const LS_PANEL_LEFT = "tak-portal-map-panel-left";
   const LS_PANEL_RIGHT = "tak-portal-map-panel-right";
 
@@ -15,16 +14,18 @@
     other: "#38bdf8",
   };
 
-  const REGION_PRESETS = {
-    conus: { center: [-98.5795, 39.8283], zoom: 4 },
-    "middle-east": { center: [44.0, 28.0], zoom: 5 },
-    europe: { center: [15.0, 50.0], zoom: 4 },
-  };
+  const MAP_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
+  const MARKER_FILTER = ["==", ["get", "kind"], "marker"];
+
+  function withMapGlyphs(style) {
+    if (typeof style === "string") return style;
+    return { ...style, glyphs: MAP_GLYPHS };
+  }
 
   const BASEMAPS = {
     dark: {
       label: "Dark",
-      style: {
+      style: withMapGlyphs({
         version: 8,
         sources: {
           basemap: {
@@ -40,7 +41,7 @@
           },
         },
         layers: [{ id: "basemap", type: "raster", source: "basemap" }],
-      },
+      }),
     },
     "dark-matter": {
       label: "Dark Matter",
@@ -48,7 +49,7 @@
     },
     light: {
       label: "Light",
-      style: {
+      style: withMapGlyphs({
         version: 8,
         sources: {
           basemap: {
@@ -64,11 +65,11 @@
           },
         },
         layers: [{ id: "basemap", type: "raster", source: "basemap" }],
-      },
+      }),
     },
     satellite: {
       label: "Satellite",
-      style: {
+      style: withMapGlyphs({
         version: 8,
         sources: {
           basemap: {
@@ -81,11 +82,11 @@
           },
         },
         layers: [{ id: "basemap", type: "raster", source: "basemap" }],
-      },
+      }),
     },
     topo: {
       label: "Topographic",
-      style: {
+      style: withMapGlyphs({
         version: 8,
         sources: {
           basemap: {
@@ -97,7 +98,7 @@
           },
         },
         layers: [{ id: "basemap", type: "raster", source: "basemap" }],
-      },
+      }),
     },
   };
 
@@ -108,9 +109,11 @@
   let filterText = "";
   let layerFilterText = "";
   let followSelected = false;
-  let activeTab = "layers";
+  let activeTab = "channels";
   let popup = null;
   let markerLayersReady = false;
+  let pendingFitVisible = true;
+  let copyToastTimer = null;
 
   const elLayerList = document.getElementById("mapLayerList");
   const elList = document.getElementById("mapMarkerList");
@@ -128,7 +131,6 @@
   const elLayerSearch = document.getElementById("mapLayerSearch");
   const elFit = document.getElementById("mapFitBtn");
   const elBasemapSelect = document.getElementById("mapBasemapSelect");
-  const elRegionSelect = document.getElementById("mapRegionSelect");
   const elFollowCheck = document.getElementById("mapFollowCheck");
   const elZulu = document.getElementById("mapZulu");
   const elOffline = document.getElementById("mapOfflineBanner");
@@ -145,7 +147,7 @@
 
   const map = new maplibregl.Map({
     container: "map",
-    style: initialBasemap.style,
+    style: withMapGlyphs(initialBasemap.style),
     center: [-98.5795, 39.8283],
     zoom: 4,
     attributionControl: true,
@@ -154,12 +156,12 @@
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
 
   restorePanelState();
-  restoreLastView();
 
   const SOURCE_ID = "tak-markers";
   const CIRCLE_LAYER = "tak-markers-circle";
   const LABEL_LAYER = "tak-markers-label";
   const COURSE_LAYER = "tak-markers-course";
+  const TAG_LAYER = "tak-markers-tag";
 
   function loadEnabledGroups() {
     try {
@@ -177,28 +179,72 @@
     localStorage.setItem(LS_GROUPS, JSON.stringify(Array.from(enabledGroups)));
   }
 
-  function saveView() {
-    const c = map.getCenter();
-    localStorage.setItem(
-      LS_VIEW,
-      JSON.stringify({ center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() })
-    );
+  function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+    } catch (_) {}
+    document.body.removeChild(ta);
+    return Promise.resolve();
   }
 
-  function restoreLastView() {
-    try {
-      const raw = localStorage.getItem(LS_VIEW);
-      if (!raw) return;
-      const v = JSON.parse(raw);
-      if (v.center && Number.isFinite(v.zoom)) {
-        map.jumpTo({
-          center: v.center,
-          zoom: v.zoom,
-          bearing: v.bearing || 0,
-          pitch: v.pitch || 0,
-        });
+  function showCopyToast(text) {
+    elCursor.textContent = text;
+    if (copyToastTimer) clearTimeout(copyToastTimer);
+    copyToastTimer = setTimeout(() => {
+      copyToastTimer = null;
+    }, 1500);
+  }
+
+  function removeMarkerLayers() {
+    for (const id of [TAG_LAYER, LABEL_LAYER, CIRCLE_LAYER, COURSE_LAYER]) {
+      if (map.getLayer(id)) {
+        try {
+          map.removeLayer(id);
+        } catch (_) {}
       }
-    } catch (_) {}
+    }
+    if (map.getSource(SOURCE_ID)) {
+      try {
+        map.removeSource(SOURCE_ID);
+      } catch (_) {}
+    }
+    markerLayersReady = false;
+  }
+
+  function fitVisibleMarkers(animate) {
+    const coords = getVisibleMarkers()
+      .filter((m) => Number.isFinite(m.lon) && Number.isFinite(m.lat))
+      .map((m) => [m.lon, m.lat]);
+    if (!coords.length) return false;
+
+    pendingFitVisible = false;
+    const opts = animate ? { duration: 800 } : {};
+
+    if (coords.length === 1) {
+      map.flyTo({ center: coords[0], zoom: 12, ...opts });
+      return true;
+    }
+
+    const bounds = coords.reduce(
+      (b, c) => b.extend(c),
+      new maplibregl.LngLatBounds(coords[0], coords[0])
+    );
+    map.fitBounds(bounds, { padding: 80, maxZoom: 14, ...opts });
+    return true;
+  }
+
+  function maybeFitVisibleOnLoad() {
+    if (!pendingFitVisible) return;
+    fitVisibleMarkers(true);
   }
 
   function restorePanelState() {
@@ -290,7 +336,7 @@
   }
 
   function addMarkerLayers() {
-    if (map.getSource(SOURCE_ID)) return;
+    removeMarkerLayers();
 
     map.addSource(SOURCE_ID, {
       type: "geojson",
@@ -313,6 +359,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
+      filter: MARKER_FILTER,
       paint: {
         "circle-radius": [
           "case",
@@ -327,39 +374,88 @@
       },
     });
 
+    // Dark pill behind callsign text (always visible above marker)
+    map.addLayer({
+      id: TAG_LAYER,
+      type: "symbol",
+      source: SOURCE_ID,
+      filter: MARKER_FILTER,
+      layout: {
+        "text-field": ["get", "callsign"],
+        "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+        "text-size": 11,
+        "text-anchor": "bottom",
+        "text-offset": [0, -1.35],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-optional": false,
+        "text-max-width": 14,
+      },
+      paint: {
+        "text-color": "rgba(0,0,0,0)",
+        "text-halo-color": "rgba(8, 12, 18, 0.94)",
+        "text-halo-width": 7,
+        "text-halo-blur": 0,
+        "text-opacity": ["get", "labelOpacity"],
+      },
+    });
+
     map.addLayer({
       id: LABEL_LAYER,
       type: "symbol",
       source: SOURCE_ID,
+      filter: MARKER_FILTER,
       layout: {
         "text-field": ["get", "callsign"],
+        "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
         "text-size": 11,
-        "text-offset": [0, 1.2],
-        "text-anchor": "top",
-        "text-max-width": 12,
+        "text-anchor": "bottom",
+        "text-offset": [0, -1.35],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-optional": false,
+        "text-max-width": 14,
       },
       paint: {
-        "text-color": "#e8eef6",
-        "text-halo-color": "rgba(8,12,18,0.85)",
-        "text-halo-width": 1.2,
+        "text-color": "#f1f5f9",
+        "text-halo-color": ["get", "color"],
+        "text-halo-width": 1,
+        "text-halo-blur": 0,
+        "text-opacity": ["get", "labelOpacity"],
       },
-    });
-
-    map.on("click", CIRCLE_LAYER, (e) => {
-      const f = e.features && e.features[0];
-      if (!f) return;
-      selectMarker(String(f.properties.uid), true);
-    });
-
-    map.on("mouseenter", CIRCLE_LAYER, () => {
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", CIRCLE_LAYER, () => {
-      map.getCanvas().style.cursor = "";
     });
 
     markerLayersReady = true;
     syncMapSource();
+  }
+
+  function onMarkerCircleClick(e) {
+    const f = e.features && e.features[0];
+    if (!f) return;
+    selectMarker(String(f.properties.uid), true);
+  }
+
+  function onMarkerCircleEnter() {
+    map.getCanvas().style.cursor = "pointer";
+  }
+
+  function onMarkerCircleLeave() {
+    map.getCanvas().style.cursor = "";
+  }
+
+  function bindMarkerLayerHandlers() {
+    map.off("click", CIRCLE_LAYER, onMarkerCircleClick);
+    map.off("mouseenter", CIRCLE_LAYER, onMarkerCircleEnter);
+    map.off("mouseleave", CIRCLE_LAYER, onMarkerCircleLeave);
+    map.on("click", CIRCLE_LAYER, onMarkerCircleClick);
+    map.on("mouseenter", CIRCLE_LAYER, onMarkerCircleEnter);
+    map.on("mouseleave", CIRCLE_LAYER, onMarkerCircleLeave);
+  }
+
+  function ensureMarkerLayers() {
+    if (!map.isStyleLoaded()) return;
+    addMarkerLayers();
+    bindMarkerLayerHandlers();
   }
 
   function markerOpacity(m) {
@@ -382,12 +478,14 @@
       type: "Feature",
       geometry: { type: "Point", coordinates: coords },
       properties: {
+        kind: "marker",
         uid: m.uid,
         callsign: m.callsign,
         type: m.type,
         affiliation: m.affiliation || "other",
         color,
         opacity: visible ? markerOpacity(m) : 0,
+        labelOpacity: visible ? markerOpacity(m) : 0,
         selected: m.uid === selectedUid,
         course: m.course,
       },
@@ -492,7 +590,7 @@
     });
 
     if (!items.length) {
-      elLayerList.innerHTML = '<div class="map-detail-empty">No groups match.</div>';
+      elLayerList.innerHTML = '<div class="map-detail-empty">No channels match.</div>';
       return;
     }
 
@@ -606,6 +704,7 @@
     syncMapSource();
     renderLayerList();
     renderList();
+    maybeFitVisibleOnLoad();
     if (selectedUid === m.uid) {
       renderDetail(m);
       if (followSelected && Number.isFinite(m.lon)) {
@@ -635,6 +734,7 @@
     syncMapSource();
     renderLayerList();
     renderList();
+    maybeFitVisibleOnLoad();
     if (state && state.host) {
       elHost.textContent =
         "TAK stream " +
@@ -665,41 +765,39 @@
     const def = BASEMAPS[id] || BASEMAPS.dark;
     localStorage.setItem(LS_BASEMAP, id);
     elBasemapLabel.textContent = def.label;
-    markerLayersReady = false;
-    map.setStyle(def.style);
+    removeMarkerLayers();
+    map.setStyle(withMapGlyphs(def.style));
   }
 
   map.on("style.load", () => {
-    addMarkerLayers();
+    map.once("idle", ensureMarkerLayers);
   });
 
   map.on("load", () => {
-    addMarkerLayers();
+    ensureMarkerLayers();
     elZoom.textContent = map.getZoom().toFixed(1);
   });
 
   map.on("moveend", () => {
-    saveView();
     elZoom.textContent = map.getZoom().toFixed(1);
   });
 
   map.on("mousemove", (e) => {
+    if (copyToastTimer) return;
     elCursor.textContent = e.lngLat.lat.toFixed(5) + ", " + e.lngLat.lng.toFixed(5);
+  });
+
+  map.on("contextmenu", (e) => {
+    e.preventDefault();
+    const text = e.lngLat.lat.toFixed(5) + ", " + e.lngLat.lng.toFixed(5);
+    copyTextToClipboard(text).then(
+      () => showCopyToast("Copied " + text),
+      () => showCopyToast(text)
+    );
   });
 
   elBasemapSelect.addEventListener("change", () => {
     setBasemap(elBasemapSelect.value);
-  });
-
-  elRegionSelect.addEventListener("change", () => {
-    const v = elRegionSelect.value;
-    elRegionSelect.value = "";
-    if (v === "last") {
-      restoreLastView();
-      return;
-    }
-    const preset = REGION_PRESETS[v];
-    if (preset) map.flyTo({ ...preset, duration: 1200 });
   });
 
   elFollowCheck.addEventListener("change", () => {
@@ -737,19 +835,7 @@
   });
 
   elFit.addEventListener("click", () => {
-    const coords = getVisibleMarkers()
-      .filter((m) => Number.isFinite(m.lon) && Number.isFinite(m.lat))
-      .map((m) => [m.lon, m.lat]);
-    if (!coords.length) return;
-    if (coords.length === 1) {
-      map.flyTo({ center: coords[0], zoom: 12 });
-      return;
-    }
-    const bounds = coords.reduce(
-      (b, c) => b.extend(c),
-      new maplibregl.LngLatBounds(coords[0], coords[0])
-    );
-    map.fitBounds(bounds, { padding: 80, maxZoom: 14 });
+    fitVisibleMarkers(true);
   });
 
   document.querySelectorAll(".map-tab").forEach((tab) => {
@@ -788,10 +874,11 @@
   elCopyCoordsBtn.addEventListener("click", () => {
     const m = selectedUid ? markersByUid.get(selectedUid) : null;
     if (!m) return;
-    const text = m.lat + ", " + m.lon;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(() => {});
-    }
+    const text = m.lat.toFixed(5) + ", " + m.lon.toFixed(5);
+    copyTextToClipboard(text).then(
+      () => showCopyToast("Copied " + text),
+      () => showCopyToast(text)
+    );
   });
 
   document.addEventListener("keydown", (ev) => {

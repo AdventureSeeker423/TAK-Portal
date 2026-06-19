@@ -510,6 +510,12 @@ body {
   font-weight: 600;
 }
 
+.map-hint {
+  font-size: 0.68rem;
+  color: var(--map-muted);
+  opacity: 0.85;
+}
+
 .map-popup-groups {
   font-size: 0.78rem;
   color: #94a3b8;

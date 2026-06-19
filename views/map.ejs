@@ -39,13 +39,6 @@
             <option value="satellite">Satellite</option>
             <option value="topo">Topographic</option>
           </select>
-          <select class="map-select" id="mapRegionSelect" title="Region preset">
-            <option value="">Region…</option>
-            <option value="conus">CONUS</option>
-            <option value="middle-east">Middle East</option>
-            <option value="europe">Europe</option>
-            <option value="last">Last view</option>
-          </select>
           <button type="button" class="map-btn" id="mapFitBtn">Fit visible</button>
           <label class="map-btn map-btn-check">
             <input type="checkbox" id="mapFollowCheck" />
@@ -55,16 +48,16 @@
         </div>
       </header>
 
-      <aside class="map-panel map-panel-left" id="mapPanelLeft" aria-label="Layers and contacts">
+      <aside class="map-panel map-panel-left" id="mapPanelLeft" aria-label="Channels and contacts">
         <div class="map-panel-tabs">
-          <button type="button" class="map-tab active" data-tab="layers">Layers</button>
+          <button type="button" class="map-tab active" data-tab="channels">Channels</button>
           <button type="button" class="map-tab" data-tab="contacts">Contacts</button>
           <button type="button" class="map-panel-collapse" id="mapCollapseLeft" title="Collapse panel">‹</button>
         </div>
 
-        <div class="map-tab-panel active" data-panel="layers">
+        <div class="map-tab-panel active" data-panel="channels">
           <div class="map-search map-search-compact">
-            <input id="mapLayerSearch" type="search" placeholder="Filter groups…" autocomplete="off" />
+            <input id="mapLayerSearch" type="search" placeholder="Filter channels…" autocomplete="off" />
           </div>
           <div class="map-layer-actions">
             <button type="button" class="map-link-btn" id="mapGroupsAll">All</button>
@@ -96,7 +89,7 @@
       </aside>
 
       <footer class="map-coords-bar">
-        <span>Cursor: <strong id="mapCursor">—</strong></span>
+        <span>Cursor: <strong id="mapCursor">—</strong> <span class="map-hint">(right-click to copy)</span></span>
         <span>Zoom: <strong id="mapZoom">—</strong></span>
         <span>Basemap: <strong id="mapBasemapLabel">Dark</strong></span>
         <span id="mapUpdated">Updated —</span>
