@@ -41,6 +41,8 @@
   const MAP_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
   const MAP_LABEL_FONT = ["Open Sans Semibold"];
   const MARKER_FILTER = ["==", ["get", "kind"], "marker"];
+  /** Must match cotStream.service.js STALE_GRACE_MS */
+  const STALE_GRACE_MS = 30000;
 
   function withMapGlyphs(style) {
     if (typeof style === "string") return style;
@@ -259,10 +261,24 @@
     }, 120);
   }
 
+  function markerMapOpacity(m) {
+    if (!m?.stale) return 1;
+    const staleMs = Date.parse(m.stale);
+    if (!Number.isFinite(staleMs)) return 1;
+    const remaining = staleMs - Date.now();
+    if (remaining > 0) {
+      if (remaining < 60000) return 0.55;
+      return 1;
+    }
+    if (Date.now() <= staleMs + STALE_GRACE_MS) return 0.4;
+    return 0;
+  }
+
   function markerGeoJsonFeatures(m) {
     const pos = markerCoords(m);
     if (!pos) return [];
     const color = markerDisplayColor(m);
+    const opacity = markerMapOpacity(m);
     const coords = [pos.lon, pos.lat];
     const apiIconId = markerUsesMapIcon(m) ? String(m.iconId) : "";
     const baseMapImageId = apiIconId ? registerMapImageId(apiIconId) : "";
@@ -284,6 +300,7 @@
           type: m.type,
           affiliation: m.affiliation || "other",
           color,
+          opacity,
           iconId: displayIconId || "",
           showCircle: displayIconId ? 0 : 1,
           selected: m.uid === selectedUid,
@@ -386,6 +403,7 @@
   let followSelected = false;
   let activeTab = "channels";
   let popup = null;
+  let stackPickerEl = null;
   let markerLayersReady = false;
   let pendingFitVisible = true;
   let copyToastTimer = null;
@@ -1261,8 +1279,8 @@
         "circle-radius": [
           "case",
           ["==", ["get", "selected"], true],
-          11,
-          8,
+          13,
+          10,
         ],
         "circle-color": ["get", "color"],
         "circle-stroke-width": [
@@ -1272,7 +1290,7 @@
           1.5,
         ],
         "circle-stroke-color": "#ffffff",
-        "circle-opacity": 1,
+        "circle-opacity": ["get", "opacity"],
       },
     });
 
@@ -1286,15 +1304,15 @@
         "icon-size": [
           "case",
           ["==", ["get", "selected"], true],
-          0.82,
-          0.68,
+          1.05,
+          0.88,
         ],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
         "icon-optional": true,
       },
       paint: {
-        "icon-opacity": 1,
+        "icon-opacity": ["get", "opacity"],
         "icon-halo-color": "#ffffff",
         "icon-halo-width": 4,
       },
@@ -1310,7 +1328,7 @@
         "text-font": MAP_LABEL_FONT,
         "text-size": 11,
         "text-anchor": "bottom",
-        "text-offset": [0, -1.65],
+        "text-offset": [0, -2],
         "text-allow-overlap": true,
         "text-ignore-placement": true,
         "text-optional": true,
@@ -1319,7 +1337,7 @@
       paint: {
         "text-color": "#ffffff",
         "text-halo-width": 0,
-        "text-opacity": 1,
+        "text-opacity": ["get", "opacity"],
       },
     });
 
@@ -1343,10 +1361,116 @@
     return true;
   }
 
+  function closeStackPicker() {
+    if (!stackPickerEl) return;
+    stackPickerEl.remove();
+    stackPickerEl = null;
+  }
+
+  function queryMarkersAtPoint(point, radiusPx) {
+    const r = radiusPx == null ? 18 : radiusPx;
+    const layers = [];
+    if (map.getLayer(CIRCLE_LAYER)) layers.push(CIRCLE_LAYER);
+    if (map.getLayer(ICON_LAYER)) layers.push(ICON_LAYER);
+    if (!layers.length) return [];
+
+    const bbox = [
+      [point.x - r, point.y - r],
+      [point.x + r, point.y + r],
+    ];
+    const features = map.queryRenderedFeatures(bbox, { layers: layers });
+    const seen = new Set();
+    const markers = [];
+    for (let i = 0; i < features.length; i++) {
+      const f = features[i];
+      if (!f.properties || f.properties.kind !== "marker") continue;
+      const uid = String(f.properties.uid || "");
+      if (!uid || seen.has(uid)) continue;
+      seen.add(uid);
+      const m = markersByUid.get(uid);
+      if (m) markers.push(m);
+    }
+    markers.sort(function (a, b) {
+      return String(a.callsign).localeCompare(String(b.callsign));
+    });
+    return markers;
+  }
+
+  function positionStackPicker(el, point) {
+    const container = map.getContainer();
+    container.appendChild(el);
+    const maxLeft = Math.max(8, container.clientWidth - el.offsetWidth - 8);
+    const maxTop = Math.max(8, container.clientHeight - el.offsetHeight - 8);
+    el.style.left = Math.min(Math.max(8, point.x + 10), maxLeft) + "px";
+    el.style.top = Math.min(Math.max(8, point.y + 10), maxTop) + "px";
+  }
+
+  function showStackPicker(markers, point) {
+    closeStackPicker();
+    closeMapPopup();
+
+    const el = document.createElement("div");
+    el.className = "map-stack-picker";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", "Select marker");
+
+    const head = document.createElement("div");
+    head.className = "map-stack-picker-head";
+    head.textContent =
+      markers.length + " markers stacked — choose one";
+    el.appendChild(head);
+
+    const list = document.createElement("div");
+    list.className = "map-stack-picker-list";
+    for (let i = 0; i < markers.length; i++) {
+      const m = markers[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "map-stack-picker-item";
+      const chips = markerGroups(m)
+        .slice(0, 2)
+        .map(function (g) {
+          return escapeHtml(stripTakPrefix(g));
+        })
+        .join(" · ");
+      btn.innerHTML =
+        '<div class="name">' +
+        '<span class="map-aff-dot" style="' +
+        markerDotStyle(m) +
+        '"></span>' +
+        escapeHtml(m.callsign) +
+        "</div>" +
+        '<div class="meta">' +
+        escapeHtml(m.type || "unknown") +
+        (chips ? " · " + chips : "") +
+        "</div>";
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        closeStackPicker();
+        selectMarker(m.uid, true);
+      });
+      list.appendChild(btn);
+    }
+    el.appendChild(list);
+
+    el.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+    });
+
+    positionStackPicker(el, point);
+    stackPickerEl = el;
+  }
+
   function onMarkerIconClick(e) {
-    const f = e.features && e.features[0];
-    if (!f) return;
-    selectMarker(String(f.properties.uid), true);
+    if (e.originalEvent) e.originalEvent.stopPropagation();
+    const markers = queryMarkersAtPoint(e.point);
+    if (!markers.length) return;
+    if (markers.length === 1) {
+      closeStackPicker();
+      selectMarker(markers[0].uid, true);
+      return;
+    }
+    showStackPicker(markers, e.point);
   }
 
   function onMarkerIconEnter() {
@@ -1398,7 +1522,11 @@
     const staleMs = Date.parse(m.stale);
     if (!Number.isFinite(staleMs)) return "";
     const sec = Math.round((staleMs - Date.now()) / 1000);
-    if (sec <= 0) return "stale";
+    if (sec <= 0) {
+      const graceSec = Math.round((staleMs + STALE_GRACE_MS - Date.now()) / 1000);
+      if (graceSec > 0) return "stale · " + graceSec + "s left";
+      return "stale";
+    }
     if (sec < 120) return "stale in " + sec + "s";
     return "";
   }
@@ -1528,6 +1656,7 @@
   }
 
   function closeMapPopup() {
+    closeStackPicker();
     if (!popup) return;
     popup.remove();
     popup = null;
@@ -1679,7 +1808,28 @@
     map.setStyle(withMapGlyphs(def.style));
   }
 
+  function deselectMarker() {
+    if (!selectedUid) return;
+    selectedUid = null;
+    renderList();
+    renderDetail(null);
+    syncMapSource();
+    closeStackPicker();
+    closeMapPopup();
+  }
+
+  let mapPointerDown = null;
+  const MAP_CLICK_DRAG_PX = 5;
+
+  function isMapClickNotDrag(e) {
+    if (!mapPointerDown) return true;
+    const dx = e.point.x - mapPointerDown.x;
+    const dy = e.point.y - mapPointerDown.y;
+    return dx * dx + dy * dy <= MAP_CLICK_DRAG_PX * MAP_CLICK_DRAG_PX;
+  }
+
   function onMapBackgroundClick(e) {
+    if (!isMapClickNotDrag(e)) return;
     const layers = [];
     if (map.getLayer(CIRCLE_LAYER)) layers.push(CIRCLE_LAYER);
     if (map.getLayer(ICON_LAYER)) layers.push(ICON_LAYER);
@@ -1688,7 +1838,7 @@
       const hit = map.queryRenderedFeatures(e.point, { layers: layers });
       if (hit && hit.length) return;
     }
-    closeMapPopup();
+    deselectMarker();
   }
 
   map.on("styleimagemissing", onStyleImageMissing);
@@ -1700,7 +1850,20 @@
     elZoom.textContent = map.getZoom().toFixed(1);
   });
 
+  map.on("movestart", closeStackPicker);
+
+  map.on("mousedown", function (e) {
+    mapPointerDown = { x: e.point.x, y: e.point.y };
+  });
+
   map.on("click", onMapBackgroundClick);
+
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") {
+      closeStackPicker();
+      deselectMarker();
+    }
+  });
 
   map.on("moveend", () => {
     elZoom.textContent = map.getZoom().toFixed(1);
@@ -1844,6 +2007,24 @@
   }
   tickZulu();
   setInterval(tickZulu, 1000);
+
+  setInterval(function () {
+    if (!markersByUid.size) return;
+    const now = Date.now();
+    let refresh = false;
+    for (const m of markersByUid.values()) {
+      if (!m.stale) continue;
+      const t = Date.parse(m.stale);
+      if (!Number.isFinite(t)) continue;
+      if (now >= t - 60000 && now <= t + STALE_GRACE_MS) {
+        refresh = true;
+        break;
+      }
+    }
+    if (!refresh) return;
+    renderList();
+    if (markerLayersReady) pushMarkerGeoJsonToSource();
+  }, 5000);
 
   const es = new EventSource("/api/map/stream");
   es.onmessage = (ev) => {

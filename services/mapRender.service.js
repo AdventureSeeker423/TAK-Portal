@@ -8,14 +8,21 @@ function markerDisplayColor(marker) {
   return mapMeta.resolveMarkerDisplayColor(marker);
 }
 
+const STALE_SWEEP_MS = 5000;
+/** Must match cotStream.service.js STALE_GRACE_MS */
+const STALE_GRACE_MS = 30000;
+
 function markerOpacity(marker, now = Date.now()) {
   if (!marker?.stale) return 1;
   const staleMs = Date.parse(marker.stale);
   if (!Number.isFinite(staleMs)) return 1;
   const remaining = staleMs - now;
-  if (remaining <= 0) return 0.35;
-  if (remaining < 60000) return 0.55;
-  return 1;
+  if (remaining > 0) {
+    if (remaining < 60000) return 0.55;
+    return 1;
+  }
+  if (now <= staleMs + STALE_GRACE_MS) return 0.35;
+  return 0;
 }
 
 function markerChannelKeys(marker) {
@@ -167,7 +174,7 @@ function buildGeoJson(markers, options = {}) {
         color,
         apiIconId,
         showCircle: apiIconId ? 0 : 1,
-        opacity: 1,
+        opacity: labelOpacity,
         labelOpacity,
         selected: marker.uid === selectedUid,
         course: Number.isFinite(marker.course) && marker.course >= 0 ? marker.course : 0,

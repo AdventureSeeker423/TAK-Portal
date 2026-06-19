@@ -12,6 +12,8 @@ const mapIcon = require("./mapIcon.service");
 const mapRender = require("./mapRender.service");
 
 const STALE_SWEEP_MS = 5000;
+/** Keep markers on the map this long after their CoT stale time before removing. */
+const STALE_GRACE_MS = 30000;
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 30000;
 const SSE_BATCH_MS = 400;
@@ -108,6 +110,14 @@ function isMarkerStale(marker, now = Date.now()) {
   if (marker?.stale) {
     const t = Date.parse(marker.stale);
     if (Number.isFinite(t) && t <= now) return true;
+  }
+  return false;
+}
+
+function isMarkerExpired(marker, now = Date.now()) {
+  if (marker?.stale) {
+    const t = Date.parse(marker.stale);
+    if (Number.isFinite(t) && now > t + STALE_GRACE_MS) return true;
   }
   return false;
 }
@@ -242,7 +252,7 @@ function broadcast(obj) {
 function sweepStaleMarkers(notify = true) {
   const now = Date.now();
   for (const [uid, marker] of markers) {
-    if (isMarkerStale(marker, now)) {
+    if (isMarkerExpired(marker, now)) {
       markers.delete(uid);
       if (notify) {
         broadcast({ type: "remove", uid, at: new Date().toISOString() });

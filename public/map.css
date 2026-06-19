@@ -614,6 +614,66 @@ body {
   color: #94a3b8;
 }
 
+.map-stack-picker {
+  position: absolute;
+  z-index: 8;
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - 24px));
+  max-height: min(280px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid var(--map-panel-border);
+  background: rgba(10, 16, 24, 0.96);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.map-stack-picker-head {
+  padding: 8px 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--map-muted);
+  border-bottom: 1px solid var(--map-border);
+  flex-shrink: 0;
+}
+
+.map-stack-picker-list {
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.map-stack-picker-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.map-stack-picker-item:hover {
+  background: var(--map-accent-dim);
+  border-color: rgba(34, 211, 238, 0.25);
+}
+
+.map-stack-picker-item .name {
+  font-size: 0.86rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-stack-picker-item .meta {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--map-muted);
+}
+
 .maplibregl-popup-content {
   background: rgba(10, 16, 24, 0.95) !important;
   color: var(--map-text) !important;
