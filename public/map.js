@@ -256,6 +256,7 @@
       allowedMemberChannelKeys = null;
     }
     if (mapChannelScope === "member") {
+      pruneGroupsCatalogToChannelScope();
       ensureEnabledGroupsInitialized();
       syncEnabledGroupsWithCatalog();
     }
@@ -265,6 +266,18 @@
     if (mapChannelScope !== "member" || !allowedMemberChannelKeys) return true;
     const k = String(key || "").trim().toLowerCase();
     return k && allowedMemberChannelKeys.has(k);
+  }
+
+  function isGroupInChannelScope(g) {
+    if (!g || !isMapChannelName(g.name)) return false;
+    if (mapChannelScope !== "member" || !allowedMemberChannelKeys) return true;
+    const key = channelGroupKey(g.name);
+    return isMemberChannelKeyAllowed(key);
+  }
+
+  function pruneGroupsCatalogToChannelScope() {
+    if (mapChannelScope !== "member" || !allowedMemberChannelKeys) return;
+    groupsCatalog = groupsCatalog.filter(isGroupInChannelScope);
   }
 
   function normalizeMarkerRecord(m) {
@@ -2148,7 +2161,7 @@
   }
 
   function syncEnabledGroupsWithCatalog() {
-    const names = groupsCatalog.filter((g) => isMapChannelName(g.name)).map((g) => g.name);
+    const names = groupsCatalog.filter(isGroupInChannelScope).map((g) => g.name);
     const nameSet = new Set(names);
     if (enabledGroups && enabledGroups.size) {
       let pruned = false;
@@ -2171,9 +2184,7 @@
 
   function ensureEnabledGroupsInitialized() {
     if (enabledGroups) return;
-    enabledGroups = new Set(
-      groupsCatalog.filter((g) => isMapChannelName(g.name)).map((g) => g.name)
-    );
+    enabledGroups = new Set(groupsCatalog.filter(isGroupInChannelScope).map((g) => g.name));
   }
 
   function channelGroupKey(name) {
@@ -2320,35 +2331,20 @@
 
   function mergeGroupsCatalog(incoming) {
     const list = Array.isArray(incoming) ? incoming : [];
-    if (mapChannelScope === "member") {
-      groupsCatalog = list
-        .filter(function (g) {
-          return isMapChannelName(g.name);
-        })
-        .slice()
-        .sort(function (a, b) {
-          return String(a.displayName || stripChannelBehaviorSuffix(a.name)).localeCompare(
-            String(b.displayName || stripChannelBehaviorSuffix(b.name))
-          );
-        });
-      recomputeGroupCounts();
-      enabledGroups = normalizeEnabledGroups(enabledGroups);
-      syncEnabledGroupsWithCatalog();
-      ensureDefaultGroupsEnabled();
-      return;
-    }
-
     const byKey = new Map();
+
     for (const g of groupsCatalog) {
+      if (!isGroupInChannelScope(g)) continue;
       const key = channelGroupKey(g.name);
       if (key) byKey.set(key, g);
     }
-    for (const g of incoming || []) {
-      if (!isMapChannelName(g.name)) continue;
+    for (const g of list) {
+      if (!isGroupInChannelScope(g)) continue;
       const key = channelGroupKey(g.name);
       if (!key) continue;
       byKey.set(key, { ...byKey.get(key), ...g, name: g.name });
     }
+
     groupsCatalog = Array.from(byKey.values()).sort((a, b) =>
       String(a.displayName || stripChannelBehaviorSuffix(a.name)).localeCompare(
         String(b.displayName || stripChannelBehaviorSuffix(b.name))
@@ -2368,7 +2364,7 @@
       }
     }
     groupsCatalog = groupsCatalog
-      .filter((g) => isMapChannelName(g.name))
+      .filter(isGroupInChannelScope)
       .map((g) => ({
         ...g,
         markerCount: counts.get(channelBaseKeyForName(g.name)) || 0,
@@ -3353,7 +3349,7 @@
     elLayerList.innerHTML = "";
     const q = layerFilterText.toLowerCase();
     const items = groupsCatalog.filter((g) => {
-      if (!isMapChannelName(g.name)) return false;
+      if (!isGroupInChannelScope(g)) return false;
       if (!q) return true;
       const label = String(g.displayName || g.name).toLowerCase();
       return label.includes(q) || String(g.name).toLowerCase().includes(q);
@@ -3467,8 +3463,12 @@
     for (const m of msg.updates || []) {
       storeMarker(m);
     }
-    if (msg.groupsCatalog) mergeGroupsCatalog(msg.groupsCatalog);
-    else recomputeGroupCounts();
+    // SSE groupsCatalog is global (no per-user scope); agency admins keep their member list.
+    if (msg.groupsCatalog && mapChannelScope !== "member") {
+      mergeGroupsCatalog(msg.groupsCatalog);
+    } else {
+      recomputeGroupCounts();
+    }
     syncMapSource();
     scheduleLayerListRefresh();
     if (slotsChanged) {
