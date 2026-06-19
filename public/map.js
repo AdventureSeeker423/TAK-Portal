@@ -55,6 +55,21 @@
     return { ...style, glyphs: MAP_GLYPHS };
   }
 
+  function applyBasemapStyle(style) {
+    if (typeof style === "string") {
+      map.setStyle(style, {
+        transformStyle: function (_previous, next) {
+          if (next && typeof next === "object" && !next.glyphs) {
+            return { ...next, glyphs: MAP_GLYPHS };
+          }
+          return next;
+        },
+      });
+      return;
+    }
+    map.setStyle(withMapGlyphs(style));
+  }
+
   function rasterBasemapStyle(label, tileUrl, attribution, maxzoom) {
     return withMapGlyphs({
       version: 8,
@@ -73,11 +88,11 @@
 
   const BASEMAPS = {
     "dark-matter": {
-      label: "Dark Matter",
+      label: "CARTO Dark Matter",
       style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
     },
     light: {
-      label: "Light",
+      label: "CARTO Light",
       style: withMapGlyphs({
         version: 8,
         sources: {
@@ -97,7 +112,7 @@
       }),
     },
     satellite: {
-      label: "Satellite",
+      label: "Esri Satellite",
       style: withMapGlyphs({
         version: 8,
         sources: {
@@ -114,7 +129,7 @@
       }),
     },
     topo: {
-      label: "Topographic",
+      label: "OpenTopoMap Topographic",
       style: withMapGlyphs({
         version: 8,
         sources: {
@@ -170,15 +185,6 @@
       style: rasterBasemapStyle(
         "Google Traffic",
         "https://mt0.google.com/vt/lyrs=m,parking,traffic&hl=en&x={x}&y={y}&z={z}&apistyle=s.t:2|s.e:l|p.v:off",
-        "Google",
-        18
-      ),
-    },
-    "google-transit": {
-      label: "Google Transit",
-      style: rasterBasemapStyle(
-        "Google Transit",
-        "https://mt0.google.com/vt/lyrs=m,transit&hl=en&x={x}&y={y}&z={z}&apistyle=s.t:2|s.e:l|p.v:off",
         "Google",
         18
       ),
@@ -330,7 +336,11 @@
       mapRefreshPending = true;
       return;
     }
-    if (!pushMarkerGeoJsonToSource()) return;
+    if (!pushMarkerGeoJsonToSource()) {
+      mapRefreshPending = true;
+      return;
+    }
+    mapRefreshPending = false;
 
     const seen = new Set();
     const iconLoads = [];
@@ -400,15 +410,23 @@
   let copyToastTimer = null;
   let lastCursorLngLat = null;
   const CURSOR_COORD_FORMATS = [
-    { id: "lat_lon", label: "Lat, Lon (decimal)" },
-    { id: "lon_lat", label: "Lon, Lat (decimal)" },
-    { id: "dms", label: "DMS" },
-    { id: "hemisphere", label: "Degrees + hemisphere" },
+    { id: "decimal_degrees", label: "Decimal Degrees" },
+    { id: "degrees_minutes", label: "Degrees, Minutes" },
+    { id: "degrees_minutes_seconds", label: "Degrees, Minutes, Seconds" },
+    { id: "utm", label: "UTM" },
+    { id: "mgrs", label: "MGRS" },
   ];
   let cursorCoordFormatIndex = (function () {
-    const stored = Number(localStorage.getItem(LS_COORD_FORMAT));
-    if (!Number.isFinite(stored)) return 0;
-    return Math.max(0, Math.min(CURSOR_COORD_FORMATS.length - 1, stored));
+    const stored = localStorage.getItem(LS_COORD_FORMAT);
+    if (!stored) return 0;
+    const asNum = Number(stored);
+    if (Number.isFinite(asNum) && String(asNum) === stored.trim()) {
+      return Math.max(0, Math.min(CURSOR_COORD_FORMATS.length - 1, asNum));
+    }
+    const idx = CURSOR_COORD_FORMATS.findIndex(function (f) {
+      return f.id === stored;
+    });
+    return idx >= 0 ? idx : 0;
   })();
   let defaultIconIds = {};
   const iconLoadPending = new Map();
@@ -935,9 +953,9 @@
 
   map.on("rotate", clampMapNorthUp);
   map.on("pitch", clampMapNorthUp);
-  map.on("move", clampMapNorthUp);
-  map.on("moveend", lockMapNorthUp);
-  map.on("style.load", lockMapNorthUp);
+  map.on("style.load", function () {
+    requestAnimationFrame(lockMapNorthUp);
+  });
   map.on("load", lockMapNorthUp);
 
   restorePanelState();
@@ -1017,6 +1035,13 @@
     return deg >= 0 ? "E" : "W";
   }
 
+  function toDmPart(deg) {
+    const abs = Math.abs(deg);
+    const d = Math.floor(abs);
+    const m = (abs - d) * 60;
+    return String(d) + "\u00B0" + m.toFixed(3).padStart(6, "0") + "'";
+  }
+
   function toDmsPart(deg) {
     const abs = Math.abs(deg);
     const d = Math.floor(abs);
@@ -1033,13 +1058,109 @@
     );
   }
 
+  const MGRS_LAT_BANDS = "CDEFGHJKLMNPQRSTUVWXX";
+  const MGRS_E100K = ["ABCDEFGH", "JKLMNPQR", "STUVWXYZ"];
+  const MGRS_N100K = ["ABCDEFGHJKLMNPQRSTUV", "FGHJKLMNPQRSTUVABCDE"];
+
+  function latLonToUtm(lat, lon) {
+    const a = 6378137;
+    const f = 1 / 298.257223563;
+    const k0 = 0.9996;
+    const eccSq = f * (2 - f);
+    const ecc2Sq = eccSq / (1 - eccSq);
+
+    let zone = Math.floor((lon + 180) / 6) + 1;
+    const latBand = MGRS_LAT_BANDS.charAt(Math.floor(lat / 8 + 10));
+    if (zone === 31 && latBand === "V" && lon >= 3) zone++;
+    if (zone === 32 && latBand === "X" && lon < 9) zone--;
+    if (zone === 32 && latBand === "X" && lon >= 9) zone++;
+    if (zone === 34 && latBand === "X" && lon < 21) zone--;
+    if (zone === 34 && latBand === "X" && lon >= 21) zone++;
+    if (zone === 36 && latBand === "X" && lon < 33) zone--;
+    if (zone === 36 && latBand === "X" && lon >= 33) zone++;
+
+    const latRad = (lat * Math.PI) / 180;
+    const lonRad = (lon * Math.PI) / 180;
+    const lonOrigin = (zone - 1) * 6 - 180 + 3;
+    const lonOriginRad = (lonOrigin * Math.PI) / 180;
+
+    const N = a / Math.sqrt(1 - eccSq * Math.sin(latRad) ** 2);
+    const T = Math.tan(latRad) ** 2;
+    const C = ecc2Sq * Math.cos(latRad) ** 2;
+    const A = Math.cos(latRad) * (lonRad - lonOriginRad);
+
+    const M =
+      a *
+      ((1 - eccSq / 4 - (3 * eccSq ** 2) / 64 - (5 * eccSq ** 3) / 256) * latRad -
+        ((3 * eccSq) / 8 + (3 * eccSq ** 2) / 32 + (45 * eccSq ** 3) / 1024) *
+          Math.sin(2 * latRad) +
+        ((15 * eccSq ** 2) / 256 + (45 * eccSq ** 3) / 1024) * Math.sin(4 * latRad) -
+        ((35 * eccSq ** 3) / 3072) * Math.sin(6 * latRad));
+
+    let easting =
+      k0 *
+        N *
+        (A +
+          ((1 - T + C) * A ** 3) / 6 +
+          ((5 - 18 * T + T ** 2 + 72 * C - 58 * ecc2Sq) * A ** 5) / 120) +
+      500000;
+    let northing =
+      k0 *
+      (M +
+        N *
+          Math.tan(latRad) *
+          (A ** 2 / 2 +
+            ((5 - T + 9 * C + 4 * C ** 2) * A ** 4) / 24 +
+            ((61 - 58 * T + T ** 2 + 600 * C - 330 * ecc2Sq) * A ** 6) / 720));
+    if (lat < 0) northing += 10000000;
+
+    return {
+      zone: zone,
+      hemisphere: lat >= 0 ? "N" : "S",
+      easting: Math.round(easting),
+      northing: Math.round(northing),
+    };
+  }
+
+  function latLonToMgrs(lat, lon, precision) {
+    if (precision == null) precision = 5;
+    const utm = latLonToUtm(lat, lon);
+    const zone = utm.zone;
+    const band = MGRS_LAT_BANDS.charAt(Math.floor(lat / 8 + 10));
+    const col = Math.floor(utm.easting / 100000);
+    const e100k = MGRS_E100K[(zone - 1) % 3].charAt(col - 1);
+    const row = Math.floor(utm.northing / 100000) % 20;
+    const n100k = MGRS_N100K[(zone - 1) % 2].charAt(row);
+    const easting = Math.floor(utm.easting % 100000);
+    const northing = Math.floor(utm.northing % 100000);
+    const eRounded = Math.floor(easting / Math.pow(10, 5 - precision));
+    const nRounded = Math.floor(northing / Math.pow(10, 5 - precision));
+    return (
+      String(zone).padStart(2, "0") +
+      band +
+      " " +
+      e100k +
+      n100k +
+      " " +
+      String(eRounded).padStart(precision, "0") +
+      " " +
+      String(nRounded).padStart(precision, "0")
+    );
+  }
+
   function formatCursorCoords(lat, lon, formatId) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return "—";
     const fmt = formatId || CURSOR_COORD_FORMATS[cursorCoordFormatIndex].id;
-    if (fmt === "lon_lat") {
-      return lon.toFixed(5) + ", " + lat.toFixed(5);
+    if (fmt === "degrees_minutes") {
+      return (
+        toDmPart(lat) +
+        coordHemisphere(lat, true) +
+        " " +
+        toDmPart(lon) +
+        coordHemisphere(lon, false)
+      );
     }
-    if (fmt === "dms") {
+    if (fmt === "degrees_minutes_seconds") {
       return (
         toDmsPart(lat) +
         coordHemisphere(lat, true) +
@@ -1048,36 +1169,43 @@
         coordHemisphere(lon, false)
       );
     }
-    if (fmt === "hemisphere") {
+    if (fmt === "utm") {
+      const utm = latLonToUtm(lat, lon);
       return (
-        Math.abs(lat).toFixed(5) +
-        "\u00B0" +
-        coordHemisphere(lat, true) +
-        ", " +
-        Math.abs(lon).toFixed(5) +
-        "\u00B0" +
-        coordHemisphere(lon, false)
+        String(utm.zone) +
+        utm.hemisphere +
+        " " +
+        utm.easting +
+        " " +
+        utm.northing
       );
+    }
+    if (fmt === "mgrs") {
+      return latLonToMgrs(lat, lon);
     }
     return lat.toFixed(5) + ", " + lon.toFixed(5);
   }
 
   function renderCursorCoords() {
     if (!elCursor || copyToastTimer) return;
+    const fmt = CURSOR_COORD_FORMATS[cursorCoordFormatIndex];
     if (!lastCursorLngLat) {
-      elCursor.textContent = "—";
+      elCursor.textContent = fmt.label + ": —";
       return;
     }
-    elCursor.textContent = formatCursorCoords(
-      lastCursorLngLat.lat,
-      lastCursorLngLat.lng
-    );
+    elCursor.textContent =
+      fmt.label +
+      ": " +
+      formatCursorCoords(lastCursorLngLat.lat, lastCursorLngLat.lng, fmt.id);
   }
 
   function cycleCursorCoordFormat() {
     cursorCoordFormatIndex =
       (cursorCoordFormatIndex + 1) % CURSOR_COORD_FORMATS.length;
-    localStorage.setItem(LS_COORD_FORMAT, String(cursorCoordFormatIndex));
+    localStorage.setItem(
+      LS_COORD_FORMAT,
+      CURSOR_COORD_FORMATS[cursorCoordFormatIndex].id
+    );
     renderCursorCoords();
     showCopyToast(CURSOR_COORD_FORMATS[cursorCoordFormatIndex].label);
   }
@@ -1642,91 +1770,97 @@
   function addMarkerLayers() {
     if (!map.isStyleLoaded()) return false;
     if (markerLayersComplete()) return true;
-    if (map.getSource(SOURCE_ID)) removeMarkerLayers();
+    try {
+      if (map.getSource(SOURCE_ID)) removeMarkerLayers();
 
-    map.addSource(SOURCE_ID, {
-      type: "geojson",
-      promoteId: "uid",
-      data: { type: "FeatureCollection", features: [] },
-    });
+      map.addSource(SOURCE_ID, {
+        type: "geojson",
+        promoteId: "uid",
+        data: { type: "FeatureCollection", features: [] },
+      });
 
-    map.addLayer({
-      id: COURSE_LAYER,
-      type: "line",
-      source: SOURCE_ID,
-      filter: ["==", ["get", "kind"], "course-line"],
-      paint: {
-        "line-color": ["get", "color"],
-        "line-width": 2,
-        "line-opacity": 1,
-      },
-    });
+      map.addLayer({
+        id: COURSE_LAYER,
+        type: "line",
+        source: SOURCE_ID,
+        filter: ["==", ["get", "kind"], "course-line"],
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": 2,
+          "line-opacity": 1,
+        },
+      });
 
-    map.addLayer({
-      id: CIRCLE_LAYER,
-      type: "circle",
-      source: SOURCE_ID,
-      filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
-      paint: {
-        "circle-radius": [
-          "case",
-          ["==", ["get", "selected"], true],
-          13,
-          10,
-        ],
-        "circle-color": ["get", "color"],
-        "circle-stroke-width": [
-          "case",
-          ["==", ["get", "selected"], true],
-          2,
-          1.5,
-        ],
-        "circle-stroke-color": "#ffffff",
-        "circle-opacity": 1,
-      },
-    });
+      map.addLayer({
+        id: CIRCLE_LAYER,
+        type: "circle",
+        source: SOURCE_ID,
+        filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 1]],
+        paint: {
+          "circle-radius": [
+            "case",
+            ["==", ["get", "selected"], true],
+            13,
+            10,
+          ],
+          "circle-color": ["get", "color"],
+          "circle-stroke-width": [
+            "case",
+            ["==", ["get", "selected"], true],
+            2,
+            1.5,
+          ],
+          "circle-stroke-color": "#ffffff",
+          "circle-opacity": 1,
+        },
+      });
 
-    map.addLayer({
-      id: ICON_LAYER,
-      type: "symbol",
-      source: SOURCE_ID,
-      filter: ["all", MARKER_FILTER, ["!=", ["get", "iconId"], ""]],
-      layout: {
-        "icon-image": ["get", "iconId"],
-        "icon-size": [
-          "case",
-          ["==", ["get", "selected"], true],
-          1.05,
-          0.88,
-        ],
-        "icon-allow-overlap": true,
-        "icon-ignore-placement": true,
-        "icon-optional": true,
-      },
-      paint: {
-        "icon-opacity": 1,
-        "icon-halo-color": "#ffffff",
-        "icon-halo-width": 4,
-      },
-    });
+      map.addLayer({
+        id: ICON_LAYER,
+        type: "symbol",
+        source: SOURCE_ID,
+        filter: ["all", MARKER_FILTER, ["!=", ["get", "iconId"], ""]],
+        layout: {
+          "icon-image": ["get", "iconId"],
+          "icon-size": [
+            "case",
+            ["==", ["get", "selected"], true],
+            1.05,
+            0.88,
+          ],
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-optional": true,
+        },
+        paint: {
+          "icon-opacity": 1,
+          "icon-halo-color": "#ffffff",
+          "icon-halo-width": 4,
+        },
+      });
 
-    map.addLayer({
-      id: LABEL_LAYER,
-      type: "symbol",
-      source: SOURCE_ID,
-      filter: LABEL_STANDARD_FILTER,
-      layout: markerLabelLayout(),
-      paint: markerLabelPaint(),
-    });
+      map.addLayer({
+        id: LABEL_LAYER,
+        type: "symbol",
+        source: SOURCE_ID,
+        filter: LABEL_STANDARD_FILTER,
+        layout: markerLabelLayout(),
+        paint: markerLabelPaint(),
+      });
 
-    map.addLayer({
-      id: LABEL_PRIORITY_LAYER,
-      type: "symbol",
-      source: SOURCE_ID,
-      filter: LABEL_PRIORITY_FILTER,
-      layout: markerLabelLayout(),
-      paint: markerLabelPaint(),
-    });
+      map.addLayer({
+        id: LABEL_PRIORITY_LAYER,
+        type: "symbol",
+        source: SOURCE_ID,
+        filter: LABEL_PRIORITY_FILTER,
+        layout: markerLabelLayout(),
+        paint: markerLabelPaint(),
+      });
+    } catch (err) {
+      console.warn("[map] addMarkerLayers failed", err);
+      removeMarkerLayers();
+      return false;
+    }
 
     markerLayersReady = true;
     bindMarkerLayerHandlers();
@@ -2758,23 +2892,25 @@
   }
 
   let styleRestoreTimer = null;
+  let styleRestoreFallbackTimer = null;
   let styleRestoreGen = 0;
   let styleRestoreCompleteGen = -1;
 
   function restoreMapAfterStyleChange() {
     const gen = styleRestoreGen;
     if (styleRestoreTimer) clearTimeout(styleRestoreTimer);
+    if (styleRestoreFallbackTimer) clearTimeout(styleRestoreFallbackTimer);
 
-    function afterLayersReady() {
+    function finishRestore() {
       if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
       styleRestoreCompleteGen = gen;
       reinstallMapIconsFromCache();
       markerLayersReady = true;
-      mapRefreshPending = false;
-      pushMarkerGeoJsonToSource();
+      labelDeclutterKey = "";
+      refreshMapFromMarkers();
       preloadMarkerIcons().finally(function () {
         if (gen !== styleRestoreGen) return;
-        pushMarkerGeoJsonToSource();
+        refreshMapFromMarkers();
         if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
         if (map.getLayer(CIRCLE_LAYER)) map.triggerRepaint();
       });
@@ -2783,34 +2919,51 @@
     function attemptRestore(retry) {
       if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
       if (!map.isStyleLoaded()) {
-        if (retry < 120) {
+        if (retry < 240) {
           setTimeout(function () {
             attemptRestore(retry + 1);
           }, 50);
         }
         return;
       }
-      removeMarkerLayers();
+      try {
+        removeMarkerLayers();
+      } catch (err) {
+        console.warn("[map] removeMarkerLayers failed during style restore", err);
+      }
       if (!ensureMarkerLayers()) {
-        if (retry < 120) {
+        if (retry < 240) {
           setTimeout(function () {
             attemptRestore(retry + 1);
           }, 50);
         }
         return;
       }
-      afterLayersReady();
+      finishRestore();
+    }
+
+    function kickRestore() {
+      if (gen !== styleRestoreGen) return;
+      markerLayersReady = false;
+      mapRefreshPending = true;
+      attemptRestore(0);
     }
 
     styleRestoreTimer = setTimeout(function () {
       styleRestoreTimer = null;
       if (gen !== styleRestoreGen) return;
-      markerLayersReady = false;
-      mapRefreshPending = true;
+      kickRestore();
       map.once("idle", function () {
+        if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
         attemptRestore(0);
       });
-    }, 50);
+      styleRestoreFallbackTimer = setTimeout(function () {
+        styleRestoreFallbackTimer = null;
+        if (gen !== styleRestoreGen || styleRestoreCompleteGen === gen) return;
+        console.warn("[map] style restore fallback — forcing marker layer rebuild");
+        attemptRestore(0);
+      }, 2500);
+    }, 0);
   }
 
   function setBasemap(id) {
@@ -2820,8 +2973,7 @@
     styleRestoreCompleteGen = -1;
     markerLayersReady = false;
     mapRefreshPending = true;
-    iconLoadPending.clear();
-    map.setStyle(withMapGlyphs(def.style));
+    applyBasemapStyle(def.style);
   }
 
   function deselectMarker() {

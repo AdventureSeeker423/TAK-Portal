@@ -797,16 +797,106 @@ function parseRoundedTrackNumber(value) {
   return Math.round(n);
 }
 
-/** Course (°) and speed from detail.track, falling back to event.point attributes. */
+function cotNodeAttributes(node) {
+  if (node == null || typeof node !== "object") return null;
+  if (node._attributes && typeof node._attributes === "object") {
+    return node._attributes;
+  }
+  const keys = Object.keys(node).filter(function (k) {
+    return k !== "_text" && k !== "#text" && !k.startsWith("_");
+  });
+  if (!keys.length) return null;
+  return node;
+}
+
+function firstRoundedFromNodes(nodes, field) {
+  const list = Array.isArray(nodes) ? nodes : nodes != null ? [nodes] : [];
+  for (let i = 0; i < list.length; i++) {
+    const attrs = cotNodeAttributes(list[i]);
+    if (!attrs) continue;
+    const n = parseRoundedTrackNumber(attrs[field]);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+/** Pull Speed/Course/Heading/Bearing labels from free-text remarks (AVL / CAD feeds). */
+function parseCourseSpeedFromText(text) {
+  const s = String(text || "");
+  if (!s.trim()) return { course: null, speed: null };
+
+  let course = null;
+  let speed = null;
+
+  const courseMatch = s.match(
+    /(?:^|[\n\r])[\s]*(?:Course|Heading|Bearing|COG|cog)[:\s=]+(-?\d+(?:\.\d+)?)/im
+  );
+  if (courseMatch) {
+    course = parseRoundedTrackNumber(courseMatch[1]);
+  }
+
+  const speedMatch = s.match(
+    /(?:^|[\n\r])[\s]*(?:Speed|SPD|spd|Velocity)[:\s=]+(-?\d+(?:\.\d+)?)/im
+  );
+  if (speedMatch) {
+    speed = parseRoundedTrackNumber(speedMatch[1]);
+  }
+
+  return { course, speed };
+}
+
+function remarksTextForCourseSpeed(detail) {
+  const parts = [];
+  const remarksNode = detail?.remarks ?? detail?.remark;
+  if (remarksNode != null) {
+    const list = Array.isArray(remarksNode) ? remarksNode : [remarksNode];
+    for (const item of list) {
+      const text = extractRemarksText(item);
+      if (text) parts.push(text);
+    }
+  }
+  const contact = detail?.contact?._attributes || detail?.contact;
+  if (contact && typeof contact.remarks === "string" && contact.remarks.trim()) {
+    parts.push(contact.remarks.trim());
+  }
+  const link = detail?.link;
+  const linkList = Array.isArray(link) ? link : link != null ? [link] : [];
+  for (let i = 0; i < linkList.length; i++) {
+    const attrs = cotNodeAttributes(linkList[i]);
+    if (attrs && typeof attrs.remarks === "string" && attrs.remarks.trim()) {
+      parts.push(attrs.remarks.trim());
+    }
+  }
+  return parts.join("\n");
+}
+
+/**
+ * Course (°) and speed from CoT — standard track/point attrs, then AVL/CAD remarks fallbacks.
+ */
 function parseCourseAndSpeed(detail, pointAttrs) {
-  const track = detail?.track?._attributes || {};
+  const d = detail || {};
   const point = pointAttrs || {};
-  const course =
-    parseRoundedTrackNumber(track.course) ??
-    parseRoundedTrackNumber(point.course);
-  const speed =
-    parseRoundedTrackNumber(track.speed) ??
-    parseRoundedTrackNumber(point.speed);
+
+  let course =
+    firstRoundedFromNodes(d.track, "course") ??
+    parseRoundedTrackNumber(point.course) ??
+    firstRoundedFromNodes(d.status, "course") ??
+    firstRoundedFromNodes(d.sensor, "course") ??
+    firstRoundedFromNodes(d.link, "course");
+
+  let speed =
+    firstRoundedFromNodes(d.track, "speed") ??
+    parseRoundedTrackNumber(point.speed) ??
+    firstRoundedFromNodes(d.status, "speed") ??
+    firstRoundedFromNodes(d.sensor, "speed") ??
+    firstRoundedFromNodes(d.link, "speed");
+
+  if (course == null || speed == null) {
+    const fromRemarks = parseCourseSpeedFromText(remarksTextForCourseSpeed(d));
+    if (course == null) course = fromRemarks.course;
+    if (speed == null) speed = fromRemarks.speed;
+  }
+
   return { course, speed };
 }
 

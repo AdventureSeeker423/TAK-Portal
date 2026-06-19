@@ -11,6 +11,9 @@
   --map-ok: #22c55e;
   --map-warn: #f59e0b;
   --map-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --map-coords-bar-height: 34px;
+  --map-zoom-stack-height: 72px;
+  --map-panel-bottom-gap: 10px;
 }
 
 * {
@@ -147,6 +150,19 @@ body {
   gap: 6px;
 }
 
+.map-hud-page-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--map-accent);
+  padding: 5px 10px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 6px;
+  background: var(--map-accent-dim);
+  line-height: 1;
+}
+
 .map-btn {
   appearance: none;
   border: 1px solid var(--map-border);
@@ -248,6 +264,9 @@ body {
   left: 12px;
   width: min(320px, 36vw);
   border-radius: 12px;
+  bottom: calc(
+    var(--map-coords-bar-height) + var(--map-zoom-stack-height) + var(--map-panel-bottom-gap)
+  );
 }
 
 .map-panel-left.collapsed {
@@ -894,11 +913,12 @@ body.map-detail-resizing .map-panel-resize-handle {
   outline-offset: 2px;
 }
 
-.map-coords-bar strong,
-.map-cursor-coords strong {
+.map-coords-bar #mapCursor,
+.map-cursor-coords #mapCursor {
   color: var(--map-text);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .map-hint {
