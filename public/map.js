@@ -199,7 +199,6 @@
   let filterText = "";
   let layerFilterText = "";
   let layerListTimer = null;
-  const MAP_MAX_ICONS = 120;
 
   function normalizeMarkerRecord(m) {
     if (!m || !m.uid) return null;
@@ -260,13 +259,13 @@
     }, 120);
   }
 
-  function markerGeoJsonFeatures(m, useIcons) {
+  function markerGeoJsonFeatures(m) {
     const pos = markerCoords(m);
     if (!pos) return [];
     const color = markerDisplayColor(m);
     const coords = [pos.lon, pos.lat];
     const labelOpacity = markerOpacity(m);
-    const apiIconId = resolveMarkerIconForMap(m, useIcons);
+    const apiIconId = m && m.iconId ? String(m.iconId) : "";
     const mapImageId = apiIconId ? registerMapImageId(apiIconId) : "";
     const features = [
       {
@@ -320,10 +319,9 @@
     if (!src) return;
 
     const visible = getVisibleMarkers();
-    const useIcons = visible.length <= MAP_MAX_ICONS;
     const features = [];
     for (let i = 0; i < visible.length; i++) {
-      features.push.apply(features, markerGeoJsonFeatures(visible[i], useIcons));
+      features.push.apply(features, markerGeoJsonFeatures(visible[i]));
     }
     src.setData({ type: "FeatureCollection", features: features });
     lastGeoMeta = {
@@ -393,19 +391,6 @@
     return "/api/map/icons?id=" + encodeURIComponent(iconId);
   }
 
-  function resolveMarkerIconId(m) {
-    if (m.iconId) return m.iconId;
-    const aff = m.affiliation || "other";
-    return defaultIconIds[aff] || defaultIconIds.friend || defaultIconIds.unknown || "";
-  }
-
-  /** Feed / usericon markers always get their icon; default icons only under MAP_MAX_ICONS. */
-  function resolveMarkerIconForMap(m, useIcons) {
-    if (m && m.iconId) return String(m.iconId);
-    if (!useIcons) return "";
-    return resolveMarkerIconId(m);
-  }
-
   function loadMapIcon(iconId, mapImageId) {
     const imageName = mapImageId || registerMapImageId(iconId);
     if (!iconId || map.hasImage(imageName)) return Promise.resolve();
@@ -450,7 +435,7 @@
   }
 
   function preloadMarkerIcons() {
-    const ids = new Set(Object.values(defaultIconIds).filter(Boolean));
+    const ids = new Set();
     for (const m of markersByUid.values()) {
       if (m && m.iconId) ids.add(String(m.iconId));
     }
@@ -890,8 +875,8 @@
         "circle-radius": [
           "case",
           ["==", ["get", "selected"], true],
-          10,
-          7,
+          ["interpolate", ["linear"], ["zoom"], 8, 7, 12, 11, 16, 14],
+          ["interpolate", ["linear"], ["zoom"], 8, 5, 12, 9, 16, 12],
         ],
         "circle-color": ["get", "color"],
         "circle-stroke-width": 0,
@@ -909,8 +894,8 @@
         "icon-size": [
           "case",
           ["==", ["get", "selected"], true],
-          0.55,
-          0.45,
+          ["interpolate", ["linear"], ["zoom"], 8, 0.65, 12, 0.95, 16, 1.15],
+          ["interpolate", ["linear"], ["zoom"], 8, 0.55, 12, 0.85, 16, 1.05],
         ],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
@@ -931,7 +916,7 @@
         "text-font": MAP_LABEL_FONT,
         "text-size": 11,
         "text-anchor": "bottom",
-        "text-offset": [0, -1.35],
+        "text-offset": [0, -1.65],
         "text-allow-overlap": true,
         "text-ignore-placement": true,
         "text-optional": true,
@@ -1170,8 +1155,6 @@
     if (m && Number.isFinite(m.lon) && Number.isFinite(m.lat)) {
       if (followSelected) {
         map.easeTo({ center: [m.lon, m.lat], duration: 400 });
-      } else if (showPopupFlag) {
-        map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12), duration: 800 });
       }
       if (showPopupFlag) showPopup(m);
     }
