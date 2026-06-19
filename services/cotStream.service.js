@@ -7,6 +7,7 @@ const {
   isTakConfigured,
   isTakBypassed,
 } = require("./tak.service");
+const mapMeta = require("./mapMeta.service");
 
 const STALE_SWEEP_MS = 5000;
 const RECONNECT_MIN_MS = 2000;
@@ -62,6 +63,7 @@ function parseMarkerFromCoT(cot) {
 
     const [lon, lat] = cot.position();
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (lat === 0 && lon === 0) return null;
 
     let callsign = "";
     try {
@@ -73,15 +75,16 @@ function parseMarkerFromCoT(cot) {
     }
 
     const detail = cot.raw?.event?.detail || {};
+    const type = String(attrs.type || cot.type() || "");
     const team =
       detail?.__group?._attributes?.name ||
       detail?.team?._attributes?.name ||
       null;
 
-    return {
+    const base = {
       uid: String(uid),
       callsign: callsign || String(uid).slice(0, 16),
-      type: String(attrs.type || cot.type() || ""),
+      type,
       lat,
       lon,
       hae: point.hae != null ? Number(point.hae) : null,
@@ -92,11 +95,58 @@ function parseMarkerFromCoT(cot) {
       stale: attrs.stale || null,
       how: attrs.how || null,
       team,
+      teamColor: mapMeta.parseTeamColor(detail),
+      affiliation: mapMeta.parseAffiliationFromType(type),
       updatedAt: new Date().toISOString(),
     };
+
+    base.groups = mapMeta.resolveGroupsForMarker(base, detail);
+    return base;
   } catch {
     return null;
   }
+}
+
+function removeMarker(uid, notify = true) {
+  if (!markers.has(uid)) return;
+  markers.delete(uid);
+  if (notify) {
+    broadcast({ type: "remove", uid, at: new Date().toISOString() });
+  }
+}
+
+function handleDeleteCot(cot) {
+  const uid = String(cot.uid?.() || cot.raw?.event?._attributes?.uid || "").trim();
+  if (uid) removeMarker(uid);
+
+  const links = cot.raw?.event?.detail?.link;
+  const linkList = Array.isArray(links) ? links : links ? [links] : [];
+  for (const link of linkList) {
+    const linkUid = String(link?._attributes?.uid || link?.uid || "").trim();
+    if (linkUid) removeMarker(linkUid);
+  }
+}
+
+function handleCot(cot) {
+  const type = String(cot.type?.() || cot.raw?.event?._attributes?.type || "").trim();
+  if (type === "t-x-d-d") {
+    handleDeleteCot(cot);
+    return;
+  }
+  if (type.startsWith("t-x-")) return;
+
+  try {
+    if (typeof cot?.is_stale === "function" && cot.is_stale()) return;
+  } catch (_) {}
+
+  const marker = parseMarkerFromCoT(cot);
+  if (!marker || isMarkerStale(marker)) return;
+  markers.set(marker.uid, marker);
+  broadcast({
+    type: "update",
+    marker,
+    at: new Date().toISOString(),
+  });
 }
 
 function broadcast(obj) {
@@ -120,8 +170,16 @@ function sweepStaleMarkers(notify = true) {
   }
 }
 
+function getMarkerList() {
+  return Array.from(markers.values()).sort((a, b) =>
+    String(a.callsign).localeCompare(String(b.callsign))
+  );
+}
+
 function getStateSnapshot() {
   sweepStaleMarkers(false);
+  mapMeta.ensureRefreshLoop();
+  const markerList = getMarkerList();
   return {
     ok: true,
     connected: bridgeState.connected,
@@ -131,10 +189,9 @@ function getStateSnapshot() {
     lastError: bridgeState.lastError,
     host: bridgeState.host,
     port: bridgeState.port,
-    markerCount: markers.size,
-    markers: Array.from(markers.values()).sort((a, b) =>
-      String(a.callsign).localeCompare(String(b.callsign))
-    ),
+    markerCount: markerList.length,
+    markers: markerList,
+    groupsCatalog: mapMeta.buildGroupsCatalogWithCounts(markerList),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -168,6 +225,8 @@ function scheduleReconnect() {
 }
 
 async function connectBridge() {
+  mapMeta.ensureRefreshLoop();
+
   if (isTakBypassed()) {
     bridgeState.lastError = "TAK bypass enabled (TAK_BYPASS_ENABLED)";
     return;
@@ -228,16 +287,10 @@ async function connectBridge() {
 
     tak.on("cot", (cot) => {
       try {
-        if (typeof cot?.is_stale === "function" && cot.is_stale()) return;
-      } catch (_) {}
-      const marker = parseMarkerFromCoT(cot);
-      if (!marker || isMarkerStale(marker)) return;
-      markers.set(marker.uid, marker);
-      broadcast({
-        type: "update",
-        marker,
-        at: new Date().toISOString(),
-      });
+        handleCot(cot);
+      } catch (err) {
+        console.error("[map-cot] handle error:", err?.message || err);
+      }
     });
 
     tak.on("error", (err) => {
@@ -260,6 +313,7 @@ async function connectBridge() {
 function ensureBridgeStarted() {
   if (started) return;
   started = true;
+  mapMeta.ensureRefreshLoop();
   if (!staleTimer) {
     staleTimer = setInterval(() => sweepStaleMarkers(true), STALE_SWEEP_MS);
     if (typeof staleTimer.unref === "function") staleTimer.unref();
@@ -286,6 +340,7 @@ function subscribe(sendFn) {
 
 module.exports = {
   getStateSnapshot,
+  getMarkerList,
   subscribe,
   ensureBridgeStarted,
 };

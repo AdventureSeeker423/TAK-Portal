@@ -1,0 +1,865 @@
+(function () {
+  "use strict";
+
+  const LS_BASEMAP = "tak-portal-map-basemap";
+  const LS_GROUPS = "tak-portal-map-groups";
+  const LS_VIEW = "tak-portal-map-view";
+  const LS_PANEL_LEFT = "tak-portal-map-panel-left";
+  const LS_PANEL_RIGHT = "tak-portal-map-panel-right";
+
+  const AFFILIATION_COLORS = {
+    friend: "#22c55e",
+    hostile: "#ef4444",
+    neutral: "#eab308",
+    unknown: "#f97316",
+    other: "#38bdf8",
+  };
+
+  const REGION_PRESETS = {
+    conus: { center: [-98.5795, 39.8283], zoom: 4 },
+    "middle-east": { center: [44.0, 28.0], zoom: 5 },
+    europe: { center: [15.0, 50.0], zoom: 4 },
+  };
+
+  const BASEMAPS = {
+    dark: {
+      label: "Dark",
+      style: {
+        version: 8,
+        sources: {
+          basemap: {
+            type: "raster",
+            tiles: [
+              "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+              "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+              "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+            ],
+            tileSize: 256,
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          },
+        },
+        layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+      },
+    },
+    "dark-matter": {
+      label: "Dark Matter",
+      style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+    },
+    light: {
+      label: "Light",
+      style: {
+        version: 8,
+        sources: {
+          basemap: {
+            type: "raster",
+            tiles: [
+              "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+              "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+              "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+            ],
+            tileSize: 256,
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          },
+        },
+        layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+      },
+    },
+    satellite: {
+      label: "Satellite",
+      style: {
+        version: 8,
+        sources: {
+          basemap: {
+            type: "raster",
+            tiles: [
+              "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            ],
+            tileSize: 256,
+            attribution: "Esri, Maxar, Earthstar Geographics",
+          },
+        },
+        layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+      },
+    },
+    topo: {
+      label: "Topographic",
+      style: {
+        version: 8,
+        sources: {
+          basemap: {
+            type: "raster",
+            tiles: ["https://tile.opentopomap.org/{z}/{x}/{y}.png"],
+            tileSize: 256,
+            attribution:
+              '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>, OSM',
+          },
+        },
+        layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+      },
+    },
+  };
+
+  const markersByUid = new Map();
+  let groupsCatalog = [];
+  let enabledGroups = loadEnabledGroups();
+  let selectedUid = null;
+  let filterText = "";
+  let layerFilterText = "";
+  let followSelected = false;
+  let activeTab = "layers";
+  let popup = null;
+  let markerLayersReady = false;
+
+  const elLayerList = document.getElementById("mapLayerList");
+  const elList = document.getElementById("mapMarkerList");
+  const elDetail = document.getElementById("mapDetail");
+  const elDetailActions = document.getElementById("mapDetailActions");
+  const elVisibleCounts = document.getElementById("mapVisibleCounts");
+  const elConnLabel = document.getElementById("mapConnLabel");
+  const elConnDot = document.getElementById("mapConnDot");
+  const elHost = document.getElementById("mapStreamHost");
+  const elUpdated = document.getElementById("mapUpdated");
+  const elCursor = document.getElementById("mapCursor");
+  const elZoom = document.getElementById("mapZoom");
+  const elBasemapLabel = document.getElementById("mapBasemapLabel");
+  const elSearch = document.getElementById("mapSearch");
+  const elLayerSearch = document.getElementById("mapLayerSearch");
+  const elFit = document.getElementById("mapFitBtn");
+  const elBasemapSelect = document.getElementById("mapBasemapSelect");
+  const elRegionSelect = document.getElementById("mapRegionSelect");
+  const elFollowCheck = document.getElementById("mapFollowCheck");
+  const elZulu = document.getElementById("mapZulu");
+  const elOffline = document.getElementById("mapOfflineBanner");
+  const elPanelLeft = document.getElementById("mapPanelLeft");
+  const elPanelRight = document.getElementById("mapPanelRight");
+  const elCenterBtn = document.getElementById("mapCenterBtn");
+  const elCopyCoordsBtn = document.getElementById("mapCopyCoordsBtn");
+
+  const savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark";
+  if (BASEMAPS[savedBasemap]) elBasemapSelect.value = savedBasemap;
+
+  const initialBasemap = BASEMAPS[elBasemapSelect.value] || BASEMAPS.dark;
+  elBasemapLabel.textContent = initialBasemap.label;
+
+  const map = new maplibregl.Map({
+    container: "map",
+    style: initialBasemap.style,
+    center: [-98.5795, 39.8283],
+    zoom: 4,
+    attributionControl: true,
+  });
+
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+
+  restorePanelState();
+  restoreLastView();
+
+  const SOURCE_ID = "tak-markers";
+  const CIRCLE_LAYER = "tak-markers-circle";
+  const LABEL_LAYER = "tak-markers-label";
+  const COURSE_LAYER = "tak-markers-course";
+
+  function loadEnabledGroups() {
+    try {
+      const raw = localStorage.getItem(LS_GROUPS);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? new Set(parsed) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveEnabledGroups() {
+    if (!enabledGroups) return;
+    localStorage.setItem(LS_GROUPS, JSON.stringify(Array.from(enabledGroups)));
+  }
+
+  function saveView() {
+    const c = map.getCenter();
+    localStorage.setItem(
+      LS_VIEW,
+      JSON.stringify({ center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() })
+    );
+  }
+
+  function restoreLastView() {
+    try {
+      const raw = localStorage.getItem(LS_VIEW);
+      if (!raw) return;
+      const v = JSON.parse(raw);
+      if (v.center && Number.isFinite(v.zoom)) {
+        map.jumpTo({
+          center: v.center,
+          zoom: v.zoom,
+          bearing: v.bearing || 0,
+          pitch: v.pitch || 0,
+        });
+      }
+    } catch (_) {}
+  }
+
+  function restorePanelState() {
+    if (localStorage.getItem(LS_PANEL_LEFT) === "collapsed") {
+      elPanelLeft.classList.add("collapsed");
+    }
+    if (localStorage.getItem(LS_PANEL_RIGHT) === "collapsed") {
+      elPanelRight.classList.add("collapsed");
+    }
+  }
+
+  function affiliationColor(aff) {
+    return AFFILIATION_COLORS[aff] || AFFILIATION_COLORS.other;
+  }
+
+  function markerGroups(m) {
+    if (Array.isArray(m.groups) && m.groups.length) return m.groups;
+    return ["Unassigned"];
+  }
+
+  function isGroupEnabled(groupName) {
+    if (!enabledGroups) return true;
+    return enabledGroups.has(groupName);
+  }
+
+  function markerVisible(m) {
+    const groups = markerGroups(m);
+    if (enabledGroups && !groups.some((g) => enabledGroups.has(g))) return false;
+    if (!markerMatchesSearch(m)) return false;
+    return true;
+  }
+
+  function markerMatchesSearch(m) {
+    if (!filterText) return true;
+    const q = filterText.toLowerCase();
+    return (
+      String(m.callsign || "").toLowerCase().includes(q) ||
+      String(m.uid || "").toLowerCase().includes(q) ||
+      String(m.type || "").toLowerCase().includes(q) ||
+      markerGroups(m).some((g) => String(g).toLowerCase().includes(q))
+    );
+  }
+
+  function getVisibleMarkers() {
+    return Array.from(markersByUid.values()).filter(markerVisible);
+  }
+
+  function ensureDefaultGroupsEnabled() {
+    if (enabledGroups) return;
+    enabledGroups = new Set();
+    for (const g of groupsCatalog) enabledGroups.add(g.name);
+    for (const m of markersByUid.values()) {
+      for (const gn of markerGroups(m)) enabledGroups.add(gn);
+    }
+    saveEnabledGroups();
+  }
+
+  function mergeGroupsCatalog(incoming) {
+    const byName = new Map();
+    for (const g of groupsCatalog) byName.set(g.name, g);
+    for (const g of incoming || []) {
+      byName.set(g.name, { ...byName.get(g.name), ...g });
+    }
+    for (const m of markersByUid.values()) {
+      for (const gn of markerGroups(m)) {
+        if (!byName.has(gn)) {
+          byName.set(gn, { name: gn, displayName: gn, markerCount: 0 });
+        }
+      }
+    }
+    groupsCatalog = Array.from(byName.values()).sort((a, b) =>
+      String(a.displayName || a.name).localeCompare(String(b.displayName || b.name))
+    );
+    recomputeGroupCounts();
+    ensureDefaultGroupsEnabled();
+  }
+
+  function recomputeGroupCounts() {
+    const counts = new Map();
+    for (const m of markersByUid.values()) {
+      for (const gn of markerGroups(m)) {
+        counts.set(gn, (counts.get(gn) || 0) + 1);
+      }
+    }
+    groupsCatalog = groupsCatalog.map((g) => ({
+      ...g,
+      markerCount: counts.get(g.name) || 0,
+    }));
+  }
+
+  function addMarkerLayers() {
+    if (map.getSource(SOURCE_ID)) return;
+
+    map.addSource(SOURCE_ID, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+
+    map.addLayer({
+      id: COURSE_LAYER,
+      type: "line",
+      source: SOURCE_ID,
+      filter: ["==", ["get", "kind"], "course-line"],
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": 2,
+        "line-opacity": 0.75,
+      },
+    });
+
+    map.addLayer({
+      id: CIRCLE_LAYER,
+      type: "circle",
+      source: SOURCE_ID,
+      paint: {
+        "circle-radius": [
+          "case",
+          ["==", ["get", "selected"], true],
+          10,
+          7,
+        ],
+        "circle-color": ["get", "color"],
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#f8fafc",
+        "circle-opacity": ["get", "opacity"],
+      },
+    });
+
+    map.addLayer({
+      id: LABEL_LAYER,
+      type: "symbol",
+      source: SOURCE_ID,
+      layout: {
+        "text-field": ["get", "callsign"],
+        "text-size": 11,
+        "text-offset": [0, 1.2],
+        "text-anchor": "top",
+        "text-max-width": 12,
+      },
+      paint: {
+        "text-color": "#e8eef6",
+        "text-halo-color": "rgba(8,12,18,0.85)",
+        "text-halo-width": 1.2,
+      },
+    });
+
+    map.on("click", CIRCLE_LAYER, (e) => {
+      const f = e.features && e.features[0];
+      if (!f) return;
+      selectMarker(String(f.properties.uid), true);
+    });
+
+    map.on("mouseenter", CIRCLE_LAYER, () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", CIRCLE_LAYER, () => {
+      map.getCanvas().style.cursor = "";
+    });
+
+    markerLayersReady = true;
+    syncMapSource();
+  }
+
+  function markerOpacity(m) {
+    if (!m.stale) return 1;
+    const staleMs = Date.parse(m.stale);
+    if (!Number.isFinite(staleMs)) return 1;
+    const remaining = staleMs - Date.now();
+    if (remaining <= 0) return 0.35;
+    if (remaining < 60000) return 0.55;
+    return 1;
+  }
+
+  function markerGeoJsonFeature(m) {
+    const color = m.teamColor || affiliationColor(m.affiliation);
+    const visible = markerVisible(m);
+    const coords = [m.lon, m.lat];
+    const features = [];
+
+    const pointFeature = {
+      type: "Feature",
+      geometry: { type: "Point", coordinates: coords },
+      properties: {
+        uid: m.uid,
+        callsign: m.callsign,
+        type: m.type,
+        affiliation: m.affiliation || "other",
+        color,
+        opacity: visible ? markerOpacity(m) : 0,
+        selected: m.uid === selectedUid,
+        course: m.course,
+      },
+    };
+    features.push(pointFeature);
+
+    if (visible && Number.isFinite(m.course) && m.course >= 0) {
+      const rad = (m.course * Math.PI) / 180;
+      const len = 0.02 / Math.max(map.getZoom(), 4);
+      features.push({
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            coords,
+            [m.lon + Math.sin(rad) * len, m.lat + Math.cos(rad) * len],
+          ],
+        },
+        properties: { uid: m.uid, color, kind: "course-line" },
+      });
+    }
+
+    return features;
+  }
+
+  function syncMapSource() {
+    if (!markerLayersReady) return;
+    const src = map.getSource(SOURCE_ID);
+    if (!src) return;
+    const features = [];
+    for (const m of markersByUid.values()) {
+      features.push(...markerGeoJsonFeature(m));
+    }
+    src.setData({ type: "FeatureCollection", features });
+    updateVisibleCounts();
+  }
+
+  function updateVisibleCounts() {
+    const total = markersByUid.size;
+    const visible = getVisibleMarkers().length;
+    elVisibleCounts.textContent = visible + " / " + total + " visible";
+  }
+
+  function fmtCoord(n) {
+    return Number.isFinite(n) ? n.toFixed(5) : "—";
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function staleAgeLabel(m) {
+    if (!m.stale) return "";
+    const staleMs = Date.parse(m.stale);
+    if (!Number.isFinite(staleMs)) return "";
+    const sec = Math.round((staleMs - Date.now()) / 1000);
+    if (sec <= 0) return "stale";
+    if (sec < 120) return "stale in " + sec + "s";
+    return "";
+  }
+
+  function renderDetail(m) {
+    if (!m) {
+      elDetail.innerHTML =
+        '<div class="map-detail-empty">Select a marker to view details.</div>';
+      elDetailActions.hidden = true;
+      return;
+    }
+    elDetailActions.hidden = false;
+    const groupHtml = markerGroups(m)
+      .map((g) => '<span class="map-chip">' + escapeHtml(g) + "</span>")
+      .join(" ");
+    elDetail.innerHTML =
+      '<dl class="map-kv">' +
+      "<dt>Callsign</dt><dd>" + escapeHtml(m.callsign) + "</dd>" +
+      "<dt>UID</dt><dd>" + escapeHtml(m.uid) + "</dd>" +
+      "<dt>Type</dt><dd>" + escapeHtml(m.type || "—") + "</dd>" +
+      "<dt>Affiliation</dt><dd>" + escapeHtml(m.affiliation || "other") + "</dd>" +
+      "<dt>Groups</dt><dd class=\"map-chips\">" + (groupHtml || "—") + "</dd>" +
+      "<dt>Team</dt><dd>" + escapeHtml(m.team || "—") + "</dd>" +
+      "<dt>Lat / Lon</dt><dd>" + fmtCoord(m.lat) + ", " + fmtCoord(m.lon) + "</dd>" +
+      "<dt>HAE</dt><dd>" + (m.hae != null ? escapeHtml(String(m.hae)) : "—") + "</dd>" +
+      "<dt>Course</dt><dd>" + (m.course != null ? escapeHtml(String(m.course)) + "°" : "—") + "</dd>" +
+      "<dt>Speed</dt><dd>" + (m.speed != null ? escapeHtml(String(m.speed)) : "—") + "</dd>" +
+      "<dt>Stale</dt><dd>" + escapeHtml(m.stale || "—") + "</dd>" +
+      "<dt>Updated</dt><dd>" + escapeHtml(m.updatedAt || "—") + "</dd>" +
+      "</dl>";
+  }
+
+  function renderLayerList() {
+    recomputeGroupCounts();
+    elLayerList.innerHTML = "";
+    const q = layerFilterText.toLowerCase();
+    const items = groupsCatalog.filter((g) => {
+      if (!q) return true;
+      const label = String(g.displayName || g.name).toLowerCase();
+      return label.includes(q) || String(g.name).toLowerCase().includes(q);
+    });
+
+    if (!items.length) {
+      elLayerList.innerHTML = '<div class="map-detail-empty">No groups match.</div>';
+      return;
+    }
+
+    for (const g of items) {
+      const row = document.createElement("label");
+      row.className = "map-layer-row";
+      const checked = isGroupEnabled(g.name);
+      row.innerHTML =
+        '<input type="checkbox" data-group="' +
+        escapeHtml(g.name) +
+        '" ' +
+        (checked ? "checked" : "") +
+        " />" +
+        '<span class="map-layer-name">' +
+        escapeHtml(g.displayName || g.name) +
+        "</span>" +
+        '<span class="map-layer-count">' +
+        String(g.markerCount || 0) +
+        "</span>";
+      row.querySelector("input").addEventListener("change", (ev) => {
+        if (!enabledGroups) enabledGroups = new Set(groupsCatalog.map((x) => x.name));
+        if (ev.target.checked) enabledGroups.add(g.name);
+        else enabledGroups.delete(g.name);
+        saveEnabledGroups();
+        syncMapSource();
+        renderList();
+      });
+      elLayerList.appendChild(row);
+    }
+  }
+
+  function renderList() {
+    const items = getVisibleMarkers().sort((a, b) =>
+      String(a.callsign).localeCompare(String(b.callsign))
+    );
+
+    elList.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "map-detail-empty";
+      empty.textContent = markersByUid.size
+        ? "No contacts match current filters."
+        : "Waiting for CoT markers…";
+      elList.appendChild(empty);
+      return;
+    }
+
+    for (const m of items) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const staleCls = staleAgeLabel(m) ? " stale" : "";
+      btn.className =
+        "map-marker-item" + (m.uid === selectedUid ? " active" : "") + staleCls;
+      const chips = markerGroups(m)
+        .slice(0, 3)
+        .map((g) => escapeHtml(g))
+        .join(" · ");
+      btn.innerHTML =
+        '<div class="name">' +
+        '<span class="map-aff-dot" style="background:' +
+        affiliationColor(m.affiliation) +
+        '"></span>' +
+        escapeHtml(m.callsign) +
+        "</div>" +
+        '<div class="meta">' +
+        escapeHtml(m.type || "unknown") +
+        (chips ? " · " + chips : "") +
+        "</div>";
+      btn.addEventListener("click", () => selectMarker(m.uid, true));
+      elList.appendChild(btn);
+    }
+  }
+
+  function showPopup(m) {
+    if (popup) popup.remove();
+    if (!m) return;
+    popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, offset: 12 })
+      .setLngLat([m.lon, m.lat])
+      .setHTML(
+        "<strong>" +
+          escapeHtml(m.callsign) +
+          "</strong><br/>" +
+          escapeHtml(m.type || "") +
+          "<br/><span class=\"map-popup-groups\">" +
+          escapeHtml(markerGroups(m).join(", ")) +
+          "</span>"
+      )
+      .addTo(map);
+  }
+
+  function selectMarker(uid, showPopupFlag) {
+    selectedUid = uid;
+    const m = markersByUid.get(uid);
+    renderList();
+    renderDetail(m);
+    syncMapSource();
+    if (m && Number.isFinite(m.lon) && Number.isFinite(m.lat)) {
+      if (followSelected) {
+        map.easeTo({ center: [m.lon, m.lat], duration: 400 });
+      } else if (showPopupFlag) {
+        map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12), duration: 800 });
+      }
+      if (showPopupFlag) showPopup(m);
+    }
+  }
+
+  function upsertMarker(m) {
+    if (!m || !m.uid) return;
+    markersByUid.set(String(m.uid), m);
+    mergeGroupsCatalog([]);
+    syncMapSource();
+    renderLayerList();
+    renderList();
+    if (selectedUid === m.uid) {
+      renderDetail(m);
+      if (followSelected && Number.isFinite(m.lon)) {
+        map.easeTo({ center: [m.lon, m.lat], duration: 300 });
+      }
+    }
+  }
+
+  function removeMarker(uid) {
+    markersByUid.delete(String(uid));
+    if (selectedUid === uid) {
+      selectedUid = null;
+      renderDetail(null);
+      if (popup) popup.remove();
+    }
+    recomputeGroupCounts();
+    syncMapSource();
+    renderLayerList();
+    renderList();
+  }
+
+  function applySnapshot(state) {
+    markersByUid.clear();
+    const list = (state && state.markers) || [];
+    for (const m of list) markersByUid.set(String(m.uid), m);
+    mergeGroupsCatalog(state?.groupsCatalog || []);
+    syncMapSource();
+    renderLayerList();
+    renderList();
+    if (state && state.host) {
+      elHost.textContent =
+        "TAK stream " +
+        state.host +
+        (state.port ? ":" + state.port : "") +
+        (state.connected ? " · connected" : state.connecting ? " · connecting" : " · offline");
+    }
+    setConnStatus(!!state.connected, state.lastError);
+    elUpdated.textContent = "Updated " + (state.updatedAt || new Date().toISOString());
+    elOffline.hidden = true;
+  }
+
+  function setConnStatus(connected, errMsg) {
+    elConnDot.classList.remove("ok", "bad");
+    if (connected) {
+      elConnDot.classList.add("ok");
+      elConnLabel.textContent = "Live";
+      elOffline.hidden = true;
+    } else if (errMsg) {
+      elConnDot.classList.add("bad");
+      elConnLabel.textContent = "Offline";
+    } else {
+      elConnLabel.textContent = "Connecting";
+    }
+  }
+
+  function setBasemap(id) {
+    const def = BASEMAPS[id] || BASEMAPS.dark;
+    localStorage.setItem(LS_BASEMAP, id);
+    elBasemapLabel.textContent = def.label;
+    markerLayersReady = false;
+    map.setStyle(def.style);
+  }
+
+  map.on("style.load", () => {
+    addMarkerLayers();
+  });
+
+  map.on("load", () => {
+    addMarkerLayers();
+    elZoom.textContent = map.getZoom().toFixed(1);
+  });
+
+  map.on("moveend", () => {
+    saveView();
+    elZoom.textContent = map.getZoom().toFixed(1);
+  });
+
+  map.on("mousemove", (e) => {
+    elCursor.textContent = e.lngLat.lat.toFixed(5) + ", " + e.lngLat.lng.toFixed(5);
+  });
+
+  elBasemapSelect.addEventListener("change", () => {
+    setBasemap(elBasemapSelect.value);
+  });
+
+  elRegionSelect.addEventListener("change", () => {
+    const v = elRegionSelect.value;
+    elRegionSelect.value = "";
+    if (v === "last") {
+      restoreLastView();
+      return;
+    }
+    const preset = REGION_PRESETS[v];
+    if (preset) map.flyTo({ ...preset, duration: 1200 });
+  });
+
+  elFollowCheck.addEventListener("change", () => {
+    followSelected = elFollowCheck.checked;
+  });
+
+  elSearch.addEventListener("input", () => {
+    filterText = elSearch.value.trim();
+    renderList();
+    syncMapSource();
+  });
+
+  elLayerSearch.addEventListener("input", () => {
+    layerFilterText = elLayerSearch.value.trim();
+    renderLayerList();
+  });
+
+  document.getElementById("mapGroupsAll").addEventListener("click", () => {
+    enabledGroups = new Set(groupsCatalog.map((g) => g.name));
+    for (const m of markersByUid.values()) {
+      for (const gn of markerGroups(m)) enabledGroups.add(gn);
+    }
+    saveEnabledGroups();
+    renderLayerList();
+    syncMapSource();
+    renderList();
+  });
+
+  document.getElementById("mapGroupsNone").addEventListener("click", () => {
+    enabledGroups = new Set();
+    saveEnabledGroups();
+    renderLayerList();
+    syncMapSource();
+    renderList();
+  });
+
+  elFit.addEventListener("click", () => {
+    const coords = getVisibleMarkers()
+      .filter((m) => Number.isFinite(m.lon) && Number.isFinite(m.lat))
+      .map((m) => [m.lon, m.lat]);
+    if (!coords.length) return;
+    if (coords.length === 1) {
+      map.flyTo({ center: coords[0], zoom: 12 });
+      return;
+    }
+    const bounds = coords.reduce(
+      (b, c) => b.extend(c),
+      new maplibregl.LngLatBounds(coords[0], coords[0])
+    );
+    map.fitBounds(bounds, { padding: 80, maxZoom: 14 });
+  });
+
+  document.querySelectorAll(".map-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      activeTab = tab.getAttribute("data-tab");
+      document.querySelectorAll(".map-tab").forEach((t) => {
+        t.classList.toggle("active", t === tab);
+      });
+      document.querySelectorAll(".map-tab-panel").forEach((p) => {
+        p.classList.toggle("active", p.getAttribute("data-panel") === activeTab);
+      });
+    });
+  });
+
+  document.getElementById("mapCollapseLeft").addEventListener("click", () => {
+    elPanelLeft.classList.toggle("collapsed");
+    localStorage.setItem(
+      LS_PANEL_LEFT,
+      elPanelLeft.classList.contains("collapsed") ? "collapsed" : "open"
+    );
+  });
+
+  document.getElementById("mapCollapseRight").addEventListener("click", () => {
+    elPanelRight.classList.toggle("collapsed");
+    localStorage.setItem(
+      LS_PANEL_RIGHT,
+      elPanelRight.classList.contains("collapsed") ? "collapsed" : "open"
+    );
+  });
+
+  elCenterBtn.addEventListener("click", () => {
+    const m = selectedUid ? markersByUid.get(selectedUid) : null;
+    if (m) map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12) });
+  });
+
+  elCopyCoordsBtn.addEventListener("click", () => {
+    const m = selectedUid ? markersByUid.get(selectedUid) : null;
+    if (!m) return;
+    const text = m.lat + ", " + m.lon;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "/" && document.activeElement !== elSearch) {
+      ev.preventDefault();
+      if (activeTab === "contacts") elSearch.focus();
+      else elLayerSearch.focus();
+    }
+    if (ev.key === "Escape") {
+      selectedUid = null;
+      if (popup) popup.remove();
+      renderList();
+      renderDetail(null);
+      syncMapSource();
+    }
+  });
+
+  function tickZulu() {
+    const d = new Date();
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    const ss = String(d.getUTCSeconds()).padStart(2, "0");
+    elZulu.textContent = hh + ":" + mm + ":" + ss + " Z";
+  }
+  tickZulu();
+  setInterval(tickZulu, 1000);
+
+  const es = new EventSource("/api/map/stream");
+  es.onmessage = (ev) => {
+    let msg;
+    try {
+      msg = JSON.parse(ev.data);
+    } catch (_) {
+      return;
+    }
+    if (msg.type === "snapshot" && msg.state) {
+      applySnapshot(msg.state);
+    } else if (msg.type === "update" && msg.marker) {
+      upsertMarker(msg.marker);
+      elUpdated.textContent = "Updated " + (msg.at || new Date().toISOString());
+    } else if (msg.type === "remove" && msg.uid) {
+      removeMarker(msg.uid);
+    } else if (msg.type === "status") {
+      setConnStatus(!!msg.connected, msg.lastError);
+      if (msg.host) {
+        elHost.textContent =
+          "TAK stream " +
+          msg.host +
+          (msg.port ? ":" + msg.port : "") +
+          (msg.connected ? " · connected" : " · offline");
+      }
+    }
+  };
+  es.onerror = () => {
+    setConnStatus(false, "SSE disconnected");
+    elOffline.hidden = false;
+  };
+
+  fetch("/api/map/state")
+    .then((r) => r.json())
+    .then((state) => applySnapshot(state))
+    .catch(() => {});
+
+  fetch("/api/map/groups")
+    .then((r) => r.json())
+    .then((data) => {
+      mergeGroupsCatalog(data.groups || []);
+      renderLayerList();
+    })
+    .catch(() => {});
+})();

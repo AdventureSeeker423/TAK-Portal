@@ -1,9 +1,24 @@
 const router = require("express").Router();
 const cotStream = require("../services/cotStream.service");
+const mapMeta = require("../services/mapMeta.service");
 
 router.get("/state", (req, res) => {
   cotStream.ensureBridgeStarted();
   return res.json(cotStream.getStateSnapshot());
+});
+
+router.get("/groups", async (req, res) => {
+  cotStream.ensureBridgeStarted();
+  try {
+    const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList());
+    return res.json(catalog);
+  } catch (err) {
+    return res.status(500).json({
+      groups: [],
+      error: err?.message || String(err),
+      updatedAt: new Date().toISOString(),
+    });
+  }
 });
 
 router.get("/stream", (req, res) => {

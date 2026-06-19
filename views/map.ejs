@@ -14,342 +14,96 @@
     <div class="map-shell">
       <div id="map" aria-label="TAK live map"></div>
 
+      <div class="map-offline-banner" id="mapOfflineBanner" hidden>
+        Stream disconnected — reload the page to retry.
+      </div>
+
       <header class="map-hud">
         <div class="map-hud-title">
           <h1>Live TAK Map</h1>
           <div class="sub" id="mapStreamHost">Connecting to TAK stream…</div>
+        </div>
+        <div class="map-hud-center">
+          <span class="map-zulu" id="mapZulu">— Z</span>
+          <span class="map-counts" id="mapVisibleCounts">0 / 0 visible</span>
         </div>
         <div class="map-hud-actions">
           <div class="map-status" id="mapConnStatus" title="Stream status">
             <span class="map-status-dot" id="mapConnDot"></span>
             <span id="mapConnLabel">Connecting</span>
           </div>
-          <button type="button" class="map-btn" id="mapFitBtn">Fit markers</button>
+          <select class="map-select" id="mapBasemapSelect" title="Basemap">
+            <option value="dark">Dark</option>
+            <option value="dark-matter">Dark Matter</option>
+            <option value="light">Light</option>
+            <option value="satellite">Satellite</option>
+            <option value="topo">Topographic</option>
+          </select>
+          <select class="map-select" id="mapRegionSelect" title="Region preset">
+            <option value="">Region…</option>
+            <option value="conus">CONUS</option>
+            <option value="middle-east">Middle East</option>
+            <option value="europe">Europe</option>
+            <option value="last">Last view</option>
+          </select>
+          <button type="button" class="map-btn" id="mapFitBtn">Fit visible</button>
+          <label class="map-btn map-btn-check">
+            <input type="checkbox" id="mapFollowCheck" />
+            Follow
+          </label>
           <a class="map-btn" href="/dashboard">Dashboard</a>
         </div>
       </header>
 
-      <aside class="map-panel map-panel-left" aria-label="Marker list">
-        <div class="map-panel-head">
-          <h2>Markers</h2>
-          <span class="count" id="mapMarkerCount">0</span>
+      <aside class="map-panel map-panel-left" id="mapPanelLeft" aria-label="Layers and contacts">
+        <div class="map-panel-tabs">
+          <button type="button" class="map-tab active" data-tab="layers">Layers</button>
+          <button type="button" class="map-tab" data-tab="contacts">Contacts</button>
+          <button type="button" class="map-panel-collapse" id="mapCollapseLeft" title="Collapse panel">‹</button>
         </div>
-        <div class="map-search">
-          <input id="mapSearch" type="search" placeholder="Filter callsign or UID…" autocomplete="off" />
+
+        <div class="map-tab-panel active" data-panel="layers">
+          <div class="map-search map-search-compact">
+            <input id="mapLayerSearch" type="search" placeholder="Filter groups…" autocomplete="off" />
+          </div>
+          <div class="map-layer-actions">
+            <button type="button" class="map-link-btn" id="mapGroupsAll">All</button>
+            <button type="button" class="map-link-btn" id="mapGroupsNone">None</button>
+          </div>
+          <div class="map-layer-list" id="mapLayerList"></div>
         </div>
-        <div class="map-marker-list" id="mapMarkerList"></div>
+
+        <div class="map-tab-panel" data-panel="contacts">
+          <div class="map-search">
+            <input id="mapSearch" type="search" placeholder="Filter callsign or UID…" autocomplete="off" />
+          </div>
+          <div class="map-marker-list" id="mapMarkerList"></div>
+        </div>
       </aside>
 
-      <aside class="map-panel map-panel-right" aria-label="Marker details">
+      <aside class="map-panel map-panel-right" id="mapPanelRight" aria-label="Marker details">
         <div class="map-panel-head">
           <h2>Details</h2>
+          <button type="button" class="map-panel-collapse" id="mapCollapseRight" title="Collapse panel">›</button>
         </div>
         <div class="map-detail-body" id="mapDetail">
           <div class="map-detail-empty">Select a marker to view details.</div>
+        </div>
+        <div class="map-detail-actions" id="mapDetailActions" hidden>
+          <button type="button" class="map-btn map-btn-sm" id="mapCenterBtn">Center</button>
+          <button type="button" class="map-btn map-btn-sm" id="mapCopyCoordsBtn">Copy coords</button>
         </div>
       </aside>
 
       <footer class="map-coords-bar">
         <span>Cursor: <strong id="mapCursor">—</strong></span>
+        <span>Zoom: <strong id="mapZoom">—</strong></span>
+        <span>Basemap: <strong id="mapBasemapLabel">Dark</strong></span>
         <span id="mapUpdated">Updated —</span>
       </footer>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script>
-      (function () {
-        const markersByUid = new Map();
-        let selectedUid = null;
-        let filterText = "";
-
-        const elList = document.getElementById("mapMarkerList");
-        const elDetail = document.getElementById("mapDetail");
-        const elCount = document.getElementById("mapMarkerCount");
-        const elConnLabel = document.getElementById("mapConnLabel");
-        const elConnDot = document.getElementById("mapConnDot");
-        const elHost = document.getElementById("mapStreamHost");
-        const elUpdated = document.getElementById("mapUpdated");
-        const elCursor = document.getElementById("mapCursor");
-        const elSearch = document.getElementById("mapSearch");
-        const elFit = document.getElementById("mapFitBtn");
-
-        const map = new maplibregl.Map({
-          container: "map",
-          style: {
-            version: 8,
-            sources: {
-              carto: {
-                type: "raster",
-                tiles: [
-                  "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                  "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                  "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                ],
-                tileSize: 256,
-                attribution:
-                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-              },
-            },
-            layers: [{ id: "carto", type: "raster", source: "carto" }],
-          },
-          center: [-98.5795, 39.8283],
-          zoom: 4,
-          attributionControl: true,
-        });
-
-        map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
-
-        map.on("mousemove", (e) => {
-          elCursor.textContent =
-            e.lngLat.lat.toFixed(5) + ", " + e.lngLat.lng.toFixed(5);
-        });
-
-        const sourceId = "tak-markers";
-        const layerId = "tak-markers-circle";
-
-        map.on("load", () => {
-          map.addSource(sourceId, {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          });
-          map.addLayer({
-            id: layerId,
-            type: "circle",
-            source: sourceId,
-            paint: {
-              "circle-radius": 7,
-              "circle-color": "#3b82f6",
-              "circle-stroke-width": 2,
-              "circle-stroke-color": "#dbeafe",
-            },
-          });
-
-          map.on("click", layerId, (e) => {
-            const f = e.features && e.features[0];
-            if (!f) return;
-            selectMarker(String(f.properties.uid));
-          });
-          map.on("mouseenter", layerId, () => {
-            map.getCanvas().style.cursor = "pointer";
-          });
-          map.on("mouseleave", layerId, () => {
-            map.getCanvas().style.cursor = "";
-          });
-        });
-
-        function markerGeoJsonFeature(m) {
-          return {
-            type: "Feature",
-            geometry: { type: "Point", coordinates: [m.lon, m.lat] },
-            properties: {
-              uid: m.uid,
-              callsign: m.callsign,
-              type: m.type,
-            },
-          };
-        }
-
-        function syncMapSource() {
-          const src = map.getSource(sourceId);
-          if (!src) return;
-          const features = Array.from(markersByUid.values()).map(markerGeoJsonFeature);
-          src.setData({ type: "FeatureCollection", features });
-        }
-
-        function fmtCoord(n) {
-          return Number.isFinite(n) ? n.toFixed(5) : "?";
-        }
-
-        function renderDetail(m) {
-          if (!m) {
-            elDetail.innerHTML =
-              '<div class="map-detail-empty">Select a marker to view details.</div>';
-            return;
-          }
-          elDetail.innerHTML =
-            "<dl class=\"map-kv\">" +
-            "<dt>Callsign</dt><dd>" + escapeHtml(m.callsign) + "</dd>" +
-            "<dt>UID</dt><dd>" + escapeHtml(m.uid) + "</dd>" +
-            "<dt>Type</dt><dd>" + escapeHtml(m.type || "?") + "</dd>" +
-            "<dt>Team</dt><dd>" + escapeHtml(m.team || "?") + "</dd>" +
-            "<dt>Lat / Lon</dt><dd>" + fmtCoord(m.lat) + ", " + fmtCoord(m.lon) + "</dd>" +
-            "<dt>HAE</dt><dd>" + (m.hae != null ? escapeHtml(String(m.hae)) : "?") + "</dd>" +
-            "<dt>Course</dt><dd>" + (m.course != null ? escapeHtml(String(m.course)) : "?") + "</dd>" +
-            "<dt>Speed</dt><dd>" + (m.speed != null ? escapeHtml(String(m.speed)) : "?") + "</dd>" +
-            "<dt>Stale</dt><dd>" + escapeHtml(m.stale || "?") + "</dd>" +
-            "<dt>Updated</dt><dd>" + escapeHtml(m.updatedAt || "?") + "</dd>" +
-            "</dl>";
-        }
-
-        function escapeHtml(s) {
-          return String(s)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\"/g, "&quot;");
-        }
-
-        function markerMatchesFilter(m) {
-          if (!filterText) return true;
-          const q = filterText.toLowerCase();
-          return (
-            String(m.callsign || "").toLowerCase().includes(q) ||
-            String(m.uid || "").toLowerCase().includes(q) ||
-            String(m.type || "").toLowerCase().includes(q)
-          );
-        }
-
-        function renderList() {
-          const items = Array.from(markersByUid.values())
-            .filter(markerMatchesFilter)
-            .sort((a, b) => String(a.callsign).localeCompare(String(b.callsign)));
-
-          elCount.textContent = String(markersByUid.size);
-          elList.innerHTML = "";
-
-          if (!items.length) {
-            const empty = document.createElement("div");
-            empty.className = "map-detail-empty";
-            empty.textContent = markersByUid.size
-              ? "No markers match your filter."
-              : "Waiting for CoT markers…";
-            elList.appendChild(empty);
-            return;
-          }
-
-          for (const m of items) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className =
-              "map-marker-item" + (m.uid === selectedUid ? " active" : "");
-            btn.innerHTML =
-              '<div class="name">' +
-              escapeHtml(m.callsign) +
-              "</div>" +
-              '<div class="meta">' +
-              escapeHtml(m.type || "unknown") +
-              " · " +
-              fmtCoord(m.lat) +
-              ", " +
-              fmtCoord(m.lon) +
-              "</div>";
-            btn.addEventListener("click", () => selectMarker(m.uid));
-            elList.appendChild(btn);
-          }
-        }
-
-        function selectMarker(uid) {
-          selectedUid = uid;
-          const m = markersByUid.get(uid);
-          renderList();
-          renderDetail(m);
-          if (m && Number.isFinite(m.lon) && Number.isFinite(m.lat)) {
-            map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12) });
-          }
-        }
-
-        function upsertMarker(m) {
-          if (!m || !m.uid) return;
-          markersByUid.set(String(m.uid), m);
-          syncMapSource();
-          renderList();
-          if (selectedUid === m.uid) renderDetail(m);
-        }
-
-        function removeMarker(uid) {
-          markersByUid.delete(String(uid));
-          if (selectedUid === uid) {
-            selectedUid = null;
-            renderDetail(null);
-          }
-          syncMapSource();
-          renderList();
-        }
-
-        function applySnapshot(state) {
-          markersByUid.clear();
-          const list = (state && state.markers) || [];
-          for (const m of list) upsertMarker(m);
-          if (state && state.host) {
-            elHost.textContent =
-              "TAK stream " +
-              state.host +
-              (state.port ? ":" + state.port : "") +
-              (state.connected ? " · connected" : state.connecting ? " · connecting" : " · offline");
-          }
-          setConnStatus(!!state.connected, state.lastError);
-          elUpdated.textContent = "Updated " + (state.updatedAt || new Date().toISOString());
-        }
-
-        function setConnStatus(connected, errMsg) {
-          elConnDot.classList.remove("ok", "bad");
-          if (connected) {
-            elConnDot.classList.add("ok");
-            elConnLabel.textContent = "Live";
-          } else if (errMsg) {
-            elConnDot.classList.add("bad");
-            elConnLabel.textContent = "Offline";
-          } else {
-            elConnLabel.textContent = "Connecting";
-          }
-        }
-
-        elSearch.addEventListener("input", () => {
-          filterText = elSearch.value.trim();
-          renderList();
-        });
-
-        elFit.addEventListener("click", () => {
-          const coords = Array.from(markersByUid.values())
-            .filter((m) => Number.isFinite(m.lon) && Number.isFinite(m.lat))
-            .map((m) => [m.lon, m.lat]);
-          if (!coords.length) return;
-          if (coords.length === 1) {
-            map.flyTo({ center: coords[0], zoom: 12 });
-            return;
-          }
-          const bounds = coords.reduce(
-            (b, c) => b.extend(c),
-            new maplibregl.LngLatBounds(coords[0], coords[0])
-          );
-          map.fitBounds(bounds, { padding: 80, maxZoom: 14 });
-        });
-
-        const es = new EventSource("/api/map/stream");
-        es.onmessage = (ev) => {
-          let msg;
-          try {
-            msg = JSON.parse(ev.data);
-          } catch (_) {
-            return;
-          }
-          if (msg.type === "snapshot" && msg.state) {
-            applySnapshot(msg.state);
-          } else if (msg.type === "update" && msg.marker) {
-            upsertMarker(msg.marker);
-            elUpdated.textContent = "Updated " + (msg.at || new Date().toISOString());
-          } else if (msg.type === "remove" && msg.uid) {
-            removeMarker(msg.uid);
-          } else if (msg.type === "status") {
-            setConnStatus(!!msg.connected, msg.lastError);
-            if (msg.host) {
-              elHost.textContent =
-                "TAK stream " +
-                msg.host +
-                (msg.port ? ":" + msg.port : "") +
-                (msg.connected ? " · connected" : " · offline");
-            }
-          }
-        };
-        es.onerror = () => {
-          setConnStatus(false, "SSE disconnected");
-        };
-
-        fetch("/api/map/state")
-          .then((r) => r.json())
-          .then((state) => applySnapshot(state))
-          .catch(() => {});
-      })();
-    </script>
+    <script src="/map.js" defer></script>
   </body>
 </html>
