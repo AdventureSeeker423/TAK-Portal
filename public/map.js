@@ -138,45 +138,13 @@
       label: "CARTO Dark Matter",
       style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
     },
-    "dark-matter-nolabels": {
-      label: "CARTO Dark Matter (no labels)",
-      style: "https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json",
-    },
     positron: {
       label: "CARTO Positron",
       style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
     },
-    "positron-nolabels": {
-      label: "CARTO Positron (no labels)",
-      style: "https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json",
-    },
     voyager: {
       label: "CARTO Voyager",
       style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
-    },
-    "voyager-nolabels": {
-      label: "CARTO Voyager (no labels)",
-      style: "https://basemaps.cartocdn.com/gl/voyager-nolabels-gl-style/style.json",
-    },
-    light: {
-      label: "CARTO Voyager (raster)",
-      style: withMapGlyphs({
-        version: 8,
-        sources: {
-          basemap: {
-            type: "raster",
-            tiles: [
-              "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-              "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-              "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-            ],
-            tileSize: 256,
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-          },
-        },
-        layers: [{ id: "basemap", type: "raster", source: "basemap" }],
-      }),
     },
     satellite: {
       label: "Esri Satellite",
@@ -1054,7 +1022,14 @@
   const elExpandRight = document.getElementById("mapExpandRight");
 
   let savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark-matter";
-  if (savedBasemap === "dark" || !BASEMAPS[savedBasemap]) {
+  if (savedBasemap === "dark" || savedBasemap === "light") {
+    savedBasemap = savedBasemap === "light" ? "voyager" : "dark-matter";
+    localStorage.setItem(LS_BASEMAP, savedBasemap);
+  } else if (/-nolabels$/.test(savedBasemap)) {
+    savedBasemap = savedBasemap.replace(/-nolabels$/, "");
+    localStorage.setItem(LS_BASEMAP, savedBasemap);
+  }
+  if (!BASEMAPS[savedBasemap]) {
     savedBasemap = "dark-matter";
     localStorage.setItem(LS_BASEMAP, savedBasemap);
   }

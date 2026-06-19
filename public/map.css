@@ -150,19 +150,6 @@ body {
   gap: 6px;
 }
 
-.map-hud-page-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--map-accent);
-  padding: 5px 10px;
-  border: 1px solid rgba(34, 211, 238, 0.35);
-  border-radius: 6px;
-  background: var(--map-accent-dim);
-  line-height: 1;
-}
-
 .map-btn {
   appearance: none;
   border: 1px solid var(--map-border);
