@@ -1133,12 +1133,7 @@
   });
 
   document.getElementById("mapGroupsAll").addEventListener("click", () => {
-    enabledGroups = new Set(groupsCatalog.filter((g) => isMapChannelName(g.name)).map((g) => g.name));
-    for (const m of markersByUid.values()) {
-      for (const gn of markerGroups(m)) {
-        if (isMapChannelName(gn)) enabledGroups.add(gn);
-      }
-    }
+    enabledGroups = null;
     saveEnabledGroups();
     renderLayerList();
     syncMapSource();
