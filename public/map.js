@@ -54,7 +54,6 @@
   const ICON_LAYER_HIGH = "tak-markers-icon-high";
   const LABEL_LAYER = "tak-markers-label";
   const LABEL_PRIORITY_LAYER = "tak-markers-label-priority";
-  const COURSE_LAYER = "tak-markers-course";
   const MARKER_HIT_LAYER_IDS = [
     CIRCLE_LAYER_LOW,
     ICON_LAYER_LOW,
@@ -62,7 +61,6 @@
     ICON_LAYER_HIGH,
   ];
   const MARKER_LAYER_IDS = [
-    COURSE_LAYER,
     CIRCLE_LAYER_LOW,
     ICON_LAYER_LOW,
     CIRCLE_LAYER_HIGH,
@@ -71,7 +69,11 @@
     LABEL_PRIORITY_LAYER,
   ];
   /** Legacy layer ids removed during style restore. */
-  const LEGACY_MARKER_LAYER_IDS = ["tak-markers-circle", "tak-markers-icon"];
+  const LEGACY_MARKER_LAYER_IDS = [
+    "tak-markers-circle",
+    "tak-markers-icon",
+    "tak-markers-course",
+  ];
   /** Must match cotStream.service.js STALE_GRACE_MS */
   const STALE_GRACE_MS = 30000;
 
@@ -428,29 +430,6 @@
         },
       },
     ];
-
-    const course = Number(m.course);
-    const speed = Number(m.speed);
-    if (
-      Number.isFinite(course) &&
-      course >= 0 &&
-      Number.isFinite(speed) &&
-      speed > 2
-    ) {
-      const rad = (course * Math.PI) / 180;
-      const len = 0.02 / Math.max(map.getZoom(), 4);
-      features.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            coords,
-            [pos.lon + Math.sin(rad) * len, pos.lat + Math.cos(rad) * len],
-          ],
-        },
-        properties: { uid: m.uid, color, kind: "course-line", renderSort: renderSort },
-      });
-    }
 
     return features;
   }
@@ -1867,7 +1846,6 @@
       ICON_LAYER_LOW,
       CIRCLE_LAYER_LOW,
       ...LEGACY_MARKER_LAYER_IDS,
-      COURSE_LAYER,
     ]) {
       if (map.getLayer(id)) {
         try {
@@ -2374,7 +2352,6 @@
   function markerLayersComplete() {
     return (
       map.getSource(SOURCE_ID) &&
-      map.getLayer(COURSE_LAYER) &&
       map.getLayer(CIRCLE_LAYER_LOW) &&
       map.getLayer(ICON_LAYER_LOW) &&
       map.getLayer(CIRCLE_LAYER_HIGH) &&
@@ -2505,21 +2482,6 @@
         type: "geojson",
         promoteId: "uid",
         data: { type: "FeatureCollection", features: [] },
-      });
-
-      map.addLayer({
-        id: COURSE_LAYER,
-        type: "line",
-        source: SOURCE_ID,
-        filter: ["==", ["get", "kind"], "course-line"],
-        layout: {
-          "line-sort-key": ["get", "renderSort"],
-        },
-        paint: {
-          "line-color": ["get", "color"],
-          "line-width": 2,
-          "line-opacity": 1,
-        },
       });
 
       map.addLayer(markerCircleLayerSpec(CIRCLE_LAYER_LOW, 0));

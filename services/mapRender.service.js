@@ -166,30 +166,8 @@ function buildGeoJson(markers, options = {}) {
         opacity: 1,
         labelOpacity: 1,
         selected: marker.uid === selectedUid,
-        course: Number.isFinite(marker.course) && marker.course >= 0 ? marker.course : 0,
       },
     });
-
-    if (
-      Number.isFinite(marker.course) &&
-      marker.course >= 0 &&
-      Number.isFinite(marker.lat) &&
-      Number.isFinite(marker.lon)
-    ) {
-      const rad = (marker.course * Math.PI) / 180;
-      const len = 0.02;
-      features.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            coords,
-            [marker.lon + Math.sin(rad) * len, marker.lat + Math.cos(rad) * len],
-          ],
-        },
-        properties: { uid: marker.uid, color, kind: "course-line" },
-      });
-    }
   }
 
   return {
