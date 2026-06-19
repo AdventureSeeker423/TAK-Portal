@@ -199,20 +199,31 @@ body {
   background: rgba(0, 0, 0, 0.35);
   border-radius: 8px;
   padding: 6px 8px;
-  cursor: pointer;
+  color-scheme: dark;
 }
 
 .map-basemap-icon {
   flex: 0 0 auto;
   color: var(--map-accent);
   opacity: 0.9;
+  pointer-events: none;
 }
 
 .map-basemap-picker .map-select {
   border: none;
-  background: transparent;
-  padding: 0;
+  background-color: transparent;
+  padding: 0 16px 0 0;
   min-width: 0;
+  color: var(--map-text);
+  color-scheme: dark;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238fa3bc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+}
+
+.map-basemap-picker .map-select option {
+  color: var(--map-text);
+  background-color: #121820;
 }
 
 .map-select {
@@ -225,6 +236,12 @@ body {
   font: inherit;
   font-size: 0.76rem;
   cursor: pointer;
+  color-scheme: dark;
+}
+
+.map-select option {
+  color: var(--map-text);
+  background-color: #121820;
 }
 
 .map-status {
