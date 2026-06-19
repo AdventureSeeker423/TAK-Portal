@@ -13,6 +13,7 @@ const CLOUDTAK_RAW =
 
 const ICONSET_ARCHIVES = [
   "Default.zip",
+  "Public Safety Air.zip",
   "FEMA Icons.zip",
   "FalconView.zip",
   "Generic Icons.zip",
@@ -20,7 +21,6 @@ const ICONSET_ARCHIVES = [
   "Google.zip",
   "Incident Management Icons.zip",
   "OSM.zip",
-  "Public Safety Air.zip",
   "Responder Icons.zip",
 ];
 

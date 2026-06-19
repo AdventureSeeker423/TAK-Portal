@@ -93,18 +93,24 @@ function isAirCotType(type) {
   return parts.length >= 3 && parts[2].toUpperCase() === "A";
 }
 
-/** PNG map icons: explicit usericon/path, or 2525 sprites for air domain types. */
+/** PNG map icons: explicit usericon/path, or any resolved icon for air domain types. */
 function markerUsesMapIcon(marker) {
   if (!marker?.iconId) return false;
   const src = String(marker.iconSource || "").toLowerCase();
   if (src === "usericon" || src === "path") return true;
-  if (src === "type2525b" && isAirCotType(marker.type)) return true;
+  if (isAirCotType(marker.type)) {
+    return (
+      src === "type2525b" ||
+      src === "default" ||
+      src === "type" ||
+      !src
+    );
+  }
   return false;
 }
 
 function toSlimMarker(marker) {
   if (!marker) return null;
-  const useIcon = markerUsesMapIcon(marker);
   return {
     uid: marker.uid,
     callsign: marker.callsign,
@@ -123,8 +129,8 @@ function toSlimMarker(marker) {
     how: marker.how,
     team: marker.team,
     updatedAt: marker.updatedAt,
-    iconId: useIcon ? marker.iconId || null : null,
-    iconSource: useIcon ? marker.iconSource || null : null,
+    iconId: marker.iconId || null,
+    iconSource: marker.iconSource || null,
   };
 }
 

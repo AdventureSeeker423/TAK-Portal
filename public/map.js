@@ -279,7 +279,7 @@
           type: m.type,
           affiliation: m.affiliation || "other",
           color,
-          iconId: iconReady ? mapImageId : "",
+          iconId: mapImageId || "",
           showCircle: iconReady ? 0 : 1,
           selected: m.uid === selectedUid,
         },
@@ -325,6 +325,7 @@
     if (!pushMarkerGeoJsonToSource()) return;
 
     const seen = new Set();
+    const iconLoads = [];
     for (const m of getVisibleMarkers()) {
       if (!markerUsesMapIcon(m)) continue;
       const apiIconId = String(m.iconId);
@@ -334,8 +335,13 @@
       seen.add(key);
       const mapImageId = registerMapImageId(apiIconId, tint);
       if (!map.hasImage(mapImageId)) {
-        loadMapIcon(apiIconId, mapImageId, tint);
+        iconLoads.push(loadMapIcon(apiIconId, mapImageId, tint));
       }
+    }
+    if (iconLoads.length) {
+      Promise.all(iconLoads).finally(function () {
+        pushMarkerGeoJsonToSource();
+      });
     }
   }
 
@@ -471,15 +477,66 @@
     if (!m || !m.iconId) return false;
     const src = String(m.iconSource || "").toLowerCase();
     if (src === "usericon" || src === "path") return true;
-    if (src === "type2525b" && isAirCotType(m.type)) return true;
+    if (isAirCotType(m.type)) {
+      return (
+        src === "type2525b" ||
+        src === "default" ||
+        src === "type" ||
+        src === "path" ||
+        !src
+      );
+    }
     return false;
   }
 
   function markerIconTint(m) {
     if (!markerUsesMapIcon(m)) return null;
     const src = String(m.iconSource || "").toLowerCase();
-    if (src === "type2525b") return null;
+    if (src === "type2525b" || isAirCotType(m.type)) return null;
     return markerDisplayColor(m);
+  }
+
+  function installMapImage(imageName, source) {
+    if (!map.isStyleLoaded() || !source || map.hasImage(imageName)) {
+      return Promise.resolve(Boolean(map.hasImage(imageName)));
+    }
+    function putImage(img) {
+      try {
+        if (!map.hasImage(imageName)) {
+          map.addImage(imageName, img, { pixelRatio: 1 });
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    if (source instanceof HTMLCanvasElement) {
+      if (typeof createImageBitmap === "function") {
+        return createImageBitmap(source).then(putImage).catch(function () {
+          return new Promise(function (resolve) {
+            const img = new Image();
+            img.onload = function () {
+              resolve(putImage(img));
+            };
+            img.onerror = function () {
+              resolve(false);
+            };
+            img.src = source.toDataURL("image/png");
+          });
+        });
+      }
+      return new Promise(function (resolve) {
+        const img = new Image();
+        img.onload = function () {
+          resolve(putImage(img));
+        };
+        img.onerror = function () {
+          resolve(false);
+        };
+        img.src = source.toDataURL("image/png");
+      });
+    }
+    return Promise.resolve(putImage(source));
   }
 
   function loadMapIcon(iconId, mapImageId, tintHex) {
@@ -494,32 +551,20 @@
         return resp.blob();
       })
       .then(function (blob) {
-        function addToMap(source) {
-          if (!map.isStyleLoaded()) return;
-          const finalSource = tintHex ? tintIconSource(source, tintHex) : source;
-          if (!map.hasImage(imageName)) {
-            try {
-              map.addImage(imageName, finalSource, { pixelRatio: 1 });
-            } catch (_) {}
-          }
-        }
-        if (typeof createImageBitmap === "function") {
-          return createImageBitmap(blob).then(function (bitmap) {
-            addToMap(bitmap);
+        if (typeof createImageBitmap !== "function") {
+          return new Promise(function (resolve, reject) {
+            const img = new Image();
+            img.onload = function () {
+              const src = tintHex ? tintIconSource(img, tintHex) : img;
+              installMapImage(imageName, src).then(resolve).catch(reject);
+            };
+            img.onerror = reject;
+            img.src = URL.createObjectURL(blob);
           });
         }
-        return new Promise(function (resolve, reject) {
-          const img = new Image();
-          img.onload = function () {
-            try {
-              addToMap(img);
-              resolve();
-            } catch (err) {
-              reject(err);
-            }
-          };
-          img.onerror = reject;
-          img.src = URL.createObjectURL(blob);
+        return createImageBitmap(blob).then(function (bitmap) {
+          const src = tintHex ? tintIconSource(bitmap, tintHex) : bitmap;
+          return installMapImage(imageName, src);
         });
       })
       .then(function () {
@@ -1007,7 +1052,7 @@
       id: ICON_LAYER,
       type: "symbol",
       source: SOURCE_ID,
-      filter: ["all", MARKER_FILTER, ["!=", ["get", "iconId"], ""]],
+      filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 0]],
       layout: {
         "icon-image": ["get", "iconId"],
         "icon-size": [
