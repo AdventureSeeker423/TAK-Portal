@@ -782,11 +782,16 @@
   function markerUsesMapIcon(m) {
     if (!m || !m.iconId) return false;
     const src = String(m.iconSource || "").toLowerCase();
-    if (src === "usericon" || src === "path" || src === "type2525b" || src === "alias") {
+    if (src === "usericon" || src === "path" || src === "alias") {
       return true;
     }
     if (src === "default" && isAirCotType(m.type)) {
       return true;
+    }
+    if (src === "type2525b") {
+      if (isAirCotType(m.type)) return true;
+      // Live EUD ground tracks use team-colored dots, not symbology PNGs.
+      return String(m.origin || "").toLowerCase() === "feed";
     }
     return false;
   }
