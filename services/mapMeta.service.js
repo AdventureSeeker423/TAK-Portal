@@ -786,15 +786,58 @@ function teamNameToColor(name) {
   return ATAK_TEAM_COLORS_LC[n.toLowerCase()] || null;
 }
 
+function clampColorByte(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+/** CoT detail.color — common on data-feed / AVL injected markers (no __group). */
+function parseDetailColor(detail) {
+  const node = detail?.color;
+  if (node == null) return null;
+
+  const list = Array.isArray(node) ? node : [node];
+  for (const item of list) {
+    if (typeof item === "string" || typeof item === "number") {
+      const parsed = normalizeTakColor(item);
+      if (parsed) return parsed;
+      continue;
+    }
+    if (!item || typeof item !== "object") continue;
+
+    const attrs = item._attributes || item;
+    for (const field of ["argb", "value", "color"]) {
+      const parsed = normalizeTakColor(attrs[field]);
+      if (parsed) return parsed;
+    }
+
+    const r = clampColorByte(attrs.red ?? attrs.r);
+    const g = clampColorByte(attrs.green ?? attrs.g);
+    const b = clampColorByte(attrs.blue ?? attrs.b);
+    if (r == null && g == null && b == null) continue;
+    const a = clampColorByte(attrs.alpha ?? attrs.a);
+    if (a === 0) continue;
+    return (
+      "#" +
+      (r ?? 0).toString(16).padStart(2, "0") +
+      (g ?? 0).toString(16).padStart(2, "0") +
+      (b ?? 0).toString(16).padStart(2, "0")
+    );
+  }
+
+  return null;
+}
+
 function parseTeamColor(detail) {
-  const color =
+  const fromGroup =
     detail?.__group?._attributes?.color ||
     detail?.team?._attributes?.color ||
     null;
-  return normalizeTakColor(color);
+  return normalizeTakColor(fromGroup) || parseDetailColor(detail);
 }
 
-/** Map marker fill: ATAK team name, then CoT color attr, then affiliation. */
+/** Map marker fill: ATAK team name, then CoT color attrs, then affiliation. */
 function resolveMarkerDisplayColor(marker) {
   const team = normalizeGroupName(marker?.team);
   const fromTeam = teamNameToColor(team);
@@ -1143,6 +1186,7 @@ module.exports = {
   parseAffiliationFromType,
   parseTeamName,
   parseTeamColor,
+  parseDetailColor,
   teamNameToColor,
   resolveMarkerDisplayColor,
   normalizeTakColor,
