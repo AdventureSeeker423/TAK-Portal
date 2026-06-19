@@ -267,7 +267,6 @@
     const apiIconId = markerUsesMapIcon(m) ? String(m.iconId) : "";
     const tint = markerIconTint(m);
     const mapImageId = apiIconId ? registerMapImageId(apiIconId, tint) : "";
-    const iconReady = Boolean(mapImageId && map.hasImage(mapImageId));
     const features = [
       {
         type: "Feature",
@@ -280,13 +279,13 @@
           affiliation: m.affiliation || "other",
           color,
           iconId: mapImageId || "",
-          showCircle: iconReady ? 0 : 1,
+          showCircle: mapImageId ? 0 : 1,
           selected: m.uid === selectedUid,
         },
       },
     ];
 
-    if (mapImageId && apiIconId && !iconReady) {
+    if (mapImageId && apiIconId) {
       loadMapIcon(apiIconId, mapImageId, tint);
     }
 
@@ -382,7 +381,6 @@
   let copyToastTimer = null;
   let defaultIconIds = {};
   const iconLoadPending = new Map();
-  const iconsKeepOriginal = new Set();
   const mapImageIdByKey = new Map();
   const iconIdByMapImageId = new Map();
 
@@ -404,7 +402,6 @@
 
   function resetMapIconCache() {
     iconLoadPending.clear();
-    iconsKeepOriginal.clear();
   }
 
   function pushMarkerGeoJsonToSource() {
@@ -491,59 +488,16 @@
     return false;
   }
 
-  function iconPreservesOriginalColors(source) {
-    try {
-      const w = source.width;
-      const h = source.height;
-      if (!w || !h) return false;
-      const canvas = document.createElement("canvas");
-      const sampleW = Math.min(w, 64);
-      const sampleH = Math.min(h, 64);
-      canvas.width = sampleW;
-      canvas.height = sampleH;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return false;
-      ctx.drawImage(source, 0, 0, sampleW, sampleH);
-      const data = ctx.getImageData(0, 0, sampleW, sampleH).data;
-      let hasDark = false;
-      let hasLight = false;
-      const hueBuckets = new Set();
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] < 40) continue;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const lum = (r * 299 + g * 587 + b * 114) / 1000;
-        if (lum < 55) hasDark = true;
-        if (lum > 210) hasLight = true;
-        const spread = Math.max(r, g, b) - Math.min(r, g, b);
-        if (spread > 45) {
-          hueBuckets.add(Math.round((Math.atan2(g - b, r - g) * 180) / Math.PI / 30));
-        }
-      }
-      if (hasDark && hasLight) return true;
-      if (hueBuckets.size > 1) return true;
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
   function markerSkipIconTint(m) {
     if (!m) return true;
-    const uid = String(m.uid || "");
-    if (uid.startsWith("incident-")) return true;
-    return false;
+    return String(m.uid || "").startsWith("incident-");
   }
 
   function markerIconTint(m) {
     if (!markerUsesMapIcon(m) || markerSkipIconTint(m)) return null;
     const src = String(m.iconSource || "").toLowerCase();
     if (src === "type2525b" || isAirCotType(m.type)) return null;
-    if (iconsKeepOriginal.has(String(m.iconId))) return null;
-    const color = markerDisplayColor(m);
-    if (!color || isLightMarkerColor(color)) return null;
-    return color;
+    return markerDisplayColor(m);
   }
 
   function formatMarkerGroupNames(m) {
@@ -604,16 +558,8 @@
     if (iconLoadPending.has(pendingKey)) return iconLoadPending.get(pendingKey);
 
     function installLoadedIcon(source) {
-      let tint = tintHex;
-      if (tint && iconPreservesOriginalColors(source)) {
-        iconsKeepOriginal.add(String(iconId));
-        tint = null;
-      }
-      const finalImageName = registerMapImageId(iconId, tint);
-      const finalSource = tint ? tintIconSource(source, tint) : source;
-      return installMapImage(finalImageName, finalSource).then(function () {
-        if (finalImageName !== imageName) scheduleMapRefresh();
-      });
+      const finalSource = tintHex ? tintIconSource(source, tintHex) : source;
+      return installMapImage(imageName, finalSource);
     }
 
     const promise = fetch(iconApiUrl(iconId))
@@ -1133,7 +1079,7 @@
       id: ICON_LAYER,
       type: "symbol",
       source: SOURCE_ID,
-      filter: ["all", MARKER_FILTER, ["==", ["get", "showCircle"], 0]],
+      filter: ["all", MARKER_FILTER, ["!=", ["get", "iconId"], ""]],
       layout: {
         "icon-image": ["get", "iconId"],
         "icon-size": [
