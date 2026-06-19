@@ -111,9 +111,15 @@ function toSlimMarker(marker) {
     affiliation: marker.affiliation,
     teamColor: marker.teamColor,
     stale: marker.stale,
-    course: marker.course,
+    course:
+      marker.course != null && Number.isFinite(Number(marker.course))
+        ? Math.round(Number(marker.course))
+        : null,
     hae: marker.hae,
-    speed: marker.speed,
+    speed:
+      marker.speed != null && Number.isFinite(Number(marker.speed))
+        ? Math.round(Number(marker.speed))
+        : null,
     time: marker.time,
     start: marker.start,
     how: marker.how,

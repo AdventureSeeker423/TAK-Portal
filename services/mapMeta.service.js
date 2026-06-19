@@ -790,6 +790,26 @@ function parseTeamRole(detail) {
   return s || null;
 }
 
+function parseRoundedTrackNumber(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n);
+}
+
+/** Course (°) and speed from detail.track, falling back to event.point attributes. */
+function parseCourseAndSpeed(detail, pointAttrs) {
+  const track = detail?.track?._attributes || {};
+  const point = pointAttrs || {};
+  const course =
+    parseRoundedTrackNumber(track.course) ??
+    parseRoundedTrackNumber(point.course);
+  const speed =
+    parseRoundedTrackNumber(track.speed) ??
+    parseRoundedTrackNumber(point.speed);
+  return { course, speed };
+}
+
 function teamNameToColor(name) {
   const n = normalizeGroupName(name);
   if (!n) return null;
@@ -1231,6 +1251,7 @@ module.exports = {
   parseAffiliationFromType,
   parseTeamName,
   parseTeamRole,
+  parseCourseAndSpeed,
   parseTeamColor,
   parseRemarks,
   parseDetailColor,

@@ -1935,6 +1935,14 @@
     return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) : "—";
   }
 
+  function fmtCourse(n) {
+    return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) + "°" : "—";
+  }
+
+  function fmtSpeed(n) {
+    return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) : "—";
+  }
+
   function isUnknownHae(n) {
     return Math.round(Number(n)) === 9999999;
   }
@@ -2213,15 +2221,11 @@
     kvRows.push(
       detailKvRow(
         "Course",
-        '<span data-detail-key="course">' +
-          (m.course != null ? escapeHtml(String(m.course)) + "°" : "—") +
-          "</span>"
+        '<span data-detail-key="course">' + escapeHtml(fmtCourse(m.course)) + "</span>"
       ),
       detailKvRow(
         "Speed",
-        '<span data-detail-key="speed">' +
-          (m.speed != null ? escapeHtml(String(m.speed)) : "—") +
-          "</span>"
+        '<span data-detail-key="speed">' + escapeHtml(fmtSpeed(m.speed)) + "</span>"
       ),
       detailKvRow(
         "Last updated",
@@ -2280,14 +2284,10 @@
     if (haeEl) haeEl.textContent = fmtHae(m.hae);
 
     const courseEl = bodyEl.querySelector('[data-detail-key="course"]');
-    if (courseEl) {
-      courseEl.textContent = m.course != null ? String(m.course) + "°" : "—";
-    }
+    if (courseEl) courseEl.textContent = fmtCourse(m.course);
 
     const speedEl = bodyEl.querySelector('[data-detail-key="speed"]');
-    if (speedEl) {
-      speedEl.textContent = m.speed != null ? String(m.speed) : "—";
-    }
+    if (speedEl) speedEl.textContent = fmtSpeed(m.speed);
 
     const groupsEl = bodyEl.querySelector('[data-detail-key="groups"]');
     if (groupsEl) {

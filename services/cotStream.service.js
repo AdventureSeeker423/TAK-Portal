@@ -147,6 +147,7 @@ function parseMarkerFromCoT(cot) {
     const type = String(attrs.type || cot.type() || "");
     const team = mapMeta.parseTeamName(detail) || null;
     const role = mapMeta.parseTeamRole(detail);
+    const { course, speed } = mapMeta.parseCourseAndSpeed(detail, point);
 
     const base = {
       uid: String(uid),
@@ -155,8 +156,8 @@ function parseMarkerFromCoT(cot) {
       lat,
       lon,
       hae: point.hae != null ? Number(point.hae) : null,
-      course: point.course != null ? Number(point.course) : null,
-      speed: point.speed != null ? Number(point.speed) : null,
+      course,
+      speed,
       time: attrs.time || null,
       start: attrs.start || null,
       stale: attrs.stale || null,
