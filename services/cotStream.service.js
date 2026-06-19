@@ -8,6 +8,7 @@ const {
   isTakBypassed,
 } = require("./tak.service");
 const mapMeta = require("./mapMeta.service");
+const mapIcon = require("./mapIcon.service");
 
 const STALE_SWEEP_MS = 5000;
 const RECONNECT_MIN_MS = 2000;
@@ -101,6 +102,22 @@ function parseMarkerFromCoT(cot) {
     };
 
     base.groups = mapMeta.resolveGroupsForMarker(base, detail);
+
+    const usericon = mapIcon.parseUserIcon(detail);
+    base.iconsetpath = usericon.iconsetpath || null;
+    base.iconGroup = usericon.group || null;
+    base.iconName = usericon.name || null;
+
+    const icon = mapIcon.resolveIcon({
+      type: base.type,
+      affiliation: base.affiliation,
+      usericon,
+    });
+    if (icon) {
+      base.iconId = icon.iconId;
+      base.iconSource = icon.source;
+    }
+
     return base;
   } catch {
     return null;
@@ -167,6 +184,29 @@ function sweepStaleMarkers(notify = true) {
         broadcast({ type: "remove", uid, at: new Date().toISOString() });
       }
     }
+  }
+}
+
+function refreshAllMarkerIcons() {
+  if (!mapIcon.getStatus().ready) return;
+  const at = new Date().toISOString();
+  for (const marker of markers.values()) {
+    const icon = mapIcon.resolveIcon({
+      type: marker.type,
+      affiliation: marker.affiliation,
+      usericon: {
+        iconsetpath: marker.iconsetpath || "",
+        group: marker.iconGroup || "",
+        name: marker.iconName || "",
+      },
+    });
+    const nextId = icon?.iconId || null;
+    const nextSource = icon?.source || null;
+    if (marker.iconId === nextId && marker.iconSource === nextSource) continue;
+    marker.iconId = nextId;
+    marker.iconSource = nextSource;
+    marker.updatedAt = at;
+    broadcast({ type: "update", marker, at });
   }
 }
 
@@ -343,4 +383,5 @@ module.exports = {
   getMarkerList,
   subscribe,
   ensureBridgeStarted,
+  refreshAllMarkerIcons,
 };

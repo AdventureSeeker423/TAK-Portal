@@ -1,10 +1,29 @@
 const router = require("express").Router();
+const path = require("path");
 const cotStream = require("../services/cotStream.service");
 const mapMeta = require("../services/mapMeta.service");
+const mapIcon = require("../services/mapIcon.service");
+
+mapIcon.ensureIconsets().then(() => {
+  cotStream.refreshAllMarkerIcons();
+}).catch((err) => {
+  console.warn("[map] iconset init failed:", err?.message || err);
+});
 
 router.get("/state", (req, res) => {
   cotStream.ensureBridgeStarted();
-  return res.json(cotStream.getStateSnapshot());
+  const snapshot = cotStream.getStateSnapshot();
+  snapshot.icons = mapIcon.getStatus();
+  return res.json(snapshot);
+});
+
+router.get("/icons", (req, res) => {
+  const iconId = String(req.query.id || "").trim();
+  if (!iconId) return res.status(400).json({ error: "Missing id" });
+  const filePath = mapIcon.getIconFilePath(iconId);
+  if (!filePath) return res.status(404).end();
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  return res.sendFile(path.resolve(filePath));
 });
 
 router.get("/groups", async (req, res) => {

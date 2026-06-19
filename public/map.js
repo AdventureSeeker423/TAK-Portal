@@ -22,6 +22,22 @@
     return { ...style, glyphs: MAP_GLYPHS };
   }
 
+  function rasterBasemapStyle(label, tileUrl, attribution, maxzoom) {
+    return withMapGlyphs({
+      version: 8,
+      sources: {
+        basemap: {
+          type: "raster",
+          tiles: [tileUrl.replace(/\{\$x\}/g, "{x}").replace(/\{\$y\}/g, "{y}").replace(/\{\$z\}/g, "{z}")],
+          tileSize: 256,
+          attribution,
+          maxzoom: maxzoom || 18,
+        },
+      },
+      layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+    });
+  }
+
   const BASEMAPS = {
     dark: {
       label: "Dark",
@@ -100,6 +116,51 @@
         layers: [{ id: "basemap", type: "raster", source: "basemap" }],
       }),
     },
+    "google-maps": {
+      label: "Google Maps",
+      style: rasterBasemapStyle(
+        "Google Maps",
+        "https://mts1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}&s=Gal&apistyle=s.t:2|s.e:l|p.v:off",
+        "Google",
+        18
+      ),
+    },
+    "google-satellite": {
+      label: "Google Satellite",
+      style: rasterBasemapStyle(
+        "Google Satellite",
+        "https://mt1.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}",
+        "Google",
+        22
+      ),
+    },
+    "google-terrain": {
+      label: "Google Terrain",
+      style: rasterBasemapStyle(
+        "Google Terrain",
+        "https://mts1.google.com/vt/lyrs=p&hl=en&x={x}&y={y}&z={z}",
+        "Google",
+        18
+      ),
+    },
+    "google-traffic": {
+      label: "Google Traffic",
+      style: rasterBasemapStyle(
+        "Google Traffic",
+        "https://mt0.google.com/vt/lyrs=m,parking,traffic&hl=en&x={x}&y={y}&z={z}&apistyle=s.t:2|s.e:l|p.v:off",
+        "Google",
+        18
+      ),
+    },
+    "google-transit": {
+      label: "Google Transit",
+      style: rasterBasemapStyle(
+        "Google Transit",
+        "https://mt0.google.com/vt/lyrs=m,transit&hl=en&x={x}&y={y}&z={z}&apistyle=s.t:2|s.e:l|p.v:off",
+        "Google",
+        18
+      ),
+    },
   };
 
   const markersByUid = new Map();
@@ -114,6 +175,68 @@
   let markerLayersReady = false;
   let pendingFitVisible = true;
   let copyToastTimer = null;
+  let defaultIconIds = {};
+  const iconLoadPending = new Map();
+
+  function iconApiUrl(iconId) {
+    return "/api/map/icons?id=" + encodeURIComponent(iconId);
+  }
+
+  function resolveMarkerIconId(m) {
+    if (m.iconId) return m.iconId;
+    const aff = m.affiliation || "other";
+    return defaultIconIds[aff] || defaultIconIds.friend || defaultIconIds.unknown || "";
+  }
+
+  function loadMapIcon(iconId) {
+    if (!iconId || map.hasImage(iconId)) return Promise.resolve();
+    if (iconLoadPending.has(iconId)) return iconLoadPending.get(iconId);
+
+    const promise = fetch(iconApiUrl(iconId))
+      .then((resp) => {
+        if (!resp.ok) throw new Error("icon " + resp.status);
+        return resp.blob();
+      })
+      .then(
+        (blob) =>
+          new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = URL.createObjectURL(blob);
+          })
+      )
+      .then((img) => {
+        if (!map.hasImage(iconId)) {
+          map.addImage(iconId, img, { pixelRatio: 2 });
+        }
+        URL.revokeObjectURL(img.src);
+      })
+      .catch(() => {})
+      .finally(() => {
+        iconLoadPending.delete(iconId);
+      });
+
+    iconLoadPending.set(iconId, promise);
+    return promise;
+  }
+
+  function preloadMarkerIcons() {
+    const ids = new Set(Object.values(defaultIconIds).filter(Boolean));
+    for (const m of markersByUid.values()) {
+      const id = resolveMarkerIconId(m);
+      if (id) ids.add(id);
+    }
+    return Promise.all(Array.from(ids, (id) => loadMapIcon(id)));
+  }
+
+  function onStyleImageMissing(e) {
+    const iconId = e.id;
+    if (!iconId || iconLoadPending.has(iconId)) return;
+    loadMapIcon(iconId).then(() => {
+      if (map.getLayer(ICON_LAYER)) map.triggerRepaint();
+    });
+  }
 
   const elLayerList = document.getElementById("mapLayerList");
   const elList = document.getElementById("mapMarkerList");
@@ -140,6 +263,9 @@
   const elCopyCoordsBtn = document.getElementById("mapCopyCoordsBtn");
 
   const savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark";
+  elBasemapSelect.innerHTML = Object.entries(BASEMAPS)
+    .map(([id, def]) => `<option value="${id}">${def.label}</option>`)
+    .join("");
   if (BASEMAPS[savedBasemap]) elBasemapSelect.value = savedBasemap;
 
   const initialBasemap = BASEMAPS[elBasemapSelect.value] || BASEMAPS.dark;
@@ -158,6 +284,7 @@
   restorePanelState();
 
   const SOURCE_ID = "tak-markers";
+  const ICON_LAYER = "tak-markers-icon";
   const CIRCLE_LAYER = "tak-markers-circle";
   const LABEL_LAYER = "tak-markers-label";
   const COURSE_LAYER = "tak-markers-course";
@@ -205,7 +332,7 @@
   }
 
   function removeMarkerLayers() {
-    for (const id of [TAG_LAYER, LABEL_LAYER, CIRCLE_LAYER, COURSE_LAYER]) {
+    for (const id of [TAG_LAYER, LABEL_LAYER, ICON_LAYER, CIRCLE_LAYER, COURSE_LAYER]) {
       if (map.getLayer(id)) {
         try {
           map.removeLayer(id);
@@ -359,7 +486,7 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: MARKER_FILTER,
+      filter: ["all", MARKER_FILTER, ["==", ["get", "iconId"], ""]],
       paint: {
         "circle-radius": [
           "case",
@@ -371,6 +498,28 @@
         "circle-stroke-width": 2,
         "circle-stroke-color": "#f8fafc",
         "circle-opacity": ["get", "opacity"],
+      },
+    });
+
+    map.addLayer({
+      id: ICON_LAYER,
+      type: "symbol",
+      source: SOURCE_ID,
+      filter: ["all", MARKER_FILTER, ["!=", ["get", "iconId"], ""]],
+      layout: {
+        "icon-image": ["get", "iconId"],
+        "icon-size": [
+          "case",
+          ["==", ["get", "selected"], true],
+          0.55,
+          0.45,
+        ],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "icon-optional": false,
+      },
+      paint: {
+        "icon-opacity": ["get", "opacity"],
       },
     });
 
@@ -427,29 +576,32 @@
 
     markerLayersReady = true;
     syncMapSource();
+    preloadMarkerIcons();
   }
 
-  function onMarkerCircleClick(e) {
+  function onMarkerIconClick(e) {
     const f = e.features && e.features[0];
     if (!f) return;
     selectMarker(String(f.properties.uid), true);
   }
 
-  function onMarkerCircleEnter() {
+  function onMarkerIconEnter() {
     map.getCanvas().style.cursor = "pointer";
   }
 
-  function onMarkerCircleLeave() {
+  function onMarkerIconLeave() {
     map.getCanvas().style.cursor = "";
   }
 
   function bindMarkerLayerHandlers() {
-    map.off("click", CIRCLE_LAYER, onMarkerCircleClick);
-    map.off("mouseenter", CIRCLE_LAYER, onMarkerCircleEnter);
-    map.off("mouseleave", CIRCLE_LAYER, onMarkerCircleLeave);
-    map.on("click", CIRCLE_LAYER, onMarkerCircleClick);
-    map.on("mouseenter", CIRCLE_LAYER, onMarkerCircleEnter);
-    map.on("mouseleave", CIRCLE_LAYER, onMarkerCircleLeave);
+    for (const layer of [ICON_LAYER, CIRCLE_LAYER]) {
+      map.off("click", layer, onMarkerIconClick);
+      map.off("mouseenter", layer, onMarkerIconEnter);
+      map.off("mouseleave", layer, onMarkerIconLeave);
+      map.on("click", layer, onMarkerIconClick);
+      map.on("mouseenter", layer, onMarkerIconEnter);
+      map.on("mouseleave", layer, onMarkerIconLeave);
+    }
   }
 
   function ensureMarkerLayers() {
@@ -473,6 +625,7 @@
     const visible = markerVisible(m);
     const coords = [m.lon, m.lat];
     const features = [];
+    const iconId = visible ? resolveMarkerIconId(m) : "";
 
     const pointFeature = {
       type: "Feature",
@@ -484,6 +637,7 @@
         type: m.type,
         affiliation: m.affiliation || "other",
         color,
+        iconId,
         opacity: visible ? markerOpacity(m) : 0,
         labelOpacity: visible ? markerOpacity(m) : 0,
         selected: m.uid === selectedUid,
@@ -491,6 +645,8 @@
       },
     };
     features.push(pointFeature);
+
+    if (iconId) loadMapIcon(iconId);
 
     if (visible && Number.isFinite(m.course) && m.course >= 0) {
       const rad = (m.course * Math.PI) / 180;
@@ -735,6 +891,10 @@
     renderLayerList();
     renderList();
     maybeFitVisibleOnLoad();
+    if (state && state.icons && state.icons.defaultIcons) {
+      defaultIconIds = state.icons.defaultIcons;
+      preloadMarkerIcons();
+    }
     if (state && state.host) {
       elHost.textContent =
         "TAK stream " +
@@ -768,6 +928,8 @@
     removeMarkerLayers();
     map.setStyle(withMapGlyphs(def.style));
   }
+
+  map.on("styleimagemissing", onStyleImageMissing);
 
   map.on("style.load", () => {
     map.once("idle", ensureMarkerLayers);
