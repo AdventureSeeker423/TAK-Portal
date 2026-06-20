@@ -13,10 +13,18 @@ const COLORED_ICON_SUFFIX = "-colored-";
 /** @type {Map<string, { buffer: Buffer, contentType: string, at: number }>} */
 const renderCache = new Map();
 
+const BATCH_MAX = getInt("MAP_ICON_BATCH_MAX", 120);
+const BATCH_CONCURRENCY = getInt("MAP_ICON_BATCH_CONCURRENCY", 8);
+
 const stats = {
   hits: 0,
   misses: 0,
   lastRenderMs: 0,
+  batchCount: 0,
+  batchIconsTotal: 0,
+  batchMsTotal: 0,
+  lastBatchMs: 0,
+  lastBatchIcons: 0,
 };
 
 function normalizeColorHex(color) {
@@ -156,6 +164,93 @@ async function getRenderedBuffer(mapImageId) {
   return null;
 }
 
+function manifestEntryToMarker(entry) {
+  const apiIconId = String(entry?.apiIconId || entry?.iconId || "").trim();
+  if (!apiIconId) return null;
+  return {
+    iconId: apiIconId,
+    iconSource: String(entry?.iconSource || ""),
+    origin: String(entry?.origin || "feed"),
+    type: String(entry?.type || ""),
+    affiliation: String(entry?.affiliation || "friend"),
+    teamColor: entry?.color || entry?.teamColor || null,
+  };
+}
+
+async function runPool(items, concurrency, worker) {
+  if (!items.length) return [];
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  const workers = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workers }, runWorker));
+  return results;
+}
+
+async function renderIconBatch(entries, options = {}) {
+  const started = Date.now();
+  const maxItems = options.maxItems != null ? options.maxItems : BATCH_MAX;
+  const concurrency = options.concurrency != null ? options.concurrency : BATCH_CONCURRENCY;
+  const list = Array.isArray(entries) ? entries : [];
+  const byId = new Map();
+
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
+    const mapImageId = String(entry?.mapImageId || "").trim();
+    if (!mapImageId || !mapImageId.startsWith("mimg-")) continue;
+    if (!byId.has(mapImageId)) byId.set(mapImageId, entry);
+  }
+
+  const unique = Array.from(byId.values()).slice(0, maxItems);
+  const icons = {};
+  const missing = [];
+
+  const rendered = await runPool(unique, concurrency, async function (entry) {
+    const mapImageId = String(entry.mapImageId || "").trim();
+    const marker = manifestEntryToMarker(entry);
+    if (!marker) {
+      missing.push(mapImageId);
+      return null;
+    }
+    const result = await renderIconForMarker(marker);
+    if (!result.buffer || result.mapImageId !== mapImageId) {
+      missing.push(mapImageId);
+      return null;
+    }
+    icons[mapImageId] = result.buffer.toString("base64");
+    return mapImageId;
+  });
+
+  const elapsed = Date.now() - started;
+  stats.batchCount++;
+  stats.batchIconsTotal += rendered.filter(Boolean).length;
+  stats.batchMsTotal += elapsed;
+  stats.lastBatchMs = elapsed;
+  stats.lastBatchIcons = rendered.filter(Boolean).length;
+
+  return {
+    icons,
+    missing,
+    requested: unique.length,
+    rendered: Object.keys(icons).length,
+    elapsedMs: elapsed,
+  };
+}
+
+async function prewarmIconManifest(entries, options = {}) {
+  return renderIconBatch(entries, {
+    maxItems: options.maxItems,
+    concurrency: options.concurrency,
+  });
+}
+
 function getStats() {
   return {
     hits: stats.hits,
@@ -163,6 +258,12 @@ function getStats() {
     size: renderCache.size,
     maxSize: CACHE_MAX,
     lastRenderMs: stats.lastRenderMs,
+    batchCount: stats.batchCount,
+    batchIconsTotal: stats.batchIconsTotal,
+    batchMsTotal: stats.batchMsTotal,
+    lastBatchMs: stats.lastBatchMs,
+    lastBatchIcons: stats.lastBatchIcons,
+    batchMax: BATCH_MAX,
   };
 }
 
@@ -170,7 +271,10 @@ module.exports = {
   computeMapImageId,
   iconSkipsRecolor,
   renderIconForMarker,
+  renderIconBatch,
+  prewarmIconManifest,
   getRenderedBuffer,
   getStats,
   COLORED_ICON_SUFFIX,
+  BATCH_MAX,
 };

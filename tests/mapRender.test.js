@@ -54,6 +54,10 @@ assert.strictEqual(feedFeature.showCircle, 0);
 assert.ok(feedFeature.channelKeys.includes("hamilton co avl law"));
 assert.strictEqual(feedFeature.drawTier, 0);
 assert.ok(Number.isFinite(feedFeature.renderSort));
+assert.ok(Array.isArray(filtered.meta.iconManifest));
+assert.strictEqual(filtered.meta.iconManifest.length, 1);
+assert.strictEqual(filtered.meta.iconManifest[0].mapImageId, feedFeature.iconId);
+assert.strictEqual(filtered.meta.iconManifest[0].apiIconId, sampleMarkers[1].iconId);
 
 const mapImageId = mapIconRender.computeMapImageId(
   sampleMarkers[1],

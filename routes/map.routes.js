@@ -95,7 +95,7 @@ function buildGeoJsonOptions(req) {
   return options;
 }
 
-router.get("/geojson", (req, res) => {
+router.get("/geojson", async (req, res) => {
   cotStream.ensureBridgeStarted();
   const options = buildGeoJsonOptions(req);
   const currentRevision = String(cotStream.getMarkerRevision());
@@ -108,6 +108,14 @@ router.get("/geojson", (req, res) => {
   }
 
   const geojson = cotStream.getMarkersGeoJson(options);
+  const manifest = Array.isArray(geojson.meta?.iconManifest) ? geojson.meta.iconManifest : [];
+  if (manifest.length) {
+    try {
+      await mapIconRender.prewarmIconManifest(manifest);
+    } catch (err) {
+      console.warn("[map] icon prewarm failed:", err?.message || err);
+    }
+  }
   res.setHeader("ETag", String(geojson.meta?.revision || currentRevision));
   res.setHeader("Cache-Control", "no-cache");
   return res.json(geojson);
@@ -165,6 +173,23 @@ router.get("/icons/rendered", async (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=86400, immutable");
   res.setHeader("Content-Type", rendered.contentType || "image/png");
   return res.send(rendered.buffer);
+});
+
+router.post("/icons/rendered/batch", async (req, res) => {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const icons = Array.isArray(body.icons) ? body.icons : [];
+  if (!icons.length) {
+    return res.status(400).json({ error: "Missing icons array" });
+  }
+
+  try {
+    const result = await mapIconRender.renderIconBatch(icons);
+    res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+    return res.json(result);
+  } catch (err) {
+    console.warn("[map] icon batch render failed:", err?.message || err);
+    return res.status(500).json({ error: "Icon batch render failed" });
+  }
 });
 
 router.get("/icons", (req, res) => {

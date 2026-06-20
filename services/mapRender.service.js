@@ -330,6 +330,8 @@ function buildGeoJson(markers, options = {}) {
       : null;
 
   const uniqueIcons = new Set();
+  const iconManifest = [];
+  const iconManifestKeys = new Set();
   const features = [];
 
   for (const marker of visible) {
@@ -338,7 +340,21 @@ function buildGeoJson(markers, options = {}) {
     const mapImageId = apiIconId
       ? mapIconRender.computeMapImageId(marker, apiIconId, color)
       : "";
-    if (mapImageId) uniqueIcons.add(mapImageId);
+    if (mapImageId) {
+      uniqueIcons.add(mapImageId);
+      if (!iconManifestKeys.has(mapImageId)) {
+        iconManifestKeys.add(mapImageId);
+        iconManifest.push({
+          mapImageId,
+          apiIconId,
+          color,
+          iconSource: marker.iconSource || "",
+          origin: marker.origin || "",
+          type: marker.type || "",
+          affiliation: marker.affiliation || "other",
+        });
+      }
+    }
 
     const renderSort = markerRenderSort(marker, options);
     const showLabel =
@@ -386,6 +402,7 @@ function buildGeoJson(markers, options = {}) {
       total: list.length,
       visible: visible.length,
       uniqueIcons: uniqueIcons.size,
+      iconManifest,
       revision,
       buildMs: renderStats.lastBuildMs,
       updatedAt: new Date().toISOString(),
