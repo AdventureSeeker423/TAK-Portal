@@ -42,6 +42,15 @@ function iconSkipsRecolor(marker, apiIconId) {
   return false;
 }
 
+function normalizeMapImageId(mapImageId) {
+  const id = String(mapImageId || "").trim();
+  if (!id) return "";
+  if (id.startsWith("mimg-")) return id;
+  const match = /^(?:wing|rotor|vehicle|boat|ship|track|car|mimg)-([0-9a-f]{16})$/i.exec(id);
+  if (match) return "mimg-" + match[1].toLowerCase();
+  return id;
+}
+
 function computeMapImageId(marker, apiIconId, colorHex) {
   const id = String(apiIconId || "").trim();
   if (!id) return "";
@@ -157,7 +166,7 @@ async function renderIconForMarker(marker) {
 }
 
 async function getRenderedBuffer(mapImageId) {
-  const id = String(mapImageId || "").trim();
+  const id = normalizeMapImageId(String(mapImageId || "").trim());
   if (!id) return null;
   const cached = cacheGet(id);
   if (cached) return cached;
@@ -269,6 +278,7 @@ function getStats() {
 
 module.exports = {
   computeMapImageId,
+  normalizeMapImageId,
   iconSkipsRecolor,
   renderIconForMarker,
   renderIconBatch,

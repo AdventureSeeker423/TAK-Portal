@@ -77,6 +77,15 @@ async function runTests() {
   assert.ok(stats.batchCount >= 2);
   assert.ok(stats.batchMax >= 120);
 
+  assert.strictEqual(
+    mapIconRender.normalizeMapImageId("wing-3bac1b2482d4d6d1"),
+    "mimg-3bac1b2482d4d6d1"
+  );
+  assert.strictEqual(
+    mapIconRender.normalizeMapImageId("mimg-3bac1b2482d4d6d1"),
+    "mimg-3bac1b2482d4d6d1"
+  );
+
   console.log("mapIconRender.test.js: all assertions passed");
 }
 

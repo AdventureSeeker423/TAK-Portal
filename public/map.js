@@ -273,8 +273,22 @@
   const ICON_DB_STORE = "icons";
   let iconDbPromise = null;
 
+  function normalizeMapImageId(mapImageId) {
+    const id = String(mapImageId || "").trim();
+    if (!id) return "";
+    if (id.startsWith("mimg-")) return id;
+    const match = /^(?:wing|rotor|vehicle|boat|ship|track|car|mimg)-([0-9a-f]{16})$/i.exec(id);
+    if (match) return "mimg-" + match[1].toLowerCase();
+    return id;
+  }
+
+  function isRenderedMapImageId(mapImageId) {
+    const id = String(mapImageId || "");
+    return /^(?:mimg|wing|rotor|vehicle|boat|ship|track|car)-[0-9a-f]{16}$/i.test(id);
+  }
+
   function markerIconDisplayProps(props) {
-    const iconId = props && props.iconId ? String(props.iconId) : "";
+    const iconId = props && props.iconId ? normalizeMapImageId(props.iconId) : "";
     if (!iconId) {
       return {
         iconId: "",
@@ -369,7 +383,7 @@
     const lat = Number(m.lat);
     const lon = Number(m.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    const mapImageId = m.mapImageId ? String(m.mapImageId) : "";
+    const mapImageId = normalizeMapImageId(m.mapImageId || "");
     const apiIconId = mapImageId ? String(m.iconId || "") : "";
     const color = m.color || m.teamColor || "#1e88e5";
     const uid = String(m.uid);
@@ -1041,6 +1055,7 @@
     applyLoadedIconCircles();
     applyMapChannelLayerFilters();
     updateChannelVisibleMeta();
+    scheduleMissingIconSweep();
     if (mapDiffFlushPending) {
       scheduleMapDiffFlush();
     }
@@ -1069,42 +1084,93 @@
 
   function registerServerMapImageMeta(mapImageId, apiIconId, markerProps) {
     if (!mapImageId) return;
-    iconIdByMapImageId.set(mapImageId, {
+    const canonicalId = normalizeMapImageId(mapImageId);
+    const meta = {
       apiIconId: String(apiIconId || ""),
-      mapImageId: mapImageId,
+      mapImageId: canonicalId,
       iconSource: markerProps && markerProps.iconSource ? markerProps.iconSource : "",
       origin: markerProps && markerProps.origin ? markerProps.origin : "",
       type: markerProps && markerProps.type ? markerProps.type : "",
       affiliation: markerProps && markerProps.affiliation ? markerProps.affiliation : "",
       color: markerProps && markerProps.color ? markerProps.color : "",
-    });
+    };
+    iconIdByMapImageId.set(canonicalId, meta);
+    if (canonicalId !== String(mapImageId)) {
+      iconIdByMapImageId.set(String(mapImageId), meta);
+    }
+  }
+
+  function resolveIconMetaForImageId(mapImageId) {
+    const rawId = String(mapImageId || "");
+    const canonicalId = normalizeMapImageId(rawId);
+    let info = iconIdByMapImageId.get(canonicalId) || iconIdByMapImageId.get(rawId);
+    if (info && info.apiIconId) return info;
+
+    if (lastServerGeoJson && Array.isArray(lastServerGeoJson.features)) {
+      for (let i = 0; i < lastServerGeoJson.features.length; i++) {
+        const props = lastServerGeoJson.features[i] && lastServerGeoJson.features[i].properties;
+        if (!props || !props.iconId) continue;
+        const featureIconId = normalizeMapImageId(props.iconId);
+        if (featureIconId !== canonicalId && props.iconId !== rawId) continue;
+        info = {
+          apiIconId: props.apiIconId || "",
+          mapImageId: canonicalId,
+          iconSource: props.iconSource || "",
+          origin: props.origin || "",
+          type: props.type || "",
+          affiliation: props.affiliation || "",
+          color: props.color || "",
+        };
+        registerServerMapImageMeta(canonicalId, info.apiIconId, info);
+        return info;
+      }
+    }
+
+    for (const marker of markersByUid.values()) {
+      const markerImageId = normalizeMapImageId(marker.mapImageId || "");
+      if (markerImageId !== canonicalId) continue;
+      info = {
+        apiIconId: marker.iconId || "",
+        mapImageId: canonicalId,
+        iconSource: marker.iconSource || "",
+        origin: marker.origin || "",
+        type: marker.type || "",
+        affiliation: marker.affiliation || "",
+        color: marker.color || marker.teamColor || "",
+      };
+      registerServerMapImageMeta(canonicalId, info.apiIconId, marker);
+      return info;
+    }
+
+    return info || null;
   }
 
   function loadRenderedMapIcon(mapImageId, apiIconId, markerProps) {
     if (!mapImageId) return Promise.resolve();
-    registerServerMapImageMeta(mapImageId, apiIconId, markerProps);
-    if (map.hasImage(mapImageId)) {
-      hideCirclesForMapImage(mapImageId);
+    const canonicalId = normalizeMapImageId(mapImageId);
+    registerServerMapImageMeta(canonicalId, apiIconId, markerProps);
+    if (map.hasImage(canonicalId)) {
+      hideCirclesForMapImage(canonicalId);
       return Promise.resolve();
     }
-    if (iconLoadPending.has(mapImageId)) return iconLoadPending.get(mapImageId);
+    if (iconLoadPending.has(canonicalId)) return iconLoadPending.get(canonicalId);
 
-    const cachedImage = mapIconImageCache.get(mapImageId);
+    const cachedImage = mapIconImageCache.get(canonicalId);
     if (cachedImage) {
-      const cachedPromise = installMapImage(mapImageId, cachedImage).then(function () {
-        hideCirclesForMapImage(mapImageId);
+      const cachedPromise = installMapImage(canonicalId, cachedImage).then(function () {
+        hideCirclesForMapImage(canonicalId);
         triggerMarkerRepaint();
       });
-      iconLoadPending.set(mapImageId, cachedPromise);
+      iconLoadPending.set(canonicalId, cachedPromise);
       cachedPromise.finally(function () {
-        iconLoadPending.delete(mapImageId);
+        iconLoadPending.delete(canonicalId);
       });
       return cachedPromise;
     }
 
     let url =
-      "/api/map/icons/rendered?mapImageId=" + encodeURIComponent(mapImageId);
-    const meta = iconIdByMapImageId.get(mapImageId);
+      "/api/map/icons/rendered?mapImageId=" + encodeURIComponent(canonicalId);
+    const meta = iconIdByMapImageId.get(canonicalId);
     if (meta && meta.apiIconId) {
       url += "&apiIconId=" + encodeURIComponent(meta.apiIconId);
       if (meta.color) url += "&color=" + encodeURIComponent(meta.color);
@@ -1118,7 +1184,7 @@
       url += "&apiIconId=" + encodeURIComponent(apiIconId);
     }
 
-    const promise = readIconCache(mapImageId)
+    const promise = readIconCache(canonicalId)
       .then(function (cachedBlob) {
         if (cachedBlob) return cachedBlob;
         return fetch(url).then(function (resp) {
@@ -1127,28 +1193,28 @@
         });
       })
       .then(function (blob) {
-        void writeIconCache(mapImageId, blob);
+        void writeIconCache(canonicalId, blob);
         return decodeIconBlob(blob);
       })
       .then(function (image) {
-        mapIconImageCache.set(mapImageId, image);
-        return installMapImage(mapImageId, image);
+        mapIconImageCache.set(canonicalId, image);
+        return installMapImage(canonicalId, image);
       })
       .then(function () {
-        hideCirclesForMapImage(mapImageId);
+        hideCirclesForMapImage(canonicalId);
         triggerMarkerRepaint();
       })
       .catch(function (err) {
         console.warn("Failed to load rendered map icon", {
-          mapImageId: mapImageId,
+          mapImageId: canonicalId,
           err: err,
         });
       })
       .finally(function () {
-        iconLoadPending.delete(mapImageId);
+        iconLoadPending.delete(canonicalId);
       });
 
-    iconLoadPending.set(mapImageId, promise);
+    iconLoadPending.set(canonicalId, promise);
     return promise;
   }
 
@@ -1961,12 +2027,40 @@
     return Promise.resolve();
   }
 
+  let missingIconSweepTimer = null;
+
+  function sweepMissingIcons() {
+    if (!map || !markerLayersReady || !lastServerGeoJson) return;
+    const seen = new Set();
+    const features = lastServerGeoJson.features || [];
+    for (let i = 0; i < features.length; i++) {
+      const props = features[i] && features[i].properties;
+      if (!props || !props.iconId) continue;
+      const canonicalId = normalizeMapImageId(props.iconId);
+      if (!canonicalId || !isRenderedMapImageId(canonicalId) || seen.has(canonicalId)) continue;
+      seen.add(canonicalId);
+      if (map.hasImage(canonicalId) || iconLoadPending.has(canonicalId)) continue;
+      const info = resolveIconMetaForImageId(canonicalId);
+      if (!info || !info.apiIconId) continue;
+      loadRenderedMapIcon(canonicalId, info.apiIconId, info);
+    }
+  }
+
+  function scheduleMissingIconSweep() {
+    if (missingIconSweepTimer) clearTimeout(missingIconSweepTimer);
+    missingIconSweepTimer = setTimeout(function () {
+      missingIconSweepTimer = null;
+      sweepMissingIcons();
+    }, 250);
+  }
+
   function onStyleImageMissing(e) {
     const mapImageId = e.id;
-    if (String(mapImageId).startsWith("mimg-")) {
-      const info = iconIdByMapImageId.get(mapImageId);
-      if (iconLoadPending.has(mapImageId)) return;
-      loadRenderedMapIcon(mapImageId, info && info.apiIconId, info);
+    if (isRenderedMapImageId(mapImageId)) {
+      const info = resolveIconMetaForImageId(mapImageId);
+      const canonicalId = normalizeMapImageId(mapImageId);
+      if (iconLoadPending.has(canonicalId)) return;
+      loadRenderedMapIcon(canonicalId, info && info.apiIconId, info || {});
       return;
     }
     const parsed = parseColoredMapImageId(mapImageId);
@@ -5026,6 +5120,7 @@
     lockMoveFromCode = false;
     resortGoToAddressesByViewport();
     scheduleClientLabelRefresh(false);
+    scheduleMissingIconSweep();
   });
 
   map.on("zoomend", () => {
