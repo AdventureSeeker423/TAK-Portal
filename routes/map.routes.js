@@ -4,6 +4,7 @@ const cotStream = require("../services/cotStream.service");
 const mapMeta = require("../services/mapMeta.service");
 const mapIcon = require("../services/mapIcon.service");
 const mapRender = require("../services/mapRender.service");
+const mapIconRender = require("../services/mapIconRender.service");
 const geocode = require("../services/geocode.service");
 
 mapIcon.ensureIconsets().then(() => {
@@ -69,6 +70,7 @@ router.get("/markers", (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   return res.json({
     markers: cotStream.getMarkersSlimList(),
+    revision: cotStream.getMarkerRevision(),
     updatedAt: new Date().toISOString(),
   });
 });
@@ -86,12 +88,83 @@ router.get("/cot-raw", (req, res) => {
   return res.send(JSON.stringify(raw, null, 2));
 });
 
+function buildGeoJsonOptions(req) {
+  const options = mapRender.parseGeoJsonQuery(req.query);
+  options.selectedUid = options.selectedUid || String(req.query.selected || "").trim();
+  options.lockedUid = options.lockedUid || String(req.query.locked || "").trim();
+  return options;
+}
+
 router.get("/geojson", (req, res) => {
   cotStream.ensureBridgeStarted();
-  const options = mapRender.parseGeoJsonQuery(req.query);
+  const options = buildGeoJsonOptions(req);
+  const currentRevision = String(cotStream.getMarkerRevision());
+  const ifNoneMatch = String(req.headers["if-none-match"] || "").trim();
+
+  if (ifNoneMatch && ifNoneMatch === currentRevision) {
+    res.setHeader("ETag", currentRevision);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.status(304).end();
+  }
+
+  const geojson = cotStream.getMarkersGeoJson(options);
+  res.setHeader("ETag", String(geojson.meta?.revision || currentRevision));
+  res.setHeader("Cache-Control", "no-cache");
+  return res.json(geojson);
+});
+
+router.post("/geojson/viewport", (req, res) => {
+  cotStream.ensureBridgeStarted();
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const query = {
+    channels: body.channels,
+    scopeKeys: body.scopeKeys,
+    selected: body.selected,
+    locked: body.locked,
+    zoom: body.zoom,
+    bounds: body.bounds,
+    declutter: "1",
+  };
+  const options = mapRender.parseGeoJsonQuery(query);
+  if (body.scopeKeys == null && Array.isArray(body.allowedChannelKeys)) {
+    options.scopeChannelKeys = new Set(
+      body.allowedChannelKeys.map(String).filter(Boolean)
+    );
+  }
   const geojson = cotStream.getMarkersGeoJson(options);
   res.setHeader("Cache-Control", "no-cache");
   return res.json(geojson);
+});
+
+router.get("/icons/rendered", async (req, res) => {
+  const mapImageId = String(req.query.mapImageId || req.query.id || "").trim();
+  if (!mapImageId) return res.status(400).json({ error: "Missing mapImageId" });
+
+  let cached = await mapIconRender.getRenderedBuffer(mapImageId);
+  if (cached) {
+    res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+    res.setHeader("Content-Type", cached.contentType || "image/png");
+    return res.send(cached.buffer);
+  }
+
+  const apiIconId = String(req.query.apiIconId || "").trim();
+  const color = String(req.query.color || "").trim();
+  if (!apiIconId) return res.status(404).end();
+
+  const marker = {
+    iconId: apiIconId,
+    iconSource: String(req.query.iconSource || ""),
+    origin: String(req.query.origin || "feed"),
+    type: String(req.query.type || ""),
+    affiliation: String(req.query.affiliation || "friend"),
+    teamColor: color || null,
+  };
+
+  const rendered = await mapIconRender.renderIconForMarker(marker);
+  if (!rendered.buffer) return res.status(404).end();
+  res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+  res.setHeader("Content-Type", rendered.contentType || "image/png");
+  return res.send(rendered.buffer);
 });
 
 router.get("/icons", (req, res) => {
@@ -221,6 +294,17 @@ router.get("/stream", (req, res) => {
     try {
       res.end();
     } catch (_) {}
+  });
+});
+
+router.get("/debug/render-stats", (req, res) => {
+  cotStream.ensureBridgeStarted();
+  res.setHeader("Cache-Control", "no-cache");
+  return res.json({
+    revision: cotStream.getMarkerRevision(),
+    markerCount: cotStream.getMarkerList().length,
+    render: mapRender.getRenderStats(),
+    icons: mapIconRender.getStats(),
   });
 });
 

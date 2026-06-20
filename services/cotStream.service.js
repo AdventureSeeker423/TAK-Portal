@@ -38,12 +38,21 @@ let reconnectDelay = RECONNECT_MIN_MS;
 let staleTimer = null;
 let started = false;
 let batchTimer = null;
+let markerRevision = 1;
 
 const pendingBroadcast = {
   updates: new Map(),
   removes: new Set(),
   groupsCatalog: false,
 };
+
+function bumpMarkerRevision() {
+  markerRevision += 1;
+}
+
+function getMarkerRevision() {
+  return markerRevision;
+}
 
 function scheduleBatchFlush() {
   if (batchTimer) return;
@@ -65,6 +74,7 @@ function flushBroadcastBatch() {
   const payload = {
     type: "batch",
     at: new Date().toISOString(),
+    revision: markerRevision,
     updates,
     removes,
   };
@@ -76,6 +86,7 @@ function flushBroadcastBatch() {
 
 function queueMarkerUpdate(marker) {
   if (!marker?.uid) return;
+  bumpMarkerRevision();
   pendingBroadcast.removes.delete(marker.uid);
   pendingBroadcast.updates.set(marker.uid, mapRender.toSlimMarker(marker));
   scheduleBatchFlush();
@@ -84,6 +95,7 @@ function queueMarkerUpdate(marker) {
 function queueMarkerRemove(uid) {
   const id = String(uid || "").trim();
   if (!id) return;
+  bumpMarkerRevision();
   pendingBroadcast.updates.delete(id);
   pendingBroadcast.removes.add(id);
   scheduleBatchFlush();
@@ -205,6 +217,7 @@ function removeMarker(uid, notify = true) {
   if (!markers.has(uid)) return;
   markers.delete(uid);
   if (notify) queueMarkerRemove(uid);
+  else bumpMarkerRevision();
 }
 
 function tryRemoveMarker(uid, notify = true) {
@@ -252,14 +265,17 @@ function broadcast(obj) {
 
 function sweepStaleMarkers(notify = true) {
   const now = Date.now();
+  let removed = false;
   for (const [uid, marker] of markers) {
     if (isMarkerExpired(marker, now)) {
       markers.delete(uid);
+      removed = true;
       if (notify) {
-        broadcast({ type: "remove", uid, at: new Date().toISOString() });
+        queueMarkerRemove(uid);
       }
     }
   }
+  if (removed && !notify) bumpMarkerRevision();
 }
 
 function refreshAllMarkerIcons() {
@@ -304,6 +320,7 @@ function getStateSnapshot(options = {}) {
     host: bridgeState.host,
     port: bridgeState.port,
     markerCount: markerList.length,
+    revision: markerRevision,
     updatedAt: new Date().toISOString(),
   };
   if (options.includeGroupsCatalog !== false) {
@@ -317,7 +334,10 @@ function getMarkersSlimList() {
 }
 
 function getMarkersGeoJson(options) {
-  return mapRender.buildGeoJson(getMarkerList(), options);
+  return mapRender.buildGeoJson(getMarkerList(), {
+    ...options,
+    markerRevision,
+  });
 }
 
 function clearConnection() {
@@ -519,6 +539,7 @@ module.exports = {
   findMarkersByCallsign,
   getMarkersSlimList,
   getMarkersGeoJson,
+  getMarkerRevision,
   subscribe,
   ensureBridgeStarted,
   refreshAllMarkerIcons,
