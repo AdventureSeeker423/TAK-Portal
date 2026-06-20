@@ -259,7 +259,7 @@
   let lastServerGeoJson = null;
   let serverGeoFetchInFlight = null;
   let labelRefreshRaf = null;
-  let iconDisplayRefreshRaf = null;
+  const mapIconImageCache = new Map();
   const SERVER_GEO_DEBOUNCE_MS = 50;
 
   function markerIconDisplayProps(props) {
@@ -274,15 +274,6 @@
       return { iconId: iconId, showCircle: 0 };
     }
     return { iconId: "", showCircle: 1 };
-  }
-
-  function scheduleIconDisplayRefresh() {
-    if (iconDisplayRefreshRaf) cancelAnimationFrame(iconDisplayRefreshRaf);
-    iconDisplayRefreshRaf = requestAnimationFrame(function () {
-      iconDisplayRefreshRaf = null;
-      if (!lastServerGeoJsonFull) return;
-      syncFullGeoJsonToMapSource({ skipIcons: true, deferLabels: true });
-    });
   }
 
   function geoJsonFeaturesForIconLoad(features) {
@@ -720,11 +711,20 @@
   function loadRenderedMapIcon(mapImageId, apiIconId, markerProps) {
     if (!mapImageId) return Promise.resolve();
     registerServerMapImageMeta(mapImageId, apiIconId, markerProps);
-    if (map.hasImage(mapImageId)) {
-      scheduleIconDisplayRefresh();
-      return Promise.resolve();
-    }
+    if (map.hasImage(mapImageId)) return Promise.resolve();
     if (iconLoadPending.has(mapImageId)) return iconLoadPending.get(mapImageId);
+
+    const cachedImage = mapIconImageCache.get(mapImageId);
+    if (cachedImage) {
+      const cachedPromise = installMapImage(mapImageId, cachedImage).then(function () {
+        triggerMarkerRepaint();
+      });
+      iconLoadPending.set(mapImageId, cachedPromise);
+      cachedPromise.finally(function () {
+        iconLoadPending.delete(mapImageId);
+      });
+      return cachedPromise;
+    }
 
     let url =
       "/api/map/icons/rendered?mapImageId=" + encodeURIComponent(mapImageId);
@@ -751,10 +751,10 @@
         return decodeIconBlob(blob);
       })
       .then(function (imageData) {
+        mapIconImageCache.set(mapImageId, imageData);
         return installMapImage(mapImageId, imageData);
       })
       .then(function () {
-        scheduleIconDisplayRefresh();
         triggerMarkerRepaint();
       })
       .catch(function (err) {
@@ -779,17 +779,14 @@
       if (!props || !props.iconId) continue;
       if (seen.has(props.iconId)) continue;
       seen.add(props.iconId);
-      if (!map.hasImage(props.iconId)) {
-        loads.push(
-          loadRenderedMapIcon(props.iconId, props.apiIconId, props)
-        );
-      }
+      if (map.hasImage(props.iconId)) continue;
+      loads.push(loadRenderedMapIcon(props.iconId, props.apiIconId, props));
     }
-    if (loads.length) {
-      Promise.all(loads).finally(function () {
-        triggerMarkerRepaint();
-      });
-    }
+    if (!loads.length) return;
+    Promise.all(loads).finally(function () {
+      syncFullGeoJsonToMapSource({ skipIcons: true, deferLabels: true });
+      triggerMarkerRepaint();
+    });
   }
 
   function applyServerGeoJsonToMap(geojson) {
@@ -920,7 +917,66 @@
     lastServerGeoJsonFull = Object.assign({}, lastServerGeoJsonFull, {
       features: features,
     });
-    syncFullGeoJsonToMapSource({ deferLabels: true });
+    return patchDisplayedGeoJsonFromBatch(removes, updates);
+  }
+
+  function patchDisplayedGeoJsonFromBatch(removes, updates) {
+    if (!map || !markerLayersReady || !lastServerGeoJsonFull) return false;
+    const src = map.getSource(SOURCE_ID);
+    if (!src) return false;
+
+    const removeSet = new Set(
+      (removes || []).map(function (uid) {
+        return String(uid);
+      })
+    );
+    const updateSet = new Set(
+      (updates || []).map(function (m) {
+        return String(m && m.uid);
+      })
+    );
+    updateSet.delete("undefined");
+    updateSet.delete("");
+
+    if (removeSet.size > 0 || !lastServerGeoJson || !Array.isArray(lastServerGeoJson.features)) {
+      return syncFullGeoJsonToMapSource({ deferLabels: true, skipIcons: true });
+    }
+
+    const canonicalByUid = new Map();
+    for (let i = 0; i < lastServerGeoJsonFull.features.length; i++) {
+      const feature = lastServerGeoJsonFull.features[i];
+      const uid = feature && feature.properties && feature.properties.uid;
+      if (uid) canonicalByUid.set(String(uid), feature);
+    }
+
+    let changed = false;
+    const displayFeatures = lastServerGeoJson.features.map(function (displayFeature) {
+      const uid = String(displayFeature && displayFeature.properties && displayFeature.properties.uid);
+      if (!updateSet.has(uid)) return displayFeature;
+      const canonical = canonicalByUid.get(uid);
+      if (!canonical || !canonical.geometry) return displayFeature;
+      const coords = canonical.geometry.coordinates;
+      const current = displayFeature.geometry && displayFeature.geometry.coordinates;
+      if (
+        current &&
+        coords &&
+        current[0] === coords[0] &&
+        current[1] === coords[1]
+      ) {
+        return displayFeature;
+      }
+      changed = true;
+      return {
+        type: displayFeature.type,
+        geometry: { type: "Point", coordinates: [coords[0], coords[1]] },
+        properties: displayFeature.properties,
+      };
+    });
+
+    if (!changed) return false;
+
+    lastServerGeoJson = Object.assign({}, lastServerGeoJson, { features: displayFeatures });
+    src.setData({ type: "FeatureCollection", features: displayFeatures });
     return true;
   }
 
