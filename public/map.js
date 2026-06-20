@@ -258,7 +258,6 @@
   let lastServerGeoJsonFull = null;
   let lastServerGeoJson = null;
   let serverGeoFetchInFlight = null;
-  let labelRefreshRaf = null;
   let lastGeoJsonFetchOk = false;
   const mapIconImageCache = new Map();
   const iconUidByMapImageId = new Map();
@@ -410,7 +409,7 @@
         locked: uid === lockedUid,
         renderSort: 0,
         labelSort: 0,
-        showLabel: 1,
+        showLabel: featureShowLabelValue(uid, m),
         channelKeys: m.channelKeys || "",
       },
     };
@@ -490,6 +489,12 @@
       return;
     }
 
+    if (pendingMapUpdates.size || pendingMapAdds.size) {
+      syncLabelVisibility(getVisibleMarkers(), {
+        forceRecompute: pendingMapUpdates.size > 0,
+      });
+    }
+
     const diff = { add: [], remove: [], update: [] };
     pendingMapRemoves.forEach(function (uid) {
       diff.remove.push(uid);
@@ -497,9 +502,11 @@
       pendingMapUpdates.delete(uid);
     });
 
-    pendingMapAdds.forEach(function (feature, uid) {
+    pendingMapAdds.forEach(function (_feature, uid) {
       if (pendingMapRemoves.has(uid)) return;
-      diff.add.push(feature);
+      const marker = markersByUid.get(uid);
+      const feature = marker ? buildMapFeatureFromMarker(marker) : _feature;
+      if (feature) diff.add.push(feature);
     });
 
     pendingMapUpdates.forEach(function (marker, uid) {
@@ -513,6 +520,7 @@
         addOrUpdateProperties: [
           { key: "selected", value: uid === selectedUid },
           { key: "locked", value: uid === lockedUid },
+          { key: "showLabel", value: featureShowLabelValue(uid, marker) },
         ],
       });
     });
@@ -1028,19 +1036,11 @@
     }
 
     const opts = options || {};
-    const features = lastServerGeoJsonFull.features.map(function (feature) {
-      const enriched = enrichFeatureChannelKeys(feature);
-      const uid = enriched.properties && enriched.properties.uid;
-      const display = markerIconDisplayProps(enriched.properties);
-      return {
-        type: enriched.type,
-        geometry: enriched.geometry,
-        properties: Object.assign({}, enriched.properties, display, {
-          selected: uid === selectedUid,
-          locked: uid === lockedUid,
-        }),
-      };
+    const visible = getVisibleMarkers();
+    syncLabelVisibility(visible, {
+      forceRecompute: !!(opts.forceLabels || opts.forceRecompute),
     });
+    const features = lastServerGeoJsonFull.features.map(buildDisplayFeature);
 
     lastServerGeoJson = Object.assign({}, lastServerGeoJsonFull, {
       features: features,
@@ -1059,12 +1059,10 @@
     if (mapDiffFlushPending) {
       scheduleMapDiffFlush();
     }
-    if (opts.deferLabels) {
-      scheduleClientLabelRefresh(
+    if (!opts.deferLabels) {
+      applyClientLabelDeclutterToSource(
         opts.forceLabels ? { forceRecompute: true } : undefined
       );
-    } else {
-      applyClientLabelDeclutterToSource();
     }
     return true;
   }
@@ -1074,7 +1072,7 @@
     if (opts.layersOnly) {
       if (!applyMapChannelLayerFilters()) return false;
       updateChannelVisibleMeta();
-      scheduleClientLabelRefresh(
+      applyClientLabelDeclutterToSource(
         opts.forceLabels ? { forceRecompute: true } : undefined
       );
       return true;
@@ -1233,7 +1231,7 @@
     }
 
     lastServerGeoJsonFull = geojson;
-    return applyLocalChannelFilter({ deferLabels: true });
+    return applyLocalChannelFilter();
   }
 
   function applyClientLabelDeclutterToSource(options) {
@@ -1244,19 +1242,19 @@
     const visible = getVisibleMarkers();
     syncLabelVisibility(visible, options);
 
-    let changed = false;
+    const updates = [];
     const patched = lastServerGeoJson.features.map(function (feature) {
       if (!feature || !feature.properties) return feature;
       const uid = feature.properties.uid;
       const marker = uid ? markersByUid.get(uid) : null;
-      let showLabel = 1;
-      if (marker) {
-        showLabel = markerShowLabel(marker);
-      } else if (uid && labelVisibleByUid.has(uid)) {
-        showLabel = labelVisibleByUid.get(uid);
-      }
+      const showLabel = featureShowLabelValue(uid, marker);
       if (feature.properties.showLabel === showLabel) return feature;
-      changed = true;
+      if (uid && typeof src.updateData === "function") {
+        updates.push({
+          id: String(uid),
+          addOrUpdateProperties: [{ key: "showLabel", value: showLabel }],
+        });
+      }
       return {
         type: feature.type,
         geometry: feature.geometry,
@@ -1264,20 +1262,20 @@
       };
     });
 
+    const changed = updates.length > 0 || patched.some(function (feature, i) {
+      return feature !== lastServerGeoJson.features[i];
+    });
     if (!changed) return true;
+
     lastServerGeoJson = Object.assign({}, lastServerGeoJson, { features: patched });
+    if (updates.length && typeof src.updateData === "function") {
+      try {
+        src.updateData({ update: updates });
+        return true;
+      } catch (_) {}
+    }
     src.setData({ type: "FeatureCollection", features: patched });
     return true;
-  }
-
-  function scheduleClientLabelRefresh(forceRecompute) {
-    if (labelRefreshRaf) cancelAnimationFrame(labelRefreshRaf);
-    labelRefreshRaf = requestAnimationFrame(function () {
-      labelRefreshRaf = null;
-      applyClientLabelDeclutterToSource(
-        forceRecompute ? { forceRecompute: true } : undefined
-      );
-    });
   }
 
   function patchServerGeoJsonFromBatch(updates, removes) {
@@ -3607,14 +3605,38 @@
     for (let i = 0; i < visible.length; i++) {
       const m = visible[i];
       if (!labelVisibleByUid.has(m.uid)) {
-        labelVisibleByUid.set(m.uid, 1);
+        labelVisibleByUid.set(m.uid, 0);
       }
     }
   }
 
   function markerShowLabel(m) {
     if (m.uid === selectedUid || m.uid === lockedUid) return 1;
-    return labelVisibleByUid.has(m.uid) ? labelVisibleByUid.get(m.uid) : 1;
+    if (!labelVisibleByUid.has(m.uid)) return 0;
+    return labelVisibleByUid.get(m.uid);
+  }
+
+  function featureShowLabelValue(uid, marker) {
+    if (uid === selectedUid || uid === lockedUid) return 1;
+    if (marker) return markerShowLabel(marker);
+    if (uid && labelVisibleByUid.has(uid)) return labelVisibleByUid.get(uid);
+    return 0;
+  }
+
+  function buildDisplayFeature(feature) {
+    const enriched = enrichFeatureChannelKeys(feature);
+    const uid = enriched.properties && enriched.properties.uid;
+    const marker = uid ? markersByUid.get(String(uid)) : null;
+    const display = markerIconDisplayProps(enriched.properties);
+    return {
+      type: enriched.type,
+      geometry: enriched.geometry,
+      properties: Object.assign({}, enriched.properties, display, {
+        selected: uid === selectedUid,
+        locked: uid === lockedUid,
+        showLabel: featureShowLabelValue(uid, marker),
+      }),
+    };
   }
 
   function ensureDefaultGroupsEnabled() {
@@ -3724,7 +3746,7 @@
       return false;
     }
 
-    let changed = false;
+    let canonicalChanged = false;
     const canonicalFeatures = lastServerGeoJsonFull.features.map(function (feature) {
       const uid = feature.properties && feature.properties.uid;
       const selected = uid === selectedUid;
@@ -3736,7 +3758,7 @@
       ) {
         return feature;
       }
-      changed = true;
+      canonicalChanged = true;
       return {
         type: feature.type,
         geometry: feature.geometry,
@@ -3747,24 +3769,52 @@
       };
     });
 
-    if (!changed) return true;
+    const visible = getVisibleMarkers();
+    syncLabelVisibility(visible, { forceRecompute: true });
 
-    lastServerGeoJsonFull = Object.assign({}, lastServerGeoJsonFull, {
-      features: canonicalFeatures,
-    });
-    const displayFeatures = canonicalFeatures.map(function (feature) {
-      const enriched = enrichFeatureChannelKeys(feature);
-      const uid = enriched.properties && enriched.properties.uid;
-      const display = markerIconDisplayProps(enriched.properties);
-      return {
-        type: enriched.type,
-        geometry: enriched.geometry,
-        properties: Object.assign({}, enriched.properties, display, {
-          selected: uid === selectedUid,
-          locked: uid === lockedUid,
-        }),
-      };
-    });
+    const prevByUid = new Map();
+    if (lastServerGeoJson && Array.isArray(lastServerGeoJson.features)) {
+      for (let i = 0; i < lastServerGeoJson.features.length; i++) {
+        const feature = lastServerGeoJson.features[i];
+        const uid = feature && feature.properties && feature.properties.uid;
+        if (uid) prevByUid.set(String(uid), feature);
+      }
+    }
+
+    const displayFeatures = canonicalFeatures.map(buildDisplayFeature);
+    const updateOps = [];
+    for (let i = 0; i < displayFeatures.length; i++) {
+      const built = displayFeatures[i];
+      const uid = built.properties && built.properties.uid;
+      if (!uid) continue;
+      const prev = prevByUid.get(String(uid));
+      if (
+        prev &&
+        prev.properties.selected === built.properties.selected &&
+        prev.properties.locked === built.properties.locked &&
+        prev.properties.showLabel === built.properties.showLabel
+      ) {
+        continue;
+      }
+      if (typeof src.updateData === "function") {
+        updateOps.push({
+          id: String(uid),
+          addOrUpdateProperties: [
+            { key: "selected", value: built.properties.selected },
+            { key: "locked", value: built.properties.locked },
+            { key: "showLabel", value: built.properties.showLabel },
+          ],
+        });
+      }
+    }
+
+    if (!canonicalChanged && !updateOps.length) return true;
+
+    if (canonicalChanged) {
+      lastServerGeoJsonFull = Object.assign({}, lastServerGeoJsonFull, {
+        features: canonicalFeatures,
+      });
+    }
     lastServerGeoJson = Object.assign({}, lastServerGeoJsonFull, {
       features: displayFeatures,
       meta: Object.assign({}, lastServerGeoJsonFull.meta || {}, {
@@ -3773,9 +3823,14 @@
       }),
     });
 
+    if (updateOps.length && typeof src.updateData === "function") {
+      try {
+        src.updateData({ update: updateOps });
+        return true;
+      } catch (_) {}
+    }
     src.setData({ type: "FeatureCollection", features: displayFeatures });
     rebuildIconUidIndex(displayFeatures);
-    scheduleClientLabelRefresh(true);
     return true;
   }
 
@@ -5119,7 +5174,7 @@
   map.on("moveend", () => {
     lockMoveFromCode = false;
     resortGoToAddressesByViewport();
-    scheduleClientLabelRefresh(false);
+    applyClientLabelDeclutterToSource();
     scheduleMissingIconSweep();
   });
 
@@ -5128,7 +5183,7 @@
       recenterLockedMarkerAtCurrentZoom();
     }
     labelDeclutterKey = "";
-    scheduleClientLabelRefresh(true);
+    applyClientLabelDeclutterToSource({ forceRecompute: true });
     resortGoToAddressesByViewport();
   });
 
