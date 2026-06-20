@@ -51,6 +51,7 @@ assert.strictEqual(filtered.features[0].properties.uid, "feed-1");
 const feedFeature = filtered.features[0].properties;
 assert.ok(feedFeature.iconId.startsWith("mimg-"));
 assert.strictEqual(feedFeature.showCircle, 0);
+assert.ok(feedFeature.channelKeys.includes("hamilton co avl law"));
 assert.strictEqual(feedFeature.drawTier, 0);
 assert.ok(Number.isFinite(feedFeature.renderSort));
 

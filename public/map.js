@@ -254,6 +254,7 @@
   let labelDeclutterKey = "";
   let lastMarkerRevision = 0;
   let lastLoadedMarkerRevision = 0;
+  let lastServerGeoJsonFull = null;
   let lastServerGeoJson = null;
   let serverGeoFetchInFlight = null;
   let labelRefreshRaf = null;
@@ -453,6 +454,13 @@
       .join(",");
   }
 
+  function buildGeoJsonFetchQueryString() {
+    const parts = [];
+    const scope = buildGeoJsonScopeParam();
+    if (scope) parts.push("scopeKeys=" + scope);
+    return parts.join("&");
+  }
+
   function buildGeoJsonQueryString() {
     const parts = [];
     const channels = buildGeoJsonChannelParam();
@@ -462,6 +470,200 @@
     if (selectedUid) parts.push("selected=" + encodeURIComponent(selectedUid));
     if (lockedUid) parts.push("locked=" + encodeURIComponent(lockedUid));
     return parts.join("&");
+  }
+
+  function featureMatchesChannelFilter(feature) {
+    const uid = feature && feature.properties && feature.properties.uid;
+    if (!uid) return false;
+    const marker = markersByUid.get(String(uid));
+    if (!marker) return !isChannelFilterActive();
+    return markerVisible(marker);
+  }
+
+  function enrichFeatureChannelKeys(feature) {
+    if (!feature || !feature.properties) return feature;
+    if (feature.properties.channelKeys) return feature;
+    const uid = feature.properties.uid;
+    const marker = uid ? markersByUid.get(String(uid)) : null;
+    if (!marker) return feature;
+    return {
+      type: feature.type,
+      geometry: feature.geometry,
+      properties: Object.assign({}, feature.properties, {
+        channelKeys: markerChannelKeys(marker).join(","),
+      }),
+    };
+  }
+
+  function channelKeyMatchExpr(key) {
+    return [
+      ">=",
+      [
+        "index-of",
+        ["concat", ",", key, ","],
+        ["concat", ",", ["coalesce", ["get", "channelKeys"], ""], ","],
+      ],
+      0,
+    ];
+  }
+
+  function buildChannelKeySetFilterExpr(keySet) {
+    if (!keySet || keySet.size === 0) return ["==", 1, 0];
+    const keys = Array.from(keySet);
+    if (keys.length === 1) return channelKeyMatchExpr(keys[0]);
+    return ["any"].concat(keys.map(channelKeyMatchExpr));
+  }
+
+  function buildChannelVisibilityFilterExpr() {
+    const parts = [];
+    if (mapChannelScope === "member" && allowedMemberChannelKeys) {
+      parts.push(buildChannelKeySetFilterExpr(allowedMemberChannelKeys));
+    }
+    const enabledKeys = enabledChannelKeysForFilter();
+    if (enabledKeys !== null) {
+      parts.push(buildChannelKeySetFilterExpr(enabledKeys));
+    }
+    if (parts.length === 0) return null;
+    if (parts.length === 1) return parts[0];
+    return ["all"].concat(parts);
+  }
+
+  function mergeMarkerLayerFilter(extraParts) {
+    const channelExpr = buildChannelVisibilityFilterExpr();
+    const parts = [MARKER_FILTER];
+    if (channelExpr) parts.push(channelExpr);
+    if (extraParts && extraParts.length) parts.push.apply(parts, extraParts);
+    return ["all"].concat(parts);
+  }
+
+  function withChannelFilter(baseFilter) {
+    const channelExpr = buildChannelVisibilityFilterExpr();
+    if (!channelExpr) return baseFilter;
+    return ["all", MARKER_FILTER, channelExpr].concat(baseFilter.slice(2));
+  }
+
+  function applyMapChannelLayerFilters() {
+    if (!map || !markerLayersReady || !markerLayersComplete()) return false;
+    try {
+      map.setFilter(
+        CIRCLE_LAYER_LOW,
+        mergeMarkerLayerFilter([
+          ["==", ["get", "showCircle"], 1],
+          ["==", ["get", "drawTier"], 0],
+        ])
+      );
+      map.setFilter(
+        CIRCLE_LAYER_HIGH,
+        mergeMarkerLayerFilter([
+          ["==", ["get", "showCircle"], 1],
+          ["==", ["get", "drawTier"], 1],
+        ])
+      );
+      map.setFilter(
+        ICON_LAYER_LOW,
+        mergeMarkerLayerFilter([
+          ["!=", ["get", "iconId"], ""],
+          ["==", ["get", "drawTier"], 0],
+        ])
+      );
+      map.setFilter(
+        ICON_LAYER_HIGH,
+        mergeMarkerLayerFilter([
+          ["!=", ["get", "iconId"], ""],
+          ["==", ["get", "drawTier"], 1],
+        ])
+      );
+      map.setFilter(LABEL_LAYER, withChannelFilter(labelStandardFilter()));
+      map.setFilter(LABEL_PRIORITY_LAYER, withChannelFilter(labelPriorityFilter()));
+      return true;
+    } catch (err) {
+      console.warn("[map] applyMapChannelLayerFilters failed", err);
+      return false;
+    }
+  }
+
+  function countChannelVisibleFeatures() {
+    if (!lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
+      return 0;
+    }
+    let visible = 0;
+    for (let i = 0; i < lastServerGeoJsonFull.features.length; i++) {
+      if (featureMatchesChannelFilter(lastServerGeoJsonFull.features[i])) visible++;
+    }
+    return visible;
+  }
+
+  function updateChannelVisibleMeta() {
+    const visible = countChannelVisibleFeatures();
+    lastGeoMeta = {
+      total:
+        lastServerGeoJsonFull &&
+        lastServerGeoJsonFull.meta &&
+        lastServerGeoJsonFull.meta.total != null
+          ? lastServerGeoJsonFull.meta.total
+          : markersByUid.size,
+      visible: visible,
+      mapped: visible,
+    };
+    updateVisibleCounts();
+  }
+
+  function syncFullGeoJsonToMapSource(options) {
+    if (!map || !markerLayersReady) return false;
+    const src = map.getSource(SOURCE_ID);
+    if (!src || !lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
+      return false;
+    }
+
+    const opts = options || {};
+    const features = lastServerGeoJsonFull.features.map(function (feature) {
+      const enriched = enrichFeatureChannelKeys(feature);
+      const uid = enriched.properties && enriched.properties.uid;
+      return {
+        type: enriched.type,
+        geometry: enriched.geometry,
+        properties: Object.assign({}, enriched.properties, {
+          selected: uid === selectedUid,
+          locked: uid === lockedUid,
+        }),
+      };
+    });
+
+    lastServerGeoJson = Object.assign({}, lastServerGeoJsonFull, {
+      features: features,
+      meta: Object.assign({}, lastServerGeoJsonFull.meta || {}, {
+        visible: countChannelVisibleFeatures(),
+        mapped: countChannelVisibleFeatures(),
+      }),
+    });
+
+    src.setData({ type: "FeatureCollection", features: features });
+    applyMapChannelLayerFilters();
+    updateChannelVisibleMeta();
+    if (!opts.skipIcons) {
+      scheduleIconsFromGeoJson(features);
+    }
+    if (opts.deferLabels) {
+      scheduleClientLabelRefresh(
+        opts.forceLabels ? { forceRecompute: true } : undefined
+      );
+    } else {
+      applyClientLabelDeclutterToSource();
+    }
+    return true;
+  }
+
+  function applyLocalChannelFilter(options) {
+    const opts = options || {};
+    if (opts.layersOnly) {
+      if (!applyMapChannelLayerFilters()) return false;
+      updateChannelVisibleMeta();
+      scheduleClientLabelRefresh(
+        opts.forceLabels ? { forceRecompute: true } : undefined
+      );
+      return true;
+    }
+    return syncFullGeoJsonToMapSource(opts);
   }
 
   function registerServerMapImageMeta(mapImageId, apiIconId, markerProps) {
@@ -550,10 +752,6 @@
 
   function applyServerGeoJsonToMap(geojson) {
     if (!geojson || !Array.isArray(geojson.features)) return false;
-    const src = map.getSource(SOURCE_ID);
-    if (!src) return false;
-
-    lastServerGeoJson = geojson;
     if (geojson.meta && geojson.meta.revision != null) {
       lastMarkerRevision = Number(geojson.meta.revision) || lastMarkerRevision;
     }
@@ -566,19 +764,8 @@
       }
     }
 
-    src.setData({ type: "FeatureCollection", features: features });
-    lastGeoMeta = {
-      total: geojson.meta && geojson.meta.total != null ? geojson.meta.total : markersByUid.size,
-      visible:
-        geojson.meta && geojson.meta.visible != null
-          ? geojson.meta.visible
-          : features.length,
-      mapped: features.length,
-    };
-    updateVisibleCounts();
-    scheduleIconsFromGeoJson(features);
-    applyClientLabelDeclutterToSource();
-    return true;
+    lastServerGeoJsonFull = geojson;
+    return applyLocalChannelFilter();
   }
 
   function applyClientLabelDeclutterToSource(options) {
@@ -626,12 +813,12 @@
   }
 
   function patchServerGeoJsonFromBatch(updates, removes) {
-    if (!lastServerGeoJson || !Array.isArray(lastServerGeoJson.features)) {
+    if (!lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
       return false;
     }
 
     let changed = false;
-    let features = lastServerGeoJson.features;
+    let features = lastServerGeoJsonFull.features;
 
     if (Array.isArray(removes) && removes.length) {
       const removeSet = new Set(
@@ -688,18 +875,32 @@
     }
 
     if (!changed) return false;
-    lastServerGeoJson = Object.assign({}, lastServerGeoJson, { features: features });
-    const src = map.getSource(SOURCE_ID);
-    if (src) {
-      src.setData({ type: "FeatureCollection", features: features });
-    }
-    applyClientLabelDeclutterToSource();
+    lastServerGeoJsonFull = Object.assign({}, lastServerGeoJsonFull, {
+      features: features,
+    });
+    syncFullGeoJsonToMapSource({ deferLabels: true });
     return true;
+  }
+
+  function batchNeedsFullGeoRefresh(updates) {
+    if (!lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
+      return true;
+    }
+    const known = new Set();
+    for (let i = 0; i < lastServerGeoJsonFull.features.length; i++) {
+      const uid = lastServerGeoJsonFull.features[i]?.properties?.uid;
+      if (uid) known.add(String(uid));
+    }
+    for (let i = 0; i < (updates || []).length; i++) {
+      const m = updates[i];
+      if (m && m.uid && !known.has(String(m.uid))) return true;
+    }
+    return false;
   }
 
   function fetchServerGeoJson() {
     let url = "/api/map/geojson";
-    const qs = buildGeoJsonQueryString();
+    const qs = buildGeoJsonFetchQueryString();
     if (qs) url += "?" + qs;
 
     return fetch(url, {
@@ -708,7 +909,7 @@
         "If-None-Match": String(lastMarkerRevision || ""),
       },
     }).then(function (resp) {
-      if (resp.status === 304) return lastServerGeoJson;
+      if (resp.status === 304) return lastServerGeoJsonFull;
       if (!resp.ok) throw new Error("geojson " + resp.status);
       return resp.json();
     });
@@ -724,8 +925,8 @@
     serverGeoFetchInFlight = fetchServerGeoJson()
       .then(function (geojson) {
         if (!geojson) return false;
-        if (geojson === lastServerGeoJson) {
-          applyClientLabelDeclutterToSource();
+        if (geojson === lastServerGeoJsonFull) {
+          applyLocalChannelFilter({ layersOnly: true });
           mapRefreshPending = false;
           return true;
         }
@@ -769,8 +970,22 @@
     return false;
   }
 
-  function syncMapSource() {
-    scheduleMapRefresh();
+  function syncMapSource(options) {
+    scheduleUiRefresh();
+    if (options && options.server) {
+      scheduleMapRefresh();
+      return;
+    }
+    if (!applyLocalChannelFilter()) {
+      scheduleMapRefresh();
+    }
+  }
+
+  function syncChannelFilterToMap() {
+    if (!applyLocalChannelFilter({ layersOnly: true })) {
+      syncMapSource({ server: true });
+      return;
+    }
     scheduleUiRefresh();
   }
 
@@ -1155,7 +1370,6 @@
       })
       .then(function () {
         triggerMarkerRepaint();
-        scheduleMapRefresh();
       })
       .catch(function (err) {
         console.warn("Failed to load colored map icon", {
@@ -1286,7 +1500,6 @@
       })
       .then(function () {
         triggerMarkerRepaint();
-        scheduleMapRefresh();
       })
       .catch(function (err) {
         console.warn("Failed to load map icon", { iconId: iconId, imageName: imageName, err: err });
@@ -1328,27 +1541,25 @@
         iconIdByMapImageId.get(mapImageId) ||
         iconIdByMapImageId.get(parsed.baseMapImageId);
       if (!info || !info.apiIconId) {
-        scheduleMapRefresh();
+        triggerMarkerRepaint();
         return;
       }
       if (iconLoadPending.has(mapImageId)) return;
       loadColoredMapIcon(info.apiIconId, parsed.baseMapImageId, parsed.colorHex).then(
         function () {
           triggerMarkerRepaint();
-          scheduleMapRefresh();
         }
       );
       return;
     }
     const info = iconIdByMapImageId.get(mapImageId);
     if (!info || !info.apiIconId) {
-      scheduleMapRefresh();
+      triggerMarkerRepaint();
       return;
     }
     if (iconLoadPending.has(mapImageId)) return;
     loadMapIcon(info.apiIconId, mapImageId).then(function () {
       triggerMarkerRepaint();
-      scheduleMapRefresh();
     });
   }
 
@@ -2934,20 +3145,51 @@
     );
   }
 
-  const LABEL_PRIORITY_FILTER = [
-    "all",
-    MARKER_FILTER,
-    ["any", ["==", ["get", "selected"], true], ["==", ["get", "locked"], true]],
-  ];
+  function markerSelectedExpr() {
+    return [
+      "==",
+      ["coalesce", ["feature-state", "selected"], ["get", "selected"]],
+      true,
+    ];
+  }
 
-  const LABEL_STANDARD_FILTER = [
-    "all",
-    MARKER_FILTER,
-    [
-      "!",
-      ["any", ["==", ["get", "selected"], true], ["==", ["get", "locked"], true]],
-    ],
-  ];
+  function markerLockedExpr() {
+    return [
+      "==",
+      ["coalesce", ["feature-state", "locked"], ["get", "locked"]],
+      true,
+    ];
+  }
+
+  function markerSelectedOrLockedExpr() {
+    return ["any", markerSelectedExpr(), markerLockedExpr()];
+  }
+
+  function labelPriorityFilter() {
+    return ["all", MARKER_FILTER, markerSelectedOrLockedExpr()];
+  }
+
+  function labelStandardFilter() {
+    return ["all", MARKER_FILTER, ["!", markerSelectedOrLockedExpr()]];
+  }
+
+  function applyMarkerHighlightState(prevSelected, prevLocked) {
+    if (!map || !markerLayersReady) return;
+    try {
+      if (prevSelected && prevSelected !== selectedUid) {
+        map.setFeatureState({ source: SOURCE_ID, id: prevSelected }, { selected: false });
+      }
+      if (selectedUid) {
+        map.setFeatureState({ source: SOURCE_ID, id: selectedUid }, { selected: true });
+      }
+      if (prevLocked && prevLocked !== lockedUid) {
+        map.setFeatureState({ source: SOURCE_ID, id: prevLocked }, { locked: false });
+      }
+      if (lockedUid) {
+        map.setFeatureState({ source: SOURCE_ID, id: lockedUid }, { locked: true });
+      }
+    } catch (_) {}
+  }
 
   function markerLabelLayout() {
     return {
@@ -2994,19 +3236,9 @@
         "circle-sort-key": ["get", "renderSort"],
       },
       paint: {
-        "circle-radius": [
-          "case",
-          ["==", ["get", "selected"], true],
-          13,
-          10,
-        ],
+        "circle-radius": ["case", markerSelectedExpr(), 13, 10],
         "circle-color": ["get", "color"],
-        "circle-stroke-width": [
-          "case",
-          ["==", ["get", "selected"], true],
-          2,
-          1.5,
-        ],
+        "circle-stroke-width": ["case", markerSelectedExpr(), 2, 1.5],
         "circle-stroke-color": "#ffffff",
         "circle-opacity": 1,
       },
@@ -3026,12 +3258,7 @@
       ],
       layout: {
         "icon-image": ["get", "iconId"],
-        "icon-size": [
-          "case",
-          ["==", ["get", "selected"], true],
-          1.05,
-          0.88,
-        ],
+        "icon-size": ["case", markerSelectedExpr(), 1.05, 0.88],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
         "icon-optional": true,
@@ -3066,7 +3293,7 @@
         id: LABEL_LAYER,
         type: "symbol",
         source: SOURCE_ID,
-        filter: LABEL_STANDARD_FILTER,
+        filter: withChannelFilter(labelStandardFilter()),
         layout: markerLabelLayout(),
         paint: markerLabelPaint(),
       });
@@ -3075,7 +3302,7 @@
         id: LABEL_PRIORITY_LAYER,
         type: "symbol",
         source: SOURCE_ID,
-        filter: LABEL_PRIORITY_FILTER,
+        filter: withChannelFilter(labelPriorityFilter()),
         layout: markerLabelLayout(),
         paint: markerLabelPaint(),
       });
@@ -3086,6 +3313,7 @@
     }
 
     markerLayersReady = true;
+    applyMapChannelLayerFilters();
     bindMarkerLayerHandlers();
     return true;
   }
@@ -3427,7 +3655,8 @@
     }
     syncDetailStackDom();
     syncDetailStackVisibility();
-    syncMapSource();
+    applyMarkerHighlightState(selectedUid, lockedUid);
+    scheduleClientLabelRefresh(true);
     applyDetailPanelWidth(
       Number(localStorage.getItem(LS_DETAIL_PANEL_WIDTH)) ||
         detailPanelDefaultWidth(),
@@ -3794,9 +4023,11 @@
   }
 
   function clearLock() {
+    const prevLocked = lockedUid;
     lockedUid = null;
     updateLockButtonsUi();
-    syncMapSource();
+    applyMarkerHighlightState(selectedUid, prevLocked);
+    scheduleClientLabelRefresh(true);
   }
 
   function updateLockButtonsUi() {
@@ -3822,11 +4053,13 @@
       clearLock();
       return;
     }
+    const prevLocked = lockedUid;
     lockedUid = m.uid;
     lockMoveFromCode = true;
     map.easeTo({ center: [m.lon, m.lat], zoom: map.getZoom(), duration: 400 });
     updateLockButtonsUi();
-    syncMapSource();
+    applyMarkerHighlightState(selectedUid, prevLocked);
+    scheduleClientLabelRefresh(true);
   }
 
   function trackLockedMarker(m) {
@@ -3921,8 +4154,7 @@
         else enabledGroups.delete(g.name);
         syncEnabledGroupsWithCatalog();
         saveEnabledGroups();
-        renderLayerList();
-        syncMapSource();
+        syncChannelFilterToMap();
         refreshGoToIfOpen();
       });
       elLayerList.appendChild(row);
@@ -3953,6 +4185,7 @@
 
   function selectMarker(uid, showPopupFlag) {
     const id = String(uid);
+    const prevSelected = selectedUid;
     const hadSlot = detailSlots.some(function (s) {
       return s.uid === id;
     });
@@ -3977,7 +4210,8 @@
       }
     }
 
-    syncMapSource();
+    applyMarkerHighlightState(prevSelected, lockedUid);
+    scheduleClientLabelRefresh(true);
   }
 
   let scopedGroupsTimer = null;
@@ -4025,7 +4259,9 @@
     } else {
       recomputeGroupCounts();
     }
-    syncMapSource();
+    if (batchNeedsFullGeoRefresh(msg.updates)) {
+      syncMapSource({ server: true });
+    }
     scheduleLayerListRefresh();
     if (slotsChanged) {
       syncDetailStackDom();
@@ -4064,6 +4300,7 @@
         applyMapChannelScope(data.channelScope, data.allowedChannelKeys);
         mergeGroupsCatalog(data.groups || []);
         renderLayerList();
+        syncChannelFilterToMap();
       })
       .catch(function () {});
   }
@@ -4101,7 +4338,7 @@
 
     function afterMarkersReady() {
       iconLoadPending.clear();
-      syncMapSource();
+      syncMapSource({ server: true });
       renderLayerList();
       maybeFitVisibleOnLoad();
       if (markerLayersReady) {
@@ -4226,6 +4463,7 @@
 
   function deselectMarker() {
     if (!selectedUid) return;
+    const prevSelected = selectedUid;
     selectedUid = null;
     for (let i = detailSlots.length - 1; i >= 0; i--) {
       if (!detailSlots[i].pinned) {
@@ -4235,7 +4473,8 @@
     }
     syncDetailStackDom();
     syncDetailStackVisibility();
-    syncMapSource();
+    applyMarkerHighlightState(prevSelected, lockedUid);
+    scheduleClientLabelRefresh(true);
     closeStackPicker();
     closeMapPopup();
   }
@@ -4366,7 +4605,7 @@
     );
     saveEnabledGroups();
     renderLayerList();
-    syncMapSource();
+    syncChannelFilterToMap();
     refreshGoToIfOpen();
   });
 
@@ -4374,7 +4613,7 @@
     enabledGroups = new Set();
     saveEnabledGroups();
     renderLayerList();
-    syncMapSource();
+    syncChannelFilterToMap();
     refreshGoToIfOpen();
   });
 

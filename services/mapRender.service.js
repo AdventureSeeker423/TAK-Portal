@@ -369,6 +369,7 @@ function buildGeoJson(markers, options = {}) {
         renderSort,
         labelSort: renderSort,
         showLabel,
+        channelKeys: markerChannelKeys(marker).join(","),
       },
     });
   }
