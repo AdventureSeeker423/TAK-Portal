@@ -3146,19 +3146,11 @@
   }
 
   function markerSelectedExpr() {
-    return [
-      "==",
-      ["coalesce", ["feature-state", "selected"], ["get", "selected"]],
-      true,
-    ];
+    return ["==", ["get", "selected"], true];
   }
 
   function markerLockedExpr() {
-    return [
-      "==",
-      ["coalesce", ["feature-state", "locked"], ["get", "locked"]],
-      true,
-    ];
+    return ["==", ["get", "locked"], true];
   }
 
   function markerSelectedOrLockedExpr() {
@@ -3173,22 +3165,50 @@
     return ["all", MARKER_FILTER, ["!", markerSelectedOrLockedExpr()]];
   }
 
-  function applyMarkerHighlightState(prevSelected, prevLocked) {
-    if (!map || !markerLayersReady) return;
-    try {
-      if (prevSelected && prevSelected !== selectedUid) {
-        map.setFeatureState({ source: SOURCE_ID, id: prevSelected }, { selected: false });
+  function syncSelectionToMapSource() {
+    if (!map || !markerLayersReady) return false;
+    const src = map.getSource(SOURCE_ID);
+    if (!src || !lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
+      return false;
+    }
+
+    let changed = false;
+    const features = lastServerGeoJsonFull.features.map(function (feature) {
+      const uid = feature.properties && feature.properties.uid;
+      const selected = uid === selectedUid;
+      const locked = uid === lockedUid;
+      if (
+        feature.properties &&
+        feature.properties.selected === selected &&
+        feature.properties.locked === locked
+      ) {
+        return feature;
       }
-      if (selectedUid) {
-        map.setFeatureState({ source: SOURCE_ID, id: selectedUid }, { selected: true });
-      }
-      if (prevLocked && prevLocked !== lockedUid) {
-        map.setFeatureState({ source: SOURCE_ID, id: prevLocked }, { locked: false });
-      }
-      if (lockedUid) {
-        map.setFeatureState({ source: SOURCE_ID, id: lockedUid }, { locked: true });
-      }
-    } catch (_) {}
+      changed = true;
+      return {
+        type: feature.type,
+        geometry: feature.geometry,
+        properties: Object.assign({}, feature.properties, {
+          selected: selected,
+          locked: locked,
+        }),
+      };
+    });
+
+    if (!changed) return true;
+
+    lastServerGeoJsonFull = Object.assign({}, lastServerGeoJsonFull, { features: features });
+    lastServerGeoJson = Object.assign({}, lastServerGeoJsonFull, {
+      features: features,
+      meta: Object.assign({}, lastServerGeoJsonFull.meta || {}, {
+        visible: countChannelVisibleFeatures(),
+        mapped: countChannelVisibleFeatures(),
+      }),
+    });
+
+    src.setData({ type: "FeatureCollection", features: features });
+    scheduleClientLabelRefresh(true);
+    return true;
   }
 
   function markerLabelLayout() {
@@ -3655,8 +3675,7 @@
     }
     syncDetailStackDom();
     syncDetailStackVisibility();
-    applyMarkerHighlightState(selectedUid, lockedUid);
-    scheduleClientLabelRefresh(true);
+    syncSelectionToMapSource();
     applyDetailPanelWidth(
       Number(localStorage.getItem(LS_DETAIL_PANEL_WIDTH)) ||
         detailPanelDefaultWidth(),
@@ -4023,11 +4042,9 @@
   }
 
   function clearLock() {
-    const prevLocked = lockedUid;
     lockedUid = null;
     updateLockButtonsUi();
-    applyMarkerHighlightState(selectedUid, prevLocked);
-    scheduleClientLabelRefresh(true);
+    syncSelectionToMapSource();
   }
 
   function updateLockButtonsUi() {
@@ -4053,13 +4070,11 @@
       clearLock();
       return;
     }
-    const prevLocked = lockedUid;
     lockedUid = m.uid;
     lockMoveFromCode = true;
     map.easeTo({ center: [m.lon, m.lat], zoom: map.getZoom(), duration: 400 });
     updateLockButtonsUi();
-    applyMarkerHighlightState(selectedUid, prevLocked);
-    scheduleClientLabelRefresh(true);
+    syncSelectionToMapSource();
   }
 
   function trackLockedMarker(m) {
@@ -4185,7 +4200,6 @@
 
   function selectMarker(uid, showPopupFlag) {
     const id = String(uid);
-    const prevSelected = selectedUid;
     const hadSlot = detailSlots.some(function (s) {
       return s.uid === id;
     });
@@ -4210,8 +4224,7 @@
       }
     }
 
-    applyMarkerHighlightState(prevSelected, lockedUid);
-    scheduleClientLabelRefresh(true);
+    syncSelectionToMapSource();
   }
 
   let scopedGroupsTimer = null;
@@ -4463,7 +4476,6 @@
 
   function deselectMarker() {
     if (!selectedUid) return;
-    const prevSelected = selectedUid;
     selectedUid = null;
     for (let i = detailSlots.length - 1; i >= 0; i--) {
       if (!detailSlots[i].pinned) {
@@ -4473,8 +4485,7 @@
     }
     syncDetailStackDom();
     syncDetailStackVisibility();
-    applyMarkerHighlightState(prevSelected, lockedUid);
-    scheduleClientLabelRefresh(true);
+    syncSelectionToMapSource();
     closeStackPicker();
     closeMapPopup();
   }
