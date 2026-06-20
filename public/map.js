@@ -254,11 +254,48 @@
   let labelDeclutterKey = "";
   let lastMarkerRevision = 0;
   let lastLoadedMarkerRevision = 0;
+  let appliedSnapshotRevision = null;
   let lastServerGeoJsonFull = null;
   let lastServerGeoJson = null;
   let serverGeoFetchInFlight = null;
   let labelRefreshRaf = null;
+  let iconDisplayRefreshRaf = null;
   const SERVER_GEO_DEBOUNCE_MS = 50;
+
+  function markerIconDisplayProps(props) {
+    const iconId = props && props.iconId ? String(props.iconId) : "";
+    if (!iconId) {
+      return {
+        iconId: "",
+        showCircle: props && props.showCircle ? 1 : 0,
+      };
+    }
+    if (map && map.hasImage(iconId)) {
+      return { iconId: iconId, showCircle: 0 };
+    }
+    return { iconId: "", showCircle: 1 };
+  }
+
+  function scheduleIconDisplayRefresh() {
+    if (iconDisplayRefreshRaf) cancelAnimationFrame(iconDisplayRefreshRaf);
+    iconDisplayRefreshRaf = requestAnimationFrame(function () {
+      iconDisplayRefreshRaf = null;
+      if (!lastServerGeoJsonFull) return;
+      syncFullGeoJsonToMapSource({ skipIcons: true, deferLabels: true });
+    });
+  }
+
+  function geoJsonFeaturesForIconLoad(features) {
+    const list = [];
+    for (let i = 0; i < features.length; i++) {
+      const feature = features[i];
+      if (!featureMatchesChannelFilter(feature)) continue;
+      const props = feature && feature.properties;
+      if (!props || !props.iconId) continue;
+      list.push(feature);
+    }
+    return list;
+  }
 
   function applyMapChannelScope(scope, allowedKeys) {
     mapChannelScope = scope === "member" ? "member" : "all";
@@ -619,10 +656,11 @@
     const features = lastServerGeoJsonFull.features.map(function (feature) {
       const enriched = enrichFeatureChannelKeys(feature);
       const uid = enriched.properties && enriched.properties.uid;
+      const display = markerIconDisplayProps(enriched.properties);
       return {
         type: enriched.type,
         geometry: enriched.geometry,
-        properties: Object.assign({}, enriched.properties, {
+        properties: Object.assign({}, enriched.properties, display, {
           selected: uid === selectedUid,
           locked: uid === lockedUid,
         }),
@@ -641,7 +679,7 @@
     applyMapChannelLayerFilters();
     updateChannelVisibleMeta();
     if (!opts.skipIcons) {
-      scheduleIconsFromGeoJson(features);
+      scheduleIconsFromGeoJson(geoJsonFeaturesForIconLoad(lastServerGeoJsonFull.features));
     }
     if (opts.deferLabels) {
       scheduleClientLabelRefresh(
@@ -682,7 +720,10 @@
   function loadRenderedMapIcon(mapImageId, apiIconId, markerProps) {
     if (!mapImageId) return Promise.resolve();
     registerServerMapImageMeta(mapImageId, apiIconId, markerProps);
-    if (map.hasImage(mapImageId)) return Promise.resolve();
+    if (map.hasImage(mapImageId)) {
+      scheduleIconDisplayRefresh();
+      return Promise.resolve();
+    }
     if (iconLoadPending.has(mapImageId)) return iconLoadPending.get(mapImageId);
 
     let url =
@@ -713,6 +754,7 @@
         return installMapImage(mapImageId, imageData);
       })
       .then(function () {
+        scheduleIconDisplayRefresh();
         triggerMarkerRepaint();
       })
       .catch(function (err) {
@@ -765,7 +807,7 @@
     }
 
     lastServerGeoJsonFull = geojson;
-    return applyLocalChannelFilter();
+    return applyLocalChannelFilter({ deferLabels: true });
   }
 
   function applyClientLabelDeclutterToSource(options) {
@@ -1221,7 +1263,9 @@
   function reinstallMapIconsFromCache() {
     if (!map || !map.isStyleLoaded()) return;
     iconLoadPending.clear();
-    if (lastServerGeoJson && Array.isArray(lastServerGeoJson.features)) {
+    if (lastServerGeoJsonFull && Array.isArray(lastServerGeoJsonFull.features)) {
+      scheduleIconsFromGeoJson(geoJsonFeaturesForIconLoad(lastServerGeoJsonFull.features));
+    } else if (lastServerGeoJson && Array.isArray(lastServerGeoJson.features)) {
       scheduleIconsFromGeoJson(lastServerGeoJson.features);
     }
   }
@@ -1457,13 +1501,15 @@
   }
 
   function installMapImage(imageName, source) {
-    if (!map.isStyleLoaded() || !source || map.hasImage(imageName)) {
-      return Promise.resolve(Boolean(map.hasImage(imageName)));
+    if (!map.isStyleLoaded() || !source) {
+      return Promise.resolve(false);
     }
     const addOpts = { pixelRatio: 1 };
     function putImage(img) {
       try {
-        if (!map.hasImage(imageName)) {
+        if (map.hasImage(imageName)) {
+          map.updateImage(imageName, img);
+        } else {
           map.addImage(imageName, img, addOpts);
         }
         return true;
@@ -1557,9 +1603,7 @@
     if (String(mapImageId).startsWith("mimg-")) {
       const info = iconIdByMapImageId.get(mapImageId);
       if (iconLoadPending.has(mapImageId)) return;
-      loadRenderedMapIcon(mapImageId, info && info.apiIconId, info).then(function () {
-        triggerMarkerRepaint();
-      });
+      loadRenderedMapIcon(mapImageId, info && info.apiIconId, info);
       return;
     }
     const parsed = parseColoredMapImageId(mapImageId);
@@ -3385,6 +3429,9 @@
 
     markerLayersReady = true;
     applyMapChannelLayerFilters();
+    if (!lastServerGeoJsonFull && !serverGeoFetchInFlight) {
+      runServerGeoJsonRefresh();
+    }
     bindMarkerLayerHandlers();
     return true;
   }
@@ -4359,6 +4406,19 @@
   }
 
   function applySnapshot(state) {
+    const snapshotRevision =
+      state && state.revision != null ? Number(state.revision) : null;
+    if (
+      snapshotRevision != null &&
+      snapshotRevision === appliedSnapshotRevision &&
+      markersByUid.size > 0
+    ) {
+      return;
+    }
+    if (snapshotRevision != null) {
+      appliedSnapshotRevision = snapshotRevision;
+    }
+
     const hasChannelScope =
       state?.channelScope === "member" || state?.channelScope === "all";
 
@@ -4391,15 +4451,22 @@
 
     function afterMarkersReady() {
       iconLoadPending.clear();
-      syncMapSource({ server: true });
       renderLayerList();
       maybeFitVisibleOnLoad();
-      if (markerLayersReady) {
-        reinstallMapIconsFromCache();
-        runServerGeoJsonRefresh().finally(function () {
-          triggerMarkerRepaint();
-        });
+      if (!markerLayersReady) return;
+      reinstallMapIconsFromCache();
+      if (lastServerGeoJsonFull) {
+        applyLocalChannelFilter({ deferLabels: true });
+        triggerMarkerRepaint();
+        return;
       }
+      runServerGeoJsonRefresh().finally(function () {
+        triggerMarkerRepaint();
+      });
+    }
+
+    if (markerLayersReady && !lastServerGeoJsonFull && !serverGeoFetchInFlight) {
+      runServerGeoJsonRefresh();
     }
 
     if (skipMarkerReload) {
