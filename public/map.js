@@ -993,8 +993,40 @@
     if (layerListTimer) clearTimeout(layerListTimer);
     layerListTimer = setTimeout(function () {
       layerListTimer = null;
-      renderLayerList();
+      updateLayerListCounts();
     }, 300);
+  }
+
+  function updateLayerListCounts() {
+    if (!elLayerList) return;
+    recomputeGroupCounts();
+    const rows = elLayerList.querySelectorAll(".map-layer-row");
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const input = row.querySelector('input[type="checkbox"][data-group]');
+      if (!input) continue;
+      const groupName = input.getAttribute("data-group");
+      const group = groupsCatalog.find(function (g) {
+        return g.name === groupName;
+      });
+      const countEl = row.querySelector(".map-layer-count");
+      if (countEl && group) {
+        countEl.textContent = String(group.markerCount || 0);
+      }
+    }
+  }
+
+  function handleChannelGroupToggle(groupName, checked) {
+    if (!groupName) return;
+    if (!enabledGroups) {
+      ensureEnabledGroupsInitialized();
+    }
+    if (checked) enabledGroups.add(groupName);
+    else enabledGroups.delete(groupName);
+    syncEnabledGroupsWithCatalog();
+    saveEnabledGroups();
+    syncChannelFilterToMap();
+    refreshGoToIfOpen();
   }
 
   function loadMarkersFromServer() {
@@ -3090,6 +3122,13 @@
 
   function mergeGroupsCatalog(incoming) {
     const list = Array.isArray(incoming) ? incoming : [];
+    const prevNames = groupsCatalog
+      .filter(isGroupInChannelScope)
+      .map(function (g) {
+        return g.name;
+      })
+      .sort()
+      .join("\0");
     const byKey = new Map();
 
     for (const g of groupsCatalog) {
@@ -3116,6 +3155,18 @@
     }
     syncEnabledGroupsWithCatalog();
     ensureDefaultGroupsEnabled();
+    const nextNames = groupsCatalog
+      .filter(isGroupInChannelScope)
+      .map(function (g) {
+        return g.name;
+      })
+      .sort()
+      .join("\0");
+    if (nextNames !== prevNames) {
+      renderLayerList();
+    } else {
+      updateLayerListCounts();
+    }
   }
 
   function recomputeGroupCounts() {
@@ -4161,17 +4212,6 @@
         '<span class="map-layer-count">' +
         String(g.markerCount || 0) +
         "</span>";
-      row.querySelector("input").addEventListener("change", (ev) => {
-        if (!enabledGroups) {
-          ensureEnabledGroupsInitialized();
-        }
-        if (ev.target.checked) enabledGroups.add(g.name);
-        else enabledGroups.delete(g.name);
-        syncEnabledGroupsWithCatalog();
-        saveEnabledGroups();
-        syncChannelFilterToMap();
-        refreshGoToIfOpen();
-      });
       elLayerList.appendChild(row);
     }
   }
@@ -4607,6 +4647,16 @@
     layerFilterText = elLayerSearch.value.trim();
     renderLayerList();
   });
+
+  if (elLayerList) {
+    elLayerList.addEventListener("change", function (ev) {
+      const input = ev.target;
+      if (!input || input.type !== "checkbox") return;
+      const groupName = input.getAttribute("data-group");
+      if (!groupName) return;
+      handleChannelGroupToggle(groupName, input.checked);
+    });
+  }
 
   document.getElementById("mapGroupsAll").addEventListener("click", () => {
     enabledGroups = new Set(
