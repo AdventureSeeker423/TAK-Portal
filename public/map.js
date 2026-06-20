@@ -2,7 +2,12 @@
   "use strict";
 
   const LS_BASEMAP = "tak-portal-map-basemap";
-  const LS_GROUPS = "tak-portal-map-groups";
+  const LS_GROUPS_LEGACY = "tak-portal-map-groups";
+  const LS_GROUPS_PREFIX = "tak-portal-map-enabled-channels";
+  const MAP_USER_KEY = (function () {
+    const el = document.body && document.body.getAttribute("data-map-user");
+    return String(el || "anonymous").trim() || "anonymous";
+  })();
   const LS_PANEL_LEFT = "tak-portal-map-panel-left";
   const LS_DETAIL_PANEL_WIDTH = "tak-portal-map-detail-panel-width";
   const LS_COORD_FORMAT = "tak-portal-map-coord-format";
@@ -232,7 +237,9 @@
   let groupsCatalog = [];
   let mapChannelScope = "all";
   let allowedMemberChannelKeys = null;
-  let enabledGroups = loadEnabledGroups();
+  let enabledGroups = null;
+  let enabledGroupsScopeLoaded = null;
+  let storedEnabledGroupKeys = undefined;
   let selectedUid = null;
   let detailSlots = [];
   let focusedDetailIndex = 0;
@@ -259,9 +266,50 @@
     }
     if (mapChannelScope === "member") {
       pruneGroupsCatalogToChannelScope();
-      ensureEnabledGroupsInitialized();
-      syncEnabledGroupsWithCatalog();
     }
+    reloadEnabledGroupsForScope();
+  }
+
+  function groupsStorageKey(scope) {
+    const scopeKey = scope === "member" ? "member" : "all";
+    return LS_GROUPS_PREFIX + ":" + MAP_USER_KEY + ":" + scopeKey;
+  }
+
+  function readStoredEnabledGroups(scope) {
+    try {
+      let raw = localStorage.getItem(groupsStorageKey(scope));
+      if (raw === null && scope === "all") {
+        raw = localStorage.getItem(LS_GROUPS_LEGACY);
+      }
+      if (raw === null) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.v === 2 && Array.isArray(parsed.keys)) {
+        return parsed.keys.length ? new Set(parsed.keys) : new Set();
+      }
+      if (Array.isArray(parsed)) {
+        return parsed.length ? new Set(parsed) : new Set();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function reloadEnabledGroupsForScope() {
+    const scope = mapChannelScope === "member" ? "member" : "all";
+    if (enabledGroupsScopeLoaded === scope) return;
+    enabledGroupsScopeLoaded = scope;
+    storedEnabledGroupKeys = readStoredEnabledGroups(scope);
+    syncEnabledGroupsFromStorage();
+  }
+
+  function syncEnabledGroupsFromStorage() {
+    if (storedEnabledGroupKeys === undefined) return;
+    if (storedEnabledGroupKeys === null) {
+      enabledGroups = null;
+      return;
+    }
+    enabledGroups = normalizeEnabledGroups(storedEnabledGroupKeys);
   }
 
   function isMemberChannelKeyAllowed(key) {
@@ -1094,38 +1142,53 @@
   loadDetailPanelWidth();
   initDetailPanelResize();
 
-  function loadEnabledGroups() {
-    try {
-      const raw = localStorage.getItem(LS_GROUPS);
-      if (raw === null) return null;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return null;
-      if (parsed.length === 0) return new Set();
-      return new Set(parsed);
-    } catch (_) {
-      return null;
-    }
-  }
-
   function normalizeEnabledGroups(set) {
     if (!set) return null;
     if (set.size === 0) return new Set();
     const out = new Set();
-    for (const name of set) {
-      const key = channelGroupKey(name);
-      if (!key) continue;
-      const match = groupsCatalog.find((g) => channelGroupKey(g.name) === key);
-      out.add(match ? match.name : name);
+    for (const item of set) {
+      const itemStr = String(item || "").trim();
+      if (!itemStr) continue;
+      let match = groupsCatalog.find(function (g) {
+        const baseKey = channelBaseKeyForName(g.name);
+        return baseKey === itemStr || g.baseKey === itemStr;
+      });
+      if (!match) {
+        const key = channelGroupKey(itemStr);
+        if (key) {
+          match = groupsCatalog.find(function (g) {
+            return channelGroupKey(g.name) === key;
+          });
+        }
+      }
+      if (match) out.add(match.name);
     }
-    return out.size ? out : new Set();
+    return out;
+  }
+
+  function enabledGroupStorageKeys() {
+    const keys = new Set();
+    if (!enabledGroups) return keys;
+    for (const name of enabledGroups) {
+      const key = channelBaseKeyForName(name);
+      if (key) keys.add(key);
+    }
+    return keys;
   }
 
   function saveEnabledGroups() {
+    const scope = mapChannelScope === "member" ? "member" : "all";
     if (!enabledGroups) {
-      localStorage.removeItem(LS_GROUPS);
+      localStorage.removeItem(groupsStorageKey(scope));
+      storedEnabledGroupKeys = null;
       return;
     }
-    localStorage.setItem(LS_GROUPS, JSON.stringify(Array.from(enabledGroups)));
+    const keys = Array.from(enabledGroupStorageKeys()).sort();
+    storedEnabledGroupKeys = new Set(keys);
+    localStorage.setItem(
+      groupsStorageKey(scope),
+      JSON.stringify({ v: 2, keys: keys })
+    );
   }
 
   function copyTextToClipboard(text) {
@@ -2298,11 +2361,6 @@
     }
     if (!enabledGroups || enabledGroups.size === 0) return;
     if (!names.length) return;
-    for (let i = 0; i < names.length; i++) {
-      if (!isGroupEnabled(names[i])) return;
-    }
-    enabledGroups = null;
-    saveEnabledGroups();
   }
 
   function ensureEnabledGroupsInitialized() {
@@ -2474,7 +2532,10 @@
       )
     );
     recomputeGroupCounts();
-    enabledGroups = normalizeEnabledGroups(enabledGroups);
+    syncEnabledGroupsFromStorage();
+    if (enabledGroups) {
+      enabledGroups = normalizeEnabledGroups(enabledGroups);
+    }
     syncEnabledGroupsWithCatalog();
     ensureDefaultGroupsEnabled();
   }
@@ -3486,7 +3547,9 @@
         String(g.markerCount || 0) +
         "</span>";
       row.querySelector("input").addEventListener("change", (ev) => {
-        if (!enabledGroups) ensureEnabledGroupsInitialized();
+        if (!enabledGroups) {
+          ensureEnabledGroupsInitialized();
+        }
         if (ev.target.checked) enabledGroups.add(g.name);
         else enabledGroups.delete(g.name);
         syncEnabledGroupsWithCatalog();
@@ -3898,7 +3961,11 @@
   });
 
   document.getElementById("mapGroupsAll").addEventListener("click", () => {
-    enabledGroups = null;
+    enabledGroups = new Set(
+      groupsCatalog.filter(isGroupInChannelScope).map(function (g) {
+        return g.name;
+      })
+    );
     saveEnabledGroups();
     renderLayerList();
     syncMapSource();

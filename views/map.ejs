@@ -24,7 +24,7 @@
     />
     <link rel="stylesheet" href="<%= mapCssUrl %>" />
   </head>
-  <body>
+  <body data-map-user="<%= typeof mapStorageUserKey !== 'undefined' ? mapStorageUserKey : 'anonymous' %>">
     <div class="map-shell">
       <div id="map" aria-label="TAK live map"></div>
 

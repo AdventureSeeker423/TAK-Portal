@@ -756,7 +756,13 @@ app.get("/map", requireMapAccess, (req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
-  return res.render("map", mapPageAssets.getRenderLocals());
+  const mapUserKey = String(
+    req.authentikUser?.uid || req.authentikUser?.username || "anonymous"
+  ).replace(/[^a-zA-Z0-9._-]/g, "_");
+  return res.render("map", {
+    ...mapPageAssets.getRenderLocals(),
+    mapStorageUserKey: mapUserKey,
+  });
 });
 app.get("/getting-started", requireGlobalAdminRole, requireBetaMode, (req, res) =>
   res.render("getting-started")
