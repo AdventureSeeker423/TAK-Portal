@@ -271,6 +271,7 @@
   const ICON_DB_NAME = "tak-portal-map-icons";
   const ICON_DB_STORE = "icons";
   let iconDbPromise = null;
+  const MAP_ICON_PLACEHOLDER = { width: 1, height: 1, data: new Uint8Array(4) };
 
   function normalizeMapImageId(mapImageId) {
     const id = String(mapImageId || "").trim();
@@ -1090,7 +1091,10 @@
       origin: markerProps && markerProps.origin ? markerProps.origin : "",
       type: markerProps && markerProps.type ? markerProps.type : "",
       affiliation: markerProps && markerProps.affiliation ? markerProps.affiliation : "",
-      color: markerProps && markerProps.color ? markerProps.color : "",
+      color:
+        (markerProps && markerProps.color) ||
+        (markerProps && markerProps.teamColor) ||
+        "",
     };
     iconIdByMapImageId.set(canonicalId, meta);
     if (canonicalId !== String(mapImageId)) {
@@ -1147,7 +1151,8 @@
     if (!mapImageId) return Promise.resolve();
     const canonicalId = normalizeMapImageId(mapImageId);
     registerServerMapImageMeta(canonicalId, apiIconId, markerProps);
-    if (map.hasImage(canonicalId)) {
+    ensurePlaceholderMapImage(canonicalId);
+    if (map.hasImage(canonicalId) && !isPlaceholderMapImage(canonicalId)) {
       hideCirclesForMapImage(canonicalId);
       return Promise.resolve();
     }
@@ -1898,6 +1903,38 @@
     return "/api/map/icons?id=" + encodeURIComponent(iconId);
   }
 
+  function renderedIconPreviewUrl(m) {
+    const mapImageId = normalizeMapImageId(m && m.mapImageId ? m.mapImageId : "");
+    if (!mapImageId || !isRenderedMapImageId(mapImageId)) return null;
+    let url = "/api/map/icons/rendered?mapImageId=" + encodeURIComponent(mapImageId);
+    const apiIconId = String((m && m.iconId) || "");
+    if (apiIconId) url += "&apiIconId=" + encodeURIComponent(apiIconId);
+    const color = markerDisplayColor(m);
+    if (color) url += "&color=" + encodeURIComponent(color);
+    if (m && m.iconSource) url += "&iconSource=" + encodeURIComponent(m.iconSource);
+    if (m && m.origin) url += "&origin=" + encodeURIComponent(m.origin);
+    if (m && m.type) url += "&type=" + encodeURIComponent(m.type);
+    if (m && m.affiliation) url += "&affiliation=" + encodeURIComponent(m.affiliation);
+    return url;
+  }
+
+  function ensurePlaceholderMapImage(imageName) {
+    if (!map || !imageName || map.hasImage(imageName)) return;
+    try {
+      map.addImage(imageName, MAP_ICON_PLACEHOLDER, { pixelRatio: 1 });
+    } catch (_) {}
+  }
+
+  function isPlaceholderMapImage(imageName) {
+    if (!map || !imageName || !map.hasImage(imageName)) return false;
+    try {
+      const img = map.getImage(imageName);
+      return !!(img && img.width === 1 && img.height === 1);
+    } catch (_) {
+      return false;
+    }
+  }
+
   /** PNG icons for feeds and explicit usericon/path; EUD tracks always use team dots. */
   function isAirCotType(type) {
     const parts = String(type || "")
@@ -2037,10 +2074,10 @@
       const canonicalId = normalizeMapImageId(props.iconId);
       if (!canonicalId || !isRenderedMapImageId(canonicalId) || seen.has(canonicalId)) continue;
       seen.add(canonicalId);
-      if (map.hasImage(canonicalId) || iconLoadPending.has(canonicalId)) continue;
-      const info = resolveIconMetaForImageId(canonicalId);
-      if (!info || !info.apiIconId) continue;
-      loadRenderedMapIcon(canonicalId, info.apiIconId, info);
+      if (iconLoadPending.has(canonicalId)) continue;
+      if (map.hasImage(canonicalId) && !isPlaceholderMapImage(canonicalId)) continue;
+      const info = resolveIconMetaForImageId(canonicalId) || { mapImageId: canonicalId };
+      loadRenderedMapIcon(canonicalId, info.apiIconId || "", info);
     }
   }
 
@@ -2057,6 +2094,7 @@
     if (isRenderedMapImageId(mapImageId)) {
       const info = resolveIconMetaForImageId(mapImageId);
       const canonicalId = normalizeMapImageId(mapImageId);
+      ensurePlaceholderMapImage(canonicalId);
       if (iconLoadPending.has(canonicalId)) return;
       loadRenderedMapIcon(canonicalId, info && info.apiIconId, info || {});
       return;
@@ -2780,10 +2818,18 @@
       return;
     }
 
-    const apiIconId = String(m.iconId);
+    const renderedUrl = renderedIconPreviewUrl(m);
     const img = document.createElement("img");
     img.className = "map-marker-preview-icon";
     img.alt = "";
+    if (renderedUrl) {
+      img.src = renderedUrl;
+      img.addEventListener("error", showDot);
+      container.appendChild(img);
+      return;
+    }
+
+    const apiIconId = String(m.iconId);
     img.src = iconApiUrl(apiIconId);
     img.addEventListener("error", showDot);
     container.appendChild(img);
@@ -3395,6 +3441,8 @@
   }
 
   function markerDisplayColor(m) {
+    const fromColor = normalizeMarkerColor(m && m.color, null);
+    if (fromColor) return fromColor;
     const fromAttr = normalizeMarkerColor(m && m.teamColor, null);
     if (fromAttr) return fromAttr;
     const fromTeam = teamNameToColor(m && m.team);
