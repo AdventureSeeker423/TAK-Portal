@@ -12,6 +12,19 @@ mapIcon.ensureIconsets().then(() => {
   console.warn("[map] iconset init failed:", err?.message || err);
 });
 
+geocode
+  .geocodeSearch("600 Market St, Chattanooga, TN", { limit: 1 })
+  .then(function (out) {
+    if (out?.lookupFailed || !Array.isArray(out?.results) || !out.results.length) {
+      console.warn(
+        "[map] geocode self-test failed — address search may be unavailable (check outbound HTTPS or set GEOCODIO_API_KEY)"
+      );
+    }
+  })
+  .catch(function (err) {
+    console.warn("[map] geocode self-test error:", err?.message || err);
+  });
+
 function getMapAccessContext(req) {
   const user = req.authentikUser || {};
   const isGlobalAdmin = !!user.isGlobalAdmin;
@@ -149,14 +162,16 @@ router.get("/geocode", async (req, res) => {
   const nearLat = Number.parseFloat(req.query.nearLat);
   const nearLon = Number.parseFloat(req.query.nearLon);
   try {
-    const results = await geocode.geocodeSearch(q, {
+    const out = await geocode.geocodeSearch(q, {
       limit,
       nearLat: Number.isFinite(nearLat) ? nearLat : undefined,
       nearLon: Number.isFinite(nearLon) ? nearLon : undefined,
     });
+    const results = Array.isArray(out?.results) ? out.results : [];
+    const lookupFailed = !!out?.lookupFailed;
     if (!results.length) {
       res.setHeader("Cache-Control", "private, max-age=60");
-      return res.json({ results: [] });
+      return res.json({ results: [], lookupFailed });
     }
     res.setHeader(
       "Cache-Control",
@@ -165,13 +180,13 @@ router.get("/geocode", async (req, res) => {
         : "private, max-age=300"
     );
     if (limit === 1) {
-      return res.json(results[0]);
+      return res.json({ ...results[0], lookupFailed: false });
     }
-    return res.json({ results });
+    return res.json({ results, lookupFailed: false });
   } catch (err) {
     console.warn("[map] geocode failed:", err?.message || err);
     res.setHeader("Cache-Control", "private, max-age=30");
-    return res.json({ results: [] });
+    return res.json({ results: [], lookupFailed: true });
   }
 });
 

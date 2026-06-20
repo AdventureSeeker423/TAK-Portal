@@ -113,4 +113,20 @@ const normalized = geocode.normalizeHit({
 assert.strictEqual(normalized.lat, 35.5);
 assert.strictEqual(normalized.label, "Test");
 
-console.log("geocode.test.js: all assertions passed");
+(async function () {
+  const blocked = global.fetch;
+  global.fetch = function () {
+    return Promise.reject(new Error("blocked"));
+  };
+  try {
+    const out = await geocode.geocodeSearch("600 market", { limit: 1 });
+    assert.ok(out && typeof out === "object");
+    assert.ok(Array.isArray(out.results));
+    assert.strictEqual(out.results.length, 0);
+    assert.strictEqual(out.lookupFailed, true);
+  } finally {
+    global.fetch = blocked;
+  }
+})().then(function () {
+  console.log("geocode.test.js: all assertions passed");
+});

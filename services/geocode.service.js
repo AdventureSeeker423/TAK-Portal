@@ -548,17 +548,22 @@ async function searchNominatim(query, limit, near) {
 async function geocodeSearch(query, options = {}) {
   const q = String(query || "").trim();
   const limit = Math.min(10, Math.max(1, Number(options.limit) || 5));
-  if (!q) return [];
+  if (!q) return { results: [], lookupFailed: false };
 
   const near = nearOptions(options);
   const variants = buildQueryVariants(q);
   const lists = [];
   const providerLimit = Math.max(limit, PROVIDER_FETCH_LIMIT);
+  let providersOk = 0;
+  let providersFailed = 0;
 
   if (geocodioApiKey()) {
-    lists.push(await searchGeocodio(q, providerLimit, near).catch(function () {
-      return [];
-    }));
+    try {
+      lists.push(await searchGeocodio(q, providerLimit, near));
+      providersOk++;
+    } catch (_) {
+      providersFailed++;
+    }
   }
 
   const censusTasks = variants.map(function (variant) {
@@ -567,7 +572,10 @@ async function geocodeSearch(query, options = {}) {
   const censusResults = await Promise.allSettled(censusTasks);
   for (const entry of censusResults) {
     if (entry.status === "fulfilled" && Array.isArray(entry.value)) {
+      providersOk++;
       lists.push(entry.value);
+    } else {
+      providersFailed++;
     }
   }
 
@@ -582,11 +590,17 @@ async function geocodeSearch(query, options = {}) {
 
   for (const entry of settled) {
     if (entry.status === "fulfilled" && Array.isArray(entry.value)) {
+      providersOk++;
       lists.push(entry.value);
+    } else {
+      providersFailed++;
     }
   }
 
-  return mergeHits(lists, limit, options);
+  return {
+    results: mergeHits(lists, limit, options),
+    lookupFailed: providersFailed > 0 && providersOk === 0,
+  };
 }
 
 module.exports = {
