@@ -687,25 +687,11 @@
     ];
   }
 
-  function hideAllMarkersFilterExpr() {
-    return ["==", ["get", "kind"], ""];
-  }
-
   function buildChannelKeySetFilterExpr(keySet) {
-    if (!keySet || keySet.size === 0) return hideAllMarkersFilterExpr();
+    if (!keySet || keySet.size === 0) return ["==", 1, 0];
     const keys = Array.from(keySet);
     if (keys.length === 1) return channelKeyMatchExpr(keys[0]);
     return ["any"].concat(keys.map(channelKeyMatchExpr));
-  }
-
-  function allScopedChannelsEnabled() {
-    if (enabledGroups === null) return false;
-    const scoped = groupsCatalog.filter(isGroupInChannelScope);
-    if (!scoped.length) return enabledGroups.size === 0;
-    for (let i = 0; i < scoped.length; i++) {
-      if (!enabledGroups.has(scoped[i].name)) return false;
-    }
-    return true;
   }
 
   function buildChannelVisibilityFilterExpr() {
@@ -715,11 +701,7 @@
     }
     const enabledKeys = enabledChannelKeysForFilter();
     if (enabledKeys !== null) {
-      if (enabledKeys.size === 0) {
-        parts.push(hideAllMarkersFilterExpr());
-      } else if (!allScopedChannelsEnabled()) {
-        parts.push(buildChannelKeySetFilterExpr(enabledKeys));
-      }
+      parts.push(buildChannelKeySetFilterExpr(enabledKeys));
     }
     if (parts.length === 0) return null;
     if (parts.length === 1) return parts[0];
@@ -1315,22 +1297,12 @@
     }
   }
 
-  let iconBatchAfterChannelTimer = null;
-
-  function scheduleVisibleIconBatchLoad() {
-    if (iconBatchAfterChannelTimer) clearTimeout(iconBatchAfterChannelTimer);
-    iconBatchAfterChannelTimer = setTimeout(function () {
-      iconBatchAfterChannelTimer = null;
-      loadVisibleIconsBatch(buildIconManifestForLoad());
-    }, 120);
-  }
-
   function syncChannelFilterToMap() {
     if (!applyLocalChannelFilter({ layersOnly: true })) {
       syncMapSource({ server: true });
       return;
     }
-    scheduleVisibleIconBatchLoad();
+    loadVisibleIconsBatch(buildIconManifestForLoad());
     scheduleUiRefresh();
   }
 
