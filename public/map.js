@@ -255,11 +255,9 @@
   let lastMarkerRevision = 0;
   let lastLoadedMarkerRevision = 0;
   let lastServerGeoJson = null;
-  let serverGeoTimer = null;
-  let viewportGeoTimer = null;
   let serverGeoFetchInFlight = null;
-  const SERVER_GEO_DEBOUNCE_MS = 150;
-  const VIEWPORT_GEO_DEBOUNCE_MS = 200;
+  let labelRefreshRaf = null;
+  const SERVER_GEO_DEBOUNCE_MS = 50;
 
   function applyMapChannelScope(scope, allowedKeys) {
     mapChannelScope = scope === "member" ? "member" : "all";
@@ -579,37 +577,127 @@
     };
     updateVisibleCounts();
     scheduleIconsFromGeoJson(features);
+    applyClientLabelDeclutterToSource();
     return true;
   }
 
-  function fetchServerGeoJson(options) {
-    const opts = options || {};
-    if (opts.viewportDeclutter && map && typeof map.getBounds === "function") {
-      const bounds = map.getBounds();
-      const body = {
-        channels: buildGeoJsonChannelParam(),
-        scopeKeys: buildGeoJsonScopeParam(),
-        selected: selectedUid || "",
-        locked: lockedUid || "",
-        zoom: map.getZoom(),
-        bounds: [
-          bounds.getWest(),
-          bounds.getSouth(),
-          bounds.getEast(),
-          bounds.getNorth(),
-        ].join(","),
+  function applyClientLabelDeclutterToSource(options) {
+    if (!map || !markerLayersReady || !lastServerGeoJson) return false;
+    const src = map.getSource(SOURCE_ID);
+    if (!src || !Array.isArray(lastServerGeoJson.features)) return false;
+
+    const visible = getVisibleMarkers();
+    syncLabelVisibility(visible, options);
+
+    let changed = false;
+    const patched = lastServerGeoJson.features.map(function (feature) {
+      if (!feature || !feature.properties) return feature;
+      const uid = feature.properties.uid;
+      const marker = uid ? markersByUid.get(uid) : null;
+      let showLabel = 1;
+      if (marker) {
+        showLabel = markerShowLabel(marker);
+      } else if (uid && labelVisibleByUid.has(uid)) {
+        showLabel = labelVisibleByUid.get(uid);
+      }
+      if (feature.properties.showLabel === showLabel) return feature;
+      changed = true;
+      return {
+        type: feature.type,
+        geometry: feature.geometry,
+        properties: Object.assign({}, feature.properties, { showLabel: showLabel }),
       };
-      return fetch("/api/map/geojson/viewport", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }).then(function (resp) {
-        if (!resp.ok) throw new Error("geojson viewport " + resp.status);
-        return resp.json();
-      });
+    });
+
+    if (!changed) return true;
+    lastServerGeoJson = Object.assign({}, lastServerGeoJson, { features: patched });
+    src.setData({ type: "FeatureCollection", features: patched });
+    return true;
+  }
+
+  function scheduleClientLabelRefresh(forceRecompute) {
+    if (labelRefreshRaf) cancelAnimationFrame(labelRefreshRaf);
+    labelRefreshRaf = requestAnimationFrame(function () {
+      labelRefreshRaf = null;
+      applyClientLabelDeclutterToSource(
+        forceRecompute ? { forceRecompute: true } : undefined
+      );
+    });
+  }
+
+  function patchServerGeoJsonFromBatch(updates, removes) {
+    if (!lastServerGeoJson || !Array.isArray(lastServerGeoJson.features)) {
+      return false;
     }
 
+    let changed = false;
+    let features = lastServerGeoJson.features;
+
+    if (Array.isArray(removes) && removes.length) {
+      const removeSet = new Set(
+        removes.map(function (uid) {
+          return String(uid);
+        })
+      );
+      const next = features.filter(function (feature) {
+        return !removeSet.has(String(feature && feature.properties && feature.properties.uid));
+      });
+      if (next.length !== features.length) {
+        features = next;
+        changed = true;
+      }
+    }
+
+    if (Array.isArray(updates) && updates.length) {
+      const byUid = new Map();
+      for (let i = 0; i < updates.length; i++) {
+        const m = updates[i];
+        if (m && m.uid) byUid.set(String(m.uid), m);
+      }
+      if (byUid.size) {
+        features = features.map(function (feature) {
+          if (!feature || !feature.properties) return feature;
+          const m = byUid.get(String(feature.properties.uid));
+          if (!m) return feature;
+          const lat = Number(m.lat);
+          const lon = Number(m.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return feature;
+          const coords = feature.geometry && feature.geometry.coordinates;
+          const selected = m.uid === selectedUid;
+          const locked = m.uid === lockedUid;
+          if (
+            coords &&
+            coords[0] === lon &&
+            coords[1] === lat &&
+            feature.properties.selected === selected &&
+            feature.properties.locked === locked
+          ) {
+            return feature;
+          }
+          changed = true;
+          return {
+            type: feature.type,
+            geometry: { type: "Point", coordinates: [lon, lat] },
+            properties: Object.assign({}, feature.properties, {
+              selected: selected,
+              locked: locked,
+            }),
+          };
+        });
+      }
+    }
+
+    if (!changed) return false;
+    lastServerGeoJson = Object.assign({}, lastServerGeoJson, { features: features });
+    const src = map.getSource(SOURCE_ID);
+    if (src) {
+      src.setData({ type: "FeatureCollection", features: features });
+    }
+    applyClientLabelDeclutterToSource();
+    return true;
+  }
+
+  function fetchServerGeoJson() {
     let url = "/api/map/geojson";
     const qs = buildGeoJsonQueryString();
     if (qs) url += "?" + qs;
@@ -626,16 +714,21 @@
     });
   }
 
-  function runServerGeoJsonRefresh(options) {
+  function runServerGeoJsonRefresh() {
     if (!markerLayersReady) {
       mapRefreshPending = true;
       return Promise.resolve(false);
     }
     if (serverGeoFetchInFlight) return serverGeoFetchInFlight;
 
-    serverGeoFetchInFlight = fetchServerGeoJson(options)
+    serverGeoFetchInFlight = fetchServerGeoJson()
       .then(function (geojson) {
         if (!geojson) return false;
+        if (geojson === lastServerGeoJson) {
+          applyClientLabelDeclutterToSource();
+          mapRefreshPending = false;
+          return true;
+        }
         const ok = applyServerGeoJsonToMap(geojson);
         mapRefreshPending = !ok;
         return ok;
@@ -650,22 +743,6 @@
       });
 
     return serverGeoFetchInFlight;
-  }
-
-  function scheduleServerGeoJsonRefresh(options) {
-    if (serverGeoTimer) clearTimeout(serverGeoTimer);
-    serverGeoTimer = setTimeout(function () {
-      serverGeoTimer = null;
-      runServerGeoJsonRefresh(options);
-    }, SERVER_GEO_DEBOUNCE_MS);
-  }
-
-  function scheduleViewportGeoJsonRefresh() {
-    if (viewportGeoTimer) clearTimeout(viewportGeoTimer);
-    viewportGeoTimer = setTimeout(function () {
-      viewportGeoTimer = null;
-      runServerGeoJsonRefresh({ viewportDeclutter: true });
-    }, VIEWPORT_GEO_DEBOUNCE_MS);
   }
 
   function scheduleMapRefresh() {
@@ -3939,6 +4016,7 @@
     for (const m of msg.updates || []) {
       storeMarker(m);
     }
+    patchServerGeoJsonFromBatch(msg.updates || [], msg.removes || []);
     // SSE groupsCatalog is global (no per-user scope); agency admins refresh scoped catalog.
     if (msg.groupsCatalog && mapChannelScope !== "member") {
       mergeGroupsCatalog(msg.groupsCatalog);
@@ -4204,7 +4282,7 @@
   map.on("moveend", () => {
     lockMoveFromCode = false;
     resortGoToAddressesByViewport();
-    scheduleViewportGeoJsonRefresh();
+    scheduleClientLabelRefresh(false);
   });
 
   map.on("zoomend", () => {
@@ -4212,7 +4290,7 @@
       recenterLockedMarkerAtCurrentZoom();
     }
     labelDeclutterKey = "";
-    if (markerLayersReady) scheduleViewportGeoJsonRefresh();
+    scheduleClientLabelRefresh(true);
     resortGoToAddressesByViewport();
   });
 
