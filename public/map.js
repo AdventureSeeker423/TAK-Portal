@@ -259,6 +259,7 @@
   let lastServerGeoJson = null;
   let serverGeoFetchInFlight = null;
   let labelRefreshRaf = null;
+  let iconDisplayRefreshTimer = null;
   const mapIconImageCache = new Map();
   const SERVER_GEO_DEBOUNCE_MS = 50;
 
@@ -270,10 +271,50 @@
         showCircle: props && props.showCircle ? 1 : 0,
       };
     }
-    if (map && map.hasImage(iconId)) {
-      return { iconId: iconId, showCircle: 0 };
+    const ready = map && map.hasImage(iconId);
+    return {
+      iconId: iconId,
+      showCircle: ready ? 0 : 1,
+    };
+  }
+
+  function queueMarkerIconDisplayRefresh() {
+    if (iconDisplayRefreshTimer) clearTimeout(iconDisplayRefreshTimer);
+    iconDisplayRefreshTimer = setTimeout(function () {
+      iconDisplayRefreshTimer = null;
+      if (!lastServerGeoJsonFull) return;
+      syncFullGeoJsonToMapSource({ skipIcons: true, deferLabels: true });
+      triggerMarkerRepaint();
+    }, 32);
+  }
+
+  function channelKeyInFeature(channelKeysCsv, key) {
+    if (!key) return false;
+    return ("," + String(channelKeysCsv || "") + ",").indexOf("," + key + ",") >= 0;
+  }
+
+  function featureMatchesChannelKeys(feature) {
+    const props = feature && feature.properties;
+    if (!props) return false;
+    const channelKeys = String(props.channelKeys || "");
+    if (mapChannelScope === "member" && allowedMemberChannelKeys) {
+      if (!allowedMemberChannelKeys.size) return false;
+      let allowed = false;
+      for (const key of allowedMemberChannelKeys) {
+        if (channelKeyInFeature(channelKeys, key)) {
+          allowed = true;
+          break;
+        }
+      }
+      if (!allowed) return false;
     }
-    return { iconId: "", showCircle: 1 };
+    const enabledKeys = enabledChannelKeysForFilter();
+    if (enabledKeys === null) return true;
+    if (!enabledKeys.size) return false;
+    for (const key of enabledKeys) {
+      if (channelKeyInFeature(channelKeys, key)) return true;
+    }
+    return false;
   }
 
   function geoJsonFeaturesForIconLoad(features) {
@@ -504,8 +545,11 @@
     const uid = feature && feature.properties && feature.properties.uid;
     if (!uid) return false;
     const marker = markersByUid.get(String(uid));
-    if (!marker) return !isChannelFilterActive();
-    return markerVisible(marker);
+    if (marker) return markerVisible(marker);
+    if (feature.properties && feature.properties.channelKeys) {
+      return featureMatchesChannelKeys(feature);
+    }
+    return !isChannelFilterActive();
   }
 
   function enrichFeatureChannelKeys(feature) {
@@ -711,13 +755,16 @@
   function loadRenderedMapIcon(mapImageId, apiIconId, markerProps) {
     if (!mapImageId) return Promise.resolve();
     registerServerMapImageMeta(mapImageId, apiIconId, markerProps);
-    if (map.hasImage(mapImageId)) return Promise.resolve();
+    if (map.hasImage(mapImageId)) {
+      queueMarkerIconDisplayRefresh();
+      return Promise.resolve();
+    }
     if (iconLoadPending.has(mapImageId)) return iconLoadPending.get(mapImageId);
 
     const cachedImage = mapIconImageCache.get(mapImageId);
     if (cachedImage) {
       const cachedPromise = installMapImage(mapImageId, cachedImage).then(function () {
-        triggerMarkerRepaint();
+        queueMarkerIconDisplayRefresh();
       });
       iconLoadPending.set(mapImageId, cachedPromise);
       cachedPromise.finally(function () {
@@ -755,7 +802,7 @@
         return installMapImage(mapImageId, imageData);
       })
       .then(function () {
-        triggerMarkerRepaint();
+        queueMarkerIconDisplayRefresh();
       })
       .catch(function (err) {
         console.warn("Failed to load rendered map icon", {
@@ -782,10 +829,12 @@
       if (map.hasImage(props.iconId)) continue;
       loads.push(loadRenderedMapIcon(props.iconId, props.apiIconId, props));
     }
-    if (!loads.length) return;
+    if (!loads.length) {
+      queueMarkerIconDisplayRefresh();
+      return;
+    }
     Promise.all(loads).finally(function () {
-      syncFullGeoJsonToMapSource({ skipIcons: true, deferLabels: true });
-      triggerMarkerRepaint();
+      queueMarkerIconDisplayRefresh();
     });
   }
 
