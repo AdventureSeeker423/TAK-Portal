@@ -1047,6 +1047,15 @@ body.map-detail-resizing .map-panel-resize-handle {
   text-overflow: ellipsis;
 }
 
+.map-goto-result .name + .meta {
+  padding-left: 30px;
+}
+
+.map-goto-result .meta.is-pending {
+  font-style: italic;
+  opacity: 0.85;
+}
+
 .map-goto-result.is-loading {
   cursor: default;
   color: var(--map-muted);

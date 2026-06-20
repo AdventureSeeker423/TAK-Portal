@@ -174,6 +174,42 @@ router.get("/geocode", async (req, res) => {
   }
 });
 
+router.get("/reverse-geocode", async (req, res) => {
+  const lat = Number.parseFloat(req.query.lat);
+  const lon = Number.parseFloat(req.query.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return res.status(400).json({ error: "Missing or invalid lat/lon" });
+  }
+  try {
+    const label = await geocode.reverseGeocode(lat, lon);
+    if (!label) {
+      return res.status(404).json({ error: "No address found" });
+    }
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    return res.json({ lat, lon, label });
+  } catch (err) {
+    return res.status(502).json({
+      error: err?.message || "Reverse geocoding failed",
+    });
+  }
+});
+
+router.post("/reverse-geocode", async (req, res) => {
+  const points = req.body?.points;
+  if (!Array.isArray(points) || !points.length) {
+    return res.status(400).json({ error: "Missing points array" });
+  }
+  try {
+    const results = await geocode.reverseGeocodeBatch(points, { limit: 12 });
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    return res.json({ results });
+  } catch (err) {
+    return res.status(502).json({
+      error: err?.message || "Reverse geocoding failed",
+    });
+  }
+});
+
 router.get("/stream", (req, res) => {
   req.socket.setTimeout(0);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");

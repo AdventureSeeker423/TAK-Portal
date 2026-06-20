@@ -567,6 +567,8 @@
   let goToActiveIndex = -1;
   let goToGeocodeTimer = null;
   let goToGeocodeSeq = 0;
+  let goToStreetSeq = 0;
+  const goToStreetCache = new Map();
   const GO_TO_CONTACT_LIMIT = 8;
   const GO_TO_ADDRESS_LIMIT = 5;
   const CURSOR_COORD_FORMATS = [
@@ -1632,6 +1634,97 @@
     return out;
   }
 
+  function goToStreetCacheKey(lat, lon) {
+    return Number(lat).toFixed(4) + "," + Number(lon).toFixed(4);
+  }
+
+  function applyCachedGoToStreetLines() {
+    let changed = false;
+    for (let i = 0; i < goToResults.length; i++) {
+      const item = goToResults[i];
+      if (item.kind !== "contact" || !item.marker) continue;
+      const pos = markerCoords(item.marker);
+      if (!pos) continue;
+      const cacheKey = goToStreetCacheKey(pos.lat, pos.lon);
+      if (!goToStreetCache.has(cacheKey)) continue;
+      const nextLine = goToStreetCache.get(cacheKey) || "";
+      if (item.streetLine !== nextLine) {
+        item.streetLine = nextLine;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function enrichGoToContactStreets() {
+    const needed = [];
+    for (let i = 0; i < goToResults.length; i++) {
+      const item = goToResults[i];
+      if (item.kind !== "contact" || !item.marker) continue;
+      const pos = markerCoords(item.marker);
+      if (!pos) continue;
+      const cacheKey = goToStreetCacheKey(pos.lat, pos.lon);
+      if (goToStreetCache.has(cacheKey)) {
+        item.streetLine = goToStreetCache.get(cacheKey) || "";
+        continue;
+      }
+      if (item.streetLinePending) continue;
+      needed.push({
+        item: item,
+        key: item.id,
+        lat: pos.lat,
+        lon: pos.lon,
+        cacheKey: cacheKey,
+      });
+    }
+
+    if (applyCachedGoToStreetLines()) {
+      renderGoToResults();
+    }
+    if (!needed.length) return;
+
+    for (let i = 0; i < needed.length; i++) {
+      needed[i].item.streetLinePending = true;
+    }
+
+    const seq = ++goToStreetSeq;
+    fetch("/api/map/reverse-geocode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        points: needed.map(function (entry) {
+          return { key: entry.key, lat: entry.lat, lon: entry.lon };
+        }),
+      }),
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (out) {
+        if (seq !== goToStreetSeq || !goToPaletteOpen) return;
+        if (!out.ok || !out.data || typeof out.data.results !== "object") return;
+        const results = out.data.results;
+        for (let i = 0; i < needed.length; i++) {
+          const entry = needed[i];
+          const label = results[entry.key];
+          const streetLine = label ? String(label).trim() : "";
+          goToStreetCache.set(entry.cacheKey, streetLine);
+          entry.item.streetLine = streetLine;
+          entry.item.streetLinePending = false;
+        }
+        renderGoToResults();
+      })
+      .catch(function () {
+        if (seq !== goToStreetSeq) return;
+        for (let i = 0; i < needed.length; i++) {
+          needed[i].item.streetLinePending = false;
+          goToStreetCache.set(needed[i].cacheKey, "");
+        }
+      });
+  }
+
   function buildGoToContactResults(query) {
     return findCallsignMatches(query, GO_TO_CONTACT_LIMIT).map(function (m) {
       return {
@@ -1668,6 +1761,7 @@
       goToGeocodeTimer = null;
     }
     goToGeocodeSeq++;
+    goToStreetSeq++;
   }
 
   function refreshGoToIfOpen() {
@@ -1866,6 +1960,13 @@
         nameEl.appendChild(previewEl);
         nameEl.appendChild(document.createTextNode(item.title || ""));
         btn.appendChild(nameEl);
+        const streetLine = item.streetLine || (item.streetLinePending ? "Looking up address…" : "");
+        if (streetLine) {
+          const metaEl = document.createElement("div");
+          metaEl.className = "meta" + (item.streetLinePending ? " is-pending" : "");
+          metaEl.textContent = streetLine;
+          btn.appendChild(metaEl);
+        }
       } else {
         nameEl.textContent = item.title || "";
         btn.appendChild(nameEl);
@@ -1924,6 +2025,7 @@
     syncGoToActiveIndex();
     setGoToHint("");
     renderGoToResults();
+    enrichGoToContactStreets();
 
     const shouldGeocode = q.length >= 3 && !coordResult;
     if (!shouldGeocode) return;
@@ -1959,6 +2061,7 @@
             setGoToHint("");
           }
           renderGoToResults();
+          enrichGoToContactStreets();
         })
         .catch(function (err) {
           if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
@@ -1967,6 +2070,7 @@
           syncGoToActiveIndex();
           setGoToHint(err?.message || "Address lookup failed", true);
           renderGoToResults();
+          enrichGoToContactStreets();
         });
     }, 300);
   }

@@ -113,4 +113,27 @@ const normalized = geocode.normalizeHit({
 assert.strictEqual(normalized.lat, 35.5);
 assert.strictEqual(normalized.label, "Test");
 
+assert.strictEqual(
+  geocode.streetLineFromPhotonProps({
+    housenumber: "600",
+    street: "Market Street",
+    city: "Chattanooga",
+    state: "Tennessee",
+  }),
+  "600 Market Street, Chattanooga, Tennessee"
+);
+
+assert.strictEqual(
+  geocode.streetLineFromNominatimAddress(
+    {
+      house_number: "600",
+      road: "Market Street",
+      city: "Chattanooga",
+      state: "Tennessee",
+    },
+    "600 Market Street, Chattanooga, Tennessee, USA"
+  ),
+  "600 Market Street, Chattanooga, Tennessee"
+);
+
 console.log("geocode.test.js: all assertions passed");
