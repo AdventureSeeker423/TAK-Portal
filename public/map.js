@@ -10,7 +10,7 @@
   const DETAIL_PANEL_MIN_VW = 0.38;
   const DETAIL_PANEL_MAX_VW = 0.5;
   const DETAIL_PANEL_RIGHT_OFFSET = 12;
-  const MAX_DETAIL_SLOTS = 2;
+  const MAX_DETAIL_SLOTS = 3;
 
   const AFFILIATION_COLORS = {
     friend: "#22c55e",
@@ -1332,7 +1332,7 @@
       CURSOR_COORD_FORMATS[cursorCoordFormatIndex].id
     );
     renderCursorCoords();
-    showCopyToast(CURSOR_COORD_FORMATS[cursorCoordFormatIndex].label);
+    refreshOpenDetailPaneCoords();
   }
 
   function cursorCoordsCopyText(lat, lon) {
@@ -2826,6 +2826,26 @@
     return Number.isFinite(n) ? n.toFixed(5) : "—";
   }
 
+  function markerCoordsDisplayText(lat, lon) {
+    return formatCursorCoords(lat, lon);
+  }
+
+  function refreshOpenDetailPaneCoords() {
+    if (!elDetailStack || !detailSlots.length) return;
+    detailSlots.forEach(function (slot, index) {
+      const m = markersByUid.get(slot.uid);
+      if (!m) return;
+      const pane = elDetailStack.querySelector(
+        '.map-detail-pane[data-slot-index="' + index + '"]'
+      );
+      if (!pane) return;
+      const coordsEl = pane.querySelector(".map-detail-coords-val");
+      if (coordsEl) {
+        coordsEl.textContent = markerCoordsDisplayText(m.lat, m.lon);
+      }
+    });
+  }
+
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, "&amp;")
@@ -2944,17 +2964,6 @@
       return 0;
     }
 
-    if (detailSlots.length === 1) {
-      if (detailSlots[0].pinned) {
-        detailSlots.push({ uid: id, pinned: false });
-        focusedDetailIndex = 1;
-        return 1;
-      }
-      detailSlots[0].uid = id;
-      focusedDetailIndex = 0;
-      return 0;
-    }
-
     const unpinnedIdx = detailSlots.findIndex(function (s) {
       return !s.pinned;
     });
@@ -2962,6 +2971,12 @@
       detailSlots[unpinnedIdx].uid = id;
       focusedDetailIndex = unpinnedIdx;
       return unpinnedIdx;
+    }
+
+    if (detailSlots.length < MAX_DETAIL_SLOTS) {
+      detailSlots.push({ uid: id, pinned: false });
+      focusedDetailIndex = detailSlots.length - 1;
+      return focusedDetailIndex;
     }
 
     showCopyToast("Unpin a details pane to view another marker");
@@ -3005,7 +3020,7 @@
       return;
     }
     if (pinnedDetailCount() >= MAX_DETAIL_SLOTS) {
-      showCopyToast("At most 2 pinned details panes");
+      showCopyToast("At most " + MAX_DETAIL_SLOTS + " pinned details panes");
       return;
     }
     slot.pinned = true;
@@ -3094,7 +3109,7 @@
       })
       .join(" ");
     const remarksText = m.remarks ? String(m.remarks).trim() : "";
-    const coordText = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
+    const coordText = markerCoordsDisplayText(m.lat, m.lon);
     const team = m.team ? String(m.team).trim() : "";
     const role = m.role ? String(m.role).trim() : "";
     const kvRows = [
@@ -3175,7 +3190,7 @@
     copyBtn.addEventListener("click", function () {
       const current = markersByUid.get(uid);
       if (!current) return;
-      const text = current.lat.toFixed(5) + ", " + current.lon.toFixed(5);
+      const text = cursorCoordsCopyText(current.lat, current.lon);
       copyTextToClipboard(text).then(
         function () {
           showCopyToast("Copied " + text);
@@ -3193,7 +3208,7 @@
 
     const coordsEl = bodyEl.querySelector(".map-detail-coords-val");
     if (coordsEl) {
-      coordsEl.textContent = fmtCoord(m.lat) + ", " + fmtCoord(m.lon);
+      coordsEl.textContent = markerCoordsDisplayText(m.lat, m.lon);
     }
 
     const haeEl = bodyEl.querySelector('[data-detail-key="hae"]');
