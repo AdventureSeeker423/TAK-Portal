@@ -696,39 +696,84 @@ async function reverseNominatim(lat, lon) {
   return label || null;
 }
 
+const REVERSE_CACHE_MAX = 3000;
+
+/** @type {Map<string, string|null>} */
+const reverseCache = new Map();
+
+function reverseCacheKey(lat, lon) {
+  return Number(lat).toFixed(4) + "," + Number(lon).toFixed(4);
+}
+
+function getReverseCached(lat, lon) {
+  const key = reverseCacheKey(lat, lon);
+  if (!reverseCache.has(key)) return undefined;
+  return reverseCache.get(key);
+}
+
+function setReverseCached(lat, lon, label) {
+  const key = reverseCacheKey(lat, lon);
+  if (reverseCache.size >= REVERSE_CACHE_MAX) {
+    const oldest = reverseCache.keys().next().value;
+    if (oldest) reverseCache.delete(oldest);
+  }
+  reverseCache.set(key, label || null);
+}
+
 async function reverseGeocode(lat, lon) {
   const latNum = Number(lat);
   const lonNum = Number(lon);
   if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return null;
 
+  const cached = getReverseCached(latNum, lonNum);
+  if (cached !== undefined) return cached;
+
+  let label = null;
+
   if (geocodioApiKey()) {
-    const geocodio = await reverseGeocodio(latNum, lonNum).catch(function () {
+    label = await reverseGeocodio(latNum, lonNum).catch(function () {
       return null;
     });
-    if (geocodio) return geocodio;
   }
 
-  const photon = await reversePhoton(latNum, lonNum).catch(function () {
-    return null;
-  });
-  if (photon) return photon;
+  if (!label) {
+    label = await reversePhoton(latNum, lonNum).catch(function () {
+      return null;
+    });
+  }
 
-  return reverseNominatim(latNum, lonNum).catch(function () {
-    return null;
-  });
+  if (!label) {
+    label = await reverseNominatim(latNum, lonNum).catch(function () {
+      return null;
+    });
+  }
+
+  setReverseCached(latNum, lonNum, label);
+  return label;
 }
 
 async function reverseGeocodeBatch(points, options = {}) {
   const list = Array.isArray(points) ? points : [];
   const max = Math.min(12, Math.max(1, Number(options.limit) || 12));
   const results = {};
+  const toFetch = [];
 
   for (const point of list.slice(0, max)) {
     const key = String(point?.key || "").trim();
     const lat = Number(point?.lat);
     const lon = Number(point?.lon);
     if (!key || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    results[key] = await reverseGeocode(lat, lon);
+
+    const cached = getReverseCached(lat, lon);
+    if (cached !== undefined) {
+      results[key] = cached;
+      continue;
+    }
+    toFetch.push({ key, lat, lon });
+  }
+
+  for (const point of toFetch) {
+    results[point.key] = await reverseGeocode(point.lat, point.lon);
   }
 
   return results;

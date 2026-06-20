@@ -567,8 +567,13 @@
   let goToActiveIndex = -1;
   let goToGeocodeTimer = null;
   let goToGeocodeSeq = 0;
-  let goToStreetSeq = 0;
   const goToStreetCache = new Map();
+  const STREET_PREFETCH_BATCH = 8;
+  const STREET_PREFETCH_PAUSE_MS = 700;
+  const STREET_PREFETCH_MAX_QUEUE = 48;
+  let streetPrefetchQueue = [];
+  let streetPrefetchTimer = null;
+  let streetPrefetchRunning = false;
   const GO_TO_CONTACT_LIMIT = 8;
   const GO_TO_ADDRESS_LIMIT = 5;
   const CURSOR_COORD_FORMATS = [
@@ -1638,6 +1643,19 @@
     return Number(lat).toFixed(4) + "," + Number(lon).toFixed(4);
   }
 
+  function rememberGoToStreetLines(results) {
+    if (!results || typeof results !== "object") return false;
+    let changed = false;
+    for (const cacheKey of Object.keys(results)) {
+      const streetLine = results[cacheKey] ? String(results[cacheKey]).trim() : "";
+      if (goToStreetCache.get(cacheKey) !== streetLine) {
+        goToStreetCache.set(cacheKey, streetLine);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   function applyCachedGoToStreetLines() {
     let changed = false;
     for (let i = 0; i < goToResults.length; i++) {
@@ -1656,44 +1674,57 @@
     return changed;
   }
 
-  function enrichGoToContactStreets() {
-    const needed = [];
-    for (let i = 0; i < goToResults.length; i++) {
-      const item = goToResults[i];
-      if (item.kind !== "contact" || !item.marker) continue;
-      const pos = markerCoords(item.marker);
-      if (!pos) continue;
-      const cacheKey = goToStreetCacheKey(pos.lat, pos.lon);
-      if (goToStreetCache.has(cacheKey)) {
-        item.streetLine = goToStreetCache.get(cacheKey) || "";
-        continue;
+  function pumpStreetPrefetch(priorityEntries) {
+    if (streetPrefetchRunning) return;
+
+    const batch = [];
+    const seen = new Set();
+
+    function addEntry(entry) {
+      if (!entry || seen.has(entry.cacheKey) || goToStreetCache.has(entry.cacheKey)) {
+        return;
       }
-      if (item.streetLinePending) continue;
-      needed.push({
-        item: item,
-        key: item.id,
-        lat: pos.lat,
-        lon: pos.lon,
-        cacheKey: cacheKey,
-      });
+      seen.add(entry.cacheKey);
+      batch.push(entry);
     }
 
-    if (applyCachedGoToStreetLines()) {
-      renderGoToResults();
-    }
-    if (!needed.length) return;
-
-    for (let i = 0; i < needed.length; i++) {
-      needed[i].item.streetLinePending = true;
+    if (Array.isArray(priorityEntries)) {
+      for (let i = 0; i < priorityEntries.length; i++) {
+        addEntry(priorityEntries[i]);
+        if (batch.length >= STREET_PREFETCH_BATCH) break;
+      }
     }
 
-    const seq = ++goToStreetSeq;
+    for (let i = 0; i < streetPrefetchQueue.length && batch.length < STREET_PREFETCH_BATCH; i++) {
+      addEntry(streetPrefetchQueue[i]);
+    }
+
+    if (batch.length < STREET_PREFETCH_BATCH) {
+      const visible = getVisibleMarkers();
+      for (let i = 0; i < visible.length && batch.length < STREET_PREFETCH_BATCH; i++) {
+        const pos = markerCoords(visible[i]);
+        if (!pos) continue;
+        addEntry({
+          cacheKey: goToStreetCacheKey(pos.lat, pos.lon),
+          lat: pos.lat,
+          lon: pos.lon,
+        });
+      }
+    }
+
+    if (!batch.length) return;
+
+    streetPrefetchRunning = true;
     fetch("/api/map/reverse-geocode", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        points: needed.map(function (entry) {
-          return { key: entry.key, lat: entry.lat, lon: entry.lon };
+        points: batch.map(function (entry) {
+          return {
+            key: entry.cacheKey,
+            lat: entry.lat,
+            lon: entry.lon,
+          };
         }),
       }),
     })
@@ -1703,35 +1734,122 @@
         });
       })
       .then(function (out) {
-        if (seq !== goToStreetSeq || !goToPaletteOpen) return;
         if (!out.ok || !out.data || typeof out.data.results !== "object") return;
-        const results = out.data.results;
-        for (let i = 0; i < needed.length; i++) {
-          const entry = needed[i];
-          const label = results[entry.key];
-          const streetLine = label ? String(label).trim() : "";
-          goToStreetCache.set(entry.cacheKey, streetLine);
-          entry.item.streetLine = streetLine;
-          entry.item.streetLinePending = false;
+        const mapped = {};
+        for (let i = 0; i < batch.length; i++) {
+          const entry = batch[i];
+          const label = out.data.results[entry.cacheKey];
+          mapped[entry.cacheKey] = label ? String(label).trim() : "";
         }
-        renderGoToResults();
+        rememberGoToStreetLines(mapped);
+        streetPrefetchQueue = streetPrefetchQueue.filter(function (entry) {
+          return !goToStreetCache.has(entry.cacheKey);
+        });
+        if (goToPaletteOpen && applyCachedGoToStreetLines()) {
+          renderGoToResults();
+        }
       })
       .catch(function () {
-        if (seq !== goToStreetSeq) return;
-        for (let i = 0; i < needed.length; i++) {
-          needed[i].item.streetLinePending = false;
-          goToStreetCache.set(needed[i].cacheKey, "");
+        for (let i = 0; i < batch.length; i++) {
+          goToStreetCache.set(batch[i].cacheKey, "");
+        }
+      })
+      .finally(function () {
+        streetPrefetchRunning = false;
+        rebuildStreetPrefetchQueue();
+        if (streetPrefetchQueue.length) {
+          streetPrefetchTimer = setTimeout(function () {
+            streetPrefetchTimer = null;
+            pumpStreetPrefetch(null);
+          }, STREET_PREFETCH_PAUSE_MS);
         }
       });
   }
 
+  function rebuildStreetPrefetchQueue() {
+    const seen = new Set();
+    const queue = [];
+    const visible = getVisibleMarkers();
+    for (let i = 0; i < visible.length; i++) {
+      const pos = markerCoords(visible[i]);
+      if (!pos) continue;
+      const cacheKey = goToStreetCacheKey(pos.lat, pos.lon);
+      if (goToStreetCache.has(cacheKey) || seen.has(cacheKey)) continue;
+      seen.add(cacheKey);
+      queue.push({ cacheKey: cacheKey, lat: pos.lat, lon: pos.lon });
+      if (queue.length >= STREET_PREFETCH_MAX_QUEUE) break;
+    }
+    streetPrefetchQueue = queue;
+  }
+
+  function scheduleStreetPrefetch(priorityEntries) {
+    if (Array.isArray(priorityEntries) && priorityEntries.length) {
+      const seen = new Set(
+        streetPrefetchQueue.map(function (entry) {
+          return entry.cacheKey;
+        })
+      );
+      const boosted = [];
+      for (let i = 0; i < priorityEntries.length; i++) {
+        const entry = priorityEntries[i];
+        if (!entry || seen.has(entry.cacheKey)) continue;
+        boosted.push(entry);
+        seen.add(entry.cacheKey);
+      }
+      streetPrefetchQueue = boosted.concat(streetPrefetchQueue).slice(
+        0,
+        STREET_PREFETCH_MAX_QUEUE
+      );
+      pumpStreetPrefetch(priorityEntries);
+      return;
+    }
+
+    if (streetPrefetchTimer) clearTimeout(streetPrefetchTimer);
+    streetPrefetchTimer = setTimeout(function () {
+      streetPrefetchTimer = null;
+      rebuildStreetPrefetchQueue();
+      pumpStreetPrefetch(null);
+    }, 500);
+  }
+
+  function enrichGoToContactStreets() {
+    if (applyCachedGoToStreetLines()) {
+      renderGoToResults();
+    }
+
+    const priority = [];
+    for (let i = 0; i < goToResults.length; i++) {
+      const item = goToResults[i];
+      if (item.kind !== "contact" || !item.marker) continue;
+      const pos = markerCoords(item.marker);
+      if (!pos) continue;
+      const cacheKey = goToStreetCacheKey(pos.lat, pos.lon);
+      item.streetLine = goToStreetCache.get(cacheKey) || item.streetLine || "";
+      if (goToStreetCache.has(cacheKey)) continue;
+      priority.push({ cacheKey: cacheKey, lat: pos.lat, lon: pos.lon });
+    }
+
+    if (priority.length) {
+      scheduleStreetPrefetch(priority);
+    }
+  }
+
   function buildGoToContactResults(query) {
     return findCallsignMatches(query, GO_TO_CONTACT_LIMIT).map(function (m) {
+      let streetLine = "";
+      const pos = markerCoords(m);
+      if (pos) {
+        const cacheKey = goToStreetCacheKey(pos.lat, pos.lon);
+        if (goToStreetCache.has(cacheKey)) {
+          streetLine = goToStreetCache.get(cacheKey) || "";
+        }
+      }
       return {
         kind: "contact",
         id: "contact:" + m.uid,
         title: m.callsign || m.uid,
         marker: m,
+        streetLine: streetLine,
       };
     });
   }
@@ -1761,7 +1879,6 @@
       goToGeocodeTimer = null;
     }
     goToGeocodeSeq++;
-    goToStreetSeq++;
   }
 
   function refreshGoToIfOpen() {
@@ -1960,11 +2077,10 @@
         nameEl.appendChild(previewEl);
         nameEl.appendChild(document.createTextNode(item.title || ""));
         btn.appendChild(nameEl);
-        const streetLine = item.streetLine || (item.streetLinePending ? "Looking up address…" : "");
-        if (streetLine) {
+        if (item.streetLine) {
           const metaEl = document.createElement("div");
-          metaEl.className = "meta" + (item.streetLinePending ? " is-pending" : "");
-          metaEl.textContent = streetLine;
+          metaEl.className = "meta";
+          metaEl.textContent = item.streetLine;
           btn.appendChild(metaEl);
         }
       } else {
@@ -3863,6 +3979,7 @@
       const locked = markersByUid.get(lockedUid);
       if (locked) trackLockedMarker(locked);
     }
+    scheduleStreetPrefetch();
   }
 
   function upsertMarker(m) {
@@ -3914,6 +4031,7 @@
         syncMapSource();
         renderLayerList();
         maybeFitVisibleOnLoad();
+        scheduleStreetPrefetch();
         if (markerLayersReady) {
           reinstallMapIconsFromCache();
           preloadMarkerIcons().finally(function () {
