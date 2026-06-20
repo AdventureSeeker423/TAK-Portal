@@ -169,9 +169,9 @@ router.get("/geocode", async (req, res) => {
     }
     return res.json({ results });
   } catch (err) {
-    return res.status(502).json({
-      error: err?.message || "Geocoding failed",
-    });
+    console.warn("[map] geocode failed:", err?.message || err);
+    res.setHeader("Cache-Control", "private, max-age=30");
+    return res.json({ results: [] });
   }
 });
 

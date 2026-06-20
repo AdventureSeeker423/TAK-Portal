@@ -1925,8 +1925,14 @@
     setGoToHint("");
     renderGoToResults();
 
-    const shouldGeocode = q.length >= 3 && !coordResult;
-    if (!shouldGeocode) return;
+    const shouldGeocode =
+      q.length >= 3 && !coordResult && contacts.length === 0;
+    if (!shouldGeocode) {
+      if (q.length >= 3 && !contacts.length && !coordResult) {
+        setGoToHint("No results found", true);
+      }
+      return;
+    }
 
     const seq = goToGeocodeSeq;
     goToGeocodeTimer = setTimeout(function () {
@@ -1943,31 +1949,22 @@
       syncGoToActiveIndex();
       renderGoToResults();
 
-      fetchGoToAddressResults(q)
-        .then(function (addresses) {
-          if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
-          if (String(elGoToInput?.value || "").trim() !== q) return;
-          goToResults = flattenGoToResults(
-            contacts,
-            coordResult,
-            sortGoToAddressesByViewport(addresses)
-          );
-          syncGoToActiveIndex();
-          if (!contacts.length && !coordResult && !addresses.length) {
-            setGoToHint("No results found", true);
-          } else {
-            setGoToHint("");
-          }
-          renderGoToResults();
-        })
-        .catch(function (err) {
-          if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
-          if (String(elGoToInput?.value || "").trim() !== q) return;
-          goToResults = flattenGoToResults(contacts, coordResult, []);
-          syncGoToActiveIndex();
-          setGoToHint(err?.message || "Address lookup failed", true);
-          renderGoToResults();
-        });
+      fetchGoToAddressResults(q).then(function (addresses) {
+        if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
+        if (String(elGoToInput?.value || "").trim() !== q) return;
+        goToResults = flattenGoToResults(
+          contacts,
+          coordResult,
+          sortGoToAddressesByViewport(addresses)
+        );
+        syncGoToActiveIndex();
+        if (!contacts.length && !coordResult && !addresses.length) {
+          setGoToHint("No results found", true);
+        } else {
+          setGoToHint("");
+        }
+        renderGoToResults();
+      });
     }, 300);
   }
 
@@ -2017,46 +2014,42 @@
   }
 
   async function fetchGoToAddressResults(query) {
-    let url =
-      "/api/map/geocode?q=" +
-      encodeURIComponent(String(query || "").trim()) +
-      "&limit=" +
-      GO_TO_ADDRESS_LIMIT;
-    const center = mapViewportCenter();
-    if (center) {
-      url +=
-        "&nearLat=" +
-        encodeURIComponent(String(center.lat)) +
-        "&nearLon=" +
-        encodeURIComponent(String(center.lon));
+    try {
+      let url =
+        "/api/map/geocode?q=" +
+        encodeURIComponent(String(query || "").trim()) +
+        "&limit=" +
+        GO_TO_ADDRESS_LIMIT;
+      const center = mapViewportCenter();
+      if (center) {
+        url +=
+          "&nearLat=" +
+          encodeURIComponent(String(center.lat)) +
+          "&nearLon=" +
+          encodeURIComponent(String(center.lon));
+      }
+      const r = await fetch(url);
+      if (!r.ok) return [];
+      const data = await r.json();
+      const hits = Array.isArray(data.results)
+        ? data.results
+        : Number.isFinite(Number(data.lat))
+          ? [data]
+          : [];
+      return sortGoToAddressesByViewport(
+        hits.map(function (hit, idx) {
+          return {
+            kind: "address",
+            id: "address:" + idx + ":" + hit.lat + "," + hit.lon,
+            title: String(hit.label || query),
+            lat: Number(hit.lat),
+            lon: Number(hit.lon),
+          };
+        })
+      );
+    } catch (_) {
+      return [];
     }
-    const r = await fetch(url);
-    if (!r.ok) {
-      if (r.status === 404) return [];
-      let msg = "Address lookup failed";
-      try {
-        const body = await r.json();
-        if (body && body.error) msg = body.error;
-      } catch (_) {}
-      throw new Error(msg);
-    }
-    const data = await r.json();
-    const hits = Array.isArray(data.results)
-      ? data.results
-      : Number.isFinite(Number(data.lat))
-        ? [data]
-        : [];
-    return sortGoToAddressesByViewport(
-      hits.map(function (hit, idx) {
-        return {
-          kind: "address",
-          id: "address:" + idx + ":" + hit.lat + "," + hit.lon,
-          title: String(hit.label || query),
-          lat: Number(hit.lat),
-          lon: Number(hit.lon),
-        };
-      })
-    );
   }
 
   async function geocodeAddress(query) {
@@ -2127,21 +2120,28 @@
       return;
     }
 
+    const visibleContacts = goToResults.filter(function (item) {
+      return item.kind === "contact" && item.marker;
+    });
+    if (visibleContacts.length === 1) {
+      activateGoToResult(visibleContacts[0]);
+      return;
+    }
+
     goToSubmitting = true;
     setGoToHint("Searching…");
-    try {
-      const hit = await geocodeAddress(q);
-      if (!hit) {
-        setGoToHint("No results found", true);
-        goToSubmitting = false;
-        return;
-      }
+    const hit = await geocodeAddress(q);
+    goToSubmitting = false;
+    if (hit) {
       flyToLocation(hit.lat, hit.lon);
       closeGoToPalette();
-    } catch (err) {
-      setGoToHint(err?.message || "Address lookup failed", true);
-      goToSubmitting = false;
+      return;
     }
+    if (visibleContacts.length) {
+      activateGoToResult(visibleContacts[0]);
+      return;
+    }
+    setGoToHint("No results found", true);
   }
 
   function removeMarkerLayers() {
