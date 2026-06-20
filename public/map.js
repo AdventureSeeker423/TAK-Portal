@@ -576,18 +576,107 @@
     { id: "utm", label: "UTM" },
     { id: "mgrs", label: "MGRS" },
   ];
-  let cursorCoordFormatIndex = (function () {
-    const stored = localStorage.getItem(LS_COORD_FORMAT);
+
+  function mapPrefsStorageKey() {
+    return "tak-portal-map-prefs:" + MAP_USER_KEY;
+  }
+
+  function normalizeBasemapId(id) {
+    let saved = String(id || "").trim() || "dark-matter";
+    if (saved === "dark" || saved === "light") {
+      saved = saved === "light" ? "voyager" : "dark-matter";
+    } else if (/-nolabels$/.test(saved)) {
+      saved = saved.replace(/-nolabels$/, "");
+    }
+    if (!BASEMAPS[saved]) saved = "dark-matter";
+    return saved;
+  }
+
+  function coordFormatIndexFromStored(stored) {
     if (!stored) return 0;
     const asNum = Number(stored);
-    if (Number.isFinite(asNum) && String(asNum) === stored.trim()) {
+    if (Number.isFinite(asNum) && String(asNum) === String(stored).trim()) {
       return Math.max(0, Math.min(CURSOR_COORD_FORMATS.length - 1, asNum));
     }
     const idx = CURSOR_COORD_FORMATS.findIndex(function (f) {
       return f.id === stored;
     });
     return idx >= 0 ? idx : 0;
-  })();
+  }
+
+  function readMapPrefs() {
+    const defaults = {
+      basemap: "dark-matter",
+      coordFormat: "decimal_degrees",
+      viewport: null,
+    };
+    try {
+      const raw = localStorage.getItem(mapPrefsStorageKey());
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return {
+            basemap: parsed.basemap || defaults.basemap,
+            coordFormat: parsed.coordFormat || defaults.coordFormat,
+            viewport:
+              parsed.viewport && typeof parsed.viewport === "object"
+                ? parsed.viewport
+                : null,
+          };
+        }
+      }
+    } catch (_) {}
+    return {
+      basemap: localStorage.getItem(LS_BASEMAP) || defaults.basemap,
+      coordFormat: localStorage.getItem(LS_COORD_FORMAT) || defaults.coordFormat,
+      viewport: null,
+    };
+  }
+
+  function writeMapPrefs(patch) {
+    const current = readMapPrefs();
+    const next = {
+      v: 1,
+      basemap: patch.basemap != null ? patch.basemap : current.basemap,
+      coordFormat:
+        patch.coordFormat != null ? patch.coordFormat : current.coordFormat,
+      viewport:
+        patch.viewport !== undefined ? patch.viewport : current.viewport,
+    };
+    next.basemap = normalizeBasemapId(next.basemap);
+    try {
+      localStorage.setItem(mapPrefsStorageKey(), JSON.stringify(next));
+    } catch (_) {}
+    return next;
+  }
+
+  function parseStoredViewport(viewport) {
+    if (!viewport || typeof viewport !== "object") return null;
+    const lng = Number(viewport.lng);
+    const lat = Number(viewport.lat);
+    const zoom = Number(viewport.zoom);
+    if (
+      !Number.isFinite(lng) ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(zoom) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return null;
+    }
+    return {
+      lng: lng,
+      lat: lat,
+      zoom: Math.min(22, Math.max(0, zoom)),
+    };
+  }
+
+  const mapPrefs = readMapPrefs();
+  const storedViewport = parseStoredViewport(mapPrefs.viewport);
+  if (storedViewport) pendingFitVisible = false;
+  let cursorCoordFormatIndex = coordFormatIndexFromStored(mapPrefs.coordFormat);
   let defaultIconIds = {};
   const iconLoadPending = new Map();
   const mapImageIdByKey = new Map();
@@ -1069,30 +1158,23 @@
   const elExpandLeft = document.getElementById("mapExpandLeft");
   const elExpandRight = document.getElementById("mapExpandRight");
 
-  let savedBasemap = localStorage.getItem(LS_BASEMAP) || "dark-matter";
-  if (savedBasemap === "dark" || savedBasemap === "light") {
-    savedBasemap = savedBasemap === "light" ? "voyager" : "dark-matter";
-    localStorage.setItem(LS_BASEMAP, savedBasemap);
-  } else if (/-nolabels$/.test(savedBasemap)) {
-    savedBasemap = savedBasemap.replace(/-nolabels$/, "");
-    localStorage.setItem(LS_BASEMAP, savedBasemap);
-  }
-  if (!BASEMAPS[savedBasemap]) {
-    savedBasemap = "dark-matter";
-    localStorage.setItem(LS_BASEMAP, savedBasemap);
-  }
+  let savedBasemap = normalizeBasemapId(mapPrefs.basemap);
   elBasemapSelect.innerHTML = Object.entries(BASEMAPS)
     .map(([id, def]) => `<option value="${id}">${def.label}</option>`)
     .join("");
   elBasemapSelect.value = savedBasemap;
 
   const initialBasemap = BASEMAPS[savedBasemap] || BASEMAPS["dark-matter"];
+  const initialCenter = storedViewport
+    ? [storedViewport.lng, storedViewport.lat]
+    : [-98.5795, 39.8283];
+  const initialZoom = storedViewport ? storedViewport.zoom : 4;
 
   const map = new maplibregl.Map({
     container: "map",
     style: withMapGlyphs(initialBasemap.style),
-    center: [-98.5795, 39.8283],
-    zoom: 4,
+    center: initialCenter,
+    zoom: initialZoom,
     bearing: 0,
     pitch: 0,
     minPitch: 0,
@@ -1137,6 +1219,24 @@
     requestAnimationFrame(lockMapNorthUp);
   });
   map.on("load", lockMapNorthUp);
+
+  let viewportSaveTimer = null;
+  function scheduleSaveViewport() {
+    if (viewportSaveTimer) clearTimeout(viewportSaveTimer);
+    viewportSaveTimer = setTimeout(function () {
+      viewportSaveTimer = null;
+      if (lockedUid || lockMoveFromCode) return;
+      const center = map.getCenter();
+      writeMapPrefs({
+        viewport: {
+          lng: center.lng,
+          lat: center.lat,
+          zoom: map.getZoom(),
+        },
+      });
+    }, 400);
+  }
+  map.on("moveend", scheduleSaveViewport);
 
   restorePanelState();
   loadDetailPanelWidth();
@@ -1390,10 +1490,9 @@
   function cycleCursorCoordFormat() {
     cursorCoordFormatIndex =
       (cursorCoordFormatIndex + 1) % CURSOR_COORD_FORMATS.length;
-    localStorage.setItem(
-      LS_COORD_FORMAT,
-      CURSOR_COORD_FORMATS[cursorCoordFormatIndex].id
-    );
+    writeMapPrefs({
+      coordFormat: CURSOR_COORD_FORMATS[cursorCoordFormatIndex].id,
+    });
     renderCursorCoords();
     refreshOpenDetailPaneCoords();
   }
@@ -3819,7 +3918,7 @@
 
   function setBasemap(id) {
     const def = BASEMAPS[id] || BASEMAPS["dark-matter"];
-    localStorage.setItem(LS_BASEMAP, id);
+    writeMapPrefs({ basemap: id });
     styleRestoreGen++;
     markerLayersReady = false;
     mapRefreshPending = true;
