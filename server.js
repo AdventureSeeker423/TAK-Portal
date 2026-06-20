@@ -24,6 +24,7 @@ const auditSvc = require("./services/auditLog.service");
 const permsSvc = require("./services/permissions.service");
 const mouSvc = require("./services/mouService");
 const mouScheduler = require("./services/mouScheduler");
+const mapPageAssets = require("./services/mapPageAssets.service");
 const accessControlRoutes = require("./routes/accessControl.routes");
 const usersSvc = require("./services/users.service");
 const groupsSvc = require("./services/groups.service");
@@ -751,7 +752,12 @@ app.get("/plugin-manager", requirePermission("page.plugin_manager"), async (req,
 });
 
 // Beta: Getting Started (global admins only, beta mode)
-app.get("/map", requireMapAccess, (req, res) => res.render("map"));
+app.get("/map", requireMapAccess, (req, res) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  return res.render("map", mapPageAssets.getRenderLocals());
+});
 app.get("/getting-started", requireGlobalAdminRole, requireBetaMode, (req, res) =>
   res.render("getting-started")
 );

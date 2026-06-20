@@ -1,0 +1,25 @@
+const fs = require("fs");
+const path = require("path");
+
+const MAP_JS = path.join(__dirname, "..", "public", "map.js");
+const MAP_CSS = path.join(__dirname, "..", "public", "map.css");
+
+function fileMtimeToken(filePath) {
+  try {
+    return String(Math.trunc(fs.statSync(filePath).mtimeMs));
+  } catch (_) {
+    return "0";
+  }
+}
+
+/** Fresh URLs for map page assets; busts cache when map.js/map.css change on disk. */
+function getRenderLocals() {
+  return {
+    mapJsUrl: `/map.js?v=${fileMtimeToken(MAP_JS)}`,
+    mapCssUrl: `/map.css?v=${fileMtimeToken(MAP_CSS)}`,
+  };
+}
+
+module.exports = {
+  getRenderLocals,
+};

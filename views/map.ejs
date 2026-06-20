@@ -22,7 +22,7 @@
       href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/map.css" />
+    <link rel="stylesheet" href="<%= mapCssUrl %>" />
   </head>
   <body>
     <div class="map-shell">
@@ -163,6 +163,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="/map.js" defer></script>
+    <script src="<%= mapJsUrl %>" defer></script>
   </body>
 </html>
