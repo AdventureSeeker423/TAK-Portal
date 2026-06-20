@@ -1920,13 +1920,24 @@
 
     const contacts = buildGoToContactResults(q);
     const coordResult = buildGoToCoordResult(q);
-    goToResults = flattenGoToResults(contacts, coordResult, []);
+    const shouldGeocode = q.length >= 3 && !coordResult;
+
+    if (shouldGeocode) {
+      goToResults = flattenGoToResults(contacts, coordResult, [
+        {
+          kind: "loading",
+          id: "loading",
+          title: "Searching addresses…",
+        },
+      ]);
+    } else {
+      goToResults = flattenGoToResults(contacts, coordResult, []);
+    }
+
     syncGoToActiveIndex();
     setGoToHint("");
     renderGoToResults();
 
-    const shouldGeocode =
-      q.length >= 3 && !coordResult && contacts.length === 0;
     if (!shouldGeocode) {
       if (q.length >= 3 && !contacts.length && !coordResult) {
         setGoToHint("No results found", true);
@@ -1938,16 +1949,7 @@
     goToGeocodeTimer = setTimeout(function () {
       goToGeocodeTimer = null;
       if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
-
-      goToResults = flattenGoToResults(contacts, coordResult, [
-        {
-          kind: "loading",
-          id: "loading",
-          title: "Searching addresses…",
-        },
-      ]);
-      syncGoToActiveIndex();
-      renderGoToResults();
+      if (String(elGoToInput?.value || "").trim() !== q) return;
 
       fetchGoToAddressResults(q).then(function (addresses) {
         if (seq !== goToGeocodeSeq || !goToPaletteOpen) return;
