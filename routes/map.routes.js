@@ -108,14 +108,6 @@ router.get("/geojson", async (req, res) => {
   }
 
   const geojson = cotStream.getMarkersGeoJson(options);
-  const manifest = Array.isArray(geojson.meta?.iconManifest) ? geojson.meta.iconManifest : [];
-  if (manifest.length) {
-    try {
-      await mapIconRender.prewarmIconManifest(manifest);
-    } catch (err) {
-      console.warn("[map] icon prewarm failed:", err?.message || err);
-    }
-  }
   res.setHeader("ETag", String(geojson.meta?.revision || currentRevision));
   res.setHeader("Cache-Control", "no-cache");
   return res.json(geojson);

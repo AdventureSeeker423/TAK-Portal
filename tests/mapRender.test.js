@@ -78,4 +78,13 @@ const selected = decluttered.features.find(function (f) {
 });
 assert.strictEqual(selected.properties.showLabel, 1);
 
+const slimFeed = mapRender.toSlimMarker(sampleMarkers[1]);
+assert.ok(slimFeed.mapImageId.startsWith("mimg-"));
+assert.ok(slimFeed.channelKeys.includes("hamilton co avl law"));
+assert.strictEqual(slimFeed.showCircle, 0);
+
+const rendered = mapRender.toRenderedFeature(sampleMarkers[1], {});
+assert.strictEqual(rendered.properties.iconId, slimFeed.mapImageId);
+assert.strictEqual(rendered.properties.apiIconId, sampleMarkers[1].iconId);
+
 console.log("mapRender.test.js: all assertions passed");

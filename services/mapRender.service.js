@@ -268,6 +268,11 @@ function buildCacheKey(markers, options, revision) {
 
 function toSlimMarker(marker) {
   if (!marker) return null;
+  const color = markerDisplayColor(marker);
+  const apiIconId = markerUsesMapIcon(marker) ? String(marker.iconId || "") : "";
+  const mapImageId = apiIconId
+    ? mapIconRender.computeMapImageId(marker, apiIconId, color)
+    : "";
   return {
     uid: marker.uid,
     callsign: marker.callsign,
@@ -277,6 +282,7 @@ function toSlimMarker(marker) {
     groups: marker.groups,
     affiliation: marker.affiliation,
     teamColor: marker.teamColor,
+    color,
     stale: marker.stale,
     course:
       marker.course != null && Number.isFinite(Number(marker.course))
@@ -296,7 +302,50 @@ function toSlimMarker(marker) {
     updatedAt: marker.updatedAt,
     iconId: marker.iconId || null,
     iconSource: marker.iconSource || null,
+    mapImageId: mapImageId || "",
+    channelKeys: markerChannelKeys(marker).join(","),
+    showCircle: mapImageId ? 0 : 1,
     remarks: marker.remarks || null,
+  };
+}
+
+function toRenderedFeature(marker, options = {}) {
+  const color = markerDisplayColor(marker);
+  const apiIconId = markerUsesMapIcon(marker) ? String(marker.iconId) : "";
+  const mapImageId = apiIconId
+    ? mapIconRender.computeMapImageId(marker, apiIconId, color)
+    : "";
+  const renderSort = markerRenderSort(marker, options);
+  const showLabel =
+    options.labelMap && options.labelMap.has(marker.uid)
+      ? options.labelMap.get(marker.uid)
+      : marker.uid === options.selectedUid || marker.uid === options.lockedUid
+        ? 1
+        : 1;
+
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [marker.lon, marker.lat] },
+    properties: {
+      kind: "marker",
+      uid: marker.uid,
+      callsign: marker.callsign,
+      type: marker.type,
+      affiliation: marker.affiliation || "other",
+      color,
+      iconId: mapImageId,
+      apiIconId: apiIconId || "",
+      iconSource: marker.iconSource || "",
+      origin: marker.origin || "",
+      showCircle: mapImageId ? 0 : 1,
+      drawTier: markerDrawTier(marker),
+      selected: marker.uid === options.selectedUid,
+      locked: marker.uid === options.lockedUid,
+      renderSort,
+      labelSort: renderSort,
+      showLabel,
+      channelKeys: markerChannelKeys(marker).join(","),
+    },
   };
 }
 
@@ -356,38 +405,13 @@ function buildGeoJson(markers, options = {}) {
       }
     }
 
-    const renderSort = markerRenderSort(marker, options);
-    const showLabel =
-      labelMap && labelMap.has(marker.uid)
-        ? labelMap.get(marker.uid)
-        : marker.uid === options.selectedUid || marker.uid === options.lockedUid
-          ? 1
-          : 1;
-
-    features.push({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [marker.lon, marker.lat] },
-      properties: {
-        kind: "marker",
-        uid: marker.uid,
-        callsign: marker.callsign,
-        type: marker.type,
-        affiliation: marker.affiliation || "other",
-        color,
-        iconId: mapImageId,
-        apiIconId: apiIconId || "",
-        iconSource: marker.iconSource || "",
-        origin: marker.origin || "",
-        showCircle: mapImageId ? 0 : 1,
-        drawTier: markerDrawTier(marker),
-        selected: marker.uid === options.selectedUid,
-        locked: marker.uid === options.lockedUid,
-        renderSort,
-        labelSort: renderSort,
-        showLabel,
-        channelKeys: markerChannelKeys(marker).join(","),
-      },
-    });
+    features.push(
+      toRenderedFeature(marker, {
+        selectedUid: options.selectedUid,
+        lockedUid: options.lockedUid,
+        labelMap,
+      })
+    );
   }
 
   renderStats.lastBuildMs = Date.now() - started;
@@ -436,6 +460,7 @@ module.exports = {
   markerDrawTier,
   computeLabelVisibility,
   toSlimMarker,
+  toRenderedFeature,
   buildGeoJson,
   getRenderStats,
 };
