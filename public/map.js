@@ -272,6 +272,10 @@
   const ICON_DB_STORE = "icons";
   let iconDbPromise = null;
   const MAP_ICON_PLACEHOLDER = { width: 1, height: 1, data: new Uint8Array(4) };
+  const ICON_BATCH_CHUNK = 80;
+  const placeholderMapImages = new Set();
+  let iconBatchInFlight = null;
+  let iconBatchResweep = false;
 
   function normalizeMapImageId(mapImageId) {
     const id = String(mapImageId || "").trim();
@@ -660,7 +664,9 @@
   function applyLoadedIconCircles() {
     if (!map) return;
     iconUidByMapImageId.forEach(function (uids, mapImageId) {
-      if (map.hasImage(mapImageId)) hideCirclesForMapImage(mapImageId);
+      if (map.hasImage(mapImageId) && !isPlaceholderMapImage(mapImageId)) {
+        hideCirclesForMapImage(mapImageId);
+      }
     });
   }
 
@@ -1151,7 +1157,6 @@
     if (!mapImageId) return Promise.resolve();
     const canonicalId = normalizeMapImageId(mapImageId);
     registerServerMapImageMeta(canonicalId, apiIconId, markerProps);
-    ensurePlaceholderMapImage(canonicalId);
     if (map.hasImage(canonicalId) && !isPlaceholderMapImage(canonicalId)) {
       hideCirclesForMapImage(canonicalId);
       return Promise.resolve();
@@ -1219,6 +1224,171 @@
 
     iconLoadPending.set(canonicalId, promise);
     return promise;
+  }
+
+  function renderedIconBatchEntry(canonicalId, info) {
+    const meta = info || {};
+    return {
+      mapImageId: canonicalId,
+      apiIconId: meta.apiIconId || "",
+      color: meta.color || "",
+      iconSource: meta.iconSource || "",
+      origin: meta.origin || "feed",
+      type: meta.type || "",
+      affiliation: meta.affiliation || "friend",
+    };
+  }
+
+  function iconNeedsLoad(canonicalId) {
+    if (!canonicalId || iconLoadPending.has(canonicalId)) return false;
+    if (!map || !map.hasImage(canonicalId)) return true;
+    return isPlaceholderMapImage(canonicalId);
+  }
+
+  function collectIconsNeedingLoad() {
+    if (!lastServerGeoJson || !Array.isArray(lastServerGeoJson.features)) return [];
+    const byId = new Map();
+    const features = lastServerGeoJson.features;
+    for (let i = 0; i < features.length; i++) {
+      const props = features[i] && features[i].properties;
+      if (!props || !props.iconId) continue;
+      const canonicalId = normalizeMapImageId(props.iconId);
+      if (!canonicalId || !isRenderedMapImageId(canonicalId) || !iconNeedsLoad(canonicalId)) {
+        continue;
+      }
+      const info = resolveIconMetaForImageId(canonicalId) || renderedIconBatchEntry(canonicalId, props);
+      byId.set(canonicalId, renderedIconBatchEntry(canonicalId, info));
+    }
+    return Array.from(byId.values());
+  }
+
+  function base64ToIconBlob(base64) {
+    const binary = atob(String(base64 || ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: "image/png" });
+  }
+
+  function installRenderedIconFromBlob(canonicalId, blob) {
+    return decodeIconBlob(blob)
+      .then(function (image) {
+        mapIconImageCache.set(canonicalId, image);
+        return installMapImage(canonicalId, image);
+      })
+      .then(function () {
+        void writeIconCache(canonicalId, blob);
+        hideCirclesForMapImage(canonicalId);
+      });
+  }
+
+  function loadRenderedIconsBatch(entries) {
+    const pending = (entries || []).filter(function (entry) {
+      return entry && entry.mapImageId && iconNeedsLoad(normalizeMapImageId(entry.mapImageId));
+    });
+    if (!pending.length) return Promise.resolve();
+
+    const withoutApi = [];
+    const withApi = [];
+    for (let i = 0; i < pending.length; i++) {
+      const entry = pending[i];
+      if (entry.apiIconId) withApi.push(entry);
+      else withoutApi.push(entry);
+    }
+
+    for (let i = 0; i < withoutApi.length; i++) {
+      const entry = withoutApi[i];
+      loadRenderedMapIcon(entry.mapImageId, "", entry);
+    }
+    if (!withApi.length) return Promise.resolve();
+
+    const batchRef = { promise: null };
+    batchRef.promise = Promise.all(
+      withApi.map(function (entry) {
+        const canonicalId = normalizeMapImageId(entry.mapImageId);
+        return readIconCache(canonicalId).then(function (cachedBlob) {
+          return { entry: entry, canonicalId: canonicalId, cachedBlob: cachedBlob };
+        });
+      })
+    )
+      .then(function (rows) {
+        const cachedInstalls = [];
+        const needServer = [];
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          if (row.cachedBlob) {
+            cachedInstalls.push(installRenderedIconFromBlob(row.canonicalId, row.cachedBlob));
+          } else {
+            needServer.push(row.entry);
+          }
+        }
+        return Promise.all(cachedInstalls).then(function () {
+          return needServer;
+        });
+      })
+      .then(function (needServer) {
+        if (!needServer.length) return;
+        const chunks = [];
+        for (let i = 0; i < needServer.length; i += ICON_BATCH_CHUNK) {
+          chunks.push(needServer.slice(i, i + ICON_BATCH_CHUNK));
+        }
+        let chain = Promise.resolve();
+        chunks.forEach(function (chunk) {
+          chain = chain.then(function () {
+            return fetch("/api/map/icons/rendered/batch", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ icons: chunk }),
+            })
+              .then(function (resp) {
+                if (!resp.ok) throw new Error("icon batch " + resp.status);
+                return resp.json();
+              })
+              .then(function (payload) {
+                const icons = (payload && payload.icons) || {};
+                const installs = [];
+                for (let i = 0; i < chunk.length; i++) {
+                  const entry = chunk[i];
+                  const canonicalId = normalizeMapImageId(entry.mapImageId);
+                  const b64 = icons[canonicalId];
+                  if (!b64) {
+                    loadRenderedMapIcon(canonicalId, entry.apiIconId, entry);
+                    continue;
+                  }
+                  installs.push(
+                    installRenderedIconFromBlob(canonicalId, base64ToIconBlob(b64))
+                  );
+                }
+                return Promise.all(installs);
+              })
+              .catch(function (err) {
+                console.warn("[map] icon batch failed, falling back to single loads", err);
+                chunk.forEach(function (entry) {
+                  loadRenderedMapIcon(entry.mapImageId, entry.apiIconId, entry);
+                });
+              });
+          });
+        });
+        return chain;
+      })
+      .then(function () {
+        triggerMarkerRepaint();
+      })
+      .finally(function () {
+        withApi.forEach(function (entry) {
+          const id = normalizeMapImageId(entry.mapImageId);
+          if (iconLoadPending.get(id) === batchRef.promise) {
+            iconLoadPending.delete(id);
+          }
+        });
+      });
+
+    withApi.forEach(function (entry) {
+      iconLoadPending.set(normalizeMapImageId(entry.mapImageId), batchRef.promise);
+    });
+    return batchRef.promise;
   }
 
   function applyServerGeoJsonToMap(geojson) {
@@ -1673,6 +1843,7 @@
 
   function resetMapIconCache() {
     iconLoadPending.clear();
+    placeholderMapImages.clear();
     baseIconPixelCache.clear();
     mapImageIdByKey.clear();
     iconIdByMapImageId.clear();
@@ -1689,12 +1860,22 @@
         } catch (_) {}
       }
     }
+    placeholderMapImages.clear();
   }
 
   function reinstallMapIconsFromCache() {
     if (!map || !map.isStyleLoaded()) return;
     iconLoadPending.clear();
-    triggerMarkerRepaint();
+    placeholderMapImages.clear();
+    const installs = [];
+    mapIconImageCache.forEach(function (image, id) {
+      installs.push(installMapImage(id, image));
+    });
+    Promise.all(installs).then(function () {
+      applyLoadedIconCircles();
+      scheduleMissingIconSweep();
+      triggerMarkerRepaint();
+    });
   }
 
   function decodeIconBlob(blob) {
@@ -1920,19 +2101,15 @@
 
   function ensurePlaceholderMapImage(imageName) {
     if (!map || !imageName || map.hasImage(imageName)) return;
+    if (placeholderMapImages.has(imageName)) return;
     try {
       map.addImage(imageName, MAP_ICON_PLACEHOLDER, { pixelRatio: 1 });
+      placeholderMapImages.add(imageName);
     } catch (_) {}
   }
 
   function isPlaceholderMapImage(imageName) {
-    if (!map || !imageName || !map.hasImage(imageName)) return false;
-    try {
-      const img = map.getImage(imageName);
-      return !!(img && img.width === 1 && img.height === 1);
-    } catch (_) {
-      return false;
-    }
+    return placeholderMapImages.has(String(imageName || ""));
   }
 
   /** PNG icons for feeds and explicit usericon/path; EUD tracks always use team dots. */
@@ -1976,7 +2153,13 @@
     function putImage(img) {
       try {
         if (map.hasImage(imageName)) {
-          map.updateImage(imageName, img);
+          if (placeholderMapImages.has(imageName)) {
+            map.removeImage(imageName);
+            placeholderMapImages.delete(imageName);
+            map.addImage(imageName, img, addOpts);
+          } else {
+            map.updateImage(imageName, img);
+          }
         } else {
           map.addImage(imageName, img, addOpts);
         }
@@ -2066,19 +2249,23 @@
 
   function sweepMissingIcons() {
     if (!map || !markerLayersReady || !lastServerGeoJson) return;
-    const seen = new Set();
-    const features = lastServerGeoJson.features || [];
-    for (let i = 0; i < features.length; i++) {
-      const props = features[i] && features[i].properties;
-      if (!props || !props.iconId) continue;
-      const canonicalId = normalizeMapImageId(props.iconId);
-      if (!canonicalId || !isRenderedMapImageId(canonicalId) || seen.has(canonicalId)) continue;
-      seen.add(canonicalId);
-      if (iconLoadPending.has(canonicalId)) continue;
-      if (map.hasImage(canonicalId) && !isPlaceholderMapImage(canonicalId)) continue;
-      const info = resolveIconMetaForImageId(canonicalId) || { mapImageId: canonicalId };
-      loadRenderedMapIcon(canonicalId, info.apiIconId || "", info);
+    const entries = collectIconsNeedingLoad();
+    if (!entries.length) return;
+    if (iconBatchInFlight) {
+      iconBatchResweep = true;
+      return;
     }
+    iconBatchInFlight = loadRenderedIconsBatch(entries)
+      .catch(function (err) {
+        console.warn("[map] sweep icon batch failed", err);
+      })
+      .finally(function () {
+        iconBatchInFlight = null;
+        if (iconBatchResweep) {
+          iconBatchResweep = false;
+          scheduleMissingIconSweep();
+        }
+      });
   }
 
   function scheduleMissingIconSweep() {
