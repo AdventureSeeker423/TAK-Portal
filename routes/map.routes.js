@@ -155,7 +155,8 @@ router.get("/geocode", async (req, res) => {
       nearLon: Number.isFinite(nearLon) ? nearLon : undefined,
     });
     if (!results.length) {
-      return res.status(404).json({ error: "No results" });
+      res.setHeader("Cache-Control", "private, max-age=60");
+      return res.json({ results: [] });
     }
     res.setHeader(
       "Cache-Control",

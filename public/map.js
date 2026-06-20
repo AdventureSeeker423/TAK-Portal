@@ -574,6 +574,7 @@
   let streetPrefetchQueue = [];
   let streetPrefetchTimer = null;
   let streetPrefetchRunning = false;
+  let streetPrefetchFailStreak = 0;
   const GO_TO_CONTACT_LIMIT = 8;
   const GO_TO_ADDRESS_LIMIT = 5;
   const CURSOR_COORD_FORMATS = [
@@ -1729,12 +1730,19 @@
       }),
     })
       .then(function (resp) {
+        if (!resp.ok) {
+          return { ok: false, data: null };
+        }
         return resp.json().then(function (data) {
-          return { ok: resp.ok, data: data };
+          return { ok: true, data: data };
         });
       })
       .then(function (out) {
-        if (!out.ok || !out.data || typeof out.data.results !== "object") return;
+        if (!out.ok || !out.data || typeof out.data.results !== "object") {
+          streetPrefetchFailStreak++;
+          return;
+        }
+        streetPrefetchFailStreak = 0;
         const mapped = {};
         for (let i = 0; i < batch.length; i++) {
           const entry = batch[i];
@@ -1750,18 +1758,21 @@
         }
       })
       .catch(function () {
-        for (let i = 0; i < batch.length; i++) {
-          goToStreetCache.set(batch[i].cacheKey, "");
-        }
+        streetPrefetchFailStreak++;
+        /* Leave cache untouched on network/route errors so prefetch can retry. */
       })
       .finally(function () {
         streetPrefetchRunning = false;
         rebuildStreetPrefetchQueue();
-        if (streetPrefetchQueue.length) {
+        if (streetPrefetchQueue.length && streetPrefetchFailStreak < 8) {
+          const delay = Math.min(
+            30000,
+            STREET_PREFETCH_PAUSE_MS * Math.max(1, streetPrefetchFailStreak)
+          );
           streetPrefetchTimer = setTimeout(function () {
             streetPrefetchTimer = null;
             pumpStreetPrefetch(null);
-          }, STREET_PREFETCH_PAUSE_MS);
+          }, delay);
         }
       });
   }
@@ -1804,7 +1815,7 @@
       return;
     }
 
-    if (streetPrefetchTimer) clearTimeout(streetPrefetchTimer);
+    if (streetPrefetchTimer || streetPrefetchRunning) return;
     streetPrefetchTimer = setTimeout(function () {
       streetPrefetchTimer = null;
       rebuildStreetPrefetchQueue();
@@ -2171,7 +2182,7 @@
             sortGoToAddressesByViewport(addresses)
           );
           syncGoToActiveIndex();
-          if (!goToResults.length) {
+          if (!contacts.length && !coordResult && !addresses.length) {
             setGoToHint("No results found", true);
           } else {
             setGoToHint("");
@@ -2251,8 +2262,8 @@
         encodeURIComponent(String(center.lon));
     }
     const r = await fetch(url);
-    if (r.status === 404) return [];
     if (!r.ok) {
+      if (r.status === 404) return [];
       let msg = "Address lookup failed";
       try {
         const body = await r.json();
