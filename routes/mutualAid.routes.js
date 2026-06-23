@@ -36,6 +36,17 @@ const uploadMaLogo = multer({
   },
 });
 
+const uploadPacketPdf = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok =
+      file.mimetype === "application/pdf" ||
+      String(file.originalname || "").toLowerCase().endsWith(".pdf");
+    cb(null, ok);
+  },
+});
+
 function toErrorPayload(err) {
   return toSafeApiError(err);
 }
@@ -187,17 +198,35 @@ router.get("/:id/qr/download", async (req, res) => {
 });
 
 
-router.post("/:id/packet/email", async (req, res) => {
+router.post("/:id/packet/email", (req, res, next) => {
+  uploadPacketPdf.single("pdf")(req, res, (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({
+          error:
+            "Deployment packet is too large to email (max 25 MB). Try downloading it instead.",
+        });
+      }
+      return res.status(400).json({ error: toErrorPayload(err) });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const id = req.params.id;
     const toRaw = req.body?.to || req.body?.emails || "";
     const pdfBase64 = req.body?.pdfBase64 || "";
-    const filename = req.body?.filename || "deployment-packet.pdf";
+    const filename = req.body?.filename || req.file?.originalname || "deployment-packet.pdf";
 
     if (!toRaw || !String(toRaw).trim()) {
       return res.status(400).json({ error: "Missing recipient email(s)" });
     }
-    if (!pdfBase64 || !String(pdfBase64).trim()) {
+
+    let pdfBuffer = req.file?.buffer || null;
+    if (!pdfBuffer && pdfBase64 && String(pdfBase64).trim()) {
+      pdfBuffer = Buffer.from(String(pdfBase64), "base64");
+    }
+    if (!pdfBuffer || !pdfBuffer.length) {
       return res.status(400).json({ error: "Missing PDF payload" });
     }
 
@@ -229,8 +258,6 @@ Attached: ${filename}
       `
 Sent from TAK Portal.
 `;
-
-    const pdfBuffer = Buffer.from(String(pdfBase64), "base64");
 
     const out = await emailSvc.sendMail({
       to: String(toRaw),

@@ -921,7 +921,6 @@ async function emailDeploymentPacket() {
     // Reuse the existing builder and just output bytes.
     const doc = await buildDeploymentPacketPdf();
     const ab = doc.output("arraybuffer");
-    const b64 = arrayBufferToBase64(ab);
 
     const filenameSafe = ((qrActiveItem?.username || "deployment-packet")
       .trim()
@@ -934,10 +933,14 @@ async function emailDeploymentPacket() {
     emailPacketSendBtn.disabled = true;
     setMsg(emailPacketMsg, "Sending...", true);
 
+    const form = new FormData();
+    form.append("to", rawTo);
+    form.append("filename", filename);
+    form.append("pdf", new Blob([ab], { type: "application/pdf" }), filename);
+
     const res = await fetch(`/api/mutual-aid/${encodeURIComponent(qrActiveId)}/packet/email`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to: rawTo, pdfBase64: b64, filename })
+      body: form
     });
     const rawBody = await res.text();
     let data = {};
@@ -951,7 +954,7 @@ async function emailDeploymentPacket() {
         (typeof data.error === "string" && data.error.trim()) ||
         (typeof data.message === "string" && data.message.trim()) ||
         (res.status === 413
-          ? "Deployment packet is too large to email. Try downloading it instead."
+          ? "Deployment packet is too large to email (max 25 MB). Try downloading it instead."
           : rawBody && !/^<!doctype html/i.test(rawBody.trim())
           ? rawBody.trim().slice(0, 300)
           : "Send failed");
@@ -969,17 +972,6 @@ async function emailDeploymentPacket() {
 }
 
 if (emailPacketSendBtn) emailPacketSendBtn.onclick = emailDeploymentPacket;
-
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
 
 // ----- Download Packet (PDF) -----
 // Pull guide definitions from settings.json (server-rendered into the page).

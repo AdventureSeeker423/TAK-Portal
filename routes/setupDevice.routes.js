@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const router = express.Router();
 
 const qrSvc = require("../services/qr.service");
@@ -30,6 +31,7 @@ router.post("/enroll-qr", async (req, res) => {
     }
 
     const isOtt = req.body && String(req.body.app || "").toLowerCase() === "ott";
+    const isItak = req.body && String(req.body.app || "").toLowerCase() === "itak";
 
     const { identifier, key, expiresAt } =
       await tokensSvc.getOrCreateEnrollmentAppPassword({
@@ -37,8 +39,26 @@ router.post("/enroll-qr", async (req, res) => {
         userId: user.uid || null,
       });
 
-    let enrollUrl;
-    if (isOtt) {
+    let enrollUrl = "";
+    let itakPayload = null;
+    let qrContent = null;
+
+    if (isItak) {
+      const host = qrSvc.getTakHost();
+      itakPayload = qrSvc.buildItakEnrollPayload({
+        host,
+        username: user.username,
+        token: key,
+        registrationId: crypto.randomUUID(),
+      });
+      if (!itakPayload) {
+        return res.status(500).json({
+          ok: false,
+          error: "Failed to build iTAK enrollment payload (check TAK_URL / hostname).",
+        });
+      }
+      qrContent = itakPayload;
+    } else if (isOtt) {
       const host = qrSvc.getTakHost();
       const userId = await tokensSvc.getUserIdByUsername(user.username);
       const fullUser = await usersSvc.getUserById(userId);
@@ -51,14 +71,23 @@ router.post("/enroll-qr", async (req, res) => {
         teamLabel: pref.teamLabel,
         roleLabel: pref.roleLabel,
       });
+      qrContent = enrollUrl;
     } else {
       enrollUrl = qrSvc.buildEnrollUrl({
         username: user.username,
         token: key,
       });
+      qrContent = enrollUrl;
     }
 
-    const qrCode = await qrSvc.generateDisplayQrDataUrl(enrollUrl);
+    if (!qrContent) {
+      return res.status(500).json({
+        ok: false,
+        error: "Failed to build enrollment QR content.",
+      });
+    }
+
+    const qrCode = await qrSvc.generateDisplayQrDataUrl(qrContent);
 
     auditSvc.auditFromRequest(req, {
       action: "SELF_SERVICE_ENROLLMENT_QR",
@@ -69,7 +98,8 @@ router.post("/enroll-qr", async (req, res) => {
         tokenIdentifier: identifier,
         expiresAt,
         ott: isOtt,
-        summary: `User generated own enrollment QR (${isOtt ? "OTT" : "standard"}).`,
+        itak: isItak,
+        summary: `User generated own enrollment QR (${isItak ? "iTAK" : isOtt ? "OTT" : "standard"}).`,
       },
     });
 
@@ -80,6 +110,7 @@ router.post("/enroll-qr", async (req, res) => {
       token: key,
       expiresAt,
       enrollUrl: enrollUrl || "",
+      itakPayload: itakPayload || undefined,
       qrCode,
     });
   } catch (err) {
