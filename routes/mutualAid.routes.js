@@ -201,6 +201,13 @@ router.post("/:id/packet/email", async (req, res) => {
       return res.status(400).json({ error: "Missing PDF payload" });
     }
 
+    const emailCfg = emailSvc.getSmtpConfig();
+    if (!emailSvc.isEmailEnabled() || !emailCfg.host || !emailCfg.from) {
+      return res.status(400).json({
+        error: "Email is disabled or SMTP is not configured.",
+      });
+    }
+
     // Find the mutual aid item for context
     const items = mutualAid.list();
     const item = items.find((x) => String(x.id) === String(id));

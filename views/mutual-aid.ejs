@@ -939,8 +939,24 @@ async function emailDeploymentPacket() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ to: rawTo, pdfBase64: b64, filename })
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Send failed");
+    const rawBody = await res.text();
+    let data = {};
+    try {
+      data = rawBody ? JSON.parse(rawBody) : {};
+    } catch (_) {
+      data = {};
+    }
+    if (!res.ok) {
+      const msg =
+        (typeof data.error === "string" && data.error.trim()) ||
+        (typeof data.message === "string" && data.message.trim()) ||
+        (res.status === 413
+          ? "Deployment packet is too large to email. Try downloading it instead."
+          : rawBody && !/^<!doctype html/i.test(rawBody.trim())
+          ? rawBody.trim().slice(0, 300)
+          : "Send failed");
+      throw new Error(msg);
+    }
 
     setMsg(emailPacketMsg, "Sent!", true);
     closeEmailPacketModal();
