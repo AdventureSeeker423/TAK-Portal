@@ -809,19 +809,39 @@
     document.body.classList.remove("noScroll");
   }
 
+  function renderQrDetailsChips(obj) {
+    const chips = [];
+    if (obj && obj.username) {
+      chips.push(`<span class="chip">User: ${escapeHtml(obj.username)}</span>`);
+    }
+    details.innerHTML = chips.join(" ");
+  }
+
+  function syncQrActionButtons(mode, obj) {
+    const isItak = mode === "itak";
+    const isOtt = mode === "ott";
+    let url = (obj.enrollUrl && String(obj.enrollUrl).trim()) || "";
+    if (isItak && obj.itakPayload) {
+      url = String(obj.itakPayload).trim();
+    }
+    if (enrollUrlHolder) enrollUrlHolder.dataset.enrollUrl = url;
+
+    if (openUrlBtn) {
+      // Preserve the three-button row; iTAK has no openable URL to launch.
+      openUrlBtn.style.visibility = isItak ? "hidden" : "visible";
+      openUrlBtn.style.pointerEvents = isItak ? "none" : "";
+      openUrlBtn.setAttribute("aria-hidden", isItak ? "true" : "false");
+      openUrlBtn.disabled = isItak || !url;
+    }
+    copyBtn.disabled = !url;
+    saveBtn.disabled = isOtt ? !obj.qrCode : !(obj.username && obj.token);
+  }
+
   function renderFromCache(obj) {
     cached = obj;
     qrImg.src = obj.qrCode || "";
-    var url = (obj.enrollUrl && String(obj.enrollUrl).trim()) || "";
-    if (enrollUrlHolder) enrollUrlHolder.dataset.enrollUrl = url;
-
-    const chips = [];
-    if (obj.username) chips.push(`<span class="chip">User: ${obj.username}</span>`);
-    details.innerHTML = chips.join(" ");
-
-    openUrlBtn.disabled = !url;
-    copyBtn.disabled = !url;
-    saveBtn.disabled = !(obj.username && obj.token);
+    renderQrDetailsChips(obj);
+    syncQrActionButtons(scanMode, obj);
     setMsg(msg, "QR ready.", true);
 
     startCountdown(obj.expiresAt);
@@ -834,23 +854,6 @@
     return "atak";
   }
 
-  function updateQrActionButtons(obj, app) {
-    const isOtt = app === "ott";
-    const isItak = app === "itak";
-    var url = (obj.enrollUrl && String(obj.enrollUrl).trim()) || "";
-    if (isItak && obj.itakPayload) {
-      url = String(obj.itakPayload).trim();
-    }
-    if (enrollUrlHolder) enrollUrlHolder.dataset.enrollUrl = url;
-    openUrlBtn.disabled = isItak || !url || (isItak && !String(obj.enrollUrl || "").trim());
-    copyBtn.disabled = !url;
-    saveBtn.disabled = isOtt
-      ? false
-      : isItak
-        ? !obj.qrCode
-        : !(obj.username && obj.token);
-  }
-
   async function fetchAndShowQr(app) {
     app = resolveEnrollApp(app);
     const isOtt = app === "ott";
@@ -859,6 +862,11 @@
     qrImg.src = "";
     details.innerHTML = "";
     if (enrollUrlHolder) enrollUrlHolder.dataset.enrollUrl = "";
+    if (openUrlBtn) {
+      openUrlBtn.style.visibility = scanMode === "itak" ? "hidden" : "visible";
+      openUrlBtn.style.pointerEvents = scanMode === "itak" ? "none" : "";
+      openUrlBtn.setAttribute("aria-hidden", scanMode === "itak" ? "true" : "false");
+    }
     openUrlBtn.disabled = true;
     copyBtn.disabled = true;
     saveBtn.disabled = true;
@@ -897,11 +905,8 @@
     if (!isOtt && !isItak) saveCache(obj);
     cached = obj;
     qrImg.src = obj.qrCode || "";
-    updateQrActionButtons(obj, app);
-    const chips = [];
-    if (obj.username) chips.push(`<span class="chip">User: ${obj.username}</span>`);
-    if (isItak) chips.push(`<span class="chip">Format: iTAK registration JSON</span>`);
-    details.innerHTML = chips.join(" ");
+    renderQrDetailsChips(obj);
+    syncQrActionButtons(scanMode, obj);
     setMsg(msg, "QR ready.", true);
     startCountdown(obj.expiresAt);
     openModal();
@@ -1261,7 +1266,7 @@
   });
 
   saveBtn.addEventListener("click", () => {
-    if (scanMode === "itak" || scanMode === "ott") {
+    if (scanMode === "ott") {
       const src = qrImg.src;
       if (!src || !src.startsWith("data:")) {
         setMsg(msg, "Generate a QR first.", false);
@@ -1269,7 +1274,7 @@
       }
       const a = document.createElement("a");
       a.href = src;
-      a.download = scanMode === "itak" ? "itak-enrollment-qr.png" : "ott-enrollment-qr.png";
+      a.download = "ott-enrollment-qr.png";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1282,9 +1287,12 @@
       return;
     }
 
-    const url =
+    let url =
       `/api/qr/download?username=${encodeURIComponent(cached.username)}` +
       `&token=${encodeURIComponent(cached.token)}`;
+    if (scanMode === "itak") {
+      url += "&format=itak";
+    }
 
     const a = document.createElement("a");
     a.href = url;

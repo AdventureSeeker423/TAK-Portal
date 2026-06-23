@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const router = express.Router();
 const qrSvc = require("../services/qr.service");
 const auditSvc = require("../services/auditLog.service");
@@ -72,17 +73,33 @@ router.get("/download", async (req, res) => {
         );
     }
 
-    const enrollUrl = qrSvc.buildEnrollUrl({ username, token });
-    if (!enrollUrl) {
-      return res.status(500).send("Failed to build enrollment URL");
+    const format = String(req.query.format || "").trim().toLowerCase();
+    const isItak = format === "itak";
+
+    let qrContent;
+    if (isItak) {
+      qrContent = qrSvc.buildItakEnrollPayload({
+        host: qrSvc.getTakHost(),
+        username,
+        token,
+        registrationId: crypto.randomUUID(),
+      });
+    } else {
+      qrContent = qrSvc.buildEnrollUrl({ username, token });
     }
 
-    const finalPng = await qrSvc.generateDownloadPng(enrollUrl, username);
+    if (!qrContent) {
+      return res.status(500).send("Failed to build enrollment QR content");
+    }
+
+    const finalPng = await qrSvc.generateDownloadPng(qrContent, username);
 
     const safeUser =
       username.toLowerCase().replace(/[^a-z0-9_-]/g, "") || "user";
 
-    const filename = `tak-${safeUser}-enrollment-qr.png`;
+    const filename = isItak
+      ? `itak-${safeUser}-enrollment-qr.png`
+      : `tak-${safeUser}-enrollment-qr.png`;
 
     res.setHeader("Content-Type", "image/png");
     res.setHeader(
@@ -97,7 +114,9 @@ router.get("/download", async (req, res) => {
       details: {
         username,
         filename,
-        summary: `Downloaded enrollment QR image for ${username}.`,
+        summary: isItak
+          ? `Downloaded iTAK enrollment QR image for ${username}.`
+          : `Downloaded enrollment QR image for ${username}.`,
       },
     });
 
