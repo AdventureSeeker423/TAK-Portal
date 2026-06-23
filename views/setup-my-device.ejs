@@ -436,32 +436,13 @@
           ? "Open TAK Tracker: How to Scan"
           : "ATAK (Android): How to Scan";
 
-    if (isITak && prefData && prefData.ok) {
-      const c = (prefData.callsign && escapeHtml(prefData.callsign)) || "";
-      const t = (prefData.teamLabel && escapeHtml(prefData.teamLabel)) || "";
-      const r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
-      const steps = [
-        "Open iTAK on your iOS device.",
-        "When prompted, allow Location access and set it to 'Always Allow'.",
-        "Select Callsign and enter: <strong>" + c + "</strong>",
-        "Select Team and enter: <strong>" + t + "</strong>",
-        "Select Role and select: <strong>" + r + "</strong>",
-        "Select the settings (gear) icon in the top right.",
-        "Select Network, then Servers. Tap the plus button and choose 'Scan QR Code'.",
-        "Allow camera access and scan the QR until the server shows as connected."
-      ];
-      instructionsList.innerHTML = steps.map(s => `<li>${s}</li>`).join("");
-      return;
-    }
-
     if (isITak) {
       const steps = [
         "Open iTAK on your iOS device.",
         "When prompted, allow Location access and set it to 'Always Allow'.",
-        "Enter your assigned Call Sign / Team / Role (per your welcome email).",
-        "Select the settings (gear) icon in the top right.",
-        "Select Network, then Servers. Tap the plus button and choose 'Scan QR Code'.",
-        "Allow camera access and scan the QR until the server shows as connected."
+        "Select the settings (gear) icon in the top right corner",
+        "Select Network and then Servers",
+        "In the bottom right corner, tap the plus button and select \"Scan QR\""
       ];
       instructionsList.innerHTML = steps.map(s => `<li>${s}</li>`).join("");
       return;
