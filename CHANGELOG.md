@@ -12,6 +12,11 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.39 - 6/23/26
+✨ `Enhancement` - Setup My Device - QR Code onboarding added to iTAK<br>
+✨ `Enhancement` - Backend - Add backend code to support a future new feature coming soon<br>
+🐛 `Bug Fix` - Mutual Aid - Fixes issue with email deployment packet failing
+
 ### v1.3.38 - 6/15/26
 ✨ `Enhancement` - MOU Documents - Added ability for MOUs to be signed by a specific agency/global admin or provide an external link via email or copy/paste<br>
 ✨ `Enhancement` - MOU Documents - Added better protection against accidental deletion of signed MOUs
