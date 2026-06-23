@@ -790,39 +790,35 @@ label.btn {
     padding: 14px;
 }
 
-#setupQrOverlay .modal.setupQrModal {
-    width: min(780px, 96vw);
-}
-
-.setupQrModalLayout {
+#setupQrOverlay .setupQrModalLayout {
     display: flex;
     flex-wrap: nowrap;
     gap: 24px;
     align-items: flex-start;
 }
 
-.setupQrModalQrCol {
+#setupQrOverlay .setupQrModalQrCol {
     flex: 0 0 280px;
     width: 280px;
     max-width: 100%;
     text-align: center;
 }
 
-.setupQrModalInfoCol {
+#setupQrOverlay .setupQrModalInfoCol {
     flex: 1 1 0;
-    min-width: 0;
+    min-width: 320px;
 }
 
-.setupQrModalInfoCol h3 {
+#setupQrOverlay .setupQrModalInfoCol h3 {
     margin-top: 0;
 }
 
-.setupQrModalInfoCol ol {
+#setupQrOverlay .setupQrModalInfoCol ol {
     margin: 6px 0 0;
     padding-left: 1.25rem;
 }
 
-.setupQrModalImg {
+#setupQrOverlay .setupQrModalImg {
     display: block;
     max-width: 280px;
     width: 100%;
@@ -831,7 +827,7 @@ label.btn {
     margin: 0 auto;
 }
 
-.setupQrModalActions {
+#setupQrOverlay .setupQrModalActions {
     display: flex;
     gap: 10px;
     margin-top: 14px;
@@ -839,7 +835,7 @@ label.btn {
     flex-wrap: nowrap;
 }
 
-.setupQrModalActions .btn {
+#setupQrOverlay .setupQrModalActions .btn {
     flex: 1 1 0;
     width: auto;
     min-width: 0;
@@ -849,16 +845,16 @@ label.btn {
     padding-right: 10px;
 }
 
-.setupQrModalCountdown {
+#setupQrOverlay .setupQrModalCountdown {
     margin-top: 10px;
 }
 
 @media (max-width: 720px) {
-    .setupQrModalLayout {
+    #setupQrOverlay .setupQrModalLayout {
         flex-wrap: wrap;
     }
 
-    .setupQrModalQrCol {
+    #setupQrOverlay .setupQrModalQrCol {
         flex: 1 1 100%;
         width: 100%;
     }
