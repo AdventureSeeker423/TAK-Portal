@@ -790,6 +790,80 @@ label.btn {
     padding: 14px;
 }
 
+#setupQrOverlay .modal.setupQrModal {
+    width: min(780px, 96vw);
+}
+
+.setupQrModalLayout {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.setupQrModalQrCol {
+    flex: 0 0 280px;
+    width: 280px;
+    max-width: 100%;
+    text-align: center;
+}
+
+.setupQrModalInfoCol {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.setupQrModalInfoCol h3 {
+    margin-top: 0;
+}
+
+.setupQrModalInfoCol ol {
+    margin: 6px 0 0;
+    padding-left: 1.25rem;
+}
+
+.setupQrModalImg {
+    display: block;
+    max-width: 280px;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    margin: 0 auto;
+}
+
+.setupQrModalActions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    justify-content: center;
+    flex-wrap: nowrap;
+}
+
+.setupQrModalActions .btn {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    white-space: nowrap;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.setupQrModalCountdown {
+    margin-top: 10px;
+}
+
+@media (max-width: 720px) {
+    .setupQrModalLayout {
+        flex-wrap: wrap;
+    }
+
+    .setupQrModalQrCol {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+}
+
 .userAgreementModal {
     width: min(760px, 96vw);
 }

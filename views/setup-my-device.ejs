@@ -243,28 +243,28 @@
 
 <!-- QR Modal -->
 <div class="modalOverlay" id="setupQrOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="setupQrTitle">
+  <div class="modal setupQrModal" role="dialog" aria-modal="true" aria-labelledby="setupQrTitle">
     <div class="modalHeader">
       <h2 id="setupQrTitle" style="margin:0;">Enrollment QR Code</h2>
       <button class="btn" id="setupQrCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div class="row" style="gap: 24px; align-items: flex-start; flex-wrap: wrap;">
-        <div style="text-align:center; min-width: 260px;">
-          <img id="setupQrImg" alt="Enrollment QR Code" style="max-width: 280px; width: 100%; height: auto; border-radius: 14px;" />
-          <div class="row" style="gap: 10px; margin-top: 14px; justify-content: center;">
+      <div class="setupQrModalLayout">
+        <div class="setupQrModalQrCol">
+          <img id="setupQrImg" class="setupQrModalImg" alt="Enrollment QR Code" />
+          <div class="setupQrModalActions">
             <span id="setupQrEnrollUrlHolder" data-enroll-url="" style="display:none;" aria-hidden="true"></span>
             <button class="btn success" type="button" id="setupQrOpenBtn" disabled>Open URL</button>
             <button class="btn" type="button" id="setupQrCopyBtn" disabled>Copy URL</button>
             <button class="btn" type="button" id="setupQrSaveBtn" disabled>Save Image</button>
           </div>
         </div>
-        <div style="min-width: 320px;">
-          <h3 style="margin-top:0;" id="setupQrInstructionsTitle">How to Scan</h3>
-          <ol id="setupQrInstructions" style="margin-top: 6px;"></ol>
-          <h3 style="margin-top:0;">Details</h3>
+        <div class="setupQrModalInfoCol">
+          <h3 id="setupQrInstructionsTitle">How to Scan</h3>
+          <ol id="setupQrInstructions"></ol>
+          <h3>Details</h3>
           <div class="chips" id="setupQrDetails"></div>
-          <div id="setupQrCountdown" class="msg" style="margin-top: 10px;"></div>
+          <div id="setupQrCountdown" class="msg setupQrModalCountdown"></div>
           <div id="setupQrMsg" class="msg"></div>
         </div>
       </div>
@@ -442,13 +442,13 @@
       const r = (prefData.roleLabel && escapeHtml(prefData.roleLabel)) || "Team Member";
       const steps = [
         "Open iTAK on your iOS device.",
+        "When prompted, allow Location access and set it to 'Always Allow'.",
         "Select Callsign and enter: <strong>" + c + "</strong>",
         "Select Team and enter: <strong>" + t + "</strong>",
         "Select Role and select: <strong>" + r + "</strong>",
-        "Enable notifications and Location Services. When prompted select Allow While Using the App, then change Location Services to Always Allow.",
-        "Select the settings (gear) icon, then Network → Servers.",
-        "Tap the plus button and choose to scan a QR code.",
-        "Scan this QR code until the server shows as connected."
+        "Select the settings (gear) icon in the top right.",
+        "Select Network, then Servers. Tap the plus button and choose 'Scan QR Code'.",
+        "Allow camera access and scan the QR until the server shows as connected."
       ];
       instructionsList.innerHTML = steps.map(s => `<li>${s}</li>`).join("");
       return;
@@ -457,11 +457,11 @@
     if (isITak) {
       const steps = [
         "Open iTAK on your iOS device.",
+        "When prompted, allow Location access and set it to 'Always Allow'.",
         "Enter your assigned Call Sign / Team / Role (per your welcome email).",
-        "Enable notifications and Location Services. When prompted select Allow While Using the App, then change Location Services to Always Allow.",
-        "Select the settings (gear) icon, then Network → Servers.",
-        "Tap the plus button and choose to scan a QR code.",
-        "Scan this QR code until the server shows as connected."
+        "Select the settings (gear) icon in the top right.",
+        "Select Network, then Servers. Tap the plus button and choose 'Scan QR Code'.",
+        "Allow camera access and scan the QR until the server shows as connected."
       ];
       instructionsList.innerHTML = steps.map(s => `<li>${s}</li>`).join("");
       return;
@@ -827,10 +827,6 @@
     if (enrollUrlHolder) enrollUrlHolder.dataset.enrollUrl = url;
 
     if (openUrlBtn) {
-      // Preserve the three-button row; iTAK has no openable URL to launch.
-      openUrlBtn.style.visibility = isItak ? "hidden" : "visible";
-      openUrlBtn.style.pointerEvents = isItak ? "none" : "";
-      openUrlBtn.setAttribute("aria-hidden", isItak ? "true" : "false");
       openUrlBtn.disabled = isItak || !url;
     }
     copyBtn.disabled = !url;
@@ -862,11 +858,6 @@
     qrImg.src = "";
     details.innerHTML = "";
     if (enrollUrlHolder) enrollUrlHolder.dataset.enrollUrl = "";
-    if (openUrlBtn) {
-      openUrlBtn.style.visibility = scanMode === "itak" ? "hidden" : "visible";
-      openUrlBtn.style.pointerEvents = scanMode === "itak" ? "none" : "";
-      openUrlBtn.setAttribute("aria-hidden", scanMode === "itak" ? "true" : "false");
-    }
     openUrlBtn.disabled = true;
     copyBtn.disabled = true;
     saveBtn.disabled = true;
