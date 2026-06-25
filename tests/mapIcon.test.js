@@ -4,6 +4,7 @@
  */
 const assert = require("assert");
 const mapIcon = require("../services/mapIcon.service");
+const mapIconResolve = require("../services/mapIcon.resolve");
 const mapRender = require("../services/mapRender.service");
 
 async function runTests() {
@@ -138,6 +139,32 @@ async function runTests() {
   });
   assert.ok(geoOpsMedical, "GeoOps Medical path should resolve");
   assert.ok(/WildFire\/Medical\.png/i.test(geoOpsMedical.relPath || geoOpsMedical.iconId));
+
+  // Standard dashed UUID iconset paths (e.g. OSM / CAD feeds)
+  const osmCamp = mapIcon.resolveIcon({
+    type: "a-u-G-E-S-R",
+    affiliation: "unknown",
+    usericon: {
+      iconsetpath: "6d781afb-89a6-4c07-b2b9-a89748b6a38f/Misc/Camp.png",
+    },
+  });
+  assert.ok(osmCamp, "OSM dashed UUID Camp path should resolve");
+  assert.strictEqual(osmCamp.source, "path");
+  assert.ok(/Misc\/Camp\.png/i.test(osmCamp.relPath || osmCamp.iconId));
+  assert.ok(mapIcon.getIconFilePath(osmCamp.iconId), "OSM Camp file must exist");
+
+  assert.strictEqual(
+    mapIconResolve.isIconsetUidToken("6d781afb-89a6-4c07-b2b9-a89748b6a38f"),
+    true,
+    "dashed UUID iconset uid"
+  );
+  assert.strictEqual(
+    mapIconResolve.isIconsetUidToken(
+      "83198b4872a8c34eb9c549da8a4de5a28f07821185b39a2277948f66c24ac17a"
+    ),
+    true,
+    "64-char hash iconset uid"
+  );
 
   // Default affiliation icons
   const defaults = mapIcon.getDefaultIconIds();

@@ -83,6 +83,8 @@ async function runTests() {
     },
   });
   assert.ok(camp && camp.iconId, "Camp usericon should resolve");
+  assert.strictEqual(camp.source, "path", "Camp should resolve via direct usericon path");
+  assert.ok(/Misc\/Camp\.png/i.test(camp.relPath || camp.iconId), "Camp icon path");
   const campMarker = {
     uid: "camp-1",
     type: "a-u-G-E-S-R",

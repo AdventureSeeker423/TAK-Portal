@@ -326,7 +326,13 @@ function resolveAliasedIcon(alias, iconsetsByUid) {
 
 function isIconsetUidToken(uid) {
   const s = String(uid || "").trim();
-  return /^[0-9a-f]{36}$/i.test(s) || /^[0-9a-f]{64}$/i.test(s);
+  if (/^[0-9a-f]{64}$/i.test(s)) return true;
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+  ) {
+    return true;
+  }
+  return /^[0-9a-f]{32}$/i.test(s);
 }
 
 function parseIconsetPath(iconsetpath) {
