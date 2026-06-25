@@ -124,7 +124,8 @@ async function augmentPointFeature(feature, missionName) {
       uid,
       cotType,
       callsign: props.callsign || uid.slice(0, 16),
-      showLabel: 1,
+      showLabel: 0,
+      labelSort: 4,
       geometryType: "point",
       stroke: props.stroke || color,
       fill: props.fill || props["marker-color"] || color,
@@ -135,6 +136,8 @@ async function augmentPointFeature(feature, missionName) {
       iconSource: marker.iconSource || "",
       origin: "mission",
       color,
+      showCircle: mapImageId ? 0 : 1,
+      how: props.how || "",
       contentSource: "cot",
     },
   };
@@ -156,7 +159,8 @@ function normalizeFeature(feature, missionName) {
       uid,
       cotType: props.type || "",
       callsign: props.callsign || uid.slice(0, 16),
-      showLabel: 1,
+      showLabel: 0,
+      labelSort: 4,
       remarks: props.remarks || "",
       geometryType: geomType,
       stroke: props.stroke || color,
@@ -288,7 +292,9 @@ async function getMissionGeoJson(missionName, options = {}) {
           features: [...fc.features, ...kmlFeatures],
         };
       }
-      rasterOverlays = await missionRaster.buildRasterOverlays(name, mission);
+      rasterOverlays = await missionRaster.buildRasterOverlays(name, mission, {
+        features: fc.features,
+      });
       attachmentSummary.raster = rasterOverlays.length;
     } catch (err) {
       console.warn("[mission-geo] attachment load failed:", err?.message || err);

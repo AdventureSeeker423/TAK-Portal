@@ -4,11 +4,18 @@
 import { CoTParser } from "@tak-ps/node-cot";
 
 const SKIP_TYPE_PREFIXES = ["b-t-f", "t-x-m-c", "t-x-d-d"];
+const SKIP_POINT_TYPE_PREFIXES = ["b-m-p-s-p-i", "b-m-p-s-p-loc"];
 
 function shouldSkipType(type) {
   const t = String(type || "").trim().toLowerCase();
   if (!t) return true;
+  if (SKIP_POINT_TYPE_PREFIXES.some((p) => t === p || t.startsWith(p + "-"))) return true;
   return SKIP_TYPE_PREFIXES.some((p) => t === p || t.startsWith(p + "-"));
+}
+
+function isMachineGeneratedHow(how) {
+  const h = String(how || "").trim().toLowerCase();
+  return h === "m-g" || h.startsWith("m-g-");
 }
 
 export function splitMissionCotXml(xml) {
@@ -38,6 +45,14 @@ export async function cotXmlToGeoJsonFeature(xmlChunk) {
     if (shouldSkipType(type)) return null;
     const feat = await CoTParser.to_geojson(cot);
     if (!feat || !feat.geometry) return null;
+    const how = cot.how ? cot.how() : feat.properties?.how;
+    if (
+      String(feat.geometry.type || "").toLowerCase() === "point" &&
+      isMachineGeneratedHow(how)
+    ) {
+      const t = String(type || "").toLowerCase();
+      if (t.startsWith("b-m-p") || t.startsWith("u-d")) return null;
+    }
     return feat;
   } catch (_) {
     return null;

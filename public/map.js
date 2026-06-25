@@ -4864,6 +4864,12 @@
         labelDeclutterKey = "";
         reinstallMapIconsFromCache();
         bindMarkerLayerHandlers();
+        if (
+          window.TakMapMissions &&
+          typeof window.TakMapMissions.restoreAfterStyleChange === "function"
+        ) {
+          window.TakMapMissions.restoreAfterStyleChange();
+        }
         runServerGeoJsonRefresh().finally(function () {
           if (gen !== styleRestoreGen) return;
           triggerMarkerRepaint();

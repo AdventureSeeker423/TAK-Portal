@@ -464,7 +464,7 @@ router.get("/missions/:missionName/geojson", async (req, res) => {
     const authUser = req.authentikUser || null;
     const missionName = String(req.params.missionName || "").trim();
     await dataSyncAccess.assertMissionReadable(authUser, missionName);
-    const includeAttachments = String(req.query.attachments || "") === "1";
+    const includeAttachments = String(req.query.attachments || "1") !== "0";
     const refresh = String(req.query.refresh || "") === "1";
     const queryParams = {};
     if (req.query.password) queryParams.password = String(req.query.password);
@@ -534,7 +534,7 @@ router.get("/missions/:missionName/raster/:hash", async (req, res) => {
     const hash = String(req.params.hash || "").trim();
     const missionRaw = await dataSyncAccess.assertMissionReadable(authUser, missionName);
     const mission = dataSyncAccess.unwrapMission(missionRaw);
-    const rasters = missionRaster.findRasterContents(mission);
+    const rasters = await missionRaster.findRasterContents(mission);
     const hit = rasters.find((r) => missionRaster.contentHash(r) === hash);
     if (!hit) {
       return res.status(404).json({ error: "Raster not found in mission" });

@@ -8,35 +8,103 @@ function unwrapMissionPayload(payload) {
   return dataSyncAccess.unwrapMission(payload) || payload;
 }
 
+function normalizeContentEntry(entry) {
+  if (!entry) return null;
+  if (typeof entry === "string") {
+    const hash = entry.trim();
+    return hash ? { hash, name: "", mimeType: "" } : null;
+  }
+  if (typeof entry !== "object") return null;
+  const data =
+    entry.data && typeof entry.data === "object" && !Array.isArray(entry.data)
+      ? entry.data
+      : entry;
+  return data && typeof data === "object" ? data : null;
+}
+
 function missionContentsList(missionPayload) {
   const mission = unwrapMissionPayload(missionPayload) || {};
-  const contents = mission.contents || mission.Contents || [];
-  return Array.isArray(contents) ? contents : [];
+  const contents =
+    mission.contents ||
+    mission.Contents ||
+    mission.content ||
+    mission.Content ||
+    [];
+  const list = Array.isArray(contents) ? contents : contents ? [contents] : [];
+  return list.map(normalizeContentEntry).filter(Boolean);
+}
+
+function listMissionAttachmentEntries(missionPayload) {
+  const mission = unwrapMissionPayload(missionPayload) || {};
+  const entries = missionContentsList(mission);
+  const seen = new Set();
+  const out = [];
+
+  function add(entry, source) {
+    const norm = normalizeContentEntry(entry);
+    if (!norm) return;
+    const hash = contentHash(norm);
+    if (!hash || seen.has(hash)) return;
+    seen.add(hash);
+    if (source) norm._attachmentSource = source;
+    out.push(norm);
+  }
+
+  for (const entry of entries) add(entry);
+
+  const baseLayer = mission.baseLayer ?? mission.BaseLayer;
+  if (baseLayer) {
+    if (typeof baseLayer === "string") {
+      add({ hash: baseLayer.trim(), name: "baseLayer.tif" }, "baseLayer");
+    } else {
+      add(baseLayer, "baseLayer");
+    }
+  }
+
+  const mapLayers = mission.mapLayers || mission.MapLayers || [];
+  for (const layer of Array.isArray(mapLayers) ? mapLayers : []) {
+    add(layer, "mapLayer");
+  }
+
+  const externalData = mission.externalData || mission.ExternalData || [];
+  for (const item of Array.isArray(externalData) ? externalData : []) {
+    add(item, "externalData");
+  }
+
+  return out;
 }
 
 function contentHash(entry) {
+  const data = normalizeContentEntry(entry) || entry || {};
   return String(
-    entry?.hash ||
-      entry?.Hash ||
-      entry?.contentHash ||
-      entry?.ContentHash ||
-      entry?.sha256 ||
-      entry?.uid ||
-      entry?.UID ||
-      entry?.UUID ||
+    data.hash ||
+      data.Hash ||
+      data.contentHash ||
+      data.ContentHash ||
+      data.sha256 ||
+      data.uid ||
+      data.UID ||
+      data.UUID ||
       ""
   ).trim();
 }
 
 function contentName(entry) {
+  const data = normalizeContentEntry(entry) || entry || {};
   return String(
-    entry?.name || entry?.filename || entry?.downloadName || entry?.FileName || ""
+    data.name ||
+      data.filename ||
+      data.downloadName ||
+      data.FileName ||
+      data.keywords ||
+      ""
   ).trim();
 }
 
 function contentMime(entry) {
+  const data = normalizeContentEntry(entry) || entry || {};
   return String(
-    entry?.mimeType || entry?.mimetype || entry?.MimeType || entry?.type || ""
+    data.mimeType || data.mimetype || data.MimeType || data.type || ""
   )
     .trim()
     .toLowerCase();
@@ -74,7 +142,9 @@ function parseMissionBbox(mission) {
 
 module.exports = {
   unwrapMissionPayload,
+  normalizeContentEntry,
   missionContentsList,
+  listMissionAttachmentEntries,
   contentHash,
   contentName,
   contentMime,

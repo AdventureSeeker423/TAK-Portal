@@ -1248,25 +1248,10 @@ body.map-detail-resizing .map-panel-resize-handle {
   color: #fca5a5;
 }
 
-.map-mission-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+.map-mission-status {
   padding: 0 8px 8px;
   font-size: 0.74rem;
-}
-
-.map-mission-attach-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   color: var(--map-muted);
-}
-
-.map-mission-admin-link {
-  color: var(--map-accent);
-  text-decoration: none;
 }
 
 .map-mission-tree {

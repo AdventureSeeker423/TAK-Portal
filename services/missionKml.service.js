@@ -6,7 +6,7 @@ const { kml } = require("@tmcw/togeojson");
 const { DOMParser } = require("@xmldom/xmldom");
 const dataSyncSvc = require("./dataSync.service");
 const {
-  missionContentsList,
+  listMissionAttachmentEntries,
   contentHash,
   contentName,
   contentMime,
@@ -96,7 +96,7 @@ function kmlToFeatures(xml, missionName, sourceMeta) {
 }
 
 async function loadKmlFeaturesFromMission(missionName, missionPayload) {
-  const list = missionContentsList(missionPayload);
+  const list = listMissionAttachmentEntries(missionPayload);
   const features = [];
 
   for (const entry of list) {
