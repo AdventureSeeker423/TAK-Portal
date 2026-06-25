@@ -10,7 +10,6 @@ const {
 const mapMeta = require("./mapMeta.service");
 const mapIcon = require("./mapIcon.service");
 const mapRender = require("./mapRender.service");
-const missionGeo = require("./missionGeo.service");
 const shapeDecor = require("../public/shapeDecorFilter.js");
 
 const STALE_SWEEP_MS = 5000;
@@ -84,6 +83,7 @@ function getMissionShapeDecorIndex() {
   if (missionDecorIndex && now - missionDecorIndexAt < MISSION_DECOR_INDEX_MS) {
     return missionDecorIndex;
   }
+  const missionGeo = require("./missionGeo.service");
   missionDecorIndex = shapeDecor.buildShapeDecorIndex(missionGeo.getCachedMissionShapeFeatures());
   missionDecorIndexAt = now;
   return missionDecorIndex;
