@@ -31,6 +31,13 @@ assert.strictEqual(bbox[1], 35.0);
 assert.strictEqual(bbox[2], -85.1);
 assert.strictEqual(bbox[3], 35.2);
 
+const bboxLatLon = parseMissionBbox({ bbox: "35.0,-85.3,35.2,-85.1" });
+assert.ok(bboxLatLon);
+assert.strictEqual(bboxLatLon[0], -85.3);
+assert.strictEqual(bboxLatLon[1], 35.0);
+assert.strictEqual(bboxLatLon[2], -85.1);
+assert.strictEqual(bboxLatLon[3], 35.2);
+
 const contents = missionContentsList({
   contents: [{ hash: "h1", name: "a.tif" }],
 });

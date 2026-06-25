@@ -174,6 +174,51 @@ function normalizeFeature(feature, missionName) {
   };
 }
 
+function coordKey(lon, lat) {
+  return `${Number(lon).toFixed(5)},${Number(lat).toFixed(5)}`;
+}
+
+function collectShapeVertexKeys(features) {
+  const keys = new Set();
+  for (const feature of features || []) {
+    const geom = feature?.geometry;
+    if (!geom) continue;
+    const type = String(geom.type || "");
+    if (type === "LineString") {
+      for (const coord of geom.coordinates || []) {
+        keys.add(coordKey(coord[0], coord[1]));
+      }
+    } else if (type === "Polygon") {
+      for (const ring of geom.coordinates || []) {
+        for (const coord of ring || []) {
+          keys.add(coordKey(coord[0], coord[1]));
+        }
+      }
+    }
+  }
+  return keys;
+}
+
+function isShapeVertexPoint(feature, vertexKeys) {
+  if (geometryType(feature?.geometry) !== "point") return false;
+  const coords = feature.geometry.coordinates;
+  if (!coords || coords.length < 2) return false;
+  if (!vertexKeys.has(coordKey(coords[0], coords[1]))) return false;
+  const props = feature.properties || {};
+  if (props.iconId || props.apiIconId) return false;
+  const type = String(props.type || props.cotType || "").toLowerCase();
+  if (type.startsWith("a-") || type.startsWith("b-i-")) return false;
+  const how = String(props.how || "").toLowerCase();
+  if (how.startsWith("h-")) return false;
+  return true;
+}
+
+function filterShapeVertexPoints(features) {
+  const vertexKeys = collectShapeVertexKeys(features);
+  if (!vertexKeys.size) return features;
+  return features.filter((feature) => !isShapeVertexPoint(feature, vertexKeys));
+}
+
 async function normalizeFeatureCollection(fc, missionName) {
   const out = [];
   for (const feature of fc.features || []) {
@@ -187,7 +232,7 @@ async function normalizeFeatureCollection(fc, missionName) {
   }
   return {
     type: "FeatureCollection",
-    features: out,
+    features: filterShapeVertexPoints(out),
   };
 }
 
@@ -269,7 +314,7 @@ async function fetchMissionCotGeoJson(missionName, queryParams = {}) {
 
 async function getMissionGeoJson(missionName, options = {}) {
   const name = String(missionName || "").trim();
-  const cacheKey = `${name}:att=${options.includeAttachments ? 1 : 0}:${JSON.stringify(options.queryParams || {})}`;
+  const cacheKey = `${name}:v2:att=${options.includeAttachments ? 1 : 0}:${JSON.stringify(options.queryParams || {})}`;
   if (!options.refresh) {
     const cached = cacheGet(geoCache, cacheKey);
     if (cached) return cached;

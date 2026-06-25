@@ -10,6 +10,7 @@ const {
   contentName,
   contentMime,
   parseMissionBbox,
+  looksLikeLatLonBbox,
 } = require("./missionContents.util");
 
 const RASTER_EXT = /\.(tif|tiff|geotiff|grg|png|jpg|jpeg)$/i;
@@ -88,8 +89,36 @@ async function readBoundsFromBuffer(buf) {
   }
 }
 
+function normalizeBounds(bounds) {
+  if (!bounds || bounds.length < 4) return null;
+  let a = Number(bounds[0]);
+  let b = Number(bounds[1]);
+  let c = Number(bounds[2]);
+  let d = Number(bounds[3]);
+  if (![a, b, c, d].every(Number.isFinite)) return null;
+  let west;
+  let south;
+  let east;
+  let north;
+  if (looksLikeLatLonBbox(a, b, c, d)) {
+    south = Math.min(a, c);
+    north = Math.max(a, c);
+    west = Math.min(b, d);
+    east = Math.max(b, d);
+  } else {
+    west = Math.min(a, c);
+    east = Math.max(a, c);
+    south = Math.min(b, d);
+    north = Math.max(b, d);
+  }
+  if (east <= west || north <= south) return null;
+  return [west, south, east, north];
+}
+
 function boundsToImageCoordinates(bounds) {
-  const [west, south, east, north] = bounds;
+  const normalized = normalizeBounds(bounds);
+  if (!normalized) return null;
+  const [west, south, east, north] = normalized;
   return [
     [west, north],
     [east, north],
@@ -219,11 +248,11 @@ async function buildRasterOverlays(missionName, missionPayload, options = {}) {
   for (const entry of await findRasterContents(mission)) {
     const hash = contentHash(entry);
     const name = contentName(entry) || hash;
-    let bounds = missionBbox || featureBounds;
+    let bounds = normalizeBounds(missionBbox) || normalizeBounds(featureBounds);
     if (!bounds) {
       try {
         const buf = await loadRasterBuffer(hash);
-        bounds = await readBoundsFromBuffer(buf);
+        bounds = normalizeBounds(await readBoundsFromBuffer(buf));
       } catch (err) {
         console.warn("[mission-raster] bounds read failed", hash, err?.message || err);
       }
@@ -255,6 +284,7 @@ module.exports = {
   renderRasterPng,
   readBoundsFromBuffer,
   parseMissionBbox,
+  normalizeBounds,
   boundsToImageCoordinates,
   boundsFromFeatures,
   bufferLooksLikeRaster,

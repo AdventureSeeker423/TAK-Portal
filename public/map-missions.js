@@ -96,9 +96,13 @@
 
   function hiddenUidFilter(hiddenUids) {
     if (!hiddenUids || !hiddenUids.size) {
-      return ["literal", true];
+      return true;
     }
     return ["!", ["in", ["get", "id"], ["literal", Array.from(hiddenUids)]]];
+  }
+
+  function missionVisibilityFilter() {
+    return ["==", ["get", "missionVisible"], 1];
   }
 
   function applyMissionLayerVisibility(name) {
@@ -108,9 +112,9 @@
     const ids = missionLayerIds(name);
     const vis = entry.visible ? "visible" : "none";
     const hiddenFilter = hiddenUidFilter(entry.hiddenUids);
-    const baseFilter = ["all", MISSION_FILTER, hiddenFilter];
+    const baseFilter = ["all", MISSION_FILTER, missionVisibilityFilter(), hiddenFilter];
 
-    const layerIds = [ids.fill, ids.line, ids.symbol, ids.dot, ids.label];
+    const layerIds = [ids.fill, ids.line, ids.symbol, ids.label];
     for (let i = 0; i < layerIds.length; i++) {
       const layerId = layerIds[i];
       if (!map.getLayer(layerId)) continue;
@@ -125,6 +129,27 @@
         map.setLayoutProperty(rasterIds.layer, "visibility", vis);
       }
     }
+    map.triggerRepaint();
+  }
+
+  function rasterAbsoluteUrl(url) {
+    const raw = String(url || "").trim();
+    if (!raw) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return window.location.origin + raw;
+  }
+
+  function getImageryBeforeLayerId() {
+    const style = map.getStyle();
+    if (style && Array.isArray(style.layers)) {
+      for (let i = 0; i < style.layers.length; i++) {
+        const id = style.layers[i].id;
+        if (id.indexOf("mission-") === 0 || id.indexOf("tak-markers") === 0) {
+          return id;
+        }
+      }
+    }
+    return bridge && bridge.getMissionBeforeLayerId ? bridge.getMissionBeforeLayerId() : undefined;
   }
 
   function missionLabelLayout() {
@@ -257,7 +282,11 @@
       return {
         type: feature.type,
         geometry: feature.geometry,
-        properties: Object.assign({}, props, { showLabel: showLabel, labelSort: labelSort }),
+        properties: Object.assign({}, props, {
+          showLabel: showLabel,
+          labelSort: labelSort,
+          missionVisible: entry.visible === false ? 0 : 1,
+        }),
       };
     });
 
@@ -290,7 +319,7 @@
   function ensureRasterOverlays(name, entry) {
     if (!map || !entry) return;
     const overlays = entry.rasterOverlays || [];
-    const beforeId = bridge.getMissionBeforeLayerId();
+    const beforeId = getImageryBeforeLayerId();
 
     for (let i = 0; i < overlays.length; i++) {
       const ov = overlays[i];
@@ -307,11 +336,25 @@
             [b[0], b[1]],
           ];
         })();
+      const url = rasterAbsoluteUrl(ov.url);
 
-      if (!map.getSource(ids.source)) {
+      const existing = map.getSource(ids.source);
+      if (existing && typeof existing.updateImage === "function") {
+        existing.updateImage({ url: url, coordinates: coords });
+      } else {
+        if (map.getLayer(ids.layer)) {
+          try {
+            map.removeLayer(ids.layer);
+          } catch (_) {}
+        }
+        if (existing) {
+          try {
+            map.removeSource(ids.source);
+          } catch (_) {}
+        }
         map.addSource(ids.source, {
           type: "image",
-          url: ov.url,
+          url: url,
           coordinates: coords,
         });
       }
@@ -323,11 +366,17 @@
             type: "raster",
             source: ids.source,
             paint: {
-              "raster-opacity": 0.9,
+              "raster-opacity": entry.visible === false ? 0 : 0.92,
               "raster-fade-duration": 0,
             },
           },
           beforeId
+        );
+      } else {
+        map.setPaintProperty(
+          ids.layer,
+          "raster-opacity",
+          entry.visible === false ? 0 : 0.92
         );
       }
     }
@@ -351,10 +400,32 @@
     }
   }
 
+  function stampMissionVisibility(geojson, visible) {
+    const show = visible !== false;
+    const features = (geojson.features || []).map(function (feature) {
+      return {
+        type: feature.type,
+        geometry: feature.geometry,
+        properties: Object.assign({}, feature.properties || {}, { missionVisible: show ? 1 : 0 }),
+      };
+    });
+    return Object.assign({}, geojson, { features: features });
+  }
+
   function ensureMissionLayers(name, geojson) {
+    const entry = openMissions.get(name);
     const srcId = missionSourceId(name);
     const ids = missionLayerIds(name);
-    const data = geojson || { type: "FeatureCollection", features: [] };
+    const data = stampMissionVisibility(
+      geojson || { type: "FeatureCollection", features: [] },
+      entry ? entry.visible : true
+    );
+
+    if (map.getLayer(ids.dot)) {
+      try {
+        map.removeLayer(ids.dot);
+      } catch (_) {}
+    }
 
     if (map.getSource(srcId)) {
       map.getSource(srcId).setData(data);
@@ -362,13 +433,21 @@
       map.addSource(srcId, { type: "geojson", data: data });
     }
 
+    const beforeId = bridge.getMissionBeforeLayerId();
+    const baseFilter = [
+      "all",
+      MISSION_FILTER,
+      missionVisibilityFilter(),
+      hiddenUidFilter(entry ? entry.hiddenUids : null),
+    ];
+
     if (!map.getLayer(ids.fill)) {
       map.addLayer(
         {
           id: ids.fill,
           type: "fill",
           source: srcId,
-          filter: ["all", MISSION_FILTER, ["==", ["get", "geometryType"], "polygon"]],
+          filter: ["all", baseFilter, ["==", ["get", "geometryType"], "polygon"]],
           paint: {
             "fill-color": ["coalesce", ["get", "fill"], "#22d3ee"],
             "fill-opacity": ["coalesce", ["get", "fill-opacity"], 0.35],
@@ -386,7 +465,7 @@
           source: srcId,
           filter: [
             "all",
-            MISSION_FILTER,
+            baseFilter,
             ["in", ["get", "geometryType"], ["literal", ["line", "polygon"]]],
           ],
           paint: {
@@ -407,7 +486,7 @@
           source: srcId,
           filter: [
             "all",
-            MISSION_FILTER,
+            baseFilter,
             ["==", ["get", "geometryType"], "point"],
             ["!=", ["get", "iconId"], ""],
           ],
@@ -422,30 +501,7 @@
             "icon-opacity": 1,
           },
         },
-        bridge.getMissionBeforeLayerId()
-      );
-    }
-
-    if (!map.getLayer(ids.dot)) {
-      map.addLayer(
-        {
-          id: ids.dot,
-          type: "circle",
-          source: srcId,
-          filter: [
-            "all",
-            MISSION_FILTER,
-            ["==", ["get", "geometryType"], "point"],
-            ["==", ["get", "showCircle"], 1],
-          ],
-          paint: {
-            "circle-radius": 6,
-            "circle-color": ["coalesce", ["get", "color"], "#22d3ee"],
-            "circle-stroke-width": 1.5,
-            "circle-stroke-color": "#ffffff",
-          },
-        },
-        bridge.getMissionBeforeLayerId()
+        beforeId
       );
     }
 
@@ -457,15 +513,23 @@
           source: srcId,
           filter: [
             "all",
-            MISSION_FILTER,
+            baseFilter,
             ["==", ["get", "showLabel"], 1],
             ["!=", ["coalesce", ["get", "callsign"], ["get", "name"], ""], ""],
           ],
           layout: missionLabelLayout(),
           paint: missionLabelPaint(),
         },
-        bridge.getMissionBeforeLayerId()
+        beforeId
       );
+    } else {
+      const layerIds = [ids.fill, ids.line, ids.symbol, ids.label];
+      for (let i = 0; i < layerIds.length; i++) {
+        const layerId = layerIds[i];
+        if (map.getLayer(layerId)) {
+          map.setFilter(layerId, baseFilter);
+        }
+      }
     }
 
     applyMissionLayerVisibility(name);
@@ -478,7 +542,7 @@
     missionLabelDeclutterKey.delete(name);
     const srcId = missionSourceId(name);
     const ids = missionLayerIds(name);
-    const allIds = [ids.fill, ids.line, ids.symbol, ids.dot, ids.label];
+    const allIds = [ids.fill, ids.line, ids.symbol, ids.label];
     for (let i = 0; i < allIds.length; i++) {
       const layerId = allIds[i];
       if (map.getLayer(layerId)) {
@@ -548,8 +612,9 @@
       entry.rasterOverlays = geojson.meta && geojson.meta.rasterOverlays ? geojson.meta.rasterOverlays : [];
       entry.attachmentSummary = geojson.meta && geojson.meta.attachmentSummary ? geojson.meta.attachmentSummary : null;
       entry.error = null;
-      ensureMissionLayers(name, geojson);
+      entry.geojson = stampMissionVisibility(geojson, entry.visible);
       ensureRasterOverlays(name, entry);
+      ensureMissionLayers(name, entry.geojson);
       applyMissionLayerVisibility(name);
       applyMissionLabelDeclutter(name, { forceRecompute: true });
       if (bridge && geojson.meta && geojson.meta.iconManifest) {
@@ -575,6 +640,13 @@
     const entry = openMissions.get(name);
     if (!entry) return;
     entry.visible = !entry.visible;
+    if (entry.geojson) {
+      entry.geojson = stampMissionVisibility(entry.geojson, entry.visible);
+      const srcId = missionSourceId(name);
+      const src = map.getSource(srcId);
+      if (src) src.setData(entry.geojson);
+    }
+    ensureRasterOverlays(name, entry);
     applyMissionLayerVisibility(name);
     writeState();
     renderMissionList();
@@ -654,7 +726,7 @@
     const layers = [];
     openMissions.forEach(function (_, name) {
       const ids = missionLayerIds(name);
-      layers.push(ids.fill, ids.line, ids.symbol, ids.dot, ids.label);
+      layers.push(ids.fill, ids.line, ids.symbol, ids.label);
     });
     const hits = map.queryRenderedFeatures(e.point, { layers: layers.filter((id) => map.getLayer(id)) });
     if (!hits.length) return;
@@ -861,8 +933,9 @@
         loadMission(name);
         return;
       }
-      ensureMissionLayers(name, entry.geojson);
+      entry.geojson = stampMissionVisibility(entry.geojson, entry.visible);
       ensureRasterOverlays(name, entry);
+      ensureMissionLayers(name, entry.geojson);
       applyMissionLayerVisibility(name);
       applyMissionLabelDeclutter(name, { forceRecompute: true });
       if (bridge && entry.geojson.meta && entry.geojson.meta.iconManifest) {
@@ -895,10 +968,18 @@
       if (tabMissions) {
         tabMissions.classList.toggle("active", missions);
       }
-      if (panelChannels) panelChannels.hidden = missions;
-      if (panelMissions) panelMissions.hidden = !missions;
+      if (panelChannels) {
+        panelChannels.classList.toggle("is-active", !missions);
+        panelChannels.hidden = missions;
+      }
+      if (panelMissions) {
+        panelMissions.classList.toggle("is-active", missions);
+        panelMissions.hidden = !missions;
+      }
       if (missions && !missionsCatalog.length) refreshMissionCatalog();
     }
+
+    setTab("channels");
 
     if (tabChannels) tabChannels.addEventListener("click", function () { setTab("channels"); });
     if (tabMissions) tabMissions.addEventListener("click", function () { setTab("missions"); });

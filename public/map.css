@@ -545,10 +545,19 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-panel-body {
-  display: flex;
+  display: none;
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
+}
+
+.map-panel-body.is-active {
+  display: flex;
+}
+
+.map-panel-body[hidden] {
+  display: none !important;
 }
 
 .map-panel-collapse {

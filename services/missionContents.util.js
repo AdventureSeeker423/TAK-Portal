@@ -110,6 +110,16 @@ function contentMime(entry) {
     .toLowerCase();
 }
 
+function looksLikeLatLonBbox(a, b, c, d) {
+  if (![a, b, c, d].every(Number.isFinite)) return false;
+  if (Math.abs(a) > 90 || Math.abs(c) > 90) return false;
+  if (Math.abs(b) > 180 || Math.abs(d) > 180) return false;
+  if (a > 0 && c > 0 && b < 0 && d < 0) return true;
+  const avgLat = (Math.abs(a) + Math.abs(c)) / 2;
+  const avgLon = (Math.abs(b) + Math.abs(d)) / 2;
+  return avgLat < avgLon;
+}
+
 function parseMissionBbox(mission) {
   const m = unwrapMissionPayload(mission) || mission || {};
   const bbox = m.bbox ?? m.Bbox ?? m.BBox;
@@ -119,6 +129,13 @@ function parseMissionBbox(mission) {
     const parts = bbox.split(/[,\s]+/).map(Number);
     if (parts.length >= 4 && parts.every(Number.isFinite)) {
       const [a, b, c, d] = parts;
+      if (looksLikeLatLonBbox(a, b, c, d)) {
+        const south = Math.min(a, c);
+        const north = Math.max(a, c);
+        const west = Math.min(b, d);
+        const east = Math.max(b, d);
+        return [west, south, east, north];
+      }
       const west = Math.min(a, c);
       const east = Math.max(a, c);
       const south = Math.min(b, d);
@@ -149,4 +166,5 @@ module.exports = {
   contentName,
   contentMime,
   parseMissionBbox,
+  looksLikeLatLonBbox,
 };

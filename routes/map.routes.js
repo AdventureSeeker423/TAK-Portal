@@ -544,7 +544,7 @@ router.get("/missions/:missionName/raster/:hash", async (req, res) => {
     if (boundsRaw) {
       const parts = String(boundsRaw).split(",").map(Number);
       if (parts.length === 4 && parts.every(Number.isFinite)) {
-        bounds = parts;
+        bounds = missionRaster.normalizeBounds(parts);
       }
     }
     const rendered = await missionRaster.renderRasterPng(hash, { bounds });
