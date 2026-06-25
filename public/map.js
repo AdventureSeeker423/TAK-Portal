@@ -274,6 +274,8 @@
   let layerListTimer = null;
   const labelVisibleByUid = new Map();
   let labelDeclutterKey = "";
+  let pendingStyleLabelDeclutter = false;
+  let labelDeclutterAfterStyleTimer = null;
   let lastMarkerRevision = 0;
   let lastLoadedMarkerRevision = 0;
   let appliedSnapshotRevision = null;
@@ -1344,8 +1346,10 @@
     const src = map.getSource(SOURCE_ID);
     if (!src || !Array.isArray(lastServerGeoJson.features)) return false;
 
+    const opts = options && typeof options === "object" ? options : {};
+    const forceRecompute = !!opts.forceRecompute || pendingStyleLabelDeclutter;
     const visible = getVisibleMarkers();
-    syncLabelVisibility(visible, options);
+    syncLabelVisibility(visible, { forceRecompute: forceRecompute });
 
     const updates = [];
     const patched = lastServerGeoJson.features.map(function (feature) {
@@ -1381,6 +1385,42 @@
     }
     src.setData({ type: "FeatureCollection", features: patched });
     return true;
+  }
+
+  function schedulePostStyleLabelDeclutter() {
+    pendingStyleLabelDeclutter = true;
+    labelDeclutterKey = "";
+
+    function runDeclutter(force) {
+      if (!map || !markerLayersReady) return;
+      applyClientLabelDeclutterToSource({ forceRecompute: !!force });
+      if (
+        window.TakMapMissions &&
+        typeof window.TakMapMissions.applyLabelDeclutter === "function"
+      ) {
+        window.TakMapMissions.applyLabelDeclutter({ forceRecompute: !!force });
+      }
+    }
+
+    runDeclutter(true);
+    if (labelDeclutterAfterStyleTimer) clearTimeout(labelDeclutterAfterStyleTimer);
+    labelDeclutterAfterStyleTimer = setTimeout(function () {
+      labelDeclutterAfterStyleTimer = null;
+      runDeclutter(true);
+      pendingStyleLabelDeclutter = false;
+    }, 120);
+
+    if (map) {
+      map.once("idle", function () {
+        runDeclutter(true);
+        pendingStyleLabelDeclutter = false;
+      });
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          runDeclutter(true);
+        });
+      });
+    }
   }
 
   function patchServerGeoJsonFromBatch(updates, removes) {
@@ -1496,7 +1536,10 @@
       .then(function (geojson) {
         if (!geojson) return false;
         if (geojson === lastServerGeoJsonFull) {
-          applyLocalChannelFilter({ layersOnly: true });
+          applyLocalChannelFilter({
+            layersOnly: true,
+            forceLabels: pendingStyleLabelDeclutter,
+          });
           lastGeoJsonFetchOk = true;
           mapRefreshPending = false;
           return true;
@@ -5040,11 +5083,13 @@
         markerLayersReady = true;
         mapRefreshPending = false;
         labelDeclutterKey = "";
+        pendingStyleLabelDeclutter = true;
         reinstallMapIconsFromCache();
         bindMarkerLayerHandlers();
 
         function afterMissionsRestore() {
           if (gen !== styleRestoreGen) return;
+          schedulePostStyleLabelDeclutter();
           triggerMarkerRepaint();
         }
 
@@ -5196,7 +5241,9 @@
   map.on("moveend", () => {
     lockMoveFromCode = false;
     resortGoToAddressesByViewport();
-    applyClientLabelDeclutterToSource();
+    applyClientLabelDeclutterToSource(
+      pendingStyleLabelDeclutter ? { forceRecompute: true } : undefined
+    );
     scheduleMissingIconSweep();
   });
 

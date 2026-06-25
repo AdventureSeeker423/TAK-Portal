@@ -332,6 +332,10 @@
     });
   }
 
+  function applyLabelDeclutter(options) {
+    applyAllMissionLabelDeclutter(options);
+  }
+
   function scheduleMissionLabelDeclutter() {
     if (labelDeclutterTimer) clearTimeout(labelDeclutterTimer);
     labelDeclutterTimer = setTimeout(function () {
@@ -1596,6 +1600,7 @@
   window.TakMapMissions = {
     init: init,
     restoreAfterStyleChange: restoreAfterStyleChange,
+    applyLabelDeclutter: applyLabelDeclutter,
     queryMarkersAtPoint: queryMissionMarkersAtPoint,
     getHitLayers: getMissionHitLayers,
     isMarkerSearchable: isMarkerSearchable,
