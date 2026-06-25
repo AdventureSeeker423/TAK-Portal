@@ -810,10 +810,10 @@ function compareAgencyResolutionToUsernameInference(user) {
 function buildGroupLookupMaps(allGroups) {
   const list = Array.isArray(allGroups) ? allGroups : [];
   const groupNameById = new Map(
-    list.map((g) => [String(g?.pk || ""), String(g?.name || "")])
+    list.map((g) => [String(g?.pk ?? g?.id ?? ""), String(g?.name || "")])
   );
   const groupsByNameLower = new Map(
-    list.map((g) => [String(g?.name || "").trim().toLowerCase(), String(g?.pk || "")])
+    list.map((g) => [String(g?.name || "").trim().toLowerCase(), String(g?.pk ?? g?.id ?? "")])
   );
   return { groupNameById, groupsByNameLower };
 }
@@ -1066,7 +1066,7 @@ function getManagedAgencySuffixesFromGroupNames(groupNames) {
  * Refresh agency-admin scope from live Authentik group membership.
  * Forward-auth headers can lag after managed-agency changes; the API is authoritative.
  */
-async function enrichAuthUserFromAuthentik(authUser) {
+async function enrichAuthUserFromAuthentik(authUser, options = {}) {
   if (!authUser || authUser.isGlobalAdmin) return authUser;
 
   const uid = String(authUser.uid || "").trim();
@@ -1078,12 +1078,21 @@ async function enrichAuthUserFromAuthentik(authUser) {
   const liveUser = await usersSvc.getUserById(uid).catch(() => null);
   if (!liveUser) return authUser;
 
-  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  const allGroups = await groupsSvc.getAllGroups({
+    includeHidden: true,
+    forceRefresh: !!options.forceRefreshGroups,
+  });
   const { groupNameById } = buildGroupLookupMaps(allGroups);
 
-  const groupIds = Array.isArray(liveUser.groups) ? liveUser.groups.map(String) : [];
+  const groupIds = Array.isArray(liveUser.groups) ? liveUser.groups : [];
   const namesFromIds = groupIds
-    .map((id) => groupNameById.get(id))
+    .map((raw) => {
+      const id =
+        raw && typeof raw === "object"
+          ? String(raw.pk ?? raw.id ?? "").trim()
+          : String(raw ?? "").trim();
+      return id ? groupNameById.get(id) : "";
+    })
     .filter(Boolean);
 
   const headerNames = Array.isArray(authUser.groups) ? authUser.groups : [];

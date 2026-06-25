@@ -1099,7 +1099,8 @@ async function refreshSubscriptionIndex() {
   return subscriptionIndex;
 }
 
-async function refreshGroupCatalog() {
+async function refreshGroupCatalog(options = {}) {
+  const forceRefresh = !!options.forceRefresh;
   if (isTakBypassed() || !isTakConfigured()) {
     catalogCache = {
       names: [],
@@ -1110,7 +1111,7 @@ async function refreshGroupCatalog() {
   }
 
   try {
-    const all = await groupsSvc.getAllGroups({ forceRefresh: false });
+    const all = await groupsSvc.getAllGroups({ forceRefresh });
     const ldapNames = (Array.isArray(all) ? all : [])
       .map((g) => normalizeGroupName(g?.name))
       .filter(isMapChannelGroupName);
@@ -1397,7 +1398,7 @@ function filterMapGroupsForUserMembership(groups, userGroupNames) {
 }
 
 async function getTakGroupCatalog(markers, options = {}) {
-  await refreshGroupCatalog();
+  await refreshGroupCatalog({ forceRefresh: !!options.forceCatalogRefresh });
   let groups = buildGroupsCatalogWithCounts(markers);
   if (options.scopeMemberGroups) {
     groups = filterMapGroupsForUserMembership(groups, options.userGroupNames || []);

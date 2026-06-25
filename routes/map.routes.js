@@ -10,6 +10,7 @@ const dataSyncSvc = require("../services/dataSync.service");
 const dataSyncAccess = require("../services/dataSyncAccess.service");
 const missionGeo = require("../services/missionGeo.service");
 const missionRaster = require("../services/missionRaster.service");
+const accessSvc = require("../services/access.service");
 
 mapIcon.ensureIconsets().then(() => {
   cotStream.refreshAllMarkerIcons();
@@ -30,15 +31,38 @@ geocode
     console.warn("[map] geocode self-test error:", err?.message || err);
   });
 
-function getMapAccessContext(req) {
+function isLiveMembershipQuery(req) {
+  return String(req?.query?.membership || "") === "live";
+}
+
+async function getMapAccessContext(req) {
   const user = req.authentikUser || {};
   const isGlobalAdmin = !!user.isGlobalAdmin;
   const isAgencyAdmin = !!user.isAgencyAdmin && !isGlobalAdmin;
+  let userGroups = Array.isArray(user.groups) ? user.groups : [];
+  const liveMembership = isLiveMembershipQuery(req);
+
+  if (liveMembership && user.uid && !isGlobalAdmin) {
+    const beforeGroups = userGroups.slice();
+    const beforeChannelKeys = mapMeta.getUserMemberChannelBaseKeys(beforeGroups);
+    try {
+      await accessSvc.enrichAuthUserFromAuthentik(user, { forceRefreshGroups: true });
+      userGroups = Array.isArray(user.groups) ? user.groups : beforeGroups;
+      const afterChannelKeys = mapMeta.getUserMemberChannelBaseKeys(userGroups);
+      if (isAgencyAdmin && beforeChannelKeys.size && !afterChannelKeys.size) {
+        userGroups = beforeGroups;
+      }
+    } catch (_) {
+      userGroups = beforeGroups;
+    }
+  }
+
   return {
     isGlobalAdmin,
     isAgencyAdmin,
     scopeMemberGroups: isAgencyAdmin,
-    userGroups: Array.isArray(user.groups) ? user.groups : [],
+    userGroups,
+    liveMembership,
   };
 }
 
@@ -46,6 +70,7 @@ async function attachScopedGroupCatalog(snapshot, ctx) {
   const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
     scopeMemberGroups: ctx.scopeMemberGroups,
     userGroupNames: ctx.userGroups,
+    forceCatalogRefresh: !!ctx.liveMembership,
   });
   snapshot.groupsCatalog = catalog.groups;
   snapshot.channelScope = catalog.channelScope;
@@ -55,7 +80,7 @@ async function attachScopedGroupCatalog(snapshot, ctx) {
 
 router.get("/state", async (req, res) => {
   cotStream.ensureBridgeStarted();
-  const ctx = getMapAccessContext(req);
+  const ctx = await getMapAccessContext(req);
   const snapshot = cotStream.getStateSnapshot();
   snapshot.icons = mapIcon.getStatus();
   try {
@@ -199,11 +224,12 @@ router.get("/icons", (req, res) => {
 
 router.get("/groups", async (req, res) => {
   cotStream.ensureBridgeStarted();
-  const ctx = getMapAccessContext(req);
+  const ctx = await getMapAccessContext(req);
   try {
     const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
       scopeMemberGroups: ctx.scopeMemberGroups,
       userGroupNames: ctx.userGroups,
+      forceCatalogRefresh: !!ctx.liveMembership,
     });
     return res.json(catalog);
   } catch (err) {
