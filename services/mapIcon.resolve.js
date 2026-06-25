@@ -334,6 +334,13 @@ function parseIconsetPath(iconsetpath) {
     return { mode: "type", cotType };
   }
 
+  if (/^COT_MAPPING_2525C\//i.test(raw)) {
+    const parts = raw.split("/").filter(Boolean);
+    const iconName = parts.length > 1 ? parts[parts.length - 1] : "";
+    const group = parts.length > 2 ? parts.slice(1, -1).join("/") : "";
+    return { mode: "usericon", iconName, group };
+  }
+
   if (/^COT_MAPPING_SPOTMAP\//i.test(raw)) {
     const parts = raw.split("/").filter(Boolean);
     const cotType = parts.length > 1 ? parts.slice(1).join("-") : "";
@@ -348,19 +355,31 @@ function parseIconsetPath(iconsetpath) {
   return { mode: "path", iconsetUid: uid, relPath: rel };
 }
 
+function prefersMilSym2525C(iconsetpath) {
+  return /^COT_MAPPING_2525C\//i.test(String(iconsetpath || "").trim());
+}
+
 function parseUserIcon(detail) {
   const attrs = detail?.usericon?._attributes || detail?.usericon || {};
   const iconsetpath = attrs.iconsetpath || attrs.iconsetPath || "";
   let name = attrs.name || "";
-  if (!name && iconsetpath) {
+  let group = attrs.group || attrs.groupName || "";
+  if (iconsetpath) {
     const parsed = parseIconsetPath(iconsetpath);
-    if (parsed?.mode === "path") {
-      name = path.basename(parsed.relPath);
+    if (!name) {
+      if (parsed?.mode === "path") {
+        name = path.basename(parsed.relPath);
+      } else if (parsed?.mode === "usericon" && parsed.iconName) {
+        name = parsed.iconName;
+      }
+    }
+    if (!group && parsed?.mode === "usericon" && parsed.group) {
+      group = parsed.group;
     }
   }
   return {
     iconsetpath,
-    group: attrs.group || attrs.groupName || "",
+    group,
     name,
   };
 }
@@ -372,7 +391,7 @@ function resolvePngIcon(
   { type, affiliation, detail, usericon },
   { iconsetsByUid, typesByPrefix }
 ) {
-  const ui = usericon || parseUserIcon(detail);
+  let ui = usericon || parseUserIcon(detail);
   let cotType = String(type || "").trim();
   let directPath = null;
 
@@ -381,6 +400,12 @@ function resolvePngIcon(
     cotType = parsedPath.cotType || cotType;
   } else if (parsedPath?.mode === "path") {
     directPath = parsedPath;
+  } else if (parsedPath?.mode === "usericon") {
+    ui = {
+      ...ui,
+      name: parsedPath.iconName || ui.name,
+      group: parsedPath.group || ui.group,
+    };
   }
 
   if (directPath) {
@@ -407,6 +432,27 @@ function resolvePngIcon(
       );
       if (aliasHit) return aliasHit;
     }
+  }
+
+  if (parsedPath?.mode === "usericon" && (ui.name || ui.group)) {
+    for (const iconset of iconsetsByUid.values()) {
+      const hit = resolveFromIconset(
+        iconset,
+        {
+          cotType,
+          iconName: ui.name,
+          groupHint: ui.group,
+          affiliation,
+        },
+        typesByPrefix,
+        iconsetsByUid
+      );
+      if (hit && String(hit.source || "").toLowerCase() === "usericon") return hit;
+    }
+  }
+
+  if (prefersMilSym2525C(ui.iconsetpath)) {
+    return null;
   }
 
   const globalTypeHit = findBestTypeMatch(cotType, typesByPrefix, iconsetsByUid);
@@ -466,6 +512,7 @@ module.exports = {
   pickBestWithinIconset,
   parseUserIcon,
   parseIconsetPath,
+  prefersMilSym2525C,
   resolvePngIcon,
   resolveRelativePath,
   defaultIconNameForAffiliation,

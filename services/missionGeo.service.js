@@ -4,6 +4,7 @@
 const { getInt } = require("./env");
 const dataSyncSvc = require("./dataSync.service");
 const mapIcon = require("./mapIcon.service");
+const mapMeta = require("./mapMeta.service");
 const mapRender = require("./mapRender.service");
 const mapIconRender = require("./mapIconRender.service");
 const missionKml = require("./missionKml.service");
@@ -55,23 +56,36 @@ function colorFromProps(props) {
 }
 
 function affiliationFromType(cotType) {
-  const parts = String(cotType || "").trim().split("-");
-  if (parts.length < 2) return "other";
-  const aff = parts[1].toLowerCase();
-  if (aff === "f") return "friend";
-  if (aff === "h") return "hostile";
-  if (aff === "n") return "neutral";
-  if (aff === "u") return "unknown";
-  return "other";
+  return mapMeta.parseAffiliationFromType(cotType);
 }
 
 function parseUserIconFromFeature(props) {
-  const iconPath = props?.icon;
+  if (!props || typeof props !== "object") return null;
+  const iconPath = props.icon || props.iconsetpath || "";
   if (!iconPath) return null;
-  return {
-    iconsetpath: String(iconPath),
-    name: String(iconPath).split("/").pop() || "",
-  };
+  return mapIcon.parseUserIcon({
+    usericon: {
+      iconsetpath: String(iconPath),
+      name: props.iconName || String(iconPath).split("/").pop() || "",
+      group: props.iconGroup || "",
+    },
+  });
+}
+
+function markerColorFromFeatureProps(props, affiliation) {
+  const fromMarkerColor = mapMeta.normalizeTakColor(props?.["marker-color"]);
+  if (fromMarkerColor && fromMarkerColor.toLowerCase() !== "#ffffff") {
+    return fromMarkerColor;
+  }
+  const fromColor = mapMeta.normalizeTakColor(props?.color);
+  if (fromColor && fromColor.toLowerCase() !== "#ffffff") {
+    return fromColor;
+  }
+  return mapMeta.resolveMarkerDisplayColor({
+    teamColor: null,
+    affiliation,
+    type: props?.type || props?.cotType || "",
+  });
 }
 
 async function augmentPointFeature(feature, missionName) {
@@ -80,6 +94,7 @@ async function augmentPointFeature(feature, missionName) {
   const uid = String(feature.id || props.uid || "");
   const usericon = parseUserIconFromFeature(props);
   const affiliation = affiliationFromType(cotType);
+  const teamColor = markerColorFromFeatureProps(props, affiliation);
 
   await mapIcon.ensureIconsets();
   let resolved = mapIcon.resolveIcon({
@@ -102,7 +117,7 @@ async function augmentPointFeature(feature, missionName) {
     origin: "mission",
     iconId: resolved?.iconId || null,
     iconSource: resolved?.source || null,
-    teamColor: colorFromProps(props),
+    teamColor,
     callsign: props.callsign || uid.slice(0, 16),
   };
 
@@ -136,6 +151,7 @@ async function augmentPointFeature(feature, missionName) {
       iconSource: marker.iconSource || "",
       origin: "mission",
       color,
+      teamColor,
       showCircle: mapImageId ? 0 : 1,
       how: props.how || "",
       contentSource: "cot",
@@ -353,14 +369,22 @@ async function getMissionGeoJson(missionName, options = {}) {
     if (p.geometryType === "point" && p.iconId && p.apiIconId) {
       if (!manifestKeys.has(p.iconId)) {
         manifestKeys.add(p.iconId);
+        const marker = {
+          type: p.cotType || "",
+          affiliation: affiliationFromType(p.cotType || ""),
+          origin: "mission",
+          iconId: p.apiIconId,
+          iconSource: p.iconSource || "",
+          teamColor: p.teamColor || null,
+        };
         iconManifest.push({
           mapImageId: p.iconId,
           apiIconId: p.apiIconId,
-          color: p.color,
+          color: mapRender.markerDisplayColor(marker),
           iconSource: p.iconSource,
           origin: "mission",
           type: p.cotType,
-          affiliation: affiliationFromType(p.cotType),
+          affiliation: marker.affiliation,
         });
       }
     }

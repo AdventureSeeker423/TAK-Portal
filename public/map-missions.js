@@ -652,6 +652,17 @@
     if (map) map.triggerRepaint();
   }
 
+  function affiliationFromCotType(cotType) {
+    const parts = String(cotType || "").trim().split("-");
+    if (parts.length < 2) return "other";
+    const aff = parts[1].toLowerCase();
+    if (aff === "f") return "friend";
+    if (aff === "h") return "hostile";
+    if (aff === "n") return "neutral";
+    if (aff === "u") return "unknown";
+    return "other";
+  }
+
   function featureToMarkerRecord(feature) {
     const props = feature && feature.properties ? feature.properties : {};
     const uid = String(props.uid || props.id || feature.id || "");
@@ -659,10 +670,14 @@
     const anchor = featureLabelAnchor(feature);
     if (!anchor) return null;
     const missionName = String(props.missionName || "");
+    const cotType = String(props.cotType || props.type || "");
+    const usesMapIcon = props.usesMapIcon === 1 || props.usesMapIcon === true;
+    const mapImageId = String(props.iconId || "");
+    const apiIconId = String(props.apiIconId || "");
     return {
       uid: uid,
       callsign: props.callsign || props.name || uid.slice(0, 16),
-      type: props.cotType || props.type || "",
+      type: cotType,
       lon: anchor[0],
       lat: anchor[1],
       remarks: props.remarks || props.description || "",
@@ -673,9 +688,32 @@
       origin: "mission",
       missionName: missionName,
       groups: missionName ? [missionName] : [],
+      affiliation: affiliationFromCotType(cotType),
+      iconId: apiIconId,
+      mapImageId: mapImageId,
+      iconSource: String(props.iconSource || ""),
+      usesMapIcon: usesMapIcon,
+      teamColor: props.teamColor || props.color || "",
+      color: props.color || props.teamColor || "",
+      showCircle:
+        props.showCircle === 1
+          ? true
+          : props.showCircle === 0
+            ? false
+            : !mapImageId,
       stale: props.stale || props.time || null,
       start: props.start || null,
     };
+  }
+
+  function isMarkerSearchable(uid, missionName) {
+    const name = String(missionName || "").trim();
+    const entry = openMissions.get(name);
+    if (!entry || !entry.visible) return false;
+    const id = String(uid || "");
+    if (!id) return false;
+    if (entry.hiddenUids && entry.hiddenUids.has(id)) return false;
+    return true;
   }
 
   function syncMissionMarkers(name, entry) {
@@ -692,6 +730,9 @@
       if (marker) markers.push(marker);
     }
     bridge.registerMissionMarkers(name, markers);
+    if (bridge && typeof bridge.refreshGoToIfOpen === "function") {
+      bridge.refreshGoToIfOpen();
+    }
   }
 
   function getMissionHitLayers() {
@@ -710,6 +751,9 @@
   }
 
   function queryMissionMarkersAtPoint(point, radiusPx) {
+    if (bridge && typeof bridge.queryMarkersAtPoint === "function") {
+      return bridge.queryMarkersAtPoint(point, radiusPx);
+    }
     const r = radiusPx == null ? 18 : radiusPx;
     const layers = getMissionHitLayers();
     if (!map || !layers.length) return [];
@@ -722,12 +766,22 @@
     const seen = new Set();
     const markers = [];
     for (let i = 0; i < features.length; i++) {
-      const marker = featureToMarkerRecord(features[i]);
-      if (!marker || seen.has(marker.uid)) continue;
-      seen.add(marker.uid);
-      markers.push(marker);
+      const props = features[i].properties || {};
+      const uid = String(props.uid || props.id || features[i].id || "");
+      if (!uid || seen.has(uid)) continue;
+      seen.add(uid);
+      const marker =
+        bridge && typeof bridge.getMarkerRecord === "function"
+          ? bridge.getMarkerRecord(uid)
+          : featureToMarkerRecord(features[i]);
+      if (marker) markers.push(marker);
     }
     markers.sort(function (a, b) {
+      const rankDiff =
+        (bridge && typeof bridge.markerOriginRank === "function"
+          ? bridge.markerOriginRank(b) - bridge.markerOriginRank(a)
+          : 0);
+      if (rankDiff !== 0) return rankDiff;
       return String(a.callsign || a.uid).localeCompare(String(b.callsign || b.uid));
     });
     return markers;
@@ -859,6 +913,9 @@
     applyMissionLayerVisibility(name);
     writeState();
     renderMissionList();
+    if (bridge && typeof bridge.refreshGoToIfOpen === "function") {
+      bridge.refreshGoToIfOpen();
+    }
   }
 
   function toggleFolderVisible(name, folder) {
@@ -875,6 +932,9 @@
     applyMissionLayerVisibility(name);
     writeState();
     renderMissionList();
+    if (bridge && typeof bridge.refreshGoToIfOpen === "function") {
+      bridge.refreshGoToIfOpen();
+    }
   }
 
   function renderMissionList() {
@@ -1189,5 +1249,6 @@
     restoreAfterStyleChange: restoreAfterStyleChange,
     queryMarkersAtPoint: queryMissionMarkersAtPoint,
     getHitLayers: getMissionHitLayers,
+    isMarkerSearchable: isMarkerSearchable,
   };
 })();

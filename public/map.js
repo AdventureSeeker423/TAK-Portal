@@ -766,6 +766,10 @@
     for (let i = 0; i < list.length; i++) {
       const normalized = normalizeMarkerRecord(list[i]);
       if (!normalized) continue;
+      const mapImageId = normalizeMapImageId(normalized.mapImageId || "");
+      if (mapImageId) {
+        registerServerMapImageMeta(mapImageId, String(normalized.iconId || ""), normalized);
+      }
       missionMarkersByUid.set(normalized.uid, normalized);
     }
   }
@@ -778,13 +782,23 @@
   }
 
   function queryMissionMarkersAtPoint(point, radiusPx) {
-    if (
+    return queryMarkersAtPoint(point, radiusPx);
+  }
+
+  function getVisibleMissionMarkers() {
+    const out = [];
+    const isSearchable =
       window.TakMapMissions &&
-      typeof window.TakMapMissions.queryMarkersAtPoint === "function"
-    ) {
-      return window.TakMapMissions.queryMarkersAtPoint(point, radiusPx);
+      typeof window.TakMapMissions.isMarkerSearchable === "function"
+        ? window.TakMapMissions.isMarkerSearchable.bind(window.TakMapMissions)
+        : null;
+    if (!isSearchable) return out;
+    for (const m of missionMarkersByUid.values()) {
+      if (!m || !m.uid) continue;
+      if (!isSearchable(m.uid, m.missionName)) continue;
+      out.push(m);
     }
-    return [];
+    return out;
   }
 
   function markerCoords(m) {
@@ -3408,7 +3422,16 @@
   }
 
   function getVisibleMarkers() {
-    return Array.from(markersByUid.values()).filter(markerVisible);
+    const merged = new Map();
+    const mission = getVisibleMissionMarkers();
+    for (let i = 0; i < mission.length; i++) {
+      merged.set(String(mission[i].uid), mission[i]);
+    }
+    const live = Array.from(markersByUid.values()).filter(markerVisible);
+    for (let i = 0; i < live.length; i++) {
+      merged.set(String(live[i].uid), live[i]);
+    }
+    return Array.from(merged.values());
   }
 
   function labelDeclutterSignature(visible) {
@@ -3890,6 +3913,15 @@
   function queryMarkersAtPoint(point, radiusPx) {
     const r = radiusPx == null ? 18 : radiusPx;
     const layers = markerHitLayers();
+    if (
+      window.TakMapMissions &&
+      typeof window.TakMapMissions.getHitLayers === "function"
+    ) {
+      const missionLayers = window.TakMapMissions.getHitLayers();
+      for (let i = 0; i < missionLayers.length; i++) {
+        layers.push(missionLayers[i]);
+      }
+    }
     if (!layers.length) return [];
 
     const bbox = [
@@ -3901,17 +3933,19 @@
     const markers = [];
     for (let i = 0; i < features.length; i++) {
       const f = features[i];
-      if (!f.properties || f.properties.kind !== "marker") continue;
-      const uid = String(f.properties.uid || "");
+      const props = f.properties || {};
+      const kind = props.kind;
+      if (kind !== "marker" && kind !== "mission-feature") continue;
+      const uid = String(props.uid || "");
       if (!uid || seen.has(uid)) continue;
       seen.add(uid);
-      const m = markersByUid.get(uid);
+      const m = getMarkerRecord(uid);
       if (m) markers.push(m);
     }
     markers.sort(function (a, b) {
       const rankDiff = markerOriginRank(b) - markerOriginRank(a);
       if (rankDiff !== 0) return rankDiff;
-      return String(a.callsign).localeCompare(String(b.callsign));
+      return String(a.callsign || a.uid).localeCompare(String(b.callsign || b.uid));
     });
     return markers;
   }
@@ -3960,34 +3994,10 @@
     armStackPickerOutsideClose();
   }
 
-  function mergeMarkersAtPoint(liveMarkers, missionMarkers) {
-    const byUid = new Map();
-    const mission = Array.isArray(missionMarkers) ? missionMarkers : [];
-    const live = Array.isArray(liveMarkers) ? liveMarkers : [];
-    for (let i = 0; i < mission.length; i++) {
-      const m = mission[i];
-      if (m && m.uid) byUid.set(String(m.uid), m);
-    }
-    for (let i = 0; i < live.length; i++) {
-      const m = live[i];
-      if (m && m.uid) byUid.set(String(m.uid), m);
-    }
-    const merged = Array.from(byUid.values());
-    merged.sort(function (a, b) {
-      const rankDiff = markerOriginRank(b) - markerOriginRank(a);
-      if (rankDiff !== 0) return rankDiff;
-      return String(a.callsign || a.uid).localeCompare(String(b.callsign || b.uid));
-    });
-    return merged;
-  }
-
   function handleMapFeatureClick(e) {
     if (e.originalEvent) e.originalEvent.stopPropagation();
     suppressMapBackgroundClickUntil = Date.now() + 150;
-    const markers = mergeMarkersAtPoint(
-      queryMarkersAtPoint(e.point),
-      queryMissionMarkersAtPoint(e.point)
-    );
+    const markers = queryMarkersAtPoint(e.point);
     if (!markers.length) return;
     if (markers.length === 1) {
       closeStackPicker();
@@ -5396,6 +5406,10 @@
     registerMissionMarkers: registerMissionMarkers,
     clearMissionMarkers: clearMissionMarkers,
     handleMapFeatureClick: handleMapFeatureClick,
+    getMarkerRecord: getMarkerRecord,
+    refreshGoToIfOpen: refreshGoToIfOpen,
+    queryMarkersAtPoint: queryMarkersAtPoint,
+    markerOriginRank: markerOriginRank,
     whenReady: function (cb) {
       if (markerLayersReady && map) {
         cb();
