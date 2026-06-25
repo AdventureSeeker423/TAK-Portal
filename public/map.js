@@ -87,21 +87,42 @@
     return { ...style, glyphs: MAP_GLYPHS };
   }
 
+  function isMissionMapSourceId(id) {
+    const s = String(id || "");
+    return s.indexOf("mission-src-") === 0 || s.indexOf("mission-raster-") === 0;
+  }
+
+  function isMissionMapLayerId(id) {
+    return String(id || "").indexOf("mission-") === 0;
+  }
+
   function preserveMarkerLayersInStyle(prev, next) {
     if (!next || typeof next !== "object") return next;
     const out = { ...next, glyphs: next.glyphs || MAP_GLYPHS };
     if (!prev || typeof prev !== "object") return out;
-    if (prev.sources && prev.sources[SOURCE_ID]) {
-      out.sources = { ...(out.sources || {}), [SOURCE_ID]: prev.sources[SOURCE_ID] };
+    if (prev.sources) {
+      const mergedSources = { ...(out.sources || {}) };
+      let changed = false;
+      if (prev.sources[SOURCE_ID]) {
+        mergedSources[SOURCE_ID] = prev.sources[SOURCE_ID];
+        changed = true;
+      }
+      for (const [id, source] of Object.entries(prev.sources)) {
+        if (isMissionMapSourceId(id)) {
+          mergedSources[id] = source;
+          changed = true;
+        }
+      }
+      if (changed) out.sources = mergedSources;
     }
-    const markerLayers = (prev.layers || []).filter(function (layer) {
-      return MARKER_LAYER_IDS.includes(layer.id);
+    const preservedLayers = (prev.layers || []).filter(function (layer) {
+      return MARKER_LAYER_IDS.includes(layer.id) || isMissionMapLayerId(layer.id);
     });
-    if (markerLayers.length) {
+    if (preservedLayers.length) {
       const baseIds = new Set((out.layers || []).map(function (layer) {
         return layer.id;
       }));
-      const extra = markerLayers.filter(function (layer) {
+      const extra = preservedLayers.filter(function (layer) {
         return !baseIds.has(layer.id);
       });
       if (extra.length) {
