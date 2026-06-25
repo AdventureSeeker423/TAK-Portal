@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.40 - 6/24/26
+✨ `Enhancement` - Agencies / System Wide - Agencies can now be configured to use a prefix rather than a forced suffix to identify their users.  This feature is still in testing.  Please notify me if you discover any bugs.
+
 ### v1.3.39 - 6/23/26
 ✨ `Enhancement` - Setup My Device - QR Code onboarding added to iTAK<br>
 ✨ `Enhancement` - Backend - Add backend code to support a future new feature coming soon<br>
