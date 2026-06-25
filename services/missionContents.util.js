@@ -157,6 +157,78 @@ function parseMissionBbox(mission) {
   return null;
 }
 
+function parseGeoPoint(point) {
+  if (point == null) return null;
+  if (Array.isArray(point) && point.length >= 2) {
+    const a = Number(point[0]);
+    const b = Number(point[1]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    if (looksLikeLatLonBbox(a, b, a, b)) return [b, a];
+    return [a, b];
+  }
+  if (typeof point === "object") {
+    const lat = Number(
+      point.lat ?? point.latitude ?? point.Lat ?? point.Latitude ?? point.y ?? point.Y
+    );
+    const lon = Number(
+      point.lon ?? point.lng ?? point.longitude ?? point.Lon ?? point.Longitude ?? point.x ?? point.X
+    );
+    if (Number.isFinite(lat) && Number.isFinite(lon)) return [lon, lat];
+  }
+  return null;
+}
+
+/** Bounds from a single mission content / mapLayer entry (WGS84 lon/lat). */
+function parseContentEntryBounds(entry) {
+  const data = normalizeContentEntry(entry) || entry || {};
+
+  const bbox = data.bbox ?? data.Bbox ?? data.BBox;
+  if (bbox != null) {
+    const parsed = parseMissionBbox({ bbox });
+    if (parsed) return parsed;
+  }
+
+  const north = Number(data.north ?? data.North ?? data.maxLat ?? data.top);
+  const south = Number(data.south ?? data.South ?? data.minLat ?? data.bottom);
+  const east = Number(data.east ?? data.East ?? data.maxLon ?? data.right);
+  const west = Number(data.west ?? data.West ?? data.minLon ?? data.left);
+  if ([north, south, east, west].every(Number.isFinite)) {
+    return [west, south, east, north];
+  }
+
+  const extent = data.extent ?? data.Extent;
+  if (Array.isArray(extent) && extent.length >= 4) {
+    const parts = extent.map(Number);
+    if (parts.every(Number.isFinite)) {
+      const parsed = parseMissionBbox({ bbox: parts.join(",") });
+      if (parsed) return parsed;
+    }
+  }
+
+  const ul = parseGeoPoint(data.upperLeft ?? data.UpperLeft ?? data.topLeft ?? data.TopLeft);
+  const ur = parseGeoPoint(data.upperRight ?? data.UpperRight ?? data.topRight ?? data.TopRight);
+  const lr = parseGeoPoint(data.lowerRight ?? data.LowerRight ?? data.bottomRight ?? data.BottomRight);
+  const ll = parseGeoPoint(data.lowerLeft ?? data.LowerLeft ?? data.bottomLeft ?? data.BottomLeft);
+  if (ul && ur && lr && ll) {
+    const lons = [ul[0], ur[0], lr[0], ll[0]];
+    const lats = [ul[1], ur[1], lr[1], ll[1]];
+    return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+  }
+
+  return null;
+}
+
+/** MapLibre image-source corners from entry metadata: TL, TR, BR, BL. */
+function parseContentEntryCoordinates(entry) {
+  const data = normalizeContentEntry(entry) || entry || {};
+  const ul = parseGeoPoint(data.upperLeft ?? data.UpperLeft ?? data.topLeft ?? data.TopLeft);
+  const ur = parseGeoPoint(data.upperRight ?? data.UpperRight ?? data.topRight ?? data.TopRight);
+  const lr = parseGeoPoint(data.lowerRight ?? data.LowerRight ?? data.bottomRight ?? data.BottomRight);
+  const ll = parseGeoPoint(data.lowerLeft ?? data.LowerLeft ?? data.bottomLeft ?? data.BottomLeft);
+  if (!ul || !ur || !lr || !ll) return null;
+  return [ul, ur, lr, ll];
+}
+
 module.exports = {
   unwrapMissionPayload,
   normalizeContentEntry,
@@ -167,4 +239,7 @@ module.exports = {
   contentMime,
   parseMissionBbox,
   looksLikeLatLonBbox,
+  parseGeoPoint,
+  parseContentEntryBounds,
+  parseContentEntryCoordinates,
 };

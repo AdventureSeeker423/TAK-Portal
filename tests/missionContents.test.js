@@ -60,4 +60,30 @@ const coords = boundsToImageCoordinates([-85.3, 35.0, -85.1, 35.2]);
 assert.strictEqual(coords[0][0], -85.3);
 assert.strictEqual(coords[0][1], 35.2);
 
+const {
+  parseContentEntryBounds,
+  parseContentEntryCoordinates,
+  parseGeoPoint,
+} = require("../services/missionContents.util");
+
+assert.deepStrictEqual(parseGeoPoint({ lat: 35.1, lon: -85.2 }), [-85.2, 35.1]);
+assert.deepStrictEqual(parseGeoPoint([35.1, -85.2]), [-85.2, 35.1]);
+
+const entryBounds = parseContentEntryBounds({
+  north: 35.2,
+  south: 35.0,
+  east: -85.1,
+  west: -85.3,
+});
+assert.deepStrictEqual(entryBounds, [-85.3, 35.0, -85.1, 35.2]);
+
+const cornerCoords = parseContentEntryCoordinates({
+  upperLeft: { lat: 35.2, lon: -85.3 },
+  upperRight: { lat: 35.2, lon: -85.1 },
+  lowerRight: { lat: 35.0, lon: -85.1 },
+  lowerLeft: { lat: 35.0, lon: -85.3 },
+});
+assert.strictEqual(cornerCoords.length, 4);
+assert.strictEqual(cornerCoords[0][0], -85.3);
+
 console.log("missionContents.test.js: all assertions passed");

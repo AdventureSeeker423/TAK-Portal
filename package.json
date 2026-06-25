@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node tests/mapIcon.test.js && node tests/mapIconRender.test.js && node tests/mapRender.test.js && node tests/missionGeo.test.js && node tests/missionKml.test.js && node tests/missionContents.test.js && node tests/geocode.test.js && node scripts/audit-map-icons.js",
+    "test": "node tests/mapIcon.test.js && node tests/mapIconRender.test.js && node tests/mapRender.test.js && node tests/missionGeo.test.js && node tests/missionKml.test.js && node tests/missionContents.test.js && node tests/missionRaster.test.js && node tests/geocode.test.js && node scripts/audit-map-icons.js",
     "audit:icons": "node scripts/audit-map-icons.js",
     "vendor:icons": "node --use-system-ca scripts/vendor-cloudtak-icons.js",
     "start": "node --use-system-ca server.js"
@@ -27,6 +27,7 @@
     "ejs": "^3.1.10",
     "express": "^5.2.1",
     "geotiff": "^3.0.5",
+    "geotiff-geokeys-to-proj4": "^2024.4.13",
     "jimp": "0.22.12",
     "marked": "^18.0.4",
     "milsymbol": "^3.0.4",
@@ -35,6 +36,7 @@
     "p12-pem": "^1.0.5",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.18.0",
+    "proj4": "^2.20.9",
     "qrcode": "^1.5.4",
     "sanitize-html": "^2.17.4",
     "sharp": "^0.35.2",

@@ -3,6 +3,8 @@
  */
 const sharp = require("sharp");
 const geotiff = require("geotiff");
+const proj4 = require("proj4");
+const geokeysToProj4 = require("geotiff-geokeys-to-proj4");
 const dataSyncSvc = require("./dataSync.service");
 const {
   listMissionAttachmentEntries,
@@ -11,6 +13,8 @@ const {
   contentMime,
   parseMissionBbox,
   looksLikeLatLonBbox,
+  parseContentEntryBounds,
+  parseContentEntryCoordinates,
 } = require("./missionContents.util");
 
 const RASTER_EXT = /\.(tif|tiff|geotiff|grg|png|jpg|jpeg)$/i;
@@ -70,23 +74,152 @@ async function loadRasterBuffer(hash) {
   return Buffer.from(res.data);
 }
 
-async function readBoundsFromBuffer(buf) {
+function looksLikeGeographicBounds(bounds) {
+  if (!bounds || bounds.length < 4) return false;
+  const [minX, minY, maxX, maxY] = bounds;
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return false;
+  if (Math.abs(minX) > 180 || Math.abs(maxX) > 180) return false;
+  if (Math.abs(minY) > 90 || Math.abs(maxY) > 90) return false;
+  return true;
+}
+
+function boundsFromLonLatCorners(corners) {
+  if (!Array.isArray(corners) || corners.length < 4) return null;
+  const lons = [];
+  const lats = [];
+  for (const corner of corners) {
+    const lon = Number(corner?.[0]);
+    const lat = Number(corner?.[1]);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+    lons.push(lon);
+    lats.push(lat);
+  }
+  return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+}
+
+function getPixelCornerCoords(image) {
+  const width = image.getWidth();
+  const height = image.getHeight();
+  const fd = image.getFileDirectory();
+  const modelTransformation = fd.getValue("ModelTransformation");
+  const pixelCorners = [
+    [0, 0],
+    [width, 0],
+    [width, height],
+    [0, height],
+  ];
+
+  if (modelTransformation) {
+    const [a, b, , d, e, f, , h] = modelTransformation;
+    return pixelCorners.map(([col, row]) => [d + a * col + b * row, h + e * col + f * row]);
+  }
+
+  const origin = image.getOrigin();
+  const resolution = image.getResolution();
+  return pixelCorners.map(([col, row]) => [
+    origin[0] + col * resolution[0],
+    origin[1] + row * resolution[1],
+  ]);
+}
+
+function buildProjectionForImage(image) {
+  const geoKeys = image.getGeoKeys();
+  if (!geoKeys) return null;
+
+  if (geoKeys.GeographicTypeGeoKey === 4326) {
+    return { projection: null, projObj: null, isWgs84: true };
+  }
+
+  try {
+    const projObj = geokeysToProj4.toProj4(geoKeys);
+    if (!projObj?.proj4) return null;
+    return {
+      projection: proj4(projObj.proj4, "EPSG:4326"),
+      projObj,
+      isWgs84: false,
+    };
+  } catch (_) {
+    const epsg = geoKeys.ProjectedCSTypeGeoKey || geoKeys.GeographicTypeGeoKey;
+    if (!epsg) return null;
+    try {
+      return {
+        projection: proj4(`EPSG:${epsg}`, "EPSG:4326"),
+        projObj: null,
+        isWgs84: false,
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+}
+
+function projectNativeCorner(nativeX, nativeY, projectionInfo) {
+  if (!projectionInfo || projectionInfo.isWgs84 || !projectionInfo.projection) {
+    return [nativeX, nativeY];
+  }
+
+  let x = nativeX;
+  let y = nativeY;
+  const params = projectionInfo.projObj?.coordinatesConversionParameters;
+  if (params) {
+    const converted = geokeysToProj4.convertCoordinates(nativeX, nativeY, 0, params);
+    x = converted.x;
+    y = converted.y;
+  }
+
+  const out = projectionInfo.projection.forward([x, y]);
+  return [out[0], out[1]];
+}
+
+async function readGeorefFromImage(image) {
+  let nativeCorners;
+  try {
+    nativeCorners = getPixelCornerCoords(image);
+  } catch (_) {
+    return null;
+  }
+  if (!nativeCorners || nativeCorners.length < 4) return null;
+
+  const nativeBbox = image.getBoundingBox();
+  const projectionInfo = buildProjectionForImage(image);
+
+  if (
+    !projectionInfo &&
+    looksLikeGeographicBounds(nativeBbox)
+  ) {
+    const coordinates = nativeCorners.map(([x, y]) => [x, y]);
+    const bounds = boundsFromLonLatCorners(coordinates);
+    if (!bounds) return null;
+    return { bounds: normalizeBounds(bounds), coordinates, crs: "native-geographic" };
+  }
+
+  const coordinates = nativeCorners.map(([x, y]) =>
+    projectNativeCorner(x, y, projectionInfo)
+  );
+  const bounds = boundsFromLonLatCorners(coordinates);
+  if (!bounds) return null;
+
+  return {
+    bounds: normalizeBounds(bounds),
+    coordinates,
+    crs: projectionInfo?.isWgs84 ? "EPSG:4326" : "reprojected",
+  };
+}
+
+async function readGeorefFromBuffer(buf) {
   try {
     const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     const tiff = await geotiff.fromArrayBuffer(arrayBuffer);
     const image = await tiff.getImage();
-    const bbox = image.getBoundingBox();
-    if (!bbox || bbox.length < 4) return null;
-    const west = Number(bbox[0]);
-    const south = Number(bbox[1]);
-    const east = Number(bbox[2]);
-    const north = Number(bbox[3]);
-    if (![west, south, east, north].every(Number.isFinite)) return null;
-    if (east <= west || north <= south) return null;
-    return [west, south, east, north];
+    return readGeorefFromImage(image);
   } catch (_) {
     return null;
   }
+}
+
+async function readBoundsFromBuffer(buf) {
+  const georef = await readGeorefFromBuffer(buf);
+  return georef?.bounds || null;
 }
 
 function normalizeBounds(bounds) {
@@ -204,7 +337,14 @@ async function renderGeotiffToPng(buf, maxDim, bounds) {
     throw new Error("GeoTIFF image has no dimensions");
   }
 
-  let outBounds = bounds || normalizeBounds(image.getBoundingBox());
+  let outBounds = bounds;
+  let outCoordinates = bounds ? boundsToImageCoordinates(bounds) : null;
+  if (!outBounds) {
+    const georef = await readGeorefFromImage(image);
+    outBounds = georef?.bounds || normalizeBounds(image.getBoundingBox());
+    outCoordinates =
+      georef?.coordinates || (outBounds ? boundsToImageCoordinates(outBounds) : null);
+  }
   const scale = Math.min(1, maxDim / Math.max(width, height));
   const outW = Math.max(1, Math.round(width * scale));
   const outH = Math.max(1, Math.round(height * scale));
@@ -251,17 +391,30 @@ async function renderGeotiffToPng(buf, maxDim, bounds) {
     width: outW,
     height: outH,
     bounds: outBounds,
-    coordinates: outBounds ? boundsToImageCoordinates(outBounds) : null,
+    coordinates: outCoordinates,
   };
 }
 
 async function renderRasterPng(hash, options = {}) {
   const buf = await loadRasterBuffer(hash);
   const maxDim = options.maxDim != null ? options.maxDim : 4096;
-  let bounds = normalizeBounds(options.bounds) || normalizeBounds(await readBoundsFromBuffer(buf));
+  let bounds = normalizeBounds(options.bounds);
+  let coordinates = bounds ? boundsToImageCoordinates(bounds) : null;
 
   if (bufferLooksLikeTiff(buf)) {
+    const georef = await readGeorefFromBuffer(buf);
+    if (georef?.bounds) {
+      if (!bounds || !looksLikeGeographicBounds(bounds)) {
+        bounds = georef.bounds;
+        coordinates = georef.coordinates;
+      }
+    }
     return renderGeotiffToPng(buf, maxDim, bounds);
+  }
+
+  if (!bounds) {
+    bounds = normalizeBounds(await readBoundsFromBuffer(buf));
+    coordinates = bounds ? boundsToImageCoordinates(bounds) : null;
   }
 
   try {
@@ -316,6 +469,49 @@ async function findRasterContents(missionPayload) {
   return results;
 }
 
+async function resolveRasterPlacement(entry, buf, fallbacks = {}) {
+  const entryCoordinates = parseContentEntryCoordinates(entry);
+  const entryBounds = normalizeBounds(parseContentEntryBounds(entry));
+  if (entryCoordinates) {
+    const bounds = entryBounds || boundsFromLonLatCorners(entryCoordinates);
+    if (bounds) {
+      return {
+        bounds: normalizeBounds(bounds),
+        coordinates: entryCoordinates,
+        source: "entry-corners",
+      };
+    }
+  }
+  if (entryBounds) {
+    return {
+      bounds: entryBounds,
+      coordinates: boundsToImageCoordinates(entryBounds),
+      source: "entry-bounds",
+    };
+  }
+
+  if (buf && bufferLooksLikeTiff(buf)) {
+    const georef = await readGeorefFromBuffer(buf);
+    if (georef?.bounds) {
+      return {
+        bounds: georef.bounds,
+        coordinates: georef.coordinates || boundsToImageCoordinates(georef.bounds),
+        source: "geotiff",
+      };
+    }
+    return null;
+  }
+
+  const fallbackBounds =
+    normalizeBounds(fallbacks.missionBbox) || normalizeBounds(fallbacks.featureBounds);
+  if (!fallbackBounds) return null;
+  return {
+    bounds: fallbackBounds,
+    coordinates: boundsToImageCoordinates(fallbackBounds),
+    source: "mission-fallback",
+  };
+}
+
 async function buildRasterOverlays(missionName, missionPayload, options = {}) {
   const mission = missionPayload || {};
   const missionBbox = parseMissionBbox(mission);
@@ -325,22 +521,29 @@ async function buildRasterOverlays(missionName, missionPayload, options = {}) {
   for (const entry of await findRasterContents(mission)) {
     const hash = contentHash(entry);
     const name = contentName(entry) || hash;
-    let bounds = normalizeBounds(missionBbox) || normalizeBounds(featureBounds);
-    if (!bounds) {
-      try {
-        const buf = await loadRasterBuffer(hash);
-        bounds = normalizeBounds(await readBoundsFromBuffer(buf));
-      } catch (err) {
-        console.warn("[mission-raster] bounds read failed", hash, err?.message || err);
-      }
+    let buf = null;
+    try {
+      buf = await loadRasterBuffer(hash);
+    } catch (err) {
+      console.warn("[mission-raster] load failed", hash, err?.message || err);
     }
-    if (!bounds) continue;
 
+    const placement = await resolveRasterPlacement(entry, buf, {
+      missionBbox,
+      featureBounds,
+    });
+    if (!placement?.bounds) {
+      console.warn("[mission-raster] no georeferencing for", name || hash);
+      continue;
+    }
+
+    const bounds = placement.bounds;
     overlays.push({
       hash,
       name,
       bounds,
-      coordinates: boundsToImageCoordinates(bounds),
+      coordinates: placement.coordinates || boundsToImageCoordinates(bounds),
+      georefSource: placement.source,
       url:
         "/api/map/missions/" +
         encodeURIComponent(missionName) +
@@ -360,10 +563,13 @@ module.exports = {
   findRasterContents,
   renderRasterPng,
   readBoundsFromBuffer,
+  readGeorefFromBuffer,
   parseMissionBbox,
   normalizeBounds,
   boundsToImageCoordinates,
   boundsFromFeatures,
   bufferLooksLikeRaster,
   buildRasterOverlays,
+  resolveRasterPlacement,
+  looksLikeGeographicBounds,
 };
