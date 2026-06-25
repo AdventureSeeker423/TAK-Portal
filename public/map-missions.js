@@ -6,6 +6,7 @@
 
   const LS_PREFIX = "tak-portal-map-missions:";
   const MISSION_FILTER = ["==", ["get", "kind"], "mission-feature"];
+  const MISSION_AUTO_REFRESH_MS = 60000;
 
   const openMissions = new Map();
   let bridge = null;
@@ -19,6 +20,81 @@
   const missionLayerClickHandlers = new Map();
   const missionLoadGen = new Map();
   let renderMissionListTimer = null;
+  let missionAutoRefreshTimer = null;
+  const missionAutoRefreshInFlight = new Set();
+
+  function hasVisibleMissions() {
+    for (const entry of openMissions.values()) {
+      if (entry && entry.visible) return true;
+    }
+    return false;
+  }
+
+  function syncMissionAutoRefreshTimer() {
+    if (missionAutoRefreshTimer) {
+      clearInterval(missionAutoRefreshTimer);
+      missionAutoRefreshTimer = null;
+    }
+    if (!hasVisibleMissions()) return;
+    missionAutoRefreshTimer = setInterval(tickMissionAutoRefresh, MISSION_AUTO_REFRESH_MS);
+  }
+
+  function tickMissionAutoRefresh() {
+    openMissions.forEach(function (entry, name) {
+      if (!entry || !entry.visible || !entry.geojson || entry.loading) return;
+      refreshVisibleMissionBackground(name);
+    });
+  }
+
+  async function refreshVisibleMissionBackground(name) {
+    const entry = openMissions.get(name);
+    if (!entry || !entry.visible || !entry.geojson || entry.loading) return;
+    if (missionAutoRefreshInFlight.has(name)) return;
+
+    missionAutoRefreshInFlight.add(name);
+    try {
+      const [geojson, layers] = await Promise.all([
+        fetchMissionGeojson(name, { refresh: true }),
+        fetchMissionLayers(name).catch(function () {
+          return { folders: [], orphaned: [] };
+        }),
+      ]);
+      if (!entry.visible || entry.loading) return;
+
+      entry.layers = layers;
+      entry.rasterOverlays =
+        geojson.meta && geojson.meta.rasterOverlays ? geojson.meta.rasterOverlays : [];
+      entry.attachmentSummary =
+        geojson.meta && geojson.meta.attachmentSummary ? geojson.meta.attachmentSummary : null;
+      entry.geojson = stampMissionVisibility(geojson, true);
+
+      if (bridge && typeof bridge.registerMissionIconManifest === "function") {
+        bridge.registerMissionIconManifest(collectOpenMissionIconManifest());
+      }
+      const manifest =
+        entry.geojson.meta && entry.geojson.meta.iconManifest
+          ? entry.geojson.meta.iconManifest
+          : [];
+      if (manifest.length && bridge && typeof bridge.preloadMarkerIcons === "function") {
+        try {
+          await bridge.preloadMarkerIcons(manifest);
+        } catch (_) {}
+      }
+      if (!entry.visible || entry.loading) return;
+
+      if (missionLayersInstalled(name)) {
+        showMissionOverlaysSync(name, entry);
+        ensureRasterOverlays(name, entry);
+        applyMissionLayerVisibility(name);
+      } else {
+        await installMissionOverlays(name, entry, missionLoadGen.get(name) || 0);
+      }
+    } catch (err) {
+      console.warn("[map-missions] auto-refresh failed:", name, err?.message || err);
+    } finally {
+      missionAutoRefreshInFlight.delete(name);
+    }
+  }
 
   function bumpMissionOp(name) {
     const next = (missionLoadGen.get(name) || 0) + 1;
@@ -50,11 +126,13 @@
       } else if (pending != null && pending !== entry.visible) {
         setMissionEnabled(name, pending);
       }
+      syncMissionAutoRefreshTimer();
       return;
     }
     if (pending != null && pending !== entry.visible) {
       setMissionEnabled(name, pending);
     }
+    syncMissionAutoRefreshTimer();
   }
   let styleRestoreTimer = null;
   let missionShapeDecorIndex = null;
@@ -1210,6 +1288,7 @@
       if (!entry) {
         entry = ensureMissionEntry(name);
         entry.visible = true;
+        syncMissionAutoRefreshTimer();
         loadMission(name);
         return;
       }
@@ -1218,10 +1297,12 @@
         entry.visible = true;
         writeState();
         renderMissionList();
+        syncMissionAutoRefreshTimer();
         return;
       }
       entry.pendingVisible = null;
       entry.visible = true;
+      syncMissionAutoRefreshTimer();
       if (entry.geojson) {
         showMissionOverlays(name, entry).catch(function (err) {
           entry.error = err?.message || String(err);
@@ -1254,6 +1335,7 @@
     }
     writeState();
     renderMissionList();
+    syncMissionAutoRefreshTimer();
   }
 
   async function loadMission(name, options) {
@@ -1367,6 +1449,26 @@
     scheduleRenderMissionList();
   }
 
+  function missionMetaLine(entry) {
+    if (!entry) return "";
+    const parts = [];
+    if (entry.geojson && Array.isArray(entry.geojson.features)) {
+      parts.push(entry.geojson.features.length + " vec");
+    }
+    const att = entry.attachmentSummary;
+    if (att && att.kml > 0) {
+      parts.push(att.kml + " kml");
+    }
+    const rasterCount = Math.max(
+      (entry.rasterOverlays || []).length,
+      att && att.raster ? att.raster : 0
+    );
+    if (rasterCount > 0) {
+      parts.push(rasterCount + " raster");
+    }
+    return parts.join(" · ");
+  }
+
   function renderMissionListNow() {
     if (!listEl) return;
     const q = String(searchEl?.value || "")
@@ -1394,6 +1496,9 @@
 
       const head = document.createElement("div");
       head.className = "map-mission-row-head";
+
+      const headTop = document.createElement("div");
+      headTop.className = "map-mission-row-top";
 
       const toggleBtn = document.createElement("button");
       toggleBtn.type = "button";
@@ -1431,36 +1536,34 @@
         loadMission(name, { refresh: true });
       });
 
-      head.appendChild(toggleBtn);
-      head.appendChild(title);
-      head.appendChild(refreshBtn);
-      row.appendChild(head);
+      headTop.appendChild(toggleBtn);
+      headTop.appendChild(title);
+      headTop.appendChild(refreshBtn);
+      head.appendChild(headTop);
 
       if (entry && entry.loading) {
         const status = document.createElement("div");
-        status.className = "map-mission-status";
+        status.className = "map-mission-meta map-mission-meta-status";
         status.textContent = "Loading…";
-        row.appendChild(status);
+        head.appendChild(status);
       } else if (entry && entry.error) {
         const status = document.createElement("div");
-        status.className = "map-mission-status map-mission-status-error";
+        status.className = "map-mission-meta map-mission-meta-error";
         status.textContent = entry.error;
-        row.appendChild(status);
+        head.appendChild(status);
+      } else if (entry && isOn) {
+        const meta = missionMetaLine(entry);
+        if (meta) {
+          const metaEl = document.createElement("div");
+          metaEl.className = "map-mission-meta";
+          metaEl.textContent = meta;
+          head.appendChild(metaEl);
+        }
       }
 
-      if (entry && isOn) {
-        if (entry.attachmentSummary) {
-          const attachHint = document.createElement("div");
-          attachHint.className = "map-mission-hint";
-          attachHint.textContent =
-            "Attachments: " +
-            entry.attachmentSummary.kml +
-            " KML feature(s), " +
-            entry.attachmentSummary.raster +
-            " raster overlay(s)";
-          row.appendChild(attachHint);
-        }
+      row.appendChild(head);
 
+      if (entry && isOn) {
         const tree = document.createElement("div");
         tree.className = "map-mission-tree";
         const folders = entry.layers?.folders || [];
@@ -1497,18 +1600,9 @@
           itemRow.appendChild(itemBtn);
           tree.appendChild(itemRow);
         }
-        if (!folders.length && !orphaned.length && entry.geojson) {
-          const count = (entry.geojson.features || []).length;
-          const rasterCount = (entry.rasterOverlays || []).length;
-          const hint = document.createElement("div");
-          hint.className = "map-mission-hint";
-          hint.textContent =
-            count +
-            " vector feature(s)" +
-            (rasterCount ? ", " + rasterCount + " raster overlay(s)" : "");
-          tree.appendChild(hint);
+        if (tree.childNodes.length) {
+          row.appendChild(tree);
         }
-        row.appendChild(tree);
       }
 
       listEl.appendChild(row);
@@ -1738,6 +1832,7 @@
     map.on("moveend", scheduleMissionLabelDeclutter);
     map.on("zoomend", scheduleMissionLabelDeclutter);
     refreshMissionCatalog().then(restoreOpenMissions);
+    syncMissionAutoRefreshTimer();
   }
 
   window.TakMapMissions = {

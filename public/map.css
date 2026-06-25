@@ -1191,13 +1191,13 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-mission-list {
   flex: 1;
   overflow: auto;
-  padding: 6px 8px 10px;
+  padding: 4px 6px 8px;
 }
 
 .map-mission-row {
   border: 1px solid var(--map-border);
-  border-radius: 8px;
-  margin-bottom: 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
   background: rgba(255, 255, 255, 0.02);
 }
 
@@ -1207,16 +1207,23 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-mission-row-head {
   display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+}
+
+.map-mission-row-top {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .map-mission-toggle {
   appearance: none;
   position: relative;
-  width: 38px;
-  height: 22px;
+  width: 32px;
+  height: 18px;
   border: none;
   border-radius: 999px;
   cursor: pointer;
@@ -1228,12 +1235,12 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-mission-toggle::after {
   content: "";
   position: absolute;
-  top: 3px;
-  width: 16px;
-  height: 16px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   transition: left 0.15s ease;
 }
 
@@ -1242,7 +1249,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-mission-toggle.is-on::after {
-  left: 19px;
+  left: 16px;
 }
 
 .map-mission-toggle.is-off {
@@ -1250,7 +1257,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-mission-toggle.is-off::after {
-  left: 3px;
+  left: 2px;
 }
 
 .map-mission-toggle:focus-visible {
@@ -1260,7 +1267,8 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-mission-name {
   flex: 1;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1277,10 +1285,10 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-mission-badge {
   display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
+  margin-left: 4px;
+  padding: 0 5px;
   border-radius: 999px;
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   color: var(--map-warn);
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
@@ -1292,17 +1300,44 @@ body.map-detail-resizing .map-panel-resize-handle {
   border: 1px solid var(--map-border);
   background: rgba(255, 255, 255, 0.03);
   color: var(--map-text);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.78rem;
-  padding: 4px 7px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  padding: 1px 5px;
+}
+
+.map-mission-refresh-btn {
+  flex-shrink: 0;
+  min-width: 22px;
+}
+
+.map-mission-meta {
+  padding-left: 38px;
+  font-size: 0.64rem;
+  line-height: 1.2;
+  color: var(--map-muted);
+}
+
+.map-mission-meta-status {
+  color: var(--map-muted);
+}
+
+.map-mission-meta-error {
+  color: #fca5a5;
+}
+
+.map-mission-hint,
+.map-mission-empty {
+  padding: 0 6px 4px;
+  font-size: 0.68rem;
+  color: var(--map-muted);
 }
 
 .map-mission-status,
-.map-mission-hint,
-.map-mission-empty {
-  padding: 0 8px 8px;
-  font-size: 0.76rem;
+.map-mission-status-error {
+  padding: 0 6px 4px;
+  font-size: 0.68rem;
   color: var(--map-muted);
 }
 
@@ -1310,26 +1345,22 @@ body.map-detail-resizing .map-panel-resize-handle {
   color: #fca5a5;
 }
 
-.map-mission-status {
-  padding: 0 8px 8px;
-  font-size: 0.74rem;
-  color: var(--map-muted);
-}
-
 .map-mission-tree {
-  padding: 0 8px 8px 12px;
-  border-top: 1px solid var(--map-border);
+  padding: 2px 6px 4px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .map-mission-folder,
 .map-mission-item {
-  margin-top: 4px;
+  margin-top: 1px;
 }
 
 .map-mission-folder-btn,
 .map-mission-item-btn {
   width: 100%;
   text-align: left;
+  font-size: 0.68rem;
+  padding: 1px 4px;
 }
 
 .map-mission-popup-title {
