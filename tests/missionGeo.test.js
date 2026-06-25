@@ -61,6 +61,46 @@ async function runTests() {
   const mapRender = require("../services/mapRender.service");
   assert.strictEqual(mapRender.markerUsesMapIcon(missionOrigin), true);
 
+  const circleFc = {
+    type: "FeatureCollection",
+    features: [
+      {
+        id: "circle-poly",
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [-85.3, 35.1],
+              [-85.29, 35.11],
+              [-85.28, 35.1],
+              [-85.29, 35.09],
+              [-85.3, 35.1],
+            ],
+          ],
+        },
+        properties: { type: "u-d-c-c", how: "h-e", callsign: "Range Ring" },
+      },
+      {
+        id: "vertex-1",
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-85.29, 35.11] },
+        properties: { type: "u-d-f-p", how: "h-e", callsign: "" },
+      },
+      {
+        id: "vehicle-1",
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-85.25, 35.12] },
+        properties: { type: "a-f-G-E-V", how: "h-g", callsign: "1A05" },
+      },
+    ],
+  };
+  const circleNormalized = await missionGeo.normalizeFeatureCollection(circleFc, "CircleMission");
+  const circleIds = circleNormalized.features.map((f) => String(f.id));
+  assert.ok(circleIds.includes("circle-poly"), "polygon should remain");
+  assert.ok(circleIds.includes("vehicle-1"), "tactical marker should remain");
+  assert.ok(!circleIds.includes("vertex-1"), "shape vertex point should be filtered");
+
   console.log("missionGeo.test.js: all assertions passed");
 }
 

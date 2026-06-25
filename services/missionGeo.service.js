@@ -204,15 +204,40 @@ function collectShapeVertexKeys(features) {
       for (const coord of geom.coordinates || []) {
         keys.add(coordKey(coord[0], coord[1]));
       }
+    } else if (type === "MultiLineString") {
+      for (const line of geom.coordinates || []) {
+        for (const coord of line || []) {
+          keys.add(coordKey(coord[0], coord[1]));
+        }
+      }
     } else if (type === "Polygon") {
       for (const ring of geom.coordinates || []) {
         for (const coord of ring || []) {
           keys.add(coordKey(coord[0], coord[1]));
         }
       }
+    } else if (type === "MultiPolygon") {
+      for (const poly of geom.coordinates || []) {
+        for (const ring of poly || []) {
+          for (const coord of ring || []) {
+            keys.add(coordKey(coord[0], coord[1]));
+          }
+        }
+      }
     }
   }
   return keys;
+}
+
+function hasRawPointIcon(props) {
+  if (!props || typeof props !== "object") return false;
+  return !!(
+    props.icon ||
+    props.iconsetpath ||
+    props.usericon ||
+    props.iconId ||
+    props.apiIconId
+  );
 }
 
 function isShapeVertexPoint(feature, vertexKeys) {
@@ -221,11 +246,10 @@ function isShapeVertexPoint(feature, vertexKeys) {
   if (!coords || coords.length < 2) return false;
   if (!vertexKeys.has(coordKey(coords[0], coords[1]))) return false;
   const props = feature.properties || {};
-  if (props.iconId || props.apiIconId) return false;
   const type = String(props.type || props.cotType || "").toLowerCase();
   if (type.startsWith("a-") || type.startsWith("b-i-")) return false;
-  const how = String(props.how || "").toLowerCase();
-  if (how.startsWith("h-")) return false;
+  if (hasRawPointIcon(props)) return false;
+  if (type.startsWith("u-d-") || type.startsWith("b-m-p-")) return true;
   return true;
 }
 
@@ -236,11 +260,13 @@ function filterShapeVertexPoints(features) {
 }
 
 async function normalizeFeatureCollection(fc, missionName) {
+  const rawFeatures = (fc.features || []).filter((feature) => feature?.geometry);
+  const vertexKeys = collectShapeVertexKeys(rawFeatures);
   const out = [];
-  for (const feature of fc.features || []) {
-    if (!feature?.geometry) continue;
+  for (const feature of rawFeatures) {
     const geomType = geometryType(feature.geometry);
     if (geomType === "point") {
+      if (isShapeVertexPoint(feature, vertexKeys)) continue;
       out.push(await augmentPointFeature(feature, missionName));
     } else {
       out.push(normalizeFeature(feature, missionName));
@@ -248,7 +274,7 @@ async function normalizeFeatureCollection(fc, missionName) {
   }
   return {
     type: "FeatureCollection",
-    features: filterShapeVertexPoints(out),
+    features: out,
   };
 }
 
@@ -499,6 +525,9 @@ module.exports = {
   geometryType,
   normalizeLayerTree,
   normalizeFeatureCollection,
+  isShapeVertexPoint,
+  collectShapeVertexKeys,
+  filterShapeVertexPoints,
   getMissionGeoJson,
   getMissionLayerTree,
   getMissionCotRaw,
