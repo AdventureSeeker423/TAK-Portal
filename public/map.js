@@ -5547,9 +5547,14 @@
     elOffline.hidden = false;
   };
 
-  fetch("/api/map/state?membership=live")
+  fetch("/api/map/state")
     .then((r) => r.json())
     .then((state) => applySnapshot(state))
+    .catch(() => {});
+
+  fetch("/api/map/groups")
+    .then((r) => r.json())
+    .then((data) => refreshScopedGroupsCatalog())
     .catch(() => {});
 
   function getStorageUserKey() {
