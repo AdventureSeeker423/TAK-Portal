@@ -3668,6 +3668,16 @@
     const enriched = enrichFeatureChannelKeys(feature);
     const uid = enriched.properties && enriched.properties.uid;
     if (uid && shouldSuppressLiveMarkerGraphic(uid)) return null;
+    const geom = enriched.geometry;
+    const coords = geom && String(geom.type || "").toLowerCase() === "point" ? geom.coordinates : null;
+    if (
+      coords &&
+      window.TakMapMissions &&
+      typeof window.TakMapMissions.isShapeDecorMarker === "function" &&
+      window.TakMapMissions.isShapeDecorMarker(coords[0], coords[1], enriched.properties)
+    ) {
+      return null;
+    }
     const marker = uid ? markersByUid.get(String(uid)) : null;
     const display = markerIconDisplayProps(enriched.properties);
     return {
@@ -5557,6 +5567,7 @@
     handleMapFeatureClick: handleMapFeatureClick,
     getMarkerRecord: getMarkerRecord,
     refreshGoToIfOpen: refreshGoToIfOpen,
+    refreshLiveMarkersForMissionOverlay: refreshLiveMarkersForMissionOverlay,
     queryMarkersAtPoint: queryMarkersAtPoint,
     markerOriginRank: markerOriginRank,
     ensureLiveMarkersLoaded: ensureLiveMarkersLoaded,

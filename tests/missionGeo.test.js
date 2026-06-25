@@ -161,6 +161,29 @@ async function runTests() {
   assert.strictEqual(airMonitor.properties.showCircle, 0);
   assert.ok(airMonitor.properties.iconId, "air monitor should have map icon");
 
+  const BAYLOR_TFR_XML = `<event version='2.0' uid='1e77fed5-d04a-45b2-b297-0ad9c54f4eed' type='u-d-c-c' time='2026-06-06T18:25:16Z' start='2026-06-06T18:25:16Z' stale='2026-06-07T18:25:08Z' how='h-e'><point lat='35.0909273' lon='-85.3333797' hae='174.465' ce='9999999.0' le='9999999.0' /><detail><contact callsign="Baylor TFR"/><shape><ellipse major="1850.7456" minor="1850.7456" angle="360"/><link uid="1e77fed5-d04a-45b2-b297-0ad9c54f4eed.Style" type="b-x-KmlStyle" relation="p-c"><Style><LineStyle><color>ffff0000</color><width>3.3</width></LineStyle><PolyStyle><color>00ff0000</color></PolyStyle></Style></link></shape></detail></event>`;
+  const baylorFc = await mod.missionCotXmlToFeatureCollection(BAYLOR_TFR_XML, "Baylor");
+  assert.strictEqual(baylorFc.features.length, 1, "Baylor TFR should convert to one polygon");
+  const ring = baylorFc.features[0].geometry.coordinates[0];
+  const ringDecor = ring.slice(0, -1).map((coord, i) => ({
+    id: "ring-handle-" + i,
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [coord[0] + 0.00008, coord[1] + 0.00008] },
+    properties: { type: "a-n-G", how: "h-e", callsign: "" },
+  }));
+  const baylorNormalized = await missionGeo.normalizeFeatureCollection(
+    { type: "FeatureCollection", features: [baylorFc.features[0], ...ringDecor] },
+    "Baylor"
+  );
+  const baylorPoints = baylorNormalized.features.filter(
+    (f) => f.properties.geometryType === "point"
+  );
+  assert.strictEqual(baylorPoints.length, 0, "ring editor handles should be filtered");
+  assert.ok(
+    baylorNormalized.features.some((f) => String(f.id) === "1e77fed5-d04a-45b2-b297-0ad9c54f4eed"),
+    "circle polygon should remain"
+  );
+
   console.log("missionGeo.test.js: all assertions passed");
 }
 

@@ -20,6 +20,36 @@
   const missionLoadGen = new Map();
   let renderMissionListTimer = null;
   let styleRestoreTimer = null;
+  let missionShapeDecorIndex = null;
+
+  function rebuildMissionShapeDecorIndex() {
+    const filter = window.ShapeDecorFilter;
+    if (!filter) {
+      missionShapeDecorIndex = null;
+      return;
+    }
+    const features = [];
+    openMissions.forEach(function (entry) {
+      if (!entry || !entry.visible || !entry.geojson || !Array.isArray(entry.geojson.features)) {
+        return;
+      }
+      features.push.apply(features, entry.geojson.features);
+    });
+    missionShapeDecorIndex = features.length ? filter.buildShapeDecorIndex(features) : null;
+  }
+
+  function isShapeDecorMarker(lon, lat, props) {
+    const filter = window.ShapeDecorFilter;
+    if (!filter || !missionShapeDecorIndex) return false;
+    return filter.shouldDropShapeDecorPoint(
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [lon, lat] },
+        properties: props || {},
+      },
+      missionShapeDecorIndex
+    );
+  }
 
   function slugMission(name) {
     return String(name || "")
@@ -706,6 +736,10 @@
 
     ensureRasterOverlays(name, entry);
     applyMissionLayerVisibility(name);
+    rebuildMissionShapeDecorIndex();
+    if (bridge && typeof bridge.refreshLiveMarkersForMissionOverlay === "function") {
+      bridge.refreshLiveMarkersForMissionOverlay();
+    }
     if (map) map.triggerRepaint();
   }
 
@@ -1120,6 +1154,10 @@
       if (src) src.setData(entry.geojson);
     }
     applyMissionLayerVisibility(name);
+    rebuildMissionShapeDecorIndex();
+    if (bridge && typeof bridge.refreshLiveMarkersForMissionOverlay === "function") {
+      bridge.refreshLiveMarkersForMissionOverlay();
+    }
     writeState();
     renderMissionList();
   }
@@ -1625,6 +1663,7 @@
     queryMarkersAtPoint: queryMissionMarkersAtPoint,
     getHitLayers: getMissionHitLayers,
     isMarkerSearchable: isMarkerSearchable,
+    isShapeDecorMarker: isShapeDecorMarker,
     flyToMissionExtent: flyToMissionExtent,
     setAllMissionsEnabled: setAllMissionsEnabled,
   };

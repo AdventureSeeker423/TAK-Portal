@@ -13,11 +13,6 @@ function shouldSkipType(type) {
   return SKIP_TYPE_PREFIXES.some((p) => t === p || t.startsWith(p + "-"));
 }
 
-function isMachineGeneratedHow(how) {
-  const h = String(how || "").trim().toLowerCase();
-  return h === "m-g" || h.startsWith("m-g-");
-}
-
 export function splitMissionCotXml(xml) {
   const raw = String(xml || "").trim();
   if (!raw) return [];
@@ -45,13 +40,11 @@ export async function cotXmlToGeoJsonFeature(xmlChunk) {
     if (shouldSkipType(type)) return null;
     const feat = await CoTParser.to_geojson(cot);
     if (!feat || !feat.geometry) return null;
-    const how = cot.how ? cot.how() : feat.properties?.how;
-    if (
-      String(feat.geometry.type || "").toLowerCase() === "point" &&
-      isMachineGeneratedHow(how)
-    ) {
-      const t = String(type || "").toLowerCase();
-      if (t.startsWith("b-m-p") || t.startsWith("u-d")) return null;
+    const geomType = String(feat.geometry.type || "").toLowerCase();
+    const t = String(type || "").toLowerCase();
+    // Drawing/shape control points are rendered via their parent polygon/line.
+    if (geomType === "point" && (t.startsWith("b-m-p") || t.startsWith("u-d"))) {
+      return null;
     }
     return feat;
   } catch (_) {
