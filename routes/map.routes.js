@@ -535,7 +535,8 @@ router.get("/missions/:missionName/raster/:hash", async (req, res) => {
     const missionRaw = await dataSyncAccess.assertMissionReadable(authUser, missionName);
     const mission = dataSyncAccess.unwrapMission(missionRaw);
     const rasters = await missionRaster.findRasterContents(mission);
-    const hit = rasters.find((r) => missionRaster.contentHash(r) === hash);
+    const hashKey = hash.toLowerCase();
+    const hit = rasters.find((r) => missionRaster.contentHash(r).toLowerCase() === hashKey);
     if (!hit) {
       return res.status(404).json({ error: "Raster not found in mission" });
     }
@@ -555,6 +556,7 @@ router.get("/missions/:missionName/raster/:hash", async (req, res) => {
     }
     return res.send(rendered.buffer);
   } catch (err) {
+    console.warn("[map] mission raster failed:", err?.message || err);
     const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
     return res.status(status).json({ error: err?.message || "Raster render failed" });
   }

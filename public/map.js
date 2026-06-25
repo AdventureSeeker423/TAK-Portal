@@ -1138,7 +1138,32 @@
       return info;
     }
 
+    for (let i = 0; i < missionIconManifest.length; i++) {
+      const entry = missionIconManifest[i];
+      const entryId = normalizeMapImageId(entry.mapImageId || "");
+      if (entryId !== canonicalId) continue;
+      info = {
+        apiIconId: entry.apiIconId || "",
+        mapImageId: canonicalId,
+        iconSource: entry.iconSource || "",
+        origin: entry.origin || "mission",
+        type: entry.type || "",
+        affiliation: entry.affiliation || "",
+        color: entry.color || "",
+      };
+      registerServerMapImageMeta(canonicalId, info.apiIconId, info);
+      return info;
+    }
+
     return info || null;
+  }
+
+  function registerMissionIconManifest(manifest) {
+    missionIconManifest = Array.isArray(manifest) ? manifest.slice() : [];
+    for (let i = 0; i < missionIconManifest.length; i++) {
+      const entry = missionIconManifest[i];
+      registerServerMapImageMeta(entry.mapImageId, entry.apiIconId, entry);
+    }
   }
 
   function loadRenderedMapIcon(mapImageId, apiIconId, markerProps) {
@@ -1646,6 +1671,7 @@
   let defaultIconIds = {};
   const iconLoadPending = new Map();
   const iconIdByMapImageId = new Map();
+  let missionIconManifest = [];
 
   function resetMapIconCache() {
     iconLoadPending.clear();
@@ -5268,6 +5294,7 @@
       return MAP_LABEL_FONT;
     },
     preloadMarkerIcons: preloadMarkerIcons,
+    registerMissionIconManifest: registerMissionIconManifest,
     whenReady: function (cb) {
       if (markerLayersReady && map) {
         cb();

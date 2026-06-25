@@ -392,6 +392,16 @@ async function getMissionLayerTree(missionName, options = {}) {
   }
 
   const res = await dataSyncSvc.getMissionLayers(name, options.queryParams || {});
+  if (res.status === 404) {
+    const empty = {
+      missionName: name,
+      fetchedAt: new Date().toISOString(),
+      folders: [],
+      orphaned: [],
+    };
+    cacheSet(layerCache, cacheKey, empty);
+    return empty;
+  }
   if (res.status >= 400) {
     const err = new Error(`Mission layer fetch failed (${res.status})`);
     err.status = res.status;

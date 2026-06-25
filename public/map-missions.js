@@ -580,6 +580,44 @@
     return resp.json();
   }
 
+  function collectOpenMissionIconManifest() {
+    const out = [];
+    const seen = new Set();
+    openMissions.forEach(function (missionEntry) {
+      const list =
+        missionEntry.geojson && missionEntry.geojson.meta && missionEntry.geojson.meta.iconManifest
+          ? missionEntry.geojson.meta.iconManifest
+          : [];
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        const id = String(item.mapImageId || "");
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push(item);
+      }
+    });
+    return out;
+  }
+
+  async function installMissionOverlays(name, entry) {
+    const manifest =
+      entry.geojson && entry.geojson.meta && entry.geojson.meta.iconManifest
+        ? entry.geojson.meta.iconManifest
+        : [];
+    if (bridge) {
+      if (typeof bridge.registerMissionIconManifest === "function") {
+        bridge.registerMissionIconManifest(collectOpenMissionIconManifest());
+      }
+      if (manifest.length && typeof bridge.preloadMarkerIcons === "function") {
+        await bridge.preloadMarkerIcons(manifest);
+      }
+    }
+    ensureRasterOverlays(name, entry);
+    ensureMissionLayers(name, entry.geojson);
+    applyMissionLayerVisibility(name);
+    applyMissionLabelDeclutter(name, { forceRecompute: true });
+  }
+
   async function loadMission(name, options) {
     const opts = options || {};
     let entry = openMissions.get(name);
@@ -613,13 +651,7 @@
       entry.attachmentSummary = geojson.meta && geojson.meta.attachmentSummary ? geojson.meta.attachmentSummary : null;
       entry.error = null;
       entry.geojson = stampMissionVisibility(geojson, entry.visible);
-      ensureRasterOverlays(name, entry);
-      ensureMissionLayers(name, entry.geojson);
-      applyMissionLayerVisibility(name);
-      applyMissionLabelDeclutter(name, { forceRecompute: true });
-      if (bridge && geojson.meta && geojson.meta.iconManifest) {
-        bridge.preloadMarkerIcons(geojson.meta.iconManifest);
-      }
+      await installMissionOverlays(name, entry);
     } catch (err) {
       entry.error = err?.message || String(err);
     } finally {
@@ -934,13 +966,9 @@
         return;
       }
       entry.geojson = stampMissionVisibility(entry.geojson, entry.visible);
-      ensureRasterOverlays(name, entry);
-      ensureMissionLayers(name, entry.geojson);
-      applyMissionLayerVisibility(name);
-      applyMissionLabelDeclutter(name, { forceRecompute: true });
-      if (bridge && entry.geojson.meta && entry.geojson.meta.iconManifest) {
-        bridge.preloadMarkerIcons(entry.geojson.meta.iconManifest);
-      }
+      installMissionOverlays(name, entry).catch(function (err) {
+        console.warn("[map-missions] restore failed for", name, err);
+      });
     });
   }
 

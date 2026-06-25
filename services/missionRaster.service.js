@@ -185,29 +185,106 @@ function boundsFromFeatures(features) {
 /**
  * Render raster to PNG with optional georeferencing bounds.
  */
-async function renderRasterPng(hash, options = {}) {
-  const buf = await loadRasterBuffer(hash);
-  const maxDim = options.maxDim != null ? options.maxDim : 4096;
-  let bounds = options.bounds || null;
-  if (!bounds) {
-    bounds = await readBoundsFromBuffer(buf);
+function clampByte(value, maxVal) {
+  let n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (maxVal > 255) n = (n / maxVal) * 255;
+  if (n < 0) return 0;
+  if (n > 255) return 255;
+  return Math.round(n);
+}
+
+async function renderGeotiffToPng(buf, maxDim, bounds) {
+  const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const tiff = await geotiff.fromArrayBuffer(arrayBuffer);
+  const image = await tiff.getImage();
+  const width = image.getWidth();
+  const height = image.getHeight();
+  if (!width || !height) {
+    throw new Error("GeoTIFF image has no dimensions");
   }
 
-  const out = await sharp(buf, { limitInputPixels: 536870912 })
-    .rotate()
-    .resize({ width: maxDim, height: maxDim, fit: "inside", withoutEnlargement: true })
+  let outBounds = bounds || normalizeBounds(image.getBoundingBox());
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  const outW = Math.max(1, Math.round(width * scale));
+  const outH = Math.max(1, Math.round(height * scale));
+  const samples = image.getSamplesPerPixel();
+  const bits = image.getBitsPerSample();
+  const maxVal = Math.max(...(Array.isArray(bits) ? bits : [bits]).map((b) => (1 << b) - 1), 255);
+
+  const data = await image.readRasters({
+    width: outW,
+    height: outH,
+    interleave: true,
+    resampleMethod: "bilinear",
+  });
+
+  const pixels = outW * outH;
+  const rgba = Buffer.alloc(pixels * 4);
+  if (samples >= 3) {
+    for (let i = 0; i < pixels; i++) {
+      const base = i * samples;
+      rgba[i * 4] = clampByte(data[base], maxVal);
+      rgba[i * 4 + 1] = clampByte(data[base + 1], maxVal);
+      rgba[i * 4 + 2] = clampByte(data[base + 2], maxVal);
+      rgba[i * 4 + 3] = samples >= 4 ? clampByte(data[base + 3], maxVal) : 255;
+    }
+  } else {
+    for (let i = 0; i < pixels; i++) {
+      const v = clampByte(data[i], maxVal);
+      rgba[i * 4] = v;
+      rgba[i * 4 + 1] = v;
+      rgba[i * 4 + 2] = v;
+      rgba[i * 4 + 3] = 255;
+    }
+  }
+
+  const out = await sharp(rgba, {
+    raw: { width: outW, height: outH, channels: 4 },
+  })
     .png()
     .toBuffer();
-  const meta = await sharp(buf).metadata();
 
   return {
     buffer: out,
     contentType: "image/png",
-    width: meta.width || null,
-    height: meta.height || null,
-    bounds,
-    coordinates: bounds ? boundsToImageCoordinates(bounds) : null,
+    width: outW,
+    height: outH,
+    bounds: outBounds,
+    coordinates: outBounds ? boundsToImageCoordinates(outBounds) : null,
   };
+}
+
+async function renderRasterPng(hash, options = {}) {
+  const buf = await loadRasterBuffer(hash);
+  const maxDim = options.maxDim != null ? options.maxDim : 4096;
+  let bounds = normalizeBounds(options.bounds) || normalizeBounds(await readBoundsFromBuffer(buf));
+
+  if (bufferLooksLikeTiff(buf)) {
+    return renderGeotiffToPng(buf, maxDim, bounds);
+  }
+
+  try {
+    const out = await sharp(buf, { limitInputPixels: 536870912 })
+      .rotate()
+      .resize({ width: maxDim, height: maxDim, fit: "inside", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+    const meta = await sharp(buf).metadata();
+    return {
+      buffer: out,
+      contentType: "image/png",
+      width: meta.width || null,
+      height: meta.height || null,
+      bounds,
+      coordinates: bounds ? boundsToImageCoordinates(bounds) : null,
+    };
+  } catch (err) {
+    if (bufferLooksLikeTiff(buf)) {
+      return renderGeotiffToPng(buf, maxDim, bounds);
+    }
+    throw err;
+  }
 }
 
 async function classifyRasterEntry(entry) {
