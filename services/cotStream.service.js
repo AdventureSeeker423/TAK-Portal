@@ -10,6 +10,7 @@ const {
 const mapMeta = require("./mapMeta.service");
 const mapIcon = require("./mapIcon.service");
 const mapRender = require("./mapRender.service");
+const shapeDecor = require("../public/shapeDecorFilter.js");
 
 const STALE_SWEEP_MS = 5000;
 /** Keep markers on the map this long after their CoT stale time before removing. */
@@ -39,6 +40,102 @@ let staleTimer = null;
 let started = false;
 let batchTimer = null;
 let markerRevision = 1;
+/** @type {Map<string, object>} uid -> GeoJSON feature for live shape overlays */
+const liveShapeFeatures = new Map();
+/** @type {Promise<typeof import("@tak-ps/node-cot")>|null} */
+let nodeCotPromise = null;
+
+function loadNodeCot() {
+  if (!nodeCotPromise) nodeCotPromise = import("@tak-ps/node-cot");
+  return nodeCotPromise;
+}
+
+function hasShapeDetail(cot) {
+  const detail = cot?.raw?.event?.detail;
+  return !!(detail && detail.shape);
+}
+
+function isShapeDrawingCotType(type) {
+  const t = String(type || "").toLowerCase();
+  return t.startsWith("u-d-") || t.startsWith("u-r-") || t.startsWith("b-m-r");
+}
+
+function isShapeChildUid(uid, shapeUids) {
+  const id = String(uid || "");
+  if (!id) return false;
+  for (const shapeUid of shapeUids) {
+    if (!shapeUid || id === shapeUid) continue;
+    if (id.startsWith(shapeUid + ".") || id.startsWith(shapeUid + "-")) return true;
+  }
+  return false;
+}
+
+function buildLiveDecorIndex() {
+  return shapeDecor.buildShapeDecorIndex(Array.from(liveShapeFeatures.values()));
+}
+
+function markerToDecorFeature(marker) {
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [marker.lon, marker.lat] },
+    properties: {
+      type: marker.type,
+      cotType: marker.type,
+      how: marker.how,
+      icon: marker.iconsetpath,
+      iconsetpath: marker.iconsetpath,
+    },
+  };
+}
+
+function markerIsShapeDecor(marker) {
+  if (!marker) return false;
+  if (shapeDecor.shouldSkipLiveStreamMarker(marker)) return true;
+
+  const uid = String(marker.uid || "");
+  const shapeUids = new Set(liveShapeFeatures.keys());
+  if (shapeUids.size && isShapeChildUid(uid, shapeUids)) return true;
+
+  const index = buildLiveDecorIndex();
+  if (index.hasShapes || index.ringProfiles.length || index.segments.length) {
+    return shapeDecor.shouldDropShapeDecorPoint(markerToDecorFeature(marker), index);
+  }
+  return false;
+}
+
+function purgeShapeDecorMarkers(notify = true) {
+  let removed = false;
+  for (const uid of Array.from(markers.keys())) {
+    const marker = markers.get(uid);
+    if (!marker || !markerIsShapeDecor(marker)) continue;
+    markers.delete(uid);
+    removed = true;
+    if (notify) queueMarkerRemove(uid);
+    else bumpMarkerRevision();
+  }
+  if (removed && !notify) bumpMarkerRevision();
+}
+
+async function trackLiveShapeFeature(cot, marker) {
+  if (!cot || !marker) return;
+  const type = String(marker.type || "").toLowerCase();
+  if (!isShapeDrawingCotType(type) || !hasShapeDetail(cot)) return;
+  try {
+    const mod = await loadNodeCot();
+    const feat = await mod.CoTParser.to_geojson(cot);
+    const uid = String(feat?.id || marker.uid || "");
+    const geomType = String(feat?.geometry?.type || "");
+    if (!uid || (geomType !== "Polygon" && geomType !== "LineString")) return;
+    liveShapeFeatures.set(uid, feat);
+    purgeShapeDecorMarkers(true);
+  } catch (_) {}
+}
+
+function forgetLiveShape(uid) {
+  const id = String(uid || "").trim();
+  if (!id) return;
+  liveShapeFeatures.delete(id);
+}
 
 const pendingBroadcast = {
   updates: new Map(),
@@ -230,13 +327,19 @@ function tryRemoveMarker(uid, notify = true) {
 
 function handleDeleteCot(cot) {
   const uid = String(cot.uid?.() || cot.raw?.event?._attributes?.uid || "").trim();
-  if (uid) tryRemoveMarker(uid);
+  if (uid) {
+    forgetLiveShape(uid);
+    tryRemoveMarker(uid);
+  }
 
   const links = cot.raw?.event?.detail?.link;
   const linkList = Array.isArray(links) ? links : links ? [links] : [];
   for (const link of linkList) {
     const linkUid = String(link?._attributes?.uid || link?.uid || "").trim();
-    if (linkUid) tryRemoveMarker(linkUid);
+    if (linkUid) {
+      forgetLiveShape(linkUid);
+      tryRemoveMarker(linkUid);
+    }
   }
 }
 
@@ -275,6 +378,18 @@ function handleCot(cot) {
 
   const marker = parseMarkerFromCoT(cot);
   if (!marker) return;
+
+  if (isShapeDrawingCotType(marker.type) && hasShapeDetail(cot)) {
+    void trackLiveShapeFeature(cot, marker);
+    tryRemoveMarker(marker.uid);
+    return;
+  }
+
+  if (markerIsShapeDecor(marker)) {
+    tryRemoveMarker(marker.uid);
+    return;
+  }
+
   markers.set(marker.uid, marker);
   if (!marker.iconId) enrichMarkerIconAsync(marker);
   queueMarkerUpdate(marker);
@@ -338,9 +453,9 @@ async function refreshAllMarkerIcons() {
 }
 
 function getMarkerList() {
-  return Array.from(markers.values()).sort((a, b) =>
-    String(a.callsign).localeCompare(String(b.callsign))
-  );
+  return Array.from(markers.values())
+    .filter((marker) => !markerIsShapeDecor(marker))
+    .sort((a, b) => String(a.callsign).localeCompare(String(b.callsign)));
 }
 
 function getStateSnapshot(options = {}) {

@@ -387,10 +387,34 @@
     });
   }
 
+  function shouldSkipLiveStreamMarker(marker) {
+    const type = String(marker?.type || marker?.cotType || "").toLowerCase();
+    if (
+      type.startsWith("u-d-") ||
+      type.startsWith("b-m-p-") ||
+      type.startsWith("b-m-r-") ||
+      type.startsWith("b-m-c-")
+    ) {
+      return true;
+    }
+    const how = String(marker?.how || "").toLowerCase();
+    const hasIcon = hasExplicitUserIcon({
+      icon: marker?.icon || marker?.iconsetpath,
+      iconsetpath: marker?.iconsetpath,
+    });
+    if (!hasIcon && (how === "m-g" || how.startsWith("m-g-"))) {
+      if (type.startsWith("a-n-") || type.startsWith("a-u-") || type.startsWith("a-p-")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   return {
     buildShapeDecorIndex: buildShapeDecorIndex,
     shouldDropShapeDecorPoint: shouldDropShapeDecorPoint,
     filterShapeVertexPoints: filterShapeVertexPoints,
     auditShapeDecor: auditShapeDecor,
+    shouldSkipLiveStreamMarker: shouldSkipLiveStreamMarker,
   };
 });

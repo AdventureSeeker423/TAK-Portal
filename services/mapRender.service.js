@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { getInt } = require("./env");
 const mapMeta = require("./mapMeta.service");
 const mapIconRender = require("./mapIconRender.service");
+const shapeDecor = require("../public/shapeDecorFilter.js");
 
 const GEOJSON_CACHE_MS = getInt("MAP_GEOJSON_CACHE_MS", 0);
 
@@ -396,6 +397,7 @@ function buildGeoJson(markers, options = {}) {
   const features = [];
 
   for (const marker of visible) {
+    if (shapeDecor.shouldSkipLiveStreamMarker(marker)) continue;
     const color = markerDisplayColor(marker);
     const apiIconId = markerUsesMapIcon(marker) ? String(marker.iconId) : "";
     const mapImageId = apiIconId

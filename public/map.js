@@ -433,6 +433,18 @@
     const color = m.color || m.teamColor || "#1e88e5";
     const uid = String(m.uid);
     if (shouldSuppressLiveMarkerGraphic(uid)) return null;
+    if (
+      window.TakMapMissions &&
+      typeof window.TakMapMissions.isShapeDecorMarker === "function" &&
+      window.TakMapMissions.isShapeDecorMarker(lon, lat, {
+        type: m.type || "",
+        how: m.how || "",
+        icon: m.iconsetpath || "",
+        iconsetpath: m.iconsetpath || "",
+      })
+    ) {
+      return null;
+    }
     if (mapImageId) {
       registerServerMapImageMeta(mapImageId, apiIconId, m);
     }
