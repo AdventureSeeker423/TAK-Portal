@@ -152,16 +152,16 @@ router.get("/icons/rendered", async (req, res) => {
   }
 
   const apiIconId = String(req.query.apiIconId || "").trim();
-  const color = String(req.query.color || "").trim();
   if (!apiIconId) return res.status(404).end();
 
+  const teamColorRaw = String(req.query.teamColor || "").trim();
   const marker = {
     iconId: apiIconId,
     iconSource: String(req.query.iconSource || ""),
     origin: String(req.query.origin || "feed"),
     type: String(req.query.type || ""),
     affiliation: String(req.query.affiliation || "friend"),
-    teamColor: color || null,
+    teamColor: teamColorRaw || null,
   };
 
   const rendered = await mapIconRender.renderIconForMarker(marker);

@@ -202,7 +202,7 @@ function manifestEntryToMarker(entry) {
     origin: String(entry?.origin || "feed"),
     type: String(entry?.type || ""),
     affiliation: String(entry?.affiliation || "friend"),
-    teamColor: entry?.color || entry?.teamColor || null,
+    teamColor: entry?.teamColor != null ? entry.teamColor : null,
   };
 }
 

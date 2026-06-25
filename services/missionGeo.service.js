@@ -381,6 +381,7 @@ async function getMissionGeoJson(missionName, options = {}) {
           mapImageId: p.iconId,
           apiIconId: p.apiIconId,
           color: mapRender.markerDisplayColor(marker),
+          teamColor: marker.teamColor != null ? marker.teamColor : null,
           iconSource: p.iconSource,
           origin: "mission",
           type: p.cotType,

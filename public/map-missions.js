@@ -53,6 +53,13 @@
 
   let missionStyleRestoreGen = 0;
 
+  function whenLiveReady(fn) {
+    if (bridge && typeof bridge.ensureLiveMarkersLoaded === "function") {
+      return bridge.ensureLiveMarkersLoaded().then(fn);
+    }
+    return Promise.resolve().then(fn);
+  }
+
   function readState() {
     try {
       const raw = localStorage.getItem(LS_PREFIX + storageKey);
@@ -999,7 +1006,9 @@
       entry.visible = true;
       if (entry.geojson) {
         entry.geojson = stampMissionVisibility(entry.geojson, true);
-        installMissionOverlays(name, entry)
+        whenLiveReady(function () {
+          return installMissionOverlays(name, entry);
+        })
           .then(function () {
             writeState();
             renderMissionList();
@@ -1032,6 +1041,7 @@
 
   async function loadMission(name, options) {
     const opts = options || {};
+    await whenLiveReady(function () {});
     let entry = openMissions.get(name);
     if (!entry) {
       entry = {
@@ -1288,8 +1298,14 @@
         error: null,
       };
       openMissions.set(name, entry);
-      if (visible) loadMission(name);
     }
+    whenLiveReady(function () {
+      const pending = readState();
+      for (const name of pending.open) {
+        const settings = pending.settings[name] || {};
+        if (settings.visible !== false) loadMission(name);
+      }
+    });
   }
 
   function reinstallMissionOverlays(name, entry) {

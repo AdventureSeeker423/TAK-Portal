@@ -260,6 +260,7 @@
   let lastServerGeoJson = null;
   let serverGeoFetchInFlight = null;
   let lastGeoJsonFetchOk = false;
+  let liveMarkersLoadGen = 0;
   const mapIconImageCache = new Map();
   const iconUidByMapImageId = new Map();
   const pendingMapAdds = new Map();
@@ -1140,6 +1141,10 @@
       type: markerProps && markerProps.type ? markerProps.type : "",
       affiliation: markerProps && markerProps.affiliation ? markerProps.affiliation : "",
       color: markerProps && markerProps.color ? markerProps.color : "",
+      teamColor:
+        markerProps && markerProps.teamColor != null && markerProps.teamColor !== ""
+          ? markerProps.teamColor
+          : "",
     };
     iconIdByMapImageId.set(canonicalId, meta);
     if (canonicalId !== String(mapImageId)) {
@@ -1167,6 +1172,7 @@
           type: props.type || "",
           affiliation: props.affiliation || "",
           color: props.color || "",
+          teamColor: props.teamColor != null ? props.teamColor : "",
         };
         registerServerMapImageMeta(canonicalId, info.apiIconId, info);
         return info;
@@ -1183,7 +1189,8 @@
         origin: marker.origin || "",
         type: marker.type || "",
         affiliation: marker.affiliation || "",
-        color: marker.color || marker.teamColor || "",
+        color: marker.color || "",
+        teamColor: marker.teamColor != null ? marker.teamColor : "",
       };
       registerServerMapImageMeta(canonicalId, info.apiIconId, marker);
       return info;
@@ -1201,6 +1208,7 @@
         type: entry.type || "",
         affiliation: entry.affiliation || "",
         color: entry.color || "",
+        teamColor: entry.teamColor != null ? entry.teamColor : "",
       };
       registerServerMapImageMeta(canonicalId, info.apiIconId, info);
       return info;
@@ -1245,7 +1253,7 @@
     const meta = iconIdByMapImageId.get(canonicalId);
     if (meta && meta.apiIconId) {
       url += "&apiIconId=" + encodeURIComponent(meta.apiIconId);
-      if (meta.color) url += "&color=" + encodeURIComponent(meta.color);
+      if (meta.teamColor) url += "&teamColor=" + encodeURIComponent(meta.teamColor);
       if (meta.iconSource) url += "&iconSource=" + encodeURIComponent(meta.iconSource);
       if (meta.origin) url += "&origin=" + encodeURIComponent(meta.origin);
       if (meta.type) url += "&type=" + encodeURIComponent(meta.type);
@@ -1488,6 +1496,40 @@
       });
 
     return serverGeoFetchInFlight;
+  }
+
+  function areLiveMarkersLoaded() {
+    return !!(
+      markerLayersReady &&
+      markerLayersComplete() &&
+      lastGeoJsonFetchOk &&
+      lastServerGeoJsonFull
+    );
+  }
+
+  function ensureLiveMarkersLoaded() {
+    const gen = liveMarkersLoadGen;
+    if (areLiveMarkersLoaded()) return Promise.resolve();
+    return new Promise(function (resolve) {
+      function tryReady(attempt) {
+        if (gen !== liveMarkersLoadGen) {
+          resolve();
+          return;
+        }
+        if (areLiveMarkersLoaded()) {
+          resolve();
+          return;
+        }
+        if (attempt >= 400) {
+          resolve();
+          return;
+        }
+        setTimeout(function () {
+          tryReady(attempt + 1);
+        }, 50);
+      }
+      tryReady(0);
+    });
   }
 
   function scheduleMapRefresh() {
@@ -1796,6 +1838,7 @@
             mapImageId: normalizeMapImageId(entry.mapImageId),
             apiIconId: entry.apiIconId || "",
             color: entry.color || "",
+            teamColor: entry.teamColor != null ? entry.teamColor : "",
             iconSource: entry.iconSource || "",
             origin: entry.origin || "",
             type: entry.type || "",
@@ -2683,8 +2726,8 @@
       let url = "/api/map/icons/rendered?mapImageId=" + encodeURIComponent(mapImageId);
       const apiIconId = String(m.iconId || "");
       if (apiIconId) url += "&apiIconId=" + encodeURIComponent(apiIconId);
-      const color = markerDisplayColor(m);
-      if (color) url += "&color=" + encodeURIComponent(color);
+      const teamColor = normalizeMarkerColor(m && m.teamColor, null);
+      if (teamColor) url += "&teamColor=" + encodeURIComponent(teamColor);
       if (m.iconSource) url += "&iconSource=" + encodeURIComponent(m.iconSource);
       if (m.origin) url += "&origin=" + encodeURIComponent(m.origin);
       if (m.type) url += "&type=" + encodeURIComponent(m.type);
@@ -4962,6 +5005,8 @@
 
   function restoreMapAfterStyleChange() {
     const gen = styleRestoreGen;
+    liveMarkersLoadGen++;
+    lastGeoJsonFetchOk = false;
     if (styleRestoreTimer) clearTimeout(styleRestoreTimer);
     if (styleRestoreFallbackTimer) clearTimeout(styleRestoreFallbackTimer);
 
@@ -4978,26 +5023,26 @@
         bindMarkerLayerHandlers();
 
         function afterMissionsRestore() {
-          runServerGeoJsonRefresh().finally(function () {
+          if (gen !== styleRestoreGen) return;
+          triggerMarkerRepaint();
+        }
+
+        runServerGeoJsonRefresh()
+          .finally(function () {
             if (gen !== styleRestoreGen) return;
-            triggerMarkerRepaint();
+            if (
+              window.TakMapMissions &&
+              typeof window.TakMapMissions.restoreAfterStyleChange === "function"
+            ) {
+              return Promise.resolve(window.TakMapMissions.restoreAfterStyleChange())
+                .then(afterMissionsRestore)
+                .catch(function (err) {
+                  console.warn("[map] mission restore after style change failed", err);
+                  afterMissionsRestore();
+                });
+            }
+            afterMissionsRestore();
           });
-        }
-
-        if (
-          window.TakMapMissions &&
-          typeof window.TakMapMissions.restoreAfterStyleChange === "function"
-        ) {
-          Promise.resolve(window.TakMapMissions.restoreAfterStyleChange())
-            .then(afterMissionsRestore)
-            .catch(function (err) {
-              console.warn("[map] mission restore after style change failed", err);
-              afterMissionsRestore();
-            });
-          return;
-        }
-
-        afterMissionsRestore();
       }
 
       function tryRestore(attempt) {
@@ -5055,6 +5100,8 @@
     const def = BASEMAPS[id] || BASEMAPS["dark-matter"];
     writeMapPrefs({ basemap: id });
     styleRestoreGen++;
+    liveMarkersLoadGen++;
+    lastGeoJsonFetchOk = false;
     markerLayersReady = false;
     mapRefreshPending = true;
     closeMapPopup();
@@ -5412,6 +5459,7 @@
     refreshGoToIfOpen: refreshGoToIfOpen,
     queryMarkersAtPoint: queryMarkersAtPoint,
     markerOriginRank: markerOriginRank,
+    ensureLiveMarkersLoaded: ensureLiveMarkersLoaded,
     whenReady: function (cb) {
       if (markerLayersReady && map) {
         cb();
