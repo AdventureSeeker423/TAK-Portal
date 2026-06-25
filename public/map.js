@@ -3845,7 +3845,7 @@
       }
     }
 
-    const displayFeatures = canonicalFeatures.map(buildDisplayFeature);
+    const displayFeatures = canonicalFeatures.map(buildDisplayFeature).filter(Boolean);
     const updateOps = [];
     for (let i = 0; i < displayFeatures.length; i++) {
       const built = displayFeatures[i];
