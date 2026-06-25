@@ -39,8 +39,13 @@ function normalizeColorHex(color) {
 
 function iconSkipsRecolor(marker, apiIconId) {
   if (mapMilSym.isMilSymIconId(apiIconId)) return true;
-  if (String(marker?.iconSource || "").toLowerCase() === "milsym") return true;
-  if (String(marker?.iconSource || "").toLowerCase() === "type2525b") return true;
+  const src = String(marker?.iconSource || "").toLowerCase();
+  if (src === "milsym" || src === "type2525b") return true;
+  const mapMeta = require("./mapMeta.service");
+  const explicitColor = mapMeta.normalizeTakColor(marker?.teamColor);
+  if (!explicitColor && (src === "usericon" || src === "path" || src === "alias")) {
+    return true;
+  }
   return false;
 }
 

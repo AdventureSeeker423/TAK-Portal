@@ -347,6 +347,10 @@ function parseIconsetPath(iconsetpath) {
     return { mode: "type", cotType };
   }
 
+  if (/^a-[a-z]-/i.test(raw) && raw.indexOf("/") === -1) {
+    return { mode: "type", cotType: raw };
+  }
+
   const slash = raw.indexOf("/");
   if (slash <= 0) return null;
   const uid = raw.slice(0, slash);
@@ -356,7 +360,14 @@ function parseIconsetPath(iconsetpath) {
 }
 
 function prefersMilSym2525C(iconsetpath) {
-  return /^COT_MAPPING_2525C\//i.test(String(iconsetpath || "").trim());
+  return prefersMilSymIconPath(iconsetpath);
+}
+
+function prefersMilSymIconPath(iconsetpath) {
+  const raw = String(iconsetpath || "").trim();
+  if (/^COT_MAPPING_2525C\//i.test(raw)) return true;
+  if (/^a-[a-z]-/i.test(raw) && raw.indexOf("/") === -1) return true;
+  return false;
 }
 
 function parseUserIcon(detail) {
@@ -451,7 +462,7 @@ function resolvePngIcon(
     }
   }
 
-  if (prefersMilSym2525C(ui.iconsetpath)) {
+  if (prefersMilSymIconPath(ui.iconsetpath)) {
     return null;
   }
 
@@ -513,6 +524,7 @@ module.exports = {
   parseUserIcon,
   parseIconsetPath,
   prefersMilSym2525C,
+  prefersMilSymIconPath,
   resolvePngIcon,
   resolveRelativePath,
   defaultIconNameForAffiliation,

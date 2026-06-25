@@ -1010,12 +1010,16 @@ function normalizeTakColor(raw) {
   if (raw == null || raw === "") return null;
   const s = String(raw).trim();
   if (/^#[0-9a-f]{3,8}$/i.test(s)) {
-    if (s.length === 4 || s.length === 7) return s;
+    if (s.length === 4 || s.length === 7) {
+      if (s.toLowerCase() === "#ffffff" || s.toLowerCase() === "#fff") return null;
+      return s;
+    }
     return s.slice(0, 7);
   }
 
   const n = Number(s);
   if (!Number.isFinite(n)) return null;
+  if (n === -1 || (n >>> 0) === 0xffffffff) return null;
 
   const argb = n >>> 0;
   const a = (argb >>> 24) & 0xff;

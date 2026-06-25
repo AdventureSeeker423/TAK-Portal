@@ -85,6 +85,7 @@ async function runTests() {
   assert.ok(mapped, "COT_MAPPING_2525B path should resolve");
   assert.ok(/fed_rotor/i.test(mapped.relPath || mapped.iconId));
 
+  // COT_MAPPING_2525C → milsym filled symbols
   const mapped2525cSync = mapIcon.resolveIcon({
     type: "a-h-G",
     affiliation: "hostile",
@@ -98,7 +99,20 @@ async function runTests() {
   });
   assert.ok(mapped2525c, "COT_MAPPING_2525C path should resolve via milsym");
   assert.strictEqual(mapped2525c.source, "milsym");
-  assert.ok(String(mapped2525c.iconId || "").startsWith("2525D:"));
+
+  const bareTypeSync = mapIcon.resolveIcon({
+    type: "a-h-G",
+    affiliation: "hostile",
+    usericon: { iconsetpath: "a-h-G" },
+  });
+  assert.strictEqual(bareTypeSync, null, "bare CoT type usericon should defer to milsym");
+  const bareType = await mapIcon.resolveIconAsync({
+    type: "a-h-G",
+    affiliation: "hostile",
+    usericon: { iconsetpath: "a-h-G" },
+  });
+  assert.ok(bareType, "bare CoT type usericon should resolve via milsym");
+  assert.strictEqual(bareType.source, "milsym");
 
   // Default affiliation icons
   const defaults = mapIcon.getDefaultIconIds();

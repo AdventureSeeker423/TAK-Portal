@@ -1266,6 +1266,15 @@ body.map-detail-resizing .map-panel-resize-handle {
   white-space: nowrap;
 }
 
+.map-mission-name.is-clickable {
+  cursor: pointer;
+  color: var(--map-accent, #38bdf8);
+}
+
+.map-mission-name.is-clickable:hover {
+  text-decoration: underline;
+}
+
 .map-mission-badge {
   display: inline-block;
   margin-left: 6px;

@@ -3,7 +3,7 @@
  */
 const { getInt } = require("./env");
 
-const MILSYM_SIZE = getInt("MAP_MILSYM_SIZE", 48);
+const MILSYM_SIZE = getInt("MAP_MILSYM_SIZE", 21);
 
 /** @type {Promise<typeof import('./mapMilSym.render.mjs')>|null} */
 let esmPromise = null;

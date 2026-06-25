@@ -3267,11 +3267,13 @@
     if (raw == null || raw === "") return fallback;
     const s = String(raw).trim();
     if (/^#[0-9a-f]{3,8}$/i.test(s)) {
+      if (s.toLowerCase() === "#ffffff" || s.toLowerCase() === "#fff") return fallback;
       if (s.length === 4 || s.length === 7) return s;
       return s.slice(0, 7);
     }
     const n = Number(s);
     if (!Number.isFinite(n)) return fallback;
+    if (n === -1 || (n >>> 0) === 0xffffffff) return fallback;
     const argb = n >>> 0;
     const a = (argb >>> 24) & 0xff;
     if (a === 0) return fallback;

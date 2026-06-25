@@ -72,15 +72,15 @@ function parseUserIconFromFeature(props) {
   });
 }
 
-function markerColorFromFeatureProps(props, affiliation) {
+function explicitMarkerColorFromProps(props) {
   const fromMarkerColor = mapMeta.normalizeTakColor(props?.["marker-color"]);
-  if (fromMarkerColor && fromMarkerColor.toLowerCase() !== "#ffffff") {
-    return fromMarkerColor;
-  }
-  const fromColor = mapMeta.normalizeTakColor(props?.color);
-  if (fromColor && fromColor.toLowerCase() !== "#ffffff") {
-    return fromColor;
-  }
+  if (fromMarkerColor) return fromMarkerColor;
+  return mapMeta.normalizeTakColor(props?.color);
+}
+
+function markerColorFromFeatureProps(props, affiliation) {
+  const explicit = explicitMarkerColorFromProps(props);
+  if (explicit) return explicit;
   return mapMeta.resolveMarkerDisplayColor({
     teamColor: null,
     affiliation,
@@ -94,7 +94,7 @@ async function augmentPointFeature(feature, missionName) {
   const uid = String(feature.id || props.uid || "");
   const usericon = parseUserIconFromFeature(props);
   const affiliation = affiliationFromType(cotType);
-  const teamColor = markerColorFromFeatureProps(props, affiliation);
+  const explicitTeamColor = explicitMarkerColorFromProps(props);
 
   await mapIcon.ensureIconsets();
   let resolved = mapIcon.resolveIcon({
@@ -117,7 +117,7 @@ async function augmentPointFeature(feature, missionName) {
     origin: "mission",
     iconId: resolved?.iconId || null,
     iconSource: resolved?.source || null,
-    teamColor,
+    teamColor: explicitTeamColor,
     callsign: props.callsign || uid.slice(0, 16),
   };
 
@@ -151,7 +151,7 @@ async function augmentPointFeature(feature, missionName) {
       iconSource: marker.iconSource || "",
       origin: "mission",
       color,
-      teamColor,
+      teamColor: explicitTeamColor,
       showCircle: mapImageId ? 0 : 1,
       how: props.how || "",
       contentSource: "cot",

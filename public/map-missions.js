@@ -652,6 +652,175 @@
     if (map) map.triggerRepaint();
   }
 
+  function featureLabel(props) {
+    return (
+      props?.callsign ||
+      props?.name ||
+      props?.cotType ||
+      props?.uid ||
+      props?.id ||
+      "Feature"
+    );
+  }
+
+  function extendBoundsPoint(bounds, lon, lat) {
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return bounds;
+    if (!bounds) {
+      return { west: lon, south: lat, east: lon, north: lat };
+    }
+    return {
+      west: Math.min(bounds.west, lon),
+      south: Math.min(bounds.south, lat),
+      east: Math.max(bounds.east, lon),
+      north: Math.max(bounds.north, lat),
+    };
+  }
+
+  function extendBoundsFromGeometry(bounds, geom) {
+    if (!geom || !geom.coordinates) return bounds;
+    const type = String(geom.type || "");
+    if (type === "Point") {
+      return extendBoundsPoint(bounds, geom.coordinates[0], geom.coordinates[1]);
+    }
+    if (type === "LineString") {
+      for (let i = 0; i < geom.coordinates.length; i++) {
+        bounds = extendBoundsPoint(bounds, geom.coordinates[i][0], geom.coordinates[i][1]);
+      }
+      return bounds;
+    }
+    if (type === "Polygon") {
+      for (let r = 0; r < geom.coordinates.length; r++) {
+        const ring = geom.coordinates[r] || [];
+        for (let i = 0; i < ring.length; i++) {
+          bounds = extendBoundsPoint(bounds, ring[i][0], ring[i][1]);
+        }
+      }
+      return bounds;
+    }
+    if (type === "MultiLineString") {
+      for (let g = 0; g < geom.coordinates.length; g++) {
+        const line = geom.coordinates[g] || [];
+        for (let i = 0; i < line.length; i++) {
+          bounds = extendBoundsPoint(bounds, line[i][0], line[i][1]);
+        }
+      }
+      return bounds;
+    }
+    if (type === "MultiPolygon") {
+      for (let p = 0; p < geom.coordinates.length; p++) {
+        const poly = geom.coordinates[p] || [];
+        for (let r = 0; r < poly.length; r++) {
+          const ring = poly[r] || [];
+          for (let i = 0; i < ring.length; i++) {
+            bounds = extendBoundsPoint(bounds, ring[i][0], ring[i][1]);
+          }
+        }
+      }
+    }
+    return bounds;
+  }
+
+  function computeMissionBounds(entry) {
+    if (!entry) return null;
+    let bounds = null;
+    const features = entry.geojson && entry.geojson.features ? entry.geojson.features : [];
+    for (let i = 0; i < features.length; i++) {
+      bounds = extendBoundsFromGeometry(bounds, features[i].geometry);
+    }
+    const rasters = entry.rasterOverlays || [];
+    for (let j = 0; j < rasters.length; j++) {
+      const b = rasters[j].bounds;
+      if (!b || b.length < 4) continue;
+      bounds = extendBoundsPoint(bounds, b[0], b[1]);
+      bounds = extendBoundsPoint(bounds, b[2], b[3]);
+    }
+    if (!bounds) return null;
+    if (bounds.west === bounds.east && bounds.south === bounds.north) {
+      return {
+        center: [bounds.west, bounds.south],
+        single: true,
+      };
+    }
+    return {
+      bounds: [
+        [bounds.west, bounds.south],
+        [bounds.east, bounds.north],
+      ],
+      single: false,
+    };
+  }
+
+  function flyToMissionExtent(name) {
+    if (!map) return Promise.resolve();
+    const missionName = String(name || "").trim();
+    if (!missionName) return Promise.resolve();
+
+    function applyFit(entry) {
+      const fit = computeMissionBounds(entry);
+      if (!fit) return;
+      if (fit.single && fit.center) {
+        map.flyTo({
+          center: fit.center,
+          zoom: Math.max(map.getZoom(), 12),
+          duration: 800,
+        });
+        return;
+      }
+      if (fit.bounds) {
+        map.fitBounds(fit.bounds, { padding: 64, maxZoom: 16, duration: 800 });
+      }
+    }
+
+    let entry = openMissions.get(missionName);
+    const ensureLoaded =
+      entry && entry.geojson
+        ? Promise.resolve()
+        : loadMission(missionName).then(function () {
+            entry = openMissions.get(missionName);
+          });
+
+    return ensureLoaded
+      .then(function () {
+        entry = openMissions.get(missionName);
+        if (!entry) return;
+        if (!entry.visible) {
+          entry.visible = true;
+          if (entry.geojson) {
+            entry.geojson = stampMissionVisibility(entry.geojson, true);
+          }
+          return installMissionOverlays(missionName, entry).then(function () {
+            writeState();
+            renderMissionList();
+            applyFit(entry);
+          });
+        }
+        applyFit(entry);
+      })
+      .catch(function (err) {
+        console.warn("[map-missions] fly to mission failed", err);
+      });
+  }
+
+  function setAllMissionsEnabled(enabled) {
+    const wantOn = !!enabled;
+    const names = missionsCatalog
+      .map(function (m) {
+        return String(m.name || m.Name || "").trim();
+      })
+      .filter(Boolean);
+    for (let i = 0; i < names.length; i++) {
+      setMissionEnabled(names[i], wantOn);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
   function affiliationFromCotType(cotType) {
     const parts = String(cotType || "").trim().split("-");
     if (parts.length < 2) return "other";
@@ -976,8 +1145,13 @@
       });
 
       const title = document.createElement("span");
-      title.className = "map-mission-name";
+      title.className = "map-mission-name is-clickable";
       title.textContent = name;
+      title.title = "Zoom map to mission extent";
+      title.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        flyToMissionExtent(name);
+      });
       if (isArchivedMission(m)) {
         const badge = document.createElement("span");
         badge.className = "map-mission-badge";
@@ -1210,6 +1384,19 @@
       searchEl.addEventListener("input", renderMissionList);
     }
 
+    const missionsAllBtn = document.getElementById("mapMissionsAll");
+    const missionsNoneBtn = document.getElementById("mapMissionsNone");
+    if (missionsAllBtn) {
+      missionsAllBtn.addEventListener("click", function () {
+        setAllMissionsEnabled(true);
+      });
+    }
+    if (missionsNoneBtn) {
+      missionsNoneBtn.addEventListener("click", function () {
+        setAllMissionsEnabled(false);
+      });
+    }
+
     const tabChannels = document.getElementById("mapTabChannels");
     const tabMissions = document.getElementById("mapTabMissions");
     const panelChannels = document.getElementById("mapPanelChannels");
@@ -1250,5 +1437,7 @@
     queryMarkersAtPoint: queryMissionMarkersAtPoint,
     getHitLayers: getMissionHitLayers,
     isMarkerSearchable: isMarkerSearchable,
+    flyToMissionExtent: flyToMissionExtent,
+    setAllMissionsEnabled: setAllMissionsEnabled,
   };
 })();
