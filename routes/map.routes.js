@@ -469,6 +469,14 @@ router.get("/missions/:missionName/geojson", async (req, res) => {
     const queryParams = {};
     if (req.query.password) queryParams.password = String(req.query.password);
 
+    if (String(req.query.debug || "") === "decor") {
+      const audit = await missionGeo.auditMissionShapeDecor(missionName, {
+        queryParams,
+      });
+      res.setHeader("Cache-Control", "no-cache");
+      return res.json(audit);
+    }
+
     let missionMeta = null;
     if (includeAttachments) {
       missionMeta = await dataSyncSvc.getMission(missionName);

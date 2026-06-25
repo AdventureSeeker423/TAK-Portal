@@ -290,7 +290,17 @@ function normalizeLayerTree(raw, featureUids) {
   return { folders, orphaned };
 }
 
-async function fetchMissionCotGeoJson(missionName, queryParams = {}) {
+function filterNormalizedDecorPoints(fc) {
+  const features = fc?.features || [];
+  const decorIndex = shapeDecor.buildShapeDecorIndex(features);
+  const out = features.filter(function (feature) {
+    if (geometryType(feature?.geometry) !== "point") return true;
+    return !shapeDecor.shouldDropShapeDecorPoint(feature, decorIndex);
+  });
+  return Object.assign({}, fc, { features: out });
+}
+
+async function fetchRawMissionCotFeatureCollection(missionName, queryParams = {}) {
   const res = await dataSyncSvc.getMissionCotXml(missionName, queryParams);
   if (res.status >= 400) {
     const err = new Error(`Mission CoT fetch failed (${res.status})`);
@@ -299,13 +309,28 @@ async function fetchMissionCotGeoJson(missionName, queryParams = {}) {
     throw err;
   }
   const mod = await loadCotConvert();
-  const fc = await mod.missionCotXmlToFeatureCollection(res.data, missionName);
-  return normalizeFeatureCollection(fc, missionName);
+  return mod.missionCotXmlToFeatureCollection(res.data, missionName);
+}
+
+async function auditMissionShapeDecor(missionName, options = {}) {
+  const name = String(missionName || "").trim();
+  const rawFc = await fetchRawMissionCotFeatureCollection(name, options.queryParams || {});
+  const normalized = await normalizeFeatureCollection(rawFc, name);
+  return {
+    missionName: name,
+    cot: shapeDecor.auditShapeDecor(rawFc.features || []),
+    normalized: shapeDecor.auditShapeDecor(normalized.features || []),
+  };
+}
+
+async function fetchMissionCotGeoJson(missionName, queryParams = {}) {
+  const rawFc = await fetchRawMissionCotFeatureCollection(missionName, queryParams);
+  return normalizeFeatureCollection(rawFc, missionName);
 }
 
 async function getMissionGeoJson(missionName, options = {}) {
   const name = String(missionName || "").trim();
-  const cacheKey = `${name}:v3:att=${options.includeAttachments ? 1 : 0}:${JSON.stringify(options.queryParams || {})}`;
+  const cacheKey = `${name}:v4:att=${options.includeAttachments ? 1 : 0}:${JSON.stringify(options.queryParams || {})}`;
   if (!options.refresh) {
     const cached = cacheGet(geoCache, cacheKey);
     if (cached) return cached;
@@ -323,10 +348,10 @@ async function getMissionGeoJson(missionName, options = {}) {
       const kmlFeatures = await missionKml.loadKmlFeaturesFromMission(name, mission);
       attachmentSummary.kml = kmlFeatures.length;
       if (kmlFeatures.length) {
-        fc = {
+        fc = filterNormalizedDecorPoints({
           type: "FeatureCollection",
           features: [...fc.features, ...kmlFeatures],
-        };
+        });
       }
       rasterOverlays = await missionRaster.buildRasterOverlays(name, mission, {
         features: fc.features,
@@ -480,5 +505,6 @@ module.exports = {
   getMissionGeoJson,
   getMissionLayerTree,
   getMissionCotRaw,
+  auditMissionShapeDecor,
   clearCache,
 };

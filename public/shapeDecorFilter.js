@@ -237,12 +237,64 @@
     return false;
   }
 
+  function collectShapeOwnerUids(features) {
+    const uids = new Set();
+    for (const feature of features || []) {
+      const props = feature.properties || {};
+      const type = String(props.type || props.cotType || "").toLowerCase();
+      const geom = geometryKind(feature?.geometry);
+      if (geom !== "polygon" && geom !== "line") continue;
+      if (
+        type.startsWith("u-d-") ||
+        type.startsWith("u-r-") ||
+        type.startsWith("b-m-r") ||
+        isCircleShapeCotType(type)
+      ) {
+        const uid = String(feature.id || props.uid || "");
+        if (uid) uids.add(uid);
+      }
+    }
+    return uids;
+  }
+
+  function isPointOwnedByShape(feature, shapeUids) {
+    if (!shapeUids || !shapeUids.size) return false;
+    const uid = String(feature.id || feature.properties?.uid || "");
+    for (const shapeUid of shapeUids) {
+      if (!shapeUid || uid === shapeUid) continue;
+      if (uid.startsWith(shapeUid + ".") || uid.startsWith(shapeUid + "-")) return true;
+    }
+    const links = feature.properties?.links;
+    const linkList = Array.isArray(links) ? links : links ? [links] : [];
+    for (let i = 0; i < linkList.length; i++) {
+      const linkUid = String(linkList[i]?.uid || linkList[i]?.Uid || "");
+      if (shapeUids.has(linkUid)) return true;
+    }
+    return false;
+  }
+
+  function summarizeDecorPoint(feature) {
+    const props = feature.properties || {};
+    const coords = feature.geometry?.coordinates || [];
+    return {
+      uid: String(feature.id || props.uid || ""),
+      type: String(props.type || props.cotType || ""),
+      callsign: String(props.callsign || props.name || ""),
+      how: String(props.how || ""),
+      lon: coords[0],
+      lat: coords[1],
+      icon: String(props.icon || props.iconsetpath || ""),
+      showCircle: props.showCircle,
+    };
+  }
+
   function buildShapeDecorIndex(features) {
     const list = Array.isArray(features) ? features : [];
     return {
       vertexKeys: collectShapeVertexKeys(list),
       segments: collectShapeSegments(list),
       ringProfiles: collectCircleRingProfiles(list),
+      shapeUids: collectShapeOwnerUids(list),
       hasShapes: missionHasShapeGeometry(list),
     };
   }
@@ -252,6 +304,7 @@
     const vertexKeys = idx.vertexKeys || new Set();
     const segments = idx.segments || [];
     const ringProfiles = idx.ringProfiles || [];
+    const shapeUids = idx.shapeUids || new Set();
     const hasShapes = !!idx.hasShapes;
 
     if (geometryKind(feature?.geometry) !== "point") return false;
@@ -266,6 +319,7 @@
     const lat = coords[1];
 
     if (hasShapes && isShapeControlCotType(type)) return true;
+    if (shapeUids.size && isPointOwnedByShape(feature, shapeUids)) return true;
     if (coordMatchesVertex(lon, lat, vertexKeys)) return true;
     if (!hasShapes) return false;
 
@@ -274,6 +328,53 @@
     const onCircleRing =
       ringProfiles.length > 0 && isPointNearCircleRing(lon, lat, ringProfiles);
     return onBoundary || onCircleRing;
+  }
+
+  function auditShapeDecor(features) {
+    const list = Array.isArray(features) ? features : [];
+    const index = buildShapeDecorIndex(list);
+    const rawPoints = list.filter(function (feature) {
+      return geometryKind(feature?.geometry) === "point";
+    });
+    const dropped = [];
+    const kept = [];
+    for (let i = 0; i < rawPoints.length; i++) {
+      const feature = rawPoints[i];
+      const summary = summarizeDecorPoint(feature);
+      if (shouldDropShapeDecorPoint(feature, index)) {
+        dropped.push(summary);
+      } else {
+        kept.push(summary);
+      }
+    }
+    const dotMarkers = list.filter(function (feature) {
+      const props = feature.properties || {};
+      return (
+        geometryKind(feature?.geometry) === "point" &&
+        (props.showCircle === 1 || props.showCircle === true)
+      );
+    });
+    return {
+      featureCount: list.length,
+      polygonCount: list.filter(function (f) {
+        return geometryKind(f?.geometry) === "polygon";
+      }).length,
+      shapeIndex: {
+        hasShapes: index.hasShapes,
+        vertexKeys: index.vertexKeys.size,
+        segments: index.segments.length,
+        ringProfiles: index.ringProfiles.length,
+        shapeUids: index.shapeUids.size,
+        shapeUidSample: Array.from(index.shapeUids).slice(0, 8),
+      },
+      rawPointCount: rawPoints.length,
+      droppedPointCount: dropped.length,
+      keptPointCount: kept.length,
+      normalizedDotCount: dotMarkers.length,
+      keptPointSample: kept.slice(0, 15),
+      normalizedDotSample: dotMarkers.slice(0, 15).map(summarizeDecorPoint),
+      droppedPointSample: dropped.slice(0, 15),
+    };
   }
 
   function filterShapeVertexPoints(features) {
@@ -290,5 +391,6 @@
     buildShapeDecorIndex: buildShapeDecorIndex,
     shouldDropShapeDecorPoint: shouldDropShapeDecorPoint,
     filterShapeVertexPoints: filterShapeVertexPoints,
+    auditShapeDecor: auditShapeDecor,
   };
 });

@@ -184,6 +184,21 @@ async function runTests() {
     "circle polygon should remain"
   );
 
+  const linkedHandle = {
+    id: "1e77fed5-d04a-45b2-b297-0ad9c54f4eed.17",
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [-85.3325, 35.0925] },
+    properties: { type: "a-n-G", how: "h-e", callsign: "handle" },
+  };
+  const linkedNormalized = await missionGeo.normalizeFeatureCollection(
+    { type: "FeatureCollection", features: [baylorFc.features[0], linkedHandle] },
+    "Baylor"
+  );
+  assert.ok(
+    !linkedNormalized.features.some((f) => String(f.id) === linkedHandle.id),
+    "uid linked to shape owner should be filtered"
+  );
+
   console.log("missionGeo.test.js: all assertions passed");
 }
 
