@@ -253,19 +253,22 @@ async function buildAgencyAllowedGroups(authUser) {
     }
   }
 
-  for (const maGroup of getMutualAidAllowedGroupsForUser(authUser)) {
-    if (seenKeys.has(maGroup.canonicalKey)) continue;
-    seenKeys.add(maGroup.canonicalKey);
-    out.push(maGroup);
-  }
-
   return out;
 }
 
-async function getAllowedCanonicalKeySet(authUser) {
+/** Map overlay: agency groups plus mutual aid channels the user belongs to. */
+const MAP_MISSION_ACCESS = { includeMutualAid: true };
+
+async function getAllowedCanonicalKeySet(authUser, options = {}) {
   const allowed = await buildAgencyAllowedGroups(authUser);
   if (allowed === null) return null;
-  return new Set(allowed.map((g) => g.canonicalKey));
+  const keys = new Set(allowed.map((g) => g.canonicalKey));
+  if (options.includeMutualAid) {
+    for (const ma of getMutualAidAllowedGroupsForUser(authUser)) {
+      keys.add(ma.canonicalKey);
+    }
+  }
+  return keys;
 }
 
 /** @deprecated name retained for callers — returns canonical key Set */
@@ -419,8 +422,8 @@ function assertGroupAllowed(body, allowedKeySet) {
   }
 }
 
-async function assertMissionReadable(authUser, missionName) {
-  const allowedKeySet = await getAllowedCanonicalKeySet(authUser);
+async function assertMissionReadable(authUser, missionName, options = {}) {
+  const allowedKeySet = await getAllowedCanonicalKeySet(authUser, options);
   const raw = await dataSyncSvc.getMission(missionName);
   const mission = unwrapMission(raw);
   const g = missionSingleGroupName(mission);
@@ -710,12 +713,14 @@ async function buildAccessDebug(authUser) {
 
   const allowed = await buildAgencyAllowedGroups(authUser);
   const allowedKeySet = allowed === null ? null : new Set(allowed.map((g) => g.canonicalKey));
+  const mapMissionKeySet = await getAllowedCanonicalKeySet(authUser, MAP_MISSION_ACCESS);
   const mutualAidAllowed = getMutualAidAllowedGroupsForUser(authUser);
   const resolved = await resolveGroupsForUser(authUser, takGroupsRaw);
 
   const missionFilterPreview = missionsRaw.map((m) => ({
     ...m,
     allowed: takGroupNameAllowed(m.singleGroup || "", allowedKeySet),
+    allowedOnMap: takGroupNameAllowed(m.singleGroup || "", mapMissionKeySet),
   }));
 
   return {
@@ -750,6 +755,7 @@ module.exports = {
   extractMissionGroupNames,
   missionSingleGroupName,
   buildAgencyAllowedGroups,
+  MAP_MISSION_ACCESS,
   getMutualAidAllowedGroupsForUser,
   resolveMutualAidAllowedGroups,
   getAllowedTakGroupNameSet,

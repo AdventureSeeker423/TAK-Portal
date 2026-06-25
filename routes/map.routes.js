@@ -428,7 +428,10 @@ function unwrapMissionList(payload) {
 router.get("/missions", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(authUser);
+    const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(
+      authUser,
+      dataSyncAccess.MAP_MISSION_ACCESS
+    );
     const data = await dataSyncSvc.listMissions(req.query);
     const filtered = dataSyncAccess.filterMissionsPayload(data, allowedKeySet);
     const list = unwrapMissionList(filtered);
@@ -448,7 +451,11 @@ router.get("/missions/:missionName", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const missionName = String(req.params.missionName || "").trim();
-    const raw = await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    const raw = await dataSyncAccess.assertMissionReadable(
+      authUser,
+      missionName,
+      dataSyncAccess.MAP_MISSION_ACCESS
+    );
     const mission = dataSyncAccess.unwrapMission(raw);
     res.setHeader("Cache-Control", "no-cache");
     return res.json({ mission });
@@ -463,7 +470,11 @@ router.get("/missions/:missionName/geojson", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const missionName = String(req.params.missionName || "").trim();
-    await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    await dataSyncAccess.assertMissionReadable(
+      authUser,
+      missionName,
+      dataSyncAccess.MAP_MISSION_ACCESS
+    );
     const includeAttachments = String(req.query.attachments || "1") !== "0";
     const refresh = String(req.query.refresh || "") === "1";
     const queryParams = {};
@@ -514,7 +525,11 @@ router.get("/missions/:missionName/cot-raw", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const missionName = String(req.params.missionName || "").trim();
-    await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    await dataSyncAccess.assertMissionReadable(
+      authUser,
+      missionName,
+      dataSyncAccess.MAP_MISSION_ACCESS
+    );
     const uid = String(req.query.uid || "").trim();
     if (!uid) return res.status(400).json({ error: "Missing uid" });
     const queryParams = {};
@@ -541,7 +556,11 @@ router.get("/missions/:missionName/layers", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const missionName = String(req.params.missionName || "").trim();
-    await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    await dataSyncAccess.assertMissionReadable(
+      authUser,
+      missionName,
+      dataSyncAccess.MAP_MISSION_ACCESS
+    );
     const refresh = String(req.query.refresh || "") === "1";
     const queryParams = {};
     if (req.query.password) queryParams.password = String(req.query.password);
@@ -569,7 +588,11 @@ router.get("/missions/:missionName/raster/:hash", async (req, res) => {
     const authUser = req.authentikUser || null;
     const missionName = String(req.params.missionName || "").trim();
     const hash = String(req.params.hash || "").trim();
-    const missionRaw = await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    const missionRaw = await dataSyncAccess.assertMissionReadable(
+      authUser,
+      missionName,
+      dataSyncAccess.MAP_MISSION_ACCESS
+    );
     const mission = dataSyncAccess.unwrapMission(missionRaw);
     const rasters = await missionRaster.findRasterContents(mission);
     const hashKey = hash.toLowerCase();
