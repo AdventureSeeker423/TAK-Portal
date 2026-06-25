@@ -1099,60 +1099,48 @@ async function refreshSubscriptionIndex() {
   return subscriptionIndex;
 }
 
-/** @type {Promise<object>|null} */
-let catalogRefreshInFlight = null;
-
-async function refreshGroupCatalog(options = {}) {
-  const forceRefresh = !!options.forceRefresh;
-  if (catalogRefreshInFlight) return catalogRefreshInFlight;
-
-  catalogRefreshInFlight = (async () => {
-    if (isTakBypassed() || !isTakConfigured()) {
-      catalogCache = {
-        names: [],
-        fetchedAt: Date.now(),
-        error: isTakBypassed() ? "TAK bypass enabled" : "TAK not configured",
-      };
-      return catalogCache;
-    }
-
-    try {
-      const all = await groupsSvc.getAllGroups({ forceRefresh });
-      const ldapNames = (Array.isArray(all) ? all : [])
-        .map((g) => normalizeGroupName(g?.name))
-        .filter(isMapChannelGroupName);
-
-      let takNames = [];
-      try {
-        const takPayload = await dataSyncSvc.listGroupsAll();
-        takNames = dataSyncAccess
-          .extractTakGroupNameList(takPayload)
-          .map((n) => groupsSvc.ensureTakPrefix(n))
-          .filter(isMapChannelGroupName);
-      } catch (_) {}
-
-      const names = Array.from(new Set([...ldapNames, ...takNames])).sort((a, b) =>
-        dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
-      );
-      catalogCache = {
-        names,
-        fetchedAt: Date.now(),
-        error: null,
-      };
-    } catch (err) {
-      catalogCache = {
-        ...catalogCache,
-        fetchedAt: Date.now(),
-        error: err?.message || String(err),
-      };
-    }
-
+async function refreshGroupCatalog() {
+  if (isTakBypassed() || !isTakConfigured()) {
+    catalogCache = {
+      names: [],
+      fetchedAt: Date.now(),
+      error: isTakBypassed() ? "TAK bypass enabled" : "TAK not configured",
+    };
     return catalogCache;
-  })().finally(() => {
-    catalogRefreshInFlight = null;
-  });
+  }
 
-  return catalogRefreshInFlight;
+  try {
+    const all = await groupsSvc.getAllGroups({ forceRefresh: false });
+    const ldapNames = (Array.isArray(all) ? all : [])
+      .map((g) => normalizeGroupName(g?.name))
+      .filter(isMapChannelGroupName);
+
+    let takNames = [];
+    try {
+      const takPayload = await dataSyncSvc.listGroupsAll();
+      takNames = dataSyncAccess
+        .extractTakGroupNameList(takPayload)
+        .map((n) => groupsSvc.ensureTakPrefix(n))
+        .filter(isMapChannelGroupName);
+    } catch (_) {}
+
+    const names = Array.from(new Set([...ldapNames, ...takNames])).sort((a, b) =>
+      dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
+    );
+    catalogCache = {
+      names,
+      fetchedAt: Date.now(),
+      error: null,
+    };
+  } catch (err) {
+    catalogCache = {
+      ...catalogCache,
+      fetchedAt: Date.now(),
+      error: err?.message || String(err),
+    };
+  }
+
+  return catalogCache;
 }
 
 function ensureRefreshLoop() {
@@ -1408,70 +1396,8 @@ function filterMapGroupsForUserMembership(groups, userGroupNames) {
   });
 }
 
-function normalizeAuthentikGroupPk(raw) {
-  if (raw && typeof raw === "object") {
-    return String(raw.pk ?? raw.id ?? "").trim();
-  }
-  return String(raw ?? "").trim();
-}
-
-/**
- * Resolve tak_* channel group names for the signed-in user (live Authentik membership).
- */
-async function resolveMapMemberChannelNames(authUser, options = {}) {
-  const forceRefresh = !!options.forceRefresh;
-  const names = new Set();
-
-  for (const raw of Array.isArray(authUser?.groups) ? authUser.groups : []) {
-    const name = normalizeGroupName(raw);
-    if (name && isMapChannelGroupName(name)) names.add(name);
-  }
-
-  const uid = String(authUser?.uid || "").trim();
-  if (!uid) return Array.from(names);
-
-  const usersSvc = require("./users.service");
-  const liveUser = await usersSvc.getUserById(uid).catch(() => null);
-  if (!liveUser) return Array.from(names);
-
-  let allGroups = [];
-  try {
-    allGroups = await groupsSvc.getAllGroups({
-      includeHidden: true,
-      forceRefresh,
-    });
-  } catch (_) {
-    try {
-      allGroups = await groupsSvc.getAllGroups({
-        includeHidden: true,
-        forceRefresh: false,
-      });
-    } catch (_) {}
-  }
-
-  const groupNameById = new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
-      String(g?.pk ?? g?.id ?? ""),
-      String(g?.name || ""),
-    ])
-  );
-
-  for (const rawId of Array.isArray(liveUser.groups) ? liveUser.groups : []) {
-    const id = normalizeAuthentikGroupPk(rawId);
-    const name = id ? groupNameById.get(id) : "";
-    if (name && isMapChannelGroupName(name)) names.add(name);
-  }
-
-  return Array.from(names);
-}
-
 async function getTakGroupCatalog(markers, options = {}) {
-  const forceRefresh = !!options.forceRefresh;
-  await refreshGroupCatalog({ forceRefresh });
-  if (options.refreshSubscriptions) {
-    await refreshSubscriptionIndex();
-    await refreshDataFeedIndex();
-  }
+  await refreshGroupCatalog();
   let groups = buildGroupsCatalogWithCounts(markers);
   if (options.scopeMemberGroups) {
     groups = filterMapGroupsForUserMembership(groups, options.userGroupNames || []);
@@ -1527,7 +1453,6 @@ module.exports = {
   getTakGroupCatalog,
   getUserMemberChannelBaseKeys,
   filterMapGroupsForUserMembership,
-  resolveMapMemberChannelNames,
   refreshGroupCatalog,
   refreshSubscriptionIndex,
   refreshDataFeedIndex,

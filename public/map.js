@@ -5020,10 +5020,8 @@
     applyBatch({ removes: [String(uid)] });
   }
 
-  function refreshScopedGroupsCatalog(options) {
-    const refresh = options && options.refresh;
-    const qs = refresh ? "?refresh=1" : "";
-    return fetch("/api/map/groups" + qs)
+  function refreshScopedGroupsCatalog() {
+    return fetch("/api/map/groups")
       .then(function (r) {
         return r.json();
       })
@@ -5057,11 +5055,9 @@
       applyMapChannelScope(state.channelScope, state.allowedChannelKeys);
       mergeGroupsCatalog(state?.groupsCatalog || []);
     } else if (mapChannelScope === "member") {
-      // SSE snapshots are not user-scoped; only fetch scoped catalog if we have none yet.
+      // SSE reconnect snapshots are not user-scoped — keep agency channel list.
       recomputeGroupCounts();
-      if (!groupsCatalog.length) {
-        refreshScopedGroupsCatalog();
-      }
+      refreshScopedGroupsCatalog();
     } else if (state?.groupsCatalog) {
       mergeGroupsCatalog(state.groupsCatalog);
     } else {
@@ -5551,9 +5547,14 @@
     elOffline.hidden = false;
   };
 
-  fetch("/api/map/state?refresh=1")
+  fetch("/api/map/state")
     .then((r) => r.json())
     .then((state) => applySnapshot(state))
+    .catch(() => {});
+
+  fetch("/api/map/groups")
+    .then((r) => r.json())
+    .then((data) => refreshScopedGroupsCatalog())
     .catch(() => {});
 
   function getStorageUserKey() {

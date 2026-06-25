@@ -30,31 +30,15 @@ geocode
     console.warn("[map] geocode self-test error:", err?.message || err);
   });
 
-function mapCatalogRefreshFromQuery(req) {
-  return String(req?.query?.refresh ?? "0") === "1";
-}
-
-async function getMapAccessContext(req) {
+function getMapAccessContext(req) {
   const user = req.authentikUser || {};
   const isGlobalAdmin = !!user.isGlobalAdmin;
   const isAgencyAdmin = !!user.isAgencyAdmin && !isGlobalAdmin;
-  const forceRefresh = mapCatalogRefreshFromQuery(req);
-  let userGroups = Array.isArray(user.groups) ? user.groups : [];
-
-  if (isAgencyAdmin && forceRefresh) {
-    try {
-      userGroups = await mapMeta.resolveMapMemberChannelNames(user, { forceRefresh: true });
-    } catch (_) {
-      userGroups = Array.isArray(user.groups) ? user.groups : [];
-    }
-  }
-
   return {
     isGlobalAdmin,
     isAgencyAdmin,
     scopeMemberGroups: isAgencyAdmin,
-    userGroups,
-    forceRefresh,
+    userGroups: Array.isArray(user.groups) ? user.groups : [],
   };
 }
 
@@ -62,8 +46,6 @@ async function attachScopedGroupCatalog(snapshot, ctx) {
   const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
     scopeMemberGroups: ctx.scopeMemberGroups,
     userGroupNames: ctx.userGroups,
-    forceRefresh: !!ctx.forceRefresh,
-    refreshSubscriptions: !!ctx.forceRefresh,
   });
   snapshot.groupsCatalog = catalog.groups;
   snapshot.channelScope = catalog.channelScope;
@@ -73,7 +55,7 @@ async function attachScopedGroupCatalog(snapshot, ctx) {
 
 router.get("/state", async (req, res) => {
   cotStream.ensureBridgeStarted();
-  const ctx = await getMapAccessContext(req);
+  const ctx = getMapAccessContext(req);
   const snapshot = cotStream.getStateSnapshot();
   snapshot.icons = mapIcon.getStatus();
   try {
@@ -217,13 +199,11 @@ router.get("/icons", (req, res) => {
 
 router.get("/groups", async (req, res) => {
   cotStream.ensureBridgeStarted();
-  const ctx = await getMapAccessContext(req);
+  const ctx = getMapAccessContext(req);
   try {
     const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
       scopeMemberGroups: ctx.scopeMemberGroups,
       userGroupNames: ctx.userGroups,
-      forceRefresh: !!ctx.forceRefresh,
-      refreshSubscriptions: !!ctx.forceRefresh,
     });
     return res.json(catalog);
   } catch (err) {
