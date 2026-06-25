@@ -240,6 +240,31 @@ function handleDeleteCot(cot) {
   }
 }
 
+function enrichMarkerIconAsync(marker) {
+  if (!marker || marker.iconId) return;
+  void mapIcon
+    .resolveIconAsync({
+      type: marker.type,
+      affiliation: marker.affiliation,
+      usericon: {
+        iconsetpath: marker.iconsetpath || "",
+        group: marker.iconGroup || "",
+        name: marker.iconName || "",
+      },
+    })
+    .then((icon) => {
+      if (!icon) return;
+      const current = markers.get(marker.uid);
+      if (!current) return;
+      if (current.iconId) return;
+      current.iconId = icon.iconId;
+      current.iconSource = icon.source;
+      current.updatedAt = new Date().toISOString();
+      queueMarkerUpdate(current);
+    })
+    .catch(() => {});
+}
+
 function handleCot(cot) {
   const type = String(cot.type?.() || cot.raw?.event?._attributes?.type || "").trim();
   if (type === "t-x-d-d") {
@@ -251,6 +276,7 @@ function handleCot(cot) {
   const marker = parseMarkerFromCoT(cot);
   if (!marker) return;
   markers.set(marker.uid, marker);
+  if (!marker.iconId) enrichMarkerIconAsync(marker);
   queueMarkerUpdate(marker);
 }
 
@@ -278,10 +304,10 @@ function sweepStaleMarkers(notify = true) {
   if (removed && !notify) bumpMarkerRevision();
 }
 
-function refreshAllMarkerIcons() {
+async function refreshAllMarkerIcons() {
   if (!mapIcon.getStatus().ready) return;
   for (const marker of markers.values()) {
-    const icon = mapIcon.resolveIcon({
+    let icon = mapIcon.resolveIcon({
       type: marker.type,
       affiliation: marker.affiliation,
       usericon: {
@@ -290,6 +316,17 @@ function refreshAllMarkerIcons() {
         name: marker.iconName || "",
       },
     });
+    if (!icon) {
+      icon = await mapIcon.resolveIconAsync({
+        type: marker.type,
+        affiliation: marker.affiliation,
+        usericon: {
+          iconsetpath: marker.iconsetpath || "",
+          group: marker.iconGroup || "",
+          name: marker.iconName || "",
+        },
+      });
+    }
     const nextId = icon?.iconId || null;
     const nextSource = icon?.source || null;
     if (marker.iconId === nextId && marker.iconSource === nextSource) continue;

@@ -58,6 +58,15 @@ async function runTests() {
   };
   assert.strictEqual(mapRender.markerUsesMapIcon(eudGround), false);
 
+  // Milsym / 2525D display gate
+  const milsymMarker = {
+    type: "a-f-G-E-V",
+    origin: "feed",
+    iconId: "2525D:10031000001211000000",
+    iconSource: "milsym",
+  };
+  assert.strictEqual(mapRender.markerUsesMapIcon(milsymMarker), true);
+
   // Feed air uses PNG
   const feedAir = {
     type: "a-f-A-C-H",

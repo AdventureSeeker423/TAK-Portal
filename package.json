@@ -17,6 +17,7 @@
     "whatwg-url": "^14.2.0"
   },
   "dependencies": {
+    "@tak-ps/node-cot": "^14.42.0",
     "@tak-ps/node-tak": "^11.20.2",
     "archiver": "^7.0.1",
     "axios": "^1.13.2",
@@ -25,6 +26,7 @@
     "express": "^5.2.1",
     "jimp": "0.22.12",
     "marked": "^18.0.4",
+    "milsymbol": "^3.0.4",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.12",
     "p12-pem": "^1.0.5",
@@ -32,6 +34,7 @@
     "pdfkit": "^0.18.0",
     "qrcode": "^1.5.4",
     "sanitize-html": "^2.17.4",
+    "sharp": "^0.35.2",
     "ssh2": "^1.17.0",
     "undici": "^7.24.4",
     "unzipper": "^0.10.11"

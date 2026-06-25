@@ -6,6 +6,7 @@ const path = require("path");
 const Jimp = require("jimp");
 const { getInt } = require("./env");
 const mapIcon = require("./mapIcon.service");
+const mapMilSym = require("./mapMilSym.service");
 
 const CACHE_MAX = getInt("MAP_ICON_CACHE_SIZE", 4096);
 const COLORED_ICON_SUFFIX = "-colored-";
@@ -37,7 +38,8 @@ function normalizeColorHex(color) {
 }
 
 function iconSkipsRecolor(marker, apiIconId) {
-  if (String(apiIconId || "").startsWith("2525D:")) return true;
+  if (mapMilSym.isMilSymIconId(apiIconId)) return true;
+  if (String(marker?.iconSource || "").toLowerCase() === "milsym") return true;
   if (String(marker?.iconSource || "").toLowerCase() === "type2525b") return true;
   return false;
 }
@@ -143,17 +145,30 @@ async function renderIconForMarker(marker) {
   }
 
   const filePath = mapIcon.getIconFilePath(apiIconId);
-  if (!filePath) {
+  let outBuffer = null;
+  const started = Date.now();
+
+  if (filePath) {
+    const fs = require("fs");
+    const inputBuffer = fs.readFileSync(path.resolve(filePath));
+    outBuffer = inputBuffer;
+    if (!skipRecolor && color) {
+      outBuffer = await tintImageBuffer(inputBuffer, color);
+    }
+  } else if (mapMilSym.isMilSymIconId(apiIconId)) {
+    outBuffer = await mapMilSym.renderMilSymPngByIconId(apiIconId);
+  } else if (marker?.type) {
+    try {
+      outBuffer = await mapMilSym.renderMilSymPng(marker.type);
+    } catch (_) {
+      outBuffer = null;
+    }
+  }
+
+  if (!outBuffer) {
     return { mapImageId: "", apiIconId, skipRecolor, buffer: null };
   }
 
-  const started = Date.now();
-  const fs = require("fs");
-  const inputBuffer = fs.readFileSync(path.resolve(filePath));
-  let outBuffer = inputBuffer;
-  if (!skipRecolor && color) {
-    outBuffer = await tintImageBuffer(inputBuffer, color);
-  }
   stats.lastRenderMs = Date.now() - started;
   cacheSet(mapImageId, outBuffer, "image/png");
   return {

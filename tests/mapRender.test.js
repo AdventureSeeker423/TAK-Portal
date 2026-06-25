@@ -51,6 +51,7 @@ assert.strictEqual(filtered.features[0].properties.uid, "feed-1");
 const feedFeature = filtered.features[0].properties;
 assert.ok(feedFeature.iconId.startsWith("mimg-"));
 assert.strictEqual(feedFeature.showCircle, 0);
+assert.strictEqual(feedFeature.usesMapIcon, 1);
 assert.ok(feedFeature.channelKeys.includes("hamilton co avl law"));
 assert.strictEqual(feedFeature.drawTier, 0);
 assert.ok(Number.isFinite(feedFeature.renderSort));
@@ -80,11 +81,13 @@ assert.strictEqual(selected.properties.showLabel, 1);
 
 const slimFeed = mapRender.toSlimMarker(sampleMarkers[1]);
 assert.ok(slimFeed.mapImageId.startsWith("mimg-"));
+assert.strictEqual(slimFeed.usesMapIcon, 1);
 assert.ok(slimFeed.channelKeys.includes("hamilton co avl law"));
 assert.strictEqual(slimFeed.showCircle, 0);
 
 const rendered = mapRender.toRenderedFeature(sampleMarkers[1], {});
 assert.strictEqual(rendered.properties.iconId, slimFeed.mapImageId);
 assert.strictEqual(rendered.properties.apiIconId, sampleMarkers[1].iconId);
+assert.strictEqual(rendered.properties.usesMapIcon, 1);
 
 console.log("mapRender.test.js: all assertions passed");

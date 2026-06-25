@@ -356,7 +356,7 @@ router.get("/debug/icon", async (req, res) => {
         }
       : null;
 
-  const trace = mapIcon.explainIconResolution({
+  const trace = await mapIcon.explainIconResolutionAsync({
     type: cotType,
     affiliation: marker?.affiliation || affiliation,
     usericon,
@@ -375,6 +375,13 @@ router.get("/debug/icon", async (req, res) => {
     displayMarker.iconSource = trace.resolved.source;
   }
 
+  const usesMapIcon = mapRender.markerUsesMapIcon(displayMarker);
+  const color = mapRender.markerDisplayColor(displayMarker);
+  const mapImageId =
+    usesMapIcon && displayMarker.iconId
+      ? mapIconRender.computeMapImageId(displayMarker, displayMarker.iconId, color)
+      : "";
+
   res.setHeader("Cache-Control", "no-cache");
   return res.json({
     marker: marker
@@ -389,11 +396,15 @@ router.get("/debug/icon", async (req, res) => {
       : null,
     trace,
     display: {
-      markerUsesMapIcon: mapRender.markerUsesMapIcon(displayMarker),
+      markerUsesMapIcon: usesMapIcon,
+      usesMapIcon: usesMapIcon ? 1 : 0,
+      mapImageId: mapImageId || null,
+      color,
       rules: [
         "EUD origin always renders team dot",
         "feed + resolved icon uses PNG for type2525b",
         "air types use PNG when not EUD",
+        "2525D milsym fallback when no PNG match",
       ],
     },
     indexes: {

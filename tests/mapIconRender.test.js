@@ -86,6 +86,28 @@ async function runTests() {
     "mimg-3bac1b2482d4d6d1"
   );
 
+  const mapMilSym = require("../services/mapMilSym.service");
+  const milId = await mapMilSym.cotTypeTo2525DIconId("a-f-G-E-V");
+  if (milId) {
+    const milMarker = {
+      uid: "milsym-1",
+      type: "a-f-G-E-V",
+      lat: 35.05,
+      lon: -85.21,
+      affiliation: "friend",
+      origin: "feed",
+      iconId: milId,
+      iconSource: "milsym",
+    };
+    const milRendered = await mapIconRender.renderIconForMarker(milMarker);
+    assert.ok(milRendered.buffer, "2525D milsym should render PNG bytes");
+    assert.strictEqual(milRendered.mapImageId, mapIconRender.computeMapImageId(
+      milMarker,
+      milId,
+      mapRender.markerDisplayColor(milMarker)
+    ));
+  }
+
   console.log("mapIconRender.test.js: all assertions passed");
 }
 

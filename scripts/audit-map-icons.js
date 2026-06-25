@@ -8,6 +8,7 @@ const path = require("path");
 
 const mapIcon = require("../services/mapIcon.service");
 const mapRender = require("../services/mapRender.service");
+const mapMilSym = require("../services/mapMilSym.service");
 
 const REPORT_DIR = path.join(__dirname, "..", "reports");
 
@@ -195,6 +196,7 @@ function runResolutionMatrix(types) {
 
 function runFixtures(fixtures) {
   const failures = [];
+  const parity = [];
   for (const fx of fixtures) {
     const resolved = mapIcon.resolveIcon({
       type: fx.type,
@@ -209,6 +211,24 @@ function runFixtures(fixtures) {
       iconSource: resolved?.source || null,
     };
     const usesIcon = mapRender.markerUsesMapIcon(marker);
+
+    parity.push({
+      fixture: fx.name,
+      cotType: fx.type,
+      usericon: fx.usericon || null,
+      portalIconId: resolved?.iconId || null,
+      portalSource: resolved?.source || null,
+      usesMapIcon: usesIcon,
+      expectUsesMapIcon: fx.expectUsesMapIcon,
+      expectIconFragment: fx.expectIconFragment || null,
+      match:
+        (fx.expectUsesMapIcon === undefined || usesIcon === fx.expectUsesMapIcon) &&
+        (!fx.expectIconFragment ||
+          !resolved ||
+          String(resolved.iconId || resolved.relPath || "")
+            .toUpperCase()
+            .includes(fx.expectIconFragment.toUpperCase())),
+    });
 
     if (fx.expectUsesMapIcon !== undefined && usesIcon !== fx.expectUsesMapIcon) {
       failures.push({
@@ -248,7 +268,40 @@ function runFixtures(fixtures) {
       }
     }
   }
-  return failures;
+  return { failures, parity };
+}
+
+async function buildParityMatrix(types) {
+  const rows = [];
+  for (const type of types) {
+    const resolved = mapIcon.resolveIcon({ type, affiliation: "friend" });
+    let milsymId = null;
+    if (!resolved) {
+      try {
+        milsymId = await mapMilSym.cotTypeTo2525DIconId(type);
+      } catch (_) {}
+    }
+    const portalIconId = resolved?.iconId || milsymId;
+    const portalSource = resolved?.source || (milsymId ? "milsym" : null);
+    const marker = {
+      type,
+      affiliation: "friend",
+      origin: "feed",
+      iconId: portalIconId,
+      iconSource: portalSource,
+    };
+    rows.push({
+      cotType: type,
+      portalIconId,
+      portalSource,
+      usesMapIcon: mapRender.markerUsesMapIcon(marker),
+      pngFileExists: resolved?.iconId
+        ? !!mapIcon.getIconFilePath(resolved.iconId)
+        : false,
+      match: !!portalIconId,
+    });
+  }
+  return rows;
 }
 
 async function buildInternalIconsetInventory() {
@@ -318,7 +371,31 @@ async function main() {
   for (const t of generateAirTypeMatrix()) allTypes.add(t.toLowerCase());
 
   const matrix = runResolutionMatrix([...allTypes].sort());
-  const fixtureFailures = runFixtures(REQUIRED_FIXTURES);
+  const fixtureResult = runFixtures(REQUIRED_FIXTURES);
+  const fixtureFailures = fixtureResult.failures;
+  const parityFixtures = fixtureResult.parity;
+  const parityMatrix = await buildParityMatrix([...allTypes].sort());
+
+  const parityMatches = parityFixtures.filter((r) => r.match).length;
+  const parityReport = {
+    auditedAt: new Date().toISOString(),
+    reference: "CloudTAK main (see docs/icon-parity.md)",
+    fixtureSummary: {
+      total: parityFixtures.length,
+      matches: parityMatches,
+      matchRate:
+        parityFixtures.length > 0
+          ? Math.round((parityMatches / parityFixtures.length) * 1000) / 10
+          : 100,
+    },
+    fixtures: parityFixtures,
+    matrixSummary: {
+      total: parityMatrix.length,
+      resolved: parityMatrix.filter((r) => r.portalIconId).length,
+      unresolved: parityMatrix.filter((r) => !r.portalIconId).map((r) => r.cotType),
+    },
+    matrix: parityMatrix,
+  };
 
   const report = {
     auditedAt: new Date().toISOString(),
@@ -333,6 +410,7 @@ async function main() {
       missingFiles: matrix.results.filter((r) => r.resolved && !r.resolved.fileExists),
     },
     fixtureFailures,
+    parity: parityReport.fixtureSummary,
     ok:
       xmlIssues.length === 0 &&
       aliasIssues.length === 0 &&
@@ -343,7 +421,9 @@ async function main() {
 
   await fsp.mkdir(REPORT_DIR, { recursive: true });
   const outPath = path.join(REPORT_DIR, "icon-audit.json");
+  const parityPath = path.join(REPORT_DIR, "icon-parity.json");
   await fsp.writeFile(outPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+  await fsp.writeFile(parityPath, JSON.stringify(parityReport, null, 2) + "\n", "utf8");
 
   console.log("Map icon audit");
   console.log("  Iconsets:", report.status.iconsetCount);
@@ -353,7 +433,13 @@ async function main() {
   console.log("  Matrix unresolved:", matrix.unresolved.length);
   console.log("  Matrix missing files:", report.matrix.missingFiles.length);
   console.log("  Fixture failures:", fixtureFailures.length);
+  console.log(
+    "  Parity fixtures:",
+    parityReport.fixtureSummary.matches + "/" + parityReport.fixtureSummary.total,
+    "(" + parityReport.fixtureSummary.matchRate + "%)"
+  );
   console.log("  Report:", outPath);
+  console.log("  Parity:", parityPath);
 
   if (fixtureFailures.length) {
     console.log("\nFixture failures:");
