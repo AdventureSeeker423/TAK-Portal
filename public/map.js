@@ -311,7 +311,30 @@
     return /^(?:mimg|wing|rotor|vehicle|boat|ship|track|car)-[0-9a-f]{16}$/i.test(id);
   }
 
+  function shouldSuppressLiveMarkerGraphic(uid) {
+    const id = uid != null ? String(uid) : "";
+    if (!id) return false;
+    const missionMarker = missionMarkersByUid.get(id);
+    if (!missionMarker || !missionMarker.missionName) return false;
+    if (
+      window.TakMapMissions &&
+      typeof window.TakMapMissions.isMarkerSearchable === "function"
+    ) {
+      return window.TakMapMissions.isMarkerSearchable(id, missionMarker.missionName);
+    }
+    return false;
+  }
+
+  function refreshLiveMarkersForMissionOverlay() {
+    if (!markerLayersReady || !lastServerGeoJsonFull) return;
+    applyLocalChannelFilter();
+  }
+
   function markerIconDisplayProps(props) {
+    const uid = props && props.uid ? String(props.uid) : "";
+    if (uid && shouldSuppressLiveMarkerGraphic(uid)) {
+      return { iconId: "", showCircle: 0 };
+    }
     const iconId = props && props.iconId ? normalizeMapImageId(props.iconId) : "";
     const showCircle =
       props && props.showCircle != null ? (props.showCircle ? 1 : 0) : iconId ? 0 : 1;
@@ -403,13 +426,16 @@
     const lat = Number(m.lat);
     const lon = Number(m.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    const mapImageId = normalizeMapImageId(m.mapImageId || "");
+    const mapImageId = normalizeMapImageId(
+      m.mapImageId || (isRenderedMapImageId(m.iconId) ? m.iconId : "")
+    );
     const apiIconId = mapImageId ? String(m.iconId || "") : "";
     const color = m.color || m.teamColor || "#1e88e5";
     const uid = String(m.uid);
     if (mapImageId) {
       registerServerMapImageMeta(mapImageId, apiIconId, m);
     }
+    const suppressed = shouldSuppressLiveMarkerGraphic(uid);
     return {
       type: "Feature",
       geometry: { type: "Point", coordinates: [lon, lat] },
@@ -420,13 +446,28 @@
         type: m.type || "",
         affiliation: m.affiliation || "other",
         color: color,
-        iconId: mapImageId,
+        iconId: suppressed ? "" : mapImageId,
         apiIconId: apiIconId,
         iconSource: m.iconSource || "",
         origin: m.origin || "",
-        showCircle:
-          m.showCircle != null ? (m.showCircle ? 1 : 0) : mapImageId ? 0 : 1,
-        usesMapIcon: m.usesMapIcon != null ? (m.usesMapIcon ? 1 : 0) : mapImageId ? 1 : 0,
+        showCircle: suppressed
+          ? 0
+          : m.showCircle != null
+            ? m.showCircle
+              ? 1
+              : 0
+            : mapImageId
+              ? 0
+              : 1,
+        usesMapIcon: suppressed
+          ? 0
+          : m.usesMapIcon != null
+            ? m.usesMapIcon
+              ? 1
+              : 0
+            : mapImageId
+              ? 1
+              : 0,
         drawTier: 0,
         selected: uid === selectedUid,
         locked: uid === lockedUid,
@@ -796,6 +837,7 @@
       }
       missionMarkersByUid.set(normalized.uid, normalized);
     }
+    refreshLiveMarkersForMissionOverlay();
   }
 
   function clearMissionMarkers(missionName) {
@@ -803,6 +845,7 @@
     for (const [uid, marker] of missionMarkersByUid) {
       if (marker && marker.missionName === name) missionMarkersByUid.delete(uid);
     }
+    refreshLiveMarkersForMissionOverlay();
   }
 
   function queryMissionMarkersAtPoint(point, radiusPx) {

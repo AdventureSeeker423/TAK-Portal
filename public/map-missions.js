@@ -510,11 +510,7 @@
             "all",
             baseFilter,
             ["==", ["get", "geometryType"], "point"],
-            [
-              "any",
-              ["==", ["get", "iconId"], ""],
-              ["==", ["get", "showCircle"], 1],
-            ],
+            ["==", ["get", "showCircle"], 1],
           ],
           paint: {
             "circle-radius": 10,
