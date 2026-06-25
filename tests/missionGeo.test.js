@@ -71,21 +71,32 @@ async function runTests() {
           type: "Polygon",
           coordinates: [
             [
-              [-85.3, 35.1],
-              [-85.29, 35.11],
-              [-85.28, 35.1],
-              [-85.29, 35.09],
-              [-85.3, 35.1],
+              [-85.33353, 35.09087],
+              [-85.332, 35.092],
+              [-85.3305, 35.09087],
+              [-85.332, 35.0895],
+              [-85.33353, 35.09087],
             ],
           ],
         },
         properties: { type: "u-d-c-c", how: "h-e", callsign: "Range Ring" },
       },
       {
-        id: "vertex-1",
+        id: "vertex-handle",
         type: "Feature",
-        geometry: { type: "Point", coordinates: [-85.29, 35.11] },
-        properties: { type: "u-d-f-p", how: "h-e", callsign: "" },
+        geometry: { type: "Point", coordinates: [-85.332, 35.092] },
+        properties: { type: "a-n-G", how: "h-e", callsign: "" },
+      },
+      {
+        id: "team-building",
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-85.3335302, 35.0908716] },
+        properties: {
+          type: "a-n-G",
+          how: "h-g-i-g-o",
+          callsign: "Team Building 1",
+          icon: "83198b4872a8c34eb9c549da8a4de5a28f07821185b39a2277948f66c24ac17a/WildFire/Camp.png",
+        },
       },
       {
         id: "vehicle-1",
@@ -98,8 +109,9 @@ async function runTests() {
   const circleNormalized = await missionGeo.normalizeFeatureCollection(circleFc, "CircleMission");
   const circleIds = circleNormalized.features.map((f) => String(f.id));
   assert.ok(circleIds.includes("circle-poly"), "polygon should remain");
+  assert.ok(circleIds.includes("team-building"), "point with explicit usericon should remain");
   assert.ok(circleIds.includes("vehicle-1"), "tactical marker should remain");
-  assert.ok(!circleIds.includes("vertex-1"), "shape vertex point should be filtered");
+  assert.ok(!circleIds.includes("vertex-handle"), "bare a-n-G vertex handle should be filtered");
 
   console.log("missionGeo.test.js: all assertions passed");
 }

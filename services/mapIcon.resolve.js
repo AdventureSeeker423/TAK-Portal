@@ -324,6 +324,11 @@ function resolveAliasedIcon(alias, iconsetsByUid) {
   return buildIconResult(iconset, rel, "alias");
 }
 
+function isIconsetUidToken(uid) {
+  const s = String(uid || "").trim();
+  return /^[0-9a-f]{36}$/i.test(s) || /^[0-9a-f]{64}$/i.test(s);
+}
+
 function parseIconsetPath(iconsetpath) {
   const raw = String(iconsetpath || "").trim();
   if (!raw) return null;
@@ -355,7 +360,7 @@ function parseIconsetPath(iconsetpath) {
   if (slash <= 0) return null;
   const uid = raw.slice(0, slash);
   const rel = raw.slice(slash + 1);
-  if (!/^[0-9a-f-]{36}$/i.test(uid)) return null;
+  if (!isIconsetUidToken(uid)) return null;
   return { mode: "path", iconsetUid: uid, relPath: rel };
 }
 
@@ -523,6 +528,7 @@ module.exports = {
   pickBestWithinIconset,
   parseUserIcon,
   parseIconsetPath,
+  isIconsetUidToken,
   prefersMilSym2525C,
   prefersMilSymIconPath,
   resolvePngIcon,

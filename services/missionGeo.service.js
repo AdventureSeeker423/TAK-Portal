@@ -190,8 +190,18 @@ function normalizeFeature(feature, missionName) {
   };
 }
 
-function coordKey(lon, lat) {
-  return `${Number(lon).toFixed(5)},${Number(lat).toFixed(5)}`;
+function coordKey(lon, lat, decimals) {
+  const d = decimals == null ? 5 : decimals;
+  return `${Number(lon).toFixed(d)},${Number(lat).toFixed(d)}`;
+}
+
+function addVertexKey(keys, lon, lat) {
+  keys.add(coordKey(lon, lat, 5));
+  keys.add(coordKey(lon, lat, 4));
+}
+
+function coordMatchesVertex(lon, lat, vertexKeys) {
+  return vertexKeys.has(coordKey(lon, lat, 5)) || vertexKeys.has(coordKey(lon, lat, 4));
 }
 
 function collectShapeVertexKeys(features) {
@@ -202,25 +212,25 @@ function collectShapeVertexKeys(features) {
     const type = String(geom.type || "");
     if (type === "LineString") {
       for (const coord of geom.coordinates || []) {
-        keys.add(coordKey(coord[0], coord[1]));
+        addVertexKey(keys, coord[0], coord[1]);
       }
     } else if (type === "MultiLineString") {
       for (const line of geom.coordinates || []) {
         for (const coord of line || []) {
-          keys.add(coordKey(coord[0], coord[1]));
+          addVertexKey(keys, coord[0], coord[1]);
         }
       }
     } else if (type === "Polygon") {
       for (const ring of geom.coordinates || []) {
         for (const coord of ring || []) {
-          keys.add(coordKey(coord[0], coord[1]));
+          addVertexKey(keys, coord[0], coord[1]);
         }
       }
     } else if (type === "MultiPolygon") {
       for (const poly of geom.coordinates || []) {
         for (const ring of poly || []) {
           for (const coord of ring || []) {
-            keys.add(coordKey(coord[0], coord[1]));
+            addVertexKey(keys, coord[0], coord[1]);
           }
         }
       }
@@ -229,26 +239,31 @@ function collectShapeVertexKeys(features) {
   return keys;
 }
 
-function hasRawPointIcon(props) {
+function looksLikeUserIconPath(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return false;
+  if (/^COT_MAPPING_/i.test(s)) return true;
+  if (/^a-[a-z]-/i.test(s) && s.indexOf("/") === -1) return true;
+  return /^[0-9a-f]{36}\//i.test(s) || /^[0-9a-f]{64}\//i.test(s);
+}
+
+function hasExplicitUserIcon(props) {
   if (!props || typeof props !== "object") return false;
-  return !!(
-    props.icon ||
-    props.iconsetpath ||
-    props.usericon ||
-    props.iconId ||
-    props.apiIconId
-  );
+  if (looksLikeUserIconPath(props.iconsetpath)) return true;
+  if (looksLikeUserIconPath(props.icon)) return true;
+  return !!props.usericon;
 }
 
 function isShapeVertexPoint(feature, vertexKeys) {
   if (geometryType(feature?.geometry) !== "point") return false;
   const coords = feature.geometry.coordinates;
   if (!coords || coords.length < 2) return false;
-  if (!vertexKeys.has(coordKey(coords[0], coords[1]))) return false;
+  if (!coordMatchesVertex(coords[0], coords[1], vertexKeys)) return false;
   const props = feature.properties || {};
   const type = String(props.type || props.cotType || "").toLowerCase();
-  if (type.startsWith("a-") || type.startsWith("b-i-")) return false;
-  if (hasRawPointIcon(props)) return false;
+  if (type.startsWith("b-i-")) return false;
+  if (hasExplicitUserIcon(props)) return false;
+  if (type.startsWith("a-")) return true;
   if (type.startsWith("u-d-") || type.startsWith("b-m-p-")) return true;
   return true;
 }

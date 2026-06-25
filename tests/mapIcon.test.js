@@ -114,6 +114,31 @@ async function runTests() {
   assert.ok(bareType, "bare CoT type usericon should resolve via milsym");
   assert.strictEqual(bareType.source, "milsym");
 
+  // GeoOps iconset uses 64-char content hash UIDs in usericon paths
+  const geoOpsCamp = mapIcon.resolveIcon({
+    type: "a-n-G",
+    affiliation: "neutral",
+    usericon: {
+      iconsetpath:
+        "83198b4872a8c34eb9c549da8a4de5a28f07821185b39a2277948f66c24ac17a/WildFire/Camp.png",
+    },
+  });
+  assert.ok(geoOpsCamp, "GeoOps hash UID path should resolve");
+  assert.strictEqual(geoOpsCamp.source, "path");
+  assert.ok(/WildFire\/Camp\.png/i.test(geoOpsCamp.relPath || geoOpsCamp.iconId));
+  assert.ok(mapIcon.getIconFilePath(geoOpsCamp.iconId), "GeoOps Camp file must exist");
+
+  const geoOpsMedical = mapIcon.resolveIcon({
+    type: "a-n-G",
+    affiliation: "neutral",
+    usericon: {
+      iconsetpath:
+        "83198b4872a8c34eb9c549da8a4de5a28f07821185b39a2277948f66c24ac17a/WildFire/Medical.png",
+    },
+  });
+  assert.ok(geoOpsMedical, "GeoOps Medical path should resolve");
+  assert.ok(/WildFire\/Medical\.png/i.test(geoOpsMedical.relPath || geoOpsMedical.iconId));
+
   // Default affiliation icons
   const defaults = mapIcon.getDefaultIconIds();
   assert.ok(defaults.friend, "default friendly icon");
