@@ -44,7 +44,7 @@ function normalizeGroupList(raw) {
  * - username: "...uppd"
  * where a plain endsWith("ppd") would incorrectly match.
  */
-function inferAgencySuffixFromUsername(username) {
+function inferAgencySuffixFromUsernameTail(username) {
   const un = String(username || "").trim().toLowerCase();
   if (!un) return "";
 
@@ -64,8 +64,51 @@ function inferAgencySuffixFromUsername(username) {
 }
 
 /**
+ * Infer agency suffix from a username when the suffix is a prefix (badge-after-suffix
+ * agencies). Longest known suffix wins (same rule as tail matching).
+ */
+function inferAgencySuffixFromUsernamePrefix(username) {
+  const un = String(username || "").trim().toLowerCase();
+  if (!un) return "";
+
+  const agencies = agenciesStore.load();
+  let bestSuffix = "";
+
+  for (const agency of agencies) {
+    const sfx = normalizeSuffix(agency && agency.suffix);
+    if (!sfx) continue;
+    if (!un.startsWith(sfx)) continue;
+    if (!bestSuffix || sfx.length > bestSuffix.length) {
+      bestSuffix = sfx;
+    }
+  }
+
+  return bestSuffix;
+}
+
+/**
+ * Infer agency suffix from username tail, then prefix (never both on one account).
+ * Tail match is preferred when both would match (legacy default).
+ */
+function inferAgencySuffixFromUsername(username) {
+  const fromTail = inferAgencySuffixFromUsernameTail(username);
+  if (fromTail) return fromTail;
+  return inferAgencySuffixFromUsernamePrefix(username);
+}
+
+/**
+ * True when the agency suffix token appears at the start or end of a username.
+ */
+function usernameHasAgencySuffixToken(username, suffix) {
+  const u = String(username || "").trim().toLowerCase();
+  const sfx = normalizeSuffix(suffix);
+  if (!u || !sfx) return false;
+  return u.endsWith(sfx) || u.startsWith(sfx);
+}
+
+/**
  * Resolve the portal agency suffix for a user from Authentik attributes, then username.
- * Order: attributes.agency (validated) → agency_name → agency_abbreviation → username tail.
+ * Order: attributes.agency (validated) → agency_name → agency_abbreviation → username tail/prefix.
  *
  * @param {object|null|undefined} user - Authentik user shape ({ username, attributes })
  * @returns {string} normalized suffix or ""
@@ -331,8 +374,8 @@ function isUsernameInAllowedAgencies(authUser, username) {
 }
 
 /**
- * TAK subscription rows: match username tail against the viewer's allowed agency suffixes
- * (longest suffix first to avoid partial overlaps).
+ * TAK subscription rows: match username against the viewer's allowed agency suffixes
+ * (suffix token at username tail or prefix; longest suffix first to avoid overlaps).
  */
 function isUsernameInAllowedAgencySuffixes(authUser, username) {
   const access = getAgencyAccess(authUser);
@@ -348,7 +391,7 @@ function isUsernameInAllowedAgencySuffixes(authUser, username) {
     .filter(Boolean)
     .sort((a, b) => b.length - a.length);
 
-  return sorted.some((sfx) => u.endsWith(sfx));
+  return sorted.some((sfx) => usernameHasAgencySuffixToken(u, sfx));
 }
 
 /**
@@ -926,6 +969,9 @@ module.exports = {
   getAllAgencyAdminGroupNames,
   getAgencyAdminGroupNamesForAgency,
   inferAgencySuffixFromUsername,
+  inferAgencySuffixFromUsernameTail,
+  inferAgencySuffixFromUsernamePrefix,
+  usernameHasAgencySuffixToken,
   resolveAgencySuffixFromUser,
   getAllowedAgencySuffixesForGroups,
   hasAnyAgencyAdminsConfigured,

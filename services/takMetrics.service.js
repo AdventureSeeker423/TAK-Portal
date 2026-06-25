@@ -558,7 +558,7 @@ function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = 
   const { noderedCount, federationCount, tlsCallsignCount } =
     computeSubscriptionExclusionCounts(list, options);
 
-  // Agency dashboard: count only subscriptions whose username matches allowed agency suffixes.
+  // Agency dashboard: count only subscriptions whose username matches allowed agency suffixes (tail or prefix).
   if (agencyOnly && authUser) {
     const connectedClients = filterConnectedUserSubscriptions(list, {
       authUser,

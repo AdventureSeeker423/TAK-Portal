@@ -242,6 +242,9 @@ function resolveCallsignRadioOrUsername({
   if (sfx && user.toLowerCase().endsWith(sfx)) {
     return user.slice(0, user.length - sfx.length);
   }
+  if (sfx && user.toLowerCase().startsWith(sfx)) {
+    return user.slice(sfx.length);
+  }
   return user;
 }
 
