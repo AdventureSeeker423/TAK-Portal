@@ -22,6 +22,7 @@
   }
 
   function addVertexKey(keys, lon, lat) {
+    keys.add(coordKey(lon, lat, 6));
     keys.add(coordKey(lon, lat, 5));
     keys.add(coordKey(lon, lat, 4));
     keys.add(coordKey(lon, lat, 3));
@@ -109,7 +110,7 @@
   }
 
   function isPointNearShapeBoundary(lon, lat, segments, epsilonDeg) {
-    const eps = epsilonDeg != null ? epsilonDeg : 0.00015;
+    const eps = epsilonDeg != null ? epsilonDeg : 0.00022;
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       if (distPointToSegment(lon, lat, seg[0], seg[1]) <= eps) return true;
@@ -169,10 +170,14 @@
   }
 
   function isPointNearCircleRing(lon, lat, profiles, epsilonDeg) {
-    const eps = epsilonDeg != null ? epsilonDeg : 0.00015;
     for (let i = 0; i < profiles.length; i++) {
       const profile = profiles[i];
       const d = distDeg(profile.cx, profile.cy, lon, lat);
+      const span = Math.max(0, profile.maxRadiusDeg - profile.minRadiusDeg);
+      const eps =
+        epsilonDeg != null
+          ? epsilonDeg
+          : Math.max(0.00022, span * 0.04, profile.maxRadiusDeg * 0.015);
       if (d + eps >= profile.minRadiusDeg && d - eps <= profile.maxRadiusDeg) {
         return true;
       }

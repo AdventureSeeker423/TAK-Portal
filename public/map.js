@@ -3682,15 +3682,21 @@
     if (uid && shouldSuppressLiveMarkerGraphic(uid)) return null;
     const geom = enriched.geometry;
     const coords = geom && String(geom.type || "").toLowerCase() === "point" ? geom.coordinates : null;
+    const marker = uid ? markersByUid.get(String(uid)) : null;
     if (
       coords &&
       window.TakMapMissions &&
       typeof window.TakMapMissions.isShapeDecorMarker === "function" &&
-      window.TakMapMissions.isShapeDecorMarker(coords[0], coords[1], enriched.properties)
+      window.TakMapMissions.isShapeDecorMarker(coords[0], coords[1], {
+        type: (marker && marker.type) || enriched.properties.type || "",
+        how: (marker && marker.how) || enriched.properties.how || "",
+        icon: (marker && marker.iconsetpath) || enriched.properties.icon || "",
+        iconsetpath: (marker && marker.iconsetpath) || enriched.properties.iconsetpath || "",
+        callsign: (marker && marker.callsign) || enriched.properties.callsign || "",
+      })
     ) {
       return null;
     }
-    const marker = uid ? markersByUid.get(String(uid)) : null;
     const display = markerIconDisplayProps(enriched.properties);
     return {
       type: enriched.type,

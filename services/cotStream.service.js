@@ -572,6 +572,9 @@ async function connectBridge() {
       bridgeState.connecting = false;
       bridgeState.lastConnectAt = new Date().toISOString();
       bridgeState.lastError = null;
+      setTimeout(function () {
+        purgeShapeDecorMarkers(true);
+      }, 3000);
       broadcast({
         type: "status",
         connected: true,
