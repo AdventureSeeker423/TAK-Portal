@@ -633,7 +633,6 @@
         bridge.registerMissionIconManifest(collectOpenMissionIconManifest());
       }
     }
-    ensureRasterOverlays(name, entry);
     ensureMissionLayers(name, entry.geojson);
     applyMissionLayerVisibility(name);
     syncMissionMarkers(name, entry);
@@ -647,6 +646,10 @@
       applyMissionLabelDeclutter(name, { forceRecompute: true });
       if (map) map.triggerRepaint();
     }
+
+    ensureRasterOverlays(name, entry);
+    applyMissionLayerVisibility(name);
+    if (map) map.triggerRepaint();
   }
 
   function featureToMarkerRecord(feature) {
