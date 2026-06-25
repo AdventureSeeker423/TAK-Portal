@@ -186,6 +186,58 @@ async function exportMissionArchiveStream(missionName, queryParams = {}) {
   });
 }
 
+/** Mission CoT items as XML — TAK GET /Marti/api/missions/{name}/cot */
+async function getMissionCotXml(missionName, queryParams = {}) {
+  assertTakAvailable();
+  const client = buildTakAxios({ timeout: 180000 });
+  const name = String(missionName || "").trim();
+  if (!name) {
+    const e = new Error("Mission name is required.");
+    e.code = "INVALID_MISSION_NAME";
+    throw e;
+  }
+  const res = await client.get(`${missionPath(name)}/cot`, {
+    params: queryParams || {},
+    responseType: "text",
+    validateStatus: () => true,
+  });
+  return res;
+}
+
+/** Mission layer tree — TAK GET /Marti/api/missions/{name}/layer */
+async function getMissionLayers(missionName, queryParams = {}) {
+  assertTakAvailable();
+  const client = buildTakAxios({ timeout: 60000 });
+  const name = String(missionName || "").trim();
+  if (!name) {
+    const e = new Error("Mission name is required.");
+    e.code = "INVALID_MISSION_NAME";
+    throw e;
+  }
+  const res = await client.get(`${missionPath(name)}/layer`, {
+    params: queryParams || {},
+    validateStatus: () => true,
+  });
+  return res;
+}
+
+/** Enterprise sync file by hash — GET /Marti/sync/content */
+async function getSyncContent(hash, queryParams = {}) {
+  assertTakAvailable();
+  const client = buildTakAxios({ timeout: 180000 });
+  const h = String(hash || "").trim();
+  if (!h) {
+    const e = new Error("Content hash is required.");
+    e.code = "INVALID_HASH";
+    throw e;
+  }
+  return client.get("/sync/content", {
+    params: { hash: h, ...(queryParams || {}) },
+    responseType: "arraybuffer",
+    validateStatus: () => true,
+  });
+}
+
 module.exports = {
   assertTakAvailable,
   missionPath,
@@ -205,5 +257,8 @@ module.exports = {
   getSyncSearch,
   exportMissionKmlStream,
   exportMissionArchiveStream,
+  getMissionCotXml,
+  getMissionLayers,
+  getSyncContent,
   KML_MIME,
 };

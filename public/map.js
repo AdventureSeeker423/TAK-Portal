@@ -5242,4 +5242,40 @@
     .then((r) => r.json())
     .then((data) => refreshScopedGroupsCatalog())
     .catch(() => {});
+
+  function getStorageUserKey() {
+    const body = document.body;
+    return body && body.getAttribute("data-map-user")
+      ? body.getAttribute("data-map-user")
+      : "anonymous";
+  }
+
+  window.TakMapBridge = {
+    getMap: function () {
+      return map;
+    },
+    getStorageKey: getStorageUserKey,
+    getMissionBeforeLayerId: function () {
+      return map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
+    },
+    preloadMarkerIcons: preloadMarkerIcons,
+    whenReady: function (cb) {
+      if (markerLayersReady && map) {
+        cb();
+        return;
+      }
+      const timer = setInterval(function () {
+        if (markerLayersReady && map) {
+          clearInterval(timer);
+          cb();
+        }
+      }, 100);
+    },
+  };
+
+  window.TakMapBridge.whenReady(function () {
+    if (window.TakMapMissions && typeof window.TakMapMissions.init === "function") {
+      window.TakMapMissions.init(window.TakMapBridge);
+    }
+  });
 })();

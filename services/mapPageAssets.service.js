@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const MAP_JS = path.join(__dirname, "..", "public", "map.js");
+const MAP_MISSIONS_JS = path.join(__dirname, "..", "public", "map-missions.js");
 const MAP_CSS = path.join(__dirname, "..", "public", "map.css");
 
 function fileMtimeToken(filePath) {
@@ -16,6 +17,7 @@ function fileMtimeToken(filePath) {
 function getRenderLocals() {
   return {
     mapJsUrl: `/map.js?v=${fileMtimeToken(MAP_JS)}`,
+    mapMissionsJsUrl: `/map-missions.js?v=${fileMtimeToken(MAP_MISSIONS_JS)}`,
     mapCssUrl: `/map.css?v=${fileMtimeToken(MAP_CSS)}`,
   };
 }

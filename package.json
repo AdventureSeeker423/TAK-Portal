@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node tests/mapIcon.test.js && node tests/mapIconRender.test.js && node tests/mapRender.test.js && node tests/geocode.test.js && node scripts/audit-map-icons.js",
+    "test": "node tests/mapIcon.test.js && node tests/mapIconRender.test.js && node tests/mapRender.test.js && node tests/missionGeo.test.js && node tests/missionKml.test.js && node tests/geocode.test.js && node scripts/audit-map-icons.js",
     "audit:icons": "node scripts/audit-map-icons.js",
     "vendor:icons": "node --use-system-ca scripts/vendor-cloudtak-icons.js",
     "start": "node --use-system-ca server.js"
@@ -19,6 +19,8 @@
   "dependencies": {
     "@tak-ps/node-cot": "^14.42.0",
     "@tak-ps/node-tak": "^11.20.2",
+    "@tmcw/togeojson": "^7.1.2",
+    "@xmldom/xmldom": "^0.9.10",
     "archiver": "^7.0.1",
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",

@@ -144,6 +144,11 @@ function isAirCotType(type) {
   return parts.length >= 3 && parts[2].toUpperCase() === "A";
 }
 
+function isFeedLikeOrigin(origin) {
+  const o = String(origin || "").toLowerCase();
+  return o === "feed" || o === "mission";
+}
+
 /** PNG / 2525D map icons: feeds, explicit usericon/path, air type2525b; EUD uses team dots. */
 function markerUsesMapIcon(marker) {
   if (!marker?.iconId) return false;
@@ -157,7 +162,7 @@ function markerUsesMapIcon(marker) {
   if (isAirCotType(marker.type) && src === "default") return true;
   if (src === "type2525b") {
     if (isAirCotType(marker.type)) return true;
-    return String(marker.origin || "").toLowerCase() === "feed";
+    return isFeedLikeOrigin(marker.origin);
   }
   return false;
 }

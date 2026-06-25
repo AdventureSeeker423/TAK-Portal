@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<events>
+  <event version="2.0" uid="point-1" type="a-f-G-E-V" how="h-g" time="2026-01-01T00:00:00.000Z" start="2026-01-01T00:00:00.000Z" stale="2026-01-02T00:00:00.000Z">
+    <point lat="35.04" lon="-85.20" hae="0" ce="9999999" le="9999999"/>
+    <detail>
+      <contact callsign="Vehicle-1"/>
+      <remarks>Test point</remarks>
+    </detail>
+  </event>
+  <event version="2.0" uid="route-1" type="b-m-r" how="h-e" time="2026-01-01T00:00:00.000Z" start="2026-01-01T00:00:00.000Z" stale="2026-01-02T00:00:00.000Z">
+    <point lat="35.05" lon="-85.21" hae="0" ce="9999999" le="9999999"/>
+    <detail>
+      <contact callsign="Route-1"/>
+      <link point="35.05,-85.21"/>
+      <link point="35.06,-85.22"/>
+      <link point="35.07,-85.23"/>
+      <strokeColor value="-256"/>
+      <strokeWeight value="3.0"/>
+    </detail>
+  </event>
+  <event version="2.0" uid="poly-1" type="u-d-r" how="h-e" time="2026-01-01T00:00:00.000Z" start="2026-01-01T00:00:00.000Z" stale="2026-01-02T00:00:00.000Z">
+    <point lat="35.08" lon="-85.24" hae="0" ce="9999999" le="9999999"/>
+    <detail>
+      <contact callsign="Area-1"/>
+      <link point="35.08,-85.24"/>
+      <link point="35.09,-85.24"/>
+      <link point="35.09,-85.25"/>
+      <link point="35.08,-85.25"/>
+      <strokeColor value="-256"/>
+      <fillColor value="-2147483648"/>
+    </detail>
+  </event>
+  <event version="2.0" uid="chat-1" type="b-t-f" how="h-g" time="2026-01-01T00:00:00.000Z" start="2026-01-01T00:00:00.000Z" stale="2026-01-02T00:00:00.000Z">
+    <point lat="35.04" lon="-85.20" hae="0" ce="9999999" le="9999999"/>
+    <detail>
+      <contact callsign="Chat"/>
+    </detail>
+  </event>
+</events>

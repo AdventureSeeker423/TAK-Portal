@@ -712,6 +712,7 @@ module.exports = {
   assertSingleGroupBody,
   assertGroupAllowed,
   assertMissionReadable,
+  unwrapMission,
   takGroupNameAllowed,
   buildAccessDebug,
   isHiddenGlobalAdminGroupName,

@@ -1179,6 +1179,128 @@ body.map-detail-resizing .map-panel-resize-handle {
   }
 }
 
+.map-mission-list {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 8px 10px;
+}
+
+.map-mission-row {
+  border: 1px solid var(--map-border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.map-mission-row.is-open {
+  border-color: rgba(34, 211, 238, 0.25);
+}
+
+.map-mission-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+}
+
+.map-mission-name {
+  flex: 1;
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-mission-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  color: var(--map-warn);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.map-mission-open-btn,
+.map-mission-vis-btn,
+.map-mission-refresh-btn,
+.map-mission-folder-btn,
+.map-mission-item-btn {
+  appearance: none;
+  border: 1px solid var(--map-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--map-text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 4px 7px;
+}
+
+.map-mission-status,
+.map-mission-hint,
+.map-mission-empty {
+  padding: 0 8px 8px;
+  font-size: 0.76rem;
+  color: var(--map-muted);
+}
+
+.map-mission-status-error {
+  color: #fca5a5;
+}
+
+.map-mission-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 8px;
+  font-size: 0.74rem;
+}
+
+.map-mission-attach-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--map-muted);
+}
+
+.map-mission-admin-link {
+  color: var(--map-accent);
+  text-decoration: none;
+}
+
+.map-mission-tree {
+  padding: 0 8px 8px 12px;
+  border-top: 1px solid var(--map-border);
+}
+
+.map-mission-folder,
+.map-mission-item {
+  margin-top: 4px;
+}
+
+.map-mission-folder-btn,
+.map-mission-item-btn {
+  width: 100%;
+  text-align: left;
+}
+
+.map-mission-popup-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.map-mission-popup-meta {
+  font-size: 0.78rem;
+  color: var(--map-muted);
+}
+
+.map-mission-popup-remarks {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 900px) {
   .map-panel-left,
   .map-detail-stack {

@@ -6,6 +6,10 @@ const mapIcon = require("../services/mapIcon.service");
 const mapRender = require("../services/mapRender.service");
 const mapIconRender = require("../services/mapIconRender.service");
 const geocode = require("../services/geocode.service");
+const dataSyncSvc = require("../services/dataSync.service");
+const dataSyncAccess = require("../services/dataSyncAccess.service");
+const missionGeo = require("../services/missionGeo.service");
+const missionRaster = require("../services/missionRaster.service");
 
 mapIcon.ensureIconsets().then(() => {
   cotStream.refreshAllMarkerIcons();
@@ -412,6 +416,148 @@ router.get("/debug/icon", async (req, res) => {
       typeMappingCount: mapIcon.getStatus().typeMappings,
     },
   });
+});
+
+function unwrapMissionList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+/** Filtered mission list for map overlay picker (read-only). */
+router.get("/missions", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(authUser);
+    const data = await dataSyncSvc.listMissions(req.query);
+    const filtered = dataSyncAccess.filterMissionsPayload(data, allowedKeySet);
+    const list = unwrapMissionList(filtered);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json({ missions: list, total: list.length });
+  } catch (err) {
+    console.warn("[map] missions list failed:", err?.message || err);
+    const status = err?.status || err?.response?.status || 500;
+    return res.status(status >= 400 && status < 600 ? status : 500).json({
+      error: err?.message || "Mission list failed",
+    });
+  }
+});
+
+/** Mission metadata (read-only). */
+router.get("/missions/:missionName", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const missionName = String(req.params.missionName || "").trim();
+    const raw = await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    const mission = dataSyncAccess.unwrapMission(raw);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json({ mission });
+  } catch (err) {
+    const code = err?.code === "FORBIDDEN" ? 403 : 500;
+    return res.status(code).json({ error: err?.message || "Mission fetch failed" });
+  }
+});
+
+/** Mission CoT geometry as GeoJSON (read-only). */
+router.get("/missions/:missionName/geojson", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const missionName = String(req.params.missionName || "").trim();
+    await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    const includeAttachments = String(req.query.attachments || "") === "1";
+    const refresh = String(req.query.refresh || "") === "1";
+    const queryParams = {};
+    if (req.query.password) queryParams.password = String(req.query.password);
+
+    let missionMeta = null;
+    if (includeAttachments) {
+      missionMeta = await dataSyncSvc.getMission(missionName);
+    }
+
+    const geojson = await missionGeo.getMissionGeoJson(missionName, {
+      queryParams,
+      refresh,
+      includeAttachments,
+      missionMeta,
+    });
+
+    if (geojson.meta?.iconManifest?.length) {
+      await mapIconRender.prewarmIconManifest(geojson.meta.iconManifest);
+    }
+
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json(geojson);
+  } catch (err) {
+    console.warn("[map] mission geojson failed:", err?.message || err);
+    const status =
+      err?.code === "FORBIDDEN"
+        ? 403
+        : err?.status >= 400 && err?.status < 600
+          ? err.status
+          : 500;
+    return res.status(status).json({ error: err?.message || "Mission GeoJSON failed" });
+  }
+});
+
+/** Mission layer tree for folder show/hide (read-only). */
+router.get("/missions/:missionName/layers", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const missionName = String(req.params.missionName || "").trim();
+    await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    const refresh = String(req.query.refresh || "") === "1";
+    const queryParams = {};
+    if (req.query.password) queryParams.password = String(req.query.password);
+
+    const layers = await missionGeo.getMissionLayerTree(missionName, {
+      queryParams,
+      refresh,
+    });
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json(layers);
+  } catch (err) {
+    const status =
+      err?.code === "FORBIDDEN"
+        ? 403
+        : err?.status >= 400 && err?.status < 600
+          ? err.status
+          : 500;
+    return res.status(status).json({ error: err?.message || "Mission layers failed" });
+  }
+});
+
+/** Raster attachment as PNG for MapLibre image source (read-only). */
+router.get("/missions/:missionName/raster/:hash", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const missionName = String(req.params.missionName || "").trim();
+    const hash = String(req.params.hash || "").trim();
+    const missionRaw = await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    const mission = dataSyncAccess.unwrapMission(missionRaw);
+    const rasters = missionRaster.findRasterContents(mission);
+    const hit = rasters.find((r) => missionRaster.contentHash(r) === hash);
+    if (!hit) {
+      return res.status(404).json({ error: "Raster not found in mission" });
+    }
+    const boundsRaw = req.query.bounds;
+    let bounds = null;
+    if (boundsRaw) {
+      const parts = String(boundsRaw).split(",").map(Number);
+      if (parts.length === 4 && parts.every(Number.isFinite)) {
+        bounds = parts;
+      }
+    }
+    const rendered = await missionRaster.renderRasterPng(hash, { bounds });
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Content-Type", rendered.contentType);
+    if (rendered.bounds) {
+      res.setHeader("X-Image-Bounds", rendered.bounds.join(","));
+    }
+    return res.send(rendered.buffer);
+  } catch (err) {
+    const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
+    return res.status(status).json({ error: err?.message || "Raster render failed" });
+  }
 });
 
 module.exports = router;
