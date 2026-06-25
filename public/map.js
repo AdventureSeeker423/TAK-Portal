@@ -234,6 +234,7 @@
   };
 
   const markersByUid = new Map();
+  const missionMarkersByUid = new Map();
   let groupsCatalog = [];
   let mapChannelScope = "all";
   let allowedMemberChannelKeys = null;
@@ -748,6 +749,42 @@
       lon: Number.isFinite(lon) ? lon : m.lon,
       lat: Number.isFinite(lat) ? lat : m.lat,
     };
+  }
+
+  function getMarkerRecord(uid) {
+    const id = uid != null ? String(uid) : "";
+    if (!id) return null;
+    return markersByUid.get(id) || missionMarkersByUid.get(id) || null;
+  }
+
+  function registerMissionMarkers(missionName, markers) {
+    const name = String(missionName || "").trim();
+    for (const [uid, marker] of missionMarkersByUid) {
+      if (marker && marker.missionName === name) missionMarkersByUid.delete(uid);
+    }
+    const list = Array.isArray(markers) ? markers : [];
+    for (let i = 0; i < list.length; i++) {
+      const normalized = normalizeMarkerRecord(list[i]);
+      if (!normalized) continue;
+      missionMarkersByUid.set(normalized.uid, normalized);
+    }
+  }
+
+  function clearMissionMarkers(missionName) {
+    const name = String(missionName || "").trim();
+    for (const [uid, marker] of missionMarkersByUid) {
+      if (marker && marker.missionName === name) missionMarkersByUid.delete(uid);
+    }
+  }
+
+  function queryMissionMarkersAtPoint(point, radiusPx) {
+    if (
+      window.TakMapMissions &&
+      typeof window.TakMapMissions.queryMarkersAtPoint === "function"
+    ) {
+      return window.TakMapMissions.queryMarkersAtPoint(point, radiusPx);
+    }
+    return [];
   }
 
   function markerCoords(m) {
@@ -3923,10 +3960,34 @@
     armStackPickerOutsideClose();
   }
 
-  function onMarkerIconClick(e) {
+  function mergeMarkersAtPoint(liveMarkers, missionMarkers) {
+    const byUid = new Map();
+    const mission = Array.isArray(missionMarkers) ? missionMarkers : [];
+    const live = Array.isArray(liveMarkers) ? liveMarkers : [];
+    for (let i = 0; i < mission.length; i++) {
+      const m = mission[i];
+      if (m && m.uid) byUid.set(String(m.uid), m);
+    }
+    for (let i = 0; i < live.length; i++) {
+      const m = live[i];
+      if (m && m.uid) byUid.set(String(m.uid), m);
+    }
+    const merged = Array.from(byUid.values());
+    merged.sort(function (a, b) {
+      const rankDiff = markerOriginRank(b) - markerOriginRank(a);
+      if (rankDiff !== 0) return rankDiff;
+      return String(a.callsign || a.uid).localeCompare(String(b.callsign || b.uid));
+    });
+    return merged;
+  }
+
+  function handleMapFeatureClick(e) {
     if (e.originalEvent) e.originalEvent.stopPropagation();
     suppressMapBackgroundClickUntil = Date.now() + 150;
-    const markers = queryMarkersAtPoint(e.point);
+    const markers = mergeMarkersAtPoint(
+      queryMarkersAtPoint(e.point),
+      queryMissionMarkersAtPoint(e.point)
+    );
     if (!markers.length) return;
     if (markers.length === 1) {
       closeStackPicker();
@@ -3934,6 +3995,10 @@
       return;
     }
     showStackPicker(markers, e.point);
+  }
+
+  function onMarkerIconClick(e) {
+    handleMapFeatureClick(e);
   }
 
   function onMarkerIconEnter() {
@@ -4210,7 +4275,7 @@
       removeDetailSlotAt(slotIndex);
     });
     pane.querySelector(".map-detail-center-btn").addEventListener("click", function () {
-      const m = markersByUid.get(slot.uid);
+      const m = getMarkerRecord(slot.uid);
       if (!m) return;
       lockMoveFromCode = true;
       map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 12) });
@@ -4219,7 +4284,16 @@
       toggleLock(slot.uid);
     });
     pane.querySelector(".map-detail-copy-raw-btn").addEventListener("click", function () {
-      fetch("/api/map/cot-raw?uid=" + encodeURIComponent(slot.uid))
+      const m = getMarkerRecord(slot.uid);
+      let rawUrl = "/api/map/cot-raw?uid=" + encodeURIComponent(slot.uid);
+      if (m && String(m.origin || "").toLowerCase() === "mission" && m.missionName) {
+        rawUrl =
+          "/api/map/missions/" +
+          encodeURIComponent(m.missionName) +
+          "/cot-raw?uid=" +
+          encodeURIComponent(slot.uid);
+      }
+      fetch(rawUrl)
         .then(function (resp) {
           if (!resp.ok) throw new Error("raw " + resp.status);
           return resp.text();
@@ -4417,7 +4491,7 @@
       '.map-detail-pane[data-slot-index="' + slotIndex + '"]'
     );
     if (!pane) return;
-    const m = markersByUid.get(slot.uid);
+    const m = getMarkerRecord(slot.uid);
     const titleEl = pane.querySelector(".map-detail-title");
     const bodyEl = pane.querySelector(".map-detail-body");
     const actionsEl = pane.querySelector(".map-detail-actions");
@@ -4534,7 +4608,7 @@
 
   function toggleLock(uid) {
     const id = uid != null ? String(uid) : selectedUid;
-    const m = id ? markersByUid.get(id) : null;
+    const m = id ? getMarkerRecord(id) : null;
     if (!m || !Number.isFinite(m.lon) || !Number.isFinite(m.lat)) return;
     if (lockedUid === m.uid) {
       clearLock();
@@ -4677,7 +4751,7 @@
       }
       syncDetailStackVisibility();
     } else if (showPopupFlag) {
-      const m = markersByUid.get(id);
+      const m = getMarkerRecord(id);
       if (m && Number.isFinite(m.lon) && Number.isFinite(m.lat)) {
         showPopup(m);
       }
@@ -4752,7 +4826,7 @@
       updateLockButtonsUi();
     }
     if (lockedUid) {
-      const locked = markersByUid.get(lockedUid);
+      const locked = getMarkerRecord(lockedUid);
       if (locked) trackLockedMarker(locked);
     }
   }
@@ -5007,6 +5081,15 @@
     const layers = markerHitLayers();
     if (map.getLayer(LABEL_PRIORITY_LAYER)) layers.push(LABEL_PRIORITY_LAYER);
     if (map.getLayer(LABEL_LAYER)) layers.push(LABEL_LAYER);
+    if (
+      window.TakMapMissions &&
+      typeof window.TakMapMissions.getHitLayers === "function"
+    ) {
+      const missionLayers = window.TakMapMissions.getHitLayers();
+      for (let i = 0; i < missionLayers.length; i++) {
+        layers.push(missionLayers[i]);
+      }
+    }
     if (layers.length) {
       const hit = map.queryRenderedFeatures(e.point, { layers: layers });
       if (hit && hit.length) return;
@@ -5310,6 +5393,9 @@
     },
     preloadMarkerIcons: preloadMarkerIcons,
     registerMissionIconManifest: registerMissionIconManifest,
+    registerMissionMarkers: registerMissionMarkers,
+    clearMissionMarkers: clearMissionMarkers,
+    handleMapFeatureClick: handleMapFeatureClick,
     whenReady: function (cb) {
       if (markerLayersReady && map) {
         cb();

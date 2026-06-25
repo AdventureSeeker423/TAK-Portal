@@ -499,6 +499,33 @@ router.get("/missions/:missionName/geojson", async (req, res) => {
   }
 });
 
+/** Single mission CoT event XML by uid (read-only). */
+router.get("/missions/:missionName/cot-raw", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const missionName = String(req.params.missionName || "").trim();
+    await dataSyncAccess.assertMissionReadable(authUser, missionName);
+    const uid = String(req.query.uid || "").trim();
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
+    const queryParams = {};
+    if (req.query.password) queryParams.password = String(req.query.password);
+    const raw = await missionGeo.getMissionCotRaw(missionName, uid, { queryParams });
+    res.setHeader("Cache-Control", "no-cache");
+    res.type("application/xml");
+    return res.send(raw);
+  } catch (err) {
+    const status =
+      err?.code === "FORBIDDEN"
+        ? 403
+        : err?.code === "NOT_FOUND"
+          ? 404
+          : err?.status >= 400 && err?.status < 600
+            ? err.status
+            : 500;
+    return res.status(status).json({ error: err?.message || "Mission CoT raw failed" });
+  }
+});
+
 /** Mission layer tree for folder show/hide (read-only). */
 router.get("/missions/:missionName/layers", async (req, res) => {
   try {

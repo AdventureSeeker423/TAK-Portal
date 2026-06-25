@@ -441,6 +441,34 @@ function clearCache(missionName) {
   layerCache.delete(prefix);
 }
 
+async function getMissionCotRaw(missionName, uid, options = {}) {
+  const name = String(missionName || "").trim();
+  const id = String(uid || "").trim();
+  if (!name || !id) {
+    const err = new Error("Mission name and uid are required.");
+    err.code = "INVALID_PARAMS";
+    throw err;
+  }
+  const res = await dataSyncSvc.getMissionCotXml(name, options.queryParams || {});
+  if (res.status >= 400) {
+    const err = new Error(`Mission CoT fetch failed (${res.status})`);
+    err.status = res.status;
+    err.code = "MISSION_COT_FETCH_FAILED";
+    throw err;
+  }
+  const mod = await loadCotConvert();
+  const chunks = mod.splitMissionCotXml(res.data);
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const match = chunk.match(/\buid=['"]([^'"]+)['"]/i);
+    if (match && match[1] === id) return chunk;
+  }
+  const err = new Error("CoT event not found in mission.");
+  err.code = "NOT_FOUND";
+  err.status = 404;
+  throw err;
+}
+
 module.exports = {
   CACHE_TTL_MS,
   geometryType,
@@ -448,5 +476,6 @@ module.exports = {
   normalizeFeatureCollection,
   getMissionGeoJson,
   getMissionLayerTree,
+  getMissionCotRaw,
   clearCache,
 };
