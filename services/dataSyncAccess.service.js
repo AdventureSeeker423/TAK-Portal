@@ -112,6 +112,50 @@ function mergeMutualAidGroupNames(byKey, takByKey) {
   }
 }
 
+/**
+ * Mutual aid channel groups the user belongs to (from mutual-aid.json groupName / groupId).
+ * @returns {Array<{ authentikName, takDisplayName, canonicalKey, agencySuffix, groupPrefix, mutualAid }>}
+ */
+function resolveMutualAidAllowedGroups(userGroupNames, maRecords) {
+  const byKey = new Map();
+  const byId = new Map();
+  for (const item of Array.isArray(maRecords) ? maRecords : []) {
+    const name = String(item?.groupName || "").trim();
+    if (!name) continue;
+    const canonicalKey = canonicalGroupKey(name);
+    if (!canonicalKey) continue;
+    const entry = {
+      authentikName: name,
+      takDisplayName: takDisplayName(name),
+      canonicalKey,
+      agencySuffix: null,
+      groupPrefix: null,
+      mutualAid: true,
+    };
+    byKey.set(canonicalKey, entry);
+    const gid = String(item?.groupId || "").trim();
+    if (gid) byId.set(gid, entry);
+  }
+  if (!byKey.size) return [];
+
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(userGroupNames) ? userGroupNames : []) {
+    const token = String(raw || "").trim();
+    if (!token) continue;
+    let entry = byKey.get(canonicalGroupKey(token));
+    if (!entry && byId.has(token)) entry = byId.get(token);
+    if (!entry || seen.has(entry.canonicalKey)) continue;
+    seen.add(entry.canonicalKey);
+    out.push(entry);
+  }
+  return out;
+}
+
+function getMutualAidAllowedGroupsForUser(authUser) {
+  return resolveMutualAidAllowedGroups(authUser?.groups, mutualAidStore.load());
+}
+
 function entryToGroupName(entry) {
   if (entry == null) return "";
   if (typeof entry === "string") return String(entry).trim();
@@ -207,6 +251,12 @@ async function buildAgencyAllowedGroups(authUser) {
         groupPrefix: gp.toUpperCase(),
       });
     }
+  }
+
+  for (const maGroup of getMutualAidAllowedGroupsForUser(authUser)) {
+    if (seenKeys.has(maGroup.canonicalKey)) continue;
+    seenKeys.add(maGroup.canonicalKey);
+    out.push(maGroup);
   }
 
   return out;
@@ -660,6 +710,7 @@ async function buildAccessDebug(authUser) {
 
   const allowed = await buildAgencyAllowedGroups(authUser);
   const allowedKeySet = allowed === null ? null : new Set(allowed.map((g) => g.canonicalKey));
+  const mutualAidAllowed = getMutualAidAllowedGroupsForUser(authUser);
   const resolved = await resolveGroupsForUser(authUser, takGroupsRaw);
 
   const missionFilterPreview = missionsRaw.map((m) => ({
@@ -680,6 +731,7 @@ async function buildAccessDebug(authUser) {
       error: takError,
     },
     authentikAllowedGroups: allowed,
+    mutualAidAllowedGroups: mutualAidAllowed,
     resolvedUiGroups: resolved.groups,
     resolvedDebug: resolved.debug,
     missions: {
@@ -698,6 +750,8 @@ module.exports = {
   extractMissionGroupNames,
   missionSingleGroupName,
   buildAgencyAllowedGroups,
+  getMutualAidAllowedGroupsForUser,
+  resolveMutualAidAllowedGroups,
   getAllowedTakGroupNameSet,
   getAllowedCanonicalKeySet,
   resolveGroupsForUser,
