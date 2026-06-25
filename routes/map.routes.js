@@ -10,6 +10,7 @@ const dataSyncSvc = require("../services/dataSync.service");
 const dataSyncAccess = require("../services/dataSyncAccess.service");
 const missionGeo = require("../services/missionGeo.service");
 const missionRaster = require("../services/missionRaster.service");
+const accessSvc = require("../services/access.service");
 
 mapIcon.ensureIconsets().then(() => {
   cotStream.refreshAllMarkerIcons();
@@ -30,15 +31,24 @@ geocode
     console.warn("[map] geocode self-test error:", err?.message || err);
   });
 
-function getMapAccessContext(req) {
+function mapCatalogRefreshFromQuery(req) {
+  return String(req?.query?.refresh ?? "1") !== "0";
+}
+
+async function getMapAccessContext(req) {
   const user = req.authentikUser || {};
   const isGlobalAdmin = !!user.isGlobalAdmin;
   const isAgencyAdmin = !!user.isAgencyAdmin && !isGlobalAdmin;
+  const forceRefresh = mapCatalogRefreshFromQuery(req);
+  if (isAgencyAdmin && user.uid) {
+    await accessSvc.enrichAuthUserFromAuthentik(user, { forceRefreshGroups: forceRefresh });
+  }
   return {
     isGlobalAdmin,
     isAgencyAdmin,
     scopeMemberGroups: isAgencyAdmin,
     userGroups: Array.isArray(user.groups) ? user.groups : [],
+    forceRefresh,
   };
 }
 
@@ -46,6 +56,8 @@ async function attachScopedGroupCatalog(snapshot, ctx) {
   const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
     scopeMemberGroups: ctx.scopeMemberGroups,
     userGroupNames: ctx.userGroups,
+    forceRefresh: !!ctx.forceRefresh,
+    refreshSubscriptions: !!ctx.forceRefresh,
   });
   snapshot.groupsCatalog = catalog.groups;
   snapshot.channelScope = catalog.channelScope;
@@ -55,7 +67,7 @@ async function attachScopedGroupCatalog(snapshot, ctx) {
 
 router.get("/state", async (req, res) => {
   cotStream.ensureBridgeStarted();
-  const ctx = getMapAccessContext(req);
+  const ctx = await getMapAccessContext(req);
   const snapshot = cotStream.getStateSnapshot();
   snapshot.icons = mapIcon.getStatus();
   try {
@@ -199,11 +211,13 @@ router.get("/icons", (req, res) => {
 
 router.get("/groups", async (req, res) => {
   cotStream.ensureBridgeStarted();
-  const ctx = getMapAccessContext(req);
+  const ctx = await getMapAccessContext(req);
   try {
     const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
       scopeMemberGroups: ctx.scopeMemberGroups,
       userGroupNames: ctx.userGroups,
+      forceRefresh: !!ctx.forceRefresh,
+      refreshSubscriptions: !!ctx.forceRefresh,
     });
     return res.json(catalog);
   } catch (err) {

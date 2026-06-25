@@ -1099,48 +1099,60 @@ async function refreshSubscriptionIndex() {
   return subscriptionIndex;
 }
 
-async function refreshGroupCatalog() {
-  if (isTakBypassed() || !isTakConfigured()) {
-    catalogCache = {
-      names: [],
-      fetchedAt: Date.now(),
-      error: isTakBypassed() ? "TAK bypass enabled" : "TAK not configured",
-    };
-    return catalogCache;
-  }
+/** @type {Promise<object>|null} */
+let catalogRefreshInFlight = null;
 
-  try {
-    const all = await groupsSvc.getAllGroups({ forceRefresh: false });
-    const ldapNames = (Array.isArray(all) ? all : [])
-      .map((g) => normalizeGroupName(g?.name))
-      .filter(isMapChannelGroupName);
+async function refreshGroupCatalog(options = {}) {
+  const forceRefresh = !!options.forceRefresh;
+  if (catalogRefreshInFlight) return catalogRefreshInFlight;
 
-    let takNames = [];
+  catalogRefreshInFlight = (async () => {
+    if (isTakBypassed() || !isTakConfigured()) {
+      catalogCache = {
+        names: [],
+        fetchedAt: Date.now(),
+        error: isTakBypassed() ? "TAK bypass enabled" : "TAK not configured",
+      };
+      return catalogCache;
+    }
+
     try {
-      const takPayload = await dataSyncSvc.listGroupsAll();
-      takNames = dataSyncAccess
-        .extractTakGroupNameList(takPayload)
-        .map((n) => groupsSvc.ensureTakPrefix(n))
+      const all = await groupsSvc.getAllGroups({ forceRefresh });
+      const ldapNames = (Array.isArray(all) ? all : [])
+        .map((g) => normalizeGroupName(g?.name))
         .filter(isMapChannelGroupName);
-    } catch (_) {}
 
-    const names = Array.from(new Set([...ldapNames, ...takNames])).sort((a, b) =>
-      dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
-    );
-    catalogCache = {
-      names,
-      fetchedAt: Date.now(),
-      error: null,
-    };
-  } catch (err) {
-    catalogCache = {
-      ...catalogCache,
-      fetchedAt: Date.now(),
-      error: err?.message || String(err),
-    };
-  }
+      let takNames = [];
+      try {
+        const takPayload = await dataSyncSvc.listGroupsAll();
+        takNames = dataSyncAccess
+          .extractTakGroupNameList(takPayload)
+          .map((n) => groupsSvc.ensureTakPrefix(n))
+          .filter(isMapChannelGroupName);
+      } catch (_) {}
 
-  return catalogCache;
+      const names = Array.from(new Set([...ldapNames, ...takNames])).sort((a, b) =>
+        dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
+      );
+      catalogCache = {
+        names,
+        fetchedAt: Date.now(),
+        error: null,
+      };
+    } catch (err) {
+      catalogCache = {
+        ...catalogCache,
+        fetchedAt: Date.now(),
+        error: err?.message || String(err),
+      };
+    }
+
+    return catalogCache;
+  })().finally(() => {
+    catalogRefreshInFlight = null;
+  });
+
+  return catalogRefreshInFlight;
 }
 
 function ensureRefreshLoop() {
@@ -1397,7 +1409,12 @@ function filterMapGroupsForUserMembership(groups, userGroupNames) {
 }
 
 async function getTakGroupCatalog(markers, options = {}) {
-  await refreshGroupCatalog();
+  const forceRefresh = !!options.forceRefresh;
+  await refreshGroupCatalog({ forceRefresh });
+  if (options.refreshSubscriptions) {
+    await refreshSubscriptionIndex();
+    await refreshDataFeedIndex();
+  }
   let groups = buildGroupsCatalogWithCounts(markers);
   if (options.scopeMemberGroups) {
     groups = filterMapGroupsForUserMembership(groups, options.userGroupNames || []);

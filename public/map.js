@@ -5020,8 +5020,10 @@
     applyBatch({ removes: [String(uid)] });
   }
 
-  function refreshScopedGroupsCatalog() {
-    return fetch("/api/map/groups")
+  function refreshScopedGroupsCatalog(options) {
+    const refresh = options && options.refresh;
+    const qs = refresh ? "?refresh=1" : "";
+    return fetch("/api/map/groups" + qs)
       .then(function (r) {
         return r.json();
       })
@@ -5547,14 +5549,9 @@
     elOffline.hidden = false;
   };
 
-  fetch("/api/map/state")
+  fetch("/api/map/state?refresh=1")
     .then((r) => r.json())
     .then((state) => applySnapshot(state))
-    .catch(() => {});
-
-  fetch("/api/map/groups")
-    .then((r) => r.json())
-    .then((data) => refreshScopedGroupsCatalog())
     .catch(() => {});
 
   function getStorageUserKey() {
