@@ -199,6 +199,18 @@ async function runTests() {
     "uid linked to shape owner should be filtered"
   );
 
+  const shapeDecor = require("../public/shapeDecorFilter.js");
+  assert.strictEqual(
+    shapeDecor.shouldSkipLiveStreamMarker({ type: "b-m-p", how: "m-g" }),
+    true,
+    "bare b-m-p shape handles should be skipped on live stream"
+  );
+  assert.strictEqual(
+    shapeDecor.shouldSkipLiveStreamMarker({ type: "b-m-r", how: "m-g" }),
+    true,
+    "bare b-m-r shape handles should be skipped on live stream"
+  );
+
   console.log("missionGeo.test.js: all assertions passed");
 }
 

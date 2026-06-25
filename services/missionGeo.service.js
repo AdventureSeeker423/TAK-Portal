@@ -466,6 +466,21 @@ function clearCache(missionName) {
   layerCache.delete(prefix);
 }
 
+/** Polygon/line features from recently fetched mission GeoJSON (for live decor filtering). */
+function getCachedMissionShapeFeatures() {
+  const out = [];
+  for (const entry of geoCache.values()) {
+    if (!entry || Date.now() - entry.at > CACHE_TTL_MS) continue;
+    const fc = entry.value;
+    if (!fc || !Array.isArray(fc.features)) continue;
+    for (const feature of fc.features) {
+      const gt = geometryType(feature?.geometry);
+      if (gt === "polygon" || gt === "line") out.push(feature);
+    }
+  }
+  return out;
+}
+
 async function getMissionCotRaw(missionName, uid, options = {}) {
   const name = String(missionName || "").trim();
   const id = String(uid || "").trim();
@@ -506,5 +521,6 @@ module.exports = {
   getMissionLayerTree,
   getMissionCotRaw,
   auditMissionShapeDecor,
+  getCachedMissionShapeFeatures,
   clearCache,
 };

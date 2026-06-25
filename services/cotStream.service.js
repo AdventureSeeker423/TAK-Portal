@@ -10,6 +10,7 @@ const {
 const mapMeta = require("./mapMeta.service");
 const mapIcon = require("./mapIcon.service");
 const mapRender = require("./mapRender.service");
+const missionGeo = require("./missionGeo.service");
 const shapeDecor = require("../public/shapeDecorFilter.js");
 
 const STALE_SWEEP_MS = 5000;
@@ -74,6 +75,20 @@ function buildLiveDecorIndex() {
   return shapeDecor.buildShapeDecorIndex(Array.from(liveShapeFeatures.values()));
 }
 
+let missionDecorIndex = null;
+let missionDecorIndexAt = 0;
+const MISSION_DECOR_INDEX_MS = 5000;
+
+function getMissionShapeDecorIndex() {
+  const now = Date.now();
+  if (missionDecorIndex && now - missionDecorIndexAt < MISSION_DECOR_INDEX_MS) {
+    return missionDecorIndex;
+  }
+  missionDecorIndex = shapeDecor.buildShapeDecorIndex(missionGeo.getCachedMissionShapeFeatures());
+  missionDecorIndexAt = now;
+  return missionDecorIndex;
+}
+
 function markerToDecorFeature(marker) {
   return {
     type: "Feature",
@@ -95,6 +110,17 @@ function markerIsShapeDecor(marker) {
   const uid = String(marker.uid || "");
   const shapeUids = new Set(liveShapeFeatures.keys());
   if (shapeUids.size && isShapeChildUid(uid, shapeUids)) return true;
+
+  const missionIndex = getMissionShapeDecorIndex();
+  if (
+    missionIndex.hasShapes ||
+    missionIndex.ringProfiles.length ||
+    missionIndex.segments.length
+  ) {
+    if (shapeDecor.shouldDropShapeDecorPoint(markerToDecorFeature(marker), missionIndex)) {
+      return true;
+    }
+  }
 
   const index = buildLiveDecorIndex();
   if (index.hasShapes || index.ringProfiles.length || index.segments.length) {

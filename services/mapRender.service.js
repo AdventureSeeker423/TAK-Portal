@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { getInt } = require("./env");
 const mapMeta = require("./mapMeta.service");
 const mapIconRender = require("./mapIconRender.service");
+const missionGeo = require("./missionGeo.service");
 const shapeDecor = require("../public/shapeDecorFilter.js");
 
 const GEOJSON_CACHE_MS = getInt("MAP_GEOJSON_CACHE_MS", 0);

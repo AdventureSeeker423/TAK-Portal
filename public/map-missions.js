@@ -147,6 +147,88 @@
     return ["==", ["get", "missionVisible"], 1];
   }
 
+  function missionBaseFilter(entry) {
+    return [
+      "all",
+      MISSION_FILTER,
+      missionVisibilityFilter(),
+      hiddenUidFilter(entry ? entry.hiddenUids : null),
+    ];
+  }
+
+  /** CloudTAK-style filters: geometry-type on the feature, not properties.geometryType. */
+  function missionLayerFilters(baseFilter) {
+    return {
+      fill: [
+        "all",
+        baseFilter,
+        ["==", ["geometry-type"], "Polygon"],
+        ["!=", ["get", "fill-opacity"], 0],
+      ],
+      line: [
+        "all",
+        baseFilter,
+        [
+          "any",
+          ["==", ["geometry-type"], "Polygon"],
+          ["==", ["geometry-type"], "LineString"],
+        ],
+      ],
+      dot: [
+        "all",
+        baseFilter,
+        ["==", ["geometry-type"], "Point"],
+        ["==", ["get", "showCircle"], 1],
+      ],
+      symbol: [
+        "all",
+        baseFilter,
+        ["==", ["geometry-type"], "Point"],
+        ["!=", ["get", "iconId"], ""],
+      ],
+      label: [
+        "all",
+        baseFilter,
+        ["==", ["get", "showLabel"], 1],
+        ["!=", ["coalesce", ["get", "callsign"], ["get", "name"], ""], ""],
+      ],
+    };
+  }
+
+  function missionLinePaint() {
+    return {
+      "line-color": ["coalesce", ["get", "stroke"], "#22d3ee"],
+      "line-width": ["coalesce", ["get", "stroke-width"], 2],
+      "line-opacity": ["coalesce", ["get", "stroke-opacity"], 1],
+      "line-dasharray": [
+        "case",
+        ["==", ["get", "stroke-style"], "dashed"],
+        ["literal", [2, 3]],
+        ["==", ["get", "stroke-style"], "dotted"],
+        ["literal", [0.1, 3]],
+        ["literal", [1, 0]],
+      ],
+    };
+  }
+
+  function missionLineLayout() {
+    return {
+      "line-join": "round",
+      "line-cap": "round",
+    };
+  }
+
+  function applyMissionLayerFilters(name, baseFilter) {
+    if (!map) return;
+    const ids = missionLayerIds(name);
+    const filters = missionLayerFilters(baseFilter);
+    if (map.getLayer(ids.fill)) map.setFilter(ids.fill, filters.fill);
+    if (map.getLayer(ids.line)) map.setFilter(ids.line, filters.line);
+    if (map.getLayer(ids.dot)) map.setFilter(ids.dot, filters.dot);
+    if (map.getLayer(ids.symbol)) map.setFilter(ids.symbol, filters.symbol);
+    if (map.getLayer(ids.label)) map.setFilter(ids.label, filters.label);
+  }
+
   function missionLayersReady() {
     if (bridge && typeof bridge.isMarkerLayersReady === "function") {
       return bridge.isMarkerLayersReady();
@@ -164,16 +246,15 @@
     if (!entry) return;
     const ids = missionLayerIds(name);
     const vis = entry.visible ? "visible" : "none";
-    const hiddenFilter = hiddenUidFilter(entry.hiddenUids);
-    const baseFilter = ["all", MISSION_FILTER, missionVisibilityFilter(), hiddenFilter];
+    const baseFilter = missionBaseFilter(entry);
 
     const layerIds = [ids.fill, ids.line, ids.symbol, ids.dot, ids.label];
     for (let i = 0; i < layerIds.length; i++) {
       const layerId = layerIds[i];
       if (!map.getLayer(layerId)) continue;
       map.setLayoutProperty(layerId, "visibility", vis);
-      map.setFilter(layerId, baseFilter);
     }
+    applyMissionLayerFilters(name, baseFilter);
 
     const rasters = entry.rasterOverlays || [];
     for (let j = 0; j < rasters.length; j++) {
@@ -486,12 +567,8 @@
     }
 
     const beforeId = bridge.getMissionBeforeLayerId();
-    const baseFilter = [
-      "all",
-      MISSION_FILTER,
-      missionVisibilityFilter(),
-      hiddenUidFilter(entry ? entry.hiddenUids : null),
-    ];
+    const baseFilter = missionBaseFilter(entry);
+    const filters = missionLayerFilters(baseFilter);
 
     if (!map.getLayer(ids.fill)) {
       map.addLayer(
@@ -499,7 +576,7 @@
           id: ids.fill,
           type: "fill",
           source: srcId,
-          filter: ["all", baseFilter, ["==", ["get", "geometryType"], "polygon"]],
+          filter: filters.fill,
           paint: {
             "fill-color": ["coalesce", ["get", "fill"], "#22d3ee"],
             "fill-opacity": ["coalesce", ["get", "fill-opacity"], 0.35],
@@ -515,16 +592,9 @@
           id: ids.line,
           type: "line",
           source: srcId,
-          filter: [
-            "all",
-            baseFilter,
-            ["in", ["get", "geometryType"], ["literal", ["line", "polygon"]]],
-          ],
-          paint: {
-            "line-color": ["coalesce", ["get", "stroke"], "#22d3ee"],
-            "line-width": ["coalesce", ["get", "stroke-width"], 2],
-            "line-opacity": ["coalesce", ["get", "stroke-opacity"], 1],
-          },
+          filter: filters.line,
+          layout: missionLineLayout(),
+          paint: missionLinePaint(),
         },
         bridge.getMissionBeforeLayerId()
       );
@@ -536,12 +606,7 @@
           id: ids.dot,
           type: "circle",
           source: srcId,
-          filter: [
-            "all",
-            baseFilter,
-            ["==", ["get", "geometryType"], "point"],
-            ["==", ["get", "showCircle"], 1],
-          ],
+          filter: filters.dot,
           paint: {
             "circle-radius": 10,
             "circle-color": ["coalesce", ["get", "color"], ["get", "fill"], "#22d3ee"],
@@ -560,12 +625,7 @@
           id: ids.symbol,
           type: "symbol",
           source: srcId,
-          filter: [
-            "all",
-            baseFilter,
-            ["==", ["get", "geometryType"], "point"],
-            ["!=", ["get", "iconId"], ""],
-          ],
+          filter: filters.symbol,
           layout: {
             "icon-image": ["get", "iconId"],
             "icon-size": 0.88,
@@ -587,53 +647,15 @@
           id: ids.label,
           type: "symbol",
           source: srcId,
-          filter: [
-            "all",
-            baseFilter,
-            ["==", ["get", "showLabel"], 1],
-            ["!=", ["coalesce", ["get", "callsign"], ["get", "name"], ""], ""],
-          ],
+          filter: filters.label,
           layout: missionLabelLayout(),
           paint: missionLabelPaint(),
         },
         beforeId
       );
-    } else if (map.getLayer(ids.label)) {
-      map.setFilter(ids.label, [
-        "all",
-        baseFilter,
-        ["==", ["get", "showLabel"], 1],
-        ["!=", ["coalesce", ["get", "callsign"], ["get", "name"], ""], ""],
-      ]);
     }
 
-    if (map.getLayer(ids.fill)) {
-      map.setFilter(ids.fill, ["all", baseFilter, ["==", ["get", "geometryType"], "polygon"]]);
-    }
-    if (map.getLayer(ids.line)) {
-      map.setFilter(ids.line, [
-        "all",
-        baseFilter,
-        ["in", ["get", "geometryType"], ["literal", ["line", "polygon"]]],
-      ]);
-    }
-    if (map.getLayer(ids.dot)) {
-      map.setFilter(ids.dot, [
-        "all",
-        baseFilter,
-        ["==", ["get", "geometryType"], "point"],
-        ["==", ["get", "showCircle"], 1],
-      ]);
-    }
-    if (map.getLayer(ids.symbol)) {
-      map.setFilter(ids.symbol, [
-        "all",
-        baseFilter,
-        ["==", ["get", "geometryType"], "point"],
-        ["!=", ["get", "iconId"], ""],
-      ]);
-    }
-
+    applyMissionLayerFilters(name, baseFilter);
     applyMissionLayerVisibility(name);
   }
 

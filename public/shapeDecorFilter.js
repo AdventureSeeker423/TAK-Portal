@@ -40,7 +40,9 @@
     const t = String(type || "").toLowerCase();
     return (
       t.startsWith("u-d-") ||
+      t === "b-m-p" ||
       t.startsWith("b-m-p-") ||
+      t === "b-m-r" ||
       t.startsWith("b-m-r-") ||
       t.startsWith("b-m-c-")
     );
@@ -394,12 +396,7 @@
 
   function shouldSkipLiveStreamMarker(marker) {
     const type = String(marker?.type || marker?.cotType || "").toLowerCase();
-    if (
-      type.startsWith("u-d-") ||
-      type.startsWith("b-m-p-") ||
-      type.startsWith("b-m-r-") ||
-      type.startsWith("b-m-c-")
-    ) {
+    if (isShapeControlCotType(type)) {
       return true;
     }
     const how = String(marker?.how || "").toLowerCase();
