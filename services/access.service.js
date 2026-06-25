@@ -106,6 +106,153 @@ function usernameHasAgencySuffixToken(username, suffix) {
   return u.endsWith(sfx) || u.startsWith(sfx);
 }
 
+const USERNAME_TOKEN_PLACEMENT_SUFFIX = "suffix";
+const USERNAME_TOKEN_PLACEMENT_PREFIX = "prefix";
+
+/**
+ * Normalize agency username token placement (badge before or after the agency token).
+ * Default: suffix (badge + token, e.g. 1234hs).
+ */
+function normalizeUsernameTokenPlacement(raw) {
+  const v = String(raw || "").trim().toLowerCase();
+  if (
+    v === USERNAME_TOKEN_PLACEMENT_PREFIX ||
+    v === "start" ||
+    v === "before" ||
+    v === "leading"
+  ) {
+    return USERNAME_TOKEN_PLACEMENT_PREFIX;
+  }
+  return USERNAME_TOKEN_PLACEMENT_SUFFIX;
+}
+
+function getAgencyUsernameTokenPlacement(agency) {
+  if (!agency || typeof agency !== "object") return USERNAME_TOKEN_PLACEMENT_SUFFIX;
+  return normalizeUsernameTokenPlacement(
+    agency.usernameTokenPlacement ?? agency.usernameSuffixPlacement
+  );
+}
+
+/**
+ * Build a portal username from badge + agency token using the agency's configured placement.
+ */
+function buildUsernameWithAgencyToken(badge, agencyOrSuffix, placement) {
+  const badgeNorm = String(badge || "").trim();
+  const agency =
+    agencyOrSuffix && typeof agencyOrSuffix === "object" ? agencyOrSuffix : null;
+  const sfx = agency
+    ? normalizeSuffix(agency.suffix)
+    : normalizeSuffix(agencyOrSuffix);
+  if (!badgeNorm || !sfx) return "";
+
+  const loc =
+    placement != null
+      ? normalizeUsernameTokenPlacement(placement)
+      : agency
+        ? getAgencyUsernameTokenPlacement(agency)
+        : USERNAME_TOKEN_PLACEMENT_SUFFIX;
+
+  return loc === USERNAME_TOKEN_PLACEMENT_PREFIX
+    ? `${sfx}${badgeNorm}`
+    : `${badgeNorm}${sfx}`;
+}
+
+/**
+ * Remove the agency token from a username (tail or prefix). When placement is unknown,
+ * tail is tried first, then prefix (same order as inferAgencySuffixFromUsername).
+ */
+function stripAgencyTokenFromUsername(username, agencySuffix, placement) {
+  const user = String(username || "").trim();
+  if (!user) return "";
+
+  let sfx = normalizeSuffix(agencySuffix);
+  const loc =
+    placement != null ? normalizeUsernameTokenPlacement(placement) : null;
+
+  if (!sfx) {
+    sfx = inferAgencySuffixFromUsername(user);
+    if (!sfx) return user;
+  }
+
+  const lower = user.toLowerCase();
+  const sfxLower = sfx.toLowerCase();
+
+  if (loc === USERNAME_TOKEN_PLACEMENT_PREFIX) {
+    return lower.startsWith(sfxLower) ? user.slice(sfx.length) : user;
+  }
+  if (loc === USERNAME_TOKEN_PLACEMENT_SUFFIX) {
+    return lower.endsWith(sfxLower) ? user.slice(0, user.length - sfx.length) : user;
+  }
+
+  if (lower.endsWith(sfxLower)) return user.slice(0, user.length - sfx.length);
+  if (lower.startsWith(sfxLower)) return user.slice(sfx.length);
+  return user;
+}
+
+/**
+ * Normalize badge input: strip a leading/trailing agency token when the user pasted a full username.
+ */
+function stripAgencyTokenFromBadge(badgeNumber, agencySuffix, placementOrAgency) {
+  const badge = String(badgeNumber || "").trim();
+  const sfx = normalizeSuffix(agencySuffix);
+  if (!badge || !sfx || sfx === "__other__") return badge;
+
+  let placement = null;
+  let agency = null;
+  if (
+    placementOrAgency &&
+    typeof placementOrAgency === "object" &&
+    !Array.isArray(placementOrAgency)
+  ) {
+    if (
+      "suffix" in placementOrAgency ||
+      "usernameTokenPlacement" in placementOrAgency ||
+      "usernameSuffixPlacement" in placementOrAgency
+    ) {
+      agency = placementOrAgency;
+    } else {
+      placement = placementOrAgency;
+    }
+  } else if (placementOrAgency != null) {
+    placement = placementOrAgency;
+  }
+
+  const loc =
+    placement != null
+      ? normalizeUsernameTokenPlacement(placement)
+      : agency
+        ? getAgencyUsernameTokenPlacement(agency)
+        : null;
+
+  const lower = badge.toLowerCase();
+  const sfxLower = sfx.toLowerCase();
+
+  if (loc === USERNAME_TOKEN_PLACEMENT_PREFIX) {
+    if (lower.startsWith(sfxLower)) {
+      const trimmed = badge.slice(sfx.length);
+      if (trimmed) return trimmed;
+    }
+    return badge;
+  }
+  if (loc === USERNAME_TOKEN_PLACEMENT_SUFFIX) {
+    if (lower.endsWith(sfxLower)) {
+      const trimmed = badge.slice(0, badge.length - sfx.length);
+      if (trimmed) return trimmed;
+    }
+    return badge;
+  }
+
+  if (lower.endsWith(sfxLower)) {
+    const trimmed = badge.slice(0, badge.length - sfx.length);
+    if (trimmed) return trimmed;
+  }
+  if (lower.startsWith(sfxLower)) {
+    const trimmed = badge.slice(sfx.length);
+    if (trimmed) return trimmed;
+  }
+  return badge;
+}
+
 /**
  * Resolve the portal agency suffix for a user from Authentik attributes, then username.
  * Order: attributes.agency (validated) → agency_name → agency_abbreviation → username tail/prefix.
@@ -367,7 +514,7 @@ function isUserInAllowedAgencies(authUser, targetUser) {
 
 /**
  * Same as {@link isUserInAllowedAgencies} when only a username string is known
- * (e.g. TAK subscription rows). Uses username-tail inference only.
+ * (e.g. TAK subscription rows). Uses username token at tail or prefix.
  */
 function isUsernameInAllowedAgencies(authUser, username) {
   return isUserInAllowedAgencies(authUser, { username, attributes: {} });
@@ -972,6 +1119,13 @@ module.exports = {
   inferAgencySuffixFromUsernameTail,
   inferAgencySuffixFromUsernamePrefix,
   usernameHasAgencySuffixToken,
+  USERNAME_TOKEN_PLACEMENT_SUFFIX,
+  USERNAME_TOKEN_PLACEMENT_PREFIX,
+  normalizeUsernameTokenPlacement,
+  getAgencyUsernameTokenPlacement,
+  buildUsernameWithAgencyToken,
+  stripAgencyTokenFromUsername,
+  stripAgencyTokenFromBadge,
   resolveAgencySuffixFromUser,
   getAllowedAgencySuffixesForGroups,
   hasAnyAgencyAdminsConfigured,

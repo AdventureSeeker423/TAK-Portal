@@ -25,8 +25,8 @@ function normalizeStr(v) {
 }
 
 /**
- * If the badge ends with the agency username suffix (exact match), remove it
- * so the stored badge is suffix-free (username is badge + suffix on approval).
+ * If the badge includes the agency username token (prefix or suffix), remove it
+ * so the stored badge is token-free (username is built from badge + token on approval).
  */
 function normalizeBadgeForUsername(badgeNumber) {
   return String(badgeNumber || "")
@@ -35,11 +35,15 @@ function normalizeBadgeForUsername(badgeNumber) {
     .replace(/\p{White_Space}+/gu, "");
 }
 
-function buildUsernameForAgency(badgeNumber, agencySuffix) {
+function buildUsernameForAgency(badgeNumber, agencyOrSuffix) {
   const badge = normalizeBadgeForUsername(badgeNumber);
-  const suffix = normalizeStr(agencySuffix);
-  if (!badge || !suffix) return "";
-  return `${badge}${suffix}`;
+  if (!badge) return "";
+  if (agencyOrSuffix && typeof agencyOrSuffix === "object") {
+    return accessSvc.buildUsernameWithAgencyToken(badge, agencyOrSuffix);
+  }
+  const suffix = normalizeStr(agencyOrSuffix);
+  if (!suffix) return "";
+  return accessSvc.buildUsernameWithAgencyToken(badge, suffix);
 }
 
 function userAlreadyExistsError() {
@@ -80,16 +84,11 @@ function findPendingDuplicateRequest(validated) {
   );
 }
 
-function stripMatchingAgencySuffixFromBadge(badgeNumber, agencySuffix) {
-  const badge = normalizeStr(badgeNumber);
-  const suffix = normalizeStr(agencySuffix).toLowerCase();
-  if (!badge || !suffix || suffix === "__other__") return badge;
-
-  if (badge.toLowerCase().endsWith(suffix)) {
-    const trimmed = badge.slice(0, badge.length - suffix.length);
-    if (trimmed) return trimmed;
+function stripMatchingAgencySuffixFromBadge(badgeNumber, agencySuffix, agency) {
+  if (agency && typeof agency === "object") {
+    return accessSvc.stripAgencyTokenFromBadge(badgeNumber, agency.suffix || agencySuffix, agency);
   }
-  return badge;
+  return accessSvc.stripAgencyTokenFromBadge(badgeNumber, agencySuffix);
 }
 
 function escapeHtml(value) {
@@ -117,9 +116,17 @@ function validateCreate(input) {
   const lastName = normalizeStr(input.lastName);
   const email = normalizeEmail(input.email);
   const agencySuffix = normalizeStr(input.agencySuffix);
+  const agencies = agenciesStore.load();
+  const agency =
+    agencySuffix && agencySuffix !== "__other__"
+      ? agencies.find(
+          (a) => String(a?.suffix || "").toLowerCase() === agencySuffix.toLowerCase()
+        ) || null
+      : null;
   const badgeNumber = stripMatchingAgencySuffixFromBadge(
     input.badgeNumber,
-    agencySuffix
+    agencySuffix,
+    agency
   );
   const radioCallsign = normalizeStr(input.radioCallsign);
   const otherAgency = normalizeStr(input.otherAgency);
@@ -144,10 +151,6 @@ function validateCreate(input) {
   }
 
   if (!isOther) {
-    const agencies = agenciesStore.load();
-    const agency = agencies.find(
-      (a) => String(a?.suffix || "").toLowerCase() === agencySuffix.toLowerCase()
-    );
     if (!agency) throw new Error("Selected agency is not valid");
     if (!agenciesStore.isAgencyPublicEnrollmentEligible(agency)) {
       throw new Error(
@@ -227,7 +230,7 @@ async function createRequest(input) {
   }
 
   if (v.agencySuffix !== "__other__" && agency) {
-    const username = buildUsernameForAgency(v.badgeNumber, agency.suffix);
+    const username = buildUsernameForAgency(v.badgeNumber, agency);
     if (username && (await usersSvc.userExists(username))) {
       throw userAlreadyExistsError();
     }

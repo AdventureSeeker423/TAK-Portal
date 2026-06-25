@@ -33,23 +33,17 @@ function getAgenciesIndex() {
 }
 
 function inferAgencyFromUsername(username) {
-  const un = safeStr(username).trim().toLowerCase();
-  if (!un) return { agencySuffix: null, agencyName: null, agencyPrefix: null };
+  const sfx = normalizeSuffix(accessSvc.inferAgencySuffixFromUsername(username));
+  if (!sfx) return { agencySuffix: null, agencyName: null, agencyPrefix: null };
 
   const { bySuffix } = getAgenciesIndex();
-  // Find the *longest* matching suffix to avoid false positives.
-  let best = null;
-  for (const [sfx, agency] of bySuffix.entries()) {
-    if (sfx && un.endsWith(sfx)) {
-      if (!best || sfx.length > best.sfx.length) best = { sfx, agency };
-    }
-  }
-  if (!best) return { agencySuffix: null, agencyName: null, agencyPrefix: null };
+  const agency = bySuffix.get(sfx);
+  if (!agency) return { agencySuffix: null, agencyName: null, agencyPrefix: null };
 
   return {
-    agencySuffix: normalizeSuffix(best.agency && best.agency.suffix) || null,
-    agencyName: safeStr(best.agency && best.agency.name) || null,
-    agencyPrefix: safeStr(best.agency && best.agency.groupPrefix).trim().toUpperCase() || null,
+    agencySuffix: normalizeSuffix(agency.suffix) || null,
+    agencyName: safeStr(agency.name) || null,
+    agencyPrefix: safeStr(agency.groupPrefix).trim().toUpperCase() || null,
   };
 }
 

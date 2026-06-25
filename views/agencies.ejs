@@ -21,6 +21,13 @@
         <input name="suffix" placeholder="(ex. hs, hcoem, etc...)" required
                oninput="this.value = this.value.toLowerCase()" />
       </label>
+
+      <label>Username Token Placement
+        <select name="usernameTokenPlacement">
+          <option value="suffix" selected>After badge (e.g. 1234hs)</option>
+          <option value="prefix">Before badge (e.g. hs1234)</option>
+        </select>
+      </label>
       </div>
 
       <div class="agencyCreateRow agencyCreateRow3">
@@ -858,7 +865,11 @@ function renderAgencies(){
       <td class="agencyAbbrCell" data-label="Abbreviation">${
         agencyAttributesEditMode ? buildAgencyAbbrCellHtml(a) : esc(a.groupPrefix)
       }</td>
-      <td class="agencySuffixCell" data-label="Username Suffix">${esc(a.suffix)}</td>
+      <td class="agencySuffixCell" data-label="Username Suffix">${esc(a.suffix)}${
+        String(a.usernameTokenPlacement || "suffix").toLowerCase() === "prefix"
+          ? ` <span class="cardMetaBadge">prefix</span>`
+          : ""
+      }</td>
       <td class="agencyCountyCell" data-label="County">${
         agencyAttributesEditMode ? buildAgencyCountyCellHtml(a) : esc(a.county)
       }</td>

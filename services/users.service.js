@@ -216,7 +216,7 @@ function getAgencyTypeCode(agencyTypeString) {
  * {{badgeNumber}} in callsign format:
  * 1) radio_callsign when set
  * 2) badge_number attribute (badge only, no agency suffix)
- * 3) username with agency suffix removed (same as legacy badge fallback)
+ * 3) username with agency token removed (prefix or suffix placement)
  */
 function resolveCallsignRadioOrUsername({
   radioCallsign,
@@ -233,19 +233,7 @@ function resolveCallsignRadioOrUsername({
   const user = String(username ?? "").trim();
   if (!user) return "";
 
-  let sfx = String(agencySuffix ?? "").trim().toLowerCase();
-  if (!sfx) {
-    sfx = String(accessSvc.inferAgencySuffixFromUsername(user) || "")
-      .trim()
-      .toLowerCase();
-  }
-  if (sfx && user.toLowerCase().endsWith(sfx)) {
-    return user.slice(0, user.length - sfx.length);
-  }
-  if (sfx && user.toLowerCase().startsWith(sfx)) {
-    return user.slice(sfx.length);
-  }
-  return user;
+  return accessSvc.stripAgencyTokenFromUsername(user, agencySuffix);
 }
 
 /** Radio callsign only — blank when unset (no badge or username fallback). */
@@ -1200,7 +1188,7 @@ async function createUser(
   if (!agency) throw new Error("Invalid agency");
   agenciesStore.assertAgencyActiveBySuffix(agency.suffix, agencies);
 
-  const username = `${normalizedBadge}${agency.suffix}`;
+  const username = accessSvc.buildUsernameWithAgencyToken(normalizedBadge, agency);
   if (!skipExistenceCheck && await userExists(username)) {
     throw new Error("Username already exists");
   }

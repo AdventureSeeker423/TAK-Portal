@@ -90,6 +90,9 @@ function normalizeAgency(a) {
     suffix: String(a.suffix || "").trim().toLowerCase(),
     groupPrefix: String(a.groupPrefix || "").trim().toUpperCase(),
     color: String(a.color || "").trim(),
+    usernameTokenPlacement: accessSvc.normalizeUsernameTokenPlacement(
+      a.usernameTokenPlacement ?? a.usernameSuffixPlacement ?? "suffix"
+    ),
   };
   // Preserve allowedAdminGroupIds (extra groups agency admins can access)
   const raw = a?.allowedAdminGroupIds;
@@ -117,6 +120,19 @@ function validateAgency(a) {
   if (!a.color) return "Agency color is required";
   if (!a.countyAbbrev) return "County abbreviation is required";
   if (a.countyAbbrev.length < 2) return "County abbreviation must be at least 2 characters";
+  const rawPlacement = String(
+    a.usernameTokenPlacement ?? a.usernameSuffixPlacement ?? ""
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    rawPlacement &&
+    !["suffix", "prefix", "start", "before", "leading", "end", "after"].includes(
+      rawPlacement
+    )
+  ) {
+    return "Username token placement must be suffix or prefix";
+  }
   return null;
 }
 
@@ -787,6 +803,11 @@ router.put("/:index", async (req, res) => {
   if (!("lookupEnabled" in body)) a.lookupEnabled = existing.lookupEnabled;
   if (!("lookupDomain" in body)) a.lookupDomain = existing.lookupDomain;
   if (!("isActive" in body)) a.isActive = existing.isActive;
+  if (!("usernameTokenPlacement" in body) && !("usernameSuffixPlacement" in body)) {
+    a.usernameTokenPlacement = accessSvc.normalizeUsernameTokenPlacement(
+      existing.usernameTokenPlacement ?? existing.usernameSuffixPlacement ?? "suffix"
+    );
+  }
   if (!("agencyDisabledUserIds" in body)) {
     a.agencyDisabledUserIds = Array.isArray(existing.agencyDisabledUserIds)
       ? existing.agencyDisabledUserIds
