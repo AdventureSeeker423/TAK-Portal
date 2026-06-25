@@ -5,23 +5,28 @@ const unzipper = require("unzipper");
 const { kml } = require("@tmcw/togeojson");
 const { DOMParser } = require("@xmldom/xmldom");
 const dataSyncSvc = require("./dataSync.service");
+const {
+  missionContentsList,
+  contentHash,
+  contentName,
+  contentMime,
+} = require("./missionContents.util");
 
-const KML_MIMES = new Set([
-  "application/vnd.google-earth.kml+xml",
-  "application/vnd.google-earth.kmz",
-  "text/xml",
-  "application/xml",
-]);
+const KML_EXT = /\.(kml|kmz)$/i;
 
 function isKmlContent(entry) {
-  const mime = String(entry?.mimeType || entry?.mimetype || entry?.type || "").toLowerCase();
-  const name = String(entry?.name || entry?.filename || "").toLowerCase();
-  if (KML_MIMES.has(mime)) return true;
-  return name.endsWith(".kml") || name.endsWith(".kmz");
-}
-
-function contentHash(entry) {
-  return String(entry?.hash || entry?.contentHash || entry?.sha256 || "").trim();
+  const mime = contentMime(entry);
+  const name = contentName(entry).toLowerCase();
+  if (
+    mime === "application/vnd.google-earth.kml+xml" ||
+    mime === "application/vnd.google-earth.kmz" ||
+    mime === "text/xml" ||
+    mime === "application/xml"
+  ) {
+    return true;
+  }
+  if (mime === "application/octet-stream" && KML_EXT.test(name)) return true;
+  return KML_EXT.test(name);
 }
 
 async function bufferFromSyncContent(hash) {
@@ -36,7 +41,7 @@ async function bufferFromSyncContent(hash) {
 
 async function extractKmlXmlFromBuffer(buf, filename) {
   const name = String(filename || "").toLowerCase();
-  if (name.endsWith(".kmz") || buf[0] === 0x50) {
+  if (name.endsWith(".kmz") || (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b)) {
     const directory = await unzipper.Open.buffer(buf);
     for (const entry of directory.files) {
       if (/\.kml$/i.test(entry.path)) {
@@ -55,6 +60,8 @@ function kmlToFeatures(xml, missionName, sourceMeta) {
   for (const f of gj.features || []) {
     if (!f?.geometry) continue;
     const uid = `kml:${sourceMeta.hash}:${features.length}`;
+    const label =
+      f.properties?.name || f.properties?.description || sourceMeta.name || "KML";
     features.push({
       type: "Feature",
       id: uid,
@@ -66,7 +73,8 @@ function kmlToFeatures(xml, missionName, sourceMeta) {
         id: uid,
         uid,
         cotType: "kml",
-        callsign: f.properties?.name || f.properties?.description || "KML",
+        callsign: label,
+        showLabel: 1,
         contentSource: "kml",
         contentHash: sourceMeta.hash,
         contentName: sourceMeta.name,
@@ -88,9 +96,7 @@ function kmlToFeatures(xml, missionName, sourceMeta) {
 }
 
 async function loadKmlFeaturesFromMission(missionName, missionPayload) {
-  const mission = missionPayload?.data || missionPayload || {};
-  const contents = mission.contents || mission.Contents || [];
-  const list = Array.isArray(contents) ? contents : [];
+  const list = missionContentsList(missionPayload);
   const features = [];
 
   for (const entry of list) {
@@ -99,11 +105,14 @@ async function loadKmlFeaturesFromMission(missionName, missionPayload) {
     if (!hash) continue;
     try {
       const buf = await bufferFromSyncContent(hash);
-      const xmlBuf = await extractKmlXmlFromBuffer(buf, entry.name || entry.filename);
+      const fileName = contentName(entry);
+      const xmlBuf = await extractKmlXmlFromBuffer(buf, fileName);
       if (!xmlBuf) continue;
-      const name = String(entry.name || entry.filename || hash);
       features.push(
-        ...kmlToFeatures(xmlBuf.toString("utf8"), missionName, { hash, name })
+        ...kmlToFeatures(xmlBuf.toString("utf8"), missionName, {
+          hash,
+          name: fileName || hash,
+        })
       );
     } catch (err) {
       console.warn("[mission-kml] failed to load", hash, err?.message || err);

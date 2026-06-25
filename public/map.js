@@ -5258,6 +5258,9 @@
     getMissionBeforeLayerId: function () {
       return map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
     },
+    getLabelFont: function () {
+      return MAP_LABEL_FONT;
+    },
     preloadMarkerIcons: preloadMarkerIcons,
     whenReady: function (cb) {
       if (markerLayersReady && map) {

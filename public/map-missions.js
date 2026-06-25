@@ -35,6 +35,17 @@
       fill: base + "-fill",
       line: base + "-line",
       symbol: base + "-symbol",
+      dot: base + "-symbol-dot",
+      label: base + "-label",
+    };
+  }
+
+  function missionRasterIds(name, hash) {
+    const slug = slugMission(name);
+    const h = String(hash || "").slice(0, 16);
+    return {
+      source: "mission-raster-" + slug + "-" + h,
+      layer: "mission-raster-" + slug + "-" + h + "-layer",
     };
   }
 
@@ -98,10 +109,112 @@
     const hiddenFilter = hiddenUidFilter(entry.hiddenUids);
     const baseFilter = ["all", MISSION_FILTER, hiddenFilter];
 
-    for (const layerId of [ids.fill, ids.line, ids.symbol]) {
+    const layerIds = [ids.fill, ids.line, ids.symbol, ids.dot, ids.label];
+    for (let i = 0; i < layerIds.length; i++) {
+      const layerId = layerIds[i];
       if (!map.getLayer(layerId)) continue;
       map.setLayoutProperty(layerId, "visibility", vis);
       map.setFilter(layerId, baseFilter);
+    }
+
+    const rasters = entry.rasterOverlays || [];
+    for (let j = 0; j < rasters.length; j++) {
+      const rasterIds = missionRasterIds(name, rasters[j].hash);
+      if (map.getLayer(rasterIds.layer)) {
+        map.setLayoutProperty(rasterIds.layer, "visibility", vis);
+      }
+    }
+  }
+
+  function missionLabelLayout() {
+    const font = bridge && bridge.getLabelFont ? bridge.getLabelFont() : ["Open Sans Semibold"];
+    return {
+      "text-field": [
+        "case",
+        ["==", ["get", "showLabel"], 1],
+        ["coalesce", ["get", "callsign"], ["get", "name"], ""],
+        "",
+      ],
+      "text-font": font,
+      "text-size": 11,
+      "text-anchor": "top",
+      "text-offset": [0, 0.6],
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
+      "text-optional": true,
+      "text-max-width": 14,
+    };
+  }
+
+  function missionLabelPaint() {
+    return {
+      "text-color": "#ffffff",
+      "text-halo-color": "rgba(0, 0, 0, 0.75)",
+      "text-halo-width": 1.25,
+    };
+  }
+
+  function ensureRasterOverlays(name, entry) {
+    if (!map || !entry) return;
+    const overlays = entry.rasterOverlays || [];
+    const beforeId = bridge.getMissionBeforeLayerId();
+
+    for (let i = 0; i < overlays.length; i++) {
+      const ov = overlays[i];
+      if (!ov.bounds || !ov.url) continue;
+      const ids = missionRasterIds(name, ov.hash);
+      const coords =
+        ov.coordinates ||
+        (function () {
+          const b = ov.bounds;
+          return [
+            [b[0], b[3]],
+            [b[2], b[3]],
+            [b[2], b[1]],
+            [b[0], b[1]],
+          ];
+        })();
+
+      if (!map.getSource(ids.source)) {
+        map.addSource(ids.source, {
+          type: "image",
+          url: ov.url,
+          coordinates: coords,
+        });
+      }
+
+      if (!map.getLayer(ids.layer)) {
+        map.addLayer(
+          {
+            id: ids.layer,
+            type: "raster",
+            source: ids.source,
+            paint: {
+              "raster-opacity": 0.9,
+              "raster-fade-duration": 0,
+            },
+          },
+          beforeId
+        );
+      }
+    }
+  }
+
+  function removeRasterOverlays(name, entry) {
+    if (!map) return;
+    const overlays = (entry && entry.rasterOverlays) || [];
+    for (let i = 0; i < overlays.length; i++) {
+      const ids = missionRasterIds(name, overlays[i].hash);
+      if (map.getLayer(ids.layer)) {
+        try {
+          map.removeLayer(ids.layer);
+        } catch (_) {}
+      }
+      if (map.getSource(ids.source)) {
+        try {
+          map.removeSource(ids.source);
+        } catch (_) {}
+      }
     }
   }
 
@@ -180,10 +293,10 @@
       );
     }
 
-    if (!map.getLayer(ids.symbol + "-dot")) {
+    if (!map.getLayer(ids.dot)) {
       map.addLayer(
         {
-          id: ids.symbol + "-dot",
+          id: ids.dot,
           type: "circle",
           source: srcId,
           filter: [
@@ -203,15 +316,37 @@
       );
     }
 
+    if (!map.getLayer(ids.label)) {
+      map.addLayer(
+        {
+          id: ids.label,
+          type: "symbol",
+          source: srcId,
+          filter: [
+            "all",
+            MISSION_FILTER,
+            ["==", ["get", "showLabel"], 1],
+            ["!=", ["coalesce", ["get", "callsign"], ["get", "name"], ""], ""],
+          ],
+          layout: missionLabelLayout(),
+          paint: missionLabelPaint(),
+        },
+        bridge.getMissionBeforeLayerId()
+      );
+    }
+
     applyMissionLayerVisibility(name);
   }
 
   function removeMissionLayers(name) {
     if (!map) return;
+    const entry = openMissions.get(name);
+    removeRasterOverlays(name, entry);
     const srcId = missionSourceId(name);
     const ids = missionLayerIds(name);
-    const allIds = [ids.fill, ids.line, ids.symbol, ids.symbol + "-dot"];
-    for (const layerId of allIds) {
+    const allIds = [ids.fill, ids.line, ids.symbol, ids.dot, ids.label];
+    for (let i = 0; i < allIds.length; i++) {
+      const layerId = allIds[i];
       if (map.getLayer(layerId)) {
         try {
           map.removeLayer(layerId);
@@ -257,7 +392,9 @@
         layers: null,
         hiddenUids: new Set(),
         hiddenPaths: new Set(),
-        showAttachments: false,
+        showAttachments: opts.attachments != null ? !!opts.attachments : true,
+        rasterOverlays: [],
+        attachmentSummary: null,
         loading: false,
         error: null,
       };
@@ -279,8 +416,12 @@
       ]);
       entry.geojson = geojson;
       entry.layers = layers;
+      entry.rasterOverlays = geojson.meta && geojson.meta.rasterOverlays ? geojson.meta.rasterOverlays : [];
+      entry.attachmentSummary = geojson.meta && geojson.meta.attachmentSummary ? geojson.meta.attachmentSummary : null;
       entry.error = null;
       ensureMissionLayers(name, geojson);
+      ensureRasterOverlays(name, entry);
+      applyMissionLayerVisibility(name);
       if (bridge && geojson.meta && geojson.meta.iconManifest) {
         bridge.preloadMarkerIcons(geojson.meta.iconManifest);
       }
@@ -383,7 +524,7 @@
     const layers = [];
     openMissions.forEach(function (_, name) {
       const ids = missionLayerIds(name);
-      layers.push(ids.fill, ids.line, ids.symbol, ids.symbol + "-dot");
+      layers.push(ids.fill, ids.line, ids.symbol, ids.dot, ids.label);
     });
     const hits = map.queryRenderedFeatures(e.point, { layers: layers.filter((id) => map.getLayer(id)) });
     if (!hits.length) return;
@@ -427,7 +568,7 @@
       openBtn.title = isOpen ? "Close mission" : "Open mission";
       openBtn.addEventListener("click", function () {
         if (isOpen) closeMission(name);
-        else loadMission(name);
+        else loadMission(name, { attachments: true });
       });
 
       const title = document.createElement("span");
@@ -491,13 +632,24 @@
           loadMission(name, { refresh: true, attachments: attachCb.checked });
         });
         attachLabel.appendChild(attachCb);
-        attachLabel.appendChild(document.createTextNode(" KML attachments"));
+        attachLabel.appendChild(document.createTextNode(" File overlays (KML, GeoTIFF)"));
         const adminLink = document.createElement("a");
         adminLink.href = "/data-sync";
         adminLink.className = "map-mission-admin-link";
         adminLink.textContent = "Open in Data Sync";
         actions.appendChild(attachLabel);
         actions.appendChild(adminLink);
+        if (entry.attachmentSummary) {
+          const attachHint = document.createElement("div");
+          attachHint.className = "map-mission-hint";
+          attachHint.textContent =
+            "Attachments: " +
+            entry.attachmentSummary.kml +
+            " KML feature(s), " +
+            entry.attachmentSummary.raster +
+            " raster overlay(s)";
+          actions.appendChild(attachHint);
+        }
         row.appendChild(actions);
 
         const tree = document.createElement("div");
@@ -538,9 +690,13 @@
         }
         if (!folders.length && !orphaned.length && entry.geojson) {
           const count = (entry.geojson.features || []).length;
+          const rasterCount = (entry.rasterOverlays || []).length;
           const hint = document.createElement("div");
           hint.className = "map-mission-hint";
-          hint.textContent = count + " feature(s)";
+          hint.textContent =
+            count +
+            " vector feature(s)" +
+            (rasterCount ? ", " + rasterCount + " raster overlay(s)" : "");
           tree.appendChild(hint);
         }
         row.appendChild(tree);

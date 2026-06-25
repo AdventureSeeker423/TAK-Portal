@@ -7,6 +7,8 @@ const mapIcon = require("./mapIcon.service");
 const mapRender = require("./mapRender.service");
 const mapIconRender = require("./mapIconRender.service");
 const missionKml = require("./missionKml.service");
+const missionRaster = require("./missionRaster.service");
+const { unwrapMissionPayload } = require("./missionContents.util");
 
 const CACHE_TTL_MS = getInt("MISSION_GEO_CACHE_TTL_MS", 45000);
 const geoCache = new Map();
@@ -121,6 +123,8 @@ async function augmentPointFeature(feature, missionName) {
       id: uid || feature.id,
       uid,
       cotType,
+      callsign: props.callsign || uid.slice(0, 16),
+      showLabel: 1,
       geometryType: "point",
       stroke: props.stroke || color,
       fill: props.fill || props["marker-color"] || color,
@@ -152,6 +156,7 @@ function normalizeFeature(feature, missionName) {
       uid,
       cotType: props.type || "",
       callsign: props.callsign || uid.slice(0, 16),
+      showLabel: 1,
       remarks: props.remarks || "",
       geometryType: geomType,
       stroke: props.stroke || color,
@@ -260,7 +265,7 @@ async function fetchMissionCotGeoJson(missionName, queryParams = {}) {
 
 async function getMissionGeoJson(missionName, options = {}) {
   const name = String(missionName || "").trim();
-  const cacheKey = `${name}:${JSON.stringify(options.queryParams || {})}`;
+  const cacheKey = `${name}:att=${options.includeAttachments ? 1 : 0}:${JSON.stringify(options.queryParams || {})}`;
   if (!options.refresh) {
     const cached = cacheGet(geoCache, cacheKey);
     if (cached) return cached;
@@ -268,18 +273,25 @@ async function getMissionGeoJson(missionName, options = {}) {
 
   let fc = await fetchMissionCotGeoJson(name, options.queryParams || {});
 
+  let rasterOverlays = [];
+  let attachmentSummary = { kml: 0, raster: 0 };
+
   if (options.includeAttachments) {
     try {
-      const mission = options.missionMeta || (await dataSyncSvc.getMission(name));
+      const missionRaw = options.missionMeta || (await dataSyncSvc.getMission(name));
+      const mission = unwrapMissionPayload(missionRaw);
       const kmlFeatures = await missionKml.loadKmlFeaturesFromMission(name, mission);
+      attachmentSummary.kml = kmlFeatures.length;
       if (kmlFeatures.length) {
         fc = {
           type: "FeatureCollection",
           features: [...fc.features, ...kmlFeatures],
         };
       }
+      rasterOverlays = await missionRaster.buildRasterOverlays(name, mission);
+      attachmentSummary.raster = rasterOverlays.length;
     } catch (err) {
-      console.warn("[mission-geo] KML attachment load failed:", err?.message || err);
+      console.warn("[mission-geo] attachment load failed:", err?.message || err);
     }
   }
 
@@ -312,6 +324,8 @@ async function getMissionGeoJson(missionName, options = {}) {
       revision: Date.now(),
       featureCount: fc.features.length,
       iconManifest,
+      rasterOverlays,
+      attachmentSummary,
     },
   };
   cacheSet(geoCache, cacheKey, result);
