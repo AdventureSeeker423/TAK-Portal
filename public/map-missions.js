@@ -456,11 +456,6 @@
     }
 
     const beforeId = bridge.getMissionBeforeLayerId();
-    const pointBeforeId =
-      bridge.getMissionPointBeforeLayerId &&
-      bridge.getMissionPointBeforeLayerId()
-        ? bridge.getMissionPointBeforeLayerId()
-        : beforeId;
     const baseFilter = [
       "all",
       MISSION_FILTER,
@@ -525,7 +520,7 @@
             "circle-opacity": 1,
           },
         },
-        pointBeforeId
+        beforeId
       );
     }
 
@@ -552,7 +547,7 @@
             "icon-opacity": 1,
           },
         },
-        pointBeforeId
+        beforeId
       );
     }
 
@@ -571,32 +566,45 @@
           layout: missionLabelLayout(),
           paint: missionLabelPaint(),
         },
-        pointBeforeId
+        beforeId
       );
-    } else {
-      const layerIds = [ids.fill, ids.line, ids.symbol, ids.dot, ids.label];
-      for (let i = 0; i < layerIds.length; i++) {
-        const layerId = layerIds[i];
-        if (map.getLayer(layerId)) {
-          map.setFilter(layerId, baseFilter);
-        }
-      }
+    } else if (map.getLayer(ids.label)) {
+      map.setFilter(ids.label, [
+        "all",
+        baseFilter,
+        ["==", ["get", "showLabel"], 1],
+        ["!=", ["coalesce", ["get", "callsign"], ["get", "name"], ""], ""],
+      ]);
     }
 
-    ensureMissionPointLayersAboveLiveMarkers(ids, pointBeforeId);
+    if (map.getLayer(ids.fill)) {
+      map.setFilter(ids.fill, ["all", baseFilter, ["==", ["get", "geometryType"], "polygon"]]);
+    }
+    if (map.getLayer(ids.line)) {
+      map.setFilter(ids.line, [
+        "all",
+        baseFilter,
+        ["in", ["get", "geometryType"], ["literal", ["line", "polygon"]]],
+      ]);
+    }
+    if (map.getLayer(ids.dot)) {
+      map.setFilter(ids.dot, [
+        "all",
+        baseFilter,
+        ["==", ["get", "geometryType"], "point"],
+        ["==", ["get", "showCircle"], 1],
+      ]);
+    }
+    if (map.getLayer(ids.symbol)) {
+      map.setFilter(ids.symbol, [
+        "all",
+        baseFilter,
+        ["==", ["get", "geometryType"], "point"],
+        ["!=", ["get", "iconId"], ""],
+      ]);
+    }
+
     applyMissionLayerVisibility(name);
-  }
-
-  function ensureMissionPointLayersAboveLiveMarkers(ids, pointBeforeId) {
-    if (!map || !pointBeforeId) return;
-    const pointLayers = [ids.dot, ids.symbol, ids.label];
-    for (let i = pointLayers.length - 1; i >= 0; i--) {
-      const layerId = pointLayers[i];
-      if (!map.getLayer(layerId)) continue;
-      try {
-        map.moveLayer(layerId, pointBeforeId);
-      } catch (_) {}
-    }
   }
 
   function removeMissionLayers(name) {
@@ -683,19 +691,18 @@
         bridge.registerMissionIconManifest(collectOpenMissionIconManifest());
       }
     }
-    ensureMissionLayers(name, entry.geojson);
-    applyMissionLayerVisibility(name);
-    syncMissionMarkers(name, entry);
-    bindMissionLayerHandlers();
-    applyMissionLabelDeclutter(name, { forceRecompute: true });
 
     if (manifest.length && bridge && typeof bridge.preloadMarkerIcons === "function") {
       try {
         await bridge.preloadMarkerIcons(manifest);
       } catch (_) {}
-      applyMissionLabelDeclutter(name, { forceRecompute: true });
-      if (map) map.triggerRepaint();
     }
+
+    ensureMissionLayers(name, entry.geojson);
+    applyMissionLayerVisibility(name);
+    syncMissionMarkers(name, entry);
+    bindMissionLayerHandlers();
+    applyMissionLabelDeclutter(name, { forceRecompute: true });
 
     ensureRasterOverlays(name, entry);
     applyMissionLayerVisibility(name);

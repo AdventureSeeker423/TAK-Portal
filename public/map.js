@@ -5544,12 +5544,6 @@
     getMissionBeforeLayerId: function () {
       return map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
     },
-    getMissionPointBeforeLayerId: function () {
-      if (map.getLayer(LABEL_LAYER)) return LABEL_LAYER;
-      if (map.getLayer(ICON_LAYER_HIGH)) return ICON_LAYER_HIGH;
-      if (map.getLayer(CIRCLE_LAYER_HIGH)) return CIRCLE_LAYER_HIGH;
-      return map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
-    },
     isMarkerLayersReady: function () {
       return !!(markerLayersReady && markerLayersComplete());
     },
