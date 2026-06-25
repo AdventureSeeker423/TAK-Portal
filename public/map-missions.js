@@ -51,6 +51,8 @@
     };
   }
 
+  let missionStyleRestoreGen = 0;
+
   function readState() {
     try {
       const raw = localStorage.getItem(LS_PREFIX + storageKey);
@@ -105,6 +107,17 @@
     return ["==", ["get", "missionVisible"], 1];
   }
 
+  function missionLayersReady() {
+    if (bridge && typeof bridge.isMarkerLayersReady === "function") {
+      return bridge.isMarkerLayersReady();
+    }
+    return !!(
+      bridge &&
+      bridge.getMissionBeforeLayerId &&
+      bridge.getMissionBeforeLayerId()
+    );
+  }
+
   function applyMissionLayerVisibility(name) {
     if (!map) return;
     const entry = openMissions.get(name);
@@ -127,6 +140,7 @@
       const rasterIds = missionRasterIds(name, rasters[j].hash);
       if (map.getLayer(rasterIds.layer)) {
         map.setLayoutProperty(rasterIds.layer, "visibility", vis);
+        map.setPaintProperty(rasterIds.layer, "raster-opacity", entry.visible ? 0.92 : 0);
       }
     }
     map.triggerRepaint();
@@ -618,6 +632,47 @@
     applyMissionLabelDeclutter(name, { forceRecompute: true });
   }
 
+  function setMissionEnabled(name, enabled) {
+    const wantOn = !!enabled;
+    let entry = openMissions.get(name);
+
+    if (wantOn) {
+      if (!entry) {
+        loadMission(name);
+        return;
+      }
+      if (entry.loading) return;
+      entry.visible = true;
+      if (entry.geojson) {
+        entry.geojson = stampMissionVisibility(entry.geojson, true);
+        installMissionOverlays(name, entry)
+          .then(function () {
+            writeState();
+            renderMissionList();
+          })
+          .catch(function (err) {
+            entry.error = err?.message || String(err);
+            renderMissionList();
+          });
+        return;
+      }
+      loadMission(name);
+      return;
+    }
+
+    if (!entry) return;
+    entry.visible = false;
+    if (entry.geojson) {
+      entry.geojson = stampMissionVisibility(entry.geojson, false);
+      const srcId = missionSourceId(name);
+      const src = map.getSource(srcId);
+      if (src) src.setData(entry.geojson);
+    }
+    applyMissionLayerVisibility(name);
+    writeState();
+    renderMissionList();
+  }
+
   async function loadMission(name, options) {
     const opts = options || {};
     let entry = openMissions.get(name);
@@ -659,29 +714,6 @@
       writeState();
       renderMissionList();
     }
-  }
-
-  function closeMission(name) {
-    openMissions.delete(name);
-    removeMissionLayers(name);
-    writeState();
-    renderMissionList();
-  }
-
-  function toggleMissionVisible(name) {
-    const entry = openMissions.get(name);
-    if (!entry) return;
-    entry.visible = !entry.visible;
-    if (entry.geojson) {
-      entry.geojson = stampMissionVisibility(entry.geojson, entry.visible);
-      const srcId = missionSourceId(name);
-      const src = map.getSource(srcId);
-      if (src) src.setData(entry.geojson);
-    }
-    ensureRasterOverlays(name, entry);
-    applyMissionLayerVisibility(name);
-    writeState();
-    renderMissionList();
   }
 
   function toggleUidVisible(name, uid) {
@@ -788,21 +820,21 @@
       const name = String(m.name || m.Name || "").trim();
       if (!name) continue;
       const entry = openMissions.get(name);
-      const isOpen = !!entry;
+      const isOn = !!(entry && entry.visible);
       const row = document.createElement("div");
-      row.className = "map-mission-row" + (isOpen ? " is-open" : "");
+      row.className = "map-mission-row" + (isOn ? " is-on" : "");
 
       const head = document.createElement("div");
       head.className = "map-mission-row-head";
 
-      const openBtn = document.createElement("button");
-      openBtn.type = "button";
-      openBtn.className = "map-mission-open-btn";
-      openBtn.textContent = isOpen ? "−" : "+";
-      openBtn.title = isOpen ? "Close mission" : "Open mission";
-      openBtn.addEventListener("click", function () {
-        if (isOpen) closeMission(name);
-        else loadMission(name);
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "map-mission-toggle" + (isOn ? " is-on" : " is-off");
+      toggleBtn.title = isOn ? "Hide mission overlays" : "Show mission overlays";
+      toggleBtn.setAttribute("aria-pressed", isOn ? "true" : "false");
+      toggleBtn.setAttribute("aria-label", (isOn ? "Hide " : "Show ") + name);
+      toggleBtn.addEventListener("click", function () {
+        setMissionEnabled(name, !isOn);
       });
 
       const title = document.createElement("span");
@@ -816,29 +848,18 @@
         title.appendChild(badge);
       }
 
-      const visBtn = document.createElement("button");
-      visBtn.type = "button";
-      visBtn.className = "map-mission-vis-btn";
-      visBtn.textContent = entry && entry.visible ? "👁" : "👁‍🗨";
-      visBtn.title = "Show/hide overlay";
-      visBtn.disabled = !isOpen;
-      visBtn.addEventListener("click", function () {
-        toggleMissionVisible(name);
-      });
-
       const refreshBtn = document.createElement("button");
       refreshBtn.type = "button";
       refreshBtn.className = "map-mission-refresh-btn";
       refreshBtn.textContent = "↻";
       refreshBtn.title = "Refresh mission";
-      refreshBtn.disabled = !isOpen || (entry && entry.loading);
+      refreshBtn.disabled = !isOn || (entry && entry.loading);
       refreshBtn.addEventListener("click", function () {
         loadMission(name, { refresh: true });
       });
 
-      head.appendChild(openBtn);
+      head.appendChild(toggleBtn);
       head.appendChild(title);
-      head.appendChild(visBtn);
       head.appendChild(refreshBtn);
       row.appendChild(head);
 
@@ -854,7 +875,7 @@
         row.appendChild(status);
       }
 
-      if (entry && isOpen) {
+      if (entry && isOn) {
         if (entry.attachmentSummary) {
           const attachHint = document.createElement("div");
           attachHint.className = "map-mission-hint";
@@ -942,8 +963,9 @@
     const state = readState();
     for (const name of state.open) {
       const settings = state.settings[name] || {};
+      const visible = settings.visible !== false;
       const entry = {
-        visible: settings.visible !== false,
+        visible: visible,
         geojson: null,
         layers: null,
         hiddenUids: new Set(settings.hiddenUids || []),
@@ -954,21 +976,77 @@
         error: null,
       };
       openMissions.set(name, entry);
-      loadMission(name);
+      if (visible) loadMission(name);
     }
   }
 
-  function restoreAfterStyleChange() {
-    if (!map) return;
-    openMissions.forEach(function (entry, name) {
-      if (!entry.geojson) {
-        loadMission(name);
-        return;
+  function reinstallMissionOverlays(name, entry) {
+    removeMissionLayers(name);
+    if (!entry || !entry.geojson || !entry.visible) {
+      if (entry && entry.geojson) {
+        entry.geojson = stampMissionVisibility(entry.geojson, false);
       }
-      entry.geojson = stampMissionVisibility(entry.geojson, entry.visible);
-      installMissionOverlays(name, entry).catch(function (err) {
-        console.warn("[map-missions] restore failed for", name, err);
-      });
+      return Promise.resolve();
+    }
+    entry.geojson = stampMissionVisibility(entry.geojson, true);
+    return installMissionOverlays(name, entry);
+  }
+
+  function restoreAfterStyleChange() {
+    if (!map) return Promise.resolve();
+    missionStyleRestoreGen++;
+    const gen = missionStyleRestoreGen;
+
+    return new Promise(function (resolve) {
+      function tryRestore(attempt) {
+        if (gen !== missionStyleRestoreGen || !map) {
+          resolve();
+          return;
+        }
+        if (!map.isStyleLoaded() || !missionLayersReady()) {
+          if (attempt < 400) {
+            setTimeout(function () {
+              tryRestore(attempt + 1);
+            }, 50);
+            return;
+          }
+          resolve();
+          return;
+        }
+
+        const jobs = [];
+        openMissions.forEach(function (entry, name) {
+          if (!entry.geojson) {
+            if (entry.visible) jobs.push(loadMission(name));
+            return;
+          }
+          jobs.push(reinstallMissionOverlays(name, entry));
+        });
+
+        Promise.all(jobs)
+          .then(function () {
+            if (bridge && typeof bridge.registerMissionIconManifest === "function") {
+              bridge.registerMissionIconManifest(collectOpenMissionIconManifest());
+            }
+            openMissions.forEach(function (entry, name) {
+              applyMissionLayerVisibility(name);
+            });
+            map.triggerRepaint();
+            resolve();
+          })
+          .catch(function (err) {
+            console.warn("[map-missions] style restore failed", err);
+            if (attempt < 40) {
+              setTimeout(function () {
+                tryRestore(attempt + 1);
+              }, 100);
+            } else {
+              resolve();
+            }
+          });
+      }
+
+      tryRestore(0);
     });
   }
 

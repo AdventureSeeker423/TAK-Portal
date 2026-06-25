@@ -4890,16 +4890,28 @@
         labelDeclutterKey = "";
         reinstallMapIconsFromCache();
         bindMarkerLayerHandlers();
+
+        function afterMissionsRestore() {
+          runServerGeoJsonRefresh().finally(function () {
+            if (gen !== styleRestoreGen) return;
+            triggerMarkerRepaint();
+          });
+        }
+
         if (
           window.TakMapMissions &&
           typeof window.TakMapMissions.restoreAfterStyleChange === "function"
         ) {
-          window.TakMapMissions.restoreAfterStyleChange();
+          Promise.resolve(window.TakMapMissions.restoreAfterStyleChange())
+            .then(afterMissionsRestore)
+            .catch(function (err) {
+              console.warn("[map] mission restore after style change failed", err);
+              afterMissionsRestore();
+            });
+          return;
         }
-        runServerGeoJsonRefresh().finally(function () {
-          if (gen !== styleRestoreGen) return;
-          triggerMarkerRepaint();
-        });
+
+        afterMissionsRestore();
       }
 
       function tryRestore(attempt) {
@@ -5289,6 +5301,9 @@
     getStorageKey: getStorageUserKey,
     getMissionBeforeLayerId: function () {
       return map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
+    },
+    isMarkerLayersReady: function () {
+      return !!(markerLayersReady && markerLayersComplete());
     },
     getLabelFont: function () {
       return MAP_LABEL_FONT;

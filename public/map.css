@@ -1201,15 +1201,61 @@ body.map-detail-resizing .map-panel-resize-handle {
   background: rgba(255, 255, 255, 0.02);
 }
 
-.map-mission-row.is-open {
-  border-color: rgba(34, 211, 238, 0.25);
+.map-mission-row.is-on {
+  border-color: rgba(34, 197, 94, 0.35);
 }
 
 .map-mission-row-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px;
+}
+
+.map-mission-toggle {
+  appearance: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+  padding: 0;
+}
+
+.map-mission-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: left 0.15s ease;
+}
+
+.map-mission-toggle.is-on {
+  background: #22c55e;
+}
+
+.map-mission-toggle.is-on::after {
+  left: 19px;
+}
+
+.map-mission-toggle.is-off {
+  background: #ef4444;
+}
+
+.map-mission-toggle.is-off::after {
+  left: 3px;
+}
+
+.map-mission-toggle:focus-visible {
+  outline: 2px solid var(--map-accent);
+  outline-offset: 2px;
 }
 
 .map-mission-name {
@@ -1230,8 +1276,6 @@ body.map-detail-resizing .map-panel-resize-handle {
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
 
-.map-mission-open-btn,
-.map-mission-vis-btn,
 .map-mission-refresh-btn,
 .map-mission-folder-btn,
 .map-mission-item-btn {
