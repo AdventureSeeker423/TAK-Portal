@@ -46,6 +46,33 @@
     });
   }
 
+  function missionIconManifest(entry) {
+    if (!entry || !entry.geojson || !entry.geojson.meta) return [];
+    return Array.isArray(entry.geojson.meta.iconManifest) ? entry.geojson.meta.iconManifest : [];
+  }
+
+  function registerMissionIconManifests() {
+    if (bridge && typeof bridge.registerMissionIconManifest === "function") {
+      bridge.registerMissionIconManifest(collectOpenMissionIconManifest());
+    }
+  }
+
+  async function preloadMissionIcons(manifest, options) {
+    const opts = options || {};
+    const list = Array.isArray(manifest) ? manifest : [];
+    if (!list.length || !bridge || typeof bridge.preloadMarkerIcons !== "function") {
+      return;
+    }
+    registerMissionIconManifests();
+    if (opts.prioritize) {
+      try {
+        await bridge.preloadMarkerIcons(list);
+      } catch (_) {}
+      return;
+    }
+    bridge.preloadMarkerIcons(list).catch(function () {});
+  }
+
   async function refreshVisibleMissionBackground(name) {
     const entry = openMissions.get(name);
     if (!entry || !entry.visible || !entry.geojson || entry.loading) return;
@@ -68,26 +95,19 @@
         geojson.meta && geojson.meta.attachmentSummary ? geojson.meta.attachmentSummary : null;
       entry.geojson = stampMissionVisibility(geojson, true);
 
-      if (bridge && typeof bridge.registerMissionIconManifest === "function") {
-        bridge.registerMissionIconManifest(collectOpenMissionIconManifest());
-      }
-      const manifest =
-        entry.geojson.meta && entry.geojson.meta.iconManifest
-          ? entry.geojson.meta.iconManifest
-          : [];
-      if (manifest.length && bridge && typeof bridge.preloadMarkerIcons === "function") {
-        try {
-          await bridge.preloadMarkerIcons(manifest);
-        } catch (_) {}
-      }
-      if (!entry.visible || entry.loading) return;
-
       if (missionLayersInstalled(name)) {
         showMissionOverlaysSync(name, entry);
         ensureRasterOverlays(name, entry);
         applyMissionLayerVisibility(name);
       } else {
-        await installMissionOverlays(name, entry, missionLoadGen.get(name) || 0);
+        await installMissionOverlays(name, entry, missionLoadGen.get(name) || 0, {
+          prioritizeIcons: false,
+        });
+      }
+
+      const manifest = missionIconManifest(entry);
+      if (missionLayersInstalled(name) && manifest.length) {
+        preloadMissionIcons(manifest, { prioritize: false });
       }
     } catch (err) {
       console.warn("[map-missions] auto-refresh failed:", name, err?.message || err);
@@ -878,10 +898,19 @@
       return loadMission(name);
     }
     entry.geojson = stampMissionVisibility(entry.geojson, true);
-    if (showMissionOverlaysSync(name, entry)) {
-      writeState();
-      renderMissionList();
-      return Promise.resolve();
+    if (missionLayersInstalled(name)) {
+      const manifest = missionIconManifest(entry);
+      return preloadMissionIcons(manifest, { prioritize: true })
+        .then(function () {
+          if (!entry.visible) return;
+          showMissionOverlaysSync(name, entry);
+          writeState();
+          renderMissionList();
+        })
+        .catch(function (err) {
+          entry.error = err?.message || String(err);
+          renderMissionList();
+        });
     }
 
     const gen = bumpMissionOp(name);
@@ -890,7 +919,7 @@
     renderMissionList();
 
     return whenLiveReady(function () {
-      return installMissionOverlays(name, entry, gen);
+      return installMissionOverlays(name, entry, gen, { prioritizeIcons: true });
     })
       .catch(function (err) {
         if (!missionOpStale(name, gen)) {
@@ -902,36 +931,25 @@
       });
   }
 
-  async function installMissionOverlays(name, entry, opGen) {
+  async function installMissionOverlays(name, entry, opGen, options) {
+    const opts = options || {};
+    const prioritizeIcons = opts.prioritizeIcons !== false;
     const gen = opGen != null ? opGen : missionLoadGen.get(name) || 0;
     if (!entry || !entry.visible || !entry.geojson) return;
     if (missionOpStale(name, gen)) return;
 
-    const manifest =
-      entry.geojson && entry.geojson.meta && entry.geojson.meta.iconManifest
-        ? entry.geojson.meta.iconManifest
-        : [];
-    if (bridge) {
-      if (typeof bridge.registerMissionIconManifest === "function") {
-        bridge.registerMissionIconManifest(collectOpenMissionIconManifest());
-      }
+    const manifest = missionIconManifest(entry);
+    if (!opts.skipIconPreload && manifest.length) {
+      await preloadMissionIcons(manifest, { prioritize: prioritizeIcons });
+      if (missionOpStale(name, gen) || !entry.visible) return;
     }
-
-    if (manifest.length && bridge && typeof bridge.preloadMarkerIcons === "function") {
-      try {
-        await bridge.preloadMarkerIcons(manifest);
-      } catch (_) {}
-    }
-    if (missionOpStale(name, gen) || !entry.visible) return;
 
     ensureMissionLayers(name, entry.geojson);
     applyMissionLayerVisibility(name);
+    ensureRasterOverlays(name, entry);
     syncMissionMarkers(name, entry);
     bindMissionLayerHandlers();
     applyMissionLabelDeclutter(name, { forceRecompute: true });
-
-    ensureRasterOverlays(name, entry);
-    applyMissionLayerVisibility(name);
     refreshMissionOverlaySideEffects();
   }
 
@@ -1277,7 +1295,7 @@
       return;
     }
     const gen = bumpMissionOp(name);
-    await installMissionOverlays(name, entry, gen);
+    await installMissionOverlays(name, entry, gen, { prioritizeIcons: true });
   }
 
   function setMissionEnabled(name, enabled) {
@@ -1346,27 +1364,40 @@
     entry.error = null;
     renderMissionList();
 
+    const geojsonPromise = fetchMissionGeojson(name, { refresh: !!opts.refresh });
+    const layersPromise = fetchMissionLayers(name).catch(function () {
+      return { folders: [], orphaned: [] };
+    });
+    const liveReadyPromise = whenLiveReady(function () {});
+
     try {
-      await whenLiveReady(function () {});
+      const [geojson] = await Promise.all([geojsonPromise, liveReadyPromise]);
       if (missionOpStale(name, gen)) return;
 
-      const [geojson, layers] = await Promise.all([
-        fetchMissionGeojson(name, { refresh: !!opts.refresh }),
-        fetchMissionLayers(name).catch(function () {
-          return { folders: [], orphaned: [] };
-        }),
-      ]);
-      if (missionOpStale(name, gen)) return;
-
-      entry.layers = layers;
       entry.rasterOverlays =
         geojson.meta && geojson.meta.rasterOverlays ? geojson.meta.rasterOverlays : [];
       entry.attachmentSummary =
         geojson.meta && geojson.meta.attachmentSummary ? geojson.meta.attachmentSummary : null;
       entry.error = null;
       entry.geojson = stampMissionVisibility(geojson, entry.visible);
+
       if (entry.visible) {
-        await installMissionOverlays(name, entry, gen);
+        const manifest =
+          geojson.meta && Array.isArray(geojson.meta.iconManifest)
+            ? geojson.meta.iconManifest
+            : [];
+        await preloadMissionIcons(manifest, { prioritize: true });
+        if (missionOpStale(name, gen)) return;
+        await installMissionOverlays(name, entry, gen, {
+          skipIconPreload: true,
+          prioritizeIcons: true,
+        });
+      }
+
+      const layers = await layersPromise;
+      if (!missionOpStale(name, gen)) {
+        entry.layers = layers;
+        renderMissionList();
       }
     } catch (err) {
       if (!missionOpStale(name, gen)) {

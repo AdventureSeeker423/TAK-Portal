@@ -15,6 +15,11 @@ const { unwrapMissionPayload } = require("./missionContents.util");
 const CACHE_TTL_MS = getInt("MISSION_GEO_CACHE_TTL_MS", 45000);
 const geoCache = new Map();
 const layerCache = new Map();
+const rawFcCache = new Map();
+/** @type {Map<string, Promise<object>>} */
+const rawFcInFlight = new Map();
+/** @type {Map<string, Promise<object>>} */
+const geoInFlight = new Map();
 
 /** @type {Promise<typeof import('./missionCotConvert.mjs')>|null} */
 let cotConvertPromise = null;
@@ -97,7 +102,6 @@ async function augmentPointFeature(feature, missionName) {
   const affiliation = affiliationFromType(cotType);
   const explicitTeamColor = explicitMarkerColorFromProps(props);
 
-  await mapIcon.ensureIconsets();
   let resolved = mapIcon.resolveIcon({
     type: cotType,
     affiliation,
@@ -211,16 +215,17 @@ function filterShapeVertexPoints(features) {
 async function normalizeFeatureCollection(fc, missionName) {
   const rawFeatures = (fc.features || []).filter((feature) => feature?.geometry);
   const decorIndex = shapeDecor.buildShapeDecorIndex(rawFeatures);
-  const out = [];
-  for (const feature of rawFeatures) {
+  await mapIcon.ensureIconsets();
+  const jobs = rawFeatures.map(async function (feature) {
     const geomType = geometryType(feature.geometry);
     if (geomType === "point") {
-      if (shapeDecor.shouldDropShapeDecorPoint(feature, decorIndex)) continue;
-      out.push(await augmentPointFeature(feature, missionName));
-    } else {
-      out.push(normalizeFeature(feature, missionName));
+      if (shapeDecor.shouldDropShapeDecorPoint(feature, decorIndex)) return null;
+      return augmentPointFeature(feature, missionName);
     }
-  }
+    return normalizeFeature(feature, missionName);
+  });
+  const results = await Promise.all(jobs);
+  const out = results.filter(Boolean);
   return {
     type: "FeatureCollection",
     features: out,
@@ -301,15 +306,31 @@ function filterNormalizedDecorPoints(fc) {
 }
 
 async function fetchRawMissionCotFeatureCollection(missionName, queryParams = {}) {
-  const res = await dataSyncSvc.getMissionCotXml(missionName, queryParams);
-  if (res.status >= 400) {
-    const err = new Error(`Mission CoT fetch failed (${res.status})`);
-    err.status = res.status;
-    err.code = "MISSION_COT_FETCH_FAILED";
-    throw err;
-  }
-  const mod = await loadCotConvert();
-  return mod.missionCotXmlToFeatureCollection(res.data, missionName);
+  const key = `${String(missionName || "").trim()}:${JSON.stringify(queryParams || {})}`;
+  const cached = cacheGet(rawFcCache, key);
+  if (cached) return cached;
+
+  const pending = rawFcInFlight.get(key);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    const res = await dataSyncSvc.getMissionCotXml(missionName, queryParams);
+    if (res.status >= 400) {
+      const err = new Error(`Mission CoT fetch failed (${res.status})`);
+      err.status = res.status;
+      err.code = "MISSION_COT_FETCH_FAILED";
+      throw err;
+    }
+    const mod = await loadCotConvert();
+    const fc = await mod.missionCotXmlToFeatureCollection(res.data, missionName);
+    cacheSet(rawFcCache, key, fc);
+    return fc;
+  })().finally(() => {
+    rawFcInFlight.delete(key);
+  });
+
+  rawFcInFlight.set(key, promise);
+  return promise;
 }
 
 async function auditMissionShapeDecor(missionName, options = {}) {
@@ -328,14 +349,7 @@ async function fetchMissionCotGeoJson(missionName, queryParams = {}) {
   return normalizeFeatureCollection(rawFc, missionName);
 }
 
-async function getMissionGeoJson(missionName, options = {}) {
-  const name = String(missionName || "").trim();
-  const cacheKey = `${name}:v4:att=${options.includeAttachments ? 1 : 0}:${JSON.stringify(options.queryParams || {})}`;
-  if (!options.refresh) {
-    const cached = cacheGet(geoCache, cacheKey);
-    if (cached) return cached;
-  }
-
+async function buildMissionGeoJson(name, options = {}) {
   let fc = await fetchMissionCotGeoJson(name, options.queryParams || {});
 
   let rasterOverlays = [];
@@ -391,7 +405,7 @@ async function getMissionGeoJson(missionName, options = {}) {
     }
   }
 
-  const result = {
+  return {
     type: "FeatureCollection",
     features: fc.features,
     meta: {
@@ -404,8 +418,31 @@ async function getMissionGeoJson(missionName, options = {}) {
       attachmentSummary,
     },
   };
-  cacheSet(geoCache, cacheKey, result);
-  return result;
+}
+
+async function getMissionGeoJson(missionName, options = {}) {
+  const name = String(missionName || "").trim();
+  const cacheKey = `${name}:v4:att=${options.includeAttachments ? 1 : 0}:${JSON.stringify(options.queryParams || {})}`;
+  if (!options.refresh) {
+    const cached = cacheGet(geoCache, cacheKey);
+    if (cached) return cached;
+    const pending = geoInFlight.get(cacheKey);
+    if (pending) return pending;
+  }
+
+  const promise = buildMissionGeoJson(name, options)
+    .then((result) => {
+      cacheSet(geoCache, cacheKey, result);
+      return result;
+    })
+    .finally(() => {
+      geoInFlight.delete(cacheKey);
+    });
+
+  if (!options.refresh) {
+    geoInFlight.set(cacheKey, promise);
+  }
+  return promise;
 }
 
 async function getMissionLayerTree(missionName, options = {}) {
@@ -436,11 +473,8 @@ async function getMissionLayerTree(missionName, options = {}) {
 
   let featureUids = options.featureUids;
   if (!featureUids) {
-    const geo = await getMissionGeoJson(name, {
-      queryParams: options.queryParams,
-      refresh: options.refresh,
-    });
-    featureUids = (geo.features || []).map((f) => String(f.id || f.properties?.uid || ""));
+    const rawFc = await fetchRawMissionCotFeatureCollection(name, options.queryParams || {});
+    featureUids = (rawFc.features || []).map((f) => String(f.id || f.properties?.uid || ""));
   }
 
   const normalized = normalizeLayerTree(res.data, featureUids);
@@ -457,11 +491,23 @@ function clearCache(missionName) {
   if (!missionName) {
     geoCache.clear();
     layerCache.clear();
+    rawFcCache.clear();
+    rawFcInFlight.clear();
+    geoInFlight.clear();
     return;
   }
   const prefix = String(missionName).trim();
   for (const key of geoCache.keys()) {
     if (key.startsWith(prefix)) geoCache.delete(key);
+  }
+  for (const key of rawFcCache.keys()) {
+    if (key.startsWith(prefix)) rawFcCache.delete(key);
+  }
+  for (const key of rawFcInFlight.keys()) {
+    if (key.startsWith(prefix)) rawFcInFlight.delete(key);
+  }
+  for (const key of geoInFlight.keys()) {
+    if (key.startsWith(prefix)) geoInFlight.delete(key);
   }
   layerCache.delete(prefix);
 }

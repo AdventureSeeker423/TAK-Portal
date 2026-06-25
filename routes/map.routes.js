@@ -490,7 +490,9 @@ router.get("/missions/:missionName/geojson", async (req, res) => {
     });
 
     if (geojson.meta?.iconManifest?.length) {
-      await mapIconRender.prewarmIconManifest(geojson.meta.iconManifest);
+      void mapIconRender
+        .prewarmIconManifest(geojson.meta.iconManifest)
+        .catch(function () {});
     }
 
     res.setHeader("Cache-Control", "no-cache");

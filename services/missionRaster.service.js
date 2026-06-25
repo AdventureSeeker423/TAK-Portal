@@ -516,45 +516,47 @@ async function buildRasterOverlays(missionName, missionPayload, options = {}) {
   const mission = missionPayload || {};
   const missionBbox = parseMissionBbox(mission);
   const featureBounds = boundsFromFeatures(options.features || []);
-  const overlays = [];
+  const entries = await findRasterContents(mission);
 
-  for (const entry of await findRasterContents(mission)) {
-    const hash = contentHash(entry);
-    const name = contentName(entry) || hash;
-    let buf = null;
-    try {
-      buf = await loadRasterBuffer(hash);
-    } catch (err) {
-      console.warn("[mission-raster] load failed", hash, err?.message || err);
-    }
+  const overlays = await Promise.all(
+    entries.map(async function (entry) {
+      const hash = contentHash(entry);
+      const name = contentName(entry) || hash;
+      let buf = null;
+      try {
+        buf = await loadRasterBuffer(hash);
+      } catch (err) {
+        console.warn("[mission-raster] load failed", hash, err?.message || err);
+      }
 
-    const placement = await resolveRasterPlacement(entry, buf, {
-      missionBbox,
-      featureBounds,
-    });
-    if (!placement?.bounds) {
-      console.warn("[mission-raster] no georeferencing for", name || hash);
-      continue;
-    }
+      const placement = await resolveRasterPlacement(entry, buf, {
+        missionBbox,
+        featureBounds,
+      });
+      if (!placement?.bounds) {
+        console.warn("[mission-raster] no georeferencing for", name || hash);
+        return null;
+      }
 
-    const bounds = placement.bounds;
-    overlays.push({
-      hash,
-      name,
-      bounds,
-      coordinates: placement.coordinates || boundsToImageCoordinates(bounds),
-      georefSource: placement.source,
-      url:
-        "/api/map/missions/" +
-        encodeURIComponent(missionName) +
-        "/raster/" +
-        encodeURIComponent(hash) +
-        "?bounds=" +
-        encodeURIComponent(bounds.join(",")),
-    });
-  }
+      const bounds = placement.bounds;
+      return {
+        hash,
+        name,
+        bounds,
+        coordinates: placement.coordinates || boundsToImageCoordinates(bounds),
+        georefSource: placement.source,
+        url:
+          "/api/map/missions/" +
+          encodeURIComponent(missionName) +
+          "/raster/" +
+          encodeURIComponent(hash) +
+          "?bounds=" +
+          encodeURIComponent(bounds.join(",")),
+      };
+    })
+  );
 
-  return overlays;
+  return overlays.filter(Boolean);
 }
 
 module.exports = {

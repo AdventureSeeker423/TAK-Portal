@@ -55,10 +55,13 @@ export async function cotXmlToGeoJsonFeature(xmlChunk) {
 export async function missionCotXmlToFeatureCollection(xml, missionName) {
   const chunks = splitMissionCotXml(xml);
   const features = [];
-  for (const chunk of chunks) {
-    const feat = await cotXmlToGeoJsonFeature(chunk);
-    if (!feat) continue;
-    features.push(feat);
+  const batchSize = 24;
+  for (let i = 0; i < chunks.length; i += batchSize) {
+    const batch = chunks.slice(i, i + batchSize);
+    const converted = await Promise.all(batch.map((chunk) => cotXmlToGeoJsonFeature(chunk)));
+    for (let j = 0; j < converted.length; j++) {
+      if (converted[j]) features.push(converted[j]);
+    }
   }
   return {
     type: "FeatureCollection",
