@@ -7,7 +7,7 @@
   <div class="card">
     <h2>Create Agency</h2>
     <form id="addForm" class="grid2">
-      <div class="agencyCreateRow agencyCreateRow3">
+      <div class="agencyCreateRow agencyCreateRow4">
       <label>Agency Full Name
         <input name="name" placeholder="Agency Name" required />
       </label>
@@ -17,16 +17,17 @@
                oninput="this.value = this.value.toUpperCase()" />
       </label>
 
-      <label>Username Suffix
-        <input name="suffix" placeholder="(ex. hs, hcoem, etc...)" required
-               oninput="this.value = this.value.toLowerCase()" />
+      <label>Username Agency Identifier
+        <select name="usernameTokenPlacement" id="usernameTokenPlacementSelect">
+          <option value="suffix" selected>Suffix (e.g. 1234abcd)</option>
+          <option value="prefix">Prefix (e.g. abcd1234)</option>
+        </select>
       </label>
 
-      <label>Username Token Placement
-        <select name="usernameTokenPlacement">
-          <option value="suffix" selected>After badge (e.g. 1234hs)</option>
-          <option value="prefix">Before badge (e.g. hs1234)</option>
-        </select>
+      <label>
+        <span id="usernameIdentifierLabelText">Username Suffix</span>
+        <input name="suffix" placeholder="(ex. abcd, hcoem, etc...)" required
+               oninput="this.value = this.value.toLowerCase()" />
       </label>
       </div>
 
@@ -1611,6 +1612,10 @@ addForm.onsubmit = async (e) => {
 
   addForm.reset();
 
+  const placementSelect = addForm.elements.usernameTokenPlacement;
+  if (placementSelect) placementSelect.value = "suffix";
+  syncUsernameIdentifierFormLabels();
+
   // Restore last-used county
   loadLastCounty();
 
@@ -2259,9 +2264,23 @@ loadLastCounty();
 loadAgenciesWithCounts();
 
 // Wire up auto-fill for county abbreviation based on existing agencies
+function syncUsernameIdentifierFormLabels() {
+  if (!addForm) return;
+  const select = addForm.elements.usernameTokenPlacement;
+  const labelEl = document.getElementById("usernameIdentifierLabelText");
+  if (!select || !labelEl) return;
+  const isPrefix = String(select.value || "suffix").toLowerCase() === "prefix";
+  labelEl.textContent = isPrefix ? "Username Prefix" : "Username Suffix";
+}
+
 if (addForm) {
   const stateInput = addForm.elements.state;
   const countyInput = addForm.elements.county;
+  const placementSelect = addForm.elements.usernameTokenPlacement;
+  if (placementSelect) {
+    placementSelect.addEventListener("change", syncUsernameIdentifierFormLabels);
+    syncUsernameIdentifierFormLabels();
+  }
   if (stateInput) {
     stateInput.addEventListener("change", syncCountyAbbrevFromExisting);
   }
@@ -2416,6 +2435,10 @@ if (addForm) {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.agencyCreateRow4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .agencyCreateRow2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -2431,6 +2454,7 @@ if (addForm) {
 }
 
 @media (max-width: 900px) {
+  .agencyCreateRow4,
   .agencyCreateRow3,
   .agencyCreateRow2 {
     grid-template-columns: 1fr;
