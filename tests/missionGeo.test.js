@@ -113,6 +113,54 @@ async function runTests() {
   assert.ok(circleIds.includes("vehicle-1"), "tactical marker should remain");
   assert.ok(!circleIds.includes("vertex-handle"), "bare a-n-G vertex handle should be filtered");
 
+  const ringFc = {
+    type: "FeatureCollection",
+    features: [
+      {
+        id: "range-ring",
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [-85.33353, 35.09087],
+              [-85.332, 35.092],
+              [-85.3305, 35.09087],
+              [-85.332, 35.0895],
+              [-85.33353, 35.09087],
+            ],
+          ],
+        },
+        properties: { type: "u-d-c-c", how: "h-e", callsign: "Range Ring" },
+      },
+      {
+        id: "ring-control",
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-85.3315, 35.0912] },
+        properties: { type: "u-d-p-c-c", how: "m-g", callsign: "" },
+      },
+      {
+        id: "air-monitor",
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [-85.3331501, 35.0915009] },
+        properties: {
+          type: "a-h-G",
+          how: "h-g-i-g-o",
+          callsign: "Air Monitor",
+          icon: "ad78aafb-83a6-4c07-b2b9-a897a8b6a38f/Shapes/square.png",
+        },
+      },
+    ],
+  };
+  const ringNormalized = await missionGeo.normalizeFeatureCollection(ringFc, "RingMission");
+  const ringIds = ringNormalized.features.map((f) => String(f.id));
+  assert.ok(ringIds.includes("range-ring"), "polygon ring should remain");
+  assert.ok(ringIds.includes("air-monitor"), "usericon marker should remain");
+  assert.ok(!ringIds.includes("ring-control"), "shape control point should be filtered");
+  const airMonitor = ringNormalized.features.find((f) => String(f.id) === "air-monitor");
+  assert.strictEqual(airMonitor.properties.showCircle, 0);
+  assert.ok(airMonitor.properties.iconId, "air monitor should have map icon");
+
   console.log("missionGeo.test.js: all assertions passed");
 }
 

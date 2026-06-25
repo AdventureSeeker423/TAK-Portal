@@ -199,10 +199,91 @@ function coordKey(lon, lat, decimals) {
 function addVertexKey(keys, lon, lat) {
   keys.add(coordKey(lon, lat, 5));
   keys.add(coordKey(lon, lat, 4));
+  keys.add(coordKey(lon, lat, 3));
 }
 
 function coordMatchesVertex(lon, lat, vertexKeys) {
-  return vertexKeys.has(coordKey(lon, lat, 5)) || vertexKeys.has(coordKey(lon, lat, 4));
+  return (
+    vertexKeys.has(coordKey(lon, lat, 5)) ||
+    vertexKeys.has(coordKey(lon, lat, 4)) ||
+    vertexKeys.has(coordKey(lon, lat, 3))
+  );
+}
+
+function isShapeControlCotType(type) {
+  const t = String(type || "").toLowerCase();
+  return (
+    t.startsWith("u-d-") ||
+    t.startsWith("b-m-p-") ||
+    t.startsWith("b-m-r-") ||
+    t.startsWith("b-m-c-")
+  );
+}
+
+function missionHasShapeGeometry(features) {
+  return (features || []).some(function (feature) {
+    const kind = geometryType(feature?.geometry);
+    return kind === "line" || kind === "polygon";
+  });
+}
+
+function collectShapeSegments(features) {
+  const segments = [];
+  function addRing(coords) {
+    for (let i = 0; i < (coords || []).length - 1; i++) {
+      const a = coords[i];
+      const b = coords[i + 1];
+      if (a && b) segments.push([a, b]);
+    }
+  }
+  for (const feature of features || []) {
+    const geom = feature?.geometry;
+    if (!geom) continue;
+    const type = String(geom.type || "");
+    if (type === "LineString") {
+      addRing(geom.coordinates || []);
+    } else if (type === "MultiLineString") {
+      for (const line of geom.coordinates || []) addRing(line || []);
+    } else if (type === "Polygon") {
+      for (const ring of geom.coordinates || []) addRing(ring || []);
+    } else if (type === "MultiPolygon") {
+      for (const poly of geom.coordinates || []) {
+        for (const ring of poly || []) addRing(ring || []);
+      }
+    }
+  }
+  return segments;
+}
+
+function distPointToSegment(lon, lat, a, b) {
+  const x = Number(lon);
+  const y = Number(lat);
+  const x1 = Number(a[0]);
+  const y1 = Number(a[1]);
+  const x2 = Number(b[0]);
+  const y2 = Number(b[1]);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (dx === 0 && dy === 0) {
+    const ddx = x - x1;
+    const ddy = y - y1;
+    return Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)));
+  const px = x1 + t * dx;
+  const py = y1 + t * dy;
+  const ddx = x - px;
+  const ddy = y - py;
+  return Math.sqrt(ddx * ddx + ddy * ddy);
+}
+
+function isPointNearShapeBoundary(lon, lat, segments, epsilonDeg) {
+  const eps = epsilonDeg != null ? epsilonDeg : 0.00004;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (distPointToSegment(lon, lat, seg[0], seg[1]) <= eps) return true;
+  }
+  return false;
 }
 
 function collectShapeVertexKeys(features) {
@@ -251,34 +332,60 @@ function hasExplicitUserIcon(props) {
   return !!props.usericon;
 }
 
-function isShapeVertexPoint(feature, vertexKeys) {
+function shouldDropShapeDecorPoint(feature, vertexKeys, segments, hasShapes) {
   if (geometryType(feature?.geometry) !== "point") return false;
   const coords = feature.geometry.coordinates;
   if (!coords || coords.length < 2) return false;
-  if (!coordMatchesVertex(coords[0], coords[1], vertexKeys)) return false;
   const props = feature.properties || {};
+  if (hasExplicitUserIcon(props)) return false;
+
   const type = String(props.type || props.cotType || "").toLowerCase();
   if (type.startsWith("b-i-")) return false;
-  if (hasExplicitUserIcon(props)) return false;
-  if (type.startsWith("a-")) return true;
-  if (type.startsWith("u-d-") || type.startsWith("b-m-p-")) return true;
-  return true;
+  const lon = coords[0];
+  const lat = coords[1];
+
+  if (hasShapes && isShapeControlCotType(type)) return true;
+
+  if (coordMatchesVertex(lon, lat, vertexKeys)) {
+    if (type.startsWith("a-")) return true;
+    if (type.startsWith("u-d-") || type.startsWith("b-m-p-")) return true;
+    return true;
+  }
+
+  if (!hasShapes || !segments.length) return false;
+  if (!isPointNearShapeBoundary(lon, lat, segments)) return false;
+
+  if (isShapeControlCotType(type)) return true;
+  const how = String(props.how || "").toLowerCase();
+  if (how === "h-e" || how === "m-g" || how.startsWith("m-g-")) return true;
+  if (type.startsWith("a-") && !String(props.callsign || "").trim()) return true;
+  return false;
+}
+
+function isShapeVertexPoint(feature, vertexKeys) {
+  return shouldDropShapeDecorPoint(feature, vertexKeys, [], false);
 }
 
 function filterShapeVertexPoints(features) {
   const vertexKeys = collectShapeVertexKeys(features);
-  if (!vertexKeys.size) return features;
-  return features.filter((feature) => !isShapeVertexPoint(feature, vertexKeys));
+  const segments = collectShapeSegments(features);
+  const hasShapes = missionHasShapeGeometry(features);
+  if (!vertexKeys.size && !segments.length) return features;
+  return features.filter(
+    (feature) => !shouldDropShapeDecorPoint(feature, vertexKeys, segments, hasShapes)
+  );
 }
 
 async function normalizeFeatureCollection(fc, missionName) {
   const rawFeatures = (fc.features || []).filter((feature) => feature?.geometry);
   const vertexKeys = collectShapeVertexKeys(rawFeatures);
+  const segments = collectShapeSegments(rawFeatures);
+  const hasShapes = missionHasShapeGeometry(rawFeatures);
   const out = [];
   for (const feature of rawFeatures) {
     const geomType = geometryType(feature.geometry);
     if (geomType === "point") {
-      if (isShapeVertexPoint(feature, vertexKeys)) continue;
+      if (shouldDropShapeDecorPoint(feature, vertexKeys, segments, hasShapes)) continue;
       out.push(await augmentPointFeature(feature, missionName));
     } else {
       out.push(normalizeFeature(feature, missionName));

@@ -432,10 +432,10 @@
     const apiIconId = mapImageId ? String(m.iconId || "") : "";
     const color = m.color || m.teamColor || "#1e88e5";
     const uid = String(m.uid);
+    if (shouldSuppressLiveMarkerGraphic(uid)) return null;
     if (mapImageId) {
       registerServerMapImageMeta(mapImageId, apiIconId, m);
     }
-    const suppressed = shouldSuppressLiveMarkerGraphic(uid);
     return {
       type: "Feature",
       geometry: { type: "Point", coordinates: [lon, lat] },
@@ -446,28 +446,14 @@
         type: m.type || "",
         affiliation: m.affiliation || "other",
         color: color,
-        iconId: suppressed ? "" : mapImageId,
+        iconId: mapImageId,
         apiIconId: apiIconId,
         iconSource: m.iconSource || "",
         origin: m.origin || "",
-        showCircle: suppressed
-          ? 0
-          : m.showCircle != null
-            ? m.showCircle
-              ? 1
-              : 0
-            : mapImageId
-              ? 0
-              : 1,
-        usesMapIcon: suppressed
-          ? 0
-          : m.usesMapIcon != null
-            ? m.usesMapIcon
-              ? 1
-              : 0
-            : mapImageId
-              ? 1
-              : 0,
+        showCircle:
+          m.showCircle != null ? (m.showCircle ? 1 : 0) : mapImageId ? 0 : 1,
+        usesMapIcon:
+          m.usesMapIcon != null ? (m.usesMapIcon ? 1 : 0) : mapImageId ? 1 : 0,
         drawTier: 0,
         selected: uid === selectedUid,
         locked: uid === lockedUid,
@@ -1156,7 +1142,9 @@
     syncLabelVisibility(visible, {
       forceRecompute: !!(opts.forceLabels || opts.forceRecompute),
     });
-    const features = lastServerGeoJsonFull.features.map(buildDisplayFeature);
+    const features = lastServerGeoJsonFull.features
+      .map(buildDisplayFeature)
+      .filter(Boolean);
 
     lastServerGeoJson = Object.assign({}, lastServerGeoJsonFull, {
       features: features,
@@ -3679,6 +3667,7 @@
   function buildDisplayFeature(feature) {
     const enriched = enrichFeatureChannelKeys(feature);
     const uid = enriched.properties && enriched.properties.uid;
+    if (uid && shouldSuppressLiveMarkerGraphic(uid)) return null;
     const marker = uid ? markersByUid.get(String(uid)) : null;
     const display = markerIconDisplayProps(enriched.properties);
     return {
@@ -5553,6 +5542,12 @@
     },
     getStorageKey: getStorageUserKey,
     getMissionBeforeLayerId: function () {
+      return map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
+    },
+    getMissionPointBeforeLayerId: function () {
+      if (map.getLayer(LABEL_LAYER)) return LABEL_LAYER;
+      if (map.getLayer(ICON_LAYER_HIGH)) return ICON_LAYER_HIGH;
+      if (map.getLayer(CIRCLE_LAYER_HIGH)) return CIRCLE_LAYER_HIGH;
       return map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
     },
     isMarkerLayersReady: function () {

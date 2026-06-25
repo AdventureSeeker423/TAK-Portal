@@ -456,6 +456,11 @@
     }
 
     const beforeId = bridge.getMissionBeforeLayerId();
+    const pointBeforeId =
+      bridge.getMissionPointBeforeLayerId &&
+      bridge.getMissionPointBeforeLayerId()
+        ? bridge.getMissionPointBeforeLayerId()
+        : beforeId;
     const baseFilter = [
       "all",
       MISSION_FILTER,
@@ -520,7 +525,7 @@
             "circle-opacity": 1,
           },
         },
-        beforeId
+        pointBeforeId
       );
     }
 
@@ -547,7 +552,7 @@
             "icon-opacity": 1,
           },
         },
-        beforeId
+        pointBeforeId
       );
     }
 
@@ -566,7 +571,7 @@
           layout: missionLabelLayout(),
           paint: missionLabelPaint(),
         },
-        beforeId
+        pointBeforeId
       );
     } else {
       const layerIds = [ids.fill, ids.line, ids.symbol, ids.dot, ids.label];
@@ -578,7 +583,20 @@
       }
     }
 
+    ensureMissionPointLayersAboveLiveMarkers(ids, pointBeforeId);
     applyMissionLayerVisibility(name);
+  }
+
+  function ensureMissionPointLayersAboveLiveMarkers(ids, pointBeforeId) {
+    if (!map || !pointBeforeId) return;
+    const pointLayers = [ids.dot, ids.symbol, ids.label];
+    for (let i = pointLayers.length - 1; i >= 0; i--) {
+      const layerId = pointLayers[i];
+      if (!map.getLayer(layerId)) continue;
+      try {
+        map.moveLayer(layerId, pointBeforeId);
+      } catch (_) {}
+    }
   }
 
   function removeMissionLayers(name) {
