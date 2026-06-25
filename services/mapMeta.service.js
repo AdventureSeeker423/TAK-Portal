@@ -1408,6 +1408,63 @@ function filterMapGroupsForUserMembership(groups, userGroupNames) {
   });
 }
 
+function normalizeAuthentikGroupPk(raw) {
+  if (raw && typeof raw === "object") {
+    return String(raw.pk ?? raw.id ?? "").trim();
+  }
+  return String(raw ?? "").trim();
+}
+
+/**
+ * Resolve tak_* channel group names for the signed-in user (live Authentik membership).
+ */
+async function resolveMapMemberChannelNames(authUser, options = {}) {
+  const forceRefresh = !!options.forceRefresh;
+  const names = new Set();
+
+  for (const raw of Array.isArray(authUser?.groups) ? authUser.groups : []) {
+    const name = normalizeGroupName(raw);
+    if (name && isMapChannelGroupName(name)) names.add(name);
+  }
+
+  const uid = String(authUser?.uid || "").trim();
+  if (!uid) return Array.from(names);
+
+  const usersSvc = require("./users.service");
+  const liveUser = await usersSvc.getUserById(uid).catch(() => null);
+  if (!liveUser) return Array.from(names);
+
+  let allGroups = [];
+  try {
+    allGroups = await groupsSvc.getAllGroups({
+      includeHidden: true,
+      forceRefresh,
+    });
+  } catch (_) {
+    try {
+      allGroups = await groupsSvc.getAllGroups({
+        includeHidden: true,
+        forceRefresh: false,
+      });
+    } catch (_) {}
+  }
+
+  const groupNameById = new Map(
+    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+      String(g?.pk ?? g?.id ?? ""),
+      String(g?.name || ""),
+    ])
+  );
+
+  for (const rawId of Array.isArray(liveUser.groups) ? liveUser.groups : []) {
+    const id = normalizeAuthentikGroupPk(rawId);
+    const name = id ? groupNameById.get(id) : "";
+    if (name && isMapChannelGroupName(name)) names.add(name);
+  }
+
+  return Array.from(names);
+}
+
 async function getTakGroupCatalog(markers, options = {}) {
   const forceRefresh = !!options.forceRefresh;
   await refreshGroupCatalog({ forceRefresh });
@@ -1470,6 +1527,7 @@ module.exports = {
   getTakGroupCatalog,
   getUserMemberChannelBaseKeys,
   filterMapGroupsForUserMembership,
+  resolveMapMemberChannelNames,
   refreshGroupCatalog,
   refreshSubscriptionIndex,
   refreshDataFeedIndex,

@@ -810,10 +810,10 @@ function compareAgencyResolutionToUsernameInference(user) {
 function buildGroupLookupMaps(allGroups) {
   const list = Array.isArray(allGroups) ? allGroups : [];
   const groupNameById = new Map(
-    list.map((g) => [String(g?.pk || ""), String(g?.name || "")])
+    list.map((g) => [String(g?.pk ?? g?.id ?? ""), String(g?.name || "")])
   );
   const groupsByNameLower = new Map(
-    list.map((g) => [String(g?.name || "").trim().toLowerCase(), String(g?.pk || "")])
+    list.map((g) => [String(g?.name || "").trim().toLowerCase(), String(g?.pk ?? g?.id ?? "")])
   );
   return { groupNameById, groupsByNameLower };
 }
@@ -1084,9 +1084,15 @@ async function enrichAuthUserFromAuthentik(authUser, options = {}) {
   });
   const { groupNameById } = buildGroupLookupMaps(allGroups);
 
-  const groupIds = Array.isArray(liveUser.groups) ? liveUser.groups.map(String) : [];
+  const groupIds = Array.isArray(liveUser.groups) ? liveUser.groups : [];
   const namesFromIds = groupIds
-    .map((id) => groupNameById.get(id))
+    .map((raw) => {
+      const id =
+        raw && typeof raw === "object"
+          ? String(raw.pk ?? raw.id ?? "").trim()
+          : String(raw ?? "").trim();
+      return id ? groupNameById.get(id) : "";
+    })
     .filter(Boolean);
 
   const headerNames = Array.isArray(authUser.groups) ? authUser.groups : [];

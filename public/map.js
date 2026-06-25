@@ -5057,9 +5057,11 @@
       applyMapChannelScope(state.channelScope, state.allowedChannelKeys);
       mergeGroupsCatalog(state?.groupsCatalog || []);
     } else if (mapChannelScope === "member") {
-      // SSE reconnect snapshots are not user-scoped — keep agency channel list.
+      // SSE snapshots are not user-scoped; only fetch scoped catalog if we have none yet.
       recomputeGroupCounts();
-      refreshScopedGroupsCatalog();
+      if (!groupsCatalog.length) {
+        refreshScopedGroupsCatalog();
+      }
     } else if (state?.groupsCatalog) {
       mergeGroupsCatalog(state.groupsCatalog);
     } else {

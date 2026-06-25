@@ -10,7 +10,6 @@ const dataSyncSvc = require("../services/dataSync.service");
 const dataSyncAccess = require("../services/dataSyncAccess.service");
 const missionGeo = require("../services/missionGeo.service");
 const missionRaster = require("../services/missionRaster.service");
-const accessSvc = require("../services/access.service");
 
 mapIcon.ensureIconsets().then(() => {
   cotStream.refreshAllMarkerIcons();
@@ -32,7 +31,7 @@ geocode
   });
 
 function mapCatalogRefreshFromQuery(req) {
-  return String(req?.query?.refresh ?? "1") !== "0";
+  return String(req?.query?.refresh ?? "0") === "1";
 }
 
 async function getMapAccessContext(req) {
@@ -40,14 +39,21 @@ async function getMapAccessContext(req) {
   const isGlobalAdmin = !!user.isGlobalAdmin;
   const isAgencyAdmin = !!user.isAgencyAdmin && !isGlobalAdmin;
   const forceRefresh = mapCatalogRefreshFromQuery(req);
-  if (isAgencyAdmin && user.uid) {
-    await accessSvc.enrichAuthUserFromAuthentik(user, { forceRefreshGroups: forceRefresh });
+  let userGroups = Array.isArray(user.groups) ? user.groups : [];
+
+  if (isAgencyAdmin && forceRefresh) {
+    try {
+      userGroups = await mapMeta.resolveMapMemberChannelNames(user, { forceRefresh: true });
+    } catch (_) {
+      userGroups = Array.isArray(user.groups) ? user.groups : [];
+    }
   }
+
   return {
     isGlobalAdmin,
     isAgencyAdmin,
     scopeMemberGroups: isAgencyAdmin,
-    userGroups: Array.isArray(user.groups) ? user.groups : [],
+    userGroups,
     forceRefresh,
   };
 }
