@@ -335,6 +335,10 @@ function isIconsetUidToken(uid) {
   return /^[0-9a-f]{32}$/i.test(s);
 }
 
+function looksLikeIconsetPath(iconsetpath) {
+  return parseIconsetPath(iconsetpath) != null;
+}
+
 function parseIconsetPath(iconsetpath) {
   const raw = String(iconsetpath || "").trim();
   if (!raw) return null;
@@ -535,6 +539,7 @@ module.exports = {
   parseUserIcon,
   parseIconsetPath,
   isIconsetUidToken,
+  looksLikeIconsetPath,
   prefersMilSym2525C,
   prefersMilSymIconPath,
   resolvePngIcon,

@@ -202,6 +202,7 @@ function runFixtures(fixtures) {
       type: fx.type,
       affiliation: fx.affiliation || "friend",
       usericon: fx.usericon,
+      detail: fx.detail,
     });
     const marker = {
       type: fx.type,

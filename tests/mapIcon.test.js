@@ -5,6 +5,7 @@
 const assert = require("assert");
 const mapIcon = require("../services/mapIcon.service");
 const mapIconResolve = require("../services/mapIcon.resolve");
+const mapIconRender = require("../services/mapIconRender.service");
 const mapRender = require("../services/mapRender.service");
 
 async function runTests() {
@@ -165,6 +166,55 @@ async function runTests() {
     true,
     "64-char hash iconset uid"
   );
+
+  const aircraftDetail = {
+    remarks: {
+      _text:
+        "Callsign: TBI-Specter\nRegistration: N563MG\nType: PC12\nAltitude (MSL): 10325 ft\nSpeed: 169 kt\nHeading: 98\nSource: tak-solutions\nHEX: A73329",
+    },
+    source: {
+      _attributes: {
+        type: "dataFeed",
+        name: "aircraftemergency",
+        uid: "eecb9a16-5f0c-4661-a800-c7bb14e612bc",
+      },
+    },
+  };
+  const aircraftIcon = mapIcon.resolveIcon({
+    type: "a-f-A-M-F",
+    affiliation: "friend",
+    detail: aircraftDetail,
+    usericon: {},
+  });
+  assert.ok(aircraftIcon, "aircraft emergency feed should resolve from CoT type");
+  assert.strictEqual(aircraftIcon.source, "type2525b");
+  assert.ok(/a-f-A-M-F/i.test(aircraftIcon.relPath || aircraftIcon.iconId));
+  const aircraftMarker = {
+    uid: "EMERG-ICAO-A73329",
+    type: "a-f-A-M-F",
+    affiliation: "friend",
+    origin: "feed",
+    iconId: aircraftIcon.iconId,
+    iconSource: aircraftIcon.source,
+    teamColor: null,
+  };
+  assert.strictEqual(mapRender.markerUsesMapIcon(aircraftMarker), true);
+  assert.strictEqual(
+    mapIconRender.iconSkipsRecolor(aircraftMarker, aircraftIcon.iconId),
+    true
+  );
+
+  const psaPathIcon = mapIcon.resolveIcon({
+    type: "a-f-A-M-F",
+    affiliation: "friend",
+    usericon: {
+      iconsetpath:
+        "66f14976-4b62-4023-8edb-d8d2ebeaa336/Public Safety Air/FED_FIXED_WING.png",
+    },
+  });
+  assert.ok(psaPathIcon, "Public Safety Air dashed UUID path should resolve");
+  assert.strictEqual(psaPathIcon.source, "path");
+  assert.ok(/FED_FIXED_WING\.png/i.test(psaPathIcon.relPath || psaPathIcon.iconId));
 
   // Default affiliation icons
   const defaults = mapIcon.getDefaultIconIds();

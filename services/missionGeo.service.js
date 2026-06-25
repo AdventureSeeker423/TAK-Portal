@@ -7,6 +7,7 @@ const mapIcon = require("./mapIcon.service");
 const mapMeta = require("./mapMeta.service");
 const mapRender = require("./mapRender.service");
 const mapIconRender = require("./mapIconRender.service");
+const mapIconResolve = require("./mapIcon.resolve");
 const missionKml = require("./missionKml.service");
 const missionRaster = require("./missionRaster.service");
 const { unwrapMissionPayload } = require("./missionContents.util");
@@ -240,11 +241,7 @@ function collectShapeVertexKeys(features) {
 }
 
 function looksLikeUserIconPath(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return false;
-  if (/^COT_MAPPING_/i.test(s)) return true;
-  if (/^a-[a-z]-/i.test(s) && s.indexOf("/") === -1) return true;
-  return /^[0-9a-f]{36}\//i.test(s) || /^[0-9a-f]{64}\//i.test(s);
+  return mapIconResolve.looksLikeIconsetPath(raw);
 }
 
 function hasExplicitUserIcon(props) {
