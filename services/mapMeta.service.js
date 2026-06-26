@@ -1,8 +1,7 @@
 /**
- * Map metadata: TAK Server group catalog + subscription index for marker enrichment.
+ * Map metadata: portal group catalog + subscription index for marker enrichment.
  */
 const dataSyncAccess = require("./dataSyncAccess.service");
-const dataSyncSvc = require("./dataSync.service");
 const groupsSvc = require("./groups.service");
 const takMetrics = require("./takMetrics.service");
 const { isTakBypassed, isTakConfigured, buildTakAxios } = require("./tak.service");
@@ -55,15 +54,6 @@ function isMapChannelGroupName(name) {
   if (display.startsWith("__")) return false;
   if (display.includes("authentik")) return false;
   if (display.startsWith("cn=")) return false;
-  return true;
-}
-
-function isPortalChannelBaseKey(baseKey) {
-  const key = String(baseKey || "").trim().toLowerCase();
-  if (!key || key === UNASSIGNED_GROUP.toLowerCase()) return false;
-  if (key.startsWith("__")) return false;
-  if (key.includes("authentik")) return false;
-  if (key.includes("cn=")) return false;
   return true;
 }
 
@@ -1099,34 +1089,16 @@ async function refreshSubscriptionIndex() {
   return subscriptionIndex;
 }
 
+/** Portal-managed channels only (Authentik). TAK-only orphans are excluded. */
 async function refreshGroupCatalog() {
-  if (isTakBypassed() || !isTakConfigured()) {
-    catalogCache = {
-      names: [],
-      fetchedAt: Date.now(),
-      error: isTakBypassed() ? "TAK bypass enabled" : "TAK not configured",
-    };
-    return catalogCache;
-  }
-
   try {
     const all = await groupsSvc.getAllGroups({ forceRefresh: false });
-    const ldapNames = (Array.isArray(all) ? all : [])
+    const names = (Array.isArray(all) ? all : [])
       .map((g) => normalizeGroupName(g?.name))
-      .filter(isMapChannelGroupName);
-
-    let takNames = [];
-    try {
-      const takPayload = await dataSyncSvc.listGroupsAll();
-      takNames = dataSyncAccess
-        .extractTakGroupNameList(takPayload)
-        .map((n) => groupsSvc.ensureTakPrefix(n))
-        .filter(isMapChannelGroupName);
-    } catch (_) {}
-
-    const names = Array.from(new Set([...ldapNames, ...takNames])).sort((a, b) =>
-      dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
-    );
+      .filter(isMapChannelGroupName)
+      .sort((a, b) =>
+        dataSyncAccess.takDisplayName(a).localeCompare(dataSyncAccess.takDisplayName(b))
+      );
     catalogCache = {
       names,
       fetchedAt: Date.now(),
@@ -1346,29 +1318,14 @@ function buildGroupsCatalogWithCounts(markers) {
     }
   }
 
-  const seen = new Set();
   const groups = [];
 
   for (const entry of consolidateChannelCatalog(catalogCache.names)) {
-    seen.add(entry.baseKey);
     groups.push({
       name: entry.name,
       displayName: entry.displayName,
       baseKey: entry.baseKey,
       markerCount: counts.get(entry.baseKey) || 0,
-    });
-  }
-
-  for (const [baseKey, count] of counts.entries()) {
-    if (seen.has(baseKey)) continue;
-    if (!isPortalChannelBaseKey(baseKey)) continue;
-    const displayName = stripChannelBehaviorSuffix(groupsSvc.ensureTakPrefix(baseKey));
-    if (!isMapChannelGroupName(channelCatalogName(displayName))) continue;
-    groups.push({
-      name: channelCatalogName(displayName),
-      displayName,
-      baseKey,
-      markerCount: count,
     });
   }
 
