@@ -198,6 +198,46 @@ function missionSingleGroupName(mission) {
   return names[0];
 }
 
+function resolveAssignmentMetaForGroup(rawGroupName) {
+  const raw = String(rawGroupName || "").trim();
+  if (!raw) {
+    return { assignedGroup: null, assignedAgencyName: null };
+  }
+  const groupDisplay = takDisplayName(raw) || raw;
+  const agency = agenciesSvc.findAgencyForGroupName(groupDisplay, agenciesSvc.load());
+  const agencyName = agency ? String(agency.name || "").trim() || null : null;
+  return {
+    assignedGroup: groupDisplay,
+    assignedAgencyName: agencyName,
+  };
+}
+
+function enrichMissionAssignmentMeta(mission) {
+  if (!mission || typeof mission !== "object") return mission;
+  const groupName = missionSingleGroupName(mission);
+  if (!groupName) return mission;
+  return { ...mission, ...resolveAssignmentMetaForGroup(groupName) };
+}
+
+function enrichMissionListAssignmentMeta(list) {
+  return (Array.isArray(list) ? list : []).map(enrichMissionAssignmentMeta);
+}
+
+function enrichMissionsPayloadAssignmentMeta(payload) {
+  if (Array.isArray(payload)) {
+    return payload.map(enrichMissionAssignmentMeta);
+  }
+  if (payload && typeof payload === "object") {
+    if (Array.isArray(payload.data)) {
+      return { ...payload, data: payload.data.map(enrichMissionAssignmentMeta) };
+    }
+    if (Array.isArray(payload.missions)) {
+      return { ...payload, missions: payload.missions.map(enrichMissionAssignmentMeta) };
+    }
+  }
+  return payload;
+}
+
 function unwrapMission(payload) {
   if (!payload) return null;
   if (payload.data != null) {
@@ -754,6 +794,10 @@ module.exports = {
   extractTakGroupNameList,
   extractMissionGroupNames,
   missionSingleGroupName,
+  resolveAssignmentMetaForGroup,
+  enrichMissionAssignmentMeta,
+  enrichMissionListAssignmentMeta,
+  enrichMissionsPayloadAssignmentMeta,
   buildAgencyAllowedGroups,
   MAP_MISSION_ACCESS,
   getMutualAidAllowedGroupsForUser,

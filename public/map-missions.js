@@ -1500,6 +1500,30 @@
     return parts.join(" · ");
   }
 
+  function appendMissionAssignmentMeta(head, mission) {
+    const group = String(mission?.assignedGroup || "").trim();
+    const agency = String(mission?.assignedAgencyName || "").trim();
+    if (!group && !agency) return;
+
+    const wrap = document.createElement("div");
+    wrap.className = "map-mission-assignment";
+
+    if (group) {
+      const groupEl = document.createElement("div");
+      groupEl.className = "map-mission-meta";
+      groupEl.textContent = "Group: " + group;
+      wrap.appendChild(groupEl);
+    }
+    if (agency) {
+      const agencyEl = document.createElement("div");
+      agencyEl.className = "map-mission-meta";
+      agencyEl.textContent = "Agency: " + agency;
+      wrap.appendChild(agencyEl);
+    }
+
+    head.appendChild(wrap);
+  }
+
   function renderMissionListNow() {
     if (!listEl) return;
     const q = String(searchEl?.value || "")
@@ -1571,6 +1595,7 @@
       headTop.appendChild(title);
       headTop.appendChild(refreshBtn);
       head.appendChild(headTop);
+      appendMissionAssignmentMeta(head, m);
 
       if (entry && entry.loading) {
         const status = document.createElement("div");

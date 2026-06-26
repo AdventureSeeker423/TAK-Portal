@@ -434,7 +434,7 @@ router.get("/missions", async (req, res) => {
     );
     const data = await dataSyncSvc.listMissions(req.query);
     const filtered = dataSyncAccess.filterMissionsPayload(data, allowedKeySet);
-    const list = unwrapMissionList(filtered);
+    const list = dataSyncAccess.enrichMissionListAssignmentMeta(unwrapMissionList(filtered));
     res.setHeader("Cache-Control", "no-cache");
     return res.json({ missions: list, total: list.length });
   } catch (err) {

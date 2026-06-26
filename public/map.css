@@ -1327,6 +1327,14 @@ body.map-detail-resizing .map-panel-resize-handle {
   color: #fca5a5;
 }
 
+.map-mission-assignment {
+  padding-left: 38px;
+}
+
+.map-mission-assignment .map-mission-meta {
+  padding-left: 0;
+}
+
 .map-mission-hint,
 .map-mission-empty {
   padding: 0 6px 4px;

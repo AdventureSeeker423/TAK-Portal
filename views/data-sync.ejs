@@ -201,6 +201,13 @@
   .chk-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); user-select: none; cursor: pointer; }
   .chk-inline input { margin: 0; }
   .data-sync-table code { font-size: 11px; }
+  .data-sync-mission-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--muted);
+    font-weight: normal;
+  }
   .mission-action-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .muted { color: var(--muted); }
 
@@ -751,11 +758,20 @@
     if (desc.length > 48) desc = desc.slice(0, 45) + "…";
     var dr = m && m.defaultRole;
     var defaultRoleLabel = defaultRoleTypeToLabel(dr && dr.type ? String(dr.type) : "MISSION_SUBSCRIBER");
+    var displayGroup = m.assignedGroup ? String(m.assignedGroup) : groupName;
+    var agencyName = m.assignedAgencyName ? String(m.assignedAgencyName) : "";
+    var nameSubLines = "";
+    if (displayGroup) {
+      nameSubLines += "<div class=\"data-sync-mission-sub\">Group: " + esc(displayGroup) + "</div>";
+    }
+    if (agencyName) {
+      nameSubLines += "<div class=\"data-sync-mission-sub\">Agency: " + esc(agencyName) + "</div>";
+    }
 
     var tr = document.createElement("tr");
     tr.innerHTML =
       "<td style=\"width:42px;\"><input type=\"checkbox\" class=\"ds-row-chk\" data-archived=\"false\" data-mission-name=\"" + esc(name) + "\" aria-label=\"Select mission\" /></td>" +
-      "<td><strong>" + esc(name) + "</strong></td>" +
+      "<td><strong>" + esc(name) + "</strong>" + nameSubLines + "</td>" +
       "<td style=\"max-width:220px;font-size:13px;\">" + esc(desc) + "</td>" +
       "<td style=\"font-size:13px;white-space:nowrap;\">" + esc(defaultRoleLabel) + "</td>" +
       "<td style=\"font-size:13px;\">" + esc(groupName) + "</td>" +

@@ -247,17 +247,18 @@ router.get("/missions", async (req, res) => {
         : Array.isArray(filtered)
           ? filtered
           : [];
+      const enriched = dataSyncAccess.enrichMissionListAssignmentMeta(list);
       return res.json({
         ...filtered,
-        data: list,
+        data: enriched,
         _debug: {
           allowedAgencySuffixes: authUser?.allowedAgencySuffixes || [],
           authentikAllowedGroups: allowed,
-          visibleMissionCount: list.length,
+          visibleMissionCount: enriched.length,
         },
       });
     }
-    return res.json(filtered);
+    return res.json(dataSyncAccess.enrichMissionsPayloadAssignmentMeta(filtered));
   } catch (err) {
     return handleRouteError(res, err);
   }
