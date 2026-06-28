@@ -606,7 +606,7 @@
           '<div class="modalOverlay" id="clientGroupsOverlay" style="display:none;">' +
             '<div class="modal group-control-modal" role="dialog" aria-modal="true" aria-labelledby="clientGroupsTitle">' +
               '<div class="modalHeader">' +
-                '<h2 id="clientGroupsTitle" style="margin:0;">Group Control</h2>' +
+                '<h2 id="clientGroupsTitle" style="margin:0;">Group / Channel Control</h2>' +
                 '<button class="btn" id="clientGroupsCloseBtn" type="button">Close</button>' +
               '</div>' +
               '<div class="modalBody">' +
@@ -738,11 +738,9 @@
           if (!clientId) return;
 
           currentGroupControlClientId = clientId;
-          var callsign = (sub.callsign && String(sub.callsign).trim()) || "";
           var username = (sub.username && String(sub.username).trim()) || "";
-          var label = callsign || username || "Client";
 
-          if (titleEl) titleEl.textContent = "Group Control — " + label;
+          if (titleEl) titleEl.textContent = "Group / Channel Control — " + (username || "Client");
           showGroupControlError("");
           overlay.style.display = "flex";
 
