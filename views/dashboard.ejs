@@ -671,7 +671,7 @@
           tableBody.innerHTML = "";
           (groups || []).forEach(function (g) {
             var tr = document.createElement("tr");
-            tr.className = g.active ? "group-control-row-active" : "group-control-row-inactive";
+            tr.className = (g.active ? "group-control-row-active" : "group-control-row-inactive") + " group-control-row";
             tr.setAttribute("data-group-name", g.name || "");
             tr.setAttribute("data-access-mode", g.accessMode || g.typeLabel || "");
 
@@ -755,17 +755,16 @@
           }, GROUP_CONTROL_REFRESH_MS);
         }
 
-        function onGroupControlCheckboxChange(e) {
-          var cb = e.target;
-          if (!cb || !cb.classList.contains("group-control-checkbox")) return;
-          var tr = cb.closest("tr");
-          if (!tr || !currentGroupControlClientId) return;
+        function applyGroupControlToggle(tr, active) {
+          if (!tr || !currentGroupControlClientId || groupToggleInFlight) return;
+          var cb = tr.querySelector(".group-control-checkbox");
+          if (!cb || cb.disabled) return;
 
           var groupName = tr.getAttribute("data-group-name") || "";
           var accessMode = tr.getAttribute("data-access-mode") || "";
-          var active = cb.checked;
           var previous = !active;
 
+          cb.checked = active;
           groupToggleInFlight = true;
           cb.disabled = true;
           showGroupControlError("");
@@ -786,7 +785,7 @@
             })
             .catch(function (err) {
               cb.checked = previous;
-              tr.className = previous ? "group-control-row-active" : "group-control-row-inactive";
+              tr.className = (previous ? "group-control-row-active" : "group-control-row-inactive") + " group-control-row";
               showGroupControlError(err.message || "Failed to update group");
             })
             .finally(function () {
@@ -795,8 +794,26 @@
             });
         }
 
+        function onGroupControlCheckboxChange(e) {
+          var cb = e.target;
+          if (!cb || !cb.classList.contains("group-control-checkbox")) return;
+          var tr = cb.closest("tr");
+          if (!tr) return;
+          applyGroupControlToggle(tr, cb.checked);
+        }
+
+        function onGroupControlRowClick(e) {
+          var tr = e.target.closest("tr.group-control-row");
+          if (!tr || !tableBody || !tableBody.contains(tr)) return;
+          if (e.target.closest("input.group-control-checkbox")) return;
+          var cb = tr.querySelector(".group-control-checkbox");
+          if (!cb || cb.disabled) return;
+          applyGroupControlToggle(tr, !cb.checked);
+        }
+
         if (tableBody) {
           tableBody.addEventListener("change", onGroupControlCheckboxChange);
+          tableBody.addEventListener("click", onGroupControlRowClick);
         }
         if (closeBtn) {
           closeBtn.addEventListener("click", function (e) {
@@ -1140,6 +1157,7 @@
   .group-control-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
   .group-control-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   .group-control-table td:first-child { width: 72px; text-align: center; }
+  .group-control-row { cursor: pointer; }
   .group-control-row-active { background: rgba(67, 160, 71, 0.22); }
   .group-control-row-inactive { background: rgba(229, 57, 53, 0.18); }
   .group-control-row-active:hover { background: rgba(67, 160, 71, 0.3); }
