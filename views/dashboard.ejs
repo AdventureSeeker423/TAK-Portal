@@ -675,11 +675,17 @@
             tr.setAttribute("data-group-name", g.name || "");
             tr.setAttribute("data-access-mode", g.accessMode || g.typeLabel || "");
 
+            if (g.locked) tr.setAttribute("data-locked", "true");
+            if (g.locked && g.active) {
+              tr.className += " group-control-row-locked";
+            }
+
             var tdOn = document.createElement("td");
             var cb = document.createElement("input");
             cb.type = "checkbox";
             cb.checked = !!g.active;
             cb.className = "group-control-checkbox";
+            if (g.locked && g.active) cb.disabled = true;
             cb.setAttribute("aria-label", "Enable " + groupControlDisplayName(g));
             tdOn.appendChild(cb);
 
@@ -757,6 +763,10 @@
           if (!tr || !currentGroupControlClientId || groupToggleInFlight) return;
           var cb = tr.querySelector(".group-control-checkbox");
           if (!cb || cb.disabled) return;
+          if (tr.getAttribute("data-locked") === "true" && !active) {
+            showGroupControlError("The only assigned group cannot be disabled.");
+            return;
+          }
 
           var groupName = tr.getAttribute("data-group-name") || "";
           var accessMode = tr.getAttribute("data-access-mode") || "";
@@ -1156,6 +1166,8 @@
   .group-control-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   .group-control-table td:first-child { width: 72px; text-align: center; }
   .group-control-row { cursor: pointer; }
+  .group-control-row-locked { cursor: default; }
+  .group-control-row-locked .group-control-checkbox:disabled { cursor: default; opacity: 1; }
   .group-control-row-active { background: rgba(67, 160, 71, 0.22); }
   .group-control-row-inactive { background: rgba(229, 57, 53, 0.18); }
   .group-control-row-active:hover { background: rgba(67, 160, 71, 0.3); }

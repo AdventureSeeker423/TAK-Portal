@@ -265,12 +265,16 @@ async function getClientGroupControlState(clientId, authUser) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
   const rawGroups = await fetchGroupsForUser(ctx.username);
 
+  const collapsed = collapseGroupsForDisplay(rawGroups);
+  const groups =
+    collapsed.length === 1 ? [{ ...collapsed[0], locked: true }] : collapsed;
+
   return {
     configured: true,
     clientUid: ctx.clientUid,
     username: ctx.username,
     callsign: ctx.callsign,
-    groups: collapseGroupsForDisplay(rawGroups),
+    groups,
   };
 }
 
@@ -290,6 +294,13 @@ async function setClientGroupActive(clientId, authUser, { groupName, accessMode,
   }
 
   const current = await fetchGroupsForUser(ctx.username);
+  const collapsedCurrent = collapseGroupsForDisplay(current);
+  if (collapsedCurrent.length === 1 && active === false) {
+    const err = new Error("The only assigned group cannot be disabled.");
+    err.status = 400;
+    throw err;
+  }
+
   let found = false;
   const next = current.map((row) => {
     if (!shouldUpdateRawRow(row, name, mode)) return row;
@@ -304,12 +315,15 @@ async function setClientGroupActive(clientId, authUser, { groupName, accessMode,
   }
 
   const rawGroups = await putActiveForceGroups(ctx.username, next);
+  const collapsed = collapseGroupsForDisplay(rawGroups);
+  const groups =
+    collapsed.length === 1 ? [{ ...collapsed[0], locked: true }] : collapsed;
   return {
     configured: true,
     clientUid: ctx.clientUid,
     username: ctx.username,
     callsign: ctx.callsign,
-    groups: collapseGroupsForDisplay(rawGroups),
+    groups,
     changed: { groupName: name, accessMode: mode, active },
   };
 }
