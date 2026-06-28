@@ -316,6 +316,7 @@ function toSlimMarker(marker) {
     channelKeys: markerChannelKeys(marker).join(","),
     showCircle: mapImageId ? 0 : 1,
     remarks: marker.remarks || null,
+    links: Array.isArray(marker.links) && marker.links.length ? marker.links : null,
   };
 }
 

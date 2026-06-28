@@ -4490,13 +4490,57 @@
     return pane;
   }
 
+  function markerDetailLinks(m) {
+    return Array.isArray(m?.links)
+      ? m.links.filter(function (link) {
+          return link && isHttpDetailLinkUrl(link.url);
+        })
+      : [];
+  }
+
+  function isHttpDetailLinkUrl(value) {
+    return /^https?:\/\//i.test(String(value || "").trim());
+  }
+
+  function buildDetailLinkAnchorsHtml(links) {
+    const list = Array.isArray(links) ? links : [];
+    return list
+      .map(function (link) {
+        const url = String(link.url || "").trim();
+        if (!isHttpDetailLinkUrl(url)) return "";
+        const label = String(link.label || url).trim() || url;
+        return (
+          '<a class="map-detail-link" href="' +
+          escapeHtml(url) +
+          '" target="_blank" rel="noopener noreferrer">' +
+          escapeHtml(label) +
+          "</a>"
+        );
+      })
+      .filter(Boolean)
+      .join("");
+  }
+
+  function buildDetailLinksHtml(links) {
+    const anchors = buildDetailLinkAnchorsHtml(links);
+    if (!anchors) return "";
+    return (
+      '<section class="map-detail-links-section">' +
+      '<div class="map-detail-links" data-detail-key="links">' +
+      anchors +
+      "</div></section>"
+    );
+  }
+
   function detailBodyStructureKey(m) {
     const groups = markerGroups(m);
+    const linkCount = markerDetailLinks(m).length;
     return [
       groups.length === 1 ? "1g" : "ng",
       m.team && String(m.team).trim() ? "t" : "",
       m.role && String(m.role).trim() ? "r" : "",
       isUnknownHae(m.hae) ? "" : "h",
+      linkCount ? "l" + linkCount : "",
     ].join("|");
   }
 
@@ -4578,7 +4622,9 @@
       (remarksText ? "" : " empty") +
       '" data-detail-key="remarks">' +
       escapeHtml(remarksText || "No remarks.") +
-      "</div></section></div>"
+      "</div></section>" +
+      buildDetailLinksHtml(markerDetailLinks(m)) +
+      "</div>"
     );
   }
 
@@ -4641,6 +4687,21 @@
       const remarksText = m.remarks ? String(m.remarks).trim() : "";
       remarksEl.textContent = remarksText || "No remarks.";
       remarksEl.classList.toggle("empty", !remarksText);
+    }
+
+    const linksEl = bodyEl.querySelector('[data-detail-key="links"]');
+    const linksSection = bodyEl.querySelector(".map-detail-links-section");
+    const links = markerDetailLinks(m);
+    if (links.length) {
+      const anchors = buildDetailLinkAnchorsHtml(links);
+      if (linksEl) {
+        linksEl.innerHTML = anchors;
+      } else if (anchors) {
+        const wrap = bodyEl.querySelector(".map-detail-wrap");
+        if (wrap) wrap.insertAdjacentHTML("beforeend", buildDetailLinksHtml(links));
+      }
+    } else if (linksSection) {
+      linksSection.remove();
     }
 
     const updatedEl = bodyEl.querySelector(".map-detail-updated");

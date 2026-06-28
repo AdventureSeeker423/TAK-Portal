@@ -298,6 +298,7 @@ function parseMarkerFromCoT(cot) {
       teamColor: mapMeta.parseTeamColor(detail),
       affiliation: mapMeta.parseAffiliationFromType(type),
       remarks: mapMeta.parseRemarks(detail),
+      links: mapMeta.parseDetailLinks(detail),
       updatedAt: new Date().toISOString(),
     };
 

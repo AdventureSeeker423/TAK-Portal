@@ -766,6 +766,31 @@ body.map-detail-resizing .map-panel-resize-handle {
   display: none;
 }
 
+.map-detail-links-section {
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+
+.map-detail-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.map-detail-link {
+  display: inline-block;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #7eb8ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-word;
+}
+
+.map-detail-link:hover {
+  color: #a8d0ff;
+}
+
 .map-detail-actions {
   display: flex;
   flex-wrap: wrap;

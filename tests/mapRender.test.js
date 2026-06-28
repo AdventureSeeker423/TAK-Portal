@@ -90,4 +90,24 @@ assert.strictEqual(rendered.properties.iconId, slimFeed.mapImageId);
 assert.strictEqual(rendered.properties.apiIconId, sampleMarkers[1].iconId);
 assert.strictEqual(rendered.properties.usesMapIcon, 1);
 
+const mapMeta = require("../services/mapMeta.service");
+const sampleDetail = {
+  link: {
+    _attributes: {
+      url: "https://maps.google.com/?q=35.11686,-85.21141",
+      remarks: "Vehicle Location",
+    },
+  },
+};
+const parsedLinks = mapMeta.parseDetailLinks(sampleDetail);
+assert.strictEqual(parsedLinks.length, 1);
+assert.strictEqual(parsedLinks[0].url, "https://maps.google.com/?q=35.11686,-85.21141");
+assert.strictEqual(parsedLinks[0].label, "Vehicle Location");
+
+const slimWithLink = mapRender.toSlimMarker({
+  ...sampleMarkers[0],
+  links: parsedLinks,
+});
+assert.deepStrictEqual(slimWithLink.links, parsedLinks);
+
 console.log("mapRender.test.js: all assertions passed");

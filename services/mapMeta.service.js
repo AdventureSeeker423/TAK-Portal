@@ -937,6 +937,38 @@ function parseRemarks(detail) {
   return joined || null;
 }
 
+function isHttpDetailUrl(value) {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+/** CoT detail.link — external URLs (maps, resources) on markers. */
+function parseDetailLinks(detail) {
+  if (!detail || typeof detail !== "object") return [];
+  const linksNode = detail.link;
+  const list = Array.isArray(linksNode) ? linksNode : linksNode ? [linksNode] : [];
+  const out = [];
+  const seen = new Set();
+
+  for (const item of list) {
+    let url = "";
+    let label = "";
+    if (typeof item === "string" || typeof item === "number") {
+      url = String(item).trim();
+    } else if (item && typeof item === "object") {
+      const attrs = item._attributes || item;
+      url = String(attrs.url || attrs.href || attrs.link || "").trim();
+      label = String(attrs.remarks || attrs.title || attrs.name || "").trim();
+    }
+    if (!isHttpDetailUrl(url)) continue;
+    const key = url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ url, label: label || url });
+  }
+
+  return out;
+}
+
 /** CoT detail.color — common on data-feed / AVL injected markers (no __group). */
 function parseDetailColor(detail) {
   const node = detail?.color;
@@ -1399,6 +1431,7 @@ module.exports = {
   parseCourseAndSpeed,
   parseTeamColor,
   parseRemarks,
+  parseDetailLinks,
   parseDetailColor,
   teamNameToColor,
   resolveMarkerDisplayColor,
