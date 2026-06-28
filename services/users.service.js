@@ -3544,6 +3544,190 @@ async function syncUsersForBulkTemplateGroupUpdates(templates, { onProgress } = 
   };
 }
 
+/**
+ * Fast path for bulk template group add/remove (groups page).
+ * Matches users by agency + current_template attributes, then updates membership
+ * with a single group-centric Authentik PATCH (same approach as agency mass assign).
+ */
+async function syncUsersForBulkTemplateGroupDelta({
+  templates,
+  groupName,
+  action,
+  onProgress,
+} = {}) {
+  const emitProgress = (p) => {
+    if (typeof onProgress === "function") onProgress(p);
+  };
+
+  const normalizedAction = String(action || "").trim().toLowerCase() === "remove" ? "remove" : "add";
+  const normalizedGroupName = String(groupName || "").trim();
+  if (!normalizedGroupName) {
+    throw new Error("Group name is required.");
+  }
+
+  const list = (Array.isArray(templates) ? templates : [])
+    .map((t) => ({
+      agencySuffix: String(t?.agencySuffix || "").trim().toLowerCase(),
+      templateName: String(t?.name || t?.templateName || "").trim(),
+    }))
+    .filter((t) => t.agencySuffix && t.templateName);
+
+  if (!list.length) {
+    return {
+      matched: 0,
+      updated: 0,
+      groupsUpdated: 0,
+      templateAttrUpdated: 0,
+      templatesProcessed: 0,
+    };
+  }
+
+  emitProgress({
+    phase: "loading_groups",
+    total: list.length,
+    processed: 0,
+    matched: 0,
+    updated: 0,
+  });
+
+  const syncCtx = buildTemplateGroupSyncContext(
+    await getAllGroups({ includeHidden: false })
+  );
+  const targetGroupId = syncCtx.byName.get(normalizedGroupName.toLowerCase()) || "";
+  if (!targetGroupId) {
+    throw new Error(`Group not found: ${normalizedGroupName}`);
+  }
+  const targetGroupIdStr = String(targetGroupId);
+
+  const fetchConcurrency = getTemplateSyncFetchConcurrency();
+  const fetchJobs = list.map((t, i) => ({ t, i }));
+  const usersByTemplate = new Array(list.length);
+
+  emitProgress({
+    phase: "fetching_users",
+    total: list.length,
+    processed: 0,
+    matched: 0,
+    updated: 0,
+  });
+
+  let fetchProcessed = 0;
+  let matchedWhileFetching = 0;
+  await runWithConcurrencyLimit(fetchJobs, fetchConcurrency, async (job) => {
+    usersByTemplate[job.i] = await fetchUsersByAgencyAndCurrentTemplate(
+      job.t.agencySuffix,
+      job.t.templateName
+    );
+    fetchProcessed += 1;
+    matchedWhileFetching += (usersByTemplate[job.i] || []).length;
+    emitProgress({
+      phase: "fetching_users",
+      total: list.length,
+      processed: fetchProcessed,
+      matched: matchedWhileFetching,
+      updated: 0,
+    });
+  });
+
+  const userByPk = new Map();
+  for (const users of usersByTemplate) {
+    for (const u of users || []) {
+      const pk = String(u?.pk ?? u?.id ?? "").trim();
+      if (pk && !userByPk.has(pk)) userByPk.set(pk, u);
+    }
+  }
+  const allUsers = Array.from(userByPk.values());
+  const matched = allUsers.length;
+
+  const targetUsers = allUsers.filter((u) => {
+    const groups = (Array.isArray(u?.groups) ? u.groups : []).map((x) => String(x));
+    return normalizedAction === "add"
+      ? !groups.includes(targetGroupIdStr)
+      : groups.includes(targetGroupIdStr);
+  });
+  const targetUserPks = targetUsers
+    .map((u) => String(u?.pk ?? u?.id ?? "").trim())
+    .filter(Boolean);
+
+  emitProgress({
+    phase: "matching",
+    total: targetUserPks.length,
+    processed: targetUserPks.length,
+    matched,
+    updated: 0,
+  });
+
+  if (!targetUserPks.length) {
+    emitProgress({
+      phase: "done",
+      total: 0,
+      processed: 0,
+      matched,
+      updated: 0,
+      groupsUpdated: 0,
+    });
+    return {
+      matched,
+      updated: 0,
+      groupsUpdated: 0,
+      templateAttrUpdated: 0,
+      templatesProcessed: list.length,
+    };
+  }
+
+  emitProgress({
+    phase: "applying",
+    total: targetUserPks.length,
+    processed: 0,
+    matched,
+    updated: 0,
+  });
+
+  const groupsSvc = require("./groups.service");
+  const bulkOut =
+    normalizedAction === "add"
+      ? await groupsSvc.bulkAddUsersToGroup(targetGroupId, targetUserPks)
+      : await groupsSvc.bulkRemoveUsersFromGroup(targetGroupId, targetUserPks);
+  const changed = Number(bulkOut?.changed || 0);
+
+  if (changed > 0) {
+    for (const u of targetUsers) {
+      try {
+        const beforeGroups = (Array.isArray(u?.groups) ? u.groups : []).map((x) => String(x));
+        const afterGroups =
+          normalizedAction === "add"
+            ? Array.from(new Set([...beforeGroups, targetGroupIdStr]))
+            : beforeGroups.filter((id) => id !== targetGroupIdStr);
+        scheduleDebouncedGroupsEmail({
+          user: u,
+          beforeIds: beforeGroups,
+          afterIds: afterGroups,
+        });
+      } catch (e) {
+        // Never fail template sync because an email enqueue failed.
+      }
+    }
+    invalidateUsersCache();
+  }
+
+  emitProgress({
+    phase: "done",
+    total: targetUserPks.length,
+    processed: changed,
+    matched,
+    updated: changed,
+    groupsUpdated: changed,
+  });
+
+  return {
+    matched,
+    updated: changed,
+    groupsUpdated: changed,
+    templateAttrUpdated: 0,
+    templatesProcessed: list.length,
+  };
+}
+
 // Add groups to a user (merge)
 async function addUserGroups(userId, groupIds, opts = {}) {
   await assertUserNotActionLocked(userId);
@@ -4496,5 +4680,6 @@ module.exports = {
   bulkSetCurrentTemplateForAgencyUsers,
   syncUsersForTemplateSave,
   syncUsersForBulkTemplateGroupUpdates,
+  syncUsersForBulkTemplateGroupDelta,
   reconcileCurrentTemplateForAgencySuffix,
 };

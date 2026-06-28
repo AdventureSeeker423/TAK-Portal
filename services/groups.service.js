@@ -1609,6 +1609,8 @@ module.exports = {
   getGroupMembers,
   getGroupMembersPaged,
   massUnassignUsersFromGroup,
+  bulkAddUsersToGroup,
+  bulkRemoveUsersFromGroup,
   buildGroupsExportCsv,
   collectGroupsExportRows,
 

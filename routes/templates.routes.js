@@ -133,22 +133,21 @@ async function runBulkTemplateGroupUpdate({
   };
 
   if (updated > 0) {
-    currentTemplateSync = await usersSvc.syncUsersForBulkTemplateGroupUpdates(
-      touched.map((t) => ({
+    currentTemplateSync = await usersSvc.syncUsersForBulkTemplateGroupDelta({
+      templates: touched.map((t) => ({
         agencySuffix: t.agencySuffix,
         name: t.name,
-        afterGroups: t.afterGroups,
       })),
-      {
-        onProgress: (p) => {
-          emitProgress({
-            ...p,
-            templatesUpdated: updated,
-            templatesSkipped: skipped,
-          });
-        },
-      }
-    );
+      groupName: normalizedGroupName,
+      action: normalizedAction,
+      onProgress: (p) => {
+        emitProgress({
+          ...p,
+          templatesUpdated: updated,
+          templatesSkipped: skipped,
+        });
+      },
+    });
   }
 
   return {
