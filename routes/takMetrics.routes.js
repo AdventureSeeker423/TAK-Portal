@@ -7,11 +7,33 @@ const {
   filterFederationSubscriptions,
 } = require("../services/takMetrics.service");
 const cotStream = require("../services/cotStream.service");
+const takGroupControl = require("../services/takGroupControl.service");
+const auditSvc = require("../services/auditLog.service");
 
-router.get("/metrics", async (req, res) => {
+function requireTakAdmin(req, res) {
   const user = req.authentikUser;
   const isAdmin = !!(user && (user.isGlobalAdmin || user.isAgencyAdmin));
-  if (!isAdmin) return res.status(403).json({ error: "Forbidden" });
+  if (!isAdmin) {
+    res.status(403).json({ error: "Forbidden" });
+    return null;
+  }
+  return user;
+}
+
+function takRouteError(res, err) {
+  const status = Number(err?.status) || err?.response?.status || 500;
+  let message = err?.message || "TAK request failed";
+  const data = err?.response?.data;
+  if (typeof data === "string" && data.trim()) message = data;
+  else if (data && typeof data === "object") {
+    message = data.message || data.error || JSON.stringify(data);
+  }
+  return res.status(status).json({ error: message });
+}
+
+router.get("/metrics", async (req, res) => {
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
 
   try {
     let metrics = await getTakMetricsSnapshot();
@@ -34,9 +56,8 @@ router.get("/metrics", async (req, res) => {
 });
 
 router.get("/subscriptions", async (req, res) => {
-  const user = req.authentikUser;
-  const isAdmin = !!(user && (user.isGlobalAdmin || user.isAgencyAdmin));
-  if (!isAdmin) return res.status(403).json({ error: "Forbidden" });
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
 
   try {
     const result = await getSubscriptionsAll();
@@ -58,6 +79,64 @@ router.get("/subscriptions", async (req, res) => {
       data: [],
       error: err?.message || "Failed to fetch subscriptions",
     });
+  }
+});
+
+router.get("/clients/:clientId/groups", async (req, res) => {
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
+
+  try {
+    const out = await takGroupControl.getClientGroupControlState(req.params.clientId, user);
+    return res.json(out);
+  } catch (err) {
+    return takRouteError(res, err);
+  }
+});
+
+router.put("/clients/:clientId/groups", async (req, res) => {
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
+
+  try {
+    const active =
+      req.body?.active === true
+        ? true
+        : req.body?.active === false
+          ? false
+          : null;
+    if (active === null) {
+      return res.status(400).json({ error: "active must be true or false" });
+    }
+
+    const out = await takGroupControl.setClientGroupActive(req.params.clientId, user, {
+      groupName: req.body?.groupName,
+      direction: req.body?.direction,
+      active,
+    });
+
+    const changed = out.changed || {};
+    auditSvc.logEvent({
+      actor: user,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "REMOTE_TOGGLE_CLIENT_GROUP",
+      targetType: "tak_client",
+      targetId: out.clientUid || String(req.params.clientId || ""),
+      details: {
+        summary: `${active ? "Enabled" : "Disabled"} ${changed.direction === "IN" ? "WRITE" : "READ"} on "${changed.groupName}" for ${out.callsign || out.username}.`,
+        username: out.username,
+        callsign: out.callsign,
+        clientUid: out.clientUid,
+        groupName: changed.groupName,
+        direction: changed.direction,
+        typeLabel: changed.direction === "IN" ? "WRITE" : "READ",
+        active,
+      },
+    });
+
+    return res.json(out);
+  } catch (err) {
+    return takRouteError(res, err);
   }
 });
 

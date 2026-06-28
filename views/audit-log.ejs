@@ -201,6 +201,13 @@
                   '—';
               }
 
+              if (type === 'tak_client') {
+                const callsign = details.callsign || '';
+                const username = details.username || '';
+                if (callsign && username) display = `${callsign} (${username})`;
+                else display = callsign || username || targetId || '—';
+              }
+
               if (type === 'data_package' || type === 'data_sync_mission' || type === 'data_sync_file') {
                 display =
                   details.fileName ||
@@ -491,7 +498,8 @@
     templates: 'Template changes',
     matched: 'Matched users',
     updated: 'Updated users',
-    skippedUsernames: 'Skipped usernames',
+    typeLabel: 'Access type',
+    active: 'Active',
   };
 
   function isUuid(s) {

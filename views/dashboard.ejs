@@ -552,7 +552,10 @@
 
       var originalCardHtml = card.innerHTML;
       var expandedRefreshTimer = null;
+      var groupControlRefreshTimer = null;
       var EXPANDED_REFRESH_MS = 20000;
+      var GROUP_CONTROL_REFRESH_MS = 8000;
+      var currentGroupControlClientId = null;
 
       function esc(s) {
         if (s == null || s === "") return "";
@@ -581,8 +584,8 @@
         tbody.innerHTML = "";
         (rows || []).forEach(function (r) {
           var tr = document.createElement("tr");
-          if (r.subscriptionUid) {
-            tr.setAttribute("data-subscription-uid", r.subscriptionUid);
+          if (r.clientUid || r.subscriptionUid) {
+            tr.setAttribute("data-client-uid", r.clientUid || r.subscriptionUid);
           }
           var bg = teamToBg(r.team);
           if (bg !== "transparent") tr.style.backgroundColor = bg;
@@ -601,14 +604,21 @@
           '<thead><tr><th>Callsign</th><th>Username</th><th>TAK Client</th><th>Battery</th><th>Role</th></tr></thead>' +
           '<tbody id="connectedClientsTableBody"></tbody></table></div></div>' +
           '<div class="modalOverlay" id="clientGroupsOverlay" style="display:none;">' +
-            '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="clientGroupsTitle">' +
+            '<div class="modal group-control-modal" role="dialog" aria-modal="true" aria-labelledby="clientGroupsTitle">' +
               '<div class="modalHeader">' +
-                '<h2 id="clientGroupsTitle" style="margin:0;">Active Groups</h2>' +
+                '<h2 id="clientGroupsTitle" style="margin:0;">Group Control</h2>' +
                 '<button class="btn" id="clientGroupsCloseBtn" type="button">Close</button>' +
               '</div>' +
               '<div class="modalBody">' +
-                '<div id="clientGroupsSummary" class="msg" style="display:none;"></div>' +
-                '<div id="clientGroupsList" style="margin-top:10px; max-height:320px; overflow:auto;"></div>' +
+                '<div id="clientGroupsSummary" class="msg muted" style="display:none; margin-bottom:10px;"></div>' +
+                '<div id="clientGroupsError" class="msg error" style="display:none; margin-bottom:10px;"></div>' +
+                '<div id="clientGroupsLoading" class="muted" style="display:none;">Loading groups…</div>' +
+                '<div class="group-control-table-wrap" id="clientGroupsTableWrap" style="display:none;">' +
+                  '<table class="group-control-table">' +
+                    '<thead><tr><th>On</th><th>Group</th><th>Type</th></tr></thead>' +
+                    '<tbody id="clientGroupsTableBody"></tbody>' +
+                  '</table>' +
+                '</div>' +
               '</div>' +
             '</div>' +
           '</div>';
@@ -624,67 +634,170 @@
         // Wire up modal behavior
         var overlay = document.getElementById("clientGroupsOverlay");
         var closeBtn = document.getElementById("clientGroupsCloseBtn");
-        var listEl = document.getElementById("clientGroupsList");
+        var tableBody = document.getElementById("clientGroupsTableBody");
+        var tableWrap = document.getElementById("clientGroupsTableWrap");
+        var loadingEl = document.getElementById("clientGroupsLoading");
         var summaryEl = document.getElementById("clientGroupsSummary");
+        var errorEl = document.getElementById("clientGroupsError");
+        var titleEl = document.getElementById("clientGroupsTitle");
+        var groupToggleInFlight = false;
+
+        function showGroupControlError(msg) {
+          if (!errorEl) return;
+          if (msg) {
+            errorEl.textContent = msg;
+            errorEl.style.display = "block";
+          } else {
+            errorEl.textContent = "";
+            errorEl.style.display = "none";
+          }
+        }
+
+        function setGroupControlLoading(on) {
+          if (loadingEl) loadingEl.style.display = on ? "block" : "none";
+          if (tableWrap) tableWrap.style.display = on ? "none" : "block";
+        }
+
+        function renderGroupControlRows(groups) {
+          if (!tableBody) return;
+          tableBody.innerHTML = "";
+          (groups || []).forEach(function (g) {
+            var tr = document.createElement("tr");
+            tr.className = g.active ? "group-control-row-active" : "group-control-row-inactive";
+            tr.setAttribute("data-group-name", g.name || "");
+            tr.setAttribute("data-direction", g.direction || "");
+
+            var tdOn = document.createElement("td");
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = !!g.active;
+            cb.className = "group-control-checkbox";
+            cb.setAttribute("aria-label", (g.name || "Group") + " " + (g.typeLabel || g.direction || ""));
+            tdOn.appendChild(cb);
+
+            var tdName = document.createElement("td");
+            tdName.textContent = g.name || "—";
+
+            var tdType = document.createElement("td");
+            tdType.textContent = g.typeLabel || (g.direction === "IN" ? "WRITE" : g.direction === "OUT" ? "READ" : "—");
+
+            tr.appendChild(tdOn);
+            tr.appendChild(tdName);
+            tr.appendChild(tdType);
+            tableBody.appendChild(tr);
+          });
+        }
+
+        function loadGroupControlState(clientId, opts) {
+          opts = opts || {};
+          if (!clientId) return Promise.reject(new Error("Missing client id"));
+          if (opts.showLoading !== false) setGroupControlLoading(true);
+          return fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/groups", {
+            headers: { Accept: "application/json" },
+          })
+            .then(function (res) {
+              return res.json().then(function (body) {
+                if (!res.ok) throw new Error((body && body.error) || "Failed to load groups");
+                return body;
+              });
+            })
+            .then(function (data) {
+              setGroupControlLoading(false);
+              renderGroupControlRows(data.groups || []);
+              return data;
+            })
+            .catch(function (err) {
+              setGroupControlLoading(false);
+              if (!opts.silent) showGroupControlError(err.message || "Failed to load groups");
+              throw err;
+            });
+        }
 
         function closeClientGroupsModal(ev) {
           if (ev) {
             ev.preventDefault();
             ev.stopPropagation();
           }
+          if (groupControlRefreshTimer) {
+            clearInterval(groupControlRefreshTimer);
+            groupControlRefreshTimer = null;
+          }
+          currentGroupControlClientId = null;
+          showGroupControlError("");
           if (overlay) overlay.style.display = "none";
         }
 
         function openClientGroupsModal(sub) {
-          if (!overlay || !listEl || !sub) return;
+          if (!overlay || !sub) return;
 
-          // Build normalized group names from subscription groups
-          var groups = Array.isArray(sub.groups) ? sub.groups.filter(function (g) { return g && g.active; }) : [];
-          var byName = {};
-          groups.forEach(function (g) {
-            var name = (g.name != null ? String(g.name).trim() : "");
-            if (!name) return;
-            var dir = (g.direction != null ? String(g.direction).trim().toUpperCase() : "");
-            if (!byName[name]) {
-              byName[name] = { in: false, out: false };
-            }
-            if (dir === "IN") byName[name].in = true;
-            if (dir === "OUT") byName[name].out = true;
-          });
+          var clientId = (sub.clientUid && String(sub.clientUid).trim()) || (sub.subscriptionUid && String(sub.subscriptionUid).trim()) || "";
+          if (!clientId) return;
 
-          var displayNames = Object.keys(byName).map(function (base) {
-            var flags = byName[base];
-            if (flags.in && flags.out) return base;
-            if (flags.in) return base + "_WRITE";
-            if (flags.out) return base + "_READ";
-            return base;
-          }).sort(function (a, b) {
-            return a.localeCompare(b, undefined, { sensitivity: "base" });
-          });
+          currentGroupControlClientId = clientId;
+          var callsign = (sub.callsign && String(sub.callsign).trim()) || "";
+          var username = (sub.username && String(sub.username).trim()) || "";
+          var label = callsign || username || "Client";
 
-          listEl.innerHTML = "";
-          if (displayNames.length === 0) {
-            listEl.innerHTML = '<div class="muted">No active groups for this client.</div>';
-          } else {
-            var ul = document.createElement("ul");
-            ul.style.paddingLeft = "20px";
-            displayNames.forEach(function (name) {
-              var li = document.createElement("li");
-              li.textContent = name;
-              ul.appendChild(li);
-            });
-            listEl.appendChild(ul);
-          }
-
+          if (titleEl) titleEl.textContent = "Group Control — " + label;
           if (summaryEl) {
-            var label = (sub.callsign && String(sub.callsign).trim()) || (sub.username && String(sub.username).trim()) || "Client";
-            summaryEl.textContent = "Groups currently active for " + label + ":";
+            summaryEl.textContent = "Live session groups for " + label + (username ? " (" + username + ")" : "") + ". Changes apply immediately and do not update Authentik membership.";
             summaryEl.style.display = "block";
           }
-
+          showGroupControlError("");
           overlay.style.display = "flex";
+
+          loadGroupControlState(clientId).catch(function () {});
+
+          if (groupControlRefreshTimer) clearInterval(groupControlRefreshTimer);
+          groupControlRefreshTimer = setInterval(function () {
+            if (!currentGroupControlClientId || groupToggleInFlight) return;
+            loadGroupControlState(currentGroupControlClientId, { showLoading: false, silent: true }).catch(function () {});
+          }, GROUP_CONTROL_REFRESH_MS);
         }
 
+        function onGroupControlCheckboxChange(e) {
+          var cb = e.target;
+          if (!cb || !cb.classList.contains("group-control-checkbox")) return;
+          var tr = cb.closest("tr");
+          if (!tr || !currentGroupControlClientId) return;
+
+          var groupName = tr.getAttribute("data-group-name") || "";
+          var direction = tr.getAttribute("data-direction") || "";
+          var active = cb.checked;
+          var previous = !active;
+
+          groupToggleInFlight = true;
+          cb.disabled = true;
+          showGroupControlError("");
+
+          fetch("/api/tak/clients/" + encodeURIComponent(currentGroupControlClientId) + "/groups", {
+            method: "PUT",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({ groupName: groupName, direction: direction, active: active }),
+          })
+            .then(function (res) {
+              return res.json().then(function (body) {
+                if (!res.ok) throw new Error((body && body.error) || "Failed to update group");
+                return body;
+              });
+            })
+            .then(function (data) {
+              renderGroupControlRows(data.groups || []);
+            })
+            .catch(function (err) {
+              cb.checked = previous;
+              tr.className = previous ? "group-control-row-active" : "group-control-row-inactive";
+              showGroupControlError(err.message || "Failed to update group");
+            })
+            .finally(function () {
+              cb.disabled = false;
+              groupToggleInFlight = false;
+            });
+        }
+
+        if (tableBody) {
+          tableBody.addEventListener("change", onGroupControlCheckboxChange);
+        }
         if (closeBtn) {
           closeBtn.addEventListener("click", function (e) {
             closeClientGroupsModal(e);
@@ -712,9 +825,11 @@
             var tr = e.target.closest("tr");
             if (!tr) return;
             e.stopPropagation();
-            var uid = tr.getAttribute("data-subscription-uid");
+            var uid = tr.getAttribute("data-client-uid");
             if (!uid || !latestSubscriptions.length) return;
-            var sub = latestSubscriptions.find(function (s) { return String(s.subscriptionUid) === uid; });
+            var sub = latestSubscriptions.find(function (s) {
+              return String(s.clientUid) === uid || String(s.subscriptionUid) === uid;
+            });
             if (!sub) return;
             openClientGroupsModal(sub);
           });
@@ -738,7 +853,8 @@
                   battery: item.battery != null ? String(item.battery).trim() : "",
                   role: item.role != null ? String(item.role).trim() || "—" : "—",
                   team: item.team != null ? String(item.team).trim() : "",
-                  subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : ""
+                  subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : "",
+                  clientUid: item.clientUid != null ? String(item.clientUid).trim() : ""
                 };
               });
               nextRows.sort(function (a, b) { return (a.callsign || "").localeCompare(b.callsign || "", undefined, { sensitivity: "base" }); });
@@ -753,6 +869,11 @@
           clearInterval(expandedRefreshTimer);
           expandedRefreshTimer = null;
         }
+        if (groupControlRefreshTimer) {
+          clearInterval(groupControlRefreshTimer);
+          groupControlRefreshTimer = null;
+        }
+        currentGroupControlClientId = null;
         card.innerHTML = originalCardHtml;
         card.classList.remove("connected-clients-expanded-card");
         row.classList.remove("connected-clients-row-expanded");
@@ -787,7 +908,8 @@
                 battery: item.battery != null ? String(item.battery).trim() : "",
                 role: item.role != null ? String(item.role).trim() || "—" : "—",
                 team: item.team != null ? String(item.team).trim() : "",
-                subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : ""
+                subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : "",
+                clientUid: item.clientUid != null ? String(item.clientUid).trim() : ""
               };
             });
             rows.sort(function (a, b) { return (a.callsign || "").localeCompare(b.callsign || "", undefined, { sensitivity: "base" }); });
@@ -1010,4 +1132,20 @@
   .connected-clients-table th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
   .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
+
+  .group-control-modal { width: min(640px, 95vw); max-height: 85vh; display: flex; flex-direction: column; }
+  .group-control-modal .modalBody { overflow: hidden; display: flex; flex-direction: column; }
+  .group-control-table-wrap { max-height: 360px; overflow: auto; margin-top: 4px; }
+  .group-control-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .group-control-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
+  .group-control-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .group-control-table td:first-child { width: 48px; text-align: center; }
+  .group-control-table td:last-child { width: 72px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .group-control-row-active { background: rgba(67, 160, 71, 0.22); }
+  .group-control-row-inactive { background: rgba(229, 57, 53, 0.18); }
+  .group-control-row-active:hover { background: rgba(67, 160, 71, 0.3); }
+  .group-control-row-inactive:hover { background: rgba(229, 57, 53, 0.26); }
+  .group-control-checkbox { width: 1.1em; height: 1.1em; cursor: pointer; }
+  .group-control-checkbox:disabled { cursor: wait; opacity: 0.6; }
+  #clientGroupsError.error { color: var(--danger, #e53935); }
 </style>
