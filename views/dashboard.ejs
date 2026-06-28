@@ -745,8 +745,11 @@
 
           currentGroupControlClientId = clientId;
           var username = (sub.username && String(sub.username).trim()) || "";
-
-          if (titleEl) titleEl.textContent = "Group / Channel Control — " + (username || "Client");
+          var callsign = (sub.callsign && String(sub.callsign).trim()) || "";
+          var titleParts = ["Group / Channel Control"];
+          if (username) titleParts.push(username);
+          if (callsign) titleParts.push(callsign);
+          if (titleEl) titleEl.textContent = titleParts.join(" — ");
           showGroupControlError("");
           overlay.style.display = "flex";
 
