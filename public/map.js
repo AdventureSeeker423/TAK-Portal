@@ -4417,6 +4417,23 @@
     syncDetailStackDom();
   }
 
+  function syncDetailPaneTitle(pane, m) {
+    const titleEl = pane.querySelector(".map-detail-title");
+    const platformEl = pane.querySelector(".map-detail-platform");
+    if (!titleEl) return;
+    if (!m) {
+      titleEl.textContent = "Details";
+      if (platformEl) platformEl.hidden = true;
+      return;
+    }
+    titleEl.textContent = m.callsign || "Details";
+    if (platformEl) {
+      const platform = m.platform ? String(m.platform).trim() : "";
+      platformEl.textContent = platform;
+      platformEl.hidden = !platform;
+    }
+  }
+
   function buildDetailPaneElement(slotIndex, slot) {
     const pane = document.createElement("aside");
     pane.className = "map-detail-pane";
@@ -4435,7 +4452,10 @@
       '">' +
       PIN_ICON +
       "</button>" +
+      '<div class="map-detail-title-wrap">' +
       '<h2 class="map-detail-title">Details</h2>' +
+      '<div class="map-detail-platform" hidden></div>' +
+      "</div>" +
       '<button type="button" class="map-detail-close-btn" title="Close details" aria-label="Close details">' +
       CLOSE_ICON +
       "</button>" +
@@ -4732,14 +4752,13 @@
     );
     if (!pane) return;
     const m = getMarkerRecord(slot.uid);
-    const titleEl = pane.querySelector(".map-detail-title");
     const bodyEl = pane.querySelector(".map-detail-body");
     const actionsEl = pane.querySelector(".map-detail-actions");
     const pinBtn = pane.querySelector(".map-detail-pin-btn");
     const lockBtn = pane.querySelector(".map-detail-lock-btn");
 
     if (!m) {
-      if (titleEl) titleEl.textContent = "Details";
+      syncDetailPaneTitle(pane, null);
       if (bodyEl) {
         bodyEl.innerHTML =
           '<div class="map-detail-empty">Marker no longer available.</div>';
@@ -4749,7 +4768,7 @@
       return;
     }
 
-    if (titleEl) titleEl.textContent = m.callsign || "Details";
+    syncDetailPaneTitle(pane, m);
     if (actionsEl) actionsEl.hidden = false;
     if (pinBtn) {
       pinBtn.classList.toggle("active", !!slot.pinned);

@@ -435,7 +435,11 @@ function displayGroupName(name){
 
 function setMsg(el, text, ok=true){
   el.textContent = text || "";
-  el.className = "msg " + (ok ? "ok" : "bad");
+  if (ok === "progress") {
+    el.className = "msg progress";
+  } else {
+    el.className = "msg " + (ok ? "ok" : "bad");
+  }
 }
 
 async function copyToClipboard(text) {
@@ -1934,7 +1938,7 @@ massApplyBtn.onclick = async () => {
     }
 
     const startedAt = Date.now();
-    setMsg(massMsg, `Preparing... 0 of ? • 0:00`, true);
+    setMsg(massMsg, `Preparing... 0 of ? • 0:00`, "progress");
 
     let done = false;
     while (!done) {
@@ -1962,7 +1966,7 @@ massApplyBtn.onclick = async () => {
           phase === "applying" ? "Applying changes" :
           "In Progress";
         const totalLabel = total > 0 ? String(total) : "?";
-        setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtElapsed(elapsedMs)}`, true);
+        setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtElapsed(elapsedMs)}`, "progress");
         await new Promise(r => setTimeout(r, 800));
         continue;
       }

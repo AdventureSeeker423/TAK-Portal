@@ -979,7 +979,7 @@ async function deleteGroupWithCleanup(groupId, opts = {}) {
 }
 
 // ---------- bulk helpers (group-centric membership updates) ----------
-async function bulkAddUsersToGroup(groupId, userPks) {
+async function bulkAddUsersToGroup(groupId, userPks, { preloadedGroup } = {}) {
   const id = normalizeId(groupId);
   if (!id) throw new Error("Group id is required");
 
@@ -987,7 +987,7 @@ async function bulkAddUsersToGroup(groupId, userPks) {
   if (!toAdd.length) return { matched: 0, changed: 0 };
 
   // Use group.users as source of truth so we don't drop unseen members
-  const group = await getGroupById(id);
+  const group = preloadedGroup || await getGroupById(id);
   const currentUsers = Array.isArray(group.users)
     ? group.users.map(x => String(x))
     : [];
@@ -998,28 +998,32 @@ async function bulkAddUsersToGroup(groupId, userPks) {
 
   if (merged.length === currentUsers.length) {
     // nothing actually changed
-    return { matched: toAdd.length, changed: 0 };
+    return { matched: toAdd.length, changed: 0, affectedPks: [] };
   }
 
   await api.patch(`/core/groups/${id}/`, { users: merged });
   invalidateGroupUsersCache();
 
+  const currentSet = new Set(currentUsers);
+  const affectedPks = toAdd.filter((pk) => !currentSet.has(String(pk)));
+
   return {
     matched: toAdd.length,
     changed: merged.length - currentUsers.length,
+    affectedPks,
   };
 }
 
-async function bulkRemoveUsersFromGroup(groupId, userPks) {
+async function bulkRemoveUsersFromGroup(groupId, userPks, { preloadedGroup } = {}) {
   const id = normalizeId(groupId);
   if (!id) throw new Error("Group id is required");
 
   const toRemove = new Set(
     normalizeIdList(userPks).map(String)
   );
-  if (!toRemove.size) return { matched: 0, changed: 0 };
+  if (!toRemove.size) return { matched: 0, changed: 0, affectedPks: [] };
 
-  const group = await getGroupById(id);
+  const group = preloadedGroup || await getGroupById(id);
   const currentUsers = Array.isArray(group.users)
     ? group.users.map(x => String(x))
     : [];
@@ -1028,16 +1032,63 @@ async function bulkRemoveUsersFromGroup(groupId, userPks) {
 
   if (remaining.length === currentUsers.length) {
     // nothing actually changed
-    return { matched: toRemove.size, changed: 0 };
+    return { matched: toRemove.size, changed: 0, affectedPks: [] };
   }
 
   await api.patch(`/core/groups/${id}/`, { users: remaining });
   invalidateGroupUsersCache();
 
+  const affectedPks = currentUsers.filter((pk) => toRemove.has(String(pk)));
+
   return {
     matched: toRemove.size,
     changed: currentUsers.length - remaining.length,
+    affectedPks,
   };
+}
+
+/**
+ * Apply add/remove to a group with one membership read and at most one PATCH.
+ * Filters to users who actually need a membership change.
+ */
+async function applyBulkGroupMembership(groupId, action, userPks) {
+  const id = normalizeId(groupId);
+  const pks = normalizeIdList(userPks);
+  const normalizedAction = String(action || "").trim().toLowerCase() === "remove" ? "remove" : "add";
+  if (!id || !pks.length) return { matched: 0, changed: 0, affectedPks: [] };
+
+  const group = await getGroupById(id);
+  const memberSet = new Set(
+    (Array.isArray(group?.users) ? group.users : []).map((x) => String(x))
+  );
+  const filtered =
+    normalizedAction === "remove"
+      ? pks.filter((pk) => memberSet.has(String(pk)))
+      : pks.filter((pk) => !memberSet.has(String(pk)));
+
+  if (!filtered.length) {
+    return { matched: pks.length, changed: 0, affectedPks: [] };
+  }
+
+  const result =
+    normalizedAction === "remove"
+      ? await bulkRemoveUsersFromGroup(id, filtered, { preloadedGroup: group })
+      : await bulkAddUsersToGroup(id, filtered, { preloadedGroup: group });
+
+  return {
+    matched: pks.length,
+    changed: Number(result?.changed || 0),
+    affectedPks: Array.isArray(result?.affectedPks) ? result.affectedPks : filtered,
+  };
+}
+
+async function fetchUsersByIds(userIds) {
+  const ids = normalizeIdList(userIds);
+  if (!ids.length) return [];
+  const rows = await Promise.all(
+    ids.map((id) => usersService.getUserById(id).catch(() => null))
+  );
+  return rows.filter(Boolean);
 }
 
 async function loadUsersByAgencySuffixes({
@@ -1144,15 +1195,8 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
     emitProgress({ phase: "matching", total: explicitUsers.length, processed: 0, matched: 0 });
     let targetUserPks = explicitUsers.slice();
     if (!access.isGlobalAdmin) {
-      // Agency admins must be restricted to allowed-agency users.
-      // Use one lightweight list call instead of N getUserById calls.
-      const allUsers = await usersService.getAllUsersLightweight();
-      const wanted = new Set(explicitUsers.map((id) => String(id).trim()));
-      const allowedUsers = restrictToAllowedAgencies(
-        (allUsers || []).filter((u) =>
-          wanted.has(String(u?.pk ?? u?.id ?? "").trim())
-        )
-      );
+      const fetchedUsers = await fetchUsersByIds(explicitUsers);
+      const allowedUsers = restrictToAllowedAgencies(fetchedUsers);
       targetUserPks = allowedUsers
         .map((u) => String(u?.pk ?? u?.id ?? "").trim())
         .filter(Boolean);
@@ -1165,7 +1209,7 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
     });
 
     emitProgress({ phase: "applying", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length });
-    const { changed } = await bulkAddUsersToGroup(gid, targetUserPks);
+    const { changed } = await applyBulkGroupMembership(gid, "add", targetUserPks);
 
     emitProgress({ phase: "done", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length, updated: changed });
     return { matched: targetUserPks.length, updated: changed };
@@ -1191,7 +1235,7 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
       matched: targetUserPks.length,
     });
     emitProgress({ phase: "applying", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length });
-    const { changed } = await bulkAddUsersToGroup(gid, targetUserPks);
+    const { changed } = await applyBulkGroupMembership(gid, "add", targetUserPks);
 
     emitProgress({ phase: "done", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length, updated: changed });
     return { matched: matchedUsers.length, updated: changed };
@@ -1223,7 +1267,7 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
     .map((u) => String(u?.pk ?? u?.id ?? "").trim())
     .filter(Boolean);
   emitProgress({ phase: "applying", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length });
-  const { changed } = await bulkAddUsersToGroup(gid, targetUserPks);
+  const { changed } = await applyBulkGroupMembership(gid, "add", targetUserPks);
 
   invalidateGroupUsersCache();
 
@@ -1336,13 +1380,8 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
     emitProgress({ phase: "matching", total: explicitUsers.length, processed: 0, matched: 0 });
     let targetUserPks = explicitUsers.slice();
     if (!access.isGlobalAdmin) {
-      const allUsers = await usersService.getAllUsersLightweight();
-      const wanted = new Set(explicitUsers.map((id) => String(id).trim()));
-      const allowedUsers = restrictToAllowedAgencies(
-        (allUsers || []).filter((u) =>
-          wanted.has(String(u?.pk ?? u?.id ?? "").trim())
-        )
-      );
+      const fetchedUsers = await fetchUsersByIds(explicitUsers);
+      const allowedUsers = restrictToAllowedAgencies(fetchedUsers);
       targetUserPks = allowedUsers
         .map((u) => String(u?.pk ?? u?.id ?? "").trim())
         .filter(Boolean);
@@ -1355,7 +1394,7 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
     });
 
     emitProgress({ phase: "applying", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length });
-    const { changed } = await bulkRemoveUsersFromGroup(gid, targetUserPks);
+    const { changed } = await applyBulkGroupMembership(gid, "remove", targetUserPks);
 
     invalidateGroupUsersCache();
 
@@ -1383,7 +1422,7 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
       matched: targetUserPks.length,
     });
     emitProgress({ phase: "applying", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length });
-    const { changed } = await bulkRemoveUsersFromGroup(gid, targetUserPks);
+    const { changed } = await applyBulkGroupMembership(gid, "remove", targetUserPks);
 
     invalidateGroupUsersCache();
 
@@ -1417,7 +1456,7 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
     .map((u) => String(u?.pk ?? u?.id ?? "").trim())
     .filter(Boolean);
   emitProgress({ phase: "applying", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length });
-  const { changed } = await bulkRemoveUsersFromGroup(gid, targetUserPks);
+  const { changed } = await applyBulkGroupMembership(gid, "remove", targetUserPks);
 
   emitProgress({ phase: "done", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length, updated: changed });
   return { matched: matchedUsers.length, updated: changed };
@@ -1611,6 +1650,7 @@ module.exports = {
   massUnassignUsersFromGroup,
   bulkAddUsersToGroup,
   bulkRemoveUsersFromGroup,
+  applyBulkGroupMembership,
   buildGroupsExportCsv,
   collectGroupsExportRows,
 

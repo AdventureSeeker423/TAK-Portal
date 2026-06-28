@@ -3376,7 +3376,8 @@ async function applyTemplateSyncWorkItems(workItems, { invalidateCache = true, o
  * Sync users tied to a template after template save.
  * Efficient path:
  * - One paged Authentik query filtered by agency + current_template
- * - Concurrent PATCH per matched user that actually needs changes
+ * - Group-centric membership updates (one PATCH per changed group, not per user)
+ * - Concurrent attribute-only PATCHes when the template was renamed
  */
 async function syncUsersForTemplateSave({
   agencySuffix,
@@ -3415,10 +3416,108 @@ async function syncUsersForTemplateSave({
     if (item) workItems.push(item);
   }
 
-  const patchStats = await applyTemplateSyncWorkItems(workItems);
+  if (!workItems.length) {
+    return {
+      matched: usersToSync.length,
+      updated: 0,
+      groupsUpdated: 0,
+      templateAttrUpdated: 0,
+    };
+  }
+
+  if (!applyGroupOverwrite) {
+    let templateAttrUpdated = 0;
+    const updatedUsers = new Set();
+    await runWithConcurrencyLimit(workItems, getTemplateSyncConcurrency(), async (item) => {
+      await api.patch(`/core/users/${item.userId}/`, { attributes: item.payload.attributes });
+      templateAttrUpdated += 1;
+      updatedUsers.add(item.userId);
+    });
+    if (updatedUsers.size > 0) invalidateUsersCache();
+    return {
+      matched: usersToSync.length,
+      updated: updatedUsers.size,
+      groupsUpdated: 0,
+      templateAttrUpdated,
+    };
+  }
+
+  const addByGroup = new Map();
+  const removeByGroup = new Map();
+  const attrItems = [];
+  const groupEmailItems = [];
+
+  for (const item of workItems) {
+    if (item.groupsChanged) {
+      groupEmailItems.push(item);
+      const beforeSet = normalizeIdSet(item.beforeGroups);
+      const nextSet = normalizeIdSet(item.afterGroups);
+      for (const gid of nextSet) {
+        if (!beforeSet.has(gid)) {
+          if (!addByGroup.has(gid)) addByGroup.set(gid, new Set());
+          addByGroup.get(gid).add(item.userId);
+        }
+      }
+      for (const gid of beforeSet) {
+        if (!nextSet.has(gid)) {
+          if (!removeByGroup.has(gid)) removeByGroup.set(gid, new Set());
+          removeByGroup.get(gid).add(item.userId);
+        }
+      }
+    }
+    if (item.attrsChanged) {
+      attrItems.push(item);
+    }
+  }
+
+  const groupsSvc = require("./groups.service");
+  const usersWithGroupChange = new Set();
+
+  const removeJobs = Array.from(removeByGroup.entries());
+  await runWithConcurrencyLimit(removeJobs, getTemplateSyncFetchConcurrency(), async ([groupId, pkSet]) => {
+    const out = await groupsSvc.applyBulkGroupMembership(groupId, "remove", [...pkSet]);
+    for (const pk of out?.affectedPks || []) {
+      usersWithGroupChange.add(String(pk));
+    }
+  });
+
+  const addJobs = Array.from(addByGroup.entries());
+  await runWithConcurrencyLimit(addJobs, getTemplateSyncFetchConcurrency(), async ([groupId, pkSet]) => {
+    const out = await groupsSvc.applyBulkGroupMembership(groupId, "add", [...pkSet]);
+    for (const pk of out?.affectedPks || []) {
+      usersWithGroupChange.add(String(pk));
+    }
+  });
+
+  let templateAttrUpdated = 0;
+  const updatedUsers = new Set(usersWithGroupChange);
+  if (attrItems.length) {
+    await runWithConcurrencyLimit(attrItems, getTemplateSyncConcurrency(), async (item) => {
+      await api.patch(`/core/users/${item.userId}/`, { attributes: item.payload.attributes });
+      templateAttrUpdated += 1;
+      updatedUsers.add(item.userId);
+    });
+  }
+
+  for (const item of groupEmailItems) {
+    try {
+      scheduleDebouncedGroupsEmail({
+        user: item.user,
+        beforeIds: item.beforeGroups,
+        afterIds: item.afterGroups,
+      });
+    } catch (e) {
+      // Never fail template sync because an email enqueue failed.
+    }
+  }
+
+  if (updatedUsers.size > 0) invalidateUsersCache();
+
   return {
     matched: usersToSync.length,
-    ...patchStats,
+    updated: updatedUsers.size,
+    groupsUpdated: usersWithGroupChange.size,
+    templateAttrUpdated,
   };
 }
 
@@ -3638,36 +3737,29 @@ async function syncUsersForBulkTemplateGroupDelta({
   }
   const allUsers = Array.from(userByPk.values());
   const matched = allUsers.length;
-
-  const targetUsers = allUsers.filter((u) => {
-    const groups = (Array.isArray(u?.groups) ? u.groups : []).map((x) => String(x));
-    return normalizedAction === "add"
-      ? !groups.includes(targetGroupIdStr)
-      : groups.includes(targetGroupIdStr);
-  });
-  const targetUserPks = targetUsers
+  const allUserPks = allUsers
     .map((u) => String(u?.pk ?? u?.id ?? "").trim())
     .filter(Boolean);
 
   emitProgress({
     phase: "matching",
-    total: targetUserPks.length,
-    processed: targetUserPks.length,
+    total: allUserPks.length,
+    processed: allUserPks.length,
     matched,
     updated: 0,
   });
 
-  if (!targetUserPks.length) {
+  if (!allUserPks.length) {
     emitProgress({
       phase: "done",
       total: 0,
       processed: 0,
-      matched,
+      matched: 0,
       updated: 0,
       groupsUpdated: 0,
     });
     return {
-      matched,
+      matched: 0,
       updated: 0,
       groupsUpdated: 0,
       templateAttrUpdated: 0,
@@ -3677,21 +3769,27 @@ async function syncUsersForBulkTemplateGroupDelta({
 
   emitProgress({
     phase: "applying",
-    total: targetUserPks.length,
+    total: allUserPks.length,
     processed: 0,
     matched,
     updated: 0,
   });
 
   const groupsSvc = require("./groups.service");
-  const bulkOut =
-    normalizedAction === "add"
-      ? await groupsSvc.bulkAddUsersToGroup(targetGroupId, targetUserPks)
-      : await groupsSvc.bulkRemoveUsersFromGroup(targetGroupId, targetUserPks);
+  const bulkOut = await groupsSvc.applyBulkGroupMembership(
+    targetGroupId,
+    normalizedAction,
+    allUserPks
+  );
   const changed = Number(bulkOut?.changed || 0);
+  const affectedPkSet = new Set(
+    (Array.isArray(bulkOut?.affectedPks) ? bulkOut.affectedPks : []).map((pk) => String(pk))
+  );
 
   if (changed > 0) {
-    for (const u of targetUsers) {
+    for (const u of allUsers) {
+      const pk = String(u?.pk ?? u?.id ?? "").trim();
+      if (!pk || !affectedPkSet.has(pk)) continue;
       try {
         const beforeGroups = (Array.isArray(u?.groups) ? u.groups : []).map((x) => String(x));
         const afterGroups =
@@ -3712,7 +3810,7 @@ async function syncUsersForBulkTemplateGroupDelta({
 
   emitProgress({
     phase: "done",
-    total: targetUserPks.length,
+    total: allUserPks.length,
     processed: changed,
     matched,
     updated: changed,

@@ -104,6 +104,19 @@ assert.strictEqual(parsedLinks.length, 1);
 assert.strictEqual(parsedLinks[0].url, "https://maps.google.com/?q=35.11686,-85.21141");
 assert.strictEqual(parsedLinks[0].label, "Vehicle Location");
 
+assert.strictEqual(
+  mapMeta.parseTakPlatform({
+    takv: { _attributes: { platform: "ATAK-CIV", device: "SAMSUNG SM-S938U" } },
+  }),
+  "ATAK-CIV"
+);
+assert.strictEqual(
+  mapMeta.parseTakPlatform({
+    takv: { _attributes: { platform: "TAKAware-CIV", os: "iOS" } },
+  }),
+  "TAKAware-CIV"
+);
+
 const slimWithLink = mapRender.toSlimMarker({
   ...sampleMarkers[0],
   links: parsedLinks,

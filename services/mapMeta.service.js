@@ -780,6 +780,20 @@ function parseTeamRole(detail) {
   return s || null;
 }
 
+/** CoT detail.takv platform (e.g. ATAK-CIV, TAKAware-CIV). */
+function parseTakPlatform(detail) {
+  const takv = detail?.takv;
+  if (!takv) return null;
+  const list = Array.isArray(takv) ? takv : [takv];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const attrs = item._attributes || item;
+    const platform = String(attrs?.platform || "").trim();
+    if (platform) return platform;
+  }
+  return null;
+}
+
 function parseRoundedTrackNumber(value) {
   if (value == null || value === "") return null;
   const n = Number(value);
@@ -1428,6 +1442,7 @@ module.exports = {
   parseAffiliationFromType,
   parseTeamName,
   parseTeamRole,
+  parseTakPlatform,
   parseCourseAndSpeed,
   parseTeamColor,
   parseRemarks,

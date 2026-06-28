@@ -278,6 +278,7 @@ function parseMarkerFromCoT(cot) {
     const type = String(attrs.type || cot.type() || "");
     const team = mapMeta.parseTeamName(detail) || null;
     const role = mapMeta.parseTeamRole(detail);
+    const platform = mapMeta.parseTakPlatform(detail);
     const { course, speed } = mapMeta.parseCourseAndSpeed(detail, point);
 
     const base = {
@@ -295,6 +296,7 @@ function parseMarkerFromCoT(cot) {
       how: attrs.how || null,
       team,
       role,
+      platform,
       teamColor: mapMeta.parseTeamColor(detail),
       affiliation: mapMeta.parseAffiliationFromType(type),
       remarks: mapMeta.parseRemarks(detail),

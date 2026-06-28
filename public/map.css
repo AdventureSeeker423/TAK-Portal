@@ -596,11 +596,32 @@ body.map-detail-resizing .map-panel-resize-handle {
   font-size: 0.88rem;
   font-weight: 600;
   letter-spacing: 0.03em;
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.map-detail-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.map-detail-platform {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--map-muted);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-detail-platform[hidden] {
+  display: none;
 }
 
 .map-search {
