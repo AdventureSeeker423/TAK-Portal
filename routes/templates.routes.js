@@ -3,6 +3,7 @@ const store = require("../services/templates.service");
 const accessSvc = require("../services/access.service");
 const agenciesSvc = require("../services/agencies.service");
 const auditSvc = require("../services/auditLog.service");
+const auditDetails = require("../services/auditDetails.service");
 const usersSvc = require("../services/users.service");
 const mutualAidStore = require("../services/mutualAid.store");
 
@@ -397,15 +398,8 @@ router.post("/", (req, res) => {
     request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
     action: "CREATE_TEMPLATE",
     targetType: "template",
-    targetId: String(templates.length - 1),
-    details: {
-      name: t.name,
-      agencySuffix: t.agencySuffix,
-      isDefault: !!t.isDefault,
-      groupsCount: t.groups.length,
-      colorOverride: t.colorOverride || "",
-      role: t.role || "Team Member",
-    },
+    targetId: auditDetails.templateTargetId(t.name, t.agencySuffix),
+    details: auditDetails.buildTemplateCreateDetails(t),
   });
 
   res.json({ success: true, currentTemplateSync });
@@ -466,17 +460,17 @@ router.put("/:index", async (req, res) => {
   };
 
   store.save(templates);
+  const beforeGroups = Array.isArray(existing?.groups)
+    ? existing.groups.map((g) => String(g || "").trim()).filter(Boolean)
+    : [];
+  const afterGroups = Array.isArray(t?.groups)
+    ? t.groups.map((g) => String(g || "").trim()).filter(Boolean)
+    : [];
   let currentTemplateSync = null;
   try {
     const oldName = String(existing?.name || "").trim();
     const newName = String(t?.name || "").trim();
     const oldAgency = String(existing?.agencySuffix || "").trim().toLowerCase();
-    const beforeGroups = Array.isArray(existing?.groups)
-      ? existing.groups.map((g) => String(g || "").trim()).filter(Boolean)
-      : [];
-    const afterGroups = Array.isArray(t?.groups)
-      ? t.groups.map((g) => String(g || "").trim()).filter(Boolean)
-      : [];
     const beforeSet = new Set(beforeGroups);
     const afterSet = new Set(afterGroups);
     const groupsChanged =
@@ -504,17 +498,15 @@ router.put("/:index", async (req, res) => {
     request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
     action: "UPDATE_TEMPLATE",
     targetType: "template",
-    targetId: String(idx),
-    details: {
-      beforeName: String(existing?.name || ""),
-      name: templates[idx]?.name,
-      agencySuffix: templates[idx]?.agencySuffix,
-      isDefault: !!templates[idx]?.isDefault,
-      groupsCount: Array.isArray(templates[idx]?.groups) ? templates[idx].groups.length : 0,
-      colorOverride: templates[idx]?.colorOverride || "",
-      role: templates[idx]?.role || "Team Member",
+    targetId: auditDetails.templateTargetId(templates[idx]?.name, templates[idx]?.agencySuffix),
+    details: auditDetails.buildTemplateUpdateDetails({
+      existing,
+      updated: templates[idx],
+      beforeGroups,
+      afterGroups,
       currentTemplateSync,
-    },
+      templateIndex: idx,
+    }),
   });
 
   res.json({ success: true, currentTemplateSync });
@@ -557,12 +549,8 @@ router.delete("/:index", async (req, res) => {
     request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
     action: "DELETE_TEMPLATE",
     targetType: "template",
-    targetId: String(idx),
-    details: {
-      name: String(existing?.name || ""),
-      agencySuffix: String(existing?.agencySuffix || "").trim().toLowerCase(),
-      currentTemplateSync,
-    },
+    targetId: auditDetails.templateTargetId(existing?.name, existing?.agencySuffix),
+    details: auditDetails.buildTemplateDeleteDetails(existing, currentTemplateSync),
   });
 
   res.json({ success: true });
@@ -583,15 +571,8 @@ router.post("/bulk-group-update", async (req, res) => {
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: out.action === "add" ? "BULK_ADD_GROUP_TO_TEMPLATES" : "BULK_REMOVE_GROUP_FROM_TEMPLATES",
       targetType: "template",
-      targetId: "bulk",
-      details: {
-        groupName: out.groupName,
-        templateIndicesRequested: out.templateIndicesRequested,
-        templatesUpdated: out.updated,
-        templatesSkipped: out.skipped,
-        currentTemplateSync: out.currentTemplateSync,
-        touched: out.touched,
-      },
+      targetId: out.groupName || "bulk",
+      details: auditDetails.buildBulkTemplateGroupAuditDetails(out),
     });
 
     return res.json({
@@ -680,16 +661,12 @@ router.post("/bulk-group-update/start", async (req, res) => {
           request: { method: "POST", path: "/api/templates/bulk-group-update/start", ip: req.ip },
           action: out.action === "add" ? "BULK_ADD_GROUP_TO_TEMPLATES" : "BULK_REMOVE_GROUP_FROM_TEMPLATES",
           targetType: "template",
-          targetId: "bulk",
-          details: {
-            jobId,
-            groupName: out.groupName,
-            templateIndicesRequested: out.templateIndicesRequested,
-            templatesUpdated: out.updated,
-            templatesSkipped: out.skipped,
-            currentTemplateSync: out.currentTemplateSync,
+          targetId: out.groupName || "bulk",
+          details: auditDetails.buildBulkTemplateGroupAuditDetails({
+            ...out,
             durationMs,
-          },
+            jobId,
+          }),
         });
       } catch (err) {
         const finishedAt = Date.now();

@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.41 - 6/28/26
+✨ `Enhancement` - Groups, Templates, Mutual Aid - Updated assign/unassign logic, greatly reducing load times for changes to apply<br>
+🐛 `Bug Fix` - Dashboard - Fixes issue with duplicate entries appearing in the connected users section for agencies using a prefix (abcd1234)
+
 ### v1.3.40 - 6/24/26
 ✨ `Enhancement` - Agencies / System Wide - Agencies can now be configured to use a prefix rather than a forced suffix to identify their users.  This feature is still in testing.  Please notify me if you discover any bugs.
 

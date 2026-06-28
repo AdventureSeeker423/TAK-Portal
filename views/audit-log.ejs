@@ -180,6 +180,27 @@
                 else if (targetId) display = targetId;
               }
 
+              if (type === 'template') {
+                const templateName = details.name || details.beforeName;
+                if (templateName) {
+                  const sfx = String(details.agencySuffix || '').trim().toLowerCase();
+                  display = sfx ? `${templateName} (${sfx})` : templateName;
+                } else if (targetId && targetId !== 'bulk') {
+                  display = targetId;
+                } else if (details.groupName) {
+                  display = details.groupName;
+                }
+              }
+
+              if (type === 'mutual_aid') {
+                display =
+                  details.title ||
+                  details.mutualAidTitle ||
+                  (details.after && details.after.title) ||
+                  targetId ||
+                  '—';
+              }
+
               if (type === 'data_package' || type === 'data_sync_mission' || type === 'data_sync_file') {
                 display =
                   details.fileName ||
@@ -456,6 +477,20 @@
     usernamesCreated: 'Usernames created',
     createdDetails: 'Created (username + template)',
     templatesUsed: 'Templates used',
+    summary: 'Summary',
+    groupName: 'Group',
+    sourceMode: 'Source mode',
+    sourceGroupNames: 'Source groups',
+    agencyLabels: 'Agencies',
+    usernames: 'Users',
+    groupsAdded: 'Groups added',
+    groupsRemoved: 'Groups removed',
+    groupsBefore: 'Groups before',
+    groupsAfter: 'Groups after',
+    templateNames: 'Templates',
+    templates: 'Template changes',
+    matched: 'Matched users',
+    updated: 'Updated users',
     skippedUsernames: 'Skipped usernames',
   };
 
@@ -590,6 +625,16 @@
     } else if (targetType.toLowerCase() === 'group') {
       var detailGroupName = String(details?.groupName || details?.name || '').trim();
       if (detailGroupName) targetDisplay = detailGroupName;
+    } else if (targetType.toLowerCase() === 'template') {
+      var templateName = String(details?.name || details?.beforeName || '').trim();
+      if (templateName) {
+        var templateSfx = String(details?.agencySuffix || '').trim().toLowerCase();
+        targetDisplay = templateSfx ? (templateName + ' (' + templateSfx + ')') : templateName;
+      } else if (details?.groupName) {
+        targetDisplay = String(details.groupName);
+      }
+    } else if (targetType.toLowerCase() === 'mutual_aid') {
+      targetDisplay = String(details?.title || details?.mutualAidTitle || details?.after?.title || targetId || '—');
     }
 
     const frag = tpl.content.cloneNode(true);

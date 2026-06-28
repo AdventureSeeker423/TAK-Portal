@@ -5,6 +5,7 @@ const agencies = require("../services/agencies.service");
 const accessSvc = require("../services/access.service");
 const usersService = require("../services/users.service");
 const auditSvc = require("../services/auditLog.service");
+const auditDetails = require("../services/auditDetails.service");
 const { getString } = require("../services/env");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 const mutualAidStore = require("../services/mutualAid.store");
@@ -457,6 +458,7 @@ router.post("/mass-assign", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const targetGroupName = await getGroupNameSafe(req.body?.groupId);
+    const sourceMode = auditDetails.inferMassAssignSourceMode(req.body);
     const out = await groups.massAssignUsersToGroup({
       groupId: req.body?.groupId,
       suffixes: req.body?.suffixes,
@@ -470,14 +472,14 @@ router.post("/mass-assign", async (req, res) => {
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "MASS_ASSIGN_USERS_TO_GROUP",
       targetType: "group",
-      targetId: String(req.body?.groupId || ""),
-      details: {
-        name: targetGroupName || undefined,
-        groupName: targetGroupName || undefined,
-        suffixes: req.body?.suffixes,
-        userIdsCount: Array.isArray(req.body?.userIds) ? req.body.userIds.length : undefined,
-        sourceGroupIds: req.body?.sourceGroupIds ?? req.body?.sourceGroupId,
-      },
+      targetId: targetGroupName || String(req.body?.groupId || ""),
+      details: await auditDetails.buildMassGroupActionAuditDetails({
+        kind: "assign",
+        payload: req.body,
+        out,
+        sourceMode,
+        targetGroupName,
+      }),
     });
 
     res.json({ success: true, ...out });
@@ -569,18 +571,16 @@ router.post("/mass-assign/start", async (req, res) => {
           request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
           action: "MASS_ASSIGN_USERS_TO_GROUP",
           targetType: "group",
-          targetId: String(payload.groupId || ""),
-          details: {
-            name: targetGroupName || undefined,
-            groupName: targetGroupName || undefined,
-            suffixes: payload.suffixes,
-            userIdsCount: Array.isArray(payload.userIds) ? payload.userIds.length : undefined,
-            sourceGroupIds: payload.sourceGroupIds ?? payload.sourceGroupId,
+          targetId: targetGroupName || String(payload.groupId || ""),
+          details: await auditDetails.buildMassGroupActionAuditDetails({
+            kind: "assign",
+            payload,
+            out,
             sourceMode,
-            matched: Number(out?.matched || 0),
-            updated: Number(out?.updated || 0),
+            targetGroupName,
             durationMs,
-          },
+            jobId,
+          }),
         });
       } catch (err) {
         const finishedAt = Date.now();
@@ -622,6 +622,7 @@ router.post("/mass-unassign", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const targetGroupName = await getGroupNameSafe(req.body?.groupId);
+    const sourceMode = auditDetails.inferMassAssignSourceMode(req.body);
     const out = await groups.massUnassignUsersFromGroup({
       groupId: req.body?.groupId,
       suffixes: req.body?.suffixes,
@@ -635,14 +636,14 @@ router.post("/mass-unassign", async (req, res) => {
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "MASS_UNASSIGN_USERS_FROM_GROUP",
       targetType: "group",
-      targetId: String(req.body?.groupId || ""),
-      details: {
-        name: targetGroupName || undefined,
-        groupName: targetGroupName || undefined,
-        suffixes: req.body?.suffixes,
-        userIdsCount: Array.isArray(req.body?.userIds) ? req.body.userIds.length : undefined,
-        sourceGroupIds: req.body?.sourceGroupIds ?? req.body?.sourceGroupId,
-      },
+      targetId: targetGroupName || String(req.body?.groupId || ""),
+      details: await auditDetails.buildMassGroupActionAuditDetails({
+        kind: "unassign",
+        payload: req.body,
+        out,
+        sourceMode,
+        targetGroupName,
+      }),
     });
 
     res.json({ success: true, ...out });
@@ -734,18 +735,16 @@ router.post("/mass-unassign/start", async (req, res) => {
           request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
           action: "MASS_UNASSIGN_USERS_FROM_GROUP",
           targetType: "group",
-          targetId: String(payload.groupId || ""),
-          details: {
-            name: targetGroupName || undefined,
-            groupName: targetGroupName || undefined,
-            suffixes: payload.suffixes,
-            userIdsCount: Array.isArray(payload.userIds) ? payload.userIds.length : undefined,
-            sourceGroupIds: payload.sourceGroupIds ?? payload.sourceGroupId,
+          targetId: targetGroupName || String(payload.groupId || ""),
+          details: await auditDetails.buildMassGroupActionAuditDetails({
+            kind: "unassign",
+            payload,
+            out,
             sourceMode,
-            matched: Number(out?.matched || 0),
-            updated: Number(out?.updated || 0),
+            targetGroupName,
             durationMs,
-          },
+            jobId,
+          }),
         });
       } catch (err) {
         const finishedAt = Date.now();

@@ -5,6 +5,7 @@ const router = require("express").Router();
 const mutualAid = require("../services/mutualAid.service");
 const emailSvc = require("../services/email.service");
 const auditSvc = require("../services/auditLog.service");
+const auditDetails = require("../services/auditDetails.service");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 
 const MA_LOGO_DIR = path.join(__dirname, "..", "data", "mutual-aid-logos");
@@ -76,8 +77,9 @@ router.post("/", async (req, res) => {
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "CREATE_MUTUAL_AID",
       targetType: "mutual_aid",
-      targetId: String(out?.id || ""),
+      targetId: String(out?.title || out?.id || ""),
       details: {
+        summary: auditDetails.buildMutualAidSummary("CREATE_MUTUAL_AID", out),
         type: out?.type,
         title: out?.title,
         expireEnabled: !!out?.expireEnabled,
@@ -85,6 +87,7 @@ router.post("/", async (req, res) => {
         groupMode: out?.groupMode,
         existingGroupId: out?.existingGroupId,
         groupName: out?.groupName,
+        username: out?.username,
       },
     });
 
@@ -108,14 +111,16 @@ router.post("/:id/additional-user", async (req, res) => {
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "CREATE_MUTUAL_AID_LINKED_USER",
       targetType: "mutual_aid",
-      targetId: String(out?.id || ""),
+      targetId: String(out?.title || out?.id || ""),
       details: {
+        summary: auditDetails.buildMutualAidSummary("CREATE_MUTUAL_AID_LINKED_USER", out),
         parentId: String(req.params.id),
         type: out?.type,
         title: out?.title,
         groupId: out?.groupId,
         groupName: out?.groupName,
         groupMasterId: out?.groupMasterId,
+        username: out?.username,
       },
     });
 
@@ -147,8 +152,32 @@ router.patch("/:id", uploadMaLogo.single("logo"), async (req, res) => {
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "UPDATE_MUTUAL_AID",
       targetType: "mutual_aid",
-      targetId: String(req.params.id),
-      details: { before, after: out },
+      targetId: String(out?.title || req.params.id),
+      details: {
+        summary: auditDetails.buildMutualAidSummary("UPDATE_MUTUAL_AID", out),
+        title: out?.title,
+        type: out?.type,
+        groupName: out?.groupName,
+        username: out?.username,
+        before: before
+          ? {
+              type: before.type,
+              title: before.title,
+              expireEnabled: before.expireEnabled,
+              expireAt: before.expireAt,
+              groupName: before.groupName,
+            }
+          : null,
+        after: out
+          ? {
+              type: out.type,
+              title: out.title,
+              expireEnabled: out.expireEnabled,
+              expireAt: out.expireAt,
+              groupName: out.groupName,
+            }
+          : null,
+      },
     });
 
     res.json({ success: true, item: out });
@@ -167,8 +196,14 @@ router.delete("/:id", async (req, res) => {
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "DELETE_MUTUAL_AID",
       targetType: "mutual_aid",
-      targetId: String(req.params.id),
-      details: before,
+      targetId: String(before?.title || req.params.id),
+      details: {
+        summary: auditDetails.buildMutualAidSummary("DELETE_MUTUAL_AID", before),
+        type: before?.type,
+        title: before?.title,
+        groupName: before?.groupName,
+        username: before?.username,
+      },
     });
 
     res.json(out);
