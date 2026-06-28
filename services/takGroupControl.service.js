@@ -89,6 +89,7 @@ function collapseGroupsForDisplay(rows) {
       const outActive = entry.out.active === true;
       result.push({
         name: entry.name,
+        displayName: entry.name,
         accessMode: "BOTH",
         typeLabel: "BOTH",
         active: inActive && outActive,
@@ -99,6 +100,7 @@ function collapseGroupsForDisplay(rows) {
     } else if (hasOut) {
       result.push({
         name: entry.name,
+        displayName: `${entry.name}_READ`,
         accessMode: "READ",
         typeLabel: "READ",
         direction: "OUT",
@@ -108,6 +110,7 @@ function collapseGroupsForDisplay(rows) {
     } else if (hasIn) {
       result.push({
         name: entry.name,
+        displayName: `${entry.name}_WRITE`,
         accessMode: "WRITE",
         typeLabel: "WRITE",
         direction: "IN",

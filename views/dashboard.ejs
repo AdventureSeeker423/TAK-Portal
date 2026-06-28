@@ -610,12 +610,11 @@
                 '<button class="btn" id="clientGroupsCloseBtn" type="button">Close</button>' +
               '</div>' +
               '<div class="modalBody">' +
-                '<div id="clientGroupsSummary" class="msg muted" style="display:none; margin-bottom:10px;"></div>' +
                 '<div id="clientGroupsError" class="msg error" style="display:none; margin-bottom:10px;"></div>' +
                 '<div id="clientGroupsLoading" class="muted" style="display:none;">Loading groups…</div>' +
                 '<div class="group-control-table-wrap" id="clientGroupsTableWrap" style="display:none;">' +
                   '<table class="group-control-table">' +
-                    '<thead><tr><th>On</th><th>Group</th><th>Type</th></tr></thead>' +
+                    '<thead><tr><th>Enabled</th><th>Group</th></tr></thead>' +
                     '<tbody id="clientGroupsTableBody"></tbody>' +
                   '</table>' +
                 '</div>' +
@@ -637,10 +636,19 @@
         var tableBody = document.getElementById("clientGroupsTableBody");
         var tableWrap = document.getElementById("clientGroupsTableWrap");
         var loadingEl = document.getElementById("clientGroupsLoading");
-        var summaryEl = document.getElementById("clientGroupsSummary");
         var errorEl = document.getElementById("clientGroupsError");
         var titleEl = document.getElementById("clientGroupsTitle");
         var groupToggleInFlight = false;
+
+        function groupControlDisplayName(g) {
+          if (!g) return "—";
+          if (g.displayName) return g.displayName;
+          var name = g.name || "";
+          var mode = String(g.accessMode || g.typeLabel || "").toUpperCase();
+          if (mode === "READ") return name + "_READ";
+          if (mode === "WRITE") return name + "_WRITE";
+          return name || "—";
+        }
 
         function showGroupControlError(msg) {
           if (!errorEl) return;
@@ -672,18 +680,14 @@
             cb.type = "checkbox";
             cb.checked = !!g.active;
             cb.className = "group-control-checkbox";
-            cb.setAttribute("aria-label", (g.name || "Group") + " " + (g.typeLabel || g.accessMode || ""));
+            cb.setAttribute("aria-label", "Enable " + groupControlDisplayName(g));
             tdOn.appendChild(cb);
 
             var tdName = document.createElement("td");
-            tdName.textContent = g.name || "—";
-
-            var tdType = document.createElement("td");
-            tdType.textContent = g.typeLabel || g.accessMode || "—";
+            tdName.textContent = groupControlDisplayName(g);
 
             tr.appendChild(tdOn);
             tr.appendChild(tdName);
-            tr.appendChild(tdType);
             tableBody.appendChild(tr);
           });
         }
@@ -739,10 +743,6 @@
           var label = callsign || username || "Client";
 
           if (titleEl) titleEl.textContent = "Group Control — " + label;
-          if (summaryEl) {
-            summaryEl.textContent = "Live session groups for " + label + (username ? " (" + username + ")" : "") + ". Changes apply immediately and do not update Authentik membership.";
-            summaryEl.style.display = "block";
-          }
           showGroupControlError("");
           overlay.style.display = "flex";
 
@@ -1139,8 +1139,7 @@
   .group-control-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .group-control-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
   .group-control-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  .group-control-table td:first-child { width: 48px; text-align: center; }
-  .group-control-table td:last-child { width: 72px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .group-control-table td:first-child { width: 72px; text-align: center; }
   .group-control-row-active { background: rgba(67, 160, 71, 0.22); }
   .group-control-row-inactive { background: rgba(229, 57, 53, 0.18); }
   .group-control-row-active:hover { background: rgba(67, 160, 71, 0.3); }
