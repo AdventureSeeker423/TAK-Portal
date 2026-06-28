@@ -665,21 +665,21 @@
             var tr = document.createElement("tr");
             tr.className = g.active ? "group-control-row-active" : "group-control-row-inactive";
             tr.setAttribute("data-group-name", g.name || "");
-            tr.setAttribute("data-direction", g.direction || "");
+            tr.setAttribute("data-access-mode", g.accessMode || g.typeLabel || "");
 
             var tdOn = document.createElement("td");
             var cb = document.createElement("input");
             cb.type = "checkbox";
             cb.checked = !!g.active;
             cb.className = "group-control-checkbox";
-            cb.setAttribute("aria-label", (g.name || "Group") + " " + (g.typeLabel || g.direction || ""));
+            cb.setAttribute("aria-label", (g.name || "Group") + " " + (g.typeLabel || g.accessMode || ""));
             tdOn.appendChild(cb);
 
             var tdName = document.createElement("td");
             tdName.textContent = g.name || "—";
 
             var tdType = document.createElement("td");
-            tdType.textContent = g.typeLabel || (g.direction === "IN" ? "WRITE" : g.direction === "OUT" ? "READ" : "—");
+            tdType.textContent = g.typeLabel || g.accessMode || "—";
 
             tr.appendChild(tdOn);
             tr.appendChild(tdName);
@@ -762,7 +762,7 @@
           if (!tr || !currentGroupControlClientId) return;
 
           var groupName = tr.getAttribute("data-group-name") || "";
-          var direction = tr.getAttribute("data-direction") || "";
+          var accessMode = tr.getAttribute("data-access-mode") || "";
           var active = cb.checked;
           var previous = !active;
 
@@ -773,7 +773,7 @@
           fetch("/api/tak/clients/" + encodeURIComponent(currentGroupControlClientId) + "/groups", {
             method: "PUT",
             headers: { Accept: "application/json", "Content-Type": "application/json" },
-            body: JSON.stringify({ groupName: groupName, direction: direction, active: active }),
+            body: JSON.stringify({ groupName: groupName, accessMode: accessMode, active: active }),
           })
             .then(function (res) {
               return res.json().then(function (body) {

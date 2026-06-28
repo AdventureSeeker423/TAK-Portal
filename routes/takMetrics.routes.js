@@ -111,11 +111,13 @@ router.put("/clients/:clientId/groups", async (req, res) => {
 
     const out = await takGroupControl.setClientGroupActive(req.params.clientId, user, {
       groupName: req.body?.groupName,
+      accessMode: req.body?.accessMode,
       direction: req.body?.direction,
       active,
     });
 
     const changed = out.changed || {};
+    const accessLabel = changed.accessMode || "GROUP";
     auditSvc.logEvent({
       actor: user,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
@@ -123,13 +125,13 @@ router.put("/clients/:clientId/groups", async (req, res) => {
       targetType: "tak_client",
       targetId: out.clientUid || String(req.params.clientId || ""),
       details: {
-        summary: `${active ? "Enabled" : "Disabled"} ${changed.direction === "IN" ? "WRITE" : "READ"} on "${changed.groupName}" for ${out.callsign || out.username}.`,
+        summary: `${active ? "Enabled" : "Disabled"} ${accessLabel} on "${changed.groupName}" for ${out.callsign || out.username}.`,
         username: out.username,
         callsign: out.callsign,
         clientUid: out.clientUid,
         groupName: changed.groupName,
-        direction: changed.direction,
-        typeLabel: changed.direction === "IN" ? "WRITE" : "READ",
+        accessMode: changed.accessMode,
+        typeLabel: accessLabel,
         active,
       },
     });

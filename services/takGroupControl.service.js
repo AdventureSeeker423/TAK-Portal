@@ -49,8 +49,93 @@ function normalizeGroupRow(group) {
   };
 }
 
-function rowKey(name, direction) {
-  return `${safeStr(name).trim().toLowerCase()}\0${normalizeDirection(direction)}`;
+function groupNameKey(name) {
+  return safeStr(name).trim().toLowerCase();
+}
+
+function normalizeAccessMode(value) {
+  const v = safeStr(value).trim().toUpperCase();
+  if (v === "READ" || v === "WRITE" || v === "BOTH") return v;
+  return "";
+}
+
+/**
+ * Collapse raw IN/OUT rows into one UI row per logical group:
+ * - OUT only → READ
+ * - IN only → WRITE
+ * - IN + OUT → BOTH (single checkbox toggles both directions)
+ */
+function collapseGroupsForDisplay(rows) {
+  const byName = new Map();
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = groupNameKey(row.name);
+    if (!key) continue;
+    if (!byName.has(key)) {
+      byName.set(key, { name: safeStr(row.name).trim(), in: null, out: null });
+    }
+    const entry = byName.get(key);
+    if (row.direction === "IN") entry.in = row;
+    if (row.direction === "OUT") entry.out = row;
+  }
+
+  const result = [];
+  for (const entry of byName.values()) {
+    const hasIn = !!entry.in;
+    const hasOut = !!entry.out;
+
+    if (hasIn && hasOut) {
+      const inActive = entry.in.active === true;
+      const outActive = entry.out.active === true;
+      result.push({
+        name: entry.name,
+        accessMode: "BOTH",
+        typeLabel: "BOTH",
+        active: inActive && outActive,
+        inActive,
+        outActive,
+        bitpos: entry.in.bitpos ?? entry.out.bitpos,
+      });
+    } else if (hasOut) {
+      result.push({
+        name: entry.name,
+        accessMode: "READ",
+        typeLabel: "READ",
+        direction: "OUT",
+        active: entry.out.active === true,
+        bitpos: entry.out.bitpos,
+      });
+    } else if (hasIn) {
+      result.push({
+        name: entry.name,
+        accessMode: "WRITE",
+        typeLabel: "WRITE",
+        direction: "IN",
+        active: entry.in.active === true,
+        bitpos: entry.in.bitpos,
+      });
+    }
+  }
+
+  result.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return result;
+}
+
+function resolveAccessMode({ accessMode, direction }) {
+  const mode = normalizeAccessMode(accessMode);
+  if (mode) return mode;
+  const dir = normalizeDirection(direction);
+  if (dir === "IN") return "WRITE";
+  if (dir === "OUT") return "READ";
+  return "";
+}
+
+function shouldUpdateRawRow(row, groupName, mode) {
+  if (groupNameKey(row.name) !== groupNameKey(groupName)) return false;
+  if (mode === "BOTH") return row.direction === "IN" || row.direction === "OUT";
+  if (mode === "READ") return row.direction === "OUT";
+  if (mode === "WRITE") return row.direction === "IN";
+  return false;
 }
 
 async function fetchGroupsForUser(username) {
@@ -175,28 +260,23 @@ async function resolveSubscriptionForControl(clientId, authUser) {
 
 async function getClientGroupControlState(clientId, authUser) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
-  const groups = await fetchGroupsForUser(ctx.username);
-  groups.sort((a, b) => {
-    const nameCmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    if (nameCmp !== 0) return nameCmp;
-    return a.direction.localeCompare(b.direction);
-  });
+  const rawGroups = await fetchGroupsForUser(ctx.username);
 
   return {
     configured: true,
     clientUid: ctx.clientUid,
     username: ctx.username,
     callsign: ctx.callsign,
-    groups,
+    groups: collapseGroupsForDisplay(rawGroups),
   };
 }
 
-async function setClientGroupActive(clientId, authUser, { groupName, direction, active }) {
+async function setClientGroupActive(clientId, authUser, { groupName, accessMode, direction, active }) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
   const name = safeStr(groupName).trim();
-  const dir = normalizeDirection(direction);
-  if (!name || !dir) {
-    const err = new Error("groupName and direction (IN or OUT) are required.");
+  const mode = resolveAccessMode({ accessMode, direction });
+  if (!name || !mode) {
+    const err = new Error("groupName and accessMode (READ, WRITE, or BOTH) are required.");
     err.status = 400;
     throw err;
   }
@@ -207,10 +287,9 @@ async function setClientGroupActive(clientId, authUser, { groupName, direction, 
   }
 
   const current = await fetchGroupsForUser(ctx.username);
-  const key = rowKey(name, dir);
   let found = false;
   const next = current.map((row) => {
-    if (rowKey(row.name, row.direction) !== key) return row;
+    if (!shouldUpdateRawRow(row, name, mode)) return row;
     found = true;
     return { ...row, active };
   });
@@ -221,14 +300,14 @@ async function setClientGroupActive(clientId, authUser, { groupName, direction, 
     throw err;
   }
 
-  const groups = await putActiveForceGroups(ctx.username, next);
+  const rawGroups = await putActiveForceGroups(ctx.username, next);
   return {
     configured: true,
     clientUid: ctx.clientUid,
     username: ctx.username,
     callsign: ctx.callsign,
-    groups,
-    changed: { groupName: name, direction: dir, active },
+    groups: collapseGroupsForDisplay(rawGroups),
+    changed: { groupName: name, accessMode: mode, active },
   };
 }
 
@@ -236,6 +315,7 @@ module.exports = {
   fetchGroupsForUser,
   getClientGroupControlState,
   setClientGroupActive,
+  collapseGroupsForDisplay,
   cleanGroupForTakPayload,
   normalizeGroupRow,
   findSubscriptionByClientId,
