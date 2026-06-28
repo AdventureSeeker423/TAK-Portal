@@ -713,6 +713,57 @@ function findMarkersByCallsign(callsign) {
   );
 }
 
+function formatBatteryPercentLabel(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (Number.isFinite(n)) return `${Math.round(Math.max(0, Math.min(100, n)))}%`;
+  const s = String(value).trim();
+  if (!s) return null;
+  return /%$/.test(s) ? s : `${s}%`;
+}
+
+function buildLiveMarkerBatteryIndex(markerList) {
+  const byCallsign = new Map();
+  const byUid = new Map();
+  for (const marker of Array.isArray(markerList) ? markerList : []) {
+    const label = formatBatteryPercentLabel(marker?.battery);
+    if (!label) continue;
+    const callsign = String(marker?.callsign || "").trim().toLowerCase();
+    if (callsign && !byCallsign.has(callsign)) byCallsign.set(callsign, label);
+    const uid = String(marker?.uid || "").trim().toLowerCase();
+    if (uid) byUid.set(uid, label);
+  }
+  return { byCallsign, byUid };
+}
+
+function resolveSubscriptionBattery(sub, index) {
+  const uidFields = [
+    sub?.uid,
+    sub?.clientUid,
+    sub?.clientUuid,
+    sub?.connectionUid,
+    sub?.deviceUid,
+  ];
+  for (const raw of uidFields) {
+    const key = String(raw || "").trim().toLowerCase();
+    if (key && index.byUid.has(key)) return index.byUid.get(key);
+  }
+  const callsign = String(sub?.callsign || "").trim().toLowerCase();
+  if (callsign && index.byCallsign.has(callsign)) return index.byCallsign.get(callsign);
+  const username = String(sub?.username || "").trim().toLowerCase();
+  if (username && index.byCallsign.has(username)) return index.byCallsign.get(username);
+  return null;
+}
+
+/** Join live CoT marker battery onto Marti subscription rows for dashboard. */
+function enrichSubscriptionsWithLiveMarkerBattery(list) {
+  const index = buildLiveMarkerBatteryIndex(getMarkerList());
+  return (Array.isArray(list) ? list : []).map((sub) => ({
+    ...sub,
+    battery: resolveSubscriptionBattery(sub, index),
+  }));
+}
+
 mapMeta.onSubscriptionIndexRefreshed(() => {
   refreshAllMarkerGroups();
 });
@@ -730,4 +781,5 @@ module.exports = {
   ensureBridgeStarted,
   refreshAllMarkerIcons,
   refreshAllMarkerGroups,
+  enrichSubscriptionsWithLiveMarkerBattery,
 };

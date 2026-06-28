@@ -6,6 +6,7 @@ const {
   filterConnectedUserSubscriptions,
   filterFederationSubscriptions,
 } = require("../services/takMetrics.service");
+const cotStream = require("../services/cotStream.service");
 
 router.get("/metrics", async (req, res) => {
   const user = req.authentikUser;
@@ -47,6 +48,8 @@ router.get("/subscriptions", async (req, res) => {
             agencyOnly: true,
           })
         : filterFederationSubscriptions(result.data);
+      cotStream.ensureBridgeStarted();
+      result.data = cotStream.enrichSubscriptionsWithLiveMarkerBattery(result.data);
     }
     return res.json(result);
   } catch (err) {

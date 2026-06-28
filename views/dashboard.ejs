@@ -569,6 +569,11 @@
 
       var latestSubscriptions = [];
 
+      function batteryCell(value) {
+        var s = value != null ? String(value).trim() : "";
+        return s ? esc(s) : "—";
+      }
+
       function fillExpandedTableBody(rows, rawItems) {
         latestSubscriptions = Array.isArray(rawItems) ? rawItems.slice() : [];
         var tbody = document.getElementById("connectedClientsTableBody");
@@ -581,7 +586,7 @@
           }
           var bg = teamToBg(r.team);
           if (bg !== "transparent") tr.style.backgroundColor = bg;
-          tr.innerHTML = "<td>" + esc(r.callsign) + "</td><td>" + esc(r.username) + "</td><td>" + esc(r.takClient) + "</td><td>" + esc(r.role) + "</td>";
+          tr.innerHTML = "<td>" + esc(r.callsign) + "</td><td>" + esc(r.username) + "</td><td>" + esc(r.takClient) + "</td><td>" + batteryCell(r.battery) + "</td><td>" + esc(r.role) + "</td>";
           tbody.appendChild(tr);
         });
       }
@@ -593,7 +598,7 @@
           '<button type="button" class="btn" id="connectedClientsCloseBtn">Close</button>' +
           '</div>' +
           '<div class="connected-clients-table-wrap"><table class="connected-clients-table">' +
-          '<thead><tr><th>Callsign</th><th>Username</th><th>TAK Client</th><th>Role</th></tr></thead>' +
+          '<thead><tr><th>Callsign</th><th>Username</th><th>TAK Client</th><th>Battery</th><th>Role</th></tr></thead>' +
           '<tbody id="connectedClientsTableBody"></tbody></table></div></div>' +
           '<div class="modalOverlay" id="clientGroupsOverlay" style="display:none;">' +
             '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="clientGroupsTitle">' +
@@ -730,6 +735,7 @@
                   callsign: item.callsign != null ? String(item.callsign).trim() : "",
                   username: item.username != null ? String(item.username).trim() : "",
                   takClient: item.takClient != null ? String(item.takClient).trim() || "—" : "—",
+                  battery: item.battery != null ? String(item.battery).trim() : "",
                   role: item.role != null ? String(item.role).trim() || "—" : "—",
                   team: item.team != null ? String(item.team).trim() : "",
                   subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : ""
@@ -778,6 +784,7 @@
                 callsign: item.callsign != null ? String(item.callsign).trim() : "",
                 username: item.username != null ? String(item.username).trim() : "",
                 takClient: item.takClient != null ? String(item.takClient).trim() || "—" : "—",
+                battery: item.battery != null ? String(item.battery).trim() : "",
                 role: item.role != null ? String(item.role).trim() || "—" : "—",
                 team: item.team != null ? String(item.team).trim() : "",
                 subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : ""
