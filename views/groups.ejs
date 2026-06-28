@@ -2162,6 +2162,25 @@ if (templateList) {
   });
 }
 
+const fmtMassElapsed = (ms) => {
+  const sec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+};
+
+const templateBulkPhaseLabel = (phase) => {
+  switch (String(phase || "")) {
+    case "queued": return "Preparing";
+    case "updating_templates": return "Updating templates";
+    case "loading_groups": return "Loading groups";
+    case "fetching_users": return "Loading users";
+    case "matching": return "Matching users";
+    case "applying": return "Applying changes";
+    default: return "In progress";
+  }
+};
+
 massApplyBtn.onclick = async () => {
   setMsg(massMsg, "");
   if (!activeMassGroupId) return setMsg(massMsg, "No target group selected.", false);
@@ -2204,8 +2223,11 @@ massApplyBtn.onclick = async () => {
     const actionVerb = massAction === "unassign" ? "remove" : "add";
     if (!confirm(`${actionVerb === "add" ? "Add" : "Remove"} "${activeMassGroupName}" ${actionVerb === "add" ? "to" : "from"} ${templateIndices.length} template(s)?`)) return;
 
+    const startedAt = Date.now();
+    setMsg(massMsg, `Preparing... 0 of ? • 0:00`, true);
+
     try {
-      const res = await fetch("/api/templates/bulk-group-update", {
+      const startRes = await fetch("/api/templates/bulk-group-update/start", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
@@ -2214,32 +2236,67 @@ massApplyBtn.onclick = async () => {
           templateIndices,
         })
       });
-      const out = await res.json();
-      if (!res.ok) {
-        return setMsg(massMsg, out.error || "Template update failed", false);
+      const startOut = await startRes.json();
+      if (!startRes.ok || !startOut?.jobId) {
+        return setMsg(massMsg, startOut.error || "Template update failed", false);
       }
-      await loadTemplatesForMassModal();
-      renderTemplateSourceList();
-      const sync = out && typeof out.currentTemplateSync === "object" ? out.currentTemplateSync : {};
-      const syncMsg = ` Users matched: ${Number(sync.matched || 0)}, updated: ${Number(sync.updated || 0)}, groups updated: ${Number(sync.groupsUpdated || 0)}.`;
-      return setMsg(
-        massMsg,
-        `Updated ${Number(out.updated || 0)} template(s). Skipped ${Number(out.skipped || 0)}.${syncMsg}`,
-        true
-      );
+
+      let done = false;
+      while (!done) {
+        const statusRes = await fetch(`/api/templates/bulk-jobs/${encodeURIComponent(startOut.jobId)}`);
+        const statusOut = await statusRes.json();
+        if (!statusRes.ok || !statusOut.success) {
+          throw new Error(statusOut.error || "Failed to read template update status");
+        }
+
+        const total = Number(statusOut.total || 0);
+        const processed = Number(statusOut.processed || 0);
+        const matched = Number(statusOut.matched || 0);
+        const elapsedMs = Date.now() - startedAt;
+        const phase = String(statusOut.phase || "");
+        const phaseLabel = templateBulkPhaseLabel(phase);
+
+        if (statusOut.status === "running") {
+          const totalLabel = total > 0 ? String(total) : "?";
+          let detail = `${processed} of ${totalLabel}`;
+          if (phase === "fetching_users" || phase === "matching" || phase === "applying") {
+            detail += ` • ${matched} user${matched === 1 ? "" : "s"} matched`;
+          }
+          if (phase === "applying" && Number(statusOut.updated || 0) > 0) {
+            detail += ` • ${Number(statusOut.updated || 0)} updated`;
+          }
+          setMsg(massMsg, `${phaseLabel}... ${detail} • ${fmtMassElapsed(elapsedMs)}`, true);
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+
+        if (statusOut.status === "failed") {
+          setMsg(massMsg, statusOut.error || "Template update failed", false);
+          done = true;
+          continue;
+        }
+
+        await loadTemplatesForMassModal();
+        renderTemplateSourceList();
+        const result = statusOut.result || {};
+        const sync = result.currentTemplateSync && typeof result.currentTemplateSync === "object"
+          ? result.currentTemplateSync
+          : {};
+        const syncMsg = ` Users matched: ${Number(sync.matched || statusOut.matched || 0)}, updated: ${Number(sync.updated || statusOut.updated || 0)}, groups updated: ${Number(sync.groupsUpdated || statusOut.groupsUpdated || 0)}.`;
+        setMsg(
+          massMsg,
+          `Updated ${Number(result.updated || statusOut.templatesUpdated || 0)} template(s). Skipped ${Number(result.skipped || statusOut.templatesSkipped || 0)}.${syncMsg} • ${fmtMassElapsed(elapsedMs)}`,
+          true
+        );
+        done = true;
+      }
     } catch (e) {
-      return setMsg(massMsg, "Template update failed", false);
+      return setMsg(massMsg, e?.message || "Template update failed", false);
     }
+    return;
   }
 
   const startEndpoint = massAction === "unassign" ? "/api/groups/mass-unassign/start" : "/api/groups/mass-assign/start";
-  const fmtElapsed = (ms) => {
-    const sec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
-  };
-
   try {
     const startRes = await fetch(startEndpoint, {
       method: "POST",
@@ -2281,10 +2338,10 @@ massApplyBtn.onclick = async () => {
           "In Progress";
         if (phase === "queued" || phase === "loading_users") {
           const totalLabel = total > 0 ? String(total) : "?";
-          setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtElapsed(elapsedMs)}`, true);
+          setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtMassElapsed(elapsedMs)}`, true);
         } else {
           const totalLabel = total > 0 ? String(total) : "?";
-          setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtElapsed(elapsedMs)}`, true);
+          setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtMassElapsed(elapsedMs)}`, true);
         }
         await new Promise(r => setTimeout(r, 800));
         continue;
@@ -2299,7 +2356,7 @@ massApplyBtn.onclick = async () => {
       const result = statusOut.result || {};
       setMsg(
         massMsg,
-        `Completed. Matched ${Number(result.matched || 0)} user(s). Updated ${Number(result.updated || 0)}. • ${fmtElapsed(elapsedMs)}`,
+        `Completed. Matched ${Number(result.matched || 0)} user(s). Updated ${Number(result.updated || 0)}. • ${fmtMassElapsed(elapsedMs)}`,
         true
       );
       done = true;

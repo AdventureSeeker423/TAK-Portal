@@ -6,6 +6,162 @@ const auditSvc = require("../services/auditLog.service");
 const usersSvc = require("../services/users.service");
 const mutualAidStore = require("../services/mutualAid.store");
 
+// In-memory progress jobs for bulk template group updates.
+const templateBulkJobs = new Map();
+function newTemplateBulkJobId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function runBulkTemplateGroupUpdate({
+  action,
+  groupName,
+  templateIndices,
+  authUser,
+  onProgress,
+} = {}) {
+  const actionRaw = String(action || "").trim().toLowerCase();
+  const normalizedAction = actionRaw === "remove" ? "remove" : actionRaw === "add" ? "add" : "";
+  if (!normalizedAction) {
+    throw new Error("Action must be 'add' or 'remove'.");
+  }
+
+  const normalizedGroupName = String(groupName || "").trim();
+  if (!normalizedGroupName) {
+    throw new Error("Group name is required.");
+  }
+  if (mutualAidStore.isCreatedGroupName(normalizedGroupName)) {
+    throw new Error("Mutual aid groups cannot be added to templates.");
+  }
+
+  const indices = Array.isArray(templateIndices)
+    ? templateIndices
+        .map((v) => Number(v))
+        .filter((n) => Number.isInteger(n) && n >= 0)
+    : [];
+  if (!indices.length) {
+    throw new Error("Select one or more templates.");
+  }
+
+  const emitProgress = (p) => {
+    if (typeof onProgress === "function") onProgress(p);
+  };
+
+  emitProgress({
+    phase: "updating_templates",
+    total: indices.length,
+    processed: 0,
+    matched: 0,
+    updated: 0,
+  });
+
+  const templates = store.load();
+  const uniqueIndices = Array.from(new Set(indices));
+  let updated = 0;
+  let skipped = 0;
+  const touched = [];
+
+  for (const idx of uniqueIndices) {
+    const tpl = templates[idx];
+    if (!tpl) {
+      skipped += 1;
+      continue;
+    }
+
+    const sfx = String(tpl.agencySuffix || "").trim().toLowerCase();
+    if (sfx && !accessSvc.isSuffixAllowed(authUser, sfx)) {
+      skipped += 1;
+      continue;
+    }
+
+    const groups = Array.isArray(tpl.groups)
+      ? tpl.groups.map((g) => String(g || "").trim()).filter(Boolean)
+      : [];
+
+    let nextGroups = groups.slice();
+    if (normalizedAction === "add") {
+      if (nextGroups.includes(normalizedGroupName)) {
+        skipped += 1;
+        continue;
+      }
+      nextGroups = Array.from(new Set([...nextGroups, normalizedGroupName]));
+    } else {
+      if (!nextGroups.includes(normalizedGroupName)) {
+        skipped += 1;
+        continue;
+      }
+      nextGroups = nextGroups.filter((g) => g !== normalizedGroupName);
+      if (!nextGroups.length) {
+        skipped += 1;
+        continue;
+      }
+    }
+
+    templates[idx] = {
+      ...tpl,
+      groups: nextGroups,
+    };
+    updated += 1;
+    touched.push({
+      index: idx,
+      name: String(tpl.name || "").trim(),
+      agencySuffix: sfx,
+      beforeGroups: groups,
+      afterGroups: nextGroups,
+    });
+  }
+
+  emitProgress({
+    phase: "updating_templates",
+    total: uniqueIndices.length,
+    processed: uniqueIndices.length,
+    matched: 0,
+    updated: 0,
+    templatesUpdated: updated,
+    templatesSkipped: skipped,
+  });
+
+  if (updated > 0) {
+    store.save(templates);
+  }
+
+  let currentTemplateSync = {
+    matched: 0,
+    updated: 0,
+    groupsUpdated: 0,
+    templateAttrUpdated: 0,
+    templatesProcessed: 0,
+  };
+
+  if (updated > 0) {
+    currentTemplateSync = await usersSvc.syncUsersForBulkTemplateGroupUpdates(
+      touched.map((t) => ({
+        agencySuffix: t.agencySuffix,
+        name: t.name,
+        afterGroups: t.afterGroups,
+      })),
+      {
+        onProgress: (p) => {
+          emitProgress({
+            ...p,
+            templatesUpdated: updated,
+            templatesSkipped: skipped,
+          });
+        },
+      }
+    );
+  }
+
+  return {
+    action: normalizedAction,
+    groupName: normalizedGroupName,
+    templateIndicesRequested: uniqueIndices.length,
+    updated,
+    skipped,
+    touched,
+    currentTemplateSync,
+  };
+}
+
 const ALLOWED_COLORS = new Set([
   "Blue",
   "Dark Blue",
@@ -416,141 +572,169 @@ router.delete("/:index", async (req, res) => {
 router.post("/bulk-group-update", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    const actionRaw = String(req.body?.action || "").trim().toLowerCase();
-    const action = actionRaw === "remove" ? "remove" : actionRaw === "add" ? "add" : "";
-    if (!action) {
-      return res.status(400).json({ error: "Action must be 'add' or 'remove'." });
-    }
-
-    const groupName = String(req.body?.groupName || "").trim();
-    if (!groupName) {
-      return res.status(400).json({ error: "Group name is required." });
-    }
-    if (mutualAidStore.isCreatedGroupName(groupName)) {
-      return res.status(400).json({ error: "Mutual aid groups cannot be added to templates." });
-    }
-
-    const indices = Array.isArray(req.body?.templateIndices)
-      ? req.body.templateIndices
-          .map((v) => Number(v))
-          .filter((n) => Number.isInteger(n) && n >= 0)
-      : [];
-    if (!indices.length) {
-      return res.status(400).json({ error: "Select one or more templates." });
-    }
-
-    const templates = store.load();
-    const uniqueIndices = Array.from(new Set(indices));
-    let updated = 0;
-    let skipped = 0;
-    const touched = [];
-
-    for (const idx of uniqueIndices) {
-      const tpl = templates[idx];
-      if (!tpl) {
-        skipped += 1;
-        continue;
-      }
-
-      const sfx = String(tpl.agencySuffix || "").trim().toLowerCase();
-      if (sfx && !accessSvc.isSuffixAllowed(authUser, sfx)) {
-        skipped += 1;
-        continue;
-      }
-
-      const groups = Array.isArray(tpl.groups)
-        ? tpl.groups.map((g) => String(g || "").trim()).filter(Boolean)
-        : [];
-
-      let nextGroups = groups.slice();
-      if (action === "add") {
-        if (nextGroups.includes(groupName)) {
-          skipped += 1;
-          continue;
-        }
-        nextGroups = Array.from(new Set([...nextGroups, groupName]));
-      } else {
-        if (!nextGroups.includes(groupName)) {
-          skipped += 1;
-          continue;
-        }
-        nextGroups = nextGroups.filter((g) => g !== groupName);
-        if (!nextGroups.length) {
-          skipped += 1;
-          continue;
-        }
-      }
-
-      templates[idx] = {
-        ...tpl,
-        groups: nextGroups,
-      };
-      updated += 1;
-      touched.push({
-        index: idx,
-        name: String(tpl.name || "").trim(),
-        agencySuffix: sfx,
-        beforeGroups: groups,
-        afterGroups: nextGroups,
-      });
-    }
-
-    if (updated > 0) {
-      store.save(templates);
-    }
-
-    let currentTemplateSync = {
-      matched: 0,
-      updated: 0,
-      groupsUpdated: 0,
-      templateAttrUpdated: 0,
-      templatesProcessed: 0,
-    };
-    if (updated > 0) {
-      for (const t of touched) {
-        const templateName = String(t?.name || "").trim();
-        const agencySuffix = String(t?.agencySuffix || "").trim().toLowerCase();
-        if (!templateName || !agencySuffix) continue;
-        const syncOut = await usersSvc.syncUsersForTemplateSave({
-          agencySuffix,
-          fromTemplateName: templateName,
-          toTemplateName: templateName,
-          templateGroupNames: Array.isArray(t?.afterGroups) ? t.afterGroups : [],
-          applyGroupOverwrite: true,
-        });
-        currentTemplateSync.matched += Number(syncOut?.matched || 0);
-        currentTemplateSync.updated += Number(syncOut?.updated || 0);
-        currentTemplateSync.groupsUpdated += Number(syncOut?.groupsUpdated || 0);
-        currentTemplateSync.templateAttrUpdated += Number(syncOut?.templateAttrUpdated || 0);
-        currentTemplateSync.templatesProcessed += 1;
-      }
-    }
+    const out = await runBulkTemplateGroupUpdate({
+      action: req.body?.action,
+      groupName: req.body?.groupName,
+      templateIndices: req.body?.templateIndices,
+      authUser,
+    });
 
     auditSvc.logEvent({
       actor: authUser,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
-      action: action === "add" ? "BULK_ADD_GROUP_TO_TEMPLATES" : "BULK_REMOVE_GROUP_FROM_TEMPLATES",
+      action: out.action === "add" ? "BULK_ADD_GROUP_TO_TEMPLATES" : "BULK_REMOVE_GROUP_FROM_TEMPLATES",
       targetType: "template",
       targetId: "bulk",
       details: {
-        groupName,
-        templateIndicesRequested: uniqueIndices.length,
-        templatesUpdated: updated,
-        templatesSkipped: skipped,
-        currentTemplateSync,
-        touched,
+        groupName: out.groupName,
+        templateIndicesRequested: out.templateIndicesRequested,
+        templatesUpdated: out.updated,
+        templatesSkipped: out.skipped,
+        currentTemplateSync: out.currentTemplateSync,
+        touched: out.touched,
       },
     });
 
     return res.json({
       success: true,
-      updated,
-      skipped,
-      currentTemplateSync,
+      updated: out.updated,
+      skipped: out.skipped,
+      currentTemplateSync: out.currentTemplateSync,
     });
   } catch (err) {
     return res.status(400).json({ error: err?.message || "Bulk template update failed" });
   }
+});
+
+router.post("/bulk-group-update/start", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const payload = req.body || {};
+    const templateIndices = Array.isArray(payload.templateIndices) ? payload.templateIndices : [];
+    const jobId = newTemplateBulkJobId();
+    const startedAt = Date.now();
+
+    templateBulkJobs.set(jobId, {
+      jobId,
+      status: "running",
+      phase: "queued",
+      total: templateIndices.length,
+      processed: 0,
+      matched: 0,
+      updated: 0,
+      groupsUpdated: 0,
+      templatesUpdated: 0,
+      templatesSkipped: 0,
+      error: null,
+      result: null,
+      startedAt,
+      finishedAt: null,
+      durationMs: null,
+      durationSeconds: null,
+    });
+
+    (async () => {
+      try {
+        const out = await runBulkTemplateGroupUpdate({
+          action: payload.action,
+          groupName: payload.groupName,
+          templateIndices,
+          authUser,
+          onProgress: (p) => {
+            const job = templateBulkJobs.get(jobId);
+            if (!job || job.status !== "running") return;
+            if (!p || typeof p !== "object") return;
+            if (p.phase) job.phase = String(p.phase);
+            if (Number.isFinite(Number(p.total))) job.total = Number(p.total);
+            if (Number.isFinite(Number(p.processed))) job.processed = Number(p.processed);
+            if (Number.isFinite(Number(p.matched))) job.matched = Number(p.matched);
+            if (Number.isFinite(Number(p.updated))) job.updated = Number(p.updated);
+            if (Number.isFinite(Number(p.groupsUpdated))) job.groupsUpdated = Number(p.groupsUpdated);
+            if (Number.isFinite(Number(p.templatesUpdated))) job.templatesUpdated = Number(p.templatesUpdated);
+            if (Number.isFinite(Number(p.templatesSkipped))) job.templatesSkipped = Number(p.templatesSkipped);
+          },
+        });
+
+        const finishedAt = Date.now();
+        const durationMs = finishedAt - startedAt;
+        const job = templateBulkJobs.get(jobId);
+        if (job) {
+          job.status = "done";
+          job.phase = "done";
+          job.result = {
+            updated: out.updated,
+            skipped: out.skipped,
+            currentTemplateSync: out.currentTemplateSync,
+          };
+          job.matched = Number(out.currentTemplateSync?.matched || job.matched || 0);
+          job.updated = Number(out.currentTemplateSync?.updated || job.updated || 0);
+          job.groupsUpdated = Number(out.currentTemplateSync?.groupsUpdated || job.groupsUpdated || 0);
+          job.templatesUpdated = Number(out.updated || 0);
+          job.templatesSkipped = Number(out.skipped || 0);
+          job.finishedAt = finishedAt;
+          job.durationMs = durationMs;
+          job.durationSeconds = Math.round((durationMs / 1000) * 10) / 10;
+        }
+
+        auditSvc.logEvent({
+          actor: authUser,
+          request: { method: "POST", path: "/api/templates/bulk-group-update/start", ip: req.ip },
+          action: out.action === "add" ? "BULK_ADD_GROUP_TO_TEMPLATES" : "BULK_REMOVE_GROUP_FROM_TEMPLATES",
+          targetType: "template",
+          targetId: "bulk",
+          details: {
+            jobId,
+            groupName: out.groupName,
+            templateIndicesRequested: out.templateIndicesRequested,
+            templatesUpdated: out.updated,
+            templatesSkipped: out.skipped,
+            currentTemplateSync: out.currentTemplateSync,
+            durationMs,
+          },
+        });
+      } catch (err) {
+        const finishedAt = Date.now();
+        const durationMs = finishedAt - startedAt;
+        const job = templateBulkJobs.get(jobId);
+        if (job) {
+          job.status = "failed";
+          job.phase = "failed";
+          job.error = err?.message || String(err);
+          job.finishedAt = finishedAt;
+          job.durationMs = durationMs;
+          job.durationSeconds = Math.round((durationMs / 1000) * 10) / 10;
+        }
+        auditSvc.logEvent({
+          actor: authUser,
+          request: { method: "POST", path: "/api/templates/bulk-group-update/start", ip: req.ip },
+          action: "BULK_TEMPLATE_GROUP_UPDATE_FAILED",
+          targetType: "template",
+          targetId: "bulk",
+          details: {
+            jobId,
+            groupName: String(payload.groupName || ""),
+            error: err?.message || String(err),
+            durationMs,
+          },
+        });
+      }
+    })();
+
+    setTimeout(() => templateBulkJobs.delete(jobId), 60 * 60 * 1000).unref?.();
+    return res.json({ success: true, jobId });
+  } catch (err) {
+    return res.status(400).json({ error: err?.message || "Bulk template update failed" });
+  }
+});
+
+router.get("/bulk-jobs/:jobId", (req, res) => {
+  const jobId = String(req.params.jobId || "");
+  const job = templateBulkJobs.get(jobId);
+  if (!job) return res.status(404).json({ error: "Template bulk job not found" });
+  return res.json({
+    success: true,
+    ...job,
+  });
 });
 
 module.exports = router;

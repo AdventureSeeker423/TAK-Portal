@@ -2628,6 +2628,18 @@ function getAgencyActiveConcurrency() {
   return Number.isFinite(envVal) && envVal > 0 && envVal <= 25 ? envVal : defaultLimit;
 }
 
+function getTemplateSyncConcurrency() {
+  const defaultLimit = 10;
+  const envVal = getInt("TEMPLATE_SYNC_CONCURRENCY", defaultLimit);
+  return Number.isFinite(envVal) && envVal > 0 && envVal <= 25 ? envVal : defaultLimit;
+}
+
+function getTemplateSyncFetchConcurrency() {
+  const defaultLimit = 6;
+  const envVal = getInt("TEMPLATE_SYNC_FETCH_CONCURRENCY", defaultLimit);
+  return Number.isFinite(envVal) && envVal > 0 && envVal <= 12 ? envVal : defaultLimit;
+}
+
 async function runWithConcurrencyLimit(items, limit, worker) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) return;
@@ -3129,7 +3141,7 @@ async function bulkSetCurrentTemplateForAgencyUsers({
     }
   }
 
-  let updated = 0;
+  const patchItems = [];
   for (const u of usersToUpdate) {
     const userId = String(u?.pk ?? u?.id ?? "").trim();
     if (!userId) continue;
@@ -3137,16 +3149,25 @@ async function bulkSetCurrentTemplateForAgencyUsers({
     if (String(attrs.current_template || "").trim() !== from) continue;
     if (String(attrs.agency || "").trim().toLowerCase() !== sfx) continue;
 
-    await api.patch(`/core/users/${userId}/`, {
-      attributes: {
-        ...attrs,
-        current_template: to,
+    patchItems.push({
+      userId,
+      payload: {
+        attributes: {
+          ...attrs,
+          current_template: to,
+        },
       },
     });
-    updated += 1;
   }
 
-  invalidateUsersCache();
+  const concurrency = getTemplateSyncConcurrency();
+  let updated = 0;
+  await runWithConcurrencyLimit(patchItems, concurrency, async (item) => {
+    await api.patch(`/core/users/${item.userId}/`, item.payload);
+    updated += 1;
+  });
+
+  if (updated > 0) invalidateUsersCache();
   return {
     matched: usersToUpdate.length,
     updated,
@@ -3169,54 +3190,44 @@ function idSetsEqual(a, b) {
   return true;
 }
 
-/**
- * Sync users tied to a template after template save.
- * Efficient path:
- * - One paged Authentik query filtered by agency + current_template
- * - One PATCH per matched user (attributes and/or groups)
- */
-async function syncUsersForTemplateSave({
-  agencySuffix,
-  fromTemplateName,
-  toTemplateName,
-  templateGroupNames,
-  applyGroupOverwrite = false,
-} = {}) {
-  const sfx = String(agencySuffix || "").trim().toLowerCase();
-  const fromName = String(fromTemplateName || "").trim();
-  const toName = String(toTemplateName || "").trim() || fromName;
-  if (!sfx || !fromName) {
-    return { matched: 0, updated: 0, groupsUpdated: 0, templateAttrUpdated: 0 };
-  }
+function buildTemplateGroupSyncContext(allVisibleGroups) {
+  const groups = Array.isArray(allVisibleGroups) ? allVisibleGroups : [];
+  const byName = new Map(
+    groups.map((g) => [
+      String(g?.name || "").trim().toLowerCase(),
+      String(g?.pk || "").trim(),
+    ])
+  );
+  const visibleGroupIdSet = new Set(
+    groups.map((g) => String(g?.pk || "").trim()).filter(Boolean)
+  );
+  const mutualAidGroupIds = mutualAidStore.getMutualAidGroupIdSet();
+  return { byName, visibleGroupIdSet, mutualAidGroupIds };
+}
 
-  let targetVisibleTemplateGroupIds = [];
-  let visibleGroupIdSet = new Set();
-  if (applyGroupOverwrite) {
-    const allVisibleGroups = await getAllGroups({ includeHidden: false });
-    const byName = new Map(
-      (Array.isArray(allVisibleGroups) ? allVisibleGroups : []).map((g) => [
-        String(g?.name || "").trim().toLowerCase(),
-        String(g?.pk || "").trim(),
-      ])
-    );
-    visibleGroupIdSet = new Set(
-      (Array.isArray(allVisibleGroups) ? allVisibleGroups : [])
-        .map((g) => String(g?.pk || "").trim())
+function resolveTemplateGroupIds(templateGroupNames, syncCtx) {
+  return Array.from(
+    new Set(
+      (Array.isArray(templateGroupNames) ? templateGroupNames : [])
+        .map((n) => syncCtx.byName.get(String(n || "").trim().toLowerCase()) || "")
         .filter(Boolean)
-    );
-    targetVisibleTemplateGroupIds = Array.from(
-      new Set(
-        (Array.isArray(templateGroupNames) ? templateGroupNames : [])
-          .map((n) => byName.get(String(n || "").trim().toLowerCase()) || "")
-          .filter(Boolean)
-      )
-    );
-  }
+    )
+  );
+}
 
-  let usersToSync = [];
+/**
+ * Fetch users by Authentik custom attributes (agency + current_template).
+ * Relies on server-side attribute filtering to avoid scanning all users.
+ */
+async function fetchUsersByAgencyAndCurrentTemplate(agencySuffix, templateName) {
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  const fromName = String(templateName || "").trim();
+  if (!sfx || !fromName) return [];
+
+  let users = [];
   let page = 1;
   let hasNext = true;
-  const pageSize = 200;
+  const pageSize = getInt("AUTHENTIK_USER_PAGE_SIZE", 500) || 500;
 
   while (hasNext) {
     const params = {
@@ -3232,7 +3243,7 @@ async function syncUsersForTemplateSave({
     const res = await api.get("/core/users/", { params });
     const data = res?.data || {};
     const rows = Array.isArray(data.results) ? data.results : [];
-    usersToSync = usersToSync.concat(rows);
+    users = users.concat(rows);
 
     const pagination = data.pagination || {};
     if (pagination && pagination.next) {
@@ -3246,75 +3257,290 @@ async function syncUsersForTemplateSave({
     }
   }
 
-  let updated = 0;
-  let groupsUpdated = 0;
-  let templateAttrUpdated = 0;
+  return users;
+}
 
-  for (const u of usersToSync) {
-    const uid = String(u?.pk ?? u?.id ?? "").trim();
-    if (!uid) continue;
+function computeTemplateSyncWorkItem(
+  user,
+  {
+    agencySuffix,
+    fromTemplateName,
+    toTemplateName,
+    templateGroupNames,
+    applyGroupOverwrite = false,
+    syncCtx = null,
+  } = {}
+) {
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  const fromName = String(fromTemplateName || "").trim();
+  const toName = String(toTemplateName || "").trim() || fromName;
 
-    const attrs = u?.attributes && typeof u.attributes === "object" ? u.attributes : {};
-    const currentTemplate = String(attrs.current_template || "").trim();
-    const currentAgency = String(attrs.agency || "").trim().toLowerCase();
-    if (currentTemplate !== fromName || currentAgency !== sfx) continue;
+  const uid = String(user?.pk ?? user?.id ?? "").trim();
+  if (!uid) return null;
 
-    const beforeGroups = Array.isArray(u?.groups) ? u.groups.map((x) => String(x)) : [];
-    const beforeSet = normalizeIdSet(beforeGroups);
-    let nextGroups = beforeGroups.slice();
+  const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
+  const currentTemplate = String(attrs.current_template || "").trim();
+  const currentAgency = String(attrs.agency || "").trim().toLowerCase();
+  if (currentTemplate !== fromName || currentAgency !== sfx) return null;
 
-    if (applyGroupOverwrite) {
-      const mutualAidGroupIds = mutualAidStore.getMutualAidGroupIdSet();
-      const preservedUnknown = beforeGroups.filter((id) => !visibleGroupIdSet.has(String(id)));
-      const preservedMutualAid = beforeGroups.filter((id) => mutualAidGroupIds.has(String(id)));
-      nextGroups = Array.from(
-        new Set([
-          ...preservedUnknown,
-          ...preservedMutualAid,
-          ...targetVisibleTemplateGroupIds,
-        ])
-      );
-    }
+  const beforeGroups = Array.isArray(user?.groups) ? user.groups.map((x) => String(x)) : [];
+  const beforeSet = normalizeIdSet(beforeGroups);
+  let nextGroups = beforeGroups.slice();
 
-    const nextSet = normalizeIdSet(nextGroups);
-    const attrsChanged = currentTemplate !== toName;
-    const groupsChanged = !idSetsEqual(beforeSet, nextSet);
+  if (applyGroupOverwrite && syncCtx) {
+    const targetVisibleTemplateGroupIds = resolveTemplateGroupIds(templateGroupNames, syncCtx);
+    const preservedUnknown = beforeGroups.filter((id) => !syncCtx.visibleGroupIdSet.has(String(id)));
+    const preservedMutualAid = beforeGroups.filter((id) => syncCtx.mutualAidGroupIds.has(String(id)));
+    nextGroups = Array.from(
+      new Set([
+        ...preservedUnknown,
+        ...preservedMutualAid,
+        ...targetVisibleTemplateGroupIds,
+      ])
+    );
+  }
 
-    if (!attrsChanged && !groupsChanged) continue;
+  const nextSet = normalizeIdSet(nextGroups);
+  const attrsChanged = currentTemplate !== toName;
+  const groupsChanged = applyGroupOverwrite ? !idSetsEqual(beforeSet, nextSet) : false;
 
-    const payload = {
-      attributes: {
-        ...attrs,
-        current_template: toName,
-      },
-    };
-    if (groupsChanged) {
-      payload.groups = nextGroups;
-    }
+  if (!attrsChanged && !groupsChanged) return null;
 
-    await api.patch(`/core/users/${uid}/`, payload);
-    updated += 1;
-    if (attrsChanged) templateAttrUpdated += 1;
-    if (groupsChanged) {
-      groupsUpdated += 1;
+  const payload = {
+    attributes: {
+      ...attrs,
+      current_template: toName,
+    },
+  };
+  if (groupsChanged) {
+    payload.groups = nextGroups;
+  }
+
+  return {
+    userId: uid,
+    user,
+    payload,
+    beforeGroups,
+    afterGroups: nextGroups,
+    attrsChanged,
+    groupsChanged,
+  };
+}
+
+async function applyTemplateSyncWorkItems(workItems, { invalidateCache = true, onProgress } = {}) {
+  const items = Array.isArray(workItems) ? workItems : [];
+  if (!items.length) {
+    return { updated: 0, groupsUpdated: 0, templateAttrUpdated: 0 };
+  }
+
+  const stats = { updated: 0, groupsUpdated: 0, templateAttrUpdated: 0 };
+  const concurrency = getTemplateSyncConcurrency();
+  const emitProgress = (extra = {}) => {
+    if (typeof onProgress !== "function") return;
+    onProgress({
+      phase: "applying",
+      total: items.length,
+      processed: stats.updated,
+      updated: stats.updated,
+      groupsUpdated: stats.groupsUpdated,
+      ...extra,
+    });
+  };
+
+  emitProgress();
+
+  await runWithConcurrencyLimit(items, concurrency, async (item) => {
+    await api.patch(`/core/users/${item.userId}/`, item.payload);
+    stats.updated += 1;
+    if (item.attrsChanged) stats.templateAttrUpdated += 1;
+    if (item.groupsChanged) {
+      stats.groupsUpdated += 1;
       try {
         scheduleDebouncedGroupsEmail({
-          user: u,
-          beforeIds: beforeGroups,
-          afterIds: nextGroups,
+          user: item.user,
+          beforeIds: item.beforeGroups,
+          afterIds: item.afterGroups,
         });
       } catch (e) {
         // Never fail template sync because an email enqueue failed.
       }
     }
+    emitProgress();
+  });
+
+  if (invalidateCache && stats.updated > 0) invalidateUsersCache();
+  return stats;
+}
+
+/**
+ * Sync users tied to a template after template save.
+ * Efficient path:
+ * - One paged Authentik query filtered by agency + current_template
+ * - Concurrent PATCH per matched user that actually needs changes
+ */
+async function syncUsersForTemplateSave({
+  agencySuffix,
+  fromTemplateName,
+  toTemplateName,
+  templateGroupNames,
+  applyGroupOverwrite = false,
+  preloadedSyncCtx = null,
+} = {}) {
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  const fromName = String(fromTemplateName || "").trim();
+  const toName = String(toTemplateName || "").trim() || fromName;
+  if (!sfx || !fromName) {
+    return { matched: 0, updated: 0, groupsUpdated: 0, templateAttrUpdated: 0 };
   }
 
-  invalidateUsersCache();
+  let syncCtx = preloadedSyncCtx;
+  if (applyGroupOverwrite && !syncCtx) {
+    const allVisibleGroups = await getAllGroups({ includeHidden: false });
+    syncCtx = buildTemplateGroupSyncContext(allVisibleGroups);
+  }
+
+  const usersToSync = await fetchUsersByAgencyAndCurrentTemplate(sfx, fromName);
+  const syncOpts = {
+    agencySuffix: sfx,
+    fromTemplateName: fromName,
+    toTemplateName: toName,
+    templateGroupNames,
+    applyGroupOverwrite,
+    syncCtx,
+  };
+
+  const workItems = [];
+  for (const u of usersToSync) {
+    const item = computeTemplateSyncWorkItem(u, syncOpts);
+    if (item) workItems.push(item);
+  }
+
+  const patchStats = await applyTemplateSyncWorkItems(workItems);
   return {
     matched: usersToSync.length,
-    updated,
-    groupsUpdated,
-    templateAttrUpdated,
+    ...patchStats,
+  };
+}
+
+/**
+ * Batch-sync users after bulk template group add/remove.
+ * Loads Authentik groups once, fetches matched users per template in parallel,
+ * then applies concurrent user PATCHes.
+ */
+async function syncUsersForBulkTemplateGroupUpdates(templates, { onProgress } = {}) {
+  const emitProgress = (p) => {
+    if (typeof onProgress === "function") onProgress(p);
+  };
+
+  const list = (Array.isArray(templates) ? templates : [])
+    .map((t) => ({
+      agencySuffix: String(t?.agencySuffix || "").trim().toLowerCase(),
+      templateName: String(t?.name || t?.templateName || "").trim(),
+      templateGroupNames: Array.isArray(t?.afterGroups) ? t.afterGroups : [],
+    }))
+    .filter((t) => t.agencySuffix && t.templateName);
+
+  if (!list.length) {
+    return {
+      matched: 0,
+      updated: 0,
+      groupsUpdated: 0,
+      templateAttrUpdated: 0,
+      templatesProcessed: 0,
+    };
+  }
+
+  emitProgress({
+    phase: "loading_groups",
+    total: list.length,
+    processed: 0,
+    matched: 0,
+    updated: 0,
+  });
+
+  const syncCtx = buildTemplateGroupSyncContext(
+    await getAllGroups({ includeHidden: false })
+  );
+  const fetchConcurrency = getTemplateSyncFetchConcurrency();
+  const fetchJobs = list.map((t, i) => ({ t, i }));
+  const usersByTemplate = new Array(list.length);
+
+  emitProgress({
+    phase: "fetching_users",
+    total: list.length,
+    processed: 0,
+    matched: 0,
+    updated: 0,
+  });
+
+  let fetchProcessed = 0;
+  let matchedWhileFetching = 0;
+  await runWithConcurrencyLimit(fetchJobs, fetchConcurrency, async (job) => {
+    usersByTemplate[job.i] = await fetchUsersByAgencyAndCurrentTemplate(
+      job.t.agencySuffix,
+      job.t.templateName
+    );
+    fetchProcessed += 1;
+    matchedWhileFetching += (usersByTemplate[job.i] || []).length;
+    emitProgress({
+      phase: "fetching_users",
+      total: list.length,
+      processed: fetchProcessed,
+      matched: matchedWhileFetching,
+      updated: 0,
+    });
+  });
+
+  let matched = 0;
+  const workItems = [];
+  for (let i = 0; i < list.length; i++) {
+    const t = list[i];
+    const users = usersByTemplate[i] || [];
+    matched += users.length;
+    const syncOpts = {
+      agencySuffix: t.agencySuffix,
+      fromTemplateName: t.templateName,
+      toTemplateName: t.templateName,
+      templateGroupNames: t.templateGroupNames,
+      applyGroupOverwrite: true,
+      syncCtx,
+    };
+    for (const u of users) {
+      const item = computeTemplateSyncWorkItem(u, syncOpts);
+      if (item) workItems.push(item);
+    }
+  }
+
+  emitProgress({
+    phase: "matching",
+    total: workItems.length,
+    processed: workItems.length,
+    matched,
+    updated: 0,
+  });
+
+  const patchStats = await applyTemplateSyncWorkItems(workItems, {
+    onProgress: (p) => {
+      emitProgress({
+        ...p,
+        matched,
+      });
+    },
+  });
+
+  emitProgress({
+    phase: "done",
+    total: workItems.length,
+    processed: patchStats.updated,
+    matched,
+    updated: patchStats.updated,
+    groupsUpdated: patchStats.groupsUpdated,
+  });
+
+  return {
+    matched,
+    ...patchStats,
+    templatesProcessed: list.length,
   };
 }
 
@@ -4269,5 +4495,6 @@ module.exports = {
   buildUsersExportCsv,
   bulkSetCurrentTemplateForAgencyUsers,
   syncUsersForTemplateSave,
+  syncUsersForBulkTemplateGroupUpdates,
   reconcileCurrentTemplateForAgencySuffix,
 };
