@@ -14,6 +14,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ### v1.3.41 - 6/28/26
 ✨ `Enhancement` - Groups, Templates, Mutual Aid - Updated assign/unassign logic, greatly reducing load times for changes to apply<br>
+✨ `Enhancement` - Audit Log - Improved audit logging for group and template edits<br>
 🐛 `Bug Fix` - Dashboard - Fixes issue with duplicate entries appearing in the connected users section for agencies using a prefix (abcd1234)
 
 ### v1.3.40 - 6/24/26
