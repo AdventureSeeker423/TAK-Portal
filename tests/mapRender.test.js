@@ -116,6 +116,18 @@ assert.strictEqual(
   }),
   "TAKAware-CIV"
 );
+assert.strictEqual(
+  mapMeta.parseBatteryPercent({
+    status: { _attributes: { battery: "60" } },
+  }),
+  60
+);
+assert.strictEqual(
+  mapMeta.parseBatteryPercent({
+    status: { _attributes: { battery: "95" } },
+  }),
+  95
+);
 
 const slimWithLink = mapRender.toSlimMarker({
   ...sampleMarkers[0],

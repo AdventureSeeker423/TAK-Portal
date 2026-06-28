@@ -309,6 +309,7 @@ function toSlimMarker(marker) {
     team: marker.team,
     role: marker.role || null,
     platform: marker.platform || null,
+    battery: marker.battery != null && marker.battery !== "" ? marker.battery : null,
     updatedAt: marker.updatedAt,
     iconId: marker.iconId || null,
     iconSource: marker.iconSource || null,

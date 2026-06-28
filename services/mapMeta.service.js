@@ -794,6 +794,24 @@ function parseTakPlatform(detail) {
   return null;
 }
 
+/** CoT detail.status battery percentage when present. */
+function parseBatteryPercent(detail) {
+  const status = detail?.status;
+  if (!status) return null;
+  const list = Array.isArray(status) ? status : [status];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const attrs = item._attributes || item;
+    const raw = attrs?.battery;
+    if (raw == null || raw === "") continue;
+    const n = Number(raw);
+    if (Number.isFinite(n)) return Math.round(Math.max(0, Math.min(100, n)));
+    const s = String(raw).trim();
+    if (s) return s;
+  }
+  return null;
+}
+
 function parseRoundedTrackNumber(value) {
   if (value == null || value === "") return null;
   const n = Number(value);
@@ -1443,6 +1461,7 @@ module.exports = {
   parseTeamName,
   parseTeamRole,
   parseTakPlatform,
+  parseBatteryPercent,
   parseCourseAndSpeed,
   parseTeamColor,
   parseRemarks,

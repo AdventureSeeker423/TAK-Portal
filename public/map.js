@@ -4417,6 +4417,24 @@
     syncDetailStackDom();
   }
 
+  function formatDetailBatteryLabel(value) {
+    if (value == null || value === "") return "";
+    const n = Number(value);
+    if (Number.isFinite(n)) return Math.round(n) + "%";
+    const s = String(value).trim();
+    if (!s) return "";
+    return /%$/.test(s) ? s : s + "%";
+  }
+
+  function markerDetailMetaLine(m) {
+    const parts = [];
+    const platform = m && m.platform ? String(m.platform).trim() : "";
+    if (platform) parts.push(platform);
+    const battery = m ? formatDetailBatteryLabel(m.battery) : "";
+    if (battery) parts.push(battery);
+    return parts.join(" · ");
+  }
+
   function syncDetailPaneTitle(pane, m) {
     const titleEl = pane.querySelector(".map-detail-title");
     const platformEl = pane.querySelector(".map-detail-platform");
@@ -4428,9 +4446,9 @@
     }
     titleEl.textContent = m.callsign || "Details";
     if (platformEl) {
-      const platform = m.platform ? String(m.platform).trim() : "";
-      platformEl.textContent = platform;
-      platformEl.hidden = !platform;
+      const metaLine = markerDetailMetaLine(m);
+      platformEl.textContent = metaLine;
+      platformEl.hidden = !metaLine;
     }
   }
 

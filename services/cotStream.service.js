@@ -279,6 +279,7 @@ function parseMarkerFromCoT(cot) {
     const team = mapMeta.parseTeamName(detail) || null;
     const role = mapMeta.parseTeamRole(detail);
     const platform = mapMeta.parseTakPlatform(detail);
+    const battery = mapMeta.parseBatteryPercent(detail);
     const { course, speed } = mapMeta.parseCourseAndSpeed(detail, point);
 
     const base = {
@@ -297,6 +298,7 @@ function parseMarkerFromCoT(cot) {
       team,
       role,
       platform,
+      battery,
       teamColor: mapMeta.parseTeamColor(detail),
       affiliation: mapMeta.parseAffiliationFromType(type),
       remarks: mapMeta.parseRemarks(detail),
