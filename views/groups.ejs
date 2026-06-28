@@ -594,7 +594,11 @@ const selectedTemplateIndices = new Set();
 
 function setMsg(el, text, ok=true){
   el.textContent = text || "";
-  el.className = "msg " + (ok ? "ok" : "bad");
+  if (ok === "progress") {
+    el.className = "msg progress";
+  } else {
+    el.className = "msg " + (ok ? "ok" : "bad");
+  }
 }
 
 function esc(s){
@@ -2224,7 +2228,7 @@ massApplyBtn.onclick = async () => {
     if (!confirm(`${actionVerb === "add" ? "Add" : "Remove"} "${activeMassGroupName}" ${actionVerb === "add" ? "to" : "from"} ${templateIndices.length} template(s)?`)) return;
 
     const startedAt = Date.now();
-    setMsg(massMsg, `Preparing... 0 of ? • 0:00`, true);
+    setMsg(massMsg, `Preparing... 0 of ? • 0:00`, "progress");
 
     try {
       const startRes = await fetch("/api/templates/bulk-group-update/start", {
@@ -2265,7 +2269,7 @@ massApplyBtn.onclick = async () => {
           if (phase === "applying" && Number(statusOut.updated || 0) > 0) {
             detail += ` • ${Number(statusOut.updated || 0)} updated`;
           }
-          setMsg(massMsg, `${phaseLabel}... ${detail} • ${fmtMassElapsed(elapsedMs)}`, true);
+          setMsg(massMsg, `${phaseLabel}... ${detail} • ${fmtMassElapsed(elapsedMs)}`, "progress");
           await new Promise(r => setTimeout(r, 800));
           continue;
         }
@@ -2309,7 +2313,7 @@ massApplyBtn.onclick = async () => {
     }
 
     const startedAt = Date.now();
-    setMsg(massMsg, `Preparing... 0 of ? • 0:00`, true);
+    setMsg(massMsg, `Preparing... 0 of ? • 0:00`, "progress");
 
     let done = false;
     while (!done) {
@@ -2338,10 +2342,10 @@ massApplyBtn.onclick = async () => {
           "In Progress";
         if (phase === "queued" || phase === "loading_users") {
           const totalLabel = total > 0 ? String(total) : "?";
-          setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtMassElapsed(elapsedMs)}`, true);
+          setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtMassElapsed(elapsedMs)}`, "progress");
         } else {
           const totalLabel = total > 0 ? String(total) : "?";
-          setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtMassElapsed(elapsedMs)}`, true);
+          setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtMassElapsed(elapsedMs)}`, "progress");
         }
         await new Promise(r => setTimeout(r, 800));
         continue;

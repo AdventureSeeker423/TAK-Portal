@@ -747,6 +747,10 @@ label.btn {
     color: #e8c170;
 }
 
+.msg.progress {
+    color: var(--warning, #ff6600);
+}
+
 /* ======================
    MODALS
    ====================== */
