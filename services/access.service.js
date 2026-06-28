@@ -521,8 +521,9 @@ function isUsernameInAllowedAgencies(authUser, username) {
 }
 
 /**
- * TAK subscription rows: match username against the viewer's allowed agency suffixes
- * (suffix token at username tail or prefix; longest suffix first to avoid overlaps).
+ * TAK subscription rows: resolve the username to a single agency suffix (longest
+ * known match at tail, then prefix — same rules as Total Users / Users by Agency),
+ * then check whether that suffix is in the viewer's allowed list.
  */
 function isUsernameInAllowedAgencySuffixes(authUser, username) {
   const access = getAgencyAccess(authUser);
@@ -530,15 +531,14 @@ function isUsernameInAllowedAgencySuffixes(authUser, username) {
   const allowed = access.allowedAgencySuffixes || [];
   if (!allowed.length) return false;
 
-  const u = String(username || "").trim().toLowerCase();
+  const u = String(username || "").trim();
   if (!u) return false;
 
-  const sorted = allowed
-    .map(normalizeSuffix)
-    .filter(Boolean)
-    .sort((a, b) => b.length - a.length);
+  const resolved = inferAgencySuffixFromUsername(u);
+  if (!resolved) return false;
 
-  return sorted.some((sfx) => usernameHasAgencySuffixToken(u, sfx));
+  const allowedSet = new Set(allowed.map(normalizeSuffix).filter(Boolean));
+  return allowedSet.has(resolved);
 }
 
 /**
