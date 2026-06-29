@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.43 - 6/29/26
+🎉 `New Feature` - Dashboard - Connected Users pane allows admins to send a message for ATAK Clients to subscribe to a data sync mission<br>
+✨ `Enhancement` - Updating user groups should not fail if multiple are selected in rapid sucession
+
 ### v1.3.42 - 6/28/26
 🎉 `New Feature` - Dashboard - Connected Users pane now allows admins to select a connected user (ATAK Clients only for now) and send a Data Package over the TAK Network to set their callsign, team, and role.
 
