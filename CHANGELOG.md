@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.42 - 6/28/26
+🎉 `New Feature` - Dashboard - Connected Users pane now allows admins to select a connected user (ATAK Clients only for now) and send a Data Package over the TAK Network to set their callsign, team, and role.
+
 ### v1.3.41 - 6/28/26
 ✨ `Enhancement` - Groups, Templates, Mutual Aid - Updated assign/unassign logic, greatly reducing load times for changes to apply<br>
 ✨ `Enhancement` - Audit Log - Improved audit logging for group and template edits<br>
