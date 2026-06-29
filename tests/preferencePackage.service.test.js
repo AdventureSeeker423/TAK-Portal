@@ -7,6 +7,8 @@ const {
   buildPreferencePackageFilename,
   buildTeamSelectOptions,
   buildRoleSelectOptions,
+  resolvePreferencePackageFormat,
+  PREFERENCE_PACKAGE_FORMAT,
 } = require("../services/preferencePackage.service");
 
 async function unzipBuffer(buffer) {
@@ -86,6 +88,42 @@ async function unzipBuffer(buffer) {
   assert.ok(configPref.includes("locationCallsign"));
   assert.ok(configPref.includes("locationTeam"));
   assert.ok(configPref.includes("atakRoleType"));
+
+  assert.strictEqual(resolvePreferencePackageFormat("ATAK-CIV"), PREFERENCE_PACKAGE_FORMAT.ATAK);
+  assert.strictEqual(resolvePreferencePackageFormat("iTAK"), PREFERENCE_PACKAGE_FORMAT.ITAK);
+
+  const itakPrefXml = buildConfigPrefXml(
+    [
+      { key: "locationCallsign", value: "ITAK-USER" },
+      { key: "locationTeam", value: "Red" },
+      { key: "atakRoleType", value: "Team Lead" },
+    ],
+    PREFERENCE_PACKAGE_FORMAT.ITAK
+  );
+  assert.ok(!itakPrefXml.includes('name="com.atakmap.app_civ_preferences"'));
+  assert.ok(itakPrefXml.includes('name="com.atakmap.app_preferences"'));
+
+  const itakBuilt = await buildPreferencePackageZip({
+    callsign: "ITAK-USER",
+    teamLabel: "Red",
+    roleLabel: "Team Lead",
+    format: PREFERENCE_PACKAGE_FORMAT.ITAK,
+  });
+  assert.strictEqual(itakBuilt.packageFormat, PREFERENCE_PACKAGE_FORMAT.ITAK);
+
+  const itakEntries = await unzipBuffer(itakBuilt.buffer);
+  assert.ok(itakEntries.has("manifest.xml"));
+  assert.ok(itakEntries.has("config.pref"));
+  assert.ok(!itakEntries.has("MANIFEST/manifest.xml"));
+  assert.ok(!itakEntries.has("certs/config.pref"));
+
+  const itakManifest = itakEntries.get("manifest.xml").toString("utf8");
+  assert.ok(itakManifest.includes('zipEntry="config.pref"'));
+  assert.ok(itakManifest.includes('onReceiveImport" value="true"'));
+
+  const itakConfigPref = itakEntries.get("config.pref").toString("utf8");
+  assert.ok(itakConfigPref.includes("ITAK-USER"));
+  assert.ok(!itakConfigPref.includes("com.atakmap.app_civ_preferences"));
 
   console.log("preferencePackage.service.test.js OK");
 })().catch((err) => {

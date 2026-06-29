@@ -567,10 +567,14 @@ async function getClientPreferenceConfig(clientId, authUser) {
 async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLabel, roleLabel }) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
   assertRemoteActionsSubscription(ctx.subscription);
+  const packageFormat = prefPkgSvc.resolvePreferencePackageFormat(
+    resolveSubscriptionTakClient(ctx.subscription)
+  );
   const built = await prefPkgSvc.buildPreferencePackageZip({
     callsign,
     teamLabel,
     roleLabel,
+    format: packageFormat,
   });
 
   const sent = await takMissionPkgSvc.sendMissionPackageToContact({
@@ -595,6 +599,7 @@ async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLa
     roleLabel: built.roleLabel,
     packageName: built.packageName,
     packageHash: sent.packageHash || built.hash,
+    packageFormat: built.packageFormat,
   };
 }
 

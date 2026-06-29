@@ -1,8 +1,15 @@
 /**
- * Build ATAK preference data packages (config.pref + MANIFEST) for remote delivery.
+ * Build preference data packages (config.pref + manifest) for remote delivery.
+ * ATAK-CIV uses MANIFEST/manifest.xml + certs/config.pref.
+ * iTAK expects a flat ZIP with manifest.xml + config.pref at the archive root.
  */
 const crypto = require("crypto");
 const archiver = require("archiver");
+
+const PREFERENCE_PACKAGE_FORMAT = {
+  ATAK: "atak",
+  ITAK: "itak",
+};
 
 const ALLOWED_TEAM_COLORS = [
   "Blue",
@@ -135,6 +142,26 @@ function sanitizeFilenamePart(value) {
     .slice(0, 80);
 }
 
+function resolvePreferencePackageFormat(takClient) {
+  const client = safeStr(takClient).trim().toUpperCase();
+  if (client === "ITAK") return PREFERENCE_PACKAGE_FORMAT.ITAK;
+  return PREFERENCE_PACKAGE_FORMAT.ATAK;
+}
+
+function getPreferencePackageLayout(format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
+  if (format === PREFERENCE_PACKAGE_FORMAT.ITAK) {
+    return {
+      manifestPath: "manifest.xml",
+      prefPath: "config.pref",
+      prefZipEntry: "config.pref",
+    };
+  }
+  return {
+    manifestPath: "MANIFEST/manifest.xml",
+    prefPath: "certs/config.pref",
+    prefZipEntry: "certs/config.pref",
+  };
+}
 function buildPreferencePackageFilename({ callsign, teamLabel, roleLabel }) {
   const parts = ["Pref", sanitizeFilenamePart(callsign)];
   const team = sanitizeFilenamePart(teamLabel);
@@ -148,7 +175,14 @@ function entryXml(key, value) {
   return `    <entry key="${escapeXml(key)}" class="${JAVA_CLASS.string}">${escapeXml(value)}</entry>`;
 }
 
-function buildConfigPrefXml(entries) {
+function buildConfigPrefXml(entries, format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
+  if (format === PREFERENCE_PACKAGE_FORMAT.ITAK) {
+    if (!entries.length) {
+      return `<?xml version='1.0' encoding='ASCII' standalone='yes'?>\n<preferences>\n</preferences>\n`;
+    }
+    return `<?xml version='1.0' encoding='ASCII' standalone='yes'?>\n<preferences>\n  <preference version="1" name="com.atakmap.app_preferences">\n${entries.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>\n</preferences>\n`;
+  }
+
   const civ = entries.filter((e) => CIV_IDENTITY_KEYS.has(e.key));
   const other = entries.filter((e) => !CIV_IDENTITY_KEYS.has(e.key));
   const blocks = [];
@@ -170,7 +204,8 @@ function buildConfigPrefXml(entries) {
   return `<?xml version='1.0' encoding='ASCII' standalone='yes'?>\n<preferences>\n${blocks.join("\n")}\n</preferences>\n`;
 }
 
-function buildManifestXml({ packageName, uid }) {
+function buildManifestXml({ packageName, uid, format = PREFERENCE_PACKAGE_FORMAT.ATAK }) {
+  const { prefZipEntry } = getPreferencePackageLayout(format);
   const name = escapeXml(packageName);
   const id = escapeXml(uid || crypto.randomUUID());
   return `<MissionPackageManifest version="2">
@@ -181,7 +216,7 @@ function buildManifestXml({ packageName, uid }) {
     <Parameter name="onReceiveDelete" value="false"/>
   </Configuration>
   <Contents>
-    <Content ignore="false" zipEntry="certs/config.pref"/>
+    <Content ignore="false" zipEntry="${prefZipEntry}"/>
   </Contents>
 </MissionPackageManifest>
 `;
@@ -221,13 +256,17 @@ function buildPreferenceEntries({ callsign, teamLabel, roleLabel }) {
   return entries;
 }
 
-async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel }) {
+async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel, format }) {
+  const resolvedFormat = format || PREFERENCE_PACKAGE_FORMAT.ATAK;
   const normalized = validatePreferenceInputs({ callsign, teamLabel, roleLabel });
   const packageName = buildPreferencePackageFilename(normalized);
-  const prefXml = buildConfigPrefXml(buildPreferenceEntries(normalized));
+  const entries = buildPreferenceEntries(normalized);
+  const prefXml = buildConfigPrefXml(entries, resolvedFormat);
+  const layout = getPreferencePackageLayout(resolvedFormat);
   const manifestXml = buildManifestXml({
     packageName,
     uid: crypto.randomUUID(),
+    format: resolvedFormat,
   });
 
   return new Promise((resolve, reject) => {
@@ -241,11 +280,12 @@ async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel }) {
         buffer,
         hash: crypto.createHash("sha256").update(buffer).digest("hex"),
         packageName,
+        packageFormat: resolvedFormat,
         ...normalized,
       });
     });
-    archive.append(manifestXml, { name: "MANIFEST/manifest.xml" });
-    archive.append(prefXml, { name: "certs/config.pref" });
+    archive.append(manifestXml, { name: layout.manifestPath });
+    archive.append(prefXml, { name: layout.prefPath });
     archive.finalize();
   });
 }
@@ -253,6 +293,7 @@ async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel }) {
 module.exports = {
   ALLOWED_TEAM_COLORS,
   ALLOWED_ATAK_ROLES,
+  PREFERENCE_PACKAGE_FORMAT,
   buildTeamSelectOptions,
   buildRoleSelectOptions,
   buildPreferencePackageZip,
@@ -262,4 +303,6 @@ module.exports = {
   validatePreferenceInputs,
   normalizeTeamLabel,
   normalizeRoleLabel,
+  resolvePreferencePackageFormat,
+  getPreferencePackageLayout,
 };
