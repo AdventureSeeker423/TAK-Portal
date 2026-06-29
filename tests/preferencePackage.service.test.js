@@ -5,6 +5,8 @@ const {
   buildConfigPrefXml,
   validatePreferenceInputs,
   buildPreferencePackageFilename,
+  buildTeamSelectOptions,
+  buildRoleSelectOptions,
 } = require("../services/preferencePackage.service");
 
 async function unzipBuffer(buffer) {
@@ -59,6 +61,17 @@ async function unzipBuffer(buffer) {
   assert.ok(Buffer.isBuffer(built.buffer));
   assert.ok(built.buffer.length > 100);
   assert.strictEqual(built.packageName, filename);
+  assert.match(built.hash, /^[a-f0-9]{64}$/);
+
+  const teamOptions = buildTeamSelectOptions({ DP_COLOR_DARK_BLUE: "Law Enforcement" });
+  const darkBlue = teamOptions.find((o) => o.value === "Dark Blue");
+  assert.ok(darkBlue);
+  assert.strictEqual(darkBlue.label, "Dark Blue -- Law Enforcement");
+
+  const roleOptions = buildRoleSelectOptions({ DP_ROLE_HQ: "Command Staff / Admin Support" });
+  const hq = roleOptions.find((o) => o.value === "HQ");
+  assert.ok(hq);
+  assert.strictEqual(hq.label, "HQ -- Command Staff / Admin Support");
 
   const entries = await unzipBuffer(built.buffer);
   assert.ok(entries.has("MANIFEST/manifest.xml"));

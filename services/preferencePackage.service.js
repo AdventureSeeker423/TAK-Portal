@@ -32,6 +32,34 @@ const ALLOWED_ATAK_ROLES = [
   "K9",
 ];
 
+const TEAM_DEPLOYMENT_SETTING_KEYS = {
+  Blue: "DP_COLOR_BLUE",
+  "Dark Blue": "DP_COLOR_DARK_BLUE",
+  Brown: "DP_COLOR_BROWN",
+  Cyan: "DP_COLOR_CYAN",
+  Green: "DP_COLOR_GREEN",
+  "Dark Green": "DP_COLOR_DARK_GREEN",
+  Magenta: "DP_COLOR_MAGENTA",
+  Maroon: "DP_COLOR_MAROON",
+  Orange: "DP_COLOR_ORANGE",
+  Purple: "DP_COLOR_PURPLE",
+  Red: "DP_COLOR_RED",
+  Teal: "DP_COLOR_TEAL",
+  White: "DP_COLOR_WHITE",
+  Yellow: "DP_COLOR_YELLOW",
+};
+
+const ROLE_DEPLOYMENT_SETTING_KEYS = {
+  "Team Member": "DP_ROLE_TEAM_MEMBER",
+  "Team Lead": "DP_ROLE_TEAM_LEAD",
+  HQ: "DP_ROLE_HQ",
+  Sniper: "DP_ROLE_SNIPER",
+  Medic: "DP_ROLE_MEDIC",
+  "Forward Observer": "DP_ROLE_FORWARD_OBSERVER",
+  RTO: "DP_ROLE_RTO",
+  K9: "DP_ROLE_K9",
+};
+
 const CIV_IDENTITY_KEYS = new Set([
   "locationCallsign",
   "locationTeam",
@@ -72,6 +100,30 @@ function normalizeRoleLabel(raw) {
   if (!s) return "Team Member";
   const match = ALLOWED_ATAK_ROLES.find((r) => r.toLowerCase() === s.toLowerCase());
   return match || "";
+}
+
+function deploymentPacketDefinition(settings, key) {
+  if (!key) return "";
+  return safeStr(settings?.[key]).trim();
+}
+
+function buildDeploymentOptionLabel(name, settings, keyMap) {
+  const definition = deploymentPacketDefinition(settings, keyMap[name]);
+  return definition ? `${name} -- ${definition}` : name;
+}
+
+function buildTeamSelectOptions(settings = {}) {
+  return ALLOWED_TEAM_COLORS.map((name) => ({
+    value: name,
+    label: buildDeploymentOptionLabel(name, settings, TEAM_DEPLOYMENT_SETTING_KEYS),
+  }));
+}
+
+function buildRoleSelectOptions(settings = {}) {
+  return ALLOWED_ATAK_ROLES.map((name) => ({
+    value: name,
+    label: buildDeploymentOptionLabel(name, settings, ROLE_DEPLOYMENT_SETTING_KEYS),
+  }));
 }
 
 function sanitizeFilenamePart(value) {
@@ -184,8 +236,10 @@ async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel }) {
     archive.on("data", (chunk) => chunks.push(chunk));
     archive.on("error", reject);
     archive.on("end", () => {
+      const buffer = Buffer.concat(chunks);
       resolve({
-        buffer: Buffer.concat(chunks),
+        buffer,
+        hash: crypto.createHash("sha256").update(buffer).digest("hex"),
         packageName,
         ...normalized,
       });
@@ -199,6 +253,8 @@ async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel }) {
 module.exports = {
   ALLOWED_TEAM_COLORS,
   ALLOWED_ATAK_ROLES,
+  buildTeamSelectOptions,
+  buildRoleSelectOptions,
   buildPreferencePackageZip,
   buildPreferencePackageFilename,
   buildConfigPrefXml,

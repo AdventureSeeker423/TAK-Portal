@@ -11,6 +11,7 @@ const tokensSvc = require("./authentikTokens.service");
 const usersSvc = require("./users.service");
 const prefPkgSvc = require("./preferencePackage.service");
 const takMissionPkgSvc = require("./takMissionPackage.service");
+const settingsSvc = require("./settings.service");
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -218,6 +219,25 @@ function findSubscriptionByClientId(subscriptions, clientId) {
   );
 }
 
+function resolveSubscriptionTakClient(subscription) {
+  return (
+    safeStr(subscription?.takClient).trim() ||
+    safeStr(subscription?.platform).trim()
+  );
+}
+
+function isAtakCivSubscription(subscription) {
+  return resolveSubscriptionTakClient(subscription).toUpperCase() === "ATAK-CIV";
+}
+
+function assertAtakCivSubscription(subscription) {
+  if (!isAtakCivSubscription(subscription)) {
+    const err = new Error("Send Configuration is only available for ATAK-CIV clients.");
+    err.status = 403;
+    throw err;
+  }
+}
+
 function assertCanControlSubscription(authUser, subscription, { agencyOnly = false } = {}) {
   if (!subscription) {
     const err = new Error("Connected client not found.");
@@ -374,8 +394,10 @@ function mergePreferencePrefills(authPref, subscription) {
 
 async function getClientPreferenceConfig(clientId, authUser) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
+  assertAtakCivSubscription(ctx.subscription);
   const authPref = await lookupAuthentikPreferenceData(ctx.username);
   const prefills = mergePreferencePrefills(authPref, ctx.subscription);
+  const settings = settingsSvc.getSettings() || {};
 
   return {
     configured: true,
@@ -386,13 +408,14 @@ async function getClientPreferenceConfig(clientId, authUser) {
     teamLabel: prefills.teamLabel,
     roleLabel: prefills.roleLabel,
     source: prefills.source,
-    teamOptions: prefPkgSvc.ALLOWED_TEAM_COLORS.slice(),
-    roleOptions: prefPkgSvc.ALLOWED_ATAK_ROLES.slice(),
+    teamOptions: prefPkgSvc.buildTeamSelectOptions(settings),
+    roleOptions: prefPkgSvc.buildRoleSelectOptions(settings),
   };
 }
 
 async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLabel, roleLabel }) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
+  assertAtakCivSubscription(ctx.subscription);
   const built = await prefPkgSvc.buildPreferencePackageZip({
     callsign,
     teamLabel,
@@ -403,6 +426,12 @@ async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLa
     clientUid: ctx.clientUid,
     buffer: built.buffer,
     filename: built.packageName,
+    packageHash: built.hash,
+  });
+
+  takMissionPkgSvc.scheduleSentPackageCleanup({
+    hash: built.hash,
+    label: built.packageName,
   });
 
   return {
@@ -413,6 +442,7 @@ async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLa
     teamLabel: built.teamLabel,
     roleLabel: built.roleLabel,
     packageName: built.packageName,
+    packageHash: built.hash,
   };
 }
 

@@ -578,7 +578,14 @@
       }
 
       function fillExpandedTableBody(rows, rawItems) {
-        latestSubscriptions = Array.isArray(rawItems) ? rawItems.slice() : [];
+        latestSubscriptions = (Array.isArray(rows) ? rows : []).map(function (r, idx) {
+          var raw = Array.isArray(rawItems) && rawItems[idx] ? rawItems[idx] : {};
+          var merged = Object.assign({}, raw, r);
+          ["takClient", "callsign", "username", "role", "battery"].forEach(function (key) {
+            if (merged[key] === "—") merged[key] = raw[key];
+          });
+          return merged;
+        });
         var tbody = document.getElementById("connectedClientsTableBody");
         if (!tbody) return;
         tbody.innerHTML = "";
@@ -619,6 +626,7 @@
                     '<tbody id="clientGroupsTableBody"></tbody>' +
                   '</table>' +
                 '</div>' +
+                '<div id="prefConfigSection" style="display:none;">' +
                 '<div class="connected-user-section-divider"></div>' +
                 '<h3 class="connected-user-section-title">Send Configuration</h3>' +
                 '<div id="prefConfigLoading" class="muted" style="display:none;">Loading configuration…</div>' +
@@ -636,9 +644,10 @@
                     '<select id="prefConfigRole" class="input"></select>' +
                   '</label>' +
                   '<div class="pref-config-actions">' +
-                    '<button type="button" class="btn btnPrimary" id="prefConfigSendBtn">Send Configuration</button>' +
+                    '<button type="button" class="btn success" id="prefConfigSendBtn">Send Configuration</button>' +
                   '</div>' +
                   '<div id="prefConfigStatus" class="pref-config-status" style="display:none;"></div>' +
+                '</div>' +
                 '</div>' +
               '</div>' +
             '</div>' +
@@ -669,6 +678,28 @@
         var prefConfigStatusEl = document.getElementById("prefConfigStatus");
         var prefConfigLoadingEl = document.getElementById("prefConfigLoading");
         var prefConfigFormEl = document.getElementById("prefConfigForm");
+        var prefConfigSectionEl = document.getElementById("prefConfigSection");
+
+        function resolveSubTakClient(sub) {
+          if (!sub) return "";
+          var raw = sub.takClient != null ? String(sub.takClient).trim() : "";
+          if (!raw || raw === "—") {
+            raw = sub.platform != null ? String(sub.platform).trim() : "";
+          }
+          return raw;
+        }
+
+        function isAtakCivClient(sub) {
+          return resolveSubTakClient(sub).toUpperCase() === "ATAK-CIV";
+        }
+
+        function setPrefConfigSectionVisible(visible) {
+          if (prefConfigSectionEl) prefConfigSectionEl.style.display = visible ? "block" : "none";
+          if (!visible) {
+            setPrefConfigLoading(false);
+            showPrefConfigStatus("");
+          }
+        }
 
         function groupControlDisplayName(g) {
           if (!g) return "—";
@@ -709,8 +740,13 @@
           }
           (options || []).forEach(function (opt) {
             var o = document.createElement("option");
-            o.value = opt;
-            o.textContent = opt;
+            if (opt && typeof opt === "object") {
+              o.value = opt.value != null ? String(opt.value) : "";
+              o.textContent = opt.label != null ? String(opt.label) : o.value;
+            } else {
+              o.value = String(opt);
+              o.textContent = String(opt);
+            }
             selectEl.appendChild(o);
           });
           var sel = selectedValue != null ? String(selectedValue).trim() : "";
@@ -724,6 +760,12 @@
               custom.value = sel;
               custom.textContent = sel;
               selectEl.appendChild(custom);
+              selectEl.value = sel;
+            } else if (emptyLabel) {
+              var customEmpty = document.createElement("option");
+              customEmpty.value = sel;
+              customEmpty.textContent = sel;
+              selectEl.appendChild(customEmpty);
               selectEl.value = sel;
             }
           }
@@ -886,6 +928,7 @@
           showGroupControlError("");
           showPrefConfigStatus("");
           setPrefConfigLoading(false);
+          setPrefConfigSectionVisible(false);
           if (overlay) overlay.style.display = "none";
         }
 
@@ -906,8 +949,13 @@
           showPrefConfigStatus("");
           overlay.style.display = "flex";
 
+          var canSendPrefConfig = isAtakCivClient(sub);
+          setPrefConfigSectionVisible(canSendPrefConfig);
+
           loadGroupControlState(clientId).catch(function () {});
-          loadPreferenceConfig(clientId).catch(function () {});
+          if (canSendPrefConfig) {
+            loadPreferenceConfig(clientId).catch(function () {});
+          }
 
           if (groupControlRefreshTimer) clearInterval(groupControlRefreshTimer);
           groupControlRefreshTimer = setInterval(function () {
@@ -1340,14 +1388,17 @@
   .group-control-checkbox { width: 1.1em; height: 1.1em; cursor: pointer; }
   .group-control-checkbox:disabled { cursor: wait; opacity: 0.6; }
   #clientGroupsError.error { color: var(--danger, #e53935); }
-  .pref-config-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 12px; align-items: end; }
+  .pref-config-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px 12px; align-items: end; }
   .pref-config-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .pref-config-label { font-size: 13px; color: var(--muted); font-weight: 600; }
-  .pref-config-actions { grid-column: 1 / -1; margin-top: 2px; }
+  .pref-config-actions { display: flex; justify-content: flex-end; align-items: flex-end; margin-left: 4px; }
+  .pref-config-actions .btn.success { white-space: nowrap; }
   .pref-config-status { margin-top: 8px; font-size: 14px; }
   .pref-config-status.success { color: var(--success, #43a047); }
   .pref-config-status.error { color: var(--danger, #e53935); }
   @media (max-width: 640px) {
     .pref-config-form { grid-template-columns: 1fr; }
+    .pref-config-actions { grid-column: 1 / -1; justify-content: stretch; }
+    .pref-config-actions .btn.success { width: 100%; }
   }
 </style>

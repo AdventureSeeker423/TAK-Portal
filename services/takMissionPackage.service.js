@@ -3,6 +3,10 @@
  */
 const { buildTakAxios, getTakBaseUrl, isTakConfigured } = require("./tak.service");
 const { getBool } = require("./env");
+const dataPackagesSvc = require("./dataPackages.service");
+
+const SENT_PACKAGE_CLEANUP_DELAY_MS = 5000;
+const SENT_PACKAGE_CLEANUP_RETRY_MS = 3000;
 
 function assertTakAvailable() {
   if (getBool("TAK_BYPASS_ENABLED", false)) {
@@ -49,7 +53,45 @@ function formatMartiError(err) {
   return out;
 }
 
-async function sendMissionPackageToContact({ clientUid, buffer, filename }) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function deleteSentDataPackage(hash, label) {
+  const h = safeStr(hash).trim();
+  if (!h) return;
+
+  let result = await dataPackagesSvc.deleteDataPackage(h);
+  if (result?.alreadyGone) {
+    await sleep(SENT_PACKAGE_CLEANUP_RETRY_MS);
+    result = await dataPackagesSvc.deleteDataPackage(h);
+  }
+
+  if (result?.alreadyGone) {
+    console.warn(
+      `[takMissionPackage] Sent package not found for cleanup (${label || h}); it may not have been stored on the server.`
+    );
+    return;
+  }
+
+  console.log(`[takMissionPackage] Cleaned up sent package ${label || h}`);
+}
+
+function scheduleSentPackageCleanup({ hash, label, delayMs = SENT_PACKAGE_CLEANUP_DELAY_MS }) {
+  const h = safeStr(hash).trim();
+  if (!h) return;
+
+  setTimeout(() => {
+    deleteSentDataPackage(h, label).catch((err) => {
+      console.warn(
+        `[takMissionPackage] Package cleanup failed (${label || h}):`,
+        err?.message || err
+      );
+    });
+  }, delayMs);
+}
+
+async function sendMissionPackageToContact({ clientUid, buffer, filename, packageHash }) {
   assertTakAvailable();
 
   const uid = safeStr(clientUid).trim();
@@ -82,6 +124,7 @@ async function sendMissionPackageToContact({ clientUid, buffer, filename }) {
       ok: true,
       clientUid: uid,
       filename: name,
+      packageHash: safeStr(packageHash).trim(),
       data: res.data,
     };
   } catch (err) {
@@ -91,4 +134,6 @@ async function sendMissionPackageToContact({ clientUid, buffer, filename }) {
 
 module.exports = {
   sendMissionPackageToContact,
+  scheduleSentPackageCleanup,
+  SENT_PACKAGE_CLEANUP_DELAY_MS,
 };
