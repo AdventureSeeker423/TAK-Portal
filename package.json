@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node tests/mapIcon.test.js && node tests/mapIconRender.test.js && node tests/mapRender.test.js && node tests/missionGeo.test.js && node tests/missionKml.test.js && node tests/missionContents.test.js && node tests/missionRaster.test.js && node tests/dataSyncAccess.test.js && node tests/geocode.test.js && node tests/preferencePackage.service.test.js && node scripts/audit-map-icons.js",
+    "test": "node tests/mapIcon.test.js && node tests/mapIconRender.test.js && node tests/mapRender.test.js && node tests/missionGeo.test.js && node tests/missionKml.test.js && node tests/missionContents.test.js && node tests/missionRaster.test.js && node tests/dataSyncAccess.test.js && node tests/geocode.test.js && node tests/preferencePackage.service.test.js && node tests/takMissionPackage.service.test.js && node tests/takGroupControl.remoteActions.test.js && node tests/dataSync.invite.test.js && node scripts/audit-map-icons.js",
     "audit:icons": "node scripts/audit-map-icons.js",
     "vendor:icons": "node --use-system-ca scripts/vendor-cloudtak-icons.js",
     "start": "node --use-system-ca server.js"

@@ -221,6 +221,25 @@ async function getMissionLayers(missionName, queryParams = {}) {
   return res;
 }
 
+/** Invite a connected client to a mission — POST /Marti/api/missions/{name}/invite */
+async function inviteMissionContact(missionName, clientUid) {
+  assertTakAvailable();
+  const uid = String(clientUid || "").trim();
+  if (!uid) {
+    const e = new Error("Client UID is required.");
+    e.code = "INVALID_CLIENT_UID";
+    throw e;
+  }
+  const client = buildTakAxios({ timeout: 60000 });
+  const form = new FormData();
+  form.append("contacts", uid);
+  const res = await client.post(`${missionPath(missionName)}/invite`, form, {
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  return res.data;
+}
+
 /** Enterprise sync file by hash — GET /Marti/sync/content */
 async function getSyncContent(hash, queryParams = {}) {
   assertTakAvailable();
@@ -260,5 +279,6 @@ module.exports = {
   getMissionCotXml,
   getMissionLayers,
   getSyncContent,
+  inviteMissionContact,
   KML_MIME,
 };

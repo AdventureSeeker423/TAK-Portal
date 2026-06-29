@@ -12,6 +12,11 @@ const usersSvc = require("./users.service");
 const prefPkgSvc = require("./preferencePackage.service");
 const takMissionPkgSvc = require("./takMissionPackage.service");
 const settingsSvc = require("./settings.service");
+const dataSyncSvc = require("./dataSync.service");
+const dataSyncAccess = require("./dataSyncAccess.service");
+
+const REMOTE_ACTIONS_TAK_CLIENTS = new Set(["ATAK-CIV", "ITAK"]);
+const DATA_SYNC_INVITE_CHANNEL_SETTLE_MS = 1500;
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -226,16 +231,55 @@ function resolveSubscriptionTakClient(subscription) {
   );
 }
 
-function isAtakCivSubscription(subscription) {
-  return resolveSubscriptionTakClient(subscription).toUpperCase() === "ATAK-CIV";
+function isRemoteActionsSubscription(subscription) {
+  const client = resolveSubscriptionTakClient(subscription).toUpperCase();
+  return REMOTE_ACTIONS_TAK_CLIENTS.has(client);
 }
 
-function assertAtakCivSubscription(subscription) {
-  if (!isAtakCivSubscription(subscription)) {
-    const err = new Error("Send Configuration is only available for ATAK-CIV clients.");
+function assertRemoteActionsSubscription(subscription) {
+  if (!isRemoteActionsSubscription(subscription)) {
+    const err = new Error("Remote actions are only available for ATAK-CIV and iTAK clients.");
     err.status = 403;
     throw err;
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function unwrapMissionList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function buildUserEntitledGroupKeySet(rawGroups) {
+  const keys = new Set();
+  for (const row of Array.isArray(rawGroups) ? rawGroups : []) {
+    const name = safeStr(row?.name).trim();
+    const key = dataSyncAccess.canonicalGroupKey(name);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+function findCollapsedGroupForMission(collapsedGroups, missionGroupName) {
+  const want = dataSyncAccess.canonicalGroupKey(missionGroupName);
+  if (!want) return null;
+  return (
+    (Array.isArray(collapsedGroups) ? collapsedGroups : []).find(
+      (g) => dataSyncAccess.canonicalGroupKey(g?.name) === want
+    ) || null
+  );
+}
+
+function isMissionGroupChannelActive(collapsedGroup) {
+  return !!(collapsedGroup && collapsedGroup.active === true);
+}
+
+function resolveMissionDisplayName(mission) {
+  return safeStr(mission?.name || mission?.missionName).trim();
 }
 
 function assertCanControlSubscription(authUser, subscription, { agencyOnly = false } = {}) {
@@ -392,9 +436,116 @@ function mergePreferencePrefills(authPref, subscription) {
   };
 }
 
+async function ensureMissionGroupChannelActive(clientId, authUser, missionGroupName) {
+  const rawGroups = await fetchGroupsForUser(
+    (await resolveSubscriptionForControl(clientId, authUser)).username
+  );
+  const collapsed = collapseGroupsForDisplay(rawGroups);
+  const group = findCollapsedGroupForMission(collapsed, missionGroupName);
+  if (!group) {
+    const err = new Error(`Group "${missionGroupName}" is not assigned to this user.`);
+    err.status = 404;
+    throw err;
+  }
+  if (isMissionGroupChannelActive(group)) {
+    return { changed: false, channelWasEnabled: true };
+  }
+
+  await setClientGroupActive(clientId, authUser, {
+    groupName: group.name,
+    accessMode: group.accessMode,
+    active: true,
+  });
+  return { changed: true, channelWasEnabled: false };
+}
+
+async function getClientDataSyncMissions(clientId, authUser) {
+  const ctx = await resolveSubscriptionForControl(clientId, authUser);
+  assertRemoteActionsSubscription(ctx.subscription);
+
+  const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(authUser);
+  const raw = await dataSyncSvc.listMissions({});
+  const filtered = dataSyncAccess.filterMissionsPayload(raw, allowedKeySet);
+  const missions = dataSyncAccess.enrichMissionListAssignmentMeta(unwrapMissionList(filtered));
+
+  const userGroups = await fetchGroupsForUser(ctx.username);
+  const userKeys = buildUserEntitledGroupKeySet(userGroups);
+
+  const accessible = missions
+    .map((mission) => {
+      const groupName = dataSyncAccess.missionSingleGroupName(mission);
+      const name = resolveMissionDisplayName(mission);
+      if (!name || !groupName) return null;
+      if (!userKeys.has(dataSyncAccess.canonicalGroupKey(groupName))) return null;
+      return {
+        name,
+        groupName,
+        assignedAgencyName: mission.assignedAgencyName || null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
+
+  return {
+    configured: true,
+    clientUid: ctx.clientUid,
+    username: ctx.username,
+    callsign: ctx.callsign,
+    missions: accessible,
+  };
+}
+
+async function sendClientDataSyncInvite(clientId, authUser, { missionName }) {
+  const ctx = await resolveSubscriptionForControl(clientId, authUser);
+  assertRemoteActionsSubscription(ctx.subscription);
+
+  const name = safeStr(missionName).trim();
+  if (!name) {
+    const err = new Error("Mission name is required.");
+    err.status = 400;
+    throw err;
+  }
+
+  await dataSyncAccess.assertMissionReadable(authUser, name);
+  const missionRaw = await dataSyncSvc.getMission(name);
+  const mission = dataSyncAccess.unwrapMission(missionRaw);
+  const groupName = dataSyncAccess.missionSingleGroupName(mission);
+  if (!groupName) {
+    const err = new Error("Mission does not have a single assigned group.");
+    err.status = 400;
+    throw err;
+  }
+
+  const userGroups = await fetchGroupsForUser(ctx.username);
+  const userKeys = buildUserEntitledGroupKeySet(userGroups);
+  if (!userKeys.has(dataSyncAccess.canonicalGroupKey(groupName))) {
+    const err = new Error("This user does not have access to the selected Data Sync mission.");
+    err.status = 403;
+    throw err;
+  }
+
+  const channelState = await ensureMissionGroupChannelActive(clientId, authUser, groupName);
+  if (!channelState.channelWasEnabled) {
+    await sleep(DATA_SYNC_INVITE_CHANNEL_SETTLE_MS);
+  }
+
+  await dataSyncSvc.inviteMissionContact(name, ctx.clientUid);
+
+  return {
+    ok: true,
+    missionName: name,
+    groupName,
+    clientUid: ctx.clientUid,
+    username: ctx.username,
+    callsign: ctx.callsign,
+    channelWasEnabled: channelState.channelWasEnabled,
+    channelEnabled: true,
+  };
+}
+
 async function getClientPreferenceConfig(clientId, authUser) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
-  assertAtakCivSubscription(ctx.subscription);
+  assertRemoteActionsSubscription(ctx.subscription);
   const authPref = await lookupAuthentikPreferenceData(ctx.username);
   const prefills = mergePreferencePrefills(authPref, ctx.subscription);
   const settings = settingsSvc.getSettings() || {};
@@ -415,7 +566,7 @@ async function getClientPreferenceConfig(clientId, authUser) {
 
 async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLabel, roleLabel }) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
-  assertAtakCivSubscription(ctx.subscription);
+  assertRemoteActionsSubscription(ctx.subscription);
   const built = await prefPkgSvc.buildPreferencePackageZip({
     callsign,
     teamLabel,
@@ -453,8 +604,15 @@ module.exports = {
   setClientGroupActive,
   getClientPreferenceConfig,
   sendClientPreferenceConfig,
+  getClientDataSyncMissions,
+  sendClientDataSyncInvite,
   collapseGroupsForDisplay,
   cleanGroupForTakPayload,
   normalizeGroupRow,
   findSubscriptionByClientId,
+  isRemoteActionsSubscription,
+  findCollapsedGroupForMission,
+  isMissionGroupChannelActive,
+  REMOTE_ACTIONS_TAK_CLIENTS,
+  DATA_SYNC_INVITE_CHANNEL_SETTLE_MS,
 };

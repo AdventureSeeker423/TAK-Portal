@@ -648,6 +648,19 @@
                   '</div>' +
                   '<div id="prefConfigStatus" class="pref-config-status" style="display:none;"></div>' +
                 '</div>' +
+                '<div class="connected-user-section-divider"></div>' +
+                '<h3 class="connected-user-section-title">Send Data Sync</h3>' +
+                '<div id="dataSyncLoading" class="muted" style="display:none;">Loading missions…</div>' +
+                '<div id="dataSyncForm" class="data-sync-form" style="display:none;">' +
+                  '<label class="pref-config-field data-sync-field">' +
+                    '<span class="pref-config-label">Mission</span>' +
+                    '<select id="dataSyncMissionSelect" class="input"></select>' +
+                  '</label>' +
+                  '<div class="pref-config-actions">' +
+                    '<button type="button" class="btn success" id="dataSyncSendBtn">Send Data Sync</button>' +
+                  '</div>' +
+                  '<div id="dataSyncStatus" class="pref-config-status" style="display:none;"></div>' +
+                '</div>' +
                 '</div>' +
               '</div>' +
             '</div>' +
@@ -679,6 +692,12 @@
         var prefConfigLoadingEl = document.getElementById("prefConfigLoading");
         var prefConfigFormEl = document.getElementById("prefConfigForm");
         var prefConfigSectionEl = document.getElementById("prefConfigSection");
+        var dataSyncMissionSelectEl = document.getElementById("dataSyncMissionSelect");
+        var dataSyncSendBtn = document.getElementById("dataSyncSendBtn");
+        var dataSyncStatusEl = document.getElementById("dataSyncStatus");
+        var dataSyncLoadingEl = document.getElementById("dataSyncLoading");
+        var dataSyncFormEl = document.getElementById("dataSyncForm");
+        var dataSyncSendInFlight = false;
 
         function resolveSubTakClient(sub) {
           if (!sub) return "";
@@ -689,15 +708,18 @@
           return raw;
         }
 
-        function isAtakCivClient(sub) {
-          return resolveSubTakClient(sub).toUpperCase() === "ATAK-CIV";
+        function isRemoteActionsClient(sub) {
+          var client = resolveSubTakClient(sub).toUpperCase();
+          return client === "ATAK-CIV" || client === "ITAK";
         }
 
-        function setPrefConfigSectionVisible(visible) {
+        function setRemoteActionsSectionVisible(visible) {
           if (prefConfigSectionEl) prefConfigSectionEl.style.display = visible ? "block" : "none";
           if (!visible) {
             setPrefConfigLoading(false);
             showPrefConfigStatus("");
+            setDataSyncLoading(false);
+            showDataSyncStatus("");
           }
         }
 
@@ -842,6 +864,97 @@
             });
         }
 
+        function showDataSyncStatus(msg, kind) {
+          if (!dataSyncStatusEl) return;
+          if (!msg) {
+            dataSyncStatusEl.textContent = "";
+            dataSyncStatusEl.style.display = "none";
+            dataSyncStatusEl.className = "pref-config-status";
+            return;
+          }
+          dataSyncStatusEl.textContent = msg;
+          dataSyncStatusEl.style.display = "block";
+          dataSyncStatusEl.className = "pref-config-status" + (kind === "error" ? " error" : kind === "success" ? " success" : "");
+        }
+
+        function setDataSyncLoading(on) {
+          if (dataSyncLoadingEl) dataSyncLoadingEl.style.display = on ? "block" : "none";
+          if (dataSyncFormEl) dataSyncFormEl.style.display = on ? "none" : "block";
+        }
+
+        function loadDataSyncMissions(clientId) {
+          if (!clientId) return Promise.reject(new Error("Missing client id"));
+          setDataSyncLoading(true);
+          showDataSyncStatus("");
+          return fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/data-sync-missions", {
+            headers: { Accept: "application/json" },
+          })
+            .then(function (res) {
+              return res.json().then(function (body) {
+                if (!res.ok) throw new Error((body && body.error) || "Failed to load missions");
+                return body;
+              });
+            })
+            .then(function (data) {
+              setDataSyncLoading(false);
+              var missions = Array.isArray(data.missions) ? data.missions : [];
+              var options = missions.map(function (m) {
+                var label = m.name || "";
+                if (m.groupName) label += " — " + m.groupName;
+                return { value: m.name, label: label };
+              });
+              fillSelectOptions(dataSyncMissionSelectEl, options, "", missions.length ? "Select mission…" : "No accessible missions");
+              return data;
+            })
+            .catch(function (err) {
+              setDataSyncLoading(false);
+              showDataSyncStatus(err.message || "Failed to load missions", "error");
+              throw err;
+            });
+        }
+
+        function sendDataSyncInvite(clientId) {
+          if (!clientId || dataSyncSendInFlight) return;
+          var missionName = dataSyncMissionSelectEl ? String(dataSyncMissionSelectEl.value || "").trim() : "";
+          if (!missionName) {
+            showDataSyncStatus("Select a mission.", "error");
+            return;
+          }
+
+          dataSyncSendInFlight = true;
+          if (dataSyncSendBtn) {
+            dataSyncSendBtn.disabled = true;
+            dataSyncSendBtn.textContent = "Sending…";
+          }
+          showDataSyncStatus("");
+
+          fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/send-data-sync-invite", {
+            method: "POST",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({ missionName: missionName }),
+          })
+            .then(function (res) {
+              return res.json().then(function (body) {
+                if (!res.ok) throw new Error((body && body.error) || "Failed to send invite");
+                return body;
+              });
+            })
+            .then(function (data) {
+              var label = data.callsign || data.username || "client";
+              showDataSyncStatus('Data Sync invite sent for "' + (data.missionName || missionName) + '" to ' + label + ".", "success");
+            })
+            .catch(function (err) {
+              showDataSyncStatus(err.message || "Failed to send invite", "error");
+            })
+            .finally(function () {
+              dataSyncSendInFlight = false;
+              if (dataSyncSendBtn) {
+                dataSyncSendBtn.disabled = false;
+                dataSyncSendBtn.textContent = "Send Data Sync";
+              }
+            });
+        }
+
         function showGroupControlError(msg) {
           if (!errorEl) return;
           if (msg) {
@@ -927,8 +1040,10 @@
           currentGroupControlClientId = null;
           showGroupControlError("");
           showPrefConfigStatus("");
+          showDataSyncStatus("");
           setPrefConfigLoading(false);
-          setPrefConfigSectionVisible(false);
+          setDataSyncLoading(false);
+          setRemoteActionsSectionVisible(false);
           if (overlay) overlay.style.display = "none";
         }
 
@@ -949,12 +1064,13 @@
           showPrefConfigStatus("");
           overlay.style.display = "flex";
 
-          var canSendPrefConfig = isAtakCivClient(sub);
-          setPrefConfigSectionVisible(canSendPrefConfig);
+          var canRemoteActions = isRemoteActionsClient(sub);
+          setRemoteActionsSectionVisible(canRemoteActions);
 
           loadGroupControlState(clientId).catch(function () {});
-          if (canSendPrefConfig) {
+          if (canRemoteActions) {
             loadPreferenceConfig(clientId).catch(function () {});
+            loadDataSyncMissions(clientId).catch(function () {});
           }
 
           if (groupControlRefreshTimer) clearInterval(groupControlRefreshTimer);
@@ -1037,6 +1153,12 @@
           prefConfigSendBtn.addEventListener("click", function () {
             if (!currentGroupControlClientId) return;
             sendPreferenceConfig(currentGroupControlClientId);
+          });
+        }
+        if (dataSyncSendBtn) {
+          dataSyncSendBtn.addEventListener("click", function () {
+            if (!currentGroupControlClientId) return;
+            sendDataSyncInvite(currentGroupControlClientId);
           });
         }
         if (overlay) {
@@ -1396,6 +1518,8 @@
   .pref-config-status { margin-top: 8px; font-size: 14px; }
   .pref-config-status.success { color: var(--success, #43a047); }
   .pref-config-status.error { color: var(--danger, #e53935); }
+  .data-sync-form { margin-top: 0; }
+  .data-sync-field { max-width: 100%; }
   @media (max-width: 640px) {
     .pref-config-form { grid-template-columns: 1fr; }
     .pref-config-actions .btn.success { width: 100%; }

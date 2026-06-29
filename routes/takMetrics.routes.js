@@ -188,4 +188,48 @@ router.post("/clients/:clientId/send-preference-config", async (req, res) => {
   }
 });
 
+router.get("/clients/:clientId/data-sync-missions", async (req, res) => {
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
+
+  try {
+    const out = await takGroupControl.getClientDataSyncMissions(req.params.clientId, user);
+    return res.json(out);
+  } catch (err) {
+    return takRouteError(res, err);
+  }
+});
+
+router.post("/clients/:clientId/send-data-sync-invite", async (req, res) => {
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
+
+  try {
+    const out = await takGroupControl.sendClientDataSyncInvite(req.params.clientId, user, {
+      missionName: req.body?.missionName ?? req.body?.name,
+    });
+
+    auditSvc.logEvent({
+      actor: user,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "REMOTE_SEND_DATA_SYNC_INVITE",
+      targetType: "tak_client",
+      targetId: out.clientUid || String(req.params.clientId || ""),
+      details: {
+        summary: `Sent Data Sync invite "${out.missionName}" to ${out.callsign || out.username}.`,
+        username: out.username,
+        clientUid: out.clientUid,
+        callsign: out.callsign,
+        missionName: out.missionName,
+        groupName: out.groupName,
+        channelWasEnabled: out.channelWasEnabled,
+      },
+    });
+
+    return res.json(out);
+  } catch (err) {
+    return takRouteError(res, err);
+  }
+});
+
 module.exports = router;
