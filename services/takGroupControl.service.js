@@ -422,7 +422,7 @@ async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLa
     roleLabel,
   });
 
-  await takMissionPkgSvc.sendMissionPackageToContact({
+  const sent = await takMissionPkgSvc.sendMissionPackageToContact({
     clientUid: ctx.clientUid,
     buffer: built.buffer,
     filename: built.packageName,
@@ -430,7 +430,8 @@ async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLa
   });
 
   takMissionPkgSvc.scheduleSentPackageCleanup({
-    hash: built.hash,
+    hash: sent.packageHash || built.hash,
+    filename: built.packageName,
     label: built.packageName,
   });
 
@@ -442,7 +443,7 @@ async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLa
     teamLabel: built.teamLabel,
     roleLabel: built.roleLabel,
     packageName: built.packageName,
-    packageHash: built.hash,
+    packageHash: sent.packageHash || built.hash,
   };
 }
 

@@ -1388,17 +1388,16 @@
   .group-control-checkbox { width: 1.1em; height: 1.1em; cursor: pointer; }
   .group-control-checkbox:disabled { cursor: wait; opacity: 0.6; }
   #clientGroupsError.error { color: var(--danger, #e53935); }
-  .pref-config-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px 12px; align-items: end; }
+  .pref-config-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; align-items: end; }
   .pref-config-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .pref-config-label { font-size: 13px; color: var(--muted); font-weight: 600; }
-  .pref-config-actions { display: flex; justify-content: flex-end; align-items: flex-end; margin-left: 4px; }
+  .pref-config-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: flex-end; margin-top: 12px; }
   .pref-config-actions .btn.success { white-space: nowrap; }
   .pref-config-status { margin-top: 8px; font-size: 14px; }
   .pref-config-status.success { color: var(--success, #43a047); }
   .pref-config-status.error { color: var(--danger, #e53935); }
   @media (max-width: 640px) {
     .pref-config-form { grid-template-columns: 1fr; }
-    .pref-config-actions { grid-column: 1 / -1; justify-content: stretch; }
     .pref-config-actions .btn.success { width: 100%; }
   }
 </style>
