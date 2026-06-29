@@ -2076,6 +2076,9 @@ function setEditUserModalLoading(on) {
 }
 
 function closeModal(){
+  clearTimeout(groupSaveTimer);
+  groupSaveTimer = null;
+  groupSavePending = false;
   modalOverlay.style.display = "none";
   document.body.classList.remove("noScroll");
   setEditUserModalLoading(false);
@@ -2464,61 +2467,86 @@ function mergeTemplateApplyGroupIds(currentIds, templateGroupIds) {
   );
 }
 
-async function applyGroupChange(groupId, shouldBeMember){
-  if (!selectedUser) return;
+function buildManualGroupIdsForSave() {
+  const currentIds = Array.isArray(selectedUser?.groups)
+    ? selectedUser.groups.map((x) => String(x))
+    : [];
+  const preservedUnknownIds = currentIds.filter((id) => !visibleGroupIds.has(String(id)));
+  return Array.from(new Set([...preservedUnknownIds, ...Array.from(pickedGroupIds)]));
+}
 
-  const url = shouldBeMember
-    ? `/api/users/${selectedUser.pk}/groups/add`
-    : `/api/users/${selectedUser.pk}/groups/remove`;
+let groupSaveTimer = null;
+let groupSaveInflight = false;
+let groupSavePending = false;
 
-  setMsgEl(actionMsg, "Updating groups...", true);
-
-  let res;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        groupIds: [String(groupId)],
-        currentTemplate: "Manual Group Selection",
-      }),
-    });
-  } catch (err) {
-    setMsgEl(actionMsg, "Network error while updating groups", false);
-    return;
-  }
-
-  const out = await res.json();
-  if (!res.ok) {
-    setMsgEl(actionMsg, out.error || "Update groups failed", false);
-    pickedGroupIds = new Set((selectedUser.groups || []).map(x => String(x)));
-    renderGroupsBox();
-    return;
-  }
-
-  const newGroups = Array.isArray(out.groups) ? out.groups : Array.from(pickedGroupIds);
+function applyGroupSaveResult(newGroups) {
   selectedUser.groups = newGroups;
-  pickedGroupIds = new Set((newGroups || []).map(x => String(x)));
+  pickedGroupIds = new Set((newGroups || []).map((x) => String(x)));
 
-  // Update role label (User/Admin) based on groups
   selectedUser.__role = roleForUser(selectedUser);
   renderGroupChips(selectedUser);
 
-  const patch = (u) => String(u.pk) === String(selectedUser.pk)
-    ? { ...u, groups: selectedUser.groups, __role: selectedUser.__role }
-    : u;
+  const patch = (u) =>
+    String(u.pk) === String(selectedUser.pk)
+      ? { ...u, groups: selectedUser.groups, __role: selectedUser.__role }
+      : u;
 
   allUsers = (allUsers || []).map(patch);
   const updatedVisible = (window.__lastUsers || []).map(patch);
   window.__lastUsers = updatedVisible.slice();
   renderResults(updatedVisible);
 
-  // Manual checkbox edits mean this user is now in manual template mode.
   if (templateApplySelect) {
     templateApplySelect.value = "manual";
   }
 
   setMsgEl(actionMsg, "Groups updated.", true);
+}
+
+async function pumpGroupSave() {
+  if (!selectedUser || groupSaveInflight || !groupSavePending) return;
+
+  groupSavePending = false;
+  groupSaveInflight = true;
+  const finalGroupIds = buildManualGroupIdsForSave();
+
+  setMsgEl(actionMsg, "Updating groups...", true);
+
+  try {
+    const res = await fetch(`/api/users/${selectedUser.pk}/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        groupIds: finalGroupIds,
+        currentTemplate: "Manual Group Selection",
+      }),
+    });
+    const out = await res.json();
+    if (!res.ok) {
+      setMsgEl(actionMsg, out.error || "Update groups failed", false);
+      pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
+      renderGroupsBox();
+      return;
+    }
+
+    const newGroups = Array.isArray(out.groups) ? out.groups : finalGroupIds;
+    applyGroupSaveResult(newGroups);
+  } catch (err) {
+    setMsgEl(actionMsg, "Network error while updating groups", false);
+    pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
+    renderGroupsBox();
+  } finally {
+    groupSaveInflight = false;
+    if (groupSavePending) void pumpGroupSave();
+  }
+}
+
+function scheduleGroupSave() {
+  clearTimeout(groupSaveTimer);
+  groupSaveTimer = setTimeout(() => {
+    groupSavePending = true;
+    void pumpGroupSave();
+  }, 350);
 }
 
 function renderGroupsBox(){
@@ -2557,7 +2585,7 @@ function renderGroupsBox(){
       } else {
         pickedGroupIds.delete(id);
       }
-      applyGroupChange(id, cb.checked);
+      scheduleGroupSave();
     });
   });
 }
@@ -2567,11 +2595,13 @@ groupFilter.addEventListener("input", ()=>renderGroupsBox());
 if (selectAllBtn) selectAllBtn.addEventListener("click", function() {
   pickedGroupIds = new Set(Array.from(visibleGroupIds));
   renderGroupsBox();
+  scheduleGroupSave();
 });
 
 if (clearAllBtn) clearAllBtn.addEventListener("click", function() {
   pickedGroupIds = new Set();
   renderGroupsBox();
+  scheduleGroupSave();
 });
 
 // Selected user in the modal
