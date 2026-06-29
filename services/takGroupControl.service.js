@@ -568,7 +568,8 @@ async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLa
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
   assertRemoteActionsSubscription(ctx.subscription);
   const packageFormat = prefPkgSvc.resolvePreferencePackageFormat(
-    resolveSubscriptionTakClient(ctx.subscription)
+    resolveSubscriptionTakClient(ctx.subscription),
+    ctx.subscription?.platform
   );
   const built = await prefPkgSvc.buildPreferencePackageZip({
     callsign,

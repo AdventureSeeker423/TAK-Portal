@@ -1,7 +1,7 @@
 /**
  * Build preference data packages (config.pref + manifest) for remote delivery.
- * ATAK-CIV uses MANIFEST/manifest.xml + certs/config.pref.
- * iTAK expects a flat ZIP with manifest.xml + config.pref at the archive root.
+ * ATAK-CIV: MANIFEST/manifest.xml + certs/config.pref.
+ * iTAK: config.pref at ZIP root + manifest.xml in MANIFEST/ (and root manifest.xml).
  */
 const crypto = require("crypto");
 const archiver = require("archiver");
@@ -142,24 +142,29 @@ function sanitizeFilenamePart(value) {
     .slice(0, 80);
 }
 
-function resolvePreferencePackageFormat(takClient) {
+function resolvePreferencePackageFormat(takClient, platform) {
   const client = safeStr(takClient).trim().toUpperCase();
-  if (client === "ITAK") return PREFERENCE_PACKAGE_FORMAT.ITAK;
+  const plat = safeStr(platform).trim().toUpperCase();
+  if (client.includes("ITAK") || plat.includes("ITAK")) return PREFERENCE_PACKAGE_FORMAT.ITAK;
   return PREFERENCE_PACKAGE_FORMAT.ATAK;
 }
 
 function getPreferencePackageLayout(format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
   if (format === PREFERENCE_PACKAGE_FORMAT.ITAK) {
     return {
-      manifestPath: "manifest.xml",
+      manifestPaths: ["manifest.xml", "MANIFEST/manifest.xml"],
       prefPath: "config.pref",
       prefZipEntry: "config.pref",
+      includeOnReceiveImport: true,
+      onReceiveDelete: false,
     };
   }
   return {
-    manifestPath: "MANIFEST/manifest.xml",
+    manifestPaths: ["MANIFEST/manifest.xml"],
     prefPath: "certs/config.pref",
     prefZipEntry: "certs/config.pref",
+    includeOnReceiveImport: true,
+    onReceiveDelete: false,
   };
 }
 function buildPreferencePackageFilename({ callsign, teamLabel, roleLabel }) {
@@ -176,13 +181,6 @@ function entryXml(key, value) {
 }
 
 function buildConfigPrefXml(entries, format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
-  if (format === PREFERENCE_PACKAGE_FORMAT.ITAK) {
-    if (!entries.length) {
-      return `<?xml version='1.0' encoding='ASCII' standalone='yes'?>\n<preferences>\n</preferences>\n`;
-    }
-    return `<?xml version='1.0' encoding='ASCII' standalone='yes'?>\n<preferences>\n  <preference version="1" name="com.atakmap.app_preferences">\n${entries.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>\n</preferences>\n`;
-  }
-
   const civ = entries.filter((e) => CIV_IDENTITY_KEYS.has(e.key));
   const other = entries.filter((e) => !CIV_IDENTITY_KEYS.has(e.key));
   const blocks = [];
@@ -201,22 +199,40 @@ function buildConfigPrefXml(entries, format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
     );
   }
 
+  if (!blocks.length) {
+    return `<?xml version='1.0' encoding='ASCII' standalone='yes'?>\n<preferences>\n</preferences>\n`;
+  }
+
   return `<?xml version='1.0' encoding='ASCII' standalone='yes'?>\n<preferences>\n${blocks.join("\n")}\n</preferences>\n`;
 }
 
-function buildManifestXml({ packageName, uid, format = PREFERENCE_PACKAGE_FORMAT.ATAK }) {
-  const { prefZipEntry } = getPreferencePackageLayout(format);
+function buildManifestXml({
+  packageName,
+  uid,
+  format = PREFERENCE_PACKAGE_FORMAT.ATAK,
+  includeOnReceiveImport,
+  onReceiveDelete = false,
+}) {
+  const layout = getPreferencePackageLayout(format);
+  const { prefZipEntry } = layout;
+  const shouldImport =
+    includeOnReceiveImport != null ? includeOnReceiveImport : layout.includeOnReceiveImport;
+  const shouldDelete = onReceiveDelete != null ? onReceiveDelete : layout.onReceiveDelete;
   const name = escapeXml(packageName);
   const id = escapeXml(uid || crypto.randomUUID());
+  const importParam = shouldImport
+    ? `    <Parameter name="onReceiveImport" value="true"/>\n`
+    : "";
   return `<MissionPackageManifest version="2">
   <Configuration>
     <Parameter name="uid" value="${id}"/>
     <Parameter name="name" value="${name}"/>
-    <Parameter name="onReceiveImport" value="true"/>
-    <Parameter name="onReceiveDelete" value="false"/>
+${importParam}    <Parameter name="onReceiveDelete" value="${shouldDelete ? "true" : "false"}"/>
   </Configuration>
   <Contents>
-    <Content ignore="false" zipEntry="${prefZipEntry}"/>
+    <Content ignore="false" zipEntry="${prefZipEntry}">
+      <Parameter name="name" value="Preference Configuration"/>
+    </Content>
   </Contents>
 </MissionPackageManifest>
 `;
@@ -284,7 +300,9 @@ async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel, forma
         ...normalized,
       });
     });
-    archive.append(manifestXml, { name: layout.manifestPath });
+    for (const manifestPath of layout.manifestPaths) {
+      archive.append(manifestXml, { name: manifestPath });
+    }
     archive.append(prefXml, { name: layout.prefPath });
     archive.finalize();
   });
