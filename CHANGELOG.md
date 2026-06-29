@@ -8,9 +8,12 @@ Planned features can be accessed [here](docs/roadmap.md)
 <!-- ✨ `Enhancement` - -->
 <!-- ✏️ `Documentation` - -->
 <!-- 🐛 `Bug Fix` - Fixes issue with -->
-<!-- ⬆️ `Dependency` - -->
+<!-- ⬆️ `Dependency Update` - -->
 
 ## Version History
+
+### v1.3.44 - 6/29/26
+⬆️ `Dependency Update` - Updated axios, dotenv, marked, multer, nodemailer, sanitize-html, undici, node-cot, node-tak
 
 ### v1.3.43 - 6/29/26
 🎉 `New Feature` - Dashboard - Connected Users pane allows admins to send a message for ATAK Clients to subscribe to a data sync mission<br>
