@@ -1,7 +1,7 @@
 /**
  * Build preference data packages (config.pref + manifest) for remote delivery.
  * ATAK-CIV: MANIFEST/manifest.xml + certs/config.pref.
- * iTAK: config.pref at ZIP root + manifest.xml in MANIFEST/ (and root manifest.xml).
+ * iTAK: server.pref at ZIP root + manifest.xml (ephemeral auto-import).
  */
 const crypto = require("crypto");
 const archiver = require("archiver");
@@ -151,12 +151,15 @@ function resolvePreferencePackageFormat(takClient, platform) {
 
 function getPreferencePackageLayout(format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
   if (format === PREFERENCE_PACKAGE_FORMAT.ITAK) {
+    // iTAK enrollment/mission packages use flat root layout with server.pref
+    // (see Cloud-RF/tak-server certDP.sh and qrtak iTAK builder).
     return {
-      manifestPaths: ["manifest.xml", "MANIFEST/manifest.xml"],
-      prefPath: "config.pref",
-      prefZipEntry: "config.pref",
+      manifestPaths: ["manifest.xml"],
+      prefPath: "server.pref",
+      prefZipEntry: "server.pref",
       includeOnReceiveImport: true,
-      onReceiveDelete: false,
+      onReceiveDelete: true,
+      includeContentName: false,
     };
   }
   return {
@@ -165,6 +168,7 @@ function getPreferencePackageLayout(format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
     prefZipEntry: "certs/config.pref",
     includeOnReceiveImport: true,
     onReceiveDelete: false,
+    includeContentName: true,
   };
 }
 function buildPreferencePackageFilename({ callsign, teamLabel, roleLabel }) {
@@ -211,7 +215,7 @@ function buildManifestXml({
   uid,
   format = PREFERENCE_PACKAGE_FORMAT.ATAK,
   includeOnReceiveImport,
-  onReceiveDelete = false,
+  onReceiveDelete,
 }) {
   const layout = getPreferencePackageLayout(format);
   const { prefZipEntry } = layout;
@@ -223,6 +227,9 @@ function buildManifestXml({
   const importParam = shouldImport
     ? `    <Parameter name="onReceiveImport" value="true"/>\n`
     : "";
+  const contentInner = layout.includeContentName
+    ? `\n      <Parameter name="name" value="Preference Configuration"/>\n    `
+    : "";
   return `<MissionPackageManifest version="2">
   <Configuration>
     <Parameter name="uid" value="${id}"/>
@@ -230,9 +237,7 @@ function buildManifestXml({
 ${importParam}    <Parameter name="onReceiveDelete" value="${shouldDelete ? "true" : "false"}"/>
   </Configuration>
   <Contents>
-    <Content ignore="false" zipEntry="${prefZipEntry}">
-      <Parameter name="name" value="Preference Configuration"/>
-    </Content>
+    <Content ignore="false" zipEntry="${prefZipEntry}">${contentInner}</Content>
   </Contents>
 </MissionPackageManifest>
 `;

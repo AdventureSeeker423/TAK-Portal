@@ -556,6 +556,7 @@
       var EXPANDED_REFRESH_MS = 20000;
       var GROUP_CONTROL_REFRESH_MS = 8000;
       var currentGroupControlClientId = null;
+      var currentGroupControlSub = null;
 
       function esc(s) {
         if (s == null || s === "") return "";
@@ -708,6 +709,10 @@
           return raw;
         }
 
+        function isItakClient(sub) {
+          return resolveSubTakClient(sub).toUpperCase().includes("ITAK");
+        }
+
         function isRemoteActionsClient(sub) {
           var client = resolveSubTakClient(sub).toUpperCase();
           return client === "ATAK-CIV" || client === "ITAK";
@@ -850,7 +855,11 @@
             })
             .then(function (data) {
               var label = data.callsign || data.username || "client";
-              showPrefConfigStatus("Configuration sent to " + label + ".", "success");
+              var msg = "Configuration sent to " + label + ".";
+              if (isItakClient(currentGroupControlSub)) {
+                msg += " On iTAK, open the package notification and tap Import if callsign does not update automatically.";
+              }
+              showPrefConfigStatus(msg, "success");
             })
             .catch(function (err) {
               showPrefConfigStatus(err.message || "Failed to send configuration", "error");
@@ -1038,6 +1047,7 @@
             groupControlRefreshTimer = null;
           }
           currentGroupControlClientId = null;
+          currentGroupControlSub = null;
           showGroupControlError("");
           showPrefConfigStatus("");
           showDataSyncStatus("");
@@ -1054,6 +1064,7 @@
           if (!clientId) return;
 
           currentGroupControlClientId = clientId;
+          currentGroupControlSub = sub;
           var username = (sub.username && String(sub.username).trim()) || "";
           var callsign = (sub.callsign && String(sub.callsign).trim()) || "";
           var titleParts = ["Connected User"];
@@ -1232,6 +1243,7 @@
           groupControlRefreshTimer = null;
         }
         currentGroupControlClientId = null;
+        currentGroupControlSub = null;
         card.innerHTML = originalCardHtml;
         card.classList.remove("connected-clients-expanded-card");
         row.classList.remove("connected-clients-row-expanded");
