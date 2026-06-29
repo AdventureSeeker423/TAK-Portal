@@ -1,7 +1,7 @@
 /**
  * Build preference data packages (config.pref + manifest) for remote delivery.
  * ATAK-CIV: MANIFEST/manifest.xml + certs/config.pref.
- * iTAK: server.pref at ZIP root + manifest.xml (ephemeral auto-import).
+ * iTAK: config.pref at ZIP root + MANIFEST/manifest.xml (qrtak / mytecknet universal layout).
  */
 const crypto = require("crypto");
 const archiver = require("archiver");
@@ -151,20 +151,20 @@ function resolvePreferencePackageFormat(takClient, platform) {
 
 function getPreferencePackageLayout(format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
   if (format === PREFERENCE_PACKAGE_FORMAT.ITAK) {
-    // iTAK enrollment/mission packages use flat root layout with server.pref
-    // (see Cloud-RF/tak-server certDP.sh and qrtak iTAK builder).
+    // qrtak + mytecknet: iTAK reads config.pref from ZIP root; universal packages
+    // still include MANIFEST/manifest.xml referencing that root config.pref.
     return {
-      manifestPaths: ["manifest.xml"],
-      prefPath: "server.pref",
-      prefZipEntry: "server.pref",
+      manifestPaths: ["MANIFEST/manifest.xml"],
+      prefPaths: ["config.pref"],
+      prefZipEntry: "config.pref",
       includeOnReceiveImport: true,
-      onReceiveDelete: true,
+      onReceiveDelete: false,
       includeContentName: false,
     };
   }
   return {
     manifestPaths: ["MANIFEST/manifest.xml"],
-    prefPath: "certs/config.pref",
+    prefPaths: ["certs/config.pref"],
     prefZipEntry: "certs/config.pref",
     includeOnReceiveImport: true,
     onReceiveDelete: false,
@@ -189,7 +189,14 @@ function buildConfigPrefXml(entries, format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
   const other = entries.filter((e) => !CIV_IDENTITY_KEYS.has(e.key));
   const blocks = [];
 
-  if (civ.length) {
+  if (format === PREFERENCE_PACKAGE_FORMAT.ITAK) {
+    const identity = civ.length ? civ : other;
+    if (identity.length) {
+      blocks.push(
+        `  <preference version="1" name="com.atakmap.app_preferences">\n${identity.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>`
+      );
+    }
+  } else if (civ.length) {
     blocks.push(
       `  <preference version="1" name="com.atakmap.app_civ_preferences">\n${civ.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>`
     );
@@ -197,7 +204,7 @@ function buildConfigPrefXml(entries, format = PREFERENCE_PACKAGE_FORMAT.ATAK) {
       `  <preference version="1" name="com.atakmap.app_preferences">\n${civ.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>`
     );
   }
-  if (other.length) {
+  if (format !== PREFERENCE_PACKAGE_FORMAT.ITAK && other.length) {
     blocks.push(
       `  <preference version="1" name="com.atakmap.app_preferences">\n${other.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>`
     );
@@ -218,7 +225,7 @@ function buildManifestXml({
   onReceiveDelete,
 }) {
   const layout = getPreferencePackageLayout(format);
-  const { prefZipEntry } = layout;
+  const prefZipEntry = layout.prefZipEntry || layout.prefPaths?.[0] || "certs/config.pref";
   const shouldImport =
     includeOnReceiveImport != null ? includeOnReceiveImport : layout.includeOnReceiveImport;
   const shouldDelete = onReceiveDelete != null ? onReceiveDelete : layout.onReceiveDelete;
@@ -305,10 +312,12 @@ async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel, forma
         ...normalized,
       });
     });
-    for (const manifestPath of layout.manifestPaths) {
+    for (const manifestPath of layout.manifestPaths || []) {
       archive.append(manifestXml, { name: manifestPath });
     }
-    archive.append(prefXml, { name: layout.prefPath });
+    for (const prefPath of layout.prefPaths || []) {
+      archive.append(prefXml, { name: prefPath });
+    }
     archive.finalize();
   });
 }

@@ -857,7 +857,7 @@
               var label = data.callsign || data.username || "client";
               var msg = "Configuration sent to " + label + ".";
               if (isItakClient(currentGroupControlSub)) {
-                msg += " On iTAK, open the package notification and tap Import if callsign does not update automatically.";
+                msg += " On iTAK, tap the package notification and choose Import. If callsign does not change, open Settings → Callsign and update manually — iTAK may not apply preference-only packages automatically.";
               }
               showPrefConfigStatus(msg, "success");
             })

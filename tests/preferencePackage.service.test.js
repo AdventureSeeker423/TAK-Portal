@@ -100,7 +100,7 @@ async function unzipBuffer(buffer) {
     ],
     PREFERENCE_PACKAGE_FORMAT.ITAK
   );
-  assert.ok(itakPrefXml.includes('name="com.atakmap.app_civ_preferences"'));
+  assert.ok(!itakPrefXml.includes('name="com.atakmap.app_civ_preferences"'));
   assert.ok(itakPrefXml.includes('name="com.atakmap.app_preferences"'));
 
   const itakBuilt = await buildPreferencePackageZip({
@@ -112,21 +112,22 @@ async function unzipBuffer(buffer) {
   assert.strictEqual(itakBuilt.packageFormat, PREFERENCE_PACKAGE_FORMAT.ITAK);
 
   const itakEntries = await unzipBuffer(itakBuilt.buffer);
-  assert.ok(itakEntries.has("manifest.xml"));
-  assert.ok(itakEntries.has("server.pref"));
-  assert.ok(!itakEntries.has("MANIFEST/manifest.xml"));
-  assert.ok(!itakEntries.has("config.pref"));
+  assert.ok(itakEntries.has("MANIFEST/manifest.xml"));
+  assert.ok(itakEntries.has("config.pref"));
+  assert.ok(!itakEntries.has("manifest.xml"));
+  assert.ok(!itakEntries.has("server.pref"));
   assert.ok(!itakEntries.has("certs/config.pref"));
 
-  const itakManifest = itakEntries.get("manifest.xml").toString("utf8");
-  assert.ok(itakManifest.includes('zipEntry="server.pref"'));
+  const itakManifest = itakEntries.get("MANIFEST/manifest.xml").toString("utf8");
+  assert.ok(itakManifest.includes('zipEntry="config.pref"'));
   assert.ok(itakManifest.includes('onReceiveImport" value="true"'));
-  assert.ok(itakManifest.includes('onReceiveDelete" value="true"'));
+  assert.ok(itakManifest.includes('onReceiveDelete" value="false"'));
   assert.ok(!itakManifest.includes("Preference Configuration"));
 
-  const itakServerPref = itakEntries.get("server.pref").toString("utf8");
-  assert.ok(itakServerPref.includes("ITAK-USER"));
-  assert.ok(itakServerPref.includes("com.atakmap.app_civ_preferences"));
+  const itakConfigPref = itakEntries.get("config.pref").toString("utf8");
+  assert.ok(itakConfigPref.includes("ITAK-USER"));
+  assert.ok(itakConfigPref.includes("com.atakmap.app_preferences"));
+  assert.ok(!itakConfigPref.includes("com.atakmap.app_civ_preferences"));
 
   assert.strictEqual(
     resolvePreferencePackageFormat("", "iTAK iOS"),
