@@ -36,4 +36,4 @@ assert.strictEqual(isMissionGroupChannelActive(collapsed[0]), true);
 assert.strictEqual(isMissionGroupChannelActive(collapsed[1]), false);
 assert.strictEqual(isMissionGroupChannelActive(null), false);
 
-console.log("takGroupControl.remoteActions.test.js OK");
+console.log("takGroupControl.test.js OK");
