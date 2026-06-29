@@ -16,6 +16,7 @@ const dataSyncSvc = require("./dataSync.service");
 const dataSyncAccess = require("./dataSyncAccess.service");
 
 const REMOTE_ACTIONS_TAK_CLIENTS = new Set(["ATAK-CIV", "ITAK"]);
+const PREFERENCE_CONFIG_TAK_CLIENTS = new Set(["ATAK-CIV"]);
 const DATA_SYNC_INVITE_CHANNEL_SETTLE_MS = 1500;
 
 function safeStr(v) {
@@ -236,9 +237,22 @@ function isRemoteActionsSubscription(subscription) {
   return REMOTE_ACTIONS_TAK_CLIENTS.has(client);
 }
 
+function isPreferenceConfigSubscription(subscription) {
+  const client = resolveSubscriptionTakClient(subscription).toUpperCase();
+  return PREFERENCE_CONFIG_TAK_CLIENTS.has(client);
+}
+
 function assertRemoteActionsSubscription(subscription) {
   if (!isRemoteActionsSubscription(subscription)) {
     const err = new Error("Remote actions are only available for ATAK-CIV and iTAK clients.");
+    err.status = 403;
+    throw err;
+  }
+}
+
+function assertPreferenceConfigSubscription(subscription) {
+  if (!isPreferenceConfigSubscription(subscription)) {
+    const err = new Error("Callsign preferences are only available for ATAK-CIV clients.");
     err.status = 403;
     throw err;
   }
@@ -545,7 +559,7 @@ async function sendClientDataSyncInvite(clientId, authUser, { missionName }) {
 
 async function getClientPreferenceConfig(clientId, authUser) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
-  assertRemoteActionsSubscription(ctx.subscription);
+  assertPreferenceConfigSubscription(ctx.subscription);
   const authPref = await lookupAuthentikPreferenceData(ctx.username);
   const prefills = mergePreferencePrefills(authPref, ctx.subscription);
   const settings = settingsSvc.getSettings() || {};
@@ -566,16 +580,11 @@ async function getClientPreferenceConfig(clientId, authUser) {
 
 async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLabel, roleLabel }) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
-  assertRemoteActionsSubscription(ctx.subscription);
-  const packageFormat = prefPkgSvc.resolvePreferencePackageFormat(
-    resolveSubscriptionTakClient(ctx.subscription),
-    ctx.subscription?.platform
-  );
+  assertPreferenceConfigSubscription(ctx.subscription);
   const built = await prefPkgSvc.buildPreferencePackageZip({
     callsign,
     teamLabel,
     roleLabel,
-    format: packageFormat,
   });
 
   const sent = await takMissionPkgSvc.sendMissionPackageToContact({
@@ -600,7 +609,6 @@ async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLa
     roleLabel: built.roleLabel,
     packageName: built.packageName,
     packageHash: sent.packageHash || built.hash,
-    packageFormat: built.packageFormat,
   };
 }
 
@@ -617,8 +625,10 @@ module.exports = {
   normalizeGroupRow,
   findSubscriptionByClientId,
   isRemoteActionsSubscription,
+  isPreferenceConfigSubscription,
   findCollapsedGroupForMission,
   isMissionGroupChannelActive,
   REMOTE_ACTIONS_TAK_CLIENTS,
+  PREFERENCE_CONFIG_TAK_CLIENTS,
   DATA_SYNC_INVITE_CHANNEL_SETTLE_MS,
 };

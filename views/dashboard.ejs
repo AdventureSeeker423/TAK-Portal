@@ -556,7 +556,6 @@
       var EXPANDED_REFRESH_MS = 20000;
       var GROUP_CONTROL_REFRESH_MS = 8000;
       var currentGroupControlClientId = null;
-      var currentGroupControlSub = null;
 
       function esc(s) {
         if (s == null || s === "") return "";
@@ -649,6 +648,8 @@
                   '</div>' +
                   '<div id="prefConfigStatus" class="pref-config-status" style="display:none;"></div>' +
                 '</div>' +
+                '</div>' +
+                '<div id="dataSyncSection" style="display:none;">' +
                 '<div class="connected-user-section-divider"></div>' +
                 '<h3 class="connected-user-section-title">Send Data Sync</h3>' +
                 '<div id="dataSyncLoading" class="muted" style="display:none;">Loading missions…</div>' +
@@ -693,6 +694,7 @@
         var prefConfigLoadingEl = document.getElementById("prefConfigLoading");
         var prefConfigFormEl = document.getElementById("prefConfigForm");
         var prefConfigSectionEl = document.getElementById("prefConfigSection");
+        var dataSyncSectionEl = document.getElementById("dataSyncSection");
         var dataSyncMissionSelectEl = document.getElementById("dataSyncMissionSelect");
         var dataSyncSendBtn = document.getElementById("dataSyncSendBtn");
         var dataSyncStatusEl = document.getElementById("dataSyncStatus");
@@ -709,20 +711,26 @@
           return raw;
         }
 
-        function isItakClient(sub) {
-          return resolveSubTakClient(sub).toUpperCase().includes("ITAK");
+        function isPreferenceConfigClient(sub) {
+          return resolveSubTakClient(sub).toUpperCase() === "ATAK-CIV";
         }
 
-        function isRemoteActionsClient(sub) {
+        function isDataSyncClient(sub) {
           var client = resolveSubTakClient(sub).toUpperCase();
           return client === "ATAK-CIV" || client === "ITAK";
         }
 
-        function setRemoteActionsSectionVisible(visible) {
+        function setPreferenceConfigVisible(visible) {
           if (prefConfigSectionEl) prefConfigSectionEl.style.display = visible ? "block" : "none";
           if (!visible) {
             setPrefConfigLoading(false);
             showPrefConfigStatus("");
+          }
+        }
+
+        function setDataSyncSectionVisible(visible) {
+          if (dataSyncSectionEl) dataSyncSectionEl.style.display = visible ? "block" : "none";
+          if (!visible) {
             setDataSyncLoading(false);
             showDataSyncStatus("");
           }
@@ -855,11 +863,7 @@
             })
             .then(function (data) {
               var label = data.callsign || data.username || "client";
-              var msg = "Configuration sent to " + label + ".";
-              if (isItakClient(currentGroupControlSub)) {
-                msg += " On iTAK, tap the package notification and choose Import. If callsign does not change, open Settings → Callsign and update manually — iTAK may not apply preference-only packages automatically.";
-              }
-              showPrefConfigStatus(msg, "success");
+              showPrefConfigStatus("Configuration sent to " + label + ".", "success");
             })
             .catch(function (err) {
               showPrefConfigStatus(err.message || "Failed to send configuration", "error");
@@ -1047,13 +1051,13 @@
             groupControlRefreshTimer = null;
           }
           currentGroupControlClientId = null;
-          currentGroupControlSub = null;
           showGroupControlError("");
           showPrefConfigStatus("");
           showDataSyncStatus("");
           setPrefConfigLoading(false);
           setDataSyncLoading(false);
-          setRemoteActionsSectionVisible(false);
+          setPreferenceConfigVisible(false);
+          setDataSyncSectionVisible(false);
           if (overlay) overlay.style.display = "none";
         }
 
@@ -1064,7 +1068,6 @@
           if (!clientId) return;
 
           currentGroupControlClientId = clientId;
-          currentGroupControlSub = sub;
           var username = (sub.username && String(sub.username).trim()) || "";
           var callsign = (sub.callsign && String(sub.callsign).trim()) || "";
           var titleParts = ["Connected User"];
@@ -1075,12 +1078,16 @@
           showPrefConfigStatus("");
           overlay.style.display = "flex";
 
-          var canRemoteActions = isRemoteActionsClient(sub);
-          setRemoteActionsSectionVisible(canRemoteActions);
+          var canPreferenceConfig = isPreferenceConfigClient(sub);
+          var canDataSync = isDataSyncClient(sub);
+          setPreferenceConfigVisible(canPreferenceConfig);
+          setDataSyncSectionVisible(canDataSync);
 
           loadGroupControlState(clientId).catch(function () {});
-          if (canRemoteActions) {
+          if (canPreferenceConfig) {
             loadPreferenceConfig(clientId).catch(function () {});
+          }
+          if (canDataSync) {
             loadDataSyncMissions(clientId).catch(function () {});
           }
 
@@ -1243,7 +1250,6 @@
           groupControlRefreshTimer = null;
         }
         currentGroupControlClientId = null;
-        currentGroupControlSub = null;
         card.innerHTML = originalCardHtml;
         card.classList.remove("connected-clients-expanded-card");
         row.classList.remove("connected-clients-row-expanded");
