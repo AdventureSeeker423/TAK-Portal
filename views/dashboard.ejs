@@ -606,17 +606,39 @@
           '<div class="modalOverlay" id="clientGroupsOverlay" style="display:none;">' +
             '<div class="modal group-control-modal" role="dialog" aria-modal="true" aria-labelledby="clientGroupsTitle">' +
               '<div class="modalHeader">' +
-                '<h2 id="clientGroupsTitle" style="margin:0;">Group / Channel Control</h2>' +
+                '<h2 id="clientGroupsTitle" style="margin:0;">Connected User</h2>' +
                 '<button class="btn" id="clientGroupsCloseBtn" type="button">Close</button>' +
               '</div>' +
               '<div class="modalBody">' +
                 '<div id="clientGroupsError" class="msg error" style="display:none; margin-bottom:10px;"></div>' +
+                '<h3 class="connected-user-section-title">Group / Channel Control</h3>' +
                 '<div id="clientGroupsLoading" class="muted" style="display:none;">Loading groups…</div>' +
                 '<div class="group-control-table-wrap" id="clientGroupsTableWrap" style="display:none;">' +
                   '<table class="group-control-table">' +
                     '<thead><tr><th>Enabled</th><th>Group</th></tr></thead>' +
                     '<tbody id="clientGroupsTableBody"></tbody>' +
                   '</table>' +
+                '</div>' +
+                '<div class="connected-user-section-divider"></div>' +
+                '<h3 class="connected-user-section-title">Send Configuration</h3>' +
+                '<div id="prefConfigLoading" class="muted" style="display:none;">Loading configuration…</div>' +
+                '<div id="prefConfigForm" class="pref-config-form" style="display:none;">' +
+                  '<label class="pref-config-field">' +
+                    '<span class="pref-config-label">Callsign</span>' +
+                    '<input type="text" id="prefConfigCallsign" class="input" autocomplete="off" />' +
+                  '</label>' +
+                  '<label class="pref-config-field">' +
+                    '<span class="pref-config-label">Team</span>' +
+                    '<select id="prefConfigTeam" class="input"></select>' +
+                  '</label>' +
+                  '<label class="pref-config-field">' +
+                    '<span class="pref-config-label">Role</span>' +
+                    '<select id="prefConfigRole" class="input"></select>' +
+                  '</label>' +
+                  '<div class="pref-config-actions">' +
+                    '<button type="button" class="btn btnPrimary" id="prefConfigSendBtn">Send Configuration</button>' +
+                  '</div>' +
+                  '<div id="prefConfigStatus" class="pref-config-status" style="display:none;"></div>' +
                 '</div>' +
               '</div>' +
             '</div>' +
@@ -639,6 +661,14 @@
         var errorEl = document.getElementById("clientGroupsError");
         var titleEl = document.getElementById("clientGroupsTitle");
         var groupToggleInFlight = false;
+        var prefConfigSendInFlight = false;
+        var prefConfigCallsignEl = document.getElementById("prefConfigCallsign");
+        var prefConfigTeamEl = document.getElementById("prefConfigTeam");
+        var prefConfigRoleEl = document.getElementById("prefConfigRole");
+        var prefConfigSendBtn = document.getElementById("prefConfigSendBtn");
+        var prefConfigStatusEl = document.getElementById("prefConfigStatus");
+        var prefConfigLoadingEl = document.getElementById("prefConfigLoading");
+        var prefConfigFormEl = document.getElementById("prefConfigForm");
 
         function groupControlDisplayName(g) {
           if (!g) return "—";
@@ -648,6 +678,126 @@
           if (mode === "READ") return name + "_READ";
           if (mode === "WRITE") return name + "_WRITE";
           return name || "—";
+        }
+
+        function showPrefConfigStatus(msg, kind) {
+          if (!prefConfigStatusEl) return;
+          if (!msg) {
+            prefConfigStatusEl.textContent = "";
+            prefConfigStatusEl.style.display = "none";
+            prefConfigStatusEl.className = "pref-config-status";
+            return;
+          }
+          prefConfigStatusEl.textContent = msg;
+          prefConfigStatusEl.style.display = "block";
+          prefConfigStatusEl.className = "pref-config-status" + (kind === "error" ? " error" : kind === "success" ? " success" : "");
+        }
+
+        function setPrefConfigLoading(on) {
+          if (prefConfigLoadingEl) prefConfigLoadingEl.style.display = on ? "block" : "none";
+          if (prefConfigFormEl) prefConfigFormEl.style.display = on ? "none" : "block";
+        }
+
+        function fillSelectOptions(selectEl, options, selectedValue, emptyLabel) {
+          if (!selectEl) return;
+          selectEl.innerHTML = "";
+          if (emptyLabel) {
+            var emptyOpt = document.createElement("option");
+            emptyOpt.value = "";
+            emptyOpt.textContent = emptyLabel;
+            selectEl.appendChild(emptyOpt);
+          }
+          (options || []).forEach(function (opt) {
+            var o = document.createElement("option");
+            o.value = opt;
+            o.textContent = opt;
+            selectEl.appendChild(o);
+          });
+          var sel = selectedValue != null ? String(selectedValue).trim() : "";
+          if (sel) {
+            var match = Array.prototype.find.call(selectEl.options, function (opt) {
+              return String(opt.value).toLowerCase() === sel.toLowerCase();
+            });
+            if (match) selectEl.value = match.value;
+            else if (!emptyLabel) {
+              var custom = document.createElement("option");
+              custom.value = sel;
+              custom.textContent = sel;
+              selectEl.appendChild(custom);
+              selectEl.value = sel;
+            }
+          }
+        }
+
+        function loadPreferenceConfig(clientId) {
+          if (!clientId) return Promise.reject(new Error("Missing client id"));
+          setPrefConfigLoading(true);
+          showPrefConfigStatus("");
+          return fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/preference-config", {
+            headers: { Accept: "application/json" },
+          })
+            .then(function (res) {
+              return res.json().then(function (body) {
+                if (!res.ok) throw new Error((body && body.error) || "Failed to load configuration");
+                return body;
+              });
+            })
+            .then(function (data) {
+              setPrefConfigLoading(false);
+              if (prefConfigCallsignEl) prefConfigCallsignEl.value = data.callsign || "";
+              fillSelectOptions(prefConfigTeamEl, data.teamOptions || [], data.teamLabel || "", "Select team…");
+              fillSelectOptions(prefConfigRoleEl, data.roleOptions || [], data.roleLabel || "Team Member", null);
+              return data;
+            })
+            .catch(function (err) {
+              setPrefConfigLoading(false);
+              showPrefConfigStatus(err.message || "Failed to load configuration", "error");
+              throw err;
+            });
+        }
+
+        function sendPreferenceConfig(clientId) {
+          if (!clientId || prefConfigSendInFlight) return;
+          var callsign = prefConfigCallsignEl ? String(prefConfigCallsignEl.value || "").trim() : "";
+          var teamLabel = prefConfigTeamEl ? String(prefConfigTeamEl.value || "").trim() : "";
+          var roleLabel = prefConfigRoleEl ? String(prefConfigRoleEl.value || "").trim() : "";
+          if (!callsign) {
+            showPrefConfigStatus("Callsign is required.", "error");
+            return;
+          }
+
+          prefConfigSendInFlight = true;
+          if (prefConfigSendBtn) {
+            prefConfigSendBtn.disabled = true;
+            prefConfigSendBtn.textContent = "Sending…";
+          }
+          showPrefConfigStatus("");
+
+          fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/send-preference-config", {
+            method: "POST",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({ callsign: callsign, teamLabel: teamLabel, roleLabel: roleLabel }),
+          })
+            .then(function (res) {
+              return res.json().then(function (body) {
+                if (!res.ok) throw new Error((body && body.error) || "Failed to send configuration");
+                return body;
+              });
+            })
+            .then(function (data) {
+              var label = data.callsign || data.username || "client";
+              showPrefConfigStatus("Configuration sent to " + label + ".", "success");
+            })
+            .catch(function (err) {
+              showPrefConfigStatus(err.message || "Failed to send configuration", "error");
+            })
+            .finally(function () {
+              prefConfigSendInFlight = false;
+              if (prefConfigSendBtn) {
+                prefConfigSendBtn.disabled = false;
+                prefConfigSendBtn.textContent = "Send Configuration";
+              }
+            });
         }
 
         function showGroupControlError(msg) {
@@ -734,6 +884,8 @@
           }
           currentGroupControlClientId = null;
           showGroupControlError("");
+          showPrefConfigStatus("");
+          setPrefConfigLoading(false);
           if (overlay) overlay.style.display = "none";
         }
 
@@ -746,14 +898,16 @@
           currentGroupControlClientId = clientId;
           var username = (sub.username && String(sub.username).trim()) || "";
           var callsign = (sub.callsign && String(sub.callsign).trim()) || "";
-          var titleParts = ["Group / Channel Control"];
+          var titleParts = ["Connected User"];
           if (username) titleParts.push(username);
           if (callsign) titleParts.push(callsign);
           if (titleEl) titleEl.textContent = titleParts.join(" — ");
           showGroupControlError("");
+          showPrefConfigStatus("");
           overlay.style.display = "flex";
 
           loadGroupControlState(clientId).catch(function () {});
+          loadPreferenceConfig(clientId).catch(function () {});
 
           if (groupControlRefreshTimer) clearInterval(groupControlRefreshTimer);
           groupControlRefreshTimer = setInterval(function () {
@@ -829,6 +983,12 @@
         if (closeBtn) {
           closeBtn.addEventListener("click", function (e) {
             closeClientGroupsModal(e);
+          });
+        }
+        if (prefConfigSendBtn) {
+          prefConfigSendBtn.addEventListener("click", function () {
+            if (!currentGroupControlClientId) return;
+            sendPreferenceConfig(currentGroupControlClientId);
           });
         }
         if (overlay) {
@@ -1161,9 +1321,11 @@
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
   .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
 
-  .group-control-modal { width: min(640px, 95vw); max-height: 85vh; display: flex; flex-direction: column; }
-  .group-control-modal .modalBody { overflow: hidden; display: flex; flex-direction: column; }
-  .group-control-table-wrap { max-height: 360px; overflow: auto; margin-top: 4px; }
+  .group-control-modal { width: min(720px, 95vw); max-height: 90vh; display: flex; flex-direction: column; }
+  .group-control-modal .modalBody { overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  .connected-user-section-title { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+  .connected-user-section-divider { border-top: 1px solid var(--line); margin: 14px 0 10px; }
+  .group-control-table-wrap { max-height: 240px; overflow: auto; margin-top: 4px; }
   .group-control-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .group-control-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
   .group-control-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -1178,4 +1340,14 @@
   .group-control-checkbox { width: 1.1em; height: 1.1em; cursor: pointer; }
   .group-control-checkbox:disabled { cursor: wait; opacity: 0.6; }
   #clientGroupsError.error { color: var(--danger, #e53935); }
+  .pref-config-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 12px; align-items: end; }
+  .pref-config-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .pref-config-label { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .pref-config-actions { grid-column: 1 / -1; margin-top: 2px; }
+  .pref-config-status { margin-top: 8px; font-size: 14px; }
+  .pref-config-status.success { color: var(--success, #43a047); }
+  .pref-config-status.error { color: var(--danger, #e53935); }
+  @media (max-width: 640px) {
+    .pref-config-form { grid-template-columns: 1fr; }
+  }
 </style>

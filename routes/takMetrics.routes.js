@@ -142,4 +142,50 @@ router.put("/clients/:clientId/groups", async (req, res) => {
   }
 });
 
+router.get("/clients/:clientId/preference-config", async (req, res) => {
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
+
+  try {
+    const out = await takGroupControl.getClientPreferenceConfig(req.params.clientId, user);
+    return res.json(out);
+  } catch (err) {
+    return takRouteError(res, err);
+  }
+});
+
+router.post("/clients/:clientId/send-preference-config", async (req, res) => {
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
+
+  try {
+    const out = await takGroupControl.sendClientPreferenceConfig(req.params.clientId, user, {
+      callsign: req.body?.callsign,
+      teamLabel: req.body?.teamLabel ?? req.body?.team,
+      roleLabel: req.body?.roleLabel ?? req.body?.role,
+    });
+
+    auditSvc.logEvent({
+      actor: user,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "REMOTE_SEND_PREFERENCE_CONFIG",
+      targetType: "tak_client",
+      targetId: out.clientUid || String(req.params.clientId || ""),
+      details: {
+        summary: `Sent preference configuration (${out.packageName}) to ${out.callsign || out.username}.`,
+        username: out.username,
+        clientUid: out.clientUid,
+        callsign: out.callsign,
+        teamLabel: out.teamLabel,
+        roleLabel: out.roleLabel,
+        packageName: out.packageName,
+      },
+    });
+
+    return res.json(out);
+  } catch (err) {
+    return takRouteError(res, err);
+  }
+});
+
 module.exports = router;

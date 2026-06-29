@@ -7,6 +7,10 @@ const {
   isExcludedConnectedUserSubscription,
 } = require("./takMetrics.service");
 const accessSvc = require("./access.service");
+const tokensSvc = require("./authentikTokens.service");
+const usersSvc = require("./users.service");
+const prefPkgSvc = require("./preferencePackage.service");
+const takMissionPkgSvc = require("./takMissionPackage.service");
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -328,10 +332,96 @@ async function setClientGroupActive(clientId, authUser, { groupName, accessMode,
   };
 }
 
+async function lookupAuthentikPreferenceData(username) {
+  const u = safeStr(username).trim();
+  if (!u) return null;
+  try {
+    const userId = await tokensSvc.getUserIdByUsername(u);
+    if (!userId) return null;
+    const user = await usersSvc.getUserById(userId).catch(() => null);
+    if (!user || user.pk == null) return null;
+    return usersSvc.getPreferenceDataForUser(user);
+  } catch (_) {
+    return null;
+  }
+}
+
+function mergePreferencePrefills(authPref, subscription) {
+  const subCallsign = safeStr(subscription?.callsign).trim();
+  const subTeam = safeStr(subscription?.team).trim();
+  const subRole = safeStr(subscription?.role).trim();
+
+  const authCallsign = safeStr(authPref?.callsign).trim();
+  const authTeam = safeStr(authPref?.teamLabel).trim();
+  const authRole = safeStr(authPref?.roleLabel).trim();
+
+  let source = "subscription";
+  if (authPref && (authCallsign || authTeam || authRole)) {
+    source = subCallsign || subTeam || subRole ? "mixed" : "authentik";
+  }
+
+  const callsign = authCallsign || subCallsign;
+  const teamLabel = authTeam || subTeam;
+  const roleLabel = authRole || subRole || "Team Member";
+
+  return {
+    callsign,
+    teamLabel: prefPkgSvc.normalizeTeamLabel(teamLabel) || teamLabel,
+    roleLabel: prefPkgSvc.normalizeRoleLabel(roleLabel),
+    source,
+  };
+}
+
+async function getClientPreferenceConfig(clientId, authUser) {
+  const ctx = await resolveSubscriptionForControl(clientId, authUser);
+  const authPref = await lookupAuthentikPreferenceData(ctx.username);
+  const prefills = mergePreferencePrefills(authPref, ctx.subscription);
+
+  return {
+    configured: true,
+    clientUid: ctx.clientUid,
+    username: ctx.username,
+    liveCallsign: ctx.callsign,
+    callsign: prefills.callsign,
+    teamLabel: prefills.teamLabel,
+    roleLabel: prefills.roleLabel,
+    source: prefills.source,
+    teamOptions: prefPkgSvc.ALLOWED_TEAM_COLORS.slice(),
+    roleOptions: prefPkgSvc.ALLOWED_ATAK_ROLES.slice(),
+  };
+}
+
+async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLabel, roleLabel }) {
+  const ctx = await resolveSubscriptionForControl(clientId, authUser);
+  const built = await prefPkgSvc.buildPreferencePackageZip({
+    callsign,
+    teamLabel,
+    roleLabel,
+  });
+
+  await takMissionPkgSvc.sendMissionPackageToContact({
+    clientUid: ctx.clientUid,
+    buffer: built.buffer,
+    filename: built.packageName,
+  });
+
+  return {
+    ok: true,
+    clientUid: ctx.clientUid,
+    username: ctx.username,
+    callsign: built.callsign,
+    teamLabel: built.teamLabel,
+    roleLabel: built.roleLabel,
+    packageName: built.packageName,
+  };
+}
+
 module.exports = {
   fetchGroupsForUser,
   getClientGroupControlState,
   setClientGroupActive,
+  getClientPreferenceConfig,
+  sendClientPreferenceConfig,
   collapseGroupsForDisplay,
   cleanGroupForTakPayload,
   normalizeGroupRow,

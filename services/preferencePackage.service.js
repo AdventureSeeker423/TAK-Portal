@@ -1,0 +1,209 @@
+/**
+ * Build ATAK preference data packages (config.pref + MANIFEST) for remote delivery.
+ */
+const crypto = require("crypto");
+const archiver = require("archiver");
+
+const ALLOWED_TEAM_COLORS = [
+  "Blue",
+  "Dark Blue",
+  "Brown",
+  "Cyan",
+  "Green",
+  "Dark Green",
+  "Magenta",
+  "Maroon",
+  "Orange",
+  "Purple",
+  "Red",
+  "Teal",
+  "White",
+  "Yellow",
+];
+
+const ALLOWED_ATAK_ROLES = [
+  "Team Member",
+  "Team Lead",
+  "HQ",
+  "Sniper",
+  "Medic",
+  "Forward Observer",
+  "RTO",
+  "K9",
+];
+
+const CIV_IDENTITY_KEYS = new Set([
+  "locationCallsign",
+  "locationTeam",
+  "atakRoleType",
+  "locationUnitType",
+  "userRemarks",
+]);
+
+const JAVA_CLASS = {
+  string: "class java.lang.String",
+  boolean: "class java.lang.Boolean",
+  int: "class java.lang.Integer",
+  long: "class java.lang.Long",
+};
+
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function escapeXml(value) {
+  return safeStr(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function normalizeTeamLabel(raw) {
+  const s = safeStr(raw).trim();
+  if (!s) return "";
+  const match = ALLOWED_TEAM_COLORS.find((c) => c.toLowerCase() === s.toLowerCase());
+  return match || "";
+}
+
+function normalizeRoleLabel(raw) {
+  const s = safeStr(raw).trim();
+  if (!s) return "Team Member";
+  const match = ALLOWED_ATAK_ROLES.find((r) => r.toLowerCase() === s.toLowerCase());
+  return match || "";
+}
+
+function sanitizeFilenamePart(value) {
+  return safeStr(value)
+    .trim()
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+}
+
+function buildPreferencePackageFilename({ callsign, teamLabel, roleLabel }) {
+  const parts = ["Pref", sanitizeFilenamePart(callsign)];
+  const team = sanitizeFilenamePart(teamLabel);
+  const role = sanitizeFilenamePart(roleLabel);
+  if (team) parts.push(team);
+  if (role) parts.push(role);
+  return `${parts.filter(Boolean).join("-") || "Pref-config"}.zip`;
+}
+
+function entryXml(key, value) {
+  return `    <entry key="${escapeXml(key)}" class="${JAVA_CLASS.string}">${escapeXml(value)}</entry>`;
+}
+
+function buildConfigPrefXml(entries) {
+  const civ = entries.filter((e) => CIV_IDENTITY_KEYS.has(e.key));
+  const other = entries.filter((e) => !CIV_IDENTITY_KEYS.has(e.key));
+  const blocks = [];
+
+  if (civ.length) {
+    blocks.push(
+      `  <preference version="1" name="com.atakmap.app_civ_preferences">\n${civ.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>`
+    );
+    blocks.push(
+      `  <preference version="1" name="com.atakmap.app_preferences">\n${civ.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>`
+    );
+  }
+  if (other.length) {
+    blocks.push(
+      `  <preference version="1" name="com.atakmap.app_preferences">\n${other.map((e) => entryXml(e.key, e.value)).join("\n")}\n  </preference>`
+    );
+  }
+
+  return `<?xml version='1.0' encoding='ASCII' standalone='yes'?>\n<preferences>\n${blocks.join("\n")}\n</preferences>\n`;
+}
+
+function buildManifestXml({ packageName, uid }) {
+  const name = escapeXml(packageName);
+  const id = escapeXml(uid || crypto.randomUUID());
+  return `<MissionPackageManifest version="2">
+  <Configuration>
+    <Parameter name="uid" value="${id}"/>
+    <Parameter name="name" value="${name}"/>
+    <Parameter name="onReceiveImport" value="true"/>
+    <Parameter name="onReceiveDelete" value="false"/>
+  </Configuration>
+  <Contents>
+    <Content ignore="false" zipEntry="certs/config.pref"/>
+  </Contents>
+</MissionPackageManifest>
+`;
+}
+
+function validatePreferenceInputs({ callsign, teamLabel, roleLabel }) {
+  const c = safeStr(callsign).trim();
+  if (!c) {
+    const err = new Error("Callsign is required.");
+    err.status = 400;
+    throw err;
+  }
+
+  const teamRaw = safeStr(teamLabel).trim();
+  const team = normalizeTeamLabel(teamRaw);
+  if (teamRaw && !team) {
+    const err = new Error(`Invalid team color. Expected one of: ${ALLOWED_TEAM_COLORS.join(", ")}`);
+    err.status = 400;
+    throw err;
+  }
+
+  const roleRaw = safeStr(roleLabel).trim();
+  const role = normalizeRoleLabel(roleRaw || "Team Member");
+  if (roleRaw && !ALLOWED_ATAK_ROLES.some((r) => r.toLowerCase() === roleRaw.toLowerCase())) {
+    const err = new Error(`Invalid role. Expected one of: ${ALLOWED_ATAK_ROLES.join(", ")}`);
+    err.status = 400;
+    throw err;
+  }
+
+  return { callsign: c, teamLabel: team, roleLabel: role };
+}
+
+function buildPreferenceEntries({ callsign, teamLabel, roleLabel }) {
+  const entries = [{ key: "locationCallsign", value: callsign }];
+  if (teamLabel) entries.push({ key: "locationTeam", value: teamLabel });
+  if (roleLabel) entries.push({ key: "atakRoleType", value: roleLabel });
+  return entries;
+}
+
+async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel }) {
+  const normalized = validatePreferenceInputs({ callsign, teamLabel, roleLabel });
+  const packageName = buildPreferencePackageFilename(normalized);
+  const prefXml = buildConfigPrefXml(buildPreferenceEntries(normalized));
+  const manifestXml = buildManifestXml({
+    packageName,
+    uid: crypto.randomUUID(),
+  });
+
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.on("data", (chunk) => chunks.push(chunk));
+    archive.on("error", reject);
+    archive.on("end", () => {
+      resolve({
+        buffer: Buffer.concat(chunks),
+        packageName,
+        ...normalized,
+      });
+    });
+    archive.append(manifestXml, { name: "MANIFEST/manifest.xml" });
+    archive.append(prefXml, { name: "certs/config.pref" });
+    archive.finalize();
+  });
+}
+
+module.exports = {
+  ALLOWED_TEAM_COLORS,
+  ALLOWED_ATAK_ROLES,
+  buildPreferencePackageZip,
+  buildPreferencePackageFilename,
+  buildConfigPrefXml,
+  buildManifestXml,
+  validatePreferenceInputs,
+  normalizeTeamLabel,
+  normalizeRoleLabel,
+};
