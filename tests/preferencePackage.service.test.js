@@ -66,12 +66,12 @@ async function unzipBuffer(buffer) {
   const teamOptions = buildTeamSelectOptions({ DP_COLOR_DARK_BLUE: "Law Enforcement" });
   const darkBlue = teamOptions.find((o) => o.value === "Dark Blue");
   assert.ok(darkBlue);
-  assert.strictEqual(darkBlue.label, "Dark Blue -- Law Enforcement");
+  assert.strictEqual(darkBlue.label, "Dark Blue — Law Enforcement");
 
   const roleOptions = buildRoleSelectOptions({ DP_ROLE_HQ: "Command Staff / Admin Support" });
   const hq = roleOptions.find((o) => o.value === "HQ");
   assert.ok(hq);
-  assert.strictEqual(hq.label, "HQ -- Command Staff / Admin Support");
+  assert.strictEqual(hq.label, "HQ — Command Staff / Admin Support");
 
   const entries = await unzipBuffer(built.buffer);
   assert.ok(entries.has("MANIFEST/manifest.xml"));

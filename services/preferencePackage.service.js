@@ -109,7 +109,7 @@ function deploymentPacketDefinition(settings, key) {
 
 function buildDeploymentOptionLabel(name, settings, keyMap) {
   const definition = deploymentPacketDefinition(settings, keyMap[name]);
-  return definition ? `${name} -- ${definition}` : name;
+  return definition ? `${name} — ${definition}` : name;
 }
 
 function buildTeamSelectOptions(settings = {}) {
