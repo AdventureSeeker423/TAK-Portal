@@ -14,7 +14,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ### v1.3.45 - 7/7/26
 🐛 `Bug Fix` - Fixes issue with SSH connection timing out<br>
-🐛 `Bug Fix` - Fixes issue with integrations not building and generating certs properly
+🐛 `Bug Fix` - Fixes issue with integrations not building and generating certs properly<br>
 🐛 `POTENTIAL Bug Fix` - Aims to fix issue with Brevo mishandling the TAK Portal button
 
 ### v1.3.44 - 6/29/26
