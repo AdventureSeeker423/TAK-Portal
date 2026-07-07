@@ -978,9 +978,19 @@
       if (out.user && out.user.pk) {
         try {
           await downloadIntegrationCertBundle(out.user.pk, username);
+          setCreateMsg(
+            "Integration \"" + username + "\" created successfully. Cert bundle downloaded.",
+            true
+          );
         } catch (downloadErr) {
-          setCreateMsg("Integration \"" + username + "\" created. Cert download failed: " + (downloadErr.message || "Download failed"), false);
+          setCreateMsg(
+            "Integration \"" + username + "\" created. Cert download failed: " +
+              (downloadErr.message || "Download failed"),
+            false
+          );
         }
+      } else {
+        setCreateMsg("Integration \"" + username + "\" created successfully.", true);
       }
     } catch (err) {
       setCreateMsg(err.message || "Create failed", false);
