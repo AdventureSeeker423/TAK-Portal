@@ -105,6 +105,10 @@ function buildPrivilegedCommand(innerCommand, mode, options = {}) {
 
   if (mode.mode === "direct") {
     if (runAsUser) {
+      const sshUser = String(options.sshUsername || "").trim();
+      if (sshUser && sshUser === runAsUser) {
+        return innerCommand;
+      }
       throw new Error(
         "SSH user can access CoreConfig directly but cannot run commands as the tak user. Use an account with sudo or re-run Configure Sudo Access."
       );
@@ -129,6 +133,13 @@ function buildPrivilegedCommand(innerCommand, mode, options = {}) {
   throw new Error(PRIVILEGED_UNAVAILABLE_MSG);
 }
 
+function takCertCommandOptions(connect, extra = {}) {
+  return {
+    sshUsername: String(connect?.username || "").trim(),
+    ...extra,
+  };
+}
+
 function buildPrivilegedTeeCommand(remoteAbsolutePath, mode) {
   const safePath = quoteForSingleQuotedShell(String(remoteAbsolutePath || "").trim());
   const teeInner = `tee '${safePath}' > /dev/null`;
@@ -147,12 +158,6 @@ async function probePrivilegedMode(connectConfig) {
     return { mode: "root" };
   }
 
-  const canRead = await execOverSsh(connectConfig, `test -r ${TAK_CORE_CONFIG_PATH}`, 15000);
-  const canWrite = await execOverSsh(connectConfig, `test -w ${TAK_CORE_CONFIG_PATH}`, 15000);
-  if (canRead.ok && canWrite.ok) {
-    return { mode: "direct" };
-  }
-
   const nopassRoot = await execOverSsh(connectConfig, shellProbeNopasswdRootAccess(), 15000);
   if (nopassRoot.ok) {
     return { mode: "nopasswd" };
@@ -169,6 +174,12 @@ async function probePrivilegedMode(connectConfig) {
     if (passRes.ok) {
       return { mode: "password", password: sudoPassword };
     }
+  }
+
+  const canRead = await execOverSsh(connectConfig, `test -r ${TAK_CORE_CONFIG_PATH}`, 15000);
+  const canWrite = await execOverSsh(connectConfig, `test -w ${TAK_CORE_CONFIG_PATH}`, 15000);
+  if (canRead.ok && canWrite.ok) {
+    return { mode: "direct" };
   }
 
   return { mode: "none" };
@@ -478,7 +489,11 @@ async function fetchIntegrationCertPairFromRemote(username) {
 
   const connect = toConnectConfig(cfg);
   const mode = await getPrivilegedMode(connect);
-  const command = buildPrivilegedCommand(remoteScript, mode, { runAsUser: "tak" });
+  const command = buildPrivilegedCommand(
+    remoteScript,
+    mode,
+    takCertCommandOptions(connect, { runAsUser: "tak" })
+  );
   const result = await execOverSsh(connect, command);
 
   if (!result.ok) {
@@ -551,7 +566,11 @@ async function revokeIntegrationCertViaSshScript(username) {
 
   const connect = toConnectConfig(cfg);
   const mode = await getPrivilegedMode(connect);
-  const revokeCommand = buildPrivilegedCommand(revokeInner, mode, { runAsUser: "tak" });
+  const revokeCommand = buildPrivilegedCommand(
+    revokeInner,
+    mode,
+    takCertCommandOptions(connect, { runAsUser: "tak" })
+  );
   const result = await execOverSsh(connect, revokeCommand, 45000);
 
   if (!result.ok) {
@@ -568,7 +587,11 @@ async function revokeIntegrationCertViaSshScript(username) {
     "done; " +
     "rm -f \"./files/${name}-trusted.pem\" \"./${name}-trusted.pem\"'";
 
-  const cleanupCommand = buildPrivilegedCommand(cleanupInner, mode, { runAsUser: "tak" });
+  const cleanupCommand = buildPrivilegedCommand(
+    cleanupInner,
+    mode,
+    takCertCommandOptions(connect, { runAsUser: "tak" })
+  );
   const cleanupResult = await execOverSsh(
     connect,
     cleanupCommand,
@@ -1271,7 +1294,13 @@ async function ensureRemoteTakCertEnvironment(connect, mode, _portalUsername) {
     '[ -n "$DIR" ] || DIR=files; export DIR; mkdir -p "$DIR"; bash -n makeCert.sh\'';
 
   let currentMode = mode || (await getPrivilegedMode(connect));
-  const verifyCmd = buildPrivilegedCommand(verifyAsTak, currentMode, { runAsUser: "tak" });
+  const buildVerifyCmd = (m) =>
+    buildPrivilegedCommand(
+      verifyAsTak,
+      m,
+      takCertCommandOptions(connect, { runAsUser: "tak" })
+    );
+  let verifyCmd = buildVerifyCmd(currentMode);
   let result = await execOverSsh(connect, verifyCmd, 30000);
   if (result.ok) return { ok: true };
 
@@ -1281,6 +1310,7 @@ async function ensureRemoteTakCertEnvironment(connect, mode, _portalUsername) {
   }
   if (repair.ok) {
     currentMode = await getPrivilegedMode(connect, { forceRefresh: true });
+    verifyCmd = buildVerifyCmd(currentMode);
     result = await execOverSsh(connect, verifyCmd, 30000);
     if (result.ok) return { ok: true };
   }
@@ -1331,7 +1361,11 @@ async function createTakClientCertForIntegration(username) {
     return { ok: false, message: envCheck.message };
   }
 
-  const command = buildPrivilegedCommand(inner, mode, { runAsUser: "tak" });
+  const command = buildPrivilegedCommand(
+    inner,
+    mode,
+    takCertCommandOptions(connect, { runAsUser: "tak" })
+  );
   const result = await execOverSsh(connect, command);
   if (!result.ok) return { ok: false, message: result.message };
   if (TAK_DEBUG) console.log("[TAK SSH] makeCert.sh succeeded for", un);
