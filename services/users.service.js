@@ -420,6 +420,7 @@ function getTakPortalPublicUrl() {
 /**
  * Build an HTML block for "TAK Portal" content.
  * NOTE: This is used with {{{takPortalBlock}}} in templates so it must be valid HTML.
+ * CTA is a plain bold link (not a boxed button) — some mail gateways strip button-shaped CTAs.
  */
 function buildTakPortalBlock({
   takPortalPublicUrl,
@@ -432,54 +433,17 @@ function buildTakPortalBlock({
   if (url) {
     const intro = String(introHtml || "").trim();
     const btnText = String(buttonText || "Open TAK Portal").trim();
-
-    const btnPadV = 12;
-    const btnPadH = 22;
-    const btnRadius = 8;
-    const btnBg = "#2563eb";
-    const btnTextColor = "#ffffff";
+    const linkColor = "#2e6da4";
 
     return `
       ${intro ? `<p style="margin:0 0 12px; font-size:14px; line-height:21px;">${intro}</p>` : ""}
 
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 16px;">
-        <tr>
-          <td align="center">
-
-            <!--[if mso]>
-            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml"
-              href="${url}"
-              style="height:${btnPadV * 2 + 16}px; v-text-anchor:middle; width:320px;"
-              arcsize="${Math.round((btnRadius / 40) * 100)}%"
-              stroke="f"
-              fillcolor="${btnBg}">
-              <w:anchorlock/>
-              <center style="color:${btnTextColor}; font-family:Segoe UI, Arial, sans-serif; font-size:14px; font-weight:700;">
-                ${btnText}
-              </center>
-            </v:roundrect>
-            <![endif]-->
-
-            <!--[if !mso]><!-- -->
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-              <tr>
-                <td bgcolor="${btnBg}" style="border-radius:${btnRadius}px;">
-                  <a href="${url}" target="_blank" rel="noopener noreferrer" class="btn-link"
-                     style="display:inline-block; padding:${btnPadV}px ${btnPadH}px;
-                            font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-                            font-size:14px; line-height:16px; font-weight:700;
-                            color:${btnTextColor} !important; mso-style-priority:100;
-                            text-decoration:none; border-radius:${btnRadius}px;">
-                    <span style="color:${btnTextColor} !important; text-decoration:none;">${btnText}</span>
-                  </a>
-                </td>
-              </tr>
-            </table>
-            <!--<![endif]-->
-
-          </td>
-        </tr>
-      </table>
+      <p style="margin:0 0 16px; text-align:center;">
+        <a href="${url}" target="_blank" rel="noopener noreferrer"
+           style="font-size:16px; font-weight:700; color:${linkColor};">
+          ${btnText}
+        </a>
+      </p>
     `.trim();
   }
 
