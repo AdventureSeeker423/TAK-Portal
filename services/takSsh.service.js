@@ -336,87 +336,6 @@ async function runTakCertsRepairWithStoredSudoPassword(connect) {
 }
 
 /**
- * Ensure sudoers includes cert repair, deploy repair script, and fix /opt/tak/certs permissions.
- */
-async function syncPortalSudoersForCertRepair(connect, portalUsername) {
-  const probe = await execOverSsh(
-    connect,
-    `sudo -n bash ${TAK_PORTAL_CERTS_REPAIR_SCRIPT} >/dev/null 2>&1`,
-    15000
-  );
-  if (probe.ok) return { ok: true };
-
-  const user = assertSafePortalSshUsername(portalUsername || connect.username);
-  const storedPw = getSudoPasswordFromSettings();
-  if (storedPw) {
-    const install = await installPortalSudoersOnRemote(connect, storedPw, user);
-    if (!install.ok) {
-      return { ok: false, message: install.message || "Could not refresh portal sudoers for cert repair." };
-    }
-    clearPrivilegedModeCache();
-  }
-
-  let mode = await getPrivilegedMode(connect, { forceRefresh: true });
-  if (!storedPw && mode.mode === "password" && mode.password) {
-    const install = await installPortalSudoersOnRemote(connect, mode.password, user);
-    if (install.ok) {
-      clearPrivilegedModeCache();
-      mode = await getPrivilegedMode(connect, { forceRefresh: true });
-    }
-  }
-  const deploy = await deployTakPortalCertsRepairScript(connect, mode);
-  if (!deploy.ok) {
-    const inline = await runInlineTakCertsRepair(connect, mode);
-    if (!inline.ok) {
-      const withPw = await runTakCertsRepairWithStoredSudoPassword(connect);
-      if (!withPw.ok) {
-        return {
-          ok: false,
-          message:
-            deploy.message ||
-            inline.message ||
-            withPw.message ||
-            "Could not deploy cert repair on the TAK server.",
-        };
-      }
-    }
-  } else {
-    const repair = await runTakPortalCertsRepair(connect, mode);
-    if (!repair.ok) {
-      const inline = await runInlineTakCertsRepair(connect, mode);
-      if (!inline.ok) {
-        const withPw = await runTakCertsRepairWithStoredSudoPassword(connect);
-        if (!withPw.ok) {
-          return { ok: false, message: repair.message || inline.message || withPw.message };
-        }
-      }
-    }
-  }
-
-  const verify = await execOverSsh(
-    connect,
-    `sudo -n bash ${TAK_PORTAL_CERTS_REPAIR_SCRIPT} >/dev/null 2>&1`,
-    15000
-  );
-  if (verify.ok) return { ok: true };
-
-  mode = await getPrivilegedMode(connect, { forceRefresh: true });
-  const finalRepair = await runTakPortalCertsRepair(connect, mode);
-  if (finalRepair.ok) return { ok: true };
-
-  const finalInline = await runInlineTakCertsRepair(connect, mode);
-  if (finalInline.ok) return { ok: true };
-
-  return {
-    ok: false,
-    message:
-      finalRepair.message ||
-      finalInline.message ||
-      "Certificate directory repair failed. In Server Settings, use Reconfigure Sudo with your SSH account password once, then retry.",
-  };
-}
-
-/**
  * During handshake: install /etc/sudoers.d/tak-portal, or store sudo password for -S fallback.
  */
 async function configureRemoteSudoAccessAfterHandshake({ host, port, username, password }) {
@@ -1342,30 +1261,36 @@ function streamRemoteSshExec(command, handlers = {}) {
 }
 
 /**
- * Verify (and repair via portal SSH) /opt/tak/certs so the tak user can source cert-metadata.sh.
+ * Verify (and repair via inline SSH commands) /opt/tak/certs so the tak user can source cert-metadata.sh.
  * makeCert.sh line 6 sources cert-metadata.sh; without read access DIR stays empty and mkdir fails.
+ * Does not invoke /opt/tak/utils/tak-portal-repair-certs.sh — that file is only deployed during SSH handshake.
  */
-async function ensureRemoteTakCertEnvironment(connect, _mode, portalUsername) {
-  const sync = await syncPortalSudoersForCertRepair(connect, portalUsername || connect.username);
-  if (!sync.ok) {
-    return sync;
-  }
-
-  const mode = await getPrivilegedMode(connect, { forceRefresh: true });
+async function ensureRemoteTakCertEnvironment(connect, mode, _portalUsername) {
   const verifyAsTak =
     `bash -lc 'set -e; cd ${TAK_CERTS_DIR}; test -r cert-metadata.sh; test -r makeCert.sh; . ./cert-metadata.sh; ` +
     '[ -n "$DIR" ] || DIR=files; export DIR; mkdir -p "$DIR"; bash -n makeCert.sh\'';
 
-  const verifyCmd = buildPrivilegedCommand(verifyAsTak, mode, { runAsUser: "tak" });
-  const result = await execOverSsh(connect, verifyCmd, 30000);
+  let currentMode = mode || (await getPrivilegedMode(connect));
+  const verifyCmd = buildPrivilegedCommand(verifyAsTak, currentMode, { runAsUser: "tak" });
+  let result = await execOverSsh(connect, verifyCmd, 30000);
   if (result.ok) return { ok: true };
 
-  const detail = String(result.stderr || result.message || "").trim();
+  let repair = await runInlineTakCertsRepair(connect, currentMode);
+  if (!repair.ok) {
+    repair = await runTakCertsRepairWithStoredSudoPassword(connect);
+  }
+  if (repair.ok) {
+    currentMode = await getPrivilegedMode(connect, { forceRefresh: true });
+    result = await execOverSsh(connect, verifyCmd, 30000);
+    if (result.ok) return { ok: true };
+  }
+
+  const detail = String(result.stderr || result.message || repair.message || "").trim();
   return {
     ok: false,
     message:
       detail ||
-      "TAK certificate directory is still not usable after automated repair. In Server Settings, use Reconfigure Sudo with your SSH account password once, then retry.",
+      "TAK certificate directory is not usable. In Server Settings, verify SSH/sudo access for the tak user, then retry.",
   };
 }
 
