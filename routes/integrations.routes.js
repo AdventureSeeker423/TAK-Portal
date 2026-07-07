@@ -24,16 +24,75 @@ function parseStoredDataFeedPort(raw) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** TAK Server feed creation can exceed the default 5s Marti axios timeout (CoreConfig + listener). */
+const DATAFEED_WRITE_TIMEOUT_MS = 30000;
+const DATAFEED_ROLLBACK_POLL_MS = 2000;
+const DATAFEED_ROLLBACK_MAX_ATTEMPTS = 6;
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isDataFeedNameAlreadyExistsError(err) {
+  const parts = [];
+  const data = err?.response?.data;
+  if (typeof data === "string") parts.push(data);
+  else if (data && typeof data === "object") {
+    if (typeof data.message === "string") parts.push(data.message);
+    if (typeof data.error === "string") parts.push(data.error);
+  }
+  if (err?.message) parts.push(err.message);
+  return /input name already exists/i.test(parts.join(" "));
+}
+
+function formatDataFeedCreateError(err) {
+  if (isDataFeedNameAlreadyExistsError(err)) {
+    return (
+      "A data feed with this name already exists on TAK Server. " +
+      "Remove the existing feed on TAK Server (or choose a different integration title) and try again."
+    );
+  }
+  return toErrorPayload(err);
+}
+
+/**
+ * Delete a data feed if present. Retries with delay so rollback can catch feeds that
+ * materialize after a timed-out create request finishes on TAK Server.
+ */
+async function deleteDataFeedIfPresent(dataFeedName, options = {}) {
+  if (!dataFeedName || !takSvc.isTakConfigured()) return;
+
+  const timeout = options.timeout ?? DATAFEED_WRITE_TIMEOUT_MS;
+  const maxAttempts = options.maxAttempts ?? DATAFEED_ROLLBACK_MAX_ATTEMPTS;
+  const delayMs = options.delayMs ?? DATAFEED_ROLLBACK_POLL_MS;
+  const takClient = takSvc.buildTakAxios({ timeout });
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const probe = await takClient.get(
+        `/api/datafeeds/${encodeURIComponent(dataFeedName)}`,
+        { validateStatus: (status) => status === 200 || status === 404 }
+      );
+      if (probe.status === 404) return;
+
+      await takClient.delete(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`);
+      return;
+    } catch (err) {
+      if (attempt >= maxAttempts) throw err;
+    }
+    await sleepMs(delayMs);
+  }
+}
+
 /**
  * Undo a failed integration create: data feed (if any), TAK client cert artifacts, Authentik user.
  */
 async function rollbackIntegrationCreation({ userId, username, dataFeedName }) {
   const un = String(username || "").toLowerCase();
 
-  if (dataFeedName && takSvc.isTakConfigured()) {
+  if (dataFeedName) {
     try {
-      const takClient = takSvc.buildTakAxios();
-      await takClient.delete(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`);
+      await deleteDataFeedIfPresent(dataFeedName);
     } catch (err) {
       console.warn(
         `[integrations] Rollback: could not delete data feed "${dataFeedName}" for "${un}":`,
@@ -152,6 +211,7 @@ router.post("/", async (req, res) => {
   let createdUserId = null;
   let createdUsername = null;
   let createdDataFeedName = null;
+  let dataFeedCreateAttempted = false;
 
   try {
     const { type, title, groupId, state, county, agencySuffix, skipDataFeed, protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags, filterGroups } = req.body || {};
@@ -214,9 +274,10 @@ router.post("/", async (req, res) => {
         filtergroup: strippedGroups,
       };
 
-      const takClient = takSvc.buildTakAxios();
-      await takClient.post("/api/datafeeds", dataFeedPayload);
       createdDataFeedName = finalDataFeedName;
+      dataFeedCreateAttempted = true;
+      const takClient = takSvc.buildTakAxios({ timeout: DATAFEED_WRITE_TIMEOUT_MS });
+      await takClient.post("/api/datafeeds", dataFeedPayload);
 
       try {
         if (result && result.user && result.user.pk) {
@@ -281,7 +342,7 @@ router.post("/", async (req, res) => {
       }
     }
 
-    const baseError = toErrorPayload(err);
+    const baseError = dataFeedCreateAttempted ? formatDataFeedCreateError(err) : toErrorPayload(err);
     const message = rollbackError
       ? `${baseError} Rollback also failed: ${rollbackError}`
       : createdUserId
@@ -524,7 +585,7 @@ router.post("/:username/datafeed", async (req, res) => {
       filtergroup: strippedGroups
     };
 
-    const takClient = takSvc.buildTakAxios();
+    const takClient = takSvc.buildTakAxios({ timeout: DATAFEED_WRITE_TIMEOUT_MS });
     await takClient.post("/api/datafeeds", dataFeedPayload);
 
     await users.updateUserAttributes(user.pk, {
@@ -547,8 +608,7 @@ router.post("/:username/datafeed", async (req, res) => {
 
     res.json({ message: "Data Feed successfully created and bound to Integration." });
   } catch (err) {
-    const upstreamError = err?.response?.data?.message || err?.message || String(err);
-    res.status(500).json({ error: "TAK Server Error: " + upstreamError });
+    res.status(500).json({ error: "TAK Server Error: " + formatDataFeedCreateError(err) });
   }
 });
 
