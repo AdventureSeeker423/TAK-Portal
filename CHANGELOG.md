@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.46 - 7/8/26
+✨ `Enhancement` - Dashboard - Connected Users pane now allows sending callsign and data sync missions to TAK Aware devices (Only works for Test Flight version of TAK Aware until release is pushed to the app store).<br>
+🐛 `Bug Fix` - Fixes issue with integrations count related to duplicate connections
+
 ### v1.3.45 - 7/7/26
 🐛 `Bug Fix` - Fixes issue with SSH connection timing out<br>
 🐛 `Bug Fix` - Fixes issue with integrations not building and generating certs properly<br>
