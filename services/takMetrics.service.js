@@ -534,12 +534,18 @@ function computeSubscriptionExclusionCounts(list, options = {}) {
   let noderedCount = 0;
   let federationCount = 0;
   let tlsCallsignCount = 0;
+  // Marti can retain stale/ghost sessions for the same integration (e.g. an old
+  // tls:24x row lingering after Node-RED reconnected as tls:25x). Track distinct
+  // integration usernames so the "Connected Integrations" stat isn't inflated by
+  // duplicate sessions, while still subtracting every nodered row from clients.
+  const noderedUsernames = new Set();
 
   for (const item of Array.isArray(list) ? list : []) {
     const username = item && item.username;
     if (isNoderedUsername(username)) {
       if (subscriptionMatchesAgencyScope(authUser, username, agencyOnly)) {
         noderedCount += 1;
+        noderedUsernames.add(String(username).trim().toLowerCase());
       }
     } else if (!agencyOnly && isFederationTokenUsername(username)) {
       federationCount += 1;
@@ -548,14 +554,19 @@ function computeSubscriptionExclusionCounts(list, options = {}) {
     }
   }
 
-  return { noderedCount, federationCount, tlsCallsignCount };
+  return {
+    noderedCount,
+    noderedDistinctCount: noderedUsernames.size,
+    federationCount,
+    tlsCallsignCount,
+  };
 }
 
 function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = {}) {
   if (!takMetricsBase || !subscriptions) return takMetricsBase;
   const list = Array.isArray(subscriptions.data) ? subscriptions.data : [];
   const { authUser = null, agencyOnly = false } = options;
-  const { noderedCount, federationCount, tlsCallsignCount } =
+  const { noderedCount, noderedDistinctCount, federationCount, tlsCallsignCount } =
     computeSubscriptionExclusionCounts(list, options);
 
   // Agency dashboard: count only subscriptions whose username matches allowed agency suffixes (tail or prefix).
@@ -576,7 +587,7 @@ function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = 
   return {
     ...takMetricsBase,
     connectedClients: Math.max(0, total - noderedCount - federationCount - tlsCallsignCount),
-    connectedIntegrations: noderedCount,
+    connectedIntegrations: noderedDistinctCount,
   };
 }
 
