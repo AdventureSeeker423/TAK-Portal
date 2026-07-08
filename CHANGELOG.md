@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.46 - 7/8/26
+✨ `Enhancement` - Dashboard - Connected Users pane now allows admins to send callsign, team, and role preferences to TAK Aware clients (previously ATAK-CIV only)
+
 ### v1.3.45 - 7/7/26
 🐛 `Bug Fix` - Fixes issue with SSH connection timing out<br>
 🐛 `Bug Fix` - Fixes issue with integrations not building and generating certs properly<br>

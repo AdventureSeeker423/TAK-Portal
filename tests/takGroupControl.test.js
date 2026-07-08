@@ -18,8 +18,10 @@ assert.strictEqual(isRemoteActionsSubscription({ takClient: "ATAK-GOV" }), false
 assert.strictEqual(isRemoteActionsSubscription({ takClient: "TAKAware-CIV" }), false);
 
 assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("ATAK-CIV"), true);
+assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("TAKAWARE-CIV"), true);
 assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("ITAK"), false);
 assert.strictEqual(isPreferenceConfigSubscription({ takClient: "ATAK-CIV" }), true);
+assert.strictEqual(isPreferenceConfigSubscription({ takClient: "TAKAware-CIV" }), true);
 assert.strictEqual(isPreferenceConfigSubscription({ takClient: "iTAK" }), false);
 
 const collapsed = [
