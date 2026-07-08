@@ -15,7 +15,7 @@ const settingsSvc = require("./settings.service");
 const dataSyncSvc = require("./dataSync.service");
 const dataSyncAccess = require("./dataSyncAccess.service");
 
-const REMOTE_ACTIONS_TAK_CLIENTS = new Set(["ATAK-CIV", "ITAK"]);
+const REMOTE_ACTIONS_TAK_CLIENTS = new Set(["ATAK-CIV", "ITAK", "TAKAWARE-CIV"]);
 const PREFERENCE_CONFIG_TAK_CLIENTS = new Set(["ATAK-CIV", "TAKAWARE-CIV"]);
 const DATA_SYNC_INVITE_CHANNEL_SETTLE_MS = 1500;
 
@@ -244,7 +244,7 @@ function isPreferenceConfigSubscription(subscription) {
 
 function assertRemoteActionsSubscription(subscription) {
   if (!isRemoteActionsSubscription(subscription)) {
-    const err = new Error("Remote actions are only available for ATAK-CIV and iTAK clients.");
+    const err = new Error("Remote actions are only available for ATAK-CIV, iTAK, and TAK Aware clients.");
     err.status = 403;
     throw err;
   }

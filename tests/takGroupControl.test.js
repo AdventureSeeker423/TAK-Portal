@@ -10,12 +10,13 @@ const {
 
 assert.strictEqual(REMOTE_ACTIONS_TAK_CLIENTS.has("ATAK-CIV"), true);
 assert.strictEqual(REMOTE_ACTIONS_TAK_CLIENTS.has("ITAK"), true);
+assert.strictEqual(REMOTE_ACTIONS_TAK_CLIENTS.has("TAKAWARE-CIV"), true);
 
 assert.strictEqual(isRemoteActionsSubscription({ takClient: "ATAK-CIV" }), true);
 assert.strictEqual(isRemoteActionsSubscription({ takClient: "iTAK" }), true);
 assert.strictEqual(isRemoteActionsSubscription({ platform: "ATAK-CIV" }), true);
+assert.strictEqual(isRemoteActionsSubscription({ takClient: "TAKAware-CIV" }), true);
 assert.strictEqual(isRemoteActionsSubscription({ takClient: "ATAK-GOV" }), false);
-assert.strictEqual(isRemoteActionsSubscription({ takClient: "TAKAware-CIV" }), false);
 
 assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("ATAK-CIV"), true);
 assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("TAKAWARE-CIV"), true);
