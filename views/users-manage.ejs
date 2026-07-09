@@ -18,7 +18,7 @@
   <% if (typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0) { %>
     <a href="/pending-user-requests" style="text-decoration:none;">
       <div class="userReqBanner" style="margin: 10px 0 14px 0;">
-        <%= pendingUserRequestsCount %> Pending User Requests
+        <%= pendingUserRequestsCount %> Pending User Request<%= pendingUserRequestsCount === 1 ? "" : "s" %>
       </div>
     </a>
   <% } %>
