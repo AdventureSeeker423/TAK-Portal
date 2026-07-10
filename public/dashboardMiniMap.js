@@ -21,6 +21,94 @@
   let currentCallsign = null;
   let iconLoadPending = null;
   let hasLiveMarker = false;
+  let centerLocked = true;
+  /** @type {[number, number] | null} */
+  let lockedCenter = null;
+  let wheelHandler = null;
+  /** Degrees — pan beyond this from the CoT breaks center lock. */
+  const UNLOCK_CENTER_THRESHOLD = 0.00012;
+
+  function lngLatDistanceDeg(a, b) {
+    if (!a || !b) return Infinity;
+    const dLng = a.lng - b[0];
+    const dLat = a.lat - b[1];
+    return Math.sqrt(dLng * dLng + dLat * dLat);
+  }
+
+  function applyCenterLockMode() {
+    if (!map) return;
+    if (centerLocked) map.scrollZoom.disable();
+    else map.scrollZoom.enable();
+  }
+
+  function centerOnLockedMarker(options) {
+    if (!map || !lockedCenter) return;
+    const opts = options || {};
+    const zoom =
+      opts.zoom != null ? opts.zoom : Math.max(map.getZoom(), 14);
+    const duration = opts.duration != null ? opts.duration : 400;
+    map.easeTo({
+      center: lockedCenter,
+      zoom: zoom,
+      duration: duration,
+    });
+  }
+
+  function setLockedCenterFromCoords(coords, options) {
+    if (!coords || coords.length < 2) return;
+    lockedCenter = [coords[0], coords[1]];
+    if (centerLocked) centerOnLockedMarker(options);
+  }
+
+  function onMapWheel(e) {
+    if (!map || !centerLocked || !lockedCenter) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let delta = e.deltaY;
+    if (e.deltaMode === 1) delta *= 16;
+    else if (e.deltaMode === 2) delta *= 400;
+    const zoom = map.getZoom();
+    const step = delta > 0 ? -0.65 : 0.65;
+    const minZoom = typeof map.getMinZoom === "function" ? map.getMinZoom() : 0;
+    const maxZoom = typeof map.getMaxZoom === "function" ? map.getMaxZoom() : 22;
+    const nextZoom = Math.max(minZoom, Math.min(maxZoom, zoom + step));
+    map.jumpTo({
+      center: lockedCenter,
+      zoom: nextZoom,
+    });
+  }
+
+  function onMapDragEnd() {
+    if (!map || !centerLocked || !lockedCenter) return;
+    const center = map.getCenter();
+    if (lngLatDistanceDeg(center, lockedCenter) > UNLOCK_CENTER_THRESHOLD) {
+      centerLocked = false;
+      applyCenterLockMode();
+      return;
+    }
+    map.easeTo({ center: lockedCenter, duration: 200 });
+  }
+
+  function bindMapInteraction() {
+    if (!map || map.__dashboardMiniMapBound) return;
+    map.__dashboardMiniMapBound = true;
+    map.on("dragend", onMapDragEnd);
+    wheelHandler = onMapWheel;
+    map.getCanvas().addEventListener("wheel", wheelHandler, { passive: false });
+    applyCenterLockMode();
+  }
+
+  function unbindMapInteraction() {
+    if (!map) return;
+    map.off("dragend", onMapDragEnd);
+    if (wheelHandler) {
+      try {
+        map.getCanvas().removeEventListener("wheel", wheelHandler);
+      } catch (_) {}
+      wheelHandler = null;
+    }
+    map.__dashboardMiniMapBound = false;
+  }
 
   function isMobile() {
     return window.matchMedia("(max-width: 768px)").matches;
@@ -263,6 +351,7 @@
 
     if (!payload || !payload.found || !payload.feature) {
       hasLiveMarker = false;
+      lockedCenter = null;
       source.setData(emptyFeatureCollection());
       setEmptyVisible(true);
       return Promise.resolve();
@@ -271,6 +360,7 @@
     hasLiveMarker = true;
     setEmptyVisible(false);
     const feature = payload.feature;
+    const hadLiveMarker = !!lockedCenter;
     source.setData({
       type: "FeatureCollection",
       features: [feature],
@@ -278,11 +368,14 @@
 
     const coords = feature.geometry && feature.geometry.coordinates;
     if (coords && coords.length >= 2) {
-      map.easeTo({
-        center: [coords[0], coords[1]],
-        zoom: Math.max(map.getZoom(), 14),
-        duration: 400,
-      });
+      if (centerLocked) {
+        setLockedCenterFromCoords(coords, {
+          zoom: Math.max(map.getZoom(), 14),
+          duration: hadLiveMarker ? 0 : 400,
+        });
+      } else {
+        lockedCenter = [coords[0], coords[1]];
+      }
     }
 
     return loadIconManifest(payload.iconManifest || []);
@@ -344,6 +437,7 @@
         map.on("load", function () {
           try {
             addMarkerLayers();
+            bindMapInteraction();
           } catch (_) {}
           requestAnimationFrame(function () {
             if (map) map.resize();
@@ -360,6 +454,8 @@
   function loadMarker(clientId, callsign) {
     currentClientId = clientId || null;
     currentCallsign = callsign || null;
+    centerLocked = true;
+    applyCenterLockMode();
     if (!map || !currentClientId || !currentCallsign) {
       if (!hasLiveMarker) setEmptyVisible(true);
       return Promise.resolve();
@@ -390,8 +486,11 @@
     currentCallsign = null;
     iconLoadPending = null;
     hasLiveMarker = false;
+    centerLocked = true;
+    lockedCenter = null;
     if (map) {
       try {
+        unbindMapInteraction();
         map.remove();
       } catch (_) {}
       map = null;
