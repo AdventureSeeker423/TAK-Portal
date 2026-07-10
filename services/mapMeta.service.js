@@ -40,7 +40,6 @@ let subscriptionListCache = [];
 let dataFeedListCache = [];
 let integrationFeedLinkCache = {
   entries: [],
-  skipped: [],
   fetchedAt: 0,
   error: null,
 };
@@ -287,26 +286,6 @@ function markerUidNameTokens(marker) {
     .filter((part) => part && !/^\d+$/.test(part) && part.length >= 3);
 }
 
-function collectUuidLikeValues(value, out) {
-  if (value == null) return;
-  if (typeof value === "string" || typeof value === "number") {
-    const s = String(value).trim();
-    if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(s)) {
-      out.add(s);
-    } else if (/^[0-9a-f]{32}$/i.test(s)) {
-      out.add(s);
-    }
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectUuidLikeValues(item, out);
-    return;
-  }
-  if (typeof value === "object") {
-    for (const item of Object.values(value)) collectUuidLikeValues(item, out);
-  }
-}
-
 function subscriptionTlsPort(sub) {
   if (sub?.port != null && sub.port !== "") return String(sub.port).trim();
   const callsign = String(sub?.callsign || "");
@@ -389,12 +368,6 @@ function registerDataFeedGroups(feed) {
   if (feed.port != null && feed.port !== "") {
     registerDataFeedLookupKeys(String(feed.port).trim(), groups);
   }
-
-  const uuidLike = new Set();
-  collectUuidLikeValues(feed, uuidLike);
-  for (const id of uuidLike) {
-    registerDataFeedLookupKeys(id, groups);
-  }
 }
 
 function buildDataFeedIdentityCandidates(marker) {
@@ -435,35 +408,7 @@ function buildDataFeedIdentityCandidates(marker) {
     add(token);
   }
 
-  const callsignSlug = normalizeFeedIdentityKey(marker?.callsign);
-  if (callsignSlug && callsignSlug.length >= 6) add(callsignSlug);
-
-  for (const ft of marker?.flowTagUids || []) {
-    const f = String(ft || "").trim();
-    if (!f) continue;
-    add(f);
-    add(f.replace(/^TAK-Server-/i, ""));
-  }
-
   return out;
-}
-
-function resolveGroupsFromDataFeedCatalog(marker) {
-  const candidates = buildDataFeedIdentityCandidates(marker);
-  if (!candidates.length || !dataFeedListCache.length) return [];
-
-  for (const feed of dataFeedListCache) {
-    const groups = dataFeedPublishGroups(feed);
-    if (!groups.length) continue;
-
-    for (const field of dataFeedIdentityFields(feed)) {
-      for (const cand of candidates) {
-        if (feedIdentityOverlaps(field, cand)) return groups;
-      }
-    }
-  }
-
-  return [];
 }
 
 function resolveGroupsFromDataFeedIndex(marker) {
@@ -475,25 +420,6 @@ function resolveGroupsFromDataFeedIndex(marker) {
   return [];
 }
 
-function resolveGroupsFromDataFeedIdentity(marker) {
-  const fromIndex = resolveGroupsFromDataFeedIndex(marker);
-  if (fromIndex.length) return fromIndex;
-  const fromCatalog = resolveGroupsFromDataFeedCatalog(marker);
-  if (fromCatalog.length) return fromCatalog;
-  return resolveGroupsFromIntegrationFeedLinks(marker);
-}
-
-function integrationTitleHyphenSlug(title) {
-  return String(title || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-/** Title slug from nodered-agency-hcso-lightbugswat -> lightbugswat */
 function integrationUsernameTitleSlug(username) {
   const u = String(username || "").trim().toLowerCase();
   if (!u.startsWith("nodered-")) return "";
@@ -554,16 +480,13 @@ function registerIntegrationLinkKeys(entry) {
   if (!Array.isArray(groups) || !groups.length) return;
 
   const linkKeys = new Set();
-  for (const field of [
-    entry.dataFeedName,
-    entry.username,
-    entry.hyphenSlug,
-    entry.titleSlug,
-    entry.usernameTitleSlug,
-  ]) {
+  for (const field of [entry.dataFeedName, entry.username]) {
     const val = normalizeGroupName(field);
     if (val) linkKeys.add(val);
   }
+
+  const usernameSlug = integrationUsernameTitleSlug(entry.username);
+  if (usernameSlug) linkKeys.add(usernameSlug);
 
   for (const word of entry.titleWordKeys || integrationTitleWordKeys(entry.title)) {
     linkKeys.add(word);
@@ -645,7 +568,6 @@ async function refreshIntegrationFeedLinks(options = {}) {
   if (isTakBypassed()) {
     integrationFeedLinkCache = {
       entries: [],
-      skipped: [],
       fetchedAt: Date.now(),
       error: "TAK bypass enabled",
     };
@@ -662,7 +584,6 @@ async function refreshIntegrationFeedLinks(options = {}) {
     );
 
     const entries = [];
-    const skipped = [];
     for (const user of integrations) {
       const dataFeedName = normalizeGroupName(user?.attributes?.tak_data_feed_name);
       const title = String(user?.attributes?.integration_title || "").trim();
@@ -670,27 +591,7 @@ async function refreshIntegrationFeedLinks(options = {}) {
 
       let groups = dataFeedName ? await fetchDataFeedPublishGroupsByName(dataFeedName) : [];
       if (!groups.length) groups = await resolveIntegrationPortalGroups(user, groupByPk);
-      if (!groups.length) {
-        skipped.push({
-          username: username || null,
-          dataFeedName: dataFeedName || null,
-          title: title || null,
-          reason: "no_channel_groups",
-        });
-        continue;
-      }
-
-      const hyphenSlug = title ? integrationTitleHyphenSlug(title) : "";
-      const usernameTitleSlug = integrationUsernameTitleSlug(username);
-      let titleSlug = "";
-      if (title) {
-        try {
-          titleSlug = usersSvc.getStreamingDataFeedNameForTitle(title);
-        } catch {
-          titleSlug = normalizeFeedIdentityKey(title);
-        }
-      }
-      if (!titleSlug && usernameTitleSlug) titleSlug = usernameTitleSlug;
+      if (!groups.length) continue;
 
       const titleWordKeys = integrationTitleWordKeys(title);
 
@@ -698,11 +599,7 @@ async function refreshIntegrationFeedLinks(options = {}) {
         username: username || null,
         dataFeedName: dataFeedName || null,
         title: title || null,
-        hyphenSlug: hyphenSlug || null,
-        titleSlug: titleSlug || null,
-        usernameTitleSlug: usernameTitleSlug || null,
         titleWordKeys,
-        usesMainEudPort: !dataFeedName,
         groups,
       };
       registerIntegrationLinkKeys(entry);
@@ -711,7 +608,6 @@ async function refreshIntegrationFeedLinks(options = {}) {
 
     integrationFeedLinkCache = {
       entries,
-      skipped,
       fetchedAt: Date.now(),
       error: null,
     };
@@ -719,106 +615,12 @@ async function refreshIntegrationFeedLinks(options = {}) {
   } catch (err) {
     integrationFeedLinkCache = {
       ...integrationFeedLinkCache,
-      skipped: integrationFeedLinkCache.skipped || [],
       fetchedAt: Date.now(),
       error: err?.message || String(err),
     };
   }
 
   return integrationFeedLinkCache;
-}
-
-function integrationEntryIdentityHaystack(entry) {
-  return normalizeFeedIdentityKey(
-    [
-      entry?.dataFeedName,
-      entry?.title,
-      entry?.hyphenSlug,
-      entry?.titleSlug,
-      entry?.usernameTitleSlug,
-      entry?.username,
-    ]
-      .filter(Boolean)
-      .join("")
-  );
-}
-
-function integrationEntryMatchesMarker(entry, candidates, marker) {
-  const keys = [
-    entry.dataFeedName,
-    entry.title,
-    entry.hyphenSlug,
-    entry.titleSlug,
-    entry.usernameTitleSlug,
-    entry.username,
-  ].filter(Boolean);
-
-  for (const key of keys) {
-    for (const cand of candidates) {
-      if (feedIdentityOverlaps(key, cand)) return true;
-    }
-  }
-
-  const hay = integrationEntryIdentityHaystack(entry);
-  if (!hay) return false;
-
-  const joined = markerUidTokenSlug(marker);
-  if (joined && (hay === joined || feedIdentityOverlaps(joined, hay))) return true;
-
-  const tokens = markerUidNameTokens(marker);
-  if (!tokens.length) return false;
-
-  const matched = tokens.filter((token) => {
-    const norm = normalizeFeedIdentityKey(token);
-    return norm && norm.length >= 4 && hay.includes(norm);
-  });
-
-  return matched.length >= 1;
-}
-
-function resolveGroupsFromIntegrationFeedLinks(marker) {
-  const candidates = buildDataFeedIdentityCandidates(marker);
-  if (!candidates.length) return [];
-
-  for (const entry of integrationFeedLinkCache.entries || []) {
-    if (integrationEntryMatchesMarker(entry, candidates, marker)) {
-      return entry.groups;
-    }
-  }
-
-  return [];
-}
-
-function parseUidPrefixChannelRules() {
-  const raw = String(process.env.MAP_UID_PREFIX_CHANNEL_RULES || "").trim();
-  if (!raw) return [];
-  const rules = [];
-  for (const part of raw.split(/[;\n]+/)) {
-    const idx = part.indexOf(":");
-    if (idx <= 0) continue;
-    const prefix = part.slice(0, idx).trim().toLowerCase();
-    const channel = part.slice(idx + 1).trim();
-    if (prefix && channel) rules.push({ prefix, channel });
-  }
-  return rules;
-}
-
-function resolveGroupsFromConfiguredUidRules(marker) {
-  const uid = String(marker?.uid || "").trim().toLowerCase();
-  if (!uid) return [];
-
-  for (const rule of parseUidPrefixChannelRules()) {
-    if (
-      uid === rule.prefix ||
-      uid.startsWith(`${rule.prefix}-`) ||
-      uid.startsWith(`${rule.prefix}_`)
-    ) {
-      const groups = normalizeDataFeedGroupList([rule.channel]);
-      if (groups.length) return groups;
-    }
-  }
-
-  return [];
 }
 
 function crossLinkFeedsAndSubscriptions(feeds, subList) {
@@ -871,7 +673,7 @@ async function refreshDataFeedIndex() {
     }
     dataFeedListCache = feeds;
     mergeDataFeedConnectionIndex();
-    await refreshIntegrationFeedLinks({ force: true });
+    await refreshIntegrationFeedLinks();
 
     dataFeedCache = {
       fetchedAt: Date.now(),
@@ -1780,16 +1582,9 @@ function markerHasDataFeedProvenance(marker) {
   return false;
 }
 
-function isIntegrationInjectedMarker(marker) {
-  if (!marker) return false;
-  if (isLiveEudSubscription(marker)) return false;
-
-  for (const entry of integrationFeedLinkCache.entries || []) {
-    if (integrationEntryMatchesMarker(entry, buildDataFeedIdentityCandidates(marker), marker)) {
-      return true;
-    }
-  }
-  return false;
+function markerResolvedViaFeedIndex(marker) {
+  if (!marker || isLiveEudSubscription(marker)) return false;
+  return resolveGroupsFromDataFeedIndex(marker).length > 0;
 }
 
 /**
@@ -1801,7 +1596,7 @@ function classifyMarkerOrigin(marker) {
 
   if (isLiveEudSubscription(marker)) return "eud";
   if (markerHasDataFeedProvenance(marker)) return "feed";
-  if (isIntegrationInjectedMarker(marker)) return "feed";
+  if (markerResolvedViaFeedIndex(marker)) return "feed";
 
   const type = String(marker.type || "").trim();
   if (/^a-f-G-/i.test(type)) return "eud";
@@ -1818,11 +1613,8 @@ function resolveGroupsForMarker(marker, cotDetail) {
   const fromSub = resolveGroupsFromSubscription(marker);
   if (fromSub[0] !== UNASSIGNED_GROUP) return fromSub;
 
-  const fromFeedIdentity = resolveGroupsFromDataFeedIdentity(marker);
-  if (fromFeedIdentity.length) return fromFeedIdentity;
-
-  const fromUidRules = resolveGroupsFromConfiguredUidRules(marker);
-  if (fromUidRules.length) return fromUidRules;
+  const fromFeed = resolveGroupsFromDataFeedIndex(marker);
+  if (fromFeed.length) return fromFeed;
 
   const fromCot = filterAssignableChannelGroups(
     detail
@@ -1845,105 +1637,6 @@ function resolveGroupsForMarker(marker, cotDetail) {
   if (fromSource.length) return fromSource;
 
   return [UNASSIGNED_GROUP];
-}
-
-/**
- * Diagnostic trace for why a marker landed in its assigned group(s).
- * Compare a working EUD vs a data-feed marker side by side.
- */
-function explainGroupAssignment(marker) {
-  const cotRouteGroups = filterAssignableChannelGroups(
-    Array.isArray(marker?.cotRouteGroups) ? marker.cotRouteGroups : []
-  );
-  const flowTagUids = Array.isArray(marker?.flowTagUids) ? marker.flowTagUids : [];
-  const relatedUids = Array.isArray(marker?.relatedUids) ? marker.relatedUids : [];
-
-  const flowTagLookups = flowTagUids.map((uid) => ({
-    uid,
-    connectionGroups: lookupConnectionGroups(uid),
-    subscriptionGroups: lookupSubscriptionGroupsByKey(String(uid).toLowerCase()),
-  }));
-
-  const subscriptionKeys = [];
-  const markerUid = String(marker?.uid || "").trim();
-  if (markerUid) subscriptionKeys.push({ kind: "marker.uid", key: markerUid });
-  for (const rel of relatedUids) {
-    const rk = String(rel || "").trim();
-    if (rk) subscriptionKeys.push({ kind: "relatedUid", key: rk });
-  }
-  const callsign = normalizeGroupName(marker?.callsign);
-  if (callsign) subscriptionKeys.push({ kind: "callsign", key: callsign });
-
-  const subscriptionLookups = subscriptionKeys.map(({ kind, key }) => ({
-    kind,
-    key,
-    connectionGroups: lookupConnectionGroups(String(key).toLowerCase()),
-    subscriptionGroups: lookupSubscriptionGroupsByKey(String(key).toLowerCase()),
-  }));
-
-  const recomputed = resolveGroupsForMarker(marker, null);
-  const sourceHints = Array.isArray(marker?.sourceHints) ? marker.sourceHints : [];
-
-  return {
-    marker: {
-      uid: marker?.uid || null,
-      callsign: marker?.callsign || null,
-      type: marker?.type || null,
-      how: marker?.how || null,
-      storedGroups: Array.isArray(marker?.groups) ? marker.groups : [],
-      cotRouteGroups,
-      flowTagUids,
-      relatedUids,
-      sourceHints,
-      detailKeys: Array.isArray(marker?.detailKeys) ? marker.detailKeys : [],
-    },
-    indexes: {
-      subscription: getSubscriptionIndexSnapshot(),
-      connectionUidCount: connectionGroupsByUid.size,
-      dataFeedKeyCount: dataFeedGroupsByKey.size,
-      dataFeedFetchedAt: dataFeedCache.fetchedAt || null,
-      dataFeedError: dataFeedCache.error || null,
-      catalogChannelCount: catalogCache.names.length,
-      integrationLinkCount: Array.isArray(integrationFeedLinkCache.entries)
-        ? integrationFeedLinkCache.entries.length
-        : 0,
-      integrationSkippedCount: Array.isArray(integrationFeedLinkCache.skipped)
-        ? integrationFeedLinkCache.skipped.length
-        : 0,
-      integrationLinkError: integrationFeedLinkCache.error || null,
-    },
-    integrationLinks: Array.isArray(integrationFeedLinkCache.entries)
-      ? integrationFeedLinkCache.entries
-      : [],
-    integrationSkipped: Array.isArray(integrationFeedLinkCache.skipped)
-      ? integrationFeedLinkCache.skipped
-      : [],
-    trace: {
-      step1_cotRouting: cotRouteGroups,
-      step2_dataFeedIdentityCandidates: buildDataFeedIdentityCandidates(marker),
-      step2_dataFeedIndexGroups: resolveGroupsFromDataFeedIndex(marker),
-      step2_dataFeedCatalogGroups: resolveGroupsFromDataFeedCatalog(marker),
-      step2_integrationFeedGroups: resolveGroupsFromIntegrationFeedLinks(marker),
-      step2_configuredUidRules: resolveGroupsFromConfiguredUidRules(marker),
-      step2_dataFeedGroups: resolveGroupsFromDataFeedIdentity(marker),
-      step3_flowTagLookups: flowTagLookups,
-      step3_flowGroups: resolveGroupsFromFlowTags({ flowTagUids }),
-      step4_subscriptionLookups: subscriptionLookups,
-      step4_subscriptionGroups: resolveGroupsFromSubscription(marker),
-      step5_sourceHints: sourceHints,
-      step5_sourceGroups: resolveGroupsFromSourceHints(sourceHints),
-      recomputedGroups: recomputed,
-    },
-    notes: [
-      "EUD clients usually match via step4 (subscription by uid/callsign).",
-      "8089 / no-datafeed integrations (e.g. SWAT Vehicle Trackers) match by shared uid/title tokens like swat, not feed name.",
-      "TAK-Server-<uuid> in _flow-tags_ is the server instance fingerprint on every event, not a channel name.",
-      "Data feeds also match via CoT filtergroup/marti, feed connection uid in link/source, or feed name/tag in the datafeeds index.",
-      "If step3 flowTagUids only contains TAK-Server-<uuid> with empty connectionGroups, that is expected — look at step2 and step5.",
-      "If step2 is empty, inspect integrationLinks / integrationSkipped in this payload and /api/map/debug/datafeeds.",
-      "Optional override: MAP_UID_PREFIX_CHANNEL_RULES=lightbug-swat:HCSO SWAT (semicolon-separated prefix:channel pairs).",
-    ],
-  };
 }
 
 function buildGroupsCatalogWithCounts(markers) {
@@ -2014,80 +1707,6 @@ async function getTakGroupCatalog(markers, options = {}) {
   };
 }
 
-function getSubscriptionIndexSnapshot() {
-  return {
-    callsignCount: subscriptionIndex.byCallsign.size,
-    usernameCount: subscriptionIndex.byUsername.size,
-    uidCount: subscriptionIndex.byUid.size,
-    fetchedAt: subscriptionIndex.fetchedAt,
-    error: subscriptionIndex.error,
-  };
-}
-
-function getDataFeedCatalogForDebug(options = {}) {
-  const search = normalizeFeedIdentityKey(options.search || "");
-  const feeds = [];
-
-  for (const feed of dataFeedListCache) {
-    const name = normalizeGroupName(feed?.name);
-    const tags = feed?.tag;
-    const tagList = Array.isArray(tags) ? tags.map(normalizeGroupName).filter(Boolean) : tags ? [normalizeGroupName(tags)].filter(Boolean) : [];
-    const groups = dataFeedPublishGroups(feed);
-    const row = {
-      name: name || null,
-      port: feed?.port ?? null,
-      uuid: feed?.uuid || feed?.uid || feed?.id || null,
-      tags: tagList,
-      filterGroups: groups,
-    };
-
-    if (search) {
-      const fields = [name, ...tagList, ...groups];
-      const matched = fields.some((field) => feedIdentityOverlaps(field, search));
-      if (!matched) continue;
-    }
-
-    feeds.push(row);
-  }
-
-  feeds.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
-
-  let integrationLinks = Array.isArray(integrationFeedLinkCache.entries)
-    ? integrationFeedLinkCache.entries
-    : [];
-  if (search) {
-    integrationLinks = integrationLinks.filter((entry) => {
-      const fields = [
-        entry.dataFeedName,
-        entry.title,
-        entry.hyphenSlug,
-        entry.titleSlug,
-        entry.usernameTitleSlug,
-        entry.username,
-        ...(entry.groups || []),
-      ];
-      return fields.some((field) => feedIdentityOverlaps(field, search));
-    });
-  }
-
-  return {
-    feeds,
-    count: feeds.length,
-    integrationLinks,
-    integrationLinkCount: integrationLinks.length,
-    integrationSkipped: Array.isArray(integrationFeedLinkCache.skipped)
-      ? integrationFeedLinkCache.skipped
-      : [],
-    integrationSkippedCount: Array.isArray(integrationFeedLinkCache.skipped)
-      ? integrationFeedLinkCache.skipped.length
-      : 0,
-    integrationLinkFetchedAt: integrationFeedLinkCache.fetchedAt || null,
-    integrationLinkError: integrationFeedLinkCache.error || null,
-    fetchedAt: dataFeedCache.fetchedAt || null,
-    error: dataFeedCache.error || null,
-  };
-}
-
 module.exports = {
   UNASSIGNED_GROUP,
   isMapChannelGroupName,
@@ -2115,23 +1734,13 @@ module.exports = {
   resolveMarkerDisplayColor,
   normalizeTakColor,
   resolveGroupsForMarker,
-  normalizeFeedIdentityKey,
-  buildDataFeedIdentityCandidates,
-  feedIdentityOverlaps,
-  integrationTitleHyphenSlug,
-  integrationUsernameTitleSlug,
-  integrationTitleWordKeys,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
-  explainGroupAssignment,
   getTakGroupCatalog,
   getUserMemberChannelBaseKeys,
   filterMapGroupsForUserMembership,
   refreshGroupCatalog,
   refreshSubscriptionIndex,
   refreshDataFeedIndex,
-  refreshIntegrationFeedLinks,
-  getSubscriptionIndexSnapshot,
-  getDataFeedCatalogForDebug,
   buildGroupsCatalogWithCounts,
 };

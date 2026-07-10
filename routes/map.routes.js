@@ -217,46 +217,6 @@ router.get("/groups", async (req, res) => {
   }
 });
 
-/** Trace group assignment for one marker (compare EUD vs data-feed). */
-router.get("/debug/groups", async (req, res) => {
-  cotStream.ensureBridgeStarted();
-  await mapMeta.refreshSubscriptionIndex();
-  await mapMeta.refreshDataFeedIndex();
-
-  const uid = String(req.query.uid || "").trim();
-  const callsign = String(req.query.callsign || "").trim();
-
-  let marker = uid ? cotStream.getMarkerByUid(uid) : null;
-  if (!marker && callsign) {
-    const matches = cotStream.findMarkersByCallsign(callsign);
-    if (matches.length === 1) marker = matches[0];
-    else if (matches.length > 1) {
-      return res.json({
-        error: "Multiple markers match callsign; pass uid instead",
-        matches: matches.map((m) => ({ uid: m.uid, callsign: m.callsign, groups: m.groups })),
-      });
-    }
-  }
-
-  if (!marker) {
-    return res.status(404).json({
-      error: "Marker not found on map",
-      hint: "Pass ?uid=ICAO-ACE18D or ?callsign=N929W while the marker is live",
-    });
-  }
-
-  res.setHeader("Cache-Control", "no-cache");
-  return res.json(mapMeta.explainGroupAssignment(marker));
-});
-
-/** List TAK data feeds (name, port, filterGroups) to debug channel assignment. */
-router.get("/debug/datafeeds", async (req, res) => {
-  await mapMeta.refreshDataFeedIndex();
-  const search = String(req.query.search || "").trim();
-  res.setHeader("Cache-Control", "no-cache");
-  return res.json(mapMeta.getDataFeedCatalogForDebug({ search }));
-});
-
 router.get("/geocode", async (req, res) => {
   const q = String(req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "Missing q" });
