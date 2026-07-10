@@ -50,15 +50,29 @@
     if (pane) pane.classList.toggle("mini-map-ready", !!visible);
   }
 
+  function revealMap() {
+    setMapReadyVisible(true);
+    if (map) {
+      try {
+        map.resize();
+      } catch (_) {}
+    }
+  }
+
   function scheduleRecenterIfLocked() {
     if (!map || !centerLocked || !lockedCenter || recenterOnIdleScheduled) return;
     recenterOnIdleScheduled = true;
-    map.once("idle", function () {
+    function runRecenter() {
       recenterOnIdleScheduled = false;
       if (!map || !centerLocked || !lockedCenter) return;
       map.resize();
       centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
-    });
+    }
+    if (typeof map.loaded === "function" && map.loaded() && typeof map.isMoving === "function" && !map.isMoving()) {
+      requestAnimationFrame(runRecenter);
+      return;
+    }
+    map.once("idle", runRecenter);
   }
 
   function whenMapReady() {
@@ -511,7 +525,6 @@
     hasLiveMarker = false;
     lockedCenter = null;
     recenterOnIdleScheduled = false;
-    setMapReadyVisible(false);
     applyCenterLockMode();
 
     if (!currentClientId || !currentCallsign) {
@@ -531,32 +544,19 @@
           zoom = LOCKED_ZOOM;
           lockedCenter = center;
         }
+        revealMap();
         return init({ center: center, zoom: zoom }).then(function () {
           return updateMarkerOnMap(payload);
         });
       })
       .then(function () {
+        revealMap();
+        scheduleRecenterIfLocked();
         startPolling(clientId, callsign);
-        if (map && centerLocked && lockedCenter) {
-          return new Promise(function (resolve) {
-            map.once("idle", function () {
-              if (!map || !centerLocked || !lockedCenter) {
-                setMapReadyVisible(true);
-                resolve(true);
-                return;
-              }
-              map.resize();
-              centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
-              setMapReadyVisible(true);
-              resolve(true);
-            });
-          });
-        }
-        setMapReadyVisible(true);
         return true;
       })
       .catch(function () {
-        setMapReadyVisible(true);
+        revealMap();
         if (!hasLiveMarker) setEmptyVisible(true);
         return false;
       });
