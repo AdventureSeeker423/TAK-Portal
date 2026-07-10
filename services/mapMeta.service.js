@@ -247,6 +247,97 @@ function normalizeFeedIdentityKey(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+const FEED_IDENTITY_MIN_OVERLAP = 5;
+
+function feedIdentityOverlaps(a, b) {
+  const na = normalizeFeedIdentityKey(a);
+  const nb = normalizeFeedIdentityKey(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.length >= FEED_IDENTITY_MIN_OVERLAP && nb.includes(na)) return true;
+  if (nb.length >= FEED_IDENTITY_MIN_OVERLAP && na.includes(nb)) return true;
+  return false;
+}
+
+/** Non-numeric uid segments joined, e.g. lightbug-swat-40002573 -> lightbugswat */
+function markerUidTokenSlug(marker) {
+  const parts = String(marker?.uid || "")
+    .trim()
+    .toLowerCase()
+    .split(/[-_]+/)
+    .filter((part) => part && !/^\d+$/.test(part));
+  return parts.length ? parts.join("") : "";
+}
+
+function collectUuidLikeValues(value, out) {
+  if (value == null) return;
+  if (typeof value === "string" || typeof value === "number") {
+    const s = String(value).trim();
+    if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(s)) {
+      out.add(s);
+    } else if (/^[0-9a-f]{32}$/i.test(s)) {
+      out.add(s);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectUuidLikeValues(item, out);
+    return;
+  }
+  if (typeof value === "object") {
+    for (const item of Object.values(value)) collectUuidLikeValues(item, out);
+  }
+}
+
+function subscriptionTlsPort(sub) {
+  if (sub?.port != null && sub.port !== "") return String(sub.port).trim();
+  const callsign = String(sub?.callsign || "");
+  const match = callsign.match(/:(\d{2,5})$/);
+  return match ? match[1] : "";
+}
+
+function dataFeedPublishGroups(feed) {
+  return normalizeDataFeedGroupList(
+    feed?.filtergroup || feed?.filterGroup || feed?.filterGroups || feed?.groups
+  );
+}
+
+function dataFeedIdentityFields(feed) {
+  const fields = [];
+  for (const field of [feed?.name, feed?.uuid, feed?.uid, feed?.id]) {
+    const val = normalizeGroupName(field);
+    if (val) fields.push(val);
+  }
+  const tags = feed?.tag;
+  const tagList = Array.isArray(tags) ? tags : tags ? [tags] : [];
+  for (const tag of tagList) {
+    const val = normalizeGroupName(tag);
+    if (val) fields.push(val);
+  }
+  return fields;
+}
+
+function feedMatchesSubscriptionIdentity(feed, sub) {
+  const feedName = normalizeGroupName(feed?.name).toLowerCase();
+  const callsign = normalizeGroupName(sub?.callsign).toLowerCase();
+  const username = normalizeGroupName(sub?.username).toLowerCase();
+  const feedFields = dataFeedIdentityFields(feed);
+  const subFields = [callsign, username].filter(Boolean);
+
+  for (const feedField of feedFields) {
+    for (const subField of subFields) {
+      if (subField === feedName) return true;
+      if (feedField && subField.includes(feedField.toLowerCase())) return true;
+      if (subField && feedField.toLowerCase().includes(subField)) return true;
+      if (feedIdentityOverlaps(feedField, subField)) return true;
+    }
+  }
+
+  const feedPort = feed?.port != null && feed?.port !== "" ? String(feed.port).trim() : "";
+  const subPort = subscriptionTlsPort(sub);
+  return !!(feedPort && subPort && feedPort === subPort);
+}
+
 function registerDataFeedLookupKeys(rawKey, groups) {
   const list = dedupeGroupNames(groups);
   if (!list.length) return;
@@ -270,23 +361,21 @@ function registerDataFeedLookupKeys(rawKey, groups) {
 
 function registerDataFeedGroups(feed) {
   if (!feed || typeof feed !== "object") return;
-  const groups = normalizeDataFeedGroupList(
-    feed.filtergroup || feed.filterGroup || feed.filterGroups || feed.groups
-  );
+  const groups = dataFeedPublishGroups(feed);
   if (!groups.length) return;
 
-  for (const field of [feed.uuid, feed.uid, feed.id, feed.name]) {
+  for (const field of dataFeedIdentityFields(feed)) {
     registerDataFeedLookupKeys(field, groups);
-  }
-
-  const tags = feed.tag;
-  const tagList = Array.isArray(tags) ? tags : tags ? [tags] : [];
-  for (const tag of tagList) {
-    registerDataFeedLookupKeys(tag, groups);
   }
 
   if (feed.port != null && feed.port !== "") {
     registerDataFeedLookupKeys(String(feed.port).trim(), groups);
+  }
+
+  const uuidLike = new Set();
+  collectUuidLikeValues(feed, uuidLike);
+  for (const id of uuidLike) {
+    registerDataFeedLookupKeys(id, groups);
   }
 }
 
@@ -321,10 +410,41 @@ function buildDataFeedIdentityCandidates(marker) {
     add(rel);
   }
 
+  const tokenSlug = markerUidTokenSlug(marker);
+  if (tokenSlug) add(tokenSlug);
+
+  const callsignSlug = normalizeFeedIdentityKey(marker?.callsign);
+  if (callsignSlug && callsignSlug.length >= 6) add(callsignSlug);
+
+  for (const ft of marker?.flowTagUids || []) {
+    const f = String(ft || "").trim();
+    if (!f) continue;
+    add(f);
+    add(f.replace(/^TAK-Server-/i, ""));
+  }
+
   return out;
 }
 
-function resolveGroupsFromDataFeedIdentity(marker) {
+function resolveGroupsFromDataFeedCatalog(marker) {
+  const candidates = buildDataFeedIdentityCandidates(marker);
+  if (!candidates.length || !dataFeedListCache.length) return [];
+
+  for (const feed of dataFeedListCache) {
+    const groups = dataFeedPublishGroups(feed);
+    if (!groups.length) continue;
+
+    for (const field of dataFeedIdentityFields(feed)) {
+      for (const cand of candidates) {
+        if (feedIdentityOverlaps(field, cand)) return groups;
+      }
+    }
+  }
+
+  return [];
+}
+
+function resolveGroupsFromDataFeedIndex(marker) {
   for (const key of buildDataFeedIdentityCandidates(marker)) {
     const groups = lookupConnectionGroups(key);
     const out = dedupeGroupNames(groups);
@@ -333,23 +453,19 @@ function resolveGroupsFromDataFeedIdentity(marker) {
   return [];
 }
 
+function resolveGroupsFromDataFeedIdentity(marker) {
+  const fromIndex = resolveGroupsFromDataFeedIndex(marker);
+  if (fromIndex.length) return fromIndex;
+  return resolveGroupsFromDataFeedCatalog(marker);
+}
+
 function crossLinkFeedsAndSubscriptions(feeds, subList) {
   for (const feed of Array.isArray(feeds) ? feeds : []) {
-    const feedName = normalizeGroupName(feed?.name).toLowerCase();
-    const groups = normalizeDataFeedGroupList(
-      feed?.filtergroup || feed?.filterGroup || feed?.filterGroups || feed?.groups
-    );
-    if (!feedName || !groups.length) continue;
+    const groups = dataFeedPublishGroups(feed);
+    if (!groups.length) continue;
 
     for (const sub of Array.isArray(subList) ? subList : []) {
-      const callsign = normalizeGroupName(sub?.callsign).toLowerCase();
-      const username = normalizeGroupName(sub?.username).toLowerCase();
-      const matchesFeed =
-        callsign === feedName ||
-        username === feedName ||
-        (callsign && callsign.includes(feedName)) ||
-        (username && username.includes(feedName));
-      if (!matchesFeed) continue;
+      if (!feedMatchesSubscriptionIdentity(feed, sub)) continue;
 
       registerConnectionGroups(
         [sub.uid, sub.clientUid, sub.clientUuid, sub.connectionUid, sub.deviceUid],
@@ -1412,6 +1528,8 @@ function explainGroupAssignment(marker) {
     trace: {
       step1_cotRouting: cotRouteGroups,
       step2_dataFeedIdentityCandidates: buildDataFeedIdentityCandidates(marker),
+      step2_dataFeedIndexGroups: resolveGroupsFromDataFeedIndex(marker),
+      step2_dataFeedCatalogGroups: resolveGroupsFromDataFeedCatalog(marker),
       step2_dataFeedGroups: resolveGroupsFromDataFeedIdentity(marker),
       step3_flowTagLookups: flowTagLookups,
       step3_flowGroups: resolveGroupsFromFlowTags({ flowTagUids }),
@@ -1427,7 +1545,7 @@ function explainGroupAssignment(marker) {
       "TAK-Server-<uuid> in _flow-tags_ is the server instance fingerprint on every event, not a channel name.",
       "Data feeds also match via CoT filtergroup/marti, feed connection uid in link/source, or feed name/tag in the datafeeds index.",
       "If step3 flowTagUids only contains TAK-Server-<uuid> with empty connectionGroups, that is expected — look at step2 and step5.",
-      "If step5_sourceGroups is empty, paste sourceHints from the marker block so link/source attrs can be wired up.",
+      "If step2 is empty, open /api/map/debug/datafeeds?search=lightbug (or your uid prefix) and confirm filterGroups on the feed.",
     ],
   };
 }
@@ -1510,6 +1628,42 @@ function getSubscriptionIndexSnapshot() {
   };
 }
 
+function getDataFeedCatalogForDebug(options = {}) {
+  const search = normalizeFeedIdentityKey(options.search || "");
+  const feeds = [];
+
+  for (const feed of dataFeedListCache) {
+    const name = normalizeGroupName(feed?.name);
+    const tags = feed?.tag;
+    const tagList = Array.isArray(tags) ? tags.map(normalizeGroupName).filter(Boolean) : tags ? [normalizeGroupName(tags)].filter(Boolean) : [];
+    const groups = dataFeedPublishGroups(feed);
+    const row = {
+      name: name || null,
+      port: feed?.port ?? null,
+      uuid: feed?.uuid || feed?.uid || feed?.id || null,
+      tags: tagList,
+      filterGroups: groups,
+    };
+
+    if (search) {
+      const fields = [name, ...tagList, ...groups];
+      const matched = fields.some((field) => feedIdentityOverlaps(field, search));
+      if (!matched) continue;
+    }
+
+    feeds.push(row);
+  }
+
+  feeds.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+
+  return {
+    feeds,
+    count: feeds.length,
+    fetchedAt: dataFeedCache.fetchedAt || null,
+    error: dataFeedCache.error || null,
+  };
+}
+
 module.exports = {
   UNASSIGNED_GROUP,
   isMapChannelGroupName,
@@ -1539,6 +1693,7 @@ module.exports = {
   resolveGroupsForMarker,
   normalizeFeedIdentityKey,
   buildDataFeedIdentityCandidates,
+  feedIdentityOverlaps,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
   explainGroupAssignment,
@@ -1549,5 +1704,6 @@ module.exports = {
   refreshSubscriptionIndex,
   refreshDataFeedIndex,
   getSubscriptionIndexSnapshot,
+  getDataFeedCatalogForDebug,
   buildGroupsCatalogWithCounts,
 };

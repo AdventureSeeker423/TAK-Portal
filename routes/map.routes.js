@@ -249,6 +249,14 @@ router.get("/debug/groups", async (req, res) => {
   return res.json(mapMeta.explainGroupAssignment(marker));
 });
 
+/** List TAK data feeds (name, port, filterGroups) to debug channel assignment. */
+router.get("/debug/datafeeds", async (req, res) => {
+  await mapMeta.refreshDataFeedIndex();
+  const search = String(req.query.search || "").trim();
+  res.setHeader("Cache-Control", "no-cache");
+  return res.json(mapMeta.getDataFeedCatalogForDebug({ search }));
+});
+
 router.get("/geocode", async (req, res) => {
   const q = String(req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "Missing q" });
