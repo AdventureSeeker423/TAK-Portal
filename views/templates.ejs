@@ -841,6 +841,22 @@ if (exportTemplatesCsvBtn) {
 </script>
 
 <style>
+/* Sortable header UI */
+th.sortable{
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th.sortable:hover{
+  text-decoration: underline;
+}
+.sortIndicator{
+  display: inline-block;
+  min-width: 12px;
+  margin-left: 6px;
+  opacity: 0.9;
+}
+
 .templatesGrid {
   display: grid;
   gap: 12px;

@@ -475,7 +475,6 @@ function updateSortIndicators(){
 function initGroupSort(){
   const headers = document.querySelectorAll("th.sortable");
   headers.forEach(th => {
-    th.style.cursor = "pointer";
     th.addEventListener("click", () => {
       const key = th.getAttribute("data-key");
       if (!key) return;
@@ -2613,6 +2612,22 @@ if (adminAccessOverlay) {
 /* Existing groups list */
 .listCardTableWrap {
   width: 100%;
+}
+
+/* Sortable header UI */
+th.sortable{
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th.sortable:hover{
+  text-decoration: underline;
+}
+.sortIndicator{
+  display: inline-block;
+  min-width: 12px;
+  margin-left: 6px;
+  opacity: 0.9;
 }
 
 .groupsListTable td {
