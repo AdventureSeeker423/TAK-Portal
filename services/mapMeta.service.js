@@ -36,6 +36,11 @@ let dataFeedCache = {
 /** Latest Marti payloads used to cross-link feed config with live connections. */
 let subscriptionListCache = [];
 let dataFeedListCache = [];
+let integrationFeedLinkCache = {
+  entries: [],
+  fetchedAt: 0,
+  error: null,
+};
 
 let refreshTimer = null;
 /** @type {Set<() => void>} */
@@ -456,7 +461,148 @@ function resolveGroupsFromDataFeedIndex(marker) {
 function resolveGroupsFromDataFeedIdentity(marker) {
   const fromIndex = resolveGroupsFromDataFeedIndex(marker);
   if (fromIndex.length) return fromIndex;
-  return resolveGroupsFromDataFeedCatalog(marker);
+  const fromCatalog = resolveGroupsFromDataFeedCatalog(marker);
+  if (fromCatalog.length) return fromCatalog;
+  return resolveGroupsFromIntegrationFeedLinks(marker);
+}
+
+function integrationTitleHyphenSlug(title) {
+  return String(title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function integrationPortalGroups(user, groupByPk) {
+  const groups = [];
+  for (const pk of Array.isArray(user?.groups) ? user.groups : []) {
+    const name = groupByPk.get(String(pk))?.name;
+    if (name) groups.push(...normalizeDataFeedGroupList([name]));
+  }
+  return dedupeGroupNames(groups);
+}
+
+async function fetchDataFeedPublishGroupsByName(dataFeedName) {
+  const name = normalizeGroupName(dataFeedName);
+  if (!name || isTakBypassed() || !isTakConfigured()) return [];
+
+  const cached = dataFeedListCache.find(
+    (feed) => normalizeGroupName(feed?.name).toLowerCase() === name.toLowerCase()
+  );
+  const fromList = cached ? dataFeedPublishGroups(cached) : [];
+  if (fromList.length) return fromList;
+
+  try {
+    const client = buildTakAxios();
+    const res = await client.get(`/api/datafeeds/${encodeURIComponent(name)}`, {
+      headers: { Accept: "application/json" },
+    });
+    const payload = res?.data?.data || res?.data;
+    return dataFeedPublishGroups(payload);
+  } catch {
+    return [];
+  }
+}
+
+async function refreshIntegrationFeedLinks() {
+  if (isTakBypassed()) {
+    integrationFeedLinkCache = {
+      entries: [],
+      fetchedAt: Date.now(),
+      error: "TAK bypass enabled",
+    };
+    return integrationFeedLinkCache;
+  }
+
+  try {
+    const usersSvc = require("./users.service");
+    const groupsSvc = require("./groups.service");
+    const integrations = await usersSvc.findIntegrationUsers();
+    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const groupByPk = new Map(
+      (Array.isArray(allGroups) ? allGroups : []).map((g) => [String(g.pk), g])
+    );
+
+    const entries = [];
+    for (const user of integrations) {
+      const dataFeedName = normalizeGroupName(user?.attributes?.tak_data_feed_name);
+      const title = String(user?.attributes?.integration_title || "").trim();
+      const username = normalizeGroupName(user?.username);
+
+      let groups = dataFeedName ? await fetchDataFeedPublishGroupsByName(dataFeedName) : [];
+      if (!groups.length) groups = integrationPortalGroups(user, groupByPk);
+      if (!groups.length) continue;
+
+      const hyphenSlug = title ? integrationTitleHyphenSlug(title) : "";
+      let titleSlug = "";
+      if (title) {
+        try {
+          titleSlug = usersSvc.getStreamingDataFeedNameForTitle(title);
+        } catch {
+          titleSlug = normalizeFeedIdentityKey(title);
+        }
+      }
+
+      const linkKeys = new Set();
+      if (dataFeedName) linkKeys.add(dataFeedName);
+      if (username) linkKeys.add(username);
+      if (hyphenSlug) linkKeys.add(hyphenSlug);
+      if (titleSlug) linkKeys.add(titleSlug);
+
+      for (const key of linkKeys) {
+        registerDataFeedLookupKeys(key, groups);
+      }
+
+      entries.push({
+        username: username || null,
+        dataFeedName: dataFeedName || null,
+        title: title || null,
+        hyphenSlug: hyphenSlug || null,
+        titleSlug: titleSlug || null,
+        groups,
+      });
+    }
+
+    integrationFeedLinkCache = {
+      entries,
+      fetchedAt: Date.now(),
+      error: null,
+    };
+  } catch (err) {
+    integrationFeedLinkCache = {
+      ...integrationFeedLinkCache,
+      fetchedAt: Date.now(),
+      error: err?.message || String(err),
+    };
+  }
+
+  return integrationFeedLinkCache;
+}
+
+function resolveGroupsFromIntegrationFeedLinks(marker) {
+  const candidates = buildDataFeedIdentityCandidates(marker);
+  if (!candidates.length) return [];
+
+  for (const entry of integrationFeedLinkCache.entries || []) {
+    const keys = [
+      entry.dataFeedName,
+      entry.title,
+      entry.hyphenSlug,
+      entry.titleSlug,
+      entry.username,
+    ].filter(Boolean);
+
+    for (const key of keys) {
+      for (const cand of candidates) {
+        if (feedIdentityOverlaps(key, cand)) return entry.groups;
+      }
+    }
+  }
+
+  return [];
 }
 
 function crossLinkFeedsAndSubscriptions(feeds, subList) {
@@ -508,6 +654,7 @@ async function refreshDataFeedIndex() {
     }
     dataFeedListCache = feeds;
     mergeDataFeedConnectionIndex();
+    await refreshIntegrationFeedLinks();
 
     dataFeedCache = {
       fetchedAt: Date.now(),
@@ -1317,6 +1464,7 @@ async function refreshSubscriptionIndex() {
     subscriptionListCache = list;
     rebuildConnectionGroupIndex(list);
     mergeDataFeedConnectionIndex();
+    await refreshIntegrationFeedLinks();
     notifySubscriptionIndexRefreshed();
   } catch (err) {
     subscriptionIndex = {
@@ -1530,6 +1678,7 @@ function explainGroupAssignment(marker) {
       step2_dataFeedIdentityCandidates: buildDataFeedIdentityCandidates(marker),
       step2_dataFeedIndexGroups: resolveGroupsFromDataFeedIndex(marker),
       step2_dataFeedCatalogGroups: resolveGroupsFromDataFeedCatalog(marker),
+      step2_integrationFeedGroups: resolveGroupsFromIntegrationFeedLinks(marker),
       step2_dataFeedGroups: resolveGroupsFromDataFeedIdentity(marker),
       step3_flowTagLookups: flowTagLookups,
       step3_flowGroups: resolveGroupsFromFlowTags({ flowTagUids }),
@@ -1545,7 +1694,7 @@ function explainGroupAssignment(marker) {
       "TAK-Server-<uuid> in _flow-tags_ is the server instance fingerprint on every event, not a channel name.",
       "Data feeds also match via CoT filtergroup/marti, feed connection uid in link/source, or feed name/tag in the datafeeds index.",
       "If step3 flowTagUids only contains TAK-Server-<uuid> with empty connectionGroups, that is expected — look at step2 and step5.",
-      "If step2 is empty, open /api/map/debug/datafeeds?search=lightbug (or your uid prefix) and confirm filterGroups on the feed.",
+      "If step2 is empty, open /api/map/debug/datafeeds?search=lightbug and check integrationLinks (portal integration title/group).",
     ],
   };
 }
@@ -1656,9 +1805,30 @@ function getDataFeedCatalogForDebug(options = {}) {
 
   feeds.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
+  let integrationLinks = Array.isArray(integrationFeedLinkCache.entries)
+    ? integrationFeedLinkCache.entries
+    : [];
+  if (search) {
+    integrationLinks = integrationLinks.filter((entry) => {
+      const fields = [
+        entry.dataFeedName,
+        entry.title,
+        entry.hyphenSlug,
+        entry.titleSlug,
+        entry.username,
+        ...(entry.groups || []),
+      ];
+      return fields.some((field) => feedIdentityOverlaps(field, search));
+    });
+  }
+
   return {
     feeds,
     count: feeds.length,
+    integrationLinks,
+    integrationLinkCount: integrationLinks.length,
+    integrationLinkFetchedAt: integrationFeedLinkCache.fetchedAt || null,
+    integrationLinkError: integrationFeedLinkCache.error || null,
     fetchedAt: dataFeedCache.fetchedAt || null,
     error: dataFeedCache.error || null,
   };
@@ -1694,6 +1864,7 @@ module.exports = {
   normalizeFeedIdentityKey,
   buildDataFeedIdentityCandidates,
   feedIdentityOverlaps,
+  integrationTitleHyphenSlug,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
   explainGroupAssignment,
@@ -1703,6 +1874,7 @@ module.exports = {
   refreshGroupCatalog,
   refreshSubscriptionIndex,
   refreshDataFeedIndex,
+  refreshIntegrationFeedLinks,
   getSubscriptionIndexSnapshot,
   getDataFeedCatalogForDebug,
   buildGroupsCatalogWithCounts,

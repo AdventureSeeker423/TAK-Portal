@@ -16,6 +16,8 @@ assert.ok(lightbugCandidates.includes("swattruck"));
 assert.strictEqual(mapMeta.feedIdentityOverlaps("lightbug", "lightbugswat"), true);
 assert.strictEqual(mapMeta.feedIdentityOverlaps("totallydifferent", "lightbugswat"), false);
 
+assert.strictEqual(mapMeta.integrationTitleHyphenSlug("Lightbug SWAT"), "lightbug-swat");
+
 const shortUid = mapMeta.buildDataFeedIdentityCandidates({ uid: "ab" });
 assert.strictEqual(shortUid.length, 0);
 
