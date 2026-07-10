@@ -29,6 +29,8 @@
   let lockedCenter = null;
   let wheelHandler = null;
   let recenterOnIdleScheduled = false;
+  /** Cached marker payload — reapplied after basemap style reloads wipe custom layers. */
+  let lastMarkerPayload = null;
   /** Degrees — pan beyond this from the CoT breaks center lock. */
   const UNLOCK_CENTER_THRESHOLD = 0.00012;
 
@@ -75,6 +77,115 @@
     map.once("idle", runRecenter);
   }
 
+  function markerLayersComplete() {
+    return !!(
+      map &&
+      map.getSource(SOURCE_ID) &&
+      map.getLayer(CIRCLE_LAYER) &&
+      map.getLayer(ICON_LAYER)
+    );
+  }
+
+  function removeMarkerLayers() {
+    if (!map) return;
+    try {
+      if (map.getLayer(ICON_LAYER)) map.removeLayer(ICON_LAYER);
+      if (map.getLayer(CIRCLE_LAYER)) map.removeLayer(CIRCLE_LAYER);
+      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+    } catch (_) {}
+  }
+
+  function markerFeatureForMap(feature) {
+    if (!feature) return null;
+    const props = Object.assign({}, feature.properties || {}, { showCircle: 1 });
+    return {
+      type: "Feature",
+      geometry: feature.geometry,
+      properties: props,
+    };
+  }
+
+  function applyPayloadToSource(payload) {
+    const source = map && map.getSource(SOURCE_ID);
+    if (!source) return false;
+
+    if (!payload || !payload.found || !payload.feature) {
+      hasLiveMarker = false;
+      lockedCenter = null;
+      source.setData(emptyFeatureCollection());
+      setEmptyVisible(true);
+      return true;
+    }
+
+    hasLiveMarker = true;
+    setEmptyVisible(false);
+    const mapped = markerFeatureForMap(payload.feature);
+    source.setData({
+      type: "FeatureCollection",
+      features: mapped ? [mapped] : [],
+    });
+
+    const coords = payload.feature.geometry && payload.feature.geometry.coordinates;
+    if (coords && coords.length >= 2) {
+      if (centerLocked) {
+        setLockedCenterFromCoords(coords, {
+          zoom: Math.max(map.getZoom(), LOCKED_ZOOM),
+          duration: 0,
+        });
+      } else {
+        lockedCenter = [coords[0], coords[1]];
+      }
+    }
+    return true;
+  }
+
+  function syncMarkerToMap() {
+    if (!map || !map.isStyleLoaded()) return Promise.resolve(false);
+
+    if (!markerLayersComplete()) {
+      try {
+        removeMarkerLayers();
+        addMarkerLayers();
+      } catch (_) {
+        return Promise.resolve(false);
+      }
+    }
+
+    if (!markerLayersComplete()) return Promise.resolve(false);
+
+    if (!lastMarkerPayload) {
+      applyPayloadToSource(null);
+      return Promise.resolve(true);
+    }
+
+    applyPayloadToSource(lastMarkerPayload);
+    const manifest =
+      (lastMarkerPayload && lastMarkerPayload.iconManifest) || [];
+    return loadIconManifest(manifest).then(function () {
+      if (map) {
+        try {
+          map.triggerRepaint();
+        } catch (_) {}
+      }
+      return true;
+    });
+  }
+
+  function scheduleMarkerSync() {
+    if (!map) return;
+    let attempt = 0;
+    function trySync() {
+      if (!map) return;
+      syncMarkerToMap().then(function (ok) {
+        if (!ok && attempt < 80) {
+          attempt += 1;
+          setTimeout(trySync, 50);
+        }
+      });
+    }
+    trySync();
+  }
+
   function whenMapReady() {
     return new Promise(function (resolve) {
       if (!map) {
@@ -82,8 +193,11 @@
         return;
       }
       function finish() {
+        if (!map || !map.isStyleLoaded()) {
+          map.once("styledata", finish);
+          return;
+        }
         try {
-          addMarkerLayers();
           map.resize();
         } catch (_) {}
         requestAnimationFrame(function () {
@@ -96,16 +210,6 @@
       if (typeof map.loaded === "function" && map.loaded()) finish();
       else map.once("load", finish);
     });
-  }
-
-  function ensureMarkerSource() {
-    if (!map) return null;
-    if (!map.getSource(SOURCE_ID)) {
-      try {
-        addMarkerLayers();
-      } catch (_) {}
-    }
-    return map.getSource(SOURCE_ID) || null;
   }
 
   function centerOnLockedMarker(options) {
@@ -381,7 +485,8 @@
   }
 
   function addMarkerLayers() {
-    if (!map || map.getSource(SOURCE_ID)) return;
+    if (!map || !map.isStyleLoaded()) return false;
+    if (markerLayersComplete()) return true;
 
     map.addSource(SOURCE_ID, {
       type: "geojson",
@@ -395,7 +500,7 @@
       filter: ["==", ["get", "showCircle"], 1],
       paint: {
         "circle-radius": 10,
-        "circle-color": ["get", "color"],
+        "circle-color": ["coalesce", ["get", "color"], "#2196F3"],
         "circle-stroke-width": 1.5,
         "circle-stroke-color": "#ffffff",
       },
@@ -411,48 +516,24 @@
         "icon-size": 0.88,
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
+        "icon-optional": true,
       },
       paint: {
         "icon-opacity": ["case", ["!=", ["get", "iconId"], ""], 1, 0],
       },
     });
+    return true;
   }
 
   function updateMarkerOnMap(payload) {
+    if (payload && payload.found && payload.feature) {
+      lastMarkerPayload = payload;
+    } else if (!hasLiveMarker) {
+      lastMarkerPayload = null;
+    }
     if (!map) return Promise.resolve();
     return whenMapReady().then(function () {
-      const source = ensureMarkerSource();
-      if (!source) return;
-
-      if (!payload || !payload.found || !payload.feature) {
-        hasLiveMarker = false;
-        lockedCenter = null;
-        source.setData(emptyFeatureCollection());
-        setEmptyVisible(true);
-        return;
-      }
-
-      hasLiveMarker = true;
-      setEmptyVisible(false);
-      const feature = payload.feature;
-      source.setData({
-        type: "FeatureCollection",
-        features: [feature],
-      });
-
-      const coords = feature.geometry && feature.geometry.coordinates;
-      if (coords && coords.length >= 2) {
-        if (centerLocked) {
-          setLockedCenterFromCoords(coords, {
-            zoom: Math.max(map.getZoom(), LOCKED_ZOOM),
-            duration: 0,
-          });
-        } else {
-          lockedCenter = [coords[0], coords[1]];
-        }
-      }
-
-      return loadIconManifest(payload.iconManifest || []);
+      return syncMarkerToMap();
     });
   }
 
@@ -498,6 +579,7 @@
     if (!currentClientId || !currentCallsign || !map) return Promise.resolve();
     return fetchLiveMarker(currentClientId, currentCallsign)
       .then(function (payload) {
+        if (payload && payload.found) lastMarkerPayload = payload;
         return updateMarkerOnMap(payload);
       })
       .catch(function () {
@@ -524,6 +606,7 @@
     centerLocked = true;
     hasLiveMarker = false;
     lockedCenter = null;
+    lastMarkerPayload = null;
     recenterOnIdleScheduled = false;
     applyCenterLockMode();
 
@@ -535,6 +618,7 @@
     return Promise.all([fetchMarkerWithRetry(0), ensureMapLibre()])
       .then(function (results) {
         const payload = results[0];
+        lastMarkerPayload = payload && payload.found ? payload : null;
         let center = DEFAULT_CENTER.slice();
         let zoom = DEFAULT_ZOOM;
         const feature = payload && payload.feature;
@@ -543,6 +627,8 @@
           center = [coords[0], coords[1]];
           zoom = LOCKED_ZOOM;
           lockedCenter = center;
+        } else {
+          lockedCenter = null;
         }
         revealMap();
         return init({ center: center, zoom: zoom }).then(function () {
@@ -551,6 +637,7 @@
       })
       .then(function () {
         revealMap();
+        scheduleMarkerSync();
         scheduleRecenterIfLocked();
         startPolling(clientId, callsign);
         return true;
@@ -605,12 +692,13 @@
               centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
               scheduleRecenterIfLocked();
             }
+            scheduleMarkerSync();
             resolve(true);
           });
         });
         map.on("styledata", function () {
           if (!map || !map.isStyleLoaded()) return;
-          ensureMarkerSource();
+          scheduleMarkerSync();
           if (centerLocked && lockedCenter) scheduleRecenterIfLocked();
         });
         map.on("error", function () {
@@ -650,6 +738,7 @@
     centerLocked = true;
     lockedCenter = null;
     recenterOnIdleScheduled = false;
+    lastMarkerPayload = null;
     setMapReadyVisible(false);
     if (map) {
       try {
