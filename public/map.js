@@ -51,35 +51,31 @@
 
   const MAP_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
   const MAP_LABEL_FONT = ["Open Sans Semibold"];
+  const MAP_ROLE_LABEL_FONT = ["Open Sans Bold"];
   const MARKER_FILTER = ["==", ["get", "kind"], "marker"];
   const SOURCE_ID = "tak-markers";
+  const EUD_DOT_ICON_ID = "tak-eud-dot";
   const CIRCLE_LAYER_LOW = "tak-markers-circle-low";
   const ICON_LAYER_LOW = "tak-markers-icon-low";
   const CIRCLE_LAYER_HIGH = "tak-markers-circle-high";
   const ICON_LAYER_HIGH = "tak-markers-icon-high";
   const LABEL_LAYER = "tak-markers-label";
   const LABEL_PRIORITY_LAYER = "tak-markers-label-priority";
-  const ROLE_LABEL_LAYER = "tak-markers-role-label";
-  const MARKER_HIT_LAYER_IDS = [
-    CIRCLE_LAYER_LOW,
-    ICON_LAYER_LOW,
-    CIRCLE_LAYER_HIGH,
-    ICON_LAYER_HIGH,
-  ];
+  const MARKER_HIT_LAYER_IDS = [CIRCLE_LAYER_LOW, CIRCLE_LAYER_HIGH];
   const MARKER_LAYER_IDS = [
     CIRCLE_LAYER_LOW,
-    ICON_LAYER_LOW,
     CIRCLE_LAYER_HIGH,
-    ICON_LAYER_HIGH,
     LABEL_LAYER,
     LABEL_PRIORITY_LAYER,
-    ROLE_LABEL_LAYER,
   ];
   /** Legacy layer ids removed during style restore. */
   const LEGACY_MARKER_LAYER_IDS = [
     "tak-markers-circle",
     "tak-markers-icon",
     "tak-markers-course",
+    "tak-markers-role-label",
+    ICON_LAYER_LOW,
+    ICON_LAYER_HIGH,
   ];
   /** Must match cotStream.service.js STALE_GRACE_MS */
   const STALE_GRACE_MS = 30000;
@@ -1110,35 +1106,14 @@
     try {
       map.setFilter(
         CIRCLE_LAYER_LOW,
-        mergeMarkerLayerFilter([
-          ["==", ["get", "showCircle"], 1],
-          ["==", ["get", "drawTier"], 0],
-        ])
+        mergeMarkerLayerFilter([["==", ["get", "drawTier"], 0]])
       );
       map.setFilter(
         CIRCLE_LAYER_HIGH,
-        mergeMarkerLayerFilter([
-          ["==", ["get", "showCircle"], 1],
-          ["==", ["get", "drawTier"], 1],
-        ])
-      );
-      map.setFilter(
-        ICON_LAYER_LOW,
-        mergeMarkerLayerFilter([
-          ["!=", ["get", "iconId"], ""],
-          ["==", ["get", "drawTier"], 0],
-        ])
-      );
-      map.setFilter(
-        ICON_LAYER_HIGH,
-        mergeMarkerLayerFilter([
-          ["!=", ["get", "iconId"], ""],
-          ["==", ["get", "drawTier"], 1],
-        ])
+        mergeMarkerLayerFilter([["==", ["get", "drawTier"], 1]])
       );
       map.setFilter(LABEL_LAYER, withChannelFilter(labelStandardFilter()));
       map.setFilter(LABEL_PRIORITY_LAYER, withChannelFilter(labelPriorityFilter()));
-      map.setFilter(ROLE_LABEL_LAYER, withChannelFilter(roleLabelFilter()));
       return true;
     } catch (err) {
       console.warn("[map] applyMapChannelLayerFilters failed", err);
@@ -3230,10 +3205,7 @@
     for (const id of [
       LABEL_PRIORITY_LAYER,
       LABEL_LAYER,
-      ROLE_LABEL_LAYER,
-      ICON_LAYER_HIGH,
       CIRCLE_LAYER_HIGH,
-      ICON_LAYER_LOW,
       CIRCLE_LAYER_LOW,
       ...LEGACY_MARKER_LAYER_IDS,
     ]) {
@@ -3813,12 +3785,9 @@
     return (
       map.getSource(SOURCE_ID) &&
       map.getLayer(CIRCLE_LAYER_LOW) &&
-      map.getLayer(ICON_LAYER_LOW) &&
       map.getLayer(CIRCLE_LAYER_HIGH) &&
-      map.getLayer(ICON_LAYER_HIGH) &&
       map.getLayer(LABEL_LAYER) &&
-      map.getLayer(LABEL_PRIORITY_LAYER) &&
-      map.getLayer(ROLE_LABEL_LAYER)
+      map.getLayer(LABEL_PRIORITY_LAYER)
     );
   }
 
@@ -3840,10 +3809,6 @@
 
   function labelStandardFilter() {
     return ["all", MARKER_FILTER, ["!", markerSelectedOrLockedExpr()]];
-  }
-
-  function roleLabelFilter() {
-    return ["all", MARKER_FILTER, ["!=", ["get", "roleLabel"], ""]];
   }
 
   function syncSelectionToMapSource() {
@@ -3971,78 +3936,96 @@
     };
   }
 
-  function markerRoleLabelLayout() {
-    return {
-      "text-field": ["get", "roleLabel"],
-      "text-font": MAP_LABEL_FONT,
-      "text-size": 10,
-      "text-anchor": "center",
-      "text-offset": [0, 0],
-      "text-allow-overlap": true,
-      "text-ignore-placement": true,
-      "text-optional": false,
-      "symbol-sort-key": ["get", "renderSort"],
-    };
+  function markerRoleTextField() {
+    return ["case", ["!=", ["get", "roleLabel"], ""], ["get", "roleLabel"], ""];
   }
 
-  function markerRoleLabelPaint() {
-    return {
-      "text-color": "#ffffff",
-      "text-halo-color": "rgba(0, 0, 0, 0.85)",
-      "text-halo-width": 1.5,
-      "text-opacity": 1,
-    };
+  function markerUsesDotIconExpr() {
+    return ["==", ["get", "showCircle"], 1];
   }
 
-  function markerCircleLayerSpec(id, drawTier) {
-    return {
-      id: id,
-      type: "circle",
-      source: SOURCE_ID,
-      filter: [
-        "all",
-        MARKER_FILTER,
-        ["==", ["get", "showCircle"], 1],
-        ["==", ["get", "drawTier"], drawTier],
-      ],
-      layout: {
-        "circle-sort-key": ["get", "renderSort"],
-      },
-      paint: {
-        "circle-radius": ["case", markerSelectedExpr(), 13, 10],
-        "circle-color": ["get", "color"],
-        "circle-stroke-width": ["case", markerSelectedExpr(), 2, 1.5],
-        "circle-stroke-color": "#ffffff",
-        "circle-opacity": markerCircleOpacityPaint(),
-      },
-    };
-  }
-
-  function markerIconLayerSpec(id, drawTier) {
+  function markerSymbolLayerSpec(id, drawTier) {
     return {
       id: id,
       type: "symbol",
       source: SOURCE_ID,
-      filter: [
-        "all",
-        MARKER_FILTER,
-        ["!=", ["get", "iconId"], ""],
-        ["==", ["get", "drawTier"], drawTier],
-      ],
+      filter: ["all", MARKER_FILTER, ["==", ["get", "drawTier"], drawTier]],
       layout: {
-        "icon-image": ["get", "iconId"],
-        "icon-size": ["case", markerSelectedExpr(), 1.05, 0.88],
+        "icon-image": [
+          "case",
+          markerUsesDotIconExpr(),
+          EUD_DOT_ICON_ID,
+          ["get", "iconId"],
+        ],
+        "icon-size": [
+          "case",
+          markerUsesDotIconExpr(),
+          ["case", markerSelectedExpr(), 0.66, 0.52],
+          ["case", markerSelectedExpr(), 1.05, 0.88],
+        ],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
         "icon-optional": true,
+        "text-field": markerRoleTextField(),
+        "text-font": MAP_ROLE_LABEL_FONT,
+        "text-size": 12,
+        "text-anchor": "center",
+        "text-offset": [0, 0],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-optional": false,
         "symbol-sort-key": ["get", "renderSort"],
       },
       paint: {
+        "icon-color": ["get", "color"],
         "icon-opacity": markerIconOpacityPaint(),
         "icon-halo-color": "#ffffff",
-        "icon-halo-width": 4,
+        "icon-halo-width": [
+          "case",
+          markerUsesDotIconExpr(),
+          ["case", markerSelectedExpr(), 2.5, 2],
+          4,
+        ],
+        "text-color": "#000000",
+        "text-halo-width": 0,
+        "text-opacity": 1,
       },
     };
+  }
+
+  function createEudDotSdfImageData(size) {
+    const data = new Uint8ClampedArray(size * size * 4);
+    const center = (size - 1) / 2;
+    const radius = size * 0.38;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = x - center;
+        const dy = y - center;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const sdf = Math.max(0, Math.min(255, 128 + (radius - dist) * 8));
+        const i = (y * size + x) * 4;
+        data[i] = sdf;
+        data[i + 1] = sdf;
+        data[i + 2] = sdf;
+        data[i + 3] = 255;
+      }
+    }
+    return new ImageData(data, size, size);
+  }
+
+  function ensureEudDotMapImage() {
+    if (!map || !map.isStyleLoaded()) return false;
+    if (map.hasImage(EUD_DOT_ICON_ID)) return true;
+    try {
+      map.addImage(EUD_DOT_ICON_ID, createEudDotSdfImageData(32), {
+        pixelRatio: 1,
+        sdf: true,
+      });
+      return true;
+    } catch (err) {
+      console.warn("[map] ensureEudDotMapImage failed", err);
+      return false;
+    }
   }
 
   function addMarkerLayers() {
@@ -4057,19 +4040,9 @@
         data: { type: "FeatureCollection", features: [] },
       });
 
-      map.addLayer(markerCircleLayerSpec(CIRCLE_LAYER_LOW, 0));
-      map.addLayer(markerIconLayerSpec(ICON_LAYER_LOW, 0));
-      map.addLayer(markerCircleLayerSpec(CIRCLE_LAYER_HIGH, 1));
-      map.addLayer(markerIconLayerSpec(ICON_LAYER_HIGH, 1));
-
-      map.addLayer({
-        id: ROLE_LABEL_LAYER,
-        type: "symbol",
-        source: SOURCE_ID,
-        filter: withChannelFilter(roleLabelFilter()),
-        layout: markerRoleLabelLayout(),
-        paint: markerRoleLabelPaint(),
-      });
+      ensureEudDotMapImage();
+      map.addLayer(markerSymbolLayerSpec(CIRCLE_LAYER_LOW, 0));
+      map.addLayer(markerSymbolLayerSpec(CIRCLE_LAYER_HIGH, 1));
 
       map.addLayer({
         id: LABEL_LAYER,
