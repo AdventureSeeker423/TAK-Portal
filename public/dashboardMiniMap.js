@@ -41,23 +41,68 @@
     else map.scrollZoom.enable();
   }
 
+  function whenMapReady() {
+    return new Promise(function (resolve) {
+      if (!map) {
+        resolve();
+        return;
+      }
+      function finish() {
+        try {
+          addMarkerLayers();
+          map.resize();
+        } catch (_) {}
+        requestAnimationFrame(function () {
+          if (map) map.resize();
+          requestAnimationFrame(function () {
+            resolve();
+          });
+        });
+      }
+      if (typeof map.loaded === "function" && map.loaded()) finish();
+      else map.once("load", finish);
+    });
+  }
+
+  function ensureMarkerSource() {
+    if (!map) return null;
+    if (!map.getSource(SOURCE_ID)) {
+      try {
+        addMarkerLayers();
+      } catch (_) {}
+    }
+    return map.getSource(SOURCE_ID) || null;
+  }
+
   function centerOnLockedMarker(options) {
     if (!map || !lockedCenter) return;
     const opts = options || {};
     const zoom =
       opts.zoom != null ? opts.zoom : Math.max(map.getZoom(), 14);
-    const duration = opts.duration != null ? opts.duration : 400;
-    map.easeTo({
-      center: lockedCenter,
-      zoom: zoom,
-      duration: duration,
-    });
+    map.resize();
+    const view = { center: lockedCenter, zoom: zoom };
+    if (opts.duration > 0) {
+      map.easeTo({
+        center: lockedCenter,
+        zoom: zoom,
+        duration: opts.duration,
+      });
+      return;
+    }
+    map.jumpTo(view);
   }
 
   function setLockedCenterFromCoords(coords, options) {
     if (!coords || coords.length < 2) return;
     lockedCenter = [coords[0], coords[1]];
-    if (centerLocked) centerOnLockedMarker(options);
+    if (!centerLocked) return;
+    centerOnLockedMarker(options);
+    if (!map) return;
+    map.once("idle", function onIdle() {
+      if (!map || !centerLocked || !lockedCenter) return;
+      map.resize();
+      centerOnLockedMarker({ zoom: Math.max(map.getZoom(), 14), duration: 0 });
+    });
   }
 
   function onMapWheel(e) {
@@ -346,39 +391,40 @@
 
   function updateMarkerOnMap(payload) {
     if (!map) return Promise.resolve();
-    const source = map.getSource(SOURCE_ID);
-    if (!source) return Promise.resolve();
+    return whenMapReady().then(function () {
+      const source = ensureMarkerSource();
+      if (!source) return;
 
-    if (!payload || !payload.found || !payload.feature) {
-      hasLiveMarker = false;
-      lockedCenter = null;
-      source.setData(emptyFeatureCollection());
-      setEmptyVisible(true);
-      return Promise.resolve();
-    }
-
-    hasLiveMarker = true;
-    setEmptyVisible(false);
-    const feature = payload.feature;
-    const hadLiveMarker = !!lockedCenter;
-    source.setData({
-      type: "FeatureCollection",
-      features: [feature],
-    });
-
-    const coords = feature.geometry && feature.geometry.coordinates;
-    if (coords && coords.length >= 2) {
-      if (centerLocked) {
-        setLockedCenterFromCoords(coords, {
-          zoom: Math.max(map.getZoom(), 14),
-          duration: hadLiveMarker ? 0 : 400,
-        });
-      } else {
-        lockedCenter = [coords[0], coords[1]];
+      if (!payload || !payload.found || !payload.feature) {
+        hasLiveMarker = false;
+        lockedCenter = null;
+        source.setData(emptyFeatureCollection());
+        setEmptyVisible(true);
+        return;
       }
-    }
 
-    return loadIconManifest(payload.iconManifest || []);
+      hasLiveMarker = true;
+      setEmptyVisible(false);
+      const feature = payload.feature;
+      source.setData({
+        type: "FeatureCollection",
+        features: [feature],
+      });
+
+      const coords = feature.geometry && feature.geometry.coordinates;
+      if (coords && coords.length >= 2) {
+        if (centerLocked) {
+          setLockedCenterFromCoords(coords, {
+            zoom: Math.max(map.getZoom(), 14),
+            duration: 0,
+          });
+        } else {
+          lockedCenter = [coords[0], coords[1]];
+        }
+      }
+
+      return loadIconManifest(payload.iconManifest || []);
+    });
   }
 
   function fetchLiveMarker(clientId, callsign) {
@@ -398,10 +444,18 @@
     });
   }
 
-  function refreshMarker() {
+  function refreshMarker(attempt) {
     if (!currentClientId || !currentCallsign || !map) return Promise.resolve();
+    const tryNum = attempt != null ? attempt : 0;
     return fetchLiveMarker(currentClientId, currentCallsign)
       .then(function (payload) {
+        if (!payload.found && tryNum < 5 && centerLocked && !hasLiveMarker) {
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              resolve(refreshMarker(tryNum + 1));
+            }, 400);
+          });
+        }
         return updateMarkerOnMap(payload);
       })
       .catch(function () {
@@ -413,7 +467,11 @@
     if (isMobile()) return Promise.resolve(false);
     const container = document.getElementById("clientMiniMap");
     if (!container) return Promise.resolve(false);
-    if (map) return Promise.resolve(true);
+    if (map) {
+      return whenMapReady().then(function () {
+        return true;
+      });
+    }
 
     return ensureMapLibre().then(function () {
       const style = getBasemapStyle();
@@ -436,13 +494,15 @@
       return new Promise(function (resolve) {
         map.on("load", function () {
           try {
-            addMarkerLayers();
             bindMapInteraction();
           } catch (_) {}
-          requestAnimationFrame(function () {
-            if (map) map.resize();
+          whenMapReady().then(function () {
+            resolve(true);
           });
-          resolve(true);
+        });
+        map.on("styledata", function () {
+          if (!map || !map.isStyleLoaded()) return;
+          ensureMarkerSource();
         });
         map.on("error", function () {
           resolve(false);
