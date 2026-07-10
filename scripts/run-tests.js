@@ -8,6 +8,7 @@ const path = require("path");
 const TEST_FILES = [
   "mapIcon.test.js",
   "mapIconRender.test.js",
+  "mapMeta.test.js",
   "mapRender.test.js",
   "missionGeo.test.js",
   "missionKml.test.js",

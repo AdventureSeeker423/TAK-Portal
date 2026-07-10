@@ -239,6 +239,35 @@ function rebuildConnectionGroupIndex(subList) {
   }
 }
 
+/** Letters/digits only — matches integration title slugs to hyphenated marker uid prefixes. */
+function normalizeFeedIdentityKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function registerDataFeedLookupKeys(rawKey, groups) {
+  const list = dedupeGroupNames(groups);
+  if (!list.length) return;
+
+  const keys = new Set();
+  const val = normalizeGroupName(rawKey);
+  if (!val) return;
+
+  keys.add(val.toLowerCase());
+  const bare = val.replace(/^TAK-Server-/i, "").toLowerCase();
+  if (bare) keys.add(bare);
+
+  const identity = normalizeFeedIdentityKey(val);
+  if (identity) keys.add(identity);
+
+  for (const key of keys) {
+    dataFeedGroupsByKey.set(key, list);
+    registerConnectionGroups([key], list);
+  }
+}
+
 function registerDataFeedGroups(feed) {
   if (!feed || typeof feed !== "object") return;
   const groups = normalizeDataFeedGroupList(
@@ -246,31 +275,62 @@ function registerDataFeedGroups(feed) {
   );
   if (!groups.length) return;
 
-  const keys = new Set();
   for (const field of [feed.uuid, feed.uid, feed.id, feed.name]) {
-    const val = normalizeGroupName(field);
-    if (!val) continue;
-    keys.add(val.toLowerCase());
-    const bare = val.replace(/^TAK-Server-/i, "").toLowerCase();
-    if (bare) keys.add(bare);
+    registerDataFeedLookupKeys(field, groups);
   }
 
   const tags = feed.tag;
   const tagList = Array.isArray(tags) ? tags : tags ? [tags] : [];
   for (const tag of tagList) {
-    const val = normalizeGroupName(tag);
-    if (!val) continue;
-    keys.add(val.toLowerCase());
+    registerDataFeedLookupKeys(tag, groups);
   }
 
   if (feed.port != null && feed.port !== "") {
-    keys.add(String(feed.port).trim());
+    registerDataFeedLookupKeys(String(feed.port).trim(), groups);
+  }
+}
+
+function buildDataFeedIdentityCandidates(marker) {
+  const out = [];
+  const seen = new Set();
+
+  function add(raw) {
+    const s = String(raw || "").trim().toLowerCase();
+    if (!s || s.length < 3 || seen.has(s)) return;
+    seen.add(s);
+    out.push(s);
+
+    const identity = normalizeFeedIdentityKey(s);
+    if (identity && identity.length >= 3 && !seen.has(identity)) {
+      seen.add(identity);
+      out.push(identity);
+    }
   }
 
-  for (const key of keys) {
-    dataFeedGroupsByKey.set(key, groups);
-    registerConnectionGroups([key], groups);
+  add(marker?.uid);
+
+  let cur = String(marker?.uid || "").trim().toLowerCase();
+  while (cur) {
+    const next = cur.replace(/[-_]\d+$/, "");
+    if (!next || next === cur || next.length < 3) break;
+    cur = next;
+    add(cur);
   }
+
+  for (const rel of marker?.relatedUids || []) {
+    add(rel);
+  }
+
+  return out;
+}
+
+function resolveGroupsFromDataFeedIdentity(marker) {
+  for (const key of buildDataFeedIdentityCandidates(marker)) {
+    const groups = lookupConnectionGroups(key);
+    const out = dedupeGroupNames(groups);
+    if (out.length) return out;
+  }
+  return [];
 }
 
 function crossLinkFeedsAndSubscriptions(feeds, subList) {
@@ -1265,6 +1325,9 @@ function resolveGroupsForMarker(marker, cotDetail) {
   const fromSub = resolveGroupsFromSubscription(marker);
   if (fromSub[0] !== UNASSIGNED_GROUP) return fromSub;
 
+  const fromFeedIdentity = resolveGroupsFromDataFeedIdentity(marker);
+  if (fromFeedIdentity.length) return fromFeedIdentity;
+
   const fromCot = filterAssignableChannelGroups(
     detail
       ? parseGroupsFromCoTDetail(detail)
@@ -1348,20 +1411,23 @@ function explainGroupAssignment(marker) {
     },
     trace: {
       step1_cotRouting: cotRouteGroups,
-      step2_flowTagLookups: flowTagLookups,
-      step2_flowGroups: resolveGroupsFromFlowTags({ flowTagUids }),
-      step3_subscriptionLookups: subscriptionLookups,
-      step3_subscriptionGroups: resolveGroupsFromSubscription(marker),
-      step4_sourceHints: sourceHints,
-      step4_sourceGroups: resolveGroupsFromSourceHints(sourceHints),
+      step2_dataFeedIdentityCandidates: buildDataFeedIdentityCandidates(marker),
+      step2_dataFeedGroups: resolveGroupsFromDataFeedIdentity(marker),
+      step3_flowTagLookups: flowTagLookups,
+      step3_flowGroups: resolveGroupsFromFlowTags({ flowTagUids }),
+      step4_subscriptionLookups: subscriptionLookups,
+      step4_subscriptionGroups: resolveGroupsFromSubscription(marker),
+      step5_sourceHints: sourceHints,
+      step5_sourceGroups: resolveGroupsFromSourceHints(sourceHints),
       recomputedGroups: recomputed,
     },
     notes: [
-      "EUD clients usually match via step3 (subscription by uid/callsign).",
+      "EUD clients usually match via step4 (subscription by uid/callsign).",
+      "Lightbug / integration feeds often match via step2 (marker uid prefix vs data feed name/tag slug).",
       "TAK-Server-<uuid> in _flow-tags_ is the server instance fingerprint on every event, not a channel name.",
-      "Data feeds match via CoT filtergroup/marti, feed connection uid in link/source, or feed name/tag in the datafeeds index.",
-      "If step2 flowTagUids only contains TAK-Server-<uuid> with empty connectionGroups, that is expected — look at step4 sourceHints and relatedUids.",
-      "If step4_sourceGroups is empty, paste sourceHints from the marker block so link/source attrs can be wired up.",
+      "Data feeds also match via CoT filtergroup/marti, feed connection uid in link/source, or feed name/tag in the datafeeds index.",
+      "If step3 flowTagUids only contains TAK-Server-<uuid> with empty connectionGroups, that is expected — look at step2 and step5.",
+      "If step5_sourceGroups is empty, paste sourceHints from the marker block so link/source attrs can be wired up.",
     ],
   };
 }
@@ -1471,6 +1537,8 @@ module.exports = {
   resolveMarkerDisplayColor,
   normalizeTakColor,
   resolveGroupsForMarker,
+  normalizeFeedIdentityKey,
+  buildDataFeedIdentityCandidates,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
   explainGroupAssignment,
