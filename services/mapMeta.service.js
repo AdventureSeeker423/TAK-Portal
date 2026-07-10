@@ -546,7 +546,7 @@ function integrationTitleWordKeys(title) {
     const norm = normalizeFeedIdentityKey(word);
     if (norm && norm.length >= 4) keys.add(norm);
   }
-  return keys;
+  return Array.from(keys);
 }
 
 function registerIntegrationLinkKeys(entry) {
@@ -692,7 +692,7 @@ async function refreshIntegrationFeedLinks(options = {}) {
       }
       if (!titleSlug && usernameTitleSlug) titleSlug = usernameTitleSlug;
 
-      const titleWordKeys = Array.from(integrationTitleWordKeys(title));
+      const titleWordKeys = integrationTitleWordKeys(title);
 
       const entry = {
         username: username || null,
@@ -1780,6 +1780,18 @@ function markerHasDataFeedProvenance(marker) {
   return false;
 }
 
+function isIntegrationInjectedMarker(marker) {
+  if (!marker) return false;
+  if (isLiveEudSubscription(marker)) return false;
+
+  for (const entry of integrationFeedLinkCache.entries || []) {
+    if (integrationEntryMatchesMarker(entry, buildDataFeedIdentityCandidates(marker), marker)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Classify marker provenance for map draw priority (EUD above data feeds).
  * @returns {"eud"|"feed"|"unknown"}
@@ -1789,6 +1801,7 @@ function classifyMarkerOrigin(marker) {
 
   if (isLiveEudSubscription(marker)) return "eud";
   if (markerHasDataFeedProvenance(marker)) return "feed";
+  if (isIntegrationInjectedMarker(marker)) return "feed";
 
   const type = String(marker.type || "").trim();
   if (/^a-f-G-/i.test(type)) return "eud";

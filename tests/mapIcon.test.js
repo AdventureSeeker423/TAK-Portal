@@ -216,6 +216,27 @@ async function runTests() {
   assert.strictEqual(psaPathIcon.source, "path");
   assert.ok(/FED_FIXED_WING\.png/i.test(psaPathIcon.relPath || psaPathIcon.iconId));
 
+  const swatCab = mapIcon.resolveIcon({
+    type: "a-f-G-E-V",
+    affiliation: "friend",
+    usericon: {
+      iconsetpath: "ad78aafb-83a6-4c07-b2b9-a897a8b6a38f/Shapes/cabs.png",
+    },
+  });
+  assert.ok(swatCab, "Generic Icons Shapes/cabs path should resolve");
+  assert.strictEqual(swatCab.source, "path");
+  const swatFeedMarker = {
+    type: "a-f-G-E-V",
+    origin: "feed",
+    iconId: swatCab.iconId,
+    iconSource: swatCab.source,
+  };
+  assert.strictEqual(
+    mapRender.markerUsesMapIcon(swatFeedMarker),
+    true,
+    "integration/feed ground vehicles with usericon should use PNG icon"
+  );
+
   // Default affiliation icons
   const defaults = mapIcon.getDefaultIconIds();
   assert.ok(defaults.friend, "default friendly icon");
