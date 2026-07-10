@@ -8,6 +8,9 @@
   const CIRCLE_LAYER = "dashboard-user-marker-circle";
   const ICON_LAYER = "dashboard-user-marker-icon";
   const POLL_MS = 8000;
+  const DEFAULT_CENTER = [-85.25, 35.17];
+  const DEFAULT_ZOOM = 10;
+  const LOCKED_ZOOM = 14;
   const MAPLIBRE_CSS =
     "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css";
   const MAPLIBRE_JS =
@@ -25,6 +28,7 @@
   /** @type {[number, number] | null} */
   let lockedCenter = null;
   let wheelHandler = null;
+  let recenterOnIdleScheduled = false;
   /** Degrees — pan beyond this from the CoT breaks center lock. */
   const UNLOCK_CENTER_THRESHOLD = 0.00012;
 
@@ -39,6 +43,22 @@
     if (!map) return;
     if (centerLocked) map.scrollZoom.disable();
     else map.scrollZoom.enable();
+  }
+
+  function setMapReadyVisible(visible) {
+    const pane = document.querySelector(".client-modal-map-pane");
+    if (pane) pane.classList.toggle("mini-map-ready", !!visible);
+  }
+
+  function scheduleRecenterIfLocked() {
+    if (!map || !centerLocked || !lockedCenter || recenterOnIdleScheduled) return;
+    recenterOnIdleScheduled = true;
+    map.once("idle", function () {
+      recenterOnIdleScheduled = false;
+      if (!map || !centerLocked || !lockedCenter) return;
+      map.resize();
+      centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
+    });
   }
 
   function whenMapReady() {
@@ -78,7 +98,7 @@
     if (!map || !lockedCenter) return;
     const opts = options || {};
     const zoom =
-      opts.zoom != null ? opts.zoom : Math.max(map.getZoom(), 14);
+      opts.zoom != null ? opts.zoom : Math.max(map.getZoom(), LOCKED_ZOOM);
     map.resize();
     const view = { center: lockedCenter, zoom: zoom };
     if (opts.duration > 0) {
@@ -97,12 +117,7 @@
     lockedCenter = [coords[0], coords[1]];
     if (!centerLocked) return;
     centerOnLockedMarker(options);
-    if (!map) return;
-    map.once("idle", function onIdle() {
-      if (!map || !centerLocked || !lockedCenter) return;
-      map.resize();
-      centerOnLockedMarker({ zoom: Math.max(map.getZoom(), 14), duration: 0 });
-    });
+    scheduleRecenterIfLocked();
   }
 
   function onMapWheel(e) {
@@ -415,7 +430,7 @@
       if (coords && coords.length >= 2) {
         if (centerLocked) {
           setLockedCenterFromCoords(coords, {
-            zoom: Math.max(map.getZoom(), 14),
+            zoom: Math.max(map.getZoom(), LOCKED_ZOOM),
             duration: 0,
           });
         } else {
@@ -444,18 +459,31 @@
     });
   }
 
-  function refreshMarker(attempt) {
-    if (!currentClientId || !currentCallsign || !map) return Promise.resolve();
+  function fetchMarkerWithRetry(attempt) {
+    if (!currentClientId || !currentCallsign) {
+      return Promise.resolve({ found: false });
+    }
     const tryNum = attempt != null ? attempt : 0;
     return fetchLiveMarker(currentClientId, currentCallsign)
       .then(function (payload) {
-        if (!payload.found && tryNum < 5 && centerLocked && !hasLiveMarker) {
+        if (!payload.found && tryNum < 5) {
           return new Promise(function (resolve) {
             setTimeout(function () {
-              resolve(refreshMarker(tryNum + 1));
+              resolve(fetchMarkerWithRetry(tryNum + 1));
             }, 400);
           });
         }
+        return payload;
+      })
+      .catch(function () {
+        return { found: false };
+      });
+  }
+
+  function refreshMarker() {
+    if (!currentClientId || !currentCallsign || !map) return Promise.resolve();
+    return fetchLiveMarker(currentClientId, currentCallsign)
+      .then(function (payload) {
         return updateMarkerOnMap(payload);
       })
       .catch(function () {
@@ -463,7 +491,78 @@
       });
   }
 
-  function init() {
+  function open(clientId, callsign) {
+    if (isMobile()) return Promise.resolve(false);
+    const container = document.getElementById("clientMiniMap");
+    if (!container) return Promise.resolve(false);
+
+    stopPolling();
+    if (map) {
+      try {
+        unbindMapInteraction();
+        map.remove();
+      } catch (_) {}
+      map = null;
+    }
+
+    currentClientId = clientId || null;
+    currentCallsign = callsign || null;
+    centerLocked = true;
+    hasLiveMarker = false;
+    lockedCenter = null;
+    recenterOnIdleScheduled = false;
+    setMapReadyVisible(false);
+    applyCenterLockMode();
+
+    if (!currentClientId || !currentCallsign) {
+      setEmptyVisible(true);
+      return Promise.resolve(false);
+    }
+
+    return Promise.all([fetchMarkerWithRetry(0), ensureMapLibre()])
+      .then(function (results) {
+        const payload = results[0];
+        let center = DEFAULT_CENTER.slice();
+        let zoom = DEFAULT_ZOOM;
+        const feature = payload && payload.feature;
+        const coords = feature && feature.geometry && feature.geometry.coordinates;
+        if (payload && payload.found && coords && coords.length >= 2) {
+          center = [coords[0], coords[1]];
+          zoom = LOCKED_ZOOM;
+          lockedCenter = center;
+        }
+        return init({ center: center, zoom: zoom }).then(function () {
+          return updateMarkerOnMap(payload);
+        });
+      })
+      .then(function () {
+        startPolling(clientId, callsign);
+        if (map && centerLocked && lockedCenter) {
+          return new Promise(function (resolve) {
+            map.once("idle", function () {
+              if (!map || !centerLocked || !lockedCenter) {
+                setMapReadyVisible(true);
+                resolve(true);
+                return;
+              }
+              map.resize();
+              centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
+              setMapReadyVisible(true);
+              resolve(true);
+            });
+          });
+        }
+        setMapReadyVisible(true);
+        return true;
+      })
+      .catch(function () {
+        setMapReadyVisible(true);
+        if (!hasLiveMarker) setEmptyVisible(true);
+        return false;
+      });
+  }
+
+  function init(options) {
     if (isMobile()) return Promise.resolve(false);
     const container = document.getElementById("clientMiniMap");
     if (!container) return Promise.resolve(false);
@@ -473,6 +572,11 @@
       });
     }
 
+    const opts = options || {};
+    const initialCenter =
+      opts.center && opts.center.length >= 2 ? opts.center : DEFAULT_CENTER;
+    const initialZoom = opts.zoom != null ? opts.zoom : DEFAULT_ZOOM;
+
     return ensureMapLibre().then(function () {
       const style = getBasemapStyle();
       const initialStyle =
@@ -481,8 +585,8 @@
       map = new maplibregl.Map({
         container: container,
         style: initialStyle,
-        center: [-85.25, 35.17],
-        zoom: 10,
+        center: initialCenter,
+        zoom: initialZoom,
         attributionControl: false,
         dragRotate: false,
         pitchWithRotate: false,
@@ -497,12 +601,17 @@
             bindMapInteraction();
           } catch (_) {}
           whenMapReady().then(function () {
+            if (centerLocked && lockedCenter) {
+              centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
+              scheduleRecenterIfLocked();
+            }
             resolve(true);
           });
         });
         map.on("styledata", function () {
           if (!map || !map.isStyleLoaded()) return;
           ensureMarkerSource();
+          if (centerLocked && lockedCenter) scheduleRecenterIfLocked();
         });
         map.on("error", function () {
           resolve(false);
@@ -512,15 +621,7 @@
   }
 
   function loadMarker(clientId, callsign) {
-    currentClientId = clientId || null;
-    currentCallsign = callsign || null;
-    centerLocked = true;
-    applyCenterLockMode();
-    if (!map || !currentClientId || !currentCallsign) {
-      if (!hasLiveMarker) setEmptyVisible(true);
-      return Promise.resolve();
-    }
-    return refreshMarker();
+    return open(clientId, callsign);
   }
 
   function startPolling(clientId, callsign) {
@@ -548,6 +649,8 @@
     hasLiveMarker = false;
     centerLocked = true;
     lockedCenter = null;
+    recenterOnIdleScheduled = false;
+    setMapReadyVisible(false);
     if (map) {
       try {
         unbindMapInteraction();
@@ -562,6 +665,7 @@
 
   window.DashboardMiniMap = {
     init: init,
+    open: open,
     loadMarker: loadMarker,
     startPolling: startPolling,
     stopPolling: stopPolling,
