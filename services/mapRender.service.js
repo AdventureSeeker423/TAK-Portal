@@ -361,6 +361,7 @@ function toRenderedFeature(marker, options = {}) {
       labelSort: renderSort,
       showLabel,
       channelKeys: markerChannelKeys(marker).join(","),
+      roleLabel: mapMeta.eudMapRoleLabel(marker),
     },
   };
 }

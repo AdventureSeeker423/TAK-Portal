@@ -59,6 +59,7 @@
   const ICON_LAYER_HIGH = "tak-markers-icon-high";
   const LABEL_LAYER = "tak-markers-label";
   const LABEL_PRIORITY_LAYER = "tak-markers-label-priority";
+  const ROLE_LABEL_LAYER = "tak-markers-role-label";
   const MARKER_HIT_LAYER_IDS = [
     CIRCLE_LAYER_LOW,
     ICON_LAYER_LOW,
@@ -72,6 +73,7 @@
     ICON_LAYER_HIGH,
     LABEL_LAYER,
     LABEL_PRIORITY_LAYER,
+    ROLE_LABEL_LAYER,
   ];
   /** Legacy layer ids removed during style restore. */
   const LEGACY_MARKER_LAYER_IDS = [
@@ -81,6 +83,31 @@
   ];
   /** Must match cotStream.service.js STALE_GRACE_MS */
   const STALE_GRACE_MS = 30000;
+
+  const EUD_MAP_ROLE_ABBREV = {
+    "team lead": "TL",
+    "team leader": "TL",
+    hq: "HQ",
+    sniper: "S",
+    medic: "+",
+    "forward observer": "FO",
+    rto: "R",
+    k9: "K9",
+  };
+
+  function abbrevEudMapRoleLabel(role) {
+    const raw = String(role || "").trim();
+    if (!raw) return "";
+    const key = raw.toLowerCase();
+    if (key === "team member") return "";
+    return EUD_MAP_ROLE_ABBREV[key] || "";
+  }
+
+  function markerRoleLabel(marker) {
+    if (!marker) return "";
+    if (String(marker.origin || "").toLowerCase() !== "eud") return "";
+    return abbrevEudMapRoleLabel(marker.role);
+  }
 
   function withMapGlyphs(style) {
     if (typeof style === "string") return style;
@@ -473,6 +500,7 @@
         labelSort: 0,
         showLabel: featureShowLabelValue(uid, m),
         channelKeys: m.channelKeys || "",
+        roleLabel: markerRoleLabel(m),
       },
     };
   }
@@ -583,6 +611,7 @@
           { key: "selected", value: uid === selectedUid },
           { key: "locked", value: uid === lockedUid },
           { key: "showLabel", value: featureShowLabelValue(uid, marker) },
+          { key: "roleLabel", value: markerRoleLabel(marker) },
         ],
       });
     });
@@ -1109,6 +1138,7 @@
       );
       map.setFilter(LABEL_LAYER, withChannelFilter(labelStandardFilter()));
       map.setFilter(LABEL_PRIORITY_LAYER, withChannelFilter(labelPriorityFilter()));
+      map.setFilter(ROLE_LABEL_LAYER, withChannelFilter(roleLabelFilter()));
       return true;
     } catch (err) {
       console.warn("[map] applyMapChannelLayerFilters failed", err);
@@ -3200,6 +3230,7 @@
     for (const id of [
       LABEL_PRIORITY_LAYER,
       LABEL_LAYER,
+      ROLE_LABEL_LAYER,
       ICON_LAYER_HIGH,
       CIRCLE_LAYER_HIGH,
       ICON_LAYER_LOW,
@@ -3705,6 +3736,7 @@
         selected: uid === selectedUid,
         locked: uid === lockedUid,
         showLabel: featureShowLabelValue(uid, marker),
+        roleLabel: marker ? markerRoleLabel(marker) : String(enriched.properties.roleLabel || ""),
       }),
     };
   }
@@ -3785,7 +3817,8 @@
       map.getLayer(CIRCLE_LAYER_HIGH) &&
       map.getLayer(ICON_LAYER_HIGH) &&
       map.getLayer(LABEL_LAYER) &&
-      map.getLayer(LABEL_PRIORITY_LAYER)
+      map.getLayer(LABEL_PRIORITY_LAYER) &&
+      map.getLayer(ROLE_LABEL_LAYER)
     );
   }
 
@@ -3807,6 +3840,10 @@
 
   function labelStandardFilter() {
     return ["all", MARKER_FILTER, ["!", markerSelectedOrLockedExpr()]];
+  }
+
+  function roleLabelFilter() {
+    return ["all", MARKER_FILTER, ["!=", ["get", "roleLabel"], ""]];
   }
 
   function syncSelectionToMapSource() {
@@ -3934,6 +3971,29 @@
     };
   }
 
+  function markerRoleLabelLayout() {
+    return {
+      "text-field": ["get", "roleLabel"],
+      "text-font": MAP_LABEL_FONT,
+      "text-size": 10,
+      "text-anchor": "center",
+      "text-offset": [0, 0],
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
+      "text-optional": false,
+      "symbol-sort-key": ["get", "renderSort"],
+    };
+  }
+
+  function markerRoleLabelPaint() {
+    return {
+      "text-color": "#ffffff",
+      "text-halo-color": "rgba(0, 0, 0, 0.85)",
+      "text-halo-width": 1.5,
+      "text-opacity": 1,
+    };
+  }
+
   function markerCircleLayerSpec(id, drawTier) {
     return {
       id: id,
@@ -4001,6 +4061,15 @@
       map.addLayer(markerIconLayerSpec(ICON_LAYER_LOW, 0));
       map.addLayer(markerCircleLayerSpec(CIRCLE_LAYER_HIGH, 1));
       map.addLayer(markerIconLayerSpec(ICON_LAYER_HIGH, 1));
+
+      map.addLayer({
+        id: ROLE_LABEL_LAYER,
+        type: "symbol",
+        source: SOURCE_ID,
+        filter: withChannelFilter(roleLabelFilter()),
+        layout: markerRoleLabelLayout(),
+        paint: markerRoleLabelPaint(),
+      });
 
       map.addLayer({
         id: LABEL_LAYER,

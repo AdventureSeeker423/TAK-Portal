@@ -90,7 +90,29 @@ assert.strictEqual(rendered.properties.iconId, slimFeed.mapImageId);
 assert.strictEqual(rendered.properties.apiIconId, sampleMarkers[1].iconId);
 assert.strictEqual(rendered.properties.usesMapIcon, 1);
 
+const eudMedic = mapRender.toRenderedFeature(
+  { ...sampleMarkers[0], role: "Medic" },
+  {}
+);
+assert.strictEqual(eudMedic.properties.roleLabel, "+");
+
+const eudTeamMember = mapRender.toRenderedFeature(
+  { ...sampleMarkers[0], role: "Team Member" },
+  {}
+);
+assert.strictEqual(eudTeamMember.properties.roleLabel, "");
+
+const feedMedic = mapRender.toRenderedFeature(
+  { ...sampleMarkers[1], role: "Medic" },
+  {}
+);
+assert.strictEqual(feedMedic.properties.roleLabel, "");
+
 const mapMeta = require("../services/mapMeta.service");
+assert.strictEqual(mapMeta.abbrevEudMapRoleLabel("Team Lead"), "TL");
+assert.strictEqual(mapMeta.abbrevEudMapRoleLabel("Team Leader"), "TL");
+assert.strictEqual(mapMeta.abbrevEudMapRoleLabel("RTO"), "R");
+assert.strictEqual(mapMeta.abbrevEudMapRoleLabel("Team Member"), "");
 const sampleDetail = {
   link: {
     _attributes: {

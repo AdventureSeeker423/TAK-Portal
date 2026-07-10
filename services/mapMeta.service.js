@@ -1444,6 +1444,33 @@ function getSubscriptionIndexSnapshot() {
   };
 }
 
+const EUD_MAP_ROLE_ABBREV = {
+  "team lead": "TL",
+  "team leader": "TL",
+  hq: "HQ",
+  sniper: "S",
+  medic: "+",
+  "forward observer": "FO",
+  rto: "R",
+  k9: "K9",
+};
+
+/** ATAK-style role abbrev for map dot labels (Team Member = none). */
+function abbrevEudMapRoleLabel(role) {
+  const raw = String(role || "").trim();
+  if (!raw) return "";
+  const key = raw.toLowerCase();
+  if (key === "team member") return "";
+  return EUD_MAP_ROLE_ABBREV[key] || "";
+}
+
+/** Role label for live EUD markers only. */
+function eudMapRoleLabel(marker) {
+  if (!marker) return "";
+  if (String(marker.origin || "").toLowerCase() !== "eud") return "";
+  return abbrevEudMapRoleLabel(marker.role);
+}
+
 module.exports = {
   UNASSIGNED_GROUP,
   isMapChannelGroupName,
@@ -1460,6 +1487,8 @@ module.exports = {
   parseAffiliationFromType,
   parseTeamName,
   parseTeamRole,
+  abbrevEudMapRoleLabel,
+  eudMapRoleLabel,
   parseTakPlatform,
   parseBatteryPercent,
   parseCourseAndSpeed,
