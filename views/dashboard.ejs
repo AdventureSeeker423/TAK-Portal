@@ -1644,14 +1644,22 @@
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
   .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
 
-  .group-control-modal { width: min(1100px, 96vw); max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
-  .group-control-modal .modalBody { overflow: hidden; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  .client-modal-body {
+  .group-control-modal {
+    width: min(1100px, 96vw);
+    max-height: 90vh;
     display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .group-control-modal .modalBody.client-modal-body {
+    display: flex;
+    flex-direction: row;
     gap: 12px;
     flex: 1 1 auto;
     min-height: 360px;
     height: min(540px, calc(90vh - 84px));
+    max-height: min(540px, calc(90vh - 84px));
+    overflow: hidden;
     align-items: stretch;
   }
   .client-modal-map-pane {
@@ -1659,12 +1667,14 @@
     min-width: 300px;
     min-height: 0;
     position: relative;
+    display: flex;
+    flex-direction: column;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--line);
     background: rgba(0, 0, 0, 0.25);
   }
-  #clientMiniMap { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #clientMiniMap { flex: 1 1 auto; width: 100%; min-height: 0; }
   .client-mini-map-empty {
     position: absolute;
     inset: 0;
@@ -1722,7 +1732,12 @@
   .data-sync-field { max-width: 100%; }
   @media (max-width: 768px) {
     .client-modal-map-pane { display: none; }
-    .client-modal-body { min-height: 0; }
+    .group-control-modal .modalBody.client-modal-body {
+      flex-direction: column;
+      min-height: 0;
+      height: auto;
+      max-height: none;
+    }
     .group-control-modal { width: min(720px, 95vw); }
   }
   @media (max-width: 640px) {
