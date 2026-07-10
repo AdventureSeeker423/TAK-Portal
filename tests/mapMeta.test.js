@@ -22,6 +22,20 @@ assert.strictEqual(
   "lightbugswat"
 );
 
+const swatEntry = {
+  username: "nodered-agency-hcso-swatvehicletrackers",
+  title: "SWAT Vehicle Trackers",
+  titleSlug: "swatvehicletrackers",
+  hyphenSlug: "swat-vehicle-trackers",
+  usernameTitleSlug: "swatvehicletrackers",
+  titleWordKeys: ["swat", "vehicle", "trackers"],
+  groups: ["tak_HCSO SWAT"],
+};
+const swatMarker = { uid: "lightbug-swat-40002573", callsign: "SWAT Truck" };
+const swatCandidates = mapMeta.buildDataFeedIdentityCandidates(swatMarker);
+assert.ok(swatCandidates.includes("swat"));
+assert.ok(mapMeta.integrationTitleWordKeys("SWAT Vehicle Trackers").includes("swat"));
+
 const shortUid = mapMeta.buildDataFeedIdentityCandidates({ uid: "ab" });
 assert.strictEqual(shortUid.length, 0);
 

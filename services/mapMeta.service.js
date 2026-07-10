@@ -7,6 +7,8 @@ const takMetrics = require("./takMetrics.service");
 const { isTakBypassed, isTakConfigured, buildTakAxios } = require("./tak.service");
 
 const SUBSCRIPTION_REFRESH_MS = 30000;
+const DATAFEED_DETAIL_CACHE_MS = 5 * 60 * 1000;
+const INTEGRATION_LINK_REFRESH_MS = 60000;
 const UNASSIGNED_GROUP = "Unassigned";
 
 let catalogCache = {
@@ -42,6 +44,8 @@ let integrationFeedLinkCache = {
   fetchedAt: 0,
   error: null,
 };
+/** name -> { groups, fetchedAt } — avoids per-feed Marti GET on every refresh */
+let dataFeedDetailGroupsCache = new Map();
 
 let refreshTimer = null;
 /** @type {Set<() => void>} */
@@ -427,6 +431,10 @@ function buildDataFeedIdentityCandidates(marker) {
   const tokenSlug = markerUidTokenSlug(marker);
   if (tokenSlug) add(tokenSlug);
 
+  for (const token of markerUidNameTokens(marker)) {
+    add(token);
+  }
+
   const callsignSlug = normalizeFeedIdentityKey(marker?.callsign);
   if (callsignSlug && callsignSlug.length >= 6) add(callsignSlug);
 
@@ -532,6 +540,65 @@ async function resolveIntegrationPortalGroups(user, groupByPk) {
   return groups;
 }
 
+function integrationTitleWordKeys(title) {
+  const keys = new Set();
+  for (const word of String(title || "").toLowerCase().split(/[^a-z0-9]+/)) {
+    const norm = normalizeFeedIdentityKey(word);
+    if (norm && norm.length >= 4) keys.add(norm);
+  }
+  return keys;
+}
+
+function registerIntegrationLinkKeys(entry) {
+  const groups = entry?.groups;
+  if (!Array.isArray(groups) || !groups.length) return;
+
+  const linkKeys = new Set();
+  for (const field of [
+    entry.dataFeedName,
+    entry.username,
+    entry.hyphenSlug,
+    entry.titleSlug,
+    entry.usernameTitleSlug,
+  ]) {
+    const val = normalizeGroupName(field);
+    if (val) linkKeys.add(val);
+  }
+
+  for (const word of entry.titleWordKeys || integrationTitleWordKeys(entry.title)) {
+    linkKeys.add(word);
+  }
+
+  for (const key of linkKeys) {
+    registerDataFeedLookupKeys(key, groups);
+  }
+}
+
+function crossLinkIntegrationsAndSubscriptions(subList) {
+  for (const entry of integrationFeedLinkCache.entries || []) {
+    if (!entry?.groups?.length || !entry?.username) continue;
+    const entryUser = String(entry.username).trim().toLowerCase();
+    if (!entryUser) continue;
+
+    for (const sub of Array.isArray(subList) ? subList : []) {
+      const username = normalizeGroupName(sub?.username).toLowerCase();
+      if (!username || username !== entryUser) continue;
+
+      registerConnectionGroups(
+        [sub.uid, sub.clientUid, sub.clientUuid, sub.connectionUid, sub.deviceUid],
+        entry.groups
+      );
+    }
+  }
+}
+
+function applyCachedIntegrationFeedLinks() {
+  for (const entry of integrationFeedLinkCache.entries || []) {
+    registerIntegrationLinkKeys(entry);
+  }
+  crossLinkIntegrationsAndSubscriptions(subscriptionListCache);
+}
+
 async function fetchDataFeedPublishGroupsByName(dataFeedName) {
   const name = normalizeGroupName(dataFeedName);
   if (!name || isTakBypassed() || !isTakConfigured()) return [];
@@ -542,19 +609,39 @@ async function fetchDataFeedPublishGroupsByName(dataFeedName) {
   const fromList = cached ? dataFeedPublishGroups(cached) : [];
   if (fromList.length) return fromList;
 
+  // Listed on Marti without filtergroup — use portal integration group; skip per-feed GET.
+  if (cached) return [];
+
+  const cacheKey = name.toLowerCase();
+  const hit = dataFeedDetailGroupsCache.get(cacheKey);
+  if (hit && Date.now() - hit.fetchedAt < DATAFEED_DETAIL_CACHE_MS) {
+    return hit.groups;
+  }
+
   try {
     const client = buildTakAxios();
     const res = await client.get(`/api/datafeeds/${encodeURIComponent(name)}`, {
       headers: { Accept: "application/json" },
     });
     const payload = res?.data?.data || res?.data;
-    return dataFeedPublishGroups(payload);
+    const groups = dataFeedPublishGroups(payload);
+    dataFeedDetailGroupsCache.set(cacheKey, { groups, fetchedAt: Date.now() });
+    return groups;
   } catch {
     return [];
   }
 }
 
-async function refreshIntegrationFeedLinks() {
+async function refreshIntegrationFeedLinks(options = {}) {
+  const force = !!options.force;
+  if (
+    !force &&
+    integrationFeedLinkCache.fetchedAt &&
+    Date.now() - integrationFeedLinkCache.fetchedAt < INTEGRATION_LINK_REFRESH_MS
+  ) {
+    applyCachedIntegrationFeedLinks();
+    return integrationFeedLinkCache;
+  }
   if (isTakBypassed()) {
     integrationFeedLinkCache = {
       entries: [],
@@ -605,29 +692,21 @@ async function refreshIntegrationFeedLinks() {
       }
       if (!titleSlug && usernameTitleSlug) titleSlug = usernameTitleSlug;
 
-      const linkKeys = new Set();
-      if (dataFeedName) linkKeys.add(dataFeedName);
-      if (username) linkKeys.add(username);
-      if (hyphenSlug) linkKeys.add(hyphenSlug);
-      if (titleSlug) linkKeys.add(titleSlug);
-      if (usernameTitleSlug) linkKeys.add(usernameTitleSlug);
-      if (usernameTitleSlug) {
-        linkKeys.add(integrationTitleHyphenSlug(usernameTitleSlug.replace(/-/g, " ")));
-      }
+      const titleWordKeys = Array.from(integrationTitleWordKeys(title));
 
-      for (const key of linkKeys) {
-        registerDataFeedLookupKeys(key, groups);
-      }
-
-      entries.push({
+      const entry = {
         username: username || null,
         dataFeedName: dataFeedName || null,
         title: title || null,
         hyphenSlug: hyphenSlug || null,
         titleSlug: titleSlug || null,
         usernameTitleSlug: usernameTitleSlug || null,
+        titleWordKeys,
+        usesMainEudPort: !dataFeedName,
         groups,
-      });
+      };
+      registerIntegrationLinkKeys(entry);
+      entries.push(entry);
     }
 
     integrationFeedLinkCache = {
@@ -636,6 +715,7 @@ async function refreshIntegrationFeedLinks() {
       fetchedAt: Date.now(),
       error: null,
     };
+    applyCachedIntegrationFeedLinks();
   } catch (err) {
     integrationFeedLinkCache = {
       ...integrationFeedLinkCache,
@@ -693,7 +773,6 @@ function integrationEntryMatchesMarker(entry, candidates, marker) {
     return norm && norm.length >= 4 && hay.includes(norm);
   });
 
-  if (tokens.length >= 2) return matched.length >= 2;
   return matched.length >= 1;
 }
 
@@ -763,6 +842,7 @@ function mergeDataFeedConnectionIndex() {
     registerDataFeedGroups(feed);
   }
   crossLinkFeedsAndSubscriptions(dataFeedListCache, subscriptionListCache);
+  applyCachedIntegrationFeedLinks();
 }
 
 async function refreshDataFeedIndex() {
@@ -791,7 +871,7 @@ async function refreshDataFeedIndex() {
     }
     dataFeedListCache = feeds;
     mergeDataFeedConnectionIndex();
-    await refreshIntegrationFeedLinks();
+    await refreshIntegrationFeedLinks({ force: true });
 
     dataFeedCache = {
       fetchedAt: Date.now(),
@@ -1601,7 +1681,6 @@ async function refreshSubscriptionIndex() {
     subscriptionListCache = list;
     rebuildConnectionGroupIndex(list);
     mergeDataFeedConnectionIndex();
-    await refreshIntegrationFeedLinks();
     notifySubscriptionIndexRefreshed();
   } catch (err) {
     subscriptionIndex = {
@@ -1844,7 +1923,7 @@ function explainGroupAssignment(marker) {
     },
     notes: [
       "EUD clients usually match via step4 (subscription by uid/callsign).",
-      "Lightbug / integration feeds often match via step2 (marker uid prefix vs data feed name/tag slug).",
+      "8089 / no-datafeed integrations (e.g. SWAT Vehicle Trackers) match by shared uid/title tokens like swat, not feed name.",
       "TAK-Server-<uuid> in _flow-tags_ is the server instance fingerprint on every event, not a channel name.",
       "Data feeds also match via CoT filtergroup/marti, feed connection uid in link/source, or feed name/tag in the datafeeds index.",
       "If step3 flowTagUids only contains TAK-Server-<uuid> with empty connectionGroups, that is expected — look at step2 and step5.",
@@ -2028,6 +2107,7 @@ module.exports = {
   feedIdentityOverlaps,
   integrationTitleHyphenSlug,
   integrationUsernameTitleSlug,
+  integrationTitleWordKeys,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
   explainGroupAssignment,

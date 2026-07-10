@@ -222,7 +222,6 @@ router.get("/debug/groups", async (req, res) => {
   cotStream.ensureBridgeStarted();
   await mapMeta.refreshSubscriptionIndex();
   await mapMeta.refreshDataFeedIndex();
-  await mapMeta.refreshIntegrationFeedLinks();
 
   const uid = String(req.query.uid || "").trim();
   const callsign = String(req.query.callsign || "").trim();
@@ -253,7 +252,6 @@ router.get("/debug/groups", async (req, res) => {
 /** List TAK data feeds (name, port, filterGroups) to debug channel assignment. */
 router.get("/debug/datafeeds", async (req, res) => {
   await mapMeta.refreshDataFeedIndex();
-  await mapMeta.refreshIntegrationFeedLinks();
   const search = String(req.query.search || "").trim();
   res.setHeader("Cache-Control", "no-cache");
   return res.json(mapMeta.getDataFeedCatalogForDebug({ search }));
