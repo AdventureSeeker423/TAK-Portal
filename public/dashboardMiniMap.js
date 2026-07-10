@@ -31,6 +31,7 @@
   let recenterOnIdleScheduled = false;
   /** Cached marker payload — reapplied after basemap style reloads wipe custom layers. */
   let lastMarkerPayload = null;
+  let containerResizeObserver = null;
   /** Degrees — pan beyond this from the CoT breaks center lock. */
   const UNLOCK_CENTER_THRESHOLD = 0.00012;
 
@@ -54,10 +55,42 @@
 
   function revealMap() {
     setMapReadyVisible(true);
-    if (map) {
+    resizeMapSoon();
+  }
+
+  function resizeMapSoon() {
+    if (!map) return;
+    try {
+      map.resize();
+    } catch (_) {}
+    requestAnimationFrame(function () {
+      if (!map) return;
       try {
         map.resize();
       } catch (_) {}
+      requestAnimationFrame(function () {
+        if (!map) return;
+        try {
+          map.resize();
+        } catch (_) {}
+      });
+    });
+  }
+
+  function bindContainerResizeObserver() {
+    unbindContainerResizeObserver();
+    const pane = document.querySelector(".client-modal-map-pane");
+    if (!pane || typeof ResizeObserver === "undefined") return;
+    containerResizeObserver = new ResizeObserver(function () {
+      resizeMapSoon();
+    });
+    containerResizeObserver.observe(pane);
+  }
+
+  function unbindContainerResizeObserver() {
+    if (containerResizeObserver) {
+      containerResizeObserver.disconnect();
+      containerResizeObserver = null;
     }
   }
 
@@ -631,6 +664,7 @@
           lockedCenter = null;
         }
         revealMap();
+        bindContainerResizeObserver();
         return init({ center: center, zoom: zoom }).then(function () {
           return updateMarkerOnMap(payload);
         });
@@ -739,6 +773,7 @@
     lockedCenter = null;
     recenterOnIdleScheduled = false;
     lastMarkerPayload = null;
+    unbindContainerResizeObserver();
     setMapReadyVisible(false);
     if (map) {
       try {

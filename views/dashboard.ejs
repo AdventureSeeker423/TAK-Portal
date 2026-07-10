@@ -1644,19 +1644,27 @@
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
   .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
 
-  .group-control-modal { width: min(1100px, 96vw); max-height: 90vh; display: flex; flex-direction: column; }
-  .group-control-modal .modalBody { overflow: hidden; }
-  .client-modal-body { display: flex; gap: 12px; min-height: 360px; flex: 1; }
+  .group-control-modal { width: min(1100px, 96vw); max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+  .group-control-modal .modalBody { overflow: hidden; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .client-modal-body {
+    display: flex;
+    gap: 12px;
+    flex: 1 1 auto;
+    min-height: 360px;
+    height: min(540px, calc(90vh - 84px));
+    align-items: stretch;
+  }
   .client-modal-map-pane {
     flex: 1 1 62%;
     min-width: 300px;
+    min-height: 0;
     position: relative;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--line);
     background: rgba(0, 0, 0, 0.25);
   }
-  #clientMiniMap { width: 100%; height: 100%; min-height: 320px; }
+  #clientMiniMap { position: absolute; inset: 0; width: 100%; height: 100%; }
   .client-mini-map-empty {
     position: absolute;
     inset: 0;
@@ -1677,6 +1685,7 @@
   .client-modal-controls-pane {
     flex: 1 1 38%;
     max-width: 400px;
+    min-height: 0;
     overflow: auto;
     display: flex;
     flex-direction: column;
