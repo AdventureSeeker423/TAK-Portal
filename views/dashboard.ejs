@@ -806,11 +806,18 @@
         // Wire up modal behavior
         var overlay = document.getElementById("clientGroupsOverlay");
         var closeBtn = document.getElementById("clientGroupsCloseBtn");
-        var tableBody = document.getElementById("clientGroupsTableBody");
-        var tableWrap = document.getElementById("clientGroupsTableWrap");
-        var loadingEl = document.getElementById("clientGroupsLoading");
+        var tableBody = null;
+        var tableWrap = null;
+        var loadingEl = null;
         var errorEl = document.getElementById("clientGroupsError");
         var titleEl = document.getElementById("clientGroupsTitle");
+        function refreshGroupControlElements() {
+          tableBody = document.getElementById("clientGroupsTableBody");
+          tableWrap = document.getElementById("clientGroupsTableWrap");
+          loadingEl = document.getElementById("clientGroupsLoading");
+        }
+
+        refreshGroupControlElements();
         var groupToggleInFlight = false;
         var prefConfigSendInFlight = false;
         var prefConfigCallsignEl = document.getElementById("prefConfigCallsign");
@@ -1192,6 +1199,7 @@
 
         function openClientGroupsModal(sub) {
           if (!overlay || !sub) return;
+          refreshGroupControlElements();
 
           var clientId = (sub.clientUid && String(sub.clientUid).trim()) || (sub.subscriptionUid && String(sub.subscriptionUid).trim()) || "";
           if (!clientId) return;
@@ -1696,16 +1704,21 @@
     flex: 1 1 38%;
     max-width: 400px;
     min-height: 0;
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
     min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
-  .group-control-modal .client-modal-controls-pane { overflow: auto; }
+  .group-control-modal .client-modal-controls-pane { overflow-x: hidden; overflow-y: auto; }
   .connected-user-section-title { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
   .connected-user-section-divider { border-top: 1px solid var(--line); margin: 14px 0 10px; }
-  .group-control-table-wrap { max-height: 240px; overflow: auto; margin-top: 4px; }
+  .group-control-table-wrap {
+    flex: none;
+    max-height: 240px;
+    min-height: 120px;
+    overflow: auto;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
   .group-control-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .group-control-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
   .group-control-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
