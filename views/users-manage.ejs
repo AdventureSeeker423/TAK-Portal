@@ -236,8 +236,8 @@
           <th class="sortable" data-key="name">
             Name <span class="sortIndicator" aria-hidden="true"></span>
           </th>
-          <th>
-            Template
+          <th class="sortable" data-key="template">
+            Template <span class="sortIndicator" aria-hidden="true"></span>
           </th>
           <th class="sortable" data-key="email">
             Email <span class="sortIndicator" aria-hidden="true"></span>
@@ -1962,6 +1962,11 @@ function getSortValue(user, key){
   if (key === "email") return normalizeSortValue(user.email);
   if (key === "name") return normalizeSortValue(lastNameForSort(user.name));
   if (key === "status") return user.is_active ? "enabled" : "disabled";
+  if (key === "template") {
+    const raw = String(user?.attributes?.current_template || "").trim();
+    if (!raw || raw.toLowerCase() === "manual group selection") return "";
+    return normalizeSortValue(raw);
+  }
 
   return "";
 }

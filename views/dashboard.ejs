@@ -571,6 +571,65 @@
       }
 
       var latestSubscriptions = [];
+      var latestConnectedRows = [];
+      var latestConnectedRawItems = [];
+      var connectedClientsSortState = { key: "callsign", dir: "asc" };
+
+      function normalizeConnectedSortValue(v) {
+        return String(v == null || v === "—" ? "" : v).trim().toLowerCase();
+      }
+
+      function getConnectedClientSortValue(row, key) {
+        if (!row) return "";
+        if (key === "callsign") return normalizeConnectedSortValue(row.callsign);
+        if (key === "username") return normalizeConnectedSortValue(row.username);
+        if (key === "takClient") return normalizeConnectedSortValue(row.takClient);
+        if (key === "battery") return normalizeConnectedSortValue(row.battery);
+        if (key === "role") return normalizeConnectedSortValue(row.role);
+        return "";
+      }
+
+      function applyConnectedClientsSort(rows, rawItems) {
+        var list = (Array.isArray(rows) ? rows : []).map(function (r, idx) {
+          return {
+            row: r,
+            raw: Array.isArray(rawItems) && rawItems[idx] ? rawItems[idx] : null
+          };
+        });
+        list.sort(function (a, b) {
+          var av = getConnectedClientSortValue(a.row, connectedClientsSortState.key);
+          var bv = getConnectedClientSortValue(b.row, connectedClientsSortState.key);
+          var cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+          return connectedClientsSortState.dir === "desc" ? -cmp : cmp;
+        });
+        return {
+          rows: list.map(function (x) { return x.row; }),
+          rawItems: list.map(function (x) { return x.raw; })
+        };
+      }
+
+      function updateConnectedClientsSortIndicators() {
+        var thead = card.querySelector(".connected-clients-table thead");
+        var ths = Array.from(thead ? thead.querySelectorAll("th.sortable") : []);
+        ths.forEach(function (th) {
+          var key = th.getAttribute("data-key");
+          var indicator = th.querySelector(".sortIndicator");
+          if (!indicator) return;
+          if (key === connectedClientsSortState.key) {
+            indicator.textContent = connectedClientsSortState.dir === "asc" ? "▲" : "▼";
+          } else {
+            indicator.textContent = "";
+          }
+        });
+      }
+
+      function setConnectedClientsData(rows, rawItems) {
+        latestConnectedRows = Array.isArray(rows) ? rows.slice() : [];
+        latestConnectedRawItems = Array.isArray(rawItems) ? rawItems.slice() : [];
+        var sorted = applyConnectedClientsSort(latestConnectedRows, latestConnectedRawItems);
+        fillExpandedTableBody(sorted.rows, sorted.rawItems);
+        updateConnectedClientsSortIndicators();
+      }
 
       function batteryCell(value) {
         var s = value != null ? String(value).trim() : "";
@@ -608,7 +667,13 @@
           '<button type="button" class="btn" id="connectedClientsCloseBtn">Close</button>' +
           '</div>' +
           '<div class="connected-clients-table-wrap"><table class="connected-clients-table">' +
-          '<thead><tr><th>Callsign</th><th>Username</th><th>TAK Client</th><th>Battery</th><th>Role</th></tr></thead>' +
+          '<thead><tr>' +
+          '<th class="sortable" data-key="callsign">Callsign <span class="sortIndicator" aria-hidden="true"></span></th>' +
+          '<th class="sortable" data-key="username">Username <span class="sortIndicator" aria-hidden="true"></span></th>' +
+          '<th class="sortable" data-key="takClient">TAK Client <span class="sortIndicator" aria-hidden="true"></span></th>' +
+          '<th class="sortable" data-key="battery">Battery <span class="sortIndicator" aria-hidden="true"></span></th>' +
+          '<th class="sortable" data-key="role">Role <span class="sortIndicator" aria-hidden="true"></span></th>' +
+          '</tr></thead>' +
           '<tbody id="connectedClientsTableBody"></tbody></table></div></div>' +
           '<div class="modalOverlay" id="clientGroupsOverlay" style="display:none;">' +
             '<div class="modal group-control-modal" role="dialog" aria-modal="true" aria-labelledby="clientGroupsTitle">' +
@@ -670,7 +735,24 @@
         card.innerHTML = html;
         card.classList.add("connected-clients-expanded-card");
         row.classList.add("connected-clients-row-expanded");
-        fillExpandedTableBody(rows, rawItems);
+        setConnectedClientsData(rows, rawItems);
+        var connectedClientsThead = card.querySelector(".connected-clients-table thead");
+        if (connectedClientsThead) {
+          connectedClientsThead.addEventListener("click", function (e) {
+            var th = e.target && e.target.closest ? e.target.closest("th.sortable") : null;
+            if (!th) return;
+            e.stopPropagation();
+            var key = th.getAttribute("data-key");
+            if (!key) return;
+            if (connectedClientsSortState.key === key) {
+              connectedClientsSortState.dir = connectedClientsSortState.dir === "asc" ? "desc" : "asc";
+            } else {
+              connectedClientsSortState.key = key;
+              connectedClientsSortState.dir = "asc";
+            }
+            setConnectedClientsData(latestConnectedRows, latestConnectedRawItems);
+          });
+        }
         document.getElementById("connectedClientsCloseBtn").addEventListener("click", function (e) {
           e.preventDefault();
           e.stopPropagation();
@@ -1234,8 +1316,7 @@
                   clientUid: item.clientUid != null ? String(item.clientUid).trim() : ""
                 };
               });
-              nextRows.sort(function (a, b) { return (a.callsign || "").localeCompare(b.callsign || "", undefined, { sensitivity: "base" }); });
-              fillExpandedTableBody(nextRows, list);
+              setConnectedClientsData(nextRows, list);
             })
             .catch(function () {});
         }, EXPANDED_REFRESH_MS);
@@ -1289,7 +1370,6 @@
                 clientUid: item.clientUid != null ? String(item.clientUid).trim() : ""
               };
             });
-            rows.sort(function (a, b) { return (a.callsign || "").localeCompare(b.callsign || "", undefined, { sensitivity: "base" }); });
             renderExpandedView(rows, list);
           })
           .catch(function () { collapse(); });
@@ -1507,6 +1587,9 @@
   .connected-clients-table-wrap { max-height: 380px; overflow-y: auto; }
   .connected-clients-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .connected-clients-table th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
+  .connected-clients-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  .connected-clients-table th.sortable:hover { text-decoration: underline; }
+  .connected-clients-table .sortIndicator { display: inline-block; min-width: 12px; margin-left: 6px; opacity: 0.9; }
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
   .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
 

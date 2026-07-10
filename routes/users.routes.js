@@ -198,6 +198,11 @@ function createUserSortHelpers(sortKey, sortDir, groupNameByPk, globalAdminSet) 
     if (sortKey === "role") {
       return computeRole(user) + "-" + String(user.name || "").toLowerCase();
     }
+    if (sortKey === "template") {
+      const raw = String(user?.attributes?.current_template || "").trim();
+      if (!raw || raw.toLowerCase() === "manual group selection") return "";
+      return raw.toLowerCase();
+    }
     return String(user.name || "").toLowerCase();
   }
 
@@ -1430,6 +1435,11 @@ router.get("/search", async (req, res) => {
       if (sortKey === "email") return String(user.email || "").toLowerCase();
       if (sortKey === "status") return user.is_active ? "enabled" : "disabled";
       if (sortKey === "role") return computeRole(user) + "-" + String(user.name || "").toLowerCase();
+      if (sortKey === "template") {
+        const raw = String(user?.attributes?.current_template || "").trim();
+        if (!raw || raw.toLowerCase() === "manual group selection") return "";
+        return raw.toLowerCase();
+      }
 
       return String(user.name || "").toLowerCase();
     }
