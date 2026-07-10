@@ -25,6 +25,7 @@ const permsSvc = require("./services/permissions.service");
 const mouSvc = require("./services/mouService");
 const mouScheduler = require("./services/mouScheduler");
 const mapPageAssets = require("./services/mapPageAssets.service");
+const mapBasemapsConfig = require("./config/mapBasemaps");
 const accessControlRoutes = require("./routes/accessControl.routes");
 const usersSvc = require("./services/users.service");
 const groupsSvc = require("./services/groups.service");
@@ -366,6 +367,18 @@ function requireGlobalAdminRole(req, res, next) {
     return res.status(403).render("access-denied", { username });
   }
   return next();
+}
+
+function getMapStorageUserKey(req) {
+  return String(req.authentikUser?.uid || req.authentikUser?.username || "anonymous").replace(
+    /[^a-zA-Z0-9._-]/g,
+    "_"
+  );
+}
+
+function getDefaultMapSource() {
+  const settings = settingsSvc.getSettings() || {};
+  return mapBasemapsConfig.getDefaultMapSource(settings);
 }
 
 function requireMapAccess(req, res, next) {
@@ -756,12 +769,11 @@ app.get("/map", requireMapAccess, (req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
-  const mapUserKey = String(
-    req.authentikUser?.uid || req.authentikUser?.username || "anonymous"
-  ).replace(/[^a-zA-Z0-9._-]/g, "_");
+  const mapUserKey = getMapStorageUserKey(req);
   return res.render("map", {
     ...mapPageAssets.getRenderLocals(),
     mapStorageUserKey: mapUserKey,
+    defaultMapSource: getDefaultMapSource(),
   });
 });
 app.get("/getting-started", requireGlobalAdminRole, requireBetaMode, (req, res) =>
@@ -1420,6 +1432,7 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   settings,
   keys,
   emailTemplates,
+  mapBasemapOptions: mapBasemapsConfig.BASEMAP_OPTIONS,
   importStatus: req.query.import,
   importError: req.query.error,
   smsTest: req.query.smsTest || "",
@@ -1483,6 +1496,10 @@ app.post(
       if (key === "SERVER_NAME") {
         const raw = String(bodySettings[key] || "").trim();
         merged[key] = raw ? raw.toUpperCase() : "";
+        return;
+      }
+      if (key === "DEFAULT_MAP_SOURCE") {
+        merged[key] = mapBasemapsConfig.normalizeBasemapId(bodySettings[key]);
         return;
       }
       merged[key] = bodySettings[key];

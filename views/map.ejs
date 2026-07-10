@@ -174,7 +174,11 @@
       </div>
     </div>
 
+    <script>
+      window.TAK_PORTAL_MAP_DEFAULTS = { basemap: "<%= defaultMapSource %>" };
+    </script>
     <script src="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js"></script>
+    <script src="<%= mapBasemapsJsUrl %>"></script>
     <script src="<%= shapeDecorFilterJsUrl %>"></script>
     <script src="<%= mapJsUrl %>" defer></script>
     <script src="<%= mapMissionsJsUrl %>" defer></script>

@@ -7,6 +7,7 @@ const {
   filterFederationSubscriptions,
 } = require("../services/takMetrics.service");
 const cotStream = require("../services/cotStream.service");
+const mapRender = require("../services/mapRender.service");
 const takGroupControl = require("../services/takGroupControl.service");
 const auditSvc = require("../services/auditLog.service");
 
@@ -29,6 +30,20 @@ function takRouteError(res, err) {
     message = data.message || data.error || JSON.stringify(data);
   }
   return res.status(status).json({ error: message });
+}
+
+function pickBestLiveMarker(markers) {
+  const list = Array.isArray(markers) ? markers : [];
+  if (!list.length) return null;
+  if (list.length === 1) return list[0];
+  const eud = list.filter((m) => String(m?.origin || "").toLowerCase() === "eud");
+  const pool = eud.length ? eud : list;
+  pool.sort((a, b) => {
+    const ta = a?.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const tb = b?.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return tb - ta;
+  });
+  return pool[0];
 }
 
 router.get("/metrics", async (req, res) => {
@@ -227,6 +242,67 @@ router.post("/clients/:clientId/send-data-sync-invite", async (req, res) => {
     });
 
     return res.json(out);
+  } catch (err) {
+    return takRouteError(res, err);
+  }
+});
+
+router.get("/clients/:clientId/live-marker", async (req, res) => {
+  const user = requireTakAdmin(req, res);
+  if (!user) return;
+
+  try {
+    cotStream.ensureBridgeStarted();
+    const callsign = String(req.query.callsign || "").trim();
+    if (!callsign) {
+      return res.status(400).json({ error: "Missing callsign query parameter" });
+    }
+
+    const marker = pickBestLiveMarker(cotStream.findMarkersByCallsign(callsign));
+    if (!marker) {
+      return res.json({
+        found: false,
+        marker: null,
+        feature: null,
+        iconManifest: [],
+      });
+    }
+
+    const lat = Number(marker.lat);
+    const lon = Number(marker.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.json({
+        found: false,
+        marker: null,
+        feature: null,
+        iconManifest: [],
+      });
+    }
+
+    const feature = mapRender.toRenderedFeature(marker, { selectedUid: marker.uid });
+    const slim = mapRender.toSlimMarker(marker);
+    const iconManifest = [];
+    const mapImageId = feature.properties && feature.properties.iconId;
+    const apiIconId = feature.properties && feature.properties.apiIconId;
+    if (mapImageId && apiIconId) {
+      iconManifest.push({
+        mapImageId,
+        apiIconId,
+        color: feature.properties.color,
+        teamColor: marker.teamColor != null ? marker.teamColor : null,
+        iconSource: marker.iconSource || "",
+        origin: marker.origin || "",
+        type: marker.type || "",
+        affiliation: marker.affiliation || "other",
+      });
+    }
+
+    return res.json({
+      found: true,
+      marker: slim,
+      feature,
+      iconManifest,
+    });
   } catch (err) {
     return takRouteError(res, err);
   }

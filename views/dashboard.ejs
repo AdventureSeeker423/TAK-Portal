@@ -528,6 +528,17 @@
   </script>
 
   <script>
+    <% if (isGlobalAdmin || isAgencyAdmin) { %>
+    window.TAK_PORTAL_MAP_DEFAULTS = { basemap: "<%= typeof defaultMapSource !== 'undefined' ? defaultMapSource : 'dark-matter' %>" };
+    window.TAK_PORTAL_MAP_USER_KEY = "<%= typeof mapStorageUserKey !== 'undefined' ? mapStorageUserKey : 'anonymous' %>";
+    <% } %>
+  </script>
+  <% if (isGlobalAdmin || isAgencyAdmin) { %>
+  <script src="<%= mapBasemapsJsUrl %>"></script>
+  <script src="<%= dashboardMiniMapJsUrl %>" defer></script>
+  <% } %>
+
+  <script>
     (function () {
       var row = document.getElementById("takStatsRow");
       var card = document.getElementById("connectedClientsStatCard");
@@ -709,7 +720,12 @@
                 '<h2 id="clientGroupsTitle" style="margin:0;">Connected User</h2>' +
                 '<button class="btn" id="clientGroupsCloseBtn" type="button">Close</button>' +
               '</div>' +
-              '<div class="modalBody">' +
+              '<div class="modalBody client-modal-body">' +
+                '<div class="client-modal-map-pane">' +
+                  '<div id="clientMiniMap" aria-label="User location map"></div>' +
+                  '<div id="clientMiniMapEmpty" class="client-mini-map-empty" hidden>No live location</div>' +
+                '</div>' +
+                '<div class="client-modal-controls-pane">' +
                 '<div id="clientGroupsError" class="msg error" style="display:none; margin-bottom:10px;"></div>' +
                 '<h3 class="connected-user-section-title">Group / Channel Control</h3>' +
                 '<div id="clientGroupsLoading" class="muted" style="display:none;">Loading groups…</div>' +
@@ -755,6 +771,7 @@
                     '<button type="button" class="btn success" id="dataSyncSendBtn">Send Data Sync</button>' +
                   '</div>' +
                   '<div id="dataSyncStatus" class="pref-config-status" style="display:none;"></div>' +
+                '</div>' +
                 '</div>' +
                 '</div>' +
               '</div>' +
@@ -1169,6 +1186,7 @@
           setDataSyncLoading(false);
           setPreferenceConfigVisible(false);
           setDataSyncSectionVisible(false);
+          if (window.DashboardMiniMap) window.DashboardMiniMap.destroy();
           if (overlay) overlay.style.display = "none";
         }
 
@@ -1207,6 +1225,13 @@
             if (!currentGroupControlClientId || groupToggleInFlight) return;
             loadGroupControlState(currentGroupControlClientId, { showLoading: false, silent: true }).catch(function () {});
           }, GROUP_CONTROL_REFRESH_MS);
+
+          if (window.DashboardMiniMap && callsign) {
+            window.DashboardMiniMap.init().then(function () {
+              window.DashboardMiniMap.loadMarker(clientId, callsign);
+              window.DashboardMiniMap.startPolling(clientId, callsign);
+            }).catch(function () {});
+          }
         }
 
         function applyGroupControlToggle(tr, active) {
@@ -1351,6 +1376,7 @@
       }
 
       function collapse() {
+        if (window.DashboardMiniMap) window.DashboardMiniMap.destroy();
         if (expandedRefreshTimer) {
           clearInterval(expandedRefreshTimer);
           expandedRefreshTimer = null;
@@ -1621,8 +1647,41 @@
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
   .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
 
-  .group-control-modal { width: min(720px, 95vw); max-height: 90vh; display: flex; flex-direction: column; }
-  .group-control-modal .modalBody { overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  .group-control-modal { width: min(1100px, 96vw); max-height: 90vh; display: flex; flex-direction: column; }
+  .group-control-modal .modalBody { overflow: hidden; }
+  .client-modal-body { display: flex; gap: 12px; min-height: 360px; flex: 1; }
+  .client-modal-map-pane {
+    flex: 1 1 42%;
+    min-width: 280px;
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.25);
+  }
+  #clientMiniMap { width: 100%; height: 100%; min-height: 320px; }
+  .client-mini-map-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    background: rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+  }
+  .client-modal-controls-pane {
+    flex: 1 1 58%;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .group-control-modal .client-modal-controls-pane { overflow: auto; }
   .connected-user-section-title { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
   .connected-user-section-divider { border-top: 1px solid var(--line); margin: 14px 0 10px; }
   .group-control-table-wrap { max-height: 240px; overflow: auto; margin-top: 4px; }
@@ -1650,6 +1709,11 @@
   .pref-config-status.error { color: var(--danger, #e53935); }
   .data-sync-form { margin-top: 0; }
   .data-sync-field { max-width: 100%; }
+  @media (max-width: 768px) {
+    .client-modal-map-pane { display: none; }
+    .client-modal-body { min-height: 0; }
+    .group-control-modal { width: min(720px, 95vw); }
+  }
   @media (max-width: 640px) {
     .pref-config-form { grid-template-columns: 1fr; }
     .pref-config-actions .btn.success { width: 100%; }

@@ -10,9 +10,23 @@ const bookmarksService = require("../services/bookmarks.service");
 const agenciesStore = require("../services/agencies.service");
 const accessSvc = require("../services/access.service");
 const mouService = require("../services/mouService");
-const { hasAcceptedAgreementForSession } = require("../services/userAgreementSession.service");
+const mapPageAssets = require("../services/mapPageAssets.service");
+const mapBasemapsConfig = require("../config/mapBasemaps");
 
 const userRequestsSvc = require("../services/userRequests.service");
+const { hasAcceptedAgreementForSession } = require("../services/userAgreementSession.service");
+
+function mapRenderLocals(req) {
+  const mapUserKey = String(
+    req.authentikUser?.uid || req.authentikUser?.username || "anonymous"
+  ).replace(/[^a-zA-Z0-9._-]/g, "_");
+  const settings = require("../services/settings.service").getSettings() || {};
+  return {
+    ...mapPageAssets.getRenderLocals(),
+    mapStorageUserKey: mapUserKey,
+    defaultMapSource: mapBasemapsConfig.getDefaultMapSource(settings),
+  };
+}
 
 function agreementLocalsForRequest(req) {
   const currentAgreement = mouService.getCurrentUserAgreement().current;
@@ -183,6 +197,7 @@ router.get("/", async (req, res) => {
       isMultiAgencyDashboard,
       agencyDisplayName,
       templateChartColor,
+      ...mapRenderLocals(req),
       ...agreementLocalsForRequest(req),
     };
 
@@ -235,6 +250,7 @@ router.get("/", async (req, res) => {
       agencyDisplayName: isAgencyOnly ? "Agency Dashboard" : null,
       templateChartColor: null,
       error: err?.response?.data || err?.message || "Failed to load dashboard",
+      ...mapRenderLocals(req),
       ...agreementLocalsForRequest(req),
     };
 

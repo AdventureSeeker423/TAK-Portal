@@ -144,6 +144,7 @@
         "MOU_REMINDER_SWEEP_HOURS",
         "BETA_MODE",
         "DEFAULT_THEME_MODE",
+        "DEFAULT_MAP_SOURCE",
         "PRIMARY_BUTTON_COLOR",
         "SITE_FONT_FAMILY",
         "USERNAME_PREFIX_LABEL",
@@ -1603,6 +1604,37 @@
             <% renderField("DP_ROLE_FORWARD_OBSERVER","Forward Observer",null,"Drone or Surveillance"); %>
             <% renderField("DP_ROLE_RTO","RTO",null,""); %>
             <% renderField("DP_ROLE_K9","K9",null,"K9 Handlers"); %>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Live Map -->
+    <div class="card">
+      <details class="settings-section">
+        <summary class="settings-summary">Live Map</summary>
+        <div class="settings-body">
+          <div class="grid2">
+            <label class="settings-field">
+              <span class="settings-label">Default Map Source</span>
+              <%
+                const defaultMapSourceSetting = String(
+                  settings.DEFAULT_MAP_SOURCE || "dark-matter"
+                );
+                const basemapOpts = Array.isArray(mapBasemapOptions) ? mapBasemapOptions : [];
+              %>
+              <select name="settings[DEFAULT_MAP_SOURCE]">
+                <% basemapOpts.forEach(function (opt) { %>
+                  <option
+                    value="<%= opt.id %>"
+                    <%= defaultMapSourceSetting === opt.id ? "selected" : "" %>
+                  ><%= opt.label %></option>
+                <% }); %>
+              </select>
+              <small class="settings-help">
+                First-load basemap for /map and the dashboard connected-user mini map when a user has not chosen their own on this device.
+              </small>
+            </label>
           </div>
         </div>
       </details>

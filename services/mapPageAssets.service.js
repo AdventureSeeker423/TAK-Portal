@@ -20,6 +20,8 @@ function getRenderLocals() {
     mapJsUrl: `/map.js?v=${fileMtimeToken(MAP_JS)}`,
     mapMissionsJsUrl: `/map-missions.js?v=${fileMtimeToken(MAP_MISSIONS_JS)}`,
     shapeDecorFilterJsUrl: `/shapeDecorFilter.js?v=${fileMtimeToken(MAP_SHAPE_DECOR_JS)}`,
+    mapBasemapsJsUrl: `/mapBasemaps.js?v=${fileMtimeToken(path.join(__dirname, "..", "public", "mapBasemaps.js"))}`,
+    dashboardMiniMapJsUrl: `/dashboardMiniMap.js?v=${fileMtimeToken(path.join(__dirname, "..", "public", "dashboardMiniMap.js"))}`,
     mapCssUrl: `/map.css?v=${fileMtimeToken(MAP_CSS)}`,
   };
 }

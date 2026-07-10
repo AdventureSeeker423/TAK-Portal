@@ -58,6 +58,7 @@
   "BETA_MODE": "false",
   "SERVER_NAME": "",
   "DEFAULT_THEME_MODE": "dark",
+  "DEFAULT_MAP_SOURCE": "dark-matter",
   "BRAND_LOGO_URL": "",
   "BOOKMARK1_TITLE": "TAK Portal GitHub",
   "BOOKMARK1_URL": "https://github.com/AdventureSeeker423/TAK-Portal",
