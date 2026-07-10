@@ -1651,8 +1651,8 @@
   .group-control-modal .modalBody { overflow: hidden; }
   .client-modal-body { display: flex; gap: 12px; min-height: 360px; flex: 1; }
   .client-modal-map-pane {
-    flex: 1 1 42%;
-    min-width: 280px;
+    flex: 1 1 62%;
+    min-width: 300px;
     position: relative;
     border-radius: 8px;
     overflow: hidden;
@@ -1663,7 +1663,8 @@
   .client-mini-map-empty {
     position: absolute;
     inset: 0;
-    display: flex;
+    z-index: 2;
+    display: none;
     align-items: center;
     justify-content: center;
     padding: 16px;
@@ -1673,8 +1674,12 @@
     background: rgba(0, 0, 0, 0.35);
     pointer-events: none;
   }
+  .client-mini-map-empty:not([hidden]) {
+    display: flex;
+  }
   .client-modal-controls-pane {
-    flex: 1 1 58%;
+    flex: 1 1 38%;
+    max-width: 400px;
     overflow: auto;
     display: flex;
     flex-direction: column;

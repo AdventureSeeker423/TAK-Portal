@@ -20,6 +20,7 @@
   let currentClientId = null;
   let currentCallsign = null;
   let iconLoadPending = null;
+  let hasLiveMarker = false;
 
   function isMobile() {
     return window.matchMedia("(max-width: 768px)").matches;
@@ -261,11 +262,13 @@
     if (!source) return Promise.resolve();
 
     if (!payload || !payload.found || !payload.feature) {
+      hasLiveMarker = false;
       source.setData(emptyFeatureCollection());
       setEmptyVisible(true);
       return Promise.resolve();
     }
 
+    hasLiveMarker = true;
     setEmptyVisible(false);
     const feature = payload.feature;
     source.setData({
@@ -309,7 +312,7 @@
         return updateMarkerOnMap(payload);
       })
       .catch(function () {
-        setEmptyVisible(true);
+        if (!hasLiveMarker) setEmptyVisible(true);
       });
   }
 
@@ -358,7 +361,7 @@
     currentClientId = clientId || null;
     currentCallsign = callsign || null;
     if (!map || !currentClientId || !currentCallsign) {
-      setEmptyVisible(true);
+      if (!hasLiveMarker) setEmptyVisible(true);
       return Promise.resolve();
     }
     return refreshMarker();
@@ -386,6 +389,7 @@
     currentClientId = null;
     currentCallsign = null;
     iconLoadPending = null;
+    hasLiveMarker = false;
     if (map) {
       try {
         map.remove();
