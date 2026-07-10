@@ -369,7 +369,12 @@
   }
 
   function markerIconOpacityPaint() {
-    return ["case", ["!=", ["get", "iconId"], ""], 1, 0];
+    return [
+      "case",
+      ["==", ["get", "showCircle"], 1],
+      1,
+      ["case", ["!=", ["get", "iconId"], ""], 1, 0],
+    ];
   }
 
   function rebuildIconUidIndex(features) {
@@ -2030,6 +2035,10 @@
 
   function onStyleImageMissing(e) {
     const mapImageId = e.id;
+    if (mapImageId === EUD_DOT_ICON_ID) {
+      ensureEudDotMapImage();
+      return;
+    }
     if (!isRenderedMapImageId(mapImageId)) {
       triggerMarkerRepaint();
       return;
@@ -5337,6 +5346,7 @@
             return;
           }
         } else {
+          ensureEudDotMapImage();
           bindMarkerLayerHandlers();
         }
 
