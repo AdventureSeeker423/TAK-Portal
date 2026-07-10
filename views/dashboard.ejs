@@ -589,6 +589,32 @@
         return "";
       }
 
+      function isConnectedBatteryEmpty(row) {
+        if (!row) return true;
+        var v = row.battery;
+        if (v == null) return true;
+        var s = String(v).trim();
+        return !s || s === "—";
+      }
+
+      function compareConnectedClientRows(a, b, key, dir) {
+        if (key === "battery") {
+          var aEmpty = isConnectedBatteryEmpty(a);
+          var bEmpty = isConnectedBatteryEmpty(b);
+          if (aEmpty && bEmpty) return 0;
+          if (aEmpty) return 1;
+          if (bEmpty) return -1;
+          var av = normalizeConnectedSortValue(a.battery);
+          var bv = normalizeConnectedSortValue(b.battery);
+          var cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+          return dir === "desc" ? -cmp : cmp;
+        }
+        var av = getConnectedClientSortValue(a, key);
+        var bv = getConnectedClientSortValue(b, key);
+        var cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+        return dir === "desc" ? -cmp : cmp;
+      }
+
       function applyConnectedClientsSort(rows, rawItems) {
         var list = (Array.isArray(rows) ? rows : []).map(function (r, idx) {
           return {
@@ -597,10 +623,12 @@
           };
         });
         list.sort(function (a, b) {
-          var av = getConnectedClientSortValue(a.row, connectedClientsSortState.key);
-          var bv = getConnectedClientSortValue(b.row, connectedClientsSortState.key);
-          var cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
-          return connectedClientsSortState.dir === "desc" ? -cmp : cmp;
+          return compareConnectedClientRows(
+            a.row,
+            b.row,
+            connectedClientsSortState.key,
+            connectedClientsSortState.dir
+          );
         });
         return {
           rows: list.map(function (x) { return x.row; }),

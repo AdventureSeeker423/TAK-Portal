@@ -166,6 +166,24 @@ async function loadGroupNameByPkForRoleSort(sortKey) {
   );
 }
 
+function getUserTemplateSortName(user) {
+  const raw = String(user?.attributes?.current_template || "").trim();
+  if (!raw || raw.toLowerCase() === "manual group selection") return "";
+  return raw.toLowerCase();
+}
+
+function compareTemplateUsers(a, b, sortDir) {
+  const av = getUserTemplateSortName(a);
+  const bv = getUserTemplateSortName(b);
+  const aEmpty = !av;
+  const bEmpty = !bv;
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+  const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+  return sortDir === "desc" ? -cmp : cmp;
+}
+
 function createUserSortHelpers(sortKey, sortDir, groupNameByPk, globalAdminSet) {
   function getAgencyAbbr(user) {
     const attrs = user?.attributes || {};
@@ -198,15 +216,13 @@ function createUserSortHelpers(sortKey, sortDir, groupNameByPk, globalAdminSet) 
     if (sortKey === "role") {
       return computeRole(user) + "-" + String(user.name || "").toLowerCase();
     }
-    if (sortKey === "template") {
-      const raw = String(user?.attributes?.current_template || "").trim();
-      if (!raw || raw.toLowerCase() === "manual group selection") return "";
-      return raw.toLowerCase();
-    }
     return String(user.name || "").toLowerCase();
   }
 
   function compareUsers(a, b) {
+    if (sortKey === "template") {
+      return compareTemplateUsers(a, b, sortDir);
+    }
     const av = getSortValue(a);
     const bv = getSortValue(b);
     let cmp = String(av).localeCompare(String(bv), undefined, {
@@ -1435,17 +1451,16 @@ router.get("/search", async (req, res) => {
       if (sortKey === "email") return String(user.email || "").toLowerCase();
       if (sortKey === "status") return user.is_active ? "enabled" : "disabled";
       if (sortKey === "role") return computeRole(user) + "-" + String(user.name || "").toLowerCase();
-      if (sortKey === "template") {
-        const raw = String(user?.attributes?.current_template || "").trim();
-        if (!raw || raw.toLowerCase() === "manual group selection") return "";
-        return raw.toLowerCase();
-      }
 
       return String(user.name || "").toLowerCase();
     }
 
     function applySort(arr) {
       arr.sort((a, b) => {
+        if (sortKey === "template") {
+          return compareTemplateUsers(a, b, sortDir);
+        }
+
         const av = getSortValue(a);
         const bv = getSortValue(b);
 
