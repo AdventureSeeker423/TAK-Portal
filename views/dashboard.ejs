@@ -1652,21 +1652,24 @@
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
   .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
 
-  .group-control-modal {
+  .group-control-modal.modal {
     width: min(1100px, 96vw);
     max-height: 90vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
+  .group-control-modal .modalHeader {
+    flex: 0 0 auto;
+    position: relative;
+    top: auto;
+  }
   .group-control-modal .modalBody.client-modal-body {
     display: flex;
     flex-direction: row;
     gap: 12px;
     flex: 1 1 auto;
-    min-height: 360px;
-    height: min(540px, calc(90vh - 84px));
-    max-height: min(540px, calc(90vh - 84px));
+    min-height: 0;
     overflow: hidden;
     align-items: stretch;
   }
@@ -1712,9 +1715,8 @@
   .connected-user-section-title { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
   .connected-user-section-divider { border-top: 1px solid var(--line); margin: 14px 0 10px; }
   .group-control-table-wrap {
-    flex: none;
-    max-height: 240px;
-    min-height: 120px;
+    max-height: min(200px, 28vh);
+    min-height: 0;
     overflow: auto;
     margin-top: 4px;
     margin-bottom: 4px;
@@ -1748,10 +1750,8 @@
     .group-control-modal .modalBody.client-modal-body {
       flex-direction: column;
       min-height: 0;
-      height: auto;
-      max-height: none;
     }
-    .group-control-modal { width: min(720px, 95vw); }
+    .group-control-modal.modal { width: min(720px, 95vw); }
   }
   @media (max-width: 640px) {
     .pref-config-form { grid-template-columns: 1fr; }
