@@ -1055,14 +1055,14 @@ async function getAllUsersRaw(options = {}) {
 // Lightweight variant for dashboard/statistics use-cases.
 // Keeps the same visibility/path filtering but requests less payload.
 async function getAllUsersLightweightRaw(options = {}) {
-  const { includeHiddenPrefixes = false } = options;
+  const { includeHiddenPrefixes = false, includeGroups = false } = options;
   let users = [];
   const pageSize = getInt("AUTHENTIK_USER_PAGE_SIZE", 500) || 500;
   let page = 1;
   let hasNext = true;
 
   while (hasNext) {
-    const url = `${getString("AUTHENTIK_URL", "")}/api/v3/core/users/?page=${page}&page_size=${pageSize}&include_groups=false&include_roles=false`;
+    const url = `${getString("AUTHENTIK_URL", "")}/api/v3/core/users/?page=${page}&page_size=${pageSize}&include_groups=${includeGroups ? "true" : "false"}&include_roles=false`;
     const res = await api.get(url);
     const data = res?.data || {};
     const results = Array.isArray(data.results) ? data.results : [];
@@ -1475,6 +1475,7 @@ async function createIntegrationUser(
     integration_type: "nodered",
     integration_scope: integrationType,
     integration_title: String(title || "").trim() || username,
+    tak_integration_group: String(group.name || "").trim(),
   };
   if (createdBy && createdBy.username) {
     attributes.created_by_username = String(createdBy.username);
@@ -1518,7 +1519,10 @@ async function createIntegrationUser(
  * Uses the lightweight list endpoint (same as dashboard) — not full getAllUsersRaw.
  */
 async function findIntegrationUsers() {
-  const raw = await getAllUsersLightweightRaw({ includeHiddenPrefixes: true });
+  const raw = await getAllUsersLightweightRaw({
+    includeHiddenPrefixes: true,
+    includeGroups: true,
+  });
   const prefix = INTEGRATION_PREFIX.toLowerCase();
   return raw.filter(u =>
     String(u?.username || "").toLowerCase().startsWith(prefix)

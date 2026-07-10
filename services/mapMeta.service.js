@@ -476,8 +476,21 @@ function integrationTitleHyphenSlug(title) {
     .replace(/^-|-$/g, "");
 }
 
+/** Title slug from nodered-agency-hcso-lightbugswat -> lightbugswat */
+function integrationUsernameTitleSlug(username) {
+  const u = String(username || "").trim().toLowerCase();
+  if (!u.startsWith("nodered-")) return "";
+  const parts = u.split("-").filter(Boolean);
+  if (parts.length < 3) return "";
+  if (parts[1] === "global") return parts.slice(2).join("");
+  return parts.slice(3).join("");
+}
+
 function integrationPortalGroups(user, groupByPk) {
   const groups = [];
+  const attrGroup = normalizeGroupName(user?.attributes?.tak_integration_group);
+  if (attrGroup) groups.push(...normalizeDataFeedGroupList([attrGroup]));
+
   for (const pk of Array.isArray(user?.groups) ? user.groups : []) {
     const name = groupByPk.get(String(pk))?.name;
     if (name) groups.push(...normalizeDataFeedGroupList([name]));
@@ -537,6 +550,7 @@ async function refreshIntegrationFeedLinks() {
       if (!groups.length) continue;
 
       const hyphenSlug = title ? integrationTitleHyphenSlug(title) : "";
+      const usernameTitleSlug = integrationUsernameTitleSlug(username);
       let titleSlug = "";
       if (title) {
         try {
@@ -545,12 +559,17 @@ async function refreshIntegrationFeedLinks() {
           titleSlug = normalizeFeedIdentityKey(title);
         }
       }
+      if (!titleSlug && usernameTitleSlug) titleSlug = usernameTitleSlug;
 
       const linkKeys = new Set();
       if (dataFeedName) linkKeys.add(dataFeedName);
       if (username) linkKeys.add(username);
       if (hyphenSlug) linkKeys.add(hyphenSlug);
       if (titleSlug) linkKeys.add(titleSlug);
+      if (usernameTitleSlug) linkKeys.add(usernameTitleSlug);
+      if (usernameTitleSlug) {
+        linkKeys.add(integrationTitleHyphenSlug(usernameTitleSlug.replace(/-/g, " ")));
+      }
 
       for (const key of linkKeys) {
         registerDataFeedLookupKeys(key, groups);
@@ -562,6 +581,7 @@ async function refreshIntegrationFeedLinks() {
         title: title || null,
         hyphenSlug: hyphenSlug || null,
         titleSlug: titleSlug || null,
+        usernameTitleSlug: usernameTitleSlug || null,
         groups,
       });
     }
@@ -592,6 +612,7 @@ function resolveGroupsFromIntegrationFeedLinks(marker) {
       entry.title,
       entry.hyphenSlug,
       entry.titleSlug,
+      entry.usernameTitleSlug,
       entry.username,
     ].filter(Boolean);
 
@@ -1815,6 +1836,7 @@ function getDataFeedCatalogForDebug(options = {}) {
         entry.title,
         entry.hyphenSlug,
         entry.titleSlug,
+        entry.usernameTitleSlug,
         entry.username,
         ...(entry.groups || []),
       ];
@@ -1865,6 +1887,7 @@ module.exports = {
   buildDataFeedIdentityCandidates,
   feedIdentityOverlaps,
   integrationTitleHyphenSlug,
+  integrationUsernameTitleSlug,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
   explainGroupAssignment,
