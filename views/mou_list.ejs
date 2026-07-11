@@ -179,7 +179,16 @@
                     <div class="mouActionRow cardActionsRow">
                       <% if (card.currentVersion) { %>
                         <% if (isAgencyAdmin && card.canSign) { %>
-                          <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>">View / Sign</a>
+                          <% const cardSignAgency = (function () {
+                            var pending = (card.signatures || []).find(function (entry) {
+                              return entry && entry.agency && !entry.signature;
+                            });
+                            if (pending && pending.agency) return pending.agency;
+                            return (card.signableAgencyChoices && card.signableAgencyChoices[0]) || null;
+                          })(); %>
+                          <% if (cardSignAgency) { %>
+                          <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>?agencyId=<%= encodeURIComponent(cardSignAgency.suffix) %>">View / Sign</a>
+                          <% } %>
                         <% } else if (isAgencyAdmin && card.viewDocumentHref) { %>
                           <a class="btn secondary" href="<%= card.viewDocumentHref %>">View Document</a>
                         <% } %>
@@ -459,7 +468,7 @@
                         <% const uploadOverlayId = "mouUploadSignedOverlay-" + row.mouId + "-" + row.agencyId; %>
                         <button class="btn secondary" type="button" data-overlay-target="<%= uploadOverlayId %>">Upload</button>
                         <% if (row.userCanSign) { %>
-                          <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.currentVersion) %>">View / Sign</a>
+                          <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.currentVersion) %>?agencyId=<%= encodeURIComponent(row.agencyId) %>">View / Sign</a>
                         <% } else if (row.documentViewHref) { %>
                           <a class="btn secondary" href="<%= row.documentViewHref %>">View Document</a>
                         <% } %>

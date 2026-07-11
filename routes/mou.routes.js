@@ -277,6 +277,54 @@ function resolveSignableAgencyChoices(authUser, stream) {
     }));
 }
 
+function normalizeMoUAgencySuffix(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+/**
+ * Pick the agency context for /mou/sign — requires ?agencyId= when several are signable.
+ */
+function resolveSigningAgencyFromChoices(agencyChoices, requestedAgencyId) {
+  const list = Array.isArray(agencyChoices) ? agencyChoices : [];
+  if (!list.length) return null;
+
+  const requested = normalizeMoUAgencySuffix(requestedAgencyId);
+  if (requested) {
+    return list.find((agency) => normalizeMoUAgencySuffix(agency.suffix) === requested) || null;
+  }
+
+  const pending = list.filter((agency) => !agency.currentSignature);
+  if (pending.length === 1) return pending[0];
+  if (list.length === 1) return list[0];
+
+  return null;
+}
+
+function buildMoUSignPageUrls(stream, versionRecord, agencySuffix) {
+  const suffix = normalizeMoUAgencySuffix(agencySuffix);
+  const contentUrls = mouService.buildContentUrls(stream, versionRecord);
+  const signedEvidence =
+    suffix && mouService.getCurrentAgencySignatureForStream(stream, suffix)
+      ? mouService.getAgencyEvidence({
+          mouId: stream.mouId,
+          agencyId: suffix,
+          version: versionRecord.version,
+        })
+      : null;
+  const signedEvidenceViewUrl = suffix
+    ? `/mou/agency/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(suffix)}?version=${encodeURIComponent(versionRecord.version)}`
+    : "";
+  const signedEvidencePdfUrl = suffix
+    ? `/mou/agency/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(suffix)}/pdf?version=${encodeURIComponent(versionRecord.version)}`
+    : "";
+  return {
+    contentUrls,
+    signedEvidence,
+    signedEvidenceViewUrl,
+    signedEvidencePdfUrl,
+  };
+}
+
 function parseAgencySigningPayload(body, agencySuffixes) {
   const agencySigning = {};
   const suffixes = Array.isArray(agencySuffixes) ? agencySuffixes : [];
@@ -809,39 +857,33 @@ router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission,
         username: req.authentikUser?.username || "",
       });
     }
-    const contentUrls = mouService.buildContentUrls(out.stream, out.targetVersion);
-    const currentAgency = agencyChoices[0] || null;
-    const currentAgencySignature = currentAgency?.currentSignature || null;
-    const signedEvidence =
-      currentAgency && currentAgencySignature
-        ? mouService.getAgencyEvidence({
-            mouId: out.stream.mouId,
-            agencyId: currentAgency.suffix,
-            version: out.targetVersion.version,
-          })
-        : null;
-    const signedEvidenceViewUrl =
-      currentAgency && currentAgencySignature
-        ? `/mou/agency/${encodeURIComponent(out.stream.mouId)}/${encodeURIComponent(currentAgency.suffix)}?version=${encodeURIComponent(out.targetVersion.version)}`
-        : "";
-    const signedEvidencePdfUrl =
-      currentAgency && currentAgencySignature
-        ? `/mou/agency/${encodeURIComponent(out.stream.mouId)}/${encodeURIComponent(currentAgency.suffix)}/pdf?version=${encodeURIComponent(out.targetVersion.version)}`
-        : "";
+    const signingAgency = resolveSigningAgencyFromChoices(
+      agencyChoices,
+      req.query.agencyId || req.query.agency
+    );
+    if (!signingAgency) {
+      return res.redirect(
+        `/mou?error=${encodeURIComponent(
+          "Open View / Sign from the MOU list for the specific agency you are signing for."
+        )}`
+      );
+    }
+    const pageUrls = buildMoUSignPageUrls(out.stream, out.targetVersion, signingAgency.suffix);
     res.render("mou_sign", {
       stream: out.stream,
       version: out.targetVersion,
       html: out.html,
       contentType: out.contentType,
-      fileUrl: contentUrls.fileUrl,
-      downloadUrl: contentUrls.downloadUrl,
-      signedEvidenceHtml: signedEvidence?.html || "",
-      signedEvidenceSignature: signedEvidence?.signature || null,
-      signedEvidenceViewUrl,
-      signedEvidenceDownloadUrl: signedEvidencePdfUrl,
+      fileUrl: pageUrls.contentUrls.fileUrl,
+      downloadUrl: pageUrls.contentUrls.downloadUrl,
+      signedEvidenceHtml: pageUrls.signedEvidence?.html || "",
+      signedEvidenceSignature: pageUrls.signedEvidence?.signature || null,
+      signedEvidenceViewUrl: pageUrls.signedEvidenceViewUrl,
+      signedEvidenceDownloadUrl: pageUrls.signedEvidencePdfUrl,
       fileName: out.fileName,
       scopeLabel: mouService.getScopeLabel(out.stream),
       agencyChoices,
+      signingAgency,
       error: req.query.error || "",
       success: req.query.success || "",
     });
@@ -899,14 +941,15 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
     triggerSignedGlobalAdminNotification(req, result, signMethod);
 
     return res.redirect(
-      `/mou/sign/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}?success=${encodeURIComponent(signMethod === "upload" ? "Signed document uploaded successfully." : "MOU signed successfully.")}`
+      `/mou/sign/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}?agencyId=${encodeURIComponent(agencySuffix)}&success=${encodeURIComponent(signMethod === "upload" ? "Signed document uploaded successfully." : "MOU signed successfully.")}`
     );
   } catch (err) {
-    return toErrorRedirect(
-      res,
-      `/mou/sign/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}`,
-      err
-    );
+    const agencyQuery = String(req.body?.agencySuffix || "").trim().toLowerCase();
+    let url = `/mou/sign/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(req.params.version)}`;
+    if (agencyQuery) {
+      url += `?agencyId=${encodeURIComponent(agencyQuery)}`;
+    }
+    return toErrorRedirect(res, url, err);
   }
 });
 

@@ -105,11 +105,11 @@
 }
 </style>
 
-<% const hasPendingAgency = agencyChoices.some(function (agency) { return !agency.currentSignature; }); %>
-<% const firstPendingAgency = agencyChoices.find(function (agency) { return !agency.currentSignature; }); %>
-<% const currentAgency = agencyChoices[0] || null; %>
+<% const signingAgencyResolved = typeof signingAgency !== "undefined" && signingAgency ? signingAgency : null; %>
+<% const currentAgency = signingAgencyResolved || agencyChoices[0] || null; %>
 <% const currentAgencySignature = currentAgency ? currentAgency.currentSignature : null; %>
-<% const signingAgencyName = firstPendingAgency ? firstPendingAgency.name : (currentAgency ? currentAgency.name : "your agency"); %>
+<% const hasPendingAgency = !!(currentAgency && !currentAgency.currentSignature); %>
+<% const signingAgencyName = currentAgency ? currentAgency.name : "your agency"; %>
 <% const showSignedEvidence = !!(currentAgencySignature && signedEvidenceHtml); %>
 <% const activeDownloadUrl = showSignedEvidence ? signedEvidenceDownloadUrl : downloadUrl; %>
 <% const customSignerFields = Array.isArray(version && version.customSignerFields) ? version.customSignerFields : []; %>
@@ -124,7 +124,13 @@
   <div class="mouPageHeader">
     <div class="mouPageHeader__intro">
       <h1 style="margin-bottom:6px;"><%= showSignedEvidence ? "View Document" : "View / Sign Document" %></h1>
-      <div class="muted"><%= showSignedEvidence ? "Your agency has already signed the current version." : "Review the current version, then sign on behalf of your agency." %></div>
+      <div class="muted">
+        <% if (showSignedEvidence) { %>
+          <%= signingAgencyName %> has already signed the current version.
+        <% } else { %>
+          Review the current version, then sign on behalf of <strong><%= signingAgencyName %></strong>.
+        <% } %>
+      </div>
     </div>
     <div class="mouActionRow mouPageHeader__actions">
       <% if (showSignedEvidence) { %>
@@ -194,7 +200,7 @@
       <% } %>
 
       <form method="post" action="/mou/sign/<%= encodeURIComponent(stream.mouId) %>/<%= encodeURIComponent(version.version) %>" id="mouSignForm" enctype="multipart/form-data">
-        <input type="hidden" name="agencySuffix" value="<%= firstPendingAgency ? firstPendingAgency.suffix : '' %>" <%= hasPendingAgency ? "" : "disabled" %> />
+        <input type="hidden" name="agencySuffix" value="<%= currentAgency ? currentAgency.suffix : '' %>" <%= hasPendingAgency ? "" : "disabled" %> />
         <input type="hidden" name="signMethodMode" id="signMethodMode" value="" />
 
         <div class="mouSignSection">
