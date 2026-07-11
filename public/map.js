@@ -4159,16 +4159,27 @@
     return "";
   }
 
+  /** CoT point hae is meters above the WGS84 ellipsoid. */
+  const METERS_TO_FEET = 3.280839895;
+
   function fmtHae(n) {
-    return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) : "—";
+    const meters = Number(n);
+    if (!Number.isFinite(meters)) return "—";
+    return String(Math.round(meters * METERS_TO_FEET)) + " ft";
   }
 
   function fmtCourse(n) {
     return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) + "°" : "—";
   }
 
+  /** CoT track/point speed is meters per second. */
+  const MPS_TO_MPH = 2.2369362921;
+
   function fmtSpeed(n) {
-    return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) : "—";
+    const mps = Number(n);
+    if (!Number.isFinite(mps)) return "—";
+    const mph = Math.round(mps * MPS_TO_MPH);
+    return String(Math.round(mps)) + " (" + mph + " mph)";
   }
 
   function isUnknownHae(n) {
@@ -4541,7 +4552,7 @@
         '<span data-detail-key="speed">' + escapeHtml(fmtSpeed(m.speed)) + "</span>"
       ),
       detailKvRow(
-        "Last updated",
+        "Last Updated",
         '<span class="map-detail-updated">' +
           escapeHtml(updatedAgeLabel(m.updatedAt)) +
           "</span>"
@@ -4736,11 +4747,11 @@
     const t = Date.parse(updatedAt);
     if (!Number.isFinite(t)) return "—";
     const totalSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
-    if (totalSec < 60) return totalSec + "sec ago";
+    if (totalSec < 60) return totalSec + " sec ago";
     if (totalSec < 3600) {
       const min = Math.floor(totalSec / 60);
       const sec = totalSec % 60;
-      return min + "m " + sec + "sec ago";
+      return min + "m " + sec + " sec ago";
     }
     if (totalSec < 86400) {
       const hr = Math.floor(totalSec / 3600);
