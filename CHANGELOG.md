@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.47 - 7/11/26
+🎉 `New Feature` - Introduces a mini-map display for connected users<br>
+🐛 `Bug Fix` - Fixes issue with MOU Signing not functioning properly for global admins (would sign the wrong agency document and/or give permission errors)
+
 ### v1.3.46 - 7/8/26
 ✨ `Enhancement` - Dashboard - Connected Users pane now allows sending callsign and data sync missions to TAK Aware devices (Only works for Test Flight version of TAK Aware until release is pushed to the app store).<br>
 🐛 `Bug Fix` - Fixes issue with integrations count related to duplicate connections
