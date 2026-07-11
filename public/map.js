@@ -4178,8 +4178,7 @@
   function fmtSpeed(n) {
     const mps = Number(n);
     if (!Number.isFinite(mps)) return "—";
-    const mph = Math.round(mps * MPS_TO_MPH);
-    return String(Math.round(mps)) + " (" + mph + " mph)";
+    return String(Math.round(mps * MPS_TO_MPH)) + " mph";
   }
 
   function isUnknownHae(n) {
