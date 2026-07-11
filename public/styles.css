@@ -120,6 +120,11 @@ body {
     #locHistOverlay .modal { /* Locate history modal */
         max-height: calc(85dvh / 0.8) !important;
     }
+    #clientGroupsOverlay .group-control-modal.modal { /* Dashboard connected user modal */
+        max-height: calc(90dvh / 0.8) !important;
+        min-height: calc(78dvh / 0.8);
+        height: calc(85dvh / 0.8);
+    }
     .modalCard { /* Audit log details modal card */
         max-height: calc(80dvh / 0.8) !important;
     }

@@ -729,7 +729,7 @@
                 '<div id="clientGroupsError" class="msg error" style="display:none; margin-bottom:10px;"></div>' +
                 '<h3 class="connected-user-section-title">Group / Channel Control</h3>' +
                 '<div id="clientGroupsLoading" class="muted" style="display:none;">Loading groups…</div>' +
-                '<div class="group-control-table-wrap" id="clientGroupsTableWrap" style="display:none;">' +
+                '<div class="group-control-table-wrap" id="clientGroupsTableWrap">' +
                   '<table class="group-control-table">' +
                     '<thead><tr><th>Enabled</th><th>Group</th></tr></thead>' +
                     '<tbody id="clientGroupsTableBody"></tbody>' +
@@ -739,7 +739,7 @@
                 '<div class="connected-user-section-divider"></div>' +
                 '<h3 class="connected-user-section-title">Send Callsign Preferences</h3>' +
                 '<div id="prefConfigLoading" class="muted" style="display:none;">Loading configuration…</div>' +
-                '<div id="prefConfigForm" class="pref-config-form" style="display:none;">' +
+                '<div id="prefConfigForm" class="pref-config-form">' +
                   '<label class="pref-config-field">' +
                     '<span class="pref-config-label">Callsign</span>' +
                     '<input type="text" id="prefConfigCallsign" class="input" autocomplete="off" />' +
@@ -762,7 +762,7 @@
                 '<div class="connected-user-section-divider"></div>' +
                 '<h3 class="connected-user-section-title">Send Data Sync</h3>' +
                 '<div id="dataSyncLoading" class="muted" style="display:none;">Loading missions…</div>' +
-                '<div id="dataSyncForm" class="data-sync-form" style="display:none;">' +
+                '<div id="dataSyncForm" class="data-sync-form">' +
                   '<label class="pref-config-field data-sync-field">' +
                     '<span class="pref-config-label">Mission</span>' +
                     '<select id="dataSyncMissionSelect" class="input"></select>' +
@@ -896,7 +896,7 @@
 
         function setPrefConfigLoading(on) {
           if (prefConfigLoadingEl) prefConfigLoadingEl.style.display = on ? "block" : "none";
-          if (prefConfigFormEl) prefConfigFormEl.style.display = on ? "none" : "block";
+          if (prefConfigFormEl) prefConfigFormEl.style.display = "block";
         }
 
         function fillSelectOptions(selectEl, options, selectedValue, emptyLabel) {
@@ -1027,7 +1027,7 @@
 
         function setDataSyncLoading(on) {
           if (dataSyncLoadingEl) dataSyncLoadingEl.style.display = on ? "block" : "none";
-          if (dataSyncFormEl) dataSyncFormEl.style.display = on ? "none" : "block";
+          if (dataSyncFormEl) dataSyncFormEl.style.display = "block";
         }
 
         function loadDataSyncMissions(clientId) {
@@ -1116,7 +1116,7 @@
 
         function setGroupControlLoading(on) {
           if (loadingEl) loadingEl.style.display = on ? "block" : "none";
-          if (tableWrap) tableWrap.style.display = on ? "none" : "block";
+          if (tableWrap) tableWrap.style.display = "block";
         }
 
         function renderGroupControlRows(groups) {
@@ -1213,12 +1213,16 @@
           if (titleEl) titleEl.textContent = titleParts.join(" — ");
           showGroupControlError("");
           showPrefConfigStatus("");
-          overlay.style.display = "flex";
 
           var canPreferenceConfig = isPreferenceConfigClient(sub);
           var canDataSync = isDataSyncClient(sub);
           setPreferenceConfigVisible(canPreferenceConfig);
           setDataSyncSectionVisible(canDataSync);
+          setGroupControlLoading(true);
+          if (canPreferenceConfig) setPrefConfigLoading(true);
+          if (canDataSync) setDataSyncLoading(true);
+
+          overlay.style.display = "flex";
 
           loadGroupControlState(clientId).catch(function () {});
           if (canPreferenceConfig) {
@@ -1235,7 +1239,12 @@
           }, GROUP_CONTROL_REFRESH_MS);
 
           if (window.DashboardMiniMap && callsign) {
-            window.DashboardMiniMap.open(clientId, callsign).catch(function () {});
+            requestAnimationFrame(function () {
+              requestAnimationFrame(function () {
+                if (!currentGroupControlClientId) return;
+                window.DashboardMiniMap.open(clientId, callsign).catch(function () {});
+              });
+            });
           }
         }
 
@@ -1654,6 +1663,8 @@
 
   .group-control-modal.modal {
     width: min(1100px, 96vw);
+    height: min(85vh, 780px);
+    min-height: min(78vh, 720px);
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -1670,13 +1681,15 @@
     gap: 12px;
     flex: 1 1 auto;
     min-height: 0;
+    height: 100%;
     overflow: hidden;
     align-items: stretch;
   }
   .client-modal-map-pane {
     flex: 1 1 62%;
     min-width: 300px;
-    min-height: 0;
+    min-height: 420px;
+    height: 100%;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -1685,7 +1698,7 @@
     border: 1px solid var(--line);
     background: rgba(0, 0, 0, 0.25);
   }
-  #clientMiniMap { flex: 1 1 auto; width: 100%; min-height: 0; }
+  #clientMiniMap { flex: 1 1 auto; width: 100%; height: 100%; min-height: 420px; }
   .client-mini-map-empty {
     position: absolute;
     inset: 0;
@@ -1706,7 +1719,8 @@
   .client-modal-controls-pane {
     flex: 1 1 38%;
     max-width: 400px;
-    min-height: 0;
+    min-height: 420px;
+    height: 100%;
     min-width: 0;
     overflow-x: hidden;
     overflow-y: auto;
@@ -1716,7 +1730,7 @@
   .connected-user-section-divider { border-top: 1px solid var(--line); margin: 14px 0 10px; }
   .group-control-table-wrap {
     max-height: min(200px, 28vh);
-    min-height: 0;
+    min-height: 160px;
     overflow: auto;
     margin-top: 4px;
     margin-bottom: 4px;
@@ -1735,7 +1749,9 @@
   .group-control-checkbox { width: 1.1em; height: 1.1em; cursor: pointer; }
   .group-control-checkbox:disabled { cursor: wait; opacity: 0.6; }
   #clientGroupsError.error { color: var(--danger, #e53935); }
-  .pref-config-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; align-items: end; }
+  #prefConfigSection { min-height: 168px; }
+  #dataSyncSection { min-height: 112px; }
+  .pref-config-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; align-items: end; min-height: 132px; }
   .pref-config-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .pref-config-label { font-size: 13px; color: var(--muted); font-weight: 600; }
   .pref-config-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: flex-end; margin-top: 12px; }
@@ -1743,7 +1759,7 @@
   .pref-config-status { margin-top: 8px; font-size: 14px; }
   .pref-config-status.success { color: var(--success, #43a047); }
   .pref-config-status.error { color: var(--danger, #e53935); }
-  .data-sync-form { margin-top: 0; }
+  .data-sync-form { margin-top: 0; min-height: 88px; }
   .data-sync-field { max-width: 100%; }
   @media (max-width: 768px) {
     .client-modal-map-pane { display: none; }
@@ -1751,7 +1767,11 @@
       flex-direction: column;
       min-height: 0;
     }
-    .group-control-modal.modal { width: min(720px, 95vw); }
+    .group-control-modal.modal {
+      width: min(720px, 95vw);
+      height: min(85vh, 720px);
+      min-height: min(70vh, 560px);
+    }
   }
   @media (max-width: 640px) {
     .pref-config-form { grid-template-columns: 1fr; }
