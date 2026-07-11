@@ -323,6 +323,10 @@ function canUserSignAgencyForStream(authUser, stream, agencySuffix) {
     return userMatchesAssignedSigningAdmin(authUser, stream, suffix);
   }
 
+  if (authUser.isGlobalAdmin) {
+    return true;
+  }
+
   const managed = accessSvc
     .getUserManagedAgencySuffixes(authUser)
     .map(normalizeAgencySuffix)

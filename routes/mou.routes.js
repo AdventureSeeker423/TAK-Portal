@@ -57,10 +57,14 @@ function requireGlobalAdmin(req, res, next) {
   return next();
 }
 
-function requireAgencyAdmin(req, res, next) {
-  if (!req.authentikUser || !req.authentikUser.isAgencyAdmin) {
+function requireMoUSignAccess(req, res, next) {
+  const user = req.authentikUser;
+  if (!user || (!user.isAgencyAdmin && !user.isGlobalAdmin)) {
+    if ((req.originalUrl || req.path || "").startsWith("/api/")) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     return res.status(403).render("access-denied", {
-      username: req.authentikUser?.username || "",
+      username: user?.username || "",
     });
   }
   return next();
@@ -788,7 +792,7 @@ router.get("/mou/agency-file/:mouId/:agencyId", requireMouEnabled, requireMouPer
   }
 });
 
-router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireAgencyAdmin, (req, res) => {
+router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireMoUSignAccess, (req, res) => {
   try {
     const out = mouService.getCurrentVersionOrLatest(req.params.mouId, req.params.version);
     if (!canSeeStream(req.authentikUser, out.stream)) {
@@ -846,7 +850,7 @@ router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission,
   }
 });
 
-router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireAgencyAdmin, upload.single("signedCopyFile"), async (req, res) => {
+router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission, requireMoUSignAccess, upload.single("signedCopyFile"), async (req, res) => {
   try {
     const stream = mouService.getStreamById(req.params.mouId);
     const agencyChoices = resolveSignableAgencyChoices(req.authentikUser, stream);
