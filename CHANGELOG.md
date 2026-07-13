@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.48 - 7/13/26
+✨ `Enhancement` - Mutual Aid - Cleans up assign and unassign menus to match the groups page by adding templates as an option to deploy a new mutual aid group to<br>
+✨ `Enhancement` - Groups - Global Groups prevent groups from being created that start with "MA -" to prevent inadvertently creating a false mutual aid group.
+
 ### v1.3.47 - 7/11/26
 🎉 `New Feature` - Introduces a mini-map display for connected users<br>
 🐛 `Bug Fix` - Fixes issue with MOU Signing not functioning properly for global admins (would sign the wrong agency document and/or give permission errors)
