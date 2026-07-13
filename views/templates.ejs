@@ -157,23 +157,6 @@ function displayGroupName(name){
   return String(name || "").replace(/^tak_/, "");
 }
 
-let mutualAidGroupNamesLower = new Set();
-
-function isMutualAidGroupName(name) {
-  const key = String(name || "").trim().toLowerCase();
-  return key ? mutualAidGroupNamesLower.has(key) : false;
-}
-
-function stripMutualAidGroupNames(names) {
-  const out = [];
-  for (const raw of Array.isArray(names) ? names : []) {
-    const name = String(raw || "").trim();
-    if (!name || isMutualAidGroupName(name)) continue;
-    out.push(name);
-  }
-  return out;
-}
-
 /** Abbreviations for Existing Templates table only */
 function abbrevRoleForTable(role){
   const r = String(role || "").trim();
@@ -232,7 +215,7 @@ function stableSort(arr, key, dir){
 
 function renderTemplates(list){
   tbody.innerHTML = (list || []).map(({t, idx}) => {
-    const groupsText = esc(stripMutualAidGroupNames(t.groups || []).map(displayGroupName).join(", "));
+    const groupsText = esc((t.groups || []).map(displayGroupName).join(", "));
     return `
     <tr>
       <td class="tplAgencyCell" data-label="Agency">${t.agencySuffix ? esc(getAgencyDisplay(t) || t.agencySuffix) : "—"}</td>
@@ -401,7 +384,6 @@ function renderGroups(filterText = ""){
 
   const list = allGroups
     .map(g => String(g.name))
-    .filter(rawName => !isMutualAidGroupName(rawName))
     .sort((a,b)=>a.localeCompare(b))
     .filter(rawName => {
       if (!q) return true;
@@ -484,18 +466,8 @@ async function loadGroups(options = {}){
     const meta = await res.json();
     if (!res.ok) throw new Error(meta.error || "Failed to load groups");
 
-    mutualAidGroupNamesLower = new Set(
-      (Array.isArray(meta.mutualAidCreatedGroupNames) ? meta.mutualAidCreatedGroupNames : [])
-        .map((n) => String(n || "").trim().toLowerCase())
-        .filter(Boolean)
-    );
+    allGroups = Array.isArray(meta.groups) ? meta.groups : [];
 
-    allGroups = (Array.isArray(meta.groups) ? meta.groups : [])
-      .filter((g) => !isMutualAidGroupName(g?.name));
-
-    for (const name of [...pickedGroupNames]) {
-      if (isMutualAidGroupName(name)) pickedGroupNames.delete(name);
-    }
     groupsLoaded = true;
     renderGroups(groupSearch.value);
   } finally {
@@ -640,7 +612,7 @@ function setEditMode(idx){
   renderRoleOptions(t.role || "Team Member");
   isDefaultEl.value = t.isDefault ? "yes" : "no";
   groupSearch.value = "";
-  pickedGroupNames = new Set(stripMutualAidGroupNames(t.groups || []));
+  pickedGroupNames = new Set(t.groups || []);
   renderGroups("");
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -672,7 +644,7 @@ window.duplicateTemplate = async (idx) => {
   renderRoleOptions(t.role || "Team Member");
   isDefaultEl.value = t.isDefault ? "yes" : "no";
   groupSearch.value = "";
-  pickedGroupNames = new Set(stripMutualAidGroupNames(t.groups || []));
+  pickedGroupNames = new Set(t.groups || []);
   renderGroups("");
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -741,13 +713,13 @@ form.onsubmit = async (e) => {
     agencySuffix: agencyEl.value,
     colorOverride: (colorOverrideEl.value || ""),
     role: String(roleEl?.value || "Team Member").trim() || "Team Member",
-    groups: stripMutualAidGroupNames(Array.from(pickedGroupNames)),
+    groups: Array.from(pickedGroupNames),
     isDefault: isDefaultEl.value === "yes"
   };
 
   if (!payload.name) return setMsg("Template name is required", false);
   if (!payload.groups.length) {
-    return setMsg("Select at least one group (mutual aid groups cannot be used in templates)", false);
+    return setMsg("Select at least one group", false);
   }
 
   const isEdit = editingIndex !== null;

@@ -321,7 +321,7 @@
   </div>
 </div>
 
-<!-- Mass Assign Modal (copied from Manage Groups) -->
+<!-- Mass Assign Modal (same modes/logic as Manage Groups) -->
 <div class="modalOverlay" id="massOverlay" style="display:none;">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="massTitle">
     <div class="modalHeader">
@@ -331,45 +331,75 @@
 
     <div class="modalBody">
       <div class="segmented" style="margin-top:4px;">
-        <button class="segBtn active" type="button" data-mode="agency">Entire agencies (suffix)</button>
-        <button class="segBtn" type="button" data-mode="group">Users with existing group(s)</button>
-        <button class="segBtn" type="button" data-mode="users">Specific users</button>
+        <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
+        <button class="segBtn" type="button" data-mode="template">Templates</button>
+        <button class="segBtn" type="button" data-mode="group">Users With An Existing Group</button>
+        <button class="segBtn" type="button" data-mode="users">Specific Users</button>
       </div>
 
+      <!-- Agency mode -->
       <div id="massAgencyPane" style="margin-top:14px;">
         <div class="row" style="justify-content:space-between; align-items:center;">
-          <input id="agencySearch" placeholder="Search agencies..." style="min-width: 360px;" />
+          <input
+            id="agencySearch"
+            placeholder="Search agencies..."
+            style="flex: 1; min-width: 0;"
+          />
           <div class="row" style="gap:10px;">
             <button class="btn" id="agencySelectAll" type="button">Select All</button>
             <button class="btn" id="agencyClearAll" type="button">Clear</button>
           </div>
         </div>
         <div id="agencyList" class="groupsBox" style="margin-top:10px;"></div>
-        <small>Select one or more agencies; users are matched by agency attribute (supports token before or after badge).</small>
       </div>
 
+      <!-- Group mode -->
       <div id="massGroupPane" style="display:none; margin-top:14px;">
         <div class="row" style="justify-content:space-between; align-items:center;">
-          <input id="sourceGroupSearch" placeholder="Search groups..." style="min-width: 360px;" />
+          <input
+            id="sourceGroupSearch"
+            placeholder="Search groups..."
+            style="flex: 1; min-width: 0;"
+          />
           <div class="row" style="gap:10px;">
             <button class="btn" id="groupSelectAll" type="button">Select All</button>
             <button class="btn" id="groupClearAll" type="button">Clear</button>
           </div>
         </div>
         <div id="sourceGroupList" class="groupsBox" style="margin-top:10px;"></div>
-        <small>Select one or more existing groups; all users in any selected group will also get the target group.</small>
       </div>
 
+      <!-- Template mode -->
+      <div id="massTemplatePane" style="display:none; margin-top:14px;">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <input
+            id="templateSearch"
+            placeholder="Search templates..."
+            style="flex: 1; min-width: 0;"
+          />
+          <div class="row" style="gap:10px;">
+            <button class="btn" id="templateSelectAll" type="button">Select All</button>
+            <button class="btn" id="templateClearAll" type="button">Clear</button>
+          </div>
+        </div>
+        <div id="templateList" class="groupsBox" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Users mode -->
       <div id="massUsersPane" style="display:none; margin-top:14px;">
         <div class="row" style="justify-content:space-between; align-items:center;">
-          <input id="userSearch" placeholder="Search username, name, or email..." style="min-width: 360px;" autocomplete="off" />
+          <input
+            id="userSearch"
+            placeholder="Search username, name, or email..."
+            style="flex: 1; min-width: 0;"
+            autocomplete="off"
+          />
           <div class="row" style="gap:10px;">
             <button class="btn" id="userSelectAll" type="button">Select All (shown)</button>
             <button class="btn" id="userClearAll" type="button">Clear</button>
           </div>
         </div>
         <div id="userList" class="groupsBox" style="margin-top:10px;"></div>
-        <small>Search and pick specific users to add the target group to.</small>
       </div>
 
       <div class="row maModalActions" style="margin-top:16px;">
@@ -1633,7 +1663,7 @@ editSaveBtn.onclick = async () => {
 
 // Group assignment is handled via the "Assign" button on each row.
 
-// ----- Mass assign modal (adapted from groups page) -----
+// ----- Mass assign modal (same modes/logic as Manage Groups) -----
 const massOverlay = document.getElementById("massOverlay");
 const massCloseBtn = document.getElementById("massCloseBtn");
 const massTitle = document.getElementById("massTitle");
@@ -1643,6 +1673,7 @@ const massSkipBtn = document.getElementById("massSkipBtn");
 
 const massAgencyPane = document.getElementById("massAgencyPane");
 const massGroupPane = document.getElementById("massGroupPane");
+const massTemplatePane = document.getElementById("massTemplatePane");
 const massUsersPane = document.getElementById("massUsersPane");
 
 const agencySearch = document.getElementById("agencySearch");
@@ -1655,6 +1686,11 @@ const sourceGroupList = document.getElementById("sourceGroupList");
 const groupSelectAll = document.getElementById("groupSelectAll");
 const groupClearAll = document.getElementById("groupClearAll");
 
+const templateSearch = document.getElementById("templateSearch");
+const templateList = document.getElementById("templateList");
+const templateSelectAll = document.getElementById("templateSelectAll");
+const templateClearAll = document.getElementById("templateClearAll");
+
 const userSearch = document.getElementById("userSearch");
 const userList = document.getElementById("userList");
 const userSelectAll = document.getElementById("userSelectAll");
@@ -1664,6 +1700,7 @@ let agenciesCache = [];
 // NOTE: groupsCache is used by both the Mutual Aid create form and the mass-assign modal.
 // Use `var` so it's available before this point in the script (no TDZ issues).
 var groupsCache = [];
+let templatesCache = [];
 let usersSearchCache = [];
 let massMode = "agency";
 let massAction = "assign";
@@ -1672,44 +1709,155 @@ let activeMassGroupName = "";
 
 const selectedSourceGroupIds = new Set();
 const selectedUserIds = new Set();
+const selectedTemplateIndices = new Set();
+
+function massGroupLabel(){
+  return displayGroupName(activeMassGroupName) || activeMassGroupId;
+}
 
 function resetMassState() {
   selectedSourceGroupIds.clear();
   selectedUserIds.clear();
+  selectedTemplateIndices.clear();
   agencySearch.value = "";
   sourceGroupSearch.value = "";
+  if (templateSearch) templateSearch.value = "";
   userSearch.value = "";
   usersSearchCache = [];
 }
 
+function updateMassPanes(){
+  const mode = massMode || "agency";
+  massAgencyPane.style.display = mode === "agency" ? "block" : "none";
+  massGroupPane.style.display = mode === "group" ? "block" : "none";
+  if (massTemplatePane) massTemplatePane.style.display = mode === "template" ? "block" : "none";
+  massUsersPane.style.display = mode === "users" ? "block" : "none";
+  setMsg(massMsg, "", true);
+}
+
+function setMassMode(mode){
+  massMode = mode;
+  document.querySelectorAll("#massOverlay .segBtn").forEach(b => {
+    b.classList.toggle("active", b.dataset.mode === mode);
+  });
+  updateMassPanes();
+  if(mode === "agency") renderAgencyList();
+  if(mode === "group") renderSourceGroupList();
+  if(mode === "template") renderTemplateSourceList();
+  if(mode === "users") renderUserList(usersSearchCache);
+}
+
+async function loadTemplatesForMassModal(){
+  try {
+    const res = await fetch("/api/templates");
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error || "Failed to load templates");
+    templatesCache = (Array.isArray(out) ? out : [])
+      .map((t) => ({
+        idx: Number(t?._index),
+        name: String(t?.name || "").trim(),
+        agencySuffix: String(t?.agencySuffix || "").trim().toLowerCase(),
+        groups: Array.isArray(t?.groups)
+          ? t.groups.map((g) => String(g || "").trim()).filter(Boolean)
+          : [],
+      }))
+      .filter((t) => Number.isInteger(t.idx) && t.idx >= 0);
+  } catch (_) {
+    templatesCache = [];
+  }
+}
+
+function getAgencyLabelBySuffix(sfxRaw){
+  const sfx = String(sfxRaw || "").trim().toLowerCase();
+  const agency = (agenciesCache || []).find((a) =>
+    String(a?.suffix || "").trim().toLowerCase() === sfx
+  );
+  if (!agency) return sfx.toUpperCase();
+  const name = String(agency?.name || "").trim();
+  const prefix = String(agency?.groupPrefix || "").trim().toUpperCase();
+  return prefix ? `${name} (${prefix})` : name;
+}
+
+function renderTemplateSourceList(){
+  if (!templateList) return;
+  const needle = String(templateSearch?.value || "").trim().toLowerCase();
+  const activeGroupName = String(activeMassGroupName || "").trim();
+  const items = (templatesCache || [])
+    .slice()
+    .sort((a, b) => {
+      const aa = getAgencyLabelBySuffix(a.agencySuffix);
+      const bb = getAgencyLabelBySuffix(b.agencySuffix);
+      const byAgency = aa.localeCompare(bb);
+      if (byAgency !== 0) return byAgency;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    })
+    .filter((t) => {
+      if (!needle) return true;
+      const n = String(t.name || "").toLowerCase();
+      const a = getAgencyLabelBySuffix(t.agencySuffix).toLowerCase();
+      const s = String(t.agencySuffix || "").toLowerCase();
+      return n.includes(needle) || a.includes(needle) || s.includes(needle);
+    });
+
+  templateList.innerHTML = items.map((t) => {
+    const id = String(t.idx);
+    const checked = selectedTemplateIndices.has(id) ? "checked" : "";
+    const hasGroup = !!(activeGroupName && Array.isArray(t.groups) && t.groups.includes(activeGroupName));
+    const label = `${getAgencyLabelBySuffix(t.agencySuffix)} - ${t.name}`;
+    const rowStyle = hasGroup
+      ? "background: rgba(46, 160, 67, 0.18); border: 1px solid rgba(46, 160, 67, 0.45);"
+      : "background: rgba(248, 81, 73, 0.14); border: 1px solid rgba(248, 81, 73, 0.35);";
+    return `
+      <label class="groupItem" style="${rowStyle}">
+        <input type="checkbox" class="srcTemplateChk" value="${esc(id)}" ${checked} />
+        <span>${esc(label)}</span>
+      </label>
+    `;
+  }).join("") || `<div style="padding:10px; color: var(--muted);">No templates found.</div>`;
+}
+
 function openMassAssign({ groupId, groupName }){
   activeMassGroupId = String(groupId || "");
-  activeMassGroupName = displayGroupName(groupName || "");
+  activeMassGroupName = String(groupName || "").trim();
   massAction = "assign";
-  massTitle.textContent = `Mass Assign — ${activeMassGroupName}`;
+  massTitle.textContent = `Mass Assign — ${massGroupLabel()}`;
   massApplyBtn.textContent = "Mass Assign";
   setMsg(massMsg, "", true);
   resetMassState();
+  setMassMode("agency");
   massOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
 
-  // load caches if empty
-  Promise.all([loadAgencies(), loadGroups()]).catch(()=>{});
+  Promise.all([loadAgencies(), loadGroups(), loadTemplatesForMassModal()])
+    .then(() => {
+      renderAgencyList();
+      renderSourceGroupList();
+      renderTemplateSourceList();
+      renderUserList([]);
+    })
+    .catch(()=>{});
 }
 
 function openMassUnassign({ groupId, groupName }){
   activeMassGroupId = String(groupId || "");
-  activeMassGroupName = displayGroupName(groupName || "");
+  activeMassGroupName = String(groupName || "").trim();
   massAction = "unassign";
-  massTitle.textContent = `Mass Unassign — ${activeMassGroupName}`;
+  massTitle.textContent = `Mass Unassign — ${massGroupLabel()}`;
   massApplyBtn.textContent = "Mass Unassign";
   setMsg(massMsg, "", true);
   resetMassState();
+  setMassMode("agency");
   massOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
 
-  // load caches if empty
-  Promise.all([loadAgencies(), loadGroups()]).catch(()=>{});
+  Promise.all([loadAgencies(), loadGroups(), loadTemplatesForMassModal()])
+    .then(() => {
+      renderAgencyList();
+      renderSourceGroupList();
+      renderTemplateSourceList();
+      renderUserList([]);
+    })
+    .catch(()=>{});
 }
 
 function closeMassAssign(){
@@ -1720,20 +1868,7 @@ function closeMassAssign(){
 massCloseBtn.onclick = closeMassAssign;
 massSkipBtn.onclick = closeMassAssign;
 
-function setMassMode(mode){
-  massMode = mode;
-  document.querySelectorAll(".segBtn").forEach(b => {
-    b.classList.toggle("active", b.dataset.mode === mode);
-  });
-  massAgencyPane.style.display = mode === "agency" ? "block" : "none";
-  massGroupPane.style.display = mode === "group" ? "block" : "none";
-  massUsersPane.style.display = mode === "users" ? "block" : "none";
-  if(mode === "agency") renderAgencyList();
-  if(mode === "group") renderSourceGroupList();
-  if(mode === "users") renderUserList(usersSearchCache);
-}
-
-document.querySelectorAll(".segBtn").forEach(b => {
+document.querySelectorAll("#massOverlay .segBtn").forEach(b => {
   b.onclick = () => setMassMode(b.dataset.mode);
 });
 
@@ -1788,6 +1923,7 @@ async function loadGroups(){
 function renderSourceGroupList(){
   const needle = String(sourceGroupSearch.value||"").trim().toLowerCase();
   const items = groupsCache
+    .filter(g => String(g.pk) !== String(activeMassGroupId))
     .slice()
     .sort((a,b)=>displayGroupName(a.name).localeCompare(displayGroupName(b.name)))
     .filter(g => {
@@ -1799,33 +1935,66 @@ function renderSourceGroupList(){
   sourceGroupList.innerHTML = items.map(g => {
     const id = String(g.pk);
     const label = displayGroupName(g.name);
+    const checked = selectedSourceGroupIds.has(id) ? "checked" : "";
     return `
       <label class="groupItem">
-        <input type="checkbox" class="srcGroupChk" value="${esc(id)}" />
+        <input type="checkbox" class="srcGroupChk" value="${esc(id)}" ${checked} />
         <span>${esc(label)}</span>
       </label>
     `;
   }).join("") || `<div style="padding:10px; color: var(--muted);">No groups found.</div>`;
-
-  // Restore selections
-  sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(ch => {
-    if(selectedSourceGroupIds.has(String(ch.value))) ch.checked = true;
-    ch.onchange = () => {
-      if(ch.checked) selectedSourceGroupIds.add(String(ch.value));
-      else selectedSourceGroupIds.delete(String(ch.value));
-    };
-  });
 }
 
 sourceGroupSearch.oninput = () => renderSourceGroupList();
 groupSelectAll.onclick = () => {
-  sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(ch => { ch.checked = true; selectedSourceGroupIds.add(String(ch.value)); });
+  sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(ch => {
+    const id = String(ch.value || "").trim();
+    if (id) selectedSourceGroupIds.add(id);
+  });
+  renderSourceGroupList();
 };
 groupClearAll.onclick = () => {
-  sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(ch => { ch.checked = false; });
   selectedSourceGroupIds.clear();
+  renderSourceGroupList();
 };
 
+sourceGroupList.addEventListener("change", (e) => {
+  const t = e.target;
+  if (!(t && t.classList && t.classList.contains("srcGroupChk"))) return;
+  const id = String(t.value || "").trim();
+  if (!id) return;
+  if (t.checked) selectedSourceGroupIds.add(id);
+  else selectedSourceGroupIds.delete(id);
+});
+
+if (templateSearch) {
+  templateSearch.oninput = renderTemplateSourceList;
+}
+if (templateSelectAll) {
+  templateSelectAll.onclick = () => {
+    templateList.querySelectorAll("input.srcTemplateChk").forEach((c) => {
+      const id = String(c.value || "").trim();
+      if (id) selectedTemplateIndices.add(id);
+    });
+    renderTemplateSourceList();
+  };
+}
+if (templateClearAll) {
+  templateClearAll.onclick = () => {
+    selectedTemplateIndices.clear();
+    renderTemplateSourceList();
+  };
+}
+if (templateList) {
+  templateList.addEventListener("change", (e) => {
+    const t = e.target;
+    if (!(t && t.classList && t.classList.contains("srcTemplateChk"))) return;
+    const id = String(t.value || "").trim();
+    if (!id) return;
+    if (t.checked) selectedTemplateIndices.add(id);
+    else selectedTemplateIndices.delete(id);
+  });
+}
 
 function renderUserList(users){
   userList.innerHTML = (users || []).map(u => {
@@ -1842,16 +2011,16 @@ function renderUserList(users){
       </label>
     `;
   }).join("") || `<div style="padding:10px; color: var(--muted);">No users loaded.</div>`;
-
-  userList.querySelectorAll("input.userChk").forEach(ch => {
-    ch.onchange = () => {
-      const id = String(ch.value || "").trim();
-      if (!id) return;
-      if (ch.checked) selectedUserIds.add(id);
-      else selectedUserIds.delete(id);
-    };
-  });
 }
+
+userList.addEventListener("change", (e) => {
+  const t = e.target;
+  if (!(t && t.classList && t.classList.contains("userChk"))) return;
+  const id = String(t.value || "").trim();
+  if (!id) return;
+  if (t.checked) selectedUserIds.add(id);
+  else selectedUserIds.delete(id);
+});
 
 let userSearchT = null;
 userSearch.oninput = () => {
@@ -1877,7 +2046,6 @@ userSearch.oninput = () => {
 };
 
 userSelectAll.onclick = () => {
-  // Add all shown users to the persistent selection set
   usersSearchCache.forEach(u => {
     const id = String(u.pk || "").trim();
     if (id) selectedUserIds.add(id);
@@ -1889,9 +2057,29 @@ userClearAll.onclick = () => {
   renderUserList(usersSearchCache);
 };
 
+const fmtMassElapsed = (ms) => {
+  const sec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+};
+
+const templateBulkPhaseLabel = (phase) => {
+  switch (String(phase || "")) {
+    case "queued": return "Preparing";
+    case "updating_templates": return "Updating templates";
+    case "loading_groups": return "Loading groups";
+    case "fetching_users": return "Loading users";
+    case "matching": return "Matching users";
+    case "applying": return "Applying changes";
+    default: return "In progress";
+  }
+};
+
 massApplyBtn.onclick = async () => {
   if(!activeMassGroupId){ setMsg(massMsg, "Missing target group", false); return; }
   const actionVerb = massAction === "unassign" ? "unassign" : "assign";
+  const groupLabel = massGroupLabel();
   setMsg(massMsg, "", true);
 
   const mode = massMode || "agency";
@@ -1900,31 +2088,104 @@ massApplyBtn.onclick = async () => {
   if(mode === "agency"){
     const suffixes = Array.from(agencyList.querySelectorAll("input.agencyChk:checked")).map(ch => String(ch.value));
     if (!suffixes.length) return setMsg(massMsg, "Select one or more agencies.", false);
-    if (!confirm(`Mass ${actionVerb} "${activeMassGroupName}" ${actionVerb === "assign" ? "to" : "from"} all users in ${suffixes.length} agency suffix(es)?`)) return;
+    if (!confirm(`Mass ${actionVerb} "${groupLabel}" ${actionVerb === "assign" ? "to" : "from"} all users in ${suffixes.length} agency suffix(es)?`)) return;
     payload.suffixes = suffixes;
   }
 
   if(mode === "group"){
     const sourceGroupIds = Array.from(selectedSourceGroupIds);
     if (!sourceGroupIds.length) return setMsg(massMsg, "Select one or more source groups.", false);
-    if (!confirm(`Mass ${actionVerb} "${activeMassGroupName}" ${actionVerb === "assign" ? "to" : "from"} users already in ${sourceGroupIds.length} selected group(s)?`)) return;
+    if (!confirm(`Mass ${actionVerb} "${groupLabel}" ${actionVerb === "assign" ? "to" : "from"} users already in ${sourceGroupIds.length} selected group(s)?`)) return;
     payload.sourceGroupIds = sourceGroupIds;
   }
 
   if(mode === "users"){
     const userIds = Array.from(selectedUserIds);
     if (!userIds.length) return setMsg(massMsg, "Select one or more users.", false);
-    if (!confirm(`Mass ${actionVerb} "${activeMassGroupName}" ${actionVerb === "assign" ? "to" : "from"} ${userIds.length} user(s)?`)) return;
+    if (!confirm(`Mass ${actionVerb} "${groupLabel}" ${actionVerb === "assign" ? "to" : "from"} ${userIds.length} user(s)?`)) return;
     payload.userIds = userIds;
   }
 
+  if (mode === "template") {
+    const templateIndices = Array.from(selectedTemplateIndices);
+    if (!templateIndices.length) return setMsg(massMsg, "Select one or more templates.", false);
+    const tplVerb = massAction === "unassign" ? "remove" : "add";
+    if (!confirm(`${tplVerb === "add" ? "Add" : "Remove"} "${groupLabel}" ${tplVerb === "add" ? "to" : "from"} ${templateIndices.length} template(s)?`)) return;
+
+    const startedAt = Date.now();
+    setMsg(massMsg, `Preparing... 0 of ? • 0:00`, "progress");
+
+    try {
+      const startRes = await fetch("/api/templates/bulk-group-update/start", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          action: tplVerb,
+          groupName: activeMassGroupName,
+          templateIndices,
+        })
+      });
+      const startOut = await startRes.json();
+      if (!startRes.ok || !startOut?.jobId) {
+        return setMsg(massMsg, startOut.error || "Template update failed", false);
+      }
+
+      let done = false;
+      while (!done) {
+        const statusRes = await fetch(`/api/templates/bulk-jobs/${encodeURIComponent(startOut.jobId)}`);
+        const statusOut = await statusRes.json();
+        if (!statusRes.ok || !statusOut.success) {
+          throw new Error(statusOut.error || "Failed to read template update status");
+        }
+
+        const total = Number(statusOut.total || 0);
+        const processed = Number(statusOut.processed || 0);
+        const matched = Number(statusOut.matched || 0);
+        const elapsedMs = Date.now() - startedAt;
+        const phase = String(statusOut.phase || "");
+        const phaseLabel = templateBulkPhaseLabel(phase);
+
+        if (statusOut.status === "running") {
+          const totalLabel = total > 0 ? String(total) : "?";
+          let detail = `${processed} of ${totalLabel}`;
+          if (phase === "fetching_users" || phase === "matching" || phase === "applying") {
+            detail += ` • ${matched} user${matched === 1 ? "" : "s"} matched`;
+          }
+          if (phase === "applying" && Number(statusOut.updated || 0) > 0) {
+            detail += ` • ${Number(statusOut.updated || 0)} updated`;
+          }
+          setMsg(massMsg, `${phaseLabel}... ${detail} • ${fmtMassElapsed(elapsedMs)}`, "progress");
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+
+        if (statusOut.status === "failed") {
+          setMsg(massMsg, statusOut.error || "Template update failed", false);
+          done = true;
+          continue;
+        }
+
+        await loadTemplatesForMassModal();
+        renderTemplateSourceList();
+        const result = statusOut.result || {};
+        const sync = result.currentTemplateSync && typeof result.currentTemplateSync === "object"
+          ? result.currentTemplateSync
+          : {};
+        const syncMsg = ` Users matched: ${Number(sync.matched || statusOut.matched || 0)}, updated: ${Number(sync.updated || statusOut.updated || 0)}, groups updated: ${Number(sync.groupsUpdated || statusOut.groupsUpdated || 0)}.`;
+        setMsg(
+          massMsg,
+          `Updated ${Number(result.updated || statusOut.templatesUpdated || 0)} template(s). Skipped ${Number(result.skipped || statusOut.templatesSkipped || 0)}.${syncMsg} • ${fmtMassElapsed(elapsedMs)}`,
+          true
+        );
+        done = true;
+      }
+    } catch (e) {
+      return setMsg(massMsg, e?.message || "Template update failed", false);
+    }
+    return;
+  }
+
   const startEndpoint = massAction === "unassign" ? "/api/groups/mass-unassign/start" : "/api/groups/mass-assign/start";
-  const fmtElapsed = (ms) => {
-    const sec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
-  };
 
   try {
     const startRes = await fetch(startEndpoint, {
@@ -1966,7 +2227,7 @@ massApplyBtn.onclick = async () => {
           phase === "applying" ? "Applying changes" :
           "In Progress";
         const totalLabel = total > 0 ? String(total) : "?";
-        setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtElapsed(elapsedMs)}`, "progress");
+        setMsg(massMsg, `${phaseLabel}... ${processed} of ${totalLabel} • ${fmtMassElapsed(elapsedMs)}`, "progress");
         await new Promise(r => setTimeout(r, 800));
         continue;
       }
@@ -1980,7 +2241,7 @@ massApplyBtn.onclick = async () => {
       const result = statusOut.result || {};
       setMsg(
         massMsg,
-        `Completed. Matched ${Number(result.matched || 0)} user(s). Updated ${Number(result.updated || 0)}. • ${fmtElapsed(elapsedMs)}`,
+        `Completed. Matched ${Number(result.matched || 0)} user(s). Updated ${Number(result.updated || 0)}. • ${fmtMassElapsed(elapsedMs)}`,
         true
       );
       done = true;
@@ -2288,7 +2549,7 @@ maCreateBtn.onclick = async () => {
     await loadList();
 
     if (groupMode !== "existing") {
-      openMassAssign({ groupId: item.groupId, groupName: displayGroupName(item.groupName) });
+      openMassAssign({ groupId: item.groupId, groupName: item.groupName });
     }
   } catch (e){
     setMsg(maCreateMsg, e.message || String(e), false);

@@ -5,7 +5,6 @@ const agenciesSvc = require("../services/agencies.service");
 const auditSvc = require("../services/auditLog.service");
 const auditDetails = require("../services/auditDetails.service");
 const usersSvc = require("../services/users.service");
-const mutualAidStore = require("../services/mutualAid.store");
 
 // In-memory progress jobs for bulk template group updates.
 const templateBulkJobs = new Map();
@@ -29,9 +28,6 @@ async function runBulkTemplateGroupUpdate({
   const normalizedGroupName = String(groupName || "").trim();
   if (!normalizedGroupName) {
     throw new Error("Group name is required.");
-  }
-  if (mutualAidStore.isCreatedGroupName(normalizedGroupName)) {
-    throw new Error("Mutual aid groups cannot be added to templates.");
   }
 
   const indices = Array.isArray(templateIndices)
@@ -194,19 +190,9 @@ function normalizeTemplate(t) {
     agencySuffix: String(t.agencySuffix || "").trim().toLowerCase(),
     colorOverride: normalizeColorOverride(t.colorOverride),
     role: role || "Team Member",
-    groups: mutualAidStore.stripCreatedGroupNames(rawGroups),
+    groups: rawGroups,
     isDefault: !!t.isDefault
   };
-}
-
-function assertTemplateGroupsAllowed(groups) {
-  const list = Array.isArray(groups) ? groups : [];
-  const blocked = list.filter((g) => mutualAidStore.isCreatedGroupName(g));
-  if (blocked.length) {
-    const err = new Error("Templates cannot include mutual aid groups.");
-    err.status = 400;
-    throw err;
-  }
 }
 
 router.get("/", (req, res) => {
@@ -353,9 +339,8 @@ router.post("/", (req, res) => {
   let t;
   try {
     t = normalizeTemplate(req.body || {});
-    assertTemplateGroupsAllowed(req.body?.groups);
   } catch (err) {
-    return res.status(err.status || 400).json({ error: err.message || "Invalid template groups" });
+    return res.status(err.status || 400).json({ error: err.message || "Invalid template" });
   }
   const authUser = req.authentikUser || null;
 
@@ -420,9 +405,8 @@ router.put("/:index", async (req, res) => {
   let t;
   try {
     t = normalizeTemplate(req.body || {});
-    assertTemplateGroupsAllowed(req.body?.groups);
   } catch (err) {
-    return res.status(err.status || 400).json({ error: err.message || "Invalid template groups" });
+    return res.status(err.status || 400).json({ error: err.message || "Invalid template" });
   }
 
   if (t.agencySuffix && !accessSvc.isSuffixAllowed(authUser, t.agencySuffix)) {

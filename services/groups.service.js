@@ -910,14 +910,22 @@ async function getDeleteImpact(groupId) {
     return gs.includes(id);
   }).length;
 
-  // Templates affected (by group name)
+  // Templates affected (by group name; allow tak_ prefix variants)
   const templates = templatesStore.load();
+  const groupNameKey = groupName.toLowerCase();
+  const groupNameWithoutTak = stripTakPrefix(groupName).toLowerCase();
   const templatesAffected = templates
     .map((t, index) => ({
       index,
       name: String(t.name || ""),
       agencySuffix: String(t.agencySuffix || ""),
-      has: Array.isArray(t.groups) && t.groups.includes(groupName)
+      has: Array.isArray(t.groups) && t.groups.some((g) => {
+        const raw = String(g || "").trim();
+        if (!raw) return false;
+        const key = raw.toLowerCase();
+        if (key === groupNameKey) return true;
+        return stripTakPrefix(raw).toLowerCase() === groupNameWithoutTak;
+      })
     }))
     .filter(x => x.has)
     .map(x => ({ index: x.index, name: x.name, agencySuffix: x.agencySuffix }));
@@ -940,6 +948,16 @@ async function deleteGroupWithCleanup(groupId, opts = {}) {
 
   const impact = await getDeleteImpact(id);
   const groupName = impact.groupName;
+  const groupNameKey = String(groupName || "").trim().toLowerCase();
+  const groupNameWithoutTak = stripTakPrefix(groupName).toLowerCase();
+
+  function templateGroupMatches(storedName) {
+    const raw = String(storedName || "").trim();
+    if (!raw || !groupNameKey) return false;
+    const key = raw.toLowerCase();
+    if (key === groupNameKey) return true;
+    return stripTakPrefix(raw).toLowerCase() === groupNameWithoutTak;
+  }
 
   // NOTE:
   // We do NOT manually strip this group from every user.
@@ -953,9 +971,9 @@ async function deleteGroupWithCleanup(groupId, opts = {}) {
 
   const updatedTemplates = templates.map(t => {
     const groups = Array.isArray(t.groups) ? t.groups : [];
-    if (!groupName || !groups.includes(groupName)) return t;
+    if (!groupName || !groups.some(templateGroupMatches)) return t;
 
-    const nextGroups = groups.filter(g => g !== groupName);
+    const nextGroups = groups.filter(g => !templateGroupMatches(g));
     templatesUpdated++;
 
     if (nextGroups.length === 0) templatesNowEmpty++;
