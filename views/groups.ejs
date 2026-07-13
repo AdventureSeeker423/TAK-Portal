@@ -1308,6 +1308,18 @@ createBtn.onclick = async () => {
   // Enforce tak_ prefix
   name = ensureTakPrefix(name);
 
+  // Global groups cannot use the mutual-aid reserved prefix
+  if (type === "generic") {
+    const withoutTak = stripTakPrefix(name).toLowerCase();
+    if (withoutTak.startsWith("ma -")) {
+      return setMsg(
+        createMsg,
+        'Global groups cannot start with "MA -". Create mutual aid groups from the Mutual Aid page.',
+        false
+      );
+    }
+  }
+
   if (!confirm(`Create group "${name}"?`)) return;
 
   // Derive group type metadata for auditing
@@ -1878,6 +1890,19 @@ editGroupSaveBtn.onclick = async () => {
   if (!newName) {
     setMsg(editGroupMsg, "Invalid group name.", false);
     return;
+  }
+
+  // Global groups cannot use the mutual-aid reserved prefix
+  if (type === "generic") {
+    const withoutTak = stripTakPrefix(newName).toLowerCase();
+    if (withoutTak.startsWith("ma -")) {
+      setMsg(
+        editGroupMsg,
+        'Global groups cannot start with "MA -". Create mutual aid groups from the Mutual Aid page.',
+        false
+      );
+      return;
+    }
   }
 
   const privateUnchanged = (newPrivate === null) || (newPrivate === editGroupCurrentPrivate);

@@ -288,6 +288,17 @@ router.post("/", async (req, res) => {
 
     const groupTypeDetail = String(req.body?.groupTypeDetail || "").trim() || null;
 
+    // Global groups cannot use the mutual-aid reserved "MA -" prefix
+    if (groupType === "Global") {
+      const lower = String(nameWithoutTak || "").toLowerCase();
+      if (lower.startsWith(MUTUAL_AID_GROUP_PREFIX)) {
+        return res.status(400).json({
+          error:
+            'Global groups cannot start with "MA -". Create mutual aid groups from the Mutual Aid page.',
+        });
+      }
+    }
+
     const createdBy = authUser
       ? {
           username: authUser.username,
