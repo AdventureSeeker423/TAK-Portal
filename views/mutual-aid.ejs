@@ -1373,14 +1373,31 @@ function splitServerNameForFlyer(serverName) {
   return { orgName: raw, orgA: raw, orgB: "" };
 }
 
+/** Human-readable placeholders for CALLSIGN_FORMAT_EXPRESSION (matches settings.ejs fields). */
+const CALLSIGN_FORMAT_LABELS = {
+  stateAbbreviation: "State",
+  county: "County",
+  countyAbbreviation: "CountyAbbrev",
+  agencyAbbreviation: "Agency",
+  agencyTypeCode: "AgencyType",
+  firstName: "FirstName",
+  firstInitial: "FirstInitial",
+  lastNameUpper: "LastName",
+  lastName: "LastName",
+  lastInitial: "LastInitial",
+  badgeNumber: "RadioID",
+  radioCallsignOrBlank: "RadioCallsign",
+};
+
 function readableCallsignFormat(expression) {
   const expr = String(expression || "").trim();
   if (!expr) return "Agency-LastName-RadioID";
-  return expr
-    .replace(/\{\{\s*agencyAbbreviation\s*\}\}/gi, "Agency")
-    .replace(/\{\{\s*lastNameUpper\s*\}\}/gi, "LastName")
-    .replace(/\{\{\s*badgeNumber\s*\}\}/gi, "RadioID")
-    .replace(/\{\{\s*[^}]+\s*\}\}/g, "X");
+  return expr.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const label = CALLSIGN_FORMAT_LABELS[key];
+    if (label) return label;
+    // Unknown token: keep a readable hint instead of collapsing to "X"
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  });
 }
 
 function markdownToFlyerPlainText(md) {
