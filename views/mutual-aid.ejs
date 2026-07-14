@@ -50,10 +50,9 @@
         <input id="maExpireAt" type="datetime-local" />
       </label>
 
-      <label class="createMaField createMaField--submit">
-        <span class="createMaBtnSpacer" aria-hidden="true">&nbsp;</span>
+      <div class="createMaField createMaField--submit">
         <button class="btn" id="maCreateBtn" type="button">Create New Mutual Aid</button>
-      </label>
+      </div>
     </div>
 
     <div id="maCreateMsg" class="msg" style="margin-top:10px;"></div>
@@ -152,8 +151,8 @@
     overflow-wrap: normal;
   }
 
-  .createMaFields {
-    align-items: flex-end !important;
+  .row.createMaFields {
+    align-items: flex-end;
     flex-wrap: wrap;
     gap: 12px;
     width: 100%;
@@ -189,11 +188,8 @@
   }
   .createMaField--submit {
     flex: 0 0 auto;
-  }
-  .createMaField--submit .createMaBtnSpacer {
-    visibility: hidden;
-    line-height: 1.2;
-    user-select: none;
+    align-self: flex-end;
+    justify-content: flex-end;
   }
   .createMaField--submit .btn {
     width: auto;
