@@ -11,8 +11,8 @@
   <div class="card">
     <h2>Create Mutual Aid</h2>
 
-    <div class="row" style="align-items: flex-end;">
-      <label style="min-width: 140px;">Type
+    <div class="row createMaFields">
+      <label class="createMaField createMaField--type">Type
         <select id="maType">
           <option value="INCIDENT" selected>Incident</option>
           <option value="EVENT">Event</option>
@@ -20,37 +20,37 @@
         </select>
       </label>
 
-      <label style="min-width: 240px;">Title
+      <label class="createMaField createMaField--title">Title
         <input
           id="maTitle"
           placeholder="Title (ex. County Fair, Search, etc...)"
         />
       </label>
 
-      <label id="maExpireWrap" style="min-width: 120px;">Expires
+      <label id="maExpireWrap" class="createMaField createMaField--expire">Expires
         <select id="maExpireEnabled">
           <option value="no" selected>No</option>
           <option value="yes">Yes</option>
         </select>
       </label>
 
-      <label id="maExpireAtWrap" style="display:none; min-width: 220px;">Expire At
+      <label id="maExpireAtWrap" class="createMaField createMaField--expireAt" style="display:none;">Expire At
         <input id="maExpireAt" type="datetime-local" />
       </label>
 
-      <label style="min-width: 200px;">Group
+      <label class="createMaField createMaField--group">Group
         <select id="maGroupMode">
           <option value="new" selected>Create New Group</option>
           <option value="existing">Use Existing Group</option>
         </select>
       </label>
 
-      <label id="maExistingGroupWrap" style="display:none; min-width: 260px; flex-direction: column;">
+      <label id="maExistingGroupWrap" class="createMaField createMaField--existing" style="display:none;">
         Existing Group
         <select id="maExistingGroup"></select>
       </label>
 
-      <button class="btn" id="maCreateBtn" type="button">Create New Mutual Aid</button>
+      <button class="btn createMaField createMaField--submit" id="maCreateBtn" type="button">Create New Mutual Aid</button>
     </div>
 
     <div id="maCreateMsg" class="msg" style="margin-top:10px;"></div>
@@ -149,6 +149,48 @@
     overflow-wrap: normal;
   }
 
+  .createMaFields {
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+    width: 100%;
+  }
+  .createMaField {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .createMaField select,
+  .createMaField input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .createMaField--type {
+    flex: 0 1 140px;
+  }
+  .createMaField--title {
+    flex: 1.4 1 200px;
+  }
+  .createMaField--expire {
+    flex: 0 1 120px;
+  }
+  .createMaField--expireAt {
+    flex: 0 1 220px;
+  }
+  .createMaField--group {
+    flex: 1.1 1 200px;
+  }
+  .createMaField--existing {
+    flex: 1.3 1 240px;
+  }
+  .createMaField--submit {
+    flex: 0 0 auto;
+    align-self: flex-end;
+    display: inline-flex;
+    width: auto;
+  }
+
   .btn.maAddUser {
     background: #ea580c;
     border-color: #ea580c;
@@ -210,8 +252,21 @@
   }
 
 @media (max-width: 900px) {
-  #maCreateBtn {
+  .createMaField--type,
+  .createMaField--title,
+  .createMaField--expire,
+  .createMaField--expireAt,
+  .createMaField--group,
+  .createMaField--existing,
+  .createMaField--submit {
+    flex: 1 1 100%;
+  }
+  .createMaField--submit {
     width: 100%;
+  }
+  .createMaField--submit.btn {
+    width: 100% !important;
+    justify-content: center;
   }
 }
 
@@ -907,7 +962,7 @@ let activeItem = null;
 function updateCreateExpireUi(){
   // Expiration is supported for both EVENT and INCIDENT.
   const enabled = String(maExpireEnabled.value || "").toLowerCase() === "yes";
-  if (maExpireAtWrap) maExpireAtWrap.style.display = enabled ? "" : "none";
+  if (maExpireAtWrap) maExpireAtWrap.style.display = enabled ? "flex" : "none";
   if (!enabled && maExpireAt) maExpireAt.value = "";
 }
 maType.onchange = updateCreateExpireUi;
@@ -963,7 +1018,7 @@ function renderExistingGroupSelect() {
 function updateCreateGroupModeUi() {
   const mode = String(maGroupMode?.value || "new").toLowerCase();
   const isExisting = mode === "existing";
-  // Use flex so the "Existing Group" label sits above the dropdown.
+  // Use flex so Existing Group participates in the full-width field row.
   if (maExistingGroupWrap) maExistingGroupWrap.style.display = isExisting ? "flex" : "none";
 
   if (isExisting) {
