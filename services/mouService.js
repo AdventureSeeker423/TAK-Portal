@@ -455,6 +455,25 @@ function getActiveSignInviteForAgency({ mouId, agencyId }) {
   );
 }
 
+function getUsedSignInviteForAgency({ mouId, agencyId, version }) {
+  const safeMouId = normalizeText(mouId);
+  const safeAgencyId = normalizeAgencySuffix(agencyId);
+  const safeVersion = version == null || version === "" ? null : normalizeVersion(version);
+  return (
+    getSignInvitesStore()
+      .items.filter((item) => {
+        if (normalizeText(item?.mouId) !== safeMouId) return false;
+        if (normalizeAgencySuffix(item?.agencyId) !== safeAgencyId) return false;
+        if (!item?.usedAt) return false;
+        if (safeVersion != null && normalizeVersion(item?.version) !== safeVersion) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => String(b.usedAt || "").localeCompare(String(a.usedAt || "")))[0] || null
+  );
+}
+
 function createSignInvite({ mouId, agencyId, version, recipientEmail, actor }) {
   revokeActiveSignInvitesForAgency({ mouId, agencyId, reason: "replaced" });
   const token = genSignInviteToken();
@@ -2979,6 +2998,7 @@ function signVersion({
   customFieldValues,
   signatureDataUrl,
   uploadedSignedCopyFile,
+  signerEmail,
   ip,
   userAgent,
 }) {
@@ -3047,6 +3067,7 @@ function signVersion({
     signerUserId: normalizeText(signerUserId) || null,
     signerDisplayName: safeSigner,
     signerStatusAtSign: safeStatus,
+    signerEmail: normalizeText(signerEmail) || null,
     signedAt,
     ip: normalizeText(ip) || null,
     userAgent: normalizeText(userAgent) || null,
@@ -3479,6 +3500,7 @@ module.exports = {
   buildExternalSignPath,
   createSignInvite,
   getActiveSignInviteForAgency,
+  getUsedSignInviteForAgency,
   getSignInviteByToken,
   getSignInviteByCompletionToken,
   resolveValidSignInvite,

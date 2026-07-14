@@ -762,6 +762,205 @@ async function sendSignedNotificationToGlobalAdmins({
   return result;
 }
 
+async function lookupAuthentikUserEmail(userIdOrUsername) {
+  const key = String(userIdOrUsername || "").trim();
+  if (!key) return "";
+
+  try {
+    const user = await usersSvc.getUserById(key);
+    const email = String(user?.email || "").trim();
+    if (email) return email;
+  } catch {
+    // Not a user pk; fall through to search.
+  }
+
+  try {
+    const resp = await authentik.get(
+      `/core/users/?search=${encodeURIComponent(key)}`
+    );
+    const results = Array.isArray(resp.data?.results) ? resp.data.results : [];
+    const match =
+      results.find(
+        (user) =>
+          String(user?.pk || "") === key ||
+          String(user?.uid || "") === key ||
+          String(user?.username || "").trim().toLowerCase() === key.toLowerCase()
+      ) || null;
+    return String(match?.email || "").trim();
+  } catch (err) {
+    console.warn(
+      "[mou-scheduler] signer email lookup failed:",
+      key,
+      err?.message || err
+    );
+    return "";
+  }
+}
+
+async function resolveOriginalSignerEmail({ stream, signature, version }) {
+  const stored = String(signature?.signerEmail || "").trim();
+  if (stored) return stored;
+
+  const fromUser = await lookupAuthentikUserEmail(signature?.signerUserId);
+  if (fromUser) return fromUser;
+
+  const usedInvite = mouService.getUsedSignInviteForAgency({
+    mouId: stream?.mouId,
+    agencyId: signature?.agencyId,
+    version: version?.version,
+  });
+  const inviteEmail = String(usedInvite?.recipientEmail || "").trim();
+  if (inviteEmail) return inviteEmail;
+
+  const assignedEmail = String(
+    mouService.getAgencySigningAssignedAdminEmail(stream, signature?.agencyId) ||
+      ""
+  ).trim();
+  if (assignedEmail) return assignedEmail;
+
+  return "";
+}
+
+async function sendCountersignedNotificationToSigner({
+  stream,
+  version,
+  signature,
+  agency,
+}) {
+  if (!shouldSendMouEmails()) {
+    return { sent: false, skipped: true, reason: "MOU emails are disabled." };
+  }
+
+  const countersignature = signature?.countersignature;
+  if (!countersignature) {
+    return {
+      sent: false,
+      skipped: true,
+      reason: "No countersignature found on the agency document.",
+    };
+  }
+
+  const recipient = await resolveOriginalSignerEmail({
+    stream,
+    signature,
+    version,
+  });
+  if (!recipient) {
+    return {
+      sent: false,
+      skipped: true,
+      reason: "Could not resolve an email address for the original signer.",
+    };
+  }
+
+  const baseUrl = getPortalBaseUrl();
+  const takPortalBlock = buildMouPortalBlock(baseUrl);
+  const agencyName =
+    signature?.agencyNameAtSign ||
+    agency?.name ||
+    agency?.groupPrefix ||
+    signature?.agencyId ||
+    "";
+  const html = renderTemplate("mou_document_countersigned.html", {
+    mouTitle: stream?.title || "",
+    version: version?.version || "",
+    agencyName,
+    signerDisplayName:
+      signature?.attestationText || signature?.signerDisplayName || "Signer",
+    countersignerDisplayName:
+      countersignature?.attestationText ||
+      countersignature?.signerDisplayName ||
+      "Global Administrator",
+    countersignerRole:
+      countersignature?.signerStatusAtSign || "Global Administrator",
+    countersignedAt: countersignature?.signedAt || "",
+    takPortalBlock,
+  });
+  const text = htmlToText(html);
+
+  let attachments;
+  try {
+    const pdfExport = await mouService.getSignedPdfExport({
+      mouId: stream?.mouId,
+      agencyId: signature?.agencyId,
+      version: version?.version,
+    });
+    if (pdfExport?.buffer?.length) {
+      attachments = [
+        {
+          filename: pdfExport.fileName,
+          content: pdfExport.buffer,
+          contentType: pdfExport.contentType || "application/pdf",
+        },
+      ];
+    }
+  } catch (pdfErr) {
+    console.warn(
+      "[mou-scheduler] countersigned PDF attachment unavailable:",
+      pdfErr?.message || pdfErr
+    );
+  }
+
+  const result = await emailSvc.sendMail({
+    to: recipient,
+    subject: `Document Countersigned - ${stream?.title || "Document"} (v${version?.version || ""})`,
+    html,
+    text,
+    attachments,
+  });
+
+  if (result.sent) {
+    auditSvc.logEvent({
+      actor: null,
+      action: "MOU_COUNTERSIGNED_NOTIFICATION_SENT",
+      targetType: "mou",
+      targetId: String(stream?.mouId || ""),
+      agencySuffix: String(signature?.agencyId || "").trim().toLowerCase() || null,
+      details: {
+        mouId: stream?.mouId || "",
+        version: version?.version || null,
+        agencyName,
+        recipient,
+        countersignerDisplayName:
+          countersignature?.attestationText ||
+          countersignature?.signerDisplayName ||
+          "",
+      },
+    });
+  } else if (result.skipped) {
+    auditSvc.logEvent({
+      actor: null,
+      action: "MOU_COUNTERSIGNED_NOTIFICATION_SKIPPED",
+      targetType: "mou",
+      targetId: String(stream?.mouId || ""),
+      agencySuffix: String(signature?.agencyId || "").trim().toLowerCase() || null,
+      details: {
+        mouId: stream?.mouId || "",
+        version: version?.version || null,
+        agencyName,
+        reason: result.reason || "Notification skipped.",
+      },
+    });
+  } else {
+    auditSvc.logEvent({
+      actor: null,
+      action: "MOU_EMAIL_FAILURE",
+      targetType: "mou",
+      targetId: String(stream?.mouId || ""),
+      agencySuffix: String(signature?.agencyId || "").trim().toLowerCase() || null,
+      details: {
+        mouId: stream?.mouId || "",
+        version: version?.version || null,
+        agencyName,
+        recipient,
+        error: result.error || "Failed to send countersigned notification.",
+      },
+    });
+  }
+
+  return { ...result, recipient };
+}
+
 function shouldSendReminder(row) {
   if (!row.lastReminderSentAt) return true;
   const lastMs = new Date(row.lastReminderSentAt).getTime();
@@ -927,6 +1126,7 @@ module.exports = {
   sendExternalSignInviteEmail,
   sendExternalSignedPdfEmail,
   sendSignedNotificationToGlobalAdmins,
+  sendCountersignedNotificationToSigner,
   listAgencyAdminUsersForAssign,
   runReminderSweep,
   startScheduler,

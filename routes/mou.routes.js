@@ -422,6 +422,67 @@ async function resolveSignerStatus(authUser) {
   }
 }
 
+async function resolveSignerEmail(authUser) {
+  try {
+    const userId =
+      (authUser?.uid && String(authUser.uid).trim()) ||
+      (await tokensSvc.getUserIdByUsername(authUser?.username || ""));
+    if (!userId) return "";
+    const fullUser = await usersSvc.getUserById(userId);
+    return String(fullUser?.email || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function triggerCountersignedSignerNotification(req, result) {
+  void Promise.resolve()
+    .then(async () => {
+      const agency = mouService.getAgencyBySuffix(result?.signature?.agencyId);
+      const notifyResult = await mouScheduler.sendCountersignedNotificationToSigner({
+        stream: result?.stream,
+        version: result?.version,
+        signature: result?.signature,
+        agency,
+      });
+      if (notifyResult?.sent) return;
+      if (notifyResult?.skipped) {
+        console.warn("[MOU_COUNTERSIGN] Signer notification skipped", {
+          mouId: result?.stream?.mouId || null,
+          version: result?.version?.version || null,
+          agencyId: result?.signature?.agencyId || null,
+          reason: notifyResult.reason || "Unknown reason",
+        });
+        return;
+      }
+      throw new Error(
+        notifyResult?.error || "Failed to send countersigned notification to signer."
+      );
+    })
+    .catch((notifyErr) => {
+      console.error("[MOU_COUNTERSIGN] Signer notification failure", {
+        mouId: result?.stream?.mouId || null,
+        version: result?.version?.version || null,
+        agencyId: result?.signature?.agencyId || null,
+        error: notifyErr?.message || String(notifyErr || "Unknown notification error"),
+      });
+      auditRequest(req, {
+        action: "MOU_COUNTERSIGNED_NOTIFICATION_FAILED",
+        targetType: "mou",
+        targetId: String(result?.stream?.mouId || ""),
+        agencySuffix: result?.signature?.agencyId || null,
+        details: {
+          mouId: result?.stream?.mouId || "",
+          version: result?.version?.version || null,
+          agencyId: result?.signature?.agencyId || null,
+          error:
+            notifyErr?.message ||
+            String(notifyErr || "Failed to notify original signer of countersignature."),
+        },
+      });
+    });
+}
+
 function buildStreamCard(authUser, stream) {
   const currentVersion = mouService.getCurrentVersion(stream);
   const agencyChoices = resolveSignableAgencyChoices(authUser, stream);
@@ -920,6 +981,7 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
 
     const agency = mouService.getAgencyBySuffix(agencySuffix);
     const signerStatus = await resolveSignerStatus(req.authentikUser);
+    const signerEmail = await resolveSignerEmail(req.authentikUser);
     const result = mouService.signVersion({
       mouId: req.params.mouId,
       version: req.params.version,
@@ -932,6 +994,7 @@ router.post("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission
       customFieldValues: req.body?.customFieldValues,
       signatureDataUrl: req.body?.signatureDataUrl,
       uploadedSignedCopyFile: signMethod === "upload" ? req.file || null : null,
+      signerEmail,
       ...requestMeta(req),
     });
 
@@ -985,6 +1048,7 @@ router.post("/admin/mou/:mouId/signatures/upload/:agencyId", requireMouEnabled, 
 
     const agency = mouService.getAgencyBySuffix(agencySuffix);
     const signerStatus = await resolveSignerStatus(req.authentikUser);
+    const signerEmail = await resolveSignerEmail(req.authentikUser);
     const result = mouService.signVersion({
       mouId: req.params.mouId,
       version: currentVersion.version,
@@ -997,6 +1061,7 @@ router.post("/admin/mou/:mouId/signatures/upload/:agencyId", requireMouEnabled, 
       customFieldValues: req.body?.customFieldValues,
       signatureDataUrl: "",
       uploadedSignedCopyFile: req.file,
+      signerEmail,
       ...requestMeta(req),
     });
 
@@ -1130,6 +1195,8 @@ router.post(
           signMethod,
         },
       });
+
+      triggerCountersignedSignerNotification(req, result);
 
       return res.redirect(
         `/mou?success=${encodeURIComponent(
@@ -2472,6 +2539,9 @@ router.post(
         throw new Error("Attach a PDF or image of the signed document.");
       }
       const agency = mouService.getAgencyBySuffix(invite.agencyId);
+      const signerEmail =
+        normalizeAssignmentEmail(req.body?.signerEmail) ||
+        normalizeAssignmentEmail(invite.recipientEmail);
       const result = mouService.signVersion({
         mouId: stream.mouId,
         version: currentVersion.version,
@@ -2484,6 +2554,7 @@ router.post(
         customFieldValues: req.body?.customFieldValues,
         signatureDataUrl: req.body?.signatureDataUrl,
         uploadedSignedCopyFile: signMethod === "upload" ? req.file || null : null,
+        signerEmail,
         ...requestMeta(req),
       });
 
@@ -2507,9 +2578,6 @@ router.post(
         signMethod === "upload" ? "external_link_upload" : "external_link"
       );
 
-      const signerEmail =
-        normalizeAssignmentEmail(req.body?.signerEmail) ||
-        normalizeAssignmentEmail(invite.recipientEmail);
       if (signerEmail) {
         void mouScheduler
           .sendExternalSignedPdfEmail({

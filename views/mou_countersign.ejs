@@ -113,7 +113,8 @@
         <div class="mouSignSection">
           <div class="mouSignSectionTitle">Countersigner Details</div>
           <div class="mouSignerIntro">
-            By countersigning this document, I affirm that I am authorized to countersign on behalf of the TAK Portal administration for the <%= agencyName %> signed copy.
+            <% const countersignOrgName = String((typeof settings !== "undefined" && settings && settings.SERVER_NAME) || "").trim(); %>
+            By countersigning this document, I affirm that I am authorized to countersign on behalf of <%= countersignOrgName || "the TAK Portal administration" %> for the <%= agencyName %> signed document.
           </div>
 
           <div data-signer-fields hidden>
