@@ -1431,9 +1431,21 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
     if (target && target.style) {
       target.style.width = `${letterW}px`;
       target.style.height = `${letterH}px`;
+      target.style.maxWidth = `${letterW}px`;
+      target.style.overflow = "hidden";
+    }
+    if (idoc.body) {
+      idoc.body.style.margin = "0";
+      idoc.body.style.width = `${letterW}px`;
+      idoc.body.style.height = `${letterH}px`;
+      idoc.body.style.overflow = "hidden";
+    }
+    if (idoc.documentElement) {
+      idoc.documentElement.style.width = `${letterW}px`;
+      idoc.documentElement.style.height = `${letterH}px`;
     }
 
-    const canvas = await window.html2canvas(target, {
+    const captureOpts = {
       scale: 2,
       backgroundColor: "#ffffff",
       useCORS: true,
@@ -1443,6 +1455,10 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       height: letterH,
       windowWidth: letterW,
       windowHeight: letterH,
+      scrollX: 0,
+      scrollY: 0,
+      x: 0,
+      y: 0,
       onclone(clonedDoc) {
         try {
           const style = clonedDoc.createElement("style");
@@ -1452,27 +1468,63 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               letter-spacing: 0 !important;
               word-spacing: normal !important;
             }
+            html, body, #maEnrollmentFlyerRoot {
+              width: ${letterW}px !important;
+              height: ${letterH}px !important;
+              max-width: ${letterW}px !important;
+              overflow: hidden !important;
+              margin: 0 !important;
+            }
+            main {
+              display: grid !important;
+              grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) !important;
+              width: 100% !important;
+            }
+            main > .section {
+              min-width: 0 !important;
+              overflow: hidden !important;
+            }
+            .alert-banner, .alert-banner * {
+              letter-spacing: 0 !important;
+              word-spacing: normal !important;
+              white-space: normal !important;
+              overflow-wrap: break-word !important;
+            }
           `;
           (clonedDoc.head || clonedDoc.documentElement).appendChild(style);
-
-          // html2canvas often collapses regular spaces with custom fonts;
-          // non-breaking spaces keep measurable glyph width.
-          const walk = (node) => {
-            if (!node) return;
-            if (node.nodeType === 3) {
-              node.nodeValue = String(node.nodeValue || "").replace(/ /g, "\u00A0");
-              return;
-            }
-            if (node.nodeType === 1) {
-              Array.from(node.childNodes || []).forEach(walk);
-            }
-          };
-          walk(clonedDoc.body || clonedDoc.documentElement);
         } catch (err) {
           console.warn("[mutual-aid] flyer capture clone harden failed:", err?.message || err);
         }
       },
-    });
+    };
+
+    // Prefer foreignObjectRendering for correct text spacing; fall back if blank/unusable.
+    let canvas = null;
+    try {
+      canvas = await window.html2canvas(target, {
+        ...captureOpts,
+        foreignObjectRendering: true,
+      });
+      if (!canvas || canvas.width < 10 || canvas.height < 10) {
+        throw new Error("foreignObject capture empty");
+      }
+      // Detect a near-blank capture (all white / transparent).
+      const probe = canvas.getContext("2d").getImageData(8, 8, 24, 24).data;
+      let dark = 0;
+      for (let i = 0; i < probe.length; i += 4) {
+        if (probe[i] + probe[i + 1] + probe[i + 2] < 720) dark += 1;
+      }
+      if (dark < 2) throw new Error("foreignObject capture blank");
+    } catch (foErr) {
+      console.warn(
+        "[mutual-aid] flyer foreignObject capture fallback:",
+        foErr?.message || foErr
+      );
+      canvas = await window.html2canvas(target, {
+        ...captureOpts,
+        foreignObjectRendering: false,
+      });
+    }
     return canvas.toDataURL("image/png");
   } finally {
     cleanup();

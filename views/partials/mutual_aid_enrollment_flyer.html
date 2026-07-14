@@ -112,24 +112,27 @@
     padding: 6px 0.48in;
     display: block;
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10.5px;
-    line-height: 1.4;
-    letter-spacing: normal;
+    font-size: 10px;
+    line-height: 1.45;
+    letter-spacing: 0;
     word-spacing: normal;
     white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
     color: #fca5a5;
   }
   .alert-banner strong {
     color: #fff;
-    letter-spacing: normal;
+    letter-spacing: 0;
     font-family: Arial, Helvetica, sans-serif;
   }
   .alert-banner .alert-banner-text {
     display: inline;
     color: #fca5a5;
-    letter-spacing: normal;
+    letter-spacing: 0;
     word-spacing: normal;
     white-space: normal;
+    overflow-wrap: break-word;
     font-family: Arial, Helvetica, sans-serif;
   }
 
@@ -137,16 +140,24 @@
   main {
     flex: 1;
     display: grid;
-    grid-template-columns: 1.05fr 0.95fr;
+    /* Fixed tracks so capture can't collapse the right column */
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
     gap: 0.28in;
     padding: 0.22in 0.48in 0.28in;
     background: #fff;
     color: #000;
     min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
   main * { color: #222; }
 
-  .section { position: relative; background: #fff; }
+  .section {
+    position: relative;
+    background: #fff;
+    min-width: 0;
+    overflow: hidden;
+  }
 
   .section-label {
     font-family: Arial, Helvetica, sans-serif;
