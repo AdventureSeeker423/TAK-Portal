@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.50 - 7/14/26
+✨ `Enhancement` - Mutual Aid - Adds a new "one-pager" as page one of the Mutual Aid document (Design credit to Tom Endress)<br>
+✨ `Enhancement` - Mutual Aid - Enhanced for mobile screen size
+
 ### v1.3.49 - 7/14/26
 ✨ `Enhancement` - MOU Documents - Documents are now (optionally) able to be countersigned by global admins<br>
 ✨ `Enhancement` - MOU Documents - When a document is initially signed the email to the global admin now includes the signed pdf, and when a document is countersigned, the original signer gets an email with the signed pdf.<br>
