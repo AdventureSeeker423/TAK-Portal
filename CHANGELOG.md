@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.51 - 7/14/26
+🐛 `Bug Fix` - Fixes issue with first page of the deployment packet not allowing callsign formats outside of the default configuration
+
 ### v1.3.50 - 7/14/26
 ✨ `Enhancement` - Mutual Aid - Adds a new "one-pager" as page one of the Mutual Aid document (Design credit to Tom Endress)<br>
 ✨ `Enhancement` - Mutual Aid - Enhanced for mobile screen size
