@@ -12,6 +12,11 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.49 - 7/14/26
+✨ `Enhancement` - MOU Documents - Documents are now (optionally) able to be countersigned by global admins<br>
+✨ `Enhancement` - MOU Documents - When a document is initially signed the email to the global admin now includes the signed pdf, and when a document is countersigned, the original signer gets an email with the signed pdf.<br>
+✨ `Enhancement` - MOU Documents - Document archive behavior has been redefined to prevent issues with an archived document conflicting with a new document for the same agency.
+
 ### v1.3.48 - 7/13/26
 ✨ `Enhancement` - Mutual Aid - Cleans up assign and unassign menus to match the groups page by adding templates as an option to deploy a new mutual aid group to<br>
 ✨ `Enhancement` - Groups - Global Groups prevent groups from being created that start with "MA -" to prevent inadvertently creating a false mutual aid group.
