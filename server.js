@@ -718,9 +718,21 @@ app.get("/agencies", requirePermission("page.agencies"), (req, res) =>
   })
 ); //require Global Admin
 app.get("/templates", (req, res) => res.render("templates"));
-app.get("/mutual-aid", requirePermission("page.mutual_aid"), (req, res) =>
-  res.render("mutual-aid")
-); //require Global Admin
+app.get("/mutual-aid", requirePermission("page.mutual_aid"), (req, res) => {
+  let enrollmentFlyerHtml = "";
+  try {
+    enrollmentFlyerHtml = fs.readFileSync(
+      path.join(__dirname, "views", "partials", "mutual_aid_enrollment_flyer.html"),
+      "utf8"
+    );
+  } catch (err) {
+    console.warn(
+      "[mutual-aid] enrollment flyer template missing:",
+      err?.message || err
+    );
+  }
+  res.render("mutual-aid", { enrollmentFlyerHtml });
+}); //require Global Admin
 app.get("/integrations", requirePermission("page.integrations"), (req, res) =>
   res.render("integrations")
 );

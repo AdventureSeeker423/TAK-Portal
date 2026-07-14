@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<!-- Mutual Aid Enrollment Flyer — fill {{TOKEN}} placeholders. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ORG_NAME}} — Mutual Aid Enrollment Flyer</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: letter; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; text-align: left; }
+
+  body,
+  #maEnrollmentFlyerRoot {
+    width: 8.5in;
+    height: 11in;
+    font-family: 'Source Sans 3', sans-serif;
+    background: #fff;
+    color: #222;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .content { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; }
+  #maEnrollmentFlyerRoot.content { height: 11in; }
+
+  /* ── HEADER (stays dark) ── */
+  header {
+    background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%);
+    border-bottom: 3px solid #38bdf8;
+    padding: 0.23in 0.48in;
+    display: flex;
+    align-items: center;
+    gap: 0.2in;
+  }
+  .logo-shield {
+    width: 54px; height: 54px;
+    background: #1e3a5f;
+    border: 2px solid #38bdf8;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700; font-size: 11px; color: #38bdf8;
+    text-align: center; line-height: 1.1;
+    flex-shrink: 0;
+  }
+  .logo-shield span { display: block; font-size: 8px; color: #94a3b8; font-weight: 500; letter-spacing: 1px; }
+  header h1 {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 29px;
+    color: #fff;
+    letter-spacing: 2px;
+    line-height: 1;
+  }
+  header h1 em { font-style: normal; color: #38bdf8; }
+  header p {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+  }
+  .header-badge {
+    margin-left: auto;
+    background: rgba(56,189,248,0.1);
+    border: 1.5px solid #38bdf8;
+    border-radius: 8px;
+    padding: 6px 14px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .header-badge .badge-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #94a3b8;
+    text-transform: uppercase;
+  }
+  .header-badge .badge-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: #38bdf8;
+    letter-spacing: 1px;
+  }
+
+  /* ── ALERT BANNER (stays dark) ── */
+  .alert-banner {
+    background: #0f1b2d;
+    border-top: 1px solid rgba(236,72,72,0.4);
+    border-bottom: 1px solid rgba(236,72,72,0.4);
+    padding: 5px 0.48in;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #fca5a5;
+  }
+  .alert-banner strong { color: #fff; }
+
+  /* ── MAIN (white body + navy accents) ── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 0.28in;
+    padding: 0.22in 0.48in 0.18in;
+    background: #fff;
+    color: #000;
+  }
+  /* Outrank inline style="color:..." inherited from the dark template */
+  main * { color: #222; }
+
+  .section { position: relative; background: #fff; }
+
+  .section-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #1a5276;
+    margin-bottom: 3px;
+  }
+  .section h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 21px;
+    color: #000;
+    margin-bottom: 8px;
+    line-height: 1.1;
+  }
+  .section h2 .step-num { color: #1a5276; letter-spacing: 1px; }
+
+  ol { list-style: none; counter-reset: steps; }
+  ol li {
+    counter-increment: steps;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-bottom: 10px;
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: #222;
+  }
+  .step-text { flex: 1; display: block; color: #222; }
+  ol li::before {
+    content: counter(steps);
+    flex-shrink: 0;
+    width: 22px; height: 22px;
+    background: #eef4fa;
+    border: 1.5px solid #1a5276;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    color: #1a5276;
+    margin-top: 1px;
+  }
+  ol li strong { color: #000; font-weight: 600; }
+
+  p { color: #444; }
+
+  .nav-path {
+    background: #eef4fa;
+    border-radius: 6px;
+    padding: 5px 9px;
+    margin: 4px 0;
+    font-size: 11.5px;
+    color: #333;
+    font-family: 'Rajdhani', sans-serif;
+    border-left: 3px solid #1a5276;
+  }
+  .nav-path * { color: #1a5276; }
+
+  .note-box {
+    background: #eef4fa;
+    border-radius: 6px;
+    padding: 6px 9px;
+    margin-top: 5px;
+    border-left: 3px solid #1a5276;
+    font-size: 11px;
+    color: #333;
+    line-height: 1.4;
+  }
+  .note-box * { color: #333; }
+  .note-box strong { color: #000; }
+  .note-box .highlight { color: #1a5276; font-weight: 600; }
+
+  .note-box-amber {
+    background: #fff8e1;
+    border-radius: 6px;
+    padding: 6px 9px;
+    margin-top: 5px;
+    border-left: 3px solid #f59e0b;
+    font-size: 11px;
+    color: #444;
+    line-height: 1.4;
+  }
+  .note-box-amber * { color: #444; }
+  .note-box-amber strong { color: #7c4700; }
+
+  /* ── QR BLOCK ── */
+  .qr-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 8px 0 6px;
+  }
+  .qr-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    color: #1a5276;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  .qr-container img {
+    width: 182px; height: 182px;
+    border: 3px solid #1a5276;
+    border-radius: 10px;
+    background: #fff;
+    padding: 6px;
+  }
+  .qr-sub {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: #555;
+    letter-spacing: 1px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  /* ── CALLSIGN TABLE ── */
+  .callsign-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    font-size: 11.5px;
+  }
+  .callsign-table th {
+    background: #1e3a5f;
+    color: #fff;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 4px 7px;
+    text-align: left;
+    border-bottom: 1.5px solid #1a5276;
+  }
+  .callsign-table th * { color: #fff; }
+  .callsign-table td {
+    padding: 4px 7px;
+    border-bottom: 1px solid #ddd;
+    color: #000;
+    vertical-align: top;
+  }
+  .callsign-table td * { color: #1a5276; }
+  .callsign-table td span { color: #555; }
+  .callsign-table td strong { color: #1a5276; }
+  .callsign-table tr:last-child td { border-bottom: none; }
+
+  /* ── INFO STRIP (stays dark) ── */
+  .info-strip {
+    background: #132744;
+    border-top: 1px solid rgba(56,189,248,0.2);
+    padding: 0.09in 0.48in;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 0.2in;
+    align-items: center;
+  }
+  .info-strip * { color: #94a3b8; }
+  .info-card { display: flex; gap: 8px; align-items: flex-start; }
+  .info-icon {
+    flex-shrink: 0;
+    width: 22px; height: 22px;
+    background: #1e3a5f;
+    border: 1.5px solid #38bdf8;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    color: #38bdf8;
+    font-size: 11px;
+    margin-top: 1px;
+  }
+  .info-card h3 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 10px;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 1px;
+  }
+  .info-card p { font-size: 10.5px; color: #94a3b8; line-height: 1.35; }
+  .info-card p strong { color: #e0e6ed; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
+
+    header { background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%) !important; border-bottom: 3px solid #38bdf8 !important; }
+    header h1 { color: #fff !important; }
+    header h1 em { color: #38bdf8 !important; }
+    header p { color: #94a3b8 !important; }
+    .header-badge { background: rgba(56,189,248,0.1) !important; border-color: #38bdf8 !important; }
+    .header-badge .badge-label { color: #94a3b8 !important; }
+    .header-badge .badge-value { color: #38bdf8 !important; }
+
+    .alert-banner { background: #0f1b2d !important; color: #fca5a5 !important; }
+    .alert-banner strong { color: #fff !important; }
+
+    main { background: #fff !important; color: #000 !important; }
+    main * { color: #222 !important; }
+    .section { background: #fff !important; }
+    .section-label { color: #1a5276 !important; }
+    .section h2 { color: #000 !important; }
+    .section h2 .step-num { color: #1a5276 !important; }
+
+    ol li { color: #222 !important; }
+    ol li strong { color: #000 !important; }
+    ol li::before { background: #eef4fa !important; border-color: #1a5276 !important; color: #1a5276 !important; }
+    .step-text { color: #222 !important; }
+
+    p { color: #444 !important; }
+
+    .nav-path { background: #eef4fa !important; border-left-color: #1a5276 !important; color: #333 !important; }
+    .nav-path * { color: #1a5276 !important; }
+
+    .note-box { background: #eef4fa !important; border-left-color: #1a5276 !important; color: #333 !important; }
+    .note-box * { color: #333 !important; }
+    .note-box strong { color: #000 !important; }
+    .note-box-amber { background: #fff8e1 !important; border-left-color: #f59e0b !important; color: #444 !important; }
+    .note-box-amber * { color: #444 !important; }
+    .note-box-amber strong { color: #7c4700 !important; }
+
+    .qr-title { color: #1a5276 !important; }
+    .qr-sub { color: #555 !important; }
+    .qr-container img { border-color: #1a5276 !important; }
+
+    .callsign-table th { background: #1e3a5f !important; color: #fff !important; border-color: #1a5276 !important; }
+    .callsign-table th * { color: #fff !important; }
+    .callsign-table td { color: #000 !important; border-color: #ddd !important; }
+    .callsign-table td * { color: #1a5276 !important; }
+    .callsign-table td span { color: #555 !important; }
+
+    .info-strip { background: #132744 !important; border-top-color: rgba(56,189,248,0.2) !important; }
+    .info-strip * { color: #94a3b8 !important; }
+    .info-icon { background: #1e3a5f !important; border-color: #38bdf8 !important; color: #38bdf8 !important; }
+    .info-card h3 { color: #fff !important; }
+    .info-card p strong { color: #e0e6ed !important; }
+  }
+</style>
+</head>
+<body>
+<div class="content" id="maEnrollmentFlyerRoot">
+
+  <header>
+    <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTQiIGhlaWdodD0iOTciIHZpZXdCb3g9IjAgMCA5NCA5NyIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCTxtYXNrIGlkPSJwYXRoLTEtb3V0c2lkZS0xIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSIwIiB5PSIwLjk0NTYxOCIgd2lkdGg9Ijk0IiBoZWlnaHQ9Ijk3IiBmaWxsPSJibGFjayI+CgkJPHJlY3QgZmlsbD0id2hpdGUiIHk9IjAuOTQ1NjE4IiB3aWR0aD0iOTQiIGhlaWdodD0iOTciLz4KCQk8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTY3LjQ0MDYgNzUuNzIxNUM2Mi40OTg2IDgyLjU0OTMgNTYuMDUxOSA4OC45MTAzIDQ3LjY0MzYgOTMuOTU2NUM0Ny41NTQgOTQgNDcuNDE5NSA5NCA0Ny4yODUgOTMuOTU2NUMzOC44ODQxIDg4LjkwNDUgMzIuNDQxNCA4Mi41NDQ4IDI3LjUwMSA3NS43MjE1SDQuNjE0MjhDNC4yMTA4OCA3NS43MjE1IDMuODk3MTIgNzUuMzI5OCA0LjAzMTU5IDc0LjkzODFMMTEuNjUxNCA0OS40MzUyQzExLjc0MSA0OS4xNzQxIDExLjk2NTEgNDkgMTIuMjM0MSA0OUgxNC45NTU1QzExLjMzNzcgMzUuOTcxMyAxMS4yNzIgMjUuMzMwOCAxMS4yOTI4IDIzLjQ5NzFDMTEuMjkyOCAyMy4zMjMgMTEuMzgyNCAyMy4xOTI1IDExLjU2MTcgMjMuMTkyNUMyNy41NjMyIDIxLjkzMDQgNDUuMDg4NyA2LjA0NTQ3IDQ3LjI0MDIgNC4wNDM1NEM0Ny4zNzQ3IDMuOTEyOTggNDcuNTU0IDMuOTEyOTggNDcuNjg4NCA0LjA0MzU0QzQ5LjgzOTkgNi4wNDU0NyA2Ny4zNjU0IDIxLjkzMDQgODMuMzY3IDIzLjE5MjVDODMuNTAxNCAyMy4xOTI1IDgzLjYzNTkgMjMuMzIzIDgzLjYzNTkgMjMuNDk3MUM4My42NTY2IDI1LjMzIDgzLjU5MSAzNS45NzI0IDc5Ljk3NzMgNDlIODIuNzM5NUM4My4wMDg0IDQ5IDgzLjI3NzMgNDkuMTc0MSA4My4zMjIyIDQ5LjQzNTJMOTAuOTQxOSA3NC45MzgxQzkxLjA3NjQgNzUuMzI5OCA5MC44MDc1IDc1LjcyMTUgOTAuMzU5MyA3NS43MjE1SDY3LjQ0MDZaIi8+Cgk8L21hc2s+Cgk8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTY3LjQ0MDYgNzUuNzIxNUM2Mi40OTg2IDgyLjU0OTMgNTYuMDUxOSA4OC45MTAzIDQ3LjY0MzYgOTMuOTU2NUM0Ny41NTQgOTQgNDcuNDE5NSA5NCA0Ny4yODUgOTMuOTU2NUMzOC44ODQxIDg4LjkwNDUgMzIuNDQxNCA4Mi41NDQ4IDI3LjUwMSA3NS43MjE1SDQuNjE0MjhDNC4yMTA4OCA3NS43MjE1IDMuODk3MTIgNzUuMzI5OCA0LjAzMTU5IDc0LjkzODFMMTEuNjUxNCA0OS40MzUyQzExLjc0MSA0OS4xNzQxIDExLjk2NTEgNDkgMTIuMjM0MSA0OUgxNC45NTU1QzExLjMzNzcgMzUuOTcxMyAxMS4yNzIgMjUuMzMwOCAxMS4yOTI4IDIzLjQ5NzFDMTEuMjkyOCAyMy4zMjMgMTEuMzgyNCAyMy4xOTI1IDExLjU2MTcgMjMuMTkyNUMyNy41NjMyIDIxLjkzMDQgNDUuMDg4NyA2LjA0NTQ3IDQ3LjI0MDIgNC4wNDM1NEM0Ny4zNzQ3IDMuOTEyOTggNDcuNTU0IDMuOTEyOTggNDcuNjg4NCA0LjA0MzU0QzQ5LjgzOTkgNi4wNDU0NyA2Ny4zNjU0IDIxLjkzMDQgODMuMzY3IDIzLjE5MjVDODMuNTAxNCAyMy4xOTI1IDgzLjYzNTkgMjMuMzIzIDgzLjYzNTkgMjMuNDk3MUM4My42NTY2IDI1LjMzIDgzLjU5MSAzNS45NzI0IDc5Ljk3NzMgNDlIODIuNzM5NUM4My4wMDg0IDQ5IDgzLjI3NzMgNDkuMTc0MSA4My4zMjIyIDQ5LjQzNTJMOTAuOTQxOSA3NC45MzgxQzkxLjA3NjQgNzUuMzI5OCA5MC44MDc1IDc1LjcyMTUgOTAuMzU5MyA3NS43MjE1SDY3LjQ0MDZaIiBmaWxsPSJ3aGl0ZSIvPgoJPHBhdGggZD0iTTQ3LjY0MzYgOTMuOTU2NUw0OC45NTM3IDk2LjY1NTNMNDkuMDczNCA5Ni41OTcyTDQ5LjE4NzQgOTYuNTI4OEw0Ny42NDM2IDkzLjk1NjVaTTY3LjQ0MDYgNzUuNzIxNVY3Mi43MjE1SDY1LjkwODdMNjUuMDEwNCA3My45NjI1TDY3LjQ0MDYgNzUuNzIxNVpNNDcuMjg1IDkzLjk1NjVMNDUuNzM5IDk2LjUyNzRMNDYuMDMzOSA5Ni43MDQ4TDQ2LjM2MTMgOTYuODEwN0w0Ny4yODUgOTMuOTU2NVpNMjcuNTAxIDc1LjcyMTVMMjkuOTMxIDczLjk2MjFMMjkuMDMyNyA3Mi43MjE1SDI3LjUwMVY3NS43MjE1Wk00LjAzMTU5IDc0LjkzODFMNi44NjkwNCA3NS45MTIyTDYuODg4NyA3NS44NTVMNi45MDYwMyA3NS43OTdMNC4wMzE1OSA3NC45MzgxWk0xMS42NTE0IDQ5LjQzNTJMOC44MTM5MiA0OC40NjExTDguNzk0MjYgNDguNTE4NEw4Ljc3NjkzIDQ4LjU3NjRMMTEuNjUxNCA0OS40MzUyWk0xNC45NTU1IDQ5VjUySDE4LjkwMkwxNy44NDYxIDQ4LjE5NzRMMTQuOTU1NSA0OVpNMTEuMjkyOCAyMy40OTcxTDE0LjI5MjYgMjMuNTMxMUwxNC4yOTI4IDIzLjUxNDFWMjMuNDk3MUgxMS4yOTI4Wk0xMS41NjE3IDIzLjE5MjVWMjYuMTkyNUgxMS42Nzk4TDExLjc5NzYgMjYuMTgzMkwxMS41NjE3IDIzLjE5MjVaTTQ3LjI0MDIgNC4wNDM1NEw0OS4yODM4IDYuMjM5ODFMNDkuMzA3MiA2LjIxODA5TDQ5LjMzMDEgNi4xOTU4N0w0Ny4yNDAyIDQuMDQzNTRaTTQ3LjY4ODQgNC4wNDM1NEw0NS41OTg2IDYuMTk1OUw0NS42MjE1IDYuMjE4MUw0NS42NDQ4IDYuMjM5ODFMNDcuNjg4NCA0LjA0MzU0Wk04My4zNjcgMjMuMTkyNUw4My4xMzExIDI2LjE4MzJMODMuMjQ4OCAyNi4xOTI1SDgzLjM2N1YyMy4xOTI1Wk04My42MzU5IDIzLjQ5NzFIODAuNjM1OVYyMy41MTQxTDgwLjYzNjEgMjMuNTMxMUw4My42MzU5IDIzLjQ5NzFaTTc5Ljk3NzMgNDlMNzcuMDg2NSA0OC4xOTgxTDc2LjAzMTkgNTJINzkuOTc3M1Y0OVpNODMuMzIyMiA0OS40MzUyTDgwLjM2NTQgNDkuOTQyOEw4MC4zOTYgNTAuMTIwOUw4MC40NDc3IDUwLjI5NEw4My4zMjIyIDQ5LjQzNTJaTTkwLjk0MTkgNzQuOTM4MUw4OC4wNjc1IDc1Ljc5N0w4OC4wODQ4IDc1Ljg1NUw4OC4xMDQ1IDc1LjkxMjJMOTAuOTQxOSA3NC45MzgxWk00OS4xODc0IDk2LjUyODhDNTcuOTc5MiA5MS4yNTI1IDY0LjcxNzMgODQuNjAwNSA2OS44NzA4IDc3LjQ4MDVMNjUuMDEwNCA3My45NjI1QzYwLjI3OTkgODAuNDk4MSA1NC4xMjQ3IDg2LjU2ODIgNDYuMDk5OSA5MS4zODQyTDQ5LjE4NzQgOTYuNTI4OFpNNDYuMzYxMyA5Ni44MTA3QzQ2LjkyMzIgOTYuOTkyNiA0Ny45MjE1IDk3LjE1NjQgNDguOTUzNyA5Ni42NTUzTDQ2LjMzMzUgOTEuMjU3N0M0Ni43OTg1IDkxLjAzMTkgNDcuMjE3MiA5MC45ODkxIDQ3LjQ4MTEgOTAuOTg5MUM0Ny43NjE5IDkwLjk4OTEgNDguMDA2MyA5MS4wMzY3IDQ4LjIwODggOTEuMTAyMkw0Ni4zNjEzIDk2LjgxMDdaTTI1LjA3MTEgNzcuNDgwOUMzMC4yMjI1IDg0LjU5NTcgMzYuOTU1OSA5MS4yNDU2IDQ1LjczOSA5Ni41Mjc0TDQ4LjgzMTEgOTEuMzg1NkM0MC44MTIzIDg2LjU2MzQgMzQuNjYwMiA4MC40OTM4IDI5LjkzMSA3My45NjIxTDI1LjA3MTEgNzcuNDgwOVpNMjcuNTAxIDcyLjcyMTVINC42MTQyOFY3OC43MjE1SDI3LjUwMVY3Mi43MjE1Wk00LjYxNDI4IDcyLjcyMTVDNi4wNDk1NCA3Mi43MjE1IDcuNDczMDYgNzQuMTUyOCA2Ljg2OTA0IDc1LjkxMjJMMS4xOTQxNCA3My45NjRDMC4zMjExODEgNzYuNTA2OCAyLjM3MjIyIDc4LjcyMTUgNC42MTQyOCA3OC43MjE1VjcyLjcyMTVaTTYuOTA2MDMgNzUuNzk3TDE0LjUyNTggNTAuMjk0TDguNzc2OTMgNDguNTc2NEwxLjE1NzE1IDc0LjA3OTNMNi45MDYwMyA3NS43OTdaTTE0LjQ4ODggNTAuNDA5M0MxNC4yMDU5IDUxLjIzMzUgMTMuMzc1NiA1MiAxMi4yMzQxIDUyVjQ2QzEwLjU1NDcgNDYgOS4yNzYxNCA0Ny4xMTQ3IDguODEzOTIgNDguNDYxMUwxNC40ODg4IDUwLjQwOTNaTTEyLjIzNDEgNTJIMTQuOTU1NVY0NkgxMi4yMzQxVjUyWk04LjI5Mjk2IDIzLjQ2MzJDOC4yNzAzNiAyNS40NjAxIDguMzQ1MSAzNi40MDY2IDEyLjA2NDggNDkuODAyN0wxNy44NDYxIDQ4LjE5NzRDMTQuMzMwNCAzNS41MzYgMTQuMjczNyAyNS4yMDE0IDE0LjI5MjYgMjMuNTMxMUw4LjI5Mjk2IDIzLjQ2MzJaTTExLjU2MTcgMjAuMTkyNUMxMC42NzU5IDIwLjE5MjUgOS43MjAwOSAyMC41NTIxIDkuMDQ0NjcgMjEuMzcxOEM4LjQzNTMgMjIuMTExNCA4LjI5Mjc3IDIyLjkzMzUgOC4yOTI3NyAyMy40OTcxSDE0LjI5MjhDMTQuMjkyOCAyMy44ODY3IDE0LjE5NTEgMjQuNTU2NCAxMy42NzUzIDI1LjE4NzJDMTMuMDg5NiAyNS44OTgxIDEyLjI2ODIgMjYuMTkyNSAxMS41NjE3IDI2LjE5MjVWMjAuMTkyNVpNNDUuMTk2NiAxLjg0NzI3QzQ0LjE4MzggMi43ODk2NiAzOS40MDEyIDcuMTM4NDggMzIuOTQ0OSAxMS4zODk5QzI2LjQwOTQgMTUuNjkzNCAxOC41NTA4IDE5LjYzMTkgMTEuMzI1OCAyMC4yMDE4TDExLjc5NzYgMjYuMTgzMkMyMC41NzQxIDI1LjQ5MSAyOS40NzkxIDIwLjg1NiAzNi4yNDQ2IDE2LjQwMUM0My4wODkyIDExLjg5NCA0OC4xNDUyIDcuMjk5MzUgNDkuMjgzOCA2LjIzOTgxTDQ1LjE5NjYgMS44NDcyN1pNNDkuNzc4MyAxLjg5MTE4QzQ5LjIyMTMgMS4zNTA0NSA0OC40MTU3IDAuOTQ1NjE4IDQ3LjQ2NDMgMC45NDU2MThDNDYuNTEyOSAwLjk0NTYxOCA0NS43MDczIDEuMzUwNDUgNDUuMTUwNCAxLjg5MTIxTDQ5LjMzMDEgNi4xOTU4N0M0OC45MDc2IDYuNjA2MDcgNDguMjU4OSA2Ljk0NTYyIDQ3LjQ2NDMgNi45NDU2MkM0Ni42Njk4IDYuOTQ1NjIgNDYuMDIxMSA2LjYwNjA3IDQ1LjU5ODYgNi4xOTU5TDQ5Ljc3ODMgMS44OTExOFpNODMuNjAyOCAyMC4yMDE4Qzc2LjM3NzggMTkuNjMxOSA2OC41MTkzIDE1LjY5MzQgNjEuOTgzOCAxMS4zODk5QzU1LjUyNzQgNy4xMzg0OCA1MC43NDQ4IDIuNzg5NjYgNDkuNzMyMSAxLjg0NzI3TDQ1LjY0NDggNi4yMzk4MUM0Ni43ODM1IDcuMjk5MzUgNTEuODM5NCAxMS44OTQgNTguNjg0IDE2LjQwMUM2NS40NDk2IDIwLjg1NiA3NC4zNTQ1IDI1LjQ5MSA4My4xMzExIDI2LjE4MzJMODMuNjAyOCAyMC4yMDE4Wk04Ni42MzU5IDIzLjQ5NzFDODYuNjM1OSAyMS44ODQ3IDg1LjM2ODcgMjAuMTkyNSA4My4zNjcgMjAuMTkyNVYyNi4xOTI1QzgxLjYzNDIgMjYuMTkyNSA4MC42MzU5IDI0Ljc2MTQgODAuNjM1OSAyMy40OTcxSDg2LjYzNTlaTTgyLjg2ODIgNDkuODAxOUM4Ni41ODM2IDM2LjQwNzMgODYuNjU4MyAyNS40NTkyIDg2LjYzNTcgMjMuNDYzMkw4MC42MzYxIDIzLjUzMTFDODAuNjU1IDI1LjIwMDkgODAuNTk4MyAzNS41Mzc2IDc3LjA4NjUgNDguMTk4MUw4Mi44NjgyIDQ5LjgwMTlaTTc5Ljk3NzMgNTJIODIuNzM5NVY0Nkg3OS45NzczVjUyWk04Mi43Mzk1IDUyQzgyLjI1MDkgNTIgODEuNzc0NSA1MS44NDk0IDgxLjM2OTMgNTEuNTU5NkM4MC45NTMyIDUxLjI2MTkgODAuNDk5NiA1MC43MjQ3IDgwLjM2NTQgNDkuOTQyOEw4Ni4yNzg5IDQ4LjkyNzdDODUuOTIgNDYuODM2OSA4NC4wMzUgNDYgODIuNzM5NSA0NlY1MlpNODAuNDQ3NyA1MC4yOTRMODguMDY3NSA3NS43OTdMOTMuODE2NCA3NC4wNzkzTDg2LjE5NjYgNDguNTc2NEw4MC40NDc3IDUwLjI5NFpNODguMTA0NSA3NS45MTIyQzg3Ljg2MDkgNzUuMjAyNyA4Ny45NjIxIDc0LjM3NTYgODguNDQgNzMuNzE2MkM4OC45MjQ3IDczLjA0NzMgODkuNjY4NiA3Mi43MjE1IDkwLjM1OTMgNzIuNzIxNVY3OC43MjE1QzkyLjgxNzUgNzguNzIxNSA5NC41OTgyIDc2LjM0OTIgOTMuNzc5NCA3My45NjRMODguMTA0NSA3NS45MTIyWk05MC4zNTkzIDcyLjcyMTVINjcuNDQwNlY3OC43MjE1SDkwLjM1OTNWNzIuNzIxNVoiIGZpbGw9IndoaXRlIiBtYXNrPSJ1cmwoI3BhdGgtMS1vdXRzaWRlLTEpIi8+Cgk8cGF0aCBkPSJNNDcuNjU2NyA5My45NTY1QzgzLjMzNTMgNzIuNTQ0NSA4My42OTM4IDI3LjQ1NzUgODMuNjQ5IDIzLjQ5NzFDODMuNjQ5IDIzLjMyMyA4My41MTQ1IDIzLjE5MjUgODMuMzgwMSAyMy4xOTI1QzY3LjM3ODUgMjEuOTMwNCA0OS44NTMgNi4wNDU0NyA0Ny43MDE2IDQuMDQzNTRDNDcuNTY3MSAzLjkxMjk4IDQ3LjM4NzggMy45MTI5OCA0Ny4yNTMzIDQuMDQzNTRDNDUuMTAxOSA2LjA0NTQ3IDI3LjU3NjQgMjEuOTMwNCAxMS41NzQ4IDIzLjE5MjVDMTEuMzk1NSAyMy4xOTI1IDExLjMwNTkgMjMuMzIzIDExLjMwNTkgMjMuNDk3MUMxMS4yNjExIDI3LjQ1NzUgMTEuNjE5NyA3Mi41MDEgNDcuMjk4MiA5My45NTY1QzQ3LjQzMjYgOTQgNDcuNTY3MSA5NCA0Ny42NTY3IDkzLjk1NjVaIiBmaWxsPSJibGFjayIvPgoJPHBhdGggZD0iTTQ3LjUyMjMgODkuNTYwOUM4MS4yNzM1IDY5LjQ1NDUgODAuMDYzMyAyNS44MDM3IDgwLjA2MzMgMjUuODAzN0M2NC42NDQ0IDI0Ljc1OTIgNDcuNTIyMyA4LjM5NTU1IDQ3LjUyMjMgOC4zOTU1NUM0Ny41MjIzIDguMzk1NTUgMzAuNDAwMiAyNC44MDI3IDE0Ljk4MTQgMjUuODAzN0MxNC45MzY1IDI1LjgwMzcgMTMuNzcxMiA2OS40MTEgNDcuNTIyMyA4OS41NjA5WiIgZmlsbD0iI0U2RTZFNiIvPgoJPHBhdGggZD0iTTQ3LjUyMjUgODkuNjkxNUw0Ny40MzI5IDg5LjY0NzlDMjkuOTUyMiA3OS4yNDY2IDIyLjAxODcgNjIuNDA0MiAxOC40MzI5IDUwLjEzMTVDMTQuNTMzNCAzNi44NTc4IDE0LjgwMjMgMjUuODkwNyAxNC44MDIzIDI1Ljc2MDFWMjUuNjI5NkgxNC45MzY4QzMwLjEzMTUgMjQuNjI4NiA0Ny4yNTM2IDguMzk1NTMgNDcuMzg4MSA4LjI2NDk3TDQ3LjQ3NzcgOC4xNzc5M0w0Ny41Njc0IDguMjY0OTdDNDcuNzQ2NiA4LjQzOTA1IDY0Ljg2ODggMjQuNjI4NiA4MC4wMTg3IDI1LjYyOTZIODAuMTUzMVYyNS43NjAxQzgwLjE1MzEgMjUuODkwNyA4MC40MjIxIDM2Ljg1NzggNzYuNTIyNSA1MC4xMzE1QzcyLjkzNjggNjIuNDA0MiA2NS4wMDMyIDc5LjIwMzEgNDcuNTIyNSA4OS42NDc5Vjg5LjY5MTVaTTE1LjA3MTIgMjUuOTM0MkMxNS4wNzEyIDI3LjE5NjMgMTUuMDI2NCAzNy41OTc3IDE4LjcwMTggNTAuMDg4QzIyLjI4NzYgNjIuMjczNyAzMC4xNzYzIDc4Ljk4NTUgNDcuNDc3NyA4OS4zODY4QzY0LjgyMzkgNzkuMDI5IDcyLjcxMjYgNjIuMzE3MiA3Ni4yNTM2IDUwLjA4OEM3OS44ODQyIDM3LjU5NzcgNzkuODg0MiAyNy4xNTI4IDc5Ljg4NDIgMjUuOTM0MkM2NS4yMjczIDI0Ljg4OTcgNDguOTEyIDkuOTE4NzQgNDcuNDc3NyA4LjU2OTYyQzQ2LjA4ODIgOS45MTg3NCAyOS43MjgxIDI0Ljg4OTcgMTUuMDcxMiAyNS45MzQyWiIgZmlsbD0iYmxhY2siLz4KCTxwYXRoIGQ9Ik00Ny4wMjk0IDQxLjkwNjJDNDUuNDE1OCA0MS45NDk3IDQzLjkzNjcgNDEuODYyNyA0Mi41OTIgNDEuNzMyMUMzNi4wOTI4IDQxLjA3OTMgMzIuMzI3NyAzOC44NTk4IDMyLjMyNzcgMzguODU5OEMzMy44OTY1IDM4LjU1NTEgMzYuODk5NiAzOC44NTk4IDM2Ljg5OTYgMzguODU5OEMyOC42OTcxIDM4LjE2MzQgMjcuODAwNyAzNC4yOTAxIDI3LjgwMDcgMzQuMjkwMUMyOS4xOTAyIDM0LjI5MDEgMzUuODY4NyAzNS41MDg3IDM1Ljg2ODcgMzUuNTA4N0MyNC43MDc5IDMxLjk4MzYgMjQuMjU5NyAyNi4xMDgzIDI0LjI1OTcgMjYuMTA4M0MyNC4yNTk3IDI2LjEwODMgMjkuMDEwOSAyOS4xOTgzIDMyLjIzODEgMzAuMDY4N0MzNS40NjUzIDMwLjkzOTEgNDIuODE2MSAzMC45MzkxIDQzLjUzMzMgMzQuMDI5TDQ1Ljk1MzcgMjguMTUzOEg1MC43NDk3QzUwLjc0OTcgMjguMTUzOCA1MS44NzAyIDI4LjA2NjcgNTIuMzE4NCAzMC4wNjg3SDQ5LjQ5NDZMNTEuNDIyIDM0LjAyOUM1Mi4xMzkxIDMwLjkzOTEgNTkuNDkgMzAuOTM5MSA2Mi43MTcyIDMwLjA2ODdDNjUuOTQ0NCAyOS4xOTgzIDcwLjY5NTYgMjYuMTA4MyA3MC42OTU2IDI2LjEwODNDNzAuNjk1NiAyNi4xMDgzIDcwLjI0NzMgMzEuOTgzNiA1OS4wODY2IDM1LjUwODdDNTkuMDg2NiAzNS41MDg3IDY1LjcyMDMgMzQuMjkwMSA2Ny4xNTQ2IDM0LjI5MDFDNjcuMTU0NiAzNC4yOTAxIDY2LjI1ODIgMzguMTYzNCA1OC4wNTU3IDM4Ljg1OThDNTguMDU1NyAzOC44NTk4IDYxLjEwMzYgMzguNTU1MSA2Mi42Mjc2IDM4Ljg1OThDNjIuNjI3NiAzOC44NTk4IDU4Ljk5NyA0MC45OTIzIDUyLjY3NyA0MS42ODg2QzUxLjI0MjcgNDEuODYyNyA0OS42NzM5IDQxLjk0OTcgNDcuOTI1OSA0MS45MDYyQzQ3Ljc0NjYgNDEuOTA2MiA0Ny4yNTM1IDQxLjkwNjIgNDcuMDI5NCA0MS45MDYyWiIgZmlsbD0iYmxhY2siLz4KCTxwYXRoIGQ9Ik00Ny4xNjM5IDQyLjczMzFDNDcuMzg4IDQyLjczMzEgNDcuODgxIDQyLjczMzEgNDguMTA1MiA0Mi43MzMxQzQ5LjcxODggNDIuNzc2NiA1MS4xOTc5IDQyLjY4OTUgNTIuNTQyNiA0Mi41NTlMNTAuOTI5IDQ1LjM4NzhMNDkuMDAxNiA0My45NTE2TDQ5LjgwODQgNDYuMDQwNkw0Ny40Nzc2IDQ3LjU2MzhMNDUuMTQ2OSA0Ni4wNDA2TDQ1Ljk1MzcgNDMuOTUxNkw0NC4wMjYzIDQ1LjM4NzhMNDIuNDEyNyA0Mi41NTlDNDMuNzU3NCA0Mi42ODk1IDQ1LjI4MTMgNDIuNzc2NiA0Ni44NTAxIDQyLjczMzFDNDcuMDc0MiA0Mi43MzMxIDQ3LjU2NzMgNDIuNzMzMSA0Ny43OTE0IDQyLjczMzEiIGZpbGw9ImJsYWNrIi8+Cgk8cGF0aCBkPSJNOTAuMzcyNCA3NS43MjE1SDQuNjI3NDZDNC4yMjQwNiA3NS43MjE1IDMuOTEwMzEgNzUuMzI5OCA0LjA0NDc3IDc0LjkzODFMMTEuNjY0NiA0OS40MzUyQzExLjc1NDIgNDkuMTc0MSAxMS45NzgzIDQ5IDEyLjI0NzIgNDlIODIuNzUyNkM4My4wMjE2IDQ5IDgzLjI5MDUgNDkuMTc0MSA4My4zMzUzIDQ5LjQzNTJMOTAuOTU1MSA3NC45MzgxQzkxLjA4OTYgNzUuMzI5OCA5MC44MjA3IDc1LjcyMTUgOTAuMzcyNCA3NS43MjE1WiIgZmlsbD0iYmxhY2siLz4KCTxwYXRoIGQ9Ik00Ny42NTY4IDkuNjE0MTJINDcuMzQzVjI2LjEwODNINDcuNjU2OFY5LjYxNDEyWiIgZmlsbD0iYmxhY2siLz4KCTxwYXRoIGQ9Ik00Ny42NTY4IDc2Ljg5NjVINDcuMzQzVjg4LjI5ODhINDcuNjU2OFY3Ni44OTY1WiIgZmlsbD0iYmxhY2siLz4KCTxwYXRoIGQ9Ik0zNi41NDEgNTQuNzQ0N1Y1Ny43OTExSDMzLjM1ODdWNjkuODg5OEgyOC4wNjk2VjU3Ljc5MTFIMjQuOTMyMVY1NC43NDQ3SDM2LjU0MVoiIGZpbGw9IndoaXRlIi8+Cgk8cGF0aCBkPSJNNTAuNTI1NSA1NC43NDQ3TDUzLjU3MzQgNjkuODg5OEg0OC4xMDUxTDQ3LjgzNjIgNjcuMTQ4SDQ1LjkwODhMNDUuNTk1IDY5Ljg4OThINDAuMDgxOUw0Mi44MTYxIDU0Ljc0NDdINTAuNTI1NVpNNDcuNzAxNyA2NC40OTMyQzQ3LjQzMjggNjIuNzk1OSA0Ny4xNjM4IDYwLjY2MzUgNDYuODk0OSA1OC4xMzkzQzQ2LjM1NyA2MS4wNTUxIDQ1Ljk5ODQgNjMuMTQ0MSA0NS44NjQgNjQuNDkzMkg0Ny43MDE3WiIgZmlsbD0id2hpdGUiLz4KCTxwYXRoIGQ9Ik02OS44NDM3IDU0Ljc0NDdMNjYuNzk1OCA2MS41Nzc0TDcwLjE1NzUgNjkuODg5OEg2NC42NDQ0TDYyLjQ5MjkgNjMuNDA1MlY2OS44ODk4SDU3LjE1OTFWNTQuNzQ0N0g2Mi40OTI5VjYwLjYxOTlMNjQuODY4NSA1NC43NDQ3SDY5Ljg0MzdaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4K" alt="{{ORG_NAME}} Logo" style="width:54px;height:54px;flex-shrink:0;">
+    <div>
+      <h1>{{ORG_NAME_A}}<em>{{ORG_NAME_B}}</em> &mdash; Mutual Aid Enrollment</h1>
+      <p>{{EVENT_NAME}} &mdash; {{EVENT_SUBTITLE}}</p>
+    </div>
+    <div class="header-badge">
+      <div class="badge-label">Channel</div>
+      <div class="badge-value">{{CHANNEL_NAME}}</div>
+    </div>
+  </header>
+
+  <div class="alert-banner">
+    <strong>&#9888; Compliance Notice:</strong>&nbsp; {{COMPLIANCE_NOTICE}}
+  </div>
+
+  <main>
+
+    <div class="section">
+
+      <div class="section-label">Step 1 of 3</div>
+      <h2><span class="step-num">Download</span> the App</h2>
+      <ol>
+        <li>
+          <div class="step-text">
+            <strong>iOS users:</strong> Search the App Store for <strong>TAK Aware</strong> and install it.
+            <div class="note-box" style="margin-top:5px;">
+              <strong>TAK Aware</strong> is the iOS TAK client. Free download from Apple App Store.
+            </div>
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            <strong>Android users:</strong> Search the Google Play Store for <strong>ATAK</strong> (Android Team Awareness Kit) and install it.
+            <div class="note-box" style="margin-top:5px;">
+              <strong>ATAK</strong> is the Android TAK client. Free download from the Play Store.
+            </div>
+          </div>
+        </li>
+      </ol>
+
+      <div class="section-label" style="margin-top:8px;">Step 2 of 3</div>
+      <h2><span class="step-num">Scan</span> QR Code to Enroll</h2>
+      <p style="font-size:11px;margin:0 0 7px 0;line-height:1.4;">Use your <strong>phone's camera app</strong> to scan the QR code. The code is pre-configured for the {{ORG_NAME}} server and grants access to the <strong>{{CHANNEL_NAME}}</strong> channel.</p>
+
+      <div class="note-box-amber" style="margin-bottom:8px;">
+        <strong>&#9888; TAK Aware (iOS) tip:</strong> If the enrollment form appears with empty fields after scanning, <strong>lock your phone then unlock it</strong> &mdash; the fields will populate automatically. This is a known app bug.
+      </div>
+
+      <ol>
+        <li>
+          <div class="step-text">
+            Open your phone's <strong>Camera app</strong> and point it at the <strong>QR code on the right</strong>.
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            Tap the notification or link that appears to open it in <strong>TAK Aware</strong> (iOS) or <strong>ATAK</strong> (Android). If prompted for Location permission, select <strong>Always</strong>.
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            <strong>Accept the connection</strong> when prompted. Enrollment is automatic &mdash; no username or password required.
+          </div>
+        </li>
+      </ol>
+
+      <div class="section-label" style="margin-top:8px;">Step 3 of 3</div>
+      <h2><span class="step-num">Configure</span> Your Profile</h2>
+      <p style="font-size:11px;margin:0 0 7px 0;line-height:1.4;">Navigate to your profile settings:</p>
+      <div class="nav-path">
+        <strong>TAK Aware (iOS):</strong> <span style="font-size:13px;">&#9776;</span> Menu &rarr; User Information
+      </div>
+      <div class="nav-path" style="margin-top:5px;margin-bottom:9px;">
+        <strong>ATAK (Android):</strong> <span style="font-size:13px;">&#9776;</span> Menu &rarr; Settings &rarr; Callsign and Device Preferences
+      </div>
+      <ol>
+        <li>
+          <div class="step-text">
+            Set your <strong>Callsign</strong> &mdash; see format in the table &rarr;
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            Set <strong>Team Role</strong> to <strong>{{TEAM_ROLE}}</strong>
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            Set <strong>Team Color</strong> to <strong style="color:{{TEAM_COLOR_HEX}};">{{TEAM_COLOR}}</strong>
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            Enter your <strong>phone number</strong> in the contact field.
+          </div>
+        </li>
+      </ol>
+
+    </div>
+
+    <div class="section">
+
+      <div class="qr-container">
+        <div class="qr-title">Scan to Enroll &mdash; {{CHANNEL_NAME}}</div>
+        <img id="maFlyerQrImg" src="{{QR_DATA_URL}}" alt="{{QR_LABEL}} Enrollment QR Code">
+        <div class="qr-sub">{{QR_LABEL}}</div>
+      </div>
+
+      <div class="section-label" style="margin-top:8px;">User Profile Reference</div>
+      <h2 style="font-size:16px;margin-bottom:9px;"><span class="step-num">Profile</span> Settings</h2>
+
+      <table class="callsign-table">
+        <tr>
+          <th>Field</th>
+          <th>Your Setting</th>
+        </tr>
+        <tr>
+          <td><strong>Callsign</strong></td>
+          <td><strong>{{CALLSIGN_FORMAT}}</strong><br>
+            <span style="font-size:11px;">
+              <strong>{{CALLSIGN_EX_1}}</strong><br>
+              <strong>{{CALLSIGN_EX_2}}</strong><br>
+              <strong>{{CALLSIGN_EX_3}}</strong>
+            </span><br>
+            <span style="font-size:10.5px;font-style:italic;">{{CALLSIGN_RULE}}</span>
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Team Role</strong></td>
+          <td>{{TEAM_ROLE}}</td>
+        </tr>
+        <tr>
+          <td><strong>Team Color</strong></td>
+          <td><span style="color:{{TEAM_COLOR_HEX}};font-weight:700;">&#9632;</span> {{TEAM_COLOR}}</td>
+        </tr>
+        <tr>
+          <td><strong>Phone #</strong></td>
+          <td>Your mobile number</td>
+        </tr>
+      </table>
+
+      <div class="note-box-amber" style="margin-top:8px;">
+        <strong>&#9888; Existing {{ORG_NAME}} Users:</strong> Do not scan this QR code if you already have a {{ORG_NAME}} account. Your existing credentials provide access to <span>{{CHANNEL_NAME}}</span>.
+      </div>
+
+      <div class="note-box" style="margin-top:6px;border-left-color:#64748b;">
+        <strong>&#128295; Troubleshooting:</strong> If your location is not visible to other users, ensure Location Services are set to <strong>Always</strong> for TAK Aware or ATAK in your phone's Settings app: <strong>Settings &rarr; Privacy &amp; Security &rarr; Location Services &rarr; [App Name] &rarr; Always</strong>.
+      </div>
+
+      <div class="note-box" style="margin-top:6px;border-left-color:#1a5276;">
+        <strong>&#9201; Temporary Access:</strong> This enrollment expires at the end of the operation. For full-time access, request an account at <strong>{{REQUEST_ACCESS_URL}}</strong>
+      </div>
+
+    </div>
+
+  </main>
+
+  <div class="info-strip">
+    <div class="info-card">
+      <div class="info-icon">&#128241;</div>
+      <div>
+        <h3>TAK Aware (iOS)</h3>
+        <p>Apple App Store &mdash; free download.<br>Search: <strong>TAK Aware</strong></p>
+      </div>
+    </div>
+    <div class="info-card">
+      <div class="info-icon">&#129302;</div>
+      <div>
+        <h3>ATAK (Android)</h3>
+        <p>Google Play Store &mdash; free download.<br>Search: <strong>ATAK</strong></p>
+      </div>
+    </div>
+    <div class="info-card">
+      <div class="info-icon">&#127760;</div>
+      <div>
+        <h3>Channel</h3>
+        <p>{{CHANNEL_DESC}}: <strong>{{CHANNEL_NAME}}</strong><br>Temporary event access only.</p>
+      </div>
+    </div>
+    <div class="info-card">
+      <div class="info-icon">&#128273;</div>
+      <div>
+        <h3>Support</h3>
+        <p>Contact {{SUPPORT_NAME}}<br><strong>{{SUPPORT_PHONE}}</strong></p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

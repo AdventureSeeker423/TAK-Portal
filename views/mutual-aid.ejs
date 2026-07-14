@@ -447,7 +447,9 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
+const ENROLLMENT_FLYER_HTML = <%- JSON.stringify(typeof enrollmentFlyerHtml !== "undefined" ? enrollmentFlyerHtml : "") %>;
 // ----- Shared helpers -----
 function esc(s){
   return String(s ?? "")
@@ -1134,6 +1136,214 @@ async function loadHiResEnrollmentQrDataUrl(itemId) {
   });
 }
 
+function splitServerNameForFlyer(serverName) {
+  const raw = String(serverName || "").trim();
+  if (!raw) return { orgName: "TAK", orgA: "TAK", orgB: "" };
+  const takMatch = raw.match(/^(.*?)(TAK)$/i);
+  if (takMatch && takMatch[1]) {
+    return {
+      orgName: raw,
+      orgA: takMatch[1].trim() || "TAK",
+      orgB: takMatch[2],
+    };
+  }
+  return { orgName: raw, orgA: raw, orgB: "" };
+}
+
+function readableCallsignFormat(expression) {
+  const expr = String(expression || "").trim();
+  if (!expr) return "Agency-LastName-RadioID";
+  return expr
+    .replace(/\{\{\s*agencyAbbreviation\s*\}\}/gi, "Agency")
+    .replace(/\{\{\s*lastNameUpper\s*\}\}/gi, "LastName")
+    .replace(/\{\{\s*badgeNumber\s*\}\}/gi, "RadioID")
+    .replace(/\{\{\s*[^}]+\s*\}\}/g, "X");
+}
+
+function flyerAgencyLabel(orgA) {
+  const raw = String(orgA || "").trim();
+  if (!raw || /^tak$/i.test(raw)) return "Agency";
+  // Prefer a short agency token for examples (e.g. "Hamilton County " → keep readable prefix).
+  const compact = raw.replace(/\s+/g, "");
+  if (compact.length <= 12) return compact;
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return words
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 8);
+  }
+  return raw.slice(0, 10);
+}
+
+function buildFlyerCallsignExamples(format, orgA) {
+  const agency = flyerAgencyLabel(orgA);
+  const apply = (lastName, radioId) =>
+    String(format || "Agency-LastName-RadioID")
+      .replace(/Agency/g, agency)
+      .replace(/LastName/g, lastName)
+      .replace(/RadioID/g, radioId)
+      .replace(/-RadioID$/i, radioId ? `-${radioId}` : "")
+      .replace(/RadioID-/i, radioId ? `${radioId}-` : "");
+
+  return {
+    ex1: apply("Smith", "K3"),
+    ex2: apply("Davis", "2N4"),
+    // Third example omits optional radio id when the format includes it.
+    ex3: String(format || "").includes("RadioID")
+      ? apply("Rose", "").replace(/-+$/g, "").replace(/-+/g, "-")
+      : apply("Rose", "A1"),
+  };
+}
+
+function flyerCallsignRule(format) {
+  const hasRadio = String(format || "").includes("RadioID");
+  if (hasRadio) {
+    return "Agency and LastName are required. RadioID is optional if you don't have one assigned.";
+  }
+  return "Follow the callsign format exactly as shown above.";
+}
+
+function fillEnrollmentFlyerHtml(tokens) {
+  let html = String(ENROLLMENT_FLYER_HTML || "");
+  Object.keys(tokens || {}).forEach((key) => {
+    const value = String(tokens[key] ?? "");
+    html = html.split(`{{${key}}}`).join(value);
+  });
+  return html;
+}
+
+function injectEnrollmentFlyerDom(filledHtml) {
+  const host = document.createElement("div");
+  host.id = "maEnrollmentFlyerHost";
+  host.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:8.5in;height:11in;overflow:hidden;background:#fff;z-index:-1;pointer-events:none;";
+
+  const styleMatch = String(filledHtml).match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const bodyMatch = String(filledHtml).match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const styleText = styleMatch ? styleMatch[1] : "";
+  const bodyHtml = bodyMatch ? bodyMatch[1] : filledHtml;
+
+  if (styleText) {
+    const styleEl = document.createElement("style");
+    styleEl.setAttribute("data-ma-flyer-style", "1");
+    styleEl.textContent = styleText;
+    host.appendChild(styleEl);
+  }
+  const wrap = document.createElement("div");
+  wrap.innerHTML = bodyHtml;
+  while (wrap.firstChild) host.appendChild(wrap.firstChild);
+
+  // Ensure flyer fonts are available for capture.
+  let fontLink = document.getElementById("maFlyerFontLink");
+  if (!fontLink) {
+    fontLink = document.createElement("link");
+    fontLink.id = "maFlyerFontLink";
+    fontLink.rel = "stylesheet";
+    fontLink.href =
+      "https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap";
+    document.head.appendChild(fontLink);
+  }
+
+  document.body.appendChild(host);
+  return host;
+}
+
+async function renderEnrollmentFlyerPageImage(qrDataUrl) {
+  if (!ENROLLMENT_FLYER_HTML) {
+    throw new Error("Enrollment flyer template is not available.");
+  }
+  if (typeof window.html2canvas !== "function") {
+    throw new Error("Flyer renderer failed to load.");
+  }
+
+  const serverName = getSetting("SERVER_NAME") || "TAK";
+  const split = splitServerNameForFlyer(serverName);
+  const channelName = String(qrActiveItem?.username || "").trim() || "MA-CHANNEL";
+  const eventName = String(qrActiveItem?.title || "").trim() || "Mutual Aid Operation";
+  const typeLabel = String(qrActiveItem?.type || "Event").trim() || "Event";
+  const portalBase = String(getSetting("TAK_PORTAL_PUBLIC_URL") || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const requestAccessUrl = portalBase
+    ? `${portalBase}/request-access`
+    : "/request-access";
+  const callsignFormat = readableCallsignFormat(
+    getSetting("CALLSIGN_FORMAT_EXPRESSION")
+  );
+  const examples = buildFlyerCallsignExamples(callsignFormat, split.orgA);
+  const supportContact = portalBase
+    ? portalBase
+    : "via your agency administrator";
+
+  const tokens = {
+    ORG_NAME: esc(split.orgName),
+    ORG_NAME_A: esc(split.orgA),
+    ORG_NAME_B: esc(split.orgB),
+    EVENT_NAME: esc(eventName),
+    EVENT_SUBTITLE: esc(`${typeLabel} — Multi-Agency Mutual Aid`),
+    CHANNEL_NAME: esc(channelName),
+    CHANNEL_DESC: esc("Temporary interoperability channel"),
+    QR_LABEL: esc(channelName),
+    // Do not HTML-escape; this is a data: URL for <img src>.
+    QR_DATA_URL: String(qrDataUrl || ""),
+    CALLSIGN_FORMAT: esc(callsignFormat),
+    CALLSIGN_EX_1: esc(examples.ex1),
+    CALLSIGN_EX_2: esc(examples.ex2),
+    CALLSIGN_EX_3: esc(examples.ex3),
+    CALLSIGN_RULE: esc(flyerCallsignRule(callsignFormat)),
+    TEAM_ROLE: esc("Team Member"),
+    TEAM_COLOR: esc("Magenta"),
+    TEAM_COLOR_HEX: "#d81b60",
+    REQUEST_ACCESS_URL: esc(requestAccessUrl),
+    SUPPORT_NAME: esc("your Mutual Aid coordinator"),
+    SUPPORT_PHONE: esc(supportContact || "via your agency administrator"),
+    COMPLIANCE_NOTICE: esc(
+      "This system uses encrypted communications. Do not transmit Criminal Justice Information (CJI) over this network. For CJIS-controlled data, use authorized and compliant channels only."
+    ),
+  };
+
+  const filled = fillEnrollmentFlyerHtml(tokens);
+  const host = injectEnrollmentFlyerDom(filled);
+  const target =
+    host.querySelector("#maEnrollmentFlyerRoot") ||
+    host.querySelector(".content") ||
+    host;
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const qrImg = host.querySelector("#maFlyerQrImg");
+    if (qrImg && !qrImg.complete) {
+      await new Promise((resolve) => {
+        qrImg.onload = () => resolve();
+        qrImg.onerror = () => resolve();
+        setTimeout(resolve, 1500);
+      });
+    }
+
+    const letterW = Math.round(8.5 * 96);
+    const letterH = Math.round(11 * 96);
+    target.style.width = `${letterW}px`;
+    target.style.height = `${letterH}px`;
+
+    const canvas = await window.html2canvas(target, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: letterW,
+      height: letterH,
+      windowWidth: letterW,
+      windowHeight: letterH,
+    });
+    return canvas.toDataURL("image/png");
+  } finally {
+    host.remove();
+  }
+}
+
 async function buildDeploymentPacketPdf() {
   try {
     if (!qrEnrollUrl || !qrActiveId) {
@@ -1156,7 +1366,47 @@ async function buildDeploymentPacketPdf() {
     // Slightly larger margins so content isn't so close to the page edges.
     const margin = 54;
 
-    // --- Page 1: App QR codes + Instructions ---
+    // Shared hi-res enrollment QR (flyer page + callsign QR page).
+    let hiResEnrollmentQr = "";
+    try {
+      hiResEnrollmentQr = await loadHiResEnrollmentQrDataUrl(qrActiveId);
+    } catch (qrLoadErr) {
+      console.warn(
+        "[mutual-aid] hi-res enrollment QR load failed:",
+        qrLoadErr?.message || qrLoadErr
+      );
+    }
+
+    // --- Page 1: Enrollment flyer (white-body Letter flyer) ---
+    let flyerOk = false;
+    if (hiResEnrollmentQr) {
+      try {
+        const flyerImage = await renderEnrollmentFlyerPageImage(hiResEnrollmentQr);
+        doc.addImage(flyerImage, "PNG", 0, 0, pageW, pageH);
+        flyerOk = true;
+      } catch (flyerErr) {
+        console.warn(
+          "[mutual-aid] enrollment flyer page skipped:",
+          flyerErr?.message || flyerErr
+        );
+      }
+    }
+
+    // Existing instructional pages start here (were pages 1–4; now 2–5 if flyer succeeded).
+    if (flyerOk) {
+      doc.addPage();
+    } else {
+      // Soft-fail: still generate instructional pages. Callers may show this via qrMsg.
+      if (typeof setMsg === "function" && qrMsg) {
+        setMsg(
+          qrMsg,
+          "Enrollment flyer could not be rendered; continuing with instructional pages.",
+          true
+        );
+      }
+    }
+
+    // --- App QR codes + Instructions ---
     const qrSize1 = 280; // Bigger but still safe on Letter
     const textWidth = pageW - margin * 2;
     let y = margin;
@@ -1242,7 +1492,9 @@ async function buildDeploymentPacketPdf() {
     // Main enrollment QR (high-res download — preserve aspect ratio; includes username strip)
     const maxQrBox = Math.min(pageW - margin * 2, pageH - (margin * 2 + 120));
     const qrY2 = margin + 70;
-    const hiResEnrollmentQr = await loadHiResEnrollmentQrDataUrl(qrActiveId);
+    if (!hiResEnrollmentQr) {
+      hiResEnrollmentQr = await loadHiResEnrollmentQrDataUrl(qrActiveId);
+    }
     const qrProps = doc.getImageProperties(hiResEnrollmentQr);
     const qrScale = Math.min(maxQrBox / qrProps.width, maxQrBox / qrProps.height);
     const drawQrW = qrProps.width * qrScale;
