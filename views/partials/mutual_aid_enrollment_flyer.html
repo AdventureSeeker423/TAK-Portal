@@ -5,22 +5,31 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ORG_NAME}} — Mutual Aid Enrollment Flyer</title>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: letter; margin: 0; }
-  * { margin: 0; padding: 0; box-sizing: border-box; text-align: left; }
+  /* System fonts only — web fonts break html2canvas spacing/metrics. */
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    text-align: left;
+    letter-spacing: 0 !important;
+    word-spacing: normal !important;
+  }
 
   body,
   #maEnrollmentFlyerRoot {
     width: 8.5in;
     height: 11in;
-    font-family: 'Source Sans 3', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     background: #fff;
     color: #222;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: relative;
+    letter-spacing: 0;
+    word-spacing: normal;
   }
 
   .content { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; }
@@ -41,12 +50,12 @@
     border: 2px solid #38bdf8;
     border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-weight: 700; font-size: 11px; color: #38bdf8;
     text-align: center; line-height: 1.1;
     flex-shrink: 0;
   }
-  .logo-shield span { display: block; font-size: 8px; color: #94a3b8; font-weight: 500; letter-spacing: 1px; }
+  .logo-shield span { display: block; font-size: 8px; color: #94a3b8; font-weight: 500; letter-spacing: 0; }
   .flyer-logo {
     width: 54px;
     height: 54px;
@@ -56,11 +65,11 @@
     background: #fff;
   }
   header h1 {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
     font-size: 29px;
     color: #fff;
-    letter-spacing: 2px;
+    letter-spacing: 0;
     line-height: 1;
   }
   header h1 em { font-style: normal; color: #38bdf8; }
@@ -68,7 +77,7 @@
     font-size: 12px;
     color: #94a3b8;
     margin-top: 4px;
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
   }
   .header-badge {
     margin-left: auto;
@@ -80,19 +89,19 @@
     flex-shrink: 0;
   }
   .header-badge .badge-label {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 9px;
     font-weight: 700;
-    letter-spacing: 2px;
+    letter-spacing: 0;
     color: #94a3b8;
     text-transform: uppercase;
   }
   .header-badge .badge-value {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 15px;
     font-weight: 700;
     color: #38bdf8;
-    letter-spacing: 1px;
+    letter-spacing: 0;
   }
 
   /* ── ALERT BANNER (omitted when agreement disabled) ── */
@@ -102,7 +111,7 @@
     border-bottom: 1px solid rgba(236,72,72,0.4);
     padding: 6px 0.48in;
     display: block;
-    font-family: 'Source Sans 3', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 10.5px;
     line-height: 1.4;
     letter-spacing: normal;
@@ -113,7 +122,7 @@
   .alert-banner strong {
     color: #fff;
     letter-spacing: normal;
-    font-family: 'Source Sans 3', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
   }
   .alert-banner .alert-banner-text {
     display: inline;
@@ -121,7 +130,7 @@
     letter-spacing: normal;
     word-spacing: normal;
     white-space: normal;
-    font-family: 'Source Sans 3', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
   }
 
   /* ── MAIN ── */
@@ -140,23 +149,23 @@
   .section { position: relative; background: #fff; }
 
   .section-label {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
     font-size: 9px;
-    letter-spacing: 3px;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: #1a5276;
     margin-bottom: 3px;
   }
   .section h2 {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
     font-size: 21px;
     color: #000;
     margin-bottom: 8px;
     line-height: 1.1;
   }
-  .section h2 .step-num { color: #1a5276; letter-spacing: 1px; }
+  .section h2 .step-num { color: #1a5276; letter-spacing: 0; }
 
   ol { list-style: none; counter-reset: steps; }
   ol li {
@@ -178,7 +187,7 @@
     border: 1.5px solid #1a5276;
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
     font-size: 12px;
     color: #1a5276;
@@ -195,7 +204,7 @@
     margin: 4px 0;
     font-size: 11.5px;
     color: #333;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     border-left: 3px solid #1a5276;
   }
   .nav-path * { color: #1a5276; }
@@ -233,12 +242,12 @@
     margin: 8px 0 6px;
   }
   .qr-title {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
     font-size: 11px;
     color: #1a5276;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 0;
     margin-bottom: 6px;
   }
   .qr-container img {
@@ -249,11 +258,11 @@
     padding: 6px;
   }
   .qr-sub {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
     font-weight: 700;
     color: #555;
-    letter-spacing: 1px;
+    letter-spacing: 0;
     margin-top: 4px;
     text-transform: uppercase;
   }
@@ -267,9 +276,9 @@
   .callsign-table th {
     background: #1e3a5f;
     color: #fff;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 10px;
-    letter-spacing: 1.5px;
+    letter-spacing: 0;
     text-transform: uppercase;
     padding: 4px 7px;
     text-align: left;

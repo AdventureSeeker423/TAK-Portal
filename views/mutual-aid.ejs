@@ -1443,6 +1443,35 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       height: letterH,
       windowWidth: letterW,
       windowHeight: letterH,
+      onclone(clonedDoc) {
+        try {
+          const style = clonedDoc.createElement("style");
+          style.textContent = `
+            * {
+              font-family: Arial, Helvetica, sans-serif !important;
+              letter-spacing: 0 !important;
+              word-spacing: normal !important;
+            }
+          `;
+          (clonedDoc.head || clonedDoc.documentElement).appendChild(style);
+
+          // html2canvas often collapses regular spaces with custom fonts;
+          // non-breaking spaces keep measurable glyph width.
+          const walk = (node) => {
+            if (!node) return;
+            if (node.nodeType === 3) {
+              node.nodeValue = String(node.nodeValue || "").replace(/ /g, "\u00A0");
+              return;
+            }
+            if (node.nodeType === 1) {
+              Array.from(node.childNodes || []).forEach(walk);
+            }
+          };
+          walk(clonedDoc.body || clonedDoc.documentElement);
+        } catch (err) {
+          console.warn("[mutual-aid] flyer capture clone harden failed:", err?.message || err);
+        }
+      },
     });
     return canvas.toDataURL("image/png");
   } finally {
