@@ -27,17 +27,6 @@
         />
       </label>
 
-      <label id="maExpireWrap" class="createMaField createMaField--expire">Expires
-        <select id="maExpireEnabled">
-          <option value="no" selected>No</option>
-          <option value="yes">Yes</option>
-        </select>
-      </label>
-
-      <label id="maExpireAtWrap" class="createMaField createMaField--expireAt" style="display:none;">Expire At
-        <input id="maExpireAt" type="datetime-local" />
-      </label>
-
       <label class="createMaField createMaField--group">Group
         <select id="maGroupMode">
           <option value="new" selected>Create New Group</option>
@@ -50,7 +39,21 @@
         <select id="maExistingGroup"></select>
       </label>
 
-      <button class="btn createMaField createMaField--submit" id="maCreateBtn" type="button">Create New Mutual Aid</button>
+      <label id="maExpireWrap" class="createMaField createMaField--expire">Expires
+        <select id="maExpireEnabled">
+          <option value="no" selected>No</option>
+          <option value="yes">Yes</option>
+        </select>
+      </label>
+
+      <label id="maExpireAtWrap" class="createMaField createMaField--expireAt" style="display:none;">Expire At
+        <input id="maExpireAt" type="datetime-local" />
+      </label>
+
+      <label class="createMaField createMaField--submit">
+        <span class="createMaBtnSpacer" aria-hidden="true">&nbsp;</span>
+        <button class="btn" id="maCreateBtn" type="button">Create New Mutual Aid</button>
+      </label>
     </div>
 
     <div id="maCreateMsg" class="msg" style="margin-top:10px;"></div>
@@ -150,7 +153,7 @@
   }
 
   .createMaFields {
-    align-items: flex-end;
+    align-items: flex-end !important;
     flex-wrap: wrap;
     gap: 12px;
     width: 100%;
@@ -186,9 +189,15 @@
   }
   .createMaField--submit {
     flex: 0 0 auto;
-    align-self: flex-end;
-    display: inline-flex;
+  }
+  .createMaField--submit .createMaBtnSpacer {
+    visibility: hidden;
+    line-height: 1.2;
+    user-select: none;
+  }
+  .createMaField--submit .btn {
     width: auto;
+    white-space: nowrap;
   }
 
   .btn.maAddUser {
@@ -261,10 +270,7 @@
   .createMaField--submit {
     flex: 1 1 100%;
   }
-  .createMaField--submit {
-    width: 100%;
-  }
-  .createMaField--submit.btn {
+  .createMaField--submit .btn {
     width: 100% !important;
     justify-content: center;
   }
