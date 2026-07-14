@@ -731,7 +731,21 @@ app.get("/mutual-aid", requirePermission("page.mutual_aid"), (req, res) => {
       err?.message || err
     );
   }
-  res.render("mutual-aid", { enrollmentFlyerHtml });
+  let flyerUserAgreement = { enabled: false, text: "" };
+  try {
+    const agreement = mouSvc.getCurrentUserAgreement();
+    const body = String(agreement?.current?.bodyMarkdown || "").trim();
+    flyerUserAgreement = {
+      enabled: agreement?.enabled === true && !!body,
+      text: body,
+    };
+  } catch (err) {
+    console.warn(
+      "[mutual-aid] user agreement unavailable for flyer:",
+      err?.message || err
+    );
+  }
+  res.render("mutual-aid", { enrollmentFlyerHtml, flyerUserAgreement });
 }); //require Global Admin
 app.get("/integrations", requirePermission("page.integrations"), (req, res) =>
   res.render("integrations")

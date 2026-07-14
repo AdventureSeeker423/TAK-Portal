@@ -450,6 +450,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 const ENROLLMENT_FLYER_HTML = <%- JSON.stringify(typeof enrollmentFlyerHtml !== "undefined" ? enrollmentFlyerHtml : "") %>;
+const FLYER_USER_AGREEMENT = <%- JSON.stringify(
+  typeof flyerUserAgreement !== "undefined" && flyerUserAgreement
+    ? flyerUserAgreement
+    : { enabled: false, text: "" }
+) %>;
 // ----- Shared helpers -----
 function esc(s){
   return String(s ?? "")
@@ -1160,49 +1165,87 @@ function readableCallsignFormat(expression) {
     .replace(/\{\{\s*[^}]+\s*\}\}/g, "X");
 }
 
-function flyerAgencyLabel(orgA) {
-  const raw = String(orgA || "").trim();
-  if (!raw || /^tak$/i.test(raw)) return "Agency";
-  // Prefer a short agency token for examples (e.g. "Hamilton County " → keep readable prefix).
-  const compact = raw.replace(/\s+/g, "");
-  if (compact.length <= 12) return compact;
-  const words = raw.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return words
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 8);
-  }
-  return raw.slice(0, 10);
+function markdownToFlyerPlainText(md) {
+  return String(md || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/[*_~]+/g, "")
+    .replace(/\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function buildFlyerCallsignExamples(format, orgA) {
-  const agency = flyerAgencyLabel(orgA);
-  const apply = (lastName, radioId) =>
-    String(format || "Agency-LastName-RadioID")
-      .replace(/Agency/g, agency)
-      .replace(/LastName/g, lastName)
-      .replace(/RadioID/g, radioId)
-      .replace(/-RadioID$/i, radioId ? `-${radioId}` : "")
-      .replace(/RadioID-/i, radioId ? `${radioId}-` : "");
-
-  return {
-    ex1: apply("Smith", "K3"),
-    ex2: apply("Davis", "2N4"),
-    // Third example omits optional radio id when the format includes it.
-    ex3: String(format || "").includes("RadioID")
-      ? apply("Rose", "").replace(/-+$/g, "").replace(/-+/g, "-")
-      : apply("Rose", "A1"),
-  };
+function buildFlyerTeamRoleListHtml(roles) {
+  const list = Array.isArray(roles) ? roles : [];
+  if (!list.length) {
+    return `<span class="ref-empty">No team roles configured</span>`;
+  }
+  return (
+    `<ul class="ref-list">` +
+    list
+      .map((r) => {
+        const label = esc(r.name || "");
+        const desc = String(r.desc || "").trim();
+        return `<li><strong>${label}</strong>${
+          desc ? ` <span class="ref-desc">— ${esc(desc)}</span>` : ""
+        }</li>`;
+      })
+      .join("") +
+    `</ul>`
+  );
 }
 
-function flyerCallsignRule(format) {
-  const hasRadio = String(format || "").includes("RadioID");
-  if (hasRadio) {
-    return "Agency and LastName are required. RadioID is optional if you don't have one assigned.";
+function buildFlyerTeamColorListHtml(colors) {
+  const list = Array.isArray(colors) ? colors : [];
+  if (!list.length) {
+    return `<span class="ref-empty">No team colors configured</span>`;
   }
-  return "Follow the callsign format exactly as shown above.";
+  return (
+    `<ul class="ref-list">` +
+    list
+      .map((c) => {
+        const hex = String(c.hex || "#888").trim() || "#888";
+        const border =
+          String(hex).toLowerCase() === "#ffffff" ? "border:1px solid #999;" : "";
+        const label = esc(c.name || "");
+        const desc = String(c.desc || "").trim();
+        return `<li><span class="ref-swatch" style="background:${esc(
+          hex
+        )};${border}"></span><strong>${label}</strong>${
+          desc ? ` <span class="ref-desc">— ${esc(desc)}</span>` : ""
+        }</li>`;
+      })
+      .join("") +
+    `</ul>`
+  );
+}
+
+async function loadBrandLogoDataUrl() {
+  const logoPath = getSetting("BRAND_LOGO_URL");
+  if (!logoPath) return "";
+  try {
+    const abs = /^https?:\/\//i.test(logoPath)
+      ? logoPath
+      : new URL(logoPath, window.location.origin).href;
+    const res = await fetch(abs, { credentials: "same-origin" });
+    if (!res.ok) return "";
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read brand logo"));
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn("[mutual-aid] brand logo for flyer skipped:", err?.message || err);
+    return "";
+  }
 }
 
 function fillEnrollmentFlyerHtml(tokens) {
@@ -1272,10 +1315,36 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
   const callsignFormat = readableCallsignFormat(
     getSetting("CALLSIGN_FORMAT_EXPRESSION")
   );
-  const examples = buildFlyerCallsignExamples(callsignFormat, split.orgA);
-  const supportContact = portalBase
-    ? portalBase
-    : "via your agency administrator";
+
+  const agreementEnabled = !!(
+    FLYER_USER_AGREEMENT &&
+    FLYER_USER_AGREEMENT.enabled &&
+    String(FLYER_USER_AGREEMENT.text || "").trim()
+  );
+  const compliancePlainRaw = agreementEnabled
+    ? markdownToFlyerPlainText(FLYER_USER_AGREEMENT.text)
+    : "";
+  const compliancePlain =
+    compliancePlainRaw.length > 450
+      ? `${compliancePlainRaw.slice(0, 447).trim()}...`
+      : compliancePlainRaw;
+  const complianceBannerHtml = compliancePlain
+    ? `<div class="alert-banner"><strong>&#9888; Compliance Notice:</strong>&nbsp; ${esc(
+        compliancePlain
+      )}</div>`
+    : "";
+
+  let logoHtml = `<div class="logo-shield">TAK<span>PORTAL</span></div>`;
+  try {
+    const logoDataUrl = await loadBrandLogoDataUrl();
+    if (logoDataUrl) {
+      logoHtml = `<img class="flyer-logo" id="maFlyerLogoImg" src="${logoDataUrl}" alt="${esc(
+        split.orgName
+      )} Logo">`;
+    }
+  } catch {
+    /* keep fallback shield */
+  }
 
   const tokens = {
     ORG_NAME: esc(split.orgName),
@@ -1284,24 +1353,15 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
     EVENT_NAME: esc(eventName),
     EVENT_SUBTITLE: esc(`${typeLabel} — Multi-Agency Mutual Aid`),
     CHANNEL_NAME: esc(channelName),
-    CHANNEL_DESC: esc("Temporary interoperability channel"),
     QR_LABEL: esc(channelName),
     // Do not HTML-escape; this is a data: URL for <img src>.
     QR_DATA_URL: String(qrDataUrl || ""),
+    LOGO_HTML: logoHtml,
+    COMPLIANCE_BANNER_HTML: complianceBannerHtml,
     CALLSIGN_FORMAT: esc(callsignFormat),
-    CALLSIGN_EX_1: esc(examples.ex1),
-    CALLSIGN_EX_2: esc(examples.ex2),
-    CALLSIGN_EX_3: esc(examples.ex3),
-    CALLSIGN_RULE: esc(flyerCallsignRule(callsignFormat)),
-    TEAM_ROLE: esc("Team Member"),
-    TEAM_COLOR: esc("Magenta"),
-    TEAM_COLOR_HEX: "#d81b60",
+    TEAM_ROLE_LIST_HTML: buildFlyerTeamRoleListHtml(TEAM_ROLES),
+    TEAM_COLOR_LIST_HTML: buildFlyerTeamColorListHtml(TEAM_COLORS),
     REQUEST_ACCESS_URL: esc(requestAccessUrl),
-    SUPPORT_NAME: esc("your Mutual Aid coordinator"),
-    SUPPORT_PHONE: esc(supportContact || "via your agency administrator"),
-    COMPLIANCE_NOTICE: esc(
-      "This system uses encrypted communications. Do not transmit Criminal Justice Information (CJI) over this network. For CJIS-controlled data, use authorized and compliant channels only."
-    ),
   };
 
   const filled = fillEnrollmentFlyerHtml(tokens);
@@ -1313,14 +1373,16 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
 
   try {
     await new Promise((resolve) => setTimeout(resolve, 350));
-    const qrImg = host.querySelector("#maFlyerQrImg");
-    if (qrImg && !qrImg.complete) {
-      await new Promise((resolve) => {
-        qrImg.onload = () => resolve();
-        qrImg.onerror = () => resolve();
+    const waitImg = (img) => {
+      if (!img || img.complete) return Promise.resolve();
+      return new Promise((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
         setTimeout(resolve, 1500);
       });
-    }
+    };
+    await waitImg(host.querySelector("#maFlyerQrImg"));
+    await waitImg(host.querySelector("#maFlyerLogoImg"));
 
     const letterW = Math.round(8.5 * 96);
     const letterH = Math.round(11 * 96);
