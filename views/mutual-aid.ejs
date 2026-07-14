@@ -1345,8 +1345,8 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
     throw new Error("Flyer renderer failed to load.");
   }
 
-  const serverName = getSetting("SERVER_NAME") || "TAK";
-  const split = splitServerNameForFlyer(serverName);
+  const serverName = String(getSetting("SERVER_NAME") || "").trim();
+  const split = splitServerNameForFlyer(serverName || "TAK");
   const channelName =
     displayGroupName(qrActiveItem?.groupName || "").trim() ||
     String(qrActiveItem?.title || "").trim() ||
@@ -1386,17 +1386,24 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
     const logoDataUrl = await loadBrandLogoDataUrl();
     if (logoDataUrl) {
       logoHtml = `<img class="flyer-logo" id="maFlyerLogoImg" src="${logoDataUrl}" alt="${esc(
-        split.orgName
+        serverName || "TAK Portal"
       )} Logo">`;
     }
   } catch {
     /* keep fallback shield */
   }
 
+  const headerTitleHtml = serverName
+    ? `<h1 class="header-title"><span class="header-server">${esc(
+        serverName
+      )}</span><span class="header-enrollment">Mutual Aid Enrollment</span></h1>`
+    : `<h1 class="header-title header-title-solo"><span class="header-enrollment">Mutual Aid Enrollment</span></h1>`;
+
   const tokens = {
     ORG_NAME: esc(split.orgName),
     ORG_NAME_A: esc(split.orgA),
     ORG_NAME_B: esc(split.orgB),
+    HEADER_TITLE_HTML: headerTitleHtml,
     EVENT_NAME: esc(eventName),
     EVENT_SUBTITLE: esc(`${typeLabel} — Multi-Agency Mutual Aid`),
     CHANNEL_NAME: esc(channelName),

@@ -86,12 +86,28 @@
   header h1 {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
-    font-size: 29px;
     color: #fff;
     letter-spacing: 0;
-    line-height: 1;
+    line-height: 1.15;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
   }
-  header h1 em { font-style: normal; color: #38bdf8; }
+  header h1 .header-server {
+    font-size: 18px;
+    font-weight: 700;
+    color: #38bdf8;
+    line-height: 1.1;
+  }
+  header h1 .header-enrollment {
+    font-size: 26px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.05;
+  }
+  header h1.header-title-solo .header-enrollment {
+    font-size: 29px;
+  }
   header p {
     font-size: 12px;
     color: #94a3b8;
@@ -364,7 +380,8 @@
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
     header { background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%) !important; border-bottom: 3px solid #38bdf8 !important; }
     header h1 { color: #fff !important; }
-    header h1 em { color: #38bdf8 !important; }
+    header h1 .header-server { color: #38bdf8 !important; }
+    header h1 .header-enrollment { color: #fff !important; }
     header p { color: #94a3b8 !important; }
     .header-badge { background: rgba(56,189,248,0.1) !important; border-color: #38bdf8 !important; }
     .header-badge .badge-label { color: #94a3b8 !important; }
@@ -410,7 +427,7 @@
   <header>
     {{LOGO_HTML}}
     <div>
-      <h1>{{ORG_NAME_A}}<em>{{ORG_NAME_B}}</em> &mdash; Mutual Aid Enrollment</h1>
+      {{HEADER_TITLE_HTML}}
       <p>{{EVENT_NAME}} &mdash; {{EVENT_SUBTITLE}}</p>
     </div>
     <div class="header-badge">
