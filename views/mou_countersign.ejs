@@ -1,0 +1,402 @@
+<%- include("partials/header") %>
+<%- include("partials/sidebar") %>
+
+<style>
+.mouSignerIntro {
+  margin: 0 0 12px 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.22);
+  line-height: 1.55;
+}
+
+.mouSignSection {
+  margin-top: 18px;
+}
+
+.mouSignSectionTitle {
+  margin: 0 0 6px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.mouSignMethodSwitch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mouSignMethodButton {
+  justify-content: center;
+}
+
+.mouSignMethodButton.is-active {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #ffffff;
+}
+
+.mouSignMethodPanel[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  .mouSignMethodSwitch {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<% const customSignerFields = Array.isArray(customSignerFields) ? customSignerFields : []; %>
+
+<main
+  class="main"
+  data-active-download-url="<%= downloadUrl || '' %>"
+  data-document-title="<%= stream.title || 'document' %>"
+  data-signing-agency-name="<%= agencyName || '' %>"
+>
+  <div class="mouPageHeader">
+    <div class="mouPageHeader__intro">
+      <h1 style="margin-bottom:6px;">Countersign Document</h1>
+      <div class="muted">
+        Add a global admin countersignature to the signed document for <strong><%= agencyName %></strong>.
+        This only affects this agency's copy.
+      </div>
+    </div>
+    <div class="mouActionRow mouPageHeader__actions">
+      <% if (downloadUrl) { %>
+        <a class="btn secondary" href="<%= downloadUrl %>">Download</a>
+      <% } %>
+      <a class="btn" href="/mou">Back to MOU / Documents</a>
+    </div>
+  </div>
+
+  <% if (error) { %>
+    <div class="card mouCallout mouCallout--danger">
+      <div class="msg bad"><%= error %></div>
+    </div>
+  <% } %>
+
+  <% if (success) { %>
+    <div class="card mouCallout">
+      <div class="msg ok"><%= success %></div>
+    </div>
+  <% } %>
+
+  <div class="mouWorkspace">
+    <section class="card mouWorkspace__document mouViewerCard" id="mouDocumentSection">
+      <%- html %>
+    </section>
+
+    <section class="card mouWorkspace__sidebar mouWorkspace__sidebar--sticky">
+      <h2 style="margin-top:0;">Countersign</h2>
+
+      <form
+        method="post"
+        action="/admin/mou/<%= encodeURIComponent(stream.mouId) %>/countersign/<%= encodeURIComponent(agencyId) %>"
+        id="mouCountersignForm"
+        enctype="multipart/form-data"
+      >
+        <input type="hidden" name="signMethodMode" id="signMethodMode" value="" />
+
+        <div class="mouSignSection">
+          <div class="mouSignSectionTitle">Choose Signing Method</div>
+          <div class="mouSignMethodSwitch" role="tablist" aria-label="Countersign method">
+            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="esign" aria-pressed="false">E-Sign Here</button>
+            <button class="btn mouSignMethodButton" type="button" data-sign-method-toggle data-method="upload" aria-pressed="false">Upload Signed Copy</button>
+          </div>
+          <div class="msg" id="signMethodMsg" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="mouSignSection">
+          <div class="mouSignSectionTitle">Countersigner Details</div>
+          <div class="mouSignerIntro">
+            By countersigning this document, I affirm that I am authorized to countersign on behalf of the TAK Portal administration for the <%= agencyName %> signed copy.
+          </div>
+
+          <div data-signer-fields hidden>
+            <label style="display:block;">
+              Full Name
+              <input type="text" name="attestationText" placeholder="Enter Full Name" style="width:100%;" required />
+            </label>
+
+            <label style="margin-top:12px;display:block;">
+              Position / Role
+              <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" required />
+            </label>
+
+            <% customSignerFields.forEach(function (customFieldLabel, customFieldIndex) { %>
+              <label style="margin-top:12px;display:block;">
+                <%= customFieldLabel %>
+                <input
+                  type="text"
+                  name="customFieldValues"
+                  data-custom-signer-input
+                  data-custom-label="<%= customFieldLabel %>"
+                  data-custom-index="<%= customFieldIndex %>"
+                  placeholder="Enter <%= customFieldLabel %>"
+                  style="width:100%;"
+                  required
+                />
+              </label>
+            <% }); %>
+          </div>
+        </div>
+
+        <input type="hidden" name="signatureDataUrl" id="signatureDataUrl" value="" />
+
+        <div class="mouSignSection mouSignMethodPanel" data-sign-method-panel="esign" hidden>
+          <div class="mouSignSectionTitle">E-Sign Here</div>
+
+          <label style="display:block;">
+            Draw Signature
+            <canvas id="signatureCanvas" width="520" height="180" class="mouSignatureCanvas" aria-label="Signature canvas"></canvas>
+          </label>
+
+          <div class="row" style="margin-top:10px;">
+            <button class="btn" type="button" id="clearSignatureBtn">Clear Signature</button>
+          </div>
+
+          <div class="row" style="margin-top:16px;justify-content:flex-end;">
+            <button class="btn success" type="submit" name="signMethod" value="esign">Countersign Document</button>
+          </div>
+        </div>
+
+        <div class="mouSignSection mouSignMethodPanel" data-sign-method-panel="upload" hidden>
+          <div class="mouSignSectionTitle">Upload Signed Copy</div>
+
+          <label style="display:block;">
+            Countersigned Document File
+            <input type="file" name="signedCopyFile" id="signedCopyFile" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" style="width:100%;" />
+          </label>
+
+          <div class="row" style="margin-top:16px;justify-content:flex-end;">
+            <button class="btn success" type="submit" name="signMethod" value="upload">Upload Countersigned Document</button>
+          </div>
+        </div>
+      </form>
+    </section>
+  </div>
+</main>
+
+<script>
+(function () {
+  var canvas = document.getElementById("signatureCanvas");
+  var form = document.getElementById("mouCountersignForm");
+  var hidden = document.getElementById("signatureDataUrl");
+  var clearBtn = document.getElementById("clearSignatureBtn");
+  var signMethodMsg = document.getElementById("signMethodMsg");
+  var signerFieldsWrap = form ? form.querySelector("[data-signer-fields]") : null;
+  var signerNameInput = form ? form.querySelector("input[name='attestationText']") : null;
+  var signerRoleInput = form ? form.querySelector("input[name='signerRole']") : null;
+  var customSignerInputs = form
+    ? Array.from(form.querySelectorAll("[data-custom-signer-input]"))
+    : [];
+  var signedCopyInput = document.getElementById("signedCopyFile");
+  var signMethodModeInput = document.getElementById("signMethodMode");
+  var signMethodToggleButtons = form ? Array.from(form.querySelectorAll("[data-sign-method-toggle]")) : [];
+  var signMethodPanels = form ? Array.from(form.querySelectorAll("[data-sign-method-panel]")) : [];
+  var activeSignMethod =
+    signMethodModeInput && /^(esign|upload)$/.test(String(signMethodModeInput.value || ""))
+      ? String(signMethodModeInput.value || "")
+      : "";
+
+  var ctx = canvas ? canvas.getContext("2d") : null;
+  var drawing = false;
+  var hasInk = false;
+
+  function setSignMethodMessage(text) {
+    if (!signMethodMsg) return;
+    signMethodMsg.className = "msg " + (text ? "bad" : "");
+    signMethodMsg.textContent = text || "";
+  }
+
+  function setActiveSignMethod(mode) {
+    activeSignMethod = mode === "upload" || mode === "esign" ? mode : "";
+    if (signMethodModeInput) signMethodModeInput.value = activeSignMethod;
+    signMethodToggleButtons.forEach(function (button) {
+      var isActive = button.getAttribute("data-method") === activeSignMethod;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+    signMethodPanels.forEach(function (panel) {
+      panel.hidden = panel.getAttribute("data-sign-method-panel") !== activeSignMethod;
+    });
+    if (signerFieldsWrap) {
+      var showSignerFields = !!activeSignMethod;
+      signerFieldsWrap.hidden = !showSignerFields;
+      if (signerNameInput && signerNameInput.hasAttribute("required")) {
+        signerNameInput.disabled = !showSignerFields;
+      }
+      if (signerRoleInput && signerRoleInput.hasAttribute("required")) {
+        signerRoleInput.disabled = !showSignerFields;
+      }
+      customSignerInputs.forEach(function (input) {
+        input.disabled = !showSignerFields;
+      });
+    }
+    updateSignerFieldPlaceholders();
+    setSignMethodMessage("");
+  }
+
+  function updateSignerFieldPlaceholders() {
+    if (signerNameInput) {
+      signerNameInput.placeholder =
+        activeSignMethod === "esign"
+          ? "Enter Your Full Name"
+          : activeSignMethod === "upload"
+            ? "Enter Signer's Full Name"
+            : "Enter Full Name";
+    }
+    if (signerRoleInput) {
+      signerRoleInput.placeholder =
+        activeSignMethod === "esign"
+          ? "Enter Your Position / Role"
+          : activeSignMethod === "upload"
+            ? "Enter Signer's Position / Role"
+            : "Enter Position / Role";
+    }
+  }
+
+  function pointFromEvent(evt) {
+    var rect = canvas.getBoundingClientRect();
+    var source = evt.touches && evt.touches[0] ? evt.touches[0] : evt;
+    var scaleX = rect.width ? canvas.width / rect.width : 1;
+    var scaleY = rect.height ? canvas.height / rect.height : 1;
+    return {
+      x: (source.clientX - rect.left) * scaleX,
+      y: (source.clientY - rect.top) * scaleY,
+    };
+  }
+
+  function begin(evt) {
+    evt.preventDefault();
+    drawing = true;
+    setSignMethodMessage("");
+    var point = pointFromEvent(evt);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  }
+
+  function draw(evt) {
+    if (!drawing) return;
+    evt.preventDefault();
+    var point = pointFromEvent(evt);
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#111827";
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+    hasInk = true;
+  }
+
+  function end(evt) {
+    if (evt) evt.preventDefault();
+    drawing = false;
+  }
+
+  if (!form) return;
+
+  signMethodToggleButtons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      setActiveSignMethod(button.getAttribute("data-method"));
+    });
+  });
+  setActiveSignMethod(activeSignMethod);
+
+  var canDrawSignature = !!(canvas && hidden && ctx);
+  if (canDrawSignature) {
+    canvas.addEventListener("mousedown", begin);
+    canvas.addEventListener("mousemove", draw);
+    window.addEventListener("mouseup", end);
+    canvas.addEventListener("touchstart", begin, { passive: false });
+    canvas.addEventListener("touchmove", draw, { passive: false });
+    canvas.addEventListener("touchend", end, { passive: false });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", function () {
+      if (!canDrawSignature) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasInk = false;
+      hidden.value = "";
+      setSignMethodMessage("");
+    });
+  }
+
+  form.addEventListener("submit", function (event) {
+    var submitter = event.submitter;
+    var signMethod = submitter && submitter.value ? submitter.value : activeSignMethod;
+    if (signMethod !== "upload" && signMethod !== "esign") {
+      event.preventDefault();
+      if (hidden) hidden.value = "";
+      setSignMethodMessage('Select "E-Sign Here" or "Upload Signed Copy" first.');
+      return;
+    }
+    if (signMethod === "upload") {
+      if (hidden) hidden.value = "";
+      if (signerNameInput && !String(signerNameInput.value || "").trim()) {
+        event.preventDefault();
+        setSignMethodMessage("Signer full name is required.");
+        return;
+      }
+      if (signerRoleInput && !String(signerRoleInput.value || "").trim()) {
+        event.preventDefault();
+        setSignMethodMessage("Signer position / role is required.");
+        return;
+      }
+      for (var i = 0; i < customSignerInputs.length; i += 1) {
+        var uploadCustomInput = customSignerInputs[i];
+        var uploadCustomLabel = String(uploadCustomInput.getAttribute("data-custom-label") || "Custom field").trim();
+        if (!String(uploadCustomInput.value || "").trim()) {
+          event.preventDefault();
+          setSignMethodMessage(uploadCustomLabel + " is required.");
+          return;
+        }
+      }
+      if (!signedCopyInput || !signedCopyInput.files || !signedCopyInput.files.length) {
+        event.preventDefault();
+        setSignMethodMessage("Attach a PDF or image of the countersigned document.");
+        return;
+      }
+      setSignMethodMessage("");
+      return;
+    }
+    if (!canDrawSignature) {
+      event.preventDefault();
+      if (hidden) hidden.value = "";
+      setSignMethodMessage("Signature pad is unavailable. Please upload a signed copy instead.");
+      return;
+    }
+    if (!hasInk) {
+      event.preventDefault();
+      hidden.value = "";
+      setSignMethodMessage("A drawn signature is required.");
+      return;
+    }
+    if (signerNameInput && !String(signerNameInput.value || "").trim()) {
+      event.preventDefault();
+      setSignMethodMessage("Signer full name is required.");
+      return;
+    }
+    if (signerRoleInput && !String(signerRoleInput.value || "").trim()) {
+      event.preventDefault();
+      setSignMethodMessage("Signer position / role is required.");
+      return;
+    }
+    for (var j = 0; j < customSignerInputs.length; j += 1) {
+      var customInput = customSignerInputs[j];
+      var customLabel = String(customInput.getAttribute("data-custom-label") || "Custom field").trim();
+      if (!String(customInput.value || "").trim()) {
+        event.preventDefault();
+        setSignMethodMessage(customLabel + " is required.");
+        return;
+      }
+    }
+    setSignMethodMessage("");
+    hidden.value = hasInk ? canvas.toDataURL("image/png") : "";
+  });
+})();
+</script>

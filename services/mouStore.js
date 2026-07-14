@@ -161,6 +161,24 @@ function getSignedUploadPath(mouId, agencyId, version, extension) {
   );
 }
 
+function getCountersignaturePngPath(mouId, agencyId, version) {
+  return path.join(
+    SIGNATURES_DIR,
+    normalizeSegment(mouId),
+    normalizeSegment(agencyId),
+    `${normalizeVersion(version)}-countersign.png`
+  );
+}
+
+function getCountersignUploadPath(mouId, agencyId, version, extension) {
+  return path.join(
+    SIGNED_DIR,
+    normalizeSegment(mouId),
+    normalizeSegment(agencyId),
+    `${normalizeVersion(version)}-countersign-upload.${normalizeExtension(extension, "pdf")}`
+  );
+}
+
 function loadIndex() {
   ensureStorage();
   return readJsonFile(INDEX_PATH, { schemaVersion: 1, streams: [] });
@@ -291,6 +309,8 @@ module.exports = {
   getSignedHtmlPath,
   getSignaturePngPath,
   getSignedUploadPath,
+  getCountersignaturePngPath,
+  getCountersignUploadPath,
   readHtml,
   writeHtml,
   writeBinary,

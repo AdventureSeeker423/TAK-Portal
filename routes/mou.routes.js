@@ -821,20 +821,31 @@ router.get("/mou/agency-file/:mouId/:agencyId", requireMouEnabled, requireMouPer
       agencyId,
       version: req.query.version,
     });
-    if (!evidence.uploadedSignedCopyAbsPath) {
+    const part = String(req.query.part || "").trim().toLowerCase();
+    const useCountersign = part === "countersign";
+    const countersignature = evidence.signature?.countersignature;
+    const absPath = useCountersign
+      ? evidence.countersignUploadedAbsPath
+      : evidence.uploadedSignedCopyAbsPath;
+    if (!absPath) {
       return renderNotFound(req, res);
     }
-    const fileName =
-      evidence.signature?.uploadedSignedCopyFileName ||
-      `${evidence.stream?.title || "signed-document"}-signed-copy`;
-    if (evidence.signature?.uploadedSignedCopyContentType) {
-      res.type(evidence.signature.uploadedSignedCopyContentType);
+    const fileName = useCountersign
+      ? countersignature?.uploadedSignedCopyFileName ||
+        `${evidence.stream?.title || "signed-document"}-countersigned-copy`
+      : evidence.signature?.uploadedSignedCopyFileName ||
+        `${evidence.stream?.title || "signed-document"}-signed-copy`;
+    const contentType = useCountersign
+      ? countersignature?.uploadedSignedCopyContentType
+      : evidence.signature?.uploadedSignedCopyContentType;
+    if (contentType) {
+      res.type(contentType);
     }
     res.setHeader(
       "Content-Disposition",
       buildContentDisposition(req.query.download === "1" ? "attachment" : "inline", fileName)
     );
-    return res.sendFile(evidence.uploadedSignedCopyAbsPath);
+    return res.sendFile(absPath);
   } catch (err) {
     return renderNotFound(req, res);
   }
@@ -1010,6 +1021,128 @@ router.post("/admin/mou/:mouId/signatures/upload/:agencyId", requireMouEnabled, 
     return toErrorRedirect(res, "/mou", err);
   }
 });
+
+router.get(
+  "/admin/mou/:mouId/countersign/:agencyId",
+  requireMouEnabled,
+  requireMouPermission,
+  requireGlobalAdmin,
+  (req, res) => {
+    try {
+      const stream = mouService.getStreamById(req.params.mouId);
+      const currentVersion = mouService.getCurrentVersion(stream);
+      if (!currentVersion) {
+        throw new Error("MOU version not found.");
+      }
+
+      const agencySuffix = String(req.params.agencyId || "").trim().toLowerCase();
+      const targetAgency = mouService
+        .getTargetAgenciesForStream(stream)
+        .find((agency) => String(agency?.suffix || "").trim().toLowerCase() === agencySuffix);
+      if (!targetAgency) {
+        throw new Error("This document is not assigned to the selected agency.");
+      }
+
+      const evidence = mouService.getAgencyEvidence({
+        mouId: req.params.mouId,
+        agencyId: agencySuffix,
+        version: currentVersion.version,
+      });
+      if (evidence.signature?.countersignature) {
+        return res.redirect(
+          `/mou/agency/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(agencySuffix)}?version=${encodeURIComponent(currentVersion.version)}&success=${encodeURIComponent("This agency document has already been countersigned.")}`
+        );
+      }
+
+      const agency = mouService.getAgencyBySuffix(agencySuffix);
+      const agencyName =
+        agency?.name || targetAgency?.name || agency?.groupPrefix || agencySuffix;
+
+      return res.render("mou_countersign", {
+        stream: evidence.stream,
+        version: evidence.version,
+        agencyId: agencySuffix,
+        agencyName,
+        html: evidence.html,
+        signature: evidence.signature,
+        customSignerFields: Array.isArray(currentVersion.customSignerFields)
+          ? currentVersion.customSignerFields
+          : [],
+        downloadUrl: `/mou/agency/${encodeURIComponent(req.params.mouId)}/${encodeURIComponent(agencySuffix)}/pdf?version=${encodeURIComponent(currentVersion.version)}`,
+        error: req.query.error || "",
+        success: req.query.success || "",
+      });
+    } catch (err) {
+      return toErrorRedirect(res, "/mou", err);
+    }
+  }
+);
+
+router.post(
+  "/admin/mou/:mouId/countersign/:agencyId",
+  requireMouEnabled,
+  requireMouPermission,
+  requireGlobalAdmin,
+  upload.single("signedCopyFile"),
+  async (req, res) => {
+    const agencySuffix = String(req.params.agencyId || "").trim().toLowerCase();
+    const countersignUrl = `/admin/mou/${encodeURIComponent(req.params.mouId)}/countersign/${encodeURIComponent(agencySuffix)}`;
+    try {
+      const stream = mouService.getStreamById(req.params.mouId);
+      const currentVersion = mouService.getCurrentVersion(stream);
+      if (!currentVersion) {
+        throw new Error("MOU version not found.");
+      }
+
+      const signMethod = String(req.body?.signMethod || "esign").trim().toLowerCase();
+      if (signMethod === "upload" && !req.file) {
+        throw new Error("Attach a PDF or image of the countersigned document.");
+      }
+
+      const signerStatus = await resolveSignerStatus(req.authentikUser);
+      const result = mouService.countersignVersion({
+        mouId: req.params.mouId,
+        version: currentVersion.version,
+        agencySuffix,
+        signerUserId: req.authentikUser?.uid || req.authentikUser?.username,
+        signerDisplayName:
+          req.body?.attestationText ||
+          req.authentikUser?.displayName ||
+          req.authentikUser?.username,
+        signerStatusAtSign: req.body?.signerRole || signerStatus || "Global Administrator",
+        attestationText: req.body?.attestationText,
+        customFieldValues: req.body?.customFieldValues,
+        signatureDataUrl: req.body?.signatureDataUrl,
+        uploadedSignedCopyFile: signMethod === "upload" ? req.file || null : null,
+        ...requestMeta(req),
+      });
+
+      auditRequest(req, {
+        action: "MOU_AGENCY_COUNTERSIGNED",
+        targetType: "mou",
+        targetId: String(result.stream.mouId),
+        agencySuffix,
+        details: {
+          mouId: result.stream.mouId,
+          version: result.version.version,
+          agencyId: agencySuffix,
+          signerDisplayName: result.signature?.countersignature?.signerDisplayName,
+          signMethod,
+        },
+      });
+
+      return res.redirect(
+        `/mou?success=${encodeURIComponent(
+          signMethod === "upload"
+            ? "Countersigned document uploaded successfully."
+            : "Document countersigned successfully."
+        )}`
+      );
+    } catch (err) {
+      return toErrorRedirect(res, countersignUrl, err);
+    }
+  }
+);
 
 router.get(
   "/admin/mou/agency-admins/:agencySuffix",

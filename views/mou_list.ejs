@@ -362,6 +362,7 @@
               <option value="all" selected>All Statuses</option>
               <option value="needs-signature">Needs Signature</option>
               <option value="signed">Signed</option>
+              <option value="countersigned">Countersigned</option>
             </select>
           </label>
           <input
@@ -407,7 +408,9 @@
               <% signatureRows.forEach(function (row) { %>
                 <% const signatureRowClass = row.needsSignature ? "mouRow--pending" : (row.signedVersion ? "mouRow--signed" : ""); %>
                 <% const scopeDisplay = row.scopeType === "agency" ? String(row.agencyId || "").toUpperCase() : row.scopeLabel; %>
-                <% const statusLabel = row.needsSignature ? "Needs Signature" : "Signed"; %>
+                <% const statusLabel = row.needsSignature
+                  ? "Needs Signature"
+                  : (row.hasCountersignature ? "Countersigned" : "Signed"); %>
                 <% const signingMethodLabel = row.signingMode === "external_link"
                   ? "External Link"
                   : (row.signingMode === "specific_agency_admin" ? "Specific Agency Admin" : "All Agency Admins"); %>
@@ -425,7 +428,7 @@
                   data-currentversion="<%= row.currentVersion %>"
                   data-signedversion="<%= row.signedVersion ? row.signedVersion : 0 %>"
                   data-signer="<%= row.signerDisplayName || '' %>"
-                  data-status="<%= row.needsSignature ? 'needs-signature' : 'signed' %>"
+                  data-status="<%= row.needsSignature ? 'needs-signature' : (row.hasCountersignature ? 'countersigned' : 'signed') %>"
                   data-statuslabel="<%= statusLabel %>"
                   data-signingmethod="<%= signingMethodLabel %>"
                 >
@@ -453,6 +456,9 @@
                       <% } %>
                       <% if (row.signedVersion) { %>
                         <a class="btn secondary" href="/mou/agency/<%= encodeURIComponent(row.mouId) %>/<%= encodeURIComponent(row.agencyId) %>?version=<%= encodeURIComponent(row.signedVersion) %>">View Document</a>
+                        <% if (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0) && !row.hasCountersignature) { %>
+                          <a class="btn success" href="/admin/mou/<%= encodeURIComponent(row.mouId) %>/countersign/<%= encodeURIComponent(row.agencyId) %>">Countersign</a>
+                        <% } %>
                         <% if (!row.needsSignature && Number(row.signedVersion || 0) === Number(row.currentVersion || 0)) { %>
                           <form method="post" action="/admin/mou/<%= encodeURIComponent(row.mouId) %>/signatures/resign/<%= encodeURIComponent(row.agencyId) %>" style="display:inline;" onsubmit="return confirm('Clear the current signed document and require this agency to sign again?');">
                             <button class="btn warning" type="submit">Re-Sign</button>
@@ -1809,7 +1815,13 @@
       if (statusFilter) {
         var selectedStatus = String(statusFilter.value || "all").trim().toLowerCase();
         var rowStatus = String(row.getAttribute("data-status") || "").trim().toLowerCase();
-        if (selectedStatus !== "all" && rowStatus !== selectedStatus) return false;
+        if (selectedStatus !== "all") {
+          if (selectedStatus === "signed") {
+            if (rowStatus !== "signed" && rowStatus !== "countersigned") return false;
+          } else if (rowStatus !== selectedStatus) {
+            return false;
+          }
+        }
       }
 
       return true;

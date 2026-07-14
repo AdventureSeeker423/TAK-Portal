@@ -359,7 +359,7 @@ async function listAgencyAdminUsersForAssign(agency) {
     .sort((a, b) => String(a.name || a.username).localeCompare(String(b.name || b.username)));
 }
 
-async function sendGlobalAdminEmail({ subject, html, text }) {
+async function sendGlobalAdminEmail({ subject, html, text, attachments }) {
   const lookup = await getGlobalAdminRecipientLookup();
   if (!lookup.configuredGroupNames.length) {
     return {
@@ -405,6 +405,7 @@ async function sendGlobalAdminEmail({ subject, html, text }) {
     subject,
     html,
     text,
+    attachments: Array.isArray(attachments) ? attachments : undefined,
   });
 }
 
@@ -677,10 +678,35 @@ async function sendSignedNotificationToGlobalAdmins({
     takPortalBlock,
   });
   const text = htmlToText(html);
+
+  let attachments;
+  try {
+    const pdfExport = await mouService.getSignedPdfExport({
+      mouId: stream?.mouId,
+      agencyId: signature?.agencyId,
+      version: version?.version,
+    });
+    if (pdfExport?.buffer?.length) {
+      attachments = [
+        {
+          filename: pdfExport.fileName,
+          content: pdfExport.buffer,
+          contentType: pdfExport.contentType || "application/pdf",
+        },
+      ];
+    }
+  } catch (pdfErr) {
+    console.warn(
+      "[mou-scheduler] signed PDF attachment unavailable for global admin notification:",
+      pdfErr?.message || pdfErr
+    );
+  }
+
   const result = await sendGlobalAdminEmail({
     subject: `TAK Portal Document Signed - ${stream?.title || "Document"} (v${version?.version || ""})`,
     html,
     text,
+    attachments,
   });
 
   if (result.sent) {
