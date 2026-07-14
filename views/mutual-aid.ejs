@@ -12,7 +12,7 @@
     <h2>Create Mutual Aid</h2>
 
     <div class="row">
-      <label style="min-width: 160px;">Type
+      <label style="min-width: 140px;">Type
         <select id="maType">
           <option value="INCIDENT" selected>Incident</option>
           <option value="EVENT">Event</option>
@@ -20,7 +20,7 @@
         </select>
       </label>
 
-      <label style="flex: 1; min-width: 200px;">Title
+      <label style="flex: 0 1 220px; min-width: 160px; max-width: 280px;">Title
         <input
           id="maTitle"
           placeholder="Title (ex. County Fair, Search, etc...)"
@@ -39,21 +39,17 @@
         <input id="maExpireAt" type="datetime-local" style="width: 100%;" />
       </label>
 
-      <label style="min-width: 220px;">Group
-        <select id="maGroupMode">
+      <label style="flex: 1 1 280px; min-width: 240px;">Group
+        <select id="maGroupMode" style="width: 100%;">
           <option value="new" selected>Create New Group</option>
           <option value="existing">Use Existing Group</option>
         </select>
       </label>
 
-      <label id="maExistingGroupWrap" style="display:none; min-width: 240px; flex-direction: column;">
+      <label id="maExistingGroupWrap" style="display:none; flex: 1 1 320px; min-width: 280px; flex-direction: column;">
         Existing Group
         <select id="maExistingGroup" style="width: 100%;"></select>
       </label>
-    </div>
-
-    <div class="row" style="margin-top:8px;">
-      <div id="maCreateHelp" class="muted" style="flex: 1; min-width: 0;"></div>
     </div>
 
     <div class="row createMaActionRow" style="margin-top:10px; justify-content:flex-end;">
@@ -848,7 +844,6 @@ const maExpireAtWrap = document.getElementById("maExpireAtWrap");
 const maGroupMode = document.getElementById("maGroupMode");
 const maExistingGroupWrap = document.getElementById("maExistingGroupWrap");
 const maExistingGroup = document.getElementById("maExistingGroup");
-const maCreateHelp = document.getElementById("maCreateHelp");
 
 const maFilter = document.getElementById("maFilter");
 const maTbody = document.getElementById("maTbody");
@@ -988,12 +983,6 @@ function updateCreateGroupModeUi() {
   const isExisting = mode === "existing";
   // Use flex so the "Existing Group" label sits above the dropdown.
   if (maExistingGroupWrap) maExistingGroupWrap.style.display = isExisting ? "flex" : "none";
-
-  if (maCreateHelp) {
-    maCreateHelp.innerHTML = isExisting
-      ? `This will create a matching user with an auto-generated 18-character password and add it to the selected group.`
-      : `This will create a group named <strong>MA - TITLE</strong> and a matching user with an auto-generated 18-character password.`;
-  }
 
   if (isExisting) {
     // Ensure groups are loaded and dropdown is populated.
