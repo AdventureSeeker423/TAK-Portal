@@ -960,6 +960,8 @@ async function emailDeploymentPacket() {
     if (typeof window.qrcode !== "function") throw new Error("QR library failed to load.");
 
     // Reuse the existing builder and just output bytes.
+    emailPacketSendBtn.disabled = true;
+    setMsg(emailPacketMsg, "Building packet...", "progress");
     const doc = await buildDeploymentPacketPdf();
     const ab = doc.output("arraybuffer");
 
@@ -971,7 +973,6 @@ async function emailDeploymentPacket() {
       || "deployment-packet").toLowerCase();
     const filename = `${filenameSafe}-packet.pdf`;
 
-    emailPacketSendBtn.disabled = true;
     setMsg(emailPacketMsg, "Sending...", true);
 
     const form = new FormData();
@@ -1257,40 +1258,83 @@ function fillEnrollmentFlyerHtml(tokens) {
   return html;
 }
 
-function injectEnrollmentFlyerDom(filledHtml) {
-  const host = document.createElement("div");
-  host.id = "maEnrollmentFlyerHost";
-  host.style.cssText =
-    "position:fixed;left:-10000px;top:0;width:8.5in;height:11in;overflow:hidden;background:#fff;z-index:-1;pointer-events:none;";
+/**
+ * Render the flyer in an isolated iframe so its CSS (body/header/main/*)
+ * cannot restyle the live Mutual Aid page during capture.
+ */
+async function mountEnrollmentFlyerIframe(filledHtml) {
+  const letterW = Math.round(8.5 * 96);
+  const letterH = Math.round(11 * 96);
+  const iframe = document.createElement("iframe");
+  iframe.id = "maEnrollmentFlyerFrame";
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.setAttribute("tabindex", "-1");
+  iframe.style.cssText = [
+    "position:fixed",
+    "left:-12000px",
+    "top:0",
+    `width:${letterW}px`,
+    `height:${letterH}px`,
+    "margin:0",
+    "padding:0",
+    "border:0",
+    "opacity:1",
+    "pointer-events:none",
+    "visibility:visible",
+    "z-index:-1",
+    "background:#fff",
+  ].join(";");
+  document.body.appendChild(iframe);
 
-  const styleMatch = String(filledHtml).match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-  const bodyMatch = String(filledHtml).match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  const styleText = styleMatch ? styleMatch[1] : "";
-  const bodyHtml = bodyMatch ? bodyMatch[1] : filledHtml;
-
-  if (styleText) {
-    const styleEl = document.createElement("style");
-    styleEl.setAttribute("data-ma-flyer-style", "1");
-    styleEl.textContent = styleText;
-    host.appendChild(styleEl);
+  const idoc = iframe.contentDocument;
+  if (!idoc) {
+    iframe.remove();
+    throw new Error("Flyer frame unavailable.");
   }
-  const wrap = document.createElement("div");
-  wrap.innerHTML = bodyHtml;
-  while (wrap.firstChild) host.appendChild(wrap.firstChild);
+  idoc.open();
+  idoc.write(String(filledHtml || ""));
+  idoc.close();
 
-  // Ensure flyer fonts are available for capture.
-  let fontLink = document.getElementById("maFlyerFontLink");
-  if (!fontLink) {
-    fontLink = document.createElement("link");
-    fontLink.id = "maFlyerFontLink";
-    fontLink.rel = "stylesheet";
-    fontLink.href =
-      "https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap";
-    document.head.appendChild(fontLink);
+  await new Promise((resolve) => {
+    const done = () => resolve();
+    if (idoc.readyState === "complete") {
+      done();
+      return;
+    }
+    iframe.addEventListener("load", done, { once: true });
+    setTimeout(done, 200);
+  });
+
+  try {
+    if (idoc.fonts?.ready) {
+      await Promise.race([
+        idoc.fonts.ready,
+        new Promise((r) => setTimeout(r, 900)),
+      ]);
+    }
+  } catch {
+    /* ignore font wait */
   }
 
-  document.body.appendChild(host);
-  return host;
+  const target =
+    idoc.getElementById("maEnrollmentFlyerRoot") ||
+    idoc.querySelector(".content") ||
+    idoc.body;
+
+  return {
+    iframe,
+    idoc,
+    target,
+    letterW,
+    letterH,
+    cleanup() {
+      try {
+        iframe.remove();
+      } catch {
+        /* ignore */
+      }
+    },
+  };
 }
 
 async function renderEnrollmentFlyerPageImage(qrDataUrl) {
@@ -1303,7 +1347,10 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
 
   const serverName = getSetting("SERVER_NAME") || "TAK";
   const split = splitServerNameForFlyer(serverName);
-  const channelName = String(qrActiveItem?.username || "").trim() || "MA-CHANNEL";
+  const channelName =
+    displayGroupName(qrActiveItem?.groupName || "").trim() ||
+    String(qrActiveItem?.title || "").trim() ||
+    "Mutual Aid Channel";
   const eventName = String(qrActiveItem?.title || "").trim() || "Mutual Aid Operation";
   const typeLabel = String(qrActiveItem?.type || "Event").trim() || "Event";
   const portalBase = String(getSetting("TAK_PORTAL_PUBLIC_URL") || "")
@@ -1329,9 +1376,9 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       ? `${compliancePlainRaw.slice(0, 447).trim()}...`
       : compliancePlainRaw;
   const complianceBannerHtml = compliancePlain
-    ? `<div class="alert-banner"><strong>&#9888; Compliance Notice:</strong>&nbsp; ${esc(
+    ? `<div class="alert-banner"><strong>&#9888; Compliance Notice:</strong> <span class="alert-banner-text">${esc(
         compliancePlain
-      )}</div>`
+      )}</span></div>`
     : "";
 
   let logoHtml = `<div class="logo-shield">TAK<span>PORTAL</span></div>`;
@@ -1365,14 +1412,11 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
   };
 
   const filled = fillEnrollmentFlyerHtml(tokens);
-  const host = injectEnrollmentFlyerDom(filled);
-  const target =
-    host.querySelector("#maEnrollmentFlyerRoot") ||
-    host.querySelector(".content") ||
-    host;
+  const frame = await mountEnrollmentFlyerIframe(filled);
+  const { target, idoc, letterW, letterH, cleanup } = frame;
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await new Promise((resolve) => setTimeout(resolve, 150));
     const waitImg = (img) => {
       if (!img || img.complete) return Promise.resolve();
       return new Promise((resolve) => {
@@ -1381,13 +1425,13 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
         setTimeout(resolve, 1500);
       });
     };
-    await waitImg(host.querySelector("#maFlyerQrImg"));
-    await waitImg(host.querySelector("#maFlyerLogoImg"));
+    await waitImg(idoc.getElementById("maFlyerQrImg"));
+    await waitImg(idoc.getElementById("maFlyerLogoImg"));
 
-    const letterW = Math.round(8.5 * 96);
-    const letterH = Math.round(11 * 96);
-    target.style.width = `${letterW}px`;
-    target.style.height = `${letterH}px`;
+    if (target && target.style) {
+      target.style.width = `${letterW}px`;
+      target.style.height = `${letterH}px`;
+    }
 
     const canvas = await window.html2canvas(target, {
       scale: 2,
@@ -1402,7 +1446,7 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
     });
     return canvas.toDataURL("image/png");
   } finally {
-    host.remove();
+    cleanup();
   }
 }
 
@@ -1646,6 +1690,10 @@ async function buildDeploymentPacketPdf() {
 // Download the same packet built by buildDeploymentPacketPdf().
 async function downloadDeploymentPacket() {
   try {
+    if (qrPacketBtn) qrPacketBtn.disabled = true;
+    if (qrEmailPacketBtn) qrEmailPacketBtn.disabled = true;
+    setMsg(qrMsg, "Building packet...", "progress");
+
     const doc = await buildDeploymentPacketPdf();
 
     const filenameSafe = ((qrActiveItem?.username || "deployment-packet")
@@ -1659,6 +1707,9 @@ async function downloadDeploymentPacket() {
     setMsg(qrMsg, "Packet downloaded.", true);
   } catch (e) {
     setMsg(qrMsg, e?.message || String(e), false);
+  } finally {
+    if (qrPacketBtn) qrPacketBtn.disabled = false;
+    if (qrEmailPacketBtn) qrEmailPacketBtn.disabled = false;
   }
 }
 

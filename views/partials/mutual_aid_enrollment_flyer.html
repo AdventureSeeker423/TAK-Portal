@@ -100,15 +100,29 @@
     background: #0f1b2d;
     border-top: 1px solid rgba(236,72,72,0.4);
     border-bottom: 1px solid rgba(236,72,72,0.4);
-    padding: 5px 0.48in;
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
+    padding: 6px 0.48in;
+    display: block;
+    font-family: 'Source Sans 3', sans-serif;
     font-size: 10.5px;
-    line-height: 1.35;
+    line-height: 1.4;
+    letter-spacing: normal;
+    word-spacing: normal;
+    white-space: normal;
     color: #fca5a5;
   }
-  .alert-banner strong { color: #fff; flex-shrink: 0; }
+  .alert-banner strong {
+    color: #fff;
+    letter-spacing: normal;
+    font-family: 'Source Sans 3', sans-serif;
+  }
+  .alert-banner .alert-banner-text {
+    display: inline;
+    color: #fca5a5;
+    letter-spacing: normal;
+    word-spacing: normal;
+    white-space: normal;
+    font-family: 'Source Sans 3', sans-serif;
+  }
 
   /* ── MAIN ── */
   main {
@@ -310,8 +324,9 @@
     .header-badge { background: rgba(56,189,248,0.1) !important; border-color: #38bdf8 !important; }
     .header-badge .badge-label { color: #94a3b8 !important; }
     .header-badge .badge-value { color: #38bdf8 !important; }
-    .alert-banner { background: #0f1b2d !important; color: #fca5a5 !important; }
-    .alert-banner strong { color: #fff !important; }
+    .alert-banner { background: #0f1b2d !important; color: #fca5a5 !important; letter-spacing: normal !important; }
+    .alert-banner strong { color: #fff !important; letter-spacing: normal !important; }
+    .alert-banner .alert-banner-text { color: #fca5a5 !important; letter-spacing: normal !important; }
     main { background: #fff !important; color: #000 !important; }
     main * { color: #222 !important; }
     .section { background: #fff !important; }
@@ -390,10 +405,6 @@
       <h2><span class="step-num">Scan</span> QR Code to Enroll</h2>
       <p style="font-size:11px;margin:0 0 7px 0;line-height:1.4;">Use your <strong>phone's camera app</strong> to scan the QR code. The code is pre-configured for the {{ORG_NAME}} server and grants access to the <strong>{{CHANNEL_NAME}}</strong> channel.</p>
 
-      <div class="note-box-amber" style="margin-bottom:8px;">
-        <strong>&#9888; TAK Aware (iOS) tip:</strong> If the enrollment form appears with empty fields after scanning, <strong>lock your phone then unlock it</strong> &mdash; the fields will populate automatically. This is a known app bug.
-      </div>
-
       <ol>
         <li>
           <div class="step-text">
@@ -437,11 +448,6 @@
             Set your <strong>Team Color</strong> &mdash; see options in the table &rarr;
           </div>
         </li>
-        <li>
-          <div class="step-text">
-            Enter your <strong>phone number</strong> in the contact field.
-          </div>
-        </li>
       </ol>
 
     </div>
@@ -474,21 +480,9 @@
           <td><strong>Team Color</strong></td>
           <td>{{TEAM_COLOR_LIST_HTML}}</td>
         </tr>
-        <tr>
-          <td><strong>Phone #</strong></td>
-          <td>Your mobile number</td>
-        </tr>
       </table>
 
-      <div class="note-box-amber" style="margin-top:8px;">
-        <strong>&#9888; Existing {{ORG_NAME}} Users:</strong> Do not scan this QR code if you already have a {{ORG_NAME}} account. Your existing credentials provide access to <span>{{CHANNEL_NAME}}</span>.
-      </div>
-
-      <div class="note-box" style="margin-top:6px;border-left-color:#64748b;">
-        <strong>&#128295; Troubleshooting:</strong> If your location is not visible to other users, ensure Location Services are set to <strong>Always</strong> for TAK Aware or ATAK in your phone's Settings app: <strong>Settings &rarr; Privacy &amp; Security &rarr; Location Services &rarr; [App Name] &rarr; Always</strong>.
-      </div>
-
-      <div class="note-box" style="margin-top:6px;border-left-color:#1a5276;">
+      <div class="note-box" style="margin-top:8px;border-left-color:#1a5276;">
         <strong>&#9201; Temporary Access:</strong> This enrollment expires at the end of the operation. For full-time access, request an account at <strong>{{REQUEST_ACCESS_URL}}</strong>
       </div>
 
