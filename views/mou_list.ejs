@@ -119,12 +119,11 @@
   <% } %>
 
   <% if (!isGlobalAdmin || (cards && cards.length)) { %>
-    <section class="card" style="margin-top:14px;">
-      <div class="mouSectionHeader">
-        <div>
-          <h2><%= isGlobalAdmin ? "Your Agency Documents" : "Active Documents" %></h2>
-        </div>
-      </div>
+    <details class="card" style="margin-top:14px;" open>
+      <summary style="cursor:pointer; font-weight:600; user-select:none;">
+        <%= isGlobalAdmin ? "Your Agency Documents" : "Active Documents" %> (<%= Array.isArray(cards) ? cards.length : 0 %>)
+      </summary>
+      <div style="margin-top:12px;">
       <% if (!cards || !cards.length) { %>
         <div class="mouEmptyState">
           <h3>No documents available</h3>
@@ -201,16 +200,16 @@
           </table>
         </div>
       <% } %>
-    </section>
+      </div>
+    </details>
   <% } %>
 
   <% if (isGlobalAdmin) { %>
-    <section class="card" style="margin-top:14px;">
-      <div class="mouSectionHeader">
-        <div>
-          <h2>Document Templates</h2>
-        </div>
-      </div>
+    <details class="card" style="margin-top:14px;" open>
+      <summary style="cursor:pointer; font-weight:600; user-select:none;">
+        Document Templates (<%= Array.isArray(adminStreams) ? adminStreams.length : 0 %>)
+      </summary>
+      <div style="margin-top:12px;">
       <% if (!adminStreams || !adminStreams.length) { %>
         <div class="mouEmptyState">
           <h3>No documents yet</h3>
@@ -317,18 +316,18 @@
           </table>
         </div>
       <% } %>
-    </section>
+      </div>
+    </details>
 
-    <section class="card" style="margin-top:14px;">
-      <div class="mouSectionHeader">
-        <div>
-          <h2>Agency Documents</h2>
-        </div>
-        <div class="mouActionRow">
+    <details class="card" style="margin-top:14px;" open>
+      <summary style="cursor:pointer; font-weight:600; user-select:none;">
+        Agency Documents (<%= Array.isArray(signatureRows) ? signatureRows.length : 0 %>)
+      </summary>
+      <div style="margin-top:12px;">
+        <div class="mouActionRow" style="margin-bottom:12px;">
           <a class="btn secondary" href="/mou?export=signatures">Export CSV</a>
           <a class="btn secondary" href="/mou?export=signatures-zip">Export ZIP</a>
         </div>
-      </div>
       <% if (!signatureRows || !signatureRows.length) { %>
         <div class="mouEmptyState">
           <h3>No signature data yet</h3>
@@ -495,7 +494,8 @@
           </table>
         </div>
       <% } %>
-    </section>
+      </div>
+    </details>
 
     <details class="card" style="margin-top:14px;">
       <summary style="cursor:pointer; font-weight:600; user-select:none;">
