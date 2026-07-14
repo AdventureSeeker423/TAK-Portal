@@ -10,46 +10,57 @@
 
   <div class="card">
     <h2>Create Mutual Aid</h2>
-    <div class="row" style="flex-wrap: wrap;">
-      <label> Type
-        <select id="maType">
-        <option value="INCIDENT" selected>Incident</option>
-        <option value="EVENT">Event</option>
-        <option value="STANDBY">Standby</option>
-      </select>
-      </label>
-      <label>Title
-      <input id="maTitle" placeholder="Title (ex. County Fair, Search, etc...)" /></label>
 
-      <label id="maExpireWrap" style="display:flex; align-items:center; gap:8px;">
-        <span>Expires</span>
+    <div class="row">
+      <label style="min-width: 160px;">Type
+        <select id="maType">
+          <option value="INCIDENT" selected>Incident</option>
+          <option value="EVENT">Event</option>
+          <option value="STANDBY">Standby</option>
+        </select>
+      </label>
+
+      <label style="flex: 1; min-width: 200px;">Title
+        <input
+          id="maTitle"
+          placeholder="Title (ex. County Fair, Search, etc...)"
+          style="width: 100%;"
+        />
+      </label>
+
+      <label id="maExpireWrap" style="min-width: 140px;">Expires
         <select id="maExpireEnabled">
           <option value="no" selected>No</option>
           <option value="yes">Yes</option>
         </select>
       </label>
 
-      <label id="maExpireAtWrap"><br>
-        <input id="maExpireAt" type="datetime-local" />
+      <label id="maExpireAtWrap" style="display:none; min-width: 220px;">Expire At
+        <input id="maExpireAt" type="datetime-local" style="width: 100%;" />
       </label>
 
-      <label>
-        Group
+      <label style="min-width: 220px;">Group
         <select id="maGroupMode">
           <option value="new" selected>Create New Group</option>
           <option value="existing">Use Existing Group</option>
         </select>
       </label>
 
-      <label id="maExistingGroupWrap" style="display:none; flex-direction:column;">
-        <span>Existing Group</span>
-        <select id="maExistingGroup"></select>
+      <label id="maExistingGroupWrap" style="display:none; min-width: 240px; flex-direction: column;">
+        Existing Group
+        <select id="maExistingGroup" style="width: 100%;"></select>
       </label>
     </div>
+
+    <div class="row" style="margin-top:8px;">
+      <div id="maCreateHelp" class="muted" style="flex: 1; min-width: 0;"></div>
+    </div>
+
     <div class="row createMaActionRow" style="margin-top:10px; justify-content:flex-end;">
       <button class="btn createMaSubmitBtn" id="maCreateBtn" type="button">Create New Mutual Aid</button>
     </div>
-    <div id="maCreateMsg" class="msg" style="margin-top:10px;"></div>
+
+    <div id="maCreateMsg" class="msg"></div>
   </div>
 
   <div class="card">
@@ -143,6 +154,13 @@
     white-space: nowrap;
     word-break: normal;
     overflow-wrap: normal;
+  }
+
+  .createMaSubmitBtn {
+    margin-left: auto;
+  }
+  .createMaActionRow {
+    width: 100%;
   }
 
   .btn.maAddUser {
@@ -825,6 +843,7 @@ const maCreateMsg = document.getElementById("maCreateMsg");
 const maExpireWrap = document.getElementById("maExpireWrap");
 const maExpireEnabled = document.getElementById("maExpireEnabled");
 const maExpireAt = document.getElementById("maExpireAt");
+const maExpireAtWrap = document.getElementById("maExpireAtWrap");
 
 const maGroupMode = document.getElementById("maGroupMode");
 const maExistingGroupWrap = document.getElementById("maExistingGroupWrap");
@@ -911,8 +930,8 @@ let activeItem = null;
 function updateCreateExpireUi(){
   // Expiration is supported for both EVENT and INCIDENT.
   const enabled = String(maExpireEnabled.value || "").toLowerCase() === "yes";
-  maExpireAt.style.display = enabled ? "block" : "none";
-  if (!enabled) maExpireAt.value = "";
+  if (maExpireAtWrap) maExpireAtWrap.style.display = enabled ? "" : "none";
+  if (!enabled && maExpireAt) maExpireAt.value = "";
 }
 maType.onchange = updateCreateExpireUi;
 maExpireEnabled.onchange = updateCreateExpireUi;
