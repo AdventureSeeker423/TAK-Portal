@@ -1188,7 +1188,7 @@ function buildFlyerTeamRoleListHtml(roles) {
     return `<span class="ref-empty">No team roles configured</span>`;
   }
   return (
-    `<ul class="ref-list">` +
+    `<ul class="ref-list ref-list-roles">` +
     list
       .map((r) => {
         const label = esc(r.name || "");
@@ -1208,7 +1208,7 @@ function buildFlyerTeamColorListHtml(colors) {
     return `<span class="ref-empty">No team colors configured</span>`;
   }
   return (
-    `<ul class="ref-list">` +
+    `<ul class="ref-list ref-list-colors">` +
     list
       .map((c) => {
         const hex = String(c.hex || "#888").trim() || "#888";
@@ -1486,12 +1486,25 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
             }
             main {
               display: grid !important;
-              grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) !important;
+              grid-template-columns: 1fr 1fr !important;
               width: 100% !important;
+              align-items: stretch !important;
             }
             main > .section {
               min-width: 0 !important;
+              height: 100% !important;
+              display: flex !important;
+              flex-direction: column !important;
               overflow: hidden !important;
+            }
+            .section-left, .section-right {
+              justify-content: space-between !important;
+            }
+            .step-block {
+              flex: 1 1 0 !important;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: center !important;
             }
             .alert-banner, .alert-banner * {
               letter-spacing: 0 !important;
