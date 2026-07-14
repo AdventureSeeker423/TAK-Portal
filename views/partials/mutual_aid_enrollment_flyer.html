@@ -17,13 +17,6 @@
     word-spacing: normal !important;
   }
 
-  html {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: #0f1b2d;
-  }
-
   body,
   #maEnrollmentFlyerRoot {
     width: 8.5in;
@@ -42,28 +35,28 @@
     outline: 0;
   }
 
-  .content {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
+  html {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: #0f1b2d;
   }
+
+  .content { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; width: 100%; }
   #maEnrollmentFlyerRoot.content { height: 11in; width: 8.5in; }
 
-  /* ── HEADER ── */
+  /* ── HEADER (stays dark, edge-to-edge) ── */
   header {
     background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%);
     border-bottom: 3px solid #38bdf8;
-    padding: 0.18in 0.4in;
+    padding: 0.22in 0.42in;
     display: flex;
     align-items: center;
-    gap: 0.16in;
+    gap: 0.18in;
     width: 100%;
     margin: 0;
     box-sizing: border-box;
-    flex-shrink: 0;
+    /* Bleed past subpixel AA so capture doesn't show white at edges */
     box-shadow: -2px -2px 0 #0f1b2d, 2px -2px 0 #0f1b2d;
   }
   header > div:nth-child(2) {
@@ -71,7 +64,7 @@
     min-width: 0;
   }
   .logo-shield {
-    width: 52px; height: 52px;
+    width: 54px; height: 54px;
     background: #1e3a5f;
     border: 2px solid #38bdf8;
     border-radius: 10px;
@@ -81,10 +74,10 @@
     text-align: center; line-height: 1.1;
     flex-shrink: 0;
   }
-  .logo-shield span { display: block; font-size: 8px; color: #94a3b8; font-weight: 500; }
+  .logo-shield span { display: block; font-size: 8px; color: #94a3b8; font-weight: 500; letter-spacing: 0; }
   .flyer-logo {
-    width: 52px;
-    height: 52px;
+    width: 54px;
+    height: 54px;
     object-fit: contain;
     flex-shrink: 0;
     border-radius: 8px;
@@ -93,29 +86,32 @@
   header h1 {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
-    font-size: 26px;
+    font-size: 29px;
     color: #fff;
-    line-height: 1.05;
+    letter-spacing: 0;
+    line-height: 1;
   }
   header h1 em { font-style: normal; color: #38bdf8; }
   header p {
-    font-size: 13px;
+    font-size: 12px;
     color: #94a3b8;
-    margin-top: 3px;
+    margin-top: 4px;
+    letter-spacing: 0;
   }
   .header-badge {
     margin-left: auto;
     background: rgba(56,189,248,0.1);
     border: 1.5px solid #38bdf8;
     border-radius: 8px;
-    padding: 7px 14px;
+    padding: 6px 14px;
     text-align: center;
     flex-shrink: 0;
   }
   .header-badge .badge-label {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
+    letter-spacing: 0;
     color: #94a3b8;
     text-transform: uppercase;
   }
@@ -124,51 +120,57 @@
     font-size: 15px;
     font-weight: 700;
     color: #38bdf8;
+    letter-spacing: 0;
   }
 
-  /* ── ALERT BANNER ── */
+  /* ── ALERT BANNER (omitted when agreement disabled) ── */
   .alert-banner {
     background: #0f1b2d;
     border-top: 1px solid rgba(236,72,72,0.4);
     border-bottom: 1px solid rgba(236,72,72,0.4);
-    padding: 7px 0.4in;
+    padding: 6px 0.42in;
     display: block;
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 11px;
-    line-height: 1.4;
+    font-size: 10px;
+    line-height: 1.45;
     letter-spacing: 0;
     word-spacing: normal;
     white-space: normal;
     overflow-wrap: break-word;
+    word-break: normal;
     color: #fca5a5;
     width: 100%;
     box-sizing: border-box;
     margin: 0;
-    flex-shrink: 0;
   }
   .alert-banner strong {
     color: #fff;
+    letter-spacing: 0;
     font-family: Arial, Helvetica, sans-serif;
   }
   .alert-banner .alert-banner-text {
     display: inline;
     color: #fca5a5;
+    letter-spacing: 0;
+    word-spacing: normal;
+    white-space: normal;
+    overflow-wrap: break-word;
     font-family: Arial, Helvetica, sans-serif;
   }
 
-  /* ── MAIN: equal columns, full remaining height ── */
+  /* ── MAIN ── */
   main {
-    flex: 1 1 auto;
+    flex: 1;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.3in;
-    padding: 0.2in 0.4in 0.22in;
+    /* Fixed tracks so capture can't collapse the right column */
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 0.28in;
+    padding: 0.22in 0.42in 0.28in;
     background: #fff;
     color: #000;
     min-height: 0;
     width: 100%;
     box-sizing: border-box;
-    align-items: stretch;
   }
   main * { color: #222; }
 
@@ -176,183 +178,151 @@
     position: relative;
     background: #fff;
     min-width: 0;
-    min-height: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
     overflow: hidden;
-  }
-
-  .section-left {
-    justify-content: space-between;
-    gap: 0.1in;
-  }
-  .section-right {
-    justify-content: space-between;
-    gap: 0.12in;
-  }
-
-  .step-block {
-    flex: 1 1 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    min-height: 0;
-    padding: 0.04in 0;
-  }
-  .step-block + .step-block {
-    border-top: 1px solid #e6eef5;
-    padding-top: 0.1in;
   }
 
   .section-label {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
-    font-size: 11px;
+    font-size: 9px;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: #1a5276;
-    margin-bottom: 2px;
+    margin-bottom: 3px;
   }
   .section h2 {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
-    font-size: 23px;
+    font-size: 21px;
     color: #000;
     margin-bottom: 8px;
     line-height: 1.1;
   }
-  .section h2 .step-num { color: #1a5276; }
-  .section h2.profile-heading {
-    font-size: 20px;
-    margin-bottom: 6px;
-  }
-
-  .lead {
-    font-size: 13.5px;
-    line-height: 1.4;
-    color: #444;
-    margin: 0 0 8px 0;
-  }
+  .section h2 .step-num { color: #1a5276; letter-spacing: 0; }
 
   ol { list-style: none; counter-reset: steps; }
   ol li {
     counter-increment: steps;
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 8px;
-    font-size: 14px;
+    gap: 9px;
+    margin-bottom: 10px;
+    font-size: 12.5px;
     line-height: 1.4;
     color: #222;
   }
-  ol li:last-child { margin-bottom: 0; }
   .step-text { flex: 1; display: block; color: #222; }
   ol li::before {
     content: counter(steps);
     flex-shrink: 0;
-    width: 24px; height: 24px;
+    width: 22px; height: 22px;
     background: #eef4fa;
     border: 1.5px solid #1a5276;
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
-    font-size: 13px;
+    font-size: 12px;
     color: #1a5276;
     margin-top: 1px;
   }
-  ol li strong { color: #000; font-weight: 700; }
+  ol li strong { color: #000; font-weight: 600; }
 
   p { color: #444; }
 
   .nav-path {
     background: #eef4fa;
     border-radius: 6px;
-    padding: 7px 10px;
-    margin: 0 0 6px 0;
-    font-size: 13px;
+    padding: 5px 9px;
+    margin: 4px 0;
+    font-size: 11.5px;
     color: #333;
     font-family: Arial, Helvetica, sans-serif;
     border-left: 3px solid #1a5276;
   }
-  .nav-path:last-of-type { margin-bottom: 10px; }
   .nav-path * { color: #1a5276; }
 
   .note-box {
     background: #eef4fa;
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 6px 9px;
+    margin-top: 5px;
     border-left: 3px solid #1a5276;
-    font-size: 12.5px;
+    font-size: 11px;
     color: #333;
     line-height: 1.4;
-    flex-shrink: 0;
   }
   .note-box * { color: #333; }
   .note-box strong { color: #000; }
+
+  .note-box-amber {
+    background: #fff8e1;
+    border-radius: 6px;
+    padding: 6px 9px;
+    margin-top: 5px;
+    border-left: 3px solid #f59e0b;
+    font-size: 11px;
+    color: #444;
+    line-height: 1.4;
+  }
+  .note-box-amber * { color: #444; }
+  .note-box-amber strong { color: #7c4700; }
 
   .qr-container {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
-    padding: 0.04in 0 0.06in;
+    margin: 4px 0 8px;
   }
   .qr-title {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
-    font-size: 13px;
+    font-size: 12px;
     color: #1a5276;
     text-transform: uppercase;
+    letter-spacing: 0;
     margin-bottom: 8px;
     text-align: center;
-    width: 100%;
   }
   .qr-container img {
-    width: 245px; height: 245px;
+    width: 220px; height: 220px;
     border: 3px solid #1a5276;
     border-radius: 10px;
     background: #fff;
-    padding: 7px;
+    padding: 6px;
   }
   .qr-sub {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     color: #555;
-    margin-top: 7px;
+    letter-spacing: 0;
+    margin-top: 6px;
     text-transform: uppercase;
     text-align: center;
-  }
-
-  .profile-block {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
   }
 
   .callsign-table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 2px;
-    font-size: 13px;
-    flex: 1 1 auto;
+    margin-top: 6px;
+    font-size: 11px;
   }
   .callsign-table th {
     background: #1e3a5f;
     color: #fff;
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 11px;
+    font-size: 10px;
+    letter-spacing: 0;
     text-transform: uppercase;
-    padding: 6px 8px;
+    padding: 4px 7px;
     text-align: left;
     border-bottom: 1.5px solid #1a5276;
   }
   .callsign-table th * { color: #fff; }
   .callsign-table td {
-    padding: 6px 8px;
+    padding: 4px 7px;
     border-bottom: 1px solid #ddd;
     color: #000;
     vertical-align: top;
@@ -361,44 +331,34 @@
   .callsign-table td span { color: #555; }
   .callsign-table td strong { color: #1a5276; }
   .callsign-table tr:last-child td { border-bottom: none; }
-  .callsign-table td:first-child {
-    width: 28%;
-    white-space: nowrap;
-  }
 
   .ref-list {
     list-style: none;
     margin: 0;
     padding: 0;
-    columns: 2;
-    column-gap: 10px;
   }
   .ref-list li {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: baseline;
     gap: 4px;
-    margin: 0 0 3px;
-    font-size: 11.5px;
+    margin: 0 0 2px;
+    font-size: 10px;
     line-height: 1.3;
     color: #222;
-    break-inside: avoid;
-  }
-  .ref-list.ref-list-roles {
-    columns: 1;
   }
   .ref-list li strong { color: #1a5276; font-weight: 700; }
   .ref-desc { color: #555 !important; font-weight: 400; }
   .ref-swatch {
     display: inline-block;
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
     border-radius: 2px;
     flex-shrink: 0;
     position: relative;
     top: 1px;
   }
-  .ref-empty { color: #888 !important; font-size: 11px; font-style: italic; }
+  .ref-empty { color: #888 !important; font-size: 10px; font-style: italic; }
 
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
@@ -409,19 +369,36 @@
     .header-badge { background: rgba(56,189,248,0.1) !important; border-color: #38bdf8 !important; }
     .header-badge .badge-label { color: #94a3b8 !important; }
     .header-badge .badge-value { color: #38bdf8 !important; }
-    .alert-banner { background: #0f1b2d !important; color: #fca5a5 !important; }
-    .alert-banner strong { color: #fff !important; }
-    .alert-banner .alert-banner-text { color: #fca5a5 !important; }
-    main { background: #fff !important; }
+    .alert-banner { background: #0f1b2d !important; color: #fca5a5 !important; letter-spacing: normal !important; }
+    .alert-banner strong { color: #fff !important; letter-spacing: normal !important; }
+    .alert-banner .alert-banner-text { color: #fca5a5 !important; letter-spacing: normal !important; }
+    main { background: #fff !important; color: #000 !important; }
+    main * { color: #222 !important; }
+    .section { background: #fff !important; }
     .section-label { color: #1a5276 !important; }
     .section h2 { color: #000 !important; }
     .section h2 .step-num { color: #1a5276 !important; }
+    ol li { color: #222 !important; }
+    ol li strong { color: #000 !important; }
     ol li::before { background: #eef4fa !important; border-color: #1a5276 !important; color: #1a5276 !important; }
-    .nav-path { background: #eef4fa !important; border-left-color: #1a5276 !important; }
+    .step-text { color: #222 !important; }
+    p { color: #444 !important; }
+    .nav-path { background: #eef4fa !important; border-left-color: #1a5276 !important; color: #333 !important; }
     .nav-path * { color: #1a5276 !important; }
-    .note-box { background: #eef4fa !important; border-left-color: #1a5276 !important; }
+    .note-box { background: #eef4fa !important; border-left-color: #1a5276 !important; color: #333 !important; }
+    .note-box * { color: #333 !important; }
+    .note-box strong { color: #000 !important; }
+    .note-box-amber { background: #fff8e1 !important; border-left-color: #f59e0b !important; color: #444 !important; }
+    .note-box-amber * { color: #444 !important; }
+    .note-box-amber strong { color: #7c4700 !important; }
     .qr-title { color: #1a5276 !important; }
-    .callsign-table th { background: #1e3a5f !important; color: #fff !important; }
+    .qr-sub { color: #555 !important; }
+    .qr-container img { border-color: #1a5276 !important; }
+    .callsign-table th { background: #1e3a5f !important; color: #fff !important; border-color: #1a5276 !important; }
+    .callsign-table th * { color: #fff !important; }
+    .callsign-table td { color: #000 !important; border-color: #ddd !important; }
+    .callsign-table td * { color: #1a5276 !important; }
+    .callsign-table td span { color: #555 !important; }
     .ref-list li strong { color: #1a5276 !important; }
     .ref-desc { color: #555 !important; }
   }
@@ -446,80 +423,75 @@
 
   <main>
 
-    <div class="section section-left">
+    <div class="section">
 
-      <div class="step-block">
-        <div class="section-label">Step 1 of 3</div>
-        <h2><span class="step-num">Download</span> the App</h2>
-        <ol>
-          <li>
-            <div class="step-text">
-              <strong>iOS users:</strong> Search the App Store for <strong>TAK Aware</strong> and install it.
-            </div>
-          </li>
-          <li>
-            <div class="step-text">
-              <strong>Android users:</strong> Search the Google Play Store for <strong>ATAK</strong> and install it.
-            </div>
-          </li>
-        </ol>
-      </div>
+      <div class="section-label">Step 1 of 3</div>
+      <h2><span class="step-num">Download</span> the App</h2>
+      <ol>
+        <li>
+          <div class="step-text">
+            <strong>iOS users:</strong> Search the App Store for <strong>TAK Aware</strong> and install it.
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            <strong>Android users:</strong> Search the Google Play Store for <strong>ATAK</strong> (Android Team Awareness Kit) and install it.
+          </div>
+        </li>
+      </ol>
 
-      <div class="step-block">
-        <div class="section-label">Step 2 of 3</div>
-        <h2><span class="step-num">Scan</span> QR Code to Enroll</h2>
-        <p class="lead">Use your <strong>phone's camera app</strong> to scan the QR code on the right. The code is pre-configured for the {{ORG_NAME}} server and grants access to <strong>{{CHANNEL_NAME}}</strong>.</p>
-        <ol>
-          <li>
-            <div class="step-text">
-              Open your phone's <strong>Camera app</strong> and point it at the <strong>QR code on the right</strong>.
-            </div>
-          </li>
-          <li>
-            <div class="step-text">
-              Open the link in <strong>TAK Aware</strong> (iOS) or <strong>ATAK</strong> (Android). Allow Location set to <strong>Always</strong>.
-            </div>
-          </li>
-          <li>
-            <div class="step-text">
-              <strong>Accept the connection</strong> when prompted. Enrollment is automatic &mdash; no password required.
-            </div>
-          </li>
-        </ol>
-      </div>
+      <div class="section-label" style="margin-top:8px;">Step 2 of 3</div>
+      <h2><span class="step-num">Scan</span> QR Code to Enroll</h2>
+      <p style="font-size:11px;margin:0 0 7px 0;line-height:1.4;">Use your <strong>phone's camera app</strong> to scan the QR code. The code is pre-configured for the {{ORG_NAME}} server and grants access to the <strong>{{CHANNEL_NAME}}</strong> channel.</p>
 
-      <div class="step-block">
-        <div class="section-label">Step 3 of 3</div>
-        <h2><span class="step-num">Configure</span> Your Profile</h2>
-        <p class="lead">Navigate to your profile settings:</p>
-        <div class="nav-path">
-          <strong>TAK Aware (iOS):</strong> &#9776; Menu &rarr; User Information
-        </div>
-        <div class="nav-path">
-          <strong>ATAK (Android):</strong> &#9776; Menu &rarr; Settings &rarr; Callsign and Device Preferences
-        </div>
-        <ol>
-          <li>
-            <div class="step-text">
-              Set your <strong>Callsign</strong> &mdash; see format in the table &rarr;
-            </div>
-          </li>
-          <li>
-            <div class="step-text">
-              Set your <strong>Team Role</strong> &mdash; see options in the table &rarr;
-            </div>
-          </li>
-          <li>
-            <div class="step-text">
-              Set your <strong>Team Color</strong> &mdash; see options in the table &rarr;
-            </div>
-          </li>
-        </ol>
+      <ol>
+        <li>
+          <div class="step-text">
+            Open your phone's <strong>Camera app</strong> and point it at the <strong>QR code on the right</strong>.
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            Tap the notification or link that appears to open it in <strong>TAK Aware</strong> (iOS) or <strong>ATAK</strong> (Android). If prompted for Location permission, select <strong>Always</strong>.
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            <strong>Accept the connection</strong> when prompted. Enrollment is automatic &mdash; no username or password required.
+          </div>
+        </li>
+      </ol>
+
+      <div class="section-label" style="margin-top:8px;">Step 3 of 3</div>
+      <h2><span class="step-num">Configure</span> Your Profile</h2>
+      <p style="font-size:11px;margin:0 0 7px 0;line-height:1.4;">Navigate to your profile settings:</p>
+      <div class="nav-path">
+        <strong>TAK Aware (iOS):</strong> <span style="font-size:13px;">&#9776;</span> Menu &rarr; User Information
       </div>
+      <div class="nav-path" style="margin-top:5px;margin-bottom:9px;">
+        <strong>ATAK (Android):</strong> <span style="font-size:13px;">&#9776;</span> Menu &rarr; Settings &rarr; Callsign and Device Preferences
+      </div>
+      <ol>
+        <li>
+          <div class="step-text">
+            Set your <strong>Callsign</strong> &mdash; see format in the table &rarr;
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            Set your <strong>Team Role</strong> &mdash; see options in the table &rarr;
+          </div>
+        </li>
+        <li>
+          <div class="step-text">
+            Set your <strong>Team Color</strong> &mdash; see options in the table &rarr;
+          </div>
+        </li>
+      </ol>
 
     </div>
 
-    <div class="section section-right">
+    <div class="section">
 
       <div class="qr-container">
         <div class="qr-title">Scan to Enroll &mdash; {{CHANNEL_NAME}}</div>
@@ -527,31 +499,29 @@
         <div class="qr-sub">{{QR_LABEL}}</div>
       </div>
 
-      <div class="profile-block">
-        <div class="section-label">User Profile Reference</div>
-        <h2 class="profile-heading"><span class="step-num">Profile</span> Settings</h2>
+      <div class="section-label" style="margin-top:8px;">User Profile Reference</div>
+      <h2 style="font-size:16px;margin-bottom:9px;"><span class="step-num">Profile</span> Settings</h2>
 
-        <table class="callsign-table">
-          <tr>
-            <th>Field</th>
-            <th>Your Setting</th>
-          </tr>
-          <tr>
-            <td><strong>Callsign</strong></td>
-            <td><strong>{{CALLSIGN_FORMAT}}</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Team Role</strong></td>
-            <td>{{TEAM_ROLE_LIST_HTML}}</td>
-          </tr>
-          <tr>
-            <td><strong>Team Color</strong></td>
-            <td>{{TEAM_COLOR_LIST_HTML}}</td>
-          </tr>
-        </table>
-      </div>
+      <table class="callsign-table">
+        <tr>
+          <th>Field</th>
+          <th>Your Setting</th>
+        </tr>
+        <tr>
+          <td><strong>Callsign</strong></td>
+          <td><strong>{{CALLSIGN_FORMAT}}</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Team Role</strong></td>
+          <td>{{TEAM_ROLE_LIST_HTML}}</td>
+        </tr>
+        <tr>
+          <td><strong>Team Color</strong></td>
+          <td>{{TEAM_COLOR_LIST_HTML}}</td>
+        </tr>
+      </table>
 
-      <div class="note-box">
+      <div class="note-box" style="margin-top:8px;border-left-color:#1a5276;">
         <strong>&#9201; Temporary Access:</strong> This enrollment expires at the end of the operation. For full-time access, request an account at <strong>{{REQUEST_ACCESS_URL}}</strong>
       </div>
 
