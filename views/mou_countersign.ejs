@@ -49,7 +49,7 @@
 }
 </style>
 
-<% const customSignerFields = Array.isArray(customSignerFields) ? customSignerFields : []; %>
+<% const countersignCustomFields = Array.isArray(customSignerFields) ? customSignerFields : []; %>
 
 <main
   class="main"
@@ -127,7 +127,7 @@
               <input type="text" name="signerRole" placeholder="Enter Position / Role" style="width:100%;" required />
             </label>
 
-            <% customSignerFields.forEach(function (customFieldLabel, customFieldIndex) { %>
+            <% countersignCustomFields.forEach(function (customFieldLabel, customFieldIndex) { %>
               <label style="margin-top:12px;display:block;">
                 <%= customFieldLabel %>
                 <input
