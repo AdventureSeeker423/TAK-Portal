@@ -30,19 +30,38 @@
     position: relative;
     letter-spacing: 0;
     word-spacing: normal;
+    margin: 0;
+    border: 0;
+    outline: 0;
   }
 
-  .content { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; }
-  #maEnrollmentFlyerRoot.content { height: 11in; }
+  html {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: #0f1b2d;
+  }
 
-  /* ── HEADER (stays dark) ── */
+  .content { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; width: 100%; }
+  #maEnrollmentFlyerRoot.content { height: 11in; width: 8.5in; }
+
+  /* ── HEADER (stays dark, edge-to-edge) ── */
   header {
     background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%);
     border-bottom: 3px solid #38bdf8;
-    padding: 0.23in 0.48in;
+    padding: 0.22in 0.42in;
     display: flex;
     align-items: center;
-    gap: 0.2in;
+    gap: 0.18in;
+    width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+    /* Bleed past subpixel AA so capture doesn't show white at edges */
+    box-shadow: -2px -2px 0 #0f1b2d, 2px -2px 0 #0f1b2d;
+  }
+  header > div:nth-child(2) {
+    flex: 1;
+    min-width: 0;
   }
   .logo-shield {
     width: 54px; height: 54px;
@@ -109,7 +128,7 @@
     background: #0f1b2d;
     border-top: 1px solid rgba(236,72,72,0.4);
     border-bottom: 1px solid rgba(236,72,72,0.4);
-    padding: 6px 0.48in;
+    padding: 6px 0.42in;
     display: block;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10px;
@@ -120,6 +139,9 @@
     overflow-wrap: break-word;
     word-break: normal;
     color: #fca5a5;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
   }
   .alert-banner strong {
     color: #fff;
@@ -143,7 +165,7 @@
     /* Fixed tracks so capture can't collapse the right column */
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
     gap: 0.28in;
-    padding: 0.22in 0.48in 0.28in;
+    padding: 0.22in 0.42in 0.28in;
     background: #fff;
     color: #000;
     min-height: 0;
@@ -250,19 +272,21 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin: 8px 0 6px;
+    justify-content: center;
+    margin: 4px 0 8px;
   }
   .qr-title {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
-    font-size: 11px;
+    font-size: 12px;
     color: #1a5276;
     text-transform: uppercase;
     letter-spacing: 0;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    text-align: center;
   }
   .qr-container img {
-    width: 158px; height: 158px;
+    width: 220px; height: 220px;
     border: 3px solid #1a5276;
     border-radius: 10px;
     background: #fff;
@@ -270,12 +294,13 @@
   }
   .qr-sub {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
     color: #555;
     letter-spacing: 0;
-    margin-top: 4px;
+    margin-top: 6px;
     text-transform: uppercase;
+    text-align: center;
   }
 
   .callsign-table {
@@ -406,17 +431,11 @@
         <li>
           <div class="step-text">
             <strong>iOS users:</strong> Search the App Store for <strong>TAK Aware</strong> and install it.
-            <div class="note-box" style="margin-top:5px;">
-              <strong>TAK Aware</strong> is the iOS TAK client. Free download from Apple App Store.
-            </div>
           </div>
         </li>
         <li>
           <div class="step-text">
             <strong>Android users:</strong> Search the Google Play Store for <strong>ATAK</strong> (Android Team Awareness Kit) and install it.
-            <div class="note-box" style="margin-top:5px;">
-              <strong>ATAK</strong> is the Android TAK client. Free download from the Play Store.
-            </div>
           </div>
         </li>
       </ol>

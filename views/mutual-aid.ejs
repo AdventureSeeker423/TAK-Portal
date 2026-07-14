@@ -1474,6 +1474,15 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               max-width: ${letterW}px !important;
               overflow: hidden !important;
               margin: 0 !important;
+              padding: 0 !important;
+              border: 0 !important;
+            }
+            html { background: #0f1b2d !important; }
+            body, #maEnrollmentFlyerRoot { background: #fff !important; }
+            header {
+              width: 100% !important;
+              margin: 0 !important;
+              box-shadow: -3px -3px 0 #0f1b2d, 3px -3px 0 #0f1b2d !important;
             }
             main {
               display: grid !important;
@@ -1525,6 +1534,21 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
         foreignObjectRendering: false,
       });
     }
+
+    // Cover residual 1px white fringe at banner edges from subpixel capture.
+    try {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        const fringe = Math.max(2, Math.round(canvas.width * 0.002));
+        const bannerH = Math.round(canvas.height * 0.12);
+        ctx.fillStyle = "#0f1b2d";
+        ctx.fillRect(0, 0, canvas.width, fringe);
+        ctx.fillRect(0, 0, fringe, bannerH);
+      }
+    } catch {
+      /* ignore */
+    }
+
     return canvas.toDataURL("image/png");
   } finally {
     cleanup();
@@ -1569,7 +1593,7 @@ async function buildDeploymentPacketPdf() {
     if (hiResEnrollmentQr) {
       try {
         const flyerImage = await renderEnrollmentFlyerPageImage(hiResEnrollmentQr);
-        doc.addImage(flyerImage, "PNG", 0, 0, pageW, pageH);
+        doc.addImage(flyerImage, "PNG", -1.5, -1.5, pageW + 3, pageH + 3);
         flyerOk = true;
       } catch (flyerErr) {
         console.warn(
