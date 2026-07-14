@@ -12,14 +12,14 @@
     <h2>Create Mutual Aid</h2>
     <div class="row" style="flex-wrap: wrap;">
       <label> Type
-        <select id="maType" style="min-width: 120px;">
+        <select id="maType">
         <option value="INCIDENT" selected>Incident</option>
         <option value="EVENT">Event</option>
         <option value="STANDBY">Standby</option>
       </select>
       </label>
       <label>Title
-      <input id="maTitle" placeholder="Title (ex. County Fair, Search, etc...)" style="min-width: 240px;" /></label>
+      <input id="maTitle" placeholder="Title (ex. County Fair, Search, etc...)" /></label>
 
       <label id="maExpireWrap" style="display:flex; align-items:center; gap:8px;">
         <span>Expires</span>
@@ -30,12 +30,12 @@
       </label>
 
       <label id="maExpireAtWrap"><br>
-        <input id="maExpireAt" type="datetime-local" style="min-width: 240px;" />
+        <input id="maExpireAt" type="datetime-local" />
       </label>
 
       <label>
         Group
-        <select id="maGroupMode" style="min-width: 220px;">
+        <select id="maGroupMode">
           <option value="new" selected>Create New Group</option>
           <option value="existing">Use Existing Group</option>
         </select>
@@ -43,16 +43,13 @@
 
       <label id="maExistingGroupWrap" style="display:none; flex-direction:column;">
         <span>Existing Group</span>
-        <select id="maExistingGroup" style="min-width: 220px;"></select>
+        <select id="maExistingGroup"></select>
       </label>
-
-      
-      <label><br>
-      <button class="btn" id="maCreateBtn" type="button">Create New Mutual Aid</button></label>
-
-      <div id="maCreateMsg" class="msg" style="margin-top:10px;"></div>
-
     </div>
+    <div class="row createMaActionRow" style="margin-top:10px; justify-content:flex-end;">
+      <button class="btn createMaSubmitBtn" id="maCreateBtn" type="button">Create New Mutual Aid</button>
+    </div>
+    <div id="maCreateMsg" class="msg" style="margin-top:10px;"></div>
   </div>
 
   <div class="card">
@@ -60,18 +57,22 @@
       <h2 style="margin:0;">Active Incidents & Events</h2>
     </div>
 
-    <input id="maFilter" placeholder="Filter..." style="margin: 10px 0; min-width: 360px;" />
+    <div class="row" style="margin: 10px 0;">
+      <input id="maFilter" placeholder="Filter..." style="flex: 1; min-width: 260px;" />
+    </div>
 
-    <table class="table">
-      <thead id="maThead">
-        <tr>
-          <th class="sortable" data-key="type" style="width: 100px;">Type <span class="sortIndicator" aria-hidden="true"></span></th>
-          <th class="sortable" data-key="title" style="width: 140px;">Title <span class="sortIndicator" aria-hidden="true"></span></th>
-          <th style="width: 380px;">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="maTbody"></tbody>
-    </table>
+    <div class="listCardTableWrap">
+      <table class="table listCardTable maListTable">
+        <thead id="maThead">
+          <tr>
+            <th class="sortable maTypeCol" data-key="type">Type <span class="sortIndicator" aria-hidden="true"></span></th>
+            <th class="sortable" data-key="title">Title <span class="sortIndicator" aria-hidden="true"></span></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="maTbody"></tbody>
+      </table>
+    </div>
 
     <div id="maListMsg" class="msg"></div>
   </div>
@@ -117,10 +118,31 @@
   .ma-unit-child td {
     background: rgba(255, 255, 255, 0.02);
     border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  }
+  .ma-unit-child .maTitleCell {
     padding-left: 28px;
   }
   .ma-unit-child-last td {
     border-bottom: 2px solid var(--line);
+  }
+
+  .maListTable .maTypeBadge,
+  .maListTable .cardMetaBadge {
+    display: none;
+  }
+
+  .maListTable .maActionsRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .maListTable .maActionsRow .btn {
+    width: auto;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
   }
 
   .btn.maAddUser {
@@ -182,6 +204,141 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+@media (max-width: 900px) {
+  .createMaActionRow {
+    display: flex;
+    justify-content: stretch !important;
+  }
+  .createMaSubmitBtn {
+    margin-left: 0;
+    width: 100% !important;
+    max-width: 100%;
+    flex: 1 1 100%;
+    display: block;
+  }
+}
+
+/* Mobile: stacked cards, no horizontal scroll (same pattern as Groups) */
+@media (max-width: 990px) {
+  .listCardTableWrap {
+    overflow-x: hidden;
+  }
+
+  .listCardTable {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .listCardTable thead {
+    display: none;
+  }
+
+  .listCardTable tbody tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .maListTable .maTitleCell.cardTitleCell { order: 1; }
+  .maListTable .maActionsCell.cardActionsCell { order: 2; }
+  .maListTable .maTypeCell,
+  .maListTable th.maTypeCol {
+    order: 99;
+    display: none !important;
+  }
+
+  .listCardTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 8px 12px;
+    word-break: normal;
+    overflow-wrap: normal;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .listCardTable .cardTitleCell {
+    padding-top: 12px;
+    padding-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleText {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
+  .maListTable .maTypeBadge,
+  .maListTable .cardMetaBadge {
+    display: inline-block;
+    margin: 0 0 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .ma-unit-master td {
+    background: rgba(124, 58, 237, 0.08);
+    border-top: none;
+  }
+  .ma-unit-child {
+    margin-left: 0;
+  }
+  .ma-unit-child .maTitleCell {
+    padding-left: 20px;
+    border-left: 3px solid rgba(124, 58, 237, 0.45);
+  }
+  .ma-unit-child td {
+    border-top: none;
+    background: transparent;
+  }
+  .ma-unit-child-last td {
+    border-bottom: none;
+  }
+
+  .listCardTable .cardActionsCell {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .listCardTable .cardActionsRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .listCardTable .cardActionsRow .btn {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    box-sizing: border-box;
+    text-align: center;
+  }
+}
+
+@media (max-width: 400px) {
+  .listCardTable .cardActionsRow {
+    grid-template-columns: 1fr;
+  }
+}
 
 </style>
 
@@ -2836,19 +2993,20 @@ function renderMutualAidRow(it, opts = {}) {
     .filter(Boolean)
     .join(" ");
 
-  const titleBlock = `<div style="font-weight:600;">${esc(displayTitle)}</div>`;
-  const channelLine = `<div style="color: var(--muted); font-size: 12px;">${esc(displayGroupName(it.groupName || ""))}</div>`;
+  const titleBlock = `<div class="cardTitleText">${esc(displayTitle)}</div>`;
+  const channelLine = `<div class="muted" style="font-size: 12px;">${esc(displayGroupName(it.groupName || ""))}</div>`;
 
   return `
     <tr class="${rowClass}">
-      <td>${esc(typeLabel)}</td>
-      <td>
+      <td class="maTypeCell">${esc(typeLabel)}</td>
+      <td class="maTitleCell cardTitleCell">
+        <span class="maTypeBadge cardMetaBadge">${esc(typeLabel)}</span>
         ${titleBlock}
         ${channelLine}
-        ${it.expireEnabled && it.expireAt ? `<div style="color: var(--muted); font-size: 12px;">Expires: ${esc(new Date(it.expireAt).toLocaleString())}</div>` : ""}
+        ${it.expireEnabled && it.expireAt ? `<div class="muted" style="font-size: 12px;">Expires: ${esc(new Date(it.expireAt).toLocaleString())}</div>` : ""}
       </td>
-      <td>
-        <div class="row" style="gap:10px; flex-wrap: wrap;">
+      <td class="maActionsCell cardActionsCell">
+        <div class="maActionsRow cardActionsRow">
           ${isSub ? "" : `<button class="btn" type="button" data-act="members" data-id="${esc(it.id)}">View Members</button>`}
           ${showMassAssign ? `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>` : ""}
           ${showMassAssign ? `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>` : ""}
