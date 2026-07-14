@@ -11,7 +11,7 @@
   <div class="card">
     <h2>Create Mutual Aid</h2>
 
-    <div class="row">
+    <div class="row" style="align-items: flex-end;">
       <label style="min-width: 140px;">Type
         <select id="maType">
           <option value="INCIDENT" selected>Incident</option>
@@ -20,15 +20,14 @@
         </select>
       </label>
 
-      <label style="flex: 0 1 220px; min-width: 160px; max-width: 280px;">Title
+      <label style="min-width: 240px;">Title
         <input
           id="maTitle"
           placeholder="Title (ex. County Fair, Search, etc...)"
-          style="width: 100%;"
         />
       </label>
 
-      <label id="maExpireWrap" style="min-width: 140px;">Expires
+      <label id="maExpireWrap" style="min-width: 120px;">Expires
         <select id="maExpireEnabled">
           <option value="no" selected>No</option>
           <option value="yes">Yes</option>
@@ -36,27 +35,25 @@
       </label>
 
       <label id="maExpireAtWrap" style="display:none; min-width: 220px;">Expire At
-        <input id="maExpireAt" type="datetime-local" style="width: 100%;" />
+        <input id="maExpireAt" type="datetime-local" />
       </label>
 
-      <label style="flex: 1 1 280px; min-width: 240px;">Group
-        <select id="maGroupMode" style="width: 100%;">
+      <label style="min-width: 200px;">Group
+        <select id="maGroupMode">
           <option value="new" selected>Create New Group</option>
           <option value="existing">Use Existing Group</option>
         </select>
       </label>
 
-      <label id="maExistingGroupWrap" style="display:none; flex: 1 1 320px; min-width: 280px; flex-direction: column;">
+      <label id="maExistingGroupWrap" style="display:none; min-width: 260px; flex-direction: column;">
         Existing Group
-        <select id="maExistingGroup" style="width: 100%;"></select>
+        <select id="maExistingGroup"></select>
       </label>
+
+      <button class="btn" id="maCreateBtn" type="button">Create New Mutual Aid</button>
     </div>
 
-    <div class="row createMaActionRow" style="margin-top:10px; justify-content:flex-end;">
-      <button class="btn createMaSubmitBtn" id="maCreateBtn" type="button">Create New Mutual Aid</button>
-    </div>
-
-    <div id="maCreateMsg" class="msg"></div>
+    <div id="maCreateMsg" class="msg" style="margin-top:10px;"></div>
   </div>
 
   <div class="card">
@@ -152,13 +149,6 @@
     overflow-wrap: normal;
   }
 
-  .createMaSubmitBtn {
-    margin-left: auto;
-  }
-  .createMaActionRow {
-    width: 100%;
-  }
-
   .btn.maAddUser {
     background: #ea580c;
     border-color: #ea580c;
@@ -220,16 +210,8 @@
   }
 
 @media (max-width: 900px) {
-  .createMaActionRow {
-    display: flex;
-    justify-content: stretch !important;
-  }
-  .createMaSubmitBtn {
-    margin-left: 0;
-    width: 100% !important;
-    max-width: 100%;
-    flex: 1 1 100%;
-    display: block;
+  #maCreateBtn {
+    width: 100%;
   }
 }
 
