@@ -78,24 +78,27 @@
               + Create Geofence
             </button>
             <div class="map-geofence-draw-bar" id="mapGeofenceDrawBar" hidden>
-              <button type="button" class="map-geofence-shape-btn" data-geofence-draw="circle" title="Draw circle" aria-label="Draw circle">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8" />
-                </svg>
-              </button>
-              <button type="button" class="map-geofence-shape-btn" data-geofence-draw="rectangle" title="Draw rectangle" aria-label="Draw rectangle">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <rect x="4" y="6" width="16" height="12" rx="1" />
-                </svg>
-              </button>
-              <button type="button" class="map-geofence-shape-btn" data-geofence-draw="polygon" title="Draw polygon" aria-label="Draw polygon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M12 3l8 6.5-3 9.5H7l-3-9.5L12 3z" />
-                </svg>
-              </button>
-              <button type="button" class="map-link-btn" id="mapGeofenceFinishPoly" hidden>Finish</button>
+              <div class="map-geofence-draw-shapes">
+                <button type="button" class="map-geofence-shape-btn" data-geofence-draw="circle" title="Draw circle" aria-label="Draw circle">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8" />
+                  </svg>
+                </button>
+                <button type="button" class="map-geofence-shape-btn" data-geofence-draw="rectangle" title="Draw rectangle" aria-label="Draw rectangle">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect x="4" y="6" width="16" height="12" rx="1" />
+                  </svg>
+                </button>
+                <button type="button" class="map-geofence-shape-btn" data-geofence-draw="polygon" title="Draw polygon" aria-label="Draw polygon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 3l8 6.5-3 9.5H7l-3-9.5L12 3z" />
+                  </svg>
+                </button>
+                <button type="button" class="map-link-btn" id="mapGeofenceFinishPoly" hidden>Finish</button>
+              </div>
               <span class="map-geofence-status" id="mapGeofenceStatus" aria-live="polite"></span>
-            </div>          </div>
+            </div>
+          </div>
           <a class="map-btn" href="/dashboard">Dashboard</a>
         </div>
       </header>

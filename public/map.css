@@ -1476,11 +1476,12 @@ body.map-detail-resizing .map-panel-resize-handle {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
+  left: auto;
   z-index: 8;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   width: max-content;
   max-width: min(420px, 70vw);
   padding: 8px 10px;
@@ -1492,6 +1493,12 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-geofence-draw-bar[hidden] {
   display: none !important;
+}
+
+.map-geofence-draw-shapes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .map-geofence-draw-bar .map-link-btn.is-active,
@@ -1523,10 +1530,10 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-geofence-status {
   margin: 0;
-  flex: 1 1 100%;
   font-size: 0.72rem;
   color: var(--map-muted);
   min-height: 1.2em;
+  line-height: 1.2;
   white-space: nowrap;
 }
 
