@@ -1649,7 +1649,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-geofence-action-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -1667,10 +1667,17 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-geofence-action-row {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 7px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
   font-size: 0.76rem;
+}
+
+.map-geofence-action-row:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .map-geofence-action-row-top {
@@ -1705,9 +1712,16 @@ body.map-detail-resizing .map-panel-resize-handle {
   grid-template-columns: 1fr auto 28px;
   gap: 8px;
   align-items: center;
-  padding: 6px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
   font-size: 0.76rem;
+}
+
+.map-geofence-mission-row:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .map-geofence-mission-meta {
