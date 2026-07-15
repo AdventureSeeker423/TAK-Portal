@@ -3,6 +3,7 @@ const path = require("path");
 
 const MAP_JS = path.join(__dirname, "..", "public", "map.js");
 const MAP_MISSIONS_JS = path.join(__dirname, "..", "public", "map-missions.js");
+const MAP_GEOFENCES_JS = path.join(__dirname, "..", "public", "map-geofences.js");
 const MAP_SHAPE_DECOR_JS = path.join(__dirname, "..", "public", "shapeDecorFilter.js");
 const MAP_CSS = path.join(__dirname, "..", "public", "map.css");
 
@@ -19,6 +20,7 @@ function getRenderLocals() {
   return {
     mapJsUrl: `/map.js?v=${fileMtimeToken(MAP_JS)}`,
     mapMissionsJsUrl: `/map-missions.js?v=${fileMtimeToken(MAP_MISSIONS_JS)}`,
+    mapGeofencesJsUrl: `/map-geofences.js?v=${fileMtimeToken(MAP_GEOFENCES_JS)}`,
     shapeDecorFilterJsUrl: `/shapeDecorFilter.js?v=${fileMtimeToken(MAP_SHAPE_DECOR_JS)}`,
     mapBasemapsJsUrl: `/mapBasemaps.js?v=${fileMtimeToken(path.join(__dirname, "..", "public", "mapBasemaps.js"))}`,
     dashboardMiniMapJsUrl: `/dashboardMiniMap.js?v=${fileMtimeToken(path.join(__dirname, "..", "public", "dashboardMiniMap.js"))}`,

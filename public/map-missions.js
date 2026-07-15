@@ -1858,32 +1858,45 @@
 
     const tabChannels = document.getElementById("mapTabChannels");
     const tabMissions = document.getElementById("mapTabMissions");
+    const tabGeofences = document.getElementById("mapTabGeofences");
     const panelChannels = document.getElementById("mapPanelChannels");
     const panelMissions = document.getElementById("mapPanelMissions");
+    const panelGeofences = document.getElementById("mapPanelGeofences");
 
     function setTab(tab) {
+      const channels = tab === "channels";
       const missions = tab === "missions";
-      if (tabChannels) {
-        tabChannels.classList.toggle("active", !missions);
-      }
-      if (tabMissions) {
-        tabMissions.classList.toggle("active", missions);
-      }
+      const geofences = tab === "geofences";
+      if (tabChannels) tabChannels.classList.toggle("active", channels);
+      if (tabMissions) tabMissions.classList.toggle("active", missions);
+      if (tabGeofences) tabGeofences.classList.toggle("active", geofences);
       if (panelChannels) {
-        panelChannels.classList.toggle("is-active", !missions);
-        panelChannels.hidden = missions;
+        panelChannels.classList.toggle("is-active", channels);
+        panelChannels.hidden = !channels;
       }
       if (panelMissions) {
         panelMissions.classList.toggle("is-active", missions);
         panelMissions.hidden = !missions;
       }
+      if (panelGeofences) {
+        panelGeofences.classList.toggle("is-active", geofences);
+        panelGeofences.hidden = !geofences;
+      }
       if (missions && !missionsCatalog.length) refreshMissionCatalog();
+      if (
+        geofences &&
+        window.TakMapGeofences &&
+        typeof window.TakMapGeofences.onTabShow === "function"
+      ) {
+        window.TakMapGeofences.onTabShow();
+      }
     }
 
     setTab("channels");
 
     if (tabChannels) tabChannels.addEventListener("click", function () { setTab("channels"); });
     if (tabMissions) tabMissions.addEventListener("click", function () { setTab("missions"); });
+    if (tabGeofences) tabGeofences.addEventListener("click", function () { setTab("geofences"); });
 
     map.on("moveend", scheduleMissionLabelDeclutter);
     map.on("zoomend", scheduleMissionLabelDeclutter);

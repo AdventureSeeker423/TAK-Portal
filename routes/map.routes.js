@@ -10,6 +10,8 @@ const dataSyncSvc = require("../services/dataSync.service");
 const dataSyncAccess = require("../services/dataSyncAccess.service");
 const missionGeo = require("../services/missionGeo.service");
 const missionRaster = require("../services/missionRaster.service");
+const geofenceStore = require("../services/geofence.store");
+const { fenceToGeoJsonFeature } = require("../services/geofence.geometry");
 
 mapIcon.ensureIconsets().then(() => {
   cotStream.refreshAllMarkerIcons();
@@ -391,6 +393,111 @@ function unwrapMissionList(payload) {
   if (Array.isArray(payload?.data)) return payload.data;
   return [];
 }
+
+function resolveMissionDisplayName(mission) {
+  return String(mission?.name || mission?.missionName || "").trim();
+}
+
+/** Channel + mission pickers for geofence action config. */
+router.get("/geofences/action-options", async (req, res) => {
+  const ctx = getMapAccessContext(req);
+  const authUser = req.authentikUser || null;
+  try {
+    cotStream.ensureBridgeStarted();
+    const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
+      scopeMemberGroups: ctx.scopeMemberGroups,
+      userGroupNames: ctx.userGroups,
+    });
+    const channels = (Array.isArray(catalog.groups) ? catalog.groups : [])
+      .map((g) => {
+        const name = String(g?.name || g?.groupName || "").trim();
+        if (!name) return null;
+        return {
+          name,
+          displayName: String(g?.displayName || g?.label || name).trim() || name,
+        };
+      })
+      .filter(Boolean);
+
+    let missions = [];
+    try {
+      const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(authUser);
+      const raw = await dataSyncSvc.listMissions({});
+      const filtered = dataSyncAccess.filterMissionsPayload(raw, allowedKeySet);
+      const list = dataSyncAccess.enrichMissionListAssignmentMeta(unwrapMissionList(filtered));
+      missions = list
+        .map((mission) => {
+          const name = resolveMissionDisplayName(mission);
+          const groupName = dataSyncAccess.missionSingleGroupName(mission);
+          if (!name || !groupName) return null;
+          return {
+            name,
+            groupName,
+            assignedAgencyName: mission.assignedAgencyName || null,
+          };
+        })
+        .filter(Boolean);
+    } catch (err) {
+      console.warn("[map] geofence mission options failed:", err?.message || err);
+    }
+
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json({ channels, missions });
+  } catch (err) {
+    console.warn("[map] geofence action-options failed:", err?.message || err);
+    return res.status(500).json({ error: err?.message || "Action options failed" });
+  }
+});
+
+router.get("/geofences", (req, res) => {
+  try {
+    const fences = geofenceStore.listFences();
+    const membershipCounts = geofenceStore.getMembershipSummary();
+    const features = fences.map(fenceToGeoJsonFeature).filter(Boolean);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json({
+      fences,
+      membershipCounts,
+      geojson: { type: "FeatureCollection", features },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Geofence list failed" });
+  }
+});
+
+router.post("/geofences", (req, res) => {
+  try {
+    const fence = geofenceStore.createFence(req.body || {}, req.authentikUser || null);
+    return res.status(201).json({ fence });
+  } catch (err) {
+    const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
+    return res.status(status).json({ error: err?.message || "Create geofence failed" });
+  }
+});
+
+router.patch("/geofences/:id", (req, res) => {
+  try {
+    const fence = geofenceStore.updateFence(
+      req.params.id,
+      req.body || {},
+      req.authentikUser || null
+    );
+    return res.json({ fence });
+  } catch (err) {
+    const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
+    return res.status(status).json({ error: err?.message || "Update geofence failed" });
+  }
+});
+
+router.delete("/geofences/:id", (req, res) => {
+  try {
+    geofenceStore.deleteFence(req.params.id);
+    return res.json({ ok: true });
+  } catch (err) {
+    const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
+    return res.status(status).json({ error: err?.message || "Delete geofence failed" });
+  }
+});
 
 /** Filtered mission list for map overlay picker (read-only). */
 router.get("/missions", async (req, res) => {

@@ -100,6 +100,7 @@
         <div class="map-panel-tabs">
           <button type="button" class="map-tab active" id="mapTabChannels">Channels</button>
           <button type="button" class="map-tab" id="mapTabMissions">Missions</button>
+          <button type="button" class="map-tab" id="mapTabGeofences">Geofences</button>
           <button type="button" class="map-panel-collapse" id="mapCollapseLeft" title="Collapse panel">‹</button>
         </div>
 
@@ -114,7 +115,7 @@
           <div class="map-layer-list" id="mapLayerList"></div>
         </div>
 
-        <div class="map-panel-body" id="mapPanelMissions">
+        <div class="map-panel-body" id="mapPanelMissions" hidden>
           <div class="map-search map-search-compact">
             <input id="mapMissionSearch" type="search" placeholder="Filter missions…" autocomplete="off" />
           </div>
@@ -123,6 +124,20 @@
             <button type="button" class="map-link-btn" id="mapMissionsNone">None</button>
           </div>
           <div class="map-mission-list" id="mapMissionList"></div>
+        </div>
+
+        <div class="map-panel-body" id="mapPanelGeofences" hidden>
+          <div class="map-geofence-toolbar">
+            <button type="button" class="map-link-btn" data-geofence-draw="circle" title="Draw circle">Circle</button>
+            <button type="button" class="map-link-btn" data-geofence-draw="rectangle" title="Draw rectangle">Rect</button>
+            <button type="button" class="map-link-btn" data-geofence-draw="polygon" title="Draw polygon">Poly</button>
+            <button type="button" class="map-link-btn" data-geofence-draw="select" title="Select geofence">Select</button>
+            <button type="button" class="map-link-btn" id="mapGeofenceFinishPoly" hidden>Finish</button>
+            <button type="button" class="map-link-btn" id="mapGeofenceCancelDraw">Cancel</button>
+          </div>
+          <p class="map-geofence-status" id="mapGeofenceStatus" aria-live="polite"></p>
+          <div class="map-geofence-list" id="mapGeofenceList"></div>
+          <div class="map-geofence-inspector" id="mapGeofenceInspector" hidden></div>
         </div>
       </aside>
 
@@ -182,5 +197,6 @@
     <script src="<%= shapeDecorFilterJsUrl %>"></script>
     <script src="<%= mapJsUrl %>" defer></script>
     <script src="<%= mapMissionsJsUrl %>" defer></script>
+    <script src="<%= mapGeofencesJsUrl %>" defer></script>
   </body>
 </html>

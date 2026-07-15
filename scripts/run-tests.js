@@ -19,6 +19,7 @@ const TEST_FILES = [
   "geocode.test.js",
   "preferencePackage.service.test.js",
   "takGroupControl.test.js",
+  "geofence.test.js",
 ];
 
 const testsDir = path.join(__dirname, "..", "tests");

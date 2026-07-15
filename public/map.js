@@ -5165,18 +5165,22 @@
         runServerGeoJsonRefresh()
           .finally(function () {
             if (gen !== styleRestoreGen) return;
-            if (
+            const missionRestore =
               window.TakMapMissions &&
               typeof window.TakMapMissions.restoreAfterStyleChange === "function"
-            ) {
-              return Promise.resolve(window.TakMapMissions.restoreAfterStyleChange())
-                .then(afterMissionsRestore)
-                .catch(function (err) {
-                  console.warn("[map] mission restore after style change failed", err);
-                  afterMissionsRestore();
-                });
-            }
-            afterMissionsRestore();
+                ? Promise.resolve(window.TakMapMissions.restoreAfterStyleChange())
+                : Promise.resolve();
+            const geofenceRestore =
+              window.TakMapGeofences &&
+              typeof window.TakMapGeofences.restoreAfterStyleChange === "function"
+                ? Promise.resolve(window.TakMapGeofences.restoreAfterStyleChange())
+                : Promise.resolve();
+            return Promise.all([missionRestore, geofenceRestore])
+              .then(afterMissionsRestore)
+              .catch(function (err) {
+                console.warn("[map] overlay restore after style change failed", err);
+                afterMissionsRestore();
+              });
           });
       }
 
@@ -5615,6 +5619,9 @@
   window.TakMapBridge.whenReady(function () {
     if (window.TakMapMissions && typeof window.TakMapMissions.init === "function") {
       window.TakMapMissions.init(window.TakMapBridge);
+    }
+    if (window.TakMapGeofences && typeof window.TakMapGeofences.init === "function") {
+      window.TakMapGeofences.init(window.TakMapBridge);
     }
   });
 })();

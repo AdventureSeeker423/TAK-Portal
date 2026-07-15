@@ -2085,6 +2085,13 @@ app.listen(port, () => {
   }
 
   try {
+    const geofenceEngine = require("./services/geofence.engine");
+    geofenceEngine.start();
+  } catch (e) {
+    console.log("⚠️ Geofence evaluator init failed", e?.message || e);
+  }
+
+  try {
     const takUrl = getString("TAK_URL", "");
     if (!takUrl) {
       console.log("⚠️ TAK_URL not set in settings.json");
