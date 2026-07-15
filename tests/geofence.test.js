@@ -111,6 +111,27 @@ assert.ok(d < 0.01);
   assert.deepStrictEqual(t.exits, []);
 }
 
+{
+  const { channelStateMatchesDesired } = require("../services/geofence.engine");
+  const { normalizeEnforceMode } = require("../services/geofence.store");
+  assert.strictEqual(normalizeEnforceMode("force"), "force");
+  assert.strictEqual(normalizeEnforceMode("one-time"), "one-time");
+  assert.strictEqual(normalizeEnforceMode(""), "one-time");
+  assert.strictEqual(
+    channelStateMatchesDesired({ accessMode: "BOTH", inActive: true, outActive: true, active: true }, true),
+    true
+  );
+  assert.strictEqual(
+    channelStateMatchesDesired({ accessMode: "BOTH", inActive: true, outActive: false, active: false }, false),
+    false,
+    "partial BOTH disable is not fully disabled"
+  );
+  assert.strictEqual(
+    channelStateMatchesDesired({ accessMode: "READ", active: false }, false),
+    true
+  );
+}
+
 // --- store round-trip in a temp dir via file path override is heavy;
 // exercise normalize helpers through create/update with isolated paths by
 // writing to the real data paths only if data/ is writable; use store API
@@ -128,7 +149,7 @@ async function testActionApply() {
 
   takGroupControl.getClientGroupControlState = async () => ({
     groups: [
-      { name: "FOO", accessMode: "BOTH", active: false },
+      { name: "FOO", accessMode: "BOTH", active: false, inActive: false, outActive: false },
       { name: "BAR", accessMode: "READ", active: true },
     ],
   });
@@ -174,6 +195,22 @@ async function testActionApply() {
     calls.missions = [];
     await engine.handleExit(fence, "uid1");
     assert.strictEqual(calls.missions.length, 0, "exit never sends Data Sync invite");
+
+    calls.channels = [];
+    await engine.enforceEnterChannelsIfNeeded("uid1", fence.owner, fence.actions.channels);
+    assert.strictEqual(calls.channels.length, 1, "force applies when FOO is off");
+    assert.strictEqual(calls.channels[0].groupName, "FOO");
+    assert.strictEqual(calls.channels[0].active, true);
+
+    takGroupControl.getClientGroupControlState = async () => ({
+      groups: [
+        { name: "FOO", accessMode: "BOTH", active: true, inActive: true, outActive: true },
+        { name: "BAR", accessMode: "READ", active: true },
+      ],
+    });
+    calls.channels = [];
+    await engine.enforceEnterChannelsIfNeeded("uid1", fence.owner, fence.actions.channels);
+    assert.strictEqual(calls.channels.length, 0, "force no-ops when already matching");
   } finally {
     takGroupControl.setClientGroupActive = origSet;
     takGroupControl.sendClientDataSyncInvite = origInvite;

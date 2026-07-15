@@ -432,8 +432,14 @@
     if (!fence || !detailPaneEl) return;
     const nameEl = detailPaneEl.querySelector("#mapGeofenceName");
     const activeEl = detailPaneEl.querySelector("#mapGeofenceActive");
+    const enforceEl = detailPaneEl.querySelector("#mapGeofenceEnforceMode");
     const name = nameEl ? String(nameEl.value || "").trim() : fence.name;
-    const active = activeEl ? !!activeEl.checked : fence.active;
+    const active = activeEl
+      ? activeEl.getAttribute("aria-pressed") === "true"
+      : fence.active;
+    const enforceMode = enforceEl
+      ? String(enforceEl.value || "one-time").trim()
+      : fence.enforceMode || "one-time";
 
     const channels = [];
     detailPaneEl.querySelectorAll("[data-gf-channel]").forEach(function (row) {
@@ -463,6 +469,7 @@
         body: JSON.stringify({
           name: name,
           active: active,
+          enforceMode: enforceMode,
           actions: { channels: channels, missions: missions },
         }),
       });
@@ -536,7 +543,9 @@
     if (title) title.textContent = fence.name || "Unnamed geofence";
     if (meta) {
       const type = fence.geometry && fence.geometry.type ? fence.geometry.type : "";
-      meta.textContent = type + (fence.active ? " · active" : " · inactive");
+      const enabled = fence.active ? "enabled" : "disabled";
+      const mode = fence.enforceMode === "force" ? " · force" : "";
+      meta.textContent = type + " · " + enabled + mode;
       meta.hidden = !type;
     }
   }
@@ -864,6 +873,9 @@
       '<div class="map-geofence-picker-results" data-gf-picker-results hidden></div>' +
       "</div>";
 
+    const enforceMode = fence.enforceMode === "force" ? "force" : "one-time";
+    const enabledOn = fence.active === true;
+
     body.innerHTML =
       '<div class="map-geofence-inspector">' +
       '<div class="map-geofence-inspector-fields">' +
@@ -872,11 +884,30 @@
       escapeAttr(fence.name || "") +
       '" />' +
       "</label>" +
-      '<label class="map-geofence-field map-geofence-field-inline">' +
-      '<input id="mapGeofenceActive" type="checkbox"' +
-      (fence.active ? " checked" : "") +
-      " /> Active" +
+      '<div class="map-geofence-control-row">' +
+      '<div class="map-geofence-enabled-control">' +
+      '<button type="button" id="mapGeofenceActive" class="map-mission-toggle ' +
+      (enabledOn ? "is-on" : "is-off") +
+      '" aria-pressed="' +
+      (enabledOn ? "true" : "false") +
+      '" title="' +
+      (enabledOn ? "Enabled" : "Disabled") +
+      '"></button>' +
+      '<span id="mapGeofenceActiveLabel">' +
+      (enabledOn ? "Enabled" : "Disabled") +
+      "</span>" +
+      "</div>" +
+      '<label class="map-geofence-field map-geofence-enforce-field">Enforce' +
+      '<select id="mapGeofenceEnforceMode" class="map-geofence-action-select">' +
+      '<option value="one-time"' +
+      (enforceMode === "one-time" ? " selected" : "") +
+      ">One-time</option>" +
+      '<option value="force"' +
+      (enforceMode === "force" ? " selected" : "") +
+      ">Force</option>" +
+      "</select>" +
       "</label>" +
+      "</div>" +
       "</div>" +
       '<div class="map-geofence-section map-geofence-section-scroll">' +
       "<h3>Channels</h3>" +
@@ -895,9 +926,23 @@
 
     const nameEl = body.querySelector("#mapGeofenceName");
     const activeEl = body.querySelector("#mapGeofenceActive");
+    const activeLabel = body.querySelector("#mapGeofenceActiveLabel");
+    const enforceEl = body.querySelector("#mapGeofenceEnforceMode");
     if (nameEl) nameEl.addEventListener("input", scheduleSave);
-    if (activeEl) activeEl.addEventListener("change", scheduleSave);
+    if (activeEl) {
+      activeEl.addEventListener("click", function () {
+        const next = activeEl.getAttribute("aria-pressed") !== "true";
+        activeEl.setAttribute("aria-pressed", next ? "true" : "false");
+        activeEl.classList.toggle("is-on", next);
+        activeEl.classList.toggle("is-off", !next);
+        activeEl.title = next ? "Enabled" : "Disabled";
+        if (activeLabel) activeLabel.textContent = next ? "Enabled" : "Disabled";
+        scheduleSave();
+      });
+    }
+    if (enforceEl) enforceEl.addEventListener("change", scheduleSave);
     body.querySelectorAll("select").forEach(function (el) {
+      if (el.id === "mapGeofenceEnforceMode") return;
       el.addEventListener("change", function () {
         patchFenceActionsLocal(collectChannelActionsFromDom(), collectMissionActionsFromDom());
         scheduleSave();

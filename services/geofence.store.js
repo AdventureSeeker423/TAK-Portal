@@ -42,6 +42,11 @@ function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
+function normalizeEnforceMode(value) {
+  const v = safeStr(value).trim().toLowerCase();
+  return v === "force" ? "force" : "one-time";
+}
+
 function normalizeAccessMode(value) {
   const v = safeStr(value).trim().toUpperCase();
   if (v === "READ" || v === "WRITE" || v === "BOTH") return v;
@@ -120,6 +125,7 @@ function normalizeFence(raw) {
     id,
     name: safeStr(raw.name).trim(),
     active: raw.active === true,
+    enforceMode: normalizeEnforceMode(raw.enforceMode),
     geometry: geo.geometry,
     actions: {
       channels: normalizeChannelActions(actions.channels),
@@ -220,6 +226,7 @@ function createFence(input, authUser) {
     id: crypto.randomUUID(),
     name: safeStr(input?.name).trim(),
     active: input?.active === true,
+    enforceMode: normalizeEnforceMode(input?.enforceMode),
     geometry: geo.geometry,
     actions: {
       channels: normalizeChannelActions(input?.actions?.channels),
@@ -253,6 +260,9 @@ function updateFence(id, patch, authUser) {
   }
   if (patch && Object.prototype.hasOwnProperty.call(patch, "active")) {
     next.active = patch.active === true;
+  }
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "enforceMode")) {
+    next.enforceMode = normalizeEnforceMode(patch.enforceMode);
   }
   if (patch && patch.geometry) {
     const geo = validateGeometry(patch.geometry);
@@ -414,6 +424,7 @@ module.exports = {
   flushStateNow,
   normalizeChannelActions,
   normalizeMissionActions,
+  normalizeEnforceMode,
   markFenceForReapplyEnter,
   takePendingReapplyEnterIds,
   _resetForTests,

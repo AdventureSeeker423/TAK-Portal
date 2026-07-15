@@ -172,6 +172,20 @@ function resolvePhaseChannelAction(ch, phase) {
   return "";
 }
 
+/** Whether display/group state already matches the desired enable/disable. */
+function channelStateMatchesDesired(hit, wantActive) {
+  if (!hit) return false;
+  if (
+    hit.accessMode === "BOTH" &&
+    typeof hit.inActive === "boolean" &&
+    typeof hit.outActive === "boolean"
+  ) {
+    if (wantActive) return hit.inActive === true && hit.outActive === true;
+    return hit.inActive === false && hit.outActive === false;
+  }
+  return hit.active === wantActive;
+}
+
 async function applyChannelActions(clientUid, authUser, channels, phase) {
   const list = Array.isArray(channels) ? channels : [];
   for (const ch of list) {
@@ -200,6 +214,73 @@ async function applyChannelActions(clientUid, authUser, channels, phase) {
       if (status === 404 || status === 400 || status === 403) {
         console.info(
           `[geofence] skip channel ${configuredName} ${phase}/${action} for ${clientUid}:`,
+          err?.message || err
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
+ * Force mode: re-apply enter channel actions only when current state differs.
+ * Does not re-send Data Sync invites.
+ */
+async function enforceEnterChannelsIfNeeded(clientUid, authUser, channels) {
+  const list = Array.isArray(channels) ? channels : [];
+  const wanted = list.filter((ch) => {
+    const action = resolvePhaseChannelAction(ch, "enter");
+    return action === "enable" || action === "disable";
+  });
+  if (!wanted.length) return;
+
+  let groups = [];
+  try {
+    const state = await takGroupControl.getClientGroupControlState(clientUid, authUser);
+    groups = Array.isArray(state?.groups) ? state.groups : [];
+  } catch (err) {
+    console.warn(
+      `[geofence] force state check failed for ${clientUid}:`,
+      err?.message || err
+    );
+    return;
+  }
+
+  for (const ch of wanted) {
+    const action = resolvePhaseChannelAction(ch, "enter");
+    const wantActive = action === "enable";
+    const configuredName = safeStr(ch.groupName).trim();
+    if (!configuredName) continue;
+    const wantKey = dataSyncAccess.canonicalGroupKey(configuredName);
+    const hit = groups.find(
+      (g) => dataSyncAccess.canonicalGroupKey(g?.name) === wantKey
+    );
+    if (!hit) {
+      console.info(
+        `[geofence] force skip channel ${configuredName} for ${clientUid}: not entitled`
+      );
+      continue;
+    }
+    if (channelStateMatchesDesired(hit, wantActive)) continue;
+    try {
+      await takGroupControl.setClientGroupActive(clientUid, authUser, {
+        groupName: safeStr(hit.name).trim(),
+        accessMode: safeStr(hit.accessMode).trim().toUpperCase() || ch.accessMode || "BOTH",
+        active: wantActive,
+      });
+      console.info(
+        `[geofence] force ${action} channel ${hit.name} (${hit.accessMode}) for ${clientUid}`
+      );
+      // Keep local groups in sync for subsequent checks in this pass.
+      hit.active = wantActive;
+      if (typeof hit.inActive === "boolean") hit.inActive = wantActive;
+      if (typeof hit.outActive === "boolean") hit.outActive = wantActive;
+    } catch (err) {
+      const status = err?.status || err?.response?.status;
+      if (status === 404 || status === 400 || status === 403) {
+        console.info(
+          `[geofence] force skip channel ${configuredName} for ${clientUid}:`,
           err?.message || err
         );
         continue;
@@ -257,6 +338,11 @@ async function handleExit(fence, clientUid) {
   await applyChannelActions(clientUid, authUser, fence.actions?.channels, "exit");
 }
 
+async function handleForceEnforce(fence, clientUid) {
+  const authUser = authUserForFence(fence);
+  await enforceEnterChannelsIfNeeded(clientUid, authUser, fence.actions?.channels);
+}
+
 async function evaluateFence(fence, eudPoints, onlineUids) {
   const fenceId = fence.id;
   const known = prevActiveByFence.has(fenceId);
@@ -290,10 +376,13 @@ async function evaluateFence(fence, eudPoints, onlineUids) {
   const forceEnterAll = known && wasActive === false;
   const enters = [];
   const exits = [];
+  const stayInside = [];
 
   for (const uid of insideSet) {
     if (forceEnterAll || !store.wasMemberInside(fenceId, uid)) {
       enters.push(uid);
+    } else {
+      stayInside.push(uid);
     }
   }
 
@@ -326,6 +415,19 @@ async function evaluateFence(fence, eudPoints, onlineUids) {
       const latest = store.getFence(fenceId) || fence;
       return handleExit(latest, uid);
     });
+  }
+
+  const enforceMode =
+    safeStr(fence.enforceMode).trim().toLowerCase() === "force" ? "force" : "one-time";
+  if (enforceMode === "force" && stayInside.length) {
+    for (const uid of stayInside) {
+      enqueueClient(uid, () => {
+        const latest = store.getFence(fenceId) || fence;
+        if (!latest || latest.active !== true) return;
+        if (safeStr(latest.enforceMode).trim().toLowerCase() !== "force") return;
+        return handleForceEnforce(latest, uid);
+      });
+    }
   }
 }
 
@@ -431,10 +533,13 @@ module.exports = {
   indexSubscriptions,
   resolveEntitledChannel,
   resolvePhaseChannelAction,
+  channelStateMatchesDesired,
   applyChannelActions,
+  enforceEnterChannelsIfNeeded,
   applyMissionEnter,
   handleEnter,
   handleExit,
+  handleForceEnforce,
   enqueueClient,
   authUserForFence,
   reapplyEnterForMembers,

@@ -1585,6 +1585,27 @@ body.map-detail-resizing .map-panel-resize-handle {
   color: var(--map-text);
 }
 
+.map-geofence-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px 18px;
+}
+
+.map-geofence-enabled-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--map-text);
+  min-height: 32px;
+}
+
+.map-geofence-enforce-field {
+  min-width: 120px;
+  flex: 0 0 auto;
+}
+
 .map-geofence-section {
   display: flex;
   flex-direction: column;
