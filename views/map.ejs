@@ -73,6 +73,7 @@
             </svg>
             <select class="map-select" id="mapBasemapSelect" title="Basemap" aria-label="Basemap"></select>
           </div>
+          <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
           <div class="map-geofence-create-wrap">
             <button type="button" class="map-btn" id="mapGeofenceCreateBtn" title="Create a geofence">
               + Create Geofence
@@ -99,6 +100,7 @@
               <span class="map-geofence-status" id="mapGeofenceStatus" aria-live="polite"></span>
             </div>
           </div>
+          <% } %>
           <a class="map-btn" href="/dashboard">Dashboard</a>
         </div>
       </header>
@@ -208,6 +210,8 @@
     <script src="<%= shapeDecorFilterJsUrl %>"></script>
     <script src="<%= mapJsUrl %>" defer></script>
     <script src="<%= mapMissionsJsUrl %>" defer></script>
+    <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
     <script src="<%= mapGeofencesJsUrl %>" defer></script>
+    <% } %>
   </body>
 </html>

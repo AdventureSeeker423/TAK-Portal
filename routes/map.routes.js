@@ -45,6 +45,14 @@ function getMapAccessContext(req) {
   };
 }
 
+/** Geofence tools are global-admin only for now. */
+function requireGeofenceGlobalAdmin(req, res, next) {
+  if (!req.authentikUser || !req.authentikUser.isGlobalAdmin) {
+    return res.status(403).json({ error: "Geofences are limited to global admins." });
+  }
+  return next();
+}
+
 async function attachScopedGroupCatalog(snapshot, ctx) {
   const catalog = await mapMeta.getTakGroupCatalog(cotStream.getMarkerList(), {
     scopeMemberGroups: ctx.scopeMemberGroups,
@@ -400,7 +408,7 @@ function resolveMissionDisplayName(mission) {
 }
 
 /** Channel + mission pickers for geofence action config. */
-router.get("/geofences/action-options", async (req, res) => {
+router.get("/geofences/action-options", requireGeofenceGlobalAdmin, async (req, res) => {
   const ctx = getMapAccessContext(req);
   const authUser = req.authentikUser || null;
   try {
@@ -450,7 +458,7 @@ router.get("/geofences/action-options", async (req, res) => {
   }
 });
 
-router.get("/geofences", (req, res) => {
+router.get("/geofences", requireGeofenceGlobalAdmin, (req, res) => {
   try {
     const fences = geofenceStore.listFences();
     const membershipCounts = geofenceStore.getMembershipSummary();
@@ -466,7 +474,7 @@ router.get("/geofences", (req, res) => {
   }
 });
 
-router.patch("/geofences/:id", (req, res) => {
+router.patch("/geofences/:id", requireGeofenceGlobalAdmin, (req, res) => {
   try {
     const fence = geofenceStore.updateFence(
       req.params.id,
@@ -482,7 +490,7 @@ router.patch("/geofences/:id", (req, res) => {
   }
 });
 
-router.post("/geofences", (req, res) => {
+router.post("/geofences", requireGeofenceGlobalAdmin, (req, res) => {
   try {
     const fence = geofenceStore.createFence(req.body || {}, req.authentikUser || null);
     void geofenceEngine.tick();
@@ -493,7 +501,7 @@ router.post("/geofences", (req, res) => {
   }
 });
 
-router.delete("/geofences/:id", (req, res) => {
+router.delete("/geofences/:id", requireGeofenceGlobalAdmin, (req, res) => {
   try {
     geofenceStore.deleteFence(req.params.id);
     return res.json({ ok: true });
