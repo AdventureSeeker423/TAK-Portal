@@ -167,6 +167,7 @@
   let storedEnabledGroupKeys = undefined;
   let selectedUid = null;
   let detailSlots = [];
+  let auxDetailActive = false;
   let focusedDetailIndex = 0;
   let detailPaneUserCollapsed = false;
   let mapRefreshTimer = null;
@@ -3165,7 +3166,7 @@
 
   function syncDetailStackVisibility() {
     if (!elDetailStack) return;
-    const hasSlots = detailSlots.length > 0;
+    const hasSlots = detailSlots.length > 0 || auxDetailActive;
     const hasPinned = detailSlots.some(function (s) {
       return s.pinned;
     });
@@ -3187,7 +3188,7 @@
   }
 
   function setDetailStackCollapsed(collapsed) {
-    if (!detailSlots.length && collapsed) return;
+    if (!detailSlots.length && !auxDetailActive && collapsed) return;
     detailPaneUserCollapsed = collapsed;
     syncDetailStackVisibility();
     if (!collapsed) closeMapPopup();
@@ -4662,6 +4663,7 @@
   function syncDetailStackDom() {
     if (!elDetailStack) return;
     const resizeHandle = elDetailResize;
+    const geofencePane = document.getElementById("mapGeofenceDetailPane");
     elDetailStack.innerHTML = "";
     if (resizeHandle) elDetailStack.appendChild(resizeHandle);
 
@@ -4670,6 +4672,7 @@
       elDetailStack.appendChild(pane);
       renderDetailPane(index);
     });
+    if (geofencePane) elDetailStack.appendChild(geofencePane);
   }
 
   function renderDetailPane(slotIndex) {
@@ -4920,6 +4923,12 @@
   }
 
   function selectMarker(uid, showPopupFlag) {
+    if (
+      window.TakMapGeofences &&
+      typeof window.TakMapGeofences.deselect === "function"
+    ) {
+      window.TakMapGeofences.deselect();
+    }
     const id = String(uid);
     const hadSlot = detailSlots.some(function (s) {
       return s.uid === id;
@@ -5248,7 +5257,13 @@
   }
 
   function deselectMarker() {
-    if (!selectedUid) return;
+    if (
+      window.TakMapGeofences &&
+      typeof window.TakMapGeofences.deselect === "function"
+    ) {
+      window.TakMapGeofences.deselect();
+    }
+    if (!selectedUid && !detailSlots.length) return;
     selectedUid = null;
     for (let i = detailSlots.length - 1; i >= 0; i--) {
       if (!detailSlots[i].pinned) {
@@ -5286,6 +5301,15 @@
       const missionLayers = window.TakMapMissions.getHitLayers();
       for (let i = 0; i < missionLayers.length; i++) {
         layers.push(missionLayers[i]);
+      }
+    }
+    if (
+      window.TakMapGeofences &&
+      typeof window.TakMapGeofences.getHitLayers === "function"
+    ) {
+      const geofenceLayers = window.TakMapGeofences.getHitLayers();
+      for (let i = 0; i < geofenceLayers.length; i++) {
+        layers.push(geofenceLayers[i]);
       }
     }
     if (layers.length) {
@@ -5602,6 +5626,28 @@
     queryMarkersAtPoint: queryMarkersAtPoint,
     markerOriginRank: markerOriginRank,
     ensureLiveMarkersLoaded: ensureLiveMarkersLoaded,
+    suppressBackgroundClick: function () {
+      suppressMapBackgroundClickUntil = Date.now() + 150;
+    },
+    setAuxDetailActive: function (active) {
+      auxDetailActive = !!active;
+      if (active) detailPaneUserCollapsed = false;
+      syncDetailStackVisibility();
+    },
+    deselectMarkersForAux: function () {
+      selectedUid = null;
+      for (let i = detailSlots.length - 1; i >= 0; i--) {
+        if (!detailSlots[i].pinned) {
+          clearDetailAgeTimer(detailSlots[i].uid);
+          detailSlots.splice(i, 1);
+        }
+      }
+      syncDetailStackDom();
+      syncDetailStackVisibility();
+      syncSelectionToMapSource();
+      closeStackPicker();
+      closeMapPopup();
+    },
     whenReady: function (cb) {
       if (markerLayersReady && map) {
         cb();
