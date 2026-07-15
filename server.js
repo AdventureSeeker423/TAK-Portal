@@ -1556,9 +1556,20 @@ app.post(
       });
     }
 
-    // Flat fields like "settings[BRAND_THEME]" created by multer
+    // Flat fields like "settings[BRAND_THEME]" / nested
+    // "settings[EMAIL_TEMPLATES_OVERRIDES][file.html]" created by multer.
     Object.keys(rawBody).forEach((key) => {
-      const match = key.match(/^settings\[(.+)\]$/);
+      const nested = key.match(/^settings\[([^\]]+)\]\[([^\]]+)\]$/);
+      if (nested) {
+        const parent = nested[1];
+        const child = nested[2];
+        if (!bodySettings[parent] || typeof bodySettings[parent] !== "object") {
+          bodySettings[parent] = {};
+        }
+        bodySettings[parent][child] = rawBody[key];
+        return;
+      }
+      const match = key.match(/^settings\[([^\]]+)\]$/);
       if (match) {
         bodySettings[match[1]] = rawBody[key];
       }
@@ -1594,6 +1605,10 @@ app.post(
         : null;
 
     // --- email template overrides (HTML bodies) ---
+    // Important: do NOT persist textarea bodies on general Save Settings / autosave.
+    // Browsers decode HTML entities inside <textarea> content, so "default" markup
+    // posted back no longer matches /email_templates and would falsely become Custom.
+    // Overrides are only written when Save Custom Template is used; resets still apply.
     const currentOverrides =
       currentSettings &&
       currentSettings.EMAIL_TEMPLATES_OVERRIDES &&
@@ -1617,24 +1632,19 @@ app.post(
         .trim();
     }
 
-    if (overridesFromForm && typeof overridesFromForm === "object") {
-      Object.keys(overridesFromForm).forEach((filename) => {
-        // If a per-template Save was used, ignore other templates.
-        if (onlyTemplate && filename !== onlyTemplate) {
-          return;
-        }
-
-        const value = overridesFromForm[filename];
-        if (typeof value !== "string") {
-          return;
-        }
-
+    if (
+      onlyTemplate &&
+      overridesFromForm &&
+      typeof overridesFromForm === "object"
+    ) {
+      const value = overridesFromForm[onlyTemplate];
+      if (typeof value === "string") {
         let isSameAsDefault = false;
 
         if (templatesDirForCompare) {
           try {
             const defaultHtml = fs.readFileSync(
-              path.join(templatesDirForCompare, filename),
+              path.join(templatesDirForCompare, onlyTemplate),
               "utf8"
             );
             if (normalizeHtml(value) === normalizeHtml(defaultHtml)) {
@@ -1644,20 +1654,18 @@ app.post(
             // If we can't read the default file, we just treat it as custom.
             console.error(
               "[settings] Failed to read default email template for compare:",
-              filename,
+              onlyTemplate,
               err
             );
           }
         }
 
         if (isSameAsDefault) {
-          // If the value matches the default on disk, we do NOT keep an override.
-          delete currentOverrides[filename];
+          delete currentOverrides[onlyTemplate];
         } else {
-          // Otherwise, keep/update the override.
-          currentOverrides[filename] = value;
+          currentOverrides[onlyTemplate] = value;
         }
-      });
+      }
     }
 
     const resetMap = bodySettings.EMAIL_TEMPLATES_OVERRIDES_RESET;

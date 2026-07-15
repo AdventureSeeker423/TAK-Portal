@@ -435,7 +435,11 @@
         "mutual_aid_created.html",
         "bulk_email.html",
         "mou_document_updated_to_agencies.html",
-        "mou_reminder_agency.html"
+        "mou_reminder_agency.html",
+        "mou_document_signed_to_global_admins.html",
+        "mou_document_countersigned.html",
+        "mou_external_sign_invite.html",
+        "mou_external_signed_copy.html"
       ];
 
       const friendlyNames = {
@@ -447,7 +451,11 @@
         "mutual_aid_created.html": "Mutual Aid",
         "bulk_email.html": "Bulk Email",
         "mou_document_updated_to_agencies.html": "MOU Updated To Agency Admins",
-        "mou_reminder_agency.html": "MOU Agency Reminder"
+        "mou_reminder_agency.html": "MOU Agency Reminder",
+        "mou_document_signed_to_global_admins.html": "MOU Signed (to Global Admins)",
+        "mou_document_countersigned.html": "MOU Countersigned",
+        "mou_external_sign_invite.html": "MOU External Sign Invite",
+        "mou_external_signed_copy.html": "MOU External Signed Copy"
       };
 
       function templateSortIndex(filename) {
@@ -488,8 +496,10 @@
 
             <script>
               window.EMAIL_TEMPLATE_DEFAULTS = {};
+              window.EMAIL_TEMPLATE_CURRENT = {};
               <% orderedEmailTemplates.forEach(function (tpl) { %>
               window.EMAIL_TEMPLATE_DEFAULTS["<%= tpl.idSafe %>"] = <%- JSON.stringify((tpl.defaultHtml != null && tpl.defaultHtml !== undefined) ? tpl.defaultHtml : "") %>;
+              window.EMAIL_TEMPLATE_CURRENT["<%= tpl.idSafe %>"] = <%- JSON.stringify((tpl.html != null && tpl.html !== undefined) ? tpl.html : "") %>;
               <% }); %>
             </script>
 
@@ -522,7 +532,7 @@
                     class="email-template-editor"
                     rows="30"
                     style="width:100%;min-height:450px;font-family:monospace;font-size:.85rem;white-space:pre;overflow:auto;"
-                  ><%- tpl.html || "" %></textarea>
+                  ></textarea>
 
                   <input
                     type="hidden"
@@ -1726,10 +1736,18 @@
   <script>
     (function () {
       var root = document.querySelector(".email-templates-section") || document;
+      var defaults = window.EMAIL_TEMPLATE_DEFAULTS || {};
+      var currents = window.EMAIL_TEMPLATE_CURRENT || {};
+
+      // Fill editors from JSON so HTML entities are not decoded by the page parser
+      // (putting raw HTML inside <textarea>...</textarea> would flip Default → Custom).
+      Object.keys(currents).forEach(function (key) {
+        var textarea = document.getElementById("email-template-" + key);
+        if (textarea) textarea.value = currents[key] || "";
+      });
 
       // Email template reset buttons: load default into textarea, set reset flag, update badge
       var resetButtons = root.querySelectorAll("[data-reset-template]");
-      var defaults = window.EMAIL_TEMPLATE_DEFAULTS || {};
       resetButtons.forEach(function (btn) {
         btn.addEventListener("click", function () {
           var key = btn.getAttribute("data-reset-template");
@@ -1938,9 +1956,19 @@
             statusEl.style.color = "";
           }
           var action = form.getAttribute("action") || "/settings";
+          var fd = new FormData(form);
+          // Autosave must not rewrite email template overrides from editor textareas.
+          Array.from(fd.keys()).forEach(function (key) {
+            if (
+              key.indexOf("EMAIL_TEMPLATES_OVERRIDES") !== -1 &&
+              key.indexOf("EMAIL_TEMPLATES_OVERRIDES_RESET") === -1
+            ) {
+              fd.delete(key);
+            }
+          });
           fetch(action, {
             method: "POST",
-            body: new FormData(form),
+            body: fd,
             headers: {
               Accept: "application/json",
               "X-Requested-With": "XMLHttpRequest",
