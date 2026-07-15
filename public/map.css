@@ -1649,7 +1649,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-geofence-action-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -1657,19 +1657,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-geofence-action-header {
-  display: grid;
-  grid-template-columns: 1fr 88px 88px 28px;
-  gap: 8px;
-  align-items: center;
-  padding: 2px 4px 6px;
-  font-size: 0.7rem;
-  color: var(--map-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  position: sticky;
-  top: 0;
-  background: var(--map-panel);
-  z-index: 1;
+  display: none;
 }
 
 .map-geofence-action-col {
@@ -1677,13 +1665,39 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-geofence-action-row {
-  display: grid;
-  grid-template-columns: 1fr 88px 88px 28px;
-  gap: 8px;
-  align-items: center;
-  padding: 5px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   font-size: 0.76rem;
+}
+
+.map-geofence-action-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.map-geofence-action-row-acts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.map-geofence-action-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.map-geofence-action-field-label {
+  font-size: 0.65rem;
+  color: var(--map-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .map-geofence-mission-row {
@@ -1802,6 +1816,8 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-geofence-action-label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

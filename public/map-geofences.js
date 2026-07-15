@@ -562,22 +562,27 @@
     return "";
   }
 
-  function phaseActionSelectHtml(attr, current) {
+  function phaseActionSelectHtml(attr, current, shortLabel) {
     const cur = current || "";
     return (
+      '<label class="map-geofence-action-field">' +
+      '<span class="map-geofence-action-field-label">' +
+      escapeHtml(shortLabel || "") +
+      "</span>" +
       '<select class="map-geofence-action-select" ' +
       attr +
       ">" +
       '<option value=""' +
       (cur === "" ? " selected" : "") +
-      ">— None —</option>" +
+      ">None</option>" +
       '<option value="enable"' +
       (cur === "enable" ? " selected" : "") +
       ">Enable</option>" +
       '<option value="disable"' +
       (cur === "disable" ? " selected" : "") +
       ">Disable</option>" +
-      "</select>"
+      "</select>" +
+      "</label>"
     );
   }
 
@@ -804,12 +809,6 @@
     } else {
       channelRows =
         '<div class="map-geofence-action-list">' +
-        '<div class="map-geofence-action-header">' +
-        '<span class="map-geofence-action-label">Channel</span>' +
-        '<span class="map-geofence-action-col">On enter</span>' +
-        '<span class="map-geofence-action-col">On exit</span>' +
-        '<span class="map-geofence-action-col map-geofence-action-col-remove"></span>' +
-        "</div>" +
         addedChannels
           .map(function (ch) {
             const enterAct = channelPhaseAction(ch, "enter");
@@ -819,14 +818,18 @@
               '<div class="map-geofence-action-row" data-gf-channel="' +
               escapeAttr(ch.groupName) +
               '">' +
+              '<div class="map-geofence-action-row-top">' +
               '<span class="map-geofence-action-label" title="' +
-              escapeAttr(ch.groupName) +
+              escapeAttr(label) +
               '">' +
               escapeHtml(label) +
               "</span>" +
-              phaseActionSelectHtml("data-gf-enter-action", enterAct) +
-              phaseActionSelectHtml("data-gf-exit-action", exitAct) +
               '<button type="button" class="map-geofence-remove-btn" data-gf-remove-channel title="Remove channel" aria-label="Remove channel">×</button>' +
+              "</div>" +
+              '<div class="map-geofence-action-row-acts">' +
+              phaseActionSelectHtml("data-gf-enter-action", enterAct, "On enter") +
+              phaseActionSelectHtml("data-gf-exit-action", exitAct, "On exit") +
+              "</div>" +
               "</div>"
             );
           })
