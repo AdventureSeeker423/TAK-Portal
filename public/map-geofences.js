@@ -388,7 +388,8 @@
 
   function beginCreate() {
     setDrawBarVisible(true);
-    setDrawMode("circle");
+    setDrawMode(null);
+    setStatus("Choose a shape to draw.");
   }
 
   function cancelCreate() {
@@ -441,7 +442,7 @@
       const exitSel = row.querySelector("[data-gf-exit-action]");
       const enterAction = enterSel ? String(enterSel.value || "").trim() : "";
       const exitAction = exitSel ? String(exitSel.value || "").trim() : "";
-      if (!enterAction && !exitAction) return;
+      if (!groupName) return;
       channels.push({
         groupName: groupName,
         accessMode: "BOTH",
@@ -619,7 +620,7 @@
       const exitSel = row.querySelector("[data-gf-exit-action]");
       const enterAction = enterSel ? String(enterSel.value || "").trim() : "";
       const exitAction = exitSel ? String(exitSel.value || "").trim() : "";
-      if (!groupName || (!enterAction && !exitAction)) return;
+      if (!groupName) return;
       channels.push({
         groupName: groupName,
         accessMode: "BOTH",
@@ -735,7 +736,7 @@
         channels.push({
           groupName: value,
           accessMode: "BOTH",
-          enterAction: "enable",
+          enterAction: "",
           exitAction: "",
         });
         patchFenceActionsLocal(channels, fence.actions.missions || []);
@@ -746,12 +747,6 @@
       }
       scheduleSave();
       renderInspector();
-      const focusSel =
-        kind === "channel"
-          ? "[data-gf-channel-picker] [data-gf-picker-search]"
-          : "[data-gf-mission-picker] [data-gf-picker-search]";
-      const nextSearch = detailPaneEl && detailPaneEl.querySelector(focusSel);
-      if (nextSearch) nextSearch.focus();
     });
   }
 

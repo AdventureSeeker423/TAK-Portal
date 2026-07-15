@@ -68,7 +68,6 @@ function normalizeChannelActions(list) {
       // Legacy boolean: onExit true → disable on exit
       exitAction = row?.onExit === true ? "disable" : "";
     }
-    if (!enterAction && !exitAction) continue;
     out.push({
       groupName,
       accessMode: normalizeAccessMode(row?.accessMode),
