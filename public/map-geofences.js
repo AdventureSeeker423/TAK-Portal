@@ -1015,6 +1015,13 @@
       detailPaneEl.hidden = true;
       const body = detailPaneEl.querySelector("#mapGeofenceDetailBody");
       if (body) body.innerHTML = "";
+      const title = detailPaneEl.querySelector("#mapGeofenceDetailTitle");
+      if (title) title.textContent = "Geofence";
+      const meta = detailPaneEl.querySelector("#mapGeofenceDetailMeta");
+      if (meta) {
+        meta.textContent = "";
+        meta.hidden = true;
+      }
     }
     notifyAuxDetail();
     if (!keepDraw && drawMode) {

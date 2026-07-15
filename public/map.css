@@ -388,6 +388,10 @@ body {
   overflow: hidden;
 }
 
+.map-detail-pane[hidden] {
+  display: none !important;
+}
+
 .map-detail-stack .map-panel-resize-handle {
   position: absolute;
   left: 0;
