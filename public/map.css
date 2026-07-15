@@ -1481,7 +1481,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  min-width: 280px;
+  width: max-content;
   max-width: min(420px, 70vw);
   padding: 8px 10px;
   border-radius: 10px;
@@ -1527,6 +1527,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   font-size: 0.72rem;
   color: var(--map-muted);
   min-height: 1.2em;
+  white-space: nowrap;
 }
 
 .map-geofence-detail-pane {

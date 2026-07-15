@@ -1218,10 +1218,6 @@
       finishBtn.addEventListener("click", finishPolygon);
       finishBtn.hidden = true;
     }
-    const cancelBtn = document.getElementById("mapGeofenceCancelDraw");
-    if (cancelBtn) {
-      cancelBtn.addEventListener("click", cancelCreate);
-    }
     document.addEventListener("keydown", onKeyDown);
   }
 
