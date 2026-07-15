@@ -1623,14 +1623,52 @@ body.map-detail-resizing .map-panel-resize-handle {
   padding-right: 2px;
 }
 
+.map-geofence-action-header {
+  display: grid;
+  grid-template-columns: 1fr 88px 88px;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 4px 6px;
+  font-size: 0.7rem;
+  color: var(--map-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  position: sticky;
+  top: 0;
+  background: var(--map-panel);
+  z-index: 1;
+}
+
+.map-geofence-action-col {
+  text-align: center;
+}
+
 .map-geofence-action-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr 88px 88px;
   gap: 8px;
   align-items: center;
   padding: 5px 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   font-size: 0.76rem;
+}
+
+.map-geofence-action-select {
+  appearance: none;
+  width: 100%;
+  border: 1px solid var(--map-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--map-text);
+  border-radius: 6px;
+  padding: 5px 6px;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.map-geofence-action-select:focus {
+  outline: 1px solid rgba(34, 211, 238, 0.45);
+  border-color: rgba(34, 211, 238, 0.45);
 }
 
 .map-geofence-action-label {

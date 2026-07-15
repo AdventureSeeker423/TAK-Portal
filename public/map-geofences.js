@@ -373,7 +373,7 @@
     }
     if (mode === "circle") setStatus("Click center, then click to set radius.");
     else if (mode === "rectangle") setStatus("Click first corner, then opposite corner.");
-    else if (mode === "polygon") setStatus("Click vertices. Double-click or Finish to close.");
+    else     if (mode === "polygon") setStatus("Click vertices. Click start point, Finish, or double-click to close.");
     else setStatus("");
     const finishBtn = document.getElementById("mapGeofenceFinishPoly");
     if (finishBtn) finishBtn.hidden = mode !== "polygon";
@@ -437,16 +437,16 @@
     const channels = [];
     detailPaneEl.querySelectorAll("[data-gf-channel]").forEach(function (row) {
       const groupName = row.getAttribute("data-gf-channel");
-      const onEnter = row.querySelector("[data-gf-enter]");
-      const onExit = row.querySelector("[data-gf-exit]");
-      const enter = onEnter && onEnter.checked;
-      const exit = onExit && onExit.checked;
-      if (!enter && !exit) return;
+      const enterSel = row.querySelector("[data-gf-enter-action]");
+      const exitSel = row.querySelector("[data-gf-exit-action]");
+      const enterAction = enterSel ? String(enterSel.value || "").trim() : "";
+      const exitAction = exitSel ? String(exitSel.value || "").trim() : "";
+      if (!enterAction && !exitAction) return;
       channels.push({
         groupName: groupName,
         accessMode: "BOTH",
-        onEnter: !!enter,
-        onExit: !!exit,
+        enterAction: enterAction,
+        exitAction: exitAction,
       });
     });
 
@@ -543,6 +543,37 @@
     }
   }
 
+  function channelPhaseAction(sel, phase) {
+    if (!sel) return "";
+    if (phase === "enter") {
+      if (sel.enterAction === "enable" || sel.enterAction === "disable") return sel.enterAction;
+      if (sel.onEnter === true) return "enable";
+      return "";
+    }
+    if (sel.exitAction === "enable" || sel.exitAction === "disable") return sel.exitAction;
+    if (sel.onExit === true) return "disable";
+    return "";
+  }
+
+  function phaseActionSelectHtml(attr, current) {
+    const cur = current || "";
+    return (
+      '<select class="map-geofence-action-select" ' +
+      attr +
+      ">" +
+      '<option value=""' +
+      (cur === "" ? " selected" : "") +
+      ">— None —</option>" +
+      '<option value="enable"' +
+      (cur === "enable" ? " selected" : "") +
+      ">Enable</option>" +
+      '<option value="disable"' +
+      (cur === "disable" ? " selected" : "") +
+      ">Disable</option>" +
+      "</select>"
+    );
+  }
+
   function channelSelectedMap(fence) {
     const mapObj = new Map();
     const list = (fence && fence.actions && fence.actions.channels) || [];
@@ -586,11 +617,16 @@
     } else {
       channelsHtml =
         '<div class="map-geofence-action-list">' +
+        '<div class="map-geofence-action-header">' +
+        '<span class="map-geofence-action-label">Channel</span>' +
+        '<span class="map-geofence-action-col">On enter</span>' +
+        '<span class="map-geofence-action-col">On exit</span>' +
+        "</div>" +
         actionOptions.channels
           .map(function (ch) {
             const sel = chMap.get(String(ch.name).toLowerCase());
-            const enter = sel ? sel.onEnter === true : false;
-            const exit = sel ? sel.onExit === true : false;
+            const enterAct = channelPhaseAction(sel, "enter");
+            const exitAct = channelPhaseAction(sel, "exit");
             const label = ch.displayName || ch.name;
             return (
               '<div class="map-geofence-action-row" data-gf-channel="' +
@@ -601,12 +637,8 @@
               '">' +
               escapeHtml(label) +
               "</span>" +
-              '<label class="map-geofence-check"><input type="checkbox" data-gf-enter' +
-              (enter ? " checked" : "") +
-              " /> Enter</label>" +
-              '<label class="map-geofence-check"><input type="checkbox" data-gf-exit' +
-              (exit ? " checked" : "") +
-              " /> Exit</label>" +
+              phaseActionSelectHtml("data-gf-enter-action", enterAct) +
+              phaseActionSelectHtml("data-gf-exit-action", exitAct) +
               "</div>"
             );
           })
@@ -673,8 +705,8 @@
     const activeEl = body.querySelector("#mapGeofenceActive");
     if (nameEl) nameEl.addEventListener("input", scheduleSave);
     if (activeEl) activeEl.addEventListener("change", scheduleSave);
-    body.querySelectorAll("input[type=checkbox]").forEach(function (cb) {
-      cb.addEventListener("change", scheduleSave);
+    body.querySelectorAll("input[type=checkbox], select").forEach(function (el) {
+      el.addEventListener("change", scheduleSave);
     });
     const del = body.querySelector("#mapGeofenceDelete");
     if (del) del.addEventListener("click", deleteSelected);
@@ -787,18 +819,29 @@
 
       if (drawMode === "polygon") {
         if (!drawState) drawState = { vertices: [] };
-        drawState.vertices.push(ll);
-        setPreviewGeometry({ type: "polygon", coordinates: drawState.vertices.slice() });
+        const verts = drawState.vertices;
+        // Clicking near the first vertex closes the ring once we have 3+ points.
+        if (verts.length >= 3 && isNearFirstVertex(e.point, verts[0])) {
+          finishPolygon();
+          return;
+        }
+        verts.push(ll);
+        setPreviewGeometry({ type: "polygon", coordinates: verts.slice() });
         setStatus(
-          drawState.vertices.length < 3
-            ? "Need " + (3 - drawState.vertices.length) + " more point(s)."
-            : "Click more points, or Finish / double-click to close."
+          verts.length < 3
+            ? "Need " + (3 - verts.length) + " more point(s)."
+            : "Click more points, or click the start point / Finish / double-click to close."
         );
       }
       return;
     }
 
     if (!map.getLayer(FILL_LAYER)) return;
+    // Markers sit above geofences visually; never steal their clicks.
+    if (bridge && typeof bridge.queryMarkersAtPoint === "function") {
+      const markers = bridge.queryMarkersAtPoint(e.point);
+      if (markers && markers.length) return;
+    }
     const feats = map.queryRenderedFeatures(e.point, { layers: [FILL_LAYER, LINE_LAYER] });
     if (feats && feats.length) {
       const id = feats[0].properties && feats[0].properties.id;
@@ -827,6 +870,24 @@
     drawState = null;
     clearPreview();
     createFenceFromGeometry(geometry);
+  }
+
+  /** Screen-space snap to first vertex (pixels). */
+  function isNearFirstVertex(point, firstLonLat) {
+    if (!map || !point || !firstLonLat) return false;
+    const start = map.project(firstLonLat);
+    const dx = point.x - start.x;
+    const dy = point.y - start.y;
+    return dx * dx + dy * dy <= 14 * 14;
+  }
+
+  function onKeyDown(e) {
+    if (!e || e.key !== "Escape") return;
+    const bar = document.getElementById("mapGeofenceDrawBar");
+    const drawing = !!drawMode || (bar && !bar.hidden);
+    if (!drawing) return;
+    e.preventDefault();
+    cancelCreate();
   }
 
   function onMapMove(e) {
@@ -888,6 +949,7 @@
     if (cancelBtn) {
       cancelBtn.addEventListener("click", cancelCreate);
     }
+    document.addEventListener("keydown", onKeyDown);
   }
 
   function init(b) {

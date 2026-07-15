@@ -147,8 +147,8 @@ async function testActionApply() {
       owner: { isGlobalAdmin: true },
       actions: {
         channels: [
-          { groupName: "tak_FOO", accessMode: "BOTH", onEnter: true, onExit: true },
-          { groupName: "tak_BAR", accessMode: "READ", onEnter: false, onExit: true },
+          { groupName: "tak_FOO", accessMode: "BOTH", enterAction: "enable", exitAction: "disable" },
+          { groupName: "tak_BAR", accessMode: "READ", enterAction: "", exitAction: "enable" },
         ],
         missions: [{ missionName: "Mission A" }],
       },
@@ -162,9 +162,10 @@ async function testActionApply() {
     calls.channels = [];
     await engine.applyChannelActions("uid1", fence.owner, fence.actions.channels, "exit");
     assert.strictEqual(calls.channels.length, 2);
-    assert.ok(calls.channels.every((c) => c.active === false));
     assert.strictEqual(calls.channels[0].groupName, "FOO");
+    assert.strictEqual(calls.channels[0].active, false, "FOO disable on exit");
     assert.strictEqual(calls.channels[1].groupName, "BAR");
+    assert.strictEqual(calls.channels[1].active, true, "BAR enable on exit");
 
     await engine.applyMissionEnter("uid1", fence.owner, fence.actions.missions);
     assert.strictEqual(calls.missions.length, 1);

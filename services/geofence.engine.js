@@ -161,34 +161,45 @@ async function resolveEntitledChannel(clientUid, authUser, configuredName) {
   };
 }
 
+function resolvePhaseChannelAction(ch, phase) {
+  if (!ch) return "";
+  const raw = phase === "enter" ? ch.enterAction : ch.exitAction;
+  const v = safeStr(raw).trim().toLowerCase();
+  if (v === "enable" || v === "disable") return v;
+  // Legacy booleans
+  if (phase === "enter" && ch.onEnter === true) return "enable";
+  if (phase === "exit" && ch.onExit === true) return "disable";
+  return "";
+}
+
 async function applyChannelActions(clientUid, authUser, channels, phase) {
   const list = Array.isArray(channels) ? channels : [];
   for (const ch of list) {
-    const want = phase === "enter" ? ch.onEnter === true : ch.onExit === true;
-    if (!want) continue;
+    const action = resolvePhaseChannelAction(ch, phase);
+    if (action !== "enable" && action !== "disable") continue;
     const configuredName = safeStr(ch.groupName).trim();
     if (!configuredName) continue;
     try {
       const entitled = await resolveEntitledChannel(clientUid, authUser, configuredName);
       if (!entitled) {
         console.info(
-          `[geofence] skip channel ${configuredName} ${phase} for ${clientUid}: not entitled`
+          `[geofence] skip channel ${configuredName} ${phase}/${action} for ${clientUid}: not entitled`
         );
         continue;
       }
       await takGroupControl.setClientGroupActive(clientUid, authUser, {
         groupName: entitled.groupName,
         accessMode: entitled.accessMode || ch.accessMode || "BOTH",
-        active: phase === "enter",
+        active: action === "enable",
       });
       console.info(
-        `[geofence] ${phase} channel ${entitled.groupName} (${entitled.accessMode}) for ${clientUid}`
+        `[geofence] ${phase} ${action} channel ${entitled.groupName} (${entitled.accessMode}) for ${clientUid}`
       );
     } catch (err) {
       const status = err?.status || err?.response?.status;
       if (status === 404 || status === 400 || status === 403) {
         console.info(
-          `[geofence] skip channel ${configuredName} ${phase} for ${clientUid}:`,
+          `[geofence] skip channel ${configuredName} ${phase}/${action} for ${clientUid}:`,
           err?.message || err
         );
         continue;
@@ -230,7 +241,9 @@ async function handleEnter(fence, clientUid) {
   const authUser = authUserForFence(fence);
   const channels = fence.actions?.channels || [];
   const missions = fence.actions?.missions || [];
-  const enterChannels = channels.filter((c) => c && c.onEnter === true).length;
+  const enterChannels = channels.filter(
+    (c) => resolvePhaseChannelAction(c, "enter") === "enable" || resolvePhaseChannelAction(c, "enter") === "disable"
+  ).length;
   console.info(
     `[geofence] enter ${clientUid} fence=${fence.id || "?"} channels=${enterChannels} missions=${missions.length}`
   );
@@ -417,6 +430,7 @@ module.exports = {
   resolveSubscriptionForMarker,
   indexSubscriptions,
   resolveEntitledChannel,
+  resolvePhaseChannelAction,
   applyChannelActions,
   applyMissionEnter,
   handleEnter,

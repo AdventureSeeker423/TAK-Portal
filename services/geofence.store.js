@@ -57,14 +57,23 @@ function normalizeChannelActions(list) {
     const key = groupName.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const onEnter = row?.onEnter === true;
-    const onExit = row?.onExit === true;
-    if (!onEnter && !onExit) continue;
+
+    let enterAction = safeStr(row?.enterAction).trim().toLowerCase();
+    let exitAction = safeStr(row?.exitAction).trim().toLowerCase();
+    if (enterAction !== "enable" && enterAction !== "disable") {
+      // Legacy boolean: onEnter true → enable on enter
+      enterAction = row?.onEnter === true ? "enable" : "";
+    }
+    if (exitAction !== "enable" && exitAction !== "disable") {
+      // Legacy boolean: onExit true → disable on exit
+      exitAction = row?.onExit === true ? "disable" : "";
+    }
+    if (!enterAction && !exitAction) continue;
     out.push({
       groupName,
       accessMode: normalizeAccessMode(row?.accessMode),
-      onEnter,
-      onExit,
+      enterAction: enterAction || "",
+      exitAction: exitAction || "",
     });
   }
   return out;
