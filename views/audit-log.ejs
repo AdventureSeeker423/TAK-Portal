@@ -36,12 +36,14 @@
         </span>
 
         <input
-          type="search"
+          type="text"
           name="q"
           class="input audit-search-input"
           placeholder="Search any field…"
           value="<%= filters?.q || '' %>"
           aria-label="Search audit log"
+          autocomplete="off"
+          spellcheck="false"
         />
 
         <div class="filter-multiselect" data-filter="actor">
@@ -372,6 +374,12 @@
   width:auto;
   min-width:180px;
   max-width:260px;
+}
+.audit-search-input::-webkit-search-cancel-button,
+.audit-search-input::-webkit-search-decoration{
+  -webkit-appearance:none;
+  appearance:none;
+  display:none;
 }
 
 .audit-pagination{
@@ -787,6 +795,41 @@
       if (!el.contains(e.target)) el.classList.remove("open");
     });
   });
+
+  const searchInput = form.querySelector('input[name="q"]');
+  if (searchInput) {
+    const FOCUS_KEY = "auditLogSearchFocus";
+    if (sessionStorage.getItem(FOCUS_KEY) === "1") {
+      sessionStorage.removeItem(FOCUS_KEY);
+      searchInput.focus();
+      const len = searchInput.value.length;
+      try { searchInput.setSelectionRange(len, len); } catch (_) {}
+    }
+
+    let searchTimer = null;
+    function applyLiveSearch() {
+      const next = String(searchInput.value || "").trim();
+      const url = new URL(window.location.href);
+      const current = String(url.searchParams.get("q") || "").trim();
+      if (next === current) return;
+
+      if (next) url.searchParams.set("q", next);
+      else url.searchParams.delete("q");
+      url.searchParams.delete("page");
+
+      const dest = url.pathname + url.search;
+      if (dest === window.location.pathname + window.location.search) return;
+
+      sessionStorage.setItem(FOCUS_KEY, "1");
+      window.location.assign(dest);
+    }
+
+    searchInput.addEventListener("input", function() {
+      clearTimeout(searchTimer);
+      const empty = String(searchInput.value || "").trim() === "";
+      searchTimer = setTimeout(applyLiveSearch, empty ? 0 : 300);
+    });
+  }
 })();
 </script>
 <script>
