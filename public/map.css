@@ -1822,6 +1822,12 @@ body.map-detail-resizing .map-panel-resize-handle {
   font: inherit;
   font-size: 0.72rem;
   cursor: pointer;
+  color-scheme: dark;
+}
+
+.map-geofence-action-select option {
+  color: var(--map-text);
+  background-color: #121820;
 }
 
 .map-geofence-action-select:focus {
