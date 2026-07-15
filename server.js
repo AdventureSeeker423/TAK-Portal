@@ -1487,6 +1487,61 @@ app.post(
 
     // Grab the current full settings object
     const currentSettings = settingsSvc.getSettings() || {};
+
+    // Reset all email template overrides to built-in files in /email_templates.
+    // This path only clears EMAIL_TEMPLATES_OVERRIDES; other settings are unchanged.
+    const resetAllEmailTemplatesRaw =
+      req.body && req.body._resetAllEmailTemplates != null
+        ? String(req.body._resetAllEmailTemplates).trim().toLowerCase()
+        : "";
+    if (
+      resetAllEmailTemplatesRaw === "1" ||
+      resetAllEmailTemplatesRaw === "true" ||
+      resetAllEmailTemplatesRaw === "yes" ||
+      resetAllEmailTemplatesRaw === "on"
+    ) {
+      const next = { ...currentSettings };
+      delete next.EMAIL_TEMPLATES_OVERRIDES;
+
+      try {
+        settingsSvc.saveSettings(next);
+      } catch (err) {
+        console.error("[settings] reset all email templates failed:", err);
+        if (wantsJson) {
+          return res.status(500).json({
+            ok: false,
+            error: err?.message || "Reset failed",
+          });
+        }
+        return res.status(500).send("Failed to reset email templates");
+      }
+
+      try {
+        auditSvc.logEvent({
+          actor: req.authentikUser || null,
+          request: {
+            method: req.method,
+            path: req.originalUrl || req.path,
+            ip: req.ip,
+          },
+          action: "UPDATE_SETTINGS",
+          targetType: "settings",
+          targetId: "server",
+          details: {
+            changedKeys: ["EMAIL_TEMPLATES_OVERRIDES"],
+            resetAllEmailTemplates: true,
+          },
+        });
+      } catch (e) {
+        // never block settings save
+      }
+
+      if (wantsJson) {
+        return res.json({ ok: true, resetAllEmailTemplates: true });
+      }
+      return res.redirect("/settings");
+    }
+
     // Start from existing settings so we don't lose anything (like BRAND_LOGO_URL)
     const merged = { ...currentSettings };
 

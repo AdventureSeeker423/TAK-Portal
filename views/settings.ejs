@@ -474,6 +474,18 @@
               overwritten by upgrades.
             </p>
 
+            <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;">
+              <button
+                type="submit"
+                class="btn"
+                name="_resetAllEmailTemplates"
+                value="1"
+                onclick="return confirm('Reset ALL email templates to the built-in defaults from /email_templates? This will discard every custom template override.');"
+              >
+                Reset All to Default
+              </button>
+            </div>
+
             <script>
               window.EMAIL_TEMPLATE_DEFAULTS = {};
               <% orderedEmailTemplates.forEach(function (tpl) { %>
