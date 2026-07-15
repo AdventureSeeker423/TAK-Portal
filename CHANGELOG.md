@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.52 - 7/15/26
+✨ `Enhancement` - Mutual Aid - Minor wording updates<br>
+🐛 `Bug Fix` - Fixes issue with incorrect email templates logic with default vs custom.
+
 ### v1.3.51 - 7/14/26
 🐛 `Bug Fix` - Fixes issue with first page of the deployment packet not allowing callsign formats outside of the default configuration
 
