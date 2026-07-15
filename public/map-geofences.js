@@ -453,10 +453,7 @@
     const missions = [];
     detailPaneEl.querySelectorAll("[data-gf-mission]").forEach(function (row) {
       const missionName = row.getAttribute("data-gf-mission");
-      const onEnter = row.querySelector("[data-gf-mission-enter]");
-      if (onEnter && onEnter.checked) {
-        missions.push({ missionName: missionName });
-      }
+      if (missionName) missions.push({ missionName: missionName });
     });
 
     try {
@@ -592,6 +589,192 @@
     return set;
   }
 
+  function channelCatalogDisplay(name) {
+    const want = String(name || "").toLowerCase();
+    const hit = (actionOptions.channels || []).find(function (c) {
+      return String(c.name || "").toLowerCase() === want;
+    });
+    return (hit && (hit.displayName || hit.name)) || name;
+  }
+
+  function patchFenceActionsLocal(nextChannels, nextMissions) {
+    const fence = getSelected();
+    if (!fence) return;
+    fence.actions = {
+      channels: Array.isArray(nextChannels) ? nextChannels : fence.actions.channels || [],
+      missions: Array.isArray(nextMissions) ? nextMissions : fence.actions.missions || [],
+    };
+    const idx = fences.findIndex(function (f) {
+      return f.id === fence.id;
+    });
+    if (idx >= 0) fences[idx] = fence;
+  }
+
+  function collectChannelActionsFromDom() {
+    const channels = [];
+    if (!detailPaneEl) return channels;
+    detailPaneEl.querySelectorAll("[data-gf-channel]").forEach(function (row) {
+      const groupName = row.getAttribute("data-gf-channel");
+      const enterSel = row.querySelector("[data-gf-enter-action]");
+      const exitSel = row.querySelector("[data-gf-exit-action]");
+      const enterAction = enterSel ? String(enterSel.value || "").trim() : "";
+      const exitAction = exitSel ? String(exitSel.value || "").trim() : "";
+      if (!groupName || (!enterAction && !exitAction)) return;
+      channels.push({
+        groupName: groupName,
+        accessMode: "BOTH",
+        enterAction: enterAction,
+        exitAction: exitAction,
+      });
+    });
+    return channels;
+  }
+
+  function collectMissionActionsFromDom() {
+    const missions = [];
+    if (!detailPaneEl) return missions;
+    detailPaneEl.querySelectorAll("[data-gf-mission]").forEach(function (row) {
+      const missionName = row.getAttribute("data-gf-mission");
+      if (missionName) missions.push({ missionName: missionName });
+    });
+    return missions;
+  }
+
+  function bindPicker(sectionEl, kind) {
+    if (!sectionEl) return;
+    const searchEl = sectionEl.querySelector("[data-gf-picker-search]");
+    const resultsEl = sectionEl.querySelector("[data-gf-picker-results]");
+    if (!searchEl || !resultsEl) return;
+
+    function hideResults() {
+      resultsEl.hidden = true;
+      resultsEl.innerHTML = "";
+    }
+
+    function renderResults(q) {
+      const query = String(q || "").trim().toLowerCase();
+      const fence = getSelected();
+      if (!fence) return hideResults();
+
+      let items = [];
+      if (kind === "channel") {
+        const taken = channelSelectedMap(fence);
+        items = (actionOptions.channels || [])
+          .filter(function (c) {
+            if (taken.has(String(c.name).toLowerCase())) return false;
+            if (!query) return true;
+            const label = String(c.displayName || c.name || "").toLowerCase();
+            return label.indexOf(query) >= 0 || String(c.name).toLowerCase().indexOf(query) >= 0;
+          })
+          .slice(0, 40)
+          .map(function (c) {
+            return {
+              value: c.name,
+              label: c.displayName || c.name,
+            };
+          });
+      } else {
+        const taken = missionSelectedSet(fence);
+        items = (actionOptions.missions || [])
+          .filter(function (m) {
+            if (taken.has(String(m.name).toLowerCase())) return false;
+            if (!query) return true;
+            return String(m.name || "").toLowerCase().indexOf(query) >= 0;
+          })
+          .slice(0, 40)
+          .map(function (m) {
+            return { value: m.name, label: m.name };
+          });
+      }
+
+      if (!items.length) {
+        resultsEl.innerHTML =
+          '<div class="map-geofence-picker-empty">No matches</div>';
+        resultsEl.hidden = false;
+        return;
+      }
+
+      resultsEl.innerHTML = items
+        .map(function (it) {
+          return (
+            '<button type="button" class="map-geofence-picker-item" data-gf-pick="' +
+            escapeAttr(it.value) +
+            '">' +
+            escapeHtml(it.label) +
+            "</button>"
+          );
+        })
+        .join("");
+      resultsEl.hidden = false;
+    }
+
+    searchEl.addEventListener("focus", function () {
+      renderResults(searchEl.value);
+    });
+    searchEl.addEventListener("input", function () {
+      renderResults(searchEl.value);
+    });
+    searchEl.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        hideResults();
+        searchEl.blur();
+      }
+    });
+
+    resultsEl.addEventListener("mousedown", function (e) {
+      const btn = e.target.closest("[data-gf-pick]");
+      if (!btn) return;
+      e.preventDefault();
+      const value = btn.getAttribute("data-gf-pick");
+      if (!value) return;
+      const fence = getSelected();
+      if (!fence) return;
+
+      if (kind === "channel") {
+        const channels = (fence.actions && fence.actions.channels ? fence.actions.channels.slice() : []);
+        channels.push({
+          groupName: value,
+          accessMode: "BOTH",
+          enterAction: "enable",
+          exitAction: "",
+        });
+        patchFenceActionsLocal(channels, fence.actions.missions || []);
+      } else {
+        const missions = (fence.actions && fence.actions.missions ? fence.actions.missions.slice() : []);
+        missions.push({ missionName: value });
+        patchFenceActionsLocal(fence.actions.channels || [], missions);
+      }
+      scheduleSave();
+      renderInspector();
+      const focusSel =
+        kind === "channel"
+          ? "[data-gf-channel-picker] [data-gf-picker-search]"
+          : "[data-gf-mission-picker] [data-gf-picker-search]";
+      const nextSearch = detailPaneEl && detailPaneEl.querySelector(focusSel);
+      if (nextSearch) nextSearch.focus();
+    });
+  }
+
+  function ensurePickerOutsideClose() {
+    if (ensurePickerOutsideClose.bound) return;
+    ensurePickerOutsideClose.bound = true;
+    document.addEventListener(
+      "mousedown",
+      function (e) {
+        if (!detailPaneEl) return;
+        detailPaneEl.querySelectorAll(".map-geofence-picker").forEach(function (picker) {
+          if (picker.contains(e.target)) return;
+          const resultsEl = picker.querySelector("[data-gf-picker-results]");
+          if (resultsEl) {
+            resultsEl.hidden = true;
+            resultsEl.innerHTML = "";
+          }
+        });
+      },
+      true
+    );
+  }
+
   function renderInspector() {
     const pane = ensureDetailPane();
     if (!pane) return;
@@ -608,37 +791,38 @@
     notifyAuxDetail();
     if (!body) return;
 
-    const chMap = channelSelectedMap(fence);
-    const mSet = missionSelectedSet(fence);
+    const addedChannels = (fence.actions && fence.actions.channels) || [];
+    const addedMissions = (fence.actions && fence.actions.missions) || [];
 
-    let channelsHtml = "";
-    if (!actionOptions.channels.length) {
-      channelsHtml = '<p class="map-geofence-hint">No channels available.</p>';
+    let channelRows = "";
+    if (!addedChannels.length) {
+      channelRows = '<p class="map-geofence-hint">No channels added yet.</p>';
     } else {
-      channelsHtml =
+      channelRows =
         '<div class="map-geofence-action-list">' +
         '<div class="map-geofence-action-header">' +
         '<span class="map-geofence-action-label">Channel</span>' +
         '<span class="map-geofence-action-col">On enter</span>' +
         '<span class="map-geofence-action-col">On exit</span>' +
+        '<span class="map-geofence-action-col map-geofence-action-col-remove"></span>' +
         "</div>" +
-        actionOptions.channels
+        addedChannels
           .map(function (ch) {
-            const sel = chMap.get(String(ch.name).toLowerCase());
-            const enterAct = channelPhaseAction(sel, "enter");
-            const exitAct = channelPhaseAction(sel, "exit");
-            const label = ch.displayName || ch.name;
+            const enterAct = channelPhaseAction(ch, "enter");
+            const exitAct = channelPhaseAction(ch, "exit");
+            const label = channelCatalogDisplay(ch.groupName);
             return (
               '<div class="map-geofence-action-row" data-gf-channel="' +
-              escapeAttr(ch.name) +
+              escapeAttr(ch.groupName) +
               '">' +
               '<span class="map-geofence-action-label" title="' +
-              escapeAttr(ch.name) +
+              escapeAttr(ch.groupName) +
               '">' +
               escapeHtml(label) +
               "</span>" +
               phaseActionSelectHtml("data-gf-enter-action", enterAct) +
               phaseActionSelectHtml("data-gf-exit-action", exitAct) +
+              '<button type="button" class="map-geofence-remove-btn" data-gf-remove-channel title="Remove channel" aria-label="Remove channel">×</button>' +
               "</div>"
             );
           })
@@ -646,33 +830,44 @@
         "</div>";
     }
 
-    let missionsHtml = "";
-    if (!actionOptions.missions.length) {
-      missionsHtml = '<p class="map-geofence-hint">No Data Sync missions available.</p>';
+    let missionRows = "";
+    if (!addedMissions.length) {
+      missionRows = '<p class="map-geofence-hint">No Data Sync missions added yet.</p>';
     } else {
-      missionsHtml =
+      missionRows =
         '<div class="map-geofence-action-list">' +
-        actionOptions.missions
+        addedMissions
           .map(function (m) {
-            const on = mSet.has(String(m.name).toLowerCase());
+            const name = m.missionName || m.name;
             return (
-              '<div class="map-geofence-action-row" data-gf-mission="' +
-              escapeAttr(m.name) +
+              '<div class="map-geofence-mission-row" data-gf-mission="' +
+              escapeAttr(name) +
               '">' +
               '<span class="map-geofence-action-label" title="' +
-              escapeAttr(m.name) +
+              escapeAttr(name) +
               '">' +
-              escapeHtml(m.name) +
+              escapeHtml(name) +
               "</span>" +
-              '<label class="map-geofence-check"><input type="checkbox" data-gf-mission-enter' +
-              (on ? " checked" : "") +
-              " /> Enter</label>" +
+              '<span class="map-geofence-mission-meta">Invite on enter</span>' +
+              '<button type="button" class="map-geofence-remove-btn" data-gf-remove-mission title="Remove mission" aria-label="Remove mission">×</button>' +
               "</div>"
             );
           })
           .join("") +
         "</div>";
     }
+
+    const channelPicker =
+      '<div class="map-geofence-picker" data-gf-channel-picker>' +
+      '<input type="search" class="map-geofence-picker-search" data-gf-picker-search placeholder="Search channels to add…" autocomplete="off" />' +
+      '<div class="map-geofence-picker-results" data-gf-picker-results hidden></div>' +
+      "</div>";
+
+    const missionPicker =
+      '<div class="map-geofence-picker" data-gf-mission-picker>' +
+      '<input type="search" class="map-geofence-picker-search" data-gf-picker-search placeholder="Search missions to add…" autocomplete="off" />' +
+      '<div class="map-geofence-picker-results" data-gf-picker-results hidden></div>' +
+      "</div>";
 
     body.innerHTML =
       '<div class="map-geofence-inspector">' +
@@ -690,11 +885,13 @@
       "</div>" +
       '<div class="map-geofence-section map-geofence-section-scroll">' +
       "<h3>Channels</h3>" +
-      channelsHtml +
+      channelPicker +
+      channelRows +
       "</div>" +
       '<div class="map-geofence-section map-geofence-section-scroll">' +
-      "<h3>Data Sync missions</h3>" +
-      missionsHtml +
+      "<h3>Data Sync Missions</h3>" +
+      missionPicker +
+      missionRows +
       "</div>" +
       '<div class="map-geofence-inspector-actions">' +
       '<button type="button" class="map-btn map-btn-danger" id="mapGeofenceDelete">Delete</button>' +
@@ -705,9 +902,45 @@
     const activeEl = body.querySelector("#mapGeofenceActive");
     if (nameEl) nameEl.addEventListener("input", scheduleSave);
     if (activeEl) activeEl.addEventListener("change", scheduleSave);
-    body.querySelectorAll("input[type=checkbox], select").forEach(function (el) {
-      el.addEventListener("change", scheduleSave);
+    body.querySelectorAll("select").forEach(function (el) {
+      el.addEventListener("change", function () {
+        patchFenceActionsLocal(collectChannelActionsFromDom(), collectMissionActionsFromDom());
+        scheduleSave();
+      });
     });
+    body.querySelectorAll("[data-gf-remove-channel]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const row = btn.closest("[data-gf-channel]");
+        const name = row && row.getAttribute("data-gf-channel");
+        if (!name) return;
+        const channels = ((getSelected() && getSelected().actions.channels) || []).filter(
+          function (c) {
+            return String(c.groupName || "").toLowerCase() !== String(name).toLowerCase();
+          }
+        );
+        patchFenceActionsLocal(channels, (getSelected() && getSelected().actions.missions) || []);
+        scheduleSave();
+        renderInspector();
+      });
+    });
+    body.querySelectorAll("[data-gf-remove-mission]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const row = btn.closest("[data-gf-mission]");
+        const name = row && row.getAttribute("data-gf-mission");
+        if (!name) return;
+        const missions = ((getSelected() && getSelected().actions.missions) || []).filter(
+          function (m) {
+            return String(m.missionName || m.name || "").toLowerCase() !== String(name).toLowerCase();
+          }
+        );
+        patchFenceActionsLocal((getSelected() && getSelected().actions.channels) || [], missions);
+        scheduleSave();
+        renderInspector();
+      });
+    });
+    bindPicker(body.querySelector("[data-gf-channel-picker]"), "channel");
+    bindPicker(body.querySelector("[data-gf-mission-picker]"), "mission");
+    ensurePickerOutsideClose();
     const del = body.querySelector("#mapGeofenceDelete");
     if (del) del.addEventListener("click", deleteSelected);
   }
