@@ -35,6 +35,15 @@
           <input type="date" name="to" class="input audit-date-input" value="<%= toDateVal %>" />
         </span>
 
+        <input
+          type="search"
+          name="q"
+          class="input audit-search-input"
+          placeholder="Search any field…"
+          value="<%= filters?.q || '' %>"
+          aria-label="Search audit log"
+        />
+
         <div class="filter-multiselect" data-filter="actor">
           <button type="button" class="btn filter-toggle" id="actorFilterToggle">Actor ▾</button>
           <div class="filter-menu">
@@ -358,6 +367,11 @@
 .audit-date-input{
   width:auto;
   min-width:140px;
+}
+.audit-search-input{
+  width:auto;
+  min-width:180px;
+  max-width:260px;
 }
 
 .audit-pagination{
