@@ -4066,6 +4066,13 @@
   }
 
   function handleMapFeatureClick(e) {
+    if (
+      window.TakMapGeofences &&
+      typeof window.TakMapGeofences.isDrawing === "function" &&
+      window.TakMapGeofences.isDrawing()
+    ) {
+      return;
+    }
     if (e.originalEvent) e.originalEvent.stopPropagation();
     suppressMapBackgroundClickUntil = Date.now() + 150;
     const markers = queryMarkersAtPoint(e.point);
@@ -5629,6 +5636,7 @@
     suppressBackgroundClick: function () {
       suppressMapBackgroundClickUntil = Date.now() + 150;
     },
+    closeStackPicker: closeStackPicker,
     setAuxDetailActive: function (active) {
       auxDetailActive = !!active;
       if (active) detailPaneUserCollapsed = false;

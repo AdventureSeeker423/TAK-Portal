@@ -124,7 +124,14 @@ async function testActionApply() {
   const calls = { channels: [], missions: [] };
   const origSet = takGroupControl.setClientGroupActive;
   const origInvite = takGroupControl.sendClientDataSyncInvite;
+  const origGroups = takGroupControl.getClientGroupControlState;
 
+  takGroupControl.getClientGroupControlState = async () => ({
+    groups: [
+      { name: "FOO", accessMode: "BOTH", active: false },
+      { name: "BAR", accessMode: "READ", active: true },
+    ],
+  });
   takGroupControl.setClientGroupActive = async (clientUid, authUser, opts) => {
     calls.channels.push({ clientUid, ...opts });
     return { ok: true };
@@ -140,8 +147,8 @@ async function testActionApply() {
       owner: { isGlobalAdmin: true },
       actions: {
         channels: [
-          { groupName: "TAK_FOO", accessMode: "BOTH", onEnter: true, onExit: true },
-          { groupName: "TAK_BAR", accessMode: "READ", onEnter: false, onExit: true },
+          { groupName: "tak_FOO", accessMode: "BOTH", onEnter: true, onExit: true },
+          { groupName: "tak_BAR", accessMode: "READ", onEnter: false, onExit: true },
         ],
         missions: [{ missionName: "Mission A" }],
       },
@@ -149,25 +156,27 @@ async function testActionApply() {
 
     await engine.applyChannelActions("uid1", fence.owner, fence.actions.channels, "enter");
     assert.strictEqual(calls.channels.length, 1);
-    assert.strictEqual(calls.channels[0].groupName, "TAK_FOO");
+    assert.strictEqual(calls.channels[0].groupName, "FOO", "resolves tak_ catalog name to Marti CN");
     assert.strictEqual(calls.channels[0].active, true);
 
     calls.channels = [];
     await engine.applyChannelActions("uid1", fence.owner, fence.actions.channels, "exit");
     assert.strictEqual(calls.channels.length, 2);
     assert.ok(calls.channels.every((c) => c.active === false));
+    assert.strictEqual(calls.channels[0].groupName, "FOO");
+    assert.strictEqual(calls.channels[1].groupName, "BAR");
 
     await engine.applyMissionEnter("uid1", fence.owner, fence.actions.missions);
     assert.strictEqual(calls.missions.length, 1);
     assert.strictEqual(calls.missions[0].missionName, "Mission A");
 
-    // Exit must never invite missions
     calls.missions = [];
     await engine.handleExit(fence, "uid1");
     assert.strictEqual(calls.missions.length, 0, "exit never sends Data Sync invite");
   } finally {
     takGroupControl.setClientGroupActive = origSet;
     takGroupControl.sendClientDataSyncInvite = origInvite;
+    takGroupControl.getClientGroupControlState = origGroups;
   }
 }
 

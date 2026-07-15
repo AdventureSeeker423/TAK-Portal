@@ -11,6 +11,7 @@ const dataSyncAccess = require("../services/dataSyncAccess.service");
 const missionGeo = require("../services/missionGeo.service");
 const missionRaster = require("../services/missionRaster.service");
 const geofenceStore = require("../services/geofence.store");
+const geofenceEngine = require("../services/geofence.engine");
 const { fenceToGeoJsonFeature } = require("../services/geofence.geometry");
 
 mapIcon.ensureIconsets().then(() => {
@@ -465,16 +466,6 @@ router.get("/geofences", (req, res) => {
   }
 });
 
-router.post("/geofences", (req, res) => {
-  try {
-    const fence = geofenceStore.createFence(req.body || {}, req.authentikUser || null);
-    return res.status(201).json({ fence });
-  } catch (err) {
-    const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
-    return res.status(status).json({ error: err?.message || "Create geofence failed" });
-  }
-});
-
 router.patch("/geofences/:id", (req, res) => {
   try {
     const fence = geofenceStore.updateFence(
@@ -482,10 +473,23 @@ router.patch("/geofences/:id", (req, res) => {
       req.body || {},
       req.authentikUser || null
     );
+    // Immediately re-evaluate so action changes apply to devices already inside.
+    void geofenceEngine.tick();
     return res.json({ fence });
   } catch (err) {
     const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
     return res.status(status).json({ error: err?.message || "Update geofence failed" });
+  }
+});
+
+router.post("/geofences", (req, res) => {
+  try {
+    const fence = geofenceStore.createFence(req.body || {}, req.authentikUser || null);
+    void geofenceEngine.tick();
+    return res.status(201).json({ fence });
+  } catch (err) {
+    const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
+    return res.status(status).json({ error: err?.message || "Create geofence failed" });
   }
 });
 

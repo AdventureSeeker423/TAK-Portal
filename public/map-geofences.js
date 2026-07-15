@@ -8,6 +8,7 @@
   const SOURCE_ID = "portal-geofences";
   const FILL_LAYER = "portal-geofences-fill";
   const LINE_LAYER = "portal-geofences-line";
+  const LABEL_LAYER = "portal-geofences-label";
   const PREVIEW_SOURCE = "portal-geofences-preview";
   const PREVIEW_FILL = "portal-geofences-preview-fill";
   const PREVIEW_LINE = "portal-geofences-preview-line";
@@ -116,12 +117,14 @@
   function fenceFeature(fence, selected) {
     const coords = geometryToPolygon(fence.geometry);
     if (!coords) return null;
+    const name = String(fence.name || "").trim();
     return {
       type: "Feature",
       id: fence.id,
       properties: {
         id: fence.id,
-        name: fence.name || "Unnamed",
+        name: name,
+        hasName: name.length > 0,
         active: fence.active === true,
         selected: selected === true,
       },
@@ -193,6 +196,41 @@
       };
       if (before && map.getLayer(before)) map.addLayer(lineSpec, before);
       else map.addLayer(lineSpec);
+    }
+    if (!map.getLayer(LABEL_LAYER)) {
+      const labelFont =
+        bridge && typeof bridge.getLabelFont === "function"
+          ? bridge.getLabelFont()
+          : ["Open Sans Semibold"];
+      const labelSpec = {
+        id: LABEL_LAYER,
+        type: "symbol",
+        source: SOURCE_ID,
+        filter: [">", ["length", ["to-string", ["get", "name"]]], 0],
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": labelFont,
+          "text-size": 13,
+          "text-anchor": "center",
+          "text-allow-overlap": false,
+          "text-ignore-placement": false,
+          "symbol-placement": "point",
+        },
+        paint: {
+          "text-color": [
+            "case",
+            ["boolean", ["get", "selected"], false],
+            "#fde68a",
+            ["boolean", ["get", "active"], false],
+            "#ecfeff",
+            "#e2e8f0",
+          ],
+          "text-halo-color": "rgba(7, 11, 16, 0.85)",
+          "text-halo-width": 1.5,
+        },
+      };
+      if (before && map.getLayer(before)) map.addLayer(labelSpec, before);
+      else map.addLayer(labelSpec);
     }
     if (!map.getLayer(PREVIEW_FILL)) {
       map.addLayer({
@@ -339,6 +377,13 @@
     else setStatus("");
     const finishBtn = document.getElementById("mapGeofenceFinishPoly");
     if (finishBtn) finishBtn.hidden = mode !== "polygon";
+    if (bridge && typeof bridge.closeStackPicker === "function") {
+      bridge.closeStackPicker();
+    }
+  }
+
+  function isDrawing() {
+    return !!drawMode;
   }
 
   function beginCreate() {
@@ -611,14 +656,12 @@
       " /> Active" +
       "</label>" +
       "</div>" +
-      '<div class="map-geofence-section">' +
+      '<div class="map-geofence-section map-geofence-section-scroll">' +
       "<h3>Channels</h3>" +
-      '<p class="map-geofence-hint">Enable on enter / disable on exit. Skipped if the EUD is not entitled.</p>' +
       channelsHtml +
       "</div>" +
-      '<div class="map-geofence-section">' +
+      '<div class="map-geofence-section map-geofence-section-scroll">' +
       "<h3>Data Sync missions</h3>" +
-      '<p class="map-geofence-hint">Invite on enter only. Data Sync cannot be revoked remotely.</p>' +
       missionsHtml +
       "</div>" +
       '<div class="map-geofence-inspector-actions">' +
@@ -693,11 +736,15 @@
 
   function onMapClick(e) {
     if (drawMode) {
-      const ll = eventLngLat(e);
-      if (!ll) return;
+      if (e.originalEvent) e.originalEvent.stopPropagation();
       if (bridge && typeof bridge.suppressBackgroundClick === "function") {
         bridge.suppressBackgroundClick();
       }
+      if (bridge && typeof bridge.closeStackPicker === "function") {
+        bridge.closeStackPicker();
+      }
+      const ll = eventLngLat(e);
+      if (!ll) return;
 
       if (drawMode === "circle") {
         if (!drawState) {
@@ -864,6 +911,7 @@
     restoreAfterStyleChange: restoreAfterStyleChange,
     deselect: deselect,
     isDetailOpen: isDetailOpen,
+    isDrawing: isDrawing,
     getHitLayers: function () {
       const layers = [];
       if (map && map.getLayer(FILL_LAYER)) layers.push(FILL_LAYER);

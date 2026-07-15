@@ -5,6 +5,7 @@ const cotStream = require("./cotStream.service");
 const mapMeta = require("./mapMeta.service");
 const { getSubscriptionsAll, isExcludedConnectedUserSubscription } = require("./takMetrics.service");
 const takGroupControl = require("./takGroupControl.service");
+const dataSyncAccess = require("./dataSyncAccess.service");
 const store = require("./geofence.store");
 const { pointInGeometry } = require("./geofence.geometry");
 
@@ -141,24 +142,53 @@ function computeTransitions({
   return { enters, exits, drops };
 }
 
+/**
+ * Map catalog uses tak_* names; Marti often uses the CN without tak_.
+ * Match by canonical key against the EUD's entitled groups.
+ */
+async function resolveEntitledChannel(clientUid, authUser, configuredName) {
+  const want = dataSyncAccess.canonicalGroupKey(configuredName);
+  if (!want) return null;
+  const state = await takGroupControl.getClientGroupControlState(clientUid, authUser);
+  const groups = Array.isArray(state?.groups) ? state.groups : [];
+  const hit = groups.find(
+    (g) => dataSyncAccess.canonicalGroupKey(g?.name) === want
+  );
+  if (!hit) return null;
+  return {
+    groupName: safeStr(hit.name).trim(),
+    accessMode: safeStr(hit.accessMode).trim().toUpperCase() || "BOTH",
+  };
+}
+
 async function applyChannelActions(clientUid, authUser, channels, phase) {
   const list = Array.isArray(channels) ? channels : [];
   for (const ch of list) {
     const want = phase === "enter" ? ch.onEnter === true : ch.onExit === true;
     if (!want) continue;
-    const groupName = safeStr(ch.groupName).trim();
-    if (!groupName) continue;
+    const configuredName = safeStr(ch.groupName).trim();
+    if (!configuredName) continue;
     try {
+      const entitled = await resolveEntitledChannel(clientUid, authUser, configuredName);
+      if (!entitled) {
+        console.info(
+          `[geofence] skip channel ${configuredName} ${phase} for ${clientUid}: not entitled`
+        );
+        continue;
+      }
       await takGroupControl.setClientGroupActive(clientUid, authUser, {
-        groupName,
-        accessMode: ch.accessMode || "BOTH",
+        groupName: entitled.groupName,
+        accessMode: entitled.accessMode || ch.accessMode || "BOTH",
         active: phase === "enter",
       });
+      console.info(
+        `[geofence] ${phase} channel ${entitled.groupName} (${entitled.accessMode}) for ${clientUid}`
+      );
     } catch (err) {
       const status = err?.status || err?.response?.status;
       if (status === 404 || status === 400 || status === 403) {
         console.info(
-          `[geofence] skip channel ${groupName} ${phase} for ${clientUid}:`,
+          `[geofence] skip channel ${configuredName} ${phase} for ${clientUid}:`,
           err?.message || err
         );
         continue;
@@ -189,14 +219,28 @@ async function applyMissionEnter(clientUid, authUser, missions) {
   }
 }
 
+function authUserForFence(fence) {
+  const o = fence?.owner && typeof fence.owner === "object" ? fence.owner : {};
+  if (o.isGlobalAdmin === true || o.isAgencyAdmin === true) return o;
+  // Map access is admin-only; missing flags should not block Marti control.
+  return { ...o, isGlobalAdmin: true };
+}
+
 async function handleEnter(fence, clientUid) {
-  const authUser = fence.owner || { isGlobalAdmin: true };
-  await applyChannelActions(clientUid, authUser, fence.actions?.channels, "enter");
-  await applyMissionEnter(clientUid, authUser, fence.actions?.missions);
+  const authUser = authUserForFence(fence);
+  const channels = fence.actions?.channels || [];
+  const missions = fence.actions?.missions || [];
+  const enterChannels = channels.filter((c) => c && c.onEnter === true).length;
+  console.info(
+    `[geofence] enter ${clientUid} fence=${fence.id || "?"} channels=${enterChannels} missions=${missions.length}`
+  );
+  await applyChannelActions(clientUid, authUser, channels, "enter");
+  await applyMissionEnter(clientUid, authUser, missions);
 }
 
 async function handleExit(fence, clientUid) {
-  const authUser = fence.owner || { isGlobalAdmin: true };
+  const authUser = authUserForFence(fence);
+  console.info(`[geofence] exit ${clientUid} fence=${fence.id || "?"}`);
   await applyChannelActions(clientUid, authUser, fence.actions?.channels, "exit");
 }
 
@@ -227,7 +271,9 @@ async function evaluateFence(fence, eudPoints, onlineUids) {
   }
   const insideSet = new Set(insideClientUids);
 
-  // Only force re-enter when we observed inactive → active (not cold start).
+  // Force re-enter on inactive→active. Also treat first observation of an
+  // already-active fence as normal (membership empty → enter), which covers
+  // "drew fence over EUD already here" and "configured Enter after create".
   const forceEnterAll = known && wasActive === false;
   const enters = [];
   const exits = [];
@@ -247,14 +293,26 @@ async function evaluateFence(fence, eudPoints, onlineUids) {
     }
   }
 
+  if (enters.length || exits.length) {
+    console.info(
+      `[geofence] fence=${fenceId} inside=${insideSet.size} enter=${enters.length} exit=${exits.length}`
+    );
+  }
+
+  // Load fresh fence config at action time (actions may have just been patched).
   for (const uid of enters) {
-    // Optimistic membership prevents duplicate enter on overlapping ticks.
     store.setMemberInside(fenceId, uid, true);
-    enqueueClient(uid, () => handleEnter(fence, uid));
+    enqueueClient(uid, () => {
+      const latest = store.getFence(fenceId) || fence;
+      return handleEnter(latest, uid);
+    });
   }
   for (const uid of exits) {
     store.setMemberInside(fenceId, uid, false);
-    enqueueClient(uid, () => handleExit(fence, uid));
+    enqueueClient(uid, () => {
+      const latest = store.getFence(fenceId) || fence;
+      return handleExit(latest, uid);
+    });
   }
 }
 
@@ -270,9 +328,10 @@ async function tick() {
     const onlineUids = new Set();
 
     for (const marker of markers) {
-      if (mapMeta.classifyMarkerOrigin(marker) !== "eud") continue;
       const sub = resolveSubscriptionForMarker(marker, index);
       if (!sub) continue;
+      // Skip obvious data-feed markers; anything matched to a live subscription is actionable.
+      if (mapMeta.classifyMarkerOrigin(marker) === "feed") continue;
       const lon = Number(marker.lon);
       const lat = Number(marker.lat);
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
@@ -294,10 +353,36 @@ async function tick() {
     for (const fence of fences) {
       await evaluateFence(fence, eudPoints, onlineUids);
     }
+
+    for (const fenceId of store.takePendingReapplyEnterIds()) {
+      reapplyEnterForMembers(fenceId);
+    }
   } catch (err) {
     console.warn("[geofence] tick failed:", err?.message || err);
   } finally {
     ticking = false;
+  }
+}
+
+/** Re-apply enter actions for devices currently marked inside an active fence. */
+function reapplyEnterForMembers(fenceId) {
+  const id = safeStr(fenceId).trim();
+  const fence = store.getFence(id);
+  if (!fence || fence.active !== true) return;
+  const membership = store.getMembershipMap(id);
+  const uids = Object.keys(membership).filter(
+    (uid) => membership[uid] && membership[uid].inside === true
+  );
+  if (!uids.length) {
+    // Nobody tracked yet — evaluate spatially on this or next tick.
+    return;
+  }
+  console.info(`[geofence] reapply enter fence=${id} members=${uids.length}`);
+  for (const uid of uids) {
+    enqueueClient(uid, () => {
+      const latest = store.getFence(id) || fence;
+      return handleEnter(latest, uid);
+    });
   }
 }
 
@@ -331,9 +416,12 @@ module.exports = {
   computeTransitions,
   resolveSubscriptionForMarker,
   indexSubscriptions,
+  resolveEntitledChannel,
   applyChannelActions,
   applyMissionEnter,
   handleEnter,
   handleExit,
   enqueueClient,
+  authUserForFence,
+  reapplyEnterForMembers,
 };

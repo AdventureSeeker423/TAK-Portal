@@ -236,6 +236,9 @@ function updateFence(id, patch, authUser) {
   }
   const current = fences[idx];
   const next = { ...current };
+  let actionsChanged = false;
+  let geometryChanged = false;
+  const wasActive = current.active === true;
 
   if (patch && Object.prototype.hasOwnProperty.call(patch, "name")) {
     next.name = safeStr(patch.name).trim();
@@ -251,6 +254,7 @@ function updateFence(id, patch, authUser) {
       throw err;
     }
     next.geometry = geo.geometry;
+    geometryChanged = true;
   }
   if (patch && patch.actions && typeof patch.actions === "object") {
     next.actions = {
@@ -261,6 +265,8 @@ function updateFence(id, patch, authUser) {
         ? normalizeMissionActions(patch.actions.missions)
         : current.actions.missions,
     };
+    actionsChanged =
+      JSON.stringify(next.actions) !== JSON.stringify(current.actions);
   }
   if (authUser && (!next.owner || !next.owner.username)) {
     next.owner = ownerFromAuthUser(authUser);
@@ -268,7 +274,30 @@ function updateFence(id, patch, authUser) {
   next.updatedAt = new Date().toISOString();
   fences[idx] = next;
   saveFences();
+
+  // Re-fire enter for anyone already inside after config/geometry/activate changes.
+  const becameActive = !wasActive && next.active === true;
+  if (next.active && (geometryChanged || becameActive)) {
+    clearFenceMembership(next.id);
+  } else if (next.active && actionsChanged) {
+    // Keep membership; ask engine to re-apply enter actions to devices already inside.
+    markFenceForReapplyEnter(next.id);
+  }
+
   return { ...next };
+}
+
+const pendingReapplyEnter = new Set();
+
+function markFenceForReapplyEnter(fenceId) {
+  const id = safeStr(fenceId).trim();
+  if (id) pendingReapplyEnter.add(id);
+}
+
+function takePendingReapplyEnterIds() {
+  const ids = Array.from(pendingReapplyEnter);
+  pendingReapplyEnter.clear();
+  return ids;
 }
 
 function deleteFence(id) {
@@ -348,7 +377,6 @@ function getMembershipSummary() {
   return summary;
 }
 
-/** Test helper: reset in-memory caches (does not delete files). */
 function _resetForTests() {
   if (_stateFlushTimer) {
     clearTimeout(_stateFlushTimer);
@@ -357,6 +385,7 @@ function _resetForTests() {
   _fences = null;
   _state = null;
   _stateDirty = false;
+  pendingReapplyEnter.clear();
 }
 
 module.exports = {
@@ -377,5 +406,7 @@ module.exports = {
   flushStateNow,
   normalizeChannelActions,
   normalizeMissionActions,
+  markFenceForReapplyEnter,
+  takePendingReapplyEnterIds,
   _resetForTests,
 };
