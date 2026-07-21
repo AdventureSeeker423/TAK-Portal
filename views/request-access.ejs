@@ -158,6 +158,7 @@
             list.sort((a,b) => String(a?.name||'').localeCompare(String(b?.name||'')));
             const selected = (form && form.agencySuffix) ? String(form.agencySuffix) : '';
           %>
+          <option value="" disabled <%= !selected ? 'selected' : '' %>>Select Agency</option>
           <% list.forEach(a => { %>
             <option value="<%= a.suffix %>" <%= (selected && selected === a.suffix) ? 'selected' : '' %>>
               <%= a.name %> (<%= a.groupPrefix %>)
