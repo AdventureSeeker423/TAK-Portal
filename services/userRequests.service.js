@@ -111,6 +111,49 @@ function getPortalBaseUrl() {
   return "";
 }
 
+const ALLOWED_REQUEST_STATES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+  "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+  "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+  "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+  "WI", "WY", "FED", "OTHER",
+]);
+
+function toTitleCaseWords(str) {
+  return String(str || "")
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function normalizeCountyName(raw) {
+  let v = String(raw || "").trim().replace(/\s+/g, " ");
+  if (!v) return "";
+  const lower = v.toLowerCase();
+  if (lower.endsWith(" county")) {
+    const base = v.slice(0, lower.lastIndexOf(" county"));
+    return toTitleCaseWords(base);
+  }
+  return toTitleCaseWords(v);
+}
+
+function normalizeRequestedAgencyFields(input) {
+  return {
+    groupPrefix: normalizeStr(input.groupPrefix).toUpperCase(),
+    usernameTokenPlacement: accessSvc.normalizeUsernameTokenPlacement(
+      input.usernameTokenPlacement || "suffix"
+    ),
+    suffix: normalizeStr(input.suffix).toLowerCase(),
+    state: normalizeStr(input.state).toUpperCase(),
+    county: normalizeCountyName(input.county),
+    countyAbbrev: normalizeStr(input.countyAbbrev).toUpperCase().replace(/[^A-Z]/g, ""),
+    type: normalizeStr(input.type),
+  };
+}
+
 function validateCreate(input) {
   const firstName = normalizeStr(input.firstName);
   const lastName = normalizeStr(input.lastName);
@@ -131,6 +174,7 @@ function validateCreate(input) {
   const radioCallsign = normalizeStr(input.radioCallsign);
   const otherAgency = normalizeStr(input.otherAgency);
   const otherReason = normalizeStr(input.otherReason);
+  const requestedAgency = normalizeRequestedAgencyFields(input || {});
 
   if (!firstName) throw new Error("First Name is required");
   if (!lastName) throw new Error("Last Name is required");
@@ -148,6 +192,18 @@ function validateCreate(input) {
   if (isOther) {
     if (!otherAgency) throw new Error("Please enter your agency name");
     if (!otherReason) throw new Error("Please enter your reason for requesting access");
+    if (!requestedAgency.groupPrefix) throw new Error("Agency Abbreviation is required");
+    if (!requestedAgency.suffix) throw new Error("Username Suffix/Prefix is required");
+    if (!requestedAgency.state) throw new Error("State is required");
+    if (!ALLOWED_REQUEST_STATES.has(requestedAgency.state)) {
+      throw new Error("State is not valid");
+    }
+    if (!requestedAgency.county) throw new Error("County is required");
+    if (!requestedAgency.countyAbbrev) throw new Error("County Abbreviation is required");
+    if (requestedAgency.countyAbbrev.length < 2) {
+      throw new Error("County Abbreviation must be at least 2 characters");
+    }
+    if (!requestedAgency.type) throw new Error("Agency Type is required");
   }
 
   if (!isOther) {
@@ -166,7 +222,23 @@ function validateCreate(input) {
     }
   }
 
-  return { firstName, lastName, email, badgeNumber, radioCallsign, agencySuffix, otherAgency, otherReason };
+  return {
+    firstName,
+    lastName,
+    email,
+    badgeNumber,
+    radioCallsign,
+    agencySuffix,
+    otherAgency,
+    otherReason,
+    groupPrefix: isOther ? requestedAgency.groupPrefix : null,
+    usernameTokenPlacement: isOther ? requestedAgency.usernameTokenPlacement : null,
+    suffix: isOther ? requestedAgency.suffix : null,
+    state: isOther ? requestedAgency.state : null,
+    county: isOther ? requestedAgency.county : null,
+    countyAbbrev: isOther ? requestedAgency.countyAbbrev : null,
+    type: isOther ? requestedAgency.type : null,
+  };
 }
 
 function listRequests() {
@@ -251,6 +323,14 @@ async function createRequest(input) {
     agencyName: agency ? String(agency.name || "").trim() : null,
     otherAgency: v.agencySuffix === "__other__" ? v.otherAgency : null,
     otherReason: v.agencySuffix === "__other__" ? v.otherReason : null,
+    groupPrefix: v.agencySuffix === "__other__" ? v.groupPrefix : null,
+    usernameTokenPlacement:
+      v.agencySuffix === "__other__" ? v.usernameTokenPlacement : null,
+    suffix: v.agencySuffix === "__other__" ? v.suffix : null,
+    state: v.agencySuffix === "__other__" ? v.state : null,
+    county: v.agencySuffix === "__other__" ? v.county : null,
+    countyAbbrev: v.agencySuffix === "__other__" ? v.countyAbbrev : null,
+    type: v.agencySuffix === "__other__" ? v.type : null,
   };
 
   const all = store.load();
@@ -318,6 +398,27 @@ async function createRequest(input) {
 const reasonLine = reqObj.otherReason
   ? `Reason for requesting access: ${reqObj.otherReason}\n`
   : "";
+const isOtherRequest = reqObj.agencySuffix === "__other__";
+const otherAgencyDetailsText = isOtherRequest
+  ? [
+      `Agency Abbreviation: ${reqObj.groupPrefix || ""}`,
+      `Username Identifier: ${reqObj.usernameTokenPlacement || "suffix"} (${reqObj.suffix || ""})`,
+      `State: ${reqObj.state || ""}`,
+      `County: ${reqObj.county || ""}`,
+      `County Abbreviation: ${reqObj.countyAbbrev || ""}`,
+      `Agency Type: ${reqObj.type || ""}`,
+    ].join("\n") + "\n"
+  : "";
+const otherAgencyDetailsHtml = isOtherRequest
+  ? `
+  <strong>Agency Abbreviation:</strong> ${escapeHtml(reqObj.groupPrefix || "")}<br/>
+  <strong>Username Identifier:</strong> ${escapeHtml(reqObj.usernameTokenPlacement || "suffix")} (${escapeHtml(reqObj.suffix || "")})<br/>
+  <strong>State:</strong> ${escapeHtml(reqObj.state || "")}<br/>
+  <strong>County:</strong> ${escapeHtml(reqObj.county || "")}<br/>
+  <strong>County Abbreviation:</strong> ${escapeHtml(reqObj.countyAbbrev || "")}<br/>
+  <strong>Agency Type:</strong> ${escapeHtml(reqObj.type || "")}<br/>
+`
+  : "";
 const portalBaseUrl = getPortalBaseUrl();
 const reviewPath = `/request-access/${reqObj.reviewToken}`;
 const reviewUrl = portalBaseUrl ? `${portalBaseUrl}${reviewPath}` : reviewPath;
@@ -338,7 +439,7 @@ ${reqObj.radioCallsign ? `Radio Callsign: ${reqObj.radioCallsign}\n` : ""}Agency
     reqObj.otherAgency ||
     reqObj.agencySuffix
   }
-${reasonLine}`,
+${otherAgencyDetailsText}${reasonLine}`,
   html: `
 <p>A new user has requested access to TAK Portal.</p>
 <p><strong><a href="${safeReviewUrl}">Review Request</a></strong></p>
@@ -358,6 +459,7 @@ ${reasonLine}`,
       reqObj.agencySuffix
     )
   }<br/>
+  ${otherAgencyDetailsHtml}
   ${
     reqObj.otherReason
       ? `<strong>Reason for requesting access:</strong> ${escapeHtml(reqObj.otherReason)}`
@@ -432,4 +534,5 @@ module.exports = {
   deleteRequestForUser,
   getById,
   getByReviewToken,
+  validateCreate,
 };

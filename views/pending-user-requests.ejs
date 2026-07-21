@@ -373,6 +373,35 @@ th.sortable:hover{
       </td>
     </tr>
   </template>
+
+  <!-- Inline create-agency form for Other / Not Listed requests -->
+  <template id="inlineCreateAgencyTemplate">
+    <tr class="inlineApproveRow inlineCreateAgencyRow">
+      <td>
+        <div class="card inlineApproveCard">
+          <h2>Create Agency</h2>
+          <p class="muted createAgencyNote"></p>
+
+          <form class="grid2 createAgencyForm" autocomplete="off">
+            <%- include("partials/agency-create-fields", {
+              agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
+              includeColor: true,
+              includeName: true,
+              fieldsRequired: true,
+              idPrefix: "pendingCreateAgency_",
+              agencyFieldValues: {}
+            }) %>
+
+            <div class="createActionsRow agencyCreateActionsRow" style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+              <button class="btn cancelBtn" type="button">Cancel</button>
+              <button class="btn success" type="submit">Create Agency</button>
+              <span class="msg createAgencyMsg"></span>
+            </div>
+          </form>
+        </div>
+      </td>
+    </tr>
+  </template>
 </main>
 
 <script>
@@ -384,6 +413,7 @@ th.sortable:hover{
   const listMsg = document.getElementById('listMsg');
   const refreshBtn = document.getElementById('refreshBtn');
   const tpl = document.getElementById('inlineApproveTemplate');
+  const createAgencyTpl = document.getElementById('inlineCreateAgencyTemplate');
 
   // -------------------- NEW: table head for sorting --------------------
   const thead = document.getElementById('thead');
@@ -678,8 +708,10 @@ th.sortable:hover{
   }
 
   // -------------------- Inline approve form --------------------
-  function openInlineApprove(reqObj, clickedRow) {
+  function openInlineApprove(reqObj, clickedRow, opts) {
     closeInlineApprove();
+    const options = opts && typeof opts === 'object' ? opts : {};
+    const preferredAgencySuffix = String(options.preferredAgencySuffix || '').trim();
 
     const frag = tpl.content.cloneNode(true);
     const approveRow = frag.querySelector('tr.inlineApproveRow');
@@ -858,9 +890,8 @@ th.sortable:hover{
     if (!window.IS_GLOBAL_ADMIN && window.IS_AGENCY_ADMIN && Array.isArray(window.ALLOWED_AGENCY_SUFFIXES) && window.ALLOWED_AGENCY_SUFFIXES.length === 1) {
       agencySelect.value = String(window.ALLOWED_AGENCY_SUFFIXES[0] || '').trim().toLowerCase();
       agencySelect.disabled = true;
-    } else if (!isOther && agencySelect) {
-      // best-effort preselect
-      const desired = String(reqObj.agencySuffix || '');
+    } else if (agencySelect) {
+      const desired = preferredAgencySuffix || (!isOther ? String(reqObj.agencySuffix || '') : '');
       if (desired && Array.from(agencySelect.options).some(o => String(o.value) === desired)) {
         agencySelect.value = desired;
       }
@@ -935,6 +966,92 @@ th.sortable:hover{
     });
   }
 
+  function setFormValue(form, name, value) {
+    const el = form && form.elements ? form.elements[name] : null;
+    if (!el) return;
+    el.value = value == null ? '' : String(value);
+  }
+
+  function openInlineCreateAgency(reqObj, clickedRow) {
+    closeInlineApprove();
+    if (!createAgencyTpl) {
+      openInlineApprove(reqObj, clickedRow);
+      return;
+    }
+
+    const frag = createAgencyTpl.content.cloneNode(true);
+    const createRow = frag.querySelector('tr.inlineApproveRow');
+    const createTd = frag.querySelector('tr.inlineApproveRow > td');
+    const form = frag.querySelector('form.createAgencyForm');
+    const note = frag.querySelector('.createAgencyNote');
+    const msg = frag.querySelector('.createAgencyMsg');
+    const cancelBtn = frag.querySelector('.cancelBtn');
+    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+
+    createTd.colSpan = 6;
+    clickedRow.parentNode.insertBefore(createRow, clickedRow.nextSibling);
+
+    const reason = esc(reqObj.otherReason || '');
+    note.innerHTML = `
+      <strong>Requested by:</strong> ${esc((reqObj.lastName || '') + ', ' + (reqObj.firstName || ''))}<br>
+      ${reason ? `<strong>Reason for Access:</strong> ${reason}` : ''}
+    `;
+
+    setFormValue(form, 'name', reqObj.otherAgency || '');
+    setFormValue(form, 'groupPrefix', reqObj.groupPrefix || '');
+    setFormValue(form, 'usernameTokenPlacement', reqObj.usernameTokenPlacement || 'suffix');
+    setFormValue(form, 'suffix', reqObj.suffix || '');
+    setFormValue(form, 'state', reqObj.state || '');
+    setFormValue(form, 'county', reqObj.county || '');
+    setFormValue(form, 'countyAbbrev', reqObj.countyAbbrev || '');
+    setFormValue(form, 'type', reqObj.type || '');
+    setFormValue(form, 'color', '');
+
+    const placementSelect = form.elements.usernameTokenPlacement;
+    const placementLabel = form.querySelector('#pendingCreateAgency_usernameIdentifierLabelText');
+    function syncPlacementLabel() {
+      if (!placementSelect || !placementLabel) return;
+      const isPrefix = String(placementSelect.value || 'suffix').toLowerCase() === 'prefix';
+      placementLabel.textContent = isPrefix ? 'Username Prefix' : 'Username Suffix';
+    }
+    if (placementSelect) {
+      placementSelect.addEventListener('change', syncPlacementLabel);
+      syncPlacementLabel();
+    }
+
+    cancelBtn.addEventListener('click', () => createRow.remove());
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      setInlineMsg(msg, '');
+
+      const fd = new FormData(form);
+      const payload = Object.fromEntries(fd.entries());
+      const createdSuffix = String(payload.suffix || '').trim().toLowerCase();
+
+      try {
+        if (submitBtn) submitBtn.disabled = true;
+        setInlinePendingMsg(msg, 'Creating agency…');
+
+        const res = await fetch('/api/agencies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Failed to create agency');
+
+        await loadAgencies();
+        setListMsg('Agency created. Continue by creating the user.', true);
+        openInlineApprove(reqObj, clickedRow, { preferredAgencySuffix: createdSuffix });
+      } catch (err) {
+        setInlineMsg(msg, err.message || 'Failed to create agency', false);
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+  }
+
   // Table actions (approve/reject)
   tbody.addEventListener('click', async (e) => {
     const btn = e.target && e.target.closest ? e.target.closest('button[data-action]') : null;
@@ -961,7 +1078,11 @@ th.sortable:hover{
 
     if (action === 'approve') {
       const row = btn.closest('tr');
-      openInlineApprove(reqObj, row);
+      if (reqObj.agencySuffix === '__other__') {
+        openInlineCreateAgency(reqObj, row);
+      } else {
+        openInlineApprove(reqObj, row);
+      }
     }
   });
 

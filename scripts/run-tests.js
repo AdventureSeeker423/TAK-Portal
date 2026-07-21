@@ -20,6 +20,7 @@ const TEST_FILES = [
   "preferencePackage.service.test.js",
   "takGroupControl.test.js",
   "geofence.test.js",
+  "userRequestsOtherAgency.test.js",
 ];
 
 const testsDir = path.join(__dirname, "..", "tests");

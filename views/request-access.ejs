@@ -17,6 +17,15 @@
           grid-template-columns: 1fr;
         }
       }
+      #otherWrap {
+        display: grid;
+        gap: 12px;
+      }
+      #otherWrap > label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
     </style>
 
     <% if (brandLogoUrl) { %>
@@ -164,6 +173,23 @@
             value="<%= (form && form.otherAgency) ? form.otherAgency : '' %>" />
         </label>
 
+        <%- include("partials/agency-create-fields", {
+          agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
+          includeColor: false,
+          includeName: false,
+          fieldsRequired: false,
+          idPrefix: "requestAccess_",
+          agencyFieldValues: {
+            groupPrefix: (form && form.groupPrefix) ? form.groupPrefix : "",
+            usernameTokenPlacement: (form && form.usernameTokenPlacement) ? form.usernameTokenPlacement : "suffix",
+            suffix: (form && form.suffix) ? form.suffix : "",
+            state: (form && form.state) ? form.state : "",
+            county: (form && form.county) ? form.county : "",
+            countyAbbrev: (form && form.countyAbbrev) ? form.countyAbbrev : "",
+            type: (form && form.type) ? form.type : ""
+          }
+        }) %>
+
         <label>Reason for requesting access
           <textarea name="otherReason" id="otherReason"
             rows="4" style="width: 100%; box-sizing: border-box;"><%= (form && form.otherReason) ? form.otherReason : '' %></textarea>
@@ -196,15 +222,42 @@
   const wrap = document.getElementById('otherWrap');
   const otherAgency = document.getElementById('otherAgency');
   const otherReason = document.getElementById('otherReason');
+  const placementSelect = document.getElementById('requestAccess_usernameTokenPlacementSelect');
+  const placementLabel = document.getElementById('requestAccess_usernameIdentifierLabelText');
+
+  function syncPlacementLabel() {
+    if (!placementSelect || !placementLabel) return;
+    const isPrefix = String(placementSelect.value || 'suffix').toLowerCase() === 'prefix';
+    placementLabel.textContent = isPrefix ? 'Username Prefix' : 'Username Suffix';
+  }
+
+  function setOtherRequired(isOther) {
+    if (otherAgency) otherAgency.required = !!isOther;
+    if (otherReason) otherReason.required = !!isOther;
+    if (!wrap) return;
+    const fields = wrap.querySelectorAll('input[name], select[name]');
+    fields.forEach((el) => {
+      const name = String(el.getAttribute('name') || '');
+      if (name === 'otherAgency' || name === 'otherReason' || name === 'usernameTokenPlacement') {
+        // usernameTokenPlacement always has a default; otherAgency/otherReason handled above
+        return;
+      }
+      if (name === 'groupPrefix' || name === 'suffix' || name === 'state' ||
+          name === 'county' || name === 'countyAbbrev' || name === 'type') {
+        el.required = !!isOther;
+      }
+    });
+  }
 
   function update() {
     const isOther = sel && sel.value === '__other__';
-    if (wrap) wrap.style.display = isOther ? 'block' : 'none';
-    if (otherAgency) otherAgency.required = !!isOther;
-    if (otherReason) otherReason.required = !!isOther;
+    if (wrap) wrap.style.display = isOther ? 'grid' : 'none';
+    setOtherRequired(isOther);
   }
 
   if (sel) sel.addEventListener('change', update);
+  if (placementSelect) placementSelect.addEventListener('change', syncPlacementLabel);
+  syncPlacementLabel();
   update();
 })();
 </script>

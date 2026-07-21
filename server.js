@@ -1242,6 +1242,7 @@ app.get("/request-access", (req, res) => {
     agencies,
     form: {},
     error: null,
+    agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
     hcaptchaEnabled,
     hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : ""
   });
@@ -1285,6 +1286,13 @@ app.post("/request-access", async (req, res) => {
       agencySuffix: body.agencySuffix,
       otherAgency: body.otherAgency,
       otherReason: body.otherReason,
+      groupPrefix: body.groupPrefix,
+      usernameTokenPlacement: body.usernameTokenPlacement,
+      suffix: body.suffix,
+      state: body.state,
+      county: body.county,
+      countyAbbrev: body.countyAbbrev,
+      type: body.type,
     });
 
     auditSvc.logEvent({
@@ -1303,6 +1311,13 @@ app.post("/request-access", async (req, res) => {
         agencySuffix: body.agencySuffix,
         otherAgency: body.otherAgency,
         otherReason: body.otherReason,
+        groupPrefix: body.groupPrefix,
+        usernameTokenPlacement: body.usernameTokenPlacement,
+        suffix: body.suffix,
+        state: body.state,
+        county: body.county,
+        countyAbbrev: body.countyAbbrev,
+        type: body.type,
       },
     });
 
@@ -1320,6 +1335,7 @@ app.post("/request-access", async (req, res) => {
       showLoginLink: err?.code === "USER_ALREADY_EXISTS",
       loginUrl: "/",
       form: req.body || {},
+      agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
       hcaptchaEnabled,
       hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : "",
     });
@@ -1342,7 +1358,9 @@ app.get("/request-access/:reviewToken", (req, res, next) => {
 
 // Admin: review pending access requests
 app.get("/pending-user-requests", requirePermission("page.users"), (req, res) => {
-  return res.render("pending-user-requests");
+  return res.render("pending-user-requests", {
+    agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
+  });
 });
 
 app.get("/settings", requirePermission("page.settings"), (req, res) => {

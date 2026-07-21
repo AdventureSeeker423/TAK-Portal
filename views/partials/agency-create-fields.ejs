@@ -1,0 +1,133 @@
+<%
+  const _vals = (typeof agencyFieldValues === "object" && agencyFieldValues) ? agencyFieldValues : {};
+  const _includeColor = (typeof includeColor === "undefined") ? true : !!includeColor;
+  const _includeName = (typeof includeName === "undefined") ? true : !!includeName;
+  const _fieldsRequired = (typeof fieldsRequired === "undefined") ? true : !!fieldsRequired;
+  const _reqAttr = _fieldsRequired ? "required" : "";
+  const _idPrefix = String(typeof idPrefix !== "undefined" ? idPrefix : "");
+  const _typeOpts = Array.isArray(agencyTypeOptions) && agencyTypeOptions.length ? agencyTypeOptions : [];
+  const _placement = String(_vals.usernameTokenPlacement || "suffix").toLowerCase() === "prefix" ? "prefix" : "suffix";
+  const _selectedState = String(_vals.state || "").trim().toUpperCase();
+  const _selectedType = String(_vals.type || "").trim();
+  const _selectedColor = String(_vals.color || "").trim();
+  const _states = [
+    "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+    "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+    "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
+  ];
+  const _colors = [
+    "Blue","Dark Blue","Brown","Cyan","Green","Dark Green","Magenta","Maroon",
+    "Orange","Purple","Red","Teal","White","Yellow"
+  ];
+  function _sel(cur, want) {
+    return String(cur || "") === String(want || "") ? "selected" : "";
+  }
+%>
+<style>
+.agencyCreateRow {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+}
+.agencyCreateRow3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.agencyCreateRow4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.agencyCreateRow2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.agencyCreateRow label { min-width: 0; }
+.agencyCreateRow input,
+.agencyCreateRow select {
+  width: 100%;
+  box-sizing: border-box;
+}
+@media (max-width: 900px) {
+  .agencyCreateRow4,
+  .agencyCreateRow3,
+  .agencyCreateRow2 {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<div class="agencyCreateRow <%= _includeName ? 'agencyCreateRow4' : 'agencyCreateRow3' %>">
+  <% if (_includeName) { %>
+  <label>Agency Full Name
+    <input name="name" placeholder="Agency Name" <%= _reqAttr %>
+           value="<%= _vals.name || '' %>" />
+  </label>
+  <% } %>
+
+  <label>Agency Abbreviation
+    <input name="groupPrefix" placeholder="(ex. HCSO, HCOEM, etc...)" <%= _reqAttr %>
+           value="<%= _vals.groupPrefix || '' %>"
+           oninput="this.value = this.value.toUpperCase()" />
+  </label>
+
+  <label>Username Agency Identifier
+    <select name="usernameTokenPlacement" id="<%= _idPrefix %>usernameTokenPlacementSelect">
+      <option value="suffix" <%= _sel(_placement, "suffix") %>>Suffix - End Of Username (e.g. 1234abcd)</option>
+      <option value="prefix" <%= _sel(_placement, "prefix") %>>Prefix - Beginning Of Username (e.g. abcd1234)</option>
+    </select>
+  </label>
+
+  <label>
+    <span id="<%= _idPrefix %>usernameIdentifierLabelText"><%= _placement === "prefix" ? "Username Prefix" : "Username Suffix" %></span>
+    <input name="suffix" placeholder="(ex. abcd, hcoem, etc...)" <%= _reqAttr %>
+           value="<%= _vals.suffix || '' %>"
+           oninput="this.value = this.value.toLowerCase()" />
+  </label>
+</div>
+
+<div class="agencyCreateRow agencyCreateRow3">
+  <label>State
+    <select name="state" <%= _reqAttr %>>
+      <option value="" disabled <%= !_selectedState ? "selected" : "" %>>Select State</option>
+      <% _states.forEach(function (st) { %>
+        <option value="<%= st %>" <%= _sel(_selectedState, st) %>><%= st %></option>
+      <% }); %>
+      <option value="FED" <%= _sel(_selectedState, "FED") %>>USA</option>
+      <option value="FED" <%= _sel(_selectedState, "FED") %>>FED</option>
+      <option value="OTHER" <%= _sel(_selectedState, "OTHER") %>>OTHER</option>
+    </select>
+  </label>
+
+  <label>County
+    <input
+      name="county"
+      placeholder="(ex. Hamilton, Marion)"
+      <%= _reqAttr %>
+      value="<%= _vals.county || '' %>"
+    />
+  </label>
+
+  <label>County Abbreviation
+    <input
+      name="countyAbbrev"
+      placeholder="(ex. HM or HML)"
+      <%= _reqAttr %>
+      minlength="2"
+      value="<%= _vals.countyAbbrev || '' %>"
+      oninput="this.value = this.value.toUpperCase().replace(/[^A-Z]/g, '')"
+    />
+  </label>
+</div>
+
+<div class="agencyCreateRow <%= _includeColor ? 'agencyCreateRow2' : '' %>">
+  <label>Agency Type
+    <select name="type" <%= _reqAttr %>>
+      <option value="" disabled <%= !_selectedType ? "selected" : "" %>>Agency Type</option>
+      <% _typeOpts.forEach(function (t) { %>
+        <option value="<%= t %>" <%= _sel(_selectedType, t) %>><%= t %></option>
+      <% }); %>
+    </select>
+  </label>
+
+  <% if (_includeColor) { %>
+  <label>Agency Color
+    <select name="color" <%= _reqAttr %>>
+      <option value="" disabled <%= !_selectedColor ? "selected" : "" %>>Color</option>
+      <% _colors.forEach(function (c) { %>
+        <option value="<%= c %>" <%= _sel(_selectedColor, c) %>><%= c %></option>
+      <% }); %>
+    </select>
+  </label>
+  <% } %>
+</div>

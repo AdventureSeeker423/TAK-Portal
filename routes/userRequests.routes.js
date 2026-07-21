@@ -36,6 +36,13 @@ router.post("/", async (req, res) => {
         agencySuffix: body.agencySuffix,
         otherAgency: body.otherAgency,
         otherReason: body.otherReason,
+        groupPrefix: body.groupPrefix,
+        usernameTokenPlacement: body.usernameTokenPlacement,
+        suffix: body.suffix,
+        state: body.state,
+        county: body.county,
+        countyAbbrev: body.countyAbbrev,
+        type: body.type,
       },
     });
 
