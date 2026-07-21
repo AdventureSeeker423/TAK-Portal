@@ -12,6 +12,11 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.53 - 7/21/26
+✨ `Enhancement` - Request Access - Selecting "Other / My Agency Isn't Listed" now requires the requester to fill out all fields needed for agency creation<br>
+✨ `Enhancement` - Pending Access - When a requester enters new agency details, the global admin will be able to create a new agency from the pending access page<br>
+✨ `Enhancement` - Groups and Pending Access - When a new agency is created an agency specific group will automatically be created for that agency with a name of "Main"
+
 ### v1.3.52 - 7/15/26
 ✨ `Enhancement` - Mutual Aid - Minor wording updates<br>
 🐛 `Bug Fix` - Fixes issue with incorrect email templates logic with default vs custom.
