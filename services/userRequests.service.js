@@ -516,6 +516,35 @@ function getById(id) {
   return all.find((r) => String(r.id || "") === rid) || null;
 }
 
+function markAgencyCreated(id, agency, mainGroupName) {
+  const rid = String(id || "").trim();
+  if (!rid) throw new Error("User request ID is required");
+
+  const all = store.load();
+  const index = all.findIndex((r) => String(r.id || "") === rid);
+  if (index < 0) throw new Error("Pending user request was not found");
+  if (String(all[index].agencySuffix || "") !== "__other__") {
+    throw new Error("Only Other agency requests can be linked to a created agency");
+  }
+
+  const suffix = normalizeStr(agency?.suffix).toLowerCase();
+  const groupPrefix = normalizeStr(agency?.groupPrefix).toUpperCase();
+  if (!suffix) throw new Error("Created agency suffix is required");
+
+  all[index].createdAgency = {
+    suffix,
+    name: normalizeStr(agency?.name) || null,
+    groupPrefix: groupPrefix || null,
+    mainGroupName:
+      normalizeStr(mainGroupName) ||
+      (groupPrefix ? `tak_${groupPrefix} Main` : null),
+    createdAt: new Date().toISOString(),
+  };
+
+  store.save(all);
+  return all[index];
+}
+
 function getByReviewToken(token) {
   const value = String(token || "").trim();
   if (!value) return null;
@@ -534,5 +563,6 @@ module.exports = {
   deleteRequestForUser,
   getById,
   getByReviewToken,
+  markAgencyCreated,
   validateCreate,
 };

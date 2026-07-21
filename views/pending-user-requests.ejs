@@ -997,14 +997,6 @@ th.sortable:hover{
     el.value = value == null ? '' : String(value);
   }
 
-  function findExistingAgencyForRequest(reqObj) {
-    const suffix = String(reqObj.suffix || '').trim().toLowerCase();
-    if (!suffix) return null;
-    return agenciesCache.find(
-      (a) => String(a.suffix || '').trim().toLowerCase() === suffix
-    ) || null;
-  }
-
   function mainGroupNameForAgency(agencyLike) {
     const prefix = String(agencyLike.groupPrefix || '').trim().toUpperCase();
     return prefix ? `tak_${prefix} Main` : '';
@@ -1017,15 +1009,17 @@ th.sortable:hover{
       return;
     }
 
-    // If this agency was already created (e.g. admin created it, left, and came back),
-    // skip straight to user creation instead of prompting to create it again.
-    const existingAgency = findExistingAgencyForRequest(reqObj);
-    if (existingAgency) {
-      const existingSuffix = String(existingAgency.suffix || '').trim().toLowerCase();
-      const mainGroupName = mainGroupNameForAgency(existingAgency);
-      setListMsg('Agency already exists. Continue by creating the user.', true);
+    // Use the persisted linkage written when this request created an agency. This
+    // remains accurate even if the admin changed the requested suffix in the form.
+    const createdAgency = reqObj.createdAgency || null;
+    if (createdAgency && createdAgency.suffix) {
+      const createdSuffix = String(createdAgency.suffix || '').trim().toLowerCase();
+      const mainGroupName =
+        String(createdAgency.mainGroupName || '').trim() ||
+        mainGroupNameForAgency(createdAgency);
+      setListMsg('Agency was already created. Continue by creating the user.', true);
       openInlineApprove(reqObj, clickedRow, {
-        preferredAgencySuffix: existingSuffix,
+        preferredAgencySuffix: createdSuffix,
         preselectGroupNames: mainGroupName ? [mainGroupName] : [],
       });
       return;
@@ -1084,6 +1078,7 @@ th.sortable:hover{
 
       const fd = new FormData(form);
       const payload = Object.fromEntries(fd.entries());
+      payload.sourceUserRequestId = reqObj.id;
       const createdSuffix = String(payload.suffix || '').trim().toLowerCase();
 
       try {
@@ -1102,13 +1097,16 @@ th.sortable:hover{
         await loadAgencies();
         await loadGroups();
 
+        const linkedAgency = out && out.createdAgency ? out.createdAgency : null;
+        const linkedSuffix = String(linkedAgency?.suffix || createdSuffix).trim().toLowerCase();
         const mainGroupName =
+          String(linkedAgency?.mainGroupName || '').trim() ||
           (out && out.mainGroup && out.mainGroup.name) ||
           mainGroupNameForAgency({ groupPrefix: payload.groupPrefix });
 
         setListMsg('Agency created. Continue by creating the user.', true);
         openInlineApprove(reqObj, clickedRow, {
-          preferredAgencySuffix: createdSuffix,
+          preferredAgencySuffix: linkedSuffix,
           preselectGroupNames: mainGroupName ? [mainGroupName] : [],
         });
       } catch (err) {

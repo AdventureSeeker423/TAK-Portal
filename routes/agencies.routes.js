@@ -13,6 +13,7 @@ const countyNameRenameSvc = require("../services/countyNameRename.service");
 const stateCodeRenameSvc = require("../services/stateCodeRename.service");
 const agencyActiveSvc = require("../services/agencyActive.service");
 const agencyDeleteSvc = require("../services/agencyDelete.service");
+const userRequestsSvc = require("../services/userRequests.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -380,10 +381,22 @@ router.get("/:index/admin-group", async (req, res) => {
 router.post("/", async (req, res) => {
   const agencies = store.load();
   const a = normalizeAgency(req.body || {});
+  const sourceUserRequestId = String(
+    req.body?.sourceUserRequestId || ""
+  ).trim();
   let mainGroupResult = null;
 
   const err = validateAgency(a);
   if (err) return res.status(400).json({ error: err });
+
+  if (sourceUserRequestId) {
+    const sourceRequest = userRequestsSvc.getById(sourceUserRequestId);
+    if (!sourceRequest || String(sourceRequest.agencySuffix || "") !== "__other__") {
+      return res.status(400).json({
+        error: "The pending Other agency request was not found",
+      });
+    }
+  }
 
   if (agencies.some(x => String(x.suffix || "").toLowerCase() === a.suffix)) {
     return res.status(400).json({ error: "Suffix already exists" });
@@ -408,6 +421,14 @@ router.post("/", async (req, res) => {
 
   agencies.push(a);
   store.save(agencies);
+
+  const linkedRequest = sourceUserRequestId
+    ? userRequestsSvc.markAgencyCreated(
+        sourceUserRequestId,
+        a,
+        mainGroupResult?.name
+      )
+    : null;
 
   if (mainGroupResult?.created) {
     const createdGroup = mainGroupResult.group || {};
@@ -448,7 +469,11 @@ router.post("/", async (req, res) => {
       }
     : null;
 
-  res.json({ success: true, mainGroup });
+  res.json({
+    success: true,
+    mainGroup,
+    createdAgency: linkedRequest?.createdAgency || null,
+  });
 });
 
 /** Must match the create-agency color dropdown in views/agencies.ejs */
