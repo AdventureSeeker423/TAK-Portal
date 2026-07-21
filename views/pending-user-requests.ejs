@@ -713,6 +713,9 @@ th.sortable:hover{
     closeInlineApprove();
     const options = opts && typeof opts === 'object' ? opts : {};
     const preferredAgencySuffix = String(options.preferredAgencySuffix || '').trim();
+    const preselectGroupNames = Array.isArray(options.preselectGroupNames)
+      ? options.preselectGroupNames.map((n) => String(n || '').trim().toLowerCase()).filter(Boolean)
+      : [];
 
     const frag = tpl.content.cloneNode(true);
     const approveRow = frag.querySelector('tr.inlineApproveRow');
@@ -907,7 +910,28 @@ th.sortable:hover{
 
     // Prime groups render + templates
     renderGroupsBox();
-    refreshTemplates().catch(err => setInlineMsg(msg, err.message || 'Failed to load templates', false));
+    (async () => {
+      try {
+        await refreshTemplates();
+
+        if (preselectGroupNames.length) {
+          const wanted = new Set(preselectGroupNames);
+          groupsCache.forEach((g) => {
+            if (wanted.has(String(g.name || '').trim().toLowerCase())) {
+              pickedManualGroupIds.add(String(g.pk));
+            }
+          });
+
+          if (pickedManualGroupIds.size) {
+            // Switch to Manual Group Selection so the preselected group is visible and submitted.
+            templateSelect.value = 'Manual Group Selection';
+            templateSelect.dispatchEvent(new Event('change'));
+          }
+        }
+      } catch (err) {
+        setInlineMsg(msg, err.message || 'Failed to load templates', false);
+      }
+    })();
 
     // Submit handler
     form.addEventListener('submit', async (e) => {
@@ -973,10 +997,37 @@ th.sortable:hover{
     el.value = value == null ? '' : String(value);
   }
 
+  function findExistingAgencyForRequest(reqObj) {
+    const suffix = String(reqObj.suffix || '').trim().toLowerCase();
+    if (!suffix) return null;
+    return agenciesCache.find(
+      (a) => String(a.suffix || '').trim().toLowerCase() === suffix
+    ) || null;
+  }
+
+  function mainGroupNameForAgency(agencyLike) {
+    const prefix = String(agencyLike.groupPrefix || '').trim().toUpperCase();
+    return prefix ? `tak_${prefix} Main` : '';
+  }
+
   function openInlineCreateAgency(reqObj, clickedRow) {
     closeInlineApprove();
     if (!createAgencyTpl) {
       openInlineApprove(reqObj, clickedRow);
+      return;
+    }
+
+    // If this agency was already created (e.g. admin created it, left, and came back),
+    // skip straight to user creation instead of prompting to create it again.
+    const existingAgency = findExistingAgencyForRequest(reqObj);
+    if (existingAgency) {
+      const existingSuffix = String(existingAgency.suffix || '').trim().toLowerCase();
+      const mainGroupName = mainGroupNameForAgency(existingAgency);
+      setListMsg('Agency already exists. Continue by creating the user.', true);
+      openInlineApprove(reqObj, clickedRow, {
+        preferredAgencySuffix: existingSuffix,
+        preselectGroupNames: mainGroupName ? [mainGroupName] : [],
+      });
       return;
     }
 
@@ -1047,9 +1098,19 @@ th.sortable:hover{
         const out = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(out.error || 'Failed to create agency');
 
+        // Reload agencies AND groups so the new agency + its Main group appear.
         await loadAgencies();
+        await loadGroups();
+
+        const mainGroupName =
+          (out && out.mainGroup && out.mainGroup.name) ||
+          mainGroupNameForAgency({ groupPrefix: payload.groupPrefix });
+
         setListMsg('Agency created. Continue by creating the user.', true);
-        openInlineApprove(reqObj, clickedRow, { preferredAgencySuffix: createdSuffix });
+        openInlineApprove(reqObj, clickedRow, {
+          preferredAgencySuffix: createdSuffix,
+          preselectGroupNames: mainGroupName ? [mainGroupName] : [],
+        });
       } catch (err) {
         setInlineMsg(msg, err.message || 'Failed to create agency', false);
       } finally {

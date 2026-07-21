@@ -440,7 +440,15 @@ router.post("/", async (req, res) => {
     details: a,
   });
 
-  res.json({ success: true });
+  const mainGroup = mainGroupResult
+    ? {
+        name: mainGroupResult.name,
+        pk: mainGroupResult.group?.pk ?? mainGroupResult.group?.id ?? null,
+        created: !!mainGroupResult.created,
+      }
+    : null;
+
+  res.json({ success: true, mainGroup });
 });
 
 /** Must match the create-agency color dropdown in views/agencies.ejs */
