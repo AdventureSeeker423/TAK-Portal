@@ -53,6 +53,44 @@ async function ensureAgencyAdminGroupExists(agency) {
   }
 }
 
+async function ensureAgencyMainGroupExists(agency, actor) {
+  const groupPrefix = String(agency?.groupPrefix || "").trim().toUpperCase();
+  if (!groupPrefix) throw new Error("Agency abbreviation (groupPrefix) is required");
+
+  const name = `tak_${groupPrefix} Main`;
+  const attributes = {
+    created_at: new Date().toISOString(),
+    private: "no",
+    created_type: "Agency",
+    created_type_detail:
+      String(agency?.name || agency?.groupPrefix || "").trim() || null,
+  };
+
+  if (actor) {
+    attributes.created_by_username = String(actor.username || "").trim() || null;
+    attributes.created_by_display_name =
+      String(actor.displayName || actor.username || "").trim() || null;
+  }
+
+  try {
+    const group = await groupsService.createGroup(name, { attributes });
+    return { created: true, name, group };
+  } catch (err) {
+    const msg = String(
+      err?.response?.data?.detail || err?.response?.data || err?.message || ""
+    );
+    const lower = msg.toLowerCase();
+    if (
+      lower.includes("already") ||
+      lower.includes("exists") ||
+      lower.includes("unique")
+    ) {
+      return { created: false, name, group: null };
+    }
+    throw err;
+  }
+}
+
 // IMPORTANT:
 // The portal intentionally hides internal Authentik groups from /api/groups
 // (via GROUPS_HIDDEN_PREFIXES, often including "authentik-").
@@ -342,6 +380,7 @@ router.get("/:index/admin-group", async (req, res) => {
 router.post("/", async (req, res) => {
   const agencies = store.load();
   const a = normalizeAgency(req.body || {});
+  let mainGroupResult = null;
 
   const err = validateAgency(a);
   if (err) return res.status(400).json({ error: err });
@@ -353,14 +392,44 @@ router.post("/", async (req, res) => {
   try {
     // Ensure the agency admin group exists in Authentik.
     await ensureAgencyAdminGroupExists(a);
+    // Create the default agency channel: Main, behavior Both, visible to agency admins.
+    mainGroupResult = await ensureAgencyMainGroupExists(
+      a,
+      req.authentikUser || null
+    );
   } catch (err) {
     return res.status(400).json({
-      error: err?.response?.data || err?.message || "Failed to create agency admin group",
+      error:
+        err?.response?.data ||
+        err?.message ||
+        "Failed to create required agency groups",
     });
   }
 
   agencies.push(a);
   store.save(agencies);
+
+  if (mainGroupResult?.created) {
+    const createdGroup = mainGroupResult.group || {};
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: {
+        method: req.method,
+        path: req.originalUrl || req.path,
+        ip: req.ip,
+      },
+      action: "CREATE_GROUP",
+      targetType: "group",
+      targetId: String(createdGroup.pk || createdGroup.id || ""),
+      details: {
+        name: createdGroup.name || mainGroupResult.name,
+        description: null,
+        private: "no",
+        created_type: "Agency",
+        created_type_detail: a.name || a.groupPrefix || null,
+      },
+    });
+  }
 
   auditSvc.logEvent({
     actor: req.authentikUser || null,
