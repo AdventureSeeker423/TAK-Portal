@@ -394,6 +394,7 @@ th.sortable:hover{
 
             <div class="createActionsRow agencyCreateActionsRow" style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
               <button class="btn cancelBtn" type="button">Cancel</button>
+              <button class="btn warning skipAgencyBtn" type="button">Skip Agency Creation</button>
               <button class="btn success" type="submit">Create Agency</button>
               <span class="msg createAgencyMsg"></span>
             </div>
@@ -986,6 +987,7 @@ th.sortable:hover{
     const note = frag.querySelector('.createAgencyNote');
     const msg = frag.querySelector('.createAgencyMsg');
     const cancelBtn = frag.querySelector('.cancelBtn');
+    const skipAgencyBtn = frag.querySelector('.skipAgencyBtn');
     const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
 
     createTd.colSpan = 6;
@@ -1020,6 +1022,10 @@ th.sortable:hover{
     }
 
     cancelBtn.addEventListener('click', () => createRow.remove());
+    skipAgencyBtn.addEventListener('click', () => {
+      setListMsg('Agency creation skipped. Select an existing agency for the user.', true);
+      openInlineApprove(reqObj, clickedRow);
+    });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
