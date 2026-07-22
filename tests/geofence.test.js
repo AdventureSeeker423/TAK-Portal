@@ -112,6 +112,110 @@ assert.ok(d < 0.01);
 }
 
 {
+  const { resolveOfflineMembership, OFFLINE_GRACE_MS } = require("../services/geofence.engine");
+  const now = Date.now();
+  assert.strictEqual(
+    resolveOfflineMembership({
+      lastSeenAt: new Date(now - 3000).toISOString(),
+      nowMs: now,
+      graceMs: OFFLINE_GRACE_MS,
+    }),
+    "hold",
+    "few-second blip stays held"
+  );
+  assert.strictEqual(
+    resolveOfflineMembership({
+      lastSeenAt: new Date(now - OFFLINE_GRACE_MS - 1000).toISOString(),
+      nowMs: now,
+      graceMs: OFFLINE_GRACE_MS,
+    }),
+    "drop",
+    "past grace drops membership"
+  );
+  assert.strictEqual(
+    resolveOfflineMembership({ nowMs: now, graceMs: OFFLINE_GRACE_MS }),
+    "hold",
+    "legacy row without timestamps starts grace"
+  );
+}
+
+{
+  const now = Date.now();
+  const t = computeTransitions({
+    fenceId: "f1",
+    active: true,
+    wasActive: true,
+    insideClientUids: [],
+    previousInsideUids: ["a"],
+    onlineUids: [],
+    membershipByUid: {
+      a: { inside: true, lastSeenAt: new Date(now - 5000).toISOString() },
+    },
+    nowMs: now,
+    offlineGraceMs: 45000,
+  });
+  assert.deepStrictEqual(t.holds, ["a"], "offline blip holds membership");
+  assert.deepStrictEqual(t.drops, []);
+  assert.deepStrictEqual(t.exits, []);
+  assert.deepStrictEqual(t.enters, []);
+}
+
+{
+  const now = Date.now();
+  const t = computeTransitions({
+    fenceId: "f1",
+    active: true,
+    wasActive: true,
+    insideClientUids: ["a"],
+    previousInsideUids: ["a"],
+    onlineUids: ["a"],
+    membershipByUid: {
+      a: { inside: true, lastSeenAt: new Date(now - 5000).toISOString() },
+    },
+    nowMs: now,
+  });
+  assert.deepStrictEqual(t.enters, [], "reappear inside after blip is not a re-entry");
+  assert.deepStrictEqual(t.exits, []);
+  assert.deepStrictEqual(t.holds, []);
+}
+
+{
+  const now = Date.now();
+  const t = computeTransitions({
+    fenceId: "f1",
+    active: true,
+    wasActive: true,
+    insideClientUids: [],
+    previousInsideUids: ["a"],
+    onlineUids: ["a"],
+    membershipByUid: {
+      a: { inside: true, lastSeenAt: new Date(now - 5000).toISOString() },
+    },
+    nowMs: now,
+  });
+  assert.deepStrictEqual(t.exits, ["a"], "online outside is still a real exit");
+}
+
+{
+  const now = Date.now();
+  const t = computeTransitions({
+    fenceId: "f1",
+    active: true,
+    wasActive: true,
+    insideClientUids: [],
+    previousInsideUids: ["a"],
+    onlineUids: [],
+    membershipByUid: {
+      a: { inside: true, lastSeenAt: new Date(now - 60000).toISOString() },
+    },
+    nowMs: now,
+    offlineGraceMs: 45000,
+  });
+  assert.deepStrictEqual(t.drops, ["a"], "long offline eventually drops");
+  assert.deepStrictEqual(t.holds, []);
+}
+
+{
   const { channelStateMatchesDesired } = require("../services/geofence.engine");
   const { normalizeEnforceMode } = require("../services/geofence.store");
   assert.strictEqual(normalizeEnforceMode("force"), "force");

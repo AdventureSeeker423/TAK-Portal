@@ -11,6 +11,12 @@ const { pointInGeometry } = require("./geofence.geometry");
 
 const POLL_MS = 2500;
 const SUB_CACHE_MS = 8000;
+/**
+ * Keep "inside" membership across brief CoT/subscription blips so one-time
+ * enter actions do not re-fire when the device never actually left.
+ * Longer than a couple-second drop; shorter than a true disconnect.
+ */
+const OFFLINE_GRACE_MS = 45000;
 
 let timer = null;
 let ticking = false;
@@ -107,8 +113,29 @@ function resolveSubscriptionForMarker(marker, index) {
 }
 
 /**
+ * Whether a previously-inside member who is temporarily not observed should
+ * keep membership (hold) or be dropped so a later sighting can re-enter.
+ * @returns {"hold"|"drop"}
+ */
+function resolveOfflineMembership({
+  lastSeenAt,
+  lastEnterAt,
+  nowMs = Date.now(),
+  graceMs = OFFLINE_GRACE_MS,
+}) {
+  const raw = lastSeenAt || lastEnterAt || null;
+  const lastSeenMs = typeof raw === "number" ? raw : Date.parse(safeStr(raw));
+  if (!Number.isFinite(lastSeenMs)) {
+    // Legacy row with no timestamps: start grace from this observation.
+    return "hold";
+  }
+  if (nowMs - lastSeenMs < graceMs) return "hold";
+  return "drop";
+}
+
+/**
  * Pure transition computation for tests.
- * @returns {{ enters: string[], exits: string[], drops: string[] }}
+ * @returns {{ enters: string[], exits: string[], drops: string[], holds: string[] }}
  */
 function computeTransitions({
   fenceId,
@@ -116,16 +143,25 @@ function computeTransitions({
   wasActive,
   insideClientUids,
   previousInsideUids,
+  onlineUids,
+  membershipByUid,
+  nowMs = Date.now(),
+  offlineGraceMs = OFFLINE_GRACE_MS,
 }) {
   const enters = [];
   const exits = [];
   const drops = [];
+  const holds = [];
   const insideSet = new Set(insideClientUids || []);
   const prevSet = new Set(previousInsideUids || []);
+  const onlineSet =
+    onlineUids instanceof Set
+      ? onlineUids
+      : new Set(Array.isArray(onlineUids) ? onlineUids : []);
 
   if (!active) {
     for (const uid of prevSet) drops.push(uid);
-    return { enters, exits, drops };
+    return { enters, exits, drops, holds };
   }
 
   const forceEnterAll = wasActive === false;
@@ -133,13 +169,30 @@ function computeTransitions({
     if (forceEnterAll || !prevSet.has(uid)) enters.push(uid);
   }
   for (const uid of prevSet) {
-    if (!insideSet.has(uid)) {
-      // Still visible as a previous member but not inside now:
-      // caller distinguishes disconnect (drop) vs exit via online set.
+    if (insideSet.has(uid)) continue;
+    // Legacy callers omit onlineUids → treat missing as a geographic exit.
+    if (onlineUids == null) {
       exits.push(uid);
+      continue;
     }
+    if (onlineSet.has(uid)) {
+      exits.push(uid);
+      continue;
+    }
+    const row =
+      membershipByUid && typeof membershipByUid === "object"
+        ? membershipByUid[uid]
+        : null;
+    const action = resolveOfflineMembership({
+      lastSeenAt: row?.lastSeenAt,
+      lastEnterAt: row?.lastEnterAt,
+      nowMs,
+      graceMs: offlineGraceMs,
+    });
+    if (action === "hold") holds.push(uid);
+    else drops.push(uid);
   }
-  return { enters, exits, drops };
+  return { enters, exits, drops, holds };
 }
 
 /**
@@ -369,6 +422,7 @@ async function evaluateFence(fence, eudPoints, onlineUids) {
     }
   }
   const insideSet = new Set(insideClientUids);
+  const nowMs = Date.now();
 
   // Force re-enter on inactive→active. Also treat first observation of an
   // already-active fence as normal (membership empty → enter), which covers
@@ -386,13 +440,33 @@ async function evaluateFence(fence, eudPoints, onlineUids) {
     }
   }
 
+  // Refresh last-seen while still observed inside (feeds offline grace).
+  for (const uid of stayInside) {
+    store.touchMemberSeen(fenceId, uid, nowMs);
+  }
+
   for (const uid of previousInsideUids) {
     if (insideSet.has(uid)) continue;
     if (onlineUids.has(uid)) {
       exits.push(uid);
-    } else {
-      store.dropMember(fenceId, uid);
+      continue;
     }
+    // Not observed (marker/subscription blip): keep membership through grace
+    // so one-time enter does not re-fire when they reappear still inside.
+    const row = membership[uid];
+    const action = resolveOfflineMembership({
+      lastSeenAt: row?.lastSeenAt,
+      lastEnterAt: row?.lastEnterAt,
+      nowMs,
+      graceMs: OFFLINE_GRACE_MS,
+    });
+    if (action === "hold") {
+      if (!row?.lastSeenAt && !row?.lastEnterAt) {
+        store.touchMemberSeen(fenceId, uid, nowMs);
+      }
+      continue;
+    }
+    store.dropMember(fenceId, uid);
   }
 
   if (enters.length || exits.length) {
@@ -525,10 +599,12 @@ function stop() {
 
 module.exports = {
   POLL_MS,
+  OFFLINE_GRACE_MS,
   start,
   stop,
   tick,
   computeTransitions,
+  resolveOfflineMembership,
   resolveSubscriptionForMarker,
   indexSubscriptions,
   resolveEntitledChannel,

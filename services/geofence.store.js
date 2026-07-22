@@ -353,11 +353,25 @@ function setMemberInside(fenceId, clientUid, inside) {
     state.membership[fid][uid] = {
       inside: true,
       lastEnterAt: now,
+      lastSeenAt: now,
       lastExitAt: state.membership[fid][uid]?.lastExitAt || null,
     };
   } else {
     delete state.membership[fid][uid];
   }
+  scheduleStateFlush();
+}
+
+/** Refresh lastSeenAt for a member still observed inside (offline-grace tracking). */
+function touchMemberSeen(fenceId, clientUid, atMs) {
+  const fid = safeStr(fenceId).trim();
+  const uid = safeStr(clientUid).trim();
+  if (!fid || !uid) return;
+  const state = ensureState();
+  const row = state.membership[fid] && state.membership[fid][uid];
+  if (!row || row.inside !== true) return;
+  const ms = Number.isFinite(atMs) ? atMs : Date.now();
+  row.lastSeenAt = new Date(ms).toISOString();
   scheduleStateFlush();
 }
 
@@ -417,6 +431,7 @@ module.exports = {
   ownerFromAuthUser,
   getMembershipMap,
   setMemberInside,
+  touchMemberSeen,
   clearFenceMembership,
   dropMember,
   wasMemberInside,
