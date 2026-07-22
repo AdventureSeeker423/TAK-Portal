@@ -36,16 +36,27 @@
     );
   }
 
+  function isOperationalBitMarkerType(type) {
+    const t = String(type || "").toLowerCase();
+    // SPI / sensor points — operational markers, not shape editor handles.
+    return (
+      t.startsWith("b-m-p-s-p-i") ||
+      t.startsWith("b-m-p-s-p-loc") ||
+      t.startsWith("b-m-p-s-p-op")
+    );
+  }
+
   function isShapeControlCotType(type) {
     const t = String(type || "").toLowerCase();
-    return (
-      t.startsWith("u-d-") ||
-      t === "b-m-p" ||
-      t.startsWith("b-m-p-") ||
-      t === "b-m-r" ||
-      t.startsWith("b-m-r-") ||
-      t.startsWith("b-m-c-")
-    );
+    if (t.startsWith("u-d-")) return true;
+    if (t === "b-m-r" || t.startsWith("b-m-r-")) return true;
+    if (t.startsWith("b-m-c-")) return true;
+    if (t === "b-m-p") return true;
+    if (t.startsWith("b-m-p-")) {
+      if (isOperationalBitMarkerType(t)) return false;
+      return true;
+    }
+    return false;
   }
 
   function missionHasShapeGeometry(features) {

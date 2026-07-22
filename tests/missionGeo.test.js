@@ -210,6 +210,16 @@ async function runTests() {
     true,
     "bare b-m-r shape handles should be skipped on live stream"
   );
+  assert.strictEqual(
+    shapeDecor.shouldSkipLiveStreamMarker({ type: "b-m-p-s-p-i", how: "m-g" }),
+    false,
+    "SPI markers must not be skipped on live stream"
+  );
+  assert.strictEqual(
+    shapeDecor.shouldSkipLiveStreamMarker({ type: "b-m-p-s-p-loc", how: "h-e" }),
+    false,
+    "sensor location markers must not be skipped on live stream"
+  );
 
   console.log("missionGeo.test.js: all assertions passed");
 }
