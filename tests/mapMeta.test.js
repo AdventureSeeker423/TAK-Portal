@@ -100,4 +100,28 @@ const federatedMarker = mapMeta.resolveGroupsForMarker(
 );
 assert.deepStrictEqual(federatedMarker, ["tak_Channel Bravo"]);
 
+// Marti LDAP DN group names (cn=...) must resolve like bare tak_* names.
+mapMeta.rebuildConnectionGroupIndex([
+  {
+    username: "11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff:00",
+    callsign: "FedHub",
+    protocol: "FIGFed_FedHub_c5283deb7284410cb9d1104b19789d17",
+    uid: null,
+    groups: [
+      { name: "cn=tak_Channel Charlie", direction: "IN", active: true },
+      { name: "cn=tak_Channel Charlie", direction: "OUT", active: true },
+    ],
+  },
+]);
+assert.deepStrictEqual(mapMeta.getFederationSubscriptionGroups(), ["tak_Channel Charlie"]);
+assert.deepStrictEqual(
+  mapMeta.resolveGroupsFromFlowTags({
+    flowTagUids: [
+      "TAK-Server-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "TAK-Server-ffffffffffffffffffffffffffffffff",
+    ],
+  }),
+  ["tak_Channel Charlie"]
+);
+
 console.log("mapMeta.test.js OK");

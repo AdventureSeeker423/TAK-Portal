@@ -168,14 +168,26 @@ function consolidateChannelCatalog(ldapNames) {
 }
 
 function toChannelGroupName(name) {
-  const n = normalizeGroupName(name);
+  const n = stripLdapDnGroupName(name);
   if (!n || n === UNASSIGNED_GROUP) return null;
   const display = stripChannelBehaviorSuffix(isMapChannelGroupName(n) ? n : groupsSvc.ensureTakPrefix(n));
   return channelCatalogName(display);
 }
 
-function isTakChannelGroupName(name) {
+/**
+ * Marti sometimes returns LDAP DNs (cn=tak_Foo) instead of bare group names.
+ * Extract the CN value; leave non-DN names unchanged.
+ */
+function stripLdapDnGroupName(name) {
   const n = normalizeGroupName(name);
+  if (!n) return "";
+  const cn = n.match(/^cn\s*=\s*([^,]+)/i);
+  if (cn && cn[1]) return normalizeGroupName(cn[1]);
+  return n;
+}
+
+function isTakChannelGroupName(name) {
+  const n = stripLdapDnGroupName(name);
   if (!n || n === UNASSIGNED_GROUP) return false;
   if (n.startsWith("_") || n.toLowerCase() === "__anon__") return false;
   if (/^cn=/i.test(n)) return false;
@@ -184,7 +196,7 @@ function isTakChannelGroupName(name) {
 }
 
 function subscriptionGroupName(entry) {
-  return normalizeGroupName(
+  return stripLdapDnGroupName(
     entry?.name || entry?.groupName || entry?.group || entry?.cn || ""
   );
 }
@@ -239,7 +251,7 @@ function filterAssignableChannelGroups(names) {
   const seen = new Set();
   const out = [];
   for (const raw of names || []) {
-    const name = normalizeGroupName(raw);
+    const name = stripLdapDnGroupName(raw);
     if (!isAssignableChannelGroupName(name)) continue;
     const key = channelBaseKey(name);
     if (!key || seen.has(key)) continue;
@@ -263,7 +275,7 @@ function normalizeDataFeedGroupList(raw) {
         : [];
   const out = [];
   for (const item of items) {
-    const n = normalizeGroupName(item);
+    const n = stripLdapDnGroupName(item);
     if (!n) continue;
     const withPrefix = isMapChannelGroupName(n) ? n : groupsSvc.ensureTakPrefix(stripChannelBehaviorSuffix(n));
     if (isTakChannelGroupName(withPrefix)) out.push(withPrefix);
@@ -281,6 +293,17 @@ function registerConnectionGroups(ids, groups) {
   }
 }
 
+function federationProtocolIds(protocol) {
+  const s = String(protocol || "").trim();
+  if (!s) return [];
+  const ids = [];
+  // e.g. FIGFed_FedHub_<32hex>
+  const m = s.match(/([0-9a-f]{32})$/i) || s.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+  if (m && m[1]) ids.push(m[1]);
+  ids.push(s);
+  return ids;
+}
+
 function subscriptionIdentityIds(sub) {
   return [
     sub?.uid,
@@ -291,6 +314,7 @@ function subscriptionIdentityIds(sub) {
     sub?.serverId,
     sub?.federateId,
     sub?.remoteServerId,
+    ...federationProtocolIds(sub?.protocol),
   ];
 }
 
@@ -299,9 +323,13 @@ function isLikelyFederationSubscription(sub) {
   if (takMetrics.isFederationTokenUsername(sub.username)) return true;
   const callsign = String(sub.callsign || "").toLowerCase();
   const username = String(sub.username || "").toLowerCase();
+  const protocol = String(sub.protocol || "").toLowerCase();
+  const handler = String(sub.handler || "").toLowerCase();
   if (callsign.includes("federat") || username.includes("federat")) return true;
-  if (String(sub.protocol || "").toLowerCase().includes("federat")) return true;
-  if (String(sub.handler || "").toLowerCase().includes("federat")) return true;
+  if (protocol.includes("federat") || handler.includes("federat")) return true;
+  if (callsign.includes("fedhub") || protocol.includes("fedhub") || protocol.includes("figfed")) {
+    return true;
+  }
   return false;
 }
 
@@ -2050,6 +2078,7 @@ module.exports = {
   rebuildConnectionGroupIndex,
   lookupConnectionGroups,
   resolveGroupsFromFlowTags,
+  stripLdapDnGroupName,
   getFederationSubscriptionGroups: () => federationSubscriptionGroups.slice(),
   refreshFederateGroupIndex,
   isLikelyFederationSubscription,
