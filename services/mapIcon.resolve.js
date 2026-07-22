@@ -73,6 +73,12 @@ const BARE_CIVILIAN_AIR_PREFERRED_ICONS = {
   ],
 };
 
+/** CoT type → Default iconset path (survives iconset.xml re-vendor). */
+const COT_TYPE_ICON_OVERRIDES = {
+  "b-m-p-s-p-i": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/target.png" },
+  "b-m-p-s-p-loc": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/target.png" },
+};
+
 function cotTypeSegments(cotType) {
   return String(cotType || "")
     .trim()
@@ -479,6 +485,15 @@ function resolvePngIcon(
 
   if (prefersMilSymIconPath(ui.iconsetpath)) {
     return null;
+  }
+
+  const typeOverride = COT_TYPE_ICON_OVERRIDES[String(cotType || "").trim().toLowerCase()];
+  if (typeOverride) {
+    const iconset = iconsetsByUid.get(typeOverride.iconsetUid);
+    if (iconset) {
+      const hit = buildIconResult(iconset, typeOverride.relPath, "type-override");
+      if (hit) return hit;
+    }
   }
 
   const globalTypeHit = findBestTypeMatch(cotType, typesByPrefix, iconsetsByUid);

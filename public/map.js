@@ -52,6 +52,9 @@
   const MAP_LABEL_FONT = ["Open Sans Semibold"];
   const MARKER_FILTER = ["==", ["get", "kind"], "marker"];
   const SOURCE_ID = "tak-markers";
+  const LIVE_SHAPES_SOURCE_ID = "tak-live-shapes";
+  const LIVE_SHAPES_FILL_LAYER = "tak-live-shapes-fill";
+  const LIVE_SHAPES_LINE_LAYER = "tak-live-shapes-line";
   const CIRCLE_LAYER_LOW = "tak-markers-circle-low";
   const ICON_LAYER_LOW = "tak-markers-icon-low";
   const CIRCLE_LAYER_HIGH = "tak-markers-circle-high";
@@ -159,6 +162,7 @@
 
   const markersByUid = new Map();
   const missionMarkersByUid = new Map();
+  const liveShapesByUid = new Map();
   let groupsCatalog = [];
   let mapChannelScope = "all";
   let allowedMemberChannelKeys = null;
@@ -780,10 +784,11 @@
   /** Higher rank = draw above data feeds (EUD on top). */
   function markerOriginRank(m) {
     const origin = String(m?.origin || "").toLowerCase();
-    if (origin === "eud" || origin === "federation") return 2;
+    if (origin === "eud" || origin === "federation" || origin === "spi") return 2;
     if (origin === "feed") return 0;
     if (origin === "unknown") return 1;
     const type = String(m?.type || "");
+    if (/^b-m-p-s-p-/i.test(type)) return 2;
     if (/^a-f-G-/i.test(type)) return 2;
     if (/^a-[fnhu]-A-/i.test(type)) return 0;
     if (/^a-f-[GUS]-/i.test(type)) return 2;
@@ -1013,11 +1018,126 @@
       );
       map.setFilter(LABEL_LAYER, withChannelFilter(labelStandardFilter()));
       map.setFilter(LABEL_PRIORITY_LAYER, withChannelFilter(labelPriorityFilter()));
+      applyLiveShapeChannelFilters();
       return true;
     } catch (err) {
       console.warn("[map] applyMapChannelLayerFilters failed", err);
       return false;
     }
+  }
+
+  function liveShapeChannelFilter() {
+    const channelExpr = buildChannelVisibilityFilterExpr();
+    if (!channelExpr) return null;
+    return channelExpr;
+  }
+
+  function applyLiveShapeChannelFilters() {
+    if (!map || !map.getLayer(LIVE_SHAPES_FILL_LAYER)) return;
+    const channelExpr = liveShapeChannelFilter();
+    const fillFilter = channelExpr
+      ? ["all", ["==", ["geometry-type"], "Polygon"], channelExpr]
+      : ["==", ["geometry-type"], "Polygon"];
+    const lineFilter = channelExpr
+      ? [
+          "all",
+          ["any", ["==", ["geometry-type"], "Polygon"], ["==", ["geometry-type"], "LineString"]],
+          channelExpr,
+        ]
+      : ["any", ["==", ["geometry-type"], "Polygon"], ["==", ["geometry-type"], "LineString"]];
+    try {
+      map.setFilter(LIVE_SHAPES_FILL_LAYER, fillFilter);
+      map.setFilter(LIVE_SHAPES_LINE_LAYER, lineFilter);
+    } catch (_) {}
+  }
+
+  function liveShapesFeatureCollection() {
+    return {
+      type: "FeatureCollection",
+      features: Array.from(liveShapesByUid.values()),
+    };
+  }
+
+  function syncLiveShapesSource() {
+    if (!map) return;
+    ensureLiveShapeLayers();
+    const src = map.getSource(LIVE_SHAPES_SOURCE_ID);
+    if (src) src.setData(liveShapesFeatureCollection());
+    applyLiveShapeChannelFilters();
+  }
+
+  function ensureLiveShapeLayers() {
+    if (!map) return;
+    const beforeId = map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
+    if (!map.getSource(LIVE_SHAPES_SOURCE_ID)) {
+      map.addSource(LIVE_SHAPES_SOURCE_ID, {
+        type: "geojson",
+        data: liveShapesFeatureCollection(),
+      });
+    }
+    if (!map.getLayer(LIVE_SHAPES_FILL_LAYER)) {
+      map.addLayer(
+        {
+          id: LIVE_SHAPES_FILL_LAYER,
+          type: "fill",
+          source: LIVE_SHAPES_SOURCE_ID,
+          filter: ["==", ["geometry-type"], "Polygon"],
+          paint: {
+            "fill-color": ["coalesce", ["get", "fill"], "#ef4444"],
+            "fill-opacity": ["coalesce", ["get", "fill-opacity"], 0.2],
+          },
+        },
+        beforeId
+      );
+    }
+    if (!map.getLayer(LIVE_SHAPES_LINE_LAYER)) {
+      map.addLayer(
+        {
+          id: LIVE_SHAPES_LINE_LAYER,
+          type: "line",
+          source: LIVE_SHAPES_SOURCE_ID,
+          filter: [
+            "any",
+            ["==", ["geometry-type"], "Polygon"],
+            ["==", ["geometry-type"], "LineString"],
+          ],
+          paint: {
+            "line-color": ["coalesce", ["get", "stroke"], "#ef4444"],
+            "line-width": ["coalesce", ["get", "stroke-width"], 2],
+            "line-opacity": ["coalesce", ["get", "stroke-opacity"], 0.95],
+          },
+        },
+        beforeId
+      );
+    }
+  }
+
+  function applyLiveShapesSnapshot(shapes) {
+    liveShapesByUid.clear();
+    const features = shapes && Array.isArray(shapes.features) ? shapes.features : [];
+    for (let i = 0; i < features.length; i++) {
+      const f = features[i];
+      const uid = String((f && f.properties && f.properties.uid) || f.id || "").trim();
+      if (!uid || !f || !f.geometry) continue;
+      liveShapesByUid.set(uid, f);
+    }
+    syncLiveShapesSource();
+  }
+
+  function applyLiveShapeBatch(shapeUpdates, shapeRemoves) {
+    let changed = false;
+    for (let i = 0; i < (shapeRemoves || []).length; i++) {
+      const id = String(shapeRemoves[i] || "").trim();
+      if (id && liveShapesByUid.delete(id)) changed = true;
+    }
+    for (let i = 0; i < (shapeUpdates || []).length; i++) {
+      const f = shapeUpdates[i];
+      const uid = String((f && f.properties && f.properties.uid) || f.id || "").trim();
+      if (!uid || !f || !f.geometry) continue;
+      liveShapesByUid.set(uid, f);
+      changed = true;
+    }
+    if (changed) syncLiveShapesSource();
   }
 
   function countChannelVisibleFeatures() {
@@ -3940,6 +4060,7 @@
     }
 
     markerLayersReady = true;
+    ensureLiveShapeLayers();
     applyMapChannelLayerFilters();
     if (mapDiffFlushPending) {
       scheduleMapDiffFlush();
@@ -5013,6 +5134,7 @@
       storeMarker(m);
     }
     patchServerGeoJsonFromBatch(msg.updates || [], msg.removes || []);
+    applyLiveShapeBatch(msg.shapeUpdates || [], msg.shapeRemoves || []);
     const needsFullGeoRefresh = batchNeedsFullGeoRefresh(msg.updates);
     if (!needsFullGeoRefresh) {
       queueMapDiffFromBatch(msg.updates || [], msg.removes || []);
@@ -5103,6 +5225,10 @@
 
     if (state && state.icons && state.icons.defaultIcons) {
       defaultIconIds = state.icons.defaultIcons;
+    }
+
+    if (state && state.liveShapes) {
+      applyLiveShapesSnapshot(state.liveShapes);
     }
 
     const skipMarkerReload =
@@ -5588,6 +5714,8 @@
     }
     if (msg.type === "snapshot" && msg.state) {
       applySnapshot(msg.state);
+    } else if (msg.type === "shapes" && msg.shapes) {
+      applyLiveShapesSnapshot(msg.shapes);
     } else if (msg.type === "batch") {
       applyBatch(msg);
     } else if (msg.type === "update" && msg.marker) {

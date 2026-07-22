@@ -156,4 +156,47 @@ assert.strictEqual(
 );
 assert.strictEqual(mapRender.markerUsesMapIcon(unassignedMarker), false);
 
+const spiMarker = {
+  uid: "spi-1",
+  callsign: "SPI-1",
+  type: "b-m-p-s-p-i",
+  lat: 36.1,
+  lon: -86.67,
+  groups: ["tak_Channel Alpha"],
+  affiliation: "other",
+  origin: "spi",
+  iconId: "34ae1613-9645-4222-a9d2-e5f243dea2865:Hunting/target.png",
+  iconSource: "type-override",
+};
+assert.strictEqual(mapRender.markerUsesMapIcon(spiMarker), true);
+assert.strictEqual(mapMeta.classifyMarkerOrigin(spiMarker), "spi");
+
+const cotStream = require("../services/cotStream.service");
+const spiFeature = cotStream.parseSpiOverlayFeature(
+  {
+    raw: {
+      event: {
+        detail: {
+          shape: {
+            polyline: {
+              _attributes: { closed: "true", fillColor: "0", color: "-1" },
+              vertex: [
+                { _attributes: { lat: "36.105099", lon: "-86.672736" } },
+                { _attributes: { lat: "36.105099", lon: "-86.672717" } },
+                { _attributes: { lat: "36.105141", lon: "-86.672719" } },
+                { _attributes: { lat: "36.105141", lon: "-86.67274" } },
+              ],
+            },
+          },
+        },
+      },
+    },
+  },
+  spiMarker
+);
+assert.ok(spiFeature, "SPI FOV feature should parse");
+assert.strictEqual(spiFeature.geometry.type, "Polygon");
+assert.strictEqual(spiFeature.properties.kind, "spi-fov");
+assert.ok(spiFeature.geometry.coordinates[0].length >= 4);
+
 console.log("mapRender.test.js: all assertions passed");

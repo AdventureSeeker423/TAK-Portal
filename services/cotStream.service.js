@@ -42,6 +42,8 @@ let batchTimer = null;
 let markerRevision = 1;
 /** @type {Map<string, object>} uid -> GeoJSON feature for live shape overlays */
 const liveShapeFeatures = new Map();
+/** @type {Map<string, object>} uid -> GeoJSON Feature for SPI FOV / sensor footprints */
+const liveOverlayFeatures = new Map();
 /** @type {Promise<typeof import("@tak-ps/node-cot")>|null} */
 let nodeCotPromise = null;
 
@@ -58,6 +60,11 @@ function hasShapeDetail(cot) {
 function isShapeDrawingCotType(type) {
   const t = String(type || "").toLowerCase();
   return t.startsWith("u-d-") || t.startsWith("u-r-") || t.startsWith("b-m-r");
+}
+
+function isSpiCotType(type) {
+  const t = String(type || "").trim().toLowerCase();
+  return t.startsWith("b-m-p-s-p-i") || t.startsWith("b-m-p-s-p-loc");
 }
 
 function isShapeChildUid(uid, shapeUids) {
@@ -157,15 +164,104 @@ async function trackLiveShapeFeature(cot, marker) {
   } catch (_) {}
 }
 
+function parseSpiOverlayFeature(cot, marker) {
+  if (!cot || !marker || !isSpiCotType(marker.type)) return null;
+  const detail = cot?.raw?.event?.detail || marker?.cotRaw?.event?.detail;
+  const poly = detail?.shape?.polyline;
+  if (!poly) return null;
+
+  const attrs = poly._attributes || poly || {};
+  const verts = poly.vertex;
+  const list = Array.isArray(verts) ? verts : verts ? [verts] : [];
+  const coords = [];
+  for (const v of list) {
+    const a = v?._attributes || v || {};
+    const lat = Number(a.lat);
+    const lon = Number(a.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    coords.push([lon, lat]);
+  }
+  if (coords.length < 2) return null;
+
+  const closedAttr = attrs.closed;
+  const closed =
+    closedAttr === true ||
+    String(closedAttr || "").toLowerCase() === "true" ||
+    coords.length >= 3;
+
+  let geometry;
+  if (closed) {
+    const ring = coords.slice();
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (!first || !last || first[0] !== last[0] || first[1] !== last[1]) {
+      ring.push([first[0], first[1]]);
+    }
+    if (ring.length < 4) return null;
+    geometry = { type: "Polygon", coordinates: [ring] };
+  } else {
+    geometry = { type: "LineString", coordinates: coords };
+  }
+
+  const stroke = mapMeta.normalizeTakColor(attrs.color) || "#ef4444";
+  const fillRaw = mapMeta.normalizeTakColor(attrs.fillColor);
+  const fill = fillRaw || stroke;
+
+  return {
+    type: "Feature",
+    id: String(marker.uid),
+    geometry,
+    properties: {
+      uid: String(marker.uid),
+      callsign: marker.callsign || "",
+      cotType: marker.type || "",
+      kind: "spi-fov",
+      channelKeys: mapRender.markerChannelKeys(marker).join(","),
+      stroke,
+      fill,
+      "fill-opacity": fillRaw ? 0.28 : 0.2,
+      "stroke-opacity": 0.95,
+      "stroke-width": 2,
+    },
+  };
+}
+
+function trackSpiOverlayFeature(cot, marker) {
+  if (!marker?.uid || !isSpiCotType(marker.type)) return;
+  const feat = parseSpiOverlayFeature(cot, marker);
+  if (!feat) {
+    if (liveOverlayFeatures.has(marker.uid)) {
+      liveOverlayFeatures.delete(marker.uid);
+      queueShapeRemove(marker.uid);
+    }
+    return;
+  }
+  liveOverlayFeatures.set(marker.uid, feat);
+  queueShapeUpdate(feat);
+}
+
 function forgetLiveShape(uid) {
   const id = String(uid || "").trim();
   if (!id) return;
   liveShapeFeatures.delete(id);
+  if (liveOverlayFeatures.has(id)) {
+    liveOverlayFeatures.delete(id);
+    queueShapeRemove(id);
+  }
+}
+
+function getLiveOverlayGeoJson() {
+  return {
+    type: "FeatureCollection",
+    features: Array.from(liveOverlayFeatures.values()),
+  };
 }
 
 const pendingBroadcast = {
   updates: new Map(),
   removes: new Set(),
+  shapeUpdates: new Map(),
+  shapeRemoves: new Set(),
   groupsCatalog: false,
 };
 
@@ -187,12 +283,24 @@ function flushBroadcastBatch() {
   batchTimer = null;
   const updates = Array.from(pendingBroadcast.updates.values());
   const removes = Array.from(pendingBroadcast.removes);
+  const shapeUpdates = Array.from(pendingBroadcast.shapeUpdates.values());
+  const shapeRemoves = Array.from(pendingBroadcast.shapeRemoves);
   const includeGroups = pendingBroadcast.groupsCatalog;
   pendingBroadcast.updates.clear();
   pendingBroadcast.removes.clear();
+  pendingBroadcast.shapeUpdates.clear();
+  pendingBroadcast.shapeRemoves.clear();
   pendingBroadcast.groupsCatalog = false;
 
-  if (!updates.length && !removes.length && !includeGroups) return;
+  if (
+    !updates.length &&
+    !removes.length &&
+    !shapeUpdates.length &&
+    !shapeRemoves.length &&
+    !includeGroups
+  ) {
+    return;
+  }
 
   const payload = {
     type: "batch",
@@ -201,6 +309,8 @@ function flushBroadcastBatch() {
     updates,
     removes,
   };
+  if (shapeUpdates.length) payload.shapeUpdates = shapeUpdates;
+  if (shapeRemoves.length) payload.shapeRemoves = shapeRemoves;
   if (includeGroups) {
     payload.groupsCatalog = mapMeta.buildGroupsCatalogWithCounts(getMarkerList());
   }
@@ -221,6 +331,29 @@ function queueMarkerRemove(uid) {
   bumpMarkerRevision();
   pendingBroadcast.updates.delete(id);
   pendingBroadcast.removes.add(id);
+  if (liveOverlayFeatures.has(id)) {
+    liveOverlayFeatures.delete(id);
+    pendingBroadcast.shapeUpdates.delete(id);
+    pendingBroadcast.shapeRemoves.add(id);
+  }
+  scheduleBatchFlush();
+}
+
+function queueShapeUpdate(feature) {
+  const uid = String(feature?.properties?.uid || feature?.id || "").trim();
+  if (!uid || !feature) return;
+  bumpMarkerRevision();
+  pendingBroadcast.shapeRemoves.delete(uid);
+  pendingBroadcast.shapeUpdates.set(uid, feature);
+  scheduleBatchFlush();
+}
+
+function queueShapeRemove(uid) {
+  const id = String(uid || "").trim();
+  if (!id) return;
+  bumpMarkerRevision();
+  pendingBroadcast.shapeUpdates.delete(id);
+  pendingBroadcast.shapeRemoves.add(id);
   scheduleBatchFlush();
 }
 
@@ -424,6 +557,9 @@ function handleCot(cot) {
   markers.set(marker.uid, marker);
   if (!marker.iconId) enrichMarkerIconAsync(marker);
   queueMarkerUpdate(marker);
+  if (isSpiCotType(marker.type) && hasShapeDetail(cot)) {
+    trackSpiOverlayFeature(cot, marker);
+  }
 }
 
 function broadcast(obj) {
@@ -444,6 +580,8 @@ function sweepStaleMarkers(notify = true) {
       removed = true;
       if (notify) {
         queueMarkerRemove(uid);
+      } else if (liveOverlayFeatures.has(uid)) {
+        liveOverlayFeatures.delete(uid);
       }
     }
   }
@@ -508,6 +646,9 @@ function getStateSnapshot(options = {}) {
   };
   if (options.includeGroupsCatalog !== false) {
     snapshot.groupsCatalog = mapMeta.buildGroupsCatalogWithCounts(markerList);
+  }
+  if (options.includeLiveShapes !== false) {
+    snapshot.liveShapes = getLiveOverlayGeoJson();
   }
   return snapshot;
 }
@@ -664,6 +805,13 @@ function subscribe(sendFn) {
         state: getStateSnapshot({ includeGroupsCatalog: false }),
       })}\n\n`
     );
+    sendFn(
+      `data: ${JSON.stringify({
+        type: "shapes",
+        shapes: getLiveOverlayGeoJson(),
+        at: new Date().toISOString(),
+      })}\n\n`
+    );
   } catch (_) {}
 
   return () => {
@@ -688,6 +836,13 @@ function refreshAllMarkerGroups() {
     if (originChanged) marker.origin = nextOrigin;
     marker.updatedAt = new Date().toISOString();
     queueMarkerUpdate(marker);
+    if (isSpiCotType(marker.type) && liveOverlayFeatures.has(marker.uid)) {
+      const overlay = liveOverlayFeatures.get(marker.uid);
+      if (overlay?.properties) {
+        overlay.properties.channelKeys = mapRender.markerChannelKeys(marker).join(",");
+        queueShapeUpdate(overlay);
+      }
+    }
     changed = true;
   }
   if (changed) queueGroupsCatalogRefresh();
@@ -776,6 +931,8 @@ module.exports = {
   findMarkersByCallsign,
   getMarkersSlimList,
   getMarkersGeoJson,
+  getLiveOverlayGeoJson,
+  parseSpiOverlayFeature,
   getMarkerRevision,
   subscribe,
   ensureBridgeStarted,

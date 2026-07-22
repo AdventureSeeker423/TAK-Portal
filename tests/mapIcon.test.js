@@ -242,6 +242,25 @@ async function runTests() {
   assert.ok(defaults.friend, "default friendly icon");
   assert.ok(mapIcon.getIconFilePath(defaults.friend));
 
+  const spiIcon = mapIcon.resolveIcon({ type: "b-m-p-s-p-i", affiliation: "other" });
+  assert.ok(spiIcon, "SPI type should resolve");
+  assert.strictEqual(spiIcon.source, "type-override");
+  assert.ok(
+    /Hunting\/target\.png/i.test(spiIcon.relPath || spiIcon.iconId),
+    "SPI should use Default Hunting/target.png, got " + spiIcon.iconId
+  );
+  assert.ok(mapIcon.getIconFilePath(spiIcon.iconId), "SPI target icon file must exist");
+  assert.strictEqual(
+    mapRender.markerUsesMapIcon({
+      type: "b-m-p-s-p-i",
+      origin: "spi",
+      iconId: spiIcon.iconId,
+      iconSource: spiIcon.source,
+    }),
+    true,
+    "SPI markers should render with map icons"
+  );
+
   console.log("mapIcon.test.js: all assertions passed");
 }
 

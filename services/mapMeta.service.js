@@ -1689,7 +1689,7 @@ function markerResolvedViaFeedIndex(marker) {
 
 /**
  * Classify marker provenance for map draw priority (EUD above data feeds).
- * @returns {"eud"|"feed"|"federation"|"unknown"}
+ * @returns {"eud"|"feed"|"federation"|"spi"|"unknown"}
  */
 function classifyMarkerOrigin(marker) {
   if (!marker) return "unknown";
@@ -1698,11 +1698,13 @@ function classifyMarkerOrigin(marker) {
   if (markerHasDataFeedProvenance(marker)) return "feed";
   if (markerResolvedViaFeedIndex(marker)) return "feed";
 
+  const type = String(marker.type || "").trim();
+  if (/^b-m-p-s-p-/i.test(type)) return "spi";
+
   const flowTags = Array.isArray(marker.flowTagUids) ? marker.flowTagUids : [];
   const flowProvenanceCount = flowTags.filter(isFlowProvenanceId).length;
   if (flowProvenanceCount >= 2) return "federation";
 
-  const type = String(marker.type || "").trim();
   if (/^a-f-G-/i.test(type)) return "eud";
   if (/^a-[fnhu]-A-/i.test(type)) return "feed";
   if (/^a-f-[GUS]-/i.test(type)) return "eud";

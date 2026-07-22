@@ -145,18 +145,30 @@ function isAirCotType(type) {
   return parts.length >= 3 && parts[2].toUpperCase() === "A";
 }
 
+function isSpiCotType(type) {
+  const t = String(type || "").trim().toLowerCase();
+  return t.startsWith("b-m-p-s-p-i") || t.startsWith("b-m-p-s-p-loc");
+}
+
 function isFeedLikeOrigin(origin) {
   const o = String(origin || "").toLowerCase();
-  return o === "feed" || o === "mission";
+  return o === "feed" || o === "mission" || o === "spi";
 }
 
 /** PNG / 2525D map icons: feeds, explicit usericon/path, air type2525b; EUD uses team dots. */
 function markerUsesMapIcon(marker) {
   if (!marker?.iconId) return false;
+  if (isSpiCotType(marker.type)) return true;
   const origin = String(marker.origin || "").toLowerCase();
   if (origin === "eud" || origin === "federation") return false;
   const src = String(marker.iconSource || "").toLowerCase();
-  if (src === "usericon" || src === "path" || src === "alias" || src === "milsym") {
+  if (
+    src === "usericon" ||
+    src === "path" ||
+    src === "alias" ||
+    src === "milsym" ||
+    src === "type-override"
+  ) {
     return true;
   }
   const apiId = String(marker.iconId || "");
@@ -172,9 +184,11 @@ function markerUsesMapIcon(marker) {
 function markerOriginRank(marker) {
   const origin = String(marker?.origin || "").toLowerCase();
   if (origin === "eud" || origin === "federation") return 2;
+  if (origin === "spi") return 2;
   if (origin === "feed") return 0;
   if (origin === "unknown") return 1;
   const type = String(marker?.type || "");
+  if (isSpiCotType(type)) return 2;
   if (/^a-f-G-/i.test(type)) return 2;
   if (/^a-[fnhu]-A-/i.test(type)) return 0;
   if (/^a-f-[GUS]-/i.test(type)) return 2;
