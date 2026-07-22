@@ -165,7 +165,7 @@ const spiMarker = {
   groups: ["tak_Channel Alpha"],
   affiliation: "other",
   origin: "spi",
-  iconId: "34ae1613-9645-4222-a9d2-e5f243dea2865:Hunting/target.png",
+  iconId: "34ae1613-9645-4222-a9d2-e5f243dea2865:Hunting/crosshair.png",
   iconSource: "type-override",
 };
 assert.strictEqual(mapRender.markerUsesMapIcon(spiMarker), true);
@@ -197,6 +197,9 @@ const spiFeature = cotStream.parseSpiOverlayFeature(
 assert.ok(spiFeature, "SPI FOV feature should parse");
 assert.strictEqual(spiFeature.geometry.type, "Polygon");
 assert.strictEqual(spiFeature.properties.kind, "spi-fov");
+assert.strictEqual(spiFeature.properties.fill, "#ffffff");
+assert.strictEqual(spiFeature.properties.stroke, "#ffffff");
+assert.ok(spiFeature.properties["fill-opacity"] < 0.2, "SPI fill should be lighter than before");
 assert.ok(spiFeature.geometry.coordinates[0].length >= 4);
 
 console.log("mapRender.test.js: all assertions passed");

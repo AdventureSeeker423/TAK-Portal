@@ -246,10 +246,10 @@ async function runTests() {
   assert.ok(spiIcon, "SPI type should resolve");
   assert.strictEqual(spiIcon.source, "type-override");
   assert.ok(
-    /Hunting\/target\.png/i.test(spiIcon.relPath || spiIcon.iconId),
-    "SPI should use Default Hunting/target.png, got " + spiIcon.iconId
+    /Hunting\/crosshair\.png/i.test(spiIcon.relPath || spiIcon.iconId),
+    "SPI should use Default Hunting/crosshair.png, got " + spiIcon.iconId
   );
-  assert.ok(mapIcon.getIconFilePath(spiIcon.iconId), "SPI target icon file must exist");
+  assert.ok(mapIcon.getIconFilePath(spiIcon.iconId), "SPI crosshair icon file must exist");
   assert.strictEqual(
     mapRender.markerUsesMapIcon({
       type: "b-m-p-s-p-i",

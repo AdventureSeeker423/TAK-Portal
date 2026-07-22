@@ -1083,8 +1083,8 @@
           source: LIVE_SHAPES_SOURCE_ID,
           filter: ["==", ["geometry-type"], "Polygon"],
           paint: {
-            "fill-color": ["coalesce", ["get", "fill"], "#ef4444"],
-            "fill-opacity": ["coalesce", ["get", "fill-opacity"], 0.2],
+            "fill-color": ["coalesce", ["get", "fill"], "#ffffff"],
+            "fill-opacity": ["coalesce", ["get", "fill-opacity"], 0.1],
           },
         },
         beforeId
@@ -1102,9 +1102,9 @@
             ["==", ["geometry-type"], "LineString"],
           ],
           paint: {
-            "line-color": ["coalesce", ["get", "stroke"], "#ef4444"],
+            "line-color": ["coalesce", ["get", "stroke"], "#ffffff"],
             "line-width": ["coalesce", ["get", "stroke-width"], 2],
-            "line-opacity": ["coalesce", ["get", "stroke-opacity"], 0.95],
+            "line-opacity": ["coalesce", ["get", "stroke-opacity"], 0.9],
           },
         },
         beforeId

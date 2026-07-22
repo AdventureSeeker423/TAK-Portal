@@ -203,9 +203,9 @@ function parseSpiOverlayFeature(cot, marker) {
     geometry = { type: "LineString", coordinates: coords };
   }
 
-  const stroke = mapMeta.normalizeTakColor(attrs.color) || "#ef4444";
-  const fillRaw = mapMeta.normalizeTakColor(attrs.fillColor);
-  const fill = fillRaw || stroke;
+  // SPI view box: white outline + light white fill (ignore CoT colors).
+  const stroke = "#ffffff";
+  const fill = "#ffffff";
 
   return {
     type: "Feature",
@@ -219,8 +219,8 @@ function parseSpiOverlayFeature(cot, marker) {
       channelKeys: mapRender.markerChannelKeys(marker).join(","),
       stroke,
       fill,
-      "fill-opacity": fillRaw ? 0.28 : 0.2,
-      "stroke-opacity": 0.95,
+      "fill-opacity": 0.1,
+      "stroke-opacity": 0.9,
       "stroke-width": 2,
     },
   };

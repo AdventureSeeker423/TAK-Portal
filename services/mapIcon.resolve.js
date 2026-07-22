@@ -75,8 +75,8 @@ const BARE_CIVILIAN_AIR_PREFERRED_ICONS = {
 
 /** CoT type → Default iconset path (survives iconset.xml re-vendor). */
 const COT_TYPE_ICON_OVERRIDES = {
-  "b-m-p-s-p-i": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/target.png" },
-  "b-m-p-s-p-loc": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/target.png" },
+  "b-m-p-s-p-i": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/crosshair.png" },
+  "b-m-p-s-p-loc": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/crosshair.png" },
 };
 
 function cotTypeSegments(cotType) {
