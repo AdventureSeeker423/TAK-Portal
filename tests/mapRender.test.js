@@ -156,6 +156,41 @@ assert.strictEqual(
 );
 assert.strictEqual(mapRender.markerUsesMapIcon(unassignedMarker), false);
 
+const fedAirMarker = {
+  uid: "790HP_COT_THP-AirBear1",
+  callsign: "THP-AirBear1",
+  type: "a-f-A-C-F",
+  lat: 36.104548,
+  lon: -86.672572,
+  affiliation: "friend",
+  origin: "federation",
+  iconId: "34ae1613-9645-4222-a9d2-e5f243dea2865:Air/air_fixedwing.png",
+  iconSource: "type2525b",
+  flowTagUids: [
+    "TAK-Server-cd849cb30b00485db3593a605b56c53b",
+    "TAK-Server-e4b70029ff1a499197b40d11438e3647",
+  ],
+};
+assert.strictEqual(
+  mapMeta.classifyMarkerOrigin(fedAirMarker),
+  "federation",
+  "multi-hop flow tags still classify as federation"
+);
+assert.strictEqual(
+  mapRender.markerUsesMapIcon(fedAirMarker),
+  true,
+  "federated aircraft should still use map icons"
+);
+assert.strictEqual(
+  mapRender.markerUsesMapIcon({
+    ...fedAirMarker,
+    type: "a-f-G-U-C",
+    iconSource: "type2525b",
+  }),
+  false,
+  "federated ground EUD still uses team dots"
+);
+
 const spiMarker = {
   uid: "spi-1",
   callsign: "SPI-1",

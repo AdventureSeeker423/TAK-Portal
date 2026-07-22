@@ -159,9 +159,14 @@ function isFeedLikeOrigin(origin) {
 function markerUsesMapIcon(marker) {
   if (!marker?.iconId) return false;
   if (isSpiCotType(marker.type)) return true;
-  const origin = String(marker.origin || "").toLowerCase();
-  if (origin === "eud" || origin === "federation") return false;
   const src = String(marker.iconSource || "").toLowerCase();
+  const apiId = String(marker.iconId || "");
+  // Aircraft (and milsym) keep symbology even when multi-hop _flow-tags_
+  // classify the marker as federation (otherwise they render as team dots).
+  if (apiId.startsWith("2525D:")) return true;
+  if (isAirCotType(marker.type) && (src === "type2525b" || src === "default" || src === "milsym")) {
+    return true;
+  }
   if (
     src === "usericon" ||
     src === "path" ||
@@ -171,11 +176,9 @@ function markerUsesMapIcon(marker) {
   ) {
     return true;
   }
-  const apiId = String(marker.iconId || "");
-  if (apiId.startsWith("2525D:")) return true;
-  if (isAirCotType(marker.type) && src === "default") return true;
+  const origin = String(marker.origin || "").toLowerCase();
+  if (origin === "eud" || origin === "federation") return false;
   if (src === "type2525b") {
-    if (isAirCotType(marker.type)) return true;
     return isFeedLikeOrigin(marker.origin);
   }
   return false;
