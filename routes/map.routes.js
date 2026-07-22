@@ -312,9 +312,12 @@ router.get("/debug/render-stats", (req, res) => {
  * Diagnose why a live marker is/isn't assigned to map channels.
  * ?uid=... or ?callsign=... (callsign match is case-insensitive, exact).
  */
-router.get("/debug/groups", (req, res) => {
+router.get("/debug/groups", async (req, res) => {
   cotStream.ensureBridgeStarted();
   mapMeta.ensureRefreshLoop();
+  try {
+    await mapMeta.refreshSubscriptionIndex();
+  } catch (_) {}
 
   const uid = String(req.query.uid || "").trim();
   const callsign = String(req.query.callsign || "").trim();
@@ -383,7 +386,62 @@ router.get("/debug/groups", (req, res) => {
       visibleWithUnassignedEnabled: mapRender.markerVisible(marker, {
         enabledChannelKeys: new Set([mapMeta.UNASSIGNED_CHANNEL_KEY]),
       }),
+      mapHint:
+        "If unassigned=true, enable the Unassigned row in Channels (or clear channel filter storage). Federated markers stay Unassigned until Marti federate/subscription groups are indexed.",
     },
+  });
+});
+
+/** Inspect federation group index (subscriptions + Marti federate API probe). */
+router.get("/debug/federation", async (req, res) => {
+  cotStream.ensureBridgeStarted();
+  mapMeta.ensureRefreshLoop();
+  try {
+    await mapMeta.refreshSubscriptionIndex();
+  } catch (err) {
+    return res.status(500).json({
+      error: err?.message || String(err),
+    });
+  }
+
+  const takMetrics = require("../services/takMetrics.service");
+  const subs = await takMetrics.getSubscriptionsAll();
+  const list = Array.isArray(subs?.data) ? subs.data : [];
+  const federationLike = list
+    .filter((s) => mapMeta.isLikelyFederationSubscription(s))
+    .map((s) => ({
+      uid: s.uid || null,
+      callsign: s.callsign || null,
+      username: s.username || null,
+      protocol: s.protocol || null,
+      filterGroups: s.filterGroups || s.filtergroups || null,
+      groupNames: Array.isArray(s.groups)
+        ? s.groups.map((g) => ({
+            name: g?.name || g?.groupName || g?.group || null,
+            direction: g?.direction || null,
+            active: g?.active,
+          }))
+        : [],
+    }));
+
+  const federateGroups = await mapMeta.refreshFederateGroupIndex();
+
+  res.setHeader("Cache-Control", "no-cache");
+  return res.json({
+    federationSubscriptionGroups: mapMeta.getFederationSubscriptionGroups(),
+    federateApiGroups: federateGroups,
+    federationLikeSubscriptionCount: federationLike.length,
+    federationLikeSubscriptions: federationLike.slice(0, 50),
+    totalSubscriptions: list.length,
+    liveFederationOriginMarkers: cotStream
+      .getMarkerList()
+      .filter((m) => String(m?.origin || "").toLowerCase() === "federation")
+      .map((m) => ({
+        uid: m.uid,
+        callsign: m.callsign,
+        groups: m.groups,
+        flowTagUids: m.flowTagUids || [],
+      })),
   });
 });
 

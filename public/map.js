@@ -3622,16 +3622,9 @@
       return channelGroupKey(g.name) === "__unassigned__";
     });
     if (!unassigned || enabledGroups.has(unassigned.name)) return;
-
-    const others = groupsCatalog.filter(function (g) {
-      return isGroupInChannelScope(g) && channelGroupKey(g.name) !== "__unassigned__";
-    });
-    if (!others.length || others.every(function (g) {
-      return enabledGroups.has(g.name);
-    })) {
-      enabledGroups.add(unassigned.name);
-      saveEnabledGroups();
-    }
+    // Always surface Unassigned when markers land there (federation often does).
+    enabledGroups.add(unassigned.name);
+    saveEnabledGroups();
   }
 
   function mergeGroupsCatalog(incoming) {

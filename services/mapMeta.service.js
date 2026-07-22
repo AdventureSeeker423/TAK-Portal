@@ -294,19 +294,153 @@ function subscriptionIdentityIds(sub) {
   ];
 }
 
+function isLikelyFederationSubscription(sub) {
+  if (!sub || typeof sub !== "object") return false;
+  if (takMetrics.isFederationTokenUsername(sub.username)) return true;
+  const callsign = String(sub.callsign || "").toLowerCase();
+  const username = String(sub.username || "").toLowerCase();
+  if (callsign.includes("federat") || username.includes("federat")) return true;
+  if (String(sub.protocol || "").toLowerCase().includes("federat")) return true;
+  if (String(sub.handler || "").toLowerCase().includes("federat")) return true;
+  return false;
+}
+
+function extractFederateRecordGroups(rec) {
+  if (!rec || typeof rec !== "object") return [];
+  const bags = [
+    rec.groups,
+    rec.group,
+    rec.inboundGroups,
+    rec.outboundGroups,
+    rec.federateGroups,
+    rec.mappedGroups,
+    rec.filterGroups,
+    rec.filtergroups,
+    rec.groupFilter,
+    rec.groupFilters,
+  ];
+  const names = [];
+  for (const bag of bags) {
+    if (bag == null) continue;
+    if (typeof bag === "string" || typeof bag === "number") {
+      names.push(...normalizeDataFeedGroupList(bag));
+      continue;
+    }
+    if (!Array.isArray(bag)) {
+      names.push(...normalizeDataFeedGroupList(Object.keys(bag)));
+      names.push(...extractFederateRecordGroups(bag));
+      continue;
+    }
+    for (const item of bag) {
+      if (typeof item === "string" || typeof item === "number") {
+        names.push(...normalizeDataFeedGroupList(item));
+        continue;
+      }
+      const n =
+        subscriptionGroupName(item) ||
+        normalizeGroupName(item?.group) ||
+        normalizeGroupName(item?.value);
+      if (n) names.push(...normalizeDataFeedGroupList(n));
+    }
+  }
+  return dedupeGroupNames(names);
+}
+
+function extractFederateRecordIds(rec) {
+  if (!rec || typeof rec !== "object") return [];
+  const ids = [
+    rec.id,
+    rec.uid,
+    rec.federateId,
+    rec.federateUid,
+    rec.serverId,
+    rec.remoteServerId,
+    rec.identity,
+    rec.name,
+    rec.displayName,
+    rec.fingerprint,
+  ];
+  return ids.map((v) => normalizeGroupName(v)).filter(Boolean);
+}
+
+function asFederateRecordList(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (typeof payload !== "object") return [];
+  for (const key of [
+    "data",
+    "federates",
+    "federate",
+    "connections",
+    "activeConnections",
+    "values",
+    "items",
+  ]) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  if (payload.id || payload.federateId || payload.uid || payload.name) return [payload];
+  return [];
+}
+
+async function refreshFederateGroupIndex() {
+  if (isTakBypassed() || !isTakConfigured()) return [];
+
+  const paths = [
+    "/api/federate",
+    "/api/federates",
+    "/api/federation",
+    "/api/federation/activeConnections",
+    "/api/federateactive",
+  ];
+  const client = buildTakAxios();
+  const collectedGroups = [];
+  let lastError = null;
+
+  for (const path of paths) {
+    try {
+      const res = await client.get(path, { headers: { Accept: "application/json" } });
+      const records = asFederateRecordList(res?.data?.data != null ? res.data.data : res?.data);
+      if (!records.length) continue;
+
+      for (const rec of records) {
+        const groups = extractFederateRecordGroups(rec);
+        if (!groups.length) continue;
+        collectedGroups.push(...groups);
+        registerConnectionGroups(extractFederateRecordIds(rec), groups);
+      }
+      if (collectedGroups.length) break;
+    } catch (err) {
+      lastError = err?.message || String(err);
+    }
+  }
+
+  const merged = dedupeGroupNames([
+    ...federationSubscriptionGroups,
+    ...collectedGroups,
+  ]);
+  federationSubscriptionGroups = merged;
+  if (!merged.length && lastError) {
+    // Keep silent in production path; debug endpoint surfaces emptiness.
+  }
+  return merged;
+}
+
 function rebuildConnectionGroupIndex(subList) {
   connectionGroupsByUid = new Map();
   const fedGroups = [];
 
   for (const sub of Array.isArray(subList) ? subList : []) {
     const groups = subscriptionPublishGroups(sub);
+    const likelyFed = isLikelyFederationSubscription(sub);
+
+    // Federation rows sometimes omit IN groups even though filterGroups / OUT exist.
+    if (!groups.length && !likelyFed) continue;
     if (!groups.length) continue;
 
     registerConnectionGroups(subscriptionIdentityIds(sub), groups);
 
-    if (takMetrics.isFederationTokenUsername(sub?.username)) {
+    if (likelyFed) {
       fedGroups.push(...groups);
-      // Federation hubs sometimes expose the peer/server id as callsign.
       registerConnectionGroups([sub.callsign, sub.username], groups);
     }
   }
@@ -1549,6 +1683,9 @@ async function refreshSubscriptionIndex() {
     subscriptionListCache = list;
     rebuildConnectionGroupIndex(list);
     mergeDataFeedConnectionIndex();
+    try {
+      await refreshFederateGroupIndex();
+    } catch (_) {}
     notifySubscriptionIndexRefreshed();
   } catch (err) {
     subscriptionIndex = {
@@ -1914,6 +2051,8 @@ module.exports = {
   lookupConnectionGroups,
   resolveGroupsFromFlowTags,
   getFederationSubscriptionGroups: () => federationSubscriptionGroups.slice(),
+  refreshFederateGroupIndex,
+  isLikelyFederationSubscription,
   getTakGroupCatalog,
   getUserMemberChannelBaseKeys,
   filterMapGroupsForUserMembership,
