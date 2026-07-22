@@ -93,14 +93,45 @@ router.get("/markers", (req, res) => {
 router.get("/cot-raw", (req, res) => {
   cotStream.ensureBridgeStarted();
   const uid = String(req.query.uid || "").trim();
-  if (!uid) return res.status(400).json({ error: "Missing uid" });
-  const raw = cotStream.getMarkerRawCot(uid);
-  if (raw == null) {
+  const callsign = String(req.query.callsign || "").trim();
+  if (!uid && !callsign) {
+    return res.status(400).json({ error: "Pass ?uid= or ?callsign=" });
+  }
+
+  let marker = uid ? cotStream.getMarkerByUid(uid) : null;
+  if (!marker && callsign) {
+    let matches = cotStream.findMarkersByCallsign(callsign);
+    if (!matches.length) {
+      const q = callsign.toLowerCase();
+      matches = cotStream.getMarkerList().filter((m) =>
+        String(m?.callsign || "")
+          .trim()
+          .toLowerCase()
+          .includes(q)
+      );
+    }
+    if (matches.length > 1) {
+      return res.status(300).json({
+        error: "Multiple markers match callsign; pass ?uid=",
+        matches: matches.slice(0, 25).map((m) => ({
+          uid: m.uid,
+          callsign: m.callsign,
+          type: m.type,
+          groups: m.groups,
+          updatedAt: m.updatedAt || null,
+        })),
+      });
+    }
+    marker = matches[0] || null;
+  }
+
+  if (!marker || marker.cotRaw == null) {
     return res.status(404).json({ error: "Marker or raw CoT not found" });
   }
+
   res.setHeader("Cache-Control", "no-cache");
   res.type("application/json");
-  return res.send(JSON.stringify(raw, null, 2));
+  return res.send(JSON.stringify(marker.cotRaw, null, 2));
 });
 
 function buildGeoJsonOptions(req) {
