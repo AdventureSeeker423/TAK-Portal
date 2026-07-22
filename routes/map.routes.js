@@ -308,6 +308,85 @@ router.get("/debug/render-stats", (req, res) => {
   });
 });
 
+/**
+ * Diagnose why a live marker is/isn't assigned to map channels.
+ * ?uid=... or ?callsign=... (callsign match is case-insensitive, exact).
+ */
+router.get("/debug/groups", (req, res) => {
+  cotStream.ensureBridgeStarted();
+  mapMeta.ensureRefreshLoop();
+
+  const uid = String(req.query.uid || "").trim();
+  const callsign = String(req.query.callsign || "").trim();
+  if (!uid && !callsign) {
+    return res.status(400).json({
+      error: "Pass ?uid= or ?callsign= for a live marker",
+    });
+  }
+
+  let marker = uid ? cotStream.getMarkerByUid(uid) : null;
+  if (!marker && callsign) {
+    let matches = cotStream.findMarkersByCallsign(callsign);
+    if (!matches.length) {
+      const q = callsign.toLowerCase();
+      matches = cotStream.getMarkerList().filter((m) =>
+        String(m?.callsign || "")
+          .trim()
+          .toLowerCase()
+          .includes(q)
+      );
+    }
+    if (matches.length === 1) marker = matches[0];
+    else if (matches.length > 1) {
+      return res.status(300).json({
+        error: "Multiple markers match callsign; pass ?uid=",
+        matches: matches.slice(0, 25).map((m) => ({
+          uid: m.uid,
+          callsign: m.callsign,
+          groups: m.groups,
+          origin: m.origin,
+        })),
+      });
+    }
+  }
+
+  if (!marker) {
+    const state = cotStream.getStateSnapshot({ includeGroupsCatalog: false });
+    return res.status(404).json({
+      error: "Marker not in portal live store (bridge never received it, or it went stale)",
+      query: { uid: uid || null, callsign: callsign || null },
+      bridge: {
+        connected: state.connected,
+        connecting: state.connecting,
+        lastError: state.lastError,
+        markerCount: state.markerCount,
+        host: state.host,
+        port: state.port,
+      },
+      federationSubscriptionGroups: mapMeta.getFederationSubscriptionGroups(),
+      hint:
+        "If CloudTAK shows it but this 404s, the portal TLS cert is likely missing the TAK groups that receive that federated traffic.",
+    });
+  }
+
+  const explanation = mapMeta.explainGroupAssignment(marker);
+  const channelKeys = mapRender.markerChannelKeys(marker);
+  res.setHeader("Cache-Control", "no-cache");
+  return res.json({
+    ...explanation,
+    visibility: {
+      channelKeys,
+      unassigned: channelKeys.length === 1 && channelKeys[0] === mapMeta.UNASSIGNED_CHANNEL_KEY,
+      visibleWithAllChannels: mapRender.markerVisible(marker, {
+        enabledChannelKeys: null,
+      }),
+      visibleWithUnassignedEnabled: mapRender.markerVisible(marker, {
+        enabledChannelKeys: new Set([mapMeta.UNASSIGNED_CHANNEL_KEY]),
+      }),
+    },
+  });
+});
+
 /** Debug icon resolution for a live marker or synthetic inputs. */
 router.get("/debug/icon", async (req, res) => {
   await mapIcon.ensureIconsets();

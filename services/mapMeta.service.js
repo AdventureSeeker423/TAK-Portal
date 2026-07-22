@@ -1705,6 +1705,88 @@ function resolveGroupsForMarker(marker, cotDetail) {
   return [UNASSIGNED_GROUP];
 }
 
+/**
+ * Diagnostic trace for map channel assignment (debug API only).
+ * @param {object} marker
+ * @param {object|null} cotDetail
+ */
+function explainGroupAssignment(marker, cotDetail = null) {
+  ensureRefreshLoop();
+  const detail =
+    cotDetail && typeof cotDetail === "object"
+      ? cotDetail
+      : marker?.cotRaw?.event?.detail || null;
+
+  const fromSub = resolveGroupsFromSubscription(marker);
+  const fromFeed = resolveGroupsFromDataFeedIndex(marker);
+  const cotRouteGroups = detail
+    ? parseGroupsFromCoTDetail(detail)
+    : Array.isArray(marker?.cotRouteGroups)
+      ? marker.cotRouteGroups
+      : [];
+  const fromCot = filterAssignableChannelGroups(cotRouteGroups);
+  const flowTagUids = detail
+    ? parseFlowTagUids(detail)
+    : Array.isArray(marker?.flowTagUids)
+      ? marker.flowTagUids
+      : [];
+  const flowTagLookups = flowTagUids.map((uid) => ({
+    uid,
+    isFlowProvenance: isFlowProvenanceId(uid),
+    connectionGroups: lookupConnectionGroups(uid),
+    lookupKeys: connectionUidLookupKeys(uid).slice(0, 8),
+  }));
+  const fromFlow = resolveGroupsFromFlowTags(
+    detail || { flowTagUids }
+  );
+  const sourceHints = detail
+    ? parseSourceHints(detail)
+    : Array.isArray(marker?.sourceHints)
+      ? marker.sourceHints
+      : [];
+  const fromSource = resolveGroupsFromSourceHints(sourceHints);
+  const resolved = resolveGroupsForMarker(marker, detail);
+
+  return {
+    marker: {
+      uid: marker?.uid || null,
+      callsign: marker?.callsign || null,
+      type: marker?.type || null,
+      origin: marker?.origin || classifyMarkerOrigin(marker),
+      storedGroups: Array.isArray(marker?.groups) ? marker.groups : [],
+      cotRouteGroups: Array.isArray(marker?.cotRouteGroups) ? marker.cotRouteGroups : [],
+      flowTagUids,
+      relatedUids: Array.isArray(marker?.relatedUids) ? marker.relatedUids : [],
+      sourceHints,
+      detailKeys: Array.isArray(marker?.detailKeys)
+        ? marker.detailKeys
+        : detail
+          ? Object.keys(detail)
+          : [],
+    },
+    indexes: {
+      subscriptionFetchedAt: subscriptionIndex.fetchedAt || null,
+      subscriptionError: subscriptionIndex.error || null,
+      subscriptionUidCount: subscriptionIndex.byUid.size,
+      connectionUidCount: connectionGroupsByUid.size,
+      dataFeedKeyCount: dataFeedGroupsByKey.size,
+      dataFeedFetchedAt: dataFeedCache.fetchedAt || null,
+      dataFeedError: dataFeedCache.error || null,
+      federationSubscriptionGroups: federationSubscriptionGroups.slice(),
+      catalogChannelCount: Array.isArray(catalogCache.names) ? catalogCache.names.length : 0,
+    },
+    trace: {
+      step1_subscription: fromSub,
+      step2_dataFeed: fromFeed,
+      step3_cotRouting: fromCot,
+      step4_flowTagLookups: flowTagLookups,
+      step4_flowResolved: fromFlow,
+      step5_sourceHints: fromSource,
+      resolved,
+    },
+  };
+}
+
 function buildGroupsCatalogWithCounts(markers) {
   ensureRefreshLoop();
   const counts = new Map();
@@ -1823,6 +1905,7 @@ module.exports = {
   resolveMarkerDisplayColor,
   normalizeTakColor,
   resolveGroupsForMarker,
+  explainGroupAssignment,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
   connectionUidLookupKeys,
