@@ -135,4 +135,25 @@ const slimWithLink = mapRender.toSlimMarker({
 });
 assert.deepStrictEqual(slimWithLink.links, parsedLinks);
 
+const unassignedMarker = {
+  uid: "fed-eud-1",
+  callsign: "FED-EUD-1",
+  type: "a-f-G-U-C",
+  lat: 35.04,
+  lon: -85.2,
+  groups: [mapMeta.UNASSIGNED_GROUP],
+  affiliation: "friend",
+  origin: "federation",
+};
+assert.deepStrictEqual(mapRender.markerChannelKeys(unassignedMarker), [
+  mapMeta.UNASSIGNED_CHANNEL_KEY,
+]);
+assert.strictEqual(
+  mapRender.markerVisible(unassignedMarker, {
+    enabledChannelKeys: new Set([mapMeta.UNASSIGNED_CHANNEL_KEY]),
+  }),
+  true
+);
+assert.strictEqual(mapRender.markerUsesMapIcon(unassignedMarker), false);
+
 console.log("mapRender.test.js: all assertions passed");

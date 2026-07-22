@@ -153,7 +153,8 @@ function isFeedLikeOrigin(origin) {
 /** PNG / 2525D map icons: feeds, explicit usericon/path, air type2525b; EUD uses team dots. */
 function markerUsesMapIcon(marker) {
   if (!marker?.iconId) return false;
-  if (String(marker.origin || "").toLowerCase() === "eud") return false;
+  const origin = String(marker.origin || "").toLowerCase();
+  if (origin === "eud" || origin === "federation") return false;
   const src = String(marker.iconSource || "").toLowerCase();
   if (src === "usericon" || src === "path" || src === "alias" || src === "milsym") {
     return true;
@@ -170,7 +171,7 @@ function markerUsesMapIcon(marker) {
 
 function markerOriginRank(marker) {
   const origin = String(marker?.origin || "").toLowerCase();
-  if (origin === "eud") return 2;
+  if (origin === "eud" || origin === "federation") return 2;
   if (origin === "feed") return 0;
   if (origin === "unknown") return 1;
   const type = String(marker?.type || "");

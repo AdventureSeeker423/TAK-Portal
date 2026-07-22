@@ -10,6 +10,8 @@ const SUBSCRIPTION_REFRESH_MS = 30000;
 const DATAFEED_DETAIL_CACHE_MS = 5 * 60 * 1000;
 const INTEGRATION_LINK_REFRESH_MS = 60000;
 const UNASSIGNED_GROUP = "Unassigned";
+/** Stable channel key for Unassigned so channel/member filters can show those markers. */
+const UNASSIGNED_CHANNEL_KEY = "__unassigned__";
 
 let catalogCache = {
   names: [],
@@ -29,6 +31,11 @@ let subscriptionIndex = {
 let connectionGroupsByUid = new Map();
 /** Data feed filtergroup targets keyed by uuid/name/id fragments. */
 let dataFeedGroupsByKey = new Map();
+/**
+ * Union of publish groups from live federation-token subscriptions.
+ * Used when multi-hop TAK-Server flow tags do not resolve to a single connection.
+ */
+let federationSubscriptionGroups = [];
 
 let dataFeedCache = {
   fetchedAt: 0,
@@ -68,7 +75,10 @@ function isMapChannelGroupName(name) {
 
 function channelGroupKey(name) {
   const n = normalizeGroupName(name).toLowerCase();
-  if (!n || n === UNASSIGNED_GROUP.toLowerCase()) return "";
+  if (!n) return "";
+  if (n === UNASSIGNED_GROUP.toLowerCase() || n === UNASSIGNED_CHANNEL_KEY) {
+    return UNASSIGNED_CHANNEL_KEY;
+  }
   return channelBaseKey(name);
 }
 
@@ -82,8 +92,18 @@ function stripChannelBehaviorSuffix(name) {
 }
 
 function channelBaseKey(name) {
-  const base = stripChannelBehaviorSuffix(name);
-  if (!base || base.toLowerCase() === UNASSIGNED_GROUP.toLowerCase()) return "";
+  const raw = normalizeGroupName(name);
+  if (!raw) return "";
+  if (
+    raw.toLowerCase() === UNASSIGNED_GROUP.toLowerCase() ||
+    raw.toLowerCase() === UNASSIGNED_CHANNEL_KEY
+  ) {
+    return UNASSIGNED_CHANNEL_KEY;
+  }
+  const base = stripChannelBehaviorSuffix(raw);
+  if (!base || base.toLowerCase() === UNASSIGNED_GROUP.toLowerCase()) {
+    return UNASSIGNED_CHANNEL_KEY;
+  }
   return base.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
@@ -173,6 +193,41 @@ function isFlowProvenanceId(name) {
   return /^TAK-Server-/i.test(String(name || "").trim());
 }
 
+/**
+ * Expand a connection / flow-tag id into lookup keys.
+ * Flow tags use TAK-Server-<32hex>; Marti subscriptions often use hyphenated UUIDs.
+ */
+function connectionUidLookupKeys(raw) {
+  const keys = new Set();
+  const val = normalizeGroupName(raw);
+  if (!val) return [];
+
+  const lower = val.toLowerCase();
+  keys.add(lower);
+
+  const bare = lower.replace(/^tak-server-/, "");
+  if (bare) {
+    keys.add(bare);
+    keys.add(`tak-server-${bare}`);
+  }
+
+  const compact = bare.replace(/-/g, "");
+  if (compact) {
+    keys.add(compact);
+    keys.add(`tak-server-${compact}`);
+    if (/^[0-9a-f]{32}$/i.test(compact)) {
+      const hyphenated = compact.replace(
+        /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/i,
+        "$1-$2-$3-$4-$5"
+      );
+      keys.add(hyphenated);
+      keys.add(`tak-server-${hyphenated}`);
+    }
+  }
+
+  return Array.from(keys);
+}
+
 /** True when the name is a TAK channel/group, not a server flow-tag connection id. */
 function isAssignableChannelGroupName(name) {
   if (!isTakChannelGroupName(name)) return false;
@@ -220,32 +275,43 @@ function registerConnectionGroups(ids, groups) {
   const list = dedupeGroupNames(groups);
   if (!list.length) return;
   for (const rawId of ids || []) {
-    const id = normalizeGroupName(rawId);
-    if (!id) continue;
-    const lower = id.toLowerCase();
-    connectionGroupsByUid.set(lower, list);
-    const bare = lower.replace(/^tak-server-/, "");
-    if (bare && bare !== lower) {
-      connectionGroupsByUid.set(bare, list);
-      connectionGroupsByUid.set(`tak-server-${bare}`, list);
-    } else if (/^[0-9a-f-]{32,36}$/i.test(bare)) {
-      connectionGroupsByUid.set(`tak-server-${bare}`, list);
+    for (const key of connectionUidLookupKeys(rawId)) {
+      connectionGroupsByUid.set(key, list);
     }
   }
 }
 
+function subscriptionIdentityIds(sub) {
+  return [
+    sub?.uid,
+    sub?.clientUid,
+    sub?.clientUuid,
+    sub?.connectionUid,
+    sub?.deviceUid,
+    sub?.serverId,
+    sub?.federateId,
+    sub?.remoteServerId,
+  ];
+}
+
 function rebuildConnectionGroupIndex(subList) {
   connectionGroupsByUid = new Map();
+  const fedGroups = [];
 
   for (const sub of Array.isArray(subList) ? subList : []) {
     const groups = subscriptionPublishGroups(sub);
     if (!groups.length) continue;
 
-    registerConnectionGroups(
-      [sub.uid, sub.clientUid, sub.clientUuid, sub.connectionUid, sub.deviceUid],
-      groups
-    );
+    registerConnectionGroups(subscriptionIdentityIds(sub), groups);
+
+    if (takMetrics.isFederationTokenUsername(sub?.username)) {
+      fedGroups.push(...groups);
+      // Federation hubs sometimes expose the peer/server id as callsign.
+      registerConnectionGroups([sub.callsign, sub.username], groups);
+    }
   }
+
+  federationSubscriptionGroups = dedupeGroupNames(fedGroups);
 }
 
 /** Letters/digits only — matches integration title slugs to hyphenated marker uid prefixes. */
@@ -339,16 +405,13 @@ function registerDataFeedLookupKeys(rawKey, groups) {
   const list = dedupeGroupNames(groups);
   if (!list.length) return;
 
-  const keys = new Set();
+  const keys = new Set(connectionUidLookupKeys(rawKey));
   const val = normalizeGroupName(rawKey);
-  if (!val) return;
-
-  keys.add(val.toLowerCase());
-  const bare = val.replace(/^TAK-Server-/i, "").toLowerCase();
-  if (bare) keys.add(bare);
-
-  const identity = normalizeFeedIdentityKey(val);
-  if (identity) keys.add(identity);
+  if (val) {
+    keys.add(val.toLowerCase());
+    const identity = normalizeFeedIdentityKey(val);
+    if (identity) keys.add(identity);
+  }
 
   for (const key of keys) {
     dataFeedGroupsByKey.set(key, list);
@@ -507,10 +570,7 @@ function crossLinkIntegrationsAndSubscriptions(subList) {
       const username = normalizeGroupName(sub?.username).toLowerCase();
       if (!username || username !== entryUser) continue;
 
-      registerConnectionGroups(
-        [sub.uid, sub.clientUid, sub.clientUuid, sub.connectionUid, sub.deviceUid],
-        entry.groups
-      );
+      registerConnectionGroups(subscriptionIdentityIds(sub), entry.groups);
     }
   }
 }
@@ -631,10 +691,7 @@ function crossLinkFeedsAndSubscriptions(feeds, subList) {
     for (const sub of Array.isArray(subList) ? subList : []) {
       if (!feedMatchesSubscriptionIdentity(feed, sub)) continue;
 
-      registerConnectionGroups(
-        [sub.uid, sub.clientUid, sub.clientUuid, sub.connectionUid, sub.deviceUid],
-        groups
-      );
+      registerConnectionGroups(subscriptionIdentityIds(sub), groups);
     }
   }
 }
@@ -740,18 +797,13 @@ function parseFlowTagUids(detail) {
 }
 
 function lookupConnectionGroups(uid) {
-  const id = normalizeGroupName(uid).toLowerCase();
-  if (!id) return [];
-  const bare = id.replace(/^tak-server-/, "");
-  return (
-    connectionGroupsByUid.get(id) ||
-    connectionGroupsByUid.get(bare) ||
-    connectionGroupsByUid.get(`tak-server-${bare}`) ||
-    dataFeedGroupsByKey.get(id) ||
-    dataFeedGroupsByKey.get(bare) ||
-    dataFeedGroupsByKey.get(`tak-server-${bare}`) ||
-    []
-  );
+  for (const key of connectionUidLookupKeys(uid)) {
+    const hit =
+      connectionGroupsByUid.get(key) ||
+      dataFeedGroupsByKey.get(key);
+    if (Array.isArray(hit) && hit.length) return hit;
+  }
+  return [];
 }
 
 function lookupGroupsByConnectionKey(key) {
@@ -767,12 +819,26 @@ function resolveGroupsFromFlowTags(source) {
     ? source.flowTagUids
     : parseFlowTagUids(source);
   const out = [];
+  let flowProvenanceCount = 0;
+
   for (const uid of uids) {
+    if (isFlowProvenanceId(uid)) flowProvenanceCount += 1;
     const groups = lookupConnectionGroups(uid);
     if (!groups.length && isFlowProvenanceId(uid)) continue;
     out.push(...groups);
   }
-  return dedupeGroupNames(out);
+
+  const resolved = dedupeGroupNames(out);
+  if (resolved.length) return resolved;
+
+  // Multi-hop TAK-Server flow tags = federated provenance. When no hop maps to a
+  // known local connection id, fall back to groups published by live federation
+  // subscriptions (the channels federation is feeding into).
+  if (flowProvenanceCount >= 2 && federationSubscriptionGroups.length) {
+    return federationSubscriptionGroups.slice();
+  }
+
+  return [];
 }
 
 function extractConnectionIdsFromText(text) {
@@ -1535,14 +1601,10 @@ function ensureRefreshLoop() {
 }
 
 function isDataFeedConnectionKey(key) {
-  const k = String(key || "").trim().toLowerCase();
-  if (!k) return false;
-  const bare = k.replace(/^tak-server-/, "");
-  return !!(
-    dataFeedGroupsByKey.get(k) ||
-    dataFeedGroupsByKey.get(bare) ||
-    dataFeedGroupsByKey.get(`tak-server-${bare}`)
-  );
+  for (const k of connectionUidLookupKeys(key)) {
+    if (dataFeedGroupsByKey.get(k)) return true;
+  }
+  return false;
 }
 
 function isLiveEudSubscription(marker) {
@@ -1589,7 +1651,7 @@ function markerResolvedViaFeedIndex(marker) {
 
 /**
  * Classify marker provenance for map draw priority (EUD above data feeds).
- * @returns {"eud"|"feed"|"unknown"}
+ * @returns {"eud"|"feed"|"federation"|"unknown"}
  */
 function classifyMarkerOrigin(marker) {
   if (!marker) return "unknown";
@@ -1597,6 +1659,10 @@ function classifyMarkerOrigin(marker) {
   if (isLiveEudSubscription(marker)) return "eud";
   if (markerHasDataFeedProvenance(marker)) return "feed";
   if (markerResolvedViaFeedIndex(marker)) return "feed";
+
+  const flowTags = Array.isArray(marker.flowTagUids) ? marker.flowTagUids : [];
+  const flowProvenanceCount = flowTags.filter(isFlowProvenanceId).length;
+  if (flowProvenanceCount >= 2) return "federation";
 
   const type = String(marker.type || "").trim();
   if (/^a-f-G-/i.test(type)) return "eud";
@@ -1643,16 +1709,25 @@ function buildGroupsCatalogWithCounts(markers) {
   ensureRefreshLoop();
   const counts = new Map();
   const markerList = Array.isArray(markers) ? markers : [];
+  let unassignedCount = 0;
 
   for (const m of markerList) {
     const groups = Array.isArray(m.groups) && m.groups.length ? m.groups : [UNASSIGNED_GROUP];
+    let assigned = false;
     for (const g of groups) {
+      if (normalizeGroupName(g) === UNASSIGNED_GROUP) {
+        unassignedCount += 1;
+        assigned = true;
+        continue;
+      }
       const channelName = toChannelGroupName(g);
       if (!channelName) continue;
       const key = channelBaseKey(channelName);
-      if (!key) continue;
+      if (!key || key === UNASSIGNED_CHANNEL_KEY) continue;
       counts.set(key, (counts.get(key) || 0) + 1);
+      assigned = true;
     }
+    if (!assigned) unassignedCount += 1;
   }
 
   const groups = [];
@@ -1666,7 +1741,20 @@ function buildGroupsCatalogWithCounts(markers) {
     });
   }
 
-  groups.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  if (unassignedCount > 0) {
+    groups.push({
+      name: UNASSIGNED_GROUP,
+      displayName: UNASSIGNED_GROUP,
+      baseKey: UNASSIGNED_CHANNEL_KEY,
+      markerCount: unassignedCount,
+    });
+  }
+
+  groups.sort((a, b) => {
+    if (a.baseKey === UNASSIGNED_CHANNEL_KEY) return 1;
+    if (b.baseKey === UNASSIGNED_CHANNEL_KEY) return -1;
+    return a.displayName.localeCompare(b.displayName);
+  });
   return groups;
 }
 
@@ -1709,6 +1797,7 @@ async function getTakGroupCatalog(markers, options = {}) {
 
 module.exports = {
   UNASSIGNED_GROUP,
+  UNASSIGNED_CHANNEL_KEY,
   isMapChannelGroupName,
   channelGroupKey,
   channelBaseKey,
@@ -1736,6 +1825,12 @@ module.exports = {
   resolveGroupsForMarker,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
+  connectionUidLookupKeys,
+  registerConnectionGroups,
+  rebuildConnectionGroupIndex,
+  lookupConnectionGroups,
+  resolveGroupsFromFlowTags,
+  getFederationSubscriptionGroups: () => federationSubscriptionGroups.slice(),
   getTakGroupCatalog,
   getUserMemberChannelBaseKeys,
   filterMapGroupsForUserMembership,

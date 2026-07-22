@@ -780,7 +780,7 @@
   /** Higher rank = draw above data feeds (EUD on top). */
   function markerOriginRank(m) {
     const origin = String(m?.origin || "").toLowerCase();
-    if (origin === "eud") return 2;
+    if (origin === "eud" || origin === "federation") return 2;
     if (origin === "feed") return 0;
     if (origin === "unknown") return 1;
     const type = String(m?.type || "");
@@ -3424,8 +3424,13 @@
   }
 
   function channelGroupKey(name) {
+    const raw = String(name || "").trim();
+    if (!raw) return "";
+    if (raw.toLowerCase() === "unassigned" || raw.toLowerCase() === "__unassigned__") {
+      return "__unassigned__";
+    }
     const base = stripChannelBehaviorSuffix(name);
-    if (!base || base.toLowerCase() === "unassigned") return "";
+    if (!base || base.toLowerCase() === "unassigned") return "__unassigned__";
     return base.toLowerCase().replace(/\s+/g, " ").trim();
   }
 
@@ -3612,7 +3617,21 @@
   }
 
   function ensureDefaultGroupsEnabled() {
-    // null enabledGroups = show all markers until the user narrows the filter
+    if (!enabledGroups) return;
+    const unassigned = groupsCatalog.find(function (g) {
+      return channelGroupKey(g.name) === "__unassigned__";
+    });
+    if (!unassigned || enabledGroups.has(unassigned.name)) return;
+
+    const others = groupsCatalog.filter(function (g) {
+      return isGroupInChannelScope(g) && channelGroupKey(g.name) !== "__unassigned__";
+    });
+    if (!others.length || others.every(function (g) {
+      return enabledGroups.has(g.name);
+    })) {
+      enabledGroups.add(unassigned.name);
+      saveEnabledGroups();
+    }
   }
 
   function mergeGroupsCatalog(incoming) {
