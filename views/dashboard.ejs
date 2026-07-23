@@ -14,7 +14,7 @@
   }) %>
 
   <% 
-    const hasMutualAid = isGlobalAdmin && mutualAid && (mutualAid.activeIncidents > 0 || mutualAid.activeEvents > 0);
+    const hasMutualAid = mutualAid && (mutualAid.activeIncidents > 0 || mutualAid.activeEvents > 0);
     const hasUserRequests = typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0;
     const hasPendingMouDocs =
       !!(typeof isAgencyDashboard !== "undefined" && isAgencyDashboard) &&
@@ -26,35 +26,23 @@
     <div style="margin: 10px 0 14px 0;">
 
       <!-- Mutual Aid Incident -->
-      <% if (isGlobalAdmin && mutualAid && mutualAid.activeIncidents > 0) { %>
-        <% if (isGlobalAdmin) { %>
-          <a href="/mutual-aid" style="text-decoration:none;">
-        <% } %>
-
-        <div class="maBanner maBannerIncident">
-          <%= mutualAid.activeIncidents %> Mutual Aid Incident<%= mutualAid.activeIncidents === 1 ? "" : "s" %> 
-          <%= mutualAid.activeIncidents === 1 ? "Is" : "Are" %> Active
-        </div>
-
-        <% if (isGlobalAdmin || isAgencyAdmin) { %>
-          </a>
-        <% } %>
+      <% if (mutualAid && mutualAid.activeIncidents > 0) { %>
+        <a href="/mutual-aid" style="text-decoration:none;">
+          <div class="maBanner maBannerIncident">
+            <%= mutualAid.activeIncidents %> Mutual Aid Incident<%= mutualAid.activeIncidents === 1 ? "" : "s" %> 
+            <%= mutualAid.activeIncidents === 1 ? "Is" : "Are" %> Active
+          </div>
+        </a>
       <% } %>
 
       <!-- Mutual Aid Event -->
-      <% if (isGlobalAdmin && mutualAid && mutualAid.activeEvents > 0) { %>
-        <% if (isGlobalAdmin) { %>
-          <a href="/mutual-aid" style="text-decoration:none;">
-        <% } %>
-
-        <div class="maBanner maBannerEvent">
-          <%= mutualAid.activeEvents %> Mutual Aid Event<%= mutualAid.activeEvents === 1 ? "" : "s" %> 
-          <%= mutualAid.activeEvents === 1 ? "Is" : "Are" %> Active
-        </div>
-
-        <% if (isGlobalAdmin || isAgencyAdmin) { %>
-          </a>
-        <% } %>
+      <% if (mutualAid && mutualAid.activeEvents > 0) { %>
+        <a href="/mutual-aid" style="text-decoration:none;">
+          <div class="maBanner maBannerEvent">
+            <%= mutualAid.activeEvents %> Mutual Aid Event<%= mutualAid.activeEvents === 1 ? "" : "s" %> 
+            <%= mutualAid.activeEvents === 1 ? "Is" : "Are" %> Active
+          </div>
+        </a>
       <% } %>
 
       <!-- Pending User Requests -->

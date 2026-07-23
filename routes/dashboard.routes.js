@@ -68,7 +68,7 @@ router.get("/", async (req, res) => {
     let activeEventCount = 0;
     try {
       const nowMs = Date.now();
-      const items = mutualAidService.list();
+      const items = mutualAidService.listForUser(req.authentikUser || null);
       for (const it of items) {
         const t = String(it.type || "").trim().toUpperCase();
         const enabled = !!it.expireEnabled;

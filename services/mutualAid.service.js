@@ -12,6 +12,8 @@ const settingsSvc = require("./settings.service");
 const emailSvc = require("./email.service");
 const { renderTemplate, htmlToText } = require("./emailTemplates.service");
 const { addLogoToQrPng } = require("./qrLogoOverlay.service");
+const accessSvc = require("./access.service");
+const agenciesSvc = require("./agencies.service");
 
 const MA_LOGO_DIR = path.join(__dirname, "..", "data", "mutual-aid-logos");
 const MA_LOGO_ALLOWED_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
@@ -537,6 +539,7 @@ function enrichItemForList(item, allItems) {
   const logoUrl = master?.logoUrl || null;
   return {
     ...item,
+    createdBy: normalizeCreatedBy(item),
     isGroupMaster,
     isLinkedDeployment: !isGroupCreatorItem(item) && siblings.length > 1,
     groupMasterId: master ? String(master.id) : null,
@@ -558,6 +561,166 @@ function list() {
 function getById(id) {
   const items = store.load();
   return items.find((x) => String(x.id) === String(id)) || null;
+}
+
+function normalizeSuffix(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+/**
+ * Missing createdBy (legacy records) is treated as global-admin ownership.
+ */
+function normalizeCreatedBy(itemOrCreatedBy) {
+  const raw =
+    itemOrCreatedBy && itemOrCreatedBy.createdBy
+      ? itemOrCreatedBy.createdBy
+      : itemOrCreatedBy && itemOrCreatedBy.role
+        ? itemOrCreatedBy
+        : null;
+
+  if (!raw || typeof raw !== "object") {
+    return {
+      role: "global_admin",
+      username: null,
+      displayName: null,
+      agencySuffixes: [],
+      agencyNames: [],
+    };
+  }
+
+  let role = String(raw.role || "").trim().toLowerCase();
+  if (role === "multi_agency_admin" || role === "multi-agency-admin") {
+    role = "multi_agency_admin";
+  } else if (role === "agency_admin" || role === "agency-admin") {
+    role = "agency_admin";
+  } else {
+    role = "global_admin";
+  }
+
+  const agencySuffixes = Array.isArray(raw.agencySuffixes)
+    ? raw.agencySuffixes.map(normalizeSuffix).filter(Boolean)
+    : [];
+  const agencyNames = Array.isArray(raw.agencyNames)
+    ? raw.agencyNames.map((n) => String(n || "").trim()).filter(Boolean)
+    : [];
+
+  return {
+    role,
+    username: raw.username != null ? String(raw.username).trim() || null : null,
+    displayName:
+      raw.displayName != null ? String(raw.displayName).trim() || null : null,
+    agencySuffixes,
+    agencyNames,
+  };
+}
+
+function isAgencyCreatedRole(role) {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "agency_admin" || r === "multi_agency_admin";
+}
+
+function buildCreatedByFromAuthUser(authUser) {
+  if (!authUser) {
+    return {
+      role: "global_admin",
+      username: null,
+      displayName: null,
+      agencySuffixes: [],
+      agencyNames: [],
+    };
+  }
+
+  const username = String(authUser.username || "").trim() || null;
+  const displayName =
+    String(authUser.displayName || authUser.username || "").trim() || null;
+
+  if (authUser.isGlobalAdmin) {
+    return {
+      role: "global_admin",
+      username,
+      displayName,
+      agencySuffixes: [],
+      agencyNames: [],
+    };
+  }
+
+  const suffixes = accessSvc
+    .getUserManagedAgencySuffixes(authUser)
+    .map(normalizeSuffix)
+    .filter(Boolean);
+  const agencies = agenciesSvc.load() || [];
+  const agencyNames = [];
+  for (const sfx of suffixes) {
+    const agency = agencies.find(
+      (a) => normalizeSuffix(a?.suffix) === sfx
+    );
+    const name = String(agency?.name || "").trim();
+    if (name) agencyNames.push(name);
+  }
+
+  const role =
+    suffixes.length > 1 ? "multi_agency_admin" : "agency_admin";
+
+  return {
+    role,
+    username,
+    displayName,
+    agencySuffixes: suffixes,
+    agencyNames,
+  };
+}
+
+function cloneCreatedBy(createdBy) {
+  const n = normalizeCreatedBy(createdBy);
+  return {
+    role: n.role,
+    username: n.username,
+    displayName: n.displayName,
+    agencySuffixes: n.agencySuffixes.slice(),
+    agencyNames: n.agencyNames.slice(),
+  };
+}
+
+function canViewMutualAid(authUser, item) {
+  if (!authUser) return false;
+  if (authUser.isGlobalAdmin) return true;
+
+  const createdBy = normalizeCreatedBy(item);
+  if (!isAgencyCreatedRole(createdBy.role)) return false;
+
+  const allowed = accessSvc
+    .getUserManagedAgencySuffixes(authUser)
+    .map(normalizeSuffix)
+    .filter(Boolean);
+  if (!allowed.length || !createdBy.agencySuffixes.length) return false;
+
+  const allowedSet = new Set(allowed);
+  return createdBy.agencySuffixes.some((sfx) => allowedSet.has(sfx));
+}
+
+function canManageMutualAid(authUser, item) {
+  return canViewMutualAid(authUser, item);
+}
+
+function listForUser(authUser) {
+  return list().filter((item) => canViewMutualAid(authUser, item));
+}
+
+function assertCanManage(authUser, id) {
+  const item = getById(id);
+  if (!item) {
+    const err = new Error("Mutual aid item not found");
+    err.status = 404;
+    throw err;
+  }
+  if (!canManageMutualAid(authUser, item)) {
+    const err = new Error(
+      "You do not have permission to manage this mutual aid deployment."
+    );
+    err.status = 403;
+    throw err;
+  }
+  return item;
 }
 
 function saveAll(items) {
@@ -643,6 +806,9 @@ async function create({
   existingGroupId,
   allowMutualAidGroup = false,
   usernameOverride = null,
+  createdBy = null,
+  authUser = null,
+  preserveMissingCreatedBy = false,
 } = {}) {
   const t = String(type || "").trim().toUpperCase();
   const name = sanitizeTitle(title);
@@ -681,6 +847,17 @@ async function create({
     group = await groupsSvc.getGroupById(gid);
     if (!group || !group.pk) throw new Error("Group not found");
     assertNotMutualAidChannelGroup(group, { allowMutualAidGroup });
+    // Agency admins may only attach to groups in their scope (not MA channel groups via this path).
+    if (!allowMutualAidGroup && authUser) {
+      const access = accessSvc.getAgencyAccess(authUser);
+      if (!access.isGlobalAdmin && !accessSvc.canUserModifyGroup(authUser, group)) {
+        const err = new Error(
+          "You do not have permission to use that group for mutual aid."
+        );
+        err.status = 403;
+        throw err;
+      }
+    }
   } else {
     // 1) Create group
     group = await groupsSvc.createGroup(desiredGroupName);
@@ -730,6 +907,29 @@ async function create({
   });
 
   // 4) Persist record (stores password so QR can be regenerated later)
+  // createdBy:
+  // - explicit object → stamp it
+  // - explicit null with preserveMissingCreatedBy → leave untagged (legacy channel)
+  // - otherwise build from authUser when available
+  let stampedCreatedBy = null;
+  if (createdBy && typeof createdBy === "object") {
+    stampedCreatedBy = cloneCreatedBy(createdBy);
+  } else if (preserveMissingCreatedBy) {
+    stampedCreatedBy = null;
+  } else if (authUser) {
+    stampedCreatedBy = buildCreatedByFromAuthUser(authUser);
+  }
+
+  if (
+    stampedCreatedBy &&
+    isAgencyCreatedRole(stampedCreatedBy.role) &&
+    !stampedCreatedBy.agencySuffixes.length
+  ) {
+    throw new Error(
+      "Unable to determine your agency scope for this mutual aid deployment."
+    );
+  }
+
   const item = {
     id: crypto.randomUUID(),
     type: t,
@@ -746,6 +946,7 @@ async function create({
     expireAt: parsedExpireAt,
     createdAt: nowIso(),
     updatedAt: nowIso(),
+    ...(stampedCreatedBy ? { createdBy: stampedCreatedBy } : {}),
   };
 
   const items = store.load();
@@ -774,7 +975,7 @@ async function create({
 /**
  * Add another deployment user on the same channel as an existing master MA record.
  */
-async function createLinkedUser({ parentId, title, expireEnabled, expireAt }) {
+async function createLinkedUser({ parentId, title, expireEnabled, expireAt, authUser = null }) {
   const parent = getById(parentId);
   if (!parent) throw new Error("Parent mutual aid item not found");
 
@@ -792,6 +993,12 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt }) {
     throw new Error("Name must contain at least one letter/number for username");
   }
 
+  // Inherit channel ownership from parent (or master) so ACL stays consistent.
+  const sourceCreatedBy = parent.createdBy || master.createdBy || null;
+  const inheritedCreatedBy = sourceCreatedBy
+    ? cloneCreatedBy(sourceCreatedBy)
+    : null;
+
   const subType = `SUB-${parentType}`;
   return create({
     type: subType,
@@ -802,6 +1009,10 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt }) {
     existingGroupId: parent.groupId,
     allowMutualAidGroup: true,
     usernameOverride: username,
+    createdBy: inheritedCreatedBy,
+    authUser,
+    // Legacy parent with no createdBy: keep child untagged (global).
+    preserveMissingCreatedBy: !inheritedCreatedBy,
   });
 }
 
@@ -984,6 +1195,7 @@ function initExpirationScheduler() {
 module.exports = {
   initExpirationScheduler,
   list,
+  listForUser,
   create,
   createLinkedUser,
   update,
@@ -992,4 +1204,9 @@ module.exports = {
   getQrDownload,
   formatMutualAidTypeLabel,
   isSubMutualAidType,
+  normalizeCreatedBy,
+  buildCreatedByFromAuthUser,
+  canViewMutualAid,
+  canManageMutualAid,
+  assertCanManage,
 };

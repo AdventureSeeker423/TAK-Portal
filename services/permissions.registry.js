@@ -129,6 +129,7 @@ const AGENCY_DEFAULT = new Set([
   "page.email",
   "page.mou",
   "page.data_sync",
+  "page.mutual_aid",
 ]);
 
 /** Standard defaults are now handled by always-on routes (plugins/setup), not configurable keys. */

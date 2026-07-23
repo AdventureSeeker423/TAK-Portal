@@ -73,6 +73,7 @@
           <tr>
             <th class="sortable maTypeCol" data-key="type">Type <span class="sortIndicator" aria-hidden="true"></span></th>
             <th class="sortable" data-key="title">Title <span class="sortIndicator" aria-hidden="true"></span></th>
+            <th class="sortable" data-key="createdBy">Created By <span class="sortIndicator" aria-hidden="true"></span></th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -298,7 +299,8 @@
   }
 
   .maListTable .maTitleCell.cardTitleCell { order: 1; }
-  .maListTable .maActionsCell.cardActionsCell { order: 2; }
+  .maListTable .maCreatedByCell { order: 2; }
+  .maListTable .maActionsCell.cardActionsCell { order: 3; }
   .maListTable .maTypeCell,
   .maListTable th.maTypeCol {
     order: 99;
@@ -902,7 +904,41 @@ function normalizeSortValue(v){
 function maGetSortValue(it, key){
   if (key === "type") return normalizeSortValue(it.type);
   if (key === "title") return normalizeSortValue(it.title);
+  if (key === "createdBy") return normalizeSortValue(createdBySortLabel(it));
   return "";
+}
+
+function createdBySortLabel(it) {
+  const cb = it?.createdBy || {};
+  const role = String(cb.role || "global_admin").trim().toLowerCase();
+  if (role === "agency_admin") {
+    const name = String(cb.displayName || cb.username || "").trim();
+    const agency = Array.isArray(cb.agencyNames) && cb.agencyNames.length
+      ? String(cb.agencyNames[0] || "").trim()
+      : "";
+    return [name, agency].filter(Boolean).join(" ");
+  }
+  if (role === "multi_agency_admin") return "Multi-Agency Admin";
+  return "Global Admin";
+}
+
+function formatCreatedByHtml(it) {
+  const cb = it?.createdBy || {};
+  const role = String(cb.role || "global_admin").trim().toLowerCase();
+  if (role === "agency_admin") {
+    const name = String(cb.displayName || cb.username || "").trim() || "Agency Admin";
+    const agency = Array.isArray(cb.agencyNames) && cb.agencyNames.length
+      ? String(cb.agencyNames[0] || "").trim()
+      : "";
+    return `
+      <div class="maCreatedByName">${esc(name)}</div>
+      ${agency ? `<div class="muted" style="font-size: 12px;">${esc(agency)}</div>` : ""}
+    `;
+  }
+  if (role === "multi_agency_admin") {
+    return `<div class="maCreatedByName">Multi-Agency Admin</div>`;
+  }
+  return `<div class="maCreatedByName">Global Admin</div>`;
 }
 
 function stableSortedCopy(arr, key, dir){
@@ -3076,6 +3112,7 @@ function renderMutualAidRow(it, opts = {}) {
         ${channelLine}
         ${it.expireEnabled && it.expireAt ? `<div class="muted" style="font-size: 12px;">Expires: ${esc(new Date(it.expireAt).toLocaleString())}</div>` : ""}
       </td>
+      <td class="maCreatedByCell">${formatCreatedByHtml(it)}</td>
       <td class="maActionsCell cardActionsCell">
         <div class="maActionsRow cardActionsRow">
           ${isSub ? "" : `<button class="btn" type="button" data-act="members" data-id="${esc(it.id)}">View Members</button>`}
@@ -3133,7 +3170,7 @@ function renderList(){
     .join("");
 
   maTbody.innerHTML =
-    html || `<tr><td colspan="3" style="color:var(--muted); padding: 10px;">No mutual aid items found.</td></tr>`;
+    html || `<tr><td colspan="4" style="color:var(--muted); padding: 10px;">No mutual aid items found.</td></tr>`;
 
   maTbody.querySelectorAll("button[data-act]").forEach(btn => {
     const id = String(btn.dataset.id);
