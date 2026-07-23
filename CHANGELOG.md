@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.54 - 7/23/26
+✨ `Enhancement` - Mutual Aid - Agency admins now have access to create and manage mutual aid instances.  Mutual Aid created by global admins will be hidden from agency admins and can only be managed by the global admins.<br>
+🐛 `Bug Fix` - Fixes issue with mutual aid packet "one-pager" cutting off text for the channel name
+
 ### v1.3.53 - 7/21/26
 ✨ `Enhancement` - Request Access - Selecting "Other / My Agency Isn't Listed" now requires the requester to fill out all fields needed for agency creation<br>
 ✨ `Enhancement` - Pending Access - When a requester enters new agency details, the global admin will be able to create a new agency from the pending access page<br>
