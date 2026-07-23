@@ -121,9 +121,10 @@
     border-radius: 8px;
     padding: 8px 12px;
     text-align: center;
-    flex: 0 1 auto;
-    max-width: 2.75in;
-    min-width: 0;
+    /* Do not shrink — wrapping + html2canvas clips the border mid-line. */
+    flex: 0 0 auto;
+    max-width: 3.25in;
+    overflow: visible;
   }
   .header-badge .badge-label {
     font-family: Arial, Helvetica, sans-serif;
@@ -133,19 +134,20 @@
     color: #94a3b8;
     text-transform: uppercase;
     line-height: 1.2;
-    margin-bottom: 2px;
+    margin-bottom: 3px;
   }
   .header-badge .badge-value {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     color: #38bdf8;
     letter-spacing: 0;
-    line-height: 1.25;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    white-space: normal;
+    line-height: 1.2;
+    white-space: nowrap;
     text-align: center;
+    max-width: 3in;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* ── ALERT BANNER (omitted when agreement disabled) ── */
