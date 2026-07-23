@@ -1769,14 +1769,17 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
             }
             .header-badge {
               flex: 0 0 auto !important;
-              max-width: 3.25in !important;
+              width: max-content !important;
+              min-width: max-content !important;
+              max-width: none !important;
               overflow: visible !important;
               height: auto !important;
             }
             .header-badge .badge-value {
               white-space: nowrap !important;
-              overflow: hidden !important;
-              text-overflow: ellipsis !important;
+              overflow: visible !important;
+              text-overflow: clip !important;
+              max-width: none !important;
               line-height: 1.2 !important;
               font-size: 12px !important;
             }

@@ -94,22 +94,22 @@
     gap: 3px;
   }
   header h1 .header-server {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
     color: #38bdf8;
     line-height: 1.1;
   }
   header h1 .header-enrollment {
-    font-size: 26px;
+    font-size: 22px;
     font-weight: 700;
     color: #fff;
     line-height: 1.05;
   }
   header h1.header-title-solo .header-enrollment {
-    font-size: 29px;
+    font-size: 24px;
   }
   header p {
-    font-size: 12px;
+    font-size: 11px;
     color: #94a3b8;
     margin-top: 4px;
     letter-spacing: 0;
@@ -119,11 +119,13 @@
     background: rgba(56,189,248,0.1);
     border: 1.5px solid #38bdf8;
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 8px 14px;
     text-align: center;
-    /* Do not shrink — wrapping + html2canvas clips the border mid-line. */
+    /* Size to full channel name; title column yields space (min-width:0). */
     flex: 0 0 auto;
-    max-width: 3.25in;
+    width: max-content;
+    min-width: max-content;
+    max-width: none;
     overflow: visible;
   }
   .header-badge .badge-label {
@@ -145,9 +147,7 @@
     line-height: 1.2;
     white-space: nowrap;
     text-align: center;
-    max-width: 3in;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
   }
 
   /* ── ALERT BANNER (omitted when agreement disabled) ── */
