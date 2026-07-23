@@ -119,9 +119,11 @@
     background: rgba(56,189,248,0.1);
     border: 1.5px solid #38bdf8;
     border-radius: 8px;
-    padding: 6px 14px;
+    padding: 8px 12px;
     text-align: center;
-    flex-shrink: 0;
+    flex: 0 1 auto;
+    max-width: 2.75in;
+    min-width: 0;
   }
   .header-badge .badge-label {
     font-family: Arial, Helvetica, sans-serif;
@@ -130,13 +132,20 @@
     letter-spacing: 0;
     color: #94a3b8;
     text-transform: uppercase;
+    line-height: 1.2;
+    margin-bottom: 2px;
   }
   .header-badge .badge-value {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
     color: #38bdf8;
     letter-spacing: 0;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
+    text-align: center;
   }
 
   /* ── ALERT BANNER (omitted when agreement disabled) ── */
@@ -300,6 +309,8 @@
     letter-spacing: 0;
     margin-bottom: 8px;
     text-align: center;
+    line-height: 1.25;
+    white-space: nowrap;
   }
   .qr-container img {
     width: 250px; height: 250px;
@@ -511,7 +522,7 @@
     <div class="section">
 
       <div class="qr-container">
-        <div class="qr-title">Scan to Enroll &mdash; {{CHANNEL_NAME}}</div>
+        <div class="qr-title">Scan to Enroll</div>
         <img id="maFlyerQrImg" src="{{QR_DATA_URL}}" alt="{{QR_LABEL}} Enrollment QR Code">
         <div class="qr-sub">{{QR_LABEL}}</div>
       </div>
