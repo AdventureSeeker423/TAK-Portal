@@ -628,9 +628,7 @@
       videoUrl: props.videoUrl || "",
       videoUid: props.videoUid || "",
       cotRawXml: props.cotRawXml || "",
-      links: props.videoUrl
-        ? [{ url: props.videoUrl, label: "Camera stream" }]
-        : [],
+      links: [],
     };
   }
 

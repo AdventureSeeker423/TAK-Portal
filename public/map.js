@@ -4642,6 +4642,16 @@
       : [];
   }
 
+  function markerDetailLinksForDisplay(m) {
+    const videoUrl = markerVideoUrl(m);
+    return markerDetailLinks(m).filter(function (link) {
+      const url = String(link.url || "").trim();
+      if (videoUrl && url === videoUrl) return false;
+      if (videoUrl && isLikelyVideoStreamUrl(url)) return false;
+      return true;
+    });
+  }
+
   function isHttpDetailLinkUrl(value) {
     return /^https?:\/\//i.test(String(value || "").trim());
   }
@@ -4689,7 +4699,7 @@
 
   function detailBodyStructureKey(m) {
     const groups = markerGroups(m);
-    const linkCount = markerDetailLinks(m).length;
+    const linkCount = markerDetailLinksForDisplay(m).length;
     const videoUrl = markerVideoUrl(m);
     const pkg = isPackageMarker(m);
     return [
@@ -4844,7 +4854,7 @@
       escapeHtml(remarksText || "No remarks.") +
       "</div></section>" +
       buildDetailVideoHtml(m) +
-      buildDetailLinksHtml(markerDetailLinks(m)) +
+      buildDetailLinksHtml(markerDetailLinksForDisplay(m)) +
       "</div>"
     );
   }
@@ -5061,7 +5071,7 @@
 
     const linksEl = bodyEl.querySelector('[data-detail-key="links"]');
     const linksSection = bodyEl.querySelector(".map-detail-links-section");
-    const links = markerDetailLinks(m);
+    const links = markerDetailLinksForDisplay(m);
     if (links.length) {
       const anchors = buildDetailLinkAnchorsHtml(links);
       if (linksEl) {
