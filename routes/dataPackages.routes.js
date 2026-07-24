@@ -388,13 +388,11 @@ router.get("/packages/download", async (req, res) => {
 
     res.status(r.status);
 
-    const ct = r.headers["content-type"];
+    const zipName = dataPackagesSvc.zipDownloadFilename(fileNameHint, hash);
 
-    if (ct) res.setHeader("Content-Type", ct);
+    res.setHeader("Content-Type", "application/zip");
 
-    const cd = r.headers["content-disposition"];
-
-    if (cd) res.setHeader("Content-Disposition", cd);
+    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
 
     const cl = r.headers["content-length"];
 

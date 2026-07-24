@@ -409,6 +409,14 @@ function safeFilename(name, fallback) {
   return cleaned || fallback;
 }
 
+/** Force a browser-friendly ZIP download name (TAK often omits .zip). */
+function zipDownloadFilename(name, hash) {
+  const fallback = `data-package-${String(hash || "file").slice(0, 16)}.zip`;
+  let base = safeFilename(name, fallback);
+  if (!/\.zip$/i.test(base)) base = `${base}.zip`;
+  return base;
+}
+
 async function uploadDataPackage(buffer, originalName, metadata = {}) {
   assertTakAvailable();
   if (!buffer || !Buffer.isBuffer(buffer) || !buffer.length) {
@@ -580,4 +588,6 @@ module.exports = {
   uploadDataPackage,
   getDataPackageMetadata,
   updateDataPackageMetadata,
+  zipDownloadFilename,
+  safeFilename,
 };

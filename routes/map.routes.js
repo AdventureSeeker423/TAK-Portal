@@ -808,16 +808,10 @@ router.get("/packages/:hash/download", async (req, res) => {
       return res.status(r.status).json({ error: msg });
     }
 
+    const zipName = dataPackagesSvc.zipDownloadFilename(fileNameHint, hash);
     res.status(r.status);
-    const ct = r.headers["content-type"];
-    if (ct) res.setHeader("Content-Type", ct);
-    const cd = r.headers["content-disposition"];
-    if (cd) {
-      res.setHeader("Content-Disposition", cd);
-    } else {
-      const safeName = (fileNameHint || hash + ".zip").replace(/[^\w.\- ()\[\]]+/g, "_");
-      res.setHeader("Content-Disposition", 'attachment; filename="' + safeName + '"');
-    }
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
     const cl = r.headers["content-length"];
     if (cl) res.setHeader("Content-Length", cl);
 

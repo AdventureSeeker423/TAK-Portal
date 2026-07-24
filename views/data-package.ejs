@@ -533,6 +533,12 @@
     }
   }
 
+  function zipDownloadName(filename, hash) {
+    var base = String(filename || "").trim() || ("data-package-" + String(hash || "file").slice(0, 16));
+    if (!/\.zip$/i.test(base)) base += ".zip";
+    return base;
+  }
+
   async function downloadPackage(hash, filename) {
     setMsg(packagesMsg, "Downloading package…", undefined);
     try {
@@ -541,7 +547,7 @@
       var blob = await res.blob();
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = filename || ("data-package-" + hash + ".zip");
+      a.download = zipDownloadName(filename, hash);
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -581,7 +587,7 @@
           var blob = await res.blob();
           var a = document.createElement("a");
           a.href = URL.createObjectURL(blob);
-          a.download = m.filename || ("data-package-" + m.hash + ".zip");
+          a.download = zipDownloadName(m.filename, m.hash);
           document.body.appendChild(a);
           a.click();
           a.remove();
