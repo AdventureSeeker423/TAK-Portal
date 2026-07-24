@@ -1,22 +1,29 @@
 /**
  * Data package ZIP → GeoJSON for map overlays (read-only).
  * List visibility matches Data Package Manager (missionpackage / ARCHIVED_MISSION + data_package kind).
+ * Rasters (GeoTIFF/PNG/JPEG) reuse missionRaster placement + PNG render logic.
  */
+const crypto = require("crypto");
 const unzipper = require("unzipper");
 const { getInt } = require("./env");
 const dataPackagesSvc = require("./dataPackages.service");
 const packageKind = require("./packageKind.service");
 const missionKml = require("./missionKml.service");
 const missionGeo = require("./missionGeo.service");
+const missionRaster = require("./missionRaster.service");
 const mapRender = require("./mapRender.service");
+
 const CACHE_TTL_MS = getInt("PACKAGE_GEO_CACHE_TTL_MS", 120000);
 const MAX_PACKAGE_BYTES = getInt("PACKAGE_GEO_MAX_BYTES", 64 * 1024 * 1024);
 const geoCache = new Map();
+/** @type {Map<string, { at: number, entries: Map<string, { name: string, buffer: Buffer }> }>} */
+const rasterEntryCache = new Map();
 /** @type {Map<string, Promise<object>>} */
 const geoInFlight = new Map();
 
 const KML_EXT = /\.(kml|kmz)$/i;
 const COT_EXT = /\.(cot|xml)$/i;
+const RASTER_EXT = /\.(tif|tiff|geotiff|grg|png|jpg|jpeg)$/i;
 const SKIP_PATH = /(^|\/)(MANIFEST\/|certs\/|\.pref$)/i;
 
 function cacheGet(key) {
@@ -31,6 +38,20 @@ function cacheGet(key) {
 
 function cacheSet(key, value) {
   geoCache.set(key, { at: Date.now(), value });
+}
+
+function rasterCacheGet(packageHash) {
+  const hit = rasterEntryCache.get(packageHash);
+  if (!hit) return null;
+  if (Date.now() - hit.at > CACHE_TTL_MS) {
+    rasterEntryCache.delete(packageHash);
+    return null;
+  }
+  return hit.entries;
+}
+
+function rasterCacheSet(packageHash, entriesMap) {
+  rasterEntryCache.set(packageHash, { at: Date.now(), entries: entriesMap });
 }
 
 function packageKeywords(pkg) {
@@ -98,6 +119,10 @@ function bufferLooksLikeCot(buf) {
   return /<event[\s>]/i.test(sample);
 }
 
+function contentHashHex(buf) {
+  return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
 function stampPackageFeature(feature, meta) {
   const props = feature.properties || {};
   const uid = String(feature.id || props.uid || props.id || "").trim();
@@ -150,6 +175,8 @@ async function extractFeaturesFromZipBuffer(buf, meta) {
   const directory = await unzipper.Open.buffer(buf);
   const cotChunks = [];
   const kmlFeatures = [];
+  const rasterItems = [];
+  const rasterEntries = new Map();
   let kmlCount = 0;
   let cotFileCount = 0;
 
@@ -180,6 +207,20 @@ async function extractFeaturesFromZipBuffer(buf, meta) {
         if (!bufferLooksLikeCot(fileBuf)) continue;
         cotChunks.push(fileBuf.toString("utf8"));
         cotFileCount += 1;
+        continue;
+      }
+
+      if (RASTER_EXT.test(lower)) {
+        const fileBuf = await entry.buffer();
+        if (!fileBuf || !fileBuf.length) continue;
+        // Skip KML/zip disguised with image extension.
+        if (!missionRaster.bufferLooksLikeRaster(fileBuf) && !missionRaster.bufferLooksLikeTiff(fileBuf)) {
+          continue;
+        }
+        const entryHash = contentHashHex(fileBuf);
+        rasterItems.push({ hash: entryHash, name: base, buffer: fileBuf });
+        rasterEntries.set(entryHash, { name: base, buffer: fileBuf });
+        rasterEntries.set(entryHash.toLowerCase(), { name: base, buffer: fileBuf });
       }
     } catch (err) {
       console.warn("[package-geo] entry failed", entryPath, err?.message || err);
@@ -195,12 +236,71 @@ async function extractFeaturesFromZipBuffer(buf, meta) {
     cotFeatures = (normalized.features || []).map((f) => stampPackageFeature(f, meta));
   }
 
-  // KML features from missionKml are already mission-feature shaped; stamp overrides kind.
   const features = [...cotFeatures, ...kmlFeatures];
+
+  const rasterOverlays = await missionRaster.buildRasterOverlaysFromBuffers(rasterItems, {
+    features,
+    urlFor: function (item, bounds) {
+      return (
+        "/api/map/packages/" +
+        encodeURIComponent(meta.hash) +
+        "/raster/" +
+        encodeURIComponent(item.hash) +
+        "?bounds=" +
+        encodeURIComponent(bounds.join(","))
+      );
+    },
+  });
+
+  rasterCacheSet(meta.hash, rasterEntries);
+
   return {
     features,
-    attachmentSummary: { kml: kmlCount, cotFiles: cotFileCount },
+    rasterOverlays,
+    attachmentSummary: {
+      kml: kmlCount,
+      cotFiles: cotFileCount,
+      raster: rasterOverlays.length,
+    },
   };
+}
+
+async function ensurePackageRasterEntries(packageHash) {
+  const h = String(packageHash || "").trim();
+  const cached = rasterCacheGet(h);
+  if (cached) return cached;
+
+  // Rebuild via geojson path (also fills raster cache).
+  await getPackageGeoJson(h, { refresh: true });
+  return rasterCacheGet(h) || new Map();
+}
+
+async function getPackageRasterPng(packageHash, entryHash, options = {}) {
+  const h = String(packageHash || "").trim();
+  const eHash = String(entryHash || "").trim();
+  if (!h || !eHash) {
+    const err = new Error("Package hash and raster hash are required.");
+    err.code = "INVALID_HASH";
+    err.status = 400;
+    throw err;
+  }
+
+  const entries = await ensurePackageRasterEntries(h);
+  const hit =
+    entries.get(eHash) ||
+    entries.get(eHash.toLowerCase()) ||
+    null;
+  if (!hit || !hit.buffer) {
+    const err = new Error("Raster not found in data package.");
+    err.code = "NOT_FOUND";
+    err.status = 404;
+    throw err;
+  }
+
+  return missionRaster.renderRasterPngFromBuffer(hit.buffer, {
+    bounds: options.bounds || null,
+    maxDim: options.maxDim,
+  });
 }
 
 async function buildPackageGeoJson(hash, options = {}) {
@@ -246,7 +346,7 @@ async function buildPackageGeoJson(hash, options = {}) {
       featureCount: extracted.features.length,
       attachmentSummary: extracted.attachmentSummary,
       iconManifest,
-      rasterOverlays: [],
+      rasterOverlays: extracted.rasterOverlays || [],
     },
   };
 }
@@ -279,6 +379,7 @@ async function getPackageGeoJson(hash, options = {}) {
 function clearCache() {
   geoCache.clear();
   geoInFlight.clear();
+  rasterEntryCache.clear();
 }
 
 module.exports = {
@@ -289,5 +390,6 @@ module.exports = {
   hasKeyword,
   listMapPackages,
   getPackageGeoJson,
+  getPackageRasterPng,
   clearCache,
 };

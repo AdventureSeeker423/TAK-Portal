@@ -789,6 +789,41 @@ router.get("/packages/:hash/geojson", async (req, res) => {
   }
 });
 
+/** Package ZIP raster entry as PNG for MapLibre image source (read-only). */
+router.get("/packages/:hash/raster/:entryHash", async (req, res) => {
+  try {
+    const hash = String(req.params.hash || "").trim();
+    const entryHash = String(req.params.entryHash || "").trim();
+    if (!hash || !entryHash) {
+      return res.status(400).json({ error: "Missing package or raster hash" });
+    }
+    const boundsRaw = req.query.bounds;
+    let bounds = null;
+    if (boundsRaw) {
+      const parts = String(boundsRaw).split(",").map(Number);
+      if (parts.length === 4 && parts.every(Number.isFinite)) {
+        bounds = missionRaster.normalizeBounds(parts);
+      }
+    }
+    const rendered = await packageGeo.getPackageRasterPng(hash, entryHash, { bounds });
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Content-Type", rendered.contentType || "image/png");
+    if (rendered.bounds) {
+      res.setHeader("X-Image-Bounds", rendered.bounds.join(","));
+    }
+    return res.send(rendered.buffer);
+  } catch (err) {
+    console.warn("[map] package raster failed:", err?.message || err);
+    const status =
+      err?.code === "NOT_FOUND"
+        ? 404
+        : err?.status >= 400 && err?.status < 600
+          ? err.status
+          : 500;
+    return res.status(status).json({ error: err?.message || "Package raster failed" });
+  }
+});
+
 /** Download data package ZIP (read-only). */
 router.get("/packages/:hash/download", async (req, res) => {
   try {

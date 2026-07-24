@@ -45,6 +45,39 @@
     };
   }
 
+  function packageRasterIds(hash, entryHash) {
+    const slug = slugPackage(hash);
+    const h = String(entryHash || "").slice(0, 16);
+    return {
+      source: "package-raster-" + slug + "-" + h,
+      layer: "package-raster-" + slug + "-" + h + "-layer",
+    };
+  }
+
+  function rasterAbsoluteUrl(url) {
+    const raw = String(url || "").trim();
+    if (!raw) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return window.location.origin + raw;
+  }
+
+  function getImageryBeforeLayerId() {
+    const style = map.getStyle();
+    if (style && Array.isArray(style.layers)) {
+      for (let i = 0; i < style.layers.length; i++) {
+        const id = style.layers[i].id;
+        if (
+          id.indexOf("package-") === 0 ||
+          id.indexOf("mission-") === 0 ||
+          id.indexOf("tak-markers") === 0
+        ) {
+          return id;
+        }
+      }
+    }
+    return bridge && bridge.getMissionBeforeLayerId ? bridge.getMissionBeforeLayerId() : undefined;
+  }
+
   function escapeHtml(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;")
@@ -231,6 +264,7 @@
       entry = {
         visible: true,
         geojson: null,
+        rasterOverlays: [],
         loading: false,
         pendingVisible: null,
         error: null,
@@ -322,6 +356,15 @@
       }
     }
     applyPackageLayerFilters(hash);
+
+    const rasters = entry.rasterOverlays || [];
+    for (let j = 0; j < rasters.length; j++) {
+      const rasterIds = packageRasterIds(hash, rasters[j].hash);
+      if (map.getLayer(rasterIds.layer)) {
+        map.setLayoutProperty(rasterIds.layer, "visibility", vis);
+        map.setPaintProperty(rasterIds.layer, "raster-opacity", entry.visible ? 0.92 : 0);
+      }
+    }
     map.triggerRepaint();
   }
 
@@ -333,6 +376,8 @@
 
   function removePackageLayers(hash) {
     if (!map) return;
+    const entry = openPackages.get(hash);
+    removeRasterOverlays(hash, entry);
     const ids = packageLayerIds(hash);
     const layerIds = [ids.label, ids.symbol, ids.dot, ids.line, ids.fill];
     for (let i = 0; i < layerIds.length; i++) {
@@ -353,6 +398,90 @@
       try {
         map.removeSource(srcId);
       } catch (_) {}
+    }
+  }
+
+  function ensureRasterOverlays(hash, entry) {
+    if (!map || !entry) return;
+    const overlays = entry.rasterOverlays || [];
+    const beforeId = getImageryBeforeLayerId();
+
+    for (let i = 0; i < overlays.length; i++) {
+      const ov = overlays[i];
+      if (!ov.bounds || !ov.url) continue;
+      const ids = packageRasterIds(hash, ov.hash);
+      const coords =
+        ov.coordinates ||
+        (function () {
+          const b = ov.bounds;
+          return [
+            [b[0], b[3]],
+            [b[2], b[3]],
+            [b[2], b[1]],
+            [b[0], b[1]],
+          ];
+        })();
+      const url = rasterAbsoluteUrl(ov.url);
+
+      const existing = map.getSource(ids.source);
+      if (existing && typeof existing.updateImage === "function") {
+        existing.updateImage({ url: url, coordinates: coords });
+      } else {
+        if (map.getLayer(ids.layer)) {
+          try {
+            map.removeLayer(ids.layer);
+          } catch (_) {}
+        }
+        if (existing) {
+          try {
+            map.removeSource(ids.source);
+          } catch (_) {}
+        }
+        map.addSource(ids.source, {
+          type: "image",
+          url: url,
+          coordinates: coords,
+        });
+      }
+
+      if (!map.getLayer(ids.layer)) {
+        map.addLayer(
+          {
+            id: ids.layer,
+            type: "raster",
+            source: ids.source,
+            paint: {
+              "raster-opacity": entry.visible === false ? 0 : 0.92,
+              "raster-fade-duration": 0,
+            },
+          },
+          beforeId
+        );
+      } else {
+        map.setPaintProperty(
+          ids.layer,
+          "raster-opacity",
+          entry.visible === false ? 0 : 0.92
+        );
+      }
+    }
+  }
+
+  function removeRasterOverlays(hash, entry) {
+    if (!map) return;
+    const overlays = (entry && entry.rasterOverlays) || [];
+    for (let i = 0; i < overlays.length; i++) {
+      const ids = packageRasterIds(hash, overlays[i].hash);
+      if (map.getLayer(ids.layer)) {
+        try {
+          map.removeLayer(ids.layer);
+        } catch (_) {}
+      }
+      if (map.getSource(ids.source)) {
+        try {
+          map.removeSource(ids.source);
+        } catch (_) {}
+      }
     }
   }
 
@@ -661,6 +790,7 @@
 
     ensurePackageLayers(hash, entry.geojson);
     applyPackageLayerVisibility(hash);
+    ensureRasterOverlays(hash, entry);
     syncPackageMarkers(hash, entry);
     bindPackageLayerHandlers();
     applyPackageLabelDeclutter(hash, { forceRecompute: true });
@@ -673,6 +803,7 @@
     const src = map.getSource(packageSourceId(hash));
     if (src) src.setData(entry.geojson);
     applyPackageLayerVisibility(hash);
+    ensureRasterOverlays(hash, entry);
     syncPackageMarkers(hash, entry);
     applyPackageLabelDeclutter(hash, { forceRecompute: true });
     writeState();
@@ -748,6 +879,10 @@
 
       entry.error = null;
       entry.geojson = stampPackageVisibility(geojson, entry.visible);
+      entry.rasterOverlays =
+        geojson.meta && Array.isArray(geojson.meta.rasterOverlays)
+          ? geojson.meta.rasterOverlays
+          : [];
       if (geojson.meta && geojson.meta.packageName) {
         entry.filename = geojson.meta.packageName;
       }
@@ -863,11 +998,19 @@
 
   function flyToPackageExtent(hash) {
     const entry = openPackages.get(hash);
-    if (!map || !entry || !entry.geojson) return;
+    if (!map || !entry) return;
     let bounds = null;
-    const features = entry.geojson.features || [];
+    const features =
+      entry.geojson && Array.isArray(entry.geojson.features) ? entry.geojson.features : [];
     for (let i = 0; i < features.length; i++) {
       bounds = extendBoundsFromGeometry(bounds, features[i].geometry);
+    }
+    const rasters = entry.rasterOverlays || [];
+    for (let j = 0; j < rasters.length; j++) {
+      const b = rasters[j].bounds;
+      if (!b || b.length < 4) continue;
+      bounds = extendBoundsPoint(bounds, b[0], b[1]);
+      bounds = extendBoundsPoint(bounds, b[2], b[3]);
     }
     if (!bounds) return;
     if (bounds.west === bounds.east && bounds.south === bounds.north) {
@@ -891,6 +1034,11 @@
     const att = entry.geojson.meta && entry.geojson.meta.attachmentSummary;
     if (att && att.kml > 0) parts.push(att.kml + " kml");
     if (att && att.cotFiles > 0) parts.push(att.cotFiles + " cot");
+    const rasterCount = Math.max(
+      (entry.rasterOverlays || []).length,
+      att && att.raster ? att.raster : 0
+    );
+    if (rasterCount > 0) parts.push(rasterCount + " raster");
     return parts.join(" · ");
   }
 
@@ -1049,6 +1197,7 @@
       openPackages.set(hash, {
         visible: settings.visible !== false,
         geojson: null,
+        rasterOverlays: [],
         loading: false,
         pendingVisible: null,
         error: null,

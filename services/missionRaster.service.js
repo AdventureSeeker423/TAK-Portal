@@ -395,8 +395,13 @@ async function renderGeotiffToPng(buf, maxDim, bounds) {
   };
 }
 
-async function renderRasterPng(hash, options = {}) {
-  const buf = await loadRasterBuffer(hash);
+async function renderRasterPngFromBuffer(buf, options = {}) {
+  if (!buf || !Buffer.isBuffer(buf) || !buf.length) {
+    const err = new Error("Raster buffer is required.");
+    err.code = "INVALID_RASTER";
+    err.status = 400;
+    throw err;
+  }
   const maxDim = options.maxDim != null ? options.maxDim : 4096;
   let bounds = normalizeBounds(options.bounds);
   let coordinates = bounds ? boundsToImageCoordinates(bounds) : null;
@@ -438,6 +443,14 @@ async function renderRasterPng(hash, options = {}) {
     }
     throw err;
   }
+}
+
+async function renderRasterPng(hash, options = {}) {
+  if (options.buffer && Buffer.isBuffer(options.buffer)) {
+    return renderRasterPngFromBuffer(options.buffer, options);
+  }
+  const buf = await loadRasterBuffer(hash);
+  return renderRasterPngFromBuffer(buf, options);
 }
 
 async function classifyRasterEntry(entry) {
@@ -559,11 +572,63 @@ async function buildRasterOverlays(missionName, missionPayload, options = {}) {
   return overlays.filter(Boolean);
 }
 
+/**
+ * Build MapLibre image overlays from in-memory raster files (e.g. data package ZIP entries).
+ * items: [{ hash, name, buffer }]
+ * urlFor(item, bounds) -> string
+ */
+async function buildRasterOverlaysFromBuffers(items, options = {}) {
+  const featureBounds = boundsFromFeatures(options.features || []);
+  const list = Array.isArray(items) ? items : [];
+  const urlFor =
+    typeof options.urlFor === "function"
+      ? options.urlFor
+      : function (item, bounds) {
+          return (
+            "/api/map/packages/raster/" +
+            encodeURIComponent(item.hash) +
+            "?bounds=" +
+            encodeURIComponent(bounds.join(","))
+          );
+        };
+
+  const overlays = await Promise.all(
+    list.map(async function (item) {
+      const hash = String(item?.hash || "").trim();
+      const name = String(item?.name || hash).trim();
+      const buf = item?.buffer;
+      if (!hash || !buf || !Buffer.isBuffer(buf)) return null;
+
+      const placement = await resolveRasterPlacement({ name, filename: name }, buf, {
+        missionBbox: options.missionBbox || null,
+        featureBounds,
+      });
+      if (!placement?.bounds) {
+        console.warn("[mission-raster] no georeferencing for package raster", name || hash);
+        return null;
+      }
+
+      const bounds = placement.bounds;
+      return {
+        hash,
+        name,
+        bounds,
+        coordinates: placement.coordinates || boundsToImageCoordinates(bounds),
+        georefSource: placement.source,
+        url: urlFor({ hash, name }, bounds),
+      };
+    })
+  );
+
+  return overlays.filter(Boolean);
+}
+
 module.exports = {
   isRasterContent,
   contentHash,
   findRasterContents,
   renderRasterPng,
+  renderRasterPngFromBuffer,
   readBoundsFromBuffer,
   readGeorefFromBuffer,
   parseMissionBbox,
@@ -571,7 +636,9 @@ module.exports = {
   boundsToImageCoordinates,
   boundsFromFeatures,
   bufferLooksLikeRaster,
+  bufferLooksLikeTiff,
   buildRasterOverlays,
+  buildRasterOverlaysFromBuffers,
   resolveRasterPlacement,
   looksLikeGeographicBounds,
 };
