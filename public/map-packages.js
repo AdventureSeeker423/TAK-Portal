@@ -965,6 +965,24 @@
         title.appendChild(badge);
       }
 
+      const downloadBtn = document.createElement("button");
+      downloadBtn.type = "button";
+      downloadBtn.className = "map-mission-refresh-btn map-package-download-btn";
+      downloadBtn.textContent = "⬇";
+      downloadBtn.title = "Download package";
+      downloadBtn.setAttribute("aria-label", "Download " + name);
+      downloadBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        const qs = new URLSearchParams();
+        if (name) qs.set("fileName", name);
+        const url =
+          "/api/map/packages/" +
+          encodeURIComponent(hash) +
+          "/download" +
+          (qs.toString() ? "?" + qs.toString() : "");
+        window.location.assign(url);
+      });
+
       const refreshBtn = document.createElement("button");
       refreshBtn.type = "button";
       refreshBtn.className = "map-mission-refresh-btn";
@@ -977,6 +995,7 @@
 
       headTop.appendChild(toggleBtn);
       headTop.appendChild(title);
+      headTop.appendChild(downloadBtn);
       headTop.appendChild(refreshBtn);
       head.appendChild(headTop);
 

@@ -11,6 +11,7 @@ const dataSyncAccess = require("../services/dataSyncAccess.service");
 const missionGeo = require("../services/missionGeo.service");
 const missionRaster = require("../services/missionRaster.service");
 const packageGeo = require("../services/packageGeo.service");
+const dataPackagesSvc = require("../services/dataPackages.service");
 const geofenceStore = require("../services/geofence.store");
 const geofenceEngine = require("../services/geofence.engine");
 const { fenceToGeoJsonFeature } = require("../services/geofence.geometry");
@@ -785,6 +786,46 @@ router.get("/packages/:hash/geojson", async (req, res) => {
           ? err.status
           : 500;
     return res.status(status).json({ error: err?.message || "Package GeoJSON failed" });
+  }
+});
+
+/** Download data package ZIP (read-only). */
+router.get("/packages/:hash/download", async (req, res) => {
+  try {
+    const hash = String(req.params.hash || "").trim();
+    if (!hash) return res.status(400).json({ error: "Missing package hash" });
+    const fileNameHint = String(req.query.fileName || req.query.filename || "").trim();
+    const r = await dataPackagesSvc.downloadDataPackageStream(hash);
+
+    if (r.status >= 400) {
+      const chunks = [];
+      await new Promise((resolve, reject) => {
+        r.data.on("data", (c) => chunks.push(c));
+        r.data.on("end", resolve);
+        r.data.on("error", reject);
+      });
+      const msg = Buffer.concat(chunks).toString("utf8").slice(0, 2000) || "Download failed";
+      return res.status(r.status).json({ error: msg });
+    }
+
+    res.status(r.status);
+    const ct = r.headers["content-type"];
+    if (ct) res.setHeader("Content-Type", ct);
+    const cd = r.headers["content-disposition"];
+    if (cd) {
+      res.setHeader("Content-Disposition", cd);
+    } else {
+      const safeName = (fileNameHint || hash + ".zip").replace(/[^\w.\- ()\[\]]+/g, "_");
+      res.setHeader("Content-Disposition", 'attachment; filename="' + safeName + '"');
+    }
+    const cl = r.headers["content-length"];
+    if (cl) res.setHeader("Content-Length", cl);
+
+    r.data.pipe(res);
+  } catch (err) {
+    console.warn("[map] package download failed:", err?.message || err);
+    const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
+    return res.status(status).json({ error: err?.message || "Package download failed" });
   }
 });
 
