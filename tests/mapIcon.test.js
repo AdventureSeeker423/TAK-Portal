@@ -261,6 +261,18 @@ async function runTests() {
     "SPI markers should render with map icons"
   );
 
+  const sensorLocIcon = mapIcon.resolveIcon({ type: "b-m-p-s-p-loc", affiliation: "other" });
+  assert.ok(sensorLocIcon, "sensor location type should resolve");
+  assert.strictEqual(sensorLocIcon.source, "type-override");
+  assert.ok(
+    /Shapes\/camera\.png/i.test(sensorLocIcon.relPath || sensorLocIcon.iconId),
+    "sensor location should use camera icon, got " + sensorLocIcon.iconId
+  );
+  assert.ok(
+    mapIcon.getIconFilePath(sensorLocIcon.iconId),
+    "sensor location camera icon file must exist"
+  );
+
   console.log("mapIcon.test.js: all assertions passed");
 }
 

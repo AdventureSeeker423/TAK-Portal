@@ -75,8 +75,10 @@ const BARE_CIVILIAN_AIR_PREFERRED_ICONS = {
 
 /** CoT type → Default iconset path (survives iconset.xml re-vendor). */
 const COT_TYPE_ICON_OVERRIDES = {
+  // SPI target / spot point
   "b-m-p-s-p-i": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/crosshair.png" },
-  "b-m-p-s-p-loc": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/crosshair.png" },
+  // Sensor point location (cameras, fixed sensors) — not a targeting SPI
+  "b-m-p-s-p-loc": { iconsetUid: GENERIC_ICONS_UID, relPath: "Shapes/camera.png" },
 };
 
 function cotTypeSegments(cotType) {
