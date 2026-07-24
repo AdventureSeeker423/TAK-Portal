@@ -125,4 +125,5 @@ module.exports = {
   isKmlContent,
   loadKmlFeaturesFromMission,
   kmlToFeatures,
+  extractKmlXmlFromBuffer,
 };

@@ -529,10 +529,11 @@ body.map-detail-resizing .map-panel-resize-handle {
   background: transparent;
   color: var(--map-muted);
   font: inherit;
-  font-size: 0.82rem;
-  padding: 10px 12px;
+  font-size: 0.78rem;
+  padding: 10px 8px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  white-space: nowrap;
 }
 
 .map-tab.active {

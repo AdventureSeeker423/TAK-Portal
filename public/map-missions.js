@@ -414,7 +414,7 @@
     if (style && Array.isArray(style.layers)) {
       for (let i = 0; i < style.layers.length; i++) {
         const id = style.layers[i].id;
-        if (id.indexOf("mission-") === 0 || id.indexOf("tak-markers") === 0) {
+        if (id.indexOf("mission-") === 0 || id.indexOf("package-") === 0 || id.indexOf("tak-markers") === 0) {
           return id;
         }
       }
@@ -1858,32 +1858,45 @@
 
     const tabChannels = document.getElementById("mapTabChannels");
     const tabMissions = document.getElementById("mapTabMissions");
+    const tabPackages = document.getElementById("mapTabPackages");
     const panelChannels = document.getElementById("mapPanelChannels");
     const panelMissions = document.getElementById("mapPanelMissions");
+    const panelPackages = document.getElementById("mapPanelPackages");
 
     function setTab(tab) {
-      const missions = tab === "missions";
-      if (tabChannels) {
-        tabChannels.classList.toggle("active", !missions);
-      }
-      if (tabMissions) {
-        tabMissions.classList.toggle("active", missions);
-      }
+      const isChannels = tab === "channels";
+      const isMissions = tab === "missions";
+      const isPackages = tab === "packages";
+      if (tabChannels) tabChannels.classList.toggle("active", isChannels);
+      if (tabMissions) tabMissions.classList.toggle("active", isMissions);
+      if (tabPackages) tabPackages.classList.toggle("active", isPackages);
       if (panelChannels) {
-        panelChannels.classList.toggle("is-active", !missions);
-        panelChannels.hidden = missions;
+        panelChannels.classList.toggle("is-active", isChannels);
+        panelChannels.hidden = !isChannels;
       }
       if (panelMissions) {
-        panelMissions.classList.toggle("is-active", missions);
-        panelMissions.hidden = !missions;
+        panelMissions.classList.toggle("is-active", isMissions);
+        panelMissions.hidden = !isMissions;
       }
-      if (missions && !missionsCatalog.length) refreshMissionCatalog();
+      if (panelPackages) {
+        panelPackages.classList.toggle("is-active", isPackages);
+        panelPackages.hidden = !isPackages;
+      }
+      if (isMissions && !missionsCatalog.length) refreshMissionCatalog();
+      if (
+        isPackages &&
+        window.TakMapPackages &&
+        typeof window.TakMapPackages.ensureCatalog === "function"
+      ) {
+        window.TakMapPackages.ensureCatalog();
+      }
     }
 
     setTab("channels");
 
     if (tabChannels) tabChannels.addEventListener("click", function () { setTab("channels"); });
     if (tabMissions) tabMissions.addEventListener("click", function () { setTab("missions"); });
+    if (tabPackages) tabPackages.addEventListener("click", function () { setTab("packages"); });
 
     map.on("moveend", scheduleMissionLabelDeclutter);
     map.on("zoomend", scheduleMissionLabelDeclutter);

@@ -128,6 +128,7 @@
         <div class="map-panel-tabs">
           <button type="button" class="map-tab active" id="mapTabChannels">Channels</button>
           <button type="button" class="map-tab" id="mapTabMissions">Missions</button>
+          <button type="button" class="map-tab" id="mapTabPackages">Packages</button>
           <button type="button" class="map-panel-collapse" id="mapCollapseLeft" title="Collapse panel">‹</button>
         </div>
 
@@ -151,6 +152,17 @@
             <button type="button" class="map-link-btn" id="mapMissionsNone">None</button>
           </div>
           <div class="map-mission-list" id="mapMissionList"></div>
+        </div>
+
+        <div class="map-panel-body" id="mapPanelPackages" hidden>
+          <div class="map-search map-search-compact">
+            <input id="mapPackageSearch" type="search" placeholder="Filter packages…" autocomplete="off" />
+          </div>
+          <div class="map-layer-actions">
+            <button type="button" class="map-link-btn" id="mapPackagesAll">All</button>
+            <button type="button" class="map-link-btn" id="mapPackagesNone">None</button>
+          </div>
+          <div class="map-mission-list" id="mapPackageList"></div>
         </div>
       </aside>
 
@@ -210,6 +222,7 @@
     <script src="<%= shapeDecorFilterJsUrl %>"></script>
     <script src="<%= mapJsUrl %>" defer></script>
     <script src="<%= mapMissionsJsUrl %>" defer></script>
+    <script src="<%= mapPackagesJsUrl %>" defer></script>
     <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
     <script src="<%= mapGeofencesJsUrl %>" defer></script>
     <% } %>

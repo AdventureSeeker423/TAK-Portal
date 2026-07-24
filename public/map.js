@@ -1467,6 +1467,12 @@
       ) {
         window.TakMapMissions.applyLabelDeclutter({ forceRecompute: !!force });
       }
+      if (
+        window.TakMapPackages &&
+        typeof window.TakMapPackages.applyLabelDeclutter === "function"
+      ) {
+        window.TakMapPackages.applyLabelDeclutter({ forceRecompute: !!force });
+      }
     }
 
     runDeclutter(true);
@@ -4126,6 +4132,15 @@
         layers.push(missionLayers[i]);
       }
     }
+    if (
+      window.TakMapPackages &&
+      typeof window.TakMapPackages.getHitLayers === "function"
+    ) {
+      const packageLayers = window.TakMapPackages.getHitLayers();
+      for (let i = 0; i < packageLayers.length; i++) {
+        layers.push(packageLayers[i]);
+      }
+    }
     if (!layers.length) return [];
 
     const bbox = [
@@ -4139,7 +4154,7 @@
       const f = features[i];
       const props = f.properties || {};
       const kind = props.kind;
-      if (kind !== "marker" && kind !== "mission-feature") continue;
+      if (kind !== "marker" && kind !== "mission-feature" && kind !== "package-feature") continue;
       const uid = String(props.uid || "");
       if (!uid || seen.has(uid)) continue;
       seen.add(uid);
@@ -5324,12 +5339,17 @@
               typeof window.TakMapMissions.restoreAfterStyleChange === "function"
                 ? Promise.resolve(window.TakMapMissions.restoreAfterStyleChange())
                 : Promise.resolve();
+            const packageRestore =
+              window.TakMapPackages &&
+              typeof window.TakMapPackages.restoreAfterStyleChange === "function"
+                ? Promise.resolve(window.TakMapPackages.restoreAfterStyleChange())
+                : Promise.resolve();
             const geofenceRestore =
               window.TakMapGeofences &&
               typeof window.TakMapGeofences.restoreAfterStyleChange === "function"
                 ? Promise.resolve(window.TakMapGeofences.restoreAfterStyleChange())
                 : Promise.resolve();
-            return Promise.all([missionRestore, geofenceRestore])
+            return Promise.all([missionRestore, packageRestore, geofenceRestore])
               .then(afterMissionsRestore)
               .catch(function (err) {
                 console.warn("[map] overlay restore after style change failed", err);
@@ -5446,6 +5466,15 @@
       const missionLayers = window.TakMapMissions.getHitLayers();
       for (let i = 0; i < missionLayers.length; i++) {
         layers.push(missionLayers[i]);
+      }
+    }
+    if (
+      window.TakMapPackages &&
+      typeof window.TakMapPackages.getHitLayers === "function"
+    ) {
+      const packageLayers = window.TakMapPackages.getHitLayers();
+      for (let i = 0; i < packageLayers.length; i++) {
+        layers.push(packageLayers[i]);
       }
     }
     if (
@@ -5813,6 +5842,9 @@
   window.TakMapBridge.whenReady(function () {
     if (window.TakMapMissions && typeof window.TakMapMissions.init === "function") {
       window.TakMapMissions.init(window.TakMapBridge);
+    }
+    if (window.TakMapPackages && typeof window.TakMapPackages.init === "function") {
+      window.TakMapPackages.init(window.TakMapBridge);
     }
     if (window.TakMapGeofences && typeof window.TakMapGeofences.init === "function") {
       window.TakMapGeofences.init(window.TakMapBridge);

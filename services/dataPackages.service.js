@@ -368,6 +368,39 @@ async function downloadDataPackageStream(hash) {
   return res;
 }
 
+/** Download package bytes for map overlay parsing (bounded). */
+async function downloadDataPackageBuffer(hash, options = {}) {
+  const maxBytes = Number(options.maxBytes) > 0 ? Number(options.maxBytes) : 64 * 1024 * 1024;
+  const res = await downloadDataPackageStream(hash);
+  if (res.status >= 400) {
+    const err = new Error(`Data package download failed (${res.status})`);
+    err.status = res.status;
+    err.code = "PACKAGE_DOWNLOAD_FAILED";
+    throw err;
+  }
+  const stream = res.data;
+  const chunks = [];
+  let total = 0;
+  await new Promise((resolve, reject) => {
+    stream.on("data", (chunk) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buf.length;
+      if (total > maxBytes) {
+        stream.destroy();
+        const err = new Error(`Data package exceeds map overlay size limit (${maxBytes} bytes).`);
+        err.code = "PACKAGE_TOO_LARGE";
+        err.status = 413;
+        reject(err);
+        return;
+      }
+      chunks.push(buf);
+    });
+    stream.on("end", resolve);
+    stream.on("error", reject);
+  });
+  return Buffer.concat(chunks);
+}
+
 function safeFilename(name, fallback) {
   const cleaned = String(name || "")
     .replace(/[^\w.\- ()\[\]]+/g, "_")
@@ -462,6 +495,7 @@ async function getDataPackageMetadata(hash) {
       const item = list[0] || {};
       if (!out.tool) out.tool = String(item.tool || "").trim();
       if (!out.keywords || !out.keywords.length) out.keywords = parseKeywords(item.keywords);
+      if (item.filename) out.filename = String(item.filename).trim();
     }
   } catch (_) {
     // optional metadata source
@@ -542,6 +576,7 @@ module.exports = {
   listDataPackages,
   deleteDataPackage,
   downloadDataPackageStream,
+  downloadDataPackageBuffer,
   uploadDataPackage,
   getDataPackageMetadata,
   updateDataPackageMetadata,

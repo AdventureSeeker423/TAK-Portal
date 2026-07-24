@@ -10,6 +10,7 @@ const dataSyncSvc = require("../services/dataSync.service");
 const dataSyncAccess = require("../services/dataSyncAccess.service");
 const missionGeo = require("../services/missionGeo.service");
 const missionRaster = require("../services/missionRaster.service");
+const packageGeo = require("../services/packageGeo.service");
 const geofenceStore = require("../services/geofence.store");
 const geofenceEngine = require("../services/geofence.engine");
 const { fenceToGeoJsonFeature } = require("../services/geofence.geometry");
@@ -737,6 +738,53 @@ router.get("/missions/:missionName/raster/:hash", async (req, res) => {
     console.warn("[map] mission raster failed:", err?.message || err);
     const status = err?.status >= 400 && err?.status < 600 ? err.status : 500;
     return res.status(status).json({ error: err?.message || "Raster render failed" });
+  }
+});
+
+/** Filtered data package list for map overlay picker (read-only). */
+router.get("/packages", async (req, res) => {
+  try {
+    const list = await packageGeo.listMapPackages();
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json({ packages: list, total: list.length });
+  } catch (err) {
+    console.warn("[map] packages list failed:", err?.message || err);
+    const status = err?.status || err?.response?.status || 500;
+    return res.status(status >= 400 && status < 600 ? status : 500).json({
+      error: err?.message || "Package list failed",
+    });
+  }
+});
+
+/** Data package ZIP contents as GeoJSON (read-only). */
+router.get("/packages/:hash/geojson", async (req, res) => {
+  try {
+    const hash = String(req.params.hash || "").trim();
+    if (!hash) return res.status(400).json({ error: "Missing package hash" });
+    const refresh = String(req.query.refresh || "") === "1";
+    const filename = String(req.query.filename || "").trim();
+    const geojson = await packageGeo.getPackageGeoJson(hash, {
+      refresh,
+      filename: filename || undefined,
+    });
+
+    if (geojson.meta?.iconManifest?.length) {
+      void mapIconRender
+        .prewarmIconManifest(geojson.meta.iconManifest)
+        .catch(function () {});
+    }
+
+    res.setHeader("Cache-Control", "no-cache");
+    return res.json(geojson);
+  } catch (err) {
+    console.warn("[map] package geojson failed:", err?.message || err);
+    const status =
+      err?.code === "PACKAGE_TOO_LARGE"
+        ? 413
+        : err?.status >= 400 && err?.status < 600
+          ? err.status
+          : 500;
+    return res.status(status).json({ error: err?.message || "Package GeoJSON failed" });
   }
 });
 
