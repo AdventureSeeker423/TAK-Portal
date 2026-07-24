@@ -322,6 +322,10 @@
     if (!list.length || !bridge || typeof bridge.preloadMarkerIcons !== "function") {
       return;
     }
+    // Register the exact manifest being loaded (merge), then any other open packages.
+    if (typeof bridge.registerMissionIconManifest === "function") {
+      bridge.registerMissionIconManifest(list);
+    }
     registerPackageIconManifests();
     if (opts.prioritize) {
       try {
@@ -794,6 +798,14 @@
     syncPackageMarkers(hash, entry);
     bindPackageLayerHandlers();
     applyPackageLabelDeclutter(hash, { forceRecompute: true });
+    // Re-bind GeoJSON after icon preload so symbol layers pick up installed images.
+    const src = map && map.getSource(packageSourceId(hash));
+    if (src && entry.geojson) {
+      try {
+        src.setData(entry.geojson);
+      } catch (_) {}
+    }
+    if (map) map.triggerRepaint();
   }
 
   function showPackageOverlaysSync(hash, entry) {

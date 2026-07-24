@@ -143,6 +143,7 @@ async function augmentPointFeature(feature, missionName) {
       id: uid || feature.id,
       uid,
       cotType,
+      affiliation,
       callsign: props.callsign || uid.slice(0, 16),
       showLabel: 0,
       labelSort: 4,

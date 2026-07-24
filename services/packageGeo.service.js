@@ -126,6 +126,8 @@ function contentHashHex(buf) {
 function stampPackageFeature(feature, meta) {
   const props = feature.properties || {};
   const uid = String(feature.id || props.uid || props.id || "").trim();
+  // Keep origin from normalize/augment (usually "mission") so icon mapImageIds
+  // stay consistent with batch icon rendering. kind marks package ownership.
   return {
     ...feature,
     id: uid || feature.id,
@@ -135,7 +137,6 @@ function stampPackageFeature(feature, meta) {
       packageHash: meta.hash,
       packageName: meta.filename,
       missionName: meta.filename,
-      origin: "package",
       id: uid || props.id || feature.id,
       uid: uid || props.uid || "",
     },
@@ -150,20 +151,39 @@ function buildIconManifest(features) {
     if (p.geometryType === "point" && p.iconId && p.apiIconId) {
       if (!manifestKeys.has(p.iconId)) {
         manifestKeys.add(p.iconId);
+        const cotType = p.cotType || p.type || "";
+        const affiliation =
+          p.affiliation ||
+          (function () {
+            const parts = String(cotType || "")
+              .trim()
+              .split("-");
+            if (parts.length < 2) return "other";
+            const aff = parts[1].toLowerCase();
+            if (aff === "f") return "friend";
+            if (aff === "h") return "hostile";
+            if (aff === "n") return "neutral";
+            if (aff === "u") return "unknown";
+            return "other";
+          })();
         const marker = {
-          type: p.cotType || "",
-          affiliation: p.affiliation || "",
-          origin: "package",
+          type: cotType,
+          affiliation,
+          origin: p.origin || "mission",
           iconId: p.apiIconId,
           iconSource: p.iconSource || "",
           teamColor: p.teamColor || null,
+          color: p.color || null,
         };
         iconManifest.push({
           mapImageId: p.iconId,
           apiIconId: p.apiIconId,
-          color: mapRender.markerDisplayColor(marker),
+          color: p.color || mapRender.markerDisplayColor(marker),
           teamColor: marker.teamColor != null ? marker.teamColor : null,
-          iconSource: p.iconSource,
+          iconSource: p.iconSource || "",
+          origin: marker.origin,
+          type: cotType,
+          affiliation,
         });
       }
     }

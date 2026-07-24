@@ -1308,9 +1308,21 @@
   }
 
   function registerMissionIconManifest(manifest) {
-    missionIconManifest = Array.isArray(manifest) ? manifest.slice() : [];
+    const incoming = Array.isArray(manifest) ? manifest : [];
+    const byId = new Map();
     for (let i = 0; i < missionIconManifest.length; i++) {
       const entry = missionIconManifest[i];
+      const id = normalizeMapImageId(entry && entry.mapImageId);
+      if (id) byId.set(id, entry);
+    }
+    for (let j = 0; j < incoming.length; j++) {
+      const entry = incoming[j];
+      const id = normalizeMapImageId(entry && entry.mapImageId);
+      if (id) byId.set(id, entry);
+    }
+    missionIconManifest = Array.from(byId.values());
+    for (let k = 0; k < missionIconManifest.length; k++) {
+      const entry = missionIconManifest[k];
       registerServerMapImageMeta(entry.mapImageId, entry.apiIconId, entry);
     }
   }

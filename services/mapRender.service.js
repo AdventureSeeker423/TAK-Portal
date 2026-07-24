@@ -152,7 +152,7 @@ function isSpiCotType(type) {
 
 function isFeedLikeOrigin(origin) {
   const o = String(origin || "").toLowerCase();
-  return o === "feed" || o === "mission" || o === "spi";
+  return o === "feed" || o === "mission" || o === "spi" || o === "package";
 }
 
 /** PNG / 2525D map icons: feeds, explicit usericon/path, air type2525b; EUD uses team dots. */

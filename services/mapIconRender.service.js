@@ -130,12 +130,14 @@ function hexToRgb(colorHex) {
 
 async function renderIconForMarker(marker) {
   const mapRender = require("./mapRender.service");
+  const mapMeta = require("./mapMeta.service");
   const apiIconId = marker?.iconId ? String(marker.iconId) : "";
   if (!apiIconId || !mapRender.markerUsesMapIcon(marker)) {
     return { mapImageId: "", apiIconId: "", skipRecolor: true, buffer: null };
   }
 
-  const color = mapRender.markerDisplayColor(marker);
+  const explicitColor = mapMeta.normalizeTakColor(marker?.color);
+  const color = explicitColor || mapRender.markerDisplayColor(marker);
   const skipRecolor = iconSkipsRecolor(marker, apiIconId);
   const mapImageId = computeMapImageId(marker, apiIconId, color);
   const cached = cacheGet(mapImageId);
@@ -196,13 +198,19 @@ async function getRenderedBuffer(mapImageId) {
 function manifestEntryToMarker(entry) {
   const apiIconId = String(entry?.apiIconId || entry?.iconId || "").trim();
   if (!apiIconId) return null;
+  const affiliationRaw = entry?.affiliation;
+  const affiliation =
+    affiliationRaw == null || String(affiliationRaw).trim() === ""
+      ? ""
+      : String(affiliationRaw);
   return {
     iconId: apiIconId,
     iconSource: String(entry?.iconSource || ""),
     origin: String(entry?.origin || "feed"),
     type: String(entry?.type || ""),
-    affiliation: String(entry?.affiliation || "friend"),
+    affiliation,
     teamColor: entry?.teamColor != null ? entry.teamColor : null,
+    color: entry?.color != null ? entry.color : null,
   };
 }
 
