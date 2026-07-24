@@ -68,6 +68,14 @@ async function run() {
     String(normCam.properties.videoUrl || "").includes("playlist.m3u8"),
     "videoUrl must survive normalize"
   );
+  assert.ok(
+    String(cam.properties?.cotRawXml || "").includes('uid="cam-1"'),
+    "camera should carry raw event XML"
+  );
+  assert.ok(
+    String(normCam.properties.cotRawXml || "").includes('type="b-m-p-s-p-loc"'),
+    "cotRawXml must survive normalize"
+  );
 
   console.log("missionCotCamera.test.js: all assertions passed");
 }

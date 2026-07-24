@@ -163,6 +163,7 @@ async function augmentPointFeature(feature, missionName) {
       contentSource: props.contentSource || "cot",
       videoUrl: props.videoUrl || "",
       videoUid: props.videoUid || "",
+      cotRawXml: props.cotRawXml || "",
     },
   };
 }

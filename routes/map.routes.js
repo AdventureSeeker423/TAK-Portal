@@ -757,6 +757,34 @@ router.get("/packages", async (req, res) => {
   }
 });
 
+/** Single package CoT event XML by uid (read-only). */
+router.get("/packages/:hash/cot-raw", async (req, res) => {
+  try {
+    const hash = String(req.params.hash || "").trim();
+    const uid = String(req.query.uid || "").trim();
+    if (!hash) return res.status(400).json({ error: "Missing package hash" });
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
+    const filename = String(req.query.filename || "").trim();
+    const raw = await packageGeo.getPackageCotRaw(hash, uid, {
+      filename: filename || undefined,
+    });
+    res.setHeader("Cache-Control", "no-cache");
+    res.type("application/xml");
+    return res.send(raw);
+  } catch (err) {
+    console.warn("[map] package cot-raw failed:", err?.message || err);
+    const status =
+      err?.code === "NOT_FOUND"
+        ? 404
+        : err?.code === "PACKAGE_TOO_LARGE"
+          ? 413
+          : err?.status >= 400 && err?.status < 600
+            ? err.status
+            : 500;
+    return res.status(status).json({ error: err?.message || "Package CoT raw failed" });
+  }
+});
+
 /** Data package ZIP contents as GeoJSON (read-only). */
 router.get("/packages/:hash/geojson", async (req, res) => {
   try {

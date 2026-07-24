@@ -226,6 +226,19 @@
     return Object.assign({}, geojson, { features: features });
   }
 
+  function geojsonForMapSource(geojson) {
+    const features = (geojson.features || []).map(function (feature) {
+      const props = Object.assign({}, feature.properties || {});
+      delete props.cotRawXml;
+      return {
+        type: feature.type,
+        geometry: feature.geometry,
+        properties: props,
+      };
+    });
+    return Object.assign({}, geojson, { features: features });
+  }
+
   function packageLayersReady() {
     if (bridge && typeof bridge.isMarkerLayersReady === "function") {
       return bridge.isMarkerLayersReady();
@@ -493,10 +506,12 @@
     const entry = openPackages.get(hash);
     const srcId = packageSourceId(hash);
     const ids = packageLayerIds(hash);
-    const data = stampPackageVisibility(
+    const stamped = stampPackageVisibility(
       geojson || { type: "FeatureCollection", features: [] },
       entry ? entry.visible : true
     );
+    // Keep MapLibre source lean — raw XML stays on entry.geojson / markers for Copy RAW.
+    const data = geojsonForMapSource(stamped);
     const beforeId = bridge.getMissionBeforeLayerId();
     const filters = packageLayerFilters(packageBaseFilter());
 
@@ -595,6 +610,7 @@
     if (!geom || geom.type !== "Point") return null;
     const uid = String(props.uid || feature.id || "");
     if (!uid) return null;
+    const packageHash = String(props.packageHash || "").trim();
     return {
       uid: uid,
       callsign: props.callsign || props.name || uid.slice(0, 16),
@@ -602,10 +618,19 @@
       lat: geom.coordinates[1],
       type: props.cotType || props.type || "",
       origin: "package",
-      missionName: props.packageHash || props.missionName || "",
+      packageHash: packageHash,
+      packageName: String(props.packageName || props.missionName || "").trim(),
+      missionName: packageHash ? "pkg:" + packageHash : String(props.missionName || ""),
       iconId: props.apiIconId || "",
       teamColor: props.teamColor || null,
       color: props.color || null,
+      remarks: props.remarks || props.description || "",
+      videoUrl: props.videoUrl || "",
+      videoUid: props.videoUid || "",
+      cotRawXml: props.cotRawXml || "",
+      links: props.videoUrl
+        ? [{ url: props.videoUrl, label: "Camera stream" }]
+        : [],
     };
   }
 
@@ -618,11 +643,13 @@
       }
       return;
     }
+    const pkgName = displayName(hash, entry);
     const markers = [];
     for (let i = 0; i < entry.geojson.features.length; i++) {
       const marker = featureToMarkerRecord(entry.geojson.features[i]);
       if (marker) {
         marker.missionName = key;
+        marker.packageName = pkgName || marker.packageName || "";
         markers.push(marker);
       }
     }
@@ -758,7 +785,7 @@
     }
     entry.geojson = Object.assign({}, entry.geojson, { features: features });
     const src = map.getSource(packageSourceId(hash));
-    if (src) src.setData(entry.geojson);
+    if (src) src.setData(geojsonForMapSource(entry.geojson));
     packageLabelDeclutterKey.set(hash, key);
   }
 
@@ -802,7 +829,7 @@
     const src = map && map.getSource(packageSourceId(hash));
     if (src && entry.geojson) {
       try {
-        src.setData(entry.geojson);
+        src.setData(geojsonForMapSource(entry.geojson));
       } catch (_) {}
     }
     if (map) map.triggerRepaint();
@@ -813,7 +840,7 @@
     if (!packageLayersInstalled(hash)) return false;
     entry.geojson = stampPackageVisibility(entry.geojson, true);
     const src = map.getSource(packageSourceId(hash));
-    if (src) src.setData(entry.geojson);
+    if (src) src.setData(geojsonForMapSource(entry.geojson));
     applyPackageLayerVisibility(hash);
     ensureRasterOverlays(hash, entry);
     syncPackageMarkers(hash, entry);
@@ -958,7 +985,7 @@
     if (entry.geojson) {
       entry.geojson = stampPackageVisibility(entry.geojson, false);
       const src = map && map.getSource(packageSourceId(hash));
-      if (src) src.setData(entry.geojson);
+      if (src) src.setData(geojsonForMapSource(entry.geojson));
     }
     applyPackageLayerVisibility(hash);
     writeState();

@@ -86,6 +86,10 @@ export async function cotXmlToGeoJsonFeature(xmlChunk) {
         contentSource: video.videoUrl ? "video" : feat.properties?.contentSource,
       });
     }
+    // Keep original event XML for Copy RAW (packages / offline overlays).
+    feat.properties = Object.assign({}, feat.properties || {}, {
+      cotRawXml: String(xmlChunk || "").trim(),
+    });
     return feat;
   } catch (_) {
     return null;

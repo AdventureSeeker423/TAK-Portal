@@ -788,6 +788,41 @@ body.map-detail-resizing .map-panel-resize-handle {
   font-style: italic;
 }
 
+.map-video-section {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.map-video-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.map-detail-video {
+  width: 100%;
+  max-height: 220px;
+  background: #000;
+  border: 1px solid var(--map-panel-border);
+  border-radius: 6px;
+}
+
+.map-video-status {
+  font-size: 0.72rem;
+  color: var(--map-muted);
+}
+
+.map-video-status.is-error {
+  color: #f87171;
+}
+
+.map-video-open-link {
+  align-self: flex-start;
+}
+
 .map-remarks-box::-webkit-scrollbar {
   display: none;
 }

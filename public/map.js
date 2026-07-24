@@ -4581,11 +4581,40 @@
     });
     pane.querySelector(".map-detail-copy-raw-btn").addEventListener("click", function () {
       const m = getMarkerRecord(slot.uid);
+      const origin = m ? String(m.origin || "").toLowerCase() : "";
+
+      function copyRawText(text) {
+        return copyTextToClipboard(text).then(function () {
+          showCopyToast("Copied raw CoT");
+        });
+      }
+
+      if (m && m.cotRawXml && String(m.cotRawXml).trim()) {
+        copyRawText(String(m.cotRawXml)).catch(function () {
+          showCopyToast("Raw CoT not available");
+        });
+        return;
+      }
+      if (m && m.cotRaw != null) {
+        const text =
+          typeof m.cotRaw === "string" ? m.cotRaw : JSON.stringify(m.cotRaw, null, 2);
+        copyRawText(text).catch(function () {
+          showCopyToast("Raw CoT not available");
+        });
+        return;
+      }
+
       let rawUrl = "/api/map/cot-raw?uid=" + encodeURIComponent(slot.uid);
-      if (m && String(m.origin || "").toLowerCase() === "mission" && m.missionName) {
+      if (origin === "mission" && m && m.missionName) {
         rawUrl =
           "/api/map/missions/" +
           encodeURIComponent(m.missionName) +
+          "/cot-raw?uid=" +
+          encodeURIComponent(slot.uid);
+      } else if (origin === "package" && m && m.packageHash) {
+        rawUrl =
+          "/api/map/packages/" +
+          encodeURIComponent(m.packageHash) +
           "/cot-raw?uid=" +
           encodeURIComponent(slot.uid);
       }
@@ -4595,9 +4624,7 @@
           return resp.text();
         })
         .then(function (text) {
-          return copyTextToClipboard(text).then(function () {
-            showCopyToast("Copied raw CoT");
-          });
+          return copyRawText(text);
         })
         .catch(function () {
           showCopyToast("Raw CoT not available");
@@ -4649,19 +4676,81 @@
     );
   }
 
+  function isPackageMarker(m) {
+    return String(m?.origin || "").toLowerCase() === "package";
+  }
+
+  function markerPackageDisplayName(m) {
+    const name = String(m?.packageName || "").trim();
+    if (name) return name;
+    const hash = String(m?.packageHash || "").trim();
+    return hash ? hash.slice(0, 12) : "—";
+  }
+
   function detailBodyStructureKey(m) {
     const groups = markerGroups(m);
     const linkCount = markerDetailLinks(m).length;
+    const videoUrl = markerVideoUrl(m);
+    const pkg = isPackageMarker(m);
     return [
-      groups.length === 1 ? "1g" : "ng",
+      pkg ? "pkg" : groups.length === 1 ? "1g" : "ng",
+      pkg ? "p:" + markerPackageDisplayName(m) : "",
       m.team && String(m.team).trim() ? "t" : "",
       m.role && String(m.role).trim() ? "r" : "",
       isUnknownHae(m.hae) ? "" : "h",
+      pkg ? "" : "c",
+      pkg ? "" : "s",
+      pkg ? "" : "u",
       linkCount ? "l" + linkCount : "",
+      videoUrl ? "v" : "",
     ].join("|");
   }
 
+  function markerVideoUrl(m) {
+    const direct = String(m?.videoUrl || "").trim();
+    if (direct && isHttpDetailLinkUrl(direct)) return direct;
+    const links = markerDetailLinks(m);
+    for (let i = 0; i < links.length; i++) {
+      const url = String(links[i].url || "").trim();
+      if (isHttpDetailLinkUrl(url) && isLikelyVideoStreamUrl(url)) return url;
+    }
+    return "";
+  }
+
+  function isLikelyVideoStreamUrl(url) {
+    const u = String(url || "").toLowerCase();
+    return (
+      /\.m3u8(\?|$)/i.test(u) ||
+      /\.(mp4|webm|ogg)(\?|$)/i.test(u) ||
+      /\/playlist\.m3u8/i.test(u) ||
+      /\/(live|stream|hls)\b/i.test(u)
+    );
+  }
+
+  function isHlsStreamUrl(url) {
+    return /\.m3u8(\?|$)/i.test(String(url || "")) || /\/playlist\.m3u8/i.test(String(url || ""));
+  }
+
+  function buildDetailVideoHtml(m) {
+    const url = markerVideoUrl(m);
+    if (!url) return "";
+    return (
+      '<section class="map-video-section">' +
+      '<h3 class="map-remarks-title">Video</h3>' +
+      '<div class="map-video-wrap" data-detail-key="video" data-video-url="' +
+      escapeHtml(url) +
+      '">' +
+      '<video class="map-detail-video" controls playsinline muted preload="metadata"></video>' +
+      '<div class="map-video-status" data-video-status></div>' +
+      '<a class="map-detail-link map-video-open-link" href="' +
+      escapeHtml(url) +
+      '" target="_blank" rel="noopener noreferrer">Open stream</a>' +
+      "</div></section>"
+    );
+  }
+
   function buildDetailBodyHtml(m) {
+    const packageMarker = isPackageMarker(m);
     const groups = markerGroups(m);
     const groupHtml = groups
       .map(function (g) {
@@ -4672,13 +4761,25 @@
     const coordText = markerCoordsDisplayText(m.lat, m.lon);
     const team = m.team ? String(m.team).trim() : "";
     const role = m.role ? String(m.role).trim() : "";
-    const kvRows = [
-      detailKvRow(
-        groups.length === 1 ? "Group" : "Groups",
-        '<span data-detail-key="groups">' + (groupHtml || "—") + "</span>",
-        "map-chips"
-      ),
-    ];
+    const kvRows = [];
+    if (packageMarker) {
+      kvRows.push(
+        detailKvRow(
+          "Data Package",
+          '<span data-detail-key="package">' +
+            escapeHtml(markerPackageDisplayName(m)) +
+            "</span>"
+        )
+      );
+    } else {
+      kvRows.push(
+        detailKvRow(
+          groups.length === 1 ? "Group" : "Groups",
+          '<span data-detail-key="groups">' + (groupHtml || "—") + "</span>",
+          "map-chips"
+        )
+      );
+    }
     if (team) {
       kvRows.push(
         detailKvRow("Team", '<span data-detail-key="team">' + escapeHtml(team) + "</span>")
@@ -4709,22 +4810,24 @@
         )
       );
     }
-    kvRows.push(
-      detailKvRow(
-        "Course",
-        '<span data-detail-key="course">' + escapeHtml(fmtCourse(m.course)) + "</span>"
-      ),
-      detailKvRow(
-        "Speed",
-        '<span data-detail-key="speed">' + escapeHtml(fmtSpeed(m.speed)) + "</span>"
-      ),
-      detailKvRow(
-        "Last Updated",
-        '<span class="map-detail-updated">' +
-          escapeHtml(updatedAgeLabel(m.updatedAt)) +
-          "</span>"
-      )
-    );
+    if (!packageMarker) {
+      kvRows.push(
+        detailKvRow(
+          "Course",
+          '<span data-detail-key="course">' + escapeHtml(fmtCourse(m.course)) + "</span>"
+        ),
+        detailKvRow(
+          "Speed",
+          '<span data-detail-key="speed">' + escapeHtml(fmtSpeed(m.speed)) + "</span>"
+        ),
+        detailKvRow(
+          "Last Updated",
+          '<span class="map-detail-updated">' +
+            escapeHtml(updatedAgeLabel(m.updatedAt)) +
+            "</span>"
+        )
+      );
+    }
 
     return (
       '<div class="map-detail-wrap" data-detail-structure="' +
@@ -4740,6 +4843,7 @@
       '" data-detail-key="remarks">' +
       escapeHtml(remarksText || "No remarks.") +
       "</div></section>" +
+      buildDetailVideoHtml(m) +
       buildDetailLinksHtml(markerDetailLinks(m)) +
       "</div>"
     );
@@ -4762,6 +4866,150 @@
         }
       );
     });
+  }
+
+  let hlsScriptPromise = null;
+  const detailVideoPlayers = new WeakMap();
+
+  function loadHlsScript() {
+    if (window.Hls) return Promise.resolve(window.Hls);
+    if (hlsScriptPromise) return hlsScriptPromise;
+    hlsScriptPromise = new Promise(function (resolve, reject) {
+      const existing = document.querySelector("script[data-tak-hls]");
+      if (existing) {
+        existing.addEventListener("load", function () {
+          resolve(window.Hls);
+        });
+        existing.addEventListener("error", reject);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js";
+      script.async = true;
+      script.dataset.takHls = "1";
+      script.onload = function () {
+        resolve(window.Hls);
+      };
+      script.onerror = function () {
+        hlsScriptPromise = null;
+        reject(new Error("Failed to load HLS library"));
+      };
+      document.head.appendChild(script);
+    });
+    return hlsScriptPromise;
+  }
+
+  function destroyDetailVideoPlayers(rootEl) {
+    if (!rootEl) return;
+    const wraps = rootEl.querySelectorAll
+      ? rootEl.querySelectorAll("[data-detail-key='video']")
+      : [];
+    for (let i = 0; i < wraps.length; i++) {
+      const wrap = wraps[i];
+      const state = detailVideoPlayers.get(wrap);
+      if (state && state.hls && typeof state.hls.destroy === "function") {
+        try {
+          state.hls.destroy();
+        } catch (_) {}
+      }
+      detailVideoPlayers.delete(wrap);
+      const video = wrap.querySelector("video");
+      if (video) {
+        try {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+        } catch (_) {}
+      }
+    }
+  }
+
+  function setDetailVideoStatus(wrap, text, isError) {
+    const statusEl = wrap.querySelector("[data-video-status]");
+    if (!statusEl) return;
+    statusEl.textContent = text || "";
+    statusEl.classList.toggle("is-error", !!isError);
+    statusEl.hidden = !text;
+  }
+
+  function attachNativeVideo(videoEl, url) {
+    videoEl.src = url;
+    return videoEl.play().catch(function () {
+      // Autoplay may be blocked; controls remain available.
+    });
+  }
+
+  function wireDetailVideoPlayer(bodyEl, uid) {
+    if (!bodyEl) return;
+    const wrap = bodyEl.querySelector('[data-detail-key="video"]');
+    if (!wrap) return;
+    const url = String(wrap.getAttribute("data-video-url") || "").trim();
+    const videoEl = wrap.querySelector("video.map-detail-video");
+    if (!url || !videoEl) return;
+
+    const existing = detailVideoPlayers.get(wrap);
+    if (existing && existing.url === url && existing.wired) return;
+
+    if (existing && existing.hls && typeof existing.hls.destroy === "function") {
+      try {
+        existing.hls.destroy();
+      } catch (_) {}
+    }
+
+    detailVideoPlayers.set(wrap, { url: url, wired: true, hls: null });
+    setDetailVideoStatus(wrap, "Loading stream…", false);
+
+    if (isHlsStreamUrl(url)) {
+      if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
+        attachNativeVideo(videoEl, url);
+        setDetailVideoStatus(wrap, "", false);
+        return;
+      }
+      loadHlsScript()
+        .then(function (Hls) {
+          if (!Hls || !Hls.isSupported()) {
+            setDetailVideoStatus(
+              wrap,
+              "HLS not supported in this browser. Use Open stream.",
+              true
+            );
+            return;
+          }
+          const current = getMarkerRecord(uid);
+          const stillUrl = markerVideoUrl(current) || url;
+          if (stillUrl !== url) return;
+          const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+          });
+          hls.loadSource(url);
+          hls.attachMedia(videoEl);
+          hls.on(Hls.Events.MANIFEST_PARSED, function () {
+            setDetailVideoStatus(wrap, "", false);
+            videoEl.play().catch(function () {});
+          });
+          hls.on(Hls.Events.ERROR, function (_event, data) {
+            if (!data || !data.fatal) return;
+            setDetailVideoStatus(
+              wrap,
+              "Stream unavailable. Try Open stream.",
+              true
+            );
+          });
+          detailVideoPlayers.set(wrap, { url: url, wired: true, hls: hls });
+        })
+        .catch(function () {
+          setDetailVideoStatus(
+            wrap,
+            "Could not load video player. Try Open stream.",
+            true
+          );
+        });
+      return;
+    }
+
+    attachNativeVideo(videoEl, url);
+    setDetailVideoStatus(wrap, "", false);
   }
 
   function patchDetailPaneBody(bodyEl, m) {
@@ -4793,6 +5041,11 @@
       groupsEl.innerHTML = groupHtml || "—";
     }
 
+    const packageEl = bodyEl.querySelector('[data-detail-key="package"]');
+    if (packageEl) {
+      packageEl.textContent = markerPackageDisplayName(m);
+    }
+
     const teamEl = bodyEl.querySelector('[data-detail-key="team"]');
     if (teamEl) teamEl.textContent = m.team ? String(m.team).trim() : "";
 
@@ -4819,6 +5072,28 @@
       }
     } else if (linksSection) {
       linksSection.remove();
+    }
+
+    const videoUrl = markerVideoUrl(m);
+    const videoSection = bodyEl.querySelector(".map-video-section");
+    if (videoUrl) {
+      const wrap = bodyEl.querySelector('[data-detail-key="video"]');
+      if (wrap) {
+        wrap.setAttribute("data-video-url", videoUrl);
+        const openLink = wrap.querySelector(".map-video-open-link");
+        if (openLink) openLink.href = videoUrl;
+      } else {
+        const detailWrap = bodyEl.querySelector(".map-detail-wrap");
+        if (detailWrap) {
+          const remarks = detailWrap.querySelector(".map-remarks-section");
+          const html = buildDetailVideoHtml(m);
+          if (remarks) remarks.insertAdjacentHTML("afterend", html);
+          else detailWrap.insertAdjacentHTML("beforeend", html);
+        }
+      }
+    } else if (videoSection) {
+      destroyDetailVideoPlayers(videoSection);
+      videoSection.remove();
     }
 
     const updatedEl = bodyEl.querySelector(".map-detail-updated");
@@ -4889,9 +5164,12 @@
         patchDetailPaneBody(bodyEl, m)
       ) {
         wireDetailCoordsCopy(bodyEl, slot.uid);
+        wireDetailVideoPlayer(bodyEl, slot.uid);
       } else {
+        destroyDetailVideoPlayers(bodyEl);
         bodyEl.innerHTML = buildDetailBodyHtml(m);
         wireDetailCoordsCopy(bodyEl, slot.uid);
+        wireDetailVideoPlayer(bodyEl, slot.uid);
       }
     }
 

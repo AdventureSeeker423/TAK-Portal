@@ -402,6 +402,81 @@ function clearCache() {
   rasterEntryCache.clear();
 }
 
+async function collectCotXmlChunksFromZipBuffer(buf) {
+  const directory = await unzipper.Open.buffer(buf);
+  const cotChunks = [];
+  for (const entry of directory.files) {
+    const entryPath = String(entry.path || "");
+    if (shouldSkipZipEntry(entryPath)) continue;
+    const base = entryBasename(entryPath);
+    if (!COT_EXT.test(base.toLowerCase())) continue;
+    try {
+      const fileBuf = await entry.buffer();
+      if (!bufferLooksLikeCot(fileBuf)) continue;
+      cotChunks.push(fileBuf.toString("utf8"));
+    } catch (err) {
+      console.warn("[package-geo] cot entry failed", entryPath, err?.message || err);
+    }
+  }
+  return cotChunks;
+}
+
+/** Single package CoT event XML by uid (read-only). */
+async function getPackageCotRaw(hash, uid, options = {}) {
+  const h = String(hash || "").trim();
+  const id = String(uid || "").trim();
+  if (!h || !id) {
+    const err = new Error("Package hash and uid are required.");
+    err.code = "INVALID_PARAMS";
+    err.status = 400;
+    throw err;
+  }
+
+  // Prefer cached GeoJSON property (avoids re-download when already loaded).
+  try {
+    const geojson = await getPackageGeoJson(h, {
+      filename: options.filename,
+      refresh: !!options.refresh,
+    });
+    const features = Array.isArray(geojson?.features) ? geojson.features : [];
+    for (let i = 0; i < features.length; i++) {
+      const f = features[i];
+      const props = f.properties || {};
+      const featureUid = String(f.id || props.uid || props.id || "").trim();
+      if (featureUid !== id) continue;
+      const raw = String(props.cotRawXml || "").trim();
+      if (raw) return raw;
+      break;
+    }
+  } catch (_) {
+    // Fall through to ZIP scan.
+  }
+
+  const buf = await dataPackagesSvc.downloadDataPackageBuffer(h, {
+    maxBytes: MAX_PACKAGE_BYTES,
+  });
+  const cotChunks = await collectCotXmlChunksFromZipBuffer(buf);
+  if (!cotChunks.length) {
+    const err = new Error("No CoT events found in data package.");
+    err.code = "NOT_FOUND";
+    err.status = 404;
+    throw err;
+  }
+
+  const mod = await import("./missionCotConvert.mjs");
+  const chunks = mod.splitMissionCotXml(cotChunks.join("\n"));
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const match = chunk.match(/\buid=['"]([^'"]+)['"]/i);
+    if (match && match[1] === id) return chunk;
+  }
+
+  const err = new Error("CoT event not found in data package.");
+  err.code = "NOT_FOUND";
+  err.status = 404;
+  throw err;
+}
+
 module.exports = {
   CACHE_TTL_MS,
   MAX_PACKAGE_BYTES,
@@ -411,5 +486,6 @@ module.exports = {
   listMapPackages,
   getPackageGeoJson,
   getPackageRasterPng,
+  getPackageCotRaw,
   clearCache,
 };
