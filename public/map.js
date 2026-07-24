@@ -4754,7 +4754,7 @@
       '<div class="map-video-status" data-video-status></div>' +
       '<a class="map-detail-link map-video-open-link" href="' +
       escapeHtml(url) +
-      '" target="_blank" rel="noopener noreferrer">Open stream</a>' +
+      '" target="_blank" rel="noopener noreferrer">Open Stream</a>' +
       "</div></section>"
     );
   }
