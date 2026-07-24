@@ -159,7 +159,9 @@ async function augmentPointFeature(feature, missionName) {
       teamColor: explicitTeamColor,
       showCircle: mapImageId ? 0 : 1,
       how: props.how || "",
-      contentSource: "cot",
+      contentSource: props.contentSource || "cot",
+      videoUrl: props.videoUrl || "",
+      videoUid: props.videoUid || "",
     },
   };
 }

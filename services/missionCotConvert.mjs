@@ -1,16 +1,40 @@
 /**
  * ESM: bulk mission CoT XML → GeoJSON via @tak-ps/node-cot.
  */
+import { createRequire } from "module";
 import { CoTParser } from "@tak-ps/node-cot";
 
+const require = createRequire(import.meta.url);
+const shapeDecor = require("../public/shapeDecorFilter.js");
+
+/** Chat / mission control chatter — never map geometry. */
 const SKIP_TYPE_PREFIXES = ["b-t-f", "t-x-m-c", "t-x-d-d"];
-const SKIP_POINT_TYPE_PREFIXES = ["b-m-p-s-p-i", "b-m-p-s-p-loc"];
+/** Video bit events are attachments, not map positions (often at 0,0). */
+const SKIP_BIT_TYPE_PREFIXES = ["b-i-v"];
 
 function shouldSkipType(type) {
   const t = String(type || "").trim().toLowerCase();
   if (!t) return true;
-  if (SKIP_POINT_TYPE_PREFIXES.some((p) => t === p || t.startsWith(p + "-"))) return true;
+  if (SKIP_BIT_TYPE_PREFIXES.some((p) => t === p || t.startsWith(p + "-"))) return true;
   return SKIP_TYPE_PREFIXES.some((p) => t === p || t.startsWith(p + "-"));
+}
+
+function extractVideoMeta(xmlChunk) {
+  const raw = String(xmlChunk || "");
+  const urlAttr = raw.match(/<__video\b[^>]*\burl\s*=\s*['"]([^'"]+)['"]/i);
+  const addressAttr = raw.match(/<ConnectionEntry\b[^>]*\baddress\s*=\s*['"]([^'"]+)['"]/i);
+  const videoUidAttr = raw.match(/<__video\b[^>]*\buid\s*=\s*['"]([^'"]+)['"]/i);
+  const url = (urlAttr && urlAttr[1]) || (addressAttr && addressAttr[1]) || "";
+  const videoUid = (videoUidAttr && videoUidAttr[1]) || "";
+  if (!url && !videoUid) return null;
+  return { videoUrl: url || "", videoUid: videoUid || "" };
+}
+
+function pointIsNullIsland(geometry) {
+  if (!geometry || String(geometry.type || "").toLowerCase() !== "point") return false;
+  const c = geometry.coordinates;
+  if (!Array.isArray(c) || c.length < 2) return false;
+  return Number(c[0]) === 0 && Number(c[1]) === 0;
 }
 
 export function splitMissionCotXml(xml) {
@@ -42,9 +66,25 @@ export async function cotXmlToGeoJsonFeature(xmlChunk) {
     if (!feat || !feat.geometry) return null;
     const geomType = String(feat.geometry.type || "").toLowerCase();
     const t = String(type || "").toLowerCase();
+
     // Drawing/shape control points are rendered via their parent polygon/line.
-    if (geomType === "point" && (t.startsWith("b-m-p") || t.startsWith("u-d"))) {
+    // Keep operational SPI / sensor / camera points (b-m-p-s-p-loc, b-m-p-s-p-i, …).
+    if (geomType === "point" && shapeDecor.isShapeControlCotType(t)) {
       return null;
+    }
+
+    // Discard null-island points (common for unpaired video/sensor sidecars).
+    if (pointIsNullIsland(feat.geometry)) {
+      return null;
+    }
+
+    const video = extractVideoMeta(xmlChunk);
+    if (video) {
+      feat.properties = Object.assign({}, feat.properties || {}, {
+        videoUrl: video.videoUrl || undefined,
+        videoUid: video.videoUid || undefined,
+        contentSource: video.videoUrl ? "video" : feat.properties?.contentSource,
+      });
     }
     return feat;
   } catch (_) {

@@ -429,5 +429,7 @@
     filterShapeVertexPoints: filterShapeVertexPoints,
     auditShapeDecor: auditShapeDecor,
     shouldSkipLiveStreamMarker: shouldSkipLiveStreamMarker,
+    isOperationalBitMarkerType: isOperationalBitMarkerType,
+    isShapeControlCotType: isShapeControlCotType,
   };
 });
