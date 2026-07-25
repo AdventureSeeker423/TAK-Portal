@@ -206,7 +206,7 @@
   const LABEL_STREAM_DECLUTTER_MS = 1500;
   const GEO_RECONCILE_MS = 45000;
   /** Below this zoom, paint all in-view COTs as cheap team-color dots (no icons). */
-  const OVERVIEW_MODE_ZOOM = 7;
+  const OVERVIEW_MODE_ZOOM = 5;
   const ICON_DB_NAME = "tak-portal-map-icons";
   const ICON_DB_STORE = "icons";
   let iconDbPromise = null;
