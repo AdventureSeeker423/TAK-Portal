@@ -205,7 +205,8 @@
   const VIEWPORT_SYNC_DEBOUNCE_MS = 200;
   const LABEL_STREAM_DECLUTTER_MS = 1500;
   const GEO_RECONCILE_MS = 45000;
-  const ICON_OVERLAP_ZOOM = 10;
+  /** Below this zoom, paint all in-view COTs as cheap team-color dots (no icons). */
+  const OVERVIEW_MODE_ZOOM = 7;
   const ICON_DB_NAME = "tak-portal-map-icons";
   const ICON_DB_STORE = "icons";
   let iconDbPromise = null;
@@ -215,7 +216,7 @@
   let labelStreamDeclutterTimer = null;
   let geoReconcileTimer = null;
   let pendingLabelStreamDeclutter = false;
-  let iconOverlapAllowed = true;
+  let overviewMode = false;
   let lastGeoFetchKey = "";
 
   function getPaddedViewportBounds() {
@@ -397,6 +398,9 @@
     if (uid && shouldSuppressLiveMarkerGraphic(uid)) {
       return { iconId: "", showCircle: 0 };
     }
+    if (overviewMode) {
+      return { iconId: "", showCircle: 1 };
+    }
     const iconId = props && props.iconId ? normalizeMapImageId(props.iconId) : "";
     const showCircle =
       props && props.showCircle != null ? (props.showCircle ? 1 : 0) : iconId ? 0 : 1;
@@ -510,6 +514,16 @@
     if (mapImageId) {
       registerServerMapImageMeta(mapImageId, apiIconId, m);
     }
+    const displayIconId = overviewMode ? "" : mapImageId;
+    const displayShowCircle = overviewMode
+      ? 1
+      : m.showCircle != null
+        ? m.showCircle
+          ? 1
+          : 0
+        : mapImageId
+          ? 0
+          : 1;
     return {
       type: "Feature",
       geometry: { type: "Point", coordinates: [lon, lat] },
@@ -520,12 +534,11 @@
         type: m.type || "",
         affiliation: m.affiliation || "other",
         color: color,
-        iconId: mapImageId,
+        iconId: displayIconId,
         apiIconId: apiIconId,
         iconSource: m.iconSource || "",
         origin: m.origin || "",
-        showCircle:
-          m.showCircle != null ? (m.showCircle ? 1 : 0) : mapImageId ? 0 : 1,
+        showCircle: displayShowCircle,
         usesMapIcon:
           m.usesMapIcon != null ? (m.usesMapIcon ? 1 : 0) : mapImageId ? 1 : 0,
         drawTier: 0,
@@ -4274,21 +4287,23 @@
     return syncFullGeoJsonToMapSource({ forceRecompute: true });
   }
 
-  function applyIconOverlapForZoom() {
-    if (!map || !markerLayersReady) return;
+  function applyOverviewRenderForZoom() {
+    if (!map) return false;
     const zoom = map.getZoom();
-    const allow = !(Number.isFinite(zoom) && zoom < ICON_OVERLAP_ZOOM);
-    if (allow === iconOverlapAllowed) {
-      // Still push layout in case layers were recreated with defaults.
-    }
-    iconOverlapAllowed = allow;
-    [ICON_LAYER_LOW, ICON_LAYER_HIGH].forEach(function (layerId) {
+    const next = Number.isFinite(zoom) && zoom < OVERVIEW_MODE_ZOOM;
+    const changed = next !== overviewMode;
+    overviewMode = next;
+    if (!markerLayersReady) return changed;
+    const radius = overviewMode
+      ? ["case", markerSelectedExpr(), 7, 4]
+      : ["case", markerSelectedExpr(), 13, 10];
+    [CIRCLE_LAYER_LOW, CIRCLE_LAYER_HIGH].forEach(function (layerId) {
       if (!map.getLayer(layerId)) return;
       try {
-        map.setLayoutProperty(layerId, "icon-allow-overlap", allow);
-        map.setLayoutProperty(layerId, "icon-ignore-placement", allow);
+        map.setPaintProperty(layerId, "circle-radius", radius);
       } catch (_) {}
     });
+    return changed;
   }
 
   function scheduleViewportSync(options) {
@@ -4297,7 +4312,7 @@
     viewportSyncTimer = setTimeout(function () {
       viewportSyncTimer = null;
       refreshPaddedViewportBounds();
-      applyIconOverlapForZoom();
+      applyOverviewRenderForZoom();
       if (opts.server || !lastServerGeoJsonFull) {
         lastGeoFetchKey = "";
         runServerGeoJsonRefresh().finally(function () {
@@ -4445,7 +4460,7 @@
     markerLayersReady = true;
     ensureLiveShapeLayers();
     applyMapChannelLayerFilters();
-    applyIconOverlapForZoom();
+    applyOverviewRenderForZoom();
     ensureGeoReconcileTimer();
     if (mapDiffFlushPending) {
       scheduleMapDiffFlush();
@@ -6188,7 +6203,7 @@
       recenterLockedMarkerAtCurrentZoom();
     }
     labelDeclutterKey = "";
-    applyIconOverlapForZoom();
+    applyOverviewRenderForZoom();
     scheduleViewportSync();
     resortGoToAddressesByViewport();
   });
