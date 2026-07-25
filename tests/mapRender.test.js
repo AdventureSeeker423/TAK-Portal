@@ -48,6 +48,26 @@ const filtered = mapRender.buildGeoJson(sampleMarkers, {
 assert.strictEqual(filtered.features.length, 1);
 assert.strictEqual(filtered.features[0].properties.uid, "feed-1");
 
+const boundsOnly = mapRender.buildGeoJson(sampleMarkers, {
+  bounds: { west: -85.205, south: 35.035, east: -85.195, north: 35.045 },
+  markerRevision: 21,
+});
+assert.strictEqual(boundsOnly.features.length, 1);
+assert.strictEqual(boundsOnly.features[0].properties.uid, "eud-1");
+
+const boundsKeepSelected = mapRender.buildGeoJson(sampleMarkers, {
+  bounds: { west: -85.205, south: 35.035, east: -85.195, north: 35.045 },
+  selectedUid: "feed-1",
+  markerRevision: 22,
+});
+assert.strictEqual(boundsKeepSelected.features.length, 2);
+assert.ok(
+  boundsKeepSelected.features.some(function (f) {
+    return f.properties.uid === "feed-1";
+  }),
+  "selected marker stays visible outside bounds"
+);
+
 const feedFeature = filtered.features[0].properties;
 assert.ok(feedFeature.iconId.startsWith("mimg-"));
 assert.strictEqual(feedFeature.showCircle, 0);

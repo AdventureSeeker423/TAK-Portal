@@ -201,9 +201,163 @@
   let mapDiffFlushPending = false;
   const SERVER_GEO_DEBOUNCE_MS = 50;
   const MAP_DIFF_FLUSH_MS = 500;
+  const VIEWPORT_PAD_RATIO = 0.25;
+  const VIEWPORT_SYNC_DEBOUNCE_MS = 200;
+  const LABEL_STREAM_DECLUTTER_MS = 1500;
+  const GEO_RECONCILE_MS = 45000;
+  const ICON_OVERLAP_ZOOM = 10;
   const ICON_DB_NAME = "tak-portal-map-icons";
   const ICON_DB_STORE = "icons";
   let iconDbPromise = null;
+  let paddedViewportBounds = null;
+  let viewportSourceUids = new Set();
+  let viewportSyncTimer = null;
+  let labelStreamDeclutterTimer = null;
+  let geoReconcileTimer = null;
+  let pendingLabelStreamDeclutter = false;
+  let iconOverlapAllowed = true;
+  let lastGeoFetchKey = "";
+
+  function getPaddedViewportBounds() {
+    if (!map) return null;
+    try {
+      const b = map.getBounds();
+      if (!b) return null;
+      const west = b.getWest();
+      const east = b.getEast();
+      const south = b.getSouth();
+      const north = b.getNorth();
+      const latSpan = Math.max(0.0001, north - south);
+      const lonSpan = Math.max(0.0001, east - west);
+      const latPad = latSpan * VIEWPORT_PAD_RATIO;
+      const lonPad = lonSpan * VIEWPORT_PAD_RATIO;
+      return {
+        west: west - lonPad,
+        south: Math.max(-90, south - latPad),
+        east: east + lonPad,
+        north: Math.min(90, north + latPad),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function refreshPaddedViewportBounds() {
+    paddedViewportBounds = getPaddedViewportBounds();
+    return paddedViewportBounds;
+  }
+
+  function expandBounds(bounds, factor) {
+    if (!bounds) return null;
+    const f = Number(factor) > 0 ? Number(factor) : 1;
+    const latMid = (bounds.south + bounds.north) / 2;
+    const lonMid = (bounds.west + bounds.east) / 2;
+    const latHalf = ((bounds.north - bounds.south) / 2) * f;
+    const lonHalf = ((bounds.east - bounds.west) / 2) * f;
+    return {
+      west: lonMid - lonHalf,
+      south: Math.max(-90, latMid - latHalf),
+      east: lonMid + lonHalf,
+      north: Math.min(90, latMid + latHalf),
+    };
+  }
+
+  function formatBoundsQuery(bounds) {
+    if (!bounds) return "";
+    return [bounds.west, bounds.south, bounds.east, bounds.north]
+      .map(function (n) {
+        return Number(n).toFixed(5);
+      })
+      .join(",");
+  }
+
+  function isPriorityMapUid(uid) {
+    const id = uid != null ? String(uid) : "";
+    return !!(id && (id === selectedUid || id === lockedUid));
+  }
+
+  function lonLatInBounds(lon, lat, bounds) {
+    if (!bounds) return true;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+    if (lat < bounds.south || lat > bounds.north) return false;
+    if (bounds.west <= bounds.east) {
+      return lon >= bounds.west && lon <= bounds.east;
+    }
+    return lon >= bounds.west || lon <= bounds.east;
+  }
+
+  function markerInPaddedViewport(m, bounds) {
+    if (!m) return false;
+    if (isPriorityMapUid(m.uid)) return true;
+    return lonLatInBounds(
+      Number(m.lon),
+      Number(m.lat),
+      bounds || paddedViewportBounds
+    );
+  }
+
+  function featureInPaddedViewport(feature, bounds) {
+    const uid = feature && feature.properties && feature.properties.uid;
+    if (isPriorityMapUid(uid)) return true;
+    const coords =
+      feature && feature.geometry && feature.geometry.coordinates;
+    if (!coords) return false;
+    return lonLatInBounds(
+      Number(coords[0]),
+      Number(coords[1]),
+      bounds || paddedViewportBounds
+    );
+  }
+
+  function sourceHasUid(uid) {
+    return viewportSourceUids.has(String(uid));
+  }
+
+  function upsertCanonicalFeature(feature) {
+    if (!feature || !feature.properties || !feature.properties.uid) return;
+    const uid = String(feature.properties.uid);
+    if (!lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
+      lastServerGeoJsonFull = {
+        type: "FeatureCollection",
+        features: [feature],
+        meta: lastServerGeoJsonFull && lastServerGeoJsonFull.meta
+          ? lastServerGeoJsonFull.meta
+          : {},
+      };
+      return;
+    }
+    let found = false;
+    const features = lastServerGeoJsonFull.features.map(function (existing) {
+      const existingUid =
+        existing && existing.properties && existing.properties.uid;
+      if (String(existingUid) !== uid) return existing;
+      found = true;
+      return feature;
+    });
+    if (!found) features.push(feature);
+    lastServerGeoJsonFull = Object.assign({}, lastServerGeoJsonFull, {
+      features: features,
+    });
+  }
+
+  function pruneCanonicalFeaturesOutside(bounds) {
+    if (
+      !bounds ||
+      !lastServerGeoJsonFull ||
+      !Array.isArray(lastServerGeoJsonFull.features)
+    ) {
+      return;
+    }
+    const next = lastServerGeoJsonFull.features.filter(function (feature) {
+      const uid = feature && feature.properties && feature.properties.uid;
+      if (isPriorityMapUid(uid)) return true;
+      return featureInPaddedViewport(feature, bounds);
+    });
+    if (next.length === lastServerGeoJsonFull.features.length) return;
+    lastServerGeoJsonFull = Object.assign({}, lastServerGeoJsonFull, {
+      features: next,
+    });
+  }
 
   function normalizeMapImageId(mapImageId) {
     const id = String(mapImageId || "").trim();
@@ -460,9 +614,7 @@
     }
 
     if (pendingMapUpdates.size || pendingMapAdds.size) {
-      syncLabelVisibility(getVisibleMarkers(), {
-        forceRecompute: pendingMapUpdates.size > 0,
-      });
+      scheduleLabelStreamDeclutter();
     }
 
     const diff = { add: [], remove: [], update: [] };
@@ -470,13 +622,18 @@
       diff.remove.push(uid);
       pendingMapAdds.delete(uid);
       pendingMapUpdates.delete(uid);
+      viewportSourceUids.delete(String(uid));
     });
 
     pendingMapAdds.forEach(function (_feature, uid) {
       if (pendingMapRemoves.has(uid)) return;
       const marker = markersByUid.get(uid);
       const feature = marker ? buildMapFeatureFromMarker(marker) : _feature;
-      if (feature) diff.add.push(feature);
+      if (feature) {
+        diff.add.push(feature);
+        upsertCanonicalFeature(feature);
+        viewportSourceUids.add(String(uid));
+      }
     });
 
     pendingMapUpdates.forEach(function (marker, uid) {
@@ -515,10 +672,26 @@
     src.setData({ type: "FeatureCollection", features: lastServerGeoJson.features });
   }
 
+  function scheduleLabelStreamDeclutter() {
+    pendingLabelStreamDeclutter = true;
+    if (labelStreamDeclutterTimer) return;
+    labelStreamDeclutterTimer = setTimeout(function () {
+      labelStreamDeclutterTimer = null;
+      if (!pendingLabelStreamDeclutter) return;
+      pendingLabelStreamDeclutter = false;
+      applyClientLabelDeclutterToSource({ forceRecompute: true });
+    }, LABEL_STREAM_DECLUTTER_MS);
+  }
+
   function queueMapDiffFromBatch(updates, removes) {
+    if (!paddedViewportBounds) refreshPaddedViewportBounds();
+    const bounds = paddedViewportBounds;
+
     for (let i = 0; i < (removes || []).length; i++) {
       const uid = String(removes[i]);
-      pendingMapRemoves.add(uid);
+      if (sourceHasUid(uid) || pendingMapAdds.has(uid)) {
+        pendingMapRemoves.add(uid);
+      }
       pendingMapAdds.delete(uid);
       pendingMapUpdates.delete(uid);
     }
@@ -526,12 +699,24 @@
       const m = updates[i];
       if (!m || !m.uid) continue;
       const uid = String(m.uid);
-      if (pendingMapRemoves.has(uid)) continue;
-      if (!canonicalFeatureHasUid(uid)) {
+      if (pendingMapRemoves.has(uid) && !markerInPaddedViewport(m, bounds)) {
+        continue;
+      }
+      const inView = markerInPaddedViewport(m, bounds);
+      if (!inView) {
+        if (sourceHasUid(uid) || pendingMapAdds.has(uid)) {
+          pendingMapRemoves.add(uid);
+          pendingMapAdds.delete(uid);
+          pendingMapUpdates.delete(uid);
+        }
+        continue;
+      }
+      pendingMapRemoves.delete(uid);
+      if (sourceHasUid(uid)) {
+        pendingMapUpdates.set(uid, m);
+      } else {
         const feature = buildMapFeatureFromMarker(m);
         if (feature) pendingMapAdds.set(uid, feature);
-      } else {
-        pendingMapUpdates.set(uid, m);
       }
     }
     scheduleMapDiffFlush();
@@ -884,6 +1069,20 @@
     const parts = [];
     const scope = buildGeoJsonScopeParam();
     if (scope) parts.push("scopeKeys=" + scope);
+    if (!paddedViewportBounds) refreshPaddedViewportBounds();
+    if (paddedViewportBounds) {
+      parts.push(
+        "bounds=" + encodeURIComponent(formatBoundsQuery(paddedViewportBounds))
+      );
+    }
+    if (map) {
+      const zoom = map.getZoom();
+      if (Number.isFinite(zoom)) {
+        parts.push("zoom=" + encodeURIComponent(String(Math.round(zoom * 10) / 10)));
+      }
+    }
+    if (selectedUid) parts.push("selected=" + encodeURIComponent(selectedUid));
+    if (lockedUid) parts.push("locked=" + encodeURIComponent(lockedUid));
     return parts.join("&");
   }
 
@@ -1141,13 +1340,10 @@
   }
 
   function countChannelVisibleFeatures() {
-    if (!lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
-      return 0;
-    }
     let visible = 0;
-    for (let i = 0; i < lastServerGeoJsonFull.features.length; i++) {
-      if (featureMatchesChannelFilter(lastServerGeoJsonFull.features[i])) visible++;
-    }
+    markersByUid.forEach(function (m) {
+      if (markerVisible(m)) visible++;
+    });
     return visible;
   }
 
@@ -1169,26 +1365,81 @@
   function syncFullGeoJsonToMapSource(options) {
     if (!map || !markerLayersReady) return false;
     const src = map.getSource(SOURCE_ID);
-    if (!src || !lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
-      return false;
-    }
+    if (!src) return false;
 
     const opts = options || {};
-    const visible = getVisibleMarkers();
-    syncLabelVisibility(visible, {
+    refreshPaddedViewportBounds();
+    const bounds = paddedViewportBounds;
+
+    const byUid = new Map();
+    if (lastServerGeoJsonFull && Array.isArray(lastServerGeoJsonFull.features)) {
+      for (let i = 0; i < lastServerGeoJsonFull.features.length; i++) {
+        const feature = lastServerGeoJsonFull.features[i];
+        const uid = feature && feature.properties && feature.properties.uid;
+        if (uid) byUid.set(String(uid), feature);
+      }
+    }
+
+    markersByUid.forEach(function (m) {
+      if (!m || !m.uid) return;
+      if (!markerVisible(m)) return;
+      if (!markerInPaddedViewport(m, bounds)) return;
+      const uid = String(m.uid);
+      if (byUid.has(uid)) return;
+      const built = buildMapFeatureFromMarker(m);
+      if (built) byUid.set(uid, built);
+    });
+
+    [selectedUid, lockedUid].forEach(function (uid) {
+      if (!uid) return;
+      const id = String(uid);
+      if (byUid.has(id)) return;
+      const m = markersByUid.get(id);
+      if (!m) return;
+      const built = buildMapFeatureFromMarker(m);
+      if (built) byUid.set(id, built);
+    });
+
+    if (!byUid.size && !lastServerGeoJsonFull) return false;
+
+    const declutterMarkers = getViewportDeclutterMarkers();
+    syncLabelVisibility(declutterMarkers, {
       forceRecompute: !!(opts.forceLabels || opts.forceRecompute),
     });
-    const features = lastServerGeoJsonFull.features
-      .map(buildDisplayFeature)
-      .filter(Boolean);
 
-    lastServerGeoJson = Object.assign({}, lastServerGeoJsonFull, {
-      features: features,
-      meta: Object.assign({}, lastServerGeoJsonFull.meta || {}, {
-        visible: countChannelVisibleFeatures(),
-        mapped: countChannelVisibleFeatures(),
-      }),
+    const features = [];
+    const nextSourceUids = new Set();
+    byUid.forEach(function (feature, uid) {
+      if (!isPriorityMapUid(uid) && !featureMatchesChannelFilter(feature)) return;
+      if (!isPriorityMapUid(uid) && !featureInPaddedViewport(feature, bounds)) {
+        return;
+      }
+      const display = buildDisplayFeature(feature);
+      if (!display) return;
+      features.push(display);
+      nextSourceUids.add(String(uid));
     });
+
+    viewportSourceUids = nextSourceUids;
+    const baseMeta =
+      (lastServerGeoJsonFull && lastServerGeoJsonFull.meta) || lastGeoMeta || {};
+    lastServerGeoJson = {
+      type: "FeatureCollection",
+      features: features,
+      meta: Object.assign({}, baseMeta, {
+        visible: countChannelVisibleFeatures(),
+        mapped: features.length,
+      }),
+    };
+    if (!lastServerGeoJsonFull) {
+      lastServerGeoJsonFull = {
+        type: "FeatureCollection",
+        features: Array.from(byUid.values()),
+        meta: baseMeta,
+      };
+    } else {
+      pruneCanonicalFeaturesOutside(expandBounds(bounds, 2));
+    }
 
     src.setData({ type: "FeatureCollection", features: features });
     rebuildIconUidIndex(features);
@@ -1196,12 +1447,19 @@
     applyMapChannelLayerFilters();
     updateChannelVisibleMeta();
     scheduleMissingIconSweep();
-    if (mapDiffFlushPending) {
-      scheduleMapDiffFlush();
+    pendingMapAdds.clear();
+    pendingMapUpdates.clear();
+    pendingMapRemoves.clear();
+    mapDiffFlushPending = false;
+    if (mapDiffTimer) {
+      clearTimeout(mapDiffTimer);
+      mapDiffTimer = null;
     }
     if (!opts.deferLabels) {
       applyClientLabelDeclutterToSource(
-        opts.forceLabels ? { forceRecompute: true } : undefined
+        opts.forceLabels || opts.forceRecompute
+          ? { forceRecompute: true }
+          : undefined
       );
     }
     return true;
@@ -1416,7 +1674,41 @@
 
     preloadMarkerIcons(geojson.meta && geojson.meta.iconManifest);
 
-    lastServerGeoJsonFull = geojson;
+    const byUid = new Map();
+    if (lastServerGeoJsonFull && Array.isArray(lastServerGeoJsonFull.features)) {
+      for (let i = 0; i < lastServerGeoJsonFull.features.length; i++) {
+        const feature = lastServerGeoJsonFull.features[i];
+        const uid = feature && feature.properties && feature.properties.uid;
+        if (uid) byUid.set(String(uid), feature);
+      }
+    }
+    for (let i = 0; i < features.length; i++) {
+      const feature = features[i];
+      const uid = feature && feature.properties && feature.properties.uid;
+      if (uid) byUid.set(String(uid), feature);
+    }
+
+    refreshPaddedViewportBounds();
+    const pruneBounds = expandBounds(paddedViewportBounds, 2);
+    if (pruneBounds) {
+      byUid.forEach(function (feature, uid) {
+        if (isPriorityMapUid(uid)) return;
+        if (!featureInPaddedViewport(feature, pruneBounds)) {
+          byUid.delete(uid);
+        }
+      });
+    }
+
+    lastServerGeoJsonFull = {
+      type: "FeatureCollection",
+      features: Array.from(byUid.values()),
+      meta: Object.assign({}, geojson.meta || {}, {
+        total:
+          geojson.meta && geojson.meta.total != null
+            ? geojson.meta.total
+            : markersByUid.size,
+      }),
+    };
     return applyLocalChannelFilter();
   }
 
@@ -1427,7 +1719,7 @@
 
     const opts = options && typeof options === "object" ? options : {};
     const forceRecompute = !!opts.forceRecompute || pendingStyleLabelDeclutter;
-    const visible = getVisibleMarkers();
+    const visible = getViewportDeclutterMarkers();
     syncLabelVisibility(visible, { forceRecompute: forceRecompute });
 
     const updates = [];
@@ -1510,6 +1802,21 @@
 
   function patchServerGeoJsonFromBatch(updates, removes) {
     if (!lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
+      if (Array.isArray(updates) && updates.length) {
+        const seeded = [];
+        for (let i = 0; i < updates.length; i++) {
+          const feature = buildMapFeatureFromMarker(updates[i]);
+          if (feature) seeded.push(feature);
+        }
+        if (seeded.length) {
+          lastServerGeoJsonFull = {
+            type: "FeatureCollection",
+            features: seeded,
+            meta: {},
+          };
+          return true;
+        }
+      }
       return false;
     }
 
@@ -1538,10 +1845,13 @@
         if (m && m.uid) byUid.set(String(m.uid), m);
       }
       if (byUid.size) {
+        const seen = new Set();
         features = features.map(function (feature) {
           if (!feature || !feature.properties) return feature;
-          const m = byUid.get(String(feature.properties.uid));
+          const uid = String(feature.properties.uid);
+          const m = byUid.get(uid);
           if (!m) return feature;
+          seen.add(uid);
           const lat = Number(m.lat);
           const lon = Number(m.lon);
           if (!Number.isFinite(lat) || !Number.isFinite(lon)) return feature;
@@ -1567,6 +1877,13 @@
             }),
           };
         });
+        byUid.forEach(function (m, uid) {
+          if (seen.has(uid)) return;
+          const feature = buildMapFeatureFromMarker(m);
+          if (!feature) return;
+          features.push(feature);
+          changed = true;
+        });
       }
     }
 
@@ -1578,35 +1895,32 @@
   }
 
   function batchNeedsFullGeoRefresh(updates) {
-    if (!lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
+    if (!lastServerGeoJsonFull && markersByUid.size === 0) {
       return true;
     }
-    const known = new Set();
-    for (let i = 0; i < lastServerGeoJsonFull.features.length; i++) {
-      const uid = lastServerGeoJsonFull.features[i]?.properties?.uid;
-      if (uid) known.add(String(uid));
-    }
-    for (let i = 0; i < (updates || []).length; i++) {
-      const m = updates[i];
-      if (m && m.uid && !known.has(String(m.uid))) return true;
-    }
+    // New UIDs are built from slim SSE markers; periodic reconcile enriches icons.
+    void updates;
     return false;
   }
 
   function fetchServerGeoJson() {
+    refreshPaddedViewportBounds();
     let url = "/api/map/geojson";
     const qs = buildGeoJsonFetchQueryString();
     if (qs) url += "?" + qs;
+    const fetchKey = String(lastMarkerRevision || 0) + "|" + qs;
+    if (fetchKey === lastGeoFetchKey && lastServerGeoJsonFull) {
+      return Promise.resolve(lastServerGeoJsonFull);
+    }
 
     return fetch(url, {
       credentials: "same-origin",
-      headers: {
-        "If-None-Match": String(lastMarkerRevision || ""),
-      },
     }).then(function (resp) {
-      if (resp.status === 304) return lastServerGeoJsonFull;
       if (!resp.ok) throw new Error("geojson " + resp.status);
-      return resp.json();
+      return resp.json().then(function (geojson) {
+        lastGeoFetchKey = fetchKey;
+        return geojson;
+      });
     });
   }
 
@@ -1717,7 +2031,7 @@
   }
 
   function syncChannelFilterToMap() {
-    if (!applyLocalChannelFilter({ layersOnly: true })) {
+    if (!applyLocalChannelFilter({ forceRecompute: true })) {
       syncMapSource({ server: true });
       return;
     }
@@ -3631,6 +3945,14 @@
     return Array.from(merged.values());
   }
 
+  function getViewportDeclutterMarkers() {
+    if (!paddedViewportBounds) refreshPaddedViewportBounds();
+    const bounds = paddedViewportBounds;
+    return getVisibleMarkers().filter(function (m) {
+      return markerInPaddedViewport(m, bounds);
+    });
+  }
+
   function labelDeclutterSignature(visible) {
     let originWeight = 0;
     for (let i = 0; i < visible.length; i++) {
@@ -3661,7 +3983,41 @@
   }
 
   function recomputeLabelVisibility(visible) {
-    const placed = [];
+    const CELL = 64;
+    const grid = new Map();
+
+    function cellKey(cx, cy) {
+      return cx + "," + cy;
+    }
+
+    function nearbyBoxes(box) {
+      const x0 = Math.floor(box.x / CELL);
+      const y0 = Math.floor(box.y / CELL);
+      const x1 = Math.floor((box.x + box.w) / CELL);
+      const y1 = Math.floor((box.y + box.h) / CELL);
+      const out = [];
+      for (let cx = x0 - 1; cx <= x1 + 1; cx++) {
+        for (let cy = y0 - 1; cy <= y1 + 1; cy++) {
+          const list = grid.get(cellKey(cx, cy));
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) out.push(list[i]);
+        }
+      }
+      return out;
+    }
+
+    function placeBox(box) {
+      const cx = Math.floor((box.x + box.w / 2) / CELL);
+      const cy = Math.floor((box.y + box.h / 2) / CELL);
+      const key = cellKey(cx, cy);
+      let list = grid.get(key);
+      if (!list) {
+        list = [];
+        grid.set(key, list);
+      }
+      list.push(box);
+    }
+
     const sorted = visible.slice().sort(function (a, b) {
       const aPri = markerLabelDeclutterPriority(a);
       const bPri = markerLabelDeclutterPriority(b);
@@ -3673,19 +4029,20 @@
       const m = sorted[i];
       if (m.uid === selectedUid || m.uid === lockedUid) {
         labelVisibleByUid.set(m.uid, 1);
-        placed.push(estimateLabelBox(m.lon, m.lat, m.callsign));
+        placeBox(estimateLabelBox(m.lon, m.lat, m.callsign));
         continue;
       }
       const box = estimateLabelBox(m.lon, m.lat, m.callsign);
+      const nearby = nearbyBoxes(box);
       let overlap = false;
-      for (let j = 0; j < placed.length; j++) {
-        if (labelBoxOverlaps(box, placed[j])) {
+      for (let j = 0; j < nearby.length; j++) {
+        if (labelBoxOverlaps(box, nearby[j])) {
           overlap = true;
           break;
         }
       }
       labelVisibleByUid.set(m.uid, overlap ? 0 : 1);
-      if (!overlap) placed.push(box);
+      if (!overlap) placeBox(box);
     }
   }
 
@@ -3863,9 +4220,17 @@
 
   function syncSelectionToMapSource() {
     if (!map || !markerLayersReady) return false;
-    const src = map.getSource(SOURCE_ID);
-    if (!src || !lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
-      return false;
+    if (!lastServerGeoJsonFull || !Array.isArray(lastServerGeoJsonFull.features)) {
+      if (selectedUid || lockedUid) {
+        [selectedUid, lockedUid].forEach(function (uid) {
+          if (!uid) return;
+          const m = markersByUid.get(String(uid));
+          if (!m) return;
+          const feature = buildMapFeatureFromMarker(m);
+          if (feature) upsertCanonicalFeature(feature);
+        });
+      }
+      if (!lastServerGeoJsonFull) return false;
     }
 
     let canonicalChanged = false;
@@ -3891,69 +4256,69 @@
       };
     });
 
-    const visible = getVisibleMarkers();
-    syncLabelVisibility(visible, { forceRecompute: true });
-
-    const prevByUid = new Map();
-    if (lastServerGeoJson && Array.isArray(lastServerGeoJson.features)) {
-      for (let i = 0; i < lastServerGeoJson.features.length; i++) {
-        const feature = lastServerGeoJson.features[i];
-        const uid = feature && feature.properties && feature.properties.uid;
-        if (uid) prevByUid.set(String(uid), feature);
-      }
-    }
-
-    const displayFeatures = canonicalFeatures.map(buildDisplayFeature).filter(Boolean);
-    const updateOps = [];
-    for (let i = 0; i < displayFeatures.length; i++) {
-      const built = displayFeatures[i];
-      const uid = built.properties && built.properties.uid;
-      if (!uid) continue;
-      const prev = prevByUid.get(String(uid));
-      if (
-        prev &&
-        prev.properties.selected === built.properties.selected &&
-        prev.properties.locked === built.properties.locked &&
-        prev.properties.showLabel === built.properties.showLabel
-      ) {
-        continue;
-      }
-      if (typeof src.updateData === "function") {
-        updateOps.push({
-          id: String(uid),
-          addOrUpdateProperties: [
-            { key: "selected", value: built.properties.selected },
-            { key: "locked", value: built.properties.locked },
-            { key: "showLabel", value: built.properties.showLabel },
-          ],
-        });
-      }
-    }
-
-    if (!canonicalChanged && !updateOps.length) return true;
-
     if (canonicalChanged) {
       lastServerGeoJsonFull = Object.assign({}, lastServerGeoJsonFull, {
         features: canonicalFeatures,
       });
     }
-    lastServerGeoJson = Object.assign({}, lastServerGeoJsonFull, {
-      features: displayFeatures,
-      meta: Object.assign({}, lastServerGeoJsonFull.meta || {}, {
-        visible: countChannelVisibleFeatures(),
-        mapped: countChannelVisibleFeatures(),
-      }),
+
+    [selectedUid, lockedUid].forEach(function (uid) {
+      if (!uid) return;
+      if (canonicalFeatureHasUid(uid)) return;
+      const m = markersByUid.get(String(uid));
+      if (!m) return;
+      const feature = buildMapFeatureFromMarker(m);
+      if (feature) upsertCanonicalFeature(feature);
     });
 
-    if (updateOps.length && typeof src.updateData === "function") {
-      try {
-        src.updateData({ update: updateOps });
-        return true;
-      } catch (_) {}
+    return syncFullGeoJsonToMapSource({ forceRecompute: true });
+  }
+
+  function applyIconOverlapForZoom() {
+    if (!map || !markerLayersReady) return;
+    const zoom = map.getZoom();
+    const allow = !(Number.isFinite(zoom) && zoom < ICON_OVERLAP_ZOOM);
+    if (allow === iconOverlapAllowed) {
+      // Still push layout in case layers were recreated with defaults.
     }
-    src.setData({ type: "FeatureCollection", features: displayFeatures });
-    rebuildIconUidIndex(displayFeatures);
-    return true;
+    iconOverlapAllowed = allow;
+    [ICON_LAYER_LOW, ICON_LAYER_HIGH].forEach(function (layerId) {
+      if (!map.getLayer(layerId)) return;
+      try {
+        map.setLayoutProperty(layerId, "icon-allow-overlap", allow);
+        map.setLayoutProperty(layerId, "icon-ignore-placement", allow);
+      } catch (_) {}
+    });
+  }
+
+  function scheduleViewportSync(options) {
+    const opts = options || {};
+    if (viewportSyncTimer) clearTimeout(viewportSyncTimer);
+    viewportSyncTimer = setTimeout(function () {
+      viewportSyncTimer = null;
+      refreshPaddedViewportBounds();
+      applyIconOverlapForZoom();
+      if (opts.server || !lastServerGeoJsonFull) {
+        lastGeoFetchKey = "";
+        runServerGeoJsonRefresh().finally(function () {
+          if (lastServerGeoJsonFull) {
+            syncFullGeoJsonToMapSource({ forceRecompute: true });
+          }
+        });
+        return;
+      }
+      syncFullGeoJsonToMapSource({ forceRecompute: true });
+    }, VIEWPORT_SYNC_DEBOUNCE_MS);
+  }
+
+  function ensureGeoReconcileTimer() {
+    if (geoReconcileTimer) return;
+    geoReconcileTimer = setInterval(function () {
+      if (!markerLayersReady) return;
+      refreshPaddedViewportBounds();
+      lastGeoFetchKey = "";
+      runServerGeoJsonRefresh();
+    }, GEO_RECONCILE_MS);
   }
 
   function markerLabelLayout() {
@@ -4080,6 +4445,8 @@
     markerLayersReady = true;
     ensureLiveShapeLayers();
     applyMapChannelLayerFilters();
+    applyIconOverlapForZoom();
+    ensureGeoReconcileTimer();
     if (mapDiffFlushPending) {
       scheduleMapDiffFlush();
     }
@@ -5451,8 +5818,11 @@
     patchServerGeoJsonFromBatch(msg.updates || [], msg.removes || []);
     applyLiveShapeBatch(msg.shapeUpdates || [], msg.shapeRemoves || []);
     const needsFullGeoRefresh = batchNeedsFullGeoRefresh(msg.updates);
-    if (!needsFullGeoRefresh) {
+    if (needsFullGeoRefresh) {
+      syncMapSource({ server: true });
+    } else {
       queueMapDiffFromBatch(msg.updates || [], msg.removes || []);
+      ensureGeoReconcileTimer();
     }
     // SSE groupsCatalog is global (no per-user scope); agency admins refresh scoped catalog.
     if (msg.groupsCatalog && mapChannelScope !== "member") {
@@ -5461,9 +5831,6 @@
       scheduleScopedGroupsRefresh();
     } else {
       recomputeGroupCounts();
-    }
-    if (needsFullGeoRefresh) {
-      syncMapSource({ server: true });
     }
     scheduleLayerListRefresh();
     if (slotsChanged) {
@@ -5812,9 +6179,7 @@
   map.on("moveend", () => {
     lockMoveFromCode = false;
     resortGoToAddressesByViewport();
-    applyClientLabelDeclutterToSource(
-      pendingStyleLabelDeclutter ? { forceRecompute: true } : undefined
-    );
+    scheduleViewportSync();
     scheduleMissingIconSweep();
   });
 
@@ -5823,7 +6188,8 @@
       recenterLockedMarkerAtCurrentZoom();
     }
     labelDeclutterKey = "";
-    applyClientLabelDeclutterToSource({ forceRecompute: true });
+    applyIconOverlapForZoom();
+    scheduleViewportSync();
     resortGoToAddressesByViewport();
   });
 
