@@ -920,6 +920,7 @@
                 { value: "countyAbbreviation", label: "County Abbrev" },
                 { value: "agencyAbbreviation", label: "Agency Abbrev" },
                 { value: "agencyTypeCode", label: "Agency Type" },
+                { value: "currentTemplate", label: "Template" },
                 { value: "firstName", label: "First Name" },
                 { value: "firstInitial", label: "First Initial" },
                 { value: "lastNameUpper", label: "Last Name (UPPER)" },
@@ -987,6 +988,7 @@
                   county: "COUNTY",
                   countyAbbreviation: "COUNTYABBREV",
                   agencyTypeCode: "TYPE",
+                  currentTemplate: "TEMPLATE",
                   firstName: "FIRST",
                   firstInitial: "F",
                   lastName: "Last",
@@ -1003,7 +1005,7 @@
                   return "";
                 });
 
-                if (expr.indexOf("radioCallsignOrBlank") >= 0) {
+                if (expr.indexOf("radioCallsignOrBlank") >= 0 || expr.indexOf("currentTemplate") >= 0) {
                   rendered = String(rendered || "").trim();
                   while (rendered.charAt(0) === "-") rendered = rendered.slice(1).trim();
                   while (rendered.charAt(rendered.length - 1) === "-") {

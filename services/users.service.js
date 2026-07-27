@@ -254,6 +254,12 @@ function cleanupCallsignOutput(str) {
  * Build a callsign string from settings + user context.
  * Falls back to "{{agencyAbbreviation}}-{{lastNameUpper}}-{{badgeNumber}}" when unset/invalid.
  */
+function resolveCallsignCurrentTemplate(currentTemplate) {
+  const name = String(currentTemplate || "").trim();
+  if (!name || name === "Manual Group Selection") return "";
+  return name;
+}
+
 function buildCallsign({
   firstName,
   lastName,
@@ -268,6 +274,7 @@ function buildCallsign({
   county,
   countyAbbreviation,
   agencyTypeCode,
+  currentTemplate,
 } = {}) {
   let settings = {};
   try {
@@ -302,6 +309,7 @@ function buildCallsign({
     county: county || "",
     countyAbbreviation: countyAbbreviation || "",
     agencyTypeCode: agencyTypeCode || "",
+    currentTemplate: resolveCallsignCurrentTemplate(currentTemplate),
   };
 
   const rendered = expr.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
@@ -313,7 +321,7 @@ function buildCallsign({
     return match;
   });
 
-  return expr.includes("radioCallsignOrBlank")
+  return expr.includes("radioCallsignOrBlank") || expr.includes("currentTemplate")
     ? cleanupCallsignOutput(rendered)
     : rendered;
 }
@@ -385,6 +393,7 @@ function getPreferenceDataForUser(user) {
     county,
     countyAbbreviation,
     agencyTypeCode,
+    currentTemplate: attrs.current_template,
   });
 
   const roleLabel = normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE);
@@ -552,6 +561,7 @@ async function buildUserAccountWelcomeEmailVars(user, groupsOverride) {
     county,
     countyAbbreviation,
     agencyTypeCode,
+    currentTemplate: attrs.current_template,
   });
 
   return {
@@ -721,6 +731,7 @@ async function emailPasswordChanged(user) {
     county,
     countyAbbreviation,
     agencyTypeCode,
+    currentTemplate: attrs.current_template,
   });
 
   const html = renderTemplate("password_changed.html", {
@@ -852,6 +863,7 @@ async function emailGroupsUpdated({ user, beforeIds, afterIds }) {
     county,
     countyAbbreviation,
     agencyTypeCode,
+    currentTemplate: attrs.current_template,
   });
 
   const html = renderTemplate("groups_updated.html", {
