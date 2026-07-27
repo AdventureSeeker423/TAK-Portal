@@ -68,7 +68,7 @@
             <th data-sort="state" role="button" tabindex="0">State</th>
             <th data-sort="type" role="button" tabindex="0" title="Sort by Type">Type</th>
             <th data-sort="color" role="button" tabindex="0" title="Sort by Color">Color</th>
-            <th>Actions</th>
+            <th class="agencyActionsHeader" data-label="Actions">Actions</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -262,6 +262,7 @@ function setMsg(text, ok=true){
 function setAgencyAttributesEditControlsVisible(editing) {
   const wrap = document.getElementById("agencyAttributesEditActions");
   if (wrap) wrap.classList.toggle("is-editing", !!editing);
+  if (agencyTable) agencyTable.classList.toggle("is-editing-attributes", !!editing);
 }
 
 if (agencyCsvTemplateBtn) {
@@ -768,7 +769,10 @@ function renderAgencies(){
       <td class="agencyColorCell" data-label="Color">${
         agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(a.color || "")
       }</td>
-      <td class="agencyActionsCell cardActionsCell">
+      ${
+        agencyAttributesEditMode
+          ? ""
+          : `<td class="agencyActionsCell cardActionsCell">
         <div class="agencyActionsRow cardActionsRow">
           <button class="btn" type="button"
             onclick="openAgencyAdmins('${agencyId}')">
@@ -791,7 +795,8 @@ function renderAgencies(){
             Delete
           </button>
         </div>
-      </td>
+      </td>`
+      }
     </tr>
   `;
   }).join("");
@@ -1492,6 +1497,11 @@ addForm.onsubmit = async (e) => {
 
   const placementSelect = addForm.elements.usernameTokenPlacement;
   if (placementSelect) placementSelect.value = "suffix";
+  const stateFederalSelect = addForm.elements.stateFederalAgency;
+  if (stateFederalSelect) stateFederalSelect.value = "no";
+  if (typeof window.takSyncStateFederalAgencyFields === "function" && stateFederalSelect) {
+    window.takSyncStateFederalAgencyFields(stateFederalSelect);
+  }
   syncUsernameIdentifierFormLabels();
 
   // Restore last-used county
@@ -2198,6 +2208,10 @@ if (addForm) {
 }
 
 .agencyAttributesEditActions.is-editing .agency-view-mode-only {
+  display: none;
+}
+
+.agenciesTable.is-editing-attributes .agencyActionsHeader {
   display: none;
 }
 

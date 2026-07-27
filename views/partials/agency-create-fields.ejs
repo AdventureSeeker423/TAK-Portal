@@ -10,6 +10,14 @@
   const _selectedState = String(_vals.state || "").trim().toUpperCase();
   const _selectedType = String(_vals.type || "").trim();
   const _selectedColor = String(_vals.color || "").trim();
+  const _sfRaw = String(
+    _vals.stateFederalAgency != null ? _vals.stateFederalAgency : ""
+  )
+    .trim()
+    .toLowerCase();
+  const _stateFederalYes =
+    _sfRaw === "yes" || _sfRaw === "true" || _sfRaw === "1";
+  const _countyReqAttr = _fieldsRequired && !_stateFederalYes ? "required" : "";
   const _states = [
     "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
     "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
@@ -37,6 +45,10 @@
 .agencyCreateRow select {
   width: 100%;
   box-sizing: border-box;
+}
+.agencyCreateOptionalHint {
+  font-weight: normal;
+  opacity: 0.8;
 }
 @media (max-width: 900px) {
   .agencyCreateRow4,
@@ -76,7 +88,7 @@
   </label>
 </div>
 
-<div class="agencyCreateRow agencyCreateRow3">
+<div class="agencyCreateRow agencyCreateRow4">
   <label>State
     <select name="state" <%= _reqAttr %>>
       <option value="" disabled <%= !_selectedState ? "selected" : "" %>>Select State</option>
@@ -89,23 +101,38 @@
     </select>
   </label>
 
-  <label>County
+  <label>State/Federal Agency
+    <select
+      name="stateFederalAgency"
+      id="<%= _idPrefix %>stateFederalAgencySelect"
+      data-agency-create-fields-required="<%= _fieldsRequired ? "1" : "0" %>"
+    >
+      <option value="no" <%= !_stateFederalYes ? "selected" : "" %>>No</option>
+      <option value="yes" <%= _stateFederalYes ? "selected" : "" %>>Yes</option>
+    </select>
+  </label>
+
+  <label>
+    County <span class="agencyCreateOptionalHint" data-county-optional-hint <%= _stateFederalYes ? "" : "hidden" %>>(optional)</span>
     <input
       name="county"
       placeholder="(ex. Hamilton, Marion)"
-      <%= _reqAttr %>
+      <%= _countyReqAttr %>
       value="<%= _vals.county || '' %>"
+      data-county-field="1"
     />
   </label>
 
-  <label>County Abbreviation
+  <label>
+    County Abbreviation <span class="agencyCreateOptionalHint" data-county-optional-hint <%= _stateFederalYes ? "" : "hidden" %>>(optional)</span>
     <input
       name="countyAbbrev"
       placeholder="(ex. HM or HML)"
-      <%= _reqAttr %>
+      <%= _countyReqAttr %>
       minlength="2"
       value="<%= _vals.countyAbbrev || '' %>"
       oninput="this.value = this.value.toUpperCase().replace(/[^A-Z]/g, '')"
+      data-county-abbrev-field="1"
     />
   </label>
 </div>
@@ -131,3 +158,43 @@
   </label>
   <% } %>
 </div>
+
+<script>
+(function () {
+  function syncStateFederalAgencyFields(root) {
+    if (!root) return;
+    var select =
+      root.matches && root.matches('select[name="stateFederalAgency"]')
+        ? root
+        : root.querySelector
+          ? root.querySelector('select[name="stateFederalAgency"]')
+          : null;
+    if (!select) return;
+    var scope = select.closest("form") || select.parentElement;
+    if (!scope || !scope.querySelectorAll) return;
+    var isYes = String(select.value || "").toLowerCase() === "yes";
+    var formRequired = String(select.getAttribute("data-agency-create-fields-required") || "") === "1";
+    var countyRequired = formRequired && !isYes;
+    scope.querySelectorAll("[data-county-optional-hint]").forEach(function (el) {
+      el.hidden = !isYes;
+    });
+    scope.querySelectorAll("[data-county-field], [data-county-abbrev-field]").forEach(function (el) {
+      if (countyRequired) el.setAttribute("required", "required");
+      else el.removeAttribute("required");
+    });
+  }
+
+  window.takSyncStateFederalAgencyFields = syncStateFederalAgencyFields;
+
+  if (!window.__takStateFederalAgencyChangeBound) {
+    window.__takStateFederalAgencyChangeBound = true;
+    document.addEventListener("change", function (e) {
+      var t = e && e.target;
+      if (!t || String(t.name || "") !== "stateFederalAgency") return;
+      syncStateFederalAgencyFields(t);
+    });
+  }
+
+  syncStateFederalAgencyFields(document.getElementById("<%= _idPrefix %>stateFederalAgencySelect"));
+})();
+</script>

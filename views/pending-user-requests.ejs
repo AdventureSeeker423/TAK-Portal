@@ -1052,7 +1052,20 @@ th.sortable:hover{
     setFormValue(form, 'county', reqObj.county || '');
     setFormValue(form, 'countyAbbrev', reqObj.countyAbbrev || '');
     setFormValue(form, 'type', reqObj.type || '');
+    setFormValue(
+      form,
+      'stateFederalAgency',
+      reqObj.stateFederalAgency === true ||
+        String(reqObj.stateFederalAgency || '').toLowerCase() === 'yes' ||
+        String(reqObj.stateFederalAgency || '').toLowerCase() === 'true'
+        ? 'yes'
+        : 'no'
+    );
     setFormValue(form, 'color', '');
+    if (typeof window.takSyncStateFederalAgencyFields === 'function') {
+      const sf = form.querySelector('select[name="stateFederalAgency"]');
+      if (sf) window.takSyncStateFederalAgencyFields(sf);
+    }
 
     const placementSelect = form.elements.usernameTokenPlacement;
     const placementLabel = form.querySelector('#pendingCreateAgency_usernameIdentifierLabelText');

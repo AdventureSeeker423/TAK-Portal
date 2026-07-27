@@ -1305,6 +1305,7 @@ app.post("/request-access", async (req, res) => {
       county: body.county,
       countyAbbrev: body.countyAbbrev,
       type: body.type,
+      stateFederalAgency: body.stateFederalAgency,
     });
 
     auditSvc.logEvent({
@@ -1330,6 +1331,7 @@ app.post("/request-access", async (req, res) => {
         county: body.county,
         countyAbbrev: body.countyAbbrev,
         type: body.type,
+        stateFederalAgency: body.stateFederalAgency,
       },
     });
 

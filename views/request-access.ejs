@@ -187,7 +187,8 @@
             state: (form && form.state) ? form.state : "",
             county: (form && form.county) ? form.county : "",
             countyAbbrev: (form && form.countyAbbrev) ? form.countyAbbrev : "",
-            type: (form && form.type) ? form.type : ""
+            type: (form && form.type) ? form.type : "",
+            stateFederalAgency: (form && form.stateFederalAgency) ? form.stateFederalAgency : "no"
           }
         }) %>
 
@@ -243,11 +244,20 @@
         // usernameTokenPlacement always has a default; otherAgency/otherReason handled above
         return;
       }
-      if (name === 'groupPrefix' || name === 'suffix' || name === 'state' ||
-          name === 'county' || name === 'countyAbbrev' || name === 'type') {
+      if (name === 'county' || name === 'countyAbbrev' || name === 'stateFederalAgency') {
+        return;
+      }
+      if (name === 'groupPrefix' || name === 'suffix' || name === 'state' || name === 'type') {
         el.required = !!isOther;
       }
     });
+    const sf = wrap.querySelector('select[name="stateFederalAgency"]');
+    if (sf) {
+      sf.setAttribute('data-agency-create-fields-required', isOther ? '1' : '0');
+      if (typeof window.takSyncStateFederalAgencyFields === 'function') {
+        window.takSyncStateFederalAgencyFields(sf);
+      }
+    }
   }
 
   function update() {

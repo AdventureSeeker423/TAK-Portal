@@ -43,6 +43,7 @@ router.post("/", async (req, res) => {
         county: body.county,
         countyAbbrev: body.countyAbbrev,
         type: body.type,
+        stateFederalAgency: body.stateFederalAgency,
       },
     });
 

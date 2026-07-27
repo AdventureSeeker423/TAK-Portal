@@ -66,6 +66,29 @@ assert.throws(
   /Please enter your reason for requesting access/
 );
 
+const stateFederal = validateCreate(
+  baseOtherPayload({
+    stateFederalAgency: "yes",
+    county: "",
+    countyAbbrev: "",
+  })
+);
+assert.strictEqual(stateFederal.stateFederalAgency, true);
+assert.strictEqual(stateFederal.county, "");
+assert.strictEqual(stateFederal.countyAbbrev, "");
+
+assert.throws(
+  () =>
+    validateCreate(
+      baseOtherPayload({
+        stateFederalAgency: "yes",
+        county: "",
+        countyAbbrev: "H",
+      })
+    ),
+  /County Abbreviation must be at least 2 characters/
+);
+
 const prefixed = validateCreate(
   baseOtherPayload({ usernameTokenPlacement: "prefix" })
 );

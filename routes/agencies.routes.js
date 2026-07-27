@@ -120,6 +120,12 @@ async function getGroupByNameUnfiltered(groupName) {
 }
 
 function normalizeAgency(a) {
+  const sfRaw = String(a?.stateFederalAgency ?? "").trim().toLowerCase();
+  const stateFederalAgency =
+    sfRaw === "yes" ||
+    sfRaw === "true" ||
+    sfRaw === "1" ||
+    a?.stateFederalAgency === true;
   const normalized = {
     name: String(a.name || "").trim(),
     type: String(a.type || "").trim(),
@@ -129,6 +135,7 @@ function normalizeAgency(a) {
     suffix: String(a.suffix || "").trim().toLowerCase(),
     groupPrefix: String(a.groupPrefix || "").trim().toUpperCase(),
     color: String(a.color || "").trim(),
+    stateFederalAgency: !!stateFederalAgency,
     usernameTokenPlacement: accessSvc.normalizeUsernameTokenPlacement(
       a.usernameTokenPlacement ?? a.usernameSuffixPlacement ?? "suffix"
     ),
@@ -157,8 +164,14 @@ function validateAgency(a) {
   if (!a.suffix) return "Username suffix is required";
   if (!a.groupPrefix) return "Group prefix is required";
   if (!a.color) return "Agency color is required";
-  if (!a.countyAbbrev) return "County abbreviation is required";
-  if (a.countyAbbrev.length < 2) return "County abbreviation must be at least 2 characters";
+  const isStateFederal = !!a.stateFederalAgency;
+  if (!isStateFederal) {
+    if (!a.county) return "County is required";
+    if (!a.countyAbbrev) return "County abbreviation is required";
+  }
+  if (a.countyAbbrev && a.countyAbbrev.length < 2) {
+    return "County abbreviation must be at least 2 characters";
+  }
   const rawPlacement = String(
     a.usernameTokenPlacement ?? a.usernameSuffixPlacement ?? ""
   )

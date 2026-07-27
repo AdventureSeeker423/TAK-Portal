@@ -141,6 +141,9 @@ function normalizeCountyName(raw) {
 }
 
 function normalizeRequestedAgencyFields(input) {
+  const sfRaw = String(input?.stateFederalAgency ?? "").trim().toLowerCase();
+  const stateFederalAgency =
+    sfRaw === "yes" || sfRaw === "true" || sfRaw === "1" || input?.stateFederalAgency === true;
   return {
     groupPrefix: normalizeStr(input.groupPrefix).toUpperCase(),
     usernameTokenPlacement: accessSvc.normalizeUsernameTokenPlacement(
@@ -151,6 +154,7 @@ function normalizeRequestedAgencyFields(input) {
     county: normalizeCountyName(input.county),
     countyAbbrev: normalizeStr(input.countyAbbrev).toUpperCase().replace(/[^A-Z]/g, ""),
     type: normalizeStr(input.type),
+    stateFederalAgency: !!stateFederalAgency,
   };
 }
 
@@ -198,9 +202,11 @@ function validateCreate(input) {
     if (!ALLOWED_REQUEST_STATES.has(requestedAgency.state)) {
       throw new Error("State is not valid");
     }
-    if (!requestedAgency.county) throw new Error("County is required");
-    if (!requestedAgency.countyAbbrev) throw new Error("County Abbreviation is required");
-    if (requestedAgency.countyAbbrev.length < 2) {
+    if (!requestedAgency.stateFederalAgency) {
+      if (!requestedAgency.county) throw new Error("County is required");
+      if (!requestedAgency.countyAbbrev) throw new Error("County Abbreviation is required");
+    }
+    if (requestedAgency.countyAbbrev && requestedAgency.countyAbbrev.length < 2) {
       throw new Error("County Abbreviation must be at least 2 characters");
     }
     if (!requestedAgency.type) throw new Error("Agency Type is required");
@@ -238,6 +244,7 @@ function validateCreate(input) {
     county: isOther ? requestedAgency.county : null,
     countyAbbrev: isOther ? requestedAgency.countyAbbrev : null,
     type: isOther ? requestedAgency.type : null,
+    stateFederalAgency: isOther ? !!requestedAgency.stateFederalAgency : null,
   };
 }
 
@@ -331,6 +338,7 @@ async function createRequest(input) {
     county: v.agencySuffix === "__other__" ? v.county : null,
     countyAbbrev: v.agencySuffix === "__other__" ? v.countyAbbrev : null,
     type: v.agencySuffix === "__other__" ? v.type : null,
+    stateFederalAgency: v.agencySuffix === "__other__" ? !!v.stateFederalAgency : null,
   };
 
   const all = store.load();
@@ -404,6 +412,7 @@ const otherAgencyDetailsText = isOtherRequest
       `Agency Abbreviation: ${reqObj.groupPrefix || ""}`,
       `Username Identifier: ${reqObj.usernameTokenPlacement || "suffix"} (${reqObj.suffix || ""})`,
       `State: ${reqObj.state || ""}`,
+      `State/Federal Agency: ${reqObj.stateFederalAgency ? "Yes" : "No"}`,
       `County: ${reqObj.county || ""}`,
       `County Abbreviation: ${reqObj.countyAbbrev || ""}`,
       `Agency Type: ${reqObj.type || ""}`,
@@ -414,6 +423,7 @@ const otherAgencyDetailsHtml = isOtherRequest
   <strong>Agency Abbreviation:</strong> ${escapeHtml(reqObj.groupPrefix || "")}<br/>
   <strong>Username Identifier:</strong> ${escapeHtml(reqObj.usernameTokenPlacement || "suffix")} (${escapeHtml(reqObj.suffix || "")})<br/>
   <strong>State:</strong> ${escapeHtml(reqObj.state || "")}<br/>
+  <strong>State/Federal Agency:</strong> ${escapeHtml(reqObj.stateFederalAgency ? "Yes" : "No")}<br/>
   <strong>County:</strong> ${escapeHtml(reqObj.county || "")}<br/>
   <strong>County Abbreviation:</strong> ${escapeHtml(reqObj.countyAbbrev || "")}<br/>
   <strong>Agency Type:</strong> ${escapeHtml(reqObj.type || "")}<br/>
