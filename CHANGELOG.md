@@ -17,7 +17,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ✨ `Enhancement` - Settings - Callsign Format - Added option to show template name as a part of the template<br>
 ✨ `Enhancement` - Settings - Callsign Format - Added logic for all options to remove leading/trailing dashes if a field is empty/null<br>
 ✨ `Enhancement` - Mutual Aid - Increased compression on page one to minimize pdf file size<br>
-
+🐛 `Bug Fix` - Fixes issue with MOU Documents wanting a new signature after editing a document and saving as the current version.
 
 ### v1.3.55 - 7/27/26
 ✨ `Enhancement` - Settings - Option added under Branding, Appearance, and Beta to disable the Request Access page.
