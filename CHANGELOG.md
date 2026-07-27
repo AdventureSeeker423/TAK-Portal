@@ -12,7 +12,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
-### v1.3.xx - 7/27/26
+### v1.3.56 - 7/27/26
 ✨ `Enhancement` - Agencies - Option added for state/federal agencies making County and County Code optional<br>
 ✨ `Enhancement` - Settings - Callsign Format - Added option to show template name as a part of the template<br>
 ✨ `Enhancement` - Settings - Callsign Format - Added logic for all options to remove leading/trailing dashes if a field is empty/null<br>
