@@ -2025,16 +2025,33 @@ function updateVersion({
     versionRecord.contentSha256 = persisted.contentSha256;
   }
 
+  // Save As Current Version keeps existing signatures. Refresh stored signed HTML
+  // so archive/export snapshots match the updated document body.
   if (Array.isArray(versionRecord.signatures) && versionRecord.signatures.length) {
     for (const signature of versionRecord.signatures) {
-      const signedHtmlPath = getAbsoluteDataPath(signature?.signedHtmlPath);
-      const signaturePngPath = getAbsoluteDataPath(signature?.signaturePngPath);
-      const uploadedSignedCopyPath = getAbsoluteDataPath(signature?.uploadedSignedCopyPath);
-      if (signedHtmlPath) store.deleteFile(signedHtmlPath);
-      if (signaturePngPath) store.deleteFile(signaturePngPath);
-      if (uploadedSignedCopyPath) store.deleteFile(uploadedSignedCopyPath);
+      try {
+        const signedHtml = buildSignedHtml({
+          stream,
+          versionRecord,
+          signatureRecord: signature,
+        });
+        const signedHtmlAbs =
+          getAbsoluteDataPath(signature?.signedHtmlPath) ||
+          store.getSignedHtmlPath(
+            mouId,
+            normalizeAgencySuffix(signature?.agencyId),
+            versionRecord.version
+          );
+        store.writeHtml(signedHtmlAbs, signedHtml);
+        signature.signedHtmlPath =
+          signature.signedHtmlPath || buildRelativeDataPath(signedHtmlAbs);
+      } catch (err) {
+        console.warn(
+          "[mou] Failed to refresh signed HTML after current-version save:",
+          err?.message || err
+        );
+      }
     }
-    versionRecord.signatures = [];
   }
 
   versionRecord.updatedAt = now;
