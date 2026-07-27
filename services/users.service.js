@@ -241,13 +241,14 @@ function resolveCallsignRadioOrBlank({ radioCallsign } = {}) {
   return String(radioCallsign ?? "").trim();
 }
 
-/** Strip orphan dashes left when optional callsign segments are empty. */
+/** Strip empty segments and orphan dashes (e.g. XXX--ZZZ or XXX- → XXX-ZZZ / XXX). */
 function cleanupCallsignOutput(str) {
   let s = String(str || "").trim();
-  while (s.startsWith("-")) s = s.slice(1).trim();
-  while (s.endsWith("-")) s = s.slice(0, -1).trim();
+  s = s.replace(/\s*-\s*/g, "-");
   s = s.replace(/-{2,}/g, "-");
-  return s;
+  while (s.startsWith("-")) s = s.slice(1);
+  while (s.endsWith("-")) s = s.slice(0, -1);
+  return s.trim();
 }
 
 /**
@@ -315,15 +316,15 @@ function buildCallsign({
   const rendered = expr.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
     if (Object.prototype.hasOwnProperty.call(ctx, key)) {
       const v = ctx[key];
-      return v != null ? String(v) : "";
+      return v != null ? String(v).trim() : "";
     }
     // Unknown tokens are left as-is so misconfigurations are visible.
     return match;
   });
 
-  return expr.includes("radioCallsignOrBlank") || expr.includes("currentTemplate")
-    ? cleanupCallsignOutput(rendered)
-    : rendered;
+  // Always drop empty fields and clean orphan leading/trailing/double dashes
+  // (e.g. XXX-YYY-ZZZ with YYY empty → XXX-ZZZ).
+  return cleanupCallsignOutput(rendered);
 }
 
 /**

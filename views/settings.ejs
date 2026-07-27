@@ -1000,19 +1000,20 @@
 
                 var rendered = expr.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, function (_, key) {
                   if (Object.prototype.hasOwnProperty.call(exampleCtx, key)) {
-                    return exampleCtx[key];
+                    return String(exampleCtx[key] || "").trim();
                   }
                   return "";
                 });
 
-                if (expr.indexOf("radioCallsignOrBlank") >= 0 || expr.indexOf("currentTemplate") >= 0) {
-                  rendered = String(rendered || "").trim();
-                  while (rendered.charAt(0) === "-") rendered = rendered.slice(1).trim();
-                  while (rendered.charAt(rendered.length - 1) === "-") {
-                    rendered = rendered.slice(0, -1).trim();
-                  }
-                  rendered = rendered.replace(/-{2,}/g, "-");
+                // Always drop empty fields and clean orphan leading/trailing/double dashes
+                rendered = String(rendered || "").trim();
+                rendered = rendered.replace(/\s*-\s*/g, "-");
+                rendered = rendered.replace(/-{2,}/g, "-");
+                while (rendered.charAt(0) === "-") rendered = rendered.slice(1);
+                while (rendered.charAt(rendered.length - 1) === "-") {
+                  rendered = rendered.slice(0, -1);
                 }
+                rendered = rendered.trim();
 
                 preview.textContent = rendered || "AGENCY-LASTNAME-BADGE";
               }
