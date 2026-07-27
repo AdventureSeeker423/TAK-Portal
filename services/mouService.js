@@ -3455,31 +3455,50 @@ function countersignVersion({
 
 function getAgencyEvidence({ mouId, agencyId, version }) {
   const stream = getStreamById(mouId);
-  const versions = version
-    ? [findVersion(stream, version)].filter(Boolean)
-    : sortVersions(stream.versions || []).reverse();
-
-  for (const versionRecord of versions) {
-    const signature = (versionRecord.signatures || []).find(
-      (entry) => normalizeAgencySuffix(entry?.agencyId) === normalizeAgencySuffix(agencyId)
-    );
-    if (!signature) continue;
-    return {
-      stream,
-      version: clone(versionRecord),
-      signature: clone(signature),
-      html: buildSignedHtml({
-        stream,
-        versionRecord,
-        signatureRecord: signature,
-      }),
-      uploadedSignedCopyAbsPath: getAbsoluteDataPath(signature?.uploadedSignedCopyPath),
-      countersignUploadedAbsPath: getAbsoluteDataPath(
-        signature?.countersignature?.uploadedSignedCopyPath
-      ),
-    };
+  const safeAgencyId = normalizeAgencySuffix(agencyId);
+  if (!safeAgencyId) {
+    throw new Error("Signed document not found.");
   }
-  throw new Error("Signed document not found.");
+
+  const requestedVersion = version != null && String(version).trim() !== ""
+    ? findVersion(stream, version)
+    : null;
+
+  let versionRecord = requestedVersion;
+  let signature = versionRecord
+    ? (versionRecord.signatures || []).find(
+        (entry) => normalizeAgencySuffix(entry?.agencyId) === safeAgencyId
+      )
+    : null;
+
+  // Fall back to the agency's latest signature when the version query is missing,
+  // invalid (e.g. "v1"), or no longer has a matching signature record.
+  if (!signature) {
+    const latest = getLatestSignatureForAgency(stream, safeAgencyId);
+    if (latest) {
+      versionRecord = latest.versionRecord;
+      signature = latest.entry;
+    }
+  }
+
+  if (!versionRecord || !signature) {
+    throw new Error("Signed document not found.");
+  }
+
+  return {
+    stream,
+    version: clone(versionRecord),
+    signature: clone(signature),
+    html: buildSignedHtml({
+      stream,
+      versionRecord,
+      signatureRecord: signature,
+    }),
+    uploadedSignedCopyAbsPath: getAbsoluteDataPath(signature?.uploadedSignedCopyPath),
+    countersignUploadedAbsPath: getAbsoluteDataPath(
+      signature?.countersignature?.uploadedSignedCopyPath
+    ),
+  };
 }
 
 function listSignaturesForStream(stream) {

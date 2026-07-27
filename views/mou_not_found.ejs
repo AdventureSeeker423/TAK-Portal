@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Document unavailable</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="page theme-<%= brandTheme || 'dark-blue' %>">
+  <main class="container">
+    <div class="card">
+      <h1>Document Unavailable</h1>
+
+      <% if (username) { %>
+        <p>
+          Signed in as <strong><%= username %></strong>.
+        </p>
+      <% } %>
+
+      <p><%= message || "The requested document could not be opened." %></p>
+
+      <p class="muted" style="margin-top: 0.75rem;">
+        If you just signed this document, return to MOU / Documents and try View Document again.
+        If the problem continues, contact your TAK Portal Administrator.
+      </p>
+
+      <div style="margin-top: 1.5rem; display:flex; gap: 0.75rem; flex-wrap: wrap;">
+        <a href="<%= backHref || '/mou' %>" class="btn">Back to MOU / Documents</a>
+        <a href="/" class="btn secondary">Back to home</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

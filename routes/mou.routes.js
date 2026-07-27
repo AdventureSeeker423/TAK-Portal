@@ -18,13 +18,45 @@ const {
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-function renderNotFound(req, res) {
-  if ((req.originalUrl || req.path || "").startsWith("/api/")) {
-    return res.status(404).json({ error: "Not found" });
+function renderNotFound(req, res, err) {
+  if (err) {
+    console.warn(
+      "[mou] not found:",
+      req.method,
+      req.originalUrl || req.path,
+      err?.message || err
+    );
   }
-  return res.status(404).render("access-denied", {
+  if ((req.originalUrl || req.path || "").startsWith("/api/")) {
+    return res.status(404).json({ error: err?.message || "Not found" });
+  }
+  return res.status(404).render("mou_not_found", {
     username: req.authentikUser?.username || "",
+    message: err?.message || "Document not found.",
+    backHref: "/mou",
   });
+}
+
+function renderForbidden(req, res, message) {
+  if ((req.originalUrl || req.path || "").startsWith("/api/")) {
+    return res.status(403).json({ error: message || "Forbidden" });
+  }
+  return res.status(403).render("mou_not_found", {
+    username: req.authentikUser?.username || "",
+    message:
+      message ||
+      "You do not have permission to view this signed document.",
+    backHref: "/mou",
+  });
+}
+
+function canViewAgencyEvidence(authUser, stream, agencyId) {
+  if (!authUser || !stream) return false;
+  if (canSeeStream(authUser, stream)) return true;
+  const suffix = normalizeMoUAgencySuffix(agencyId);
+  if (!suffix) return false;
+  if (accessSvc.isSuffixAllowed(authUser, suffix)) return true;
+  return mouService.canUserSignAgencyForStream(authUser, stream, suffix);
 }
 
 function requireMouEnabled(req, res, next) {
@@ -745,7 +777,7 @@ router.get("/mou/file/:mouId/:version", requireMouEnabled, requireMouPermission,
     }
     return res.send(content.html);
   } catch (err) {
-    return renderNotFound(req, res);
+    return renderNotFound(req, res, err);
   }
 });
 
@@ -798,21 +830,20 @@ router.get("/mou/view/:mouId/:version", requireMouEnabled, requireMouPermission,
       updatedFromOlderVersion: req.query.updated === "1",
     });
   } catch (err) {
-    return renderNotFound(req, res);
+    return renderNotFound(req, res, err);
   }
 });
 
 router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermission, (req, res) => {
   try {
     const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
-    const canSeeAll = !!req.authentikUser?.isGlobalAdmin;
-    const canSeeOwnAgency =
-      !!req.authentikUser?.isAgencyAdmin &&
-      accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
-    if (!canSeeAll && !canSeeOwnAgency) {
-      return res.status(403).render("access-denied", {
-        username: req.authentikUser?.username || "",
-      });
+    const stream = mouService.getStreamById(req.params.mouId);
+    if (!canViewAgencyEvidence(req.authentikUser, stream, agencyId)) {
+      return renderForbidden(
+        req,
+        res,
+        "You do not have permission to view this signed document for the selected agency."
+      );
     }
 
     const evidence = mouService.getAgencyEvidence({
@@ -834,21 +865,20 @@ router.get("/mou/agency/:mouId/:agencyId", requireMouEnabled, requireMouPermissi
       updatedFromOlderVersion: false,
     });
   } catch (err) {
-    return renderNotFound(req, res);
+    return renderNotFound(req, res, err);
   }
 });
 
 router.get("/mou/agency/:mouId/:agencyId/pdf", requireMouEnabled, requireMouPermission, async (req, res) => {
   try {
     const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
-    const canSeeAll = !!req.authentikUser?.isGlobalAdmin;
-    const canSeeOwnAgency =
-      !!req.authentikUser?.isAgencyAdmin &&
-      accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
-    if (!canSeeAll && !canSeeOwnAgency) {
-      return res.status(403).render("access-denied", {
-        username: req.authentikUser?.username || "",
-      });
+    const stream = mouService.getStreamById(req.params.mouId);
+    if (!canViewAgencyEvidence(req.authentikUser, stream, agencyId)) {
+      return renderForbidden(
+        req,
+        res,
+        "You do not have permission to download this signed document for the selected agency."
+      );
     }
 
     const pdf = await mouService.getSignedPdfExport({
@@ -860,21 +890,20 @@ router.get("/mou/agency/:mouId/:agencyId/pdf", requireMouEnabled, requireMouPerm
     res.setHeader("Content-Disposition", buildContentDisposition("attachment", pdf.fileName));
     return res.send(pdf.buffer);
   } catch (err) {
-    return renderNotFound(req, res);
+    return renderNotFound(req, res, err);
   }
 });
 
 router.get("/mou/agency-file/:mouId/:agencyId", requireMouEnabled, requireMouPermission, (req, res) => {
   try {
     const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
-    const canSeeAll = !!req.authentikUser?.isGlobalAdmin;
-    const canSeeOwnAgency =
-      !!req.authentikUser?.isAgencyAdmin &&
-      accessSvc.isSuffixAllowed(req.authentikUser, agencyId);
-    if (!canSeeAll && !canSeeOwnAgency) {
-      return res.status(403).render("access-denied", {
-        username: req.authentikUser?.username || "",
-      });
+    const stream = mouService.getStreamById(req.params.mouId);
+    if (!canViewAgencyEvidence(req.authentikUser, stream, agencyId)) {
+      return renderForbidden(
+        req,
+        res,
+        "You do not have permission to view this signed document for the selected agency."
+      );
     }
 
     const evidence = mouService.getAgencyEvidence({
@@ -889,7 +918,7 @@ router.get("/mou/agency-file/:mouId/:agencyId", requireMouEnabled, requireMouPer
       ? evidence.countersignUploadedAbsPath
       : evidence.uploadedSignedCopyAbsPath;
     if (!absPath) {
-      return renderNotFound(req, res);
+      return renderNotFound(req, res, new Error("Uploaded signed copy not found."));
     }
     const fileName = useCountersign
       ? countersignature?.uploadedSignedCopyFileName ||
@@ -908,7 +937,7 @@ router.get("/mou/agency-file/:mouId/:agencyId", requireMouEnabled, requireMouPer
     );
     return res.sendFile(absPath);
   } catch (err) {
-    return renderNotFound(req, res);
+    return renderNotFound(req, res, err);
   }
 });
 
@@ -960,7 +989,7 @@ router.get("/mou/sign/:mouId/:version", requireMouEnabled, requireMouPermission,
       success: req.query.success || "",
     });
   } catch (err) {
-    return renderNotFound(req, res);
+    return renderNotFound(req, res, err);
   }
 });
 

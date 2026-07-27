@@ -177,7 +177,7 @@
                   <td class="cardActionsCell" data-label="Actions">
                     <div class="mouActionRow cardActionsRow">
                       <% if (card.currentVersion) { %>
-                        <% if (isAgencyAdmin && card.canSign) { %>
+                        <% if ((isAgencyAdmin || isGlobalAdmin) && card.canSign) { %>
                           <% const cardSignAgency = (function () {
                             var pending = (card.signatures || []).find(function (entry) {
                               return entry && entry.agency && !entry.signature;
@@ -188,7 +188,7 @@
                           <% if (cardSignAgency) { %>
                           <a class="btn secondary" href="/mou/sign/<%= encodeURIComponent(card.stream.mouId) %>/<%= encodeURIComponent(card.currentVersion.version) %>?agencyId=<%= encodeURIComponent(cardSignAgency.suffix) %>">View / Sign</a>
                           <% } %>
-                        <% } else if (isAgencyAdmin && card.viewDocumentHref) { %>
+                        <% } else if ((isAgencyAdmin || isGlobalAdmin) && card.viewDocumentHref) { %>
                           <a class="btn secondary" href="<%= card.viewDocumentHref %>">View Document</a>
                         <% } %>
                       <% } %>
