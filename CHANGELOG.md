@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.55 - 7/27/26
+✨ `Enhancement` - Settings - Option added under Branding, Appearance, and Beta to disable the Request Access page.
+
 ### v1.3.54 - 7/23/26
 ✨ `Enhancement` - Mutual Aid - Agency admins now have access to create and manage mutual aid instances.  Mutual Aid created by global admins will be hidden from agency admins and can only be managed by the global admins.<br>
 🐛 `Bug Fix` - Fixes issue with mutual aid packet "one-pager" cutting off text for the channel name
