@@ -894,6 +894,42 @@ router.get("/mou/agency/:mouId/:agencyId/pdf", requireMouEnabled, requireMouPerm
   }
 });
 
+router.get(
+  "/mou/agency/:mouId/:agencyId/signed-content",
+  requireMouEnabled,
+  requireMouPermission,
+  (req, res) => {
+    try {
+      const agencyId = String(req.params.agencyId || "").trim().toLowerCase();
+      const stream = mouService.getStreamById(req.params.mouId);
+      if (!canViewAgencyEvidence(req.authentikUser, stream, agencyId)) {
+        return renderForbidden(
+          req,
+          res,
+          "You do not have permission to view this signed document for the selected agency."
+        );
+      }
+
+      const content = mouService.getSignedContentExport({
+        mouId: req.params.mouId,
+        agencyId,
+        version: req.query.version,
+      });
+      res.setHeader("Content-Type", content.contentType);
+      res.setHeader(
+        "Content-Disposition",
+        buildContentDisposition(
+          req.query.download === "1" ? "attachment" : "inline",
+          content.fileName
+        )
+      );
+      return res.send(content.buffer);
+    } catch (err) {
+      return renderNotFound(req, res, err);
+    }
+  }
+);
+
 router.get("/mou/agency-file/:mouId/:agencyId", requireMouEnabled, requireMouPermission, (req, res) => {
   try {
     const agencyId = String(req.params.agencyId || "").trim().toLowerCase();

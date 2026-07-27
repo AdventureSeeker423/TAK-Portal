@@ -775,6 +775,8 @@ function createArchiveSnapshot(archiveId, signatureEntry, versionRecord) {
       uploadedSignedCopyContentType: signatureEntry.uploadedSignedCopyContentType || "",
     },
     signedHtmlPath: "",
+    signedContentPath: "",
+    signedContentType: "",
     signaturePngPath: "",
     uploadedSignedCopyPath: "",
   };
@@ -783,6 +785,18 @@ function createArchiveSnapshot(archiveId, signatureEntry, versionRecord) {
     const dest = `${base}/signed.html`;
     if (copyDataFile(signatureEntry.signedHtmlPath, dest)) {
       snapshot.signedHtmlPath = dest;
+    }
+  }
+  if (signatureEntry.signedContentPath) {
+    const ext =
+      path.extname(String(signatureEntry.signedContentPath || "")) ||
+      `.${getFileExtensionForContentType(versionRecord?.contentType)}`;
+    const dest = `${base}/signed-content${ext}`;
+    if (copyDataFile(signatureEntry.signedContentPath, dest)) {
+      snapshot.signedContentPath = dest;
+      snapshot.signedContentType =
+        signatureEntry.signedContentType ||
+        normalizeContentType(versionRecord?.contentType);
     }
   }
   if (signatureEntry.signaturePngPath) {
@@ -1444,6 +1458,7 @@ function getHistoricalSignedVersionsForAgency(stream, agencyId, currentVersion) 
 
 function deleteSignatureArtifacts(signature) {
   const signedHtmlPath = getAbsoluteDataPath(signature?.signedHtmlPath);
+  const signedContentPath = getAbsoluteDataPath(signature?.signedContentPath);
   const signaturePngPath = getAbsoluteDataPath(signature?.signaturePngPath);
   const uploadedSignedCopyPath = getAbsoluteDataPath(signature?.uploadedSignedCopyPath);
   const countersignaturePngPath = getAbsoluteDataPath(
@@ -1453,6 +1468,7 @@ function deleteSignatureArtifacts(signature) {
     signature?.countersignature?.uploadedSignedCopyPath
   );
   if (signedHtmlPath) store.deleteFile(signedHtmlPath);
+  if (signedContentPath) store.deleteFile(signedContentPath);
   if (signaturePngPath) store.deleteFile(signaturePngPath);
   if (uploadedSignedCopyPath) store.deleteFile(uploadedSignedCopyPath);
   if (countersignaturePngPath) store.deleteFile(countersignaturePngPath);
@@ -2025,34 +2041,8 @@ function updateVersion({
     versionRecord.contentSha256 = persisted.contentSha256;
   }
 
-  // Save As Current Version keeps existing signatures. Refresh stored signed HTML
-  // so archive/export snapshots match the updated document body.
-  if (Array.isArray(versionRecord.signatures) && versionRecord.signatures.length) {
-    for (const signature of versionRecord.signatures) {
-      try {
-        const signedHtml = buildSignedHtml({
-          stream,
-          versionRecord,
-          signatureRecord: signature,
-        });
-        const signedHtmlAbs =
-          getAbsoluteDataPath(signature?.signedHtmlPath) ||
-          store.getSignedHtmlPath(
-            mouId,
-            normalizeAgencySuffix(signature?.agencyId),
-            versionRecord.version
-          );
-        store.writeHtml(signedHtmlAbs, signedHtml);
-        signature.signedHtmlPath =
-          signature.signedHtmlPath || buildRelativeDataPath(signedHtmlAbs);
-      } catch (err) {
-        console.warn(
-          "[mou] Failed to refresh signed HTML after current-version save:",
-          err?.message || err
-        );
-      }
-    }
-  }
+  // Save As Current Version keeps existing signatures and their frozen signed
+  // snapshots so "View Document" still shows what was signed.
 
   versionRecord.updatedAt = now;
   versionRecord.updatedBy = actor?.uid || actor?.username || null;
@@ -2422,6 +2412,9 @@ function restoreLiveSignatureFromArchiveSnapshot(stream, archivedRecord) {
   const signaturePngAbs = store.getSignaturePngPath(mouId, agencyId, versionNumber);
   let signedHtmlPath = null;
   let signaturePngPath = null;
+  let signedContentPath = null;
+  let signedContentType =
+    snapshot.signedContentType || normalizeContentType(versionRecord?.contentType);
   let uploadedAbs = "";
   let uploadedFileName = null;
   let uploadedContentType =
@@ -2430,6 +2423,20 @@ function restoreLiveSignatureFromArchiveSnapshot(stream, archivedRecord) {
   if (snapshot.signedHtmlPath) {
     if (copyDataFile(snapshot.signedHtmlPath, buildRelativeDataPath(signedHtmlAbs))) {
       signedHtmlPath = buildRelativeDataPath(signedHtmlAbs);
+    }
+  }
+  if (snapshot.signedContentPath) {
+    const ext =
+      path.extname(String(snapshot.signedContentPath || "")) ||
+      `.${getFileExtensionForContentType(signedContentType)}`;
+    const signedContentAbs = store.getSignedContentPath(
+      mouId,
+      agencyId,
+      versionNumber,
+      ext.replace(/^\./, "")
+    );
+    if (copyDataFile(snapshot.signedContentPath, buildRelativeDataPath(signedContentAbs))) {
+      signedContentPath = buildRelativeDataPath(signedContentAbs);
     }
   }
   if (snapshot.signaturePngPath) {
@@ -2510,6 +2517,8 @@ function restoreLiveSignatureFromArchiveSnapshot(stream, archivedRecord) {
     uploadedSignedCopyFileName: uploadedFileName,
     uploadedSignedCopyContentType: uploadedContentType,
     signedHtmlPath,
+    signedContentPath,
+    signedContentType,
     attestationText: snapshot.signature.attestationText || "",
     customFieldValues: Array.isArray(snapshot.signature.customFieldValues)
       ? snapshot.signature.customFieldValues
@@ -2935,9 +2944,63 @@ function resolveSignatureImageDataUrl(signatureEntry) {
     : "";
 }
 
+function persistSignedContentSnapshot({ mouId, agencySuffix, version, versionRecord }) {
+  const contentType = normalizeContentType(versionRecord?.contentType);
+  const extension = getFileExtensionForContentType(contentType);
+  const sourceAbs = getAbsoluteContentPath(versionRecord);
+  const sourceBuf = readBufferSafe(sourceAbs);
+  if (!sourceBuf.length) return null;
+  const destAbs = store.getSignedContentPath(mouId, agencySuffix, version, extension);
+  store.writeBinary(destAbs, sourceBuf);
+  return {
+    absPath: destAbs,
+    contentType,
+    relativePath: buildRelativeDataPath(destAbs),
+  };
+}
+
+function readSignedContentBuffer(versionRecord, signatureRecord) {
+  const snapshotAbs = getAbsoluteDataPath(signatureRecord?.signedContentPath);
+  const snapshotBuf = snapshotAbs ? readBufferSafe(snapshotAbs) : Buffer.alloc(0);
+  if (snapshotBuf.length) return snapshotBuf;
+  return readContentBuffer(versionRecord);
+}
+
+function resolveSignedDocumentBodyHtml(stream, versionRecord, signatureRecord) {
+  const contentType = normalizeContentType(
+    signatureRecord?.signedContentType || versionRecord?.contentType
+  );
+  const signedContentHref = signatureRecord?.signedContentPath
+    ? `/mou/agency/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+        signatureRecord.agencyId
+      )}/signed-content?version=${encodeURIComponent(versionRecord.version)}`
+    : `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(
+        versionRecord.version
+      )}`;
+
+  if (contentType === "pdf") {
+    return [
+      '<div class="signed-pdf-wrap">',
+      `  <p><a href="${signedContentHref}" target="_blank" rel="noopener noreferrer">Open attached PDF</a></p>`,
+      `  <iframe src="${signedContentHref}" title="MOU PDF" style="width:100%;min-height:780px;border:1px solid #d1d5db;border-radius:12px;background:#fff;"></iframe>`,
+      "</div>",
+    ].join("\n");
+  }
+
+  const snapshotAbs = getAbsoluteDataPath(signatureRecord?.signedContentPath);
+  const snapshotBuf = snapshotAbs ? readBufferSafe(snapshotAbs) : Buffer.alloc(0);
+  if (snapshotBuf.length) {
+    const raw = snapshotBuf.toString("utf8");
+    if (contentType === "markdown") {
+      return sanitizeMouHtml(marked.parse(raw || ""));
+    }
+    return raw;
+  }
+  return renderDocumentHtml(versionRecord);
+}
+
 function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
   const scopeLabel = getScopeLabel(stream);
-  const fileHref = `/mou/file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(versionRecord.version)}`;
   const uploadedSignedCopyHref = signatureRecord.uploadedSignedCopyPath
     ? `/mou/agency-file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(signatureRecord.agencyId)}?version=${encodeURIComponent(versionRecord.version)}`
     : "";
@@ -2945,15 +3008,11 @@ function buildSignedHtml({ stream, versionRecord, signatureRecord }) {
   const countersignUploadedHref = countersignature?.uploadedSignedCopyPath
     ? `/mou/agency-file/${encodeURIComponent(stream.mouId)}/${encodeURIComponent(signatureRecord.agencyId)}?version=${encodeURIComponent(versionRecord.version)}&part=countersign`
     : "";
-  const renderedBody =
-    normalizeContentType(versionRecord.contentType) === "pdf"
-      ? [
-          '<div class="signed-pdf-wrap">',
-          `  <p><a href="${fileHref}" target="_blank" rel="noopener noreferrer">Open attached PDF</a></p>`,
-          `  <iframe src="${fileHref}" title="MOU PDF" style="width:100%;min-height:780px;border:1px solid #d1d5db;border-radius:12px;background:#fff;"></iframe>`,
-          "</div>",
-        ].join("\n")
-      : renderDocumentHtml(versionRecord);
+  const renderedBody = resolveSignedDocumentBodyHtml(
+    stream,
+    versionRecord,
+    signatureRecord
+  );
   const uploadedSignedCopyBlock = buildUploadedSignedCopyBlock({
     href: uploadedSignedCopyHref,
     contentType: signatureRecord.uploadedSignedCopyContentType,
@@ -3154,7 +3213,7 @@ async function mergePdfBuffers(buffers) {
 }
 
 async function buildMergedSignedPdfBuffer({ stream, versionRecord, signatureRecord }) {
-  const sourcePdf = readContentBuffer(versionRecord);
+  const sourcePdf = readSignedContentBuffer(versionRecord, signatureRecord);
   if (!sourcePdf.length) {
     throw new Error("Document PDF was not found.");
   }
@@ -3167,7 +3226,20 @@ async function buildMergedSignedPdfBuffer({ stream, versionRecord, signatureReco
 }
 
 async function buildSignedTextPdfBuffer({ stream, versionRecord, signatureRecord }) {
-  const plainText = htmlToPlainText(renderDocumentHtml(versionRecord));
+  const snapshotAbs = getAbsoluteDataPath(signatureRecord?.signedContentPath);
+  const snapshotBuf = snapshotAbs ? readBufferSafe(snapshotAbs) : Buffer.alloc(0);
+  const contentType = normalizeContentType(
+    signatureRecord?.signedContentType || versionRecord?.contentType
+  );
+  let plainText = "";
+  if (snapshotBuf.length) {
+    const raw = snapshotBuf.toString("utf8");
+    plainText = htmlToPlainText(
+      contentType === "markdown" ? sanitizeMouHtml(marked.parse(raw || "")) : raw
+    );
+  } else {
+    plainText = htmlToPlainText(renderDocumentHtml(versionRecord));
+  }
   return collectPdfBuffer((doc) => {
     writePdfHeader(doc, stream, versionRecord);
     const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
@@ -3201,7 +3273,7 @@ async function getSignedPdfExport({ mouId, agencyId, version }) {
     } else {
       pdfBuffer = uploadedPdf;
     }
-  } else if (normalizeContentType(evidence.version?.contentType) === "pdf") {
+  } else if (normalizeContentType(evidence.signature?.signedContentType || evidence.version?.contentType) === "pdf") {
     pdfBuffer = await buildMergedSignedPdfBuffer({
       stream: evidence.stream,
       versionRecord: evidence.version,
@@ -3296,6 +3368,13 @@ function signVersion({
       })
     : null;
 
+  const signedContentSnapshot = persistSignedContentSnapshot({
+    mouId,
+    agencySuffix: safeAgencySuffix,
+    version: versionRecord.version,
+    versionRecord,
+  });
+
   const signedAt = nowIso();
   const signatureRecord = {
     agencyId: safeAgencySuffix,
@@ -3311,6 +3390,10 @@ function signVersion({
     uploadedSignedCopyPath: uploadedSignedCopy ? buildRelativeDataPath(uploadedSignedCopy.absPath) : null,
     uploadedSignedCopyFileName: uploadedSignedCopy ? uploadedSignedCopy.fileName : null,
     uploadedSignedCopyContentType: uploadedSignedCopy ? uploadedSignedCopy.contentType : null,
+    signedContentPath: signedContentSnapshot ? signedContentSnapshot.relativePath : null,
+    signedContentType: signedContentSnapshot
+      ? signedContentSnapshot.contentType
+      : normalizeContentType(versionRecord.contentType),
     signedHtmlPath: buildRelativeDataPath(
       store.getSignedHtmlPath(mouId, safeAgencySuffix, versionRecord.version)
     ),
@@ -3502,19 +3585,57 @@ function getAgencyEvidence({ mouId, agencyId, version }) {
     throw new Error("Signed document not found.");
   }
 
+  const signedHtmlAbs = getAbsoluteDataPath(signature.signedHtmlPath);
+  let html = "";
+  if (signedHtmlAbs && fs.existsSync(signedHtmlAbs)) {
+    html = store.readHtml(signedHtmlAbs);
+  }
+  if (!String(html || "").trim()) {
+    html = buildSignedHtml({
+      stream,
+      versionRecord,
+      signatureRecord: signature,
+    });
+  }
+
   return {
     stream,
     version: clone(versionRecord),
     signature: clone(signature),
-    html: buildSignedHtml({
-      stream,
-      versionRecord,
-      signatureRecord: signature,
-    }),
+    html,
     uploadedSignedCopyAbsPath: getAbsoluteDataPath(signature?.uploadedSignedCopyPath),
     countersignUploadedAbsPath: getAbsoluteDataPath(
       signature?.countersignature?.uploadedSignedCopyPath
     ),
+    signedContentAbsPath: getAbsoluteDataPath(signature?.signedContentPath),
+    signedContentType: normalizeContentType(
+      signature?.signedContentType || versionRecord?.contentType
+    ),
+  };
+}
+
+function getSignedContentExport({ mouId, agencyId, version }) {
+  const evidence = getAgencyEvidence({ mouId, agencyId, version });
+  const absPath = evidence.signedContentAbsPath;
+  if (!absPath || !fs.existsSync(absPath)) {
+    throw new Error("Signed document content snapshot not found.");
+  }
+  const contentType = evidence.signedContentType || "html";
+  const extension = getFileExtensionForContentType(contentType);
+  const fileName = `${sanitizeFileSegment(evidence.stream?.title, "mou")}-${sanitizeFileSegment(
+    evidence.signature?.agencyId,
+    "agency"
+  )}-v${evidence.version.version}-signed-content.${extension}`;
+  return {
+    absPath,
+    fileName,
+    contentType:
+      contentType === "pdf"
+        ? "application/pdf"
+        : contentType === "markdown"
+          ? "text/markdown; charset=utf-8"
+          : "text/html; charset=utf-8",
+    buffer: readBufferSafe(absPath),
   };
 }
 
@@ -3724,6 +3845,7 @@ module.exports = {
   signVersion,
   countersignVersion,
   getAgencyEvidence,
+  getSignedContentExport,
   getSignedPdfExport,
   getArchivedDocumentView,
   getArchivedSignedPdfExport,

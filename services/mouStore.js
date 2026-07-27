@@ -143,6 +143,15 @@ function getSignedHtmlPath(mouId, agencyId, version) {
   );
 }
 
+function getSignedContentPath(mouId, agencyId, version, extension) {
+  return path.join(
+    SIGNED_DIR,
+    normalizeSegment(mouId),
+    normalizeSegment(agencyId),
+    `${normalizeVersion(version)}-content.${normalizeExtension(extension, "html")}`
+  );
+}
+
 function getSignaturePngPath(mouId, agencyId, version) {
   return path.join(
     SIGNATURES_DIR,
@@ -307,6 +316,7 @@ module.exports = {
   getVersionPath,
   getVersionContentPath,
   getSignedHtmlPath,
+  getSignedContentPath,
   getSignaturePngPath,
   getSignedUploadPath,
   getCountersignaturePngPath,
