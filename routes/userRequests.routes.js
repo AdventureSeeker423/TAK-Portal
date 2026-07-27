@@ -171,6 +171,10 @@ function requireValidReviewTokenParam(req, res, next) {
   if (!isValidReviewToken(token)) {
     return res.status(404).json({ error: "Not found" });
   }
+  const request = userRequestsSvc.getByReviewToken(token);
+  if (!request) {
+    return res.status(404).json({ error: "Not found" });
+  }
   return next();
 }
 
