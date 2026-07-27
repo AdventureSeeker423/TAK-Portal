@@ -134,7 +134,11 @@ function markerVisible(marker, options) {
   }
 
   if (!markerMatchesSearch(marker, options?.search)) return false;
-  if (!markerInBounds(marker, options?.bounds)) return false;
+  const uid = String(marker?.uid || "");
+  const isPriority =
+    (options?.selectedUid && uid === String(options.selectedUid)) ||
+    (options?.lockedUid && uid === String(options.lockedUid));
+  if (!isPriority && !markerInBounds(marker, options?.bounds)) return false;
   return true;
 }
 
