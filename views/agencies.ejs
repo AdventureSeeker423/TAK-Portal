@@ -389,7 +389,7 @@ function buildAgencyCountyAbbrevViewHtml(a) {
     .toUpperCase();
   if (abbrev) return esc(abbrev);
   // State/Federal agencies do not need a county abbreviation — never show Update.
-  if (isAgencyStateFederal(a)) return "—";
+  if (isAgencyStateFederal(a)) return "";
   const agencyId = esc(a._id ?? a.id ?? "");
   return (
     `<button class="btn" type="button" onclick="openCountyAbbrevModal('${agencyId}')">Update</button>`
