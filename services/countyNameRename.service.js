@@ -151,8 +151,36 @@ async function renameCountyName(agencyIndex, newCountyRaw) {
 
   const oldCounty = normalizeCountyName(agency.county);
   const newCounty = normalizeCountyName(newCountyRaw);
-  if (!newCounty) {
+  const allowEmpty = !!agency.stateFederalAgency;
+  if (!newCounty && !allowEmpty) {
     throw new Error("County name is required");
+  }
+
+  // Clearing county for a State/Federal agency: update this agency only (no group rename).
+  if (!newCounty && allowEmpty) {
+    if (!oldCounty) {
+      return {
+        success: true,
+        skipped: true,
+        state: targetState,
+        oldCounty,
+        newCounty: "",
+        updatedIndexes: [idx],
+        groupsRenamed: 0,
+      };
+    }
+    agencies[idx] = { ...agencies[idx], county: "" };
+    agenciesStore.save(agencies);
+    groupsService.invalidateGroupsCache();
+    return {
+      success: true,
+      skipped: false,
+      state: targetState,
+      oldCounty,
+      newCounty: "",
+      updatedIndexes: [idx],
+      groupsRenamed: 0,
+    };
   }
 
   const targetCountyKey = String(oldCounty || "").trim().toLowerCase();

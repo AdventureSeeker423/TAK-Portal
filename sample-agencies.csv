@@ -1,3 +1,4 @@
-Agency Full Name,Agency Abbreviation,Username Suffix,State,County,County Abbreviation,Agency Type,Agency Color
-Riverbend County Sheriff's Office,RCSO,rcso,TN,Riverbend,RBD,Law Enforcement,Dark Blue
-Metro Valley Emergency Management,MVEM,mvem,TN,Metro Valley,MVL,Emergency Management,Teal
+Agency Full Name,Agency Abbreviation,Username Agency Identifier,Username Identifier,State,State/Federal Agency,County,County Abbreviation,Agency Type,Agency Color
+Riverbend County Sheriff's Office,RCSO,suffix,rcso,TN,No,Riverbend,RBD,Law Enforcement,Dark Blue
+Metro Valley Emergency Management,MVEM,suffix,mvem,TN,No,Metro Valley,MVL,Emergency Management,Teal
+Statewide Defense Agency,SDA,prefix,sda,AR,Yes,,,State Defense,Cyan

@@ -250,12 +250,50 @@ function csvEscapeCell(value) {
   return s;
 }
 
+/** Minimal CSV line parser (supports quotes / escaped quotes). */
+function parseCsvLine(line) {
+  const raw = String(line ?? "");
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (raw[i + 1] === '"') {
+          cur += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (ch === ",") {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
 function buildAgenciesExportCsv(agencies) {
   const header = [
     "Agency Full Name",
     "Agency Abbreviation",
-    "Username Suffix",
+    "Username Agency Identifier",
+    "Username Identifier",
     "State",
+    "State/Federal Agency",
     "County",
     "County Abbreviation",
     "Agency Type",
@@ -271,12 +309,19 @@ function buildAgenciesExportCsv(agencies) {
     );
 
   for (const a of sorted) {
+    const placement =
+      String(a?.usernameTokenPlacement || "suffix").toLowerCase() === "prefix"
+        ? "prefix"
+        : "suffix";
+    const stateFederal = a?.stateFederalAgency === true ? "Yes" : "No";
     lines.push(
       [
         a?.name || "",
         a?.groupPrefix || "",
+        placement,
         a?.suffix || "",
         a?.state || "",
+        stateFederal,
         a?.county || "",
         a?.countyAbbrev || "",
         a?.type || "",
@@ -526,17 +571,59 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
       });
     }
 
-    const header = lines[0].split(",").map((h) => String(h || "").trim());
+    const header = parseCsvLine(lines[0]).map((h) => String(h || "").trim());
     const normalizedHeader = header.map((h) => h.toLowerCase());
     const requiredColumns = [
       { key: "name", label: "Agency Full Name", aliases: ["agency full name", "name"] },
-      { key: "groupPrefix", label: "Agency Abbreviation", aliases: ["agency abbreviation", "groupprefix"] },
-      { key: "suffix", label: "Username Suffix", aliases: ["username suffix", "suffix"] },
+      {
+        key: "groupPrefix",
+        label: "Agency Abbreviation",
+        aliases: ["agency abbreviation", "groupprefix", "abbreviation"],
+      },
+      {
+        key: "suffix",
+        label: "Username Identifier",
+        aliases: [
+          "username identifier",
+          "username suffix",
+          "username prefix",
+          "suffix",
+          "prefix",
+        ],
+      },
       { key: "state", label: "State", aliases: ["state"] },
       { key: "county", label: "County", aliases: ["county"] },
-      { key: "countyAbbrev", label: "County Abbreviation", aliases: ["county abbreviation", "countyabbrev"] },
+      {
+        key: "countyAbbrev",
+        label: "County Abbreviation",
+        aliases: ["county abbreviation", "countyabbrev", "county abbrev"],
+      },
       { key: "type", label: "Agency Type", aliases: ["agency type", "type"] },
       { key: "color", label: "Agency Color", aliases: ["agency color", "color"] },
+    ];
+    const optionalColumns = [
+      {
+        key: "usernameTokenPlacement",
+        label: "Username Agency Identifier",
+        aliases: [
+          "username agency identifier",
+          "username token placement",
+          "usernametokenplacement",
+          "token placement",
+          "placement",
+        ],
+      },
+      {
+        key: "stateFederalAgency",
+        label: "State/Federal Agency",
+        aliases: [
+          "state/federal agency",
+          "state federal agency",
+          "statefederalagency",
+          "state/federal",
+          "state federal",
+        ],
+      },
     ];
 
     const columnIndexes = new Map();
@@ -546,6 +633,10 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
         return res.status(400).json({ error: `Missing required column: ${col.label}` });
       }
       columnIndexes.set(col.key, idx);
+    }
+    for (const col of optionalColumns) {
+      const idx = normalizedHeader.findIndex((h) => col.aliases.includes(h));
+      if (idx >= 0) columnIndexes.set(col.key, idx);
     }
 
     function get(parts, key) {
@@ -570,7 +661,7 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
     const failed = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(",");
+      const parts = parseCsvLine(lines[i]);
       const line = i + 1;
 
       const name = get(parts, "name");
@@ -581,6 +672,8 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
       const countyAbbrev = get(parts, "countyAbbrev").toUpperCase().replace(/[^A-Z]/g, "");
       const type = get(parts, "type");
       const color = get(parts, "color");
+      const usernameTokenPlacement = get(parts, "usernameTokenPlacement") || "suffix";
+      const stateFederalAgency = get(parts, "stateFederalAgency") || "no";
 
       const candidate = normalizeAgency({
         name,
@@ -591,13 +684,17 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
         countyAbbrev,
         type,
         color,
+        usernameTokenPlacement,
+        stateFederalAgency,
       });
 
       const rowErrors = [];
       const baseErr = validateAgency(candidate);
       if (baseErr) rowErrors.push(baseErr);
       if (candidate.suffix && !/^[a-z0-9_-]+$/.test(candidate.suffix)) {
-        rowErrors.push("Username suffix can only contain lowercase letters, numbers, dashes, and underscores");
+        rowErrors.push(
+          "Username identifier can only contain lowercase letters, numbers, dashes, and underscores"
+        );
       }
       if (candidate.groupPrefix && !/^[A-Z0-9_-]+$/.test(candidate.groupPrefix)) {
         rowErrors.push("Agency abbreviation can only contain letters, numbers, dashes, and underscores");
@@ -610,6 +707,22 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
       }
       if (candidate.color && !ALLOWED_AGENCY_COLORS.has(candidate.color)) {
         rowErrors.push(`Invalid agency color "${candidate.color}"`);
+      }
+      const placementRaw = String(usernameTokenPlacement || "").trim().toLowerCase();
+      if (
+        placementRaw &&
+        !["suffix", "prefix", "start", "before", "leading", "end", "after"].includes(placementRaw)
+      ) {
+        rowErrors.push(
+          'Username Agency Identifier must be "suffix" or "prefix"'
+        );
+      }
+      const sfRaw = String(stateFederalAgency || "").trim().toLowerCase();
+      if (
+        sfRaw &&
+        !["yes", "no", "true", "false", "1", "0", "y", "n"].includes(sfRaw)
+      ) {
+        rowErrors.push('State/Federal Agency must be "Yes" or "No"');
       }
 
       if (rowErrors.length) {
@@ -776,6 +889,45 @@ router.patch("/:index/type", (req, res) => {
   });
 
   res.json({ success: true, type: raw });
+});
+
+router.patch("/:index/state-federal", (req, res) => {
+  const idx = Number(req.params.index);
+  const agencies = store.load();
+  if (!Number.isInteger(idx) || !agencies[idx]) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  const agency = agencies[idx];
+  if (!accessSvc.isSuffixAllowed(req.authentikUser, agency.suffix)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const sfRaw = String(req.body?.stateFederalAgency ?? "").trim().toLowerCase();
+  const next =
+    req.body?.stateFederalAgency === true ||
+    sfRaw === "yes" ||
+    sfRaw === "true" ||
+    sfRaw === "1";
+
+  const before = !!agency.stateFederalAgency;
+  if (before === next) {
+    return res.json({ success: true, stateFederalAgency: next });
+  }
+
+  agencies[idx] = { ...agency, stateFederalAgency: next };
+  store.save(agencies);
+
+  auditSvc.logEvent({
+    actor: req.authentikUser || null,
+    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    action: "UPDATE_AGENCY_STATE_FEDERAL",
+    targetType: "agency",
+    targetId: String(agency.suffix || ""),
+    details: { before, after: next },
+  });
+
+  return res.json({ success: true, stateFederalAgency: next });
 });
 
 router.post("/:index/rename-agency-name", async (req, res) => {
@@ -973,17 +1125,18 @@ router.put("/:index/county-abbrev", async (req, res) => {
     }
 
     const raw = String(req.body?.countyAbbrev || "").trim().toUpperCase();
+    const agency = agencies[idx];
+    const allowEmpty = !!agency?.stateFederalAgency;
     if (!raw) {
-      return res.status(400).json({ error: "County abbreviation is required" });
-    }
-    if (raw.length < 2) {
+      if (!allowEmpty) {
+        return res.status(400).json({ error: "County abbreviation is required" });
+      }
+    } else if (raw.length < 2) {
       return res.status(400).json({ error: "County abbreviation must be at least 2 characters" });
-    }
-    if (!/^[A-Z]+$/.test(raw)) {
+    } else if (!/^[A-Z]+$/.test(raw)) {
       return res.status(400).json({ error: "County abbreviation must contain only letters" });
     }
 
-    const agency = agencies[idx];
     const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
     if (!abbr) {
       return res.status(400).json({ error: "Agency abbreviation (groupPrefix) is missing" });
@@ -997,12 +1150,17 @@ router.put("/:index/county-abbrev", async (req, res) => {
     const targetState = String(agency.state || "").trim().toUpperCase();
 
     const matchingIndexes = [];
-    for (let i = 0; i < agencies.length; i++) {
-      const ag = agencies[i];
-      if (!ag) continue;
-      const c = String(ag.county || "").trim().toLowerCase();
-      const s = String(ag.state || "").trim().toUpperCase();
-      if (c === targetCounty && s === targetState) matchingIndexes.push(i);
+    if (!newCountyAbbrev) {
+      // Clearing abbrev (State/Federal only): update this agency alone so peers keep theirs.
+      matchingIndexes.push(idx);
+    } else {
+      for (let i = 0; i < agencies.length; i++) {
+        const ag = agencies[i];
+        if (!ag) continue;
+        const c = String(ag.county || "").trim().toLowerCase();
+        const s = String(ag.state || "").trim().toUpperCase();
+        if (c === targetCounty && s === targetState) matchingIndexes.push(i);
+      }
     }
 
     const allAlreadySet = matchingIndexes.every((i) => {
@@ -1031,7 +1189,9 @@ router.put("/:index/county-abbrev", async (req, res) => {
       if (!gp) continue;
 
       const prevCountyAbbrev = String(ag.countyAbbrev || "").trim().toUpperCase();
-      const desiredName = `authentik-${newCountyAbbrev}-${gp}-AgencyAdmin`;
+      const desiredName = newCountyAbbrev
+        ? `authentik-${newCountyAbbrev}-${gp}-AgencyAdmin`
+        : `authentik-${gp}-AgencyAdmin`;
 
       if (prevCountyAbbrev !== newCountyAbbrev) {
         const candidates = [];
