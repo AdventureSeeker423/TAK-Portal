@@ -7,7 +7,7 @@ const settingsSvc = require("./services/settings.service");
 const dashboardStatsCache = require("./services/dashboardStatsCache.service");
 const takDashboardCache = require("./services/takDashboardCache.service");
 const axios = require("axios");
-const { getString } = require("./services/env");
+const { getString, getBool } = require("./services/env");
 const { URL } = require("url");
 const pkg = require("./package.json");
 const mutualAidSvc = require("./services/mutualAid.service");
@@ -1231,7 +1231,18 @@ app.post("/lookup", async (req, res) => {
 });
 
 // Public: request access form (must remain reachable by non-authenticated users)
+function isRequestAccessEnabled() {
+  return getBool("REQUEST_ACCESS_ENABLED", true);
+}
+
+function renderRequestAccessDisabled(req, res) {
+  return res.status(404).render("access-denied", {
+    username: req.authentikUser?.username || "",
+  });
+}
+
 app.get("/request-access", (req, res) => {
+  if (!isRequestAccessEnabled()) return renderRequestAccessDisabled(req, res);
   const agencies = agenciesStore.filterPublicEnrollmentAgencies(agenciesStore.load());
   const settings = (res.locals && res.locals.settings) ? res.locals.settings : (settingsSvc.getSettings() || {});
   const hcaptchaSiteKey = String(settings.HCAPTCHA_SITE_KEY || "").trim();
@@ -1250,6 +1261,7 @@ app.get("/request-access", (req, res) => {
 
 app.post("/request-access", async (req, res) => {
   try {
+    if (!isRequestAccessEnabled()) return renderRequestAccessDisabled(req, res);
     const body = req.body || {};
 
     // hCaptcha enforcement (enabled only if BOTH keys are set)
@@ -1343,6 +1355,7 @@ app.post("/request-access", async (req, res) => {
 });
 
 app.get("/request-access/confirmation", (req, res) => {
+  if (!isRequestAccessEnabled()) return renderRequestAccessDisabled(req, res);
   return res.render("request-access-confirmation");
 });
 

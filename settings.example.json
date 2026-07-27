@@ -55,6 +55,7 @@
   "SMS_BREVO_API_KEY": "",
   "SMS_BREVO_SENDER": "",
   "SMS_TEST_TO": "",
+  "REQUEST_ACCESS_ENABLED": "true",
   "BETA_MODE": "false",
   "SERVER_NAME": "",
   "DEFAULT_THEME_MODE": "dark",

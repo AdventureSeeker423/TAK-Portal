@@ -37,6 +37,7 @@
         "SMTP_SECURE",
         "EMAIL_FAIL_HARD",
         "PORTAL_AUTH_ENABLED",
+        "REQUEST_ACCESS_ENABLED",
         "BETA_MODE",
         "MOU_ENABLED",
         "MOU_SEND_EMAILS"
@@ -52,10 +53,14 @@
             const rawVal = (settings && typeof settings[key] === "string")
               ? settings[key].toLowerCase()
               : "";
+            const defaultBool =
+              defaultValue === "true" || defaultValue === "false"
+                ? defaultValue
+                : "";
             const currentVal =
               rawVal === "true" ? "true" :
               rawVal === "false" ? "false" :
-              "";
+              defaultBool;
           %>
           <select name="settings[<%= key %>]">
             <option value="true" <%= currentVal === "true" ? "selected" : "" %>>true</option>
@@ -142,6 +147,7 @@
         "MOU_DEFAULT_REMINDER_DAYS",
         "MOU_HTML_MAX_KB",
         "MOU_REMINDER_SWEEP_HOURS",
+        "REQUEST_ACCESS_ENABLED",
         "BETA_MODE",
         "DEFAULT_THEME_MODE",
         "DEFAULT_MAP_SOURCE",
@@ -1280,6 +1286,7 @@
               </small>
             </label>
             <% renderField("USERNAME_PREFIX_LABEL","Username Descriptor Text","Displayed on Users, Pending User Requests, and Request Access pages. Default: Badge Number / Username","Badge Number / Username"); %>
+            <% renderField("REQUEST_ACCESS_ENABLED","Enable Request Access Page","If true, the public /request-access enrollment form is available. Set false to disable it. Default: true.","true"); %>
             <% renderField("BETA_MODE","Enable Beta Features","If true, shows in-development features for global admins (e.g. Getting Started). Data Package, Locate Persons, and Data Sync are available regardless of this setting."); %>
           </div>
           <script>
