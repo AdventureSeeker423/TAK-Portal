@@ -63,7 +63,7 @@
             <th data-sort="name" role="button" tabindex="0" title="Sort by Agency">Agency</th>
             <th data-sort="groupPrefix" role="button" tabindex="0" title="Sort by Abbreviation">Abbreviation</th>
             <th data-sort="suffix" role="button" tabindex="0" title="Sort by username identifier">Username Identifier</th>
-            <th data-sort="stateFederalAgency" role="button" tabindex="0" title="Sort by State/Federal Agency">State/Federal</th>
+            <th class="agencyStateFederalHeader" data-sort="stateFederalAgency" role="button" tabindex="0" title="Sort by State/Federal Agency">State/Federal</th>
             <th data-sort="county" role="button" tabindex="0" title="Sort by County">County</th>
             <th data-sort="countyAbbrev" role="button" tabindex="0" title="Sort by County Abbreviation">County Abbrev</th>
             <th data-sort="state" role="button" tabindex="0">State</th>
@@ -381,10 +381,6 @@ function isAgencyStateFederal(a) {
   if (raw === false || raw === 0 || raw == null) return false;
   const s = String(raw).trim().toLowerCase();
   return s === "yes" || s === "true" || s === "1" || s === "y";
-}
-
-function stateFederalDisplayLabel(a) {
-  return isAgencyStateFederal(a) ? "Yes" : "No";
 }
 
 function buildAgencyCountyAbbrevViewHtml(a) {
@@ -807,11 +803,11 @@ function renderAgencies(){
         agencyAttributesEditMode ? buildAgencyAbbrCellHtml(a) : esc(a.groupPrefix)
       }</td>
       <td class="agencySuffixCell" data-label="Username Identifier">${esc(formatAgencyIdentifierDisplay(a))}</td>
-      <td class="agencyStateFederalCell" data-label="State/Federal">${
+      ${
         agencyAttributesEditMode
-          ? buildAgencyStateFederalCellHtml(a)
-          : esc(stateFederalDisplayLabel(a))
-      }</td>
+          ? `<td class="agencyStateFederalCell" data-label="State/Federal">${buildAgencyStateFederalCellHtml(a)}</td>`
+          : ""
+      }
       <td class="agencyCountyCell" data-label="County">${
         agencyAttributesEditMode ? buildAgencyCountyCellHtml(a) : esc(a.county || "")
       }</td>
@@ -2389,6 +2385,14 @@ if (addForm) {
   display: none;
 }
 
+.agenciesTable .agencyStateFederalHeader {
+  display: none;
+}
+
+.agenciesTable.is-editing-attributes .agencyStateFederalHeader {
+  display: table-cell;
+}
+
 .agenciesTable .agencyNameCell {
   max-width: 320px;
 }
@@ -2473,6 +2477,19 @@ if (addForm) {
   .agency-type-select {
     max-width: min(14rem, 100%);
   }
+}
+
+/* Edit mode: stretch all attribute controls to the column width */
+.agenciesTable.is-editing-attributes td {
+  min-width: 0;
+}
+.agenciesTable.is-editing-attributes input[type="text"],
+.agenciesTable.is-editing-attributes select {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0;
+  box-sizing: border-box;
+  field-sizing: fixed;
 }
 
 /* Grey button for Disable Lookup */
