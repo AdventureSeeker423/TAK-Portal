@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.57 - 7/28/26
+🐛 `Bug Fix` - Fixes issue with an empty tak cert list returning a connection failure error
+
 ### v1.3.56 - 7/27/26
 ✨ `Enhancement` - Agencies - Option added for state/federal agencies making County and County Code optional<br>
 ✨ `Enhancement` - Settings - Callsign Format - Added option to show template name as a part of the template<br>

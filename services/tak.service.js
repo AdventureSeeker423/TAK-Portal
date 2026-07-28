@@ -282,6 +282,10 @@ function buildTakAxios(options = {}) {
 /**
  * Generic "all certs" list.
  * GET /api/certadmin/cert
+ *
+ * Returns { ok, list, url }.
+ * - ok=true when any candidate returned HTTP success (including an empty catalog)
+ * - ok=false when every candidate failed (network/HTTP error)
  */
 async function getAllCerts(client, TAK_DEBUG) {
   const candidates = [
@@ -290,22 +294,28 @@ async function getAllCerts(client, TAK_DEBUG) {
     "/api/certadmin/cert/list",
   ];
 
+  const failures = [];
+
   for (const url of candidates) {
     try {
       const res = await client.get(url);
       const list = unwrapTakList(res.data);
       if (TAK_DEBUG) console.log(`[TAK CERT LIST] ${url} -> ${list.length}`);
-      if (list.length) return list;
+      // A successful response (even with 0 certs) is a valid answer on a fresh system.
+      return { ok: true, list, url };
     } catch (e) {
+      const detail = e.response?.status || e.message || String(e);
+      failures.push(`${url} (${detail})`);
       if (TAK_DEBUG) {
-        console.log(
-          `[TAK CERT LIST] ${url} not available (${e.response?.status || e.message})`
-        );
+        console.log(`[TAK CERT LIST] ${url} not available (${detail})`);
       }
     }
   }
 
-  return [];
+  console.warn(
+    `[TAK CERT LIST] Unable to list certificates; all candidates failed: ${failures.join("; ")}`
+  );
+  return { ok: false, list: [], url: null };
 }
 
 function isRevokedGeneric(cert) {
@@ -333,7 +343,8 @@ function isRevokedGeneric(cert) {
 
 async function verifyRevoked(client, ids, TAK_DEBUG) {
   // First attempt: verify using fields present in the generic /cert list
-  const after = await getAllCerts(client, TAK_DEBUG);
+  const afterResult = await getAllCerts(client, TAK_DEBUG);
+  const after = afterResult.ok ? afterResult.list : [];
   const byId = new Map(after.map((c) => [String(c?.id ?? "").trim(), c]));
 
   const pending = [];
@@ -468,8 +479,8 @@ async function revokeCertsForUsersBulk(usernames, options = {}) {
   }
 
   const client = buildTakAxios();
-  const allCerts = await getAllCerts(client, TAK_DEBUG);
-  if (!allCerts.length) {
+  const certCatalog = await getAllCerts(client, TAK_DEBUG);
+  if (!certCatalog.ok) {
     if (requireVerified) {
       throw new Error(
         "TAK: Unable to list certificates from /api/certadmin/cert; refusing to proceed."
@@ -484,6 +495,7 @@ async function revokeCertsForUsersBulk(usernames, options = {}) {
     };
   }
 
+  const allCerts = certCatalog.list;
   const byUsername = buildCertIdsByUsername(allCerts, list);
   const allIds = Array.from(
     new Set(Array.from(byUsername.values()).flatMap((ids) => ids))
@@ -553,8 +565,8 @@ async function revokeCertsForUser(username, options = {}) {
 
   const client = buildTakAxios();
 
-  const allCerts = await getAllCerts(client, TAK_DEBUG);
-  if (!allCerts.length) {
+  const certCatalog = await getAllCerts(client, TAK_DEBUG);
+  if (!certCatalog.ok) {
     if (requireVerified) {
       throw new Error(
         "TAK: Unable to list certificates from /api/certadmin/cert; refusing to proceed."
@@ -563,6 +575,7 @@ async function revokeCertsForUser(username, options = {}) {
     return { revoked: 0, attempted: 0, skipped: false, verified: false };
   }
 
+  const allCerts = certCatalog.list;
   const ids = certIdsForUsername(allCerts, u);
 
   if (TAK_DEBUG) {
