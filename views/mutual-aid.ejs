@@ -1849,6 +1849,27 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               white-space: normal !important;
               overflow-wrap: break-word !important;
             }
+            /* Keep profile lists as block flow during capture so wrapped
+               role/color titles do not stack on top of each other. */
+            .ref-list {
+              display: block !important;
+            }
+            .ref-list li {
+              display: block !important;
+              flex: none !important;
+              height: auto !important;
+              min-height: 0 !important;
+              margin: 0 0 4px !important;
+              line-height: 1.45 !important;
+              overflow: visible !important;
+              white-space: normal !important;
+            }
+            .ref-swatch {
+              display: inline-block !important;
+              vertical-align: -1px !important;
+              margin-right: 4px !important;
+              position: static !important;
+            }
           `;
           (clonedDoc.head || clonedDoc.documentElement).appendChild(style);
         } catch (err) {
