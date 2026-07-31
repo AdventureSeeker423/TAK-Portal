@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.58 - 7/31/26
+🐛 `Bug Fix` - Fixes issue with overlapping text on mutual aid packets in the role/team sections.
+
 ### v1.3.57 - 7/28/26
 🐛 `Bug Fix` - Fixes issue with an empty tak cert list returning a connection failure error
 
