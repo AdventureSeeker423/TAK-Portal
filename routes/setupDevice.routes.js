@@ -30,7 +30,6 @@ router.post("/enroll-qr", async (req, res) => {
       });
     }
 
-    const isOtt = req.body && String(req.body.app || "").toLowerCase() === "ott";
     const isItak = req.body && String(req.body.app || "").toLowerCase() === "itak";
 
     const { identifier, key, expiresAt } =
@@ -58,20 +57,6 @@ router.post("/enroll-qr", async (req, res) => {
         });
       }
       qrContent = itakPayload;
-    } else if (isOtt) {
-      const host = qrSvc.getTakHost();
-      const userId = await tokensSvc.getUserIdByUsername(user.username);
-      const fullUser = await usersSvc.getUserById(userId);
-      const pref = usersSvc.getPreferenceDataForUser(fullUser);
-      enrollUrl = qrSvc.buildOttEnrollUrl({
-        host,
-        username: user.username,
-        token: key,
-        callsign: pref.callsign,
-        teamLabel: pref.teamLabel,
-        roleLabel: pref.roleLabel,
-      });
-      qrContent = enrollUrl;
     } else {
       enrollUrl = qrSvc.buildEnrollUrl({
         username: user.username,
@@ -97,9 +82,8 @@ router.post("/enroll-qr", async (req, res) => {
         username: user.username,
         tokenIdentifier: identifier,
         expiresAt,
-        ott: isOtt,
         itak: isItak,
-        summary: `User generated own enrollment QR (${isItak ? "iTAK" : isOtt ? "OTT" : "standard"}).`,
+        summary: `User generated own enrollment QR (${isItak ? "iTAK" : "standard"}).`,
       },
     });
 
