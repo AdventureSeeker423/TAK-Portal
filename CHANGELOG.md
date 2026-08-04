@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.59 - 8/4/26
+🐛 `Bug Fix` - Fixes issue with Data Sync visibility on missions with read-only permissions
+
 ### v1.3.58 - 7/31/26
 🐛 `Bug Fix` - Fixes issue with overlapping text on mutual aid packets in the role/team sections.
 
