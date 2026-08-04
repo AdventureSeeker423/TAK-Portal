@@ -29,11 +29,18 @@ function missionPath(missionName) {
   return `/api/missions/${encodeURIComponent(n)}`;
 }
 
-/** List all missions — TAK GET /Marti/api/missions (full list; same shape as legacy pagedmissions). */
+/**
+ * List all missions — TAK GET /Marti/api/missions (full list; same shape as legacy pagedmissions).
+ * Always request passwordProtected + defaultRole: without them TAK omits password-protected
+ * missions and any whose defaultRole isn't plain MISSION_SUBSCRIBER (e.g. read-only subscriber).
+ * Callers may still override via params.
+ */
 async function listMissions(params) {
   assertTakAvailable();
   const client = buildTakAxios({ timeout: 60000 });
-  const res = await client.get("/api/missions", { params: params || {} });
+  const res = await client.get("/api/missions", {
+    params: { passwordProtected: true, defaultRole: true, ...(params || {}) },
+  });
   return res.data;
 }
 
