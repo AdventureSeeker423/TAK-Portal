@@ -12,8 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
-### v1.3.61 - PENDING
+### v1.3.61 - 8/5/26
 🐛 `Bug Fix` - Fixes issue with cluttered logs due to an error parsing HAE<br>
+🐛 `Bug Fix` - Fixes issue with slow loading times and display on mini-map
 
 ### v1.3.60 - 8/4/26
 ✨ `Enhancement` - Adds compatibility for WinTAKTracker and AndroidTAKTracker (Work In Progress Applications) to send callsign/team/role information<br>
