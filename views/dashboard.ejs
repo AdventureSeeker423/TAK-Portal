@@ -835,7 +835,12 @@
 
         function isPreferenceConfigClient(sub) {
           var client = resolveSubTakClient(sub).toUpperCase();
-          return client === "ATAK-CIV" || client === "TAKAWARE-CIV";
+          return (
+            client === "ATAK-CIV" ||
+            client === "TAKAWARE-CIV" ||
+            client === "WINTAKTRACKER" ||
+            client === "ANDROIDTAKTRACKER"
+          );
         }
 
         function isDataSyncClient(sub) {

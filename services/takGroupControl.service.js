@@ -16,7 +16,12 @@ const dataSyncSvc = require("./dataSync.service");
 const dataSyncAccess = require("./dataSyncAccess.service");
 
 const REMOTE_ACTIONS_TAK_CLIENTS = new Set(["ATAK-CIV", "ITAK", "TAKAWARE-CIV"]);
-const PREFERENCE_CONFIG_TAK_CLIENTS = new Set(["ATAK-CIV", "TAKAWARE-CIV"]);
+const PREFERENCE_CONFIG_TAK_CLIENTS = new Set([
+  "ATAK-CIV",
+  "TAKAWARE-CIV",
+  "WINTAKTRACKER",
+  "ANDROIDTAKTRACKER",
+]);
 const DATA_SYNC_INVITE_CHANNEL_SETTLE_MS = 1500;
 
 function safeStr(v) {
@@ -252,7 +257,9 @@ function assertRemoteActionsSubscription(subscription) {
 
 function assertPreferenceConfigSubscription(subscription) {
   if (!isPreferenceConfigSubscription(subscription)) {
-    const err = new Error("Callsign preferences are only available for ATAK-CIV and TAK Aware clients.");
+    const err = new Error(
+      "Callsign preferences are only available for ATAK-CIV, TAK Aware, WinTAKTracker, and AndroidTAKTracker clients."
+    );
     err.status = 403;
     throw err;
   }

@@ -20,10 +20,16 @@ assert.strictEqual(isRemoteActionsSubscription({ takClient: "ATAK-GOV" }), false
 
 assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("ATAK-CIV"), true);
 assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("TAKAWARE-CIV"), true);
+assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("WINTAKTRACKER"), true);
+assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("ANDROIDTAKTRACKER"), true);
 assert.strictEqual(PREFERENCE_CONFIG_TAK_CLIENTS.has("ITAK"), false);
 assert.strictEqual(isPreferenceConfigSubscription({ takClient: "ATAK-CIV" }), true);
 assert.strictEqual(isPreferenceConfigSubscription({ takClient: "TAKAware-CIV" }), true);
+assert.strictEqual(isPreferenceConfigSubscription({ takClient: "WinTAKTracker" }), true);
+assert.strictEqual(isPreferenceConfigSubscription({ takClient: "AndroidTAKTracker" }), true);
 assert.strictEqual(isPreferenceConfigSubscription({ takClient: "iTAK" }), false);
+assert.strictEqual(isRemoteActionsSubscription({ takClient: "WinTAKTracker" }), false);
+assert.strictEqual(isRemoteActionsSubscription({ takClient: "AndroidTAKTracker" }), false);
 
 const collapsed = [
   { name: "TAK_FOO Bar", accessMode: "BOTH", active: true, inActive: true, outActive: true },
