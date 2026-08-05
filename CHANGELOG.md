@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.60 - 8/4/26
+✨ `Enhancement` - Adds compatibility for WinTAKTracker and AndroidTAKTracker (Work In Progress Applications) to send callsign/team/role information<br>
+
 ### v1.3.59 - 8/4/26
 🐛 `Bug Fix` - Fixes issue with Data Sync visibility on missions with read-only permissions
 
