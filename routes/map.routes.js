@@ -338,6 +338,9 @@ router.get("/debug/render-stats", (req, res) => {
     markerCount: cotStream.getMarkerList().length,
     render: mapRender.getRenderStats(),
     icons: mapIconRender.getStats(),
+    bridge: typeof cotStream.getBridgeMemoryStats === "function"
+      ? cotStream.getBridgeMemoryStats()
+      : null,
   });
 });
 

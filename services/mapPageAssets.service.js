@@ -1,12 +1,14 @@
 const fs = require("fs");
 const path = require("path");
 
-const MAP_JS = path.join(__dirname, "..", "public", "map.js");
-const MAP_MISSIONS_JS = path.join(__dirname, "..", "public", "map-missions.js");
-const MAP_PACKAGES_JS = path.join(__dirname, "..", "public", "map-packages.js");
-const MAP_GEOFENCES_JS = path.join(__dirname, "..", "public", "map-geofences.js");
-const MAP_SHAPE_DECOR_JS = path.join(__dirname, "..", "public", "shapeDecorFilter.js");
+const MAP_DIST_JS = path.join(__dirname, "..", "public", "dist", "map.js");
+const MAP_DIST_WORKER = path.join(__dirname, "..", "public", "dist", "map.worker.js");
 const MAP_CSS = path.join(__dirname, "..", "public", "map.css");
+const MAP_BASEMAPS_JS = path.join(__dirname, "..", "public", "mapBasemaps.js");
+const SHAPE_DECOR_JS = path.join(__dirname, "..", "public", "shapeDecorFilter.js");
+const MAPLIBRE_JS = path.join(__dirname, "..", "public", "vendor", "maplibre-gl", "maplibre-gl.js");
+const MAPLIBRE_CSS = path.join(__dirname, "..", "public", "vendor", "maplibre-gl", "maplibre-gl.css");
+const DASHBOARD_MINI = path.join(__dirname, "..", "public", "dashboardMiniMap.js");
 
 function fileMtimeToken(filePath) {
   try {
@@ -16,17 +18,26 @@ function fileMtimeToken(filePath) {
   }
 }
 
-/** Fresh URLs for map page assets; busts cache when map.js/map.css change on disk. */
+/** Fresh URLs for map page assets; busts cache when dist/css change on disk. */
 function getRenderLocals() {
+  const mapToken = fileMtimeToken(MAP_DIST_JS);
   return {
-    mapJsUrl: `/map.js?v=${fileMtimeToken(MAP_JS)}`,
-    mapMissionsJsUrl: `/map-missions.js?v=${fileMtimeToken(MAP_MISSIONS_JS)}`,
-    mapPackagesJsUrl: `/map-packages.js?v=${fileMtimeToken(MAP_PACKAGES_JS)}`,
-    mapGeofencesJsUrl: `/map-geofences.js?v=${fileMtimeToken(MAP_GEOFENCES_JS)}`,
-    shapeDecorFilterJsUrl: `/shapeDecorFilter.js?v=${fileMtimeToken(MAP_SHAPE_DECOR_JS)}`,
-    mapBasemapsJsUrl: `/mapBasemaps.js?v=${fileMtimeToken(path.join(__dirname, "..", "public", "mapBasemaps.js"))}`,
-    dashboardMiniMapJsUrl: `/dashboardMiniMap.js?v=${fileMtimeToken(path.join(__dirname, "..", "public", "dashboardMiniMap.js"))}`,
+    mapJsUrl: `/dist/map.js?v=${mapToken}`,
+    mapWorkerJsUrl: `/dist/map.worker.js?v=${fileMtimeToken(MAP_DIST_WORKER)}`,
+    mapBasemapsJsUrl: `/mapBasemaps.js?v=${fileMtimeToken(MAP_BASEMAPS_JS)}`,
+    shapeDecorFilterJsUrl: `/shapeDecorFilter.js?v=${fileMtimeToken(SHAPE_DECOR_JS)}`,
     mapCssUrl: `/map.css?v=${fileMtimeToken(MAP_CSS)}`,
+    maplibreJsUrl: fs.existsSync(MAPLIBRE_JS)
+      ? `/vendor/maplibre-gl/maplibre-gl.js?v=${fileMtimeToken(MAPLIBRE_JS)}`
+      : "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js",
+    maplibreCssUrl: fs.existsSync(MAPLIBRE_CSS)
+      ? `/vendor/maplibre-gl/maplibre-gl.css?v=${fileMtimeToken(MAPLIBRE_CSS)}`
+      : "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css",
+    dashboardMiniMapJsUrl: `/dashboardMiniMap.js?v=${fileMtimeToken(DASHBOARD_MINI)}`,
+    // Overlays are bundled into dist/map.js
+    mapMissionsJsUrl: "",
+    mapPackagesJsUrl: "",
+    mapGeofencesJsUrl: "",
   };
 }
 

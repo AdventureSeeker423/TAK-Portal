@@ -21,8 +21,32 @@ const SSE_BATCH_MS = 400;
 
 /** @type {Map<string, object>} */
 const markers = new Map();
+/**
+ * Bounded raw CoT cache (not on the hot marker object).
+ * Lazy/on-demand for GET /cot-raw — avoids deep-cloning full XML trees per update.
+ */
+const COT_RAW_CACHE_MAX = Math.max(50, getInt("MAP_COT_RAW_CACHE_MAX", 500));
+/** @type {Map<string, object>} */
+const cotRawByUid = new Map();
 /** @type {Set<(line: string) => void>} */
 const subscribers = new Set();
+
+function rememberCotRaw(uid, raw) {
+  const id = String(uid || "").trim();
+  if (!id || raw == null) return;
+  if (cotRawByUid.has(id)) cotRawByUid.delete(id);
+  cotRawByUid.set(id, raw);
+  while (cotRawByUid.size > COT_RAW_CACHE_MAX) {
+    const oldest = cotRawByUid.keys().next().value;
+    if (oldest == null) break;
+    cotRawByUid.delete(oldest);
+  }
+}
+
+function forgetCotRaw(uid) {
+  const id = String(uid || "").trim();
+  if (id) cotRawByUid.delete(id);
+}
 
 const bridgeState = {
   connected: false,
@@ -208,6 +232,7 @@ function purgeShapeDecorMarkers(notify = true) {
     const marker = markers.get(uid);
     if (!marker || !markerIsShapeDecor(marker)) continue;
     markers.delete(uid);
+    forgetCotRaw(uid);
     removed = true;
     if (notify) queueMarkerRemove(uid);
     else bumpMarkerRevision();
@@ -232,7 +257,8 @@ async function trackLiveShapeFeature(cot, marker) {
 
 function parseSpiOverlayFeature(cot, marker) {
   if (!cot || !marker || !isSpiCotType(marker.type)) return null;
-  const detail = cot?.raw?.event?.detail || marker?.cotRaw?.event?.detail;
+  const cached = cotRawByUid.get(String(marker.uid || ""));
+  const detail = cot?.raw?.event?.detail || cached?.event?.detail;
   const poly = detail?.shape?.polyline;
   if (!poly) return null;
 
@@ -505,11 +531,8 @@ function parseMarkerFromCoT(cot) {
       updatedAt: new Date().toISOString(),
     };
 
-    try {
-      base.cotRaw = JSON.parse(JSON.stringify(cot.raw));
-    } catch (_) {
-      base.cotRaw = cot.raw || null;
-    }
+    // Keep raw off the slim marker; cache separately for /cot-raw (no deep clone).
+    if (cot.raw) rememberCotRaw(base.uid, cot.raw);
 
     base.relatedUids = mapMeta.parseRelatedUids(detail);
     base.cotRouteGroups = mapMeta.parseGroupsFromCoTDetail(detail);
@@ -543,6 +566,7 @@ function parseMarkerFromCoT(cot) {
 function removeMarker(uid, notify = true) {
   if (!markers.has(uid)) return;
   markers.delete(uid);
+  forgetCotRaw(uid);
   if (notify) queueMarkerRemove(uid);
   else bumpMarkerRevision();
 }
@@ -643,6 +667,7 @@ function sweepStaleMarkers(notify = true) {
   for (const [uid, marker] of markers) {
     if (isMarkerExpired(marker, now)) {
       markers.delete(uid);
+      forgetCotRaw(uid);
       removed = true;
       if (notify) {
         queueMarkerRemove(uid);
@@ -924,9 +949,26 @@ function getMarkerByUid(uid) {
 }
 
 function getMarkerRawCot(uid) {
-  const marker = getMarkerByUid(uid);
+  const id = String(uid || "").trim();
+  if (!id) return null;
+  // Prefer bounded cache; fall back to legacy field if present on older markers.
+  if (cotRawByUid.has(id)) return cotRawByUid.get(id);
+  const marker = getMarkerByUid(id);
   if (!marker || marker.cotRaw == null) return null;
   return marker.cotRaw;
+}
+
+function getBridgeMemoryStats() {
+  return {
+    markerCount: markers.size,
+    cotRawCacheCount: cotRawByUid.size,
+    cotRawCacheMax: COT_RAW_CACHE_MAX,
+    liveShapeCount: liveShapeFeatures.size,
+    liveOverlayCount: liveOverlayFeatures.size,
+    subscriberCount: subscribers.size,
+    markerRevision,
+    rss: typeof process.memoryUsage === "function" ? process.memoryUsage().rss : null,
+  };
 }
 
 function findMarkersByCallsign(callsign) {
@@ -997,6 +1039,7 @@ module.exports = {
   getMarkerList,
   getMarkerByUid,
   getMarkerRawCot,
+  getBridgeMemoryStats,
   findMarkersByCallsign,
   getMarkersSlimList,
   getMarkersGeoJson,

@@ -43,14 +43,14 @@ async function runTests() {
   );
   assert.ok(/fed_fixed_wing/i.test(airHit.iconName || airHit.relPath || ""));
 
-  // EUD always dots
+  // EUD ground uses dots; EUD air keeps type2525b/milsym symbology
   const eudAir = {
     type: "a-f-A-C-H",
     origin: "eud",
     iconId: rotor.iconId,
     iconSource: rotor.source,
   };
-  assert.strictEqual(mapRender.markerUsesMapIcon(eudAir), false);
+  assert.strictEqual(mapRender.markerUsesMapIcon(eudAir), true);
 
   const eudGround = {
     type: "a-f-G-U-C",
@@ -58,7 +58,7 @@ async function runTests() {
     iconId: "34ae1613-9645-4222-a9d2-e5f243dea2865:People/walk.png",
     iconSource: "usericon",
   };
-  assert.strictEqual(mapRender.markerUsesMapIcon(eudGround), false);
+  assert.strictEqual(mapRender.markerUsesMapIcon(eudGround), true);
 
   // Milsym / 2525D display gate
   const milsymMarker = {

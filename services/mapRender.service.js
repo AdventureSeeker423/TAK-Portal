@@ -187,7 +187,6 @@ function markerUsesMapIcon(marker) {
   }
   return false;
 }
-
 function markerOriginRank(marker) {
   const origin = String(marker?.origin || "").toLowerCase();
   if (origin === "eud" || origin === "federation") return 2;

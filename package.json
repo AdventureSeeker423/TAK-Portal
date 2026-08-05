@@ -10,6 +10,10 @@
     "test": "node scripts/run-tests.js",
     "audit:icons": "node scripts/audit-map-icons.js",
     "vendor:icons": "node --use-system-ca scripts/vendor-cloudtak-icons.js",
+    "generate:map": "node scripts/generate-map-app.mjs",
+    "build:map": "node scripts/generate-map-app.mjs && node scripts/build-map.mjs",
+    "watch:map": "node scripts/generate-map-app.mjs && node scripts/build-map.mjs --watch",
+    "prestart": "node scripts/generate-map-app.mjs && node scripts/build-map.mjs",
     "start": "node --use-system-ca server.js"
   },
   "keywords": [],
@@ -32,6 +36,7 @@
     "geotiff": "^3.0.5",
     "geotiff-geokeys-to-proj4": "^2024.4.13",
     "jimp": "0.22.12",
+    "maplibre-gl": "^6.1.0",
     "marked": "^18.0.5",
     "milsymbol": "^3.0.4",
     "multer": "^2.2.0",
@@ -46,5 +51,10 @@
     "ssh2": "^1.17.0",
     "undici": "^7.28.0",
     "unzipper": "^0.10.11"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2"
   }
 }

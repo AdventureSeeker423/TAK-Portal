@@ -1,3 +1,8 @@
+# Generated map client (rebuild with npm run build:map)
+client/map/ported/
+public/dist/
+public/vendor/maplibre-gl/
+
 # Node
 node_modules/
 npm-debug.log*

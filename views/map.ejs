@@ -18,10 +18,7 @@
       <link rel="icon" href="<%= brandLogoUrl %>" type="image/png" />
       <link rel="shortcut icon" href="<%= brandLogoUrl %>" type="image/png" />
     <% } %>
-    <link
-      href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css"
-      rel="stylesheet"
-    />
+    <link href="<%= maplibreCssUrl %>" rel="stylesheet" />
     <link rel="stylesheet" href="<%= mapCssUrl %>" />
   </head>
   <body data-map-user="<%= typeof mapStorageUserKey !== 'undefined' ? mapStorageUserKey : 'anonymous' %>">
@@ -215,16 +212,14 @@
     </div>
 
     <script>
-      window.TAK_PORTAL_MAP_DEFAULTS = { basemap: "<%= defaultMapSource %>" };
+      window.TAK_PORTAL_MAP_DEFAULTS = {
+        basemap: "<%= defaultMapSource %>",
+        enableGeofences: <%= typeof isGlobalAdmin !== "undefined" && isGlobalAdmin ? "true" : "false" %>,
+      };
     </script>
-    <script src="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js"></script>
+    <script src="<%= maplibreJsUrl %>"></script>
     <script src="<%= mapBasemapsJsUrl %>"></script>
     <script src="<%= shapeDecorFilterJsUrl %>"></script>
     <script src="<%= mapJsUrl %>" defer></script>
-    <script src="<%= mapMissionsJsUrl %>" defer></script>
-    <script src="<%= mapPackagesJsUrl %>" defer></script>
-    <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
-    <script src="<%= mapGeofencesJsUrl %>" defer></script>
-    <% } %>
   </body>
 </html>
