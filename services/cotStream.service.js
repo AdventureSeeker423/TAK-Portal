@@ -46,10 +46,76 @@ const liveShapeFeatures = new Map();
 const liveOverlayFeatures = new Map();
 /** @type {Promise<typeof import("@tak-ps/node-cot")>|null} */
 let nodeCotPromise = null;
+let takLogNoiseFilterInstalled = false;
+let cotParseHardened = false;
 
 function loadNodeCot() {
   if (!nodeCotPromise) nodeCotPromise = import("@tak-ps/node-cot");
   return nodeCotPromise;
+}
+
+/**
+ * @tak-ps/node-tak console.error("Error parsing", err, data.toString()) dumps the
+ * whole TCP chunk when a single CoT fails validation (e.g. hae=""). That looks
+ * like every CoT is being logged. Suppress that library noise.
+ */
+function installTakLogNoiseFilter() {
+  if (takLogNoiseFilterInstalled) return;
+  takLogNoiseFilterInstalled = true;
+
+  // node-cot prints every CoT JSON when this env var is truthy.
+  if (process.env.DEBUG_COTS) delete process.env.DEBUG_COTS;
+
+  const origError = console.error.bind(console);
+  const origWarn = console.warn.bind(console);
+
+  function isTakParseNoise(args) {
+    const first = args[0];
+    if (typeof first !== "string") return false;
+    if (first.startsWith("Error parsing")) return true;
+    if (first.startsWith("Warning: must be number")) return true;
+    if (/^ok - .+ @ (connect|secure):/.test(first)) return true;
+    return false;
+  }
+
+  console.error = (...args) => {
+    if (isTakParseNoise(args)) return;
+    origError(...args);
+  };
+  console.warn = (...args) => {
+    if (isTakParseNoise(args)) return;
+    origWarn(...args);
+  };
+}
+
+/** Coerce empty point numeric attrs so node-cot validation does not reject them. */
+function sanitizeCotXmlPointAttrs(raw) {
+  return String(raw ?? "")
+    .replace(/\b(hae|ce|le)="\s*"/gi, '$1="9999999.0"')
+    .replace(/\b(hae|ce|le)='\s*'/gi, "$1='9999999.0'");
+}
+
+/**
+ * Patch shared CoTParser.from_xml (peer dep of node-tak) before connecting.
+ * Prevents empty hae/ce/le from failing parse and triggering chunk dumps.
+ */
+async function hardenCotXmlParse() {
+  if (cotParseHardened) return;
+  const mod = await loadNodeCot();
+  const CoTParser = mod?.CoTParser;
+  if (!CoTParser || typeof CoTParser.from_xml !== "function") return;
+  if (CoTParser.from_xml.__takPortalHardened) {
+    cotParseHardened = true;
+    return;
+  }
+
+  const orig = CoTParser.from_xml.bind(CoTParser);
+  function fromXmlHardened(raw, opts) {
+    return orig(sanitizeCotXmlPointAttrs(raw), opts);
+  }
+  fromXmlHardened.__takPortalHardened = true;
+  CoTParser.from_xml = fromXmlHardened;
+  cotParseHardened = true;
 }
 
 function hasShapeDetail(cot) {
@@ -719,6 +785,9 @@ async function connectBridge() {
   clearConnection();
 
   try {
+    installTakLogNoiseFilter();
+    await hardenCotXmlParse();
+
     const authRaw = getTakTlsAuth({ allowInsecureServer: true });
     const auth = {
       cert:
