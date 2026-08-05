@@ -1,5 +1,6 @@
 /**
  * Dashboard connected-user mini map (single live marker).
+ * Uses the same MapLibre UMD vendor + paint patterns as /map for stability.
  */
 (function () {
   "use strict";
@@ -11,18 +12,34 @@
   const DEFAULT_CENTER = [-85.25, 35.17];
   const DEFAULT_ZOOM = 10;
   const LOCKED_ZOOM = 14;
-  const MAPLIBRE_CSS =
-    "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css";
-  const MAPLIBRE_JS =
-    "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js";
   const LS_BASEMAP = "tak-portal-map-basemap";
+  const FEATURE_ID = 1;
+
+  function mapAssets() {
+    return window.TAK_PORTAL_MAP_ASSETS || {};
+  }
+
+  function maplibreCssUrl() {
+    return (
+      mapAssets().maplibreCssUrl ||
+      "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css"
+    );
+  }
+
+  function maplibreJsUrl() {
+    return (
+      mapAssets().maplibreJsUrl ||
+      "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js"
+    );
+  }
 
   let map = null;
   let pollTimer = null;
   let assetsPromise = null;
   let currentClientId = null;
   let currentCallsign = null;
-  let iconLoadPending = null;
+  /** @type {Map<string, Promise<void>>} */
+  const iconLoadPending = new Map();
   let hasLiveMarker = false;
   let centerLocked = true;
   /** @type {[number, number] | null} */
@@ -31,6 +48,7 @@
   let recenterOnIdleScheduled = false;
   /** Cached marker payload — reapplied after basemap style reloads wipe custom layers. */
   let lastMarkerPayload = null;
+  let lastAppliedSignature = "";
   let containerResizeObserver = null;
   /** Degrees — pan beyond this from the CoT breaks center lock. */
   const UNLOCK_CENTER_THRESHOLD = 0.00012;
@@ -103,7 +121,12 @@
       map.resize();
       centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
     }
-    if (typeof map.loaded === "function" && map.loaded() && typeof map.isMoving === "function" && !map.isMoving()) {
+    if (
+      typeof map.loaded === "function" &&
+      map.loaded() &&
+      typeof map.isMoving === "function" &&
+      !map.isMoving()
+    ) {
       requestAnimationFrame(runRecenter);
       return;
     }
@@ -128,23 +151,64 @@
     } catch (_) {}
   }
 
-  function markerFeatureForMap(feature) {
+  function normalizeMapImageId(mapImageId) {
+    const id = String(mapImageId || "").trim();
+    if (!id) return "";
+    if (id.startsWith("mimg-")) return id;
+    const match = /^(?:wing|rotor|vehicle|boat|ship|track|car|mimg)-([0-9a-f]{16})$/i.exec(id);
+    if (match) return "mimg-" + match[1].toLowerCase();
+    return id;
+  }
+
+  function isRenderedMapImageId(mapImageId) {
+    return /^(?:mimg|wing|rotor|vehicle|boat|ship|track|car)-[0-9a-f]{16}$/i.test(
+      String(mapImageId || "")
+    );
+  }
+
+  function payloadSignature(payload) {
+    if (!payload || !payload.found || !payload.feature) return "empty";
+    const props = payload.feature.properties || {};
+    const coords = (payload.feature.geometry && payload.feature.geometry.coordinates) || [];
+    return [
+      props.uid || "",
+      coords[0],
+      coords[1],
+      props.iconId || "",
+      props.color || "",
+      props.callsign || "",
+    ].join("|");
+  }
+
+  function markerFeatureForMap(feature, iconReady) {
     if (!feature) return null;
-    const props = Object.assign({}, feature.properties || {}, { showCircle: 1 });
+    const propsIn = feature.properties || {};
+    const mapImageId = normalizeMapImageId(propsIn.iconId || "");
+    const hasIcon = !!(mapImageId && isRenderedMapImageId(mapImageId));
+    const ready = !!(iconReady && hasIcon && map && map.hasImage(mapImageId));
+    const props = Object.assign({}, propsIn, {
+      iconId: hasIcon ? mapImageId : "",
+      showCircle: ready ? 0 : 1,
+    });
     return {
       type: "Feature",
+      id: FEATURE_ID,
       geometry: feature.geometry,
       properties: props,
     };
   }
 
   function applyPayloadToSource(payload) {
-    const source = map && map.getSource(SOURCE_ID);
+    if (!map || typeof map.isStyleLoaded !== "function" || !map.isStyleLoaded()) {
+      return false;
+    }
+    const source = map.getSource(SOURCE_ID);
     if (!source) return false;
 
     if (!payload || !payload.found || !payload.feature) {
       hasLiveMarker = false;
       lockedCenter = null;
+      lastAppliedSignature = "empty";
       source.setData(emptyFeatureCollection());
       setEmptyVisible(true);
       return true;
@@ -152,11 +216,44 @@
 
     hasLiveMarker = true;
     setEmptyVisible(false);
-    const mapped = markerFeatureForMap(payload.feature);
-    source.setData({
-      type: "FeatureCollection",
-      features: mapped ? [mapped] : [],
-    });
+    const mapped = markerFeatureForMap(payload.feature, true);
+    if (!mapped) {
+      source.setData(emptyFeatureCollection());
+      return true;
+    }
+
+    const sig = payloadSignature(payload) + "|" + mapped.properties.showCircle;
+    const canPatch =
+      typeof source.updateData === "function" &&
+      lastAppliedSignature &&
+      lastAppliedSignature !== "empty" &&
+      String(lastAppliedSignature).split("|")[0] === String(mapped.properties.uid || "");
+
+    if (canPatch) {
+      try {
+        source.updateData({
+          update: [
+            {
+              id: FEATURE_ID,
+              newGeometry: mapped.geometry,
+              addOrUpdateProperties: [
+                { key: "uid", value: mapped.properties.uid },
+                { key: "callsign", value: mapped.properties.callsign },
+                { key: "color", value: mapped.properties.color },
+                { key: "iconId", value: mapped.properties.iconId },
+                { key: "showCircle", value: mapped.properties.showCircle },
+                { key: "apiIconId", value: mapped.properties.apiIconId || "" },
+              ],
+            },
+          ],
+        });
+      } catch (_) {
+        source.setData({ type: "FeatureCollection", features: [mapped] });
+      }
+    } else {
+      source.setData({ type: "FeatureCollection", features: [mapped] });
+    }
+    lastAppliedSignature = sig;
 
     const coords = payload.feature.geometry && payload.feature.geometry.coordinates;
     if (coords && coords.length >= 2) {
@@ -170,6 +267,27 @@
       }
     }
     return true;
+  }
+
+  function flipShowCircleOff(mapImageId) {
+    if (!map || !map.isStyleLoaded()) return;
+    const source = map.getSource(SOURCE_ID);
+    if (!source || typeof source.updateData !== "function") return;
+    const id = normalizeMapImageId(mapImageId);
+    if (!id || !map.hasImage(id)) return;
+    try {
+      source.updateData({
+        update: [
+          {
+            id: FEATURE_ID,
+            addOrUpdateProperties: [
+              { key: "iconId", value: id },
+              { key: "showCircle", value: 0 },
+            ],
+          },
+        ],
+      });
+    } catch (_) {}
   }
 
   function syncMarkerToMap() {
@@ -192,9 +310,10 @@
     }
 
     applyPayloadToSource(lastMarkerPayload);
-    const manifest =
-      (lastMarkerPayload && lastMarkerPayload.iconManifest) || [];
+    const manifest = (lastMarkerPayload && lastMarkerPayload.iconManifest) || [];
     return loadIconManifest(manifest).then(function () {
+      // Re-apply so showCircle flips once the bitmap is present.
+      applyPayloadToSource(lastMarkerPayload);
       if (map) {
         try {
           map.triggerRepaint();
@@ -381,13 +500,14 @@
 
   function loadStylesheet(href) {
     return new Promise(function (resolve, reject) {
-      if (document.querySelector('link[href="' + href + '"]')) {
+      if (document.querySelector('link[data-tak-maplibre-css="1"]')) {
         resolve();
         return;
       }
       const link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = href;
+      link.setAttribute("data-tak-maplibre-css", "1");
       link.onload = function () {
         resolve();
       };
@@ -400,13 +520,24 @@
 
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
-      if (document.querySelector('script[src="' + src + '"]')) {
+      if (window.maplibregl) {
         resolve();
+        return;
+      }
+      if (document.querySelector('script[data-tak-maplibre-js="1"]')) {
+        const existing = document.querySelector('script[data-tak-maplibre-js="1"]');
+        existing.addEventListener("load", function () {
+          resolve();
+        });
+        existing.addEventListener("error", function () {
+          reject(new Error("Failed to load script"));
+        });
         return;
       }
       const script = document.createElement("script");
       script.src = src;
       script.async = true;
+      script.setAttribute("data-tak-maplibre-js", "1");
       script.onload = function () {
         resolve();
       };
@@ -420,14 +551,18 @@
   function ensureMapLibre() {
     if (window.maplibregl) return Promise.resolve();
     if (assetsPromise) return assetsPromise;
-    assetsPromise = loadStylesheet(MAPLIBRE_CSS)
+    assetsPromise = loadStylesheet(maplibreCssUrl())
       .then(function () {
-        return loadScript(MAPLIBRE_JS);
+        return loadScript(maplibreJsUrl());
       })
       .then(function () {
         if (!window.maplibregl) {
           throw new Error("MapLibre failed to load");
         }
+      })
+      .catch(function (err) {
+        assetsPromise = null;
+        throw err;
       });
     return assetsPromise;
   }
@@ -467,7 +602,7 @@
   }
 
   function installMapImage(imageName, source) {
-    if (!map || !source) return Promise.resolve(false);
+    if (!map || !source || !map.isStyleLoaded()) return Promise.resolve(false);
     const addOpts = { pixelRatio: 1 };
     try {
       if (map.hasImage(imageName)) {
@@ -484,13 +619,39 @@
   function loadIconManifest(manifest) {
     const list = Array.isArray(manifest) ? manifest : [];
     if (!list.length || !map) return Promise.resolve();
-    if (iconLoadPending) return iconLoadPending;
 
-    iconLoadPending = fetch("/api/map/icons/rendered/batch", {
+    const needed = [];
+    const seen = new Set();
+    for (let i = 0; i < list.length; i++) {
+      const entry = list[i] || {};
+      const mapImageId = normalizeMapImageId(entry.mapImageId || "");
+      if (!mapImageId || !isRenderedMapImageId(mapImageId) || seen.has(mapImageId)) continue;
+      seen.add(mapImageId);
+      if (map.hasImage(mapImageId) || iconLoadPending.has(mapImageId)) continue;
+      needed.push(
+        Object.assign({}, entry, {
+          mapImageId: mapImageId,
+          apiIconId: entry.apiIconId || "",
+        })
+      );
+    }
+    if (!needed.length) {
+      for (const id of seen) flipShowCircleOff(id);
+      return Promise.resolve();
+    }
+
+    const batchKey = needed
+      .map(function (e) {
+        return e.mapImageId;
+      })
+      .join(",");
+    if (iconLoadPending.has(batchKey)) return iconLoadPending.get(batchKey);
+
+    const promise = fetch("/api/map/icons/rendered/batch", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ icons: list }),
+      body: JSON.stringify({ icons: needed }),
     })
       .then(function (resp) {
         if (!resp.ok) throw new Error("icon batch " + resp.status);
@@ -502,19 +663,27 @@
         for (const mapImageId of Object.keys(icons)) {
           const b64 = icons[mapImageId];
           if (!b64) continue;
+          const canonicalId = normalizeMapImageId(mapImageId);
           jobs.push(
             decodeIconBlob(base64ToBlob(b64, "image/png")).then(function (img) {
-              return installMapImage(mapImageId, img);
+              return installMapImage(canonicalId, img).then(function (ok) {
+                if (ok) flipShowCircleOff(canonicalId);
+                return ok;
+              });
             })
           );
         }
         return Promise.all(jobs);
       })
+      .catch(function (err) {
+        console.warn("[dashboardMiniMap] icon preload failed", err);
+      })
       .finally(function () {
-        iconLoadPending = null;
+        iconLoadPending.delete(batchKey);
       });
 
-    return iconLoadPending;
+    iconLoadPending.set(batchKey, promise);
+    return promise;
   }
 
   function addMarkerLayers() {
@@ -543,7 +712,7 @@
       id: ICON_LAYER,
       type: "symbol",
       source: SOURCE_ID,
-      filter: ["!=", ["get", "iconId"], ""],
+      filter: ["all", ["!=", ["get", "iconId"], ""], ["==", ["get", "showCircle"], 0]],
       layout: {
         "icon-image": ["get", "iconId"],
         "icon-size": 0.88,
@@ -552,7 +721,9 @@
         "icon-optional": true,
       },
       paint: {
-        "icon-opacity": ["case", ["!=", ["get", "iconId"], ""], 1, 0],
+        "icon-opacity": 1,
+        "icon-halo-color": "#ffffff",
+        "icon-halo-width": 4,
       },
     });
     return true;
@@ -612,6 +783,12 @@
     if (!currentClientId || !currentCallsign || !map) return Promise.resolve();
     return fetchLiveMarker(currentClientId, currentCallsign)
       .then(function (payload) {
+        const nextSig = payloadSignature(payload);
+        // lastAppliedSignature appends showCircle; compare the payload core only.
+        const prevCore = String(lastAppliedSignature || "").replace(/\|[01]$/, "");
+        if (nextSig !== "empty" && prevCore === nextSig) {
+          return null;
+        }
         if (payload && payload.found) lastMarkerPayload = payload;
         return updateMarkerOnMap(payload);
       })
@@ -640,6 +817,7 @@
     hasLiveMarker = false;
     lockedCenter = null;
     lastMarkerPayload = null;
+    lastAppliedSignature = "";
     recenterOnIdleScheduled = false;
     applyCenterLockMode();
 
@@ -767,12 +945,13 @@
     stopPolling();
     currentClientId = null;
     currentCallsign = null;
-    iconLoadPending = null;
+    iconLoadPending.clear();
     hasLiveMarker = false;
     centerLocked = true;
     lockedCenter = null;
     recenterOnIdleScheduled = false;
     lastMarkerPayload = null;
+    lastAppliedSignature = "";
     unbindContainerResizeObserver();
     setMapReadyVisible(false);
     if (map) {
