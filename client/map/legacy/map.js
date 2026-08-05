@@ -1271,7 +1271,9 @@
   }
 
   function syncLiveShapesSource() {
-    if (!map) return;
+    if (!map || typeof map.isStyleLoaded !== "function" || !map.isStyleLoaded()) {
+      return;
+    }
     ensureLiveShapeLayers();
     const src = map.getSource(LIVE_SHAPES_SOURCE_ID);
     if (src) src.setData(liveShapesFeatureCollection());
@@ -1279,7 +1281,9 @@
   }
 
   function ensureLiveShapeLayers() {
-    if (!map) return;
+    if (!map || typeof map.isStyleLoaded !== "function" || !map.isStyleLoaded()) {
+      return;
+    }
     const beforeId = map.getLayer(CIRCLE_LAYER_LOW) ? CIRCLE_LAYER_LOW : undefined;
     if (!map.getSource(LIVE_SHAPES_SOURCE_ID)) {
       map.addSource(LIVE_SHAPES_SOURCE_ID, {
@@ -5925,7 +5929,14 @@
     }
 
     if (state && state.liveShapes) {
-      applyLiveShapesSnapshot(state.liveShapes);
+      // Style may not be ready yet on first SSE snapshot — defer until load.
+      if (map && typeof map.isStyleLoaded === "function" && map.isStyleLoaded()) {
+        applyLiveShapesSnapshot(state.liveShapes);
+      } else if (map) {
+        map.once("load", function () {
+          applyLiveShapesSnapshot(state.liveShapes);
+        });
+      }
     }
 
     const skipMarkerReload =

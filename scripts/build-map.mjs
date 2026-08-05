@@ -1,6 +1,6 @@
 /**
  * Build the TypeScript map client → public/dist/
- * Also vendors MapLibre GL into public/vendor/maplibre-gl/
+ * Also vendors MapLibre GL (UMD) into public/vendor/maplibre-gl/
  */
 import * as esbuild from "esbuild";
 import fs from "fs";
@@ -17,7 +17,7 @@ function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-async function vendorMapLibre() {
+function vendorMapLibre() {
   const pkgRoot = path.join(root, "node_modules", "maplibre-gl");
   const dist = path.join(pkgRoot, "dist");
   if (!fs.existsSync(dist)) {
@@ -25,46 +25,31 @@ async function vendorMapLibre() {
     return;
   }
   ensureDir(vendorDir);
+
   const cssSrc = path.join(dist, "maplibre-gl.css");
   if (fs.existsSync(cssSrc)) {
     fs.copyFileSync(cssSrc, path.join(vendorDir, "maplibre-gl.css"));
   }
-  const outJs = path.join(vendorDir, "maplibre-gl.js");
+
+  // Prefer official UMD build (MapLibre 5.x). Do NOT IIFE-bundle ESM —
+  // that breaks the MapLibre web worker and yields blank maps + MIME errors.
   const umdJs = path.join(dist, "maplibre-gl.js");
+  const outJs = path.join(vendorDir, "maplibre-gl.js");
   if (fs.existsSync(umdJs)) {
     fs.copyFileSync(umdJs, outJs);
-  } else {
-    // MapLibre 6+ ships ESM-only (.mjs); bundle to IIFE for <script src> + maplibregl global.
-    const esmJs = path.join(dist, "maplibre-gl.mjs");
-    if (!fs.existsSync(esmJs)) {
-      console.warn("[build-map] no maplibre-gl.js/.mjs to vendor");
-      return;
-    }
-    await esbuild.build({
-      absWorkingDir: root,
-      entryPoints: [esmJs],
-      outfile: outJs,
-      bundle: true,
-      format: "iife",
-      globalName: "maplibregl",
-      platform: "browser",
-      target: ["es2022"],
-      logLevel: "info",
-      footer: {
-        js: "maplibregl = maplibregl.default || maplibregl;",
-      },
-    });
+    console.log("[build-map] vendored MapLibre UMD → public/vendor/maplibre-gl/");
+    return;
   }
-  console.log("[build-map] vendored maplibre-gl -> public/vendor/maplibre-gl/");
+
+  console.error(
+    "[build-map] maplibre-gl UMD dist/maplibre-gl.js missing. " +
+      "Install maplibre-gl@5.13.0 (ESM-only MapLibre 6 breaks classic <script> + worker)."
+  );
+  process.exit(1);
 }
 
 ensureDir(distDir);
-await vendorMapLibre();
-
-/** Copy shared non-TS assets that overlays still need at runtime via same-origin URLs */
-function copyPublicHelpers() {
-  // shapeDecorFilter stays in public/ for server require(); client bundles its own copy.
-}
+vendorMapLibre();
 
 const shared = {
   absWorkingDir: root,
@@ -93,8 +78,6 @@ const workerOptions = {
   platform: "browser",
   format: "iife",
 };
-
-copyPublicHelpers();
 
 if (watch) {
   const ctxMain = await esbuild.context(mainOptions);

@@ -36,7 +36,7 @@
     "geotiff": "^3.0.5",
     "geotiff-geokeys-to-proj4": "^2024.4.13",
     "jimp": "0.22.12",
-    "maplibre-gl": "^6.1.0",
+    "maplibre-gl": "5.13.0",
     "marked": "^18.0.5",
     "milsymbol": "^3.0.4",
     "multer": "^2.2.0",

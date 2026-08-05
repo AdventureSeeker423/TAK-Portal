@@ -27,6 +27,7 @@ function getRenderLocals() {
     mapBasemapsJsUrl: `/mapBasemaps.js?v=${fileMtimeToken(MAP_BASEMAPS_JS)}`,
     shapeDecorFilterJsUrl: `/shapeDecorFilter.js?v=${fileMtimeToken(SHAPE_DECOR_JS)}`,
     mapCssUrl: `/map.css?v=${fileMtimeToken(MAP_CSS)}`,
+    // Prefer vendored UMD (MapLibre 5.13). Fallback CDN matches that pin.
     maplibreJsUrl: fs.existsSync(MAPLIBRE_JS)
       ? `/vendor/maplibre-gl/maplibre-gl.js?v=${fileMtimeToken(MAPLIBRE_JS)}`
       : "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js",
