@@ -39,12 +39,15 @@ export function buildPaintFeature(
   if (!marker.uid) return null;
 
   const color = resolveColor(marker);
-  const mapImageId = String(marker.mapImageId || "");
+  // Slim markers carry mapImageId (mimg-*); never treat raw api iconId as a MapLibre image name.
+  const mapImageId = String(marker.mapImageId || "").trim();
   const apiIconId = String(marker.iconId || "");
-  const usesIcon = !!(marker.usesMapIcon || mapImageId || apiIconId);
+  const usesIcon = !!(marker.usesMapIcon || mapImageId);
   const overview = !!options.overviewMode;
-  const iconReady = options.iconReady !== false && !!mapImageId && !overview;
-  const showCircle = overview || !iconReady ? 1 : 0;
+  const hasMapImage = !!mapImageId && /^mimg-[0-9a-f]{16}$/i.test(mapImageId);
+  const iconReady = !!options.iconReady && hasMapImage && !overview;
+  // Keep iconId on the feature even before the bitmap is installed so styleimagemissing can fire.
+  const showCircle = overview || !hasMapImage || !iconReady ? 1 : 0;
   const drawTier = marker.drawTier != null ? Number(marker.drawTier) : markerDrawTier(marker);
   const renderSort =
     marker.renderSort != null ? Number(marker.renderSort) : markerRenderSort(marker);
@@ -66,7 +69,7 @@ export function buildPaintFeature(
     affiliation: String(marker.affiliation || "other"),
     color,
     teamColor: marker.teamColor != null ? marker.teamColor : null,
-    iconId: overview ? "" : mapImageId,
+    iconId: overview || !hasMapImage ? "" : mapImageId,
     apiIconId: apiIconId || "",
     iconSource: String(marker.iconSource || ""),
     origin: String(marker.origin || ""),

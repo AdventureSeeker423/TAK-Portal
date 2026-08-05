@@ -99,13 +99,15 @@ function visibleMarkers(): SlimMarker[] {
 }
 
 function buildFeature(marker: SlimMarker, showLabel: number): MarkerFeature | null {
-  const mapImageId = String(marker.mapImageId || "");
+  const mapImageId = String(marker.mapImageId || "").trim();
+  const hasMapImage = !!mapImageId && /^mimg-[0-9a-f]{16}$/i.test(mapImageId);
   return buildPaintFeature(marker, {
     selectedUid,
     lockedUid,
     showLabel,
     overviewMode,
-    iconReady: !mapImageId || readyIcons.has(mapImageId),
+    // true only when bitmap is installed (or marker has no icon to wait for)
+    iconReady: !hasMapImage || readyIcons.has(mapImageId),
   });
 }
 

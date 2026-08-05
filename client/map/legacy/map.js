@@ -450,6 +450,18 @@
     }
   }
 
+  /** Stable numeric MapLibre feature id (must match worker vectorId / featureBuild). */
+  function markerFeatureId(uid) {
+    const s = String(uid || "");
+    if (!s) return 1;
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0 || 1;
+  }
+
   function hideCirclesForMapImage(mapImageId) {
     if (!map || !mapImageId) return;
     const uids = iconUidByMapImageId.get(String(mapImageId));
@@ -463,7 +475,7 @@
     }
     const updates = uidList.map(function (uid) {
       return {
-        id: uid,
+        id: markerFeatureId(uid),
         addOrUpdateProperties: [{ key: "showCircle", value: 0 }],
       };
     });
@@ -2370,20 +2382,75 @@
   let missingIconSweepTimer = null;
 
   function sweepMissingIcons() {
-    if (!map || !markerLayersReady || !lastServerGeoJson) return;
+    if (!map || !markerLayersReady) return;
     const seen = new Set();
-    const features = lastServerGeoJson.features || [];
+    function consider(mapImageId, apiIconId, meta) {
+      const canonicalId = normalizeMapImageId(mapImageId);
+      if (!canonicalId || !isRenderedMapImageId(canonicalId) || seen.has(canonicalId)) return;
+      seen.add(canonicalId);
+      if (map.hasImage(canonicalId) || iconLoadPending.has(canonicalId)) return;
+      const info =
+        meta ||
+        resolveIconMetaForImageId(canonicalId) ||
+        (apiIconId
+          ? { apiIconId: String(apiIconId), mapImageId: canonicalId }
+          : null);
+      if (!info || !info.apiIconId) return;
+      loadRenderedMapIcon(canonicalId, info.apiIconId, info);
+    }
+
+    const features =
+      (lastServerGeoJson && lastServerGeoJson.features) ||
+      (lastServerGeoJsonFull && lastServerGeoJsonFull.features) ||
+      [];
     for (let i = 0; i < features.length; i++) {
       const props = features[i] && features[i].properties;
       if (!props || !props.iconId) continue;
-      const canonicalId = normalizeMapImageId(props.iconId);
-      if (!canonicalId || !isRenderedMapImageId(canonicalId) || seen.has(canonicalId)) continue;
-      seen.add(canonicalId);
-      if (map.hasImage(canonicalId) || iconLoadPending.has(canonicalId)) continue;
-      const info = resolveIconMetaForImageId(canonicalId);
-      if (!info || !info.apiIconId) continue;
-      loadRenderedMapIcon(canonicalId, info.apiIconId, info);
+      consider(props.iconId, props.apiIconId, props);
     }
+
+    // Worker path may paint icons before lastServerGeoJson is rebuilt — also scan slim markers.
+    markersByUid.forEach(function (m) {
+      if (!m) return;
+      const mapImageId = normalizeMapImageId(m.mapImageId || "");
+      if (!mapImageId) return;
+      consider(mapImageId, m.iconId, m);
+    });
+  }
+
+  /** Build batch-preload manifest from slim markers (worker / SSE path). */
+  function buildIconManifestFromMarkers(markerList) {
+    const out = [];
+    const seen = new Set();
+    const list = Array.isArray(markerList) ? markerList : [];
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (!m) continue;
+      const mapImageId = normalizeMapImageId(m.mapImageId || "");
+      if (!mapImageId || !isRenderedMapImageId(mapImageId) || seen.has(mapImageId)) continue;
+      seen.add(mapImageId);
+      registerServerMapImageMeta(mapImageId, String(m.iconId || ""), m);
+      out.push({
+        mapImageId: mapImageId,
+        apiIconId: String(m.iconId || ""),
+        color: m.color || "",
+        teamColor: m.teamColor != null ? m.teamColor : "",
+        iconSource: m.iconSource || "",
+        origin: m.origin || "",
+        type: m.type || "",
+        affiliation: m.affiliation || "",
+      });
+    }
+    return out;
+  }
+
+  function preloadIconsForMarkers(markerList) {
+    const manifest = buildIconManifestFromMarkers(markerList);
+    if (!manifest.length) {
+      scheduleMissingIconSweep();
+      return Promise.resolve();
+    }
+    return preloadMarkerIcons(manifest);
   }
 
   function scheduleMissingIconSweep() {

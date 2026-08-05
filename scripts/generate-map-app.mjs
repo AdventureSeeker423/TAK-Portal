@@ -120,6 +120,23 @@ function __pushViewToWorker() {
   } catch (_) {}
 }
 
+function __syncGeoJsonCacheFromWorkerFeatures(features) {
+  const list = Array.isArray(features) ? features : [];
+  lastServerGeoJson = {
+    type: "FeatureCollection",
+    features: list,
+    meta: __workerMeta,
+  };
+  if (typeof rebuildIconUidIndex === "function") rebuildIconUidIndex(list);
+  if (typeof applyLoadedIconCircles === "function") applyLoadedIconCircles();
+  // Preload any mimg-* referenced by worker features / slim markers.
+  if (typeof preloadIconsForMarkers === "function") {
+    preloadIconsForMarkers(Array.from(markersByUid.values()));
+  } else if (typeof scheduleMissingIconSweep === "function") {
+    scheduleMissingIconSweep();
+  }
+}
+
 function __applyWorkerDiff(diff) {
   if (!map || !markerLayersReady) return;
   const src = map.getSource(SOURCE_ID);
@@ -128,15 +145,61 @@ function __applyWorkerDiff(diff) {
     !(diff.add && diff.add.length) &&
     !(diff.update && diff.update.length) &&
     !(diff.remove && diff.remove.length);
-  if (empty) return;
+  if (empty) {
+    // Still ensure icons for current marker set (e.g. after channel toggle).
+    if (typeof preloadIconsForMarkers === "function") {
+      preloadIconsForMarkers(Array.from(markersByUid.values()));
+    }
+    return;
+  }
   if (typeof src.updateData === "function") {
     try {
       src.updateData(diff);
-      return;
     } catch (err) {
       console.warn("[map] worker updateData failed, resync", err);
       if (__cotStore) __cotStore.forceResync();
+      return;
     }
+  }
+  // Keep lastServerGeoJson / icon index warm so sweeps and hideCircles work.
+  if (diff.add && diff.add.length) {
+    if (!lastServerGeoJson || !Array.isArray(lastServerGeoJson.features)) {
+      lastServerGeoJson = {
+        type: "FeatureCollection",
+        features: [],
+        meta: __workerMeta,
+      };
+    }
+    const byUid = new Map();
+    for (let i = 0; i < lastServerGeoJson.features.length; i++) {
+      const f = lastServerGeoJson.features[i];
+      const uid = f && f.properties && f.properties.uid;
+      if (uid) byUid.set(String(uid), f);
+    }
+    for (let i = 0; i < diff.add.length; i++) {
+      const f = diff.add[i];
+      const uid = f && f.properties && f.properties.uid;
+      if (uid) byUid.set(String(uid), f);
+    }
+    if (diff.remove && diff.remove.length) {
+      const removeIds = new Set(diff.remove.map(String));
+      byUid.forEach(function (f, uid) {
+        if (f && f.id != null && removeIds.has(String(f.id))) byUid.delete(uid);
+      });
+    }
+    lastServerGeoJson = {
+      type: "FeatureCollection",
+      features: Array.from(byUid.values()),
+      meta: __workerMeta,
+    };
+    if (typeof rebuildIconUidIndex === "function") {
+      rebuildIconUidIndex(lastServerGeoJson.features);
+    }
+  }
+  if (typeof preloadIconsForMarkers === "function") {
+    preloadIconsForMarkers(Array.from(markersByUid.values()));
+  } else if (typeof scheduleMissingIconSweep === "function") {
+    scheduleMissingIconSweep();
   }
 }
 
@@ -145,14 +208,7 @@ function __applyWorkerResync(features) {
   const src = map.getSource(SOURCE_ID);
   if (!src) return;
   src.setData({ type: "FeatureCollection", features: features || [] });
-  lastServerGeoJson = {
-    type: "FeatureCollection",
-    features: features || [],
-    meta: __workerMeta,
-  };
-  if (typeof rebuildIconUidIndex === "function") rebuildIconUidIndex(features || []);
-  if (typeof applyLoadedIconCircles === "function") applyLoadedIconCircles();
-  if (typeof scheduleMissingIconSweep === "function") scheduleMissingIconSweep();
+  __syncGeoJsonCacheFromWorkerFeatures(features || []);
 }
 
 function __applyWorkerShapes(features) {
@@ -198,14 +254,21 @@ export function bootTakMap() {
       store.shapesBatch(msg.shapeUpdates || [], msg.shapeRemoves || []);
     }
     __pushViewToWorker();
+    if (typeof preloadIconsForMarkers === "function") {
+      preloadIconsForMarkers(msg.updates || []);
+    }
   };
 
   const __origLoadMarkers = loadMarkersFromServer;
   loadMarkersFromServer = async function () {
     const result = await __origLoadMarkers.apply(this, arguments);
     const store = __initCotStore();
-    store.reset(Array.from(markersByUid.values()), lastMarkerRevision || 0);
+    const list = Array.from(markersByUid.values());
+    store.reset(list, lastMarkerRevision || 0);
     __pushViewToWorker();
+    if (typeof preloadIconsForMarkers === "function") {
+      preloadIconsForMarkers(list);
+    }
     return result;
   };
 
