@@ -13,7 +13,7 @@
     "generate:map": "node scripts/generate-map-app.mjs",
     "build:map": "node scripts/generate-map-app.mjs && node scripts/build-map.mjs",
     "watch:map": "node scripts/generate-map-app.mjs && node scripts/build-map.mjs --watch",
-    "prestart": "node scripts/generate-map-app.mjs && node scripts/build-map.mjs",
+    "prestart": "node scripts/ensure-map-built.mjs",
     "start": "node --use-system-ca server.js"
   },
   "keywords": [],

@@ -1,21 +1,22 @@
 # Dockerfile
 FROM node:22-alpine
 
-# Create app directory
 WORKDIR /usr/src/app
 
 RUN apk add --no-cache ca-certificates && update-ca-certificates
 
-# Install dependencies first (better layer caching)
+# Install all deps (including esbuild) so the map client can be built in-image.
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install
 
-# Copy the rest of the app
+# Copy app sources, build map bundle + vendor MapLibre, then drop devDependencies.
 COPY . .
+RUN npm run build:map && npm prune --omit=dev
 
 ENV NODE_ENV=production
 
 # The app uses WEB_UI_PORT from env, default to 3000
 EXPOSE 3000
 
+# prestart skips rebuild when public/dist already exists (built above).
 CMD ["npm", "start"]
