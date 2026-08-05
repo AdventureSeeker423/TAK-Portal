@@ -979,6 +979,46 @@ function findMarkersByCallsign(callsign) {
   );
 }
 
+/**
+ * Resolve live map markers for a connected dashboard client.
+ * Subscription callsign often differs from the CoT callsign / device uid,
+ * so match by uid, callsign, and username.
+ */
+function findMarkersForConnectedClient(options = {}) {
+  const callsign = String(options.callsign || "")
+    .trim()
+    .toLowerCase();
+  const username = String(options.username || "")
+    .trim()
+    .toLowerCase();
+  const clientUid = String(options.clientUid || options.uid || "")
+    .trim()
+    .toLowerCase();
+
+  const nameKeys = new Set();
+  if (callsign) nameKeys.add(callsign);
+  if (username) nameKeys.add(username);
+
+  const list = getMarkerList();
+  const matches = [];
+  for (const m of list) {
+    const cs = String(m?.callsign || "")
+      .trim()
+      .toLowerCase();
+    const mid = String(m?.uid || "")
+      .trim()
+      .toLowerCase();
+    if (clientUid && mid && mid === clientUid) {
+      matches.push(m);
+      continue;
+    }
+    if (cs && nameKeys.has(cs)) {
+      matches.push(m);
+    }
+  }
+  return matches;
+}
+
 function formatBatteryPercentLabel(value) {
   if (value == null || value === "") return null;
   const n = Number(value);
@@ -1041,6 +1081,7 @@ module.exports = {
   getMarkerRawCot,
   getBridgeMemoryStats,
   findMarkersByCallsign,
+  findMarkersForConnectedClient,
   getMarkersSlimList,
   getMarkersGeoJson,
   getLiveOverlayGeoJson,

@@ -38,6 +38,7 @@
   let assetsPromise = null;
   let currentClientId = null;
   let currentCallsign = null;
+  let currentUsername = null;
   /** @type {Map<string, Promise<void>>} */
   const iconLoadPending = new Map();
   let hasLiveMarker = false;
@@ -180,20 +181,29 @@
     ].join("|");
   }
 
-  function markerFeatureForMap(feature, iconReady) {
-    if (!feature) return null;
+  function markerFeatureForMap(feature) {
+    if (!feature || !feature.geometry) return null;
+    const coords = feature.geometry.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return null;
+    const lon = Number(coords[0]);
+    const lat = Number(coords[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
     const propsIn = feature.properties || {};
     const mapImageId = normalizeMapImageId(propsIn.iconId || "");
     const hasIcon = !!(mapImageId && isRenderedMapImageId(mapImageId));
-    const ready = !!(iconReady && hasIcon && map && map.hasImage(mapImageId));
+    const ready = !!(hasIcon && map && map.hasImage(mapImageId));
+    // Always keep a team-color circle until the icon bitmap is installed.
     const props = Object.assign({}, propsIn, {
+      kind: "marker",
       iconId: hasIcon ? mapImageId : "",
       showCircle: ready ? 0 : 1,
+      color: propsIn.color || propsIn.teamColor || "#2196F3",
     });
     return {
       type: "Feature",
       id: FEATURE_ID,
-      geometry: feature.geometry,
+      geometry: { type: "Point", coordinates: [lon, lat] },
       properties: props,
     };
   }
@@ -216,9 +226,10 @@
 
     hasLiveMarker = true;
     setEmptyVisible(false);
-    const mapped = markerFeatureForMap(payload.feature, true);
+    const mapped = markerFeatureForMap(payload.feature);
     if (!mapped) {
       source.setData(emptyFeatureCollection());
+      setEmptyVisible(true);
       return true;
     }
 
@@ -699,12 +710,19 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      filter: ["==", ["get", "showCircle"], 1],
+      // Show team-color dot whenever showCircle is truthy (default for EUDs).
+      filter: [
+        "any",
+        ["==", ["get", "showCircle"], 1],
+        ["==", ["get", "showCircle"], true],
+        ["!", ["has", "showCircle"]],
+      ],
       paint: {
         "circle-radius": 10,
         "circle-color": ["coalesce", ["get", "color"], "#2196F3"],
         "circle-stroke-width": 1.5,
         "circle-stroke-color": "#ffffff",
+        "circle-opacity": 1,
       },
     });
 
@@ -712,7 +730,8 @@
       id: ICON_LAYER,
       type: "symbol",
       source: SOURCE_ID,
-      filter: ["all", ["!=", ["get", "iconId"], ""], ["==", ["get", "showCircle"], 0]],
+      // Show icon whenever we have an image id; circle stays until showCircle flips to 0.
+      filter: ["!=", ["get", "iconId"], ""],
       layout: {
         "icon-image": ["get", "iconId"],
         "icon-size": 0.88,
@@ -721,7 +740,7 @@
         "icon-optional": true,
       },
       paint: {
-        "icon-opacity": 1,
+        "icon-opacity": ["case", ["==", ["get", "showCircle"], 0], 1, 0.001],
         "icon-halo-color": "#ffffff",
         "icon-halo-width": 4,
       },
@@ -741,12 +760,15 @@
     });
   }
 
-  function fetchLiveMarker(clientId, callsign) {
+  function fetchLiveMarker(clientId, callsign, username) {
+    const params = new URLSearchParams();
+    if (callsign) params.set("callsign", callsign);
+    if (username) params.set("username", username);
     const q =
       "/api/tak/clients/" +
       encodeURIComponent(clientId) +
-      "/live-marker?callsign=" +
-      encodeURIComponent(callsign || "");
+      "/live-marker?" +
+      params.toString();
     return fetch(q, {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -759,11 +781,11 @@
   }
 
   function fetchMarkerWithRetry(attempt) {
-    if (!currentClientId || !currentCallsign) {
+    if (!currentClientId || (!currentCallsign && !currentUsername)) {
       return Promise.resolve({ found: false });
     }
     const tryNum = attempt != null ? attempt : 0;
-    return fetchLiveMarker(currentClientId, currentCallsign)
+    return fetchLiveMarker(currentClientId, currentCallsign, currentUsername)
       .then(function (payload) {
         if (!payload.found && tryNum < 5) {
           return new Promise(function (resolve) {
@@ -780,8 +802,10 @@
   }
 
   function refreshMarker() {
-    if (!currentClientId || !currentCallsign || !map) return Promise.resolve();
-    return fetchLiveMarker(currentClientId, currentCallsign)
+    if (!currentClientId || (!currentCallsign && !currentUsername) || !map) {
+      return Promise.resolve();
+    }
+    return fetchLiveMarker(currentClientId, currentCallsign, currentUsername)
       .then(function (payload) {
         const nextSig = payloadSignature(payload);
         // lastAppliedSignature appends showCircle; compare the payload core only.
@@ -797,7 +821,7 @@
       });
   }
 
-  function open(clientId, callsign) {
+  function open(clientId, callsign, username) {
     if (isMobile()) return Promise.resolve(false);
     const container = document.getElementById("clientMiniMap");
     if (!container) return Promise.resolve(false);
@@ -813,6 +837,7 @@
 
     currentClientId = clientId || null;
     currentCallsign = callsign || null;
+    currentUsername = username || null;
     centerLocked = true;
     hasLiveMarker = false;
     lockedCenter = null;
@@ -821,7 +846,7 @@
     recenterOnIdleScheduled = false;
     applyCenterLockMode();
 
-    if (!currentClientId || !currentCallsign) {
+    if (!currentClientId || (!currentCallsign && !currentUsername)) {
       setEmptyVisible(true);
       return Promise.resolve(false);
     }
@@ -851,7 +876,7 @@
         revealMap();
         scheduleMarkerSync();
         scheduleRecenterIfLocked();
-        startPolling(clientId, callsign);
+        startPolling(clientId, callsign, username);
         return true;
       })
       .catch(function () {
@@ -920,13 +945,14 @@
     });
   }
 
-  function loadMarker(clientId, callsign) {
-    return open(clientId, callsign);
+  function loadMarker(clientId, callsign, username) {
+    return open(clientId, callsign, username);
   }
 
-  function startPolling(clientId, callsign) {
+  function startPolling(clientId, callsign, username) {
     if (clientId) currentClientId = clientId;
     if (callsign) currentCallsign = callsign;
+    if (username) currentUsername = username;
     stopPolling();
     if (!map || isMobile()) return;
     pollTimer = setInterval(function () {
@@ -945,6 +971,7 @@
     stopPolling();
     currentClientId = null;
     currentCallsign = null;
+    currentUsername = null;
     iconLoadPending.clear();
     hasLiveMarker = false;
     centerLocked = true;

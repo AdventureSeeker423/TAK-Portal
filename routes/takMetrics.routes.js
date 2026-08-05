@@ -253,12 +253,24 @@ router.get("/clients/:clientId/live-marker", async (req, res) => {
 
   try {
     cotStream.ensureBridgeStarted();
+    const clientId = String(req.params.clientId || "").trim();
     const callsign = String(req.query.callsign || "").trim();
-    if (!callsign) {
-      return res.status(400).json({ error: "Missing callsign query parameter" });
+    const username = String(req.query.username || "").trim();
+    if (!callsign && !username && !clientId) {
+      return res.status(400).json({
+        error: "Missing callsign, username, or client id",
+      });
     }
 
-    const marker = pickBestLiveMarker(cotStream.findMarkersByCallsign(callsign));
+    const marker = pickBestLiveMarker(
+      typeof cotStream.findMarkersForConnectedClient === "function"
+        ? cotStream.findMarkersForConnectedClient({
+            callsign,
+            username,
+            clientUid: clientId,
+          })
+        : cotStream.findMarkersByCallsign(callsign)
+    );
     if (!marker) {
       return res.json({
         found: false,
