@@ -956,6 +956,14 @@
               if (prefConfigCallsignEl) prefConfigCallsignEl.value = data.callsign || "";
               fillSelectOptions(prefConfigTeamEl, data.teamOptions || [], data.teamLabel || "", "Select team…");
               fillSelectOptions(prefConfigRoleEl, data.roleOptions || [], data.roleLabel || "Team Member", null);
+              // Live CoT callsign often matches preference, not Marti subscription.
+              if (
+                window.DashboardMiniMap &&
+                typeof window.DashboardMiniMap.setCallsign === "function" &&
+                data.callsign
+              ) {
+                window.DashboardMiniMap.setCallsign(data.callsign).catch(function () {});
+              }
               return data;
             })
             .catch(function (err) {

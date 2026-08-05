@@ -980,15 +980,48 @@ function findMarkersByCallsign(callsign) {
 }
 
 /**
+ * Badge / unit number tokens from usernames like "3633hs" → "3633".
+ * Used when Marti subscription callsign differs from the live CoT callsign.
+ */
+function collectIdentityTokens(...names) {
+  const tokens = new Set();
+  for (const raw of names) {
+    const s = String(raw || "")
+      .trim()
+      .toLowerCase();
+    if (!s) continue;
+    for (const m of s.match(/\d{3,}/g) || []) tokens.add(m);
+  }
+  return tokens;
+}
+
+function callsignMatchesIdentityToken(callsign, token) {
+  const cs = String(callsign || "")
+    .trim()
+    .toLowerCase();
+  const t = String(token || "")
+    .trim()
+    .toLowerCase();
+  if (!cs || !t) return false;
+  if (cs === t) return true;
+  if (cs.endsWith("-" + t) || cs.endsWith("_" + t)) return true;
+  const parts = cs.split(/[-_./\s]+/).filter(Boolean);
+  return parts.length > 0 && parts[parts.length - 1] === t;
+}
+
+/**
  * Resolve live map markers for a connected dashboard client.
  * Subscription callsign often differs from the CoT callsign / device uid,
- * so match by uid, callsign, and username.
+ * so match by uid, callsign, username, preference callsign, and badge tokens.
  */
 function findMarkersForConnectedClient(options = {}) {
   const callsign = String(options.callsign || "")
     .trim()
     .toLowerCase();
   const username = String(options.username || "")
+    .trim()
+    .toLowerCase();
+  const preferenceCallsign = String(options.preferenceCallsign || "")
     .trim()
     .toLowerCase();
   const clientUid = String(options.clientUid || options.uid || "")
@@ -998,9 +1031,13 @@ function findMarkersForConnectedClient(options = {}) {
   const nameKeys = new Set();
   if (callsign) nameKeys.add(callsign);
   if (username) nameKeys.add(username);
+  if (preferenceCallsign) nameKeys.add(preferenceCallsign);
+
+  const tokens = collectIdentityTokens(username, callsign, preferenceCallsign);
 
   const list = getMarkerList();
   const matches = [];
+  const seen = new Set();
   for (const m of list) {
     const cs = String(m?.callsign || "")
       .trim()
@@ -1008,13 +1045,22 @@ function findMarkersForConnectedClient(options = {}) {
     const mid = String(m?.uid || "")
       .trim()
       .toLowerCase();
-    if (clientUid && mid && mid === clientUid) {
-      matches.push(m);
-      continue;
+    let hit = false;
+    if (clientUid && mid && mid === clientUid) hit = true;
+    else if (cs && nameKeys.has(cs)) hit = true;
+    else if (cs && tokens.size) {
+      for (const t of tokens) {
+        if (callsignMatchesIdentityToken(cs, t)) {
+          hit = true;
+          break;
+        }
+      }
     }
-    if (cs && nameKeys.has(cs)) {
-      matches.push(m);
-    }
+    if (!hit) continue;
+    const key = mid || cs || String(matches.length);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    matches.push(m);
   }
   return matches;
 }

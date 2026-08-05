@@ -1,6 +1,5 @@
 /**
  * Dashboard connected-user mini map (single live marker).
- * Uses the same MapLibre UMD vendor + paint patterns as /map for stability.
  */
 (function () {
   "use strict";
@@ -13,24 +12,17 @@
   const DEFAULT_ZOOM = 10;
   const LOCKED_ZOOM = 14;
   const LS_BASEMAP = "tak-portal-map-basemap";
-  const FEATURE_ID = 1;
 
-  function mapAssets() {
-    return window.TAK_PORTAL_MAP_ASSETS || {};
-  }
-
-  function maplibreCssUrl() {
-    return (
-      mapAssets().maplibreCssUrl ||
-      "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css"
-    );
-  }
-
-  function maplibreJsUrl() {
-    return (
-      mapAssets().maplibreJsUrl ||
-      "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js"
-    );
+  function mapAssetUrls() {
+    const assets = window.TAK_PORTAL_MAP_ASSETS || {};
+    return {
+      css:
+        assets.maplibreCssUrl ||
+        "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css",
+      js:
+        assets.maplibreJsUrl ||
+        "https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js",
+    };
   }
 
   let map = null;
@@ -39,8 +31,7 @@
   let currentClientId = null;
   let currentCallsign = null;
   let currentUsername = null;
-  /** @type {Map<string, Promise<void>>} */
-  const iconLoadPending = new Map();
+  let iconLoadPending = null;
   let hasLiveMarker = false;
   let centerLocked = true;
   /** @type {[number, number] | null} */
@@ -49,7 +40,6 @@
   let recenterOnIdleScheduled = false;
   /** Cached marker payload — reapplied after basemap style reloads wipe custom layers. */
   let lastMarkerPayload = null;
-  let lastAppliedSignature = "";
   let containerResizeObserver = null;
   /** Degrees — pan beyond this from the CoT breaks center lock. */
   const UNLOCK_CENTER_THRESHOLD = 0.00012;
@@ -122,12 +112,7 @@
       map.resize();
       centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
     }
-    if (
-      typeof map.loaded === "function" &&
-      map.loaded() &&
-      typeof map.isMoving === "function" &&
-      !map.isMoving()
-    ) {
+    if (typeof map.loaded === "function" && map.loaded() && typeof map.isMoving === "function" && !map.isMoving()) {
       requestAnimationFrame(runRecenter);
       return;
     }
@@ -152,73 +137,23 @@
     } catch (_) {}
   }
 
-  function normalizeMapImageId(mapImageId) {
-    const id = String(mapImageId || "").trim();
-    if (!id) return "";
-    if (id.startsWith("mimg-")) return id;
-    const match = /^(?:wing|rotor|vehicle|boat|ship|track|car|mimg)-([0-9a-f]{16})$/i.exec(id);
-    if (match) return "mimg-" + match[1].toLowerCase();
-    return id;
-  }
-
-  function isRenderedMapImageId(mapImageId) {
-    return /^(?:mimg|wing|rotor|vehicle|boat|ship|track|car)-[0-9a-f]{16}$/i.test(
-      String(mapImageId || "")
-    );
-  }
-
-  function payloadSignature(payload) {
-    if (!payload || !payload.found || !payload.feature) return "empty";
-    const props = payload.feature.properties || {};
-    const coords = (payload.feature.geometry && payload.feature.geometry.coordinates) || [];
-    return [
-      props.uid || "",
-      coords[0],
-      coords[1],
-      props.iconId || "",
-      props.color || "",
-      props.callsign || "",
-    ].join("|");
-  }
-
   function markerFeatureForMap(feature) {
-    if (!feature || !feature.geometry) return null;
-    const coords = feature.geometry.coordinates;
-    if (!Array.isArray(coords) || coords.length < 2) return null;
-    const lon = Number(coords[0]);
-    const lat = Number(coords[1]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-
-    const propsIn = feature.properties || {};
-    const mapImageId = normalizeMapImageId(propsIn.iconId || "");
-    const hasIcon = !!(mapImageId && isRenderedMapImageId(mapImageId));
-    const ready = !!(hasIcon && map && map.hasImage(mapImageId));
-    // Always keep a team-color circle until the icon bitmap is installed.
-    const props = Object.assign({}, propsIn, {
-      kind: "marker",
-      iconId: hasIcon ? mapImageId : "",
-      showCircle: ready ? 0 : 1,
-      color: propsIn.color || propsIn.teamColor || "#2196F3",
-    });
+    if (!feature) return null;
+    const props = Object.assign({}, feature.properties || {}, { showCircle: 1 });
     return {
       type: "Feature",
-      id: FEATURE_ID,
-      geometry: { type: "Point", coordinates: [lon, lat] },
+      geometry: feature.geometry,
       properties: props,
     };
   }
 
   function applyPayloadToSource(payload) {
-    if (!map || typeof map.isStyleLoaded !== "function" || !map.isStyleLoaded()) {
-      return false;
-    }
-    const source = map.getSource(SOURCE_ID);
+    const source = map && map.getSource(SOURCE_ID);
     if (!source) return false;
 
     if (!payload || !payload.found || !payload.feature) {
       hasLiveMarker = false;
       lockedCenter = null;
-      lastAppliedSignature = "empty";
       source.setData(emptyFeatureCollection());
       setEmptyVisible(true);
       return true;
@@ -227,44 +162,10 @@
     hasLiveMarker = true;
     setEmptyVisible(false);
     const mapped = markerFeatureForMap(payload.feature);
-    if (!mapped) {
-      source.setData(emptyFeatureCollection());
-      setEmptyVisible(true);
-      return true;
-    }
-
-    const sig = payloadSignature(payload) + "|" + mapped.properties.showCircle;
-    const canPatch =
-      typeof source.updateData === "function" &&
-      lastAppliedSignature &&
-      lastAppliedSignature !== "empty" &&
-      String(lastAppliedSignature).split("|")[0] === String(mapped.properties.uid || "");
-
-    if (canPatch) {
-      try {
-        source.updateData({
-          update: [
-            {
-              id: FEATURE_ID,
-              newGeometry: mapped.geometry,
-              addOrUpdateProperties: [
-                { key: "uid", value: mapped.properties.uid },
-                { key: "callsign", value: mapped.properties.callsign },
-                { key: "color", value: mapped.properties.color },
-                { key: "iconId", value: mapped.properties.iconId },
-                { key: "showCircle", value: mapped.properties.showCircle },
-                { key: "apiIconId", value: mapped.properties.apiIconId || "" },
-              ],
-            },
-          ],
-        });
-      } catch (_) {
-        source.setData({ type: "FeatureCollection", features: [mapped] });
-      }
-    } else {
-      source.setData({ type: "FeatureCollection", features: [mapped] });
-    }
-    lastAppliedSignature = sig;
+    source.setData({
+      type: "FeatureCollection",
+      features: mapped ? [mapped] : [],
+    });
 
     const coords = payload.feature.geometry && payload.feature.geometry.coordinates;
     if (coords && coords.length >= 2) {
@@ -278,27 +179,6 @@
       }
     }
     return true;
-  }
-
-  function flipShowCircleOff(mapImageId) {
-    if (!map || !map.isStyleLoaded()) return;
-    const source = map.getSource(SOURCE_ID);
-    if (!source || typeof source.updateData !== "function") return;
-    const id = normalizeMapImageId(mapImageId);
-    if (!id || !map.hasImage(id)) return;
-    try {
-      source.updateData({
-        update: [
-          {
-            id: FEATURE_ID,
-            addOrUpdateProperties: [
-              { key: "iconId", value: id },
-              { key: "showCircle", value: 0 },
-            ],
-          },
-        ],
-      });
-    } catch (_) {}
   }
 
   function syncMarkerToMap() {
@@ -321,10 +201,9 @@
     }
 
     applyPayloadToSource(lastMarkerPayload);
-    const manifest = (lastMarkerPayload && lastMarkerPayload.iconManifest) || [];
+    const manifest =
+      (lastMarkerPayload && lastMarkerPayload.iconManifest) || [];
     return loadIconManifest(manifest).then(function () {
-      // Re-apply so showCircle flips once the bitmap is present.
-      applyPayloadToSource(lastMarkerPayload);
       if (map) {
         try {
           map.triggerRepaint();
@@ -511,14 +390,13 @@
 
   function loadStylesheet(href) {
     return new Promise(function (resolve, reject) {
-      if (document.querySelector('link[data-tak-maplibre-css="1"]')) {
+      if (document.querySelector('link[href="' + href + '"]')) {
         resolve();
         return;
       }
       const link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = href;
-      link.setAttribute("data-tak-maplibre-css", "1");
       link.onload = function () {
         resolve();
       };
@@ -531,24 +409,13 @@
 
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
-      if (window.maplibregl) {
+      if (document.querySelector('script[src="' + src + '"]')) {
         resolve();
-        return;
-      }
-      if (document.querySelector('script[data-tak-maplibre-js="1"]')) {
-        const existing = document.querySelector('script[data-tak-maplibre-js="1"]');
-        existing.addEventListener("load", function () {
-          resolve();
-        });
-        existing.addEventListener("error", function () {
-          reject(new Error("Failed to load script"));
-        });
         return;
       }
       const script = document.createElement("script");
       script.src = src;
       script.async = true;
-      script.setAttribute("data-tak-maplibre-js", "1");
       script.onload = function () {
         resolve();
       };
@@ -562,9 +429,10 @@
   function ensureMapLibre() {
     if (window.maplibregl) return Promise.resolve();
     if (assetsPromise) return assetsPromise;
-    assetsPromise = loadStylesheet(maplibreCssUrl())
+    const urls = mapAssetUrls();
+    assetsPromise = loadStylesheet(urls.css)
       .then(function () {
-        return loadScript(maplibreJsUrl());
+        return loadScript(urls.js);
       })
       .then(function () {
         if (!window.maplibregl) {
@@ -613,7 +481,7 @@
   }
 
   function installMapImage(imageName, source) {
-    if (!map || !source || !map.isStyleLoaded()) return Promise.resolve(false);
+    if (!map || !source) return Promise.resolve(false);
     const addOpts = { pixelRatio: 1 };
     try {
       if (map.hasImage(imageName)) {
@@ -630,39 +498,13 @@
   function loadIconManifest(manifest) {
     const list = Array.isArray(manifest) ? manifest : [];
     if (!list.length || !map) return Promise.resolve();
+    if (iconLoadPending) return iconLoadPending;
 
-    const needed = [];
-    const seen = new Set();
-    for (let i = 0; i < list.length; i++) {
-      const entry = list[i] || {};
-      const mapImageId = normalizeMapImageId(entry.mapImageId || "");
-      if (!mapImageId || !isRenderedMapImageId(mapImageId) || seen.has(mapImageId)) continue;
-      seen.add(mapImageId);
-      if (map.hasImage(mapImageId) || iconLoadPending.has(mapImageId)) continue;
-      needed.push(
-        Object.assign({}, entry, {
-          mapImageId: mapImageId,
-          apiIconId: entry.apiIconId || "",
-        })
-      );
-    }
-    if (!needed.length) {
-      for (const id of seen) flipShowCircleOff(id);
-      return Promise.resolve();
-    }
-
-    const batchKey = needed
-      .map(function (e) {
-        return e.mapImageId;
-      })
-      .join(",");
-    if (iconLoadPending.has(batchKey)) return iconLoadPending.get(batchKey);
-
-    const promise = fetch("/api/map/icons/rendered/batch", {
+    iconLoadPending = fetch("/api/map/icons/rendered/batch", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ icons: needed }),
+      body: JSON.stringify({ icons: list }),
     })
       .then(function (resp) {
         if (!resp.ok) throw new Error("icon batch " + resp.status);
@@ -674,27 +516,19 @@
         for (const mapImageId of Object.keys(icons)) {
           const b64 = icons[mapImageId];
           if (!b64) continue;
-          const canonicalId = normalizeMapImageId(mapImageId);
           jobs.push(
             decodeIconBlob(base64ToBlob(b64, "image/png")).then(function (img) {
-              return installMapImage(canonicalId, img).then(function (ok) {
-                if (ok) flipShowCircleOff(canonicalId);
-                return ok;
-              });
+              return installMapImage(mapImageId, img);
             })
           );
         }
         return Promise.all(jobs);
       })
-      .catch(function (err) {
-        console.warn("[dashboardMiniMap] icon preload failed", err);
-      })
       .finally(function () {
-        iconLoadPending.delete(batchKey);
+        iconLoadPending = null;
       });
 
-    iconLoadPending.set(batchKey, promise);
-    return promise;
+    return iconLoadPending;
   }
 
   function addMarkerLayers() {
@@ -710,19 +544,12 @@
       id: CIRCLE_LAYER,
       type: "circle",
       source: SOURCE_ID,
-      // Show team-color dot whenever showCircle is truthy (default for EUDs).
-      filter: [
-        "any",
-        ["==", ["get", "showCircle"], 1],
-        ["==", ["get", "showCircle"], true],
-        ["!", ["has", "showCircle"]],
-      ],
+      filter: ["==", ["get", "showCircle"], 1],
       paint: {
         "circle-radius": 10,
         "circle-color": ["coalesce", ["get", "color"], "#2196F3"],
         "circle-stroke-width": 1.5,
         "circle-stroke-color": "#ffffff",
-        "circle-opacity": 1,
       },
     });
 
@@ -730,7 +557,6 @@
       id: ICON_LAYER,
       type: "symbol",
       source: SOURCE_ID,
-      // Show icon whenever we have an image id; circle stays until showCircle flips to 0.
       filter: ["!=", ["get", "iconId"], ""],
       layout: {
         "icon-image": ["get", "iconId"],
@@ -740,9 +566,7 @@
         "icon-optional": true,
       },
       paint: {
-        "icon-opacity": ["case", ["==", ["get", "showCircle"], 0], 1, 0.001],
-        "icon-halo-color": "#ffffff",
-        "icon-halo-width": 4,
+        "icon-opacity": ["case", ["!=", ["get", "iconId"], ""], 1, 0],
       },
     });
     return true;
@@ -760,15 +584,18 @@
     });
   }
 
+  function hasIdentity() {
+    return !!(currentClientId && (currentCallsign || currentUsername));
+  }
+
   function fetchLiveMarker(clientId, callsign, username) {
-    const params = new URLSearchParams();
-    if (callsign) params.set("callsign", callsign);
-    if (username) params.set("username", username);
     const q =
       "/api/tak/clients/" +
       encodeURIComponent(clientId) +
-      "/live-marker?" +
-      params.toString();
+      "/live-marker?callsign=" +
+      encodeURIComponent(callsign || "") +
+      "&username=" +
+      encodeURIComponent(username || "");
     return fetch(q, {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -781,7 +608,7 @@
   }
 
   function fetchMarkerWithRetry(attempt) {
-    if (!currentClientId || (!currentCallsign && !currentUsername)) {
+    if (!hasIdentity()) {
       return Promise.resolve({ found: false });
     }
     const tryNum = attempt != null ? attempt : 0;
@@ -802,17 +629,9 @@
   }
 
   function refreshMarker() {
-    if (!currentClientId || (!currentCallsign && !currentUsername) || !map) {
-      return Promise.resolve();
-    }
+    if (!hasIdentity() || !map) return Promise.resolve();
     return fetchLiveMarker(currentClientId, currentCallsign, currentUsername)
       .then(function (payload) {
-        const nextSig = payloadSignature(payload);
-        // lastAppliedSignature appends showCircle; compare the payload core only.
-        const prevCore = String(lastAppliedSignature || "").replace(/\|[01]$/, "");
-        if (nextSig !== "empty" && prevCore === nextSig) {
-          return null;
-        }
         if (payload && payload.found) lastMarkerPayload = payload;
         return updateMarkerOnMap(payload);
       })
@@ -842,11 +661,10 @@
     hasLiveMarker = false;
     lockedCenter = null;
     lastMarkerPayload = null;
-    lastAppliedSignature = "";
     recenterOnIdleScheduled = false;
     applyCenterLockMode();
 
-    if (!currentClientId || (!currentCallsign && !currentUsername)) {
+    if (!hasIdentity()) {
       setEmptyVisible(true);
       return Promise.resolve(false);
     }
@@ -949,6 +767,17 @@
     return open(clientId, callsign, username);
   }
 
+  /** Prefer Authentik/preference callsign when subscription callsign differs from CoT. */
+  function setCallsign(callsign) {
+    const next = callsign != null ? String(callsign).trim() : "";
+    if (!next || next === currentCallsign) return Promise.resolve(false);
+    currentCallsign = next;
+    if (!map || !hasIdentity()) return Promise.resolve(false);
+    return refreshMarker().then(function () {
+      return true;
+    });
+  }
+
   function startPolling(clientId, callsign, username) {
     if (clientId) currentClientId = clientId;
     if (callsign) currentCallsign = callsign;
@@ -972,13 +801,12 @@
     currentClientId = null;
     currentCallsign = null;
     currentUsername = null;
-    iconLoadPending.clear();
+    iconLoadPending = null;
     hasLiveMarker = false;
     centerLocked = true;
     lockedCenter = null;
     recenterOnIdleScheduled = false;
     lastMarkerPayload = null;
-    lastAppliedSignature = "";
     unbindContainerResizeObserver();
     setMapReadyVisible(false);
     if (map) {
@@ -997,6 +825,7 @@
     init: init,
     open: open,
     loadMarker: loadMarker,
+    setCallsign: setCallsign,
     startPolling: startPolling,
     stopPolling: stopPolling,
     destroy: destroy,

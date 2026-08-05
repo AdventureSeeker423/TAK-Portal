@@ -262,15 +262,36 @@ router.get("/clients/:clientId/live-marker", async (req, res) => {
       });
     }
 
-    const marker = pickBestLiveMarker(
+    let markers =
       typeof cotStream.findMarkersForConnectedClient === "function"
         ? cotStream.findMarkersForConnectedClient({
             callsign,
             username,
             clientUid: clientId,
           })
-        : cotStream.findMarkersByCallsign(callsign)
-    );
+        : cotStream.findMarkersByCallsign(callsign);
+
+    // Subscription callsign (e.g. HCSO-BUCK-K03) often differs from the
+    // Authentik/preference CoT callsign (e.g. HCSO-BUCK-3633). Only hit
+    // preference lookup when the cheap match misses.
+    if ((!markers || !markers.length) && clientId) {
+      try {
+        const pref = await takGroupControl.getClientPreferenceConfig(clientId, user);
+        const preferenceCallsign = String(pref?.callsign || "").trim();
+        if (preferenceCallsign) {
+          markers = cotStream.findMarkersForConnectedClient({
+            callsign,
+            username,
+            clientUid: clientId,
+            preferenceCallsign,
+          });
+        }
+      } catch (_) {
+        // Non-preference clients or Authentik misses — keep empty match.
+      }
+    }
+
+    const marker = pickBestLiveMarker(markers);
     if (!marker) {
       return res.json({
         found: false,
