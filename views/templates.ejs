@@ -150,7 +150,7 @@ let viewTemplates = []; // [{ t, idx }] where idx is the original index in the s
 let sortState = { key: "agency", dir: "asc" }; // default: agency, then name
 
 function getAgencyDisplay(t){
-  return t && t.agencySuffix ? (agencyAbbrFromSuffix(t.agencySuffix) || t.agencySuffix) : "";
+  return t && t.agencySuffix ? (agencyNameFromSuffix(t.agencySuffix) || t.agencySuffix) : "";
 }
 
 function displayGroupName(name){
@@ -475,10 +475,10 @@ async function loadGroups(options = {}){
   }
 }
 
-function agencyAbbrFromSuffix(suffix){
+function agencyNameFromSuffix(suffix){
   const s = String(suffix || "").trim().toLowerCase();
   const a = allAgencies.find(x => String(x.suffix || "").trim().toLowerCase() === s);
-  return String(a?.groupPrefix || "").trim();
+  return String(a?.name || "").trim();
 }
 
 function updateTemplateAgencyFilterOptions(){
