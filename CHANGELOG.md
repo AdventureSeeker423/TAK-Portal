@@ -12,6 +12,13 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.62 - 8/5/26
+✨ `Enhancement` - Agencies - Abbreviation field relabeled to Agency Abbreviation / Short Name; allows mixed case, spaces, dashes, and underscores (no forced uppercase)<br>
+✨ `Enhancement` - Agencies - Duplicate abbreviation/short name and duplicate full agency name are rejected (case-insensitive) on create, edit, CSV import, and rename<br>
+✨ `Enhancement` - Agencies / Groups - Agency group ownership and admin visibility now use Authentik attributes instead of first-space name prefix parsing<br>
+✨ `Enhancement` - Agencies - CSV import creates the agency Main channel group in addition to the admin group<br>
+🐛 `Bug Fix` - Fixes issue with Authentik unique group name collisions when multiple agencies shared the same abbreviation
+
 ### v1.3.61 - 8/5/26
 🐛 `Bug Fix` - Fixes issue with cluttered logs due to an error parsing HAE<br>
 🐛 `Bug Fix` - Fixes issue with slow loading times and display on mini-map
