@@ -221,7 +221,6 @@
             <span id="setupQrEnrollUrlHolder" data-enroll-url="" style="display:none;" aria-hidden="true"></span>
             <button class="btn success btnOpenInApp" type="button" id="setupQrOpenBtn" disabled>Open In App</button>
             <button class="btn" type="button" id="setupQrCopyBtn" disabled>Copy URL</button>
-            <button class="btn" type="button" id="setupQrSaveBtn" disabled>Save Image</button>
           </div>
         </div>
         <div class="setupQrModalInfoCol">
@@ -270,7 +269,6 @@
             <span id="preferenceQrUrlHolder" data-preference-url="" style="display:none;" aria-hidden="true"></span>
             <button class="btn success btnOpenInApp" type="button" id="preferenceQrOpenBtn" disabled>Open In App</button>
             <button class="btn" type="button" id="preferenceQrCopyBtn" disabled>Copy URL</button>
-            <button class="btn" type="button" id="preferenceQrSaveBtn" disabled>Save Image</button>
           </div>
         </div>
         <div style="min-width: 320px;">
@@ -359,7 +357,6 @@
   const enrollUrlHolder = document.getElementById("setupQrEnrollUrlHolder");
   const openUrlBtn = document.getElementById("setupQrOpenBtn");
   const copyBtn = document.getElementById("setupQrCopyBtn");
-  const saveBtn = document.getElementById("setupQrSaveBtn");
 
   function getCurrentEnrollUrl() {
     if (!enrollUrlHolder || !enrollUrlHolder.dataset.enrollUrl) return "";
@@ -674,7 +671,6 @@
         if (enrollUrlHolder) enrollUrlHolder.dataset.enrollUrl = "";
         openUrlBtn.disabled = true;
         copyBtn.disabled = true;
-        saveBtn.disabled = true;
         setMsg(msg, "This enrollment QR has expired. Click Scan QR Code to generate a new one.", false);
         clearCountdown();
         return;
@@ -744,7 +740,6 @@
       openUrlBtn.disabled = isItak || !url;
     }
     copyBtn.disabled = !url;
-    saveBtn.disabled = !(obj.username && obj.token);
   }
 
   function renderFromCache(obj) {
@@ -772,7 +767,6 @@
     if (enrollUrlHolder) enrollUrlHolder.dataset.enrollUrl = "";
     openUrlBtn.disabled = true;
     copyBtn.disabled = true;
-    saveBtn.disabled = true;
     countdownEl.textContent = "";
     setMsg(msg, "Generating enrollment QR...", true);
 
@@ -901,7 +895,6 @@
   const preferenceQrUrlHolder = document.getElementById("preferenceQrUrlHolder");
   const preferenceQrOpenBtn = document.getElementById("preferenceQrOpenBtn");
   const preferenceQrCopyBtn = document.getElementById("preferenceQrCopyBtn");
-  const preferenceQrSaveBtn = document.getElementById("preferenceQrSaveBtn");
   const preferenceQrInstructions = document.getElementById("preferenceQrInstructions");
   const preferenceQrDetails = document.getElementById("preferenceQrDetails");
   const preferenceQrMsg = document.getElementById("preferenceQrMsg");
@@ -995,7 +988,6 @@
     if (preferenceQrUrlHolder) preferenceQrUrlHolder.dataset.preferenceUrl = "";
     preferenceQrOpenBtn.disabled = true;
     preferenceQrCopyBtn.disabled = true;
-    preferenceQrSaveBtn.disabled = true;
     openPreferenceQrModal();
     try {
       const data = await fetchPreferenceData();
@@ -1009,7 +1001,6 @@
       const url = (data.preferenceUrl && String(data.preferenceUrl).trim()) || "";
       preferenceQrOpenBtn.disabled = !url;
       preferenceQrCopyBtn.disabled = !url;
-      preferenceQrSaveBtn.disabled = !data.qrCode;
       setPreferenceMsg("", true);
     } catch (err) {
       setPreferenceMsg(err?.message || String(err), false);
@@ -1082,17 +1073,6 @@
     var url = getCurrentPreferenceUrl();
     if (url) copyToClipboard(url).then(() => setPreferenceMsg("Copied!", true)).catch(() => setPreferenceMsg("Copy failed", false));
   });
-  preferenceQrSaveBtn.addEventListener("click", () => {
-    var src = preferenceQrImg.src;
-    if (!src || !src.startsWith("data:")) return;
-    var a = document.createElement("a");
-    a.href = src;
-    a.download = "preference-qr.png";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setPreferenceMsg("Downloading...", true);
-  });
 
   // Attach handlers (buttons exist in DOM even when flows are hidden)
   if (scanQrBtnTakAware) scanQrBtnTakAware.addEventListener("click", () => handleScanClick("takaware"));
@@ -1142,28 +1122,5 @@
   copyBtn.addEventListener("click", () => {
     var url = getCurrentEnrollUrl();
     if (url) copyToClipboard(url);
-  });
-
-  saveBtn.addEventListener("click", () => {
-    if (!cached || !cached.username || !cached.token) {
-      setMsg(msg, "Generate a QR first.", false);
-      return;
-    }
-
-    let url =
-      `/api/qr/download?username=${encodeURIComponent(cached.username)}` +
-      `&token=${encodeURIComponent(cached.token)}`;
-    if (scanMode === "itak") {
-      url += "&format=itak";
-    }
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    setMsg(msg, "Downloading high-res QR...", true);
   });
 </script>
