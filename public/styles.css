@@ -854,6 +854,14 @@ label.btn {
     padding-right: 10px;
 }
 
+#setupQrOverlay .setupQrModalActions .btn.btnOpenInApp,
+#preferenceQrOverlay .btn.btnOpenInApp {
+    flex: 1.55 1 0;
+    padding-left: 14px;
+    padding-right: 14px;
+    min-width: 7.25rem;
+}
+
 #setupQrOverlay .setupQrModalCountdown {
     margin-top: 10px;
 }
