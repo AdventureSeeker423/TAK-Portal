@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.63 - 8/6/26
+✨ `Enhancement` - Setup My Device - Minor wording updates to better onboard new users<br>
+✨ `Enhancement` - Templates - Switched from agency abbreviation to agency full name to aid in visibility
+
 ### v1.3.62 - 8/5/26
 ✨ `Enhancement` - Agencies - Abbreviation field relabeled to Agency Abbreviation / Short Name; allows mixed case, spaces, dashes, and underscores (no forced uppercase)<br>
 ✨ `Enhancement` - Agencies - Duplicate abbreviation/short name and duplicate full agency name are rejected (case-insensitive) on create, edit, CSV import, and rename<br>
