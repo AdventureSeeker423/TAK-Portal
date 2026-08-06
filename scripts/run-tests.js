@@ -12,6 +12,7 @@ const TEST_FILES = [
   "mapBasemaps.test.js",
   "mapRender.test.js",
   "mapUidHash.test.js",
+  "labelDeclutter.test.js",
   "cotStreamSlim.test.js",
   "mapPerfSoak.test.js",
   "missionGeo.test.js",

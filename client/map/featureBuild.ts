@@ -1,5 +1,6 @@
 import type { MarkerFeature, PaintFeatureProperties, SlimMarker } from "./types";
 import { AFFILIATION_COLORS } from "./constants";
+import { computeLabelSortKey } from "./labelDeclutter";
 import { vectorId } from "./uidHash";
 
 function markerDrawTier(marker: SlimMarker): number {
@@ -60,6 +61,7 @@ export function buildPaintFeature(
       : selected || locked
         ? 1
         : 1;
+  const labelSort = computeLabelSortKey(marker, options.selectedUid, options.lockedUid);
 
   const properties: PaintFeatureProperties = {
     kind: "marker",
@@ -79,7 +81,7 @@ export function buildPaintFeature(
     selected,
     locked,
     renderSort,
-    labelSort: renderSort,
+    labelSort,
     showLabel,
     channelKeys: String(marker.channelKeys || ""),
     course:

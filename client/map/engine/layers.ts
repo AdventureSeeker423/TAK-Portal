@@ -91,21 +91,33 @@ function markerIconLayerSpec(id: string, drawTier: number): object {
 
 function markerLabelLayout(priority: boolean): object {
   return {
-    "text-field": ["get", "callsign"],
+    "text-field": [
+      "case",
+      ["any", ["==", ["get", "showLabel"], 1], ["==", ["get", "showLabel"], true]],
+      ["get", "callsign"],
+      "",
+    ],
     "text-font": MAP_LABEL_FONT,
     "text-size": 12,
-    "text-offset": [0, 1.4],
-    "text-anchor": "top",
+    "text-offset": [0, -1.55],
+    "text-anchor": "bottom",
     "text-allow-overlap": priority,
     "text-ignore-placement": priority,
+    "text-optional": !priority,
+    "text-max-width": 12,
+    "text-padding": 1.5,
+    "text-letter-spacing": 0.01,
     "symbol-sort-key": ["get", "labelSort"],
+    "symbol-z-order": "source",
   };
 }
 
 const markerLabelPaint = {
   "text-color": "#f8fafc",
-  "text-halo-color": "#0f172a",
-  "text-halo-width": 1.2,
+  "text-halo-color": "rgba(0, 0, 0, 0.92)",
+  "text-halo-width": 2,
+  "text-halo-blur": 0.35,
+  "text-opacity": 1,
 };
 
 export function markerLayersComplete(map: MapLibreMap): boolean {

@@ -1031,9 +1031,20 @@
   function markerLabelDeclutterPriority(m) {
     if (m.uid === selectedUid) return 0;
     if (m.uid === lockedUid) return 1;
-    if (markerOriginRank(m) === 2) return 2;
-    if (markerOriginRank(m) === 1) return 3;
-    return 4;
+    const origin = String((m && m.origin) || "").toLowerCase();
+    if (origin === "spi") return 2;
+    // Keep EUD and live feed/AVL at the same tier so dense car layers label evenly.
+    if (
+      origin === "eud" ||
+      origin === "user" ||
+      origin === "federation" ||
+      origin === "feed"
+    ) {
+      return 3;
+    }
+    if (markerOriginRank(m) === 2) return 3;
+    if (markerOriginRank(m) === 1) return 4;
+    return 5;
   }
 
   function isMarkerExpiredAtIngest(m) {
@@ -4061,9 +4072,27 @@
 
   function estimateLabelBox(lon, lat, callsign) {
     const pt = map.project([lon, lat]);
-    const w = Math.max(36, String(callsign || "").length * 6.5);
-    const h = 13;
-    return { x: pt.x - w / 2, y: pt.y - 28, w: w, h: h };
+    const zoom = map.getZoom();
+    let density = 1.2;
+    if (Number.isFinite(zoom)) {
+      if (zoom >= 15) density = 0.45;
+      else if (zoom >= 13) density = 0.6;
+      else if (zoom >= 11) density = 0.78;
+      else if (zoom >= 9) density = 0.95;
+    }
+    const label = String(callsign || "");
+    const w = Math.max(22, label.length * 5.6) * density;
+    const h = 12 * density;
+    return { x: pt.x - w / 2, y: pt.y - 26, w: w, h: h };
+  }
+
+  function markerIsSpiLikeForLabel(m) {
+    const origin = String((m && m.origin) || "").toLowerCase();
+    if (origin === "spi") return true;
+    const type = String((m && m.type) || "")
+      .trim()
+      .toLowerCase();
+    return type.indexOf("b-m-p-s-p-i") === 0 || type.indexOf("b-m-p-s-p-loc") === 0;
   }
 
   function recomputeLabelVisibility(visible) {
@@ -4106,17 +4135,22 @@
       const aPri = markerLabelDeclutterPriority(a);
       const bPri = markerLabelDeclutterPriority(b);
       if (aPri !== bPri) return aPri - bPri;
+      const la = String(a.callsign || "").length;
+      const lb = String(b.callsign || "").length;
+      if (la !== lb) return la - lb;
       return String(a.callsign).localeCompare(String(b.callsign));
     });
     labelVisibleByUid.clear();
     for (let i = 0; i < sorted.length; i++) {
       const m = sorted[i];
-      if (m.uid === selectedUid || m.uid === lockedUid) {
+      const forced =
+        m.uid === selectedUid || m.uid === lockedUid || markerIsSpiLikeForLabel(m);
+      const box = estimateLabelBox(m.lon, m.lat, m.callsign);
+      if (forced) {
         labelVisibleByUid.set(m.uid, 1);
-        placeBox(estimateLabelBox(m.lon, m.lat, m.callsign));
+        placeBox(box);
         continue;
       }
-      const box = estimateLabelBox(m.lon, m.lat, m.callsign);
       const nearby = nearbyBoxes(box);
       let overlap = false;
       for (let j = 0; j < nearby.length; j++) {
@@ -4299,7 +4333,12 @@
   }
 
   function labelStandardFilter() {
-    return ["all", MARKER_FILTER, ["!", markerSelectedOrLockedExpr()]];
+    return [
+      "all",
+      MARKER_FILTER,
+      ["!", markerSelectedOrLockedExpr()],
+      ["any", ["==", ["get", "showLabel"], 1], ["==", ["get", "showLabel"], true]],
+    ];
   }
 
   function syncSelectionToMapSource() {
@@ -4407,32 +4446,40 @@
     }, GEO_RECONCILE_MS);
   }
 
-  function markerLabelLayout() {
+  function markerLabelLayout(options) {
+    const opts = options || {};
+    const priority = !!opts.priority;
     return {
       "text-field": [
         "case",
-        ["==", ["get", "showLabel"], 1],
+        ["any", ["==", ["get", "showLabel"], 1], ["==", ["get", "showLabel"], true]],
         ["get", "callsign"],
         "",
       ],
       "text-font": MAP_LABEL_FONT,
-      "text-size": 11,
+      "text-size": 12,
       "text-anchor": "bottom",
-      "text-offset": [0, -2],
-      "text-allow-overlap": true,
-      "text-ignore-placement": true,
-      "text-optional": false,
-      "text-max-width": 14,
-      "text-padding": 2,
+      "text-offset": [0, -1.55],
+      // Priority (selected/locked) always paints; standard uses MapLibre collision.
+      "text-allow-overlap": priority,
+      "text-ignore-placement": priority,
+      "text-optional": !priority,
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      "text-max-width": 12,
+      "text-padding": 1.5,
+      "text-letter-spacing": 0.01,
       "symbol-sort-key": ["get", "labelSort"],
+      "symbol-z-order": "source",
     };
   }
 
   function markerLabelPaint() {
     return {
-      "text-color": "#ffffff",
-      "text-halo-color": "rgba(0, 0, 0, 0.75)",
-      "text-halo-width": 1.25,
+      "text-color": "#f8fafc",
+      "text-halo-color": "rgba(0, 0, 0, 0.92)",
+      "text-halo-width": 2,
+      "text-halo-blur": 0.35,
       "text-opacity": 1,
     };
   }
@@ -4510,7 +4557,7 @@
         type: "symbol",
         source: SOURCE_ID,
         filter: withChannelFilter(labelStandardFilter()),
-        layout: markerLabelLayout(),
+        layout: markerLabelLayout({ priority: false }),
         paint: markerLabelPaint(),
       });
 
@@ -4519,7 +4566,7 @@
         type: "symbol",
         source: SOURCE_ID,
         filter: withChannelFilter(labelPriorityFilter()),
-        layout: markerLabelLayout(),
+        layout: markerLabelLayout({ priority: true }),
         paint: markerLabelPaint(),
       });
     } catch (err) {
