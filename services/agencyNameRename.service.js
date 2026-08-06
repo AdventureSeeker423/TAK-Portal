@@ -14,7 +14,7 @@ const usersService = require("./users.service");
 const MAX_AGENCY_NAME_LENGTH = 200;
 
 function getAgencyAdminGroupName(agency) {
-  const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
+  const abbr = agenciesStore.normalizeGroupPrefix(agency?.groupPrefix);
   const countyAbbrev = String(agency?.countyAbbrev || "").trim().toUpperCase();
   if (!abbr) return null;
   if (countyAbbrev) {
@@ -83,17 +83,26 @@ async function ensureAgencyAdminGroupExists(agency) {
     const msg = String(err?.response?.data?.detail || err?.response?.data || err?.message || "");
     const lower = msg.toLowerCase();
     if (lower.includes("already") || lower.includes("exists") || lower.includes("unique")) {
-      return { created: false, name };
+      const existing = await getGroupByNameUnfiltered(name);
+      if (existing && agenciesStore.isAgencyOwnedGroup(existing, agency)) {
+        return { created: false, name };
+      }
+      throw new Error(
+        `Authentik group "${name}" already exists and is not owned by this agency`
+      );
     }
     throw err;
   }
 }
 
-function validateNewAgencyName(raw) {
+function validateNewAgencyName(raw, agencies, excludeIndex) {
   const name = String(raw || "").trim();
   if (!name) return "Agency name is required";
   if (name.length > MAX_AGENCY_NAME_LENGTH) {
     return `Agency name must be at most ${MAX_AGENCY_NAME_LENGTH} characters`;
+  }
+  if (agencies) {
+    return agenciesStore.assertUniqueAgencyName(agencies, name, excludeIndex);
   }
   return null;
 }
@@ -216,7 +225,7 @@ async function updateAgencyAdminGroupMetadata(agency) {
 async function updateAgencyTakGroupsCreatedTypeDetail(oldName, newName, groupPrefix) {
   const oldN = String(oldName || "").trim();
   const newN = String(newName || "").trim();
-  const gp = String(groupPrefix || "").trim().toUpperCase();
+  const gp = agenciesStore.normalizeGroupPrefix(groupPrefix);
   if (!oldN || !newN) return { groupsUpdated: 0 };
 
   const allGroups = await groupsService.getAllGroups({ includeHidden: true });
@@ -233,7 +242,7 @@ async function updateAgencyTakGroupsCreatedTypeDetail(oldName, newName, groupPre
 
     if (gp) {
       const prefix = getTakGroupPrefix(gn);
-      if (prefix && prefix !== gp) return false;
+      if (prefix && prefix.toUpperCase() !== gp.toUpperCase()) return false;
     }
     return true;
   });
@@ -296,7 +305,7 @@ async function renameAgencyName(agencyIndex, newName) {
     throw new Error("Agency not found");
   }
 
-  const err = validateNewAgencyName(newName);
+  const err = validateNewAgencyName(newName, agencies, idx);
   if (err) throw new Error(err);
 
   const agency = agencies[idx];

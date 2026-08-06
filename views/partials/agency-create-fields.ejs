@@ -67,10 +67,10 @@
   </label>
   <% } %>
 
-  <label>Agency Abbreviation
-    <input name="groupPrefix" placeholder="(ex. HCSO, HCOEM, etc...)" <%= _reqAttr %>
+  <label>Agency Abbreviation / Short Name
+    <input name="groupPrefix" placeholder="(ex. HCSO, Hcso, CPD Main)" <%= _reqAttr %>
            value="<%= _vals.groupPrefix || '' %>"
-           oninput="this.value = this.value.toUpperCase()" />
+           title="Letters, numbers, spaces, dashes, and underscores" />
   </label>
 
   <label>Username Agency Identifier

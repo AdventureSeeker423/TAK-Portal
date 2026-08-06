@@ -230,51 +230,6 @@ router.post("/", async (req, res) => {
 
     const allAgencies = agencies.load();
 
-    if (!access.isGlobalAdmin) {
-      const allowedSuffixes = access.allowedAgencySuffixes || [];
-      if (!allowedSuffixes.length) {
-        return res
-          .status(403)
-          .json({ error: "You do not have permission to create groups." });
-      }
-
-      const allowedPrefixes = allAgencies
-        .filter((a) =>
-          allowedSuffixes.includes(
-            String(a.suffix || "").trim().toLowerCase()
-          )
-        )
-        .map((a) => String(a.groupPrefix || "").trim().toUpperCase())
-        .filter(Boolean);
-
-      const upperName = nameWithoutTak.toUpperCase();
-      const canCreateForAny = allowedPrefixes.some((prefix) => {
-        // Allow:
-        // PREFIX <space>
-        // PREFIX-...
-        // PREFIX -...
-        return (
-          upperName.startsWith(prefix + " ") ||
-          upperName.startsWith(prefix + "-") ||
-          upperName.startsWith(prefix + " -")
-        );
-      });
-
-      if (!canCreateForAny) {
-        return res.status(403).json({
-          error:
-            "You may only create agency-specific groups for your own agency.",
-        });
-      }
-    }
-
-    const matchedAgency = agencies.findAgencyForGroupName(nameWithoutTak, allAgencies);
-    if (matchedAgency && !agencies.isAgencyActive(matchedAgency)) {
-      return res.status(403).json({
-        error: `Agency "${matchedAgency.name || matchedAgency.suffix}" is disabled. Enable the agency before creating groups for it.`,
-      });
-    }
-
     const description = String(req.body?.description || "").trim() || null;
 
     const rawGroupType = String(req.body?.groupType || "").trim();
@@ -287,6 +242,54 @@ router.post("/", async (req, res) => {
         : "Global";
 
     const groupTypeDetail = String(req.body?.groupTypeDetail || "").trim() || null;
+
+    let matchedAgency = null;
+    if (groupType === "Agency" && groupTypeDetail) {
+      const detailLower = groupTypeDetail.toLowerCase();
+      matchedAgency =
+        allAgencies.find(
+          (a) => String(a?.name || "").trim().toLowerCase() === detailLower
+        ) || null;
+    }
+    if (!matchedAgency) {
+      matchedAgency = agencies.findAgencyForGroupName(nameWithoutTak, allAgencies);
+    }
+
+    if (!access.isGlobalAdmin) {
+      const allowedSuffixes = access.allowedAgencySuffixes || [];
+      if (!allowedSuffixes.length) {
+        return res
+          .status(403)
+          .json({ error: "You do not have permission to create groups." });
+      }
+
+      const managedNames = allAgencies
+        .filter((a) =>
+          allowedSuffixes.includes(String(a.suffix || "").trim().toLowerCase())
+        )
+        .map((a) => String(a.name || "").trim())
+        .filter(Boolean);
+
+      const detailOk =
+        groupType === "Agency" &&
+        groupTypeDetail &&
+        managedNames.some(
+          (n) => n.toLowerCase() === groupTypeDetail.toLowerCase()
+        );
+
+      if (!detailOk) {
+        return res.status(403).json({
+          error:
+            "You may only create agency-specific groups for your own agency.",
+        });
+      }
+    }
+
+    if (matchedAgency && !agencies.isAgencyActive(matchedAgency)) {
+      return res.status(403).json({
+        error: `Agency "${matchedAgency.name || matchedAgency.suffix}" is disabled. Enable the agency before creating groups for it.`,
+      });
+    }
 
     // Global groups cannot use the mutual-aid reserved "MA -" prefix
     if (groupType === "Global") {
@@ -802,19 +805,8 @@ router.get("/mass-jobs/:jobId", (req, res) => {
   });
 });
 
-function getGroupPrefixFromName(groupName) {
-  const n = String(groupName || "").trim();
-  const withoutTak = n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
-  const spaceIdx = withoutTak.toUpperCase().indexOf(" ");
-  if (spaceIdx <= 0) return "";
-  return withoutTak.slice(0, spaceIdx).trim().toUpperCase();
-}
-
-function isGroupOwnedByAgency(groupName, agency) {
-  const prefix = getGroupPrefixFromName(groupName);
-  if (!prefix) return false;
-  const gp = String(agency?.groupPrefix || "").trim().toUpperCase();
-  return prefix === gp;
+function isGroupOwnedByAgency(group, agency) {
+  return agencies.isAgencyOwnedGroup(group, agency);
 }
 
 // Which agencies' admins can access this group (inverse of agency access-groups).
@@ -835,16 +827,15 @@ router.get("/:groupId/admin-access", async (req, res) => {
       return res.status(404).json({ error: "Group not found" });
     }
 
-    const groupName = String(group?.name || "").trim();
     const allAgencies = agencies.load();
     const agenciesOut = allAgencies.map((a, idx) => {
       const ids = Array.isArray(a.allowedAdminGroupIds) ? a.allowedAdminGroupIds : [];
       const hasExplicit = ids.map((id) => String(id).trim()).includes(groupId);
-      const implicitAccess = isGroupOwnedByAgency(groupName, a);
+      const implicitAccess = isGroupOwnedByAgency(group, a);
       return {
         id: idx,
         name: String(a.name || "").trim(),
-        groupPrefix: String(a.groupPrefix || "").trim().toUpperCase(),
+        groupPrefix: agencies.normalizeGroupPrefix(a.groupPrefix),
         suffix: String(a.suffix || "").trim().toLowerCase(),
         hasAccess: hasExplicit,
         implicitAccess,
@@ -872,10 +863,9 @@ router.put("/:groupId/admin-access", async (req, res) => {
     const groupId = String(req.params.groupId || "").trim();
     if (!groupId) return res.status(400).json({ error: "Group id is required" });
 
-    let groupName = "";
+    let group;
     try {
-      const g = await groups.getGroupById(groupId);
-      groupName = String(g?.name || "").trim();
+      group = await groups.getGroupById(groupId);
     } catch (_) {
       return res.status(404).json({ error: "Group not found" });
     }
@@ -892,7 +882,7 @@ router.put("/:groupId/admin-access", async (req, res) => {
 
     for (let idx = 0; idx < allAgencies.length; idx++) {
       const agency = allAgencies[idx];
-      if (isGroupOwnedByAgency(groupName, agency)) continue;
+      if (isGroupOwnedByAgency(group, agency)) continue;
 
       let ids = Array.isArray(agency.allowedAdminGroupIds)
         ? agency.allowedAdminGroupIds.map((id) => String(id).trim()).filter(Boolean)

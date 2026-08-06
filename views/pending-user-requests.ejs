@@ -998,7 +998,7 @@ th.sortable:hover{
   }
 
   function mainGroupNameForAgency(agencyLike) {
-    const prefix = String(agencyLike.groupPrefix || '').trim().toUpperCase();
+    const prefix = String(agencyLike.groupPrefix || '').trim();
     return prefix ? `tak_${prefix} Main` : '';
   }
 

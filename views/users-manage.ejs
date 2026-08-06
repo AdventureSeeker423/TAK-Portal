@@ -1449,7 +1449,7 @@ async function resolveManagedSuffixesForUser(user) {
   const groups = new Set((user?.groups || []).map((x) => String(x)));
   const suffixes = [];
   for (const a of allAgenciesCache) {
-    const abbr = String(a?.groupPrefix || "").trim().toUpperCase();
+    const abbr = String(a?.groupPrefix || "").trim();
     const ids = agencyAdminGroupIdIndexByAbbr?.get(abbr) || [];
     if (ids.some((id) => groups.has(String(id)))) {
       suffixes.push(String(a.suffix || "").trim().toLowerCase());
@@ -1476,10 +1476,10 @@ function getHomeSuffixForUser(user) {
   const attrs = user?.attributes || {};
   const direct = String(attrs.agency || "").trim().toLowerCase();
   if (direct) return direct;
-  const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+  const abbr = String(attrs.agency_abbreviation || "").trim().toLowerCase();
   if (!abbr) return "";
   const a = allAgenciesCache.find(
-    (x) => String(x?.groupPrefix || "").trim().toUpperCase() === abbr
+    (x) => String(x?.groupPrefix || "").trim().toLowerCase() === abbr
   );
   return a ? String(a.suffix || "").trim().toLowerCase() : "";
 }
@@ -2430,7 +2430,7 @@ function roleForUser(user){
     if (agencyAdminGroupIdIndexByAbbr) {
       const groupSet = new Set(groups);
       for (const a of allAgenciesCache) {
-        const abbr = String(a?.groupPrefix || "").trim().toUpperCase();
+        const abbr = String(a?.groupPrefix || "").trim();
         const ids = agencyAdminGroupIdIndexByAbbr.get(abbr) || [];
         if (ids.some((id) => groupSet.has(String(id)))) {
           managed.push(String(a.suffix || "").trim().toLowerCase());

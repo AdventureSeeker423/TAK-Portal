@@ -302,10 +302,10 @@
     const attrs = user?.attributes || {};
     const direct = String(attrs.agency || "").trim().toLowerCase();
     if (direct) return direct;
-    const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+    const abbr = String(attrs.agency_abbreviation || "").trim().toLowerCase();
     if (!abbr) return "";
     const a = allAgenciesCache.find(
-      (x) => String(x?.groupPrefix || "").trim().toUpperCase() === abbr
+      (x) => String(x?.groupPrefix || "").trim().toLowerCase() === abbr
     );
     return a ? String(a.suffix || "").trim().toLowerCase() : "";
   }

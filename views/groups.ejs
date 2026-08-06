@@ -659,7 +659,7 @@ async function loadAgencies(){
   agencyPrefixSelect.innerHTML =
     `<option value="">Select Agency</option>` +
     prefixList.map(a => {
-      const prefix = String(a.groupPrefix || "").trim().toUpperCase();
+      const prefix = String(a.groupPrefix || "").trim();
       const label = `${a.name} (${prefix})`;
       return `<option value="${esc(prefix)}">${esc(label)}</option>`;
     }).join("");
@@ -727,7 +727,7 @@ function agencyItems(){
     .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")))
     .map(a => {
       const sfx = String(a.suffix || "").trim().toLowerCase();
-      const prefix = String(a.groupPrefix || "").trim().toUpperCase();
+      const prefix = String(a.groupPrefix || "").trim();
       return { name: String(a.name || ""), suffix: sfx, prefix };
     });
 }
@@ -765,14 +765,14 @@ function parseGroupName(fullName) {
     const leftUpper = left.toUpperCase();
     const leftNoCoUpper = leftNoCo.toUpperCase();
 
-    // Check for agency prefix
+    // Check for agency short name (exact left side, case-insensitive)
     const agencyMatch = (agenciesCache || []).find(a =>
       String(a.groupPrefix || "").trim().toUpperCase() === leftUpper
     );
 
     if (agencyMatch) {
       type = "agency";
-      agencyPrefix = leftUpper;
+      agencyPrefix = String(agencyMatch.groupPrefix || "").trim() || left;
       baseName = right || "";
     } else {
       // Try County (compare uppercase)
@@ -816,18 +816,20 @@ function parseGroupName(fullName) {
 
 
   // Fallback parse for new format without " - "
-  // Agency: "<PREFIX> <Title>"
+  // Agency: "<PREFIX> <Title>" — longest short-name match (supports spaces)
   if (type === "generic") {
     const upperName = name.toUpperCase();
     const agencyPrefixes = (agenciesCache || [])
-      .map(a => String(a.groupPrefix || "").trim().toUpperCase())
+      .map((a) => String(a.groupPrefix || "").trim())
       .filter(Boolean)
-      .sort((a,b)=>b.length - a.length); // longest first, just in case
-    const hit = agencyPrefixes.find(pfx => upperName.startsWith(pfx + " "));
+      .sort((a, b) => b.length - a.length);
+    const hit = agencyPrefixes.find((pfx) =>
+      upperName.startsWith(pfx.toUpperCase() + " ")
+    );
     if (hit) {
       type = "agency";
       agencyPrefix = hit;
-      baseName = name.slice(hit.length + 1).trim(); // drop "<PREFIX> "
+      baseName = name.slice(hit.length + 1).trim();
     }
   }
 
@@ -912,11 +914,34 @@ function getPortalGroupCountyDetail(g) {
 }
 
 function getPortalGroupAgencyPrefixDetail(g) {
+  if (normalizeCreatedType(g?.attributes?.created_type) === "agency") {
+    const detail = String(g?.attributes?.created_type_detail || "").trim();
+    if (detail) {
+      const byName = agenciesCache.find(
+        (a) => String(a.name || "").trim().toLowerCase() === detail.toLowerCase()
+      );
+      if (byName) return String(byName.groupPrefix || "").trim();
+      return detail;
+    }
+  }
   const parsed = parseGroupName(g?.name || "");
   if (parsed.type === "agency" && parsed.agencyPrefix) {
-    return String(parsed.agencyPrefix).trim().toUpperCase();
+    return String(parsed.agencyPrefix).trim();
   }
   return "";
+}
+
+function getPortalGroupAgencyNameDetail(g) {
+  if (normalizeCreatedType(g?.attributes?.created_type) === "agency") {
+    return String(g?.attributes?.created_type_detail || "").trim();
+  }
+  const prefix = getPortalGroupAgencyPrefixDetail(g);
+  if (!prefix) return "";
+  const match = agenciesCache.find(
+    (a) =>
+      String(a.groupPrefix || "").trim().toLowerCase() === prefix.toLowerCase()
+  );
+  return match ? String(match.name || "").trim() : "";
 }
 
 // Build a full group name from broken-out fields
@@ -929,7 +954,7 @@ function buildGroupNameFromParts({ type, baseName, behavior, prefix, county, sta
   else if (b === "write") name += "_WRITE";
 
   if (type === "agency") {
-    const p = String(prefix || "").trim().toUpperCase();
+    const p = String(prefix || "").trim();
     if (!p) return "";
     name = `${p} ${name}`;
   } else if (type === "county") {
@@ -945,26 +970,43 @@ function buildGroupNameFromParts({ type, baseName, behavior, prefix, county, sta
   return ensureTakPrefix(name);
 }
 
-function isGroupEditable(name){
+function isGroupEditable(groupOrName){
   <% if (isGlobalAdmin) { %>
   return true;
   <% } %>
 
-  const raw = String(name || "").trim();
+  // Prefer full group object (attribute ownership); accept name string for legacy callers.
+  if (groupOrName && typeof groupOrName === "object") {
+    const detail = String(groupOrName?.attributes?.created_type_detail || "").trim();
+    const createdType = normalizeCreatedType(groupOrName?.attributes?.created_type);
+    if (createdType === "agency" && detail) {
+      return agenciesCache.some(
+        (a) => String(a.name || "").trim().toLowerCase() === detail.toLowerCase()
+      );
+    }
+  }
+
+  const raw = String(
+    (groupOrName && typeof groupOrName === "object"
+      ? groupOrName.name
+      : groupOrName) || ""
+  ).trim();
   if (!raw) return false;
 
-  // Remove tak_ prefix first
   const n = stripTakPrefix(raw);
-
-  // Agency groups are formatted as: "<PREFIX> <Title>"
-  const spIdx = n.indexOf(" ");
-  if (spIdx <= 0) return false;
-
-  const prefix = n.slice(0, spIdx).trim().toUpperCase();
-
-  return agenciesCache.some(a =>
-    String(a.groupPrefix || "").trim().toUpperCase() === prefix
-  );
+  const prefixes = agenciesCache
+    .map((a) => String(a.groupPrefix || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  const nUpper = n.toUpperCase();
+  return prefixes.some((prefix) => {
+    const p = prefix.toUpperCase();
+    return (
+      nUpper.startsWith(p + " ") ||
+      nUpper.startsWith(p + "-") ||
+      nUpper.startsWith(p + " -")
+    );
+  });
 }
 
 function renderAgencyList(){
@@ -1078,7 +1120,15 @@ function renderGroups(){
         filteredRaw = filteredRaw.filter(g => {
           if (getPortalGroupScope(g) !== "agency") return false;
           if (!detail) return true;
-          return getPortalGroupAgencyPrefixDetail(g) === String(detail).trim().toUpperCase();
+          const detailTrim = String(detail).trim();
+          const agencyName = getPortalGroupAgencyNameDetail(g);
+          if (agencyName && agencyName.toLowerCase() === detailTrim.toLowerCase()) {
+            return true;
+          }
+          return (
+            getPortalGroupAgencyPrefixDetail(g).toLowerCase() ===
+            detailTrim.toLowerCase()
+          );
         });
       }
     }
@@ -1088,7 +1138,7 @@ function renderGroups(){
 
   tbody.innerHTML = filtered.map(g => {
     const locked = groupActionsLocked(g.name);
-    const editable = !locked && isGroupEditable(g.name);
+    const editable = !locked && isGroupEditable(g);
     const desc = String(g?.attributes?.description || "").trim();
     const isPrivate = String(g?.attributes?.private || "").trim().toLowerCase() === "yes";
 
@@ -1175,22 +1225,22 @@ function updateGroupScopeDetailOptions() {
     groupScopeDetailWrap.style.display = "flex";
     groupScopeDetailSelect.value = "";
   } else if (scope === "agency") {
-    const prefixSet = new Set(
-      scopedAgencies
-        .map(a => String(a.groupPrefix || "").trim().toUpperCase())
-        .filter(Boolean)
-    );
-
-    const prefixList = Array.from(prefixSet).sort((a, b) => a.localeCompare(b));
-
-    const options = prefixList.map(prefix => {
-      const agency = scopedAgencies.find(
-        a => String(a.groupPrefix || "").trim().toUpperCase() === prefix
-      );
-      const name = agency?.name ? String(agency.name).trim() : "";
-      const label = name ? `${name} (${prefix})` : prefix;
-      return `<option value="${esc(prefix)}">${esc(label)}</option>`;
-    }).join("");
+    const options = scopedAgencies
+      .slice()
+      .sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+          sensitivity: "base",
+        })
+      )
+      .map((agency) => {
+        const name = String(agency?.name || "").trim();
+        const prefix = String(agency?.groupPrefix || "").trim();
+        if (!name) return "";
+        const label = prefix ? `${name} (${prefix})` : name;
+        return `<option value="${esc(name)}">${esc(label)}</option>`;
+      })
+      .filter(Boolean)
+      .join("");
 
     groupScopeDetailSelect.innerHTML =
       `<option value="">All Agency Groups</option>${options}`;
@@ -1291,7 +1341,7 @@ createBtn.onclick = async () => {
   const type = createType.value;
 
   if (type === "agency") {
-    const prefix = String(agencyPrefixSelect.value || "").trim().toUpperCase();
+    const prefix = String(agencyPrefixSelect.value || "").trim();
     if (!prefix) return setMsg(createMsg, "Select an agency prefix.", false);
     name = `${prefix} ${name}`;
   } else if (type === "county") {
@@ -1328,10 +1378,10 @@ createBtn.onclick = async () => {
 
   if (type === "agency") {
     groupType = "Agency";
-    const prefix = String(agencyPrefixSelect.value || "").trim().toUpperCase();
+    const prefix = String(agencyPrefixSelect.value || "").trim();
     const agencyObj = (agenciesCache || []).find(a => {
-      const p = String(a.groupPrefix || "").trim().toUpperCase();
-      return p === prefix;
+      const p = String(a.groupPrefix || "").trim();
+      return p.toLowerCase() === prefix.toLowerCase();
     });
     if (agencyObj && agencyObj.name) {
       groupTypeDetail = String(agencyObj.name);
@@ -1584,7 +1634,7 @@ function getAgencyLabelBySuffix(sfxRaw){
   );
   if (!agency) return sfx.toUpperCase();
   const name = String(agency?.name || "").trim();
-  const prefix = String(agency?.groupPrefix || "").trim().toUpperCase();
+  const prefix = String(agency?.groupPrefix || "").trim();
   return prefix ? `${name} (${prefix})` : name;
 }
 
@@ -1854,7 +1904,7 @@ editGroupSaveBtn.onclick = async () => {
   }
 
   if (type === "agency") {
-    prefix = String(editAgencyPrefixSelect?.value || "").trim().toUpperCase();
+    prefix = String(editAgencyPrefixSelect?.value || "").trim();
     if (!prefix) {
       setMsg(editGroupMsg, "Select an agency prefix.", false);
       return;
@@ -2428,7 +2478,7 @@ function showAdminAccessModal(on) {
 }
 
 function adminAccessAgencyLabel(a) {
-  const prefix = String(a.groupPrefix || "").trim().toUpperCase();
+  const prefix = String(a.groupPrefix || "").trim();
   const name = String(a.name || "").trim();
   return prefix ? `${name} (${prefix})` : name;
 }

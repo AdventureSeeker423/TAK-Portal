@@ -275,8 +275,12 @@ async function buildAgencyAllowedGroups(authUser) {
     const agency = agencies.find((a) => accessSvc.normalizeSuffix(a?.suffix) === norm);
     if (!agency) continue;
     const gp = String(agency.groupPrefix || "").trim();
-    if (!gp) continue;
-    const filtered = accessSvc.filterAgencySpecificGroupsForDashboard(authentikGroups, gp);
+    const agencyName = String(agency.name || "").trim();
+    if (!agencyName && !gp) continue;
+    const filtered = accessSvc.filterAgencySpecificGroupsForDashboard(
+      authentikGroups,
+      agencyName || gp
+    );
     for (const g of filtered) {
       const authentikName = String(g?.name || "").trim();
       if (!authentikName) continue;
@@ -288,7 +292,7 @@ async function buildAgencyAllowedGroups(authUser) {
         takDisplayName: takDisplayName(authentikName),
         canonicalKey,
         agencySuffix: norm,
-        groupPrefix: gp.toUpperCase(),
+        groupPrefix: gp,
       });
     }
   }

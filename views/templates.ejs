@@ -504,7 +504,7 @@ function updateTemplateAgencyFilterOptions(){
     `<option value="">All Agencies</option>` +
     agencies.map(a => {
       const suffix = String(a.suffix || "").trim().toLowerCase();
-      const abbr = String(a.groupPrefix || "").trim().toUpperCase();
+      const abbr = String(a.groupPrefix || "").trim();
       const name = String(a.name || "").trim();
       const label = abbr ? `${name} (${abbr})` : name;
       return `<option value="${esc(suffix)}">${esc(label)}</option>`;

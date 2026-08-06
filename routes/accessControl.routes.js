@@ -50,9 +50,9 @@ async function loadGroupNamesForUserId(userId) {
 
 function resolveDefaultManagedSuffixesForUser(user) {
   const attrs = user?.attributes || {};
-  const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+  const abbr = String(attrs.agency_abbreviation || "").trim().toLowerCase();
   const agency = (agenciesSvc.load() || []).find(
-    (a) => String(a?.groupPrefix || "").trim().toUpperCase() === abbr
+    (a) => String(a?.groupPrefix || "").trim().toLowerCase() === abbr
   );
   const sfx = agency ? String(agency.suffix || "").trim().toLowerCase() : "";
   return sfx ? [sfx] : [];

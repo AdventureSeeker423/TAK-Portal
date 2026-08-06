@@ -35,7 +35,7 @@ assert.strictEqual(complete.usernameTokenPlacement, "suffix");
 
 assert.throws(
   () => validateCreate(baseOtherPayload({ groupPrefix: "" })),
-  /Agency Abbreviation is required/
+  /Agency abbreviation \/ short name is required/
 );
 assert.throws(
   () => validateCreate(baseOtherPayload({ suffix: "" })),

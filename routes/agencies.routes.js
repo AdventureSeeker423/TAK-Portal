@@ -17,7 +17,7 @@ const userRequestsSvc = require("../services/userRequests.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
-  const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
+  const abbr = store.normalizeGroupPrefix(agency?.groupPrefix);
   const countyAbbrev = String(agency?.countyAbbrev || "").trim().toUpperCase();
   if (!abbr) return null;
   if (countyAbbrev) {
@@ -29,7 +29,7 @@ function getAgencyAdminGroupName(agency) {
 
 async function ensureAgencyAdminGroupExists(agency) {
   const name = getAgencyAdminGroupName(agency);
-  if (!name) throw new Error("Agency abbreviation (groupPrefix) is required");
+  if (!name) throw new Error("Agency abbreviation / short name is required");
 
   // Create (idempotent-ish): if the group already exists, Authentik will reject.
   // We treat "already exists" as success.
@@ -48,15 +48,25 @@ async function ensureAgencyAdminGroupExists(agency) {
     // Common Authentik duplicate patterns include "unique" / "already exists".
     const lower = msg.toLowerCase();
     if (lower.includes("already") || lower.includes("exists") || lower.includes("unique")) {
-      return { created: false, name };
+      try {
+        const existing = await getGroupByNameUnfiltered(name);
+        if (existing && store.isAgencyOwnedGroup(existing, agency)) {
+          return { created: false, name };
+        }
+      } catch (_) {
+        // fall through
+      }
+      throw new Error(
+        `Authentik group "${name}" already exists and is not owned by this agency`
+      );
     }
     throw err;
   }
 }
 
 async function ensureAgencyMainGroupExists(agency, actor) {
-  const groupPrefix = String(agency?.groupPrefix || "").trim().toUpperCase();
-  if (!groupPrefix) throw new Error("Agency abbreviation (groupPrefix) is required");
+  const groupPrefix = store.normalizeGroupPrefix(agency?.groupPrefix);
+  if (!groupPrefix) throw new Error("Agency abbreviation / short name is required");
 
   const name = `tak_${groupPrefix} Main`;
   const attributes = {
@@ -86,7 +96,18 @@ async function ensureAgencyMainGroupExists(agency, actor) {
       lower.includes("exists") ||
       lower.includes("unique")
     ) {
-      return { created: false, name, group: null };
+      // Soft-success only when the existing group belongs to this agency (idempotent re-ensure).
+      try {
+        const existing = await getGroupByNameUnfiltered(name);
+        if (existing && store.isAgencyOwnedGroup(existing, agency)) {
+          return { created: false, name, group: existing };
+        }
+      } catch (_) {
+        // fall through to throw
+      }
+      throw new Error(
+        `Authentik group "${name}" already exists and is not owned by this agency`
+      );
     }
     throw err;
   }
@@ -133,7 +154,7 @@ function normalizeAgency(a) {
     countyAbbrev: String(a.countyAbbrev || "").trim().toUpperCase(),
     state: String(a.state || "").trim().toUpperCase(),
     suffix: String(a.suffix || "").trim().toLowerCase(),
-    groupPrefix: String(a.groupPrefix || "").trim().toUpperCase(),
+    groupPrefix: store.normalizeGroupPrefix(a.groupPrefix),
     color: String(a.color || "").trim(),
     stateFederalAgency: !!stateFederalAgency,
     usernameTokenPlacement: accessSvc.normalizeUsernameTokenPlacement(
@@ -160,9 +181,10 @@ function normalizeAgency(a) {
 
 function validateAgency(a) {
   if (!a.name) return "Name is required";
-  if (!a.state) return "State is required";   // ← ADD THIS
+  if (!a.state) return "State is required";
   if (!a.suffix) return "Username suffix is required";
-  if (!a.groupPrefix) return "Group prefix is required";
+  const gpErr = store.validateGroupPrefix(a.groupPrefix);
+  if (gpErr) return gpErr;
   if (!a.color) return "Agency color is required";
   const isStateFederal = !!a.stateFederalAgency;
   if (!isStateFederal) {
@@ -289,7 +311,7 @@ function parseCsvLine(line) {
 function buildAgenciesExportCsv(agencies) {
   const header = [
     "Agency Full Name",
-    "Agency Abbreviation",
+    "Agency Abbreviation / Short Name",
     "Username Agency Identifier",
     "Username Identifier",
     "State",
@@ -460,6 +482,12 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Suffix already exists" });
   }
 
+  const dupPrefix = store.assertUniqueGroupPrefix(agencies, a.groupPrefix);
+  if (dupPrefix) return res.status(400).json({ error: dupPrefix });
+
+  const dupName = store.assertUniqueAgencyName(agencies, a.name);
+  if (dupName) return res.status(400).json({ error: dupName });
+
   try {
     // Ensure the agency admin group exists in Authentik.
     await ensureAgencyAdminGroupExists(a);
@@ -577,8 +605,15 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
       { key: "name", label: "Agency Full Name", aliases: ["agency full name", "name"] },
       {
         key: "groupPrefix",
-        label: "Agency Abbreviation",
-        aliases: ["agency abbreviation", "groupprefix", "abbreviation"],
+        label: "Agency Abbreviation / Short Name",
+        aliases: [
+          "agency abbreviation / short name",
+          "agency abbreviation",
+          "agency short name",
+          "groupprefix",
+          "abbreviation",
+          "short name",
+        ],
       },
       {
         key: "suffix",
@@ -655,6 +690,14 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
       allAgencies.map((a) => String(a?.suffix || "").trim().toLowerCase()).filter(Boolean)
     );
     const seenIncomingSuffixes = new Set();
+    const existingPrefixes = new Set(
+      allAgencies.map((a) => store.groupPrefixKey(a?.groupPrefix)).filter(Boolean)
+    );
+    const seenIncomingPrefixes = new Set();
+    const existingNames = new Set(
+      allAgencies.map((a) => store.agencyNameKey(a?.name)).filter(Boolean)
+    );
+    const seenIncomingNames = new Set();
 
     const created = [];
     const skipped = [];
@@ -665,7 +708,7 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
       const line = i + 1;
 
       const name = get(parts, "name");
-      const groupPrefix = get(parts, "groupPrefix").toUpperCase();
+      const groupPrefix = store.normalizeGroupPrefix(get(parts, "groupPrefix"));
       const suffix = get(parts, "suffix").toLowerCase();
       const state = get(parts, "state").toUpperCase();
       const county = normalizeCountyName(get(parts, "county"));
@@ -695,9 +738,6 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
         rowErrors.push(
           "Username identifier can only contain lowercase letters, numbers, dashes, and underscores"
         );
-      }
-      if (candidate.groupPrefix && !/^[A-Z0-9_-]+$/.test(candidate.groupPrefix)) {
-        rowErrors.push("Agency abbreviation can only contain letters, numbers, dashes, and underscores");
       }
       if (candidate.state && !ALLOWED_STATES.has(candidate.state)) {
         rowErrors.push(`Invalid state "${candidate.state}"`);
@@ -761,11 +801,52 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
         continue;
       }
 
+      const prefixKey = store.groupPrefixKey(candidate.groupPrefix);
+      if (existingPrefixes.has(prefixKey)) {
+        skipped.push({
+          line,
+          suffix: candidate.suffix,
+          reason: "Agency abbreviation / short name already exists",
+        });
+        continue;
+      }
+      if (seenIncomingPrefixes.has(prefixKey)) {
+        skipped.push({
+          line,
+          suffix: candidate.suffix,
+          reason: "Duplicate agency abbreviation / short name in CSV",
+        });
+        continue;
+      }
+
+      const nameKey = store.agencyNameKey(candidate.name);
+      if (existingNames.has(nameKey)) {
+        skipped.push({
+          line,
+          suffix: candidate.suffix,
+          reason: "Agency name already exists",
+        });
+        continue;
+      }
+      if (seenIncomingNames.has(nameKey)) {
+        skipped.push({
+          line,
+          suffix: candidate.suffix,
+          reason: "Duplicate agency name in CSV",
+        });
+        continue;
+      }
+
       try {
         await ensureAgencyAdminGroupExists(candidate);
+        await ensureAgencyMainGroupExists(candidate, req.authentikUser || null);
         allAgencies.push(candidate);
         existingSuffixes.add(candidate.suffix);
         seenIncomingSuffixes.add(candidate.suffix);
+        existingPrefixes.add(prefixKey);
+        seenIncomingPrefixes.add(prefixKey);
+        existingNames.add(nameKey);
+        seenIncomingNames.add(nameKey);
         created.push({
           line,
           suffix: candidate.suffix,
@@ -779,7 +860,7 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
             err?.response?.data?.detail ||
               err?.response?.data ||
               err?.message ||
-              "Failed to create agency admin group",
+              "Failed to create agency groups",
           ],
         });
       }
@@ -943,7 +1024,11 @@ router.post("/:index/rename-agency-name", async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const validationErr = agencyNameRenameSvc.validateNewAgencyName(req.body?.name);
+    const validationErr = agencyNameRenameSvc.validateNewAgencyName(
+      req.body?.name,
+      agencies,
+      idx
+    );
     if (validationErr) {
       return res.status(400).json({ error: validationErr });
     }
@@ -1008,7 +1093,7 @@ router.post("/:index/rename-group-prefix", async (req, res) => {
       return res.status(400).json({ error: validationErr });
     }
 
-    const beforeAbbr = String(agency.groupPrefix || "").trim().toUpperCase();
+    const beforeAbbr = store.normalizeGroupPrefix(agency.groupPrefix);
     const result = await agencyAbbrevRenameSvc.renameAgencyGroupPrefix(
       idx,
       req.body.groupPrefix
@@ -1090,6 +1175,12 @@ router.put("/:index", async (req, res) => {
     return res.status(400).json({ error: "Suffix already exists" });
   }
 
+  const dupPrefix = store.assertUniqueGroupPrefix(agencies, a.groupPrefix, idx);
+  if (dupPrefix) return res.status(400).json({ error: dupPrefix });
+
+  const dupName = store.assertUniqueAgencyName(agencies, a.name, idx);
+  if (dupName) return res.status(400).json({ error: dupName });
+
   try {
     // If the abbreviation changed (or group is missing), create the new admin group.
     await ensureAgencyAdminGroupExists(a);
@@ -1137,9 +1228,9 @@ router.put("/:index/county-abbrev", async (req, res) => {
       return res.status(400).json({ error: "County abbreviation must contain only letters" });
     }
 
-    const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
+    const abbr = store.normalizeGroupPrefix(agency?.groupPrefix);
     if (!abbr) {
-      return res.status(400).json({ error: "Agency abbreviation (groupPrefix) is missing" });
+      return res.status(400).json({ error: "Agency abbreviation / short name is missing" });
     }
 
     const oldCountyAbbrev = String(agency.countyAbbrev || "").trim().toUpperCase();
@@ -1185,7 +1276,7 @@ router.put("/:index/county-abbrev", async (req, res) => {
       const ag = agencies[i];
       if (!ag) continue;
 
-      const gp = String(ag.groupPrefix || "").trim().toUpperCase();
+      const gp = store.normalizeGroupPrefix(ag.groupPrefix);
       if (!gp) continue;
 
       const prevCountyAbbrev = String(ag.countyAbbrev || "").trim().toUpperCase();

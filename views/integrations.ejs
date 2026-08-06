@@ -367,7 +367,7 @@
     agencySelect.innerHTML =
       "<option value=\"\">Select Agency</option>" +
       prefixList.map(function (a) {
-        const prefix = String(a.groupPrefix || "").trim().toUpperCase();
+        const prefix = String(a.groupPrefix || "").trim();
         const label = (a.name || "") + " (" + prefix + ")";
         return "<option value=\"" + esc(prefix) + "\">" + esc(label) + "</option>";
       }).join("");

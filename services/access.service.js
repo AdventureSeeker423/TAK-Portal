@@ -255,7 +255,7 @@ function stripAgencyTokenFromBadge(badgeNumber, agencySuffix, placementOrAgency)
 
 /**
  * Resolve the portal agency suffix for a user from Authentik attributes, then username.
- * Order: attributes.agency (validated) â†’ agency_name â†’ agency_abbreviation â†’ username tail/prefix.
+ * Order: attributes.agency (validated) ? agency_name ? agency_abbreviation ? username tail/prefix.
  *
  * @param {object|null|undefined} user - Authentik user shape ({ username, attributes })
  * @returns {string} normalized suffix or ""
@@ -317,7 +317,9 @@ function resolveAgencySuffixFromUser(user) {
 }
 
 function getAgencyAdminGroupName(agency) {
-  const abbr = String(agency?.groupPrefix || agency?.suffix || "").trim().toUpperCase();
+  const abbr = agenciesStore.normalizeGroupPrefix(
+    agency?.groupPrefix || agency?.suffix || ""
+  );
   const countyAbbrev = String(agency?.countyAbbrev || "").trim().toUpperCase();
   if (!abbr) return null;
   if (countyAbbrev) {
@@ -329,7 +331,9 @@ function getAgencyAdminGroupName(agency) {
 
 function getAllAgencyAdminGroupNames(agency) {
   const names = [];
-  const abbr = String(agency?.groupPrefix || agency?.suffix || "").trim().toUpperCase();
+  const abbr = agenciesStore.normalizeGroupPrefix(
+    agency?.groupPrefix || agency?.suffix || ""
+  );
   const countyAbbrev = String(agency?.countyAbbrev || "").trim().toUpperCase();
   if (!abbr) return names;
   if (countyAbbrev) {
@@ -376,7 +380,7 @@ function getAllowedAgencySuffixesForGroups(userGroups) {
       agency.adminGroups != null ? agency.adminGroups : agency.adminGroup;
     const legacyAdminList = normalizeGroupList(rawAdmin);
 
-    // New (computed) admin group name(s) â€“ support both legacy and county-abbrev patterns
+    // New (computed) admin group name(s)  support both legacy and county-abbrev patterns
     const computedNames = getAllAgencyAdminGroupNames(agency).map((n) =>
       n.toLowerCase()
     );
@@ -522,7 +526,7 @@ function isUsernameInAllowedAgencies(authUser, username) {
 
 /**
  * TAK subscription rows: resolve the username to a single agency suffix (longest
- * known match at tail, then prefix — same rules as Total Users / Users by Agency),
+ * known match at tail, then prefix  same rules as Total Users / Users by Agency),
  * then check whether that suffix is in the viewer's allowed list.
  */
 function isUsernameInAllowedAgencySuffixes(authUser, username) {
@@ -548,24 +552,34 @@ function isUsernameInAllowedAgencySuffixes(authUser, username) {
  * countyPrefixes: e.g. ["HAMILTON", "BRADLEY"]
  * statePrefixes: e.g. ["TN", "GA"]
  */
-function getAgencyCountyAndStatePrefixesForUser(authUser) {
+function collectManagedAgencyScope(authUser) {
   const access = getAgencyAccess(authUser);
   if (access.isGlobalAdmin) {
-    // null means "no restriction"
-    return { agencyPrefixes: null, countyPrefixes: null, statePrefixes: null };
+    return {
+      agencyPrefixes: null,
+      agencyNames: null,
+      countyPrefixes: null,
+      statePrefixes: null,
+    };
   }
 
   const allowed = Array.isArray(access.allowedAgencySuffixes)
     ? access.allowedAgencySuffixes.map(normalizeSuffix).filter(Boolean)
     : [];
   if (!allowed.length) {
-    return { agencyPrefixes: [], countyPrefixes: [], statePrefixes: [] };
+    return {
+      agencyPrefixes: [],
+      agencyNames: [],
+      countyPrefixes: [],
+      statePrefixes: [],
+    };
   }
 
   const allowedSet = new Set(allowed);
   const agencies = agenciesStore.load();
 
   const agencyPrefixes = [];
+  const agencyNames = [];
   const countyPrefixes = [];
   const statePrefixes = [];
 
@@ -573,8 +587,19 @@ function getAgencyCountyAndStatePrefixesForUser(authUser) {
     const sfx = normalizeSuffix(agency && agency.suffix);
     if (!sfx || !allowedSet.has(sfx)) continue;
 
-    const gp = String(agency.groupPrefix || "").trim().toUpperCase();
-    if (gp && !agencyPrefixes.includes(gp)) {
+    const an = String(agency.name || "").trim();
+    if (
+      an &&
+      !agencyNames.some((n) => n.toLowerCase() === an.toLowerCase())
+    ) {
+      agencyNames.push(an);
+    }
+
+    const gp = agenciesStore.normalizeGroupPrefix(agency.groupPrefix);
+    if (
+      gp &&
+      !agencyPrefixes.some((p) => p.toLowerCase() === gp.toLowerCase())
+    ) {
       agencyPrefixes.push(gp);
     }
 
@@ -583,61 +608,37 @@ function getAgencyCountyAndStatePrefixesForUser(authUser) {
       countyPrefixes.push(county);
     }
 
-    // State groups follow the same prefix-before-dash convention as county groups.
-    // Derive the user's allowed state prefixes from their allowed agencies.
     const state = String(agency.state || "").trim().toUpperCase();
     if (state && !statePrefixes.includes(state)) {
       statePrefixes.push(state);
     }
   }
 
-  return { agencyPrefixes, countyPrefixes, statePrefixes };
+  return { agencyPrefixes, agencyNames, countyPrefixes, statePrefixes };
+}
+
+function getAgencyCountyAndStatePrefixesForUser(authUser) {
+  return collectManagedAgencyScope(authUser);
 }
 
 // Backwards-compatible alias (older callers expect this name).
-// It now also returns statePrefixes.
+// Also returns agencyNames for attribute-based ownership.
 function getAgencyAndCountyPrefixesForUser(authUser) {
-  const access = getAgencyAccess(authUser);
-  if (access.isGlobalAdmin) {
-    return { agencyPrefixes: null, countyPrefixes: null, statePrefixes: null };
-  }
+  return collectManagedAgencyScope(authUser);
+}
 
+/** Agencies the user administers (from allowed suffixes). */
+function getManagedAgenciesForUser(authUser) {
+  const access = getAgencyAccess(authUser);
+  if (access.isGlobalAdmin) return null;
   const allowed = Array.isArray(access.allowedAgencySuffixes)
     ? access.allowedAgencySuffixes.map(normalizeSuffix).filter(Boolean)
     : [];
-
-  if (!allowed.length) {
-    return { agencyPrefixes: [], countyPrefixes: [], statePrefixes: [] };
-  }
-
+  if (!allowed.length) return [];
   const allowedSet = new Set(allowed);
-  const agencies = agenciesStore.load();
-
-  const agencyPrefixes = [];
-  const countyPrefixes = [];
-  const statePrefixes = [];
-
-  for (const agency of agencies) {
-    const sfx = normalizeSuffix(agency?.suffix);
-    if (!sfx || !allowedSet.has(sfx)) continue;
-
-    const gp = String(agency.groupPrefix || "").trim().toUpperCase();
-    if (gp && !agencyPrefixes.includes(gp)) {
-      agencyPrefixes.push(gp);
-    }
-
-    const county = String(agency.county || "").trim().toUpperCase();
-    if (county && !countyPrefixes.includes(county)) {
-      countyPrefixes.push(county);
-    }
-
-    const state = String(agency.state || "").trim().toUpperCase();
-    if (state && !statePrefixes.includes(state)) {
-      statePrefixes.push(state);
-    }
-  }
-
-  return { agencyPrefixes, countyPrefixes, statePrefixes };
+  return agenciesStore
+    .load()
+    .filter((a) => allowedSet.has(normalizeSuffix(a?.suffix)));
 }
 
 /**
@@ -668,7 +669,7 @@ function getAllowedAdminGroupIdsForUser(authUser) {
 
 /**
  * Whether the user is allowed to modify (e.g. mass assign/unassign) this group.
- * Global admins: yes. Agency admins: only their agency-prefixed groups or groups in allowedAdminGroupIds.
+ * Global admins: yes. Agency admins: owned groups (created_type_detail) or allowedAdminGroupIds.
  */
 function canUserModifyGroup(authUser, group) {
   const access = getAgencyAccess(authUser);
@@ -677,13 +678,9 @@ function canUserModifyGroup(authUser, group) {
   const pk = String(group.pk).trim();
   const allowedExtraIds = getAllowedAdminGroupIdsForUser(authUser);
   if (allowedExtraIds && pk && allowedExtraIds.has(pk)) return true;
-  let name = String(group.name || "").trim();
-  if (name.toLowerCase().startsWith("tak_")) name = name.slice(4);
-  const spaceIdx = name.toUpperCase().indexOf(" ");
-  if (spaceIdx <= 0) return false;
-  const prefix = name.slice(0, spaceIdx).trim().toUpperCase();
-  const { agencyPrefixes } = getAgencyAndCountyPrefixesForUser(authUser);
-  return Array.isArray(agencyPrefixes) && agencyPrefixes.length > 0 && agencyPrefixes.includes(prefix);
+  const managed = getManagedAgenciesForUser(authUser);
+  if (!Array.isArray(managed) || !managed.length) return false;
+  return managed.some((a) => agenciesStore.isAgencyOwnedGroup(group, a));
 }
 
 function isGroupMarkedPrivate(group) {
@@ -707,19 +704,39 @@ function getGroupNamePrefixUpper(group) {
 }
 
 /**
- * Agency dashboard group total: only groups named with this agency's groupPrefix.
+ * Agency dashboard group total: groups owned by this agency via created_type_detail.
  * Excludes private groups and does not count county/state/global groups from allowedAdminGroupIds.
  *
  * @param {object[]} groups
- * @param {string} groupPrefix - agency.groupPrefix (e.g. "HCSO")
+ * @param {string} agencyNameOrPrefix - preferred: full agency name; groupPrefix still accepted
  */
-function filterAgencySpecificGroupsForDashboard(groups, groupPrefix) {
-  const prefix = String(groupPrefix || "").trim().toUpperCase();
-  if (!prefix) return [];
+function filterAgencySpecificGroupsForDashboard(groups, agencyNameOrPrefix) {
+  const key = String(agencyNameOrPrefix || "").trim();
+  if (!key) return [];
+  const keyLower = key.toLowerCase();
+  const agencies = agenciesStore.load();
+  const agency =
+    agencies.find(
+      (a) => String(a?.name || "").trim().toLowerCase() === keyLower
+    ) ||
+    agencies.find(
+      (a) =>
+        agenciesStore.normalizeGroupPrefix(a?.groupPrefix).toLowerCase() ===
+        keyLower
+    ) ||
+    null;
 
   return (Array.isArray(groups) ? groups : []).filter((g) => {
     if (isGroupMarkedPrivate(g)) return false;
-    return getGroupNamePrefixUpper(g) === prefix;
+    if (agency) return agenciesStore.isAgencyOwnedGroup(g, agency);
+    const attrs =
+      g?.attributes && typeof g.attributes === "object" ? g.attributes : {};
+    if (String(attrs.created_type || "").trim().toLowerCase() !== "agency") {
+      return false;
+    }
+    return (
+      String(attrs.created_type_detail || "").trim().toLowerCase() === keyLower
+    );
   });
 }
 
@@ -728,7 +745,7 @@ function filterAgencySpecificGroupsForDashboard(groups, groupPrefix) {
  *
  * - Global admins: see all groups (after GROUPS_HIDDEN_PREFIXES is applied).
  * - Agency admins: see only
- *   - their own agency's groups (name prefix = agency groupPrefix; unless marked private),
+ *   - their own agency's groups (created_type=Agency + created_type_detail=full name),
  *   - plus groups explicitly granted via the agency's allowedAdminGroupIds (set on Agencies page).
  * County and state groups are NOT shown by default; only if added to allowedAdminGroupIds.
  */
@@ -740,11 +757,9 @@ function filterGroupsForUser(authUser, groups) {
     return list;
   }
 
-  const { agencyPrefixes } = getAgencyAndCountyPrefixesForUser(authUser);
+  const managed = getManagedAgenciesForUser(authUser);
   const allowedExtraIds = getAllowedAdminGroupIdsForUser(authUser);
-
-  const hasAgencyPrefixes =
-    Array.isArray(agencyPrefixes) && agencyPrefixes.length > 0;
+  const hasManaged = Array.isArray(managed) && managed.length > 0;
 
   return list.filter((g) => {
     if (isGroupMarkedPrivate(g)) return false;
@@ -752,19 +767,17 @@ function filterGroupsForUser(authUser, groups) {
     const pk = String(g?.pk ?? g?.id ?? "").trim();
     if (allowedExtraIds && pk && allowedExtraIds.has(pk)) return true;
 
-    const prefix = getGroupNamePrefixUpper(g);
-    if (!prefix) return false;
-
-    // Agency admins: only their agency-prefixed groups by default (not county/state)
-    if (hasAgencyPrefixes && agencyPrefixes.includes(prefix)) return true;
+    if (hasManaged && managed.some((a) => agenciesStore.isAgencyOwnedGroup(g, a))) {
+      return true;
+    }
 
     return false;
   });
 }
 
 /**
- * Agency-only page titles (Users, Groups, Templates): single managed agency â†’ groupPrefix (e.g. "HCSO").
- * Multiple agencies or global admin â†’ null (views use generic "Agency â€¦" or default title).
+ * Agency-only page titles (Users, Groups, Templates): single managed agency ? groupPrefix (e.g. "HCSO").
+ * Multiple agencies or global admin ? null (views use generic "Agency " or default title).
  */
 function getAgencyPageTitleAbbrev(authUser) {
   const access = getAgencyAccess(authUser);
@@ -782,9 +795,10 @@ function getAgencyPageTitleAbbrev(authUser) {
     if (!norm) continue;
     const agency = agencies.find((a) => normalizeSuffix(a && a.suffix) === norm);
     if (!agency) continue;
-    const gp = String(agency.groupPrefix || "").trim().toUpperCase();
-    if (!gp || seen.has(gp)) continue;
-    seen.add(gp);
+    const gp = agenciesStore.normalizeGroupPrefix(agency.groupPrefix);
+    const key = gp.toLowerCase();
+    if (!gp || seen.has(key)) continue;
+    seen.add(key);
     prefixes.push(gp);
   }
 
@@ -1144,6 +1158,7 @@ module.exports = {
   // Export both names; older routes use getAgencyAndCountyPrefixesForUser.
   getAgencyCountyAndStatePrefixesForUser,
   getAgencyAndCountyPrefixesForUser,
+  getManagedAgenciesForUser,
   filterGroupsForUser,
   isGroupMarkedPrivate,
   getGroupNamePrefixUpper,

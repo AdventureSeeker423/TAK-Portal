@@ -12,7 +12,7 @@ const accessSvc = require("./access.service");
 const usersService = require("./users.service");
 
 function getAgencyAdminGroupName(agency) {
-  const abbr = String(agency?.groupPrefix || "").trim().toUpperCase();
+  const abbr = agenciesStore.normalizeGroupPrefix(agency?.groupPrefix);
   const countyAbbrev = String(agency?.countyAbbrev || "").trim().toUpperCase();
   if (!abbr) return null;
   if (countyAbbrev) {
@@ -51,7 +51,7 @@ async function getGroupByNameUnfiltered(groupName) {
 
 async function ensureAgencyAdminGroupExists(agency) {
   const name = getAgencyAdminGroupName(agency);
-  if (!name) throw new Error("Agency abbreviation (groupPrefix) is required");
+  if (!name) throw new Error("Agency abbreviation / short name is required");
 
   const attributes = {
     created_at: new Date().toISOString(),
@@ -67,24 +67,25 @@ async function ensureAgencyAdminGroupExists(agency) {
     const msg = String(err?.response?.data?.detail || err?.response?.data || err?.message || "");
     const lower = msg.toLowerCase();
     if (lower.includes("already") || lower.includes("exists") || lower.includes("unique")) {
-      return { created: false, name };
+      const existing = await getGroupByNameUnfiltered(name);
+      if (existing && agenciesStore.isAgencyOwnedGroup(existing, agency)) {
+        return { created: false, name };
+      }
+      throw new Error(
+        `Authentik group "${name}" already exists and is not owned by this agency`
+      );
     }
     throw err;
   }
 }
 
 function validateNewGroupPrefix(raw) {
-  const gp = String(raw || "").trim().toUpperCase();
-  if (!gp) return "Agency abbreviation is required";
-  if (!/^[A-Z0-9_-]+$/.test(gp)) {
-    return "Agency abbreviation can only contain letters, numbers, dashes, and underscores";
-  }
-  return null;
+  return agenciesStore.validateGroupPrefix(raw);
 }
 
 async function updateUsersAgencyAbbreviation(agencyName, newAbbrev) {
   const name = String(agencyName || "").trim();
-  const abbr = String(newAbbrev || "").trim().toUpperCase();
+  const abbr = agenciesStore.normalizeGroupPrefix(newAbbrev);
   if (!name || !abbr) return { matched: 0, updated: 0 };
 
   const hiddenPrefixes = String(getString("USERS_HIDDEN_PREFIXES", "") || "")
@@ -133,15 +134,13 @@ async function updateUsersAgencyAbbreviation(agencyName, newAbbrev) {
       if (agencyNameAttr !== name) continue;
 
       matched += 1;
-      const currentAbbr = String(
+      const currentAbbr = agenciesStore.normalizeGroupPrefix(
         attrs.agency_abbreviation ||
           attrs.agencyAbbreviation ||
           attrs.agencyAbbr ||
           attrs.agencyabbr ||
           ""
-      )
-        .trim()
-        .toUpperCase();
+      );
 
       if (currentAbbr === abbr) continue;
 
@@ -297,7 +296,7 @@ function updateAgencyTemplatesGroupNames(agencySuffix, oldPrefix, newPrefix, gro
 
 /**
  * @param {number} agencyIndex - index in agencies.json
- * @param {string} newGroupPrefix - new abbreviation (uppercased)
+ * @param {string} newGroupPrefix - new abbreviation / short name (exact casing preserved)
  */
 async function renameAgencyGroupPrefix(agencyIndex, newGroupPrefix) {
   const idx = Number(agencyIndex);
@@ -309,9 +308,12 @@ async function renameAgencyGroupPrefix(agencyIndex, newGroupPrefix) {
   const err = validateNewGroupPrefix(newGroupPrefix);
   if (err) throw new Error(err);
 
+  const newPrefix = agenciesStore.normalizeGroupPrefix(newGroupPrefix);
+  const dup = agenciesStore.assertUniqueGroupPrefix(agencies, newPrefix, idx);
+  if (dup) throw new Error(dup);
+
   const agency = agencies[idx];
-  const oldPrefix = String(agency.groupPrefix || "").trim().toUpperCase();
-  const newPrefix = String(newGroupPrefix || "").trim().toUpperCase();
+  const oldPrefix = agenciesStore.normalizeGroupPrefix(agency.groupPrefix);
 
   if (oldPrefix === newPrefix) {
     return {

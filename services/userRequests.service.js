@@ -145,7 +145,7 @@ function normalizeRequestedAgencyFields(input) {
   const stateFederalAgency =
     sfRaw === "yes" || sfRaw === "true" || sfRaw === "1" || input?.stateFederalAgency === true;
   return {
-    groupPrefix: normalizeStr(input.groupPrefix).toUpperCase(),
+    groupPrefix: agenciesStore.normalizeGroupPrefix(input.groupPrefix),
     usernameTokenPlacement: accessSvc.normalizeUsernameTokenPlacement(
       input.usernameTokenPlacement || "suffix"
     ),
@@ -196,7 +196,8 @@ function validateCreate(input) {
   if (isOther) {
     if (!otherAgency) throw new Error("Please enter your agency name");
     if (!otherReason) throw new Error("Please enter your reason for requesting access");
-    if (!requestedAgency.groupPrefix) throw new Error("Agency Abbreviation is required");
+    const gpErr = agenciesStore.validateGroupPrefix(requestedAgency.groupPrefix);
+    if (gpErr) throw new Error(gpErr);
     if (!requestedAgency.suffix) throw new Error("Username Suffix/Prefix is required");
     if (!requestedAgency.state) throw new Error("State is required");
     if (!ALLOWED_REQUEST_STATES.has(requestedAgency.state)) {
@@ -409,7 +410,7 @@ const reasonLine = reqObj.otherReason
 const isOtherRequest = reqObj.agencySuffix === "__other__";
 const otherAgencyDetailsText = isOtherRequest
   ? [
-      `Agency Abbreviation: ${reqObj.groupPrefix || ""}`,
+      `Agency Abbreviation / Short Name: ${reqObj.groupPrefix || ""}`,
       `Username Identifier: ${reqObj.usernameTokenPlacement || "suffix"} (${reqObj.suffix || ""})`,
       `State: ${reqObj.state || ""}`,
       `State/Federal Agency: ${reqObj.stateFederalAgency ? "Yes" : "No"}`,
@@ -420,7 +421,7 @@ const otherAgencyDetailsText = isOtherRequest
   : "";
 const otherAgencyDetailsHtml = isOtherRequest
   ? `
-  <strong>Agency Abbreviation:</strong> ${escapeHtml(reqObj.groupPrefix || "")}<br/>
+  <strong>Agency Abbreviation / Short Name:</strong> ${escapeHtml(reqObj.groupPrefix || "")}<br/>
   <strong>Username Identifier:</strong> ${escapeHtml(reqObj.usernameTokenPlacement || "suffix")} (${escapeHtml(reqObj.suffix || "")})<br/>
   <strong>State:</strong> ${escapeHtml(reqObj.state || "")}<br/>
   <strong>State/Federal Agency:</strong> ${escapeHtml(reqObj.stateFederalAgency ? "Yes" : "No")}<br/>
@@ -538,7 +539,7 @@ function markAgencyCreated(id, agency, mainGroupName) {
   }
 
   const suffix = normalizeStr(agency?.suffix).toLowerCase();
-  const groupPrefix = normalizeStr(agency?.groupPrefix).toUpperCase();
+  const groupPrefix = agenciesStore.normalizeGroupPrefix(agency?.groupPrefix);
   if (!suffix) throw new Error("Created agency suffix is required");
 
   all[index].createdAgency = {

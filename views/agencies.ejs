@@ -61,7 +61,7 @@
         <thead>
           <tr>
             <th data-sort="name" role="button" tabindex="0" title="Sort by Agency">Agency</th>
-            <th data-sort="groupPrefix" role="button" tabindex="0" title="Sort by Abbreviation">Abbreviation</th>
+            <th data-sort="groupPrefix" role="button" tabindex="0" title="Sort by Agency Abbreviation / Short Name">Abbreviation / Short Name</th>
             <th data-sort="suffix" role="button" tabindex="0" title="Sort by username identifier">Username Identifier</th>
             <th class="agencyStateFederalHeader" data-sort="stateFederalAgency" role="button" tabindex="0" title="Sort by State/Federal Agency">State/Federal</th>
             <th data-sort="county" role="button" tabindex="0" title="Sort by County">County</th>
@@ -424,14 +424,14 @@ function updateAgencyNameLocal(agencyIndex, raw) {
 
 function buildAgencyAbbrCellHtml(a) {
   const idx = a._id ?? a.id;
-  const val = String(a.groupPrefix || "").trim().toUpperCase();
+  const val = String(a.groupPrefix || "").trim();
   const aria = esc(a.name || "Agency");
-  return `<input type="text" class="agency-abbr-input" aria-label="Abbreviation for ${aria}" value="${esc(val)}" pattern="[A-Z0-9_-]+" title="Letters, numbers, dashes, and underscores" oninput="this.value = this.value.toUpperCase(); updateAgencyAbbrLocal(${Number(idx)}, this.value)" />`;
+  return `<input type="text" class="agency-abbr-input" aria-label="Abbreviation / Short Name for ${aria}" value="${esc(val)}" pattern="[A-Za-z0-9 _-]+" title="Letters, numbers, spaces, dashes, and underscores" oninput="updateAgencyAbbrLocal(${Number(idx)}, this.value)" />`;
 }
 
 function updateAgencyAbbrLocal(agencyIndex, raw) {
   const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
-  if (row) row.groupPrefix = String(raw || "").trim().toUpperCase();
+  if (row) row.groupPrefix = String(raw || "").trim();
 }
 
 function countyMatchKey(state, county) {
@@ -665,7 +665,7 @@ function normalizeVal(v){
 }
 
 function adminGroupNameForAgency(a){
-  const abbr = String(a?.groupPrefix || "").trim().toUpperCase();
+  const abbr = String(a?.groupPrefix || "").trim();
   const countyAbbrev = String(a?.countyAbbrev || "").trim().toUpperCase();
   if (!abbr) return "";
   if (countyAbbrev) {
@@ -799,7 +799,7 @@ function renderAgencies(){
               }`
         }
       </td>
-      <td class="agencyAbbrCell" data-label="Abbreviation">${
+      <td class="agencyAbbrCell" data-label="Abbreviation / Short Name">${
         agencyAttributesEditMode ? buildAgencyAbbrCellHtml(a) : esc(a.groupPrefix)
       }</td>
       <td class="agencySuffixCell" data-label="Username Identifier">${esc(formatAgencyIdentifierDisplay(a))}</td>
@@ -1521,6 +1521,42 @@ addForm.onsubmit = async (e) => {
   e.preventDefault();
   setMsg("");
 
+  const groupPrefixInput = addForm.elements.groupPrefix;
+  if (groupPrefixInput) {
+    const gp = String(groupPrefixInput.value || "").trim();
+    groupPrefixInput.value = gp;
+    if (!gp || !/^[A-Za-z0-9 _-]+$/.test(gp)) {
+      setMsg(
+        "Agency abbreviation / short name can only contain letters, numbers, spaces, dashes, and underscores",
+        false
+      );
+      return;
+    }
+    const gpLower = gp.toLowerCase();
+    if (
+      agencies.some(
+        (a) => String(a.groupPrefix || "").trim().toLowerCase() === gpLower
+      )
+    ) {
+      setMsg("Agency abbreviation / short name already exists", false);
+      return;
+    }
+  }
+
+  const nameInput = addForm.elements.name;
+  if (nameInput) {
+    const nm = String(nameInput.value || "").trim();
+    nameInput.value = nm;
+    const nmLower = nm.toLowerCase();
+    if (
+      nm &&
+      agencies.some((a) => String(a.name || "").trim().toLowerCase() === nmLower)
+    ) {
+      setMsg("Agency name already exists", false);
+      return;
+    }
+  }
+
   // Normalize county before sending to backend
   const countyInput = addForm.elements.county;
   countyInput.value = normalizeCountyName(countyInput.value);
@@ -1587,8 +1623,8 @@ function agencyNameChanged(a) {
 function agencyAbbrevChanged(a) {
   const id = String(a._id ?? a.id ?? "");
   if (!id || !(id in abbrevSnapshotById)) return false;
-  const oldAbbr = String(abbrevSnapshotById[id] || "").trim().toUpperCase();
-  const newAbbr = String(a.groupPrefix || "").trim().toUpperCase();
+  const oldAbbr = String(abbrevSnapshotById[id] || "").trim();
+  const newAbbr = String(a.groupPrefix || "").trim();
   return oldAbbr && newAbbr && oldAbbr !== newAbbr;
 }
 
@@ -1788,7 +1824,7 @@ async function finishAgencyAttributesEditing() {
       }
       if (agencyAbbrevChanged(a)) {
         parts.push(
-          `abbrev: ${abbrevSnapshotById[id]} → ${String(a.groupPrefix || "").trim().toUpperCase()}`
+          `abbrev: ${abbrevSnapshotById[id]} → ${String(a.groupPrefix || "").trim()}`
         );
       }
       const label = String(nameSnapshotById[id] || a.name || "Agency");
@@ -1952,9 +1988,22 @@ async function finishAgencyAttributesEditing() {
     const displayName = String(nameSnapshotById[String(idx)] || a.name || "Agency");
 
     if (agencyAbbrevChanged(a)) {
-      const gp = String(a.groupPrefix || "").trim().toUpperCase();
-      if (!/^[A-Z0-9_-]+$/.test(gp)) {
-        errors.push(`${String(a.name || displayName)}: invalid abbreviation`);
+      const gp = String(a.groupPrefix || "").trim();
+      if (!gp || !/^[A-Za-z0-9 _-]+$/.test(gp)) {
+        errors.push(
+          `${String(a.name || displayName)}: invalid abbreviation / short name (letters, numbers, spaces, dashes, underscores)`
+        );
+        continue;
+      }
+      const gpLower = gp.toLowerCase();
+      const dup = agencies.some((other) => {
+        if (String(other._id ?? other.id) === String(idx)) return false;
+        return String(other.groupPrefix || "").trim().toLowerCase() === gpLower;
+      });
+      if (dup) {
+        errors.push(
+          `${String(a.name || displayName)}: agency abbreviation / short name already exists`
+        );
         continue;
       }
       try {
@@ -1971,7 +2020,7 @@ async function finishAgencyAttributesEditing() {
           throw new Error(
             typeof data.error === "string"
               ? data.error
-              : data.error?.detail || data.error || "Abbreviation rename failed"
+              : data.error?.detail || data.error || "Abbreviation / short name rename failed"
           );
         }
         if (!data.skipped) {
@@ -2090,7 +2139,7 @@ if (agencyAttributesEditBtn) {
       const id = String(a._id ?? a.id ?? "");
       if (!id) continue;
       nameSnapshotById[id] = String(a.name || "").trim();
-      abbrevSnapshotById[id] = String(a.groupPrefix || "").trim().toUpperCase();
+      abbrevSnapshotById[id] = String(a.groupPrefix || "").trim();
       stateSnapshotById[id] = String(a.state || "").trim().toUpperCase();
       countySnapshotById[id] = String(a.county || "").trim();
       countyAbbrevSnapshotById[id] = String(a.countyAbbrev || "").trim().toUpperCase();
@@ -2132,20 +2181,18 @@ function displayGroupName(name) {
   return String(name || "").replace(/^tak_/i, "");
 }
 
-function getGroupPrefix(groupName) {
-  const n = String(groupName || "").trim();
-  const withoutTak = n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
-  const spaceIdx = withoutTak.toUpperCase().indexOf(" ");
-  if (spaceIdx <= 0) return "";
-  return withoutTak.slice(0, spaceIdx).trim().toUpperCase();
-}
-
-// Exclude only this agency's own groups (prefix = agency abbreviation). Include global, state, and county.
-function isGroupRelatedToAgency(groupName, agency) {
-  const prefix = getGroupPrefix(groupName);
-  if (!prefix) return false;
-  const gp = String(agency?.groupPrefix || "").trim().toUpperCase();
-  return prefix === gp;
+// Exclude this agency's own groups via created_type / created_type_detail (full agency name).
+function isGroupRelatedToAgency(group, agency) {
+  const name = String(agency?.name || "").trim();
+  if (!name) return false;
+  const attrs =
+    group && typeof group === "object" && group.attributes && typeof group.attributes === "object"
+      ? group.attributes
+      : {};
+  const createdType = String(attrs.created_type || "").trim().toLowerCase();
+  if (createdType !== "agency") return false;
+  const detail = String(attrs.created_type_detail || "").trim();
+  return detail.toLowerCase() === name.toLowerCase();
 }
 
 function renderAccessGroupsGrid(filterText) {
@@ -2211,7 +2258,7 @@ window.openAccessGroupsModal = async (agencyId) => {
     if (!allowedRes.ok) throw new Error(allowedData.error || "Failed to load access groups");
 
     const allGroups = Array.isArray(groupsData) ? groupsData : [];
-    accessGroupsSelectable = allGroups.filter(g => !isGroupRelatedToAgency(g.name, a));
+    accessGroupsSelectable = allGroups.filter(g => !isGroupRelatedToAgency(g, a));
     accessGroupsPickedIds = new Set(Array.isArray(allowedData.allowedAdminGroupIds) ? allowedData.allowedAdminGroupIds : []);
 
     accessGroupsSummary.textContent = `Select extra groups that administrators for "${esc(a.name || "")}" can see. They always see their own agency groups.`;

@@ -15,7 +15,7 @@
   }
 
   function formatSummaryLabel(a) {
-    const abbr = String(a?.groupPrefix || a?.suffix || "").trim().toUpperCase();
+    const abbr = String(a?.groupPrefix || a?.suffix || "").trim();
     if (abbr) return abbr;
     return String(a?.name || "").trim();
   }

@@ -225,7 +225,7 @@ function resolveManagedAgenciesForUser(authUser) {
     byNameKey.set(key, {
       name,
       suffix: norm,
-      groupPrefix: String(agency.groupPrefix || "").trim().toUpperCase(),
+      groupPrefix: String(agency.groupPrefix || "").trim(),
       color: String(agency.color || "").trim() || null,
     });
   }
@@ -255,7 +255,7 @@ async function refreshAgencyNow(agencyName, { expectedAgencySuffix, groupPrefix,
 
       const filteredGroups = accessSvc.filterAgencySpecificGroupsForDashboard(
         groups || [],
-        groupPrefix
+        name || groupPrefix
       );
 
       const entry = {

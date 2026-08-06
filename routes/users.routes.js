@@ -618,8 +618,11 @@ router.get("/agency-admin-group-ids", async (req, res) => {
     const abbreviationsRaw = String(req.query.abbreviations || "");
     const abbreviations = abbreviationsRaw
       .split(",")
-      .map(s => String(s || "").trim().toUpperCase())
+      .map((s) => String(s || "").trim())
       .filter(Boolean);
+    const abbreviationKeys = new Set(
+      abbreviations.map((s) => s.toLowerCase())
+    );
 
     if (!abbreviations.length) {
       return res.status(400).json({ error: "abbreviations is required" });
@@ -639,8 +642,8 @@ router.get("/agency-admin-group-ids", async (req, res) => {
       if (!access.isGlobalAdmin) {
         if (!sfx || !allowedSuffixes.includes(sfx)) return false;
       }
-      const gp = String(a?.groupPrefix || "").trim().toUpperCase();
-      return gp && abbreviations.includes(gp);
+      const gp = String(a?.groupPrefix || "").trim();
+      return gp && abbreviationKeys.has(gp.toLowerCase());
     });
 
     // Build expected Authentik group names for those agencies.
@@ -648,23 +651,24 @@ router.get("/agency-admin-group-ids", async (req, res) => {
     // - computed name using county abbreviation if present
     // - legacy county-less name as fallback
     const expectedNameLowerToAbbrs = new Map(); // nameLower -> Set<ABBR>
-    const addExpected = (groupName, abbrUpper) => {
+    const addExpected = (groupName, abbrKey) => {
       const n = String(groupName || "").trim();
       const lower = n.toLowerCase();
-      if (!n || !abbrUpper) return;
+      if (!n || !abbrKey) return;
       if (!expectedNameLowerToAbbrs.has(lower)) expectedNameLowerToAbbrs.set(lower, new Set());
-      expectedNameLowerToAbbrs.get(lower).add(abbrUpper);
+      expectedNameLowerToAbbrs.get(lower).add(abbrKey);
     };
 
     for (const a of matchingAgencies) {
-      const abbrUpper = String(a?.groupPrefix || "").trim().toUpperCase();
-      if (!abbrUpper) continue;
+      const abbrExact = String(a?.groupPrefix || "").trim();
+      if (!abbrExact) continue;
+      const abbrKey = abbrExact.toLowerCase();
 
       const computed = accessSvc.getAgencyAdminGroupName(a);
-      addExpected(computed, abbrUpper);
+      addExpected(computed, abbrKey);
 
       // Legacy fallback: authentik-<ABBR>-AgencyAdmin
-      addExpected(`authentik-${abbrUpper}-AgencyAdmin`, abbrUpper);
+      addExpected(`authentik-${abbrExact}-AgencyAdmin`, abbrKey);
     }
 
     const nameLowerToPk = await getAllHiddenGroupsNameLowerToPk();
@@ -675,9 +679,12 @@ router.get("/agency-admin-group-ids", async (req, res) => {
     for (const [nameLower, abbrSet] of expectedNameLowerToAbbrs.entries()) {
       const pk = nameLowerToPk.get(nameLower);
       if (!pk) continue;
-      for (const abbrUpper of abbrSet) {
-        if (!Array.isArray(out[abbrUpper])) out[abbrUpper] = [];
-        out[abbrUpper].push(pk);
+      for (const abbrKey of abbrSet) {
+        for (const orig of abbreviations) {
+          if (orig.toLowerCase() !== abbrKey) continue;
+          if (!Array.isArray(out[orig])) out[orig] = [];
+          out[orig].push(pk);
+        }
       }
     }
 
@@ -1775,9 +1782,9 @@ router.get("/:userId", async (req, res) => {
 
 function resolveDefaultManagedSuffixesForUser(user) {
   const attrs = user?.attributes || {};
-  const abbr = String(attrs.agency_abbreviation || "").trim().toUpperCase();
+  const abbr = String(attrs.agency_abbreviation || "").trim().toLowerCase();
   const agency = (agenciesSvc.load() || []).find(
-    (a) => String(a?.groupPrefix || "").trim().toUpperCase() === abbr
+    (a) => String(a?.groupPrefix || "").trim().toLowerCase() === abbr
   );
   const sfx = agency ? String(agency.suffix || "").trim().toLowerCase() : "";
   return sfx ? [sfx] : [];

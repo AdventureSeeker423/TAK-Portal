@@ -2622,7 +2622,7 @@ function getAgencyLabelBySuffix(sfxRaw){
   );
   if (!agency) return sfx.toUpperCase();
   const name = String(agency?.name || "").trim();
-  const prefix = String(agency?.groupPrefix || "").trim().toUpperCase();
+  const prefix = String(agency?.groupPrefix || "").trim();
   return prefix ? `${name} (${prefix})` : name;
 }
 

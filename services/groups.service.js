@@ -234,8 +234,9 @@ async function searchGroupsRaw(searchTerm, { includeHidden = false } = {}) {
 }
 
 async function getGroupsByPrefix(groupPrefix) {
-  const prefix = String(groupPrefix || "").trim().toUpperCase();
+  const prefix = agenciesStore.normalizeGroupPrefix(groupPrefix);
   if (!prefix) return [];
+  const prefixUpper = prefix.toUpperCase();
 
   const searchTerms = [`tak_${prefix}`, prefix];
   const seen = new Set();
@@ -247,7 +248,42 @@ async function getGroupsByPrefix(groupPrefix) {
       const pk = String(g?.pk ?? g?.id ?? "").trim();
       if (!pk || seen.has(pk)) continue;
       if (accessSvc.isGroupMarkedPrivate(g)) continue;
-      if (accessSvc.getGroupNamePrefixUpper(g) !== prefix) continue;
+      if (accessSvc.getGroupNamePrefixUpper(g) !== prefixUpper) continue;
+      seen.add(pk);
+      matches.push(g);
+    }
+  }
+
+  return matches;
+}
+
+/** Groups owned by agency full name (created_type_detail), with search fallback. */
+async function getGroupsByAgencyName(agencyName) {
+  const name = String(agencyName || "").trim();
+  if (!name) return [];
+  const agency = { name };
+  const searchTerms = [name];
+  const gp = (() => {
+    const agencies = agenciesStore.load();
+    const found = agencies.find(
+      (a) => String(a?.name || "").trim().toLowerCase() === name.toLowerCase()
+    );
+    return agenciesStore.normalizeGroupPrefix(found?.groupPrefix);
+  })();
+  if (gp) {
+    searchTerms.push(`tak_${gp}`, gp);
+  }
+
+  const seen = new Set();
+  const matches = [];
+
+  for (const term of searchTerms) {
+    const batch = await searchGroupsRaw(term);
+    for (const g of batch) {
+      const pk = String(g?.pk ?? g?.id ?? "").trim();
+      if (!pk || seen.has(pk)) continue;
+      if (accessSvc.isGroupMarkedPrivate(g)) continue;
+      if (!agenciesStore.isAgencyOwnedGroup(g, agency)) continue;
       seen.add(pk);
       matches.push(g);
     }
@@ -257,7 +293,7 @@ async function getGroupsByPrefix(groupPrefix) {
 }
 
 /**
- * Agency / multi-agency admin fast path: prefix-scoped Authentik search per
+ * Agency / multi-agency admin fast path: attribute-scoped Authentik search per
  * managed agency plus explicitly granted groups (allowedAdminGroupIds).
  */
 async function getGroupsForAuthUser(authUser, { forceRefresh = false } = {}) {
@@ -266,12 +302,12 @@ async function getGroupsForAuthUser(authUser, { forceRefresh = false } = {}) {
     return getAllGroups({ forceRefresh });
   }
 
-  const { agencyPrefixes } = accessSvc.getAgencyAndCountyPrefixesForUser(authUser);
-  const prefixes = Array.isArray(agencyPrefixes) ? agencyPrefixes : [];
-  if (!prefixes.length) return [];
+  const { agencyNames } = accessSvc.getAgencyAndCountyPrefixesForUser(authUser);
+  const names = Array.isArray(agencyNames) ? agencyNames : [];
+  if (!names.length) return [];
 
-  const byPrefix = await Promise.all(prefixes.map((p) => getGroupsByPrefix(p)));
-  const merged = byPrefix.flat();
+  const byAgency = await Promise.all(names.map((n) => getGroupsByAgencyName(n)));
+  const merged = byAgency.flat();
 
   const havePks = new Set(
     merged
@@ -854,11 +890,12 @@ async function patchGroupNameAndCn(groupId, newName, opts = {}) {
 }
 
 function rewriteTakGroupNamePrefix(groupName, oldPrefix, newPrefix) {
-  const oldP = String(oldPrefix || "").trim().toUpperCase();
-  const newP = String(newPrefix || "").trim().toUpperCase();
+  const oldP = agenciesStore.normalizeGroupPrefix(oldPrefix);
+  const newP = agenciesStore.normalizeGroupPrefix(newPrefix);
   const original = String(groupName || "").trim();
   if (!oldP || !newP || oldP === newP) return original;
 
+  const oldUpper = oldP.toUpperCase();
   let n = stripTakPrefix(original);
   let behavior = "";
   if (n.endsWith("_READ")) {
@@ -869,25 +906,23 @@ function rewriteTakGroupNamePrefix(groupName, oldPrefix, newPrefix) {
     n = n.slice(0, -6);
   }
 
-  const dashIdx = n.indexOf(" - ");
-  if (dashIdx > 0) {
-    const left = n.slice(0, dashIdx).trim().toUpperCase();
-    const right = n.slice(dashIdx + 3);
-    if (left === oldP) {
-      return ensureTakPrefix(`${newP} - ${right}${behavior}`);
-    }
-  }
+  const nUpper = n.toUpperCase();
 
-  const spaceIdx = n.indexOf(" ");
-  if (spaceIdx > 0) {
-    const left = n.slice(0, spaceIdx).trim().toUpperCase();
-    const right = n.slice(spaceIdx + 1);
-    if (left === oldP) {
-      return ensureTakPrefix(`${newP} ${right}${behavior}`);
-    }
+  // Prefer full oldPrefix match (supports multi-word short names with spaces).
+  if (nUpper.startsWith(oldUpper + " - ")) {
+    const right = n.slice(oldP.length + 3);
+    return ensureTakPrefix(`${newP} - ${right}${behavior}`);
   }
-
-  if (n.trim().toUpperCase() === oldP) {
+  if (nUpper.startsWith(oldUpper + " ")) {
+    const right = n.slice(oldP.length + 1);
+    return ensureTakPrefix(`${newP} ${right}${behavior}`);
+  }
+  if (nUpper.startsWith(oldUpper + "-") && !nUpper.startsWith(oldUpper + " -")) {
+    const right = n.slice(oldP.length);
+    // Keep the separator character from the original ("-" or rest after prefix)
+    return ensureTakPrefix(`${newP}${right}${behavior}`);
+  }
+  if (nUpper === oldUpper) {
     return ensureTakPrefix(`${newP}${behavior}`);
   }
 
@@ -1648,6 +1683,8 @@ async function collectGroupsExportRows(groups, { authUser, agencyAbbreviation, a
 module.exports = {
   getAllGroups,
   getGroupsForAuthUser,
+  getGroupsByPrefix,
+  getGroupsByAgencyName,
   resolveAgencyAbbreviationsForAuthUser,
   getGroupById,
   createGroup,
