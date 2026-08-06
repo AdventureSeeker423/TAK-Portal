@@ -11,7 +11,7 @@ import type {
   WorkerInbound,
   WorkerOutbound,
 } from "../types";
-import { MAP_DIFF_FLUSH_MS } from "../constants";
+import { MAP_DIFF_FLUSH_MS, VIEW_FLUSH_MS } from "../constants";
 import { buildPaintFeature, featurePropertyPatch, pointInBounds } from "../featureBuild";
 import { computeLabelVisibility } from "../labelDeclutter";
 import { vectorId } from "../uidHash";
@@ -20,6 +20,8 @@ const markers = new Map<string, SlimMarker>();
 const sourceUids = new Set<string>();
 const readyIcons = new Set<string>();
 const liveShapes = new Map<string, LiveShapeFeature>();
+/** Sticky label flags — recomputed on camera/selection, not every CoT move. */
+const showLabelByUid = new Map<string, number>();
 
 let revision = 0;
 let bounds: LonLatBounds | null = null;
@@ -32,8 +34,10 @@ let enabledKeys: Set<string> | null = null;
 let scopeKeys: Set<string> | null = null;
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let flushDelayMs = MAP_DIFF_FLUSH_MS;
 let dirty = false;
 let needFullResync = true;
+let labelsNeedRecompute = true;
 
 function post(msg: WorkerOutbound): void {
   (self as DedicatedWorkerGlobalScope).postMessage(msg);
@@ -81,13 +85,28 @@ function shouldMap(marker: SlimMarker): boolean {
   return pointInBounds(Number(marker.lon), Number(marker.lat), bounds);
 }
 
-function scheduleFlush(): void {
+function scheduleFlush(delayMs: number = MAP_DIFF_FLUSH_MS): void {
   dirty = true;
-  if (flushTimer != null) return;
+  if (flushTimer != null) {
+    // Promote to a sooner flush if a view update needs it.
+    if (delayMs < flushDelayMs) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+      flushDelayMs = delayMs;
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flushDelayMs = MAP_DIFF_FLUSH_MS;
+        flush();
+      }, delayMs);
+    }
+    return;
+  }
+  flushDelayMs = delayMs;
   flushTimer = setTimeout(() => {
     flushTimer = null;
+    flushDelayMs = MAP_DIFF_FLUSH_MS;
     flush();
-  }, MAP_DIFF_FLUSH_MS);
+  }, delayMs);
 }
 
 function visibleMarkers(): SlimMarker[] {
@@ -98,6 +117,23 @@ function visibleMarkers(): SlimMarker[] {
   return out;
 }
 
+function resolveShowLabel(uid: string, labelMap: Map<string, number> | null): number {
+  if (uid === selectedUid || uid === lockedUid) {
+    showLabelByUid.set(uid, 1);
+    return 1;
+  }
+  if (labelMap) {
+    const v = labelMap.get(uid) ?? 0;
+    showLabelByUid.set(uid, v);
+    return v;
+  }
+  if (showLabelByUid.has(uid)) return showLabelByUid.get(uid) as number;
+  // New marker entering the padded viewport mid-stream: show until next camera pass.
+  const fallback = zoom >= 7 ? 1 : 0;
+  showLabelByUid.set(uid, fallback);
+  return fallback;
+}
+
 function buildFeature(marker: SlimMarker, showLabel: number): MarkerFeature | null {
   const mapImageId = String(marker.mapImageId || "").trim();
   const hasMapImage = !!mapImageId && /^mimg-[0-9a-f]{16}$/i.test(mapImageId);
@@ -106,7 +142,6 @@ function buildFeature(marker: SlimMarker, showLabel: number): MarkerFeature | nu
     lockedUid,
     showLabel,
     overviewMode,
-    // true only when bitmap is installed (or marker has no icon to wait for)
     iconReady: !hasMapImage || readyIcons.has(mapImageId),
   });
 }
@@ -129,20 +164,26 @@ function flush(): void {
   dirty = false;
 
   const visible = visibleMarkers();
-  const labelMap = computeLabelVisibility(visible, {
-    zoom,
-    selectedUid,
-    lockedUid,
-    bounds,
-  });
+  let labelMap: Map<string, number> | null = null;
+  if (labelsNeedRecompute || needFullResync) {
+    labelMap = computeLabelVisibility(visible, {
+      zoom,
+      selectedUid,
+      lockedUid,
+      bounds,
+    });
+    labelsNeedRecompute = false;
+  }
 
   if (needFullResync) {
     needFullResync = false;
     const features: MarkerFeature[] = [];
     const next = new Set<string>();
+    showLabelByUid.clear();
     for (const m of visible) {
       const uid = String(m.uid);
-      const feat = buildFeature(m, labelMap.get(uid) ?? 0);
+      const showLabel = resolveShowLabel(uid, labelMap);
+      const feat = buildFeature(m, showLabel);
       if (!feat) continue;
       features.push(feat);
       next.add(uid);
@@ -167,7 +208,8 @@ function flush(): void {
   const want = new Map<string, MarkerFeature>();
   for (const m of visible) {
     const uid = String(m.uid);
-    const feat = buildFeature(m, labelMap.get(uid) ?? 0);
+    const showLabel = resolveShowLabel(uid, labelMap);
+    const feat = buildFeature(m, showLabel);
     if (!feat) continue;
     want.set(uid, feat);
     nextUids.add(uid);
@@ -178,6 +220,7 @@ function flush(): void {
   for (const uid of sourceUids) {
     if (!nextUids.has(uid)) {
       diff.remove.push(vectorId(uid));
+      showLabelByUid.delete(uid);
     }
   }
 
@@ -188,47 +231,56 @@ function flush(): void {
     }
     const marker = markers.get(uid);
     if (!marker) continue;
-    diff.update.push({
-      id: feat.id,
-      newGeometry: feat.geometry,
-      addOrUpdateProperties: featurePropertyPatch(marker, {
-        selectedUid,
-        lockedUid,
-        showLabel: labelMap.get(uid) ?? 0,
-        overviewMode,
-        iconReady:
-          !String(marker.mapImageId || "") ||
-          readyIcons.has(String(marker.mapImageId || "")),
-      }),
-    });
+    const showLabel = resolveShowLabel(uid, labelMap);
+    // Geometry always; full property patch only when labels were recomputed or icon state may change.
+    if (labelMap) {
+      diff.update.push({
+        id: feat.id,
+        newGeometry: feat.geometry,
+        addOrUpdateProperties: featurePropertyPatch(marker, {
+          selectedUid,
+          lockedUid,
+          showLabel,
+          overviewMode,
+          iconReady:
+            !String(marker.mapImageId || "") ||
+            readyIcons.has(String(marker.mapImageId || "")),
+        }),
+      });
+    } else {
+      const mapImageId = String(marker.mapImageId || "").trim();
+      const hasMapImage = !!mapImageId && /^mimg-[0-9a-f]{16}$/i.test(mapImageId);
+      const iconReady = !hasMapImage || readyIcons.has(mapImageId);
+      const showCircle = overviewMode || !hasMapImage || !iconReady ? 1 : 0;
+      diff.update.push({
+        id: feat.id,
+        newGeometry: feat.geometry,
+        addOrUpdateProperties: [
+          { key: "callsign", value: String(marker.callsign || uid.slice(0, 16)) },
+          { key: "color", value: feat.properties.color },
+          { key: "iconId", value: feat.properties.iconId },
+          { key: "showCircle", value: showCircle },
+          { key: "showLabel", value: showLabel },
+          { key: "selected", value: uid === selectedUid },
+          { key: "locked", value: uid === lockedUid },
+        ],
+      });
+    }
   }
 
   sourceUids.clear();
   for (const uid of nextUids) sourceUids.add(uid);
 
-  if (diff.add.length || diff.update.length || diff.remove.length) {
-    post({
-      type: "diff",
-      diff,
-      meta: {
-        total: markers.size,
-        visible: visible.length,
-        mapped: nextUids.size,
-        revision,
-      },
-    });
-  } else {
-    post({
-      type: "diff",
-      diff,
-      meta: {
-        total: markers.size,
-        visible: visible.length,
-        mapped: nextUids.size,
-        revision,
-      },
-    });
-  }
+  post({
+    type: "diff",
+    diff,
+    meta: {
+      total: markers.size,
+      visible: visible.length,
+      mapped: nextUids.size,
+      revision,
+    },
+  });
 }
 
 function emitShapes(): void {
@@ -245,9 +297,11 @@ function handle(msg: WorkerInbound): void {
     case "reset": {
       markers.clear();
       sourceUids.clear();
+      showLabelByUid.clear();
       for (const m of msg.markers || []) upsertMarker(m);
       revision = Number(msg.revision) || revision;
       needFullResync = true;
+      labelsNeedRecompute = true;
       emitSearchIndex();
       scheduleFlush();
       break;
@@ -255,6 +309,7 @@ function handle(msg: WorkerInbound): void {
     case "batch": {
       for (const uid of msg.removes || []) {
         markers.delete(String(uid));
+        showLabelByUid.delete(String(uid));
       }
       for (const m of msg.updates || []) upsertMarker(m);
       if (msg.revision != null) revision = Number(msg.revision) || revision;
@@ -263,10 +318,16 @@ function handle(msg: WorkerInbound): void {
       break;
     }
     case "setView": {
+      const nextZoom = Number(msg.zoom) || zoom;
       bounds = msg.bounds;
-      zoom = Number(msg.zoom) || zoom;
+      zoom = nextZoom;
       overviewMode = !!msg.overviewMode;
-      scheduleFlush();
+      // Live pan: paint the padded fringe without reshuffling labels.
+      // Settled camera / explicit true: recompute which callsigns stay visible.
+      if (msg.recomputeLabels !== false) {
+        labelsNeedRecompute = true;
+      }
+      scheduleFlush(VIEW_FLUSH_MS);
       break;
     }
     case "setChannels": {
@@ -275,17 +336,20 @@ function handle(msg: WorkerInbound): void {
         msg.enabledKeys == null ? null : new Set(msg.enabledKeys.map((k) => String(k).toLowerCase()));
       scopeKeys =
         msg.scopeKeys == null ? null : new Set(msg.scopeKeys.map((k) => String(k).toLowerCase()));
+      labelsNeedRecompute = true;
       scheduleFlush();
       break;
     }
     case "setSelection": {
       selectedUid = msg.selectedUid ? String(msg.selectedUid) : null;
       lockedUid = msg.lockedUid ? String(msg.lockedUid) : null;
-      scheduleFlush();
+      labelsNeedRecompute = true;
+      scheduleFlush(VIEW_FLUSH_MS);
       break;
     }
     case "forceResync": {
       needFullResync = true;
+      labelsNeedRecompute = true;
       scheduleFlush();
       break;
     }

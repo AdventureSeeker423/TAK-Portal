@@ -97,6 +97,8 @@ export type WorkerInbound =
       bounds: LonLatBounds | null;
       zoom: number;
       overviewMode: boolean;
+      /** When false, expand/cull painted markers without reshuffling showLabel. */
+      recomputeLabels?: boolean;
     }
   | {
       type: "setChannels";

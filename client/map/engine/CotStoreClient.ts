@@ -106,8 +106,13 @@ export class CotStoreClient {
     this.send({ type: "batch", updates, removes, revision });
   }
 
-  setView(bounds: LonLatBounds | null, zoom: number, overviewMode: boolean): void {
-    this.send({ type: "setView", bounds, zoom, overviewMode });
+  setView(
+    bounds: LonLatBounds | null,
+    zoom: number,
+    overviewMode: boolean,
+    recomputeLabels: boolean = true
+  ): void {
+    this.send({ type: "setView", bounds, zoom, overviewMode, recomputeLabels });
   }
 
   setChannels(

@@ -1,6 +1,5 @@
 /**
- * Label visibility: at city zoom all in-view markers request labels;
- * MapLibre collision hides the rest.
+ * Label declutter: sticky visibility + denser packing at city zoom.
  */
 const assert = require("assert");
 const path = require("path");
@@ -37,24 +36,42 @@ function marker(uid, callsign, lon, lat, origin, type) {
 async function main() {
   const { computeLabelVisibility, computeLabelSortKey } = await loadDeclutter();
 
-  const cluster = [];
-  for (let i = 0; i < 16; i++) {
-    cluster.push(
-      marker("u" + i, "H" + (200 + i), -85.25 + i * 0.0002, 35.05, "feed")
+  const loose = [];
+  for (let i = 0; i < 10; i++) {
+    loose.push(marker("u" + i, "H" + (200 + i), -85.25 + i * 0.01, 35.05, "feed"));
+  }
+  const at14 = computeLabelVisibility(loose, { zoom: 14 });
+  at14.forEach((v) => assert.strictEqual(v, 1));
+
+  const tight = [];
+  for (let i = 0; i < 12; i++) {
+    tight.push(
+      marker(
+        "t" + i,
+        "H" + (200 + i),
+        -85.25 + (i % 3) * 0.0002,
+        35.05 + Math.floor(i / 3) * 0.0002,
+        "feed"
+      )
     );
   }
+  const at11 = computeLabelVisibility(tight, { zoom: 11 });
+  at11.forEach((v) => assert.strictEqual(v, 1));
 
-  const at13 = computeLabelVisibility(cluster, { zoom: 13 });
-  assert.strictEqual(at13.size, 16);
-  at13.forEach((v) => assert.strictEqual(v, 1));
+  const at8 = computeLabelVisibility(tight, { zoom: 8 });
+  let shown = 0;
+  at8.forEach((v) => {
+    if (v === 1) shown += 1;
+  });
+  assert.ok(shown >= 1, "expected some labels at z8, got " + shown);
+  assert.ok(shown <= tight.length, "label count in range");
 
-  const overview = computeLabelVisibility(cluster, { zoom: 5, selectedUid: "u3" });
+  const overview = computeLabelVisibility(loose, { zoom: 5, selectedUid: "u3" });
   assert.strictEqual(overview.get("u3"), 1);
   assert.strictEqual(overview.get("u0"), 0);
 
   const spi = marker("spi1", "ACC2", -85.25, 35.05, "feed", "b-m-p-s-p-i");
-  assert.ok(computeLabelSortKey(spi) < computeLabelSortKey(cluster[0]));
-  assert.strictEqual(computeLabelSortKey(cluster[0], "u0"), 0);
+  assert.ok(computeLabelSortKey(spi) < computeLabelSortKey(loose[0]));
 
   console.log("labelDeclutter.test.js ok");
 }

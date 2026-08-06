@@ -201,7 +201,7 @@
   let mapDiffFlushPending = false;
   const SERVER_GEO_DEBOUNCE_MS = 50;
   const MAP_DIFF_FLUSH_MS = 500;
-  const VIEWPORT_PAD_RATIO = 0.25;
+  const VIEWPORT_PAD_RATIO = 0.55;
   const VIEWPORT_SYNC_DEBOUNCE_MS = 200;
   const LABEL_STREAM_DECLUTTER_MS = 1500;
   const GEO_RECONCILE_MS = 45000;
@@ -4460,10 +4460,11 @@
       "text-size": 12,
       "text-anchor": "bottom",
       "text-offset": [0, -1.55],
-      // Priority (selected/locked) always paints; standard uses MapLibre collision.
-      "text-allow-overlap": priority,
-      "text-ignore-placement": priority,
-      "text-optional": !priority,
+      // Always allow overlap — MapLibre collision reshuffles on every CoT move and
+      // makes labels blink away/back. Visibility is gated by showLabel + zoom.
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
+      "text-optional": false,
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
       "text-max-width": 12,

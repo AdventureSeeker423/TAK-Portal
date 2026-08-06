@@ -101,9 +101,10 @@ function markerLabelLayout(priority: boolean): object {
     "text-size": 12,
     "text-offset": [0, -1.55],
     "text-anchor": "bottom",
-    "text-allow-overlap": priority,
-    "text-ignore-placement": priority,
-    "text-optional": !priority,
+    // Avoid MapLibre collision — it reshuffles labels whenever geometry updates.
+    "text-allow-overlap": true,
+    "text-ignore-placement": true,
+    "text-optional": false,
     "text-max-width": 12,
     "text-padding": 1.5,
     "text-letter-spacing": 0.01,

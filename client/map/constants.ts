@@ -35,9 +35,14 @@ export const MARKER_FILTER: unknown[] = ["==", ["get", "kind"], "marker"];
 export const MAP_LABEL_FONT = ["Open Sans Semibold"];
 export const STALE_GRACE_MS = 30000;
 export const MAP_DIFF_FLUSH_MS = 400;
-export const VIEWPORT_PAD_RATIO = 0.25;
+/** Extra viewport fringe so markers just off-screen are already painted while panning. */
+export const VIEWPORT_PAD_RATIO = 0.55;
 export const OVERVIEW_MODE_ZOOM = 5;
 export const LABEL_MIN_ZOOM = 7;
+/** Debounce for pushing map bounds to the CoT worker while the camera is moving. */
+export const VIEW_PUSH_DEBOUNCE_MS = 80;
+/** Faster worker flush when only the camera changed (keep CoT batch flush at MAP_DIFF_FLUSH_MS). */
+export const VIEW_FLUSH_MS = 50;
 
 export const AFFILIATION_COLORS: Record<string, string> = {
   friend: "#22c55e",

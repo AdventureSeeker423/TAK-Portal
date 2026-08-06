@@ -75,10 +75,12 @@ import { CotStoreClient } from "../engine/CotStoreClient";
 import {
   OVERVIEW_MODE_ZOOM as _WORKER_OVERVIEW_ZOOM,
   VIEWPORT_PAD_RATIO as _WORKER_PAD,
+  VIEW_PUSH_DEBOUNCE_MS as _VIEW_PUSH_MS,
 } from "../constants";
 
 let __cotStore = null;
 let __workerMeta = { total: 0, visible: 0, mapped: 0, revision: 0 };
+let __viewPushTimer = null;
 
 function __workerUrl() {
   const scripts = document.getElementsByTagName("script");
@@ -105,7 +107,7 @@ function __padBounds(b, ratio) {
 
 ${body}
 
-function __pushViewToWorker() {
+function __pushViewToWorker(recomputeLabels) {
   if (!__cotStore || typeof map === "undefined" || !map) return;
   try {
     const b = map.getBounds();
@@ -116,8 +118,22 @@ function __pushViewToWorker() {
       north: b.getNorth(),
     };
     const zoom = map.getZoom();
-    __cotStore.setView(__padBounds(raw, _WORKER_PAD), zoom, zoom < _WORKER_OVERVIEW_ZOOM);
+    __cotStore.setView(
+      __padBounds(raw, _WORKER_PAD),
+      zoom,
+      zoom < _WORKER_OVERVIEW_ZOOM,
+      recomputeLabels !== false
+    );
   } catch (_) {}
+}
+
+function __schedulePushViewToWorker() {
+  if (__viewPushTimer) return;
+  __viewPushTimer = setTimeout(function () {
+    __viewPushTimer = null;
+    // While dragging: prefetch off-screen markers, keep labels sticky.
+    __pushViewToWorker(false);
+  }, _VIEW_PUSH_MS);
 }
 
 function __syncGeoJsonCacheFromWorkerFeatures(features) {
@@ -329,8 +345,21 @@ export function bootTakMap() {
 
   queueMapDiffFromBatch = function () {};
 
-  map.on("moveend", __pushViewToWorker);
-  map.on("zoomend", __pushViewToWorker);
+  map.on("move", __schedulePushViewToWorker);
+  map.on("moveend", function () {
+    if (__viewPushTimer) {
+      clearTimeout(__viewPushTimer);
+      __viewPushTimer = null;
+    }
+    __pushViewToWorker(true);
+  });
+  map.on("zoomend", function () {
+    if (__viewPushTimer) {
+      clearTimeout(__viewPushTimer);
+      __viewPushTimer = null;
+    }
+    __pushViewToWorker(true);
+  });
 
   const __origInstall = installMapImage;
   installMapImage = function (mapImageId, source) {
