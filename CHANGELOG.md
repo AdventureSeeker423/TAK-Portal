@@ -12,6 +12,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.65 - 8/7/26
+✨ `Enhancement` - Settings - Page redesigned to aid in navigation and organization
+
 ### v1.3.64 - 8/7/26
 ✨ `Enhancement` - Groups and Mutual Aid - Adds "Agency Type" to the options for assigning/unassigning groups<br>
 🐛 `Bug Fix` - Groups - Fixes issue with the "Admin Access" button where it occasionally errors out due to a mis-match of group names.
