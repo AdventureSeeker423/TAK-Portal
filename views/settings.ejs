@@ -38,8 +38,10 @@
         autocomplete="off"
         spellcheck="false"
       />
-      <p id="settingsHubSearchEmpty" class="settings-hub-search-empty" hidden>No settings match your search.</p>
     </div>
+    <div id="settingsSearchResults" class="settings-search-results" hidden></div>
+    <p id="settingsHubSearchEmpty" class="settings-hub-search-empty" hidden>No settings match your search.</p>
+    <div id="settingsHubCategories">
 
     <section class="settings-hub-category" aria-labelledby="settingsCatAuth">
       <h2 class="settings-hub-category-title" id="settingsCatAuth">
@@ -146,6 +148,7 @@
         </div>
       </div>
     </section>
+    </div>
   </div>
 
   <form id="settingsForm" method="post" action="/settings" autocomplete="off" enctype="multipart/form-data">
@@ -2764,67 +2767,198 @@
         openSettingsModal("sms");
       }
 
-      // Live search: filter hub cards by title, category, and fields inside each modal
+      // Live search: list matching settings on the main page (not hub cards)
       (function initSettingsHubSearch() {
         var hub = document.getElementById("settingsHub");
         var input = document.getElementById("settingsHubSearch");
         var emptyEl = document.getElementById("settingsHubSearchEmpty");
-        if (!hub || !input) return;
+        var resultsEl = document.getElementById("settingsSearchResults");
+        var categoriesEl = document.getElementById("settingsHubCategories");
+        if (!hub || !input || !resultsEl || !categoriesEl) return;
 
-        var searchCache = Object.create(null);
+        var indexed = null;
 
-        function modalSearchText(modalId) {
-          if (searchCache[modalId] !== undefined) return searchCache[modalId];
-          var modal = document.getElementById("settingsModal-" + modalId);
-          if (!modal) {
-            searchCache[modalId] = "";
-            return "";
-          }
-          var parts = [];
-          modal.querySelectorAll(".settings-label, .settings-help-popover, h2, h3").forEach(function (el) {
-            parts.push(el.textContent || "");
-          });
-          modal.querySelectorAll("[name]").forEach(function (el) {
-            var name = el.getAttribute("name") || "";
-            parts.push(name);
-            var m = name.match(/settings\[([^\]]+)\]/);
-            if (m) parts.push(m[1].replace(/_/g, " "));
-          });
-          searchCache[modalId] = parts.join(" ").toLowerCase();
-          return searchCache[modalId];
+        function cleanLabel(text) {
+          return String(text || "")
+            .replace(/\s+/g, " ")
+            .replace(/\bInstalled\b|\bNot Installed\b/gi, "")
+            .trim();
         }
 
-        function cardSearchText(card) {
-          var id = card.getAttribute("data-open-settings-modal") || "";
-          var title = "";
-          var titleEl = card.querySelector(".settings-hub-card-title");
-          if (titleEl) title = titleEl.textContent || "";
-          var cat = card.closest(".settings-hub-category");
-          var catTitle = "";
-          if (cat) {
-            var catEl = cat.querySelector(".settings-hub-category-title");
-            if (catEl) catTitle = catEl.textContent || "";
+        function fieldValuePreview(control) {
+          if (!control) return "";
+          if (control.type === "password") {
+            return control.value ? "••••••••" : "";
           }
-          return (title + " " + catTitle + " " + modalSearchText(id)).toLowerCase();
+          if (control.type === "file") {
+            return control.files && control.files.length ? control.files[0].name : "";
+          }
+          if (control.tagName === "SELECT") {
+            var opt = control.options[control.selectedIndex];
+            return opt ? String(opt.textContent || opt.value || "").trim() : "";
+          }
+          return String(control.value || "").trim();
+        }
+
+        function buildIndex() {
+          var items = [];
+          var cards = hub.querySelectorAll(".settings-hub-card[data-open-settings-modal]");
+          cards.forEach(function (card) {
+            var modalId = card.getAttribute("data-open-settings-modal") || "";
+            var sectionTitle = "";
+            var titleEl = card.querySelector(".settings-hub-card-title");
+            if (titleEl) sectionTitle = cleanLabel(titleEl.textContent);
+            var modal = document.getElementById("settingsModal-" + modalId);
+            if (!modal) return;
+
+            var fields = modal.querySelectorAll(".settings-field");
+            fields.forEach(function (field, idx) {
+              var labelEl = field.querySelector(".settings-label");
+              var label = cleanLabel(labelEl ? labelEl.textContent : "");
+              if (!label) return;
+              var control =
+                field.querySelector("input:not([type='hidden']), select, textarea") ||
+                field.querySelector("input, select, textarea");
+              var name = control ? control.getAttribute("name") || "" : "";
+              var key = "";
+              var keyMatch = name.match(/settings\[([^\]]+)\]/);
+              if (keyMatch) key = keyMatch[1];
+              var helpEl = field.querySelector(".settings-help-popover");
+              var help = helpEl ? cleanLabel(helpEl.textContent) : "";
+              var haystack = [label, key, key.replace(/_/g, " "), help, sectionTitle, name]
+                .join(" ")
+                .toLowerCase();
+              items.push({
+                modalId: modalId,
+                sectionTitle: sectionTitle,
+                label: label,
+                key: key,
+                haystack: haystack,
+                fieldIndex: idx,
+              });
+            });
+
+            // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "bookmarks" || modalId === "email-templates" || modalId === "tak-maintenance") {
+              var sectionHelp = "";
+              var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
+              if (sectionHelpEl) sectionHelp = cleanLabel(sectionHelpEl.textContent);
+              items.push({
+                modalId: modalId,
+                sectionTitle: sectionTitle,
+                label: sectionTitle,
+                key: "",
+                haystack: [sectionTitle, sectionHelp, modalId.replace(/-/g, " ")].join(" ").toLowerCase(),
+                fieldIndex: -1,
+                sectionOnly: true,
+              });
+            }
+          });
+          return items;
+        }
+
+        function ensureIndex() {
+          if (!indexed) indexed = buildIndex();
+          return indexed;
+        }
+
+        function openResult(item) {
+          openSettingsModal(item.modalId);
+          window.setTimeout(function () {
+            var modal = document.getElementById("settingsModal-" + item.modalId);
+            if (!modal) return;
+            var target = null;
+            if (item.fieldIndex >= 0) {
+              var fields = modal.querySelectorAll(".settings-field");
+              target = fields[item.fieldIndex] || null;
+            }
+            if (!target) {
+              target = modal.querySelector(".modalBody") || modal;
+            }
+            if (target && target.scrollIntoView) {
+              target.scrollIntoView({ block: "center", behavior: "smooth" });
+            }
+            var focusEl = target && target.querySelector
+              ? target.querySelector("input:not([type='hidden']), select, textarea, button")
+              : null;
+            if (focusEl && focusEl.focus) {
+              try {
+                focusEl.focus({ preventScroll: true });
+              } catch (_) {
+                focusEl.focus();
+              }
+            }
+          }, 60);
+        }
+
+        function renderResults(q) {
+          var items = ensureIndex();
+          var matches = items.filter(function (item) {
+            return item.haystack.indexOf(q) !== -1;
+          });
+
+          // Prefer field rows over section-only rows when that section already has field hits
+          var fieldMatchedModals = Object.create(null);
+          matches.forEach(function (item) {
+            if (!item.sectionOnly) fieldMatchedModals[item.modalId] = true;
+          });
+          matches = matches.filter(function (item) {
+            if (!item.sectionOnly) return true;
+            return !fieldMatchedModals[item.modalId];
+          });
+
+          resultsEl.innerHTML = "";
+          matches.forEach(function (item) {
+            var modal = document.getElementById("settingsModal-" + item.modalId);
+            var preview = "";
+            if (modal && item.fieldIndex >= 0) {
+              var field = modal.querySelectorAll(".settings-field")[item.fieldIndex];
+              if (field) {
+                var control = field.querySelector("input:not([type='hidden']), select, textarea");
+                preview = fieldValuePreview(control);
+              }
+            }
+
+            var btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "settings-search-result";
+            btn.innerHTML =
+              '<span class="settings-search-result-main">' +
+                '<span class="settings-search-result-label"></span>' +
+                '<span class="settings-search-result-section"></span>' +
+              "</span>" +
+              '<span class="settings-search-result-value"></span>';
+            btn.querySelector(".settings-search-result-label").textContent = item.label;
+            btn.querySelector(".settings-search-result-section").textContent = item.sectionTitle;
+            var valueEl = btn.querySelector(".settings-search-result-value");
+            if (preview) {
+              valueEl.textContent = preview;
+            } else {
+              valueEl.hidden = true;
+            }
+            btn.addEventListener("click", function () {
+              openResult(item);
+            });
+            resultsEl.appendChild(btn);
+          });
+
+          return matches.length;
         }
 
         function applyFilter() {
           var q = String(input.value || "").trim().toLowerCase();
-          var cards = hub.querySelectorAll(".settings-hub-card[data-open-settings-modal]");
-          var visibleCount = 0;
+          if (!q) {
+            categoriesEl.hidden = false;
+            resultsEl.hidden = true;
+            resultsEl.innerHTML = "";
+            if (emptyEl) emptyEl.hidden = true;
+            return;
+          }
 
-          cards.forEach(function (card) {
-            var match = !q || cardSearchText(card).indexOf(q) !== -1;
-            card.classList.toggle("is-filtered-out", !match);
-            if (match) visibleCount += 1;
-          });
-
-          hub.querySelectorAll(".settings-hub-category").forEach(function (section) {
-            var anyVisible = section.querySelector(".settings-hub-card[data-open-settings-modal]:not(.is-filtered-out)");
-            section.classList.toggle("is-filtered-out", !anyVisible);
-          });
-
-          if (emptyEl) emptyEl.hidden = !q || visibleCount > 0;
+          categoriesEl.hidden = true;
+          var count = renderResults(q);
+          resultsEl.hidden = count === 0;
+          if (emptyEl) emptyEl.hidden = count > 0;
         }
 
         input.addEventListener("input", applyFilter);
