@@ -2565,9 +2565,15 @@
         });
       }
 
+      function startTakMaintenanceLogTail() {
+        startWatchStream({ tailOnly: true });
+      }
+      window.startTakMaintenanceLogTail = startTakMaintenanceLogTail;
+      window.stopTakMaintenanceLogTail = stopStream;
+
       if (showLogsBtn) {
         showLogsBtn.addEventListener("click", function () {
-          startWatchStream({ tailOnly: true });
+          startTakMaintenanceLogTail();
         });
       }
 
@@ -2661,6 +2667,7 @@
       }
 
       function closeSettingsModal() {
+        var wasMaintenance = openId === "tak-maintenance";
         if (!openId) {
           document.querySelectorAll(".settings-modal-overlay").forEach(function (el) {
             el.style.display = "none";
@@ -2676,6 +2683,9 @@
         }
         openId = null;
         document.body.classList.remove("modal-open");
+        if (wasMaintenance && typeof window.stopTakMaintenanceLogTail === "function") {
+          window.stopTakMaintenanceLogTail();
+        }
       }
 
       function openSettingsModal(id) {
@@ -2689,6 +2699,9 @@
         document.body.classList.add("modal-open");
         var closeBtn = el.querySelector("[data-close-settings-modal]");
         if (closeBtn) closeBtn.focus();
+        if (id === "tak-maintenance" && typeof window.startTakMaintenanceLogTail === "function") {
+          window.startTakMaintenanceLogTail();
+        }
       }
 
       window.openSettingsModal = openSettingsModal;
@@ -2997,6 +3010,7 @@
         function applyFilter() {
           var q = String(input.value || "").trim().toLowerCase();
           if (!q) {
+            hub.classList.remove("is-searching");
             categoriesEl.hidden = false;
             resultsEl.hidden = true;
             resultsEl.innerHTML = "";
@@ -3004,6 +3018,7 @@
             return;
           }
 
+          hub.classList.add("is-searching");
           categoriesEl.hidden = true;
           var count = renderResults(q);
           resultsEl.hidden = count === 0;

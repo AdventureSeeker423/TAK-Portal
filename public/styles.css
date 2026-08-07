@@ -2009,6 +2009,12 @@ body.modal-open .sidebarToggle {
     width: 100%;
 }
 
+/* ID display:flex must not override the hidden attribute during search */
+#settingsHubCategories[hidden],
+.settings-hub.is-searching #settingsHubCategories {
+    display: none !important;
+}
+
 .settings-hub-search {
     display: flex;
     flex-direction: column;
