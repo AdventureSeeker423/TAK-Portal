@@ -26,6 +26,156 @@
   </div>
 <% } %>
 
+
+  <div class="settings-hub" id="settingsHub">
+    <section class="settings-hub-category" aria-labelledby="settingsCatAuth">
+      <h2 class="settings-hub-category-title" id="settingsCatAuth">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Authentication
+      </h2>
+      <div class="settings-hub-grid">
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="authentik">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Authentik</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Authentik URL, API token, and user/group visibility prefixes.</span>
+          </span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="portal-access">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Portal Access Control</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Require Authentik login, public URLs, admin groups, and hCaptcha.</span>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-hub-category" aria-labelledby="settingsCatTak">
+      <h2 class="settings-hub-category-title" id="settingsCatTak">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        TAK Server
+      </h2>
+      <div class="settings-hub-grid">
+        <div class="settings-hub-card span-2" role="button" tabindex="0" data-open-settings-modal="tak-server">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Connection &amp; Certificates</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">TAK URL, client certificates, CloudTAK, and SSH setup.</span>
+          </span>
+        </div>
+        <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
+        <div class="settings-hub-card span-2" role="button" tabindex="0" data-open-settings-modal="tak-maintenance">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Maintenance</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">View TAK logs, restart the TAK service, or reboot the TAK host.</span>
+          </span>
+        </div>
+        <% } %>
+      </div>
+    </section>
+
+    <section class="settings-hub-category" aria-labelledby="settingsCatMsg">
+      <h2 class="settings-hub-category-title" id="settingsCatMsg">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4h16v12H5.17L4 17.17V4z"/><path d="M8 8h8M8 12h5"/></svg>
+        Messaging
+      </h2>
+      <div class="settings-hub-grid">
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="email">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Email</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">SMTP settings and notification options.</span>
+          </span>
+        </div>
+        <% if (typeof emailTemplates !== "undefined" && Array.isArray(emailTemplates) && emailTemplates.length) { %>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="email-templates">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Email Templates</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Customize HTML bodies for system emails.</span>
+          </span>
+        </div>
+        <% } %>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="sms">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">SMS</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Twilio or Brevo SMS for alerts and locate links.</span>
+          </span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="mou">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">MOU</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">MOU workflow, reminders, and content size limits.</span>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-hub-category" aria-labelledby="settingsCatAppear">
+      <h2 class="settings-hub-category-title" id="settingsCatAppear">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Appearance
+      </h2>
+      <div class="settings-hub-grid">
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="branding">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Branding &amp; Appearance</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Logo, theme, fonts, button color, and beta features.</span>
+          </span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="callsign">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Callsign Format</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Build how callsigns are displayed.</span>
+          </span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="live-map">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Live Map</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Default basemap for maps in the portal.</span>
+          </span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="bookmarks">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Dashboard Bookmarks</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Admin-only dashboard bookmarks.</span>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-hub-category" aria-labelledby="settingsCatRef">
+      <h2 class="settings-hub-category-title" id="settingsCatRef">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        Reference Data
+      </h2>
+      <div class="settings-hub-grid">
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="agency-types">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Agency Types</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Additional types for the Agencies dropdown.</span>
+          </span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="deployment-packet">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Deployment Packet</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Color/team and role labels for deployment packets.</span>
+          </span>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <form id="settingsForm" method="post" action="/settings" autocomplete="off" enctype="multipart/form-data">
     <%
       const BOOL_KEYS = new Set([
@@ -42,11 +192,23 @@
         "MOU_ENABLED",
         "MOU_SEND_EMAILS"
       ]);
+      function renderHelpTip(helpText) {
+        if (!helpText) return;
+    %>
+        <span class="settings-help-tip">
+          <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+          <span class="settings-help-popover" role="tooltip"><%= helpText %></span>
+        </span>
+    <%
+      }
 
       function renderField(key, label, helpText, defaultValue) {
     %>
       <label class="settings-field">
-        <span class="settings-label"><%= label || key %></span>
+        <span class="settings-label">
+          <span><%= label || key %></span>
+          <% renderHelpTip(helpText); %>
+        </span>
 
         <% if (BOOL_KEYS.has(key)) { %>
           <%
@@ -77,10 +239,6 @@
             name="settings[<%= key %>]"
             value="<%= resolvedVal %>"
           />
-        <% } %>
-
-        <% if (helpText) { %>
-          <small class="settings-help"><%= helpText %></small>
         <% } %>
       </label>
     <% } %>
@@ -177,15 +335,29 @@
     %>
 
     <!-- Authentik -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Authentik</summary>
-
-        <div class="settings-body">
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-authentik" data-settings-modal="authentik" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-authentik">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-authentik">Authentik</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Authentik connection, API token, and visibility / action-lock prefixes.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <div class="grid2">
             <% renderField("AUTHENTIK_URL","Authentik Internal URL","Base URL of your Authentik instance (e.g. http://authentik:9000)"); %>
             <label class="settings-field">
-              <span class="settings-label">Authentik API Token</span>
+              <span class="settings-label">
+                <span>Authentik API Token</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">API token with permission to manage users and groups.</span>
+                </span>
+              </span>
 
               <div class="passwordWrap">
                 <input
@@ -206,10 +378,6 @@
                   👁
                 </button>
               </div>
-
-              <small class="settings-help">
-                API token with permission to manage users and groups.
-              </small>
             </label>
             <% renderField("USERS_HIDDEN_PREFIXES","Hidden User Prefixes","Comma-separated prefixes of usernames to hide from the UI."); %>
             <% renderField("GROUPS_HIDDEN_PREFIXES","Hidden Group Prefixes","Comma-separated prefixes of groups to hide from the UI."); %>
@@ -217,22 +385,35 @@
             <% renderField("GROUPS_ACTIONS_HIDDEN_PREFIXES","Group Action-Lock Prefixes","Groups whose name starts with these prefixes cannot be modified from the portal."); %>
             <% renderField("DASHBOARD_AUTHENTIK_STATS_REFRESH_SECONDS","Dashboard Authentik Stats Refresh (seconds)","How often the server refreshes cached Authentik dashboard stats in the background. Server restart required for changes to take effect."); %>
           </div>
+        
         </div>
-      </details>
+      </div>
     </div>
 
-    <!-- TAK Server -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">TAK Server</summary>
-
-        <div class="settings-body">
+    <!-- Connection &amp; Certificates -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-tak-server" data-settings-modal="tak-server" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-tak-server">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-tak-server">Connection &amp; Certificates</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">TAK Marti URL, client certificates, CloudTAK, and SSH setup for the TAK host.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <div class="grid2">
             <% renderField("TAK_URL","TAK URL","Full Marti URL, e.g. https://tak.example.gov:8443/Marti."); %>
 
         <label class="settings-field">
           <span class="settings-label">
-            Client P12 Certificate
+            <span>Client P12 Certificate</span>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Upload a new file to replace the existing certificate.</span>
+            </span>
             <% if (p12Exists) { %>
               <span class="cert-status installed">Installed</span>
             <% } else { %>
@@ -241,13 +422,16 @@
           </span>
 
           <input type="file" name="TAK_API_P12_UPLOAD" accept=".p12,.pfx,application/x-pkcs12" />
-          <small class="settings-help">
-            Upload a new file to replace the existing certificate.
-          </small>
         </label>
 
         <label class="settings-field">
-        <span class="settings-label">Client P12 Password</span>
+        <span class="settings-label">
+          <span>Client P12 Password</span>
+          <span class="settings-help-tip">
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Passphrase for the client .p12 file (may be empty).</span>
+          </span>
+        </span>
 
         <div class="passwordWrap">
           <input
@@ -269,14 +453,16 @@
           </button>
         </div>
 
-        <small class="settings-help">
-          Passphrase for the client .p12 file (may be empty).
-        </small>
+        
       </label>
 
         <label class="settings-field">
           <span class="settings-label">
-            TAK Server PEM Certificate
+            <span>TAK Server PEM Certificate</span>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Upload a new file to replace the existing CA certificate. Notepad should show three distinct blocks of text starting with -----BEGIN CERTIFICATE-----</span>
+            </span>
             <% if (caExists) { %>
               <span class="cert-status installed">Installed</span>
             <% } else { %>
@@ -285,9 +471,6 @@
           </span>
 
           <input type="file" name="TAK_CA_UPLOAD" accept=".pem,.crt,.cer,.der" />
-          <small class="settings-help">
-            Upload a new file to replace the existing CA certificate. Notepad should show three distinct blocks of text starting with -----BEGIN CERTIFICATE-----
-          </small>
         </label>
 
             <% renderField("TAK_REVOKE_ON_DISABLE","Revoke on Disable","If true, revokes TAK certs when a user is disabled."); %>
@@ -343,27 +526,48 @@
             <button type="button" class="btn" id="sshSetupBtn">Set Up SSH (Generate Key, Install on Server, Configure Sudo, and Test)</button>
             <button type="button" class="btn" id="sshTestOnlyBtn">Test SSH Connection</button>
           </div>
-          <p class="settings-help" style="margin-top:.5rem;">
-            Enter the TAK Server SSH host, port, username, and that user&apos;s password above, then run setup once.
-            The portal generates a key pair, installs it on the server, configures passwordless sudo for Locate and maintenance, and verifies access automatically.
-            The account must be allowed to run <code>sudo</code> with its password during setup.
-          </p>
+          <div style="margin-top:.5rem;">
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">
+                Enter the TAK Server SSH host, port, username, and that user&apos;s password above, then run setup once.
+                The portal generates a key pair, installs it on the server, configures passwordless sudo for Locate and maintenance, and verifies access automatically.
+                The account must be allowed to run <code>sudo</code> with its password during setup.
+              </span>
+            </span>
+            <span class="muted" style="font-size:0.8rem;margin-left:0.35rem;">SSH setup help</span>
+          </div>
 
           <div id="sshStatusBox" class="settings-help" style="margin-top:.5rem;white-space:pre-line;"></div>
+        
         </div>
-      </details>
+      </div>
     </div>
 
     <!-- Email -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Email</summary>
-
-        <div class="settings-body">
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-email" data-settings-modal="email" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-email">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-email">Email</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">SMTP settings and options for portal notification emails.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <div class="grid2">
             <% renderField("EMAIL_ENABLED","Email Enabled","true/false – whether email notifications are enabled."); %>
             <label class="settings-field">
-              <span class="settings-label">Send Group-Change Emails</span>
+              <span class="settings-label">
+                <span>Send Group-Change Emails</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">When yes, group edits trigger user group-change email notifications.</span>
+                </span>
+              </span>
               <%
                 const groupChangeRaw = (settings && typeof settings.EMAIL_GROUP_CHANGES_ENABLED === "string")
                   ? settings.EMAIL_GROUP_CHANGES_ENABLED.toLowerCase()
@@ -374,7 +578,7 @@
                 <option value="true" <%= groupChangeEnabled === "true" ? "selected" : "" %>>yes</option>
                 <option value="false" <%= groupChangeEnabled === "false" ? "selected" : "" %>>no</option>
               </select>
-              <small class="settings-help">When yes, group edits trigger user group-change email notifications.</small>
+              
             </label>
             <% renderField("EMAIL_PROVIDER","Email Provider","Currently only 'smtp' is supported."); %>
             <% renderField("SMTP_HOST","SMTP Host","SMTP server hostname."); %>
@@ -399,20 +603,30 @@
               value="1">
               Send Test Email
             </button>
-            <small class="settings-help">
-              Sends “TAK Portal - Email SMTP Test” to the configured Always CC and Always BCC addresses. (Email Enabled must be true.)
-            </small>
+            <span class="settings-help-tip" style="margin-left:0.5rem;vertical-align:middle;">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Sends “TAK Portal - Email SMTP Test” to the configured Always CC and Always BCC addresses. (Email Enabled must be true.)</span>
+            </span>
           </div>
+        
         </div>
-      </details>
+      </div>
     </div>
 
     <!-- MOU -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">MOU</summary>
-
-        <div class="settings-body">
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-mou" data-settings-modal="mou" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-mou">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-mou">MOU</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">MOU workflow toggles, reminder schedule, and HTML size limits.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <div class="grid2">
             <% renderField("MOU_ENABLED","MOU Enabled","Turn the MOU and standard-user agreement workflows on or off."); %>
             <% renderField("MOU_SEND_EMAILS","Send MOU Emails","When true, MOU assignment/update and reminder emails are sent to agency admins."); %>
@@ -420,8 +634,9 @@
             <% renderField("MOU_HTML_MAX_KB","MOU HTML Max KB","Maximum allowed size for stored MOU HTML, Markdown source, and rendered user-agreement content."); %>
             <% renderField("MOU_REMINDER_SWEEP_HOURS","Reminder Sweep Hours","How often the reminder scheduler checks for unsigned agency MOUs. Server restart required for changes to take effect."); %>
           </div>
+        
         </div>
-      </details>
+      </div>
     </div>
 
     <%
@@ -476,19 +691,21 @@
         });
     %>
     <% if (orderedEmailTemplates.length) { %>
-      <div class="card">
-        <details class="settings-section email-templates-section">
-          <summary class="settings-summary">Email Templates</summary>
-
-          <div class="settings-body">
-            <p class="settings-help">
-              Edit the HTML bodies used for system notification emails. Changes
-              here are stored separately from the built-in files in
-              <code>/email_templates</code>, so your customizations will not be
-              overwritten by upgrades.
-            </p>
-
-            <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;">
+    <!-- Email Templates -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-email-templates" data-settings-modal="email-templates" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-email-templates">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-email-templates">Email Templates</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Edit HTML bodies for system notification emails. Overrides are stored separately from /email_templates.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+<div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;">
               <button
                 type="submit"
                 class="btn"
@@ -576,32 +793,46 @@
                 </div>
               </details>
             <% }); %>
-          </div>
-        </details>
+          
+        </div>
       </div>
+    </div>
     <% } %>
 
-    <!-- SMS (Twilio / Brevo) -->
-    <div class="card" id="sms-settings">
-      <details class="settings-section sms-settings-section">
-        <summary class="settings-summary">SMS</summary>
-        <div class="settings-body">
-          <p class="settings-help" style="margin-top:0;">
-            Use Twilio or Brevo to send SMS for critical alerts and locate links. No SMS?
-            Alerts still go to the email address above; set up push notifications in your email app on your phone to get alerts on the go.
-          </p>
+<div id="sms-settings" hidden aria-hidden="true"></div>
+    <!-- SMS -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-sms" data-settings-modal="sms" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-sms">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-sms">SMS</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Twilio or Brevo SMS for critical alerts and locate links.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          
 
           <%
             const smsProv = String((settings && settings.SMS_PROVIDER) || "disabled").toLowerCase();
           %>
           <label class="settings-field" style="max-width:320px;">
-            <span class="settings-label">SMS provider</span>
+            <span class="settings-label">
+              <span>SMS provider</span>
+              <span class="settings-help-tip">
+                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                <span class="settings-help-popover">SMS is off until you pick Twilio or Brevo and save settings. Use Twilio or Brevo for critical alerts and locate links; otherwise alerts still go by email.</span>
+              </span>
+            </span>
             <select id="smsProviderSelect" name="settings[SMS_PROVIDER]">
               <option value="disabled" <%= smsProv === "disabled" ? "selected" : "" %>>Disabled</option>
               <option value="twilio" <%= smsProv === "twilio" ? "selected" : "" %>>Twilio</option>
               <option value="brevo" <%= smsProv === "brevo" ? "selected" : "" %>>Brevo</option>
             </select>
-            <small class="settings-help">SMS is off until you pick Twilio or Brevo and save settings.</small>
+            
           </label>
 
           <div id="smsTwilioFields" style="margin-top:1rem;display:<%= smsProv === 'twilio' ? 'block' : 'none' %>;">
@@ -619,9 +850,10 @@
                 <input type="text" name="settings[SMS_TWILIO_FROM]" value="<%= settings.SMS_TWILIO_FROM || '' %>" placeholder="From number (e.g. +15551234567)" autocomplete="off" />
               </label>
             </div>
-            <small class="settings-help">
-              To (test): digits + country code, comma-separated (e.g. <code>15551234567, +15559876543</code>).
-            </small>
+            <span class="settings-help-tip" style="margin-top:0.5rem;">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">To (test): digits + country code, comma-separated (e.g. 15551234567, +15559876543).</span>
+            </span>
           </div>
 
           <div id="smsBrevoFields" style="margin-top:1rem;display:<%= smsProv === 'brevo' ? 'block' : 'none' %>;">
@@ -635,13 +867,16 @@
                 <input type="text" name="settings[SMS_BREVO_SENDER]" value="<%= settings.SMS_BREVO_SENDER || '' %>" placeholder="Sender (max 11 chars)" maxlength="11" autocomplete="off" />
               </label>
             </div>
-            <small class="settings-help">
-              To (test): digits + country code (e.g. <code>15551234567</code>). Sender: up to 11 letters/numbers.
-              If the test reports sent but no text arrives, check Brevo → Campaigns → SMS or Statistics for delivery status.
-            </small>
+            <span class="settings-help-tip" style="margin-top:0.5rem;">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">To (test): digits + country code (e.g. 15551234567). Sender: up to 11 letters/numbers. If the test reports sent but no text arrives, check Brevo → Campaigns → SMS or Statistics for delivery status.</span>
+            </span>
             <div style="margin-top:.5rem;">
               <button type="button" class="btn" id="smsBrevoDeliveryBtn">Check delivery status (Brevo)</button>
-              <small class="settings-help" style="display:block;margin-top:.35rem;">Opens the Brevo app in a new tab.</small>
+              <span class="settings-help-tip" style="margin-left:0.35rem;">
+                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                <span class="settings-help-popover">Opens the Brevo app in a new tab.</span>
+              </span>
             </div>
           </div>
 
@@ -661,11 +896,13 @@
               value="1"
             >Send test SMS</button>
           </div>
-          <small class="settings-help">
-            “Save SMS settings” saves the whole settings form (same as Save Settings at the bottom). “Send test SMS” uses the values currently in the form without requiring a save first.
-          </small>
+          <span class="settings-help-tip" style="margin-top:0.5rem;">
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">“Save SMS settings” saves the whole settings form (same as Save Settings at the bottom). “Send test SMS” uses the values currently in the form without requiring a save first.</span>
+          </span>
+        
         </div>
-      </details>
+      </div>
     </div>
 
     <script>
@@ -686,23 +923,27 @@
             window.open("https://app.brevo.com/", "_blank", "noopener,noreferrer");
           });
         }
-        if (window.location.hash === "#sms-settings") {
-          var det = document.querySelector("#sms-settings details");
-          if (det) det.open = true;
+        if (window.location.hash === "#sms-settings" && typeof window.openSettingsModal === "function") {
+          window.openSettingsModal("sms");
         }
       })();
     </script>
 
-    <!-- Additional Agency Types -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Additional Agency Types</summary>
-
-        <div class="settings-body">
-          <p class="settings-help">
-            Types listed here appear in the <strong>Agencies</strong> page type dropdown at the bottom of the list, just above <strong>Other</strong>.
-            Built-in types are always shown first; reorder only affects your additional types.
-          </p>
+    <!-- Agency Types -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-agency-types" data-settings-modal="agency-types" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-agency-types">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-agency-types">Agency Types</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Extra agency types shown in the Agencies page type dropdown above Other.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          
 
           <%
             const initialAdditionalAgencyTypes = [];
@@ -861,25 +1102,35 @@
               });
             })();
           </script>
+        
         </div>
-      </details>
+      </div>
     </div>
 
     <!-- Callsign Format -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Callsign Format</summary>
-
-        <div class="settings-body">
-          <p class="settings-help">
-            Configure how callsigns are displayed. Use field blocks and text blocks to build the final callsign string.
-          </p>
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-callsign" data-settings-modal="callsign" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-callsign">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-callsign">Callsign Format</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Build how callsigns are displayed using field and text blocks.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          
 
           <div id="callsignBuilder" style="margin-top:.5rem;">
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem;">
               <button type="button" class="btn" id="addCallsignFieldBtn">Add Field</button>
               <button type="button" class="btn" id="addCallsignTextBtn">Add Text</button>
-              <small class="settings-help">Drag chips by the handle to change order.</small>
+              <span class="settings-help-tip">
+                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                <span class="settings-help-popover">Drag chips by the handle to change order.</span>
+              </span>
             </div>
 
             <ul
@@ -1162,19 +1413,34 @@
               initFromExpression();
             })();
           </script>
+        
         </div>
-      </details>
+      </div>
     </div>
 
-    <!-- Branding, Appearance & Beta -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Branding, Appearance, and Beta</summary>
-
-        <div class="settings-body">
+    <!-- Branding &amp; Appearance -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-branding" data-settings-modal="branding" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-branding">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-branding">Branding &amp; Appearance</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Server name, logo, theme, fonts, button color, and beta features.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <div class="grid2">
             <label class="settings-field">
-              <span class="settings-label">Server Name Abbreviation</span>
+              <span class="settings-label">
+                <span>Server Name Abbreviation</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">Server Abbreviation to add custom branding to the portal.</span>
+                </span>
+              </span>
               <input
                 type="text"
                 id="serverNameAbbrevInput"
@@ -1185,19 +1451,29 @@
                 spellcheck="false"
                 style="text-transform: uppercase;"
               />
-              <small class="settings-help">Server Abbreviation to add custom branding to the portal.</small>
+              
             </label>
             <label class="settings-field">
-              <span class="settings-label">Portal Logo</span>
+              <span class="settings-label">
+                <span>Portal Logo</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">Shown in sidebar and QR codes. Upload a new image to replace the current logo.</span>
+                </span>
+              </span>
               <input type="file" name="BRAND_LOGO_UPLOAD" accept="image/*" />
               <% if (settings.BRAND_LOGO_URL) { %>
-                <small class="settings-help">Current: <code><%= settings.BRAND_LOGO_URL %></code></small>
-              <% } else { %>
-                <small class="settings-help">Shown in sidebar and QR codes.</small>
+                <small class="muted" style="font-size:0.8rem;">Current: <code><%= settings.BRAND_LOGO_URL %></code></small>
               <% } %>
             </label>
             <label class="settings-field">
-              <span class="settings-label">Default Theme Mode</span>
+              <span class="settings-label">
+                <span>Default Theme Mode</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">Sets first-load appearance for users who have not toggled a saved theme on this device yet.</span>
+                </span>
+              </span>
               <%
                 const defaultThemeMode = String(settings.DEFAULT_THEME_MODE || "dark").toLowerCase();
               %>
@@ -1205,12 +1481,16 @@
                 <option value="dark" <%= defaultThemeMode === "dark" ? "selected" : "" %>>Dark</option>
                 <option value="light" <%= defaultThemeMode === "light" ? "selected" : "" %>>Light</option>
               </select>
-              <small class="settings-help">
-                Sets first-load appearance for users who have not toggled a saved theme on this device yet.
-              </small>
+              
             </label>
             <label class="settings-field">
-              <span class="settings-label">Site-wide Font Family</span>
+              <span class="settings-label">
+                <span>Site-wide Font Family</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">Applies globally to the portal UI.</span>
+                </span>
+              </span>
               <%
                 const fontOptions = [
                   { label: "System UI", value: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" },
@@ -1253,12 +1533,18 @@
               <div style="margin-top:.4rem;">
                 <button type="button" class="btn reset-default-btn" id="resetSiteFontFamilyBtn">Reset to default</button>
               </div>
-              <small class="settings-help">
-                Applies globally to the portal UI. Preview: <span id="siteFontPreview" style="font-family:<%= resolvedSiteFont %>;"><%= selectedSiteFontLabel %> - The quick brown fox jumps over the lazy dog.</span>
-              </small>
+              <div class="muted" style="font-size:0.8rem;margin-top:0.35rem;">
+                Preview: <span id="siteFontPreview" style="font-family:<%= resolvedSiteFont %>;"><%= selectedSiteFontLabel %> - The quick brown fox jumps over the lazy dog.</span>
+              </div>
             </label>
             <label class="settings-field">
-              <span class="settings-label">Primary Button Color</span>
+              <span class="settings-label">
+                <span>Primary Button Color</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">Sets the default color used for primary action buttons across the portal.</span>
+                </span>
+              </span>
               <%
                 const defaultPrimaryButtonColor = defaultThemeMode === "light" ? "#2563eb" : "#0a84ff";
                 const configuredPrimaryButtonColor = String(settings.PRIMARY_BUTTON_COLOR || "").trim();
@@ -1284,9 +1570,7 @@
                 <span id="primaryButtonColorPreview" class="btn" style="pointer-events:none;">Primary Button</span>
                 <button type="button" class="btn reset-default-btn" id="resetPrimaryButtonColorBtn">Reset to default</button>
               </div>
-              <small class="settings-help">
-                Sets the default color used for primary action buttons across the portal.
-              </small>
+              
             </label>
             <% renderField("USERNAME_PREFIX_LABEL","Username Descriptor Text","Displayed on Users, Pending User Requests, and Request Access pages. Default: Badge Number / Username","Badge Number / Username"); %>
             <% renderField("REQUEST_ACCESS_ENABLED","Enable Request Access Page","If true, the public /request-access enrollment form is available. Set false to disable it. Default: true.","true"); %>
@@ -1405,16 +1689,25 @@
               updatePreview();
             })();
           </script>
+        
         </div>
-      </details>
+      </div>
     </div>
 
     <!-- Dashboard Bookmarks -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Dashboard Bookmarks (Visible Only To Global Admins)</summary>
-
-        <div class="settings-body">
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-bookmarks" data-settings-modal="bookmarks" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-bookmarks">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-bookmarks">Dashboard Bookmarks</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Bookmarks visible only to global admins on the dashboard.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <% 
             const initialBookmarks = [];
             for (let i = 1; i <= 20; i++) {
@@ -1594,18 +1887,27 @@
               });
             })();
           </script>
+        
         </div>
-      </details>
+      </div>
     </div>
 
 
 
-    <!-- Deployment Packet Settings -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Deployment Packet Settings</summary>
-
-        <div class="settings-body">
+    <!-- Deployment Packet -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-deployment-packet" data-settings-modal="deployment-packet" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-deployment-packet">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-deployment-packet">Deployment Packet</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Color/team labels and role labels used in deployment packets.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <h3 style="margin:0 0 .5rem 0;">Color / Team</h3>
           <div class="grid2">
             <% renderField("DP_COLOR_BLUE","Blue",null,"Aircraft"); %>
@@ -1637,18 +1939,34 @@
             <% renderField("DP_ROLE_RTO","RTO",null,""); %>
             <% renderField("DP_ROLE_K9","K9",null,"K9 Handlers"); %>
           </div>
+        
         </div>
-      </details>
+      </div>
     </div>
 
     <!-- Live Map -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Live Map</summary>
-        <div class="settings-body">
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-live-map" data-settings-modal="live-map" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-live-map">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-live-map">Live Map</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Default basemap for /map and the dashboard mini map.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <div class="grid2">
             <label class="settings-field">
-              <span class="settings-label">Default Map Source</span>
+              <span class="settings-label">
+                <span>Default Map Source</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">First-load basemap for /map and the dashboard connected-user mini map when a user has not chosen their own on this device.</span>
+                </span>
+              </span>
               <%
                 const defaultMapSourceSetting = String(
                   settings.DEFAULT_MAP_SOURCE || "dark-matter"
@@ -1663,21 +1981,28 @@
                   ><%= opt.label %></option>
                 <% }); %>
               </select>
-              <small class="settings-help">
-                First-load basemap for /map and the dashboard connected-user mini map when a user has not chosen their own on this device.
-              </small>
+              
             </label>
           </div>
+        
         </div>
-      </details>
+      </div>
     </div>
 
     <!-- Portal Access Control -->
-    <div class="card">
-      <details class="settings-section">
-        <summary class="settings-summary">Portal Access Control</summary>
-
-        <div class="settings-body">
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-portal-access" data-settings-modal="portal-access" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-portal-access">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-portal-access">Portal Access Control</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Require Authentik login, public URLs, admin groups, and hCaptcha keys.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <div class="grid2">
             <% renderField("PORTAL_AUTH_ENABLED","DANGER!! Require Authentik login","Requires Authentik forward_auth / Caddy."); %>
             <% renderField("AUTHENTIK_PUBLIC_URL","Authentik Public URL","Used for logout redirects."); %>
@@ -1686,8 +2011,9 @@
             <% renderField("HCAPTCHA_SITE_KEY","hCaptcha Site Key","Visit hcaptcha.com for a free public site key for the Request Access form. Leave blank to disable."); %>
             <% renderField("HCAPTCHA_SECRET_KEY","hCaptcha Secret Key","Visit hcaptcha.com for a free secret key for server-side verification. Leave blank to disable."); %>
           </div>
+        
         </div>
-      </details>
+      </div>
     </div>
 
   </form>
@@ -1718,27 +2044,40 @@
   </div>
 
   <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
-  <div class="card" style="margin-top:1.25rem;">
-    <h2 style="margin-top:0;font-size:1.125rem;">TAK Server Maintenance</h2>
-    <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center;">
-      <button type="button" class="btn" id="takMaintShowLogsBtn">Show TAK Logs</button>
-      <button type="button" class="btn warning" id="takMaintRestartServiceBtn">Restart TAK Service</button>
-      <button type="button" class="btn danger" id="takMaintRebootServerBtn">Restart TAK Server</button>
-    </div>
-    <div
-      id="takMaintInProgress"
-      role="status"
-      aria-live="polite"
-      style="display:none;margin-top:.75rem;padding:.65rem .85rem;border-radius:8px;border:1px solid var(--line, #374151);background:rgba(255,102,0,0.14);font-weight:600;font-size:14px;line-height:1.4;"
-    ></div>
-    <div id="takMaintPanel" style="display:none;margin-top:1rem;">
-      <div class="settings-label" style="margin-bottom:.35rem;">Status</div>
-      <ul id="takMaintStatusList" style="margin:0 0 .75rem 1.1rem;font-size:13px;line-height:1.45;"></ul>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.35rem;">
-        <div class="settings-label" style="margin:0;">tail -f /opt/tak/logs/takserver-api.log</div>
-        <button type="button" class="btn" id="takMaintCopyLogsBtn">Copy log</button>
+  <div class="modalOverlay settings-modal-overlay" id="settingsModal-tak-maintenance" data-settings-modal="tak-maintenance" style="display:none;" aria-hidden="true">
+    <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-tak-maintenance">
+      <div class="modalHeader">
+        <div class="modalHeaderLeft">
+          <h2 id="settingsModalTitle-tak-maintenance">TAK Server Maintenance</h2>
+          <span class="settings-help-tip">
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">View TAK logs, restart the TAK service, or reboot the TAK host over SSH.</span>
+          </span>
+        </div>
+        <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
       </div>
-      <pre id="takMaintLogPre" style="margin:0;max-height:360px;overflow:auto;padding:.75rem;background:var(--panel, #111827);border:1px solid var(--line, #374151);border-radius:8px;font-size:12px;line-height:1.35;white-space:pre-wrap;word-break:break-word;"></pre>
+      <div class="modalBody settings-body">
+        <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center;">
+          <button type="button" class="btn" id="takMaintShowLogsBtn">Show TAK Logs</button>
+          <button type="button" class="btn warning" id="takMaintRestartServiceBtn">Restart TAK Service</button>
+          <button type="button" class="btn danger" id="takMaintRebootServerBtn">Restart TAK Server</button>
+        </div>
+        <div
+          id="takMaintInProgress"
+          role="status"
+          aria-live="polite"
+          style="display:none;margin-top:.75rem;padding:.65rem .85rem;border-radius:8px;border:1px solid var(--line, #374151);background:rgba(255,102,0,0.14);font-weight:600;font-size:14px;line-height:1.4;"
+        ></div>
+        <div id="takMaintPanel" style="display:none;margin-top:1rem;">
+          <div class="settings-label" style="margin-bottom:.35rem;">Status</div>
+          <ul id="takMaintStatusList" style="margin:0 0 .75rem 1.1rem;font-size:13px;line-height:1.45;"></ul>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.35rem;">
+            <div class="settings-label" style="margin:0;">tail -f /opt/tak/logs/takserver-api.log</div>
+            <button type="button" class="btn" id="takMaintCopyLogsBtn">Copy log</button>
+          </div>
+          <pre id="takMaintLogPre" style="margin:0;max-height:360px;overflow:auto;padding:.75rem;background:var(--panel, #111827);border:1px solid var(--line, #374151);border-radius:8px;font-size:12px;line-height:1.35;white-space:pre-wrap;word-break:break-word;"></pre>
+        </div>
+      </div>
     </div>
   </div>
   <% } %>
@@ -2325,103 +2664,178 @@
   </script>
   <% } %>
 
+
+  <script>
+    (function () {
+      var openId = null;
+
+      function panelEl(id) {
+        return document.getElementById("settingsModal-" + id);
+      }
+
+      function closeSettingsModal() {
+        if (!openId) {
+          document.querySelectorAll(".settings-modal-overlay").forEach(function (el) {
+            el.style.display = "none";
+            el.setAttribute("aria-hidden", "true");
+          });
+          document.body.classList.remove("modal-open");
+          return;
+        }
+        var el = panelEl(openId);
+        if (el) {
+          el.style.display = "none";
+          el.setAttribute("aria-hidden", "true");
+        }
+        openId = null;
+        document.body.classList.remove("modal-open");
+      }
+
+      function openSettingsModal(id) {
+        if (!id) return;
+        closeSettingsModal();
+        var el = panelEl(id);
+        if (!el) return;
+        el.style.display = "flex";
+        el.setAttribute("aria-hidden", "false");
+        openId = id;
+        document.body.classList.add("modal-open");
+        var closeBtn = el.querySelector("[data-close-settings-modal]");
+        if (closeBtn) closeBtn.focus();
+      }
+
+      window.openSettingsModal = openSettingsModal;
+      window.closeSettingsModal = closeSettingsModal;
+
+      function closeAllHelpTips() {
+        document.querySelectorAll(".settings-help-tip.is-open").forEach(function (t) {
+          t.classList.remove("is-open");
+          var b = t.querySelector(".settings-help-btn");
+          if (b) b.setAttribute("aria-expanded", "false");
+        });
+      }
+
+      document.addEventListener("click", function (e) {
+        var helpBtn = e.target.closest && e.target.closest(".settings-help-btn");
+        if (helpBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          var tip = helpBtn.closest(".settings-help-tip");
+          if (!tip) return;
+          var open = tip.classList.contains("is-open");
+          closeAllHelpTips();
+          if (!open) {
+            tip.classList.add("is-open");
+            helpBtn.setAttribute("aria-expanded", "true");
+          }
+          return;
+        }
+
+        if (!e.target.closest || !e.target.closest(".settings-help-tip")) {
+          closeAllHelpTips();
+        }
+
+        var stop = e.target.closest && e.target.closest("[data-stop-card-open]");
+        if (stop) {
+          e.stopPropagation();
+          return;
+        }
+
+        var openBtn = e.target.closest && e.target.closest("[data-open-settings-modal]");
+        if (openBtn) {
+          e.preventDefault();
+          openSettingsModal(openBtn.getAttribute("data-open-settings-modal"));
+          return;
+        }
+
+        var closeBtn = e.target.closest && e.target.closest("[data-close-settings-modal]");
+        if (closeBtn) {
+          e.preventDefault();
+          closeSettingsModal();
+          return;
+        }
+
+        if (e.target.classList && e.target.classList.contains("settings-modal-overlay")) {
+          closeSettingsModal();
+        }
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") {
+          if (document.querySelector(".settings-help-tip.is-open")) {
+            closeAllHelpTips();
+            return;
+          }
+          if (openId) closeSettingsModal();
+          return;
+        }
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var card = e.target.closest && e.target.closest(".settings-hub-card[data-open-settings-modal]");
+        if (!card || e.target.closest(".settings-help-tip")) return;
+        e.preventDefault();
+        openSettingsModal(card.getAttribute("data-open-settings-modal"));
+      });
+
+      if (window.location.hash === "#sms-settings") {
+        openSettingsModal("sms");
+      }
+    })();
+  </script>
+
   <style>
-    /* Bottom bar: Export + Import left (normal .btn), Save Settings success + right */
-    .settings-actions-row {
-      margin-top: 1rem;
+    .cert-status {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .cert-status.installed {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .cert-status.missing {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .passwordWrap {
+      position: relative;
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 0.75rem;
     }
 
-    .settings-import-inline-form {
-      display: inline-flex;
-      margin: 0;
+    .passwordWrap input {
+      width: 100%;
+      padding-right: 2.5rem;
     }
 
-    .settings-action-save {
-      margin-left: auto;
+    .passwordToggle {
+      position: absolute;
+      right: 8px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0;
+      filter: invert(1);
     }
 
-    @media (max-width: 640px) {
-      .settings-actions-row {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .settings-action-save {
-        margin-left: 0;
-      }
-
-      .settings-actions-row > a,
-      .settings-import-inline-form,
-      .settings-actions-row > .settings-action-save {
-        width: 100%;
-        box-sizing: border-box;
-      }
-
-      .settings-import-inline-form label.btn {
-        width: 100%;
-        box-sizing: border-box;
-        justify-content: center;
-      }
+    .branding-color-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
     }
 
-    .settings-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
+    .reset-default-btn {
+      color: #fff;
+    }
 
-  .cert-status {
-    font-size: 0.7rem;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-
-  .cert-status.installed {
-    background: #dcfce7;
-    color: #166534;
-  }
-
-  .cert-status.missing {
-    background: #fee2e2;
-    color: #991b1b;
-  }
-  .passwordWrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .passwordWrap input {
-    width: 100%;
-    padding-right: 2.5rem;
-  }
-
-  .passwordToggle {
-    position: absolute;
-    right: 8px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 0;
-    filter: invert(1);
-  }
-
-  .branding-color-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .reset-default-btn {
-    color: #fff;
-  }
+    body.theme-light .passwordToggle {
+      filter: none;
+    }
   </style>
 </main>

@@ -1949,11 +1949,274 @@ body.modal-open .sidebarToggle {
 
 .settings-label {
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .settings-help {
     font-size: 0.8rem;
     opacity: 0.8;
+}
+
+/* Settings hub (categorized cards) */
+.settings-hub {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.settings-hub-category-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.65rem 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted, #9ca3af);
+}
+
+.settings-hub-category-icon {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.settings-hub-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.settings-hub-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+    text-align: left;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--line, #374151);
+    border-radius: 12px;
+    background: var(--card, var(--panel, #1f2937));
+    color: var(--text, #f3f4f6);
+    cursor: pointer;
+    font: inherit;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+}
+
+.settings-hub-card:hover,
+.settings-hub-card:focus-visible {
+    border-color: var(--accent, #0a84ff);
+    outline: none;
+}
+
+.settings-hub-card:active {
+    transform: scale(0.995);
+}
+
+.settings-hub-card-title {
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.settings-hub-card-main {
+    min-width: 0;
+    flex: 1;
+}
+
+.settings-hub-card.span-2 {
+    grid-column: 1 / -1;
+}
+
+/* Help tip (? icon + popover) */
+.settings-help-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.settings-help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15rem;
+    height: 1.15rem;
+    padding: 0;
+    border-radius: 999px;
+    border: 1px solid var(--line, #6b7280);
+    background: transparent;
+    color: var(--muted, #9ca3af);
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+}
+
+.settings-help-btn:hover,
+.settings-help-btn:focus-visible,
+.settings-help-tip.is-open .settings-help-btn {
+    color: var(--text, #f3f4f6);
+    border-color: var(--accent, #0a84ff);
+    outline: none;
+}
+
+.settings-help-popover {
+    position: absolute;
+    z-index: 40;
+    left: 0;
+    top: calc(100% + 6px);
+    min-width: 180px;
+    max-width: min(320px, 70vw);
+    padding: 0.55rem 0.7rem;
+    border-radius: 8px;
+    border: 1px solid var(--line, #374151);
+    background: var(--panel, #111827);
+    color: var(--text, #e5e7eb);
+    font-size: 0.78rem;
+    font-weight: 400;
+    line-height: 1.35;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    white-space: normal;
+    display: none;
+}
+
+.settings-help-tip.is-open .settings-help-popover,
+.settings-help-tip:hover .settings-help-popover,
+.settings-help-tip:focus-within .settings-help-popover {
+    display: block;
+}
+
+.settings-hub-card .settings-help-tip {
+    margin-top: 2px;
+}
+
+.settings-hub-card .settings-help-popover {
+    left: auto;
+    right: 0;
+}
+
+/* Settings section modals */
+.settings-modal-overlay {
+    z-index: 1200;
+}
+
+.settings-modal {
+    width: min(960px, 96vw);
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+}
+
+.settings-modal .modalHeader {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 3;
+    background: var(--panel, #111827);
+    overflow: visible;
+}
+
+.settings-modal .modalHeader .settings-help-popover {
+    top: auto;
+    bottom: calc(100% + 6px);
+}
+
+.settings-modal .modalBody,
+.settings-modal .settings-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: calc(92vh - 72px);
+    overflow: auto;
+    padding: 14px 16px 20px;
+}
+
+.settings-modal .modalHeaderLeft {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.settings-modal .modalHeaderLeft h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.settings-actions-row {
+    margin-top: 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.settings-import-inline-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.settings-action-save {
+    margin-left: auto;
+}
+
+@media (max-width: 768px) {
+    .settings-hub-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-hub-card.span-2 {
+        grid-column: auto;
+    }
+
+    .settings-modal {
+        width: 100%;
+        max-width: 100%;
+        max-height: 96dvh;
+        border-radius: 12px;
+    }
+
+    .settings-modal .modalBody,
+    .settings-modal .settings-body {
+        max-height: calc(96dvh - 72px);
+    }
+
+    .settings-modal-overlay {
+        padding: 8px;
+        align-items: flex-end;
+    }
+}
+
+@media (max-width: 640px) {
+    .settings-actions-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .settings-action-save {
+        margin-left: 0;
+    }
+
+    .settings-actions-row > a,
+    .settings-import-inline-form,
+    .settings-actions-row > .settings-action-save {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .settings-import-inline-form label.btn {
+        width: 100%;
+        box-sizing: border-box;
+        justify-content: center;
+    }
 }
 
 /* Callsign builder chips */
