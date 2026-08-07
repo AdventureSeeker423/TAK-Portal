@@ -543,6 +543,7 @@
       <div class="segmented" style="margin-top:4px;">
         <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
         <button class="segBtn" type="button" data-mode="template">Templates</button>
+        <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
         <button class="segBtn" type="button" data-mode="group">Users With An Existing Group</button>
         <button class="segBtn" type="button" data-mode="users">Specific Users</button>
       </div>
@@ -593,6 +594,22 @@
           </div>
         </div>
         <div id="templateList" class="groupsBox" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Agency Types mode -->
+      <div id="massAgencyTypePane" style="display:none; margin-top:14px;">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <input
+            id="agencyTypeSearch"
+            placeholder="Search agency types..."
+            style="flex: 1; min-width: 0;"
+          />
+          <div class="row" style="gap:10px;">
+            <button class="btn" id="agencyTypeSelectAll" type="button">Select All</button>
+            <button class="btn" id="agencyTypeClearAll" type="button">Clear</button>
+          </div>
+        </div>
+        <div id="agencyTypeList" class="groupsBox" style="margin-top:10px;"></div>
       </div>
 
       <!-- Users mode -->
@@ -2522,6 +2539,7 @@ const massSkipBtn = document.getElementById("massSkipBtn");
 const massAgencyPane = document.getElementById("massAgencyPane");
 const massGroupPane = document.getElementById("massGroupPane");
 const massTemplatePane = document.getElementById("massTemplatePane");
+const massAgencyTypePane = document.getElementById("massAgencyTypePane");
 const massUsersPane = document.getElementById("massUsersPane");
 
 const agencySearch = document.getElementById("agencySearch");
@@ -2538,6 +2556,11 @@ const templateSearch = document.getElementById("templateSearch");
 const templateList = document.getElementById("templateList");
 const templateSelectAll = document.getElementById("templateSelectAll");
 const templateClearAll = document.getElementById("templateClearAll");
+
+const agencyTypeSearch = document.getElementById("agencyTypeSearch");
+const agencyTypeList = document.getElementById("agencyTypeList");
+const agencyTypeSelectAll = document.getElementById("agencyTypeSelectAll");
+const agencyTypeClearAll = document.getElementById("agencyTypeClearAll");
 
 const userSearch = document.getElementById("userSearch");
 const userList = document.getElementById("userList");
@@ -2570,6 +2593,7 @@ function resetMassState() {
   agencySearch.value = "";
   sourceGroupSearch.value = "";
   if (templateSearch) templateSearch.value = "";
+  if (agencyTypeSearch) agencyTypeSearch.value = "";
   userSearch.value = "";
   usersSearchCache = [];
 }
@@ -2579,6 +2603,7 @@ function updateMassPanes(){
   massAgencyPane.style.display = mode === "agency" ? "block" : "none";
   massGroupPane.style.display = mode === "group" ? "block" : "none";
   if (massTemplatePane) massTemplatePane.style.display = mode === "template" ? "block" : "none";
+  if (massAgencyTypePane) massAgencyTypePane.style.display = mode === "agencyType" ? "block" : "none";
   massUsersPane.style.display = mode === "users" ? "block" : "none";
   setMsg(massMsg, "", true);
 }
@@ -2592,6 +2617,7 @@ function setMassMode(mode){
   if(mode === "agency") renderAgencyList();
   if(mode === "group") renderSourceGroupList();
   if(mode === "template") renderTemplateSourceList();
+  if(mode === "agencyType") renderAgencyTypeList();
   if(mode === "users") renderUserList(usersSearchCache);
 }
 
@@ -2752,6 +2778,54 @@ function renderAgencyList(){
   }).join("") || `<div style="padding:10px; color: var(--muted);">No agencies found.</div>`;
 }
 
+function agencyTypesWithAgencies(){
+  const list = Array.isArray(agenciesCache) ? agenciesCache : [];
+  const counts = new Map();
+  for (const a of list) {
+    const type = String(a?.type || "").trim();
+    const sfx = String(a?.suffix || "").trim();
+    if (!type || !sfx) continue;
+    counts.set(type, (counts.get(type) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => a.type.localeCompare(b.type, undefined, { sensitivity: "base" }));
+}
+
+function suffixesForSelectedAgencyTypes(types){
+  const wanted = new Set(
+    (types || []).map((t) => String(t || "").trim().toLowerCase()).filter(Boolean)
+  );
+  if (!wanted.size) return [];
+  const list = Array.isArray(agenciesCache) ? agenciesCache : [];
+  const suffixes = [];
+  for (const a of list) {
+    const type = String(a?.type || "").trim().toLowerCase();
+    if (!wanted.has(type)) continue;
+    const sfx = String(a?.suffix || "").trim().toLowerCase();
+    if (sfx) suffixes.push(sfx);
+  }
+  return Array.from(new Set(suffixes));
+}
+
+function renderAgencyTypeList(){
+  if (!agencyTypeList) return;
+  const needle = String(agencyTypeSearch?.value || "").trim().toLowerCase();
+  const items = agencyTypesWithAgencies().filter((x) => {
+    if (!needle) return true;
+    return x.type.toLowerCase().includes(needle);
+  });
+  agencyTypeList.innerHTML = items.map((x) => {
+    const label = `${x.type} (${x.count} ${x.count === 1 ? "agency" : "agencies"})`;
+    return `
+      <label class="groupItem">
+        <input type="checkbox" class="agencyTypeChk" value="${esc(x.type)}" />
+        <span>${esc(label)}</span>
+      </label>
+    `;
+  }).join("") || `<div style="padding:10px; color: var(--muted);">No agency types with registered agencies.</div>`;
+}
+
 agencySearch.oninput = () => renderAgencyList();
 agencySelectAll.onclick = () => {
   agencyList.querySelectorAll("input.agencyChk").forEach(ch => ch.checked = true);
@@ -2759,6 +2833,18 @@ agencySelectAll.onclick = () => {
 agencyClearAll.onclick = () => {
   agencyList.querySelectorAll("input.agencyChk").forEach(ch => ch.checked = false);
 };
+
+if (agencyTypeSearch) agencyTypeSearch.oninput = () => renderAgencyTypeList();
+if (agencyTypeSelectAll) {
+  agencyTypeSelectAll.onclick = () => {
+    agencyTypeList.querySelectorAll("input.agencyTypeChk").forEach((ch) => (ch.checked = true));
+  };
+}
+if (agencyTypeClearAll) {
+  agencyTypeClearAll.onclick = () => {
+    agencyTypeList.querySelectorAll("input.agencyTypeChk").forEach((ch) => (ch.checked = false));
+  };
+}
 
 async function loadGroups(){
   const res = await fetch("/api/groups");
@@ -2937,6 +3023,18 @@ massApplyBtn.onclick = async () => {
     const suffixes = Array.from(agencyList.querySelectorAll("input.agencyChk:checked")).map(ch => String(ch.value));
     if (!suffixes.length) return setMsg(massMsg, "Select one or more agencies.", false);
     if (!confirm(`Mass ${actionVerb} "${groupLabel}" ${actionVerb === "assign" ? "to" : "from"} all users in ${suffixes.length} agency suffix(es)?`)) return;
+    payload.suffixes = suffixes;
+  }
+
+  if(mode === "agencyType"){
+    const types = Array.from(agencyTypeList.querySelectorAll("input.agencyTypeChk:checked"))
+      .map((ch) => String(ch.value || "").trim())
+      .filter(Boolean);
+    if (!types.length) return setMsg(massMsg, "Select one or more agency types.", false);
+    const suffixes = suffixesForSelectedAgencyTypes(types);
+    if (!suffixes.length) return setMsg(massMsg, "No agencies found for the selected type(s).", false);
+    if (!confirm(`Mass ${actionVerb} "${groupLabel}" ${actionVerb === "assign" ? "to" : "from"} all users in ${types.length} agency type(s) (${suffixes.length} agency suffix(es))?`)) return;
+    payload.sourceMode = "agency";
     payload.suffixes = suffixes;
   }
 

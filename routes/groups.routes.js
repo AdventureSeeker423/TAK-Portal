@@ -827,6 +827,8 @@ router.get("/:groupId/admin-access", async (req, res) => {
       return res.status(404).json({ error: "Group not found" });
     }
 
+    const groupName = String(group?.name || "").trim();
+
     const allAgencies = agencies.load();
     const agenciesOut = allAgencies.map((a, idx) => {
       const ids = Array.isArray(a.allowedAdminGroupIds) ? a.allowedAdminGroupIds : [];
@@ -869,6 +871,8 @@ router.put("/:groupId/admin-access", async (req, res) => {
     } catch (_) {
       return res.status(404).json({ error: "Group not found" });
     }
+
+    const groupName = String(group?.name || "").trim();
 
     const raw = req.body?.agencyIds;
     const selected = new Set(
