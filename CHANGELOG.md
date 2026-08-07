@@ -12,6 +12,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.64 - 8/7/26
+✨ `Enhancement` - Groups and Mutual Aid - Adds "Agency Type" to the options for assigning/unassigning groups<br>
+🐛 `Bug Fix` - Groups - Fixes issue with the "Admin Access" button where it occassionaly errors out due to a mis-match of group names.
+
 ### v1.3.63 - 8/6/26
 ✨ `Enhancement` - Setup My Device - Minor wording updates to better onboard new users<br>
 ✨ `Enhancement` - Templates - Switched from agency abbreviation to agency full name to aid in visibility
