@@ -2778,11 +2778,23 @@
 
         var indexed = null;
 
-        function cleanLabel(text) {
-          return String(text || "")
-            .replace(/\s+/g, " ")
-            .replace(/\bInstalled\b|\bNot Installed\b/gi, "")
-            .trim();
+        function cleanText(text) {
+          return String(text || "").replace(/\s+/g, " ").trim();
+        }
+
+        function fieldLabelText(field) {
+          var labelEl = field.querySelector(".settings-label");
+          if (!labelEl) return "";
+          // Prefer the dedicated title span; never include ? / help popover text
+          var titleSpan = labelEl.querySelector(":scope > span:first-child");
+          if (titleSpan && !titleSpan.classList.contains("settings-help-tip")) {
+            return cleanText(titleSpan.textContent);
+          }
+          var clone = labelEl.cloneNode(true);
+          clone.querySelectorAll(".settings-help-tip, .cert-status").forEach(function (el) {
+            el.remove();
+          });
+          return cleanText(clone.textContent);
         }
 
         function fieldValuePreview(control) {
@@ -2795,9 +2807,11 @@
           }
           if (control.tagName === "SELECT") {
             var opt = control.options[control.selectedIndex];
-            return opt ? String(opt.textContent || opt.value || "").trim() : "";
+            return opt ? cleanText(opt.textContent || opt.value || "") : "";
           }
-          return String(control.value || "").trim();
+          var raw = cleanText(control.value || "");
+          if (raw.length > 48) return raw.slice(0, 45) + "…";
+          return raw;
         }
 
         function buildIndex() {
@@ -2807,14 +2821,13 @@
             var modalId = card.getAttribute("data-open-settings-modal") || "";
             var sectionTitle = "";
             var titleEl = card.querySelector(".settings-hub-card-title");
-            if (titleEl) sectionTitle = cleanLabel(titleEl.textContent);
+            if (titleEl) sectionTitle = cleanText(titleEl.textContent);
             var modal = document.getElementById("settingsModal-" + modalId);
             if (!modal) return;
 
             var fields = modal.querySelectorAll(".settings-field");
             fields.forEach(function (field, idx) {
-              var labelEl = field.querySelector(".settings-label");
-              var label = cleanLabel(labelEl ? labelEl.textContent : "");
+              var label = fieldLabelText(field);
               if (!label) return;
               var control =
                 field.querySelector("input:not([type='hidden']), select, textarea") ||
@@ -2824,7 +2837,7 @@
               var keyMatch = name.match(/settings\[([^\]]+)\]/);
               if (keyMatch) key = keyMatch[1];
               var helpEl = field.querySelector(".settings-help-popover");
-              var help = helpEl ? cleanLabel(helpEl.textContent) : "";
+              var help = helpEl ? cleanText(helpEl.textContent) : "";
               var haystack = [label, key, key.replace(/_/g, " "), help, sectionTitle, name]
                 .join(" ")
                 .toLowerCase();
@@ -2842,7 +2855,7 @@
             if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "bookmarks" || modalId === "email-templates" || modalId === "tak-maintenance") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
-              if (sectionHelpEl) sectionHelp = cleanLabel(sectionHelpEl.textContent);
+              if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);
               items.push({
                 modalId: modalId,
                 sectionTitle: sectionTitle,
@@ -2908,38 +2921,74 @@
           });
 
           resultsEl.innerHTML = "";
-          matches.forEach(function (item) {
-            var modal = document.getElementById("settingsModal-" + item.modalId);
-            var preview = "";
-            if (modal && item.fieldIndex >= 0) {
-              var field = modal.querySelectorAll(".settings-field")[item.fieldIndex];
-              if (field) {
-                var control = field.querySelector("input:not([type='hidden']), select, textarea");
-                preview = fieldValuePreview(control);
-              }
-            }
 
-            var btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "settings-search-result";
-            btn.innerHTML =
-              '<span class="settings-search-result-main">' +
-                '<span class="settings-search-result-label"></span>' +
-                '<span class="settings-search-result-section"></span>' +
-              "</span>" +
-              '<span class="settings-search-result-value"></span>';
-            btn.querySelector(".settings-search-result-label").textContent = item.label;
-            btn.querySelector(".settings-search-result-section").textContent = item.sectionTitle;
-            var valueEl = btn.querySelector(".settings-search-result-value");
-            if (preview) {
-              valueEl.textContent = preview;
-            } else {
-              valueEl.hidden = true;
+          // Group matches by section for a cleaner list
+          var groups = [];
+          var groupMap = Object.create(null);
+          matches.forEach(function (item) {
+            var key = item.modalId || item.sectionTitle || "other";
+            if (!groupMap[key]) {
+              groupMap[key] = {
+                modalId: item.modalId,
+                sectionTitle: item.sectionTitle || "Settings",
+                items: [],
+              };
+              groups.push(groupMap[key]);
             }
-            btn.addEventListener("click", function () {
-              openResult(item);
+            groupMap[key].items.push(item);
+          });
+
+          groups.forEach(function (group) {
+            var section = document.createElement("section");
+            section.className = "settings-search-group";
+
+            var heading = document.createElement("h3");
+            heading.className = "settings-search-group-title";
+            heading.textContent = group.sectionTitle;
+            section.appendChild(heading);
+
+            var list = document.createElement("div");
+            list.className = "settings-search-group-list";
+
+            group.items.forEach(function (item) {
+              var modal = document.getElementById("settingsModal-" + item.modalId);
+              var preview = "";
+              if (modal && item.fieldIndex >= 0) {
+                var field = modal.querySelectorAll(".settings-field")[item.fieldIndex];
+                if (field) {
+                  var control = field.querySelector("input:not([type='hidden']), select, textarea");
+                  preview = fieldValuePreview(control);
+                }
+              }
+
+              var btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "settings-search-result";
+
+              var labelEl = document.createElement("span");
+              labelEl.className = "settings-search-result-label";
+              labelEl.textContent = item.sectionOnly ? "Open section" : item.label;
+
+              var valueEl = document.createElement("span");
+              valueEl.className = "settings-search-result-value";
+              if (preview) {
+                valueEl.textContent = preview;
+                valueEl.title = preview;
+              } else {
+                valueEl.classList.add("is-empty");
+                valueEl.textContent = item.sectionOnly ? "View" : "—";
+              }
+
+              btn.appendChild(labelEl);
+              btn.appendChild(valueEl);
+              btn.addEventListener("click", function () {
+                openResult(item);
+              });
+              list.appendChild(btn);
             });
-            resultsEl.appendChild(btn);
+
+            section.appendChild(list);
+            resultsEl.appendChild(section);
           });
 
           return matches.length;
