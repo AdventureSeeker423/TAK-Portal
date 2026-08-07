@@ -1,7 +1,7 @@
 <%- include("partials/header") %>
 <%- include("partials/sidebar") %>
 
-<main class="main">
+<main class="main settings-page">
   <h1>Settings</h1>
   <div id="settingsAutoSaveStatus" class="muted" style="margin-top:8px;font-size:13px;min-height:1.25em;" aria-live="polite"></div>
 
@@ -36,17 +36,9 @@
       <div class="settings-hub-grid">
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="authentik">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Authentik</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Authentik URL, API token, and user/group visibility prefixes.</span>
-          </span>
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="portal-access">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Portal Access Control</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Require Authentik login, public URLs, admin groups, and hCaptcha.</span>
-          </span>
         </div>
       </div>
     </section>
@@ -59,18 +51,10 @@
       <div class="settings-hub-grid">
         <div class="settings-hub-card span-2" role="button" tabindex="0" data-open-settings-modal="tak-server">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Connection &amp; Certificates</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">TAK URL, client certificates, CloudTAK, and SSH setup.</span>
-          </span>
         </div>
         <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
         <div class="settings-hub-card span-2" role="button" tabindex="0" data-open-settings-modal="tak-maintenance">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Maintenance</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">View TAK logs, restart the TAK service, or reboot the TAK host.</span>
-          </span>
         </div>
         <% } %>
       </div>
@@ -84,33 +68,17 @@
       <div class="settings-hub-grid">
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="email">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Email</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">SMTP settings and notification options.</span>
-          </span>
         </div>
         <% if (typeof emailTemplates !== "undefined" && Array.isArray(emailTemplates) && emailTemplates.length) { %>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="email-templates">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Email Templates</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Customize HTML bodies for system emails.</span>
-          </span>
         </div>
         <% } %>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="sms">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">SMS</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Twilio or Brevo SMS for alerts and locate links.</span>
-          </span>
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="mou">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">MOU</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">MOU workflow, reminders, and content size limits.</span>
-          </span>
         </div>
       </div>
     </section>
@@ -123,31 +91,15 @@
       <div class="settings-hub-grid">
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="branding">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Branding &amp; Appearance</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Logo, theme, fonts, button color, and beta features.</span>
-          </span>
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="callsign">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Callsign Format</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Build how callsigns are displayed.</span>
-          </span>
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="live-map">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Live Map</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Default basemap for maps in the portal.</span>
-          </span>
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="bookmarks">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Dashboard Bookmarks</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Admin-only dashboard bookmarks.</span>
-          </span>
         </div>
       </div>
     </section>
@@ -158,18 +110,25 @@
         Reference Data
       </h2>
       <div class="settings-hub-grid">
-        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="agency-types">
+        <div class="settings-hub-card span-2" role="button" tabindex="0" data-open-settings-modal="agency-types">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Agency Types</span></span>
           <span class="settings-help-tip" data-stop-card-open>
             <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Additional types for the Agencies dropdown.</span>
+            <span class="settings-help-popover" role="tooltip">Additional types for the Agencies dropdown.</span>
           </span>
         </div>
-        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="deployment-packet">
-          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Deployment Packet</span></span>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="deployment-packet-colors">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Deployment Packet Colors / Teams</span></span>
           <span class="settings-help-tip" data-stop-card-open>
             <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Color/team and role labels for deployment packets.</span>
+            <span class="settings-help-popover" role="tooltip">Color and team labels used in deployment packets.</span>
+          </span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="deployment-packet-roles">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Deployment Packet Roles</span></span>
+          <span class="settings-help-tip" data-stop-card-open>
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover" role="tooltip">Role labels used in deployment packets.</span>
           </span>
         </div>
       </div>
@@ -1894,21 +1853,20 @@
 
 
 
-    <!-- Deployment Packet -->
-    <div class="modalOverlay settings-modal-overlay" id="settingsModal-deployment-packet" data-settings-modal="deployment-packet" style="display:none;" aria-hidden="true">
-      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-deployment-packet">
+    <!-- Deployment Packet Colors / Teams -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-deployment-packet-colors" data-settings-modal="deployment-packet-colors" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-deployment-packet-colors">
         <div class="modalHeader">
           <div class="modalHeaderLeft">
-            <h2 id="settingsModalTitle-deployment-packet">Deployment Packet</h2>
+            <h2 id="settingsModalTitle-deployment-packet-colors">Deployment Packet Colors / Teams</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Color/team labels and role labels used in deployment packets.</span>
+              <span class="settings-help-popover" role="tooltip">Color and team labels used in deployment packets.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
         </div>
         <div class="modalBody settings-body">
-          <h3 style="margin:0 0 .5rem 0;">Color / Team</h3>
           <div class="grid2">
             <% renderField("DP_COLOR_BLUE","Blue",null,"Aircraft"); %>
             <% renderField("DP_COLOR_DARK_BLUE","Dark Blue",null,"Law Enforcement"); %>
@@ -1925,10 +1883,24 @@
             <% renderField("DP_COLOR_WHITE","White",null,"Command Post"); %>
             <% renderField("DP_COLOR_YELLOW","Yellow",null,""); %>
           </div>
+        </div>
+      </div>
+    </div>
 
-          <hr style="margin:1rem 0;opacity:.35;" />
-
-          <h3 style="margin:0 0 .5rem 0;">Role</h3>
+    <!-- Deployment Packet Roles -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-deployment-packet-roles" data-settings-modal="deployment-packet-roles" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-deployment-packet-roles">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-deployment-packet-roles">Deployment Packet Roles</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover" role="tooltip">Role labels used in deployment packets.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
           <div class="grid2">
             <% renderField("DP_ROLE_TEAM_MEMBER","Team Member",null,"All Standard Operators"); %>
             <% renderField("DP_ROLE_TEAM_LEAD","Team Lead",null,"Team Leaders / Supervisors"); %>
@@ -1939,7 +1911,6 @@
             <% renderField("DP_ROLE_RTO","RTO",null,""); %>
             <% renderField("DP_ROLE_K9","K9",null,"K9 Handlers"); %>
           </div>
-        
         </div>
       </div>
     </div>
