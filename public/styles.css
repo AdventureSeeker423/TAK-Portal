@@ -1961,18 +1961,41 @@ body.modal-open .sidebarToggle {
 }
 
 /* Settings hub (categorized cards) */
-.settings-page > h1,
-.settings-page > #settingsAutoSaveStatus,
-.settings-page > .alert {
+/* Center the whole settings column in the main pane */
+.main.settings-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.main.settings-page > h1,
+.main.settings-page > #settingsAutoSaveStatus,
+.main.settings-page > .alert,
+.main.settings-page > .settings-hub,
+.main.settings-page > .settings-actions-row {
+    width: 100%;
     max-width: 720px;
-    margin-left: auto;
-    margin-right: auto;
+    box-sizing: border-box;
+}
+
+/* Form only hosts hidden modals; collapse its layout height */
+.main.settings-page > #settingsForm {
+    width: 100%;
+    max-width: 720px;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+}
+
+.main.settings-page > h1 {
+    margin-left: 0;
+    margin-right: 0;
 }
 
 .settings-hub {
-    margin: 1rem auto 0;
-    width: 100%;
-    max-width: 720px;
+    margin-top: 1rem;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
@@ -2264,9 +2287,7 @@ body.modal-open .sidebarToggle {
 }
 
 .settings-actions-row {
-    margin: 1.25rem auto 0;
-    width: 100%;
-    max-width: 720px;
+    margin-top: 1.25rem;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
