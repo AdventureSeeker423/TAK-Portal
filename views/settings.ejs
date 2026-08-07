@@ -148,6 +148,21 @@
         </div>
       </div>
     </section>
+
+    <section class="settings-hub-category" aria-labelledby="settingsCatBackup">
+      <h2 class="settings-hub-category-title" id="settingsCatBackup">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Backup &amp; Restore
+      </h2>
+      <div class="settings-hub-grid">
+        <a href="/settings/export-data" class="settings-hub-card">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Export Configuration</span></span>
+        </a>
+        <div class="settings-hub-card" role="button" tabindex="0" data-import-config>
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Import Configuration</span></span>
+        </div>
+      </div>
+    </section>
     </div>
   </div>
 
@@ -861,7 +876,6 @@
           </label>
 
           <div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
-            <button type="submit" class="btn">Save SMS settings</button>
             <button
               type="submit"
               class="btn"
@@ -873,7 +887,7 @@
           </div>
           <span class="settings-help-tip" style="margin-top:0.5rem;">
             <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">“Save SMS settings” saves the whole settings form (same as Save Settings at the bottom). “Send test SMS” uses the values currently in the form without requiring a save first.</span>
+            <span class="settings-help-popover">SMS settings auto-save as you edit. “Send test SMS” uses the values currently in the form.</span>
           </span>
         
         </div>
@@ -987,6 +1001,11 @@
                 inp.value = label || "";
                 inp.setAttribute("data-additional-agency-type-val", "1");
                 inp.style.width = "100%";
+                inp.addEventListener("input", function () {
+                  if (typeof window.scheduleSettingsAutoSave === "function") {
+                    window.scheduleSettingsAutoSave();
+                  }
+                });
 
                 var del = document.createElement("button");
                 del.type = "button";
@@ -995,6 +1014,9 @@
                 del.addEventListener("click", function () {
                   li.remove();
                   updateCount();
+                  if (typeof window.scheduleSettingsAutoSave === "function") {
+                    window.scheduleSettingsAutoSave();
+                  }
                 });
 
                 wrap.appendChild(handle);
@@ -1008,6 +1030,9 @@
                 });
                 li.addEventListener("dragend", function () {
                   li.classList.remove("dragging");
+                  if (typeof window.scheduleSettingsAutoSave === "function") {
+                    window.scheduleSettingsAutoSave();
+                  }
                 });
 
                 return li;
@@ -1056,7 +1081,7 @@
               }
               updateCount();
 
-              form.addEventListener("submit", function () {
+              function serializeAdditionalAgencyTypes() {
                 hiddenHost.innerHTML = "";
 
                 var rows = [].slice.call(list.querySelectorAll("li[data-additional-agency-type-row]"));
@@ -1074,7 +1099,11 @@
                   h.value = normalized[i - 1] || "";
                   hiddenHost.appendChild(h);
                 }
-              });
+              }
+
+              window.__settingsSerializeHooks = window.__settingsSerializeHooks || [];
+              window.__settingsSerializeHooks.push(serializeAdditionalAgencyTypes);
+              form.addEventListener("submit", serializeAdditionalAgencyTypes);
             })();
           </script>
         
@@ -1760,6 +1789,13 @@
                 title.setAttribute('data-bm-title', '1');
                 var url = makeInput('URL (https://...)', bm && bm.url);
                 url.setAttribute('data-bm-url', '1');
+                function onBookmarkEdit() {
+                  if (typeof window.scheduleSettingsAutoSave === "function") {
+                    window.scheduleSettingsAutoSave();
+                  }
+                }
+                title.addEventListener('input', onBookmarkEdit);
+                url.addEventListener('input', onBookmarkEdit);
 
                 var del = document.createElement('button');
                 del.type = 'button';
@@ -1768,6 +1804,7 @@
                 del.addEventListener('click', function () {
                   li.remove();
                   updateCount();
+                  onBookmarkEdit();
                 });
 
                 wrap.appendChild(handle);
@@ -1783,6 +1820,9 @@
                 });
                 li.addEventListener('dragend', function () {
                   li.classList.remove('dragging');
+                  if (typeof window.scheduleSettingsAutoSave === "function") {
+                    window.scheduleSettingsAutoSave();
+                  }
                 });
 
                 return li;
@@ -1827,9 +1867,8 @@
               }
               updateCount();
 
-              // On submit, serialize into flat settings[BOOKMARKn_*] fields.
-              form.addEventListener('submit', function () {
-                // Clear any previous hidden fields
+              // Serialize into flat settings[BOOKMARKn_*] fields for autosave / full submit.
+              function serializeBookmarks() {
                 hiddenHost.innerHTML = '';
 
                 var rows = [].slice.call(list.querySelectorAll('li[data-bookmark-row]'));
@@ -1859,7 +1898,11 @@
                   hiddenHost.appendChild(t);
                   hiddenHost.appendChild(u);
                 }
-              });
+              }
+
+              window.__settingsSerializeHooks = window.__settingsSerializeHooks || [];
+              window.__settingsSerializeHooks.push(serializeBookmarks);
+              form.addEventListener('submit', serializeBookmarks);
             })();
           </script>
         
@@ -2005,30 +2048,23 @@
 
   </form>
 
-  <!-- Action row (outside the main form to avoid nested forms) — same pattern as Users: secondary actions left, primary success right -->
-  <div class="settings-actions-row">
-    <a href="/settings/export-data" class="btn">Export Configuration</a>
-    <form
-      id="importConfigForm"
-      class="settings-import-inline-form"
-      action="/settings/import-data"
-      method="post"
-      enctype="multipart/form-data"
-    >
-      <input
-        id="configZipInput"
-        type="file"
-        name="CONFIG_ZIP_UPLOAD"
-        accept=".zip,application/zip"
-        style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;"
-      />
-
-      <label for="configZipInput" class="btn" style="cursor:pointer;">
-        Import Configuration
-      </label>
-    </form>
-    <button type="submit" class="btn success settings-action-save" form="settingsForm">Save Settings</button>
-  </div>
+  <!-- Import form stays outside settingsForm to avoid nested forms -->
+  <form
+    id="importConfigForm"
+    action="/settings/import-data"
+    method="post"
+    enctype="multipart/form-data"
+    style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;"
+    aria-hidden="true"
+  >
+    <input
+      id="configZipInput"
+      type="file"
+      name="CONFIG_ZIP_UPLOAD"
+      accept=".zip,application/zip"
+      tabindex="-1"
+    />
+  </form>
 
   <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
   <div class="modalOverlay settings-modal-overlay" id="settingsModal-tak-maintenance" data-settings-modal="tak-maintenance" style="display:none;" aria-hidden="true">
@@ -2109,9 +2145,28 @@
         });
       });
 
-      // Import Configuration (restore data from zip)
+      // Import Configuration (restore data from zip) — hub card triggers file picker
       var importInput = document.getElementById("configZipInput");
       var importForm = document.getElementById("importConfigForm");
+
+      function openImportPicker() {
+        if (importInput) importInput.click();
+      }
+
+      document.addEventListener("click", function (e) {
+        var card = e.target.closest && e.target.closest("[data-import-config]");
+        if (!card) return;
+        e.preventDefault();
+        openImportPicker();
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var card = e.target.closest && e.target.closest("[data-import-config]");
+        if (!card) return;
+        e.preventDefault();
+        openImportPicker();
+      });
 
       if (importInput && importForm) {
         importInput.addEventListener("change", function () {
@@ -2119,7 +2174,6 @@
 
           var fileName = importInput.files[0].name || "selected file";
 
-          // Confirm destructive action
           var ok = window.confirm(
             "Importing a configuration will OVERWRITE files in the data folder with the contents of the zip.\n\nContinue?"
           );
@@ -2276,99 +2330,177 @@
       if (!form) return;
 
       var statusEl = document.getElementById("settingsAutoSaveStatus");
-      var debounceMs = 1400;
+      var debounceMs = 900;
       var timer = null;
-      var pendingAutoSave = false;
       var saveInFlight = false;
+      var dirtyWhileSaving = false;
 
-      form.addEventListener("submit", function (e) {
-        if (pendingAutoSave) {
-          e.preventDefault();
-          pendingAutoSave = false;
-          if (saveInFlight) return;
-          saveInFlight = true;
-          if (statusEl) {
-            statusEl.textContent = "Saving…";
-            statusEl.style.color = "";
+      function setStatus(text, isError) {
+        if (!statusEl) return;
+        statusEl.textContent = text || "";
+        statusEl.style.color = isError ? "#dc2626" : "";
+      }
+
+      function isEditorField(el) {
+        if (!el) return false;
+        return !!(
+          el.closest &&
+          (el.closest("#bookmarkEditor") ||
+            el.closest("#additionalAgencyTypeEditor") ||
+            el.closest("#callsignBuilder"))
+        );
+      }
+
+      function shouldAutoSaveFrom(el) {
+        if (!el) return false;
+        // Named settings fields (skip live email template editors — saved explicitly)
+        if (el.name) {
+          var n = String(el.name);
+          if (
+            n.indexOf("EMAIL_TEMPLATES_OVERRIDES") !== -1 &&
+            n.indexOf("EMAIL_TEMPLATES_OVERRIDES_RESET") === -1
+          ) {
+            return false;
           }
-          var action = form.getAttribute("action") || "/settings";
-          var fd = new FormData(form);
-          // Autosave must not rewrite email template overrides from editor textareas.
-          Array.from(fd.keys()).forEach(function (key) {
-            if (
-              key.indexOf("EMAIL_TEMPLATES_OVERRIDES") !== -1 &&
-              key.indexOf("EMAIL_TEMPLATES_OVERRIDES_RESET") === -1
-            ) {
-              fd.delete(key);
-            }
-          });
-          fetch(action, {
-            method: "POST",
-            body: fd,
-            headers: {
-              Accept: "application/json",
-              "X-Requested-With": "XMLHttpRequest",
-            },
-            credentials: "same-origin",
-          })
-            .then(function (res) {
-              return res.text().then(function (text) {
-                var j = null;
-                try {
-                  j = text ? JSON.parse(text) : null;
-                } catch (_) {}
-                if (!res.ok || !j || j.ok !== true) {
-                  throw new Error((j && j.error) || text.slice(0, 200) || res.statusText || "Save failed");
-                }
-              });
-            })
-            .then(function () {
-              if (statusEl) {
-                statusEl.textContent = "Saved";
-                statusEl.style.color = "";
-              }
-            })
-            .catch(function (err) {
-              if (statusEl) {
-                statusEl.textContent = "Auto-save failed: " + (err.message || String(err));
-                statusEl.style.color = "#dc2626";
-              }
-            })
-            .finally(function () {
-              saveInFlight = false;
-            });
+          return true;
+        }
+        return isEditorField(el);
+      }
+
+      function isIntentionalFullSubmit(submitter) {
+        if (!submitter) return false;
+        var name = submitter.getAttribute("name") || "";
+        if (
+          name === "_saveTemplate" ||
+          name === "_resetAllEmailTemplates" ||
+          name === "_testEmail" ||
+          name === "_testSms"
+        ) {
+          return true;
+        }
+        var fa = submitter.getAttribute("formaction") || "";
+        return fa.indexOf("/settings/test-") !== -1;
+      }
+
+      function serializeEditors() {
+        var hooks = window.__settingsSerializeHooks || [];
+        hooks.forEach(function (fn) {
+          try {
+            if (typeof fn === "function") fn();
+          } catch (err) {
+            console.error("Settings serialize hook failed:", err);
+          }
+        });
+      }
+
+      function buildAutoSaveFormData() {
+        serializeEditors();
+        var fd = new FormData(form);
+        // Never persist template textarea bodies on autosave (same as server rule).
+        Array.from(fd.keys()).forEach(function (key) {
+          if (
+            key.indexOf("EMAIL_TEMPLATES_OVERRIDES") !== -1 &&
+            key.indexOf("EMAIL_TEMPLATES_OVERRIDES_RESET") === -1
+          ) {
+            fd.delete(key);
+          }
+        });
+        return fd;
+      }
+
+      function performAutoSave() {
+        if (saveInFlight) {
+          dirtyWhileSaving = true;
           return;
         }
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
+        saveInFlight = true;
+        dirtyWhileSaving = false;
+        setStatus("Saving…", false);
+
+        var action = form.getAttribute("action") || "/settings";
+        var fd;
+        try {
+          fd = buildAutoSaveFormData();
+        } catch (err) {
+          saveInFlight = false;
+          setStatus("Auto-save failed: " + (err && err.message ? err.message : String(err)), true);
+          return;
         }
-      });
+
+        fetch(action, {
+          method: "POST",
+          body: fd,
+          headers: {
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          credentials: "same-origin",
+        })
+          .then(function (res) {
+            return res.text().then(function (text) {
+              var j = null;
+              try {
+                j = text ? JSON.parse(text) : null;
+              } catch (_) {}
+              if (!res.ok || !j || j.ok !== true) {
+                throw new Error(
+                  (j && j.error) || text.slice(0, 200) || res.statusText || "Save failed"
+                );
+              }
+            });
+          })
+          .then(function () {
+            setStatus("Saved", false);
+          })
+          .catch(function (err) {
+            setStatus(
+              "Auto-save failed: " + (err && err.message ? err.message : String(err)),
+              true
+            );
+          })
+          .finally(function () {
+            saveInFlight = false;
+            if (dirtyWhileSaving) {
+              dirtyWhileSaving = false;
+              scheduleAutoSave();
+            }
+          });
+      }
 
       function scheduleAutoSave() {
         if (timer) clearTimeout(timer);
         timer = setTimeout(function () {
           timer = null;
-          pendingAutoSave = true;
-          if (typeof form.requestSubmit === "function") {
-            form.requestSubmit();
-          } else {
-            var sub = document.createElement("button");
-            sub.type = "submit";
-            sub.setAttribute("formnovalidate", "");
-            sub.style.cssText = "position:absolute;left:-9999px;width:1px;height:1px;opacity:0;";
-            form.appendChild(sub);
-            sub.click();
-            form.removeChild(sub);
-          }
+          performAutoSave();
         }, debounceMs);
       }
+
+      window.scheduleSettingsAutoSave = scheduleAutoSave;
+
+      // Block accidental full-page posts (e.g. Enter in a field). Allow explicit actions.
+      form.addEventListener(
+        "submit",
+        function (e) {
+          if (isIntentionalFullSubmit(e.submitter)) {
+            if (timer) {
+              clearTimeout(timer);
+              timer = null;
+            }
+            // Let bookmark/agency serialize listeners run, then navigate.
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          scheduleAutoSave();
+        },
+        true
+      );
 
       form.addEventListener(
         "input",
         function (e) {
           var t = e.target;
-          if (!t || !t.name) return;
+          if (!shouldAutoSaveFrom(t)) return;
           if (t.type === "file") return;
           scheduleAutoSave();
         },
@@ -2379,11 +2511,18 @@
         "change",
         function (e) {
           var t = e.target;
-          if (!t || !t.name) return;
+          if (!shouldAutoSaveFrom(t)) return;
           scheduleAutoSave();
         },
         true
       );
+
+      // Warn if navigating away during an in-flight or pending save
+      window.addEventListener("beforeunload", function (e) {
+        if (!saveInFlight && !timer && !dirtyWhileSaving) return;
+        e.preventDefault();
+        e.returnValue = "";
+      });
     })();
   </script>
 
