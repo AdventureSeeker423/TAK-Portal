@@ -21,7 +21,8 @@
   "license": "ISC",
   "type": "commonjs",
   "overrides": {
-    "whatwg-url": "^14.2.0"
+    "whatwg-url": "^14.2.0",
+    "brace-expansion": "1.1.16"
   },
   "dependencies": {
     "@tak-ps/node-cot": "^14.42.1",
