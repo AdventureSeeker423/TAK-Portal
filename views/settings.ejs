@@ -28,6 +28,19 @@
 
 
   <div class="settings-hub" id="settingsHub">
+    <div class="settings-hub-search">
+      <label class="settings-hub-search-label" for="settingsHubSearch">Search settings</label>
+      <input
+        type="search"
+        id="settingsHubSearch"
+        class="settings-hub-search-input"
+        placeholder="Search settings…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <p id="settingsHubSearchEmpty" class="settings-hub-search-empty" hidden>No settings match your search.</p>
+    </div>
+
     <section class="settings-hub-category" aria-labelledby="settingsCatAuth">
       <h2 class="settings-hub-category-title" id="settingsCatAuth">
         <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -69,14 +82,14 @@
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="email">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Email</span></span>
         </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="sms">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">SMS</span></span>
+        </div>
         <% if (typeof emailTemplates !== "undefined" && Array.isArray(emailTemplates) && emailTemplates.length) { %>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="email-templates">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Email Templates</span></span>
         </div>
         <% } %>
-        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="sms">
-          <span class="settings-hub-card-main"><span class="settings-hub-card-title">SMS</span></span>
-        </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="mou">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">MOU</span></span>
         </div>
@@ -2750,6 +2763,73 @@
       if (window.location.hash === "#sms-settings") {
         openSettingsModal("sms");
       }
+
+      // Live search: filter hub cards by title, category, and fields inside each modal
+      (function initSettingsHubSearch() {
+        var hub = document.getElementById("settingsHub");
+        var input = document.getElementById("settingsHubSearch");
+        var emptyEl = document.getElementById("settingsHubSearchEmpty");
+        if (!hub || !input) return;
+
+        var searchCache = Object.create(null);
+
+        function modalSearchText(modalId) {
+          if (searchCache[modalId] !== undefined) return searchCache[modalId];
+          var modal = document.getElementById("settingsModal-" + modalId);
+          if (!modal) {
+            searchCache[modalId] = "";
+            return "";
+          }
+          var parts = [];
+          modal.querySelectorAll(".settings-label, .settings-help-popover, h2, h3").forEach(function (el) {
+            parts.push(el.textContent || "");
+          });
+          modal.querySelectorAll("[name]").forEach(function (el) {
+            var name = el.getAttribute("name") || "";
+            parts.push(name);
+            var m = name.match(/settings\[([^\]]+)\]/);
+            if (m) parts.push(m[1].replace(/_/g, " "));
+          });
+          searchCache[modalId] = parts.join(" ").toLowerCase();
+          return searchCache[modalId];
+        }
+
+        function cardSearchText(card) {
+          var id = card.getAttribute("data-open-settings-modal") || "";
+          var title = "";
+          var titleEl = card.querySelector(".settings-hub-card-title");
+          if (titleEl) title = titleEl.textContent || "";
+          var cat = card.closest(".settings-hub-category");
+          var catTitle = "";
+          if (cat) {
+            var catEl = cat.querySelector(".settings-hub-category-title");
+            if (catEl) catTitle = catEl.textContent || "";
+          }
+          return (title + " " + catTitle + " " + modalSearchText(id)).toLowerCase();
+        }
+
+        function applyFilter() {
+          var q = String(input.value || "").trim().toLowerCase();
+          var cards = hub.querySelectorAll(".settings-hub-card[data-open-settings-modal]");
+          var visibleCount = 0;
+
+          cards.forEach(function (card) {
+            var match = !q || cardSearchText(card).indexOf(q) !== -1;
+            card.classList.toggle("is-filtered-out", !match);
+            if (match) visibleCount += 1;
+          });
+
+          hub.querySelectorAll(".settings-hub-category").forEach(function (section) {
+            var anyVisible = section.querySelector(".settings-hub-card[data-open-settings-modal]:not(.is-filtered-out)");
+            section.classList.toggle("is-filtered-out", !anyVisible);
+          });
+
+          if (emptyEl) emptyEl.hidden = !q || visibleCount > 0;
+        }
+
+        input.addEventListener("input", applyFilter);
+        input.addEventListener("search", applyFilter);
+      })();
     })();
   </script>
 

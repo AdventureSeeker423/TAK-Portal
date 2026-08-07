@@ -1978,6 +1978,56 @@ body.modal-open .sidebarToggle {
     gap: 1.5rem;
 }
 
+.settings-hub-search {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.settings-hub-search-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.settings-hub-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--line, #374151);
+    border-radius: 10px;
+    background: var(--card, var(--panel, #1f2937));
+    color: var(--text, #f3f4f6);
+    font: inherit;
+    font-size: 0.95rem;
+}
+
+.settings-hub-search-input::placeholder {
+    color: var(--muted, #9ca3af);
+}
+
+.settings-hub-search-input:focus {
+    outline: none;
+    border-color: var(--accent, #0a84ff);
+}
+
+.settings-hub-search-empty {
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    color: var(--muted, #9ca3af);
+}
+
+.settings-hub-category.is-filtered-out,
+.settings-hub-card.is-filtered-out {
+    display: none !important;
+}
+
 .settings-hub-category-title {
     display: flex;
     align-items: center;
