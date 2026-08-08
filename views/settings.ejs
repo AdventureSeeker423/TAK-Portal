@@ -3046,10 +3046,14 @@
       if (!form) return;
 
       var statusEl = document.getElementById("settingsAutoSaveStatus");
-      var debounceMs = 900;
+      // Coalesce rapid toggles/typing; shorter than before so power-through feels snappy.
+      var debounceMs = 350;
       var timer = null;
       var saveInFlight = false;
-      var dirtyWhileSaving = false;
+      var dirty = false;
+      var saveGen = 0;
+      var abortController = null;
+      var catchUpTimer = null;
 
       function setStatus(text, isError) {
         if (!statusEl) return;
@@ -3113,24 +3117,59 @@
         serializeEditors();
         var fd = new FormData(form);
         // Never persist template textarea bodies on autosave (same as server rule).
+        // Also drop file inputs — autosave must not touch cert/logo uploads.
         Array.from(fd.keys()).forEach(function (key) {
           if (
             key.indexOf("EMAIL_TEMPLATES_OVERRIDES") !== -1 &&
             key.indexOf("EMAIL_TEMPLATES_OVERRIDES_RESET") === -1
           ) {
             fd.delete(key);
+            return;
+          }
+          if (
+            key === "TAK_API_P12_UPLOAD" ||
+            key === "TAK_CA_UPLOAD" ||
+            key === "BRAND_LOGO_UPLOAD"
+          ) {
+            fd.delete(key);
+          }
+        });
+        // Defense in depth: strip any File values (empty file inputs still serialize).
+        Array.from(fd.entries()).forEach(function (entry) {
+          if (typeof File !== "undefined" && entry[1] instanceof File) {
+            fd.delete(entry[0]);
           }
         });
         return fd;
       }
 
-      function performAutoSave() {
+      function isAbortError(err) {
+        if (!err) return false;
+        if (err.name === "AbortError") return true;
+        return String(err.message || "").toLowerCase().indexOf("aborted") !== -1;
+      }
+
+      function queueCatchUp() {
+        if (catchUpTimer) clearTimeout(catchUpTimer);
+        catchUpTimer = setTimeout(function () {
+          catchUpTimer = null;
+          flushAutoSave();
+        }, 0);
+      }
+
+      function flushAutoSave() {
         if (saveInFlight) {
-          dirtyWhileSaving = true;
+          dirty = true;
           return;
         }
+        if (!dirty) return;
+
+        dirty = false;
         saveInFlight = true;
-        dirtyWhileSaving = false;
+        var myGen = ++saveGen;
+        abortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+        var signal = abortController ? abortController.signal : undefined;
+
         setStatus("Saving…", false);
 
         var action = form.getAttribute("action") || "/settings";
@@ -3139,7 +3178,12 @@
           fd = buildAutoSaveFormData();
         } catch (err) {
           saveInFlight = false;
-          setStatus("Auto-save failed: " + (err && err.message ? err.message : String(err)), true);
+          abortController = null;
+          setStatus(
+            "Auto-save failed: " + (err && err.message ? err.message : String(err)),
+            true
+          );
+          if (dirty) queueCatchUp();
           return;
         }
 
@@ -3151,6 +3195,7 @@
             "X-Requested-With": "XMLHttpRequest",
           },
           credentials: "same-origin",
+          signal: signal,
         })
           .then(function (res) {
             return res.text().then(function (text) {
@@ -3166,28 +3211,47 @@
             });
           })
           .then(function () {
-            setStatus("", false);
+            if (myGen !== saveGen) return;
+            if (!dirty) setStatus("Saved", false);
+            else setStatus("Saving…", false);
+            // Clear "Saved" quietly after a beat so the bar doesn't linger.
+            if (!dirty) {
+              setTimeout(function () {
+                if (myGen === saveGen && !saveInFlight && !dirty && !timer) {
+                  setStatus("", false);
+                }
+              }, 1200);
+            }
           })
           .catch(function (err) {
+            if (isAbortError(err)) return;
+            if (myGen !== saveGen) return;
             setStatus(
               "Auto-save failed: " + (err && err.message ? err.message : String(err)),
               true
             );
           })
           .finally(function () {
+            if (myGen !== saveGen) return;
             saveInFlight = false;
-            if (dirtyWhileSaving) {
-              dirtyWhileSaving = false;
-              scheduleAutoSave();
+            abortController = null;
+            if (dirty) {
+              queueCatchUp();
             }
           });
       }
 
+      /**
+       * Mark settings dirty and debounce a save. Rapid toggles reset the timer
+       * so one POST leaves with the latest form state after a short quiet window.
+       * If a save is already in flight, the next flush runs immediately when it finishes.
+       */
       function scheduleAutoSave() {
+        dirty = true;
         if (timer) clearTimeout(timer);
         timer = setTimeout(function () {
           timer = null;
-          performAutoSave();
+          flushAutoSave();
         }, debounceMs);
       }
 
@@ -3201,6 +3265,11 @@
             if (timer) {
               clearTimeout(timer);
               timer = null;
+            }
+            if (abortController) {
+              try {
+                abortController.abort();
+              } catch (_) {}
             }
             // Let bookmark/agency serialize listeners run, then navigate.
             return;
@@ -3228,6 +3297,7 @@
         function (e) {
           var t = e.target;
           if (!shouldAutoSaveFrom(t)) return;
+          if (t && t.type === "file") return;
           scheduleAutoSave();
         },
         true
@@ -3235,7 +3305,7 @@
 
       // Warn if navigating away during an in-flight or pending save
       window.addEventListener("beforeunload", function (e) {
-        if (!saveInFlight && !timer && !dirtyWhileSaving) return;
+        if (!saveInFlight && !timer && !dirty && !catchUpTimer) return;
         e.preventDefault();
         e.returnValue = "";
       });

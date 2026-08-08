@@ -104,7 +104,19 @@ function getSettings() {
 function saveSettings(newSettings) {
   _settings = stripDeprecatedKeys(newSettings || {}).settings;
   ensureDirExists(SETTINGS_PATH);
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(_settings, null, 2));
+  const payload = JSON.stringify(_settings, null, 2);
+  // Atomic replace avoids torn/partial settings.json under rapid autosave writes.
+  const tmpPath = SETTINGS_PATH + ".tmp";
+  fs.writeFileSync(tmpPath, payload);
+  try {
+    fs.renameSync(tmpPath, SETTINGS_PATH);
+  } catch (err) {
+    // Windows can fail rename over an existing file; fall back to copy+unlink.
+    fs.copyFileSync(tmpPath, SETTINGS_PATH);
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch (_) {}
+  }
 }
 
 function updateSettings(patch) {
