@@ -359,7 +359,8 @@ async function getAgencyDeletePreview(agencyIndex) {
     agencySuffix: plan.agencySuffix,
     userCount: plan.userCount,
     integrationCount: plan.integrationCount,
-    agencyGroupCount: plan.agencyGroupCount,
+    // Hide the Authentik agency admin group from the confirm UI (still deleted).
+    agencyGroupCount: Math.max(0, plan.agencyGroupCount - 1),
     countyGroupCount: plan.countyGroupCount,
     stateGroupCount: plan.stateGroupCount,
     dataSyncMissionCount: dataSyncByScope.total,
