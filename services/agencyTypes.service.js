@@ -1,10 +1,10 @@
 const settingsSvc = require("./settings.service");
 
 /**
- * Built-in agency types (order fixed). "Other" is always last in the dropdown.
- * Additional types from settings are inserted immediately before "Other".
+ * Shipped default agency types (order fixed for new installs / reset).
+ * "Other" is always appended last in the Agencies dropdown and is not stored.
  */
-const CORE_AGENCY_TYPES = [
+const DEFAULT_AGENCY_TYPES = [
   "Law Enforcement",
   "Fire",
   "EMS",
@@ -19,41 +19,113 @@ const CORE_AGENCY_TYPES = [
   "Volunteer",
 ];
 
-const MAX_ADDITIONAL_AGENCY_TYPES = 30;
+/** @deprecated Use DEFAULT_AGENCY_TYPES */
+const CORE_AGENCY_TYPES = DEFAULT_AGENCY_TYPES;
 
-function getAdditionalAgencyTypesFromSettings(settings) {
+const MAX_AGENCY_TYPES = 30;
+/** @deprecated Use MAX_AGENCY_TYPES */
+const MAX_ADDITIONAL_AGENCY_TYPES = MAX_AGENCY_TYPES;
+
+function isCustomized(settings) {
+  const raw = String(settings?.AGENCY_TYPES_CUSTOMIZED || "")
+    .trim()
+    .toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
+function getStoredAgencyTypes(settings) {
   const s = settings || {};
   const out = [];
-  for (let i = 1; i <= MAX_ADDITIONAL_AGENCY_TYPES; i += 1) {
+  const seen = new Set();
+  for (let i = 1; i <= MAX_AGENCY_TYPES; i += 1) {
     const v = String(s[`ADDITIONAL_AGENCY_TYPE_${i}`] || "").trim();
-    if (v) out.push(v);
+    if (!v) continue;
+    const key = v.toLowerCase();
+    if (key === "other") continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
   }
   return out;
 }
 
+/** @deprecated Use getStoredAgencyTypes */
+function getAdditionalAgencyTypesFromSettings(settings) {
+  return getStoredAgencyTypes(settings);
+}
+
+function mergeDefaultsAndExtras(extras) {
+  const seen = new Set();
+  const out = [];
+  for (const t of DEFAULT_AGENCY_TYPES) {
+    const key = String(t || "")
+      .trim()
+      .toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  for (const e of extras || []) {
+    const v = String(e || "").trim();
+    const key = v.toLowerCase();
+    if (!v || key === "other" || seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out.slice(0, MAX_AGENCY_TYPES);
+}
+
 /**
- * Full ordered list for the Agencies page type dropdown:
- * core types, then additional (deduped, order preserved), then Other.
+ * Editable types for settings UI / dropdown (without trailing "Other").
+ * - Customized installs: stored list (fallback to defaults if empty)
+ * - Legacy / uncustomized: shipped defaults + any stored extras
+ */
+function getConfigurableAgencyTypes(settings) {
+  const s = settings != null ? settings : settingsSvc.getSettings() || {};
+  const stored = getStoredAgencyTypes(s);
+  if (isCustomized(s)) {
+    return stored.length ? stored.slice(0, MAX_AGENCY_TYPES) : [...DEFAULT_AGENCY_TYPES];
+  }
+  return mergeDefaultsAndExtras(stored);
+}
+
+/**
+ * Full ordered list for the Agencies page type dropdown.
+ * Configurable types, then Other.
  */
 function getAgencyTypeOptions(settings) {
-  const s = settings != null ? settings : settingsSvc.getSettings() || {};
-  const extras = getAdditionalAgencyTypesFromSettings(s);
-  const coreLower = new Set(CORE_AGENCY_TYPES.map((x) => x.toLowerCase()));
+  return [...getConfigurableAgencyTypes(settings), "Other"];
+}
+
+function buildAgencyTypeSettingsPatch(types, customized = true) {
   const seen = new Set();
-  const dedupedExtras = [];
-  for (const e of extras) {
-    const k = e.toLowerCase();
-    if (coreLower.has(k)) continue;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    dedupedExtras.push(e);
+  const normalized = [];
+  for (const raw of Array.isArray(types) ? types : []) {
+    const v = String(raw || "").trim();
+    const key = v.toLowerCase();
+    if (!v || key === "other" || seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(v);
+    if (normalized.length >= MAX_AGENCY_TYPES) break;
   }
-  return [...CORE_AGENCY_TYPES, ...dedupedExtras, "Other"];
+  const patch = {
+    AGENCY_TYPES_CUSTOMIZED: customized ? "true" : "false",
+  };
+  for (let i = 1; i <= MAX_AGENCY_TYPES; i += 1) {
+    patch[`ADDITIONAL_AGENCY_TYPE_${i}`] = normalized[i - 1] || "";
+  }
+  return patch;
 }
 
 module.exports = {
+  DEFAULT_AGENCY_TYPES,
   CORE_AGENCY_TYPES,
+  MAX_AGENCY_TYPES,
   MAX_ADDITIONAL_AGENCY_TYPES,
   getAgencyTypeOptions,
+  getConfigurableAgencyTypes,
+  getStoredAgencyTypes,
   getAdditionalAgencyTypesFromSettings,
+  buildAgencyTypeSettingsPatch,
+  isCustomized,
 };

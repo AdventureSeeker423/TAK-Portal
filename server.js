@@ -1499,7 +1499,8 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   p12Exists,
   caExists,
   takSshMaintenanceVisible,
-  coreAgencyTypes: agencyTypesSvc.CORE_AGENCY_TYPES,
+  defaultAgencyTypes: agencyTypesSvc.DEFAULT_AGENCY_TYPES,
+  configurableAgencyTypes: agencyTypesSvc.getConfigurableAgencyTypes(settings),
   });
 });
 
