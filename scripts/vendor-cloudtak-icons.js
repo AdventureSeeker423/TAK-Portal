@@ -34,20 +34,38 @@ async function sha256File(filePath) {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
 
+function isSafeZipEntryPath(destDir, entryPath) {
+  const name = String(entryPath || "").replace(/\\/g, "/");
+  if (!name || name === "/" || name.endsWith("/")) return null;
+  if (name.includes("..") || name.startsWith("/") || /^[A-Za-z]:/.test(name)) {
+    return null;
+  }
+  const destResolved = path.resolve(destDir) + path.sep;
+  const outResolved = path.resolve(destDir, name);
+  if (!outResolved.startsWith(destResolved) && outResolved !== path.resolve(destDir)) {
+    return null;
+  }
+  return outResolved;
+}
+
 async function extractZip(buf, destDir) {
   await fsp.mkdir(destDir, { recursive: true });
   await new Promise((resolve, reject) => {
     const stream = unzipper.Parse();
     stream.on("entry", (entry) => {
-      const name = entry.path.replace(/\\/g, "/");
-      const outPath = path.join(destDir, name);
-      if (entry.type === "Directory") {
+      const outResolved = isSafeZipEntryPath(destDir, entry.path);
+      if (!outResolved) {
+        console.warn("Skipping unsafe zip entry:", entry.path);
         entry.autodrain();
         return;
       }
-      const dir = path.dirname(outPath);
-      fs.mkdirSync(dir, { recursive: true });
-      entry.pipe(fs.createWriteStream(outPath));
+      if (entry.type === "Directory") {
+        fs.mkdirSync(outResolved, { recursive: true });
+        entry.autodrain();
+        return;
+      }
+      fs.mkdirSync(path.dirname(outResolved), { recursive: true });
+      entry.pipe(fs.createWriteStream(outResolved));
     });
     stream.on("close", resolve);
     stream.on("error", reject);
