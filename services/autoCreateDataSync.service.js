@@ -4,6 +4,7 @@ const { getBool, getString, getInt } = require("./env");
 const agenciesStore = require("./agencies.service");
 const autoCreateGroupsSvc = require("./autoCreateGroups.service");
 const dataSyncSvc = require("./dataSync.service");
+const groupsService = require("./groups.service");
 
 const LEDGER_PATH = path.join(__dirname, "..", "data", "autoCreateDataSync.json");
 
@@ -145,6 +146,8 @@ function buildStateMissionName(state, missionTitle) {
 }
 
 function buildMissionBody(missionName, groupName) {
+  // TAK Marti uses LDAP CN without tak_; Authentik stores tak_<CN>.
+  const takGroupCn = groupsService.stripTakPrefix(String(groupName || "").trim());
   return {
     name: missionName,
     tool: "public",
@@ -153,7 +156,7 @@ function buildMissionBody(missionName, groupName) {
       type: "MISSION_SUBSCRIBER",
       permissions: ["MISSION_WRITE", "MISSION_READ"],
     },
-    groups: [groupName],
+    groups: [takGroupCn],
     keywords: [],
     inviteOnly: false,
   };
