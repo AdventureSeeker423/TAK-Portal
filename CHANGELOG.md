@@ -6,11 +6,20 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 <!-- 🎉 `New Feature` - -->
 <!-- ✨ `Enhancement` - -->
-<!-- ✏️ `Documentation` - -->
 <!-- 🐛 `Bug Fix` - Fixes issue with -->
 <!-- ⬆️ `Dependency Update` - -->
 
 ## Version History
+
+### v1.3.67 - 8/8/26
+🎉 `New Feature` - Settings - Auto Create Groups / Channels<br>
+🎉 `New Feature` - Settings - Auto Create Data Sync Missions<br>
+✨ `Enhancement` - Agencies - Deleting an agency will now add data sync missions to its delete list<br>
+✨ `Enhancement` - Settings - Improved auto-save logic<br>
+🐛 `Bug Fix` - Fixes issue with mutual aid deployment packet quality
+
+### v1.3.66 - 8/8/26
+⬆️ `Dependency Update` - Updated dependencies
 
 ### v1.3.65 - 8/7/26
 ✨ `Enhancement` - Settings - Page redesigned to aid in navigation and organization
