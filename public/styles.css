@@ -2703,6 +2703,14 @@ a.settings-hub-card:visited {
   margin-bottom: 0.75rem;
 }
 
+.settings-auto-create-section.is-disabled {
+  opacity: 0.55;
+}
+
+.settings-auto-create-section.is-disabled .settings-toggle {
+  cursor: not-allowed;
+}
+
 .settings-auto-create-header {
   display: flex;
   align-items: center;

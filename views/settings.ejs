@@ -119,6 +119,9 @@
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="auto-create-groups">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Auto Create Groups / Channels</span></span>
         </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="auto-create-data-sync">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Auto Create Data Sync Missions</span></span>
+        </div>
       </div>
     </section>
 
@@ -175,7 +178,10 @@
         "MOU_SEND_EMAILS",
         "AUTO_CREATE_AGENCY_GROUPS_ENABLED",
         "AUTO_CREATE_COUNTY_GROUPS_ENABLED",
-        "AUTO_CREATE_STATE_GROUPS_ENABLED"
+        "AUTO_CREATE_STATE_GROUPS_ENABLED",
+        "AUTO_CREATE_AGENCY_DATA_SYNC_ENABLED",
+        "AUTO_CREATE_COUNTY_DATA_SYNC_ENABLED",
+        "AUTO_CREATE_STATE_DATA_SYNC_ENABLED"
       ]);
       function renderHelpTip(helpText) {
         if (!helpText) return;
@@ -260,6 +266,15 @@
         "AUTO_CREATE_AGENCY_GROUPS_ENABLED",
         "AUTO_CREATE_COUNTY_GROUPS_ENABLED",
         "AUTO_CREATE_STATE_GROUPS_ENABLED",
+        "AUTO_CREATE_AGENCY_DATA_SYNC_ENABLED",
+        "AUTO_CREATE_COUNTY_DATA_SYNC_ENABLED",
+        "AUTO_CREATE_STATE_DATA_SYNC_ENABLED",
+        "AUTO_CREATE_AGENCY_DATA_SYNC_TITLE",
+        "AUTO_CREATE_COUNTY_DATA_SYNC_TITLE",
+        "AUTO_CREATE_STATE_DATA_SYNC_TITLE",
+        "AUTO_CREATE_AGENCY_DATA_SYNC_GROUP_INDEX",
+        "AUTO_CREATE_COUNTY_DATA_SYNC_GROUP_INDEX",
+        "AUTO_CREATE_STATE_DATA_SYNC_GROUP_INDEX",
       ];
       for (let i = 1; i <= 3; i++) {
         autoCreateGroupKeys.push(
@@ -2120,6 +2135,7 @@
                 remove.textContent = 'Remove';
 
                 input.addEventListener('input', function () {
+                  notifyDataSyncGroupsChanged();
                   if (typeof window.scheduleSettingsAutoSave === 'function') {
                     window.scheduleSettingsAutoSave();
                   }
@@ -2129,6 +2145,7 @@
                   if (rows.length <= 1) return;
                   row.remove();
                   updateSectionUi(section);
+                  notifyDataSyncGroupsChanged();
                   if (typeof window.scheduleSettingsAutoSave === 'function') {
                     window.scheduleSettingsAutoSave();
                   }
@@ -2140,6 +2157,38 @@
                 updateSectionUi(section);
               }
 
+              function getLiveConfig() {
+                var out = {};
+                ['agency', 'county', 'state'].forEach(function (type) {
+                  var section = sectionEl(type);
+                  if (!section) {
+                    out[type] = { enabled: false, titles: [] };
+                    return;
+                  }
+                  var enabled = isOn(section.querySelector('[data-acg-toggle]'));
+                  var titles = [];
+                  var rows = [].slice.call(section.querySelectorAll('[data-acg-row]'));
+                  rows.forEach(function (row, idx) {
+                    var t = String((row.querySelector('[data-acg-title]') || {}).value || '').trim();
+                    if (!t) return;
+                    titles.push({ index: idx + 1, title: t });
+                  });
+                  if (!titles.length && enabled) {
+                    titles.push({ index: 1, title: defaults[type] });
+                  }
+                  out[type] = { enabled: enabled, titles: titles };
+                });
+                return out;
+              }
+
+              function notifyDataSyncGroupsChanged() {
+                if (typeof window.__refreshAutoCreateDataSyncGroupOptions === 'function') {
+                  window.__refreshAutoCreateDataSyncGroupOptions();
+                }
+              }
+
+              window.__getAutoCreateGroupsLiveConfig = getLiveConfig;
+
               function initSection(type) {
                 var section = sectionEl(type);
                 if (!section) return;
@@ -2149,6 +2198,7 @@
                 toggle.addEventListener('click', function () {
                   setToggle(toggle, !isOn(toggle));
                   updateSectionUi(section);
+                  notifyDataSyncGroupsChanged();
                   if (typeof window.scheduleSettingsAutoSave === 'function') {
                     window.scheduleSettingsAutoSave();
                   }
@@ -2164,6 +2214,7 @@
                   var n = section.querySelectorAll('[data-acg-row]').length;
                   if (n >= MAX) return;
                   createRow(section, '');
+                  notifyDataSyncGroupsChanged();
                   if (typeof window.scheduleSettingsAutoSave === 'function') {
                     window.scheduleSettingsAutoSave();
                   }
@@ -2213,6 +2264,343 @@
               window.__settingsSerializeHooks = window.__settingsSerializeHooks || [];
               window.__settingsSerializeHooks.push(serializeAutoCreateGroups);
               form.addEventListener('submit', serializeAutoCreateGroups);
+            })();
+          </script>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auto Create Data Sync Missions -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-auto-create-data-sync" data-settings-modal="auto-create-data-sync" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-auto-create-data-sync">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-auto-create-data-sync">Auto Create Data Sync Missions</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">When an agency is created, optionally create one Data Sync mission per Agency/County/State, linked to an Auto Create Groups / Channels title. County/State missions are created once and are not recreated if renamed or deleted. Requires the matching Groups scope to be enabled.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          <%
+            function dsEnabled(key) {
+              const raw = String(settings[key] || "").trim().toLowerCase();
+              return raw === "true";
+            }
+            function dsTitle(key) {
+              const t = String(settings[key] || "").trim();
+              return t || "Active Incident";
+            }
+            function dsGroupIndex(key) {
+              const n = parseInt(String(settings[key] || "1"), 10);
+              return Number.isFinite(n) && n >= 1 && n <= 3 ? n : 1;
+            }
+            const autoCreateDataSyncInitial = {
+              agency: {
+                enabled: dsEnabled("AUTO_CREATE_AGENCY_DATA_SYNC_ENABLED"),
+                title: dsTitle("AUTO_CREATE_AGENCY_DATA_SYNC_TITLE"),
+                groupIndex: dsGroupIndex("AUTO_CREATE_AGENCY_DATA_SYNC_GROUP_INDEX"),
+              },
+              county: {
+                enabled: dsEnabled("AUTO_CREATE_COUNTY_DATA_SYNC_ENABLED"),
+                title: dsTitle("AUTO_CREATE_COUNTY_DATA_SYNC_TITLE"),
+                groupIndex: dsGroupIndex("AUTO_CREATE_COUNTY_DATA_SYNC_GROUP_INDEX"),
+              },
+              state: {
+                enabled: dsEnabled("AUTO_CREATE_STATE_DATA_SYNC_ENABLED"),
+                title: dsTitle("AUTO_CREATE_STATE_DATA_SYNC_TITLE"),
+                groupIndex: dsGroupIndex("AUTO_CREATE_STATE_DATA_SYNC_GROUP_INDEX"),
+              },
+            };
+            const autoCreateGroupsFallback = {
+              agency: {
+                enabled: autoCreateEnabled("AUTO_CREATE_AGENCY_GROUPS_ENABLED", true),
+                titles: (function () {
+                  const out = [];
+                  for (let i = 1; i <= 3; i++) {
+                    const t = String(settings[`AUTO_CREATE_AGENCY_GROUP_TITLE_${i}`] || "").trim();
+                    if (t) out.push({ index: i, title: t });
+                  }
+                  if (!out.length) out.push({ index: 1, title: "Main" });
+                  return out;
+                })(),
+              },
+              county: {
+                enabled: autoCreateEnabled("AUTO_CREATE_COUNTY_GROUPS_ENABLED", false),
+                titles: (function () {
+                  const out = [];
+                  for (let i = 1; i <= 3; i++) {
+                    const t = String(settings[`AUTO_CREATE_COUNTY_GROUP_TITLE_${i}`] || "").trim();
+                    if (t) out.push({ index: i, title: t });
+                  }
+                  if (!out.length) out.push({ index: 1, title: "Interop" });
+                  return out;
+                })(),
+              },
+              state: {
+                enabled: autoCreateEnabled("AUTO_CREATE_STATE_GROUPS_ENABLED", false),
+                titles: (function () {
+                  const out = [];
+                  for (let i = 1; i <= 3; i++) {
+                    const t = String(settings[`AUTO_CREATE_STATE_GROUP_TITLE_${i}`] || "").trim();
+                    if (t) out.push({ index: i, title: t });
+                  }
+                  if (!out.length) out.push({ index: 1, title: "Interop" });
+                  return out;
+                })(),
+              },
+            };
+          %>
+
+          <div id="autoCreateDataSyncEditor">
+            <div class="settings-auto-create-section" data-acds-type="agency">
+              <div class="settings-auto-create-header">
+                <h3>Agency Specific Data Sync</h3>
+                <button type="button" class="settings-toggle is-off" data-acds-toggle aria-pressed="false" aria-label="Toggle agency data sync"></button>
+              </div>
+              <div class="settings-auto-create-body" data-acds-body>
+                <label class="settings-field">
+                  <span class="settings-label"><span>Mission title</span></span>
+                  <input type="text" data-acds-title placeholder="Active Incident" />
+                </label>
+                <label class="settings-field" style="margin-top:.5rem;">
+                  <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
+                  <select data-acds-group></select>
+                </label>
+                <small class="settings-help" data-acds-hint style="display:none;margin-top:.4rem;">Enable Agency Specific Groups in Auto Create Groups / Channels to use this option.</small>
+              </div>
+            </div>
+
+            <div class="settings-auto-create-section" data-acds-type="county">
+              <div class="settings-auto-create-header">
+                <h3>County Specific Data Sync</h3>
+                <button type="button" class="settings-toggle is-off" data-acds-toggle aria-pressed="false" aria-label="Toggle county data sync"></button>
+              </div>
+              <div class="settings-auto-create-body" data-acds-body>
+                <label class="settings-field">
+                  <span class="settings-label"><span>Mission title</span></span>
+                  <input type="text" data-acds-title placeholder="Active Incident" />
+                </label>
+                <label class="settings-field" style="margin-top:.5rem;">
+                  <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
+                  <select data-acds-group></select>
+                </label>
+                <small class="settings-help" data-acds-hint style="display:none;margin-top:.4rem;">Enable County Specific Groups in Auto Create Groups / Channels to use this option.</small>
+              </div>
+            </div>
+
+            <div class="settings-auto-create-section" data-acds-type="state">
+              <div class="settings-auto-create-header">
+                <h3>State Specific Data Sync</h3>
+                <button type="button" class="settings-toggle is-off" data-acds-toggle aria-pressed="false" aria-label="Toggle state data sync"></button>
+              </div>
+              <div class="settings-auto-create-body" data-acds-body>
+                <label class="settings-field">
+                  <span class="settings-label"><span>Mission title</span></span>
+                  <input type="text" data-acds-title placeholder="Active Incident" />
+                </label>
+                <label class="settings-field" style="margin-top:.5rem;">
+                  <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
+                  <select data-acds-group></select>
+                </label>
+                <small class="settings-help" data-acds-hint style="display:none;margin-top:.4rem;">Enable State Specific Groups in Auto Create Groups / Channels to use this option.</small>
+              </div>
+            </div>
+
+            <div id="autoCreateDataSyncHiddenFields"></div>
+          </div>
+
+          <script>
+            (function () {
+              var form = document.getElementById('settingsForm');
+              var editor = document.getElementById('autoCreateDataSyncEditor');
+              var hiddenHost = document.getElementById('autoCreateDataSyncHiddenFields');
+              if (!form || !editor || !hiddenHost) return;
+
+              var initial = <%- JSON.stringify(autoCreateDataSyncInitial) %>;
+              var groupsFallback = <%- JSON.stringify(autoCreateGroupsFallback) %>;
+              var prefixes = {
+                agency: 'AUTO_CREATE_AGENCY',
+                county: 'AUTO_CREATE_COUNTY',
+                state: 'AUTO_CREATE_STATE'
+              };
+
+              function sectionEl(type) {
+                return editor.querySelector('[data-acds-type="' + type + '"]');
+              }
+
+              function setToggle(btn, on) {
+                btn.classList.toggle('is-on', !!on);
+                btn.classList.toggle('is-off', !on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+              }
+
+              function isOn(btn) {
+                return btn.classList.contains('is-on');
+              }
+
+              function getGroupsConfig() {
+                if (typeof window.__getAutoCreateGroupsLiveConfig === 'function') {
+                  try {
+                    return window.__getAutoCreateGroupsLiveConfig() || groupsFallback;
+                  } catch (_) {}
+                }
+                return groupsFallback;
+              }
+
+              function updateSectionAvailability(type) {
+                var section = sectionEl(type);
+                if (!section) return;
+                var groupsCfg = getGroupsConfig()[type] || { enabled: false, titles: [] };
+                var groupsOn = !!groupsCfg.enabled;
+                var toggle = section.querySelector('[data-acds-toggle]');
+                var body = section.querySelector('[data-acds-body]');
+                var hint = section.querySelector('[data-acds-hint]');
+                var titleInput = section.querySelector('[data-acds-title]');
+                var groupSelect = section.querySelector('[data-acds-group]');
+
+                section.classList.toggle('is-disabled', !groupsOn);
+                if (toggle) {
+                  toggle.disabled = !groupsOn;
+                  if (!groupsOn) setToggle(toggle, false);
+                }
+                if (hint) hint.style.display = groupsOn ? 'none' : '';
+                if (titleInput) titleInput.disabled = !groupsOn;
+                if (groupSelect) groupSelect.disabled = !groupsOn;
+                if (body) body.style.display = (groupsOn && isOn(toggle)) ? '' : (groupsOn ? '' : '');
+                // When groups on: show body; when off: still show body greyed with hint
+                if (body) {
+                  if (!groupsOn) {
+                    body.style.display = '';
+                  } else {
+                    body.style.display = isOn(toggle) ? '' : 'none';
+                  }
+                }
+
+                // Rebuild select options from group titles
+                if (groupSelect) {
+                  var prev = String(groupSelect.value || '');
+                  var savedIndex = String((initial[type] && initial[type].groupIndex) || 1);
+                  groupSelect.innerHTML = '';
+                  var titles = Array.isArray(groupsCfg.titles) ? groupsCfg.titles : [];
+                  if (!titles.length) {
+                    var opt = document.createElement('option');
+                    opt.value = '1';
+                    opt.textContent = '(No group titles configured)';
+                    groupSelect.appendChild(opt);
+                  } else {
+                    titles.forEach(function (item) {
+                      var o = document.createElement('option');
+                      o.value = String(item.index);
+                      o.textContent = item.title;
+                      groupSelect.appendChild(o);
+                    });
+                    var prefer = prev || savedIndex;
+                    var has = [].some.call(groupSelect.options, function (o) { return o.value === prefer; });
+                    groupSelect.value = has ? prefer : String(titles[0].index);
+                  }
+                }
+              }
+
+              function refreshAll() {
+                ['agency', 'county', 'state'].forEach(updateSectionAvailability);
+              }
+
+              window.__refreshAutoCreateDataSyncGroupOptions = refreshAll;
+
+              function initSection(type) {
+                var section = sectionEl(type);
+                if (!section) return;
+                var conf = initial[type] || {};
+                var toggle = section.querySelector('[data-acds-toggle]');
+                var titleInput = section.querySelector('[data-acds-title]');
+                var groupSelect = section.querySelector('[data-acds-group]');
+
+                setToggle(toggle, !!conf.enabled);
+                if (titleInput) titleInput.value = conf.title || 'Active Incident';
+
+                toggle.addEventListener('click', function () {
+                  if (toggle.disabled) return;
+                  setToggle(toggle, !isOn(toggle));
+                  updateSectionAvailability(type);
+                  if (typeof window.scheduleSettingsAutoSave === 'function') {
+                    window.scheduleSettingsAutoSave();
+                  }
+                });
+
+                if (titleInput) {
+                  titleInput.addEventListener('input', function () {
+                    if (typeof window.scheduleSettingsAutoSave === 'function') {
+                      window.scheduleSettingsAutoSave();
+                    }
+                  });
+                }
+                if (groupSelect) {
+                  groupSelect.addEventListener('change', function () {
+                    initial[type] = initial[type] || {};
+                    initial[type].groupIndex = parseInt(groupSelect.value, 10) || 1;
+                    if (typeof window.scheduleSettingsAutoSave === 'function') {
+                      window.scheduleSettingsAutoSave();
+                    }
+                  });
+                }
+
+                updateSectionAvailability(type);
+              }
+
+              ['agency', 'county', 'state'].forEach(initSection);
+              refreshAll();
+
+              function serializeAutoCreateDataSync() {
+                hiddenHost.innerHTML = '';
+                var groupsCfg = getGroupsConfig();
+
+                ['agency', 'county', 'state'].forEach(function (type) {
+                  var section = sectionEl(type);
+                  if (!section) return;
+                  var prefix = prefixes[type];
+                  var groupsOn = !!(groupsCfg[type] && groupsCfg[type].enabled);
+                  var enabled = groupsOn && isOn(section.querySelector('[data-acds-toggle]'));
+                  var title = String((section.querySelector('[data-acds-title]') || {}).value || '').trim() || 'Active Incident';
+                  var groupIndex = String((section.querySelector('[data-acds-group]') || {}).value || '1');
+                  if (!/^[123]$/.test(groupIndex)) groupIndex = '1';
+
+                  var en = document.createElement('input');
+                  en.type = 'hidden';
+                  en.name = 'settings[' + prefix + '_DATA_SYNC_ENABLED]';
+                  en.value = enabled ? 'true' : 'false';
+                  hiddenHost.appendChild(en);
+
+                  var t = document.createElement('input');
+                  t.type = 'hidden';
+                  t.name = 'settings[' + prefix + '_DATA_SYNC_TITLE]';
+                  t.value = title;
+                  hiddenHost.appendChild(t);
+
+                  var g = document.createElement('input');
+                  g.type = 'hidden';
+                  g.name = 'settings[' + prefix + '_DATA_SYNC_GROUP_INDEX]';
+                  g.value = groupIndex;
+                  hiddenHost.appendChild(g);
+                });
+              }
+
+              window.__settingsSerializeHooks = window.__settingsSerializeHooks || [];
+              window.__settingsSerializeHooks.push(serializeAutoCreateDataSync);
+              form.addEventListener('submit', serializeAutoCreateDataSync);
+
+              // Refresh options whenever this modal is opened
+              var modal = document.getElementById('settingsModal-auto-create-data-sync');
+              if (modal && typeof MutationObserver !== 'undefined') {
+                var obs = new MutationObserver(function () {
+                  if (modal.style.display !== 'none' && modal.getAttribute('aria-hidden') !== 'true') {
+                    refreshAll();
+                  }
+                });
+                obs.observe(modal, { attributes: true, attributeFilter: ['style', 'aria-hidden'] });
+              }
             })();
           </script>
         </div>
@@ -3382,7 +3770,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "email-templates" || modalId === "tak-maintenance") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

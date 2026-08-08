@@ -408,6 +408,7 @@ module.exports = {
   buildAgencyGroupName,
   buildCountyGroupName,
   buildStateGroupName,
+  getGroupByNameUnfiltered,
   loadLedger,
   saveLedger,
 };

@@ -15,6 +15,7 @@ const agencyActiveSvc = require("../services/agencyActive.service");
 const agencyDeleteSvc = require("../services/agencyDelete.service");
 const userRequestsSvc = require("../services/userRequests.service");
 const autoCreateGroupsSvc = require("../services/autoCreateGroups.service");
+const autoCreateDataSyncSvc = require("../services/autoCreateDataSync.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -443,7 +444,7 @@ router.post("/", async (req, res) => {
   try {
     // Ensure the agency admin group exists in Authentik.
     await ensureAgencyAdminGroupExists(a);
-    // Auto-create configured Agency / County / State groups (settings-driven).
+    // 1) Auto-create configured Agency / County / State groups first.
     autoCreateResult = await autoCreateGroupsSvc.ensureAutoCreateGroupsForAgency(
       a,
       req.authentikUser || null
@@ -455,6 +456,17 @@ router.post("/", async (req, res) => {
         err?.message ||
         "Failed to create required agency groups",
     });
+  }
+
+  // 2) Only after groups succeed: auto-create Data Sync missions (soft-fail).
+  let dsResult = null;
+  try {
+    dsResult = await autoCreateDataSyncSvc.ensureAutoCreateDataSyncForAgency(a);
+  } catch (dsErr) {
+    console.warn(
+      "[agencies] Auto Create Data Sync failed:",
+      dsErr?.message || dsErr
+    );
   }
 
   agencies.push(a);
@@ -493,6 +505,38 @@ router.post("/", async (req, res) => {
         created_type_detail: created.created_type_detail || null,
       },
     });
+  }
+
+  const createdMissions = Array.isArray(dsResult?.createdMissions)
+    ? dsResult.createdMissions
+    : [];
+  for (const m of createdMissions) {
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: {
+        method: req.method,
+        path: req.originalUrl || req.path,
+        ip: req.ip,
+      },
+      action: "DATA_SYNC_MISSION_CREATED",
+      targetType: "data_sync_mission",
+      targetId: String(m.missionName || ""),
+      details: {
+        missionName: m.missionName || null,
+        groupName: m.groupName || null,
+        scope: m.scope || null,
+        autoCreate: true,
+      },
+    });
+  }
+  const dsErrors = (Array.isArray(dsResult?.results) ? dsResult.results : []).filter(
+    (r) => r && r.reason === "error"
+  );
+  if (dsErrors.length) {
+    console.warn(
+      "[agencies] Auto Create Data Sync errors:",
+      dsErrors.map((e) => e.error || e.missionName).join("; ")
+    );
   }
 
   auditSvc.logEvent({
@@ -796,10 +840,20 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
 
       try {
         await ensureAgencyAdminGroupExists(candidate);
+        // Groups must exist before Data Sync missions are created.
         await autoCreateGroupsSvc.ensureAutoCreateGroupsForAgency(
           candidate,
           req.authentikUser || null
         );
+        try {
+          await autoCreateDataSyncSvc.ensureAutoCreateDataSyncForAgency(candidate);
+        } catch (dsErr) {
+          console.warn(
+            "[agencies/import-csv] Auto Create Data Sync failed for",
+            candidate.suffix,
+            dsErr?.message || dsErr
+          );
+        }
         allAgencies.push(candidate);
         existingSuffixes.add(candidate.suffix);
         seenIncomingSuffixes.add(candidate.suffix);

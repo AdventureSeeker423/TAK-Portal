@@ -51,6 +51,18 @@ async function getMission(missionName) {
   return res.data;
 }
 
+async function missionExists(missionName) {
+  try {
+    await getMission(missionName);
+    return true;
+  } catch (err) {
+    const status = err?.response?.status;
+    if (status === 404) return false;
+    // Treat other errors as "unknown / not found" for idempotent ensure flows.
+    return false;
+  }
+}
+
 async function putMission(missionName, body) {
   assertTakAvailable();
   const client = buildTakAxios({ timeout: 60000 });
@@ -271,6 +283,7 @@ module.exports = {
   /** @deprecated use listMissions */
   listPagedMissions: listMissions,
   getMission,
+  missionExists,
   putMission,
   postMission,
   changeMission,
