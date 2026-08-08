@@ -14,6 +14,7 @@ const stateCodeRenameSvc = require("../services/stateCodeRename.service");
 const agencyActiveSvc = require("../services/agencyActive.service");
 const agencyDeleteSvc = require("../services/agencyDelete.service");
 const userRequestsSvc = require("../services/userRequests.service");
+const autoCreateGroupsSvc = require("../services/autoCreateGroups.service");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -55,55 +56,6 @@ async function ensureAgencyAdminGroupExists(agency) {
         }
       } catch (_) {
         // fall through
-      }
-      throw new Error(
-        `Authentik group "${name}" already exists and is not owned by this agency`
-      );
-    }
-    throw err;
-  }
-}
-
-async function ensureAgencyMainGroupExists(agency, actor) {
-  const groupPrefix = store.normalizeGroupPrefix(agency?.groupPrefix);
-  if (!groupPrefix) throw new Error("Agency abbreviation / short name is required");
-
-  const name = `tak_${groupPrefix} Main`;
-  const attributes = {
-    created_at: new Date().toISOString(),
-    private: "no",
-    created_type: "Agency",
-    created_type_detail:
-      String(agency?.name || agency?.groupPrefix || "").trim() || null,
-  };
-
-  if (actor) {
-    attributes.created_by_username = String(actor.username || "").trim() || null;
-    attributes.created_by_display_name =
-      String(actor.displayName || actor.username || "").trim() || null;
-  }
-
-  try {
-    const group = await groupsService.createGroup(name, { attributes });
-    return { created: true, name, group };
-  } catch (err) {
-    const msg = String(
-      err?.response?.data?.detail || err?.response?.data || err?.message || ""
-    );
-    const lower = msg.toLowerCase();
-    if (
-      lower.includes("already") ||
-      lower.includes("exists") ||
-      lower.includes("unique")
-    ) {
-      // Soft-success only when the existing group belongs to this agency (idempotent re-ensure).
-      try {
-        const existing = await getGroupByNameUnfiltered(name);
-        if (existing && store.isAgencyOwnedGroup(existing, agency)) {
-          return { created: false, name, group: existing };
-        }
-      } catch (_) {
-        // fall through to throw
       }
       throw new Error(
         `Authentik group "${name}" already exists and is not owned by this agency`
@@ -464,7 +416,7 @@ router.post("/", async (req, res) => {
   const sourceUserRequestId = String(
     req.body?.sourceUserRequestId || ""
   ).trim();
-  let mainGroupResult = null;
+  let autoCreateResult = null;
 
   const err = validateAgency(a);
   if (err) return res.status(400).json({ error: err });
@@ -491,8 +443,8 @@ router.post("/", async (req, res) => {
   try {
     // Ensure the agency admin group exists in Authentik.
     await ensureAgencyAdminGroupExists(a);
-    // Create the default agency channel: Main, behavior Both, visible to agency admins.
-    mainGroupResult = await ensureAgencyMainGroupExists(
+    // Auto-create configured Agency / County / State groups (settings-driven).
+    autoCreateResult = await autoCreateGroupsSvc.ensureAutoCreateGroupsForAgency(
       a,
       req.authentikUser || null
     );
@@ -508,6 +460,8 @@ router.post("/", async (req, res) => {
   agencies.push(a);
   store.save(agencies);
 
+  const mainGroupResult = autoCreateResult?.mainGroup || null;
+
   const linkedRequest = sourceUserRequestId
     ? userRequestsSvc.markAgencyCreated(
         sourceUserRequestId,
@@ -516,8 +470,11 @@ router.post("/", async (req, res) => {
       )
     : null;
 
-  if (mainGroupResult?.created) {
-    const createdGroup = mainGroupResult.group || {};
+  const newlyCreated = Array.isArray(autoCreateResult?.createdGroups)
+    ? autoCreateResult.createdGroups
+    : [];
+  for (const created of newlyCreated) {
+    const createdGroup = created.group || {};
     auditSvc.logEvent({
       actor: req.authentikUser || null,
       request: {
@@ -529,11 +486,11 @@ router.post("/", async (req, res) => {
       targetType: "group",
       targetId: String(createdGroup.pk || createdGroup.id || ""),
       details: {
-        name: createdGroup.name || mainGroupResult.name,
+        name: createdGroup.name || created.name,
         description: null,
         private: "no",
-        created_type: "Agency",
-        created_type_detail: a.name || a.groupPrefix || null,
+        created_type: created.created_type || null,
+        created_type_detail: created.created_type_detail || null,
       },
     });
   }
@@ -839,7 +796,10 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
 
       try {
         await ensureAgencyAdminGroupExists(candidate);
-        await ensureAgencyMainGroupExists(candidate, req.authentikUser || null);
+        await autoCreateGroupsSvc.ensureAutoCreateGroupsForAgency(
+          candidate,
+          req.authentikUser || null
+        );
         allAgencies.push(candidate);
         existingSuffixes.add(candidate.suffix);
         seenIncomingSuffixes.add(candidate.suffix);

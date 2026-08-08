@@ -116,6 +116,9 @@
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="bookmarks">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Dashboard Bookmarks</span></span>
         </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="auto-create-groups">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Auto Create Groups / Channels</span></span>
+        </div>
       </div>
     </section>
 
@@ -180,7 +183,10 @@
         "REQUEST_ACCESS_ENABLED",
         "BETA_MODE",
         "MOU_ENABLED",
-        "MOU_SEND_EMAILS"
+        "MOU_SEND_EMAILS",
+        "AUTO_CREATE_AGENCY_GROUPS_ENABLED",
+        "AUTO_CREATE_COUNTY_GROUPS_ENABLED",
+        "AUTO_CREATE_STATE_GROUPS_ENABLED"
       ]);
       function renderHelpTip(helpText) {
         if (!helpText) return;
@@ -244,6 +250,19 @@
       const additionalAgencyTypeKeys = [];
       for (let i = 1; i <= 30; i++) {
         additionalAgencyTypeKeys.push(`ADDITIONAL_AGENCY_TYPE_${i}`);
+      }
+
+      const autoCreateGroupKeys = [
+        "AUTO_CREATE_AGENCY_GROUPS_ENABLED",
+        "AUTO_CREATE_COUNTY_GROUPS_ENABLED",
+        "AUTO_CREATE_STATE_GROUPS_ENABLED",
+      ];
+      for (let i = 1; i <= 3; i++) {
+        autoCreateGroupKeys.push(
+          `AUTO_CREATE_AGENCY_GROUP_TITLE_${i}`,
+          `AUTO_CREATE_COUNTY_GROUP_TITLE_${i}`,
+          `AUTO_CREATE_STATE_GROUP_TITLE_${i}`
+        );
       }
 
       const knownKeys = new Set([
@@ -313,6 +332,7 @@
 
         ...bookmarkKeys,
         ...additionalAgencyTypeKeys,
+        ...autoCreateGroupKeys,
 
         "BRAND_THEME",
         "SERVER_NAME",
@@ -1910,7 +1930,248 @@
       </div>
     </div>
 
+    <!-- Auto Create Groups / Channels -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-auto-create-groups" data-settings-modal="auto-create-groups" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-auto-create-groups">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-auto-create-groups">Auto Create Groups / Channels</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">When an agency is created, optionally auto-create Agency, County, and State groups using these titles (up to 3 each). County/State groups are created once per county/state+title and are not recreated if renamed or deleted.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          <%
+            function autoCreateEnabled(key, defaultOn) {
+              const raw = String(settings[key] || "").trim().toLowerCase();
+              if (raw === "true" || raw === "false") return raw === "true";
+              return !!defaultOn;
+            }
+            function autoCreateTitles(prefix, defaultTitle) {
+              const titles = [];
+              for (let i = 1; i <= 3; i++) {
+                const t = String(settings[`${prefix}_${i}`] || "").trim();
+                if (t) titles.push(t);
+              }
+              if (!titles.length && defaultTitle) titles.push(defaultTitle);
+              return titles;
+            }
+            const autoCreateInitial = {
+              agency: {
+                enabled: autoCreateEnabled("AUTO_CREATE_AGENCY_GROUPS_ENABLED", true),
+                titles: autoCreateTitles("AUTO_CREATE_AGENCY_GROUP_TITLE", "Main"),
+              },
+              county: {
+                enabled: autoCreateEnabled("AUTO_CREATE_COUNTY_GROUPS_ENABLED", false),
+                titles: autoCreateTitles("AUTO_CREATE_COUNTY_GROUP_TITLE", "Interop"),
+              },
+              state: {
+                enabled: autoCreateEnabled("AUTO_CREATE_STATE_GROUPS_ENABLED", false),
+                titles: autoCreateTitles("AUTO_CREATE_STATE_GROUP_TITLE", "Interop"),
+              },
+            };
+          %>
 
+          <div id="autoCreateGroupsEditor">
+            <div class="settings-auto-create-section" data-acg-type="agency">
+              <div class="settings-auto-create-header">
+                <h3>Agency Specific Groups</h3>
+                <button type="button" class="settings-toggle is-on" data-acg-toggle aria-pressed="true" aria-label="Toggle agency specific groups"></button>
+              </div>
+              <div class="settings-auto-create-titles" data-acg-titles></div>
+              <div class="settings-auto-create-actions">
+                <button type="button" class="btn" data-acg-add title="Add title">+</button>
+                <small class="settings-help" data-acg-count></small>
+              </div>
+            </div>
+
+            <div class="settings-auto-create-section" data-acg-type="county">
+              <div class="settings-auto-create-header">
+                <h3>County Specific Groups</h3>
+                <button type="button" class="settings-toggle is-off" data-acg-toggle aria-pressed="false" aria-label="Toggle county specific groups"></button>
+              </div>
+              <div class="settings-auto-create-titles" data-acg-titles></div>
+              <div class="settings-auto-create-actions">
+                <button type="button" class="btn" data-acg-add title="Add title">+</button>
+                <small class="settings-help" data-acg-count></small>
+              </div>
+            </div>
+
+            <div class="settings-auto-create-section" data-acg-type="state">
+              <div class="settings-auto-create-header">
+                <h3>State Specific Groups</h3>
+                <button type="button" class="settings-toggle is-off" data-acg-toggle aria-pressed="false" aria-label="Toggle state specific groups"></button>
+              </div>
+              <div class="settings-auto-create-titles" data-acg-titles></div>
+              <div class="settings-auto-create-actions">
+                <button type="button" class="btn" data-acg-add title="Add title">+</button>
+                <small class="settings-help" data-acg-count></small>
+              </div>
+            </div>
+
+            <div id="autoCreateGroupsHiddenFields"></div>
+          </div>
+
+          <script>
+            (function () {
+              var MAX = 3;
+              var form = document.getElementById('settingsForm');
+              var editor = document.getElementById('autoCreateGroupsEditor');
+              var hiddenHost = document.getElementById('autoCreateGroupsHiddenFields');
+              if (!form || !editor || !hiddenHost) return;
+
+              var initial = <%- JSON.stringify(autoCreateInitial) %>;
+              var defaults = { agency: 'Main', county: 'Interop', state: 'Interop' };
+              var prefixes = {
+                agency: 'AUTO_CREATE_AGENCY',
+                county: 'AUTO_CREATE_COUNTY',
+                state: 'AUTO_CREATE_STATE'
+              };
+
+              function sectionEl(type) {
+                return editor.querySelector('[data-acg-type="' + type + '"]');
+              }
+
+              function setToggle(btn, on) {
+                btn.classList.toggle('is-on', !!on);
+                btn.classList.toggle('is-off', !on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+              }
+
+              function isOn(btn) {
+                return btn.classList.contains('is-on');
+              }
+
+              function updateCount(section) {
+                var n = section.querySelectorAll('[data-acg-row]').length;
+                var note = section.querySelector('[data-acg-count]');
+                var addBtn = section.querySelector('[data-acg-add]');
+                if (note) note.textContent = n + ' / ' + MAX + ' titles';
+                if (addBtn) addBtn.disabled = n >= MAX;
+                section.querySelectorAll('[data-acg-remove]').forEach(function (btn) {
+                  btn.disabled = n <= 1;
+                });
+              }
+
+              function createRow(section, value) {
+                var list = section.querySelector('[data-acg-titles]');
+                var row = document.createElement('div');
+                row.className = 'settings-auto-create-row';
+                row.setAttribute('data-acg-row', '1');
+
+                var input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = 'Group title';
+                input.value = value || '';
+                input.setAttribute('data-acg-title', '1');
+
+                var remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'btn caution';
+                remove.setAttribute('data-acg-remove', '1');
+                remove.setAttribute('aria-label', 'Remove title');
+                remove.textContent = 'Remove';
+
+                input.addEventListener('input', function () {
+                  if (typeof window.scheduleSettingsAutoSave === 'function') {
+                    window.scheduleSettingsAutoSave();
+                  }
+                });
+                remove.addEventListener('click', function () {
+                  var rows = section.querySelectorAll('[data-acg-row]');
+                  if (rows.length <= 1) return;
+                  row.remove();
+                  updateCount(section);
+                  if (typeof window.scheduleSettingsAutoSave === 'function') {
+                    window.scheduleSettingsAutoSave();
+                  }
+                });
+
+                row.appendChild(input);
+                row.appendChild(remove);
+                list.appendChild(row);
+                updateCount(section);
+              }
+
+              function initSection(type) {
+                var section = sectionEl(type);
+                if (!section) return;
+                var conf = initial[type] || {};
+                var toggle = section.querySelector('[data-acg-toggle]');
+                setToggle(toggle, !!conf.enabled);
+                toggle.addEventListener('click', function () {
+                  setToggle(toggle, !isOn(toggle));
+                  if (typeof window.scheduleSettingsAutoSave === 'function') {
+                    window.scheduleSettingsAutoSave();
+                  }
+                });
+
+                var titles = Array.isArray(conf.titles) && conf.titles.length
+                  ? conf.titles.slice(0, MAX)
+                  : [defaults[type]];
+                titles.forEach(function (t) { createRow(section, t); });
+
+                section.querySelector('[data-acg-add]').addEventListener('click', function () {
+                  var n = section.querySelectorAll('[data-acg-row]').length;
+                  if (n >= MAX) return;
+                  createRow(section, '');
+                  if (typeof window.scheduleSettingsAutoSave === 'function') {
+                    window.scheduleSettingsAutoSave();
+                  }
+                });
+              }
+
+              ['agency', 'county', 'state'].forEach(initSection);
+
+              function serializeAutoCreateGroups() {
+                hiddenHost.innerHTML = '';
+
+                ['agency', 'county', 'state'].forEach(function (type) {
+                  var section = sectionEl(type);
+                  if (!section) return;
+                  var prefix = prefixes[type];
+                  var enabled = isOn(section.querySelector('[data-acg-toggle]'));
+
+                  var en = document.createElement('input');
+                  en.type = 'hidden';
+                  en.name = 'settings[' + prefix + '_GROUPS_ENABLED]';
+                  en.value = enabled ? 'true' : 'false';
+                  hiddenHost.appendChild(en);
+
+                  var rows = [].slice.call(section.querySelectorAll('[data-acg-row]'));
+                  var titles = rows
+                    .map(function (row) {
+                      return String((row.querySelector('[data-acg-title]') || {}).value || '').trim();
+                    })
+                    .filter(Boolean)
+                    .slice(0, MAX);
+
+                  // Keep at least the default title slot value when enabled with empty inputs
+                  if (!titles.length && enabled) {
+                    titles = [defaults[type]];
+                  }
+
+                  for (var i = 1; i <= MAX; i++) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'settings[' + prefix + '_GROUP_TITLE_' + i + ']';
+                    inp.value = titles[i - 1] || '';
+                    hiddenHost.appendChild(inp);
+                  }
+                });
+              }
+
+              window.__settingsSerializeHooks = window.__settingsSerializeHooks || [];
+              window.__settingsSerializeHooks.push(serializeAutoCreateGroups);
+              form.addEventListener('submit', serializeAutoCreateGroups);
+            })();
+          </script>
+        </div>
+      </div>
+    </div>
 
     <!-- Deployment Packet Colors / Teams -->
     <div class="modalOverlay settings-modal-overlay" id="settingsModal-deployment-packet-colors" data-settings-modal="deployment-packet-colors" style="display:none;" aria-hidden="true">
@@ -3004,7 +3265,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "bookmarks" || modalId === "email-templates" || modalId === "tak-maintenance") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "email-templates" || modalId === "tak-maintenance") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

@@ -2626,3 +2626,99 @@ a.settings-hub-card:visited {
   line-height: 1.35;
 }
 
+/* Settings green/red pill toggles */
+.settings-toggle {
+  appearance: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.settings-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: left 0.15s ease;
+}
+
+.settings-toggle.is-on {
+  background: #22c55e;
+}
+
+.settings-toggle.is-on::after {
+  left: 19px;
+}
+
+.settings-toggle.is-off {
+  background: #ef4444;
+}
+
+.settings-toggle.is-off::after {
+  left: 3px;
+}
+
+.settings-toggle:focus-visible {
+  outline: 2px solid var(--btn);
+  outline-offset: 2px;
+}
+
+.settings-auto-create-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.settings-auto-create-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.settings-auto-create-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  flex: 1;
+  min-width: 10rem;
+}
+
+.settings-auto-create-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.settings-auto-create-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-auto-create-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-auto-create-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+

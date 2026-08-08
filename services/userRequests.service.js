@@ -546,9 +546,7 @@ function markAgencyCreated(id, agency, mainGroupName) {
     suffix,
     name: normalizeStr(agency?.name) || null,
     groupPrefix: groupPrefix || null,
-    mainGroupName:
-      normalizeStr(mainGroupName) ||
-      (groupPrefix ? `tak_${groupPrefix} Main` : null),
+    mainGroupName: normalizeStr(mainGroupName) || null,
     createdAt: new Date().toISOString(),
   };
 
