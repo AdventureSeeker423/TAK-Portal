@@ -1609,14 +1609,24 @@ addForm.onsubmit = async (e) => {
   }
 
   const body = Object.fromEntries(new FormData(addForm));
+  const createLabel = String(body.name || body.groupPrefix || "agency").trim() || "agency";
 
-  const res = await fetch("/api/agencies", {
-    method:"POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify(body)
-  });
+  setMsg(`Agency creation in progress for "${createLabel}"…`, "progress");
 
-  const out = await res.json();
+  let res;
+  let out = {};
+  try {
+    res = await fetch("/api/agencies", {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body)
+    });
+    out = await res.json().catch(() => ({}));
+  } catch (err) {
+    setMsg(err?.message || "Add failed", false);
+    return;
+  }
+
   if(!res.ok){
     setMsg(out.error || "Add failed", false);
     return;
