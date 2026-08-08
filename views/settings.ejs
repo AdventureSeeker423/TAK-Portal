@@ -1981,10 +1981,11 @@
                 <h3>Agency Specific Groups</h3>
                 <button type="button" class="settings-toggle is-on" data-acg-toggle aria-pressed="true" aria-label="Toggle agency specific groups"></button>
               </div>
-              <div class="settings-auto-create-titles" data-acg-titles></div>
-              <div class="settings-auto-create-actions">
-                <button type="button" class="btn" data-acg-add title="Add title">+</button>
-                <small class="settings-help" data-acg-count></small>
+              <div class="settings-auto-create-body" data-acg-body>
+                <div class="settings-auto-create-titles" data-acg-titles></div>
+                <div class="settings-auto-create-actions">
+                  <button type="button" class="btn" data-acg-add>Add Additional Groups</button>
+                </div>
               </div>
             </div>
 
@@ -1993,10 +1994,11 @@
                 <h3>County Specific Groups</h3>
                 <button type="button" class="settings-toggle is-off" data-acg-toggle aria-pressed="false" aria-label="Toggle county specific groups"></button>
               </div>
-              <div class="settings-auto-create-titles" data-acg-titles></div>
-              <div class="settings-auto-create-actions">
-                <button type="button" class="btn" data-acg-add title="Add title">+</button>
-                <small class="settings-help" data-acg-count></small>
+              <div class="settings-auto-create-body" data-acg-body>
+                <div class="settings-auto-create-titles" data-acg-titles></div>
+                <div class="settings-auto-create-actions">
+                  <button type="button" class="btn" data-acg-add>Add Additional Groups</button>
+                </div>
               </div>
             </div>
 
@@ -2005,10 +2007,11 @@
                 <h3>State Specific Groups</h3>
                 <button type="button" class="settings-toggle is-off" data-acg-toggle aria-pressed="false" aria-label="Toggle state specific groups"></button>
               </div>
-              <div class="settings-auto-create-titles" data-acg-titles></div>
-              <div class="settings-auto-create-actions">
-                <button type="button" class="btn" data-acg-add title="Add title">+</button>
-                <small class="settings-help" data-acg-count></small>
+              <div class="settings-auto-create-body" data-acg-body>
+                <div class="settings-auto-create-titles" data-acg-titles></div>
+                <div class="settings-auto-create-actions">
+                  <button type="button" class="btn" data-acg-add>Add Additional Groups</button>
+                </div>
               </div>
             </div>
 
@@ -2045,14 +2048,15 @@
                 return btn.classList.contains('is-on');
               }
 
-              function updateCount(section) {
+              function updateSectionUi(section) {
                 var n = section.querySelectorAll('[data-acg-row]').length;
-                var note = section.querySelector('[data-acg-count]');
                 var addBtn = section.querySelector('[data-acg-add]');
-                if (note) note.textContent = n + ' / ' + MAX + ' titles';
-                if (addBtn) addBtn.disabled = n >= MAX;
+                var body = section.querySelector('[data-acg-body]');
+                var enabled = isOn(section.querySelector('[data-acg-toggle]'));
+                if (body) body.style.display = enabled ? '' : 'none';
+                if (addBtn) addBtn.style.display = n >= MAX ? 'none' : '';
                 section.querySelectorAll('[data-acg-remove]').forEach(function (btn) {
-                  btn.disabled = n <= 1;
+                  btn.style.display = n <= 1 ? 'none' : '';
                 });
               }
 
@@ -2084,7 +2088,7 @@
                   var rows = section.querySelectorAll('[data-acg-row]');
                   if (rows.length <= 1) return;
                   row.remove();
-                  updateCount(section);
+                  updateSectionUi(section);
                   if (typeof window.scheduleSettingsAutoSave === 'function') {
                     window.scheduleSettingsAutoSave();
                   }
@@ -2093,7 +2097,7 @@
                 row.appendChild(input);
                 row.appendChild(remove);
                 list.appendChild(row);
-                updateCount(section);
+                updateSectionUi(section);
               }
 
               function initSection(type) {
@@ -2104,6 +2108,7 @@
                 setToggle(toggle, !!conf.enabled);
                 toggle.addEventListener('click', function () {
                   setToggle(toggle, !isOn(toggle));
+                  updateSectionUi(section);
                   if (typeof window.scheduleSettingsAutoSave === 'function') {
                     window.scheduleSettingsAutoSave();
                   }
@@ -2113,6 +2118,7 @@
                   ? conf.titles.slice(0, MAX)
                   : [defaults[type]];
                 titles.forEach(function (t) { createRow(section, t); });
+                updateSectionUi(section);
 
                 section.querySelector('[data-acg-add]').addEventListener('click', function () {
                   var n = section.querySelectorAll('[data-acg-row]').length;
