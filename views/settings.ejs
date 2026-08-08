@@ -3181,6 +3181,56 @@
         });
       }
 
+      function placeSettingsHelpTip(tip) {
+        if (!tip || !tip.classList) return;
+        // Modal header tips already open upward via CSS.
+        if (tip.closest(".modalHeader")) {
+          tip.classList.remove("popover-above");
+          return;
+        }
+
+        var btn = tip.querySelector(".settings-help-btn");
+        if (!btn) return;
+
+        var container =
+          tip.closest(".settings-modal .modalBody, .settings-modal .settings-body") ||
+          tip.closest(".modalBody, .settings-body");
+        var btnRect = btn.getBoundingClientRect();
+        var bounds = container
+          ? container.getBoundingClientRect()
+          : { top: 0, bottom: window.innerHeight || 0 };
+        var spaceBelow = bounds.bottom - btnRect.bottom;
+        var spaceAbove = btnRect.top - bounds.top;
+        var minBelow = 140;
+        var preferAbove = spaceBelow < minBelow && spaceAbove > spaceBelow;
+        tip.classList.toggle("popover-above", !!preferAbove);
+      }
+
+      document.addEventListener(
+        "mouseover",
+        function (e) {
+          var tip = e.target && e.target.closest
+            ? e.target.closest(".settings-help-tip")
+            : null;
+          if (!tip) return;
+          var from = e.relatedTarget;
+          if (from && tip.contains(from)) return;
+          placeSettingsHelpTip(tip);
+        },
+        true
+      );
+
+      document.addEventListener(
+        "focusin",
+        function (e) {
+          var tip = e.target && e.target.closest
+            ? e.target.closest(".settings-help-tip")
+            : null;
+          if (tip) placeSettingsHelpTip(tip);
+        },
+        true
+      );
+
       document.addEventListener("click", function (e) {
         var helpBtn = e.target.closest && e.target.closest(".settings-help-btn");
         if (helpBtn) {
@@ -3191,6 +3241,7 @@
           var open = tip.classList.contains("is-open");
           closeAllHelpTips();
           if (!open) {
+            placeSettingsHelpTip(tip);
             tip.classList.add("is-open");
             helpBtn.setAttribute("aria-expanded", "true");
           }

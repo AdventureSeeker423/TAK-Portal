@@ -2299,6 +2299,11 @@ a.settings-hub-card:visited {
     display: none;
 }
 
+.settings-help-tip.popover-above .settings-help-popover {
+    top: auto;
+    bottom: calc(100% + 6px);
+}
+
 .settings-help-tip.is-open .settings-help-popover,
 .settings-help-tip:hover .settings-help-popover,
 .settings-help-tip:focus-within .settings-help-popover {
