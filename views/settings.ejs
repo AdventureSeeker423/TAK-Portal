@@ -962,16 +962,15 @@
 
           <div id="additionalAgencyTypeEditor" style="margin-top:.25rem;">
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem;">
-              <button type="button" class="btn" id="addAdditionalAgencyTypeBtn">Add type</button>
               <button type="button" class="btn reset-default-btn" id="resetAgencyTypesBtn">Reset to default</button>
               <small class="settings-help" id="additionalAgencyTypeCountNote"></small>
             </div>
 
             <ul id="additionalAgencyTypeList" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.5rem;"></ul>
 
-            <p class="settings-help" style="margin:.75rem 0 0;">
-              <strong>Other</strong> is always shown last on the Agencies page and cannot be edited here.
-            </p>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.75rem;">
+              <button type="button" class="btn" id="addAdditionalAgencyTypeBtn">Add type</button>
+            </div>
 
             <div id="additionalAgencyTypeHiddenFields"></div>
           </div>
@@ -1116,6 +1115,13 @@
 
               if (resetBtn) {
                 resetBtn.addEventListener("click", function () {
+                  if (
+                    !window.confirm(
+                      "Reset agency types to the default list? Your current types will be replaced."
+                    )
+                  ) {
+                    return;
+                  }
                   seedRows(defaults);
                   if (typeof window.scheduleSettingsAutoSave === "function") {
                     window.scheduleSettingsAutoSave();
