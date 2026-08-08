@@ -1125,6 +1125,36 @@ window.delAgency = async (id) => {
     lines.push("- 0 State Specific Groups (other agencies remain in this state)");
   }
 
+  lines.push(
+    countLine(
+      preview.agencyDataSyncMissionCount ?? preview.dataSyncMissionCount,
+      "Agency Data Sync Mission",
+      "Agency Data Sync Missions"
+    )
+  );
+  if (preview.willDeleteCountyGroups) {
+    lines.push(
+      countLine(
+        preview.countyDataSyncMissionCount,
+        "County Data Sync Mission",
+        "County Data Sync Missions"
+      )
+    );
+  } else {
+    lines.push("- 0 County Data Sync Missions (county groups kept)");
+  }
+  if (preview.willDeleteStateGroups) {
+    lines.push(
+      countLine(
+        preview.stateDataSyncMissionCount,
+        "State Data Sync Mission",
+        "State Data Sync Missions"
+      )
+    );
+  } else {
+    lines.push("- 0 State Data Sync Missions (state groups kept)");
+  }
+
   lines.push(countLine(preview.templateCount, "Template", "Templates"));
   lines.push(
     countLine(preview.integrationCount, "Agency Integration", "Agency Integrations")

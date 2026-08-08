@@ -8,12 +8,133 @@ const groupsService = require("./groups.service");
 const templatesStore = require("./templates.service");
 const usersService = require("./users.service");
 const userRequestsService = require("./userRequests.service");
+const dataSyncSvc = require("./dataSync.service");
+const dataSyncAccess = require("./dataSyncAccess.service");
+const { isTakConfigured } = require("./tak.service");
+const { getBool } = require("./env");
 const { normalizeCountyName } = require("./countyNameRename.service");
 const { normalizeStateCode } = require("./stateCodeRename.service");
 
 function stripTakPrefix(name) {
   const n = String(name || "").trim();
   return n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
+}
+
+function canonicalGroupKey(name) {
+  return stripTakPrefix(name).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function unwrapMissionList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+/**
+ * Map canonical group key → scope for every group that will be deleted
+ * (agency-specific, and county/state when this is the last agency in that geo).
+ */
+function collectDeletedGroupKeyScopes(plan) {
+  const keyToScope = new Map();
+  const buckets = [
+    ["agency", plan?.agencyGroups],
+    ["county", plan?.countyGroups],
+    ["state", plan?.stateGroups],
+  ];
+  for (const [scope, groups] of buckets) {
+    for (const group of Array.isArray(groups) ? groups : []) {
+      const key = canonicalGroupKey(group?.name);
+      if (key && !keyToScope.has(key)) keyToScope.set(key, scope);
+    }
+  }
+  return keyToScope;
+}
+
+/**
+ * Data Sync missions whose single assigned group is among groups being deleted
+ * (agency, and county/state groups when those are included in the delete plan).
+ */
+async function findDataSyncMissionsForDeletedGroups(plan) {
+  if (getBool("TAK_BYPASS_ENABLED", false) || !isTakConfigured()) {
+    return [];
+  }
+
+  const keyToScope = collectDeletedGroupKeyScopes(plan);
+  if (!keyToScope.size) return [];
+
+  let raw;
+  try {
+    raw = await dataSyncSvc.listMissions();
+  } catch (err) {
+    console.warn(
+      "[agencyDelete] Failed to list Data Sync missions:",
+      err?.message || err
+    );
+    return [];
+  }
+
+  const matched = [];
+  const seen = new Set();
+  for (const mission of unwrapMissionList(raw)) {
+    const groupName = dataSyncAccess.missionSingleGroupName(mission);
+    if (!groupName) continue;
+    const scope = keyToScope.get(canonicalGroupKey(groupName));
+    if (!scope) continue;
+    const missionName = String(mission?.name || mission?.missionName || "").trim();
+    if (!missionName || seen.has(missionName.toLowerCase())) continue;
+    seen.add(missionName.toLowerCase());
+    matched.push({ name: missionName, groupName, scope });
+  }
+  return matched;
+}
+
+function summarizeDataSyncMissionsByScope(missions) {
+  const summary = { agency: 0, county: 0, state: 0, total: 0 };
+  for (const mission of Array.isArray(missions) ? missions : []) {
+    if (mission?.scope === "agency") summary.agency += 1;
+    else if (mission?.scope === "county") summary.county += 1;
+    else if (mission?.scope === "state") summary.state += 1;
+    summary.total += 1;
+  }
+  return summary;
+}
+
+/**
+ * Delete matching Data Sync missions before their groups are removed.
+ * Soft-fails so a TAK outage does not block agency delete.
+ */
+async function deleteDataSyncMissionsForPlan(plan) {
+  const missions = await findDataSyncMissionsForDeletedGroups(plan);
+  let deleted = 0;
+  const failures = [];
+
+  for (const mission of missions) {
+    try {
+      await dataSyncSvc.deleteMission(mission.name);
+      deleted += 1;
+    } catch (err) {
+      if (err?.code === "TAK_BYPASS" || err?.code === "TAK_NOT_CONFIGURED") {
+        break;
+      }
+      failures.push({
+        missionName: mission.name,
+        groupName: mission.groupName,
+        error: err?.message || String(err),
+      });
+      console.warn(
+        "[agencyDelete] Failed to delete Data Sync mission",
+        mission.name,
+        err?.message || err
+      );
+    }
+  }
+
+  return {
+    attempted: missions.length,
+    deleted,
+    failures,
+    missions,
+  };
 }
 
 function matchesAgencyGroup(group, agencyName) {
@@ -231,6 +352,8 @@ async function buildAgencyDeletePlan(agencyIndex) {
 
 async function getAgencyDeletePreview(agencyIndex) {
   const plan = await buildAgencyDeletePlan(agencyIndex);
+  const dataSyncMissions = await findDataSyncMissionsForDeletedGroups(plan);
+  const dataSyncByScope = summarizeDataSyncMissionsByScope(dataSyncMissions);
   return {
     agencyName: plan.agencyName,
     agencySuffix: plan.agencySuffix,
@@ -239,6 +362,10 @@ async function getAgencyDeletePreview(agencyIndex) {
     agencyGroupCount: plan.agencyGroupCount,
     countyGroupCount: plan.countyGroupCount,
     stateGroupCount: plan.stateGroupCount,
+    dataSyncMissionCount: dataSyncByScope.total,
+    agencyDataSyncMissionCount: dataSyncByScope.agency,
+    countyDataSyncMissionCount: dataSyncByScope.county,
+    stateDataSyncMissionCount: dataSyncByScope.state,
     templateCount: plan.templateCount,
     pendingRequestCount: plan.pendingRequestCount,
     willDeleteCountyGroups: plan.willDeleteCountyGroups,
@@ -331,6 +458,9 @@ async function deleteAgency(agencyIndex) {
   const userResult = await usersService.bulkDeleteUsersForAgency(plan.users);
   const integrationsDeleted = await deleteAgencyIntegrations(plan.agencyIntegrations);
 
+  // Delete Data Sync missions tied to groups that will be removed (before groups go away).
+  const dataSyncResult = await deleteDataSyncMissionsForPlan(plan);
+
   const groupsDeleted =
     (await deleteGroupsInPlan(plan.agencyGroups)) +
     (await deleteGroupsInPlan(plan.countyGroups)) +
@@ -352,6 +482,8 @@ async function deleteAgency(agencyIndex) {
     agencySuffix: plan.agencySuffix,
     usersDeleted: userResult.deletedIds.length,
     integrationsDeleted,
+    dataSyncMissionsDeleted: dataSyncResult.deleted,
+    dataSyncMissionsAttempted: dataSyncResult.attempted,
     agencyGroupsDeleted: plan.agencyGroups.length,
     countyGroupsDeleted: plan.countyGroups.length,
     stateGroupsDeleted: plan.stateGroups.length,
