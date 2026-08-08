@@ -2360,16 +2360,18 @@
                 <h3>Agency Specific Data Sync</h3>
                 <button type="button" class="settings-toggle is-off" data-acds-toggle aria-pressed="false" aria-label="Toggle agency data sync"></button>
               </div>
+              <p class="settings-help" data-acds-hint style="display:none;margin:.35rem 0 0;">To use this feature, you must enable auto creation for groups / channels.</p>
               <div class="settings-auto-create-body" data-acds-body>
-                <label class="settings-field">
-                  <span class="settings-label"><span>Mission title</span></span>
-                  <input type="text" data-acds-title placeholder="Active Incident" />
-                </label>
-                <label class="settings-field" style="margin-top:.5rem;">
-                  <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
-                  <select data-acds-group></select>
-                </label>
-                <small class="settings-help" data-acds-hint style="display:none;margin-top:.4rem;">Enable Agency Specific Groups in Auto Create Groups / Channels to use this option.</small>
+                <div class="grid2">
+                  <label class="settings-field">
+                    <span class="settings-label"><span>Mission Title</span></span>
+                    <input type="text" data-acds-title placeholder="Active Incident" />
+                  </label>
+                  <label class="settings-field">
+                    <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
+                    <select data-acds-group></select>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -2378,16 +2380,18 @@
                 <h3>County Specific Data Sync</h3>
                 <button type="button" class="settings-toggle is-off" data-acds-toggle aria-pressed="false" aria-label="Toggle county data sync"></button>
               </div>
+              <p class="settings-help" data-acds-hint style="display:none;margin:.35rem 0 0;">To use this feature, you must enable auto creation for groups / channels.</p>
               <div class="settings-auto-create-body" data-acds-body>
-                <label class="settings-field">
-                  <span class="settings-label"><span>Mission title</span></span>
-                  <input type="text" data-acds-title placeholder="Active Incident" />
-                </label>
-                <label class="settings-field" style="margin-top:.5rem;">
-                  <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
-                  <select data-acds-group></select>
-                </label>
-                <small class="settings-help" data-acds-hint style="display:none;margin-top:.4rem;">Enable County Specific Groups in Auto Create Groups / Channels to use this option.</small>
+                <div class="grid2">
+                  <label class="settings-field">
+                    <span class="settings-label"><span>Mission Title</span></span>
+                    <input type="text" data-acds-title placeholder="Active Incident" />
+                  </label>
+                  <label class="settings-field">
+                    <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
+                    <select data-acds-group></select>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -2396,16 +2400,18 @@
                 <h3>State Specific Data Sync</h3>
                 <button type="button" class="settings-toggle is-off" data-acds-toggle aria-pressed="false" aria-label="Toggle state data sync"></button>
               </div>
+              <p class="settings-help" data-acds-hint style="display:none;margin:.35rem 0 0;">To use this feature, you must enable auto creation for groups / channels.</p>
               <div class="settings-auto-create-body" data-acds-body>
-                <label class="settings-field">
-                  <span class="settings-label"><span>Mission title</span></span>
-                  <input type="text" data-acds-title placeholder="Active Incident" />
-                </label>
-                <label class="settings-field" style="margin-top:.5rem;">
-                  <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
-                  <select data-acds-group></select>
-                </label>
-                <small class="settings-help" data-acds-hint style="display:none;margin-top:.4rem;">Enable State Specific Groups in Auto Create Groups / Channels to use this option.</small>
+                <div class="grid2">
+                  <label class="settings-field">
+                    <span class="settings-label"><span>Mission Title</span></span>
+                    <input type="text" data-acds-title placeholder="Active Incident" />
+                  </label>
+                  <label class="settings-field">
+                    <span class="settings-label"><span>Link to Auto Create Group / Channel</span></span>
+                    <select data-acds-group></select>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -2469,14 +2475,9 @@
                 if (hint) hint.style.display = groupsOn ? 'none' : '';
                 if (titleInput) titleInput.disabled = !groupsOn;
                 if (groupSelect) groupSelect.disabled = !groupsOn;
-                if (body) body.style.display = (groupsOn && isOn(toggle)) ? '' : (groupsOn ? '' : '');
-                // When groups on: show body; when off: still show body greyed with hint
+                // Collapse body when groups scope is off, or when DS toggle is off.
                 if (body) {
-                  if (!groupsOn) {
-                    body.style.display = '';
-                  } else {
-                    body.style.display = isOn(toggle) ? '' : 'none';
-                  }
+                  body.style.display = groupsOn && isOn(toggle) ? '' : 'none';
                 }
 
                 // Rebuild select options from group titles
