@@ -1794,9 +1794,9 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       idoc.documentElement.style.height = `${letterH}px`;
     }
 
-    // ~144 DPI Letter capture; JPEG export keeps the packet well under email limits.
+    // ~192 DPI Letter capture; JPEG kept lossy for email size but sharp enough to print.
     const captureOpts = {
-      scale: 1.5,
+      scale: 2,
       backgroundColor: "#ffffff",
       useCORS: true,
       allowTaint: true,
@@ -1937,7 +1937,7 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       /* ignore */
     }
 
-    return canvas.toDataURL("image/jpeg", 0.82);
+    return canvas.toDataURL("image/jpeg", 0.92);
   } finally {
     cleanup();
   }
@@ -1996,7 +1996,7 @@ async function buildDeploymentPacketPdf() {
     if (flyerQr) {
       try {
         const flyerImage = await renderEnrollmentFlyerPageImage(flyerQr);
-        doc.addImage(flyerImage, "JPEG", -1.5, -1.5, pageW + 3, pageH + 3, undefined, "MEDIUM");
+        doc.addImage(flyerImage, "JPEG", -1.5, -1.5, pageW + 3, pageH + 3, undefined, "FAST");
         flyerOk = true;
       } catch (flyerErr) {
         console.warn(
