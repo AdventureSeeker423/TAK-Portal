@@ -3170,8 +3170,6 @@
         abortController = typeof AbortController !== "undefined" ? new AbortController() : null;
         var signal = abortController ? abortController.signal : undefined;
 
-        setStatus("Saving…", false);
-
         var action = form.getAttribute("action") || "/settings";
         var fd;
         try {
@@ -3212,16 +3210,7 @@
           })
           .then(function () {
             if (myGen !== saveGen) return;
-            if (!dirty) setStatus("Saved", false);
-            else setStatus("Saving…", false);
-            // Clear "Saved" quietly after a beat so the bar doesn't linger.
-            if (!dirty) {
-              setTimeout(function () {
-                if (myGen === saveGen && !saveInFlight && !dirty && !timer) {
-                  setStatus("", false);
-                }
-              }, 1200);
-            }
+            setStatus("", false);
           })
           .catch(function (err) {
             if (isAbortError(err)) return;
