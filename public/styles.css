@@ -1947,6 +1947,23 @@ body.modal-open .sidebarToggle {
     gap: 0.15rem;
 }
 
+.settings-field-bool {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 2.25rem;
+}
+
+.settings-field-bool .settings-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-field-bool .settings-toggle {
+    margin-left: auto;
+}
+
 .settings-label {
     font-weight: 600;
     display: flex;

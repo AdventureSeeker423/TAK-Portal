@@ -130,24 +130,12 @@
       <div class="settings-hub-grid">
         <div class="settings-hub-card span-2" role="button" tabindex="0" data-open-settings-modal="agency-types">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Agency Types</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover" role="tooltip">Additional types for the Agencies dropdown.</span>
-          </span>
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="deployment-packet-colors">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Deployment Packet Colors / Teams</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover" role="tooltip">Color and team labels used in deployment packets.</span>
-          </span>
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="deployment-packet-roles">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Deployment Packet Roles</span></span>
-          <span class="settings-help-tip" data-stop-card-open>
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover" role="tooltip">Role labels used in deployment packets.</span>
-          </span>
         </div>
       </div>
     </section>
@@ -177,6 +165,7 @@
         "TAK_BYPASS_ENABLED",
         "SHOW_ITAK_LINKS",
         "EMAIL_ENABLED",
+        "EMAIL_GROUP_CHANGES_ENABLED",
         "SMTP_SECURE",
         "EMAIL_FAIL_HARD",
         "PORTAL_AUTH_ENABLED",
@@ -199,43 +188,58 @@
       }
 
       function renderField(key, label, helpText, defaultValue) {
+        if (BOOL_KEYS.has(key)) {
+          const rawVal = (settings && typeof settings[key] === "string")
+            ? settings[key].toLowerCase()
+            : "";
+          const defaultBool =
+            defaultValue === "true" || defaultValue === "false"
+              ? defaultValue
+              : "false";
+          const currentVal =
+            rawVal === "true" ? "true" :
+            rawVal === "false" ? "false" :
+            defaultBool;
+          const isOn = currentVal === "true";
+    %>
+      <div class="settings-field settings-field-bool">
+        <span class="settings-label">
+          <span><%= label || key %></span>
+          <% renderHelpTip(helpText); %>
+        </span>
+        <button
+          type="button"
+          class="settings-toggle <%= isOn ? 'is-on' : 'is-off' %>"
+          data-settings-bool-toggle
+          aria-pressed="<%= isOn ? 'true' : 'false' %>"
+          aria-label="<%= label || key %>"
+        ></button>
+        <input
+          type="hidden"
+          name="settings[<%= key %>]"
+          value="<%= isOn ? 'true' : 'false' %>"
+          data-settings-bool-input
+        />
+      </div>
+    <%
+          return;
+        }
     %>
       <label class="settings-field">
         <span class="settings-label">
           <span><%= label || key %></span>
           <% renderHelpTip(helpText); %>
         </span>
-
-        <% if (BOOL_KEYS.has(key)) { %>
-          <%
-            const rawVal = (settings && typeof settings[key] === "string")
-              ? settings[key].toLowerCase()
-              : "";
-            const defaultBool =
-              defaultValue === "true" || defaultValue === "false"
-                ? defaultValue
-                : "";
-            const currentVal =
-              rawVal === "true" ? "true" :
-              rawVal === "false" ? "false" :
-              defaultBool;
-          %>
-          <select name="settings[<%= key %>]">
-            <option value="true" <%= currentVal === "true" ? "selected" : "" %>>true</option>
-            <option value="false" <%= currentVal === "false" ? "selected" : "" %>>false</option>
-          </select>
-        <% } else { %>
-          <%
-            const resolvedVal = (typeof settings[key] === 'string')
-              ? settings[key]
-              : (typeof defaultValue === 'string' ? defaultValue : '');
-          %>
-          <input
-            type="text"
-            name="settings[<%= key %>]"
-            value="<%= resolvedVal %>"
-          />
-        <% } %>
+        <%
+          const resolvedVal = (typeof settings[key] === 'string')
+            ? settings[key]
+            : (typeof defaultValue === 'string' ? defaultValue : '');
+        %>
+        <input
+          type="text"
+          name="settings[<%= key %>]"
+          value="<%= resolvedVal %>"
+        />
       </label>
     <% } %>
 
@@ -299,6 +303,7 @@
         "TAK_PORTAL_PUBLIC_URL",
 
         "EMAIL_ENABLED",
+        "EMAIL_GROUP_CHANGES_ENABLED",
         "EMAIL_PROVIDER",
         "SMTP_HOST",
         "SMTP_PORT",
@@ -483,12 +488,12 @@
           <input type="file" name="TAK_CA_UPLOAD" accept=".pem,.crt,.cer,.der" />
         </label>
 
-            <% renderField("TAK_REVOKE_ON_DISABLE","Revoke on Disable","If true, revokes TAK certs when a user is disabled."); %>
-            <% renderField("TAK_DEBUG","TAK Debug","If true, enables verbose TAK debug logging."); %>
-            <% renderField("TAK_BYPASS_ENABLED","Bypass TAK","If true, disables all outbound TAK calls (for testing)."); %>
+            <% renderField("TAK_REVOKE_ON_DISABLE","Revoke on Disable","Revokes TAK certs when a user is disabled."); %>
+            <% renderField("TAK_DEBUG","TAK Debug","Enables verbose TAK debug logging."); %>
+            <% renderField("TAK_BYPASS_ENABLED","Bypass TAK","Disables all outbound TAK calls (for testing)."); %>
             <% renderField("DASHBOARD_TAK_STATS_REFRESH_SECONDS","Dashboard TAK stats refresh (seconds)","How often the server refreshes cached TAK metrics for the dashboard in the background. Lower = fresher numbers; the dashboard page does not wait on TAK. Server restart required for changes to take effect."); %>
             <% renderField("CLOUDTAK_URL","CloudTAK URL","Optional. Base URL for CloudTAK web (e.g. https://cloudtak.example.gov)."); %>
-            <% renderField("SHOW_ITAK_LINKS","Show iTAK Links","If true, Setup My Device shows iTAK options for Apple devices."); %>
+            <% renderField("SHOW_ITAK_LINKS","Show iTAK Links","Shows iTAK options for Apple devices on Setup My Device."); %>
           </div>
 
           <hr style="margin:1rem 0;opacity:.35;" />
@@ -569,37 +574,18 @@
         </div>
         <div class="modalBody settings-body">
           <div class="grid2">
-            <% renderField("EMAIL_ENABLED","Email Enabled","true/false – whether email notifications are enabled."); %>
-            <label class="settings-field">
-              <span class="settings-label">
-                <span>Send Group-Change Emails</span>
-                <span class="settings-help-tip">
-                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-                  <span class="settings-help-popover">When yes, group edits trigger user group-change email notifications.</span>
-                </span>
-              </span>
-              <%
-                const groupChangeRaw = (settings && typeof settings.EMAIL_GROUP_CHANGES_ENABLED === "string")
-                  ? settings.EMAIL_GROUP_CHANGES_ENABLED.toLowerCase()
-                  : "";
-                const groupChangeEnabled = groupChangeRaw === "false" ? "false" : "true";
-              %>
-              <select name="settings[EMAIL_GROUP_CHANGES_ENABLED]">
-                <option value="true" <%= groupChangeEnabled === "true" ? "selected" : "" %>>yes</option>
-                <option value="false" <%= groupChangeEnabled === "false" ? "selected" : "" %>>no</option>
-              </select>
-              
-            </label>
+            <% renderField("EMAIL_ENABLED","Email Enabled","Whether email notifications are enabled."); %>
+            <% renderField("EMAIL_GROUP_CHANGES_ENABLED","Send Group-Change Emails","When enabled, group edits trigger user group-change email notifications.","true"); %>
             <% renderField("EMAIL_PROVIDER","Email Provider","Currently only 'smtp' is supported."); %>
             <% renderField("SMTP_HOST","SMTP Host","SMTP server hostname."); %>
             <% renderField("SMTP_PORT","SMTP Port","SMTP port, e.g. 587."); %>
-            <% renderField("SMTP_SECURE","SMTP Secure","true for SMTPS/465, false for STARTTLS/587."); %>
+            <% renderField("SMTP_SECURE","SMTP Secure","On for SMTPS/465, off for STARTTLS/587."); %>
             <% renderField("SMTP_USER","SMTP Username","Username for SMTP authentication."); %>
             <% renderField("SMTP_PASS","SMTP Password","Password for SMTP authentication."); %>
             <% renderField("SMTP_FROM","From Address",'e.g. TAK Admin <admin@example.com>'); %>
             <% renderField("EMAIL_ALWAYS_CC","Always CC","Optional comma-separated list."); %>
             <% renderField("EMAIL_SEND_COPY_TO","Always BCC","Optional comma-separated list."); %>
-            <% renderField("EMAIL_FAIL_HARD","Fail Hard on Email Error","If true, user actions fail when email fails."); %>
+            <% renderField("EMAIL_FAIL_HARD","Fail Hard on Email Error","User actions fail when email sending fails."); %>
           </div>
 
           <!-- Send Test Email button (uses the main form, but overrides action) -->
@@ -639,7 +625,7 @@
         <div class="modalBody settings-body">
           <div class="grid2">
             <% renderField("MOU_ENABLED","MOU Enabled","Turn the MOU and standard-user agreement workflows on or off."); %>
-            <% renderField("MOU_SEND_EMAILS","Send MOU Emails","When true, MOU assignment/update and reminder emails are sent to agency admins."); %>
+            <% renderField("MOU_SEND_EMAILS","Send MOU Emails","Sends MOU assignment/update and reminder emails to agency admins."); %>
             <% renderField("MOU_DEFAULT_REMINDER_DAYS","Default Reminder Days","Days between agency-admin reminder emails for unsigned current MOUs."); %>
             <% renderField("MOU_HTML_MAX_KB","MOU HTML Max KB","Maximum allowed size for stored MOU HTML, Markdown source, and rendered user-agreement content."); %>
             <% renderField("MOU_REMINDER_SWEEP_HOURS","Reminder Sweep Hours","How often the reminder scheduler checks for unsigned agency MOUs. Server restart required for changes to take effect."); %>
@@ -1597,8 +1583,8 @@
               
             </label>
             <% renderField("USERNAME_PREFIX_LABEL","Username Descriptor Text","Displayed on Users, Pending User Requests, and Request Access pages. Default: Badge Number / Username","Badge Number / Username"); %>
-            <% renderField("REQUEST_ACCESS_ENABLED","Enable Request Access Page","If true, the public /request-access enrollment form is available. Set false to disable it. Default: true.","true"); %>
-            <% renderField("BETA_MODE","Enable Beta Features","If true, shows in-development features for global admins (e.g. Getting Started). Data Package, Locate Persons, and Data Sync are available regardless of this setting."); %>
+            <% renderField("REQUEST_ACCESS_ENABLED","Enable Request Access Page","Makes the public /request-access enrollment form available.","true"); %>
+            <% renderField("BETA_MODE","Enable Beta Features","Shows in-development features for global admins (e.g. Getting Started). Data Package, Locate Persons, and Data Sync are available regardless of this setting."); %>
           </div>
           <script>
             (function () {
@@ -2479,6 +2465,26 @@
     wirePasswordToggle("authentikTokenInput", "authentikTokenToggle");
     wirePasswordToggle("p12PassphraseInput", "p12PassphraseToggle");
     wirePasswordToggle("sshPasswordInput", "sshPasswordToggle");
+
+    document.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest
+        ? e.target.closest("[data-settings-bool-toggle]")
+        : null;
+      if (!btn) return;
+      var field = btn.closest(".settings-field");
+      var input = field
+        ? field.querySelector("[data-settings-bool-input]")
+        : null;
+      if (!input) return;
+      var on = !btn.classList.contains("is-on");
+      btn.classList.toggle("is-on", on);
+      btn.classList.toggle("is-off", !on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      input.value = on ? "true" : "false";
+      if (typeof window.scheduleSettingsAutoSave === "function") {
+        window.scheduleSettingsAutoSave();
+      }
+    });
 
     const statusBox = document.getElementById("sshStatusBox");
     const hostInput = document.getElementById("sshHostInput");
