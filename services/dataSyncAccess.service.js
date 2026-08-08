@@ -676,7 +676,16 @@ async function deleteMatchingFileSyncPackages(missionName, mission, allowedKeySe
   return deletedFiles;
 }
 
-async function permanentlyDeleteMissionForUser(authUser, missionName) {
+/**
+ * Permanently delete a Data Sync mission (same as Data Sync page delete):
+ * remove matching file-sync copies, delete the active mission, then remove
+ * the ARCHIVED_MISSION row TAK typically writes on delete.
+ *
+ * @param {string} missionName
+ * @param {{ allowedKeySet?: Set<string>|null }} [opts]
+ *   allowedKeySet null = unrestricted (system / global admin).
+ */
+async function permanentlyDeleteMission(missionName, opts = {}) {
   const name = String(missionName || "").trim();
   if (!name) {
     const err = new Error("Mission name is required.");
@@ -684,7 +693,10 @@ async function permanentlyDeleteMissionForUser(authUser, missionName) {
     throw err;
   }
 
-  const allowedKeySet = await getAllowedCanonicalKeySet(authUser);
+  const allowedKeySet = Object.prototype.hasOwnProperty.call(opts, "allowedKeySet")
+    ? opts.allowedKeySet
+    : null;
+
   let mission = null;
   let missionExisted = false;
 
@@ -692,22 +704,17 @@ async function permanentlyDeleteMissionForUser(authUser, missionName) {
     const raw = await dataSyncSvc.getMission(name);
     mission = unwrapMission(raw);
     missionExisted = !!mission;
-    const g = missionSingleGroupName(mission);
-    if (!g || !takGroupNameAllowed(g, allowedKeySet)) {
-      const err = new Error("Forbidden");
-      err.code = "FORBIDDEN";
-      throw err;
-    }
   } catch (err) {
     const status = err?.response?.status;
-    if (err?.code === "FORBIDDEN") throw err;
     if (status && status !== 404) throw err;
   }
 
   let deletedFiles = 0;
 
   // Remove any existing file-sync copies before deleting the active mission.
-  deletedFiles += await deleteMatchingFileSyncPackages(name, mission, allowedKeySet, { broad: true });
+  deletedFiles += await deleteMatchingFileSyncPackages(name, mission, allowedKeySet, {
+    broad: true,
+  });
 
   if (missionExisted) {
     try {
@@ -719,7 +726,9 @@ async function permanentlyDeleteMissionForUser(authUser, missionName) {
   }
 
   // TAK often writes a new ARCHIVED_MISSION file-sync row when a mission is deleted.
-  deletedFiles += await deleteMatchingFileSyncPackages(name, mission, allowedKeySet, { broad: true });
+  deletedFiles += await deleteMatchingFileSyncPackages(name, mission, allowedKeySet, {
+    broad: true,
+  });
 
   return {
     ok: true,
@@ -727,6 +736,36 @@ async function permanentlyDeleteMissionForUser(authUser, missionName) {
     deletedFiles,
     deletedMission: missionExisted,
   };
+}
+
+async function permanentlyDeleteMissionForUser(authUser, missionName) {
+  const name = String(missionName || "").trim();
+  if (!name) {
+    const err = new Error("Mission name is required.");
+    err.code = "INVALID_MISSION_NAME";
+    throw err;
+  }
+
+  const allowedKeySet = await getAllowedCanonicalKeySet(authUser);
+
+  try {
+    const raw = await dataSyncSvc.getMission(name);
+    const mission = unwrapMission(raw);
+    if (mission) {
+      const g = missionSingleGroupName(mission);
+      if (!g || !takGroupNameAllowed(g, allowedKeySet)) {
+        const err = new Error("Forbidden");
+        err.code = "FORBIDDEN";
+        throw err;
+      }
+    }
+  } catch (err) {
+    const status = err?.response?.status;
+    if (err?.code === "FORBIDDEN") throw err;
+    if (status && status !== 404) throw err;
+  }
+
+  return permanentlyDeleteMission(name, { allowedKeySet });
 }
 
 async function buildAccessDebug(authUser) {
@@ -815,6 +854,7 @@ module.exports = {
   filterFileSyncPackagesForAccess,
   listFileSyncPackagesForUser,
   assertFileSyncPackageAllowed,
+  permanentlyDeleteMission,
   permanentlyDeleteMissionForUser,
   extractPackageGroupNames,
   assertSingleGroupBody,
