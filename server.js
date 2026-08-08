@@ -1498,7 +1498,8 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   smsErr: req.query.smsErr || "",
   p12Exists,
   caExists,
-  takSshMaintenanceVisible
+  takSshMaintenanceVisible,
+  coreAgencyTypes: agencyTypesSvc.CORE_AGENCY_TYPES,
   });
 });
 

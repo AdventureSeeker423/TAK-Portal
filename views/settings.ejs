@@ -932,15 +932,29 @@
             <h2 id="settingsModalTitle-agency-types">Agency Types</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Extra agency types shown in the Agencies page type dropdown above Other.</span>
+              <span class="settings-help-popover">Shows the fixed default agency types in Agencies-page order. Add extra types below; they appear after the defaults and before Other.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
         </div>
         <div class="modalBody settings-body">
-          
-
           <%
+            const coreTypesList = Array.isArray(typeof coreAgencyTypes !== "undefined" ? coreAgencyTypes : null)
+              ? coreAgencyTypes
+              : [
+                  "Law Enforcement",
+                  "Fire",
+                  "EMS",
+                  "State Defense",
+                  "Military",
+                  "Game Warden / NPS / Forestry",
+                  "CBRNE / HAZMAT",
+                  "SAR / Technical",
+                  "Emergency Management",
+                  "Dispatch / Communications",
+                  "Public Works",
+                  "Volunteer",
+                ];
             const initialAdditionalAgencyTypes = [];
             for (let i = 1; i <= 30; i++) {
               const v = (settings[`ADDITIONAL_AGENCY_TYPE_${i}`] || "").trim();
@@ -948,7 +962,24 @@
             }
           %>
 
+          <div class="settings-agency-types-fixed" style="margin-bottom:1rem;">
+            <div class="settings-label" style="margin-bottom:.4rem;">
+              <span>Default types (fixed order)</span>
+            </div>
+            <ol class="settings-agency-types-fixed-list" style="margin:0;padding-left:1.25rem;display:flex;flex-direction:column;gap:.25rem;">
+              <% coreTypesList.forEach(function (t) { %>
+                <li><%= t %></li>
+              <% }); %>
+            </ol>
+            <p class="settings-help" style="margin:.65rem 0 0;">
+              Additional types below appear after these defaults and before <strong>Other</strong> (always last) on the Agencies page.
+            </p>
+          </div>
+
           <div id="additionalAgencyTypeEditor" style="margin-top:.5rem;">
+            <div class="settings-label" style="margin-bottom:.4rem;">
+              <span>Additional types</span>
+            </div>
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem;">
               <button type="button" class="btn" id="addAdditionalAgencyTypeBtn">Add type</button>
               <small class="settings-help" id="additionalAgencyTypeCountNote"></small>
@@ -957,6 +988,13 @@
             <ul id="additionalAgencyTypeList" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.5rem;"></ul>
 
             <div id="additionalAgencyTypeHiddenFields"></div>
+          </div>
+
+          <div class="settings-agency-types-fixed" style="margin-top:1rem;">
+            <div class="settings-label" style="margin-bottom:.25rem;">
+              <span>Always last</span>
+            </div>
+            <div>Other</div>
           </div>
 
           <script>
