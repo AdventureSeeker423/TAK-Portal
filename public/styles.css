@@ -2332,6 +2332,15 @@ a.settings-hub-card:visited {
     overflow: visible;
 }
 
+#settingsModal-email-templates .settings-modal {
+    width: min(1500px, 98vw);
+    max-height: 96vh;
+}
+
+#settingsModal-email-templates .modalBody {
+    max-height: calc(96vh - 72px);
+}
+
 .settings-modal .modalHeader {
     flex-shrink: 0;
     position: relative;
