@@ -164,7 +164,8 @@ const uploadStorage = multer.diskStorage({
 
     if (file.fieldname === "BRAND_LOGO_UPLOAD") {
       const ext = path.extname(safeOriginal) || ".png";
-      return cb(null, "logo" + ext);
+      // A unique URL prevents browsers from showing a cached previous logo.
+      return cb(null, `logo-${Date.now()}${ext}`);
     }
 
     cb(null, safeOriginal);
@@ -1771,6 +1772,30 @@ app.post(
         });
       }
       return res.status(500).send("Failed to save settings");
+    }
+
+    if (logoFiles.length > 0) {
+      const previousLogoUrl = String(currentSettings.BRAND_LOGO_URL || "")
+        .split("?")[0]
+        .trim();
+      if (previousLogoUrl.startsWith("/branding/")) {
+        const previousLogoName = path.basename(previousLogoUrl);
+        const currentLogoName = path.basename(logoFiles[0].path);
+        if (
+          previousLogoName.startsWith("logo") &&
+          previousLogoName !== currentLogoName
+        ) {
+          try {
+            fs.unlinkSync(
+              path.join(__dirname, "data", "branding", previousLogoName)
+            );
+          } catch (err) {
+            if (err?.code !== "ENOENT") {
+              console.warn("[settings] Failed to remove previous logo:", err);
+            }
+          }
+        }
+      }
     }
 
     try {

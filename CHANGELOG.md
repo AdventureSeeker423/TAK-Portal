@@ -11,6 +11,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### 1.3.68 - 8/9/26
+🐛 `Bug Fix` - Fixes issue with auto-save not applying to uploaded files to settings
+
 ### v1.3.67 - 8/8/26
 🎉 `New Feature` - Settings - Auto Create Groups / Channels<br>
 🎉 `New Feature` - Settings - Auto Create Data Sync Missions<br>
