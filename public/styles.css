@@ -2733,6 +2733,47 @@ a.settings-hub-card:visited {
   margin-top: 0.35rem;
 }
 
+.settings-allowed-client-row .settings-recommend-star {
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #d4a017;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.settings-allowed-client-row .settings-recommend-star svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.settings-allowed-client-row .settings-recommend-star.is-filled svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.settings-allowed-client-row .settings-recommend-star:hover,
+.settings-allowed-client-row .settings-recommend-star:focus-visible {
+  outline: none;
+  background: rgba(212, 160, 23, 0.12);
+}
+
+.settings-allowed-client-row .settings-recommend-star:focus-visible {
+  outline: 2px solid #d4a017;
+  outline-offset: 1px;
+}
+
 .settings-auto-create-section.is-disabled {
   opacity: 0.55;
 }

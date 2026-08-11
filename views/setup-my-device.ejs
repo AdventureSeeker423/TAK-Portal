@@ -41,6 +41,21 @@
       iosAppCount >= 3 ? "iosSetupGrid--three" :
       iosAppCount === 2 ? "iosSetupGrid--two" :
       "iosSetupGrid--one";
+
+    function recommendedApp(key, defaultApp) {
+      if (settings && Object.prototype.hasOwnProperty.call(settings, key)) {
+        return String(settings[key] || "").trim();
+      }
+      return defaultApp || "";
+    }
+    const recommendedIos = recommendedApp("ALLOWED_CLIENT_RECOMMENDED_IOS", "tak_aware");
+    const recommendedAndroid = recommendedApp("ALLOWED_CLIENT_RECOMMENDED_ANDROID", "");
+    const recommendedWeb = recommendedApp("ALLOWED_CLIENT_RECOMMENDED_WEB", "");
+    const recommendTakAware = recommendedIos === "tak_aware";
+    const recommendTakTracker = recommendedIos === "tak_tracker";
+    const recommendITak = recommendedIos === "itak";
+    const recommendAtak = recommendedAndroid === "atak";
+    const recommendCloudTak = recommendedWeb === "cloudtak";
   %>
 
   <!-- Device selector -->
@@ -66,8 +81,8 @@
       <% } %>
 
       <% if (showWebPlatform) { %>
-        <button type="button" class="btn tile deviceTile" id="selectWeb">
-          <span class="title">Web Browser</span>
+        <button type="button" class="btn tile deviceTile<%= recommendCloudTak ? ' success' : '' %>" id="selectWeb">
+          <span class="title">Web Browser<%= recommendCloudTak ? ' (Recommended)' : '' %></span>
           <span class="desc">Use CloudTAK on web browsers.</span>
         </button>
       <% } %>
@@ -90,9 +105,9 @@
             href="https://apps.apple.com/us/app/tak-aware/id6738631659"
             target="_blank"
             rel="noopener noreferrer"
-            class="btn tile success"
+            class="btn tile<%= recommendTakAware ? ' success' : '' %>"
           >
-            <span class="title">iOS - TAK Aware (Recommended)</span>
+            <span class="title">iOS - TAK Aware<%= recommendTakAware ? ' (Recommended)' : '' %></span>
             <span class="desc">Download TAK Aware for iPhone or iPad.</span>
           </a>
         </section>
@@ -138,9 +153,9 @@
             href="https://apps.apple.com/us/app/tak-tracker/id6455684671"
             target="_blank"
             rel="noopener noreferrer"
-            class="btn tile"
+            class="btn tile<%= recommendTakTracker ? ' success' : '' %>"
           >
-            <span class="title">iOS - TAK Tracker</span>
+            <span class="title">iOS - TAK Tracker<%= recommendTakTracker ? ' (Recommended)' : '' %></span>
             <span class="desc">Download TAK Tracker for iPhone or iPad. (Tracking Only, No Map)</span>
           </a>
         </section>
@@ -171,9 +186,9 @@
               href="https://apps.apple.com/us/app/itak/id1561656396"
               target="_blank"
               rel="noopener noreferrer"
-              class="btn tile"
+              class="btn tile<%= recommendITak ? ' success' : '' %>"
             >
-              <span class="title">iOS - iTAK</span>
+              <span class="title">iOS - iTAK<%= recommendITak ? ' (Recommended)' : '' %></span>
               <span class="desc">Download iTAK for iPhone or iPad.</span>
             </a>
           </section>
@@ -209,9 +224,9 @@
           href="https://play.google.com/store/apps/details?id=com.atakmap.app.civ"
           target="_blank"
           rel="noopener noreferrer"
-          class="btn tile"
+          class="btn tile<%= recommendAtak ? ' success' : '' %>"
         >
-          <span class="title">Android - ATAK</span>
+          <span class="title">Android - ATAK<%= recommendAtak ? ' (Recommended)' : '' %></span>
           <span class="desc">Download ATAK for Android devices.</span>
         </a>
       </section>

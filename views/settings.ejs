@@ -314,6 +314,9 @@
         "ALLOWED_CLIENT_TAK_TRACKER",
         "ALLOWED_CLIENT_ATAK",
         "ALLOWED_CLIENT_CLOUDTAK",
+        "ALLOWED_CLIENT_RECOMMENDED_IOS",
+        "ALLOWED_CLIENT_RECOMMENDED_ANDROID",
+        "ALLOWED_CLIENT_RECOMMENDED_WEB",
         "TAK_SSH_HOST",
         "TAK_SSH_PORT",
         "TAK_SSH_USER",
@@ -2642,26 +2645,97 @@
               cloudtakRaw === "true" ? true :
               cloudtakRaw === "false" ? false :
               cloudtakDefaultOn === "true";
+
+            function recommendedFor(section, defaultApp) {
+              const key =
+                section === "ios" ? "ALLOWED_CLIENT_RECOMMENDED_IOS" :
+                section === "android" ? "ALLOWED_CLIENT_RECOMMENDED_ANDROID" :
+                "ALLOWED_CLIENT_RECOMMENDED_WEB";
+              if (settings && Object.prototype.hasOwnProperty.call(settings, key)) {
+                return String(settings[key] || "").trim();
+              }
+              return defaultApp || "";
+            }
+            const recommendedIos = recommendedFor("ios", "tak_aware");
+            const recommendedAndroid = recommendedFor("android", "");
+            const recommendedWeb = recommendedFor("web", "");
+
+            function renderAllowedClientApp(opts) {
+              const key = opts.key;
+              const label = opts.label;
+              const section = opts.section;
+              const appId = opts.appId;
+              const defaultOn = opts.defaultOn;
+              const recommended = opts.recommended;
+              const rawVal = (settings && typeof settings[key] === "string")
+                ? settings[key].toLowerCase()
+                : "";
+              const currentVal =
+                rawVal === "true" ? "true" :
+                rawVal === "false" ? "false" :
+                defaultOn;
+              const isOn = currentVal === "true";
+              const isRecommended = recommended === appId;
+          %>
+            <div
+              class="settings-field settings-field-bool settings-allowed-client-row"
+              data-allowed-client-section="<%= section %>"
+              data-allowed-client-app="<%= appId %>"
+            >
+              <button
+                type="button"
+                class="settings-recommend-star <%= isRecommended ? 'is-filled' : 'is-empty' %>"
+                data-allowed-client-star
+                aria-pressed="<%= isRecommended ? 'true' : 'false' %>"
+                aria-label="<%= isRecommended ? 'Remove recommendation for ' + label : 'Recommend ' + label %>"
+                title="<%= isRecommended ? 'Recommended (click to clear)' : 'Mark as recommended' %>"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                </svg>
+              </button>
+              <span class="settings-label">
+                <span><%= label %></span>
+              </span>
+              <button
+                type="button"
+                class="settings-toggle <%= isOn ? 'is-on' : 'is-off' %>"
+                data-settings-bool-toggle
+                aria-pressed="<%= isOn ? 'true' : 'false' %>"
+                aria-label="<%= label %>"
+              ></button>
+              <input
+                type="hidden"
+                name="settings[<%= key %>]"
+                value="<%= isOn ? 'true' : 'false' %>"
+                data-settings-bool-input
+              />
+            </div>
+          <%
+            }
           %>
 
           <h3 class="settings-allowed-client-platform">iOS</h3>
-          <div class="settings-auto-create-section">
-            <% renderField("ALLOWED_CLIENT_TAK_AWARE","TAK Aware",null,"true"); %>
-            <% renderField("ALLOWED_CLIENT_TAK_TRACKER","TAK Tracker",null,"true"); %>
-            <% renderField("SHOW_ITAK_LINKS","iTAK",null,"false"); %>
+          <div class="settings-auto-create-section" data-allowed-client-section-group="ios">
+            <% renderAllowedClientApp({ key: "ALLOWED_CLIENT_TAK_AWARE", label: "TAK Aware", section: "ios", appId: "tak_aware", defaultOn: "true", recommended: recommendedIos }); %>
+            <% renderAllowedClientApp({ key: "ALLOWED_CLIENT_TAK_TRACKER", label: "TAK Tracker", section: "ios", appId: "tak_tracker", defaultOn: "true", recommended: recommendedIos }); %>
+            <% renderAllowedClientApp({ key: "SHOW_ITAK_LINKS", label: "iTAK", section: "ios", appId: "itak", defaultOn: "false", recommended: recommendedIos }); %>
+            <input type="hidden" name="settings[ALLOWED_CLIENT_RECOMMENDED_IOS]" value="<%= recommendedIos %>" data-allowed-client-recommended-input="ios" />
           </div>
 
           <h3 class="settings-allowed-client-platform">Android</h3>
-          <div class="settings-auto-create-section">
-            <% renderField("ALLOWED_CLIENT_ATAK","ATAK",null,"true"); %>
+          <div class="settings-auto-create-section" data-allowed-client-section-group="android">
+            <% renderAllowedClientApp({ key: "ALLOWED_CLIENT_ATAK", label: "ATAK", section: "android", appId: "atak", defaultOn: "true", recommended: recommendedAndroid }); %>
+            <input type="hidden" name="settings[ALLOWED_CLIENT_RECOMMENDED_ANDROID]" value="<%= recommendedAndroid %>" data-allowed-client-recommended-input="android" />
           </div>
 
           <h3 class="settings-allowed-client-platform">Web Browser</h3>
-          <div class="settings-auto-create-section">
-            <% renderField("ALLOWED_CLIENT_CLOUDTAK","CloudTAK",null, cloudtakDefaultOn); %>
+          <div class="settings-auto-create-section" data-allowed-client-section-group="web">
+            <% renderAllowedClientApp({ key: "ALLOWED_CLIENT_CLOUDTAK", label: "CloudTAK", section: "web", appId: "cloudtak", defaultOn: cloudtakDefaultOn, recommended: recommendedWeb }); %>
             <div id="allowedClientCloudtakUrlFields" style="margin-top:0.75rem;display:<%= cloudtakIsOn ? 'block' : 'none' %>;">
               <% renderField("CLOUDTAK_URL","CloudTAK URL",null); %>
             </div>
+            <input type="hidden" name="settings[ALLOWED_CLIENT_RECOMMENDED_WEB]" value="<%= recommendedWeb %>" data-allowed-client-recommended-input="web" />
           </div>
 
           <h3 class="settings-allowed-client-platform">PC</h3>
@@ -2674,6 +2748,7 @@
               var modal = document.getElementById("settingsModal-allowed-client-devices");
               if (!modal) return;
               var urlFields = document.getElementById("allowedClientCloudtakUrlFields");
+
               function syncCloudtakUrlVisibility() {
                 if (!urlFields) return;
                 var toggle = null;
@@ -2688,11 +2763,52 @@
                 var on = toggle && toggle.classList.contains("is-on");
                 urlFields.style.display = on ? "block" : "none";
               }
+
+              function setStarState(btn, filled) {
+                if (!btn) return;
+                btn.classList.toggle("is-filled", !!filled);
+                btn.classList.toggle("is-empty", !filled);
+                btn.setAttribute("aria-pressed", filled ? "true" : "false");
+                var row = btn.closest("[data-allowed-client-app]");
+                var label = row ? (row.querySelector(".settings-label span") || {}).textContent || "app" : "app";
+                btn.setAttribute(
+                  "aria-label",
+                  filled ? ("Remove recommendation for " + label) : ("Recommend " + label)
+                );
+                btn.title = filled ? "Recommended (click to clear)" : "Mark as recommended";
+              }
+
               modal.addEventListener("click", function (e) {
+                var star = e.target && e.target.closest && e.target.closest("[data-allowed-client-star]");
+                if (star) {
+                  e.preventDefault();
+                  var row = star.closest("[data-allowed-client-app]");
+                  if (!row) return;
+                  var section = row.getAttribute("data-allowed-client-section");
+                  var appId = row.getAttribute("data-allowed-client-app");
+                  var group = modal.querySelector('[data-allowed-client-section-group="' + section + '"]');
+                  var hidden = modal.querySelector('[data-allowed-client-recommended-input="' + section + '"]');
+                  var currentlyFilled = star.classList.contains("is-filled");
+                  var nextValue = currentlyFilled ? "" : appId;
+
+                  if (group) {
+                    group.querySelectorAll("[data-allowed-client-star]").forEach(function (btn) {
+                      setStarState(btn, false);
+                    });
+                  }
+                  if (!currentlyFilled) setStarState(star, true);
+                  if (hidden) hidden.value = nextValue;
+                  if (typeof window.scheduleSettingsAutoSave === "function") {
+                    window.scheduleSettingsAutoSave();
+                  }
+                  return;
+                }
+
                 if (e.target && e.target.closest && e.target.closest("[data-settings-bool-toggle]")) {
                   setTimeout(syncCloudtakUrlVisibility, 0);
                 }
               });
+
               syncCloudtakUrlVisibility();
             })();
           </script>
