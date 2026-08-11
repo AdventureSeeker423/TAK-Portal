@@ -79,6 +79,8 @@ function isNewerVersion(latest, current) {
   return lc > cc;
 }
 
+let loggedAvailableUpdateVersion = null;
+
 async function checkForUpdates() {
   try {
     // You can move this to an env var if you like
@@ -94,18 +96,22 @@ async function checkForUpdates() {
         : response.data;
 
     const latestVersion = data.version || app.locals.APP_VERSION;
-
-    app.locals.APP_LATEST_VERSION = latestVersion;
-    app.locals.APP_UPDATE_AVAILABLE = isNewerVersion(
+    const updateAvailable = isNewerVersion(
       latestVersion,
       app.locals.APP_VERSION
     );
 
-    console.log(
-      `[update-check] current=${app.locals.APP_VERSION} latest=${latestVersion} update=${app.locals.APP_UPDATE_AVAILABLE}`
-    );
-  } catch (err) {
-    console.warn("Failed to check for updates:", err.message || err);
+    app.locals.APP_LATEST_VERSION = latestVersion;
+    app.locals.APP_UPDATE_AVAILABLE = updateAvailable;
+
+    if (updateAvailable && loggedAvailableUpdateVersion !== latestVersion) {
+      loggedAvailableUpdateVersion = latestVersion;
+      console.log(
+        `[update] ${app.locals.APP_VERSION} → ${latestVersion} available`
+      );
+    }
+  } catch (_) {
+    // Periodic checks stay quiet unless an update is available.
   }
 }
 
@@ -2120,7 +2126,9 @@ app.get("/settings/export-data", requirePermission("page.settings"), (req, res) 
 const port = process.env.WEB_UI_PORT || 3000;
 
 app.listen(port, () => {
-  console.log(`✅ TAK Portal running on http://localhost:${port}`);
+  console.log(
+    `✅ TAK Portal ${app.locals.APP_VERSION} running on http://localhost:${port}`
+  );
 
   // Prime dashboard Authentik stats cache (dashboard-only)
   dashboardStatsCache.startDashboardStatsRefresher();
