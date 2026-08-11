@@ -13,6 +13,14 @@ function getHiddenUserPrefixes() {
     .filter(Boolean);
 }
 
+function usernameMatchesHiddenPrefix(username) {
+  const u = String(username || "").trim().toLowerCase();
+  if (!u) return false;
+  const prefixes = getHiddenUserPrefixes();
+  if (!prefixes.length) return false;
+  return prefixes.some((p) => u.startsWith(p));
+}
+
 // ---------------- Action-lock helpers ----------------
 // If a username starts with any prefix in USERS_ACTIONS_HIDDEN_PREFIXES,
 // the UI hides action buttons AND the API will reject mutating operations.
@@ -136,6 +144,8 @@ function shouldSkipRoleBackfillForUser(user) {
   if (type === "service_account" || type === "internal_service_account") return true;
   // Mutual aid deployment users are managed separately.
   if (isMutualAidUser(user)) return true;
+  // Never migrate users hidden by USERS_HIDDEN_PREFIXES.
+  if (usernameMatchesHiddenPrefix(user?.username)) return true;
   return false;
 }
 
