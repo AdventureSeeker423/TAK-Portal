@@ -11,6 +11,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.70 - 8/11/26
+✨ `Enhancement` - Settings / Setup My Device - Section added in settings to manage supported TAK Clients
+
 ### v1.3.69 - 8/11/26
 ✨ `Enhancement` - Request Access - One time links to review the access requests follow the scope of that user (agency vs global admin) for agency selection<br>
 ✨ `Enhancement` - Mutual Aid - Allows a single existing group to be reused across multiple mutual aid instances rather than limited to one mutual aid at a time<br>
