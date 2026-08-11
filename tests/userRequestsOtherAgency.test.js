@@ -1,5 +1,9 @@
 const assert = require("assert");
-const { validateCreate } = require("../services/userRequests.service");
+const {
+  validateCreate,
+  canChangeAgencyForReviewToken,
+} = require("../services/userRequests.service");
+const accessSvc = require("../services/access.service");
 
 function baseOtherPayload(overrides = {}) {
   return {
@@ -93,5 +97,32 @@ const prefixed = validateCreate(
   baseOtherPayload({ usernameTokenPlacement: "prefix" })
 );
 assert.strictEqual(prefixed.usernameTokenPlacement, "prefix");
+
+const adminGroupNames = accessSvc.getAgencyAdminGroupNamesForAgency({
+  suffix: "hfd",
+  groupPrefix: "HFD",
+  countyAbbrev: "HM",
+  adminGroups: "custom-hfd-admins, authentik-HFD-AgencyAdmin",
+});
+const adminGroupNamesLower = adminGroupNames.map((n) => String(n).toLowerCase());
+assert.ok(adminGroupNamesLower.includes("authentik-hm-hfd-agencyadmin"));
+assert.ok(adminGroupNamesLower.includes("authentik-hfd-agencyadmin"));
+assert.ok(adminGroupNamesLower.includes("custom-hfd-admins"));
+
+const dualTokenRequest = {
+  reviewToken: "agencytoken",
+  globalReviewToken: "globaltoken",
+  agencySuffix: "hfd",
+};
+assert.strictEqual(canChangeAgencyForReviewToken("globaltoken", dualTokenRequest), true);
+assert.strictEqual(canChangeAgencyForReviewToken("agencytoken", dualTokenRequest), false);
+assert.strictEqual(
+  canChangeAgencyForReviewToken("legacy", { reviewToken: "legacy", agencySuffix: "__other__" }),
+  true
+);
+assert.strictEqual(
+  canChangeAgencyForReviewToken("legacy", { reviewToken: "legacy", agencySuffix: "hfd" }),
+  false
+);
 
 console.log("userRequestsOtherAgency.test.js: ok");

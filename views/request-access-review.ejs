@@ -114,8 +114,9 @@
               <input type="text" name="badge" placeholder="Enter <%= usernamePrefixLabel %>" required />
             </label>
 
-            <label>Agency
+            <label id="agencyFieldLabel">Agency
               <select name="agencySuffix" id="agencySelect" class="agencySelect" required></select>
+              <input type="hidden" name="agencySuffix" id="agencySuffixLocked" disabled />
             </label>
 
             <label>First Name
@@ -221,6 +222,7 @@
       const pickedManualGroupIds = new Set();
       const ATAK_ROLE_OPTIONS = ["Team Member", "Team Lead", "HQ", "Sniper", "Medic", "Forward Observer", "RTO", "K9"];
       let reviewRequest = null;
+      let canChangeAgency = false;
       let groupsCache = [];
       let templatesCache = [];
       let agenciesCache = [];
@@ -439,6 +441,7 @@
           const out = await res.json();
           if (!res.ok) throw new Error(out.error || "Request not found.");
           reviewRequest = out.request || null;
+          canChangeAgency = !!out.canChangeAgency;
           if (!reviewRequest) throw new Error("Request not found.");
 
           reviewInfo.textContent = "";
@@ -455,26 +458,50 @@
           if (!metaRes.ok) throw new Error(metaOut.error || "Failed to load metadata.");
 
           agenciesCache = Array.isArray(metaOut.agencies) ? metaOut.agencies : [];
+          const requestedAgency = String(reviewRequest.agencySuffix || "").trim().toLowerCase();
+          const lockedInput = document.getElementById("agencySuffixLocked");
+
           agencySelect.innerHTML = agenciesCache
             .slice()
             .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
             .map((a) => '<option value="' + esc(a.suffix) + '">' + esc(a.name) + " (" + esc(a.groupPrefix) + ")</option>")
             .join("");
 
-          const requestedAgency = String(reviewRequest.agencySuffix || "").trim().toLowerCase();
-          if (requestedAgency === "__other__") {
-            const opt = document.createElement("option");
-            opt.value = "__other__";
-            opt.textContent = "Other / Not Listed";
-            opt.selected = true;
-            agencySelect.insertBefore(opt, agencySelect.firstChild);
-          } else if (
-            requestedAgency &&
-            Array.from(agencySelect.options).some((o) => String(o.value) === requestedAgency)
-          ) {
-            agencySelect.value = requestedAgency;
-          } else if (agencySelect.options.length) {
-            agencySelect.selectedIndex = 0;
+          function selectRequestedAgency() {
+            const match = Array.from(agencySelect.options).find(
+              (o) => String(o.value).toLowerCase() === requestedAgency
+            );
+            if (match) {
+              agencySelect.value = match.value;
+            } else if (agencySelect.options.length) {
+              agencySelect.selectedIndex = 0;
+            }
+          }
+
+          if (canChangeAgency) {
+            agencySelect.disabled = false;
+            agencySelect.removeAttribute("title");
+            if (lockedInput) {
+              lockedInput.disabled = true;
+              lockedInput.value = "";
+            }
+            if (requestedAgency === "__other__" || !requestedAgency) {
+              const opt = document.createElement("option");
+              opt.value = "";
+              opt.textContent = "Select agency for creation...";
+              opt.selected = true;
+              agencySelect.insertBefore(opt, agencySelect.firstChild);
+            } else {
+              selectRequestedAgency();
+            }
+          } else {
+            selectRequestedAgency();
+            agencySelect.disabled = true;
+            agencySelect.title = "Agency is locked to the requested agency";
+            if (lockedInput) {
+              lockedInput.disabled = false;
+              lockedInput.value = agencySelect.value || requestedAgency;
+            }
           }
 
           renderGroupsBox();

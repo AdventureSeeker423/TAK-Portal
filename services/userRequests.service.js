@@ -111,6 +111,193 @@ function getPortalBaseUrl() {
   return "";
 }
 
+function parseConfiguredGroupNames(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(/[;,]/)
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+}
+
+function uniqueEmails(list) {
+  const seen = new Set();
+  const out = [];
+  for (const value of Array.isArray(list) ? list : []) {
+    const email = String(value || "").trim();
+    const key = email.toLowerCase();
+    if (!email || seen.has(key)) continue;
+    seen.add(key);
+    out.push(email);
+  }
+  return out;
+}
+
+async function resolveGroupByName(groupName) {
+  const name = String(groupName || "").trim();
+  if (!name) return null;
+
+  try {
+    const groupResp = await authentik.get(
+      `/core/groups/?name=${encodeURIComponent(name)}`
+    );
+    const results = Array.isArray(groupResp.data?.results)
+      ? groupResp.data.results
+      : [];
+    const exact = results.find(
+      (group) =>
+        String(group?.name || "").trim().toLowerCase() === name.toLowerCase()
+    );
+    if (exact) return exact;
+  } catch (err) {
+    console.warn(
+      "[user-requests] group lookup by name failed:",
+      name,
+      err?.message || err
+    );
+  }
+
+  try {
+    const searchResp = await authentik.get(
+      `/core/groups/?search=${encodeURIComponent(name)}`
+    );
+    const results = Array.isArray(searchResp.data?.results)
+      ? searchResp.data.results
+      : [];
+    return (
+      results.find(
+        (group) =>
+          String(group?.name || "").trim().toLowerCase() === name.toLowerCase()
+      ) || null
+    );
+  } catch (err) {
+    console.warn(
+      "[user-requests] group search lookup failed:",
+      name,
+      err?.message || err
+    );
+    return null;
+  }
+}
+
+async function fetchUsersFromGroupMembershipList(group) {
+  const groupPk = String(group?.pk || group?.id || "").trim();
+  if (!groupPk) return [];
+
+  let memberRefs = Array.isArray(group?.users) ? group.users : [];
+  if (!memberRefs.length) {
+    try {
+      const detailResp = await authentik.get(
+        `/core/groups/${encodeURIComponent(groupPk)}/`
+      );
+      const detail = detailResp.data || {};
+      memberRefs = Array.isArray(detail.users) ? detail.users : [];
+    } catch (err) {
+      console.warn(
+        "[user-requests] group detail lookup failed:",
+        groupPk,
+        err?.message || err
+      );
+      return [];
+    }
+  }
+
+  const memberPks = Array.from(
+    new Set(
+      memberRefs
+        .map((entry) => {
+          if (entry && typeof entry === "object") {
+            return String(entry.pk || entry.id || "").trim();
+          }
+          return String(entry || "").trim();
+        })
+        .filter(Boolean)
+    )
+  );
+  if (!memberPks.length) return [];
+
+  const users = [];
+  for (const memberPk of memberPks) {
+    try {
+      const userResp = await authentik.get(
+        `/core/users/${encodeURIComponent(memberPk)}/`
+      );
+      if (userResp?.data) users.push(userResp.data);
+    } catch (err) {
+      console.warn(
+        "[user-requests] group member user lookup failed:",
+        memberPk,
+        err?.message || err
+      );
+    }
+  }
+  return users;
+}
+
+async function getUsersForGroupName(groupName) {
+  const group = await resolveGroupByName(groupName);
+  if (!group?.pk) return [];
+
+  let users = [];
+  try {
+    users = await usersSvc.getUsersByGroups([group.pk], {
+      includeHiddenPrefixes: true,
+      ignoreUserPathFilter: true,
+    });
+  } catch (err) {
+    console.warn(
+      "[user-requests] groups_by_pk lookup failed:",
+      groupName,
+      err?.message || err
+    );
+  }
+
+  if (!Array.isArray(users) || !users.length) {
+    users = await fetchUsersFromGroupMembershipList(group);
+  }
+
+  return Array.isArray(users) ? users : [];
+}
+
+async function collectEmailsForGroupNames(groupNames) {
+  const emails = [];
+  for (const groupName of groupNames) {
+    const users = await getUsersForGroupName(groupName);
+    for (const user of users) {
+      emails.push(user?.email);
+    }
+  }
+  return uniqueEmails(emails);
+}
+
+async function getGlobalAdminEmails() {
+  const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
+  return collectEmailsForGroupNames(
+    parseConfiguredGroupNames(settings.PORTAL_AUTH_REQUIRED_GROUP)
+  );
+}
+
+async function resolveAccessRequestRecipientSets(agency) {
+  const agencyAdminEmails = agency
+    ? await collectEmailsForGroupNames(
+        accessSvc.getAgencyAdminGroupNamesForAgency(agency)
+      )
+    : [];
+  const globalAdminEmails = await getGlobalAdminEmails();
+  const globalSet = new Set(globalAdminEmails.map((e) => e.toLowerCase()));
+  return {
+    agencyAdminEmails: agencyAdminEmails.filter(
+      (email) => !globalSet.has(email.toLowerCase())
+    ),
+    globalAdminEmails,
+  };
+}
+
+async function resolveAccessRequestRecipients(agency) {
+  const { agencyAdminEmails, globalAdminEmails } =
+    await resolveAccessRequestRecipientSets(agency);
+  return agencyAdminEmails.length ? agencyAdminEmails : globalAdminEmails;
+}
+
 const ALLOWED_REQUEST_STATES = new Set([
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
   "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
@@ -321,6 +508,7 @@ async function createRequest(input) {
   const reqObj = {
     id: genId(),
     reviewToken: genReviewToken(),
+    globalReviewToken: genReviewToken(),
     createdAt: now,
     firstName: v.firstName,
     lastName: v.lastName,
@@ -350,77 +538,49 @@ async function createRequest(input) {
   // Email Notification Logic
   // ===============================
   try {
-    let recipients = [];
+    const isOtherRequest = reqObj.agencySuffix === "__other__";
+    const { agencyAdminEmails, globalAdminEmails } =
+      await resolveAccessRequestRecipientSets(isOtherRequest ? null : agency);
 
-    async function getUsersInGroup(groupName) {
-      if (!groupName) return [];
-
-      const groupResp = await authentik.get(
-        `/core/groups/?name=${encodeURIComponent(groupName)}`
-      );
-
-      const group = groupResp.data?.results?.[0];
-      if (!group) return [];
-
-      const groupPk = group.pk;
-
-      let users = [];
-      let next = "/core/users/?page_size=200";
-
-      while (next) {
-        const resp = await authentik.get(next);
-        const data = resp.data;
-
-        users.push(...(data.results || []));
-
-        next = data.next
-          ? data.next.replace(/^.*\/api\/v3/, "")
-          : null;
-      }
-
-      return users
-        .filter(
-          (u) =>
-            Array.isArray(u.groups) &&
-            u.groups.includes(groupPk) &&
-            u.email
-        )
-        .map((u) => u.email);
+    const portalBaseUrl = getPortalBaseUrl();
+    function reviewUrlForToken(token) {
+      const path = `/request-access/${token}`;
+      return portalBaseUrl ? `${portalBaseUrl}${path}` : path;
     }
 
-    // Try agency admins first
-    if (v.agencySuffix !== "__other__" && agency) {
-      const agencyAdminGroup =
-        accessSvc.getAgencyAdminGroupName(agency);
-
-      recipients = await getUsersInGroup(agencyAdminGroup);
+    const noticeBatches = [];
+    if (!isOtherRequest && agencyAdminEmails.length) {
+      noticeBatches.push({
+        recipients: agencyAdminEmails,
+        reviewUrl: reviewUrlForToken(reqObj.reviewToken),
+      });
+    }
+    if (globalAdminEmails.length) {
+      noticeBatches.push({
+        recipients: globalAdminEmails,
+        reviewUrl: reviewUrlForToken(reqObj.globalReviewToken),
+      });
     }
 
-    // Fallback to global admins
-    if (!recipients.length) {
-      const settings = settingsSvc.getSettings();
-      const globalGroup = settings.PORTAL_AUTH_REQUIRED_GROUP;
-      recipients = await getUsersInGroup(globalGroup);
-    }
-
-    if (recipients.length) {
-const reasonLine = reqObj.otherReason
-  ? `Reason for requesting access: ${reqObj.otherReason}\n`
-  : "";
-const isOtherRequest = reqObj.agencySuffix === "__other__";
-const otherAgencyDetailsText = isOtherRequest
-  ? [
-      `Agency Abbreviation / Short Name: ${reqObj.groupPrefix || ""}`,
-      `Username Identifier: ${reqObj.usernameTokenPlacement || "suffix"} (${reqObj.suffix || ""})`,
-      `State: ${reqObj.state || ""}`,
-      `State/Federal Agency: ${reqObj.stateFederalAgency ? "Yes" : "No"}`,
-      `County: ${reqObj.county || ""}`,
-      `County Abbreviation: ${reqObj.countyAbbrev || ""}`,
-      `Agency Type: ${reqObj.type || ""}`,
-    ].join("\n") + "\n"
-  : "";
-const otherAgencyDetailsHtml = isOtherRequest
-  ? `
+    if (!noticeBatches.length) {
+      console.warn("No recipients found for access request notification.");
+    } else {
+      const reasonLine = reqObj.otherReason
+        ? `Reason for requesting access: ${reqObj.otherReason}\n`
+        : "";
+      const otherAgencyDetailsText = isOtherRequest
+        ? [
+            `Agency Abbreviation / Short Name: ${reqObj.groupPrefix || ""}`,
+            `Username Identifier: ${reqObj.usernameTokenPlacement || "suffix"} (${reqObj.suffix || ""})`,
+            `State: ${reqObj.state || ""}`,
+            `State/Federal Agency: ${reqObj.stateFederalAgency ? "Yes" : "No"}`,
+            `County: ${reqObj.county || ""}`,
+            `County Abbreviation: ${reqObj.countyAbbrev || ""}`,
+            `Agency Type: ${reqObj.type || ""}`,
+          ].join("\n") + "\n"
+        : "";
+      const otherAgencyDetailsHtml = isOtherRequest
+        ? `
   <strong>Agency Abbreviation / Short Name:</strong> ${escapeHtml(reqObj.groupPrefix || "")}<br/>
   <strong>Username Identifier:</strong> ${escapeHtml(reqObj.usernameTokenPlacement || "suffix")} (${escapeHtml(reqObj.suffix || "")})<br/>
   <strong>State:</strong> ${escapeHtml(reqObj.state || "")}<br/>
@@ -429,29 +589,27 @@ const otherAgencyDetailsHtml = isOtherRequest
   <strong>County Abbreviation:</strong> ${escapeHtml(reqObj.countyAbbrev || "")}<br/>
   <strong>Agency Type:</strong> ${escapeHtml(reqObj.type || "")}<br/>
 `
-  : "";
-const portalBaseUrl = getPortalBaseUrl();
-const reviewPath = `/request-access/${reqObj.reviewToken}`;
-const reviewUrl = portalBaseUrl ? `${portalBaseUrl}${reviewPath}` : reviewPath;
-const safeReviewUrl = escapeHtml(reviewUrl);
+        : "";
 
-await emailSvc.sendMail({
-  to: recipients.join(","),
-  subject: "New TAK Portal Access Request",
-  text: `A new user has requested access to TAK Portal.
+      for (const batch of noticeBatches) {
+        const safeReviewUrl = escapeHtml(batch.reviewUrl);
+        await emailSvc.sendMail({
+          to: batch.recipients.join(","),
+          subject: "New TAK Portal Access Request",
+          text: `A new user has requested access to TAK Portal.
 
-Review Request: ${reviewUrl}
+Review Request: ${batch.reviewUrl}
 
 Name: ${reqObj.lastName}, ${reqObj.firstName}
 Email: ${reqObj.email}
 Badge: ${reqObj.badgeNumber}
 ${reqObj.radioCallsign ? `Radio Callsign: ${reqObj.radioCallsign}\n` : ""}Agency: ${
-    reqObj.agencyName ||
-    reqObj.otherAgency ||
-    reqObj.agencySuffix
-  }
+            reqObj.agencyName ||
+            reqObj.otherAgency ||
+            reqObj.agencySuffix
+          }
 ${otherAgencyDetailsText}${reasonLine}`,
-  html: `
+          html: `
 <p>A new user has requested access to TAK Portal.</p>
 <p><strong><a href="${safeReviewUrl}">Review Request</a></strong></p>
 <p>
@@ -478,11 +636,9 @@ ${otherAgencyDetailsText}${reasonLine}`,
   }
 </p>
 `,
-});
-
-      console.log("Access request notification sent to:", recipients);
-    } else {
-      console.warn("No recipients found for access request notification.");
+        });
+        console.log("Access request notification sent to:", batch.recipients);
+      }
     }
   } catch (err) {
     console.error("Failed to send access request notification:", err);
@@ -558,7 +714,40 @@ function getByReviewToken(token) {
   const value = String(token || "").trim();
   if (!value) return null;
   const all = store.load();
-  return all.find((r) => String(r?.reviewToken || "") === value) || null;
+  return (
+    all.find(
+      (r) =>
+        String(r?.reviewToken || "") === value ||
+        String(r?.globalReviewToken || "") === value
+    ) || null
+  );
+}
+
+function canChangeAgencyForReviewToken(token, request) {
+  const value = String(token || "").trim();
+  if (!request || !value) return false;
+  const globalToken = String(request.globalReviewToken || "").trim();
+  const agencyToken = String(request.reviewToken || "").trim();
+  if (globalToken && value === globalToken) return true;
+  if (globalToken && agencyToken && value === agencyToken) return false;
+  // Legacy single-token links: Other-agency requests were sent to global admins.
+  return String(request.agencySuffix || "") === "__other__";
+}
+
+function toPublicReviewRequest(request) {
+  if (!request || typeof request !== "object") return null;
+  const { reviewToken, globalReviewToken, ...rest } = request;
+  return rest;
+}
+
+function getReviewAccessForToken(token) {
+  const request = getByReviewToken(token);
+  if (!request) return null;
+  return {
+    request,
+    publicRequest: toPublicReviewRequest(request),
+    canChangeAgency: canChangeAgencyForReviewToken(token, request),
+  };
 }
 
 module.exports = {
@@ -572,6 +761,9 @@ module.exports = {
   deleteRequestForUser,
   getById,
   getByReviewToken,
+  getReviewAccessForToken,
+  canChangeAgencyForReviewToken,
   markAgencyCreated,
   validateCreate,
+  resolveAccessRequestRecipients,
 };

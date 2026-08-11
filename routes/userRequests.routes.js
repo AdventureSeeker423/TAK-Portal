@@ -67,23 +67,54 @@ function isValidReviewToken(value) {
 
 function getReviewRequestHandler(req, res) {
   const token = String(req.params.token || req.params.reviewToken || "").trim();
-  const request = userRequestsSvc.getByReviewToken(token);
-  if (!request) return res.status(404).json({ error: "Not found" });
-  return res.json({ request });
+  const access = userRequestsSvc.getReviewAccessForToken(token);
+  if (!access) return res.status(404).json({ error: "Not found" });
+  return res.json({
+    request: access.publicRequest,
+    canChangeAgency: access.canChangeAgency,
+  });
+}
+
+function resolveReviewAgencySuffix(access, requestedSuffix) {
+  const requested = String(requestedSuffix || "").trim().toLowerCase();
+  const locked = String(access.request?.agencySuffix || "").trim().toLowerCase();
+  if (!access.canChangeAgency) {
+    if (!locked || locked === "__other__") {
+      throw new Error("This review link is locked to the requested agency.");
+    }
+    return locked;
+  }
+  if (requested && requested !== "__other__") return requested;
+  if (locked && locked !== "__other__") return locked;
+  return "";
 }
 
 async function getReviewMetaHandler(req, res) {
   try {
     const token = String(req.params.token || req.params.reviewToken || "").trim();
-    const request = userRequestsSvc.getByReviewToken(token);
-    if (!request) return res.status(404).json({ error: "Not found" });
-    const agencySuffix = String(req.query.agencySuffix || request.agencySuffix || "")
-      .trim()
-      .toLowerCase();
+    const access = userRequestsSvc.getReviewAccessForToken(token);
+    if (!access) return res.status(404).json({ error: "Not found" });
+    const agencySuffix = resolveReviewAgencySuffix(
+      access,
+      req.query.agencySuffix || access.request.agencySuffix
+    );
     const templates = usersSvc.getTemplatesForAgency(agencySuffix);
     const groups = await usersSvc.getAllGroups({ includeHidden: false });
-    const agencies = agenciesSvc.load();
-    return res.json({ templates, groups, agencies });
+    const allAgencies = agenciesSvc.load();
+    const lockedSuffix = String(access.request?.agencySuffix || "")
+      .trim()
+      .toLowerCase();
+    const agencies = access.canChangeAgency
+      ? allAgencies
+      : allAgencies.filter(
+          (a) => String(a?.suffix || "").trim().toLowerCase() === lockedSuffix
+        );
+    return res.json({
+      templates,
+      groups,
+      agencies,
+      canChangeAgency: access.canChangeAgency,
+    });
   } catch (err) {
     return res.status(400).json({ error: err?.message || "Failed to load metadata." });
   }
@@ -92,10 +123,15 @@ async function getReviewMetaHandler(req, res) {
 async function postReviewApproveHandler(req, res) {
   try {
     const token = String(req.params.token || req.params.reviewToken || "").trim();
-    const request = userRequestsSvc.getByReviewToken(token);
-    if (!request) return res.status(404).json({ error: "Not found" });
+    const access = userRequestsSvc.getReviewAccessForToken(token);
+    if (!access) return res.status(404).json({ error: "Not found" });
+    const request = access.request;
 
     const payload = req.body || {};
+    payload.agencySuffix = resolveReviewAgencySuffix(access, payload.agencySuffix);
+    if (!payload.agencySuffix || payload.agencySuffix === "__other__") {
+      return res.status(400).json({ error: "Select a valid agency for user creation." });
+    }
     let permRaw = payload.permissions;
     if (Array.isArray(permRaw)) permRaw = permRaw[0];
     permRaw = String(permRaw ?? "user").trim().toLowerCase();
