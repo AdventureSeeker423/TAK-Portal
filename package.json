@@ -1,6 +1,6 @@
 {
   "name": "tak-portal",
-  "version": "1.3.69",
+  "version": "1.3.70",
   "description": "",
   "main": "server.js",
   "engines": {
