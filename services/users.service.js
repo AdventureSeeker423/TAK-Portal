@@ -4115,6 +4115,45 @@ async function getMissingUserRoleStats() {
   };
 }
 
+async function getMissingUserRolePreviewRows() {
+  const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
+  const list = Array.isArray(users) ? users : [];
+  const rows = [];
+
+  for (const user of list) {
+    const attrs = user?.attributes || {};
+    const username = String(user?.username || "").trim();
+    const displayName = String(user?.name || "").trim();
+    const userId = String(user?.pk || user?.id || "").trim();
+    const agencySuffix = String(
+      attrs.agency || accessSvc.resolveAgencySuffixFromUser(user) || ""
+    ).trim().toLowerCase();
+    const currentRole = String(attrs.role || "").trim();
+
+    if (shouldSkipRoleBackfillForUser(user)) {
+      continue;
+    }
+    if (currentRole) continue;
+
+    rows.push({
+      username,
+      displayName,
+      userId,
+      agencySuffix,
+      currentRole: "",
+      newRole: DEFAULT_ATAK_ROLE,
+      action: "will_set_role",
+    });
+  }
+
+  rows.sort((a, b) =>
+    String(a.username || "").localeCompare(String(b.username || ""), undefined, {
+      sensitivity: "base",
+    })
+  );
+  return rows;
+}
+
 function idSetFromArray(arr) {
   return new Set(
     (Array.isArray(arr) ? arr : [])
@@ -4741,6 +4780,7 @@ module.exports = {
   updateRadioCallsign,
   backfillMissingUserRoles,
   getMissingUserRoleStats,
+  getMissingUserRolePreviewRows,
   backfillCurrentTemplateAttributes,
   getCurrentTemplateBackfillStats,
   getCurrentTemplateBackfillPreviewRows,

@@ -1664,6 +1664,50 @@ router.get("/roles/backfill-status", async (req, res) => {
   }
 });
 
+router.get("/roles/backfill-preview.csv", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!access.isGlobalAdmin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const rows = await users.getMissingUserRolePreviewRows();
+    const csvEscape = (v) => {
+      const s = String(v == null ? "" : v);
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const header = [
+      "username",
+      "display_name",
+      "user_id",
+      "agency_suffix",
+      "current_role",
+      "new_role",
+      "action",
+    ].join(",");
+    const body = rows.map((r) => ([
+      csvEscape(r.username),
+      csvEscape(r.displayName),
+      csvEscape(r.userId),
+      csvEscape(r.agencySuffix),
+      csvEscape(r.currentRole),
+      csvEscape(r.newRole),
+      csvEscape(r.action),
+    ].join(","))).join("\n");
+    const csv = `${header}\n${body}\n`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="user-role-backfill-preview-${Date.now()}.csv"`
+    );
+    return res.send(csv);
+  } catch (err) {
+    return res.status(400).json({ error: toErrorPayload(err) });
+  }
+});
+
 router.get("/export-csv", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;

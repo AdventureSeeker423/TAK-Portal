@@ -29,6 +29,10 @@
         User role migration pending.
       </div>
     </a>
+    <div id="roleBackfillActions" style="display:none; margin: -6px 0 14px 0;">
+      <button class="btn" id="roleBackfillDryRunBtn" type="button">Dry Run Preview</button>
+      <span class="msg" id="roleBackfillDryRunMsg" style="margin-left:8px;"></span>
+    </div>
     <a id="currentTemplateBackfillBannerLink" href="#" style="text-decoration:none; display:none;">
       <div class="userReqBanner" id="currentTemplateBackfillBanner" style="margin: 10px 0 14px 0;">
         User current template migration pending.
@@ -3712,11 +3716,27 @@ if (exportUsersCsvBtn) {
           if (!ok || !body || !body.needsBackfill) return;
           const link = document.getElementById("roleBackfillBannerLink");
           const banner = document.getElementById("roleBackfillBanner");
-          if (!link || !banner) return;
+          const actions = document.getElementById("roleBackfillActions");
+          const dryBtn = document.getElementById("roleBackfillDryRunBtn");
+          const dryMsg = document.getElementById("roleBackfillDryRunMsg");
+          if (!link || !banner || !actions || !dryBtn || !dryMsg) return;
           const missing = Number(body.missing || 0);
           banner.textContent = missing > 0
             ? `${missing} user role migration${missing === 1 ? "" : "s"} pending. Click to run now.`
             : "User role migration pending.";
+          dryBtn.onclick = () => {
+            dryMsg.textContent = "Preparing preview download...";
+            const url = "/api/users/roles/backfill-preview.csv";
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => {
+              dryMsg.textContent = "Preview CSV downloaded. Review before running migration.";
+            }, 250);
+          };
           link.href = "#";
           link.onclick = (e) => {
             e.preventDefault();
@@ -3750,10 +3770,12 @@ if (exportUsersCsvBtn) {
                       const remaining = Number(body2.missing || 0);
                       banner.textContent = `${remaining} user role migration${remaining === 1 ? "" : "s"} still pending. Click to run again.`;
                       link.style.display = "block";
+                      actions.style.display = "block";
                     } else {
                       banner.textContent = "User role migration complete.";
                       setTimeout(() => {
                         link.style.display = "none";
+                        actions.style.display = "none";
                       }, 2000);
                     }
                   });
@@ -3763,6 +3785,7 @@ if (exportUsersCsvBtn) {
               });
           };
           link.style.display = "block";
+          actions.style.display = "block";
         })
         .catch(() => {});
 

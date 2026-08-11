@@ -13,8 +13,8 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ### v1.3.69 - 8/11/26
 ✨ `Enhancement` - Request Access - One time links to review the access requests follow the scope of that user (agency vs global admin) for agency selection<br>
-✨ `Enhancement` - Mutual Aid - Allows an existing group to be reused across multiple mutual aid instances<br>
-🐛 `Bug Fix` - Fixes issue with request access emails not going to all agency admins when there are multiple
+✨ `Enhancement` - Mutual Aid - Allows a single existing group to be reused across multiple mutual aid instances rather than limited to one mutual aid at a time<br>
+🐛 `Bug Fix` - Fixes issue with request access emails not going to all agency admins when there are more than one
 
 ### v1.3.68 - 8/9/26
 🐛 `Bug Fix` - Fixes issue with auto-save not applying to uploaded files to settings
