@@ -122,6 +122,9 @@
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="auto-create-data-sync">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Auto Create Data Sync Missions</span></span>
         </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="allowed-client-devices">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Allowed Client Devices</span></span>
+        </div>
       </div>
     </section>
 
@@ -167,6 +170,10 @@
         "TAK_DEBUG",
         "TAK_BYPASS_ENABLED",
         "SHOW_ITAK_LINKS",
+        "ALLOWED_CLIENT_TAK_AWARE",
+        "ALLOWED_CLIENT_TAK_TRACKER",
+        "ALLOWED_CLIENT_ATAK",
+        "ALLOWED_CLIENT_CLOUDTAK",
         "EMAIL_ENABLED",
         "EMAIL_GROUP_CHANGES_ENABLED",
         "SMTP_SECURE",
@@ -303,6 +310,10 @@
         "TAK_BYPASS_ENABLED",
         "CLOUDTAK_URL",
         "SHOW_ITAK_LINKS",
+        "ALLOWED_CLIENT_TAK_AWARE",
+        "ALLOWED_CLIENT_TAK_TRACKER",
+        "ALLOWED_CLIENT_ATAK",
+        "ALLOWED_CLIENT_CLOUDTAK",
         "TAK_SSH_HOST",
         "TAK_SSH_PORT",
         "TAK_SSH_USER",
@@ -428,7 +439,7 @@
             <h2 id="settingsModalTitle-tak-server">Connection &amp; Certificates</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">TAK Marti URL, client certificates, CloudTAK, and SSH setup for the TAK host.</span>
+              <span class="settings-help-popover">TAK Marti URL, client certificates, and SSH setup for the TAK host.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -507,8 +518,6 @@
             <% renderField("TAK_DEBUG","TAK Debug","Enables verbose TAK debug logging."); %>
             <% renderField("TAK_BYPASS_ENABLED","Bypass TAK","Disables all outbound TAK calls (for testing)."); %>
             <% renderField("DASHBOARD_TAK_STATS_REFRESH_SECONDS","Dashboard TAK stats refresh (seconds)","How often the server refreshes cached TAK metrics for the dashboard in the background. Lower = fresher numbers; the dashboard page does not wait on TAK. Server restart required for changes to take effect."); %>
-            <% renderField("CLOUDTAK_URL","CloudTAK URL","Optional. Base URL for CloudTAK web (e.g. https://cloudtak.example.gov)."); %>
-            <% renderField("SHOW_ITAK_LINKS","Show iTAK Links","Shows iTAK options for Apple devices on Setup My Device."); %>
           </div>
 
           <hr style="margin:1rem 0;opacity:.35;" />
@@ -2605,6 +2614,94 @@
                 });
                 obs.observe(modal, { attributes: true, attributeFilter: ['style', 'aria-hidden'] });
               }
+            })();
+          </script>
+        </div>
+      </div>
+    </div>
+
+    <!-- Allowed Client Devices -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-allowed-client-devices" data-settings-modal="allowed-client-devices" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-allowed-client-devices">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-allowed-client-devices">Allowed Client Devices</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover" role="tooltip">Choose which TAK client apps appear on Setup My Device. Platforms with no enabled apps are hidden from users.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          <%
+            const cloudtakUrlExisting = String((settings && settings.CLOUDTAK_URL) || "").trim();
+            const cloudtakDefaultOn = cloudtakUrlExisting ? "true" : "false";
+            const cloudtakRaw = String((settings && settings.ALLOWED_CLIENT_CLOUDTAK) || "").trim().toLowerCase();
+            const cloudtakIsOn =
+              cloudtakRaw === "true" ? true :
+              cloudtakRaw === "false" ? false :
+              cloudtakDefaultOn === "true";
+          %>
+
+          <div class="settings-auto-create-section">
+            <div class="settings-auto-create-header">
+              <h3>iOS</h3>
+            </div>
+            <% renderField("ALLOWED_CLIENT_TAK_AWARE","TAK Aware","Shows TAK Aware on Setup My Device for Apple devices.","true"); %>
+            <% renderField("ALLOWED_CLIENT_TAK_TRACKER","TAK Tracker","Shows TAK Tracker on Setup My Device for Apple devices.","true"); %>
+            <% renderField("SHOW_ITAK_LINKS","iTAK","Shows iTAK on Setup My Device for Apple devices.","false"); %>
+          </div>
+
+          <div class="settings-auto-create-section">
+            <div class="settings-auto-create-header">
+              <h3>Android</h3>
+            </div>
+            <% renderField("ALLOWED_CLIENT_ATAK","ATAK","Shows ATAK on Setup My Device for Android devices.","true"); %>
+          </div>
+
+          <div class="settings-auto-create-section">
+            <div class="settings-auto-create-header">
+              <h3>Web Browser</h3>
+            </div>
+            <% renderField("ALLOWED_CLIENT_CLOUDTAK","CloudTAK","Shows CloudTAK / Web Browser on Setup My Device when a URL is set.", cloudtakDefaultOn); %>
+            <div id="allowedClientCloudtakUrlFields" style="margin-top:0.75rem;display:<%= cloudtakIsOn ? 'block' : 'none' %>;">
+              <% renderField("CLOUDTAK_URL","CloudTAK URL","Base URL for CloudTAK web (e.g. https://cloudtak.example.gov). Required for the Web Browser option on Setup My Device."); %>
+            </div>
+          </div>
+
+          <div class="settings-auto-create-section">
+            <div class="settings-auto-create-header">
+              <h3>PC</h3>
+            </div>
+            <p class="settings-help" style="margin:0;">No PC clients configured yet.</p>
+          </div>
+
+          <script>
+            (function () {
+              var modal = document.getElementById("settingsModal-allowed-client-devices");
+              if (!modal) return;
+              var urlFields = document.getElementById("allowedClientCloudtakUrlFields");
+              function syncCloudtakUrlVisibility() {
+                if (!urlFields) return;
+                var toggle = null;
+                var fields = modal.querySelectorAll(".settings-field-bool");
+                for (var i = 0; i < fields.length; i++) {
+                  var input = fields[i].querySelector('input[name="settings[ALLOWED_CLIENT_CLOUDTAK]"]');
+                  if (input) {
+                    toggle = fields[i].querySelector("[data-settings-bool-toggle]");
+                    break;
+                  }
+                }
+                var on = toggle && toggle.classList.contains("is-on");
+                urlFields.style.display = on ? "block" : "none";
+              }
+              modal.addEventListener("click", function (e) {
+                if (e.target && e.target.closest && e.target.closest("[data-settings-bool-toggle]")) {
+                  setTimeout(syncCloudtakUrlVisibility, 0);
+                }
+              });
+              syncCloudtakUrlVisibility();
             })();
           </script>
         </div>

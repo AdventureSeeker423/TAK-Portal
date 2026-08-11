@@ -4,36 +4,82 @@
 <main class="main">
   <h1>Setup My Device</h1>
   <%
-    const showITakLinks = String((settings && settings.SHOW_ITAK_LINKS) || "false").toLowerCase() === "true";
+    function allowedClientBool(key, defaultOn) {
+      const raw = String((settings && settings[key]) || "").trim().toLowerCase();
+      if (raw === "true") return true;
+      if (raw === "false") return false;
+      return !!defaultOn;
+    }
+    const cloudtakUrlTrimmed = (settings && typeof settings.CLOUDTAK_URL === "string")
+      ? settings.CLOUDTAK_URL.trim()
+      : "";
+    const showTakAware = allowedClientBool("ALLOWED_CLIENT_TAK_AWARE", true);
+    const showTakTracker = allowedClientBool("ALLOWED_CLIENT_TAK_TRACKER", true);
+    const showITakLinks = allowedClientBool("SHOW_ITAK_LINKS", false);
+    const showAtak = allowedClientBool("ALLOWED_CLIENT_ATAK", true);
+    const showCloudTakEnabled = allowedClientBool(
+      "ALLOWED_CLIENT_CLOUDTAK",
+      !!cloudtakUrlTrimmed
+    );
+    const showCloudTak = showCloudTakEnabled && !!cloudtakUrlTrimmed;
+    const showIosPlatform = showTakAware || showTakTracker || showITakLinks;
+    const showAndroidPlatform = showAtak;
+    const showWebPlatform = showCloudTak;
+    const platformCount =
+      (showIosPlatform ? 1 : 0) +
+      (showAndroidPlatform ? 1 : 0) +
+      (showWebPlatform ? 1 : 0);
+    const platformGridClass =
+      platformCount >= 3 ? "grid3" :
+      platformCount === 2 ? "grid2" :
+      "grid1";
+    const iosAppCount =
+      (showTakAware ? 1 : 0) +
+      (showTakTracker ? 1 : 0) +
+      (showITakLinks ? 1 : 0);
+    const iosGridClass =
+      iosAppCount >= 3 ? "iosSetupGrid--three" :
+      iosAppCount === 2 ? "iosSetupGrid--two" :
+      "iosSetupGrid--one";
   %>
 
   <!-- Device selector -->
   <div class="card" id="deviceSelectCard">
     <h2>Select Your Device Type</h2>
 
-    <div class="<%= (settings && settings.CLOUDTAK_URL && settings.CLOUDTAK_URL.trim()) ? 'grid3' : 'grid2' %>">
+    <% if (platformCount === 0) { %>
+      <p class="msg">No client devices are currently enabled. Contact your administrator.</p>
+    <% } else { %>
+    <div class="<%= platformGridClass %>">
+      <% if (showIosPlatform) { %>
       <button type="button" class="btn tile deviceTile deviceTile-ios" id="selectIOS">
         <span class="title">Apple (iPhone / iPad)</span>
         <span class="desc">Use TAK Aware or TAK Tracker on iOS devices.</span>
       </button>
+      <% } %>
 
+      <% if (showAndroidPlatform) { %>
       <button type="button" class="btn tile deviceTile deviceTile-android" id="selectAndroid">
         <span class="title">Android (Phone / Tablet)</span>
         <span class="desc">Use ATAK on Android devices.</span>
       </button>
+      <% } %>
 
-      <% if (settings && typeof settings.CLOUDTAK_URL === "string" && settings.CLOUDTAK_URL.trim()) { %>
+      <% if (showWebPlatform) { %>
         <button type="button" class="btn tile deviceTile" id="selectWeb">
           <span class="title">Web Browser</span>
           <span class="desc">Use CloudTAK on web browsers.</span>
         </button>
       <% } %>
     </div>
+    <% } %>
   </div>
 
   <!-- iOS flow: one card per app; steps 1–3 stacked vertically inside -->
+  <% if (showIosPlatform) { %>
   <div id="iosFlow" style="display:none;">
-    <div class="iosSetupGrid <%= showITakLinks ? 'iosSetupGrid--three' : 'iosSetupGrid--two' %>" style="margin-top: 0.5rem;">
+    <div class="iosSetupGrid <%= iosGridClass %>" style="margin-top: 0.5rem;">
+      <% if (showTakAware) { %>
       <!-- TAK Aware -->
       <div class="card iosAppGroup">
         <h2 class="iosAppGroupTitle">TAK Aware</h2>
@@ -79,7 +125,9 @@
           </div>
         </section>
       </div>
+      <% } %>
 
+      <% if (showTakTracker) { %>
       <!-- TAK Tracker -->
       <div class="card iosAppGroup">
         <h2 class="iosAppGroupTitle">TAK Tracker</h2>
@@ -111,6 +159,7 @@
           </div>
         </section>
       </div>
+      <% } %>
 
       <% if (showITakLinks) { %>
         <div class="card iosAppGroup">
@@ -146,8 +195,10 @@
       <% } %>
     </div>
   </div>
+  <% } %>
 
   <!-- Android flow: ATAK steps stacked vertically (same pattern as iOS) -->
+  <% if (showAndroidPlatform) { %>
   <div id="androidFlow" style="display:none;">
     <div class="card iosAppGroup" style="margin-top: 0.5rem;">
       <h2 class="iosAppGroupTitle">ATAK</h2>
@@ -202,6 +253,7 @@
       </section>
     </div>
   </div>
+  <% } %>
 </main>
 
 <%- include("partials/mou_user_agreement_modal") %>
@@ -305,8 +357,11 @@
 
 <script>
   // CloudTAK URL (from settings.json via server render)
-  const cloudtakUrl = <%- JSON.stringify((settings && typeof settings.CLOUDTAK_URL === "string") ? settings.CLOUDTAK_URL.trim() : "") %>;
-  const showITakLinks = <%- JSON.stringify(String((settings && settings.SHOW_ITAK_LINKS) || "false").toLowerCase() === "true") %>;
+  const cloudtakUrl = <%- JSON.stringify(cloudtakUrlTrimmed) %>;
+  const showITakLinks = <%- JSON.stringify(showITakLinks) %>;
+  const showTakAware = <%- JSON.stringify(showTakAware) %>;
+  const showTakTracker = <%- JSON.stringify(showTakTracker) %>;
+  const showAtak = <%- JSON.stringify(showAtak) %>;
 
   // --- device selection UI (NO persistence; forgets on reload) ---
   const iosFlow = document.getElementById("iosFlow");
@@ -316,15 +371,19 @@
   const selectWeb = document.getElementById("selectWeb");
 
   function showIOS() {
+    if (!iosFlow) return;
     iosFlow.style.display = "block";
-    androidFlow.style.display = "none";
-    setScanInstructions("takaware");
+    if (androidFlow) androidFlow.style.display = "none";
+    if (showTakAware) setScanInstructions("takaware");
+    else if (showTakTracker) setScanInstructions("taktracker");
+    else if (showITakLinks) setScanInstructions("itak");
     // optional: scroll to the revealed content
     iosFlow.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function showAndroid() {
-    iosFlow.style.display = "none";
+    if (!androidFlow) return;
+    if (iosFlow) iosFlow.style.display = "none";
     androidFlow.style.display = "block";
     setScanInstructions("atak");
     androidFlow.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -337,12 +396,12 @@
 
   // On load: always start with chooser only
   (function resetOnLoad() {
-    iosFlow.style.display = "none";
-    androidFlow.style.display = "none";
+    if (iosFlow) iosFlow.style.display = "none";
+    if (androidFlow) androidFlow.style.display = "none";
   })();
 
-  selectIOS.addEventListener("click", showIOS);
-  selectAndroid.addEventListener("click", showAndroid);
+  if (selectIOS) selectIOS.addEventListener("click", showIOS);
+  if (selectAndroid) selectAndroid.addEventListener("click", showAndroid);
   if (selectWeb) selectWeb.addEventListener("click", openCloudTAK);
 
   // --- QR modal + enrollment logic ---
@@ -1075,12 +1134,12 @@
   });
 
   // Attach handlers (buttons exist in DOM even when flows are hidden)
-  if (scanQrBtnTakAware) scanQrBtnTakAware.addEventListener("click", () => handleScanClick("takaware"));
-  if (scanQrBtnTakTracker) scanQrBtnTakTracker.addEventListener("click", () => handleScanClick("taktracker"));
-  scanQrBtnAtak.addEventListener("click", () => handleScanClick("atak"));
-  if (manualLoginBtnTakAware) manualLoginBtnTakAware.addEventListener("click", () => handleManualLoginClick("takaware"));
-  if (manualLoginBtnTakTracker) manualLoginBtnTakTracker.addEventListener("click", () => handleManualLoginClick("taktracker"));
-  manualLoginBtnAtak.addEventListener("click", () => handleManualLoginClick("atak"));
+  if (showTakAware && scanQrBtnTakAware) scanQrBtnTakAware.addEventListener("click", () => handleScanClick("takaware"));
+  if (showTakTracker && scanQrBtnTakTracker) scanQrBtnTakTracker.addEventListener("click", () => handleScanClick("taktracker"));
+  if (showAtak && scanQrBtnAtak) scanQrBtnAtak.addEventListener("click", () => handleScanClick("atak"));
+  if (showTakAware && manualLoginBtnTakAware) manualLoginBtnTakAware.addEventListener("click", () => handleManualLoginClick("takaware"));
+  if (showTakTracker && manualLoginBtnTakTracker) manualLoginBtnTakTracker.addEventListener("click", () => handleManualLoginClick("taktracker"));
+  if (showAtak && manualLoginBtnAtak) manualLoginBtnAtak.addEventListener("click", () => handleManualLoginClick("atak"));
   if (showITakLinks && scanQrBtnITak) {
     scanQrBtnITak.addEventListener("click", () => handleScanClick("itak"));
   }

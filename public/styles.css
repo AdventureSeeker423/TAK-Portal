@@ -490,6 +490,12 @@ h2 {
     gap: 8px;
 }
 
+.grid1 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+}
+
 .grid2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -2476,6 +2482,10 @@ a.settings-hub-card:visited {
     align-items: start;
 }
 
+.iosSetupGrid--one {
+    grid-template-columns: 1fr;
+}
+
 .iosSetupGrid--two {
     grid-template-columns: 1fr 1fr;
 }
@@ -2486,6 +2496,7 @@ a.settings-hub-card:visited {
 
 @media (max-width: 900px) {
 
+    .iosSetupGrid--one,
     .iosSetupGrid--two,
     .iosSetupGrid--three {
         grid-template-columns: 1fr;
