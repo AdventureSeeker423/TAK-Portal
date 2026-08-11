@@ -58,9 +58,21 @@ function mergeWithTemplate(existing) {
   const merged = { ...template, ...current };
 
   // Needs save if we’re missing any template keys
-  const needsSave = Object.keys(template).some(
+  let needsSave = Object.keys(template).some(
     key => !Object.prototype.hasOwnProperty.call(current, key)
   ) || removedDeprecated;
+
+  // One-time: when Allowed Client Devices was introduced, template merge seeded
+  // ALLOWED_CLIENT_CLOUDTAK=false even if CLOUDTAK_URL was already set. Enable
+  // CloudTAK once when a URL exists, then mark migration complete.
+  if (String(current.ALLOWED_CLIENT_DEVICES_MIGRATION || "") !== "1") {
+    const cloudtakUrl = String(merged.CLOUDTAK_URL || "").trim();
+    if (cloudtakUrl) {
+      merged.ALLOWED_CLIENT_CLOUDTAK = "true";
+    }
+    merged.ALLOWED_CLIENT_DEVICES_MIGRATION = "1";
+    needsSave = true;
+  }
 
   return { merged, needsSave };
 }
