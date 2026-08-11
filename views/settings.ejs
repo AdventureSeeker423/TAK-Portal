@@ -2644,36 +2644,28 @@
               cloudtakDefaultOn === "true";
           %>
 
+          <h3 class="settings-allowed-client-platform">iOS</h3>
           <div class="settings-auto-create-section">
-            <div class="settings-auto-create-header">
-              <h3>iOS</h3>
-            </div>
-            <% renderField("ALLOWED_CLIENT_TAK_AWARE","TAK Aware","Shows TAK Aware on Setup My Device for Apple devices.","true"); %>
-            <% renderField("ALLOWED_CLIENT_TAK_TRACKER","TAK Tracker","Shows TAK Tracker on Setup My Device for Apple devices.","true"); %>
-            <% renderField("SHOW_ITAK_LINKS","iTAK","Shows iTAK on Setup My Device for Apple devices.","false"); %>
+            <% renderField("ALLOWED_CLIENT_TAK_AWARE","TAK Aware",null,"true"); %>
+            <% renderField("ALLOWED_CLIENT_TAK_TRACKER","TAK Tracker",null,"true"); %>
+            <% renderField("SHOW_ITAK_LINKS","iTAK",null,"false"); %>
           </div>
 
+          <h3 class="settings-allowed-client-platform">Android</h3>
           <div class="settings-auto-create-section">
-            <div class="settings-auto-create-header">
-              <h3>Android</h3>
-            </div>
-            <% renderField("ALLOWED_CLIENT_ATAK","ATAK","Shows ATAK on Setup My Device for Android devices.","true"); %>
+            <% renderField("ALLOWED_CLIENT_ATAK","ATAK",null,"true"); %>
           </div>
 
+          <h3 class="settings-allowed-client-platform">Web Browser</h3>
           <div class="settings-auto-create-section">
-            <div class="settings-auto-create-header">
-              <h3>Web Browser</h3>
-            </div>
-            <% renderField("ALLOWED_CLIENT_CLOUDTAK","CloudTAK","Shows CloudTAK / Web Browser on Setup My Device when a URL is set.", cloudtakDefaultOn); %>
+            <% renderField("ALLOWED_CLIENT_CLOUDTAK","CloudTAK",null, cloudtakDefaultOn); %>
             <div id="allowedClientCloudtakUrlFields" style="margin-top:0.75rem;display:<%= cloudtakIsOn ? 'block' : 'none' %>;">
-              <% renderField("CLOUDTAK_URL","CloudTAK URL","Base URL for CloudTAK web (e.g. https://cloudtak.example.gov). Required for the Web Browser option on Setup My Device."); %>
+              <% renderField("CLOUDTAK_URL","CloudTAK URL",null); %>
             </div>
           </div>
 
+          <h3 class="settings-allowed-client-platform">PC</h3>
           <div class="settings-auto-create-section">
-            <div class="settings-auto-create-header">
-              <h3>PC</h3>
-            </div>
             <p class="settings-help" style="margin:0;">No PC clients configured yet.</p>
           </div>
 

@@ -2723,6 +2723,16 @@ a.settings-hub-card:visited {
   margin-bottom: 0.75rem;
 }
 
+.settings-allowed-client-platform {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.settings-allowed-client-platform:not(:first-child) {
+  margin-top: 0.35rem;
+}
+
 .settings-auto-create-section.is-disabled {
   opacity: 0.55;
 }
