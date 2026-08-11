@@ -82,10 +82,6 @@ function startTakDashboardRefresher() {
   _timer = setInterval(() => {
     refreshNow().catch(() => null);
   }, seconds * 1000);
-
-  console.log(
-    `[DASHBOARD] TAK stats cache enabled: every ${seconds}s (dashboard reads cache; no TAK wait on page load)`
-  );
 }
 
 function stopTakDashboardRefresher() {

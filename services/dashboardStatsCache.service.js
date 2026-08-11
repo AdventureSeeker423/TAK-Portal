@@ -174,10 +174,6 @@ function startDashboardStatsRefresher() {
   _state.timer = setInterval(() => {
     refreshNow().catch(() => null);
   }, seconds * 1000);
-
-  console.log(
-    `[DASHBOARD] Authentik stats cache enabled: immediate refresh + optional settle at ${initialDelaySeconds}s, then every ${seconds}s`
-  );
 }
 
 function restartDashboardStatsRefresher() {
