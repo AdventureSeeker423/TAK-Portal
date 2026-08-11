@@ -2742,7 +2742,7 @@ a.settings-hub-card:visited {
   border: none;
   background: transparent;
   cursor: pointer;
-  color: #d4a017;
+  color: var(--muted, #9ca3af);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2758,6 +2758,10 @@ a.settings-hub-card:visited {
   stroke-linejoin: round;
 }
 
+.settings-allowed-client-row .settings-recommend-star.is-filled {
+  color: #d4a017;
+}
+
 .settings-allowed-client-row .settings-recommend-star.is-filled svg {
   fill: currentColor;
   stroke: currentColor;
@@ -2766,12 +2770,41 @@ a.settings-hub-card:visited {
 .settings-allowed-client-row .settings-recommend-star:hover,
 .settings-allowed-client-row .settings-recommend-star:focus-visible {
   outline: none;
+  background: rgba(156, 163, 175, 0.12);
+}
+
+.settings-allowed-client-row .settings-recommend-star.is-filled:hover,
+.settings-allowed-client-row .settings-recommend-star.is-filled:focus-visible {
   background: rgba(212, 160, 23, 0.12);
 }
 
 .settings-allowed-client-row .settings-recommend-star:focus-visible {
-  outline: 2px solid #d4a017;
+  outline: 2px solid currentColor;
   outline-offset: 1px;
+}
+
+.settings-allowed-client-item {
+  margin-bottom: 0.25rem;
+}
+
+.settings-allowed-client-item.dragging {
+  opacity: 0.55;
+}
+
+.settings-allowed-client-grip {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  text-align: center;
+  cursor: grab;
+  user-select: none;
+  color: var(--muted, #9ca3af);
+  font-size: 0.95rem;
+  line-height: 1;
+  letter-spacing: -0.08em;
+}
+
+.settings-allowed-client-item.dragging .settings-allowed-client-grip {
+  cursor: grabbing;
 }
 
 .settings-auto-create-section.is-disabled {

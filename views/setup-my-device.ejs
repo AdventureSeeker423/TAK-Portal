@@ -56,6 +56,32 @@
     const recommendITak = recommendedIos === "itak";
     const recommendAtak = recommendedAndroid === "atak";
     const recommendCloudTak = recommendedWeb === "cloudtak";
+
+    function parseClientOrder(key, defaults) {
+      const known = defaults.slice();
+      const knownSet = new Set(known);
+      const raw = (settings && typeof settings[key] === "string") ? settings[key] : "";
+      const parsed = String(raw)
+        .split(",")
+        .map((s) => s.trim())
+        .filter((id) => id && knownSet.has(id));
+      known.forEach((id) => {
+        if (!parsed.includes(id)) parsed.push(id);
+      });
+      return parsed;
+    }
+    const iosOrder = parseClientOrder(
+      "ALLOWED_CLIENT_ORDER_IOS",
+      ["tak_aware", "tak_tracker", "itak"]
+    ).filter((id) =>
+      (id === "tak_aware" && showTakAware) ||
+      (id === "tak_tracker" && showTakTracker) ||
+      (id === "itak" && showITakLinks)
+    );
+    const androidOrder = parseClientOrder(
+      "ALLOWED_CLIENT_ORDER_ANDROID",
+      ["atak"]
+    ).filter((id) => id === "atak" && showAtak);
   %>
 
   <!-- Device selector -->
@@ -94,7 +120,8 @@
   <% if (showIosPlatform) { %>
   <div id="iosFlow" style="display:none;">
     <div class="iosSetupGrid <%= iosGridClass %>" style="margin-top: 0.5rem;">
-      <% if (showTakAware) { %>
+      <% iosOrder.forEach(function (appId) { %>
+        <% if (appId === "tak_aware") { %>
       <!-- TAK Aware -->
       <div class="card iosAppGroup">
         <h2 class="iosAppGroupTitle">TAK Aware</h2>
@@ -140,9 +167,7 @@
           </div>
         </section>
       </div>
-      <% } %>
-
-      <% if (showTakTracker) { %>
+        <% } else if (appId === "tak_tracker") { %>
       <!-- TAK Tracker -->
       <div class="card iosAppGroup">
         <h2 class="iosAppGroupTitle">TAK Tracker</h2>
@@ -174,9 +199,7 @@
           </div>
         </section>
       </div>
-      <% } %>
-
-      <% if (showITakLinks) { %>
+        <% } else if (appId === "itak") { %>
         <div class="card iosAppGroup">
           <h2 class="iosAppGroupTitle">iTAK</h2>
 
@@ -207,7 +230,8 @@
             </div>
           </section>
         </div>
-      <% } %>
+        <% } %>
+      <% }); %>
     </div>
   </div>
   <% } %>
@@ -215,6 +239,8 @@
   <!-- Android flow: ATAK steps stacked vertically (same pattern as iOS) -->
   <% if (showAndroidPlatform) { %>
   <div id="androidFlow" style="display:none;">
+    <% androidOrder.forEach(function (appId) { %>
+      <% if (appId === "atak") { %>
     <div class="card iosAppGroup" style="margin-top: 0.5rem;">
       <h2 class="iosAppGroupTitle">ATAK</h2>
 
@@ -267,6 +293,8 @@
         </a>
       </section>
     </div>
+      <% } %>
+    <% }); %>
   </div>
   <% } %>
 </main>
@@ -377,6 +405,7 @@
   const showTakAware = <%- JSON.stringify(showTakAware) %>;
   const showTakTracker = <%- JSON.stringify(showTakTracker) %>;
   const showAtak = <%- JSON.stringify(showAtak) %>;
+  const iosOrder = <%- JSON.stringify(iosOrder) %>;
 
   // --- device selection UI (NO persistence; forgets on reload) ---
   const iosFlow = document.getElementById("iosFlow");
@@ -389,7 +418,11 @@
     if (!iosFlow) return;
     iosFlow.style.display = "block";
     if (androidFlow) androidFlow.style.display = "none";
-    if (showTakAware) setScanInstructions("takaware");
+    const firstIos = Array.isArray(iosOrder) && iosOrder.length ? iosOrder[0] : "";
+    if (firstIos === "tak_aware") setScanInstructions("takaware");
+    else if (firstIos === "tak_tracker") setScanInstructions("taktracker");
+    else if (firstIos === "itak") setScanInstructions("itak");
+    else if (showTakAware) setScanInstructions("takaware");
     else if (showTakTracker) setScanInstructions("taktracker");
     else if (showITakLinks) setScanInstructions("itak");
     // optional: scroll to the revealed content
