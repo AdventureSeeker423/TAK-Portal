@@ -1024,12 +1024,18 @@ maType.onchange = updateCreateExpireUi;
 maExpireEnabled.onchange = updateCreateExpireUi;
 updateCreateExpireUi();
 
-// Group IDs tied to mutual aid channels — excluded from "Use Existing Group" picker.
+// Groups created by the MA workflow — excluded from "Use Existing Group" picker.
+// Normal existing groups stay selectable even if another mutual aid already uses them.
 let mutualAidExcludedGroupIds = new Set();
 
 function refreshMutualAidExcludedGroupIds() {
   mutualAidExcludedGroupIds = new Set(
     (allItems || [])
+      .filter((it) => {
+        if (it?.groupWasCreated === true) return true;
+        if (isSubMutualAidType(it?.type)) return false;
+        return String(it?.groupMode || "new").toLowerCase() !== "existing";
+      })
       .map((it) => String(it?.groupId || "").trim())
       .filter(Boolean)
   );
@@ -3240,27 +3246,50 @@ function buildDisplayUnits(filteredItems) {
 
   for (const gid of groupIds) {
     const allInGroup = (allItems || []).filter((x) => String(x.groupId || "") === gid);
-    const anchor = getGroupAnchorForGroup(gid);
     const visible = allInGroup.filter((x) => filteredIdSet.has(String(x.id)));
     if (!visible.length) continue;
 
-    if (anchor && allInGroup.length > 1) {
+    const creator = allInGroup.find((x) => isGroupCreatorItem(x)) || null;
+    if (creator && allInGroup.length > 1) {
       const children = visible
-        .filter((x) => String(x.id) !== String(anchor.id))
+        .filter((x) => String(x.id) !== String(creator.id))
         .sort((a, b) =>
           String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
         );
-      if (!filteredIdSet.has(String(anchor.id)) && !children.length) continue;
+      if (!filteredIdSet.has(String(creator.id)) && !children.length) continue;
       units.push({
         kind: "unit",
-        master: anchor,
+        master: creator,
         children,
         totalCount: allInGroup.length,
       });
-    } else {
-      for (const it of visible) {
-        units.push({ kind: "single", item: it });
+      continue;
+    }
+
+    const primaries = visible.filter((x) => !isSubMutualAidType(x?.type));
+    const subs = visible.filter((x) => isSubMutualAidType(x?.type));
+    const usedSubIds = new Set();
+    for (const primary of primaries) {
+      const children = subs
+        .filter((x) => String(x.groupMasterId || "") === String(primary.id))
+        .sort((a, b) =>
+          String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+        );
+      children.forEach((child) => usedSubIds.add(String(child.id)));
+      if (children.length) {
+        units.push({
+          kind: "unit",
+          master: primary,
+          children,
+          totalCount: 1 + children.length,
+        });
+      } else {
+        units.push({ kind: "single", item: primary });
       }
+    }
+    for (const orphan of subs) {
+      if (usedSubIds.has(String(orphan.id))) continue;
+      units.push({ kind: "single", item: orphan });
     }
   }
   return units;
@@ -3418,6 +3447,9 @@ async function deleteItem(item){
   const linkedCount = (allItems || []).filter(
     (x) => String(x.groupId || "") === String(item.groupId || "")
   ).length;
+  const ownedCount = 1 + (allItems || []).filter(
+    (x) => String(x.groupMasterId || "") === String(item.id || "")
+  ).length;
 
   let extra;
   if (isAnchor && isCreator && linkedCount > 1) {
@@ -3426,15 +3458,13 @@ async function deleteItem(item){
       `This will delete all ${linkedCount} deployment(s) (including sub-users), revoke TAK certs for each user, and delete the shared group.`;
   } else if (isAnchor && isCreator) {
     extra = "This will revoke TAK certs, delete the user, and delete the group.";
-  } else if (isAnchor && linkedCount > 1) {
+  } else if (ownedCount > 1) {
     extra =
-      `This is the master deployment for this channel.\n\n` +
-      `This will delete all ${linkedCount} deployment(s) (including sub-users) and revoke TAK certs for each user. The shared group will remain.`;
-  } else if (isAnchor) {
-    extra = "This will revoke TAK certs and delete the user.";
+      `This will revoke TAK certs and delete this deployment plus ${ownedCount - 1} additional user(s) created on it. ` +
+      `The shared group and any other mutual aid deployments using it will remain.`;
   } else {
     extra =
-      "This will revoke TAK certs and delete this deployment user only. (Other deployments on this channel will remain.)";
+      "This will revoke TAK certs and delete this deployment user only. The shared group and any other mutual aid deployments using it will remain.";
   }
 
   const ok = confirm(`Delete ${item.type} "${item.title}"?\n\n${extra}`);

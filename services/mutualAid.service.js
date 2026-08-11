@@ -783,7 +783,9 @@ function parseExpireAt(value) {
 function assertNotMutualAidChannelGroup(group, { allowMutualAidGroup = false } = {}) {
   if (allowMutualAidGroup || !group) return;
   const gid = String(group.pk || "").trim();
-  if (gid && store.getMutualAidGroupIdSet().has(gid)) {
+  // Only block groups created by the MA workflow. A normal existing group may
+  // be reused by more than one standalone mutual aid deployment.
+  if (gid && store.getCreatedGroupIdSet().has(gid)) {
     throw new Error(
       "Mutual aid channels cannot be selected as an existing group. Use Create Additional MA User on an existing deployment instead."
     );
@@ -805,6 +807,7 @@ async function create({
   groupMode,
   existingGroupId,
   allowMutualAidGroup = false,
+  groupMasterId = null,
   usernameOverride = null,
   createdBy = null,
   authUser = null,
@@ -866,8 +869,13 @@ async function create({
 
   const groupName = String(group?.name || desiredGroupName);
   const existingItems = store.load();
+  const requestedMasterId = String(groupMasterId || "").trim();
   const groupMaster =
-    mode === "existing" ? findGroupAnchorItem(existingItems, String(group.pk)) : null;
+    mode === "existing" && allowMutualAidGroup
+      ? (requestedMasterId
+          ? existingItems.find((x) => String(x?.id || "") === requestedMasterId) || null
+          : findGroupAnchorItem(existingItems, String(group.pk)))
+      : null;
 
   // 2) Create user (minimal fields; password is numeric as requested)
   const password = randomPassword(18);
@@ -987,7 +995,7 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt, auth
 
   const items = store.load();
   const master = findGroupAnchorItem(items, parent.groupId) || parent;
-  const masterTitle = sanitizeTitle(master.title);
+  const masterTitle = sanitizeTitle(parent.title || master.title);
   const username = buildLinkedMutualAidUsername(masterTitle, childTitle);
   if (!username) {
     throw new Error("Name must contain at least one letter/number for username");
@@ -1008,6 +1016,7 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt, auth
     groupMode: "existing",
     existingGroupId: parent.groupId,
     allowMutualAidGroup: true,
+    groupMasterId: parent.id,
     usernameOverride: username,
     createdBy: inheritedCreatedBy,
     authUser,
@@ -1106,6 +1115,20 @@ async function update({ id, type, title, expireEnabled, expireAt, logoFile, remo
   return getById(id) || updated;
 }
 
+function itemsOwnedByDeployment(items, item) {
+  const id = String(item?.id || "").trim();
+  if (!id) return [];
+  const owned = [];
+  for (const entry of Array.isArray(items) ? items : []) {
+    if (String(entry?.id || "") === id) {
+      owned.push(entry);
+      continue;
+    }
+    if (String(entry?.groupMasterId || "").trim() === id) owned.push(entry);
+  }
+  return owned;
+}
+
 async function remove({ id }) {
   const items = store.load();
   const idx = items.findIndex((x) => String(x.id) === String(id));
@@ -1114,13 +1137,18 @@ async function remove({ id }) {
   const item = items[idx];
   const anchor = findGroupAnchorItem(items, item.groupId);
   const isAnchor = !!(anchor && String(anchor.id) === String(item.id));
+  const isCreator = isGroupCreatorItem(item);
 
-  // Deleting the anchor removes every deployment on the same group (master + all subs).
-  const cascade = isAnchor ? itemsSharingGroup(items, item.groupId) : [item];
+  // MA-created channels still cascade the whole family. Standalone deployments
+  // that reused an existing group only remove themselves and their own sub-users.
+  const cascade =
+    isAnchor && isCreator
+      ? itemsSharingGroup(items, item.groupId)
+      : itemsOwnedByDeployment(items, item);
 
   const deleteSharedGroup =
     isAnchor &&
-    isGroupCreatorItem(item) &&
+    isCreator &&
     (item.groupWasCreated === true ||
       String(item.groupMode || "new").toLowerCase() !== "existing");
 
