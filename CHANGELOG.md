@@ -11,6 +11,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.71 - 8/13/26
+✨ `Enhancement` - Adds the ability to build data packages for enrollment.  Must be enabled in server settings and Supported TAK Clients.  Download buttons on Setup My Device page and on Users page under Enroll QR.
+
 ### v1.3.70 - 8/11/26
 ✨ `Enhancement` - Settings / Setup My Device - Section added in settings to manage supported TAK Clients
 
