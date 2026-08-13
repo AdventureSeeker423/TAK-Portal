@@ -22,6 +22,7 @@ const TEST_FILES = [
   "dataSyncAccess.test.js",
   "geocode.test.js",
   "preferencePackage.service.test.js",
+  "enrollmentPackage.service.test.js",
   "takGroupControl.test.js",
   "geofence.test.js",
   "userRequestsOtherAgency.test.js",

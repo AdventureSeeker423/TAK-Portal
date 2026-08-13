@@ -6,6 +6,7 @@ const qrSvc = require("../services/qr.service");
 const tokensSvc = require("../services/authentikTokens.service");
 const usersSvc = require("../services/users.service");
 const auditSvc = require("../services/auditLog.service");
+const enrollmentPkg = require("../services/enrollmentPackage.service");
 
 function requireLoggedIn(req, res) {
   const u = req.authentikUser;
@@ -151,6 +152,68 @@ router.get("/preference-data", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: err?.message || "Failed to get preference data",
+    });
+  }
+});
+
+router.get("/data-package", async (req, res) => {
+  try {
+    const user = requireLoggedIn(req, res);
+    if (!user) return;
+
+    if (!enrollmentPkg.isDataPackageAvailable()) {
+      return res.status(403).json({
+        ok: false,
+        error:
+          "Data Package is not available. Enable it in Supported TAK Clients after SSH is configured.",
+      });
+    }
+
+    let prefs = { callsign: "", teamLabel: "", roleLabel: "" };
+    try {
+      const userId = await tokensSvc.getUserIdByUsername(user.username);
+      const fullUser = await usersSvc.getUserById(userId);
+      prefs = usersSvc.getPreferenceDataForUser(fullUser);
+    } catch (prefErr) {
+      console.warn(
+        "[setup-device] preference lookup for data package failed:",
+        prefErr?.message || prefErr
+      );
+    }
+
+    const built = await enrollmentPkg.buildEnrollmentPackageZip({
+      username: user.username,
+      callsign: prefs.callsign,
+      teamLabel: prefs.teamLabel,
+      roleLabel: prefs.roleLabel,
+    });
+
+    auditSvc.auditFromRequest(req, {
+      action: "SELF_SERVICE_DATA_PACKAGE",
+      targetType: "user",
+      targetId: String(user.username || "").trim().toLowerCase(),
+      details: {
+        username: user.username,
+        packageName: built.packageName,
+        summary: "User downloaded a TAK enrollment data package.",
+      },
+    });
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${built.packageName}"`
+    );
+    return res.send(built.buffer);
+  } catch (err) {
+    console.error(
+      "[setup-device] Failed to build data package:",
+      err?.message || err
+    );
+    const status = Number(err?.status) || 500;
+    return res.status(status).json({
+      ok: false,
+      error: err?.message || "Failed to build data package",
     });
   }
 });

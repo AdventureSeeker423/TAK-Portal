@@ -174,6 +174,7 @@
         "ALLOWED_CLIENT_TAK_TRACKER",
         "ALLOWED_CLIENT_ATAK",
         "ALLOWED_CLIENT_CLOUDTAK",
+        "ALLOWED_CLIENT_DATA_PACKAGE",
         "EMAIL_ENABLED",
         "EMAIL_GROUP_CHANGES_ENABLED",
         "SMTP_SECURE",
@@ -314,12 +315,15 @@
         "ALLOWED_CLIENT_TAK_TRACKER",
         "ALLOWED_CLIENT_ATAK",
         "ALLOWED_CLIENT_CLOUDTAK",
+        "ALLOWED_CLIENT_DATA_PACKAGE",
         "ALLOWED_CLIENT_RECOMMENDED_IOS",
         "ALLOWED_CLIENT_RECOMMENDED_ANDROID",
         "ALLOWED_CLIENT_RECOMMENDED_WEB",
+        "ALLOWED_CLIENT_RECOMMENDED_PC",
         "ALLOWED_CLIENT_ORDER_IOS",
         "ALLOWED_CLIENT_ORDER_ANDROID",
         "ALLOWED_CLIENT_ORDER_WEB",
+        "ALLOWED_CLIENT_ORDER_PC",
         "TAK_SSH_HOST",
         "TAK_SSH_PORT",
         "TAK_SSH_USER",
@@ -2653,6 +2657,7 @@
               const key =
                 section === "ios" ? "ALLOWED_CLIENT_RECOMMENDED_IOS" :
                 section === "android" ? "ALLOWED_CLIENT_RECOMMENDED_ANDROID" :
+                section === "pc" ? "ALLOWED_CLIENT_RECOMMENDED_PC" :
                 "ALLOWED_CLIENT_RECOMMENDED_WEB";
               if (settings && Object.prototype.hasOwnProperty.call(settings, key)) {
                 return String(settings[key] || "").trim();
@@ -2662,6 +2667,8 @@
             const recommendedIos = recommendedFor("ios", "tak_aware");
             const recommendedAndroid = recommendedFor("android", "");
             const recommendedWeb = recommendedFor("web", "");
+            const recommendedPc = recommendedFor("pc", "");
+            const sshConfiguredForClients = !!takSshMaintenanceVisible;
 
             function parseClientOrder(key, defaults) {
               const known = defaults.slice();
@@ -2701,6 +2708,7 @@
               const defaultOn = opts.defaultOn;
               const recommended = opts.recommended;
               const showCloudtakUrl = !!opts.showCloudtakUrl;
+              const locked = !!opts.locked;
               const rawVal = (settings && typeof settings[key] === "string")
                 ? settings[key].toLowerCase()
                 : "";
@@ -2708,14 +2716,15 @@
                 rawVal === "true" ? "true" :
                 rawVal === "false" ? "false" :
                 defaultOn;
-              const isOn = currentVal === "true";
+              const isOn = locked ? false : currentVal === "true";
               const isRecommended = recommended === appId;
           %>
             <div
-              class="settings-allowed-client-item"
+              class="settings-allowed-client-item<%= locked ? ' is-disabled' : '' %>"
               data-allowed-client-item
               data-allowed-client-section="<%= section %>"
               data-allowed-client-app="<%= appId %>"
+              <% if (locked) { %>data-allowed-client-locked="1"<% } %>
               draggable="true"
             >
               <div class="settings-field settings-field-bool settings-allowed-client-row">
@@ -2741,6 +2750,7 @@
                   data-settings-bool-toggle
                   aria-pressed="<%= isOn ? 'true' : 'false' %>"
                   aria-label="<%= label %>"
+                  <% if (locked) { %>disabled<% } %>
                 ></button>
                 <input
                   type="hidden"
@@ -2815,8 +2825,31 @@
           </div>
 
           <h3 class="settings-allowed-client-platform">PC</h3>
-          <div class="settings-auto-create-section">
-            <p class="settings-help" style="margin:0;">No PC clients configured yet.</p>
+          <div class="settings-auto-create-section" data-allowed-client-section-group="pc">
+            <%
+              const pcAppDefs = {
+                data_package: { key: "ALLOWED_CLIENT_DATA_PACKAGE", label: "Data Package", defaultOn: "false" },
+              };
+              const pcOrder = parseClientOrder("ALLOWED_CLIENT_ORDER_PC", ["data_package"]);
+              pcOrder.forEach(function (appId) {
+                const def = pcAppDefs[appId];
+                if (!def) return;
+                renderAllowedClientApp({
+                  key: def.key,
+                  label: def.label,
+                  section: "pc",
+                  appId: appId,
+                  defaultOn: def.defaultOn,
+                  recommended: recommendedPc,
+                  locked: appId === "data_package" && !sshConfiguredForClients,
+                });
+              });
+            %>
+            <% if (!sshConfiguredForClients) { %>
+              <p class="settings-help" style="margin:0.5rem 0 0;">Complete SSH setup under Connection &amp; Certificates before enabling Data Package.</p>
+            <% } %>
+            <input type="hidden" name="settings[ALLOWED_CLIENT_RECOMMENDED_PC]" value="<%= recommendedPc %>" data-allowed-client-recommended-input="pc" />
+            <input type="hidden" name="settings[ALLOWED_CLIENT_ORDER_PC]" value="<%= pcOrder.join(',') %>" data-allowed-client-order-input="pc" />
           </div>
 
           <script>
@@ -3263,6 +3296,7 @@
         ? e.target.closest("[data-settings-bool-toggle]")
         : null;
       if (!btn) return;
+      if (btn.disabled || btn.getAttribute("aria-disabled") === "true" || btn.closest("[data-allowed-client-locked]")) return;
       var field = btn.closest(".settings-field");
       var input = field
         ? field.querySelector("[data-settings-bool-input]")

@@ -990,9 +990,11 @@ app.get("/setup-my-device", async (req, res) => {
       enrollQrBootstrap = null;
     }
   }
+  const locateConfigSvc = require("./services/locateConfig.service");
   return res.render("setup-my-device", {
     takHost,
     enrollQrBootstrap,
+    sshConfigured: !!locateConfigSvc.isSshConfigured().configured,
     agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser, {
       acceptedForSession: hasAcceptedAgreementForSession(
         req,
@@ -1765,6 +1767,11 @@ app.post(
     }
     // IMPORTANT: if no logo file uploaded, we do NOT touch merged.BRAND_LOGO_URL
     // so it stays whatever it was before.
+
+    const locateConfigSvcForSave = require("./services/locateConfig.service");
+    if (!locateConfigSvcForSave.isSshConfigured().configured) {
+      merged.ALLOWED_CLIENT_DATA_PACKAGE = "false";
+    }
 
     // Save the FULL merged settings object
     try {

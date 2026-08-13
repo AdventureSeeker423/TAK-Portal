@@ -22,14 +22,20 @@
       !!cloudtakUrlTrimmed
     );
     const showCloudTak = showCloudTakEnabled && !!cloudtakUrlTrimmed;
+    const sshConfiguredForClients = typeof sshConfigured !== "undefined" && !!sshConfigured;
+    const showDataPackage =
+      allowedClientBool("ALLOWED_CLIENT_DATA_PACKAGE", false) && sshConfiguredForClients;
     const showIosPlatform = showTakAware || showTakTracker || showITakLinks;
     const showAndroidPlatform = showAtak;
     const showWebPlatform = showCloudTak;
+    const showPcPlatform = showDataPackage;
     const platformCount =
       (showIosPlatform ? 1 : 0) +
       (showAndroidPlatform ? 1 : 0) +
-      (showWebPlatform ? 1 : 0);
+      (showWebPlatform ? 1 : 0) +
+      (showPcPlatform ? 1 : 0);
     const platformGridClass =
+      platformCount >= 4 ? "grid4" :
       platformCount >= 3 ? "grid3" :
       platformCount === 2 ? "grid2" :
       "grid1";
@@ -51,11 +57,13 @@
     const recommendedIos = recommendedApp("ALLOWED_CLIENT_RECOMMENDED_IOS", "tak_aware");
     const recommendedAndroid = recommendedApp("ALLOWED_CLIENT_RECOMMENDED_ANDROID", "");
     const recommendedWeb = recommendedApp("ALLOWED_CLIENT_RECOMMENDED_WEB", "");
+    const recommendedPc = recommendedApp("ALLOWED_CLIENT_RECOMMENDED_PC", "");
     const recommendTakAware = recommendedIos === "tak_aware";
     const recommendTakTracker = recommendedIos === "tak_tracker";
     const recommendITak = recommendedIos === "itak";
     const recommendAtak = recommendedAndroid === "atak";
     const recommendCloudTak = recommendedWeb === "cloudtak";
+    const recommendDataPackage = recommendedPc === "data_package";
 
     function parseClientOrder(key, defaults) {
       const known = defaults.slice();
@@ -110,6 +118,13 @@
         <button type="button" class="btn tile deviceTile<%= recommendCloudTak ? ' success' : '' %>" id="selectWeb">
           <span class="title">Web Browser<%= recommendCloudTak ? ' (Recommended)' : '' %></span>
           <span class="desc">Use CloudTAK on web browsers.</span>
+        </button>
+      <% } %>
+
+      <% if (showPcPlatform) { %>
+        <button type="button" class="btn tile deviceTile deviceTile-pc" id="selectPC">
+          <span class="title">PC</span>
+          <span class="desc">Use a TAK data package on Windows.</span>
         </button>
       <% } %>
     </div>
@@ -297,6 +312,25 @@
     <% }); %>
   </div>
   <% } %>
+
+  <% if (showPcPlatform) { %>
+  <div id="pcFlow" style="display:none;">
+    <div class="card iosAppGroup" style="margin-top: 0.5rem;">
+      <h2 class="iosAppGroupTitle">Data Package</h2>
+      <section class="iosStep">
+        <h3 class="iosStepHeading">Download and import</h3>
+        <a
+          href="/api/setup-my-device/data-package"
+          class="btn tile<%= recommendDataPackage ? ' success' : '' %>"
+          id="downloadDataPackageBtn"
+        >
+          <span class="title">Download Data Package<%= recommendDataPackage ? ' (Recommended)' : '' %></span>
+          <span class="desc">Import the ZIP in WinTAK (Import File or drag-and-drop), then sign in with your portal credentials.</span>
+        </a>
+      </section>
+    </div>
+  </div>
+  <% } %>
 </main>
 
 <%- include("partials/mou_user_agreement_modal") %>
@@ -410,14 +444,22 @@
   // --- device selection UI (NO persistence; forgets on reload) ---
   const iosFlow = document.getElementById("iosFlow");
   const androidFlow = document.getElementById("androidFlow");
+  const pcFlow = document.getElementById("pcFlow");
   const selectIOS = document.getElementById("selectIOS");
   const selectAndroid = document.getElementById("selectAndroid");
   const selectWeb = document.getElementById("selectWeb");
+  const selectPC = document.getElementById("selectPC");
+
+  function hideDeviceFlows() {
+    if (iosFlow) iosFlow.style.display = "none";
+    if (androidFlow) androidFlow.style.display = "none";
+    if (pcFlow) pcFlow.style.display = "none";
+  }
 
   function showIOS() {
     if (!iosFlow) return;
+    hideDeviceFlows();
     iosFlow.style.display = "block";
-    if (androidFlow) androidFlow.style.display = "none";
     const firstIos = Array.isArray(iosOrder) && iosOrder.length ? iosOrder[0] : "";
     if (firstIos === "tak_aware") setScanInstructions("takaware");
     else if (firstIos === "tak_tracker") setScanInstructions("taktracker");
@@ -431,10 +473,17 @@
 
   function showAndroid() {
     if (!androidFlow) return;
-    if (iosFlow) iosFlow.style.display = "none";
+    hideDeviceFlows();
     androidFlow.style.display = "block";
     setScanInstructions("atak");
     androidFlow.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function showPC() {
+    if (!pcFlow) return;
+    hideDeviceFlows();
+    pcFlow.style.display = "block";
+    pcFlow.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function openCloudTAK() {
@@ -444,13 +493,13 @@
 
   // On load: always start with chooser only
   (function resetOnLoad() {
-    if (iosFlow) iosFlow.style.display = "none";
-    if (androidFlow) androidFlow.style.display = "none";
+    hideDeviceFlows();
   })();
 
   if (selectIOS) selectIOS.addEventListener("click", showIOS);
   if (selectAndroid) selectAndroid.addEventListener("click", showAndroid);
   if (selectWeb) selectWeb.addEventListener("click", openCloudTAK);
+  if (selectPC) selectPC.addEventListener("click", showPC);
 
   // --- QR modal + enrollment logic ---
   const scanQrBtnTakAware = document.getElementById("scanQrBtnTakAware");

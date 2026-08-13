@@ -1406,6 +1406,54 @@ async function testSshConnectionAndPrivilegedAccess() {
   };
 }
 
+async function fetchTakTruststoreP12FromRemote() {
+  const cfg = getTakSshConfig();
+  if (!cfg) {
+    throw new Error("SSH is not configured. Complete SSH handshake in Settings.");
+  }
+
+  const remoteScript =
+    "bash -lc 'set -e; cd /opt/tak/certs; " +
+    "pass=atakatak; " +
+    "if [ -r cert-metadata.sh ]; then set +e; . ./cert-metadata.sh >/dev/null 2>&1; set -e; " +
+    "if [ -n \"$CAPASS\" ]; then pass=\"$CAPASS\"; elif [ -n \"$PASS\" ]; then pass=\"$PASS\"; fi; fi; " +
+    "p12path=\"\"; " +
+    "for f in ./files/truststore-root.p12 ./truststore-root.p12 /opt/tak/certs/files/truststore-root.p12 /opt/tak/certs/truststore-root.p12 ./files/truststore-intermediate.p12 ./truststore-intermediate.p12 /opt/tak/certs/files/truststore-intermediate.p12 /opt/tak/certs/truststore-intermediate.p12; do " +
+    "[ -f \"$f\" ] && p12path=\"$f\" && break; done; " +
+    "if [ -z \"$p12path\" ]; then echo \"Missing truststore-root.p12 on TAK server\" 1>&2; exit 44; fi; " +
+    "echo __TAK_TRUST_PASS_BEGIN__; printf \"%s\" \"$pass\"; echo; echo __TAK_TRUST_PASS_END__; " +
+    "echo __TAK_TRUST_PATH_BEGIN__; printf \"%s\" \"$p12path\"; echo; echo __TAK_TRUST_PATH_END__; " +
+    "echo __TAK_TRUST_P12_BEGIN__; base64 \"$p12path\" | tr -d \"\\n\"; echo; echo __TAK_TRUST_P12_END__'";
+
+  const connect = toConnectConfig(cfg);
+  const mode = await getPrivilegedMode(connect);
+  const command = buildPrivilegedCommand(
+    remoteScript,
+    mode,
+    takCertCommandOptions(connect, { runAsUser: "tak" })
+  );
+  const result = await execOverSsh(connect, command, 45000);
+  if (!result.ok) {
+    throw new Error(result.message || "Failed to fetch TAK truststore from the TAK server.");
+  }
+
+  const out = String(result.stdout || "");
+  const passMatch = out.match(/__TAK_TRUST_PASS_BEGIN__\s*([\s\S]*?)\s*__TAK_TRUST_PASS_END__/);
+  const pathMatch = out.match(/__TAK_TRUST_PATH_BEGIN__\s*([\s\S]*?)\s*__TAK_TRUST_PATH_END__/);
+  const p12Match = out.match(/__TAK_TRUST_P12_BEGIN__\s*([\s\S]*?)\s*__TAK_TRUST_P12_END__/);
+  if (!p12Match) {
+    throw new Error("Remote truststore output could not be parsed.");
+  }
+  const p12B64 = String(p12Match[1] || "").replace(/\s+/g, "");
+  const p12 = Buffer.from(p12B64, "base64");
+  if (!p12.length) {
+    throw new Error("Remote truststore was empty.");
+  }
+  const password = String(passMatch && passMatch[1] != null ? passMatch[1] : "atakatak").replace(/\r?\n/g, "");
+  const sourcePath = String(pathMatch && pathMatch[1] ? pathMatch[1] : "").trim();
+  return { p12, password: password || "atakatak", sourcePath };
+}
+
 module.exports = {
   getLocalKeyStatus,
   ensureLocalSshKeyPair,
@@ -1426,4 +1474,5 @@ module.exports = {
   deleteStoredIntegrationCertFiles,
   getTakSshConfig,
   createTakClientCertForIntegration,
+  fetchTakTruststoreP12FromRemote,
 };
