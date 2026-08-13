@@ -204,6 +204,7 @@ router.get("/data-package", async (req, res) => {
         packageName: built.packageName,
         tokenIdentifier: token.identifier,
         tokenExpiresAt: token.expiresAt,
+        tokenExpiring: token.expiring !== false,
         tokenReused: !!token.reused,
         summary: "User downloaded a TAK enrollment data package.",
       },
@@ -220,10 +221,11 @@ router.get("/data-package", async (req, res) => {
       "[setup-device] Failed to build data package:",
       err?.message || err
     );
-    const status = Number(err?.status) || 500;
+    const { toSafeApiError } = require("../services/apiErrorPayload.service");
+    const status = Number(err?.status || err?.response?.status) || 500;
     return res.status(status).json({
       ok: false,
-      error: err?.message || "Failed to build data package",
+      error: toSafeApiError(err) || err?.message || "Failed to build data package",
     });
   }
 });

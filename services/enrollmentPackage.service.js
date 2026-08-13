@@ -257,11 +257,32 @@ async function buildEnrollmentPackageZip({
     trust = await getTakTruststore();
   }
 
-  const identity = prefPkg.validatePreferenceInputs({
-    callsign: safeStr(callsign).trim() || safeStr(username).trim() || "TAK",
-    teamLabel,
-    roleLabel: safeStr(roleLabel).trim() || "Team Member",
-  });
+  const identity = (() => {
+    const callsignFallback =
+      safeStr(callsign).trim() || safeStr(username).trim() || "TAK";
+    try {
+      return prefPkg.validatePreferenceInputs({
+        callsign: callsignFallback,
+        teamLabel,
+        roleLabel: safeStr(roleLabel).trim() || "Team Member",
+      });
+    } catch (_) {
+      // Don't fail package build on agency color / role mismatches.
+      try {
+        return prefPkg.validatePreferenceInputs({
+          callsign: callsignFallback,
+          teamLabel: "",
+          roleLabel: "Team Member",
+        });
+      } catch {
+        return {
+          callsign: callsignFallback,
+          teamLabel: "",
+          roleLabel: "Team Member",
+        };
+      }
+    }
+  })();
 
   const serverName = safeStr(description).trim() || safeStr(settings.SERVER_NAME).trim() || "TAK Server";
   const packageName = buildEnrollmentPackageFilename({
