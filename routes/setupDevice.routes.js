@@ -165,7 +165,7 @@ router.get("/data-package", async (req, res) => {
       return res.status(403).json({
         ok: false,
         error:
-          "Data Package is not available. Enable it in Supported TAK Clients after SSH is configured.",
+          "Data Package is not available. Enable it in Supported TAK Clients after SSH Generate Key + Handshake succeeds with sudo (privileged) access.",
       });
     }
 

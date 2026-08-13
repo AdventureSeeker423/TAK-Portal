@@ -49,13 +49,17 @@ function isSshConfigured() {
   return !!takSshSvc.getTakSshConfig();
 }
 
+function isPrivilegedSshReady(settings) {
+  return !!takSshSvc.isPrivilegedSshReady(settings);
+}
+
 function isDataPackageEnabled(settings) {
   const cfg = settings || settingsSvc.getSettings() || {};
   return String(cfg.ALLOWED_CLIENT_DATA_PACKAGE || "").trim().toLowerCase() === "true";
 }
 
 function isDataPackageAvailable(settings) {
-  return isSshConfigured() && isDataPackageEnabled(settings);
+  return isPrivilegedSshReady(settings) && isDataPackageEnabled(settings);
 }
 
 function typedEntry(key, javaClass, value) {
@@ -278,6 +282,7 @@ async function buildEnrollmentPackageZip({
 
 module.exports = {
   isSshConfigured,
+  isPrivilegedSshReady,
   isDataPackageEnabled,
   isDataPackageAvailable,
   buildEnrollmentPackageFilename,

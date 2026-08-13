@@ -991,10 +991,11 @@ app.get("/setup-my-device", async (req, res) => {
     }
   }
   const locateConfigSvc = require("./services/locateConfig.service");
+  const takSshSvc = require("./services/takSsh.service");
   return res.render("setup-my-device", {
     takHost,
     enrollQrBootstrap,
-    sshConfigured: !!locateConfigSvc.isSshConfigured().configured,
+    sshConfigured: !!takSshSvc.isPrivilegedSshReady(),
     agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser, {
       acceptedForSession: hasAcceptedAgreementForSession(
         req,
@@ -1494,7 +1495,9 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   }
 
   const locateConfigSvc = require("./services/locateConfig.service");
+  const takSshSvcForSettings = require("./services/takSsh.service");
   const takSshMaintenanceVisible = locateConfigSvc.isSshConfigured().configured;
+  const sshPrivilegedReady = takSshSvcForSettings.isPrivilegedSshReady(settings);
 
   res.render("settings", {
   settings,
@@ -1508,6 +1511,7 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   p12Exists,
   caExists,
   takSshMaintenanceVisible,
+  sshPrivilegedReady,
   defaultAgencyTypes: agencyTypesSvc.DEFAULT_AGENCY_TYPES,
   configurableAgencyTypes: agencyTypesSvc.getConfigurableAgencyTypes(settings),
   });
@@ -1768,8 +1772,8 @@ app.post(
     // IMPORTANT: if no logo file uploaded, we do NOT touch merged.BRAND_LOGO_URL
     // so it stays whatever it was before.
 
-    const locateConfigSvcForSave = require("./services/locateConfig.service");
-    if (!locateConfigSvcForSave.isSshConfigured().configured) {
+    const takSshSvcForSave = require("./services/takSsh.service");
+    if (!takSshSvcForSave.isPrivilegedSshReady(merged)) {
       merged.ALLOWED_CLIENT_DATA_PACKAGE = "false";
     }
 

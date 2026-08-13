@@ -133,6 +133,7 @@ router.post("/reconfigure-sudo", async (req, res) => {
       nextSettings.TAK_SSH_SUDOERS_CONFIGURED = "false";
     } else {
       nextSettings.TAK_SSH_SUDOERS_CONFIGURED = "false";
+      nextSettings.ALLOWED_CLIENT_DATA_PACKAGE = "false";
     }
     settingsSvc.saveSettings(nextSettings);
     takSshSvc.clearPrivilegedModeCache();

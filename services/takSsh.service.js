@@ -702,6 +702,22 @@ function getTakSshConfig() {
   return { host, port, username, privateKey, passphrase };
 }
 
+/**
+ * Sync check: SSH key login is configured AND privileged access is expected to work
+ * (passwordless sudoers installed, stored sudo password, or root SSH user).
+ * Used to gate features that need sudo (e.g. enrollment Data Package truststore fetch).
+ */
+function isPrivilegedSshReady(settings) {
+  if (!getTakSshConfig()) return false;
+  const cfg = settings || settingsSvc.getSettings() || {};
+  const sudoersConfigured =
+    String(cfg.TAK_SSH_SUDOERS_CONFIGURED || "").trim().toLowerCase() === "true";
+  if (sudoersConfigured) return true;
+  if (String(cfg.TAK_SSH_SUDO_PASSWORD || "").trim()) return true;
+  const sshUser = String(cfg.TAK_SSH_USER || "").trim().toLowerCase();
+  return sshUser === "root";
+}
+
 function getLocalKeyStatus() {
   const privateKeyPath = resolvePathMaybe(getString("TAK_SSH_PRIVATE_KEY_PATH", "")) || DEFAULT_PRIVATE_KEY_PATH;
   const publicKeyPath = resolvePathMaybe(getString("TAK_SSH_PUBLIC_KEY_PATH", "")) || DEFAULT_PUBLIC_KEY_PATH;
@@ -1042,6 +1058,7 @@ async function onboardTakSshWithPassword({ host, port, username, password }) {
     nextSettings.TAK_SSH_SUDOERS_CONFIGURED = "false";
   } else {
     nextSettings.TAK_SSH_SUDOERS_CONFIGURED = "false";
+    nextSettings.ALLOWED_CLIENT_DATA_PACKAGE = "false";
   }
 
   settingsSvc.saveSettings(nextSettings);
@@ -1473,6 +1490,7 @@ module.exports = {
   revokeIntegrationCertViaSshScript,
   deleteStoredIntegrationCertFiles,
   getTakSshConfig,
+  isPrivilegedSshReady,
   createTakClientCertForIntegration,
   fetchTakTruststoreP12FromRemote,
 };

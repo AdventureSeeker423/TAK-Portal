@@ -2668,7 +2668,8 @@
             const recommendedAndroid = recommendedFor("android", "");
             const recommendedWeb = recommendedFor("web", "");
             const recommendedPc = recommendedFor("pc", "");
-            const sshConfiguredForClients = !!takSshMaintenanceVisible;
+            const sshPrivilegedReadyForClients =
+              typeof sshPrivilegedReady !== "undefined" ? !!sshPrivilegedReady : false;
 
             function parseClientOrder(key, defaults) {
               const known = defaults.slice();
@@ -2841,12 +2842,12 @@
                   appId: appId,
                   defaultOn: def.defaultOn,
                   recommended: recommendedPc,
-                  locked: appId === "data_package" && !sshConfiguredForClients,
+                  locked: appId === "data_package" && !sshPrivilegedReadyForClients,
                 });
               });
             %>
-            <% if (!sshConfiguredForClients) { %>
-              <p class="settings-help" style="margin:0.5rem 0 0;">Complete SSH setup under Connection &amp; Certificates before enabling Data Package.</p>
+            <% if (!sshPrivilegedReadyForClients) { %>
+              <p class="settings-help" style="margin:0.5rem 0 0;">Complete SSH Generate Key + Handshake under Connection &amp; Certificates with an account that can sudo before enabling Data Package.</p>
             <% } %>
             <input type="hidden" name="settings[ALLOWED_CLIENT_RECOMMENDED_PC]" value="<%= recommendedPc %>" data-allowed-client-recommended-input="pc" />
             <input type="hidden" name="settings[ALLOWED_CLIENT_ORDER_PC]" value="<%= pcOrder.join(',') %>" data-allowed-client-order-input="pc" />
