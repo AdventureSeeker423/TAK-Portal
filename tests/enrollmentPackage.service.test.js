@@ -31,6 +31,7 @@ async function unzipBuffer(buffer) {
     description: "Demo TAK",
     caPassword: "atakatak",
     username: "jdoe",
+    password: "token-secret",
     callsign: "ALPHA-1",
     teamLabel: "Green",
     roleLabel: "Team Lead",
@@ -39,6 +40,8 @@ async function unzipBuffer(buffer) {
   assert.ok(prefXml.includes("tak.example.gov:8089:ssl"));
   assert.ok(prefXml.includes('key="username0"'));
   assert.ok(prefXml.includes(">jdoe</entry>"));
+  assert.ok(prefXml.includes('key="password0"'));
+  assert.ok(prefXml.includes(">token-secret</entry>"));
   assert.ok(prefXml.includes("enrollForCertificateWithTrust0"));
   assert.ok(prefXml.includes("useAuth0"));
   assert.ok(prefXml.includes("Cache credentials"));
@@ -62,6 +65,7 @@ async function unzipBuffer(buffer) {
   const fakeP12 = Buffer.from("not-a-real-p12-but-fine-for-zip-test");
   const built = await buildEnrollmentPackageZip({
     username: "jdoe",
+    password: "token-secret",
     callsign: "ALPHA-1",
     teamLabel: "Green",
     roleLabel: "Team Lead",
@@ -85,6 +89,8 @@ async function unzipBuffer(buffer) {
   assert.ok(configPref.includes("enrollForCertificateWithTrust0"));
   assert.ok(configPref.includes('key="username0"'));
   assert.ok(configPref.includes(">jdoe</entry>"));
+  assert.ok(configPref.includes('key="password0"'));
+  assert.ok(configPref.includes(">token-secret</entry>"));
   assert.ok(configPref.includes("locationCallsign"));
   assert.ok(configPref.includes("ALPHA-1"));
 

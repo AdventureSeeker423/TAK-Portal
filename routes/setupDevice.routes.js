@@ -170,8 +170,9 @@ router.get("/data-package", async (req, res) => {
     }
 
     let prefs = { callsign: "", teamLabel: "", roleLabel: "" };
+    let userId = null;
     try {
-      const userId = await tokensSvc.getUserIdByUsername(user.username);
+      userId = await tokensSvc.getUserIdByUsername(user.username);
       const fullUser = await usersSvc.getUserById(userId);
       prefs = usersSvc.getPreferenceDataForUser(fullUser);
     } catch (prefErr) {
@@ -181,8 +182,14 @@ router.get("/data-package", async (req, res) => {
       );
     }
 
+    const token = await tokensSvc.getOrCreateDataPackageAppPassword({
+      username: user.username,
+      userId,
+    });
+
     const built = await enrollmentPkg.buildEnrollmentPackageZip({
       username: user.username,
+      password: token.key,
       callsign: prefs.callsign,
       teamLabel: prefs.teamLabel,
       roleLabel: prefs.roleLabel,
@@ -195,6 +202,9 @@ router.get("/data-package", async (req, res) => {
       details: {
         username: user.username,
         packageName: built.packageName,
+        tokenIdentifier: token.identifier,
+        tokenExpiresAt: token.expiresAt,
+        tokenReused: !!token.reused,
         summary: "User downloaded a TAK enrollment data package.",
       },
     });

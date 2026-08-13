@@ -2600,8 +2600,13 @@ router.post("/data-package", async (req, res) => {
 
     const prefs = users.getPreferenceDataForUser(targetUser);
     const username = String(targetUser.username || "").trim();
+    const token = await tokensSvc.getOrCreateDataPackageAppPassword({
+      username,
+      userId,
+    });
     const built = await enrollmentPkg.buildEnrollmentPackageZip({
       username,
+      password: token.key,
       callsign: prefs.callsign,
       teamLabel: prefs.teamLabel,
       roleLabel: prefs.roleLabel,
@@ -2616,6 +2621,9 @@ router.post("/data-package", async (req, res) => {
       details: {
         username,
         packageName: built.packageName,
+        tokenIdentifier: token.identifier,
+        tokenExpiresAt: token.expiresAt,
+        tokenReused: !!token.reused,
         summary: "Admin downloaded a TAK enrollment data package for a user.",
       },
     });

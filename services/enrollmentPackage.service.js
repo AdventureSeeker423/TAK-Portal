@@ -79,6 +79,7 @@ function buildEnrollmentConfigPrefXml({
   description,
   caPassword,
   username,
+  password,
   callsign,
   teamLabel,
   roleLabel,
@@ -87,6 +88,7 @@ function buildEnrollmentConfigPrefXml({
   const desc = safeStr(description).trim() || "TAK Server";
   const pass = safeStr(caPassword);
   const user = safeStr(username).trim();
+  const authPassword = safeStr(password);
   const connectString = `${h}:8089:ssl`;
 
   const streamEntries = [
@@ -99,6 +101,9 @@ function buildEnrollmentConfigPrefXml({
   ];
   if (user) {
     streamEntries.push(typedEntry("username0", JAVA_CLASS.string, user));
+  }
+  if (authPassword) {
+    streamEntries.push(typedEntry("password0", JAVA_CLASS.string, authPassword));
   }
   streamEntries.push(
     typedEntry("enrollForCertificateWithTrust0", JAVA_CLASS.boolean, "true"),
@@ -226,6 +231,7 @@ async function zipEnrollmentPackage({ prefXml, manifestXml, caP12 }) {
 
 async function buildEnrollmentPackageZip({
   username,
+  password,
   callsign,
   teamLabel,
   roleLabel,
@@ -267,6 +273,7 @@ async function buildEnrollmentPackageZip({
     description: serverName,
     caPassword: trust.password,
     username: safeStr(username).trim(),
+    password: safeStr(password),
     callsign: identity.callsign,
     teamLabel: identity.teamLabel,
     roleLabel: identity.roleLabel,

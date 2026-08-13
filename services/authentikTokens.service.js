@@ -3,6 +3,10 @@ const api = require("./authentik");
 const TOKEN_DESCRIPTION = "TAK Portal Enrollment";
 const IDENT_PREFIX = "tak-portal-enroll-";
 
+const DATA_PACKAGE_TOKEN_DESCRIPTION = "TAK Portal Data Package";
+const DATA_PACKAGE_IDENT_PREFIX = "tak-portal-datapackage-";
+const DATA_PACKAGE_TTL_MINUTES = 30 * 24 * 60; // 30 days
+
 function toIso(dt) {
   return dt instanceof Date ? dt.toISOString() : new Date(dt).toISOString();
 }
@@ -70,8 +74,10 @@ async function viewTokenKey(identifier) {
   return key;
 }
 
-async function createAppPasswordForUserId(userId, expiresAt) {
-  const identifier = `${IDENT_PREFIX}${Date.now()}-${Math.random()
+async function createAppPasswordForUserId(userId, expiresAt, { description, identPrefix } = {}) {
+  const desc = String(description || TOKEN_DESCRIPTION).trim() || TOKEN_DESCRIPTION;
+  const prefix = String(identPrefix || IDENT_PREFIX).trim() || IDENT_PREFIX;
+  const identifier = `${prefix}${Date.now()}-${Math.random()
     .toString(16)
     .slice(2, 10)}`;
 
@@ -79,7 +85,7 @@ async function createAppPasswordForUserId(userId, expiresAt) {
     identifier,
     intent: "app_password",
     user: userId,
-    description: TOKEN_DESCRIPTION,
+    description: desc,
     expiring: true,
     expires: toIso(expiresAt),
   };
@@ -89,16 +95,10 @@ async function createAppPasswordForUserId(userId, expiresAt) {
   return created.identifier || identifier;
 }
 
-/**
- * Return an existing (non-expired) enrollment token for this user, or create one.
- * Reuses within TTL window to avoid multiple active tokens per user.
- */
-async function getOrCreateEnrollmentAppPassword(params, ttlMinutes = 15) {
-  // Backwards-compatible signature:
-  //   getOrCreateEnrollmentAppPassword(username, ttlMinutes)
-  //   getOrCreateEnrollmentAppPassword({ username, userId, ttlMinutes })
+function resolveAppPasswordParams(params, defaultTtlMinutes) {
   let username = params;
   let userId = null;
+  let ttlMinutes = defaultTtlMinutes;
 
   if (params && typeof params === "object") {
     username = params.username;
@@ -109,9 +109,32 @@ async function getOrCreateEnrollmentAppPassword(params, ttlMinutes = 15) {
   const u = String(username || "").trim();
   if (!u) throw new Error("Missing username");
 
+  return { username: u, userId, ttlMinutes };
+}
+
+/**
+ * Return an existing (non-expired) app password matching description/prefix, or create one.
+ */
+async function getOrCreateAppPassword(params, {
+  description,
+  identPrefix,
+  ttlMinutes: defaultTtlMinutes,
+} = {}) {
+  const { username, userId, ttlMinutes } = resolveAppPasswordParams(
+    params,
+    defaultTtlMinutes
+  );
+  const desc = String(description || "").trim();
+  const prefix = String(identPrefix || "").trim();
+  if (!desc || !prefix) {
+    throw new Error("Token description and identifier prefix are required");
+  }
+
   const now = new Date();
   const cleanedUserId = userId ? String(userId).trim() : "";
-  const resolvedUserId = (/^\d+$/.test(cleanedUserId)) ? cleanedUserId : await getUserIdByUsername(u);
+  const resolvedUserId = (/^\d+$/.test(cleanedUserId))
+    ? cleanedUserId
+    : await getUserIdByUsername(username);
 
   const tokens = await listUserAppPasswordsByUserId(resolvedUserId);
 
@@ -119,7 +142,7 @@ async function getOrCreateEnrollmentAppPassword(params, ttlMinutes = 15) {
     .filter((t) => {
       const d = String(t?.description || "");
       const ident = String(t?.identifier || "");
-      return d === TOKEN_DESCRIPTION || ident.startsWith(IDENT_PREFIX);
+      return d === desc || ident.startsWith(prefix);
     })
     .map((t) => ({ t, expires: parseExpires(t) }))
     .filter((x) => x.expires && x.expires.getTime() > now.getTime())
@@ -129,7 +152,8 @@ async function getOrCreateEnrollmentAppPassword(params, ttlMinutes = 15) {
     ? String(candidate.t.identifier)
     : await createAppPasswordForUserId(
         resolvedUserId,
-        new Date(now.getTime() + ttlMinutes * 60 * 1000)
+        new Date(now.getTime() + ttlMinutes * 60 * 1000),
+        { description: desc, identPrefix: prefix }
       );
 
   // Refresh token details (expires may not be present in create response)
@@ -146,12 +170,54 @@ async function getOrCreateEnrollmentAppPassword(params, ttlMinutes = 15) {
     identifier,
     key,
     expiresAt: toIso(expires),
+    reused: !!candidate,
   };
+}
+
+/**
+ * Return an existing (non-expired) enrollment token for this user, or create one.
+ * Reuses within TTL window to avoid multiple active tokens per user.
+ */
+async function getOrCreateEnrollmentAppPassword(params, ttlMinutes = 15) {
+  // Backwards-compatible signature:
+  //   getOrCreateEnrollmentAppPassword(username, ttlMinutes)
+  //   getOrCreateEnrollmentAppPassword({ username, userId, ttlMinutes })
+  let nextParams = params;
+  if (params && typeof params === "object") {
+    nextParams = { ...params };
+    if (typeof params.ttlMinutes !== "number" && typeof ttlMinutes === "number") {
+      nextParams.ttlMinutes = ttlMinutes;
+    }
+  } else if (typeof ttlMinutes === "number") {
+    nextParams = { username: params, ttlMinutes };
+  }
+
+  return getOrCreateAppPassword(nextParams, {
+    description: TOKEN_DESCRIPTION,
+    identPrefix: IDENT_PREFIX,
+    ttlMinutes: 15,
+  });
+}
+
+/**
+ * Long-lived Authentik app password for enrollment data packages (30 days).
+ * Reuses an existing non-expired data-package token for the user when present.
+ */
+async function getOrCreateDataPackageAppPassword(params) {
+  return getOrCreateAppPassword(params, {
+    description: DATA_PACKAGE_TOKEN_DESCRIPTION,
+    identPrefix: DATA_PACKAGE_IDENT_PREFIX,
+    ttlMinutes: DATA_PACKAGE_TTL_MINUTES,
+  });
 }
 
 module.exports = {
   getUserIdByUsername,
   getOrCreateEnrollmentAppPassword,
+  getOrCreateDataPackageAppPassword,
   TOKEN_DESCRIPTION,
   IDENT_PREFIX,
+  DATA_PACKAGE_TOKEN_DESCRIPTION,
+  DATA_PACKAGE_IDENT_PREFIX,
+  DATA_PACKAGE_TTL_MINUTES,
 };
