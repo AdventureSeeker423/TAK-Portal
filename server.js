@@ -700,10 +700,12 @@ app.get("/users/manage", (req, res) => {
     dashboardSnap.stats &&
     dashboardSnap.stats.totalUsers
   );
+  const enrollmentPkg = require("./services/enrollmentPackage.service");
 
   return res.render("users-manage", {
     pendingUserRequestsCount,
     dashboardTotalUsers: Number.isFinite(dashboardTotalUsers) ? dashboardTotalUsers : null,
+    dataPackageAvailable: enrollmentPkg.isDataPackageAvailable(),
   });
 });
 app.get("/sample-users.csv", requirePermission("page.users"), (req, res) => {

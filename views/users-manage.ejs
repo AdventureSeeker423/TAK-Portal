@@ -468,7 +468,9 @@
         <img id="userQrImg" alt="Enrollment QR Code" class="userQrPairImg" />
         <div class="row userQrPairActions">
           <button class="btn" type="button" id="userQrCopyBtn" disabled>Copy URL</button>
-          <button class="btn" type="button" id="userQrSaveBtn" disabled>Save Image</button>
+          <% if (typeof dataPackageAvailable !== "undefined" && dataPackageAvailable) { %>
+          <button class="btn success" type="button" id="userQrDataPackageBtn" disabled>Download Data Package</button>
+          <% } %>
         </div>
         <div id="userQrCountdown" class="msg userQrPairCountdown"></div>
       </div>
@@ -493,7 +495,6 @@
         <img id="userPrefQrImg" alt="Device preferences QR Code" class="userQrPairImg" />
         <div class="row userQrPairActions">
           <button class="btn" type="button" id="userPrefQrCopyBtn" disabled>Copy URL</button>
-          <button class="btn" type="button" id="userPrefQrSaveBtn" disabled>Save Image</button>
         </div>
       </div>
       <div class="userQrDetailsSection">
@@ -1528,6 +1529,7 @@ const USERS_ACTIONS_HIDDEN_PREFIXES = String(USERS_ACTIONS_HIDDEN_PREFIXES_RAW |
 const IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
 const IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+const DATA_PACKAGE_AVAILABLE = <%- JSON.stringify(!!(typeof dataPackageAvailable !== "undefined" && dataPackageAvailable)) %>;
 const DASHBOARD_TOTAL_USERS = Number(
   (document.getElementById("dashboardTotalUsersSeed") || {}).value || NaN
 );
@@ -1612,9 +1614,8 @@ const userPrefQrCloseBtn = document.getElementById("userPrefQrCloseBtn");
 const userQrImg = document.getElementById("userQrImg");
 const userPrefQrImg = document.getElementById("userPrefQrImg");
 const userQrCopyBtn = document.getElementById("userQrCopyBtn");
-const userQrSaveBtn = document.getElementById("userQrSaveBtn");
+const userQrDataPackageBtn = document.getElementById("userQrDataPackageBtn");
 const userPrefQrCopyBtn = document.getElementById("userPrefQrCopyBtn");
-const userPrefQrSaveBtn = document.getElementById("userPrefQrSaveBtn");
 const userQrDetails = document.getElementById("userQrDetails");
 const userPrefQrDetails = document.getElementById("userPrefQrDetails");
 const userQrCountdown = document.getElementById("userQrCountdown");
@@ -1697,7 +1698,6 @@ function startUserQrCountdown(expiresAt){
     if (remain <= 0) {
       userQrCountdown.textContent = "QR Code Expired";
       if (userQrCopyBtn) userQrCopyBtn.disabled = true;
-      if (userQrSaveBtn) userQrSaveBtn.disabled = true;
       setMsgEl(userEnrollQrMsg, "This enrollment QR has expired. Click Enroll QR again to generate a new one.", false);
       if (userQrCountdownTimer) {
         clearInterval(userQrCountdownTimer);
@@ -1733,7 +1733,7 @@ function resetUserEnrollQrModal() {
   if (userQrImg) userQrImg.src = "";
   if (userQrDetails) userQrDetails.innerHTML = "";
   if (userQrCopyBtn) userQrCopyBtn.disabled = true;
-  if (userQrSaveBtn) userQrSaveBtn.disabled = true;
+  if (userQrDataPackageBtn) userQrDataPackageBtn.disabled = true;
   if (userQrCountdown) userQrCountdown.textContent = "";
   userEnrollQrCurrent = null;
   setUserEnrollQrModalTitle("", "");
@@ -1743,7 +1743,6 @@ function resetUserPrefQrModal() {
   if (userPrefQrImg) userPrefQrImg.src = "";
   if (userPrefQrDetails) userPrefQrDetails.innerHTML = "";
   if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = true;
-  if (userPrefQrSaveBtn) userPrefQrSaveBtn.disabled = true;
   userPrefQrCurrent = null;
   setUserPrefQrModalTitle("", "");
 }
@@ -1759,7 +1758,7 @@ function renderUserEnrollQr(obj) {
   if (userQrDetails) userQrDetails.innerHTML = chips.join(" ");
 
   if (userQrCopyBtn) userQrCopyBtn.disabled = !obj.enrollUrl;
-  if (userQrSaveBtn) userQrSaveBtn.disabled = !(obj.username && obj.token);
+  if (userQrDataPackageBtn) userQrDataPackageBtn.disabled = !(DATA_PACKAGE_AVAILABLE && obj.userId);
 
   setMsgEl(userEnrollQrMsg, "Enrollment QR ready.", true);
   startUserQrCountdown(obj.expiresAt);
@@ -1781,7 +1780,6 @@ function renderUserPrefQr(obj) {
   }
 
   if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = !obj.preferenceUrl;
-  if (userPrefQrSaveBtn) userPrefQrSaveBtn.disabled = !obj.qrCode;
 
   setMsgEl(userPrefQrMsg, "Preferences QR ready.", true);
 }
@@ -1802,6 +1800,7 @@ async function fetchUserEnrollQrData(userId, username) {
   }
 
   return {
+    userId,
     username: data.username,
     tokenIdentifier: data.tokenIdentifier,
     token: data.token,
@@ -1885,44 +1884,58 @@ if (userQrCopyBtn) userQrCopyBtn.addEventListener("click", () => {
   if (userEnrollQrCurrent && userEnrollQrCurrent.enrollUrl) copyToClipboard(userEnrollQrCurrent.enrollUrl, userEnrollQrMsg);
 });
 
-if (userQrSaveBtn) userQrSaveBtn.addEventListener("click", () => {
-  if (!userEnrollQrCurrent || !userEnrollQrCurrent.username || !userEnrollQrCurrent.token) {
+if (userQrDataPackageBtn) userQrDataPackageBtn.addEventListener("click", async () => {
+  const userId = userEnrollQrCurrent && userEnrollQrCurrent.userId;
+  if (!userId) {
     setMsgEl(userEnrollQrMsg, "Generate a QR first.", false);
     return;
   }
-
-  const url =
-    `/api/qr/download?username=${encodeURIComponent(userEnrollQrCurrent.username)}` +
-    `&token=${encodeURIComponent(userEnrollQrCurrent.token)}`;
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  setMsgEl(userEnrollQrMsg, "Downloading high-res enrollment QR...", true);
+  userQrDataPackageBtn.disabled = true;
+  setMsgEl(userEnrollQrMsg, "Building data package…", true);
+  try {
+    const res = await fetch("/api/users/data-package", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/zip, application/json",
+      },
+      body: JSON.stringify({ userId }),
+    });
+    const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+    if (!res.ok || contentType.includes("application/json")) {
+      let errMsg = "Failed to build data package";
+      try {
+        const data = await res.json();
+        if (data && (data.error || data.message)) errMsg = data.error || data.message;
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+    const blob = await res.blob();
+    let filename = "TAK-DataPackage.zip";
+    const disposition = String(res.headers.get("content-disposition") || "");
+    const match = /filename="([^"]+)"/i.exec(disposition);
+    if (match && match[1]) filename = match[1];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setMsgEl(userEnrollQrMsg, "Data package download started.", true);
+  } catch (err) {
+    setMsgEl(userEnrollQrMsg, err?.message || String(err), false);
+  } finally {
+    if (userEnrollQrCurrent && userEnrollQrCurrent.userId) {
+      userQrDataPackageBtn.disabled = false;
+    }
+  }
 });
 
 if (userPrefQrCopyBtn) userPrefQrCopyBtn.addEventListener("click", () => {
   const url = userPrefQrCurrent?.preferenceUrl;
   if (url) copyToClipboard(url, userPrefQrMsg);
-});
-
-if (userPrefQrSaveBtn) userPrefQrSaveBtn.addEventListener("click", () => {
-  const src = userPrefQrImg && userPrefQrImg.src;
-  if (!src || !src.startsWith("data:")) {
-    setMsgEl(userPrefQrMsg, "No preferences QR to save.", false);
-    return;
-  }
-  const a = document.createElement("a");
-  a.href = src;
-  a.download = "preference-qr.png";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setMsgEl(userPrefQrMsg, "Downloading preferences QR...", true);
 });
 // ------------------ end Enrollment QR ------------------
 

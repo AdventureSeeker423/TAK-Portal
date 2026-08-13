@@ -10,6 +10,7 @@ const agenciesSvc = require("../services/agencies.service");
 const userRequestsSvc = require("../services/userRequests.service");
 const qrSvc = require("../services/qr.service");
 const tokensSvc = require("../services/authentikTokens.service");
+const enrollmentPkg = require("../services/enrollmentPackage.service");
 const { getString, getBool } = require("../services/env");
 const auditSvc = require("../services/auditLog.service");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
@@ -2562,6 +2563,75 @@ router.post("/preference-qr", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: err?.message || "Failed to generate preference QR",
+    });
+  }
+});
+
+// Enrollment data package ZIP for a specific user (admin-only; requires privileged SSH)
+router.post("/data-package", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    if (!authUser || (!access.isGlobalAdmin && !access.isAgencyAdmin)) {
+      return res.status(403).json({ ok: false, error: "Admin access required" });
+    }
+
+    if (!enrollmentPkg.isDataPackageAvailable()) {
+      return res.status(403).json({
+        ok: false,
+        error:
+          "Data Package is not available. Enable it in Supported TAK Clients after SSH Generate Key + Handshake succeeds with sudo (privileged) access.",
+      });
+    }
+
+    const userId = String(req.body?.userId || req.body?.pk || "").trim();
+    if (!userId) {
+      return res.status(400).json({ ok: false, error: "Missing userId" });
+    }
+
+    const targetUser = await users.getUserById(userId).catch(() => null);
+    if (!targetUser || targetUser.pk == null) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    if (!access.isGlobalAdmin && !accessSvc.isUserInAllowedAgencies(authUser, targetUser)) {
+      return res.status(403).json({ ok: false, error: "You do not have access to that user." });
+    }
+
+    const prefs = users.getPreferenceDataForUser(targetUser);
+    const username = String(targetUser.username || "").trim();
+    const built = await enrollmentPkg.buildEnrollmentPackageZip({
+      username,
+      callsign: prefs.callsign,
+      teamLabel: prefs.teamLabel,
+      roleLabel: prefs.roleLabel,
+    });
+
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "GENERATE_ENROLLMENT_DATA_PACKAGE",
+      targetType: "user",
+      targetId: String(userId),
+      details: {
+        username,
+        packageName: built.packageName,
+        summary: "Admin downloaded a TAK enrollment data package for a user.",
+      },
+    });
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${built.packageName}"`
+    );
+    return res.send(built.buffer);
+  } catch (err) {
+    console.error("[users] Failed to build data package:", err?.message || err);
+    const status = Number(err?.status) || 500;
+    return res.status(status).json({
+      ok: false,
+      error: err?.message || "Failed to build data package",
     });
   }
 });
