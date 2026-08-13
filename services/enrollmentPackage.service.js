@@ -78,8 +78,6 @@ function buildEnrollmentConfigPrefXml({
   host,
   description,
   caPassword,
-  username,
-  password,
   callsign,
   teamLabel,
   roleLabel,
@@ -87,8 +85,6 @@ function buildEnrollmentConfigPrefXml({
   const h = safeStr(host).trim();
   const desc = safeStr(description).trim() || "TAK Server";
   const pass = safeStr(caPassword);
-  const user = safeStr(username).trim();
-  const authPassword = safeStr(password);
   const connectString = `${h}:8089:ssl`;
 
   const streamEntries = [
@@ -98,18 +94,10 @@ function buildEnrollmentConfigPrefXml({
     typedEntry("connectString0", JAVA_CLASS.string, connectString),
     typedEntry("caLocation0", JAVA_CLASS.string, "cert/caCert.p12"),
     typedEntry("caPassword0", JAVA_CLASS.string, pass),
-  ];
-  if (user) {
-    streamEntries.push(typedEntry("username0", JAVA_CLASS.string, user));
-  }
-  if (authPassword) {
-    streamEntries.push(typedEntry("password0", JAVA_CLASS.string, authPassword));
-  }
-  streamEntries.push(
     typedEntry("enrollForCertificateWithTrust0", JAVA_CLASS.boolean, "true"),
     typedEntry("useAuth0", JAVA_CLASS.boolean, "true"),
-    typedEntry("cacheCreds0", JAVA_CLASS.string, "Cache credentials")
-  );
+    typedEntry("cacheCreds0", JAVA_CLASS.string, "Cache credentials"),
+  ];
 
   const identityEntries = [
     typedEntry("displayServerConnectionWidget", JAVA_CLASS.boolean, "true"),
@@ -231,7 +219,6 @@ async function zipEnrollmentPackage({ prefXml, manifestXml, caP12 }) {
 
 async function buildEnrollmentPackageZip({
   username,
-  password,
   callsign,
   teamLabel,
   roleLabel,
@@ -257,32 +244,11 @@ async function buildEnrollmentPackageZip({
     trust = await getTakTruststore();
   }
 
-  const identity = (() => {
-    const callsignFallback =
-      safeStr(callsign).trim() || safeStr(username).trim() || "TAK";
-    try {
-      return prefPkg.validatePreferenceInputs({
-        callsign: callsignFallback,
-        teamLabel,
-        roleLabel: safeStr(roleLabel).trim() || "Team Member",
-      });
-    } catch (_) {
-      // Don't fail package build on agency color / role mismatches.
-      try {
-        return prefPkg.validatePreferenceInputs({
-          callsign: callsignFallback,
-          teamLabel: "",
-          roleLabel: "Team Member",
-        });
-      } catch {
-        return {
-          callsign: callsignFallback,
-          teamLabel: "",
-          roleLabel: "Team Member",
-        };
-      }
-    }
-  })();
+  const identity = prefPkg.validatePreferenceInputs({
+    callsign: safeStr(callsign).trim() || safeStr(username).trim() || "TAK",
+    teamLabel,
+    roleLabel: safeStr(roleLabel).trim() || "Team Member",
+  });
 
   const serverName = safeStr(description).trim() || safeStr(settings.SERVER_NAME).trim() || "TAK Server";
   const packageName = buildEnrollmentPackageFilename({
@@ -293,8 +259,6 @@ async function buildEnrollmentPackageZip({
     host: takHost,
     description: serverName,
     caPassword: trust.password,
-    username: safeStr(username).trim(),
-    password: safeStr(password),
     callsign: identity.callsign,
     teamLabel: identity.teamLabel,
     roleLabel: identity.roleLabel,

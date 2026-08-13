@@ -2600,13 +2600,8 @@ router.post("/data-package", async (req, res) => {
 
     const prefs = users.getPreferenceDataForUser(targetUser);
     const username = String(targetUser.username || "").trim();
-    const token = await tokensSvc.getOrCreateDataPackageAppPassword({
-      username,
-      userId,
-    });
     const built = await enrollmentPkg.buildEnrollmentPackageZip({
       username,
-      password: token.key,
       callsign: prefs.callsign,
       teamLabel: prefs.teamLabel,
       roleLabel: prefs.roleLabel,
@@ -2621,10 +2616,6 @@ router.post("/data-package", async (req, res) => {
       details: {
         username,
         packageName: built.packageName,
-        tokenIdentifier: token.identifier,
-        tokenExpiresAt: token.expiresAt,
-        tokenExpiring: token.expiring !== false,
-        tokenReused: !!token.reused,
         summary: "Admin downloaded a TAK enrollment data package for a user.",
       },
     });
@@ -2637,11 +2628,10 @@ router.post("/data-package", async (req, res) => {
     return res.send(built.buffer);
   } catch (err) {
     console.error("[users] Failed to build data package:", err?.message || err);
-    const { toSafeApiError } = require("../services/apiErrorPayload.service");
-    const status = Number(err?.status || err?.response?.status) || 500;
+    const status = Number(err?.status) || 500;
     return res.status(status).json({
       ok: false,
-      error: toSafeApiError(err) || err?.message || "Failed to build data package",
+      error: err?.message || "Failed to build data package",
     });
   }
 });
