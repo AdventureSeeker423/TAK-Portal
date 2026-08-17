@@ -4073,17 +4073,20 @@
   function estimateLabelBox(lon, lat, callsign) {
     const pt = map.project([lon, lat]);
     const zoom = map.getZoom();
-    let density = 1.2;
+    let density = 1.25;
     if (Number.isFinite(zoom)) {
-      if (zoom >= 15) density = 0.45;
-      else if (zoom >= 13) density = 0.6;
-      else if (zoom >= 11) density = 0.78;
-      else if (zoom >= 9) density = 0.95;
+      if (zoom >= 13) density = 1;
+      else if (zoom >= 11) density = 1.08;
+      else if (zoom >= 9) density = 1.15;
     }
     const label = String(callsign || "");
-    const w = Math.max(22, label.length * 5.6) * density;
-    const h = 12 * density;
-    return { x: pt.x - w / 2, y: pt.y - 26, w: w, h: h };
+    const maxW = 144;
+    const rawW = Math.max(24, label.length * 6.8);
+    const lines = Math.max(1, Math.ceil(rawW / maxW));
+    const w = (Math.min(rawW, maxW) + 8) * density;
+    const h = (lines * 14.5 + 8) * density;
+    const offsetY = 1.55 * 12 * density;
+    return { x: pt.x - w / 2, y: pt.y - offsetY - h, w: w, h: h };
   }
 
   function markerIsSpiLikeForLabel(m) {

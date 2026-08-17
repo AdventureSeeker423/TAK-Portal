@@ -2,11 +2,30 @@ import type { LonLatBounds, SlimMarker } from "./types";
 
 type LabelBox = { x: number; y: number; w: number; h: number };
 
+/** Must match markerLabelLayout in engine/layers.ts */
+const TEXT_SIZE_PX = 12;
+const TEXT_MAX_WIDTH_EM = 12;
+const CHAR_WIDTH_PX = 6.8;
+const LINE_HEIGHT_PX = 14.5;
+const LABEL_GAP_PX = 8;
+const TEXT_OFFSET_Y_EM = 1.55;
+
 function projectMercator(lon: number, lat: number): { x: number; y: number } {
   const x = (lon + 180) / 360;
   const sin = Math.sin((lat * Math.PI) / 180);
   const y = 0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI);
   return { x, y };
+}
+
+function wrappedLabelPixels(callsign: string): { w: number; h: number } {
+  const label = String(callsign || "");
+  const maxW = TEXT_SIZE_PX * TEXT_MAX_WIDTH_EM;
+  const rawW = Math.max(24, label.length * CHAR_WIDTH_PX);
+  const lines = Math.max(1, Math.ceil(rawW / maxW));
+  return {
+    w: Math.min(rawW, maxW) + LABEL_GAP_PX,
+    h: lines * LINE_HEIGHT_PX + LABEL_GAP_PX,
+  };
 }
 
 function estimateLabelBox(
@@ -19,11 +38,12 @@ function estimateLabelBox(
   const p = projectMercator(lon, lat);
   const scale = Math.pow(2, Math.max(0, zoom));
   const px = 1 / (256 * scale);
-  const label = String(callsign || "");
-  // Slight under-estimate so nearby short callsigns can both keep labels.
-  const w = Math.max(20, label.length * 5.2) * density * px;
-  const h = 11 * density * px;
-  return { x: p.x - w / 2, y: p.y - h * 2.1, w, h };
+  const size = wrappedLabelPixels(callsign);
+  const w = size.w * density * px;
+  const h = size.h * density * px;
+  // text-anchor bottom + text-offset [0, -1.55]: label sits above the icon.
+  const offsetY = TEXT_OFFSET_Y_EM * TEXT_SIZE_PX * density * px;
+  return { x: p.x - w / 2, y: p.y - offsetY - h, w, h };
 }
 
 function overlaps(a: LabelBox, b: LabelBox): boolean {
@@ -55,12 +75,12 @@ function priority(
 }
 
 function densityForZoom(zoom: number): number {
-  // Tighter packing (more labels) as you zoom in.
-  if (zoom >= 15) return 0.4;
-  if (zoom >= 13) return 0.55;
-  if (zoom >= 11) return 0.7;
-  if (zoom >= 9) return 0.9;
-  return 1.15;
+  // Geographic scale already packs more labels as you zoom in. Keep boxes at
+  // true pixel size so stacked units (incident clusters) hide extras.
+  if (zoom >= 13) return 1;
+  if (zoom >= 11) return 1.08;
+  if (zoom >= 9) return 1.15;
+  return 1.25;
 }
 
 function inBounds(m: SlimMarker, bounds?: LonLatBounds | null): boolean {
@@ -102,12 +122,6 @@ export function computeLabelVisibility(
       const uid = String(m.uid);
       out.set(uid, uid === selectedUid || uid === lockedUid ? 1 : 0);
     }
-    return out;
-  }
-
-  // City / neighborhood: show everything — allow-overlap keeps labels sticky.
-  if (zoom >= 11) {
-    for (const m of candidates) out.set(String(m.uid), 1);
     return out;
   }
 

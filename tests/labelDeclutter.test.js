@@ -1,5 +1,5 @@
 /**
- * Label declutter: sticky visibility + denser packing at city zoom.
+ * Label declutter: hide colliding callsigns at every zoom, not just overview.
  */
 const assert = require("assert");
 const path = require("path");
@@ -33,6 +33,14 @@ function marker(uid, callsign, lon, lat, origin, type) {
   };
 }
 
+function countShown(map) {
+  let shown = 0;
+  map.forEach((v) => {
+    if (v === 1) shown += 1;
+  });
+  return shown;
+}
+
 async function main() {
   const { computeLabelVisibility, computeLabelSortKey } = await loadDeclutter();
 
@@ -48,27 +56,38 @@ async function main() {
     tight.push(
       marker(
         "t" + i,
-        "H" + (200 + i),
+        "H" + (200 + i) + " - Disorder Prevention",
         -85.25 + (i % 3) * 0.0002,
         35.05 + Math.floor(i / 3) * 0.0002,
         "feed"
       )
     );
   }
+
+  const at14tight = computeLabelVisibility(tight, { zoom: 14 });
+  const shown14 = countShown(at14tight);
+  assert.ok(shown14 >= 1, "expected at least one label at z14, got " + shown14);
+  assert.ok(shown14 < tight.length, "cluster at z14 should hide colliding labels, got " + shown14);
+
   const at11 = computeLabelVisibility(tight, { zoom: 11 });
-  at11.forEach((v) => assert.strictEqual(v, 1));
+  const shown11 = countShown(at11);
+  assert.ok(shown11 >= 1, "expected at least one label at z11, got " + shown11);
+  assert.ok(shown11 < tight.length, "cluster at z11 should hide colliding labels, got " + shown11);
 
   const at8 = computeLabelVisibility(tight, { zoom: 8 });
-  let shown = 0;
-  at8.forEach((v) => {
-    if (v === 1) shown += 1;
-  });
-  assert.ok(shown >= 1, "expected some labels at z8, got " + shown);
-  assert.ok(shown <= tight.length, "label count in range");
+  const shown8 = countShown(at8);
+  assert.ok(shown8 >= 1, "expected some labels at z8, got " + shown8);
+  assert.ok(shown8 <= tight.length, "label count in range");
 
   const overview = computeLabelVisibility(loose, { zoom: 5, selectedUid: "u3" });
   assert.strictEqual(overview.get("u3"), 1);
   assert.strictEqual(overview.get("u0"), 0);
+
+  const selectedInCluster = computeLabelVisibility(tight, {
+    zoom: 14,
+    selectedUid: "t11",
+  });
+  assert.strictEqual(selectedInCluster.get("t11"), 1);
 
   const spi = marker("spi1", "ACC2", -85.25, 35.05, "feed", "b-m-p-s-p-i");
   assert.ok(computeLabelSortKey(spi) < computeLabelSortKey(loose[0]));
