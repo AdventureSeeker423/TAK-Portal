@@ -1869,36 +1869,51 @@ app.post(
   }
 );
 
-// Send a simple SMTP test email using Always CC / BCC lists
+// Send a simple SMTP test email using Always CC / BCC lists from the current form.
 
-app.post("/settings/test-email", requirePermission("page.settings"), async (req, res) => {
+app.post(
+  "/settings/test-email",
+  requirePermission("page.settings"),
+  upload.fields([
+    { name: "TAK_API_P12_UPLOAD", maxCount: 1 },
+    { name: "TAK_CA_UPLOAD", maxCount: 1 },
+    { name: "BRAND_LOGO_UPLOAD", maxCount: 1 },
+  ]),
+  async (req, res) => {
     console.log("[settings] Test email requested");
 
-  try {
-    const result = await emailSvc.sendMail({
-      // no explicit "to": we only use CC / BCC lists
-      subject: "TAK Portal - Email SMTP Test",
-      text: "TAK Portal - Email SMTP Test",
-    });
+    try {
+      const bodySettings = settingsSvc.collectBodySettings(req.body || {});
+      const currentSettings = settingsSvc.getSettings() || {};
+      const merged = emailSvc.mergeEmailFormSettings(currentSettings, bodySettings);
 
-    if (result.sent) {
-      auditSvc.auditFromRequest(req, {
-        action: "SETTINGS_TEST_EMAIL_SENT",
-        targetType: "settings",
-        targetId: "smtp",
-        details: { summary: "Sent SMTP test email from Settings." },
+      settingsSvc.saveSettings(merged);
+
+      const result = await emailSvc.sendMail({
+        // no explicit "to": we only use CC / BCC lists
+        subject: "TAK Portal - Email SMTP Test",
+        text: "TAK Portal - Email SMTP Test",
       });
-    }
 
-    console.log("[settings] Test email result:", result);
-    return res.redirect("/settings");
-  } catch (err) {
-    console.error("[settings] Test email failed:", err?.message || err);
-    return res
-      .status(500)
-      .send("Failed to send test email. Check SMTP settings and server logs.");
+      if (result.sent) {
+        auditSvc.auditFromRequest(req, {
+          action: "SETTINGS_TEST_EMAIL_SENT",
+          targetType: "settings",
+          targetId: "smtp",
+          details: { summary: "Sent SMTP test email from Settings." },
+        });
+      }
+
+      console.log("[settings] Test email result:", result);
+      return res.redirect("/settings");
+    } catch (err) {
+      console.error("[settings] Test email failed:", err?.message || err);
+      return res
+        .status(500)
+        .send("Failed to send test email. Check SMTP settings and server logs.");
+    }
   }
-});
+);
 
 const uploadSmsTest = multer();
 app.post(

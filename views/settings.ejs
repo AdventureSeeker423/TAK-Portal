@@ -635,7 +635,7 @@
             </button>
             <span class="settings-help-tip" style="margin-left:0.5rem;vertical-align:middle;">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Sends “TAK Portal - Email SMTP Test” to the configured Always CC and Always BCC addresses. (Email Enabled must be true.)</span>
+              <span class="settings-help-popover">Sends “TAK Portal - Email SMTP Test” to the Always CC and Always BCC addresses currently in the form. Email settings are saved when you send the test. (Email Enabled must be true.)</span>
             </span>
           </div>
         
@@ -3981,6 +3981,7 @@
   <script>
     (function () {
       var openId = null;
+      var overlayMouseDown = false;
 
       function panelEl(id) {
         return document.getElementById("settingsModal-" + id);
@@ -4085,6 +4086,14 @@
         true
       );
 
+      document.addEventListener("mousedown", function (e) {
+        overlayMouseDown = !!(
+          e.target &&
+          e.target.classList &&
+          e.target.classList.contains("settings-modal-overlay")
+        );
+      }, true);
+
       document.addEventListener("click", function (e) {
         var helpBtn = e.target.closest && e.target.closest(".settings-help-btn");
         if (helpBtn) {
@@ -4127,7 +4136,10 @@
         }
 
         if (e.target.classList && e.target.classList.contains("settings-modal-overlay")) {
-          closeSettingsModal();
+          if (overlayMouseDown) {
+            closeSettingsModal();
+          }
+          overlayMouseDown = false;
         }
       });
 

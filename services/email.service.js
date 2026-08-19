@@ -118,6 +118,32 @@ function getTransport() {
   return _transport;
 }
 
+const EMAIL_FORM_KEYS = [
+  "EMAIL_ENABLED",
+  "EMAIL_GROUP_CHANGES_ENABLED",
+  "EMAIL_PROVIDER",
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_SECURE",
+  "SMTP_USER",
+  "SMTP_PASS",
+  "SMTP_FROM",
+  "EMAIL_ALWAYS_CC",
+  "EMAIL_SEND_COPY_TO",
+  "EMAIL_FAIL_HARD",
+];
+
+function mergeEmailFormSettings(baseSettings, bodySettings) {
+  const merged = { ...(baseSettings || {}) };
+  const body = bodySettings || {};
+  EMAIL_FORM_KEYS.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      merged[key] = body[key];
+    }
+  });
+  return merged;
+}
+
 async function sendMail({ to, subject, text, html, cc, bcc, attachments }) {
   if (!isEmailEnabled()) {
     return { sent: false, skipped: true };
@@ -164,5 +190,6 @@ module.exports = {
   isEmailEnabled,
   getEmailProvider,
   getSmtpConfig,
+  mergeEmailFormSettings,
   sendMail,
 };

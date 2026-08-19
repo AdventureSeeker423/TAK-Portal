@@ -144,6 +144,37 @@ function get(name, fallback) {
   return fallback;
 }
 
+/** Parse flat settings[KEY] fields from a multipart or urlencoded POST body. */
+function collectBodySettings(rawBody) {
+  const bodySettings = {};
+  const raw = rawBody || {};
+
+  if (raw.settings && typeof raw.settings === "object") {
+    Object.keys(raw.settings).forEach((key) => {
+      bodySettings[key] = raw.settings[key];
+    });
+  }
+
+  Object.keys(raw).forEach((key) => {
+    const nested = key.match(/^settings\[([^\]]+)\]\[([^\]]+)\]$/);
+    if (nested) {
+      const parent = nested[1];
+      const child = nested[2];
+      if (!bodySettings[parent] || typeof bodySettings[parent] !== "object") {
+        bodySettings[parent] = {};
+      }
+      bodySettings[parent][child] = raw[key];
+      return;
+    }
+    const match = key.match(/^settings\[([^\]]+)\]$/);
+    if (match) {
+      bodySettings[match[1]] = raw[key];
+    }
+  });
+
+  return bodySettings;
+}
+
 module.exports = {
   SETTINGS_PATH,
   TEMPLATE_PATH,
@@ -152,4 +183,5 @@ module.exports = {
   saveSettings,
   updateSettings,
   get,
+  collectBodySettings,
 };
