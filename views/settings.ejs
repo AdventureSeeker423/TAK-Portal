@@ -3438,6 +3438,7 @@
       var saveGen = 0;
       var abortController = null;
       var catchUpTimer = null;
+      var suppressUnloadWarning = false;
 
       function setStatus(text, isError) {
         if (!statusEl) return;
@@ -3654,21 +3655,31 @@
 
       window.scheduleSettingsAutoSave = scheduleAutoSave;
 
+      function clearAutoSavePendingState() {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (catchUpTimer) {
+          clearTimeout(catchUpTimer);
+          catchUpTimer = null;
+        }
+        dirty = false;
+      }
+
       // Block accidental full-page posts (e.g. Enter in a field). Allow explicit actions.
       form.addEventListener(
         "submit",
         function (e) {
           if (isIntentionalFullSubmit(e.submitter)) {
-            if (timer) {
-              clearTimeout(timer);
-              timer = null;
-            }
+            clearAutoSavePendingState();
             if (abortController) {
               try {
                 abortController.abort();
               } catch (_) {}
             }
-            // Let bookmark/agency serialize listeners run, then navigate.
+            // Form POST saves email/SMS test values; skip "leave page" warning.
+            suppressUnloadWarning = true;
             return;
           }
           e.preventDefault();
@@ -3700,6 +3711,7 @@
 
       // Warn if navigating away during an in-flight or pending save
       window.addEventListener("beforeunload", function (e) {
+        if (suppressUnloadWarning) return;
         if (!saveInFlight && !timer && !dirty && !catchUpTimer) return;
         e.preventDefault();
         e.returnValue = "";
