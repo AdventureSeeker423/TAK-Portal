@@ -11,6 +11,10 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.72 - 8/19/26
+🐛 `Bug Fix` - Fixes issue with email settings for "Always CC and BCC" fields not saving before a test email is sent<br>
+🐛 `Bug Fix` - Fixes issue with the groups updated email template using the old callsign logic and not pulling from custom callsign formatting as defined in settings
+
 ### v1.3.71 - 8/13/26
 ✨ `Enhancement` - Adds the ability to build data packages for enrollment.  Must be enabled in server settings and Supported TAK Clients.  Download buttons on Setup My Device page and on Users page under Enroll QR.
 
