@@ -7,6 +7,7 @@ const router = require("express").Router();
 const path = require("path");
 const fs = require("fs");
 const pluginsSvc = require("../services/plugins.service");
+const pluginUpdateSyncSvc = require("../services/pluginUpdateSync.service");
 const auditSvc = require("../services/auditLog.service");
 const multer = require("multer");
 
@@ -59,6 +60,42 @@ router.get("/update-status", async (req, res) => {
     res.json({ updateStatus });
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
+/**
+ * GET /api/plugins/sync-status
+ * One-way OTA sync status (portal plugins → TAK Server webcontent/update).
+ */
+router.get("/sync-status", (req, res) => {
+  try {
+    res.json({ ok: true, sync: pluginUpdateSyncSvc.getSyncStatus() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: toErrorPayload(err) });
+  }
+});
+
+/**
+ * POST /api/plugins/sync-now
+ * Trigger an immediate sync (e.g. after SSH was configured).
+ */
+router.post("/sync-now", async (req, res) => {
+  try {
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "PLUGIN_UPDATE_SYNC_STARTED",
+      targetType: "plugin_update_sync",
+      targetId: "tak-server",
+      details: { summary: "Manual plugin update sync requested from Plugin Manager." },
+    });
+    // Kick off sync without blocking the HTTP request for long large uploads.
+    void pluginUpdateSyncSvc.syncNow().catch((err) => {
+      console.error("[plugins] sync-now failed:", err?.message || err);
+    });
+    res.json({ ok: true, sync: pluginUpdateSyncSvc.getSyncStatus() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: toErrorPayload(err) });
   }
 });
 

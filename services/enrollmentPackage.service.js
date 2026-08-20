@@ -112,6 +112,18 @@ function buildEnrollmentConfigPrefXml({
     identityEntries.push(typedEntry("atakRoleType", JAVA_CLASS.string, safeStr(roleLabel).trim()));
   }
 
+  // Plugin Update Server (OTA) — matches OpenTAKServer / ATAK CIV preference keys.
+  if (h) {
+    const updateUrl = `https://${h}:8443/update`;
+    identityEntries.push(
+      typedEntry("appMgmtEnableUpdateServer", JAVA_CLASS.boolean, "true"),
+      typedEntry("atakUpdateServerUrl", JAVA_CLASS.string, updateUrl),
+      typedEntry("repoStartupSync", JAVA_CLASS.boolean, "true"),
+      typedEntry("updateServerCaLocation", JAVA_CLASS.string, "cert/caCert.p12"),
+      typedEntry("updateServerCaPassword", JAVA_CLASS.string, pass || "atakatak")
+    );
+  }
+
   const civEntries = identityEntries.filter((line) =>
     /key="(locationCallsign|locationTeam|atakRoleType)"/.test(line)
   );

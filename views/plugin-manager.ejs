@@ -36,6 +36,17 @@
   <!-- Downloaded plugins: cards (above Plugin Browser) -->
   <div class="card">
     <h2 style="margin-top: 0;">Downloaded Plugins</h2>
+    <div id="takServerSyncStatus" class="plugin-sync-status" aria-live="polite">
+      <div class="plugin-sync-status-main">
+        <strong>TAK Server plugin sync</strong>
+        <span id="takServerSyncLabel" class="muted">Checking…</span>
+      </div>
+      <div class="plugin-sync-status-actions">
+        <code id="takServerSyncUrl" class="plugin-sync-url" style="display:none;"></code>
+        <button class="btn" type="button" id="takServerSyncNowBtn">Sync now</button>
+      </div>
+      <div id="takServerSyncDetail" class="muted" style="margin-top: 6px;"></div>
+    </div>
     <div class="row" style="flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px;">
       <label>Filter by ATAK version
         <select id="downloadedVersionFilter" style="min-width: 160px;">
@@ -141,6 +152,37 @@
   .btn.favorite:hover { filter: brightness(1.08); }
   .btn.favorite.is-favorite { background: #f0d000; color: #000; }
   .marketplace-grid .plugin-card .plugin-desc { font-size: 0.85rem; color: var(--muted); max-height: 2.6em; overflow: hidden; text-overflow: ellipsis; }
+  .plugin-sync-status {
+    margin-top: 10px;
+    margin-bottom: 4px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .plugin-sync-status-main {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: baseline;
+  }
+  .plugin-sync-status-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .plugin-sync-url {
+    font-size: 0.8rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .plugin-sync-status.is-error #takServerSyncLabel { color: #c44; }
+  .plugin-sync-status.is-success #takServerSyncLabel { color: #2a7; }
+  .plugin-sync-status.is-blocked #takServerSyncLabel { color: #c80; }
 </style>
 
 <script>
@@ -761,5 +803,109 @@
   downloadedPluginsCache = initialPlugins;
   renderPluginCards(initialPlugins);
   loadState();
+
+  // --- TAK Server OTA sync status ---
+  const syncStatusEl = document.getElementById("takServerSyncStatus");
+  const syncLabelEl = document.getElementById("takServerSyncLabel");
+  const syncDetailEl = document.getElementById("takServerSyncDetail");
+  const syncUrlEl = document.getElementById("takServerSyncUrl");
+  const syncNowBtn = document.getElementById("takServerSyncNowBtn");
+  let syncPollTimer = null;
+
+  function formatRelativeTime(iso) {
+    if (!iso) return "";
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return "";
+    const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (sec < 60) return sec + "s ago";
+    const min = Math.round(sec / 60);
+    if (min < 60) return min + "m ago";
+    const hr = Math.round(min / 60);
+    if (hr < 48) return hr + "h ago";
+    return Math.round(hr / 24) + "d ago";
+  }
+
+  function applySyncStatus(sync) {
+    if (!syncStatusEl || !syncLabelEl) return;
+    syncStatusEl.classList.remove("is-error", "is-success", "is-blocked", "is-syncing");
+    const state = (sync && sync.state) || "idle";
+    let label = "Idle";
+    if (state === "syncing" || (sync && sync.inProgress)) {
+      label = "Syncing…";
+      syncStatusEl.classList.add("is-syncing");
+    } else if (state === "success") {
+      label = "Synced" + (sync.lastSuccessAt ? " " + formatRelativeTime(sync.lastSuccessAt) : "");
+      syncStatusEl.classList.add("is-success");
+    } else if (state === "blocked_ssh") {
+      label = "SSH required";
+      syncStatusEl.classList.add("is-blocked");
+    } else if (state === "error") {
+      label = "Sync failed";
+      syncStatusEl.classList.add("is-error");
+    }
+    syncLabelEl.textContent = label;
+    if (syncDetailEl) {
+      const parts = [];
+      if (sync && sync.message) parts.push(sync.message);
+      if (sync && sync.error) parts.push(sync.error);
+      if (sync && sync.pluginCount != null && state === "success") {
+        parts.push(sync.pluginCount + " plugin(s) on server.");
+      }
+      syncDetailEl.textContent = parts.join(" ");
+    }
+    if (syncUrlEl) {
+      const url = sync && sync.updateServerUrl;
+      if (url) {
+        syncUrlEl.style.display = "";
+        syncUrlEl.textContent = url;
+        syncUrlEl.title = url;
+      } else {
+        syncUrlEl.style.display = "none";
+        syncUrlEl.textContent = "";
+      }
+    }
+    if (syncNowBtn) {
+      syncNowBtn.disabled = !!(sync && sync.inProgress);
+    }
+  }
+
+  function refreshSyncStatus() {
+    return fetch("/api/plugins/sync-status")
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        const sync = data && data.sync ? data.sync : null;
+        applySyncStatus(sync);
+        const busy = !!(sync && (sync.inProgress || sync.state === "syncing"));
+        if (busy) {
+          if (!syncPollTimer) {
+            syncPollTimer = setInterval(refreshSyncStatus, 2000);
+          }
+        } else if (syncPollTimer) {
+          clearInterval(syncPollTimer);
+          syncPollTimer = null;
+        }
+      })
+      .catch(function () {
+        applySyncStatus({ state: "error", message: "Could not load sync status." });
+      });
+  }
+
+  if (syncNowBtn) {
+    syncNowBtn.addEventListener("click", function () {
+      syncNowBtn.disabled = true;
+      fetch("/api/plugins/sync-now", { method: "POST" })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          applySyncStatus(data && data.sync ? data.sync : { state: "syncing", inProgress: true });
+          if (!syncPollTimer) syncPollTimer = setInterval(refreshSyncStatus, 2000);
+        })
+        .catch(function (err) {
+          applySyncStatus({ state: "error", error: err.message || "Sync failed to start." });
+          syncNowBtn.disabled = false;
+        });
+    });
+  }
+
+  refreshSyncStatus();
 })();
 </script>

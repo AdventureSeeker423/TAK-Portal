@@ -1471,6 +1471,191 @@ async function fetchTakTruststoreP12FromRemote() {
   return { p12, password: password || "atakatak", sourcePath };
 }
 
+const REMOTE_TMP_SYNC_DIR = "/tmp/tak-portal-plugin-sync";
+
+function withSshConnection(connectConfig, timeoutMs, workFn) {
+  return new Promise((resolve) => {
+    const conn = new Client();
+    let finished = false;
+    const done = (payload) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(t);
+      try {
+        conn.end();
+      } catch (_) {}
+      resolve(payload);
+    };
+
+    const t = setTimeout(() => {
+      done({ ok: false, message: "SSH operation timed out.", stdout: "", stderr: "", exitCode: null });
+    }, timeoutMs);
+
+    conn
+      .on("keyboard-interactive", (name, instructions, instructionsLang, prompts, finish) => {
+        if (connectConfig && connectConfig.password) {
+          finish([String(connectConfig.password)]);
+          return;
+        }
+        finish([]);
+      })
+      .on("ready", () => {
+        Promise.resolve()
+          .then(() => workFn(conn))
+          .then((result) => done(result || { ok: true }))
+          .catch((err) => {
+            done({
+              ok: false,
+              message: err?.message || String(err),
+              stdout: "",
+              stderr: "",
+              exitCode: null,
+            });
+          });
+      })
+      .on("error", (err) => {
+        done({ ok: false, message: err.message || String(err), stdout: "", stderr: "", exitCode: null });
+      })
+      .connect(connectConfig);
+  });
+}
+
+function sftpMkdirp(sftp, remoteDir) {
+  const parts = String(remoteDir || "")
+    .split("/")
+    .filter(Boolean);
+  let current = "";
+  return parts.reduce((prev, part) => {
+    return prev.then(() => {
+      current += "/" + part;
+      return new Promise((resolve, reject) => {
+        sftp.mkdir(current, (err) => {
+          if (!err || err.code === 4 || /Failure|exists/i.test(String(err.message || ""))) {
+            return resolve();
+          }
+          return reject(err);
+        });
+      });
+    });
+  }, Promise.resolve());
+}
+
+function sftpFastPut(sftp, localPath, remotePath) {
+  return new Promise((resolve, reject) => {
+    sftp.fastPut(localPath, remotePath, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+/**
+ * Upload a local file to an absolute remote path using SFTP to a temp dir,
+ * then privileged move into the destination (handles /opt/tak ownership).
+ */
+async function uploadRemoteFilePrivileged({ localPath, remoteAbsolutePath, timeoutMs = 600000 }) {
+  const local = String(localPath || "").trim();
+  const remote = String(remoteAbsolutePath || "").trim();
+  if (!local || !fs.existsSync(local)) {
+    return { ok: false, message: "Local file not found.", stdout: "", stderr: "", exitCode: null };
+  }
+  if (!remote.startsWith("/")) {
+    return { ok: false, message: "Remote path must be absolute.", stdout: "", stderr: "", exitCode: null };
+  }
+  if (!isPrivilegedSshReady()) {
+    return {
+      ok: false,
+      message: "SSH privileged access is not ready. Complete SSH handshake in Settings.",
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+    };
+  }
+
+  const cfg = getTakSshConfig();
+  if (!cfg) {
+    return {
+      ok: false,
+      message: "SSH is not configured. Complete the SSH handshake in Settings first.",
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+    };
+  }
+
+  const connect = toConnectConfig(cfg);
+  const baseName = path.basename(remote);
+  const tmpRemote = `${REMOTE_TMP_SYNC_DIR}/${Date.now()}_${baseName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const remoteDir = path.posix.dirname(remote);
+
+  const uploadResult = await withSshConnection(connect, timeoutMs, async (conn) => {
+    const sftp = await new Promise((resolve, reject) => {
+      conn.sftp((err, s) => (err ? reject(err) : resolve(s)));
+    });
+    await sftpMkdirp(sftp, REMOTE_TMP_SYNC_DIR);
+    await sftpFastPut(sftp, local, tmpRemote);
+    return { ok: true };
+  });
+  if (!uploadResult.ok) return uploadResult;
+
+  const safeTmp = quoteForSingleQuotedShell(tmpRemote);
+  const safeDestDir = quoteForSingleQuotedShell(remoteDir);
+  const safeDest = quoteForSingleQuotedShell(remote);
+  const moveCmd =
+    `mkdir -p '${safeDestDir}' && ` +
+    `mv -f '${safeTmp}' '${safeDest}' && ` +
+    `chown tak:tak '${safeDest}' 2>/dev/null || true && ` +
+    `chmod 644 '${safeDest}' 2>/dev/null || true`;
+  return runRemotePrivilegedCommand(moveCmd, Math.max(60000, Math.min(timeoutMs, 120000)));
+}
+
+/**
+ * List filenames in a remote directory (non-recursive). Returns [] if missing.
+ */
+async function listRemoteDir(remoteAbsolutePath, timeoutMs = 60000) {
+  const remote = String(remoteAbsolutePath || "").trim();
+  if (!remote.startsWith("/")) {
+    return { ok: false, message: "Remote path must be absolute.", names: [] };
+  }
+  const cfg = getTakSshConfig();
+  if (!cfg) {
+    return { ok: false, message: "SSH is not configured.", names: [] };
+  }
+  const connect = toConnectConfig(cfg);
+
+  // Prefer privileged ls so /opt/tak is readable even when the SSH user cannot SFTP there.
+  const safe = quoteForSingleQuotedShell(remote);
+  const ls = await runRemotePrivilegedCommand(
+    `if [ -d '${safe}' ]; then ls -1A '${safe}'; else echo '__MISSING__'; fi`,
+    timeoutMs
+  );
+  if (!ls.ok) {
+    return { ok: false, message: ls.message || "Failed to list remote directory.", names: [] };
+  }
+  const out = String(ls.stdout || "").trim();
+  if (out === "__MISSING__" || !out) {
+    return { ok: true, names: [] };
+  }
+  const names = out
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((n) => n !== "__MISSING__");
+  return { ok: true, names };
+}
+
+/**
+ * Remove a remote file via privileged rm.
+ */
+async function removeRemoteFilePrivileged(remoteAbsolutePath, timeoutMs = 60000) {
+  const remote = String(remoteAbsolutePath || "").trim();
+  if (!remote.startsWith("/")) {
+    return { ok: false, message: "Remote path must be absolute.", stdout: "", stderr: "", exitCode: null };
+  }
+  const safe = quoteForSingleQuotedShell(remote);
+  return runRemotePrivilegedCommand(`rm -f '${safe}'`, timeoutMs);
+}
+
 module.exports = {
   getLocalKeyStatus,
   ensureLocalSshKeyPair,
@@ -1484,6 +1669,9 @@ module.exports = {
   runRemoteRebootFireAndForget,
   streamRemoteSshExec,
   writeRemoteFileViaSudoTee,
+  uploadRemoteFilePrivileged,
+  listRemoteDir,
+  removeRemoteFilePrivileged,
   hasStoredIntegrationCertFiles,
   provisionIntegrationCertFiles,
   getOrProvisionIntegrationCertFiles,

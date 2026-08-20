@@ -19,6 +19,15 @@ const DATA_DIR = path.join(__dirname, "..", "data");
 const PLUGINS_DIR = path.join(DATA_DIR, "plugins");
 const MANIFEST_PATH = path.join(DATA_DIR, "plugin-manifest.json");
 
+function notifyPluginCatalogChanged(reason) {
+  try {
+    // Lazy require avoids circular dependency with pluginUpdateSync.service.
+    require("./pluginUpdateSync.service").notifyCatalogChanged(reason);
+  } catch (err) {
+    console.warn("[plugins.service] plugin sync notify failed:", err?.message || err);
+  }
+}
+
 const TAK_GOV_DEVICE_URL = "https://auth.tak.gov/auth/realms/TPC/protocol/openid-connect/auth/device";
 const TAK_GOV_TOKEN_URL = "https://auth.tak.gov/auth/realms/TPC/protocol/openid-connect/token";
 const TAK_GOV_CLIENT_ID = "tak-gov-eud";
@@ -467,6 +476,7 @@ async function downloadTakGovPlugin(pluginItem) {
     };
     manifest.plugins.push(plugin);
     saveManifest(manifest);
+    notifyPluginCatalogChanged("tak.gov-download");
     return { success: true, plugin };
   } catch (err) {
     const msg = err?.message || "Download failed.";
@@ -740,6 +750,7 @@ function addPluginFromFile(sourceFilePath, meta = {}) {
   };
   manifest.plugins.push(plugin);
   saveManifest(manifest);
+  notifyPluginCatalogChanged("add-file");
   return { success: true, plugin };
 }
 
@@ -816,6 +827,7 @@ async function addPluginFromUrl(downloadUrl, meta = {}) {
   };
   manifest.plugins.push(plugin);
   saveManifest(manifest);
+  notifyPluginCatalogChanged("add-url");
   return { success: true, plugin };
 }
 
@@ -838,6 +850,7 @@ function deletePlugin(id) {
   }
   manifest.plugins = manifest.plugins.filter((p) => p.id !== id);
   saveManifest(manifest);
+  notifyPluginCatalogChanged("delete");
   return { success: true };
 }
 
