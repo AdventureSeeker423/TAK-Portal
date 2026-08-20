@@ -2738,6 +2738,121 @@ a.settings-hub-card:visited {
   margin-bottom: 0.75rem;
 }
 
+/* Regions settings modal */
+.settings-regions-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.settings-regions-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.settings-regions-section-header {
+  margin-bottom: 0.75rem;
+}
+
+.settings-regions-section-header h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.settings-regions-section-header .settings-help {
+  margin: 0;
+}
+
+.settings-regions-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.settings-regions-add-field {
+  min-width: 0;
+}
+
+.settings-regions-msg {
+  min-height: 1.25rem;
+  margin: 0.5rem 0 0;
+}
+
+.settings-regions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.65rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-regions-empty {
+  padding: 0.65rem 0.75rem;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.settings-regions-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+}
+
+.settings-regions-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.settings-regions-item-row input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.settings-regions-members {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.settings-regions-assign-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.settings-regions-assign-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .settings-regions-add-row,
+  .settings-regions-item-row,
+  .settings-regions-assign-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-regions-assign-actions {
+    justify-content: stretch;
+  }
+
+  .settings-regions-assign-actions .btn {
+    width: 100%;
+  }
+}
+
+
 .settings-allowed-client-platform {
   margin: 0 0 0.4rem;
   font-size: 1rem;

@@ -978,30 +978,44 @@
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
         </div>
         <div class="modalBody settings-body">
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem;">
-            <label style="flex:1;min-width:180px;">Region name
-              <input type="text" id="regionsNewName" placeholder="e.g. East TN" maxlength="120" />
-            </label>
-            <button type="button" class="btn" id="regionsAddBtn">Add region</button>
-          </div>
-          <div id="regionsMsg" class="msg" style="margin-bottom:.75rem;"></div>
-          <ul id="regionsList" style="list-style:none;padding:0;margin:0 0 1.25rem 0;display:flex;flex-direction:column;gap:.5rem;"></ul>
+          <div class="settings-regions-editor">
+            <section class="settings-regions-section" aria-labelledby="settingsRegionsManageTitle">
+              <div class="settings-regions-section-header">
+                <h3 id="settingsRegionsManageTitle">Manage regions</h3>
+                <p class="settings-help">Named areas that can span states. Assign agencies on the Agencies page or below.</p>
+              </div>
+              <div class="settings-regions-add-row">
+                <label class="settings-field settings-regions-add-field">Region name
+                  <input type="text" id="regionsNewName" placeholder="e.g. East TN" maxlength="120" />
+                </label>
+                <button type="button" class="btn" id="regionsAddBtn">Add region</button>
+              </div>
+              <div id="regionsMsg" class="msg settings-regions-msg"></div>
+              <ul id="regionsList" class="settings-regions-list"></ul>
+            </section>
 
-          <h3 style="margin:0 0 .5rem 0;font-size:1rem;">Assign by county</h3>
-          <p class="settings-help" style="margin-top:0;">Sets the region on every agency currently in that state + county. Does not lock future agencies.</p>
-          <div style="display:grid;gap:.5rem;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end;">
-            <label>State
-              <select id="regionsAssignState"><option value="">Select State</option></select>
-            </label>
-            <label>County
-              <select id="regionsAssignCounty" disabled><option value="">Select County</option></select>
-            </label>
-            <label>Region
-              <select id="regionsAssignRegion"><option value="">Select Region</option></select>
-            </label>
-            <button type="button" class="btn" id="regionsAssignBtn">Apply to agencies</button>
+            <section class="settings-regions-section" aria-labelledby="settingsRegionsAssignTitle">
+              <div class="settings-regions-section-header">
+                <h3 id="settingsRegionsAssignTitle">Assign by county</h3>
+                <p class="settings-help">Sets the region on every agency currently in that state + county. Does not lock future agencies.</p>
+              </div>
+              <div class="settings-regions-assign-grid">
+                <label class="settings-field">State
+                  <select id="regionsAssignState"><option value="">Select State</option></select>
+                </label>
+                <label class="settings-field">County
+                  <select id="regionsAssignCounty" disabled><option value="">Select County</option></select>
+                </label>
+                <label class="settings-field">Region
+                  <select id="regionsAssignRegion"><option value="">Select Region</option></select>
+                </label>
+              </div>
+              <div class="settings-regions-assign-actions">
+                <button type="button" class="btn" id="regionsAssignBtn">Apply to agencies</button>
+              </div>
+              <div id="regionsAssignMsg" class="msg settings-regions-msg"></div>
+            </section>
           </div>
-          <div id="regionsAssignMsg" class="msg" style="margin-top:.75rem;"></div>
 
           <script>
             (function () {
@@ -1022,7 +1036,8 @@
               function setMsg(el, text, ok) {
                 if (!el) return;
                 el.textContent = text || "";
-                el.style.color = ok === false ? "var(--danger, #c0392b)" : "var(--muted, inherit)";
+                el.classList.toggle("ok", ok === true);
+                el.classList.toggle("bad", ok === false);
               }
 
               function esc(s) {
@@ -1103,7 +1118,7 @@
               function renderList() {
                 if (!regionsCache.length) {
                   listEl.innerHTML =
-                    '<li style="padding:.5rem;color:var(--muted);">No regions yet. Add one above.</li>';
+                    '<li class="settings-regions-empty">No regions yet. Add one above.</li>';
                   return;
                 }
                 listEl.innerHTML = regionsCache
@@ -1116,8 +1131,8 @@
                     var count = Number(r.agencyCount) || names.length || 0;
                     var members =
                       count === 0
-                        ? '<div style="font-size:.85rem;color:var(--muted);margin-top:.35rem;">No agencies assigned</div>'
-                        : '<div style="font-size:.85rem;color:var(--muted);margin-top:.35rem;">' +
+                        ? '<div class="settings-regions-members">No agencies assigned</div>'
+                        : '<div class="settings-regions-members">' +
                           esc(String(count)) +
                           " agenc" +
                           (count === 1 ? "y" : "ies") +
@@ -1126,13 +1141,13 @@
                           (names.length > 8 ? "…" : "") +
                           "</div>";
                     return (
-                      '<li data-region-id="' +
+                      '<li class="settings-regions-item" data-region-id="' +
                       esc(r.id) +
-                      '" style="border:1px solid #e5e7eb;border-radius:.5rem;padding:.5rem;background:#fff0;">' +
-                      '<div style="display:grid;grid-template-columns:1fr auto auto;gap:.5rem;align-items:center;">' +
+                      '">' +
+                      '<div class="settings-regions-item-row">' +
                       '<input type="text" data-region-name value="' +
                       esc(r.name) +
-                      '" maxlength="120" style="width:100%;" />' +
+                      '" maxlength="120" />' +
                       '<button type="button" class="btn" data-region-save>Save</button>' +
                       '<button type="button" class="btn danger" data-region-delete>Delete</button>' +
                       "</div>" +
@@ -1166,6 +1181,7 @@
 
               async function refreshAll() {
                 setMsg(msgEl, "");
+                setMsg(assignMsg, "");
                 await Promise.all([loadRegions(), loadAgencies()]);
               }
 
