@@ -87,20 +87,43 @@ function buildItakEnrollPayload({ host, username, token, registrationId }) {
 }
 
 /**
- * Build ATAK device preference URL for callsign, team (color), and role.
- * Format: tak://com.atakmap.app/preference?key1=locationCallsign&type1=string&value1=...&key2=locationTeam&type2=string&value2=...&key3=atakRoleType&type3=string&value3=...
+ * Build ATAK device preference URL for callsign, team (color), role, and
+ * Plugin Update Server settings when TAK host is known.
+ * Format: tak://com.atakmap.app/preference?key1=...&type1=...&value1=...&key2=...
  */
 function buildPreferenceUrl({ callsign, teamLabel, roleLabel }) {
   const c = String(callsign || "").trim();
   const t = String(teamLabel || "").trim();
   const r = String(roleLabel || "Team Member").trim();
-  if (!c && !t && !r) return null;
 
-  const params = [];
-  if (c) params.push(`key1=locationCallsign&type1=string&value1=${encodeURIComponent(c)}`);
-  if (t) params.push(`key2=locationTeam&type2=string&value2=${encodeURIComponent(t)}`);
-  if (r) params.push(`key3=atakRoleType&type3=string&value3=${encodeURIComponent(r)}`);
-  if (!params.length) return null;
+  const entries = [];
+  if (c) entries.push({ key: "locationCallsign", type: "string", value: c });
+  if (t) entries.push({ key: "locationTeam", type: "string", value: t });
+  if (r) entries.push({ key: "atakRoleType", type: "string", value: r });
+
+  const host = getTakHost();
+  if (host) {
+    entries.push(
+      { key: "appMgmtEnableUpdateServer", type: "boolean", value: "true" },
+      {
+        key: "atakUpdateServerUrl",
+        type: "string",
+        value: `https://${host}:8443/update`,
+      },
+      { key: "repoStartupSync", type: "boolean", value: "true" }
+    );
+  }
+
+  if (!entries.length) return null;
+
+  const params = entries.map((entry, i) => {
+    const n = i + 1;
+    return (
+      `key${n}=${encodeURIComponent(entry.key)}` +
+      `&type${n}=${encodeURIComponent(entry.type)}` +
+      `&value${n}=${encodeURIComponent(entry.value)}`
+    );
+  });
 
   return `tak://com.atakmap.app/preference?${params.join("&")}`;
 }
