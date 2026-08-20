@@ -767,6 +767,7 @@ app.get("/agencies", requirePermission("page.agencies"), (req, res) =>
   res.render("agencies", {
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
     regionOptions: regionsSvc.listNormalized(),
+    regionCountyLocks: regionsSvc.listLocks(),
   })
 ); //require Global Admin
 app.get("/templates", (req, res) => res.render("templates"));
@@ -1311,6 +1312,7 @@ app.get("/request-access", (req, res) => {
     error: null,
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
     regionOptions: regionsSvc.listNormalized(),
+    regionCountyLocks: regionsSvc.listLocks(),
     hcaptchaEnabled,
     hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : ""
   });
@@ -1408,6 +1410,7 @@ app.post("/request-access", async (req, res) => {
       form: req.body || {},
       agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
       regionOptions: regionsSvc.listNormalized(),
+      regionCountyLocks: regionsSvc.listLocks(),
       hcaptchaEnabled,
       hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : "",
     });
@@ -1434,6 +1437,7 @@ app.get("/pending-user-requests", requirePermission("page.users"), (req, res) =>
   return res.render("pending-user-requests", {
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
     regionOptions: regionsSvc.listNormalized(),
+    regionCountyLocks: regionsSvc.listLocks(),
   });
 });
 

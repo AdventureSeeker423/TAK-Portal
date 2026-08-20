@@ -972,7 +972,7 @@
             <h2 id="settingsModalTitle-regions">Regions</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Create named regions (can span states). Assign agencies individually on the Agencies page, or bulk-assign all agencies in a county here. Agencies in the same county can still belong to different regions.</span>
+              <span class="settings-help-popover">Create named regions (can span states). Lock an entire state or a single county so new agencies inherit that region. A state lock prevents county locks in that state.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -993,25 +993,27 @@
               <ul id="regionsList" class="settings-regions-list"></ul>
             </section>
 
-            <section class="settings-regions-section" aria-labelledby="settingsRegionsAssignTitle">
+            <section class="settings-regions-section" aria-labelledby="settingsRegionsLockTitle">
               <div class="settings-regions-section-header">
-                <h3 id="settingsRegionsAssignTitle">Mass Assign Region To States or Counties</h3>
+                <h3 id="settingsRegionsLockTitle">Lock states or counties to regions</h3>
+                <p class="settings-help">Lock an entire state, or a single county. A state lock blocks county locks in that state. New agencies inherit the locked region; existing matching agencies are updated when you lock.</p>
               </div>
               <div class="settings-regions-assign-grid">
                 <label class="settings-field">State
                   <select id="regionsAssignState"><option value="">Select State</option></select>
                 </label>
                 <label class="settings-field">County
-                  <select id="regionsAssignCounty" disabled><option value="">Select County</option></select>
+                  <select id="regionsAssignCounty" disabled><option value="">Entire state</option></select>
                 </label>
                 <label class="settings-field">Region
                   <select id="regionsAssignRegion"><option value="">Select Region</option></select>
                 </label>
               </div>
               <div class="settings-regions-assign-actions">
-                <button type="button" class="btn" id="regionsAssignBtn">Apply To Agencies</button>
+                <button type="button" class="btn" id="regionsAssignBtn">Lock</button>
               </div>
               <div id="regionsAssignMsg" class="msg settings-regions-msg"></div>
+              <ul id="regionsLocksList" class="settings-regions-locks-list"></ul>
             </section>
           </div>
 
@@ -1026,10 +1028,12 @@
               var assignRegion = document.getElementById("regionsAssignRegion");
               var assignBtn = document.getElementById("regionsAssignBtn");
               var assignMsg = document.getElementById("regionsAssignMsg");
+              var locksListEl = document.getElementById("regionsLocksList");
               if (!listEl || !addBtn) return;
 
               var regionsCache = [];
               var agenciesCache = [];
+              var locksCache = [];
 
               function setMsg(el, text, ok) {
                 if (!el) return;
@@ -1101,16 +1105,28 @@
                 if (!assignCounty || !assignState) return;
                 var st = assignState.value;
                 var counties = st ? countiesForState(st) : [];
-                assignCounty.disabled = !st;
+                var stateLocked = !!(st && locksCache.some(function (l) {
+                  return l.scope === "state" && String(l.state || "").toUpperCase() === String(st).toUpperCase();
+                }));
+                assignCounty.disabled = !st || stateLocked;
                 var cur = assignCounty.value;
                 assignCounty.innerHTML =
-                  '<option value="">Select County</option>' +
-                  counties
-                    .map(function (c) {
-                      return '<option value="' + esc(c) + '">' + esc(c) + "</option>";
-                    })
-                    .join("");
-                if (cur && counties.indexOf(cur) >= 0) assignCounty.value = cur;
+                  '<option value="">Entire state</option>' +
+                  (stateLocked
+                    ? ""
+                    : counties
+                        .map(function (c) {
+                          return '<option value="' + esc(c) + '">' + esc(c) + "</option>";
+                        })
+                        .join(""));
+                if (!stateLocked && cur && counties.indexOf(cur) >= 0) {
+                  assignCounty.value = cur;
+                } else {
+                  assignCounty.value = "";
+                }
+                if (assignBtn) {
+                  assignBtn.textContent = assignCounty.value ? "Lock county" : "Lock state";
+                }
               }
 
               function renderList() {
@@ -1138,6 +1154,22 @@
                           esc(names.slice(0, 8).join(", ")) +
                           (names.length > 8 ? "…" : "") +
                           "</div>";
+                    var locks = Array.isArray(r.lockedCounties) ? r.lockedCounties : [];
+                    var locksHtml =
+                      locks.length === 0
+                        ? ""
+                        : '<div class="settings-regions-members">Locks: ' +
+                          esc(
+                            locks
+                              .map(function (l) {
+                                if (l.scope === "state") {
+                                  return (l.state || "") + " (entire state)";
+                                }
+                                return (l.county || "") + ", " + (l.state || "");
+                              })
+                              .join("; ")
+                          ) +
+                          "</div>";
                     return (
                       '<li class="settings-regions-item" data-region-id="' +
                       esc(r.id) +
@@ -1152,10 +1184,58 @@
                       '<button type="button" class="btn danger" data-region-delete>Delete</button>' +
                       "</div>" +
                       members +
+                      locksHtml +
                       "</li>"
                     );
                   })
                   .join("");
+              }
+
+              function renderLocksList() {
+                if (!locksListEl) return;
+                if (!locksCache.length) {
+                  locksListEl.innerHTML =
+                    '<li class="settings-regions-empty">No state or county locks yet.</li>';
+                  return;
+                }
+                locksListEl.innerHTML = locksCache
+                  .map(function (l) {
+                    var label =
+                      l.scope === "state"
+                        ? esc(l.state) + " (entire state)"
+                        : esc(l.county) + ", " + esc(l.state);
+                    return (
+                      '<li class="settings-regions-lock-item" data-lock-scope="' +
+                      esc(l.scope || "county") +
+                      '" data-lock-state="' +
+                      esc(l.state) +
+                      '" data-lock-county="' +
+                      esc(l.county || "") +
+                      '">' +
+                      '<div class="settings-regions-lock-label">' +
+                      "<strong>" +
+                      label +
+                      "</strong>" +
+                      '<span class="settings-regions-members"> → ' +
+                      esc(l.regionName || "Unknown region") +
+                      "</span>" +
+                      "</div>" +
+                      '<button type="button" class="btn" data-region-unlock>Unlock</button>' +
+                      "</li>"
+                    );
+                  })
+                  .join("");
+              }
+
+              async function loadLocks() {
+                var res = await fetch("/api/regions/county-locks");
+                var data = await res.json().catch(function () {
+                  return null;
+                });
+                if (!res.ok) throw new Error((data && data.error) || "Failed to load locks");
+                locksCache = Array.isArray(data) ? data : [];
+                renderLocksList();
+                fillCountySelect();
               }
 
               function enterRenameMode(li) {
@@ -1213,7 +1293,7 @@
               async function refreshAll() {
                 setMsg(msgEl, "");
                 setMsg(assignMsg, "");
-                await Promise.all([loadRegions(), loadAgencies()]);
+                await Promise.all([loadRegions(), loadAgencies(), loadLocks()]);
               }
 
               addBtn.addEventListener("click", async function () {
@@ -1329,6 +1409,13 @@
                   fillCountySelect();
                 });
               }
+              if (assignCounty) {
+                assignCounty.addEventListener("change", function () {
+                  if (assignBtn) {
+                    assignBtn.textContent = assignCounty.value ? "Lock county" : "Lock state";
+                  }
+                });
+              }
 
               if (assignBtn) {
                 assignBtn.addEventListener("click", async function () {
@@ -1337,33 +1424,83 @@
                   var county = String(assignCounty && assignCounty.value || "").trim();
                   if (!regionId) return setMsg(assignMsg, "Select a region", false);
                   if (!state) return setMsg(assignMsg, "Select a state", false);
-                  if (!county) return setMsg(assignMsg, "Select a county", false);
                   assignBtn.disabled = true;
                   try {
-                    var res = await fetch(
-                      "/api/regions/" + encodeURIComponent(regionId) + "/assign-county",
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ state: state, county: county }),
-                      }
-                    );
+                    var res = await fetch("/api/regions/county-locks", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        regionId: regionId,
+                        state: state,
+                        county: county || null,
+                      }),
+                    });
                     var data = await res.json().catch(function () {
                       return null;
                     });
-                    if (!res.ok) throw new Error((data && data.error) || "Assign failed");
-                    var updated = (data && data.updated) || 0;
-                    var matched = (data && data.matched) || 0;
+                    if (!res.ok) throw new Error((data && data.error) || "Lock failed");
+                    var updated = (data && data.agenciesUpdated) || 0;
+                    var scope = data && data.lock && data.lock.scope;
+                    var where =
+                      scope === "state"
+                        ? state + " (entire state)"
+                        : county + ", " + state;
                     setMsg(
                       assignMsg,
-                      "Updated " + updated + " of " + matched + " agenc" + (matched === 1 ? "y" : "ies") + " in " + county + ", " + state + ".",
+                      "Locked " +
+                        where +
+                        (updated
+                          ? " (updated " + updated + " existing agenc" + (updated === 1 ? "y" : "ies") + ")."
+                          : "."),
                       true
                     );
-                    await loadRegions();
+                    await Promise.all([loadRegions(), loadLocks()]);
+                    fillCountySelect();
                   } catch (err) {
-                    setMsg(assignMsg, err.message || "Assign failed", false);
+                    setMsg(assignMsg, err.message || "Lock failed", false);
                   } finally {
                     assignBtn.disabled = false;
+                  }
+                });
+              }
+
+              if (locksListEl) {
+                locksListEl.addEventListener("click", async function (e) {
+                  var t = e.target;
+                  if (!t || !t.matches || !t.matches("[data-region-unlock]")) return;
+                  var li = t.closest("li[data-lock-state]");
+                  if (!li) return;
+                  var state = li.getAttribute("data-lock-state");
+                  var county = li.getAttribute("data-lock-county") || "";
+                  var scope = li.getAttribute("data-lock-scope") || "county";
+                  var label =
+                    scope === "state"
+                      ? state + " (entire state)"
+                      : county + ", " + state;
+                  if (!confirm('Unlock "' + label + '"? Future agencies can pick any region.')) {
+                    return;
+                  }
+                  t.disabled = true;
+                  try {
+                    var res = await fetch("/api/regions/county-locks", {
+                      method: "DELETE",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        state: state,
+                        county: scope === "state" ? null : county,
+                      }),
+                    });
+                    var data = await res.json().catch(function () {
+                      return null;
+                    });
+                    if (!res.ok) throw new Error((data && data.error) || "Unlock failed");
+                    setMsg(assignMsg, "Unlocked " + label + ".", true);
+                    await Promise.all([loadRegions(), loadLocks()]);
+                    fillCountySelect();
+                  } catch (err) {
+                    setMsg(assignMsg, err.message || "Unlock failed", false);
+                  } finally {
+                    t.disabled = false;
                   }
                 });
               }

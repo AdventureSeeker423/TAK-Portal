@@ -145,6 +145,11 @@ function normalizeAgency(a) {
       if (fallback) normalized.regionId = fallback;
     }
   }
+  // County lock wins: locked counties always use their region.
+  const lockedId = regionsSvc.lockedRegionIdForAgency(normalized);
+  if (lockedId) {
+    normalized.regionId = lockedId;
+  }
   return normalized;
 }
 
@@ -1029,6 +1034,16 @@ router.patch("/:index/region", (req, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
+  const lockedId = regionsSvc.lockedRegionIdForAgency(agency);
+  if (lockedId) {
+    return res.status(400).json({
+      error: "Region is locked for this agency's county",
+      regionId: lockedId,
+      regionName: regionsSvc.getRegionName(lockedId) || null,
+      locked: true,
+    });
+  }
+
   let nextId = null;
   const raw =
     req.body?.regionId != null ? req.body.regionId : req.body?.region;
@@ -1269,6 +1284,8 @@ router.put("/:index", async (req, res) => {
   if (!("regionId" in body) && !("region" in body)) {
     if (existing.regionId) a.regionId = existing.regionId;
   }
+  const lockedId = regionsSvc.lockedRegionIdForAgency(a);
+  if (lockedId) a.regionId = lockedId;
   const err = validateAgency(a);
   if (err) return res.status(400).json({ error: err });
 

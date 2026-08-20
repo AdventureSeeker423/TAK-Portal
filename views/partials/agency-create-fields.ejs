@@ -7,6 +7,9 @@
   const _idPrefix = String(typeof idPrefix !== "undefined" ? idPrefix : "");
   const _typeOpts = Array.isArray(agencyTypeOptions) && agencyTypeOptions.length ? agencyTypeOptions : [];
   const _regionOpts = Array.isArray(regionOptions) && regionOptions.length ? regionOptions : [];
+  const _regionLocks = Array.isArray(typeof regionCountyLocks !== "undefined" ? regionCountyLocks : null)
+    ? regionCountyLocks
+    : [];
   const _placement = String(_vals.usernameTokenPlacement || "suffix").toLowerCase() === "prefix" ? "prefix" : "suffix";
   const _selectedState = String(_vals.state || "").trim().toUpperCase();
   const _selectedType = String(_vals.type || "").trim();
@@ -167,14 +170,15 @@
   <% } %>
 
   <% if (_showRegion) { %>
-  <label>Region (optional)
-    <select name="regionId">
+  <label id="<%= _idPrefix %>regionFieldWrap">Region <span id="<%= _idPrefix %>regionOptionalHint">(optional)</span>
+    <select name="regionId" id="<%= _idPrefix %>regionIdSelect">
       <option value="" <%= !_selectedRegionId ? "selected" : "" %>>None</option>
       <% _regionOpts.forEach(function (r) { %>
         <option value="<%= r.id %>" <%= _sel(_selectedRegionId, r.id) %>><%= r.name %></option>
       <% }); %>
     </select>
   </label>
+  <script type="application/json" id="<%= _idPrefix %>regionCountyLocksJson"><%- JSON.stringify(_regionLocks) %></script>
   <% } %>
 </div>
 
@@ -201,19 +205,118 @@
       if (countyRequired) el.setAttribute("required", "required");
       else el.removeAttribute("required");
     });
+    if (typeof window.takSyncAgencyRegionLock === "function") {
+      window.takSyncAgencyRegionLock(scope);
+    }
   }
 
   window.takSyncStateFederalAgencyFields = syncStateFederalAgencyFields;
+
+  function parseLocks(prefix) {
+    var el = document.getElementById(String(prefix || "") + "regionCountyLocksJson");
+    if (!el) return [];
+    try {
+      var parsed = JSON.parse(el.textContent || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function findLock(locks, state, county) {
+    var st = String(state || "").trim().toUpperCase();
+    var cn = String(county || "").trim().toLowerCase();
+    if (!st) return null;
+    var stateLock = null;
+    var countyLock = null;
+    for (var i = 0; i < locks.length; i++) {
+      var l = locks[i];
+      if (String(l.state || "").trim().toUpperCase() !== st) continue;
+      if (String(l.scope || "").toLowerCase() === "state" || (!l.county && String(l.scope || "") !== "county")) {
+        stateLock = l;
+        break;
+      }
+      if (cn && String(l.county || "").trim().toLowerCase() === cn) {
+        countyLock = l;
+      }
+    }
+    return stateLock || countyLock;
+  }
+
+  function syncAgencyRegionLock(scope) {
+    if (!scope || !scope.querySelector) return;
+    var regionSelect = scope.querySelector('select[name="regionId"], select[data-region-lock-select]');
+    if (!regionSelect) {
+      // When locked we remove name=regionId; still find by id suffix.
+      var maybe = scope.querySelector('select[id$="regionIdSelect"]');
+      regionSelect = maybe;
+    }
+    if (!regionSelect) return;
+    var idPrefix = String(regionSelect.id || "").replace(/regionIdSelect$/, "");
+    var locks = parseLocks(idPrefix);
+    var stateEl = scope.querySelector('select[name="state"]');
+    var countyEl = scope.querySelector('[data-county-field], input[name="county"]');
+    var hint = document.getElementById(idPrefix + "regionOptionalHint");
+    var lock = findLock(locks, stateEl && stateEl.value, countyEl && countyEl.value);
+
+    if (lock && lock.regionId) {
+      regionSelect.value = String(lock.regionId);
+      regionSelect.disabled = true;
+      regionSelect.removeAttribute("name");
+      regionSelect.setAttribute("data-region-lock-select", "1");
+      var hidden = scope.querySelector("input[data-region-lock-hidden]");
+      if (!hidden) {
+        hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.name = "regionId";
+        hidden.setAttribute("data-region-lock-hidden", "1");
+        regionSelect.parentNode.appendChild(hidden);
+      }
+      hidden.value = String(lock.regionId);
+      if (hint) {
+        hint.textContent =
+          lock.scope === "state" ? "(locked to state)" : "(locked to county)";
+      }
+    } else {
+      regionSelect.disabled = false;
+      regionSelect.setAttribute("name", "regionId");
+      regionSelect.removeAttribute("data-region-lock-select");
+      var clearHidden = scope.querySelector("input[data-region-lock-hidden]");
+      if (clearHidden) clearHidden.remove();
+      if (hint) hint.textContent = "(optional)";
+    }
+  }
+
+  window.takSyncAgencyRegionLock = syncAgencyRegionLock;
 
   if (!window.__takStateFederalAgencyChangeBound) {
     window.__takStateFederalAgencyChangeBound = true;
     document.addEventListener("change", function (e) {
       var t = e && e.target;
-      if (!t || String(t.name || "") !== "stateFederalAgency") return;
-      syncStateFederalAgencyFields(t);
+      if (!t) return;
+      var name = String(t.name || "");
+      if (name === "stateFederalAgency") {
+        syncStateFederalAgencyFields(t);
+        return;
+      }
+      if (name === "state" || name === "county") {
+        var scope = t.closest("form") || t.parentElement;
+        syncAgencyRegionLock(scope);
+      }
+    });
+    document.addEventListener("input", function (e) {
+      var t = e && e.target;
+      if (!t || String(t.name || "") !== "county") return;
+      var scope = t.closest("form") || t.parentElement;
+      syncAgencyRegionLock(scope);
     });
   }
 
   syncStateFederalAgencyFields(document.getElementById("<%= _idPrefix %>stateFederalAgencySelect"));
+  var regionScope =
+    (document.getElementById("<%= _idPrefix %>regionIdSelect") &&
+      document.getElementById("<%= _idPrefix %>regionIdSelect").closest("form")) ||
+    document;
+  syncAgencyRegionLock(regionScope);
 })();
 </script>

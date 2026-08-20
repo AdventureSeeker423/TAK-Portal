@@ -10,6 +10,7 @@
       <%- include("partials/agency-create-fields", {
         agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
         regionOptions: typeof regionOptions !== "undefined" ? regionOptions : [],
+        regionCountyLocks: typeof regionCountyLocks !== "undefined" ? regionCountyLocks : [],
         includeColor: true,
         includeName: true,
         fieldsRequired: true,
@@ -224,6 +225,8 @@ const AGENCY_STATE_OPTIONS = [
 const AGENCY_TYPE_OPTIONS = <%- JSON.stringify(Array.isArray(agencyTypeOptions) ? agencyTypeOptions : []) %>;
 /** Region catalog from Settings → Regions; PATCH /api/agencies/:index/region */
 const AGENCY_REGION_OPTIONS = <%- JSON.stringify(Array.isArray(regionOptions) ? regionOptions : []) %>;
+/** County → region locks; when present, Region is fixed for that state+county */
+const AGENCY_REGION_COUNTY_LOCKS = <%- JSON.stringify(Array.isArray(regionCountyLocks) ? regionCountyLocks : []) %>;
 const msg = document.getElementById("msg");
 const tbody = document.getElementById("tbody");
 const addForm = document.getElementById("addForm");
@@ -670,9 +673,32 @@ function regionNameForId(regionId) {
   return hit ? String(hit.name || "").trim() : "";
 }
 
+function findAgencyCountyRegionLock(a) {
+  const st = String(a?.state || "").trim().toUpperCase();
+  const cn = String(a?.county || "").trim().toLowerCase();
+  if (!st) return null;
+  const locks = AGENCY_REGION_COUNTY_LOCKS || [];
+  const stateLock = locks.find(
+    (l) =>
+      String(l?.state || "").trim().toUpperCase() === st &&
+      (String(l?.scope || "").toLowerCase() === "state" ||
+        (!l?.county && String(l?.scope || "") !== "county"))
+  );
+  if (stateLock) return stateLock;
+  if (!cn) return null;
+  return (
+    locks.find(
+      (l) =>
+        String(l?.state || "").trim().toUpperCase() === st &&
+        String(l?.county || "").trim().toLowerCase() === cn
+    ) || null
+  );
+}
+
 function buildAgencyRegionCellHtml(a) {
   const idx = a._id ?? a.id;
-  const current = String(a.regionId || "").trim();
+  const lock = findAgencyCountyRegionLock(a);
+  const current = String((lock && lock.regionId) || a.regionId || "").trim();
   let opts = `<option value=""${!current ? " selected" : ""}>None</option>`;
   opts += (AGENCY_REGION_OPTIONS || [])
     .map((r) => {
@@ -687,6 +713,13 @@ function buildAgencyRegionCellHtml(a) {
     opts += `<option value="${esc(current)}" selected>${esc(a.regionName || current)} (missing)</option>`;
   }
   const aria = esc(a.name || "Agency");
+  if (lock) {
+    const lockTitle =
+      lock.scope === "state"
+        ? "Locked to this state's region"
+        : "Locked to this county's region";
+    return `<select class="agency-region-select" aria-label="Region for ${aria}" disabled title="${esc(lockTitle)}">${opts}</select>`;
+  }
   return `<select class="agency-region-select" aria-label="Region for ${aria}" onchange="updateAgencyRegion(${Number(idx)}, this.value)">${opts}</select>`;
 }
 
