@@ -987,7 +987,7 @@
                 <label class="settings-field settings-regions-add-field">Region Name
                   <input type="text" id="regionsNewName" placeholder="e.g. East TN, Northwest, District 2, etc..." maxlength="120" />
                 </label>
-                <button type="button" class="btn" id="regionsAddBtn">Add Region</button>
+                <button type="button" class="btn settings-regions-btn" id="regionsAddBtn">Add Region</button>
               </div>
               <div id="regionsMsg" class="msg settings-regions-msg"></div>
               <ul id="regionsList" class="settings-regions-list"></ul>
@@ -1007,9 +1007,9 @@
                 <label class="settings-field">Region
                   <select id="regionsAssignRegion"><option value="">Select Region</option></select>
                 </label>
-              </div>
-              <div class="settings-regions-assign-actions">
-                <button type="button" class="btn" id="regionsAssignBtn">Assign State</button>
+                <div class="settings-regions-assign-btn-wrap">
+                  <button type="button" class="btn settings-regions-btn" id="regionsAssignBtn">Assign State</button>
+                </div>
               </div>
               <div id="regionsAssignMsg" class="msg settings-regions-msg"></div>
               <ul id="regionsLocksList" class="settings-regions-locks-list"></ul>
@@ -1142,33 +1142,39 @@
                       })
                       .filter(Boolean);
                     var count = Number(r.agencyCount) || names.length || 0;
-                    var members =
-                      count === 0
-                        ? '<div class="settings-regions-members">No Agencies Assigned</div>'
-                        : '<div class="settings-regions-members">' +
-                          esc(String(count)) +
-                          " Agenc" +
+                    var metaParts = [];
+                    if (count === 0) {
+                      metaParts.push("No agencies");
+                    } else {
+                      metaParts.push(
+                        String(count) +
+                          " agenc" +
                           (count === 1 ? "y" : "ies") +
-                          ": " +
-                          esc(names.slice(0, 8).join(", ")) +
-                          (names.length > 8 ? "…" : "") +
-                          "</div>";
+                          (names.length
+                            ? ": " + names.slice(0, 4).join(", ") + (names.length > 4 ? "…" : "")
+                            : "")
+                      );
+                    }
                     var locks = Array.isArray(r.lockedCounties) ? r.lockedCounties : [];
-                    var locksHtml =
-                      locks.length === 0
-                        ? ""
-                        : '<div class="settings-regions-members">Assignments: ' +
-                          esc(
-                            locks
-                              .map(function (l) {
-                                if (l.scope === "state") {
-                                  return (l.state || "") + " (Entire State)";
-                                }
-                                return (l.county || "") + ", " + (l.state || "");
-                              })
-                              .join("; ")
-                          ) +
-                          "</div>";
+                    if (locks.length) {
+                      metaParts.push(
+                        "Assigned: " +
+                          locks
+                            .map(function (l) {
+                              if (l.scope === "state") {
+                                return (l.state || "") + " (state)";
+                              }
+                              return (l.county || "") + ", " + (l.state || "");
+                            })
+                            .join("; ")
+                      );
+                    }
+                    var metaHtml =
+                      '<div class="settings-regions-meta" title="' +
+                      esc(metaParts.join(" · ")) +
+                      '">' +
+                      esc(metaParts.join(" · ")) +
+                      "</div>";
                     return (
                       '<li class="settings-regions-item" data-region-id="' +
                       esc(r.id) +
@@ -1176,14 +1182,15 @@
                       esc(r.name) +
                       '">' +
                       '<div class="settings-regions-item-row" data-region-view>' +
+                      '<div class="settings-regions-item-main">' +
                       '<div class="settings-regions-item-name">' +
                       esc(r.name) +
                       "</div>" +
-                      '<button type="button" class="btn" data-region-rename>Rename</button>' +
-                      '<button type="button" class="btn danger" data-region-delete>Delete</button>' +
+                      metaHtml +
                       "</div>" +
-                      members +
-                      locksHtml +
+                      '<button type="button" class="btn settings-regions-btn" data-region-rename>Rename</button>' +
+                      '<button type="button" class="btn danger settings-regions-btn" data-region-delete>Delete</button>' +
+                      "</div>" +
                       "</li>"
                     );
                   })
@@ -1219,7 +1226,7 @@
                       esc(l.regionName || "Unknown Region") +
                       "</span>" +
                       "</div>" +
-                      '<button type="button" class="btn" data-region-unlock>Unassign</button>' +
+                      '<button type="button" class="btn settings-regions-btn" data-region-unlock>Unassign</button>' +
                       "</li>"
                     );
                   })
@@ -1247,13 +1254,15 @@
                 edit.setAttribute("data-region-edit", "1");
                 edit.innerHTML =
                   '<input type="text" data-region-name maxlength="120" />' +
-                  '<button type="button" class="btn" data-region-save>Save</button>' +
-                  '<button type="button" class="btn" data-region-cancel>Cancel</button>';
+                  '<button type="button" class="btn settings-regions-btn" data-region-save>Save</button>' +
+                  '<button type="button" class="btn settings-regions-btn" data-region-cancel>Cancel</button>';
                 var inp = edit.querySelector("[data-region-name]");
                 if (inp) inp.value = currentName;
-                var members = li.querySelector(".settings-regions-members");
-                if (members) li.insertBefore(edit, members);
-                else li.appendChild(edit);
+                if (view && view.parentNode) {
+                  view.parentNode.insertBefore(edit, view.nextSibling);
+                } else {
+                  li.appendChild(edit);
+                }
                 if (inp) {
                   inp.focus();
                   inp.select();

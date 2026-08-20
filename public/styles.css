@@ -2742,22 +2742,22 @@ a.settings-hub-card:visited {
 .settings-regions-editor {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.65rem;
 }
 
 .settings-regions-section {
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 0.85rem 1rem;
+  padding: 0.65rem 0.75rem;
 }
 
 .settings-regions-section-header {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.45rem;
 }
 
 .settings-regions-section-header h3 {
-  margin: 0 0 0.25rem;
-  font-size: 1rem;
+  margin: 0;
+  font-size: 0.95rem;
   font-weight: 600;
 }
 
@@ -2768,7 +2768,7 @@ a.settings-hub-card:visited {
 .settings-regions-add-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.6rem;
+  gap: 0.5rem;
   align-items: end;
 }
 
@@ -2776,18 +2776,28 @@ a.settings-hub-card:visited {
   min-width: 0;
 }
 
+.settings-regions-section .settings-field {
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+
 .settings-regions-msg {
-  min-height: 1.25rem;
-  margin: 0.5rem 0 0;
+  min-height: 0;
+  margin: 0.35rem 0 0;
+}
+
+.settings-regions-msg:empty {
+  display: none;
+  margin: 0;
 }
 
 .settings-regions-list {
   list-style: none;
   padding: 0;
-  margin: 0.65rem 0 0;
+  margin: 0.45rem 0 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
   max-height: min(38vh, 420px);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2795,30 +2805,36 @@ a.settings-hub-card:visited {
 }
 
 .settings-regions-empty {
-  padding: 0.65rem 0.75rem;
+  padding: 0.45rem 0.55rem;
   color: var(--muted);
   border: 1px dashed var(--line);
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .settings-regions-item {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0.55rem 0.65rem;
+  padding: 0.35rem 0.5rem;
   flex-shrink: 0;
 }
 
 .settings-regions-item-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0.5rem;
+  gap: 0.4rem;
   align-items: center;
+}
+
+.settings-regions-item-main {
+  min-width: 0;
 }
 
 .settings-regions-item-name {
   min-width: 0;
   font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
@@ -2828,32 +2844,48 @@ a.settings-hub-card:visited {
   box-sizing: border-box;
 }
 
+.settings-regions-meta {
+  margin-top: 0.1rem;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .settings-regions-members {
-  margin-top: 0.4rem;
   font-size: 0.85rem;
   color: var(--muted);
 }
 
+.settings-regions-btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .settings-regions-assign-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 0.5rem;
   align-items: end;
 }
 
-.settings-regions-assign-actions {
+.settings-regions-assign-btn-wrap {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 0.75rem;
+  align-items: flex-end;
+  padding-bottom: 1px;
 }
 
 .settings-regions-locks-list {
   list-style: none;
   padding: 0;
-  margin: 0.85rem 0 0;
+  margin: 0.45rem 0 0;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.3rem;
   max-height: min(28vh, 320px);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2864,29 +2896,45 @@ a.settings-hub-card:visited {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0.5rem 0.65rem;
+  padding: 0.28rem 0.5rem;
 }
 
 .settings-regions-lock-label {
   min-width: 0;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-regions-lock-label .settings-regions-members {
+  font-size: inherit;
 }
 
 @media (max-width: 700px) {
   .settings-regions-add-row,
-  .settings-regions-item-row,
+  .settings-regions-item-row {
+    grid-template-columns: 1fr;
+  }
+
   .settings-regions-assign-grid {
     grid-template-columns: 1fr;
   }
 
-  .settings-regions-assign-actions {
-    justify-content: stretch;
+  .settings-regions-assign-btn-wrap .btn {
+    width: 100%;
   }
 
-  .settings-regions-assign-actions .btn {
-    width: 100%;
+  .settings-regions-meta {
+    white-space: normal;
+  }
+
+  .settings-regions-lock-label {
+    white-space: normal;
   }
 
   .settings-regions-list {
