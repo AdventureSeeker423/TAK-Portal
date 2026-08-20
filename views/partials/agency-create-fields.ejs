@@ -170,7 +170,8 @@
   <% } %>
 
   <% if (_showRegion) { %>
-  <label id="<%= _idPrefix %>regionFieldWrap">Region <span id="<%= _idPrefix %>regionOptionalHint">(optional)</span>
+  <label id="<%= _idPrefix %>regionFieldWrap">
+    <span>Region <span class="agencyCreateOptionalHint" id="<%= _idPrefix %>regionOptionalHint">(optional)</span></span>
     <select name="regionId" id="<%= _idPrefix %>regionIdSelect">
       <option value="" <%= !_selectedRegionId ? "selected" : "" %>>None</option>
       <% _regionOpts.forEach(function (r) { %>
