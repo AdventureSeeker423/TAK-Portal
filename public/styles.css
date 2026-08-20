@@ -2788,6 +2788,10 @@ a.settings-hub-card:visited {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-height: min(38vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
 }
 
 .settings-regions-empty {
@@ -2802,6 +2806,7 @@ a.settings-hub-card:visited {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.55rem 0.65rem;
+  flex-shrink: 0;
 }
 
 .settings-regions-item-row {
@@ -2849,6 +2854,10 @@ a.settings-hub-card:visited {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  max-height: min(28vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
 }
 
 .settings-regions-lock-item {
@@ -2878,6 +2887,14 @@ a.settings-hub-card:visited {
 
   .settings-regions-assign-actions .btn {
     width: 100%;
+  }
+
+  .settings-regions-list {
+    max-height: min(32vh, 280px);
+  }
+
+  .settings-regions-locks-list {
+    max-height: min(24vh, 220px);
   }
 }
 
