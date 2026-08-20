@@ -2848,7 +2848,7 @@ a.settings-hub-card:visited {
 }
 
 .settings-atak-apk-name {
-  max-width: 10rem;
+  max-width: 22rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
