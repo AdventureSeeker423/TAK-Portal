@@ -108,7 +108,7 @@
             <option value="all" selected>All Groups</option>
             <option value="agency">Agency Groups</option>
             <option value="county">County Groups</option>
-            <option value="region">Region Groups</option>
+            <option value="region">Regional Groups</option>
             <option value="state">State Groups</option>
             <option value="global">Global Groups</option>
           </select>
@@ -1376,7 +1376,7 @@ function updateGroupScopeDetailOptions() {
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
     groupScopeDetailSelect.innerHTML =
-      `<option value="">All Region Groups</option>` +
+      `<option value="">All Regional Groups</option>` +
       regionList
         .map((r) => `<option value="${esc(r)}">${esc(r)}</option>`)
         .join("");
