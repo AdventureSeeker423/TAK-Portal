@@ -764,6 +764,7 @@ if (editStateSelect && stateSelect) {
 
   renderAgencyList();
   updateGroupScopeDetailOptions();
+  updateCreateEditTypeOptions();
 }
 
 async function loadRegions() {
@@ -789,6 +790,52 @@ async function loadRegions() {
   if (editRegionSelect && regionSelect) {
     editRegionSelect.innerHTML = regionSelect.innerHTML;
   }
+  updateCreateEditTypeOptions();
+}
+
+/** Which create/edit group types have underlying data available. */
+function getGroupTypeAvailability() {
+  const agencies = Array.isArray(agenciesCache) ? agenciesCache : [];
+  const regions = Array.isArray(regionsCache) ? regionsCache : [];
+  return {
+    agency: agencies.some(
+      (a) => String(a.groupPrefix || "").trim() || String(a.suffix || "").trim()
+    ),
+    county: agencies.some((a) => String(a.county || "").trim()),
+    region: regions.some((r) => String(r?.name || "").trim()),
+    state: agencies.some((a) => String(a.state || "").trim()),
+    generic: true,
+  };
+}
+
+function applyTypeOptionVisibility(select, { forceShow } = {}) {
+  if (!select || select.disabled) return;
+  const avail = getGroupTypeAvailability();
+  const force = String(forceShow || "").trim().toLowerCase();
+  Array.from(select.options).forEach((opt) => {
+    const v = String(opt.value || "").trim().toLowerCase();
+    if (v === "generic") {
+      opt.hidden = false;
+      opt.disabled = false;
+      return;
+    }
+    const show = !!avail[v] || (force && v === force);
+    opt.hidden = !show;
+    opt.disabled = !show;
+  });
+  const selected = select.options[select.selectedIndex];
+  if (selected && (selected.hidden || selected.disabled)) {
+    const first = Array.from(select.options).find((o) => !o.hidden && !o.disabled);
+    if (first) {
+      select.value = first.value;
+      if (typeof select.onchange === "function") select.onchange();
+    }
+  }
+}
+
+function updateCreateEditTypeOptions(forceEditType) {
+  applyTypeOptionVisibility(createType);
+  applyTypeOptionVisibility(editType, { forceShow: forceEditType });
 }
 
 function agencyItems(){
@@ -1464,7 +1511,45 @@ async function loadGroups(){
 
   groupsCache = out || [];
   setMsg(listMsg, `Loaded ${groupsCache.length} group(s).`, true);
+  updateGroupScopeSelectOptions();
   renderGroups();
+}
+
+/** Hide scope filter options that have no matching groups in the current list. */
+function updateGroupScopeSelectOptions() {
+  if (!groupScopeSelect) return;
+
+  const present = {
+    agency: false,
+    county: false,
+    region: false,
+    state: false,
+    global: false,
+  };
+  for (const g of Array.isArray(groupsCache) ? groupsCache : []) {
+    const scope = getPortalGroupScope(g);
+    if (Object.prototype.hasOwnProperty.call(present, scope)) {
+      present[scope] = true;
+    }
+  }
+
+  const prev = String(groupScopeSelect.value || "all").trim().toLowerCase();
+  Array.from(groupScopeSelect.options).forEach((opt) => {
+    const v = String(opt.value || "").trim().toLowerCase();
+    if (v === "all") {
+      opt.hidden = false;
+      opt.disabled = false;
+      return;
+    }
+    const show = !!present[v];
+    opt.hidden = !show;
+    opt.disabled = !show;
+  });
+
+  if (prev !== "all" && !present[prev]) {
+    groupScopeSelect.value = "all";
+  }
+  updateGroupScopeDetailOptions();
 }
 
 const exportGroupsCsvBtn = document.getElementById("exportGroupsCsvBtn");
@@ -1683,6 +1768,7 @@ window.editGroupName = async (groupId) => {
       editType.value = "agency";
       editType.disabled = true;
     } else {
+      updateCreateEditTypeOptions(parsed.type || "generic");
       editType.value = parsed.type || "generic";
       editType.disabled = false;
     }
@@ -2911,6 +2997,7 @@ if (adminAccessOverlay) {
   await loadAgencies();
   await loadRegions();
   await loadTemplatesForMassModal();
+  updateCreateEditTypeOptions();
   updateGroupScopeDetailOptions();
   await loadGroups();
 })();
