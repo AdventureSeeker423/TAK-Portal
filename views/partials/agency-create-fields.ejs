@@ -139,7 +139,13 @@
   </label>
 </div>
 
-<div class="agencyCreateRow agencyCreateRow3">
+<%
+  const _showRegion = _regionOpts.length > 0;
+  let _typeRowClass = "agencyCreateRow";
+  if (_includeColor && _showRegion) _typeRowClass += " agencyCreateRow3";
+  else if (_includeColor || _showRegion) _typeRowClass += " agencyCreateRow2";
+%>
+<div class="<%= _typeRowClass %>">
   <label>Agency Type
     <select name="type" <%= _reqAttr %>>
       <option value="" disabled <%= !_selectedType ? "selected" : "" %>>Agency Type</option>
@@ -160,7 +166,8 @@
   </label>
   <% } %>
 
-  <label>Region <span class="agencyCreateOptionalHint">(optional)</span>
+  <% if (_showRegion) { %>
+  <label>Region (optional)
     <select name="regionId">
       <option value="" <%= !_selectedRegionId ? "selected" : "" %>>None</option>
       <% _regionOpts.forEach(function (r) { %>
@@ -168,6 +175,7 @@
       <% }); %>
     </select>
   </label>
+  <% } %>
 </div>
 
 <script>
