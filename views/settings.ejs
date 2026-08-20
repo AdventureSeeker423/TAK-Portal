@@ -1381,7 +1381,7 @@
                   var label =
                     String(li.getAttribute("data-region-name-value") || "").trim() ||
                     "this region";
-                  if (!confirm('Delete region "' + label + '"? Agencies will be unassigned from it. Existing region groups are kept.')) {
+                  if (!confirm('Delete region "' + label + '"? Agencies will be unassigned from it, and matching region groups will be deleted.')) {
                     return;
                   }
                   t.disabled = true;
@@ -1393,7 +1393,18 @@
                       return null;
                     });
                     if (!delRes.ok) throw new Error((delData && delData.error) || "Delete failed");
-                    setMsg(msgEl, "Region deleted.", true);
+                    var groupsDeleted = (delData && delData.groupsDeleted) || 0;
+                    setMsg(
+                      msgEl,
+                      groupsDeleted
+                        ? "Region deleted (" +
+                            groupsDeleted +
+                            " group" +
+                            (groupsDeleted === 1 ? "" : "s") +
+                            " removed)."
+                        : "Region deleted.",
+                      true
+                    );
                     await loadRegions();
                   } catch (err) {
                     setMsg(msgEl, err.message || "Delete failed", false);

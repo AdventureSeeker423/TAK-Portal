@@ -1,5 +1,5 @@
 /**
- * Rename Authentik Region groups when a region is renamed in the registry.
+ * Rename / delete Authentik Region groups when a region changes in the registry.
  */
 
 const groupsService = require("./groups.service");
@@ -49,6 +49,24 @@ function computeRenamedRegionGroupName(groupName, oldRegion, newRegion) {
 
 function isAgencyAdminGroupName(name) {
   return /-agencyadmin$/i.test(String(name || "").trim());
+}
+
+function isRegionGroupMatch(group, regionName) {
+  const region = regionsSvc.normalizeName(regionName);
+  if (!region) return false;
+
+  const gn = String(group?.name || "").trim();
+  if (!gn || isAgencyAdminGroupName(gn)) return false;
+
+  const attrs = group?.attributes && typeof group.attributes === "object" ? group.attributes : {};
+  const createdType = String(attrs.created_type || "").trim().toLowerCase();
+  const detail = String(attrs.created_type_detail || "").trim();
+  if (createdType === "region" && detail.toLowerCase() === region.toLowerCase()) {
+    return true;
+  }
+
+  // Name-based: tak_{Region} Title[_READ|_WRITE]
+  return !!computeRenamedRegionGroupName(gn, region, region);
 }
 
 async function renameRegionTakGroups(oldRegion, newRegion) {
@@ -107,6 +125,38 @@ async function renameRegionTakGroups(oldRegion, newRegion) {
 }
 
 /**
+ * Delete Authentik Region groups for a region name.
+ */
+async function deleteRegionTakGroups(regionName) {
+  const region = regionsSvc.normalizeName(regionName);
+  if (!region) return { groupsDeleted: 0, groupNames: [] };
+
+  const allGroups = await groupsService.getAllGroups({ includeHidden: true });
+  const targets = (Array.isArray(allGroups) ? allGroups : []).filter((g) =>
+    isRegionGroupMatch(g, region)
+  );
+
+  const groupNames = [];
+  let groupsDeleted = 0;
+  for (const g of targets) {
+    const gid = String(g?.pk ?? g?.id ?? "").trim();
+    const gn = String(g?.name || "").trim();
+    if (!gid) continue;
+    await groupsService.deleteGroupWithCleanup(gid, { ignoreLocks: true });
+    groupsDeleted += 1;
+    if (gn) groupNames.push(gn);
+  }
+
+  if (groupsDeleted > 0) {
+    try {
+      groupsService.invalidateGroupsCache();
+    } catch (_) {}
+  }
+
+  return { groupsDeleted, groupNames };
+}
+
+/**
  * Rename region in store + Authentik Region groups.
  */
 async function renameRegion(id, newNameRaw) {
@@ -119,8 +169,27 @@ async function renameRegion(id, newNameRaw) {
   return { region, oldName, newName, groupsRenamed };
 }
 
+/**
+ * Delete region from store and Authentik Region groups.
+ */
+async function deleteRegion(id) {
+  const result = regionsSvc.remove(id);
+  const regionName = regionsSvc.normalizeName(result?.region?.name);
+  let groupsDeleted = 0;
+  let groupNames = [];
+  if (regionName) {
+    const deleted = await deleteRegionTakGroups(regionName);
+    groupsDeleted = deleted.groupsDeleted || 0;
+    groupNames = deleted.groupNames || [];
+  }
+  return { ...result, groupsDeleted, groupNames };
+}
+
 module.exports = {
   computeRenamedRegionGroupName,
+  isRegionGroupMatch,
   renameRegionTakGroups,
+  deleteRegionTakGroups,
   renameRegion,
+  deleteRegion,
 };

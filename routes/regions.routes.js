@@ -184,11 +184,11 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   if (!requireGlobalAdmin(req, res)) return;
   try {
     const id = String(req.params.id || "").trim();
-    const result = regionsSvc.remove(id);
+    const result = await regionRenameSvc.deleteRegion(id);
     try {
       auditSvc.logEvent({
         actor: req.authentikUser,
@@ -200,6 +200,8 @@ router.delete("/:id", (req, res) => {
           name: result.region?.name,
           agenciesCleared: result.agenciesCleared,
           locksCleared: result.locksCleared,
+          groupsDeleted: result.groupsDeleted,
+          groupNames: result.groupNames,
         },
       });
     } catch (_) {}
