@@ -12,7 +12,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ## Version History
 
 ### v1.3.74 - 8/20/26
-✨ `Enhancement` - Plugins - Plugin Manager now syncs added plugins to TAK Server via SSH.  ATAK Clients can download these plugins directly within ATAK after scanning the TAK Portal Preference QR Code or by manually entering their update server details at "https://<takserver>:8443/update"<br>
+✨ `Enhancement` - Plugins - Plugin Manager now syncs added plugins to TAK Server via SSH.  ATAK Clients can download these plugins directly within ATAK after scanning the TAK Portal Preference QR Code or by manually entering their update server details at "https://takserverurl:8443/update"<br>
 
 
 ### v1.3.73 - 8/20/26
