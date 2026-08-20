@@ -52,7 +52,7 @@ router.get("/county-locks", (req, res) => {
     }));
     res.json(locks);
   } catch (err) {
-    res.status(500).json({ error: err?.message || "Failed to list county locks" });
+    res.status(500).json({ error: err?.message || "Failed to list county assignments" });
   }
 });
 
@@ -88,8 +88,8 @@ router.post("/county-locks", (req, res) => {
     } catch (_) {}
     res.status(201).json(result);
   } catch (err) {
-    const msg = err?.message || "Failed to lock";
-    const status = /required|not found|cannot lock/i.test(msg) ? 400 : 500;
+    const msg = err?.message || "Failed to assign";
+    const status = /required|not found|cannot assign/i.test(msg) ? 400 : 500;
     res.status(status).json({ error: msg });
   }
 });
@@ -119,7 +119,7 @@ router.delete("/county-locks", (req, res) => {
     } catch (_) {}
     res.json(result);
   } catch (err) {
-    const msg = err?.message || "Failed to unlock";
+    const msg = err?.message || "Failed to unassign";
     const status = /required|not found/i.test(msg) ? 400 : 500;
     res.status(status).json({ error: msg });
   }

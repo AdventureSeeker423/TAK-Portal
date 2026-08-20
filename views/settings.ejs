@@ -972,7 +972,7 @@
             <h2 id="settingsModalTitle-regions">Regions</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Create named regions (can span states). Lock an entire state or a single county so new agencies inherit that region. A state lock prevents county locks in that state.</span>
+              <span class="settings-help-popover">Create named regions (can span states). Assign an entire state or a single county so new agencies inherit that region. A state assignment prevents county assignments in that state.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -995,21 +995,21 @@
 
             <section class="settings-regions-section" aria-labelledby="settingsRegionsLockTitle">
               <div class="settings-regions-section-header">
-                <h3 id="settingsRegionsLockTitle">Lock states or counties to regions</h3>
+                <h3 id="settingsRegionsLockTitle">Assign States or Counties To Regions</h3>
               </div>
               <div class="settings-regions-assign-grid">
                 <label class="settings-field">State
                   <select id="regionsAssignState"><option value="">Select State</option></select>
                 </label>
                 <label class="settings-field">County
-                  <select id="regionsAssignCounty" disabled><option value="">Entire state</option></select>
+                  <select id="regionsAssignCounty" disabled><option value="">Entire State</option></select>
                 </label>
                 <label class="settings-field">Region
                   <select id="regionsAssignRegion"><option value="">Select Region</option></select>
                 </label>
               </div>
               <div class="settings-regions-assign-actions">
-                <button type="button" class="btn" id="regionsAssignBtn">Lock</button>
+                <button type="button" class="btn" id="regionsAssignBtn">Assign State</button>
               </div>
               <div id="regionsAssignMsg" class="msg settings-regions-msg"></div>
               <ul id="regionsLocksList" class="settings-regions-locks-list"></ul>
@@ -1110,7 +1110,7 @@
                 assignCounty.disabled = !st || stateLocked;
                 var cur = assignCounty.value;
                 assignCounty.innerHTML =
-                  '<option value="">Entire state</option>' +
+                  '<option value="">Entire State</option>' +
                   (stateLocked
                     ? ""
                     : counties
@@ -1124,14 +1124,14 @@
                   assignCounty.value = "";
                 }
                 if (assignBtn) {
-                  assignBtn.textContent = assignCounty.value ? "Lock county" : "Lock state";
+                  assignBtn.textContent = assignCounty.value ? "Assign County" : "Assign State";
                 }
               }
 
               function renderList() {
                 if (!regionsCache.length) {
                   listEl.innerHTML =
-                    '<li class="settings-regions-empty">No regions yet. Add one above.</li>';
+                    '<li class="settings-regions-empty">No Regions Yet. Add One Above.</li>';
                   return;
                 }
                 listEl.innerHTML = regionsCache
@@ -1144,10 +1144,10 @@
                     var count = Number(r.agencyCount) || names.length || 0;
                     var members =
                       count === 0
-                        ? '<div class="settings-regions-members">No agencies assigned</div>'
+                        ? '<div class="settings-regions-members">No Agencies Assigned</div>'
                         : '<div class="settings-regions-members">' +
                           esc(String(count)) +
-                          " agenc" +
+                          " Agenc" +
                           (count === 1 ? "y" : "ies") +
                           ": " +
                           esc(names.slice(0, 8).join(", ")) +
@@ -1157,12 +1157,12 @@
                     var locksHtml =
                       locks.length === 0
                         ? ""
-                        : '<div class="settings-regions-members">Locks: ' +
+                        : '<div class="settings-regions-members">Assignments: ' +
                           esc(
                             locks
                               .map(function (l) {
                                 if (l.scope === "state") {
-                                  return (l.state || "") + " (entire state)";
+                                  return (l.state || "") + " (Entire State)";
                                 }
                                 return (l.county || "") + ", " + (l.state || "");
                               })
@@ -1194,14 +1194,14 @@
                 if (!locksListEl) return;
                 if (!locksCache.length) {
                   locksListEl.innerHTML =
-                    '<li class="settings-regions-empty">No state or county locks yet.</li>';
+                    '<li class="settings-regions-empty">No State or County Assignments Yet.</li>';
                   return;
                 }
                 locksListEl.innerHTML = locksCache
                   .map(function (l) {
                     var label =
                       l.scope === "state"
-                        ? esc(l.state) + " (entire state)"
+                        ? esc(l.state) + " (Entire State)"
                         : esc(l.county) + ", " + esc(l.state);
                     return (
                       '<li class="settings-regions-lock-item" data-lock-scope="' +
@@ -1216,10 +1216,10 @@
                       label +
                       "</strong>" +
                       '<span class="settings-regions-members"> → ' +
-                      esc(l.regionName || "Unknown region") +
+                      esc(l.regionName || "Unknown Region") +
                       "</span>" +
                       "</div>" +
-                      '<button type="button" class="btn" data-region-unlock>Unlock</button>' +
+                      '<button type="button" class="btn" data-region-unlock>Unassign</button>' +
                       "</li>"
                     );
                   })
@@ -1231,7 +1231,7 @@
                 var data = await res.json().catch(function () {
                   return null;
                 });
-                if (!res.ok) throw new Error((data && data.error) || "Failed to load locks");
+                if (!res.ok) throw new Error((data && data.error) || "Failed to load assignments");
                 locksCache = Array.isArray(data) ? data : [];
                 renderLocksList();
                 fillCountySelect();
@@ -1411,7 +1411,7 @@
               if (assignCounty) {
                 assignCounty.addEventListener("change", function () {
                   if (assignBtn) {
-                    assignBtn.textContent = assignCounty.value ? "Lock county" : "Lock state";
+                    assignBtn.textContent = assignCounty.value ? "Assign County" : "Assign State";
                   }
                 });
               }
@@ -1437,16 +1437,16 @@
                     var data = await res.json().catch(function () {
                       return null;
                     });
-                    if (!res.ok) throw new Error((data && data.error) || "Lock failed");
+                    if (!res.ok) throw new Error((data && data.error) || "Assign failed");
                     var updated = (data && data.agenciesUpdated) || 0;
                     var scope = data && data.lock && data.lock.scope;
                     var where =
                       scope === "state"
-                        ? state + " (entire state)"
+                        ? state + " (Entire State)"
                         : county + ", " + state;
                     setMsg(
                       assignMsg,
-                      "Locked " +
+                      "Assigned " +
                         where +
                         (updated
                           ? " (updated " + updated + " existing agenc" + (updated === 1 ? "y" : "ies") + ")."
@@ -1456,7 +1456,7 @@
                     await Promise.all([loadRegions(), loadLocks()]);
                     fillCountySelect();
                   } catch (err) {
-                    setMsg(assignMsg, err.message || "Lock failed", false);
+                    setMsg(assignMsg, err.message || "Assign failed", false);
                   } finally {
                     assignBtn.disabled = false;
                   }
@@ -1474,9 +1474,9 @@
                   var scope = li.getAttribute("data-lock-scope") || "county";
                   var label =
                     scope === "state"
-                      ? state + " (entire state)"
+                      ? state + " (Entire State)"
                       : county + ", " + state;
-                  if (!confirm('Unlock "' + label + '"? Future agencies can pick any region.')) {
+                  if (!confirm('Unassign "' + label + '"? Future agencies can pick any region.')) {
                     return;
                   }
                   t.disabled = true;
@@ -1492,12 +1492,12 @@
                     var data = await res.json().catch(function () {
                       return null;
                     });
-                    if (!res.ok) throw new Error((data && data.error) || "Unlock failed");
-                    setMsg(assignMsg, "Unlocked " + label + ".", true);
+                    if (!res.ok) throw new Error((data && data.error) || "Unassign failed");
+                    setMsg(assignMsg, "Unassigned " + label + ".", true);
                     await Promise.all([loadRegions(), loadLocks()]);
                     fillCountySelect();
                   } catch (err) {
-                    setMsg(assignMsg, err.message || "Unlock failed", false);
+                    setMsg(assignMsg, err.message || "Unassign failed", false);
                   } finally {
                     t.disabled = false;
                   }

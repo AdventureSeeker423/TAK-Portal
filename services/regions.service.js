@@ -176,7 +176,7 @@ function lockState(regionId, stateRaw) {
   );
   if (countyLocksInState.length) {
     throw new Error(
-      `Cannot lock entire state ${state} while county locks exist. Unlock those counties first.`
+      `Cannot assign entire state ${state} while county assignments exist. Unassign those counties first.`
     );
   }
 
@@ -213,7 +213,7 @@ function lockCounty(regionId, stateRaw, countyRaw) {
   const locks = loadLocks().map(normalizeLock).filter(Boolean);
   if (findStateLock(state, locks)) {
     throw new Error(
-      `Cannot lock a county in ${state} because the entire state is locked. Unlock the state first.`
+      `Cannot assign a county in ${state} because the entire state is already assigned. Unassign the state first.`
     );
   }
 
@@ -256,7 +256,7 @@ function unlockState(stateRaw) {
   const before = locks.length;
   const next = locks.filter((l) => !(l.scope === "state" && l.state === state));
   if (next.length === before) {
-    throw new Error("State lock not found");
+    throw new Error("State assignment not found");
   }
   saveLocks(next);
   return { unlocked: { scope: "state", state } };
@@ -276,7 +276,7 @@ function unlockCounty(stateRaw, countyRaw) {
       !(l.scope === "county" && countyLockKey(l.state, l.county) === lockKey)
   );
   if (next.length === before) {
-    throw new Error("County lock not found");
+    throw new Error("County assignment not found");
   }
   saveLocks(next);
   return { unlocked: { scope: "county", state, county } };

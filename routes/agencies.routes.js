@@ -1037,7 +1037,7 @@ router.patch("/:index/region", (req, res) => {
   const lockedId = regionsSvc.lockedRegionIdForAgency(agency);
   if (lockedId) {
     return res.status(400).json({
-      error: "Region is locked for this agency's county",
+      error: "Region is assigned for this agency's location",
       regionId: lockedId,
       regionName: regionsSvc.getRegionName(lockedId) || null,
       locked: true,

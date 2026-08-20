@@ -716,8 +716,8 @@ function buildAgencyRegionCellHtml(a) {
   if (lock) {
     const lockTitle =
       lock.scope === "state"
-        ? "Locked to this state's region"
-        : "Locked to this county's region";
+        ? "Assigned to this state's region"
+        : "Assigned to this county's region";
     return `<select class="agency-region-select" aria-label="Region for ${aria}" disabled title="${esc(lockTitle)}">${opts}</select>`;
   }
   return `<select class="agency-region-select" aria-label="Region for ${aria}" onchange="updateAgencyRegion(${Number(idx)}, this.value)">${opts}</select>`;
