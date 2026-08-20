@@ -11,6 +11,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.73 - 8/20/26
+✨ `Enhancement` - Settings - Supported TAK Clients now optionally allows you to upload your own hosted APK for ATAK that is downloadable from the "Setup My Device" page
+
 ### v1.3.72 - 8/19/26
 🐛 `Bug Fix` - Fixes issue with email settings for "Always CC and BCC" fields not saving before a test email is sent<br>
 🐛 `Bug Fix` - Fixes issue with the groups updated email template using the old callsign logic and not pulling from custom callsign formatting as defined in settings
