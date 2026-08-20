@@ -2775,6 +2775,12 @@
                         style="<%= atakApkInfo.uploaded ? '' : 'display:none;' %>"
                         title="<%= atakApkInfo.originalName || '' %>"
                       ><%= atakApkInfo.originalName || "" %></span>
+                      <span
+                        class="settings-atak-apk-status"
+                        data-atak-apk-status
+                        style="display:none;"
+                        aria-live="polite"
+                      ></span>
                     </span>
                   <% } %>
                 </span>
@@ -3026,17 +3032,33 @@
                 var uploadBtn = actions.querySelector("[data-atak-apk-upload]");
                 var removeBtn = actions.querySelector("[data-atak-apk-remove]");
                 var nameEl = actions.querySelector("[data-atak-apk-name]");
+                var statusEl = actions.querySelector("[data-atak-apk-status]");
                 var busy = false;
+                var lastUploaded = !!(nameEl && nameEl.style.display !== "none" && nameEl.textContent);
 
-                function setBusy(next) {
+                function setStatus(text) {
+                  if (!statusEl) return;
+                  var msg = String(text || "").trim();
+                  statusEl.textContent = msg;
+                  statusEl.style.display = msg ? "" : "none";
+                }
+
+                function setBusy(next, statusText) {
                   busy = !!next;
+                  actions.classList.toggle("is-busy", busy);
                   if (uploadBtn) uploadBtn.disabled = busy;
                   if (removeBtn) removeBtn.disabled = busy;
+                  if (busy) {
+                    setStatus(statusText || "Working…");
+                  } else {
+                    setStatus("");
+                  }
                 }
 
                 function applyInfo(info) {
                   var uploaded = !!(info && info.uploaded);
                   var originalName = (info && info.originalName) || "";
+                  lastUploaded = uploaded;
                   if (uploadBtn) {
                     uploadBtn.textContent = uploaded ? "Replace APK" : "Upload APK";
                   }
@@ -3047,6 +3069,14 @@
                     nameEl.textContent = originalName;
                     nameEl.title = originalName;
                     nameEl.style.display = uploaded ? "" : "none";
+                  }
+                }
+
+                function parseJsonSafe(raw) {
+                  try {
+                    return JSON.parse(raw);
+                  } catch (_) {
+                    return null;
                   }
                 }
 
@@ -3066,35 +3096,72 @@
                       fileInput.value = "";
                       return;
                     }
-                    setBusy(true);
+
+                    setBusy(true, "Uploading… 0%");
+                    if (uploadBtn) uploadBtn.textContent = "Uploading…";
+                    if (nameEl) {
+                      nameEl.textContent = file.name;
+                      nameEl.title = file.name;
+                      nameEl.style.display = "";
+                    }
+
                     var fd = new FormData();
                     fd.append("apk", file);
-                    fetch("/api/settings/atak-apk/upload", {
-                      method: "POST",
-                      body: fd,
-                      credentials: "same-origin",
-                      headers: { "X-Requested-With": "XMLHttpRequest" },
-                    })
-                      .then(function (res) {
-                        return res.json().then(function (body) {
-                          return { ok: res.ok, body: body };
-                        });
-                      })
-                      .then(function (result) {
-                        if (!result.ok || !result.body || !result.body.ok) {
-                          throw new Error(
-                            (result.body && result.body.error) || "Upload failed."
-                          );
+                    var xhr = new XMLHttpRequest();
+                    xhr.open("POST", "/api/settings/atak-apk/upload");
+                    xhr.withCredentials = true;
+                    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+                    xhr.setRequestHeader("Accept", "application/json");
+
+                    xhr.upload.onprogress = function (evt) {
+                      if (!evt.lengthComputable || !evt.total) {
+                        setStatus("Uploading…");
+                        return;
+                      }
+                      var pct = Math.max(0, Math.min(100, Math.round((evt.loaded / evt.total) * 100)));
+                      setStatus("Uploading… " + pct + "%");
+                      if (uploadBtn) uploadBtn.textContent = "Uploading… " + pct + "%";
+                    };
+
+                    xhr.upload.onload = function () {
+                      setStatus("Saving…");
+                      if (uploadBtn) uploadBtn.textContent = "Saving…";
+                    };
+
+                    xhr.onerror = function () {
+                      fileInput.value = "";
+                      setBusy(false);
+                      if (uploadBtn) {
+                        uploadBtn.textContent = lastUploaded ? "Replace APK" : "Upload APK";
+                      }
+                      if (!lastUploaded && nameEl) {
+                        nameEl.textContent = "";
+                        nameEl.title = "";
+                        nameEl.style.display = "none";
+                      }
+                      alert("Upload failed.");
+                    };
+
+                    xhr.onload = function () {
+                      var body = parseJsonSafe(xhr.responseText);
+                      fileInput.value = "";
+                      setBusy(false);
+                      if (xhr.status < 200 || xhr.status >= 300 || !body || !body.ok) {
+                        if (uploadBtn) {
+                          uploadBtn.textContent = lastUploaded ? "Replace APK" : "Upload APK";
                         }
-                        applyInfo(result.body);
-                      })
-                      .catch(function (err) {
-                        alert(err && err.message ? err.message : "Upload failed.");
-                      })
-                      .finally(function () {
-                        fileInput.value = "";
-                        setBusy(false);
-                      });
+                        if (!lastUploaded && nameEl) {
+                          nameEl.textContent = "";
+                          nameEl.title = "";
+                          nameEl.style.display = "none";
+                        }
+                        alert((body && body.error) || "Upload failed.");
+                        return;
+                      }
+                      applyInfo(body);
+                    };
+
+                    xhr.send(fd);
                   });
                 }
 
@@ -3106,7 +3173,8 @@
                     if (!confirm("Remove the hosted ATAK APK? Setup My Device will use the Play Store link again.")) {
                       return;
                     }
-                    setBusy(true);
+                    setBusy(true, "Removing…");
+                    if (removeBtn) removeBtn.textContent = "Removing…";
                     fetch("/api/settings/atak-apk", {
                       method: "DELETE",
                       credentials: "same-origin",
@@ -3132,6 +3200,7 @@
                         alert(err && err.message ? err.message : "Remove failed.");
                       })
                       .finally(function () {
+                        if (removeBtn) removeBtn.textContent = "Remove APK";
                         setBusy(false);
                       });
                   });

@@ -2841,9 +2841,9 @@ a.settings-hub-card:visited {
 }
 
 .settings-atak-apk-btn {
-  padding: 0.25rem 0.55rem;
-  font-size: 0.8rem;
-  line-height: 1.2;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
@@ -2853,6 +2853,17 @@ a.settings-hub-card:visited {
   text-overflow: ellipsis;
   white-space: nowrap;
   margin: 0;
+}
+
+.settings-atak-apk-status {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.settings-atak-apk-actions.is-busy .settings-atak-apk-btn:disabled {
+  opacity: 0.75;
+  cursor: wait;
 }
 
 .settings-auto-create-section.is-disabled {
