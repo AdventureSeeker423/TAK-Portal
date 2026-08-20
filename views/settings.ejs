@@ -981,14 +981,13 @@
           <div class="settings-regions-editor">
             <section class="settings-regions-section" aria-labelledby="settingsRegionsManageTitle">
               <div class="settings-regions-section-header">
-                <h3 id="settingsRegionsManageTitle">Manage regions</h3>
-                <p class="settings-help">Named areas that can span states. Assign agencies on the Agencies page or below.</p>
+                <h3 id="settingsRegionsManageTitle">Manage Regions</h3>
               </div>
               <div class="settings-regions-add-row">
-                <label class="settings-field settings-regions-add-field">Region name
+                <label class="settings-field settings-regions-add-field">Region Name
                   <input type="text" id="regionsNewName" placeholder="e.g. East TN" maxlength="120" />
                 </label>
-                <button type="button" class="btn" id="regionsAddBtn">Add region</button>
+                <button type="button" class="btn" id="regionsAddBtn">Add Region</button>
               </div>
               <div id="regionsMsg" class="msg settings-regions-msg"></div>
               <ul id="regionsList" class="settings-regions-list"></ul>
@@ -996,8 +995,7 @@
 
             <section class="settings-regions-section" aria-labelledby="settingsRegionsAssignTitle">
               <div class="settings-regions-section-header">
-                <h3 id="settingsRegionsAssignTitle">Assign by county</h3>
-                <p class="settings-help">Sets the region on every agency currently in that state + county. Does not lock future agencies.</p>
+                <h3 id="settingsRegionsAssignTitle">Mass Assign Region To States or Counties</h3>
               </div>
               <div class="settings-regions-assign-grid">
                 <label class="settings-field">State
@@ -1011,7 +1009,7 @@
                 </label>
               </div>
               <div class="settings-regions-assign-actions">
-                <button type="button" class="btn" id="regionsAssignBtn">Apply to agencies</button>
+                <button type="button" class="btn" id="regionsAssignBtn">Apply To Agencies</button>
               </div>
               <div id="regionsAssignMsg" class="msg settings-regions-msg"></div>
             </section>
@@ -1143,12 +1141,14 @@
                     return (
                       '<li class="settings-regions-item" data-region-id="' +
                       esc(r.id) +
-                      '">' +
-                      '<div class="settings-regions-item-row">' +
-                      '<input type="text" data-region-name value="' +
+                      '" data-region-name-value="' +
                       esc(r.name) +
-                      '" maxlength="120" />' +
-                      '<button type="button" class="btn" data-region-save>Save</button>' +
+                      '">' +
+                      '<div class="settings-regions-item-row" data-region-view>' +
+                      '<div class="settings-regions-item-name">' +
+                      esc(r.name) +
+                      "</div>" +
+                      '<button type="button" class="btn" data-region-rename>Rename</button>' +
                       '<button type="button" class="btn danger" data-region-delete>Delete</button>' +
                       "</div>" +
                       members +
@@ -1156,6 +1156,37 @@
                     );
                   })
                   .join("");
+              }
+
+              function enterRenameMode(li) {
+                if (!li || li.querySelector("[data-region-edit]")) return;
+                var currentName = String(li.getAttribute("data-region-name-value") || "").trim();
+                var view = li.querySelector("[data-region-view]");
+                if (view) view.hidden = true;
+                var edit = document.createElement("div");
+                edit.className = "settings-regions-item-row";
+                edit.setAttribute("data-region-edit", "1");
+                edit.innerHTML =
+                  '<input type="text" data-region-name maxlength="120" />' +
+                  '<button type="button" class="btn" data-region-save>Save</button>' +
+                  '<button type="button" class="btn" data-region-cancel>Cancel</button>';
+                var inp = edit.querySelector("[data-region-name]");
+                if (inp) inp.value = currentName;
+                var members = li.querySelector(".settings-regions-members");
+                if (members) li.insertBefore(edit, members);
+                else li.appendChild(edit);
+                if (inp) {
+                  inp.focus();
+                  inp.select();
+                }
+              }
+
+              function exitRenameMode(li) {
+                if (!li) return;
+                var edit = li.querySelector("[data-region-edit]");
+                if (edit) edit.remove();
+                var view = li.querySelector("[data-region-view]");
+                if (view) view.hidden = false;
               }
 
               async function loadRegions() {
@@ -1215,9 +1246,19 @@
                 var li = t.closest("li[data-region-id]");
                 if (!li) return;
                 var id = li.getAttribute("data-region-id");
-                var nameInp = li.querySelector("[data-region-name]");
+
+                if (t.matches("[data-region-rename]")) {
+                  enterRenameMode(li);
+                  return;
+                }
+
+                if (t.matches("[data-region-cancel]")) {
+                  exitRenameMode(li);
+                  return;
+                }
 
                 if (t.matches("[data-region-save]")) {
+                  var nameInp = li.querySelector("[data-region-name]");
                   var name = String(nameInp && nameInp.value || "").trim();
                   if (!name) return setMsg(msgEl, "Region name is required", false);
                   t.disabled = true;
@@ -1249,7 +1290,9 @@
                 }
 
                 if (t.matches("[data-region-delete]")) {
-                  var label = String(nameInp && nameInp.value || "").trim() || "this region";
+                  var label =
+                    String(li.getAttribute("data-region-name-value") || "").trim() ||
+                    "this region";
                   if (!confirm('Delete region "' + label + '"? Agencies will be unassigned from it. Existing region groups are kept.')) {
                     return;
                   }
@@ -1270,6 +1313,15 @@
                     t.disabled = false;
                   }
                 }
+              });
+
+              listEl.addEventListener("keydown", function (e) {
+                if (!e || e.key !== "Escape") return;
+                var t = e.target;
+                if (!t || !t.closest) return;
+                var li = t.closest("li[data-region-id]");
+                if (!li || !li.querySelector("[data-region-edit]")) return;
+                exitRenameMode(li);
               });
 
               if (assignState) {

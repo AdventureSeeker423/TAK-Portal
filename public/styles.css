@@ -2811,6 +2811,12 @@ a.settings-hub-card:visited {
   align-items: center;
 }
 
+.settings-regions-item-name {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .settings-regions-item-row input[type="text"] {
   width: 100%;
   min-width: 0;
