@@ -2,6 +2,7 @@ const router = require("express").Router();
 const multer = require("multer");
 const store = require("../services/agencies.service");
 const agencyTypesSvc = require("../services/agencyTypes.service");
+const regionsSvc = require("../services/regions.service");
 const accessSvc = require("../services/access.service");
 const usersService = require("../services/users.service");
 const groupsService = require("../services/groups.service");
@@ -129,6 +130,21 @@ function normalizeAgency(a) {
       .map((id) => String(id).trim())
       .filter(Boolean);
   }
+  // Optional region assignment (registry id). Empty clears.
+  if ("regionId" in (a || {}) || "region" in (a || {})) {
+    const rawRegion =
+      a.regionId != null && String(a.regionId).trim() !== ""
+        ? a.regionId
+        : a.region;
+    try {
+      const resolved = regionsSvc.resolveRegionId(rawRegion);
+      if (resolved) normalized.regionId = resolved;
+    } catch (_) {
+      // Leave unset; validateAgency / callers handle unknown regions.
+      const fallback = String(rawRegion || "").trim();
+      if (fallback) normalized.regionId = fallback;
+    }
+  }
   return normalized;
 }
 
@@ -146,6 +162,11 @@ function validateAgency(a) {
   }
   if (a.countyAbbrev && a.countyAbbrev.length < 2) {
     return "County abbreviation must be at least 2 characters";
+  }
+  if (a.regionId) {
+    if (!regionsSvc.findById(a.regionId)) {
+      return "Invalid region";
+    }
   }
   const rawPlacement = String(
     a.usernameTokenPlacement ?? a.usernameSuffixPlacement ?? ""
@@ -273,6 +294,7 @@ function buildAgenciesExportCsv(agencies) {
     "County Abbreviation",
     "Agency Type",
     "Agency Color",
+    "Region",
   ];
   const lines = [header.map(csvEscapeCell).join(",")];
   const sorted = (Array.isArray(agencies) ? agencies : [])
@@ -289,6 +311,7 @@ function buildAgenciesExportCsv(agencies) {
         ? "prefix"
         : "suffix";
     const stateFederal = a?.stateFederalAgency === true ? "Yes" : "No";
+    const regionName = regionsSvc.getRegionName(a?.regionId) || "";
     lines.push(
       [
         a?.name || "",
@@ -301,6 +324,7 @@ function buildAgenciesExportCsv(agencies) {
         a?.countyAbbrev || "",
         a?.type || "",
         a?.color || "",
+        regionName,
       ]
         .map(csvEscapeCell)
         .join(",")
@@ -660,6 +684,11 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
           "state federal",
         ],
       },
+      {
+        key: "region",
+        label: "Region",
+        aliases: ["region", "region name", "regionid", "region id"],
+      },
     ];
 
     const columnIndexes = new Map();
@@ -718,6 +747,7 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
       const color = get(parts, "color");
       const usernameTokenPlacement = get(parts, "usernameTokenPlacement") || "suffix";
       const stateFederalAgency = get(parts, "stateFederalAgency") || "no";
+      const region = get(parts, "region");
 
       const candidate = normalizeAgency({
         name,
@@ -730,6 +760,7 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
         color,
         usernameTokenPlacement,
         stateFederalAgency,
+        region,
       });
 
       const rowErrors = [];
@@ -986,6 +1017,62 @@ router.patch("/:index/type", (req, res) => {
   res.json({ success: true, type: raw });
 });
 
+router.patch("/:index/region", (req, res) => {
+  const idx = Number(req.params.index);
+  const agencies = store.load();
+  if (!Number.isInteger(idx) || !agencies[idx]) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  const agency = agencies[idx];
+  if (!accessSvc.isSuffixAllowed(req.authentikUser, agency.suffix)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  let nextId = null;
+  const raw =
+    req.body?.regionId != null ? req.body.regionId : req.body?.region;
+  try {
+    nextId = regionsSvc.resolveRegionId(raw);
+  } catch (err) {
+    return res.status(400).json({ error: err?.message || "Invalid region" });
+  }
+
+  const before = String(agency.regionId || "").trim() || null;
+  if (before === nextId) {
+    return res.json({
+      success: true,
+      regionId: nextId,
+      regionName: nextId ? regionsSvc.getRegionName(nextId) : null,
+    });
+  }
+
+  const next = { ...agency };
+  if (nextId) next.regionId = nextId;
+  else delete next.regionId;
+  agencies[idx] = next;
+  store.save(agencies);
+
+  auditSvc.logEvent({
+    actor: req.authentikUser || null,
+    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    action: "UPDATE_AGENCY_REGION",
+    targetType: "agency",
+    targetId: String(agency.suffix || ""),
+    details: {
+      before,
+      after: nextId,
+      regionName: nextId ? regionsSvc.getRegionName(nextId) : null,
+    },
+  });
+
+  res.json({
+    success: true,
+    regionId: nextId,
+    regionName: nextId ? regionsSvc.getRegionName(nextId) : null,
+  });
+});
+
 router.patch("/:index/state-federal", (req, res) => {
   const idx = Number(req.params.index);
   const agencies = store.load();
@@ -1178,6 +1265,9 @@ router.put("/:index", async (req, res) => {
     a.agencyDisabledUserIds = Array.isArray(existing.agencyDisabledUserIds)
       ? existing.agencyDisabledUserIds
       : [];
+  }
+  if (!("regionId" in body) && !("region" in body)) {
+    if (existing.regionId) a.regionId = existing.regionId;
   }
   const err = validateAgency(a);
   if (err) return res.status(400).json({ error: err });

@@ -6,10 +6,12 @@
   const _reqAttr = _fieldsRequired ? "required" : "";
   const _idPrefix = String(typeof idPrefix !== "undefined" ? idPrefix : "");
   const _typeOpts = Array.isArray(agencyTypeOptions) && agencyTypeOptions.length ? agencyTypeOptions : [];
+  const _regionOpts = Array.isArray(regionOptions) && regionOptions.length ? regionOptions : [];
   const _placement = String(_vals.usernameTokenPlacement || "suffix").toLowerCase() === "prefix" ? "prefix" : "suffix";
   const _selectedState = String(_vals.state || "").trim().toUpperCase();
   const _selectedType = String(_vals.type || "").trim();
   const _selectedColor = String(_vals.color || "").trim();
+  const _selectedRegionId = String(_vals.regionId || "").trim();
   const _sfRaw = String(
     _vals.stateFederalAgency != null ? _vals.stateFederalAgency : ""
   )
@@ -137,7 +139,7 @@
   </label>
 </div>
 
-<div class="agencyCreateRow <%= _includeColor ? 'agencyCreateRow2' : '' %>">
+<div class="agencyCreateRow agencyCreateRow3">
   <label>Agency Type
     <select name="type" <%= _reqAttr %>>
       <option value="" disabled <%= !_selectedType ? "selected" : "" %>>Agency Type</option>
@@ -157,6 +159,15 @@
     </select>
   </label>
   <% } %>
+
+  <label>Region <span class="agencyCreateOptionalHint">(optional)</span>
+    <select name="regionId">
+      <option value="" <%= !_selectedRegionId ? "selected" : "" %>>None</option>
+      <% _regionOpts.forEach(function (r) { %>
+        <option value="<%= r.id %>" <%= _sel(_selectedRegionId, r.id) %>><%= r.name %></option>
+      <% }); %>
+    </select>
+  </label>
 </div>
 
 <script>

@@ -16,7 +16,7 @@ function ensureDirExists(filePath) {
 }
 
 function emptyLedger() {
-  return { county: {}, state: {} };
+  return { county: {}, state: {}, region: {} };
 }
 
 function loadLedger() {
@@ -35,6 +35,10 @@ function loadLedger() {
         parsed.state && typeof parsed.state === "object" && !Array.isArray(parsed.state)
           ? parsed.state
           : {},
+      region:
+        parsed.region && typeof parsed.region === "object" && !Array.isArray(parsed.region)
+          ? parsed.region
+          : {},
     };
   } catch (err) {
     console.warn(
@@ -50,6 +54,7 @@ function saveLedger(ledger) {
   const next = {
     county: ledger?.county && typeof ledger.county === "object" ? ledger.county : {},
     state: ledger?.state && typeof ledger.state === "object" ? ledger.state : {},
+    region: ledger?.region && typeof ledger.region === "object" ? ledger.region : {},
   };
   fs.writeFileSync(LEDGER_PATH, JSON.stringify(next, null, 2));
   return next;
@@ -71,6 +76,10 @@ function stateKey(detail, title) {
   return `${String(detail || "").trim().toUpperCase()}|${titleKeyPart(title)}`;
 }
 
+function regionKey(detail, title) {
+  return `${String(detail || "").trim().toLowerCase()}|${titleKeyPart(title)}`;
+}
+
 function readTitles(prefix) {
   const titles = [];
   const seen = new Set();
@@ -89,9 +98,11 @@ function getAutoCreateConfig() {
   return {
     agencyEnabled: getBool("AUTO_CREATE_AGENCY_GROUPS_ENABLED", true),
     countyEnabled: getBool("AUTO_CREATE_COUNTY_GROUPS_ENABLED", false),
+    regionEnabled: getBool("AUTO_CREATE_REGION_GROUPS_ENABLED", false),
     stateEnabled: getBool("AUTO_CREATE_STATE_GROUPS_ENABLED", false),
     agencyTitles: readTitles("AUTO_CREATE_AGENCY_GROUP_TITLE"),
     countyTitles: readTitles("AUTO_CREATE_COUNTY_GROUP_TITLE"),
+    regionTitles: readTitles("AUTO_CREATE_REGION_GROUP_TITLE"),
     stateTitles: readTitles("AUTO_CREATE_STATE_GROUP_TITLE"),
   };
 }
@@ -108,6 +119,13 @@ function buildCountyGroupName(county, title) {
   const t = normalizeTitle(title);
   if (!c || !t) return null;
   return groupsService.ensureTakPrefix(`${c} Co ${t}`);
+}
+
+function buildRegionGroupName(regionName, title) {
+  const r = String(regionName || "").trim().replace(/\s+/g, " ");
+  const t = normalizeTitle(title);
+  if (!r || !t) return null;
+  return groupsService.ensureTakPrefix(`${r} ${t}`);
 }
 
 function buildStateGroupName(state, title) {
@@ -164,7 +182,8 @@ function actorAttributes(actor) {
 }
 
 function markLedger(ledger, scope, key, entry) {
-  const bucket = scope === "state" ? "state" : "county";
+  const bucket =
+    scope === "state" ? "state" : scope === "region" ? "region" : "county";
   if (!ledger[bucket] || typeof ledger[bucket] !== "object") {
     ledger[bucket] = {};
   }
@@ -230,9 +249,16 @@ async function ensureGeoTitleGroup({
   actor,
   ledger,
 }) {
-  const key = scope === "state" ? stateKey(detail, title) : countyKey(detail, title);
-  const bucket = scope === "state" ? "state" : "county";
-  const createdType = scope === "state" ? "State" : "County";
+  const key =
+    scope === "state"
+      ? stateKey(detail, title)
+      : scope === "region"
+        ? regionKey(detail, title)
+        : countyKey(detail, title);
+  const bucket =
+    scope === "state" ? "state" : scope === "region" ? "region" : "county";
+  const createdType =
+    scope === "state" ? "State" : scope === "region" ? "Region" : "County";
 
   if (ledger[bucket] && ledger[bucket][key]) {
     return {
@@ -366,6 +392,29 @@ async function ensureAutoCreateGroupsForAgency(agency, actor) {
     }
   }
 
+  const regionsSvc = require("./regions.service");
+  const regionName = regionsSvc.getRegionName(agency?.regionId);
+  if (config.regionEnabled && regionName) {
+    const titles = config.regionTitles.length
+      ? config.regionTitles
+      : ["Interop"];
+    for (const title of titles) {
+      const name = buildRegionGroupName(regionName, title);
+      if (!name) continue;
+      const result = await ensureGeoTitleGroup({
+        scope: "region",
+        detail: regionName,
+        title,
+        name,
+        actor,
+        ledger,
+      });
+      results.push(result);
+      if (result.ledgerDirty) ledgerDirty = true;
+      if (result.created) createdGroups.push(result);
+    }
+  }
+
   const state = String(agency?.state || "").trim().toUpperCase();
   if (config.stateEnabled && state) {
     const titles = config.stateTitles.length
@@ -407,6 +456,7 @@ module.exports = {
   ensureAutoCreateGroupsForAgency,
   buildAgencyGroupName,
   buildCountyGroupName,
+  buildRegionGroupName,
   buildStateGroupName,
   getGroupByNameUnfiltered,
   loadLedger,

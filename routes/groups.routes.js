@@ -236,6 +236,7 @@ router.post("/", async (req, res) => {
     const groupType =
       rawGroupType === "Agency" ||
       rawGroupType === "County" ||
+      rawGroupType === "Region" ||
       rawGroupType === "State" ||
       rawGroupType === "Global"
         ? rawGroupType

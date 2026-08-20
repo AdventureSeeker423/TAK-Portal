@@ -9,6 +9,7 @@
     <form id="addForm" class="grid2">
       <%- include("partials/agency-create-fields", {
         agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
+        regionOptions: typeof regionOptions !== "undefined" ? regionOptions : [],
         includeColor: true,
         includeName: true,
         fieldsRequired: true,
@@ -68,6 +69,7 @@
             <th data-sort="countyAbbrev" role="button" tabindex="0" title="Sort by County Abbreviation">County Abbrev</th>
             <th data-sort="state" role="button" tabindex="0">State</th>
             <th data-sort="type" role="button" tabindex="0" title="Sort by Type">Type</th>
+            <th data-sort="regionName" role="button" tabindex="0" title="Sort by Region">Region</th>
             <th data-sort="color" role="button" tabindex="0" title="Sort by Color">Color</th>
             <th class="agencyActionsHeader" data-label="Actions">Actions</th>
           </tr>
@@ -220,6 +222,8 @@ const AGENCY_STATE_OPTIONS = [
 ];
 /** Same list as Add Agency type dropdown (core + settings extras + Other); PATCH /api/agencies/:index/type */
 const AGENCY_TYPE_OPTIONS = <%- JSON.stringify(Array.isArray(agencyTypeOptions) ? agencyTypeOptions : []) %>;
+/** Region catalog from Settings → Regions; PATCH /api/agencies/:index/region */
+const AGENCY_REGION_OPTIONS = <%- JSON.stringify(Array.isArray(regionOptions) ? regionOptions : []) %>;
 const msg = document.getElementById("msg");
 const tbody = document.getElementById("tbody");
 const addForm = document.getElementById("addForm");
@@ -659,6 +663,55 @@ async function updateAgencyType(agencyIndex, newType) {
   }
 }
 
+function regionNameForId(regionId) {
+  const id = String(regionId || "").trim();
+  if (!id) return "";
+  const hit = (AGENCY_REGION_OPTIONS || []).find((r) => String(r?.id || "") === id);
+  return hit ? String(hit.name || "").trim() : "";
+}
+
+function buildAgencyRegionCellHtml(a) {
+  const idx = a._id ?? a.id;
+  const current = String(a.regionId || "").trim();
+  let opts = `<option value=""${!current ? " selected" : ""}>None</option>`;
+  opts += (AGENCY_REGION_OPTIONS || [])
+    .map((r) => {
+      const id = String(r?.id || "").trim();
+      const name = String(r?.name || "").trim();
+      if (!id) return "";
+      const sel = id === current ? " selected" : "";
+      return `<option value="${esc(id)}"${sel}>${esc(name)}</option>`;
+    })
+    .join("");
+  if (current && !(AGENCY_REGION_OPTIONS || []).some((r) => String(r?.id || "") === current)) {
+    opts += `<option value="${esc(current)}" selected>${esc(a.regionName || current)} (missing)</option>`;
+  }
+  const aria = esc(a.name || "Agency");
+  return `<select class="agency-region-select" aria-label="Region for ${aria}" onchange="updateAgencyRegion(${Number(idx)}, this.value)">${opts}</select>`;
+}
+
+async function updateAgencyRegion(agencyIndex, newRegionId) {
+  try {
+    const res = await fetch(`/api/agencies/${encodeURIComponent(agencyIndex)}/region`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ regionId: newRegionId || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Failed to update region");
+    setMsg("Region saved.", true);
+    const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
+    if (row) {
+      row.regionId = data.regionId || null;
+      row.regionName = data.regionName || "";
+    }
+    renderAgencies();
+  } catch (e) {
+    setMsg(e.message || String(e), false);
+    await loadAgenciesWithCounts();
+  }
+}
+
 function normalizeVal(v){
   if (v === null || v === undefined) return "";
   return String(v).toLowerCase().trim();
@@ -822,6 +875,11 @@ function renderAgencies(){
       <td class="agencyTypeCell${agencyAttributesEditMode ? " agency-type-td" : ""}" data-label="Type">${
         agencyAttributesEditMode ? buildAgencyTypeCellHtml(a) : esc(a.type || "")
       }</td>
+      <td class="agencyRegionCell" data-label="Region">${
+        agencyAttributesEditMode
+          ? buildAgencyRegionCellHtml(a)
+          : esc(a.regionName || regionNameForId(a.regionId) || "")
+      }</td>
       <td class="agencyColorCell" data-label="Color">${
         agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(a.color || "")
       }</td>
@@ -969,6 +1027,7 @@ async function loadAgenciesWithCounts(){
       countyAbbrev: String(a?.countyAbbrev || "")
         .trim()
         .toUpperCase(),
+      regionName: regionNameForId(a?.regionId) || String(a?.regionName || "").trim(),
     });
   });
   renderAgencies();

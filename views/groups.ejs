@@ -17,6 +17,7 @@
       <select id="createType">
         <option value="agency" selected>Agency-Specific Group</option>
         <option value="county">County-Specific Group</option>
+        <option value="region">Region-Specific Group</option>
         <option value="state">State-Specific Group</option>
         <option value="generic">Global Group</option>
       </select>
@@ -36,6 +37,12 @@
     <label id="countyWrap" style="display:none;">Select County
       <select id="countySelect">
         <option value="">Select County</option>
+      </select>
+    </label>
+
+    <label id="regionWrap" style="display:none;">Select Region
+      <select id="regionSelect">
+        <option value="">Select Region</option>
       </select>
     </label>
 <label id="stateWrap" style="display:none;">Select State
@@ -101,6 +108,7 @@
             <option value="all" selected>All Groups</option>
             <option value="agency">Agency Groups</option>
             <option value="county">County Groups</option>
+            <option value="region">Region Groups</option>
             <option value="state">State Groups</option>
             <option value="global">Global Groups</option>
           </select>
@@ -165,6 +173,7 @@
             <select id="editType">
               <option value="agency">Agency-Specific Group</option>
               <option value="county">County-Specific Group</option>
+              <option value="region">Region-Specific Group</option>
               <option value="state">State-Specific Group</option>
               <option value="generic">Global Group</option>
             </select>
@@ -184,6 +193,12 @@
           <label id="editCountyWrap" style="display:none;">Select County
             <select id="editCountySelect">
               <option value="">Select County</option>
+            </select>
+          </label>
+
+          <label id="editRegionWrap" style="display:none;">Select Region
+            <select id="editRegionSelect">
+              <option value="">Select Region</option>
             </select>
           </label>
 <label id="editStateWrap" style="display:none;">Select State
@@ -418,14 +433,17 @@ const membersPageInfo = document.getElementById("membersPageInfo");
 const createType = document.getElementById("createType");
 const agencyPrefixSelect = document.getElementById("agencyPrefixSelect");
 const countySelect = document.getElementById("countySelect");
+const regionSelect = document.getElementById("regionSelect");
 const stateSelect = document.getElementById("stateSelect");
 const groupName = document.getElementById("groupName");
 const groupDescription = document.getElementById("groupDescription");
 const agencyPrefixWrap = document.getElementById("agencyPrefixWrap");
 const countyWrap = document.getElementById("countyWrap");
+const regionWrap = document.getElementById("regionWrap");
 const stateWrap = document.getElementById("stateWrap");
 const editAgencyPrefixWrap = document.getElementById("editAgencyPrefixWrap");
 const editCountyWrap = document.getElementById("editCountyWrap");
+const editRegionWrap = document.getElementById("editRegionWrap");
 const editStateWrap = document.getElementById("editStateWrap");
 
 // Private dropdown (Global Admins only)
@@ -553,6 +571,7 @@ const userClearAll = document.getElementById("userClearAll");
 const editType = document.getElementById("editType");
 const editAgencyPrefixSelect = document.getElementById("editAgencyPrefixSelect");
 const editCountySelect = document.getElementById("editCountySelect");
+const editRegionSelect = document.getElementById("editRegionSelect");
 const editStateSelect = document.getElementById("editStateSelect");
 const editBehaviorSelect = document.getElementById("editBehaviorSelect");
 
@@ -589,6 +608,7 @@ function agenciesForScopeFilter() {
 
 let groupsCache = [];
 let agenciesCache = [];
+let regionsCache = [];
 
 // Action-lock prefixes (case-insensitive, comma-separated)
 const GROUPS_ACTIONS_HIDDEN_PREFIXES_RAW = "<%= (process.env.GROUPS_ACTIONS_HIDDEN_PREFIXES) %>";
@@ -738,9 +758,37 @@ if (editStateSelect && stateSelect) {
   if (editCountySelect) {
     editCountySelect.innerHTML = countySelect.innerHTML;
   }
+  if (editRegionSelect && regionSelect) {
+    editRegionSelect.innerHTML = regionSelect.innerHTML;
+  }
 
   renderAgencyList();
   updateGroupScopeDetailOptions();
+}
+
+async function loadRegions() {
+  try {
+    const res = await fetch("/api/regions");
+    const out = await res.json().catch(() => []);
+    regionsCache = res.ok && Array.isArray(out) ? out : [];
+  } catch (_) {
+    regionsCache = [];
+  }
+  if (regionSelect) {
+    regionSelect.innerHTML =
+      `<option value="">Select Region</option>` +
+      regionsCache
+        .map((r) => {
+          const name = String(r?.name || "").trim();
+          if (!name) return "";
+          return `<option value="${esc(name)}">${esc(name)}</option>`;
+        })
+        .filter(Boolean)
+        .join("");
+  }
+  if (editRegionSelect && regionSelect) {
+    editRegionSelect.innerHTML = regionSelect.innerHTML;
+  }
 }
 
 function agencyItems(){
@@ -774,6 +822,7 @@ function parseGroupName(fullName) {
   let type = "generic";
   let agencyPrefix = "";
   let county = "";
+  let region = "";
   let state = "";
   let baseName = name;
 
@@ -870,6 +919,21 @@ function parseGroupName(fullName) {
       baseName = name.slice((hitCounty + " Co ").length).trim();
     }
   }
+  // Region: "<Region Name> <Title>" (longest match first)
+  if (type === "generic") {
+    const regions = (regionsCache || [])
+      .map((r) => String(r?.name || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+    const hitRegion = regions.find((rn) =>
+      name.toLowerCase().startsWith((rn + " ").toLowerCase())
+    );
+    if (hitRegion) {
+      type = "region";
+      region = hitRegion;
+      baseName = name.slice(hitRegion.length + 1).trim();
+    }
+  }
   // State: "<State> <Title>"
   if (type === "generic") {
     const states = Array.from(new Set(
@@ -889,24 +953,34 @@ function parseGroupName(fullName) {
     }
   }
 
-  return { type, agencyPrefix, county, state, baseName, behavior };
+  return { type, agencyPrefix, county, region, state, baseName, behavior };
 }
 
 function normalizeCreatedType(raw) {
   return String(raw || "").trim().toLowerCase();
 }
 
-/** Scope bucket for Existing Groups filters (agency / county / state / global). */
+/** Scope bucket for Existing Groups filters (agency / county / region / state / global). */
 function getPortalGroupScope(g) {
   const parsed = parseGroupName(g?.name || "");
   const createdType = normalizeCreatedType(g?.attributes?.created_type);
 
   // Name patterns win for scoped types (fixes legacy groups mis-tagged as Global).
-  if (parsed.type === "agency" || parsed.type === "county" || parsed.type === "state") {
+  if (
+    parsed.type === "agency" ||
+    parsed.type === "county" ||
+    parsed.type === "region" ||
+    parsed.type === "state"
+  ) {
     return parsed.type;
   }
 
-  if (createdType === "agency" || createdType === "county" || createdType === "state") {
+  if (
+    createdType === "agency" ||
+    createdType === "county" ||
+    createdType === "region" ||
+    createdType === "state"
+  ) {
     return createdType;
   }
   if (createdType === "global") return "global";
@@ -931,6 +1005,17 @@ function getPortalGroupCountyDetail(g) {
     return String(parsed.county).trim();
   }
   if (normalizeCreatedType(g?.attributes?.created_type) === "county") {
+    return String(g?.attributes?.created_type_detail || "").trim();
+  }
+  return "";
+}
+
+function getPortalGroupRegionDetail(g) {
+  const parsed = parseGroupName(g?.name || "");
+  if (parsed.type === "region" && parsed.region) {
+    return String(parsed.region).trim();
+  }
+  if (normalizeCreatedType(g?.attributes?.created_type) === "region") {
     return String(g?.attributes?.created_type_detail || "").trim();
   }
   return "";
@@ -968,7 +1053,7 @@ function getPortalGroupAgencyNameDetail(g) {
 }
 
 // Build a full group name from broken-out fields
-function buildGroupNameFromParts({ type, baseName, behavior, prefix, county, state }) {
+function buildGroupNameFromParts({ type, baseName, behavior, prefix, county, region, state }) {
   let name = String(baseName || "").trim();
   if (!name) return "";
 
@@ -984,6 +1069,10 @@ function buildGroupNameFromParts({ type, baseName, behavior, prefix, county, sta
     const c = String(county || "").trim();
     if (!c) return "";
     name = `${c} Co ${name}`;
+  } else if (type === "region") {
+    const r = String(region || "").trim();
+    if (!r) return "";
+    name = `${r} ${name}`;
   } else if (type === "state") {
     const s = String(state || "").trim().toUpperCase();
     if (!s) return "";
@@ -1106,7 +1195,7 @@ function renderAgencyTypeList(){
   }).join("") || `<div style="padding:10px; color: var(--muted);">No agency types with registered agencies.</div>`;
 }
 
-// Show/hide agency / county selects based on type
+// Show/hide agency / county / region selects based on type
 createType.onchange = () => {
   if (!IS_GLOBAL_ADMIN) {
     if (IS_MULTI_AGENCY_ADMIN) {
@@ -1115,6 +1204,7 @@ createType.onchange = () => {
       agencyPrefixWrap.style.display = "none";
     }
     if (countyWrap) countyWrap.style.display = "none";
+    if (regionWrap) regionWrap.style.display = "none";
     if (stateWrap) stateWrap.style.display = "none";
     if (privateWrap) privateWrap.style.display = "none";
     return;
@@ -1122,15 +1212,17 @@ createType.onchange = () => {
   const v = createType.value;
   const isAgency = v === "agency";
   const isCounty = v === "county";
+  const isRegion = v === "region";
   const isState = v === "state";
 
   if (agencyPrefixWrap) agencyPrefixWrap.style.display = isAgency ? "flex" : "none";
   if (countyWrap) countyWrap.style.display = isCounty ? "flex" : "none";
+  if (regionWrap) regionWrap.style.display = isRegion ? "flex" : "none";
   if (stateWrap) stateWrap.style.display = isState ? "flex" : "none";
   if (privateWrap) privateWrap.style.display = isAgency ? "flex" : "none";
 };
 
-// Show/hide edit agency / county selects based on type
+// Show/hide edit agency / county / region selects based on type
 if (editType) {
   editType.onchange = () => {
     if (!IS_GLOBAL_ADMIN) {
@@ -1140,6 +1232,7 @@ if (editType) {
         editAgencyPrefixWrap.style.display = "none";
       }
       if (editCountyWrap) editCountyWrap.style.display = "none";
+      if (editRegionWrap) editRegionWrap.style.display = "none";
       if (editStateWrap) editStateWrap.style.display = "none";
       if (editPrivateWrap) editPrivateWrap.style.display = "none";
       return;
@@ -1147,10 +1240,12 @@ if (editType) {
     const v = editType.value;
     const isAgency = v === "agency";
     const isCounty = v === "county";
+    const isRegion = v === "region";
     const isState = v === "state";
 
     if (editAgencyPrefixWrap) editAgencyPrefixWrap.style.display = isAgency ? "flex" : "none";
     if (editCountyWrap) editCountyWrap.style.display = isCounty ? "flex" : "none";
+    if (editRegionWrap) editRegionWrap.style.display = isRegion ? "flex" : "none";
     if (editStateWrap) editStateWrap.style.display = isState ? "flex" : "none";
     if (editPrivateWrap) editPrivateWrap.style.display = isAgency ? "flex" : "none";
   };
@@ -1190,6 +1285,15 @@ function renderGroups(){
           return (
             getPortalGroupCountyDetail(g).toUpperCase() ===
             String(detail).trim().toUpperCase()
+          );
+        });
+      } else if (scope === "region") {
+        filteredRaw = filteredRaw.filter(g => {
+          if (getPortalGroupScope(g) !== "region") return false;
+          if (!detail) return true;
+          return (
+            getPortalGroupRegionDetail(g).toLowerCase() ===
+            String(detail).trim().toLowerCase()
           );
         });
       } else if (scope === "agency") {
@@ -1264,6 +1368,23 @@ function updateGroupScopeDetailOptions() {
   // Default: hide detail selector
   groupScopeDetailWrap.style.display = "none";
   groupScopeDetailSelect.innerHTML = "";
+
+  if (scope === "region") {
+    const regionList = (regionsCache || [])
+      .map((r) => String(r?.name || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+    groupScopeDetailSelect.innerHTML =
+      `<option value="">All Region Groups</option>` +
+      regionList
+        .map((r) => `<option value="${esc(r)}">${esc(r)}</option>`)
+        .join("");
+
+    groupScopeDetailWrap.style.display = "flex";
+    groupScopeDetailSelect.value = "";
+    return;
+  }
 
   if (!scopedAgencies.length) return;
 
@@ -1424,6 +1545,10 @@ createBtn.onclick = async () => {
     const county = String(countySelect.value || "").trim();
     if (!county) return setMsg(createMsg, "Select a county.", false);
     name = `${county} Co ${name}`;
+  } else if (type === "region") {
+    const region = String(regionSelect?.value || "").trim();
+    if (!region) return setMsg(createMsg, "Select a region.", false);
+    name = `${region} ${name}`;
   } else if (type === "state") {
     const state = String(stateSelect?.value || "").trim().toUpperCase();
     if (!state) return setMsg(createMsg, "Select a state.", false);
@@ -1469,6 +1594,12 @@ createBtn.onclick = async () => {
     const county = String(countySelect.value || "").trim();
     if (county) {
       groupTypeDetail = county;
+    }
+  } else if (type === "region") {
+    groupType = "Region";
+    const region = String(regionSelect?.value || "").trim();
+    if (region) {
+      groupTypeDetail = region;
     }
   } else if (type === "state") {
     groupType = "State";
@@ -1568,6 +1699,9 @@ window.editGroupName = async (groupId) => {
 }
   if (editCountySelect) {
     editCountySelect.value = parsed.county || "";
+  }
+  if (editRegionSelect) {
+    editRegionSelect.value = parsed.region || "";
   }
   if (editStateSelect) {
     editStateSelect.value = parsed.state || "";
@@ -1967,6 +2101,7 @@ editGroupSaveBtn.onclick = async () => {
 
   let prefix = "";
   let county = "";
+  let region = "";
   let state = "";
 
   if (!baseName) {
@@ -1992,6 +2127,12 @@ editGroupSaveBtn.onclick = async () => {
       setMsg(editGroupMsg, "Select a county.", false);
       return;
     }
+  } else if (type === "region") {
+    region = String(editRegionSelect?.value || "").trim();
+    if (!region) {
+      setMsg(editGroupMsg, "Select a region.", false);
+      return;
+    }
   } else if (type === "state") {
     state = String(editStateSelect?.value || "").trim().toUpperCase();
     if (!state) {
@@ -2006,6 +2147,7 @@ editGroupSaveBtn.onclick = async () => {
     behavior,
     prefix,
     county,
+    region,
     state,
   });
 
@@ -2767,6 +2909,7 @@ if (adminAccessOverlay) {
   if (editType) editType.onchange();
   initGroupSort();
   await loadAgencies();
+  await loadRegions();
   await loadTemplatesForMassModal();
   updateGroupScopeDetailOptions();
   await loadGroups();

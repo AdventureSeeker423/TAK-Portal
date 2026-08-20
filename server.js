@@ -30,6 +30,7 @@ const accessControlRoutes = require("./routes/accessControl.routes");
 const usersSvc = require("./services/users.service");
 const groupsSvc = require("./services/groups.service");
 const agencyTypesSvc = require("./services/agencyTypes.service");
+const regionsSvc = require("./services/regions.service");
 const locatorsSvc = require("./services/locators.service");
 const pluginsSvc = require("./services/plugins.service");
 const atakApkSvc = require("./services/atakApk.service");
@@ -443,6 +444,7 @@ app.get("/logout", (req, res) => {
 
 // API Routes
 app.use("/api/agencies", require("./routes/agencies.routes"));
+app.use("/api/regions", require("./routes/regions.routes"));
 app.use("/api/users", require("./routes/users.routes"));
 app.use("/api/groups", require("./routes/groups.routes"));
 app.use("/api/templates", require("./routes/templates.routes"));
@@ -764,6 +766,7 @@ app.get("/groups", (req, res) => res.render("groups"));
 app.get("/agencies", requirePermission("page.agencies"), (req, res) =>
   res.render("agencies", {
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
+    regionOptions: regionsSvc.listNormalized(),
   })
 ); //require Global Admin
 app.get("/templates", (req, res) => res.render("templates"));
@@ -1307,6 +1310,7 @@ app.get("/request-access", (req, res) => {
     form: {},
     error: null,
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
+    regionOptions: regionsSvc.listNormalized(),
     hcaptchaEnabled,
     hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : ""
   });
@@ -1403,6 +1407,7 @@ app.post("/request-access", async (req, res) => {
       loginUrl: "/",
       form: req.body || {},
       agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
+      regionOptions: regionsSvc.listNormalized(),
       hcaptchaEnabled,
       hcaptchaSiteKey: hcaptchaEnabled ? hcaptchaSiteKey : "",
     });
@@ -1428,6 +1433,7 @@ app.get("/request-access/:reviewToken", (req, res, next) => {
 app.get("/pending-user-requests", requirePermission("page.users"), (req, res) => {
   return res.render("pending-user-requests", {
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
+    regionOptions: regionsSvc.listNormalized(),
   });
 });
 

@@ -134,8 +134,11 @@
         Reference Data
       </h2>
       <div class="settings-hub-grid">
-        <div class="settings-hub-card span-2" role="button" tabindex="0" data-open-settings-modal="agency-types">
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="agency-types">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Agency Types</span></span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="regions">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Regions</span></span>
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="deployment-packet-colors">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Deployment Packet Colors / Teams</span></span>
@@ -186,6 +189,7 @@
         "MOU_SEND_EMAILS",
         "AUTO_CREATE_AGENCY_GROUPS_ENABLED",
         "AUTO_CREATE_COUNTY_GROUPS_ENABLED",
+        "AUTO_CREATE_REGION_GROUPS_ENABLED",
         "AUTO_CREATE_STATE_GROUPS_ENABLED",
         "AUTO_CREATE_AGENCY_DATA_SYNC_ENABLED",
         "AUTO_CREATE_COUNTY_DATA_SYNC_ENABLED",
@@ -273,6 +277,7 @@
       const autoCreateGroupKeys = [
         "AUTO_CREATE_AGENCY_GROUPS_ENABLED",
         "AUTO_CREATE_COUNTY_GROUPS_ENABLED",
+        "AUTO_CREATE_REGION_GROUPS_ENABLED",
         "AUTO_CREATE_STATE_GROUPS_ENABLED",
         "AUTO_CREATE_AGENCY_DATA_SYNC_ENABLED",
         "AUTO_CREATE_COUNTY_DATA_SYNC_ENABLED",
@@ -288,6 +293,7 @@
         autoCreateGroupKeys.push(
           `AUTO_CREATE_AGENCY_GROUP_TITLE_${i}`,
           `AUTO_CREATE_COUNTY_GROUP_TITLE_${i}`,
+          `AUTO_CREATE_REGION_GROUP_TITLE_${i}`,
           `AUTO_CREATE_STATE_GROUP_TITLE_${i}`
         );
       }
@@ -957,6 +963,359 @@
         }
       })();
     </script>
+
+    <!-- Regions -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-regions" data-settings-modal="regions" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-regions">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-regions">Regions</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Create named regions (can span states). Assign agencies individually on the Agencies page, or bulk-assign all agencies in a county here. Agencies in the same county can still belong to different regions.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem;">
+            <label style="flex:1;min-width:180px;">Region name
+              <input type="text" id="regionsNewName" placeholder="e.g. East TN" maxlength="120" />
+            </label>
+            <button type="button" class="btn" id="regionsAddBtn">Add region</button>
+          </div>
+          <div id="regionsMsg" class="msg" style="margin-bottom:.75rem;"></div>
+          <ul id="regionsList" style="list-style:none;padding:0;margin:0 0 1.25rem 0;display:flex;flex-direction:column;gap:.5rem;"></ul>
+
+          <h3 style="margin:0 0 .5rem 0;font-size:1rem;">Assign by county</h3>
+          <p class="settings-help" style="margin-top:0;">Sets the region on every agency currently in that state + county. Does not lock future agencies.</p>
+          <div style="display:grid;gap:.5rem;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end;">
+            <label>State
+              <select id="regionsAssignState"><option value="">Select State</option></select>
+            </label>
+            <label>County
+              <select id="regionsAssignCounty" disabled><option value="">Select County</option></select>
+            </label>
+            <label>Region
+              <select id="regionsAssignRegion"><option value="">Select Region</option></select>
+            </label>
+            <button type="button" class="btn" id="regionsAssignBtn">Apply to agencies</button>
+          </div>
+          <div id="regionsAssignMsg" class="msg" style="margin-top:.75rem;"></div>
+
+          <script>
+            (function () {
+              var listEl = document.getElementById("regionsList");
+              var newNameEl = document.getElementById("regionsNewName");
+              var addBtn = document.getElementById("regionsAddBtn");
+              var msgEl = document.getElementById("regionsMsg");
+              var assignState = document.getElementById("regionsAssignState");
+              var assignCounty = document.getElementById("regionsAssignCounty");
+              var assignRegion = document.getElementById("regionsAssignRegion");
+              var assignBtn = document.getElementById("regionsAssignBtn");
+              var assignMsg = document.getElementById("regionsAssignMsg");
+              if (!listEl || !addBtn) return;
+
+              var regionsCache = [];
+              var agenciesCache = [];
+
+              function setMsg(el, text, ok) {
+                if (!el) return;
+                el.textContent = text || "";
+                el.style.color = ok === false ? "var(--danger, #c0392b)" : "var(--muted, inherit)";
+              }
+
+              function esc(s) {
+                return String(s || "")
+                  .replace(/&/g, "&amp;")
+                  .replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;");
+              }
+
+              function fillAssignRegionSelect() {
+                if (!assignRegion) return;
+                var cur = assignRegion.value;
+                assignRegion.innerHTML =
+                  '<option value="">Select Region</option>' +
+                  regionsCache
+                    .map(function (r) {
+                      return '<option value="' + esc(r.id) + '">' + esc(r.name) + "</option>";
+                    })
+                    .join("");
+                if (cur && regionsCache.some(function (r) { return r.id === cur; })) {
+                  assignRegion.value = cur;
+                }
+              }
+
+              function uniqueStates() {
+                var set = {};
+                (agenciesCache || []).forEach(function (a) {
+                  var st = String(a.state || "").trim().toUpperCase();
+                  if (st) set[st] = true;
+                });
+                return Object.keys(set).sort();
+              }
+
+              function countiesForState(state) {
+                var st = String(state || "").trim().toUpperCase();
+                var set = {};
+                (agenciesCache || []).forEach(function (a) {
+                  if (String(a.state || "").trim().toUpperCase() !== st) return;
+                  var c = String(a.county || "").trim();
+                  if (c) set[c] = true;
+                });
+                return Object.keys(set).sort(function (a, b) {
+                  return a.localeCompare(b, undefined, { sensitivity: "base" });
+                });
+              }
+
+              function fillStateSelect() {
+                if (!assignState) return;
+                var cur = assignState.value;
+                assignState.innerHTML =
+                  '<option value="">Select State</option>' +
+                  uniqueStates()
+                    .map(function (st) {
+                      return '<option value="' + esc(st) + '">' + esc(st) + "</option>";
+                    })
+                    .join("");
+                if (cur) assignState.value = cur;
+                fillCountySelect();
+              }
+
+              function fillCountySelect() {
+                if (!assignCounty || !assignState) return;
+                var st = assignState.value;
+                var counties = st ? countiesForState(st) : [];
+                assignCounty.disabled = !st;
+                var cur = assignCounty.value;
+                assignCounty.innerHTML =
+                  '<option value="">Select County</option>' +
+                  counties
+                    .map(function (c) {
+                      return '<option value="' + esc(c) + '">' + esc(c) + "</option>";
+                    })
+                    .join("");
+                if (cur && counties.indexOf(cur) >= 0) assignCounty.value = cur;
+              }
+
+              function renderList() {
+                if (!regionsCache.length) {
+                  listEl.innerHTML =
+                    '<li style="padding:.5rem;color:var(--muted);">No regions yet. Add one above.</li>';
+                  return;
+                }
+                listEl.innerHTML = regionsCache
+                  .map(function (r) {
+                    var names = (r.agencies || [])
+                      .map(function (a) {
+                        return a.name || a.suffix || "";
+                      })
+                      .filter(Boolean);
+                    var count = Number(r.agencyCount) || names.length || 0;
+                    var members =
+                      count === 0
+                        ? '<div style="font-size:.85rem;color:var(--muted);margin-top:.35rem;">No agencies assigned</div>'
+                        : '<div style="font-size:.85rem;color:var(--muted);margin-top:.35rem;">' +
+                          esc(String(count)) +
+                          " agenc" +
+                          (count === 1 ? "y" : "ies") +
+                          ": " +
+                          esc(names.slice(0, 8).join(", ")) +
+                          (names.length > 8 ? "…" : "") +
+                          "</div>";
+                    return (
+                      '<li data-region-id="' +
+                      esc(r.id) +
+                      '" style="border:1px solid #e5e7eb;border-radius:.5rem;padding:.5rem;background:#fff0;">' +
+                      '<div style="display:grid;grid-template-columns:1fr auto auto;gap:.5rem;align-items:center;">' +
+                      '<input type="text" data-region-name value="' +
+                      esc(r.name) +
+                      '" maxlength="120" style="width:100%;" />' +
+                      '<button type="button" class="btn" data-region-save>Save</button>' +
+                      '<button type="button" class="btn danger" data-region-delete>Delete</button>' +
+                      "</div>" +
+                      members +
+                      "</li>"
+                    );
+                  })
+                  .join("");
+              }
+
+              async function loadRegions() {
+                var res = await fetch("/api/regions");
+                var data = await res.json().catch(function () {
+                  return null;
+                });
+                if (!res.ok) throw new Error((data && data.error) || "Failed to load regions");
+                regionsCache = Array.isArray(data) ? data : [];
+                fillAssignRegionSelect();
+                renderList();
+              }
+
+              async function loadAgencies() {
+                var res = await fetch("/api/agencies");
+                var data = await res.json().catch(function () {
+                  return null;
+                });
+                if (!res.ok) throw new Error((data && data.error) || "Failed to load agencies");
+                agenciesCache = Array.isArray(data) ? data : [];
+                fillStateSelect();
+              }
+
+              async function refreshAll() {
+                setMsg(msgEl, "");
+                await Promise.all([loadRegions(), loadAgencies()]);
+              }
+
+              addBtn.addEventListener("click", async function () {
+                var name = String(newNameEl && newNameEl.value || "").trim();
+                if (!name) return setMsg(msgEl, "Region name is required", false);
+                addBtn.disabled = true;
+                try {
+                  var res = await fetch("/api/regions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: name }),
+                  });
+                  var data = await res.json().catch(function () {
+                    return null;
+                  });
+                  if (!res.ok) throw new Error((data && data.error) || "Create failed");
+                  if (newNameEl) newNameEl.value = "";
+                  setMsg(msgEl, "Region created.", true);
+                  await loadRegions();
+                } catch (err) {
+                  setMsg(msgEl, err.message || "Create failed", false);
+                } finally {
+                  addBtn.disabled = false;
+                }
+              });
+
+              listEl.addEventListener("click", async function (e) {
+                var t = e.target;
+                if (!t || !t.closest) return;
+                var li = t.closest("li[data-region-id]");
+                if (!li) return;
+                var id = li.getAttribute("data-region-id");
+                var nameInp = li.querySelector("[data-region-name]");
+
+                if (t.matches("[data-region-save]")) {
+                  var name = String(nameInp && nameInp.value || "").trim();
+                  if (!name) return setMsg(msgEl, "Region name is required", false);
+                  t.disabled = true;
+                  try {
+                    var res = await fetch("/api/regions/" + encodeURIComponent(id), {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name: name }),
+                    });
+                    var data = await res.json().catch(function () {
+                      return null;
+                    });
+                    if (!res.ok) throw new Error((data && data.error) || "Rename failed");
+                    var renamed = (data && data.groupsRenamed) || 0;
+                    setMsg(
+                      msgEl,
+                      renamed
+                        ? "Region renamed (" + renamed + " group" + (renamed === 1 ? "" : "s") + " updated)."
+                        : "Region renamed.",
+                      true
+                    );
+                    await loadRegions();
+                  } catch (err) {
+                    setMsg(msgEl, err.message || "Rename failed", false);
+                  } finally {
+                    t.disabled = false;
+                  }
+                  return;
+                }
+
+                if (t.matches("[data-region-delete]")) {
+                  var label = String(nameInp && nameInp.value || "").trim() || "this region";
+                  if (!confirm('Delete region "' + label + '"? Agencies will be unassigned from it. Existing region groups are kept.')) {
+                    return;
+                  }
+                  t.disabled = true;
+                  try {
+                    var delRes = await fetch("/api/regions/" + encodeURIComponent(id), {
+                      method: "DELETE",
+                    });
+                    var delData = await delRes.json().catch(function () {
+                      return null;
+                    });
+                    if (!delRes.ok) throw new Error((delData && delData.error) || "Delete failed");
+                    setMsg(msgEl, "Region deleted.", true);
+                    await loadRegions();
+                  } catch (err) {
+                    setMsg(msgEl, err.message || "Delete failed", false);
+                  } finally {
+                    t.disabled = false;
+                  }
+                }
+              });
+
+              if (assignState) {
+                assignState.addEventListener("change", function () {
+                  fillCountySelect();
+                });
+              }
+
+              if (assignBtn) {
+                assignBtn.addEventListener("click", async function () {
+                  var regionId = String(assignRegion && assignRegion.value || "").trim();
+                  var state = String(assignState && assignState.value || "").trim();
+                  var county = String(assignCounty && assignCounty.value || "").trim();
+                  if (!regionId) return setMsg(assignMsg, "Select a region", false);
+                  if (!state) return setMsg(assignMsg, "Select a state", false);
+                  if (!county) return setMsg(assignMsg, "Select a county", false);
+                  assignBtn.disabled = true;
+                  try {
+                    var res = await fetch(
+                      "/api/regions/" + encodeURIComponent(regionId) + "/assign-county",
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ state: state, county: county }),
+                      }
+                    );
+                    var data = await res.json().catch(function () {
+                      return null;
+                    });
+                    if (!res.ok) throw new Error((data && data.error) || "Assign failed");
+                    var updated = (data && data.updated) || 0;
+                    var matched = (data && data.matched) || 0;
+                    setMsg(
+                      assignMsg,
+                      "Updated " + updated + " of " + matched + " agenc" + (matched === 1 ? "y" : "ies") + " in " + county + ", " + state + ".",
+                      true
+                    );
+                    await loadRegions();
+                  } catch (err) {
+                    setMsg(assignMsg, err.message || "Assign failed", false);
+                  } finally {
+                    assignBtn.disabled = false;
+                  }
+                });
+              }
+
+              var modal = document.getElementById("settingsModal-regions");
+              if (modal) {
+                var observer = new MutationObserver(function () {
+                  if (modal.style.display !== "none" && modal.getAttribute("aria-hidden") !== "true") {
+                    refreshAll().catch(function (err) {
+                      setMsg(msgEl, err.message || "Failed to load", false);
+                    });
+                  }
+                });
+                observer.observe(modal, { attributes: true, attributeFilter: ["style", "aria-hidden"] });
+              }
+            })();
+          </script>
+        </div>
+      </div>
+    </div>
 
     <!-- Agency Types -->
     <div class="modalOverlay settings-modal-overlay" id="settingsModal-agency-types" data-settings-modal="agency-types" style="display:none;" aria-hidden="true">
@@ -2015,7 +2374,7 @@
             <h2 id="settingsModalTitle-auto-create-groups">Auto Create Groups / Channels</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">When an agency is created, optionally auto-create Agency, County, and State groups using these titles (up to 3 each). County/State groups are created once per county/state+title and are not recreated if renamed or deleted.</span>
+              <span class="settings-help-popover">When an agency is created, optionally auto-create Agency, County, Region, and State groups using these titles (up to 3 each). County/Region/State groups are created once per county/region/state+title and are not recreated if renamed or deleted. Region groups require the agency to have a region assigned.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -2044,6 +2403,10 @@
               county: {
                 enabled: autoCreateEnabled("AUTO_CREATE_COUNTY_GROUPS_ENABLED", false),
                 titles: autoCreateTitles("AUTO_CREATE_COUNTY_GROUP_TITLE", "Interop"),
+              },
+              region: {
+                enabled: autoCreateEnabled("AUTO_CREATE_REGION_GROUPS_ENABLED", false),
+                titles: autoCreateTitles("AUTO_CREATE_REGION_GROUP_TITLE", "Interop"),
               },
               state: {
                 enabled: autoCreateEnabled("AUTO_CREATE_STATE_GROUPS_ENABLED", false),
@@ -2079,6 +2442,19 @@
               </div>
             </div>
 
+            <div class="settings-auto-create-section" data-acg-type="region">
+              <div class="settings-auto-create-header">
+                <h3>Region Specific Groups</h3>
+                <button type="button" class="settings-toggle is-off" data-acg-toggle aria-pressed="false" aria-label="Toggle region specific groups"></button>
+              </div>
+              <div class="settings-auto-create-body" data-acg-body>
+                <div class="settings-auto-create-titles" data-acg-titles></div>
+                <div class="settings-auto-create-actions">
+                  <button type="button" class="btn" data-acg-add>Add Additional Groups</button>
+                </div>
+              </div>
+            </div>
+
             <div class="settings-auto-create-section" data-acg-type="state">
               <div class="settings-auto-create-header">
                 <h3>State Specific Groups</h3>
@@ -2104,10 +2480,11 @@
               if (!form || !editor || !hiddenHost) return;
 
               var initial = <%- JSON.stringify(autoCreateInitial) %>;
-              var defaults = { agency: 'Main', county: 'Interop', state: 'Interop' };
+              var defaults = { agency: 'Main', county: 'Interop', region: 'Interop', state: 'Interop' };
               var prefixes = {
                 agency: 'AUTO_CREATE_AGENCY',
                 county: 'AUTO_CREATE_COUNTY',
+                region: 'AUTO_CREATE_REGION',
                 state: 'AUTO_CREATE_STATE'
               };
 
@@ -2181,7 +2558,7 @@
 
               function getLiveConfig() {
                 var out = {};
-                ['agency', 'county', 'state'].forEach(function (type) {
+                ['agency', 'county', 'region', 'state'].forEach(function (type) {
                   var section = sectionEl(type);
                   if (!section) {
                     out[type] = { enabled: false, titles: [] };
@@ -2243,12 +2620,12 @@
                 });
               }
 
-              ['agency', 'county', 'state'].forEach(initSection);
+              ['agency', 'county', 'region', 'state'].forEach(initSection);
 
               function serializeAutoCreateGroups() {
                 hiddenHost.innerHTML = '';
 
-                ['agency', 'county', 'state'].forEach(function (type) {
+                ['agency', 'county', 'region', 'state'].forEach(function (type) {
                   var section = sectionEl(type);
                   if (!section) return;
                   var prefix = prefixes[type];
@@ -4483,7 +4860,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

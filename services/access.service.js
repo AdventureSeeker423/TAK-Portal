@@ -380,7 +380,7 @@ function getAllowedAgencySuffixesForGroups(userGroups) {
       agency.adminGroups != null ? agency.adminGroups : agency.adminGroup;
     const legacyAdminList = normalizeGroupList(rawAdmin);
 
-    // New (computed) admin group name(s) ù support both legacy and county-abbrev patterns
+    // New (computed) admin group name(s) ¬ù support both legacy and county-abbrev patterns
     const computedNames = getAllAgencyAdminGroupNames(agency).map((n) =>
       n.toLowerCase()
     );
@@ -526,7 +526,7 @@ function isUsernameInAllowedAgencies(authUser, username) {
 
 /**
  * TAK subscription rows: resolve the username to a single agency suffix (longest
- * known match at tail, then prefix ù same rules as Total Users / Users by Agency),
+ * known match at tail, then prefix ¬ù same rules as Total Users / Users by Agency),
  * then check whether that suffix is in the viewer's allowed list.
  */
 function isUsernameInAllowedAgencySuffixes(authUser, username) {
@@ -747,7 +747,7 @@ function filterAgencySpecificGroupsForDashboard(groups, agencyNameOrPrefix) {
  * - Agency admins: see only
  *   - their own agency's groups (created_type=Agency + created_type_detail=full name),
  *   - plus groups explicitly granted via the agency's allowedAdminGroupIds (set on Agencies page).
- * County and state groups are NOT shown by default; only if added to allowedAdminGroupIds.
+ * County, region, and state groups are NOT shown by default; only if added to allowedAdminGroupIds.
  */
 function filterGroupsForUser(authUser, groups) {
   const access = getAgencyAccess(authUser);
@@ -777,7 +777,7 @@ function filterGroupsForUser(authUser, groups) {
 
 /**
  * Agency-only page titles (Users, Groups, Templates): single managed agency ? groupPrefix (e.g. "HCSO").
- * Multiple agencies or global admin ? null (views use generic "Agency ù" or default title).
+ * Multiple agencies or global admin ? null (views use generic "Agency ¬ù" or default title).
  */
 function getAgencyPageTitleAbbrev(authUser) {
   const access = getAgencyAccess(authUser);

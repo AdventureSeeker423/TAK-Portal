@@ -171,6 +171,11 @@ function getRequiredPermissionsForRequest(path, method) {
     if (m === "GET" || m === "HEAD") return [];
     return ["page.agencies"];
   }
+  if (p === "/api/regions" || p.startsWith("/api/regions/")) {
+    // Region catalog used by Agencies / Groups / Settings; writes are global-admin gated in the route.
+    if (m === "GET" || m === "HEAD") return [];
+    return ["page.settings"];
+  }
   if (p.startsWith("/api/users")) return ["page.users"];
   if (p.startsWith("/api/groups")) return ["page.groups"];
   if (p.startsWith("/api/templates")) return ["page.templates"];
