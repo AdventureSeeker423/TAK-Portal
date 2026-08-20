@@ -90,6 +90,8 @@ function portalAuthMiddleware(req, res, next) {
     method === "GET" &&
     normalizedPath.startsWith("/api/plugins/") &&
     normalizedPath.endsWith("/download");
+  const isAtakApkDownloadApi =
+    method === "GET" && normalizedPath === "/api/atak/download";
 
   // ============================================================
   // AUTH DISABLED => EVERYTHING WIDE OPEN + BOOTSTRAP ADMIN USER
@@ -206,7 +208,8 @@ function portalAuthMiddleware(req, res, next) {
         normalizedPath === "/api/mou/user-agreement/accept" ||
         normalizedPath === "/api/mou/user-agreement/decline" ||
         normalizedPath === "/plugins" ||
-        isPluginDownloadApi;
+        isPluginDownloadApi ||
+        isAtakApkDownloadApi;
       if (!isAllowedNonAdminPath) {
         return deny();
       }

@@ -2638,7 +2638,7 @@
             <h2 id="settingsModalTitle-allowed-client-devices">Supported TAK Clients</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover" role="tooltip">Choose which TAK client apps appear on Setup My Device. Platforms with no enabled apps are hidden from users.</span>
+              <span class="settings-help-popover" role="tooltip">Choose which TAK client apps appear on Setup My Device. Platforms with no enabled apps are hidden from users. For ATAK, you can optionally upload an APK so Setup My Device offers a direct download instead of the Play Store.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -2709,6 +2709,7 @@
               const defaultOn = opts.defaultOn;
               const recommended = opts.recommended;
               const showCloudtakUrl = !!opts.showCloudtakUrl;
+              const showAtakApkUpload = !!opts.showAtakApkUpload;
               const locked = !!opts.locked;
               const rawVal = (settings && typeof settings[key] === "string")
                 ? settings[key].toLowerCase()
@@ -2719,6 +2720,10 @@
                 defaultOn;
               const isOn = locked ? false : currentVal === "true";
               const isRecommended = recommended === appId;
+              const atakApkInfo =
+                typeof atakApk !== "undefined" && atakApk && typeof atakApk === "object"
+                  ? atakApk
+                  : { uploaded: false, originalName: null };
           %>
             <div
               class="settings-allowed-client-item<%= locked ? ' is-disabled' : '' %>"
@@ -2744,6 +2749,34 @@
                 </button>
                 <span class="settings-label">
                   <span><%= label %></span>
+                  <% if (showAtakApkUpload) { %>
+                    <span class="settings-atak-apk-actions" data-atak-apk-actions>
+                      <input
+                        type="file"
+                        id="atakApkUploadInput"
+                        accept=".apk,application/vnd.android.package-archive"
+                        style="display:none;"
+                        tabindex="-1"
+                      />
+                      <button type="button" class="btn settings-atak-apk-btn" data-atak-apk-upload>
+                        <%= atakApkInfo.uploaded ? "Replace APK" : "Upload APK" %>
+                      </button>
+                      <button
+                        type="button"
+                        class="btn settings-atak-apk-btn"
+                        data-atak-apk-remove
+                        style="<%= atakApkInfo.uploaded ? '' : 'display:none;' %>"
+                      >
+                        Remove APK
+                      </button>
+                      <span
+                        class="settings-help settings-atak-apk-name"
+                        data-atak-apk-name
+                        style="<%= atakApkInfo.uploaded ? '' : 'display:none;' %>"
+                        title="<%= atakApkInfo.originalName || '' %>"
+                      ><%= atakApkInfo.originalName || "" %></span>
+                    </span>
+                  <% } %>
                 </span>
                 <button
                   type="button"
@@ -2800,6 +2833,7 @@
                 appId: appId,
                 defaultOn: def.defaultOn,
                 recommended: recommendedAndroid,
+                showAtakApkUpload: appId === "atak",
               });
             }); %>
             <input type="hidden" name="settings[ALLOWED_CLIENT_RECOMMENDED_ANDROID]" value="<%= recommendedAndroid %>" data-allowed-client-recommended-input="android" />
@@ -2916,6 +2950,7 @@
                   if (e.target && e.target.closest && (
                     e.target.closest("[data-allowed-client-star]") ||
                     e.target.closest("[data-settings-bool-toggle]") ||
+                    e.target.closest("[data-atak-apk-actions]") ||
                     e.target.closest("input") ||
                     e.target.closest("label.settings-field")
                   )) {
@@ -2983,6 +3018,125 @@
                   setTimeout(syncCloudtakUrlVisibility, 0);
                 }
               });
+
+              (function setupAtakApkActions() {
+                var actions = modal.querySelector("[data-atak-apk-actions]");
+                if (!actions) return;
+                var fileInput = document.getElementById("atakApkUploadInput");
+                var uploadBtn = actions.querySelector("[data-atak-apk-upload]");
+                var removeBtn = actions.querySelector("[data-atak-apk-remove]");
+                var nameEl = actions.querySelector("[data-atak-apk-name]");
+                var busy = false;
+
+                function setBusy(next) {
+                  busy = !!next;
+                  if (uploadBtn) uploadBtn.disabled = busy;
+                  if (removeBtn) removeBtn.disabled = busy;
+                }
+
+                function applyInfo(info) {
+                  var uploaded = !!(info && info.uploaded);
+                  var originalName = (info && info.originalName) || "";
+                  if (uploadBtn) {
+                    uploadBtn.textContent = uploaded ? "Replace APK" : "Upload APK";
+                  }
+                  if (removeBtn) {
+                    removeBtn.style.display = uploaded ? "" : "none";
+                  }
+                  if (nameEl) {
+                    nameEl.textContent = originalName;
+                    nameEl.title = originalName;
+                    nameEl.style.display = uploaded ? "" : "none";
+                  }
+                }
+
+                if (uploadBtn && fileInput) {
+                  uploadBtn.addEventListener("click", function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (busy) return;
+                    fileInput.click();
+                  });
+                  fileInput.addEventListener("change", function () {
+                    if (!fileInput.files || !fileInput.files.length) return;
+                    var file = fileInput.files[0];
+                    var lower = String(file.name || "").toLowerCase();
+                    if (!lower.endsWith(".apk")) {
+                      alert("Please select an .apk file.");
+                      fileInput.value = "";
+                      return;
+                    }
+                    setBusy(true);
+                    var fd = new FormData();
+                    fd.append("apk", file);
+                    fetch("/api/settings/atak-apk/upload", {
+                      method: "POST",
+                      body: fd,
+                      credentials: "same-origin",
+                      headers: { "X-Requested-With": "XMLHttpRequest" },
+                    })
+                      .then(function (res) {
+                        return res.json().then(function (body) {
+                          return { ok: res.ok, body: body };
+                        });
+                      })
+                      .then(function (result) {
+                        if (!result.ok || !result.body || !result.body.ok) {
+                          throw new Error(
+                            (result.body && result.body.error) || "Upload failed."
+                          );
+                        }
+                        applyInfo(result.body);
+                      })
+                      .catch(function (err) {
+                        alert(err && err.message ? err.message : "Upload failed.");
+                      })
+                      .finally(function () {
+                        fileInput.value = "";
+                        setBusy(false);
+                      });
+                  });
+                }
+
+                if (removeBtn) {
+                  removeBtn.addEventListener("click", function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (busy) return;
+                    if (!confirm("Remove the hosted ATAK APK? Setup My Device will use the Play Store link again.")) {
+                      return;
+                    }
+                    setBusy(true);
+                    fetch("/api/settings/atak-apk", {
+                      method: "DELETE",
+                      credentials: "same-origin",
+                      headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        Accept: "application/json",
+                      },
+                    })
+                      .then(function (res) {
+                        return res.json().then(function (body) {
+                          return { ok: res.ok, body: body };
+                        });
+                      })
+                      .then(function (result) {
+                        if (!result.ok || !result.body || !result.body.ok) {
+                          throw new Error(
+                            (result.body && result.body.error) || "Remove failed."
+                          );
+                        }
+                        applyInfo(result.body);
+                      })
+                      .catch(function (err) {
+                        alert(err && err.message ? err.message : "Remove failed.");
+                      })
+                      .finally(function () {
+                        setBusy(false);
+                      });
+                  });
+                }
+              })();
 
               syncCloudtakUrlVisibility();
             })();

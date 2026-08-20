@@ -154,6 +154,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/setup-my-device")) return [];
   if (p.startsWith("/api/qr")) return [];
   if (p.startsWith("/api/plugins/") && p.endsWith("/download") && m === "GET") return [];
+  if (p === "/api/atak/download" && m === "GET") return [];
   if (p === "/styles.css" || p === "/favicon.ico") return [];
 
   // APIs now inherit from their owning page capability.
@@ -193,6 +194,7 @@ function getRequiredPermissionsForRequest(path, method) {
   }
   if (p.startsWith("/api/mou")) return ["page.mou"];
   if (p.startsWith("/api/settings/tak-maintenance")) return ["page.settings"];
+  if (p.startsWith("/api/settings/atak-apk")) return ["page.settings"];
   // Getting-started is role-gated in server.js, not permission-toggled.
 
   // Pages

@@ -261,14 +261,30 @@
 
       <section class="iosStep">
         <h3 class="iosStepHeading">Step 1: Download ATAK</h3>
+        <%
+          const atakApkInfo =
+            typeof atakApk !== "undefined" && atakApk && typeof atakApk === "object"
+              ? atakApk
+              : null;
+          const atakApkUploaded = !!(atakApkInfo && atakApkInfo.uploaded && atakApkInfo.downloadUrl);
+          const atakDownloadHref = atakApkUploaded
+            ? atakApkInfo.downloadUrl
+            : "https://play.google.com/store/apps/details?id=com.atakmap.app.civ";
+          const atakDownloadTitle = atakApkUploaded
+            ? "Download ATAK"
+            : "Android - ATAK";
+          const atakDownloadDesc = atakApkUploaded
+            ? "Download the ATAK APK hosted by this portal."
+            : "Download ATAK for Android devices.";
+        %>
         <a
-          href="https://play.google.com/store/apps/details?id=com.atakmap.app.civ"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="<%= atakDownloadHref %>"
+          <% if (!atakApkUploaded) { %>target="_blank" rel="noopener noreferrer"<% } %>
           class="btn tile<%= recommendAtak ? ' success' : '' %>"
+          <%= atakApkUploaded ? 'download' : '' %>
         >
-          <span class="title">Android - ATAK<%= recommendAtak ? ' (Recommended)' : '' %></span>
-          <span class="desc">Download ATAK for Android devices.</span>
+          <span class="title"><%= atakDownloadTitle %><%= recommendAtak ? ' (Recommended)' : '' %></span>
+          <span class="desc"><%= atakDownloadDesc %></span>
         </a>
       </section>
 

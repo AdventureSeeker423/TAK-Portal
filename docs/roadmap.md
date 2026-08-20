@@ -7,7 +7,6 @@ Below you will find a comprehensive list of items planned for implementation in 
 ## 🚧 In Development
 
 ## 📌 Planned / Upcoming Features
-- Host local ATAK version rather than play store
 
 ## 🧠 Ideas / Long Term
 - Device Profile Management

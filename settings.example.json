@@ -33,6 +33,7 @@
   "ALLOWED_CLIENT_ORDER_ANDROID": "atak",
   "ALLOWED_CLIENT_ORDER_WEB": "cloudtak",
   "ALLOWED_CLIENT_ORDER_PC": "data_package",
+  "ATAK_APK_ORIGINAL_NAME": "",
   "TAK_SSH_HOST": "",
   "TAK_SSH_PORT": "22",
   "TAK_SSH_USER": "",

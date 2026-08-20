@@ -32,6 +32,7 @@ const groupsSvc = require("./services/groups.service");
 const agencyTypesSvc = require("./services/agencyTypes.service");
 const locatorsSvc = require("./services/locators.service");
 const pluginsSvc = require("./services/plugins.service");
+const atakApkSvc = require("./services/atakApk.service");
 const { toSafeApiError } = require("./services/apiErrorPayload.service");
 const {
   USER_AGREEMENT_SESSION_COOKIE,
@@ -299,11 +300,14 @@ app.use((req, res, next) => {
     const isSetupMyDevicePath =
       normalizedPath === "/setup-my-device" ||
       normalizedPath.startsWith("/api/setup-my-device");
+    const isAtakApkDownloadPath =
+      normalizedPath === "/api/atak/download";
     const isAgreementExemptPath =
       normalizedPath === "/logout" ||
       isAgreementApiPath ||
       (isPortalAdmin && normalizedPath === "/dashboard") ||
-      isSetupMyDevicePath;
+      isSetupMyDevicePath ||
+      isAtakApkDownloadPath;
 
     if (
       !isAgreementTargetUser ||
@@ -471,6 +475,37 @@ app.get("/api/plugins/:id/download", (req, res) => {
     return res.status(500).json({ error: toSafeApiError(err) });
   }
 });
+// Hosted ATAK client APK for Setup My Device (same audience as plugin downloads).
+app.get("/api/atak/download", (req, res) => {
+  try {
+    const filePath = atakApkSvc.getApkFilePath();
+    if (!filePath) {
+      return res.status(404).json({ error: "No ATAK APK has been uploaded." });
+    }
+    const filename = atakApkSvc.getOriginalName();
+    auditSvc.auditFromRequest(req, {
+      action: "ATAK_APK_DOWNLOADED",
+      targetType: "atak_apk",
+      targetId: "client",
+      details: {
+        filename,
+        summary: `Downloaded hosted ATAK APK ${filename}.`,
+      },
+    });
+    const safeDisposition = String(filename || "atak-client.apk").replace(
+      /["\\\r\n]/g,
+      "_"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${safeDisposition}"`
+    );
+    res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    return res.sendFile(filePath);
+  } catch (err) {
+    return res.status(500).json({ error: toSafeApiError(err) });
+  }
+});
 app.use("/api/audit-log", requirePermission("page.audit_log"), require("./routes/auditLog.routes"));
 app.use("/api/plugins", requirePermission("page.plugin_manager"), require("./routes/plugins.routes"));
 app.use("/api/integrations", requirePermission("page.integrations"), require("./routes/integrations.routes"));
@@ -480,6 +515,11 @@ app.use(
   "/api/settings/tak-maintenance",
   requirePermission("page.settings"),
   require("./routes/settingsTakMaintenance.routes")
+);
+app.use(
+  "/api/settings/atak-apk",
+  requirePermission("page.settings"),
+  require("./routes/atakApk.routes")
 );
 // Locate + data packages (admin + JSON APIs): page-aligned capability.
 app.use("/api/locate", requirePermission("page.locate"), require("./routes/locate.routes"));
@@ -998,6 +1038,7 @@ app.get("/setup-my-device", async (req, res) => {
     takHost,
     enrollQrBootstrap,
     sshConfigured: !!takSshSvc.isPrivilegedSshReady(),
+    atakApk: atakApkSvc.getApkInfo(),
     agreementSummary: mouSvc.getAgreementSummaryForUser(req.authentikUser, {
       acceptedForSession: hasAcceptedAgreementForSession(
         req,
@@ -1516,6 +1557,7 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   sshPrivilegedReady,
   defaultAgencyTypes: agencyTypesSvc.DEFAULT_AGENCY_TYPES,
   configurableAgencyTypes: agencyTypesSvc.getConfigurableAgencyTypes(settings),
+  atakApk: atakApkSvc.getApkInfo(),
   });
 });
 
