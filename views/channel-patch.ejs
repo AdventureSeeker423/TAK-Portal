@@ -8,18 +8,16 @@
     singleFallbackTitle: "Agency Channel Patch"
   }) %>
 
-  <p class="cp-lead">
-    Select the channels you want linked. Traffic on any selected channel is
-    rebroadcast to the others in both directions.
-  </p>
-
   <div id="cpBridgeBanner" class="cp-bridge" hidden>
     <span class="cp-bridgeDot"></span>
     <span id="cpBridgeText">Checking TAK stream…</span>
   </div>
 
-  <div class="card cp-createCard">
-    <h2 style="margin-top:0;">New Patch</h2>
+  <div class="card cp-formCard">
+    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px; flex-wrap:wrap;">
+      <h2 style="margin:0;" id="cpFormTitle">New Patch</h2>
+      <button class="btn" id="cpCancelEditBtn" type="button" style="display:none;">Cancel Edit</button>
+    </div>
 
     <label class="cp-field">
       Name
@@ -34,23 +32,22 @@
       <div id="cpChannelsBox" class="groupsBox cp-channelsBox">
         <div class="msg">Loading channels…</div>
       </div>
-      <div id="cpSelectedHint" class="cp-selectedHint"></div>
     </div>
 
     <div class="row" style="margin-top:14px; gap:14px; align-items:center; flex-wrap:wrap;">
-      <button class="btn" type="button" id="cpCreateBtn">Create Patch</button>
-      <div class="cp-enableCreate">
-        <span>Enable immediately</span>
+      <button class="btn" type="button" id="cpSubmitBtn">Create Patch</button>
+      <div class="cp-enableCreate" id="cpEnableCreateRow">
+        <span>Enable</span>
         <button
           type="button"
           id="cpCreateEnabled"
           class="settings-toggle is-on"
           aria-pressed="true"
-          aria-label="Enable immediately"
+          aria-label="Enable"
         ></button>
       </div>
     </div>
-    <div id="cpCreateMsg" class="msg" style="margin-top:10px;"></div>
+    <div id="cpFormMsg" class="msg" style="margin-top:10px;"></div>
   </div>
 
   <div class="card">
@@ -65,13 +62,6 @@
 </main>
 
 <style>
-  .cp-lead {
-    margin: 0 0 16px;
-    max-width: 62ch;
-    color: var(--muted, #8b93a7);
-    line-height: 1.45;
-  }
-
   .cp-bridge {
     display: flex;
     align-items: center;
@@ -117,11 +107,6 @@
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 4px 10px;
   }
-  .cp-selectedHint {
-    margin-top: 8px;
-    font-size: 0.88rem;
-    color: var(--muted, #8b93a7);
-  }
 
   .cp-enableCreate {
     display: inline-flex;
@@ -142,13 +127,14 @@
     border: 1px solid var(--line);
     border-radius: 14px;
     padding: 14px 16px;
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--btn) 8%, transparent), transparent 42%),
-      var(--panel);
+  }
+  .cp-patch.is-on {
+    border-color: color-mix(in srgb, #22c55e 55%, var(--line));
+    background: color-mix(in srgb, #22c55e 16%, var(--panel));
   }
   .cp-patch.is-off {
-    opacity: 0.72;
-    background: var(--panel);
+    border-color: color-mix(in srgb, #ef4444 50%, var(--line));
+    background: color-mix(in srgb, #ef4444 14%, var(--panel));
   }
   .cp-patchTop {
     display: flex;
@@ -163,15 +149,10 @@
     font-weight: 700;
     letter-spacing: 0.01em;
   }
-  .cp-patchMeta {
-    margin-top: 4px;
-    font-size: 0.85rem;
-    color: var(--muted, #8b93a7);
-  }
   .cp-patchActions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
   }
   .cp-enableRow {
@@ -207,12 +188,6 @@
     font-size: 0.9rem;
     font-weight: 600;
   }
-  .cp-statusLine {
-    margin-top: 10px;
-    font-size: 0.82rem;
-    color: var(--muted, #8b93a7);
-  }
-  .cp-statusLine.is-err { color: #e35d5d; }
   .cp-empty {
     padding: 18px 4px;
     color: var(--muted, #8b93a7);
@@ -221,13 +196,15 @@
 
 <script>
 (function () {
+  const formTitle = document.getElementById("cpFormTitle");
+  const cancelEditBtn = document.getElementById("cpCancelEditBtn");
   const channelsBox = document.getElementById("cpChannelsBox");
   const channelSearch = document.getElementById("cpChannelSearch");
-  const selectedHint = document.getElementById("cpSelectedHint");
   const nameInput = document.getElementById("cpName");
-  const createBtn = document.getElementById("cpCreateBtn");
+  const submitBtn = document.getElementById("cpSubmitBtn");
   const createEnabledBtn = document.getElementById("cpCreateEnabled");
-  const createMsg = document.getElementById("cpCreateMsg");
+  const enableCreateRow = document.getElementById("cpEnableCreateRow");
+  const formMsg = document.getElementById("cpFormMsg");
   const board = document.getElementById("cpPatchBoard");
   const refreshBtn = document.getElementById("cpRefreshBtn");
   const bridgeBanner = document.getElementById("cpBridgeBanner");
@@ -235,8 +212,12 @@
 
   /** @type {{ name: string, displayName: string, baseKey: string }[]} */
   let channels = [];
+  /** @type {object[]} */
+  let patchesCache = [];
   /** Persist checked names across filter re-renders */
   const selectedNames = new Set();
+  /** @type {string|null} */
+  let editingId = null;
 
   function esc(s) {
     return String(s ?? "")
@@ -270,19 +251,8 @@
     bridgeBanner.classList.toggle("is-up", !!connected);
     bridgeBanner.classList.toggle("is-down", !connected);
     bridgeText.textContent = connected
-      ? "TAK stream connected — patches can rebroadcast"
-      : "TAK stream disconnected — patches saved but will not forward until connected";
-  }
-
-  function updateSelectedHint() {
-    const n = selectedNames.size;
-    if (n < 2) {
-      selectedHint.textContent = n === 0
-        ? "Select at least two channels."
-        : "Select one more channel.";
-      return;
-    }
-    selectedHint.textContent = n + " channels selected — both directions.";
+      ? "TAK stream connected"
+      : "TAK stream disconnected";
   }
 
   function renderChannelsBox() {
@@ -297,7 +267,6 @@
 
     if (!list.length) {
       channelsBox.innerHTML = '<div class="msg">No matching channels.</div>';
-      updateSelectedHint();
       return;
     }
 
@@ -312,12 +281,52 @@
         })
         .join("") +
       "</div>";
-    updateSelectedHint();
   }
 
-  function setMsg(el, text, isError) {
-    el.textContent = text || "";
-    el.style.color = isError ? "#e35d5d" : "";
+  function setMsg(text, isError) {
+    formMsg.textContent = text || "";
+    formMsg.style.color = isError ? "#e35d5d" : "";
+  }
+
+  function setCreateMode() {
+    editingId = null;
+    formTitle.textContent = "New Patch";
+    submitBtn.textContent = "Create Patch";
+    cancelEditBtn.style.display = "none";
+    enableCreateRow.style.display = "";
+    setToggle(createEnabledBtn, true);
+    nameInput.value = "";
+    channelSearch.value = "";
+    selectedNames.clear();
+    renderChannelsBox();
+    setMsg("");
+  }
+
+  function setEditMode(id) {
+    const patch = patchesCache.find((p) => String(p.id) === String(id));
+    if (!patch) return;
+
+    editingId = String(patch.id);
+    formTitle.textContent = "Edit Patch";
+    submitBtn.textContent = "Save Changes";
+    cancelEditBtn.style.display = "inline-block";
+    enableCreateRow.style.display = "none";
+    setMsg("");
+
+    nameInput.value = patch.name || "";
+    channelSearch.value = "";
+    selectedNames.clear();
+    for (const g of patch.groups || []) {
+      const hit = channels.find(
+        (c) =>
+          c.name === g ||
+          c.baseKey === String(g).toLowerCase() ||
+          c.displayName === g
+      );
+      selectedNames.add(hit ? hit.name : g);
+    }
+    renderChannelsBox();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function api(path, opts) {
@@ -335,43 +344,25 @@
   }
 
   function renderBoard(patches) {
-    if (!patches || !patches.length) {
-      board.innerHTML =
-        '<div class="cp-empty">No patches yet. Select channels above to create one.</div>';
+    patchesCache = Array.isArray(patches) ? patches : [];
+    if (!patchesCache.length) {
+      board.innerHTML = '<div class="cp-empty">No patches yet.</div>';
       return;
     }
 
-    board.innerHTML = patches
+    board.innerHTML = patchesCache
       .map((p) => {
         const groups = Array.isArray(p.groups) ? p.groups : [];
         const nodesHtml = groups
-          .map(
-            (g) =>
-              `<span class="cp-node">${esc(displayFor(g))}</span>`
-          )
+          .map((g) => `<span class="cp-node">${esc(displayFor(g))}</span>`)
           .join("");
 
-        const status = p.lastError
-          ? `<div class="cp-statusLine is-err">Last error: ${esc(p.lastError)}</div>`
-          : p.lastForwardAt
-            ? `<div class="cp-statusLine">Last forwarded: ${esc(
-                new Date(p.lastForwardAt).toLocaleString()
-              )}</div>`
-            : `<div class="cp-statusLine">Waiting for traffic…</div>`;
-
         return `
-          <article class="cp-patch ${p.enabled ? "" : "is-off"}" data-id="${esc(p.id)}">
+          <article class="cp-patch ${p.enabled ? "is-on" : "is-off"}" data-id="${esc(p.id)}">
             <div class="cp-patchTop">
-              <div>
-                <h3 class="cp-patchTitle">${esc(p.name)}</h3>
-                <div class="cp-patchMeta">
-                  ${p.enabled ? "Enabled" : "Disabled"}
-                  ${p.createdBy ? " · " + esc(p.createdBy) : ""}
-                </div>
-              </div>
+              <h3 class="cp-patchTitle">${esc(p.name)}</h3>
               <div class="cp-patchActions">
                 <div class="cp-enableRow">
-                  <span>${p.enabled ? "On" : "Off"}</span>
                   <button
                     type="button"
                     class="settings-toggle ${p.enabled ? "is-on" : "is-off"} cp-enableToggle"
@@ -379,11 +370,11 @@
                     aria-label="Enable ${esc(p.name)}"
                   ></button>
                 </div>
+                <button type="button" class="btn cp-editBtn">Edit</button>
                 <button type="button" class="btn cp-danger cp-deleteBtn">Delete</button>
               </div>
             </div>
             <div class="cp-topology">${nodesHtml}</div>
-            ${status}
           </article>`;
       })
       .join("");
@@ -421,39 +412,52 @@
     if (!cb) return;
     if (cb.checked) selectedNames.add(cb.value);
     else selectedNames.delete(cb.value);
-    updateSelectedHint();
   });
 
   createEnabledBtn.addEventListener("click", () => {
     setToggle(createEnabledBtn, !isToggleOn(createEnabledBtn));
   });
 
-  createBtn.addEventListener("click", async () => {
-    setMsg(createMsg, "");
+  cancelEditBtn.addEventListener("click", () => setCreateMode());
+
+  submitBtn.addEventListener("click", async () => {
+    setMsg("");
     const groups = Array.from(selectedNames);
     if (groups.length < 2) {
-      setMsg(createMsg, "Select at least two channels.", true);
+      setMsg("Select at least two channels.", true);
       return;
     }
-    createBtn.disabled = true;
+    const name = String(nameInput.value || "").trim();
+    submitBtn.disabled = true;
+    const isEdit = !!editingId;
     try {
-      await api("/api/channel-patch", {
-        method: "POST",
-        body: JSON.stringify({
-          name: String(nameInput.value || "").trim() || undefined,
-          groups,
-          enabled: isToggleOn(createEnabledBtn),
-        }),
-      });
-      nameInput.value = "";
-      selectedNames.clear();
-      renderChannelsBox();
-      setMsg(createMsg, "Patch created.");
+      if (isEdit) {
+        await api("/api/channel-patch/" + encodeURIComponent(editingId), {
+          method: "PATCH",
+          body: JSON.stringify({
+            name,
+            groups,
+          }),
+        });
+        setCreateMode();
+        setMsg("Patch updated.");
+      } else {
+        await api("/api/channel-patch", {
+          method: "POST",
+          body: JSON.stringify({
+            name: name || undefined,
+            groups,
+            enabled: isToggleOn(createEnabledBtn),
+          }),
+        });
+        setCreateMode();
+        setMsg("Patch created.");
+      }
       await loadPatches();
     } catch (err) {
-      setMsg(createMsg, err.message || "Create failed", true);
+      setMsg(err.message || (isEdit ? "Update failed" : "Create failed"), true);
     } finally {
-      createBtn.disabled = false;
+      submitBtn.disabled = false;
     }
   });
 
@@ -465,8 +469,8 @@
       const id = card.getAttribute("data-id");
       const next = !isToggleOn(toggle);
       setToggle(toggle, next);
-      const label = card.querySelector(".cp-enableRow span");
-      if (label) label.textContent = next ? "On" : "Off";
+      card.classList.toggle("is-on", next);
+      card.classList.toggle("is-off", !next);
       toggle.disabled = true;
       try {
         await api("/api/channel-patch/" + encodeURIComponent(id), {
@@ -476,11 +480,20 @@
         await loadPatches();
       } catch (err) {
         setToggle(toggle, !next);
-        if (label) label.textContent = !next ? "On" : "Off";
+        card.classList.toggle("is-on", !next);
+        card.classList.toggle("is-off", next);
         alert(err.message || "Update failed");
       } finally {
         toggle.disabled = false;
       }
+      return;
+    }
+
+    const editBtn = e.target.closest(".cp-editBtn");
+    if (editBtn) {
+      const card = editBtn.closest(".cp-patch");
+      if (!card) return;
+      setEditMode(card.getAttribute("data-id"));
       return;
     }
 
@@ -494,6 +507,7 @@
     btn.disabled = true;
     try {
       await api("/api/channel-patch/" + encodeURIComponent(id), { method: "DELETE" });
+      if (editingId && String(editingId) === String(id)) setCreateMode();
       await loadPatches();
     } catch (err) {
       alert(err.message || "Delete failed");
@@ -510,7 +524,7 @@
   });
 
   refreshAll().catch((err) => {
-    setMsg(createMsg, err.message || "Failed to load", true);
+    setMsg(err.message || "Failed to load", true);
     board.innerHTML = `<div class="msg" style="color:#e35d5d;">${esc(
       err.message || "Failed to load patches"
     )}</div>`;
