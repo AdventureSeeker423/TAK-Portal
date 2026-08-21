@@ -625,6 +625,13 @@ function enrichMarkerIconAsync(marker) {
 }
 
 function handleCot(cot) {
+  // Ignore CoT we injected (channel-patch rebroadcasts / bridge identity).
+  // Otherwise TAK echoes update this connection as a ghost duplicate of the EUD.
+  const detail = cot?.raw?.event?.detail;
+  if (detail && (detail.__takportal_patch || detail.__takportal_bridge)) {
+    return;
+  }
+
   const type = String(cot.type?.() || cot.raw?.event?._attributes?.type || "").trim();
   if (type === "t-x-d-d") {
     handleDeleteCot(cot);

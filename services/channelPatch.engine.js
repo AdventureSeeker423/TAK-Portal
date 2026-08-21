@@ -1,5 +1,12 @@
 /**
  * Channel patch engine — mesh CoT rebroadcast across selected channels (both ways).
+ *
+ * Important: patched CoT is written on the portal's webadmin TLS stream. Reusing the
+ * EUD's UID/SA would make TAK Server treat webadmin as a second instance of that
+ * client (same callsign, admin's full group list). We therefore:
+ *  - assign a distinct UID per dest
+ *  - ignore our own echoes on the map stream
+ *  - restore a stable bridge callsign after each write batch
  */
 const cotStream = require("./cotStream.service");
 const mapMeta = require("./mapMeta.service");
@@ -8,6 +15,9 @@ const groupsSvc = require("./groups.service");
 const store = require("./channelPatch.store");
 
 const PATCH_TAG = "__takportal_patch";
+const BRIDGE_TAG = "__takportal_bridge";
+const BRIDGE_UID = "takportal-channel-patch-bridge";
+const BRIDGE_CALLSIGN = "TAK-Portal";
 const RUNTIME_FLUSH_MS = 5000;
 const MAX_DESTS_PER_EVENT = 32;
 
@@ -43,9 +53,13 @@ function toMartiGroupName(catalogOrAny) {
 function isPortalPatchedCot(cot) {
   const detail = cot?.raw?.event?.detail || cot?.detail?.() || {};
   if (detail && detail[PATCH_TAG]) return true;
-  // Also honor string attribute bag forms
   if (detail && detail[PATCH_TAG]?._attributes) return true;
   return false;
+}
+
+function isPortalBridgeCot(cot) {
+  const detail = cot?.raw?.event?.detail || cot?.detail?.() || {};
+  return !!(detail && detail[BRIDGE_TAG]);
 }
 
 /**
@@ -112,6 +126,7 @@ function stampPatchTag(detail, meta) {
       patchId: safeStr(meta.patchId),
       from: safeStr(meta.fromGroup),
       to: safeStr(meta.toGroup),
+      srcUid: safeStr(meta.srcUid),
     },
   };
 }
@@ -120,6 +135,29 @@ function setFilterGroup(detail, groupName) {
   const g = safeStr(groupName).trim();
   if (!g) return;
   detail.filtergroup = { _attributes: { group: g } };
+}
+
+function patchedUid(srcUid, destGroup) {
+  const base = safeStr(srcUid).trim() || "unknown";
+  const dest = groupKey(destGroup) || toMartiGroupName(destGroup) || "dest";
+  const slug = dest.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
+  return `${base}.takportal.${slug}`.slice(0, 128);
+}
+
+/**
+ * Strip elements that make TAK treat this as the injecting connection's own SA.
+ */
+function neutralizeAsInjectedCopy(detail) {
+  if (!detail || typeof detail !== "object") return;
+  // Connection/group membership announcements from the original EUD
+  delete detail.__group;
+  delete detail._group;
+  delete detail.group;
+  // Do not carry original flow tags onto the webadmin write
+  delete detail["_flow-tags_"];
+  delete detail["flow-tags"];
+  delete detail._flowTags;
+  delete detail.flowTags;
 }
 
 /**
@@ -134,21 +172,68 @@ async function buildTargetedCot(sourceCot, destGroup, meta) {
   const raw = JSON.parse(JSON.stringify(sourceCot.raw));
   if (!raw?.event) throw new Error("Invalid CoT raw");
 
+  const srcUid = safeStr(raw.event?._attributes?.uid).trim();
   const clone = new CoT(raw);
   const detail = clone.detail();
   clearExistingDests(detail);
-  // Marti routes by CN (no tak_ prefix). Catalog stores Authentik tak_* names.
+  neutralizeAsInjectedCopy(detail);
+
+  // Distinct UID so TAK does not bind this SA to the webadmin ClientEndpoint
+  // as a second instance of the real EUD.
+  clone.uid(patchedUid(srcUid, destGroup));
+
   const martiGroup = toMartiGroupName(destGroup);
   if (!martiGroup) throw new Error("Empty Marti dest group");
   clone.addDest({ group: martiGroup });
   setFilterGroup(detail, martiGroup);
-  stampPatchTag(detail, { ...meta, toGroup: destGroup });
+  stampPatchTag(detail, { ...meta, toGroup: destGroup, srcUid });
 
   return clone;
 }
 
+/**
+ * Restore a stable callsign/uid on the webadmin stream so Client Dashboard
+ * does not keep showing the last patched EUD under username admin.
+ */
+async function buildBridgePresenceCot() {
+  const mod = await loadNodeCot();
+  const CoT = mod.default || mod.CoT;
+  if (!CoT) throw new Error("node-cot CoT constructor unavailable");
+
+  const now = new Date();
+  const stale = new Date(now.getTime() + 5 * 60 * 1000);
+  const iso = now.toISOString();
+  const raw = {
+    event: {
+      _attributes: {
+        version: "2.0",
+        uid: BRIDGE_UID,
+        type: "a-f-G-U-C",
+        how: "h-g-i-g-o",
+        time: iso,
+        start: iso,
+        stale: stale.toISOString(),
+      },
+      point: {
+        _attributes: {
+          lat: "0.0",
+          lon: "0.0",
+          hae: "9999999.0",
+          ce: "9999999.0",
+          le: "9999999.0",
+        },
+      },
+      detail: {
+        contact: { _attributes: { callsign: BRIDGE_CALLSIGN } },
+        [BRIDGE_TAG]: { _attributes: { v: "1" } },
+      },
+    },
+  };
+  return new CoT(raw);
+}
+
 async function forwardCot({ marker, cot }) {
-  if (!cot || isPortalPatchedCot(cot)) return;
+  if (!cot || isPortalPatchedCot(cot) || isPortalBridgeCot(cot)) return;
   if (!cotStream.isBridgeConnected()) return;
 
   const patches = store.listEnabled();
@@ -209,6 +294,18 @@ async function forwardCot({ marker, cot }) {
         queueRuntime(id, {
           lastError: "TAK stream not connected; write skipped",
         });
+      }
+    }
+
+    if (ok) {
+      try {
+        const bridgeCot = await buildBridgePresenceCot();
+        await cotStream.writeCot(bridgeCot, { stripFlow: true });
+      } catch (err) {
+        console.warn(
+          "[channel-patch] bridge identity restore failed:",
+          err?.message || err
+        );
       }
     }
   } catch (err) {
@@ -286,7 +383,12 @@ module.exports = {
   stop,
   destinationsForSource,
   isPortalPatchedCot,
+  isPortalBridgeCot,
   toMartiGroupName,
+  patchedUid,
   getRuntimeHint,
   PATCH_TAG,
+  BRIDGE_TAG,
+  BRIDGE_UID,
+  BRIDGE_CALLSIGN,
 };

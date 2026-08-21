@@ -58,4 +58,9 @@ assert.strictEqual(
   "requires at least two channels"
 );
 
+assert.strictEqual(
+  engine.patchedUid("ANDROID-abc", "tak_CPD Main"),
+  "ANDROID-abc.takportal.cpd-main"
+);
+
 console.log("channelPatch.engine.test.js OK");
