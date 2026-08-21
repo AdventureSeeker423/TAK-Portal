@@ -8,15 +8,12 @@
     singleFallbackTitle: "Agency Channel Patch"
   }) %>
 
-  <div id="cpBridgeBanner" class="cp-bridge" hidden>
-    <span class="cp-bridgeDot"></span>
-    <span id="cpBridgeText">Checking TAK stream…</span>
-  </div>
-
-  <div class="card cp-formCard">
-    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px; flex-wrap:wrap;">
-      <h2 style="margin:0;" id="cpFormTitle">New Patch</h2>
-      <button class="btn" id="cpCancelEditBtn" type="button" style="display:none;">Cancel Edit</button>
+  <div class="card">
+    <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h2 style="margin: 0;" id="cpFormTitle">Create New Patch</h2>
+      <div class="row" style="gap:8px;">
+        <button class="btn" id="cpCancelEditBtn" type="button" style="display:none;">Cancel Edit</button>
+      </div>
     </div>
 
     <label class="cp-field">
@@ -24,36 +21,42 @@
       <input id="cpName" type="text" placeholder="e.g. Law Family Patch" maxlength="120" />
     </label>
 
-    <div class="cp-channelsSection">
-      <div class="row" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-        <label style="margin:0; font-weight:600;">Channels</label>
-        <input id="cpChannelSearch" type="search" placeholder="Filter channels…" style="max-width:260px; flex:1;" />
-      </div>
-      <div id="cpChannelsBox" class="groupsBox cp-channelsBox">
-        <div class="msg">Loading channels…</div>
-      </div>
+    <div style="margin-top:4px;">
+      <label>
+        Channels
+        <div class="row" style="gap:10px; margin-top:8px; align-items:center; flex-wrap:wrap;">
+          <input id="cpChannelSearch" type="search" placeholder="Search channels..." style="flex:1; min-width:0;" />
+          <button class="btn" type="button" id="cpSelectAllBtn">Select All</button>
+          <button class="btn" type="button" id="cpClearAllBtn">Clear All</button>
+        </div>
+
+        <div id="cpChannelsBox" class="groupsBox">
+          <div id="cpChannelsInner" class="groupsInner">
+            <div class="msg">Loading channels…</div>
+          </div>
+        </div>
+      </label>
     </div>
 
-    <div class="row" style="margin-top:14px; gap:14px; align-items:center; flex-wrap:wrap;">
-      <button class="btn" type="button" id="cpSubmitBtn">Create Patch</button>
+    <div class="row" style="margin-top:14px; justify-content:flex-end; gap:14px; align-items:center; flex-wrap:wrap;">
+      <div id="cpFormMsg" class="msg"></div>
       <div class="cp-enableCreate" id="cpEnableCreateRow">
-        <span>Enable</span>
+        <span>Enable Patch Upon Creation</span>
         <button
           type="button"
           id="cpCreateEnabled"
           class="settings-toggle is-on"
           aria-pressed="true"
-          aria-label="Enable"
+          aria-label="Enable Patch Upon Creation"
         ></button>
       </div>
+      <button class="btn success" type="button" id="cpSubmitBtn">Create Patch</button>
     </div>
-    <div id="cpFormMsg" class="msg" style="margin-top:10px;"></div>
   </div>
 
   <div class="card">
-    <div class="row" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-      <h2 style="margin:0;">Patches</h2>
-      <button class="btn" type="button" id="cpRefreshBtn" style="opacity:.85;">Refresh</button>
+    <div class="row" style="justify-content: space-between; align-items:center;">
+      <h2 style="margin:0;">Existing Patches</h2>
     </div>
     <div id="cpPatchBoard" class="cp-board">
       <div class="msg">Loading patches…</div>
@@ -62,29 +65,6 @@
 </main>
 
 <style>
-  .cp-bridge {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 14px;
-    padding: 10px 14px;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--panel) 88%, transparent);
-    font-size: 0.92rem;
-  }
-  .cp-bridge.is-up { border-color: color-mix(in srgb, #3dba7a 45%, var(--line)); }
-  .cp-bridge.is-down { border-color: color-mix(in srgb, #e35d5d 45%, var(--line)); }
-  .cp-bridgeDot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: #8b93a7;
-    flex: 0 0 auto;
-  }
-  .cp-bridge.is-up .cp-bridgeDot { background: #3dba7a; box-shadow: 0 0 0 3px rgba(61,186,122,.2); }
-  .cp-bridge.is-down .cp-bridgeDot { background: #e35d5d; }
-
   .cp-field {
     display: flex;
     flex-direction: column;
@@ -98,14 +78,13 @@
     box-sizing: border-box;
   }
 
-  .cp-channelsBox {
-    max-height: 280px;
-    margin-top: 8px;
+  .groupsInner {
+    column-width: 280px;
+    column-gap: 14px;
+    column-count: 4;
   }
-  .cp-channelsInner {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 4px 10px;
+  .groupItem {
+    white-space: nowrap;
   }
 
   .cp-enableCreate {
@@ -199,16 +178,16 @@
   const formTitle = document.getElementById("cpFormTitle");
   const cancelEditBtn = document.getElementById("cpCancelEditBtn");
   const channelsBox = document.getElementById("cpChannelsBox");
+  const channelsInner = document.getElementById("cpChannelsInner");
   const channelSearch = document.getElementById("cpChannelSearch");
+  const selectAllBtn = document.getElementById("cpSelectAllBtn");
+  const clearAllBtn = document.getElementById("cpClearAllBtn");
   const nameInput = document.getElementById("cpName");
   const submitBtn = document.getElementById("cpSubmitBtn");
   const createEnabledBtn = document.getElementById("cpCreateEnabled");
   const enableCreateRow = document.getElementById("cpEnableCreateRow");
   const formMsg = document.getElementById("cpFormMsg");
   const board = document.getElementById("cpPatchBoard");
-  const refreshBtn = document.getElementById("cpRefreshBtn");
-  const bridgeBanner = document.getElementById("cpBridgeBanner");
-  const bridgeText = document.getElementById("cpBridgeText");
 
   /** @type {{ name: string, displayName: string, baseKey: string }[]} */
   let channels = [];
@@ -246,41 +225,33 @@
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   }
 
-  function setBridge(connected) {
-    bridgeBanner.hidden = false;
-    bridgeBanner.classList.toggle("is-up", !!connected);
-    bridgeBanner.classList.toggle("is-down", !connected);
-    bridgeText.textContent = connected
-      ? "TAK stream connected"
-      : "TAK stream disconnected";
-  }
-
-  function renderChannelsBox() {
+  function filteredChannels() {
     const q = String(channelSearch.value || "").trim().toLowerCase();
-    const list = channels.filter((c) => {
+    return channels.filter((c) => {
       if (!q) return true;
       return (
         c.displayName.toLowerCase().includes(q) ||
         c.name.toLowerCase().includes(q)
       );
     });
+  }
+
+  function renderChannelsBox() {
+    const list = filteredChannels();
 
     if (!list.length) {
-      channelsBox.innerHTML = '<div class="msg">No matching channels.</div>';
+      channelsInner.innerHTML = '<div class="msg">No matching channels.</div>';
       return;
     }
 
-    channelsBox.innerHTML =
-      '<div class="cp-channelsInner">' +
-      list
-        .map((c) => {
-          const checked = selectedNames.has(c.name) ? "checked" : "";
-          return `<label class="groupItem"><input type="checkbox" value="${esc(
-            c.name
-          )}" ${checked} /><span>${esc(c.displayName)}</span></label>`;
-        })
-        .join("") +
-      "</div>";
+    channelsInner.innerHTML = list
+      .map((c) => {
+        const checked = selectedNames.has(c.name) ? "checked" : "";
+        return `<label class="groupItem"><input type="checkbox" value="${esc(
+          c.name
+        )}" ${checked} /><span>${esc(c.displayName)}</span></label>`;
+      })
+      .join("");
   }
 
   function setMsg(text, isError) {
@@ -290,7 +261,7 @@
 
   function setCreateMode() {
     editingId = null;
-    formTitle.textContent = "New Patch";
+    formTitle.textContent = "Create New Patch";
     submitBtn.textContent = "Create Patch";
     cancelEditBtn.style.display = "none";
     enableCreateRow.style.display = "";
@@ -388,13 +359,11 @@
         sensitivity: "base",
       })
     );
-    setBridge(!!meta.bridgeConnected);
     renderChannelsBox();
   }
 
   async function loadPatches() {
     const data = await api("/api/channel-patch");
-    setBridge(!!data.bridgeConnected);
     renderBoard(Array.isArray(data.patches) ? data.patches : []);
   }
 
@@ -412,6 +381,16 @@
     if (!cb) return;
     if (cb.checked) selectedNames.add(cb.value);
     else selectedNames.delete(cb.value);
+  });
+
+  selectAllBtn.addEventListener("click", () => {
+    for (const c of filteredChannels()) selectedNames.add(c.name);
+    renderChannelsBox();
+  });
+
+  clearAllBtn.addEventListener("click", () => {
+    for (const c of filteredChannels()) selectedNames.delete(c.name);
+    renderChannelsBox();
   });
 
   createEnabledBtn.addEventListener("click", () => {
@@ -513,14 +492,6 @@
       alert(err.message || "Delete failed");
       btn.disabled = false;
     }
-  });
-
-  refreshBtn.addEventListener("click", () => {
-    refreshAll().catch((err) => {
-      board.innerHTML = `<div class="msg" style="color:#e35d5d;">${esc(
-        err.message || "Failed to refresh"
-      )}</div>`;
-    });
   });
 
   refreshAll().catch((err) => {
