@@ -2219,13 +2219,13 @@ router.put("/:userId/groups", async (req, res) => {
       : [];
     const beforeLabels = await resolveGroupLabels(beforeIds);
     const preserveMutualAidGroups = !!req.body?.preserveMutualAidGroups;
-    await users.setUserGroups(req.params.userId, groupIds, {
+    const writtenIds = await users.setUserGroups(req.params.userId, groupIds, {
       ...(hasCurrentTemplate ? { currentTemplate } : {}),
       ...(preserveMutualAidGroups ? { preserveMutualAidGroups: true } : {}),
     });
-    const user = await users.getUserById(req.params.userId).catch(() => null);
-    const appliedGroupIds = Array.isArray(user?.groups)
-      ? user.groups.map(String)
+    // Prefer the IDs we actually wrote — Authentik read-after-write can lag.
+    const appliedGroupIds = Array.isArray(writtenIds)
+      ? writtenIds.map(String)
       : groupIds.map(String);
     const afterLabels = await resolveGroupLabels(appliedGroupIds);
 
@@ -2236,7 +2236,7 @@ router.put("/:userId/groups", async (req, res) => {
       targetType: "user",
       targetId: String(req.params.userId),
       details: {
-        username: user?.username ?? beforeUser?.username ?? null,
+        username: beforeUser?.username ?? null,
         beforeGroupIds: beforeLabels.ids,
         beforeGroupNames: beforeLabels.names,
         afterGroupIds: afterLabels.ids,
@@ -2263,13 +2263,13 @@ router.post("/:userId/groups", async (req, res) => {
       : [];
     const beforeLabels = await resolveGroupLabels(beforeIds);
     const preserveMutualAidGroups = !!req.body?.preserveMutualAidGroups;
-    await users.setUserGroups(req.params.userId, groupIds, {
+    const writtenIds = await users.setUserGroups(req.params.userId, groupIds, {
       ...(hasCurrentTemplate ? { currentTemplate } : {}),
       ...(preserveMutualAidGroups ? { preserveMutualAidGroups: true } : {}),
     });
-    const user = await users.getUserById(req.params.userId).catch(() => null);
-    const appliedGroupIds = Array.isArray(user?.groups)
-      ? user.groups.map(String)
+    // Prefer the IDs we actually wrote — Authentik read-after-write can lag.
+    const appliedGroupIds = Array.isArray(writtenIds)
+      ? writtenIds.map(String)
       : groupIds.map(String);
     const afterLabels = await resolveGroupLabels(appliedGroupIds);
     auditSvc.logEvent({
@@ -2279,7 +2279,7 @@ router.post("/:userId/groups", async (req, res) => {
       targetType: "user",
       targetId: String(req.params.userId),
       details: {
-        username: user?.username ?? beforeUser?.username ?? null,
+        username: beforeUser?.username ?? null,
         beforeGroupIds: beforeLabels.ids,
         beforeGroupNames: beforeLabels.names,
         afterGroupIds: afterLabels.ids,

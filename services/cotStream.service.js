@@ -30,6 +30,8 @@ const COT_RAW_CACHE_MAX = Math.max(50, getInt("MAP_COT_RAW_CACHE_MAX", 500));
 const cotRawByUid = new Map();
 /** @type {Set<(line: string) => void>} */
 const subscribers = new Set();
+/** @type {Set<(payload: { marker: object, cot: object }) => void>} */
+const cotProcessedListeners = new Set();
 
 function rememberCotRaw(uid, raw) {
   const id = String(uid || "").trim();
@@ -650,6 +652,54 @@ function handleCot(cot) {
   if (isSpiCotType(marker.type) && hasShapeDetail(cot)) {
     trackSpiOverlayFeature(cot, marker);
   }
+
+  notifyCotProcessed({ marker, cot });
+}
+
+function notifyCotProcessed(payload) {
+  if (!cotProcessedListeners.size) return;
+  for (const fn of cotProcessedListeners) {
+    try {
+      fn(payload);
+    } catch (err) {
+      console.error(
+        "[map-cot] onCotProcessed listener error:",
+        err?.message || err
+      );
+    }
+  }
+}
+
+function onCotProcessed(fn) {
+  if (typeof fn !== "function") return () => {};
+  cotProcessedListeners.add(fn);
+  return () => {
+    cotProcessedListeners.delete(fn);
+  };
+}
+
+/**
+ * Write CoT(s) on the existing webadmin TLS stream.
+ * Accepts CoT instances (or anything node-tak write accepts).
+ * @returns {Promise<boolean>} true if queued, false if bridge unavailable
+ */
+async function writeCot(cotOrList, opts = {}) {
+  ensureBridgeStarted();
+  if (!takConn || typeof takConn.write !== "function") return false;
+  const list = Array.isArray(cotOrList) ? cotOrList : [cotOrList];
+  const cots = list.filter(Boolean);
+  if (!cots.length) return false;
+  try {
+    await takConn.write(cots, opts);
+    return true;
+  } catch (err) {
+    console.error("[map-cot] writeCot failed:", err?.message || err);
+    return false;
+  }
+}
+
+function isBridgeConnected() {
+  return !!(bridgeState.connected && takConn);
 }
 
 function broadcast(obj) {
@@ -1138,4 +1188,7 @@ module.exports = {
   refreshAllMarkerIcons,
   refreshAllMarkerGroups,
   enrichSubscriptionsWithLiveMarkerBattery,
+  onCotProcessed,
+  writeCot,
+  isBridgeConnected,
 };

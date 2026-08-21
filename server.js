@@ -514,6 +514,11 @@ app.use("/api/integrations", requirePermission("page.integrations"), require("./
 app.use("/api/ssh", requirePermission("page.integrations"), require("./routes/ssh.routes"));
 app.use("/api/map", requireMapAccess, require("./routes/map.routes"));
 app.use(
+  "/api/channel-patch",
+  requireGlobalAdminRole,
+  require("./routes/channel-patch.routes")
+);
+app.use(
   "/api/settings/tak-maintenance",
   requirePermission("page.settings"),
   require("./routes/settingsTakMaintenance.routes")
@@ -807,6 +812,11 @@ app.get("/integrations", requirePermission("page.integrations"), (req, res) =>
 // Admin: email (global + agency defaults; overridable per user)
 app.get("/email", requirePermission("page.email"), (req, res) =>
   res.render("email")
+);
+
+// Channel Patch (global admins only for now; not in sidebar)
+app.get("/channel-patch", requireGlobalAdminRole, (req, res) =>
+  res.render("channel-patch")
 );
 app.get("/locate-persons", (req, res) => {
   res.redirect(301, "/locate");
@@ -2237,6 +2247,13 @@ app.listen(port, () => {
     geofenceEngine.start();
   } catch (e) {
     console.log("⚠️ Geofence evaluator init failed", e?.message || e);
+  }
+
+  try {
+    const channelPatchEngine = require("./services/channelPatch.engine");
+    channelPatchEngine.start();
+  } catch (e) {
+    console.log("⚠️ Channel patch engine init failed", e?.message || e);
   }
 
   try {

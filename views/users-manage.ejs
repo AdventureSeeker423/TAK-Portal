@@ -2098,9 +2098,7 @@ function setEditUserModalLoading(on) {
 }
 
 function closeModal(){
-  clearTimeout(groupSaveTimer);
-  groupSaveTimer = null;
-  groupSavePending = false;
+  cancelGroupAutosave({ bumpEpoch: true });
   modalOverlay.style.display = "none";
   document.body.classList.remove("noScroll");
   setEditUserModalLoading(false);
@@ -2497,32 +2495,69 @@ function buildManualGroupIdsForSave() {
   return Array.from(new Set([...preservedUnknownIds, ...Array.from(pickedGroupIds)]));
 }
 
+function sameGroupIdSet(a, b) {
+  const aa = Array.from(a || []).map(String).sort();
+  const bb = Array.from(b || []).map(String).sort();
+  if (aa.length !== bb.length) return false;
+  return aa.every((id, i) => id === bb[i]);
+}
+
 let groupSaveTimer = null;
 let groupSaveInflight = false;
 let groupSavePending = false;
+let groupSaveEpoch = 0;
+let lastConfirmedGroupIds = [];
 
-function applyGroupSaveResult(newGroups) {
-  selectedUser.groups = newGroups;
-  pickedGroupIds = new Set((newGroups || []).map((x) => String(x)));
+function cancelGroupAutosave({ bumpEpoch = false } = {}) {
+  clearTimeout(groupSaveTimer);
+  groupSaveTimer = null;
+  groupSavePending = false;
+  if (bumpEpoch) groupSaveEpoch += 1;
+}
 
-  selectedUser.__role = roleForUser(selectedUser);
-  renderGroupChips(selectedUser);
-
+function patchUserGroupsInLists(userPk, groups, role) {
   const patch = (u) =>
-    String(u.pk) === String(selectedUser.pk)
-      ? { ...u, groups: selectedUser.groups, __role: selectedUser.__role }
+    String(u.pk) === String(userPk)
+      ? { ...u, groups, __role: role }
       : u;
 
   allUsers = (allUsers || []).map(patch);
   const updatedVisible = (window.__lastUsers || []).map(patch);
   window.__lastUsers = updatedVisible.slice();
   renderResults(updatedVisible);
+}
 
+function paintLocalGroupSelection(groupIds, { message, ok = true, updateLists = false } = {}) {
+  if (!selectedUser) return;
+  selectedUser.groups = (groupIds || []).map(String);
+  selectedUser.__role = roleForUser(selectedUser);
+  renderGroupChips(selectedUser);
+  if (updateLists) {
+    patchUserGroupsInLists(selectedUser.pk, selectedUser.groups, selectedUser.__role);
+  }
   if (templateApplySelect) {
     templateApplySelect.value = "manual";
   }
+  if (message) setMsgEl(actionMsg, message, ok);
+}
 
-  setMsgEl(actionMsg, "Groups updated.", true);
+function applyGroupSaveResult(requestedIds, { userPk, epoch } = {}) {
+  if (epoch != null && epoch !== groupSaveEpoch) return;
+  if (!selectedUser || String(selectedUser.pk) !== String(userPk)) return;
+
+  // This request landed — keep for accurate rollback even if the user kept editing.
+  lastConfirmedGroupIds = requestedIds.map(String);
+
+  // Checkbox picks are source of truth — never overwrite them from a save response.
+  // Only confirm UI/lists when the user has not kept editing since this request.
+  const currentPayload = buildManualGroupIdsForSave();
+  if (!sameGroupIdSet(currentPayload, requestedIds)) return;
+
+  paintLocalGroupSelection(requestedIds, {
+    message: "Groups updated.",
+    ok: true,
+    updateLists: true,
+  });
 }
 
 async function pumpGroupSave() {
@@ -2530,12 +2565,19 @@ async function pumpGroupSave() {
 
   groupSavePending = false;
   groupSaveInflight = true;
+  const userPk = String(selectedUser.pk);
+  const epoch = groupSaveEpoch;
+  const previousGroups = lastConfirmedGroupIds.slice();
   const finalGroupIds = buildManualGroupIdsForSave();
 
-  setMsgEl(actionMsg, "Updating groups...", true);
+  paintLocalGroupSelection(finalGroupIds, {
+    message: "Updating groups...",
+    ok: true,
+    updateLists: true,
+  });
 
   try {
-    const res = await fetch(`/api/users/${selectedUser.pk}/groups`, {
+    const res = await fetch(`/api/users/${userPk}/groups`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2543,20 +2585,45 @@ async function pumpGroupSave() {
         currentTemplate: "Manual Group Selection",
       }),
     });
-    const out = await res.json();
+    const out = await res.json().catch(() => ({}));
+
+    if (epoch !== groupSaveEpoch) return;
+    if (!selectedUser || String(selectedUser.pk) !== userPk) return;
+
     if (!res.ok) {
-      setMsgEl(actionMsg, out.error || "Update groups failed", false);
-      pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
-      renderGroupsBox();
+      // Only roll back if the user has not changed picks since this failed request.
+      if (sameGroupIdSet(buildManualGroupIdsForSave(), finalGroupIds)) {
+        pickedGroupIds = new Set(previousGroups.map(String));
+        selectedUser.groups = previousGroups.slice();
+        renderGroupsBox();
+        paintLocalGroupSelection(previousGroups, {
+          message: out.error || "Update groups failed",
+          ok: false,
+          updateLists: true,
+        });
+      } else {
+        setMsgEl(actionMsg, out.error || "Update groups failed", false);
+      }
       return;
     }
 
-    const newGroups = Array.isArray(out.groups) ? out.groups : finalGroupIds;
-    applyGroupSaveResult(newGroups);
+    applyGroupSaveResult(finalGroupIds, { userPk, epoch });
   } catch (err) {
-    setMsgEl(actionMsg, "Network error while updating groups", false);
-    pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
-    renderGroupsBox();
+    if (epoch !== groupSaveEpoch) return;
+    if (!selectedUser || String(selectedUser.pk) !== userPk) return;
+
+    if (sameGroupIdSet(buildManualGroupIdsForSave(), finalGroupIds)) {
+      pickedGroupIds = new Set(previousGroups.map(String));
+      selectedUser.groups = previousGroups.slice();
+      renderGroupsBox();
+      paintLocalGroupSelection(previousGroups, {
+        message: "Network error while updating groups",
+        ok: false,
+        updateLists: true,
+      });
+    } else {
+      setMsgEl(actionMsg, "Network error while updating groups", false);
+    }
   } finally {
     groupSaveInflight = false;
     if (groupSavePending) void pumpGroupSave();
@@ -2568,7 +2635,12 @@ function scheduleGroupSave() {
   groupSaveTimer = setTimeout(() => {
     groupSavePending = true;
     void pumpGroupSave();
-  }, 350);
+  }, 150);
+}
+
+function syncPickedGroupsToUi() {
+  if (!selectedUser) return;
+  paintLocalGroupSelection(buildManualGroupIdsForSave());
 }
 
 function renderGroupsBox(){
@@ -2607,6 +2679,7 @@ function renderGroupsBox(){
       } else {
         pickedGroupIds.delete(id);
       }
+      syncPickedGroupsToUi();
       scheduleGroupSave();
     });
   });
@@ -2617,12 +2690,14 @@ groupFilter.addEventListener("input", ()=>renderGroupsBox());
 if (selectAllBtn) selectAllBtn.addEventListener("click", function() {
   pickedGroupIds = new Set(Array.from(visibleGroupIds));
   renderGroupsBox();
+  syncPickedGroupsToUi();
   scheduleGroupSave();
 });
 
 if (clearAllBtn) clearAllBtn.addEventListener("click", function() {
   pickedGroupIds = new Set();
   renderGroupsBox();
+  syncPickedGroupsToUi();
   scheduleGroupSave();
 });
 
@@ -2740,6 +2815,7 @@ window.editUser = async (userPk) => {
     renderGroupChips(selectedUser);
 
     pickedGroupIds = new Set((selectedUser.groups || []).map(x => String(x)));
+    lastConfirmedGroupIds = Array.from(pickedGroupIds);
     renderGroupsBox();
 
     if (permissionsSelect) {
@@ -2768,6 +2844,7 @@ window.editUser = async (userPk) => {
   }
 
   // Avoid showing stale chips/permissions from a previous edit or incomplete row data.
+  cancelGroupAutosave({ bumpEpoch: true });
   if (firstNameInput) firstNameInput.value = "";
   if (lastNameInput) lastNameInput.value = "";
   if (emailInput) emailInput.value = "";
@@ -2775,6 +2852,7 @@ window.editUser = async (userPk) => {
   if (groupChips) groupChips.innerHTML = "";
   if (groupsInner) groupsInner.innerHTML = "";
   pickedGroupIds = new Set();
+  lastConfirmedGroupIds = [];
 
   selectedUser = { ...u };
   setEditUserModalTitle(u);
@@ -2934,6 +3012,8 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
 
   if (!silentSuccess) setMsgEl(actionMsg, "Updating permissions...", true);
 
+  cancelGroupAutosave({ bumpEpoch: true });
+
   try {
     const payload = { role: desired };
     if (desired === "agency_admin") payload.managedAgencySuffixes = managedSuffixes;
@@ -2976,6 +3056,7 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
     }
 
     pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
+    lastConfirmedGroupIds = Array.from(pickedGroupIds);
     selectedUser.__role = roleForUser(selectedUser);
     renderGroupChips(selectedUser);
     renderGroupsBox();
@@ -3477,6 +3558,8 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
     return { ok: true, skipped: true };
   }
 
+  cancelGroupAutosave({ bumpEpoch: true });
+
   const nameToId = {};
   for (const [id, name] of groupIndex.entries()) {
     const n = String(name || "").trim().toLowerCase();
@@ -3534,6 +3617,7 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
 
   selectedUser.groups = applied;
   pickedGroupIds = new Set(applied.map(x => String(x)));
+  lastConfirmedGroupIds = Array.from(pickedGroupIds);
 
   selectedUser.__role = roleForUser(selectedUser);
   renderGroupChips(selectedUser);

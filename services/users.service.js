@@ -2966,6 +2966,8 @@ async function setUserGroups(userId, groupIds, opts = {}) {
   }
   await api.patch(`/core/users/${userId}/`, payload);
 
+  invalidateUsersCache();
+
   // Notify user via debounced email (do not fail operation if email fails)
   try {
     scheduleDebouncedGroupsEmail({
@@ -2979,7 +2981,7 @@ async function setUserGroups(userId, groupIds, opts = {}) {
       e?.message || e
     );
   }
-  return true;
+  return ids;
 }
 
 async function toggleUserActive(userId, isActive) {

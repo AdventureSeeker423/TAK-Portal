@@ -100,6 +100,12 @@ const PERMISSIONS = {
       description: "Per-user permission overrides (global by default).",
       section: "configuration",
     },
+    channel_patch: {
+      id: "page.channel_patch",
+      label: "Channel Patch",
+      description: "Patch TAK portal groups together (hub-and-spoke CoT rebroadcast).",
+      section: "administration",
+    },
   },
 };
 
@@ -194,6 +200,7 @@ function getRequiredPermissionsForRequest(path, method) {
     return [];
   }
   if (p.startsWith("/api/email")) return ["page.email"];
+  if (p.startsWith("/api/channel-patch")) return ["page.channel_patch"];
   if (p === "/api/mou/user-agreement/accept" || p === "/api/mou/user-agreement/decline") {
     return [];
   }
@@ -210,6 +217,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/groups")) return ["page.groups"];
   if (p.startsWith("/templates")) return ["page.templates"];
   if (p === "/email" || p.startsWith("/email/")) return ["page.email"];
+  if (p === "/channel-patch" || p.startsWith("/channel-patch/")) return ["page.channel_patch"];
   if (p === "/mou" || p.startsWith("/mou/")) return ["page.mou"];
   if (p === "/admin/mou" || p.startsWith("/admin/mou/")) return ["page.mou"];
   if (p === "/pending-user-requests" || p.startsWith("/pending-user-requests/")) return ["page.users"];
