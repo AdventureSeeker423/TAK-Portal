@@ -63,4 +63,34 @@ assert.strictEqual(
   "HCSO-DAVIS-3598.takportal.cpd-main"
 );
 
+// Patched copies must keep callsign on <contact> (ATAK shows "NO CALLSIGN" otherwise)
+// while dropping endpoint so the copy is not a routable ClientEndpoint advertise.
+const detailWithEndpoint = {
+  contact: {
+    _attributes: {
+      callsign: "HCSO-DAVIS-3598",
+      endpoint: "192.168.1.10:4242:tcp",
+    },
+  },
+  takv: { _attributes: { platform: "ATAK" } },
+  __group: { _attributes: { name: "Cyan" } },
+  remarks: { _text: "keep me" },
+};
+assert.strictEqual(
+  engine.neutralizeAsInjectedCopy(detailWithEndpoint),
+  "HCSO-DAVIS-3598"
+);
+assert.deepStrictEqual(detailWithEndpoint.contact, {
+  _attributes: { callsign: "HCSO-DAVIS-3598" },
+});
+assert.strictEqual(detailWithEndpoint.takv, undefined);
+assert.strictEqual(detailWithEndpoint.__group, undefined);
+assert.deepStrictEqual(detailWithEndpoint.remarks, { _text: "keep me" });
+
+assert.strictEqual(
+  engine.neutralizeAsInjectedCopy({}, "MARKER-CS"),
+  "MARKER-CS",
+  "falls back to marker callsign when contact is missing"
+);
+
 console.log("channelPatch.engine.test.js OK");

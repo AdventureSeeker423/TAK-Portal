@@ -4,9 +4,10 @@
  * Important: patched CoT is written on the portal's webadmin TLS stream. Reusing the
  * EUD's UID/SA would make TAK Server treat webadmin as a second instance of that
  * client (same callsign, admin's full group list). We therefore:
- *  - assign a distinct UID per dest
+ *  - assign a distinct UID per dest (…callsign.takportal.dest)
+ *  - keep <contact callsign> so ATAK does not label markers "NO CALLSIGN"
+ *  - strip endpoint / device identity / self-SA group announce from the copy
  *  - ignore our own echoes on the map stream
- *  - restore a stable bridge callsign after each write batch
  */
 const cotStream = require("./cotStream.service");
 const mapMeta = require("./mapMeta.service");
@@ -135,8 +136,9 @@ function setFilterGroup(detail, groupName) {
 }
 
 function patchedUid(srcUid, destGroup, callsign) {
-  // Prefer callsign in the UID so ATAK still shows a readable label without a
-  // <contact callsign> (which would steal the webadmin ClientEndpoint callsign).
+  // Distinct UID per dest so TAK does not bind the copy to the webadmin
+  // ClientEndpoint as a second instance of the real EUD. Callsign prefix
+  // keeps UIDs readable in logs / filters (see takMetrics .takportal. exclude).
   const label =
     safeStr(callsign).trim() || safeStr(srcUid).trim() || "unit";
   const slugLabel = label
@@ -151,14 +153,18 @@ function patchedUid(srcUid, destGroup, callsign) {
 
 /**
  * Strip elements that make TAK treat this as the injecting connection's own SA.
- * Returns the original callsign (for UID/remarks) if present.
+ * Keeps callsign on <contact> (ATAK labels) but drops endpoint / device identity.
+ * Returns the callsign used on the copy.
  */
-function neutralizeAsInjectedCopy(detail) {
-  if (!detail || typeof detail !== "object") return "";
+function neutralizeAsInjectedCopy(detail, fallbackCallsign) {
+  if (!detail || typeof detail !== "object") {
+    return safeStr(fallbackCallsign).trim();
+  }
 
   const callsign = safeStr(
     detail.contact?._attributes?.callsign ||
       detail.contact?.callsign ||
+      fallbackCallsign ||
       ""
   ).trim();
 
@@ -177,12 +183,13 @@ function neutralizeAsInjectedCopy(detail) {
   delete detail._flowTags;
   delete detail.flowTags;
 
-  // CRITICAL: any contact.callsign written on the webadmin TLS socket updates
-  // that connection's ClientEndpoint callsign (dashboard "callsign stealing").
-  delete detail.contact;
-
+  // ATAK shows "NO CALLSIGN" when <contact callsign> is missing. Keep the
+  // callsign for display, but strip endpoint so this is not a routable
+  // ClientEndpoint advertise on the webadmin socket.
   if (callsign) {
-    detail.remarks = { _text: callsign };
+    detail.contact = { _attributes: { callsign } };
+  } else {
+    delete detail.contact;
   }
 
   return callsign;
@@ -204,9 +211,9 @@ async function buildTargetedCot(sourceCot, destGroup, meta) {
   const clone = new CoT(raw);
   const detail = clone.detail();
   clearExistingDests(detail);
-  const callsign = neutralizeAsInjectedCopy(detail);
+  const callsign = neutralizeAsInjectedCopy(detail, meta?.callsign);
 
-  // Distinct UID (includes callsign for readable ATAK labels without <contact>).
+  // Distinct UID so TAK does not bind this copy to the webadmin ClientEndpoint.
   clone.uid(patchedUid(srcUid, destGroup, callsign));
 
   // Demote self-SA type so TAK is less likely to treat this as a live client.
@@ -274,6 +281,7 @@ async function forwardCot({ marker, cot }) {
         const targeted = await buildTargetedCot(cot, job.dest, {
           patchId: job.patchId,
           fromGroup: job.fromGroup,
+          callsign: marker?.callsign,
         });
         cots.push(targeted);
         patchIdsTouched.add(job.patchId);
@@ -297,9 +305,6 @@ async function forwardCot({ marker, cot }) {
         });
       }
     }
-    // Do not write bridge presence SA — it floods every admin group (including
-    // the source channel) as a visible "TAK-Portal" pin. Contact callsign is
-    // already stripped from patched CoT, so endpoint stealing is avoided.
   } catch (err) {
     console.error("[channel-patch] forward failed:", err?.message || err);
   }
@@ -378,6 +383,7 @@ module.exports = {
   isPortalBridgeCot,
   toMartiGroupName,
   patchedUid,
+  neutralizeAsInjectedCopy,
   getRuntimeHint,
   PATCH_TAG,
   BRIDGE_TAG,
