@@ -35,7 +35,6 @@ async function loadScopedChannels(authUser, access) {
     userGroupNames: Array.isArray(authUser?.groups) ? authUser.groups : [],
   });
 
-  // Prefer Authentik-visible groups when available (same filter as Groups/Email).
   let authGroups = [];
   try {
     const all = await groupsSvc.getAllGroups({});
@@ -55,7 +54,6 @@ async function loadScopedChannels(authUser, access) {
   );
 
   let channels = Array.isArray(catalog.groups) ? catalog.groups : [];
-  // Drop Unassigned from picker
   channels = channels.filter(
     (g) => g.baseKey && g.baseKey !== mapMeta.UNASSIGNED_CHANNEL_KEY
   );
@@ -78,10 +76,8 @@ async function loadScopedChannels(authUser, access) {
 
 function patchGroupKeys(patch) {
   const keys = new Set();
-  const hub = mapMeta.channelBaseKey(patch?.hubGroup);
-  if (hub) keys.add(hub);
-  for (const s of patch?.spokes || []) {
-    const k = mapMeta.channelBaseKey(s.group);
+  for (const name of patch?.groups || []) {
+    const k = mapMeta.channelBaseKey(name);
     if (k) keys.add(k);
   }
   return keys;
@@ -101,10 +97,10 @@ function filterPatchesForAccess(access, patches, allowedKeys) {
   });
 }
 
-function assertGroupsInScope(access, hubGroup, spokes, allowedKeys) {
+function assertGroupsInScope(access, groups, allowedKeys) {
   if (access.isGlobalAdmin) return;
   const allow = allowedKeys instanceof Set ? allowedKeys : new Set(allowedKeys || []);
-  const names = [hubGroup, ...(spokes || []).map((s) => s.group || s)];
+  const names = Array.isArray(groups) ? groups : [];
   for (const n of names) {
     const k = mapMeta.channelBaseKey(n);
     if (!k || !allow.has(k)) {
@@ -146,7 +142,6 @@ router.get("/meta", async (req, res) => {
       channelScope: scoped.channelScope,
       allowedChannelKeys: scoped.allowedChannelKeys,
       bridgeConnected: cotStream.isBridgeConnected(),
-      directions: Array.from(store.DIRECTIONS),
     });
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });
@@ -186,14 +181,14 @@ router.post("/", async (req, res) => {
       )
     );
 
-    assertGroupsInScope(access, body.hubGroup, body.spokes, allowed);
+    const groups = Array.isArray(body.groups) ? body.groups : [];
+    assertGroupsInScope(access, groups, allowed);
 
     const patch = store.create(
       {
         name: body.name,
         enabled: body.enabled !== false,
-        hubGroup: body.hubGroup,
-        spokes: body.spokes,
+        groups,
         agencyScope: access.isGlobalAdmin
           ? body.agencyScope || []
           : access.allowedAgencySuffixes || [],
@@ -207,8 +202,7 @@ router.post("/", async (req, res) => {
       targetId: patch.id,
       details: {
         name: patch.name,
-        hubGroup: patch.hubGroup,
-        spokes: patch.spokes,
+        groups: patch.groups,
         summary: `Created channel patch ${patch.name}.`,
       },
     });
@@ -245,15 +239,13 @@ router.patch("/:id", async (req, res) => {
     }
 
     const body = req.body || {};
-    const nextHub = body.hubGroup != null ? body.hubGroup : existing.hubGroup;
-    const nextSpokes = body.spokes != null ? body.spokes : existing.spokes;
-    assertGroupsInScope(access, nextHub, nextSpokes, allowed);
+    const nextGroups = body.groups != null ? body.groups : existing.groups;
+    assertGroupsInScope(access, nextGroups, allowed);
 
     const fields = {};
     if (body.name != null) fields.name = body.name;
     if (body.enabled != null) fields.enabled = body.enabled;
-    if (body.hubGroup != null) fields.hubGroup = body.hubGroup;
-    if (body.spokes != null) fields.spokes = body.spokes;
+    if (body.groups != null) fields.groups = body.groups;
     if (body.agencyScope != null && access.isGlobalAdmin) {
       fields.agencyScope = body.agencyScope;
     }
@@ -267,8 +259,7 @@ router.patch("/:id", async (req, res) => {
       details: {
         name: patch.name,
         enabled: patch.enabled,
-        hubGroup: patch.hubGroup,
-        spokes: patch.spokes,
+        groups: patch.groups,
         summary: `Updated channel patch ${patch.name}.`,
       },
     });
@@ -312,7 +303,7 @@ router.delete("/:id", async (req, res) => {
       targetId: existing.id,
       details: {
         name: existing.name,
-        hubGroup: existing.hubGroup,
+        groups: existing.groups,
         summary: `Deleted channel patch ${existing.name}.`,
       },
     });

@@ -1,13 +1,14 @@
 /**
  * Persist channel patches under data/channel-patches.json.
+ *
+ * Model: a named set of channels patched together (full mesh, both directions).
+ * Legacy hub/spokes rows are migrated on read.
  */
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
 const FILE = path.join(__dirname, "..", "data", "channel-patches.json");
-
-const DIRECTIONS = new Set(["both", "from_hub", "to_hub"]);
 
 let _cache = null;
 
@@ -20,41 +21,58 @@ function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-function normalizeDirection(raw) {
-  const d = safeStr(raw).trim().toLowerCase();
-  if (DIRECTIONS.has(d)) return d;
-  return "both";
+function groupDedupeKey(name) {
+  return safeStr(name).trim().toLowerCase();
 }
 
-function normalizeSpoke(row) {
-  const group = safeStr(row?.group || row?.name || row?.groupName).trim();
-  if (!group) return null;
-  return {
-    group,
-    direction: normalizeDirection(row?.direction),
-  };
+/**
+ * Accept modern `groups: string[]` or legacy hub + spokes.
+ * @returns {string[]}
+ */
+function extractGroupNames(raw) {
+  const out = [];
+  const seen = new Set();
+
+  function push(name) {
+    const g = safeStr(name).trim();
+    if (!g) return;
+    const key = groupDedupeKey(g);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(g);
+  }
+
+  if (Array.isArray(raw?.groups)) {
+    for (const item of raw.groups) {
+      if (typeof item === "string" || typeof item === "number") {
+        push(item);
+      } else if (item && typeof item === "object") {
+        push(item.group || item.name || item.groupName);
+      }
+    }
+  }
+
+  // Legacy hub / spokes → flat mesh
+  if (!out.length) {
+    push(raw?.hubGroup || raw?.hub);
+    const spokes = Array.isArray(raw?.spokes) ? raw.spokes : [];
+    for (const row of spokes) {
+      if (typeof row === "string" || typeof row === "number") {
+        push(row);
+      } else if (row && typeof row === "object") {
+        push(row.group || row.name || row.groupName);
+      }
+    }
+  }
+
+  return out;
 }
 
 function normalizePatch(raw, { assignId = false } = {}) {
   if (!raw || typeof raw !== "object") return null;
 
-  const hubGroup = safeStr(raw.hubGroup || raw.hub).trim();
-  if (!hubGroup) return null;
-
-  const spokeRows = Array.isArray(raw.spokes) ? raw.spokes : [];
-  const spokes = [];
-  const seen = new Set();
-  const hubKey = hubGroup.toLowerCase();
-  for (const row of spokeRows) {
-    const spoke = normalizeSpoke(row);
-    if (!spoke) continue;
-    const key = spoke.group.toLowerCase();
-    if (key === hubKey) continue;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    spokes.push(spoke);
-  }
-  if (!spokes.length) return null;
+  const groups = extractGroupNames(raw);
+  if (groups.length < 2) return null;
 
   let id = safeStr(raw.id).trim();
   if (!id && assignId) id = crypto.randomUUID();
@@ -65,8 +83,7 @@ function normalizePatch(raw, { assignId = false } = {}) {
     id,
     name: safeStr(raw.name).trim() || "Untitled Patch",
     enabled: raw.enabled !== false && raw.enabled !== "false" && raw.enabled !== 0,
-    hubGroup,
-    spokes,
+    groups,
     createdBy: safeStr(raw.createdBy).trim() || "",
     createdAt: safeStr(raw.createdAt).trim() || now,
     updatedAt: safeStr(raw.updatedAt).trim() || now,
@@ -142,7 +159,7 @@ function create(input, actorName) {
   );
   if (!patch) {
     const err = new Error(
-      "Invalid patch: require hub group and at least one distinct spoke."
+      "Invalid patch: select at least two distinct channels."
     );
     err.status = 400;
     throw err;
@@ -183,13 +200,12 @@ function update(id, patchFields) {
   const next = normalizePatch(merged);
   if (!next) {
     const err = new Error(
-      "Invalid patch: require hub group and at least one distinct spoke."
+      "Invalid patch: select at least two distinct channels."
     );
     err.status = 400;
     throw err;
   }
 
-  // Preserve runtime status fields unless explicitly overwritten
   if (
     patchFields &&
     !Object.prototype.hasOwnProperty.call(patchFields, "lastForwardAt")
@@ -232,7 +248,6 @@ function touchRuntime(id, { lastForwardAt, lastError } = {}) {
   row.updatedAt = items[idx].updatedAt;
   items[idx] = row;
   _cache = items;
-  // Soft write — avoid thrashing disk on every CoT; debounce via engine if needed
   writeFile(items);
   return row;
 }
@@ -242,7 +257,6 @@ function invalidateCache() {
 }
 
 module.exports = {
-  DIRECTIONS,
   list,
   listEnabled,
   getById,
@@ -252,5 +266,5 @@ module.exports = {
   touchRuntime,
   invalidateCache,
   normalizePatch,
-  normalizeDirection,
+  extractGroupNames,
 };

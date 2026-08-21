@@ -1,9 +1,10 @@
 /**
- * Channel patch engine — hub/spoke conference CoT rebroadcast on the webadmin stream.
+ * Channel patch engine — mesh CoT rebroadcast across selected channels (both ways).
  */
 const cotStream = require("./cotStream.service");
 const mapMeta = require("./mapMeta.service");
 const mapRender = require("./mapRender.service");
+const groupsSvc = require("./groups.service");
 const store = require("./channelPatch.store");
 
 const PATCH_TAG = "__takportal_patch";
@@ -32,6 +33,13 @@ function groupKey(name) {
   return mapMeta.channelBaseKey(name);
 }
 
+/**
+ * Portal catalog uses Authentik names (tak_…). Marti dest / filtergroup use the CN.
+ */
+function toMartiGroupName(catalogOrAny) {
+  return groupsSvc.stripTakPrefix(safeStr(catalogOrAny).trim());
+}
+
 function isPortalPatchedCot(cot) {
   const detail = cot?.raw?.event?.detail || cot?.detail?.() || {};
   if (detail && detail[PATCH_TAG]) return true;
@@ -41,47 +49,29 @@ function isPortalPatchedCot(cot) {
 }
 
 /**
- * Conference fanout destinations for a source channel within one patch.
+ * Destinations for a source channel within one patch (full mesh, both ways).
  * @returns {string[]} destination group names (catalog names)
  */
 function destinationsForSource(patch, sourceKey) {
-  const hubKey = groupKey(patch.hubGroup);
-  if (!hubKey || !sourceKey) return [];
+  if (!sourceKey) return [];
+  const groups = Array.isArray(patch?.groups) ? patch.groups : [];
+  if (groups.length < 2) return [];
 
-  const spokes = Array.isArray(patch.spokes) ? patch.spokes : [];
+  const memberKeys = new Set(
+    groups.map((g) => groupKey(g)).filter(Boolean)
+  );
+  if (!memberKeys.has(sourceKey)) return [];
+
   const dests = [];
   const seen = new Set();
-
-  function addDest(groupName) {
+  for (const groupName of groups) {
     const g = safeStr(groupName).trim();
-    if (!g) return;
+    if (!g) continue;
     const k = groupKey(g);
-    if (!k || k === sourceKey) return;
-    if (seen.has(k)) return;
+    if (!k || k === sourceKey) continue;
+    if (seen.has(k)) continue;
     seen.add(k);
     dests.push(g);
-  }
-
-  if (sourceKey === hubKey) {
-    // Hub traffic → spokes that receive (both | from_hub)
-    for (const spoke of spokes) {
-      const dir = spoke.direction || "both";
-      if (dir === "both" || dir === "from_hub") addDest(spoke.group);
-    }
-    return dests;
-  }
-
-  const spoke = spokes.find((s) => groupKey(s.group) === sourceKey);
-  if (!spoke) return [];
-  const dir = spoke.direction || "both";
-  if (dir !== "both" && dir !== "to_hub") return [];
-
-  // Sending spoke → hub + other receiving spokes (conference)
-  addDest(patch.hubGroup);
-  for (const other of spokes) {
-    if (groupKey(other.group) === sourceKey) continue;
-    const od = other.direction || "both";
-    if (od === "both" || od === "from_hub") addDest(other.group);
   }
   return dests;
 }
@@ -134,6 +124,7 @@ function setFilterGroup(detail, groupName) {
 
 /**
  * Build a CoT clone targeted at one destination group.
+ * @param {string} destGroup catalog / Authentik name (may include tak_)
  */
 async function buildTargetedCot(sourceCot, destGroup, meta) {
   const mod = await loadNodeCot();
@@ -146,10 +137,11 @@ async function buildTargetedCot(sourceCot, destGroup, meta) {
   const clone = new CoT(raw);
   const detail = clone.detail();
   clearExistingDests(detail);
-  clone.addDest({ group: destGroup });
-  // Some TAK builds route by callsign-as-group; set both.
-  clone.addDest({ callsign: destGroup });
-  setFilterGroup(detail, destGroup);
+  // Marti routes by CN (no tak_ prefix). Catalog stores Authentik tak_* names.
+  const martiGroup = toMartiGroupName(destGroup);
+  if (!martiGroup) throw new Error("Empty Marti dest group");
+  clone.addDest({ group: martiGroup });
+  setFilterGroup(detail, martiGroup);
   stampPatchTag(detail, { ...meta, toGroup: destGroup });
 
   return clone;
@@ -228,15 +220,49 @@ function onCot({ marker, cot }) {
   void forwardCot({ marker, cot });
 }
 
+/**
+ * For map attribution: given a marker's current channel groups, return catalog
+ * destinations that enabled patches would fan out to.
+ */
+function augmentDestGroupsForSourceGroups(sourceGroups) {
+  const patches = store.listEnabled();
+  if (!patches.length) return [];
+  const sourceKeys = (Array.isArray(sourceGroups) ? sourceGroups : [])
+    .map((g) => groupKey(g))
+    .filter((k) => k && k !== mapMeta.UNASSIGNED_CHANNEL_KEY);
+  if (!sourceKeys.length) return [];
+
+  const dests = [];
+  const seen = new Set();
+  for (const patch of patches) {
+    for (const sourceKey of sourceKeys) {
+      for (const dest of destinationsForSource(patch, sourceKey)) {
+        const channel = mapMeta.toChannelGroupName(dest) || safeStr(dest).trim();
+        const k = groupKey(channel);
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        dests.push(channel);
+      }
+    }
+  }
+  return dests;
+}
+
 function start() {
   if (started) return;
   started = true;
   cotStream.ensureBridgeStarted();
+  if (typeof mapMeta.setPatchDestAugmenter === "function") {
+    mapMeta.setPatchDestAugmenter(augmentDestGroupsForSourceGroups);
+  }
   unsubscribe = cotStream.onCotProcessed(onCot);
   console.log("[channel-patch] engine started");
 }
 
 function stop() {
+  if (typeof mapMeta.setPatchDestAugmenter === "function") {
+    mapMeta.setPatchDestAugmenter(null);
+  }
   if (unsubscribe) {
     try {
       unsubscribe();
@@ -260,6 +286,7 @@ module.exports = {
   stop,
   destinationsForSource,
   isPortalPatchedCot,
+  toMartiGroupName,
   getRuntimeHint,
   PATCH_TAG,
 };

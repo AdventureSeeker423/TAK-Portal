@@ -103,7 +103,7 @@ const PERMISSIONS = {
     channel_patch: {
       id: "page.channel_patch",
       label: "Channel Patch",
-      description: "Patch TAK portal groups together (hub-and-spoke CoT rebroadcast).",
+      description: "Patch TAK portal groups together (bidirectional CoT rebroadcast).",
       section: "administration",
     },
   },

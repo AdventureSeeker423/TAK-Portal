@@ -1712,15 +1712,47 @@ function classifyMarkerOrigin(marker) {
   return "unknown";
 }
 
+/**
+ * Channel-patch rebroadcast stamps __takportal_patch with the destination catalog name.
+ * Merge those into map attribution so patched channel counts reflect delivery.
+ */
+function parsePortalPatchDestGroups(detail) {
+  if (!detail || typeof detail !== "object") return [];
+  const tag = detail.__takportal_patch;
+  if (!tag || typeof tag !== "object") return [];
+  const attrs = tag._attributes || tag;
+  const toRaw = normalizeGroupName(attrs.to || attrs.toGroup || "");
+  if (!toRaw) return [];
+  const channelName = toChannelGroupName(toRaw) || toRaw;
+  return filterAssignableChannelGroups([channelName]);
+}
+
+/** Optional hook registered by channelPatch.engine (avoids circular require). */
+let patchDestAugmenter = null;
+
+function setPatchDestAugmenter(fn) {
+  patchDestAugmenter = typeof fn === "function" ? fn : null;
+}
+
 function resolveGroupsForMarker(marker, cotDetail) {
   const detail = cotDetail && typeof cotDetail === "object" ? cotDetail : null;
+  const patchDests = parsePortalPatchDestGroups(detail);
 
   // EUD clients: marker uid matches a live subscription connection uid.
   const fromSub = resolveGroupsFromSubscription(marker);
-  if (fromSub[0] !== UNASSIGNED_GROUP) return fromSub;
+  if (fromSub[0] !== UNASSIGNED_GROUP) {
+    const livePatchDests = patchDestAugmenter
+      ? patchDestAugmenter(fromSub) || []
+      : [];
+    return dedupeGroupNames([...fromSub, ...patchDests, ...livePatchDests]);
+  }
 
   const fromFeed = resolveGroupsFromDataFeedIndex(marker);
-  if (fromFeed.length) return fromFeed;
+  if (fromFeed.length) {
+    return patchDests.length
+      ? dedupeGroupNames([...fromFeed, ...patchDests])
+      : fromFeed;
+  }
 
   const fromCot = filterAssignableChannelGroups(
     detail
@@ -1734,13 +1766,19 @@ function resolveGroupsForMarker(marker, cotDetail) {
     detail || { flowTagUids: marker?.flowTagUids || [] }
   );
 
-  const routed = dedupeGroupNames([...fromCot, ...fromFlow]);
+  const routed = dedupeGroupNames([...fromCot, ...fromFlow, ...patchDests]);
   if (routed.length) return routed;
 
   const fromSource = resolveGroupsFromSourceHints(
     detail ? parseSourceHints(detail) : marker?.sourceHints || []
   );
-  if (fromSource.length) return fromSource;
+  if (fromSource.length) {
+    return patchDests.length
+      ? dedupeGroupNames([...fromSource, ...patchDests])
+      : fromSource;
+  }
+
+  if (patchDests.length) return patchDests;
 
   return [UNASSIGNED_GROUP];
 }
@@ -1863,6 +1901,7 @@ module.exports = {
   resolveMarkerDisplayColor,
   normalizeTakColor,
   resolveGroupsForMarker,
+  setPatchDestAugmenter,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,
   connectionUidLookupKeys,

@@ -9,8 +9,8 @@
   }) %>
 
   <p class="cp-lead">
-    Link TAK portal groups like a radio patch console. Pick a hub channel, add spokes,
-    and choose both-ways or one-way flow. Multiple patches can run at once.
+    Select the channels you want linked. Traffic on any selected channel is
+    rebroadcast to the others in both directions.
   </p>
 
   <div id="cpBridgeBanner" class="cp-bridge" hidden>
@@ -21,46 +21,41 @@
   <div class="card cp-createCard">
     <h2 style="margin-top:0;">New Patch</h2>
 
-    <div class="cp-createGrid">
-      <label class="cp-field">
-        Name
-        <input id="cpName" type="text" placeholder="e.g. Fire Mutual Aid Patch" maxlength="120" />
-      </label>
+    <label class="cp-field">
+      Name
+      <input id="cpName" type="text" placeholder="e.g. Law Family Patch" maxlength="120" />
+    </label>
 
-      <label class="cp-field">
-        Hub group
-        <select id="cpHub"></select>
-      </label>
-    </div>
-
-    <div class="cp-spokesSection">
+    <div class="cp-channelsSection">
       <div class="row" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-        <label style="margin:0; font-weight:600;">Spoke groups</label>
-        <input id="cpSpokeSearch" type="search" placeholder="Filter groups…" style="max-width:260px; flex:1;" />
+        <label style="margin:0; font-weight:600;">Channels</label>
+        <input id="cpChannelSearch" type="search" placeholder="Filter channels…" style="max-width:260px; flex:1;" />
       </div>
-      <div id="cpSpokesBox" class="groupsBox cp-spokesBox">
-        <div class="msg">Loading groups…</div>
+      <div id="cpChannelsBox" class="groupsBox cp-channelsBox">
+        <div class="msg">Loading channels…</div>
       </div>
+      <div id="cpSelectedHint" class="cp-selectedHint"></div>
     </div>
 
-    <div id="cpSpokeDirections" class="cp-dirPanel" hidden>
-      <div class="cp-dirHeader">Spoke directions <span class="cp-muted">(default: both ways)</span></div>
-      <div id="cpDirRows" class="cp-dirRows"></div>
-    </div>
-
-    <div class="row" style="margin-top:14px; gap:10px; align-items:center;">
+    <div class="row" style="margin-top:14px; gap:14px; align-items:center; flex-wrap:wrap;">
       <button class="btn" type="button" id="cpCreateBtn">Create Patch</button>
-      <label class="cp-enableCreate">
-        <input type="checkbox" id="cpCreateEnabled" checked />
-        Enable immediately
-      </label>
+      <div class="cp-enableCreate">
+        <span>Enable immediately</span>
+        <button
+          type="button"
+          id="cpCreateEnabled"
+          class="settings-toggle is-on"
+          aria-pressed="true"
+          aria-label="Enable immediately"
+        ></button>
+      </div>
     </div>
     <div id="cpCreateMsg" class="msg" style="margin-top:10px;"></div>
   </div>
 
   <div class="card">
     <div class="row" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-      <h2 style="margin:0;">Active Patches</h2>
+      <h2 style="margin:0;">Patches</h2>
       <button class="btn" type="button" id="cpRefreshBtn" style="opacity:.85;">Refresh</button>
     </div>
     <div id="cpPatchBoard" class="cp-board">
@@ -100,69 +95,40 @@
   .cp-bridge.is-up .cp-bridgeDot { background: #3dba7a; box-shadow: 0 0 0 3px rgba(61,186,122,.2); }
   .cp-bridge.is-down .cp-bridgeDot { background: #e35d5d; }
 
-  .cp-createGrid {
-    display: grid;
-    grid-template-columns: 1.2fr 1fr;
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-  @media (max-width: 800px) {
-    .cp-createGrid { grid-template-columns: 1fr; }
-  }
   .cp-field {
     display: flex;
     flex-direction: column;
     gap: 6px;
     min-width: 0;
+    margin-bottom: 14px;
   }
-  .cp-field input,
-  .cp-field select {
+  .cp-field input {
     width: 100%;
+    max-width: 420px;
     box-sizing: border-box;
   }
 
-  .cp-spokesBox {
-    max-height: 240px;
+  .cp-channelsBox {
+    max-height: 280px;
     margin-top: 8px;
   }
-  .cp-spokesInner {
+  .cp-channelsInner {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 4px 10px;
   }
-
-  .cp-dirPanel {
-    margin-top: 14px;
-    padding: 12px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--panel);
+  .cp-selectedHint {
+    margin-top: 8px;
+    font-size: 0.88rem;
+    color: var(--muted, #8b93a7);
   }
-  .cp-dirHeader { font-weight: 600; margin-bottom: 10px; }
-  .cp-muted { font-weight: 400; color: var(--muted, #8b93a7); font-size: 0.9em; }
-  .cp-dirRows { display: flex; flex-direction: column; gap: 8px; }
-  .cp-dirRow {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding: 8px 10px;
-    border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-  }
-  .cp-dirLabel {
-    font-weight: 500;
-    min-width: 140px;
-  }
-  .cp-dirRow .segmented { flex-wrap: wrap; }
 
   .cp-enableCreate {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    cursor: pointer;
+    gap: 10px;
     user-select: none;
+    font-size: 0.92rem;
   }
 
   .cp-board {
@@ -205,22 +171,15 @@
   .cp-patchActions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     flex-wrap: wrap;
   }
-  .cp-toggle {
+  .cp-enableRow {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--bg) 70%, transparent);
-    cursor: pointer;
-    user-select: none;
+    gap: 10px;
     font-size: 0.88rem;
   }
-  .cp-toggle input { margin: 0; }
   .cp-danger {
     background: transparent;
     border: 1px solid color-mix(in srgb, #e35d5d 55%, var(--line));
@@ -248,16 +207,6 @@
     font-size: 0.9rem;
     font-weight: 600;
   }
-  .cp-node.is-hub {
-    border-color: color-mix(in srgb, var(--btn) 55%, var(--line));
-    background: color-mix(in srgb, var(--btn) 18%, transparent);
-  }
-  .cp-edge {
-    font-size: 0.78rem;
-    color: var(--muted, #8b93a7);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    letter-spacing: 0.02em;
-  }
   .cp-statusLine {
     margin-top: 10px;
     font-size: 0.82rem;
@@ -272,14 +221,12 @@
 
 <script>
 (function () {
-  const hubSelect = document.getElementById("cpHub");
-  const spokesBox = document.getElementById("cpSpokesBox");
-  const spokeSearch = document.getElementById("cpSpokeSearch");
-  const dirPanel = document.getElementById("cpSpokeDirections");
-  const dirRows = document.getElementById("cpDirRows");
+  const channelsBox = document.getElementById("cpChannelsBox");
+  const channelSearch = document.getElementById("cpChannelSearch");
+  const selectedHint = document.getElementById("cpSelectedHint");
   const nameInput = document.getElementById("cpName");
   const createBtn = document.getElementById("cpCreateBtn");
-  const createEnabled = document.getElementById("cpCreateEnabled");
+  const createEnabledBtn = document.getElementById("cpCreateEnabled");
   const createMsg = document.getElementById("cpCreateMsg");
   const board = document.getElementById("cpPatchBoard");
   const refreshBtn = document.getElementById("cpRefreshBtn");
@@ -288,8 +235,8 @@
 
   /** @type {{ name: string, displayName: string, baseKey: string }[]} */
   let channels = [];
-  /** @type {Map<string, string>} baseKey -> direction */
-  const spokeDirs = new Map();
+  /** Persist checked names across filter re-renders */
+  const selectedNames = new Set();
 
   function esc(s) {
     return String(s ?? "")
@@ -307,6 +254,17 @@
     return hit ? hit.displayName : raw.replace(/^tak_/i, "");
   }
 
+  function isToggleOn(btn) {
+    return !!(btn && btn.classList.contains("is-on"));
+  }
+
+  function setToggle(btn, on) {
+    if (!btn) return;
+    btn.classList.toggle("is-on", !!on);
+    btn.classList.toggle("is-off", !on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
   function setBridge(connected) {
     bridgeBanner.hidden = false;
     bridgeBanner.classList.toggle("is-up", !!connected);
@@ -316,34 +274,20 @@
       : "TAK stream disconnected — patches saved but will not forward until connected";
   }
 
-  function selectedSpokeNames() {
-    return Array.from(spokesBox.querySelectorAll('input[type="checkbox"]:checked')).map(
-      (cb) => cb.value
-    );
+  function updateSelectedHint() {
+    const n = selectedNames.size;
+    if (n < 2) {
+      selectedHint.textContent = n === 0
+        ? "Select at least two channels."
+        : "Select one more channel.";
+      return;
+    }
+    selectedHint.textContent = n + " channels selected — both directions.";
   }
 
-  function hubName() {
-    return String(hubSelect.value || "").trim();
-  }
-
-  function renderHubOptions() {
-    const prev = hubSelect.value;
-    hubSelect.innerHTML =
-      '<option value="">Select hub group…</option>' +
-      channels
-        .map(
-          (c) =>
-            `<option value="${esc(c.name)}">${esc(c.displayName)}</option>`
-        )
-        .join("");
-    if (prev && channels.some((c) => c.name === prev)) hubSelect.value = prev;
-  }
-
-  function renderSpokesBox() {
-    const q = String(spokeSearch.value || "").trim().toLowerCase();
-    const hub = hubName();
+  function renderChannelsBox() {
+    const q = String(channelSearch.value || "").trim().toLowerCase();
     const list = channels.filter((c) => {
-      if (hub && c.name === hub) return false;
       if (!q) return true;
       return (
         c.displayName.toLowerCase().includes(q) ||
@@ -352,73 +296,23 @@
     });
 
     if (!list.length) {
-      spokesBox.innerHTML = '<div class="msg">No matching groups.</div>';
+      channelsBox.innerHTML = '<div class="msg">No matching channels.</div>';
+      updateSelectedHint();
       return;
     }
 
-    const selected = new Set(selectedSpokeNames());
-    spokesBox.innerHTML =
-      '<div class="cp-spokesInner">' +
+    channelsBox.innerHTML =
+      '<div class="cp-channelsInner">' +
       list
         .map((c) => {
-          const checked = selected.has(c.name) ? "checked" : "";
+          const checked = selectedNames.has(c.name) ? "checked" : "";
           return `<label class="groupItem"><input type="checkbox" value="${esc(
             c.name
           )}" ${checked} /><span>${esc(c.displayName)}</span></label>`;
         })
         .join("") +
       "</div>";
-  }
-
-  function dirGlyph(direction) {
-    if (direction === "from_hub") return "hub → spoke";
-    if (direction === "to_hub") return "spoke → hub";
-    return "↔ both";
-  }
-
-  function renderDirectionRows() {
-    const spokes = selectedSpokeNames();
-    // Drop dirs for deselected
-    for (const key of Array.from(spokeDirs.keys())) {
-      if (!spokes.includes(key)) spokeDirs.delete(key);
-    }
-    for (const name of spokes) {
-      if (!spokeDirs.has(name)) spokeDirs.set(name, "both");
-    }
-
-    if (!spokes.length) {
-      dirPanel.hidden = true;
-      dirRows.innerHTML = "";
-      return;
-    }
-
-    dirPanel.hidden = false;
-    dirRows.innerHTML = spokes
-      .map((name) => {
-        const dir = spokeDirs.get(name) || "both";
-        const opts = [
-          ["both", "Both ways"],
-          ["from_hub", "Hub → Spoke"],
-          ["to_hub", "Spoke → Hub"],
-        ];
-        return `
-          <div class="cp-dirRow" data-group="${esc(name)}">
-            <div class="cp-dirLabel">${esc(displayFor(name))}</div>
-            <div class="segmented" role="group" aria-label="Direction for ${esc(
-              displayFor(name)
-            )}">
-              ${opts
-                .map(
-                  ([v, label]) =>
-                    `<button type="button" class="segBtn ${
-                      dir === v ? "active" : ""
-                    }" data-dir="${v}">${label}</button>`
-                )
-                .join("")}
-            </div>
-          </div>`;
-      })
-      .join("");
+    updateSelectedHint();
   }
 
   function setMsg(el, text, isError) {
@@ -443,18 +337,18 @@
   function renderBoard(patches) {
     if (!patches || !patches.length) {
       board.innerHTML =
-        '<div class="cp-empty">No patches yet. Create one above to link groups.</div>';
+        '<div class="cp-empty">No patches yet. Select channels above to create one.</div>';
       return;
     }
 
     board.innerHTML = patches
       .map((p) => {
-        const spokesHtml = (p.spokes || [])
-          .map((s) => {
-            return `
-              <span class="cp-edge">${esc(dirGlyph(s.direction))}</span>
-              <span class="cp-node">${esc(displayFor(s.group))}</span>`;
-          })
+        const groups = Array.isArray(p.groups) ? p.groups : [];
+        const nodesHtml = groups
+          .map(
+            (g) =>
+              `<span class="cp-node">${esc(displayFor(g))}</span>`
+          )
           .join("");
 
         const status = p.lastError
@@ -476,21 +370,19 @@
                 </div>
               </div>
               <div class="cp-patchActions">
-                <label class="cp-toggle">
-                  <input type="checkbox" class="cp-enableToggle" ${
-                    p.enabled ? "checked" : ""
-                  } />
-                  ${p.enabled ? "On" : "Off"}
-                </label>
+                <div class="cp-enableRow">
+                  <span>${p.enabled ? "On" : "Off"}</span>
+                  <button
+                    type="button"
+                    class="settings-toggle ${p.enabled ? "is-on" : "is-off"} cp-enableToggle"
+                    aria-pressed="${p.enabled ? "true" : "false"}"
+                    aria-label="Enable ${esc(p.name)}"
+                  ></button>
+                </div>
                 <button type="button" class="btn cp-danger cp-deleteBtn">Delete</button>
               </div>
             </div>
-            <div class="cp-topology">
-              <span class="cp-node is-hub" title="Hub">${esc(
-                displayFor(p.hubGroup)
-              )}</span>
-              ${spokesHtml}
-            </div>
+            <div class="cp-topology">${nodesHtml}</div>
             ${status}
           </article>`;
       })
@@ -506,9 +398,7 @@
       })
     );
     setBridge(!!meta.bridgeConnected);
-    renderHubOptions();
-    renderSpokesBox();
-    renderDirectionRows();
+    renderChannelsBox();
   }
 
   async function loadPatches() {
@@ -522,52 +412,27 @@
     await loadPatches();
   }
 
-  hubSelect.addEventListener("change", () => {
-    // If hub was selected as spoke, uncheck it
-    const hub = hubName();
-    spokesBox.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-      if (cb.value === hub) cb.checked = false;
-    });
-    renderSpokesBox();
-    renderDirectionRows();
+  channelSearch.addEventListener("input", () => {
+    renderChannelsBox();
   });
 
-  spokeSearch.addEventListener("input", () => {
-    renderSpokesBox();
+  channelsBox.addEventListener("change", (e) => {
+    const cb = e.target && e.target.matches('input[type="checkbox"]') ? e.target : null;
+    if (!cb) return;
+    if (cb.checked) selectedNames.add(cb.value);
+    else selectedNames.delete(cb.value);
+    updateSelectedHint();
   });
 
-  spokesBox.addEventListener("change", (e) => {
-    if (e.target && e.target.matches('input[type="checkbox"]')) {
-      renderDirectionRows();
-    }
-  });
-
-  dirRows.addEventListener("click", (e) => {
-    const btn = e.target.closest(".segBtn");
-    if (!btn) return;
-    const row = btn.closest(".cp-dirRow");
-    if (!row) return;
-    const group = row.getAttribute("data-group");
-    const dir = btn.getAttribute("data-dir");
-    if (!group || !dir) return;
-    spokeDirs.set(group, dir);
-    row.querySelectorAll(".segBtn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
+  createEnabledBtn.addEventListener("click", () => {
+    setToggle(createEnabledBtn, !isToggleOn(createEnabledBtn));
   });
 
   createBtn.addEventListener("click", async () => {
     setMsg(createMsg, "");
-    const hub = hubName();
-    const spokes = selectedSpokeNames().map((group) => ({
-      group,
-      direction: spokeDirs.get(group) || "both",
-    }));
-    if (!hub) {
-      setMsg(createMsg, "Select a hub group.", true);
-      return;
-    }
-    if (!spokes.length) {
-      setMsg(createMsg, "Select at least one spoke group.", true);
+    const groups = Array.from(selectedNames);
+    if (groups.length < 2) {
+      setMsg(createMsg, "Select at least two channels.", true);
       return;
     }
     createBtn.disabled = true;
@@ -576,17 +441,13 @@
         method: "POST",
         body: JSON.stringify({
           name: String(nameInput.value || "").trim() || undefined,
-          hubGroup: hub,
-          spokes,
-          enabled: !!createEnabled.checked,
+          groups,
+          enabled: isToggleOn(createEnabledBtn),
         }),
       });
       nameInput.value = "";
-      spokeDirs.clear();
-      spokesBox.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-        cb.checked = false;
-      });
-      renderDirectionRows();
+      selectedNames.clear();
+      renderChannelsBox();
       setMsg(createMsg, "Patch created.");
       await loadPatches();
     } catch (err) {
@@ -596,29 +457,33 @@
     }
   });
 
-  board.addEventListener("change", async (e) => {
-    const toggle = e.target.closest(".cp-enableToggle");
-    if (!toggle) return;
-    const card = toggle.closest(".cp-patch");
-    if (!card) return;
-    const id = card.getAttribute("data-id");
-    const enabled = !!toggle.checked;
-    toggle.disabled = true;
-    try {
-      await api("/api/channel-patch/" + encodeURIComponent(id), {
-        method: "PATCH",
-        body: JSON.stringify({ enabled }),
-      });
-      await loadPatches();
-    } catch (err) {
-      alert(err.message || "Update failed");
-      toggle.checked = !enabled;
-    } finally {
-      toggle.disabled = false;
-    }
-  });
-
   board.addEventListener("click", async (e) => {
+    const toggle = e.target.closest(".cp-enableToggle");
+    if (toggle) {
+      const card = toggle.closest(".cp-patch");
+      if (!card) return;
+      const id = card.getAttribute("data-id");
+      const next = !isToggleOn(toggle);
+      setToggle(toggle, next);
+      const label = card.querySelector(".cp-enableRow span");
+      if (label) label.textContent = next ? "On" : "Off";
+      toggle.disabled = true;
+      try {
+        await api("/api/channel-patch/" + encodeURIComponent(id), {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: next }),
+        });
+        await loadPatches();
+      } catch (err) {
+        setToggle(toggle, !next);
+        if (label) label.textContent = !next ? "On" : "Off";
+        alert(err.message || "Update failed");
+      } finally {
+        toggle.disabled = false;
+      }
+      return;
+    }
+
     const btn = e.target.closest(".cp-deleteBtn");
     if (!btn) return;
     const card = btn.closest(".cp-patch");
@@ -650,10 +515,5 @@
       err.message || "Failed to load patches"
     )}</div>`;
   });
-
-  // Soft poll for bridge / last-forward status
-  setInterval(() => {
-    loadPatches().catch(() => {});
-  }, 15000);
 })();
 </script>
