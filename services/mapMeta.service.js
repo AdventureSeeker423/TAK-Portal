@@ -1901,6 +1901,7 @@ module.exports = {
   resolveMarkerDisplayColor,
   normalizeTakColor,
   resolveGroupsForMarker,
+  resolveGroupsFromSubscription,
   setPatchDestAugmenter,
   classifyMarkerOrigin,
   filterAssignableChannelGroups,

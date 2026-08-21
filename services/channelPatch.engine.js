@@ -10,14 +10,11 @@
  */
 const cotStream = require("./cotStream.service");
 const mapMeta = require("./mapMeta.service");
-const mapRender = require("./mapRender.service");
 const groupsSvc = require("./groups.service");
 const store = require("./channelPatch.store");
 
 const PATCH_TAG = "__takportal_patch";
 const BRIDGE_TAG = "__takportal_bridge";
-const BRIDGE_UID = "takportal-channel-patch-bridge";
-const BRIDGE_CALLSIGN = "TAK-Portal";
 const RUNTIME_FLUSH_MS = 5000;
 const MAX_DESTS_PER_EVENT = 32;
 
@@ -232,68 +229,6 @@ async function buildTargetedCot(sourceCot, destGroup, meta) {
   return clone;
 }
 
-/**
- * Restore a stable callsign/uid on the webadmin stream so Client Dashboard
- * does not keep showing a previously stolen EUD callsign under username admin.
- * Avoid null-island (0,0) — TAK often ignores those for endpoint updates.
- */
-async function buildBridgePresenceCot(point = {}) {
-  const mod = await loadNodeCot();
-  const CoT = mod.default || mod.CoT;
-  if (!CoT) throw new Error("node-cot CoT constructor unavailable");
-
-  let lat = Number(point.lat);
-  let lon = Number(point.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
-    // Far-south placeholder TAK will still accept for endpoint metadata.
-    lat = -89.9;
-    lon = 0;
-  }
-  const hae =
-    point.hae != null && Number.isFinite(Number(point.hae))
-      ? Number(point.hae)
-      : 9999999.0;
-
-  const now = new Date();
-  const stale = new Date(now.getTime() + 5 * 60 * 1000);
-  const iso = now.toISOString();
-  const raw = {
-    event: {
-      _attributes: {
-        version: "2.0",
-        uid: BRIDGE_UID,
-        type: "a-f-G-U-C",
-        how: "h-g-i-g-o",
-        time: iso,
-        start: iso,
-        stale: stale.toISOString(),
-      },
-      point: {
-        _attributes: {
-          lat: String(lat),
-          lon: String(lon),
-          hae: String(hae),
-          ce: "9999999.0",
-          le: "9999999.0",
-        },
-      },
-      detail: {
-        contact: { _attributes: { callsign: BRIDGE_CALLSIGN } },
-        takv: {
-          _attributes: {
-            device: "TAK-Portal",
-            platform: "TAK-Portal",
-            os: "server",
-            version: "channel-patch",
-          },
-        },
-        [BRIDGE_TAG]: { _attributes: { v: "1" } },
-      },
-    },
-  };
-  return new CoT(raw);
-}
-
 async function forwardCot({ marker, cot }) {
   if (!cot || isPortalPatchedCot(cot) || isPortalBridgeCot(cot)) return;
   if (!cotStream.isBridgeConnected()) return;
@@ -301,9 +236,13 @@ async function forwardCot({ marker, cot }) {
   const patches = store.listEnabled();
   if (!patches.length) return;
 
-  const sourceKeys = mapRender.markerChannelKeys(marker).filter(
-    (k) => k && k !== mapMeta.UNASSIGNED_CHANNEL_KEY
-  );
+  // Use the EUD's real publish subscription only — NOT marker.groups.
+  // marker.groups may include channel-patch map attribution (dest channels),
+  // which would fan traffic back onto the source channel as a ghost pin.
+  const publishGroups = mapMeta.resolveGroupsFromSubscription(marker);
+  const sourceKeys = (Array.isArray(publishGroups) ? publishGroups : [])
+    .map((g) => groupKey(mapMeta.toChannelGroupName(g) || g))
+    .filter((k) => k && k !== mapMeta.UNASSIGNED_CHANNEL_KEY);
   if (!sourceKeys.length) return;
 
   /** @type {Map<string, { dest: string, patchId: string, fromGroup: string }>} */
@@ -358,22 +297,9 @@ async function forwardCot({ marker, cot }) {
         });
       }
     }
-
-    if (ok) {
-      try {
-        const bridgeCot = await buildBridgePresenceCot({
-          lat: marker?.lat,
-          lon: marker?.lon,
-          hae: marker?.hae,
-        });
-        await cotStream.writeCot(bridgeCot, { stripFlow: true });
-      } catch (err) {
-        console.warn(
-          "[channel-patch] bridge identity restore failed:",
-          err?.message || err
-        );
-      }
-    }
+    // Do not write bridge presence SA — it floods every admin group (including
+    // the source channel) as a visible "TAK-Portal" pin. Contact callsign is
+    // already stripped from patched CoT, so endpoint stealing is avoided.
   } catch (err) {
     console.error("[channel-patch] forward failed:", err?.message || err);
   }
@@ -419,14 +345,6 @@ function start() {
     mapMeta.setPatchDestAugmenter(augmentDestGroupsForSourceGroups);
   }
   unsubscribe = cotStream.onCotProcessed(onCot);
-  // Claim a stable bridge callsign as soon as the stream is up.
-  void (async () => {
-    try {
-      if (!cotStream.isBridgeConnected()) return;
-      const bridgeCot = await buildBridgePresenceCot({});
-      await cotStream.writeCot(bridgeCot, { stripFlow: true });
-    } catch (_) {}
-  })();
   console.log("[channel-patch] engine started");
 }
 
@@ -463,6 +381,4 @@ module.exports = {
   getRuntimeHint,
   PATCH_TAG,
   BRIDGE_TAG,
-  BRIDGE_UID,
-  BRIDGE_CALLSIGN,
 };
