@@ -497,12 +497,23 @@ function isTlsCallsignSubscription(item) {
   return isTlsCallsign(item && item.callsign);
 }
 
+/** Channel-patch bridge / rebroadcast ghosts on the webadmin stream. */
+function isChannelPatchBridgeSubscription(item) {
+  const cs = String(item && item.callsign || "").trim().toLowerCase();
+  const uid = String(item && (item.uid || item.clientUid) || "").trim().toLowerCase();
+  if (cs === "tak-portal") return true;
+  if (uid === "takportal-channel-patch-bridge") return true;
+  if (cs.includes(".takportal.") || uid.includes(".takportal.")) return true;
+  return false;
+}
+
 function isExcludedConnectedUserSubscription(item) {
   const username = item && item.username;
   return (
     isNoderedUsername(username) ||
     isFederationTokenUsername(username) ||
-    isTlsCallsignSubscription(item)
+    isTlsCallsignSubscription(item) ||
+    isChannelPatchBridgeSubscription(item)
   );
 }
 
@@ -525,6 +536,7 @@ function filterConnectedUserSubscriptions(list, options = {}) {
   return filterFederationSubscriptions(list).filter((item) => {
     if (isNoderedUsername(item && item.username)) return false;
     if (isTlsCallsignSubscription(item)) return false;
+    if (isChannelPatchBridgeSubscription(item)) return false;
     return subscriptionMatchesAgencyScope(authUser, item && item.username, agencyOnly);
   });
 }

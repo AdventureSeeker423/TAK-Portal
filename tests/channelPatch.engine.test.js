@@ -59,8 +59,8 @@ assert.strictEqual(
 );
 
 assert.strictEqual(
-  engine.patchedUid("ANDROID-abc", "tak_CPD Main"),
-  "ANDROID-abc.takportal.cpd-main"
+  engine.patchedUid("ANDROID-abc", "tak_CPD Main", "HCSO-DAVIS-3598"),
+  "HCSO-DAVIS-3598.takportal.cpd-main"
 );
 
 console.log("channelPatch.engine.test.js OK");

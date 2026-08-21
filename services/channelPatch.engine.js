@@ -137,27 +137,58 @@ function setFilterGroup(detail, groupName) {
   detail.filtergroup = { _attributes: { group: g } };
 }
 
-function patchedUid(srcUid, destGroup) {
-  const base = safeStr(srcUid).trim() || "unknown";
+function patchedUid(srcUid, destGroup, callsign) {
+  // Prefer callsign in the UID so ATAK still shows a readable label without a
+  // <contact callsign> (which would steal the webadmin ClientEndpoint callsign).
+  const label =
+    safeStr(callsign).trim() || safeStr(srcUid).trim() || "unit";
+  const slugLabel = label
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
   const dest = groupKey(destGroup) || toMartiGroupName(destGroup) || "dest";
-  const slug = dest.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
-  return `${base}.takportal.${slug}`.slice(0, 128);
+  const slugDest = dest.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
+  return `${slugLabel || "unit"}.takportal.${slugDest || "dest"}`.slice(0, 128);
 }
 
 /**
  * Strip elements that make TAK treat this as the injecting connection's own SA.
+ * Returns the original callsign (for UID/remarks) if present.
  */
 function neutralizeAsInjectedCopy(detail) {
-  if (!detail || typeof detail !== "object") return;
+  if (!detail || typeof detail !== "object") return "";
+
+  const callsign = safeStr(
+    detail.contact?._attributes?.callsign ||
+      detail.contact?.callsign ||
+      ""
+  ).trim();
+
   // Connection/group membership announcements from the original EUD
   delete detail.__group;
   delete detail._group;
   delete detail.group;
+  // Client identity / device fingerprint — leave these off the bridge write
+  delete detail.takv;
+  delete detail.status;
+  delete detail.uid;
+  delete detail._uid_;
   // Do not carry original flow tags onto the webadmin write
   delete detail["_flow-tags_"];
   delete detail["flow-tags"];
   delete detail._flowTags;
   delete detail.flowTags;
+
+  // CRITICAL: any contact.callsign written on the webadmin TLS socket updates
+  // that connection's ClientEndpoint callsign (dashboard "callsign stealing").
+  delete detail.contact;
+
+  if (callsign) {
+    detail.remarks = { _text: callsign };
+  }
+
+  return callsign;
 }
 
 /**
@@ -176,29 +207,52 @@ async function buildTargetedCot(sourceCot, destGroup, meta) {
   const clone = new CoT(raw);
   const detail = clone.detail();
   clearExistingDests(detail);
-  neutralizeAsInjectedCopy(detail);
+  const callsign = neutralizeAsInjectedCopy(detail);
 
-  // Distinct UID so TAK does not bind this SA to the webadmin ClientEndpoint
-  // as a second instance of the real EUD.
-  clone.uid(patchedUid(srcUid, destGroup));
+  // Distinct UID (includes callsign for readable ATAK labels without <contact>).
+  clone.uid(patchedUid(srcUid, destGroup, callsign));
+
+  // Demote self-SA type so TAK is less likely to treat this as a live client.
+  const typ = safeStr(clone.type()).trim();
+  if (/^a-f-G-U-C/i.test(typ)) {
+    clone.type("a-f-G");
+  }
 
   const martiGroup = toMartiGroupName(destGroup);
   if (!martiGroup) throw new Error("Empty Marti dest group");
   clone.addDest({ group: martiGroup });
   setFilterGroup(detail, martiGroup);
-  stampPatchTag(detail, { ...meta, toGroup: destGroup, srcUid });
+  stampPatchTag(detail, {
+    ...meta,
+    toGroup: destGroup,
+    srcUid,
+    callsign,
+  });
 
   return clone;
 }
 
 /**
  * Restore a stable callsign/uid on the webadmin stream so Client Dashboard
- * does not keep showing the last patched EUD under username admin.
+ * does not keep showing a previously stolen EUD callsign under username admin.
+ * Avoid null-island (0,0) — TAK often ignores those for endpoint updates.
  */
-async function buildBridgePresenceCot() {
+async function buildBridgePresenceCot(point = {}) {
   const mod = await loadNodeCot();
   const CoT = mod.default || mod.CoT;
   if (!CoT) throw new Error("node-cot CoT constructor unavailable");
+
+  let lat = Number(point.lat);
+  let lon = Number(point.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
+    // Far-south placeholder TAK will still accept for endpoint metadata.
+    lat = -89.9;
+    lon = 0;
+  }
+  const hae =
+    point.hae != null && Number.isFinite(Number(point.hae))
+      ? Number(point.hae)
+      : 9999999.0;
 
   const now = new Date();
   const stale = new Date(now.getTime() + 5 * 60 * 1000);
@@ -216,15 +270,23 @@ async function buildBridgePresenceCot() {
       },
       point: {
         _attributes: {
-          lat: "0.0",
-          lon: "0.0",
-          hae: "9999999.0",
+          lat: String(lat),
+          lon: String(lon),
+          hae: String(hae),
           ce: "9999999.0",
           le: "9999999.0",
         },
       },
       detail: {
         contact: { _attributes: { callsign: BRIDGE_CALLSIGN } },
+        takv: {
+          _attributes: {
+            device: "TAK-Portal",
+            platform: "TAK-Portal",
+            os: "server",
+            version: "channel-patch",
+          },
+        },
         [BRIDGE_TAG]: { _attributes: { v: "1" } },
       },
     },
@@ -299,7 +361,11 @@ async function forwardCot({ marker, cot }) {
 
     if (ok) {
       try {
-        const bridgeCot = await buildBridgePresenceCot();
+        const bridgeCot = await buildBridgePresenceCot({
+          lat: marker?.lat,
+          lon: marker?.lon,
+          hae: marker?.hae,
+        });
         await cotStream.writeCot(bridgeCot, { stripFlow: true });
       } catch (err) {
         console.warn(
@@ -353,6 +419,14 @@ function start() {
     mapMeta.setPatchDestAugmenter(augmentDestGroupsForSourceGroups);
   }
   unsubscribe = cotStream.onCotProcessed(onCot);
+  // Claim a stable bridge callsign as soon as the stream is up.
+  void (async () => {
+    try {
+      if (!cotStream.isBridgeConnected()) return;
+      const bridgeCot = await buildBridgePresenceCot({});
+      await cotStream.writeCot(bridgeCot, { stripFlow: true });
+    } catch (_) {}
+  })();
   console.log("[channel-patch] engine started");
 }
 
