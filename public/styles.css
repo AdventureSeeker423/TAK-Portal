@@ -87,40 +87,46 @@ body {
     color: var(--text);
 }
 
+/* Desktop scale normalization to mimic ~80% browser zoom */
 @media (min-width: 1024px) {
+    body {
+        zoom: 0.8;
+    }
+    /* Compensate viewport-sized containers when zoom is applied */
     .app {
-        min-height: 100dvh;
+        min-height: calc(100dvh / 0.8);
     }
     .sidebar {
-        min-height: 100dvh;
-        height: 100dvh !important;
+        min-height: calc(100dvh / 0.8);
+        height: calc(100dvh / 0.8) !important;
     }
+    /* Keep modals visually tall at desktop zoom */
     .modal {
-        max-height: 92dvh;
+        max-height: calc(92dvh / 0.8);
     }
     /* Page-specific modal sizing moved here from view files */
     #modalOverlay .modal { /* Users edit modal */
-        max-height: 96dvh !important;
-        min-height: 78dvh;
+        max-height: calc(96dvh / 0.8) !important;
+        min-height: calc(78dvh / 0.8);
     }
     #missionModal .modal { /* Data Sync edit mission modal */
-        max-height: 96dvh !important;
-        min-height: 82dvh;
+        max-height: calc(96dvh / 0.8) !important;
+        min-height: calc(82dvh / 0.8);
     }
     #dataFeedModalOverlay .modal { /* Integrations create streaming feed modal */
-        max-height: 96dvh !important;
-        min-height: 82dvh;
+        max-height: calc(96dvh / 0.8) !important;
+        min-height: calc(82dvh / 0.8);
     }
     #locHistOverlay .modal { /* Locate history modal */
-        max-height: 85dvh !important;
+        max-height: calc(85dvh / 0.8) !important;
     }
     #clientGroupsOverlay .group-control-modal.modal { /* Dashboard connected user modal */
-        max-height: 82dvh !important;
-        min-height: 66dvh;
-        height: 72dvh;
+        max-height: calc(82dvh / 0.8) !important;
+        min-height: calc(66dvh / 0.8);
+        height: calc(72dvh / 0.8);
     }
     .modalCard { /* Audit log details modal card */
-        max-height: 80dvh !important;
+        max-height: calc(80dvh / 0.8) !important;
     }
 }
 

@@ -55,12 +55,12 @@ body.map-page .sidebar {
 
 @media (min-width: 1024px) {
   body.map-page .app {
-    min-height: 100dvh !important;
-    height: 100dvh !important;
+    min-height: calc(100dvh / 0.8) !important;
+    height: calc(100dvh / 0.8) !important;
   }
   body.map-page .sidebar {
-    height: 100dvh !important;
-    min-height: 100dvh !important;
+    height: calc(100dvh / 0.8) !important;
+    min-height: calc(100dvh / 0.8) !important;
   }
 }
 
