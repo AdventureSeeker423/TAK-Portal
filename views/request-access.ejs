@@ -96,8 +96,7 @@
     const brandedPortalTitle =
       typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal";
     const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Username";
-    const requireAllAgencyDetails =
-      typeof requireAllAgencyDetails !== "undefined" ? !!requireAllAgencyDetails : false;
+    const requireAllDetailsForNewAgency = !!requireAllAgencyDetails;
   %>
   <h1>Request <%= brandedPortalTitle %> Access</h1>
 
@@ -182,8 +181,8 @@
           regionCountyLocks: typeof regionCountyLocks !== "undefined" ? regionCountyLocks : [],
           includeColor: false,
           includeName: false,
-          includeExtendedFields: requireAllAgencyDetails,
-          fieldsRequired: requireAllAgencyDetails,
+          includeExtendedFields: requireAllDetailsForNewAgency,
+          fieldsRequired: requireAllDetailsForNewAgency,
           idPrefix: "requestAccess_",
           agencyFieldValues: {
             groupPrefix: (form && form.groupPrefix) ? form.groupPrefix : "",
@@ -231,7 +230,7 @@
   const otherReason = document.getElementById('otherReason');
   const placementSelect = document.getElementById('requestAccess_usernameTokenPlacementSelect');
   const placementLabel = document.getElementById('requestAccess_usernameIdentifierLabelText');
-  const requireAllAgencyDetails = <%= requireAllAgencyDetails ? "true" : "false" %>;
+  const requireAllAgencyDetails = <%= requireAllDetailsForNewAgency ? "true" : "false" %>;
 
   function syncPlacementLabel() {
     if (!placementSelect || !placementLabel) return;

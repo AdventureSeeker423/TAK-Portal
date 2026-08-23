@@ -1369,6 +1369,11 @@ body.theme-light .maplibregl-ctrl-group button {
   color: var(--text);
 }
 
+.map-hud-icon-btn.is-active {
+  border-color: color-mix(in srgb, var(--map-accent) 45%, transparent);
+  color: var(--map-accent);
+}
+
 .map-hud-sidebar-btn {
   background: var(--card);
 }

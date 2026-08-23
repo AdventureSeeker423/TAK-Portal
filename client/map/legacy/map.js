@@ -3727,7 +3727,12 @@
 
   function setPanelLeftCollapsed(collapsed, opts) {
     elPanelLeft.classList.toggle("collapsed", collapsed);
-    elExpandLeft.hidden = !collapsed;
+    if (elExpandLeft) {
+      elExpandLeft.classList.toggle("is-active", !collapsed);
+      elExpandLeft.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      elExpandLeft.title = collapsed ? "Show channels" : "Hide channels";
+      elExpandLeft.setAttribute("aria-label", elExpandLeft.title);
+    }
     if (!opts || opts.persist !== false) {
       if (!isMapLayoutNarrow()) {
         localStorage.setItem(LS_PANEL_LEFT, collapsed ? "collapsed" : "open");
@@ -6510,7 +6515,7 @@
   });
 
   elExpandLeft.addEventListener("click", () => {
-    setPanelLeftCollapsed(false);
+    setPanelLeftCollapsed(!elPanelLeft.classList.contains("collapsed"));
   });
 
   elExpandRight.addEventListener("click", () => {
