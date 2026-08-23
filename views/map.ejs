@@ -1,5 +1,11 @@
 <%
-  pageTitle = "Live Map";
+  const _serverName = String(
+    (typeof settings !== "undefined" && settings && settings.SERVER_NAME) ||
+      (typeof serverAbbrev !== "undefined" && serverAbbrev) ||
+      ""
+  ).trim();
+  const _mapHeading = _serverName ? _serverName + " Live Map" : "Live Map";
+  pageTitle = _mapHeading;
   bodyExtraClass = "map-page";
   extraStylesheets = [maplibreCssUrl, mapCssUrl];
 %>
@@ -18,16 +24,19 @@
       <div class="map-hud-left">
         <button
           type="button"
-          class="map-hud-icon-btn"
+          class="map-hud-icon-btn map-hud-sidebar-btn"
           id="mapSiteNavBtn"
-          title="Site menu"
-          aria-label="Site menu"
+          title="Hide sidebar"
+          aria-label="Hide sidebar"
           aria-controls="sidebar"
           aria-expanded="true"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-            <path d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+          <span class="map-hud-sidebar-glyph" aria-hidden="true">
+            <span class="map-hud-sidebar-pane"></span>
+            <svg class="map-hud-sidebar-arrow" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6.2 2.2L3.2 5l3 2.8" />
+            </svg>
+          </span>
         </button>
         <div
           class="map-hud-title map-hud-fit-trigger"
@@ -36,7 +45,7 @@
           tabindex="0"
           title="Fit visible markers"
         >
-          <h1>Live Map</h1>
+          <h1><%= _mapHeading %></h1>
         </div>
       </div>
       <div class="map-hud-center">
@@ -256,11 +265,11 @@
       var expanded;
       if (isMobile()) {
         expanded = document.body.classList.contains("sidebar-open");
-        navBtn.title = "Site menu";
-        navBtn.setAttribute("aria-label", "Site menu");
+        navBtn.title = expanded ? "Hide sidebar" : "Show sidebar";
+        navBtn.setAttribute("aria-label", navBtn.title);
       } else {
         expanded = !document.documentElement.classList.contains("map-sidebar-collapsed");
-        navBtn.title = expanded ? "Hide site menu" : "Show site menu";
+        navBtn.title = expanded ? "Hide sidebar" : "Show sidebar";
         navBtn.setAttribute("aria-label", navBtn.title);
       }
       navBtn.setAttribute("aria-expanded", expanded ? "true" : "false");
