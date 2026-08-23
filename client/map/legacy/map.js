@@ -16,6 +16,11 @@
   const DETAIL_PANEL_MAX_VW = 0.5;
   const DETAIL_PANEL_RIGHT_OFFSET = 12;
   const MAX_DETAIL_SLOTS = 3;
+  const LAYOUT_NARROW_MAX = 990;
+
+  function isMapLayoutNarrow() {
+    return window.innerWidth <= LAYOUT_NARROW_MAX;
+  }
 
   const AFFILIATION_COLORS = {
     friend: "#22c55e",
@@ -2641,6 +2646,16 @@
     attributionControl: true,
   });
 
+  if (typeof ResizeObserver !== "undefined") {
+    const mapEl = document.getElementById("map");
+    if (mapEl) {
+      const ro = new ResizeObserver(function () {
+        if (map && typeof map.resize === "function") map.resize();
+      });
+      ro.observe(mapEl);
+    }
+  }
+
   function lockMapNorthUp() {
     if (map.dragRotate) map.dragRotate.disable();
     if (map.touchPitch) map.touchPitch.disable();
@@ -2696,6 +2711,18 @@
   restorePanelState();
   loadDetailPanelWidth();
   initDetailPanelResize();
+
+  let lastLayoutNarrow = isMapLayoutNarrow();
+  window.addEventListener("resize", function () {
+    const narrow = isMapLayoutNarrow();
+    if (narrow === lastLayoutNarrow) return;
+    lastLayoutNarrow = narrow;
+    if (narrow) {
+      setPanelLeftCollapsed(true, { persist: false });
+    } else {
+      setPanelLeftCollapsed(localStorage.getItem(LS_PANEL_LEFT) === "collapsed");
+    }
+  });
 
   function normalizeEnabledGroups(set) {
     if (!set) return null;
@@ -3701,10 +3728,17 @@
     fitVisibleMarkers(true);
   }
 
-  function setPanelLeftCollapsed(collapsed) {
+  function setPanelLeftCollapsed(collapsed, opts) {
     elPanelLeft.classList.toggle("collapsed", collapsed);
     elExpandLeft.hidden = !collapsed;
-    localStorage.setItem(LS_PANEL_LEFT, collapsed ? "collapsed" : "open");
+    if (!opts || opts.persist !== false) {
+      if (!isMapLayoutNarrow()) {
+        localStorage.setItem(LS_PANEL_LEFT, collapsed ? "collapsed" : "open");
+      }
+    }
+    if (!collapsed && isMapLayoutNarrow()) {
+      setDetailStackCollapsed(true);
+    }
   }
 
   function isDetailPaneOpen() {
@@ -3731,6 +3765,9 @@
     } else {
       elDetailStack.classList.remove("collapsed");
       elExpandRight.hidden = true;
+      if (isMapLayoutNarrow() && elPanelLeft && !elPanelLeft.classList.contains("collapsed")) {
+        setPanelLeftCollapsed(true, { persist: false });
+      }
     }
   }
 
@@ -3738,7 +3775,12 @@
     if (!detailSlots.length && !auxDetailActive && collapsed) return;
     detailPaneUserCollapsed = collapsed;
     syncDetailStackVisibility();
-    if (!collapsed) closeMapPopup();
+    if (!collapsed) {
+      closeMapPopup();
+      if (isMapLayoutNarrow() && elPanelLeft && !elPanelLeft.classList.contains("collapsed")) {
+        setPanelLeftCollapsed(true, { persist: false });
+      }
+    }
   }
 
   function detailPanelDefaultWidth() {
@@ -3766,7 +3808,7 @@
   }
 
   function applyDetailPanelWidth(width, persist) {
-    if (!elDetailStack || window.innerWidth <= 900) return;
+    if (!elDetailStack || isMapLayoutNarrow()) return;
     const clamped = clampDetailPanelWidth(width);
     elDetailStack.style.setProperty("--map-detail-pane-width", clamped + "px");
     if (persist !== false) {
@@ -3779,7 +3821,7 @@
   }
 
   function loadDetailPanelWidth() {
-    if (!elDetailStack || window.innerWidth <= 900) return;
+    if (!elDetailStack || isMapLayoutNarrow()) return;
     const stored = Number(localStorage.getItem(LS_DETAIL_PANEL_WIDTH));
     const initial = Number.isFinite(stored)
       ? stored
@@ -3817,7 +3859,7 @@
     }
 
     elDetailResize.addEventListener("pointerdown", function (e) {
-      if (elDetailStack.classList.contains("collapsed") || window.innerWidth <= 900) {
+      if (elDetailStack.classList.contains("collapsed") || isMapLayoutNarrow()) {
         return;
       }
       e.preventDefault();
@@ -3835,7 +3877,7 @@
     });
 
     window.addEventListener("resize", function () {
-      if (window.innerWidth <= 900) {
+      if (isMapLayoutNarrow()) {
         elDetailStack.style.removeProperty("--map-detail-pane-width");
         return;
       }
@@ -3847,7 +3889,11 @@
   }
 
   function restorePanelState() {
-    setPanelLeftCollapsed(localStorage.getItem(LS_PANEL_LEFT) === "collapsed");
+    if (isMapLayoutNarrow()) {
+      setPanelLeftCollapsed(true, { persist: false });
+    } else {
+      setPanelLeftCollapsed(localStorage.getItem(LS_PANEL_LEFT) === "collapsed");
+    }
     syncDetailStackVisibility();
   }
 
@@ -6443,6 +6489,13 @@
         ev.preventDefault();
         triggerFitVisible();
       }
+    });
+  }
+
+  const elGoToBtn = document.getElementById("mapGoToBtn");
+  if (elGoToBtn) {
+    elGoToBtn.addEventListener("click", function () {
+      openGoToPalette("");
     });
   }
 

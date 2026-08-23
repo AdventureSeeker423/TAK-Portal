@@ -1,9 +1,16 @@
 const assert = require("assert");
+const settingsSvc = require("../services/settings.service");
 const {
   validateCreate,
   canChangeAgencyForReviewToken,
 } = require("../services/userRequests.service");
 const accessSvc = require("../services/access.service");
+
+const priorRequireAllDetails = settingsSvc.get(
+  "REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS",
+  "false"
+);
+settingsSvc.updateSettings({ REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS: "true" });
 
 function baseOtherPayload(overrides = {}) {
   return {
@@ -124,5 +131,27 @@ assert.strictEqual(
   canChangeAgencyForReviewToken("legacy", { reviewToken: "legacy", agencySuffix: "hfd" }),
   false
 );
+
+settingsSvc.updateSettings({
+  REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS: priorRequireAllDetails,
+});
+
+settingsSvc.updateSettings({ REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS: "false" });
+const minimal = validateCreate(
+  baseOtherPayload({
+    groupPrefix: "",
+    suffix: "",
+    state: "",
+    county: "",
+    countyAbbrev: "",
+  })
+);
+assert.strictEqual(minimal.groupPrefix, "");
+assert.strictEqual(minimal.suffix, "");
+assert.strictEqual(minimal.state, "");
+assert.strictEqual(minimal.type, "Fire");
+settingsSvc.updateSettings({
+  REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS: priorRequireAllDetails,
+});
 
 console.log("userRequestsOtherAgency.test.js: ok");

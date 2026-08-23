@@ -2,6 +2,7 @@
   const _vals = (typeof agencyFieldValues === "object" && agencyFieldValues) ? agencyFieldValues : {};
   const _includeColor = (typeof includeColor === "undefined") ? true : !!includeColor;
   const _includeName = (typeof includeName === "undefined") ? true : !!includeName;
+  const _includeExtendedFields = (typeof includeExtendedFields === "undefined") ? true : !!includeExtendedFields;
   const _fieldsRequired = (typeof fieldsRequired === "undefined") ? true : !!fieldsRequired;
   const _reqAttr = _fieldsRequired ? "required" : "";
   const _idPrefix = String(typeof idPrefix !== "undefined" ? idPrefix : "");
@@ -64,7 +65,7 @@
 }
 </style>
 
-<div class="agencyCreateRow <%= _includeName ? 'agencyCreateRow4' : 'agencyCreateRow3' %>">
+<div class="agencyCreateRow <%= _includeName ? 'agencyCreateRow4' : 'agencyCreateRow3' %>"<% if (!_includeExtendedFields) { %> hidden data-agency-extended-fields="1"<% } %>>
   <% if (_includeName) { %>
   <label>Agency Full Name
     <input name="name" placeholder="Agency Name" <%= _reqAttr %>
@@ -93,7 +94,7 @@
   </label>
 </div>
 
-<div class="agencyCreateRow agencyCreateRow4">
+<div class="agencyCreateRow agencyCreateRow4"<% if (!_includeExtendedFields) { %> hidden data-agency-extended-fields="1"<% } %>>
   <label>State
     <select name="state" <%= _reqAttr %>>
       <option value="" disabled <%= !_selectedState ? "selected" : "" %>>Select State</option>
@@ -169,7 +170,7 @@
   </label>
   <% } %>
 
-  <% if (_showRegion) { %>
+  <% if (_includeExtendedFields && _showRegion) { %>
   <label id="<%= _idPrefix %>regionFieldWrap">
     <span>Region <span class="agencyCreateOptionalHint" id="<%= _idPrefix %>regionOptionalHint">(optional)</span></span>
     <select name="regionId" id="<%= _idPrefix %>regionIdSelect">
@@ -313,11 +314,13 @@
     });
   }
 
+  <% if (_includeExtendedFields) { %>
   syncStateFederalAgencyFields(document.getElementById("<%= _idPrefix %>stateFederalAgencySelect"));
   var regionScope =
     (document.getElementById("<%= _idPrefix %>regionIdSelect") &&
       document.getElementById("<%= _idPrefix %>regionIdSelect").closest("form")) ||
     document;
   syncAgencyRegionLock(regionScope);
+  <% } %>
 })();
 </script>

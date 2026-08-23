@@ -1302,6 +1302,10 @@ function isRequestAccessEnabled() {
   return getBool("REQUEST_ACCESS_ENABLED", true);
 }
 
+function isRequestAccessRequireAllAgencyDetails() {
+  return getBool("REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS", false);
+}
+
 function renderRequestAccessDisabled(req, res) {
   return res.status(404).render("access-denied", {
     username: req.authentikUser?.username || "",
@@ -1320,6 +1324,7 @@ app.get("/request-access", (req, res) => {
     agencies,
     form: {},
     error: null,
+    requireAllAgencyDetails: isRequestAccessRequireAllAgencyDetails(),
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
     regionOptions: regionsSvc.listNormalized(),
     regionCountyLocks: regionsSvc.listLocks(),
@@ -1418,6 +1423,7 @@ app.post("/request-access", async (req, res) => {
       showLoginLink: err?.code === "USER_ALREADY_EXISTS",
       loginUrl: "/",
       form: req.body || {},
+      requireAllAgencyDetails: isRequestAccessRequireAllAgencyDetails(),
       agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
       regionOptions: regionsSvc.listNormalized(),
       regionCountyLocks: regionsSvc.listLocks(),

@@ -96,6 +96,8 @@
     const brandedPortalTitle =
       typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal";
     const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Username";
+    const requireAllAgencyDetails =
+      typeof requireAllAgencyDetails !== "undefined" ? !!requireAllAgencyDetails : false;
   %>
   <h1>Request <%= brandedPortalTitle %> Access</h1>
 
@@ -180,7 +182,8 @@
           regionCountyLocks: typeof regionCountyLocks !== "undefined" ? regionCountyLocks : [],
           includeColor: false,
           includeName: false,
-          fieldsRequired: false,
+          includeExtendedFields: requireAllAgencyDetails,
+          fieldsRequired: requireAllAgencyDetails,
           idPrefix: "requestAccess_",
           agencyFieldValues: {
             groupPrefix: (form && form.groupPrefix) ? form.groupPrefix : "",
@@ -194,9 +197,9 @@
           }
         }) %>
 
-        <label>Reason for requesting access
+        <label>Reason For Requesting Access
           <textarea name="otherReason" id="otherReason"
-            rows="4" style="width: 100%; box-sizing: border-box;"><%= (form && form.otherReason) ? form.otherReason : '' %></textarea>
+            rows="4" style="width: 100%; box-sizing: border-box;" required><%= (form && form.otherReason) ? form.otherReason : '' %></textarea>
         </label>
       </div>
 
@@ -228,6 +231,7 @@
   const otherReason = document.getElementById('otherReason');
   const placementSelect = document.getElementById('requestAccess_usernameTokenPlacementSelect');
   const placementLabel = document.getElementById('requestAccess_usernameIdentifierLabelText');
+  const requireAllAgencyDetails = <%= requireAllAgencyDetails ? "true" : "false" %>;
 
   function syncPlacementLabel() {
     if (!placementSelect || !placementLabel) return;
@@ -239,17 +243,22 @@
     if (otherAgency) otherAgency.required = !!isOther;
     if (otherReason) otherReason.required = !!isOther;
     if (!wrap) return;
+
+    const typeSelect = wrap.querySelector('select[name="type"]');
+    if (typeSelect) typeSelect.required = !!isOther;
+
+    if (!requireAllAgencyDetails) return;
+
     const fields = wrap.querySelectorAll('input[name], select[name]');
     fields.forEach((el) => {
       const name = String(el.getAttribute('name') || '');
-      if (name === 'otherAgency' || name === 'otherReason' || name === 'usernameTokenPlacement') {
-        // usernameTokenPlacement always has a default; otherAgency/otherReason handled above
+      if (name === 'otherAgency' || name === 'otherReason' || name === 'usernameTokenPlacement' || name === 'type') {
         return;
       }
       if (name === 'county' || name === 'countyAbbrev' || name === 'stateFederalAgency') {
         return;
       }
-      if (name === 'groupPrefix' || name === 'suffix' || name === 'state' || name === 'type') {
+      if (name === 'groupPrefix' || name === 'suffix' || name === 'state') {
         el.required = !!isOther;
       }
     });

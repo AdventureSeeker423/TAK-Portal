@@ -2,9 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title><%= typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1<%= typeof bodyExtraClass !== 'undefined' && String(bodyExtraClass).indexOf('map-page') !== -1 ? ', viewport-fit=cover' : '' %>" />
+    <title><%= typeof pageTitle !== "undefined" && pageTitle ? pageTitle : (typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal") %></title>
     <link rel="stylesheet" href="/styles.css" />
+    <% if (typeof extraStylesheets !== "undefined" && extraStylesheets && extraStylesheets.length) { %>
+      <% extraStylesheets.forEach(function (href) { %>
+    <link rel="stylesheet" href="<%= href %>" />
+      <% }); %>
+    <% } %>
+    <% if (typeof extraHead !== "undefined" && extraHead) { %>
+      <%- extraHead %>
+    <% } %>
+    <% if (typeof bodyExtraClass !== "undefined" && String(bodyExtraClass).indexOf("map-page") !== -1) { %>
+    <script>
+      (function () {
+        document.documentElement.classList.add("map-page");
+        try {
+          if (
+            window.matchMedia("(min-width: 991px)").matches &&
+            localStorage.getItem("tak-portal-map-site-sidebar") === "collapsed"
+          ) {
+            document.documentElement.classList.add("map-sidebar-collapsed");
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <% } %>
 
     <% if (brandLogoUrl) { %>
       <link rel="icon" href="<%= brandLogoUrl %>" type="image/png" />
@@ -12,7 +35,8 @@
     <% } %>
   </head>
   <body
-    class="theme-<%= brandTheme || 'dark' %>"
+    class="theme-<%= brandTheme || 'dark' %><%= typeof bodyExtraClass !== 'undefined' && bodyExtraClass ? ' ' + bodyExtraClass : '' %>"
+    <% if (typeof mapStorageUserKey !== "undefined" && mapStorageUserKey) { %>data-map-user="<%= mapStorageUserKey %>"<% } %>
     <% if (primaryButtonColor || siteFontFamily) { %>
       style="<% if (primaryButtonColor) { %>--btn:<%= primaryButtonColor %>;<% } %><% if (siteFontFamily) { %>--site-font:<%= siteFontFamily %>;<% } %>"
     <% } %>

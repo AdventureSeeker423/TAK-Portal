@@ -6,6 +6,7 @@ const emailSvc = require("./email.service");
 const settingsSvc = require("./settings.service");
 const usersSvc = require("./users.service");
 const authentik = require("./authentik");
+const { getBool } = require("./env");
 
 function genId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -383,21 +384,28 @@ function validateCreate(input) {
   if (isOther) {
     if (!otherAgency) throw new Error("Please enter your agency name");
     if (!otherReason) throw new Error("Please enter your reason for requesting access");
-    const gpErr = agenciesStore.validateGroupPrefix(requestedAgency.groupPrefix);
-    if (gpErr) throw new Error(gpErr);
-    if (!requestedAgency.suffix) throw new Error("Username Suffix/Prefix is required");
-    if (!requestedAgency.state) throw new Error("State is required");
-    if (!ALLOWED_REQUEST_STATES.has(requestedAgency.state)) {
-      throw new Error("State is not valid");
-    }
-    if (!requestedAgency.stateFederalAgency) {
-      if (!requestedAgency.county) throw new Error("County is required");
-      if (!requestedAgency.countyAbbrev) throw new Error("County Abbreviation is required");
-    }
-    if (requestedAgency.countyAbbrev && requestedAgency.countyAbbrev.length < 2) {
-      throw new Error("County Abbreviation must be at least 2 characters");
-    }
     if (!requestedAgency.type) throw new Error("Agency Type is required");
+
+    const requireAllAgencyDetails = getBool(
+      "REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS",
+      false
+    );
+    if (requireAllAgencyDetails) {
+      const gpErr = agenciesStore.validateGroupPrefix(requestedAgency.groupPrefix);
+      if (gpErr) throw new Error(gpErr);
+      if (!requestedAgency.suffix) throw new Error("Username Suffix/Prefix is required");
+      if (!requestedAgency.state) throw new Error("State is required");
+      if (!ALLOWED_REQUEST_STATES.has(requestedAgency.state)) {
+        throw new Error("State is not valid");
+      }
+      if (!requestedAgency.stateFederalAgency) {
+        if (!requestedAgency.county) throw new Error("County is required");
+        if (!requestedAgency.countyAbbrev) throw new Error("County Abbreviation is required");
+      }
+      if (requestedAgency.countyAbbrev && requestedAgency.countyAbbrev.length < 2) {
+        throw new Error("County Abbreviation must be at least 2 characters");
+      }
+    }
   }
 
   if (!isOther) {

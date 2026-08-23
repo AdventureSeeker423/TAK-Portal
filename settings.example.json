@@ -71,6 +71,7 @@
   "SMS_BREVO_SENDER": "",
   "SMS_TEST_TO": "",
   "REQUEST_ACCESS_ENABLED": "true",
+  "REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS": "false",
   "BETA_MODE": "false",
   "SERVER_NAME": "",
   "DEFAULT_THEME_MODE": "dark",

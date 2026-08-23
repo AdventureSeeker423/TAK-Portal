@@ -125,6 +125,9 @@
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="allowed-client-devices">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Supported TAK Clients</span></span>
         </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="request-access">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Request Access</span></span>
+        </div>
       </div>
     </section>
 
@@ -184,6 +187,7 @@
         "EMAIL_FAIL_HARD",
         "PORTAL_AUTH_ENABLED",
         "REQUEST_ACCESS_ENABLED",
+        "REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS",
         "BETA_MODE",
         "MOU_ENABLED",
         "MOU_SEND_EMAILS",
@@ -362,6 +366,7 @@
         "MOU_HTML_MAX_KB",
         "MOU_REMINDER_SWEEP_HOURS",
         "REQUEST_ACCESS_ENABLED",
+        "REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS",
         "BETA_MODE",
         "DEFAULT_THEME_MODE",
         "DEFAULT_MAP_SOURCE",
@@ -2254,7 +2259,6 @@
               
             </label>
             <% renderField("USERNAME_PREFIX_LABEL","Username Descriptor Text","Displayed on Users, Pending User Requests, and Request Access pages. Default: Badge Number / Username","Badge Number / Username"); %>
-            <% renderField("REQUEST_ACCESS_ENABLED","Enable Request Access Page","Makes the public /request-access enrollment form available.","true"); %>
             <% renderField("BETA_MODE","Enable Beta Features","Shows in-development features for global admins (e.g. Getting Started). Data Package, Locate Persons, and Data Sync are available regardless of this setting."); %>
           </div>
           <script>
@@ -3918,6 +3922,28 @@
             </label>
           </div>
         
+        </div>
+      </div>
+    </div>
+
+    <!-- Request Access -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-request-access" data-settings-modal="request-access" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-request-access">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-request-access">Request Access</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Public enrollment form at /request-access and options for new-agency requests.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          <div class="grid2">
+            <% renderField("REQUEST_ACCESS_ENABLED","Enable Request Access Page","Makes the public /request-access enrollment form available.","true"); %>
+            <% renderField("REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS","Require All Details For New Agency","When No, users who select Other / My Agency Isn't Listed only provide agency name, agency type, and reason for requesting access. Admins collect remaining agency details during review.","false"); %>
+          </div>
         </div>
       </div>
     </div>
