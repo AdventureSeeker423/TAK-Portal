@@ -93,4 +93,30 @@ assert.strictEqual(
   "falls back to marker callsign when contact is missing"
 );
 
+assert.strictEqual(store.groupMatchKey("tak_CPD Main"), "cpd main");
+assert.strictEqual(store.groupDisplayLabel("tak_CPD Main"), "CPD Main");
+
+const peerIndex = store.peerLabelsByGroupKeyFromPatches([
+  {
+    enabled: true,
+    groups: ["tak_CPD Main", "tak_DAVIS Main", "tak_SPD Main"],
+  },
+  {
+    enabled: false,
+    groups: ["tak_CPD Main", "tak_Unused"],
+  },
+]);
+assert.deepStrictEqual(peerIndex.get("cpd main"), ["DAVIS Main", "SPD Main"]);
+assert.deepStrictEqual(peerIndex.get("davis main"), ["CPD Main", "SPD Main"]);
+assert.strictEqual(peerIndex.get("unused"), undefined);
+
+const mixedPrefix = store.peerLabelsByGroupKeyFromPatches([
+  { enabled: true, groups: ["CPD Main", "tak_DAVIS Main"] },
+]);
+assert.deepStrictEqual(
+  mixedPrefix.get("cpd main"),
+  ["DAVIS Main"],
+  "matches groups with or without tak_ prefix"
+);
+
 console.log("channelPatch.engine.test.js OK");

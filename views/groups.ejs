@@ -8,6 +8,14 @@
     singleFallbackTitle: "Agency Groups / Channels"
   }) %>
 
+  <% if (typeof canSeeChannelPatch !== "undefined" && canSeeChannelPatch && Number(activeChannelPatchCount) > 0) { %>
+    <a href="/channel-patch" style="text-decoration:none;">
+      <div class="channelPatchBanner" style="margin: 10px 0 14px 0;">
+        <%= activeChannelPatchCount %> Channel Patch<%= Number(activeChannelPatchCount) === 1 ? "" : "es" %> Active
+      </div>
+    </a>
+  <% } %>
+
   <div class="card">
   <h2>Create Group / Channel</h2>
 
@@ -581,6 +589,7 @@ const editPrivateWrap = document.getElementById("editPrivateWrap");
 
 // Global admin flag for JS logic
 const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
+const CAN_SEE_CHANNEL_PATCH = <%= (typeof canSeeChannelPatch !== "undefined" && canSeeChannelPatch) ? "true" : "false" %>;
 const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
 const IS_MULTI_AGENCY_ADMIN =
@@ -1307,7 +1316,10 @@ function renderGroups(){
     ? groupsCache.filter(g => {
         const name = String(g.name || "").toLowerCase();
         const desc = String(g?.attributes?.description || "").toLowerCase();
-        return name.includes(needle) || desc.includes(needle);
+        const patched = CAN_SEE_CHANNEL_PATCH && Array.isArray(g.patchedWith)
+          ? g.patchedWith.join(" ").toLowerCase()
+          : "";
+        return name.includes(needle) || desc.includes(needle) || patched.includes(needle);
       })
     : groupsCache;
 
@@ -1368,12 +1380,17 @@ function renderGroups(){
     const editable = !locked && isGroupEditable(g);
     const desc = String(g?.attributes?.description || "").trim();
     const isPrivate = String(g?.attributes?.private || "").trim().toLowerCase() === "yes";
+    const patchedWithLabel =
+      CAN_SEE_CHANNEL_PATCH && Array.isArray(g.patchedWith) && g.patchedWith.length
+        ? g.patchedWith.join(", ")
+        : "";
 
     return `
     <tr>
       <td class="groupNameCell cardTitleCell">
         <div class="groupNameText cardTitleText">${esc(stripTakPrefix(g.name))}</div>
         ${desc ? `<div class="muted groupDescText">${esc(desc)}</div>` : ""}
+        ${patchedWithLabel ? `<div class="groupPatchedText">Patched With ${esc(patchedWithLabel)}</div>` : ""}
         ${IS_GLOBAL_ADMIN && isPrivate ? `<span class="groupPrivateBadge cardMetaBadge">Private</span>` : ""}
       </td>
       ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell">${isPrivate ? "Private" : ""}</td>` : ``}
@@ -3013,6 +3030,15 @@ if (adminAccessOverlay) {
   filter: brightness(0.95);
 }
 
+.channelPatchBanner{
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-weight: 800;
+  color: #ffffff;
+  background: #ea580c;
+  display: block;
+}
+
 .createGroupSubmitBtnAlignRight{
   margin-left: auto;
 }
@@ -3060,6 +3086,14 @@ th.sortable:hover{
   font-size: 11px;
   margin-top: 2px;
   white-space: normal;
+}
+
+.groupsListTable .groupPatchedText {
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: normal;
+  color: #ea580c;
+  font-weight: 600;
 }
 
 .groupsListTable .groupPrivateBadge,

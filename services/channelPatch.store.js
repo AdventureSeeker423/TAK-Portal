@@ -25,6 +25,66 @@ function groupDedupeKey(name) {
   return safeStr(name).trim().toLowerCase();
 }
 
+/** Match Authentik `tak_` names to catalog / patch group names. */
+function groupMatchKey(name) {
+  let n = safeStr(name).trim();
+  if (n.toLowerCase().startsWith("tak_")) n = n.slice(4);
+  return n.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function groupDisplayLabel(name) {
+  let n = safeStr(name).trim();
+  if (n.toLowerCase().startsWith("tak_")) n = n.slice(4);
+  return n;
+}
+
+/**
+ * For each channel in enabled patches, the other channels it is patched with.
+ * @param {Array<{ enabled?: boolean, groups?: string[] }>} patches
+ * @returns {Map<string, string[]>} matchKey -> sorted peer display labels
+ */
+function peerLabelsByGroupKeyFromPatches(patches) {
+  const byKey = new Map();
+  for (const p of Array.isArray(patches) ? patches : []) {
+    if (!p || p.enabled === false) continue;
+    const items = (Array.isArray(p.groups) ? p.groups : [])
+      .map((g) => ({ key: groupMatchKey(g), label: groupDisplayLabel(g) }))
+      .filter((x) => x.key);
+    for (const src of items) {
+      if (!byKey.has(src.key)) byKey.set(src.key, new Map());
+      const peers = byKey.get(src.key);
+      for (const dst of items) {
+        if (dst.key === src.key) continue;
+        if (!peers.has(dst.key)) peers.set(dst.key, dst.label);
+      }
+    }
+  }
+  const out = new Map();
+  for (const [k, peers] of byKey) {
+    out.set(
+      k,
+      Array.from(peers.values()).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      )
+    );
+  }
+  return out;
+}
+
+function enabledPeerLabelsByGroupKey() {
+  return peerLabelsByGroupKeyFromPatches(listEnabled());
+}
+
+function annotateGroupsWithPatchPeers(groups) {
+  const index = enabledPeerLabelsByGroupKey();
+  if (!index.size) return Array.isArray(groups) ? groups : [];
+  return (Array.isArray(groups) ? groups : []).map((g) => {
+    const peers = index.get(groupMatchKey(g && g.name));
+    if (!peers || !peers.length) return g;
+    return Object.assign({}, g, { patchedWith: peers });
+  });
+}
+
 /**
  * Accept modern `groups: string[]` or legacy hub + spokes.
  * @returns {string[]}
@@ -267,4 +327,9 @@ module.exports = {
   invalidateCache,
   normalizePatch,
   extractGroupNames,
+  groupMatchKey,
+  groupDisplayLabel,
+  peerLabelsByGroupKeyFromPatches,
+  enabledPeerLabelsByGroupKey,
+  annotateGroupsWithPatchPeers,
 };

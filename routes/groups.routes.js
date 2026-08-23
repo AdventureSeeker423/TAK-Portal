@@ -9,6 +9,7 @@ const auditDetails = require("../services/auditDetails.service");
 const { getString } = require("../services/env");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 const mutualAidStore = require("../services/mutualAid.store");
+const channelPatchStore = require("../services/channelPatch.store");
 
 const MUTUAL_AID_GROUP_PREFIX = "ma -";
 
@@ -58,7 +59,12 @@ router.get("/", async (req, res) => {
       includeMutualAid,
     });
 
-    res.json(filtered);
+    const payload =
+      access.isGlobalAdmin
+        ? channelPatchStore.annotateGroupsWithPatchPeers(filtered)
+        : filtered;
+
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });
   }

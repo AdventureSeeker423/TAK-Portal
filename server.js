@@ -29,6 +29,7 @@ const mapBasemapsConfig = require("./config/mapBasemaps");
 const accessControlRoutes = require("./routes/accessControl.routes");
 const usersSvc = require("./services/users.service");
 const groupsSvc = require("./services/groups.service");
+const channelPatchStore = require("./services/channelPatch.store");
 const agencyTypesSvc = require("./services/agencyTypes.service");
 const regionsSvc = require("./services/regions.service");
 const locatorsSvc = require("./services/locators.service");
@@ -767,7 +768,20 @@ app.get("/csv-instructions-readme.txt", requirePermission("page.users"), (req, r
   const filePath = path.join(__dirname, "csv-instructions-readme.txt");
   return res.download(filePath, "csv-instructions-readme.txt");
 });
-app.get("/groups", (req, res) => res.render("groups"));
+app.get("/groups", (req, res) => {
+  const canSeeChannelPatch =
+    !!res.locals.isGlobalAdmin &&
+    (typeof res.locals.perm !== "function" || res.locals.perm("page.channel_patch"));
+  let activeChannelPatchCount = 0;
+  if (canSeeChannelPatch) {
+    try {
+      activeChannelPatchCount = channelPatchStore.listEnabled().length;
+    } catch (_) {
+      activeChannelPatchCount = 0;
+    }
+  }
+  return res.render("groups", { canSeeChannelPatch, activeChannelPatchCount });
+});
 app.get("/agencies", requirePermission("page.agencies"), (req, res) =>
   res.render("agencies", {
     agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
