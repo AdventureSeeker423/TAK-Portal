@@ -5119,6 +5119,19 @@
     pane.querySelector(".map-detail-pin-btn").addEventListener("click", function () {
       toggleDetailPin(slotIndex);
     });
+    const titleEl = pane.querySelector(".map-detail-title");
+    if (titleEl) {
+      titleEl.addEventListener("click", function () {
+        if (!titleEl.classList.contains("is-client-action")) return;
+        toggleDetailCallsignPanel(pane);
+      });
+      titleEl.addEventListener("keydown", function (e) {
+        if (!titleEl.classList.contains("is-client-action")) return;
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        toggleDetailCallsignPanel(pane);
+      });
+    }
     pane.querySelector(".map-detail-close-btn").addEventListener("click", function () {
       removeDetailSlotAt(slotIndex);
     });
@@ -5311,6 +5324,626 @@
     );
   }
 
+  const PREFERENCE_CONFIG_CLIENTS = {
+    "ATAK-CIV": true,
+    "TAKAWARE-CIV": true,
+    WINTAKTRACKER: true,
+    ANDROIDTAKTRACKER: true,
+  };
+  const CLIENT_CTRL_NODERED_PREFIX = "nodered-";
+  const CLIENT_CTRL_TLS_PREFIX = "tls:";
+  const connectedSubsCache = { at: 0, list: null, promise: null };
+  const CONNECTED_SUBS_TTL_MS = 8000;
+  const detailClientUiByUid = Object.create(null);
+
+  function mapCanControlClients() {
+    return !!(
+      window.TAK_PORTAL_MAP_DEFAULTS &&
+      window.TAK_PORTAL_MAP_DEFAULTS.canControlClients
+    );
+  }
+
+  function paneSlotUid(pane) {
+    const idx = Number(pane && pane.getAttribute("data-slot-index"));
+    const slot = Number.isFinite(idx) ? detailSlots[idx] : null;
+    return slot && slot.uid != null ? String(slot.uid) : "";
+  }
+
+  function clientCtrlNorm(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function isExcludedConnectedSub(item) {
+    const u = clientCtrlNorm(item && item.username);
+    if (u.indexOf(CLIENT_CTRL_NODERED_PREFIX) === 0) return true;
+    const c = clientCtrlNorm(item && item.callsign);
+    return c.indexOf(CLIENT_CTRL_TLS_PREFIX) === 0;
+  }
+
+  function subscriptionClientId(sub) {
+    if (!sub) return "";
+    return (
+      String(sub.clientUid || "").trim() ||
+      String(sub.subscriptionUid || "").trim() ||
+      String(sub.uid || "").trim()
+    );
+  }
+
+  function subscriptionTakClient(sub) {
+    if (!sub) return "";
+    let raw = sub.takClient != null ? String(sub.takClient).trim() : "";
+    if (!raw || raw === "—") {
+      raw = sub.platform != null ? String(sub.platform).trim() : "";
+    }
+    return raw;
+  }
+
+  function isPreferenceConfigClient(sub) {
+    return !!PREFERENCE_CONFIG_CLIENTS[subscriptionTakClient(sub).toUpperCase()];
+  }
+
+  function collectIdentityTokens() {
+    const tokens = new Set();
+    for (let i = 0; i < arguments.length; i++) {
+      const s = clientCtrlNorm(arguments[i]);
+      if (!s) continue;
+      const matches = s.match(/\d{3,}/g) || [];
+      for (let j = 0; j < matches.length; j++) tokens.add(matches[j]);
+    }
+    return tokens;
+  }
+
+  function callsignMatchesToken(callsign, token) {
+    const cs = clientCtrlNorm(callsign);
+    const t = clientCtrlNorm(token);
+    if (!cs || !t) return false;
+    if (cs === t) return true;
+    if (cs.endsWith("-" + t) || cs.endsWith("_" + t)) return true;
+    const parts = cs.split(/[-_./\s]+/).filter(Boolean);
+    return parts.length > 0 && parts[parts.length - 1] === t;
+  }
+
+  function matchSubscriptionForMarker(marker, list) {
+    if (!marker || !Array.isArray(list) || !list.length) return null;
+    const uid = clientCtrlNorm(marker.uid);
+    const cs = clientCtrlNorm(marker.callsign);
+    let i;
+    for (i = 0; i < list.length; i++) {
+      const s = list[i];
+      if (isExcludedConnectedSub(s)) continue;
+      const clientUid = clientCtrlNorm(s.clientUid || s.uid);
+      const subUid = clientCtrlNorm(s.subscriptionUid);
+      if (uid && (uid === clientUid || uid === subUid)) return s;
+    }
+    const exact = [];
+    for (i = 0; i < list.length; i++) {
+      const s = list[i];
+      if (isExcludedConnectedSub(s)) continue;
+      const scs = clientCtrlNorm(s.callsign);
+      const un = clientCtrlNorm(s.username);
+      if (cs && (cs === scs || cs === un)) exact.push(s);
+    }
+    if (exact.length === 1) return exact[0];
+    const tokenHits = [];
+    for (i = 0; i < list.length; i++) {
+      const s = list[i];
+      if (isExcludedConnectedSub(s)) continue;
+      const tokens = collectIdentityTokens(s.username, s.callsign);
+      let hit = false;
+      tokens.forEach(function (t) {
+        if (callsignMatchesToken(cs, t)) hit = true;
+      });
+      if (hit) tokenHits.push(s);
+    }
+    if (tokenHits.length === 1) return tokenHits[0];
+    return exact.length ? exact[0] : null;
+  }
+
+  function loadConnectedSubscriptions() {
+    if (!mapCanControlClients()) return Promise.resolve([]);
+    const now = Date.now();
+    if (connectedSubsCache.list && now - connectedSubsCache.at < CONNECTED_SUBS_TTL_MS) {
+      return Promise.resolve(connectedSubsCache.list);
+    }
+    if (connectedSubsCache.promise) return connectedSubsCache.promise;
+    connectedSubsCache.promise = fetch("/api/tak/subscriptions", {
+      headers: { Accept: "application/json" },
+    })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error((body && body.error) || "subscriptions");
+          return body;
+        });
+      })
+      .then(function (body) {
+        const list = body && Array.isArray(body.data) ? body.data : [];
+        connectedSubsCache.at = Date.now();
+        connectedSubsCache.list = list;
+        connectedSubsCache.promise = null;
+        return list;
+      })
+      .catch(function () {
+        connectedSubsCache.promise = null;
+        connectedSubsCache.at = Date.now();
+        connectedSubsCache.list = connectedSubsCache.list || [];
+        return connectedSubsCache.list;
+      });
+    return connectedSubsCache.promise;
+  }
+
+  function markerMayBeConnectedClient(m) {
+    if (!m || isPackageMarker(m)) return false;
+    const origin = String(m.origin || "").toLowerCase();
+    if (origin === "package" || origin === "mission") return false;
+    return true;
+  }
+
+  function clientDetailPanelsHtml() {
+    if (!mapCanControlClients()) return "";
+    return (
+      '<section class="map-client-panel map-client-groups-panel" hidden>' +
+      '<h3 class="map-client-panel-title">Group / Channel Control</h3>' +
+      '<div class="map-client-panel-msg" data-groups-msg hidden></div>' +
+      '<div class="map-client-panel-loading" data-groups-loading hidden>Loading groups…</div>' +
+      '<div class="map-client-groups-list" data-groups-list></div>' +
+      "</section>" +
+      '<section class="map-client-panel map-client-callsign-panel" hidden>' +
+      '<h3 class="map-client-panel-title">Send Callsign Preferences</h3>' +
+      '<div class="map-client-panel-msg" data-pref-msg hidden></div>' +
+      '<div class="map-client-panel-loading" data-pref-loading hidden>Loading configuration…</div>' +
+      '<div class="map-client-pref-form" data-pref-form>' +
+      '<label class="map-client-pref-field"><span>Callsign</span>' +
+      '<input type="text" data-pref-callsign autocomplete="off" /></label>' +
+      '<label class="map-client-pref-field"><span>Team</span>' +
+      '<select data-pref-team></select></label>' +
+      '<label class="map-client-pref-field"><span>Role</span>' +
+      '<select data-pref-role></select></label>' +
+      '<div class="map-client-pref-actions">' +
+      '<button type="button" class="map-btn map-btn-sm" data-pref-send>Send Configuration</button>' +
+      "</div></div></section>"
+    );
+  }
+
+  function groupControlDisplayName(g) {
+    if (!g) return "—";
+    if (g.displayName) return g.displayName;
+    const name = g.name || "";
+    const mode = String(g.accessMode || g.typeLabel || "").toUpperCase();
+    if (mode === "READ") return name + "_READ";
+    if (mode === "WRITE") return name + "_WRITE";
+    return name || "—";
+  }
+
+  function setSettingsToggleVisual(btn, on) {
+    if (!btn) return;
+    btn.classList.toggle("is-on", !!on);
+    btn.classList.toggle("is-off", !on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  function fillClientSelect(selectEl, options, selectedValue, emptyLabel) {
+    if (!selectEl) return;
+    selectEl.innerHTML = "";
+    if (emptyLabel) {
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = emptyLabel;
+      selectEl.appendChild(empty);
+    }
+    (options || []).forEach(function (opt) {
+      const o = document.createElement("option");
+      if (opt && typeof opt === "object") {
+        o.value = opt.value != null ? String(opt.value) : "";
+        o.textContent = opt.label != null ? String(opt.label) : o.value;
+      } else {
+        o.value = String(opt);
+        o.textContent = String(opt);
+      }
+      selectEl.appendChild(o);
+    });
+    const sel = selectedValue != null ? String(selectedValue).trim() : "";
+    if (!sel) return;
+    const match = Array.prototype.find.call(selectEl.options, function (opt) {
+      return String(opt.value).toLowerCase() === sel.toLowerCase();
+    });
+    if (match) {
+      selectEl.value = match.value;
+      return;
+    }
+    const custom = document.createElement("option");
+    custom.value = sel;
+    custom.textContent = sel;
+    selectEl.appendChild(custom);
+    selectEl.value = sel;
+  }
+
+  function setClientPanelMsg(el, msg, kind) {
+    if (!el) return;
+    if (!msg) {
+      el.textContent = "";
+      el.hidden = true;
+      el.className = "map-client-panel-msg";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = msg;
+    el.className =
+      "map-client-panel-msg" +
+      (kind === "error" ? " is-error" : kind === "success" ? " is-success" : "");
+  }
+
+  function detailClientState(uid) {
+    const id = uid != null ? String(uid) : "";
+    if (!id) return { groupsOpen: false, callsignOpen: false, clientId: "", canPref: false };
+    if (!detailClientUiByUid[id]) {
+      detailClientUiByUid[id] = {
+        groupsOpen: false,
+        callsignOpen: false,
+        clientId: "",
+        canPref: false,
+      };
+    }
+    return detailClientUiByUid[id];
+  }
+
+  function applyDetailClientActionState(pane, wrap, connected, canPref) {
+    const titleEl = pane.querySelector(".map-detail-title");
+    if (titleEl) {
+      titleEl.classList.toggle("is-client-action", !!(connected && canPref));
+      if (connected && canPref) {
+        titleEl.setAttribute("title", "Send callsign preferences");
+        titleEl.setAttribute("role", "button");
+        titleEl.setAttribute("tabindex", "0");
+      } else {
+        titleEl.removeAttribute("title");
+        titleEl.removeAttribute("role");
+        titleEl.removeAttribute("tabindex");
+      }
+    }
+    const groupNodes = wrap
+      ? wrap.querySelectorAll('[data-detail-row="groups"]')
+      : [];
+    for (let i = 0; i < groupNodes.length; i++) {
+      groupNodes[i].classList.toggle("is-client-action", !!connected);
+      if (connected) {
+        groupNodes[i].setAttribute("title", "Toggle this user's groups");
+        groupNodes[i].setAttribute("role", "button");
+        groupNodes[i].setAttribute("tabindex", "0");
+      } else {
+        groupNodes[i].removeAttribute("title");
+        groupNodes[i].removeAttribute("role");
+        groupNodes[i].removeAttribute("tabindex");
+      }
+    }
+  }
+
+  function renderDetailGroupRows(listEl, groups) {
+    if (!listEl) return;
+    listEl.innerHTML = "";
+    (groups || []).forEach(function (g) {
+      const row = document.createElement("div");
+      row.className =
+        "map-client-group-row " + (g.active ? "is-on" : "is-off");
+      row.setAttribute("data-group-name", g.name || "");
+      row.setAttribute("data-access-mode", g.accessMode || g.typeLabel || "");
+      if (g.locked) row.setAttribute("data-locked", "true");
+      if (g.locked && g.active) row.classList.add("is-locked");
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "settings-toggle " + (g.active ? "is-on" : "is-off");
+      toggle.setAttribute("aria-pressed", g.active ? "true" : "false");
+      toggle.setAttribute("aria-label", "Enable " + groupControlDisplayName(g));
+      if (g.locked && g.active) toggle.disabled = true;
+
+      const name = document.createElement("span");
+      name.className = "map-client-group-row-name";
+      name.textContent = groupControlDisplayName(g);
+
+      row.appendChild(toggle);
+      row.appendChild(name);
+      listEl.appendChild(row);
+    });
+  }
+
+  function loadDetailGroups(wrap, clientId) {
+    const loadingEl = wrap.querySelector("[data-groups-loading]");
+    const msgEl = wrap.querySelector("[data-groups-msg]");
+    const listEl = wrap.querySelector("[data-groups-list]");
+    if (loadingEl) loadingEl.hidden = false;
+    setClientPanelMsg(msgEl, "", "");
+    return fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/groups", {
+      headers: { Accept: "application/json" },
+    })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error((body && body.error) || "Failed to load groups");
+          return body;
+        });
+      })
+      .then(function (data) {
+        if (loadingEl) loadingEl.hidden = true;
+        renderDetailGroupRows(listEl, data.groups || []);
+        return data;
+      })
+      .catch(function (err) {
+        if (loadingEl) loadingEl.hidden = true;
+        setClientPanelMsg(msgEl, err.message || "Failed to load groups", "error");
+        throw err;
+      });
+  }
+
+  function applyDetailGroupToggle(wrap, row, clientId, active) {
+    const toggle = row.querySelector(".settings-toggle");
+    if (!toggle || toggle.disabled || wrap._groupToggleBusy) return;
+    if (row.getAttribute("data-locked") === "true" && !active) {
+      setClientPanelMsg(
+        wrap.querySelector("[data-groups-msg]"),
+        "The only assigned group cannot be disabled.",
+        "error"
+      );
+      return;
+    }
+    const groupName = row.getAttribute("data-group-name") || "";
+    const accessMode = row.getAttribute("data-access-mode") || "";
+    const previous = !active;
+    setSettingsToggleVisual(toggle, active);
+    row.classList.toggle("is-on", active);
+    row.classList.toggle("is-off", !active);
+    wrap._groupToggleBusy = true;
+    toggle.disabled = true;
+    setClientPanelMsg(wrap.querySelector("[data-groups-msg]"), "", "");
+    fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/groups", {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        groupName: groupName,
+        accessMode: accessMode,
+        active: active,
+      }),
+    })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error((body && body.error) || "Failed to update group");
+          return body;
+        });
+      })
+      .then(function (data) {
+        renderDetailGroupRows(wrap.querySelector("[data-groups-list]"), data.groups || []);
+      })
+      .catch(function (err) {
+        setSettingsToggleVisual(toggle, previous);
+        row.classList.toggle("is-on", previous);
+        row.classList.toggle("is-off", !previous);
+        setClientPanelMsg(
+          wrap.querySelector("[data-groups-msg]"),
+          err.message || "Failed to update group",
+          "error"
+        );
+      })
+      .finally(function () {
+        const locked = row.getAttribute("data-locked") === "true";
+        toggle.disabled = locked && toggle.classList.contains("is-on");
+        wrap._groupToggleBusy = false;
+      });
+  }
+
+  function loadDetailPreferenceConfig(wrap, clientId) {
+    const loadingEl = wrap.querySelector("[data-pref-loading]");
+    const msgEl = wrap.querySelector("[data-pref-msg]");
+    const formEl = wrap.querySelector("[data-pref-form]");
+    if (loadingEl) loadingEl.hidden = false;
+    if (formEl) formEl.hidden = false;
+    setClientPanelMsg(msgEl, "", "");
+    return fetch(
+      "/api/tak/clients/" + encodeURIComponent(clientId) + "/preference-config",
+      { headers: { Accept: "application/json" } }
+    )
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error((body && body.error) || "Failed to load configuration");
+          return body;
+        });
+      })
+      .then(function (data) {
+        if (loadingEl) loadingEl.hidden = true;
+        const callsignEl = wrap.querySelector("[data-pref-callsign]");
+        if (callsignEl) callsignEl.value = data.callsign || "";
+        fillClientSelect(
+          wrap.querySelector("[data-pref-team]"),
+          data.teamOptions || [],
+          data.teamLabel || "",
+          "Select team…"
+        );
+        fillClientSelect(
+          wrap.querySelector("[data-pref-role]"),
+          data.roleOptions || [],
+          data.roleLabel || "Team Member",
+          null
+        );
+        return data;
+      })
+      .catch(function (err) {
+        if (loadingEl) loadingEl.hidden = true;
+        setClientPanelMsg(msgEl, err.message || "Failed to load configuration", "error");
+        throw err;
+      });
+  }
+
+  function sendDetailPreferenceConfig(wrap, clientId) {
+    if (wrap._prefSendBusy) return;
+    const callsignEl = wrap.querySelector("[data-pref-callsign]");
+    const teamEl = wrap.querySelector("[data-pref-team]");
+    const roleEl = wrap.querySelector("[data-pref-role]");
+    const sendBtn = wrap.querySelector("[data-pref-send]");
+    const msgEl = wrap.querySelector("[data-pref-msg]");
+    const callsign = callsignEl ? String(callsignEl.value || "").trim() : "";
+    const teamLabel = teamEl ? String(teamEl.value || "").trim() : "";
+    const roleLabel = roleEl ? String(roleEl.value || "").trim() : "";
+    if (!callsign) {
+      setClientPanelMsg(msgEl, "Callsign is required.", "error");
+      return;
+    }
+    wrap._prefSendBusy = true;
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = "Sending…";
+    }
+    setClientPanelMsg(msgEl, "", "");
+    fetch(
+      "/api/tak/clients/" + encodeURIComponent(clientId) + "/send-preference-config",
+      {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callsign: callsign,
+          teamLabel: teamLabel,
+          roleLabel: roleLabel,
+        }),
+      }
+    )
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error((body && body.error) || "Failed to send configuration");
+          return body;
+        });
+      })
+      .then(function (data) {
+        const label = data.callsign || data.username || "client";
+        setClientPanelMsg(msgEl, "Configuration sent to " + label + ".", "success");
+        showCopyToast("Configuration sent");
+      })
+      .catch(function (err) {
+        setClientPanelMsg(msgEl, err.message || "Failed to send configuration", "error");
+      })
+      .finally(function () {
+        wrap._prefSendBusy = false;
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "Send Configuration";
+        }
+      });
+  }
+
+  function setDetailGroupsPanelOpen(pane, wrap, uid, open) {
+    const panel = wrap.querySelector(".map-client-groups-panel");
+    if (!panel) return;
+    const state = detailClientState(uid);
+    state.groupsOpen = !!open;
+    panel.hidden = !open;
+    if (open && state.clientId) loadDetailGroups(wrap, state.clientId).catch(function () {});
+  }
+
+  function setDetailCallsignPanelOpen(pane, wrap, uid, open) {
+    const panel = wrap.querySelector(".map-client-callsign-panel");
+    if (!panel) return;
+    const state = detailClientState(uid);
+    state.callsignOpen = !!open;
+    panel.hidden = !open;
+    if (open && state.clientId && state.canPref) {
+      loadDetailPreferenceConfig(wrap, state.clientId).catch(function () {});
+    }
+  }
+
+  function toggleDetailGroupsPanel(pane) {
+    const uid = paneSlotUid(pane);
+    const wrap = pane.querySelector(".map-detail-wrap");
+    const state = detailClientState(uid);
+    if (!wrap || !state.clientId) return;
+    setDetailGroupsPanelOpen(pane, wrap, uid, !state.groupsOpen);
+  }
+
+  function toggleDetailCallsignPanel(pane) {
+    const uid = paneSlotUid(pane);
+    const wrap = pane.querySelector(".map-detail-wrap");
+    const state = detailClientState(uid);
+    if (!wrap || !state.clientId || !state.canPref) return;
+    setDetailCallsignPanelOpen(pane, wrap, uid, !state.callsignOpen);
+  }
+
+  function bindDetailClientPanelEvents(pane, wrap) {
+    wrap.addEventListener("click", function (e) {
+      const groupHit = e.target.closest('[data-detail-row="groups"]');
+      if (groupHit && wrap.contains(groupHit) && groupHit.classList.contains("is-client-action")) {
+        toggleDetailGroupsPanel(pane);
+        return;
+      }
+      const groupRow = e.target.closest(".map-client-group-row");
+      if (groupRow && wrap.contains(groupRow)) {
+        const uid = paneSlotUid(pane);
+        const clientId = detailClientState(uid).clientId;
+        const toggle = groupRow.querySelector(".settings-toggle");
+        if (!clientId || !toggle || toggle.disabled) return;
+        applyDetailGroupToggle(
+          wrap,
+          groupRow,
+          clientId,
+          !toggle.classList.contains("is-on")
+        );
+        return;
+      }
+      const sendBtn = e.target.closest("[data-pref-send]");
+      if (sendBtn && wrap.contains(sendBtn)) {
+        const uid = paneSlotUid(pane);
+        const clientId = detailClientState(uid).clientId;
+        if (clientId) sendDetailPreferenceConfig(wrap, clientId);
+      }
+    });
+    wrap.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const groupHit = e.target.closest('[data-detail-row="groups"]');
+      if (!groupHit || !wrap.contains(groupHit) || !groupHit.classList.contains("is-client-action")) {
+        return;
+      }
+      e.preventDefault();
+      toggleDetailGroupsPanel(pane);
+    });
+  }
+
+  function refreshDetailClientConnection(pane, wrap, uid) {
+    const m = getMarkerRecord(uid);
+    const state = detailClientState(uid);
+    if (!markerMayBeConnectedClient(m)) {
+      state.clientId = "";
+      state.canPref = false;
+      applyDetailClientActionState(pane, wrap, false, false);
+      setDetailGroupsPanelOpen(pane, wrap, uid, false);
+      setDetailCallsignPanelOpen(pane, wrap, uid, false);
+      return;
+    }
+    const gen = (Number(wrap._clientResolveGen) || 0) + 1;
+    wrap._clientResolveGen = gen;
+    loadConnectedSubscriptions().then(function (list) {
+      if (wrap._clientResolveGen !== gen) return;
+      if (paneSlotUid(pane) !== String(uid)) return;
+      const sub = matchSubscriptionForMarker(m, list);
+      const clientId = subscriptionClientId(sub);
+      const canPref = !!(sub && isPreferenceConfigClient(sub));
+      state.clientId = clientId;
+      state.canPref = canPref;
+      applyDetailClientActionState(pane, wrap, !!clientId, canPref);
+      if (!clientId) {
+        setDetailGroupsPanelOpen(pane, wrap, uid, false);
+        setDetailCallsignPanelOpen(pane, wrap, uid, false);
+        return;
+      }
+      if (state.groupsOpen) setDetailGroupsPanelOpen(pane, wrap, uid, true);
+      if (state.callsignOpen && canPref) setDetailCallsignPanelOpen(pane, wrap, uid, true);
+      else if (!canPref) setDetailCallsignPanelOpen(pane, wrap, uid, false);
+    });
+  }
+
+  function wireDetailClientControls(pane, bodyEl, uid) {
+    if (!mapCanControlClients() || !pane || !bodyEl) return;
+    const wrap = bodyEl.querySelector(".map-detail-wrap");
+    if (!wrap) return;
+    if (wrap.getAttribute("data-client-ui-bound") !== "1") {
+      wrap.setAttribute("data-client-ui-bound", "1");
+      bindDetailClientPanelEvents(pane, wrap);
+    }
+    refreshDetailClientConnection(pane, wrap, uid);
+  }
+
   function buildDetailBodyHtml(m) {
     const packageMarker = isPackageMarker(m);
     const groups = markerGroups(m);
@@ -5338,7 +5971,8 @@
         detailKvRow(
           groups.length === 1 ? "Group" : "Groups",
           '<span data-detail-key="groups">' + (groupHtml || "—") + "</span>",
-          "map-chips"
+          "map-chips",
+          "groups"
         )
       );
     }
@@ -5398,6 +6032,7 @@
       '<dl class="map-kv map-kv-compact">' +
       kvRows.join("") +
       "</dl>" +
+      clientDetailPanelsHtml() +
       '<section class="map-remarks-section">' +
       '<h3 class="map-remarks-title">Remarks</h3>' +
       '<div class="map-remarks-box' +
@@ -5727,11 +6362,13 @@
       ) {
         wireDetailCoordsCopy(bodyEl, slot.uid);
         wireDetailVideoPlayer(bodyEl, slot.uid);
+        wireDetailClientControls(pane, bodyEl, slot.uid);
       } else {
         destroyDetailVideoPlayers(bodyEl);
         bodyEl.innerHTML = buildDetailBodyHtml(m);
         wireDetailCoordsCopy(bodyEl, slot.uid);
         wireDetailVideoPlayer(bodyEl, slot.uid);
+        wireDetailClientControls(pane, bodyEl, slot.uid);
       }
     }
 
@@ -5772,9 +6409,21 @@
     return hr > 0 ? days + "d " + hr + "h ago" : days + "d ago";
   }
 
-  function detailKvRow(label, valueHtml, ddClass) {
+  function detailKvRow(label, valueHtml, ddClass, rowKey) {
     const cls = ddClass ? ' class="' + ddClass + '"' : "";
-    return "<dt>" + escapeHtml(label) + "</dt><dd" + cls + ">" + valueHtml + "</dd>";
+    const rowAttr = rowKey ? ' data-detail-row="' + escapeHtml(rowKey) + '"' : "";
+    return (
+      "<dt" +
+      rowAttr +
+      ">" +
+      escapeHtml(label) +
+      "</dt><dd" +
+      cls +
+      rowAttr +
+      ">" +
+      valueHtml +
+      "</dd>"
+    );
   }
 
   function lockedMarkerCoords() {

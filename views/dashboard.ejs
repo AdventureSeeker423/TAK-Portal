@@ -1139,13 +1139,13 @@
             }
 
             var tdOn = document.createElement("td");
-            var cb = document.createElement("input");
-            cb.type = "checkbox";
-            cb.checked = !!g.active;
-            cb.className = "group-control-checkbox";
-            if (g.locked && g.active) cb.disabled = true;
-            cb.setAttribute("aria-label", "Enable " + groupControlDisplayName(g));
-            tdOn.appendChild(cb);
+            var toggle = document.createElement("button");
+            toggle.type = "button";
+            toggle.className = "settings-toggle " + (g.active ? "is-on" : "is-off");
+            toggle.setAttribute("aria-pressed", g.active ? "true" : "false");
+            toggle.setAttribute("aria-label", "Enable " + groupControlDisplayName(g));
+            if (g.locked && g.active) toggle.disabled = true;
+            tdOn.appendChild(toggle);
 
             var tdName = document.createElement("td");
             tdName.textContent = groupControlDisplayName(g);
@@ -1253,10 +1253,17 @@
           }
         }
 
+        function setGroupToggleVisual(toggle, active) {
+          if (!toggle) return;
+          toggle.classList.toggle("is-on", !!active);
+          toggle.classList.toggle("is-off", !active);
+          toggle.setAttribute("aria-pressed", active ? "true" : "false");
+        }
+
         function applyGroupControlToggle(tr, active) {
           if (!tr || !currentGroupControlClientId || groupToggleInFlight) return;
-          var cb = tr.querySelector(".group-control-checkbox");
-          if (!cb || cb.disabled) return;
+          var toggle = tr.querySelector(".settings-toggle");
+          if (!toggle || toggle.disabled) return;
           if (tr.getAttribute("data-locked") === "true" && !active) {
             showGroupControlError("The only assigned group cannot be disabled.");
             return;
@@ -1266,9 +1273,9 @@
           var accessMode = tr.getAttribute("data-access-mode") || "";
           var previous = !active;
 
-          cb.checked = active;
+          setGroupToggleVisual(toggle, active);
           groupToggleInFlight = true;
-          cb.disabled = true;
+          toggle.disabled = true;
           showGroupControlError("");
 
           fetch("/api/tak/clients/" + encodeURIComponent(currentGroupControlClientId) + "/groups", {
@@ -1286,35 +1293,26 @@
               renderGroupControlRows(data.groups || []);
             })
             .catch(function (err) {
-              cb.checked = previous;
+              setGroupToggleVisual(toggle, previous);
               tr.className = (previous ? "group-control-row-active" : "group-control-row-inactive") + " group-control-row";
               showGroupControlError(err.message || "Failed to update group");
             })
             .finally(function () {
-              cb.disabled = false;
+              var locked = tr.getAttribute("data-locked") === "true";
+              toggle.disabled = locked && toggle.classList.contains("is-on");
               groupToggleInFlight = false;
             });
-        }
-
-        function onGroupControlCheckboxChange(e) {
-          var cb = e.target;
-          if (!cb || !cb.classList.contains("group-control-checkbox")) return;
-          var tr = cb.closest("tr");
-          if (!tr) return;
-          applyGroupControlToggle(tr, cb.checked);
         }
 
         function onGroupControlRowClick(e) {
           var tr = e.target.closest("tr.group-control-row");
           if (!tr || !tableBody || !tableBody.contains(tr)) return;
-          if (e.target.closest("input.group-control-checkbox")) return;
-          var cb = tr.querySelector(".group-control-checkbox");
-          if (!cb || cb.disabled) return;
-          applyGroupControlToggle(tr, !cb.checked);
+          var toggle = tr.querySelector(".settings-toggle");
+          if (!toggle || toggle.disabled) return;
+          applyGroupControlToggle(tr, !toggle.classList.contains("is-on"));
         }
 
         if (tableBody) {
-          tableBody.addEventListener("change", onGroupControlCheckboxChange);
           tableBody.addEventListener("click", onGroupControlRowClick);
         }
         if (closeBtn) {
@@ -1743,16 +1741,15 @@
   .group-control-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .group-control-table th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
   .group-control-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  .group-control-table td:first-child { width: 72px; text-align: center; }
+  .group-control-table td:first-child { width: 52px; text-align: center; }
   .group-control-row { cursor: pointer; }
   .group-control-row-locked { cursor: default; }
-  .group-control-row-locked .group-control-checkbox:disabled { cursor: default; opacity: 1; }
+  .group-control-row .settings-toggle { vertical-align: middle; }
+  .group-control-row-locked .settings-toggle:disabled { cursor: default; opacity: 1; }
   .group-control-row-active { background: rgba(67, 160, 71, 0.22); }
   .group-control-row-inactive { background: rgba(229, 57, 53, 0.18); }
   .group-control-row-active:hover { background: rgba(67, 160, 71, 0.3); }
   .group-control-row-inactive:hover { background: rgba(229, 57, 53, 0.26); }
-  .group-control-checkbox { width: 1.1em; height: 1.1em; cursor: pointer; }
-  .group-control-checkbox:disabled { cursor: wait; opacity: 0.6; }
   #clientGroupsError.error { color: var(--danger, #e53935); }
   #prefConfigSection { min-height: 168px; }
   #dataSyncSection { min-height: 112px; }

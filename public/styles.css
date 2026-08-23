@@ -2731,6 +2731,11 @@ a.settings-hub-card:visited {
   outline-offset: 2px;
 }
 
+.settings-toggle:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .settings-auto-create-section {
   border: 1px solid var(--line);
   border-radius: 10px;

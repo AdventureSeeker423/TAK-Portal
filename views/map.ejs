@@ -258,6 +258,12 @@
   window.TAK_PORTAL_MAP_DEFAULTS = {
     basemap: "<%= defaultMapSource %>",
     enableGeofences: <%= typeof isGlobalAdmin !== "undefined" && isGlobalAdmin ? "true" : "false" %>,
+    canControlClients: <%=
+      (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) ||
+      (typeof isAgencyAdmin !== "undefined" && isAgencyAdmin)
+        ? "true"
+        : "false"
+    %>,
   };
 </script>
 <script>
