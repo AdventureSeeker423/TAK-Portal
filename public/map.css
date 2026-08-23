@@ -31,17 +31,6 @@ body.map-page {
   background: var(--map-bg);
 }
 
-@media (min-width: 1024px) {
-  body.map-page {
-    zoom: 1 !important;
-  }
-  body.map-page .app,
-  body.map-page .sidebar {
-    min-height: 100dvh !important;
-    height: 100dvh !important;
-  }
-}
-
 body.map-page .app {
   height: 100%;
   min-height: 0;
@@ -52,9 +41,25 @@ body.map-page .app {
   body.map-page .sidebar {
     position: relative;
     top: auto;
-    height: 100% !important;
-    min-height: 0 !important;
     overflow-y: auto;
+  }
+}
+
+/* MapLibre needs unzoomed CSS pixels; keep the site sidebar at the same
+   visual scale as other pages (body zoom 0.8 from 1024px up). */
+@media (min-width: 1024px) {
+  body.map-page {
+    zoom: 1 !important;
+  }
+  body.map-page .app {
+    min-height: 100dvh !important;
+    height: 100dvh !important;
+  }
+  body.map-page .sidebar {
+    zoom: 0.8;
+    width: 240px;
+    height: calc(100dvh / 0.8) !important;
+    min-height: calc(100dvh / 0.8) !important;
   }
 }
 
@@ -84,6 +89,31 @@ body.map-page .map-main {
 .map-shell {
   color: var(--map-text);
   font-family: var(--map-font);
+}
+
+/* styles.css form rules (label column + padded inputs) load on this page
+   now; keep map chrome and the channel list on their original look. */
+.map-shell label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: inherit;
+  color: inherit;
+}
+
+.map-shell input[type="checkbox"] {
+  appearance: auto;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: inherit;
+  accent-color: var(--map-accent);
 }
 
 @media (min-width: 991px) {
@@ -750,12 +780,14 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-layer-row {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
   padding: 7px 8px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.82rem;
+  color: inherit;
 }
 
 .map-layer-row:hover {
@@ -763,7 +795,15 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-layer-row input {
+  appearance: auto;
+  width: auto;
+  height: auto;
   margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   accent-color: var(--map-accent);
 }
 
