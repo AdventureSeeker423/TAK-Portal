@@ -197,11 +197,11 @@
           required
           minlength="2"
           style="width:100%; box-sizing:border-box; margin-top:4px;"
-          oninput="this.value = this.value.toUpperCase().replace(/[^A-Z]/g, '')"
+          oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '')"
         />
       </label>
       <small class="muted">
-        Must be at least 2 letters.
+        Must be at least 2 characters (letters or numbers).
       </small>
       <div style="margin-top:14px; text-align:right;">
         <button class="btn" type="button" id="countyAbbrevCancelBtn">Cancel</button>
@@ -556,8 +556,8 @@ function buildAgencyCountyAbbrevCellHtml(a) {
   const aria = esc(`${a.county || "County"}, ${a.state || ""}`);
   const requiredHint = isAgencyStateFederal(a)
     ? "Optional for State/Federal agencies"
-    : "At least 2 letters; updates all agencies in this county";
-  return `<input type="text" class="agency-county-abbrev-input" data-edit-key="${esc(editKey)}" data-county="${esc(county)}" aria-label="County abbreviation for ${aria}" value="${esc(val)}" maxlength="8" placeholder="(ex. HM)" title="${esc(requiredHint)}" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z]/g, ''); updateAgencyCountyAbbrevLocal(${Number(idx)}, this.value)" />`;
+    : "At least 2 characters (letters or numbers); updates all agencies in this county";
+  return `<input type="text" class="agency-county-abbrev-input" data-edit-key="${esc(editKey)}" data-county="${esc(county)}" aria-label="County abbreviation for ${aria}" value="${esc(val)}" maxlength="8" placeholder="(ex. HM)" title="${esc(requiredHint)}" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); updateAgencyCountyAbbrevLocal(${Number(idx)}, this.value)" />`;
 }
 
 function syncCountyAbbrevInputsForCounty(editKey, value) {
@@ -572,7 +572,7 @@ function syncCountyAbbrevInputsForCounty(editKey, value) {
 function updateAgencyCountyAbbrevLocal(agencyIndex, raw) {
   const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
   if (!row) return;
-  const value = String(raw || "").trim().toUpperCase().replace(/[^A-Z]/g, "");
+  const value = String(raw || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (isAgencyStateFederal(row) || !value) {
     row.countyAbbrev = value;
     return;
@@ -1603,10 +1603,10 @@ if (countyAbbrevSaveBtn) {
     const input = document.getElementById("countyAbbrevInput");
     const summary = document.getElementById("countyAbbrevSummary");
     const raw = (input && input.value) || "";
-    const value = String(raw).trim().toUpperCase().replace(/[^A-Z]/g, "");
+    const value = String(raw).trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (!value || value.length < 2) {
       if (summary) {
-        summary.textContent = "County abbreviation must be at least 2 letters.";
+        summary.textContent = "County abbreviation must be at least 2 characters.";
         summary.className = "msg bad";
       }
       return;
@@ -1903,15 +1903,15 @@ async function finishAgencyAttributesEditing() {
         setMsg(`${label}: County is required unless State/Federal Agency is Yes`, false);
         return;
       }
-      if (!countyAbbrev || countyAbbrev.length < 2) {
+      if (!countyAbbrev || countyAbbrev.length < 2 || !/^[A-Z0-9]+$/.test(countyAbbrev)) {
         setMsg(
-          `${label}: County Abbreviation is required (at least 2 letters) unless State/Federal Agency is Yes`,
+          `${label}: County Abbreviation is required (at least 2 letters or numbers) unless State/Federal Agency is Yes`,
           false
         );
         return;
       }
-    } else if (countyAbbrev && countyAbbrev.length < 2) {
-      setMsg(`${label}: County Abbreviation must be at least 2 letters when provided`, false);
+    } else if (countyAbbrev && (countyAbbrev.length < 2 || !/^[A-Z0-9]+$/.test(countyAbbrev))) {
+      setMsg(`${label}: County Abbreviation must be at least 2 characters (letters or numbers) when provided`, false);
       return;
     }
   }
@@ -2082,11 +2082,11 @@ async function finishAgencyAttributesEditing() {
     const allowEmpty = isAgencyStateFederal(ch.agency);
     if (!value) {
       if (!allowEmpty) {
-        errors.push(`${countyLabel}: county abbreviation must be at least 2 letters`);
+        errors.push(`${countyLabel}: county abbreviation must be at least 2 characters`);
         continue;
       }
-    } else if (value.length < 2 || !/^[A-Z]+$/.test(value)) {
-      errors.push(`${countyLabel}: county abbreviation must be at least 2 letters`);
+    } else if (value.length < 2 || !/^[A-Z0-9]+$/.test(value)) {
+      errors.push(`${countyLabel}: county abbreviation must be at least 2 characters (letters or numbers)`);
       continue;
     }
     const idx = ch.agency._id ?? ch.agency.id;

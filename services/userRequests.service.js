@@ -339,7 +339,7 @@ function normalizeRequestedAgencyFields(input) {
     suffix: normalizeStr(input.suffix).toLowerCase(),
     state: normalizeStr(input.state).toUpperCase(),
     county: normalizeCountyName(input.county),
-    countyAbbrev: normalizeStr(input.countyAbbrev).toUpperCase().replace(/[^A-Z]/g, ""),
+    countyAbbrev: normalizeStr(input.countyAbbrev).toUpperCase().replace(/[^A-Z0-9]/g, ""),
     type: normalizeStr(input.type),
     stateFederalAgency: !!stateFederalAgency,
   };

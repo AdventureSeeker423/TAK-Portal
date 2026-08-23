@@ -168,6 +168,9 @@ function validateAgency(a) {
   if (a.countyAbbrev && a.countyAbbrev.length < 2) {
     return "County abbreviation must be at least 2 characters";
   }
+  if (a.countyAbbrev && !/^[A-Z0-9]+$/.test(a.countyAbbrev)) {
+    return "County abbreviation must contain only letters and numbers";
+  }
   if (a.regionId) {
     if (!regionsSvc.findById(a.regionId)) {
       return "Invalid region";
@@ -747,7 +750,7 @@ router.post("/import-csv", upload.single("file"), async (req, res) => {
       const suffix = get(parts, "suffix").toLowerCase();
       const state = get(parts, "state").toUpperCase();
       const county = normalizeCountyName(get(parts, "county"));
-      const countyAbbrev = get(parts, "countyAbbrev").toUpperCase().replace(/[^A-Z]/g, "");
+      const countyAbbrev = get(parts, "countyAbbrev").toUpperCase().replace(/[^A-Z0-9]/g, "");
       const type = get(parts, "type");
       const color = get(parts, "color");
       const usernameTokenPlacement = get(parts, "usernameTokenPlacement") || "suffix";
@@ -1345,8 +1348,8 @@ router.put("/:index/county-abbrev", async (req, res) => {
       }
     } else if (raw.length < 2) {
       return res.status(400).json({ error: "County abbreviation must be at least 2 characters" });
-    } else if (!/^[A-Z]+$/.test(raw)) {
-      return res.status(400).json({ error: "County abbreviation must contain only letters" });
+    } else if (!/^[A-Z0-9]+$/.test(raw)) {
+      return res.status(400).json({ error: "County abbreviation must contain only letters and numbers" });
     }
 
     const abbr = store.normalizeGroupPrefix(agency?.groupPrefix);

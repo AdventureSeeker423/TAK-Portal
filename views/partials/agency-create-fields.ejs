@@ -136,7 +136,7 @@
       <%= _countyReqAttr %>
       minlength="2"
       value="<%= _vals.countyAbbrev || '' %>"
-      oninput="this.value = this.value.toUpperCase().replace(/[^A-Z]/g, '')"
+      oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '')"
       data-county-abbrev-field="1"
     />
   </label>
