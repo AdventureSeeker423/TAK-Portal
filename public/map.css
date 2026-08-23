@@ -62,19 +62,19 @@ body.map-page .sidebar {
 }
 
 @media (min-width: 1024px) {
-  /* Site-wide body zoom: 0.8 already scales the page. Do not apply it again
-     to map chrome — that made HUD/panel type feel like 80% of 80%. */
+  /* Halfway between the site 80% zoom and unscaled 100%. */
   body.map-page {
-    zoom: 1;
+    zoom: 0.9;
   }
 
   body.map-page .app {
-    min-height: 0 !important;
-    height: 100% !important;
+    min-height: calc(100dvh / 0.9) !important;
+    height: calc(100dvh / 0.9) !important;
   }
 
+  /* Keep the real sidebar on the master 80% scale. */
   body.map-page .sidebar {
-    zoom: 0.8;
+    zoom: calc(0.8 / 0.9);
     height: calc(100dvh / 0.8) !important;
     min-height: calc(100dvh / 0.8) !important;
   }
@@ -362,9 +362,7 @@ body.map-page .map-main {
 }
 
 .map-panel-left.collapsed {
-  transform: translateX(calc(-100% - 16px));
-  opacity: 0;
-  pointer-events: none;
+  display: none;
 }
 
 .map-panel-expand {
@@ -629,12 +627,25 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-panel-collapse {
   margin-left: auto;
   appearance: none;
-  border: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--map-muted);
-  font-size: 1.18rem;
   cursor: pointer;
-  padding: 6px 8px;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.map-panel-collapse:hover {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
 .map-tab-panel {
@@ -1734,27 +1745,12 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   }
 
   .map-zoom-controls {
-    left: calc(12px + env(safe-area-inset-left, 0px));
-    bottom: calc(44px + env(safe-area-inset-bottom, 0px));
-  }
-
-  .map-shell:has(.map-panel-left:not(.collapsed)) .map-zoom-controls,
-  .map-shell:has(.map-detail-stack:not(.collapsed)) .map-zoom-controls,
-  .map-shell:has(#mapGeofenceDrawBar:not([hidden])) .map-zoom-controls,
-  .map-shell:has(#mapGoToOverlay:not([hidden])) .map-zoom-controls,
-  body.sidebar-open .map-zoom-controls {
     display: none !important;
   }
 
   .map-shell:has(.map-panel-left:not(.collapsed)) .map-panel-expand,
   .map-shell:has(.map-detail-stack:not(.collapsed)) .map-panel-expand {
     display: none;
-  }
-
-  .map-zoom-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 1.18rem;
   }
 
   .map-panel-expand-left,
