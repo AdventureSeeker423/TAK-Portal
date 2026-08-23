@@ -1675,6 +1675,37 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
     flex-wrap: nowrap;
   }
 
+  .map-hud .map-basemap-picker {
+    position: relative;
+    background: transparent;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .map-basemap-picker .map-select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    opacity: 0;
+    font-size: 16px;
+    background-image: none;
+    cursor: pointer;
+    z-index: 1;
+  }
+
+  .map-basemap-icon {
+    margin: 0;
+    pointer-events: none;
+  }
+
   .map-hud-title h1 {
     font-size: 0.78rem;
     letter-spacing: normal;
@@ -1731,6 +1762,10 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   .map-zoom-controls {
     left: calc(12px + env(safe-area-inset-left, 0px));
     bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .map-panel-left:not(.collapsed) ~ .map-zoom-controls {
+    display: none;
   }
 
   .map-zoom-btn {
