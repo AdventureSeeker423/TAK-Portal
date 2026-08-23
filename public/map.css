@@ -62,11 +62,19 @@ body.map-page .sidebar {
 }
 
 @media (min-width: 1024px) {
-  body.map-page .app {
-    min-height: calc(100dvh / 0.8) !important;
-    height: calc(100dvh / 0.8) !important;
+  /* Site-wide body zoom: 0.8 already scales the page. Do not apply it again
+     to map chrome — that made HUD/panel type feel like 80% of 80%. */
+  body.map-page {
+    zoom: 1;
   }
+
+  body.map-page .app {
+    min-height: 0 !important;
+    height: 100% !important;
+  }
+
   body.map-page .sidebar {
+    zoom: 0.8;
     height: calc(100dvh / 0.8) !important;
     min-height: calc(100dvh / 0.8) !important;
   }
