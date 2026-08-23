@@ -62,7 +62,7 @@ body.map-page .sidebar {
 }
 
 @media (min-width: 1024px) {
-  /* Map chrome at 90%. Site pages zoom sidebar/main to 80% without zooming body. */
+  /* Map chrome at 90%. Site pages zoom body to 80%; keep the real sidebar at 80%. */
   body.map-page {
     zoom: 0.9;
   }
