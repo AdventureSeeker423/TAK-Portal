@@ -28,13 +28,21 @@ html.map-page body.map-page {
 }
 
 body.map-page {
-  background: var(--map-bg);
+  background: var(--bg);
+  color: var(--text);
 }
 
 body.map-page .app {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Sidebar colors follow the site day/night theme, not map chrome. */
+body.map-page .sidebar {
+  background: var(--panel);
+  color: var(--text);
+  border-right-color: var(--line);
 }
 
 @media (min-width: 991px) {
@@ -45,21 +53,14 @@ body.map-page .app {
   }
 }
 
-/* MapLibre needs unzoomed CSS pixels; keep the site sidebar at the same
-   visual scale as other pages (body zoom 0.8 from 1024px up). */
 @media (min-width: 1024px) {
-  body.map-page {
-    zoom: 1 !important;
-  }
   body.map-page .app {
     min-height: 100dvh !important;
     height: 100dvh !important;
   }
   body.map-page .sidebar {
-    zoom: 0.8;
-    width: 240px;
-    height: calc(100dvh / 0.8) !important;
-    min-height: calc(100dvh / 0.8) !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
   }
 }
 
@@ -125,6 +126,7 @@ body.map-page .map-main {
 #map {
   position: absolute;
   inset: 0;
+  background: var(--map-bg);
 }
 
 .map-shell {
@@ -158,8 +160,9 @@ body.map-page .map-main {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  background: #060a10;
-  border-bottom: 1px solid var(--map-panel-border);
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
   pointer-events: none;
 }
 
@@ -190,28 +193,21 @@ body.map-page .map-main {
 
 .map-hud-fit-trigger:hover {
   opacity: 0.92;
-  background: rgba(34, 211, 238, 0.08);
+  background: var(--sidebar-link-hover);
 }
 
 .map-hud-fit-trigger:focus-visible {
-  outline: 2px solid var(--map-accent);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
-}
-
-.map-hud-logo {
-  max-height: 28px;
-  width: auto;
-  flex-shrink: 0;
-  display: block;
 }
 
 .map-hud-title h1 {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--map-accent);
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -224,17 +220,12 @@ body.map-page .map-main {
   align-items: center;
   gap: 2px;
   font-size: 0.78rem;
-  color: var(--map-muted);
-}
-
-.map-zulu {
-  font-variant-numeric: tabular-nums;
-  color: var(--map-text);
-  letter-spacing: 0.04em;
+  color: var(--muted);
 }
 
 .map-counts {
   font-size: 0.72rem;
+  color: var(--muted);
 }
 
 .map-hud-actions {
@@ -340,36 +331,6 @@ body.map-page .map-main {
   color: var(--map-text);
   background-color: #121820;
   padding: 8px 12px;
-}
-
-.map-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.78rem;
-  color: var(--map-muted);
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--map-border);
-  background: rgba(0, 0, 0, 0.25);
-}
-
-.map-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--map-warn);
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
-}
-
-.map-status-dot.ok {
-  background: var(--map-ok);
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.45);
-}
-
-.map-status-dot.bad {
-  background: var(--map-danger);
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.45);
 }
 
 .map-panel {
@@ -794,17 +755,8 @@ body.map-detail-resizing .map-panel-resize-handle {
   background: var(--map-accent-dim);
 }
 
-.map-layer-row input {
-  appearance: auto;
-  width: auto;
-  height: auto;
-  margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  accent-color: var(--map-accent);
+.map-layer-row .map-mission-toggle {
+  flex-shrink: 0;
 }
 
 .map-layer-name {
@@ -1396,18 +1348,43 @@ body.map-detail-resizing .map-panel-resize-handle {
   width: 36px;
   height: 36px;
   padding: 0;
-  border: 1px solid var(--map-border);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--map-text);
+  background: transparent;
+  color: var(--text);
   cursor: pointer;
   touch-action: manipulation;
 }
 
 .map-hud-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: var(--map-panel-border);
-  color: var(--map-accent);
+  background: var(--sidebar-link-hover);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.map-hud .map-basemap-picker {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--text);
+  color-scheme: light dark;
+}
+
+.map-hud .map-basemap-picker .map-select {
+  color: var(--text);
+  color-scheme: light dark;
+}
+
+.map-hud .map-btn {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--text);
+}
+
+.map-hud .map-btn:hover,
+.map-hud .map-btn.is-active {
+  background: var(--sidebar-link-hover);
+  border-color: var(--line);
+  color: var(--text);
 }
 
 .map-hud-more-btn {
@@ -1647,22 +1624,10 @@ body.map-detail-resizing .map-panel-resize-handle {
 
   .map-hud-title h1 {
     font-size: 0.78rem;
-    letter-spacing: 0.02em;
+    letter-spacing: normal;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .map-status-text {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-  }
-
-  .map-status {
-    padding: 5px 7px;
   }
 
   .map-hud-more-btn {

@@ -2097,7 +2097,7 @@
     const rows = elLayerList.querySelectorAll(".map-layer-row");
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const input = row.querySelector('input[type="checkbox"][data-group]');
+      const input = row.querySelector(".map-mission-toggle[data-group]");
       if (!input) continue;
       const groupName = input.getAttribute("data-group");
       const group = groupsCatalog.find(function (g) {
@@ -2596,8 +2596,6 @@
   const elLayerList = document.getElementById("mapLayerList");
   const elDetailStack = document.getElementById("mapDetailStack");
   const elVisibleCounts = document.getElementById("mapVisibleCounts");
-  const elConnLabel = document.getElementById("mapConnLabel");
-  const elConnDot = document.getElementById("mapConnDot");
   const elCursor = document.getElementById("mapCursor");
   const elCursorBtn = document.getElementById("mapCursorBtn");
   const elGoToOverlay = document.getElementById("mapGoToOverlay");
@@ -2611,7 +2609,6 @@
   const elLayerSearch = document.getElementById("mapLayerSearch");
   const elHudFit = document.getElementById("mapHudFit");
   const elBasemapSelect = document.getElementById("mapBasemapSelect");
-  const elZulu = document.getElementById("mapZulu");
   const elOffline = document.getElementById("mapOfflineBanner");
   const elPanelLeft = document.getElementById("mapPanelLeft");
   const elDetailResize = document.getElementById("mapDetailResize");
@@ -5886,21 +5883,31 @@
     }
 
     for (const g of items) {
-      const row = document.createElement("label");
-      row.className = "map-layer-row";
       const checked = isGroupEnabled(g.name);
-      row.innerHTML =
-        '<input type="checkbox" data-group="' +
-        escapeHtml(g.name) +
-        '" ' +
-        (checked ? "checked" : "") +
-        " />" +
-        '<span class="map-layer-name">' +
-        escapeHtml(g.displayName || stripChannelBehaviorSuffix(g.name)) +
-        "</span>" +
-        '<span class="map-layer-count">' +
-        String(g.markerCount || 0) +
-        "</span>";
+      const label = g.displayName || stripChannelBehaviorSuffix(g.name);
+      const row = document.createElement("div");
+      row.className = "map-layer-row" + (checked ? " is-on" : "");
+      row.setAttribute("data-group", g.name);
+
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "map-mission-toggle" + (checked ? " is-on" : " is-off");
+      toggleBtn.setAttribute("data-group", g.name);
+      toggleBtn.setAttribute("aria-pressed", checked ? "true" : "false");
+      toggleBtn.setAttribute("aria-label", (checked ? "Hide " : "Show ") + label);
+      toggleBtn.title = checked ? "Hide channel" : "Show channel";
+
+      const name = document.createElement("span");
+      name.className = "map-layer-name";
+      name.textContent = label;
+
+      const count = document.createElement("span");
+      count.className = "map-layer-count";
+      count.textContent = String(g.markerCount || 0);
+
+      row.appendChild(toggleBtn);
+      row.appendChild(name);
+      row.appendChild(count);
       elLayerList.appendChild(row);
     }
   }
@@ -6144,18 +6151,8 @@
     elOffline.hidden = true;
   }
 
-  function setConnStatus(connected, errMsg) {
-    elConnDot.classList.remove("ok", "bad");
-    if (connected) {
-      elConnDot.classList.add("ok");
-      elConnLabel.textContent = "Live";
-      elOffline.hidden = true;
-    } else if (errMsg) {
-      elConnDot.classList.add("bad");
-      elConnLabel.textContent = "Offline";
-    } else {
-      elConnLabel.textContent = "Connecting";
-    }
+  function setConnStatus(connected) {
+    if (connected && elOffline) elOffline.hidden = true;
   }
 
   let styleRestoreTimer = null;
@@ -6448,12 +6445,21 @@
   });
 
   if (elLayerList) {
-    elLayerList.addEventListener("change", function (ev) {
-      const input = ev.target;
-      if (!input || input.type !== "checkbox") return;
-      const groupName = input.getAttribute("data-group");
+    elLayerList.addEventListener("click", function (ev) {
+      const row = ev.target.closest(".map-layer-row[data-group]");
+      if (!row || !elLayerList.contains(row)) return;
+      const groupName = row.getAttribute("data-group");
       if (!groupName) return;
-      handleChannelGroupToggle(groupName, input.checked);
+      const btn = row.querySelector(".map-mission-toggle");
+      const checked = !(btn && btn.classList.contains("is-on"));
+      handleChannelGroupToggle(groupName, checked);
+      if (btn) {
+        btn.classList.toggle("is-on", checked);
+        btn.classList.toggle("is-off", !checked);
+        btn.setAttribute("aria-pressed", checked ? "true" : "false");
+        btn.title = checked ? "Hide channel" : "Show channel";
+      }
+      row.classList.toggle("is-on", checked);
     });
   }
 
@@ -6579,16 +6585,6 @@
     ev.preventDefault();
     openGoToPalette(text);
   });
-
-  function tickZulu() {
-    const d = new Date();
-    const hh = String(d.getUTCHours()).padStart(2, "0");
-    const mm = String(d.getUTCMinutes()).padStart(2, "0");
-    const ss = String(d.getUTCSeconds()).padStart(2, "0");
-    elZulu.textContent = hh + ":" + mm + ":" + ss + " Z";
-  }
-  tickZulu();
-  setInterval(tickZulu, 1000);
 
   setInterval(function () {
     if (mapRefreshPending && markerLayersReady && !serverGeoFetchInFlight && !lastGeoJsonFetchOk) {

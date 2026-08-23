@@ -1,13 +1,5 @@
 <%
-  const _serverName = String(
-    (typeof settings !== "undefined" && settings && settings.SERVER_NAME) ||
-      (typeof serverAbbrev !== "undefined" && serverAbbrev) ||
-      ""
-  )
-    .trim()
-    .toUpperCase();
-  const _mapHeading = _serverName ? _serverName + " LIVE MAP" : "LIVE MAP";
-  pageTitle = _mapHeading;
+  pageTitle = "Live Map";
   bodyExtraClass = "map-page";
   extraStylesheets = [maplibreCssUrl, mapCssUrl];
 %>
@@ -44,21 +36,13 @@
           tabindex="0"
           title="Fit visible markers"
         >
-          <% if (typeof brandLogoUrl !== "undefined" && brandLogoUrl) { %>
-            <img src="<%= brandLogoUrl %>" alt="" class="map-hud-logo" />
-          <% } %>
-          <h1><%= _mapHeading %></h1>
+          <h1>Live Map</h1>
         </div>
       </div>
       <div class="map-hud-center">
-        <span class="map-zulu" id="mapZulu">— Z</span>
         <span class="map-counts" id="mapVisibleCounts">0 / 0 visible</span>
       </div>
       <div class="map-hud-actions">
-        <div class="map-status" id="mapConnStatus" title="Stream status">
-          <span class="map-status-dot" id="mapConnDot"></span>
-          <span class="map-status-text" id="mapConnLabel">Connecting</span>
-        </div>
         <button
           type="button"
           class="map-hud-icon-btn"
@@ -335,7 +319,11 @@
         if (!morePanel.classList.contains("is-open")) return;
         if (morePanel.contains(ev.target) || moreBtn.contains(ev.target)) return;
         var drawBar = document.getElementById("mapGeofenceDrawBar");
-        if (drawBar && !drawBar.hidden) return;
+        var shapeChosen =
+          drawBar &&
+          !drawBar.hidden &&
+          drawBar.querySelector("[data-geofence-draw].is-active");
+        if (shapeChosen) return;
         morePanel.classList.remove("is-open");
         moreBtn.setAttribute("aria-expanded", "false");
       });
