@@ -576,27 +576,61 @@ async function createRequest(input) {
       const reasonLine = reqObj.otherReason
         ? `Reason for requesting access: ${reqObj.otherReason}\n`
         : "";
-      const otherAgencyDetailsText = isOtherRequest
-        ? [
-            `Agency Abbreviation / Short Name: ${reqObj.groupPrefix || ""}`,
-            `Username Identifier: ${reqObj.usernameTokenPlacement || "suffix"} (${reqObj.suffix || ""})`,
-            `State: ${reqObj.state || ""}`,
-            `State/Federal Agency: ${reqObj.stateFederalAgency ? "Yes" : "No"}`,
-            `County: ${reqObj.county || ""}`,
-            `County Abbreviation: ${reqObj.countyAbbrev || ""}`,
-            `Agency Type: ${reqObj.type || ""}`,
-          ].join("\n") + "\n"
+      const otherAgencyDetailLines = [];
+      if (isOtherRequest) {
+        if (reqObj.groupPrefix) {
+          otherAgencyDetailLines.push({
+            label: "Agency Abbreviation / Short Name",
+            value: String(reqObj.groupPrefix),
+          });
+        }
+        if (reqObj.suffix) {
+          otherAgencyDetailLines.push({
+            label: "Username Identifier",
+            value: `${reqObj.usernameTokenPlacement || "suffix"} (${reqObj.suffix})`,
+          });
+        }
+        if (reqObj.state) {
+          otherAgencyDetailLines.push({
+            label: "State",
+            value: String(reqObj.state),
+          });
+        }
+        if (reqObj.state || reqObj.groupPrefix || reqObj.suffix) {
+          otherAgencyDetailLines.push({
+            label: "State/Federal Agency",
+            value: reqObj.stateFederalAgency ? "Yes" : "No",
+          });
+        }
+        if (reqObj.county) {
+          otherAgencyDetailLines.push({
+            label: "County",
+            value: String(reqObj.county),
+          });
+        }
+        if (reqObj.countyAbbrev) {
+          otherAgencyDetailLines.push({
+            label: "County Abbreviation",
+            value: String(reqObj.countyAbbrev),
+          });
+        }
+        if (reqObj.type) {
+          otherAgencyDetailLines.push({
+            label: "Agency Type",
+            value: String(reqObj.type),
+          });
+        }
+      }
+      const otherAgencyDetailsText = otherAgencyDetailLines.length
+        ? otherAgencyDetailLines.map((l) => `${l.label}: ${l.value}`).join("\n") + "\n"
         : "";
-      const otherAgencyDetailsHtml = isOtherRequest
-        ? `
-  <strong>Agency Abbreviation / Short Name:</strong> ${escapeHtml(reqObj.groupPrefix || "")}<br/>
-  <strong>Username Identifier:</strong> ${escapeHtml(reqObj.usernameTokenPlacement || "suffix")} (${escapeHtml(reqObj.suffix || "")})<br/>
-  <strong>State:</strong> ${escapeHtml(reqObj.state || "")}<br/>
-  <strong>State/Federal Agency:</strong> ${escapeHtml(reqObj.stateFederalAgency ? "Yes" : "No")}<br/>
-  <strong>County:</strong> ${escapeHtml(reqObj.county || "")}<br/>
-  <strong>County Abbreviation:</strong> ${escapeHtml(reqObj.countyAbbrev || "")}<br/>
-  <strong>Agency Type:</strong> ${escapeHtml(reqObj.type || "")}<br/>
-`
+      const otherAgencyDetailsHtml = otherAgencyDetailLines.length
+        ? otherAgencyDetailLines
+            .map(
+              (l) =>
+                `<strong>${escapeHtml(l.label)}:</strong> ${escapeHtml(l.value)}<br/>`
+            )
+            .join("\n  ") + "\n"
         : "";
 
       for (const batch of noticeBatches) {
