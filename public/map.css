@@ -14,7 +14,11 @@ body.map-page {
   --map-text: var(--text);
   --map-muted: var(--muted);
   --map-accent: var(--btn);
-  --map-accent-dim: var(--sidebar-link-hover);
+  --map-accent-dim: color-mix(in srgb, var(--map-accent) 16%, transparent);
+  --map-accent-border: color-mix(in srgb, var(--map-accent) 40%, transparent);
+  --map-accent-border-strong: color-mix(in srgb, var(--map-accent) 70%, transparent);
+  --map-accent-fill: color-mix(in srgb, var(--map-accent) 12%, transparent);
+  --map-accent-fill-strong: color-mix(in srgb, var(--map-accent) 28%, transparent);
   --map-danger: var(--danger);
   --map-ok: var(--success);
   --map-warn: var(--warning);
@@ -150,7 +154,7 @@ body.map-page .map-main {
   background: rgba(127, 29, 29, 0.92);
   border: 1px solid rgba(239, 68, 68, 0.45);
   color: #fecaca;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
 }
 
 .map-hud {
@@ -160,7 +164,7 @@ body.map-page .map-main {
   right: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
@@ -207,7 +211,7 @@ body.map-page .map-main {
 
 .map-hud-title h1 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 1.02rem;
   font-weight: 600;
   letter-spacing: normal;
   text-transform: none;
@@ -216,20 +220,6 @@ body.map-page .map-main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.map-hud-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.map-counts {
-  font-size: 0.72rem;
-  color: var(--muted);
 }
 
 .map-hud-actions {
@@ -248,7 +238,7 @@ body.map-page .map-main {
   border-radius: 8px;
   padding: 6px 10px;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   cursor: pointer;
   text-decoration: none;
   display: inline-flex;
@@ -259,7 +249,7 @@ body.map-page .map-main {
 
 .map-btn-sm {
   padding: 5px 9px;
-  font-size: 0.76rem;
+  font-size: 0.81rem;
 }
 
 .map-btn:hover {
@@ -269,7 +259,7 @@ body.map-page .map-main {
 
 .map-btn.active {
   background: var(--map-accent-dim);
-  border-color: rgba(34, 211, 238, 0.35);
+  border-color: color-mix(in srgb, var(--map-accent) 35%, transparent);
   color: var(--map-accent);
 }
 
@@ -327,7 +317,7 @@ body.map-page .map-main {
   border-radius: 8px;
   padding: 6px 8px;
   font: inherit;
-  font-size: 0.76rem;
+  font-size: 0.81rem;
   cursor: pointer;
   color-scheme: light dark;
 }
@@ -376,7 +366,7 @@ body.map-page .map-main {
   background: var(--map-panel);
   color: var(--map-accent);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 8px 10px;
@@ -485,13 +475,13 @@ body.map-page .map-main {
 .map-detail-pin-btn:hover {
   color: var(--map-accent);
   background: var(--map-accent-dim);
-  border-color: rgba(34, 211, 238, 0.25);
+  border-color: color-mix(in srgb, var(--map-accent) 25%, transparent);
 }
 
 .map-detail-pin-btn.active {
   color: var(--map-accent);
   background: var(--map-accent-dim);
-  border-color: rgba(34, 211, 238, 0.35);
+  border-color: color-mix(in srgb, var(--map-accent) 35%, transparent);
 }
 
 .map-detail-close-btn {
@@ -554,7 +544,7 @@ body.map-page .map-main {
 
 .map-panel-resize-handle:hover::after,
 .map-panel-resize-handle.is-dragging::after {
-  background: rgba(34, 211, 238, 0.75);
+  background: color-mix(in srgb, var(--map-accent) 75%, transparent);
   height: 48px;
 }
 
@@ -590,8 +580,8 @@ body.map-detail-resizing .map-panel-resize-handle {
   background: transparent;
   color: var(--map-muted);
   font: inherit;
-  font-size: 0.78rem;
-  padding: 10px 8px;
+  font-size: 0.83rem;
+  padding: 11px 9px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
   white-space: nowrap;
@@ -604,7 +594,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-panel-title {
   color: var(--map-accent);
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   font-weight: 600;
   padding: 10px 12px;
   letter-spacing: 0.03em;
@@ -632,7 +622,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   border: none;
   background: transparent;
   color: var(--map-muted);
-  font-size: 1.1rem;
+  font-size: 1.18rem;
   cursor: pointer;
   padding: 6px 8px;
 }
@@ -659,7 +649,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-panel-head h2 {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: 0.94rem;
   font-weight: 600;
   letter-spacing: 0.03em;
   min-width: 0;
@@ -677,7 +667,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-detail-platform {
-  font-size: 0.68rem;
+  font-size: 0.73rem;
   font-weight: 500;
   color: var(--map-muted);
   letter-spacing: 0.02em;
@@ -707,12 +697,12 @@ body.map-detail-resizing .map-panel-resize-handle {
   color: var(--text);
   padding: 7px 10px;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
 }
 
 .map-search input:focus {
   outline: none;
-  border-color: rgba(34, 211, 238, 0.45);
+  border-color: color-mix(in srgb, var(--map-accent) 45%, transparent);
   box-shadow: 0 0 0 2px var(--map-accent-dim);
 }
 
@@ -729,7 +719,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   background: transparent;
   color: var(--map-accent);
   font: inherit;
-  font-size: 0.76rem;
+  font-size: 0.81rem;
   cursor: pointer;
   padding: 0;
 }
@@ -749,10 +739,10 @@ body.map-detail-resizing .map-panel-resize-handle {
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  padding: 7px 8px;
+  padding: 8px 9px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   color: inherit;
 }
 
@@ -773,7 +763,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-layer-count {
-  font-size: 0.72rem;
+  font-size: 0.77rem;
   color: var(--map-muted);
   min-width: 1.5rem;
   text-align: right;
@@ -791,7 +781,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   overflow: hidden;
   flex: 1;
   min-height: 0;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   display: flex;
   flex-direction: column;
 }
@@ -820,7 +810,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-remarks-title {
   margin: 0;
-  font-size: 0.76rem;
+  font-size: 0.81rem;
   color: var(--map-muted);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -838,7 +828,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   background: var(--bg);
   border: 1px solid var(--map-panel-border);
   border-radius: 6px;
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
@@ -873,7 +863,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-video-status {
-  font-size: 0.72rem;
+  font-size: 0.77rem;
   color: var(--map-muted);
 }
 
@@ -909,10 +899,10 @@ body.map-detail-resizing .map-panel-resize-handle {
   box-sizing: border-box;
   padding: 9px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(34, 211, 238, 0.45);
+  border: 1px solid color-mix(in srgb, var(--map-accent) 45%, transparent);
   background: var(--map-accent-dim);
   color: var(--map-accent);
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 600;
   line-height: 1.2;
   text-align: center;
@@ -922,9 +912,9 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-detail-link:hover {
-  background: rgba(34, 211, 238, 0.28);
-  border-color: rgba(34, 211, 238, 0.7);
-  color: #67e8f9;
+  background: var(--map-accent-fill-strong);
+  border-color: var(--map-accent-border-strong);
+  color: var(--map-accent);
 }
 
 .map-detail-link:focus-visible {
@@ -945,7 +935,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-detail-empty {
   color: var(--map-muted);
   padding: 16px 12px;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
 }
 
 .map-kv {
@@ -958,7 +948,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-kv dt {
   margin: 0;
   color: var(--map-muted);
-  font-size: 0.76rem;
+  font-size: 0.81rem;
 }
 
 .map-kv dd {
@@ -992,7 +982,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-copy-btn:hover {
   color: var(--map-accent);
   background: var(--map-accent-dim);
-  border-color: rgba(34, 211, 238, 0.25);
+  border-color: color-mix(in srgb, var(--map-accent) 25%, transparent);
 }
 
 .map-chips {
@@ -1005,9 +995,9 @@ body.map-detail-resizing .map-panel-resize-handle {
   display: inline-block;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(34, 211, 238, 0.12);
-  border: 1px solid rgba(34, 211, 238, 0.25);
-  font-size: 0.72rem;
+  background: var(--map-accent-fill);
+  border: 1px solid color-mix(in srgb, var(--map-accent) 25%, transparent);
+  font-size: 0.77rem;
   color: var(--map-accent);
 }
 
@@ -1019,12 +1009,21 @@ body.map-detail-resizing .map-panel-resize-handle {
   z-index: 5;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   padding: 5px 12px;
-  font-size: 0.74rem;
+  font-size: 0.79rem;
   color: var(--muted);
   background: var(--panel);
   border-top: 1px solid var(--line);
+}
+
+.map-counts {
+  flex-shrink: 0;
+  font-size: 0.79rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .map-zoom-controls {
@@ -1046,7 +1045,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   border-radius: 8px;
   background: var(--panel);
   color: var(--text);
-  font-size: 1.25rem;
+  font-size: 1.34rem;
   line-height: 1;
   font-weight: 500;
   cursor: pointer;
@@ -1055,8 +1054,8 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-zoom-btn:hover {
-  background: rgba(34, 211, 238, 0.1);
-  border-color: rgba(34, 211, 238, 0.35);
+  background: color-mix(in srgb, var(--map-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--map-accent) 35%, transparent);
   color: var(--map-accent);
 }
 
@@ -1074,7 +1073,8 @@ body.map-detail-resizing .map-panel-resize-handle {
   border: none;
   background: transparent;
   padding: 4px 6px;
-  margin: 0;
+  margin: 0 0 0 auto;
+  min-width: 0;
   font: inherit;
   color: inherit;
   cursor: pointer;
@@ -1083,7 +1083,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-cursor-coords:hover {
-  background: rgba(34, 211, 238, 0.08);
+  background: color-mix(in srgb, var(--map-accent) 8%, transparent);
   color: var(--map-text);
 }
 
@@ -1101,7 +1101,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-hint {
-  font-size: 0.68rem;
+  font-size: 0.73rem;
   color: var(--map-muted);
   opacity: 0.85;
 }
@@ -1158,7 +1158,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-goto-section {
   padding: 6px 8px 4px;
-  font-size: 0.68rem;
+  font-size: 0.73rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1180,11 +1180,11 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-goto-result:hover,
 .map-goto-result.active {
   background: var(--map-accent-dim);
-  border-color: rgba(34, 211, 238, 0.25);
+  border-color: color-mix(in srgb, var(--map-accent) 25%, transparent);
 }
 
 .map-goto-result .name {
-  font-size: 0.88rem;
+  font-size: 0.94rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -1215,7 +1215,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-goto-result .meta {
   margin-top: 2px;
-  font-size: 0.72rem;
+  font-size: 0.77rem;
   color: var(--map-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1238,7 +1238,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   background: transparent;
   color: var(--map-text);
   font: inherit;
-  font-size: 1.15rem;
+  font-size: 1.23rem;
   line-height: 1.35;
   outline: none;
 }
@@ -1251,7 +1251,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 .map-goto-hint {
   margin: 8px 0 0;
   min-height: 1.1em;
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   color: var(--map-muted);
 }
 
@@ -1260,7 +1260,7 @@ body.map-detail-resizing .map-panel-resize-handle {
 }
 
 .map-popup-groups {
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   color: var(--muted);
 }
 
@@ -1304,11 +1304,11 @@ body.map-detail-resizing .map-panel-resize-handle {
 
 .map-stack-picker-item:hover {
   background: var(--map-accent-dim);
-  border-color: rgba(34, 211, 238, 0.25);
+  border-color: color-mix(in srgb, var(--map-accent) 25%, transparent);
 }
 
 .map-stack-picker-item .name {
-  font-size: 0.86rem;
+  font-size: 0.92rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -1320,7 +1320,7 @@ body.map-detail-resizing .map-panel-resize-handle {
   color: var(--text) !important;
   border: 1px solid var(--line) !important;
   border-radius: 8px !important;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   padding: 10px 12px !important;
 }
 
@@ -1440,14 +1440,6 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   color: var(--text);
 }
 
-.map-hud-more-btn {
-  display: none;
-}
-
-.map-hud-more {
-  display: contents;
-}
-
 .map-mission-list {
   flex: 1;
   overflow: auto;
@@ -1527,7 +1519,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-mission-name {
   flex: 1;
-  font-size: 0.76rem;
+  font-size: 0.81rem;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1536,7 +1528,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-mission-name.is-clickable {
   cursor: pointer;
-  color: var(--map-accent, #38bdf8);
+  color: var(--map-accent);
 }
 
 .map-mission-name.is-clickable:hover {
@@ -1548,7 +1540,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   margin-left: 4px;
   padding: 0 5px;
   border-radius: 999px;
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   color: var(--map-warn);
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
@@ -1562,7 +1554,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   color: var(--map-text);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.72rem;
+  font-size: 0.77rem;
   line-height: 1.2;
   padding: 1px 5px;
 }
@@ -1574,7 +1566,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-mission-meta {
   padding-left: 38px;
-  font-size: 0.64rem;
+  font-size: 0.68rem;
   line-height: 1.2;
   color: var(--map-muted);
 }
@@ -1598,14 +1590,14 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 .map-mission-hint,
 .map-mission-empty {
   padding: 0 6px 4px;
-  font-size: 0.68rem;
+  font-size: 0.73rem;
   color: var(--map-muted);
 }
 
 .map-mission-status,
 .map-mission-status-error {
   padding: 0 6px 4px;
-  font-size: 0.68rem;
+  font-size: 0.73rem;
   color: var(--map-muted);
 }
 
@@ -1627,7 +1619,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 .map-mission-item-btn {
   width: 100%;
   text-align: left;
-  font-size: 0.68rem;
+  font-size: 0.73rem;
   padding: 1px 4px;
 }
 
@@ -1637,41 +1629,25 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 }
 
 .map-mission-popup-meta {
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   color: var(--map-muted);
 }
 
 .map-mission-popup-remarks {
   margin-top: 6px;
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   white-space: pre-wrap;
 }
 
 @media (max-width: 990px) {
   .map-hud {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "left actions"
-      "center center";
     gap: 4px 8px;
     padding: 6px 8px;
     padding-top: calc(6px + env(safe-area-inset-top, 0px));
   }
 
-  .map-hud-left {
-    grid-area: left;
-  }
-
-  .map-hud-center {
-    grid-area: center;
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 10px;
-    font-size: 0.7rem;
-  }
-
   .map-hud-actions {
-    grid-area: actions;
     flex-wrap: nowrap;
   }
 
@@ -1707,37 +1683,11 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   }
 
   .map-hud-title h1 {
-    font-size: 0.78rem;
+    font-size: 0.83rem;
     letter-spacing: normal;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .map-hud-more-btn {
-    display: inline-flex;
-  }
-
-  .map-hud-more {
-    display: none;
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 8px;
-    z-index: 8;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-    padding: 8px;
-    border-radius: 10px;
-    background: var(--map-panel);
-    border: 1px solid var(--map-panel-border);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    min-width: 180px;
-  }
-
-  .map-hud-more.is-open,
-  .map-hud-more:has(#mapGeofenceDrawBar:not([hidden])) {
-    display: flex;
   }
 
   .map-panel-left,
@@ -1771,7 +1721,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   .map-zoom-btn {
     width: 36px;
     height: 36px;
-    font-size: 1.1rem;
+    font-size: 1.18rem;
   }
 
   .map-panel-expand-left,
@@ -1798,6 +1748,22 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
     max-width: none;
   }
 
+  .map-geofence-create-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .map-geofence-create-btn .map-geofence-create-icon {
+    display: block;
+  }
+
+  .map-geofence-create-label {
+    display: none;
+  }
+
   .map-goto-overlay {
     padding-top: 12px;
     align-items: flex-start;
@@ -1811,10 +1777,15 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
+  flex-shrink: 0;
+}
+
+.map-geofence-create-icon {
+  display: none;
 }
 
 .map-geofence-create-wrap .map-btn.is-active {
-  border-color: rgba(34, 211, 238, 0.45);
+  border-color: color-mix(in srgb, var(--map-accent) 45%, transparent);
   color: var(--map-accent);
 }
 
@@ -1850,7 +1821,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 .map-geofence-draw-bar .map-link-btn.is-active,
 .map-geofence-draw-bar .map-geofence-shape-btn.is-active {
   color: var(--map-accent);
-  border-color: rgba(34, 211, 238, 0.45);
+  border-color: color-mix(in srgb, var(--map-accent) 45%, transparent);
   background: var(--map-accent-dim);
 }
 
@@ -1871,12 +1842,12 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-geofence-shape-btn:hover {
   color: var(--map-accent);
-  border-color: rgba(34, 211, 238, 0.35);
+  border-color: color-mix(in srgb, var(--map-accent) 35%, transparent);
 }
 
 .map-geofence-status {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.77rem;
   color: var(--map-muted);
   min-height: 1.2em;
   line-height: 1.2;
@@ -1917,7 +1888,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   color: var(--map-muted);
 }
 
@@ -1929,7 +1900,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   border-radius: 6px;
   padding: 7px 9px;
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 0.9rem;
 }
 
 .map-geofence-field-inline {
@@ -1950,7 +1921,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.84rem;
+  font-size: 0.9rem;
   color: var(--map-text);
   min-height: 32px;
 }
@@ -1975,7 +1946,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-geofence-section h3 {
   margin: 0 0 6px;
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 600;
   color: var(--map-accent);
   flex-shrink: 0;
@@ -1983,7 +1954,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-geofence-hint {
   margin: 0 0 8px;
-  font-size: 0.72rem;
+  font-size: 0.77rem;
   color: var(--map-muted);
   line-height: 1.35;
 }
@@ -2014,7 +1985,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.035);
-  font-size: 0.76rem;
+  font-size: 0.81rem;
 }
 
 .map-geofence-action-row:hover {
@@ -2043,7 +2014,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 }
 
 .map-geofence-action-field-label {
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   color: var(--map-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2058,7 +2029,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.035);
-  font-size: 0.76rem;
+  font-size: 0.81rem;
 }
 
 .map-geofence-mission-row:hover {
@@ -2067,7 +2038,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 }
 
 .map-geofence-mission-meta {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--map-muted);
   white-space: nowrap;
 }
@@ -2080,7 +2051,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   border-radius: 6px;
   background: transparent;
   color: var(--map-muted);
-  font-size: 1.1rem;
+  font-size: 1.18rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -2106,7 +2077,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   border-radius: 6px;
   padding: 7px 9px;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
 }
 
 .map-geofence-picker-results {
@@ -2137,7 +2108,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   color: var(--map-text);
   padding: 8px 10px;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   cursor: pointer;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
@@ -2149,7 +2120,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-geofence-picker-empty {
   padding: 10px;
-  font-size: 0.76rem;
+  font-size: 0.81rem;
   color: var(--map-muted);
 }
 
@@ -2162,7 +2133,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   border-radius: 6px;
   padding: 5px 6px;
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 0.77rem;
   cursor: pointer;
   color-scheme: light dark;
 }
@@ -2173,8 +2144,8 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 }
 
 .map-geofence-action-select:focus {
-  outline: 1px solid rgba(34, 211, 238, 0.45);
-  border-color: rgba(34, 211, 238, 0.45);
+  outline: 1px solid color-mix(in srgb, var(--map-accent) 45%, transparent);
+  border-color: color-mix(in srgb, var(--map-accent) 45%, transparent);
 }
 
 .map-geofence-action-label {
@@ -2210,7 +2181,7 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   border-radius: 6px;
   padding: 7px 12px;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   cursor: pointer;
 }
 

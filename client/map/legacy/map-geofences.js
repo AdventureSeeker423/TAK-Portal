@@ -396,10 +396,6 @@
     setDrawMode(null);
     setDrawBarVisible(false);
     setStatus("");
-    const morePanel = document.getElementById("mapHudMore");
-    const moreBtn = document.getElementById("mapHudMoreBtn");
-    if (morePanel) morePanel.classList.remove("is-open");
-    if (moreBtn) moreBtn.setAttribute("aria-expanded", "false");
   }
 
   async function createFenceFromGeometry(geometry) {
@@ -1056,10 +1052,7 @@
   function onMapClick(e) {
     if (!drawMode) {
       const bar = document.getElementById("mapGeofenceDrawBar");
-      const morePanel = document.getElementById("mapHudMore");
-      const menuOpen = morePanel && morePanel.classList.contains("is-open");
-      const barVisible = bar && !bar.hidden;
-      if (menuOpen || barVisible) cancelCreate();
+      if (bar && !bar.hidden) cancelCreate();
     }
     if (drawMode) {
       if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -1242,26 +1235,13 @@
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("click", function (ev) {
       const bar = document.getElementById("mapGeofenceDrawBar");
-      const morePanel = document.getElementById("mapHudMore");
-      const moreBtn = document.getElementById("mapHudMoreBtn");
       const wrap = document.querySelector(".map-geofence-create-wrap");
-      const menuOpen = morePanel && morePanel.classList.contains("is-open");
       const barVisible = bar && !bar.hidden;
-      if (!menuOpen && !barVisible) return;
-      if (moreBtn && moreBtn.contains(ev.target)) return;
+      if (!barVisible) return;
       if (wrap && wrap.contains(ev.target)) return;
-      if (morePanel && morePanel.contains(ev.target)) return;
       if (drawMode) return;
       cancelCreate();
     });
-    const moreBtn = document.getElementById("mapHudMoreBtn");
-    if (moreBtn) {
-      moreBtn.addEventListener("click", function () {
-        const morePanel = document.getElementById("mapHudMore");
-        const closed = !morePanel || !morePanel.classList.contains("is-open");
-        if (closed && !drawMode) cancelCreate();
-      });
-    }
   }
 
   function init(b) {

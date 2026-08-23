@@ -48,9 +48,6 @@
           <h1><%= _mapHeading %></h1>
         </div>
       </div>
-      <div class="map-hud-center">
-        <span class="map-counts" id="mapVisibleCounts">0 / 0 visible</span>
-      </div>
       <div class="map-hud-actions">
         <button
           type="button"
@@ -84,47 +81,51 @@
           <select class="map-select" id="mapBasemapSelect" title="Basemap" aria-label="Basemap"></select>
         </div>
         <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
-        <button
-          type="button"
-          class="map-hud-icon-btn map-hud-more-btn"
-          id="mapHudMoreBtn"
-          title="More map tools"
-          aria-label="More map tools"
-          aria-expanded="false"
-          aria-controls="mapHudMore"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <circle cx="5" cy="12" r="2" />
-            <circle cx="12" cy="12" r="2" />
-            <circle cx="19" cy="12" r="2" />
-          </svg>
-        </button>
-        <div class="map-hud-more" id="mapHudMore">
-          <div class="map-geofence-create-wrap">
-            <button type="button" class="map-btn" id="mapGeofenceCreateBtn" title="Create a geofence">
-              + Create Geofence
-            </button>
-            <div class="map-geofence-draw-bar" id="mapGeofenceDrawBar" hidden>
-              <div class="map-geofence-draw-shapes">
-                <button type="button" class="map-geofence-shape-btn" data-geofence-draw="circle" title="Draw circle" aria-label="Draw circle">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <circle cx="12" cy="12" r="8" />
-                  </svg>
-                </button>
-                <button type="button" class="map-geofence-shape-btn" data-geofence-draw="rectangle" title="Draw rectangle" aria-label="Draw rectangle">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <rect x="4" y="6" width="16" height="12" rx="1" />
-                  </svg>
-                </button>
-                <button type="button" class="map-geofence-shape-btn" data-geofence-draw="polygon" title="Draw polygon" aria-label="Draw polygon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 3l8 6.5-3 9.5H7l-3-9.5L12 3z" />
-                  </svg>
-                </button>
-                <button type="button" class="map-link-btn" id="mapGeofenceFinishPoly" hidden>Finish</button>
-              </div>
-              <span class="map-geofence-status" id="mapGeofenceStatus" aria-live="polite"></span>
+        <div class="map-geofence-create-wrap">
+          <button
+            type="button"
+            class="map-btn map-geofence-create-btn"
+            id="mapGeofenceCreateBtn"
+            title="Create a geofence"
+            aria-label="Create a geofence"
+          >
+            <svg
+              class="map-geofence-create-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 3l8 6.5-3 9.5H7l-3-9.5L12 3z" />
+              <path d="M12 9v6M9 12h6" />
+            </svg>
+            <span class="map-geofence-create-label">+ Create Geofence</span>
+          </button>
+          <div class="map-geofence-draw-bar" id="mapGeofenceDrawBar" hidden>
+            <div class="map-geofence-draw-shapes">
+              <button type="button" class="map-geofence-shape-btn" data-geofence-draw="circle" title="Draw circle" aria-label="Draw circle">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8" />
+                </svg>
+              </button>
+              <button type="button" class="map-geofence-shape-btn" data-geofence-draw="rectangle" title="Draw rectangle" aria-label="Draw rectangle">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="4" y="6" width="16" height="12" rx="1" />
+                </svg>
+              </button>
+              <button type="button" class="map-geofence-shape-btn" data-geofence-draw="polygon" title="Draw polygon" aria-label="Draw polygon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3l8 6.5-3 9.5H7l-3-9.5L12 3z" />
+                </svg>
+              </button>
+              <button type="button" class="map-link-btn" id="mapGeofenceFinishPoly" hidden>Finish</button>
             </div>
+            <span class="map-geofence-status" id="mapGeofenceStatus" aria-live="polite"></span>
           </div>
         </div>
         <% } %>
@@ -209,6 +210,7 @@
     </div>
 
     <footer class="map-coords-bar">
+      <span class="map-counts" id="mapVisibleCounts">0 / 0 visible</span>
       <button
         type="button"
         class="map-cursor-coords"
@@ -252,8 +254,6 @@
     var LS_KEY = "tak-portal-map-site-sidebar";
     var navBtn = document.getElementById("mapSiteNavBtn");
     var siteToggle = document.getElementById("sidebarToggle");
-    var moreBtn = document.getElementById("mapHudMoreBtn");
-    var morePanel = document.getElementById("mapHudMore");
     var mq = window.matchMedia("(max-width: 990px)");
 
     function isMobile() {
@@ -313,30 +313,7 @@
         setDesktopCollapsed(collapsed);
       }
       syncNavBtn();
-      if (morePanel) morePanel.classList.remove("is-open");
-      if (moreBtn) moreBtn.setAttribute("aria-expanded", "false");
     });
-
-    if (moreBtn && morePanel) {
-      moreBtn.addEventListener("click", function (ev) {
-        ev.stopPropagation();
-        var open = !morePanel.classList.contains("is-open");
-        morePanel.classList.toggle("is-open", open);
-        moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
-      });
-      document.addEventListener("click", function (ev) {
-        if (!morePanel.classList.contains("is-open")) return;
-        if (morePanel.contains(ev.target) || moreBtn.contains(ev.target)) return;
-        var drawBar = document.getElementById("mapGeofenceDrawBar");
-        var shapeChosen =
-          drawBar &&
-          !drawBar.hidden &&
-          drawBar.querySelector("[data-geofence-draw].is-active");
-        if (shapeChosen) return;
-        morePanel.classList.remove("is-open");
-        moreBtn.setAttribute("aria-expanded", "false");
-      });
-    }
 
     syncNavBtn();
   })();
