@@ -390,6 +390,19 @@
     setDrawBarVisible(true);
     setDrawMode(null);
     setStatus("Choose a shape to draw.");
+    if (window.matchMedia("(max-width: 990px)").matches) {
+      const collapseLeft = document.getElementById("mapCollapseLeft");
+      const left = document.getElementById("mapPanelLeft");
+      if (collapseLeft && left && !left.classList.contains("collapsed")) {
+        collapseLeft.click();
+      }
+      const stack = document.getElementById("mapDetailStack");
+      if (stack && !stack.classList.contains("collapsed")) {
+        stack.querySelectorAll(".map-detail-close-btn").forEach(function (btn) {
+          btn.click();
+        });
+      }
+    }
   }
 
   function cancelCreate() {

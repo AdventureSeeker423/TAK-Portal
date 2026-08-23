@@ -1694,17 +1694,26 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
   .map-panel-left,
   .map-detail-stack {
-    width: calc(100% - 24px) !important;
-    max-width: none;
-    max-height: min(42vh, 360px);
+    left: 0;
+    right: 0;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none;
+    height: auto;
     flex-direction: column;
-    top: auto;
+    top: calc(50px + env(safe-area-inset-top, 0px));
     bottom: calc(var(--map-coords-bar-height) + env(safe-area-inset-bottom, 0px));
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
   }
 
   .map-detail-pane {
     width: 100% !important;
-    max-height: 18vh;
+    max-height: none;
+    flex: 1 1 0;
+    min-height: 0;
+    border-radius: 0;
   }
 
   .map-panel-resize-handle {
@@ -1716,7 +1725,16 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
     bottom: calc(44px + env(safe-area-inset-bottom, 0px));
   }
 
-  .map-panel-left:not(.collapsed) ~ .map-zoom-controls {
+  .map-shell:has(.map-panel-left:not(.collapsed)) .map-zoom-controls,
+  .map-shell:has(.map-detail-stack:not(.collapsed)) .map-zoom-controls,
+  .map-shell:has(#mapGeofenceDrawBar:not([hidden])) .map-zoom-controls,
+  .map-shell:has(#mapGoToOverlay:not([hidden])) .map-zoom-controls,
+  body.sidebar-open .map-zoom-controls {
+    display: none !important;
+  }
+
+  .map-shell:has(.map-panel-left:not(.collapsed)) .map-panel-expand,
+  .map-shell:has(.map-detail-stack:not(.collapsed)) .map-panel-expand {
     display: none;
   }
 
@@ -1805,6 +1823,20 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-geofence-draw-bar[hidden] {
   display: none !important;
+}
+
+@media (max-width: 990px) {
+  .map-geofence-draw-bar {
+    position: fixed;
+    top: calc(50px + env(safe-area-inset-top, 0px));
+    right: 0;
+    left: 0;
+    bottom: auto;
+    width: auto;
+    max-width: none;
+    border-radius: 0;
+    padding: 10px 12px;
+  }
 }
 
 .map-geofence-draw-shapes {
