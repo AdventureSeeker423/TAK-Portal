@@ -172,6 +172,7 @@ body.map-page .map-main {
   border-bottom: 1px solid var(--line);
   color: var(--text);
   pointer-events: none;
+  overflow: visible;
 }
 
 .map-hud > * {
@@ -228,6 +229,7 @@ body.map-page .map-main {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
+  overflow: visible;
 }
 
 .map-btn {
@@ -1738,16 +1740,6 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
     padding-bottom: calc(5px + env(safe-area-inset-bottom, 0px));
   }
 
-  .map-geofence-draw-bar {
-    position: fixed;
-    top: auto;
-    right: 8px;
-    left: 8px;
-    bottom: calc(48px + env(safe-area-inset-bottom, 0px));
-    width: auto;
-    max-width: none;
-  }
-
   .map-geofence-create-btn {
     width: 36px;
     height: 36px;
@@ -1778,6 +1770,8 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   align-items: flex-end;
   gap: 6px;
   flex-shrink: 0;
+  overflow: visible;
+  z-index: 6;
 }
 
 .map-geofence-create-icon {
@@ -1794,13 +1788,14 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   top: calc(100% + 6px);
   right: 0;
   left: auto;
+  bottom: auto;
   z-index: 8;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
   width: max-content;
-  max-width: min(420px, 70vw);
+  max-width: min(420px, calc(100vw - 24px));
   padding: 8px 10px;
   border-radius: 10px;
   background: var(--map-panel);
