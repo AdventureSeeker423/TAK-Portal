@@ -75,22 +75,12 @@ body.map-page {
 }
 
 @media (min-width: 1024px) {
-  /* Body stays at site-wide 80% (styles.css). html/body default to height:100%,
-     which after zoom:0.8 letterboxes the map. Expand the canvas by 1/0.8 so
-     the zoomed page still fills the viewport. Do not change body zoom here. */
-  html.map-page,
-  html.map-page body.map-page,
-  html:has(body.map-page),
-  body.map-page {
-    width: calc(100vw / 0.8);
-    height: calc(100dvh / 0.8);
-    overflow: hidden;
-  }
-
+  /* html is already zoom: 0.8 site-wide. Keep the map canvas at 100% of that
+     viewport — do not zoom body or inflate html/body size (that letterboxes).
+     Scale only map chrome up so effective map UI stays ~90%. */
   body.map-page .app {
-    width: 100%;
-    min-height: 100% !important;
     height: 100% !important;
+    min-height: 100% !important;
   }
 
   body.map-page .sidebar {
