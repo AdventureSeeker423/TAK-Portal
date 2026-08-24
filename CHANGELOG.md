@@ -12,7 +12,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ## Version History
 
 ### v1.3.78 - 8/24/26
-🐛 `Bug Fix` - Fixes issue with impropper site scaling artifacts
+🐛 `Bug Fix` - Fixes issue with improper site scaling artifacts
 
 ### v1.3.77 - 8/23/26
 ✨ `Enhancement` - Connected Users - Modal now uses a toggle switch rather than a checkbox<br>
