@@ -11,6 +11,9 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.78 - 8/24/26
+🐛 `Bug Fix` - Fixes issue with impropper site scaling artifacts
+
 ### v1.3.77 - 8/23/26
 ✨ `Enhancement` - Connected Users - Modal now uses a toggle switch rather than a checkbox<br>
 ✨ `Enhancement` - Settings / Request Access - If a new agency requests access the requestor is not required/shown fields for suffix and agency details, this is off by default but can be enabled in settings<br>
