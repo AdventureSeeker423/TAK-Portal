@@ -75,8 +75,13 @@ body.map-page {
 }
 
 @media (min-width: 1024px) {
-  /* Site zoom lives on html only (0.8). Extra zoom on .map-shell boxed the map
-     inside .map-main. Keep the shell at 100% so it fills beside the sidebar. */
+  /* Site pages are html zoom 0.8. Map is 5 points larger (0.85) on html so it
+     still fills the viewport — do not nest zoom on .map-shell. */
+  html.map-page,
+  html:has(body.map-page) {
+    zoom: 0.85;
+  }
+
   body.map-page .app {
     height: 100% !important;
     min-height: 100% !important;
