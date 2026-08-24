@@ -61,29 +61,6 @@ body.map-page .sidebar {
   }
 }
 
-@media (min-width: 1024px) {
-  /* Body stays at site-wide 80% (styles.css). Do not change body zoom here —
-     flipping body between 0.9 (map) and 0.8 (other pages) was leaking a larger
-     scale onto subsequent pages after visiting the map.
-     Scale only the map chrome up so effective map UI stays ~90%. */
-  body.map-page .app {
-    min-height: calc(100dvh / 0.8) !important;
-    height: calc(100dvh / 0.8) !important;
-  }
-
-  body.map-page .sidebar {
-    height: calc(100dvh / 0.8) !important;
-    min-height: calc(100dvh / 0.8) !important;
-  }
-
-  /* 0.8 * (0.9/0.8) = 0.9 effective; shrink layout box so it still fills .map-main */
-  body.map-page .map-shell {
-    zoom: calc(0.9 / 0.8);
-    width: calc(100% * 0.8 / 0.9);
-    height: calc(100% * 0.8 / 0.9);
-  }
-}
-
 body.map-page .theme-toggle,
 body.map-page .sidebarToggle {
   display: none !important;
@@ -95,6 +72,38 @@ body.map-page {
   margin: 0;
   height: 100%;
   overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  /* Body stays at site-wide 80% (styles.css). html/body default to height:100%,
+     which after zoom:0.8 letterboxes the map. Expand the canvas by 1/0.8 so
+     the zoomed page still fills the viewport. Do not change body zoom here. */
+  html.map-page,
+  html.map-page body.map-page,
+  html:has(body.map-page),
+  body.map-page {
+    width: calc(100vw / 0.8);
+    height: calc(100dvh / 0.8);
+    overflow: hidden;
+  }
+
+  body.map-page .app {
+    width: 100%;
+    min-height: 100% !important;
+    height: 100% !important;
+  }
+
+  body.map-page .sidebar {
+    height: 100% !important;
+    min-height: 100% !important;
+  }
+
+  /* 0.8 * (0.9/0.8) = 0.9 effective; shrink layout box so it still fills .map-main */
+  body.map-page .map-shell {
+    zoom: calc(0.9 / 0.8);
+    width: calc(100% * 0.8 / 0.9);
+    height: calc(100% * 0.8 / 0.9);
+  }
 }
 
 body.map-page .map-main {
