@@ -4508,7 +4508,7 @@
         "",
       ],
       "text-font": MAP_LABEL_FONT,
-      "text-size": 12,
+      "text-size": 14,
       "text-anchor": "bottom",
       "text-offset": [0, -1.55],
       // Always allow overlap — MapLibre collision reshuffles on every CoT move and

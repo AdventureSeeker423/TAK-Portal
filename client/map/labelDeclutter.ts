@@ -3,7 +3,7 @@ import type { LonLatBounds, SlimMarker } from "./types";
 type LabelBox = { x: number; y: number; w: number; h: number };
 
 /** Must match markerLabelLayout in engine/layers.ts */
-const TEXT_SIZE_PX = 12;
+const TEXT_SIZE_PX = 14;
 const TEXT_MAX_WIDTH_EM = 12;
 const CHAR_WIDTH_PX = 6.8;
 const LINE_HEIGHT_PX = 14.5;

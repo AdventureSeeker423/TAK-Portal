@@ -98,7 +98,7 @@ function markerLabelLayout(priority: boolean): object {
       "",
     ],
     "text-font": MAP_LABEL_FONT,
-    "text-size": 12,
+    "text-size": 14,
     "text-offset": [0, -1.55],
     "text-anchor": "bottom",
     // Avoid MapLibre collision — it reshuffles labels whenever geometry updates.
