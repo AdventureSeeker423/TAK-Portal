@@ -17,7 +17,7 @@ Planned features can be accessed [here](docs/roadmap.md)
 ✨ `Enhancement` - Agencies - County code now allows for numerics 
 
 ### v1.3.76 - 8/23/26
-VERSION BUMP FOR TESTING
+VERSION BUMP FOR TESTING PURPOSES
 
 ### v1.3.75 - 8/20/26
 🎉 `New Feature` - Region Management - Regions can now be created via the settings page and can be assigned manually to agencies or assigned to entire states or counties.  This also allows for both automatic and manual group creation for regions.
