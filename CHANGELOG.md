@@ -2,14 +2,14 @@
 
 All notable changes to this project will be documented in this file.  Minor quality improvements or tweaks may not be listed.
 
-Planned features can be accessed [here](docs/roadmap.md)
-
 <!-- 🎉 `New Feature` - -->
 <!-- ✨ `Enhancement` - -->
 <!-- 🐛 `Bug Fix` - Fixes issue with -->
 <!-- ⬆️ `Dependency Update` - -->
 
 ## Version History
+### v1.3.79 - 8/24/26
+✏️ `Documentation` - License type changed to AGPL 
 
 ### v1.3.78 - 8/24/26
 🐛 `Bug Fix` - Fixes issue with improper site scaling artifacts
