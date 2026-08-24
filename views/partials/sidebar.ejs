@@ -66,6 +66,7 @@
       <% if (_perm("page.dashboard")) { %>
         <a href="/" class="<%= isActive('/') ? 'active' : '' %>">Dashboard</a>
       <% } %>
+      <a href="/map" class="<%= isActive('/map') ? 'active' : '' %>">Live Map</a>
 
       <% if (canSeeUsersGroupsSection) { %>
         <!-- Users & Groups -->

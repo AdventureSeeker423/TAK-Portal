@@ -396,8 +396,8 @@ function getDefaultMapSource() {
 
 function requireMapAccess(req, res, next) {
   const u = req.authentikUser;
-  if (!u || (!u.isGlobalAdmin && !u.isAgencyAdmin)) {
-    const username = u && u.username ? u.username : "";
+  if (!u) {
+    const username = "";
     if (isApiRequest(req)) {
       return res.status(403).json({ error: "Forbidden" });
     }

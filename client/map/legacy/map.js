@@ -4456,8 +4456,8 @@
     overviewMode = next;
     if (!markerLayersReady) return changed;
     const radius = overviewMode
-      ? ["case", markerSelectedExpr(), 7, 4]
-      : ["case", markerSelectedExpr(), 13, 10];
+      ? ["case", markerSelectedExpr(), 9, 5]
+      : ["case", markerSelectedExpr(), 16, 13];
     [CIRCLE_LAYER_LOW, CIRCLE_LAYER_HIGH].forEach(function (layerId) {
       if (!map.getLayer(layerId)) return;
       try {
@@ -4551,7 +4551,7 @@
         "circle-sort-key": ["get", "renderSort"],
       },
       paint: {
-        "circle-radius": ["case", markerSelectedExpr(), 13, 10],
+        "circle-radius": ["case", markerSelectedExpr(), 16, 13],
         "circle-color": ["get", "color"],
         "circle-stroke-width": ["case", markerSelectedExpr(), 2, 1.5],
         "circle-stroke-color": "#ffffff",
@@ -4573,7 +4573,7 @@
       ],
       layout: {
         "icon-image": ["get", "iconId"],
-        "icon-size": ["case", markerSelectedExpr(), 1.05, 0.88],
+        "icon-size": ["case", markerSelectedExpr(), 1.28, 1.1],
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
         "icon-optional": true,

@@ -42,7 +42,7 @@ function getMapAccessContext(req) {
   return {
     isGlobalAdmin,
     isAgencyAdmin,
-    scopeMemberGroups: isAgencyAdmin,
+    scopeMemberGroups: !isGlobalAdmin,
     userGroups: Array.isArray(user.groups) ? user.groups : [],
   };
 }

@@ -559,7 +559,7 @@
           source: srcId,
           filter: filters.dot,
           paint: {
-            "circle-radius": 10,
+            "circle-radius": 13,
             "circle-color": ["coalesce", ["get", "color"], ["get", "fill"], "#22d3ee"],
             "circle-stroke-width": 1.5,
             "circle-stroke-color": "#ffffff",
@@ -579,7 +579,7 @@
           filter: filters.symbol,
           layout: {
             "icon-image": ["get", "iconId"],
-            "icon-size": 0.88,
+            "icon-size": 1.1,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
             "icon-optional": true,

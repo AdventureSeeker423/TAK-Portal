@@ -54,7 +54,7 @@ function markerCircleLayerSpec(id: string, drawTier: number): object {
       "circle-sort-key": ["get", "renderSort"],
     },
     paint: {
-      "circle-radius": ["case", ["get", "selected"], 13, 10],
+      "circle-radius": ["case", ["get", "selected"], 16, 13],
       "circle-color": ["get", "color"],
       "circle-stroke-color": "#ffffff",
       "circle-stroke-width": 1.5,
@@ -76,7 +76,7 @@ function markerIconLayerSpec(id: string, drawTier: number): object {
     ],
     layout: {
       "icon-image": ["get", "iconId"],
-      "icon-size": ["case", ["get", "selected"], 1.05, 0.88],
+      "icon-size": ["case", ["get", "selected"], 1.28, 1.1],
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
       "symbol-sort-key": ["get", "renderSort"],
