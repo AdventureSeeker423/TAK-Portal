@@ -87,15 +87,17 @@ body {
     color: var(--text);
 }
 
-/* Desktop 80% scale on non-map pages. Zoom the page as a whole so the
-   sidebar and main column stay aligned. Do not inflate `.main` width. */
+/* Desktop 80% scale on non-map pages (map keeps its own zoom in map.css).
+   Zoom body as a whole so sidebar + main stay aligned, then expand
+   viewport-sized heights by 1/0.8 so the layout still fills the screen —
+   same pattern as body.map-page / 0.9 in map.css. */
 @media (min-width: 1024px) {
     body:not(.map-page) {
         zoom: 0.8;
     }
 
     body:not(.map-page) .app {
-        min-height: 100dvh;
+        min-height: calc(100dvh / 0.8);
     }
 
     body:not(.map-page) .sidebar {
@@ -129,6 +131,18 @@ body {
     }
     body:not(.map-page) .modalCard { /* Audit log details modal card */
         max-height: calc(80dvh / 0.8) !important;
+    }
+
+    /* Settings hub modals (also .modal) — compensate inner scroll areas */
+    body:not(.map-page) .settings-modal .modalBody,
+    body:not(.map-page) .settings-modal .settings-body {
+        max-height: calc((92dvh / 0.8) - 72px);
+    }
+    body:not(.map-page) #settingsModal-email-templates .settings-modal {
+        max-height: calc(96dvh / 0.8) !important;
+    }
+    body:not(.map-page) #settingsModal-email-templates .modalBody {
+        max-height: calc((96dvh / 0.8) - 72px);
     }
 }
 
