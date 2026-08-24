@@ -102,6 +102,11 @@ a.brand {
     box-sizing: border-box;
 }
 
+html,
+body {
+    height: 100%;
+}
+
 body {
     margin: 0;
     font-family: var(--site-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
@@ -157,7 +162,30 @@ body.theme-light .theme-toggle__icon--moon {
 
 .app {
     display: flex;
-    min-height: 100vh;
+    align-items: stretch;
+    min-height: 100%;
+}
+
+/* Match the map page: on desktop the shell fills the zoomed viewport and
+   .main scrolls, so the sidebar is full height (100vh + html zoom left a gap). */
+@media (min-width: 991px) {
+    html,
+    body {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .app {
+        height: 100%;
+        min-height: 100%;
+        overflow: hidden;
+    }
+
+    .main {
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+    }
 }
 
 /* ======================
@@ -188,13 +216,15 @@ body.theme-light .theme-toggle__icon--moon {
     display: none;                  /* Safari and Chrome */
 }
 
-/* Desktop sticky sidebar: stays visible while main content scrolls */
+/* Desktop sidebar: fill the app column the same way the map does */
 @media (min-width: 991px) {
     .sidebar {
-        position: sticky;
-        top: 0;
-        height: 100vh;
-        overflow-y: auto;  /* sidebar scrolls if it gets too tall */
+        position: relative;
+        top: auto;
+        align-self: stretch;
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
         transform: none !important;
     }
 }
@@ -1674,7 +1704,8 @@ body.modal-open .sidebarToggle {
         position: fixed;
         top: 0;
         left: 0;
-        height: 100vh;
+        bottom: 0;
+        height: auto;
         width: 240px;
         transform: translateX(-105%);
         transition: transform .2s ease;
