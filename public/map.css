@@ -1527,6 +1527,19 @@ body.theme-light .maplibregl-ctrl-group button {
   color: var(--map-accent);
 }
 
+.map-hud-channels-btn {
+  width: auto;
+  gap: 6px;
+  padding: 0 10px 0 8px;
+}
+
+.map-hud-channels-label {
+  font-size: 0.83rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
 .map-hud-sidebar-btn {
   background: var(--card);
 }
@@ -1848,6 +1861,15 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .map-hud-channels-btn {
+    width: 36px;
+    padding: 0;
+  }
+
+  .map-hud-channels-label {
+    display: none;
   }
 
   .map-panel-left,
