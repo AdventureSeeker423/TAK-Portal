@@ -1,9 +1,31 @@
+<%
+  const _portalName =
+    typeof portalTitle !== "undefined" && portalTitle
+      ? String(portalTitle).trim()
+      : "TAK Portal";
+  const _pageName =
+    typeof pageTitle !== "undefined" && pageTitle ? String(pageTitle).trim() : "";
+  const _customName = String(
+    (typeof settings !== "undefined" && settings && settings.SERVER_NAME) || ""
+  ).trim();
+  let _docTitle = _pageName || _portalName;
+  if (_customName && _pageName) {
+    const alreadyBranded =
+      _pageName === _portalName ||
+      _pageName.toLowerCase().startsWith(_portalName.toLowerCase() + " ") ||
+      _pageName.toLowerCase().startsWith(_portalName.toLowerCase() + " -") ||
+      _pageName.toUpperCase().startsWith(_customName.toUpperCase() + " ");
+    _docTitle = alreadyBranded ? _pageName : _portalName + " - " + _pageName;
+  } else if (!_pageName) {
+    _docTitle = _portalName;
+  }
+%>
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1<%= typeof bodyExtraClass !== 'undefined' && String(bodyExtraClass).indexOf('map-page') !== -1 ? ', viewport-fit=cover' : '' %>" />
-    <title><%= typeof pageTitle !== "undefined" && pageTitle ? pageTitle : (typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal") %></title>
+    <title><%= _docTitle %></title>
     <link rel="stylesheet" href="/styles.css" />
     <% if (typeof extraStylesheets !== "undefined" && extraStylesheets && extraStylesheets.length) { %>
       <% extraStylesheets.forEach(function (href) { %>

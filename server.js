@@ -185,7 +185,7 @@ const upload = multer({ storage: uploadStorage });
 
 function pageTitleForPath(pathname, portalTitle, serverAbbrev) {
   const p = String(pathname || "/").replace(/\/+$/, "") || "/";
-  const liveMapTitle = serverAbbrev ? `${serverAbbrev} Live Map` : "Live Map";
+  const liveMapTitle = "Live Map";
   const labels = [
     ["/dashboard", "Dashboard"],
     ["/setup-my-device", "Setup My Device"],
