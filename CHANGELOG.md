@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.  Minor qual
 <!-- ⬆️ `Dependency Update` - -->
 
 ## Version History
+
 ### v1.3.79 - 8/24/26
 ✏️ `Documentation` - License type changed to AGPL 
 
