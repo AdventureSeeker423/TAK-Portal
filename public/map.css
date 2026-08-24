@@ -62,21 +62,25 @@ body.map-page .sidebar {
 }
 
 @media (min-width: 1024px) {
-  /* Map chrome at 90%. Site pages zoom body to 80%; keep the real sidebar at 80%. */
-  body.map-page {
-    zoom: 0.9;
-  }
-
+  /* Body stays at site-wide 80% (styles.css). Do not change body zoom here —
+     flipping body between 0.9 (map) and 0.8 (other pages) was leaking a larger
+     scale onto subsequent pages after visiting the map.
+     Scale only the map chrome up so effective map UI stays ~90%. */
   body.map-page .app {
-    min-height: calc(100dvh / 0.9) !important;
-    height: calc(100dvh / 0.9) !important;
+    min-height: calc(100dvh / 0.8) !important;
+    height: calc(100dvh / 0.8) !important;
   }
 
-  /* Keep the real sidebar on the master 80% scale. */
   body.map-page .sidebar {
-    zoom: calc(0.8 / 0.9);
     height: calc(100dvh / 0.8) !important;
     min-height: calc(100dvh / 0.8) !important;
+  }
+
+  /* 0.8 * (0.9/0.8) = 0.9 effective; shrink layout box so it still fills .map-main */
+  body.map-page .map-shell {
+    zoom: calc(0.9 / 0.8);
+    width: calc(100% * 0.8 / 0.9);
+    height: calc(100% * 0.8 / 0.9);
   }
 }
 
