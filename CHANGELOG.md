@@ -11,10 +11,13 @@ Planned features can be accessed [here](docs/roadmap.md)
 
 ## Version History
 
+### v1.3.77 - 8/23/26
+✨ `Enhancement` - Connected Users - Modal now uses a toggle switch rather than a checkbox<br>
+✨ `Enhancement` - Settings / Request Access - If a new agency requests access the requestor is not required/shown fields for suffix and agency details, this is off by default but can be enabled in settings<br>
+✨ `Enhancement` - Agencies - County code now allows for numerics 
+
 ### v1.3.76 - 8/23/26
-✨ `Enhancement` - Map CoT details now use the main text color for callsign, client type, and battery in dark mode<br>
-✨ `Enhancement` - Connected user group control on the dashboard now uses the red/green settings toggles<br>
-✨ `Enhancement` - Map CoT details for a live connected client let you click groups to toggle that user's channels, and click the callsign to send callsign / team / role preferences
+VERSION BUMP FOR TESTING
 
 ### v1.3.75 - 8/20/26
 🎉 `New Feature` - Region Management - Regions can now be created via the settings page and can be assigned manually to agencies or assigned to entire states or counties.  This also allows for both automatic and manual group creation for regions.

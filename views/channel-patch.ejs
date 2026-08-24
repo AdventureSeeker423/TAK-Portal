@@ -9,7 +9,7 @@
   }) %>
 
   <div class="card">
-    <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <div class="row cp-formHeader" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
       <h2 style="margin: 0;" id="cpFormTitle">Create New Patch</h2>
       <div class="row" style="gap:8px;">
         <button class="btn" id="cpCancelEditBtn" type="button" style="display:none;">Cancel Edit</button>
@@ -24,7 +24,7 @@
     <div style="margin-top:4px;">
       <label>
         Channels
-        <div class="row" style="gap:10px; margin-top:8px; align-items:center; flex-wrap:wrap;">
+        <div class="row cp-channelToolbar" style="gap:10px; margin-top:8px; align-items:center; flex-wrap:wrap;">
           <input id="cpChannelSearch" type="search" placeholder="Search channels..." style="flex:1; min-width:0;" />
           <button class="btn" type="button" id="cpSelectAllBtn">Select All</button>
           <button class="btn" type="button" id="cpClearAllBtn">Clear All</button>
@@ -38,7 +38,7 @@
       </label>
     </div>
 
-    <div class="row" style="margin-top:14px; justify-content:flex-end; gap:14px; align-items:center; flex-wrap:wrap;">
+    <div class="row cp-formFooter" style="margin-top:14px; justify-content:flex-end; gap:14px; align-items:center; flex-wrap:wrap;">
       <div id="cpFormMsg" class="msg"></div>
       <div class="cp-enableCreate" id="cpEnableCreateRow">
         <span>Enable Patch Upon Creation</span>
@@ -78,13 +78,40 @@
     box-sizing: border-box;
   }
 
+  .groupsBox {
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 10px;
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
   .groupsInner {
     column-width: 280px;
     column-gap: 14px;
     column-count: 4;
   }
   .groupItem {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
     white-space: nowrap;
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .groupItem span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .cp-enableCreate {
@@ -106,6 +133,8 @@
     border: 1px solid var(--line);
     border-radius: 14px;
     padding: 14px 16px;
+    min-width: 0;
+    overflow: hidden;
   }
   .cp-patch.is-on {
     border-color: color-mix(in srgb, #22c55e 55%, var(--line));
@@ -170,6 +199,115 @@
   .cp-empty {
     padding: 18px 4px;
     color: var(--muted, #8b93a7);
+  }
+
+  /* Mobile: stacked layout, no horizontal scroll — same pattern as Templates */
+  @media (max-width: 990px) {
+    .cp-formHeader {
+      flex-wrap: wrap;
+      align-items: stretch !important;
+      gap: 10px;
+    }
+    .cp-formHeader h2 {
+      flex: 1 1 100%;
+    }
+    .cp-formHeader .row,
+    .cp-formHeader .btn {
+      width: 100% !important;
+    }
+
+    .cp-field input {
+      max-width: 100%;
+    }
+
+    .cp-channelToolbar {
+      align-items: stretch !important;
+    }
+    .cp-channelToolbar input {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+    .cp-channelToolbar .btn {
+      flex: 1 1 calc(50% - 10px);
+      width: 100% !important;
+      min-width: 0;
+      text-align: center;
+    }
+
+    .groupsInner {
+      column-count: 2;
+      column-width: auto;
+    }
+    .groupItem {
+      white-space: normal;
+    }
+    .groupItem span {
+      overflow: visible;
+      text-overflow: unset;
+      word-break: break-word;
+    }
+
+    .cp-formFooter {
+      flex-direction: column;
+      align-items: stretch !important;
+      justify-content: flex-start !important;
+    }
+    .cp-formFooter .msg {
+      width: 100%;
+    }
+    .cp-enableCreate {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .cp-formFooter .btn {
+      width: 100% !important;
+    }
+
+    .cp-patchTop {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .cp-patchTitle {
+      word-break: break-word;
+    }
+    .cp-patchActions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: 100%;
+      gap: 8px;
+    }
+    .cp-enableRow {
+      grid-column: 1 / -1;
+      justify-content: space-between;
+    }
+    .cp-patchActions .btn {
+      width: 100% !important;
+      max-width: 100%;
+      min-width: 0;
+      margin: 0;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .cp-node {
+      max-width: 100%;
+      white-space: normal;
+      word-break: break-word;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .groupsInner {
+      column-count: 1;
+    }
+    .cp-channelToolbar .btn {
+      flex: 1 1 100%;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .cp-patchActions {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
 
@@ -332,7 +470,7 @@
           <article class="cp-patch ${p.enabled ? "is-on" : "is-off"}" data-id="${esc(p.id)}">
             <div class="cp-patchTop">
               <h3 class="cp-patchTitle">${esc(p.name)}</h3>
-              <div class="cp-patchActions">
+              <div class="cp-patchActions cardActionsRow">
                 <div class="cp-enableRow">
                   <button
                     type="button"
