@@ -75,9 +75,8 @@ body.map-page {
 }
 
 @media (min-width: 1024px) {
-  /* html is already zoom: 0.8 site-wide. Keep the map canvas at 100% of that
-     viewport — do not zoom body or inflate html/body size (that letterboxes).
-     Scale only map chrome up so effective map UI stays ~90%. */
+  /* Site zoom lives on html only (0.8). Extra zoom on .map-shell boxed the map
+     inside .map-main. Keep the shell at 100% so it fills beside the sidebar. */
   body.map-page .app {
     height: 100% !important;
     min-height: 100% !important;
@@ -88,11 +87,10 @@ body.map-page {
     min-height: 100% !important;
   }
 
-  /* 0.8 * (0.9/0.8) = 0.9 effective; shrink layout box so it still fills .map-main */
   body.map-page .map-shell {
-    zoom: calc(0.9 / 0.8);
-    width: calc(100% * 0.8 / 0.9);
-    height: calc(100% * 0.8 / 0.9);
+    zoom: 1;
+    width: 100%;
+    height: 100%;
   }
 }
 
