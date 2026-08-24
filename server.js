@@ -183,6 +183,53 @@ const uploadStorage = multer.diskStorage({
 
 const upload = multer({ storage: uploadStorage });
 
+function pageTitleForPath(pathname, portalTitle, serverAbbrev) {
+  const p = String(pathname || "/").replace(/\/+$/, "") || "/";
+  const liveMapTitle = serverAbbrev ? `${serverAbbrev} Live Map` : "Live Map";
+  const labels = [
+    ["/dashboard", "Dashboard"],
+    ["/setup-my-device", "Setup My Device"],
+    ["/users/manage", "Users"],
+    ["/users/create", "Create User"],
+    ["/groups", "Groups / Channels"],
+    ["/templates", "Templates"],
+    ["/audit-log", "Audit Log"],
+    ["/data-packages", "Data Package"],
+    ["/data-package", "Data Package"],
+    ["/data-sync", "Data Sync"],
+    ["/email", "Email Users"],
+    ["/locate-persons", "Locate Persons"],
+    ["/locate", "Locate Persons"],
+    ["/mutual-aid", "Mutual Aid"],
+    ["/admin/mou", "MOU Documents"],
+    ["/mou", "MOU Documents"],
+    ["/agencies", "Agencies"],
+    ["/integrations", "Integrations"],
+    ["/plugin-manager", "Plugin Manager"],
+    ["/access-control", "Access Control"],
+    ["/settings", "Server Settings"],
+    ["/plugins", "ATAK Plugins"],
+    ["/map", liveMapTitle],
+    ["/getting-started", "Getting Started"],
+    ["/channel-patch", "Channel Patch"],
+    ["/pending-user-requests", "Pending Requests"],
+    ["/lookup", "Lookup"],
+    ["/request-access", "Request Access"],
+  ];
+  if (p === "/") return "Dashboard";
+  let bestPrefix = "";
+  let bestLabel = "";
+  for (const [prefix, label] of labels) {
+    if (p === prefix || p.startsWith(prefix + "/")) {
+      if (prefix.length >= bestPrefix.length) {
+        bestPrefix = prefix;
+        bestLabel = label;
+      }
+    }
+  }
+  return bestLabel || portalTitle || "TAK Portal";
+}
+
 // Expose settings + theme/logo + current path to all views (for sidebar active state)
 app.use((req, res, next) => {
   try {
@@ -213,6 +260,11 @@ app.use((req, res, next) => {
     res.locals.primaryButtonColor = primaryButtonColor;
     res.locals.siteFontFamily = siteFontFamily;
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
+    res.locals.pageTitle = pageTitleForPath(
+      res.locals.currentPath,
+      res.locals.portalTitle,
+      serverAbbrev
+    );
   } catch (err) {
     console.warn("Failed to load settings for request:", err?.message || err);
     res.locals.settings = {};
@@ -223,6 +275,11 @@ app.use((req, res, next) => {
     res.locals.primaryButtonColor = "";
     res.locals.siteFontFamily = "";
     res.locals.currentPath = (req.path || "/").replace(/\/+$/, "") || "/";
+    res.locals.pageTitle = pageTitleForPath(
+      res.locals.currentPath,
+      res.locals.portalTitle,
+      res.locals.serverAbbrev
+    );
   }
   next();
 });

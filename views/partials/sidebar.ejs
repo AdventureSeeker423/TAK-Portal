@@ -51,15 +51,19 @@
     if (h === "/") return _path === "/" || _path === "/dashboard";
     return _path === h || _path.startsWith(h + "/");
   }
+
+  const _isAnyAdmin = _isGlobalAdmin || _isAgencyAdmin;
+  const _homeHref = _isAnyAdmin ? "/" : "/setup-my-device";
+  const _homeLabel = _isAnyAdmin ? "Go to dashboard" : "Go to Setup My Device";
 %>
 
 <aside class="sidebar" id="sidebar">
-  <div class="brand <%= brandLogoUrl ? 'has-logo' : 'no-logo' %>">
+  <a href="<%= _homeHref %>" class="brand <%= brandLogoUrl ? 'has-logo' : 'no-logo' %>" aria-label="<%= _homeLabel %>">
     <% if (brandLogoUrl) { %>
-      <img src="<%= brandLogoUrl %>" alt="Portal logo" class="brand-logo" />
+      <img src="<%= brandLogoUrl %>" alt="" class="brand-logo" />
     <% } %>
     <span class="brand-title"><%= typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal" %></span>
-  </div>
+  </a>
 
   <nav class="sidebar-nav">
     <div class="nav-top">
