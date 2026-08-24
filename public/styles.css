@@ -166,6 +166,8 @@ body.theme-light .theme-toggle__icon--moon {
 
 .sidebar {
     width: 240px;
+    flex: 0 0 240px;
+    min-width: 240px;
     padding: 18px;
     background: var(--panel);
     border-right: 1px solid var(--line);
@@ -193,6 +195,7 @@ body.theme-light .theme-toggle__icon--moon {
         top: 0;
         height: 100vh;
         overflow-y: auto;  /* sidebar scrolls if it gets too tall */
+        transform: none !important;
     }
 }
 

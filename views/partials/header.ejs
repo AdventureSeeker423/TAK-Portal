@@ -35,21 +35,35 @@
     <% if (typeof extraHead !== "undefined" && extraHead) { %>
       <%- extraHead %>
     <% } %>
-    <% if (typeof bodyExtraClass !== "undefined" && String(bodyExtraClass).indexOf("map-page") !== -1) { %>
     <script>
       (function () {
-        document.documentElement.classList.add("map-page");
-        try {
-          if (
-            window.matchMedia("(min-width: 991px)").matches &&
-            localStorage.getItem("tak-portal-map-site-sidebar") === "collapsed"
-          ) {
-            document.documentElement.classList.add("map-sidebar-collapsed");
+        var isMapPage = <%= typeof bodyExtraClass !== "undefined" && String(bodyExtraClass).indexOf("map-page") !== -1 ? "true" : "false" %>;
+        function clearMapLayoutLeak() {
+          if (isMapPage) return;
+          var root = document.documentElement;
+          root.classList.remove("map-page", "map-sidebar-collapsed");
+          root.style.removeProperty("zoom");
+          if (document.body) {
+            document.body.classList.remove("map-page", "sidebar-open");
+            document.body.style.removeProperty("zoom");
           }
-        } catch (e) {}
+        }
+        if (isMapPage) {
+          document.documentElement.classList.add("map-page");
+          try {
+            if (
+              window.matchMedia("(min-width: 991px)").matches &&
+              localStorage.getItem("tak-portal-map-site-sidebar") === "collapsed"
+            ) {
+              document.documentElement.classList.add("map-sidebar-collapsed");
+            }
+          } catch (e) {}
+        } else {
+          clearMapLayoutLeak();
+        }
+        window.addEventListener("pageshow", clearMapLayoutLeak);
       })();
     </script>
-    <% } %>
 
     <% if (brandLogoUrl) { %>
       <link rel="icon" href="<%= brandLogoUrl %>" type="image/png" />
