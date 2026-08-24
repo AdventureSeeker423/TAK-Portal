@@ -1390,7 +1390,7 @@ function renderGroups(){
       <td class="groupNameCell cardTitleCell">
         <div class="groupNameText cardTitleText">${esc(stripTakPrefix(g.name))}</div>
         ${desc ? `<div class="muted groupDescText">${esc(desc)}</div>` : ""}
-        ${patchedWithLabel ? `<div class="groupPatchedText">Patched With ${esc(patchedWithLabel)}</div>` : ""}
+        ${patchedWithLabel ? `<div class="groupPatchedText">Channel Patched With ${esc(patchedWithLabel)}</div>` : ""}
         ${IS_GLOBAL_ADMIN && isPrivate ? `<span class="groupPrivateBadge cardMetaBadge">Private</span>` : ""}
       </td>
       ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell">${isPrivate ? "Private" : ""}</td>` : ``}
