@@ -898,7 +898,9 @@ label.btn {
 }
 
 #setupQrOverlay .setupQrModalActions .btn.btnOpenInApp,
-#preferenceQrOverlay .btn.btnOpenInApp {
+#preferenceQrOverlay .btn.btnOpenInApp,
+#userEnrollQrOverlay .userQrPairActions .btn.btnOpenInApp,
+#userPrefQrOverlay .userQrPairActions .btn.btnOpenInApp {
     flex: 1.55 1 0;
     padding-left: 14px;
     padding-right: 14px;

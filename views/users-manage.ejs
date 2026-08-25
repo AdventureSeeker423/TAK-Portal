@@ -467,6 +467,7 @@
       <div class="userQrSingleCol">
         <img id="userQrImg" alt="Enrollment QR Code" class="userQrPairImg" />
         <div class="row userQrPairActions">
+          <button class="btn success btnOpenInApp" type="button" id="userQrOpenBtn" disabled>Open In App</button>
           <button class="btn" type="button" id="userQrCopyBtn" disabled>Copy URL</button>
           <% if (typeof dataPackageAvailable !== "undefined" && dataPackageAvailable) { %>
           <button class="btn success" type="button" id="userQrDataPackageBtn" disabled>Download Data Package</button>
@@ -494,6 +495,7 @@
       <div class="userQrSingleCol">
         <img id="userPrefQrImg" alt="Device preferences QR Code" class="userQrPairImg" />
         <div class="row userQrPairActions">
+          <button class="btn success btnOpenInApp" type="button" id="userPrefQrOpenBtn" disabled>Open In App</button>
           <button class="btn" type="button" id="userPrefQrCopyBtn" disabled>Copy URL</button>
         </div>
       </div>
@@ -1613,8 +1615,10 @@ const userPrefQrOverlay = document.getElementById("userPrefQrOverlay");
 const userPrefQrCloseBtn = document.getElementById("userPrefQrCloseBtn");
 const userQrImg = document.getElementById("userQrImg");
 const userPrefQrImg = document.getElementById("userPrefQrImg");
+const userQrOpenBtn = document.getElementById("userQrOpenBtn");
 const userQrCopyBtn = document.getElementById("userQrCopyBtn");
 const userQrDataPackageBtn = document.getElementById("userQrDataPackageBtn");
+const userPrefQrOpenBtn = document.getElementById("userPrefQrOpenBtn");
 const userPrefQrCopyBtn = document.getElementById("userPrefQrCopyBtn");
 const userQrDetails = document.getElementById("userQrDetails");
 const userPrefQrDetails = document.getElementById("userPrefQrDetails");
@@ -1697,6 +1701,7 @@ function startUserQrCountdown(expiresAt){
     const remain = exp - Date.now();
     if (remain <= 0) {
       userQrCountdown.textContent = "QR Code Expired";
+      if (userQrOpenBtn) userQrOpenBtn.disabled = true;
       if (userQrCopyBtn) userQrCopyBtn.disabled = true;
       setMsgEl(userEnrollQrMsg, "This enrollment QR has expired. Click Enroll QR again to generate a new one.", false);
       if (userQrCountdownTimer) {
@@ -1710,6 +1715,18 @@ function startUserQrCountdown(expiresAt){
 
   tick();
   userQrCountdownTimer = setInterval(tick, 1000);
+}
+
+function openUrlInApp(url) {
+  const href = String(url || "").trim();
+  if (!href) return;
+  const a = document.createElement("a");
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 async function copyToClipboard(text, msgEl) {
@@ -1732,6 +1749,7 @@ async function copyToClipboard(text, msgEl) {
 function resetUserEnrollQrModal() {
   if (userQrImg) userQrImg.src = "";
   if (userQrDetails) userQrDetails.innerHTML = "";
+  if (userQrOpenBtn) userQrOpenBtn.disabled = true;
   if (userQrCopyBtn) userQrCopyBtn.disabled = true;
   if (userQrDataPackageBtn) userQrDataPackageBtn.disabled = true;
   if (userQrCountdown) userQrCountdown.textContent = "";
@@ -1742,6 +1760,7 @@ function resetUserEnrollQrModal() {
 function resetUserPrefQrModal() {
   if (userPrefQrImg) userPrefQrImg.src = "";
   if (userPrefQrDetails) userPrefQrDetails.innerHTML = "";
+  if (userPrefQrOpenBtn) userPrefQrOpenBtn.disabled = true;
   if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = true;
   userPrefQrCurrent = null;
   setUserPrefQrModalTitle("", "");
@@ -1757,6 +1776,7 @@ function renderUserEnrollQr(obj) {
   if (obj.tokenIdentifier) chips.push(`<span class="chip">Token: ${escapeHtml(obj.tokenIdentifier)}</span>`);
   if (userQrDetails) userQrDetails.innerHTML = chips.join(" ");
 
+  if (userQrOpenBtn) userQrOpenBtn.disabled = !obj.enrollUrl;
   if (userQrCopyBtn) userQrCopyBtn.disabled = !obj.enrollUrl;
   if (userQrDataPackageBtn) userQrDataPackageBtn.disabled = !(DATA_PACKAGE_AVAILABLE && obj.userId);
 
@@ -1779,6 +1799,7 @@ function renderUserPrefQr(obj) {
       : "<span class=\"muted\">No preference data available for this user.</span>";
   }
 
+  if (userPrefQrOpenBtn) userPrefQrOpenBtn.disabled = !obj.preferenceUrl;
   if (userPrefQrCopyBtn) userPrefQrCopyBtn.disabled = !obj.preferenceUrl;
 
   setMsgEl(userPrefQrMsg, "Preferences QR ready.", true);
@@ -1880,6 +1901,10 @@ document.addEventListener("keydown", (e) => {
   if (userPrefQrOverlay && userPrefQrOverlay.style.display !== "none") closeUserPrefQrModal();
 });
 
+if (userQrOpenBtn) userQrOpenBtn.addEventListener("click", () => {
+  if (userEnrollQrCurrent && userEnrollQrCurrent.enrollUrl) openUrlInApp(userEnrollQrCurrent.enrollUrl);
+});
+
 if (userQrCopyBtn) userQrCopyBtn.addEventListener("click", () => {
   if (userEnrollQrCurrent && userEnrollQrCurrent.enrollUrl) copyToClipboard(userEnrollQrCurrent.enrollUrl, userEnrollQrMsg);
 });
@@ -1931,6 +1956,11 @@ if (userQrDataPackageBtn) userQrDataPackageBtn.addEventListener("click", async (
       userQrDataPackageBtn.disabled = false;
     }
   }
+});
+
+if (userPrefQrOpenBtn) userPrefQrOpenBtn.addEventListener("click", () => {
+  const url = userPrefQrCurrent?.preferenceUrl;
+  if (url) openUrlInApp(url);
 });
 
 if (userPrefQrCopyBtn) userPrefQrCopyBtn.addEventListener("click", () => {
@@ -4814,6 +4844,20 @@ tr.row-disabled td {
   margin-top: 14px;
   justify-content: center;
   flex-wrap: wrap;
+}
+
+.userQrPairActions .btn {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.userQrPairActions .btn#userQrDataPackageBtn {
+  flex: 1 1 100%;
 }
 
 .userQrPairCountdown {
