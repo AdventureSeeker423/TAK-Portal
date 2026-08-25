@@ -5,30 +5,48 @@ import { vectorId } from "./uidHash";
 
 /** ATAK/TAK Aware self-SA ground (a-f-G-U-C). Other clients draw a team dot. */
 export function isStandardGroundEudType(type: unknown): boolean {
-  const parts = String(type || "")
+  const t = String(type || "")
     .trim()
-    .split("-")
-    .filter(Boolean);
-  return (
-    parts.length >= 5 &&
-    parts[0].toLowerCase() === "a" &&
-    parts[2].toUpperCase() === "G" &&
-    parts[3].toUpperCase() === "U" &&
-    parts[4].toUpperCase() === "C"
-  );
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .toLowerCase();
+  return /^a-[a-z0-9]+-g-u-c(?:-|$)/.test(t);
 }
 
-function isExplicitCustomIconSource(source: unknown): boolean {
-  const src = String(source || "").toLowerCase();
-  return src === "usericon" || src === "path" || src === "alias";
+function isAirCotType(type: unknown): boolean {
+  const parts = String(type || "")
+    .trim()
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .split("-")
+    .filter(Boolean);
+  return parts.length >= 3 && parts[2].toUpperCase() === "A";
+}
+
+function isMilsymAviationIconId(iconId: unknown): boolean {
+  const raw = String(iconId || "").trim();
+  if (!/^2525D:/i.test(raw)) return false;
+  const sidc = raw.slice(6);
+  if (sidc.length < 16) return false;
+  // Type2525.to2525D("a-f-G-U-C") → land-unit entity 120900 (fixed-wing bowtie).
+  return sidc.slice(10, 16) === "120900";
+}
+
+function isExplicitCustomBitmap(marker: SlimMarker): boolean {
+  const src = String(marker.iconSource || "").toLowerCase();
+  if (src !== "usericon" && src !== "path" && src !== "alias") return false;
+  const id = String(marker.iconId || "");
+  if (!id || /^2525D:/i.test(id) || /a-f-g\.png$/i.test(id)) return false;
+  return true;
 }
 
 /**
  * Ground EUDs stay team dots even if a stale slim payload still has a milsym/FalconView mapImageId.
- * usesMapIcon === 0 also wins over a leftover mapImageId.
+ * Land-unit aviation SIDCs (entity 12xxxx) are never shown unless the CoT type is air.
  */
 export function markerPaintsMapIcon(marker: SlimMarker): boolean {
-  if (isStandardGroundEudType(marker.type) && !isExplicitCustomIconSource(marker.iconSource)) {
+  if (isMilsymAviationIconId(marker.iconId) && !isAirCotType(marker.type)) {
+    return false;
+  }
+  if (isStandardGroundEudType(marker.type) && !isExplicitCustomBitmap(marker)) {
     return false;
   }
   if (marker.usesMapIcon === 0) return false;

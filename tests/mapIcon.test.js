@@ -68,6 +68,21 @@ async function runTests() {
     affiliation: "friend",
   });
   assert.strictEqual(bareEudAsync, null, "bare ground EUD should not fall back to milsym");
+  const mappedEud2525c = await mapIcon.resolveIconAsync({
+    type: "a-f-G-U-C",
+    affiliation: "friend",
+    usericon: { iconsetpath: "COT_MAPPING_2525C/a-f/a-f-G-U-C" },
+  });
+  assert.strictEqual(
+    mappedEud2525c,
+    null,
+    "ground EUD with COT_MAPPING_2525C must not milsym-render as aviation"
+  );
+  assert.strictEqual(
+    mapIconResolve.isStandardGroundEudType("a\u2013f\u2013G\u2013U\u2013C"),
+    true,
+    "en-dash CoT types still match ground EUD"
+  );
   assert.strictEqual(
     mapRender.markerUsesMapIcon({
       type: "a-f-G-U-C",

@@ -4,6 +4,7 @@
 const crypto = require("crypto");
 const { getInt } = require("./env");
 const mapMeta = require("./mapMeta.service");
+const mapIconResolve = require("./mapIcon.resolve");
 const mapIconRender = require("./mapIconRender.service");
 const shapeDecor = require("../public/shapeDecorFilter.js");
 
@@ -151,17 +152,16 @@ function isAirCotType(type) {
 
 /** ATAK/TAK Aware self-SA ground (a-f-G-U-C). Other clients draw a team dot. */
 function isStandardGroundEudCotType(type) {
-  const parts = String(type || "")
-    .trim()
-    .split("-")
-    .filter(Boolean);
-  return (
-    parts.length >= 5 &&
-    parts[0].toLowerCase() === "a" &&
-    parts[2].toUpperCase() === "G" &&
-    parts[3].toUpperCase() === "U" &&
-    parts[4].toUpperCase() === "C"
-  );
+  return mapIconResolve.isStandardGroundEudType(type);
+}
+
+function isMilsymAviationIconId(iconId) {
+  const raw = String(iconId || "").trim();
+  if (!/^2525D:/i.test(raw)) return false;
+  const sidc = raw.slice(6);
+  if (sidc.length < 16) return false;
+  // Type2525.to2525D("a-f-G-U-C") → land-unit entity 120900 (fixed-wing bowtie).
+  return sidc.slice(10, 16) === "120900";
 }
 
 function isSpiCotType(type) {
@@ -180,11 +180,13 @@ function markerUsesMapIcon(marker) {
   if (isSpiCotType(marker.type)) return true;
   const src = String(marker.iconSource || "").toLowerCase();
   const apiId = String(marker.iconId || "");
-  // Ground EUDs (a-f-G-U-C) always use team dots unless the CoT set a custom icon.
-  // Prefix matching otherwise assigns FalconView A-F-G.png / 2525D frames.
+  // Ground EUDs (a-f-G-U-C) always use team dots unless the CoT set a custom bitmap.
+  // Prefix matching otherwise assigns FalconView A-F-G.png / 2525D aviation frames.
   if (isStandardGroundEudCotType(marker.type)) {
+    if (/^2525D:/i.test(apiId) || /a-f-g\.png$/i.test(apiId)) return false;
     return src === "usericon" || src === "path" || src === "alias";
   }
+  if (!isAirCotType(marker.type) && isMilsymAviationIconId(apiId)) return false;
   // Aircraft (and milsym) keep symbology even when multi-hop _flow-tags_
   // classify the marker as federation (otherwise they render as team dots).
   if (apiId.startsWith("2525D:")) return true;

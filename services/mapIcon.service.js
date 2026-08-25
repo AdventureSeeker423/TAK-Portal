@@ -125,11 +125,19 @@ async function resolveIconAsync({ type, affiliation, detail, usericon }) {
   const ui = usericon || mapIconResolve.parseUserIcon(detail);
   const parsedPath = mapIconResolve.parseIconsetPath(ui.iconsetpath);
   let cotType = String(type || "").trim();
-  if (parsedPath?.mode === "type") {
+  if (
+    parsedPath?.mode === "type" &&
+    !mapIconResolve.isStandardGroundEudType(cotType) &&
+    !mapIconResolve.isStandardGroundEudType(parsedPath.cotType)
+  ) {
     cotType = parsedPath.cotType || cotType;
   }
 
-  if (mapIconResolve.isStandardGroundEudType(cotType) && !ui.name && parsedPath?.mode !== "path") {
+  // Never milsym-render ground EUDs. Type2525.to2525D("a-f-G-U-C") is land aviation (bowtie).
+  if (
+    mapIconResolve.isStandardGroundEudType(type) ||
+    mapIconResolve.isStandardGroundEudType(cotType)
+  ) {
     return null;
   }
 

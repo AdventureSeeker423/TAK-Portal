@@ -103,16 +103,20 @@ function cotDomain(cotType) {
   return "other";
 }
 
+function normalizeCotTypeKey(cotType) {
+  return String(cotType || "")
+    .trim()
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .toLowerCase();
+}
+
 /** ATAK self-SA ground type (a-f-G-U-C and affiliation variants) — team dots, not 2525 frames. */
 function isStandardGroundEudType(cotType) {
-  const segments = cotTypeSegments(cotType);
-  return (
-    segments.length >= 5 &&
-    segments[0] === "a" &&
-    segments[2] === "g" &&
-    segments[3] === "u" &&
-    segments[4] === "c"
-  );
+  return /^a-[a-z0-9]+-g-u-c(?:-|$)/.test(normalizeCotTypeKey(cotType));
+}
+
+function isCotMappingIconPath(iconsetpath) {
+  return /^COT_MAPPING_/i.test(String(iconsetpath || "").trim());
 }
 
 function domainPriorityList(cotType, iconsetsByUid) {
@@ -441,9 +445,13 @@ function resolvePngIcon(
   let cotType = String(type || "").trim();
   let directPath = null;
 
+  const originalIsGroundEud = isStandardGroundEudType(cotType);
   const parsedPath = parseIconsetPath(ui.iconsetpath);
   if (parsedPath?.mode === "type") {
-    cotType = parsedPath.cotType || cotType;
+    // COT_MAPPING_2525B remaps must not turn a ground EUD into air/2525 art.
+    if (!originalIsGroundEud && !isStandardGroundEudType(parsedPath.cotType)) {
+      cotType = parsedPath.cotType || cotType;
+    }
   } else if (parsedPath?.mode === "path") {
     directPath = parsedPath;
   } else if (parsedPath?.mode === "usericon") {
@@ -452,6 +460,10 @@ function resolvePngIcon(
       name: parsedPath.iconName || ui.name,
       group: parsedPath.group || ui.group,
     };
+  }
+
+  if (directPath && originalIsGroundEud && /a-f-g\.png$/i.test(String(directPath.relPath || ""))) {
+    return null;
   }
 
   if (directPath) {
@@ -480,7 +492,12 @@ function resolvePngIcon(
     }
   }
 
-  if (parsedPath?.mode === "usericon" && (ui.name || ui.group)) {
+  if (
+    parsedPath?.mode === "usericon" &&
+    (ui.name || ui.group) &&
+    !isCotMappingIconPath(ui.iconsetpath) &&
+    !/a-f-g\.png$/i.test(String(ui.name || ""))
+  ) {
     for (const iconset of iconsetsByUid.values()) {
       const hit = resolveFromIconset(
         iconset,
@@ -501,9 +518,9 @@ function resolvePngIcon(
     return null;
   }
 
-  // Bare a-*-G-U-C is an ATAK/TAK Aware ground EUD. Do not prefix-match
-  // FalconView A-F-G.png (or milsym) — other TAK clients show a team dot.
-  if (isStandardGroundEudType(cotType) && !ui.name) {
+  // Ground EUDs (a-*-G-U-C): ATAK shows a team dot. Never type-prefix or
+  // honor COT_MAPPING_2525* — those become aviation tombstones via milsym.
+  if (originalIsGroundEud || isStandardGroundEudType(cotType)) {
     return null;
   }
 
@@ -568,6 +585,7 @@ module.exports = {
   DOMAIN_ICONSET_PRIORITY,
   cotDomain,
   isStandardGroundEudType,
+  normalizeCotTypeKey,
   domainPriorityList,
   findBestTypeMatch,
   pickBestFromEntries,

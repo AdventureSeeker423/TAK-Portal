@@ -413,6 +413,10 @@ export function bootTakMap() {
         if (props.showCircle != null) marker.showCircle = props.showCircle;
         if (props.usesMapIcon != null) marker.usesMapIcon = props.usesMapIcon;
         if (props.apiIconId) marker.iconId = props.apiIconId;
+        if (typeof markerShouldPaintMapIcon === "function" && !markerShouldPaintMapIcon(marker)) {
+          marker.mapImageId = "";
+          marker.usesMapIcon = 0;
+        }
         if (props.channelKeys) marker.channelKeys = props.channelKeys;
         if (props.drawTier != null) marker.drawTier = props.drawTier;
         if (props.renderSort != null) marker.renderSort = props.renderSort;

@@ -78,6 +78,23 @@ async function run() {
   assert.strictEqual(forcedOff.properties.iconId, "");
   assert.strictEqual(forcedOff.properties.showCircle, 1);
 
+  const aviationSidcNoType = buildPaintFeature({
+    uid: "sidc-only",
+    callsign: "TN-HUMPHREYSSO-102-EDWARDS",
+    type: "",
+    lat: 36.1,
+    lon: -86.67,
+    affiliation: "friend",
+    origin: "federation",
+    iconId: "2525D:10031000001209000000",
+    iconSource: "milsym",
+    mapImageId: "mimg-0123456789abcdef",
+    usesMapIcon: 1,
+    color: "#1b5e20",
+  });
+  assert.strictEqual(aviationSidcNoType.properties.iconId, "");
+  assert.strictEqual(aviationSidcNoType.properties.showCircle, 1);
+
   const air = buildPaintFeature({
     uid: "air-1",
     callsign: "AIRBEAR",

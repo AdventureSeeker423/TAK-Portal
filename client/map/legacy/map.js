@@ -380,30 +380,43 @@
   }
 
   function isStandardGroundEudCotType(type) {
-    const parts = String(type || "")
+    const t = String(type || "")
       .trim()
-      .split("-")
-      .filter(Boolean);
-    return (
-      parts.length >= 5 &&
-      parts[0].toLowerCase() === "a" &&
-      parts[2].toUpperCase() === "G" &&
-      parts[3].toUpperCase() === "U" &&
-      parts[4].toUpperCase() === "C"
-    );
+      .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+      .toLowerCase();
+    return /^a-[a-z0-9]+-g-u-c(?:-|$)/.test(t);
   }
 
-  function isExplicitCustomIconSource(source) {
-    const src = String(source || "").toLowerCase();
-    return src === "usericon" || src === "path" || src === "alias";
+  function isAirCotType(type) {
+    const parts = String(type || "")
+      .trim()
+      .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+      .split("-")
+      .filter(Boolean);
+    return parts.length >= 3 && parts[2].toUpperCase() === "A";
+  }
+
+  function isMilsymAviationIconId(iconId) {
+    const raw = String(iconId || "").trim();
+    if (!/^2525D:/i.test(raw)) return false;
+    const sidc = raw.slice(6);
+    if (sidc.length < 16) return false;
+    return sidc.slice(10, 16) === "120900";
+  }
+
+  function isExplicitCustomBitmap(m) {
+    const src = String((m && m.iconSource) || "").toLowerCase();
+    if (src !== "usericon" && src !== "path" && src !== "alias") return false;
+    const id = String((m && m.iconId) || "");
+    if (!id || /^2525D:/i.test(id) || /a-f-g\.png$/i.test(id)) return false;
+    return true;
   }
 
   /** Ground EUDs stay team dots even if a stale payload still has a 2525/milsym mapImageId. */
   function markerShouldPaintMapIcon(m) {
     if (!m) return false;
-    if (isStandardGroundEudCotType(m.type) && !isExplicitCustomIconSource(m.iconSource)) {
-      return false;
-    }
+    if (isMilsymAviationIconId(m.iconId) && !isAirCotType(m.type)) return false;
+    if (isStandardGroundEudCotType(m.type) && !isExplicitCustomBitmap(m)) return false;
     if (m.usesMapIcon === 0 || m.usesMapIcon === false) return false;
     const mapImageId = normalizeMapImageId(m.mapImageId || "");
     return !!(mapImageId && isRenderedMapImageId(mapImageId));
@@ -438,8 +451,11 @@
     }
     if (
       isStandardGroundEudCotType(props && props.type) &&
-      !isExplicitCustomIconSource(props && props.iconSource)
+      !isExplicitCustomBitmap(props)
     ) {
+      return { iconId: "", showCircle: 1 };
+    }
+    if (isMilsymAviationIconId(props && props.apiIconId) && !isAirCotType(props && props.type)) {
       return { iconId: "", showCircle: 1 };
     }
     if (props && (props.usesMapIcon === 0 || props.usesMapIcon === false)) {
