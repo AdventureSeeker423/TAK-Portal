@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.3.80 - 8/25/26
+✨ `Enhancement` - Agencies - DC added as an option in the states dropdown (more customization to come soon for non-US users)
+
 ### v1.3.79 - 8/24/26
 ✏️ `Documentation` - License type changed to AGPL 
 
