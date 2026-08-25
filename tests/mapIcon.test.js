@@ -60,6 +60,25 @@ async function runTests() {
   };
   assert.strictEqual(mapRender.markerUsesMapIcon(eudGround), true);
 
+  // Bare a-f-G-U-C must not pick FalconView A-F-G.png (ATAK shows a team dot)
+  const bareEud = mapIcon.resolveIcon({ type: "a-f-G-U-C", affiliation: "friend" });
+  assert.strictEqual(bareEud, null, "bare ground EUD should not resolve a type2525b PNG");
+  const bareEudAsync = await mapIcon.resolveIconAsync({
+    type: "a-f-G-U-C",
+    affiliation: "friend",
+  });
+  assert.strictEqual(bareEudAsync, null, "bare ground EUD should not fall back to milsym");
+  assert.strictEqual(
+    mapRender.markerUsesMapIcon({
+      type: "a-f-G-U-C",
+      origin: "feed",
+      iconId: "6d180afb-89a6-4c07-b2b3-a89748b6a38f:FalconView/A-F-G.png",
+      iconSource: "type2525b",
+    }),
+    false,
+    "ground EUD stays a team dot even if origin is misclassified as feed"
+  );
+
   // Milsym / 2525D display gate
   const milsymMarker = {
     type: "a-f-G-E-V",

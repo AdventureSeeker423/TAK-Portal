@@ -129,6 +129,10 @@ async function resolveIconAsync({ type, affiliation, detail, usericon }) {
     cotType = parsedPath.cotType || cotType;
   }
 
+  if (mapIconResolve.isStandardGroundEudType(cotType) && !ui.name && parsedPath?.mode !== "path") {
+    return null;
+  }
+
   const milId = await mapMilSym.cotTypeTo2525DIconId(cotType);
   if (milId) {
     return {

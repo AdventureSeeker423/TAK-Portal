@@ -103,6 +103,18 @@ function cotDomain(cotType) {
   return "other";
 }
 
+/** ATAK self-SA ground type (a-f-G-U-C and affiliation variants) — team dots, not 2525 frames. */
+function isStandardGroundEudType(cotType) {
+  const segments = cotTypeSegments(cotType);
+  return (
+    segments.length >= 5 &&
+    segments[0] === "a" &&
+    segments[2] === "g" &&
+    segments[3] === "u" &&
+    segments[4] === "c"
+  );
+}
+
 function domainPriorityList(cotType, iconsetsByUid) {
   const domain = cotDomain(cotType);
   const list = DOMAIN_ICONSET_PRIORITY[domain] || DOMAIN_ICONSET_PRIORITY.other;
@@ -489,6 +501,12 @@ function resolvePngIcon(
     return null;
   }
 
+  // Bare a-*-G-U-C is an ATAK/TAK Aware ground EUD. Do not prefix-match
+  // FalconView A-F-G.png (or milsym) — other TAK clients show a team dot.
+  if (isStandardGroundEudType(cotType) && !ui.name) {
+    return null;
+  }
+
   const typeOverride = COT_TYPE_ICON_OVERRIDES[String(cotType || "").trim().toLowerCase()];
   if (typeOverride) {
     const iconset = iconsetsByUid.get(typeOverride.iconsetUid);
@@ -549,6 +567,7 @@ module.exports = {
   ICON_PATH_ALIASES,
   DOMAIN_ICONSET_PRIORITY,
   cotDomain,
+  isStandardGroundEudType,
   domainPriorityList,
   findBestTypeMatch,
   pickBestFromEntries,

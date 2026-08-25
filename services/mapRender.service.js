@@ -149,6 +149,21 @@ function isAirCotType(type) {
   return parts.length >= 3 && parts[2].toUpperCase() === "A";
 }
 
+/** ATAK/TAK Aware self-SA ground (a-f-G-U-C). Other clients draw a team dot. */
+function isStandardGroundEudCotType(type) {
+  const parts = String(type || "")
+    .trim()
+    .split("-")
+    .filter(Boolean);
+  return (
+    parts.length >= 5 &&
+    parts[0].toLowerCase() === "a" &&
+    parts[2].toUpperCase() === "G" &&
+    parts[3].toUpperCase() === "U" &&
+    parts[4].toUpperCase() === "C"
+  );
+}
+
 function isSpiCotType(type) {
   const t = String(type || "").trim().toLowerCase();
   return t.startsWith("b-m-p-s-p-i") || t.startsWith("b-m-p-s-p-loc");
@@ -165,6 +180,11 @@ function markerUsesMapIcon(marker) {
   if (isSpiCotType(marker.type)) return true;
   const src = String(marker.iconSource || "").toLowerCase();
   const apiId = String(marker.iconId || "");
+  // Ground EUDs (a-f-G-U-C) always use team dots unless the CoT set a custom icon.
+  // Prefix matching otherwise assigns FalconView A-F-G.png / 2525D frames.
+  if (isStandardGroundEudCotType(marker.type)) {
+    return src === "usericon" || src === "path" || src === "alias";
+  }
   // Aircraft (and milsym) keep symbology even when multi-hop _flow-tags_
   // classify the marker as federation (otherwise they render as team dots).
   if (apiId.startsWith("2525D:")) return true;
