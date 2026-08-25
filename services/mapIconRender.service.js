@@ -164,7 +164,7 @@ async function renderIconForMarker(marker) {
     }
   } else if (mapMilSym.isMilSymIconId(apiIconId)) {
     outBuffer = await mapMilSym.renderMilSymPngByIconId(apiIconId);
-  } else if (marker?.type) {
+  } else if (marker?.type && !mapRender.isStandardGroundEudCotType(marker.type)) {
     try {
       outBuffer = await mapMilSym.renderMilSymPng(marker.type);
     } catch (_) {

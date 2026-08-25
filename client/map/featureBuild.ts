@@ -3,6 +3,42 @@ import { AFFILIATION_COLORS } from "./constants";
 import { computeLabelSortKey } from "./labelDeclutter";
 import { vectorId } from "./uidHash";
 
+/** ATAK/TAK Aware self-SA ground (a-f-G-U-C). Other clients draw a team dot. */
+export function isStandardGroundEudType(type: unknown): boolean {
+  const parts = String(type || "")
+    .trim()
+    .split("-")
+    .filter(Boolean);
+  return (
+    parts.length >= 5 &&
+    parts[0].toLowerCase() === "a" &&
+    parts[2].toUpperCase() === "G" &&
+    parts[3].toUpperCase() === "U" &&
+    parts[4].toUpperCase() === "C"
+  );
+}
+
+function isExplicitCustomIconSource(source: unknown): boolean {
+  const src = String(source || "").toLowerCase();
+  return src === "usericon" || src === "path" || src === "alias";
+}
+
+/**
+ * Ground EUDs stay team dots even if a stale slim payload still has a milsym/FalconView mapImageId.
+ * usesMapIcon === 0 also wins over a leftover mapImageId.
+ */
+export function markerPaintsMapIcon(marker: SlimMarker): boolean {
+  if (isStandardGroundEudType(marker.type) && !isExplicitCustomIconSource(marker.iconSource)) {
+    return false;
+  }
+  if (marker.usesMapIcon === 0) return false;
+  return /^mimg-[0-9a-f]{16}$/i.test(String(marker.mapImageId || "").trim());
+}
+
+export function effectiveMapImageId(marker: SlimMarker): string {
+  return markerPaintsMapIcon(marker) ? String(marker.mapImageId || "").trim() : "";
+}
+
 function markerDrawTier(marker: SlimMarker): number {
   const origin = String(marker.origin || "").toLowerCase();
   if (origin === "feed" || origin === "air") return 0;
@@ -41,11 +77,11 @@ export function buildPaintFeature(
 
   const color = resolveColor(marker);
   // Slim markers carry mapImageId (mimg-*); never treat raw api iconId as a MapLibre image name.
-  const mapImageId = String(marker.mapImageId || "").trim();
-  const apiIconId = String(marker.iconId || "");
-  const usesIcon = !!(marker.usesMapIcon || mapImageId);
+  const mapImageId = effectiveMapImageId(marker);
+  const apiIconId = mapImageId ? String(marker.iconId || "") : "";
+  const usesIcon = !!mapImageId;
   const overview = !!options.overviewMode;
-  const hasMapImage = !!mapImageId && /^mimg-[0-9a-f]{16}$/i.test(mapImageId);
+  const hasMapImage = !!mapImageId;
   const iconReady = !!options.iconReady && hasMapImage && !overview;
   // Keep iconId on the feature even before the bitmap is installed so styleimagemissing can fire.
   const showCircle = overview || !hasMapImage || !iconReady ? 1 : 0;

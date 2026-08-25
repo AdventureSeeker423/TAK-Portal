@@ -379,6 +379,36 @@
     return /^(?:mimg|wing|rotor|vehicle|boat|ship|track|car)-[0-9a-f]{16}$/i.test(id);
   }
 
+  function isStandardGroundEudCotType(type) {
+    const parts = String(type || "")
+      .trim()
+      .split("-")
+      .filter(Boolean);
+    return (
+      parts.length >= 5 &&
+      parts[0].toLowerCase() === "a" &&
+      parts[2].toUpperCase() === "G" &&
+      parts[3].toUpperCase() === "U" &&
+      parts[4].toUpperCase() === "C"
+    );
+  }
+
+  function isExplicitCustomIconSource(source) {
+    const src = String(source || "").toLowerCase();
+    return src === "usericon" || src === "path" || src === "alias";
+  }
+
+  /** Ground EUDs stay team dots even if a stale payload still has a 2525/milsym mapImageId. */
+  function markerShouldPaintMapIcon(m) {
+    if (!m) return false;
+    if (isStandardGroundEudCotType(m.type) && !isExplicitCustomIconSource(m.iconSource)) {
+      return false;
+    }
+    if (m.usesMapIcon === 0 || m.usesMapIcon === false) return false;
+    const mapImageId = normalizeMapImageId(m.mapImageId || "");
+    return !!(mapImageId && isRenderedMapImageId(mapImageId));
+  }
+
   function shouldSuppressLiveMarkerGraphic(uid) {
     const id = uid != null ? String(uid) : "";
     if (!id) return false;
@@ -404,6 +434,15 @@
       return { iconId: "", showCircle: 0 };
     }
     if (overviewMode) {
+      return { iconId: "", showCircle: 1 };
+    }
+    if (
+      isStandardGroundEudCotType(props && props.type) &&
+      !isExplicitCustomIconSource(props && props.iconSource)
+    ) {
+      return { iconId: "", showCircle: 1 };
+    }
+    if (props && (props.usesMapIcon === 0 || props.usesMapIcon === false)) {
       return { iconId: "", showCircle: 1 };
     }
     const iconId = props && props.iconId ? normalizeMapImageId(props.iconId) : "";
@@ -509,9 +548,11 @@
     const lat = Number(m.lat);
     const lon = Number(m.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    const mapImageId = normalizeMapImageId(
-      m.mapImageId || (isRenderedMapImageId(m.iconId) ? m.iconId : "")
-    );
+    const mapImageId = markerShouldPaintMapIcon(m)
+      ? normalizeMapImageId(
+          m.mapImageId || (isRenderedMapImageId(m.iconId) ? m.iconId : "")
+        )
+      : "";
     const apiIconId = mapImageId ? String(m.iconId || "") : "";
     const color = m.color || m.teamColor || "#1e88e5";
     const uid = String(m.uid);
@@ -952,7 +993,9 @@
     for (let i = 0; i < list.length; i++) {
       const normalized = normalizeMarkerRecord(list[i]);
       if (!normalized) continue;
-      const mapImageId = normalizeMapImageId(normalized.mapImageId || "");
+      const mapImageId = markerShouldPaintMapIcon(normalized)
+        ? normalizeMapImageId(normalized.mapImageId || "")
+        : "";
       if (mapImageId) {
         registerServerMapImageMeta(mapImageId, String(normalized.iconId || ""), normalized);
       }
@@ -2309,9 +2352,7 @@
 
   function markerPreviewUsesIcon(m) {
     if (!m) return false;
-    if (m.usesMapIcon != null) return !!m.usesMapIcon;
-    const mapImageId = normalizeMapImageId(m.mapImageId || m.iconId || "");
-    return !!(mapImageId && isRenderedMapImageId(mapImageId));
+    return markerShouldPaintMapIcon(m);
   }
 
   function preloadMarkerIcons(manifest) {
@@ -2427,7 +2468,7 @@
 
     // Worker path may paint icons before lastServerGeoJson is rebuilt — also scan slim markers.
     markersByUid.forEach(function (m) {
-      if (!m) return;
+      if (!m || !markerShouldPaintMapIcon(m)) return;
       const mapImageId = normalizeMapImageId(m.mapImageId || "");
       if (!mapImageId) return;
       consider(mapImageId, m.iconId, m);
@@ -2441,7 +2482,7 @@
     const list = Array.isArray(markerList) ? markerList : [];
     for (let i = 0; i < list.length; i++) {
       const m = list[i];
-      if (!m) continue;
+      if (!m || !markerShouldPaintMapIcon(m)) continue;
       const mapImageId = normalizeMapImageId(m.mapImageId || "");
       if (!mapImageId || !isRenderedMapImageId(mapImageId) || seen.has(mapImageId)) continue;
       seen.add(mapImageId);

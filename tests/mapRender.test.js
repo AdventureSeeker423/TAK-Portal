@@ -211,6 +211,24 @@ assert.strictEqual(
   "federated ground EUD still uses team dots"
 );
 
+const slimGroundEud = mapRender.toSlimMarker({
+  uid: "tn-humphreysso-102-edwards",
+  callsign: "TN-HUMPHREYSSO-102-EDWARDS",
+  type: "a-f-G-U-C",
+  lat: 36.1,
+  lon: -86.67,
+  affiliation: "friend",
+  origin: "federation",
+  iconId: "2525D:10031000001209000000",
+  iconSource: "milsym",
+  teamColor: "#0000ff",
+});
+assert.strictEqual(slimGroundEud.usesMapIcon, 0);
+assert.strictEqual(slimGroundEud.mapImageId, "");
+assert.strictEqual(slimGroundEud.iconId, null);
+assert.strictEqual(slimGroundEud.iconSource, null);
+assert.strictEqual(slimGroundEud.showCircle, 1);
+
 const spiMarker = {
   uid: "spi-1",
   callsign: "SPI-1",

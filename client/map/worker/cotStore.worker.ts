@@ -12,7 +12,12 @@ import type {
   WorkerOutbound,
 } from "../types";
 import { MAP_DIFF_FLUSH_MS, VIEW_FLUSH_MS } from "../constants";
-import { buildPaintFeature, featurePropertyPatch, pointInBounds } from "../featureBuild";
+import {
+  buildPaintFeature,
+  effectiveMapImageId,
+  featurePropertyPatch,
+  pointInBounds,
+} from "../featureBuild";
 import { computeLabelVisibility } from "../labelDeclutter";
 import { vectorId } from "../uidHash";
 
@@ -135,8 +140,8 @@ function resolveShowLabel(uid: string, labelMap: Map<string, number> | null): nu
 }
 
 function buildFeature(marker: SlimMarker, showLabel: number): MarkerFeature | null {
-  const mapImageId = String(marker.mapImageId || "").trim();
-  const hasMapImage = !!mapImageId && /^mimg-[0-9a-f]{16}$/i.test(mapImageId);
+  const mapImageId = effectiveMapImageId(marker);
+  const hasMapImage = !!mapImageId;
   return buildPaintFeature(marker, {
     selectedUid,
     lockedUid,
@@ -232,6 +237,7 @@ function flush(): void {
     const marker = markers.get(uid);
     if (!marker) continue;
     const showLabel = resolveShowLabel(uid, labelMap);
+    const paintId = effectiveMapImageId(marker);
     // Geometry always; full property patch only when labels were recomputed or icon state may change.
     if (labelMap) {
       diff.update.push({
@@ -242,16 +248,10 @@ function flush(): void {
           lockedUid,
           showLabel,
           overviewMode,
-          iconReady:
-            !String(marker.mapImageId || "") ||
-            readyIcons.has(String(marker.mapImageId || "")),
+          iconReady: !paintId || readyIcons.has(paintId),
         }),
       });
     } else {
-      const mapImageId = String(marker.mapImageId || "").trim();
-      const hasMapImage = !!mapImageId && /^mimg-[0-9a-f]{16}$/i.test(mapImageId);
-      const iconReady = !hasMapImage || readyIcons.has(mapImageId);
-      const showCircle = overviewMode || !hasMapImage || !iconReady ? 1 : 0;
       diff.update.push({
         id: feat.id,
         newGeometry: feat.geometry,
@@ -259,7 +259,7 @@ function flush(): void {
           { key: "callsign", value: String(marker.callsign || uid.slice(0, 16)) },
           { key: "color", value: feat.properties.color },
           { key: "iconId", value: feat.properties.iconId },
-          { key: "showCircle", value: showCircle },
+          { key: "showCircle", value: feat.properties.showCircle },
           { key: "showLabel", value: showLabel },
           { key: "selected", value: uid === selectedUid },
           { key: "locked", value: uid === lockedUid },
