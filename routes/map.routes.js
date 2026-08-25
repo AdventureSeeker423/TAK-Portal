@@ -127,13 +127,18 @@ router.get("/cot-raw", (req, res) => {
     marker = matches[0] || null;
   }
 
-  if (!marker || marker.cotRaw == null) {
+  if (!marker) {
+    return res.status(404).json({ error: "Marker or raw CoT not found" });
+  }
+
+  const raw = cotStream.getMarkerRawCot(marker.uid);
+  if (raw == null) {
     return res.status(404).json({ error: "Marker or raw CoT not found" });
   }
 
   res.setHeader("Cache-Control", "no-cache");
   res.type("application/json");
-  return res.send(JSON.stringify(marker.cotRaw, null, 2));
+  return res.send(JSON.stringify(raw, null, 2));
 });
 
 function buildGeoJsonOptions(req) {

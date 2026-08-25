@@ -1009,7 +1009,13 @@ function getMarkerRawCot(uid) {
   const id = String(uid || "").trim();
   if (!id) return null;
   // Prefer bounded cache; fall back to legacy field if present on older markers.
-  if (cotRawByUid.has(id)) return cotRawByUid.get(id);
+  if (cotRawByUid.has(id)) {
+    const raw = cotRawByUid.get(id);
+    // Touch LRU so a copied marker is not the next eviction.
+    cotRawByUid.delete(id);
+    cotRawByUid.set(id, raw);
+    return raw;
+  }
   const marker = getMarkerByUid(id);
   if (!marker || marker.cotRaw == null) return null;
   return marker.cotRaw;
