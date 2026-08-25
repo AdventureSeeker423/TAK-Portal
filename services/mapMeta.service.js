@@ -5,6 +5,7 @@ const dataSyncAccess = require("./dataSyncAccess.service");
 const groupsSvc = require("./groups.service");
 const takMetrics = require("./takMetrics.service");
 const { isTakBypassed, isTakConfigured, buildTakAxios } = require("./tak.service");
+const { sanitizeCallsign } = require("./callsignSanitize");
 
 const SUBSCRIPTION_REFRESH_MS = 30000;
 const DATAFEED_DETAIL_CACHE_MS = 5 * 60 * 1000;
@@ -1887,6 +1888,7 @@ module.exports = {
   parseSourceHints,
   parseRelatedUids,
   onSubscriptionIndexRefreshed,
+  sanitizeCallsign,
   parseAffiliationFromType,
   parseTeamName,
   parseTeamRole,

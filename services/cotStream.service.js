@@ -500,6 +500,7 @@ function parseMarkerFromCoT(cot) {
       const contact = cot.raw?.event?.detail?.contact?._attributes;
       if (contact?.callsign) callsign = String(contact.callsign);
     }
+    callsign = mapMeta.sanitizeCallsign(callsign);
 
     const detail = cot.raw?.event?.detail || {};
     const type = String(attrs.type || cot.type() || "");

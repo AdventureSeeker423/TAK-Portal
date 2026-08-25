@@ -229,7 +229,7 @@ function estimateLabelBoxMercator(lon, lat, callsign, zoom) {
   const x = ((lon + 180) / 360) * scale;
   const sinLat = Math.sin((lat * Math.PI) / 180);
   const y = (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * scale;
-  const w = Math.max(36, String(callsign || "").length * 6.5);
+  const w = Math.max(36, String(mapMeta.sanitizeCallsign(callsign) || "").length * 6.5);
   const h = 13;
   return { x: x - w / 2, y: y - 28, w, h };
 }
@@ -305,7 +305,7 @@ function toSlimMarker(marker) {
     : "";
   return {
     uid: marker.uid,
-    callsign: marker.callsign,
+    callsign: mapMeta.sanitizeCallsign(marker.callsign),
     type: marker.type,
     lat: Number.isFinite(Number(marker?.lat)) ? Number(marker.lat) : marker?.lat,
     lon: Number.isFinite(Number(marker?.lon)) ? Number(marker.lon) : marker?.lon,
@@ -364,7 +364,7 @@ function toRenderedFeature(marker, options = {}) {
     properties: {
       kind: "marker",
       uid: marker.uid,
-      callsign: marker.callsign,
+      callsign: mapMeta.sanitizeCallsign(marker.callsign),
       type: marker.type,
       affiliation: marker.affiliation || "other",
       color,

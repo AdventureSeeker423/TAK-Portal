@@ -124,4 +124,11 @@ assert.deepStrictEqual(
   ["tak_Channel Charlie"]
 );
 
+assert.strictEqual(
+  mapMeta.sanitizeCallsign("TN\uFFFC\uFFFCHumphsheriff\uFFFC-102\uFFFCi"),
+  "TN Humphsheriff -102 i"
+);
+assert.strictEqual(mapMeta.sanitizeCallsign("  ALPHA\u200B-1  "), "ALPHA-1");
+assert.strictEqual(mapMeta.sanitizeCallsign(""), "");
+
 console.log("mapMeta.test.js OK");

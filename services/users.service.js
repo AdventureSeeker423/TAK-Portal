@@ -5,6 +5,7 @@ const templatesStore = require("./templates.service");
 const tak = require("./tak.service");
 const settingsSvc = require("./settings.service");
 const accessSvc = require("./access.service");
+const { sanitizeCallsign } = require("./callsignSanitize");
 
 function getHiddenUserPrefixes() {
   return String(getString("USERS_HIDDEN_PREFIXES", ""))
@@ -253,7 +254,7 @@ function resolveCallsignRadioOrBlank({ radioCallsign } = {}) {
 
 /** Strip empty segments and orphan dashes (e.g. XXX--ZZZ or XXX- → XXX-ZZZ / XXX). */
 function cleanupCallsignOutput(str) {
-  let s = String(str || "").trim();
+  let s = sanitizeCallsign(str);
   s = s.replace(/\s*-\s*/g, "-");
   s = s.replace(/-{2,}/g, "-");
   while (s.startsWith("-")) s = s.slice(1);
