@@ -9,6 +9,13 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.0 - 8/26/26
+🎉 `New Feature` - TAK Portal Live Map - A built in live map now ships with TAK Portal allowing for an easy to use, view only web interface that can serve anyone wanting an overview of TAK.  Channels, Data Sync Missions, and Data Packages can all be viewed from within live map. (Issues are still being sorted with an occassional bug of an improper icon getting displayed)<br>
+🎉 `New Feature` - Live Map Search Functionality - Allows the user to search for callsigns of COTs, addresses (in beta), and coordinates.<br>
+🎉 `New Feature` - Live Map Geofence - Geofences can be created within Live Map to automatically toggle channels and/or data sync missions on and off when a user enters or exits a geofence<br>
+🎉 `New Feature` - Channel Patching - TAK Portal can now "patch" channels together similar to a dispatch console.  Currently any channel that is added to the patch will both send and receive across those channels with TAK Portal acting as a bridge/relay.  More customization options will be added at a later date.<br>
+✨ `Enhancement` - Reorganized sidebar allowing for better ease of use and accessibility of frequently used pages
+
 ### v1.3.80 - 8/25/26
 ✨ `Enhancement` - Agencies - DC added as an option in the states dropdown (more customization to come soon for non-US users)
 
