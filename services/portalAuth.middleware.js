@@ -208,6 +208,10 @@ function portalAuthMiddleware(req, res, next) {
         normalizedPath === "/api/mou/user-agreement/accept" ||
         normalizedPath === "/api/mou/user-agreement/decline" ||
         normalizedPath === "/plugins" ||
+        normalizedPath === "/map" ||
+        normalizedPath.startsWith("/map/") ||
+        normalizedPath === "/api/map" ||
+        normalizedPath.startsWith("/api/map/") ||
         isPluginDownloadApi ||
         isAtakApkDownloadApi;
       if (!isAllowedNonAdminPath) {

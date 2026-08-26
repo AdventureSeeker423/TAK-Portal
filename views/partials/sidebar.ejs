@@ -26,6 +26,7 @@
       ? _settings.MOU_ENABLED.toLowerCase() === "true"
       : false;
   const canSeeMouNav = (_isGlobalAdmin || _isAgencyAdmin) && _perm("page.mou") && mouEnabled;
+  const _isAnyAdmin = _isGlobalAdmin || _isAgencyAdmin;
 
   const canSeeChannelPatchNav = _isGlobalAdmin && _perm("page.channel_patch");
   const canSeeUsersGroupsSection =
@@ -43,7 +44,7 @@
     _perm("page.settings");
   const canSeeIncidentResponseSection =
     _perm("page.locate") || _perm("page.mutual_aid");
-  const canSeeOnboardingSection = true;
+  const canSeeOnboardingSection = _isAnyAdmin;
 
   const _path = (typeof currentPath !== "undefined" && currentPath) ? String(currentPath).replace(/\/+$/, "") || "/" : "/";
   function isActive(href) {
@@ -52,7 +53,6 @@
     return _path === h || _path.startsWith(h + "/");
   }
 
-  const _isAnyAdmin = _isGlobalAdmin || _isAgencyAdmin;
   const _homeHref = _isAnyAdmin ? "/" : "/setup-my-device";
   const _homeLabel = _isAnyAdmin ? "Go to dashboard" : "Go to Setup My Device";
 %>
@@ -160,6 +160,9 @@
             <a href="/plugins" class="<%= isActive('/plugins') ? 'active' : '' %>">ATAK Plugins</a>
           </div>
         </div>
+      <% } else { %>
+        <a href="/setup-my-device" class="<%= isActive('/setup-my-device') ? 'active' : '' %>">Setup My Device</a>
+        <a href="/plugins" class="<%= isActive('/plugins') ? 'active' : '' %>">ATAK Plugins</a>
       <% } %>
     </div>
 

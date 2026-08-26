@@ -275,7 +275,7 @@
 
 <!-- User Edit Modal -->
 <div class="modalOverlay" id="modalOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="userTitle">
+  <div class="modal editUserModal" role="dialog" aria-modal="true" aria-labelledby="userTitle">
     <div class="modalHeader">
       <div class="modalHeaderLeft">
         <h2 id="userTitle" style="margin:0;">Edit User</h2>
@@ -370,7 +370,7 @@
           </div>
         </div>
 
-        <div style="grid-column:1/-1;">
+        <div class="editUserGroupsSection" style="grid-column:1/-1;">
           <h3>Groups</h3>
           <div id="groupChips" class="chips"></div>
 
@@ -4063,6 +4063,74 @@ if (exportUsersCsvBtn) {
   box-shadow: 0 12px 40px rgba(0,0,0,.45);
 }
 
+/* Keep the edit-user dialog inside the overlay; only the groups list scrolls. */
+#modalOverlay{
+  overflow: hidden;
+  box-sizing: border-box;
+}
+#modalOverlay .editUserModal{
+  display: flex;
+  flex-direction: column;
+  width: min(1200px, 100%);
+  max-height: 100%;
+  overflow: hidden;
+}
+#modalOverlay .editUserModal .modalHeader{
+  flex: 0 0 auto;
+  position: relative;
+  top: auto;
+}
+#modalOverlay .editUserModal .modalBody{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#modalOverlay .editUserModal .modalBody > .grid2{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+#modalOverlay .editUserModal .topPanels{
+  flex: 0 0 auto;
+}
+#modalOverlay .editUserGroupsSection{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#modalOverlay .editUserGroupsSection > h3{
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+}
+#modalOverlay .editUserGroupsSection .chips{
+  flex: 0 1 auto;
+  max-height: 4.75rem;
+  overflow-y: auto;
+}
+#modalOverlay .editUserGroupsSection .editGroupFilterRow{
+  flex: 0 0 auto;
+}
+#modalOverlay .editUserGroupsSection .groupsBox{
+  flex: 1 1 auto;
+  min-height: 8rem;
+  max-height: none;
+  overflow-y: auto;
+}
+#modalOverlay .editUserGroupsSection .templateBar,
+#modalOverlay .editUserGroupsSection .managedAgenciesBar{
+  flex: 0 0 auto;
+}
+body.noScroll .main{
+  overflow: hidden !important;
+}
+
 .modalHeader{
   position: sticky;
   top: 0;
@@ -4459,10 +4527,11 @@ th.sortable:hover{
   .modalOverlay{
     padding: 8px;
   }
-  #modalOverlay .modal{
+  #modalOverlay .modal,
+  #modalOverlay .editUserModal{
     width: 100%;
     max-width: 100%;
-    max-height: 96dvh;
+    max-height: 100%;
     border-radius: 12px;
   }
   #modalOverlay .modalHeader{
@@ -4470,6 +4539,10 @@ th.sortable:hover{
   }
   #modalOverlay .modalBody{
     padding: 10px;
+  }
+  #modalOverlay .editUserGroupsSection .groupsBox{
+    min-height: 6rem;
+    max-height: none;
   }
   .topPanels .panel.editTopPanel{
     padding: 8px;
