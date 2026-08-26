@@ -4542,8 +4542,26 @@ th.sortable:hover{
     padding: 10px;
   }
   #modalOverlay .editUserGroupsSection .groupsBox{
-    min-height: 6rem;
-    max-height: none;
+    min-height: 8rem;
+  }
+  #modalOverlay .editUserGroupsSection .groupsInner,
+  .groupsInner{
+    column-count: 1;
+    column-width: auto;
+  }
+  .groupItem{
+    min-height: 44px;
+    padding: 10px 8px;
+    white-space: normal;
+  }
+  .groupItem input{
+    width: 20px;
+    height: 20px;
+  }
+  .groupItem span{
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
   }
   .topPanels .panel.editTopPanel{
     padding: 8px;
@@ -4621,7 +4639,7 @@ th.sortable:hover{
 }
 
 /* Phones, tablets, and short viewports: scroll the edit dialog as a whole.
-   Nested overflow:hidden + inner list scroll clips the header/fields and fights touch scrolling. */
+   The groups checkbox list keeps its own max-height so long lists can scroll inside it. */
 @media (max-width: 1024px), (max-height: 900px){
   #modalOverlay{
     align-items: flex-start;
@@ -4657,9 +4675,14 @@ th.sortable:hover{
   }
   #modalOverlay .editUserGroupsSection .groupsBox{
     flex: 0 0 auto;
-    min-height: 8rem;
-    max-height: none;
-    overflow: visible;
+    min-height: 10rem;
+    max-height: 52vh;
+    max-height: min(52dvh, 24rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
   }
 }
 
