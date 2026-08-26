@@ -31,8 +31,13 @@ function getInt(name, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function isLiveMapEnabled() {
+  return getBool("LIVE_MAP_ENABLED", true);
+}
+
 module.exports = {
   getString,
   getBool,
   getInt,
+  isLiveMapEnabled,
 };

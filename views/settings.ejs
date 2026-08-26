@@ -222,6 +222,7 @@
         "REQUEST_ACCESS_ENABLED",
         "REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS",
         "BETA_MODE",
+        "LIVE_MAP_ENABLED",
         "MOU_ENABLED",
         "MOU_SEND_EMAILS",
         "AUTO_CREATE_AGENCY_GROUPS_ENABLED",
@@ -402,6 +403,7 @@
         "REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS",
         "BETA_MODE",
         "DEFAULT_THEME_MODE",
+        "LIVE_MAP_ENABLED",
         "DEFAULT_MAP_SOURCE",
         "PRIMARY_BUTTON_COLOR",
         "SITE_FONT_FAMILY",
@@ -3922,13 +3924,14 @@
             <h2 id="settingsModalTitle-live-map">Live Map</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Default basemap for /map and the dashboard mini map.</span>
+              <span class="settings-help-popover">Enable or disable the Live Map page, and set the default basemap for /map and the dashboard mini map.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
         </div>
         <div class="modalBody settings-body">
           <div class="grid2">
+            <% renderField("LIVE_MAP_ENABLED","Enable Live Map","When off, the Live Map page is hidden and map-only services stop (live stream, geofences, mission and package overlays). The dashboard connected-client mini map still works.","true"); %>
             <label class="settings-field">
               <span class="settings-label">
                 <span>Default Map Source</span>

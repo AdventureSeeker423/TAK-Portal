@@ -7,7 +7,7 @@ const settingsSvc = require("./services/settings.service");
 const dashboardStatsCache = require("./services/dashboardStatsCache.service");
 const takDashboardCache = require("./services/takDashboardCache.service");
 const axios = require("axios");
-const { getString, getBool } = require("./services/env");
+const { getString, getBool, isLiveMapEnabled } = require("./services/env");
 const { URL } = require("url");
 const pkg = require("./package.json");
 const mutualAidSvc = require("./services/mutualAid.service");
@@ -451,6 +451,40 @@ function getDefaultMapSource() {
   return mapBasemapsConfig.getDefaultMapSource(settings);
 }
 
+function applyLiveMapRuntime() {
+  try {
+    const geofenceEngine = require("./services/geofence.engine");
+    if (isLiveMapEnabled()) {
+      geofenceEngine.start();
+    } else {
+      geofenceEngine.stop();
+    }
+  } catch (e) {
+    console.log("⚠️ Live Map runtime apply failed", e?.message || e);
+  }
+}
+
+function isDashboardMiniMapApiPath(req) {
+  const raw = String(req.path || req.url || "").split("?")[0];
+  const p = raw.replace(/\/+$/, "") || "/";
+  return (
+    p === "/icons" ||
+    p.startsWith("/icons/") ||
+    p === "/api/map/icons" ||
+    p.startsWith("/api/map/icons/")
+  );
+}
+
+function requireLiveMapEnabled(req, res, next) {
+  if (isLiveMapEnabled() || isDashboardMiniMapApiPath(req)) return next();
+  if (isApiRequest(req)) {
+    return res.status(404).json({ error: "Live Map is disabled" });
+  }
+  const u = req.authentikUser;
+  const dest = u && (u.isGlobalAdmin || u.isAgencyAdmin) ? "/" : "/setup-my-device";
+  return res.redirect(dest);
+}
+
 function requireMapAccess(req, res, next) {
   const u = req.authentikUser;
   if (!u) {
@@ -570,7 +604,7 @@ app.use("/api/audit-log", requirePermission("page.audit_log"), require("./routes
 app.use("/api/plugins", requirePermission("page.plugin_manager"), require("./routes/plugins.routes"));
 app.use("/api/integrations", requirePermission("page.integrations"), require("./routes/integrations.routes"));
 app.use("/api/ssh", requirePermission("page.integrations"), require("./routes/ssh.routes"));
-app.use("/api/map", requireMapAccess, require("./routes/map.routes"));
+app.use("/api/map", requireMapAccess, requireLiveMapEnabled, require("./routes/map.routes"));
 app.use(
   "/api/channel-patch",
   requireGlobalAdminRole,
@@ -925,7 +959,7 @@ app.get("/plugin-manager", requirePermission("page.plugin_manager"), async (req,
 });
 
 // Beta: Getting Started (global admins only, beta mode)
-app.get("/map", requireMapAccess, (req, res) => {
+app.get("/map", requireMapAccess, requireLiveMapEnabled, (req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
@@ -2001,6 +2035,8 @@ app.post(
       // never block settings save
     }
 
+    applyLiveMapRuntime();
+
     if (wantsJson) {
       return res.json({ ok: true });
     }
@@ -2242,6 +2278,8 @@ app.post(
         console.warn("[settings] Failed to reload settings after import:", e?.message || e);
       }
 
+      applyLiveMapRuntime();
+
       return res.redirect("/settings?import=1");
 
     } catch (err) {
@@ -2320,8 +2358,7 @@ app.listen(port, () => {
   }
 
   try {
-    const geofenceEngine = require("./services/geofence.engine");
-    geofenceEngine.start();
+    applyLiveMapRuntime();
   } catch (e) {
     console.log("⚠️ Geofence evaluator init failed", e?.message || e);
   }

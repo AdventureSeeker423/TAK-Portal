@@ -26,6 +26,10 @@
       ? _settings.MOU_ENABLED.toLowerCase() === "true"
       : false;
   const canSeeMouNav = (_isGlobalAdmin || _isAgencyAdmin) && _perm("page.mou") && mouEnabled;
+  const liveMapEnabled =
+    typeof _settings.LIVE_MAP_ENABLED === "string"
+      ? !["false", "0", "off", "no"].includes(_settings.LIVE_MAP_ENABLED.toLowerCase())
+      : true;
   const _isAnyAdmin = _isGlobalAdmin || _isAgencyAdmin;
 
   const canSeeChannelPatchNav = _isGlobalAdmin && _perm("page.channel_patch");
@@ -71,7 +75,9 @@
         <a href="/" class="<%= isActive('/') ? 'active' : '' %>">Dashboard</a>
       <% } %>
 
+      <% if (liveMapEnabled) { %>
       <a href="/map" class="<%= isActive('/map') ? 'active' : '' %>">Live Map</a>
+      <% } %>
 
       <% if (canSeeUsersGroupsSection) { %>
         <!-- Users & Groups -->
