@@ -1476,7 +1476,7 @@
   }
 
   function isItemMenuOpen(name) {
-    if (!itemMenuOpen.has(name)) return true;
+    if (!itemMenuOpen.has(name)) return false;
     return !!itemMenuOpen.get(name);
   }
 

@@ -14,7 +14,6 @@
   const DETAIL_PANEL_MIN_PX = 340;
   const DETAIL_PANEL_MIN_VW = 0.38;
   const DETAIL_PANEL_MAX_VW = 0.5;
-  const DETAIL_PANEL_RIGHT_OFFSET = 12;
   const MAX_DETAIL_SLOTS = 3;
   const LAYOUT_NARROW_MAX = 990;
 
@@ -3842,21 +3841,39 @@
     }
   }
 
+  function layoutViewportWidth() {
+    const w = document.documentElement && document.documentElement.clientWidth;
+    return w > 0 ? w : window.innerWidth;
+  }
+
+  /** Visual px per layout px. Desktop uses html { zoom: 0.8 }; clientX is visual. */
+  function cssZoomScale() {
+    const root = document.documentElement;
+    if (!root) return 1;
+    const rect = root.getBoundingClientRect();
+    if (rect.width && root.clientWidth) {
+      const s = rect.width / root.clientWidth;
+      if (s > 0.2 && s < 5) return s;
+    }
+    const z = parseFloat(window.getComputedStyle(root).zoom);
+    return Number.isFinite(z) && z > 0 ? z : 1;
+  }
+
   function detailPanelDefaultWidth() {
-    return Math.min(DETAIL_PANEL_MIN_PX, window.innerWidth * DETAIL_PANEL_MIN_VW);
+    return Math.min(DETAIL_PANEL_MIN_PX, layoutViewportWidth() * DETAIL_PANEL_MIN_VW);
   }
 
   function detailPanelMinWidth() {
     const count = Math.max(1, detailSlots.length || 1);
     const perPaneMax = Math.floor(
-      (window.innerWidth * DETAIL_PANEL_MAX_VW) / count
+      (layoutViewportWidth() * DETAIL_PANEL_MAX_VW) / count
     );
     return Math.min(detailPanelDefaultWidth(), perPaneMax);
   }
 
   function detailPanelMaxWidth() {
     const count = Math.max(1, detailSlots.length || 1);
-    return Math.floor((window.innerWidth * DETAIL_PANEL_MAX_VW) / count);
+    return Math.floor((layoutViewportWidth() * DETAIL_PANEL_MAX_VW) / count);
   }
 
   function clampDetailPanelWidth(width) {
@@ -3895,11 +3912,13 @@
 
     function onPointerMove(e) {
       if (!dragging) return;
-      const totalWidth =
-        window.innerWidth - DETAIL_PANEL_RIGHT_OFFSET - e.clientX;
+      const stackRect = elDetailStack.getBoundingClientRect();
+      const visualTotal = stackRect.right - e.clientX;
+      const scale = cssZoomScale();
+      const layoutTotal = scale > 0 ? visualTotal / scale : visualTotal;
       const count = Math.max(1, detailSlots.length || 1);
       const gap = 8 * (count - 1);
-      const perPane = (totalWidth - gap) / count;
+      const perPane = (layoutTotal - gap) / count;
       applyDetailPanelWidth(perPane);
     }
 
@@ -3923,6 +3942,9 @@
       }
       e.preventDefault();
       dragging = true;
+      try {
+        elDetailResize.setPointerCapture(e.pointerId);
+      } catch (_) {}
       elDetailResize.classList.add("is-dragging");
       elDetailStack.classList.add("is-resizing");
       document.body.classList.add("map-detail-resizing");
