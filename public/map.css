@@ -431,8 +431,11 @@ body.map-page .map-main {
   pointer-events: none;
 }
 
-.map-detail-stack.is-resizing {
+.map-detail-stack.is-resizing,
+body.map-detail-resizing .map-detail-stack,
+body.map-detail-resizing .map-detail-pane {
   transition: none;
+  max-width: none;
 }
 
 .map-detail-pane {

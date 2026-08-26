@@ -3842,21 +3842,55 @@
   }
 
   function layoutViewportWidth() {
-    const w = document.documentElement && document.documentElement.clientWidth;
-    return w > 0 ? w : window.innerWidth;
+    const client =
+      document.documentElement && document.documentElement.clientWidth;
+    const visual = window.visualViewport && window.visualViewport.width;
+    return Math.max(client || 0, window.innerWidth || 0, visual || 0);
   }
 
-  /** Visual px per layout px. Desktop uses html { zoom: 0.8 }; clientX is visual. */
-  function cssZoomScale() {
-    const root = document.documentElement;
-    if (!root) return 1;
-    const rect = root.getBoundingClientRect();
-    if (rect.width && root.clientWidth) {
-      const s = rect.width / root.clientWidth;
-      if (s > 0.2 && s < 5) return s;
-    }
-    const z = parseFloat(window.getComputedStyle(root).zoom);
-    return Number.isFinite(z) && z > 0 ? z : 1;
+  function visibleDetailPaneCount() {
+    if (!elDetailStack) return 1;
+    return Math.max(
+      1,
+      elDetailStack.querySelectorAll(".map-detail-pane:not([hidden])").length
+    );
+  }
+
+  function stackGapPx() {
+    if (!elDetailStack) return 8;
+    const style = window.getComputedStyle(elDetailStack);
+    const gap = parseFloat(style.columnGap || style.gap);
+    return Number.isFinite(gap) ? gap : 8;
+  }
+
+  /**
+   * Per-pane width from the pointer. Uses the stack's own box vs clientX so
+   * html { zoom: 0.8 } cannot mix window.innerWidth with layout CSS pixels.
+   */
+  function paneWidthFromClientX(clientX) {
+    const rect = elDetailStack.getBoundingClientRect();
+    const visualSpan = rect.right - clientX;
+    const visualStack = rect.width;
+    const layoutStack = elDetailStack.offsetWidth;
+    const layoutSpan =
+      visualStack > 1 && layoutStack > 1
+        ? visualSpan * (layoutStack / visualStack)
+        : visualSpan;
+    const count = visibleDetailPaneCount();
+    const gap = stackGapPx() * Math.max(0, count - 1);
+    return (layoutSpan - gap) / count;
+  }
+
+  function currentDetailPaneLayoutWidth() {
+    const pane =
+      elDetailStack &&
+      elDetailStack.querySelector(".map-detail-pane:not([hidden])");
+    if (pane && pane.offsetWidth > 0) return pane.offsetWidth;
+    const raw = elDetailStack
+      ? parseFloat(elDetailStack.style.getPropertyValue("--map-detail-pane-width"))
+      : NaN;
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return detailPanelDefaultWidth();
   }
 
   function detailPanelDefaultWidth() {
@@ -3876,21 +3910,28 @@
     return Math.floor((layoutViewportWidth() * DETAIL_PANEL_MAX_VW) / count);
   }
 
-  function clampDetailPanelWidth(width) {
-    return Math.max(
-      detailPanelMinWidth(),
-      Math.min(detailPanelMaxWidth(), Math.round(width))
-    );
+  function clampDetailPanelWidth(width, lockSize) {
+    let min = detailPanelMinWidth();
+    let max = detailPanelMaxWidth();
+    if (Number.isFinite(lockSize) && lockSize > 0) {
+      min = Math.min(min, lockSize);
+      max = Math.max(max, lockSize);
+    }
+    return Math.max(min, Math.min(max, Math.round(width)));
   }
 
-  function applyDetailPanelWidth(width, persist) {
+  function applyDetailPanelWidth(width, persist, lockSize) {
     if (!elDetailStack || isMapLayoutNarrow()) return;
-    const clamped = clampDetailPanelWidth(width);
+    const clamped = clampDetailPanelWidth(width, lockSize);
     elDetailStack.style.setProperty("--map-detail-pane-width", clamped + "px");
     if (persist !== false) {
       localStorage.setItem(LS_DETAIL_PANEL_WIDTH, String(clamped));
     }
-    if (map && typeof map.resize === "function") {
+    if (
+      (!elDetailStack || !elDetailStack.classList.contains("is-resizing")) &&
+      map &&
+      typeof map.resize === "function"
+    ) {
       map.resize();
     }
     return clamped;
@@ -3909,17 +3950,11 @@
     if (!elDetailResize || !elDetailStack) return;
 
     let dragging = false;
+    let startWidth = 0;
 
     function onPointerMove(e) {
       if (!dragging) return;
-      const stackRect = elDetailStack.getBoundingClientRect();
-      const visualTotal = stackRect.right - e.clientX;
-      const scale = cssZoomScale();
-      const layoutTotal = scale > 0 ? visualTotal / scale : visualTotal;
-      const count = Math.max(1, detailSlots.length || 1);
-      const gap = 8 * (count - 1);
-      const perPane = (layoutTotal - gap) / count;
-      applyDetailPanelWidth(perPane);
+      applyDetailPanelWidth(paneWidthFromClientX(e.clientX), false, startWidth);
     }
 
     function stopDrag() {
@@ -3931,6 +3966,7 @@
       document.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerup", stopDrag);
       document.removeEventListener("pointercancel", stopDrag);
+      applyDetailPanelWidth(currentDetailPaneLayoutWidth(), true);
       if (map && typeof map.resize === "function") {
         map.resize();
       }
@@ -3940,11 +3976,11 @@
       if (elDetailStack.classList.contains("collapsed") || isMapLayoutNarrow()) {
         return;
       }
+      if (e.button != null && e.button !== 0) return;
       e.preventDefault();
       dragging = true;
-      try {
-        elDetailResize.setPointerCapture(e.pointerId);
-      } catch (_) {}
+      startWidth = currentDetailPaneLayoutWidth();
+      applyDetailPanelWidth(startWidth, false, startWidth);
       elDetailResize.classList.add("is-dragging");
       elDetailStack.classList.add("is-resizing");
       document.body.classList.add("map-detail-resizing");
