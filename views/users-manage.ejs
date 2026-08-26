@@ -4063,7 +4063,8 @@ if (exportUsersCsvBtn) {
   box-shadow: 0 12px 40px rgba(0,0,0,.45);
 }
 
-/* Keep the edit-user dialog inside the overlay; only the groups list scrolls. */
+/* Large screens: keep the edit-user dialog inside the overlay; only the groups list scrolls.
+   Group chips always wrap in full — never an inner chip scroller. */
 #modalOverlay{
   overflow: hidden;
   box-sizing: border-box;
@@ -4110,9 +4111,9 @@ if (exportUsersCsvBtn) {
   margin: 0 0 8px;
 }
 #modalOverlay .editUserGroupsSection .chips{
-  flex: 0 1 auto;
-  max-height: 4.75rem;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
 }
 #modalOverlay .editUserGroupsSection .editGroupFilterRow{
   flex: 0 0 auto;
@@ -4616,6 +4617,49 @@ th.sortable:hover{
   }
   .groupsBox{
     max-height: 280px;
+  }
+}
+
+/* Phones, tablets, and short viewports: scroll the edit dialog as a whole.
+   Nested overflow:hidden + inner list scroll clips the header/fields and fights touch scrolling. */
+@media (max-width: 1024px), (max-height: 900px){
+  #modalOverlay{
+    align-items: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  #modalOverlay .editUserModal{
+    flex: 0 0 auto;
+    width: min(1200px, 100%);
+    max-height: none;
+    overflow: visible;
+    margin-block: auto;
+  }
+  #modalOverlay .editUserModal .modalHeader{
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: var(--panel);
+  }
+  #modalOverlay .editUserModal .modalBody,
+  #modalOverlay .editUserModal .modalBody > .grid2,
+  #modalOverlay .editUserGroupsSection{
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  #modalOverlay .editUserGroupsSection .chips{
+    flex: 0 0 auto;
+    max-height: none;
+    overflow: visible;
+  }
+  #modalOverlay .editUserGroupsSection .groupsBox{
+    flex: 0 0 auto;
+    min-height: 8rem;
+    max-height: none;
+    overflow: visible;
   }
 }
 
