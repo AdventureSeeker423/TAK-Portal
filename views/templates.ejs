@@ -79,7 +79,7 @@
 
       <div style="grid-column:1/-1; justify-content:flex-end;" class="row">
         <span id="msg" class="msg"></span>
-        <button class="btn success" id="submitBtn" type="submit">Create Template</button>
+        <button class="btn success" id="submitBtn" type="submit">Create New Template</button>
       </div>
     </form>
   </div>
@@ -582,7 +582,7 @@ async function loadTemplates(){
 function setCreateMode(){
   editingIndex = null;
   formTitle.textContent = "Create New Template";
-  submitBtn.textContent = "Create Template";
+  submitBtn.textContent = "Create New Template";
   cancelEditBtn.style.display = "none";
   setMsg("");
 
@@ -630,7 +630,7 @@ window.duplicateTemplate = async (idx) => {
 
   editingIndex = null;
   formTitle.textContent = "Create New Template";
-  submitBtn.textContent = "Create Template";
+  submitBtn.textContent = "Create New Template";
   cancelEditBtn.style.display = "none";
   setMsg("");
 

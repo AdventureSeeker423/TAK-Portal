@@ -5,7 +5,7 @@
   <h1>Agencies</h1>
 
   <div class="card">
-    <h2>Create Agency</h2>
+    <h2>Create New Agency</h2>
     <form id="addForm" class="grid2">
       <%- include("partials/agency-create-fields", {
         agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
@@ -21,7 +21,7 @@
       <div class="createActionsRow agencyCreateActionsRow">
         <button class="btn btn-access createTemplateDownloadBtn" type="button" id="agencyCsvTemplateBtn">Download CSV Template</button>
         <button class="btn" type="button" id="agencyCsvBtn">Create from CSV</button>
-        <button class="btn success createAgencySubmitBtnAlignRight" type="submit">Create Agency</button>
+        <button class="btn success createAgencySubmitBtnAlignRight" type="submit">Create New Agency</button>
         <input type="file" id="agencyCsvFileInput" accept=".csv" style="display:none" />
         <span id="msg" class="msg"></span>
       </div>
