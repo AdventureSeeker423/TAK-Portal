@@ -43,6 +43,39 @@
     <p id="settingsHubSearchEmpty" class="settings-hub-search-empty" hidden>No settings match your search.</p>
     <div id="settingsHubCategories">
 
+    <%
+      const _settingsPerm = typeof perm === "function" ? perm : function () { return false; };
+      const canSeeSettingsAdminLinks =
+        _settingsPerm("page.audit_log") ||
+        _settingsPerm("page.plugin_manager") ||
+        _settingsPerm("page.access_control");
+    %>
+    <% if (canSeeSettingsAdminLinks) { %>
+    <section class="settings-hub-category" aria-labelledby="settingsCatAdmin">
+      <h2 class="settings-hub-category-title" id="settingsCatAdmin">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Administration
+      </h2>
+      <div class="settings-hub-grid">
+        <% if (_settingsPerm("page.audit_log")) { %>
+        <a href="/audit-log" class="settings-hub-card">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Audit Log</span></span>
+        </a>
+        <% } %>
+        <% if (_settingsPerm("page.plugin_manager")) { %>
+        <a href="/plugin-manager" class="settings-hub-card">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Plugin Manager</span></span>
+        </a>
+        <% } %>
+        <% if (_settingsPerm("page.access_control")) { %>
+        <a href="/access-control" class="settings-hub-card">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Access Control</span></span>
+        </a>
+        <% } %>
+      </div>
+    </section>
+    <% } %>
+
     <section class="settings-hub-category" aria-labelledby="settingsCatAuth">
       <h2 class="settings-hub-category-title" id="settingsCatAuth">
         <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -5125,6 +5158,23 @@
               });
             }
           });
+
+          hub.querySelectorAll("a.settings-hub-card[href]").forEach(function (card) {
+            var titleEl = card.querySelector(".settings-hub-card-title");
+            var sectionTitle = titleEl ? cleanText(titleEl.textContent) : "";
+            var href = card.getAttribute("href") || "";
+            if (!sectionTitle || !href) return;
+            items.push({
+              href: href,
+              modalId: "",
+              sectionTitle: sectionTitle,
+              label: sectionTitle,
+              key: "",
+              haystack: [sectionTitle, href.replace(/[\/_-]+/g, " ")].join(" ").toLowerCase(),
+              fieldIndex: -1,
+              sectionOnly: true,
+            });
+          });
           return items;
         }
 
@@ -5134,6 +5184,10 @@
         }
 
         function openResult(item) {
+          if (item.href) {
+            window.location.href = item.href;
+            return;
+          }
           openSettingsModal(item.modalId);
           window.setTimeout(function () {
             var modal = document.getElementById("settingsModal-" + item.modalId);
@@ -5225,7 +5279,7 @@
 
               var labelEl = document.createElement("span");
               labelEl.className = "settings-search-result-label";
-              labelEl.textContent = item.sectionOnly ? "Open section" : item.label;
+              labelEl.textContent = item.href ? "Open page" : item.sectionOnly ? "Open section" : item.label;
 
               var valueEl = document.createElement("span");
               valueEl.className = "settings-search-result-value";

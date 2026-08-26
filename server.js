@@ -885,7 +885,7 @@ app.get("/email", requirePermission("page.email"), (req, res) =>
   res.render("email")
 );
 
-// Channel Patch (global admins only for now; not in sidebar)
+// Channel Patch (global admins only)
 app.get("/channel-patch", requireGlobalAdminRole, (req, res) =>
   res.render("channel-patch")
 );

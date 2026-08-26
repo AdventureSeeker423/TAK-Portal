@@ -27,22 +27,22 @@
       : false;
   const canSeeMouNav = (_isGlobalAdmin || _isAgencyAdmin) && _perm("page.mou") && mouEnabled;
 
-  const canSeeConfigSection =
-    _perm("page.agencies") ||
-    _perm("page.integrations") ||
-    _perm("page.plugin_manager") ||
-    _perm("page.settings") ||
-    _perm("page.access_control");
+  const canSeeChannelPatchNav = _isGlobalAdmin && _perm("page.channel_patch");
   const canSeeUsersGroupsSection =
-    _perm("page.users") || _perm("page.groups") || _perm("page.templates");
-  const canSeeAdminSection =
-    _perm("page.audit_log") ||
+    _perm("page.users") ||
+    _perm("page.groups") ||
+    _perm("page.templates") ||
+    _perm("page.agencies");
+  const canSeeOperationsSection =
+    canSeeChannelPatchNav ||
     _perm("page.data_package") ||
     _perm("page.data_sync") ||
     _perm("page.email") ||
-    _perm("page.locate") ||
-    _perm("page.mutual_aid") ||
-    canSeeMouNav;
+    _perm("page.integrations") ||
+    canSeeMouNav ||
+    _perm("page.settings");
+  const canSeeIncidentResponseSection =
+    _perm("page.locate") || _perm("page.mutual_aid");
   const canSeeOnboardingSection = true;
 
   const _path = (typeof currentPath !== "undefined" && currentPath) ? String(currentPath).replace(/\/+$/, "") || "/" : "/";
@@ -71,6 +71,8 @@
         <a href="/" class="<%= isActive('/') ? 'active' : '' %>">Dashboard</a>
       <% } %>
 
+      <a href="/map" class="<%= isActive('/map') ? 'active' : '' %>">Live Map</a>
+
       <% if (canSeeUsersGroupsSection) { %>
         <!-- Users & Groups -->
         <div class="nav-section" data-section="users-groups">
@@ -88,20 +90,23 @@
             <% if (_perm("page.templates")) { %>
             <a href="/templates" class="<%= isActive('/templates') ? 'active' : '' %>">Templates</a>
             <% } %>
+            <% if (_perm("page.agencies")) { %>
+            <a href="/agencies" class="<%= isActive('/agencies') ? 'active' : '' %>">Agencies</a>
+            <% } %>
           </div>
         </div>
       <% } %>
 
-      <% if (canSeeAdminSection) { %>
-        <!-- Administration -->
-        <div class="nav-section" data-section="administration">
-          <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-administration" id="nav-toggle-administration">
-            <span class="nav-section-label">Administration</span>
+      <% if (canSeeOperationsSection) { %>
+        <!-- Operations -->
+        <div class="nav-section" data-section="operations">
+          <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-operations" id="nav-toggle-operations">
+            <span class="nav-section-label">Operations</span>
             <span class="nav-section-chevron" aria-hidden="true">▾</span>
           </button>
-          <div class="nav-section-links" id="nav-administration">
-            <% if (_perm("page.audit_log")) { %>
-              <a href="/audit-log" class="<%= isActive('/audit-log') ? 'active' : '' %>">Audit Log</a>
+          <div class="nav-section-links" id="nav-operations">
+            <% if (canSeeChannelPatchNav) { %>
+              <a href="/channel-patch" class="<%= isActive('/channel-patch') ? 'active' : '' %>">Channel Patching</a>
             <% } %>
             <% if (_perm("page.data_package")) { %>
               <a href="/data-package" class="<%= isActive('/data-package') ? 'active' : '' %>">Data Package</a>
@@ -112,41 +117,32 @@
             <% if (_perm("page.email")) { %>
             <a href="/email" class="<%= isActive('/email') ? 'active' : '' %>">Email Users</a>
             <% } %>
-            <% if (_perm("page.locate")) { %>
-              <a href="/locate" class="<%= isActive('/locate') ? 'active' : '' %>">Locate Persons</a>
-            <% } %>
-            <% if (_perm("page.mutual_aid")) { %>
-              <a href="/mutual-aid" class="<%= isActive('/mutual-aid') ? 'active' : '' %>">Mutual Aid</a>
+            <% if (_perm("page.integrations")) { %>
+            <a href="/integrations" class="<%= isActive('/integrations') ? 'active' : '' %>">Integrations</a>
             <% } %>
             <% if (canSeeMouNav) { %>
               <a href="/mou" class="<%= isActive('/mou') || isActive('/admin/mou') ? 'active' : '' %>">MOU Documents</a>
+            <% } %>
+            <% if (_perm("page.settings")) { %>
+            <a href="/settings" class="<%= isActive('/settings') || isActive('/audit-log') || isActive('/plugin-manager') || isActive('/access-control') ? 'active' : '' %>">Server Settings</a>
             <% } %>
           </div>
         </div>
       <% } %>
 
-      <% if (canSeeConfigSection) { %>
-        <!-- Configuration -->
-        <div class="nav-section" data-section="configuration">
-          <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-configuration" id="nav-toggle-configuration">
-            <span class="nav-section-label">Configuration</span>
+      <% if (canSeeIncidentResponseSection) { %>
+        <!-- Incident Response -->
+        <div class="nav-section" data-section="incident-response">
+          <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-incident-response" id="nav-toggle-incident-response">
+            <span class="nav-section-label">Incident Response</span>
             <span class="nav-section-chevron" aria-hidden="true">▾</span>
           </button>
-          <div class="nav-section-links" id="nav-configuration">
-            <% if (_perm("page.agencies")) { %>
-            <a href="/agencies" class="<%= isActive('/agencies') ? 'active' : '' %>">Agencies</a>
+          <div class="nav-section-links" id="nav-incident-response">
+            <% if (_perm("page.locate")) { %>
+              <a href="/locate" class="<%= isActive('/locate') ? 'active' : '' %>">Locate Persons</a>
             <% } %>
-            <% if (_perm("page.integrations")) { %>
-            <a href="/integrations" class="<%= isActive('/integrations') ? 'active' : '' %>">Integrations</a>
-            <% } %>
-            <% if (_perm("page.plugin_manager")) { %>
-            <a href="/plugin-manager" class="<%= isActive('/plugin-manager') ? 'active' : '' %>">Plugin Manager</a>
-            <% } %>
-            <% if (_perm("page.access_control")) { %>
-            <a href="/access-control" class="<%= isActive('/access-control') ? 'active' : '' %>">Access Control</a>
-            <% } %>
-            <% if (_perm("page.settings")) { %>
-            <a href="/settings" class="<%= isActive('/settings') ? 'active' : '' %>">Server Settings</a>
+            <% if (_perm("page.mutual_aid")) { %>
+              <a href="/mutual-aid" class="<%= isActive('/mutual-aid') ? 'active' : '' %>">Mutual Aid</a>
             <% } %>
           </div>
         </div>
