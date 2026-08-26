@@ -1785,6 +1785,112 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.map-mission-items-drop {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.map-mission-items-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--map-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 5px 8px 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.map-mission-items-summary:hover {
+  color: var(--map-text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.map-mission-items-chevron {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent currentColor;
+  transition: transform 0.12s ease;
+  flex-shrink: 0;
+}
+
+.map-mission-items-summary[aria-expanded="true"] .map-mission-items-chevron {
+  transform: rotate(90deg);
+}
+
+.map-mission-items-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px 8px 8px;
+}
+
+.map-mission-items-empty {
+  font-size: 0.74rem;
+  color: var(--map-muted);
+  padding: 2px 4px 4px;
+}
+
+.map-mission-item-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 2px;
+}
+
+.map-mission-item-row.is-nested {
+  padding-left: 18px;
+}
+
+.map-mission-item-row.is-folder .map-mission-item-name {
+  font-weight: 600;
+}
+
+.map-mission-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+.map-mission-item-kind {
+  flex-shrink: 0;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--map-muted);
+}
+
+.map-mission-toggle-sm {
+  width: 26px;
+  height: 14px;
+}
+
+.map-mission-toggle-sm::after {
+  top: 2px;
+  width: 10px;
+  height: 10px;
+}
+
+.map-mission-toggle-sm.is-on::after {
+  left: 13px;
+}
+
+.map-mission-toggle-sm.is-off::after {
+  left: 2px;
+}
+
 .map-mission-folder,
 .map-mission-item {
   margin-top: 1px;

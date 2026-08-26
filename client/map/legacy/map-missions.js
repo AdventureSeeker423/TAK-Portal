@@ -22,6 +22,7 @@
   let renderMissionListTimer = null;
   let missionAutoRefreshTimer = null;
   const missionAutoRefreshInFlight = new Set();
+  const itemMenuOpen = new Map();
 
   function hasVisibleMissions() {
     for (const entry of openMissions.values()) {
@@ -251,6 +252,7 @@
         visible: !!entry.visible,
         hiddenUids: Array.from(entry.hiddenUids || []),
         hiddenPaths: Array.from(entry.hiddenPaths || []),
+        hiddenRasters: Array.from(entry.hiddenRasters || []),
       };
     });
     try {
@@ -394,12 +396,25 @@
     const rasters = entry.rasterOverlays || [];
     for (let j = 0; j < rasters.length; j++) {
       const rasterIds = missionRasterIds(name, rasters[j].hash);
-      if (map.getLayer(rasterIds.layer)) {
-        map.setLayoutProperty(rasterIds.layer, "visibility", vis);
-        map.setPaintProperty(rasterIds.layer, "raster-opacity", entry.visible ? 0.92 : 0);
-      }
+      if (!map.getLayer(rasterIds.layer)) continue;
+      const rasterOn = rasterIsVisible(entry, rasters[j]);
+      map.setLayoutProperty(rasterIds.layer, "visibility", rasterOn ? "visible" : "none");
+      map.setPaintProperty(rasterIds.layer, "raster-opacity", rasterOn ? 0.92 : 0);
     }
     map.triggerRepaint();
+  }
+
+  function rasterIsVisible(entry, ov) {
+    if (!entry || !entry.visible) return false;
+    const hash = String((ov && ov.hash) || "").trim();
+    if (!hash) return false;
+    return !(entry.hiddenRasters && entry.hiddenRasters.has(hash));
+  }
+
+  function rasterLabel(ov) {
+    const raw = String((ov && ov.name) || (ov && ov.hash) || "Raster").trim();
+    const parts = raw.replace(/\\/g, "/").split("/");
+    return parts[parts.length - 1] || raw;
   }
 
   function rasterAbsoluteUrl(url) {
@@ -640,18 +655,19 @@
             type: "raster",
             source: ids.source,
             paint: {
-              "raster-opacity": entry.visible === false ? 0 : 0.92,
+              "raster-opacity": rasterIsVisible(entry, ov) ? 0.92 : 0,
               "raster-fade-duration": 0,
+            },
+            layout: {
+              visibility: rasterIsVisible(entry, ov) ? "visible" : "none",
             },
           },
           beforeId
         );
       } else {
-        map.setPaintProperty(
-          ids.layer,
-          "raster-opacity",
-          entry.visible === false ? 0 : 0.92
-        );
+        const rasterOn = rasterIsVisible(entry, ov);
+        map.setLayoutProperty(ids.layer, "visibility", rasterOn ? "visible" : "none");
+        map.setPaintProperty(ids.layer, "raster-opacity", rasterOn ? 0.92 : 0);
       }
     }
   }
@@ -951,6 +967,11 @@
     bindMissionLayerHandlers();
     applyMissionLabelDeclutter(name, { forceRecompute: true });
     refreshMissionOverlaySideEffects();
+  }
+
+  function featureUid(feat) {
+    if (!feat) return "";
+    return String(feat.id || feat.properties?.id || feat.properties?.uid || "").trim();
   }
 
   function featureLabel(props) {
@@ -1441,6 +1462,24 @@
     }
   }
 
+  function toggleRasterVisible(name, hash) {
+    const entry = openMissions.get(name);
+    if (!entry) return;
+    if (!entry.hiddenRasters) entry.hiddenRasters = new Set();
+    const id = String(hash || "").trim();
+    if (!id) return;
+    if (entry.hiddenRasters.has(id)) entry.hiddenRasters.delete(id);
+    else entry.hiddenRasters.add(id);
+    applyMissionLayerVisibility(name);
+    writeState();
+    renderMissionList();
+  }
+
+  function isItemMenuOpen(name) {
+    if (!itemMenuOpen.has(name)) return true;
+    return !!itemMenuOpen.get(name);
+  }
+
   function missionLayersInstalled(name) {
     if (!map) return false;
     const srcId = missionSourceId(name);
@@ -1457,6 +1496,7 @@
         layers: null,
         hiddenUids: new Set(),
         hiddenPaths: new Set(),
+        hiddenRasters: new Set(),
         rasterOverlays: [],
         attachmentSummary: null,
         loading: false,
@@ -1522,6 +1562,189 @@
     }
 
     head.appendChild(wrap);
+  }
+
+  function makeItemSwitch(isOn, label, onClick) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "map-mission-toggle map-mission-toggle-sm" + (isOn ? " is-on" : " is-off");
+    btn.title = (isOn ? "Hide " : "Show ") + label;
+    btn.setAttribute("aria-pressed", isOn ? "true" : "false");
+    btn.setAttribute("aria-label", (isOn ? "Hide " : "Show ") + label);
+    btn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      onClick();
+    });
+    return btn;
+  }
+
+  function appendItemRow(parent, options) {
+    const row = document.createElement("div");
+    row.className =
+      "map-mission-item-row" +
+      (options.nested ? " is-nested" : "") +
+      (options.kind === "folder" ? " is-folder" : "") +
+      (options.kind === "raster" ? " is-raster" : "");
+
+    row.appendChild(makeItemSwitch(options.on, options.label, options.onToggle));
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "map-mission-item-name";
+    nameEl.textContent = options.label;
+    nameEl.title = options.label;
+    row.appendChild(nameEl);
+
+    if (options.kind === "raster" || options.kind === "folder") {
+      const kindEl = document.createElement("span");
+      kindEl.className = "map-mission-item-kind";
+      kindEl.textContent = options.kind === "raster" ? "raster" : "folder";
+      row.appendChild(kindEl);
+    }
+
+    parent.appendChild(row);
+  }
+
+  function featureByUid(entry, uid) {
+    const id = String(uid);
+    const features = (entry && entry.geojson && entry.geojson.features) || [];
+    for (let i = 0; i < features.length; i++) {
+      if (featureUid(features[i]) === id) return features[i];
+    }
+    return null;
+  }
+
+  function itemLabelForUid(entry, uid) {
+    const feat = featureByUid(entry, uid);
+    if (feat) return String(featureLabel(feat.properties) || uid);
+    const id = String(uid || "");
+    return id.length > 18 ? id.slice(0, 16) + "…" : id || "Feature";
+  }
+
+  function appendMissionItemsDropdown(row, name, entry) {
+    const listed = new Set();
+    const folders = (entry.layers && entry.layers.folders) || [];
+    const orphaned = (entry.layers && entry.layers.orphaned) || [];
+    const features = (entry.geojson && entry.geojson.features) || [];
+    const rasters = entry.rasterOverlays || [];
+    const extraUids = [];
+
+    for (let i = 0; i < folders.length; i++) {
+      const uids = folders[i].uids || [];
+      for (let j = 0; j < uids.length; j++) listed.add(String(uids[j]));
+    }
+    for (let i = 0; i < orphaned.length; i++) listed.add(String(orphaned[i]));
+    for (let i = 0; i < features.length; i++) {
+      const id = featureUid(features[i]);
+      if (id && !listed.has(id)) extraUids.push(id);
+    }
+
+    const itemCount = listed.size + extraUids.length + rasters.length;
+    const wrap = document.createElement("div");
+    wrap.className = "map-mission-items-drop";
+
+    const open = isItemMenuOpen(name);
+    const summary = document.createElement("button");
+    summary.type = "button";
+    summary.className = "map-mission-items-summary";
+    summary.setAttribute("aria-expanded", open ? "true" : "false");
+    const chevron = document.createElement("span");
+    chevron.className = "map-mission-items-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    const summaryLabel = document.createElement("span");
+    summaryLabel.textContent = "Contents" + (itemCount ? " (" + itemCount + ")" : "");
+    summary.appendChild(chevron);
+    summary.appendChild(summaryLabel);
+    summary.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      itemMenuOpen.set(name, !isItemMenuOpen(name));
+      renderMissionList();
+    });
+    wrap.appendChild(summary);
+
+    if (!open) {
+      row.appendChild(wrap);
+      return;
+    }
+
+    const panel = document.createElement("div");
+    panel.className = "map-mission-items-panel";
+
+    if (!itemCount) {
+      const empty = document.createElement("div");
+      empty.className = "map-mission-items-empty";
+      empty.textContent = entry.loading ? "Loading items…" : "No overlay items in this mission.";
+      panel.appendChild(empty);
+      wrap.appendChild(panel);
+      row.appendChild(wrap);
+      return;
+    }
+
+    for (let i = 0; i < folders.length; i++) {
+      const folder = folders[i];
+      const folderOn = !entry.hiddenPaths.has(folder.path);
+      appendItemRow(panel, {
+        kind: "folder",
+        label: folder.name || folder.path || "Folder",
+        on: folderOn,
+        onToggle: function () {
+          toggleFolderVisible(name, folder);
+        },
+      });
+      const uids = folder.uids || [];
+      for (let j = 0; j < uids.length; j++) {
+        const uid = String(uids[j]);
+        appendItemRow(panel, {
+          kind: "feature",
+          nested: true,
+          label: itemLabelForUid(entry, uid),
+          on: !entry.hiddenUids.has(uid),
+          onToggle: function () {
+            toggleUidVisible(name, uid);
+          },
+        });
+      }
+    }
+
+    for (let i = 0; i < orphaned.length; i++) {
+      const uid = String(orphaned[i]);
+      appendItemRow(panel, {
+        kind: "feature",
+        label: itemLabelForUid(entry, uid),
+        on: !entry.hiddenUids.has(uid),
+        onToggle: function () {
+          toggleUidVisible(name, uid);
+        },
+      });
+    }
+
+    for (let i = 0; i < extraUids.length; i++) {
+      const uid = extraUids[i];
+      appendItemRow(panel, {
+        kind: "feature",
+        label: itemLabelForUid(entry, uid),
+        on: !entry.hiddenUids.has(uid),
+        onToggle: function () {
+          toggleUidVisible(name, uid);
+        },
+      });
+    }
+
+    for (let i = 0; i < rasters.length; i++) {
+      const ov = rasters[i];
+      const hash = String(ov.hash || "").trim();
+      if (!hash) continue;
+      appendItemRow(panel, {
+        kind: "raster",
+        label: rasterLabel(ov),
+        on: rasterIsVisible(entry, ov),
+        onToggle: function () {
+          toggleRasterVisible(name, hash);
+        },
+      });
+    }
+
+    wrap.appendChild(panel);
+    row.appendChild(wrap);
   }
 
   function renderMissionListNow() {
@@ -1620,45 +1843,7 @@
       row.appendChild(head);
 
       if (entry && isOn) {
-        const tree = document.createElement("div");
-        tree.className = "map-mission-tree";
-        const folders = entry.layers?.folders || [];
-        for (const folder of folders) {
-          const folderRow = document.createElement("div");
-          folderRow.className = "map-mission-folder";
-          const folderBtn = document.createElement("button");
-          folderBtn.type = "button";
-          folderBtn.className = "map-mission-folder-btn";
-          const hidden = entry.hiddenPaths.has(folder.path);
-          folderBtn.textContent = (hidden ? "○ " : "● ") + (folder.name || folder.path);
-          folderBtn.addEventListener("click", function () {
-            toggleFolderVisible(name, folder);
-          });
-          folderRow.appendChild(folderBtn);
-          tree.appendChild(folderRow);
-        }
-        const orphaned = entry.layers?.orphaned || [];
-        for (const uid of orphaned) {
-          const itemRow = document.createElement("div");
-          itemRow.className = "map-mission-item";
-          const itemBtn = document.createElement("button");
-          itemBtn.type = "button";
-          itemBtn.className = "map-mission-item-btn";
-          const hidden = entry.hiddenUids.has(String(uid));
-          const feat = (entry.geojson?.features || []).find(function (f) {
-            return String(f.id || f.properties?.uid) === String(uid);
-          });
-          const label = feat ? featureLabel(feat.properties) : uid.slice(0, 12);
-          itemBtn.textContent = (hidden ? "○ " : "● ") + label;
-          itemBtn.addEventListener("click", function () {
-            toggleUidVisible(name, uid);
-          });
-          itemRow.appendChild(itemBtn);
-          tree.appendChild(itemRow);
-        }
-        if (tree.childNodes.length) {
-          row.appendChild(tree);
-        }
+        appendMissionItemsDropdown(row, name, entry);
       }
 
       listEl.appendChild(row);
@@ -1693,6 +1878,7 @@
         layers: null,
         hiddenUids: new Set(settings.hiddenUids || []),
         hiddenPaths: new Set(settings.hiddenPaths || []),
+        hiddenRasters: new Set(settings.hiddenRasters || []),
         rasterOverlays: [],
         attachmentSummary: null,
         loading: false,
