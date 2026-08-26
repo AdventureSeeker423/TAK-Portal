@@ -212,6 +212,7 @@
         "ALLOWED_CLIENT_TAK_AWARE",
         "ALLOWED_CLIENT_TAK_TRACKER",
         "ALLOWED_CLIENT_ATAK",
+        "ALLOWED_CLIENT_LIVE_MAP",
         "ALLOWED_CLIENT_CLOUDTAK",
         "ALLOWED_CLIENT_DATA_PACKAGE",
         "EMAIL_ENABLED",
@@ -358,6 +359,7 @@
         "ALLOWED_CLIENT_TAK_AWARE",
         "ALLOWED_CLIENT_TAK_TRACKER",
         "ALLOWED_CLIENT_ATAK",
+        "ALLOWED_CLIENT_LIVE_MAP",
         "ALLOWED_CLIENT_CLOUDTAK",
         "ALLOWED_CLIENT_DATA_PACKAGE",
         "ALLOWED_CLIENT_RECOMMENDED_IOS",
@@ -3292,6 +3294,14 @@
               cloudtakRaw === "true" ? true :
               cloudtakRaw === "false" ? false :
               cloudtakDefaultOn === "true";
+            const liveMapEnabledRaw = String((settings && settings.LIVE_MAP_ENABLED) || "").trim().toLowerCase();
+            const liveMapGloballyEnabled =
+              liveMapEnabledRaw === "false" ||
+              liveMapEnabledRaw === "0" ||
+              liveMapEnabledRaw === "off" ||
+              liveMapEnabledRaw === "no"
+                ? false
+                : true;
 
             function recommendedFor(section, defaultApp) {
               const key =
@@ -3311,7 +3321,7 @@
             const sshPrivilegedReadyForClients =
               typeof sshPrivilegedReady !== "undefined" ? !!sshPrivilegedReady : false;
 
-            function parseClientOrder(key, defaults) {
+            function parseClientOrder(key, defaults, insertMissingAtStart) {
               const known = defaults.slice();
               const knownSet = new Set(known);
               const raw = (settings && typeof settings[key] === "string")
@@ -3321,10 +3331,8 @@
                 .split(",")
                 .map((s) => s.trim())
                 .filter((id) => id && knownSet.has(id));
-              known.forEach((id) => {
-                if (!parsed.includes(id)) parsed.push(id);
-              });
-              return parsed;
+              const missing = known.filter((id) => !parsed.includes(id));
+              return insertMissingAtStart ? missing.concat(parsed) : parsed.concat(missing);
             }
             const iosAppDefs = {
               tak_aware: { key: "ALLOWED_CLIENT_TAK_AWARE", label: "TAK Aware", defaultOn: "true" },
@@ -3335,11 +3343,12 @@
               atak: { key: "ALLOWED_CLIENT_ATAK", label: "ATAK", defaultOn: "true" },
             };
             const webAppDefs = {
+              live_map: { key: "ALLOWED_CLIENT_LIVE_MAP", label: "TAK Portal Live Map", defaultOn: "true" },
               cloudtak: { key: "ALLOWED_CLIENT_CLOUDTAK", label: "CloudTAK", defaultOn: cloudtakDefaultOn },
             };
             const iosOrder = parseClientOrder("ALLOWED_CLIENT_ORDER_IOS", ["tak_aware", "tak_tracker", "itak"]);
             const androidOrder = parseClientOrder("ALLOWED_CLIENT_ORDER_ANDROID", ["atak"]);
-            const webOrder = parseClientOrder("ALLOWED_CLIENT_ORDER_WEB", ["cloudtak"]);
+            const webOrder = parseClientOrder("ALLOWED_CLIENT_ORDER_WEB", ["live_map", "cloudtak"], true);
 
             function renderAllowedClientApp(opts) {
               const key = opts.key;
@@ -3351,6 +3360,7 @@
               const showCloudtakUrl = !!opts.showCloudtakUrl;
               const showAtakApkUpload = !!opts.showAtakApkUpload;
               const locked = !!opts.locked;
+              const requiresLiveMap = !!opts.requiresLiveMap;
               const rawVal = (settings && typeof settings[key] === "string")
                 ? settings[key].toLowerCase()
                 : "";
@@ -3364,13 +3374,15 @@
                 typeof atakApk !== "undefined" && atakApk && typeof atakApk === "object"
                   ? atakApk
                   : { uploaded: false, originalName: null };
+              const unavailable = requiresLiveMap && !liveMapGloballyEnabled;
           %>
             <div
-              class="settings-allowed-client-item<%= locked ? ' is-disabled' : '' %>"
+              class="settings-allowed-client-item<%= locked ? ' is-disabled' : '' %><%= unavailable ? ' is-unavailable' : '' %>"
               data-allowed-client-item
               data-allowed-client-section="<%= section %>"
               data-allowed-client-app="<%= appId %>"
               <% if (locked) { %>data-allowed-client-locked="1"<% } %>
+              <% if (requiresLiveMap) { %>data-allowed-client-requires-live-map="1" aria-hidden="<%= unavailable ? 'true' : 'false' %>"<% } %>
               draggable="true"
             >
               <div class="settings-field settings-field-bool settings-allowed-client-row">
@@ -3499,6 +3511,7 @@
                 defaultOn: def.defaultOn,
                 recommended: recommendedWeb,
                 showCloudtakUrl: appId === "cloudtak",
+                requiresLiveMap: appId === "live_map",
               });
             }); %>
             <input type="hidden" name="settings[ALLOWED_CLIENT_RECOMMENDED_WEB]" value="<%= recommendedWeb %>" data-allowed-client-recommended-input="web" />
@@ -3555,6 +3568,28 @@
                 urlFields.style.display = on ? "block" : "none";
               }
 
+              function isLiveMapGloballyEnabled() {
+                var input = document.querySelector('input[name="settings[LIVE_MAP_ENABLED]"]');
+                if (!input) return true;
+                return String(input.value || "").trim().toLowerCase() === "true";
+              }
+
+              function syncLiveMapClientVisibility() {
+                var item = modal.querySelector("[data-allowed-client-requires-live-map]");
+                if (!item) return;
+                var enabled = isLiveMapGloballyEnabled();
+                item.classList.toggle("is-unavailable", !enabled);
+                item.setAttribute("aria-hidden", enabled ? "false" : "true");
+                if (!enabled) {
+                  var recInput = modal.querySelector('[data-allowed-client-recommended-input="web"]');
+                  var star = item.querySelector("[data-allowed-client-star]");
+                  if (recInput && recInput.value === "live_map") {
+                    recInput.value = "";
+                    setStarState(star, false);
+                  }
+                }
+              }
+
               function setStarState(btn, filled) {
                 if (!btn) return;
                 btn.classList.toggle("is-filled", !!filled);
@@ -3580,7 +3615,9 @@
               }
 
               function getDragAfterElement(container, y) {
-                var els = [].slice.call(container.querySelectorAll("[data-allowed-client-item]:not(.dragging)"));
+                var els = [].slice.call(container.querySelectorAll("[data-allowed-client-item]:not(.dragging)")).filter(function (el) {
+                  return !el.classList.contains("is-unavailable");
+                });
                 return els.reduce(function (closest, child) {
                   var box = child.getBoundingClientRect();
                   var offset = y - box.top - box.height / 2;
@@ -3593,6 +3630,10 @@
 
               modal.querySelectorAll("[data-allowed-client-item]").forEach(function (item) {
                 item.addEventListener("dragstart", function (e) {
+                  if (item.classList.contains("is-unavailable")) {
+                    e.preventDefault();
+                    return;
+                  }
                   if (e.target && e.target.closest && (
                     e.target.closest("[data-allowed-client-star]") ||
                     e.target.closest("[data-settings-bool-toggle]") ||
@@ -3847,7 +3888,17 @@
                 }
               })();
 
+              document.addEventListener("click", function (e) {
+                var btn = e.target && e.target.closest && e.target.closest("[data-settings-bool-toggle]");
+                if (!btn) return;
+                var field = btn.closest(".settings-field");
+                var input = field && field.querySelector('input[name="settings[LIVE_MAP_ENABLED]"]');
+                if (!input) return;
+                setTimeout(syncLiveMapClientVisibility, 0);
+              });
+
               syncCloudtakUrlVisibility();
+              syncLiveMapClientVisibility();
             })();
           </script>
         </div>

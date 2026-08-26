@@ -3065,6 +3065,10 @@ a.settings-hub-card:visited {
   opacity: 0.55;
 }
 
+.settings-allowed-client-item.is-unavailable {
+  display: none;
+}
+
 .settings-allowed-client-item.is-disabled .settings-toggle {
   cursor: not-allowed;
 }

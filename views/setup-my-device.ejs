@@ -17,6 +17,9 @@
     const showTakTracker = allowedClientBool("ALLOWED_CLIENT_TAK_TRACKER", true);
     const showITakLinks = allowedClientBool("SHOW_ITAK_LINKS", false);
     const showAtak = allowedClientBool("ALLOWED_CLIENT_ATAK", true);
+    const liveMapGloballyEnabled = allowedClientBool("LIVE_MAP_ENABLED", true);
+    const showLiveMap =
+      liveMapGloballyEnabled && allowedClientBool("ALLOWED_CLIENT_LIVE_MAP", true);
     const showCloudTakEnabled = allowedClientBool(
       "ALLOWED_CLIENT_CLOUDTAK",
       !!cloudtakUrlTrimmed
@@ -27,7 +30,7 @@
       allowedClientBool("ALLOWED_CLIENT_DATA_PACKAGE", false) && sshConfiguredForClients;
     const showIosPlatform = showTakAware || showTakTracker || showITakLinks;
     const showAndroidPlatform = showAtak;
-    const showWebPlatform = showCloudTak;
+    const showWebPlatform = showLiveMap || showCloudTak;
     const showPcPlatform = showDataPackage;
     const platformCount =
       (showIosPlatform ? 1 : 0) +
@@ -47,6 +50,12 @@
       iosAppCount >= 3 ? "iosSetupGrid--three" :
       iosAppCount === 2 ? "iosSetupGrid--two" :
       "iosSetupGrid--one";
+    const webAppCount =
+      (showLiveMap ? 1 : 0) +
+      (showCloudTak ? 1 : 0);
+    const webGridClass =
+      webAppCount >= 2 ? "iosSetupGrid--two" :
+      "iosSetupGrid--one";
 
     function recommendedApp(key, defaultApp) {
       if (settings && Object.prototype.hasOwnProperty.call(settings, key)) {
@@ -62,10 +71,17 @@
     const recommendTakTracker = recommendedIos === "tak_tracker";
     const recommendITak = recommendedIos === "itak";
     const recommendAtak = recommendedAndroid === "atak";
+    const recommendLiveMap = recommendedWeb === "live_map";
     const recommendCloudTak = recommendedWeb === "cloudtak";
     const recommendDataPackage = recommendedPc === "data_package";
+    const webPlatformDesc =
+      showLiveMap && showCloudTak
+        ? "Use TAK Portal Live Map or CloudTAK in a web browser."
+        : showLiveMap
+          ? "Use TAK Portal Live Map in a web browser."
+          : "Use CloudTAK on web browsers.";
 
-    function parseClientOrder(key, defaults) {
+    function parseClientOrder(key, defaults, insertMissingAtStart) {
       const known = defaults.slice();
       const knownSet = new Set(known);
       const raw = (settings && typeof settings[key] === "string") ? settings[key] : "";
@@ -73,10 +89,8 @@
         .split(",")
         .map((s) => s.trim())
         .filter((id) => id && knownSet.has(id));
-      known.forEach((id) => {
-        if (!parsed.includes(id)) parsed.push(id);
-      });
-      return parsed;
+      const missing = known.filter((id) => !parsed.includes(id));
+      return insertMissingAtStart ? missing.concat(parsed) : parsed.concat(missing);
     }
     const iosOrder = parseClientOrder(
       "ALLOWED_CLIENT_ORDER_IOS",
@@ -90,6 +104,14 @@
       "ALLOWED_CLIENT_ORDER_ANDROID",
       ["atak"]
     ).filter((id) => id === "atak" && showAtak);
+    const webOrder = parseClientOrder(
+      "ALLOWED_CLIENT_ORDER_WEB",
+      ["live_map", "cloudtak"],
+      true
+    ).filter((id) =>
+      (id === "live_map" && showLiveMap) ||
+      (id === "cloudtak" && showCloudTak)
+    );
   %>
 
   <!-- Device selector -->
@@ -115,9 +137,9 @@
       <% } %>
 
       <% if (showWebPlatform) { %>
-        <button type="button" class="btn tile deviceTile<%= recommendCloudTak ? ' success' : '' %>" id="selectWeb">
-          <span class="title">Web Browser<%= recommendCloudTak ? ' (Recommended)' : '' %></span>
-          <span class="desc">Use CloudTAK on web browsers.</span>
+        <button type="button" class="btn tile deviceTile deviceTile-web" id="selectWeb">
+          <span class="title">Web Browser</span>
+          <span class="desc"><%= webPlatformDesc %></span>
         </button>
       <% } %>
 
@@ -329,6 +351,46 @@
   </div>
   <% } %>
 
+  <% if (showWebPlatform) { %>
+  <div id="webFlow" style="display:none;">
+    <div class="iosSetupGrid <%= webGridClass %>" style="margin-top: 0.5rem;">
+      <% webOrder.forEach(function (appId) { %>
+        <% if (appId === "live_map") { %>
+      <div class="card iosAppGroup">
+        <h2 class="iosAppGroupTitle">TAK Portal Live Map</h2>
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Open in browser</h3>
+          <a
+            href="/map"
+            class="btn tile<%= recommendLiveMap ? ' success' : '' %>"
+          >
+            <span class="title">TAK Portal Live Map<%= recommendLiveMap ? ' (Recommended)' : '' %></span>
+            <span class="desc">View live TAK positions in your browser. (View only — does not share your location or send map items.)</span>
+          </a>
+        </section>
+      </div>
+        <% } else if (appId === "cloudtak") { %>
+      <div class="card iosAppGroup">
+        <h2 class="iosAppGroupTitle">CloudTAK</h2>
+        <section class="iosStep">
+          <h3 class="iosStepHeading">Open in browser</h3>
+          <a
+            href="<%= cloudtakUrlTrimmed %>"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn tile<%= recommendCloudTak ? ' success' : '' %>"
+          >
+            <span class="title">CloudTAK<%= recommendCloudTak ? ' (Recommended)' : '' %></span>
+            <span class="desc">Open CloudTAK in a web browser for a full TAK client experience.</span>
+          </a>
+        </section>
+      </div>
+        <% } %>
+      <% }); %>
+    </div>
+  </div>
+  <% } %>
+
   <% if (showPcPlatform) { %>
   <div id="pcFlow" style="display:none;">
     <div class="card iosAppGroup" style="margin-top: 0.5rem;">
@@ -449,8 +511,6 @@
 </div>
 
 <script>
-  // CloudTAK URL (from settings.json via server render)
-  const cloudtakUrl = <%- JSON.stringify(cloudtakUrlTrimmed) %>;
   const showITakLinks = <%- JSON.stringify(showITakLinks) %>;
   const showTakAware = <%- JSON.stringify(showTakAware) %>;
   const showTakTracker = <%- JSON.stringify(showTakTracker) %>;
@@ -460,6 +520,7 @@
   // --- device selection UI (NO persistence; forgets on reload) ---
   const iosFlow = document.getElementById("iosFlow");
   const androidFlow = document.getElementById("androidFlow");
+  const webFlow = document.getElementById("webFlow");
   const pcFlow = document.getElementById("pcFlow");
   const selectIOS = document.getElementById("selectIOS");
   const selectAndroid = document.getElementById("selectAndroid");
@@ -469,6 +530,7 @@
   function hideDeviceFlows() {
     if (iosFlow) iosFlow.style.display = "none";
     if (androidFlow) androidFlow.style.display = "none";
+    if (webFlow) webFlow.style.display = "none";
     if (pcFlow) pcFlow.style.display = "none";
   }
 
@@ -495,16 +557,18 @@
     androidFlow.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function showWeb() {
+    if (!webFlow) return;
+    hideDeviceFlows();
+    webFlow.style.display = "block";
+    webFlow.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function showPC() {
     if (!pcFlow) return;
     hideDeviceFlows();
     pcFlow.style.display = "block";
     pcFlow.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  function openCloudTAK() {
-    if (!cloudtakUrl) return;
-    window.open(cloudtakUrl, "_blank", "noopener,noreferrer");
   }
 
   // On load: always start with chooser only
@@ -514,7 +578,7 @@
 
   if (selectIOS) selectIOS.addEventListener("click", showIOS);
   if (selectAndroid) selectAndroid.addEventListener("click", showAndroid);
-  if (selectWeb) selectWeb.addEventListener("click", openCloudTAK);
+  if (selectWeb) selectWeb.addEventListener("click", showWeb);
   if (selectPC) selectPC.addEventListener("click", showPC);
 
   // --- QR modal + enrollment logic ---
