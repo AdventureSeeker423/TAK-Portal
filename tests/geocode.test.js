@@ -1,6 +1,15 @@
 const assert = require("assert");
 const geocode = require("../services/geocode.service");
 
+geocode.setOpenAddressesForTests({
+  isIndexReady() {
+    return false;
+  },
+  search() {
+    throw new Error("local OpenAddresses search should not run when no index is installed");
+  },
+});
+
 assert.strictEqual(
   geocode.isUnitedStatesHit("US", "United States"),
   true
@@ -127,6 +136,40 @@ assert.strictEqual(normalized.label, "Test");
   } finally {
     global.fetch = blocked;
   }
+
+  let fetchCalled = false;
+  global.fetch = function () {
+    fetchCalled = true;
+    return Promise.reject(new Error("blocked"));
+  };
+  geocode.setOpenAddressesForTests({
+    isIndexReady() {
+      return true;
+    },
+    search() {
+      return [{ lat: 35.04, lon: -85.2, label: "600 Market St, Chattanooga, TN" }];
+    },
+  });
+  try {
+    const local = await geocode.geocodeSearch("600 market", { limit: 1 });
+    assert.strictEqual(local.results.length, 1);
+    assert.strictEqual(local.results[0].label, "600 Market St, Chattanooga, TN");
+    assert.strictEqual(local.lookupFailed, false);
+    assert.strictEqual(fetchCalled, false);
+  } finally {
+    global.fetch = blocked;
+    geocode.setOpenAddressesForTests({
+      isIndexReady() {
+        return false;
+      },
+      search() {
+        return [];
+      },
+    });
+  }
 })().then(function () {
   console.log("geocode.test.js: all assertions passed");
+}).catch(function (err) {
+  console.error(err);
+  process.exit(1);
 });

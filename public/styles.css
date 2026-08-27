@@ -3158,3 +3158,94 @@ a.settings-hub-card:visited {
   margin-top: 0.5rem;
 }
 
+.settings-oa-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.settings-oa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.45rem;
+}
+
+.settings-oa-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.settings-oa-note {
+  margin: 0 0 0.85rem;
+  line-height: 1.45;
+}
+
+.settings-oa-msg {
+  min-height: 1.2em;
+  margin: 0.35rem 0 0.65rem;
+  font-size: 0.85rem;
+}
+
+.settings-oa-msg:empty {
+  display: none;
+}
+
+.settings-oa-msg.is-error {
+  color: #dc2626;
+}
+
+.settings-oa-table-wrap {
+  overflow-x: auto;
+}
+
+.settings-oa-table {
+  font-size: 13px;
+}
+
+.settings-oa-table th,
+.settings-oa-table td {
+  vertical-align: middle;
+}
+
+.settings-oa-actions {
+  white-space: nowrap;
+}
+
+.settings-oa-btn,
+.settings-oa-refresh {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
+.settings-oa-status.is-ready {
+  color: #16a34a;
+}
+
+.settings-oa-status.is-update {
+  color: #d97706;
+}
+
+.settings-oa-status.is-error {
+  color: #dc2626;
+}
+
+.settings-oa-status.is-busy {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.settings-oa-warn {
+  display: inline-block;
+  margin-left: 0.35rem;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #d97706;
+}
+

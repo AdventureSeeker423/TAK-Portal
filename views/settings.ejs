@@ -407,6 +407,7 @@
         "DEFAULT_THEME_MODE",
         "LIVE_MAP_ENABLED",
         "DEFAULT_MAP_SOURCE",
+        "OPENADDRESSES_TOKEN",
         "PRIMARY_BUTTON_COLOR",
         "SITE_FONT_FAMILY",
         "USERNAME_PREFIX_LABEL",
@@ -3975,7 +3976,7 @@
             <h2 id="settingsModalTitle-live-map">Live Map</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Enable or disable the Live Map page, and set the default basemap for /map and the dashboard mini map.</span>
+              <span class="settings-help-popover">Enable or disable the Live Map page, set the default basemap, and optionally download OpenAddresses collections for self-hosted address search.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -4008,6 +4009,344 @@
               
             </label>
           </div>
+
+          <div class="settings-oa-section" data-openaddresses-section>
+            <div class="settings-oa-header">
+              <h3>OpenAddresses search</h3>
+              <button type="button" class="btn settings-oa-refresh" data-oa-refresh>Refresh catalog</button>
+            </div>
+            <p class="settings-help settings-oa-note">
+              Live Map Go To uses a local address index when a collection is installed on this server (SQLite on this host — not Pelias, and no extra containers).
+              Coverage is only the regions you download (US South includes Tennessee). Searches outside those regions will miss.
+              Listing collections is public; downloading requires a free
+              <a href="https://batch.openaddresses.io/login" target="_blank" rel="noopener noreferrer">OpenAddresses API token</a>.
+              First import of a large region can take a long time and roughly <strong>2× the zip size</strong> in free disk (zip + index). Northeast or Canada are realistic first tests. Global (~55 GB) is not recommended.
+            </p>
+            <label class="settings-field">
+              <span class="settings-label">
+                <span>OpenAddresses API Token</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover">Optional to list collections; required to download. Create a token at batch.openaddresses.io after signing in. It autosaves with the rest of settings.</span>
+                </span>
+              </span>
+              <div class="passwordWrap">
+                <input
+                  id="oaTokenInput"
+                  type="password"
+                  name="settings[OPENADDRESSES_TOKEN]"
+                  value="<%= settings.OPENADDRESSES_TOKEN || '' %>"
+                  autocomplete="new-password"
+                  placeholder="oa.…"
+                />
+                <button
+                  type="button"
+                  id="oaTokenToggle"
+                  class="passwordToggle"
+                  aria-label="Show token"
+                  title="Show token"
+                >
+                  👁
+                </button>
+              </div>
+            </label>
+            <p class="settings-oa-msg" data-oa-msg aria-live="polite"></p>
+            <div class="settings-oa-table-wrap">
+              <table class="table settings-oa-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Updated</th>
+                    <th>Size</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody data-oa-tbody>
+                  <tr><td colspan="5" class="muted">Loading collections…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <script>
+            (function () {
+              var section = document.querySelector("[data-openaddresses-section]");
+              if (!section) return;
+              var tbody = section.querySelector("[data-oa-tbody]");
+              var msgEl = section.querySelector("[data-oa-msg]");
+              var refreshBtn = section.querySelector("[data-oa-refresh]");
+              var pollTimer = null;
+              var inFlight = false;
+
+              function setMsg(text, isError) {
+                if (!msgEl) return;
+                msgEl.textContent = text || "";
+                msgEl.classList.toggle("is-error", !!isError);
+              }
+
+              function esc(s) {
+                return String(s == null ? "" : s)
+                  .replace(/&/g, "&amp;")
+                  .replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;");
+              }
+
+              function statusClass(status) {
+                if (status === "ready") return "is-ready";
+                if (status === "update_available") return "is-update";
+                if (status === "error") return "is-error";
+                if (status === "downloading" || status === "importing") return "is-busy";
+                return "";
+              }
+
+              function confirmDisk(row, isUpdate) {
+                var lines = [
+                  (isUpdate ? "Update" : "Download") + ' "' + (row.human || row.name) + '" (' + (row.sizeLabel || "") + " zip)?",
+                  "Plan about " + (row.estimatedDiskLabel || "2× the zip") + " of free disk for the zip plus the local search index.",
+                  "This runs in the background and can take a long time. Northeast or Canada are realistic first tests."
+                ];
+                if (row.isGlobal) {
+                  lines.push("Global is about 55 GB (plan ~110 GB free) and is not recommended on this host.");
+                }
+                return window.confirm(lines.join("\n\n"));
+              }
+
+              function render(data) {
+                if (!tbody) return;
+                var collections = (data && data.collections) || [];
+                var job = (data && data.job) || null;
+                if (data && data.catalogError && !collections.length) {
+                  tbody.innerHTML = '<tr><td colspan="5" class="muted">Could not load the OpenAddresses catalog. ' + esc(data.catalogError) + "</td></tr>";
+                } else if (!collections.length) {
+                  tbody.innerHTML = '<tr><td colspan="5" class="muted">No collections returned.</td></tr>';
+                } else {
+                  tbody.innerHTML = collections.map(function (row) {
+                    var actions = [];
+                    if (row.canDownload) {
+                      actions.push('<button type="button" class="btn settings-oa-btn" data-oa-download="' + esc(row.id) + '">Download</button>');
+                    }
+                    if (row.canUpdate) {
+                      actions.push('<button type="button" class="btn settings-oa-btn" data-oa-update="' + esc(row.id) + '">Update</button>');
+                    }
+                    if (row.canRemove) {
+                      actions.push('<button type="button" class="btn settings-oa-btn" data-oa-remove="' + esc(row.id) + '">Remove</button>');
+                    }
+                    if (!actions.length && (row.status === "downloading" || row.status === "importing")) {
+                      actions.push('<span class="muted">Working…</span>');
+                    }
+                    var name = esc(row.human || row.name || row.id);
+                    if (row.isGlobal) name += ' <span class="settings-oa-warn">not recommended</span>';
+                    return (
+                      "<tr>" +
+                      "<td>" + name + "</td>" +
+                      "<td>" + esc(row.updatedLabel || "—") + "</td>" +
+                      "<td>" + esc(row.sizeLabel || "—") + "</td>" +
+                      '<td class="settings-oa-status ' + statusClass(row.status) + '">' + esc(row.statusLabel || row.status || "") + "</td>" +
+                      '<td class="settings-oa-actions">' + actions.join(" ") + "</td>" +
+                      "</tr>"
+                    );
+                  }).join("");
+                }
+
+                if (!data || !data.hasToken) {
+                  setMsg("Add an API token to download collections. The catalog above is public and does not need a token.", false);
+                } else if (data.catalogError) {
+                  setMsg(data.catalogError, true);
+                } else if (job && job.running) {
+                  setMsg(job.message || "Working…", false);
+                } else if (job && job.error) {
+                  setMsg(job.error, true);
+                } else if (data.indexReady) {
+                  setMsg(
+                    "Local address search is on (" +
+                      (data.installedCount || 0) +
+                      " collection" +
+                      (data.installedCount === 1 ? "" : "s") +
+                      "). Live Map Go To uses this index instead of Census / Photon / Nominatim / Geocodio.",
+                    false
+                  );
+                } else {
+                  setMsg("No collection installed — Live Map search still uses Census / Photon / Nominatim / Geocodio.", false);
+                }
+              }
+
+              function load(force) {
+                if (inFlight) return Promise.resolve();
+                inFlight = true;
+                return fetch("/api/settings/openaddresses" + (force ? "?refresh=1" : ""), {
+                  credentials: "same-origin",
+                  headers: {
+                    Accept: "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                  },
+                })
+                  .then(function (res) {
+                    return res.json().then(function (body) {
+                      return { ok: res.ok, body: body };
+                    });
+                  })
+                  .then(function (result) {
+                    if (!result.ok || !result.body || result.body.ok === false) {
+                      throw new Error((result.body && result.body.error) || "Could not load OpenAddresses status.");
+                    }
+                    render(result.body);
+                    return result.body;
+                  })
+                  .catch(function (err) {
+                    setMsg(err && err.message ? err.message : "Could not load OpenAddresses status.", true);
+                    return null;
+                  })
+                  .finally(function () {
+                    inFlight = false;
+                  });
+              }
+
+              function postJson(url, body) {
+                return fetch(url, {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                  },
+                  body: JSON.stringify(body || {}),
+                }).then(function (res) {
+                  return res.json().then(function (payload) {
+                    if (!res.ok || !payload || payload.ok === false) {
+                      throw new Error((payload && payload.error) || "Request failed.");
+                    }
+                    return payload;
+                  });
+                });
+              }
+
+              function del(url) {
+                return fetch(url, {
+                  method: "DELETE",
+                  credentials: "same-origin",
+                  headers: {
+                    Accept: "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                  },
+                }).then(function (res) {
+                  return res.json().then(function (payload) {
+                    if (!res.ok || !payload || payload.ok === false) {
+                      throw new Error((payload && payload.error) || "Request failed.");
+                    }
+                    return payload;
+                  });
+                });
+              }
+
+              function collectionsFromDom() {
+                return lastData && lastData.collections ? lastData.collections : [];
+              }
+
+              var lastData = null;
+              var origRender = render;
+              render = function (data) {
+                lastData = data;
+                origRender(data);
+              };
+
+              function rowById(id) {
+                var list = collectionsFromDom();
+                for (var i = 0; i < list.length; i++) {
+                  if (String(list[i].id) === String(id)) return list[i];
+                }
+                return { id: id, human: id, sizeLabel: "", estimatedDiskLabel: "2× the zip", isGlobal: false };
+              }
+
+              function afterStart() {
+                startPoll(false);
+              }
+
+              section.addEventListener("click", function (e) {
+                var downloadBtn = e.target.closest && e.target.closest("[data-oa-download]");
+                var updateBtn = e.target.closest && e.target.closest("[data-oa-update]");
+                var removeBtn = e.target.closest && e.target.closest("[data-oa-remove]");
+                if (downloadBtn) {
+                  e.preventDefault();
+                  var did = downloadBtn.getAttribute("data-oa-download");
+                  var drow = rowById(did);
+                  if (!confirmDisk(drow, false)) return;
+                  downloadBtn.disabled = true;
+                  postJson("/api/settings/openaddresses/download", { collectionId: did })
+                    .then(afterStart)
+                    .catch(function (err) {
+                      setMsg(err.message || "Download failed.", true);
+                      downloadBtn.disabled = false;
+                    });
+                  return;
+                }
+                if (updateBtn) {
+                  e.preventDefault();
+                  var uid = updateBtn.getAttribute("data-oa-update");
+                  var urow = rowById(uid);
+                  if (!confirmDisk(urow, true)) return;
+                  updateBtn.disabled = true;
+                  postJson("/api/settings/openaddresses/" + encodeURIComponent(uid) + "/update", {})
+                    .then(afterStart)
+                    .catch(function (err) {
+                      setMsg(err.message || "Update failed.", true);
+                      updateBtn.disabled = false;
+                    });
+                  return;
+                }
+                if (removeBtn) {
+                  e.preventDefault();
+                  var rid = removeBtn.getAttribute("data-oa-remove");
+                  var rrow = rowById(rid);
+                  if (!window.confirm('Remove "' + (rrow.human || rid) + '" from this server? Address search will drop that region.')) {
+                    return;
+                  }
+                  removeBtn.disabled = true;
+                  del("/api/settings/openaddresses/" + encodeURIComponent(rid))
+                    .then(afterStart)
+                    .catch(function (err) {
+                      setMsg(err.message || "Remove failed.", true);
+                      removeBtn.disabled = false;
+                    });
+                }
+              });
+
+              if (refreshBtn) {
+                refreshBtn.addEventListener("click", function (e) {
+                  e.preventDefault();
+                  load(true);
+                });
+              }
+
+              function startPoll(force) {
+                stopPoll();
+                load(!!force).then(function (data) {
+                  if (data && data.job && data.job.running) {
+                    pollTimer = setInterval(function () {
+                      load(false).then(function (next) {
+                        if (!next || !next.job || !next.job.running) stopPoll();
+                      });
+                    }, 1000);
+                  }
+                });
+              }
+
+              function stopPoll() {
+                if (pollTimer) {
+                  clearInterval(pollTimer);
+                  pollTimer = null;
+                }
+              }
+
+              window.startOpenAddressesPoll = function () {
+                startPoll(true);
+              };
+              window.stopOpenAddressesPoll = function () {
+                stopPoll();
+              };
+            })();
+          </script>
         
         </div>
       </div>
@@ -4228,6 +4567,7 @@
     wirePasswordToggle("authentikTokenInput", "authentikTokenToggle");
     wirePasswordToggle("p12PassphraseInput", "p12PassphraseToggle");
     wirePasswordToggle("sshPasswordInput", "sshPasswordToggle");
+    wirePasswordToggle("oaTokenInput", "oaTokenToggle");
 
     document.addEventListener("click", function (e) {
       var btn = e.target && e.target.closest
@@ -4938,6 +5278,7 @@
 
       function closeSettingsModal() {
         var wasMaintenance = openId === "tak-maintenance";
+        var wasLiveMap = openId === "live-map";
         if (!openId) {
           document.querySelectorAll(".settings-modal-overlay").forEach(function (el) {
             el.style.display = "none";
@@ -4956,6 +5297,9 @@
         if (wasMaintenance && typeof window.stopTakMaintenanceLogTail === "function") {
           window.stopTakMaintenanceLogTail();
         }
+        if (wasLiveMap && typeof window.stopOpenAddressesPoll === "function") {
+          window.stopOpenAddressesPoll();
+        }
       }
 
       function openSettingsModal(id) {
@@ -4971,6 +5315,9 @@
         if (closeBtn) closeBtn.focus();
         if (id === "tak-maintenance" && typeof window.startTakMaintenanceLogTail === "function") {
           window.startTakMaintenanceLogTail();
+        }
+        if (id === "live-map" && typeof window.startOpenAddressesPoll === "function") {
+          window.startOpenAddressesPoll();
         }
       }
 
@@ -5197,7 +5544,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

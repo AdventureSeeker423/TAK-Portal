@@ -1,13 +1,21 @@
 /**
  * US-focused forward geocoding with multi-provider fallback.
  *
- * Optional: set GEOCODIO_API_KEY for best US street/intersection coverage
- * (free tier: 2,500 lookups/day at https://www.geocod.io).
- *
- * Without an API key, requests fan out to Census (US addresses), Photon, and
- * Nominatim (US-biased) and merge/deduplicate results.
+ * When a self-hosted OpenAddresses collection is indexed, that local SQLite
+ * search is the only address source. Otherwise requests fan out to Census,
+ * Photon, Nominatim, and optional Geocodio (GEOCODIO_API_KEY).
  */
 const { getString } = require("./env");
+
+let openaddresses = require("./openaddresses.service");
+
+function getOpenAddresses() {
+  return openaddresses;
+}
+
+function setOpenAddressesForTests(impl) {
+  openaddresses = impl;
+}
 
 const FETCH_TIMEOUT_MS = 9000;
 const USER_AGENT = "TAK-Portal/1.0 (live map geocoding)";
@@ -550,6 +558,26 @@ async function geocodeSearch(query, options = {}) {
   const limit = Math.min(10, Math.max(1, Number(options.limit) || 5));
   if (!q) return { results: [], lookupFailed: false };
 
+  const oa = getOpenAddresses();
+  if (oa && typeof oa.isIndexReady === "function" && oa.isIndexReady()) {
+    try {
+      const hits = oa.search(q, {
+        limit,
+        nearLat: options.nearLat,
+        nearLon: options.nearLon,
+      });
+      const results = Array.isArray(hits)
+        ? hits.map(function (hit) {
+            return { lat: hit.lat, lon: hit.lon, label: hit.label };
+          })
+        : [];
+      return { results, lookupFailed: false };
+    } catch (err) {
+      console.warn("[geocode] local OpenAddresses search failed:", err?.message || err);
+      return { results: [], lookupFailed: true };
+    }
+  }
+
   const near = nearOptions(options);
   const variants = buildQueryVariants(q);
   const lists = [];
@@ -613,4 +641,5 @@ module.exports = {
   sortHits,
   clusterHits,
   labelQualityScore,
+  setOpenAddressesForTests,
 };

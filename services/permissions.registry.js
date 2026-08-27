@@ -207,6 +207,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/mou")) return ["page.mou"];
   if (p.startsWith("/api/settings/tak-maintenance")) return ["page.settings"];
   if (p.startsWith("/api/settings/atak-apk")) return ["page.settings"];
+  if (p.startsWith("/api/settings/openaddresses")) return ["page.settings"];
   // Getting-started is role-gated in server.js, not permission-toggled.
 
   // Pages

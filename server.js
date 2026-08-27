@@ -620,6 +620,11 @@ app.use(
   requirePermission("page.settings"),
   require("./routes/atakApk.routes")
 );
+app.use(
+  "/api/settings/openaddresses",
+  requirePermission("page.settings"),
+  require("./routes/openaddresses.routes")
+);
 // Locate + data packages (admin + JSON APIs): page-aligned capability.
 app.use("/api/locate", requirePermission("page.locate"), require("./routes/locate.routes"));
 
