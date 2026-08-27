@@ -2034,7 +2034,8 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
     padding-bottom: calc(5px + env(safe-area-inset-bottom, 0px));
   }
 
-  .map-geofence-create-btn {
+  .map-geofence-create-btn,
+  .map-geofence-list-btn {
     width: 36px;
     height: 36px;
     padding: 0;
@@ -2042,11 +2043,13 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
     flex-shrink: 0;
   }
 
-  .map-geofence-create-btn .map-geofence-create-icon {
+  .map-geofence-create-btn .map-geofence-create-icon,
+  .map-geofence-list-btn .map-geofence-list-icon {
     display: block;
   }
 
-  .map-geofence-create-label {
+  .map-geofence-create-label,
+  .map-geofence-list-count {
     display: none;
   }
 
@@ -2068,8 +2071,133 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   z-index: 6;
 }
 
-.map-geofence-create-icon {
+.map-geofence-hud-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-geofence-create-icon,
+.map-geofence-list-icon {
   display: none;
+}
+
+.map-geofence-list-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15em;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--map-accent) 22%, transparent);
+  color: var(--map-accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.map-geofence-list-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 9;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--map-panel);
+  border: 1px solid var(--map-panel-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.map-geofence-list-pop[hidden] {
+  display: none !important;
+}
+
+.map-geofence-list-empty,
+.map-geofence-list-error {
+  margin: 0;
+  padding: 10px 8px;
+  font-size: 0.81rem;
+  color: var(--map-muted);
+}
+
+.map-geofence-list-error {
+  color: #fecaca;
+}
+
+.map-geofence-list-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--map-text);
+  padding: 0;
+}
+
+.map-geofence-list-item.is-selected {
+  background: var(--map-accent-dim);
+  border-color: color-mix(in srgb, var(--map-accent) 35%, transparent);
+}
+
+.map-geofence-list-item-open {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 8px 8px;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.map-geofence-list-item-open:hover {
+  color: var(--map-accent);
+}
+
+.map-geofence-list-item-name {
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.map-geofence-list-item-meta {
+  font-size: 0.72rem;
+  color: var(--map-muted);
+}
+
+.map-geofence-list-item-del {
+  appearance: none;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--map-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.map-geofence-list-item-del:hover {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.45);
+  border-color: rgba(239, 68, 68, 0.35);
 }
 
 .map-geofence-create-wrap .map-btn.is-active {
@@ -2102,7 +2230,8 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 }
 
 @media (max-width: 990px) {
-  .map-geofence-draw-bar {
+  .map-geofence-draw-bar,
+  .map-geofence-list-pop {
     position: fixed;
     top: calc(50px + env(safe-area-inset-top, 0px));
     right: 0;
@@ -2469,9 +2598,22 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
   cursor: pointer;
 }
 
+.map-geofence-error {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #fecaca;
+}
+
+.map-geofence-error[hidden] {
+  display: none !important;
+}
+
 .map-geofence-inspector-actions {
   margin-top: 0;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
   flex-shrink: 0;
 }
@@ -2490,4 +2632,9 @@ html.map-sidebar-collapsed .map-hud-sidebar-arrow {
 
 .map-btn-danger:hover {
   background: rgba(153, 27, 27, 0.75);
+}
+
+.map-btn-danger:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }

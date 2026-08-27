@@ -29,8 +29,11 @@
   let drawState = null;
   let actionOptions = { channels: [], missions: [] };
   let saveTimer = null;
+  let persistGen = 0;
+  let deletingId = null;
   let optionsLoaded = false;
   let detailPaneEl = null;
+  let listPopBound = false;
 
   function emptyFc() {
     return { type: "FeatureCollection", features: [] };
@@ -252,6 +255,44 @@
         },
       });
     }
+    bindGeofenceLayerHandlers();
+  }
+
+  function onGeofenceLayerClick(e) {
+    if (drawMode) return;
+    if (liveMarkersBlockGeofenceClick(e.point)) return;
+    const id = featureFenceId(e.features && e.features[0]);
+    if (!id) return;
+    if (e.originalEvent) e.originalEvent.stopPropagation();
+    if (bridge && typeof bridge.suppressBackgroundClick === "function") {
+      bridge.suppressBackgroundClick();
+    }
+    selectFence(id);
+  }
+
+  function onGeofenceLayerEnter() {
+    if (!map || drawMode) return;
+    map.getCanvas().style.cursor = "pointer";
+  }
+
+  function onGeofenceLayerLeave() {
+    if (!map || drawMode) return;
+    map.getCanvas().style.cursor = "";
+  }
+
+  function bindGeofenceLayerHandlers() {
+    if (!map) return;
+    const layers = [FILL_LAYER, LINE_LAYER, LABEL_LAYER];
+    for (let i = 0; i < layers.length; i++) {
+      const layerId = layers[i];
+      if (!map.getLayer(layerId)) continue;
+      map.off("click", layerId, onGeofenceLayerClick);
+      map.off("mouseenter", layerId, onGeofenceLayerEnter);
+      map.off("mouseleave", layerId, onGeofenceLayerLeave);
+      map.on("click", layerId, onGeofenceLayerClick);
+      map.on("mouseenter", layerId, onGeofenceLayerEnter);
+      map.on("mouseleave", layerId, onGeofenceLayerLeave);
+    }
   }
 
   function syncSource() {
@@ -282,18 +323,92 @@
     setPreviewGeometry(null);
   }
 
+  function fenceIdsEqual(a, b) {
+    return String(a || "") === String(b || "");
+  }
+
+  function featureFenceId(feat) {
+    if (!feat) return "";
+    const props = feat.properties || {};
+    return String(props.id || feat.id || "").trim();
+  }
+
+  function liveMarkersBlockGeofenceClick(point) {
+    if (!bridge || typeof bridge.queryMarkersAtPoint !== "function") return false;
+    const markers = bridge.queryMarkersAtPoint(point, 10, { markersOnly: true });
+    return !!(markers && markers.length);
+  }
+
   function setStatus(msg) {
     const statusEl = document.getElementById("mapGeofenceStatus");
     if (statusEl) statusEl.textContent = msg || "";
+  }
+
+  function showFormError(msg) {
+    setStatus(msg);
+    const el = detailPaneEl && detailPaneEl.querySelector("#mapGeofenceFormError");
+    if (el) {
+      el.hidden = !msg;
+      el.textContent = msg || "";
+    }
+    const listErr = document.getElementById("mapGeofenceListError");
+    if (listErr) {
+      listErr.hidden = !msg;
+      listErr.textContent = msg || "";
+    }
   }
 
   function getSelected() {
     if (!selectedId) return null;
     return (
       fences.find(function (f) {
-        return f.id === selectedId;
+        return fenceIdsEqual(f.id, selectedId);
       }) || null
     );
+  }
+
+  async function api(path, options) {
+    const opts = options || {};
+    const headers = Object.assign({ Accept: "application/json" }, opts.headers || {});
+    if (opts.body && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    let res;
+    try {
+      res = await fetch(
+        path,
+        Object.assign(
+          {
+            credentials: "same-origin",
+            redirect: "error",
+          },
+          opts,
+          { headers: headers }
+        )
+      );
+    } catch (err) {
+      const raw = String((err && err.message) || err || "");
+      const expired = /failed to fetch|networkerror|redirect|load failed/i.test(raw);
+      const e = new Error(
+        expired ? "Session expired — reload the page and try again." : raw || "Network error"
+      );
+      e.status = 0;
+      throw e;
+    }
+    const data = await res.json().catch(function () {
+      return {};
+    });
+    if (!res.ok) {
+      const err = new Error(
+        data.error ||
+          (res.status === 401 ? "Session expired — reload the page and try again." : "") ||
+          res.statusText ||
+          "Request failed"
+      );
+      err.status = res.status;
+      throw err;
+    }
+    return data;
   }
 
   function isDetailOpen() {
@@ -306,32 +421,16 @@
     }
   }
 
-  async function api(path, options) {
-    const res = await fetch(path, {
-      credentials: "same-origin",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      ...(options || {}),
-    });
-    const data = await res.json().catch(function () {
-      return {};
-    });
-    if (!res.ok) {
-      const err = new Error(data.error || res.statusText || "Request failed");
-      err.status = res.status;
-      throw err;
-    }
-    return data;
-  }
-
   async function loadFences() {
     const data = await api("/api/map/geofences");
     fences = Array.isArray(data.fences) ? data.fences : [];
-    if (selectedId && !fences.some(function (f) { return f.id === selectedId; })) {
+    if (selectedId && !fences.some(function (f) { return fenceIdsEqual(f.id, selectedId); })) {
       deselect({ keepDraw: true });
     } else {
       syncSource();
       renderInspector();
     }
+    renderFenceList();
   }
 
   async function loadActionOptions() {
@@ -387,6 +486,7 @@
   }
 
   function beginCreate() {
+    setFenceListOpen(false);
     setDrawBarVisible(true);
     setDrawMode(null);
     setStatus("Choose a shape to draw.");
@@ -427,6 +527,7 @@
       cancelCreate();
       selectFence(fence.id);
       setStatus("");
+      renderFenceList();
     } catch (err) {
       setStatus(err.message || "Failed to create geofence");
     }
@@ -440,9 +541,18 @@
     }, 400);
   }
 
+  function cancelPendingSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    persistGen += 1;
+  }
+
   async function persistSelected() {
     const fence = getSelected();
     if (!fence || !detailPaneEl) return;
+    const gen = persistGen;
     const nameEl = detailPaneEl.querySelector("#mapGeofenceName");
     const activeEl = detailPaneEl.querySelector("#mapGeofenceActive");
     const enforceEl = detailPaneEl.querySelector("#mapGeofenceEnforceMode");
@@ -486,30 +596,171 @@
           actions: { channels: channels, missions: missions },
         }),
       });
+      if (gen !== persistGen || !fenceIdsEqual(selectedId, fence.id)) return;
       const idx = fences.findIndex(function (f) {
-        return f.id === fence.id;
+        return fenceIdsEqual(f.id, fence.id);
       });
       if (idx >= 0) fences[idx] = data.fence;
       syncSource();
       syncPaneTitle(data.fence);
+      renderFenceList();
     } catch (err) {
-      setStatus(err.message || "Save failed");
+      if (gen !== persistGen) return;
+      showFormError(err.message || "Save failed");
+    }
+  }
+
+  async function deleteFenceById(id) {
+    const want = String(id || "").trim();
+    const fence = fences.find(function (f) {
+      return fenceIdsEqual(f.id, want);
+    });
+    if (!fence || deletingId) return false;
+    if (!window.confirm('Delete geofence "' + (fence.name || "Unnamed") + '"?')) return false;
+    cancelPendingSave();
+    deletingId = fence.id;
+    showFormError("");
+    try {
+      await api("/api/map/geofences/" + encodeURIComponent(fence.id), { method: "DELETE" });
+      fences = fences.filter(function (f) {
+        return !fenceIdsEqual(f.id, fence.id);
+      });
+      if (fenceIdsEqual(selectedId, fence.id)) deselect();
+      syncSource();
+      renderFenceList();
+      return true;
+    } catch (err) {
+      const msg = err.message || "Delete failed";
+      renderFenceList();
+      showFormError(msg);
+      return false;
+    } finally {
+      deletingId = null;
     }
   }
 
   async function deleteSelected() {
     const fence = getSelected();
-    if (!fence) return;
-    if (!window.confirm('Delete geofence "' + (fence.name || "Unnamed") + '"?')) return;
+    if (!fence) {
+      showFormError("Select a geofence to delete.");
+      return;
+    }
+    await deleteFenceById(fence.id);
+  }
+
+  function setFenceListOpen(open) {
+    const pop = document.getElementById("mapGeofenceListPop");
+    const btn = document.getElementById("mapGeofenceListBtn");
+    if (pop) pop.hidden = !open;
+    if (btn) {
+      btn.classList.toggle("is-active", !!open);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    if (open) {
+      cancelCreate();
+      renderFenceList();
+    }
+  }
+
+  function fenceBounds(fence) {
+    const coords = geometryToPolygon(fence && fence.geometry);
+    const ring = coords && coords[0];
+    if (!ring || !ring.length) return null;
+    let minLon = Infinity;
+    let minLat = Infinity;
+    let maxLon = -Infinity;
+    let maxLat = -Infinity;
+    for (let i = 0; i < ring.length; i++) {
+      const lon = Number(ring[i][0]);
+      const lat = Number(ring[i][1]);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+      minLon = Math.min(minLon, lon);
+      minLat = Math.min(minLat, lat);
+      maxLon = Math.max(maxLon, lon);
+      maxLat = Math.max(maxLat, lat);
+    }
+    if (!Number.isFinite(minLon) || minLon === Infinity) return null;
+    return [
+      [minLon, minLat],
+      [maxLon, maxLat],
+    ];
+  }
+
+  function flyToFence(fence) {
+    if (!map || !fence) return;
+    const b = fenceBounds(fence);
+    if (!b) return;
     try {
-      await api("/api/map/geofences/" + encodeURIComponent(fence.id), { method: "DELETE" });
-      fences = fences.filter(function (f) {
-        return f.id !== fence.id;
+      map.fitBounds(b, { padding: 72, maxZoom: 15, duration: 450 });
+    } catch (_) {}
+  }
+
+  function renderFenceList() {
+    const pop = document.getElementById("mapGeofenceListPop");
+    const countEl = document.getElementById("mapGeofenceListCount");
+    if (countEl) {
+      const n = fences.length;
+      countEl.textContent = String(n);
+      countEl.hidden = n < 1;
+    }
+    if (!pop) return;
+    if (!fences.length) {
+      pop.innerHTML =
+        '<p class="map-geofence-list-error" id="mapGeofenceListError" hidden></p>' +
+        '<p class="map-geofence-list-empty">No geofences yet.</p>';
+      return;
+    }
+    const errHtml =
+      '<p class="map-geofence-list-error" id="mapGeofenceListError" hidden></p>';
+    pop.innerHTML =
+      errHtml +
+      fences
+        .map(function (f) {
+          const selected = fenceIdsEqual(f.id, selectedId);
+          const type = f.geometry && f.geometry.type ? f.geometry.type : "";
+          const enabled = f.active ? "enabled" : "disabled";
+          return (
+            '<div class="map-geofence-list-item' +
+            (selected ? " is-selected" : "") +
+            '" data-gf-list-id="' +
+            escapeAttr(f.id) +
+            '">' +
+            '<button type="button" class="map-geofence-list-item-open" data-gf-list-open>' +
+            '<span class="map-geofence-list-item-name">' +
+            escapeHtml(f.name || "Unnamed geofence") +
+            "</span>" +
+            '<span class="map-geofence-list-item-meta">' +
+            escapeHtml(type + (type ? " · " : "") + enabled) +
+            "</span>" +
+            "</button>" +
+            '<button type="button" class="map-geofence-list-item-del" data-gf-list-del title="Delete geofence" aria-label="Delete geofence">×</button>' +
+            "</div>"
+          );
+        })
+        .join("");
+  }
+
+  function onFenceListClick(e) {
+    const del = e.target.closest("[data-gf-list-del]");
+    const open = e.target.closest("[data-gf-list-open]");
+    const row = e.target.closest("[data-gf-list-id]");
+    if (!row) return;
+    const id = row.getAttribute("data-gf-list-id");
+    if (del) {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteFenceById(id);
+      return;
+    }
+    if (open) {
+      const fence = fences.find(function (f) {
+        return fenceIdsEqual(f.id, id);
       });
-      deselect();
-      syncSource();
-    } catch (err) {
-      setStatus(err.message || "Delete failed");
+      setFenceListOpen(false);
+      if (fence) {
+        selectFence(fence.id);
+        flyToFence(fence);
+      }
     }
   }
 
@@ -633,7 +884,7 @@
       missions: Array.isArray(nextMissions) ? nextMissions : fence.actions.missions || [],
     };
     const idx = fences.findIndex(function (f) {
-      return f.id === fence.id;
+      return fenceIdsEqual(f.id, fence.id);
     });
     if (idx >= 0) fences[idx] = fence;
   }
@@ -936,6 +1187,7 @@
       missionRows +
       "</div>" +
       '<div class="map-geofence-inspector-actions">' +
+      '<p class="map-geofence-error" id="mapGeofenceFormError" hidden></p>' +
       '<button type="button" class="map-btn map-btn-danger" id="mapGeofenceDelete">Delete</button>' +
       "</div>" +
       "</div>";
@@ -998,7 +1250,10 @@
     bindPicker(body.querySelector("[data-gf-mission-picker]"), "mission");
     ensurePickerOutsideClose();
     const del = body.querySelector("#mapGeofenceDelete");
-    if (del) del.addEventListener("click", deleteSelected);
+    if (del) {
+      del.disabled = !!deletingId;
+      del.addEventListener("click", deleteSelected);
+    }
   }
 
   function selectFence(id) {
@@ -1006,7 +1261,8 @@
       deselect();
       return;
     }
-    selectedId = id;
+    selectedId = String(id);
+    setFenceListOpen(false);
     if (bridge && typeof bridge.deselectMarkersForAux === "function") {
       bridge.deselectMarkersForAux();
     }
@@ -1014,6 +1270,7 @@
       bridge.suppressBackgroundClick();
     }
     syncSource();
+    renderFenceList();
     if (!optionsLoaded) {
       loadActionOptions().then(function () {
         renderInspector();
@@ -1040,6 +1297,7 @@
       }
     }
     notifyAuxDetail();
+    renderFenceList();
     if (!keepDraw && drawMode) {
       // leave draw alone only when explicitly requested
     }
@@ -1137,16 +1395,18 @@
     }
 
     if (!map.getLayer(FILL_LAYER)) return;
-    // Markers sit above geofences visually; never steal their clicks.
-    if (bridge && typeof bridge.queryMarkersAtPoint === "function") {
-      const markers = bridge.queryMarkersAtPoint(e.point);
-      if (markers && markers.length) return;
-    }
-    const feats = map.queryRenderedFeatures(e.point, { layers: [FILL_LAYER, LINE_LAYER] });
+    // Point markers sit above geofences; never steal those clicks.
+    if (liveMarkersBlockGeofenceClick(e.point)) return;
+    const layers = [FILL_LAYER, LINE_LAYER];
+    if (map.getLayer(LABEL_LAYER)) layers.push(LABEL_LAYER);
+    const feats = map.queryRenderedFeatures(e.point, { layers: layers });
     if (feats && feats.length) {
-      const id = feats[0].properties && feats[0].properties.id;
+      const id = featureFenceId(feats[0]);
       if (id) {
         if (e.originalEvent) e.originalEvent.stopPropagation();
+        if (bridge && typeof bridge.suppressBackgroundClick === "function") {
+          bridge.suppressBackgroundClick();
+        }
         selectFence(id);
       }
     }
@@ -1183,6 +1443,12 @@
 
   function onKeyDown(e) {
     if (!e || e.key !== "Escape") return;
+    const pop = document.getElementById("mapGeofenceListPop");
+    if (pop && !pop.hidden) {
+      e.preventDefault();
+      setFenceListOpen(false);
+      return;
+    }
     const bar = document.getElementById("mapGeofenceDrawBar");
     const drawing = !!drawMode || (bar && !bar.hidden);
     if (!drawing) return;
@@ -1234,6 +1500,19 @@
         }
       });
     }
+    const listBtn = document.getElementById("mapGeofenceListBtn");
+    if (listBtn) {
+      listBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        const pop = document.getElementById("mapGeofenceListPop");
+        setFenceListOpen(!!(pop && pop.hidden));
+      });
+    }
+    const listPop = document.getElementById("mapGeofenceListPop");
+    if (listPop && !listPopBound) {
+      listPopBound = true;
+      listPop.addEventListener("click", onFenceListClick);
+    }
     document.querySelectorAll("[data-geofence-draw]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         const mode = btn.getAttribute("data-geofence-draw");
@@ -1247,13 +1526,13 @@
     }
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("click", function (ev) {
-      const bar = document.getElementById("mapGeofenceDrawBar");
       const wrap = document.querySelector(".map-geofence-create-wrap");
+      const inside = wrap && wrap.contains(ev.target);
+      const bar = document.getElementById("mapGeofenceDrawBar");
       const barVisible = bar && !bar.hidden;
-      if (!barVisible) return;
-      if (wrap && wrap.contains(ev.target)) return;
-      if (drawMode) return;
-      cancelCreate();
+      if (barVisible && !inside && !drawMode) cancelCreate();
+      const pop = document.getElementById("mapGeofenceListPop");
+      if (pop && !pop.hidden && !inside) setFenceListOpen(false);
     });
   }
 
@@ -1269,6 +1548,8 @@
     map.on("mousemove", onMapMove);
     loadFences().catch(function (err) {
       console.warn("[map-geofences] load failed:", err.message || err);
+      renderFenceList();
+      showFormError(err.message || "Failed to load geofences");
     });
     loadActionOptions().catch(function () {});
   }
@@ -1283,6 +1564,7 @@
       const layers = [];
       if (map && map.getLayer(FILL_LAYER)) layers.push(FILL_LAYER);
       if (map && map.getLayer(LINE_LAYER)) layers.push(LINE_LAYER);
+      if (map && map.getLayer(LABEL_LAYER)) layers.push(LABEL_LAYER);
       return layers;
     },
   };

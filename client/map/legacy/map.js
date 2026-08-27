@@ -4799,25 +4799,27 @@
     disarmStackPickerOutsideClose();
   }
 
-  function queryMarkersAtPoint(point, radiusPx) {
+  function queryMarkersAtPoint(point, radiusPx, opts) {
     const r = radiusPx == null ? 18 : radiusPx;
     const layers = markerHitLayers();
-    if (
-      window.TakMapMissions &&
-      typeof window.TakMapMissions.getHitLayers === "function"
-    ) {
-      const missionLayers = window.TakMapMissions.getHitLayers();
-      for (let i = 0; i < missionLayers.length; i++) {
-        layers.push(missionLayers[i]);
+    if (!(opts && opts.markersOnly)) {
+      if (
+        window.TakMapMissions &&
+        typeof window.TakMapMissions.getHitLayers === "function"
+      ) {
+        const missionLayers = window.TakMapMissions.getHitLayers();
+        for (let i = 0; i < missionLayers.length; i++) {
+          layers.push(missionLayers[i]);
+        }
       }
-    }
-    if (
-      window.TakMapPackages &&
-      typeof window.TakMapPackages.getHitLayers === "function"
-    ) {
-      const packageLayers = window.TakMapPackages.getHitLayers();
-      for (let i = 0; i < packageLayers.length; i++) {
-        layers.push(packageLayers[i]);
+      if (
+        window.TakMapPackages &&
+        typeof window.TakMapPackages.getHitLayers === "function"
+      ) {
+        const packageLayers = window.TakMapPackages.getHitLayers();
+        for (let i = 0; i < packageLayers.length; i++) {
+          layers.push(packageLayers[i]);
+        }
       }
     }
     if (!layers.length) return [];
