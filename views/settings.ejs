@@ -4013,12 +4013,12 @@
           <div class="settings-oa-section" data-openaddresses-section>
             <div class="settings-oa-header">
               <h3>OpenAddresses search</h3>
-              <button type="button" class="btn settings-oa-refresh" data-oa-refresh>Refresh catalog</button>
+              <button type="button" class="btn settings-oa-refresh" data-oa-refresh<%= String(settings.OPENADDRESSES_TOKEN || "").trim() ? "" : " hidden" %>>Refresh catalog</button>
             </div>
             <p class="settings-help settings-oa-note">
               Downloading OpenAddresses requires a free
               <a href="https://batch.openaddresses.io/login" target="_blank" rel="noopener noreferrer">OpenAddresses API token</a>.
-              The zip is deleted after import; only the address search index stays on this server.
+              Enter a token below to see available collections. The zip is deleted after import; only the address search index stays on this server.
               First import of a large region can take a long time and needs free disk for the zip plus the index while it runs (about <strong>2× the zip</strong> until cleanup). Global (~55 GB) is not recommended.
             </p>
             <label class="settings-field">
@@ -4026,7 +4026,7 @@
                 <span>OpenAddresses API Token</span>
                 <span class="settings-help-tip">
                   <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-                  <span class="settings-help-popover">Optional to list collections; required to download. Create a token at batch.openaddresses.io after signing in. It autosaves with the rest of settings.</span>
+                  <span class="settings-help-popover">Required to list and download collections. Create a token at batch.openaddresses.io after signing in. It autosaves with the rest of settings.</span>
                 </span>
               </span>
               <div class="passwordWrap">
@@ -4050,7 +4050,7 @@
               </div>
             </label>
             <p class="settings-oa-msg" data-oa-msg aria-live="polite"></p>
-            <div class="settings-oa-table-wrap">
+            <div class="settings-oa-table-wrap" data-oa-catalog<%= String(settings.OPENADDRESSES_TOKEN || "").trim() ? "" : " hidden" %>>
               <table class="table settings-oa-table">
                 <thead>
                   <tr>
@@ -4074,8 +4074,21 @@
               var tbody = section.querySelector("[data-oa-tbody]");
               var msgEl = section.querySelector("[data-oa-msg]");
               var refreshBtn = section.querySelector("[data-oa-refresh]");
+              var catalogEl = section.querySelector("[data-oa-catalog]");
+              var tokenInput = document.getElementById("oaTokenInput");
               var pollTimer = null;
               var inFlight = false;
+
+              function tokenEntered() {
+                return !!(tokenInput && String(tokenInput.value || "").trim());
+              }
+
+              function syncCatalogVisibility() {
+                var on = tokenEntered();
+                if (refreshBtn) refreshBtn.hidden = !on;
+                if (catalogEl) catalogEl.hidden = !on;
+                return on;
+              }
 
               function setMsg(text, isError) {
                 if (!msgEl) return;
@@ -4149,7 +4162,9 @@
                 }
 
                 if (!data || !data.hasToken) {
-                  setMsg("Add an API token to download collections. The catalog above is public and does not need a token.", false);
+                  if (!tokenEntered()) {
+                    setMsg("Add an API token to list and download collections.", false);
+                  }
                 } else if (data.catalogError) {
                   setMsg(data.catalogError, true);
                 } else if (job && job.running) {
@@ -4353,11 +4368,30 @@
               }
 
               window.startOpenAddressesPoll = function () {
+                if (!syncCatalogVisibility()) {
+                  stopPoll();
+                  setMsg("Add an API token to list and download collections.", false);
+                  return;
+                }
                 startPoll(true);
               };
               window.stopOpenAddressesPoll = function () {
                 stopPoll();
               };
+
+              if (tokenInput) {
+                tokenInput.addEventListener("input", function () {
+                  if (!tokenEntered()) {
+                    stopPoll();
+                    syncCatalogVisibility();
+                    setMsg("Add an API token to list and download collections.", false);
+                    return;
+                  }
+                  var wasHidden = catalogEl && catalogEl.hidden;
+                  syncCatalogVisibility();
+                  if (wasHidden) startPoll(true);
+                });
+              }
             })();
           </script>
         

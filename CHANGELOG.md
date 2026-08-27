@@ -9,6 +9,11 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.1 - 8/26/26
+✨ `Enhancement` - Open Addresses added to Live Map settings to provide enhanced address lookup.  A free api key must be obtained and entered.  You can then download a region of addresses.  (These files can be large, so ensure you have plenty of storage space).  While downloading and importing you do not have to stay on the settings page as long as you do not restart or update the server.<br>
+✨ `Enhancement` - Channel Patching moved to "Incident Response" section in the sidebar<br>
+🐛 `Bug Fix` - Fixes issue with geofences not deleting properly.  Adds improved error handling to prevent session issues.
+
 ### v1.4.0 - 8/26/26
 🎉 `New Feature` - TAK Portal Live Map - A built in live map now ships with TAK Portal allowing for an easy to use, view only web interface that can serve anyone wanting an overview of TAK.  Channels, Data Sync Missions, and Data Packages can all be viewed from within live map. (Issues are still being sorted with an occassional bug of an improper icon getting displayed)<br>
 🎉 `New Feature` - Live Map Search Functionality - Allows the user to search for callsigns of COTs, addresses (in beta), and coordinates.<br>
