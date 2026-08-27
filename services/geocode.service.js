@@ -568,7 +568,12 @@ async function geocodeSearch(query, options = {}) {
       });
       const results = Array.isArray(hits)
         ? hits.map(function (hit) {
-            return { lat: hit.lat, lon: hit.lon, label: hit.label };
+            return {
+              lat: hit.lat,
+              lon: hit.lon,
+              label: hit.label,
+              score: hit.score,
+            };
           })
         : [];
       return { results, lookupFailed: false };

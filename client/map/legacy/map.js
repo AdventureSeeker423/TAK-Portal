@@ -3234,11 +3234,15 @@
   }
 
   function sortGoToAddressesByViewport(addresses) {
-    const center = mapViewportCenter();
-    if (!center || !Array.isArray(addresses) || addresses.length < 2) {
+    if (!Array.isArray(addresses) || addresses.length < 2) {
       return addresses;
     }
+    const center = mapViewportCenter();
     return addresses.slice().sort(function (a, b) {
+      const sa = Number(a.score) || 0;
+      const sb = Number(b.score) || 0;
+      if (sb !== sa) return sb - sa;
+      if (!center) return 0;
       const da = distanceKm(center.lat, center.lon, a.lat, a.lon);
       const db = distanceKm(center.lat, center.lon, b.lat, b.lon);
       return da - db;
@@ -3276,7 +3280,13 @@
     const lon = Number(hit.lon != null ? hit.lon : hit.lng);
     const label = String(hit.label || hit.display_name || "").trim();
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || !label) return null;
-    return { lat, lon, label };
+    const score = Number(hit.score);
+    return {
+      lat,
+      lon,
+      label,
+      score: Number.isFinite(score) ? score : 0,
+    };
   }
 
   function parseGoToGeocodePayload(data) {
@@ -3312,13 +3322,18 @@
           title: String(hit.label || query),
           lat: hit.lat,
           lon: hit.lon,
+          score: Number(hit.score) || 0,
         };
       })
     );
   }
 
-  function setGoToEmptyHint(contacts, coordResult, lookupFailed) {
-    if (contacts.length || coordResult) {
+  function setGoToEmptyHint(contacts, coordResult, addresses, lookupFailed) {
+    if (
+      (contacts && contacts.length) ||
+      coordResult ||
+      (addresses && addresses.length)
+    ) {
       setGoToHint("");
       return;
     }
@@ -3550,7 +3565,7 @@
         const addresses = out.addresses || [];
         goToResults = flattenGoToResults(contactsNow, coordNow, addresses);
         syncGoToActiveIndex();
-        setGoToEmptyHint(contactsNow, coordNow, !!out.lookupFailed);
+        setGoToEmptyHint(contactsNow, coordNow, addresses, !!out.lookupFailed);
         renderGoToResults();
       });
     }, 300);
@@ -3722,7 +3737,7 @@
       activateGoToResult(visibleContacts[0]);
       return;
     }
-    setGoToEmptyHint([], null, !!out.lookupFailed);
+    setGoToEmptyHint([], null, out.addresses, !!out.lookupFailed);
   }
 
   function removeMarkerLayers() {

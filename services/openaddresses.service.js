@@ -124,7 +124,463 @@ function coordsFromGeometry(geom) {
 function prop(props, key) {
   if (!props || typeof props !== "object") return "";
   const v = props[key] != null ? props[key] : props[String(key).toUpperCase()];
-  return String(v == null ? "" : v).trim();
+  return cleanAddressField(v);
+}
+
+const STREET_TYPES = {
+  alley: "Aly",
+  aly: "Aly",
+  annex: "Anx",
+  anx: "Anx",
+  arcade: "Arc",
+  avenue: "Ave",
+  ave: "Ave",
+  boulevard: "Blvd",
+  blvd: "Blvd",
+  branch: "Br",
+  bridge: "Brg",
+  brook: "Brk",
+  bypass: "Byp",
+  byp: "Byp",
+  causeway: "Cswy",
+  center: "Ctr",
+  centre: "Ctr",
+  cir: "Cir",
+  circle: "Cir",
+  cliff: "Clf",
+  close: "Cl",
+  common: "Cmn",
+  corner: "Cor",
+  court: "Ct",
+  ct: "Ct",
+  cove: "Cv",
+  cv: "Cv",
+  creek: "Crk",
+  crescent: "Cres",
+  cres: "Cres",
+  crossing: "Xing",
+  xing: "Xing",
+  drive: "Dr",
+  dr: "Dr",
+  estate: "Est",
+  expressway: "Expy",
+  expy: "Expy",
+  extension: "Ext",
+  freeway: "Fwy",
+  fwy: "Fwy",
+  garden: "Gdn",
+  gardens: "Gdns",
+  gateway: "Gtwy",
+  glen: "Gln",
+  green: "Grn",
+  grove: "Grv",
+  harbor: "Hbr",
+  heights: "Hts",
+  highway: "Hwy",
+  hwy: "Hwy",
+  hill: "Hl",
+  hills: "Hls",
+  junction: "Jct",
+  jct: "Jct",
+  knoll: "Knl",
+  lake: "Lk",
+  landing: "Lndg",
+  lane: "Ln",
+  ln: "Ln",
+  loop: "Loop",
+  manor: "Mnr",
+  meadow: "Mdw",
+  mews: "Mews",
+  mill: "Ml",
+  mission: "Msn",
+  motorway: "Mtwy",
+  mount: "Mt",
+  mountain: "Mtn",
+  orchard: "Orch",
+  oval: "Oval",
+  overpass: "Opas",
+  park: "Park",
+  parkway: "Pkwy",
+  pkwy: "Pkwy",
+  pass: "Pass",
+  path: "Path",
+  pike: "Pike",
+  pine: "Pne",
+  place: "Pl",
+  pl: "Pl",
+  plain: "Pln",
+  plaza: "Plz",
+  plz: "Plz",
+  point: "Pt",
+  pt: "Pt",
+  port: "Prt",
+  prairie: "Pr",
+  radial: "Radl",
+  ranch: "Rnch",
+  rapid: "Rpd",
+  rest: "Rst",
+  ridge: "Rdg",
+  rdg: "Rdg",
+  river: "Riv",
+  road: "Rd",
+  rd: "Rd",
+  route: "Rte",
+  rte: "Rte",
+  row: "Row",
+  rue: "Rue",
+  run: "Run",
+  shoal: "Shl",
+  shore: "Shr",
+  skyway: "Skwy",
+  spring: "Spg",
+  springs: "Spgs",
+  spur: "Spur",
+  square: "Sq",
+  sq: "Sq",
+  station: "Sta",
+  stravenue: "Stra",
+  stream: "Strm",
+  street: "St",
+  st: "St",
+  str: "St",
+  summit: "Smt",
+  terrace: "Ter",
+  ter: "Ter",
+  throughway: "Trwy",
+  trace: "Trce",
+  track: "Trak",
+  trafficway: "Trfy",
+  trail: "Trl",
+  trl: "Trl",
+  trailer: "Trlr",
+  tunnel: "Tunl",
+  turnpike: "Tpke",
+  tpke: "Tpke",
+  underpass: "Upas",
+  union: "Un",
+  valley: "Vly",
+  viaduct: "Via",
+  view: "Vw",
+  village: "Vlg",
+  ville: "Vl",
+  vista: "Vis",
+  walk: "Walk",
+  wall: "Wall",
+  way: "Way",
+  well: "Wl",
+};
+
+const DIRECTIONALS = {
+  north: "N",
+  n: "N",
+  south: "S",
+  s: "S",
+  east: "E",
+  e: "E",
+  west: "W",
+  w: "W",
+  northeast: "NE",
+  ne: "NE",
+  northwest: "NW",
+  nw: "NW",
+  southeast: "SE",
+  se: "SE",
+  southwest: "SW",
+  sw: "SW",
+};
+
+const REGION_ABBR = {
+  alabama: "AL",
+  alaska: "AK",
+  arizona: "AZ",
+  arkansas: "AR",
+  california: "CA",
+  colorado: "CO",
+  connecticut: "CT",
+  delaware: "DE",
+  florida: "FL",
+  georgia: "GA",
+  hawaii: "HI",
+  idaho: "ID",
+  illinois: "IL",
+  indiana: "IN",
+  iowa: "IA",
+  kansas: "KS",
+  kentucky: "KY",
+  louisiana: "LA",
+  maine: "ME",
+  maryland: "MD",
+  massachusetts: "MA",
+  michigan: "MI",
+  minnesota: "MN",
+  mississippi: "MS",
+  missouri: "MO",
+  montana: "MT",
+  nebraska: "NE",
+  nevada: "NV",
+  "new hampshire": "NH",
+  "new jersey": "NJ",
+  "new mexico": "NM",
+  "new york": "NY",
+  "north carolina": "NC",
+  "north dakota": "ND",
+  ohio: "OH",
+  oklahoma: "OK",
+  oregon: "OR",
+  pennsylvania: "PA",
+  "rhode island": "RI",
+  "south carolina": "SC",
+  "south dakota": "SD",
+  tennessee: "TN",
+  texas: "TX",
+  utah: "UT",
+  vermont: "VT",
+  virginia: "VA",
+  washington: "WA",
+  "west virginia": "WV",
+  wisconsin: "WI",
+  wyoming: "WY",
+  "district of columbia": "DC",
+  alberta: "AB",
+  "british columbia": "BC",
+  manitoba: "MB",
+  "new brunswick": "NB",
+  newfoundland: "NL",
+  "newfoundland and labrador": "NL",
+  "northwest territories": "NT",
+  "nova scotia": "NS",
+  nunavut: "NU",
+  ontario: "ON",
+  "prince edward island": "PE",
+  quebec: "QC",
+  québec: "QC",
+  saskatchewan: "SK",
+  yukon: "YT",
+};
+
+const US_ZIP_RE = /^\d{5}(?:-?\d{4})?$/;
+const CA_POST_RE = /^[abceghj-nprstvxy]\d[abceghj-nprstv-z]\s?\d[abceghj-nprstv-z]\d$/i;
+const REGION_RE = /^[a-z]{2}$/i;
+const UNIT_RE = /^(#|apt|apartment|suite|ste|unit|fl|floor|bldg|building|rm|room|dept|department)\b/i;
+
+function cleanAddressField(value) {
+  const s = String(value == null ? "" : value).trim();
+  if (!s) return "";
+  if (/^(n\/a|na|null|undefined|none|unknown|-)$/i.test(s)) return "";
+  return s;
+}
+
+function titleCaseName(value) {
+  return cleanAddressField(value)
+    .split(/\s+/)
+    .map(function (word) {
+      const bare = word.replace(/\./g, "");
+      if (!bare) return "";
+      if (/^(po)$/i.test(bare)) return "PO";
+      if (/^(ne|nw|se|sw)$/i.test(bare)) return bare.toUpperCase();
+      return bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase();
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
+function formatRegion(value) {
+  const raw = cleanAddressField(value);
+  if (!raw) return "";
+  if (REGION_RE.test(raw)) return raw.toUpperCase();
+  const mapped = REGION_ABBR[raw.toLowerCase()];
+  if (mapped) return mapped;
+  return titleCaseName(raw);
+}
+
+function formatPostcode(value) {
+  const raw = cleanAddressField(value).toUpperCase().replace(/[\s-]/g, "");
+  if (!raw) return "";
+  if (/^\d{9}$/.test(raw)) return raw.slice(0, 5) + "-" + raw.slice(5);
+  if (/^\d{5}$/.test(raw)) return raw;
+  if (/^[A-Z]\d[A-Z]\d[A-Z]\d$/.test(raw)) return raw.slice(0, 3) + " " + raw.slice(3);
+  return cleanAddressField(value);
+}
+
+function isPostcodeToken(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  return US_ZIP_RE.test(raw) || CA_POST_RE.test(raw.replace(/\s/g, ""));
+}
+
+function isUnitToken(value) {
+  const raw = String(value || "").trim();
+  return !!raw && UNIT_RE.test(raw);
+}
+
+function formatUnit(value) {
+  const raw = cleanAddressField(value);
+  if (!raw) return "";
+  if (UNIT_RE.test(raw)) return titleCaseName(raw.replace(/^#\s*/, "#"));
+  return "#" + raw;
+}
+
+function formatStreetName(value) {
+  const raw = cleanAddressField(value);
+  if (!raw) return "";
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  const lastIdx = tokens.length - 1;
+  return tokens
+    .map(function (token, index) {
+      const bare = token.replace(/\./g, "");
+      if (!bare) return "";
+      const lower = bare.toLowerCase();
+      const lastIsDir = lastIdx > 0 && DIRECTIONALS[String(tokens[lastIdx] || "").replace(/\./g, "").toLowerCase()];
+      const typeIdx = lastIsDir ? lastIdx - 1 : lastIdx;
+      if (index === typeIdx && STREET_TYPES[lower]) return STREET_TYPES[lower];
+      if ((index === 0 || index === lastIdx) && DIRECTIONALS[lower]) return DIRECTIONALS[lower];
+      if (/^\d+[a-z]{0,3}$/i.test(bare)) return bare.toUpperCase();
+      if (/^(us|sr|rt|hwy|cr|fm|ih|rr)$/i.test(lower)) return bare.toUpperCase();
+      return bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase();
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
+function parseRegionZipPart(part) {
+  const raw = String(part || "").trim();
+  const two = raw.match(/^([A-Za-z]{2})\s+(.+)$/);
+  if (two && isPostcodeToken(two[2])) {
+    return { region: formatRegion(two[1]), postcode: formatPostcode(two[2]) };
+  }
+  return null;
+}
+
+function parseAddressLabel(label) {
+  const parts = String(label || "")
+    .split(",")
+    .map(function (p) {
+      return p.trim();
+    })
+    .filter(Boolean);
+  let postcode = "";
+  let region = "";
+  const kept = parts.slice();
+  for (let i = kept.length - 1; i >= 0; i--) {
+    const part = kept[i];
+    if (!postcode && isPostcodeToken(part)) {
+      postcode = formatPostcode(part);
+      kept.splice(i, 1);
+      continue;
+    }
+    const combo = parseRegionZipPart(part);
+    if (combo && (!region || !postcode)) {
+      if (!region) region = combo.region;
+      if (!postcode) postcode = combo.postcode;
+      kept.splice(i, 1);
+      continue;
+    }
+    if (!region && (REGION_RE.test(part) || REGION_ABBR[part.toLowerCase()])) {
+      region = formatRegion(part);
+      kept.splice(i, 1);
+    }
+  }
+  const line1 = kept[0] || "";
+  const extras = kept.slice(1);
+  const units = [];
+  const cities = [];
+  for (let i = 0; i < extras.length; i++) {
+    if (isUnitToken(extras[i])) units.push(formatUnit(extras[i]));
+    else cities.push(titleCaseName(extras[i]));
+  }
+  const houseMatch = line1.match(/^(\d+[a-z0-9-]*)\s+(.*)$/i);
+  return {
+    number: houseMatch ? houseMatch[1] : "",
+    street: formatStreetName(houseMatch ? houseMatch[2] : line1),
+    unit: units.join(" "),
+    city: cities.join(" "),
+    region,
+    postcode,
+  };
+}
+
+function labelCompleteness(parsed) {
+  let n = 0;
+  if (parsed.number) n += 2;
+  if (parsed.street) n += 2;
+  if (parsed.city) n += 4;
+  if (parsed.region) n += 3;
+  if (parsed.postcode) n += 2;
+  if (parsed.unit) n += 1;
+  return n;
+}
+
+function formatAddressLabel(labelOrFields) {
+  if (typeof labelOrFields === "string" && labelOrFields.split(",").length > 6) {
+    return labelOrFields.trim();
+  }
+  const parsed =
+    labelOrFields && typeof labelOrFields === "object" && !Array.isArray(labelOrFields)
+      ? {
+          number: cleanAddressField(labelOrFields.number),
+          street: formatStreetName(labelOrFields.street),
+          unit: labelOrFields.unit ? formatUnit(labelOrFields.unit) : "",
+          city: titleCaseName(labelOrFields.city),
+          region: formatRegion(labelOrFields.region),
+          postcode: formatPostcode(labelOrFields.postcode),
+        }
+      : parseAddressLabel(labelOrFields);
+  const line1 = [parsed.number, parsed.street, parsed.unit].filter(Boolean).join(" ");
+  const regionZip = [parsed.region, parsed.postcode].filter(Boolean).join(" ");
+  return [line1, parsed.city, regionZip].filter(Boolean).join(", ");
+}
+
+function streetKey(street) {
+  return formatStreetName(street)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function dedupeAddressHits(hits) {
+  const clusters = [];
+  for (let i = 0; i < hits.length; i++) {
+    const hit = hits[i];
+    const parsed = parseAddressLabel(hit.label);
+    const house = String(parsed.number || "").toLowerCase();
+    const street = streetKey(parsed.street);
+    let placed = false;
+    for (let c = 0; c < clusters.length; c++) {
+      const rep = clusters[c][0];
+      const dist = haversineKm(hit.lat, hit.lon, rep.lat, rep.lon);
+      if (dist > 0.12) continue;
+      const other = parseAddressLabel(rep.label);
+      const sameHouse = house && house === String(other.number || "").toLowerCase();
+      const sameStreet = street && street === streetKey(other.street);
+      if ((sameHouse && sameStreet) || (dist < 0.04 && sameHouse)) {
+        clusters[c].push(hit);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) clusters.push([hit]);
+  }
+  return clusters.map(function (cluster) {
+    cluster.sort(function (a, b) {
+      const ca = labelCompleteness(parseAddressLabel(a.label));
+      const cb = labelCompleteness(parseAddressLabel(b.label));
+      if (cb !== ca) return cb - ca;
+      return b.score - a.score;
+    });
+    const best = cluster[0];
+    return {
+      lat: best.lat,
+      lon: best.lon,
+      label: formatAddressLabel(best.label),
+      source: best.source,
+      score: Math.max.apply(
+        null,
+        cluster.map(function (h) {
+          return h.score;
+        })
+      ),
+    };
+  });
 }
 
 function featureToRecord(obj) {
@@ -140,7 +596,7 @@ function featureToRecord(obj) {
     number,
     street,
     unit: prop(props, "unit"),
-    city: prop(props, "city"),
+    city: prop(props, "city") || prop(props, "district"),
     region: prop(props, "region"),
     postcode: prop(props, "postcode"),
   });
@@ -180,19 +636,11 @@ function isAddressHeader(map) {
 function cell(row, map, name) {
   const idx = map[name];
   if (idx == null) return "";
-  return String(row[idx] || "").trim();
+  return cleanAddressField(row[idx]);
 }
 
 function buildAddressLabel(fields) {
-  const number = String(fields.number || "").trim();
-  const street = String(fields.street || "").trim();
-  const unit = String(fields.unit || "").trim();
-  const city = String(fields.city || "").trim();
-  const region = String(fields.region || "").trim();
-  const postcode = String(fields.postcode || "").trim();
-  const line1 = [number, street].filter(Boolean).join(" ");
-  const cityRegion = [city, region].filter(Boolean).join(", ");
-  return [line1, unit, cityRegion, postcode].filter(Boolean).join(", ");
+  return formatAddressLabel(fields || {});
 }
 
 function rowToRecord(row, map) {
@@ -207,7 +655,7 @@ function rowToRecord(row, map) {
     number,
     street,
     unit: cell(row, map, "UNIT"),
-    city: cell(row, map, "CITY"),
+    city: cell(row, map, "CITY") || cell(row, map, "DISTRICT"),
     region: cell(row, map, "REGION"),
     postcode: cell(row, map, "POSTCODE"),
   });
@@ -249,12 +697,37 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 function scoreLabel(label, tokens) {
+  const parsed = parseAddressLabel(label);
+  const streetLine = [parsed.number, parsed.street].filter(Boolean).join(" ").toLowerCase();
+  const city = String(parsed.city || "").toLowerCase();
+  const region = String(parsed.region || "").toLowerCase();
+  const zip = String(parsed.postcode || "")
+    .toLowerCase()
+    .replace(/\s/g, "");
   const lower = String(label || "").toLowerCase();
-  let score = 70;
-  for (const t of tokens) {
-    if (lower.includes(t)) score += 6;
+  const house = String(parsed.number || "").toLowerCase();
+  const queryNum = tokens.find(function (t) {
+    return /^\d/.test(t);
+  });
+
+  let score = 40;
+  if (queryNum) {
+    if (house === queryNum) score += 50;
+    else if (house.startsWith(queryNum) && queryNum.length >= 3) score += 12;
+    else if (zip === queryNum || zip.startsWith(queryNum)) {
+      score += queryNum.length >= 5 ? 20 : -20;
+    }
   }
-  if (tokens[0] && lower.startsWith(tokens[0])) score += 10;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (/^\d/.test(t)) continue;
+    if (streetLine.includes(t)) score += 10;
+    else if (city.includes(t) || region === t) score += 6;
+    else if (lower.includes(t)) score += 2;
+  }
+  if (parsed.city) score += 3;
+  if (parsed.region) score += 2;
+  if (parsed.postcode) score += 1;
   return score;
 }
 
@@ -1367,27 +1840,39 @@ function createOpenAddressesService(options = {}) {
         const lon = Number(row.lon);
         const label = String(row.label || "").trim();
         if (!Number.isFinite(lat) || !Number.isFinite(lon) || !label) return null;
+        let score = scoreLabel(label, tokens);
+        if (hasNear) {
+          const dist = haversineKm(nearLat, nearLon, lat, lon);
+          score += Math.max(0, 12 - Math.min(dist, 12));
+        }
         return {
           lat,
           lon,
           label,
           source: "openaddresses",
-          score: scoreLabel(label, tokens),
+          score,
         };
       })
       .filter(Boolean);
 
     hits.sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
       if (hasNear) {
         const da = haversineKm(nearLat, nearLon, a.lat, a.lon);
         const db = haversineKm(nearLat, nearLon, b.lat, b.lon);
         if (da !== db) return da - db;
       }
-      return b.score - a.score || a.label.localeCompare(b.label);
+      return a.label.localeCompare(b.label);
     });
 
-    return hits.slice(0, limit).map(function (hit) {
-      return { lat: hit.lat, lon: hit.lon, label: hit.label, source: hit.source };
+    return dedupeAddressHits(hits).slice(0, limit).map(function (hit) {
+      return {
+        lat: hit.lat,
+        lon: hit.lon,
+        label: hit.label,
+        source: hit.source,
+        score: hit.score,
+      };
     });
   }
 
@@ -1464,6 +1949,9 @@ const singleton = createOpenAddressesService();
 module.exports = Object.assign(singleton, {
   createOpenAddressesService,
   buildAddressLabel,
+  formatAddressLabel,
+  parseAddressLabel,
+  scoreLabel,
   parseCsvLine,
   isAddressCsvPath,
   isAddressDataPath,

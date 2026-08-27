@@ -19,7 +19,36 @@ assert.strictEqual(
     region: "TN",
     postcode: "37402",
   }),
-  "600 Market St, Chattanooga, TN, 37402"
+  "600 Market St, Chattanooga, TN 37402"
+);
+assert.strictEqual(
+  oa.formatAddressLabel("180 MAIN ST, 60015"),
+  "180 Main St, 60015"
+);
+assert.strictEqual(
+  oa.formatAddressLabel("600 East MAIN Street, MONONGAHELA CITY, PA, 15063"),
+  "600 E Main St, Monongahela City, PA 15063"
+);
+assert.strictEqual(
+  oa.formatAddressLabel("600 MAIN ST, ROCKWOOD BORO"),
+  "600 Main St, Rockwood Boro"
+);
+assert.strictEqual(
+  oa.formatAddressLabel("3891 CONGRESS STREET"),
+  "3891 Congress St"
+);
+assert.strictEqual(
+  oa.formatAddressLabel("389 Congress Ave, WATERBURY, CT, 06708"),
+  "389 Congress Ave, Waterbury, CT 06708"
+);
+
+assert.ok(
+  oa.scoreLabel("600 Main St, Monongahela City, PA 15063", ["600", "main"]) >
+    oa.scoreLabel("180 Main St, 60015", ["600", "main"])
+);
+assert.strictEqual(
+  oa.formatAddressLabel("600 Market St, Chattanooga, TN 37402"),
+  "600 Market St, Chattanooga, TN 37402"
 );
 assert.strictEqual(oa.isAddressCsvPath("us/tn/hamilton.csv"), true);
 assert.strictEqual(oa.isAddressCsvPath("us/tn/hamilton-parcels.csv"), false);
@@ -55,6 +84,7 @@ const geoRec = oa.featureToRecord({
 assert.ok(geoRec);
 assert.strictEqual(geoRec.lat, 45.9);
 assert.ok(geoRec.label.includes("1315 Route 16"));
+assert.strictEqual(geoRec.label, "1315 Route 16, Jolicure, NB E4L 2P9");
 assert.strictEqual(
   oa.featureToRecord({
     type: "Feature",
@@ -146,6 +176,7 @@ const FIXTURE_GEOJSON = [
     });
     assert.ok(hits.length >= 1);
     assert.ok(/600 Market/i.test(hits[0].label));
+    assert.strictEqual(hits[0].label, "600 Market St, Chattanooga, TN 37402");
     assert.ok(Math.abs(hits[0].lat - 35.0456) < 0.001);
 
     const nearChat = svc.search("Broadway", {
