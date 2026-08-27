@@ -4125,14 +4125,14 @@
                     if (row.canDownload) {
                       actions.push('<button type="button" class="btn settings-oa-btn" data-oa-download="' + esc(row.id) + '">Download</button>');
                     }
+                    if (row.canCancel) {
+                      actions.push('<button type="button" class="btn settings-oa-btn" data-oa-cancel="' + esc(row.id) + '">Cancel</button>');
+                    }
                     if (row.canUpdate) {
                       actions.push('<button type="button" class="btn settings-oa-btn" data-oa-update="' + esc(row.id) + '">Update</button>');
                     }
                     if (row.canRemove) {
                       actions.push('<button type="button" class="btn settings-oa-btn" data-oa-remove="' + esc(row.id) + '">Delete</button>');
-                    }
-                    if (!actions.length && (row.status === "downloading" || row.status === "importing")) {
-                      actions.push('<span class="muted">Working…</span>');
                     }
                     var name = esc(row.human || row.name || row.id);
                     if (row.isGlobal) name += ' <span class="settings-oa-warn">not recommended</span>';
@@ -4154,6 +4154,8 @@
                   setMsg(data.catalogError, true);
                 } else if (job && job.running) {
                   setMsg(job.message || "Working…", false);
+                } else if (job && job.status === "cancelled") {
+                  setMsg(job.message || "Download cancelled. Partial files were deleted.", false);
                 } else if (job && job.error) {
                   setMsg(job.error, true);
                 } else if (data.indexReady) {
@@ -4266,6 +4268,18 @@
                 var downloadBtn = e.target.closest && e.target.closest("[data-oa-download]");
                 var updateBtn = e.target.closest && e.target.closest("[data-oa-update]");
                 var removeBtn = e.target.closest && e.target.closest("[data-oa-remove]");
+                var cancelBtn = e.target.closest && e.target.closest("[data-oa-cancel]");
+                if (cancelBtn) {
+                  e.preventDefault();
+                  cancelBtn.disabled = true;
+                  postJson("/api/settings/openaddresses/cancel", {})
+                    .then(afterStart)
+                    .catch(function (err) {
+                      setMsg(err.message || "Cancel failed.", true);
+                      cancelBtn.disabled = false;
+                    });
+                  return;
+                }
                 if (downloadBtn) {
                   e.preventDefault();
                   var did = downloadBtn.getAttribute("data-oa-download");

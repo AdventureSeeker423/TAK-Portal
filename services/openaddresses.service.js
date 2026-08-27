@@ -302,6 +302,22 @@ function httpError(status, message) {
   return err;
 }
 
+function cancelledError() {
+  const err = new Error("Download cancelled.");
+  err.cancelled = true;
+  err.status = 499;
+  return err;
+}
+
+function isAbortErr(err) {
+  if (!err) return false;
+  if (err.cancelled) return true;
+  const name = String(err.name || "");
+  const code = String(err.code || "");
+  const msg = String(err.message || "").toLowerCase();
+  return name === "AbortError" || code === "ABORT_ERR" || msg.indexOf("aborted") !== -1;
+}
+
 function createOpenAddressesService(options = {}) {
   const rootDir =
     options.rootDir || path.join(__dirname, "..", "data", "openaddresses");
@@ -471,6 +487,16 @@ function createOpenAddressesService(options = {}) {
     db.exec("BEGIN");
     try {
       for await (const rawLine of rl) {
+        if (job && job.cancelled) {
+          if (typeof stream.destroy === "function") {
+            try {
+              stream.destroy();
+            } catch (_) {
+              /* ignore */
+            }
+          }
+          throw cancelledError();
+        }
         const line = String(rawLine || "").replace(/^\uFEFF/, "").trim();
         if (!line) continue;
         if (!mode) {
@@ -637,9 +663,11 @@ function createOpenAddressesService(options = {}) {
 
   function publicJob() {
     if (!job) return null;
+    const running = !!job.running;
+    const action = job.action || "";
     return {
-      running: !!job.running,
-      action: job.action || "",
+      running,
+      action,
       collectionId: job.collectionId != null ? String(job.collectionId) : "",
       collectionName: job.collectionName || "",
       status: job.status || "",
@@ -648,7 +676,12 @@ function createOpenAddressesService(options = {}) {
       bytesReceived: Number(job.bytesReceived) || 0,
       bytesTotal: Number(job.bytesTotal) || 0,
       importedRows: Number(job.importedRows) || 0,
+      canCancel: running && (action === "download" || action === "update"),
     };
+  }
+
+  function throwIfCancelled() {
+    if (job && job.cancelled) throw cancelledError();
   }
 
   function assertNoJob() {
@@ -684,7 +717,11 @@ function createOpenAddressesService(options = {}) {
   async function downloadUrlToFile(url, token, destPath) {
     const tmp = destPath + ".part";
     unlinkQuiet(tmp);
+    throwIfCancelled();
     try {
+      if (!job.abortController && typeof AbortController !== "undefined") {
+        job.abortController = new AbortController();
+      }
       const res = await fetchImpl(url, {
         headers: {
           Authorization: "Bearer " + token,
@@ -692,7 +729,9 @@ function createOpenAddressesService(options = {}) {
           "User-Agent": USER_AGENT,
         },
         redirect: "follow",
+        signal: job.abortController ? job.abortController.signal : undefined,
       });
+      throwIfCancelled();
       if (!res.ok) {
         let detail = "";
         try {
@@ -744,8 +783,14 @@ function createOpenAddressesService(options = {}) {
       }
 
       const input = Readable.fromWeb(res.body);
+      const out = fs.createWriteStream(tmp);
+      job.writeStream = out;
       const counter = new Transform({
         transform(chunk, _enc, cb) {
+          if (job && job.cancelled) {
+            cb(cancelledError());
+            return;
+          }
           if (job) {
             job.bytesReceived = (job.bytesReceived || 0) + chunk.length;
             const rec = formatBytes(job.bytesReceived);
@@ -756,11 +801,16 @@ function createOpenAddressesService(options = {}) {
           cb(null, chunk);
         },
       });
-      await pipeline(input, counter, fs.createWriteStream(tmp));
+      await pipeline(input, counter, out);
+      job.writeStream = null;
+      throwIfCancelled();
       fs.renameSync(tmp, destPath);
       return destPath;
     } catch (err) {
+      job.writeStream = null;
       unlinkQuiet(tmp);
+      if (job && job.cancelled) throw cancelledError();
+      if (isAbortErr(err)) throw cancelledError();
       throw err;
     }
   }
@@ -777,9 +827,11 @@ function createOpenAddressesService(options = {}) {
       job.message = "Reading zip…";
     }
     const directory = await unzipper.Open.file(zipPath);
+    throwIfCancelled();
     let imported = 0;
     let files = 0;
     for (const entry of directory.files) {
+      throwIfCancelled();
       if (!isAddressDataPath(entry.path)) continue;
       files++;
       if (job) {
@@ -813,6 +865,7 @@ function createOpenAddressesService(options = {}) {
       running: true,
       action: replace ? "update" : "download",
       collectionId: id,
+      collectionKey: collection.name || "",
       collectionName: collection.human || collection.name || id,
       status: "downloading",
       message: "Starting download…",
@@ -823,6 +876,7 @@ function createOpenAddressesService(options = {}) {
     });
 
     await downloadCollectionZip(id, token, destZip);
+    throwIfCancelled();
 
     try {
     setJob({ status: "importing", message: "Building search index…" });
@@ -850,6 +904,7 @@ function createOpenAddressesService(options = {}) {
         job.status = "importing";
         job.message = "Finalizing index…";
       }
+      throwIfCancelled();
       swapLiveDb(dbBuildPath);
     } catch (err) {
       try {
@@ -966,6 +1021,20 @@ function createOpenAddressesService(options = {}) {
   }
 
   function failJob(err) {
+    if ((job && job.cancelled) || (err && err.cancelled) || isAbortErr(err)) {
+      const id = job && job.collectionId;
+      const name = (job && job.collectionKey) || "";
+      if (id) deleteDownloadArtifacts(name, id);
+      unlinkQuiet(dbBuildPath);
+      setJob({
+        running: false,
+        status: "cancelled",
+        error: "",
+        message: "Download cancelled. Partial files were deleted.",
+        writeStream: null,
+      });
+      return;
+    }
     const message = err && err.message ? err.message : String(err || "Collection job failed.");
     console.warn("[openaddresses]", message);
     setJob({
@@ -980,6 +1049,39 @@ function createOpenAddressesService(options = {}) {
     Promise.resolve()
       .then(fn)
       .catch(failJob);
+  }
+
+  function cancelJob() {
+    if (!job || !job.running) {
+      throw httpError(409, "No download is in progress.");
+    }
+    if (job.action && job.action !== "download" && job.action !== "update") {
+      throw httpError(409, "That job cannot be cancelled.");
+    }
+    job.cancelled = true;
+    job.message = "Cancelling…";
+    try {
+      if (job.abortController) job.abortController.abort();
+    } catch (_) {
+      /* ignore */
+    }
+    try {
+      if (job.writeStream) job.writeStream.destroy();
+    } catch (_) {
+      /* ignore */
+    }
+    const id = job.collectionId;
+    const name = job.collectionKey || "";
+    if (id) deleteDownloadArtifacts(name, id);
+    unlinkQuiet(dbBuildPath);
+    setJob({
+      running: false,
+      status: "cancelled",
+      error: "",
+      message: "Download cancelled. Partial files were deleted.",
+      writeStream: null,
+    });
+    return publicJob();
   }
 
   async function findCatalogRow(id, force) {
@@ -1008,8 +1110,12 @@ function createOpenAddressesService(options = {}) {
     }
     setJob({
       running: true,
+      cancelled: false,
+      abortController: typeof AbortController !== "undefined" ? new AbortController() : null,
+      writeStream: null,
       action: "download",
       collectionId: id,
+      collectionKey: "",
       collectionName: id,
       status: "downloading",
       message: "Looking up collection…",
@@ -1020,7 +1126,9 @@ function createOpenAddressesService(options = {}) {
     });
     startBackground(async function () {
       const row = await findCatalogRow(id, true);
+      throwIfCancelled();
       job.collectionName = row.human || row.name || id;
+      job.collectionKey = row.name || job.collectionKey || "";
       job.bytesTotal = Number(row.size) || 0;
       await runInstall(row, { replace: false, token });
     });
@@ -1044,8 +1152,12 @@ function createOpenAddressesService(options = {}) {
     }
     setJob({
       running: true,
+      cancelled: false,
+      abortController: typeof AbortController !== "undefined" ? new AbortController() : null,
+      writeStream: null,
       action: "update",
       collectionId: id,
+      collectionKey: (manifest.collections[id] && manifest.collections[id].name) || "",
       collectionName: manifest.collections[id].human || id,
       status: "downloading",
       message: "Looking up collection…",
@@ -1056,7 +1168,9 @@ function createOpenAddressesService(options = {}) {
     });
     startBackground(async function () {
       const row = await findCatalogRow(id, true);
+      throwIfCancelled();
       job.collectionName = row.human || row.name || id;
+      job.collectionKey = row.name || job.collectionKey || "";
       await runInstall(row, { replace: true, token });
     });
     return publicJob();
@@ -1166,6 +1280,7 @@ function createOpenAddressesService(options = {}) {
       canDownload: !installed && !active,
       canUpdate: !!installed && !active,
       canRemove: !active && (!!installed || leftover),
+      canCancel: active && (job.action === "download" || job.action === "update"),
     };
   }
 
@@ -1335,6 +1450,7 @@ function createOpenAddressesService(options = {}) {
     startDownload,
     startUpdate,
     startRemove,
+    cancelJob,
     isIndexReady,
     search,
     importCsvText,

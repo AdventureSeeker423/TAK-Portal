@@ -53,6 +53,18 @@ router.post("/download", (req, res) => {
   }
 });
 
+router.post("/cancel", (req, res) => {
+  try {
+    const job = oa.cancelJob();
+    audit(req, "OPENADDRESSES_DOWNLOAD_CANCELLED", job && job.collectionId, {
+      summary: "Cancelled OpenAddresses collection download.",
+    });
+    return res.json({ ok: true, job });
+  } catch (err) {
+    return res.status(err.status || 500).json({ ok: false, error: toSafeApiError(err) });
+  }
+});
+
 router.post("/:collectionId/update", (req, res) => {
   try {
     const collectionId = collectionIdParam(req);
