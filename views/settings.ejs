@@ -4016,11 +4016,10 @@
               <button type="button" class="btn settings-oa-refresh" data-oa-refresh>Refresh catalog</button>
             </div>
             <p class="settings-help settings-oa-note">
-              Live Map Go To uses a local address index when a collection is installed on this server (SQLite on this host — not Pelias, and no extra containers).
-              Coverage is only the regions you download. Searches outside those regions will miss.
-              Listing collections is public; downloading requires a free
+              Downloading OpenAddresses requires a free
               <a href="https://batch.openaddresses.io/login" target="_blank" rel="noopener noreferrer">OpenAddresses API token</a>.
-              First import of a large region can take a long time and roughly <strong>2× the zip size</strong> in free disk (zip + index). Northeast or Canada are realistic first tests. Global (~55 GB) is not recommended.
+              The zip is deleted after import; only the address search index stays on this server.
+              First import of a large region can take a long time and needs free disk for the zip plus the index while it runs (about <strong>2× the zip</strong> until cleanup). Northeast or Canada are realistic first tests. Global (~55 GB) is not recommended.
             </p>
             <label class="settings-field">
               <span class="settings-label">
@@ -4103,7 +4102,7 @@
               function confirmDisk(row, isUpdate) {
                 var lines = [
                   (isUpdate ? "Update" : "Download") + ' "' + (row.human || row.name) + '" (' + (row.sizeLabel || "") + " zip)?",
-                  "Plan about " + (row.estimatedDiskLabel || "2× the zip") + " of free disk for the zip plus the local search index.",
+                  "While importing, plan about " + (row.estimatedDiskLabel || "2× the zip") + " of free disk. The zip is deleted afterward; only the address index stays.",
                   "This runs in the background and can take a long time. Northeast or Canada are realistic first tests."
                 ];
                 if (row.isGlobal) {
@@ -4130,7 +4129,7 @@
                       actions.push('<button type="button" class="btn settings-oa-btn" data-oa-update="' + esc(row.id) + '">Update</button>');
                     }
                     if (row.canRemove) {
-                      actions.push('<button type="button" class="btn settings-oa-btn" data-oa-remove="' + esc(row.id) + '">Remove</button>');
+                      actions.push('<button type="button" class="btn settings-oa-btn" data-oa-remove="' + esc(row.id) + '">Delete</button>');
                     }
                     if (!actions.length && (row.status === "downloading" || row.status === "importing")) {
                       actions.push('<span class="muted">Working…</span>');
@@ -4299,7 +4298,7 @@
                   e.preventDefault();
                   var rid = removeBtn.getAttribute("data-oa-remove");
                   var rrow = rowById(rid);
-                  if (!window.confirm('Remove "' + (rrow.human || rid) + '" from this server? Address search will drop that region.')) {
+                  if (!window.confirm('Delete "' + (rrow.human || rid) + '" from this server? The indexed addresses for that region will be removed.')) {
                     return;
                   }
                   removeBtn.disabled = true;

@@ -3,12 +3,13 @@
  *
  * Catalog: GET https://batch.openaddresses.io/api/collections (public).
  * Download: GET /api/collections/:id/data with Bearer token (required).
- * Index: CSV → SQLite FTS5 via node:sqlite. No extra dependencies.
+ * Index: address GeoJSON/CSV → SQLite FTS5 via node:sqlite. Zip is deleted after import.
  */
 
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
+const zlib = require("zlib");
 const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
 const { getString } = require("./env");
@@ -87,16 +88,72 @@ function parseCsvLine(line) {
   return out;
 }
 
-function isAddressCsvPath(filePath) {
+function isAddressDataPath(filePath) {
   const p = String(filePath || "")
     .replace(/\\/g, "/")
     .toLowerCase();
-  if (!p.endsWith(".csv")) return false;
-  if (p.includes("__macosx") || p.endsWith("/")) return false;
+  if (!p || p.endsWith("/") || p.includes("__macosx")) return false;
+  if (p.endsWith(".meta") || p.endsWith(".txt") || p.endsWith(".md")) return false;
   if (p.includes("parcel") || p.includes("building") || p.includes("centerline")) {
     return false;
   }
-  return true;
+  if (p.endsWith(".geojson") || p.endsWith(".json") || p.endsWith(".geojson.gz") || p.endsWith(".json.gz")) {
+    return true;
+  }
+  if (p.endsWith(".csv") || p.endsWith(".csv.gz")) return true;
+  return false;
+}
+
+function isAddressCsvPath(filePath) {
+  return isAddressDataPath(filePath);
+}
+
+function coordsFromGeometry(geom) {
+  if (!geom || typeof geom !== "object") return null;
+  const coords = geom.coordinates;
+  if (geom.type === "Point" && Array.isArray(coords) && coords.length >= 2) {
+    const lon = Number(coords[0]);
+    const lat = Number(coords[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { lat, lon };
+  }
+  return null;
+}
+
+function prop(props, key) {
+  if (!props || typeof props !== "object") return "";
+  const v = props[key] != null ? props[key] : props[String(key).toUpperCase()];
+  return String(v == null ? "" : v).trim();
+}
+
+function featureToRecord(obj) {
+  if (!obj || typeof obj !== "object") return null;
+  const feature = obj.type === "Feature" ? obj : obj.type === "Point" ? { geometry: obj, properties: {} } : obj;
+  const coords = coordsFromGeometry(feature.geometry);
+  if (!coords) return null;
+  const props = feature.properties && typeof feature.properties === "object" ? feature.properties : {};
+  const number = prop(props, "number");
+  const street = prop(props, "street");
+  if (!number && !street) return null;
+  const label = buildAddressLabel({
+    number,
+    street,
+    unit: prop(props, "unit"),
+    city: prop(props, "city"),
+    region: prop(props, "region"),
+    postcode: prop(props, "postcode"),
+  });
+  if (!label) return null;
+  return { lat: coords.lat, lon: coords.lon, label };
+}
+
+function parseJsonLine(line) {
+  try {
+    return JSON.parse(line);
+  } catch (_) {
+    return null;
+  }
 }
 
 function headerIndexMap(cells) {
@@ -387,28 +444,48 @@ function createOpenAddressesService(options = {}) {
     return copied;
   }
 
-  async function importCsvStream(db, stream, collectionId) {
+  async function importAddressStream(db, stream, collectionId) {
     const rl = readline.createInterface({
       input: stream,
       crlfDelay: Infinity,
     });
+    let mode = null;
     let map = null;
-    let skippedFile = false;
     let count = 0;
     const insert = db.prepare(
       "INSERT INTO addresses (label, lat, lon, collection_id) VALUES (?, ?, ?, ?)"
     );
     const cid = String(collectionId);
 
+    function bumpProgress() {
+      if (count % 8000 !== 0) return;
+      db.exec("COMMIT");
+      db.exec("BEGIN");
+      if (job && job.running) {
+        job.importedRows = (Number(job.importedRows) || 0) + 8000;
+        job.message =
+          "Indexing addresses… " + Number(job.importedRows).toLocaleString() + " rows";
+      }
+    }
+
     db.exec("BEGIN");
     try {
       for await (const rawLine of rl) {
-        const line = String(rawLine || "").replace(/^\uFEFF/, "");
-        if (!line.trim()) continue;
-        if (!map) {
+        const line = String(rawLine || "").replace(/^\uFEFF/, "").trim();
+        if (!line) continue;
+        if (!mode) {
+          if (line.charAt(0) === "{") {
+            mode = "geojson";
+            const rec = featureToRecord(parseJsonLine(line));
+            if (rec) {
+              insert.run(rec.label, rec.lat, rec.lon, cid);
+              count++;
+              bumpProgress();
+            }
+            continue;
+          }
           map = headerIndexMap(parseCsvLine(line));
           if (!isAddressHeader(map)) {
-            skippedFile = true;
             if (typeof stream.destroy === "function") {
               try {
                 stream.destroy();
@@ -418,20 +495,17 @@ function createOpenAddressesService(options = {}) {
             }
             break;
           }
+          mode = "csv";
           continue;
         }
-        const rec = rowToRecord(parseCsvLine(line), map);
+        const rec =
+          mode === "geojson"
+            ? featureToRecord(parseJsonLine(line))
+            : rowToRecord(parseCsvLine(line), map);
         if (!rec) continue;
         insert.run(rec.label, rec.lat, rec.lon, cid);
         count++;
-        if (count % 8000 === 0) {
-          db.exec("COMMIT");
-          db.exec("BEGIN");
-          if (job && job.running) {
-            job.importedRows = (job.importedRows || 0) + 8000;
-            job.message = "Indexing addresses… " + Number(job.importedRows).toLocaleString() + " rows";
-          }
-        }
+        bumpProgress();
       }
       db.exec("COMMIT");
     } catch (err) {
@@ -445,7 +519,6 @@ function createOpenAddressesService(options = {}) {
       rl.close();
     }
 
-    if (skippedFile) return 0;
     return count;
   }
 
@@ -505,6 +578,22 @@ function createOpenAddressesService(options = {}) {
     return path.join(downloadsDir, safeCollectionName(name, id) + ".zip");
   }
 
+  function unlinkQuiet(filePath) {
+    try {
+      fs.unlinkSync(filePath);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function deleteDownloadArtifacts(name, id) {
+    const zip = zipPathFor(name, id);
+    unlinkQuiet(zip);
+    unlinkQuiet(zip + ".part");
+    unlinkQuiet(path.join(downloadsDir, "collection-" + String(id) + ".zip"));
+    unlinkQuiet(path.join(downloadsDir, safeCollectionName(name, id) + ".zip.part"));
+  }
+
   function setJob(patch) {
     if (!job) job = {};
     Object.assign(job, patch);
@@ -559,85 +648,86 @@ function createOpenAddressesService(options = {}) {
 
   async function downloadUrlToFile(url, token, destPath) {
     const tmp = destPath + ".part";
+    unlinkQuiet(tmp);
     try {
-      fs.unlinkSync(tmp);
-    } catch (_) {
-      /* ignore */
-    }
-    const res = await fetchImpl(url, {
-      headers: {
-        Authorization: "Bearer " + token,
-        Accept: "application/zip, application/octet-stream, application/json, */*",
-        "User-Agent": USER_AGENT,
-      },
-      redirect: "follow",
-    });
-    if (!res.ok) {
-      let detail = "";
-      try {
-        detail = (await res.text()).slice(0, 180);
-      } catch (_) {
-        detail = "";
-      }
-      if (res.status === 401 || res.status === 403) {
-        throw httpError(
-          403,
-          "OpenAddresses rejected the download (HTTP " +
-            res.status +
-            "). Check the API token from batch.openaddresses.io/login."
-        );
-      }
-      throw httpError(
-        res.status,
-        "OpenAddresses download failed (HTTP " +
-          res.status +
-          (detail ? ": " + detail : "") +
-          ")."
-      );
-    }
-
-    const ctype = String(res.headers.get("content-type") || "").toLowerCase();
-    if (ctype.includes("json") && !ctype.includes("zip")) {
-      const payload = await res.json();
-      const next = extractDownloadUrl(payload);
-      if (!next) {
-        throw new Error(
-          "OpenAddresses did not return a downloadable file. Confirm the token can access collection downloads."
-        );
-      }
-      return downloadUrlToFile(next, token, destPath);
-    }
-
-    const total = Number(res.headers.get("content-length")) || 0;
-    if (job) {
-      job.bytesTotal = total;
-      job.bytesReceived = 0;
-      job.status = "downloading";
-      job.message = total
-        ? "Downloading… 0 B / " + formatBytes(total)
-        : "Downloading…";
-    }
-
-    if (!res.body) {
-      throw new Error("OpenAddresses download returned an empty body.");
-    }
-
-    const input = Readable.fromWeb(res.body);
-    const counter = new Transform({
-      transform(chunk, _enc, cb) {
-        if (job) {
-          job.bytesReceived = (job.bytesReceived || 0) + chunk.length;
-          const rec = formatBytes(job.bytesReceived);
-          job.message = job.bytesTotal
-            ? "Downloading… " + rec + " / " + formatBytes(job.bytesTotal)
-            : "Downloading… " + rec;
+      const res = await fetchImpl(url, {
+        headers: {
+          Authorization: "Bearer " + token,
+          Accept: "application/zip, application/octet-stream, application/json, */*",
+          "User-Agent": USER_AGENT,
+        },
+        redirect: "follow",
+      });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          detail = (await res.text()).slice(0, 180);
+        } catch (_) {
+          detail = "";
         }
-        cb(null, chunk);
-      },
-    });
-    await pipeline(input, counter, fs.createWriteStream(tmp));
-    fs.renameSync(tmp, destPath);
-    return destPath;
+        if (res.status === 401 || res.status === 403) {
+          throw httpError(
+            403,
+            "OpenAddresses rejected the download (HTTP " +
+              res.status +
+              "). Check the API token from batch.openaddresses.io/login."
+          );
+        }
+        throw httpError(
+          res.status,
+          "OpenAddresses download failed (HTTP " +
+            res.status +
+            (detail ? ": " + detail : "") +
+            ")."
+        );
+      }
+
+      const ctype = String(res.headers.get("content-type") || "").toLowerCase();
+      if (ctype.includes("json") && !ctype.includes("zip")) {
+        const payload = await res.json();
+        const next = extractDownloadUrl(payload);
+        if (!next) {
+          throw new Error(
+            "OpenAddresses did not return a downloadable file. Confirm the token can access collection downloads."
+          );
+        }
+        return downloadUrlToFile(next, token, destPath);
+      }
+
+      const total = Number(res.headers.get("content-length")) || 0;
+      if (job) {
+        job.bytesTotal = total;
+        job.bytesReceived = 0;
+        job.status = "downloading";
+        job.message = total
+          ? "Downloading… 0 B / " + formatBytes(total)
+          : "Downloading…";
+      }
+
+      if (!res.body) {
+        throw new Error("OpenAddresses download returned an empty body.");
+      }
+
+      const input = Readable.fromWeb(res.body);
+      const counter = new Transform({
+        transform(chunk, _enc, cb) {
+          if (job) {
+            job.bytesReceived = (job.bytesReceived || 0) + chunk.length;
+            const rec = formatBytes(job.bytesReceived);
+            job.message = job.bytesTotal
+              ? "Downloading… " + rec + " / " + formatBytes(job.bytesTotal)
+              : "Downloading… " + rec;
+          }
+          cb(null, chunk);
+        },
+      });
+      await pipeline(input, counter, fs.createWriteStream(tmp));
+      fs.renameSync(tmp, destPath);
+      return destPath;
+    } catch (err) {
+      unlinkQuiet(tmp);
+      throw err;
+    }
   }
 
   async function downloadCollectionZip(id, token, destPath) {
@@ -653,16 +743,20 @@ function createOpenAddressesService(options = {}) {
     }
     const directory = await unzipper.Open.file(zipPath);
     let imported = 0;
-    let csvFiles = 0;
+    let files = 0;
     for (const entry of directory.files) {
-      if (!isAddressCsvPath(entry.path)) continue;
-      csvFiles++;
+      if (!isAddressDataPath(entry.path)) continue;
+      files++;
       if (job) {
         job.message = "Indexing " + path.basename(entry.path) + "…";
       }
-      imported += await importCsvStream(db, entry.stream(), collectionId);
+      let stream = entry.stream();
+      if (/\.gz$/i.test(entry.path)) {
+        stream = stream.pipe(zlib.createGunzip());
+      }
+      imported += await importAddressStream(db, stream, collectionId);
     }
-    return { imported, csvFiles };
+    return { imported, files };
   }
 
   function countLiveRows() {
@@ -695,6 +789,7 @@ function createOpenAddressesService(options = {}) {
 
     await downloadCollectionZip(id, token, destZip);
 
+    try {
     setJob({ status: "importing", message: "Building search index…" });
     try {
       fs.unlinkSync(dbBuildPath);
@@ -712,7 +807,7 @@ function createOpenAddressesService(options = {}) {
       imported = result.imported;
       if (imported <= 0) {
         throw new Error(
-          "No address rows found in this collection (parcels and buildings are skipped)."
+          "No address rows found in this collection (parcels, buildings, and rows without a street or coordinates are skipped)."
         );
       }
       db.close();
@@ -742,7 +837,7 @@ function createOpenAddressesService(options = {}) {
       human: collection.human || collection.name || "",
       created: Number(collection.created) || 0,
       size: Number(collection.size) || 0,
-      zipName: path.basename(destZip),
+      zipName: "",
       installedAt: new Date().toISOString(),
       rowCount: imported,
     };
@@ -756,6 +851,9 @@ function createOpenAddressesService(options = {}) {
       importedRows: imported,
       error: "",
     });
+    } finally {
+      deleteDownloadArtifacts(collection.name, id);
+    }
   }
 
   async function runRemove(collectionId) {
@@ -784,17 +882,12 @@ function createOpenAddressesService(options = {}) {
 
     if (!remaining.length) {
       removeLiveIndex();
-      const zip = zipPathFor(installed.name, id);
-      try {
-        fs.unlinkSync(zip);
-      } catch (_) {
-        /* ignore */
-      }
+      deleteDownloadArtifacts(installed.name, id);
       writeManifest(emptyManifest());
       setJob({
         running: false,
         status: "not_installed",
-        message: "Collection removed.",
+        message: "Collection deleted.",
         error: "",
       });
       return;
@@ -824,12 +917,7 @@ function createOpenAddressesService(options = {}) {
       throw err;
     }
 
-    const zip = zipPathFor(installed.name, id);
-    try {
-      fs.unlinkSync(zip);
-    } catch (_) {
-      /* ignore */
-    }
+    deleteDownloadArtifacts(installed.name, id);
     delete manifest.collections[id];
     manifest.ready = Object.keys(manifest.collections).length > 0;
     manifest.rowCount = countLiveRows();
@@ -837,7 +925,7 @@ function createOpenAddressesService(options = {}) {
     setJob({
       running: false,
       status: "ready",
-      message: "Collection removed.",
+      message: "Collection deleted.",
       error: "",
     });
   }
@@ -1138,7 +1226,7 @@ function createOpenAddressesService(options = {}) {
       } else if (fs.existsSync(dbLivePath) && !meta.replace) {
         copyAddressesExcept(dbLivePath, db, null);
       }
-      imported = await importCsvStream(db, Readable.from(String(csvText || "")), id);
+      imported = await importAddressStream(db, Readable.from(String(csvText || "")), id);
       db.close();
       if (imported <= 0) throw new Error("No address rows imported.");
       swapLiveDb(dbBuildPath);
@@ -1196,6 +1284,8 @@ module.exports = Object.assign(singleton, {
   buildAddressLabel,
   parseCsvLine,
   isAddressCsvPath,
+  isAddressDataPath,
+  featureToRecord,
   toFtsQuery,
   formatBytes,
   rowToRecord,
