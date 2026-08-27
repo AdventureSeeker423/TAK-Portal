@@ -33,7 +33,6 @@
   let deletingId = null;
   let optionsLoaded = false;
   let detailPaneEl = null;
-  let listPopBound = false;
 
   function emptyFc() {
     return { type: "FeatureCollection", features: [] };
@@ -351,11 +350,6 @@
       el.hidden = !msg;
       el.textContent = msg || "";
     }
-    const listErr = document.getElementById("mapGeofenceListError");
-    if (listErr) {
-      listErr.hidden = !msg;
-      listErr.textContent = msg || "";
-    }
   }
 
   function getSelected() {
@@ -430,7 +424,6 @@
       syncSource();
       renderInspector();
     }
-    renderFenceList();
   }
 
   async function loadActionOptions() {
@@ -486,7 +479,6 @@
   }
 
   function beginCreate() {
-    setFenceListOpen(false);
     setDrawBarVisible(true);
     setDrawMode(null);
     setStatus("Choose a shape to draw.");
@@ -527,7 +519,6 @@
       cancelCreate();
       selectFence(fence.id);
       setStatus("");
-      renderFenceList();
     } catch (err) {
       setStatus(err.message || "Failed to create geofence");
     }
@@ -603,39 +594,9 @@
       if (idx >= 0) fences[idx] = data.fence;
       syncSource();
       syncPaneTitle(data.fence);
-      renderFenceList();
     } catch (err) {
       if (gen !== persistGen) return;
       showFormError(err.message || "Save failed");
-    }
-  }
-
-  async function deleteFenceById(id) {
-    const want = String(id || "").trim();
-    const fence = fences.find(function (f) {
-      return fenceIdsEqual(f.id, want);
-    });
-    if (!fence || deletingId) return false;
-    if (!window.confirm('Delete geofence "' + (fence.name || "Unnamed") + '"?')) return false;
-    cancelPendingSave();
-    deletingId = fence.id;
-    showFormError("");
-    try {
-      await api("/api/map/geofences/" + encodeURIComponent(fence.id), { method: "DELETE" });
-      fences = fences.filter(function (f) {
-        return !fenceIdsEqual(f.id, fence.id);
-      });
-      if (fenceIdsEqual(selectedId, fence.id)) deselect();
-      syncSource();
-      renderFenceList();
-      return true;
-    } catch (err) {
-      const msg = err.message || "Delete failed";
-      renderFenceList();
-      showFormError(msg);
-      return false;
-    } finally {
-      deletingId = null;
     }
   }
 
@@ -645,122 +606,22 @@
       showFormError("Select a geofence to delete.");
       return;
     }
-    await deleteFenceById(fence.id);
-  }
-
-  function setFenceListOpen(open) {
-    const pop = document.getElementById("mapGeofenceListPop");
-    const btn = document.getElementById("mapGeofenceListBtn");
-    if (pop) pop.hidden = !open;
-    if (btn) {
-      btn.classList.toggle("is-active", !!open);
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
-    }
-    if (open) {
-      cancelCreate();
-      renderFenceList();
-    }
-  }
-
-  function fenceBounds(fence) {
-    const coords = geometryToPolygon(fence && fence.geometry);
-    const ring = coords && coords[0];
-    if (!ring || !ring.length) return null;
-    let minLon = Infinity;
-    let minLat = Infinity;
-    let maxLon = -Infinity;
-    let maxLat = -Infinity;
-    for (let i = 0; i < ring.length; i++) {
-      const lon = Number(ring[i][0]);
-      const lat = Number(ring[i][1]);
-      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-      minLon = Math.min(minLon, lon);
-      minLat = Math.min(minLat, lat);
-      maxLon = Math.max(maxLon, lon);
-      maxLat = Math.max(maxLat, lat);
-    }
-    if (!Number.isFinite(minLon) || minLon === Infinity) return null;
-    return [
-      [minLon, minLat],
-      [maxLon, maxLat],
-    ];
-  }
-
-  function flyToFence(fence) {
-    if (!map || !fence) return;
-    const b = fenceBounds(fence);
-    if (!b) return;
+    if (deletingId) return;
+    if (!window.confirm('Delete geofence "' + (fence.name || "Unnamed") + '"?')) return;
+    cancelPendingSave();
+    deletingId = fence.id;
+    showFormError("");
     try {
-      map.fitBounds(b, { padding: 72, maxZoom: 15, duration: 450 });
-    } catch (_) {}
-  }
-
-  function renderFenceList() {
-    const pop = document.getElementById("mapGeofenceListPop");
-    const countEl = document.getElementById("mapGeofenceListCount");
-    if (countEl) {
-      const n = fences.length;
-      countEl.textContent = String(n);
-      countEl.hidden = n < 1;
-    }
-    if (!pop) return;
-    if (!fences.length) {
-      pop.innerHTML =
-        '<p class="map-geofence-list-error" id="mapGeofenceListError" hidden></p>' +
-        '<p class="map-geofence-list-empty">No geofences yet.</p>';
-      return;
-    }
-    const errHtml =
-      '<p class="map-geofence-list-error" id="mapGeofenceListError" hidden></p>';
-    pop.innerHTML =
-      errHtml +
-      fences
-        .map(function (f) {
-          const selected = fenceIdsEqual(f.id, selectedId);
-          const type = f.geometry && f.geometry.type ? f.geometry.type : "";
-          const enabled = f.active ? "enabled" : "disabled";
-          return (
-            '<div class="map-geofence-list-item' +
-            (selected ? " is-selected" : "") +
-            '" data-gf-list-id="' +
-            escapeAttr(f.id) +
-            '">' +
-            '<button type="button" class="map-geofence-list-item-open" data-gf-list-open>' +
-            '<span class="map-geofence-list-item-name">' +
-            escapeHtml(f.name || "Unnamed geofence") +
-            "</span>" +
-            '<span class="map-geofence-list-item-meta">' +
-            escapeHtml(type + (type ? " · " : "") + enabled) +
-            "</span>" +
-            "</button>" +
-            '<button type="button" class="map-geofence-list-item-del" data-gf-list-del title="Delete geofence" aria-label="Delete geofence">×</button>' +
-            "</div>"
-          );
-        })
-        .join("");
-  }
-
-  function onFenceListClick(e) {
-    const del = e.target.closest("[data-gf-list-del]");
-    const open = e.target.closest("[data-gf-list-open]");
-    const row = e.target.closest("[data-gf-list-id]");
-    if (!row) return;
-    const id = row.getAttribute("data-gf-list-id");
-    if (del) {
-      e.preventDefault();
-      e.stopPropagation();
-      deleteFenceById(id);
-      return;
-    }
-    if (open) {
-      const fence = fences.find(function (f) {
-        return fenceIdsEqual(f.id, id);
+      await api("/api/map/geofences/" + encodeURIComponent(fence.id), { method: "DELETE" });
+      fences = fences.filter(function (f) {
+        return !fenceIdsEqual(f.id, fence.id);
       });
-      setFenceListOpen(false);
-      if (fence) {
-        selectFence(fence.id);
-        flyToFence(fence);
-      }
+      deselect();
+      syncSource();
+    } catch (err) {
+      showFormError(err.message || "Delete failed");
+    } finally {
+      deletingId = null;
     }
   }
 
@@ -1262,7 +1123,6 @@
       return;
     }
     selectedId = String(id);
-    setFenceListOpen(false);
     if (bridge && typeof bridge.deselectMarkersForAux === "function") {
       bridge.deselectMarkersForAux();
     }
@@ -1270,7 +1130,6 @@
       bridge.suppressBackgroundClick();
     }
     syncSource();
-    renderFenceList();
     if (!optionsLoaded) {
       loadActionOptions().then(function () {
         renderInspector();
@@ -1297,7 +1156,6 @@
       }
     }
     notifyAuxDetail();
-    renderFenceList();
     if (!keepDraw && drawMode) {
       // leave draw alone only when explicitly requested
     }
@@ -1443,12 +1301,6 @@
 
   function onKeyDown(e) {
     if (!e || e.key !== "Escape") return;
-    const pop = document.getElementById("mapGeofenceListPop");
-    if (pop && !pop.hidden) {
-      e.preventDefault();
-      setFenceListOpen(false);
-      return;
-    }
     const bar = document.getElementById("mapGeofenceDrawBar");
     const drawing = !!drawMode || (bar && !bar.hidden);
     if (!drawing) return;
@@ -1500,19 +1352,6 @@
         }
       });
     }
-    const listBtn = document.getElementById("mapGeofenceListBtn");
-    if (listBtn) {
-      listBtn.addEventListener("click", function (ev) {
-        ev.stopPropagation();
-        const pop = document.getElementById("mapGeofenceListPop");
-        setFenceListOpen(!!(pop && pop.hidden));
-      });
-    }
-    const listPop = document.getElementById("mapGeofenceListPop");
-    if (listPop && !listPopBound) {
-      listPopBound = true;
-      listPop.addEventListener("click", onFenceListClick);
-    }
     document.querySelectorAll("[data-geofence-draw]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         const mode = btn.getAttribute("data-geofence-draw");
@@ -1526,13 +1365,13 @@
     }
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("click", function (ev) {
-      const wrap = document.querySelector(".map-geofence-create-wrap");
-      const inside = wrap && wrap.contains(ev.target);
       const bar = document.getElementById("mapGeofenceDrawBar");
+      const wrap = document.querySelector(".map-geofence-create-wrap");
       const barVisible = bar && !bar.hidden;
-      if (barVisible && !inside && !drawMode) cancelCreate();
-      const pop = document.getElementById("mapGeofenceListPop");
-      if (pop && !pop.hidden && !inside) setFenceListOpen(false);
+      if (!barVisible) return;
+      if (wrap && wrap.contains(ev.target)) return;
+      if (drawMode) return;
+      cancelCreate();
     });
   }
 
@@ -1548,7 +1387,6 @@
     map.on("mousemove", onMapMove);
     loadFences().catch(function (err) {
       console.warn("[map-geofences] load failed:", err.message || err);
-      renderFenceList();
       showFormError(err.message || "Failed to load geofences");
     });
     loadActionOptions().catch(function () {});
