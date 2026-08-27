@@ -587,11 +587,46 @@ function createOpenAddressesService(options = {}) {
   }
 
   function deleteDownloadArtifacts(name, id) {
+    const paths = downloadArtifactPaths(name, id);
+    for (const p of paths) unlinkQuiet(p);
+  }
+
+  function downloadArtifactPaths(name, id) {
     const zip = zipPathFor(name, id);
-    unlinkQuiet(zip);
-    unlinkQuiet(zip + ".part");
-    unlinkQuiet(path.join(downloadsDir, "collection-" + String(id) + ".zip"));
-    unlinkQuiet(path.join(downloadsDir, safeCollectionName(name, id) + ".zip.part"));
+    const out = [
+      zip,
+      zip + ".part",
+      path.join(downloadsDir, "collection-" + String(id) + ".zip"),
+      path.join(downloadsDir, "collection-" + String(id) + ".zip.part"),
+      path.join(downloadsDir, safeCollectionName(name, id) + ".zip.part"),
+    ];
+    try {
+      const needle = safeCollectionName(name, id).toLowerCase();
+      const files = fs.readdirSync(downloadsDir);
+      for (const file of files) {
+        const lower = String(file).toLowerCase();
+        if (
+          (needle && lower.indexOf(needle) !== -1) ||
+          lower === "collection-" + String(id) + ".zip" ||
+          lower.indexOf("collection-" + String(id) + ".") === 0
+        ) {
+          out.push(path.join(downloadsDir, file));
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return out;
+  }
+
+  function hasDownloadArtifacts(name, id) {
+    return downloadArtifactPaths(name, id).some(function (p) {
+      try {
+        return fs.existsSync(p);
+      } catch (_) {
+        return false;
+      }
+    });
   }
 
   function setJob(patch) {
@@ -1032,14 +1067,44 @@ function createOpenAddressesService(options = {}) {
     const id = String(collectionId || "").trim();
     if (!id) throw httpError(400, "Missing collection id.");
     const manifest = readManifest();
-    if (!manifest.collections[id]) {
-      throw httpError(404, "That collection is not installed.");
+    const installed = manifest.collections[id];
+    const catalogRow = (catalogCache.rows || []).find(function (row) {
+      return String(row.id) === id;
+    });
+    const name = (installed && installed.name) || (catalogRow && catalogRow.name) || "";
+    if (!installed) {
+      if (!hasDownloadArtifacts(name, id)) {
+        throw httpError(404, "That collection is not installed.");
+      }
+      deleteDownloadArtifacts(name, id);
+      if (job && String(job.collectionId) === id) {
+        setJob({
+          running: false,
+          action: "remove",
+          collectionId: id,
+          status: "not_installed",
+          message: "Leftover download deleted.",
+          error: "",
+        });
+      }
+      return {
+        running: false,
+        action: "remove",
+        collectionId: id,
+        collectionName: (catalogRow && (catalogRow.human || catalogRow.name)) || name || id,
+        status: "not_installed",
+        message: "Leftover download deleted.",
+        error: "",
+        bytesReceived: 0,
+        bytesTotal: 0,
+        importedRows: 0,
+      };
     }
     setJob({
       running: true,
       action: "remove",
       collectionId: id,
-      collectionName: manifest.collections[id].human || manifest.collections[id].name || id,
+      collectionName: installed.human || installed.name || id,
       status: "importing",
       message: "Removing collection…",
       error: "",
@@ -1062,12 +1127,13 @@ function createOpenAddressesService(options = {}) {
     const active = job && job.running && String(job.collectionId) === id;
     let status = "not_installed";
     let statusLabel = "Not installed";
+    const leftover = hasDownloadArtifacts(remote.name, id);
     if (active) {
       status = job.status === "downloading" ? "downloading" : "importing";
       statusLabel = job.message || (status === "downloading" ? "Downloading…" : "Importing…");
     } else if (job && !job.running && job.status === "error" && String(job.collectionId) === id) {
       status = "error";
-      statusLabel = job.error || "Error";
+      statusLabel = leftover ? "Failed — zip still on disk" : job.error || "Error";
     } else if (installed) {
       const newer =
         (created && created > Number(installed.created || 0)) ||
@@ -1099,7 +1165,7 @@ function createOpenAddressesService(options = {}) {
       statusLabel,
       canDownload: !installed && !active,
       canUpdate: !!installed && !active,
-      canRemove: !!installed && !active,
+      canRemove: !active && (!!installed || leftover),
     };
   }
 
