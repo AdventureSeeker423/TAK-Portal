@@ -39,7 +39,6 @@
     _perm("page.templates") ||
     _perm("page.agencies");
   const canSeeOperationsSection =
-    canSeeChannelPatchNav ||
     _perm("page.data_package") ||
     _perm("page.data_sync") ||
     _perm("page.email") ||
@@ -47,7 +46,9 @@
     canSeeMouNav ||
     _perm("page.settings");
   const canSeeIncidentResponseSection =
-    _perm("page.locate") || _perm("page.mutual_aid");
+    canSeeChannelPatchNav ||
+    _perm("page.locate") ||
+    _perm("page.mutual_aid");
   const canSeeOnboardingSection = _isAnyAdmin;
 
   const _path = (typeof currentPath !== "undefined" && currentPath) ? String(currentPath).replace(/\/+$/, "") || "/" : "/";
@@ -111,9 +112,6 @@
             <span class="nav-section-chevron" aria-hidden="true">▾</span>
           </button>
           <div class="nav-section-links" id="nav-operations">
-            <% if (canSeeChannelPatchNav) { %>
-              <a href="/channel-patch" class="<%= isActive('/channel-patch') ? 'active' : '' %>">Channel Patching</a>
-            <% } %>
             <% if (_perm("page.data_package")) { %>
               <a href="/data-package" class="<%= isActive('/data-package') ? 'active' : '' %>">Data Package</a>
             <% } %>
@@ -144,6 +142,9 @@
             <span class="nav-section-chevron" aria-hidden="true">▾</span>
           </button>
           <div class="nav-section-links" id="nav-incident-response">
+            <% if (canSeeChannelPatchNav) { %>
+              <a href="/channel-patch" class="<%= isActive('/channel-patch') ? 'active' : '' %>">Channel Patching</a>
+            <% } %>
             <% if (_perm("page.locate")) { %>
               <a href="/locate" class="<%= isActive('/locate') ? 'active' : '' %>">Locate Persons</a>
             <% } %>
