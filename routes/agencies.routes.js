@@ -443,54 +443,74 @@ router.get("/:index/admin-group", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+function agencyErrorMessage(err, fallback) {
+  const data = err?.response?.data;
+  if (typeof data === "string" && data.trim()) return data;
+  if (data && typeof data === "object") {
+    if (typeof data.detail === "string" && data.detail.trim()) return data.detail;
+    if (typeof data.error === "string" && data.error.trim()) return data.error;
+  }
+  return err?.message || fallback;
+}
+
+async function createAgencyFromPayload(body, opts = {}) {
+  const actor = opts.actor || null;
+  const requestInfo = opts.request || {};
   const agencies = store.load();
-  const a = normalizeAgency(req.body || {});
-  const sourceUserRequestId = String(
-    req.body?.sourceUserRequestId || ""
-  ).trim();
+  const a = normalizeAgency(body || {});
+  const sourceUserRequestId = String(body?.sourceUserRequestId || "").trim();
   let autoCreateResult = null;
 
   const err = validateAgency(a);
-  if (err) return res.status(400).json({ error: err });
+  if (err) {
+    const e = new Error(err);
+    e.statusCode = 400;
+    throw e;
+  }
 
   if (sourceUserRequestId) {
     const sourceRequest = userRequestsSvc.getById(sourceUserRequestId);
     if (!sourceRequest || String(sourceRequest.agencySuffix || "") !== "__other__") {
-      return res.status(400).json({
-        error: "The pending Other agency request was not found",
-      });
+      const e = new Error("The pending Other agency request was not found");
+      e.statusCode = 400;
+      throw e;
     }
   }
 
-  if (agencies.some(x => String(x.suffix || "").toLowerCase() === a.suffix)) {
-    return res.status(400).json({ error: "Suffix already exists" });
+  if (agencies.some((x) => String(x.suffix || "").toLowerCase() === a.suffix)) {
+    const e = new Error("Suffix already exists");
+    e.statusCode = 400;
+    throw e;
   }
 
   const dupPrefix = store.assertUniqueGroupPrefix(agencies, a.groupPrefix);
-  if (dupPrefix) return res.status(400).json({ error: dupPrefix });
-
-  const dupName = store.assertUniqueAgencyName(agencies, a.name);
-  if (dupName) return res.status(400).json({ error: dupName });
-
-  try {
-    // Ensure the agency admin group exists in Authentik.
-    await ensureAgencyAdminGroupExists(a);
-    // 1) Auto-create configured Agency / County / State groups first.
-    autoCreateResult = await autoCreateGroupsSvc.ensureAutoCreateGroupsForAgency(
-      a,
-      req.authentikUser || null
-    );
-  } catch (err) {
-    return res.status(400).json({
-      error:
-        err?.response?.data ||
-        err?.message ||
-        "Failed to create required agency groups",
-    });
+  if (dupPrefix) {
+    const e = new Error(dupPrefix);
+    e.statusCode = 400;
+    throw e;
   }
 
-  // 2) Only after groups succeed: auto-create Data Sync missions (soft-fail).
+  const dupName = store.assertUniqueAgencyName(agencies, a.name);
+  if (dupName) {
+    const e = new Error(dupName);
+    e.statusCode = 400;
+    throw e;
+  }
+
+  try {
+    await ensureAgencyAdminGroupExists(a);
+    autoCreateResult = await autoCreateGroupsSvc.ensureAutoCreateGroupsForAgency(
+      a,
+      actor
+    );
+  } catch (groupErr) {
+    const e = new Error(
+      agencyErrorMessage(groupErr, "Failed to create required agency groups")
+    );
+    e.statusCode = 400;
+    throw e;
+  }
+
   let dsResult = null;
   try {
     dsResult = await autoCreateDataSyncSvc.ensureAutoCreateDataSyncForAgency(a);
@@ -520,12 +540,8 @@ router.post("/", async (req, res) => {
   for (const created of newlyCreated) {
     const createdGroup = created.group || {};
     auditSvc.logEvent({
-      actor: req.authentikUser || null,
-      request: {
-        method: req.method,
-        path: req.originalUrl || req.path,
-        ip: req.ip,
-      },
+      actor,
+      request: requestInfo,
       action: "CREATE_GROUP",
       targetType: "group",
       targetId: String(createdGroup.pk || createdGroup.id || ""),
@@ -544,12 +560,8 @@ router.post("/", async (req, res) => {
     : [];
   for (const m of createdMissions) {
     auditSvc.logEvent({
-      actor: req.authentikUser || null,
-      request: {
-        method: req.method,
-        path: req.originalUrl || req.path,
-        ip: req.ip,
-      },
+      actor,
+      request: requestInfo,
       action: "DATA_SYNC_MISSION_CREATED",
       targetType: "data_sync_mission",
       targetId: String(m.missionName || ""),
@@ -572,8 +584,8 @@ router.post("/", async (req, res) => {
   }
 
   auditSvc.logEvent({
-    actor: req.authentikUser || null,
-    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    actor,
+    request: requestInfo,
     action: "CREATE_AGENCY",
     targetType: "agency",
     targetId: String(a?.suffix || ""),
@@ -588,11 +600,33 @@ router.post("/", async (req, res) => {
       }
     : null;
 
-  res.json({
+  return {
     success: true,
     mainGroup,
     createdAgency: linkedRequest?.createdAgency || null,
-  });
+  };
+}
+
+router.post("/", async (req, res) => {
+  try {
+    const result = await createAgencyFromPayload(req.body || {}, {
+      actor: req.authentikUser || null,
+      request: {
+        method: req.method,
+        path: req.originalUrl || req.path,
+        ip: req.ip,
+      },
+    });
+    return res.json({
+      success: true,
+      mainGroup: result.mainGroup,
+      createdAgency: result.createdAgency,
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({
+      error: err?.message || "Failed to create agency",
+    });
+  }
 });
 
 /** Must match the create-agency color dropdown in views/agencies.ejs */
@@ -1825,3 +1859,4 @@ router.post("/:index/lookup/disable", (req, res) => {
 });
 
 module.exports = router;
+module.exports.createAgencyFromPayload = createAgencyFromPayload;

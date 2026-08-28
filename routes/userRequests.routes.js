@@ -4,6 +4,7 @@ const auditSvc = require("../services/auditLog.service");
 const permsSvc = require("../services/permissions.service");
 const usersSvc = require("../services/users.service");
 const agenciesSvc = require("../services/agencies.service");
+const agenciesRoutes = require("./agencies.routes");
 
 function requireUserRequestsApi(req, res, next) {
   const eff = req.effectivePermissionSet;
@@ -202,6 +203,56 @@ function postReviewRejectHandler(req, res) {
   return res.json({ success: true });
 }
 
+async function postReviewCreateAgencyHandler(req, res) {
+  try {
+    const token = String(req.params.token || req.params.reviewToken || "").trim();
+    const access = userRequestsSvc.getReviewAccessForToken(token);
+    if (!access) return res.status(404).json({ error: "Not found" });
+    if (!access.canChangeAgency) {
+      return res.status(403).json({
+        error: "This review link cannot create agencies.",
+      });
+    }
+
+    const request = access.request;
+    if (String(request.agencySuffix || "") !== "__other__") {
+      return res.status(400).json({
+        error: "Agency creation is only available for Other / Not Listed requests.",
+      });
+    }
+
+    if (request.createdAgency && request.createdAgency.suffix) {
+      return res.json({
+        success: true,
+        alreadyCreated: true,
+        mainGroup: request.createdAgency.mainGroupName
+          ? { name: request.createdAgency.mainGroupName }
+          : null,
+        createdAgency: request.createdAgency,
+      });
+    }
+
+    const payload = { ...(req.body || {}), sourceUserRequestId: request.id };
+    const result = await agenciesRoutes.createAgencyFromPayload(payload, {
+      actor: {
+        username: "request-access-review-link",
+        displayName: "Request Access Review Link",
+      },
+      request: {
+        method: req.method,
+        path: req.originalUrl || req.path,
+        ip: req.ip,
+      },
+    });
+
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({
+      error: err?.message || "Failed to create agency.",
+    });
+  }
+}
+
 function requireValidReviewTokenParam(req, res, next) {
   const token = String(req.params.reviewToken || "").trim();
   if (!isValidReviewToken(token)) {
@@ -219,12 +270,18 @@ function registerPublicReviewRoutes(app) {
   app.get("/request-access/:reviewToken/meta", requireValidReviewTokenParam, getReviewMetaHandler);
   app.post("/request-access/:reviewToken/approve", requireValidReviewTokenParam, postReviewApproveHandler);
   app.post("/request-access/:reviewToken/reject", requireValidReviewTokenParam, postReviewRejectHandler);
+  app.post(
+    "/request-access/:reviewToken/create-agency",
+    requireValidReviewTokenParam,
+    postReviewCreateAgencyHandler
+  );
 }
 
 router.get("/review/:token", getReviewRequestHandler);
 router.get("/review/:token/meta", getReviewMetaHandler);
 router.post("/review/:token/approve", postReviewApproveHandler);
 router.post("/review/:token/reject", postReviewRejectHandler);
+router.post("/review/:token/create-agency", postReviewCreateAgencyHandler);
 
 // Admin: delete a request (reject)
 router.delete("/:id", requireUserRequestsApi, (req, res) => {

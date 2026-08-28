@@ -190,7 +190,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/user-requests/review/")) return [];
   if (p === "/api/user-requests" && m === "POST") return [];
   if (p.startsWith("/api/user-requests")) return ["page.users"];
-  if (/^\/request-access\/[a-f0-9]{32,64}(\/(data|meta|approve|reject))?\/?$/i.test(p)) {
+  if (/^\/request-access\/[a-f0-9]{32,64}(\/(data|meta|approve|reject|create-agency))?\/?$/i.test(p)) {
     return [];
   }
   if (/^\/request-access\/mou\/[a-f0-9]{32,64}(\/(sign|file))?\/?$/i.test(p)) {

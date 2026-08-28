@@ -305,7 +305,7 @@ function isPublicPortalBypass(req) {
   if (method === "GET" && /^\/request-access\/[a-f0-9]{32,64}\/(data|meta)$/i.test(p)) {
     return true;
   }
-  if (method === "POST" && /^\/request-access\/[a-f0-9]{32,64}\/(approve|reject)$/i.test(p)) {
+  if (method === "POST" && /^\/request-access\/[a-f0-9]{32,64}\/(approve|reject|create-agency)$/i.test(p)) {
     return true;
   }
   // Tokenized external MOU signing (under /request-access* for Caddy public bypass)
@@ -1555,6 +1555,9 @@ app.get("/request-access/:reviewToken", (req, res, next) => {
   if (!userRequestsRoutes.isValidReviewToken(token)) return next();
   return res.render("request-access-review", {
     reviewToken: token,
+    agencyTypeOptions: agencyTypesSvc.getAgencyTypeOptions(),
+    regionOptions: regionsSvc.listNormalized(),
+    regionCountyLocks: regionsSvc.listLocks(),
   });
 });
 

@@ -85,10 +85,62 @@
         outline: 2px solid var(--accent, #fff);
         outline-offset: 2px;
       }
+      .reviewFormActions,
+      .createActionsRow {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
       @media (max-width: 640px) {
         .approveEmailPwdRow,
         .approveFinalRow{
           grid-template-columns: 1fr;
+        }
+        .groupsInner{
+          column-count: 1;
+          column-width: auto;
+        }
+        .groupItem{
+          min-height: 44px;
+          padding: 10px 8px;
+          white-space: normal;
+        }
+        .groupItem input{
+          width: 20px;
+          height: 20px;
+        }
+        .groupItem span{
+          white-space: normal;
+          overflow: visible;
+          text-overflow: unset;
+        }
+      }
+      @media (max-width: 990px) {
+        .approveEmailPwdRow,
+        .approveFinalRow{
+          grid-template-columns: 1fr;
+        }
+        .groupsInner{
+          column-count: 1;
+          column-width: auto;
+        }
+        .reviewFormActions,
+        .createActionsRow{
+          flex-direction: column;
+          align-items: stretch;
+          justify-content: stretch;
+        }
+        .reviewFormActions .btn,
+        .createActionsRow .btn{
+          width: 100%;
+        }
+        .reviewFormActions .msg,
+        .createActionsRow .msg{
+          width: 100%;
+          text-align: center;
         }
       }
     </style>
@@ -105,9 +157,30 @@
           const usernamePrefixLabel = String((settings && settings.USERNAME_PREFIX_LABEL) || "").trim() || "Badge Number / Username";
         %>
         <div class="card">
-          <h2 style="margin-top:0;">User Access Request</h2>
+          <h2 style="margin-top:0;" id="reviewCardTitle">User Access Request</h2>
           <p class="muted approveNote" id="approveNote"></p>
           <p class="muted" id="reviewInfo">Loading request...</p>
+          <div id="listMsg" class="msg"></div>
+
+          <form id="createAgencyForm" class="grid2 createAgencyForm" autocomplete="off" style="display:none;">
+            <%- include("partials/agency-create-fields", {
+              agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
+              regionOptions: typeof regionOptions !== "undefined" ? regionOptions : [],
+              regionCountyLocks: typeof regionCountyLocks !== "undefined" ? regionCountyLocks : [],
+              includeColor: true,
+              includeName: true,
+              fieldsRequired: true,
+              idPrefix: "reviewCreateAgency_",
+              agencyFieldValues: {}
+            }) %>
+
+            <div class="createActionsRow agencyCreateActionsRow">
+              <button class="btn danger" id="createAgencyRejectBtn" type="button">Reject</button>
+              <button class="btn warning" id="skipAgencyBtn" type="button">Skip Agency Creation</button>
+              <button class="btn success" type="submit">Create Agency</button>
+              <span class="msg createAgencyMsg" id="createAgencyMsg"></span>
+            </div>
+          </form>
 
           <form id="reviewForm" class="grid2 approveForm" autocomplete="off" style="display:none;">
             <label><%= usernamePrefixLabel %>
@@ -189,7 +262,7 @@
               </label>
             </div>
 
-            <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap; justify-content:flex-end;">
+            <div class="reviewFormActions">
               <button class="btn danger" id="rejectBtn" type="button">Reject</button>
               <button class="btn success" id="approveBtn" type="submit">Create New User</button>
               <span class="msg createMsg" id="actionMsg"></span>
@@ -203,10 +276,19 @@
     (function () {
       const token = <%- JSON.stringify(reviewToken || "") %>;
       const form = document.getElementById("reviewForm");
+      const createAgencyForm = document.getElementById("createAgencyForm");
+      const reviewCardTitle = document.getElementById("reviewCardTitle");
       const reviewInfo = document.getElementById("reviewInfo");
       const approveNote = document.getElementById("approveNote");
+      const listMsg = document.getElementById("listMsg");
       const actionMsg = document.getElementById("actionMsg");
+      const createAgencyMsg = document.getElementById("createAgencyMsg");
       const rejectBtn = document.getElementById("rejectBtn");
+      const createAgencyRejectBtn = document.getElementById("createAgencyRejectBtn");
+      const skipAgencyBtn = document.getElementById("skipAgencyBtn");
+      const createAgencySubmitBtn = createAgencyForm
+        ? createAgencyForm.querySelector('button[type="submit"]')
+        : null;
       const approveBtn = document.getElementById("approveBtn");
       const agencySelect = document.getElementById("agencySelect");
       const templateSelect = document.getElementById("templateSelect");
@@ -239,6 +321,33 @@
       function setMsg(text, ok) {
         actionMsg.textContent = text || "";
         actionMsg.className = "msg createMsg " + (ok === false ? "bad" : ok === "pending" ? "pending" : "ok");
+      }
+
+      function setAgencyMsg(text, ok) {
+        if (!createAgencyMsg) return;
+        createAgencyMsg.textContent = text || "";
+        createAgencyMsg.className = "msg createAgencyMsg " + (ok === false ? "bad" : ok === "pending" ? "pending" : "ok");
+      }
+
+      function setListMsg(text, ok) {
+        if (!listMsg) return;
+        listMsg.textContent = text || "";
+        listMsg.className = "msg " + (ok === false ? "bad" : "ok");
+      }
+
+      function setFormValue(targetForm, name, value) {
+        const el = targetForm && targetForm.elements ? targetForm.elements[name] : null;
+        if (!el) return;
+        el.value = value == null ? "" : String(value);
+      }
+
+      function mainGroupNameForAgency(agencyLike) {
+        const prefix = String(agencyLike.groupPrefix || "").trim();
+        return prefix ? "tak_" + prefix + " Main" : "";
+      }
+
+      function isOtherRequest(reqObj) {
+        return String(reqObj?.agencySuffix || "") === "__other__";
       }
 
       function isValidPassword(pwd) {
@@ -283,6 +392,53 @@
         Array.from(groupsInner.querySelectorAll('input[type="checkbox"]')).forEach((cb) => {
           cb.checked = pickedManualGroupIds.has(String(cb.value));
         });
+      }
+
+      function fillAgencySelect() {
+        agencySelect.innerHTML = agenciesCache
+          .slice()
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
+          .map((a) => '<option value="' + esc(a.suffix) + '">' + esc(a.name) + " (" + esc(a.groupPrefix) + ")</option>")
+          .join("");
+      }
+
+      async function reloadMetaAgencies() {
+        const metaRes = await fetch("/request-access/" + encodeURIComponent(token) + "/meta");
+        const metaOut = await metaRes.json();
+        if (!metaRes.ok) throw new Error(metaOut.error || "Failed to load metadata.");
+        agenciesCache = Array.isArray(metaOut.agencies) ? metaOut.agencies : [];
+        if (Array.isArray(metaOut.groups)) groupsCache = metaOut.groups;
+      }
+
+      async function rejectRequest() {
+        if (!confirm("Reject this request? This will delete it.")) return;
+        if (rejectBtn) rejectBtn.disabled = true;
+        if (approveBtn) approveBtn.disabled = true;
+        if (createAgencyRejectBtn) createAgencyRejectBtn.disabled = true;
+        if (skipAgencyBtn) skipAgencyBtn.disabled = true;
+        if (createAgencySubmitBtn) createAgencySubmitBtn.disabled = true;
+        setMsg("Rejecting request...", "pending");
+        setAgencyMsg("Rejecting request...", "pending");
+        try {
+          const res = await fetch("/request-access/" + encodeURIComponent(token) + "/reject", {
+            method: "POST",
+          });
+          const out = await res.json();
+          if (!res.ok) throw new Error(out.error || "Failed to reject request.");
+          setMsg("Request rejected.", true);
+          setAgencyMsg("Request rejected.", true);
+          form.style.display = "none";
+          if (createAgencyForm) createAgencyForm.style.display = "none";
+          reviewInfo.textContent = "This request has been reviewed.";
+        } catch (err) {
+          setMsg(err.message || "Failed to reject request.", false);
+          setAgencyMsg(err.message || "Failed to reject request.", false);
+          if (rejectBtn) rejectBtn.disabled = false;
+          if (approveBtn) approveBtn.disabled = false;
+          if (createAgencyRejectBtn) createAgencyRejectBtn.disabled = false;
+          if (skipAgencyBtn) skipAgencyBtn.disabled = false;
+          if (createAgencySubmitBtn) createAgencySubmitBtn.disabled = false;
+        }
       }
 
       async function refreshMetaForAgency() {
@@ -375,26 +531,8 @@
         pickedManualGroupIds.clear();
       });
 
-      rejectBtn.addEventListener("click", async function () {
-        if (!confirm("Reject this request? This will delete it.")) return;
-        rejectBtn.disabled = true;
-        approveBtn.disabled = true;
-        setMsg("Rejecting request...", "pending");
-        try {
-          const res = await fetch("/request-access/" + encodeURIComponent(token) + "/reject", {
-            method: "POST",
-          });
-          const out = await res.json();
-          if (!res.ok) throw new Error(out.error || "Failed to reject request.");
-          setMsg("Request rejected.", true);
-          form.style.display = "none";
-          reviewInfo.textContent = "This request has been reviewed.";
-        } catch (err) {
-          setMsg(err.message || "Failed to reject request.", false);
-          rejectBtn.disabled = false;
-          approveBtn.disabled = false;
-        }
-      });
+      if (rejectBtn) rejectBtn.addEventListener("click", rejectRequest);
+      if (createAgencyRejectBtn) createAgencyRejectBtn.addEventListener("click", rejectRequest);
 
       form.addEventListener("submit", async function (e) {
         e.preventDefault();
@@ -427,6 +565,7 @@
           const username = (out.user && out.user.username) || out.username || payload.badge || "";
           setMsg(username ? "User created: " + username : "User created.", true);
           form.style.display = "none";
+          if (createAgencyForm) createAgencyForm.style.display = "none";
           reviewInfo.textContent = "This request has been reviewed.";
         } catch (err) {
           setMsg(err.message || "Failed to create user.", false);
@@ -434,6 +573,215 @@
           rejectBtn.disabled = false;
         }
       });
+
+      async function showUserForm(opts) {
+        const options = opts && typeof opts === "object" ? opts : {};
+        const preferredAgencySuffix = String(options.preferredAgencySuffix || "").trim().toLowerCase();
+        const preselectGroupNames = Array.isArray(options.preselectGroupNames)
+          ? options.preselectGroupNames.map((n) => String(n || "").trim().toLowerCase()).filter(Boolean)
+          : [];
+
+        if (createAgencyForm) createAgencyForm.style.display = "none";
+        if (reviewCardTitle) reviewCardTitle.textContent = "Create User (Approve Request)";
+        renderApproveNote(reviewRequest);
+
+        form.badge.value = reviewRequest.badgeNumber || "";
+        form.firstName.value = reviewRequest.firstName || "";
+        form.lastName.value = reviewRequest.lastName || "";
+        form.email.value = reviewRequest.email || "";
+        form.radioCallsign.value = reviewRequest.radioCallsign || "";
+
+        fillAgencySelect();
+        const requestedAgency = String(reviewRequest.agencySuffix || "").trim().toLowerCase();
+        const lockedInput = document.getElementById("agencySuffixLocked");
+
+        function selectAgencyValue(desired) {
+          const want = String(desired || "").trim().toLowerCase();
+          if (!want || want === "__other__") return false;
+          const match = Array.from(agencySelect.options).find(
+            (o) => String(o.value).toLowerCase() === want
+          );
+          if (match) {
+            agencySelect.value = match.value;
+            return true;
+          }
+          return false;
+        }
+
+        if (canChangeAgency) {
+          agencySelect.disabled = false;
+          agencySelect.removeAttribute("title");
+          if (lockedInput) {
+            lockedInput.disabled = true;
+            lockedInput.value = "";
+          }
+          const selectedPreferred = selectAgencyValue(preferredAgencySuffix);
+          if (!selectedPreferred) {
+            if (requestedAgency === "__other__" || !requestedAgency) {
+              const opt = document.createElement("option");
+              opt.value = "";
+              opt.textContent = "Select agency for creation...";
+              opt.selected = true;
+              agencySelect.insertBefore(opt, agencySelect.firstChild);
+            } else {
+              selectAgencyValue(requestedAgency);
+            }
+          }
+        } else {
+          if (!selectAgencyValue(preferredAgencySuffix)) selectAgencyValue(requestedAgency);
+          if (!agencySelect.value && agencySelect.options.length) agencySelect.selectedIndex = 0;
+          agencySelect.disabled = true;
+          agencySelect.title = "Agency is locked to the requested agency";
+          if (lockedInput) {
+            lockedInput.disabled = false;
+            lockedInput.value = agencySelect.value || requestedAgency;
+          }
+        }
+
+        pickedManualGroupIds.clear();
+        renderGroupsBox();
+        await refreshMetaForAgency();
+
+        if (preselectGroupNames.length) {
+          const wanted = new Set(preselectGroupNames);
+          groupsCache.forEach((g) => {
+            if (wanted.has(String(g.name || "").trim().toLowerCase())) {
+              pickedManualGroupIds.add(String(g.pk));
+            }
+          });
+          if (pickedManualGroupIds.size) {
+            templateSelect.value = "Manual Group Selection";
+            templateSelect.dispatchEvent(new Event("change"));
+          }
+        }
+
+        form.style.display = "";
+      }
+
+      async function showCreateAgencyForm() {
+        if (!createAgencyForm) {
+          showUserForm();
+          return;
+        }
+
+        const createdAgency = reviewRequest.createdAgency || null;
+        if (createdAgency && createdAgency.suffix) {
+          const createdSuffix = String(createdAgency.suffix || "").trim().toLowerCase();
+          const mainGroupName =
+            String(createdAgency.mainGroupName || "").trim() ||
+            mainGroupNameForAgency(createdAgency);
+          setListMsg("Agency was already created. Continue by creating the user.", true);
+          await showUserForm({
+            preferredAgencySuffix: createdSuffix,
+            preselectGroupNames: mainGroupName ? [mainGroupName] : [],
+          });
+          return;
+        }
+
+        form.style.display = "none";
+        if (reviewCardTitle) reviewCardTitle.textContent = "Create Agency";
+        const reason = esc(reviewRequest.otherReason || "");
+        approveNote.innerHTML =
+          "<strong>Requested by:</strong> " +
+          esc((reviewRequest.lastName || "") + ", " + (reviewRequest.firstName || "")) +
+          "<br>" +
+          (reason ? "<strong>Reason for Access:</strong> " + reason : "");
+
+        setFormValue(createAgencyForm, "name", reviewRequest.otherAgency || "");
+        setFormValue(createAgencyForm, "groupPrefix", reviewRequest.groupPrefix || "");
+        setFormValue(createAgencyForm, "usernameTokenPlacement", reviewRequest.usernameTokenPlacement || "suffix");
+        setFormValue(createAgencyForm, "suffix", reviewRequest.suffix || "");
+        setFormValue(createAgencyForm, "state", reviewRequest.state || "");
+        setFormValue(createAgencyForm, "county", reviewRequest.county || "");
+        setFormValue(createAgencyForm, "countyAbbrev", reviewRequest.countyAbbrev || "");
+        setFormValue(createAgencyForm, "type", reviewRequest.type || "");
+        setFormValue(
+          createAgencyForm,
+          "stateFederalAgency",
+          reviewRequest.stateFederalAgency === true ||
+            String(reviewRequest.stateFederalAgency || "").toLowerCase() === "yes" ||
+            String(reviewRequest.stateFederalAgency || "").toLowerCase() === "true"
+            ? "yes"
+            : "no"
+        );
+        setFormValue(createAgencyForm, "color", "");
+        if (typeof window.takSyncStateFederalAgencyFields === "function") {
+          const sf = createAgencyForm.querySelector('select[name="stateFederalAgency"]');
+          if (sf) window.takSyncStateFederalAgencyFields(sf);
+        }
+
+        const placementSelect = createAgencyForm.elements.usernameTokenPlacement;
+        const placementLabel = createAgencyForm.querySelector("#reviewCreateAgency_usernameIdentifierLabelText");
+        function syncPlacementLabel() {
+          if (!placementSelect || !placementLabel) return;
+          const isPrefix = String(placementSelect.value || "suffix").toLowerCase() === "prefix";
+          placementLabel.textContent = isPrefix ? "Username Prefix" : "Username Suffix";
+        }
+        if (placementSelect && !placementSelect.dataset.reviewBound) {
+          placementSelect.dataset.reviewBound = "1";
+          placementSelect.addEventListener("change", syncPlacementLabel);
+        }
+        syncPlacementLabel();
+
+        createAgencyForm.style.display = "";
+      }
+
+      if (skipAgencyBtn) {
+        skipAgencyBtn.addEventListener("click", function () {
+          setListMsg("Agency creation skipped. Select an existing agency for the user.", true);
+          showUserForm().catch((err) => {
+            setMsg(err.message || "Failed to load user form", false);
+          });
+        });
+      }
+
+      if (createAgencyForm) {
+        createAgencyForm.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          setAgencyMsg("");
+
+          const fd = new FormData(createAgencyForm);
+          const payload = Object.fromEntries(fd.entries());
+          const createdSuffix = String(payload.suffix || "").trim().toLowerCase();
+
+          try {
+            if (createAgencySubmitBtn) createAgencySubmitBtn.disabled = true;
+            if (skipAgencyBtn) skipAgencyBtn.disabled = true;
+            if (createAgencyRejectBtn) createAgencyRejectBtn.disabled = true;
+            setAgencyMsg("Creating agency…", "pending");
+
+            const res = await fetch("/request-access/" + encodeURIComponent(token) + "/create-agency", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            const out = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(out.error || "Failed to create agency");
+
+            await reloadMetaAgencies();
+
+            const linkedAgency = out && out.createdAgency ? out.createdAgency : null;
+            const linkedSuffix = String(linkedAgency?.suffix || createdSuffix).trim().toLowerCase();
+            const mainGroupName =
+              String(linkedAgency?.mainGroupName || "").trim() ||
+              (out && out.mainGroup && out.mainGroup.name) ||
+              mainGroupNameForAgency({ groupPrefix: payload.groupPrefix });
+
+            if (reviewRequest) reviewRequest.createdAgency = linkedAgency || reviewRequest.createdAgency;
+            setListMsg("Agency created. Continue by creating the user.", true);
+            await showUserForm({
+              preferredAgencySuffix: linkedSuffix,
+              preselectGroupNames: mainGroupName ? [mainGroupName] : [],
+            });
+          } catch (err) {
+            setAgencyMsg(err.message || "Failed to create agency", false);
+          } finally {
+            if (createAgencySubmitBtn) createAgencySubmitBtn.disabled = false;
+            if (skipAgencyBtn) skipAgencyBtn.disabled = false;
+            if (createAgencyRejectBtn) createAgencyRejectBtn.disabled = false;
+          }
+        });
+      }
 
       async function init() {
         try {
@@ -445,71 +793,17 @@
           if (!reviewRequest) throw new Error("Request not found.");
 
           reviewInfo.textContent = "";
-          renderApproveNote(reviewRequest);
+          await reloadMetaAgencies();
 
-          form.badge.value = reviewRequest.badgeNumber || "";
-          form.firstName.value = reviewRequest.firstName || "";
-          form.lastName.value = reviewRequest.lastName || "";
-          form.email.value = reviewRequest.email || "";
-          form.radioCallsign.value = reviewRequest.radioCallsign || "";
-
-          const metaRes = await fetch("/request-access/" + encodeURIComponent(token) + "/meta");
-          const metaOut = await metaRes.json();
-          if (!metaRes.ok) throw new Error(metaOut.error || "Failed to load metadata.");
-
-          agenciesCache = Array.isArray(metaOut.agencies) ? metaOut.agencies : [];
-          const requestedAgency = String(reviewRequest.agencySuffix || "").trim().toLowerCase();
-          const lockedInput = document.getElementById("agencySuffixLocked");
-
-          agencySelect.innerHTML = agenciesCache
-            .slice()
-            .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
-            .map((a) => '<option value="' + esc(a.suffix) + '">' + esc(a.name) + " (" + esc(a.groupPrefix) + ")</option>")
-            .join("");
-
-          function selectRequestedAgency() {
-            const match = Array.from(agencySelect.options).find(
-              (o) => String(o.value).toLowerCase() === requestedAgency
-            );
-            if (match) {
-              agencySelect.value = match.value;
-            } else if (agencySelect.options.length) {
-              agencySelect.selectedIndex = 0;
-            }
-          }
-
-          if (canChangeAgency) {
-            agencySelect.disabled = false;
-            agencySelect.removeAttribute("title");
-            if (lockedInput) {
-              lockedInput.disabled = true;
-              lockedInput.value = "";
-            }
-            if (requestedAgency === "__other__" || !requestedAgency) {
-              const opt = document.createElement("option");
-              opt.value = "";
-              opt.textContent = "Select agency for creation...";
-              opt.selected = true;
-              agencySelect.insertBefore(opt, agencySelect.firstChild);
-            } else {
-              selectRequestedAgency();
-            }
+          if (canChangeAgency && isOtherRequest(reviewRequest)) {
+            await showCreateAgencyForm();
           } else {
-            selectRequestedAgency();
-            agencySelect.disabled = true;
-            agencySelect.title = "Agency is locked to the requested agency";
-            if (lockedInput) {
-              lockedInput.disabled = false;
-              lockedInput.value = agencySelect.value || requestedAgency;
-            }
+            await showUserForm();
           }
-
-          renderGroupsBox();
-          await refreshMetaForAgency();
-          form.style.display = "";
         } catch (err) {
           reviewInfo.textContent = err.message || "Request not found.";
           form.style.display = "none";
+          if (createAgencyForm) createAgencyForm.style.display = "none";
         }
       }
 

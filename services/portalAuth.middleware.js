@@ -73,7 +73,7 @@ function portalAuthMiddleware(req, res, next) {
     (method === "GET" &&
       /^\/request-access\/[a-f0-9]{32,64}\/(data|meta)$/i.test(normalizedPath)) ||
     (method === "POST" &&
-      /^\/request-access\/[a-f0-9]{32,64}\/(approve|reject)$/i.test(normalizedPath));
+      /^\/request-access\/[a-f0-9]{32,64}\/(approve|reject|create-agency)$/i.test(normalizedPath));
   const isPublicMouExternalSign =
     (method === "GET" &&
       /^\/request-access\/mou\/[a-f0-9]{32,64}$/i.test(normalizedPath)) ||

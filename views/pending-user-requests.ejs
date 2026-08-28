@@ -103,6 +103,61 @@
   grid-column: 1 / -1;
 }
 
+.pendingRequestsHeader{
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pendingRequestsHeader h2 {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.listCardTableWrap {
+  width: 100%;
+}
+
+.pendingRequestsTable td {
+  vertical-align: top;
+}
+
+.pendingRequestsTable .cardTitleText {
+  font-weight: 600;
+}
+
+.pendingRequestsTable .cardMetaBadge {
+  display: none;
+}
+
+.pendingRequestsTable .reqEmailCell {
+  word-break: break-word;
+}
+
+.pendingRequestsTable .cardActionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pendingRequestsTable .cardActionsRow .btn {
+  width: auto;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.approveFormActions,
+.createActionsRow {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 /* Stack nicely on small screens */
 @media (max-width: 640px){
   .templateBar{
@@ -116,19 +171,208 @@
   .approveFinalRow{
     grid-template-columns: 1fr;
   }
-}
-
-/* Hide Status/Email column on small screens */
-@media (max-width: 640px){
-  .table th:nth-child(5),
-  .table td:nth-child(5){
-    display: none;
+  .groupsInner{
+    column-count: 1;
+    column-width: auto;
+  }
+  .groupItem{
+    min-height: 44px;
+    padding: 10px 8px;
+    white-space: normal;
+  }
+  .groupItem input{
+    width: 20px;
+    height: 20px;
+  }
+  .groupItem span{
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
   }
 }
-@media (max-width: 640px){
-  .table th:nth-child(3),
-  .table td:nth-child(3){
+
+/* Mobile: stacked cards with 2-column detail grid (matches Users page) */
+@media (max-width: 990px){
+  .pendingRequestsHeader{
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pendingRequestsHeader .btn{
+    width: 100% !important;
+  }
+
+  .approveEmailPwdRow,
+  .approveFinalRow{
+    grid-template-columns: 1fr;
+  }
+
+  .groupsInner{
+    column-count: 1;
+    column-width: auto;
+  }
+
+  .approveFormActions,
+  .createActionsRow{
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .approveFormActions .btn,
+  .createActionsRow .btn{
+    width: 100%;
+  }
+  .approveFormActions .msg,
+  .createActionsRow .msg{
+    width: 100%;
+    text-align: center;
+  }
+
+  .listCardTableWrap {
+    overflow-x: hidden;
+  }
+
+  .listCardTable {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .pendingRequestsTable tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .listCardTable thead {
     display: none;
+  }
+
+  .pendingRequestsTable tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title title"
+      "badge email"
+      "agency agency"
+      "actions actions";
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .pendingRequestsTable .cardTitleCell { grid-area: title; }
+  .pendingRequestsTable .reqBadgeCell { grid-area: badge; }
+  .pendingRequestsTable .reqEmailCell { grid-area: email; }
+  .pendingRequestsTable .reqAgencyCell { grid-area: agency; }
+  .pendingRequestsTable .cardActionsCell { grid-area: actions; }
+  .pendingRequestsTable .reqSubmittedCell { display: none !important; }
+
+  .pendingRequestsTable tbody tr.emptyStateRow {
+    display: block;
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .pendingRequestsTable tbody tr.inlineApproveRow {
+    display: block;
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .listCardTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 8px 12px;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    min-width: 0 !important;
+    max-width: none !important;
+    white-space: normal;
+  }
+
+  .listCardTable tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleCell::before,
+  .listCardTable .cardActionsCell::before {
+    display: none;
+  }
+
+  .listCardTable .cardTitleCell {
+    padding-top: 12px;
+    padding-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleText {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+
+  .pendingRequestsTable .cardMetaBadge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+
+  .listCardTable .cardActionsCell {
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .listCardTable .cardActionsRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .listCardTable .cardActionsRow .btn {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .pendingRequestsTable tbody tr.inlineApproveRow > td {
+    padding: 0 0 8px;
+  }
+
+  .inlineApproveCard {
+    margin: 0;
+  }
+}
+
+@media (max-width: 400px) {
+  .pendingRequestsTable .cardActionsRow {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -245,14 +489,15 @@ th.sortable:hover{
   %>
 
   <div class="card">
-    <div class="row" style="justify-content: space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div class="row pendingRequestsHeader">
       <h2 style="margin:0;">Pending User Requests</h2>
       <button class="btn" type="button" id="refreshBtn">Refresh</button>
     </div>
 
     <div id="listMsg" class="msg"></div>
 
-    <table class="table">
+    <div class="listCardTableWrap">
+    <table class="table listCardTable pendingRequestsTable">
       <!-- -------------------- UPDATED: sortable headers (Actions not sortable) -------------------- -->
       <thead id="thead">
         <tr>
@@ -266,6 +511,7 @@ th.sortable:hover{
       </thead>
       <tbody id="reqTbody"></tbody>
     </table>
+    </div>
   </div>
 
   <!-- Inline approve form template (injected under the clicked row) -->
@@ -363,7 +609,7 @@ th.sortable:hover{
               </label>
             </div>
 
-            <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap; justify-content:flex-end;">
+            <div class="approveFormActions">
               <button class="btn cancelBtn" type="button">Cancel</button>
               <button class="btn success" type="submit">Create New User</button>
               <span class="msg createMsg"></span>
@@ -394,7 +640,7 @@ th.sortable:hover{
               agencyFieldValues: {}
             }) %>
 
-            <div class="createActionsRow agencyCreateActionsRow" style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+            <div class="createActionsRow agencyCreateActionsRow">
               <button class="btn cancelBtn" type="button">Cancel</button>
               <button class="btn warning skipAgencyBtn" type="button">Skip Agency Creation</button>
               <button class="btn success" type="submit">Create Agency</button>
@@ -412,6 +658,7 @@ th.sortable:hover{
   window.IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
   window.IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
   window.ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+  const usernamePrefixLabel = <%- JSON.stringify(usernamePrefixLabel) %>;
   const tbody = document.getElementById('reqTbody');
   const listMsg = document.getElementById('listMsg');
   const refreshBtn = document.getElementById('refreshBtn');
@@ -602,7 +849,7 @@ th.sortable:hover{
 
     if (!requestsCache.length) {
       const colSpan = 6;
-      tbody.innerHTML = `<tr><td colspan="${colSpan}" class="muted">No pending requests.</td></tr>`;
+      tbody.innerHTML = `<tr class="emptyStateRow"><td colspan="${colSpan}" class="muted">No pending requests.</td></tr>`;
       updateSortIndicators();
       return;
     }
@@ -618,15 +865,20 @@ th.sortable:hover{
         : agencyObj
             ? `${agencyObj.name} (${agencyObj.groupPrefix})`
             : r.agencySuffix;
+      const displayName = `${r.lastName || ''}, ${r.firstName || ''}`.replace(/^,\s*|,\s*$/g, '').trim();
+      const submittedLabel = fmtDate(r.createdAt);
       return `
         <tr data-request-row="1" data-request-id="${esc(r.id)}">
-          <td>${esc(fmtDate(r.createdAt))}</td>
-          <td>${esc(r.badgeNumber||'')}</td>
-          <td>${esc((r.lastName || '') + ', ' + (r.firstName || ''))}</td>  
-          <td>${esc(r.email||'')}</td>
-          <td>${esc(agencyLabel)}</td>
-          <td>
-            <div class="row" style="gap:8px; flex-wrap:wrap;">
+          <td class="reqSubmittedCell" data-label="Submitted">${esc(submittedLabel)}</td>
+          <td class="reqBadgeCell" data-label="${esc(usernamePrefixLabel)}">${esc(r.badgeNumber||'') || '—'}</td>
+          <td class="reqNameCell cardTitleCell">
+            <div class="cardTitleText">${esc(displayName || '—')}</div>
+            ${submittedLabel ? `<span class="cardMetaBadge">${esc(submittedLabel)}</span>` : ''}
+          </td>
+          <td class="reqEmailCell" data-label="Email">${esc(r.email||'') || '—'}</td>
+          <td class="reqAgencyCell" data-label="Agency">${esc(agencyLabel)}</td>
+          <td class="reqActionsCell cardActionsCell">
+            <div class="row cardActionsRow">
               ${
                 r.agencySuffix === '__other__'
                   ? `<button class="btn" type="button" data-action="approve" data-id="${esc(r.id)}">Review Request</button>`
