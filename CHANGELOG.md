@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.3 - 8/28/26
+⬆️ `Dependency Update` - Node Forge
+
 ### v1.4.2 - 8/28/26
 ✨ `Enhancement` - All pages optimized for better functionality and ease of use on mobile<br>
 ✨ `Enhancement` - Updated request access one time link that is sent to global admins when a user requests access to a new agency now prompts the admin for the agency creation form
