@@ -74,8 +74,8 @@
   <div class="card" id="existingLocatorsCard" style="margin-top:1.25rem;">
     <h2 style="margin-top:0;">Existing Locators</h2>
     <div id="locListMsg" class="msg" style="margin-left:0;"></div>
-    <div class="locate-table-scroll">
-      <table class="table locate-table locate-table-active">
+    <div class="locate-table-scroll listCardTableWrap">
+      <table class="table locate-table locate-table-active listCardTable">
         <thead>
           <tr>
             <th>Title</th>
@@ -96,8 +96,8 @@
     </summary>
     <div style="margin-top:12px;">
       <div id="archivedListMsg" class="msg" style="margin-left:0;"></div>
-      <div class="locate-table-scroll">
-        <table class="table locate-table locate-table-archived">
+      <div class="locate-table-scroll listCardTableWrap">
+        <table class="table locate-table locate-table-archived listCardTable">
           <thead>
             <tr>
               <th>Title</th>
@@ -253,34 +253,86 @@
         padding-right: 16px;
       }
     }
-    @media (max-width: 720px) {
-      .locate-page .locate-table .locate-col-ping {
-        display: none;
+    @media (max-width: 990px) {
+      .locate-page .listCardTableWrap {
+        overflow-x: hidden;
       }
-    }
-    @media (max-width: 520px) {
-      .locate-page .locate-table .locate-col-last {
-        display: none;
+      .locate-table.listCardTable {
+        width: 100%;
+        min-width: 0 !important;
+        border-collapse: separate;
+        border-spacing: 0 12px;
       }
-      /* Title + Actions only — avoids crushed status pills / broken button text at ~385px */
-      .locate-page .locate-table .locate-col-status {
-        display: none;
+      .locate-table.listCardTable thead { display: none; }
+      .locate-table.listCardTable tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
-    }
-    /* Narrow viewports: no forced table min-width; wrap long titles/URLs inside cells */
-    @media (max-width: 640px) {
-      .locate-page .locate-table {
-        min-width: 0;
-        table-layout: fixed;
+      .locate-table.listCardTable tbody tr {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+          "title title"
+          "ping status"
+          "last last"
+          "actions actions";
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        overflow: hidden;
       }
-      .locate-page .locate-table th,
-      .locate-page .locate-table td {
+      .locate-table .cardTitleCell { grid-area: title; }
+      .locate-table .locate-col-ping { grid-area: ping; }
+      .locate-table .locate-col-status { grid-area: status; }
+      .locate-table .locate-col-last { grid-area: last; }
+      .locate-table .cardActionsCell { grid-area: actions; }
+      .locate-table.listCardTable tbody tr.emptyStateRow {
+        display: block;
+        border: none;
+        background: transparent;
+      }
+      .locate-table.listCardTable tbody td {
+        display: block;
+        border-top: none;
+        padding: 8px 12px;
+        word-break: normal;
         overflow-wrap: anywhere;
-        word-break: break-word;
+        min-width: 0 !important;
+        max-width: none !important;
+        white-space: normal;
       }
-      /* Keep action button labels on one line (word-break on td was splitting label glyphs vertically) */
-      .locate-page .locate-actions-cell,
-      .locate-page .locate-actions-cell .btn {
+      .locate-table.listCardTable tbody td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .locate-table .cardTitleCell::before,
+      .locate-table .cardActionsCell::before {
+        display: none;
+      }
+      .locate-table .cardTitleCell { padding-top: 12px; padding-bottom: 4px; }
+      .locate-table .cardTitleText { font-weight: 600; font-size: 15px; line-height: 1.3; word-break: break-word; }
+      .locate-table .cardActionsCell { padding-top: 10px; padding-bottom: 12px; }
+      .locate-table .cardActionsRow {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+      }
+      .locate-table .cardActionsRow .btn {
+        width: 100% !important;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        white-space: nowrap;
+        box-sizing: border-box;
+        text-align: center;
         word-break: normal;
         overflow-wrap: normal;
       }
@@ -1011,7 +1063,11 @@
 
   function titleCellPlain(loc) {
     var tdTitle = document.createElement("td");
-    tdTitle.textContent = loc.title;
+    tdTitle.className = "cardTitleCell";
+    var titleText = document.createElement("div");
+    titleText.className = "cardTitleText";
+    titleText.textContent = loc.title;
+    tdTitle.appendChild(titleText);
     var small = document.createElement("div");
     small.className = "settings-help";
     small.style.marginTop = "4px";
@@ -1095,6 +1151,7 @@
     tbody.innerHTML = "";
     if (!locators || !locators.length) {
       var tr = document.createElement("tr");
+      tr.className = "emptyStateRow";
       var td = document.createElement("td");
       td.colSpan = 5;
       td.textContent = "No existing locators.";
@@ -1110,10 +1167,12 @@
 
       var tdPing = document.createElement("td");
       tdPing.className = "locate-col-ping";
+      tdPing.setAttribute("data-label", "Ping Interval");
       tdPing.textContent = formatPingInterval(loc.pingIntervalSeconds);
 
       var tdStatus = document.createElement("td");
       tdStatus.className = "locate-col-status";
+      tdStatus.setAttribute("data-label", "Status");
       var pill = document.createElement("span");
       var statusLabel;
       var statusTone = "muted";
@@ -1147,10 +1206,13 @@
 
       var tdRecent = document.createElement("td");
       tdRecent.className = "locate-col-last";
+      tdRecent.setAttribute("data-label", "Last Update");
       appendRecentCell(tdRecent, loc);
 
       var tdAct = document.createElement("td");
-      tdAct.className = "locate-col-actions locate-actions-cell";
+      tdAct.className = "locate-col-actions locate-actions-cell cardActionsCell";
+      var actWrap = document.createElement("div");
+      actWrap.className = "cardActionsRow locate-actions-cell";
 
       function addBtn(label, onClick, extraClass) {
         var b = document.createElement("button");
@@ -1158,7 +1220,7 @@
         b.className = extraClass ? "btn " + String(extraClass).trim() : "btn";
         b.textContent = label;
         b.addEventListener("click", onClick);
-        tdAct.appendChild(b);
+        actWrap.appendChild(b);
       }
 
       /* qr: purple accent (same as Mutual Aid QR); success on Activate; danger on Archive */
@@ -1222,6 +1284,7 @@
           });
       }, "danger");
 
+      tdAct.appendChild(actWrap);
       tr.appendChild(tdTitle);
       tr.appendChild(tdPing);
       tr.appendChild(tdStatus);
@@ -1236,6 +1299,7 @@
     if (archivedCountEl) archivedCountEl.textContent = String((locators && locators.length) || 0);
     if (!locators || !locators.length) {
       var tr0 = document.createElement("tr");
+      tr0.className = "emptyStateRow";
       var td0 = document.createElement("td");
       td0.colSpan = 5;
       td0.textContent = "No archived locators.";
@@ -1248,9 +1312,11 @@
       var tdTitle = titleCellPlain(loc);
       var tdPing = document.createElement("td");
       tdPing.className = "locate-col-ping";
+      tdPing.setAttribute("data-label", "Ping Interval");
       tdPing.textContent = formatPingInterval(loc.pingIntervalSeconds);
       var tdStatus = document.createElement("td");
       tdStatus.className = "locate-col-status";
+      tdStatus.setAttribute("data-label", "Status");
       var pill = document.createElement("span");
       pill.textContent = "Archived";
       pill.style.display = "inline-block";
@@ -1262,16 +1328,19 @@
       tdStatus.appendChild(pill);
       var tdRecent = document.createElement("td");
       tdRecent.className = "locate-col-last";
+      tdRecent.setAttribute("data-label", "Last Update");
       appendRecentCell(tdRecent, loc);
       var tdAct = document.createElement("td");
-      tdAct.className = "locate-col-actions locate-actions-cell";
+      tdAct.className = "locate-col-actions locate-actions-cell cardActionsCell";
+      var actWrap = document.createElement("div");
+      actWrap.className = "cardActionsRow locate-actions-cell";
       function addBtn(label, onClick, extraClass) {
         var b = document.createElement("button");
         b.type = "button";
         b.className = extraClass ? "btn " + String(extraClass).trim() : "btn";
         b.textContent = label;
         b.addEventListener("click", onClick);
-        tdAct.appendChild(b);
+        actWrap.appendChild(b);
       }
       addBtn("History", function () {
         openHistoryForId(loc.id);
@@ -1315,6 +1384,7 @@
         },
         "danger"
       );
+      tdAct.appendChild(actWrap);
       tr.appendChild(tdTitle);
       tr.appendChild(tdPing);
       tr.appendChild(tdStatus);

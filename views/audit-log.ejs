@@ -109,7 +109,8 @@
       </form>
     </div>
 
-    <table class="table">
+    <div class="listCardTableWrap" style="overflow-x: auto;">
+    <table class="table listCardTable audit-log-table">
       <thead>
         <tr>
           <th>Time</th>
@@ -123,7 +124,7 @@
       <tbody id="auditTbody">
 
         <% if (!result || !result.items || !result.items.length) { %>
-          <tr>
+          <tr class="emptyStateRow">
             <td colspan="6" class="muted">No audit events found.</td>
           </tr>
         <% } %>
@@ -135,23 +136,23 @@
               data-target-id="<%= log.targetId || '' %>">
 
             <!-- Time -->
-            <td>
+            <td class="auditTimeCell" data-label="Time">
               <span class="ts" data-ts="<%= log.timestamp || '' %>"></span>
             </td>
 
             <!-- Actor -->
-            <td>
+            <td class="auditActorCell" data-label="Actor">
               <strong><%= log.actor?.displayName || log.actor?.username || '—' %></strong><br>
               <span class="muted"><%= log.actor?.username || '' %></span>
             </td>
 
             <!-- Action -->
-            <td>
-              <span class="badge"><%= formatAuditAction(log.action) %></span>
+            <td class="cardTitleCell">
+              <span class="badge cardTitleText"><%= formatAuditAction(log.action) %></span>
             </td>
 
           <!-- Target (names from details or userMap/groupMap, fallback to ID) -->
-          <td>
+          <td class="auditTargetCell" data-label="Target">
             <%
               const type = String(log.targetType || '').toLowerCase();
               const details = log.details || {};
@@ -236,7 +237,7 @@
           </td>
 
             <!-- Agency -->
-            <td>
+            <td class="auditAgencyCell" data-label="Agency">
               <%
                 const sfx = String(log.agencySuffix || '').toLowerCase();
                 const agencyObj = agencyMap?.[sfx];
@@ -246,9 +247,11 @@
             </td>
 
             <!-- Details -->
-            <td>
+            <td class="cardActionsCell">
               <% if (log.details && Object.keys(log.details).length) { %>
-                <button class="btn viewDetailsBtn" type="button">View Details</button>
+                <div class="cardActionsRow">
+                  <button class="btn viewDetailsBtn" type="button">View Details</button>
+                </div>
               <% } else { %>
                 <span class="muted">—</span>
               <% } %>
@@ -259,6 +262,7 @@
 
       </tbody>
     </table>
+    </div>
 
     <!-- Pagination -->
     <% if (result && result.pageCount > 1) {
@@ -460,12 +464,87 @@
 .auditDetailsRawWrap{ margin-top:12px; }
 .auditDetailsRawWrap summary{ cursor:pointer; padding:4px 0; }
 
-@media (max-width: 640px){
-  .table th:nth-child(4),
-  .table td:nth-child(4),
-  .table th:nth-child(5),
-  .table td:nth-child(5){
+@media (max-width: 990px) {
+  .listCardTableWrap {
+    overflow-x: hidden;
+  }
+  .audit-log-table.listCardTable {
+    width: 100%;
+    min-width: 0 !important;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+  .audit-log-table.listCardTable thead { display: none; }
+  .audit-log-table.listCardTable tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .audit-log-table.listCardTable tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title title"
+      "time actor"
+      "target agency"
+      "actions actions";
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+  .audit-log-table .cardTitleCell { grid-area: title; }
+  .audit-log-table .auditTimeCell { grid-area: time; }
+  .audit-log-table .auditActorCell { grid-area: actor; }
+  .audit-log-table .auditTargetCell { grid-area: target; }
+  .audit-log-table .auditAgencyCell { grid-area: agency; }
+  .audit-log-table .cardActionsCell { grid-area: actions; }
+  .audit-log-table.listCardTable tbody tr.emptyStateRow {
+    display: block;
+    border: none;
+    background: transparent;
+  }
+  .audit-log-table.listCardTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 8px 12px;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    min-width: 0 !important;
+    max-width: none !important;
+    white-space: normal;
+  }
+  .audit-log-table.listCardTable tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .audit-log-table .cardTitleCell::before,
+  .audit-log-table .cardActionsCell::before {
     display: none;
+  }
+  .audit-log-table .cardTitleCell { padding-top: 12px; padding-bottom: 4px; }
+  .audit-log-table .cardTitleText { font-weight: 600; font-size: 15px; line-height: 1.3; word-break: break-word; }
+  .audit-log-table .cardActionsCell { padding-top: 10px; padding-bottom: 12px; }
+  .audit-log-table .cardActionsRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+  .audit-log-table .cardActionsRow .btn {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    box-sizing: border-box;
+    text-align: center;
   }
 }
 </style>

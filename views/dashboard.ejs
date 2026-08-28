@@ -686,7 +686,7 @@
           }
           var bg = teamToBg(r.team);
           if (bg !== "transparent") tr.style.backgroundColor = bg;
-          tr.innerHTML = "<td>" + esc(r.callsign) + "</td><td>" + esc(r.username) + "</td><td>" + esc(r.takClient) + "</td><td>" + batteryCell(r.battery) + "</td><td>" + esc(r.role) + "</td>";
+          tr.innerHTML = "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + esc(r.callsign) + "</div></td><td class=\"ccUsernameCell\" data-label=\"Username\">" + esc(r.username) + "</td><td class=\"ccClientCell\" data-label=\"TAK Client\">" + esc(r.takClient) + "</td><td class=\"ccBatteryCell\" data-label=\"Battery\">" + batteryCell(r.battery) + "</td><td class=\"ccRoleCell\" data-label=\"Role\">" + esc(r.role) + "</td>";
           tbody.appendChild(tr);
         });
       }
@@ -697,7 +697,7 @@
           '<h2 class="cardTitle">Connected Users</h2>' +
           '<button type="button" class="btn" id="connectedClientsCloseBtn">Close</button>' +
           '</div>' +
-          '<div class="connected-clients-table-wrap"><table class="connected-clients-table">' +
+          '<div class="connected-clients-table-wrap listCardTableWrap"><table class="connected-clients-table listCardTable">' +
           '<thead><tr>' +
           '<th class="sortable" data-key="callsign">Callsign <span class="sortIndicator" aria-hidden="true"></span></th>' +
           '<th class="sortable" data-key="username">Username <span class="sortIndicator" aria-hidden="true"></span></th>' +
@@ -1663,6 +1663,73 @@
   .connected-clients-table .sortIndicator { display: inline-block; min-width: 12px; margin-left: 6px; opacity: 0.9; }
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
   .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
+  @media (max-width: 990px) {
+    .connected-clients-table-wrap.listCardTableWrap {
+      overflow-x: hidden;
+    }
+    .connected-clients-table.listCardTable {
+      width: 100%;
+      min-width: 0 !important;
+      border-collapse: separate;
+      border-spacing: 0 12px;
+    }
+    .connected-clients-table.listCardTable thead { display: none; }
+    .connected-clients-table.listCardTable tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .connected-clients-table.listCardTable tbody tr {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-areas:
+        "title title"
+        "username tak"
+        "battery role";
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .connected-clients-table .cardTitleCell { grid-area: title; }
+    .connected-clients-table .ccUsernameCell { grid-area: username; }
+    .connected-clients-table .ccClientCell { grid-area: tak; }
+    .connected-clients-table .ccBatteryCell { grid-area: battery; }
+    .connected-clients-table .ccRoleCell { grid-area: role; }
+    .connected-clients-table.listCardTable tbody tr.emptyStateRow {
+      display: block;
+      border: none;
+      background: transparent;
+      cursor: default;
+    }
+    .connected-clients-table.listCardTable tbody td {
+      display: block;
+      border-top: none;
+      border-bottom: none;
+      padding: 8px 12px;
+      word-break: normal;
+      overflow-wrap: anywhere;
+      min-width: 0 !important;
+      max-width: none !important;
+      white-space: normal;
+    }
+    .connected-clients-table.listCardTable tbody td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .connected-clients-table .cardTitleCell::before {
+      display: none;
+    }
+    .connected-clients-table .cardTitleCell { padding-top: 12px; padding-bottom: 4px; }
+    .connected-clients-table .cardTitleText { font-weight: 600; font-size: 15px; line-height: 1.3; word-break: break-word; }
+  }
 
   .group-control-modal.modal {
     width: min(1100px, 96vw);

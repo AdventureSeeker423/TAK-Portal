@@ -211,6 +211,30 @@
 .email-dropdown .filter-option span { flex: 1; min-width: 0; text-align: left; }
 .email-dropdown-actions { display: flex; gap: 10px; flex-shrink: 0; }
 .email-dropdown-actions .link-btn { padding: 4px 0; font-size: 12px; }
+
+@media (max-width: 990px) {
+  .email-dropdown.filter-multiselect {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+  .email-dropdown .filter-toggle,
+  .email-dropdown-toggle {
+    width: 100%;
+  }
+  .email-dropdown .filter-menu {
+    left: 0;
+    right: 0;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .segmented .segBtn {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+}
 .email-managed-chips {
   display: inline-flex;
   flex-wrap: wrap;

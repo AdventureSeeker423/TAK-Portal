@@ -183,6 +183,41 @@
   .plugin-sync-status.is-error #takServerSyncLabel { color: #c44; }
   .plugin-sync-status.is-success #takServerSyncLabel { color: #2a7; }
   .plugin-sync-status.is-blocked #takServerSyncLabel { color: #c80; }
+
+  @media (max-width: 990px) {
+    .plugin-cards {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+    .plugin-cards .plugin-card .plugin-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .plugin-cards .plugin-card .plugin-actions .btn {
+      width: 100%;
+      margin: 0;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .main .row {
+      flex-direction: column;
+      align-items: stretch !important;
+    }
+    .main .row > label,
+    .main .row > div {
+      flex: 1 1 100% !important;
+      min-width: 0 !important;
+      width: 100%;
+    }
+    .main select,
+    .main input[type="text"],
+    .main input[type="search"] {
+      width: 100%;
+      min-width: 0 !important;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+  }
 </style>
 
 <script>

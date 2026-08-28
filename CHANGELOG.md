@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.2 - 8/28/26
+✨ `Enhancement` - All pages optimized for better functionality and ease of use on mobile<br>
+✨ `Enhancement` - Updated request access one time link that is sent to global admins when a user requests access to a new agency now prompts the admin for the agency creation form
+
 ### v1.4.1 - 8/26/26
 ✨ `Enhancement` - Open Addresses added to Live Map settings to provide enhanced address lookup.  A free api key must be obtained and entered.  You can then download a region of addresses.  (These files can be large, so ensure you have plenty of storage space).  While downloading and importing you do not have to stay on the settings page as long as you do not restart or update the server.<br>
 ✨ `Enhancement` - Channel Patching moved to "Incident Response" section in the sidebar<br>

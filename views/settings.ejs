@@ -4050,8 +4050,8 @@
               </div>
             </label>
             <p class="settings-oa-msg" data-oa-msg aria-live="polite"></p>
-            <div class="settings-oa-table-wrap" data-oa-catalog<%= String(settings.OPENADDRESSES_TOKEN || "").trim() ? "" : " hidden" %>>
-              <table class="table settings-oa-table">
+            <div class="settings-oa-table-wrap listCardTableWrap" data-oa-catalog<%= String(settings.OPENADDRESSES_TOKEN || "").trim() ? "" : " hidden" %>>
+              <table class="table settings-oa-table listCardTable">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -4062,7 +4062,7 @@
                   </tr>
                 </thead>
                 <tbody data-oa-tbody>
-                  <tr><td colspan="5" class="muted">Loading collections…</td></tr>
+                  <tr class="emptyStateRow"><td colspan="5" class="muted">Loading collections…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -4129,9 +4129,9 @@
                 var collections = (data && data.collections) || [];
                 var job = (data && data.job) || null;
                 if (data && data.catalogError && !collections.length) {
-                  tbody.innerHTML = '<tr><td colspan="5" class="muted">Could not load the OpenAddresses catalog. ' + esc(data.catalogError) + "</td></tr>";
+                  tbody.innerHTML = '<tr class="emptyStateRow"><td colspan="5" class="muted">Could not load the OpenAddresses catalog. ' + esc(data.catalogError) + "</td></tr>";
                 } else if (!collections.length) {
-                  tbody.innerHTML = '<tr><td colspan="5" class="muted">No collections returned.</td></tr>';
+                  tbody.innerHTML = '<tr class="emptyStateRow"><td colspan="5" class="muted">No collections returned.</td></tr>';
                 } else {
                   tbody.innerHTML = collections.map(function (row) {
                     var actions = [];
@@ -4151,11 +4151,11 @@
                     if (row.isGlobal) name += ' <span class="settings-oa-warn">not recommended</span>';
                     return (
                       "<tr>" +
-                      "<td>" + name + "</td>" +
-                      "<td>" + esc(row.updatedLabel || "—") + "</td>" +
-                      "<td>" + esc(row.sizeLabel || "—") + "</td>" +
-                      '<td class="settings-oa-status ' + statusClass(row.status) + '">' + esc(row.statusLabel || row.status || "") + "</td>" +
-                      '<td class="settings-oa-actions">' + actions.join(" ") + "</td>" +
+                      "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + name + "</div></td>" +
+                      "<td class=\"oaUpdatedCell\" data-label=\"Updated\">" + esc(row.updatedLabel || "—") + "</td>" +
+                      "<td class=\"oaSizeCell\" data-label=\"Size\">" + esc(row.sizeLabel || "—") + "</td>" +
+                      '<td class="oaStatusCell settings-oa-status ' + statusClass(row.status) + '" data-label="Status">' + esc(row.statusLabel || row.status || "") + "</td>" +
+                      '<td class="settings-oa-actions cardActionsCell"><div class="cardActionsRow">' + actions.join(" ") + "</div></td>" +
                       "</tr>"
                     );
                   }).join("");

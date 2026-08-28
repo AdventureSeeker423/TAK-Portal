@@ -48,8 +48,8 @@
       </div>
     </div>
     <div id="packagesMsg" class="msg" style="margin:12px 0 0 0;"></div>
-    <div class="data-packages-table-scroll">
-      <table class="table data-packages-table">
+    <div class="data-packages-table-scroll listCardTableWrap">
+      <table class="table data-packages-table listCardTable">
         <thead>
           <tr>
             <th style="width:42px;">
@@ -74,8 +74,8 @@
     </summary>
     <div style="margin-top:12px;">
       <div id="archivedPackagesMsg" class="msg" style="margin-left:0;"></div>
-      <div class="data-packages-table-scroll">
-        <table class="table data-packages-table">
+      <div class="data-packages-table-scroll listCardTableWrap">
+        <table class="table data-packages-table listCardTable">
           <thead>
             <tr>
             <th style="width:42px;">
@@ -138,28 +138,6 @@
   }
   .data-packages-page .data-packages-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 12px; width: 100%; }
   .data-packages-page .data-packages-table { width: 100%; }
-  @media (min-width: 641px) { .data-packages-page .data-packages-table { min-width: 720px; } }
-  @media (max-width: 640px) {
-    .data-packages-page .data-packages-table .data-packages-col-creator,
-    .data-packages-page .data-packages-table .data-packages-col-expiration,
-    .data-packages-page .data-packages-table .data-packages-col-updated {
-      display: none;
-    }
-    .data-packages-page .data-packages-table {
-      min-width: 0;
-      table-layout: fixed;
-    }
-    .data-packages-page .data-packages-table th,
-    .data-packages-page .data-packages-table td {
-      overflow-wrap: anywhere;
-      word-break: break-word;
-    }
-    .data-packages-page .data-packages-actions-cell,
-    .data-packages-page .data-packages-actions-cell .btn {
-      overflow-wrap: normal;
-      word-break: normal;
-    }
-  }
   .data-packages-page .data-packages-actions-cell { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .data-packages-page .data-packages-actions-cell .btn { margin: 0 !important; }
   .data-packages-page #packageFilter{
@@ -167,6 +145,94 @@
     max-width: 100%;
     box-sizing: border-box;
     display: block;
+  }
+
+  @media (max-width: 990px) {
+    .data-packages-page .listCardTableWrap,
+    .data-packages-page .data-packages-table-scroll {
+      overflow-x: hidden;
+    }
+    .data-packages-table.listCardTable {
+      width: 100%;
+      min-width: 0 !important;
+      border-collapse: separate;
+      border-spacing: 0 12px;
+    }
+    .data-packages-table.listCardTable thead { display: none; }
+    .data-packages-table.listCardTable tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .data-packages-table.listCardTable tbody tr {
+      display: grid;
+      grid-template-columns: auto 1fr 1fr;
+      grid-template-areas:
+        "check title title"
+        "size creator creator"
+        "expiration updated updated"
+        "actions actions actions";
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+    .data-packages-table .pkgCheckCell { grid-area: check; }
+    .data-packages-table .cardTitleCell { grid-area: title; }
+    .data-packages-table .pkgSizeCell { grid-area: size; }
+    .data-packages-table .data-packages-col-creator { grid-area: creator; }
+    .data-packages-table .data-packages-col-expiration { grid-area: expiration; }
+    .data-packages-table .data-packages-col-updated { grid-area: updated; }
+    .data-packages-table .cardActionsCell { grid-area: actions; }
+    .data-packages-table.listCardTable tbody tr.emptyStateRow {
+      display: block;
+      border: none;
+      background: transparent;
+    }
+    .data-packages-table.listCardTable tbody td {
+      display: block;
+      border-top: none;
+      padding: 8px 12px;
+      word-break: normal;
+      overflow-wrap: anywhere;
+      min-width: 0 !important;
+      max-width: none !important;
+      white-space: normal;
+    }
+    .data-packages-table.listCardTable tbody td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .data-packages-table .cardTitleCell::before,
+    .data-packages-table .cardActionsCell::before,
+    .data-packages-table .pkgCheckCell::before {
+      display: none;
+    }
+    .data-packages-table .cardTitleCell { padding-top: 12px; padding-bottom: 4px; }
+    .data-packages-table .cardTitleText { font-weight: 600; font-size: 15px; line-height: 1.3; word-break: break-word; }
+    .data-packages-table .pkgCheckCell { padding-top: 14px; }
+    .data-packages-table .cardActionsCell { padding-top: 10px; padding-bottom: 12px; }
+    .data-packages-table .cardActionsRow {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+    .data-packages-table .cardActionsRow .btn {
+      width: 100% !important;
+      max-width: 100%;
+      min-width: 0;
+      margin: 0;
+      white-space: nowrap;
+      box-sizing: border-box;
+      text-align: center;
+    }
   }
 </style>
 
@@ -321,16 +387,16 @@
 
     var tr = document.createElement("tr");
     tr.innerHTML =
-      "<td style='width:42px;'><input type='checkbox' class='pkg-row-chk' data-hash='" + esc(hash) + "' data-filename='" + esc(filename || "") + "' data-archived='" + (isArchived ? "true" : "false") + "' aria-label='Select package' /></td>" +
-      "<td style='max-width:240px;'>" + esc(filename || "(unnamed)") + "</td>" +
-      "<td style='white-space:nowrap;'>" + esc(fmtSize(size)) + "</td>" +
-      "<td class=\"data-packages-col-creator\">" + esc(creator) + "</td>" +
-      "<td class=\"data-packages-col-expiration\" style='white-space:nowrap;font-size:12px;'>" + esc(expiration) + "</td>" +
-      "<td class=\"data-packages-col-updated\" style='font-size:12px;white-space:nowrap;'>" + esc(created) + "</td>" +
+      "<td class=\"pkgCheckCell\" style='width:42px;'><input type='checkbox' class='pkg-row-chk' data-hash='" + esc(hash) + "' data-filename='" + esc(filename || "") + "' data-archived='" + (isArchived ? "true" : "false") + "' aria-label='Select package' /></td>" +
+      "<td class=\"cardTitleCell\" style='max-width:240px;'><div class=\"cardTitleText\">" + esc(filename || "(unnamed)") + "</div></td>" +
+      "<td class=\"pkgSizeCell\" data-label=\"Size\" style='white-space:nowrap;'>" + esc(fmtSize(size)) + "</td>" +
+      "<td class=\"data-packages-col-creator\" data-label=\"Creator\">" + esc(creator) + "</td>" +
+      "<td class=\"data-packages-col-expiration\" data-label=\"Expiration\" style='white-space:nowrap;font-size:12px;'>" + esc(expiration) + "</td>" +
+      "<td class=\"data-packages-col-updated\" data-label=\"Last Updated\" style='font-size:12px;white-space:nowrap;'>" + esc(created) + "</td>" +
       "<td></td>";
 
     var tdAct = tr.querySelector("td:last-child");
-    tdAct.className = "data-packages-actions-cell";
+    tdAct.className = "data-packages-actions-cell cardActionsCell";
     var rowChk = tr.querySelector("input.pkg-row-chk");
     if (rowChk && hash) {
       var key = String(hash).trim();
@@ -380,6 +446,10 @@
     tdAct.appendChild(bDl);
     tdAct.appendChild(bArchiveRestore);
     tdAct.appendChild(bDel);
+    var actWrap = document.createElement("div");
+    actWrap.className = "cardActionsRow";
+    while (tdAct.firstChild) actWrap.appendChild(tdAct.firstChild);
+    tdAct.appendChild(actWrap);
     tbody.appendChild(tr);
   }
 
@@ -410,6 +480,7 @@
 
     if (!activeCount) {
       var trA = document.createElement("tr");
+      trA.className = "emptyStateRow";
       var tdA = document.createElement("td");
       tdA.colSpan = 7;
       tdA.textContent = "No active mission packages.";
@@ -418,6 +489,7 @@
     }
     if (!archivedCountValue) {
       var trR = document.createElement("tr");
+      trR.className = "emptyStateRow";
       var tdR = document.createElement("td");
       tdR.colSpan = 7;
       tdR.textContent = "No archived mission packages.";

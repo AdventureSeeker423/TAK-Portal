@@ -1,6 +1,19 @@
 <%- include("partials/header") %>
 <%- include("partials/sidebar") %>
 
+<style>
+@media (max-width: 990px) {
+  #preferenceQrOverlay .row > div {
+    min-width: 0 !important;
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  #preferenceQrOverlay .row .btn {
+    width: 100%;
+  }
+}
+</style>
+
 <main class="main">
   <h1>Setup My Device</h1>
   <%

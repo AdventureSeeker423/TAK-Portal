@@ -72,7 +72,8 @@
 
     <div id="tableMsg" class="msg"></div>
 
-    <table class="table" id="integrationsTable">
+    <div class="listCardTableWrap" style="overflow-x: auto;">
+    <table class="table listCardTable integrations-table" id="integrationsTable">
       <thead>
         <tr>
           <th data-sort="username" data-type="text">Username</th>
@@ -85,6 +86,7 @@
       </thead>
       <tbody id="tbody"></tbody>
     </table>
+    </div>
   </div>
 </main>
 
@@ -461,7 +463,7 @@
     }
 
     if (rows.length === 0) {
-      tbody.innerHTML = "<tr><td colspan=\"6\">" + (needle ? "No integrations match your search." : "No integration users found.") + "</td></tr>";
+      tbody.innerHTML = "<tr class=\"emptyStateRow\"><td colspan=\"6\">" + (needle ? "No integrations match your search." : "No integration users found.") + "</td></tr>";
     } else {
       tbody.innerHTML = rows.map(function (u) {
         var groupDisplay = (u.groupNames || []).join(", ") || "—";
@@ -487,12 +489,12 @@
         var rowStatusClass = isConnected ? "row-status-connected" : "row-status-disconnected";
 
         return "<tr class=\"" + rowStatusClass + "\">" +
-          "<td>" + esc(u.username) + "</td>" +
-          "<td>" + esc(groupDisplay) + "</td>" +
-          "<td>" + dataFeedButtonHtml + "</td>" +
-          "<td>" + portCell + "</td>" +
-          "<td>" + statusPill + "</td>" +
-          "<td><div class=\"row\" style=\"gap:8px; flex-wrap:wrap;\">" +
+          "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + esc(u.username) + "</div></td>" +
+          "<td class=\"intGroupCell\" data-label=\"Group\">" + esc(groupDisplay) + "</td>" +
+          "<td class=\"intFeedCell\" data-label=\"Data Feed\">" + dataFeedButtonHtml + "</td>" +
+          "<td class=\"intPortCell\" data-label=\"Port\">" + portCell + "</td>" +
+          "<td class=\"intStatusCell\" data-label=\"Status\">" + statusPill + "</td>" +
+          "<td class=\"cardActionsCell\"><div class=\"row cardActionsRow\" style=\"gap:8px; flex-wrap:wrap;\">" +
           "<button class=\"btn success\" type=\"button\" data-action=\"download-certs\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\">Download Certs</button>" +
           "<button class=\"btn\" type=\"button\" data-action=\"edit\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\" data-group=\"" + esc(currentGroupPk) + "\">Edit Group</button>" +
           "<button class=\"btn danger\" type=\"button\" data-action=\"delete\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\">Delete</button>" +
@@ -1066,52 +1068,100 @@
   opacity: 0.7;
 }
 
-@media (max-width: 640px){
-  .table th:nth-child(2),
-  .table td:nth-child(2),
-  .table th:nth-child(3),
-  .table td:nth-child(3){
-    display: none;
+@media (max-width: 990px) {
+  .listCardTableWrap {
+    overflow-x: hidden;
   }
-
-  /* Hide Status column on mobile; use row tint instead */
-  .table th:nth-child(5),
-  .table td:nth-child(5){
-    display: none;
+  .integrations-table.listCardTable {
+    width: 100%;
+    min-width: 0 !important;
+    border-collapse: separate;
+    border-spacing: 0 12px;
   }
-
-  /* Port column: keep compact, about 4 digits wide */
-  .table th:nth-child(4),
-  .table td:nth-child(4){
-    width: 4ch;
-    min-width: 4ch;
-    max-width: 4ch;
-    white-space: nowrap;
-    text-align: center;
-    padding-left: 6px;
-    padding-right: 6px;
+  .integrations-table.listCardTable thead { display: none; }
+  .integrations-table.listCardTable tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
-
-  /* Improve spacing/readability between Username, Port, and Actions */
-  .table th:nth-child(6),
-  .table td:nth-child(6){
-    padding-left: 10px;
-    padding-right: 8px;
+  .integrations-table.listCardTable tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title status"
+      "group port"
+      "feed feed"
+      "actions actions";
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+  .integrations-table .cardTitleCell { grid-area: title; }
+  .integrations-table .intGroupCell { grid-area: group; }
+  .integrations-table .intFeedCell { grid-area: feed; }
+  .integrations-table .intPortCell { grid-area: port; }
+  .integrations-table .intStatusCell { grid-area: status; }
+  .integrations-table .cardActionsCell { grid-area: actions; }
+  .integrations-table.listCardTable tbody tr.emptyStateRow {
+    display: block;
+    border: none;
+    background: transparent;
+  }
+  .integrations-table.listCardTable tbody td {
+    display: block;
+    border-top: none;
+    padding: 8px 12px;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    min-width: 0 !important;
+    max-width: none !important;
     white-space: normal;
   }
-  .table td:nth-child(6) .row{
-    gap: 6px !important;
-    align-items: center;
-    justify-content: flex-start;
+  .integrations-table.listCardTable tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 4px;
   }
-  .table td:nth-child(6) .btn{
-    padding: 8px 10px;
+  .integrations-table .cardTitleCell::before,
+  .integrations-table .cardActionsCell::before {
+    display: none;
   }
-
-  .table tbody tr.row-status-connected{
+  .integrations-table .intStatusCell::before {
+    display: none;
+  }
+  .integrations-table .cardTitleCell { padding-top: 12px; padding-bottom: 4px; }
+  .integrations-table .intStatusCell { padding-top: 12px; display: flex; align-items: flex-start; justify-content: flex-end; }
+  .integrations-table .cardTitleText { font-weight: 600; font-size: 15px; line-height: 1.3; word-break: break-word; }
+  .integrations-table .cardActionsCell { padding-top: 10px; padding-bottom: 12px; }
+  .integrations-table .cardActionsRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .integrations-table .cardActionsRow .btn {
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    white-space: nowrap;
+    box-sizing: border-box;
+    text-align: center;
+  }
+  .integrations-table .intFeedCell .btn {
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  .integrations-table tbody tr.row-status-connected {
     background: rgba(24, 179, 90, 0.08);
   }
-  .table tbody tr.row-status-disconnected{
+  .integrations-table tbody tr.row-status-disconnected {
     background: rgba(255, 59, 59, 0.08);
   }
 }

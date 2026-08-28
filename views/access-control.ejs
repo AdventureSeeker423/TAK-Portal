@@ -33,7 +33,6 @@
     .ac-user-table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 900px;
     }
     .ac-user-table th,
     .ac-user-table td {
@@ -109,16 +108,96 @@
       margin-bottom: 8px;
       transition: background-color .15s ease;
     }
-    @media (max-width: 900px) {
+    @media (max-width: 990px) {
       .ac-filter-row {
         grid-template-columns: 1fr;
       }
-      .ac-user-table {
-        min-width: 760px;
+      .ac-user-table-wrap.listCardTableWrap {
+        overflow: hidden;
       }
       .ac-user-table-scroll {
-        max-height: 260px;
+        max-height: none;
+        overflow-x: hidden;
       }
+      .ac-user-table.listCardTable {
+        width: 100%;
+        min-width: 0 !important;
+        border-collapse: separate;
+        border-spacing: 0 12px;
+      }
+      .ac-user-table.listCardTable thead { display: none; }
+      .ac-user-table.listCardTable tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ac-user-table.listCardTable tbody tr {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+          "title title"
+          "name email"
+          "agency agency"
+          "actions actions";
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+      .ac-user-table .cardTitleCell { grid-area: title; }
+      .ac-user-table .acNameCell { grid-area: name; }
+      .ac-user-table .acEmailCell { grid-area: email; }
+      .ac-user-table .acAgencyCell { grid-area: agency; }
+      .ac-user-table .cardActionsCell { grid-area: actions; }
+      .ac-user-table.listCardTable tbody tr.emptyStateRow {
+        display: block;
+        border: none;
+        background: transparent;
+      }
+      .ac-user-table.listCardTable tbody td {
+        display: block;
+        border-top: none;
+        padding: 8px 12px;
+        word-break: normal;
+        overflow-wrap: anywhere;
+        min-width: 0 !important;
+        max-width: none !important;
+        white-space: normal;
+      }
+      .ac-user-table.listCardTable tbody td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .ac-user-table .cardTitleCell::before,
+      .ac-user-table .cardActionsCell::before {
+        display: none;
+      }
+      .ac-user-table .cardTitleCell { padding-top: 12px; padding-bottom: 4px; }
+      .ac-user-table .cardTitleText { font-weight: 600; font-size: 15px; line-height: 1.3; word-break: break-word; }
+      .ac-user-table .cardActionsCell { padding-top: 10px; padding-bottom: 12px; }
+      .ac-user-table .cardActionsRow {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+        width: 100%;
+      }
+      .ac-user-table .cardActionsRow .btn {
+        width: 100% !important;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        white-space: nowrap;
+        box-sizing: border-box;
+        text-align: center;
+      }
+    }
+    @media (max-width: 900px) {
       .ac-perm-row {
         grid-template-columns: 1fr;
       }
@@ -128,14 +207,6 @@
       }
     }
     @media (max-width: 640px) {
-      .ac-user-table {
-        min-width: 640px;
-      }
-      .ac-user-table th,
-      .ac-user-table td {
-        padding: 7px 6px;
-        font-size: 0.88rem;
-      }
       .ac-pill {
         margin-left: 0 !important;
         margin-top: 6px;
@@ -161,9 +232,9 @@
 
     <div id="acSearchMsg" class="muted" style="margin-top:8px;">Type 2+ characters to search.</div>
 
-    <div class="ac-user-table-wrap">
+    <div class="ac-user-table-wrap listCardTableWrap">
       <div class="ac-user-table-scroll">
-        <table class="ac-user-table">
+        <table class="ac-user-table listCardTable">
           <thead>
             <tr>
               <th>Username</th>
@@ -657,7 +728,7 @@
     const body = el("acSearchRows");
     body.innerHTML = "";
     if (!items.length) {
-      body.innerHTML = '<tr><td colspan="5" class="muted">No matching users.</td></tr>';
+      body.innerHTML = '<tr class="emptyStateRow"><td colspan="5" class="muted">No matching users.</td></tr>';
       return;
     }
 
@@ -668,11 +739,11 @@
       const email = String(u?.email || "");
       const agency = String(u?.attributes?.agency_abbreviation || u?.agency_abbreviation || "").toUpperCase();
       tr.innerHTML =
-        "<td>" + username + "</td>" +
-        "<td>" + (name || "-") + "</td>" +
-        "<td>" + (email || "-") + "</td>" +
-        "<td>" + (agency || "-") + "</td>" +
-        "<td><button type=\"button\" class=\"btn success ac-edit-btn\">Edit Permissions</button></td>";
+        "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + username + "</div></td>" +
+        "<td class=\"acNameCell\" data-label=\"Name\">" + (name || "-") + "</td>" +
+        "<td class=\"acEmailCell\" data-label=\"Email\">" + (email || "-") + "</td>" +
+        "<td class=\"acAgencyCell\" data-label=\"Agency\">" + (agency || "-") + "</td>" +
+        "<td class=\"cardActionsCell\"><div class=\"cardActionsRow\"><button type=\"button\" class=\"btn success ac-edit-btn\">Edit Permissions</button></div></td>";
       body.appendChild(tr);
       tr.querySelector(".ac-edit-btn").addEventListener("click", function () {
         selectUser(u);
@@ -704,7 +775,7 @@
       await renderSearchRows(items);
     } catch (e) {
       setSearchMsg(e?.message || "Search failed.", true, false);
-      el("acSearchRows").innerHTML = '<tr><td colspan="5" class="muted">Search failed.</td></tr>';
+      el("acSearchRows").innerHTML = '<tr class="emptyStateRow"><td colspan="5" class="muted">Search failed.</td></tr>';
     }
   }
 
