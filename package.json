@@ -22,7 +22,8 @@
   "type": "commonjs",
   "overrides": {
     "whatwg-url": "^14.2.0",
-    "undici": "$undici"
+    "undici": "$undici",
+    "node-forge": "^1.4.0"
   },
   "dependencies": {
     "@tak-ps/node-cot": "^14.51.0",
