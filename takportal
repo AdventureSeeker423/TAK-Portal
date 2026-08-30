@@ -17,7 +17,7 @@ Commands:
   start      Build (if needed) and start the stack in the background
   stop       Stop the stack and keep data volume
   restart    Restart containers (rebuild if needed)
-  update     git pull, rebuild, restart containers, and prune old images
+  update     Fetch code (GitHub Release, or main if Beta Mode is on), rebuild, prune old images
   logs       Follow logs from the container
   status     Show container status
   remove     Completely remove containers, volumes, network, and images
@@ -35,6 +35,247 @@ edit_env() {
     echo "Create it manually or re-download the project, then rerun this command."
     exit 1
   fi
+}
+
+# TAKPORTAL_CHANNEL_AWARE=1  — do not re-exec a checkout that lacks this marker (would git-pull main).
+
+GITHUB_REPO="${GITHUB_REPO:-AdventureSeeker423/TAK-Portal}"
+
+file_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    wc -c < "$1"
+  fi
+}
+
+beta_mode_from_json() {
+  local json="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys
+try:
+  s=json.loads(sys.stdin.read() or "{}")
+  print(str(s.get("BETA_MODE") or "").strip().lower())
+except Exception:
+  print("")
+' <<<"$json"
+    return
+  fi
+  echo "$json" | tr -d '\r' | grep -oE '"BETA_MODE"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
+    | sed 's/.*"BETA_MODE"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | tr '[:upper:]' '[:lower:]'
+}
+
+read_settings_json() {
+  local out=""
+  if $COMPOSE_CMD ps -q "$SERVICE_NAME" >/dev/null 2>&1; then
+    local cid
+    cid="$($COMPOSE_CMD ps -q "$SERVICE_NAME" 2>/dev/null || true)"
+    if [[ -n "$cid" ]]; then
+      out="$($COMPOSE_CMD exec -T "$SERVICE_NAME" cat /usr/src/app/data/settings.json 2>/dev/null || true)"
+      if [[ -n "$out" ]]; then
+        echo "$out"
+        return 0
+      fi
+    fi
+  fi
+
+  local vol=""
+  vol="$(docker inspect tak-portal --format '{{range .Mounts}}{{if eq .Destination "/usr/src/app/data"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)"
+  if [[ -n "$vol" ]]; then
+    local img=""
+    img="$(docker inspect tak-portal --format '{{.Image}}' 2>/dev/null || true)"
+    if [[ -n "$img" ]]; then
+      out="$(docker run --rm --entrypoint cat -v "${vol}:/data:ro" "$img" /data/settings.json 2>/dev/null || true)"
+      if [[ -n "$out" ]]; then
+        echo "$out"
+        return 0
+      fi
+    fi
+  fi
+
+  return 1
+}
+
+is_beta_mode() {
+  local json=""
+  json="$(read_settings_json || true)"
+  if [[ -z "$json" ]]; then
+    echo "Could not read settings.json from the data volume; treating Beta Mode as off (stable)."
+    return 1
+  fi
+  local val
+  val="$(beta_mode_from_json "$json")"
+  if [[ "$val" == "true" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+installed_version() {
+  if [[ ! -f package.json ]]; then
+    echo "0.0.0"
+    return
+  fi
+  grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' package.json | head -1 \
+    | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+}
+
+tag_is_sane() {
+  [[ "$1" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+version_norm() {
+  local v="${1#v}"
+  v="${v#V}"
+  [[ "$v" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]] || { echo "00000000.00000000.00000000"; return; }
+  printf '%08d.%08d.%08d' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+}
+
+highest_semver_tag() {
+  local best="" best_norm=""
+  local tag a b c norm
+  while IFS= read -r tag; do
+    [[ "$tag" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || continue
+    a="${BASH_REMATCH[1]}"
+    b="${BASH_REMATCH[2]}"
+    c="${BASH_REMATCH[3]}"
+    norm="$(printf '%08d.%08d.%08d' "$a" "$b" "$c")"
+    if [[ -z "$best_norm" || "$norm" > "$best_norm" ]]; then
+      best="$tag"
+      best_norm="$norm"
+    fi
+  done
+  echo "$best"
+}
+
+latest_release_tag_from_api() {
+  local body="" tag=""
+  local url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+  if command -v curl >/dev/null 2>&1; then
+    body="$(curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: TAK-Portal" "$url" 2>/dev/null || true)"
+  elif command -v wget >/dev/null 2>&1; then
+    body="$(wget -qO- --header="Accept: application/vnd.github+json" --header="User-Agent: TAK-Portal" "$url" 2>/dev/null || true)"
+  fi
+  if [[ -z "$body" ]]; then
+    return 1
+  fi
+  tag="$(echo "$body" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 \
+    | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  if tag_is_sane "$tag"; then
+    echo "$tag"
+    return 0
+  fi
+  return 1
+}
+
+latest_release_tag_from_git() {
+  local tags=""
+  tags="$(git ls-remote --tags --refs origin 2>/dev/null | awk '{print $2}' | sed 's|refs/tags/||' || true)"
+  if [[ -z "$tags" ]]; then
+    git fetch origin --tags --force >/dev/null 2>&1 || true
+    tags="$(git tag -l 2>/dev/null || true)"
+  fi
+  echo "$tags" | highest_semver_tag
+}
+
+resolve_stable_tag() {
+  local tag=""
+  tag="$(latest_release_tag_from_api || true)"
+  if [[ -n "$tag" ]] && tag_is_sane "$tag"; then
+    echo "$tag"
+    return 0
+  fi
+  echo "GitHub Releases API did not return a usable tag; trying git tags..." >&2
+  tag="$(latest_release_tag_from_git || true)"
+  if [[ -n "$tag" ]] && tag_is_sane "$tag"; then
+    echo "$tag"
+    return 0
+  fi
+  return 1
+}
+
+checkout_stable_release() {
+  local tag="$1"
+  local before
+  before="$(installed_version)"
+  echo "Fetching tags from origin..."
+  git fetch origin --tags --force || true
+  if ! git fetch origin "refs/tags/${tag}:refs/tags/${tag}" --force 2>/dev/null \
+    && ! git fetch origin tag "$tag" --force; then
+    echo "ERROR: Could not fetch release tag ${tag} from origin. Not pulling main."
+    exit 1
+  fi
+  local before_n tag_n
+  before_n="$(version_norm "$before")"
+  tag_n="$(version_norm "$tag")"
+  if [[ "$before_n" > "$tag_n" ]]; then
+    echo "Rolling back from ${before} to release ${tag} because Beta Mode is off"
+  elif [[ "$before_n" < "$tag_n" ]]; then
+    echo "Updating from ${before} to GitHub Release ${tag} (Beta Mode is off)..."
+  else
+    echo "Checking out GitHub Release ${tag} (Beta Mode is off)..."
+  fi
+  git checkout --force "$tag"
+}
+
+checkout_beta_main() {
+  echo "Beta Mode is on — tracking origin/main..."
+  git fetch origin main --force
+  git checkout --force -B main origin/main
+}
+
+maybe_reexec_updater() {
+  local self_hash="$1"
+  if [[ -n "${TAKPORTAL_UPDATE_REEXEC:-}" ]]; then
+    return 0
+  fi
+  if ! grep -q "TAKPORTAL_CHANNEL_AWARE=1" "$0"; then
+    echo "Checked out an older updater; finishing this run without re-exec (would git-pull main)."
+    return 0
+  fi
+  local new_hash
+  new_hash="$(file_sha256 "$0")"
+  if [[ "$new_hash" != "$self_hash" ]]; then
+    echo "Updater script changed; continuing with the new script..."
+    exec env TAKPORTAL_UPDATE_REEXEC=1 "$0" update
+  fi
+}
+
+run_update() {
+  echo "Updating repository and containers..."
+
+  local self_hash=""
+  self_hash="$(file_sha256 "$0")"
+
+  if [[ -d .git ]]; then
+    if is_beta_mode; then
+      checkout_beta_main
+    else
+      local tag=""
+      if ! tag="$(resolve_stable_tag)"; then
+        echo "ERROR: Could not resolve the latest GitHub Release. Not pulling main."
+        echo "Check network access to GitHub, then retry."
+        exit 1
+      fi
+      echo "Stable channel: GitHub Release ${tag}"
+      checkout_stable_release "$tag"
+    fi
+    maybe_reexec_updater "$self_hash"
+  else
+    echo "No .git directory found; skipping git checkout."
+  fi
+
+  echo "Rebuilding and recreating containers..."
+  $COMPOSE_CMD up -d --build
+
+  echo
+  sleep 5
+
+  echo "Removing unused Docker images..."
+  docker image prune -f
+  echo "Old images cleaned up."
 }
 
 CMD="${1:-}"
@@ -71,24 +312,7 @@ case "$CMD" in
     ;;
 
   update)
-    echo "Updating repository and containers..."
-
-    if [[ -d .git ]]; then
-      echo "Fetching latest code..."
-      git pull --rebase --autostash || git pull
-    else
-      echo "No .git directory found; skipping git pull."
-    fi
-
-    echo "Rebuilding and recreating containers..."
-    $COMPOSE_CMD up -d --build
-
-    echo
-    sleep 5
-
-    echo "Removing unused Docker images..."
-    docker image prune -f
-    echo "Old images cleaned up."
+    run_update
     ;;
 
   logs)

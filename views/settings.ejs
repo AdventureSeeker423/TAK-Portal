@@ -2334,7 +2334,7 @@
               
             </label>
             <% renderField("USERNAME_PREFIX_LABEL","Username Descriptor Text","Displayed on Users, Pending User Requests, and Request Access pages. Default: Badge Number / Username","Badge Number / Username"); %>
-            <% renderField("BETA_MODE","Enable Beta Features","Shows in-development features for global admins (e.g. Getting Started). Data Package, Locate Persons, and Data Sync are available regardless of this setting."); %>
+            <% renderField("BETA_MODE","Enable Beta Features","Shows in-development features for global admins (e.g. Getting Started). Also selects the update channel: on tracks the latest main branch; off updates to the last GitHub Release (including rolling back if you were on main). Settings and other data in the Docker volume are kept. Data Package, Locate Persons, and Data Sync are available regardless of this setting."); %>
           </div>
           <script>
             (function () {

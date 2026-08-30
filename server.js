@@ -84,21 +84,35 @@ function isNewerVersion(latest, current) {
 
 let loggedAvailableUpdateVersion = null;
 
+function stripVersionPrefix(v) {
+  return String(v || "")
+    .trim()
+    .replace(/^v/i, "");
+}
+
+async function fetchLatestReleaseVersion(repo) {
+  const url = `https://api.github.com/repos/${repo}/releases/latest`;
+  const response = await axios.get(url, {
+    timeout: 5000,
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "TAK-Portal",
+    },
+  });
+  const tag = stripVersionPrefix(
+    (response.data && response.data.tag_name) || ""
+  );
+  if (!/^\d+\.\d+\.\d+/.test(tag)) {
+    throw new Error("Invalid GitHub release tag");
+  }
+  return tag;
+}
+
 async function checkForUpdates() {
   try {
-    // You can move this to an env var if you like
     const repo = process.env.GITHUB_REPO || "AdventureSeeker423/TAK-Portal";
+    const latestVersion = await fetchLatestReleaseVersion(repo);
 
-    // Grab package.json from main and read its version
-    const url = `https://raw.githubusercontent.com/${repo}/main/package.json`;
-    const response = await axios.get(url, { timeout: 5000 });
-
-    const data =
-      typeof response.data === "string"
-        ? JSON.parse(response.data)
-        : response.data;
-
-    const latestVersion = data.version || app.locals.APP_VERSION;
     const updateAvailable = isNewerVersion(
       latestVersion,
       app.locals.APP_VERSION
