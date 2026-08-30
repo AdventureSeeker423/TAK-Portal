@@ -9,6 +9,11 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.6 - 8/30/26
+✨ `Enhancement` - STANDALONE TAK PORTAL INSTANCES ONLY - Update script changed to ensure that users are recieving the latest stable release version unless "BETA MODE" is enabled in settings.  If beta mode is enabled, each update will pull the latest files from main branch for testing purposes.
+
+INFRATAK INSTALLS ARE NOT AFFECTED BY THIS CHANGE.  AN UPDATE TO INFRATAK WILL BE DONE IN THE NEAR FUTURE TO MIMIC THIS BEHAVIOR.
+
 ### v1.4.5 - 8/30/26
 VERSION BUMP FOR TESTING
 
