@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.4 - 8/30/26
+✨ `Enhancement` - Adds support for dzdo commands through a toggle on the connections page in settings (if you don't know what that is... you are blessed and don't change it :)
+
 ### v1.4.3 - 8/28/26
 ⬆️ `Dependency Update` - Node Forge
 

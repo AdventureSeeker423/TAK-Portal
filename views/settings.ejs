@@ -378,6 +378,7 @@
         "TAK_SSH_PASSPHRASE",
         "TAK_SSH_ONBOARDED",
         "TAK_SSH_LAST_HANDSHAKE_AT",
+        "TAK_SSH_PRIVILEGE_CMD",
 
         "PORTAL_AUTH_ENABLED",
         "PORTAL_AUTH_REQUIRED_GROUP",
@@ -619,6 +620,42 @@
               </div>
             </label>
           </div>
+          <%
+            const sshPrivilegeCmd =
+              String(settings.TAK_SSH_PRIVILEGE_CMD || "sudo").trim().toLowerCase() === "dzdo"
+                ? "dzdo"
+                : "sudo";
+            const sshPrivilegeIsDzdo = sshPrivilegeCmd === "dzdo";
+          %>
+          <div class="settings-field settings-field-bool" style="margin-top:.75rem;">
+            <span class="settings-label">
+              <span>Privilege command</span>
+              <span class="settings-help-tip">
+                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                <span class="settings-help-popover">
+                  sudo is the default. Choose dzdo for Centrify/DirectAuthorize hosts. All privileged SSH commands (restart, reboot, Locate, certs, CoreConfig) use this binary.
+                </span>
+              </span>
+            </span>
+            <div class="settings-choice-toggle" data-ssh-privilege-wrap>
+              <span class="settings-choice-toggle-label <%= sshPrivilegeIsDzdo ? '' : 'is-active' %>" data-ssh-privilege-label="sudo">sudo</span>
+              <button
+                type="button"
+                class="settings-toggle <%= sshPrivilegeIsDzdo ? 'is-on' : 'is-off' %>"
+                id="sshPrivilegeToggle"
+                data-ssh-privilege-toggle
+                aria-pressed="<%= sshPrivilegeIsDzdo ? 'true' : 'false' %>"
+                aria-label="Privilege command"
+              ></button>
+              <span class="settings-choice-toggle-label <%= sshPrivilegeIsDzdo ? 'is-active' : '' %>" data-ssh-privilege-label="dzdo">dzdo</span>
+            </div>
+            <input
+              type="hidden"
+              id="sshPrivilegeCmdInput"
+              name="settings[TAK_SSH_PRIVILEGE_CMD]"
+              value="<%= sshPrivilegeCmd %>"
+            />
+          </div>
 
           <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
             <button type="button" class="btn" id="sshSetupBtn">Set Up SSH (Generate Key, Install on Server, Configure Sudo, and Test)</button>
@@ -629,8 +666,8 @@
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
               <span class="settings-help-popover">
                 Enter the TAK Server SSH host, port, username, and that user&apos;s password above, then run setup once.
-                The portal generates a key pair, installs it on the server, configures passwordless sudo for Locate and maintenance, and verifies access automatically.
-                The account must be allowed to run <code>sudo</code> with its password during setup.
+                The portal generates a key pair, installs it on the server, configures passwordless privilege (sudo by default, or dzdo if selected) for Locate and maintenance, and verifies access automatically.
+                The account must be allowed to run <code>sudo</code> or <code>dzdo</code> with its password during setup.
               </span>
             </span>
             <span class="muted" style="font-size:0.8rem;margin-left:0.35rem;">SSH setup help</span>
@@ -4644,7 +4681,42 @@
     const passInput = document.getElementById("sshPasswordInput");
     const btnSetup = document.getElementById("sshSetupBtn");
     const btnTestOnly = document.getElementById("sshTestOnlyBtn");
+    const privilegeToggle = document.getElementById("sshPrivilegeToggle");
+    const privilegeInput = document.getElementById("sshPrivilegeCmdInput");
     var lastSshTestPassed = null;
+
+    function getSshPrivilegeCmd() {
+      var v = privilegeInput && String(privilegeInput.value || "").trim().toLowerCase();
+      return v === "dzdo" ? "dzdo" : "sudo";
+    }
+    window.getSshPrivilegeCmd = getSshPrivilegeCmd;
+
+    function setSshPrivilegeCmd(next) {
+      var bin = next === "dzdo" ? "dzdo" : "sudo";
+      var isDzdo = bin === "dzdo";
+      if (privilegeInput) privilegeInput.value = bin;
+      if (privilegeToggle) {
+        privilegeToggle.classList.toggle("is-on", isDzdo);
+        privilegeToggle.classList.toggle("is-off", !isDzdo);
+        privilegeToggle.setAttribute("aria-pressed", isDzdo ? "true" : "false");
+      }
+      var wrap = privilegeToggle && privilegeToggle.closest("[data-ssh-privilege-wrap]");
+      if (wrap) {
+        var sudoLbl = wrap.querySelector('[data-ssh-privilege-label="sudo"]');
+        var dzdoLbl = wrap.querySelector('[data-ssh-privilege-label="dzdo"]');
+        if (sudoLbl) sudoLbl.classList.toggle("is-active", !isDzdo);
+        if (dzdoLbl) dzdoLbl.classList.toggle("is-active", isDzdo);
+      }
+    }
+
+    if (privilegeToggle) {
+      privilegeToggle.addEventListener("click", function () {
+        setSshPrivilegeCmd(getSshPrivilegeCmd() === "dzdo" ? "sudo" : "dzdo");
+        if (typeof window.scheduleSettingsAutoSave === "function") {
+          window.scheduleSettingsAutoSave();
+        }
+      });
+    }
 
     function setStatus(msg, isError) {
       if (!statusBox) return;
@@ -4660,9 +4732,9 @@
         "  • Privileged access (read CoreConfig.xml): OK",
       ];
       if (data && data.sudoSetup === "sudoers") {
-        lines.push("  • Sudo: passwordless (sudoers configured)");
+        lines.push("  • " + (getSshPrivilegeCmd() === "dzdo" ? "dzdo" : "Sudo") + ": passwordless");
       } else if (data && data.sudoSetup === "password") {
-        lines.push("  • Sudo: using stored password for privileged commands");
+        lines.push("  • " + (getSshPrivilegeCmd() === "dzdo" ? "dzdo" : "Sudo") + ": using stored password for privileged commands");
       }
       return lines.join("\n");
     }
@@ -4678,7 +4750,7 @@
         " | Port: " + (s.port || "22") +
         " | Keypair: " + (s.hasKeyPair ? "present" : "missing") +
         " | Setup: " + (s.onboarded ? "complete" : "not run yet") +
-        (s.sudoersConfigured ? " | Sudo: passwordless" : "") +
+        (s.sudoersConfigured ? " | " + (getSshPrivilegeCmd() === "dzdo" ? "dzdo" : "Sudo") + ": passwordless" : "") +
         (lastSshTestPassed === true ? " | Last test: passed" : lastSshTestPassed === false ? " | Last test: failed" : "") +
         (s.lastHandshakeAt ? " | Last setup: " + s.lastHandshakeAt : ""),
         false
@@ -4711,10 +4783,18 @@
         try {
           btnSetup.disabled = true;
           setStatus(
-            "Running full SSH setup: generate key, install on server, configure sudo, and test…",
+            "Running full SSH setup: generate key, install on server, configure " +
+              getSshPrivilegeCmd() +
+              ", and test…",
             false
           );
-          const data = await postJson("/api/ssh/setup", { host, port, username, password });
+          const data = await postJson("/api/ssh/setup", {
+            host,
+            port,
+            username,
+            password,
+            privilegeCmd: getSshPrivilegeCmd(),
+          });
           if (passInput) passInput.value = "";
           lastSshTestPassed = !!data.testPassed;
           setStatus(formatSshTestSuccess(data), false);
@@ -5250,15 +5330,27 @@
         });
       }
 
+      function sshPrivilegeCmd() {
+        if (typeof window.getSshPrivilegeCmd === "function") return window.getSshPrivilegeCmd();
+        var el = document.getElementById("sshPrivilegeCmdInput");
+        var v = el && String(el.value || "").trim().toLowerCase();
+        return v === "dzdo" ? "dzdo" : "sudo";
+      }
+
       if (restartBtn) {
         restartBtn.addEventListener("click", function () {
+          var priv = sshPrivilegeCmd();
           var ok = window.confirm(
-            "Run on the TAK Server over SSH:\n\n  sudo systemctl restart takserver\n\n" +
+            "Run on the TAK Server over SSH:\n\n  " +
+              priv +
+              " systemctl restart takserver\n\n" +
               "Connected ATAK / TAK clients may drop briefly while the service restarts.\n\nContinue?"
           );
           if (!ok) return;
           setInProgress(
-            "Restart in progress — sudo systemctl restart takserver is running on the TAK Server over SSH (often up to about a minute). The status panel below will open automatically."
+            "Restart in progress — " +
+              priv +
+              " systemctl restart takserver is running on the TAK Server over SSH (often up to about a minute). The status panel below will open automatically."
           );
           restartBtn.disabled = true;
           if (rebootBtn) rebootBtn.disabled = true;
@@ -5281,15 +5373,20 @@
 
       if (rebootBtn) {
         rebootBtn.addEventListener("click", function () {
+          var priv = sshPrivilegeCmd();
           var ok = window.confirm(
-            "This will reboot the entire TAK Server host over SSH:\n\n  sudo reboot\n\n" +
+            "This will reboot the entire TAK Server host over SSH:\n\n  " +
+              priv +
+              " reboot\n\n" +
               "All services on that machine will restart. The portal will wait for the TAK Marti API to respond again, then show takserver-api.log.\n\nContinue?"
           );
           if (!ok) return;
           var ok2 = window.confirm("Confirm full host reboot?");
           if (!ok2) return;
           setInProgress(
-            "Restart in progress — sending sudo reboot to the TAK Server host over SSH. The machine will go down briefly."
+            "Restart in progress — sending " +
+              priv +
+              " reboot to the TAK Server host over SSH. The machine will go down briefly."
           );
           if (restartBtn) restartBtn.disabled = true;
           rebootBtn.disabled = true;

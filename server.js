@@ -1825,6 +1825,11 @@ app.post(
         merged[key] = mapBasemapsConfig.normalizeBasemapId(bodySettings[key]);
         return;
       }
+      if (key === "TAK_SSH_PRIVILEGE_CMD") {
+        merged[key] =
+          String(bodySettings[key] || "").trim().toLowerCase() === "dzdo" ? "dzdo" : "sudo";
+        return;
+      }
       merged[key] = bodySettings[key];
     });
 
@@ -1956,6 +1961,7 @@ app.post(
     // so it stays whatever it was before.
 
     const takSshSvcForSave = require("./services/takSsh.service");
+    takSshSvcForSave.clearPrivilegedModeCache();
     if (!takSshSvcForSave.isPrivilegedSshReady(merged)) {
       merged.ALLOWED_CLIENT_DATA_PACKAGE = "false";
     }

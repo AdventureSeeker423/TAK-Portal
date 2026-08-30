@@ -2010,6 +2010,34 @@ body.modal-open .sidebarToggle {
     margin-left: auto;
 }
 
+.settings-field-bool .settings-choice-toggle .settings-toggle {
+    margin-left: 0;
+}
+
+.settings-choice-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.settings-choice-toggle-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    opacity: 0.5;
+}
+
+.settings-choice-toggle-label.is-active {
+    opacity: 1;
+}
+
+.settings-choice-toggle .settings-toggle.is-off,
+.settings-choice-toggle .settings-toggle.is-on {
+    background: var(--btn, #2563eb);
+}
+
 .settings-label {
     font-weight: 600;
     display: flex;

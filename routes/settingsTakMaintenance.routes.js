@@ -18,12 +18,13 @@ function ensureSsh(req, res, next) {
  * still completes. Respond immediately and run the SSH command in the background.
  */
 router.post("/restart-service", ensureSsh, (req, res) => {
+  const priv = takSshSvc.getPrivilegeBin();
   auditSvc.auditFromRequest(req, {
     action: "TAK_SERVER_RESTART_QUEUED",
     targetType: "tak_server",
     targetId: "takserver",
     details: {
-      command: "sudo systemctl restart takserver",
+      command: `${priv} systemctl restart takserver`,
       summary: "Queued TAK Server service restart over SSH.",
     },
   });
@@ -41,7 +42,7 @@ router.post("/restart-service", ensureSsh, (req, res) => {
   return res.json({
     ok: true,
     message:
-      "TAK Server service restart has been queued over SSH (sudo systemctl restart takserver). It may take up to about a minute on the host; the status panel tracks API health and the log tail.",
+      `TAK Server service restart has been queued over SSH (${priv} systemctl restart takserver). It may take up to about a minute on the host; the status panel tracks API health and the log tail.`,
   });
 });
 

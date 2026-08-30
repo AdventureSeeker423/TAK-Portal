@@ -51,13 +51,14 @@ router.post("/generate-key", (req, res) => {
 router.post("/handshake", async (req, res) => {
   try {
     const body = req.body || {};
-    const result = await takSshSvc.onboardTakSshWithPassword({
+    const handshake = await takSshSvc.onboardTakSshWithPassword({
       host: body.host,
       port: body.port,
       username: body.username,
       password: body.password,
+      privilegeCmd: body.privilegeCmd,
     });
-    if (result?.ok) {
+    if (handshake?.ok) {
       auditSvc.auditFromRequest(req, {
         action: "SSH_HANDSHAKE",
         targetType: "ssh",
@@ -70,7 +71,7 @@ router.post("/handshake", async (req, res) => {
         },
       });
     }
-    res.json(result);
+    res.json(handshake);
   } catch (err) {
     res.status(400).json({ ok: false, error: err?.message || String(err) });
   }
@@ -185,7 +186,7 @@ router.post("/test-connection", async (req, res) => {
       targetId: "remote",
       details: {
         remoteUser: test.remoteUser || undefined,
-        summary: "SSH connection test succeeded (whoami + privileged sudo).",
+        summary: "SSH connection test succeeded (whoami + privileged access).",
       },
     });
     res.json({
@@ -225,6 +226,7 @@ router.post("/setup", async (req, res) => {
       port,
       username,
       password,
+      privilegeCmd: body.privilegeCmd,
     });
     if (!handshake?.ok) {
       return res.status(400).json({
@@ -255,7 +257,7 @@ router.post("/setup", async (req, res) => {
         username,
         remoteUser: test.remoteUser,
         sudoSetup: handshake.sudoSetup,
-        summary: "Completed full SSH setup (key, sudo, and verification test).",
+        summary: "Completed full SSH setup (key, privilege access, and verification test).",
       },
     });
 

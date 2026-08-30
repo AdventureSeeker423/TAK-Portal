@@ -7,12 +7,13 @@
  * Settings (all optional; if not set, cert creation is skipped):
  *   TAK_SSH_HOST       SSH host (default: hostname from TAK_URL)
  *   TAK_SSH_PORT       SSH port (default: 22)
- *   TAK_SSH_USER       SSH username (non-root OK; handshake configures sudo)
- *   TAK_SSH_SUDO_PASSWORD Optional fallback when passwordless sudo cannot be installed
+ *   TAK_SSH_USER       SSH username (non-root OK; handshake configures sudo/dzdo)
+ *   TAK_SSH_PRIVILEGE_CMD  "sudo" (default) or "dzdo"
+ *   TAK_SSH_SUDO_PASSWORD Optional fallback when passwordless sudo/dzdo cannot be installed
  *   TAK_SSH_PRIVATE_KEY_PATH   Path to PEM private key file
  *   TAK_SSH_PASSPHRASE Optional passphrase for encrypted key
  *
- * Command run on server: sudo -u tak bash -c 'cd /opt/tak/certs && bash makeCert.sh client <username>'
+ * Command run on server: <sudo|dzdo> -u tak bash -c 'cd /opt/tak/certs && bash makeCert.sh client <username>'
  */
 
 const fs = require("fs");
@@ -43,8 +44,21 @@ function quoteForSingleQuotedShell(str) {
   return String(str || "").replace(/'/g, "'\"'\"'");
 }
 
-const PRIVILEGED_UNAVAILABLE_MSG =
-  "SSH connected but privileged commands are not available. In Server Settings, run Generate Key + Handshake again with an account that can sudo (the portal installs passwordless sudo automatically).";
+function normalizePrivilegeBin(raw) {
+  return String(raw || "").trim().toLowerCase() === "dzdo" ? "dzdo" : "sudo";
+}
+
+function getPrivilegeBin() {
+  return normalizePrivilegeBin(getString("TAK_SSH_PRIVILEGE_CMD", "sudo"));
+}
+
+function privilegedUnavailableMessage() {
+  const bin = getPrivilegeBin();
+  if (bin === "dzdo") {
+    return "SSH connected but privileged commands are not available. In Server Settings, run Generate Key + Handshake again with an account that can run dzdo.";
+  }
+  return "SSH connected but privileged commands are not available. In Server Settings, run Generate Key + Handshake again with an account that can sudo (the portal installs passwordless sudo automatically).";
+}
 
 const TAK_CORE_CONFIG_PATH = "/opt/tak/CoreConfig.xml";
 const TAK_CERTS_DIR = "/opt/tak/certs";
@@ -52,16 +66,16 @@ const TAK_PORTAL_CERTS_REPAIR_SCRIPT = "/opt/tak/utils/tak-portal-repair-certs.s
 
 /** Shell checks that match commands granted in /etc/sudoers.d/tak-portal (not bare `sudo true`). */
 function shellProbeNopasswdRootAccess() {
-  return `sudo -n cat ${TAK_CORE_CONFIG_PATH} >/dev/null 2>&1`;
+  return `${getPrivilegeBin()} -n cat ${TAK_CORE_CONFIG_PATH} >/dev/null 2>&1`;
 }
 
 function shellProbeNopasswdAsTakUser() {
-  return "sudo -n -u tak id >/dev/null 2>&1";
+  return `${getPrivilegeBin()} -n -u tak id >/dev/null 2>&1`;
 }
 
 function shellProbePasswordSudoAccess(password) {
   const safePass = quoteForSingleQuotedShell(password);
-  return `printf '%s\\n' '${safePass}' | sudo -S -p '' cat ${TAK_CORE_CONFIG_PATH} >/dev/null 2>&1`;
+  return `printf '%s\\n' '${safePass}' | ${getPrivilegeBin()} -S -p '' cat ${TAK_CORE_CONFIG_PATH} >/dev/null 2>&1`;
 }
 
 let privilegedModeCache = null;
@@ -71,7 +85,7 @@ function clearPrivilegedModeCache() {
 }
 
 function connectConfigKey(connectConfig) {
-  return `${connectConfig.host}:${connectConfig.port}:${connectConfig.username}`;
+  return `${connectConfig.host}:${connectConfig.port}:${connectConfig.username}:${getPrivilegeBin()}`;
 }
 
 function toConnectConfig(cfg) {
@@ -99,8 +113,9 @@ function assertSafePortalSshUsername(username) {
 
 function buildPrivilegedCommand(innerCommand, mode, options = {}) {
   const runAsUser = String(options.runAsUser || "").trim();
+  const bin = getPrivilegeBin();
   if (!mode || mode.mode === "none") {
-    throw new Error(PRIVILEGED_UNAVAILABLE_MSG);
+    throw new Error(privilegedUnavailableMessage());
   }
 
   if (mode.mode === "direct") {
@@ -110,27 +125,27 @@ function buildPrivilegedCommand(innerCommand, mode, options = {}) {
         return innerCommand;
       }
       throw new Error(
-        "SSH user can access CoreConfig directly but cannot run commands as the tak user. Use an account with sudo or re-run Configure Sudo Access."
+        `SSH user can access CoreConfig directly but cannot run commands as the tak user. Use an account with ${bin} or re-run SSH setup.`
       );
     }
     return innerCommand;
   }
   if (mode.mode === "root") {
-    if (runAsUser) return `sudo -u ${runAsUser} ${innerCommand}`;
+    if (runAsUser) return `${bin} -u ${runAsUser} ${innerCommand}`;
     return innerCommand;
   }
   if (mode.mode === "nopasswd") {
-    if (runAsUser) return `sudo -n -u ${runAsUser} ${innerCommand}`;
-    return `sudo -n ${innerCommand}`;
+    if (runAsUser) return `${bin} -n -u ${runAsUser} ${innerCommand}`;
+    return `${bin} -n ${innerCommand}`;
   }
   if (mode.mode === "password" && mode.password) {
     const safePass = quoteForSingleQuotedShell(mode.password);
     if (runAsUser) {
-      return `printf '%s\\n' '${safePass}' | sudo -S -p '' -u ${runAsUser} ${innerCommand}`;
+      return `printf '%s\\n' '${safePass}' | ${bin} -S -p '' -u ${runAsUser} ${innerCommand}`;
     }
-    return `printf '%s\\n' '${safePass}' | sudo -S -p '' ${innerCommand}`;
+    return `printf '%s\\n' '${safePass}' | ${bin} -S -p '' ${innerCommand}`;
   }
-  throw new Error(PRIVILEGED_UNAVAILABLE_MSG);
+  throw new Error(privilegedUnavailableMessage());
 }
 
 function takCertCommandOptions(connect, extra = {}) {
@@ -143,13 +158,14 @@ function takCertCommandOptions(connect, extra = {}) {
 function buildPrivilegedTeeCommand(remoteAbsolutePath, mode) {
   const safePath = quoteForSingleQuotedShell(String(remoteAbsolutePath || "").trim());
   const teeInner = `tee '${safePath}' > /dev/null`;
+  const bin = getPrivilegeBin();
   if (mode.mode === "root") return teeInner;
-  if (mode.mode === "nopasswd") return `sudo -n ${teeInner}`;
+  if (mode.mode === "nopasswd") return `${bin} -n ${teeInner}`;
   if (mode.mode === "password" && mode.password) {
     const safePass = quoteForSingleQuotedShell(mode.password);
-    return `(printf '%s\\n' '${safePass}'; cat) | sudo -S -p '' ${teeInner}`;
+    return `(printf '%s\\n' '${safePass}'; cat) | ${bin} -S -p '' ${teeInner}`;
   }
-  throw new Error(PRIVILEGED_UNAVAILABLE_MSG);
+  throw new Error(privilegedUnavailableMessage());
 }
 
 async function probePrivilegedMode(connectConfig) {
@@ -201,8 +217,9 @@ async function getPrivilegedMode(connectConfig, { forceRefresh = false } = {}) {
 
   let mode = await probePrivilegedMode(connectConfig);
 
+  const bin = getPrivilegeBin();
   const sudoersConfigured = String(getString("TAK_SSH_SUDOERS_CONFIGURED", "")).toLowerCase() === "true";
-  if (!sudoersConfigured && mode.mode === "password" && mode.password) {
+  if (bin === "sudo" && !sudoersConfigured && mode.mode === "password" && mode.password) {
     const install = await installPortalSudoersUsingStoredPassword(connectConfig, connectConfig.username);
     if (install.ok) {
       mode = await probePrivilegedMode(connectConfig);
@@ -281,7 +298,7 @@ async function installPortalSudoersOnRemote(connectConfig, sshPassword, portalUs
   const script = buildPortalSudoersInstallScript(portalUsername);
   const b64 = Buffer.from(script, "utf8").toString("base64");
   const safePass = quoteForSingleQuotedShell(String(sshPassword || ""));
-  const cmd = `printf '%s\\n' '${safePass}' | sudo -S -p '' bash -lc 'echo ${b64} | base64 -d | bash'`;
+  const cmd = `printf '%s\\n' '${safePass}' | ${getPrivilegeBin()} -S -p '' bash -lc 'echo ${b64} | base64 -d | bash'`;
   return execOverSsh(connectConfig, cmd, 90000);
 }
 
@@ -342,12 +359,12 @@ async function runTakCertsRepairWithStoredSudoPassword(connect) {
     return { ok: false, message: "No stored sudo password for cert repair." };
   }
   const safePass = quoteForSingleQuotedShell(password);
-  const cmd = `printf '%s\\n' '${safePass}' | sudo -S -p '' ${buildInlineTakCertsRepairCommand()}`;
+  const cmd = `printf '%s\\n' '${safePass}' | ${getPrivilegeBin()} -S -p '' ${buildInlineTakCertsRepairCommand()}`;
   return execOverSsh(connect, cmd, 30000);
 }
 
 /**
- * During handshake: install /etc/sudoers.d/tak-portal, or store sudo password for -S fallback.
+ * During handshake: install /etc/sudoers.d/tak-portal (sudo), or probe passwordless/password dzdo.
  */
 async function configureRemoteSudoAccessAfterHandshake({ host, port, username, password }) {
   const connect = {
@@ -359,7 +376,45 @@ async function configureRemoteSudoAccessAfterHandshake({ host, port, username, p
     tryKeyboard: true,
   };
 
+  const bin = getPrivilegeBin();
   const portalUser = assertSafePortalSshUsername(username);
+
+  if (bin === "dzdo") {
+    const nopass = await execOverSsh(connect, shellProbeNopasswdRootAccess(), 20000);
+    if (nopass.ok) {
+      clearPrivilegedModeCache();
+      let verifyConnect = connect;
+      const keyCfg = getTakSshConfig();
+      if (keyCfg && keyCfg.username === portalUser && keyCfg.host === String(host || "").trim()) {
+        verifyConnect = toConnectConfig(keyCfg);
+      }
+      const mode = await getPrivilegedMode(verifyConnect, { forceRefresh: true });
+      await deployTakPortalCertsRepairScript(verifyConnect, mode);
+      await runTakPortalCertsRepair(verifyConnect, mode);
+      return { ok: true, method: "sudoers" };
+    }
+
+    const passRes = await execOverSsh(connect, shellProbePasswordSudoAccess(password), 20000);
+    if (passRes.ok) {
+      return { ok: true, method: "password", sudoPassword: password };
+    }
+
+    console.warn(
+      "[TAK SSH] Could not configure passwordless dzdo for portal user:",
+      nopass.message || nopass.stderr || passRes.message || passRes.stderr || "unknown"
+    );
+    return {
+      ok: false,
+      method: "none",
+      message:
+        passRes.message ||
+        passRes.stderr ||
+        nopass.message ||
+        nopass.stderr ||
+        "dzdo configuration failed (passwordless and password dzdo checks both failed)",
+    };
+  }
+
   const install = await installPortalSudoersOnRemote(connect, password, portalUser);
   if (install.ok) {
     clearPrivilegedModeCache();
@@ -387,7 +442,7 @@ async function configureRemoteSudoAccessAfterHandshake({ host, port, username, p
   }
 
   console.warn(
-    "[TAK SSH] Could not configure passwordless sudo for portal user:",
+    `[TAK SSH] Could not configure passwordless ${bin} for portal user:`,
     install.message || install.stderr || passRes.message || passRes.stderr || "unknown"
   );
   return {
@@ -397,7 +452,7 @@ async function configureRemoteSudoAccessAfterHandshake({ host, port, username, p
       install.message ||
       passRes.message ||
       passRes.stderr ||
-      "sudo configuration failed (install and password sudo checks both failed)",
+      `${bin} configuration failed (install and password ${bin} checks both failed)`,
   };
 }
 
@@ -995,11 +1050,12 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000) {
   });
 }
 
-async function onboardTakSshWithPassword({ host, port, username, password }) {
+async function onboardTakSshWithPassword({ host, port, username, password, privilegeCmd }) {
   const h = String(host || "").trim();
   const u = String(username || "").trim();
   const p = String(password || "");
   const sshPort = Number.parseInt(String(port || "22"), 10) || 22;
+  const bin = normalizePrivilegeBin(privilegeCmd || getPrivilegeBin());
 
   if (!h) throw new Error("Target host is required.");
   if (!u) throw new Error("SSH username is required.");
@@ -1031,6 +1087,15 @@ async function onboardTakSshWithPassword({ host, port, username, password }) {
     throw new Error(result.message || "SSH handshake failed.");
   }
 
+  const currentBeforeHandshake = settingsSvc.getSettings() || {};
+  if (String(currentBeforeHandshake.TAK_SSH_PRIVILEGE_CMD || "") !== bin) {
+    settingsSvc.saveSettings({
+      ...currentBeforeHandshake,
+      TAK_SSH_PRIVILEGE_CMD: bin,
+    });
+    clearPrivilegedModeCache();
+  }
+
   const sudoSetup = await configureRemoteSudoAccessAfterHandshake({
     host: h,
     port: sshPort,
@@ -1044,6 +1109,7 @@ async function onboardTakSshWithPassword({ host, port, username, password }) {
     TAK_SSH_HOST: h,
     TAK_SSH_PORT: String(sshPort),
     TAK_SSH_USER: u,
+    TAK_SSH_PRIVILEGE_CMD: bin,
     TAK_SSH_ONBOARDED: "true",
     TAK_SSH_LAST_HANDSHAKE_AT: new Date().toISOString(),
     TAK_SSH_PRIVATE_KEY_PATH: keyStatus.privateKeyPath,
@@ -1066,12 +1132,15 @@ async function onboardTakSshWithPassword({ host, port, username, password }) {
 
   let message = "SSH key installed on remote server. Handshake complete.";
   if (sudoSetup.method === "sudoers") {
-    message += " Passwordless sudo for TAK Portal was configured on the server.";
+    message +=
+      bin === "dzdo"
+        ? " Passwordless dzdo for TAK Portal is available on the server."
+        : " Passwordless sudo for TAK Portal was configured on the server.";
   } else if (sudoSetup.method === "password") {
-    message += " Sudo access will use the handshake password when needed.";
+    message += ` ${bin === "dzdo" ? "dzdo" : "Sudo"} access will use the handshake password when needed.`;
   } else {
     message +=
-      " Warning: could not configure sudo on the server; Locate and other privileged SSH actions may fail until you re-handshake with a sudo-capable account.";
+      ` Warning: could not configure ${bin} on the server; Locate and other privileged SSH actions may fail until you re-handshake with a ${bin}-capable account.`;
   }
 
   return {
@@ -1337,7 +1406,9 @@ async function ensureRemoteTakCertEnvironment(connect, mode, _portalUsername) {
     ok: false,
     message:
       detail ||
-      "TAK certificate directory is not usable. In Server Settings, verify SSH/sudo access for the tak user, then retry.",
+      "TAK certificate directory is not usable. In Server Settings, verify SSH/" +
+      getPrivilegeBin() +
+      " access for the tak user, then retry.",
   };
 }
 
@@ -1411,7 +1482,9 @@ async function testSshConnectionAndPrivilegedAccess() {
       remoteUser: String(login.stdout || "").trim(),
       message:
         priv.message ||
-        "SSH login works but privileged commands failed. Re-run full SSH setup with an account that can sudo.",
+        "SSH login works but privileged commands failed. Re-run full SSH setup with an account that can " +
+        getPrivilegeBin() +
+        ".",
     };
   }
 
@@ -1657,6 +1730,8 @@ async function removeRemoteFilePrivileged(remoteAbsolutePath, timeoutMs = 60000)
 }
 
 module.exports = {
+  getPrivilegeBin,
+  normalizePrivilegeBin,
   getLocalKeyStatus,
   ensureLocalSshKeyPair,
   onboardTakSshWithPassword,

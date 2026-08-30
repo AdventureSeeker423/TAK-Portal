@@ -698,8 +698,11 @@
       }
     }
 
+    var sshPrivilegeCmd = "<%= String((typeof settings !== 'undefined' && settings && settings.TAK_SSH_PRIVILEGE_CMD) || 'sudo').trim().toLowerCase() === 'dzdo' ? 'dzdo' : 'sudo' %>";
     var confirmText =
-      "This will update CoreConfig.xml on the TAK Server over SSH and run: sudo systemctl restart takserver\n\n" +
+      "This will update CoreConfig.xml on the TAK Server over SSH and run: " +
+      sshPrivilegeCmd +
+      " systemctl restart takserver\n\n" +
       "Connected ATAK / TAK clients may lose connection temporarily while the service restarts.\n\n" +
       "Do you want to continue?";
     if (!window.confirm(confirmText)) {
