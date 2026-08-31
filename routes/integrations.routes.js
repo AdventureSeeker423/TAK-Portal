@@ -26,6 +26,113 @@ function uniqueRequestedGroupIds(body) {
   return [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))];
 }
 
+function uniqueStrippedGroupNames(names) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of Array.isArray(names) ? names : []) {
+    const stripped = stripTakPrefix(raw);
+    if (!stripped) continue;
+    const key = stripped.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(stripped);
+  }
+  return out;
+}
+
+function sameStrippedGroupSet(a, b) {
+  const left = uniqueStrippedGroupNames(a)
+    .map((n) => n.toLowerCase())
+    .sort();
+  const right = uniqueStrippedGroupNames(b)
+    .map((n) => n.toLowerCase())
+    .sort();
+  if (left.length !== right.length) return false;
+  return left.every((v, i) => v === right[i]);
+}
+
+function mergeDataFeedFilterGroups(existingFilterGroups, previousGroupNames, nextGroupNames) {
+  const existing = uniqueStrippedGroupNames(existingFilterGroups);
+  const previousKeys = new Set(
+    uniqueStrippedGroupNames(previousGroupNames).map((n) => n.toLowerCase())
+  );
+  const next = uniqueStrippedGroupNames(nextGroupNames);
+  const kept = existing.filter((g) => !previousKeys.has(g.toLowerCase()));
+  return uniqueStrippedGroupNames([...kept, ...next]);
+}
+
+function unwrapDataFeed(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
+    return payload.data;
+  }
+  return payload;
+}
+
+function dataFeedWritePayload(feed, filtergroup) {
+  const src = feed && typeof feed === "object" ? feed : {};
+  const payload = {
+    type: src.type || "Streaming",
+    name: src.name,
+    protocol: src.protocol || "tls",
+    auth: src.auth || "X_509",
+    port: src.port,
+    coreVersion: src.coreVersion,
+    coreVersion2TlsVersions: src.coreVersion2TlsVersions || "",
+    group: src.group || "",
+    iface: src.iface || "",
+    syncCacheRetentionSeconds:
+      src.syncCacheRetentionSeconds != null ? String(src.syncCacheRetentionSeconds) : "3600",
+    archive: src.archive === true,
+    anongroup: src.anongroup === true,
+    archiveOnly: src.archiveOnly === true,
+    sync: src.sync === true,
+    federated: src.federated !== false,
+    tag: Array.isArray(src.tag) ? src.tag : [],
+    filtergroup,
+  };
+  if (src.uuid) payload.uuid = src.uuid;
+  return payload;
+}
+
+/**
+ * Update a TAK streaming data feed's filtergroup to follow Authentik group changes.
+ * Extra filter groups that were not part of the previous Authentik assignment are kept.
+ * Writes the feed before Authentik so a TAK failure leaves membership unchanged.
+ */
+async function syncDataFeedFilterGroups({ dataFeedName, previousGroupNames, nextGroupNames }) {
+  if (!dataFeedName || !takSvc.isTakConfigured()) {
+    return { updated: false, skipped: true };
+  }
+
+  const takClient = takSvc.buildTakAxios({ timeout: DATAFEED_WRITE_TIMEOUT_MS });
+  const dfRes = await takClient.get(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`, {
+    validateStatus: (status) => status === 200 || status === 404,
+  });
+  if (dfRes.status === 404) {
+    return {
+      updated: false,
+      skipped: true,
+      warning: `Data feed "${dataFeedName}" was not found on TAK Server, so filter groups were not updated.`,
+    };
+  }
+
+  const feed = unwrapDataFeed(dfRes.data);
+  if (!feed || !feed.name) {
+    throw new Error("Could not read the existing TAK data feed.");
+  }
+
+  const existing = feed.filtergroup || feed.filterGroup || feed.filterGroups || [];
+  const merged = mergeDataFeedFilterGroups(existing, previousGroupNames, nextGroupNames);
+  if (sameStrippedGroupSet(existing, merged)) {
+    return { updated: false, skipped: true, filterGroups: merged };
+  }
+
+  const payload = dataFeedWritePayload(feed, merged);
+  await takClient.put(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`, payload);
+  return { updated: true, filterGroups: merged };
+}
+
 function parseStoredDataFeedPort(raw) {
   if (raw == null || raw === "") return null;
   const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
@@ -433,6 +540,8 @@ router.get("/:userId/certs/download", async (req, res) => {
 /**
  * PUT /api/integrations/:userId/group
  * Set the integration user's groups (replaces current). Only for nodered- users; bypasses action lock.
+ * If the integration has a TAK data feed, its filter groups are updated first so a TAK failure
+ * leaves Authentik membership unchanged.
  */
 router.put("/:userId/group", async (req, res) => {
   try {
@@ -457,6 +566,35 @@ router.put("/:userId/group", async (req, res) => {
       return group;
     });
     const groupNames = selectedGroups.map((g) => g.name).filter(Boolean);
+    const previousGroupNames = (Array.isArray(user.groups) ? user.groups : [])
+      .map((id) => groupByPk.get(String(id))?.name)
+      .filter(Boolean);
+
+    const dataFeedName = String(user.attributes?.tak_data_feed_name || "").trim();
+    let dataFeedUpdated = false;
+    let dataFeedWarning = "";
+    if (dataFeedName) {
+      if (!takSvc.isTakConfigured()) {
+        dataFeedWarning =
+          "TAK Server is not configured, so the data feed filter groups were not updated.";
+      } else {
+        try {
+          const feedSync = await syncDataFeedFilterGroups({
+            dataFeedName,
+            previousGroupNames,
+            nextGroupNames: groupNames,
+          });
+          dataFeedUpdated = !!feedSync.updated;
+          if (feedSync.warning) dataFeedWarning = feedSync.warning;
+        } catch (feedErr) {
+          return res.status(400).json({
+            error:
+              "Groups were not changed because updating the TAK data feed failed: " +
+              toErrorPayload(feedErr),
+          });
+        }
+      }
+    }
 
     await users.setUserGroups(userId, requestedIds, { ignoreLocks: true });
     try {
@@ -483,12 +621,24 @@ router.put("/:userId/group", async (req, res) => {
         groupId: requestedIds[0],
         groupIds: requestedIds,
         groups: groupNames,
+        dataFeedName: dataFeedName || undefined,
+        dataFeedUpdated: dataFeedName ? dataFeedUpdated : undefined,
         summary: `Changed integration user ${user?.username || userId} to Authentik group${
           requestedIds.length > 1 ? "s" : ""
-        } ${groupLabel}.`,
+        } ${groupLabel}.${
+          dataFeedUpdated
+            ? ` Updated data feed "${dataFeedName}" filter groups.`
+            : dataFeedName
+              ? " Data feed filter groups were not changed."
+              : ""
+        }`,
       },
     });
-    res.json({ success: true });
+    res.json({
+      success: true,
+      dataFeedUpdated,
+      dataFeedWarning: dataFeedWarning || undefined,
+    });
   } catch (err) {
     res.status(400).json({ error: toErrorPayload(err) });
   }

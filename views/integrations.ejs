@@ -802,7 +802,8 @@
         setEditMsg("Please select at least one group.", false);
         return;
       }
-      setEditMsg("");
+      setEditMsg("Saving…", true);
+      editIntegrationSaveBtn.disabled = true;
       fetch("/api/integrations/" + encodeURIComponent(editCurrentPk) + "/group", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -815,10 +816,19 @@
             return;
           }
           closeEditModal();
-          loadIntegrations();
+          loadIntegrations(true).then(function () {
+            if (out.dataFeedWarning) {
+              setTableMsg(out.dataFeedWarning, false);
+            } else if (out.dataFeedUpdated) {
+              setTableMsg("Groups saved. Data feed filter groups were updated.", true);
+            }
+          });
         })
         .catch(function (err) {
           setEditMsg(err.message || "Save failed", false);
+        })
+        .finally(function () {
+          editIntegrationSaveBtn.disabled = false;
         });
     });
   }
