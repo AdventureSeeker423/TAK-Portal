@@ -63,9 +63,9 @@
           </div>
         </label>
       </div>
-      <div class="row" style="margin-top: 12px; align-items: center;">
-        <button class="btn" type="submit">Create Integration</button>
+      <div class="createActionsRow" style="margin-top: 12px; display:flex; align-items:center; gap:10px; flex-wrap: wrap;">
         <div id="createMsg" class="msg"></div>
+        <button class="btn success createIntegrationSubmitBtn" type="submit">Create New Integration</button>
       </div>
     </form>
   </div>
@@ -228,13 +228,6 @@
               </select>
             </label>
           </div>
-
-          <div style="margin-top: 16px;">
-            <label style="display: block; margin-bottom: 8px; font-weight: bold;">Filter Groups</label>
-            <div id="filterGroupsCheckboxList" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; padding: 8px;">
-              <!-- Checkboxes populate here -->
-            </div>
-          </div>
           
            <div class="row" style="margin-top: 12px;">
              <label style="flex: 1; min-width: 200px;">Sync
@@ -310,7 +303,6 @@
   const dataFeedModalOverlay = document.getElementById("dataFeedModalOverlay");
   const dataFeedCloseBtn = document.getElementById("dataFeedCloseBtn");
   const dataFeedForm = document.getElementById("dataFeedForm");
-  const filterGroupsCheckboxList = document.getElementById("filterGroupsCheckboxList");
 
   let agenciesCache = [];
   let groupsCache = [];
@@ -688,16 +680,6 @@
         
         if (mode === "create") {
             integrationRetroactiveUsername = username;
-            var retroUser = usersCache.find(function (u) { return String(u.username) === String(username); });
-            var retroGroupPks = new Set(((retroUser && retroUser.groups) || []).map(String));
-            filterGroupsCheckboxList.innerHTML = groupsCache.map(function(g) {
-               const isChecked = retroGroupPks.has(String(g.pk)) ? "checked" : "";
-               const displayName = stripTakPrefix(g.name) || g.pk;
-               return `<label style="display: flex; flex-direction: row; align-items: center; font-weight: normal; margin-bottom: 6px; width: 100%;">
-                         <input type="checkbox" value="${esc(g.name)}" style="margin-right: 8px; margin-top: 0;" ${isChecked} />
-                         ${esc(displayName)}
-                       </label>`;
-            }).join("");
             
             dataFeedForm.reset();
             document.getElementById("dataFeedTitle").innerText = "Create Streaming Data Feed";
@@ -753,14 +735,6 @@
                  dataFeedForm.archiveOnly.value = f.archiveOnly === true ? "true" : "false";
                  dataFeedForm.sync.value = f.sync === true ? "true" : "false";
                  dataFeedForm.federated.value = f.federated === true ? "true" : "false";
-
-                 filterGroupsCheckboxList.innerHTML = ((f.filtergroup || [])).map(function(grp) {
-                     const displayName = stripTakPrefix(grp);
-                     return `<label style="display: flex; flex-direction: row; align-items: center; font-weight: normal; margin-bottom: 6px; width: 100%;">
-                               <input type="checkbox" checked disabled style="margin-right: 8px; margin-top: 0;"/>
-                               ${esc(displayName)}
-                             </label>`;
-                 }).join("");
                  
                  Array.from(dataFeedForm.elements).forEach(el => el.disabled = true);
                  document.getElementById("dataFeedCloseBtn").disabled = false;
@@ -965,17 +939,6 @@
 
     integrationPayloadCache = payload;
     integrationRetroactiveUsername = null;
-    
-    // Render Filter Groups checkboxes for standard flow
-    var selectedCreatePks = new Set(groupIds.map(String));
-    filterGroupsCheckboxList.innerHTML = groupsCache.map(function(g) {
-        const isChecked = selectedCreatePks.has(String(g.pk)) ? "checked" : "";
-        const displayName = stripTakPrefix(g.name) || g.pk;
-        return `<label style="display: flex; flex-direction: row; align-items: center; font-weight: normal; margin-bottom: 6px; width: 100%;">
-                  <input type="checkbox" value="${esc(g.name)}" style="margin-right: 8px; margin-top: 0;" ${isChecked} />
-                  ${esc(displayName)}
-                </label>`;
-    }).join("");
 
     dataFeedForm.reset();
     document.getElementById("dataFeedTitle").innerText = "Create Streaming Data Feed";
@@ -1001,39 +964,14 @@
 
   dataFeedForm.addEventListener("submit", async function(e) {
     e.preventDefault();
-    if (!integrationPayloadCache) return;
+    if (!integrationPayloadCache && !integrationRetroactiveUsername) return;
 
-    const payload = integrationPayloadCache;
-    
-    payload.dataFeedName = dataFeedForm.dataFeedName.value.trim();
-    payload.tags = dataFeedForm.tags.value;
-    payload.protocol = dataFeedForm.protocol.value;
-    payload.authType = dataFeedForm.authType.value;
-    payload.port = dataFeedForm.port.value;
-    payload.coreVersion = dataFeedForm.coreVersion.value;
-    
     const tlsVersions = [];
     if (dataFeedForm.tlsv1.checked) tlsVersions.push("TLSv1");
     if (dataFeedForm.tlsv1_1.checked) tlsVersions.push("TLSv1.1");
     if (dataFeedForm.tlsv1_2.checked) tlsVersions.push("TLSv1.2");
     if (dataFeedForm.tlsv1_3.checked) tlsVersions.push("TLSv1.3");
-    payload.coreVersion2TlsVersions = tlsVersions.join(",");
 
-    payload.multicastGroup = dataFeedForm.multicastGroup.value.trim();
-    payload.iface = dataFeedForm.interface.value.trim();
-    payload.syncCacheRetention = dataFeedForm.syncCacheRetention.value;
-    payload.archive = dataFeedForm.archive.value;
-    payload.anongroup = dataFeedForm.anongroup.value;
-    payload.archiveOnly = dataFeedForm.archiveOnly.value;
-    payload.sync = dataFeedForm.sync.value;
-    payload.federated = dataFeedForm.federated.value;
-
-    const checkedBoxes = filterGroupsCheckboxList.querySelectorAll('input[type="checkbox"]:checked');
-    const filterGroups = [];
-    checkedBoxes.forEach(function(box) {
-        filterGroups.push(box.value);
-    });
-    
     const dataFeedPayloadSegment = {
       dataFeedName: dataFeedForm.dataFeedName.value.trim(),
       tags: dataFeedForm.tags.value,
@@ -1049,8 +987,7 @@
       anongroup: dataFeedForm.anongroup.value,
       archiveOnly: dataFeedForm.archiveOnly.value,
       sync: dataFeedForm.sync.value,
-      federated: dataFeedForm.federated.value,
-      filterGroups: filterGroups
+      federated: dataFeedForm.federated.value
     };
 
     dataFeedModalOverlay.style.display = "none";
@@ -1079,8 +1016,8 @@
     }
 
     // Default Creation Flow
-    Object.assign(payload, dataFeedPayloadSegment);
-    submitIntegration(payload);
+    Object.assign(integrationPayloadCache, dataFeedPayloadSegment);
+    submitIntegration(integrationPayloadCache);
   });
 
   async function submitIntegration(payload) {
@@ -1219,6 +1156,10 @@
   display: inline-block;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.createIntegrationSubmitBtn {
+  margin-left: auto;
 }
 
 .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }

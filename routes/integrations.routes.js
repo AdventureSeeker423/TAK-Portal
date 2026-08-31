@@ -51,16 +51,6 @@ function sameStrippedGroupSet(a, b) {
   return left.every((v, i) => v === right[i]);
 }
 
-function mergeDataFeedFilterGroups(existingFilterGroups, previousGroupNames, nextGroupNames) {
-  const existing = uniqueStrippedGroupNames(existingFilterGroups);
-  const previousKeys = new Set(
-    uniqueStrippedGroupNames(previousGroupNames).map((n) => n.toLowerCase())
-  );
-  const next = uniqueStrippedGroupNames(nextGroupNames);
-  const kept = existing.filter((g) => !previousKeys.has(g.toLowerCase()));
-  return uniqueStrippedGroupNames([...kept, ...next]);
-}
-
 function unwrapDataFeed(payload) {
   if (!payload || typeof payload !== "object") return null;
   if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
@@ -96,11 +86,10 @@ function dataFeedWritePayload(feed, filtergroup) {
 }
 
 /**
- * Update a TAK streaming data feed's filtergroup to follow Authentik group changes.
- * Extra filter groups that were not part of the previous Authentik assignment are kept.
+ * Update a TAK streaming data feed's filtergroup to match Authentik group membership exactly.
  * Writes the feed before Authentik so a TAK failure leaves membership unchanged.
  */
-async function syncDataFeedFilterGroups({ dataFeedName, previousGroupNames, nextGroupNames }) {
+async function syncDataFeedFilterGroups({ dataFeedName, nextGroupNames }) {
   if (!dataFeedName || !takSvc.isTakConfigured()) {
     return { updated: false, skipped: true };
   }
@@ -123,14 +112,14 @@ async function syncDataFeedFilterGroups({ dataFeedName, previousGroupNames, next
   }
 
   const existing = feed.filtergroup || feed.filterGroup || feed.filterGroups || [];
-  const merged = mergeDataFeedFilterGroups(existing, previousGroupNames, nextGroupNames);
-  if (sameStrippedGroupSet(existing, merged)) {
-    return { updated: false, skipped: true, filterGroups: merged };
+  const next = uniqueStrippedGroupNames(nextGroupNames);
+  if (sameStrippedGroupSet(existing, next)) {
+    return { updated: false, skipped: true, filterGroups: next };
   }
 
-  const payload = dataFeedWritePayload(feed, merged);
+  const payload = dataFeedWritePayload(feed, next);
   await takClient.put(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`, payload);
-  return { updated: true, filterGroups: merged };
+  return { updated: true, filterGroups: next };
 }
 
 function parseStoredDataFeedPort(raw) {
@@ -332,7 +321,7 @@ router.post("/", async (req, res) => {
   let dataFeedCreateAttempted = false;
 
   try {
-    const { type, title, groupId, groupIds, state, county, agencySuffix, skipDataFeed, protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags, filterGroups } = req.body || {};
+    const { type, title, groupId, groupIds, state, county, agencySuffix, skipDataFeed, protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags } = req.body || {};
     const authUser = req.authentikUser || null;
     const createdBy = authUser
       ? {
@@ -371,7 +360,9 @@ router.post("/", async (req, res) => {
 
     if (!isSkipDataFeed && finalDataFeedName && takSvc.isTakConfigured()) {
       const payloadTags = tags ? tags.split(/[\n,]+/).map(t => t.trim()).filter(Boolean) : [];
-      const strippedGroups = Array.isArray(filterGroups) ? filterGroups.map(stripTakPrefix) : [];
+      const strippedGroups = uniqueStrippedGroupNames(
+        (Array.isArray(result?.groups) ? result.groups : []).map((g) => g?.name)
+      );
 
       const dataFeedPayload = {
         type: "Streaming",
@@ -569,9 +560,6 @@ router.put("/:userId/group", async (req, res) => {
       return group;
     });
     const groupNames = selectedGroups.map((g) => g.name).filter(Boolean);
-    const previousGroupNames = (Array.isArray(user.groups) ? user.groups : [])
-      .map((id) => groupByPk.get(String(id))?.name)
-      .filter(Boolean);
 
     const dataFeedName = String(user.attributes?.tak_data_feed_name || "").trim();
     let dataFeedUpdated = false;
@@ -584,7 +572,6 @@ router.put("/:userId/group", async (req, res) => {
         try {
           const feedSync = await syncDataFeedFilterGroups({
             dataFeedName,
-            previousGroupNames,
             nextGroupNames: groupNames,
           });
           dataFeedUpdated = !!feedSync.updated;
@@ -733,7 +720,7 @@ router.post("/:username/datafeed", async (req, res) => {
       return res.status(400).json({ error: "Integration already has an associated Data Feed." });
     }
 
-    const { protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags, filterGroups } = req.body || {};
+    const { protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags } = req.body || {};
 
     const titleForFeed = String(user.attributes?.integration_title || "").trim();
     if (!titleForFeed) {
@@ -755,7 +742,12 @@ router.post("/:username/datafeed", async (req, res) => {
     }
 
     const payloadTags = tags ? tags.split(/[\n,]+/).map(t => t.trim()).filter(Boolean) : [];
-    const strippedGroups = Array.isArray(filterGroups) ? filterGroups.map(stripTakPrefix) : [];
+    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const groupByPk = new Map((allGroups || []).map((g) => [String(g.pk), g]));
+    const userGroupNames = (Array.isArray(user.groups) ? user.groups : [])
+      .map((id) => groupByPk.get(String(id))?.name)
+      .filter(Boolean);
+    const strippedGroups = uniqueStrippedGroupNames(userGroupNames);
     
     const dataFeedPayload = {
       type: "Streaming",
