@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.7 - 8/31/26
+✨ `Enhancement` - Integrations - Now allows for multiple groups to be selected for a single integration cert/data feed
+
 ### v1.4.6 - 8/30/26
 ✨ `Enhancement` - STANDALONE TAK PORTAL INSTANCES ONLY - Update script changed to ensure that users are recieving the latest stable release version unless "BETA MODE" is enabled in settings.  If beta mode is enabled, each update will pull the latest files from main branch for testing purposes.
 
