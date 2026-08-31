@@ -51,10 +51,12 @@
       <div id="createManualGroupsWrap" style="margin-top: 12px;">
         <label style="display:block;">
           Groups
-          <input id="createGroupFilter" placeholder="Search groups..." />
-          <div class="row" style="gap:10px; margin-top:8px;">
-            <button class="btn" id="createSelectAllBtn" type="button">Select All</button>
-            <button class="btn" id="createClearAllBtn" type="button">Clear All</button>
+          <div class="groupFilterRow">
+            <input id="createGroupFilter" placeholder="Search groups..." />
+            <div class="groupFilterActions">
+              <button class="btn" id="createSelectAllBtn" type="button">Select All</button>
+              <button class="btn" id="createClearAllBtn" type="button">Clear All</button>
+            </div>
           </div>
           <div id="createGroupsBox" class="groupsBox">
             <div id="createGroupsInner" class="groupsInner"></div>
@@ -114,11 +116,9 @@
         </div>
         <div class="editUserGroupsSection" style="margin-top: 12px;">
           <h3 style="margin: 0 0 8px;">Groups</h3>
-          <div class="editGroupFilterRow">
-            <div class="editGroupFilterInputWrap">
-              <input id="editGroupFilter" placeholder="Search groups..." />
-            </div>
-            <div class="row" style="gap:10px; margin-top:8px; flex-wrap:wrap;">
+          <div class="groupFilterRow">
+            <input id="editGroupFilter" placeholder="Search groups..." />
+            <div class="groupFilterActions">
               <button class="btn" id="editSelectAllBtn" type="button">Select All</button>
               <button class="btn" id="editClearAllBtn" type="button">Clear All</button>
             </div>
@@ -1220,24 +1220,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.editGroupFilterRow {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.editGroupFilterInputWrap {
-  flex: 0 0 50%;
-  max-width: 50%;
-  min-width: 260px;
-}
-#createGroupFilter,
-#editGroupFilter {
-  width: 100%;
-  box-sizing: border-box;
-}
 
 .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .status-connected { background: rgba(24, 179, 90, 0.2); color: var(--success, #18b35a); }
@@ -1281,15 +1263,6 @@
     white-space: normal;
     overflow: visible;
     text-overflow: unset;
-  }
-  .editGroupFilterRow > .row {
-    margin-top: 0 !important;
-    width: 100%;
-  }
-  .editGroupFilterInputWrap {
-    flex: 1 1 100%;
-    max-width: 100%;
-    min-width: 0;
   }
 }
 

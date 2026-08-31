@@ -738,6 +738,30 @@ label.btn {
     text-overflow: ellipsis;
 }
 
+.groupFilterRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.groupFilterRow > input {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+}
+
+.groupFilterActions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
 /* ======================
    PASSWORD FIELDS (show/hide — same pattern as users-manage)
    ====================== */

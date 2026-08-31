@@ -156,11 +156,12 @@
 
         <label style="display:block;">
           Groups
-          <input id="createGroupFilter" placeholder="Search groups..." />
-
-          <div class="row" style="gap:10px; margin-top:8px;">
-            <button class="btn" id="createSelectAllBtn" type="button">Select All</button>
-            <button class="btn" id="createClearAllBtn" type="button">Clear All</button>
+          <div class="groupFilterRow">
+            <input id="createGroupFilter" placeholder="Search groups..." />
+            <div class="groupFilterActions">
+              <button class="btn" id="createSelectAllBtn" type="button">Select All</button>
+              <button class="btn" id="createClearAllBtn" type="button">Clear All</button>
+            </div>
           </div>
 
           <!-- OUTER SCROLL BOX + INNER MULTICOL WRAPPER -->
@@ -374,15 +375,13 @@
           <h3>Groups</h3>
           <div id="groupChips" class="chips"></div>
 
-          <div class="editGroupFilterRow">
-              <div class="editGroupFilterInputWrap">
-                <input id="groupFilter" placeholder="Search groups..." />
-              </div>
-              <div class="row" style="gap:10px; margin-top:8px; flex-wrap:wrap;">
-                <button class="btn" id="selectAllBtn" type="button">Select All</button>
-                <button class="btn" id="clearAllBtn" type="button">Clear All</button>
-              </div>
+          <div class="groupFilterRow">
+            <input id="groupFilter" placeholder="Search groups..." />
+            <div class="groupFilterActions">
+              <button class="btn" id="selectAllBtn" type="button">Select All</button>
+              <button class="btn" id="clearAllBtn" type="button">Clear All</button>
             </div>
+          </div>
 
           <div class="groupsBox" id="groupsBox">
             <div class="groupsInner" id="groupsInner"></div>
@@ -4115,7 +4114,7 @@ if (exportUsersCsvBtn) {
   max-height: none;
   overflow: visible;
 }
-#modalOverlay .editUserGroupsSection .editGroupFilterRow{
+#modalOverlay .editUserGroupsSection .groupFilterRow{
   flex: 0 0 auto;
 }
 #modalOverlay .editUserGroupsSection .groupsBox{
@@ -4352,23 +4351,12 @@ th.sortable:hover{
   max-width: 420px;
 }
 
-.editGroupFilterRow{
+.groupFilterRow{
   margin-top: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.editGroupFilterInputWrap{
-  flex: 0 0 50%;
-  max-width: 50%;
-  min-width: 260px;
 }
 
 #groupFilter{
-  width: 100%;
+  width: auto;
   box-sizing: border-box;
 }
 
@@ -4582,10 +4570,6 @@ th.sortable:hover{
   .createFinalRow{
     grid-template-columns: 1fr;
   }
-  .editGroupFilterRow > .row{
-    margin-top: 0 !important;
-    width: 100%;
-  }
   .templateBar{
     display: grid;
     grid-template-columns: auto 1fr;
@@ -4627,11 +4611,6 @@ th.sortable:hover{
     flex: 1 1 100%;
     white-space: normal;
     margin-left: 0;
-  }
-  .editGroupFilterInputWrap{
-    flex: 1 1 100%;
-    max-width: 100%;
-    min-width: 0;
   }
   .groupsBox{
     max-height: 280px;
