@@ -48,12 +48,18 @@
         </label>
 
       </div>
-      <div class="row" style="margin-top: 12px; align-items: flex-start;">
-        <div style="flex: 1; min-width: 220px;">
-          <div style="margin-bottom: 6px; font-size: 13px;">Groups</div>
-          <input type="text" id="groupSelectSearch" placeholder="Search groups..." style="width: 100%; box-sizing: border-box; margin-bottom: 6px;" />
-          <div id="groupSelectList" class="int-group-checklist"></div>
-        </div>
+      <div id="createManualGroupsWrap" style="margin-top: 12px;">
+        <label style="display:block;">
+          Groups
+          <input id="createGroupFilter" placeholder="Search groups..." />
+          <div class="row" style="gap:10px; margin-top:8px;">
+            <button class="btn" id="createSelectAllBtn" type="button">Select All</button>
+            <button class="btn" id="createClearAllBtn" type="button">Clear All</button>
+          </div>
+          <div id="createGroupsBox" class="groupsBox">
+            <div id="createGroupsInner" class="groupsInner"></div>
+          </div>
+        </label>
       </div>
       <div class="row" style="margin-top: 12px; align-items: center;">
         <button class="btn" type="submit">Create Integration</button>
@@ -106,11 +112,19 @@
             <input type="text" id="editIntegrationUsername" readonly style="width: 100%;" />
           </label>
         </div>
-        <div class="row" style="margin-top: 12px; align-items: flex-start;">
-          <div style="flex: 1; min-width: 0;">
-            <div style="margin-bottom: 6px; font-size: 13px;">Groups</div>
-            <input type="text" id="editGroupSearch" placeholder="Search groups..." style="width: 100%; box-sizing: border-box; margin-bottom: 6px;" />
-            <div id="editGroupSelectList" class="int-group-checklist"></div>
+        <div class="editUserGroupsSection" style="margin-top: 12px;">
+          <h3 style="margin: 0 0 8px;">Groups</h3>
+          <div class="editGroupFilterRow">
+            <div class="editGroupFilterInputWrap">
+              <input id="editGroupFilter" placeholder="Search groups..." />
+            </div>
+            <div class="row" style="gap:10px; margin-top:8px; flex-wrap:wrap;">
+              <button class="btn" id="editSelectAllBtn" type="button">Select All</button>
+              <button class="btn" id="editClearAllBtn" type="button">Clear All</button>
+            </div>
+          </div>
+          <div class="groupsBox" id="editGroupsBox">
+            <div class="groupsInner" id="editGroupsInner"></div>
           </div>
         </div>
         <div class="row" style="margin-top: 16px; align-items: center;">
@@ -256,8 +270,11 @@
   const agencySelect = document.getElementById("agencySelect");
   const countySelect = document.getElementById("countySelect");
   const stateSelect = document.getElementById("stateSelect");
-  const groupSelectList = document.getElementById("groupSelectList");
-  const groupSelectSearch = document.getElementById("groupSelectSearch");
+  const createGroupsBox = document.getElementById("createGroupsBox");
+  const createGroupsInner = document.getElementById("createGroupsInner");
+  const createGroupFilter = document.getElementById("createGroupFilter");
+  const createSelectAllBtn = document.getElementById("createSelectAllBtn");
+  const createClearAllBtn = document.getElementById("createClearAllBtn");
   const createMsg = document.getElementById("createMsg");
   const tableMsg = document.getElementById("tableMsg");
   const tbody = document.getElementById("tbody");
@@ -395,37 +412,54 @@
       countyList.map(function (c) { return "<option value=\"" + esc(c) + "\">" + esc(c) + "</option>"; }).join("");
   }
 
-  function getChecklistGroupIds(container) {
-    if (!container) return [];
-    return Array.from(container.querySelectorAll('input[type="checkbox"]:checked'))
-      .map(function (cb) { return String(cb.value || "").trim(); })
-      .filter(Boolean);
-  }
+  let createPickedGroupIds = new Set();
+  let editPickedGroupIds = new Set();
 
-  function filterGroupChecklist(container, needle) {
-    if (!container) return;
-    var n = String(needle || "").trim().toLowerCase();
-    container.querySelectorAll("label").forEach(function (lab) {
-      var text = (lab.textContent || "").toLowerCase();
-      lab.style.display = !n || text.indexOf(n) !== -1 ? "flex" : "none";
+  function sortedGroupsCache() {
+    return groupsCache.slice().sort(function (a, b) {
+      var an = stripTakPrefix(a.name) || a.name || "";
+      var bn = stripTakPrefix(b.name) || b.name || "";
+      return String(an).localeCompare(String(bn), undefined, { numeric: true, sensitivity: "base" });
     });
   }
 
-  function renderGroupChecklist(container, selectedPks) {
-    if (!container) return;
-    var selected = new Set((selectedPks || []).map(String));
-    if (!groupsCache.length) {
-      container.innerHTML = "<div style=\"color: var(--muted); font-size: 13px;\">No groups loaded</div>";
+  function groupMatchesFilter(g, needle) {
+    if (!needle) return true;
+    var raw = String(g.name || "").toLowerCase();
+    var display = stripTakPrefix(g.name).toLowerCase();
+    return raw.indexOf(needle) !== -1 || display.indexOf(needle) !== -1;
+  }
+
+  function renderGroupsPicker(innerEl, filterInput, pickedSet) {
+    if (!innerEl) return;
+    var needle = String(filterInput && filterInput.value ? filterInput.value : "").trim().toLowerCase();
+    var sorted = sortedGroupsCache();
+    var filtered = needle
+      ? sorted.filter(function (g) { return groupMatchesFilter(g, needle); })
+      : sorted;
+    if (!filtered.length) {
+      innerEl.innerHTML = groupsCache.length
+        ? "<p class=\"muted\" style=\"margin:0;padding:8px;\">No groups match your search.</p>"
+        : "<p class=\"muted\" style=\"margin:0;padding:8px;\">No groups loaded</p>";
       return;
     }
-    container.innerHTML = groupsCache.map(function (g) {
-      var displayName = stripTakPrefix(g.name) || g.pk;
-      var isChecked = selected.has(String(g.pk)) ? "checked" : "";
-      return "<label style=\"display: flex; flex-direction: row; align-items: center; font-weight: normal; margin-bottom: 6px; width: 100%;\">" +
-        "<input type=\"checkbox\" value=\"" + esc(g.pk) + "\" style=\"margin-right: 8px; margin-top: 0;\" " + isChecked + " />" +
-        esc(displayName) +
+    innerEl.innerHTML = filtered.map(function (g) {
+      var id = String(g.pk);
+      var name = stripTakPrefix(g.name) || g.pk;
+      var checked = pickedSet.has(id) ? "checked" : "";
+      return "<label class=\"groupItem\">" +
+        "<input type=\"checkbox\" value=\"" + esc(id) + "\" " + checked + " />" +
+        "<span>" + esc(name) + "</span>" +
         "</label>";
     }).join("");
+  }
+
+  function renderCreateGroups() {
+    renderGroupsPicker(createGroupsInner, createGroupFilter, createPickedGroupIds);
+  }
+
+  function renderEditGroups() {
+    renderGroupsPicker(editGroupsInner, editGroupFilter, editPickedGroupIds);
   }
 
   async function loadGroups() {
@@ -433,8 +467,7 @@
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to load groups");
     groupsCache = Array.isArray(data) ? data : (data.groups || []);
-    renderGroupChecklist(groupSelectList, getChecklistGroupIds(groupSelectList));
-    if (groupSelectSearch) filterGroupChecklist(groupSelectList, groupSelectSearch.value);
+    renderCreateGroups();
   }
 
   function renderIntegrations() {
@@ -607,8 +640,11 @@
   var editIntegrationOverlay = document.getElementById("editIntegrationOverlay");
   var editIntegrationCloseBtn = document.getElementById("editIntegrationCloseBtn");
   var editIntegrationUsername = document.getElementById("editIntegrationUsername");
-  var editGroupSelectList = document.getElementById("editGroupSelectList");
-  var editGroupSearch = document.getElementById("editGroupSearch");
+  var editGroupsBox = document.getElementById("editGroupsBox");
+  var editGroupsInner = document.getElementById("editGroupsInner");
+  var editGroupFilter = document.getElementById("editGroupFilter");
+  var editSelectAllBtn = document.getElementById("editSelectAllBtn");
+  var editClearAllBtn = document.getElementById("editClearAllBtn");
   var editIntegrationSaveBtn = document.getElementById("editIntegrationSaveBtn");
   var editIntegrationMsg = document.getElementById("editIntegrationMsg");
 
@@ -624,11 +660,9 @@
     editIntegrationUsername.value = username || "";
     var user = usersCache.find(function (u) { return String(u.pk) === String(pk); });
     var currentGroupPks = (user && Array.isArray(user.groups)) ? user.groups : [];
-    renderGroupChecklist(editGroupSelectList, currentGroupPks);
-    if (editGroupSearch) {
-      editGroupSearch.value = "";
-      filterGroupChecklist(editGroupSelectList, "");
-    }
+    editPickedGroupIds = new Set(currentGroupPks.map(String));
+    if (editGroupFilter) editGroupFilter.value = "";
+    renderEditGroups();
     setEditMsg("");
     editIntegrationOverlay.style.display = "flex";
   }
@@ -788,19 +822,61 @@
       if (e.target === editIntegrationOverlay) closeEditModal();
     });
   }
-  if (editGroupSearch) {
-    editGroupSearch.addEventListener("input", function () {
-      filterGroupChecklist(editGroupSelectList, editGroupSearch.value);
+  if (createGroupsBox) {
+    createGroupsBox.addEventListener("change", function (e) {
+      var cb = e.target;
+      if (!cb || cb.tagName !== "INPUT" || cb.type !== "checkbox") return;
+      var id = String(cb.value);
+      if (cb.checked) createPickedGroupIds.add(id);
+      else createPickedGroupIds.delete(id);
     });
   }
-  if (groupSelectSearch) {
-    groupSelectSearch.addEventListener("input", function () {
-      filterGroupChecklist(groupSelectList, groupSelectSearch.value);
+  if (createGroupFilter) {
+    createGroupFilter.addEventListener("input", renderCreateGroups);
+  }
+  if (createSelectAllBtn) {
+    createSelectAllBtn.addEventListener("click", function () {
+      Array.from(createGroupsBox.querySelectorAll('input[type="checkbox"]')).forEach(function (cb) {
+        cb.checked = true;
+        createPickedGroupIds.add(String(cb.value));
+      });
+    });
+  }
+  if (createClearAllBtn) {
+    createClearAllBtn.addEventListener("click", function () {
+      Array.from(createGroupsBox.querySelectorAll('input[type="checkbox"]')).forEach(function (cb) {
+        cb.checked = false;
+      });
+      createPickedGroupIds.clear();
+    });
+  }
+  if (editGroupsBox) {
+    editGroupsBox.addEventListener("change", function (e) {
+      var cb = e.target;
+      if (!cb || cb.tagName !== "INPUT" || cb.type !== "checkbox") return;
+      var id = String(cb.value);
+      if (cb.checked) editPickedGroupIds.add(id);
+      else editPickedGroupIds.delete(id);
+    });
+  }
+  if (editGroupFilter) {
+    editGroupFilter.addEventListener("input", renderEditGroups);
+  }
+  if (editSelectAllBtn) {
+    editSelectAllBtn.addEventListener("click", function () {
+      editPickedGroupIds = new Set(groupsCache.map(function (g) { return String(g.pk); }));
+      renderEditGroups();
+    });
+  }
+  if (editClearAllBtn) {
+    editClearAllBtn.addEventListener("click", function () {
+      editPickedGroupIds = new Set();
+      renderEditGroups();
     });
   }
   if (editIntegrationSaveBtn) {
     editIntegrationSaveBtn.addEventListener("click", function () {
-      var groupIds = getChecklistGroupIds(editGroupSelectList);
+      var groupIds = Array.from(editPickedGroupIds);
       if (!editCurrentPk || !groupIds.length) {
         setEditMsg("Please select at least one group.", false);
         return;
@@ -841,7 +917,7 @@
     setCreateMsg("");
     const type = integrationType.value || "global";
     const title = createForm.title.value.trim();
-    const groupIds = getChecklistGroupIds(groupSelectList);
+    const groupIds = Array.from(createPickedGroupIds);
     if (!groupIds.length) {
       setCreateMsg("Please select at least one group.", false);
       return;
@@ -1026,11 +1102,9 @@
       setCreateMsg("Integration \"" + username + "\" created successfully. Downloading cert bundle...", true);
 
       createForm.reset();
-      renderGroupChecklist(groupSelectList, []);
-      if (groupSelectSearch) {
-        groupSelectSearch.value = "";
-        filterGroupChecklist(groupSelectList, "");
-      }
+      createPickedGroupIds = new Set();
+      if (createGroupFilter) createGroupFilter.value = "";
+      renderCreateGroups();
       integrationType.value = "global";
       integrationType.dispatchEvent(new Event("change"));
       updateIntegrationTitleConstraints();
@@ -1103,16 +1177,66 @@
 </script>
 
 <style>
-.int-group-checklist {
-  max-height: 180px;
-  overflow-y: auto;
+.groupsBox {
+  margin-top: 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px;
   background: var(--panel);
+  border-radius: 12px;
+  padding: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
-.int-group-checklist label {
-  color: var(--text);
+.groupsInner {
+  column-width: 310px;
+  column-gap: 14px;
+  column-count: 4;
+}
+.groupItem {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+}
+.groupItem:hover {
+  background: rgba(255,255,255,.06);
+}
+.groupItem input {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.groupItem span {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.editGroupFilterRow {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.editGroupFilterInputWrap {
+  flex: 0 0 50%;
+  max-width: 50%;
+  min-width: 260px;
+}
+#createGroupFilter,
+#editGroupFilter {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
@@ -1137,6 +1261,36 @@
   position: absolute;
   right: 0.5rem;
   opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .groupsInner {
+    column-count: 1;
+    column-width: auto;
+  }
+  .groupItem {
+    min-height: 44px;
+    padding: 10px 8px;
+    white-space: normal;
+  }
+  .groupItem input {
+    width: 20px;
+    height: 20px;
+  }
+  .groupItem span {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+  .editGroupFilterRow > .row {
+    margin-top: 0 !important;
+    width: 100%;
+  }
+  .editGroupFilterInputWrap {
+    flex: 1 1 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 990px) {
