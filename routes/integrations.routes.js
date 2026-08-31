@@ -257,7 +257,10 @@ router.get("/", async (req, res) => {
           const name = groupByPk.get(String(pk))?.name;
           return name ? stripTakPrefix(name) : null;
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        .sort((a, b) =>
+          String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" })
+        );
       const dataFeedName = u.attributes?.tak_data_feed_name || null;
       return {
         pk: u.pk,

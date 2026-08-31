@@ -299,7 +299,7 @@
   let groupsCache = [];
   let usersCache = [];
   let connectedUsernamesSet = new Set();
-  let sortState = { key: "group", dir: 1 }; // default: Group asc
+  let sortState = { key: "username", dir: 1 };
 
   function stripTakPrefix(name) {
     if (name == null || name === undefined) return "";
@@ -486,6 +486,9 @@
             cmp = av - bv;
           } else {
             cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+          }
+          if (cmp === 0) {
+            cmp = aUsername.toLowerCase().localeCompare(bUsername.toLowerCase(), undefined, { numeric: true, sensitivity: "base" });
           }
           if (cmp === 0) return aWrap.idx - bWrap.idx; // stable
           return cmp * dir;
