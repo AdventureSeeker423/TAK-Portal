@@ -18,6 +18,14 @@ function stripTakPrefix(name) {
   return n.toLowerCase().startsWith("tak_") ? n.slice(4) : n;
 }
 
+function uniqueRequestedGroupIds(body) {
+  const ids = [];
+  if (Array.isArray(body?.groupIds)) ids.push(...body.groupIds);
+  else if (body?.groupIds != null && body.groupIds !== "") ids.push(body.groupIds);
+  if (body?.groupId != null && body.groupId !== "") ids.push(body.groupId);
+  return [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))];
+}
+
 function parseStoredDataFeedPort(raw) {
   if (raw == null || raw === "") return null;
   const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
@@ -204,7 +212,7 @@ router.get("/", async (req, res) => {
 
 /**
  * POST /api/integrations
- * Create a new integration user: username "nodered-{slug from title}", single group.
+ * Create a new integration user: username "nodered-{slug from title}", one or more groups.
  * Mounted with requirePermission("page.integrations") in server.js.
  */
 router.post("/", async (req, res) => {
@@ -214,7 +222,7 @@ router.post("/", async (req, res) => {
   let dataFeedCreateAttempted = false;
 
   try {
-    const { type, title, groupId, state, county, agencySuffix, skipDataFeed, protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags, filterGroups } = req.body || {};
+    const { type, title, groupId, groupIds, state, county, agencySuffix, skipDataFeed, protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags, filterGroups } = req.body || {};
     const authUser = req.authentikUser || null;
     const createdBy = authUser
       ? {
@@ -235,6 +243,7 @@ router.post("/", async (req, res) => {
         type: type || "global",
         title: titleStr,
         groupId,
+        groupIds,
         state: state ? String(state).trim() : undefined,
         county: county ? String(county).trim() : undefined,
         agencySuffix: agencySuffix ? String(agencySuffix).trim() : undefined,
@@ -291,10 +300,10 @@ router.post("/", async (req, res) => {
       }
     }
 
-    const groupName =
-      Array.isArray(result?.groups) && result.groups[0]
-        ? result.groups[0].name
-        : "";
+    const groupNames = Array.isArray(result?.groups)
+      ? result.groups.map((g) => g?.name).filter(Boolean)
+      : [];
+    const groupLabel = groupNames.join(", ");
     auditSvc.logEvent({
       actor: authUser,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
@@ -303,10 +312,11 @@ router.post("/", async (req, res) => {
       targetId: String(result?.user?.pk || ""),
       details: {
         username: result?.user?.username,
-        group: groupName,
+        group: groupLabel,
+        groups: groupNames,
         certBundleReady: true,
         summary: `Created integration user ${result?.user?.username || ""}${
-          groupName ? ` in group ${groupName}` : ""
+          groupLabel ? ` in group${groupNames.length > 1 ? "s" : ""} ${groupLabel}` : ""
         }. Client certificate bundle was prepared successfully.`,
       },
     });
@@ -422,21 +432,46 @@ router.get("/:userId/certs/download", async (req, res) => {
 
 /**
  * PUT /api/integrations/:userId/group
- * Set the integration user's group (replaces current). Only for nodered- users; bypasses action lock.
+ * Set the integration user's groups (replaces current). Only for nodered- users; bypasses action lock.
  */
 router.put("/:userId/group", async (req, res) => {
   try {
     const userId = req.params.userId;
-    const { groupId } = req.body || {};
     const user = await users.getUserById(userId);
     const username = String(user?.username || "").toLowerCase();
     if (!username.startsWith("nodered-")) {
       return res.status(403).json({ error: "Not an integration user." });
     }
-    const groupIdStr = String(groupId || "").trim();
-    if (!groupIdStr) return res.status(400).json({ error: "groupId required." });
-    await users.setUserGroups(userId, [groupIdStr], { ignoreLocks: true });
+    const requestedIds = uniqueRequestedGroupIds(req.body || {});
+    if (!requestedIds.length) {
+      return res.status(400).json({ error: "At least one group is required." });
+    }
+
+    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const groupByPk = new Map((allGroups || []).map((g) => [String(g.pk), g]));
+    const selectedGroups = requestedIds.map((id) => {
+      const group = groupByPk.get(String(id));
+      if (!group) {
+        throw new Error("Selected group not found.");
+      }
+      return group;
+    });
+    const groupNames = selectedGroups.map((g) => g.name).filter(Boolean);
+
+    await users.setUserGroups(userId, requestedIds, { ignoreLocks: true });
+    try {
+      await users.updateUserAttributes(userId, {
+        tak_integration_group: groupNames.join(","),
+      });
+    } catch (attrErr) {
+      console.warn(
+        "Failed to update tak_integration_group after group change:",
+        attrErr?.message || attrErr
+      );
+    }
+
     const authUser = req.authentikUser || null;
+    const groupLabel = groupNames.join(", ") || requestedIds.join(", ");
     auditSvc.logEvent({
       actor: authUser,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
@@ -445,8 +480,12 @@ router.put("/:userId/group", async (req, res) => {
       targetId: String(userId),
       details: {
         username: user?.username,
-        groupId: groupIdStr,
-        summary: `Changed integration user ${user?.username || userId} to Authentik group id ${groupIdStr}.`,
+        groupId: requestedIds[0],
+        groupIds: requestedIds,
+        groups: groupNames,
+        summary: `Changed integration user ${user?.username || userId} to Authentik group${
+          requestedIds.length > 1 ? "s" : ""
+        } ${groupLabel}.`,
       },
     });
     res.json({ success: true });

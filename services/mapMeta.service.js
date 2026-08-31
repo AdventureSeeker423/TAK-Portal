@@ -534,7 +534,7 @@ function integrationUsernameTitleSlug(username) {
 function integrationPortalGroups(user, groupByPk) {
   const groups = [];
   const attrGroup = normalizeGroupName(user?.attributes?.tak_integration_group);
-  if (attrGroup) groups.push(...normalizeDataFeedGroupList([attrGroup]));
+  if (attrGroup) groups.push(...normalizeDataFeedGroupList(attrGroup));
 
   for (const item of Array.isArray(user?.groups) ? user.groups : []) {
     let name = null;

@@ -1450,13 +1450,21 @@ function getStreamingDataFeedNameForTitle(title) {
   return slug;
 }
 
+function uniqueGroupIds(groupIds, groupId) {
+  const ids = [];
+  if (Array.isArray(groupIds)) ids.push(...groupIds);
+  else if (groupIds != null && groupIds !== "") ids.push(groupIds);
+  if (groupId != null && groupId !== "") ids.push(groupId);
+  return [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))];
+}
+
 /**
- * Create an integration user (username prefix "nodered-") with a single group.
+ * Create an integration user (username prefix "nodered-") with one or more groups.
  * type: "global" | "state" | "county" | "agency". Scope values (state, county, agencySuffix) required when type matches.
  * Username is always lowercase, no spaces: e.g. nodered-state-ca-weather-api, nodered-agency-abc-myapi.
  */
 async function createIntegrationUser(
-  { type, title, groupId, state, county, agencySuffix },
+  { type, title, groupId, groupIds, state, county, agencySuffix },
   opts = {}
 ) {
   const createdBy = opts.createdBy || null;
@@ -1488,18 +1496,30 @@ async function createIntegrationUser(
     throw new Error(`Integration user "${username}" already exists.`);
   }
 
-  const allGroups = await getAllGroups({ includeHidden: true });
-  const group = allGroups.find(g => String(g.pk) === String(groupId));
-  if (!group) {
-    throw new Error("Selected group not found.");
+  const requestedIds = uniqueGroupIds(groupIds, groupId);
+  if (!requestedIds.length) {
+    throw new Error("At least one group is required.");
   }
+
+  const allGroups = await getAllGroups({ includeHidden: true });
+  const groupByPk = new Map((allGroups || []).map((g) => [String(g.pk), g]));
+  const selectedGroups = requestedIds.map((id) => {
+    const group = groupByPk.get(String(id));
+    if (!group) {
+      throw new Error("Selected group not found.");
+    }
+    return group;
+  });
 
   const name = username;
   const attributes = {
     integration_type: "nodered",
     integration_scope: integrationType,
     integration_title: String(title || "").trim() || username,
-    tak_integration_group: String(group.name || "").trim(),
+    tak_integration_group: selectedGroups
+      .map((g) => String(g.name || "").trim())
+      .filter(Boolean)
+      .join(","),
   };
   if (createdBy && createdBy.username) {
     attributes.created_by_username = String(createdBy.username);
@@ -1530,11 +1550,11 @@ async function createIntegrationUser(
   });
 
   await api.patch(`/core/users/${user.pk}/`, {
-    groups: [group.pk],
+    groups: selectedGroups.map((g) => g.pk),
   });
 
   invalidateUsersCache();
-  return { user, groups: [group] };
+  return { user, groups: selectedGroups };
 }
 
 /**

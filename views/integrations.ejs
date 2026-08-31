@@ -40,12 +40,6 @@
           <input type="text" id="integrationTitle" name="title" placeholder="e.g. Weather API" style="width: 100%;" required />
         </label>
 
-        <label style="min-width: 200px;">Group
-          <select name="groupId" id="groupSelect" style="min-width: 160px;" required>
-            <option value="">Select a group</option>
-          </select>
-        </label>
-        
         <label style="min-width: 250px;">Make Streaming Data Feed?
           <select name="makeDataFeed" id="makeDataFeed" style="min-width: 100px;">
             <option value="yes">Yes</option>
@@ -53,11 +47,18 @@
           </select>
         </label>
 
-        <label>&nbsp;
-          <button class="btn" type="submit">Create Integration</button>
-        </label>
       </div>
-      <div id="createMsg" class="msg"></div>
+      <div class="row" style="margin-top: 12px; align-items: flex-start;">
+        <div style="flex: 1; min-width: 220px;">
+          <div style="margin-bottom: 6px; font-size: 13px;">Groups</div>
+          <input type="text" id="groupSelectSearch" placeholder="Search groups..." style="width: 100%; box-sizing: border-box; margin-bottom: 6px;" />
+          <div id="groupSelectList" class="int-group-checklist"></div>
+        </div>
+      </div>
+      <div class="row" style="margin-top: 12px; align-items: center;">
+        <button class="btn" type="submit">Create Integration</button>
+        <div id="createMsg" class="msg"></div>
+      </div>
     </form>
   </div>
 
@@ -77,7 +78,7 @@
       <thead>
         <tr>
           <th data-sort="username" data-type="text">Username</th>
-          <th data-sort="group" data-type="text">Group</th>
+          <th data-sort="group" data-type="text">Groups</th>
           <th data-sort="dataFeed" data-type="text">Data Feed</th>
           <th data-sort="port" data-type="number">Port</th>
           <th data-sort="status" data-type="text">Status</th>
@@ -99,16 +100,18 @@
     </div>
     <div class="modalBody">
       <div class="card" style="margin: 0;">
-        <h2 style="margin-top: 0;">Edit Group Assignment</h2>
+        <h2 style="margin-top: 0;">Edit Group Assignments</h2>
         <div class="row">
           <label style="flex: 1; min-width: 0;">Integration (read-only)
             <input type="text" id="editIntegrationUsername" readonly style="width: 100%;" />
           </label>
         </div>
-        <div class="row" style="margin-top: 12px;">
-          <label style="min-width: 200px;">Group
-            <select id="editGroupSelect" style="min-width: 200px;"></select>
-          </label>
+        <div class="row" style="margin-top: 12px; align-items: flex-start;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="margin-bottom: 6px; font-size: 13px;">Groups</div>
+            <input type="text" id="editGroupSearch" placeholder="Search groups..." style="width: 100%; box-sizing: border-box; margin-bottom: 6px;" />
+            <div id="editGroupSelectList" class="int-group-checklist"></div>
+          </div>
         </div>
         <div class="row" style="margin-top: 16px; align-items: center;">
           <button class="btn success" id="editIntegrationSaveBtn" type="button">Save Changes</button>
@@ -253,7 +256,8 @@
   const agencySelect = document.getElementById("agencySelect");
   const countySelect = document.getElementById("countySelect");
   const stateSelect = document.getElementById("stateSelect");
-  const groupSelect = document.getElementById("groupSelect");
+  const groupSelectList = document.getElementById("groupSelectList");
+  const groupSelectSearch = document.getElementById("groupSelectSearch");
   const createMsg = document.getElementById("createMsg");
   const tableMsg = document.getElementById("tableMsg");
   const tbody = document.getElementById("tbody");
@@ -391,19 +395,46 @@
       countyList.map(function (c) { return "<option value=\"" + esc(c) + "\">" + esc(c) + "</option>"; }).join("");
   }
 
+  function getChecklistGroupIds(container) {
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(function (cb) { return String(cb.value || "").trim(); })
+      .filter(Boolean);
+  }
+
+  function filterGroupChecklist(container, needle) {
+    if (!container) return;
+    var n = String(needle || "").trim().toLowerCase();
+    container.querySelectorAll("label").forEach(function (lab) {
+      var text = (lab.textContent || "").toLowerCase();
+      lab.style.display = !n || text.indexOf(n) !== -1 ? "flex" : "none";
+    });
+  }
+
+  function renderGroupChecklist(container, selectedPks) {
+    if (!container) return;
+    var selected = new Set((selectedPks || []).map(String));
+    if (!groupsCache.length) {
+      container.innerHTML = "<div style=\"color: var(--muted); font-size: 13px;\">No groups loaded</div>";
+      return;
+    }
+    container.innerHTML = groupsCache.map(function (g) {
+      var displayName = stripTakPrefix(g.name) || g.pk;
+      var isChecked = selected.has(String(g.pk)) ? "checked" : "";
+      return "<label style=\"display: flex; flex-direction: row; align-items: center; font-weight: normal; margin-bottom: 6px; width: 100%;\">" +
+        "<input type=\"checkbox\" value=\"" + esc(g.pk) + "\" style=\"margin-right: 8px; margin-top: 0;\" " + isChecked + " />" +
+        esc(displayName) +
+        "</label>";
+    }).join("");
+  }
+
   async function loadGroups() {
     const res = await fetch("/api/groups");
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to load groups");
     groupsCache = Array.isArray(data) ? data : (data.groups || []);
-    var optionsHtml =
-      "<option value=\"\">Select a group</option>" +
-      groupsCache.map(function (g) {
-        var displayName = stripTakPrefix(g.name) || g.pk;
-        return "<option value=\"" + esc(g.pk) + "\">" + esc(displayName) + "</option>";
-      }).join("");
-    groupSelect.innerHTML = optionsHtml;
-    if (editGroupSelect) editGroupSelect.innerHTML = optionsHtml;
+    renderGroupChecklist(groupSelectList, getChecklistGroupIds(groupSelectList));
+    if (groupSelectSearch) filterGroupChecklist(groupSelectList, groupSelectSearch.value);
   }
 
   function renderIntegrations() {
@@ -467,7 +498,6 @@
     } else {
       tbody.innerHTML = rows.map(function (u) {
         var groupDisplay = (u.groupNames || []).join(", ") || "—";
-        var currentGroupPk = (u.groups && u.groups[0]) ? String(u.groups[0]) : "";
         var username = String(u.username || "").trim();
         var isConnected = connectedUsernamesSet.has(username);
         var statusPill = isConnected
@@ -478,7 +508,7 @@
         if (u.dataFeedName) {
           dataFeedButtonHtml = "<button class=\"btn success\" type=\"button\" data-action=\"data-feed\" data-mode=\"view\" data-username=\"" + esc(u.username) + "\">DF Enabled</button>";
         } else {
-          dataFeedButtonHtml = "<button class=\"btn danger\" type=\"button\" data-action=\"data-feed\" data-mode=\"create\" data-username=\"" + esc(u.username) + "\" data-grouppk=\"" + esc(currentGroupPk) + "\" data-integration-title=\"" + esc(u.integrationTitle || "") + "\">No DF</button>";
+          dataFeedButtonHtml = "<button class=\"btn danger\" type=\"button\" data-action=\"data-feed\" data-mode=\"create\" data-username=\"" + esc(u.username) + "\" data-integration-title=\"" + esc(u.integrationTitle || "") + "\">No DF</button>";
         }
 
         var portCell = "";
@@ -490,13 +520,13 @@
 
         return "<tr class=\"" + rowStatusClass + "\">" +
           "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + esc(u.username) + "</div></td>" +
-          "<td class=\"intGroupCell\" data-label=\"Group\">" + esc(groupDisplay) + "</td>" +
+          "<td class=\"intGroupCell\" data-label=\"Groups\">" + esc(groupDisplay) + "</td>" +
           "<td class=\"intFeedCell\" data-label=\"Data Feed\">" + dataFeedButtonHtml + "</td>" +
           "<td class=\"intPortCell\" data-label=\"Port\">" + portCell + "</td>" +
           "<td class=\"intStatusCell\" data-label=\"Status\">" + statusPill + "</td>" +
           "<td class=\"cardActionsCell\"><div class=\"row cardActionsRow\" style=\"gap:8px; flex-wrap:wrap;\">" +
           "<button class=\"btn success\" type=\"button\" data-action=\"download-certs\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\">Download Certs</button>" +
-          "<button class=\"btn\" type=\"button\" data-action=\"edit\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\" data-group=\"" + esc(currentGroupPk) + "\">Edit Group</button>" +
+          "<button class=\"btn\" type=\"button\" data-action=\"edit\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\">Edit Groups</button>" +
           "<button class=\"btn danger\" type=\"button\" data-action=\"delete\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\">Delete</button>" +
           "</div></td>" +
           "</tr>";
@@ -574,7 +604,8 @@
   var editIntegrationOverlay = document.getElementById("editIntegrationOverlay");
   var editIntegrationCloseBtn = document.getElementById("editIntegrationCloseBtn");
   var editIntegrationUsername = document.getElementById("editIntegrationUsername");
-  var editGroupSelect = document.getElementById("editGroupSelect");
+  var editGroupSelectList = document.getElementById("editGroupSelectList");
+  var editGroupSearch = document.getElementById("editGroupSearch");
   var editIntegrationSaveBtn = document.getElementById("editIntegrationSaveBtn");
   var editIntegrationMsg = document.getElementById("editIntegrationMsg");
 
@@ -585,16 +616,16 @@
     editIntegrationMsg.style.color = ok ? "" : "var(--error, #c00)";
   }
 
-  function openEditModal(pk, username, currentGroupPk) {
+  function openEditModal(pk, username) {
     editCurrentPk = pk;
     editIntegrationUsername.value = username || "";
-    editGroupSelect.innerHTML =
-      "<option value=\"\">Select a group</option>" +
-      groupsCache.map(function (g) {
-        var displayName = stripTakPrefix(g.name) || g.pk;
-        return "<option value=\"" + esc(g.pk) + "\">" + esc(displayName) + "</option>";
-      }).join("");
-    editGroupSelect.value = currentGroupPk || "";
+    var user = usersCache.find(function (u) { return String(u.pk) === String(pk); });
+    var currentGroupPks = (user && Array.isArray(user.groups)) ? user.groups : [];
+    renderGroupChecklist(editGroupSelectList, currentGroupPks);
+    if (editGroupSearch) {
+      editGroupSearch.value = "";
+      filterGroupChecklist(editGroupSelectList, "");
+    }
     setEditMsg("");
     editIntegrationOverlay.style.display = "flex";
   }
@@ -609,8 +640,7 @@
       btn.addEventListener("click", function () {
         var pk = btn.getAttribute("data-pk");
         var username = btn.getAttribute("data-username");
-        var groupPk = btn.getAttribute("data-group");
-        openEditModal(pk, username, groupPk);
+        openEditModal(pk, username);
       });
     });
     tbody.querySelectorAll("button[data-action=\"data-feed\"]").forEach(function (btn) {
@@ -618,12 +648,13 @@
         const username = btn.getAttribute("data-username");
         const mode = btn.getAttribute("data-mode");
         const integrationTitleAttr = btn.getAttribute("data-integration-title");
-        const groupPk = btn.getAttribute("data-grouppk");
         
         if (mode === "create") {
             integrationRetroactiveUsername = username;
+            var retroUser = usersCache.find(function (u) { return String(u.username) === String(username); });
+            var retroGroupPks = new Set(((retroUser && retroUser.groups) || []).map(String));
             filterGroupsCheckboxList.innerHTML = groupsCache.map(function(g) {
-               const isChecked = (g.pk === groupPk) ? "checked" : "";
+               const isChecked = retroGroupPks.has(String(g.pk)) ? "checked" : "";
                const displayName = stripTakPrefix(g.name) || g.pk;
                return `<label style="display: flex; flex-direction: row; align-items: center; font-weight: normal; margin-bottom: 6px; width: 100%;">
                          <input type="checkbox" value="${esc(g.name)}" style="margin-right: 8px; margin-top: 0;" ${isChecked} />
@@ -754,18 +785,28 @@
       if (e.target === editIntegrationOverlay) closeEditModal();
     });
   }
+  if (editGroupSearch) {
+    editGroupSearch.addEventListener("input", function () {
+      filterGroupChecklist(editGroupSelectList, editGroupSearch.value);
+    });
+  }
+  if (groupSelectSearch) {
+    groupSelectSearch.addEventListener("input", function () {
+      filterGroupChecklist(groupSelectList, groupSelectSearch.value);
+    });
+  }
   if (editIntegrationSaveBtn) {
     editIntegrationSaveBtn.addEventListener("click", function () {
-      var groupId = editGroupSelect.value;
-      if (!editCurrentPk || !groupId) {
-        setEditMsg("Please select a group.", false);
+      var groupIds = getChecklistGroupIds(editGroupSelectList);
+      if (!editCurrentPk || !groupIds.length) {
+        setEditMsg("Please select at least one group.", false);
         return;
       }
       setEditMsg("");
       fetch("/api/integrations/" + encodeURIComponent(editCurrentPk) + "/group", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ groupId: groupId }),
+        body: JSON.stringify({ groupIds: groupIds }),
       })
         .then(function (res) { return res.json(); })
         .then(function (out) {
@@ -787,9 +828,9 @@
     setCreateMsg("");
     const type = integrationType.value || "global";
     const title = createForm.title.value.trim();
-    const groupId = groupSelect.value;
-    if (!groupId) {
-      setCreateMsg("Please select a group.", false);
+    const groupIds = getChecklistGroupIds(groupSelectList);
+    if (!groupIds.length) {
+      setCreateMsg("Please select at least one group.", false);
       return;
     }
     if (type === "agency" && !agencySelect.value) {
@@ -807,7 +848,7 @@
     const payload = {
       type: type,
       title: title,
-      groupId: groupId,
+      groupIds: groupIds,
     };
     if (type === "agency") payload.agencySuffix = agencySelect.value;
     if (type === "county") payload.county = countySelect.value;
@@ -837,8 +878,9 @@
     integrationRetroactiveUsername = null;
     
     // Render Filter Groups checkboxes for standard flow
+    var selectedCreatePks = new Set(groupIds.map(String));
     filterGroupsCheckboxList.innerHTML = groupsCache.map(function(g) {
-        const isChecked = (g.pk === groupId) ? "checked" : "";
+        const isChecked = selectedCreatePks.has(String(g.pk)) ? "checked" : "";
         const displayName = stripTakPrefix(g.name) || g.pk;
         return `<label style="display: flex; flex-direction: row; align-items: center; font-weight: normal; margin-bottom: 6px; width: 100%;">
                   <input type="checkbox" value="${esc(g.name)}" style="margin-right: 8px; margin-top: 0;" ${isChecked} />
@@ -971,7 +1013,11 @@
       setCreateMsg("Integration \"" + username + "\" created successfully. Downloading cert bundle...", true);
 
       createForm.reset();
-      groupSelect.value = "";
+      renderGroupChecklist(groupSelectList, []);
+      if (groupSelectSearch) {
+        groupSelectSearch.value = "";
+        filterGroupChecklist(groupSelectList, "");
+      }
       integrationType.value = "global";
       integrationType.dispatchEvent(new Event("change"));
       updateIntegrationTitleConstraints();
@@ -1044,6 +1090,18 @@
 </script>
 
 <style>
+.int-group-checklist {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--panel);
+}
+.int-group-checklist label {
+  color: var(--text);
+}
+
 .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .status-connected { background: rgba(24, 179, 90, 0.2); color: var(--success, #18b35a); }
 .status-disconnected { background: rgba(255, 59, 59, 0.2); color: var(--danger, #ff3b3b); }
