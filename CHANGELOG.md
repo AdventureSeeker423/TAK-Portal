@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.8 - 9/2/26
+🐛 `Bug Fix` - Fixes issue with .env file getting replaced after 1.4.6 change
+
 ### v1.4.7 - 8/31/26
 ✨ `Enhancement` - Integrations - Now allows for multiple groups to be selected for a single integration cert/data feed
 

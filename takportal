@@ -25,15 +25,58 @@ Commands:
 EOF
 }
 
-edit_env() {
+ensure_env() {
   if [[ -f .env ]]; then
-    echo "Opening .env in nano..."
-    nano .env
-  else
-    echo "ERROR: .env not found in $(pwd)"
-    echo "There should be a default .env included with the download."
-    echo "Create it manually or re-download the project, then rerun this command."
+    return 0
+  fi
+  if [[ -f .env.example ]]; then
+    cp -a .env.example .env
+    echo "Created .env from .env.example"
+    return 0
+  fi
+  echo "ERROR: .env not found in $(pwd) and no .env.example to copy."
+  return 1
+}
+
+edit_env() {
+  if ! ensure_env; then
     exit 1
+  fi
+  echo "Opening .env in nano..."
+  nano .env
+}
+
+# Keep local .env across git checkout --force (it is no longer tracked).
+# Also recovers WEB_UI_PORT from a running container when an older updater
+# already removed a previously-tracked .env during this upgrade.
+preserve_dotenv() {
+  local bak=".env.takportal-preserve"
+  rm -f "$bak"
+  if [[ -f .env ]]; then
+    cp -a .env "$bak"
+    return 0
+  fi
+  local port=""
+  port="$(docker inspect tak-portal --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+    | sed -n 's/^WEB_UI_PORT=//p' | head -1 || true)"
+  if [[ -n "$port" ]]; then
+    printf '#WEB SERVER UI\nWEB_UI_PORT=%s\n' "$port" > "$bak"
+    echo "Preserved WEB_UI_PORT=${port} from running container (no local .env)."
+    return 0
+  fi
+  if [[ -f .env.example ]]; then
+    cp -a .env.example "$bak"
+  fi
+}
+
+restore_dotenv() {
+  local bak=".env.takportal-preserve"
+  if [[ -f "$bak" ]]; then
+    mv -f "$bak" .env
+    return 0
+  fi
+  if [[ ! -f .env && -f .env.example ]]; then
+    cp -a .env.example .env
   fi
 }
 
@@ -250,11 +293,13 @@ run_update() {
   self_hash="$(file_sha256 "$0")"
 
   if [[ -d .git ]]; then
+    preserve_dotenv
     if is_beta_mode; then
       checkout_beta_main
     else
       local tag=""
       if ! tag="$(resolve_stable_tag)"; then
+        restore_dotenv
         echo "ERROR: Could not resolve the latest GitHub Release. Not pulling main."
         echo "Check network access to GitHub, then retry."
         exit 1
@@ -262,9 +307,14 @@ run_update() {
       echo "Stable channel: GitHub Release ${tag}"
       checkout_stable_release "$tag"
     fi
+    restore_dotenv
     maybe_reexec_updater "$self_hash"
   else
     echo "No .git directory found; skipping git checkout."
+  fi
+
+  if ! ensure_env; then
+    exit 1
   fi
 
   echo "Rebuilding and recreating containers..."
@@ -291,9 +341,8 @@ case "$CMD" in
     ;;
 
   start)
-    if [[ ! -f .env ]]; then
-      echo "ERROR: .env missing. Run:"
-      echo "  ./$(basename "${BASH_SOURCE[0]}") setup"
+    if ! ensure_env; then
+      echo "Run: ./$(basename "${BASH_SOURCE[0]}") setup"
       exit 1
     fi
     echo "Starting TAK Portal..."

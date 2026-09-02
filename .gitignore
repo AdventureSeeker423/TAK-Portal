@@ -10,8 +10,10 @@ yarn-debug.log*
 yarn-error.log*
 
 # Environment / secrets
+.env
 .env.local
 .env.*.local
+.env.takportal-preserve
 
 # Certificates / sensitive files
 certs/*.p12
