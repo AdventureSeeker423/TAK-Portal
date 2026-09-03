@@ -31,8 +31,13 @@
     letter-spacing: 0;
     word-spacing: normal;
     margin: 0;
+    padding: 0;
     border: 0;
     outline: 0;
+  }
+  /* Page margins live on the capture root only so body + root don't stack. */
+  #maEnrollmentFlyerRoot {
+    padding: 0.5in 0;
   }
 
   html {
@@ -45,7 +50,7 @@
   .content { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; width: 100%; }
   #maEnrollmentFlyerRoot.content { height: 11in; width: 8.5in; }
 
-  /* ── HEADER (stays dark, edge-to-edge) ── */
+  /* ── HEADER (full width, inset from top/bottom page margins) ── */
   header {
     background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%);
     border-bottom: 3px solid #38bdf8;
@@ -55,9 +60,10 @@
     gap: 0.18in;
     width: 100%;
     margin: 0;
+    flex: 0 0 auto;
     box-sizing: border-box;
-    /* Bleed past subpixel AA so capture doesn't show white at edges */
-    box-shadow: -2px -2px 0 #0f1b2d, 2px -2px 0 #0f1b2d;
+    /* Side bleed only — do not paint into the top page margin */
+    box-shadow: -2px 0 0 #0f1b2d, 2px 0 0 #0f1b2d;
   }
   header > div:nth-child(2) {
     flex: 1;
@@ -192,7 +198,7 @@
     /* Fixed tracks so capture can't collapse the right column */
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
     gap: 0.28in;
-    padding: 0.22in 0.42in 0.28in;
+    padding: 0.18in 0.42in 0.12in;
     background: #fff;
     color: #000;
     min-height: 0;
@@ -205,7 +211,24 @@
     position: relative;
     background: #fff;
     min-width: 0;
+    min-height: 0;
     overflow: hidden;
+  }
+  .section-ref {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .section-ref-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .flyer-access-note {
+    flex: 0 0 auto;
+    margin-top: auto;
+    overflow: visible;
   }
 
   .section-label {
@@ -300,7 +323,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    margin: 4px 0 16px;
+    flex: 0 1 auto;
+    min-height: 0;
+    margin: 0 0 8px;
   }
   .qr-title {
     font-family: Arial, Helvetica, sans-serif;
@@ -315,7 +340,10 @@
     white-space: nowrap;
   }
   .qr-container img {
-    width: 250px; height: 250px;
+    width: 230px;
+    height: 230px;
+    max-width: 230px;
+    max-height: 230px;
     border: 3px solid #1a5276;
     border-radius: 10px;
     background: #fff;
@@ -393,6 +421,7 @@
 
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
+    #maEnrollmentFlyerRoot { padding: 0.5in 0 !important; }
     header { background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%) !important; border-bottom: 3px solid #38bdf8 !important; }
     header h1 { color: #fff !important; }
     header h1 .header-server { color: #38bdf8 !important; }
@@ -523,7 +552,7 @@
 
     </div>
 
-    <div class="section">
+    <div class="section section-ref">
 
       <div class="qr-container">
         <div class="qr-title">Scan to Enroll</div>
@@ -531,29 +560,31 @@
         <div class="qr-sub">{{QR_LABEL}}</div>
       </div>
 
-      <div class="section-label" style="margin-top:14px;">User Profile Reference</div>
-      <h2 style="font-size:16px;margin-bottom:9px;"><span class="step-num">Profile</span> Settings</h2>
+      <div class="section-ref-body">
+        <div class="section-label">User Profile Reference</div>
+        <h2 style="font-size:16px;margin-bottom:9px;"><span class="step-num">Profile</span> Settings</h2>
 
-      <table class="callsign-table">
-        <tr>
-          <th>Field</th>
-          <th>Your Setting</th>
-        </tr>
-        <tr>
-          <td><strong>Callsign</strong></td>
-          <td><strong>{{CALLSIGN_FORMAT}}</strong></td>
-        </tr>
-        <tr>
-          <td><strong>Team Role</strong></td>
-          <td>{{TEAM_ROLE_LIST_HTML}}</td>
-        </tr>
-        <tr>
-          <td><strong>Team Color</strong></td>
-          <td>{{TEAM_COLOR_LIST_HTML}}</td>
-        </tr>
-      </table>
+        <table class="callsign-table">
+          <tr>
+            <th>Field</th>
+            <th>Your Setting</th>
+          </tr>
+          <tr>
+            <td><strong>Callsign</strong></td>
+            <td><strong>{{CALLSIGN_FORMAT}}</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Team Role</strong></td>
+            <td>{{TEAM_ROLE_LIST_HTML}}</td>
+          </tr>
+          <tr>
+            <td><strong>Team Color</strong></td>
+            <td>{{TEAM_COLOR_LIST_HTML}}</td>
+          </tr>
+        </table>
+      </div>
 
-      <div class="note-box" style="margin-top:8px;border-left-color:#1a5276;">
+      <div class="note-box flyer-access-note" style="border-left-color:#1a5276;">
         <strong>&#9201; Temporary Access:</strong> This enrollment expires at the end of the operation. For full-time access, request an account at <strong>{{REQUEST_ACCESS_URL}}</strong>
       </div>
 
