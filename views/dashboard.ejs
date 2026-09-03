@@ -231,6 +231,7 @@
           "Yellow": "#fdd835"
         };
         const defaultColor = "#9ca3af";
+        const LEGEND_MAX_ITEMS = 8;
         function resolveColor(c) {
           if (!c || typeof c !== "string") return defaultColor;
           const raw = c.trim();
@@ -238,16 +239,113 @@
           if (raw.charAt(0) === "#") return raw;
           return agencyColorNameToHex[raw] || agencyColorNameToHex[raw.toLowerCase()] || raw;
         }
-        const pieOptions = {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: "bottom",
-              labels: { boxWidth: 14, boxHeight: 14, padding: 12, font: { size: 15 } }
-            }
+
+        // Chart.js prefers mouse offsetX/offsetY, which Chromium does not
+        // map correctly when html { zoom } is applied. Touch events skip
+        // offsetX and look correct. Always map from client coords instead.
+        function positionFromPointer(nativeEvent, chart) {
+          var source = nativeEvent;
+          var touches = nativeEvent && (nativeEvent.touches || nativeEvent.changedTouches);
+          if (touches && touches.length) source = touches[0];
+          var canvas = chart.canvas;
+          var rect = canvas.getBoundingClientRect();
+          if (!rect.width || !rect.height || !source || typeof source.clientX !== "number") {
+            return { x: 0, y: 0 };
           }
-        };
+          var dpr = chart.currentDevicePixelRatio || 1;
+          return {
+            x: (source.clientX - rect.left) / rect.width * (canvas.width / dpr),
+            y: (source.clientY - rect.top) / rect.height * (canvas.height / dpr)
+          };
+        }
+        try {
+          if (!Chart.registry.plugins.get("cssZoomHoverFix")) {
+            Chart.register({
+              id: "cssZoomHoverFix",
+              beforeEvent: function (chart, args) {
+                var event = args.event;
+                if (!event || !event.native || event.x == null || event.y == null) return;
+                var pos = positionFromPointer(event.native, chart);
+                event.x = pos.x;
+                event.y = pos.y;
+              }
+            });
+          }
+        } catch (e) {}
+        if (Chart.helpers && typeof Chart.helpers.getRelativePosition === "function") {
+          Chart.helpers.getRelativePosition = function (evt, chart) {
+            var native = evt && evt.native ? evt.native : evt;
+            return positionFromPointer(native, chart);
+          };
+        }
+
+        function pieOptionsFor(showLegend) {
+          return {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "nearest", intersect: true },
+            elements: { arc: { hoverOffset: 8 } },
+            plugins: {
+              legend: {
+                display: !!showLegend,
+                position: "bottom",
+                labels: { boxWidth: 14, boxHeight: 14, padding: 12, font: { size: 15 } }
+              },
+              tooltip: {
+                callbacks: {
+                  title: function (items) {
+                    return items && items[0] ? items[0].label : "";
+                  },
+                  label: function (ctx) {
+                    var value = Number(ctx.parsed) || 0;
+                    var data = (ctx.dataset && ctx.dataset.data) || [];
+                    var total = 0;
+                    for (var i = 0; i < data.length; i++) total += Number(data[i]) || 0;
+                    var pct = total ? Math.round((value / total) * 1000) / 10 : 0;
+                    return value + " user" + (value === 1 ? "" : "s") + " (" + pct + "%)";
+                  }
+                }
+              }
+            }
+          };
+        }
+        function setLegendHint(canvas, showLegend, labelCount) {
+          var wrap = canvas && canvas.parentElement;
+          if (!wrap) return;
+          var hint = wrap.nextElementSibling;
+          if (!hint || !hint.classList.contains("chartLegendHint")) {
+            hint = document.createElement("div");
+            hint.className = "chartLegendHint";
+            wrap.insertAdjacentElement("afterend", hint);
+          }
+          if (!showLegend && labelCount > LEGEND_MAX_ITEMS) {
+            hint.hidden = false;
+            hint.textContent = "Hover or tap a slice for the name and count.";
+          } else {
+            hint.hidden = true;
+            hint.textContent = "";
+          }
+        }
+        function createPieChart(canvasId, labels, data, colors) {
+          var canvas = document.getElementById(canvasId);
+          if (!canvas) return;
+          var showLegend = labels.length > 0 && labels.length <= LEGEND_MAX_ITEMS;
+          new Chart(canvas, {
+            type: "pie",
+            data: {
+              labels: labels,
+              datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderColor: "#ffffff",
+                borderWidth: 2
+              }]
+            },
+            options: pieOptionsFor(showLegend)
+          });
+          setLegendHint(canvas, showLegend, labels.length);
+        }
+
         const templateChartPalette = [
           "#1e88e5", "#43a047", "#e53935", "#8e24aa", "#ff7b00", "#00acc1",
           "#6d4c41", "#d81b60", "#0d47a1", "#1b5e20", "#800000", "#fdd835",
@@ -284,34 +382,15 @@
             const agencyBackgroundColors = agencyLabels.map(function(label) {
               return resolveColor(agencyColors[label]);
             });
-            new Chart(document.getElementById("agencyChart"), {
-              type: "pie",
-              data: {
-                labels: agencyLabels,
-                datasets: [{
-                  data: agencyData,
-                  backgroundColor: agencyBackgroundColors,
-                  borderColor: "#ffffff",
-                  borderWidth: 2
-                }]
-              },
-              options: pieOptions
-            });
+            createPieChart("agencyChart", agencyLabels, agencyData, agencyBackgroundColors);
           }
 
-          new Chart(document.getElementById("templateChart"), {
-            type: "pie",
-            data: {
-              labels: templateLabels,
-              datasets: [{
-                data: templateData,
-                backgroundColor: chartPaletteColors(templateLabels.length, baseColor),
-                borderColor: "#ffffff",
-                borderWidth: 2
-              }]
-            },
-            options: pieOptions
-          });
+          createPieChart(
+            "templateChart",
+            templateLabels,
+            templateData,
+            chartPaletteColors(templateLabels.length, baseColor)
+          );
           return;
         }
 
@@ -333,19 +412,7 @@
           return agencyColorNameToHex[raw] || agencyColorNameToHex[raw.toLowerCase()] || raw;
         });
 
-        new Chart(document.getElementById("agencyChart"), {
-          type: "pie",
-          data: {
-            labels: agencyLabels,
-            datasets: [{
-              data: agencyData,
-              backgroundColor: agencyBackgroundColors,
-              borderColor: "#ffffff",
-              borderWidth: 2
-            }]
-          },
-          options: pieOptions
-        });
+        createPieChart("agencyChart", agencyLabels, agencyData, agencyBackgroundColors);
 
         const usersByType = <%- JSON.stringify((charts && charts.usersByType) || {}) %>;
         const unknownType = <%- JSON.stringify((charts && charts.unknownType) || 0) %>;
@@ -364,19 +431,7 @@
           return agencyColorNameToHex[raw] || agencyColorNameToHex[raw.toLowerCase()] || defaultAgencyColor;
         });
 
-        new Chart(document.getElementById("typeChart"), {
-          type: "pie",
-          data: {
-            labels: typeLabels,
-            datasets: [{
-              data: typeData,
-              backgroundColor: typeBackgroundColors,
-              borderColor: "#ffffff",
-              borderWidth: 2
-            }]
-          },
-          options: pieOptions
-        });
+        createPieChart("typeChart", typeLabels, typeData, typeBackgroundColors);
       }
 
       function loadChartJsAndInit() {
@@ -1613,16 +1668,20 @@
     letter-spacing: -0.01em;
   }
 
-  /* Makes both charts smaller + centered */
+  /* Chart.js owns canvas size. Forcing CSS width/height on the canvas
+     breaks hover hit-testing (especially with html { zoom } on desktop). */
   .chartWrap{
+    position: relative;
     max-width: 100%;
     width: 100%;
     height: 340px;
     margin: 0 auto;
   }
-  .chartWrap canvas{
-    width: 100% !important;
-    height: 100% !important;
+  .chartLegendHint{
+    margin: 8px 0 0 0;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
   }
 
   .maBanner{
