@@ -7,14 +7,22 @@
 <title>{{ORG_NAME}} — Mutual Aid Enrollment Flyer</title>
 <style>
   @page { size: letter; margin: 0; }
-  /* System fonts only — web fonts break html2canvas spacing/metrics. */
+  /* System fonts only — web fonts break html2canvas spacing/metrics.
+     Prefer tables/blocks over flex for lists; foreignObjectRendering
+     collapses flex item heights and shifts bordered boxes. */
   * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    text-align: left;
     letter-spacing: 0 !important;
     word-spacing: normal !important;
+  }
+
+  html {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: #fff;
   }
 
   body,
@@ -24,308 +32,280 @@
     font-family: Arial, Helvetica, sans-serif;
     background: #fff;
     color: #222;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
-    letter-spacing: 0;
-    word-spacing: normal;
     margin: 0;
     padding: 0;
     border: 0;
     outline: 0;
-  }
-  /* Page margins live on the capture root only so body + root don't stack. */
-  #maEnrollmentFlyerRoot {
-    padding: 0.5in 0;
+    overflow: hidden;
+    position: relative;
   }
 
-  html {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: #0f1b2d;
-  }
-
-  .content { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100%; width: 100%; }
-  #maEnrollmentFlyerRoot.content { height: 11in; width: 8.5in; }
-
-  /* ── HEADER (full width, inset from top/bottom page margins) ── */
-  header {
-    background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%);
-    border-bottom: 3px solid #38bdf8;
-    padding: 0.22in 0.42in;
-    display: flex;
-    align-items: center;
-    gap: 0.18in;
-    width: 100%;
-    margin: 0;
-    flex: 0 0 auto;
+  .flyer-sheet {
+    width: 8.5in;
+    height: 11in;
+    padding: 0.38in;
     box-sizing: border-box;
-    /* Side bleed only — do not paint into the top page margin */
-    box-shadow: -2px 0 0 #0f1b2d, 2px 0 0 #0f1b2d;
+    background: #fff;
+    display: table;
+    table-layout: fixed;
   }
-  header > div:nth-child(2) {
-    flex: 1;
-    min-width: 0;
+
+  .flyer-sheet-inner {
+    display: table-cell;
+    vertical-align: top;
+    width: 100%;
+    height: 100%;
+    background: #fff;
+    border: 1px solid #d6dee8;
   }
+
+  /* ── HEADER ── */
+  header {
+    background: #0f1b2d;
+    border-bottom: 3px solid #38bdf8;
+    padding: 0.16in 0.28in;
+    width: 100%;
+  }
+  .header-row {
+    display: table;
+    width: 100%;
+    table-layout: auto;
+    border-collapse: collapse;
+  }
+  .header-logo-cell,
+  .header-title-cell,
+  .header-badge-cell {
+    display: table-cell;
+    vertical-align: middle;
+  }
+  .header-logo-cell { width: 62px; }
+  .header-title-cell { padding: 0 12px; }
+  .header-badge-cell { width: 1%; white-space: nowrap; text-align: right; }
+
   .logo-shield {
-    width: 54px; height: 54px;
+    width: 50px;
+    height: 50px;
     background: #1e3a5f;
     border: 2px solid #38bdf8;
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px;
     font-family: Arial, Helvetica, sans-serif;
-    font-weight: 700; font-size: 11px; color: #38bdf8;
-    text-align: center; line-height: 1.1;
-    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 11px;
+    color: #38bdf8;
+    text-align: center;
+    line-height: 1.15;
+    padding-top: 9px;
   }
-  .logo-shield span { display: block; font-size: 8px; color: #94a3b8; font-weight: 500; letter-spacing: 0; }
+  .logo-shield span {
+    display: block;
+    font-size: 8px;
+    color: #94a3b8;
+    font-weight: 500;
+  }
   .flyer-logo {
-    width: 54px;
-    height: 54px;
+    width: 50px;
+    height: 50px;
     object-fit: contain;
-    flex-shrink: 0;
     border-radius: 8px;
     background: #fff;
+    display: block;
   }
   header h1 {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
     color: #fff;
-    letter-spacing: 0;
     line-height: 1.15;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
   }
   header h1 .header-server {
-    font-size: 16px;
+    display: block;
+    font-size: 15px;
     font-weight: 700;
     color: #38bdf8;
     line-height: 1.1;
   }
   header h1 .header-enrollment {
+    display: block;
     font-size: 22px;
     font-weight: 700;
     color: #fff;
-    line-height: 1.05;
+    line-height: 1.1;
+    margin-top: 2px;
   }
-  header h1.header-title-solo .header-enrollment {
-    font-size: 24px;
-  }
+  header h1.header-title-solo .header-enrollment { font-size: 24px; }
   header p {
     font-size: 11px;
     color: #94a3b8;
     margin-top: 4px;
-    letter-spacing: 0;
   }
   .header-badge {
-    margin-left: auto;
-    background: rgba(56,189,248,0.1);
+    display: inline-block;
+    background: #132744;
     border: 1.5px solid #38bdf8;
     border-radius: 8px;
     padding: 8px 14px;
     text-align: center;
-    /* Size to full channel name; title column yields space (min-width:0). */
-    flex: 0 0 auto;
-    width: max-content;
-    min-width: max-content;
-    max-width: none;
-    overflow: visible;
+    white-space: nowrap;
   }
   .header-badge .badge-label {
-    font-family: Arial, Helvetica, sans-serif;
     font-size: 9px;
     font-weight: 700;
-    letter-spacing: 0;
     color: #94a3b8;
     text-transform: uppercase;
     line-height: 1.2;
     margin-bottom: 3px;
+    text-align: center;
   }
   .header-badge .badge-value {
-    font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
     font-weight: 700;
     color: #38bdf8;
-    letter-spacing: 0;
     line-height: 1.2;
     white-space: nowrap;
     text-align: center;
-    overflow: visible;
   }
 
-  /* ── ALERT BANNER (omitted when agreement disabled) ── */
+  /* ── ALERT BANNER ── */
   .alert-banner {
     background: #0f1b2d;
     border-top: 1px solid rgba(236,72,72,0.4);
-    border-bottom: 1px solid rgba(236,72,72,0.4);
-    padding: 6px 0.42in;
-    display: block;
+    padding: 7px 0.28in;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10px;
     line-height: 1.45;
-    letter-spacing: 0;
-    word-spacing: normal;
-    white-space: normal;
-    overflow-wrap: break-word;
-    word-break: normal;
     color: #fca5a5;
     width: 100%;
-    box-sizing: border-box;
-    margin: 0;
   }
-  .alert-banner strong {
-    color: #fff;
-    letter-spacing: 0;
-    font-family: Arial, Helvetica, sans-serif;
-  }
-  .alert-banner .alert-banner-text {
-    display: inline;
-    color: #fca5a5;
-    letter-spacing: 0;
-    word-spacing: normal;
-    white-space: normal;
-    overflow-wrap: break-word;
-    font-family: Arial, Helvetica, sans-serif;
-  }
+  .alert-banner strong { color: #fff; }
+  .alert-banner .alert-banner-text { color: #fca5a5; }
 
-  /* ── MAIN ── */
-  main {
-    flex: 1;
-    display: grid;
-    /* Fixed tracks so capture can't collapse the right column */
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-    gap: 0.28in;
-    padding: 0.18in 0.42in 0.12in;
-    background: #fff;
-    color: #000;
-    min-height: 0;
+  /* ── MAIN: two columns as a table (html2canvas-safe) ── */
+  .flyer-cols {
     width: 100%;
-    box-sizing: border-box;
-  }
-  main * { color: #222; }
-
-  .section {
-    position: relative;
+    border-collapse: collapse;
+    table-layout: fixed;
     background: #fff;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
   }
-  .section-ref {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
+  .col-steps {
+    width: 54%;
+    vertical-align: top;
+    padding: 0.18in 0.16in 0.16in 0.22in;
+    background: #fff;
   }
-  .section-ref-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-    margin-bottom: 8px;
-  }
-  .flyer-access-note {
-    flex: 0 0 auto;
-    margin-top: auto;
-    overflow: visible;
+  .col-ref {
+    width: 46%;
+    vertical-align: top;
+    padding: 0.18in 0.22in 0.16in 0.12in;
+    background: #fff;
   }
 
   .section-label {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
     font-size: 9px;
-    letter-spacing: 0;
     text-transform: uppercase;
     color: #1a5276;
-    margin-bottom: 3px;
+    margin: 0 0 2px;
   }
-  .section h2 {
+  .section-label.spaced { margin-top: 12px; }
+  h2.step-heading {
     font-family: Arial, Helvetica, sans-serif;
     font-weight: 700;
-    font-size: 21px;
+    font-size: 18px;
     color: #000;
-    margin-bottom: 8px;
-    line-height: 1.1;
+    margin: 0 0 6px;
+    line-height: 1.15;
   }
-  .section h2 .step-num { color: #1a5276; letter-spacing: 0; }
+  h2.step-heading .step-num { color: #1a5276; }
+  h2.ref-heading {
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #000;
+    margin: 0 0 8px;
+    line-height: 1.15;
+  }
+  h2.ref-heading .step-num { color: #1a5276; }
 
-  ol { list-style: none; counter-reset: steps; }
-  ol li {
-    counter-increment: steps;
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
-    margin-bottom: 10px;
-    font-size: 12.5px;
+  p.lead {
+    font-size: 11px;
+    margin: 0 0 6px;
+    line-height: 1.4;
+    color: #444;
+  }
+  p.lead strong { color: #000; }
+
+  .steps { width: 100%; }
+  .step {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    margin: 0 0 6px;
+  }
+  .step-n,
+  .step-t {
+    display: table-cell;
+    vertical-align: top;
+  }
+  .step-n { width: 26px; }
+  .step-n span {
+    display: block;
+    width: 22px;
+    height: 22px;
+    line-height: 20px;
+    text-align: center !important;
+    border: 1.5px solid #1a5276;
+    border-radius: 50%;
+    background: #eef4fa;
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    color: #1a5276;
+  }
+  .step-t {
+    padding-left: 8px;
+    font-size: 12px;
     line-height: 1.4;
     color: #222;
   }
-  .step-text { flex: 1; display: block; color: #222; }
-  ol li::before {
-    content: counter(steps);
-    flex-shrink: 0;
-    width: 22px; height: 22px;
-    background: #eef4fa;
-    border: 1.5px solid #1a5276;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-family: Arial, Helvetica, sans-serif;
-    font-weight: 700;
-    font-size: 12px;
-    color: #1a5276;
-    margin-top: 1px;
-  }
-  ol li strong { color: #000; font-weight: 600; }
+  .step-t strong { color: #000; font-weight: 600; }
 
-  p { color: #444; }
-
+  .nav-paths { width: 100%; margin: 0 0 8px; }
   .nav-path {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
     background: #eef4fa;
     border-radius: 6px;
-    padding: 5px 9px;
-    margin: 4px 0;
-    font-size: 11.5px;
+    padding: 6px 10px 6px 12px;
+    margin: 0 0 5px;
+    font-size: 11px;
     color: #333;
-    font-family: Arial, Helvetica, sans-serif;
-    border-left: 3px solid #1a5276;
+    line-height: 1.4;
+    box-shadow: inset 3px 0 0 #1a5276;
   }
-  .nav-path * { color: #1a5276; }
+  .nav-path strong { color: #1a5276; }
 
   .note-box {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
     background: #eef4fa;
     border-radius: 6px;
-    padding: 6px 9px;
-    margin-top: 5px;
-    border-left: 3px solid #1a5276;
+    padding: 8px 10px 8px 12px;
+    margin-top: 10px;
     font-size: 11px;
     color: #333;
     line-height: 1.4;
+    box-shadow: inset 3px 0 0 #1a5276;
   }
-  .note-box * { color: #333; }
   .note-box strong { color: #000; }
 
-  .note-box-amber {
-    background: #fff8e1;
-    border-radius: 6px;
-    padding: 6px 9px;
-    margin-top: 5px;
-    border-left: 3px solid #f59e0b;
-    font-size: 11px;
-    color: #444;
-    line-height: 1.4;
-  }
-  .note-box-amber * { color: #444; }
-  .note-box-amber strong { color: #7c4700; }
-
-  .qr-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex: 0 1 auto;
-    min-height: 0;
-    margin: 0 0 8px;
+  .qr-wrap {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin: 0 0 12px;
   }
   .qr-title {
     font-family: Arial, Helvetica, sans-serif;
@@ -333,49 +313,42 @@
     font-size: 12px;
     color: #1a5276;
     text-transform: uppercase;
-    letter-spacing: 0;
-    margin-bottom: 8px;
-    text-align: center;
-    line-height: 1.25;
-    white-space: nowrap;
+    margin-bottom: 6px;
+    text-align: center !important;
   }
-  .qr-container img {
-    width: 230px;
-    height: 230px;
-    max-width: 230px;
-    max-height: 230px;
+  .qr-wrap img {
+    width: 196px;
+    height: 196px;
     border: 3px solid #1a5276;
     border-radius: 10px;
     background: #fff;
-    padding: 6px;
+    padding: 5px;
+    display: inline-block;
   }
   .qr-sub {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     color: #555;
-    letter-spacing: 0;
-    margin-top: 6px;
     text-transform: uppercase;
-    text-align: center;
+    text-align: center !important;
+    margin-top: 6px;
   }
 
   .callsign-table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 6px;
-    font-size: 11px;
+    margin-top: 4px;
+    font-size: 10.5px;
   }
   .callsign-table th {
     background: #1e3a5f;
     color: #fff;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10px;
-    letter-spacing: 0;
     text-transform: uppercase;
-    padding: 4px 7px;
+    padding: 5px 7px;
     text-align: left;
-    border-bottom: 1.5px solid #1a5276;
   }
   .callsign-table th * { color: #fff; }
   .callsign-table td {
@@ -389,8 +362,6 @@
   .callsign-table td strong { color: #1a5276; }
   .callsign-table tr:last-child td { border-bottom: none; }
 
-  /* Block layout (not flex) — html2canvas foreignObjectRendering collapses
-     flex item heights when long titles wrap, causing overlapping lines. */
   .ref-list {
     list-style: none;
     margin: 0;
@@ -399,13 +370,11 @@
   }
   .ref-list li {
     display: block;
-    margin: 0 0 4px;
+    margin: 0 0 3px;
     padding: 0;
     font-size: 10px;
-    line-height: 1.45;
+    line-height: 1.4;
     color: #222;
-    height: auto;
-    overflow: visible;
   }
   .ref-list li strong { color: #1a5276; font-weight: 700; }
   .ref-desc { color: #555 !important; font-weight: 400; }
@@ -420,150 +389,113 @@
   .ref-empty { color: #888 !important; font-size: 10px; font-style: italic; }
 
   @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
-    #maEnrollmentFlyerRoot { padding: 0.5in 0 !important; }
-    header { background: linear-gradient(135deg, #0f1b2d 0%, #132744 100%) !important; border-bottom: 3px solid #38bdf8 !important; }
-    header h1 { color: #fff !important; }
+    body, #maEnrollmentFlyerRoot, .flyer-sheet { background: #fff !important; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    header { background: #0f1b2d !important; border-bottom: 3px solid #38bdf8 !important; }
     header h1 .header-server { color: #38bdf8 !important; }
     header h1 .header-enrollment { color: #fff !important; }
     header p { color: #94a3b8 !important; }
-    .header-badge { background: rgba(56,189,248,0.1) !important; border-color: #38bdf8 !important; }
+    .header-badge { background: #132744 !important; border-color: #38bdf8 !important; }
     .header-badge .badge-label { color: #94a3b8 !important; }
     .header-badge .badge-value { color: #38bdf8 !important; }
-    .alert-banner { background: #0f1b2d !important; color: #fca5a5 !important; letter-spacing: normal !important; }
-    .alert-banner strong { color: #fff !important; letter-spacing: normal !important; }
-    .alert-banner .alert-banner-text { color: #fca5a5 !important; letter-spacing: normal !important; }
-    main { background: #fff !important; color: #000 !important; }
-    main * { color: #222 !important; }
-    .section { background: #fff !important; }
-    .section-label { color: #1a5276 !important; }
-    .section h2 { color: #000 !important; }
-    .section h2 .step-num { color: #1a5276 !important; }
-    ol li { color: #222 !important; }
-    ol li strong { color: #000 !important; }
-    ol li::before { background: #eef4fa !important; border-color: #1a5276 !important; color: #1a5276 !important; }
-    .step-text { color: #222 !important; }
-    p { color: #444 !important; }
-    .nav-path { background: #eef4fa !important; border-left-color: #1a5276 !important; color: #333 !important; }
-    .nav-path * { color: #1a5276 !important; }
-    .note-box { background: #eef4fa !important; border-left-color: #1a5276 !important; color: #333 !important; }
-    .note-box * { color: #333 !important; }
-    .note-box strong { color: #000 !important; }
-    .note-box-amber { background: #fff8e1 !important; border-left-color: #f59e0b !important; color: #444 !important; }
-    .note-box-amber * { color: #444 !important; }
-    .note-box-amber strong { color: #7c4700 !important; }
-    .qr-title { color: #1a5276 !important; }
-    .qr-sub { color: #555 !important; }
-    .qr-container img { border-color: #1a5276 !important; }
-    .callsign-table th { background: #1e3a5f !important; color: #fff !important; border-color: #1a5276 !important; }
-    .callsign-table th * { color: #fff !important; }
-    .callsign-table td { color: #000 !important; border-color: #ddd !important; }
-    .callsign-table td * { color: #1a5276 !important; }
-    .callsign-table td span { color: #555 !important; }
-    .ref-list li strong { color: #1a5276 !important; }
-    .ref-desc { color: #555 !important; }
+    .alert-banner { background: #0f1b2d !important; color: #fca5a5 !important; }
+    .alert-banner strong { color: #fff !important; }
+    .nav-path, .note-box { background: #eef4fa !important; }
+    .callsign-table th { background: #1e3a5f !important; color: #fff !important; }
   }
 </style>
 </head>
 <body>
-<div class="content" id="maEnrollmentFlyerRoot">
+<div id="maEnrollmentFlyerRoot">
+<div class="flyer-sheet">
+<div class="flyer-sheet-inner">
 
   <header>
-    {{LOGO_HTML}}
-    <div>
-      {{HEADER_TITLE_HTML}}
-      <p>{{EVENT_NAME}} &mdash; {{EVENT_SUBTITLE}}</p>
-    </div>
-    <div class="header-badge">
-      <div class="badge-label">Channel</div>
-      <div class="badge-value">{{CHANNEL_NAME}}</div>
+    <div class="header-row">
+      <div class="header-logo-cell">{{LOGO_HTML}}</div>
+      <div class="header-title-cell">
+        {{HEADER_TITLE_HTML}}
+        <p>{{EVENT_NAME}} &mdash; {{EVENT_SUBTITLE}}</p>
+      </div>
+      <div class="header-badge-cell">
+        <div class="header-badge">
+          <div class="badge-label">Channel</div>
+          <div class="badge-value">{{CHANNEL_NAME}}</div>
+        </div>
+      </div>
     </div>
   </header>
 
   {{COMPLIANCE_BANNER_HTML}}
 
-  <main>
+  <table class="flyer-cols">
+    <tr>
+      <td class="col-steps">
 
-    <div class="section">
-
-      <div class="section-label">Step 1 of 3</div>
-      <h2><span class="step-num">Download</span> the App</h2>
-      <ol>
-        <li>
-          <div class="step-text">
-            <strong>iOS users:</strong> Search the App Store for <strong>TAK Aware</strong> and install it.
+        <div class="section-label">Step 1 of 3</div>
+        <h2 class="step-heading"><span class="step-num">Download</span> the App</h2>
+        <div class="steps">
+          <div class="step">
+            <div class="step-n"><span>1</span></div>
+            <div class="step-t"><strong>iOS users:</strong> Search the App Store for <strong>TAK Aware</strong> and install it.</div>
           </div>
-        </li>
-        <li>
-          <div class="step-text">
-            <strong>Android users:</strong> Search the Google Play Store for <strong>ATAK</strong> (Android Team Awareness Kit) and install it.
+          <div class="step">
+            <div class="step-n"><span>2</span></div>
+            <div class="step-t"><strong>Android users:</strong> Search the Google Play Store for <strong>ATAK</strong> (Android Team Awareness Kit) and install it.</div>
           </div>
-        </li>
-      </ol>
+        </div>
 
-      <div class="section-label" style="margin-top:18px;">Step 2 of 3</div>
-      <h2><span class="step-num">Scan</span> QR Code to Enroll</h2>
-      <p style="font-size:11px;margin:0 0 7px 0;line-height:1.4;">Use your <strong>phone's camera app</strong> to scan the QR code. The code is pre-configured for the {{ORG_NAME}} server and grants access to the <strong>{{CHANNEL_NAME}}</strong> channel.</p>
-
-      <ol>
-        <li>
-          <div class="step-text">
-            Open your phone's <strong>Camera app</strong> and point it at the <strong>QR code on the right</strong>.
+        <div class="section-label spaced">Step 2 of 3</div>
+        <h2 class="step-heading"><span class="step-num">Scan</span> QR Code to Enroll</h2>
+        <p class="lead">Use your <strong>phone's camera app</strong> to scan the QR code. The code is pre-configured for the {{ORG_NAME}} server and grants access to the <strong>{{CHANNEL_NAME}}</strong> channel.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-n"><span>1</span></div>
+            <div class="step-t">Open your phone's <strong>Camera app</strong> and point it at the <strong>QR code on the right</strong>.</div>
           </div>
-        </li>
-        <li>
-          <div class="step-text">
-            Tap the notification or link that appears to open it in <strong>TAK Aware</strong> (iOS) or <strong>ATAK</strong> (Android). If prompted for Location permission, select <strong>Always</strong>.
+          <div class="step">
+            <div class="step-n"><span>2</span></div>
+            <div class="step-t">Tap the notification or link that appears to open it in <strong>TAK Aware</strong> (iOS) or <strong>ATAK</strong> (Android). If prompted for Location permission, select <strong>Always</strong>.</div>
           </div>
-        </li>
-        <li>
-          <div class="step-text">
-            <strong>Accept the connection</strong> when prompted. Enrollment is automatic &mdash; no username or password required.
+          <div class="step">
+            <div class="step-n"><span>3</span></div>
+            <div class="step-t"><strong>Accept the connection</strong> when prompted. Enrollment is automatic &mdash; no username or password required.</div>
           </div>
-        </li>
-      </ol>
+        </div>
 
-      <div class="section-label" style="margin-top:18px;">Step 3 of 3</div>
-      <h2><span class="step-num">Configure</span> Your Profile</h2>
-      <p style="font-size:11px;margin:0 0 7px 0;line-height:1.4;">Navigate to your profile settings:</p>
-      <div class="nav-path">
-        <strong>TAK Aware (iOS):</strong> <span style="font-size:13px;">&#9776;</span> Menu &rarr; User Information
-      </div>
-      <div class="nav-path" style="margin-top:5px;margin-bottom:9px;">
-        <strong>ATAK (Android):</strong> <span style="font-size:13px;">&#9776;</span> Menu &rarr; Settings &rarr; Callsign and Device Preferences
-      </div>
-      <ol>
-        <li>
-          <div class="step-text">
-            Set your <strong>Callsign</strong> &mdash; see format in the table &rarr;
+        <div class="section-label spaced">Step 3 of 3</div>
+        <h2 class="step-heading"><span class="step-num">Configure</span> Your Profile</h2>
+        <p class="lead">Navigate to your profile settings:</p>
+        <div class="nav-paths">
+          <div class="nav-path"><strong>TAK Aware (iOS):</strong> Menu &rarr; User Information</div>
+          <div class="nav-path"><strong>ATAK (Android):</strong> Menu &rarr; Settings &rarr; Callsign and Device Preferences</div>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-n"><span>1</span></div>
+            <div class="step-t">Set your <strong>Callsign</strong> &mdash; see format in the table &rarr;</div>
           </div>
-        </li>
-        <li>
-          <div class="step-text">
-            Set your <strong>Team Role</strong> &mdash; see options in the table &rarr;
+          <div class="step">
+            <div class="step-n"><span>2</span></div>
+            <div class="step-t">Set your <strong>Team Role</strong> &mdash; see options in the table &rarr;</div>
           </div>
-        </li>
-        <li>
-          <div class="step-text">
-            Set your <strong>Team Color</strong> &mdash; see options in the table &rarr;
+          <div class="step">
+            <div class="step-n"><span>3</span></div>
+            <div class="step-t">Set your <strong>Team Color</strong> &mdash; see options in the table &rarr;</div>
           </div>
-        </li>
-      </ol>
+        </div>
 
-    </div>
+      </td>
+      <td class="col-ref">
 
-    <div class="section section-ref">
+        <div class="qr-wrap">
+          <div class="qr-title">Scan to Enroll</div>
+          <img id="maFlyerQrImg" src="{{QR_DATA_URL}}" alt="{{QR_LABEL}} Enrollment QR Code">
+          <div class="qr-sub">{{QR_LABEL}}</div>
+        </div>
 
-      <div class="qr-container">
-        <div class="qr-title">Scan to Enroll</div>
-        <img id="maFlyerQrImg" src="{{QR_DATA_URL}}" alt="{{QR_LABEL}} Enrollment QR Code">
-        <div class="qr-sub">{{QR_LABEL}}</div>
-      </div>
-
-      <div class="section-ref-body">
         <div class="section-label">User Profile Reference</div>
-        <h2 style="font-size:16px;margin-bottom:9px;"><span class="step-num">Profile</span> Settings</h2>
-
+        <h2 class="ref-heading"><span class="step-num">Profile</span> Settings</h2>
         <table class="callsign-table">
           <tr>
             <th>Field</th>
@@ -582,16 +514,17 @@
             <td>{{TEAM_COLOR_LIST_HTML}}</td>
           </tr>
         </table>
-      </div>
 
-      <div class="note-box flyer-access-note" style="border-left-color:#1a5276;">
-        <strong>&#9201; Temporary Access:</strong> This enrollment expires at the end of the operation. For full-time access, request an account at <strong>{{REQUEST_ACCESS_URL}}</strong>
-      </div>
+        <div class="note-box">
+          <strong>&#9201; Temporary Access:</strong> This enrollment expires at the end of the operation. For full-time access, request an account at <strong>{{REQUEST_ACCESS_URL}}</strong>
+        </div>
 
-    </div>
+      </td>
+    </tr>
+  </table>
 
-  </main>
-
+</div>
+</div>
 </div>
 </body>
 </html>

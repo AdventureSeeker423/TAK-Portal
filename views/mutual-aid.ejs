@@ -1823,6 +1823,7 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               font-family: Arial, Helvetica, sans-serif !important;
               letter-spacing: 0 !important;
               word-spacing: normal !important;
+              box-sizing: border-box !important;
             }
             html, body, #maEnrollmentFlyerRoot {
               width: ${letterW}px !important;
@@ -1830,63 +1831,73 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               max-width: ${letterW}px !important;
               overflow: hidden !important;
               margin: 0 !important;
-              border: 0 !important;
-            }
-            html { background: #fff !important; padding: 0 !important; }
-            body {
-              background: #fff !important;
               padding: 0 !important;
-            }
-            #maEnrollmentFlyerRoot {
+              border: 0 !important;
               background: #fff !important;
-              padding: 0.5in 0 !important;
             }
-            header {
-              width: 100% !important;
+            .flyer-sheet {
+              width: ${letterW}px !important;
+              height: ${letterH}px !important;
               margin: 0 !important;
-              box-shadow: -3px 0 0 #0f1b2d, 3px 0 0 #0f1b2d !important;
-              align-items: center !important;
+              padding: 0.38in !important;
+              border: 0 !important;
+              background: #fff !important;
+              display: table !important;
+              table-layout: fixed !important;
+              overflow: hidden !important;
+            }
+            .flyer-sheet-inner {
+              display: table-cell !important;
+              vertical-align: top !important;
+              background: #fff !important;
+            }
+            header, .header-row, .header-logo-cell, .header-title-cell, .header-badge-cell {
+              background: #0f1b2d !important;
+            }
+            .header-row {
+              display: table !important;
+              width: 100% !important;
+            }
+            .header-logo-cell, .header-title-cell, .header-badge-cell {
+              display: table-cell !important;
+              vertical-align: middle !important;
             }
             .header-badge {
-              flex: 0 0 auto !important;
-              width: max-content !important;
-              min-width: max-content !important;
-              max-width: none !important;
+              display: inline-block !important;
+              white-space: nowrap !important;
               overflow: visible !important;
-              height: auto !important;
             }
             .header-badge .badge-value {
               white-space: nowrap !important;
               overflow: visible !important;
-              text-overflow: clip !important;
-              max-width: none !important;
-              line-height: 1.2 !important;
-              font-size: 12px !important;
+              text-align: center !important;
             }
-            main {
-              display: grid !important;
-              grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) !important;
+            .flyer-cols {
               width: 100% !important;
+              border-collapse: collapse !important;
+              table-layout: fixed !important;
             }
-            main > .section {
-              min-width: 0 !important;
-              overflow: hidden !important;
-            }
-            .section-ref {
-              display: flex !important;
-              flex-direction: column !important;
-              height: 100% !important;
-            }
-            .section-ref-body {
-              flex: 1 1 auto !important;
-              min-height: 0 !important;
-              overflow: hidden !important;
-              margin-bottom: 8px !important;
-            }
-            .flyer-access-note {
-              flex: 0 0 auto !important;
-              margin-top: auto !important;
+            .col-steps, .col-ref {
+              vertical-align: top !important;
               overflow: visible !important;
+            }
+            .step {
+              display: table !important;
+              width: 100% !important;
+              table-layout: fixed !important;
+            }
+            .step-n, .step-t {
+              display: table-cell !important;
+              vertical-align: top !important;
+            }
+            .nav-path, .note-box, .nav-paths, .steps, .qr-wrap {
+              display: block !important;
+              width: 100% !important;
+              float: none !important;
+              position: static !important;
+            }
+            .qr-wrap, .qr-title, .qr-sub {
+              text-align: center !important;
             }
             .alert-banner, .alert-banner * {
               letter-spacing: 0 !important;
@@ -1894,8 +1905,6 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               white-space: normal !important;
               overflow-wrap: break-word !important;
             }
-            /* Keep profile lists as block flow during capture so wrapped
-               role/color titles do not stack on top of each other. */
             .ref-list {
               display: block !important;
             }
@@ -1903,9 +1912,8 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               display: block !important;
               flex: none !important;
               height: auto !important;
-              min-height: 0 !important;
-              margin: 0 0 4px !important;
-              line-height: 1.45 !important;
+              margin: 0 0 3px !important;
+              line-height: 1.4 !important;
               overflow: visible !important;
               white-space: normal !important;
             }
@@ -1934,12 +1942,17 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
         throw new Error("foreignObject capture empty");
       }
       // Detect a near-blank capture (all white / transparent).
-      // Sample inside the navy header, below the 0.5in top page margin.
+      // Sample inside the navy header, below the page inset.
       const sampleY = Math.min(
         canvas.height - 32,
-        Math.round(canvas.height * (0.5 / 11)) + 16
+        Math.round(canvas.height * (0.38 / 11)) + 20
       );
-      const probe = canvas.getContext("2d").getImageData(8, sampleY, 24, 24).data;
+      const probe = canvas.getContext("2d").getImageData(
+        Math.round(canvas.width * 0.12),
+        sampleY,
+        24,
+        24
+      ).data;
       let dark = 0;
       for (let i = 0; i < probe.length; i += 4) {
         if (probe[i] + probe[i + 1] + probe[i + 2] < 720) dark += 1;
@@ -1956,16 +1969,16 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       });
     }
 
-    // Cover residual 1px white fringe at banner side edges from subpixel capture.
-    // Skip the top of the canvas — that is the page margin, not the navy header.
+    // Cover residual 1px white fringe at the inner sheet / header join.
     try {
       const ctx = canvas.getContext("2d");
       if (ctx) {
+        const inset = Math.round(canvas.width * (0.38 / 8.5));
         const fringe = Math.max(2, Math.round(canvas.width * 0.002));
-        const topMargin = Math.round(canvas.height * (0.5 / 11));
-        const bannerH = Math.round(canvas.height * 0.12);
+        const headerH = Math.round(canvas.height * 0.11);
         ctx.fillStyle = "#0f1b2d";
-        ctx.fillRect(0, topMargin, fringe, bannerH);
+        ctx.fillRect(inset, inset, fringe, headerH);
+        ctx.fillRect(canvas.width - inset - fringe, inset, fringe, headerH);
       }
     } catch {
       /* ignore */
