@@ -309,23 +309,6 @@
             }
           };
         }
-        function setLegendHint(canvas, showLegend, labelCount) {
-          var wrap = canvas && canvas.parentElement;
-          if (!wrap) return;
-          var hint = wrap.nextElementSibling;
-          if (!hint || !hint.classList.contains("chartLegendHint")) {
-            hint = document.createElement("div");
-            hint.className = "chartLegendHint";
-            wrap.insertAdjacentElement("afterend", hint);
-          }
-          if (!showLegend && labelCount > LEGEND_MAX_ITEMS) {
-            hint.hidden = false;
-            hint.textContent = "Hover or tap a slice for the name and count.";
-          } else {
-            hint.hidden = true;
-            hint.textContent = "";
-          }
-        }
         function createPieChart(canvasId, labels, data, colors) {
           var canvas = document.getElementById(canvasId);
           if (!canvas) return;
@@ -343,7 +326,6 @@
             },
             options: pieOptionsFor(showLegend)
           });
-          setLegendHint(canvas, showLegend, labels.length);
         }
 
         const templateChartPalette = [
@@ -1676,12 +1658,6 @@
     width: 100%;
     height: 340px;
     margin: 0 auto;
-  }
-  .chartLegendHint{
-    margin: 8px 0 0 0;
-    text-align: center;
-    color: var(--muted);
-    font-size: 13px;
   }
 
   .maBanner{
