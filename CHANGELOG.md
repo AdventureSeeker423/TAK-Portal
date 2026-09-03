@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.9 - PENDING
+🐛 `Bug Fix` - Fixes issue with improper margins on page one of the mutual aid packet.
+
 ### v1.4.8 - 9/2/26
 🐛 `Bug Fix` - Fixes issue with .env file getting replaced after 1.4.6 change
 
