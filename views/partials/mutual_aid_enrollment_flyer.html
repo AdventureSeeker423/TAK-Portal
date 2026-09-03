@@ -40,23 +40,21 @@
     position: relative;
   }
 
+  /* Child frame (not padding on the capture target) so html2canvas
+     actually paints a true 0.25in page margin on all sides. */
   .flyer-sheet {
-    width: 8.5in;
-    height: 11in;
-    padding: 0.38in;
-    box-sizing: border-box;
+    width: 8in;
+    height: 10.5in;
+    margin: 0.25in;
+    padding: 0;
     background: #fff;
-    display: table;
-    table-layout: fixed;
+    overflow: hidden;
   }
 
   .flyer-sheet-inner {
-    display: table-cell;
-    vertical-align: top;
     width: 100%;
     height: 100%;
     background: #fff;
-    border: 1px solid #d6dee8;
   }
 
   /* ── HEADER ── */
@@ -271,35 +269,32 @@
   .step-t strong { color: #000; font-weight: 600; }
 
   .nav-paths { width: 100%; margin: 0 0 8px; }
-  .nav-path {
-    display: block;
+  .callout {
     width: 100%;
-    box-sizing: border-box;
+    border-collapse: collapse;
+    table-layout: fixed;
     background: #eef4fa;
     border-radius: 6px;
-    padding: 6px 10px 6px 12px;
     margin: 0 0 5px;
+  }
+  .callout-bar {
+    width: 4px;
+    background: #1a5276;
+  }
+  .callout-body {
+    padding: 6px 10px;
     font-size: 11px;
     color: #333;
     line-height: 1.4;
-    box-shadow: inset 3px 0 0 #1a5276;
   }
-  .nav-path strong { color: #1a5276; }
-
+  .callout-body strong { color: #1a5276; }
   .note-box {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    background: #eef4fa;
-    border-radius: 6px;
-    padding: 8px 10px 8px 12px;
     margin-top: 10px;
-    font-size: 11px;
-    color: #333;
-    line-height: 1.4;
-    box-shadow: inset 3px 0 0 #1a5276;
   }
-  .note-box strong { color: #000; }
+  .note-box .callout-body {
+    padding: 8px 10px;
+  }
+  .note-box .callout-body strong { color: #000; }
 
   .qr-wrap {
     display: block;
@@ -400,7 +395,8 @@
     .header-badge .badge-value { color: #38bdf8 !important; }
     .alert-banner { background: #0f1b2d !important; color: #fca5a5 !important; }
     .alert-banner strong { color: #fff !important; }
-    .nav-path, .note-box { background: #eef4fa !important; }
+    .callout { background: #eef4fa !important; }
+    .callout-bar { background: #1a5276 !important; }
     .callsign-table th { background: #1e3a5f !important; color: #fff !important; }
   }
 </style>
@@ -467,8 +463,18 @@
         <h2 class="step-heading"><span class="step-num">Configure</span> Your Profile</h2>
         <p class="lead">Navigate to your profile settings:</p>
         <div class="nav-paths">
-          <div class="nav-path"><strong>TAK Aware (iOS):</strong> Menu &rarr; User Information</div>
-          <div class="nav-path"><strong>ATAK (Android):</strong> Menu &rarr; Settings &rarr; Callsign and Device Preferences</div>
+          <table class="callout">
+            <tr>
+              <td class="callout-bar"></td>
+              <td class="callout-body"><strong>TAK Aware (iOS):</strong> Menu &rarr; User Information</td>
+            </tr>
+          </table>
+          <table class="callout">
+            <tr>
+              <td class="callout-bar"></td>
+              <td class="callout-body"><strong>ATAK (Android):</strong> Menu &rarr; Settings &rarr; Callsign and Device Preferences</td>
+            </tr>
+          </table>
         </div>
         <div class="steps">
           <div class="step">
@@ -515,9 +521,12 @@
           </tr>
         </table>
 
-        <div class="note-box">
-          <strong>&#9201; Temporary Access:</strong> This enrollment expires at the end of the operation. For full-time access, request an account at <strong>{{REQUEST_ACCESS_URL}}</strong>
-        </div>
+        <table class="callout note-box">
+          <tr>
+            <td class="callout-bar"></td>
+            <td class="callout-body"><strong>&#9201; Temporary Access:</strong> This enrollment expires at the end of the operation. For full-time access, request an account at <strong>{{REQUEST_ACCESS_URL}}</strong></td>
+          </tr>
+        </table>
 
       </td>
     </tr>

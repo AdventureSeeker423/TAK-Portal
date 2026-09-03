@@ -1836,20 +1836,21 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               background: #fff !important;
             }
             .flyer-sheet {
-              width: ${letterW}px !important;
-              height: ${letterH}px !important;
-              margin: 0 !important;
-              padding: 0.38in !important;
+              width: ${Math.round(8 * 96)}px !important;
+              height: ${Math.round(10.5 * 96)}px !important;
+              margin: ${Math.round(0.25 * 96)}px !important;
+              padding: 0 !important;
               border: 0 !important;
               background: #fff !important;
-              display: table !important;
-              table-layout: fixed !important;
+              display: block !important;
               overflow: hidden !important;
             }
             .flyer-sheet-inner {
-              display: table-cell !important;
-              vertical-align: top !important;
+              display: block !important;
+              width: 100% !important;
+              height: 100% !important;
               background: #fff !important;
+              border: 0 !important;
             }
             header, .header-row, .header-logo-cell, .header-title-cell, .header-badge-cell {
               background: #0f1b2d !important;
@@ -1890,11 +1891,22 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
               display: table-cell !important;
               vertical-align: top !important;
             }
-            .nav-path, .note-box, .nav-paths, .steps, .qr-wrap {
+            .nav-paths, .steps, .qr-wrap {
               display: block !important;
               width: 100% !important;
               float: none !important;
               position: static !important;
+            }
+            .callout {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              table-layout: fixed !important;
+              background: #eef4fa !important;
+              box-shadow: none !important;
+            }
+            .callout-bar {
+              width: 4px !important;
+              background: #1a5276 !important;
             }
             .qr-wrap, .qr-title, .qr-sub {
               text-align: center !important;
@@ -1945,7 +1957,7 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       // Sample inside the navy header, below the page inset.
       const sampleY = Math.min(
         canvas.height - 32,
-        Math.round(canvas.height * (0.38 / 11)) + 20
+        Math.round(canvas.height * (0.25 / 11)) + 20
       );
       const probe = canvas.getContext("2d").getImageData(
         Math.round(canvas.width * 0.12),
@@ -1967,21 +1979,6 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
         ...captureOpts,
         foreignObjectRendering: false,
       });
-    }
-
-    // Cover residual 1px white fringe at the inner sheet / header join.
-    try {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        const inset = Math.round(canvas.width * (0.38 / 8.5));
-        const fringe = Math.max(2, Math.round(canvas.width * 0.002));
-        const headerH = Math.round(canvas.height * 0.11);
-        ctx.fillStyle = "#0f1b2d";
-        ctx.fillRect(inset, inset, fringe, headerH);
-        ctx.fillRect(canvas.width - inset - fringe, inset, fringe, headerH);
-      }
-    } catch {
-      /* ignore */
     }
 
     return canvas.toDataURL("image/jpeg", 0.92);
