@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.  Minor qual
 ## Version History
 
 ### v1.4.9 - PENDING
+✨ `Enhancement` - Dashboard - Charts - When more than 8 items are shown, the key is hidden<br>
+🐛 `Bug Fix` - Fixes issue with incorrect hover actions/placement on charts<br>
 🐛 `Bug Fix` - Fixes issue with improper margins on page one of the mutual aid packet.
 
 ### v1.4.8 - 9/2/26
