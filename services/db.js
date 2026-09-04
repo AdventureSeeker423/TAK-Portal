@@ -124,6 +124,12 @@ async function waitForSchema(version, timeoutMs = 120000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          id INT PRIMARY KEY,
+          applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `);
       const r = await query("SELECT COALESCE(MAX(id), 0)::int AS id FROM schema_migrations");
       if (Number(r.rows[0]?.id || 0) >= want) return true;
     } catch (_) {

@@ -54,6 +54,16 @@ function hiddenGroupClause(params, includeHidden) {
   return ` AND NOT EXISTS (SELECT 1 FROM unnest($${params.length}::text[]) AS p WHERE lower(name) LIKE p || '%')`;
 }
 
+function isAuthentikPkToken(v) {
+  const s = String(v || "").trim();
+  return /^\d+$/.test(s) || isUuid(s);
+}
+
+function pkStr(v) {
+  if (v == null || v === "") return null;
+  return String(v);
+}
+
 function rowToUser(r, groupPks) {
   if (!r) return null;
   const pk = r.authentik_pk != null ? r.authentik_pk : r.id;
@@ -143,9 +153,12 @@ async function getUserById(id) {
   if (!raw) return null;
   let r;
   if (isUuid(raw)) {
-    r = await db.query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [raw]);
+    r = await db.query(
+      `SELECT * FROM users WHERE id = $1::uuid OR authentik_pk = $1 LIMIT 1`,
+      [raw]
+    );
   } else if (/^\d+$/.test(raw)) {
-    r = await db.query(`SELECT * FROM users WHERE authentik_pk = $1 LIMIT 1`, [Number(raw)]);
+    r = await db.query(`SELECT * FROM users WHERE authentik_pk = $1 LIMIT 1`, [raw]);
   } else {
     r = await db.query(
       `SELECT * FROM users WHERE lower(username) = lower($1) LIMIT 1`,
@@ -162,13 +175,12 @@ async function getUsersByIds(ids) {
   const list = (Array.isArray(ids) ? ids : []).map((x) => String(x).trim()).filter(Boolean);
   if (!list.length) return [];
   const uuids = list.filter(isUuid);
-  const pks = list.filter((x) => /^\d+$/.test(x)).map(Number);
   const names = list.filter((x) => !isUuid(x) && !/^\d+$/.test(x)).map((x) => x.toLowerCase());
   const r = await db.query(
     `SELECT * FROM users
      WHERE pending_delete = false
-       AND (id = ANY($1::uuid[]) OR authentik_pk = ANY($2::int[]) OR lower(username) = ANY($3::text[]))`,
-    [uuids, pks, names]
+       AND (id = ANY($1::uuid[]) OR authentik_pk = ANY($2::text[]) OR lower(username) = ANY($3::text[]))`,
+    [uuids, list, names]
   );
   const users = r.rows.map((row) => rowToUser(row));
   await attachGroups(users);
@@ -215,12 +227,11 @@ async function getGroupsByPks(pks) {
   const list = (Array.isArray(pks) ? pks : []).map((x) => String(x).trim()).filter(Boolean);
   if (!list.length) return [];
   const uuids = list.filter(isUuid);
-  const nums = list.filter((x) => /^\d+$/.test(x)).map(Number);
   const r = await db.query(
     `SELECT * FROM groups
      WHERE pending_delete = false
-       AND (id = ANY($1::uuid[]) OR authentik_pk = ANY($2::int[]))`,
-    [uuids, nums]
+       AND (id = ANY($1::uuid[]) OR authentik_pk = ANY($2::text[]))`,
+    [uuids, list]
   );
   return r.rows.map(rowToGroup);
 }
@@ -242,9 +253,12 @@ async function getGroupById(id) {
   if (!raw) return null;
   let r;
   if (isUuid(raw)) {
-    r = await db.query(`SELECT * FROM groups WHERE id = $1 LIMIT 1`, [raw]);
+    r = await db.query(
+      `SELECT * FROM groups WHERE id = $1::uuid OR authentik_pk = $1 LIMIT 1`,
+      [raw]
+    );
   } else if (/^\d+$/.test(raw)) {
-    r = await db.query(`SELECT * FROM groups WHERE authentik_pk = $1 LIMIT 1`, [Number(raw)]);
+    r = await db.query(`SELECT * FROM groups WHERE authentik_pk = $1 LIMIT 1`, [raw]);
   } else {
     r = await db.query(
       `SELECT * FROM groups WHERE lower(name) = lower($1) LIMIT 1`,
@@ -687,6 +701,8 @@ async function waitForAuthentikPk(username, timeoutMs = 15000) {
 
 module.exports = {
   isUuid,
+  isAuthentikPkToken,
+  pkStr,
   rowToUser,
   rowToGroup,
   getUserByUsername,

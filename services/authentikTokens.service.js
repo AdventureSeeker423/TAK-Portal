@@ -110,10 +110,18 @@ async function getOrCreateEnrollmentAppPassword(params, ttlMinutes = 15) {
   if (!u) throw new Error("Missing username");
 
   const now = new Date();
+  const directoryRepo = require("./directoryRepo.service");
   const cleanedUserId = userId ? String(userId).trim() : "";
-  let resolvedUserId = /^\d+$/.test(cleanedUserId) ? cleanedUserId : null;
+  let resolvedUserId = null;
+  if (cleanedUserId) {
+    const existing = await directoryRepo.getUserById(cleanedUserId).catch(() => null);
+    if (existing && existing.authentik_pk != null) {
+      resolvedUserId = String(existing.authentik_pk);
+    } else if (/^\d+$/.test(cleanedUserId)) {
+      resolvedUserId = cleanedUserId;
+    }
+  }
   if (!resolvedUserId) {
-    const directoryRepo = require("./directoryRepo.service");
     try {
       resolvedUserId = String(await directoryRepo.waitForAuthentikPk(u, 15000));
     } catch (e) {

@@ -101,7 +101,7 @@ async function handleOutboxRow(row) {
     if (payload.password) {
       await api.post(`/core/users/${pk}/set_password/`, { password: payload.password });
     }
-    const groupPks = (payload.groupPks || []).map(String).filter((x) => /^\d+$/.test(x));
+    const groupPks = (payload.groupPks || []).map(String).filter((x) => repo.isAuthentikPkToken(x));
     if (groupPks.length) {
       await api.patch(`/core/users/${pk}/`, { groups: groupPks });
     }
@@ -148,7 +148,7 @@ async function handleOutboxRow(row) {
   if (kind === "set_groups") {
     const pk = row.authentik_pk || payload.authentikPk;
     if (!pk) throw new Error("No authentik pk for set_groups");
-    const groupPks = (payload.groupPks || []).map(String).filter((x) => /^\d+$/.test(x));
+    const groupPks = (payload.groupPks || []).map(String).filter((x) => repo.isAuthentikPkToken(x));
     await api.patch(`/core/users/${pk}/`, { groups: groupPks });
     if (row.entity_id) {
       await db.query(`UPDATE users SET sync_status = 'ok', updated_at = now() WHERE id = $1`, [row.entity_id]);
@@ -244,7 +244,7 @@ async function upsertAuthentikUser(akUser, pending) {
   const pk = akUser.pk;
   const username = String(akUser.username || "").trim();
   if (!username) return;
-  if (pending.byPk.has(Number(pk)) || pending.byUsername.has(username.toLowerCase())) {
+  if (pending.byPk.has(String(pk)) || pending.byUsername.has(username.toLowerCase())) {
     return;
   }
   const attrs = akUser.attributes || {};
@@ -327,7 +327,7 @@ async function upsertAuthentikGroup(akGroup, pending) {
   const pk = akGroup.pk;
   const name = String(akGroup.name || "").trim();
   if (!name) return;
-  if (pending.byPk.has(Number(pk))) return;
+  if (pending.byPk.has(String(pk))) return;
   const attrs = akGroup.attributes || {};
   const cols = extractGroupColumns(attrs);
   await db.query(
@@ -439,11 +439,11 @@ async function inboundSnapshot() {
     const seenUserPks = new Set();
     const seenGroupPks = new Set();
     for (const g of groups) {
-      seenGroupPks.add(Number(g.pk));
+      seenGroupPks.add(String(g.pk));
       await upsertAuthentikGroup(g, pending);
     }
     for (const u of users) {
-      seenUserPks.add(Number(u.pk));
+      seenUserPks.add(String(u.pk));
       await upsertAuthentikUser(u, pending);
     }
 
@@ -456,7 +456,7 @@ async function inboundSnapshot() {
         `UPDATE users SET is_active = false, updated_at = now()
          WHERE authentik_pk IS NOT NULL
            AND pending_delete = false
-           AND NOT (authentik_pk = ANY($1::int[]))
+           AND NOT (authentik_pk = ANY($1::text[]))
            AND lower(username) <> ALL($2::text[])`,
         [seenArr, Array.from(pendingCreate)]
       );

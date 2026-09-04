@@ -10,7 +10,7 @@ db.query = async (sql, params) => {
     rows: [
       {
         id: "11111111-1111-4111-8111-111111111111",
-        authentik_pk: 9,
+        authentik_pk: "08078bff-cca2-4b47-b4aa-fd87229168ef",
         username: "badge.so",
         name: "Officer",
         email: "a@example.com",

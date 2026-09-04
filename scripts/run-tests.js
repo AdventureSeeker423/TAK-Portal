@@ -35,6 +35,8 @@ const TEST_FILES = [
   "directorySync.deadLetter.test.js",
   "directorySync.inboundAbort.test.js",
   "health.migration.test.js",
+  "mouStore.ensure.test.js",
+  "directoryPkText.test.js",
 ];
 
 const testsDir = path.join(__dirname, "..", "tests");

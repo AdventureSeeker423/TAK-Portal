@@ -53,7 +53,7 @@ async function enqueue(row, client) {
       row.kind,
       row.entityType || null,
       row.entityId || null,
-      row.authentikPk != null ? Number(row.authentikPk) : null,
+      row.authentikPk != null ? String(row.authentikPk) : null,
       row.username || null,
       JSON.stringify(payload),
     ]
@@ -84,7 +84,7 @@ async function pendingEntityKeys() {
   for (const row of r.rows) {
     if (row.entity_id) byUserId.add(String(row.entity_id));
     if (row.username) byUsername.add(String(row.username).toLowerCase());
-    if (row.authentik_pk != null) byPk.add(Number(row.authentik_pk));
+    if (row.authentik_pk != null) byPk.add(String(row.authentik_pk));
     const k = `${row.kind}:${row.entity_id || row.username || row.authentik_pk}`;
     byKind.set(k, row);
   }

@@ -1009,7 +1009,7 @@ async function bulkAddUsersToGroup(groupId, userPks, { preloadedGroup } = {}) {
         authentikPk: group.authentik_pk,
         payload: {
           authentikPk: group.authentik_pk,
-          userPks: toAdd.filter((x) => /^\d+$/.test(String(x))),
+          userPks: toAdd.filter((x) => directoryRepo.isAuthentikPkToken(x)),
         },
       },
       c
@@ -1056,7 +1056,7 @@ async function bulkRemoveUsersFromGroup(groupId, userPks, { preloadedGroup } = {
         authentikPk: group.authentik_pk,
         payload: {
           authentikPk: group.authentik_pk,
-          userPks: Array.from(toRemove).filter((x) => /^\d+$/.test(String(x))),
+          userPks: Array.from(toRemove).filter((x) => directoryRepo.isAuthentikPkToken(x)),
         },
       },
       c

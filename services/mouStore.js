@@ -23,6 +23,7 @@ function ensureDir(dirPath) {
 }
 
 function ensureParentDir(filePath) {
+  if (!filePath) return;
   ensureDir(path.dirname(filePath));
 }
 
@@ -38,6 +39,7 @@ function readJsonFile(filePath, fallback) {
 }
 
 function atomicWriteFile(filePath, content, encoding) {
+  if (!filePath) return;
   ensureParentDir(filePath);
   const tmpPath = `${filePath}.tmp`;
   if (Buffer.isBuffer(content)) {
@@ -57,56 +59,7 @@ function ensureStorage() {
   ensureDir(VERSIONS_DIR);
   ensureDir(SIGNED_DIR);
   ensureDir(SIGNATURES_DIR);
-
-  if (!fs.existsSync(INDEX_PATH)) {
-    atomicWriteJson(INDEX_PATH, {
-      schemaVersion: 1,
-      streams: [],
-    });
-  }
-
-  if (!fs.existsSync(USER_AGREEMENT_PATH)) {
-    atomicWriteJson(USER_AGREEMENT_PATH, {
-      schemaVersion: 1,
-      currentVersion: 0,
-      versions: [],
-    });
-  }
-
-  if (!fs.existsSync(ACKS_PATH)) {
-    atomicWriteJson(ACKS_PATH, {
-      schemaVersion: 1,
-      items: [],
-    });
-  }
-
-  if (!fs.existsSync(VIEWS_PATH)) {
-    atomicWriteJson(VIEWS_PATH, {
-      schemaVersion: 1,
-      items: [],
-    });
-  }
-
-  if (!fs.existsSync(REMINDERS_PATH)) {
-    atomicWriteJson(REMINDERS_PATH, {
-      schemaVersion: 1,
-      agency: {},
-    });
-  }
-
-  if (!fs.existsSync(ARCHIVED_DOCUMENTS_PATH)) {
-    atomicWriteJson(ARCHIVED_DOCUMENTS_PATH, {
-      schemaVersion: 1,
-      items: [],
-    });
-  }
-
-  if (!fs.existsSync(SIGN_INVITES_PATH)) {
-    atomicWriteJson(SIGN_INVITES_PATH, {
-      schemaVersion: 1,
-      items: [],
-    });
-  }
+  // JSON indexes live in Postgres (pgCache). Only binary/HTML dirs stay on disk.
 }
 
 function normalizeVersion(version) {

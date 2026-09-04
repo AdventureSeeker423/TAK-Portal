@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS authentik_outbox (
   kind TEXT NOT NULL,
   entity_type TEXT,
   entity_id UUID,
-  authentik_pk INT,
+  authentik_pk TEXT,
   username TEXT,
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   attempts INT NOT NULL DEFAULT 0,
@@ -86,7 +86,7 @@ INSERT INTO app_update_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  authentik_pk INT UNIQUE,
+  authentik_pk TEXT UNIQUE,
   username TEXT NOT NULL UNIQUE,
   name TEXT,
   email TEXT,
@@ -136,13 +136,13 @@ CREATE INDEX IF NOT EXISTS users_badge_trgm_idx ON users USING gin (badge_number
 
 CREATE TABLE IF NOT EXISTS groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  authentik_pk INT UNIQUE,
+  authentik_pk TEXT UNIQUE,
   name TEXT NOT NULL,
   cn TEXT,
   description TEXT,
   is_private BOOLEAN NOT NULL DEFAULT false,
   is_superuser BOOLEAN NOT NULL DEFAULT false,
-  parent_pk INT,
+  parent_pk TEXT,
   num_pk INT,
   created_type TEXT,
   created_type_detail TEXT,
