@@ -110,8 +110,8 @@
       <div class="card" style="margin: 0;">
         <h2 style="margin-top: 0;">Edit Group Assignments</h2>
         <div class="row">
-          <label style="flex: 1; min-width: 0;">Integration (read-only)
-            <input type="text" id="editIntegrationUsername" readonly style="width: 100%;" />
+          <label style="flex: 1; min-width: 0;">Integration Title (non-editable)
+            <input type="text" id="editIntegrationUsername" readonly tabindex="-1" class="integrationTitleReadonly" style="width: 100%;" />
           </label>
         </div>
         <div class="editUserGroupsSection" style="margin-top: 12px;">
@@ -1160,6 +1160,13 @@
 
 .createIntegrationSubmitBtn {
   margin-left: auto;
+}
+
+.integrationTitleReadonly {
+  background: rgba(128, 128, 128, 0.28);
+  color: var(--muted, #9aa3ad);
+  cursor: not-allowed;
+  opacity: 0.9;
 }
 
 .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
