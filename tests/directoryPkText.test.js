@@ -12,7 +12,9 @@ const sql002 = fs.readFileSync(
   path.join(__dirname, "..", "db", "migrations", "002_authentik_pk_text.sql"),
   "utf8"
 );
+assert.ok(/DROP VIEW IF EXISTS v_group_users/.test(sql002));
 assert.ok(/ALTER COLUMN authentik_pk TYPE TEXT/.test(sql002));
+assert.ok(/CREATE OR REPLACE VIEW v_group_users/.test(sql002));
 
 const init = fs.readFileSync(
   path.join(__dirname, "..", "db", "migrations", "001_init.sql"),
