@@ -15,7 +15,14 @@ function extractUserColumns(attributes, user = {}) {
   return {
     agency: str(a.agency || user.agency || "").trim() || null,
     agency_name: str(a.agency_name || user.agency_name || "").trim() || null,
-    agency_abbreviation: str(a.agency_abbreviation || "").trim() || null,
+    agency_abbreviation:
+      str(
+        a.agency_abbreviation ||
+          a.agencyAbbreviation ||
+          a.agencyAbbr ||
+          a.agencyabbr ||
+          ""
+      ).trim() || null,
     agency_color: str(a.agency_color || "").trim() || null,
     badge_number: str(a.badge_number || "").trim() || null,
     role: str(a.role || "").trim() || null,
@@ -40,13 +47,16 @@ function extractUserColumns(attributes, user = {}) {
 
 function extractGroupColumns(attributes) {
   const a = attrsOf(attributes);
+  const privateRaw = str(a.private || "").trim().toLowerCase();
   return {
     created_type: str(a.created_type || "").trim() || null,
     created_type_detail: str(a.created_type_detail || "").trim() || null,
     created_at_attr: a.created_at || null,
     created_by_username: str(a.created_by_username || "").trim() || null,
     created_by_display_name: str(a.created_by_display_name || "").trim() || null,
-    cn: str(a.cn || "").trim() || null,
+    cn: str(a.CN || a.cn || "").trim() || null,
+    description: str(a.description || "").trim() || null,
+    is_private: privateRaw === "yes" || privateRaw === "true" || privateRaw === "1",
   };
 }
 

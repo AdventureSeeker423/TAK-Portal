@@ -3,7 +3,7 @@
  * Scoped by agency full name — not by shared abbreviation or username suffix.
  */
 
-const api = require("./authentik");
+const directoryRepo = require("./directoryRepo.service");
 const { getString } = require("./env");
 const agenciesStore = require("./agencies.service");
 const templatesStore = require("./templates.service");
@@ -28,25 +28,7 @@ function isAgencyAdminGroupName(name) {
 async function getGroupByNameUnfiltered(groupName) {
   const name = String(groupName || "").trim();
   if (!name) return null;
-
-  try {
-    const res = await api.get(`/core/groups/?name=${encodeURIComponent(name)}`);
-    const results = Array.isArray(res?.data?.results) ? res.data.results : [];
-    const exact = results.find(
-      (g) => String(g?.name || "").trim().toLowerCase() === name.toLowerCase()
-    );
-    if (exact) return exact;
-  } catch (_) {
-    // fall through
-  }
-
-  const res2 = await api.get(`/core/groups/?search=${encodeURIComponent(name)}`);
-  const results2 = Array.isArray(res2?.data?.results) ? res2.data.results : [];
-  return (
-    results2.find(
-      (g) => String(g?.name || "").trim().toLowerCase() === name.toLowerCase()
-    ) || null
-  );
+  return directoryRepo.getGroupById(name);
 }
 
 async function ensureAgencyAdminGroupExists(agency) {

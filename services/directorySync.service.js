@@ -338,9 +338,10 @@ async function upsertAuthentikGroup(akGroup, pending) {
     `INSERT INTO groups (
       authentik_pk, name, cn, description, is_superuser, parent_pk, num_pk, attributes,
       created_type, created_type_detail, created_at_attr, created_by_username, created_by_display_name,
+      is_private,
       sync_status, pending_delete, updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,'ok', false, now()
+      $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,'ok', false, now()
     )
     ON CONFLICT (authentik_pk) DO UPDATE SET
       name = EXCLUDED.name,
@@ -355,13 +356,15 @@ async function upsertAuthentikGroup(akGroup, pending) {
       created_at_attr = EXCLUDED.created_at_attr,
       created_by_username = EXCLUDED.created_by_username,
       created_by_display_name = EXCLUDED.created_by_display_name,
+      is_private = EXCLUDED.is_private,
       sync_status = 'ok',
       pending_delete = false,
       updated_at = now()`,
     [
-      pk, name, cols.cn, akGroup.is_superuser ? null : (akGroup.attributes?.notes || null),
+      pk, name, cols.cn, cols.description,
       !!akGroup.is_superuser, akGroup.parent || null, akGroup.num_pk || null, JSON.stringify(attrs),
       cols.created_type, cols.created_type_detail, cols.created_at_attr, cols.created_by_username, cols.created_by_display_name,
+      cols.is_private,
     ]
   );
 }

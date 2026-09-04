@@ -1487,9 +1487,9 @@ function userHasAnyAgencyAdminGroup(user) {
 
 function getHomeSuffixForUser(user) {
   const attrs = user?.attributes || {};
-  const direct = String(attrs.agency || "").trim().toLowerCase();
+  const direct = String(user?.agency || attrs.agency || "").trim().toLowerCase();
   if (direct) return direct;
-  const abbr = String(attrs.agency_abbreviation || "").trim().toLowerCase();
+  const abbr = String(user?.agency_abbreviation || attrs.agency_abbreviation || "").trim().toLowerCase();
   if (!abbr) return "";
   const a = allAgenciesCache.find(
     (x) => String(x?.groupPrefix || "").trim().toLowerCase() === abbr
@@ -2013,7 +2013,7 @@ function getSortValue(user, key){
   if (key === "name") return normalizeSortValue(lastNameForSort(user.name));
   if (key === "status") return user.is_active ? "enabled" : "disabled";
   if (key === "template") {
-    const raw = String(user?.attributes?.current_template || "").trim();
+    const raw = String(user?.current_template || user?.attributes?.current_template || "").trim();
     if (!raw || raw.toLowerCase() === "manual group selection") return "";
     return normalizeSortValue(raw);
   }
@@ -2042,7 +2042,7 @@ function renderResults(users){
     const toggleLabel = u.is_active ? "Disable" : "Enable";
     const toggleBtnClass = u.is_active ? "btn caution" : "btn";
     const locked = userActionsLocked(u.username);
-    const currentTemplateRaw = String(u?.attributes?.current_template || "").trim();
+    const currentTemplateRaw = String(u?.current_template || u?.attributes?.current_template || "").trim();
     const currentTemplateDisplay = (!currentTemplateRaw || currentTemplateRaw === "Manual Group Selection")
       ? "—"
       : currentTemplateRaw;
@@ -2198,7 +2198,7 @@ async function loadTemplatesForAgency(agencySuffix){
     agencyTemplatesCache = sortedTemplates;
     const matchingTemplateKey = resolveTemplateApplyValueForUser(selectedUser, sortedTemplates);
     templateApplySelect.value = matchingTemplateKey || "manual";
-    const currentRoleFromUser = selectedUser?.attributes?.role;
+    const currentRoleFromUser = selectedUser?.role || selectedUser?.attributes?.role;
     renderRoleOptions(roleSelect, currentRoleFromUser || roleSelect?.value || "Team Member");
     if (applyChangesBtn) applyChangesBtn.disabled = false;
   } catch (err) {
@@ -2290,7 +2290,7 @@ function findMatchingTemplateKeyForUser(user, templates) {
 
 function resolveTemplateApplyValueForUser(user, templates) {
   const candidates = Array.isArray(templates) ? templates : [];
-  const current = String(user?.attributes?.current_template || "").trim();
+  const current = String(user?.current_template || user?.attributes?.current_template || "").trim();
 
   if (current) {
     const lower = current.toLowerCase();
@@ -2866,11 +2866,11 @@ window.editUser = async (userPk) => {
 
     if (emailInput) emailInput.value = selectedUser.email || "";
     if (radioCallsignInput) {
-      radioCallsignInput.value = String(selectedUser?.attributes?.radio_callsign || "").trim();
+      radioCallsignInput.value = String(selectedUser?.radio_callsign || selectedUser?.attributes?.radio_callsign || "").trim();
     }
     renderRoleOptions(
       roleSelect,
-      selectedUser?.attributes?.role || "Team Member"
+      selectedUser?.role || selectedUser?.attributes?.role || "Team Member"
     );
 
     const { first, last } = splitName(selectedUser.name || "");

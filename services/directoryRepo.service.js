@@ -64,18 +64,41 @@ function pkStr(v) {
   return String(v);
 }
 
+function applyUserColumnAttrs(r, attrs) {
+  const cols = {
+    agency: r.agency,
+    agency_name: r.agency_name,
+    agency_abbreviation: r.agency_abbreviation,
+    agency_color: r.agency_color,
+    badge_number: r.badge_number,
+    role: r.role,
+    radio_callsign: r.radio_callsign,
+    current_template: r.current_template,
+    created_template: r.created_template,
+    created_at: r.created_at_attr,
+    created_method: r.created_method,
+    created_by_username: r.created_by_username,
+    created_by_display_name: r.created_by_display_name,
+    mutual_aid: r.mutual_aid,
+    mutual_aid_type: r.mutual_aid_type,
+    mutual_aid_group: r.mutual_aid_group,
+    integration_type: r.integration_type,
+    integration_scope: r.integration_scope,
+    integration_title: r.integration_title,
+    tak_integration_group: r.tak_integration_group,
+    state: r.state,
+    county: r.county,
+  };
+  for (const [key, value] of Object.entries(cols)) {
+    if (value != null && String(value).trim() !== "") attrs[key] = value;
+  }
+  return attrs;
+}
+
 function rowToUser(r, groupPks) {
   if (!r) return null;
   const pk = r.authentik_pk != null ? r.authentik_pk : r.id;
-  const attrs = Object.assign({}, r.attributes || {});
-  if (r.agency && !attrs.agency) attrs.agency = r.agency;
-  if (r.agency_name && !attrs.agency_name) attrs.agency_name = r.agency_name;
-  if (r.agency_abbreviation && !attrs.agency_abbreviation) {
-    attrs.agency_abbreviation = r.agency_abbreviation;
-  }
-  if (r.current_template && !attrs.current_template) attrs.current_template = r.current_template;
-  if (r.role && !attrs.role) attrs.role = r.role;
-  if (r.radio_callsign && !attrs.radio_callsign) attrs.radio_callsign = r.radio_callsign;
+  const attrs = applyUserColumnAttrs(r, Object.assign({}, r.attributes || {}));
   return {
     pk,
     id: r.id,
@@ -94,6 +117,7 @@ function rowToUser(r, groupPks) {
     agency_abbreviation: r.agency_abbreviation || attrs.agency_abbreviation || null,
     current_template: r.current_template || attrs.current_template || null,
     role: r.role || attrs.role || null,
+    radio_callsign: r.radio_callsign || attrs.radio_callsign || null,
     groups: Array.isArray(groupPks) ? groupPks : r.groups || [],
     pending_delete: r.pending_delete,
     sync_status: r.sync_status,
@@ -103,6 +127,18 @@ function rowToUser(r, groupPks) {
 function rowToGroup(r) {
   if (!r) return null;
   const pk = r.authentik_pk != null ? r.authentik_pk : r.id;
+  const attrs = Object.assign({}, r.attributes || {});
+  if (r.created_type) attrs.created_type = r.created_type;
+  if (r.created_type_detail) attrs.created_type_detail = r.created_type_detail;
+  if (r.created_at_attr && !attrs.created_at) attrs.created_at = r.created_at_attr;
+  if (r.created_by_username) attrs.created_by_username = r.created_by_username;
+  if (r.created_by_display_name) attrs.created_by_display_name = r.created_by_display_name;
+  if (r.cn) {
+    attrs.cn = r.cn;
+    if (!attrs.CN) attrs.CN = r.cn;
+  }
+  if (r.description) attrs.description = r.description;
+  attrs.private = r.is_private === true ? "yes" : "no";
   return {
     pk,
     id: r.id,
@@ -110,9 +146,14 @@ function rowToGroup(r) {
     authentik_pk: r.authentik_pk,
     name: r.name,
     is_superuser: r.is_superuser,
+    is_private: !!r.is_private,
     parent: r.parent_pk,
     num_pk: r.num_pk,
-    attributes: r.attributes || {},
+    cn: r.cn || attrs.CN || attrs.cn || null,
+    description: r.description || attrs.description || null,
+    created_type: r.created_type || attrs.created_type || null,
+    created_type_detail: r.created_type_detail || attrs.created_type_detail || null,
+    attributes: attrs,
     pending_delete: r.pending_delete,
     sync_status: r.sync_status,
   };
@@ -682,11 +723,13 @@ async function insertLocalGroup({ name, attributes }, client) {
   const q = client || db;
   const cols = extractGroupColumns(attributes);
   const r = await q.query(
-    `INSERT INTO groups (name, cn, attributes, created_type, created_type_detail, created_at_attr, created_by_username, created_by_display_name, sync_status)
-     VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,$8,'pending') RETURNING *`,
+    `INSERT INTO groups (name, cn, description, is_private, attributes, created_type, created_type_detail, created_at_attr, created_by_username, created_by_display_name, sync_status)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,'pending') RETURNING *`,
     [
       name,
       cols.cn,
+      cols.description,
+      cols.is_private,
       JSON.stringify(attributes || {}),
       cols.created_type,
       cols.created_type_detail,
@@ -728,6 +771,8 @@ async function updateLocalGroup(id, patch, client) {
       attributes = COALESCE($4::jsonb, attributes),
       created_type = COALESCE($5, created_type),
       created_type_detail = COALESCE($6, created_type_detail),
+      description = CASE WHEN $4::jsonb IS NULL THEN description ELSE $8 END,
+      is_private = CASE WHEN $4::jsonb IS NULL THEN is_private ELSE $9 END,
       sync_status = COALESCE($7, sync_status),
       updated_at = now()
      WHERE id = $1
@@ -740,6 +785,8 @@ async function updateLocalGroup(id, patch, client) {
       cols.created_type || null,
       cols.created_type_detail || null,
       patch.sync_status || "pending",
+      patch.attributes ? cols.description : null,
+      patch.attributes ? cols.is_private : null,
     ]
   );
   return rowToGroup(r.rows[0]);

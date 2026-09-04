@@ -6,7 +6,7 @@ const regionsSvc = require("../services/regions.service");
 const accessSvc = require("../services/access.service");
 const usersService = require("../services/users.service");
 const groupsService = require("../services/groups.service");
-const api = require("../services/authentik");
+const directoryRepo = require("../services/directoryRepo.service");
 const auditSvc = require("../services/auditLog.service");
 const agencyAbbrevRenameSvc = require("../services/agencyAbbrevRename.service");
 const agencyNameRenameSvc = require("../services/agencyNameRename.service");
@@ -67,31 +67,12 @@ async function ensureAgencyAdminGroupExists(agency) {
   }
 }
 
-// IMPORTANT:
-// The portal intentionally hides internal Authentik groups from /api/groups
-// (via GROUPS_HIDDEN_PREFIXES, often including "authentik-").
-// Agencies need to look up their computed admin group anyway.
-// So, for the agencies page ONLY, we query Authentik directly to resolve
-// a group by name (unfiltered).
+// Hidden prefixes (often including "authentik-") apply to paged /api/groups search.
+// Agency admin groups still need an exact name lookup against local Postgres.
 async function getGroupByNameUnfiltered(groupName) {
   const name = String(groupName || "").trim();
   if (!name) throw new Error("Group name is required");
-
-  // 1) Try exact-name filter (fast if supported)
-  try {
-    const res = await api.get(`/core/groups/?name=${encodeURIComponent(name)}`);
-    const results = Array.isArray(res?.data?.results) ? res.data.results : [];
-    const exact = results.find(g => String(g?.name || "").trim().toLowerCase() === name.toLowerCase());
-    if (exact) return exact;
-  } catch (e) {
-    // ignore and fall back to search
-  }
-
-  // 2) Fallback: use search and then exact-match in JS
-  const res2 = await api.get(`/core/groups/?search=${encodeURIComponent(name)}`);
-  const results2 = Array.isArray(res2?.data?.results) ? res2.data.results : [];
-  const exact2 = results2.find(g => String(g?.name || "").trim().toLowerCase() === name.toLowerCase());
-  return exact2 || null;
+  return directoryRepo.getGroupById(name);
 }
 
 function normalizeAgency(a) {

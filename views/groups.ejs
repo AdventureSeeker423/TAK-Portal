@@ -488,7 +488,7 @@ function getSortValue(group, key){
   if (!group) return "";
   if (key === "name") return normalizeSortValue(group.name);
   if (key === "private") {
-    const isPriv = normalizeSortValue(group?.attributes?.private) === "yes";
+    const isPriv = groupIsPrivate(group);
     // Sort as 0/1 so non-private comes first in ascending order
     return isPriv ? "1" : "0";
   }
@@ -1026,10 +1026,28 @@ function normalizeCreatedType(raw) {
   return String(raw || "").trim().toLowerCase();
 }
 
+function groupCreatedType(g) {
+  return normalizeCreatedType(g?.created_type || g?.attributes?.created_type);
+}
+
+function groupCreatedTypeDetail(g) {
+  return String(g?.created_type_detail || g?.attributes?.created_type_detail || "").trim();
+}
+
+function groupIsPrivate(g) {
+  if (g && g.is_private === true) return true;
+  if (g && g.is_private === false) return false;
+  return String(g?.attributes?.private || "").trim().toLowerCase() === "yes";
+}
+
+function groupDescription(g) {
+  return String(g?.description || g?.attributes?.description || "").trim();
+}
+
 /** Scope bucket for Existing Groups filters (agency / county / region / state / global). */
 function getPortalGroupScope(g) {
   const parsed = parseGroupName(g?.name || "");
-  const createdType = normalizeCreatedType(g?.attributes?.created_type);
+  const createdType = groupCreatedType(g);
 
   // Name patterns win for scoped types (fixes legacy groups mis-tagged as Global).
   if (
@@ -1059,8 +1077,8 @@ function getPortalGroupStateDetail(g) {
   if (parsed.type === "state" && parsed.state) {
     return String(parsed.state).trim().toUpperCase();
   }
-  if (normalizeCreatedType(g?.attributes?.created_type) === "state") {
-    return String(g?.attributes?.created_type_detail || "").trim().toUpperCase();
+  if (groupCreatedType(g) === "state") {
+    return groupCreatedTypeDetail(g).toUpperCase();
   }
   return "";
 }
@@ -1070,8 +1088,8 @@ function getPortalGroupCountyDetail(g) {
   if (parsed.type === "county" && parsed.county) {
     return String(parsed.county).trim();
   }
-  if (normalizeCreatedType(g?.attributes?.created_type) === "county") {
-    return String(g?.attributes?.created_type_detail || "").trim();
+  if (groupCreatedType(g) === "county") {
+    return groupCreatedTypeDetail(g);
   }
   return "";
 }
@@ -1081,15 +1099,15 @@ function getPortalGroupRegionDetail(g) {
   if (parsed.type === "region" && parsed.region) {
     return String(parsed.region).trim();
   }
-  if (normalizeCreatedType(g?.attributes?.created_type) === "region") {
-    return String(g?.attributes?.created_type_detail || "").trim();
+  if (groupCreatedType(g) === "region") {
+    return groupCreatedTypeDetail(g);
   }
   return "";
 }
 
 function getPortalGroupAgencyPrefixDetail(g) {
-  if (normalizeCreatedType(g?.attributes?.created_type) === "agency") {
-    const detail = String(g?.attributes?.created_type_detail || "").trim();
+  if (groupCreatedType(g) === "agency") {
+    const detail = groupCreatedTypeDetail(g);
     if (detail) {
       const byName = agenciesCache.find(
         (a) => String(a.name || "").trim().toLowerCase() === detail.toLowerCase()
@@ -1106,8 +1124,8 @@ function getPortalGroupAgencyPrefixDetail(g) {
 }
 
 function getPortalGroupAgencyNameDetail(g) {
-  if (normalizeCreatedType(g?.attributes?.created_type) === "agency") {
-    return String(g?.attributes?.created_type_detail || "").trim();
+  if (groupCreatedType(g) === "agency") {
+    return groupCreatedTypeDetail(g);
   }
   const prefix = getPortalGroupAgencyPrefixDetail(g);
   if (!prefix) return "";
@@ -1155,8 +1173,8 @@ function isGroupEditable(groupOrName){
 
   // Prefer full group object (attribute ownership); accept name string for legacy callers.
   if (groupOrName && typeof groupOrName === "object") {
-    const detail = String(groupOrName?.attributes?.created_type_detail || "").trim();
-    const createdType = normalizeCreatedType(groupOrName?.attributes?.created_type);
+    const detail = groupCreatedTypeDetail(groupOrName);
+    const createdType = groupCreatedType(groupOrName);
     if (createdType === "agency" && detail) {
       return agenciesCache.some(
         (a) => String(a.name || "").trim().toLowerCase() === detail.toLowerCase()
@@ -1324,8 +1342,8 @@ function renderGroups(){
   tbody.innerHTML = filtered.map(g => {
     const locked = groupActionsLocked(g.name);
     const editable = !locked && isGroupEditable(g);
-    const desc = String(g?.attributes?.description || "").trim();
-    const isPrivate = String(g?.attributes?.private || "").trim().toLowerCase() === "yes";
+    const desc = groupDescription(g);
+    const isPrivate = groupIsPrivate(g);
     const patchedWithLabel =
       CAN_SEE_CHANNEL_PATCH && Array.isArray(g.patchedWith) && g.patchedWith.length
         ? g.patchedWith.join(", ")
@@ -1731,11 +1749,8 @@ window.editGroupName = async (groupId) => {
 
   const g = (groupsCache || []).find(x => String(x.pk) === String(groupId));
   const currentName = String(g?.name || "").trim();
-  const currentDescription = String(g?.attributes?.description || "").trim();
-	  const currentPrivateRaw = String(g?.attributes?.private || "no").trim().toLowerCase();
-	  const currentPrivate = (currentPrivateRaw === "yes" || currentPrivateRaw === "true" || currentPrivateRaw === "1")
-	    ? "yes"
-	    : "no";
+  const currentDescription = groupDescription(g);
+	  const currentPrivate = groupIsPrivate(g) ? "yes" : "no";
 
   if (groupActionsLocked(currentName)) {
     setMsg(listMsg, `Actions are locked for group ${currentName || groupId}`, false);

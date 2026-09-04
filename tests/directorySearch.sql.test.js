@@ -94,6 +94,31 @@ const directoryRepo = require("../services/directoryRepo.service");
   const pkSql = sqlCalls.find((c) => /COALESCE\(authentik_pk/.test(c.sql) && /lower\(agency\)/.test(c.sql));
   assert.ok(pkSql, "agency mass-assign should select user pks by agency suffix");
 
+  const { extractUserColumns, extractGroupColumns } = require("../services/userAttributes.util");
+  const userCols = extractUserColumns({
+    agency: "so",
+    agencyAbbreviation: "SO",
+    radio_callsign: "UNIT1",
+    current_template: "Patrol",
+  });
+  assert.strictEqual(userCols.agency, "so");
+  assert.strictEqual(userCols.agency_abbreviation, "SO");
+  assert.strictEqual(userCols.radio_callsign, "UNIT1");
+  assert.strictEqual(userCols.current_template, "Patrol");
+
+  const groupCols = extractGroupColumns({
+    CN: "SO Patrol",
+    private: "yes",
+    description: "Night shift",
+    created_type: "Agency",
+    created_type_detail: "Sheriff",
+  });
+  assert.strictEqual(groupCols.cn, "SO Patrol");
+  assert.strictEqual(groupCols.is_private, true);
+  assert.strictEqual(groupCols.description, "Night shift");
+  assert.strictEqual(groupCols.created_type, "Agency");
+  assert.strictEqual(groupCols.created_type_detail, "Sheriff");
+
   console.log("directorySearch.sql.test.js: ok");
 })().catch((err) => {
   console.error(err);

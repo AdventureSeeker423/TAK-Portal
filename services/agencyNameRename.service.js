@@ -3,7 +3,7 @@
  * Scoped by agency suffix + index; discovers users/groups by old name from agencies.json.
  */
 
-const api = require("./authentik");
+const directoryRepo = require("./directoryRepo.service");
 const { getString } = require("./env");
 const agenciesStore = require("./agencies.service");
 const userRequestsStore = require("./userRequests.store");
@@ -43,25 +43,7 @@ function getTakGroupPrefix(groupName) {
 async function getGroupByNameUnfiltered(groupName) {
   const name = String(groupName || "").trim();
   if (!name) return null;
-
-  try {
-    const res = await api.get(`/core/groups/?name=${encodeURIComponent(name)}`);
-    const results = Array.isArray(res?.data?.results) ? res.data.results : [];
-    const exact = results.find(
-      (g) => String(g?.name || "").trim().toLowerCase() === name.toLowerCase()
-    );
-    if (exact) return exact;
-  } catch (_) {
-    // fall through
-  }
-
-  const res2 = await api.get(`/core/groups/?search=${encodeURIComponent(name)}`);
-  const results2 = Array.isArray(res2?.data?.results) ? res2.data.results : [];
-  return (
-    results2.find(
-      (g) => String(g?.name || "").trim().toLowerCase() === name.toLowerCase()
-    ) || null
-  );
+  return directoryRepo.getGroupById(name);
 }
 
 async function ensureAgencyAdminGroupExists(agency) {

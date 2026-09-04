@@ -1,7 +1,7 @@
 const { getBool, getString } = require("./env");
 const groupsService = require("./groups.service");
 const agenciesStore = require("./agencies.service");
-const api = require("./authentik");
+const directoryRepo = require("./directoryRepo.service");
 const pgCache = require("./pgCache");
 
 const LEDGER_PATH = null;
@@ -122,29 +122,7 @@ function buildStateGroupName(state, title) {
 async function getGroupByNameUnfiltered(groupName) {
   const name = String(groupName || "").trim();
   if (!name) return null;
-
-  try {
-    const res = await api.get(`/core/groups/?name=${encodeURIComponent(name)}`);
-    const results = Array.isArray(res?.data?.results) ? res.data.results : [];
-    const exact = results.find(
-      (g) => String(g?.name || "").trim().toLowerCase() === name.toLowerCase()
-    );
-    if (exact) return exact;
-  } catch (_) {
-    // fall through to search
-  }
-
-  try {
-    const res2 = await api.get(`/core/groups/?search=${encodeURIComponent(name)}`);
-    const results2 = Array.isArray(res2?.data?.results) ? res2.data.results : [];
-    return (
-      results2.find(
-        (g) => String(g?.name || "").trim().toLowerCase() === name.toLowerCase()
-      ) || null
-    );
-  } catch (_) {
-    return null;
-  }
+  return directoryRepo.getGroupById(name);
 }
 
 function isDuplicateNameError(err) {

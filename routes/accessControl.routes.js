@@ -12,7 +12,6 @@ const auditSvc = require("../services/auditLog.service");
 const accessSvc = require("../services/access.service");
 const agenciesSvc = require("../services/agencies.service");
 const { getBool } = require("../services/env");
-const api = require("../services/authentik");
 
 const router = express.Router();
 const PERMISSION_UI_ORDER = [
@@ -262,10 +261,9 @@ router.get("/effective", async (req, res) => {
       return res.status(400).json({ error: "Missing ?user= (Authentik username)" });
     }
 
-    const r = await api.get("/core/users/", { params: { username: raw } });
-    const row = (r.data && r.data.results) ? r.data.results[0] : null;
+    const row = await usersSvc.getUserById(raw);
     if (!row) {
-      return res.status(404).json({ error: "User not found in Authentik" });
+      return res.status(404).json({ error: "User not found" });
     }
 
     const { user, groupNames } = await loadGroupNamesForUserId(row.pk);

@@ -1,4 +1,3 @@
-const authentik = require("./authentik");
 const accessSvc = require("./access.service");
 const emailSvc = require("./email.service");
 const mouService = require("./mouService");
@@ -55,48 +54,7 @@ function parseConfiguredGroupNames(raw) {
 async function resolveGroupByName(groupName) {
   const name = String(groupName || "").trim();
   if (!name) return null;
-
-  try {
-    const groupResp = await authentik.get(
-      `/core/groups/?name=${encodeURIComponent(name)}`
-    );
-    const results = Array.isArray(groupResp.data?.results)
-      ? groupResp.data.results
-      : [];
-    const exact = results.find(
-      (group) =>
-        String(group?.name || "").trim().toLowerCase() === name.toLowerCase()
-    );
-    if (exact) return exact;
-  } catch (err) {
-    console.warn(
-      "[mou-scheduler] group lookup by name failed:",
-      name,
-      err?.message || err
-    );
-  }
-
-  try {
-    const searchResp = await authentik.get(
-      `/core/groups/?search=${encodeURIComponent(name)}`
-    );
-    const results = Array.isArray(searchResp.data?.results)
-      ? searchResp.data.results
-      : [];
-    return (
-      results.find(
-        (group) =>
-          String(group?.name || "").trim().toLowerCase() === name.toLowerCase()
-      ) || null
-    );
-  } catch (err) {
-    console.warn(
-      "[mou-scheduler] group search lookup failed:",
-      name,
-      err?.message || err
-    );
-    return null;
-  }
+  return directoryRepo.getGroupById(name);
 }
 
 async function getUsersInGroupByPk(groupPk) {
@@ -111,56 +69,6 @@ async function getUsersInGroupByPk(groupPk) {
     hasNext = !!r.hasNext;
     page += 1;
     if (page > 500) break;
-  }
-  return users;
-}
-
-async function fetchUsersFromGroupMembershipList(group) {
-  const groupPk = String(group?.pk || group?.id || "").trim();
-  if (!groupPk) return [];
-
-  let memberRefs = Array.isArray(group?.users) ? group.users : [];
-  if (!memberRefs.length) {
-    try {
-      const detailResp = await authentik.get(`/core/groups/${encodeURIComponent(groupPk)}/`);
-      const detail = detailResp.data || {};
-      memberRefs = Array.isArray(detail.users) ? detail.users : [];
-    } catch (err) {
-      console.warn(
-        "[mou-scheduler] group detail lookup failed:",
-        groupPk,
-        err?.message || err
-      );
-      return [];
-    }
-  }
-
-  const memberPks = Array.from(
-    new Set(
-      memberRefs
-        .map((entry) => {
-          if (entry && typeof entry === "object") {
-            return String(entry.pk || entry.id || "").trim();
-          }
-          return String(entry || "").trim();
-        })
-        .filter(Boolean)
-    )
-  );
-  if (!memberPks.length) return [];
-
-  const users = [];
-  for (const memberPk of memberPks) {
-    try {
-      const userResp = await authentik.get(`/core/users/${encodeURIComponent(memberPk)}/`);
-      if (userResp?.data) users.push(userResp.data);
-    } catch (err) {
-      console.warn(
-        "[mou-scheduler] group member user lookup failed:",
-        memberPk,
-        err?.message || err
-      );
-    }
   }
   return users;
 }
@@ -751,22 +659,12 @@ async function lookupAuthentikUserEmail(userIdOrUsername) {
     const email = String(user?.email || "").trim();
     if (email) return email;
   } catch {
-    // Not a user pk; fall through to search.
+    // Not a user pk; fall through to username lookup.
   }
 
   try {
-    const resp = await authentik.get(
-      `/core/users/?search=${encodeURIComponent(key)}`
-    );
-    const results = Array.isArray(resp.data?.results) ? resp.data.results : [];
-    const match =
-      results.find(
-        (user) =>
-          String(user?.pk || "") === key ||
-          String(user?.uid || "") === key ||
-          String(user?.username || "").trim().toLowerCase() === key.toLowerCase()
-      ) || null;
-    return String(match?.email || "").trim();
+    const byName = await directoryRepo.getUserByUsername(key);
+    return String(byName?.email || "").trim();
   } catch (err) {
     console.warn(
       "[mou-scheduler] signer email lookup failed:",

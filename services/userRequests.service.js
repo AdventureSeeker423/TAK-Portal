@@ -5,7 +5,7 @@ const store = require("./userRequests.store");
 const emailSvc = require("./email.service");
 const settingsSvc = require("./settings.service");
 const usersSvc = require("./users.service");
-const authentik = require("./authentik");
+const directoryRepo = require("./directoryRepo.service");
 const { getBool } = require("./env");
 
 function genId() {
@@ -136,102 +136,26 @@ function uniqueEmails(list) {
 async function resolveGroupByName(groupName) {
   const name = String(groupName || "").trim();
   if (!name) return null;
-
-  try {
-    const groupResp = await authentik.get(
-      `/core/groups/?name=${encodeURIComponent(name)}`
-    );
-    const results = Array.isArray(groupResp.data?.results)
-      ? groupResp.data.results
-      : [];
-    const exact = results.find(
-      (group) =>
-        String(group?.name || "").trim().toLowerCase() === name.toLowerCase()
-    );
-    if (exact) return exact;
-  } catch (err) {
-    console.warn(
-      "[user-requests] group lookup by name failed:",
-      name,
-      err?.message || err
-    );
-  }
-
-  try {
-    const searchResp = await authentik.get(
-      `/core/groups/?search=${encodeURIComponent(name)}`
-    );
-    const results = Array.isArray(searchResp.data?.results)
-      ? searchResp.data.results
-      : [];
-    return (
-      results.find(
-        (group) =>
-          String(group?.name || "").trim().toLowerCase() === name.toLowerCase()
-      ) || null
-    );
-  } catch (err) {
-    console.warn(
-      "[user-requests] group search lookup failed:",
-      name,
-      err?.message || err
-    );
-    return null;
-  }
+  return directoryRepo.getGroupById(name);
 }
 
 async function fetchUsersFromGroupMembershipList(group) {
   const groupPk = String(group?.pk || group?.id || "").trim();
   if (!groupPk) return [];
-
-  let memberRefs = Array.isArray(group?.users) ? group.users : [];
-  if (!memberRefs.length) {
-    try {
-      const detailResp = await authentik.get(
-        `/core/groups/${encodeURIComponent(groupPk)}/`
-      );
-      const detail = detailResp.data || {};
-      memberRefs = Array.isArray(detail.users) ? detail.users : [];
-    } catch (err) {
-      console.warn(
-        "[user-requests] group detail lookup failed:",
-        groupPk,
-        err?.message || err
-      );
-      return [];
-    }
+  try {
+    const out = await directoryRepo.getGroupMembersPaged(groupPk, {
+      page: 1,
+      pageSize: 500,
+    });
+    return Array.isArray(out?.users) ? out.users : [];
+  } catch (err) {
+    console.warn(
+      "[user-requests] group member lookup failed:",
+      groupPk,
+      err?.message || err
+    );
+    return [];
   }
-
-  const memberPks = Array.from(
-    new Set(
-      memberRefs
-        .map((entry) => {
-          if (entry && typeof entry === "object") {
-            return String(entry.pk || entry.id || "").trim();
-          }
-          return String(entry || "").trim();
-        })
-        .filter(Boolean)
-    )
-  );
-  if (!memberPks.length) return [];
-
-  const users = [];
-  for (const memberPk of memberPks) {
-    try {
-      const userResp = await authentik.get(
-        `/core/users/${encodeURIComponent(memberPk)}/`
-      );
-      if (userResp?.data) users.push(userResp.data);
-    } catch (err) {
-      console.warn(
-        "[user-requests] group member user lookup failed:",
-        memberPk,
-        err?.message || err
-      );
-    }
-  }
-  return users;
 }
 
 async function getUsersForGroupName(groupName) {

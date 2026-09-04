@@ -1,5 +1,4 @@
 const { getString, getInt } = require("./env");
-const api = require("./authentik");
 const usersService = require("./users.service");
 const templatesStore = require("./templates.service");
 const accessSvc = require("./access.service");
@@ -1476,13 +1475,15 @@ function csvEscapeCell(value) {
 
 function getGroupExportColumns(group) {
   const attrs = group?.attributes || {};
-  const priv = String(attrs.private || "no").trim().toLowerCase();
+  const priv = group?.is_private === true
+    ? "yes"
+    : String(attrs.private || "no").trim().toLowerCase();
 
   return {
     groupName: stripTakPrefixForExport(group?.name || ""),
     behavior: parseChannelBehaviorFromGroupName(group?.name),
     private: priv === "yes" ? "Yes" : "No",
-    type: String(attrs.created_type || "").trim(),
+    type: String(group?.created_type || attrs.created_type || "").trim(),
   };
 }
 
