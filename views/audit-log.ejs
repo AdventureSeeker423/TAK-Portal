@@ -54,7 +54,7 @@
                 <input type="checkbox" value="" data-filter-value="__all" checked>
                 <span>All actors</span>
               </label>
-              <% (actorOptions || []).forEach(function(a) { %>
+              <% (Array.isArray(actorOptions) ? actorOptions : []).forEach(function(a) { %>
                 <%
                   const actorLabel = (a.displayName && a.username) ? (a.displayName + ' - ' + a.username) : (a.displayName || a.username || '');
                 %>
@@ -75,7 +75,7 @@
                 <input type="checkbox" value="" data-filter-value="__all" checked>
                 <span>All actions</span>
               </label>
-              <% (actionOptions || []).forEach(function(a) { %>
+              <% (Array.isArray(actionOptions) ? actionOptions : []).forEach(function(a) { %>
                 <label class="filter-option">
                   <input type="checkbox" value="<%= a %>" data-filter-value="<%= a %>">
                   <span><%= formatAuditAction(a) %></span>

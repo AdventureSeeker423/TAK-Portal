@@ -27,6 +27,26 @@ db.query = async (sql) => {
   assert.strictEqual(migrating.worker.ok, true);
 
   jsonImport.readStatusJson = async () => ({ active: false, phase: "complete" });
+  let pings = 0;
+  db.query = async (sql) => {
+    if (String(sql).includes("SELECT 1")) {
+      pings += 1;
+      if (pings === 1) {
+        const err = new Error("terminating connection due to administrator command");
+        err.code = "57P01";
+        throw err;
+      }
+      return { rows: [{}] };
+    }
+    if (String(sql).includes("worker_heartbeat")) {
+      return { rows: [{ updated_at: new Date() }] };
+    }
+    throw new Error("unexpected query: " + sql);
+  };
+  const recovered = await stackHealth.getStackHealth();
+  assert.strictEqual(recovered.ok, true);
+  assert.strictEqual(recovered.postgres.ok, true);
+
   db.query = async (sql) => {
     if (String(sql).includes("SELECT 1")) return { rows: [{}] };
     if (String(sql).includes("worker_heartbeat")) {

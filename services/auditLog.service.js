@@ -308,7 +308,7 @@ async function queryLogs({
 async function listDistinctValues({ field, limit = 250 } = {}) {
   const f = safeStr(field);
   const vals = await store.listDistinct(f, limit);
-  return (vals || [])
+  return (Array.isArray(vals) ? vals : [])
     .map((v) => (f === "agencies" ? normalizeSuffix(v) : v))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
@@ -426,23 +426,14 @@ function logLookupEvent(req, payload = {}) {
   });
 }
 
-function listDistinctActors({ limit = 250 } = {}) {
-  const logs = store.load();
-  const byUsername = new Map();
-
-  for (const log of logs) {
-    if (!log || !log.actor) continue;
-    const username = safeStr(log.actor.username);
-    if (!username) continue;
-    if (byUsername.has(username)) continue;
-    byUsername.set(username, {
-      username,
-      displayName: safeStr(log.actor.displayName) || null,
-    });
-    if (byUsername.size >= limit) break;
-  }
-
-  return Array.from(byUsername.values())
+async function listDistinctActors({ limit = 250 } = {}) {
+  const rows = await store.listDistinctActors(limit);
+  return (Array.isArray(rows) ? rows : [])
+    .map((a) => ({
+      username: safeStr(a && a.username),
+      displayName: safeStr(a && a.displayName) || null,
+    }))
+    .filter((a) => a.username)
     .sort((a, b) => {
       const labelA = (a.displayName || a.username).toLowerCase();
       const labelB = (b.displayName || b.username).toLowerCase();

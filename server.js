@@ -1121,9 +1121,11 @@ app.get("/audit-log", requirePermission("page.audit_log"), async (req, res) => {
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const actionOptions = auditSvc.listDistinctValues({ field: "actions" });
-  const targetTypeOptions = auditSvc.listDistinctValues({ field: "targetTypes" });
-  const actorOptions = auditSvc.listDistinctActors();
+  const [actionOptions, targetTypeOptions, actorOptions] = await Promise.all([
+    auditSvc.listDistinctValues({ field: "actions" }),
+    auditSvc.listDistinctValues({ field: "targetTypes" }),
+    auditSvc.listDistinctActors(),
+  ]);
 
   function buildLink(newPage) {
     const u = new URL(`${req.protocol}://${req.get("host")}${req.path}`);

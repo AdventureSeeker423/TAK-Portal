@@ -29,6 +29,14 @@ function getPool() {
   });
   pool.on("error", (err) => {
     console.error("[db] pool error:", err?.message || err);
+    // Idle clients die when Postgres is restarted (SIGTERM / docker stop).
+    // Drop the pool so the next query opens a fresh connection instead of
+    // hammering a set of already-terminated sockets.
+    if (pool) {
+      const dying = pool;
+      pool = null;
+      dying.end().catch(() => {});
+    }
   });
   return pool;
 }

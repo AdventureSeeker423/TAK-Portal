@@ -166,6 +166,25 @@ async function listDistinct(field, limit = 250) {
   return r.rows.map((x) => x.v).filter(Boolean);
 }
 
+async function listDistinctActors(limit = 250) {
+  if (!db.isConfigured()) return [];
+  const r = await db.query(
+    `SELECT actor->>'username' AS username,
+            MIN(NULLIF(BTRIM(actor->>'displayName'), '')) AS display_name
+     FROM audit_events
+     WHERE actor->>'username' IS NOT NULL
+       AND BTRIM(actor->>'username') <> ''
+     GROUP BY 1
+     ORDER BY 1
+     LIMIT $1`,
+    [limit]
+  );
+  return r.rows.map((row) => ({
+    username: row.username,
+    displayName: row.display_name || null,
+  }));
+}
+
 module.exports = {
   FILE,
   MAX_FILE_BYTES,
@@ -177,5 +196,6 @@ module.exports = {
   insertEvent,
   queryRows,
   listDistinct,
+  listDistinctActors,
   trimIfNeeded,
 };

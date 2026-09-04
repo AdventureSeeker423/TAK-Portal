@@ -37,12 +37,9 @@ async function getStackHealth() {
   if (!db.isConfigured()) {
     postgres.detail = "not_configured";
   } else {
-    try {
-      await queryOrTimeout("SELECT 1", 3000);
-      postgres.ok = true;
-    } catch (e) {
-      postgres.detail = e?.code || e?.message || "unreachable";
-    }
+    const ping = await pingPostgres();
+    if (ping.ok) postgres.ok = true;
+    else postgres.detail = ping.detail;
   }
 
   const worker = { ok: false };
@@ -105,6 +102,36 @@ function describeOutage(health) {
     message:
       "Directory sync and dashboard updates cannot continue, so the portal is paused until the worker recovers. Docker restarts it if the process exited. On the server, run ./takportal start (or restart the stack from InfraTAK).",
   };
+}
+
+function isTransientPgError(e) {
+  const code = String(e?.code || "");
+  const msg = String(e?.message || "");
+  if (code === "health_timeout") return false;
+  if (code === "57P01" || code === "57P02" || code === "57P03") return true;
+  if (code === "ECONNRESET" || code === "ECONNREFUSED") return true;
+  if (/terminating connection/i.test(msg)) return true;
+  if (/Connection terminated/i.test(msg)) return true;
+  if (/the database system is (starting up|shutting down)/i.test(msg)) return true;
+  return false;
+}
+
+async function pingPostgres() {
+  try {
+    await queryOrTimeout("SELECT 1", 3000);
+    return { ok: true };
+  } catch (e) {
+    if (!isTransientPgError(e)) {
+      return { ok: false, detail: e?.code || e?.message || "unreachable" };
+    }
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      await queryOrTimeout("SELECT 1", 3000);
+      return { ok: true };
+    } catch (e2) {
+      return { ok: false, detail: e2?.code || e2?.message || e?.message || "unreachable" };
+    }
+  }
 }
 
 async function queryOrTimeout(sql, ms) {
