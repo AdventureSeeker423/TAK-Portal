@@ -23,4 +23,14 @@ const init = fs.readFileSync(
 assert.ok(/authentik_pk TEXT UNIQUE/.test(init));
 assert.ok(!/authentik_pk INT UNIQUE/.test(init));
 
+const repoSrc = fs.readFileSync(
+  path.join(__dirname, "..", "services", "directoryRepo.service.js"),
+  "utf8"
+);
+assert.ok(
+  !/id = \$1::uuid OR authentik_pk = \$1(?!::)/.test(repoSrc),
+  "reusing $1 as uuid and text makes Postgres error: operator does not exist: text = uuid"
+);
+assert.ok(/id = \$1::uuid OR authentik_pk = \$2 LIMIT 1/.test(repoSrc));
+
 console.log("directoryPkText.test.js: ok");

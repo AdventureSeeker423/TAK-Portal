@@ -154,8 +154,8 @@ async function getUserById(id) {
   let r;
   if (isUuid(raw)) {
     r = await db.query(
-      `SELECT * FROM users WHERE id = $1::uuid OR authentik_pk = $1 LIMIT 1`,
-      [raw]
+      `SELECT * FROM users WHERE id = $1::uuid OR authentik_pk = $2 LIMIT 1`,
+      [raw, raw]
     );
   } else if (/^\d+$/.test(raw)) {
     r = await db.query(`SELECT * FROM users WHERE authentik_pk = $1 LIMIT 1`, [raw]);
@@ -254,8 +254,8 @@ async function getGroupById(id) {
   let r;
   if (isUuid(raw)) {
     r = await db.query(
-      `SELECT * FROM groups WHERE id = $1::uuid OR authentik_pk = $1 LIMIT 1`,
-      [raw]
+      `SELECT * FROM groups WHERE id = $1::uuid OR authentik_pk = $2 LIMIT 1`,
+      [raw, raw]
     );
   } else if (/^\d+$/.test(raw)) {
     r = await db.query(`SELECT * FROM groups WHERE authentik_pk = $1 LIMIT 1`, [raw]);
