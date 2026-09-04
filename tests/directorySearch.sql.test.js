@@ -69,6 +69,31 @@ const directoryRepo = require("../services/directoryRepo.service");
   assert.strictEqual(emptyAgency.users.length, 0);
   assert.ok(!sqlCalls.some((c) => /COUNT\(\*\)/.test(c.sql)), "empty agency list should not query");
 
+  sqlCalls.length = 0;
+  const groups = await directoryRepo.searchGroupsPaged({
+    q: "tak",
+    page: 1,
+    pageSize: 25,
+  });
+  assert.strictEqual(groups.pageSize, 25);
+  assert.strictEqual(groups.total, 3);
+  const groupCount = sqlCalls.find((c) => /COUNT\(\*\)/.test(c.sql) && /FROM groups/.test(c.sql));
+  const groupList = sqlCalls.find((c) => /LIMIT/.test(c.sql) && /FROM groups/.test(c.sql));
+  assert.ok(groupCount, "paged group search should COUNT matching groups");
+  assert.ok(groupList, "paged group search should LIMIT/OFFSET rather than select all groups");
+
+  sqlCalls.length = 0;
+  const emails = await directoryRepo.listUserEmailRowsByGroupPks(["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]);
+  assert.ok(Array.isArray(emails));
+  const memberSql = sqlCalls.find((c) => /group_members/.test(c.sql));
+  assert.ok(memberSql, "group recipient lookup should join group_members");
+
+  sqlCalls.length = 0;
+  const pks = await directoryRepo.listUserPksByAgencySuffixes(["so"]);
+  assert.ok(Array.isArray(pks));
+  const pkSql = sqlCalls.find((c) => /COALESCE\(authentik_pk/.test(c.sql) && /lower\(agency\)/.test(c.sql));
+  assert.ok(pkSql, "agency mass-assign should select user pks by agency suffix");
+
   console.log("directorySearch.sql.test.js: ok");
 })().catch((err) => {
   console.error(err);

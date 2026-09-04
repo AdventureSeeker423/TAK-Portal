@@ -155,9 +155,6 @@ router.get("/meta", async (req, res) => {
     }
 
     const dynamic = users.getTemplatesForAgency(agencySuffix);
-    const allGroups = await groupsSvc.getGroupsForAuthUser(authUser);
-    let groups = accessSvc.filterGroupsForUser(authUser, allGroups);
-
     const templates = [
       // index 0 = Manual, as the EJS expects
       {
@@ -175,32 +172,9 @@ router.get("/meta", async (req, res) => {
         isDefault: t.isDefault,
       })),
     ];
-    groups.sort((a, b) => {
-      const an = String(a?.name || "").toLowerCase();
-      const bn = String(b?.name || "").toLowerCase();
-      return an.localeCompare(bn, undefined, { numeric: true, sensitivity: "base" });
-    });
-
-    // Apply hidden prefix filtering (final pass)
-    const hiddenRaw = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "");
-    const hiddenPrefixes = hiddenRaw
-      .split(",")
-      .map(p => String(p || "").trim().toLowerCase())
-      .filter(Boolean);
-
-    if (hiddenPrefixes.length) {
-      groups = groups.filter(g => {
-        const raw = String(g?.name || "").trim().toLowerCase();
-        const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
-
-        return !hiddenPrefixes.some(prefix =>
-          raw.startsWith(prefix) || withoutTak.startsWith(prefix)
-        );
-      });
-    }
 
     res.json({
-      groups,
+      groups: [],
       templates,
       mutualAidCreatedGroupNames: mutualAidStore.getCreatedGroupNames(),
       mutualAidCreatedGroupIds: Array.from(mutualAidStore.getCreatedGroupIdSet()),
@@ -891,61 +865,7 @@ router.get("/export-csv", async (req, res) => {
     const globalAdminGroupPks = await getGlobalAdminGroupPks();
     const globalAdminSet = new Set(globalAdminGroupPks.map(String));
 
-    let visible = [];
-    if (!access.isGlobalAdmin) {
-      const suffixes = access.allowedAgencySuffixes || [];
-      const directoryRepo = require("../services/directoryRepo.service");
-      for (const sfx of suffixes) {
-        const batch = await directoryRepo.listUsersByAgencySuffix(sfx);
-        visible = visible.concat(batch);
-      }
-    } else {
-      const directoryRepo = require("../services/directoryRepo.service");
-      let page = 1;
-      let hasNext = true;
-      while (hasNext) {
-        const r = await directoryRepo.searchUsersPaged({
-          page,
-          pageSize: 200,
-          includeGroups: true,
-          includeHiddenPrefixes: false,
-        });
-        visible = visible.concat(r.users || []);
-        hasNext = !!r.hasNext;
-        page += 1;
-        if (page > 500) break;
-      }
-    }
-
-    const groupPks = [];
-    for (const u of visible) {
-      for (const g of Array.isArray(u.groups) ? u.groups : []) groupPks.push(String(g));
-    }
-    const namedGroups = await require("../services/directoryRepo.service").getGroupsByPks(groupPks);
-    const groupNameByPk = new Map(
-      (Array.isArray(namedGroups) ? namedGroups : []).map((g) => [
-        String(g.pk),
-        String(g.name || "").trim(),
-      ])
-    );
-
-    if (!access.isGlobalAdmin) {
-      visible = visible.filter((u) => accessSvc.isUserInAllowedAgencies(authUser, u));
-      if (globalAdminSet.size) {
-        visible = visible.filter((u) => {
-          const gs = Array.isArray(u?.groups) ? u.groups.map(String) : [];
-          return !gs.some((gid) => globalAdminSet.has(gid));
-        });
-      }
-    }
-
-    visible.sort((a, b) =>
-      String(a?.username || "").localeCompare(String(b?.username || ""), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      })
-    );
-
+    const directoryRepo = require("../services/directoryRepo.service");
     const agencies = require("../services/agencies.service").load();
     const agencyNameByAbbr = new Map();
     for (const agency of Array.isArray(agencies) ? agencies : []) {
@@ -954,11 +874,61 @@ router.get("/export-csv", async (req, res) => {
       agencyNameByAbbr.set(abbr, String(agency?.name || "").trim());
     }
 
-    const csv = users.buildUsersExportCsv(visible, {
-      groupNameByPk,
-      globalAdminGroupPks,
-      agencyNameByAbbr,
-    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="tak-portal-users-${stamp}.csv"`
+    );
+
+    let page = 1;
+    let hasNext = true;
+    let wroteHeader = false;
+    let rowCount = 0;
+    const searchOpts = {
+      pageSize: 200,
+      includeGroups: true,
+      sortKey: "username",
+      sortDir: "asc",
+    };
+    if (!access.isGlobalAdmin) {
+      searchOpts.agencySuffixes = access.allowedAgencySuffixes || [];
+      searchOpts.excludeGroupPks = [...globalAdminSet];
+    }
+
+    while (hasNext) {
+      const r = await directoryRepo.searchUsersPaged({ ...searchOpts, page });
+      const batch = Array.isArray(r.users) ? r.users : [];
+      const groupPks = [];
+      for (const u of batch) {
+        for (const g of Array.isArray(u.groups) ? u.groups : []) groupPks.push(String(g));
+      }
+      const namedGroups = await directoryRepo.getGroupsByPks(groupPks);
+      const groupNameByPk = new Map(
+        (Array.isArray(namedGroups) ? namedGroups : []).map((g) => [
+          String(g.pk),
+          String(g.name || "").trim(),
+        ])
+      );
+      const csv = users.buildUsersExportCsv(batch, {
+        groupNameByPk,
+        globalAdminGroupPks,
+        agencyNameByAbbr,
+      });
+      const lines = String(csv || "").split(/\r?\n/);
+      if (!wroteHeader) {
+        res.write(lines[0] ? `${lines[0]}\n` : "");
+        wroteHeader = true;
+      }
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i]) continue;
+        res.write(`${lines[i]}\n`);
+        rowCount += 1;
+      }
+      hasNext = !!r.hasNext;
+      page += 1;
+      if (page > 500) break;
+    }
 
     auditSvc.logEvent({
       actor: authUser,
@@ -967,18 +937,12 @@ router.get("/export-csv", async (req, res) => {
       targetType: "user",
       targetId: "bulk",
       details: {
-        rowCount: visible.length,
+        rowCount,
         scope: access.isGlobalAdmin ? "global" : "agency",
       },
     });
 
-    const stamp = new Date().toISOString().slice(0, 10);
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="tak-portal-users-${stamp}.csv"`
-    );
-    return res.send(csv);
+    return res.end();
   } catch (err) {
     return res.status(500).json({ error: toErrorPayload(err) });
   }

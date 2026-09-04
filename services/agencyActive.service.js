@@ -126,10 +126,11 @@ async function getAgencyActiveChangePreview(agencyIndex) {
     return { enabling: false, userCount: 0, agencyName: "" };
   }
 
-  const users = await listActiveUsersForAgencyName(agencyName);
+  const directoryRepo = require("./directoryRepo.service");
+  const userCount = await directoryRepo.countActiveUsersByAgencyName(agencyName);
   return {
     enabling: false,
-    userCount: users.length,
+    userCount,
     agencyName,
   };
 }

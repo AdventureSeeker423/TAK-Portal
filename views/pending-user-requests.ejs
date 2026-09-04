@@ -932,11 +932,15 @@ th.sortable:hover{
   }
 
   // -------------------- Groups (cache once) --------------------
-  async function loadGroups() {
-    const res = await fetch('/api/users/groups');
+  async function loadGroups(q) {
+    const res = await fetch('/api/groups/search?' + new URLSearchParams({
+      q: String(q || '').trim(),
+      page: '1',
+      pageSize: '25',
+    }).toString());
     const out = await res.json();
     if (!res.ok) throw new Error(out.error || 'Failed to load groups');
-    groupsCache = Array.isArray(out) ? out : [];
+    groupsCache = Array.isArray(out.groups) ? out.groups : [];
   }
 
   // -------------------- Templates (per form) --------------------
@@ -1039,15 +1043,11 @@ th.sortable:hover{
     const pickedManualGroupIds = new Set();
 
     function renderGroupsBox() {
-      const needle = String(groupFilter.value || '').trim().toLowerCase();
       const sorted = groupsCache
         .slice()
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-      const filtered = needle
-        ? sorted.filter((g) => String(g.name || '').toLowerCase().includes(needle))
-        : sorted;
 
-      groupsInner.innerHTML = filtered
+      groupsInner.innerHTML = sorted
         .map((g) => {
           const id = String(g.pk);
           const rawName = String(g.name || '');
@@ -1074,7 +1074,13 @@ th.sortable:hover{
       else pickedManualGroupIds.delete(id);
     });
 
-    groupFilter.addEventListener('input', () => renderGroupsBox());
+    groupFilter.addEventListener('input', () => {
+      clearTimeout(window.__pendingGroupFilterTimer);
+      window.__pendingGroupFilterTimer = setTimeout(async () => {
+        await loadGroups(groupFilter.value);
+        renderGroupsBox();
+      }, 280);
+    });
 
     selectAllBtn.addEventListener('click', () => {
       Array.from(groupsBox.querySelectorAll('input[type="checkbox"]')).forEach((cb) => {

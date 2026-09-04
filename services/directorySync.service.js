@@ -240,7 +240,7 @@ async function drainOutbox() {
   return batch.length;
 }
 
-async function upsertAuthentikUser(akUser, pending) {
+async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
   const pk = akUser.pk;
   const username = String(akUser.username || "").trim();
   if (!username) return;
@@ -249,8 +249,14 @@ async function upsertAuthentikUser(akUser, pending) {
   }
   const attrs = akUser.attributes || {};
   const cols = extractUserColumns(attrs, akUser);
-  const groupPks = Array.isArray(akUser.groups) ? akUser.groups.map(String) : [];
-  const hash = membershipHash(groupPks);
+  const hasGroupsField = Array.isArray(akUser.groups);
+  const groupPks = hasGroupsField ? akUser.groups.map(String) : [];
+  const hash = hasGroupsField ? membershipHash(groupPks) : null;
+  const existing = await db.query(
+    `SELECT id, groups_hash FROM users WHERE authentik_pk = $1 OR lower(username) = lower($2) LIMIT 1`,
+    [pk, username]
+  );
+  const priorHash = existing.rows[0] ? String(existing.rows[0].groups_hash || "") : "";
   await db.query(
     `INSERT INTO users (
       authentik_pk, username, name, email, is_active, is_superuser, path, type, attributes,
@@ -295,7 +301,6 @@ async function upsertAuthentikUser(akUser, pending) {
       tak_integration_group = EXCLUDED.tak_integration_group,
       state = EXCLUDED.state,
       county = EXCLUDED.county,
-      groups_hash = EXCLUDED.groups_hash,
       sync_status = 'ok',
       pending_delete = false,
       updated_at = now()`,
@@ -306,21 +311,20 @@ async function upsertAuthentikUser(akUser, pending) {
       cols.radio_callsign, cols.current_template, cols.created_template, cols.created_at_attr, cols.created_method,
       cols.created_by_username, cols.created_by_display_name, cols.mutual_aid, cols.mutual_aid_type, cols.mutual_aid_group,
       cols.integration_type, cols.integration_scope, cols.integration_title, cols.tak_integration_group, cols.state, cols.county,
-      hash,
+      hash || priorHash || null,
     ]
   );
+  if (!hasGroupsField) return;
   const local = await db.query("SELECT id, groups_hash FROM users WHERE authentik_pk = $1", [pk]);
   const localId = local.rows[0]?.id;
   if (!localId) return;
-  if (String(local.rows[0].groups_hash || "") === hash) return;
-  const groups = await repo.getGroupsByPks(groupPks);
-  await db.query("DELETE FROM group_members WHERE user_id = $1", [localId]);
-  for (const g of groups) {
-    await db.query(
-      "INSERT INTO group_members (user_id, group_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-      [localId, g.uuid || g.id]
-    );
+  if (priorHash && priorHash === hash) return;
+  const uuids = [];
+  for (const gpk of groupPks) {
+    const uuid = groupUuidByPk && groupUuidByPk.get(String(gpk));
+    if (uuid) uuids.push(uuid);
   }
+  await repo.replaceUserMembershipsFromUuids(localId, uuids, hash);
 }
 
 async function upsertAuthentikGroup(akGroup, pending) {
@@ -430,6 +434,7 @@ async function inboundSnapshot() {
     let groups;
     try {
       groups = await paginateAuthentik("/core/groups/", { include_users: false });
+      // Group pks only (not nested group objects). Skip membership rewrite when groups_hash matches.
       users = await paginateAuthentik("/core/users/", { include_groups: true, include_roles: false });
     } catch (e) {
       await setDirectoryError(e?.message || String(e));
@@ -442,9 +447,17 @@ async function inboundSnapshot() {
       seenGroupPks.add(String(g.pk));
       await upsertAuthentikGroup(g, pending);
     }
+    const localGroups = await db.query(
+      `SELECT id, authentik_pk FROM groups WHERE pending_delete = false`
+    );
+    const groupUuidByPk = new Map();
+    for (const row of localGroups.rows) {
+      if (row.authentik_pk != null) groupUuidByPk.set(String(row.authentik_pk), row.id);
+      groupUuidByPk.set(String(row.id), row.id);
+    }
     for (const u of users) {
       seenUserPks.add(String(u.pk));
-      await upsertAuthentikUser(u, pending);
+      await upsertAuthentikUser(u, pending, groupUuidByPk);
     }
 
     if (users.length > 0) {

@@ -67,6 +67,15 @@ function pkStr(v) {
 function rowToUser(r, groupPks) {
   if (!r) return null;
   const pk = r.authentik_pk != null ? r.authentik_pk : r.id;
+  const attrs = Object.assign({}, r.attributes || {});
+  if (r.agency && !attrs.agency) attrs.agency = r.agency;
+  if (r.agency_name && !attrs.agency_name) attrs.agency_name = r.agency_name;
+  if (r.agency_abbreviation && !attrs.agency_abbreviation) {
+    attrs.agency_abbreviation = r.agency_abbreviation;
+  }
+  if (r.current_template && !attrs.current_template) attrs.current_template = r.current_template;
+  if (r.role && !attrs.role) attrs.role = r.role;
+  if (r.radio_callsign && !attrs.radio_callsign) attrs.radio_callsign = r.radio_callsign;
   return {
     pk,
     id: r.id,
@@ -79,7 +88,12 @@ function rowToUser(r, groupPks) {
     is_superuser: r.is_superuser,
     path: r.path,
     type: r.type,
-    attributes: r.attributes || {},
+    attributes: attrs,
+    agency: r.agency || attrs.agency || null,
+    agency_name: r.agency_name || attrs.agency_name || null,
+    agency_abbreviation: r.agency_abbreviation || attrs.agency_abbreviation || null,
+    current_template: r.current_template || attrs.current_template || null,
+    role: r.role || attrs.role || null,
     groups: Array.isArray(groupPks) ? groupPks : r.groups || [],
     pending_delete: r.pending_delete,
     sync_status: r.sync_status,
@@ -205,6 +219,85 @@ async function getUsersByUsernames(usernames) {
   const users = r.rows.map((row) => rowToUser(row));
   await attachGroups(users);
   return users;
+}
+
+async function listUserEmailRowsByGroupPks(groupPks, { includeHiddenPrefixes = false } = {}) {
+  const list = (Array.isArray(groupPks) ? groupPks : []).map((x) => String(x).trim()).filter(Boolean);
+  if (!list.length) return [];
+  const params = [list.filter(isUuid), list];
+  let where = `u.pending_delete = false AND u.email IS NOT NULL AND btrim(u.email) <> ''
+    AND (g.id = ANY($1::uuid[]) OR g.authentik_pk = ANY($2::text[]))`;
+  where += hiddenUserClause(params, includeHiddenPrefixes).replace(/\busername\b/g, "u.username");
+  where += userPathClause(params).replace(/\bpath\b/g, "u.path");
+  const r = await db.query(
+    `SELECT DISTINCT u.username, u.name, u.email, u.agency, u.attributes, u.authentik_pk, u.id
+     FROM users u
+     JOIN group_members gm ON gm.user_id = u.id
+     JOIN groups g ON g.id = gm.group_id
+     WHERE ${where}`,
+    params
+  );
+  return r.rows.map((row) => ({
+    pk: row.authentik_pk != null ? row.authentik_pk : row.id,
+    username: row.username,
+    name: row.name,
+    email: row.email,
+    attributes: row.attributes || {},
+    agency: row.agency,
+  }));
+}
+
+async function countUsersByTemplate({ agencyName, agencySuffixes } = {}) {
+  const params = [];
+  let where = `pending_delete = false`;
+  where += hiddenUserClause(params, false);
+  where += userPathClause(params);
+  if (agencyName && String(agencyName).trim()) {
+    params.push(String(agencyName).trim());
+    where += ` AND lower(agency_name) = lower($${params.length})`;
+  }
+  if (Array.isArray(agencySuffixes) && agencySuffixes.length) {
+    params.push(agencySuffixes.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean));
+    where += ` AND lower(agency) = ANY($${params.length}::text[])`;
+  }
+  const r = await db.query(
+    `SELECT COALESCE(NULLIF(btrim(current_template), ''), 'Manual Group Selection') AS tmpl, COUNT(*)::int AS n
+     FROM users WHERE ${where}
+     GROUP BY 1`,
+    params
+  );
+  const counts = Object.create(null);
+  for (const row of r.rows) counts[row.tmpl] = row.n;
+  return counts;
+}
+
+async function countCurrentTemplateByAgencySuffix({ agencySuffixes } = {}) {
+  const params = [];
+  let where = `pending_delete = false AND agency IS NOT NULL AND btrim(agency) <> ''
+    AND current_template IS NOT NULL AND btrim(current_template) <> ''
+    AND current_template <> 'Manual Group Selection'`;
+  where += hiddenUserClause(params, false);
+  where += userPathClause(params);
+  if (Array.isArray(agencySuffixes) && agencySuffixes.length) {
+    params.push(agencySuffixes.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean));
+    where += ` AND lower(agency) = ANY($${params.length}::text[])`;
+  }
+  const r = await db.query(
+    `SELECT lower(agency) AS sfx, current_template AS tmpl, COUNT(*)::int AS n
+     FROM users WHERE ${where}
+     GROUP BY 1, 2`,
+    params
+  );
+  const counts = Object.create(null);
+  for (const row of r.rows) {
+    counts[`${row.sfx}::${String(row.tmpl).toLowerCase()}`] = row.n;
+  }
+  return counts;
+}
+
+async function countGroupsMatching(opts = {}) {
+  const r = await searchGroupsPaged({ ...opts, page: 1, pageSize: 1 });
+  return Number(r.total) || 0;
 }
 
 async function listUserEmailRows({ includeHiddenPrefixes = false, agencySuffixes } = {}) {
@@ -435,8 +528,10 @@ async function searchGroupsPaged({
   pageSize = 50,
   prefix,
   agencyName,
+  agencyNames,
   createdType,
   createdTypeDetail,
+  extraGroupPks,
 } = {}) {
   const params = [];
   let where = `pending_delete = false`;
@@ -456,13 +551,37 @@ async function searchGroupsPaged({
       OR attributes->>'agency_name' ILIKE $${params.length}
     )`;
   }
-  if (createdType) {
-    params.push(String(createdType));
-    where += ` AND created_type = $${params.length}`;
+  const names = Array.isArray(agencyNames)
+    ? agencyNames.map((n) => String(n || "").trim()).filter(Boolean)
+    : [];
+  if (names.length) {
+    params.push(names);
+    params.push(names.map((n) => n.toLowerCase()));
+    where += ` AND (
+      created_type_detail ILIKE ANY($${params.length - 1}::text[])
+      OR lower(attributes->>'agency_name') = ANY($${params.length}::text[])
+    )`;
+  }
+  const scope = String(createdType || "").trim().toLowerCase();
+  if (scope === "global" || scope === "generic") {
+    where += ` AND (
+      created_type IS NULL
+      OR lower(created_type) IN ('global', 'generic', '')
+    )`;
+  } else if (scope) {
+    params.push(scope);
+    where += ` AND lower(created_type) = $${params.length}`;
   }
   if (createdTypeDetail) {
     params.push(String(createdTypeDetail));
-    where += ` AND created_type_detail = $${params.length}`;
+    where += ` AND created_type_detail ILIKE $${params.length}`;
+  }
+  const extra = (Array.isArray(extraGroupPks) ? extraGroupPks : [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  if (extra.length) {
+    params.push(extra.filter(isUuid), extra);
+    where = `(${where}) OR (pending_delete = false AND (id = ANY($${params.length - 1}::uuid[]) OR authentik_pk = ANY($${params.length}::text[])))`;
   }
   const ps = Math.max(1, Math.min(500, Number(pageSize) || 50));
   const p = Math.max(1, Number(page) || 1);
@@ -717,6 +836,189 @@ async function deleteLocalGroup(id, client) {
   await q.query("DELETE FROM groups WHERE id = $1", [existing.uuid || existing.id]);
 }
 
+async function listUserPksByAgencySuffixes(suffixes) {
+  const list = (Array.isArray(suffixes) ? suffixes : [])
+    .map((s) => String(s || "").trim().toLowerCase())
+    .filter(Boolean);
+  if (!list.length) return [];
+  const params = [list];
+  let extra = hiddenUserClause(params, false);
+  extra += userPathClause(params);
+  const r = await db.query(
+    `SELECT COALESCE(authentik_pk, id::text) AS pk
+     FROM users
+     WHERE pending_delete = false
+       AND lower(agency) = ANY($1::text[])
+       ${extra}`,
+    params
+  );
+  return r.rows.map((row) => String(row.pk));
+}
+
+async function listUserPksByGroupIds(groupIds) {
+  const ids = (Array.isArray(groupIds) ? groupIds : [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  if (!ids.length) return [];
+  const uuids = ids.filter(isUuid);
+  const params = [uuids, ids];
+  let extra = hiddenUserClause(params, false);
+  extra = extra.replace(/\busername\b/g, "u.username").replace(/\bpath\b/g, "u.path");
+  extra += userPathClause(params).replace(/\bpath\b/g, "u.path");
+  const r = await db.query(
+    `SELECT DISTINCT COALESCE(u.authentik_pk, u.id::text) AS pk
+     FROM group_members gm
+     JOIN users u ON u.id = gm.user_id
+     JOIN groups g ON g.id = gm.group_id
+     WHERE u.pending_delete = false
+       AND g.pending_delete = false
+       AND (g.id = ANY($1::uuid[]) OR g.authentik_pk = ANY($2::text[]))
+       ${extra}`,
+    params
+  );
+  return r.rows.map((row) => String(row.pk));
+}
+
+async function filterUserPksByAgencySuffixes(pks, suffixes) {
+  const ids = (Array.isArray(pks) ? pks : []).map((x) => String(x || "").trim()).filter(Boolean);
+  const list = (Array.isArray(suffixes) ? suffixes : [])
+    .map((s) => String(s || "").trim().toLowerCase())
+    .filter(Boolean);
+  if (!ids.length || !list.length) return [];
+  const uuids = ids.filter(isUuid);
+  const r = await db.query(
+    `SELECT COALESCE(authentik_pk, id::text) AS pk
+     FROM users
+     WHERE pending_delete = false
+       AND lower(agency) = ANY($1::text[])
+       AND (authentik_pk = ANY($2::text[]) OR id = ANY($3::uuid[]) OR id::text = ANY($2::text[]))`,
+    [list, ids, uuids]
+  );
+  return r.rows.map((row) => String(row.pk));
+}
+
+async function countActiveUsersByAgencyName(agencyName) {
+  const name = String(agencyName || "").trim();
+  if (!name) return 0;
+  const params = [name];
+  let extra = hiddenUserClause(params, false);
+  extra += userPathClause(params);
+  const r = await db.query(
+    `SELECT COUNT(*)::int AS n
+     FROM users
+     WHERE pending_delete = false
+       AND is_active = true
+       AND lower(agency_name) = lower($1)
+       ${extra}`,
+    params
+  );
+  return r.rows[0]?.n || 0;
+}
+
+async function listGroupMembersForExport(groupIds, { agencyAbbreviations } = {}) {
+  const ids = (Array.isArray(groupIds) ? groupIds : [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  const map = new Map();
+  for (const id of ids) map.set(id, []);
+  if (!ids.length) return map;
+  const uuids = ids.filter(isUuid);
+  const params = [uuids, ids];
+  let extra = "";
+  const abbrs = (Array.isArray(agencyAbbreviations) ? agencyAbbreviations : [])
+    .map((a) => String(a || "").trim())
+    .filter(Boolean);
+  if (abbrs.length) {
+    params.push(abbrs.map((a) => a.toLowerCase()));
+    extra += ` AND lower(u.agency_abbreviation) = ANY($${params.length}::text[])`;
+  }
+  extra += hiddenUserClause(params, false)
+    .replace(/\busername\b/g, "u.username")
+    .replace(/\bpath\b/g, "u.path");
+  extra += userPathClause(params).replace(/\bpath\b/g, "u.path");
+  const r = await db.query(
+    `SELECT g.id::text AS gid, g.authentik_pk, u.username, u.name, COALESCE(u.authentik_pk, u.id::text) AS user_pk
+     FROM groups g
+     LEFT JOIN group_members gm ON gm.group_id = g.id
+     LEFT JOIN users u ON u.id = gm.user_id AND u.pending_delete = false ${extra}
+     WHERE g.pending_delete = false
+       AND (g.id = ANY($1::uuid[]) OR g.authentik_pk = ANY($2::text[]))
+     ORDER BY u.username NULLS LAST`,
+    params
+  );
+  for (const row of r.rows) {
+    const keys = [String(row.gid || ""), String(row.authentik_pk || "")].filter(Boolean);
+    if (!row.username) continue;
+    const member = {
+      pk: row.user_pk,
+      username: row.username,
+      name: row.name || "",
+    };
+    for (const key of keys) {
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(member);
+    }
+  }
+  return map;
+}
+
+async function replaceUserMembershipsFromUuids(userUuid, groupUuids, groupsHash, client) {
+  const q = client || db;
+  await q.query("DELETE FROM group_members WHERE user_id = $1", [userUuid]);
+  const ids = (Array.isArray(groupUuids) ? groupUuids : []).filter(Boolean);
+  if (ids.length) {
+    await q.query(
+      `INSERT INTO group_members (user_id, group_id)
+       SELECT $1, x FROM unnest($2::uuid[]) AS x
+       ON CONFLICT DO NOTHING`,
+      [userUuid, ids]
+    );
+  }
+  await q.query("UPDATE users SET groups_hash = $2, updated_at = now() WHERE id = $1", [
+    userUuid,
+    groupsHash || membershipHash([]),
+  ]);
+}
+
+async function updateUsersAgencyNameColumn(oldName, newName, agencySuffix) {
+  const oldN = String(oldName || "").trim();
+  const newN = String(newName || "").trim();
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  if (!oldN || !newN || !sfx) return [];
+  const r = await db.query(
+    `UPDATE users SET
+       agency_name = $1,
+       attributes = jsonb_set(COALESCE(attributes, '{}'::jsonb), '{agency_name}', to_jsonb($1::text), true),
+       sync_status = 'pending',
+       updated_at = now()
+     WHERE pending_delete = false
+       AND lower(agency) = $2
+       AND lower(agency_name) = lower($3)
+     RETURNING id, authentik_pk, username, attributes`,
+    [newN, sfx, oldN]
+  );
+  return r.rows;
+}
+
+async function updateUsersAgencyAbbreviationColumn(agencyName, abbreviation) {
+  const name = String(agencyName || "").trim();
+  const abbr = String(abbreviation || "").trim();
+  if (!name || !abbr) return [];
+  const r = await db.query(
+    `UPDATE users SET
+       agency_abbreviation = $1,
+       attributes = jsonb_set(COALESCE(attributes, '{}'::jsonb), '{agency_abbreviation}', to_jsonb($1::text), true),
+       sync_status = 'pending',
+       updated_at = now()
+     WHERE pending_delete = false
+       AND lower(agency_name) = lower($2)
+       AND COALESCE(agency_abbreviation, '') <> $1
+     RETURNING id, authentik_pk, username, attributes`,
+    [abbr, name]
+  );
+  return r.rows;
+}
+
 async function userExists(username) {
   const u = String(username || "").trim();
   if (!u) return false;
@@ -750,6 +1052,10 @@ module.exports = {
   getUsersByIds,
   getUsersByUsernames,
   listUserEmailRows,
+  listUserEmailRowsByGroupPks,
+  countUsersByTemplate,
+  countCurrentTemplateByAgencySuffix,
+  countGroupsMatching,
   getGroupsByPks,
   getGroupsByNames,
   getGroupById,
@@ -776,4 +1082,12 @@ module.exports = {
   attachGroups,
   hiddenUserPrefixes,
   hiddenGroupPrefixes,
+  listUserPksByAgencySuffixes,
+  listUserPksByGroupIds,
+  filterUserPksByAgencySuffixes,
+  countActiveUsersByAgencyName,
+  listGroupMembersForExport,
+  replaceUserMembershipsFromUuids,
+  updateUsersAgencyNameColumn,
+  updateUsersAgencyAbbreviationColumn,
 };

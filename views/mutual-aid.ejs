@@ -824,7 +824,7 @@ async function loadMembersPage(page) {
   } in group "${label}".`;
   membersSummary.className = "msg ok";
   membersHint.textContent = membersTotalCount
-    ? "Showing current members of this mutual aid group's Authentik group."
+    ? "Showing current members of this mutual aid group."
     : "No users are currently assigned to this mutual aid group.";
 
   renderMembersList();
@@ -2891,9 +2891,14 @@ if (agencyTypeClearAll) {
 }
 
 async function loadGroups(){
-  const res = await fetch("/api/groups");
+  const q = String(sourceGroupSearch && sourceGroupSearch.value || "").trim();
+  const res = await fetch("/api/groups/search?" + new URLSearchParams({
+    q,
+    page: "1",
+    pageSize: "25",
+  }).toString());
   const out = await res.json();
-  groupsCache = res.ok && Array.isArray(out) ? out : [];
+  groupsCache = res.ok && Array.isArray(out.groups) ? out.groups : [];
   renderSourceGroupList();
   renderExistingGroupSelect();
 }
@@ -2923,7 +2928,10 @@ function renderSourceGroupList(){
   }).join("") || `<div style="padding:10px; color: var(--muted);">No groups found.</div>`;
 }
 
-sourceGroupSearch.oninput = () => renderSourceGroupList();
+sourceGroupSearch.oninput = () => {
+  clearTimeout(window.__maSourceGroupTimer);
+  window.__maSourceGroupTimer = setTimeout(loadGroups, 280);
+};
 groupSelectAll.onclick = () => {
   sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(ch => {
     const id = String(ch.value || "").trim();
@@ -3011,7 +3019,7 @@ userSearch.oninput = () => {
       return;
     }
     try {
-      const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}&page=1&pageSize=200`);
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}&page=1&pageSize=25`);
       const out = await res.json();
       if (!res.ok) throw new Error(out.error || "Search failed");
       const arr = Array.isArray(out.users) ? out.users : [];

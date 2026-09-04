@@ -70,6 +70,43 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/search", async (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const access = accessSvc.getAgencyAccess(authUser);
+    const q = String(req.query.q || "").trim();
+    const scope = String(req.query.scope || "all").trim().toLowerCase();
+    const detail = String(req.query.detail || "").trim();
+    const page = parseInt(req.query.page, 10) || 1;
+    const pageSize = parseInt(req.query.pageSize, 10) || 25;
+    const includeMutualAid =
+      access.isGlobalAdmin && String(req.query.includeMutualAid || "") === "1";
+
+    const out = await groups.searchGroupsForAuthUser(authUser, {
+      q,
+      scope,
+      detail,
+      page,
+      pageSize,
+      includeMutualAid,
+    });
+    const groupsList = Array.isArray(out.groups) ? out.groups : [];
+    const payload = access.isGlobalAdmin
+      ? channelPatchStore.annotateGroupsWithPatchPeers(groupsList)
+      : groupsList;
+    res.json({
+      groups: payload,
+      total: Number(out.total || 0),
+      page: Number(out.page || page),
+      pageSize: Number(out.pageSize || pageSize),
+      hasNext: !!out.hasNext,
+      hasPrev: !!out.hasPrev,
+    });
+  } catch (err) {
+    res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
 async function resolveAgencyAbbreviationsForScopedExport(authUser, access) {
   if (!authUser || access.isGlobalAdmin) return [];
 
@@ -172,21 +209,47 @@ router.get("/export-csv", async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const all = await groups.getGroupsForAuthUser(authUser, { forceRefresh: false });
-    let visible = filterGroupsVisibleToUser(authUser, all);
-
-    visible.sort((a, b) => {
-      const an = stripTakPrefix(String(a?.name || "")).toLowerCase();
-      const bn = stripTakPrefix(String(b?.name || "")).toLowerCase();
-      return an.localeCompare(bn, undefined, { numeric: true, sensitivity: "base" });
-    });
-
     const agencyAbbreviations = await resolveAgencyAbbreviationsForScopedExport(authUser, access);
-    const exportRows = await groups.collectGroupsExportRows(visible, {
-      authUser,
-      agencyAbbreviations,
-    });
-    const csv = groups.buildGroupsExportCsv(exportRows);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="tak-portal-groups-${stamp}.csv"`
+    );
+
+    let page = 1;
+    let hasNext = true;
+    let wroteHeader = false;
+    let groupCount = 0;
+    while (hasNext) {
+      const out = await groups.searchGroupsForAuthUser(authUser, {
+        q: "",
+        scope: "all",
+        page,
+        pageSize: 200,
+        includeMutualAid: access.isGlobalAdmin,
+      });
+      let visible = Array.isArray(out.groups) ? out.groups : [];
+      visible = filterGroupsVisibleToUser(authUser, visible);
+      const exportRows = await groups.collectGroupsExportRows(visible, {
+        authUser,
+        agencyAbbreviations,
+      });
+      const csv = groups.buildGroupsExportCsv(exportRows);
+      const lines = String(csv || "").split(/\r?\n/);
+      if (!wroteHeader) {
+        res.write(lines[0] ? `${lines[0]}\n` : "");
+        wroteHeader = true;
+      }
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i]) continue;
+        res.write(`${lines[i]}\n`);
+      }
+      groupCount += visible.length;
+      hasNext = !!out.hasNext;
+      page += 1;
+      if (page > 500) break;
+    }
 
     auditSvc.logEvent({
       actor: authUser,
@@ -195,18 +258,12 @@ router.get("/export-csv", async (req, res) => {
       targetType: "group",
       targetId: "bulk",
       details: {
-        groupCount: visible.length,
+        groupCount,
         scope: access.isGlobalAdmin ? "global" : "agency",
       },
     });
 
-    const stamp = new Date().toISOString().slice(0, 10);
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="tak-portal-groups-${stamp}.csv"`
-    );
-    return res.send(csv);
+    return res.end();
   } catch (err) {
     return res.status(500).json({ error: toErrorPayload(err) });
   }

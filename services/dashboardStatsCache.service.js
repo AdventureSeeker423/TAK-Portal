@@ -1,6 +1,5 @@
 const settingsSvc = require("./settings.service");
 const usersService = require("./users.service");
-const groupsService = require("./groups.service");
 const agenciesStore = require("./agencies.service");
 const accessSvc = require("./access.service");
 
@@ -228,23 +227,21 @@ async function refreshAgencyNow(agencyName, { expectedAgencySuffix, groupPrefix,
   const refreshPromise = (async () => {
     const prev = _agencySnapshots.get(key);
     try {
-      const [totalUsers, usersByTemplate, groups] = await Promise.all([
+      const [totalUsers, usersByTemplate, totalGroups] = await Promise.all([
         usersService.countUsersByAgencyName(name),
         usersService.buildUsersByTemplateForAgencyName(name, { expectedAgencySuffix }),
-        groupsService.getGroupsByAgencyName(name),
+        require("./directoryRepo.service").countGroupsMatching({
+          agencyName: name,
+          createdType: "agency",
+        }),
       ]);
-
-      const filteredGroups = accessSvc.filterAgencySpecificGroupsForDashboard(
-        groups || [],
-        name || groupPrefix
-      );
 
       const entry = {
         agencyName: name,
         expectedAgencySuffix: String(expectedAgencySuffix || "").trim().toLowerCase(),
         stats: {
           totalUsers: Number(totalUsers) || 0,
-          totalGroups: Array.isArray(filteredGroups) ? filteredGroups.length : 0,
+          totalGroups: Number(totalGroups) || 0,
         },
         charts: {
           usersByTemplate: usersByTemplate || {},

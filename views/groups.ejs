@@ -135,6 +135,11 @@
     </div>
 
     <div id="listMsg" class="msg"></div>
+    <div class="pagination" id="groupsPagination" style="display:none; align-items:center; justify-content:center; gap:8px; margin: 8px 0;">
+      <button class="btn" type="button" id="groupsPrevBtn">Previous</button>
+      <span id="groupsPageInfo"></span>
+      <button class="btn" type="button" id="groupsNextBtn">Next</button>
+    </div>
 
     <div class="listCardTableWrap">
       <table class="table listCardTable groupsListTable">
@@ -616,6 +621,11 @@ function agenciesForScopeFilter() {
 }
 
 let groupsCache = [];
+let sourceGroupsCache = [];
+let groupsTotal = 0;
+let groupsPage = 1;
+const GROUPS_PAGE_SIZE = 25;
+let groupsFilterTimer = null;
 let agenciesCache = [];
 let regionsCache = [];
 
@@ -1309,71 +1319,7 @@ if (editType) {
 
 
 function renderGroups(){
-  const needle = String(filter.value || "").trim().toLowerCase();
-
-  // Base search filtering
-  let filteredRaw = needle
-    ? groupsCache.filter(g => {
-        const name = String(g.name || "").toLowerCase();
-        const desc = String(g?.attributes?.description || "").toLowerCase();
-        const patched = CAN_SEE_CHANNEL_PATCH && Array.isArray(g.patchedWith)
-          ? g.patchedWith.join(" ").toLowerCase()
-          : "";
-        return name.includes(needle) || desc.includes(needle) || patched.includes(needle);
-      })
-    : groupsCache;
-
-  // Scope + sub-filter (global admin and agency / multi-agency admin)
-  if ((IS_GLOBAL_ADMIN || IS_AGENCY_ADMIN) && groupScopeSelect && groupScopeDetailSelect) {
-    const scope = String(groupScopeSelect.value || "all").trim().toLowerCase();
-    const detail = String(groupScopeDetailSelect.value || "").trim();
-
-    if (scope !== "all") {
-      if (scope === "global") {
-        filteredRaw = filteredRaw.filter(g => getPortalGroupScope(g) === "global");
-      } else if (scope === "state") {
-        filteredRaw = filteredRaw.filter(g => {
-          if (getPortalGroupScope(g) !== "state") return false;
-          if (!detail) return true;
-          return getPortalGroupStateDetail(g) === String(detail).trim().toUpperCase();
-        });
-      } else if (scope === "county") {
-        filteredRaw = filteredRaw.filter(g => {
-          if (getPortalGroupScope(g) !== "county") return false;
-          if (!detail) return true;
-          return (
-            getPortalGroupCountyDetail(g).toUpperCase() ===
-            String(detail).trim().toUpperCase()
-          );
-        });
-      } else if (scope === "region") {
-        filteredRaw = filteredRaw.filter(g => {
-          if (getPortalGroupScope(g) !== "region") return false;
-          if (!detail) return true;
-          return (
-            getPortalGroupRegionDetail(g).toLowerCase() ===
-            String(detail).trim().toLowerCase()
-          );
-        });
-      } else if (scope === "agency") {
-        filteredRaw = filteredRaw.filter(g => {
-          if (getPortalGroupScope(g) !== "agency") return false;
-          if (!detail) return true;
-          const detailTrim = String(detail).trim();
-          const agencyName = getPortalGroupAgencyNameDetail(g);
-          if (agencyName && agencyName.toLowerCase() === detailTrim.toLowerCase()) {
-            return true;
-          }
-          return (
-            getPortalGroupAgencyPrefixDetail(g).toLowerCase() ===
-            detailTrim.toLowerCase()
-          );
-        });
-      }
-    }
-  }
-
-  const filtered = stableSortedCopy(filteredRaw, sortKey, sortDir);
+  const filtered = stableSortedCopy(groupsCache || [], sortKey, sortDir);
 
   tbody.innerHTML = filtered.map(g => {
     const locked = groupActionsLocked(g.name);
@@ -1420,17 +1366,25 @@ function renderGroups(){
   `;
   }).join("");
 
-  renderSourceGroupList();
-
   const shown = filtered.length;
+  const total = Number(groupsTotal || shown);
   const needleLabel = String(filter.value || "").trim();
-  if (!shown) {
+  if (!total) {
     setMsg(listMsg, needleLabel ? `No groups found for "${needleLabel}".` : "No groups found.", true);
   } else if (needleLabel) {
-    setMsg(listMsg, `Showing ${shown} of ${shown} group(s) for "${needleLabel}".`, true);
+    setMsg(listMsg, `Showing ${shown} of ${total} group(s) for "${needleLabel}".`, true);
   } else {
-    setMsg(listMsg, `Showing ${shown} of ${shown} group(s).`, true);
+    setMsg(listMsg, `Showing ${shown} of ${total} group(s).`, true);
   }
+  const pag = document.getElementById("groupsPagination");
+  const info = document.getElementById("groupsPageInfo");
+  const prev = document.getElementById("groupsPrevBtn");
+  const next = document.getElementById("groupsNextBtn");
+  const totalPages = Math.max(1, Math.ceil(total / GROUPS_PAGE_SIZE));
+  if (pag) pag.style.display = total > GROUPS_PAGE_SIZE ? "flex" : "none";
+  if (info) info.textContent = `Page ${groupsPage} of ${totalPages}`;
+  if (prev) prev.disabled = groupsPage <= 1;
+  if (next) next.disabled = groupsPage >= totalPages;
 }
 
 function updateGroupScopeDetailOptions() {
@@ -1528,7 +1482,18 @@ function updateGroupScopeDetailOptions() {
 
 async function loadGroups(){
   setMsg(listMsg, "Loading groups...", true);
-  const res = await fetch("/api/groups");
+  const params = new URLSearchParams({
+    q: String(filter && filter.value || "").trim(),
+    page: String(groupsPage),
+    pageSize: String(GROUPS_PAGE_SIZE),
+  });
+  if (groupScopeSelect) {
+    params.set("scope", String(groupScopeSelect.value || "all").trim().toLowerCase());
+  }
+  if (groupScopeDetailSelect && groupScopeDetailSelect.value) {
+    params.set("detail", String(groupScopeDetailSelect.value || "").trim());
+  }
+  const res = await fetch("/api/groups/search?" + params.toString());
   const out = await res.json();
 
   if(!res.ok){
@@ -1536,45 +1501,19 @@ async function loadGroups(){
     return;
   }
 
-  groupsCache = out || [];
-  updateGroupScopeSelectOptions();
+  groupsCache = Array.isArray(out.groups) ? out.groups : [];
+  groupsTotal = Number(out.total || 0);
+  groupsPage = Number(out.page || groupsPage || 1);
   renderGroups();
 }
 
-/** Hide scope filter options that have no matching groups in the current list. */
+/** Scope options stay visible; paging means the current page is not the full catalog. */
 function updateGroupScopeSelectOptions() {
   if (!groupScopeSelect) return;
-
-  const present = {
-    agency: false,
-    county: false,
-    region: false,
-    state: false,
-    global: false,
-  };
-  for (const g of Array.isArray(groupsCache) ? groupsCache : []) {
-    const scope = getPortalGroupScope(g);
-    if (Object.prototype.hasOwnProperty.call(present, scope)) {
-      present[scope] = true;
-    }
-  }
-
-  const prev = String(groupScopeSelect.value || "all").trim().toLowerCase();
   Array.from(groupScopeSelect.options).forEach((opt) => {
-    const v = String(opt.value || "").trim().toLowerCase();
-    if (v === "all") {
-      opt.hidden = false;
-      opt.disabled = false;
-      return;
-    }
-    const show = !!present[v];
-    opt.hidden = !show;
-    opt.disabled = !show;
+    opt.hidden = false;
+    opt.disabled = false;
   });
-
-  if (prev !== "all" && !present[prev]) {
-    groupScopeSelect.value = "all";
-  }
   updateGroupScopeDetailOptions();
 }
 
@@ -1619,17 +1558,41 @@ if (exportGroupsCsvBtn) {
   });
 }
 
-filter.oninput = renderGroups;
+filter.oninput = () => {
+  clearTimeout(groupsFilterTimer);
+  groupsFilterTimer = setTimeout(() => {
+    groupsPage = 1;
+    loadGroups();
+  }, 280);
+};
 if (groupScopeSelect) {
   groupScopeSelect.addEventListener("change", () => {
-    // Update detail options + visibility, then re-render.
     updateGroupScopeDetailOptions();
-    renderGroups();
+    groupsPage = 1;
+    loadGroups();
   });
 }
 
 if (groupScopeDetailSelect) {
-  groupScopeDetailSelect.addEventListener("change", renderGroups);
+  groupScopeDetailSelect.addEventListener("change", () => {
+    groupsPage = 1;
+    loadGroups();
+  });
+}
+const groupsPrevBtn = document.getElementById("groupsPrevBtn");
+const groupsNextBtn = document.getElementById("groupsNextBtn");
+if (groupsPrevBtn) {
+  groupsPrevBtn.onclick = () => {
+    if (groupsPage <= 1) return;
+    groupsPage -= 1;
+    loadGroups();
+  };
+}
+if (groupsNextBtn) {
+  groupsNextBtn.onclick = () => {
+    groupsPage += 1;
+    loadGroups();
+  };
 }
 
 createBtn.onclick = async () => {
@@ -1877,7 +1840,7 @@ window.deleteGroup = async (groupId) => {
     `This will:\n` +
     `• Remove this group from ${userCount} user(s)\n` +
     `• Remove this group from ${tmplCount} template(s)\n\n` +
-    `Then delete the group in Authentik.` +
+    `Then delete the group.` +
     tmplPreview
   );
 
@@ -2374,7 +2337,7 @@ window.openMassAssign = async (groupId) => {
   renderAgencyList();
   renderUserList([]);
   sourceGroupSearch.value = "";
-  renderSourceGroupList();
+  loadSourceGroups();
   if (templateSearch) templateSearch.value = "";
   renderTemplateSourceList();
   renderAgencyTypeList();
@@ -2404,7 +2367,7 @@ window.openMassUnassign = async (groupId) => {
   renderAgencyList();
   renderUserList([]);
   sourceGroupSearch.value = "";
-  renderSourceGroupList();
+  loadSourceGroups();
   if (templateSearch) templateSearch.value = "";
   renderTemplateSourceList();
   renderAgencyTypeList();
@@ -2489,11 +2452,11 @@ userSearch.oninput = () => {
       return;
     }
     try {
-      const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}&page=1&pageSize=200`);
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}&page=1&pageSize=25`);
       const out = await res.json();
       if(!res.ok) throw new Error(out.error || "Search failed");
       const arr = Array.isArray(out.users) ? out.users : [];
-      usersSearchCache = arr.slice(0, 200);
+      usersSearchCache = arr.slice(0, 25);
       renderUserList(usersSearchCache);
     } catch (e) {
       renderUserList([]);
@@ -2514,16 +2477,10 @@ userClearAll.onclick = () => {
 };
 
 function renderSourceGroupList(){
-  const needle = String(sourceGroupSearch?.value || "").trim().toLowerCase();
-  const items = (groupsCache || [])
+  const items = (sourceGroupsCache || [])
     .filter(g => String(g.pk) !== String(activeMassGroupId))
     .slice()
-    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")))
-    .filter(g => {
-      if (!needle) return true;
-      const n = String(g.name || "").toLowerCase();
-      return n.includes(needle);
-    });
+    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
 
   sourceGroupList.innerHTML = items.map(g => {
     const id = String(g.pk);
@@ -2537,7 +2494,27 @@ function renderSourceGroupList(){
   }).join("") || `<div style="padding:10px; color: var(--muted);">No groups found.</div>`;
 }
 
-sourceGroupSearch.oninput = renderSourceGroupList;
+async function loadSourceGroups() {
+  const q = String(sourceGroupSearch?.value || "").trim();
+  try {
+    const res = await fetch("/api/groups/search?" + new URLSearchParams({
+      q,
+      page: "1",
+      pageSize: "25",
+    }).toString());
+    const out = await res.json();
+    sourceGroupsCache = res.ok && Array.isArray(out.groups) ? out.groups : [];
+  } catch (_) {
+    sourceGroupsCache = [];
+  }
+  renderSourceGroupList();
+}
+
+let sourceGroupSearchTimer = null;
+sourceGroupSearch.oninput = () => {
+  clearTimeout(sourceGroupSearchTimer);
+  sourceGroupSearchTimer = setTimeout(loadSourceGroups, 280);
+};
 groupSelectAll.onclick = () => {
   sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(c => {
     const id = String(c.value || "").trim();

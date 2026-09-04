@@ -113,82 +113,22 @@ async function updateUsersAgencyName(oldName, newName, agencySuffix) {
   const sfx = String(agencySuffix || "").trim().toLowerCase();
   if (!oldN || !newN || !sfx) return { matched: 0, updated: 0 };
 
-  const hiddenPrefixes = String(getString("USERS_HIDDEN_PREFIXES", "") || "")
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
-
-  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "") || "").trim();
-
-  let page = 1;
-  let hasNext = true;
-  let matched = 0;
-  let updated = 0;
-
-  while (hasNext) {
-    const params = {
-      page,
-      page_size: 200,
-      include_groups: "false",
-      include_roles: "false",
-      attributes: JSON.stringify({ agency_name: oldN }),
-    };
-
-    if (hiddenPrefixes.length) {
-      params.type = ["external", "internal"];
-    }
-
-    if (folderRaw) {
-      params.path_startswith = folderRaw.replace(/^\/+|\/+$/g, "");
-    }
-
-    const res = await api.get("/core/users/", { params });
-    const data = res?.data || {};
-    let rows = Array.isArray(data.results) ? data.results : [];
-
-    if (hiddenPrefixes.length) {
-      rows = rows.filter((u) => {
-        const username = String(u?.username || "").trim().toLowerCase();
-        return !hiddenPrefixes.some((p) => username.startsWith(p));
-      });
-    }
-
-    for (const u of rows) {
-      const attrs = u?.attributes && typeof u.attributes === "object" ? u.attributes : {};
-      const agencyNameAttr = String(attrs.agency_name || "").trim();
-      if (agencyNameAttr !== oldN) continue;
-
-      const userSuffix = String(attrs.agency || "").trim().toLowerCase();
-      if (userSuffix !== sfx) continue;
-
-      matched += 1;
-      if (agencyNameAttr === newN) continue;
-
-      const userId = String(u?.pk ?? u?.id ?? "").trim();
-      if (!userId) continue;
-
-      await api.patch(`/core/users/${userId}/`, {
-        attributes: {
-          ...attrs,
-          agency_name: newN,
-        },
-      });
-      updated += 1;
-    }
-
-    const pagination = data.pagination || {};
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      hasNext = true;
-    } else if (data.next) {
-      page += 1;
-      hasNext = true;
-    } else {
-      hasNext = false;
-    }
+  const directoryRepo = require("./directoryRepo.service");
+  const authentikOutbox = require("./authentikOutbox.service");
+  const rows = await directoryRepo.updateUsersAgencyNameColumn(oldN, newN, sfx);
+  for (const row of rows) {
+    if (!row.authentik_pk) continue;
+    await authentikOutbox.enqueue({
+      kind: "patch_user",
+      entityType: "user",
+      entityId: row.id,
+      authentikPk: row.authentik_pk,
+      username: row.username,
+      payload: { authentikPk: row.authentik_pk, patch: { attributes: row.attributes } },
+    });
   }
-
-  return { matched, updated };
+  if (rows.length) usersService.invalidateUsersCache();
+  return { matched: rows.length, updated: rows.length };
 }
 
 async function updateAgencyAdminGroupMetadata(agency) {

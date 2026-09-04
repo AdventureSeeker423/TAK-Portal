@@ -4,6 +4,7 @@ const emailSvc = require("./email.service");
 const mouService = require("./mouService");
 const auditSvc = require("./auditLog.service");
 const usersSvc = require("./users.service");
+const directoryRepo = require("./directoryRepo.service");
 const {
   renderTemplate,
   htmlToText,
@@ -101,34 +102,16 @@ async function resolveGroupByName(groupName) {
 async function getUsersInGroupByPk(groupPk) {
   const gid = String(groupPk || "").trim();
   if (!gid) return [];
-
   const users = [];
-  const pageSize = 200;
   let page = 1;
-  let url =
-    `/core/users/?page=${page}&page_size=${pageSize}` +
-    `&groups_by_pk=${encodeURIComponent(gid)}` +
-    "&include_groups=false&include_roles=false";
-
-  while (url) {
-    const resp = await authentik.get(url);
-    const data = resp.data || {};
-    users.push(...(Array.isArray(data.results) ? data.results : []));
-
-    const pagination = data.pagination || {};
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      url =
-        `/core/users/?page=${page}&page_size=${pageSize}` +
-        `&groups_by_pk=${encodeURIComponent(gid)}` +
-        "&include_groups=false&include_roles=false";
-    } else if (data.next) {
-      url = data.next.replace(/^.*\/api\/v3/, "");
-    } else {
-      url = null;
-    }
+  let hasNext = true;
+  while (hasNext) {
+    const r = await directoryRepo.getGroupMembersPaged(gid, { page, pageSize: 200 });
+    users.push(...(r.users || []));
+    hasNext = !!r.hasNext;
+    page += 1;
+    if (page > 500) break;
   }
-
   return users;
 }
 
@@ -189,9 +172,6 @@ async function getUsersForConfiguredGroup(groupName) {
   }
 
   let users = await getUsersInGroupByPk(group.pk);
-  if (!users.length) {
-    users = await fetchUsersFromGroupMembershipList(group);
-  }
 
   return {
     groupName,

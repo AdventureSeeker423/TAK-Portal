@@ -370,9 +370,9 @@
   }
 
   function getHomeSuffixForAcUser(user) {
-    const attrs = user?.attributes || {};
-    const direct = String(attrs.agency || "").trim().toLowerCase();
+    const direct = String(user?.agency || "").trim().toLowerCase();
     if (direct) return direct;
+    const attrs = user?.attributes || {};
     const abbr = String(attrs.agency_abbreviation || "").trim().toLowerCase();
     if (!abbr) return "";
     const a = allAgenciesCache.find(
@@ -737,7 +737,7 @@
       const username = String(u?.username || "");
       const name = String(u?.name || "");
       const email = String(u?.email || "");
-      const agency = String(u?.attributes?.agency_abbreviation || u?.agency_abbreviation || "").toUpperCase();
+      const agency = String(u?.agency_abbreviation || u?.attributes?.agency_abbreviation || "").toUpperCase();
       tr.innerHTML =
         "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + username + "</div></td>" +
         "<td class=\"acNameCell\" data-label=\"Name\">" + (name || "-") + "</td>" +

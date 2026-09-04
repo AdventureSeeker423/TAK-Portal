@@ -110,6 +110,19 @@
         class="groupsBox"
         style="margin-top:10px; max-height: 320px; overflow:auto;"
       ></div>
+      <div class="pagination" style="margin-top:10px; display:flex; align-items:center; justify-content:center; gap:8px; font-size:14px;">
+        <button class="btn" id="adminsPrevBtn" type="button"
+          style="padding: 4px 14px; border-radius:999px; background:#2f3241; border:1px solid #3a3d4d; color:#e4e4e4; font-size:13px; line-height:1.2;">
+          Previous
+        </button>
+        <span id="adminsPageInfo"
+          style="padding:3px 10px; border-radius:999px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); opacity:.9; font-size:12px;">
+        </span>
+        <button class="btn" id="adminsNextBtn" type="button"
+          style="padding: 4px 14px; border-radius:999px; background:#2f3241; border:1px solid #3a3d4d; color:#e4e4e4; font-size:13px; line-height:1.2;">
+          Next
+        </button>
+      </div>
       <small id="adminsHint" class="muted"></small>
     </div>
   </div>
@@ -246,6 +259,14 @@ const adminsSummary = document.getElementById("adminsSummary");
 const adminsFilter = document.getElementById("adminsFilter");
 const adminsList = document.getElementById("adminsList");
 const adminsHint = document.getElementById("adminsHint");
+const adminsPrevBtn = document.getElementById("adminsPrevBtn");
+const adminsNextBtn = document.getElementById("adminsNextBtn");
+const adminsPageInfo = document.getElementById("adminsPageInfo");
+let adminsCurrentPage = 1;
+let adminsPageSize = 50;
+let adminsTotalCount = 0;
+let adminsHasNext = false;
+let adminsHasPrev = false;
 
 let agencies = [];
 /** When true, Name, Type, Color, Abbreviation, State, County, and County Abbrev columns are editable. */
@@ -833,6 +854,38 @@ if (adminsOverlay) adminsOverlay.addEventListener("click", (e) => {
   if (e.target === adminsOverlay) showAdminsModal(false);
 });
 if (adminsFilter) adminsFilter.oninput = renderAdminsList;
+if (adminsPrevBtn) adminsPrevBtn.onclick = () => {
+  if (adminsHasPrev) loadAdminsPage(adminsCurrentPage - 1).catch(() => {});
+};
+if (adminsNextBtn) adminsNextBtn.onclick = () => {
+  if (adminsHasNext) loadAdminsPage(adminsCurrentPage + 1).catch(() => {});
+};
+
+async function loadAdminsPage(page) {
+  if (!activeAdminsGroupId) return;
+  const targetPage = Math.max(1, Number(page || 1));
+  const res = await fetch(
+    `/api/groups/${encodeURIComponent(activeAdminsGroupId)}/members?page=${targetPage}&pageSize=${adminsPageSize}`
+  );
+  const out = await res.json();
+  if (!res.ok) throw new Error(out.error || "Failed to load admins");
+  activeAdmins = Array.isArray(out.users) ? out.users : [];
+  adminsCurrentPage = Number(out.page || targetPage || 1);
+  adminsPageSize = Number(out.pageSize || adminsPageSize || 50);
+  adminsTotalCount = Number(out.memberCount || activeAdmins.length || 0);
+  adminsHasNext = !!out.hasNext;
+  adminsHasPrev = !!out.hasPrev;
+  const totalPages = adminsTotalCount > 0 ? Math.max(1, Math.ceil(adminsTotalCount / Math.max(1, adminsPageSize))) : 1;
+  if (adminsPageInfo) adminsPageInfo.textContent = `Page ${adminsCurrentPage} of ${totalPages}`;
+  if (adminsPrevBtn) adminsPrevBtn.disabled = !adminsHasPrev;
+  if (adminsNextBtn) adminsNextBtn.disabled = !adminsHasNext;
+  adminsSummary.textContent = `${adminsTotalCount} admin${adminsTotalCount === 1 ? "" : "s"} in group "${activeAdminsGroupName}".`;
+  adminsSummary.className = "msg ok";
+  adminsHint.textContent = adminsTotalCount
+    ? "Showing current admins for this agency. Use Remove to strip admin access from individual users."
+    : "No users are currently assigned to this agency admin group.";
+  renderAdminsList();
+}
 
 function renderAgencies(){
   // apply sort (copy to avoid mutating original order if you later want it)
@@ -983,28 +1036,14 @@ window.openAgencyAdmins = async (agencyId) => {
 
     const g = gOut?.group;
     if(!g || !g.pk){
-      adminsSummary.textContent = `Admin group "${groupName}" was not found in Authentik.`;
+      adminsSummary.textContent = `Admin group "${groupName}" was not found.`;
       adminsSummary.className = "msg bad";
-      adminsHint.textContent = "If this agency was created before the new auto-create behavior, create this group in Authentik or re-save the agency.";
+      adminsHint.textContent = "If this agency was created before the new auto-create behavior, create this group or re-save the agency.";
       return;
     }
 
     activeAdminsGroupId = String(g.pk);
-
-    const res = await fetch(`/api/groups/${encodeURIComponent(activeAdminsGroupId)}/members`);
-    const out = await res.json();
-    if(!res.ok) throw new Error(out.error || "Failed to load admins");
-
-    activeAdmins = Array.isArray(out.users) ? out.users : [];
-    const memberCount = typeof out.memberCount === "number" ? out.memberCount : activeAdmins.length;
-
-    adminsSummary.textContent = `${memberCount} admin${memberCount === 1 ? "" : "s"} in group "${groupName}".`;
-    adminsSummary.className = "msg ok";
-    adminsHint.textContent = memberCount
-      ? "Showing current admins for this agency. Use Remove to strip admin access from individual users."
-      : "No users are currently assigned to this agency admin group.";
-
-    renderAdminsList();
+    await loadAdminsPage(1);
   } catch (e) {
     adminsSummary.textContent = "Failed to load admins.";
     adminsSummary.className = "msg bad";
@@ -2381,7 +2420,7 @@ window.openAccessGroupsModal = async (agencyId) => {
 
   try {
     const [groupsRes, allowedRes] = await Promise.all([
-      fetch("/api/groups"),
+      fetch("/api/groups/search?" + new URLSearchParams({ q: "", page: "1", pageSize: "25" }).toString()),
       fetch(`/api/agencies/${encodeURIComponent(agencyId)}/access-groups`)
     ]);
     const groupsData = await groupsRes.json();
@@ -2389,7 +2428,7 @@ window.openAccessGroupsModal = async (agencyId) => {
     if (!groupsRes.ok) throw new Error(groupsData.error || "Failed to load groups");
     if (!allowedRes.ok) throw new Error(allowedData.error || "Failed to load access groups");
 
-    const allGroups = Array.isArray(groupsData) ? groupsData : [];
+    const allGroups = Array.isArray(groupsData.groups) ? groupsData.groups : (Array.isArray(groupsData) ? groupsData : []);
     accessGroupsSelectable = allGroups.filter(g => !isGroupRelatedToAgency(g, a));
     accessGroupsPickedIds = new Set(Array.isArray(allowedData.allowedAdminGroupIds) ? allowedData.allowedAdminGroupIds : []);
 
@@ -2402,7 +2441,26 @@ window.openAccessGroupsModal = async (agencyId) => {
   }
 };
 
-if (accessGroupSearch) accessGroupSearch.addEventListener("input", () => renderAccessGroupsGrid(accessGroupSearch.value));
+if (accessGroupSearch) accessGroupSearch.addEventListener("input", () => {
+  clearTimeout(window.__accessGroupSearchTimer);
+  window.__accessGroupSearchTimer = setTimeout(async () => {
+    try {
+      const q = String(accessGroupSearch.value || "").trim();
+      const res = await fetch("/api/groups/search?" + new URLSearchParams({
+        q,
+        page: "1",
+        pageSize: "25",
+      }).toString());
+      const groupsData = await res.json();
+      const allGroups = Array.isArray(groupsData.groups) ? groupsData.groups : [];
+      const a = (agencies || []).find(x => String(x._id ?? x.id) === String(accessGroupsAgencyId));
+      accessGroupsSelectable = allGroups.filter(g => !a || !isGroupRelatedToAgency(g, a));
+      renderAccessGroupsGrid("");
+    } catch (_) {
+      renderAccessGroupsGrid(accessGroupSearch.value);
+    }
+  }, 280);
+});
 if (accessGroupsSelectAllBtn) accessGroupsSelectAllBtn.onclick = () => {
   accessGroupsSelectable.forEach(g => accessGroupsPickedIds.add(String(g.pk ?? g.id ?? "")));
   renderAccessGroupsGrid(accessGroupSearch?.value || "");

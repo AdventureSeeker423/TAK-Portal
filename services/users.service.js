@@ -986,12 +986,20 @@ function getTemplatesForAgency(agencySuffix) {
 // Authentik API helpers (groups)
 async function getAllGroupsRaw(options = {}) {
   const { includeHidden = false } = options || {};
-  const r = await directoryRepo.searchGroupsPaged({
-    includeHidden,
-    page: 1,
-    pageSize: 500,
-  });
-  return r.groups;
+  const pageSize = 200;
+  const all = [];
+  let page = 1;
+  for (;;) {
+    const r = await directoryRepo.searchGroupsPaged({
+      includeHidden,
+      page,
+      pageSize,
+    });
+    all.push(...(r.groups || []));
+    if (!r.hasNext) break;
+    page += 1;
+  }
+  return all;
 }
 
 /**
@@ -1013,25 +1021,29 @@ function applyHiddenPrefixFilter(users, includeHiddenPrefixes) {
 // - hide service/system users by username prefix (USERS_HIDDEN_PREFIXES), unless includeHiddenPrefixes
 // - optionally filter by AUTHENTIK_USER_PATH if set
 async function getAllUsersRaw(options = {}) {
-  const { includeHiddenPrefixes = false } = options;
-  const r = await directoryRepo.searchUsersPaged({
-    includeHiddenPrefixes,
-    includeGroups: true,
-    page: 1,
-    pageSize: 100,
-  });
-  return r.users;
+  const { includeHiddenPrefixes = false, includeGroups = true } = options;
+  const pageSize = 200;
+  const all = [];
+  let page = 1;
+  for (;;) {
+    const r = await directoryRepo.searchUsersPaged({
+      includeHiddenPrefixes,
+      includeGroups,
+      page,
+      pageSize,
+    });
+    all.push(...(r.users || []));
+    if (!r.hasNext) break;
+    page += 1;
+  }
+  return all;
 }
 
 async function getAllUsersLightweightRaw(options = {}) {
-  const { includeHiddenPrefixes = false, includeGroups = false } = options;
-  const r = await directoryRepo.searchUsersPaged({
-    includeHiddenPrefixes,
-    includeGroups,
-    page: 1,
-    pageSize: 100,
+  return getAllUsersRaw({
+    includeHiddenPrefixes: !!options.includeHiddenPrefixes,
+    includeGroups: !!options.includeGroups,
   });
-  return r.users;
 }
 
 async function userExists(username) {
@@ -2064,110 +2076,6 @@ async function searchUsersByAgencyAbbreviationPaged({
     agencyAbbreviation: abbr,
     includeGroups,
   });
-
-  const hiddenPrefixes = getHiddenUserPrefixes();
-  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
-
-  const attrsFilter = { agency_abbreviation: abbr };
-  const templateName = String(currentTemplate || "").trim();
-  if (templateName) attrsFilter.current_template = templateName;
-
-  const params = {
-    page,
-    page_size: pageSize,
-    ordering: getAuthentikOrderingForUserSort({ sortKey, sortDir }),
-    // Authentik filters JSON attributes via `attributes=<json>`.
-    // See authentik/core/api/users.py UsersFilter.filter_attributes().
-    attributes: JSON.stringify(attrsFilter),
-    include_roles: includeRoles ? "true" : "false",
-    include_groups: includeGroups ? "true" : "false",
-  };
-
-  // Reduce payload + align pagination totals with what the UI is allowed to see.
-  if (hiddenPrefixes.length) {
-    params.type = ["external", "internal"];
-  }
-
-  if (folderRaw) {
-    params.path_startswith = normalizePath(folderRaw);
-  }
-
-  if (Array.isArray(groupsByPk) && groupsByPk.length) {
-    const cleaned = groupsByPk.map((x) => String(x).trim()).filter(Boolean);
-    // axios may serialize arrays in a way Authentik's filters don't accept.
-    // In practice, the global-admin set is usually a single group; handle
-    // that reliably as a scalar. If we have multiple, force fallback.
-    if (cleaned.length > 1) {
-      throw new Error("Delegated global-admin exclusion requires a single group PK");
-    }
-    if (cleaned.length === 1) params.groups_by_pk = cleaned[0];
-  }
-
-  if (q && String(q).trim()) {
-    // Authentik supports "search" across username/email/etc.
-    params.search = String(q).trim();
-  }
-
-  const res = await api.get("/core/users/", { params });
-  const data = res?.data || {};
-  const raw = Array.isArray(data.results) ? data.results : [];
-
-  // Apply the same hidden-prefix/path filters used elsewhere.
-  let users = raw.slice();
-
-  if (hiddenPrefixes.length) {
-    users = users.filter((u) => {
-      const username = String(u?.username || "").trim().toLowerCase();
-      return !hiddenPrefixes.some((p) => username.startsWith(p));
-    });
-  }
-
-  if (folderRaw) {
-    const target = normalizePath(folderRaw);
-    users = users.filter((u) => {
-      const up = normalizePath(u.path);
-      return up === target || up.startsWith(target + "/");
-    });
-  }
-
-  const pagination = data.pagination || {};
-  let total = 0;
-
-  if (pagination) {
-    if (typeof pagination.count === "number") total = pagination.count;
-    if (!total && typeof pagination.total === "number") total = pagination.total;
-    if (!total && typeof pagination.total_items === "number")
-      total = pagination.total_items;
-  }
-
-  if (!total && data && data.count != null) {
-    const c = Number(data.count);
-    if (!Number.isNaN(c) && c >= 0) total = c;
-  }
-
-  if (!total) total = users.length;
-
-  // Adjust downward for hidden-prefix filtering when it affected this page.
-  if (hiddenPrefixes.length) {
-    const filteredOnPage = raw.length - users.length;
-    if (filteredOnPage > 0 && total >= filteredOnPage) {
-      total = total - filteredOnPage;
-    }
-  }
-
-  const currentPage =
-    typeof pagination.current === "number"
-      ? pagination.current
-      : Number(params.page) || 1;
-
-  return {
-    users,
-    total,
-    page: currentPage,
-    pageSize,
-    hasNext: Boolean(pagination.next ?? data.next),
-    hasPrev: Boolean(pagination.previous ?? data.previous),
-  };
 }
 
 async function listAllUsersByAgencySuffix(agencySuffix) {
@@ -2208,108 +2116,6 @@ async function searchUsersByAgencySuffixPaged({
     agencySuffix: sfx,
     includeGroups,
   });
-
-  const hiddenPrefixesSuffix = getHiddenUserPrefixes();
-  const hiddenPrefixes = getHiddenUserPrefixes();
-  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
-
-  const attrsFilter = { agency: sfx };
-  const templateName = String(currentTemplate || "").trim();
-  if (templateName) attrsFilter.current_template = templateName;
-
-  const params = {
-    page,
-    page_size: pageSize,
-    ordering: getAuthentikOrderingForUserSort({ sortKey, sortDir }),
-    // Authentik filters JSON attributes via `attributes=<json>`.
-    // See authentik/core/api/users.py UsersFilter.filter_attributes().
-    attributes: JSON.stringify(attrsFilter),
-    include_roles: includeRoles ? "true" : "false",
-    include_groups: includeGroups ? "true" : "false",
-  };
-
-  // Reduce payload + align pagination totals with what the UI is allowed to see.
-  if (hiddenPrefixes.length) {
-    // Match the logic used by searchUsersPaged() so totals reflect visible users.
-    params.type = ["external", "internal"];
-  }
-
-  if (folderRaw) {
-    params.path_startswith = normalizePath(folderRaw);
-  }
-
-  if (Array.isArray(groupsByPk) && groupsByPk.length) {
-    const cleaned = groupsByPk.map((x) => String(x).trim()).filter(Boolean);
-    if (cleaned.length > 1) {
-      throw new Error("Delegated global-admin exclusion requires a single group PK");
-    }
-    if (cleaned.length === 1) params.groups_by_pk = cleaned[0];
-  }
-
-  if (q && String(q).trim()) {
-    // For this fast path, we generally call with q empty (to preserve semantics).
-    params.search = String(q).trim();
-  }
-
-  const res = await api.get("/core/users/", { params });
-  const data = res?.data || {};
-  const raw = Array.isArray(data.results) ? data.results : [];
-
-  // Keep the same hidden-prefix/path enforcement as other paged helpers
-  let users = raw.slice();
-
-  // Apply prefix filter as a safety net in case the instance has custom naming.
-  if (hiddenPrefixes.length) {
-    users = users.filter((u) => {
-      const username = String(u?.username || "").trim().toLowerCase();
-      return !hiddenPrefixes.some((p) => username.startsWith(p));
-    });
-  }
-
-  if (folderRaw) {
-    const target = normalizePath(folderRaw);
-    users = users.filter((u) => {
-      const up = normalizePath(u.path);
-      return up === target || up.startsWith(target + "/");
-    });
-  }
-
-  const pagination = data.pagination || {};
-  let total = 0;
-
-  if (pagination && pagination.count != null) {
-    const t = Number(pagination.count);
-    if (!Number.isNaN(t) && t >= 0) total = t;
-  }
-
-  if (!total && data && data.count != null) {
-    const c = Number(data.count);
-    if (!Number.isNaN(c) && c >= 0) total = c;
-  }
-
-  if (!total) total = users.length;
-
-  // Adjust downward for hidden-prefix filtering when it affected this page.
-  if (hiddenPrefixes.length) {
-    const filteredOnPage = raw.length - users.length;
-    if (filteredOnPage > 0 && total >= filteredOnPage) {
-      total = total - filteredOnPage;
-    }
-  }
-
-  const currentPage =
-    typeof pagination.current === "number"
-      ? pagination.current
-      : Number(params.page) || 1;
-
-  return {
-    users,
-    total,
-    page: currentPage,
-    pageSize,
-    hasNext: Boolean(pagination.next ?? data.next),
-    hasPrev: Boolean(pagination.previous ?? data.previous),
-  };
 }
 
 async function searchUsersByAgencyNamePaged({
@@ -2348,100 +2154,6 @@ async function searchUsersByAgencyNamePaged({
     includeGroups,
     activeOnly: activeOnly || undefined,
   });
-
-  const hiddenPrefixes = getHiddenUserPrefixes();
-  const templateName = String(currentTemplate || "").trim();
-  if (templateName) attrsFilter.current_template = templateName;
-
-  const params = {
-    page,
-    page_size: pageSize,
-    ordering: getAuthentikOrderingForUserSort({ sortKey, sortDir }),
-    // Authentik filters JSON attributes via `attributes=<json>`.
-    // The create-user flow stores the full agency name under `attributes.agency_name`.
-    attributes: JSON.stringify(attrsFilter),
-    include_roles: includeRoles ? "true" : "false",
-    include_groups: includeGroups ? "true" : "false",
-  };
-
-  if (activeOnly) params.is_active = true;
-
-  if (hiddenPrefixes.length) {
-    params.type = ["external", "internal"];
-  }
-
-  if (folderRaw) {
-    params.path_startswith = normalizePath(folderRaw);
-  }
-
-  if (Array.isArray(groupsByPk) && groupsByPk.length) {
-    const cleaned = groupsByPk.map((x) => String(x).trim()).filter(Boolean);
-    if (cleaned.length > 1) {
-      throw new Error("Delegated global-admin exclusion requires a single group PK");
-    }
-    if (cleaned.length === 1) params.groups_by_pk = cleaned[0];
-  }
-
-  if (q && String(q).trim()) {
-    params.search = String(q).trim();
-  }
-
-  const res = await api.get("/core/users/", { params });
-  const data = res?.data || {};
-  const raw = Array.isArray(data.results) ? data.results : [];
-
-  let users = raw.slice();
-
-  if (hiddenPrefixes.length) {
-    users = users.filter((u) => {
-      const username = String(u?.username || "").trim().toLowerCase();
-      return !hiddenPrefixes.some((p) => username.startsWith(p));
-    });
-  }
-
-  if (folderRaw) {
-    const target = normalizePath(folderRaw);
-    users = users.filter((u) => {
-      const up = normalizePath(u.path);
-      return up === target || up.startsWith(target + "/");
-    });
-  }
-
-  const pagination = data.pagination || {};
-  let total = 0;
-
-  if (pagination && pagination.count != null) {
-    const t = Number(pagination.count);
-    if (!Number.isNaN(t) && t >= 0) total = t;
-  }
-
-  if (!total && data && data.count != null) {
-    const c = Number(data.count);
-    if (!Number.isNaN(c) && c >= 0) total = c;
-  }
-
-  if (!total) total = users.length;
-
-  if (hiddenPrefixes.length) {
-    const filteredOnPage = raw.length - users.length;
-    if (filteredOnPage > 0 && total >= filteredOnPage) {
-      total = total - filteredOnPage;
-    }
-  }
-
-  const currentPage =
-    typeof pagination.current === "number"
-      ? pagination.current
-      : Number(params.page) || 1;
-
-  return {
-    users,
-    total,
-    page: currentPage,
-    pageSize,
-    hasNext: Boolean(pagination.next ?? data.next),
-    hasPrev: Boolean(pagination.previous ?? data.previous),
-  };
 }
 
 async function listAllUsersByAgencyName(agencyName, { activeOnly = false } = {}) {
@@ -2672,47 +2384,19 @@ function userPassesAgencySuffixSafety(user, expectedAgencySuffix) {
 }
 
 async function countUsersByAgencyName(agencyName) {
-  const name = String(agencyName || "").trim();
-  if (!name) return 0;
-  const page = await searchUsersByAgencyNamePaged({
-    agencyName: name,
-    page: 1,
-    pageSize: 1,
-    includeGroups: false,
-  });
-  return Number(page.total) || 0;
+  return directoryRepo.countUsersByAgencyName(agencyName);
 }
 
 async function buildUsersByTemplateForAgencyName(agencyName, { expectedAgencySuffix } = {}) {
   const name = String(agencyName || "").trim();
   if (!name) return {};
-
-  const counts = Object.create(null);
-  let page = 1;
-  let hasNext = true;
-
-  while (hasNext) {
-    const result = await searchUsersByAgencyNamePaged({
-      agencyName: name,
-      page,
-      pageSize: AGENCY_DASHBOARD_USER_PAGE_SIZE,
-      includeGroups: false,
-    });
-
-    for (const u of result.users || []) {
-      if (!userPassesAgencySuffixSafety(u, expectedAgencySuffix)) continue;
-      const attrs =
-        u && typeof u.attributes === "object" && u.attributes ? u.attributes : {};
-      let tmpl = String(attrs.current_template || "").trim();
-      if (!tmpl) tmpl = "Manual Group Selection";
-      counts[tmpl] = (counts[tmpl] || 0) + 1;
-    }
-
-    hasNext = result.hasNext;
-    page += 1;
-  }
-
-  return counts;
+  const suffixes = expectedAgencySuffix
+    ? [String(expectedAgencySuffix).trim().toLowerCase()].filter(Boolean)
+    : undefined;
+  return directoryRepo.countUsersByTemplate({
+    agencyName: name,
+    agencySuffixes: suffixes && suffixes.length ? suffixes : undefined,
+  });
 }
 
 async function resetPassword(userId, password) {
@@ -3817,83 +3501,18 @@ async function getAllGroups(options = {}) {
 }
 
 /**
- * Fetch users who are in a single group via Authentik's groups_by_pk filter.
- * Used so we get accurate membership without relying on user.groups from list endpoints.
- */
-async function fetchUsersByGroupId(groupId, options = {}) {
-  const gid = String(groupId || "").trim();
-  if (!gid) return [];
-  const { includeHiddenPrefixes = false, ignoreUserPathFilter = false } = options;
-  let users = [];
-  const pageSize = 200;
-  let page = 1;
-  let url =
-    `/core/users/?page=${page}&page_size=${pageSize}` +
-    `&groups_by_pk=${encodeURIComponent(gid)}` +
-    "&include_groups=false&include_roles=false";
-
-  while (url) {
-    const res = await api.get(url);
-    const data = res?.data || {};
-    const results = Array.isArray(data.results) ? data.results : [];
-    users = users.concat(results);
-
-    const pagination = data.pagination || {};
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      url =
-        `/core/users/?page=${page}&page_size=${pageSize}` +
-        `&groups_by_pk=${encodeURIComponent(gid)}` +
-        "&include_groups=false&include_roles=false";
-    } else if (data.next) {
-      url = String(data.next).replace(`${getString("AUTHENTIK_URL", "")}/api/v3`, "");
-    } else {
-      url = null;
-    }
-  }
-
-  if (!includeHiddenPrefixes) {
-    const hiddenPrefixes = getHiddenUserPrefixes();
-    if (hiddenPrefixes.length) {
-      users = users.filter((u) => {
-        const username = String(u?.username || "").trim().toLowerCase();
-        return !hiddenPrefixes.some((p) => username.startsWith(p));
-      });
-    }
-  }
-
-  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
-  if (folderRaw && !ignoreUserPathFilter) {
-    const target = normalizePath(folderRaw);
-    users = users.filter((u) => {
-      const up = normalizePath(u.path);
-      return up === target || up.startsWith(target + "/");
-    });
-  }
-
-  return users;
-}
-
-/**
- * Return users who belong to any of the given group IDs (for bulk email by groups).
- * Fetches per group via Authentik's groups_by_pk so membership is correct; merges and dedupes by user pk.
+ * Users in any of the given group IDs (Postgres group_members).
  */
 async function getUsersByGroups(groupIds, options = {}) {
   const list = Array.isArray(groupIds) ? groupIds.map((id) => String(id).trim()).filter(Boolean) : [];
   if (!list.length) return [];
-  const seenPk = new Set();
-  const merged = [];
-  for (const gid of list) {
-    const groupUsers = await fetchUsersByGroupId(gid, options);
-    for (const u of groupUsers) {
-      const pk = u?.pk != null ? String(u.pk) : u?.id != null ? String(u.id) : null;
-      if (pk && !seenPk.has(pk)) {
-        seenPk.add(pk);
-        merged.push(u);
-      }
-    }
-  }
-  return merged;
+  return directoryRepo.listUserEmailRowsByGroupPks(list, {
+    includeHiddenPrefixes: !!options.includeHiddenPrefixes,
+  });
+}
+
+async function fetchUsersByGroupId(groupId, options = {}) {
+  return getUsersByGroups([groupId], options);
 }
 
 /**
@@ -4139,21 +3758,18 @@ async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
   let hasNext = true;
 
   while (hasNext) {
-    const params = {
+    const result = await directoryRepo.searchUsersPaged({
+      agencySuffix: sfx,
       page,
-      page_size: 200,
-      include_groups: "true",
-      include_roles: "false",
-      attributes: JSON.stringify({ agency: sfx }),
-    };
-
-    const res = await api.get("/core/users/", { params });
-    const data = res?.data || {};
-    const rows = Array.isArray(data.results) ? data.results : [];
+      pageSize: 200,
+      includeGroups: true,
+      includeHiddenPrefixes: true,
+    });
+    const rows = Array.isArray(result.users) ? result.users : [];
 
     for (const user of rows) {
       const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
-      if (String(attrs.agency || "").trim().toLowerCase() !== sfx) continue;
+      if (String(attrs.agency || user.agency || "").trim().toLowerCase() !== sfx) continue;
       if (shouldSkipCurrentTemplateBackfillForUser(user)) continue;
 
       scanned += 1;
@@ -4166,31 +3782,35 @@ async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
       });
       if (desired == null) continue;
 
-      const current = String(attrs.current_template || "").trim();
+      const current = String(attrs.current_template || user.current_template || "").trim();
       if (current === desired) continue;
 
       const uid = String(user?.pk ?? user?.id ?? "").trim();
       if (!uid) continue;
 
-      await api.patch(`/core/users/${uid}/`, {
-        attributes: {
-          ...attrs,
-          current_template: desired,
-        },
+      const nextAttrs = { ...attrs, current_template: desired };
+      await db.withTransaction(async (c) => {
+        await directoryRepo.updateLocalUser(user.uuid || user.id, { attributes: nextAttrs }, c);
+        if (user.authentik_pk) {
+          await authentikOutbox.enqueue(
+            {
+              kind: "patch_user",
+              entityType: "user",
+              entityId: user.uuid || user.id,
+              authentikPk: user.authentik_pk,
+              username: user.username,
+              payload: { authentikPk: user.authentik_pk, patch: { attributes: nextAttrs } },
+            },
+            c
+          );
+        }
       });
       updated += 1;
     }
 
-    const pagination = data.pagination || {};
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      hasNext = true;
-    } else if (data.next) {
-      page += 1;
-      hasNext = true;
-    } else {
-      hasNext = false;
-    }
+    hasNext = !!result.hasNext;
+    page += 1;
+    if (page > 500) break;
   }
 
   if (updated > 0) invalidateUsersCache();
@@ -4454,21 +4074,9 @@ async function getCurrentTemplateCountsByTemplate(options = {}) {
     }
   }
 
-  const users = await getAllUsersLightweight({});
-  const list = Array.isArray(users) ? users : [];
-  const counts = Object.create(null);
-
-  for (const u of list) {
-    const attrs = (u && typeof u.attributes === "object" && u.attributes) ? u.attributes : {};
-    const agencySuffix = String(attrs.agency || "").trim().toLowerCase();
-    const currentTemplate = String(attrs.current_template || "").trim();
-    if (!agencySuffix || !currentTemplate) continue;
-    if (allowedSet && !allowedSet.has(agencySuffix)) continue;
-    if (currentTemplate === "Manual Group Selection") continue;
-
-    const key = `${agencySuffix}::${currentTemplate.toLowerCase()}`;
-    counts[key] = Number(counts[key] || 0) + 1;
-  }
+  const counts = await directoryRepo.countCurrentTemplateByAgencySuffix({
+    agencySuffixes: allowedSet ? Array.from(allowedSet) : undefined,
+  });
 
   if (TEMPLATE_COUNTS_CACHE_TTL_MS > 0) {
     TEMPLATE_COUNTS_CACHE = counts;

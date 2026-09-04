@@ -288,7 +288,7 @@
         <div class="editUserModalLoadingCard">
           <div class="editUserModalLoadingSpinner" aria-hidden="true"></div>
           <p class="editUserModalLoadingTitle">Loading user details…</p>
-          <p class="muted" style="margin:0;font-size:12px;">Fetching group memberships from Authentik</p>
+          <p class="muted" style="margin:0;font-size:12px;">Loading group memberships</p>
         </div>
       </div>
       <div class="grid2">
@@ -751,6 +751,25 @@ async function loadAgencies() {
 }
 
 // -------------------- Templates + manual group list (single /api/users/meta call) --------------------
+async function searchPortalGroups(q) {
+  const res = await fetch("/api/groups/search?" + new URLSearchParams({
+    q: String(q || "").trim(),
+    page: "1",
+    pageSize: "25",
+  }).toString());
+  const out = await res.json();
+  const groups = res.ok && Array.isArray(out.groups) ? out.groups : [];
+  groupsCache = groups;
+  if (!window.groupIndex) window.groupIndex = groupIndex;
+  for (const g of groups) {
+    const id = String(g.pk || g.id || "");
+    if (!id) continue;
+    groupIndex.set(id, g.name || ("Group " + id));
+    visibleGroupIds.add(id);
+  }
+  return groups;
+}
+
 async function loadMeta() {
   const sfx = agencySelect.value || "";
   const res = await fetch(
@@ -759,8 +778,7 @@ async function loadMeta() {
   const meta = await res.json();
   if (!res.ok) throw new Error(meta.error || "Failed to load templates");
 
-  groupsCache = Array.isArray(meta.groups) ? meta.groups : [];
-  renderGroupsBox();
+  await searchPortalGroups(groupFilter && groupFilter.value || "");
 
   // Router now returns: { groups, templates: [ { key, label, isDefault?, groups? }, ... ] }
   const raw = Array.isArray(meta.templates) ? meta.templates : [];
@@ -829,20 +847,11 @@ agencySelect.addEventListener("change", () => {
 
 // -------------------- Manual Groups --------------------
 function renderGroupsBox() {
-  const needle = String(groupFilter.value || "").trim().toLowerCase();
-
-  const sorted = groupsCache
+  const sorted = (groupsCache || [])
     .slice()
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
-  const filtered = needle
-    ? sorted.filter((g) =>
-        String(g.name || "").toLowerCase().includes(needle)
-      )
-    : sorted;
-
-  // IMPORTANT: render into the INNER wrapper (multicol), not the scroll box
-  groupsInner.innerHTML = filtered
+  groupsInner.innerHTML = sorted
     .map((g) => {
       const id = String(g.pk);
       const rawName = String(g.name || "");
@@ -854,7 +863,7 @@ function renderGroupsBox() {
       </label>
     `;
     })
-    .join("");
+    .join("") || '<p class="muted" style="margin:0;padding:8px;">Type to search groups…</p>';
 
   Array.from(groupsBox.querySelectorAll('input[type="checkbox"]')).forEach(
     (cb) => {
@@ -871,7 +880,13 @@ groupsBox.addEventListener("change", (e) => {
   else pickedManualGroupIds.delete(id);
 });
 
-groupFilter.oninput = () => renderGroupsBox();
+groupFilter.oninput = () => {
+  clearTimeout(window.__usersGroupFilterTimer);
+  window.__usersGroupFilterTimer = setTimeout(async () => {
+    await searchPortalGroups(groupFilter.value);
+    renderGroupsBox();
+  }, 280);
+};
 
 selectAllBtn.onclick = () => {
   Array.from(groupsBox.querySelectorAll('input[type="checkbox"]')).forEach(
@@ -2221,8 +2236,7 @@ let mutualAidGroupIds = new Set();
 // (e.g. groups starting with "authentik-").
 const groupNameToIdCache = new Map();
 
-// Cache of all Authentik groups including those hidden from the normal /api/users/groups list.
-// Only global admins can load this (enforced server-side).
+// Cache of agency-admin groups (resolved by abbreviation, not a full directory dump).
 let allGroupsIncludingHiddenCache = null;
 
 function normalizeGroupNameKey(name) {
@@ -2321,18 +2335,33 @@ wirePasswordToggle(pw2, pw2Toggle);
 
 async function fetchAllGroupsIncludingHidden(){
   if (allGroupsIncludingHiddenCache) return allGroupsIncludingHiddenCache;
-  const res = await fetch("/api/users/all-groups-hidden");
+  const abbrs = (allAgenciesCache || [])
+    .map((a) => String(a?.groupPrefix || "").trim())
+    .filter(Boolean);
+  const res = await fetch(
+    "/api/users/agency-admin-group-ids?abbreviations=" + encodeURIComponent(abbrs.join(","))
+  );
   const out = await res.json();
   if (!res.ok) {
-    console.error("Failed to load all groups (including hidden):", out.error || out);
+    console.error("Failed to load agency admin groups:", out.error || out);
     allGroupsIncludingHiddenCache = [];
     return allGroupsIncludingHiddenCache;
   }
-  allGroupsIncludingHiddenCache = Array.isArray(out) ? out : [];
+  const groups = [];
+  if (out && typeof out === "object") {
+    for (const [abbr, ids] of Object.entries(out)) {
+      for (const id of Array.isArray(ids) ? ids : []) {
+        groups.push({ pk: id, name: `authentik-${String(abbr).trim().toUpperCase()}-AgencyAdmin` });
+      }
+    }
+  }
+  allGroupsIncludingHiddenCache = groups;
   return allGroupsIncludingHiddenCache;
 }
 
 function getUserAgencyAbbreviation(user){
+  const direct = String(user?.agency_abbreviation || "").trim();
+  if (direct) return direct;
   const attrs = user && user.attributes ? user.attributes : {};
   const raw =
     attrs.agency_abbreviation ||
@@ -2485,21 +2514,17 @@ function roleForUser(user){
 }
 
 async function loadGroups(){
-  const res = await fetch("/api/users/meta");
-  const meta = await res.json();
-
-  if(!res.ok){
-    throw new Error(meta.error || "Failed to load groups");
-  }
-
-  const groups = Array.isArray(meta.groups) ? meta.groups : [];
-  visibleGroupIds = new Set(groups.map(g => String(g.pk)));
-  groupIndex = new Map(groups.map(g => [String(g.pk), g.name || ("Group " + g.pk)]));
-  const maIds = Array.isArray(meta.mutualAidGroupIds)
-    ? meta.mutualAidGroupIds
-    : (Array.isArray(meta.mutualAidCreatedGroupIds) ? meta.mutualAidCreatedGroupIds : []);
-  mutualAidGroupIds = new Set(maIds.map((id) => String(id).trim()).filter(Boolean));
-
+  await searchPortalGroups(groupFilter && groupFilter.value || "");
+  try {
+    const res = await fetch("/api/users/meta");
+    const meta = await res.json();
+    if (res.ok) {
+      const maIds = Array.isArray(meta.mutualAidGroupIds)
+        ? meta.mutualAidGroupIds
+        : (Array.isArray(meta.mutualAidCreatedGroupIds) ? meta.mutualAidCreatedGroupIds : []);
+      mutualAidGroupIds = new Set(maIds.map((id) => String(id).trim()).filter(Boolean));
+    }
+  } catch (_) {}
   renderGroupsBox();
 }
 
@@ -2709,10 +2734,18 @@ function renderGroupsBox(){
   });
 }
 
-groupFilter.addEventListener("input", ()=>renderGroupsBox());
+groupFilter.addEventListener("input", () => {
+  clearTimeout(window.__usersEditGroupFilterTimer);
+  window.__usersEditGroupFilterTimer = setTimeout(async () => {
+    await searchPortalGroups(groupFilter.value);
+    renderGroupsBox();
+  }, 280);
+});
 
 if (selectAllBtn) selectAllBtn.addEventListener("click", function() {
-  pickedGroupIds = new Set(Array.from(visibleGroupIds));
+  pickedGroupIds = new Set(
+    Array.from(groupsBox.querySelectorAll("input[type=checkbox]")).map((cb) => String(cb.value))
+  );
   renderGroupsBox();
   syncPickedGroupsToUi();
   scheduleGroupSave();
@@ -3584,17 +3617,21 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
 
   cancelGroupAutosave({ bumpEpoch: true });
 
+  const templateGroupNames = Array.isArray(template.groups) ? template.groups : [];
+  if (!templateGroupNames.length) {
+    setMsgEl(actionMsg, "This template has no groups configured.", false);
+    return { ok: false };
+  }
+
+  for (const gName of templateGroupNames) {
+    await searchPortalGroups(gName);
+  }
+
   const nameToId = {};
   for (const [id, name] of groupIndex.entries()) {
     const n = String(name || "").trim().toLowerCase();
     if (!n) continue;
     nameToId[n] = id;
-  }
-
-  const templateGroupNames = Array.isArray(template.groups) ? template.groups : [];
-  if (!templateGroupNames.length) {
-    setMsgEl(actionMsg, "This template has no groups configured.", false);
-    return { ok: false };
   }
 
   const newGroupIds = templateGroupNames
@@ -3605,7 +3642,7 @@ async function applyTemplateSelection({ silentSuccess = false } = {}) {
     .filter(Boolean);
 
   if (!newGroupIds.length) {
-    setMsgEl(actionMsg, "Template groups could not be matched to available Authentik groups.", false);
+    setMsgEl(actionMsg, "Template groups could not be matched to available groups.", false);
     return { ok: false };
   }
 
@@ -3990,10 +4027,7 @@ if (exportUsersCsvBtn) {
         })
         .catch(() => {});
     }
-    // Warm agency-admin group index for global admins so first "Edit" does not wait on a full hidden-groups fetch.
-    if (IS_GLOBAL_ADMIN) {
-      ensureAgencyAdminGroupIdIndex().catch(() => {});
-    }
+    // Agency admin groups are resolved lazily when editing a user.
   } catch (err) {
     setMsgEl(msg, err.message || "Failed to load page", false);
   }
@@ -4458,7 +4492,7 @@ th.sortable:hover{
   min-width: 280px;
 }
 
-/* Edit user: block interaction until Authentik user + group data is loaded */
+/* Edit user: block interaction until user + group data is loaded */
 .editUserModalLoading{
   position: absolute;
   inset: 0;

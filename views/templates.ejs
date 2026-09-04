@@ -376,21 +376,13 @@ function renderGroups(filterText = ""){
     return;
   }
   if (!allGroups.length) {
-    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">No groups available.</p>';
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">Type to search groups…</p>';
     return;
   }
 
-  const q = String(filterText || "").trim().toLowerCase();
-
   const list = allGroups
     .map(g => String(g.name))
-    .sort((a,b)=>a.localeCompare(b))
-    .filter(rawName => {
-      if (!q) return true;
-      const raw = rawName.toLowerCase();
-      const disp = displayGroupName(rawName).toLowerCase();
-      return raw.includes(q) || disp.includes(q);
-    });
+    .sort((a,b)=>a.localeCompare(b));
 
   groupsInner.innerHTML = list.map(rawName => {
     const checked = pickedGroupNames.has(rawName) ? "checked" : "";
@@ -454,7 +446,7 @@ async function loadAgencies(){
 
 async function loadGroups(options = {}){
   const { force = false } = options || {};
-  if (groupsLoaded && !force) {
+  if (groupsLoaded && !force && !String(groupSearch.value || "").trim()) {
     renderGroups(groupSearch.value);
     return;
   }
@@ -462,11 +454,15 @@ async function loadGroups(options = {}){
   groupsLoadingForAgency = true;
   renderGroups(groupSearch.value);
   try {
-    const res = await fetch("/api/users/meta");
-    const meta = await res.json();
-    if (!res.ok) throw new Error(meta.error || "Failed to load groups");
+    const res = await fetch("/api/groups/search?" + new URLSearchParams({
+      q: String(groupSearch.value || "").trim(),
+      page: "1",
+      pageSize: "25",
+    }).toString());
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error || "Failed to load groups");
 
-    allGroups = Array.isArray(meta.groups) ? meta.groups : [];
+    allGroups = Array.isArray(out.groups) ? out.groups : [];
 
     groupsLoaded = true;
     renderGroups(groupSearch.value);
@@ -671,7 +667,11 @@ window.deleteTemplate = async (idx) => {
 };
 
 groupSearch.oninput = () => {
-  renderGroups(groupSearch.value);
+  clearTimeout(window.__tplGroupSearchTimer);
+  window.__tplGroupSearchTimer = setTimeout(() => {
+    groupsLoaded = false;
+    loadGroups({ force: true }).catch(() => {});
+  }, 280);
 };
 
 agencyEl.addEventListener("change", () => {

@@ -335,7 +335,8 @@
         emailAllAgencyAdminsPane.style.display =
           mode === "all_agency_admins" ? "block" : "none";
       }
-      if (mode === "users" && usersCache.length === 0) loadEmailUsers();
+      if (mode === "users") loadEmailUsers();
+      if (mode === "groups") loadEmailGroups();
       updateEmailDropdownLabels();
     }
 
@@ -426,15 +427,7 @@
 
     function renderEmailGroupList() {
       if (!emailGroupListInner) return;
-      const needle = String(emailGroupSearch.value || "").trim().toLowerCase();
-      const items = (groupsCache || [])
-        .slice()
-        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
-        .filter((g) =>
-          !needle
-            ? true
-            : String(g.name || "").toLowerCase().includes(needle)
-        );
+      const items = (groupsCache || []).slice();
 
       emailGroupListInner.innerHTML =
         items
@@ -451,7 +444,7 @@
             `;
           })
           .join("") ||
-        `<div style="padding:10px; color: var(--muted);">No groups found.</div>`;
+        `<div style="padding:10px; color: var(--muted);">Type to search groups.</div>`;
       updateEmailDropdownLabels();
     }
 
@@ -470,12 +463,16 @@
 
     async function loadEmailGroups() {
       try {
-        const groupsUrl = IS_GLOBAL_ADMIN
-          ? "/api/groups?includeMutualAid=1"
-          : "/api/groups";
-        const res = await fetch(groupsUrl);
+        const q = String(emailGroupSearch && emailGroupSearch.value || "").trim();
+        const params = new URLSearchParams({
+          q,
+          page: "1",
+          pageSize: "25",
+        });
+        if (IS_GLOBAL_ADMIN) params.set("includeMutualAid", "1");
+        const res = await fetch("/api/groups/search?" + params.toString());
         const out = await res.json();
-        groupsCache = res.ok && Array.isArray(out) ? out : [];
+        groupsCache = res.ok && Array.isArray(out.groups) ? out.groups : [];
         renderEmailGroupList();
       } catch (e) {
         groupsCache = [];
@@ -485,20 +482,15 @@
 
     async function loadEmailUsers() {
       try {
-        usersCache = [];
-        let page = 1;
-        const pageSize = 500;
-        let hasNext = true;
-        while (hasNext) {
-          const res = await fetch(
-            `/api/users/search?q=&page=${page}&pageSize=${pageSize}`
-          );
-          const out = await res.json();
-          if (!res.ok || !Array.isArray(out.users)) break;
-          usersCache = usersCache.concat(out.users);
-          hasNext = !!out.hasNext;
-          page += 1;
-        }
+        const q = String(emailUserSearch && emailUserSearch.value || "").trim();
+        const params = new URLSearchParams({
+          q,
+          page: "1",
+          pageSize: "25",
+        });
+        const res = await fetch("/api/users/search?" + params.toString());
+        const out = await res.json();
+        usersCache = res.ok && Array.isArray(out.users) ? out.users : [];
         renderEmailUserList();
       } catch (e) {
         usersCache = [];
@@ -508,25 +500,7 @@
 
     function renderEmailUserList() {
       if (!emailUserListInner) return;
-      const needle = String(emailUserSearch.value || "").trim().toLowerCase();
-      const items = (usersCache || [])
-        .slice()
-        .sort((a, b) =>
-          String(a.name || a.username || "").localeCompare(
-            String(b.name || b.username || "")
-          )
-        )
-        .filter((u) => {
-          if (!needle) return true;
-          const name = String(u.name || "").toLowerCase();
-          const username = String(u.username || "").toLowerCase();
-          const email = String(u.email || "").toLowerCase();
-          return (
-            name.includes(needle) ||
-            username.includes(needle) ||
-            email.includes(needle)
-          );
-        });
+      const items = (usersCache || []).slice();
 
       emailUserListInner.innerHTML =
         items
@@ -551,7 +525,7 @@
           })
           .filter(Boolean)
           .join("") ||
-        `<div style="padding:10px; color: var(--muted);">No users found.</div>`;
+        `<div style="padding:10px; color: var(--muted);">Type to search users.</div>`;
       updateEmailDropdownLabels();
     }
 
@@ -748,10 +722,16 @@
       emailAgencySearch.addEventListener("input", renderEmailAgencyList);
     }
     if (emailGroupSearch) {
-      emailGroupSearch.addEventListener("input", renderEmailGroupList);
+      emailGroupSearch.addEventListener("input", () => {
+        clearTimeout(window.__emailGroupSearchTimer);
+        window.__emailGroupSearchTimer = setTimeout(loadEmailGroups, 280);
+      });
     }
     if (emailUserSearch) {
-      emailUserSearch.addEventListener("input", renderEmailUserList);
+      emailUserSearch.addEventListener("input", () => {
+        clearTimeout(window.__emailUserSearchTimer);
+        window.__emailUserSearchTimer = setTimeout(loadEmailUsers, 280);
+      });
     }
 
     // Keep selection in sync when checkboxes change (event delegation)
@@ -819,11 +799,8 @@
     }
     if (emailGroupSelectAll) {
       emailGroupSelectAll.onclick = () => {
-        const needle = String(emailGroupSearch.value || "").trim().toLowerCase();
-        const items = (groupsCache || [])
-          .filter((g) =>
-            !needle ? true : String(g.name || "").toLowerCase().includes(needle)
-          );
+        const items = groupsCache || [];
+        items.forEach((g) => selectedGroupIdsSet.add(String(g.pk)));
         items.forEach((g) => selectedGroupIdsSet.add(String(g.pk)));
         renderEmailGroupList();
       };
@@ -836,14 +813,7 @@
     }
     if (emailUserSelectAll) {
       emailUserSelectAll.onclick = () => {
-        const needle = String(emailUserSearch.value || "").trim().toLowerCase();
-        const items = (usersCache || []).filter((u) => {
-          if (!needle) return true;
-          const name = String(u.name || "").toLowerCase();
-          const username = String(u.username || "").toLowerCase();
-          const email = String(u.email || "").toLowerCase();
-          return name.includes(needle) || username.includes(needle) || email.includes(needle);
-        });
+        const items = usersCache || [];
         items.forEach((u) => {
           const username = String(u.username || "").trim();
           if (username) selectedUsernamesSet.add(username);
@@ -866,7 +836,7 @@
     }
 
     // Initial load
-    Promise.all([loadEmailAgencies(), loadEmailGroups()]).catch(() => {});
+    Promise.all([loadEmailAgencies()]).catch(() => {});
     setEmailMode("agency");
   })();
 </script>

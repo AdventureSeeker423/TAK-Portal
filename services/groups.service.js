@@ -159,14 +159,22 @@ function applyUserVisibilityFilters(users) {
 // ---------------- Authentik API helpers (groups) ----------------
 async function getAllGroupsRaw(options = {}) {
   const includeHidden = !!options.includeHidden;
-  const r = await directoryRepo.searchGroupsPaged({
-    includeHidden,
-    page: 1,
-    pageSize: 500,
-    q: options.q,
-    prefix: options.prefix,
-  });
-  return r.groups;
+  const pageSize = 200;
+  const all = [];
+  let page = 1;
+  for (;;) {
+    const r = await directoryRepo.searchGroupsPaged({
+      includeHidden,
+      page,
+      pageSize,
+      q: options.q,
+      prefix: options.prefix,
+    });
+    all.push(...(r.groups || []));
+    if (!r.hasNext) break;
+    page += 1;
+  }
+  return all;
 }
 
 function applyGroupsHiddenPrefixFilter(groups, { includeHidden = false } = {}) {
@@ -538,8 +546,20 @@ async function getGroupById(groupId) {
 }
 
 async function getAllUsersRaw() {
-  const r = await directoryRepo.searchUsersPaged({ page: 1, pageSize: 100, includeGroups: false });
-  return r.users;
+  const pageSize = 200;
+  const all = [];
+  let page = 1;
+  for (;;) {
+    const r = await directoryRepo.searchUsersPaged({
+      page,
+      pageSize,
+      includeGroups: false,
+    });
+    all.push(...(r.users || []));
+    if (!r.hasNext) break;
+    page += 1;
+  }
+  return all;
 }
 
 // Fetch all users who are members of a single group via Authentik filtering.
@@ -1117,71 +1137,33 @@ async function fetchUsersByIds(userIds) {
   return rows.filter(Boolean);
 }
 
-async function loadUsersByAgencySuffixes({
+async function restrictPksToAllowedAgencies(pks, authUser) {
+  const access = accessSvc.getAgencyAccess(authUser || null);
+  const ids = Array.isArray(pks) ? pks.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  if (!ids.length) return [];
+  if (access.isGlobalAdmin) return ids;
+  return directoryRepo.filterUserPksByAgencySuffixes(ids, access.allowedAgencySuffixes || []);
+}
+
+async function loadUserPksByAgencySuffixes({
   selectedSuffixes,
   emitProgress,
-  concurrency = 6,
 } = {}) {
   const suffixes = Array.isArray(selectedSuffixes) ? selectedSuffixes : [];
-  const maxConcurrency = Math.max(1, Number(concurrency) || 6);
-  const seenPk = new Set();
-  const matchedUsers = [];
-  let processedAgencies = 0;
-  let idx = 0;
-
   emitProgress({
     phase: "loading_users",
     total: suffixes.length,
     processed: 0,
     matched: 0,
   });
-
-  async function worker() {
-    while (idx < suffixes.length) {
-      const current = idx;
-      idx += 1;
-      const sfx = suffixes[current];
-
-      let page = 1;
-      let hasNext = true;
-      while (hasNext) {
-        const out = await usersService.searchUsersByAgencySuffixPaged({
-          agencySuffix: sfx,
-          q: "",
-          page,
-          pageSize: 500,
-          sortKey: "username",
-          sortDir: "asc",
-          includeRoles: false,
-          includeGroups: false,
-        });
-        const rows = Array.isArray(out?.users) ? out.users : [];
-        for (const u of rows) {
-          const pk = String(u?.pk ?? u?.id ?? "").trim();
-          if (!pk || seenPk.has(pk)) continue;
-          seenPk.add(pk);
-          matchedUsers.push(u);
-        }
-        hasNext = !!out?.hasNext;
-        page += 1;
-      }
-
-      processedAgencies += 1;
-      emitProgress({
-        phase: "loading_users",
-        total: suffixes.length,
-        processed: processedAgencies,
-        matched: matchedUsers.length,
-      });
-    }
-  }
-
-  const workers = Array.from(
-    { length: Math.min(maxConcurrency, suffixes.length || 1) },
-    () => worker()
-  );
-  await Promise.all(workers);
-  return matchedUsers;
+  const pks = await directoryRepo.listUserPksByAgencySuffixes(suffixes);
+  emitProgress({
+    phase: "loading_users",
+    total: suffixes.length,
+    processed: suffixes.length,
+    matched: pks.length,
+  });
+  return pks;
 }
 
 // ---------- Mass assign / unassign ----------
@@ -1196,37 +1178,11 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
   // Block protected groups
   await assertGroupNotActionLocked(gid);
 
-  const access = accessSvc.getAgencyAccess(authUser || null);
-  function restrictToAllowedAgencies(userList) {
-    if (access.isGlobalAdmin) return userList;
-    return userList.filter((u) =>
-      accessSvc.isUserInAllowedAgencies(authUser, u)
-    );
-  }
-  function dedupeUsersByPk(userList) {
-    const seen = new Set();
-    const out = [];
-    for (const u of userList || []) {
-      const pk = String(u?.pk ?? u?.id ?? "").trim();
-      if (!pk || seen.has(pk)) continue;
-      seen.add(pk);
-      out.push(u);
-    }
-    return out;
-  }
-
   // Strategy 1: explicit users
   const explicitUsers = normalizeIdList(userIds);
   if (explicitUsers.length) {
     emitProgress({ phase: "matching", total: explicitUsers.length, processed: 0, matched: 0 });
-    let targetUserPks = explicitUsers.slice();
-    if (!access.isGlobalAdmin) {
-      const fetchedUsers = await fetchUsersByIds(explicitUsers);
-      const allowedUsers = restrictToAllowedAgencies(fetchedUsers);
-      targetUserPks = allowedUsers
-        .map((u) => String(u?.pk ?? u?.id ?? "").trim())
-        .filter(Boolean);
-    }
+    const targetUserPks = await restrictPksToAllowedAgencies(explicitUsers, authUser);
     emitProgress({
       phase: "matching",
       total: explicitUsers.length,
@@ -1245,15 +1201,8 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
   const srcGids = normalizeIdList(sourceGroupIds);
   if (srcGids.length) {
     emitProgress({ phase: "matching", total: srcGids.length, processed: 0, matched: 0 });
-    const memberLists = await Promise.all(
-      srcGids.map((id) => getUsersByGroupIdRaw({ groupId: id }).catch(() => []))
-    );
-    emitProgress({ phase: "matching", total: srcGids.length, processed: srcGids.length, matched: 0 });
-    let matchedUsers = dedupeUsersByPk(memberLists.flat());
-    matchedUsers = restrictToAllowedAgencies(matchedUsers);
-    const targetUserPks = matchedUsers
-      .map((u) => String(u?.pk ?? u?.id ?? "").trim())
-      .filter(Boolean);
+    const memberPks = await directoryRepo.listUserPksByGroupIds(srcGids);
+    const targetUserPks = await restrictPksToAllowedAgencies(memberPks, authUser);
     emitProgress({
       phase: "matching",
       total: targetUserPks.length,
@@ -1264,7 +1213,7 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
     const { changed } = await applyBulkGroupMembership(gid, "add", targetUserPks);
 
     emitProgress({ phase: "done", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length, updated: changed });
-    return { matched: matchedUsers.length, updated: changed };
+    return { matched: targetUserPks.length, updated: changed };
   }
 
   // Strategy 3: match by agency suffix
@@ -1276,29 +1225,25 @@ async function massAssignUsersToGroup({ groupId, suffixes, sourceGroupIds, userI
   }
 
   const selectedSuffixes = Array.from(new Set(suffixList));
-  let matchedUsers = await loadUsersByAgencySuffixes({
+  let matchedPks = await loadUserPksByAgencySuffixes({
     selectedSuffixes,
     emitProgress,
-    concurrency: 6,
   });
 
   emitProgress({
     phase: "matching",
-    total: matchedUsers.length,
-    processed: matchedUsers.length,
-    matched: matchedUsers.length,
+    total: matchedPks.length,
+    processed: matchedPks.length,
+    matched: matchedPks.length,
   });
-  matchedUsers = restrictToAllowedAgencies(matchedUsers);
-  const targetUserPks = matchedUsers
-    .map((u) => String(u?.pk ?? u?.id ?? "").trim())
-    .filter(Boolean);
+  const targetUserPks = await restrictPksToAllowedAgencies(matchedPks, authUser);
   emitProgress({ phase: "applying", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length });
   const { changed } = await applyBulkGroupMembership(gid, "add", targetUserPks);
 
   invalidateGroupUsersCache();
 
   emitProgress({ phase: "done", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length, updated: changed });
-  return { matched: matchedUsers.length, updated: changed };
+  return { matched: targetUserPks.length, updated: changed };
 }
 
 // Fetch all members of a single group (lightweight projection)
@@ -1382,36 +1327,11 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
   // Block protected groups
   await assertGroupNotActionLocked(gid);
 
-  const access = accessSvc.getAgencyAccess(authUser || null);
-
-  function restrictToAllowedAgencies(userList) {
-    if (access.isGlobalAdmin) return userList;
-    return userList.filter((u) => accessSvc.isUserInAllowedAgencies(authUser, u));
-  }
-  function dedupeUsersByPk(userList) {
-    const seen = new Set();
-    const out = [];
-    for (const u of userList || []) {
-      const pk = String(u?.pk ?? u?.id ?? "").trim();
-      if (!pk || seen.has(pk)) continue;
-      seen.add(pk);
-      out.push(u);
-    }
-    return out;
-  }
-
   // Strategy 1: explicit users
   const explicitUsers = normalizeIdList(userIds);
   if (explicitUsers.length) {
     emitProgress({ phase: "matching", total: explicitUsers.length, processed: 0, matched: 0 });
-    let targetUserPks = explicitUsers.slice();
-    if (!access.isGlobalAdmin) {
-      const fetchedUsers = await fetchUsersByIds(explicitUsers);
-      const allowedUsers = restrictToAllowedAgencies(fetchedUsers);
-      targetUserPks = allowedUsers
-        .map((u) => String(u?.pk ?? u?.id ?? "").trim())
-        .filter(Boolean);
-    }
+    const targetUserPks = await restrictPksToAllowedAgencies(explicitUsers, authUser);
     emitProgress({
       phase: "matching",
       total: explicitUsers.length,
@@ -1432,15 +1352,8 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
   const srcGids = normalizeIdList(sourceGroupIds);
   if (srcGids.length) {
     emitProgress({ phase: "matching", total: srcGids.length, processed: 0, matched: 0 });
-    const memberLists = await Promise.all(
-      srcGids.map((id) => getUsersByGroupIdRaw({ groupId: id }).catch(() => []))
-    );
-    emitProgress({ phase: "matching", total: srcGids.length, processed: srcGids.length, matched: 0 });
-    let matchedUsers = dedupeUsersByPk(memberLists.flat());
-    matchedUsers = restrictToAllowedAgencies(matchedUsers);
-    const targetUserPks = matchedUsers
-      .map((u) => String(u?.pk ?? u?.id ?? "").trim())
-      .filter(Boolean);
+    const memberPks = await directoryRepo.listUserPksByGroupIds(srcGids);
+    const targetUserPks = await restrictPksToAllowedAgencies(memberPks, authUser);
     emitProgress({
       phase: "matching",
       total: targetUserPks.length,
@@ -1453,7 +1366,7 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
     invalidateGroupUsersCache();
 
     emitProgress({ phase: "done", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length, updated: changed });
-    return { matched: matchedUsers.length, updated: changed };
+    return { matched: targetUserPks.length, updated: changed };
   }
 
   // Strategy 3: match by agency suffix
@@ -1465,27 +1378,23 @@ async function massUnassignUsersFromGroup({ groupId, suffixes, sourceGroupIds, u
   }
 
   const selectedSuffixes = Array.from(new Set(suffixList));
-  let matchedUsers = await loadUsersByAgencySuffixes({
+  let matchedPks = await loadUserPksByAgencySuffixes({
     selectedSuffixes,
     emitProgress,
-    concurrency: 6,
   });
 
   emitProgress({
     phase: "matching",
-    total: matchedUsers.length,
-    processed: matchedUsers.length,
-    matched: matchedUsers.length,
+    total: matchedPks.length,
+    processed: matchedPks.length,
+    matched: matchedPks.length,
   });
-  matchedUsers = restrictToAllowedAgencies(matchedUsers);
-  const targetUserPks = matchedUsers
-    .map((u) => String(u?.pk ?? u?.id ?? "").trim())
-    .filter(Boolean);
+  const targetUserPks = await restrictPksToAllowedAgencies(matchedPks, authUser);
   emitProgress({ phase: "applying", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length });
   const { changed } = await applyBulkGroupMembership(gid, "remove", targetUserPks);
 
   emitProgress({ phase: "done", total: targetUserPks.length, processed: targetUserPks.length, matched: targetUserPks.length, updated: changed });
-  return { matched: matchedUsers.length, updated: changed };
+  return { matched: targetUserPks.length, updated: changed };
 }
 
 
@@ -1635,32 +1544,72 @@ function buildGroupsExportCsv(rows) {
   return `${lines.join("\n")}\n`;
 }
 
+async function searchGroupsForAuthUser(
+  authUser,
+  {
+    q,
+    scope,
+    detail,
+    page = 1,
+    pageSize = 25,
+    includeMutualAid = false,
+  } = {}
+) {
+  const access = accessSvc.getAgencyAccess(authUser);
+  const scopeKey = String(scope || "all").trim().toLowerCase();
+  const detailRaw = String(detail || "").trim();
+  const opts = {
+    q: String(q || "").trim(),
+    page,
+    pageSize,
+    includeHidden: !!includeMutualAid,
+  };
+
+  if (scopeKey === "agency") {
+    opts.createdType = "agency";
+    if (detailRaw) opts.agencyName = detailRaw;
+  } else if (scopeKey === "state" || scopeKey === "county" || scopeKey === "region") {
+    opts.createdType = scopeKey;
+    if (detailRaw) opts.createdTypeDetail = detailRaw;
+  } else if (scopeKey === "global") {
+    opts.createdType = "global";
+  }
+
+  if (!access.isGlobalAdmin) {
+    const { agencyNames } = accessSvc.getAgencyAndCountyPrefixesForUser(authUser);
+    opts.agencyNames = Array.isArray(agencyNames) ? agencyNames : [];
+    const extra = accessSvc.getAllowedAdminGroupIdsForUser(authUser);
+    if (extra && extra.size) opts.extraGroupPks = Array.from(extra);
+    if (!opts.agencyNames.length && !(opts.extraGroupPks && opts.extraGroupPks.length)) {
+      return { groups: [], total: 0, page: 1, pageSize, hasNext: false, hasPrev: false };
+    }
+  }
+
+  return directoryRepo.searchGroupsPaged(opts);
+}
+
 /**
  * Collect member lists for export (sequential Authentik calls per group).
  */
 async function collectGroupsExportRows(groups, { authUser, agencyAbbreviation, agencyAbbreviations } = {}) {
-  const out = [];
   const list = Array.isArray(groups) ? groups : [];
   const abbrs = normalizeAgencyAbbreviations(agencyAbbreviations, agencyAbbreviation);
-  const memberOpts =
-    abbrs.length > 1
-      ? { authUser, agencyAbbreviations: abbrs }
-      : { authUser, agencyAbbreviation: abbrs[0] || agencyAbbreviation || null };
-
-  for (const group of list) {
+  const ids = list.map((g) => normalizeId(g?.pk ?? g?.id)).filter(Boolean);
+  const membersByGroup = await directoryRepo.listGroupMembersForExport(ids, {
+    agencyAbbreviations: abbrs,
+  });
+  void authUser;
+  return list.map((group) => {
     const gid = normalizeId(group?.pk ?? group?.id);
-    if (!gid) continue;
-
-    const members = await getGroupMembers(gid, memberOpts);
-    out.push({ group, members });
-  }
-
-  return out;
+    const members = membersByGroup.get(gid) || membersByGroup.get(String(group?.pk || "")) || [];
+    return { group, members };
+  });
 }
 
 module.exports = {
   getAllGroups,
   getGroupsForAuthUser,
+  searchGroupsForAuthUser,
   getGroupsByPrefix,
   getGroupsByAgencyName,
   resolveAgencyAbbreviationsForAuthUser,
