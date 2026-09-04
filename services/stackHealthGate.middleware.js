@@ -30,7 +30,10 @@ async function stackHealthGate(req, res, next) {
     if (health.ok || health.migrating) return next();
 
     if (wantsHtml(req)) {
-      return res.status(503).render("stack-down", { health });
+      return res.status(503).render("stack-down", {
+        health,
+        unavailable: stackHealth.getUnavailablePageLocals(),
+      });
     }
     res.setHeader("Retry-After", "5");
     return res.status(503).json({
@@ -45,13 +48,14 @@ async function stackHealthGate(req, res, next) {
   } catch (e) {
     console.warn("[stack-health-gate]", e?.message || e);
     if (wantsHtml(req)) {
+      const unavailable = stackHealth.getUnavailablePageLocals();
       return res.status(503).render("stack-down", {
         health: {
           ok: false,
-          title: "TAK Portal is unavailable",
-          message:
-            "The portal could not check database and worker status. On the server, run ./takportal start (or restart the stack from InfraTAK).",
+          title: unavailable.title,
+          message: unavailable.message,
         },
+        unavailable,
       });
     }
     res.setHeader("Retry-After", "5");

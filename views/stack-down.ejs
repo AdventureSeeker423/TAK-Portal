@@ -1,9 +1,25 @@
+<%
+  const copy = (typeof unavailable !== "undefined" && unavailable) ? unavailable : {};
+  const _portalTitle = String(
+    copy.portalTitle ||
+      (typeof portalTitle !== "undefined" ? portalTitle : "") ||
+      "TAK Portal"
+  ).trim() || "TAK Portal";
+  const _pageTitle = String(copy.title || "").trim() || (_portalTitle + " Is Unavailable");
+  const _message = String(copy.message || "").trim() || "TAK Portal is not responding properly. Please refresh the page or try again later.";
+  const _hint = String(copy.hint || "").trim() || "For ongoing issues, please contact your TAK Administrator";
+  const _logo = String(
+    copy.brandLogoUrl ||
+      (typeof brandLogoUrl !== "undefined" ? brandLogoUrl : "") ||
+      ""
+  ).trim();
+%>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TAK Portal is unavailable</title>
+  <title><%= _pageTitle %></title>
   <style>
     :root { color-scheme: dark; }
     body {
@@ -16,17 +32,74 @@
       background: #0f1419;
       color: #e7ecf1;
     }
-    .box { width: min(560px, 92vw); text-align: center; }
-    h1 { font-size: 1.4rem; font-weight: 650; margin: 0 0 12px; }
-    p { color: #9aa7b4; line-height: 1.5; }
-    .hint { margin-top: 18px; font-size: 0.9rem; color: #cbd5e1; }
+    .box {
+      width: min(560px, 92vw);
+      text-align: center;
+    }
+    .logoWrap {
+      display: flex;
+      justify-content: center;
+      margin: 0 0 28px;
+    }
+    .logoWrap img {
+      max-height: 112px;
+      max-width: min(280px, 70vw);
+      width: auto;
+      height: auto;
+      object-fit: contain;
+    }
+    .logoFallback {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 96px;
+      height: 96px;
+      border-radius: 20px;
+      background: #1b2430;
+      border: 1px solid #334155;
+      color: #e7ecf1;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      line-height: 1.05;
+    }
+    .logoFallback span {
+      font-size: 0.72rem;
+      font-weight: 650;
+      color: #93c5fd;
+      letter-spacing: 0.14em;
+    }
+    h1 {
+      font-size: 1.55rem;
+      font-weight: 650;
+      margin: 0 0 14px;
+      letter-spacing: -0.02em;
+    }
+    p {
+      color: #9aa7b4;
+      line-height: 1.55;
+      margin: 0 0 12px;
+      font-size: 1.02rem;
+    }
+    .hint {
+      margin-top: 18px;
+      font-size: 0.95rem;
+      color: #cbd5e1;
+    }
   </style>
 </head>
 <body>
   <div class="box">
-    <h1 id="title"><%= (health && health.title) || "TAK Portal is unavailable" %></h1>
-    <p id="message"><%= (health && health.message) || "The portal cannot be used until the database and background worker are running." %></p>
-    <p class="hint">This page will reopen the portal when the stack recovers. You can leave it open.</p>
+    <div class="logoWrap">
+      <% if (_logo) { %>
+        <img src="<%= _logo %>" alt="<%= _portalTitle %>" />
+      <% } else { %>
+        <div class="logoFallback" aria-hidden="true">TAK<span>PORTAL</span></div>
+      <% } %>
+    </div>
+    <h1 id="title"><%= _pageTitle %></h1>
+    <p id="message"><%= _message %></p>
+    <p class="hint"><%= _hint %></p>
   </div>
   <script>
     async function tick() {
@@ -35,10 +108,7 @@
         const s = await r.json();
         if (s && s.ok) {
           window.location.replace("/");
-          return;
         }
-        if (s && s.title) document.getElementById("title").textContent = s.title;
-        if (s && s.message) document.getElementById("message").textContent = s.message;
       } catch (e) {}
     }
     tick();

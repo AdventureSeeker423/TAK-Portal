@@ -165,15 +165,19 @@ app.get("/stack-down", async (req, res) => {
   try {
     const health = await stackHealth.getStackHealth();
     if (health.ok) return res.redirect("/");
-    return res.status(503).render("stack-down", { health });
+    return res.status(503).render("stack-down", {
+      health,
+      unavailable: stackHealth.getUnavailablePageLocals(),
+    });
   } catch (e) {
+    const unavailable = stackHealth.getUnavailablePageLocals();
     return res.status(503).render("stack-down", {
       health: {
         ok: false,
-        title: "TAK Portal is unavailable",
-        message:
-          "The portal could not check database and worker status. On the server, run ./takportal start (or restart the stack from InfraTAK).",
+        title: unavailable.title,
+        message: unavailable.message,
       },
+      unavailable,
     });
   }
 });

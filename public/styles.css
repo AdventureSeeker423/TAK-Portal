@@ -188,19 +188,54 @@ body.stack-health-locked {
     width: min(560px, 92vw);
     text-align: center;
 }
-.stackHealthLockBox h1 {
-    font-size: 1.4rem;
+.stackHealthLockLogo {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 28px;
+}
+.stackHealthLockLogo img {
+    max-height: 112px;
+    max-width: min(280px, 70vw);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
+.stackHealthLockLogoFallback {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 96px;
+    height: 96px;
+    border-radius: 20px;
+    background: #1b2430;
+    border: 1px solid #334155;
+    color: #e7ecf1;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.05;
+}
+.stackHealthLockLogoFallback span {
+    font-size: 0.72rem;
     font-weight: 650;
-    margin: 0 0 12px;
+    color: #93c5fd;
+    letter-spacing: 0.14em;
+}
+.stackHealthLockBox h1 {
+    font-size: 1.55rem;
+    font-weight: 650;
+    margin: 0 0 14px;
+    letter-spacing: -0.02em;
 }
 .stackHealthLockBox p {
     color: #9aa7b4;
-    line-height: 1.5;
+    line-height: 1.55;
     margin: 0 0 12px;
+    font-size: 1.02rem;
 }
 .stackHealthLockHint {
     margin-top: 18px !important;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     color: #cbd5e1 !important;
 }
 

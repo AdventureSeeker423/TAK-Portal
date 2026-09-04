@@ -86,22 +86,38 @@ async function getStackHealth() {
   return health;
 }
 
+const UNAVAILABLE_MESSAGE =
+  "TAK Portal is not responding properly. Please refresh the page or try again later.";
+const UNAVAILABLE_HINT =
+  "For ongoing issues, please contact your TAK Administrator";
+
+function getUnavailablePageLocals() {
+  let portalTitle = "TAK Portal";
+  let brandLogoUrl = "";
+  try {
+    const settingsSvc = require("./settings.service");
+    const settings = settingsSvc.getSettings() || {};
+    const raw = String(settings.SERVER_NAME || "").trim();
+    if (raw) portalTitle = `${raw.toUpperCase()} Portal`;
+    brandLogoUrl = String(settings.BRAND_LOGO_URL || "").trim();
+  } catch (_) {
+    /* keep defaults */
+  }
+  return {
+    portalTitle,
+    brandLogoUrl,
+    title: `${portalTitle} Is Unavailable`,
+    message: UNAVAILABLE_MESSAGE,
+    hint: UNAVAILABLE_HINT,
+  };
+}
+
 function describeOutage(health) {
   if (!health || health.ok || health.migrating) {
     return { title: "", message: "" };
   }
-  if (!health.postgres || !health.postgres.ok) {
-    return {
-      title: "Portal database is unavailable",
-      message:
-        "TAK Portal cannot be used until Postgres is running again. Docker restarts it if the process exited. On the server, run ./takportal start (or restart the stack from InfraTAK).",
-    };
-  }
-  return {
-    title: "Background worker is not running",
-    message:
-      "Directory sync and dashboard updates cannot continue, so the portal is paused until the worker recovers. Docker restarts it if the process exited. On the server, run ./takportal start (or restart the stack from InfraTAK).",
-  };
+  const copy = getUnavailablePageLocals();
+  return { title: copy.title, message: copy.message };
 }
 
 function isTransientPgError(e) {
@@ -155,6 +171,7 @@ async function queryOrTimeout(sql, ms) {
 module.exports = {
   getStackHealth,
   describeOutage,
+  getUnavailablePageLocals,
   WORKER_STALE_MS,
   WORKER_STARTING_GRACE_MS,
 };

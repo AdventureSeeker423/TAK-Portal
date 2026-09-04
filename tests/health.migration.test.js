@@ -71,7 +71,7 @@ db.query = async (sql) => {
   assert.strictEqual(stale.postgres.ok, true);
   assert.strictEqual(stale.worker.ok, false);
   assert.strictEqual(stale.worker.detail, "stale");
-  assert.ok(String(stale.title).includes("worker"));
+  assert.ok(/unavailable/i.test(String(stale.title)));
   assert.ok(String(stale.message).length > 0);
 
   db.query = async (sql) => {
@@ -96,7 +96,7 @@ db.query = async (sql) => {
   assert.strictEqual(down.postgres.ok, false);
   assert.strictEqual(down.worker.ok, false);
   assert.strictEqual(down.worker.detail, "postgres_down");
-  assert.ok(String(down.title).toLowerCase().includes("database"));
+  assert.ok(/unavailable/i.test(String(down.title)));
 
   console.log("health.migration.test.js: ok");
 })().catch((err) => {

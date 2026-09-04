@@ -145,9 +145,16 @@
 
 		<div id="stackHealthLock" class="stackHealthLock" hidden role="alertdialog" aria-modal="true" aria-labelledby="stackHealthLockTitle" aria-describedby="stackHealthLockMessage">
 			<div class="stackHealthLockBox">
-				<h1 id="stackHealthLockTitle">TAK Portal is unavailable</h1>
-				<p id="stackHealthLockMessage">The portal cannot be used until the database and background worker are running.</p>
-				<p class="stackHealthLockHint">This screen will reopen the portal when the stack recovers.</p>
+				<div class="stackHealthLockLogo">
+					<% if (typeof brandLogoUrl !== "undefined" && brandLogoUrl) { %>
+						<img src="<%= brandLogoUrl %>" alt="<%= typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal" %>" />
+					<% } else { %>
+						<div class="stackHealthLockLogoFallback" aria-hidden="true">TAK<span>PORTAL</span></div>
+					<% } %>
+				</div>
+				<h1 id="stackHealthLockTitle"><%= typeof portalTitle !== "undefined" && portalTitle ? portalTitle : "TAK Portal" %> Is Unavailable</h1>
+				<p id="stackHealthLockMessage">TAK Portal is not responding properly. Please refresh the page or try again later.</p>
+				<p class="stackHealthLockHint">For ongoing issues, please contact your TAK Administrator</p>
 			</div>
 		</div>
 
