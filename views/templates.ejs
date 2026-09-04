@@ -541,6 +541,7 @@ function updateTemplateListMsg(shown, total){
   const needle = String(templateNameSearch?.value || "").trim();
   const n = Number(shown || 0);
   const t = Number(total || 0);
+  el.className = "msg ok";
   if (!t) {
     el.textContent = needle ? `No templates found for "${needle}".` : "No templates found.";
     return;
