@@ -3746,6 +3746,11 @@ function invalidateUsersCache() {
   TEMPLATE_COUNTS_CACHE = null;
   TEMPLATE_COUNTS_CACHE_KEY = "";
   TEMPLATE_COUNTS_CACHE_TS = 0;
+  try {
+    require("./dashboardStatsCache.service").refreshAfterUsersChanged();
+  } catch (_) {
+    /* dashboard refresh is best-effort */
+  }
 }
 
 function invalidateGroupsCache() {

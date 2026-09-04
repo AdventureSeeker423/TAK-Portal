@@ -1506,6 +1506,11 @@ function invalidateGroupsCache() {
     true: { data: null, loadedAt: 0 },
     false: { data: null, loadedAt: 0 },
   };
+  try {
+    require("./dashboardStatsCache.service").refreshAfterGroupsChanged();
+  } catch (_) {
+    /* dashboard refresh is best-effort */
+  }
 }
 
 function invalidateGroupUsersCache() {

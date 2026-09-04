@@ -118,11 +118,10 @@ router.get("/", async (req, res) => {
       if (managed.length === 1 && managed[0].color) {
         templateChartColor = managed[0].color;
       }
-    } else {
-      let snap = dashboardStatsCache.getDashboardStatsSnapshot();
+            } else {
+      let snap = await dashboardStatsCache.getDashboardStatsSnapshot();
       if (!snap.refreshedAt) {
-        await dashboardStatsCache.refreshNow();
-        snap = dashboardStatsCache.getDashboardStatsSnapshot();
+        snap = await dashboardStatsCache.refreshNow();
       }
       stats = {
         totalUsers: snap.stats?.totalUsers ?? 0,

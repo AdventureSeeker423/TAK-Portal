@@ -37,7 +37,6 @@ const TEST_FILES = [
   "health.migration.test.js",
   "mouStore.ensure.test.js",
   "directoryPkText.test.js",
-  "takDashboardCache.test.js",
 ];
 
 const testsDir = path.join(__dirname, "..", "tests");

@@ -868,10 +868,10 @@ app.get("/", (req, res) => {
 });
 
 app.get("/users/create", (req, res) => res.render("users-create"));
-app.get("/users/manage", (req, res) => {
+app.get("/users/manage", async (req, res) => {
   const pendingUserRequestsCount =
     userRequestsSvc.countRequestsForUser(req.authentikUser);
-  const dashboardSnap = dashboardStatsCache.getDashboardStatsSnapshot();
+  const dashboardSnap = await dashboardStatsCache.getDashboardStatsSnapshot();
   const dashboardTotalUsers = Number(
     dashboardSnap &&
     dashboardSnap.stats &&
