@@ -1421,6 +1421,16 @@ function renderGroups(){
   }).join("");
 
   renderSourceGroupList();
+
+  const shown = filtered.length;
+  const needleLabel = String(filter.value || "").trim();
+  if (!shown) {
+    setMsg(listMsg, needleLabel ? `No groups found for "${needleLabel}".` : "No groups found.", true);
+  } else if (needleLabel) {
+    setMsg(listMsg, `Showing ${shown} of ${shown} group(s) for "${needleLabel}".`, true);
+  } else {
+    setMsg(listMsg, `Showing ${shown} of ${shown} group(s).`, true);
+  }
 }
 
 function updateGroupScopeDetailOptions() {
@@ -1527,7 +1537,6 @@ async function loadGroups(){
   }
 
   groupsCache = out || [];
-  setMsg(listMsg, `Loaded ${groupsCache.length} group(s).`, true);
   updateGroupScopeSelectOptions();
   renderGroups();
 }

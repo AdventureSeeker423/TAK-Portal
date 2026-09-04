@@ -110,6 +110,12 @@ function sortSql(sortKey, sortDir) {
   if (key === "name") return `name ${dir} NULLS LAST, username ASC`;
   if (key === "email") return `email ${dir} NULLS LAST, username ASC`;
   if (key === "status" || key === "is_active") return `is_active ${dir}, username ASC`;
+  if (key === "agency") {
+    return `lower(COALESCE(agency_name, agency, '')) ${dir} NULLS LAST, name ASC, username ASC`;
+  }
+  if (key === "template") {
+    return `lower(COALESCE(current_template, '')) ${dir} NULLS LAST, username ASC`;
+  }
   return `username ${dir}`;
 }
 
@@ -277,11 +283,13 @@ async function searchUsersPaged({
   currentTemplate,
   agencyName,
   agencySuffix,
+  agencySuffixes,
   agencyAbbreviation,
   usernamePrefix,
   includeHiddenPrefixes = false,
   includeGroups = true,
   activeOnly,
+  excludeGroupPks,
 } = {}) {
   const params = [];
   let where = `pending_delete = false`;
@@ -302,7 +310,27 @@ async function searchUsersPaged({
     params.push(String(agencyName).trim());
     where += ` AND lower(agency_name) = lower($${params.length})`;
   }
-  if (agencySuffix && String(agencySuffix).trim()) {
+  const suffixList = Array.isArray(agencySuffixes)
+    ? agencySuffixes.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (Array.isArray(agencySuffixes) && !suffixList.length) {
+    const psEmpty = Math.max(1, Math.min(200, Number(pageSize) || 25));
+    return {
+      users: [],
+      total: 0,
+      page: 1,
+      pageSize: psEmpty,
+      hasNext: false,
+      hasPrev: false,
+    };
+  }
+  if (suffixList.length === 1) {
+    params.push(suffixList[0]);
+    where += ` AND lower(agency) = $${params.length}`;
+  } else if (suffixList.length > 1) {
+    params.push(suffixList);
+    where += ` AND lower(agency) = ANY($${params.length}::text[])`;
+  } else if (agencySuffix && String(agencySuffix).trim()) {
     params.push(String(agencySuffix).trim().toLowerCase());
     where += ` AND lower(agency) = $${params.length}`;
   }
@@ -318,6 +346,18 @@ async function searchUsersPaged({
     where += ` AND is_active = true`;
   } else if (activeOnly === false) {
     where += ` AND is_active = false`;
+  }
+  const excludePks = Array.isArray(excludeGroupPks)
+    ? excludeGroupPks.map((x) => String(x || "").trim()).filter(Boolean)
+    : [];
+  if (excludePks.length) {
+    params.push(excludePks);
+    where += ` AND NOT EXISTS (
+      SELECT 1 FROM group_members gm
+      JOIN groups g ON g.id = gm.group_id
+      WHERE gm.user_id = users.id
+        AND (g.id::text = ANY($${params.length}::text[]) OR COALESCE(g.authentik_pk, '') = ANY($${params.length}::text[]))
+    )`;
   }
 
   const ps = Math.max(1, Math.min(200, Number(pageSize) || 25));

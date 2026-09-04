@@ -2012,6 +2012,9 @@ async function searchUsersPaged({
   sortKey = "username",
   sortDir = "asc",
   currentTemplate,
+  agencySuffix,
+  agencySuffixes,
+  excludeGroupPks,
 } = {}) {
   return directoryRepo.searchUsersPaged({
     q,
@@ -2020,6 +2023,9 @@ async function searchUsersPaged({
     sortKey,
     sortDir,
     currentTemplate,
+    agencySuffix,
+    agencySuffixes,
+    excludeGroupPks,
     includeGroups: true,
   });
 }

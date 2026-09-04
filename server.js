@@ -4,7 +4,6 @@ const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 const settingsSvc = require("./services/settings.service");
-const dashboardStatsCache = require("./services/dashboardStatsCache.service");
 const takDashboardCache = require("./services/takDashboardCache.service");
 const axios = require("axios");
 const { getString, getBool, isLiveMapEnabled } = require("./services/env");
@@ -896,17 +895,10 @@ app.get("/users/create", (req, res) => res.render("users-create"));
 app.get("/users/manage", async (req, res) => {
   const pendingUserRequestsCount =
     userRequestsSvc.countRequestsForUser(req.authentikUser);
-  const dashboardSnap = await dashboardStatsCache.getDashboardStatsSnapshot();
-  const dashboardTotalUsers = Number(
-    dashboardSnap &&
-    dashboardSnap.stats &&
-    dashboardSnap.stats.totalUsers
-  );
   const enrollmentPkg = require("./services/enrollmentPackage.service");
 
   return res.render("users-manage", {
     pendingUserRequestsCount,
-    dashboardTotalUsers: Number.isFinite(dashboardTotalUsers) ? dashboardTotalUsers : null,
     dataPackageAvailable: enrollmentPkg.isDataPackageAvailable(),
   });
 });

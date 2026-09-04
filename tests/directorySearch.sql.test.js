@@ -44,6 +44,31 @@ const directoryRepo = require("../services/directoryRepo.service");
   assert.ok(listSql, "paged search should LIMIT/OFFSET rather than select all users");
   assert.ok(/ILIKE/.test(countSql.sql), "search should use SQL ILIKE");
   assert.ok(!/SELECT \* FROM users$/.test(listSql.sql.trim()));
+
+  sqlCalls.length = 0;
+  const agency = await directoryRepo.searchUsersPaged({
+    agencySuffix: "so",
+    page: 1,
+    pageSize: 25,
+    includeGroups: false,
+  });
+  assert.strictEqual(agency.total, 3);
+  const agencyCount = sqlCalls.find((c) => /COUNT\(\*\)/.test(c.sql));
+  assert.ok(agencyCount, "agency search should COUNT matching users");
+  assert.ok(/lower\(agency\)/.test(agencyCount.sql), "agency filter should COUNT by users.agency");
+  assert.ok(agencyCount.params.includes("so"));
+
+  sqlCalls.length = 0;
+  const emptyAgency = await directoryRepo.searchUsersPaged({
+    agencySuffixes: [],
+    page: 1,
+    pageSize: 25,
+    includeGroups: false,
+  });
+  assert.strictEqual(emptyAgency.total, 0);
+  assert.strictEqual(emptyAgency.users.length, 0);
+  assert.ok(!sqlCalls.some((c) => /COUNT\(\*\)/.test(c.sql)), "empty agency list should not query");
+
   console.log("directorySearch.sql.test.js: ok");
 })().catch((err) => {
   console.error(err);
