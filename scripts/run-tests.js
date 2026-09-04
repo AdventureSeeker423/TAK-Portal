@@ -28,6 +28,13 @@ const TEST_FILES = [
   "takGroupControl.test.js",
   "geofence.test.js",
   "userRequestsOtherAgency.test.js",
+  "migrationGate.test.js",
+  "jsonImport.retire.test.js",
+  "directorySearch.sql.test.js",
+  "outbox.skipLocked.test.js",
+  "directorySync.deadLetter.test.js",
+  "directorySync.inboundAbort.test.js",
+  "health.migration.test.js",
 ];
 
 const testsDir = path.join(__dirname, "..", "tests");

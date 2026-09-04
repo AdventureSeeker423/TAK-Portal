@@ -141,11 +141,9 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
       }
     }
 
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
     const delta = await accessSvc.syncPortalRoleGroups(userId, {
       role: desiredRole,
       managedAgencySuffixes,
-      allGroups,
     });
 
     permsSvc.saveOverridesForUser(String(target.username || "").trim().toLowerCase(), {
@@ -228,11 +226,9 @@ router.put("/managed-agencies/:userId", express.json({ limit: "1mb" }), async (r
       return res.status(400).json({ error: "Select at least one managed agency." });
     }
 
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
     const delta = await accessSvc.syncPortalRoleGroups(userId, {
       role: "agency_admin",
       managedAgencySuffixes,
-      allGroups,
     });
 
     const { groupNames } = await loadGroupNamesForUserId(userId);

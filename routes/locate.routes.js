@@ -121,7 +121,7 @@ function isTakUpstreamNotFound(err) {
 router.get("/tak-channel-groups", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    const all = await groupsSvc.getAllGroups({ forceRefresh: false });
+    const all = await groupsSvc.getGroupsForAuthUser(authUser);
     const filtered = accessSvc.filterGroupsForUser(authUser, all);
     const shorts = filtered
       .map((g) => stripTakPrefix(g?.name))

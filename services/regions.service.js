@@ -1,33 +1,25 @@
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
 const agenciesStore = require("./agencies.service");
+const pgCache = require("./pgCache");
 
-const FILE = path.join(__dirname, "../data/regions.json");
-const LOCKS_FILE = path.join(__dirname, "../data/regionCountyLocks.json");
+const FILE = null;
+const LOCKS_FILE = null;
 
-function ensureDirExists(filePath) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
+function ensureDirExists() {}
 
 function load() {
   try {
-    if (!fs.existsSync(FILE)) return [];
-    const parsed = JSON.parse(fs.readFileSync(FILE, "utf8"));
+    const parsed = pgCache.caches.regions;
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
-    console.warn("[regions] Failed to read regions.json:", err?.message || err);
+    console.warn("[regions] Failed to read regions:", err?.message || err);
     return [];
   }
 }
 
 function save(data) {
-  ensureDirExists(FILE);
   const list = Array.isArray(data) ? data : [];
-  fs.writeFileSync(FILE, JSON.stringify(list, null, 2));
+  pgCache.replaceRegions(list);
   return list;
 }
 
@@ -55,22 +47,17 @@ function stateLockKey(state) {
 
 function loadLocks() {
   try {
-    if (!fs.existsSync(LOCKS_FILE)) return [];
-    const parsed = JSON.parse(fs.readFileSync(LOCKS_FILE, "utf8"));
+    const parsed = pgCache.caches.locks;
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
-    console.warn(
-      "[regions] Failed to read regionCountyLocks.json:",
-      err?.message || err
-    );
+    console.warn("[regions] Failed to read region county locks:", err?.message || err);
     return [];
   }
 }
 
 function saveLocks(data) {
-  ensureDirExists(LOCKS_FILE);
   const list = Array.isArray(data) ? data : [];
-  fs.writeFileSync(LOCKS_FILE, JSON.stringify(list, null, 2));
+  pgCache.replaceLocks(list);
   return list;
 }
 

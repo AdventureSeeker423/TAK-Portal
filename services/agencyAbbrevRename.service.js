@@ -191,6 +191,7 @@ async function renameAgencyAdminGroup(agencyOld, agencyNew) {
     const detail = String(agencyNew?.name || "").trim();
     await groupsService.patchGroupNameAndCn(g.pk, desiredName, {
       skipActionLock: true,
+      bulk: true,
       attributes: {
         created_type: "Agency",
         created_type_detail: detail || null,
@@ -210,7 +211,13 @@ async function renameAgencyAdminGroup(agencyOld, agencyNew) {
 
 async function renameAgencyTakGroups(agencyName, oldPrefix, newPrefix) {
   const targetName = String(agencyName || "").trim();
-  const allGroups = await groupsService.getAllGroups({ includeHidden: true });
+  const r = await require("./directoryRepo.service").searchGroupsPaged({
+    createdTypeDetail: targetName,
+    includeHidden: true,
+    page: 1,
+    pageSize: 500,
+  });
+  const allGroups = r.groups;
 
   const candidates = (Array.isArray(allGroups) ? allGroups : []).filter((g) => {
     const gn = String(g?.name || "").trim();
@@ -243,6 +250,7 @@ async function renameAgencyTakGroups(agencyName, oldPrefix, newPrefix) {
       g?.attributes && typeof g.attributes === "object" ? g.attributes : {};
     await groupsService.patchGroupNameAndCn(gid, newGroupName, {
       skipActionLock: true,
+      bulk: true,
       attributes: {
         created_type: attrs.created_type,
         created_type_detail: targetName,

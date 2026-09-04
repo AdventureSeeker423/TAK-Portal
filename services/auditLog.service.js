@@ -195,7 +195,6 @@ function auditFromRequest(req, payload = {}) {
 
 function logEvent(payload) {
   try {
-    const logs = store.load();
     const nowIso = new Date().toISOString();
 
     const actor = payload && payload.actor ? payload.actor : null;
@@ -225,7 +224,7 @@ function logEvent(payload) {
       agency = inferAgency({ targetType, targetId, details });
     }
 
-    logs.unshift({
+    const ev = {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
       timestamp: nowIso,
       actor: actor
@@ -245,18 +244,16 @@ function logEvent(payload) {
       agencyName: agency.agencyName,
       agencyPrefix: agency.agencyPrefix,
       details,
+    };
+    store.insertEvent(ev).catch((err) => {
+      console.warn("[audit] failed to write audit log:", err?.message || err);
     });
-
-    const max = Number(payload && payload.maxItems) || 5000;
-    if (logs.length > max) logs.splice(max);
-    store.save(logs);
   } catch (err) {
-    // Audit logging must never break normal app logic.
     console.warn("[audit] failed to write audit log:", err?.message || err);
   }
 }
 
-function queryLogs({
+async function queryLogs({
   q,
   actor,
   action,
@@ -267,8 +264,6 @@ function queryLogs({
   page = 1,
   pageSize = 50,
 } = {}) {
-  const logs = store.load();
-  const needle = safeStr(q).trim().toLowerCase();
   const actorNeedles = safeStr(actor)
     .split(",")
     .map((s) => s.trim().toLowerCase())
@@ -286,86 +281,21 @@ function queryLogs({
     .map((s) => normalizeSuffix(s))
     .filter(Boolean);
 
-  const fromMs = from ? Date.parse(from) : NaN;
-  const toMs = to ? Date.parse(to) : NaN;
-
-  function matchesText(log) {
-    if (!needle) return true;
-    const parts = [
-      log.action,
-      log.targetType,
-      log.targetId,
-      log.actor && log.actor.username,
-      log.actor && log.actor.displayName,
-      log.agencySuffix,
-      log.agencyName,
-      log.agencyPrefix,
-      log.request && log.request.path,
-      log.request && log.request.method,
-    ]
-      .filter(Boolean)
-      .map((x) => String(x).toLowerCase());
-
-    if (parts.some((p) => p.includes(needle))) return true;
-
-    // Also search a small JSON representation of details.
-    try {
-      const d = log.details ? JSON.stringify(log.details).toLowerCase() : "";
-      if (d.includes(needle)) return true;
-    } catch (_) {}
-
-    return false;
-  }
-
-  const filtered = logs.filter((log) => {
-    if (!log) return false;
-
-    if (actorNeedles.length) {
-      const au = safeStr(log.actor && log.actor.username).toLowerCase();
-      const dn = safeStr(log.actor && log.actor.displayName).toLowerCase();
-      const matches = actorNeedles.some(
-        (needle) => (au && au.includes(needle)) || (dn && dn.includes(needle))
-      );
-      if (!matches) return false;
-    }
-
-    if (actionNeedles.length) {
-      const act = safeStr(log.action).toLowerCase();
-      if (!actionNeedles.includes(act)) return false;
-    }
-
-    if (targetNeedles.length) {
-      const tt = safeStr(log.targetType).toLowerCase();
-      if (!targetNeedles.includes(tt)) return false;
-    }
-
-    if (agencyNeedles.length) {
-      const sfx = normalizeSuffix(log.agencySuffix);
-      if (!agencyNeedles.includes(sfx)) return false;
-    }
-
-    if (!Number.isNaN(fromMs)) {
-      const t = Date.parse(log.timestamp);
-      if (!Number.isNaN(t) && t < fromMs) return false;
-    }
-
-    if (!Number.isNaN(toMs)) {
-      const t = Date.parse(log.timestamp);
-      if (!Number.isNaN(t) && t > toMs) return false;
-    }
-
-    if (!matchesText(log)) return false;
-    return true;
-  });
-
   const p = Math.max(1, Number(page) || 1);
   const ps = Math.min(500, Math.max(10, Number(pageSize) || 50));
-  const total = filtered.length;
-  const pageCount = Math.max(1, Math.ceil(total / ps));
+  const { items, total } = await store.queryRows({
+    q,
+    actorNeedles,
+    actionNeedles,
+    targetNeedles,
+    agencyNeedles,
+    from,
+    to,
+    page: p,
+    pageSize: ps,
+  });
+  const pageCount = Math.max(1, Math.ceil((total || 0) / ps));
   const safePage = Math.min(pageCount, p);
-  const start = (safePage - 1) * ps;
-  const items = filtered.slice(start, start + ps);
-
   return {
     items,
     total,
@@ -375,21 +305,11 @@ function queryLogs({
   };
 }
 
-function listDistinctValues({ field, limit = 250 } = {}) {
-  const logs = store.load();
-  const out = new Set();
+async function listDistinctValues({ field, limit = 250 } = {}) {
   const f = safeStr(field);
-
-  for (const log of logs) {
-    if (!log) continue;
-    if (f === "actions") out.add(safeStr(log.action));
-    else if (f === "targetTypes") out.add(safeStr(log.targetType));
-    else if (f === "agencies") out.add(normalizeSuffix(log.agencySuffix));
-    else if (f === "actors") out.add(safeStr(log.actor && log.actor.username));
-    if (out.size >= limit) break;
-  }
-
-  return Array.from(out)
+  const vals = await store.listDistinct(f, limit);
+  return (vals || [])
+    .map((v) => (f === "agencies" ? normalizeSuffix(v) : v))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
 }

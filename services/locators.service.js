@@ -1,39 +1,45 @@
 /**
  * Persisted locators (missing-person share links) and ping history.
- * Storage: data/locators.json
+ * Storage: Postgres (pgCache).
  */
 
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
 const { getString } = require("./env");
 const settingsSvc = require("./settings.service");
 const { buildTakAxios } = require("./tak.service");
+const pgCache = require("./pgCache");
 
-const FILE = path.join(__dirname, "..", "data", "locators.json");
+const FILE = null;
+const HISTORY_CAP_PER_LOCATOR = 5000;
 
 function defaultStore() {
   return { locators: [], history: [] };
 }
 
 function load() {
-  if (!fs.existsSync(FILE)) return defaultStore();
-  try {
-    const raw = fs.readFileSync(FILE, "utf8");
-    const data = JSON.parse(raw);
-    if (!data || typeof data !== "object") return defaultStore();
-    if (!Array.isArray(data.locators)) data.locators = [];
-    if (!Array.isArray(data.history)) data.history = [];
-    return data;
-  } catch {
-    return defaultStore();
-  }
+  const data = pgCache.caches.locators || defaultStore();
+  if (!data || typeof data !== "object") return defaultStore();
+  if (!Array.isArray(data.locators)) data.locators = [];
+  if (!Array.isArray(data.history)) data.history = [];
+  return data;
 }
 
 function save(data) {
-  const dir = path.dirname(FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8");
+  const next = data && typeof data === "object" ? data : defaultStore();
+  if (!Array.isArray(next.locators)) next.locators = [];
+  if (!Array.isArray(next.history)) next.history = [];
+  const counts = new Map();
+  const trimmed = [];
+  for (let i = next.history.length - 1; i >= 0; i--) {
+    const h = next.history[i];
+    const lid = String(h?.locatorId || "");
+    const n = counts.get(lid) || 0;
+    if (n >= HISTORY_CAP_PER_LOCATOR) continue;
+    counts.set(lid, n + 1);
+    trimmed.push(h);
+  }
+  next.history = trimmed.reverse();
+  pgCache.replaceLocators(next);
 }
 
 function titleToSlug(title) {

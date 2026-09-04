@@ -9,33 +9,63 @@ SERVICE_NAME="tak-portal"
 
 usage() {
   cat <<EOF
-Usage: $0 {setup|config|start|stop|restart|update|logs|status|remove|data}
+Usage: $0 {setup|config|start|stop|restart|update|logs|status|remove|data|db}
 
 Commands:
   setup      Open .env in nano for editing
   config     Alias for 'setup'
   start      Build (if needed) and start the stack in the background
-  stop       Stop the stack and keep data volume
-  restart    Restart containers (rebuild if needed)
+  stop       Stop the stack and keep data volumes (does not delete Postgres)
+  restart    Rebuild and recreate all compose services
   update     Fetch code (GitHub Release, or main if Beta Mode is on), rebuild, prune old images
-  logs       Follow logs from the container
+  logs       Follow logs from web, worker, and Postgres
   status     Show container status
   remove     Completely remove containers, volumes, network, and images
-  data       Open a shell in the container's /usr/src/app/data directory
+             WARNING: -v deletes both tak_portal_data and tak_portal_pg
+  data       Open a shell in the web container's /usr/src/app/data directory
+  db         Open psql in the portal Postgres database (password is never printed)
 EOF
 }
 
+ensure_postgres_password() {
+  if [[ ! -f .env ]]; then
+    return 0
+  fi
+  local current=""
+  current="$(grep -E '^POSTGRES_PASSWORD=' .env 2>/dev/null | tail -1 | sed 's/^POSTGRES_PASSWORD=//' | tr -d '\r' || true)"
+  if [[ -n "$current" ]]; then
+    return 0
+  fi
+  local pw=""
+  pw="$(tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 32 || true)"
+  if [[ ${#pw} -lt 24 ]]; then
+    pw="$(openssl rand -hex 16 2>/dev/null || date +%s%N | sha256sum | awk '{print $1}')"
+  fi
+  if grep -qE '^POSTGRES_PASSWORD=' .env 2>/dev/null; then
+    awk -v pw="$pw" '
+      BEGIN { done=0 }
+      /^POSTGRES_PASSWORD=/ && !done { print "POSTGRES_PASSWORD=" pw; done=1; next }
+      { print }
+      END { if (!done) print "POSTGRES_PASSWORD=" pw }
+    ' .env > .env.takportal-pw && mv -f .env.takportal-pw .env
+  else
+    printf '\nPOSTGRES_PASSWORD=%s\n' "$pw" >> .env
+  fi
+  echo "Generated POSTGRES_PASSWORD in .env (also shown in Settings → Portal database)."
+}
+
 ensure_env() {
-  if [[ -f .env ]]; then
-    return 0
+  if [[ ! -f .env ]]; then
+    if [[ -f .env.example ]]; then
+      cp -a .env.example .env
+      echo "Created .env from .env.example"
+    else
+      echo "ERROR: .env not found in $(pwd) and no .env.example to copy."
+      return 1
+    fi
   fi
-  if [[ -f .env.example ]]; then
-    cp -a .env.example .env
-    echo "Created .env from .env.example"
-    return 0
-  fi
-  echo "ERROR: .env not found in $(pwd) and no .env.example to copy."
-  return 1
+  ensure_postgres_password
+  return 0
 }
 
 edit_env() {
@@ -355,9 +385,12 @@ case "$CMD" in
     ;;
 
   restart)
-    echo "Restarting..."
-    $COMPOSE_CMD down
-    $COMPOSE_CMD up -d
+    if ! ensure_env; then
+      echo "Run: ./$(basename "${BASH_SOURCE[0]}") setup"
+      exit 1
+    fi
+    echo "Restarting stack..."
+    $COMPOSE_CMD up -d --build
     ;;
 
   update)
@@ -365,8 +398,8 @@ case "$CMD" in
     ;;
 
   logs)
-    echo "Following logs (Ctrl+C to exit)..."
-    $COMPOSE_CMD logs -f "$SERVICE_NAME"
+    echo "Following logs from all TAK Portal services (Ctrl+C to exit)..."
+    $COMPOSE_CMD logs -f
     ;;
 
   status)
@@ -375,6 +408,7 @@ case "$CMD" in
 
   remove)
     echo "⚠️  This will DELETE containers, volumes, networks, and images."
+    echo "    That includes tak_portal_data AND the Postgres volume tak_portal_pg."
     read -p "Type 'yes' to continue: " confirm
     if [[ "$confirm" != "yes" ]]; then
       echo "Canceled."
@@ -404,6 +438,10 @@ case "$CMD" in
     $COMPOSE_CMD exec -it -w /usr/src/app/data "$SERVICE_NAME" /bin/sh
     ;;
 
+  db)
+    echo "Opening psql as takportal (Ctrl+D to exit)..."
+    $COMPOSE_CMD exec -it postgres psql -U takportal -d takportal
+    ;;
 
   *)
     usage

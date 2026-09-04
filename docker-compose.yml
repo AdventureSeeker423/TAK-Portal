@@ -1,21 +1,68 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tak-portal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: takportal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: takportal
+    volumes:
+      - tak_portal_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U takportal -d takportal"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Localhost only — not the LAN/internet. 5433 avoids clashing with a host Postgres on 5432.
+    # Connection: host 127.0.0.1, port 5433, database/user takportal, password POSTGRES_PASSWORD.
+    # Remote operators: SSH tunnel `ssh -L 5433:127.0.0.1:5433 user@tak-host` then DBeaver to localhost:5433.
+    # To disable host access, delete this ports block (containers still reach postgres:5432 on the compose network).
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+
   tak-portal:
     build: .
     container_name: tak-portal
     restart: unless-stopped
-
-    # Load environment from your .env file in the repo root
-    env_file:
-      - .env
-
-    # Expose the web UI. If WEB_UI_PORT isn't set, default to 3000.
+    env_file: .env
+    environment:
+      PROCESS_ROLE: web
+      DATABASE_URL: postgres://takportal:${POSTGRES_PASSWORD}@postgres:5432/takportal
     ports:
       - "${WEB_UI_PORT:-3000}:${WEB_UI_PORT:-3000}"
-
-    # Persist the /data folder where mutual-aid.json and other data live
     volumes:
       - tak_portal_data:/usr/src/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["npm", "start"]
+
+  tak-portal-worker:
+    build: .
+    container_name: tak-portal-worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PROCESS_ROLE: worker
+      DATABASE_URL: postgres://takportal:${POSTGRES_PASSWORD}@postgres:5432/takportal
+    volumes:
+      - tak_portal_data:/usr/src/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node", "--use-system-ca", "worker.js"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('pg').Pool({connectionString:process.env.DATABASE_URL,max:1}).query('SELECT 1').then(()=>process.exit(0)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 8s
+      retries: 10
+      start_period: 30s
 
 volumes:
   tak_portal_data:
-    # Named volume so data survives container rebuilds & 'docker compose down'
+  tak_portal_pg:

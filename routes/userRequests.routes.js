@@ -100,7 +100,14 @@ async function getReviewMetaHandler(req, res) {
       req.query.agencySuffix || access.request.agencySuffix
     );
     const templates = usersSvc.getTemplatesForAgency(agencySuffix);
-    const groups = await usersSvc.getAllGroups({ includeHidden: false });
+    const directoryRepo = require("../services/directoryRepo.service");
+    const found = await directoryRepo.searchGroupsPaged({
+      q: agencySuffix,
+      includeHidden: false,
+      page: 1,
+      pageSize: 200,
+    });
+    const groups = found.groups;
     const allAgencies = agenciesSvc.load();
     const lockedSuffix = String(access.request?.agencySuffix || "")
       .trim()

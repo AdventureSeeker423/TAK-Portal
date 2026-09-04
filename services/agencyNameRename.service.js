@@ -204,6 +204,7 @@ async function updateAgencyAdminGroupMetadata(agency) {
     adminGroupName = String(g.name || groupName).trim();
     await groupsService.patchGroupNameAndCn(g.pk, adminGroupName, {
       skipActionLock: true,
+      bulk: true,
       attributes: {
         created_type: "Agency",
         created_type_detail: fullName || null,
@@ -228,7 +229,13 @@ async function updateAgencyTakGroupsCreatedTypeDetail(oldName, newName, groupPre
   const gp = agenciesStore.normalizeGroupPrefix(groupPrefix);
   if (!oldN || !newN) return { groupsUpdated: 0 };
 
-  const allGroups = await groupsService.getAllGroups({ includeHidden: true });
+  const r = await require("./directoryRepo.service").searchGroupsPaged({
+    createdTypeDetail: oldN,
+    includeHidden: true,
+    page: 1,
+    pageSize: 500,
+  });
+  const allGroups = r.groups;
 
   const candidates = (Array.isArray(allGroups) ? allGroups : []).filter((g) => {
     const gn = String(g?.name || "").trim();
@@ -259,6 +266,7 @@ async function updateAgencyTakGroupsCreatedTypeDetail(oldName, newName, groupPre
 
     await groupsService.patchGroupNameAndCn(gid, groupName, {
       skipActionLock: true,
+      bulk: true,
       attributes: {
         created_type: attrs.created_type,
         created_type_detail: newN,

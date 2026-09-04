@@ -101,50 +101,49 @@ function buildCharts(users, agencies) {
   return { usersByAgency, unknownAgency, usersByType, unknownType };
 }
 
+function startDashboardStatsRefresher() {
+  // Worker writes dashboard_stats. Web only reads Postgres.
+}
+
 async function refreshNow() {
-  if (_refreshInFlight) return _refreshInFlight;
+  try {
+    const directorySync = require("./directorySync.service");
+    await directorySync.writeDashboardStats();
+    return getDashboardStatsSnapshot();
+  } catch (err) {
+    _state.lastError = err?.message || String(err);
+    return _state.snapshot;
+  }
+}
 
-  _refreshInFlight = (async () => {
-    _state.lastError = null;
-
-    try {
-      // One lightweight user-directory pass + groups in parallel (avoids doubling Authentik work).
-      const [{ visibleUsers, integrationCount }, groups] = await Promise.all([
-        usersService.fetchUsersForDashboardStats(),
-        groupsService.getAllGroups(), // <-- use portal logic
-      ]);
-
-      // Local data (agencies)
-      const agencies = agenciesStore.load();
-
-      const charts = buildCharts(visibleUsers || [], agencies || []);
-
-      _state.snapshot = {
-        stats: {
-          totalUsers: Array.isArray(visibleUsers) ? visibleUsers.length : 0,
-          totalGroups: Array.isArray(groups) ? groups.length : 0,
-          totalAgencies: Array.isArray(agencies) ? agencies.length : 0,
-          totalIntegrations: integrationCount,
-        },
-        charts,
-      };
-
-      _state.refreshedAt = new Date();
-      return _state.snapshot;
-    } catch (err) {
-      _state.lastError = err?.message || String(err);
-      console.warn("[DASHBOARD] Authentik stats cache refresh failed:", err);
-      // Avoid unbounded /dashboard awaits when Authentik is down and we never had a successful refresh.
-      if (!_state.refreshedAt) {
-        _state.refreshedAt = new Date();
+function getDashboardStatsSnapshot() {
+  const db = require("./db");
+  if (!db.isConfigured()) {
+    return { ..._state.snapshot, refreshedAt: _state.refreshedAt, ageMs: null, error: _state.lastError };
+  }
+  // Sync wrapper used by EJS: hydrate from last in-memory snapshot; kick async refresh.
+  void db
+    .query("SELECT payload, updated_at FROM dashboard_stats WHERE id = 1")
+    .then((r) => {
+      const row = r.rows[0];
+      if (row && row.payload && typeof row.payload === "object") {
+        _state.snapshot = {
+          stats: row.payload.stats || _state.snapshot.stats,
+          charts: row.payload.charts || _state.snapshot.charts,
+        };
+        _state.refreshedAt = row.updated_at ? new Date(row.updated_at) : new Date();
+        _state.lastError = null;
       }
-      return _state.snapshot; // keep last good snapshot
-    } finally {
-      _refreshInFlight = null;
-    }
-  })();
-
-  return _refreshInFlight;
+    })
+    .catch(() => {});
+  const refreshedAt = _state.refreshedAt;
+  const ageMs = refreshedAt ? Date.now() - refreshedAt.getTime() : null;
+  return {
+    ..._state.snapshot,
+    refreshedAt,
+    ageMs,
+    error: _state.lastError,
+  };
 }
 
 function stopDashboardStatsRefresher() {
@@ -154,43 +153,9 @@ function stopDashboardStatsRefresher() {
   }
 }
 
-function startDashboardStatsRefresher() {
-  // If already running, do nothing (use restartDashboardStatsRefresher to reconfigure)
-  if (_state.timer) return;
-
-  const seconds = parseRefreshSeconds();
-  const initialDelaySeconds = parseInitialDelaySeconds();
-
-  // Prime immediately so /dashboard is not stuck on zeros until the old "first refresh after delay" runs.
-  void refreshNow().catch(() => null);
-
-  // Optional second pass after startup so Authentik/network can settle (same intent as before).
-  if (initialDelaySeconds > 0) {
-    setTimeout(() => {
-      refreshNow().catch(() => null);
-    }, initialDelaySeconds * 1000).unref?.();
-  }
-
-  _state.timer = setInterval(() => {
-    refreshNow().catch(() => null);
-  }, seconds * 1000);
-}
-
 function restartDashboardStatsRefresher() {
   stopDashboardStatsRefresher();
   startDashboardStatsRefresher();
-}
-
-function getDashboardStatsSnapshot() {
-  const refreshedAt = _state.refreshedAt;
-  const ageMs = refreshedAt ? Date.now() - refreshedAt.getTime() : null;
-
-  return {
-    ..._state.snapshot,
-    refreshedAt,
-    ageMs,
-    error: _state.lastError,
-  };
 }
 
 function normalizeAgencyNameKey(agencyName) {
@@ -246,7 +211,7 @@ async function refreshAgencyNow(agencyName, { expectedAgencySuffix, groupPrefix,
       const [totalUsers, usersByTemplate, groups] = await Promise.all([
         usersService.countUsersByAgencyName(name),
         usersService.buildUsersByTemplateForAgencyName(name, { expectedAgencySuffix }),
-        groupsService.getAllGroups(),
+        groupsService.getGroupsByAgencyName(name),
       ]);
 
       const filteredGroups = accessSvc.filterAgencySpecificGroupsForDashboard(

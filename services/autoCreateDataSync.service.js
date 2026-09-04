@@ -1,57 +1,41 @@
-const fs = require("fs");
-const path = require("path");
 const { getBool, getString, getInt } = require("./env");
 const agenciesStore = require("./agencies.service");
 const autoCreateGroupsSvc = require("./autoCreateGroups.service");
 const dataSyncSvc = require("./dataSync.service");
 const groupsService = require("./groups.service");
+const pgCache = require("./pgCache");
 
-const LEDGER_PATH = path.join(__dirname, "..", "data", "autoCreateDataSync.json");
+const LEDGER_PATH = null;
 
-function ensureDirExists(filePath) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
+function ensureDirExists() {}
 
 function emptyLedger() {
   return { county: {}, state: {} };
 }
 
 function loadLedger() {
-  try {
-    if (!fs.existsSync(LEDGER_PATH)) return emptyLedger();
-    const parsed = JSON.parse(fs.readFileSync(LEDGER_PATH, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return emptyLedger();
-    }
-    return {
-      county:
-        parsed.county && typeof parsed.county === "object" && !Array.isArray(parsed.county)
-          ? parsed.county
-          : {},
-      state:
-        parsed.state && typeof parsed.state === "object" && !Array.isArray(parsed.state)
-          ? parsed.state
-          : {},
-    };
-  } catch (err) {
-    console.warn(
-      "[autoCreateDataSync] Failed to read ledger:",
-      err.message || err
-    );
+  const parsed = pgCache.caches.autoCreateDataSync;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return emptyLedger();
   }
+  return {
+    county:
+      parsed.county && typeof parsed.county === "object" && !Array.isArray(parsed.county)
+        ? parsed.county
+        : {},
+    state:
+      parsed.state && typeof parsed.state === "object" && !Array.isArray(parsed.state)
+        ? parsed.state
+        : {},
+  };
 }
 
 function saveLedger(ledger) {
-  ensureDirExists(LEDGER_PATH);
   const next = {
     county: ledger?.county && typeof ledger.county === "object" ? ledger.county : {},
     state: ledger?.state && typeof ledger.state === "object" ? ledger.state : {},
   };
-  fs.writeFileSync(LEDGER_PATH, JSON.stringify(next, null, 2));
+  pgCache.replaceAutoCreateDataSync(next);
   return next;
 }
 

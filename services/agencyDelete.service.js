@@ -432,7 +432,13 @@ async function buildAgencyDeletePlan(agencyIndex) {
   if (!agencyName) throw new Error("Agency name is missing");
 
   const remainingAgencies = remainingAgenciesAfterDelete(agencies, idx);
-  const allGroups = await groupsService.getAllGroups({ includeHidden: true });
+  const r = await require("./directoryRepo.service").searchGroupsPaged({
+    agencyName: agencyName,
+    includeHidden: true,
+    page: 1,
+    pageSize: 500,
+  });
+  const allGroups = r.groups;
   const groupPlan = classifyGroupsForAgencyDelete(agency, allGroups, remainingAgencies);
   const suffix = String(agency.suffix || "").trim().toLowerCase();
   const allAgencyUsers = await usersService.listAllUsersByAgencyName(agencyName);

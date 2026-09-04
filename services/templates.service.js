@@ -1,15 +1,13 @@
-const fs = require("fs");
-const path = require("path");
+const pgCache = require("./pgCache");
 
-const FILE = path.join(__dirname, "../data/agency-templates.json");
+const FILE = null;
 
 function load() {
-  if (!fs.existsSync(FILE)) return [];
-  return JSON.parse(fs.readFileSync(FILE, "utf8"));
+  return Array.isArray(pgCache.caches.templates) ? pgCache.caches.templates : [];
 }
 
 function save(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+  pgCache.replaceTemplates(Array.isArray(data) ? data : []);
 }
 
 module.exports = { load, save, FILE };

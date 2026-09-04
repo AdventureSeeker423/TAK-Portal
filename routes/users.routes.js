@@ -46,9 +46,18 @@ async function getAllHiddenGroupsNameLowerToPk() {
 
   if (cacheValid) return _agencyAdminGroupsNameLowerToPkCache.map;
 
-  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  const accessSvc = require("../services/access.service");
+  const directoryRepo = require("../services/directoryRepo.service");
+  const agencies = agenciesSvc.load() || [];
+  const names = [];
+  for (const ag of agencies) {
+    for (const n of accessSvc.getAllAgencyAdminGroupNames(ag) || []) {
+      if (n) names.push(n);
+    }
+  }
+  const groups = await directoryRepo.getGroupsByNames(names);
   const nameLowerToPk = new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+    (Array.isArray(groups) ? groups : []).map((g) => [
       String(g?.name || "").trim().toLowerCase(),
       String(g?.pk ?? g?.id ?? "").trim() || null,
     ])
@@ -75,9 +84,10 @@ async function resolveGroupLabels(groupIds) {
     .map((id) => String(id || "").trim())
     .filter(Boolean);
   if (!ids.length) return { ids: [], names: [] };
-  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  const directoryRepo = require("../services/directoryRepo.service");
+  const groups = await directoryRepo.getGroupsByPks(ids);
   const byPk = new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+    (Array.isArray(groups) ? groups : []).map((g) => [
       String(g?.pk),
       String(g?.name || "").trim(),
     ])
@@ -101,10 +111,10 @@ async function getGlobalAdminGroupPks() {
     return _globalAdminGroupPkCache.pks.slice();
   }
 
-  // Resolve group names -> PKs (including hidden groups).
-  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  const directoryRepo = require("../services/directoryRepo.service");
+  const found = await directoryRepo.getGroupsByNames(namesLower);
   const byNameLower = new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+    (Array.isArray(found) ? found : []).map((g) => [
       String(g?.name || "").trim().toLowerCase(),
       String(g?.pk),
     ])
@@ -158,9 +168,16 @@ function userIsGlobalAdminUser(user, globalAdminSet) {
 
 async function loadGroupNameByPkForRoleSort(sortKey) {
   if (sortKey !== "role") return new Map();
-  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+  const agencies = agenciesSvc.load() || [];
+  const names = [];
+  for (const a of agencies) {
+    for (const n of accessSvc.getAllAgencyAdminGroupNames(a) || []) {
+      if (n) names.push(n);
+    }
+  }
+  const found = await require("../services/directoryRepo.service").getGroupsByNames(names);
   return new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+    (Array.isArray(found) ? found : []).map((g) => [
       String(g.pk),
       String(g.name || "").toLowerCase(),
     ])
@@ -459,7 +476,7 @@ router.get("/meta", async (req, res) => {
     }
 
     const dynamic = users.getTemplatesForAgency(agencySuffix);
-    const allGroups = await groupsSvc.getAllGroups({});
+    const allGroups = await groupsSvc.getGroupsForAuthUser(authUser);
     let groups = accessSvc.filterGroupsForUser(authUser, allGroups);
 
     const templates = [
@@ -556,13 +573,7 @@ router.get("/group-lookup", async (req, res) => {
       }
     }
 
-    // Bypass GROUPS_HIDDEN_PREFIXES by requesting all groups (including hidden).
-    // groups.service.getAllGroups supports includeHidden=true.
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
-    const target = name.toLowerCase();
-    const found = (Array.isArray(allGroups) ? allGroups : []).find(
-      (g) => String(g?.name || "").trim().toLowerCase() === target
-    );
+    const found = await require("../services/directoryRepo.service").getGroupById(name);
 
     if (!found) {
       return res.status(404).json({ error: "Group not found" });
@@ -578,7 +589,7 @@ router.get("/group-lookup", async (req, res) => {
 router.get("/groups", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    const all = await groupsSvc.getAllGroups({});
+    const all = await groupsSvc.getGroupsForAuthUser(authUser);
     const filtered = accessSvc.filterGroupsForUser(authUser, all);
     res.json(filtered);
   } catch (err) {
@@ -595,7 +606,18 @@ router.get("/all-groups-hidden", async (req, res) => {
     if (!access.isGlobalAdmin) {
       return res.status(403).json({ error: "Forbidden" });
     }
-    const all = await groupsSvc.getAllGroups({ includeHidden: true });
+    const agencies = agenciesSvc.load() || [];
+    const names = [];
+    for (const a of agencies) {
+      for (const n of accessSvc.getAllAgencyAdminGroupNames(a) || []) {
+        if (n) names.push(n);
+      }
+    }
+    const rawAdmin = String(getString("PORTAL_AUTH_REQUIRED_GROUP", "") || "");
+    for (const n of rawAdmin.split(/[;,]/)) {
+      if (n.trim()) names.push(n.trim());
+    }
+    const all = await require("../services/directoryRepo.service").getGroupsByNames(names);
     res.json(Array.isArray(all) ? all : []);
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });
@@ -1418,11 +1440,7 @@ router.get("/search", async (req, res) => {
     // groups by name.
     let groupNameByPk = new Map();
     if (sortKey === "role") {
-      const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
-      const groupList = Array.isArray(allGroups) ? allGroups : [];
-      groupNameByPk = new Map(
-        groupList.map((g) => [String(g.pk), String(g.name || "").toLowerCase()])
-      );
+      groupNameByPk = await loadGroupNameByPkForRoleSort(sortKey);
     }
 
     function computeRole(user) {
@@ -1724,15 +1742,43 @@ router.get("/export-csv", async (req, res) => {
     const globalAdminGroupPks = await getGlobalAdminGroupPks();
     const globalAdminSet = new Set(globalAdminGroupPks.map(String));
 
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    let visible = [];
+    if (!access.isGlobalAdmin) {
+      const suffixes = access.allowedAgencySuffixes || [];
+      const directoryRepo = require("../services/directoryRepo.service");
+      for (const sfx of suffixes) {
+        const batch = await directoryRepo.listUsersByAgencySuffix(sfx);
+        visible = visible.concat(batch);
+      }
+    } else {
+      const directoryRepo = require("../services/directoryRepo.service");
+      let page = 1;
+      let hasNext = true;
+      while (hasNext) {
+        const r = await directoryRepo.searchUsersPaged({
+          page,
+          pageSize: 200,
+          includeGroups: true,
+          includeHiddenPrefixes: false,
+        });
+        visible = visible.concat(r.users || []);
+        hasNext = !!r.hasNext;
+        page += 1;
+        if (page > 500) break;
+      }
+    }
+
+    const groupPks = [];
+    for (const u of visible) {
+      for (const g of Array.isArray(u.groups) ? u.groups : []) groupPks.push(String(g));
+    }
+    const namedGroups = await require("../services/directoryRepo.service").getGroupsByPks(groupPks);
     const groupNameByPk = new Map(
-      (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+      (Array.isArray(namedGroups) ? namedGroups : []).map((g) => [
         String(g.pk),
         String(g.name || "").trim(),
       ])
     );
-
-    let visible = await users.findUsers({ q: "", forceRefresh: false });
 
     if (!access.isGlobalAdmin) {
       visible = visible.filter((u) => accessSvc.isUserInAllowedAgencies(authUser, u));
@@ -1899,11 +1945,9 @@ router.post("/:userId/portal-role", express.json({ limit: "1mb" }), async (req, 
       }
     }
 
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
     const delta = await accessSvc.syncPortalRoleGroups(userId, {
       role: desiredRole,
       managedAgencySuffixes,
-      allGroups,
     });
 
     const { user: updatedUser, groupNames } = await loadGroupNamesForUserId(userId);

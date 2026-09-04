@@ -84,57 +84,21 @@ function isNewerVersion(latest, current) {
 
 let loggedAvailableUpdateVersion = null;
 
-function stripVersionPrefix(v) {
-  return String(v || "")
-    .trim()
-    .replace(/^v/i, "");
-}
-
-async function fetchLatestReleaseVersion(repo) {
-  const url = `https://api.github.com/repos/${repo}/releases/latest`;
-  const response = await axios.get(url, {
-    timeout: 5000,
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "TAK-Portal",
-    },
-  });
-  const tag = stripVersionPrefix(
-    (response.data && response.data.tag_name) || ""
-  );
-  if (!/^\d+\.\d+\.\d+/.test(tag)) {
-    throw new Error("Invalid GitHub release tag");
-  }
-  return tag;
-}
-
-async function checkForUpdates() {
+async function refreshAppUpdateLocals() {
   try {
-    const repo = process.env.GITHUB_REPO || "AdventureSeeker423/TAK-Portal";
-    const latestVersion = await fetchLatestReleaseVersion(repo);
-
-    const updateAvailable = isNewerVersion(
-      latestVersion,
-      app.locals.APP_VERSION
-    );
-
-    app.locals.APP_LATEST_VERSION = latestVersion;
-    app.locals.APP_UPDATE_AVAILABLE = updateAvailable;
-
-    if (updateAvailable && loggedAvailableUpdateVersion !== latestVersion) {
-      loggedAvailableUpdateVersion = latestVersion;
-      console.log(
-        `[update] ${app.locals.APP_VERSION} → ${latestVersion} available`
-      );
+    const db = require("./services/db");
+    if (!db.isConfigured()) return;
+    const r = await db.query("SELECT latest, update_available FROM app_update_meta WHERE id = 1");
+    const row = r.rows[0];
+    if (!row) return;
+    if (row.latest) app.locals.APP_LATEST_VERSION = row.latest;
+    app.locals.APP_UPDATE_AVAILABLE = !!row.update_available;
+    if (app.locals.APP_UPDATE_AVAILABLE && loggedAvailableUpdateVersion !== row.latest) {
+      loggedAvailableUpdateVersion = row.latest;
+      console.log(`[update] ${app.locals.APP_VERSION} → ${row.latest} available`);
     }
-  } catch (_) {
-    // Periodic checks stay quiet unless an update is available.
-  }
+  } catch (_) {}
 }
-
-// Run once on startup, then periodically (every 15 min)
-checkForUpdates();
-setInterval(checkForUpdates, 15 * 60 * 1000);
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -144,6 +108,54 @@ app.use(
   "/mutual-aid-logos",
   express.static(path.join(__dirname, "data", "mutual-aid-logos"))
 );
+
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
+
+const migrationGate = require("./services/migrationGate.middleware");
+const jsonImport = require("./services/jsonImport.service");
+
+app.get("/api/system/health", async (req, res) => {
+  let migrating = false;
+  try {
+    const s = await jsonImport.readStatusJson();
+    migrating = !!s.active;
+  } catch (_) {}
+  return res.status(200).json({ ok: true, migrating });
+});
+
+app.get("/api/system/migration-status", async (req, res) => {
+  try {
+    return res.json(await jsonImport.readStatusJson());
+  } catch (e) {
+    return res.json({ active: false, phase: "idle", percent: 100 });
+  }
+});
+
+app.post("/api/system/migration-retry", async (req, res) => {
+  try {
+    const s = await jsonImport.readStatusJson();
+    if (s.phase !== "failed") {
+      return res.status(409).json({ error: "retry_not_available", phase: s.phase });
+    }
+    jsonImport.retry().catch((e) => console.error("[json-import] retry:", e?.message || e));
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e?.message || "retry failed" });
+  }
+});
+
+app.get("/migration", async (req, res) => {
+  try {
+    const status = await jsonImport.readStatusJson();
+    if (!status.active) return res.redirect("/");
+    return res.status(503).render("migration", { status });
+  } catch (e) {
+    return res.redirect("/");
+  }
+});
+
+app.use(migrationGate);
 
 // Multer storage for settings uploads (certs + branding)
 const uploadStorage = multer.diskStorage({
@@ -430,6 +442,15 @@ function requirePermission(permissionId) {
   };
 }
 
+app.get("/api/system/directory-sync-status", requirePermission("page.users"), async (req, res) => {
+  try {
+    const directorySync = require("./services/directorySync.service");
+    return res.json(await directorySync.getDirectorySyncStatus());
+  } catch (e) {
+    return res.json({ ok: true, lastError: null, lastSuccessAt: null });
+  }
+});
+
 function requireBetaMode(req, res, next) {
   const cfg = settingsSvc.getSettings() || {};
   const beta = String(cfg.BETA_MODE || "").toLowerCase() === "true";
@@ -519,8 +540,6 @@ function requireBetaModeApi(req, res, next) {
   }
   next();
 }
-app.set("view engine", "ejs");
-app.set("views", path.join(__dirname, "views"));
 
 app.get("/logout", (req, res) => {
   // Where to send the user back after logout (the portal itself)
@@ -1026,7 +1045,7 @@ app.get("/audit-log", requirePermission("page.audit_log"), async (req, res) => {
       pageSize: raw.pageSize || "50",
     };
 
-    const result = auditSvc.queryLogs(filters);
+    const result = await auditSvc.queryLogs(filters);
     const agencies = agenciesStore.load();
 
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1320,16 +1339,10 @@ app.post("/lookup", async (req, res) => {
       throw new Error("Email address or Username Not Found");
     }
 
-    const allUsers = await usersSvc.getAllUsers({ forceRefresh: true });
-    const usernameMatches = allUsers.filter(
-      (u) => String(u.username || "").trim().toLowerCase() === form.username
-    );
-    const user = usernameMatches.find(
-      (u) => !u.email || !String(u.email).trim()
-    );
-    const userHasEmailOnFile = usernameMatches.some(
-      (u) => u.email && String(u.email).trim()
-    );
+    const found = await usersSvc.getUserById(form.username);
+    const usernameExists = !!found;
+    const userHasEmailOnFile = !!(found && found.email && String(found.email).trim());
+    const user = found && !userHasEmailOnFile ? found : null;
 
     if (!user) {
       logLookupFailure("user_not_found", {
@@ -1337,7 +1350,7 @@ app.post("/lookup", async (req, res) => {
         agencySuffix: String(agency?.suffix || "").trim().toLowerCase() || undefined,
         agencyName: String(agency?.name || "") || undefined,
         lookupEnabledAgencyCount,
-        usernameExists: usernameMatches.length > 0,
+        usernameExists,
         userHasEmailOnFile,
       });
       throw new Error("Email address or Username Not Found");
@@ -1711,6 +1724,13 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   defaultAgencyTypes: agencyTypesSvc.DEFAULT_AGENCY_TYPES,
   configurableAgencyTypes: agencyTypesSvc.getConfigurableAgencyTypes(settings),
   atakApk: atakApkSvc.getApkInfo(),
+  portalDb: {
+    host: "127.0.0.1",
+    port: String(process.env.POSTGRES_HOST_PORT || "5433"),
+    user: "takportal",
+    database: "takportal",
+    password: String(process.env.POSTGRES_PASSWORD || ""),
+  },
   });
 });
 
@@ -2210,204 +2230,70 @@ app.post(
 app.post(
   "/settings/import-data",
   requirePermission("page.settings"),
-  upload.single("CONFIG_ZIP_UPLOAD"),
-  async (req, res) => {
-    const unzipper = require("unzipper");
-    const { finished } = require("stream/promises");
-
-    try {
-      if (!req.file || !req.file.path) {
-        return res.redirect("/settings?error=No+file+uploaded");
-      }
-
-      const zipPath = req.file.path;
-      const dataDir = path.join(__dirname, "data");
-
-      // Ensure data directory exists
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-
-      const directory = await unzipper.Open.file(zipPath);
-      const dataDirResolved = path.resolve(dataDir) + path.sep;
-      let filesExtracted = 0;
-      const extractedPaths = [];
-
-      // Extract entries safely (prevent Zip Slip)
-      for (const entry of directory.files) {
-        // Normalize to forward slashes as used inside zip archives
-        const raw = (entry.path || "").replace(/\\/g, "/");
-
-        // Ignore empty / weird names
-        if (!raw || raw === "/" || raw.endsWith("/")) {
-          if (entry.type === "Directory") continue;
-        }
-
-        // Only allow restoring into data/
-        const rel = raw.startsWith("data/") ? raw.slice("data/".length) : raw;
-
-        if (!rel) continue;
-
-        // Basic traversal / absolute path protection
-        if (rel.includes("..") || rel.startsWith("/") || rel.startsWith("\\")) {
-          console.warn("Skipping unsafe zip entry:", raw);
-          continue;
-        }
-
-        const outPath = path.join(dataDir, rel);
-        const outResolved = path.resolve(outPath);
-
-        if (!outResolved.startsWith(dataDirResolved)) {
-          console.warn("Skipping zip entry outside dataDir:", raw);
-          continue;
-        }
-
-        if (entry.type === "Directory") {
-          if (!fs.existsSync(outResolved)) {
-            fs.mkdirSync(outResolved, { recursive: true });
-          }
-          continue;
-        }
-
-        // Ensure parent dir exists
-        const parent = path.dirname(outResolved);
-        if (!fs.existsSync(parent)) {
-          fs.mkdirSync(parent, { recursive: true });
-        }
-
-        // Overwrite/create file
-        const writeStream = fs.createWriteStream(outResolved);
-        await finished(entry.stream().pipe(writeStream));
-        filesExtracted += 1;
-        if (extractedPaths.length < 30) extractedPaths.push(rel);
-      }
-
-      auditSvc.auditFromRequest(req, {
-        action: "SETTINGS_DATA_IMPORTED",
-        targetType: "settings",
-        targetId: "data",
-        details: {
-          zipName: path.basename(zipPath),
-          filesExtracted,
-          samplePaths: extractedPaths,
-          summary: `Imported configuration zip (${filesExtracted} file(s) into data/).`,
-        },
-      });
-
-      // Cleanup uploaded zip
-      try {
-        fs.unlinkSync(zipPath);
-      } catch (_) {}
-
-      // IMPORTANT: reload cached settings from disk so UI reflects imported settings.json
-      try {
-        settingsSvc.ensureSettingsInitialized();
-      } catch (e) {
-        console.warn("[settings] Failed to reload settings after import:", e?.message || e);
-      }
-
-      applyLiveMapRuntime();
-
-      return res.redirect("/settings?import=1");
-
-    } catch (err) {
-      console.error("Import data zip error:", err);
-      try {
-        if (req.file?.path) fs.unlinkSync(req.file.path);
-      } catch (_) {}
-      return res.redirect("/settings?error=Failed+to+import+zip");
-    }
-  }
+  (req, res) => res.status(410).send("Backup and restore is not available.")
 );
 
-// Export a zip of the data folder
 app.get("/settings/export-data", requirePermission("page.settings"), (req, res) => {
-  const archiver = require("archiver");
-  const dataDir = path.join(__dirname, "data");
-
-  if (!fs.existsSync(dataDir)) {
-    return res.status(404).send("No data directory to export");
-  }
-
-  auditSvc.auditFromRequest(req, {
-    action: "SETTINGS_DATA_EXPORTED",
-    targetType: "settings",
-    targetId: "data",
-    details: {
-      summary: "Exported portal data folder as zip (tak-portal-data.zip).",
-    },
-  });
-
-  res.setHeader("Content-Type", "application/zip");
-  res.setHeader(
-    "Content-Disposition",
-    'attachment; filename="tak-portal-data.zip"'
-  );
-
-  const archive = archiver("zip", { zlib: { level: 9 } });
-
-  archive.on("error", (err) => {
-    console.error("Export data zip error:", err);
-    res.status(500).end("Failed to export data");
-  });
-
-  archive.pipe(res);
-  archive.directory(dataDir, "data");
-  archive.finalize();
+  return res.status(410).send("Backup and restore is not available.");
 });
 
-const port = process.env.WEB_UI_PORT || 3000;
 
-app.listen(port, () => {
-  console.log(
-    `✅ TAK Portal ${app.locals.APP_VERSION} running on http://localhost:${port}`
-  );
-
-  // Prime dashboard Authentik stats cache (dashboard-only)
-  dashboardStatsCache.startDashboardStatsRefresher();
-
-  // TAK metrics for dashboard HTML: background refresh so /dashboard does not wait on TAK
-  takDashboardCache.startTakDashboardRefresher();
-
-  // Rehydrate expiration timers from stored mutual aid records.
+async function boot() {
+  const db = require("./services/db");
+  const pgCache = require("./services/pgCache");
   try {
-    mutualAidSvc.initExpirationScheduler();
+    settingsSvc.ensureSettingsInitialized();
   } catch (e) {
+    console.warn("[boot] settings init:", e?.message || e);
+  }
+  try {
+    require("./services/cryptoSecrets").getKeyBuffer();
+  } catch (_) {}
+  if (!db.isConfigured()) {
+    console.error("DATABASE_URL is not set");
+    process.exit(1);
+  }
+  try {
+    await db.connectWithRetry(60000);
+    await db.migrate();
+    await pgCache.hydrate();
+  } catch (e) {
+    console.error("[boot] Postgres migrate failed:", e?.message || e);
+    process.exit(1);
+  }
+  const port = process.env.WEB_UI_PORT || 3000;
+  app.listen(port, () => {
     console.log(
-      "⚠️ Mutual aid expiration scheduler init failed",
-      e?.message || e
+      `✅ TAK Portal ${app.locals.APP_VERSION} running on http://localhost:${port}`
     );
-  }
-
-  try {
-    mouScheduler.startScheduler();
-  } catch (e) {
-    console.log("⚠️ MOU reminder scheduler init failed", e?.message || e);
-  }
-
-  try {
-    applyLiveMapRuntime();
-  } catch (e) {
-    console.log("⚠️ Geofence evaluator init failed", e?.message || e);
-  }
-
-  try {
-    const channelPatchEngine = require("./services/channelPatch.engine");
-    channelPatchEngine.start();
-  } catch (e) {
-    console.log("⚠️ Channel patch engine init failed", e?.message || e);
-  }
-
-  try {
-    const takUrl = getString("TAK_URL", "");
-    if (!takUrl) {
-      console.log("⚠️ TAK_URL not set in settings.json");
-      return;
+    refreshAppUpdateLocals();
+    setInterval(refreshAppUpdateLocals, 60 * 1000).unref?.();
+    try {
+      applyLiveMapRuntime();
+    } catch (e) {
+      console.log("⚠️ Geofence evaluator init failed", e?.message || e);
     }
+    try {
+      const channelPatchEngine = require("./services/channelPatch.engine");
+      channelPatchEngine.start();
+    } catch (e) {
+      console.log("⚠️ Channel patch engine init failed", e?.message || e);
+    }
+    jsonImport.run().catch((e) => console.error("[json-import]", e?.message || e));
+    try {
+      const takUrl = getString("TAK_URL", "");
+      if (!takUrl) {
+        console.log("⚠️ TAK_URL not set in settings.json");
+      } else {
+        console.log("TAK host:", new URL(takUrl).hostname);
+      }
+    } catch (e) {
+      console.log("⚠️ Invalid TAK_URL in settings.json");
+    }
+  });
+}
 
-    const host = new URL(takUrl).hostname;
-    console.log("TAK host:", host);
-  } catch (e) {
-    console.log("⚠️ Invalid TAK_URL in settings.json");
-  }
+boot().catch((e) => {
+  console.error("[boot] fatal:", e?.message || e);
+  process.exit(1);
 });

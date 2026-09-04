@@ -1,21 +1,17 @@
 /**
- * Persist channel patches under data/channel-patches.json.
+ * Persist channel patches in Postgres.
  *
  * Model: a named set of channels patched together (full mesh, both directions).
  * Legacy hub/spokes rows are migrated on read.
  */
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
+const pgCache = require("./pgCache");
 
-const FILE = path.join(__dirname, "..", "data", "channel-patches.json");
+const FILE = null;
 
 let _cache = null;
 
-function ensureDirExists(filePath) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
+function ensureDirExists() {}
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -157,9 +153,7 @@ function normalizePatch(raw, { assignId = false } = {}) {
 
 function readFile() {
   try {
-    if (!fs.existsSync(FILE)) return [];
-    const raw = fs.readFileSync(FILE, "utf8");
-    const parsed = JSON.parse(raw);
+    const parsed = pgCache.caches.channelPatches;
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     console.warn("[channelPatch.store] Failed to read:", err.message || err);
@@ -168,8 +162,7 @@ function readFile() {
 }
 
 function writeFile(items) {
-  ensureDirExists(FILE);
-  fs.writeFileSync(FILE, JSON.stringify(items, null, 2));
+  pgCache.replaceChannelPatches(items);
 }
 
 function load() {

@@ -6,7 +6,7 @@ const accessSvc = require("../services/access.service");
 // Access:
 //  - Global Admin: all logs
 //  - Agency Admin: only logs tied to agencies they manage
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const access = accessSvc.getAgencyAccess(authUser);
@@ -46,27 +46,14 @@ router.get("/", (req, res) => {
       // For correctness, filter first then paginate.
       const requestedPage = Math.max(1, Number(query.page) || 1);
       const requestedPageSize = Math.min(500, Math.max(10, Number(query.pageSize) || 50));
-
-      // Pull a large slice then filter; logs are capped (default 5000).
-      const unpaged = auditSvc.queryLogs({ ...query, page: 1, pageSize: 5000 });
-      const scoped = (unpaged.items || []).filter((it) => {
-        const sfx = String(it?.agencySuffix || "").trim().toLowerCase();
-        return sfx && allowed.includes(sfx);
-      });
-
-      const total = scoped.length;
-      const pageCount = Math.max(1, Math.ceil(total / requestedPageSize));
-      const page = Math.min(pageCount, requestedPage);
-      const start = (page - 1) * requestedPageSize;
-      const items = scoped.slice(start, start + requestedPageSize);
-
-      return res.json({
-        items,
-        total,
-        page,
+      const scopedQuery = {
+        ...query,
+        page: requestedPage,
         pageSize: requestedPageSize,
-        pageCount,
-      });
+        agencySuffix: query.agencySuffix || allowed.join(","),
+      };
+      const result = await auditSvc.queryLogs(scopedQuery);
+      return res.json(result);
     }
 
     if (String(req.query.export || "").trim() === "1") {
@@ -89,14 +76,14 @@ router.get("/", (req, res) => {
       });
     }
 
-    const result = auditSvc.queryLogs(query);
+    const result = await auditSvc.queryLogs(query);
     return res.json(result);
   } catch (err) {
     return res.status(500).json({ error: err?.message || "Unknown error" });
   }
 });
 
-router.get("/meta", (req, res) => {
+router.get("/meta", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const access = accessSvc.getAgencyAccess(authUser);
@@ -105,10 +92,12 @@ router.get("/meta", (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const actions = auditSvc.listDistinctValues({ field: "actions" });
-    const targetTypes = auditSvc.listDistinctValues({ field: "targetTypes" });
-    const agencies = auditSvc.listDistinctValues({ field: "agencies" });
-    const actors = auditSvc.listDistinctValues({ field: "actors" });
+    const [actions, targetTypes, agencies, actors] = await Promise.all([
+      auditSvc.listDistinctValues({ field: "actions" }),
+      auditSvc.listDistinctValues({ field: "targetTypes" }),
+      auditSvc.listDistinctValues({ field: "agencies" }),
+      auditSvc.listDistinctValues({ field: "actors" }),
+    ]);
 
     if (!access.isGlobalAdmin) {
       const allowed = Array.isArray(access.allowedAgencySuffixes)

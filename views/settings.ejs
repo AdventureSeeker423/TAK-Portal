@@ -185,20 +185,18 @@
       </div>
     </section>
 
-    <section class="settings-hub-category" aria-labelledby="settingsCatBackup">
-      <h2 class="settings-hub-category-title" id="settingsCatBackup">
-        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Backup &amp; Restore
+    <section class="settings-hub-category" aria-labelledby="settingsCatPortalDb">
+      <h2 class="settings-hub-category-title" id="settingsCatPortalDb">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6"/></svg>
+        Portal database
       </h2>
       <div class="settings-hub-grid">
-        <a href="/settings/export-data" class="settings-hub-card">
-          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Export Configuration</span></span>
-        </a>
-        <div class="settings-hub-card" role="button" tabindex="0" data-import-config>
-          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Import Configuration</span></span>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="portal-database">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Connection</span></span>
         </div>
       </div>
     </section>
+
     </div>
   </div>
 
@@ -487,6 +485,58 @@
             <% renderField("DASHBOARD_AUTHENTIK_STATS_REFRESH_SECONDS","Dashboard Authentik Stats Refresh (seconds)","How often the server refreshes cached Authentik dashboard stats in the background. Server restart required for changes to take effect."); %>
           </div>
         
+        </div>
+      </div>
+    </div>
+
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-portal-database" data-settings-modal="portal-database" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-portal-database">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-portal-database">Portal database</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Read-only Postgres connection for DBeaver/psql. Changing .env after the volume exists does not rotate this password.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          <% const pdb = typeof portalDb !== "undefined" && portalDb ? portalDb : { host: "127.0.0.1", port: "5433", user: "takportal", database: "takportal", password: "" }; %>
+          <p class="muted">Host tools connect to this localhost port. Containers use the compose network. This password is not stored in settings.json.</p>
+          <div class="grid2" style="margin-top:12px;">
+            <label class="settings-field"><span class="settings-label">Host</span><input type="text" readonly value="<%= pdb.host %>" /></label>
+            <label class="settings-field"><span class="settings-label">Port</span><input type="text" readonly value="<%= pdb.port %>" /></label>
+            <label class="settings-field"><span class="settings-label">Database</span><input type="text" readonly value="<%= pdb.database %>" /></label>
+            <label class="settings-field"><span class="settings-label">User</span><input type="text" readonly value="<%= pdb.user %>" /></label>
+            <label class="settings-field" style="grid-column:1 / -1;">
+              <span class="settings-label">Password</span>
+              <div class="passwordWrap">
+                <input id="portalDbPassword" type="password" readonly value="<%= pdb.password || '' %>" autocomplete="off" />
+                <button type="button" class="passwordToggle" id="portalDbPasswordToggle" aria-label="Show password">👁</button>
+                <button type="button" class="btn" id="portalDbPasswordCopy" style="margin-left:8px;">Copy</button>
+              </div>
+            </label>
+          </div>
+          <script>
+            (function () {
+              var input = document.getElementById("portalDbPassword");
+              var toggle = document.getElementById("portalDbPasswordToggle");
+              var copy = document.getElementById("portalDbPasswordCopy");
+              if (toggle && input) {
+                toggle.addEventListener("click", function () {
+                  input.type = input.type === "password" ? "text" : "password";
+                });
+              }
+              if (copy && input) {
+                copy.addEventListener("click", function () {
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(input.value || "");
+                  }
+                });
+              }
+            })();
+          </script>
         </div>
       </div>
     </div>

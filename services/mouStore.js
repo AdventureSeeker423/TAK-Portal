@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const pgCache = require("./pgCache");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const ROOT_DIR = path.join(DATA_DIR, "mou");
@@ -7,13 +8,13 @@ const VERSIONS_DIR = path.join(ROOT_DIR, "versions");
 const SIGNED_DIR = path.join(ROOT_DIR, "signed");
 const SIGNATURES_DIR = path.join(ROOT_DIR, "signatures");
 
-const INDEX_PATH = path.join(ROOT_DIR, "index.json");
-const USER_AGREEMENT_PATH = path.join(ROOT_DIR, "user-agreement.json");
-const ACKS_PATH = path.join(ROOT_DIR, "acks.json");
-const VIEWS_PATH = path.join(ROOT_DIR, "views.json");
-const REMINDERS_PATH = path.join(ROOT_DIR, "reminders.json");
-const ARCHIVED_DOCUMENTS_PATH = path.join(ROOT_DIR, "archived-documents.json");
-const SIGN_INVITES_PATH = path.join(ROOT_DIR, "sign-invites.json");
+const INDEX_PATH = null;
+const USER_AGREEMENT_PATH = null;
+const ACKS_PATH = null;
+const VIEWS_PATH = null;
+const REMINDERS_PATH = null;
+const ARCHIVED_DOCUMENTS_PATH = null;
+const SIGN_INVITES_PATH = null;
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -190,77 +191,77 @@ function getCountersignUploadPath(mouId, agencyId, version, extension) {
 
 function loadIndex() {
   ensureStorage();
-  return readJsonFile(INDEX_PATH, { schemaVersion: 1, streams: [] });
+  return pgCache.caches.mouIndex || { schemaVersion: 1, streams: [] };
 }
 
 function saveIndex(data) {
   ensureStorage();
-  atomicWriteJson(INDEX_PATH, data);
+  pgCache.replaceMouIndex(data || { schemaVersion: 1, streams: [] });
 }
 
 function loadUserAgreement() {
   ensureStorage();
-  return readJsonFile(USER_AGREEMENT_PATH, {
+  return pgCache.caches.mouAgreement || {
     schemaVersion: 1,
     enabled: false,
     currentVersion: 0,
     versions: [],
-  });
+  };
 }
 
 function saveUserAgreement(data) {
   ensureStorage();
-  atomicWriteJson(USER_AGREEMENT_PATH, data);
+  pgCache.replaceMouAgreement(data);
 }
 
 function loadAcks() {
   ensureStorage();
-  return readJsonFile(ACKS_PATH, { schemaVersion: 1, items: [] });
+  return pgCache.caches.mouAcks || { schemaVersion: 1, items: [] };
 }
 
 function saveAcks(data) {
   ensureStorage();
-  atomicWriteJson(ACKS_PATH, data);
+  pgCache.replaceMouAcks(data);
 }
 
 function loadViews() {
   ensureStorage();
-  return readJsonFile(VIEWS_PATH, { schemaVersion: 1, items: [] });
+  return pgCache.caches.mouViews || { schemaVersion: 1, items: [] };
 }
 
 function saveViews(data) {
   ensureStorage();
-  atomicWriteJson(VIEWS_PATH, data);
+  pgCache.replaceMouViews(data);
 }
 
 function loadReminders() {
   ensureStorage();
-  return readJsonFile(REMINDERS_PATH, { schemaVersion: 1, agency: {} });
+  return pgCache.caches.mouReminders || { schemaVersion: 1, agency: {} };
 }
 
 function saveReminders(data) {
   ensureStorage();
-  atomicWriteJson(REMINDERS_PATH, data);
+  pgCache.replaceMouReminders(data);
 }
 
 function loadArchivedDocuments() {
   ensureStorage();
-  return readJsonFile(ARCHIVED_DOCUMENTS_PATH, { schemaVersion: 1, items: [] });
+  return pgCache.caches.mouArchived || { schemaVersion: 1, items: [] };
 }
 
 function saveArchivedDocuments(data) {
   ensureStorage();
-  atomicWriteJson(ARCHIVED_DOCUMENTS_PATH, data);
+  pgCache.replaceMouArchived(data);
 }
 
 function loadSignInvites() {
   ensureStorage();
-  return readJsonFile(SIGN_INVITES_PATH, { schemaVersion: 1, items: [] });
+  return pgCache.caches.mouInvites || { schemaVersion: 1, items: [] };
 }
 
 function saveSignInvites(data) {
   ensureStorage();
-  atomicWriteJson(SIGN_INVITES_PATH, data);
+  pgCache.replaceMouInvites(data);
 }
 
 function readHtml(filePath) {

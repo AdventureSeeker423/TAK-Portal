@@ -111,7 +111,16 @@ async function getOrCreateEnrollmentAppPassword(params, ttlMinutes = 15) {
 
   const now = new Date();
   const cleanedUserId = userId ? String(userId).trim() : "";
-  const resolvedUserId = (/^\d+$/.test(cleanedUserId)) ? cleanedUserId : await getUserIdByUsername(u);
+  let resolvedUserId = /^\d+$/.test(cleanedUserId) ? cleanedUserId : null;
+  if (!resolvedUserId) {
+    const directoryRepo = require("./directoryRepo.service");
+    try {
+      resolvedUserId = String(await directoryRepo.waitForAuthentikPk(u, 15000));
+    } catch (e) {
+      if (e && e.code === "AUTHENTIK_SYNC_PENDING") throw e;
+      throw new Error("Still syncing to Authentik — try again in a moment.");
+    }
+  }
 
   const tokens = await listUserAppPasswordsByUserId(resolvedUserId);
 

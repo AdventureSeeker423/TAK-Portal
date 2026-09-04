@@ -37,7 +37,7 @@ async function loadScopedChannels(authUser, access) {
 
   let authGroups = [];
   try {
-    const all = await groupsSvc.getAllGroups({});
+    const all = await groupsSvc.getGroupsForAuthUser(authUser);
     authGroups = groupsRoutes.filterGroupsVisibleToUser(authUser, all, {
       includeMutualAid: access.isGlobalAdmin,
     });

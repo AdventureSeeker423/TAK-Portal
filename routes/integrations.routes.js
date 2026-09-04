@@ -234,10 +234,12 @@ async function rollbackIntegrationCreation({ userId, username, dataFeedName }) {
 router.get("/", async (req, res) => {
   try {
     const list = await users.findIntegrationUsers();
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
-    const groupByPk = new Map(
-      (allGroups || []).map((g) => [String(g.pk), g])
-    );
+    const pks = [];
+    for (const u of list) {
+      for (const g of Array.isArray(u.groups) ? u.groups : []) pks.push(String(g));
+    }
+    const named = await require("../services/directoryRepo.service").getGroupsByPks(pks);
+    const groupByPk = new Map((named || []).map((g) => [String(g.pk), g]));
 
     const usersWithGroupNames = list.map((u) => {
       const groupPks = Array.isArray(u.groups) ? u.groups : [];
@@ -550,15 +552,10 @@ router.put("/:userId/group", async (req, res) => {
       return res.status(400).json({ error: "At least one group is required." });
     }
 
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
-    const groupByPk = new Map((allGroups || []).map((g) => [String(g.pk), g]));
-    const selectedGroups = requestedIds.map((id) => {
-      const group = groupByPk.get(String(id));
-      if (!group) {
-        throw new Error("Selected group not found.");
-      }
-      return group;
-    });
+    const selectedGroups = await require("../services/directoryRepo.service").getGroupsByPks(requestedIds);
+    if (selectedGroups.length !== requestedIds.length) {
+      throw new Error("Selected group not found.");
+    }
     const groupNames = selectedGroups.map((g) => g.name).filter(Boolean);
 
     const dataFeedName = String(user.attributes?.tak_data_feed_name || "").trim();
@@ -742,8 +739,10 @@ router.post("/:username/datafeed", async (req, res) => {
     }
 
     const payloadTags = tags ? tags.split(/[\n,]+/).map(t => t.trim()).filter(Boolean) : [];
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
-    const groupByPk = new Map((allGroups || []).map((g) => [String(g.pk), g]));
+    const named = await require("../services/directoryRepo.service").getGroupsByPks(
+      Array.isArray(user.groups) ? user.groups : []
+    );
+    const groupByPk = new Map((named || []).map((g) => [String(g.pk), g]));
     const userGroupNames = (Array.isArray(user.groups) ? user.groups : [])
       .map((id) => groupByPk.get(String(id))?.name)
       .filter(Boolean);

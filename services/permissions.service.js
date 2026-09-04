@@ -1,36 +1,17 @@
 /**
- * Effective permissions: role defaults + per-user allow/deny overrides (JSON file).
+ * Effective permissions: role defaults + per-user allow/deny overrides (Postgres).
  */
 
-const fs = require("fs");
-const path = require("path");
 const registry = require("./permissions.registry");
 const { getString } = require("./env");
+const pgCache = require("./pgCache");
 
-const DATA_FILE = path.join(__dirname, "..", "data", "permission-overrides.json");
-
-let cache = { raw: null, mtimeMs: 0, parsed: {} };
+const DATA_FILE = null;
 
 function loadOverridesFromDisk() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) {
-      return {};
-    }
-    const st = fs.statSync(DATA_FILE);
-    if (cache.raw != null && st.mtimeMs === cache.mtimeMs) {
-      return cache.parsed;
-    }
-    const raw = fs.readFileSync(DATA_FILE, "utf8");
-    const parsed = JSON.parse(raw || "{}");
-    if (typeof parsed !== "object" || parsed === null) {
-      return {};
-    }
-    cache = { raw, mtimeMs: st.mtimeMs, parsed };
-    return parsed;
-  } catch (e) {
-    console.warn("[permissions] Failed to load permission-overrides.json:", e.message || e);
-    return {};
-  }
+  const parsed = pgCache.caches.permissionOverrides;
+  if (typeof parsed !== "object" || parsed === null) return {};
+  return parsed;
 }
 
 function normalizeUsername(u) {
@@ -165,7 +146,7 @@ function saveOverridesForUser(username, overrideInput) {
   const denySet = new Set(uniqueDeny);
   const allowFinal = uniqueAllow.filter((id) => !denySet.has(id));
 
-  const all = loadOverridesFromDisk();
+  const all = { ...loadOverridesFromDisk() };
   if (uniqueDeny.length === 0 && allowFinal.length === 0) {
     delete all[un];
   } else {
@@ -174,15 +155,7 @@ function saveOverridesForUser(username, overrideInput) {
       allow: allowFinal.sort(),
     };
   }
-  const dir = path.dirname(DATA_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  const tmp = DATA_FILE + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(all, null, 2), "utf8");
-  fs.renameSync(tmp, DATA_FILE);
-  cache = { raw: null, mtimeMs: 0, parsed: {} };
-  loadOverridesFromDisk();
+  pgCache.replacePermissionOverrides(all);
 }
 
 function getOverridesForUser(username) {

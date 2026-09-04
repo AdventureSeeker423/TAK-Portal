@@ -76,7 +76,7 @@ function filterAuthentikGroupsForGlobalAdminDataSync(authUser, allGroups) {
  * Uses Authentik as source of truth; TAK CN display names (no tak_ prefix).
  */
 async function getGlobalAdminGroupDisplayNames(authUser) {
-  const authentikGroups = await groupsSvc.getAllGroups({});
+  const authentikGroups = await groupsSvc.getGroupsForAuthUser(authUser);
   const visible = filterAuthentikGroupsForGlobalAdminDataSync(authUser, authentikGroups);
   const out = [];
   const seen = new Set();
@@ -264,7 +264,7 @@ async function buildAgencyAllowedGroups(authUser) {
   const access = accessSvc.getAgencyAccess(authUser);
   if (access.isGlobalAdmin) return null;
 
-  const authentikGroups = await groupsSvc.getAllGroups({});
+  const authentikGroups = await groupsSvc.getGroupsForAuthUser(authUser);
   const allowedSuffixes = access.allowedAgencySuffixes || [];
   const agencies = agenciesSvc.load();
   const out = [];

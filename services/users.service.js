@@ -6,6 +6,9 @@ const tak = require("./tak.service");
 const settingsSvc = require("./settings.service");
 const accessSvc = require("./access.service");
 const { sanitizeCallsign } = require("./callsignSanitize");
+const directoryRepo = require("./directoryRepo.service");
+const authentikOutbox = require("./authentikOutbox.service");
+const db = require("./db");
 
 function getHiddenUserPrefixes() {
   return String(getString("USERS_HIDDEN_PREFIXES", ""))
@@ -160,10 +163,8 @@ async function resolveGroupNames(groupIds) {
     : [];
   if (!ids.length) return [];
 
-  // Include hidden/internal groups when resolving names so notifications and
-  // admin UIs never fall back to raw UUIDs.
-  const all = await getAllGroups({ includeHidden: true });
-  const byPk = new Map(all.map(g => [String(g.pk), String(g.name || "").trim()]));
+  const groups = await directoryRepo.getGroupsByPks(ids);
+  const byPk = new Map(groups.map(g => [String(g.pk), String(g.name || "").trim()]));
   return ids
     .map(id => byPk.get(String(id)) || String(id))
     .filter(Boolean)
@@ -985,37 +986,12 @@ function getTemplatesForAgency(agencySuffix) {
 // Authentik API helpers (groups)
 async function getAllGroupsRaw(options = {}) {
   const { includeHidden = false } = options || {};
-  let groups = [];
-  const pageSize = 200;
-  let page = 1;
-
-  let url = `/core/groups/?page=${page}&page_size=${pageSize}`;
-
-  while (url) {
-    const res = await api.get(url);
-    const data = res?.data || {};
-    const results = Array.isArray(data.results) ? data.results : [];
-    groups = groups.concat(results);
-
-    const pagination = data.pagination || {};
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      url = `/core/groups/?page=${page}&page_size=${pageSize}`;
-    } else if (data.next) {
-      url = data.next.replace(`${getString("AUTHENTIK_URL", "")}/api/v3`, "");
-    } else {
-      url = null;
-    }
-  }
-
-  if (!includeHidden) {
-    groups = groups.filter(g => {
-      const name = String(g?.name || "").trim().toLowerCase();
-      return !name.startsWith("authentik");
-    });
-  }
-
-  return groups;
+  const r = await directoryRepo.searchGroupsPaged({
+    includeHidden,
+    page: 1,
+    pageSize: 500,
+  });
+  return r.groups;
 }
 
 /**
@@ -1038,87 +1014,28 @@ function applyHiddenPrefixFilter(users, includeHiddenPrefixes) {
 // - optionally filter by AUTHENTIK_USER_PATH if set
 async function getAllUsersRaw(options = {}) {
   const { includeHiddenPrefixes = false } = options;
-  let users = [];
-  const pageSize = getInt("AUTHENTIK_USER_PAGE_SIZE", 500) || 500; // per-page size; total is unlimited
-  let page = 1;
-  let hasNext = true;
-
-  while (hasNext) {
-    const url = `${getString("AUTHENTIK_URL", "")}/api/v3/core/users/?page=${page}&page_size=${pageSize}`;
-    const res = await api.get(url);
-    const data = res?.data || {};
-    const results = Array.isArray(data.results) ? data.results : [];
-    const pagination = data.pagination || {};
-
-    users = users.concat(results);
-
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      hasNext = true;
-    } else {
-      hasNext = false;
-    }
-  }
-
-  users = applyHiddenPrefixFilter(users, includeHiddenPrefixes);
-
-  // --- path filter ---
-  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
-  if (!folderRaw) {
-    return users;
-  }
-
-  const target = normalizePath(folderRaw);
-
-  return users.filter(u => {
-    const up = normalizePath(u.path);
-    return up === target || up.startsWith(target + "/");
+  const r = await directoryRepo.searchUsersPaged({
+    includeHiddenPrefixes,
+    includeGroups: true,
+    page: 1,
+    pageSize: 100,
   });
+  return r.users;
 }
 
-// Lightweight variant for dashboard/statistics use-cases.
-// Keeps the same visibility/path filtering but requests less payload.
 async function getAllUsersLightweightRaw(options = {}) {
   const { includeHiddenPrefixes = false, includeGroups = false } = options;
-  let users = [];
-  const pageSize = getInt("AUTHENTIK_USER_PAGE_SIZE", 500) || 500;
-  let page = 1;
-  let hasNext = true;
-
-  while (hasNext) {
-    const url = `${getString("AUTHENTIK_URL", "")}/api/v3/core/users/?page=${page}&page_size=${pageSize}&include_groups=${includeGroups ? "true" : "false"}&include_roles=false`;
-    const res = await api.get(url);
-    const data = res?.data || {};
-    const results = Array.isArray(data.results) ? data.results : [];
-    const pagination = data.pagination || {};
-
-    users = users.concat(results);
-
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      hasNext = true;
-    } else {
-      hasNext = false;
-    }
-  }
-
-  users = applyHiddenPrefixFilter(users, includeHiddenPrefixes);
-
-  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
-  if (!folderRaw) {
-    return users;
-  }
-
-  const target = normalizePath(folderRaw);
-  return users.filter((u) => {
-    const up = normalizePath(u.path);
-    return up === target || up.startsWith(target + "/");
+  const r = await directoryRepo.searchUsersPaged({
+    includeHiddenPrefixes,
+    includeGroups,
+    page: 1,
+    pageSize: 100,
   });
+  return r.users;
 }
 
 async function userExists(username) {
-  const res = await api.get("/core/users/", { params: { username } });
-  return res.data.results.length > 0;
+  return directoryRepo.userExists(username);
 }
 
 // Main: Create user
@@ -1196,34 +1113,66 @@ async function createUser(
   const name = `${last}, ${first}`;
 
   const perm = String(permissions || "user").trim().toLowerCase() || "user";
-  const includeHiddenForGroups =
-    perm === "agency_admin" || perm === "global_admin";
 
-  // Fetch all groups once (or reuse caller-provided cache).
-  // Agency/global admin groups use names starting with "authentik" and are only
-  // present when includeHidden is true — use one fetch for template + admin.
-  const allGroupsLocal = Array.isArray(allGroups) && allGroups.length
-    ? allGroups
-    : await getAllGroups({ includeHidden: includeHiddenForGroups });
+  const templateNameRaw = String(templateIndex || "").trim();
+  const dynTemplates = getTemplatesForAgency(agency.suffix);
 
-  // Build fast lookup maps
+  const neededNames = [];
+  const neededPks = [];
+  if (templateNameRaw === "Manual Group Selection") {
+    for (const x of Array.isArray(manualGroupIds) ? manualGroupIds : []) {
+      const v = String(x).trim();
+      if (!v) continue;
+      if (/^\d+$/.test(v) || directoryRepo.isUuid(v)) neededPks.push(v);
+      else neededNames.push(v);
+    }
+  } else {
+    const selectedTemplate = dynTemplates.find(t =>
+      String(t.name || "").trim().toLowerCase() === templateNameRaw.toLowerCase()
+    );
+    if (!selectedTemplate) {
+      throw new Error(`Template "${templateNameRaw}" not found for agency.`);
+    }
+    for (const n of selectedTemplate.groups || []) {
+      if (n) neededNames.push(String(n));
+    }
+  }
+  if (perm === "agency_admin") {
+    const suffixes = accessSvc.normalizeManagedAgencySuffixes(
+      Array.isArray(managedAgencySuffixes) && managedAgencySuffixes.length
+        ? managedAgencySuffixes
+        : [agency.suffix],
+      { allowedForActor: Array.isArray(opts.allowedAgencySuffixesForAssign) ? opts.allowedAgencySuffixesForAssign : null }
+    );
+    const agencies = agenciesStore.load();
+    for (const sfx of suffixes.concat([String(agency.suffix || "").trim().toLowerCase()])) {
+      const ag = agencies.find((a) => String(a.suffix || "").trim().toLowerCase() === String(sfx).trim().toLowerCase());
+      if (!ag) continue;
+      for (const n of accessSvc.getAllAgencyAdminGroupNames(ag) || []) neededNames.push(n);
+    }
+  }
+  if (perm === "global_admin") {
+    for (const n of String(getString("PORTAL_AUTH_REQUIRED_GROUP", "")).split(",")) {
+      if (n.trim()) neededNames.push(n.trim());
+    }
+  }
+
+  const fetched = [
+    ...(Array.isArray(allGroups) ? allGroups : []),
+    ...(await directoryRepo.getGroupsByNames(neededNames)),
+    ...(await directoryRepo.getGroupsByPks(neededPks)),
+  ];
+  const allGroupsLocal = [...new Map(fetched.map((g) => [String(g.pk), g])).values()];
+
   const byPk = new Map(allGroupsLocal.map(g => [String(g.pk), g]));
   const byNameLower = new Map(
     allGroupsLocal.map(g => [String(g.name || "").trim().toLowerCase(), g])
   );
 
-  // Determine selected groups from template/manual
   let selectedGroups = [];
-
-  const templateNameRaw = String(templateIndex || "").trim();
-  const dynTemplates = getTemplatesForAgency(agency.suffix);
-
-  // Manual Group Selection
   if (templateNameRaw === "Manual Group Selection") {
     templateNameUsed = "Manual Group Selection";
-
     const raw = Array.isArray(manualGroupIds) ? manualGroupIds : [];
-
     selectedGroups = raw
       .map(x => String(x).trim())
       .filter(Boolean)
@@ -1235,37 +1184,22 @@ async function createUser(
         return byNameLower.get(v.toLowerCase()) || null;
       })
       .filter(Boolean);
-
     if (!selectedGroups.length) {
-      throw new Error(
-        "Manual group selection did not match any Authentik groups."
-      );
+      throw new Error("Manual group selection did not match any Authentik groups.");
     }
     templateRoleUsed = DEFAULT_ATAK_ROLE;
-
   } else {
     const selectedTemplate = dynTemplates.find(t =>
-      String(t.name || "").trim().toLowerCase() ===
-      templateNameRaw.toLowerCase()
+      String(t.name || "").trim().toLowerCase() === templateNameRaw.toLowerCase()
     );
-
-    if (!selectedTemplate) {
-      throw new Error(`Template "${templateNameRaw}" not found for agency.`);
-    }
-
     templateNameUsed = String(selectedTemplate.name || "").trim();
     templateRoleUsed = normalizeTakRole(selectedTemplate.role, DEFAULT_ATAK_ROLE);
-
     selectedGroups = (selectedTemplate.groups || [])
-      .map(n =>
-        byNameLower.get(String(n).trim().toLowerCase())
-      )
+      .map(n => byNameLower.get(String(n).trim().toLowerCase()))
       .filter(Boolean);
   }
-  // Merge + dedupe by PK (selected groups only)
-  let groupsToApply = [
-    ...new Map(selectedGroups.map(g => [g.pk, g])).values(),
-  ];
+
+  let groupsToApply = [...new Map(selectedGroups.map(g => [g.pk, g])).values()];
 
   if (perm === "agency_admin" || perm === "global_admin") {
     const extra = [];
@@ -1282,39 +1216,26 @@ async function createUser(
       if (!suffixes.includes(String(agency.suffix || "").trim().toLowerCase())) {
         suffixes = [...suffixes, String(agency.suffix || "").trim().toLowerCase()];
       }
-      const adminPkSet = accessSvc.resolveAgencyAdminGroupIdsForSuffixes(
-        suffixes,
-        allGroupsLocal
-      );
+      const adminPkSet = accessSvc.resolveAgencyAdminGroupIdsForSuffixes(suffixes, allGroupsLocal);
       for (const g of allGroupsLocal) {
         if (adminPkSet.has(String(g.pk))) extra.push(g);
       }
       if (!extra.length) {
-        throw new Error(
-          "Cannot assign Agency Admin: agency admin group was not found in Authentik."
-        );
+        throw new Error("Cannot assign Agency Admin: agency admin group was not found in Authentik.");
       }
     } else {
       const raw = String(getString("PORTAL_AUTH_REQUIRED_GROUP", "")).trim();
-      const nameList = raw
-        .split(",")
-        .map(x => String(x || "").trim().toLowerCase())
-        .filter(Boolean);
+      const nameList = raw.split(",").map(x => String(x || "").trim().toLowerCase()).filter(Boolean);
       for (const nm of nameList) {
         const g = byNameLower.get(nm);
         if (g) extra.push(g);
       }
       if (!extra.length) {
-        throw new Error(
-          "Cannot assign Global Admin: global admin groups are not configured or not found in Authentik."
-        );
+        throw new Error("Cannot assign Global Admin: global admin groups are not configured or not found in Authentik.");
       }
     }
-
     const mergedByPk = new Map(groupsToApply.map(g => [String(g.pk), g]));
-    for (const g of extra) {
-      mergedByPk.set(String(g.pk), g);
-    }
+    for (const g of extra) mergedByPk.set(String(g.pk), g);
     groupsToApply = [...mergedByPk.values()];
   }
 
@@ -1368,48 +1289,49 @@ async function createUser(
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
   if (folderRaw) payload.path = normalizePath(folderRaw);
 
-  // Track whether a password is being set at creation time
-  const hasPassword = !!pwd;
+  const groupPks = groupsToApply.map((g) => String(g.pk));
+  const wait = opts.waitForOutbox !== false && opts.bulk !== true;
 
-  // Create user
-  const res = await api.post("/core/users/", payload);
-  let user = res.data;
-
-  // NOTE: Authentik's create-user endpoint may not reliably apply the provided
-  // password field (depending on configuration / permissions). However, the
-  // dedicated set_password endpoint is known to work (and is what the UI uses
-  // for resets). To keep behavior consistent, set the password *after* creation
-  // when one was provided.
-  if (pwd) {
-    await api.post(`/core/users/${user.pk}/set_password/`, { password: pwd });
-  }
-
-  // Apply groups (string PKs match setUserGroups / Authentik expectations)
-  if (groupsToApply.length) {
-    await api.patch(`/core/users/${user.pk}/`, {
-      groups: groupsToApply.map(g => String(g.pk)),
-    });
-  }
-
-  // Re-fetch so onboarding email (atakRole, callsign fields, etc.) matches persisted attributes.
-  // Some Authentik versions return incomplete attributes on POST /core/users/.
-  try {
-    user = await getUserById(user.pk);
-  } catch (e) {
-    console.warn(
-      "[createUser] refetch before onboarding email failed:",
-      e?.message || e
+  const outboxId = await db.withTransaction(async (c) => {
+    const local = await directoryRepo.insertLocalUser(
+      {
+        username: payload.username,
+        name: payload.name,
+        email: payload.email,
+        path: payload.path || null,
+        attributes: payload.attributes,
+        isActive: true,
+      },
+      c
     );
+    await directoryRepo.setUserMemberships(local.uuid || local.id, groupPks, c);
+    return authentikOutbox.enqueue(
+      {
+        kind: "create_user",
+        entityType: "user",
+        entityId: local.uuid || local.id,
+        username: payload.username,
+        payload: {
+          username: payload.username,
+          email: payload.email,
+          name: payload.name,
+          path: payload.path,
+          is_active: true,
+          attributes: payload.attributes,
+          groupPks,
+          password: pwd || "",
+          sendOnboardingEmail: true,
+        },
+      },
+      c
+    );
+  });
+
+  if (wait) {
+    await authentikOutbox.waitForOutbox(outboxId, 8000);
   }
 
-  // Email notification (never includes the password)
-  try {
-    await emailUserCreated({ user, groups: groupsToApply, hasPassword });
-  } catch (e) {
-    // Don't fail user creation if email fails
-    console.error("[EMAIL] user creation notice failed:", e?.message || e);
-  }
-
+  let user = await directoryRepo.getUserByUsername(username);
   invalidateUsersCache();
   return { user, groups: groupsToApply };
 }
@@ -1501,15 +1423,12 @@ async function createIntegrationUser(
     throw new Error("At least one group is required.");
   }
 
-  const allGroups = await getAllGroups({ includeHidden: true });
-  const groupByPk = new Map((allGroups || []).map((g) => [String(g.pk), g]));
-  const selectedGroups = requestedIds.map((id) => {
-    const group = groupByPk.get(String(id));
-    if (!group) {
-      throw new Error("Selected group not found.");
-    }
-    return group;
-  });
+  const selectedGroups = await directoryRepo.getGroupsByPks(requestedIds);
+  if (selectedGroups.length !== requestedIds.length) {
+    const have = new Set(selectedGroups.map((g) => String(g.pk)));
+    const missing = requestedIds.filter((id) => !have.has(String(id)));
+    if (missing.length) throw new Error("Selected group not found.");
+  }
 
   const name = username;
   const attributes = {
@@ -1539,21 +1458,52 @@ async function createIntegrationUser(
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
   if (folderRaw) payload.path = normalizePath(folderRaw);
 
-  const res = await api.post("/core/users/", payload);
-  const user = res.data;
-
-  // Set a random secure password so the integration account is not easily loginable
   const crypto = require("crypto");
   const randomPassword = `Int3gr4t10n!${crypto.randomBytes(8).toString("hex")}`;
-  await api.post(`/core/users/${user.pk}/set_password/`, {
-    password: randomPassword,
+  const groupPks = selectedGroups.map((g) => String(g.pk));
+  const wait = opts.waitForOutbox !== false && opts.bulk !== true;
+
+  const outboxId = await db.withTransaction(async (c) => {
+    const local = await directoryRepo.insertLocalUser(
+      {
+        username: payload.username,
+        name: payload.name,
+        email: payload.email,
+        path: payload.path || null,
+        attributes: payload.attributes,
+        isActive: true,
+      },
+      c
+    );
+    await directoryRepo.setUserMemberships(local.uuid || local.id, groupPks, c);
+    return authentikOutbox.enqueue(
+      {
+        kind: "create_user",
+        entityType: "user",
+        entityId: local.uuid || local.id,
+        username: payload.username,
+        payload: {
+          username: payload.username,
+          email: payload.email,
+          name: payload.name,
+          path: payload.path,
+          is_active: true,
+          attributes: payload.attributes,
+          groupPks,
+          password: randomPassword,
+          sendOnboardingEmail: false,
+        },
+      },
+      c
+    );
   });
 
-  await api.patch(`/core/users/${user.pk}/`, {
-    groups: selectedGroups.map((g) => g.pk),
-  });
+  if (wait) {
+    await authentikOutbox.waitForOutbox(outboxId, 8000);
+  }
 
   invalidateUsersCache();
+  const user = await directoryRepo.getUserByUsername(username);
   return { user, groups: selectedGroups };
 }
 
@@ -1563,14 +1513,14 @@ async function createIntegrationUser(
  * Uses the lightweight list endpoint (same as dashboard) — not full getAllUsersRaw.
  */
 async function findIntegrationUsers() {
-  const raw = await getAllUsersLightweightRaw({
+  const r = await directoryRepo.searchUsersPaged({
+    usernamePrefix: INTEGRATION_PREFIX,
     includeHiddenPrefixes: true,
     includeGroups: true,
+    page: 1,
+    pageSize: 200,
   });
-  const prefix = INTEGRATION_PREFIX.toLowerCase();
-  return raw.filter(u =>
-    String(u?.username || "").toLowerCase().startsWith(prefix)
-  );
+  return r.users;
 }
 
 function agencyIntegrationUsernamePrefix(agencySuffix) {
@@ -1901,8 +1851,8 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
   const skipped = [];
   let processed = 0;
 
-  // Preload Authentik groups once for all rows to avoid repeated API calls
-  const allGroups = await getAllGroups();
+  // Groups resolved per row via targeted SQL in createUser
+  const allGroups = [];
 
   const defaultLimit = 5;
   const envVal = getInt("USER_IMPORT_CONCURRENCY", defaultLimit);
@@ -1968,6 +1918,8 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
             skipExistenceCheck: true,
             createdBy,
             creationMethod,
+            bulk: true,
+            waitForOutbox: false,
           }
         );
 
@@ -2028,33 +1980,14 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
 // Search users
 // - If no q provided -> returns all users (already filtered by folder)
 async function findUsers({ q, forceRefresh = false } = {}) {
-  // Legacy helper kept for backwards compatibility:
-  // fetches all users (honoring folder/prefix filters), then filters in-memory.
-  let users = await getAllUsers({ forceRefresh });
-  if (!q || !String(q).trim()) {
-    return users;
-  }
-
-  const needle = String(q).trim().toLowerCase();
-  return users.filter(u => {
-    const username = String(u.username || "").toLowerCase();
-    const email = String(u.email || "").toLowerCase();
-    const name = String(u.name || "").toLowerCase();
-    const attrs = u?.attributes || {};
-    const agencyAbbr = String(
-      attrs.agency_abbreviation ||
-      attrs.agencyAbbreviation ||
-      attrs.agencyAbbr ||
-      attrs.agencyabbr ||
-      ""
-    ).trim().toLowerCase();
-    return (
-      username.includes(needle) ||
-      email.includes(needle) ||
-      name.includes(needle) ||
-      agencyAbbr.includes(needle)
-    );
+  const r = await directoryRepo.searchUsersPaged({
+    q,
+    page: 1,
+    pageSize: 200,
+    includeGroups: true,
+    includeHiddenPrefixes: false,
   });
+  return r.users;
 }
 
 function getAuthentikOrderingForUserSort({ sortKey, sortDir } = {}) {
@@ -2080,135 +2013,15 @@ async function searchUsersPaged({
   sortDir = "asc",
   currentTemplate,
 } = {}) {
-  const params = {
+  return directoryRepo.searchUsersPaged({
+    q,
     page,
-    page_size: pageSize,
-    ordering: getAuthentikOrderingForUserSort({ sortKey, sortDir }),
-  };
-
-  // IMPORTANT: Keep pagination totals accurate without extra API calls.
-  //
-  // The portal supports hiding system/service users by username prefix
-  // (USERS_HIDDEN_PREFIXES). When possible, we also apply Authentik's
-  // server-side `type` filter so the API's `pagination.count` already
-  // reflects the same visible set.
-  //
-  // Authentik exposes the following user `type` values:
-  //   - external
-  //   - internal
-  //   - internal_service_account
-  //   - service_account
-  //
-  // If the portal is configured to hide users by prefix, those hidden users
-  // are almost always service accounts. Excluding service accounts here keeps
-  // the "showing X of Y users" UI correct with a single request.
-  const hiddenPrefixes = getHiddenUserPrefixes();
-  if (hiddenPrefixes.length) {
-    // NOTE: params.type is an array; axios serializes this as repeated
-    // query params (?type=external&type=internal), which matches Authentik.
-    params.type = ["external", "internal"];
-  }
-
-  // If AUTHENTIK_USER_PATH is set, ask Authentik to filter server-side so
-  // pagination totals align with the visible user set.
-  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
-  if (folderRaw) {
-    params.path_startswith = normalizePath(folderRaw);
-  }
-
-  if (q && String(q).trim()) {
-    // Authentik supports "search" across username/email/etc.
-    params.search = String(q).trim();
-  }
-  const templateName = String(currentTemplate || "").trim();
-  if (templateName) {
-    params.attributes = JSON.stringify({ current_template: templateName });
-  }
-
-  // Needed so the Manage Users UI can show roles and the edit modal can
-  // initialize the Permissions dropdown (matches other paged search helpers).
-  params.include_groups = "true";
-  params.include_roles = "false";
-
-  const res = await api.get("/core/users/", { params });
-  const data = res?.data || {};
-  const raw = Array.isArray(data.results) ? data.results : [];
-
-  // Apply the same prefix/path filters that getAllUsersRaw uses so that
-  // paged search stays in sync with full-list queries.
-  let users = raw.slice();
-
-  // Even when we apply the server-side `type` filter above, keep this
-  // prefix filter as a safety net in case the instance has custom naming.
-  if (hiddenPrefixes.length) {
-    users = users.filter(u => {
-      const username = String(u?.username || "").trim().toLowerCase();
-      return !hiddenPrefixes.some(p => username.startsWith(p));
-    });
-  }
-
-  // If the instance doesn't support the `path_startswith` param (or if the
-  // portal is using a strict folder match), keep the legacy in-memory path
-  // enforcement.
-  if (folderRaw) {
-    const target = normalizePath(folderRaw);
-    users = users.filter(u => {
-      const up = normalizePath(u.path);
-      return up === target || up.startsWith(target + "/");
-    });
-  }
-
-  const pagination = data.pagination || {};
-  let total = 0;
-
-  // Prefer Authentik's pagination.count if available (total items)
-  if (pagination && pagination.count != null) {
-    const t = Number(pagination.count);
-    if (!Number.isNaN(t) && t >= 0) {
-      total = t;
-    }
-  }
-
-  // Fallback to top-level count if that is how this version exposes it
-  if (!total && data && data.count != null) {
-    const c = Number(data.count);
-    if (!Number.isNaN(c) && c >= 0) {
-      total = c;
-    }
-  }
-
-  // As a last resort, fall back to the current page length
-  if (!total) {
-    total = users.length;
-  }
-
-  // If we still have any hidden-prefix users on this page (e.g., if the
-  // Authentik instance does not classify them as service accounts), adjust
-  // the total downward for this request so the UI doesn't over-report.
-  //
-  // This preserves correctness when the API `type` filter is effective
-  // (the common case), while still being strictly better than the unfiltered
-  // count when it's not.
-  if (hiddenPrefixes.length) {
-    const filteredOnPage = raw.length - users.length;
-    if (filteredOnPage > 0 && total >= filteredOnPage) {
-      total = total - filteredOnPage;
-    }
-  }
-
-  const currentPage =
-    typeof pagination.current === "number"
-      ? pagination.current
-      : Number(params.page) || 1;
-
-  return {
-    users,
-    total,
-    page: currentPage,
     pageSize,
-    hasNext: Boolean(pagination.next ?? data.next),
-    hasPrev: Boolean(pagination.previous ?? data.previous),
-  };
+    sortKey,
+    sortDir,
+    currentTemplate,
+    includeGroups: true,
+  });
 }
 
 async function searchUsersByAgencyAbbreviationPaged({
@@ -2234,6 +2047,17 @@ async function searchUsersByAgencyAbbreviationPaged({
       hasPrev: false,
     };
   }
+
+  return directoryRepo.searchUsersPaged({
+    q,
+    page,
+    pageSize,
+    sortKey,
+    sortDir,
+    currentTemplate,
+    agencyAbbreviation: abbr,
+    includeGroups,
+  });
 
   const hiddenPrefixes = getHiddenUserPrefixes();
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
@@ -2341,25 +2165,7 @@ async function searchUsersByAgencyAbbreviationPaged({
 }
 
 async function listAllUsersByAgencySuffix(agencySuffix) {
-  const sfx = String(agencySuffix || "").trim();
-  if (!sfx) return [];
-
-  const all = [];
-  let page = 1;
-  let hasNext = true;
-  while (hasNext) {
-    const batch = await searchUsersByAgencySuffixPaged({
-      agencySuffix: sfx,
-      page,
-      pageSize: 200,
-      includeGroups: false,
-      includeRoles: false,
-    });
-    all.push(...(Array.isArray(batch.users) ? batch.users : []));
-    hasNext = !!batch.hasNext;
-    page += 1;
-  }
-  return all;
+  return directoryRepo.listUsersByAgencySuffix(agencySuffix);
 }
 
 async function searchUsersByAgencySuffixPaged({
@@ -2386,6 +2192,18 @@ async function searchUsersByAgencySuffixPaged({
     };
   }
 
+  return directoryRepo.searchUsersPaged({
+    q,
+    page,
+    pageSize,
+    sortKey,
+    sortDir,
+    currentTemplate,
+    agencySuffix: sfx,
+    includeGroups,
+  });
+
+  const hiddenPrefixesSuffix = getHiddenUserPrefixes();
   const hiddenPrefixes = getHiddenUserPrefixes();
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
 
@@ -2513,10 +2331,19 @@ async function searchUsersByAgencyNamePaged({
     };
   }
 
-  const hiddenPrefixes = getHiddenUserPrefixes();
-  const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
+  return directoryRepo.searchUsersPaged({
+    q,
+    page,
+    pageSize,
+    sortKey,
+    sortDir,
+    currentTemplate,
+    agencyName: name,
+    includeGroups,
+    activeOnly: activeOnly || undefined,
+  });
 
-  const attrsFilter = { agency_name: name };
+  const hiddenPrefixes = getHiddenUserPrefixes();
   const templateName = String(currentTemplate || "").trim();
   if (templateName) attrsFilter.current_template = templateName;
 
@@ -2612,26 +2439,7 @@ async function searchUsersByAgencyNamePaged({
 }
 
 async function listAllUsersByAgencyName(agencyName, { activeOnly = false } = {}) {
-  const name = String(agencyName || "").trim();
-  if (!name) return [];
-
-  const all = [];
-  let page = 1;
-  let hasNext = true;
-  while (hasNext) {
-    const batch = await searchUsersByAgencyNamePaged({
-      agencyName: name,
-      page,
-      pageSize: 200,
-      includeGroups: false,
-      includeRoles: false,
-      activeOnly,
-    });
-    all.push(...(Array.isArray(batch.users) ? batch.users : []));
-    hasNext = !!batch.hasNext;
-    page += 1;
-  }
-  return all;
+  return directoryRepo.listUsersByAgencyName(agencyName, { activeOnly });
 }
 
 function getAgencyActiveConcurrency() {
@@ -2905,17 +2713,23 @@ async function resetPassword(userId, password) {
   await assertUserNotActionLocked(userId);
   const err = validatePassword(password);
   if (err) throw new Error(err);
-  await api.post(`/core/users/${userId}/set_password/`, {
-    password,
+  const user = await directoryRepo.getUserById(userId);
+  if (!user) throw new Error("User not found");
+  const outboxId = await authentikOutbox.enqueue({
+    kind: "set_password",
+    entityType: "user",
+    entityId: user.uuid || user.id,
+    authentikPk: user.authentik_pk,
+    username: user.username,
+    payload: { password, authentikPk: user.authentik_pk },
   });
-
-  // Notify the user (does not include the new password)
-  try {
-    const user = await getUserById(userId);
-    await emailPasswordChanged(user);
-  } catch (e) {
-    // Don't fail the password change if email fails
-    console.error("[EMAIL] password change notice failed:", e?.message || e);
+  const waited = await authentikOutbox.waitForOutbox(outboxId, 8000);
+  if (waited.done) {
+    try {
+      await emailPasswordChanged(user);
+    } catch (e) {
+      console.error("[EMAIL] password change notice failed:", e?.message || e);
+    }
   }
   return true;
 }
@@ -2932,12 +2746,7 @@ async function resendOnboardingEmail(userId) {
     ? user.groups.map(x => String(x))
     : [];
 
-  const allGroups = await getAllGroups({ includeHidden: true });
-  const byPk = new Map(allGroups.map(g => [String(g.pk), g]));
-
-  const groups = groupIds
-    .map(id => byPk.get(String(id)))
-    .filter(Boolean);
+  const groups = await directoryRepo.getGroupsByPks(groupIds);
 
   // Determine whether the user already has a password
   const hasPassword = !!user.password_set;
@@ -2954,7 +2763,23 @@ async function resendOnboardingEmail(userId) {
 async function updateEmail(userId, email) {
   await assertUserNotActionLocked(userId);
   const mail = String(email || "").trim();
-  await api.patch(`/core/users/${userId}/`, { email: mail });
+  const user = await directoryRepo.getUserById(userId);
+  if (!user) throw new Error("User not found");
+  const outboxId = await db.withTransaction(async (c) => {
+    await directoryRepo.updateLocalUser(user.uuid || user.id, { email: mail }, c);
+    return authentikOutbox.enqueue(
+      {
+        kind: "patch_user",
+        entityType: "user",
+        entityId: user.uuid || user.id,
+        authentikPk: user.authentik_pk,
+        username: user.username,
+        payload: { authentikPk: user.authentik_pk, patch: { email: mail } },
+      },
+      c
+    );
+  });
+  await authentikOutbox.waitForOutbox(outboxId, 8000);
   return true;
 }
 
@@ -2985,7 +2810,29 @@ async function setUserGroups(userId, groupIds, opts = {}) {
       current_template: currentTemplate || "Manual Group Selection",
     };
   }
-  await api.patch(`/core/users/${userId}/`, payload);
+  const wait = opts.waitForOutbox !== false && opts.bulk !== true;
+  const outboxId = await db.withTransaction(async (c) => {
+    await directoryRepo.setUserMemberships(userBefore.uuid || userBefore.id, ids, c);
+    if (payload.attributes) {
+      await directoryRepo.updateLocalUser(userBefore.uuid || userBefore.id, { attributes: payload.attributes }, c);
+    }
+    return authentikOutbox.enqueue(
+      {
+        kind: "set_groups",
+        entityType: "user",
+        entityId: userBefore.uuid || userBefore.id,
+        authentikPk: userBefore.authentik_pk,
+        username: userBefore.username,
+        payload: {
+          authentikPk: userBefore.authentik_pk,
+          groupPks: ids,
+          patch: payload.attributes ? { attributes: payload.attributes } : undefined,
+        },
+      },
+      c
+    );
+  });
+  if (wait) await authentikOutbox.waitForOutbox(outboxId, 8000);
 
   invalidateUsersCache();
 
@@ -3036,9 +2883,21 @@ async function toggleUserActive(userId, isActive) {
     }
   }
 
-  await api.patch(`/core/users/${userId}/`, {
-    is_active: !!isActive,
+  const outboxId = await db.withTransaction(async (c) => {
+    await directoryRepo.updateLocalUser(userBefore.uuid || userBefore.id, { is_active: !!isActive }, c);
+    return authentikOutbox.enqueue(
+      {
+        kind: "patch_user",
+        entityType: "user",
+        entityId: userBefore.uuid || userBefore.id,
+        authentikPk: userBefore.authentik_pk,
+        username: userBefore.username,
+        payload: { authentikPk: userBefore.authentik_pk, patch: { is_active: !!isActive } },
+      },
+      c
+    );
   });
+  await authentikOutbox.waitForOutbox(outboxId, 8000);
 
   invalidateUsersCache();
 
@@ -3063,7 +2922,21 @@ async function deleteUser(userId, opts = {}) {
     await tak.revokeCertsForUser(user?.username, { requireVerified: true });
   }
 
-  await api.delete(`/core/users/${userId}/`);
+  const outboxId = await db.withTransaction(async (c) => {
+    await directoryRepo.updateLocalUser(user.uuid || user.id, { pending_delete: true }, c);
+    return authentikOutbox.enqueue(
+      {
+        kind: "delete_user",
+        entityType: "user",
+        entityId: user.uuid || user.id,
+        authentikPk: user.authentik_pk,
+        username: user.username,
+        payload: { authentikPk: user.authentik_pk },
+      },
+      c
+    );
+  });
+  await authentikOutbox.waitForOutbox(outboxId, 8000);
   invalidateUsersCache();
   return true;
 }
@@ -3072,13 +2945,28 @@ async function updateName(userId, name) {
   await assertUserNotActionLocked(userId);
   const n = String(name || "").trim();
   if (!n) throw new Error("Name is required");
-  await api.patch(`/core/users/${userId}/`, { name: n });
+  const user = await directoryRepo.getUserById(userId);
+  if (!user) throw new Error("User not found");
+  const outboxId = await db.withTransaction(async (c) => {
+    await directoryRepo.updateLocalUser(user.uuid || user.id, { name: n }, c);
+    return authentikOutbox.enqueue(
+      {
+        kind: "patch_user",
+        entityType: "user",
+        entityId: user.uuid || user.id,
+        authentikPk: user.authentik_pk,
+        username: user.username,
+        payload: { authentikPk: user.authentik_pk, patch: { name: n } },
+      },
+      c
+    );
+  });
+  await authentikOutbox.waitForOutbox(outboxId, 8000);
 }
 
 // Fetch single user (if you don't already have it)
 async function getUserById(userId) {
-  const res = await api.get(`/core/users/${userId}/`);
-  return res.data;
+  return directoryRepo.getUserById(userId);
 }
 
 // Update specific attributes on a user (merging with existing)
@@ -3086,7 +2974,21 @@ async function updateUserAttributes(userId, changes) {
   await assertUserNotActionLocked(userId, { ignoreLocks: true });
   const user = await getUserById(userId);
   const newAttrs = { ...(user.attributes || {}), ...changes };
-  await api.patch(`/core/users/${userId}/`, { attributes: newAttrs });
+  const outboxId = await db.withTransaction(async (c) => {
+    await directoryRepo.updateLocalUser(user.uuid || user.id, { attributes: newAttrs }, c);
+    return authentikOutbox.enqueue(
+      {
+        kind: "patch_user",
+        entityType: "user",
+        entityId: user.uuid || user.id,
+        authentikPk: user.authentik_pk,
+        username: user.username,
+        payload: { authentikPk: user.authentik_pk, patch: { attributes: newAttrs } },
+      },
+      c
+    );
+  });
+  await authentikOutbox.waitForOutbox(outboxId, 8000);
   invalidateUsersCache();
   return newAttrs;
 }
@@ -3101,7 +3003,21 @@ async function updateRadioCallsign(userId, radioCallsign) {
   } else {
     delete newAttrs.radio_callsign;
   }
-  await api.patch(`/core/users/${userId}/`, { attributes: newAttrs });
+  const outboxId = await db.withTransaction(async (c) => {
+    await directoryRepo.updateLocalUser(user.uuid || user.id, { attributes: newAttrs }, c);
+    return authentikOutbox.enqueue(
+      {
+        kind: "patch_user",
+        entityType: "user",
+        entityId: user.uuid || user.id,
+        authentikPk: user.authentik_pk,
+        username: user.username,
+        payload: { authentikPk: user.authentik_pk, patch: { attributes: newAttrs } },
+      },
+      c
+    );
+  });
+  await authentikOutbox.waitForOutbox(outboxId, 8000);
   invalidateUsersCache();
   return newAttrs;
 }
@@ -3122,64 +3038,27 @@ async function bulkSetCurrentTemplateForAgencyUsers({
     return { matched: 0, updated: 0 };
   }
 
-  let usersToUpdate = [];
-  let page = 1;
-  let hasNext = true;
-  const pageSize = 200;
-
-  while (hasNext) {
-    const params = {
-      page,
-      page_size: pageSize,
-      include_groups: "false",
-      include_roles: "false",
-      attributes: JSON.stringify({
-        agency: sfx,
-        current_template: from,
-      }),
-    };
-    const res = await api.get("/core/users/", { params });
-    const data = res?.data || {};
-    const rows = Array.isArray(data.results) ? data.results : [];
-    usersToUpdate = usersToUpdate.concat(rows);
-
-    const pagination = data.pagination || {};
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      hasNext = true;
-    } else if (data.next) {
-      page += 1;
-      hasNext = true;
-    } else {
-      hasNext = false;
-    }
-  }
-
-  const patchItems = [];
-  for (const u of usersToUpdate) {
-    const userId = String(u?.pk ?? u?.id ?? "").trim();
-    if (!userId) continue;
-    const attrs = u?.attributes && typeof u.attributes === "object" ? u.attributes : {};
-    if (String(attrs.current_template || "").trim() !== from) continue;
-    if (String(attrs.agency || "").trim().toLowerCase() !== sfx) continue;
-
-    patchItems.push({
-      userId,
-      payload: {
-        attributes: {
-          ...attrs,
-          current_template: to,
-        },
-      },
-    });
-  }
-
-  const concurrency = getTemplateSyncConcurrency();
+  const usersToUpdate = await directoryRepo.listUsersByTemplate(sfx, from);
   let updated = 0;
-  await runWithConcurrencyLimit(patchItems, concurrency, async (item) => {
-    await api.patch(`/core/users/${item.userId}/`, item.payload);
+  for (const u of usersToUpdate) {
+    const attrs = u?.attributes && typeof u.attributes === "object" ? u.attributes : {};
+    const newAttrs = { ...attrs, current_template: to };
+    await db.withTransaction(async (c) => {
+      await directoryRepo.updateLocalUser(u.uuid || u.id, { attributes: newAttrs }, c);
+      await authentikOutbox.enqueue(
+        {
+          kind: "patch_user",
+          entityType: "user",
+          entityId: u.uuid || u.id,
+          authentikPk: u.authentik_pk,
+          username: u.username,
+          payload: { authentikPk: u.authentik_pk, patch: { attributes: newAttrs } },
+        },
+        c
+      );
+    });
     updated += 1;
-  });
+  }
 
   if (updated > 0) invalidateUsersCache();
   return {
@@ -3237,41 +3116,7 @@ async function fetchUsersByAgencyAndCurrentTemplate(agencySuffix, templateName) 
   const sfx = String(agencySuffix || "").trim().toLowerCase();
   const fromName = String(templateName || "").trim();
   if (!sfx || !fromName) return [];
-
-  let users = [];
-  let page = 1;
-  let hasNext = true;
-  const pageSize = getInt("AUTHENTIK_USER_PAGE_SIZE", 500) || 500;
-
-  while (hasNext) {
-    const params = {
-      page,
-      page_size: pageSize,
-      include_groups: "true",
-      include_roles: "false",
-      attributes: JSON.stringify({
-        agency: sfx,
-        current_template: fromName,
-      }),
-    };
-    const res = await api.get("/core/users/", { params });
-    const data = res?.data || {};
-    const rows = Array.isArray(data.results) ? data.results : [];
-    users = users.concat(rows);
-
-    const pagination = data.pagination || {};
-    if (pagination && pagination.next) {
-      page = pagination.next;
-      hasNext = true;
-    } else if (data.next) {
-      page += 1;
-      hasNext = true;
-    } else {
-      hasNext = false;
-    }
-  }
-
-  return users;
+  return directoryRepo.listUsersByTemplate(sfx, fromName);
 }
 
 function computeTemplateSyncWorkItem(
@@ -3410,7 +3255,7 @@ async function syncUsersForTemplateSave({
 
   let syncCtx = preloadedSyncCtx;
   if (applyGroupOverwrite && !syncCtx) {
-    const allVisibleGroups = await getAllGroups({ includeHidden: false });
+    const allVisibleGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
     syncCtx = buildTemplateGroupSyncContext(allVisibleGroups);
   }
 
@@ -3572,7 +3417,7 @@ async function syncUsersForBulkTemplateGroupUpdates(templates, { onProgress } = 
   });
 
   const syncCtx = buildTemplateGroupSyncContext(
-    await getAllGroups({ includeHidden: false })
+    await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 })
   );
   const fetchConcurrency = getTemplateSyncFetchConcurrency();
   const fetchJobs = list.map((t, i) => ({ t, i }));
@@ -3704,7 +3549,7 @@ async function syncUsersForBulkTemplateGroupDelta({
   });
 
   const syncCtx = buildTemplateGroupSyncContext(
-    await getAllGroups({ includeHidden: false })
+    await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 })
   );
   const targetGroupId = syncCtx.byName.get(normalizedGroupName.toLowerCase()) || "";
   if (!targetGroupId) {
@@ -4046,9 +3891,7 @@ async function getUsersByGroups(groupIds, options = {}) {
 async function getUsersByUsernames(usernames, options = {}) {
   const list = Array.isArray(usernames) ? usernames.map((n) => String(n).trim()).filter(Boolean) : [];
   if (!list.length) return [];
-  const all = await getAllUsers(options);
-  const nameSet = new Set(list);
-  return all.filter((u) => nameSet.has(String(u?.username || "").trim()));
+  return directoryRepo.getUsersByUsernames(list);
 }
 
 async function backfillMissingUserRoles({ dryRun = true } = {}) {
@@ -4265,7 +4108,7 @@ async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
     templatesByAgencySuffix.get(ts).push(t);
   }
 
-  const allGroups = await getAllGroups({ includeHidden: false });
+  const allGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
   const groupNameToId = new Map(
     (Array.isArray(allGroups) ? allGroups : []).map((g) => [
       String(g?.name || "").trim().toLowerCase(),
@@ -4347,7 +4190,7 @@ async function getCurrentTemplateBackfillStats() {
   const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
   const list = Array.isArray(users) ? users : [];
   const templates = templatesStore.load();
-  const allGroups = await getAllGroups({ includeHidden: false });
+  const allGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
 
   const groupNameToId = new Map(
     (Array.isArray(allGroups) ? allGroups : []).map((g) => [
@@ -4418,7 +4261,7 @@ async function backfillCurrentTemplateAttributes({ dryRun = true } = {}) {
   const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
   const list = Array.isArray(users) ? users : [];
   const templates = templatesStore.load();
-  const allGroups = await getAllGroups({ includeHidden: false });
+  const allGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
 
   const groupNameToId = new Map(
     (Array.isArray(allGroups) ? allGroups : []).map((g) => [
@@ -4496,7 +4339,7 @@ async function getCurrentTemplateBackfillPreviewRows() {
   const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
   const list = Array.isArray(users) ? users : [];
   const templates = templatesStore.load();
-  const allGroups = await getAllGroups({ includeHidden: false });
+  const allGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
 
   const groupNameToId = new Map(
     (Array.isArray(allGroups) ? allGroups : []).map((g) => [
@@ -4772,6 +4615,7 @@ module.exports = {
   // meta/template support
   getTemplatesForAgency,
   buildTakPortalBlock,
+  emailUserCreated,
 
   // shared data
   getAllGroups,

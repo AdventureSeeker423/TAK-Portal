@@ -1,42 +1,27 @@
 /**
- * Persist portal geofences and membership state under data/.
+ * Persist portal geofences and membership state in Postgres.
+ * Membership writes are debounced (~500ms) and flushed as dirty-key upserts.
  */
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
 const { validateGeometry } = require("./geofence.geometry");
+const pgCache = require("./pgCache");
 
-const FENCES_PATH = path.join(__dirname, "..", "data", "geofences.json");
-const STATE_PATH = path.join(__dirname, "..", "data", "geofence-state.json");
+const FENCES_PATH = null;
+const STATE_PATH = null;
 
 let _fences = null;
 let _state = null;
 let _stateDirty = false;
 let _stateFlushTimer = null;
+const _dirtyMemberships = new Map();
 
-function ensureDirExists(filePath) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+function ensureDirExists() {}
+
+function readJsonSafe(_filePath, fallback) {
+  return fallback;
 }
 
-function readJsonSafe(filePath, fallback) {
-  try {
-    if (!fs.existsSync(filePath)) return fallback;
-    const raw = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed;
-  } catch (err) {
-    console.warn(`[geofence.store] Failed to read ${filePath}:`, err.message || err);
-    return fallback;
-  }
-}
-
-function writeJsonSafe(filePath, value) {
-  ensureDirExists(filePath);
-  fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
-}
+function writeJsonSafe() {}
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -138,7 +123,7 @@ function normalizeFence(raw) {
 }
 
 function loadFences() {
-  const parsed = readJsonSafe(FENCES_PATH, { fences: [] });
+  const parsed = pgCache.caches.geofences || { fences: [] };
   const list = Array.isArray(parsed?.fences)
     ? parsed.fences
     : Array.isArray(parsed)
@@ -155,11 +140,11 @@ function ensureFences() {
 
 function saveFences() {
   const fences = ensureFences();
-  writeJsonSafe(FENCES_PATH, { fences, updatedAt: new Date().toISOString() });
+  pgCache.replaceGeofences(fences);
 }
 
 function loadState() {
-  const parsed = readJsonSafe(STATE_PATH, { membership: {} });
+  const parsed = pgCache.caches.geofenceState || { membership: {} };
   const membership =
     parsed && typeof parsed.membership === "object" && !Array.isArray(parsed.membership)
       ? parsed.membership
@@ -174,13 +159,28 @@ function ensureState() {
   return _state;
 }
 
+function markDirtyMembership(fenceId, clientUid, payload) {
+  const fid = safeStr(fenceId).trim();
+  const uid = safeStr(clientUid).trim();
+  if (!fid) return;
+  const key = uid ? `${fid}|${uid}` : `${fid}|`;
+  _dirtyMemberships.set(key, payload);
+}
+
 function flushStateNow() {
   if (!_stateDirty || _state === null) return;
-  writeJsonSafe(STATE_PATH, {
+  const dirty = Array.from(_dirtyMemberships.values());
+  _dirtyMemberships.clear();
+  _stateDirty = false;
+  pgCache.caches.geofenceState = {
     membership: _state.membership,
     updatedAt: new Date().toISOString(),
-  });
-  _stateDirty = false;
+  };
+  if (dirty.length) {
+    pgCache.persistCatch("geofence-memberships", () =>
+      pgCache.upsertGeofenceMemberships(dirty)
+    );
+  }
 }
 
 function scheduleStateFlush() {
@@ -349,15 +349,26 @@ function setMemberInside(fenceId, clientUid, inside) {
     state.membership[fid] = {};
   }
   const now = new Date().toISOString();
+  const prev = state.membership[fid][uid];
   if (inside) {
-    state.membership[fid][uid] = {
+    const row = {
       inside: true,
       lastEnterAt: now,
       lastSeenAt: now,
-      lastExitAt: state.membership[fid][uid]?.lastExitAt || null,
+      lastExitAt: prev?.lastExitAt || null,
     };
+    state.membership[fid][uid] = row;
+    markDirtyMembership(fid, uid, {
+      fenceId: fid,
+      clientUid: uid,
+      inside: true,
+      lastEnterAt: row.lastEnterAt,
+      lastSeenAt: row.lastSeenAt,
+      lastExitAt: row.lastExitAt,
+    });
   } else {
     delete state.membership[fid][uid];
+    markDirtyMembership(fid, uid, { fenceId: fid, clientUid: uid, delete: true });
   }
   scheduleStateFlush();
 }
@@ -372,6 +383,14 @@ function touchMemberSeen(fenceId, clientUid, atMs) {
   if (!row || row.inside !== true) return;
   const ms = Number.isFinite(atMs) ? atMs : Date.now();
   row.lastSeenAt = new Date(ms).toISOString();
+  markDirtyMembership(fid, uid, {
+    fenceId: fid,
+    clientUid: uid,
+    inside: true,
+    lastEnterAt: row.lastEnterAt,
+    lastSeenAt: row.lastSeenAt,
+    lastExitAt: row.lastExitAt,
+  });
   scheduleStateFlush();
 }
 
@@ -380,6 +399,7 @@ function clearFenceMembership(fenceId) {
   const state = ensureState();
   if (state.membership[fid]) {
     delete state.membership[fid];
+    markDirtyMembership(fid, "", { fenceId: fid, delete: true });
     scheduleStateFlush();
   }
 }
@@ -390,6 +410,7 @@ function dropMember(fenceId, clientUid) {
   const state = ensureState();
   if (state.membership[fid] && state.membership[fid][uid]) {
     delete state.membership[fid][uid];
+    markDirtyMembership(fid, uid, { fenceId: fid, clientUid: uid, delete: true });
     scheduleStateFlush();
   }
 }
@@ -417,6 +438,7 @@ function _resetForTests() {
   _fences = null;
   _state = null;
   _stateDirty = false;
+  _dirtyMemberships.clear();
   pendingReapplyEnter.clear();
 }
 

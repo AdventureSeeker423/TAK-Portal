@@ -1047,8 +1047,20 @@ async function syncPortalRoleGroups(userId, opts = {}) {
   const target = await usersSvc.getUserById(uid);
   if (!target) throw new Error("User not found.");
 
-  const groupsSvc = require("./groups.service");
-  const allGroups = opts.allGroups || (await groupsSvc.getAllGroups({ includeHidden: true }));
+  const directoryRepo = require("./directoryRepo.service");
+  const agenciesStore = require("./agencies.service");
+  const names = [];
+  const agencies = agenciesStore.load() || [];
+  for (const a of agencies) {
+    for (const n of getAllAgencyAdminGroupNames(a) || []) {
+      if (n) names.push(n);
+    }
+  }
+  const raw = String(getString("PORTAL_AUTH_REQUIRED_GROUP", "") || "");
+  for (const n of raw.split(/[;,]/)) {
+    if (n.trim()) names.push(n.trim());
+  }
+  const allGroups = opts.allGroups || (await directoryRepo.getGroupsByNames(names));
   const currentGroupIds = Array.isArray(opts.currentGroupIds)
     ? opts.currentGroupIds
     : Array.isArray(target.groups)
@@ -1092,10 +1104,11 @@ async function enrichAuthUserFromAuthentik(authUser) {
   const liveUser = await usersSvc.getUserById(uid).catch(() => null);
   if (!liveUser) return authUser;
 
-  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
-  const { groupNameById } = buildGroupLookupMaps(allGroups);
-
+  const directoryRepo = require("./directoryRepo.service");
   const groupIds = Array.isArray(liveUser.groups) ? liveUser.groups.map(String) : [];
+  const memberGroups = await directoryRepo.getGroupsByPks(groupIds);
+  const { groupNameById } = buildGroupLookupMaps(memberGroups);
+
   const namesFromIds = groupIds
     .map((id) => groupNameById.get(id))
     .filter(Boolean);

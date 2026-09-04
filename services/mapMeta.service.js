@@ -677,9 +677,13 @@ async function refreshIntegrationFeedLinks(options = {}) {
     const usersSvc = require("./users.service");
     const groupsSvc = require("./groups.service");
     const integrations = await usersSvc.findIntegrationUsers();
-    const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
+    const pks = [];
+    for (const user of integrations) {
+      for (const g of Array.isArray(user.groups) ? user.groups : []) pks.push(String(g));
+    }
+    const named = await require("./directoryRepo.service").getGroupsByPks(pks);
     const groupByPk = new Map(
-      (Array.isArray(allGroups) ? allGroups : []).map((g) => [String(g.pk), g])
+      (Array.isArray(named) ? named : []).map((g) => [String(g.pk), g])
     );
 
     const entries = [];
@@ -1603,7 +1607,12 @@ async function refreshSubscriptionIndex() {
 /** Portal-managed channels only (Authentik). TAK-only orphans are excluded. */
 async function refreshGroupCatalog() {
   try {
-    const all = await groupsSvc.getAllGroups({ forceRefresh: false });
+    const r = await require("./directoryRepo.service").searchGroupsPaged({
+      includeHidden: false,
+      page: 1,
+      pageSize: 500,
+    });
+    const all = r.groups;
     const names = (Array.isArray(all) ? all : [])
       .map((g) => normalizeGroupName(g?.name))
       .filter(isMapChannelGroupName)

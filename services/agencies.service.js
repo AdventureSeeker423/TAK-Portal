@@ -1,7 +1,6 @@
-const fs = require("fs");
-const path = require("path");
+const pgCache = require("./pgCache");
 
-const FILE = path.join(__dirname, "../data/agencies.json");
+const FILE = null;
 
 const DOMAIN_PART = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -44,9 +43,7 @@ function emailDomainInAgencyList(email, storedDomains) {
 }
 
 function load() {
-  return fs.existsSync(FILE)
-    ? JSON.parse(fs.readFileSync(FILE, "utf8"))
-    : [];
+  return Array.isArray(pgCache.caches.agencies) ? pgCache.caches.agencies : [];
 }
 
 function isAgencyActive(agency) {
@@ -222,7 +219,7 @@ function findAgencyForGroupName(nameWithoutTak, agencies) {
 }
 
 function save(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+  pgCache.replaceAgencies(Array.isArray(data) ? data : []);
   try {
     const dashboardStatsCache = require("./dashboardStatsCache.service");
     dashboardStatsCache.refreshAfterAgenciesChanged();

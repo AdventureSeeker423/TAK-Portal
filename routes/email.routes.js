@@ -43,34 +43,6 @@ function getAgencyAdminGroupNamesForAgency(agency) {
   return Array.from(names);
 }
 
-async function getAllHiddenGroupsNameLowerToPk() {
-  const now = Date.now();
-  const cacheValid =
-    _agencyAdminGroupsNameLowerToPkCache &&
-    _agencyAdminGroupsNameLowerToPkCache.loadedAt &&
-    now - _agencyAdminGroupsNameLowerToPkCache.loadedAt <
-      AGENCY_ADMIN_GROUP_NAME_PK_CACHE_TTL_MS &&
-    _agencyAdminGroupsNameLowerToPkCache.map &&
-    _agencyAdminGroupsNameLowerToPkCache.map.size > 0;
-
-  if (cacheValid) return _agencyAdminGroupsNameLowerToPkCache.map;
-
-  const allGroups = await groupsSvc.getAllGroups({ includeHidden: true });
-  const nameLowerToPk = new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
-      String(g?.name || "").trim().toLowerCase(),
-      String(g?.pk ?? g?.id ?? "").trim() || null,
-    ])
-  );
-
-  _agencyAdminGroupsNameLowerToPkCache = {
-    loadedAt: now,
-    map: nameLowerToPk,
-  };
-
-  return nameLowerToPk;
-}
-
 async function resolveAgencyAdminGroupPks({ access, agencySuffixes }) {
   const suffixSet = new Set(
     (Array.isArray(agencySuffixes) ? agencySuffixes : [])
@@ -95,7 +67,15 @@ async function resolveAgencyAdminGroupPks({ access, agencySuffixes }) {
     return true;
   });
 
-  const nameLowerToPk = await getAllHiddenGroupsNameLowerToPk();
+  const found = await require("../services/directoryRepo.service").getGroupsByNames(
+    matching.flatMap((agency) => getAgencyAdminGroupNamesForAgency(agency))
+  );
+  const nameLowerToPk = new Map(
+    (Array.isArray(found) ? found : []).map((g) => [
+      String(g?.name || "").trim().toLowerCase(),
+      String(g?.pk ?? g?.id ?? "").trim() || null,
+    ])
+  );
   const pks = new Set();
   for (const agency of matching) {
     for (const nameLower of getAgencyAdminGroupNamesForAgency(agency)) {
@@ -118,10 +98,7 @@ router.get("/meta", async (req, res) => {
       agenciesStore.load()
     );
 
-    const allGroups = await groupsSvc.getAllGroups({});
-    const groups = groupsRoutes.filterGroupsVisibleToUser(authUser, allGroups, {
-      includeMutualAid: access.isGlobalAdmin,
-    });
+    const groups = await groupsSvc.getGroupsForAuthUser(authUser);
 
     res.json({
       isGlobalAdmin: access.isGlobalAdmin,
@@ -164,22 +141,19 @@ async function resolveRecipients({ authUser, mode, agencies, groupIds, usernames
       err.statusCode = 403;
       throw err;
     }
-    users = await usersSvc.getAllUsers({ includeHiddenPrefixes: false });
+    users = await require("../services/directoryRepo.service").listUserEmailRows({
+      includeHiddenPrefixes: false,
+    });
   } else if (mode === "agency") {
-    const all = await usersSvc.getAllUsers({ includeHiddenPrefixes: false });
     const suffixes =
       Array.isArray(agencies) && agencies.length
         ? agencies.map((a) => String(a || "").trim().toLowerCase())
         : access.allowedAgencySuffixes || [];
-    const suffixSet = new Set(
-      (suffixes || []).map((s) => String(s || "").trim().toLowerCase())
-    );
-    users = all.filter((u) => {
-      const resolvedSuffix = accessSvc.resolveAgencySuffixFromUser(u);
-      const match =
-        resolvedSuffix && suffixSet.has(String(resolvedSuffix).toLowerCase());
-      return match && isUserInAllowedAgency(u);
+    users = await require("../services/directoryRepo.service").listUserEmailRows({
+      includeHiddenPrefixes: false,
+      agencySuffixes: suffixes,
     });
+    users = users.filter((u) => isUserInAllowedAgency(u));
   } else if (mode === "agency_admins") {
     if (!access.isGlobalAdmin) {
       const err = new Error("Forbidden");
