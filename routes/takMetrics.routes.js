@@ -1,4 +1,5 @@
 const router = require("express").Router();
+const takDashboardCache = require("../services/takDashboardCache.service");
 const {
   getTakMetricsSnapshot,
   getSubscriptionsAll,
@@ -51,10 +52,17 @@ router.get("/metrics", async (req, res) => {
   if (!user) return;
 
   try {
+    const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
+    const snap = await takDashboardCache.getDashboardTakSnapshot({
+      authUser: user,
+      agencyOnly: isAgencyOnly,
+    });
+    if (snap.takMetrics) {
+      return res.json(snap.takMetrics);
+    }
     let metrics = await getTakMetricsSnapshot();
     try {
       const sub = await getSubscriptionsAll();
-      const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
       metrics = applySubscriptionMetricsSplit(metrics, sub, {
         authUser: user,
         agencyOnly: isAgencyOnly,

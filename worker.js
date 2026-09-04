@@ -59,12 +59,12 @@ async function writeAppUpdateMeta() {
 async function writeTakDashboard() {
   try {
     const takDashboardCache = require("./services/takDashboardCache.service");
-    const snap = await takDashboardCache.refreshNow();
+    const payload = await takDashboardCache.refreshNow();
     await db.query(
       `INSERT INTO tak_dashboard_stats (id, payload, updated_at)
        VALUES (1, $1::jsonb, now())
        ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`,
-      [JSON.stringify(snap || {})]
+      [JSON.stringify(payload || {})]
     );
   } catch (e) {
     console.warn("[worker] TAK dashboard refresh failed:", e?.message || e);

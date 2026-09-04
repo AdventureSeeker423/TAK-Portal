@@ -1,10 +1,6 @@
 const router = require("express").Router();
 const dashboardStatsCache = require("../services/dashboardStatsCache.service");
 const takDashboardCache = require("../services/takDashboardCache.service");
-const {
-  getSubscriptionsAll,
-  applySubscriptionMetricsSplit,
-} = require("../services/takMetrics.service");
 const mutualAidService = require("../services/mutualAid.service");
 const bookmarksService = require("../services/bookmarks.service");
 const agenciesStore = require("../services/agencies.service");
@@ -51,7 +47,12 @@ router.get("/", async (req, res) => {
   try {
     const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
     const bookmarks = bookmarksService.loadBookmarks();
-    let { takMetrics } = takDashboardCache.getDashboardTakSnapshot();
+    const takSnap = await takDashboardCache.getDashboardTakSnapshot({
+      authUser: req.authentikUser,
+      agencyOnly: isAgencyOnly,
+    });
+    let { takMetrics } = takSnap;
+    const takStatView = takSnap.view || takDashboardCache.viewFields(takMetrics);
 
     const pendingUserRequestsCount = userRequestsSvc.countRequestsForUser(req.authentikUser);
     const pendingMouDocumentsCount =
@@ -168,18 +169,6 @@ router.get("/", async (req, res) => {
       }
     }
 
-    if (isAgencyOnly && takMetrics) {
-      try {
-        const sub = await getSubscriptionsAll();
-        takMetrics = applySubscriptionMetricsSplit(takMetrics, sub, {
-          authUser: req.authentikUser,
-          agencyOnly: true,
-        });
-      } catch (e) {
-        console.warn("[DASHBOARD] Agency TAK metrics adjustment failed:", e?.message || e);
-      }
-    }
-
     const viewModel = {
       stats,
       mutualAid: {
@@ -191,6 +180,7 @@ router.get("/", async (req, res) => {
       typeColors,
       bookmarks,
       takMetrics,
+      takStatView,
       pendingUserRequestsCount,
       pendingMouDocumentsCount,
       isAgencyDashboard,
@@ -206,8 +196,12 @@ router.get("/", async (req, res) => {
     console.error("[DASHBOARD] failed:", err?.message || err);
 
     const bookmarks = bookmarksService.loadBookmarks();
-    const { takMetrics: cachedTak } = takDashboardCache.getDashboardTakSnapshot();
     const isAgencyOnly = !!(user && user.isAgencyAdmin && !user.isGlobalAdmin);
+    const errTakSnap = await takDashboardCache.getDashboardTakSnapshot({
+      authUser: req.authentikUser,
+      agencyOnly: isAgencyOnly,
+    });
+    const cachedTak = errTakSnap.takMetrics;
     const allowedSuffixes = Array.isArray(user?.allowedAgencySuffixes)
       ? user.allowedAgencySuffixes
       : [];
@@ -234,6 +228,7 @@ router.get("/", async (req, res) => {
       typeColors: {},
       bookmarks,
       takMetrics: cachedTak,
+      takStatView: errTakSnap.view || takDashboardCache.viewFields(cachedTak),
       pendingUserRequestsCount: userRequestsSvc.countRequestsForUser(req.authentikUser),
       pendingMouDocumentsCount:
         user?.isAgencyAdmin && mouService.isEnabled()

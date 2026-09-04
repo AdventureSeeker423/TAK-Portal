@@ -120,10 +120,11 @@
   </div>
 
   <!-- TAK stats row: 4-wide global; agency admin shows connected users only -->
+  <% const takView = typeof takStatView !== "undefined" && takStatView ? takStatView : { connectedClients: "--", connectedIntegrations: "--", uptime: "--", disk: "--" }; %>
   <div class="<%= agencyDash ? 'gridTakStatsAgencyOnly' : 'gridTakStats' %> gridTight" id="takStatsRow" style="margin-top:8px;" <%= (isGlobalAdmin || isAgencyAdmin) ? 'data-can-expand-clients="true"' : '' %>>
     <div class="card stat" id="connectedClientsStatCard" role="<%= (isGlobalAdmin || isAgencyAdmin) ? 'button' : '' %>" tabindex="<%= (isGlobalAdmin || isAgencyAdmin) ? '0' : '-1' %>">
       <div class="statLabel">Connected Users</div>
-      <div class="statValue" id="takClients">--</div>
+      <div class="statValue" id="takClients"><%= takView.connectedClients %></div>
       <div class="statHint"></div>
     </div>
 
@@ -131,7 +132,7 @@
     <a href="/integrations" class="statCardLink">
     <div class="card stat">
       <div class="statLabel">Connected Integrations</div>
-      <div class="statValue" id="takConnectedIntegrations">--</div>
+      <div class="statValue" id="takConnectedIntegrations"><%= takView.connectedIntegrations %></div>
       <div class="statHint"></div>
     </div>
     </a>
@@ -140,13 +141,13 @@
     <% if (!agencyDash) { %>
     <div class="card stat">
       <div class="statLabel">TAK Server Uptime</div>
-      <div class="statValue" id="takUptime">--</div>
+      <div class="statValue" id="takUptime"><%= takView.uptime %></div>
       <div class="statHint" id="takUptimeHint"></div>
     </div>
 
     <div class="card stat">
       <div class="statLabel">Disk Usage %</div>
-      <div class="statValue" id="takDisk">--</div>
+      <div class="statValue" id="takDisk"><%= takView.disk %></div>
       <div class="statHint"></div>
     </div>
     <% } %>
@@ -533,16 +534,12 @@
       // Initial render from server-side snapshot
       const initial = <%- JSON.stringify(takMetrics || null) %>;
       if (initial) apply(initial);
-      // Expose smoothing-aware updater for other scripts (manual refresh, etc.)
       window.__takApplyDashboardMetrics = apply;
 
-      // Delay the first health check until after full page load, then +5s.
-      // Then poll every 20s.
+      // Cache is filled by the worker (~15s). Poll it, do not wait on TAK HTTP.
       function startTakPolling() {
-        setTimeout(async () => {
-          await refresh();
-          setInterval(refresh, 20000);
-        }, 5000);
+        if (!initial) void refresh();
+        setInterval(refresh, 15000);
       }
 
       if (document.readyState === "complete") {
