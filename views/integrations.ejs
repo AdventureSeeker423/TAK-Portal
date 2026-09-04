@@ -644,11 +644,11 @@
 
   function openEditModal(pk, username, title) {
     editCurrentPk = pk;
-    var heading = String(title || username || "").trim();
+    var user = usersCache.find(function (u) { return String(u.pk) === String(pk); });
+    var heading = String((user && user.username) || username || title || "").trim();
     if (editIntegrationTitle) {
       editIntegrationTitle.textContent = heading ? ("Edit Integration - " + heading) : "Edit Integration";
     }
-    var user = usersCache.find(function (u) { return String(u.pk) === String(pk); });
     var currentGroupPks = (user && Array.isArray(user.groups)) ? user.groups : [];
     editPickedGroupIds = new Set(currentGroupPks.map(String));
     if (editGroupFilter) editGroupFilter.value = "";
