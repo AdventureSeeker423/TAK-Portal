@@ -1040,7 +1040,7 @@ function groupIsPrivate(g) {
   return String(g?.attributes?.private || "").trim().toLowerCase() === "yes";
 }
 
-function groupDescription(g) {
+function groupDescriptionText(g) {
   return String(g?.description || g?.attributes?.description || "").trim();
 }
 
@@ -1342,7 +1342,7 @@ function renderGroups(){
   tbody.innerHTML = filtered.map(g => {
     const locked = groupActionsLocked(g.name);
     const editable = !locked && isGroupEditable(g);
-    const desc = groupDescription(g);
+    const desc = groupDescriptionText(g);
     const isPrivate = groupIsPrivate(g);
     const patchedWithLabel =
       CAN_SEE_CHANNEL_PATCH && Array.isArray(g.patchedWith) && g.patchedWith.length
@@ -1749,7 +1749,7 @@ window.editGroupName = async (groupId) => {
 
   const g = (groupsCache || []).find(x => String(x.pk) === String(groupId));
   const currentName = String(g?.name || "").trim();
-  const currentDescription = groupDescription(g);
+  const currentDescription = groupDescriptionText(g);
 	  const currentPrivate = groupIsPrivate(g) ? "yes" : "no";
 
   if (groupActionsLocked(currentName)) {

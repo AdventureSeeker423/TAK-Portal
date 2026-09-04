@@ -318,11 +318,17 @@ async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
   const local = await db.query("SELECT id, groups_hash FROM users WHERE authentik_pk = $1", [pk]);
   const localId = local.rows[0]?.id;
   if (!localId) return;
-  if (priorHash && priorHash === hash) return;
   const uuids = [];
   for (const gpk of groupPks) {
     const uuid = groupUuidByPk && groupUuidByPk.get(String(gpk));
     if (uuid) uuids.push(uuid);
+  }
+  if (priorHash && priorHash === hash) {
+    const existingMembers = await db.query(
+      `SELECT COUNT(*)::int AS n FROM group_members WHERE user_id = $1`,
+      [localId]
+    );
+    if (Number(existingMembers.rows[0]?.n || 0) === uuids.length) return;
   }
   await repo.replaceUserMembershipsFromUuids(localId, uuids, hash);
 }

@@ -199,10 +199,11 @@
         ></select>
       <% } %>
       <% if (isGlobalAdmin || isAgencyAdmin) { %>
+        <% const showTemplateFilterOnLoad = !isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length === 1; %>
         <select
           id="filterTemplateSelect"
           aria-label="Filter by template"
-          style="margin: 10px 0; min-width: 260px;"
+          style="margin: 10px 0; min-width: 260px; <%= showTemplateFilterOnLoad ? '' : 'display:none;' %>"
         >
           <option value="">All Templates</option>
         </select>
@@ -2083,25 +2084,28 @@ function renderResults(users){
   }).join("");
 }
 
+function indexUserGroupDetails(user) {
+  const details = Array.isArray(user?.groupDetails) ? user.groupDetails : [];
+  for (const g of details) {
+    const id = String(g?.pk || g?.id || "").trim();
+    const name = String(g?.name || "").trim();
+    if (!id || !name) continue;
+    groupIndex.set(id, name);
+  }
+}
+
 function renderGroupChips(user){
+  indexUserGroupDetails(user);
   const ids = Array.isArray(user.groups)
     ? user.groups.map(x => String(x))
     : [];
 
   const names = ids
     .map(id => {
-      // Show if it's a visible portal group
-      if (visibleGroupIds.has(String(id))) {
-        return groupIndex.get(id);
+      const key = String(id);
+      if (visibleGroupIds.has(key) || groupIndex.has(key)) {
+        return groupIndex.get(key);
       }
-
-      // ALSO show if we resolved it into groupIndex
-      // (agency admin / global admin groups are injected there)
-      if (groupIndex.has(String(id))) {
-        return groupIndex.get(String(id));
-      }
-
-      // Otherwise hide it completely
       return null;
     })
     .filter(Boolean)
@@ -3246,7 +3250,7 @@ function applyFilterSortRender(){
 
 function scheduleFilter(){
   clearTimeout(filterTimer);
-  filterTimer = setTimeout(applyFilterSortRender, 280);
+  filterTimer = setTimeout(applyFilterSortRender, 100);
 }
 
 q.addEventListener("input", scheduleFilter);
@@ -3270,6 +3274,21 @@ if (filterTemplateSelect) {
   filterTemplateSelect.addEventListener("change", applyFilterSortRender);
 }
 
+function agencySuffixForTemplateFilter(){
+  if (filterAgencySelect) return String(filterAgencySelect.value || "").trim().toLowerCase();
+  if (!IS_GLOBAL_ADMIN && IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length === 1) {
+    return String(ALLOWED_AGENCY_SUFFIXES[0] || "").trim().toLowerCase();
+  }
+  return "";
+}
+
+function updateTemplateFilterVisibility(){
+  if (!filterTemplateSelect) return;
+  const show = !!agencySuffixForTemplateFilter();
+  filterTemplateSelect.style.display = show ? "" : "none";
+  if (!show) filterTemplateSelect.value = "";
+}
+
 function getAgencyTokenForTemplateFilter(sfx){
   const suffix = String(sfx || "").trim().toLowerCase();
   if (!suffix) return "";
@@ -3287,8 +3306,10 @@ function getAgencyTokenForTemplateFilter(sfx){
 function renderTemplateFilterOptions(){
   if (!filterTemplateSelect) return;
 
+  updateTemplateFilterVisibility();
   const prev = String(filterTemplateSelect.value || "").trim();
-  const selectedAgency = String(filterAgencySelect?.value || "").trim().toLowerCase();
+  const selectedAgency = agencySuffixForTemplateFilter();
+  if (!selectedAgency) return;
   const source = Array.isArray(tableTemplateFilters) ? tableTemplateFilters : [];
   const scoped = selectedAgency
     ? source.filter((t) => String(t?.agencySuffix || "").trim().toLowerCase() === selectedAgency)
@@ -3300,8 +3321,7 @@ function renderTemplateFilterOptions(){
       const sfx = String(t?.agencySuffix || "").trim().toLowerCase();
       if (!name || !sfx) return null;
       const value = `sfx=${encodeURIComponent(sfx)}&name=${encodeURIComponent(name)}`;
-      const agencyLabel = getAgencyTokenForTemplateFilter(sfx);
-      const label = (!IS_GLOBAL_ADMIN || selectedAgency) ? name : `${agencyLabel} - ${name}`;
+      const label = name;
       return { value, label };
     })
     .filter(Boolean)

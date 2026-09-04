@@ -103,6 +103,8 @@
       />
     </div>
 
+    <div id="templateListMsg" class="msg"></div>
+
     <div class="listCardTableWrap">
       <table class="table listCardTable templatesTable">
         <thead>
@@ -262,10 +264,12 @@ function updateSortIndicators(){
 }
 
 function applySortAndRender(){
+  const agencyScoped = getAgencyScopedTemplatePairs();
   const filtered = getFilteredTemplatePairs();
   const sorted = stableSort(filtered, sortState.key, sortState.dir);
   renderTemplates(sorted);
   updateSortIndicators();
+  updateTemplateListMsg(sorted.length, agencyScoped.length);
 }
 
 // click-to-sort headers
@@ -509,26 +513,43 @@ function updateTemplateAgencyFilterOptions(){
   if (prevVal) templateAgencyFilterSelect.value = prevVal;
 }
 
-function getFilteredTemplatePairs(){
+function getAgencyScopedTemplatePairs(){
   const base = Array.isArray(viewTemplates) ? viewTemplates.slice() : [];
-  const needle = String(templateNameSearch?.value || "").trim().toLowerCase();
   const agencyFilter = String(templateAgencyFilterSelect?.value || "").trim().toLowerCase();
 
   return base.filter(({ t }) => {
-    const tpl = t || {};
-    const name = String(tpl.name || "").toLowerCase();
-    const sfx = String(tpl.agencySuffix || "").trim().toLowerCase();
-
-    // Name search
-    if (needle && !name.includes(needle)) return false;
-
-    // Agency filter (global admin or multi-agency admin)
+    const sfx = String((t || {}).agencySuffix || "").trim().toLowerCase();
     if ((IS_GLOBAL_ADMIN || IS_MULTI_AGENCY_ADMIN) && templateAgencyFilterSelect && agencyFilter) {
       return sfx === agencyFilter;
     }
-
     return true;
   });
+}
+
+function getFilteredTemplatePairs(){
+  const needle = String(templateNameSearch?.value || "").trim().toLowerCase();
+  return getAgencyScopedTemplatePairs().filter(({ t }) => {
+    const name = String((t || {}).name || "").toLowerCase();
+    if (needle && !name.includes(needle)) return false;
+    return true;
+  });
+}
+
+function updateTemplateListMsg(shown, total){
+  const el = document.getElementById("templateListMsg");
+  if (!el) return;
+  const needle = String(templateNameSearch?.value || "").trim();
+  const n = Number(shown || 0);
+  const t = Number(total || 0);
+  if (!t) {
+    el.textContent = needle ? `No templates found for "${needle}".` : "No templates found.";
+    return;
+  }
+  if (needle) {
+    el.textContent = `Showing ${n} of ${t} template(s) for "${needle}".`;
+  } else {
+    el.textContent = `Showing ${n} of ${t} template(s).`;
+  }
 }
 
 async function loadTemplatesList(){

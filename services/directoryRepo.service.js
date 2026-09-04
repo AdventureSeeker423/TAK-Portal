@@ -186,12 +186,13 @@ async function attachGroups(users) {
   );
   const map = new Map();
   for (const row of r.rows) {
+    const uid = String(row.user_id);
     const pk = row.authentik_pk != null ? String(row.authentik_pk) : String(row.group_uuid);
-    if (!map.has(row.user_id)) map.set(row.user_id, []);
-    map.get(row.user_id).push(pk);
+    if (!map.has(uid)) map.set(uid, []);
+    map.get(uid).push(pk);
   }
   return users.map((u) => {
-    u.groups = map.get(u.id) || [];
+    u.groups = map.get(String(u.id)) || [];
     return u;
   });
 }
@@ -421,7 +422,7 @@ async function searchUsersPaged({
   agencyAbbreviation,
   usernamePrefix,
   includeHiddenPrefixes = false,
-  includeGroups = true,
+  includeGroups = false,
   activeOnly,
   excludeGroupPks,
 } = {}) {

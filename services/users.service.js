@@ -2027,6 +2027,7 @@ async function searchUsersPaged({
   agencySuffix,
   agencySuffixes,
   excludeGroupPks,
+  includeGroups = false,
 } = {}) {
   return directoryRepo.searchUsersPaged({
     q,
@@ -2038,7 +2039,7 @@ async function searchUsersPaged({
     agencySuffix,
     agencySuffixes,
     excludeGroupPks,
-    includeGroups: true,
+    includeGroups,
   });
 }
 
@@ -2656,7 +2657,19 @@ async function updateName(userId, name) {
 
 // Fetch single user (if you don't already have it)
 async function getUserById(userId) {
-  return directoryRepo.getUserById(userId);
+  const user = await directoryRepo.getUserById(userId);
+  if (!user) return null;
+  const pks = Array.isArray(user.groups) ? user.groups : [];
+  if (!pks.length) {
+    user.groupDetails = [];
+    return user;
+  }
+  const named = await directoryRepo.getGroupsByPks(pks);
+  user.groupDetails = (Array.isArray(named) ? named : []).map((g) => ({
+    pk: g.pk,
+    name: g.name,
+  }));
+  return user;
 }
 
 // Update specific attributes on a user (merging with existing)
