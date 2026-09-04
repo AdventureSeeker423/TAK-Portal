@@ -760,13 +760,6 @@ async function searchPortalGroups(q) {
   const out = await res.json();
   const groups = res.ok && Array.isArray(out.groups) ? out.groups : [];
   groupsCache = groups;
-  if (!window.groupIndex) window.groupIndex = groupIndex;
-  for (const g of groups) {
-    const id = String(g.pk || g.id || "");
-    if (!id) continue;
-    groupIndex.set(id, g.name || ("Group " + id));
-    visibleGroupIds.add(id);
-  }
   return groups;
 }
 
@@ -779,6 +772,7 @@ async function loadMeta() {
   if (!res.ok) throw new Error(meta.error || "Failed to load templates");
 
   await searchPortalGroups(groupFilter && groupFilter.value || "");
+  renderGroupsBox();
 
   // Router now returns: { groups, templates: [ { key, label, isDefault?, groups? }, ... ] }
   const raw = Array.isArray(meta.templates) ? meta.templates : [];
@@ -835,7 +829,6 @@ agencySelect.addEventListener("change", () => {
   // Optional: clear manual group picks when switching agencies
   pickedManualGroupIds.clear();
   groupFilter.value = "";
-  renderGroupsBox();
 
   loadMeta().catch((err) => {
     console.error(err);
@@ -916,6 +909,7 @@ templateSelect.onchange = () => {
   );
   const isManual = selectedName.toLowerCase() === "manual group selection";
   manualGroupsWrap.style.display = isManual ? "block" : "none";
+  if (isManual) renderGroupsBox();
   renderRoleOptions(createRoleSelect, selectedTemplate?.role || "Team Member");
 };
 
@@ -2511,6 +2505,23 @@ function roleForUser(user){
 
   // 3 Default
   return "Standard User";
+}
+
+async function searchPortalGroups(q) {
+  const res = await fetch("/api/groups/search?" + new URLSearchParams({
+    q: String(q || "").trim(),
+    page: "1",
+    pageSize: "25",
+  }).toString());
+  const out = await res.json();
+  const groups = res.ok && Array.isArray(out.groups) ? out.groups : [];
+  for (const g of groups) {
+    const id = String(g.pk || g.id || "");
+    if (!id) continue;
+    groupIndex.set(id, g.name || ("Group " + id));
+    visibleGroupIds.add(id);
+  }
+  return groups;
 }
 
 async function loadGroups(){
