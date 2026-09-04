@@ -2,6 +2,7 @@ const jsonImport = require("./jsonImport.service");
 
 const ALLOW_EXACT = new Set([
   "/migration",
+  "/stack-down",
   "/api/system/migration-status",
   "/api/system/health",
   "/api/system/migration-retry",

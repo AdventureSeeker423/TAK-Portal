@@ -14,6 +14,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    # PG 15+ logs checkpoints at LOG by default (every ~5 min plus shutdown).
+    # Keep ERROR/FATAL; drop routine checkpoint and statement duration noise.
+    command:
+      - postgres
+      - -c
+      - log_checkpoints=off
+      - -c
+      - log_min_duration_statement=-1
+      - -c
+      - log_autovacuum_min_duration=-1
+      - -c
+      - log_error_verbosity=terse
     # Localhost only — not the LAN/internet. 5433 avoids clashing with a host Postgres on 5432.
     # Connection: host 127.0.0.1, port 5433, database/user takportal, password POSTGRES_PASSWORD.
     # Remote operators: SSH tunnel `ssh -L 5433:127.0.0.1:5433 user@tak-host` then DBeaver to localhost:5433.
@@ -36,7 +48,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["npm", "start"]
+    command: ["sh", "-c", "node scripts/ensure-map-built.mjs && exec node --use-system-ca server.js"]
 
   tak-portal-worker:
     build: .
@@ -56,7 +68,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"require('pg').Pool({connectionString:process.env.DATABASE_URL,max:1}).query('SELECT 1').then(()=>process.exit(0)).catch(()=>process.exit(1))\"",
+          "node -e \"const {Pool}=require('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,max:1});p.query('SELECT 1').then(()=>p.end()).then(()=>process.exit(0)).catch(async()=>{try{await p.end()}catch(e){}process.exit(1)})\"",
         ]
       interval: 15s
       timeout: 8s

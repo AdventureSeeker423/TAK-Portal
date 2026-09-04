@@ -166,6 +166,44 @@ body.theme-light .theme-toggle__icon--moon {
     min-height: 100%;
 }
 
+.stackHealthLock {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 40000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+    background: #0f1419;
+    color: #e7ecf1;
+}
+.stackHealthLock.is-visible {
+    display: flex;
+}
+body.stack-health-locked {
+    overflow: hidden;
+}
+.stackHealthLockBox {
+    width: min(560px, 92vw);
+    text-align: center;
+}
+.stackHealthLockBox h1 {
+    font-size: 1.4rem;
+    font-weight: 650;
+    margin: 0 0 12px;
+}
+.stackHealthLockBox p {
+    color: #9aa7b4;
+    line-height: 1.5;
+    margin: 0 0 12px;
+}
+.stackHealthLockHint {
+    margin-top: 18px !important;
+    font-size: 0.9rem;
+    color: #cbd5e1 !important;
+}
+
 /* Match the map page: on desktop the shell fills the zoomed viewport and
    .main scrolls, so the sidebar is full height (100vh + html zoom left a gap). */
 @media (min-width: 991px) {

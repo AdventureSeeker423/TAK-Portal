@@ -143,6 +143,14 @@
 		<!-- Overlay shown when sidebar is open on small screens -->
 		<div class="sidebarOverlay" id="sidebarOverlay" aria-hidden="true"></div>
 
+		<div id="stackHealthLock" class="stackHealthLock" hidden role="alertdialog" aria-modal="true" aria-labelledby="stackHealthLockTitle" aria-describedby="stackHealthLockMessage">
+			<div class="stackHealthLockBox">
+				<h1 id="stackHealthLockTitle">TAK Portal is unavailable</h1>
+				<p id="stackHealthLockMessage">The portal cannot be used until the database and background worker are running.</p>
+				<p class="stackHealthLockHint">This screen will reopen the portal when the stack recovers.</p>
+			</div>
+		</div>
+
 		<div class="app">
 
       <script>
@@ -185,4 +193,5 @@
 
 			<script src="/sidebar.js" defer=""></script>
       <script src="/theme-toggle.js" defer></script>
+      <script src="/stack-health-banner.js" defer></script>
 		

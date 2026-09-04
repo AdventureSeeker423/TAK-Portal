@@ -113,15 +113,22 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
 const migrationGate = require("./services/migrationGate.middleware");
+const stackHealthGate = require("./services/stackHealthGate.middleware");
 const jsonImport = require("./services/jsonImport.service");
+const stackHealth = require("./services/stackHealth.service");
 
 app.get("/api/system/health", async (req, res) => {
-  let migrating = false;
   try {
-    const s = await jsonImport.readStatusJson();
-    migrating = !!s.active;
-  } catch (_) {}
-  return res.status(200).json({ ok: true, migrating });
+    const health = await stackHealth.getStackHealth();
+    return res.status(health.ok ? 200 : 503).json(health);
+  } catch (e) {
+    return res.status(503).json({
+      ok: false,
+      migrating: false,
+      postgres: { ok: false, detail: e?.message || "health_failed" },
+      worker: { ok: false, detail: "health_failed" },
+    });
+  }
 });
 
 app.get("/api/system/migration-status", async (req, res) => {
@@ -155,7 +162,25 @@ app.get("/migration", async (req, res) => {
   }
 });
 
+app.get("/stack-down", async (req, res) => {
+  try {
+    const health = await stackHealth.getStackHealth();
+    if (health.ok) return res.redirect("/");
+    return res.status(503).render("stack-down", { health });
+  } catch (e) {
+    return res.status(503).render("stack-down", {
+      health: {
+        ok: false,
+        title: "TAK Portal is unavailable",
+        message:
+          "The portal could not check database and worker status. On the server, run ./takportal start (or restart the stack from InfraTAK).",
+      },
+    });
+  }
+});
+
 app.use(migrationGate);
+app.use(stackHealthGate);
 
 // Multer storage for settings uploads (certs + branding)
 const uploadStorage = multer.diskStorage({
@@ -2280,6 +2305,9 @@ async function boot() {
       console.log("⚠️ Channel patch engine init failed", e?.message || e);
     }
     jsonImport.run().catch((e) => console.error("[json-import]", e?.message || e));
+    setInterval(() => {
+      stackHealth.getStackHealth().catch(() => {});
+    }, 20000).unref?.();
     try {
       const takUrl = getString("TAK_URL", "");
       if (!takUrl) {

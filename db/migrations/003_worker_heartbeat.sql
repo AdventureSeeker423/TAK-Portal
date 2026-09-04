@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS worker_heartbeat (
+  id INT PRIMARY KEY DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

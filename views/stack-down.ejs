@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TAK Portal is unavailable</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0f1419;
+      color: #e7ecf1;
+    }
+    .box { width: min(560px, 92vw); text-align: center; }
+    h1 { font-size: 1.4rem; font-weight: 650; margin: 0 0 12px; }
+    p { color: #9aa7b4; line-height: 1.5; }
+    .hint { margin-top: 18px; font-size: 0.9rem; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1 id="title"><%= (health && health.title) || "TAK Portal is unavailable" %></h1>
+    <p id="message"><%= (health && health.message) || "The portal cannot be used until the database and background worker are running." %></p>
+    <p class="hint">This page will reopen the portal when the stack recovers. You can leave it open.</p>
+  </div>
+  <script>
+    async function tick() {
+      try {
+        const r = await fetch("/api/system/health", { cache: "no-store", headers: { Accept: "application/json" } });
+        const s = await r.json();
+        if (s && s.ok) {
+          window.location.replace("/");
+          return;
+        }
+        if (s && s.title) document.getElementById("title").textContent = s.title;
+        if (s && s.message) document.getElementById("message").textContent = s.message;
+      } catch (e) {}
+    }
+    tick();
+    setInterval(tick, 3000);
+  </script>
+</body>
+</html>

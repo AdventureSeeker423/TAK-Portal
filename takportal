@@ -480,6 +480,9 @@ case "$CMD" in
 
   status)
     $COMPOSE_CMD ps
+    echo
+    echo "Postgres and the worker restart automatically if their process exits (restart: unless-stopped)."
+    echo "Unhealthy in the STATUS column means the healthcheck is failing; run ./takportal start if a service stays down."
     ;;
 
   remove)

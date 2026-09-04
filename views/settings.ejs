@@ -504,6 +504,7 @@
         <div class="modalBody settings-body">
           <% const pdb = typeof portalDb !== "undefined" && portalDb ? portalDb : { host: "127.0.0.1", port: "5433", user: "takportal", database: "takportal", password: "" }; %>
           <p class="muted">Host tools connect to this localhost port. Containers use the compose network. This password is not stored in settings.json.</p>
+          <p id="portalDbStackStatus" class="muted" style="margin-top:8px;">Checking database and worker…</p>
           <div class="grid2" style="margin-top:12px;">
             <label class="settings-field"><span class="settings-label">Host</span><input type="text" readonly value="<%= pdb.host %>" /></label>
             <label class="settings-field"><span class="settings-label">Port</span><input type="text" readonly value="<%= pdb.port %>" /></label>
@@ -534,6 +535,21 @@
                     navigator.clipboard.writeText(input.value || "");
                   }
                 });
+              }
+              var statusEl = document.getElementById("portalDbStackStatus");
+              if (statusEl) {
+                fetch("/api/system/health", { headers: { Accept: "application/json" } })
+                  .then(function (r) { return r.json(); })
+                  .then(function (h) {
+                    var pg = h && h.postgres && h.postgres.ok ? "reachable" : "unreachable";
+                    var wk = h && h.worker && h.worker.ok ? "running" : "not running";
+                    statusEl.textContent = "Database: " + pg + ". Background worker: " + wk + ".";
+                    if (!h || !h.ok) statusEl.style.color = "var(--danger, #ff3b3b)";
+                  })
+                  .catch(function () {
+                    statusEl.textContent = "Could not read stack health.";
+                    statusEl.style.color = "var(--danger, #ff3b3b)";
+                  });
               }
             })();
           </script>

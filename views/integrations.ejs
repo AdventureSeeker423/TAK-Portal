@@ -109,11 +109,6 @@
     <div class="modalBody">
       <div class="card" style="margin: 0;">
         <h2 style="margin-top: 0;">Edit Group Assignments</h2>
-        <div class="row">
-          <label style="flex: 1; min-width: 0;">Integration Title (Non-Editable After Creation)
-            <input type="text" id="editIntegrationUsername" readonly tabindex="-1" class="integrationTitleReadonly" style="width: 100%;" />
-          </label>
-        </div>
         <div class="editUserGroupsSection" style="margin-top: 12px;">
           <h3 style="margin: 0 0 8px;">Groups</h3>
           <div class="groupFilterRow">
@@ -554,7 +549,7 @@
           "<td class=\"intStatusCell\" data-label=\"Status\">" + statusPill + "</td>" +
           "<td class=\"cardActionsCell\"><div class=\"row cardActionsRow\" style=\"gap:8px; flex-wrap:wrap;\">" +
           "<button class=\"btn success\" type=\"button\" data-action=\"download-certs\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\">Download Certs</button>" +
-          "<button class=\"btn\" type=\"button\" data-action=\"edit\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\">Edit Groups</button>" +
+          "<button class=\"btn\" type=\"button\" data-action=\"edit\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\" data-integration-title=\"" + esc(u.integrationTitle || "") + "\">Edit Groups</button>" +
           "<button class=\"btn danger\" type=\"button\" data-action=\"delete\" data-pk=\"" + esc(u.pk) + "\" data-username=\"" + esc(u.username) + "\">Delete</button>" +
           "</div></td>" +
           "</tr>";
@@ -631,7 +626,7 @@
 
   var editIntegrationOverlay = document.getElementById("editIntegrationOverlay");
   var editIntegrationCloseBtn = document.getElementById("editIntegrationCloseBtn");
-  var editIntegrationUsername = document.getElementById("editIntegrationUsername");
+  var editIntegrationTitle = document.getElementById("editIntegrationTitle");
   var editGroupsBox = document.getElementById("editGroupsBox");
   var editGroupsInner = document.getElementById("editGroupsInner");
   var editGroupFilter = document.getElementById("editGroupFilter");
@@ -647,9 +642,12 @@
     editIntegrationMsg.style.color = ok ? "" : "var(--error, #c00)";
   }
 
-  function openEditModal(pk, username) {
+  function openEditModal(pk, username, title) {
     editCurrentPk = pk;
-    editIntegrationUsername.value = username || "";
+    var heading = String(title || username || "").trim();
+    if (editIntegrationTitle) {
+      editIntegrationTitle.textContent = heading ? ("Edit Integration - " + heading) : "Edit Integration";
+    }
     var user = usersCache.find(function (u) { return String(u.pk) === String(pk); });
     var currentGroupPks = (user && Array.isArray(user.groups)) ? user.groups : [];
     editPickedGroupIds = new Set(currentGroupPks.map(String));
@@ -669,7 +667,8 @@
       btn.addEventListener("click", function () {
         var pk = btn.getAttribute("data-pk");
         var username = btn.getAttribute("data-username");
-        openEditModal(pk, username);
+        var title = btn.getAttribute("data-integration-title");
+        openEditModal(pk, username, title);
       });
     });
     tbody.querySelectorAll("button[data-action=\"data-feed\"]").forEach(function (btn) {
@@ -1160,13 +1159,6 @@
 
 .createIntegrationSubmitBtn {
   margin-left: auto;
-}
-
-.integrationTitleReadonly {
-  background: rgba(128, 128, 128, 0.28);
-  color: var(--muted, #9aa3ad);
-  cursor: not-allowed;
-  opacity: 0.9;
 }
 
 .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }

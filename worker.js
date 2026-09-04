@@ -56,6 +56,32 @@ async function writeAppUpdateMeta() {
   }
 }
 
+async function writeHeartbeat() {
+  if (_stopping) return;
+  try {
+    await db.query(
+      `INSERT INTO worker_heartbeat (id, updated_at) VALUES (1, now())
+       ON CONFLICT (id) DO UPDATE SET updated_at = now()`
+    );
+  } catch (e) {
+    console.error("[worker] heartbeat failed:", e?.message || e);
+    try {
+      await db.end();
+      await db.connectWithRetry(20000);
+      await db.query(
+        `INSERT INTO worker_heartbeat (id, updated_at) VALUES (1, now())
+         ON CONFLICT (id) DO UPDATE SET updated_at = now()`
+      );
+      console.log("[worker] Postgres reconnected");
+    } catch (e2) {
+      console.error(
+        "[worker] Postgres still unreachable; exiting so Docker can restart this container"
+      );
+      process.exit(1);
+    }
+  }
+}
+
 async function writeTakDashboard() {
   try {
     const takDashboardCache = require("./services/takDashboardCache.service");
@@ -108,6 +134,7 @@ async function main() {
   console.log("[worker] connecting to Postgres…");
   await db.connectWithRetry(60000);
   await db.waitForSchema();
+  await writeHeartbeat();
   console.log("[worker] waiting for JSON import to finish…");
   await waitForImportComplete();
   try {
@@ -117,6 +144,7 @@ async function main() {
   }
   console.log("[worker] starting loops");
 
+  every(15 * 1000, writeHeartbeat);
   every(200, () => directorySync.drainOutbox());
   every(INBOUND_SECONDS * 1000, () => directorySync.inboundSnapshot());
   void directorySync.inboundSnapshot().catch((e) =>

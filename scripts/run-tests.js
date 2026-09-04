@@ -29,6 +29,7 @@ const TEST_FILES = [
   "geofence.test.js",
   "userRequestsOtherAgency.test.js",
   "migrationGate.test.js",
+  "stackHealthGate.test.js",
   "jsonImport.retire.test.js",
   "directorySearch.sql.test.js",
   "outbox.skipLocked.test.js",

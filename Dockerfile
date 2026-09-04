@@ -18,5 +18,5 @@ ENV NODE_ENV=production
 # The app uses WEB_UI_PORT from env, default to 3000
 EXPOSE 3000
 
-# prestart skips rebuild when public/dist already exists (built above).
-CMD ["npm", "start"]
+# exec so SIGTERM reaches Node (npm start prints a fake "command failed" on recreate).
+CMD ["sh", "-c", "node scripts/ensure-map-built.mjs && exec node --use-system-ca server.js"]
