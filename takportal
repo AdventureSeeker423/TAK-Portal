@@ -27,12 +27,36 @@ Commands:
 EOF
 }
 
+read_dotenv_postgres_password() {
+  local current=""
+  current="$(grep -E '^POSTGRES_PASSWORD=' .env 2>/dev/null | tail -1 | sed 's/^POSTGRES_PASSWORD=//' | tr -d '\r' || true)"
+  current="${current#\"}"
+  current="${current%\"}"
+  current="${current#\'}"
+  current="${current%\'}"
+  printf '%s' "$current"
+}
+
+# Compose interpolates ${POSTGRES_PASSWORD} from the process environment first,
+# then the project .env. An empty exported value would ignore .env and crash-loop
+# official Postgres (no superuser password). Always export the file value.
+export_compose_secrets() {
+  local current=""
+  current="$(read_dotenv_postgres_password)"
+  if [[ -z "$current" ]]; then
+    echo "ERROR: POSTGRES_PASSWORD is empty in .env"
+    return 1
+  fi
+  export POSTGRES_PASSWORD="$current"
+  return 0
+}
+
 ensure_postgres_password() {
   if [[ ! -f .env ]]; then
     return 0
   fi
   local current=""
-  current="$(grep -E '^POSTGRES_PASSWORD=' .env 2>/dev/null | tail -1 | sed 's/^POSTGRES_PASSWORD=//' | tr -d '\r' || true)"
+  current="$(read_dotenv_postgres_password)"
   if [[ -n "$current" ]]; then
     return 0
   fi
@@ -51,7 +75,49 @@ ensure_postgres_password() {
   else
     printf '\nPOSTGRES_PASSWORD=%s\n' "$pw" >> .env
   fi
+  TAKPORTAL_PW_GENERATED=1
   echo "Generated POSTGRES_PASSWORD in .env (also shown in Settings → Portal database)."
+}
+
+# Blank-password Postgres is created by an older updater (or compose up without
+# ./takportal) and then left Restarting. `up --build` will not recreate it just
+# because .env changed later — operators had to stop then start. Recreate here.
+postgres_needs_recreate() {
+  local name="tak-portal-postgres"
+  if ! docker inspect "$name" >/dev/null 2>&1; then
+    return 1
+  fi
+  local pw=""
+  pw="$(docker inspect "$name" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+    | sed -n 's/^POSTGRES_PASSWORD=//p' | head -1 | tr -d '\r' || true)"
+  if [[ -z "$pw" ]]; then
+    return 0
+  fi
+  local status="" health=""
+  status="$(docker inspect "$name" --format '{{.State.Status}}' 2>/dev/null || true)"
+  health="$(docker inspect "$name" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || true)"
+  if [[ "$status" == "restarting" || "$status" == "exited" || "$status" == "dead" ]]; then
+    return 0
+  fi
+  if [[ "$health" == "unhealthy" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+compose_up_stack() {
+  local mode="${1:-auto}"
+  if ! export_compose_secrets; then
+    return 1
+  fi
+  local extra=()
+  if [[ "$mode" == "always" || "${TAKPORTAL_PW_GENERATED:-}" == "1" ]] || postgres_needs_recreate; then
+    extra=(--force-recreate)
+    if [[ "${TAKPORTAL_PW_GENERATED:-}" == "1" ]] || postgres_needs_recreate; then
+      echo "Recreating containers so Postgres uses POSTGRES_PASSWORD from .env..."
+    fi
+  fi
+  $COMPOSE_CMD up -d --build "${extra[@]}"
 }
 
 ensure_env() {
@@ -319,6 +385,15 @@ maybe_reexec_updater() {
 run_update() {
   echo "Updating repository and containers..."
 
+  # 1.4.9 re-execs this script after checkout, then we land here. Write the
+  # password before preserve/checkout so .env.takportal-preserve already has it,
+  # and before `compose ps` (beta detection) interpolates POSTGRES_PASSWORD.
+  if ! ensure_env; then
+    echo "Run: ./$(basename "${BASH_SOURCE[0]}") setup"
+    exit 1
+  fi
+  export_compose_secrets || exit 1
+
   local self_hash=""
   self_hash="$(file_sha256 "$0")"
 
@@ -346,9 +421,10 @@ run_update() {
   if ! ensure_env; then
     exit 1
   fi
+  export_compose_secrets || exit 1
 
   echo "Rebuilding and recreating containers..."
-  $COMPOSE_CMD up -d --build
+  compose_up_stack always
 
   echo
   sleep 5
@@ -376,11 +452,11 @@ case "$CMD" in
       exit 1
     fi
     echo "Starting TAK Portal..."
-    $COMPOSE_CMD up -d --build
+    compose_up_stack auto
     ;;
 
   stop)
-    echo "Stopping containers (keeping data volume)..."
+    echo "Stopping containers (keeping data volumes)..."
     $COMPOSE_CMD down
     ;;
 
@@ -390,7 +466,7 @@ case "$CMD" in
       exit 1
     fi
     echo "Restarting stack..."
-    $COMPOSE_CMD up -d --build
+    compose_up_stack auto
     ;;
 
   update)
