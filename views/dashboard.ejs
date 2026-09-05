@@ -82,8 +82,7 @@
   <% const agencyDash = typeof isAgencyDashboard !== "undefined" && isAgencyDashboard; %>
   <% const multiAgencyDash = agencyDash && typeof isMultiAgencyDashboard !== "undefined" && isMultiAgencyDashboard; %>
   <% const canOpenTemplates = typeof perm === "function" ? perm("page.templates") : (isGlobalAdmin || isAgencyAdmin); %>
-  <% const canOpenAgencies = typeof perm === "function" ? perm("page.agencies") : !!isGlobalAdmin; %>
-  <div class="grid4">
+  <div class="<%= isGlobalAdmin ? 'grid4' : 'grid3' %>">
     <a href="/users" class="statCardLink">
       <div class="card stat">
         <div class="statLabel">Total Users</div>
@@ -112,15 +111,13 @@
     </a>
     <% } %>
 
-    <% if (canOpenAgencies) { %>
+    <% if (isGlobalAdmin) { %>
     <a href="/agencies" class="statCardLink">
-    <% } %>
-    <div class="card stat">
-      <div class="statLabel">Total Agencies</div>
-      <div class="statValue"><%= stats.totalAgencies %></div>
-      <div class="statHint"></div>
-    </div>
-    <% if (canOpenAgencies) { %>
+      <div class="card stat">
+        <div class="statLabel">Total Agencies</div>
+        <div class="statValue"><%= stats.totalAgencies %></div>
+        <div class="statHint"></div>
+      </div>
     </a>
     <% } %>
   </div>
@@ -1608,7 +1605,7 @@
     color: inherit;
     cursor: pointer;
   }
-  .statCardLink:hover .card{ border-color: rgba(255,255,255,0.15); }
+  .statCardLink:hover .card{ border-color: color-mix(in srgb, var(--btn) 42%, var(--line)); }
 
   /* Remove card margin inside grids so row spacing is controlled below */
   .main .grid3 .card,
@@ -1625,8 +1622,8 @@
 
   /* Slightly refreshed card feel */
   .card{
-    border: 1px solid rgba(255,255,255,0.06);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
     border-radius: 16px;
   }
 
@@ -1693,7 +1690,7 @@
     display: block;
   }
 
-  #connectedClientsStatCard[role="button"]:hover { border-color: rgba(255,255,255,0.15); }
+  #connectedClientsStatCard[role="button"]:hover { border-color: color-mix(in srgb, var(--btn) 42%, var(--line)); }
   .connected-clients-expanded { padding: 12px; }
   .connected-clients-expanded-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
   .connected-clients-expanded-header .cardTitle { margin: 0; }
@@ -1704,7 +1701,7 @@
   .connected-clients-table th.sortable:hover { text-decoration: underline; }
   .connected-clients-table .sortIndicator { display: inline-block; min-width: 12px; margin-left: 6px; opacity: 0.9; }
   .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
-  .connected-clients-table tbody tr:hover { background: rgba(255,255,255,0.06); }
+  .connected-clients-table tbody tr:hover { background: var(--hover); }
   @media (max-width: 990px) {
     .connected-clients-table-wrap.listCardTableWrap {
       overflow-x: hidden;
@@ -1808,7 +1805,7 @@
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--line);
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--input-bg);
   }
   #clientMiniMap { flex: 1 1 auto; width: 100%; height: 100%; min-height: 320px; }
   .client-mini-map-empty {

@@ -4222,8 +4222,8 @@ body.noScroll .main{
   .topPanels{ grid-template-columns: 1fr; }
 }
 .panel{
-  border:1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.03);
+  border:1px solid var(--glass-border);
+  background: var(--glass-fill);
   border-radius: 14px;
   padding: 12px;
 }
@@ -4290,7 +4290,7 @@ body.noScroll .main{
   gap:8px;
   padding: 10px;
   border: 1px solid var(--line);
-  background: rgba(255,255,255,.04);
+  background: var(--glass-fill);
   border-radius: 12px;
   min-height: 44px;
 }
@@ -4299,8 +4299,8 @@ body.noScroll .main{
   align-items:center;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.10);
+  background: var(--hover-strong);
+  border: 1px solid var(--glass-border);
   font-size: 12px;
 }
 .muted{ color: var(--muted); }
@@ -4354,7 +4354,7 @@ th.sortable:hover{
   white-space: nowrap;
 }
 .groupItem:hover{
-  background: rgba(255,255,255,.06);
+  background: var(--hover);
 }
 .groupItem input{
   margin: 0;
@@ -4375,14 +4375,14 @@ th.sortable:hover{
   align-items: center;
   gap: 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.03);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-fill);
 }
 
 .templateBarDivider{
   width: 1px;
   height: 22px;
-  background: rgba(255,255,255,.12);
+  background: var(--line);
   margin: 0 2px;
 }
 
@@ -4497,7 +4497,7 @@ th.sortable:hover{
   text-overflow: ellipsis;
 }
 .managedAgenciesBarToggle:hover {
-  border-color: rgba(255,255,255,.22);
+  border-color: color-mix(in srgb, var(--btn) 40%, var(--line));
 }
 .managedAgenciesBarToggle:focus {
   outline: none;
@@ -4549,7 +4549,7 @@ th.sortable:hover{
   width: 36px;
   height: 36px;
   margin: 0 auto;
-  border: 3px solid rgba(255,255,255,0.15);
+  border: 3px solid var(--glass-border);
   border-top-color: var(--btn, #3b82f6);
   border-radius: 50%;
   animation: editUserSpin 0.75s linear infinite;
@@ -4755,12 +4755,12 @@ th.sortable:hover{
 }
 
 tr.row-disabled {
-  background: rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.65);
+  background: color-mix(in srgb, var(--muted) 16%, var(--card));
+  color: var(--muted);
 }
 
 tr.row-disabled td {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--line);
 }
 
 /* Mobile: stacked cards with 2-column detail grid */
@@ -4862,7 +4862,7 @@ tr.row-disabled td {
     border-radius: 999px;
     font-size: 11px;
     font-weight: 600;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--hover-strong);
     border: 1px solid var(--line);
     color: var(--muted);
   }
@@ -4943,16 +4943,16 @@ tr.row-disabled td {
 .pagination .btn {
   padding: 4px 14px;
   border-radius: 999px;
-  background: #2f3241;
-  border: 1px solid #3a3d4d;
-  color: #e4e4e4;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  color: var(--text);
   font-size: 13px;
   line-height: 1.2;
 }
 
 .pagination .btn:hover:not(:disabled) {
-  background: #3a3d4d;
-  border-color: #4a4d5e;
+  background: var(--hover-strong);
+  border-color: var(--line);
 }
 
 .pagination .btn:disabled {
@@ -4965,8 +4965,8 @@ tr.row-disabled td {
 #pageInfoBottom {
   padding: 3px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
   opacity: 0.9;
   font-size: 12px;
 }
