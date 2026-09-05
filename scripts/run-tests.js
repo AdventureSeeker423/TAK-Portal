@@ -26,6 +26,7 @@ const TEST_FILES = [
   "openaddresses.test.js",
   "preferencePackage.service.test.js",
   "enrollmentPackage.service.test.js",
+  "qr.cache.test.js",
   "takGroupControl.test.js",
   "geofence.test.js",
   "userRequestsOtherAgency.test.js",

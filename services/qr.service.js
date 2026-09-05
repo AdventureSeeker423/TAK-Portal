@@ -4,7 +4,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const Jimp = require("jimp"); // Jimp 0.22.x
 const settingsSvc = require("./settings.service");
-const { addLogoToQrPng } = require("./qrLogoOverlay.service");
+const { addLogoToQrPng, logoCacheIdentity } = require("./qrLogoOverlay.service");
 
 // Prefer TAK_URL from settings.json, fall back to .env if needed
 function getTakUrl() {
@@ -128,6 +128,43 @@ function buildPreferenceUrl({ callsign, teamLabel, roleLabel }) {
   return `tak://com.atakmap.app/preference?${params.join("&")}`;
 }
 
+const DISPLAY_QR_CACHE_MAX = 250;
+/** @type {Map<string, string>} */
+const displayQrCache = new Map();
+
+function displayQrCacheKey(content) {
+  const settings = settingsSvc.getSettings() || {};
+  const logoUrl = settings.BRAND_LOGO_URL;
+  let logoId = "nologo";
+  if (logoUrl && typeof logoUrl === "string") {
+    const logoFsPath = path.join(__dirname, "..", "data", logoUrl.replace(/^\//, ""));
+    logoId = logoCacheIdentity(logoFsPath) || "nologo";
+  }
+  return crypto
+    .createHash("sha256")
+    .update(`${String(content || "")}\0${logoId}`)
+    .digest("hex");
+}
+
+function getCachedDisplayQr(content) {
+  const key = displayQrCacheKey(content);
+  const hit = displayQrCache.get(key);
+  if (!hit) return null;
+  displayQrCache.delete(key);
+  displayQrCache.set(key, hit);
+  return hit;
+}
+
+function setCachedDisplayQr(content, dataUrl) {
+  const key = displayQrCacheKey(content);
+  if (displayQrCache.has(key)) displayQrCache.delete(key);
+  displayQrCache.set(key, dataUrl);
+  while (displayQrCache.size > DISPLAY_QR_CACHE_MAX) {
+    const oldest = displayQrCache.keys().next().value;
+    displayQrCache.delete(oldest);
+  }
+}
+
 async function addLogoToPng(pngBuffer, options = {}) {
   const settings = settingsSvc.getSettings() || {};
   const logoUrl = settings.BRAND_LOGO_URL;
@@ -188,7 +225,12 @@ async function addUsernameLabel(pngBuffer, username) {
 }
 
 async function generateDisplayQrDataUrl(enrollUrl) {
-  const basePng = await QRCode.toBuffer(enrollUrl, {
+  const content = String(enrollUrl || "");
+  if (!content) return "";
+  const cached = getCachedDisplayQr(content);
+  if (cached) return cached;
+
+  const basePng = await QRCode.toBuffer(content, {
     errorCorrectionLevel: "H",
     type: "png",
     width: 512, // Display size
@@ -200,7 +242,9 @@ async function generateDisplayQrDataUrl(enrollUrl) {
   });
 
   const finalPng = await addLogoToPng(basePng);
-  return "data:image/png;base64," + finalPng.toString("base64");
+  const dataUrl = "data:image/png;base64," + finalPng.toString("base64");
+  setCachedDisplayQr(content, dataUrl);
+  return dataUrl;
 }
 
 async function generateDownloadPng(enrollUrl, username) {
@@ -228,4 +272,5 @@ module.exports = {
   buildPreferenceUrl,
   generateDisplayQrDataUrl,
   generateDownloadPng,
+  displayQrCacheKey,
 };

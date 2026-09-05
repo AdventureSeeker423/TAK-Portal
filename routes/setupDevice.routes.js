@@ -121,8 +121,11 @@ router.get("/preference-data", async (req, res) => {
     const user = requireLoggedIn(req, res);
     if (!user) return;
 
-    const userId = await tokensSvc.getUserIdByUsername(user.username);
-    const fullUser = await usersSvc.getUserById(userId);
+    const uid = String(user.uid || "").trim();
+    const fullUser = await usersSvc.getUserById(uid || user.username);
+    if (!fullUser) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
     const data = usersSvc.getPreferenceDataForUser(fullUser);
 
     const preferenceUrl = qrSvc.buildPreferenceUrl({
@@ -171,7 +174,7 @@ router.get("/data-package", async (req, res) => {
 
     let prefs = { callsign: "", teamLabel: "", roleLabel: "" };
     try {
-      const userId = await tokensSvc.getUserIdByUsername(user.username);
+      const userId = String(user.uid || "").trim() || user.username;
       const fullUser = await usersSvc.getUserById(userId);
       prefs = usersSvc.getPreferenceDataForUser(fullUser);
     } catch (prefErr) {

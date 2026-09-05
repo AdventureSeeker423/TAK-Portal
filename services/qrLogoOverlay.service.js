@@ -1,7 +1,35 @@
 /**
  * Center logo overlay for QR PNGs — preserves source aspect ratio (no stretch).
  */
+const fs = require("fs");
 const Jimp = require("jimp");
+
+let _logoCache = { path: "", mtimeMs: 0, image: null };
+
+function logoCacheIdentity(logoFsPath) {
+  try {
+    const st = fs.statSync(logoFsPath);
+    return `${logoFsPath}:${st.mtimeMs}`;
+  } catch (_) {
+    return "";
+  }
+}
+
+async function getCachedLogoImage(logoFsPath) {
+  const identity = logoCacheIdentity(logoFsPath);
+  if (!identity) return null;
+  const st = fs.statSync(logoFsPath);
+  if (
+    _logoCache.image &&
+    _logoCache.path === logoFsPath &&
+    _logoCache.mtimeMs === st.mtimeMs
+  ) {
+    return _logoCache.image;
+  }
+  const image = await Jimp.read(logoFsPath);
+  _logoCache = { path: logoFsPath, mtimeMs: st.mtimeMs, image };
+  return image;
+}
 
 /**
  * @param {Buffer} pngBuffer
@@ -19,8 +47,9 @@ async function addLogoToQrPng(pngBuffer, logoFsPath, options = {}) {
 
     const [qrImage, logoImageOriginal] = await Promise.all([
       Jimp.read(pngBuffer),
-      Jimp.read(logoFsPath),
+      getCachedLogoImage(logoFsPath),
     ]);
+    if (!logoImageOriginal) return pngBuffer;
 
     const qrWidth = qrImage.getWidth();
     const qrHeight = qrImage.getHeight();
@@ -67,4 +96,5 @@ async function addLogoToQrPng(pngBuffer, logoFsPath, options = {}) {
 
 module.exports = {
   addLogoToQrPng,
+  logoCacheIdentity,
 };

@@ -168,6 +168,11 @@ async function main() {
     console.warn("[worker] MOU scheduler:", e?.message || e);
   }
 
+  every(5 * 60 * 1000, () => {
+    const tokensSvc = require("./services/authentikTokens.service");
+    return tokensSvc.pruneExpiredEnrollmentCache();
+  });
+
   every(15 * 60 * 1000, writeAppUpdateMeta);
   void writeAppUpdateMeta();
 
