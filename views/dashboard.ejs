@@ -82,7 +82,7 @@
   <% const agencyDash = typeof isAgencyDashboard !== "undefined" && isAgencyDashboard; %>
   <% const multiAgencyDash = agencyDash && typeof isMultiAgencyDashboard !== "undefined" && isMultiAgencyDashboard; %>
   <div class="<%= multiAgencyDash ? 'grid3' : (agencyDash ? 'grid2 dashboardAgencyStats' : 'grid3') %>">
-    <a href="/users/manage" class="statCardLink">
+    <a href="/users" class="statCardLink">
       <div class="card stat">
         <div class="statLabel">Total Users</div>
         <div class="statValue"><%= stats.totalUsers %></div>

@@ -13,7 +13,7 @@ const PERMISSIONS = {
     users: {
       id: "page.users",
       label: "Users",
-      description: "Open Users screens (create, manage, CSV samples).",
+      description: "Open the Users page and related user APIs.",
       section: "usersGroups",
     },
     groups: {
@@ -214,7 +214,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p === "/dashboard" || p.startsWith("/dashboard/")) return ["page.dashboard"];
   if (p === "/access-control" || p.startsWith("/access-control/")) return ["page.access_control"];
   if (p === "/api/access-control" || p.startsWith("/api/access-control/")) return ["page.access_control"];
-  if (p.startsWith("/users")) return ["page.users"];
+  if (p === "/users" || p.startsWith("/users/")) return ["page.users"];
   if (p.startsWith("/groups")) return ["page.groups"];
   if (p.startsWith("/templates")) return ["page.templates"];
   if (p === "/email" || p.startsWith("/email/")) return ["page.email"];

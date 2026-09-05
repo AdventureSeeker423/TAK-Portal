@@ -89,7 +89,7 @@
           </button>
           <div class="nav-section-links" id="nav-users-groups">
             <% if (_perm("page.users")) { %>
-            <a href="/users/manage" class="<%= isActive('/users/manage') ? 'active' : '' %>">Users</a>
+            <a href="/users" class="<%= isActive('/users') ? 'active' : '' %>">Users</a>
             <% } %>
             <% if (_perm("page.groups")) { %>
             <a href="/groups" class="<%= isActive('/groups') ? 'active' : '' %>">Groups / Channels</a>

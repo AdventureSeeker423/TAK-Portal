@@ -243,8 +243,7 @@ function pageTitleForPath(pathname, portalTitle, serverAbbrev) {
   const labels = [
     ["/dashboard", "Dashboard"],
     ["/setup-my-device", "Setup My Device"],
-    ["/users/manage", "Users"],
-    ["/users/create", "Create User"],
+    ["/users", "Users"],
     ["/groups", "Groups / Channels"],
     ["/templates", "Templates"],
     ["/audit-log", "Audit Log"],
@@ -895,17 +894,18 @@ app.get("/", (req, res) => {
   return res.redirect("dashboard");
 });
 
-app.get("/users/create", (req, res) => res.render("users-create"));
-app.get("/users/manage", async (req, res) => {
+app.get("/users", requirePermission("page.users"), async (req, res) => {
   const pendingUserRequestsCount =
     userRequestsSvc.countRequestsForUser(req.authentikUser);
   const enrollmentPkg = require("./services/enrollmentPackage.service");
 
-  return res.render("users-manage", {
+  return res.render("users", {
     pendingUserRequestsCount,
     dataPackageAvailable: enrollmentPkg.isDataPackageAvailable(),
   });
 });
+app.get("/users/manage", requirePermission("page.users"), (req, res) => res.redirect(301, "/users"));
+app.get("/users/create", requirePermission("page.users"), (req, res) => res.redirect(301, "/users"));
 app.get("/sample-users.csv", requirePermission("page.users"), (req, res) => {
   const filePath = path.join(__dirname, "sample-users.csv");
   return res.download(filePath, "users-import-template.csv");

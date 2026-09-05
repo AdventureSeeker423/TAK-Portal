@@ -199,7 +199,7 @@ router.get("/group-lookup", async (req, res) => {
 
     // Global admins can resolve any group name (including hidden).
     // Agency admins may ONLY resolve their own computed AgencyAdmin group(s)
-    // so the Manage Users UI can:
+    // so the Users page can:
     //  - show the friendly group name in "Current Groups"
     //  - compute the Role column (User/Admin)
     // without exposing arbitrary hidden groups.
@@ -251,7 +251,7 @@ router.get("/groups", async (req, res) => {
 });
 
 // All Authentik groups, including those normally hidden from the portal UI (e.g. authentik-*).
-// Restricted to global admins, used by the Manage Users page to resolve AgencyAdmin roles.
+// Restricted to global admins, used by the Users page to resolve AgencyAdmin roles.
 router.get("/all-groups-hidden", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
