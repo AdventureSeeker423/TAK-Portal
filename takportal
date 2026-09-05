@@ -23,7 +23,7 @@ Commands:
   remove     Completely remove containers, volumes, network, and images
              WARNING: -v deletes both tak_portal_data and tak_portal_pg
   data       Open a shell in the web container's /usr/src/app/data directory
-  db         Open psql in the portal Postgres database (password is never printed)
+  db         Open psql in the portal Postgres database
 EOF
 }
 
@@ -38,45 +38,24 @@ read_dotenv_postgres_password() {
 }
 
 # Compose interpolates ${POSTGRES_PASSWORD} from the process environment first,
-# then the project .env. An empty exported value would ignore .env and crash-loop
-# official Postgres (no superuser password). Always export the file value.
+# then the project .env. An empty exported value would ignore .env; compose.yml
+# uses ${POSTGRES_PASSWORD:-takportal} so 1.4.9 / InfraTAK `docker compose up`
+# still initializes Postgres. Do not export an empty value.
 export_compose_secrets() {
   local current=""
   current="$(read_dotenv_postgres_password)"
-  if [[ -z "$current" ]]; then
-    echo "ERROR: POSTGRES_PASSWORD is empty in .env"
-    return 1
+  if [[ -n "$current" ]]; then
+    export POSTGRES_PASSWORD="$current"
+  else
+    unset POSTGRES_PASSWORD || true
   fi
-  export POSTGRES_PASSWORD="$current"
   return 0
 }
 
+# Password is optional. Empty .env keeps the compose default (takportal) so a
+# 1.4.9 updater that only runs `docker compose up` can init Postgres.
 ensure_postgres_password() {
-  if [[ ! -f .env ]]; then
-    return 0
-  fi
-  local current=""
-  current="$(read_dotenv_postgres_password)"
-  if [[ -n "$current" ]]; then
-    return 0
-  fi
-  local pw=""
-  pw="$(tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 32 || true)"
-  if [[ ${#pw} -lt 24 ]]; then
-    pw="$(openssl rand -hex 16 2>/dev/null || date +%s%N | sha256sum | awk '{print $1}')"
-  fi
-  if grep -qE '^POSTGRES_PASSWORD=' .env 2>/dev/null; then
-    awk -v pw="$pw" '
-      BEGIN { done=0 }
-      /^POSTGRES_PASSWORD=/ && !done { print "POSTGRES_PASSWORD=" pw; done=1; next }
-      { print }
-      END { if (!done) print "POSTGRES_PASSWORD=" pw }
-    ' .env > .env.takportal-pw && mv -f .env.takportal-pw .env
-  else
-    printf '\nPOSTGRES_PASSWORD=%s\n' "$pw" >> .env
-  fi
-  TAKPORTAL_PW_GENERATED=1
-  echo "Generated POSTGRES_PASSWORD in .env (also shown in Settings → Portal database)."
+  return 0
 }
 
 # Blank-password Postgres is created by an older updater (or compose up without
@@ -385,9 +364,8 @@ maybe_reexec_updater() {
 run_update() {
   echo "Updating repository and containers..."
 
-  # 1.4.9 re-execs this script after checkout, then we land here. Write the
-  # password before preserve/checkout so .env.takportal-preserve already has it,
-  # and before `compose ps` (beta detection) interpolates POSTGRES_PASSWORD.
+  # 1.4.9 re-execs this script after checkout, then we land here. Do not require
+  # POSTGRES_PASSWORD in .env — compose.yml defaults it so older updaters work.
   if ! ensure_env; then
     echo "Run: ./$(basename "${BASH_SOURCE[0]}") setup"
     exit 1

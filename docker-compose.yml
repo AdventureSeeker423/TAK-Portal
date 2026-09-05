@@ -5,7 +5,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: takportal
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # 1.4.9 / InfraTAK run `docker compose up` with a .env that has no password.
+      # Official Postgres refuses to init on a blank value; :-default keeps that path working.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-takportal}
       POSTGRES_DB: takportal
     volumes:
       - tak_portal_pg:/var/lib/postgresql/data
@@ -27,7 +29,7 @@ services:
       - -c
       - log_error_verbosity=terse
     # Localhost only — not the LAN/internet. 5433 avoids clashing with a host Postgres on 5432.
-    # Connection: host 127.0.0.1, port 5433, database/user takportal, password POSTGRES_PASSWORD.
+    # Connection: host 127.0.0.1, port 5433, database/user takportal, password from POSTGRES_PASSWORD (default takportal).
     # Remote operators: SSH tunnel `ssh -L 5433:127.0.0.1:5433 user@tak-host` then DBeaver to localhost:5433.
     # To disable host access, delete this ports block (containers still reach postgres:5432 on the compose network).
     ports:
@@ -40,7 +42,8 @@ services:
     env_file: .env
     environment:
       PROCESS_ROLE: web
-      DATABASE_URL: postgres://takportal:${POSTGRES_PASSWORD}@postgres:5432/takportal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-takportal}
+      DATABASE_URL: postgres://takportal:${POSTGRES_PASSWORD:-takportal}@postgres:5432/takportal
     ports:
       - "${WEB_UI_PORT:-3000}:${WEB_UI_PORT:-3000}"
     volumes:
@@ -57,7 +60,8 @@ services:
     env_file: .env
     environment:
       PROCESS_ROLE: worker
-      DATABASE_URL: postgres://takportal:${POSTGRES_PASSWORD}@postgres:5432/takportal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-takportal}
+      DATABASE_URL: postgres://takportal:${POSTGRES_PASSWORD:-takportal}@postgres:5432/takportal
     volumes:
       - tak_portal_data:/usr/src/app/data
     depends_on:
