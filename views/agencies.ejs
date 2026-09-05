@@ -78,7 +78,7 @@
             <th data-sort="countyAbbrev" role="button" tabindex="0" title="Sort by County Abbreviation">County Abbrev</th>
             <th data-sort="state" role="button" tabindex="0">State</th>
             <th data-sort="type" role="button" tabindex="0" title="Sort by Type">Type</th>
-            <th data-sort="regionName" role="button" tabindex="0" title="Sort by Region">Region</th>
+            <th class="agencyRegionHeader" data-sort="regionName" role="button" tabindex="0" title="Sort by Region">Region</th>
             <th data-sort="color" role="button" tabindex="0" title="Sort by Color">Color</th>
             <th class="agencyActionsHeader" data-label="Actions">Actions</th>
           </tr>
@@ -734,6 +734,21 @@ function regionNameForId(regionId) {
   return hit ? String(hit.name || "").trim() : "";
 }
 
+function agencyHasRegion(a) {
+  if (String(a?.regionId || "").trim()) return true;
+  if (String(a?.regionName || "").trim()) return true;
+  const lock = findAgencyCountyRegionLock(a);
+  return !!(lock && String(lock.regionId || "").trim());
+}
+
+function anyAgencyHasRegion() {
+  return (agencies || []).some(agencyHasRegion);
+}
+
+function shouldShowRegionColumn() {
+  return agencyAttributesEditMode || anyAgencyHasRegion();
+}
+
 function findAgencyCountyRegionLock(a) {
   const st = String(a?.state || "").trim().toUpperCase();
   const cn = String(a?.county || "").trim().toLowerCase();
@@ -939,6 +954,9 @@ async function loadAdminsPage(page) {
 }
 
 function renderAgencies(){
+  const showRegionColumn = shouldShowRegionColumn();
+  if (agencyTable) agencyTable.classList.toggle("hide-region-column", !showRegionColumn);
+
   // apply sort (copy to avoid mutating original order if you later want it)
   const rows = [...agencies];
 
@@ -1026,11 +1044,15 @@ function renderAgencies(){
       <td class="agencyTypeCell${agencyAttributesEditMode ? " agency-type-td" : ""}" data-label="Type">${
         agencyAttributesEditMode ? buildAgencyTypeCellHtml(a) : esc(a.type || "")
       }</td>
-      <td class="agencyRegionCell" data-label="Region">${
-        agencyAttributesEditMode
-          ? buildAgencyRegionCellHtml(a)
-          : esc(a.regionName || regionNameForId(a.regionId) || "")
-      }</td>
+      ${
+        showRegionColumn
+          ? `<td class="agencyRegionCell" data-label="Region">${
+              agencyAttributesEditMode
+                ? buildAgencyRegionCellHtml(a)
+                : esc(a.regionName || regionNameForId(a.regionId) || "")
+            }</td>`
+          : ""
+      }
       <td class="agencyColorCell" data-label="Color">${
         agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(a.color || "")
       }</td>
@@ -2915,6 +2937,11 @@ if (addForm) {
   display: table-cell;
 }
 
+.agenciesTable.hide-region-column .agencyRegionHeader,
+.agenciesTable.hide-region-column .agencyRegionCell {
+  display: none !important;
+}
+
 .agenciesTable .agencyNameCell {
   max-width: 320px;
 }
@@ -3099,8 +3126,9 @@ if (addForm) {
   .agenciesTable .agencyCountyAbbrevCell { order: 6; }
   .agenciesTable .agencyStateCell { order: 7; }
   .agenciesTable .agencyTypeCell { order: 8; }
-  .agenciesTable .agencyColorCell { order: 9; }
-  .agenciesTable .cardActionsCell { order: 10; }
+  .agenciesTable .agencyRegionCell { order: 9; }
+  .agenciesTable .agencyColorCell { order: 10; }
+  .agenciesTable .cardActionsCell { order: 11; }
 
   .listCardTable tbody td {
     display: block;
