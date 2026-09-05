@@ -2373,7 +2373,7 @@
                 </span>
               </span>
               <%
-                const defaultPrimaryButtonColor = defaultThemeMode === "light" ? "#2563eb" : "#0a84ff";
+                const defaultPrimaryButtonColor = defaultThemeMode === "light" ? "#1d4ed8" : "#2563eb";
                 const configuredPrimaryButtonColor = String(settings.PRIMARY_BUTTON_COLOR || "").trim();
                 const hasCustomPrimaryButtonColor = /^#[0-9a-fA-F]{6}$/.test(configuredPrimaryButtonColor);
                 const primaryButtonColor = hasCustomPrimaryButtonColor
@@ -2434,9 +2434,9 @@
               var defaultSiteFontFamily = <%- JSON.stringify(defaultSiteFont) %>;
               function getThemeDefaultButtonColor() {
                 var body = document.body;
-                if (!body) return "#0a84ff";
-                if (body.classList.contains("theme-light")) return "#2563eb";
-                return "#0a84ff";
+                if (!body) return "#2563eb";
+                if (body.classList.contains("theme-light")) return "#1d4ed8";
+                return "#2563eb";
               }
               function syncThemeColorVisuals() {
                 var themeColor = getThemeDefaultButtonColor();
