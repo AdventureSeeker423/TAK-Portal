@@ -105,6 +105,14 @@
 
     <div id="templateListMsg" class="msg"></div>
 
+    <div class="pagination" id="templatesPagination" style="display:none;">
+      <button class="btn pagination-first-last" type="button" id="templatesFirstBtn">First</button>
+      <button class="btn" type="button" id="templatesPrevBtn">Previous</button>
+      <span id="templatesPageInfo"></span>
+      <button class="btn" type="button" id="templatesNextBtn">Next</button>
+      <button class="btn pagination-first-last" type="button" id="templatesLastBtn">Last</button>
+    </div>
+
     <div class="listCardTableWrap">
       <table class="table listCardTable templatesTable">
         <thead>
@@ -146,6 +154,14 @@ const IS_MULTI_AGENCY_ADMIN =
 const AGENCY_ADMIN_SUFFIX = <%- JSON.stringify((!isGlobalAdmin && isAgencyAdmin && Array.isArray(allowedAgencySuffixes) && allowedAgencySuffixes.length === 1) ? String(allowedAgencySuffixes[0] || "").trim().toLowerCase() : "") %>;
 const templateNameSearch = document.getElementById("templateNameSearch");
 const templateAgencyFilterSelect = document.getElementById("templateAgencyFilterSelect");
+const TEMPLATES_PAGE_SIZE = 25;
+let templatesPage = 1;
+const templatesPagination = document.getElementById("templatesPagination");
+const templatesFirstBtn = document.getElementById("templatesFirstBtn");
+const templatesPrevBtn = document.getElementById("templatesPrevBtn");
+const templatesNextBtn = document.getElementById("templatesNextBtn");
+const templatesLastBtn = document.getElementById("templatesLastBtn");
+const templatesPageInfo = document.getElementById("templatesPageInfo");
 
 // ---- sortable Existing Templates table ----
 let viewTemplates = []; // [{ t, idx }] where idx is the original index in the stored templates array
@@ -267,7 +283,20 @@ function applySortAndRender(){
   const agencyScoped = getAgencyScopedTemplatePairs();
   const filtered = getFilteredTemplatePairs();
   const sorted = stableSort(filtered, sortState.key, sortState.dir);
-  renderTemplates(sorted);
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / TEMPLATES_PAGE_SIZE));
+  if (templatesPage > totalPages) templatesPage = totalPages;
+  if (templatesPage < 1) templatesPage = 1;
+  const pageList = total > TEMPLATES_PAGE_SIZE
+    ? sorted.slice((templatesPage - 1) * TEMPLATES_PAGE_SIZE, templatesPage * TEMPLATES_PAGE_SIZE)
+    : sorted;
+  if (templatesPagination) templatesPagination.style.display = total > TEMPLATES_PAGE_SIZE ? "flex" : "none";
+  if (templatesPageInfo) templatesPageInfo.textContent = `Page ${templatesPage} of ${totalPages}`;
+  if (templatesFirstBtn) templatesFirstBtn.disabled = templatesPage <= 1;
+  if (templatesPrevBtn) templatesPrevBtn.disabled = templatesPage <= 1;
+  if (templatesNextBtn) templatesNextBtn.disabled = templatesPage >= totalPages;
+  if (templatesLastBtn) templatesLastBtn.disabled = templatesPage >= totalPages;
+  renderTemplates(pageList);
   updateSortIndicators();
   updateTemplateListMsg(sorted.length, agencyScoped.length);
 }
@@ -703,11 +732,47 @@ agencyEl.addEventListener("change", () => {
 });
 
 if (templateNameSearch) {
-  templateNameSearch.addEventListener("input", applySortAndRender);
+  templateNameSearch.addEventListener("input", () => {
+    templatesPage = 1;
+    applySortAndRender();
+  });
 }
 
 if (templateAgencyFilterSelect) {
-  templateAgencyFilterSelect.addEventListener("change", applySortAndRender);
+  templateAgencyFilterSelect.addEventListener("change", () => {
+    templatesPage = 1;
+    applySortAndRender();
+  });
+}
+
+if (templatesFirstBtn) {
+  templatesFirstBtn.onclick = () => {
+    if (templatesPage <= 1) return;
+    templatesPage = 1;
+    applySortAndRender();
+  };
+}
+if (templatesPrevBtn) {
+  templatesPrevBtn.onclick = () => {
+    if (templatesPage <= 1) return;
+    templatesPage -= 1;
+    applySortAndRender();
+  };
+}
+if (templatesNextBtn) {
+  templatesNextBtn.onclick = () => {
+    templatesPage += 1;
+    applySortAndRender();
+  };
+}
+if (templatesLastBtn) {
+  templatesLastBtn.onclick = () => {
+    const total = getFilteredTemplatePairs().length;
+    const totalPages = Math.max(1, Math.ceil(total / TEMPLATES_PAGE_SIZE));
+    if (templatesPage >= totalPages) return;
+    templatesPage = totalPages;
+    applySortAndRender();
+  };
 }
 
 selectAllBtn.onclick = () => {
@@ -835,6 +900,44 @@ if (exportTemplatesCsvBtn) {
 </script>
 
 <style>
+.pagination {
+  margin: 12px 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.pagination .btn {
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: #2f3241;
+  border: 1px solid #3a3d4d;
+  color: #e4e4e4;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.pagination .btn:hover:not(:disabled) {
+  background: #3a3d4d;
+  border-color: #4a4d5e;
+}
+
+.pagination .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#templatesPageInfo {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0.9;
+  font-size: 12px;
+}
+
 /* Sortable header UI */
 th.sortable{
   cursor: pointer;

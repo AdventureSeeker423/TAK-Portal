@@ -58,6 +58,14 @@
       </div>
     </div>
 
+    <div class="pagination" id="agenciesPagination" style="display:none;">
+      <button class="btn pagination-first-last" type="button" id="agenciesFirstBtn">First</button>
+      <button class="btn" type="button" id="agenciesPrevBtn">Previous</button>
+      <span id="agenciesPageInfo"></span>
+      <button class="btn" type="button" id="agenciesNextBtn">Next</button>
+      <button class="btn pagination-first-last" type="button" id="agenciesLastBtn">Last</button>
+    </div>
+
     <div class="listCardTableWrap">
       <table class="table listCardTable agenciesTable" id="agencyTable">
         <thead>
@@ -110,18 +118,12 @@
         class="groupsBox"
         style="margin-top:10px; max-height: 320px; overflow:auto;"
       ></div>
-      <div class="pagination" style="margin-top:10px; display:flex; align-items:center; justify-content:center; gap:8px; font-size:14px;">
-        <button class="btn" id="adminsPrevBtn" type="button"
-          style="padding: 4px 14px; border-radius:999px; background:#2f3241; border:1px solid #3a3d4d; color:#e4e4e4; font-size:13px; line-height:1.2;">
-          Previous
-        </button>
-        <span id="adminsPageInfo"
-          style="padding:3px 10px; border-radius:999px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); opacity:.9; font-size:12px;">
-        </span>
-        <button class="btn" id="adminsNextBtn" type="button"
-          style="padding: 4px 14px; border-radius:999px; background:#2f3241; border:1px solid #3a3d4d; color:#e4e4e4; font-size:13px; line-height:1.2;">
-          Next
-        </button>
+      <div class="pagination" id="adminsPagination" style="display:none;">
+        <button class="btn pagination-first-last" id="adminsFirstBtn" type="button">First</button>
+        <button class="btn" id="adminsPrevBtn" type="button">Previous</button>
+        <span id="adminsPageInfo"></span>
+        <button class="btn" id="adminsNextBtn" type="button">Next</button>
+        <button class="btn pagination-first-last" id="adminsLastBtn" type="button">Last</button>
       </div>
       <small id="adminsHint" class="muted"></small>
     </div>
@@ -259,14 +261,26 @@ const adminsSummary = document.getElementById("adminsSummary");
 const adminsFilter = document.getElementById("adminsFilter");
 const adminsList = document.getElementById("adminsList");
 const adminsHint = document.getElementById("adminsHint");
+const adminsFirstBtn = document.getElementById("adminsFirstBtn");
 const adminsPrevBtn = document.getElementById("adminsPrevBtn");
 const adminsNextBtn = document.getElementById("adminsNextBtn");
+const adminsLastBtn = document.getElementById("adminsLastBtn");
 const adminsPageInfo = document.getElementById("adminsPageInfo");
+const adminsPagination = document.getElementById("adminsPagination");
 let adminsCurrentPage = 1;
 let adminsPageSize = 50;
 let adminsTotalCount = 0;
 let adminsHasNext = false;
 let adminsHasPrev = false;
+
+const AGENCIES_PAGE_SIZE = 25;
+let agenciesPage = 1;
+const agenciesPagination = document.getElementById("agenciesPagination");
+const agenciesFirstBtn = document.getElementById("agenciesFirstBtn");
+const agenciesPrevBtn = document.getElementById("agenciesPrevBtn");
+const agenciesNextBtn = document.getElementById("agenciesNextBtn");
+const agenciesLastBtn = document.getElementById("agenciesLastBtn");
+const agenciesPageInfo = document.getElementById("agenciesPageInfo");
 
 let agencies = [];
 /** When true, Name, Type, Color, Abbreviation, State, County, and County Abbrev columns are editable. */
@@ -854,11 +868,19 @@ if (adminsOverlay) adminsOverlay.addEventListener("click", (e) => {
   if (e.target === adminsOverlay) showAdminsModal(false);
 });
 if (adminsFilter) adminsFilter.oninput = renderAdminsList;
+if (adminsFirstBtn) adminsFirstBtn.onclick = () => {
+  if (adminsCurrentPage > 1) loadAdminsPage(1).catch(() => {});
+};
 if (adminsPrevBtn) adminsPrevBtn.onclick = () => {
   if (adminsHasPrev) loadAdminsPage(adminsCurrentPage - 1).catch(() => {});
 };
 if (adminsNextBtn) adminsNextBtn.onclick = () => {
   if (adminsHasNext) loadAdminsPage(adminsCurrentPage + 1).catch(() => {});
+};
+if (adminsLastBtn) adminsLastBtn.onclick = () => {
+  const size = Math.max(1, Number(adminsPageSize || 50));
+  const totalPages = Math.max(1, Math.ceil(Number(adminsTotalCount || 0) / size));
+  if (adminsCurrentPage < totalPages) loadAdminsPage(totalPages).catch(() => {});
 };
 
 async function loadAdminsPage(page) {
@@ -876,9 +898,12 @@ async function loadAdminsPage(page) {
   adminsHasNext = !!out.hasNext;
   adminsHasPrev = !!out.hasPrev;
   const totalPages = adminsTotalCount > 0 ? Math.max(1, Math.ceil(adminsTotalCount / Math.max(1, adminsPageSize))) : 1;
+  if (adminsPagination) adminsPagination.style.display = adminsTotalCount > adminsPageSize ? "flex" : "none";
   if (adminsPageInfo) adminsPageInfo.textContent = `Page ${adminsCurrentPage} of ${totalPages}`;
+  if (adminsFirstBtn) adminsFirstBtn.disabled = adminsCurrentPage <= 1 || !adminsHasPrev;
   if (adminsPrevBtn) adminsPrevBtn.disabled = !adminsHasPrev;
   if (adminsNextBtn) adminsNextBtn.disabled = !adminsHasNext;
+  if (adminsLastBtn) adminsLastBtn.disabled = adminsCurrentPage >= totalPages || !adminsHasNext;
   adminsSummary.textContent = `${adminsTotalCount} admin${adminsTotalCount === 1 ? "" : "s"} in group "${activeAdminsGroupName}".`;
   adminsSummary.className = "msg ok";
   adminsHint.textContent = adminsTotalCount
@@ -922,7 +947,21 @@ function renderAgencies(){
     }
   });
 
-  tbody.innerHTML = rows.map((a)=>{
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / AGENCIES_PAGE_SIZE));
+  if (agenciesPage > totalPages) agenciesPage = totalPages;
+  if (agenciesPage < 1) agenciesPage = 1;
+  const pageRows = total > AGENCIES_PAGE_SIZE
+    ? rows.slice((agenciesPage - 1) * AGENCIES_PAGE_SIZE, agenciesPage * AGENCIES_PAGE_SIZE)
+    : rows;
+  if (agenciesPagination) agenciesPagination.style.display = total > AGENCIES_PAGE_SIZE ? "flex" : "none";
+  if (agenciesPageInfo) agenciesPageInfo.textContent = `Page ${agenciesPage} of ${totalPages}`;
+  if (agenciesFirstBtn) agenciesFirstBtn.disabled = agenciesPage <= 1;
+  if (agenciesPrevBtn) agenciesPrevBtn.disabled = agenciesPage <= 1;
+  if (agenciesNextBtn) agenciesNextBtn.disabled = agenciesPage >= totalPages;
+  if (agenciesLastBtn) agenciesLastBtn.disabled = agenciesPage >= totalPages;
+
+  tbody.innerHTML = pageRows.map((a)=>{
     const agencyId = esc(a._id ?? a.id ?? "");
     const active = isAgencyActive(a);
     const toggleBtnClass = active ? "btn caution" : "btn";
@@ -2532,6 +2571,37 @@ if (exportAgenciesCsvBtn) {
   });
 }
 
+if (agenciesFirstBtn) {
+  agenciesFirstBtn.onclick = () => {
+    if (agenciesPage <= 1) return;
+    agenciesPage = 1;
+    renderAgencies();
+  };
+}
+if (agenciesPrevBtn) {
+  agenciesPrevBtn.onclick = () => {
+    if (agenciesPage <= 1) return;
+    agenciesPage -= 1;
+    renderAgencies();
+  };
+}
+if (agenciesNextBtn) {
+  agenciesNextBtn.onclick = () => {
+    const totalPages = Math.max(1, Math.ceil((agencies || []).length / AGENCIES_PAGE_SIZE));
+    if (agenciesPage >= totalPages) return;
+    agenciesPage += 1;
+    renderAgencies();
+  };
+}
+if (agenciesLastBtn) {
+  agenciesLastBtn.onclick = () => {
+    const totalPages = Math.max(1, Math.ceil((agencies || []).length / AGENCIES_PAGE_SIZE));
+    if (agenciesPage >= totalPages) return;
+    agenciesPage = totalPages;
+    renderAgencies();
+  };
+}
+
 // click-to-sort + keyboard support (Enter/Space)
 agencyTable.querySelectorAll("thead th[data-sort]").forEach(th => {
   th.addEventListener("click", () => {
@@ -2586,6 +2656,45 @@ if (addForm) {
 </script>
 
 <style>
+.pagination {
+  margin: 12px 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.pagination .btn {
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: #2f3241;
+  border: 1px solid #3a3d4d;
+  color: #e4e4e4;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.pagination .btn:hover:not(:disabled) {
+  background: #3a3d4d;
+  border-color: #4a4d5e;
+}
+
+.pagination .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#agenciesPageInfo,
+#adminsPageInfo {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0.9;
+  font-size: 12px;
+}
+
 .msg.progress {
   color: var(--warning, #ff6600);
 }

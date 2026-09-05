@@ -219,7 +219,7 @@
     <div id="msg" class="msg"></div>
 
     <!-- Pagination controls (top) -->
-    <div class="pagination" id="paginationTop">
+    <div class="pagination" id="paginationTop" style="display:none;">
       <button class="btn pagination-first-last" id="firstPageBtnTop" type="button">First</button>
       <button class="btn" id="prevPageBtnTop" type="button">Previous</button>
       <span id="pageInfoTop"></span>
@@ -257,7 +257,7 @@
     </div>
 
     <!-- Pagination controls (bottom) -->
-    <div class="pagination" id="paginationBottom">
+    <div class="pagination" id="paginationBottom" style="display:none;">
       <button class="btn pagination-first-last" id="firstPageBtnBottom" type="button">First</button>
       <button class="btn" id="prevPageBtnBottom" type="button">Previous</button>
       <span id="pageInfoBottom"></span>
@@ -3404,7 +3404,7 @@ function updatePaginationControls() {
   if (!haveTop && !haveBottom) return;
 
   const total = totalUsers || 0;
-  if (!total) {
+  if (total <= PAGE_SIZE) {
     if (haveTop) paginationTop.style.display = "none";
     if (haveBottom) paginationBottom.style.display = "none";
     return;
@@ -3422,19 +3422,14 @@ function updatePaginationControls() {
 
   const disablePrev = !hasPrevPage && currentPage <= 1;
   const disableNext = !hasNextPage;
-  const showFirstLast = totalPages > 1;
   const disableFirst = currentPage <= 1;
   const disableLast = currentPage >= totalPages;
 
   [firstPageBtnTop, firstPageBtnBottom].forEach(btn => {
-    if (!btn) return;
-    btn.style.display = showFirstLast ? "" : "none";
-    btn.disabled = disableFirst;
+    if (btn) btn.disabled = disableFirst;
   });
   [lastPageBtnTop, lastPageBtnBottom].forEach(btn => {
-    if (!btn) return;
-    btn.style.display = showFirstLast ? "" : "none";
-    btn.disabled = disableLast;
+    if (btn) btn.disabled = disableLast;
   });
   [prevPageBtnTop, prevPageBtnBottom].forEach(btn => {
     if (btn) btn.disabled = disablePrev;
