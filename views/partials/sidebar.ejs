@@ -37,7 +37,7 @@
       : true;
   const _isAnyAdmin = _isGlobalAdmin || _isAgencyAdmin;
 
-  const canSeeChannelPatchNav = _isGlobalAdmin && _perm("page.channel_patch");
+  const canSeeChannelPatchNav = _perm("page.channel_patch");
   const canSeeUsersGroupsSection =
     _perm("page.users") ||
     _perm("page.groups") ||

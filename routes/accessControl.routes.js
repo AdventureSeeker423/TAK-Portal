@@ -22,6 +22,7 @@ const PERMISSION_UI_ORDER = [
   "page.audit_log",
   "page.data_package",
   "page.data_sync",
+  "page.channel_patch",
   "page.email",
   "page.locate",
   "page.mutual_aid",

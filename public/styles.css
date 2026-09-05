@@ -995,8 +995,8 @@ label.btn {
     position: fixed;
     inset: 0;
     background: var(--overlay);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2620,6 +2620,10 @@ a.settings-hub-card:visited {
 
 .settings-modal-backup {
     width: min(760px, 96vw);
+}
+
+.backup-mode-switch {
+    margin: 0 0 1rem;
 }
 
 .backup-toggle-groups {

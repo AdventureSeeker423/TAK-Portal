@@ -29,6 +29,8 @@ const accessControlRoutes = require("./routes/accessControl.routes");
 const usersSvc = require("./services/users.service");
 const groupsSvc = require("./services/groups.service");
 const channelPatchStore = require("./services/channelPatch.store");
+const channelPatchAccess = require("./services/channelPatchAccess.service");
+const accessSvc = require("./services/access.service");
 const agencyTypesSvc = require("./services/agencyTypes.service");
 const regionsSvc = require("./services/regions.service");
 const locatorsSvc = require("./services/locators.service");
@@ -676,7 +678,7 @@ app.use("/api/ssh", requirePermission("page.integrations"), require("./routes/ss
 app.use("/api/map", requireMapAccess, requireLiveMapEnabled, require("./routes/map.routes"));
 app.use(
   "/api/channel-patch",
-  requireGlobalAdminRole,
+  requirePermission("page.channel_patch"),
   require("./routes/channel-patch.routes")
 );
 app.use(
@@ -932,14 +934,23 @@ app.get("/csv-instructions-readme.txt", requirePermission("page.users"), (req, r
   const filePath = path.join(__dirname, "csv-instructions-readme.txt");
   return res.download(filePath, "csv-instructions-readme.txt");
 });
-app.get("/groups", (req, res) => {
+app.get("/groups", async (req, res) => {
   const canSeeChannelPatch =
-    !!res.locals.isGlobalAdmin &&
-    (typeof res.locals.perm !== "function" || res.locals.perm("page.channel_patch"));
+    typeof res.locals.perm !== "function" || res.locals.perm("page.channel_patch");
   let activeChannelPatchCount = 0;
   if (canSeeChannelPatch) {
     try {
-      activeChannelPatchCount = channelPatchStore.listEnabled().length;
+      const enabled = channelPatchStore.listEnabled();
+      if (enabled.length) {
+        const authUser = req.authentikUser || null;
+        const access = accessSvc.getAgencyAccess(authUser);
+        const allowed = await channelPatchAccess.resolveAllowedChannelKeySet(authUser);
+        activeChannelPatchCount = channelPatchAccess.filterPatchesForAccess(
+          access,
+          enabled,
+          allowed
+        ).length;
+      }
     } catch (_) {
       activeChannelPatchCount = 0;
     }
@@ -992,8 +1003,8 @@ app.get("/email", requirePermission("page.email"), (req, res) =>
   res.render("email")
 );
 
-// Channel Patch (global admins only)
-app.get("/channel-patch", requireGlobalAdminRole, (req, res) =>
+// Channel Patch (global + agency admins; agency-scoped in the route)
+app.get("/channel-patch", requirePermission("page.channel_patch"), (req, res) =>
   res.render("channel-patch")
 );
 app.get("/locate-persons", (req, res) => {

@@ -335,6 +335,7 @@
   const selectedNames = new Set();
   /** @type {string|null} */
   let editingId = null;
+  let isAgencyScoped = false;
 
   function esc(s) {
     return String(s ?? "")
@@ -378,7 +379,9 @@
     const list = filteredChannels();
 
     if (!list.length) {
-      channelsInner.innerHTML = '<div class="msg">No matching channels.</div>';
+      channelsInner.innerHTML = isAgencyScoped
+        ? '<div class="msg">No agency channels in your scope.</div>'
+        : '<div class="msg">No matching channels.</div>';
       return;
     }
 
@@ -455,7 +458,9 @@
   function renderBoard(patches) {
     patchesCache = Array.isArray(patches) ? patches : [];
     if (!patchesCache.length) {
-      board.innerHTML = '<div class="cp-empty">No patches yet.</div>';
+      board.innerHTML = isAgencyScoped
+        ? '<div class="cp-empty">No patches in your agency scope.</div>'
+        : '<div class="cp-empty">No patches yet.</div>';
       return;
     }
 
@@ -491,6 +496,7 @@
 
   async function loadMeta() {
     const meta = await api("/api/channel-patch/meta");
+    isAgencyScoped = !!meta.isAgencyAdmin && !meta.isGlobalAdmin;
     channels = Array.isArray(meta.channels) ? meta.channels : [];
     channels.sort((a, b) =>
       String(a.displayName || "").localeCompare(String(b.displayName || ""), undefined, {

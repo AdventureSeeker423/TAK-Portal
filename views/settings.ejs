@@ -175,21 +175,6 @@
       </div>
     </section>
 
-    <section class="settings-hub-category" aria-labelledby="settingsCatBackup">
-      <h2 class="settings-hub-category-title" id="settingsCatBackup">
-        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Backup & Restore
-      </h2>
-      <div class="settings-hub-grid">
-        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="backup-export">
-          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Export</span></span>
-        </div>
-        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="backup-import">
-          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Import</span></span>
-        </div>
-      </div>
-    </section>
-
     <section class="settings-hub-category" aria-labelledby="settingsCatPortalDb">
       <h2 class="settings-hub-category-title" id="settingsCatPortalDb">
         <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6"/></svg>
@@ -198,6 +183,9 @@
       <div class="settings-hub-grid">
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="portal-database">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Connection</span></span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="backup">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Import / Export</span></span>
         </div>
       </div>
     </section>
@@ -4557,96 +4545,89 @@
 
   </form>
 
-  <div class="modalOverlay settings-modal-overlay" id="settingsModal-backup-export" data-settings-modal="backup-export" style="display:none;" aria-hidden="true">
-    <div class="modal settings-modal settings-modal-backup" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-backup-export">
+  <div class="modalOverlay settings-modal-overlay" id="settingsModal-backup" data-settings-modal="backup" style="display:none;" aria-hidden="true">
+    <div class="modal settings-modal settings-modal-backup" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-backup">
       <div class="modalHeader">
         <div class="modalHeaderLeft">
-          <h2 id="settingsModalTitle-backup-export">Export backup</h2>
+          <h2 id="settingsModalTitle-backup">Import / Export</h2>
           <span class="settings-help-tip">
             <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Download a versioned archive of selected portal data. Authentik passwords are never included. Secrets (tokens, certs, keys) are off by default.</span>
+            <span class="settings-help-popover">Export a versioned archive of selected portal data, or import one onto this instance. Authentik passwords are never included. Secrets (tokens, certs, keys) are off by default on export.</span>
           </span>
         </div>
         <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
       </div>
       <div class="modalBody settings-body">
-        <label class="backup-toggle backup-toggle-master">
-          <input type="checkbox" id="backupExportSelectAll" />
-          <span>Select all</span>
-        </label>
-        <div id="backupExportToggles" class="backup-toggle-groups"></div>
-        <div class="backup-extra">
-          <label class="backup-toggle">
-            <input type="checkbox" id="backupExportSecrets" />
-            <span>Include secrets</span>
-          </label>
-          <p class="muted backup-hint">Tokens, certs, SSH keys, SMTP/SMS credentials, and the mutual-aid encryption key. Leave off unless you need a clone that can reconnect immediately.</p>
-          <label class="settings-field">
-            <span class="settings-label">Optional passphrase</span>
-            <input type="password" id="backupExportPassphrase" autocomplete="new-password" placeholder="Encrypt the archive" />
-          </label>
+        <div class="segmented backup-mode-switch" role="tablist" aria-label="Import or export">
+          <button type="button" class="segBtn active" id="backupModeExportBtn" data-backup-mode="export" role="tab" aria-selected="true">Export</button>
+          <button type="button" class="segBtn" id="backupModeImportBtn" data-backup-mode="import" role="tab" aria-selected="false">Import</button>
         </div>
-        <p id="backupExportStatus" class="muted backup-status" role="status"></p>
-        <div class="backup-actions">
-          <button type="button" class="btn" id="backupExportStartBtn">Start export</button>
-          <a id="backupExportDownload" class="btn" style="display:none;" href="#">Download</a>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <div class="modalOverlay settings-modal-overlay" id="settingsModal-backup-import" data-settings-modal="backup-import" style="display:none;" aria-hidden="true">
-    <div class="modal settings-modal settings-modal-backup" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-backup-import">
-      <div class="modalHeader">
-        <div class="modalHeaderLeft">
-          <h2 id="settingsModalTitle-backup-import">Import backup</h2>
-          <span class="settings-help-tip">
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">Restore selected categories onto this portal. Users and groups are recreated in Authentik without passwords. Merge updates matching records; Replace wipes only the categories you import.</span>
-          </span>
-        </div>
-        <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
-      </div>
-      <div class="modalBody settings-body">
-        <label class="settings-field">
-          <span class="settings-label">Backup file</span>
-          <input type="file" id="backupImportFile" accept=".zip,.takbackup,application/zip" />
-        </label>
-        <label class="settings-field">
-          <span class="settings-label">Passphrase (if encrypted)</span>
-          <input type="password" id="backupImportPassphrase" autocomplete="off" />
-        </label>
-        <button type="button" class="btn" id="backupImportInspectBtn">Read archive</button>
-        <p id="backupImportInspectStatus" class="muted backup-status" role="status"></p>
-        <div id="backupImportOptions" hidden>
+        <div id="backupExportPane" data-backup-pane="export">
           <label class="backup-toggle backup-toggle-master">
-            <input type="checkbox" id="backupImportSelectAll" />
+            <input type="checkbox" id="backupExportSelectAll" />
             <span>Select all</span>
           </label>
-          <div id="backupImportToggles" class="backup-toggle-groups"></div>
-          <fieldset class="backup-mode">
-            <legend>On conflict</legend>
-            <label><input type="radio" name="backupImportMode" value="merge" checked /> Merge (update matching records, keep extras)</label>
-            <label><input type="radio" name="backupImportMode" value="replace" /> Replace selected categories (wipe those tables, then load)</label>
-          </fieldset>
-          <label class="backup-toggle">
-            <input type="checkbox" id="backupImportSecrets" />
-            <span>Import secrets from this archive</span>
-          </label>
-          <label class="backup-toggle">
-            <input type="checkbox" id="backupImportDryRun" />
-            <span>Dry run (report only, no writes)</span>
-          </label>
-          <label class="backup-toggle">
-            <input type="checkbox" id="backupImportOnboarding" />
-            <span>Email newly created users that they must reset their password</span>
-          </label>
+          <div id="backupExportToggles" class="backup-toggle-groups"></div>
+          <div class="backup-extra">
+            <label class="backup-toggle">
+              <input type="checkbox" id="backupExportSecrets" />
+              <span>Include secrets</span>
+            </label>
+            <p class="muted backup-hint">Tokens, certs, SSH keys, SMTP/SMS credentials, and the mutual-aid encryption key. Leave off unless you need a clone that can reconnect immediately.</p>
+            <label class="settings-field">
+              <span class="settings-label">Optional passphrase</span>
+              <input type="password" id="backupExportPassphrase" autocomplete="new-password" placeholder="Encrypt the archive" />
+            </label>
+          </div>
+          <p id="backupExportStatus" class="muted backup-status" role="status"></p>
           <div class="backup-actions">
-            <button type="button" class="btn" id="backupImportStartBtn">Start import</button>
+            <button type="button" class="btn" id="backupExportStartBtn">Start export</button>
+            <a id="backupExportDownload" class="btn" style="display:none;" href="#">Download</a>
           </div>
         </div>
-        <p id="backupImportStatus" class="muted backup-status" role="status"></p>
-        <pre id="backupImportReport" class="backup-report" hidden></pre>
+
+        <div id="backupImportPane" data-backup-pane="import" hidden>
+          <label class="settings-field">
+            <span class="settings-label">Backup file</span>
+            <input type="file" id="backupImportFile" accept=".zip,.takbackup,application/zip" />
+          </label>
+          <label class="settings-field">
+            <span class="settings-label">Passphrase (if encrypted)</span>
+            <input type="password" id="backupImportPassphrase" autocomplete="off" />
+          </label>
+          <button type="button" class="btn" id="backupImportInspectBtn">Read archive</button>
+          <p id="backupImportInspectStatus" class="muted backup-status" role="status"></p>
+          <div id="backupImportOptions" hidden>
+            <label class="backup-toggle backup-toggle-master">
+              <input type="checkbox" id="backupImportSelectAll" />
+              <span>Select all</span>
+            </label>
+            <div id="backupImportToggles" class="backup-toggle-groups"></div>
+            <fieldset class="backup-mode">
+              <legend>On conflict</legend>
+              <label><input type="radio" name="backupImportMode" value="merge" checked /> Merge (update matching records, keep extras)</label>
+              <label><input type="radio" name="backupImportMode" value="replace" /> Replace selected categories (wipe those tables, then load)</label>
+            </fieldset>
+            <label class="backup-toggle">
+              <input type="checkbox" id="backupImportSecrets" />
+              <span>Import secrets from this archive</span>
+            </label>
+            <label class="backup-toggle">
+              <input type="checkbox" id="backupImportDryRun" />
+              <span>Dry run (report only, no writes)</span>
+            </label>
+            <label class="backup-toggle">
+              <input type="checkbox" id="backupImportOnboarding" />
+              <span>Email newly created users that they must reset their password</span>
+            </label>
+            <div class="backup-actions">
+              <button type="button" class="btn" id="backupImportStartBtn">Start import</button>
+            </div>
+          </div>
+          <p id="backupImportStatus" class="muted backup-status" role="status"></p>
+          <pre id="backupImportReport" class="backup-report" hidden></pre>
+        </div>
       </div>
     </div>
   </div>
@@ -4917,8 +4898,26 @@
         }, 1000);
       }
 
-      var exportModal = document.getElementById("settingsModal-backup-export");
-      if (exportModal) {
+      var backupModal = document.getElementById("settingsModal-backup");
+      if (backupModal) {
+        function setBackupMode(mode) {
+          var exportPane = document.getElementById("backupExportPane");
+          var importPane = document.getElementById("backupImportPane");
+          var isExport = mode !== "import";
+          if (exportPane) exportPane.hidden = !isExport;
+          if (importPane) importPane.hidden = isExport;
+          backupModal.querySelectorAll("[data-backup-mode]").forEach(function (btn) {
+            var on = btn.getAttribute("data-backup-mode") === (isExport ? "export" : "import");
+            btn.classList.toggle("active", on);
+            btn.setAttribute("aria-selected", on ? "true" : "false");
+          });
+        }
+        backupModal.querySelectorAll("[data-backup-mode]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            setBackupMode(btn.getAttribute("data-backup-mode"));
+          });
+        });
+        setBackupMode("export");
         loadCatalog().then(function (catalog) {
           var box = document.getElementById("backupExportToggles");
           renderGroups(box, catalog, null, false);
@@ -6145,7 +6144,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup-export" || modalId === "backup-import") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

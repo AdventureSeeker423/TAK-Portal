@@ -103,7 +103,8 @@ const PERMISSIONS = {
     channel_patch: {
       id: "page.channel_patch",
       label: "Channel Patch",
-      description: "Patch TAK portal groups together (bidirectional CoT rebroadcast).",
+      description:
+        "Patch TAK portal groups together (bidirectional CoT rebroadcast). Agency admins are limited to in-scope channels.",
       section: "administration",
     },
   },
@@ -135,6 +136,7 @@ const AGENCY_DEFAULT = new Set([
   "page.email",
   "page.mou",
   "page.data_sync",
+  "page.channel_patch",
   "page.mutual_aid",
 ]);
 

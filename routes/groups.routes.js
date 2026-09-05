@@ -10,8 +10,22 @@ const { getString } = require("../services/env");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 const mutualAidStore = require("../services/mutualAid.store");
 const channelPatchStore = require("../services/channelPatch.store");
+const channelPatchAccess = require("../services/channelPatchAccess.service");
 
 const MUTUAL_AID_GROUP_PREFIX = "ma -";
+
+async function annotateGroupsWithScopedPatchPeers(authUser, groupsList) {
+  try {
+    const enabled = channelPatchStore.listEnabled();
+    if (!enabled.length) return Array.isArray(groupsList) ? groupsList : [];
+    const access = accessSvc.getAgencyAccess(authUser);
+    const allowed = await channelPatchAccess.resolveAllowedChannelKeySet(authUser);
+    const patches = channelPatchAccess.filterPatchesForAccess(access, enabled, allowed);
+    return channelPatchStore.annotateGroupsWithPatchPeers(groupsList, patches);
+  } catch (_) {
+    return Array.isArray(groupsList) ? groupsList : [];
+  }
+}
 
 function ensureTakPrefix(name) {
   const n = String(name || "").trim();
@@ -59,10 +73,7 @@ router.get("/", async (req, res) => {
       includeMutualAid,
     });
 
-    const payload =
-      access.isGlobalAdmin
-        ? channelPatchStore.annotateGroupsWithPatchPeers(filtered)
-        : filtered;
+    const payload = await annotateGroupsWithScopedPatchPeers(authUser, filtered);
 
     res.json(payload);
   } catch (err) {
@@ -91,9 +102,7 @@ router.get("/search", async (req, res) => {
       includeMutualAid,
     });
     const groupsList = Array.isArray(out.groups) ? out.groups : [];
-    const payload = access.isGlobalAdmin
-      ? channelPatchStore.annotateGroupsWithPatchPeers(groupsList)
-      : groupsList;
+    const payload = await annotateGroupsWithScopedPatchPeers(authUser, groupsList);
     res.json({
       groups: payload,
       total: Number(out.total || 0),

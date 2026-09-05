@@ -71,8 +71,10 @@ function enabledPeerLabelsByGroupKey() {
   return peerLabelsByGroupKeyFromPatches(listEnabled());
 }
 
-function annotateGroupsWithPatchPeers(groups) {
-  const index = enabledPeerLabelsByGroupKey();
+function annotateGroupsWithPatchPeers(groups, patches) {
+  const index = Array.isArray(patches)
+    ? peerLabelsByGroupKeyFromPatches(patches)
+    : enabledPeerLabelsByGroupKey();
   if (!index.size) return Array.isArray(groups) ? groups : [];
   return (Array.isArray(groups) ? groups : []).map((g) => {
     const peers = index.get(groupMatchKey(g && g.name));
