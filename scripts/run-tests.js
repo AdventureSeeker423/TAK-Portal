@@ -28,6 +28,7 @@ const TEST_FILES = [
   "takGroupControl.test.js",
   "geofence.test.js",
   "userRequestsOtherAgency.test.js",
+  "agencyAutoApprove.test.js",
   "migrationGate.test.js",
   "stackHealthGate.test.js",
   "jsonImport.retire.test.js",

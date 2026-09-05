@@ -16,11 +16,15 @@
     <div class="app">
 
 <main class="main" style="max-width: 980px; margin: 0 auto;">
-  <h1>Request Submitted</h1>
+  <h1><%= typeof autoApproved !== "undefined" && autoApproved ? "Account Created" : "Request Submitted" %></h1>
 
   <div class="card">
     <p>
-      Your request to access TAK Portal has been successfully submitted. An administrator will review your request shortly. Once it has been approved, you will receive an email with instructions on how to access your account.
+      <% if (typeof autoApproved !== "undefined" && autoApproved) { %>
+        Your TAK Portal account has been created. Check your email shortly for instructions on how to access your account.
+      <% } else { %>
+        Your request to access TAK Portal has been successfully submitted. An administrator will review your request shortly. Once it has been approved, you will receive an email with instructions on how to access your account.
+      <% } %>
     </p>
     <div style="margin-top: 14px; display:flex; gap: 10px; flex-wrap:wrap;">
       <a class="btn" href="/request-access" style="text-decoration:none;">Submit another request</a>

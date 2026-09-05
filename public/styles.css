@@ -923,6 +923,19 @@ label.btn {
     box-shadow: 0 12px 40px rgba(0,0,0,.45);
 }
 
+#lookupModal .modal {
+    width: min(560px, 96vw);
+    overflow: visible;
+}
+
+#lookupModal .modalBody {
+    overflow: visible;
+}
+
+#lookupModal .settings-field-bool {
+    padding: 2px 0;
+}
+
 .modalHeader {
     position: sticky;
     top: 0;

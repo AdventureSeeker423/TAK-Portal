@@ -1570,7 +1570,31 @@ app.post("/request-access", async (req, res) => {
       },
     });
 
-    return res.redirect("/request-access/confirmation");
+    if (created?.autoApproved) {
+      auditSvc.logEvent({
+        actor: req.authentikUser || null,
+        request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+        action: "CREATE_USER",
+        targetType: "user",
+        targetId: String(created?.createdUser?.pk || created?.createdUsername || ""),
+        details: {
+          username: created?.createdUsername,
+          email: body.email,
+          name: [body.lastName, body.firstName].filter(Boolean).join(", "),
+          groups: Array.isArray(created?.createdGroups)
+            ? created.createdGroups.map((g) => g?.name).filter(Boolean)
+            : [],
+          created_method: "request_access_auto_approve",
+          agencySuffix: body.agencySuffix,
+        },
+      });
+    }
+
+    return res.redirect(
+      created?.autoApproved
+        ? "/request-access/confirmation?created=1"
+        : "/request-access/confirmation"
+    );
   } catch (err) {
     const agencies = agenciesStore.filterPublicEnrollmentAgencies(agenciesStore.load());
     const settings = (res.locals && res.locals.settings) ? res.locals.settings : (settingsSvc.getSettings() || {});
@@ -1596,7 +1620,9 @@ app.post("/request-access", async (req, res) => {
 
 app.get("/request-access/confirmation", (req, res) => {
   if (!isRequestAccessEnabled()) return renderRequestAccessDisabled(req, res);
-  return res.render("request-access-confirmation");
+  return res.render("request-access-confirmation", {
+    autoApproved: String(req.query.created || "") === "1",
+  });
 });
 
 userRequestsRoutes.registerPublicReviewRoutes(app);

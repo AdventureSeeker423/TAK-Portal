@@ -220,7 +220,13 @@ router.get("/with-counts", async (req, res) => {
         (ag) => ag === a || (String(ag.suffix || "").toLowerCase() === String(a.suffix || "").toLowerCase() && String(ag.name || "") === String(a.name || ""))
       );
       const id = idx >= 0 ? idx : 0;
-      return { ...a, id, _id: id };
+      return {
+        ...a,
+        id,
+        _id: id,
+        autoApproveRequests: a.autoApproveRequests === true,
+        hasDefaultTemplate: store.agencyHasDefaultTemplate(a?.suffix),
+      };
     });
 
     res.json(result);
@@ -1288,6 +1294,7 @@ router.put("/:index", async (req, res) => {
   const body = req.body || {};
   if (!("lookupEnabled" in body)) a.lookupEnabled = existing.lookupEnabled;
   if (!("lookupDomain" in body)) a.lookupDomain = existing.lookupDomain;
+  if (!("autoApproveRequests" in body)) a.autoApproveRequests = existing.autoApproveRequests === true;
   if (!("isActive" in body)) a.isActive = existing.isActive;
   if (!("usernameTokenPlacement" in body) && !("usernameSuffixPlacement" in body)) {
     a.usernameTokenPlacement = accessSvc.normalizeUsernameTokenPlacement(
@@ -1837,6 +1844,76 @@ router.post("/:index/lookup/disable", (req, res) => {
   });
 
   return res.json({ success: true });
+});
+
+
+// Enable auto-approve of matching Request Access submissions (requires a default template).
+router.post("/:index/auto-approve/enable", (req, res) => {
+  const idx = Number(req.params.index);
+  if (!Number.isInteger(idx)) {
+    return res.status(400).json({ error: "Invalid agency index" });
+  }
+
+  const agencies = store.load();
+  if (!agencies[idx]) {
+    return res.status(404).json({ error: "Agency not found" });
+  }
+
+  const agency = agencies[idx];
+  try {
+    store.assertAgencyCanEnableAutoApprove(agency);
+  } catch (e) {
+    return res.status(400).json({ error: e?.message || "Cannot enable auto-approve" });
+  }
+
+  agencies[idx].autoApproveRequests = true;
+  store.save(agencies);
+
+  auditSvc.logEvent({
+    actor: req.authentikUser || null,
+    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    action: "ENABLE_AGENCY_AUTO_APPROVE",
+    targetType: "agency",
+    targetId: String(agency?.suffix || ""),
+    details: {
+      lookupDomain: String(agency.lookupDomain || ""),
+      summary: `Enabled auto-approve of access requests for agency ${agency?.name || agency?.suffix || ""}.`,
+    },
+  });
+
+  return res.json({ success: true, autoApproveRequests: true });
+});
+
+
+// Disable auto-approve of Request Access submissions.
+router.post("/:index/auto-approve/disable", (req, res) => {
+  const idx = Number(req.params.index);
+  if (!Number.isInteger(idx)) {
+    return res.status(400).json({ error: "Invalid agency index" });
+  }
+
+  const agencies = store.load();
+  if (!agencies[idx]) {
+    return res.status(404).json({ error: "Agency not found" });
+  }
+
+  const agency = agencies[idx];
+  agencies[idx].autoApproveRequests = false;
+  store.save(agencies);
+
+  auditSvc.logEvent({
+    actor: req.authentikUser || null,
+    request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+    action: "DISABLE_AGENCY_AUTO_APPROVE",
+    targetType: "agency",
+    targetId: String(agency?.suffix || ""),
+    details: {
+      lookupDomain: String(agency.lookupDomain || ""),
+      summary: `Disabled auto-approve of access requests for agency ${agency?.name || agency?.suffix || ""}.`,
+    },
+  });
+
+  return res.json({ success: true, autoApproveRequests: false });
 });
 
 module.exports = router;

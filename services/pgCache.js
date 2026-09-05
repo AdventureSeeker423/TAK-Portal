@@ -47,6 +47,7 @@ function rowToAgency(r) {
     regionId: r.region_id,
     lookupDomain: r.lookup_domain,
     lookupEnabled: r.lookup_enabled,
+    autoApproveRequests: r.auto_approve_requests === true,
     adminGroups: r.admin_groups,
   };
 }
@@ -56,7 +57,7 @@ function agencyToRow(a) {
     "name", "type", "county", "countyAbbrev", "state", "suffix", "groupPrefix",
     "color", "stateFederalAgency", "usernameTokenPlacement", "allowedAdminGroupIds",
     "isActive", "agencyDisabledUserIds", "regionId", "lookupDomain", "lookupEnabled",
-    "adminGroups",
+    "autoApproveRequests", "adminGroups",
   ]);
   const extra = {};
   for (const [k, v] of Object.entries(a || {})) {
@@ -208,8 +209,8 @@ async function persistAgenciesSql(list) {
           suffix, name, type, county, county_abbrev, state, group_prefix, color,
           state_federal_agency, username_token_placement, allowed_admin_group_ids,
           is_active, agency_disabled_user_ids, region_id, lookup_domain, lookup_enabled,
-          admin_groups, extra, updated_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb,$14,$15,$16,$17::jsonb,$18::jsonb, now())`,
+          auto_approve_requests, admin_groups, extra, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19::jsonb, now())`,
         [
           suffix,
           a.name || null,
@@ -227,6 +228,7 @@ async function persistAgenciesSql(list) {
           a.regionId || null,
           a.lookupDomain || null,
           !!a.lookupEnabled,
+          !!a.autoApproveRequests,
           a.adminGroups != null ? JSON.stringify(a.adminGroups) : null,
           JSON.stringify(agencyToRow(a)),
         ]

@@ -1,4 +1,5 @@
 const pgCache = require("./pgCache");
+const templatesStore = require("./templates.service");
 
 const FILE = null;
 
@@ -218,6 +219,35 @@ function findAgencyForGroupName(nameWithoutTak, agencies) {
   return null;
 }
 
+function agencyHasDefaultTemplate(agencySuffix) {
+  return !!templatesStore.getDefaultTemplateForAgency(agencySuffix);
+}
+
+function assertAgencyCanEnableAutoApprove(agency) {
+  if (!agencyHasDefaultTemplate(agency?.suffix)) {
+    throw new Error(
+      "Set a default template for this agency on the Templates page before enabling auto-approve."
+    );
+  }
+}
+
+function syncAutoApproveForAgencySuffix(suffix) {
+  const sfx = String(suffix || "").trim().toLowerCase();
+  if (!sfx) return false;
+  if (agencyHasDefaultTemplate(sfx)) return false;
+  const agencies = load();
+  let changed = false;
+  for (const a of agencies) {
+    if (String(a?.suffix || "").trim().toLowerCase() !== sfx) continue;
+    if (a.autoApproveRequests === true) {
+      a.autoApproveRequests = false;
+      changed = true;
+    }
+  }
+  if (changed) save(agencies);
+  return changed;
+}
+
 function save(data) {
   pgCache.replaceAgencies(Array.isArray(data) ? data : []);
   try {
@@ -252,4 +282,7 @@ module.exports = {
   isAgencyOwnedGroup,
   findAgencyForGroup,
   findAgencyForGroupName,
+  agencyHasDefaultTemplate,
+  assertAgencyCanEnableAutoApprove,
+  syncAutoApproveForAgencySuffix,
 };

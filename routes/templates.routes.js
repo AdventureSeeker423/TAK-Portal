@@ -376,6 +376,7 @@ router.post("/", (req, res) => {
 
   templates.push(t);
   store.save(templates);
+  agenciesSvc.syncAutoApproveForAgencySuffix(t.agencySuffix);
   const currentTemplateSync = null;
 
   auditSvc.logEvent({
@@ -444,6 +445,8 @@ router.put("/:index", async (req, res) => {
   };
 
   store.save(templates);
+  agenciesSvc.syncAutoApproveForAgencySuffix(existing?.agencySuffix);
+  agenciesSvc.syncAutoApproveForAgencySuffix(t.agencySuffix);
   const beforeGroups = Array.isArray(existing?.groups)
     ? existing.groups.map((g) => String(g || "").trim()).filter(Boolean)
     : [];
@@ -527,6 +530,7 @@ router.delete("/:index", async (req, res) => {
 
   templates.splice(idx, 1);
   store.save(templates);
+  agenciesSvc.syncAutoApproveForAgencySuffix(existing?.agencySuffix);
 
   auditSvc.logEvent({
     actor: authUser,

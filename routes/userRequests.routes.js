@@ -48,6 +48,28 @@ router.post("/", async (req, res) => {
       },
     });
 
+    if (created?.autoApproved) {
+      auditSvc.logEvent({
+        actor: req.authentikUser || null,
+        request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+        action: "CREATE_USER",
+        targetType: "user",
+        targetId: String(created?.createdUser?.pk || created?.createdUsername || ""),
+        details: {
+          source: "api",
+          username: created?.createdUsername,
+          email: body.email,
+          name: [body.lastName, body.firstName].filter(Boolean).join(", "),
+          groups: Array.isArray(created?.createdGroups)
+            ? created.createdGroups.map((g) => g?.name).filter(Boolean)
+            : [],
+          created_method: "request_access_auto_approve",
+          agencySuffix: body.agencySuffix,
+          sourceRequestId: created?.id,
+        },
+      });
+    }
+
     return res.json({ success: true, request: created });
   } catch (err) {
     const payload = { error: err?.message || "Invalid request" };

@@ -6,6 +6,7 @@ const emailSvc = require("./email.service");
 const settingsSvc = require("./settings.service");
 const usersSvc = require("./users.service");
 const directoryRepo = require("./directoryRepo.service");
+const templatesStore = require("./templates.service");
 const { getBool } = require("./env");
 
 function genId() {
@@ -416,6 +417,49 @@ function deleteRequestsForAgencySuffix(suffix) {
   return removed;
 }
 
+function shouldAutoApproveRequest(agency, validated) {
+  if (!agency || !validated) return false;
+  if (String(validated.agencySuffix || "").trim().toLowerCase() === "__other__") return false;
+  if (agency.autoApproveRequests !== true) return false;
+  const defaultTpl = templatesStore.getDefaultTemplateForAgency(agency.suffix);
+  if (!defaultTpl) return false;
+  const list = agenciesStore.domainsListFromStored(agency.lookupDomain);
+  if (list.length > 0 && !agenciesStore.emailDomainInAgencyList(validated.email, agency.lookupDomain)) {
+    return false;
+  }
+  return true;
+}
+
+async function tryAutoApproveRequest(agency, validated, reqObj) {
+  const defaultTpl = templatesStore.getDefaultTemplateForAgency(agency?.suffix);
+  if (!defaultTpl) return null;
+  const result = await usersSvc.createUser(
+    {
+      badge: validated.badgeNumber,
+      agencySuffix: agency.suffix,
+      email: validated.email,
+      firstName: validated.firstName,
+      lastName: validated.lastName,
+      radioCallsign: validated.radioCallsign,
+      templateIndex: String(defaultTpl.name || "").trim(),
+      permissions: "user",
+    },
+    {
+      createdBy: {
+        username: "auto-approve",
+        displayName: "Agency Auto-Approve",
+      },
+      creationMethod: "request_access_auto_approve",
+      waitForOutbox: false,
+    }
+  );
+  reqObj.autoApproved = true;
+  reqObj.createdUsername = result?.user?.username || null;
+  reqObj.createdUser = result?.user || null;
+  reqObj.createdGroups = Array.isArray(result?.groups) ? result.groups : [];
+  return reqObj;
+}
+
 async function createRequest(input) {
   const v = validateCreate(input || {});
   const agencies = agenciesStore.load();
@@ -461,6 +505,15 @@ async function createRequest(input) {
     type: v.agencySuffix === "__other__" ? v.type : null,
     stateFederalAgency: v.agencySuffix === "__other__" ? !!v.stateFederalAgency : null,
   };
+
+  if (shouldAutoApproveRequest(agency, v)) {
+    try {
+      const autoApproved = await tryAutoApproveRequest(agency, v, reqObj);
+      if (autoApproved) return autoApproved;
+    } catch (err) {
+      console.error("Auto-approve of access request failed; saving as pending:", err);
+    }
+  }
 
   const all = store.load();
   all.push(reqObj);
@@ -723,6 +776,7 @@ module.exports = {
   countPendingRequestsForAgencySuffix,
   deleteRequestsForAgencySuffix,
   createRequest,
+  shouldAutoApproveRequest,
   deleteRequest,
   deleteRequestForUser,
   getById,
