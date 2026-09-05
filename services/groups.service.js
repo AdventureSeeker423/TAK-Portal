@@ -187,8 +187,9 @@ function applyGroupsHiddenPrefixFilter(groups, { includeHidden = false } = {}) {
   if (!prefixes.length) return list;
 
   return list.filter((g) => {
-    const name = String(g?.name || "").trim().toLowerCase();
-    return !prefixes.some((p) => name.startsWith(p));
+    const raw = String(g?.name || "").trim().toLowerCase();
+    const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
+    return !prefixes.some((p) => raw.startsWith(p) || withoutTak.startsWith(p));
   });
 }
 

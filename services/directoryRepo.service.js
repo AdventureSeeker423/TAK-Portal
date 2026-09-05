@@ -51,7 +51,13 @@ function hiddenGroupClause(params, includeHidden) {
   const prefixes = hiddenGroupPrefixes();
   if (!prefixes.length) return "";
   params.push(prefixes);
-  return ` AND NOT EXISTS (SELECT 1 FROM unnest($${params.length}::text[]) AS p WHERE lower(name) LIKE p || '%')`;
+  const i = params.length;
+  // Match Settings prefixes on the stored name and on the name without a leading tak_.
+  return ` AND NOT EXISTS (
+    SELECT 1 FROM unnest($${i}::text[]) AS p
+    WHERE lower(name) LIKE p || '%'
+       OR lower(regexp_replace(name, '^tak_', '', 'i')) LIKE p || '%'
+  )`;
 }
 
 function isAuthentikPkToken(v) {
