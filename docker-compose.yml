@@ -17,6 +17,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 20s
     # PG 15+ logs checkpoints at LOG by default (every ~5 min plus shutdown).
     # Keep ERROR/FATAL; drop routine checkpoint and statement duration noise.
     command:

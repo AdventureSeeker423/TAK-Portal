@@ -89,14 +89,16 @@ compose_up_stack() {
   if ! export_compose_secrets; then
     return 1
   fi
-  local extra=()
-  if [[ "$mode" == "always" || "${TAKPORTAL_PW_GENERATED:-}" == "1" ]] || postgres_needs_recreate; then
-    extra=(--force-recreate)
-    if [[ "${TAKPORTAL_PW_GENERATED:-}" == "1" ]] || postgres_needs_recreate; then
-      echo "Recreating containers so Postgres uses POSTGRES_PASSWORD from .env..."
-    fi
+  # Recreate the app containers. Leave Postgres running unless it is missing or
+  # crash-looping — `up --force-recreate` of the whole stack SIGTERM's Postgres
+  # and Compose then fails with "dependency postgres failed to start".
+  if postgres_needs_recreate; then
+    echo "Recreating Postgres..."
+    $COMPOSE_CMD up -d --force-recreate postgres
+  else
+    $COMPOSE_CMD up -d postgres
   fi
-  $COMPOSE_CMD up -d --build "${extra[@]}"
+  $COMPOSE_CMD up -d --build --force-recreate tak-portal tak-portal-worker
 }
 
 ensure_env() {
