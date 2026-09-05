@@ -73,4 +73,14 @@ assert.ok(
 );
 assert.ok(!/\/settings\/export-data/.test(serverSrc), "legacy export-data stub should be gone");
 
+const registry = require("../services/permissions.registry");
+assert.deepStrictEqual(
+  registry.getRequiredPermissionsForRequest("/api/settings/backup/catalog", "GET"),
+  ["page.settings"]
+);
+assert.deepStrictEqual(
+  registry.getRequiredPermissionsForRequest("/api/settings/backup/export", "POST"),
+  ["page.settings"]
+);
+
 console.log("backup.test.js: ok");
