@@ -15,6 +15,9 @@ const qrSvc = require("../services/qr.service");
     qrSvc.displayQrCacheKey(url),
     qrSvc.displayQrCacheKey(url + "&extra=1")
   );
+  const wide = await qrSvc.generateDisplayQrDataUrl(url, { width: 1024, margin: 2 });
+  assert.ok(wide.startsWith("data:image/png;base64,"));
+  assert.notStrictEqual(wide, first, "different QR sizes should not share a cached image");
   console.log("qr.cache.test.js: ok");
 })().catch((err) => {
   console.error(err);

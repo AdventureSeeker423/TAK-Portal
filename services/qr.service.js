@@ -128,62 +128,76 @@ function buildPreferenceUrl({ callsign, teamLabel, roleLabel }) {
   return `tak://com.atakmap.app/preference?${params.join("&")}`;
 }
 
-const DISPLAY_QR_CACHE_MAX = 250;
-/** @type {Map<string, string>} */
-const displayQrCache = new Map();
+const QR_PNG_CACHE_MAX = 250;
+/** @type {Map<string, Buffer>} */
+const qrPngCache = new Map();
+let _sans64BlackFont = null;
 
-function displayQrCacheKey(content) {
+function defaultBrandLogoPath() {
   const settings = settingsSvc.getSettings() || {};
   const logoUrl = settings.BRAND_LOGO_URL;
-  let logoId = "nologo";
-  if (logoUrl && typeof logoUrl === "string") {
-    const logoFsPath = path.join(__dirname, "..", "data", logoUrl.replace(/^\//, ""));
-    logoId = logoCacheIdentity(logoFsPath) || "nologo";
-  }
+  if (!logoUrl || typeof logoUrl !== "string") return "";
+  const logoFsPath = path.join(__dirname, "..", "data", logoUrl.replace(/^\//, ""));
+  return fs.existsSync(logoFsPath) ? logoFsPath : "";
+}
+
+function qrPngCacheKey(content, options = {}) {
+  const width = Number(options.width) > 0 ? Number(options.width) : 512;
+  const margin = options.margin != null ? Number(options.margin) : 2;
+  const logoPath =
+    options.logoPath != null ? String(options.logoPath || "") : defaultBrandLogoPath();
+  const logoId = logoPath ? logoCacheIdentity(logoPath) || logoPath : "nologo";
+  const logoRatio = options.logoRatio != null ? String(options.logoRatio) : "";
+  const username = String(options.usernameLabel || "")
+    .trim()
+    .toUpperCase();
   return crypto
     .createHash("sha256")
-    .update(`${String(content || "")}\0${logoId}`)
+    .update(
+      [String(content || ""), width, margin, logoId, logoRatio, username].join("\0")
+    )
     .digest("hex");
 }
 
-function getCachedDisplayQr(content) {
-  const key = displayQrCacheKey(content);
-  const hit = displayQrCache.get(key);
+function displayQrCacheKey(content) {
+  return qrPngCacheKey(content, { width: 512, margin: 2 });
+}
+
+function getCachedQrPng(key) {
+  const hit = qrPngCache.get(key);
   if (!hit) return null;
-  displayQrCache.delete(key);
-  displayQrCache.set(key, hit);
+  qrPngCache.delete(key);
+  qrPngCache.set(key, hit);
   return hit;
 }
 
-function setCachedDisplayQr(content, dataUrl) {
-  const key = displayQrCacheKey(content);
-  if (displayQrCache.has(key)) displayQrCache.delete(key);
-  displayQrCache.set(key, dataUrl);
-  while (displayQrCache.size > DISPLAY_QR_CACHE_MAX) {
-    const oldest = displayQrCache.keys().next().value;
-    displayQrCache.delete(oldest);
+function setCachedQrPng(key, buf) {
+  if (qrPngCache.has(key)) qrPngCache.delete(key);
+  qrPngCache.set(key, buf);
+  while (qrPngCache.size > QR_PNG_CACHE_MAX) {
+    const oldest = qrPngCache.keys().next().value;
+    qrPngCache.delete(oldest);
   }
 }
 
 async function addLogoToPng(pngBuffer, options = {}) {
-  const settings = settingsSvc.getSettings() || {};
-  const logoUrl = settings.BRAND_LOGO_URL;
-  if (!logoUrl || typeof logoUrl !== "string") return pngBuffer;
-
-  const logoUrlPath = logoUrl.replace(/^\//, "");
-  const logoFsPath = path.join(__dirname, "..", "data", logoUrlPath);
-  if (!fs.existsSync(logoFsPath)) return pngBuffer;
-
+  const logoFsPath = defaultBrandLogoPath();
+  if (!logoFsPath) return pngBuffer;
   return addLogoToQrPng(pngBuffer, logoFsPath, options);
+}
+
+async function getSans64BlackFont() {
+  if (!_sans64BlackFont) {
+    _sans64BlackFont = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK);
+  }
+  return _sans64BlackFont;
 }
 
 // Add username label underneath the QR image (for downloaded image only)
 async function addUsernameLabel(pngBuffer, username) {
   try {
     const qrImage = await Jimp.read(pngBuffer);
-
-    // Built-in font in Jimp 0.22.x
-    const font = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK);
+    const font = await getSans64BlackFont();
 
     // FORCE ALL CAPS
     const text = (String(username || "").trim() || "USER").toUpperCase();
@@ -224,44 +238,64 @@ async function addUsernameLabel(pngBuffer, username) {
   }
 }
 
-async function generateDisplayQrDataUrl(enrollUrl) {
-  const content = String(enrollUrl || "");
-  if (!content) return "";
-  const cached = getCachedDisplayQr(content);
+/**
+ * Generate a QR PNG with optional logo overlay and username label.
+ * Results are cached in-memory by content + size + logo identity.
+ */
+async function generateQrPngBuffer(content, options = {}) {
+  const text = String(content || "");
+  if (!text) return Buffer.alloc(0);
+  const width = Number(options.width) > 0 ? Number(options.width) : 512;
+  const margin = options.margin != null ? Number(options.margin) : 2;
+  const key = qrPngCacheKey(text, options);
+  const cached = getCachedQrPng(key);
   if (cached) return cached;
 
-  const basePng = await QRCode.toBuffer(content, {
+  const basePng = await QRCode.toBuffer(text, {
     errorCorrectionLevel: "H",
     type: "png",
-    width: 512, // Display size
-    margin: 2,
+    width,
+    margin,
     color: {
       dark: "#000000",
       light: "#FFFFFF",
     },
   });
 
-  const finalPng = await addLogoToPng(basePng);
-  const dataUrl = "data:image/png;base64," + finalPng.toString("base64");
-  setCachedDisplayQr(content, dataUrl);
-  return dataUrl;
+  const overlayOpts =
+    options.logoRatio != null ? { logoRatio: options.logoRatio } : {};
+  let finalPng = basePng;
+  if (options.logoPath) {
+    finalPng = await addLogoToQrPng(finalPng, options.logoPath, overlayOpts);
+  } else if (options.logoPath !== "") {
+    finalPng = await addLogoToPng(finalPng, overlayOpts);
+  }
+
+  if (options.usernameLabel) {
+    finalPng = await addUsernameLabel(finalPng, options.usernameLabel);
+  }
+
+  setCachedQrPng(key, finalPng);
+  return finalPng;
+}
+
+async function generateDisplayQrDataUrl(enrollUrl, options = {}) {
+  const content = String(enrollUrl || "");
+  if (!content) return "";
+  const buf = await generateQrPngBuffer(content, {
+    width: 512,
+    margin: 2,
+    ...options,
+  });
+  return "data:image/png;base64," + buf.toString("base64");
 }
 
 async function generateDownloadPng(enrollUrl, username) {
-  const pngBuffer = await QRCode.toBuffer(enrollUrl, {
-    errorCorrectionLevel: "H",
-    type: "png",
+  return generateQrPngBuffer(enrollUrl, {
     width: 1200,
     margin: 3,
-    color: {
-      dark: "#000000",
-      light: "#FFFFFF",
-    },
+    usernameLabel: username,
   });
-
-  let finalPng = await addLogoToPng(pngBuffer);
-  finalPng = await addUsernameLabel(finalPng, username);
-  return finalPng;
 }
 
 module.exports = {
@@ -272,5 +306,6 @@ module.exports = {
   buildPreferenceUrl,
   generateDisplayQrDataUrl,
   generateDownloadPng,
+  generateQrPngBuffer,
   displayQrCacheKey,
 };

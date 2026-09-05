@@ -1111,24 +1111,24 @@ let qrEnrollUrl = "";
 let qrCodeDataUrl = "";
 let qrActiveId = "";
 let qrActiveItem = null;
+/** @type {Map<string, { enrollUrl: string, qrCode: string }>} */
+const enrollmentQrByItemId = new Map();
 
 async function ensureEnrollmentQrReady(item) {
   if (!item?.id) throw new Error("Mutual Aid item is required.");
-  // Reuse cached enroll URL when already loaded for this item.
-  if (
-    qrEnrollUrl &&
-    qrCodeDataUrl &&
-    String(qrActiveId) === String(item.id) &&
-    qrActiveItem &&
-    String(qrActiveItem.id) === String(item.id)
-  ) {
+  const cacheKey = String(item.id);
+  const cached = enrollmentQrByItemId.get(cacheKey);
+  if (cached?.enrollUrl && cached?.qrCode) {
+    qrActiveId = item.id;
+    qrActiveItem = item;
+    qrEnrollUrl = cached.enrollUrl;
+    qrCodeDataUrl = cached.qrCode;
+    if (qrImg && qrCodeDataUrl) qrImg.src = qrCodeDataUrl;
     return;
   }
 
   qrActiveId = item.id;
   qrActiveItem = item;
-  qrEnrollUrl = "";
-  qrCodeDataUrl = "";
 
   const res = await fetch(`/api/mutual-aid/${encodeURIComponent(item.id)}/qr`);
   const data = await res.json().catch(() => ({}));
@@ -1136,6 +1136,10 @@ async function ensureEnrollmentQrReady(item) {
   qrEnrollUrl = data.enrollUrl || "";
   if (!qrEnrollUrl) throw new Error("Enrollment URL missing.");
   qrCodeDataUrl = String(data.qrCode || "");
+  enrollmentQrByItemId.set(cacheKey, {
+    enrollUrl: qrEnrollUrl,
+    qrCode: qrCodeDataUrl,
+  });
   if (qrImg && qrCodeDataUrl) qrImg.src = qrCodeDataUrl;
 }
 
@@ -1143,17 +1147,29 @@ function openQrModal(item){
   qrOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
   qrTitle.textContent = `QR Code — ${item.type} — ${item.title}`;
-  qrImg.src = "";
-  qrCopyBtn.disabled = true;
-  qrSaveBtn.disabled = true;
-  qrEnrollUrl = "";
-  qrCodeDataUrl = "";
   qrActiveId = item.id;
   qrActiveItem = item;
   qrDetails.innerHTML = `
     <span class="chip">Group: ${esc(displayGroupName(item.groupName || ""))}</span>
     <span class="chip">Username: ${esc(item.username || "")}</span>
   `;
+
+  const cached = enrollmentQrByItemId.get(String(item.id));
+  if (cached?.enrollUrl && cached?.qrCode) {
+    qrEnrollUrl = cached.enrollUrl;
+    qrCodeDataUrl = cached.qrCode;
+    qrImg.src = cached.qrCode;
+    qrCopyBtn.disabled = false;
+    qrSaveBtn.disabled = false;
+    setMsg(qrMsg, "QR ready.", true);
+    return;
+  }
+
+  qrImg.src = "";
+  qrCopyBtn.disabled = true;
+  qrSaveBtn.disabled = true;
+  qrEnrollUrl = "";
+  qrCodeDataUrl = "";
   setMsg(qrMsg, "Loading...", true);
 
   ensureEnrollmentQrReady(item)
@@ -1369,6 +1385,15 @@ function makeQrDataUrl(text, cellSize = 8, margin = 2) {
   return qr.createDataURL(cellSize, margin);
 }
 
+const appStoreQrCache = new Map();
+function getCachedAppStoreQr(name, url) {
+  const hit = appStoreQrCache.get(name);
+  if (hit) return hit;
+  const dataUrl = makeQrDataUrl(url, 10, 2);
+  appStoreQrCache.set(name, dataUrl);
+  return dataUrl;
+}
+
 function fitOneLine(doc, text, maxWidthPt, startSizePt) {
   let size = startSizePt;
   doc.setFontSize(size);
@@ -1575,24 +1600,36 @@ function buildFlyerTeamColorListHtml(colors) {
   );
 }
 
+let brandLogoDataUrlCache = { loaded: false, value: "" };
+
 async function loadBrandLogoDataUrl() {
+  if (brandLogoDataUrlCache.loaded) return brandLogoDataUrlCache.value;
   const logoPath = getSetting("BRAND_LOGO_URL");
-  if (!logoPath) return "";
+  if (!logoPath) {
+    brandLogoDataUrlCache = { loaded: true, value: "" };
+    return "";
+  }
   try {
     const abs = /^https?:\/\//i.test(logoPath)
       ? logoPath
       : new URL(logoPath, window.location.origin).href;
     const res = await fetch(abs, { credentials: "same-origin" });
-    if (!res.ok) return "";
+    if (!res.ok) {
+      brandLogoDataUrlCache = { loaded: true, value: "" };
+      return "";
+    }
     const blob = await res.blob();
-    return await new Promise((resolve, reject) => {
+    const value = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
       reader.onerror = () => reject(new Error("Failed to read brand logo"));
       reader.readAsDataURL(blob);
     });
+    brandLogoDataUrlCache = { loaded: true, value };
+    return value;
   } catch (err) {
     console.warn("[mutual-aid] brand logo for flyer skipped:", err?.message || err);
+    brandLogoDataUrlCache = { loaded: true, value: "" };
     return "";
   }
 }
@@ -1657,7 +1694,7 @@ async function mountEnrollmentFlyerIframe(filledHtml) {
     if (idoc.fonts?.ready) {
       await Promise.race([
         idoc.fonts.ready,
-        new Promise((r) => setTimeout(r, 900)),
+        new Promise((r) => setTimeout(r, 400)),
       ]);
     }
   } catch {
@@ -1685,6 +1722,8 @@ async function mountEnrollmentFlyerIframe(filledHtml) {
   };
 }
 
+const flyerPageImageCache = new Map();
+
 async function renderEnrollmentFlyerPageImage(qrDataUrl) {
   if (!ENROLLMENT_FLYER_HTML) {
     throw new Error("Enrollment flyer template is not available.");
@@ -1692,6 +1731,19 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
   if (typeof window.html2canvas !== "function") {
     throw new Error("Flyer renderer failed to load.");
   }
+
+  const flyerCacheKey = [
+    String(qrActiveId || ""),
+    String(qrDataUrl || "").slice(0, 80),
+    String(qrDataUrl || "").length,
+    String(getSetting("SERVER_NAME") || ""),
+    String(getSetting("CALLSIGN_FORMAT_EXPRESSION") || ""),
+    String(qrActiveItem?.groupName || ""),
+    String(qrActiveItem?.title || ""),
+    String(qrActiveItem?.type || ""),
+  ].join("\0");
+  const cachedFlyer = flyerPageImageCache.get(flyerCacheKey);
+  if (cachedFlyer) return cachedFlyer;
 
   const serverName = String(getSetting("SERVER_NAME") || "").trim();
   const split = splitServerNameForFlyer(serverName || "TAK");
@@ -1771,15 +1823,15 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
   const { target, idoc, letterW, letterH, cleanup } = frame;
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    const waitImg = (img) => {
-      if (!img || img.complete) return Promise.resolve();
-      return new Promise((resolve) => {
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-        setTimeout(resolve, 1500);
-      });
-    };
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const waitImg = (img) => {
+    if (!img || img.complete) return Promise.resolve();
+    return new Promise((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      setTimeout(resolve, 800);
+    });
+  };
     await waitImg(idoc.getElementById("maFlyerQrImg"));
     await waitImg(idoc.getElementById("maFlyerLogoImg"));
 
@@ -1800,9 +1852,9 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       idoc.documentElement.style.height = `${letterH}px`;
     }
 
-    // ~192 DPI Letter capture; JPEG kept lossy for email size but sharp enough to print.
+    // ~144 DPI Letter capture; JPEG kept lossy for email size but sharp enough to print.
     const captureOpts = {
-      scale: 2,
+      scale: 1.5,
       backgroundColor: "#ffffff",
       useCORS: true,
       allowTaint: true,
@@ -1981,7 +2033,13 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
       });
     }
 
-    return canvas.toDataURL("image/jpeg", 0.92);
+    const jpeg = canvas.toDataURL("image/jpeg", 0.92);
+    flyerPageImageCache.set(flyerCacheKey, jpeg);
+    while (flyerPageImageCache.size > 12) {
+      const oldest = flyerPageImageCache.keys().next().value;
+      flyerPageImageCache.delete(oldest);
+    }
+    return jpeg;
   } finally {
     cleanup();
   }
@@ -2009,7 +2067,8 @@ async function buildDeploymentPacketPdf() {
     // Slightly larger margins so content isn't so close to the page edges.
     const margin = 54;
 
-    // Flyer uses the compact modal QR (1024px). Dedicated QR page uses a downscaled hi-res PNG.
+    // Flyer and packet enrollment page share the cached 1024px modal QR.
+    // The PDF draws the username as text, so the labeled 1800px download is not needed.
     let flyerQr = String(qrCodeDataUrl || (qrImg && qrImg.src) || "").trim();
     if (!flyerQr || flyerQr.indexOf("data:image") !== 0) {
       try {
@@ -2022,18 +2081,7 @@ async function buildDeploymentPacketPdf() {
         );
       }
     }
-
-    let packetEnrollmentQr = "";
-    try {
-      const hiResEnrollmentQr = await loadHiResEnrollmentQrDataUrl(qrActiveId);
-      packetEnrollmentQr = await downscalePngDataUrl(hiResEnrollmentQr, 1100);
-    } catch (qrLoadErr) {
-      console.warn(
-        "[mutual-aid] enrollment QR load failed:",
-        qrLoadErr?.message || qrLoadErr
-      );
-      packetEnrollmentQr = flyerQr;
-    }
+    const packetEnrollmentQr = flyerQr;
 
     // --- Page 1: Enrollment flyer (white-body Letter flyer) ---
     let flyerOk = false;
@@ -2071,8 +2119,8 @@ async function buildDeploymentPacketPdf() {
 
     const takAwareUrl = "https://apps.apple.com/us/app/tak-aware/id6738631659";
     const atakUrl = "https://play.google.com/store/apps/details?id=com.atakmap.app.civ";
-    const takAwareQr = makeQrDataUrl(takAwareUrl, 10, 2);
-    const atakQr = makeQrDataUrl(atakUrl, 10, 2);
+    const takAwareQr = getCachedAppStoreQr("takAware", takAwareUrl);
+    const atakQr = getCachedAppStoreQr("atak", atakUrl);
 
     /* =========================================================
       TAK AWARE (iOS)
@@ -2564,6 +2612,10 @@ editSaveBtn.onclick = async () => {
   }
   editLogoRemovePending = false;
   if (editLogoFile) editLogoFile.value = "";
+  enrollmentQrByItemId.delete(String(activeItem.id));
+  for (const k of [...flyerPageImageCache.keys()]) {
+    if (String(k).startsWith(String(activeItem.id) + "\0")) flyerPageImageCache.delete(k);
+  }
   setMsg(editMsg, "Saved.", true);
   editOverlay.style.display = "none";
   document.body.classList.remove("noScroll");

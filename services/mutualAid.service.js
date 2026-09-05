@@ -1,9 +1,7 @@
 const crypto = require("crypto");
-const QRCode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
 const { getString } = require("./env");
-const Jimp = require("jimp");
 const api = require("./authentik");
 const groupsSvc = require("./groups.service");
 const usersSvc = require("./users.service");
@@ -11,7 +9,7 @@ const store = require("./mutualAid.store");
 const settingsSvc = require("./settings.service");
 const emailSvc = require("./email.service");
 const { renderTemplate, htmlToText } = require("./emailTemplates.service");
-const { addLogoToQrPng } = require("./qrLogoOverlay.service");
+const qrSvc = require("./qr.service");
 const accessSvc = require("./access.service");
 const agenciesSvc = require("./agencies.service");
 
@@ -321,94 +319,30 @@ async function applyDeploymentLogo({ id, file, removeLogo }) {
   return nextOwner;
 }
 
-// ---- Jimp helpers (Jimp 0.22.x) ----
-
-async function addLogoToPng(pngBuffer, logoFsPath, options = {}) {
-  if (!logoFsPath || !fs.existsSync(logoFsPath)) return pngBuffer;
-  return addLogoToQrPng(pngBuffer, logoFsPath, options);
-}
-
-async function addUsernameLabel(pngBuffer, username) {
-  try {
-    const qrImage = await Jimp.read(pngBuffer);
-
-    // Bold-looking built-in font
-    const font = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK);
-
-    // FORCE ALL CAPS
-    const text = (String(username || "").trim() || "USER").toUpperCase();
-
-    const textBlockHeight = 80; // a little extra space for text
-
-    const qrWidth = qrImage.getWidth();
-    const qrHeight = qrImage.getHeight();
-
-    // New canvas: same width, extra height for text
-    const combined = new Jimp(
-      qrWidth,
-      qrHeight + textBlockHeight,
-      0xffffffff // white background
-    );
-
-    // Paste the QR code at the top
-    combined.composite(qrImage, 0, 0);
-
-    // Center text under QR
-    combined.print(
-      font,
-      0,
-      qrHeight + 10,
-      {
-        text,
-        alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER,
-        alignmentY: Jimp.VERTICAL_ALIGN_TOP,
-      },
-      qrWidth,
-      textBlockHeight
-    );
-
-    return combined.getBufferAsync(Jimp.MIME_PNG);
-  } catch (err) {
-    console.error("[MUTUAL AID] Failed to add username label to QR:", err);
-    return pngBuffer;
-  }
-}
-
-// ---- QR helpers ----
+// ---- QR helpers (cached PNG + logo overlay via qr.service) ----
 
 async function qrDataUrl(username, token, item) {
   const enrollUrl = enrollUrlForCreds(username, token);
-  const basePng = await QRCode.toBuffer(enrollUrl, {
-    errorCorrectionLevel: "H",
-    type: "png",
+  const logoPath = resolveLogoFsPathForItem(item);
+  const qrCode = await qrSvc.generateDisplayQrDataUrl(enrollUrl, {
     width: 1024,
     margin: 2,
-    color: { dark: "#000000", light: "#FFFFFF" },
+    logoRatio: 0.28,
+    ...(logoPath ? { logoPath } : {}),
   });
-  const logoPath = resolveLogoFsPathForItem(item);
-  const finalPng = await addLogoToPng(basePng, logoPath, { logoRatio: 0.28 });
-  const qrCode = "data:image/png;base64," + finalPng.toString("base64");
   return { enrollUrl, qrCode };
 }
 
 async function qrPngBuffer(username, token, item) {
   const enrollUrl = enrollUrlForCreds(username, token);
-  const pngBuffer = await QRCode.toBuffer(enrollUrl, {
-    errorCorrectionLevel: "H",
-    type: "png",
+  const logoPath = resolveLogoFsPathForItem(item);
+  return qrSvc.generateQrPngBuffer(enrollUrl, {
     width: 1800,
     margin: 3,
-    color: { dark: "#000000", light: "#FFFFFF" },
+    logoRatio: 0.28,
+    usernameLabel: username,
+    ...(logoPath ? { logoPath } : {}),
   });
-
-  const logoPath = resolveLogoFsPathForItem(item);
-  // 1) Add logo in the center (with white badge)
-  let finalPng = await addLogoToPng(pngBuffer, logoPath, { logoRatio: 0.28 });
-
-  // 2) Add username label underneath
-  finalPng = await addUsernameLabel(finalPng, username);
-
-  return finalPng;
 }
 
 function isSubMutualAidType(type) {
