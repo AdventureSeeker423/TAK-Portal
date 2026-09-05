@@ -81,6 +81,14 @@
 
     <div id="tableMsg" class="msg"></div>
 
+    <div class="pagination" id="integrationsPagination" style="display:none;">
+      <button class="btn pagination-first-last" type="button" id="integrationsFirstBtn">First</button>
+      <button class="btn" type="button" id="integrationsPrevBtn">Previous</button>
+      <span id="integrationsPageInfo"></span>
+      <button class="btn" type="button" id="integrationsNextBtn">Next</button>
+      <button class="btn pagination-first-last" type="button" id="integrationsLastBtn">Last</button>
+    </div>
+
     <div class="listCardTableWrap" style="overflow-x: auto;">
     <table class="table listCardTable integrations-table" id="integrationsTable">
       <thead>
@@ -268,6 +276,14 @@
   const tbody = document.getElementById("tbody");
   const integrationsTable = document.getElementById("integrationsTable");
   const integrationFilter = document.getElementById("integrationFilter");
+  const INTEGRATIONS_PAGE_SIZE = 25;
+  let integrationsPage = 1;
+  const integrationsPagination = document.getElementById("integrationsPagination");
+  const integrationsFirstBtn = document.getElementById("integrationsFirstBtn");
+  const integrationsPrevBtn = document.getElementById("integrationsPrevBtn");
+  const integrationsNextBtn = document.getElementById("integrationsNextBtn");
+  const integrationsLastBtn = document.getElementById("integrationsLastBtn");
+  const integrationsPageInfo = document.getElementById("integrationsPageInfo");
   const integrationTitleInput = document.getElementById("integrationTitle");
   const makeDataFeedSelect = document.getElementById("makeDataFeed");
 
@@ -518,10 +534,24 @@
         .map(function (x) { return x.item; });
     }
 
-    if (rows.length === 0) {
+    var total = rows.length;
+    var totalPages = Math.max(1, Math.ceil(total / INTEGRATIONS_PAGE_SIZE));
+    if (integrationsPage > totalPages) integrationsPage = totalPages;
+    if (integrationsPage < 1) integrationsPage = 1;
+    var pageRows = total > INTEGRATIONS_PAGE_SIZE
+      ? rows.slice((integrationsPage - 1) * INTEGRATIONS_PAGE_SIZE, integrationsPage * INTEGRATIONS_PAGE_SIZE)
+      : rows;
+    if (integrationsPagination) integrationsPagination.style.display = total > INTEGRATIONS_PAGE_SIZE ? "flex" : "none";
+    if (integrationsPageInfo) integrationsPageInfo.textContent = "Page " + integrationsPage + " of " + totalPages;
+    if (integrationsFirstBtn) integrationsFirstBtn.disabled = integrationsPage <= 1;
+    if (integrationsPrevBtn) integrationsPrevBtn.disabled = integrationsPage <= 1;
+    if (integrationsNextBtn) integrationsNextBtn.disabled = integrationsPage >= totalPages;
+    if (integrationsLastBtn) integrationsLastBtn.disabled = integrationsPage >= totalPages;
+
+    if (total === 0) {
       tbody.innerHTML = "<tr class=\"emptyStateRow\"><td colspan=\"6\">" + (needle ? "No integrations match your search." : "No integration users found.") + "</td></tr>";
     } else {
-      tbody.innerHTML = rows.map(function (u) {
+      tbody.innerHTML = pageRows.map(function (u) {
         var groupDisplay = (u.groupNames || []).join(", ") || "—";
         var username = String(u.username || "").trim();
         var isConnected = connectedUsernamesSet.has(username);
@@ -603,12 +633,56 @@
       if (!silent) {
         setTableMsg(err.message || "Failed to load integrations", false);
         usersCache = [];
-        tbody.innerHTML = "";
+        integrationsPage = 1;
+        renderIntegrations();
       }
     }
   }
 
-  if (integrationFilter) integrationFilter.addEventListener("input", renderIntegrations);
+  if (integrationFilter) integrationFilter.addEventListener("input", function () {
+    integrationsPage = 1;
+    renderIntegrations();
+  });
+
+  if (integrationsFirstBtn) {
+    integrationsFirstBtn.onclick = function () {
+      if (integrationsPage <= 1) return;
+      integrationsPage = 1;
+      renderIntegrations();
+    };
+  }
+  if (integrationsPrevBtn) {
+    integrationsPrevBtn.onclick = function () {
+      if (integrationsPage <= 1) return;
+      integrationsPage -= 1;
+      renderIntegrations();
+    };
+  }
+  if (integrationsNextBtn) {
+    integrationsNextBtn.onclick = function () {
+      integrationsPage += 1;
+      renderIntegrations();
+    };
+  }
+  if (integrationsLastBtn) {
+    integrationsLastBtn.onclick = function () {
+      var needle = String(integrationFilter ? integrationFilter.value : "").trim().toLowerCase();
+      var list = needle
+        ? usersCache.filter(function (u) {
+            var username = String(u.username || "").toLowerCase();
+            var name = String(u.name || "").toLowerCase();
+            var groupNames = (u.groupNames || []).join(" ").toLowerCase();
+            return username.indexOf(needle) !== -1 ||
+              name.indexOf(needle) !== -1 ||
+              groupNames.indexOf(needle) !== -1;
+          })
+        : usersCache;
+      var totalPages = Math.max(1, Math.ceil((list || []).length / INTEGRATIONS_PAGE_SIZE));
+      if (integrationsPage >= totalPages) return;
+      integrationsPage = totalPages;
+      renderIntegrations();
+    };
+  }
 
   if (integrationsTable) {
     integrationsTable.querySelectorAll("thead th[data-sort]").forEach(function (th) {
@@ -1127,6 +1201,44 @@
 </script>
 
 <style>
+.pagination {
+  margin: 12px 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.pagination .btn {
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: #2f3241;
+  border: 1px solid #3a3d4d;
+  color: #e4e4e4;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.pagination .btn:hover:not(:disabled) {
+  background: #3a3d4d;
+  border-color: #4a4d5e;
+}
+
+.pagination .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#integrationsPageInfo {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0.9;
+  font-size: 12px;
+}
+
 .groupsBox {
   margin-top: 10px;
   border: 1px solid var(--line);
