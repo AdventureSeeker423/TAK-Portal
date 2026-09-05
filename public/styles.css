@@ -924,7 +924,7 @@ label.btn {
 }
 
 #lookupModal .modal {
-    width: min(560px, 96vw);
+    width: min(760px, 96vw);
     overflow: visible;
 }
 
