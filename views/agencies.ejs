@@ -217,15 +217,6 @@
             aria-label="Account Lookup"
           ></button>
         </div>
-
-        <div style="margin-top:16px; display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end;">
-          <button class="btn" type="button" onclick="showLookupModal(false)">
-            Cancel
-          </button>
-          <button class="btn" type="button" id="saveLookupDomainsBtn">
-            Save domains
-          </button>
-        </div>
       </div>
     </div>
   </div>
@@ -1443,6 +1434,9 @@ let currentLookupAgencyId = null;
 let currentLookupModalEnabled = false;
 let currentLookupModalAutoApprove = false;
 let currentLookupModalHasDefaultTemplate = false;
+let lastSavedLookupDomain = "";
+let lookupDomainSaveTimer = null;
+let lookupDomainSaveInFlight = false;
 
 function setSettingsToggleState(btn, on) {
   if (!btn) return;
@@ -1478,8 +1472,13 @@ window.openDomainModal = (id) => {
   currentLookupModalEnabled = !!(a && a.lookupEnabled);
   currentLookupModalAutoApprove = !!(a && a.autoApproveRequests);
   currentLookupModalHasDefaultTemplate = !!(a && a.hasDefaultTemplate);
+  if (lookupDomainSaveTimer) {
+    clearTimeout(lookupDomainSaveTimer);
+    lookupDomainSaveTimer = null;
+  }
   const domainInput = document.getElementById("lookupDomain");
   if (domainInput) domainInput.value = a && a.lookupDomain != null ? String(a.lookupDomain) : "";
+  lastSavedLookupDomain = domainInput ? String(domainInput.value || "") : "";
   showDomainModalError("");
   syncLookupModalToggles();
   showLookupModal(true);
@@ -1490,7 +1489,14 @@ function showLookupModal(on) {
   const modal = document.getElementById("lookupModal");
   if (!modal) return;
 
-  if (!on) closeLookupModalHelpTips();
+  if (!on) {
+    if (lookupDomainSaveTimer) {
+      clearTimeout(lookupDomainSaveTimer);
+      lookupDomainSaveTimer = null;
+    }
+    saveLookupDomains();
+    closeLookupModalHelpTips();
+  }
   modal.style.display = on ? "flex" : "none";
   document.body.style.overflow = on ? "hidden" : "";
 }
@@ -1586,34 +1592,61 @@ function validateDomainFieldForSave(domainInput, errorEl) {
   return true;
 }
 
-const saveLookupDomainsBtn = document.getElementById("saveLookupDomainsBtn");
-if (saveLookupDomainsBtn) {
-  saveLookupDomainsBtn.onclick = function () {
-    const domainInput = document.getElementById("lookupDomain");
-    const error = document.getElementById("domainError");
-    if (!currentLookupAgencyId || !domainInput || !error) return;
-    if (!validateDomainFieldForSave(domainInput, error)) return;
+function saveLookupDomains() {
+  const domainInput = document.getElementById("lookupDomain");
+  const error = document.getElementById("domainError");
+  if (!currentLookupAgencyId || !domainInput || !error) return Promise.resolve(false);
+  if (lookupDomainSaveInFlight) return Promise.resolve(false);
+  const nextValue = String(domainInput.value || "");
+  if (nextValue === lastSavedLookupDomain) return Promise.resolve(true);
+  if (!validateDomainFieldForSave(domainInput, error)) return Promise.resolve(false);
 
-    fetch(`/api/agencies/${encodeURIComponent(currentLookupAgencyId)}/lookup/domain`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lookupDomain: domainInput.value.trim() })
+  lookupDomainSaveInFlight = true;
+  return fetch(`/api/agencies/${encodeURIComponent(currentLookupAgencyId)}/lookup/domain`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lookupDomain: nextValue.trim() })
+  })
+    .then(async (res) => {
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showDomainModalError(out.error || "Could not save domains.");
+        return false;
+      }
+      await loadAgenciesWithCounts();
+      const a = (agencies || []).find((x) => String(x._id ?? x.id) === String(currentLookupAgencyId));
+      if (domainInput && a) domainInput.value = a.lookupDomain != null ? String(a.lookupDomain) : "";
+      lastSavedLookupDomain = domainInput ? String(domainInput.value || "") : nextValue;
+      showDomainModalError("");
+      return true;
     })
-      .then(async (res) => {
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          showDomainModalError(out.error || "Could not save domains.");
-          return;
-        }
-        await loadAgenciesWithCounts();
-        const a = (agencies || []).find((x) => String(x._id ?? x.id) === String(currentLookupAgencyId));
-        if (domainInput && a) domainInput.value = a.lookupDomain != null ? String(a.lookupDomain) : "";
-        setMsg("Domains saved.", true);
-      })
-      .catch(() => {
-        showDomainModalError("Could not save domains.");
-      });
-  };
+    .catch(() => {
+      showDomainModalError("Could not save domains.");
+      return false;
+    })
+    .finally(() => {
+      lookupDomainSaveInFlight = false;
+    });
+}
+
+function scheduleLookupDomainAutoSave() {
+  if (lookupDomainSaveTimer) clearTimeout(lookupDomainSaveTimer);
+  lookupDomainSaveTimer = setTimeout(function () {
+    lookupDomainSaveTimer = null;
+    saveLookupDomains();
+  }, 350);
+}
+
+const lookupDomainInput = document.getElementById("lookupDomain");
+if (lookupDomainInput) {
+  lookupDomainInput.addEventListener("input", scheduleLookupDomainAutoSave);
+  lookupDomainInput.addEventListener("blur", function () {
+    if (lookupDomainSaveTimer) {
+      clearTimeout(lookupDomainSaveTimer);
+      lookupDomainSaveTimer = null;
+    }
+    saveLookupDomains();
+  });
 }
 
 const accountLookupToggle = document.getElementById("accountLookupToggle");
@@ -1631,6 +1664,11 @@ if (accountLookupToggle) {
         showDomainModalError("Enter at least one domain to enable lookup.");
         return;
       }
+    }
+
+    if (lookupDomainSaveTimer) {
+      clearTimeout(lookupDomainSaveTimer);
+      lookupDomainSaveTimer = null;
     }
 
     accountLookupToggle.disabled = true;
@@ -1654,6 +1692,7 @@ if (accountLookupToggle) {
           return;
         }
         currentLookupModalEnabled = enabling;
+        if (enabling) lastSavedLookupDomain = String(domainInput.value || "");
         syncLookupModalToggles();
         await loadAgenciesWithCounts();
         setMsg(enabling ? "Account lookup enabled." : "Account lookup disabled.", true);

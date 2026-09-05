@@ -190,6 +190,25 @@
             window.addEventListener("resize", syncModalOpenClass);
           }
 
+          // Close-on-backdrop only if the press started on the overlay itself.
+          // Selecting text inside a modal and releasing outside must not dismiss it.
+          var overlayMouseDownTarget = null;
+          function isModalOverlayEl(el) {
+            return !!(el && el.classList && el.classList.contains("modalOverlay"));
+          }
+          document.addEventListener("pointerdown", function (e) {
+            overlayMouseDownTarget = isModalOverlayEl(e.target) ? e.target : null;
+          }, true);
+          document.addEventListener("mousedown", function (e) {
+            overlayMouseDownTarget = isModalOverlayEl(e.target) ? e.target : null;
+          }, true);
+          document.addEventListener("click", function (e) {
+            if (!isModalOverlayEl(e.target)) return;
+            if (overlayMouseDownTarget !== e.target) {
+              e.stopImmediatePropagation();
+            }
+          }, true);
+
           if (document.readyState === "loading") {
             document.addEventListener("DOMContentLoaded", initModalOpenWatcher);
           } else {
