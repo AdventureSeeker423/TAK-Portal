@@ -343,6 +343,7 @@ const PUBLIC_PATHS = new Set([
   "/lookup",
   "/request-access",
   "/request-access/confirmation",
+  "/api/system/health",
 ]);
 
 function isPublicPortalBypass(req) {

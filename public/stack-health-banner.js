@@ -17,12 +17,31 @@
     }
   }
 
+  function isJsonResponse(res) {
+    var ct = String((res && res.headers && res.headers.get("content-type")) || "");
+    return ct.indexOf("application/json") !== -1;
+  }
+
+  function isAuthOrProxyBlip(res) {
+    if (!res) return true;
+    if (res.type === "opaqueredirect") return true;
+    var status = Number(res.status || 0);
+    if (status >= 300 && status < 400) return true;
+    if (status === 401 || status === 403) return true;
+    if (status === 502 || status === 504) return true;
+    return false;
+  }
+
   async function poll() {
     try {
       var res = await fetch("/api/system/health", {
         cache: "no-store",
         headers: { Accept: "application/json" },
+        redirect: "manual",
+        credentials: "same-origin",
       });
+      // Caddy/Authentik 502s and login redirects are not a portal outage.
+      if (isAuthOrProxyBlip(res) || !isJsonResponse(res)) return;
       var data = await res.json();
       if (data && (data.ok || data.migrating)) {
         failCount = 0;
@@ -37,9 +56,7 @@
       if (failCount < FAIL_BEFORE_LOCK && !locked) return;
       setLocked(true);
     } catch (_) {
-      failCount += 1;
-      if (failCount < FAIL_BEFORE_LOCK && !locked) return;
-      setLocked(true);
+      // Network / CORS (Authentik authorize URL) — do not treat as stack-down.
     }
   }
 

@@ -162,6 +162,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/plugins/") && p.endsWith("/download") && m === "GET") return [];
   if (p === "/api/atak/download" && m === "GET") return [];
   if (p === "/styles.css" || p === "/favicon.ico") return [];
+  if (p === "/api/system/health" && m === "GET") return [];
 
   // APIs now inherit from their owning page capability.
   if (p.startsWith("/api/audit-log")) return ["page.audit_log"];
