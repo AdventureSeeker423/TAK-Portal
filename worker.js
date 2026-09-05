@@ -170,6 +170,11 @@ async function main() {
 
   every(15 * 60 * 1000, writeAppUpdateMeta);
   void writeAppUpdateMeta();
+
+  every(1000, () => {
+    const backup = require("./services/backup");
+    return backup.runOnce();
+  });
 }
 
 async function shutdown() {

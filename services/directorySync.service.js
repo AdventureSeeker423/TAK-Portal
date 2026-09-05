@@ -8,6 +8,19 @@ const agenciesStore = require("./agencies.service");
 const accessSvc = require("./access.service");
 
 let _snapshotRunning = false;
+let _backupPause = 0;
+
+function pauseInboundSnapshot() {
+  _backupPause += 1;
+}
+
+function resumeInboundSnapshot() {
+  _backupPause = Math.max(0, _backupPause - 1);
+}
+
+function isInboundPaused() {
+  return _backupPause > 0;
+}
 
 function pageSize() {
   return getInt("AUTHENTIK_USER_PAGE_SIZE", 500) || 500;
@@ -219,6 +232,7 @@ async function handleOutboxRow(row) {
 }
 
 async function drainOutbox() {
+  if (_backupPause > 0) return;
   const batch = await outbox.claimBatch(20);
   for (const row of batch) {
     try {
@@ -437,6 +451,7 @@ async function writeDashboardStats() {
 }
 
 async function inboundSnapshot() {
+  if (_backupPause > 0) return;
   if (_snapshotRunning) return;
   _snapshotRunning = true;
   await db.query(`UPDATE directory_sync SET last_started_at = now() WHERE id = 1`);
@@ -510,4 +525,7 @@ module.exports = {
   getDirectorySyncStatus,
   revertDeadLetter,
   handleOutboxRow,
+  pauseInboundSnapshot,
+  resumeInboundSnapshot,
+  isInboundPaused,
 };

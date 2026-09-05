@@ -694,6 +694,11 @@ app.use(
   requirePermission("page.settings"),
   require("./routes/openaddresses.routes")
 );
+app.use(
+  "/api/settings/backup",
+  requirePermission("page.settings"),
+  require("./routes/settingsBackup.routes")
+);
 // Locate + data packages (admin + JSON APIs): page-aligned capability.
 app.use("/api/locate", requirePermission("page.locate"), require("./routes/locate.routes"));
 
@@ -2279,21 +2284,6 @@ app.post(
     }
   }
 );
-
-
-// Import (restore) a zip into the data folder
-// Expected zip structure is either:
-//   - data/<files...>  (matches the Export Configuration zip)
-//   - <files...>       (will be treated as data/<files...>)
-app.post(
-  "/settings/import-data",
-  requirePermission("page.settings"),
-  (req, res) => res.status(410).send("Backup and restore is not available.")
-);
-
-app.get("/settings/export-data", requirePermission("page.settings"), (req, res) => {
-  return res.status(410).send("Backup and restore is not available.");
-});
 
 
 async function boot() {

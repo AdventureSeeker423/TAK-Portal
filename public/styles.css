@@ -2618,6 +2618,97 @@ a.settings-hub-card:visited {
     max-height: calc(96vh - 72px);
 }
 
+.settings-modal-backup {
+    width: min(760px, 96vw);
+}
+
+.backup-toggle-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin: 0.75rem 0 1rem;
+    max-height: 46vh;
+    overflow: auto;
+    padding-right: 0.35rem;
+}
+
+.backup-cat-group h3 {
+    margin: 0 0 0.4rem;
+    font-size: 0.95rem;
+}
+
+.backup-toggle {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.55rem;
+    row-gap: 0.1rem;
+    align-items: start;
+    margin: 0.28rem 0;
+    font-size: 0.92rem;
+}
+
+.backup-toggle input {
+    margin-top: 0.2rem;
+}
+
+.backup-toggle > span:first-of-type {
+    font-weight: 600;
+}
+
+.backup-cat-desc {
+    grid-column: 2;
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+
+.backup-toggle-child {
+    margin-left: 1.1rem;
+}
+
+.backup-toggle-master,
+.backup-toggle-parent {
+    font-weight: 700;
+}
+
+.backup-extra,
+.backup-mode {
+    margin: 0.75rem 0;
+}
+
+.backup-mode label {
+    display: block;
+    margin: 0.3rem 0;
+}
+
+.backup-hint {
+    margin: 0.25rem 0 0.75rem;
+    font-size: 0.85rem;
+}
+
+.backup-status {
+    min-height: 1.3em;
+    margin: 0.6rem 0;
+}
+
+.backup-actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.backup-report {
+    margin-top: 0.75rem;
+    max-height: 220px;
+    overflow: auto;
+    padding: 0.75rem;
+    background: var(--panel, #111827);
+    border: 1px solid var(--line, #374151);
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
 .settings-modal .modalHeader {
     flex-shrink: 0;
     position: relative;

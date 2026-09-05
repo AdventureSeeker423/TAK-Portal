@@ -5,16 +5,6 @@
   <h1>Settings</h1>
   <div id="settingsAutoSaveStatus" class="muted settings-autosave-status" aria-live="polite"></div>
 
-<% if (importStatus) { %>
-  <div class="alert success" style="margin-top: 12px;">
-    Configuration imported successfully. Your data folder has been restored from the uploaded zip.
-  </div>
-<% } %>
-<% if (importError) { %>
-  <div class="alert error" style="margin-top: 12px;">
-    Import failed: <%= importError %>
-  </div>
-<% } %>
 <% if (typeof smsTest !== 'undefined' && smsTest === 'ok') { %>
   <div class="alert success" style="margin-top: 12px;">
     Test SMS sent successfully.
@@ -181,6 +171,21 @@
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="deployment-packet-roles">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Deployment Packet Roles</span></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-hub-category" aria-labelledby="settingsCatBackup">
+      <h2 class="settings-hub-category-title" id="settingsCatBackup">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Backup & Restore
+      </h2>
+      <div class="settings-hub-grid">
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="backup-export">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Export</span></span>
+        </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="backup-import">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Import</span></span>
         </div>
       </div>
     </section>
@@ -4552,23 +4557,100 @@
 
   </form>
 
-  <!-- Import form stays outside settingsForm to avoid nested forms -->
-  <form
-    id="importConfigForm"
-    action="/settings/import-data"
-    method="post"
-    enctype="multipart/form-data"
-    style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;"
-    aria-hidden="true"
-  >
-    <input
-      id="configZipInput"
-      type="file"
-      name="CONFIG_ZIP_UPLOAD"
-      accept=".zip,application/zip"
-      tabindex="-1"
-    />
-  </form>
+  <div class="modalOverlay settings-modal-overlay" id="settingsModal-backup-export" data-settings-modal="backup-export" style="display:none;" aria-hidden="true">
+    <div class="modal settings-modal settings-modal-backup" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-backup-export">
+      <div class="modalHeader">
+        <div class="modalHeaderLeft">
+          <h2 id="settingsModalTitle-backup-export">Export backup</h2>
+          <span class="settings-help-tip">
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Download a versioned archive of selected portal data. Authentik passwords are never included. Secrets (tokens, certs, keys) are off by default.</span>
+          </span>
+        </div>
+        <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+      </div>
+      <div class="modalBody settings-body">
+        <label class="backup-toggle backup-toggle-master">
+          <input type="checkbox" id="backupExportSelectAll" />
+          <span>Select all</span>
+        </label>
+        <div id="backupExportToggles" class="backup-toggle-groups"></div>
+        <div class="backup-extra">
+          <label class="backup-toggle">
+            <input type="checkbox" id="backupExportSecrets" />
+            <span>Include secrets</span>
+          </label>
+          <p class="muted backup-hint">Tokens, certs, SSH keys, SMTP/SMS credentials, and the mutual-aid encryption key. Leave off unless you need a clone that can reconnect immediately.</p>
+          <label class="settings-field">
+            <span class="settings-label">Optional passphrase</span>
+            <input type="password" id="backupExportPassphrase" autocomplete="new-password" placeholder="Encrypt the archive" />
+          </label>
+        </div>
+        <p id="backupExportStatus" class="muted backup-status" role="status"></p>
+        <div class="backup-actions">
+          <button type="button" class="btn" id="backupExportStartBtn">Start export</button>
+          <a id="backupExportDownload" class="btn" style="display:none;" href="#">Download</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modalOverlay settings-modal-overlay" id="settingsModal-backup-import" data-settings-modal="backup-import" style="display:none;" aria-hidden="true">
+    <div class="modal settings-modal settings-modal-backup" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-backup-import">
+      <div class="modalHeader">
+        <div class="modalHeaderLeft">
+          <h2 id="settingsModalTitle-backup-import">Import backup</h2>
+          <span class="settings-help-tip">
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">Restore selected categories onto this portal. Users and groups are recreated in Authentik without passwords. Merge updates matching records; Replace wipes only the categories you import.</span>
+          </span>
+        </div>
+        <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+      </div>
+      <div class="modalBody settings-body">
+        <label class="settings-field">
+          <span class="settings-label">Backup file</span>
+          <input type="file" id="backupImportFile" accept=".zip,.takbackup,application/zip" />
+        </label>
+        <label class="settings-field">
+          <span class="settings-label">Passphrase (if encrypted)</span>
+          <input type="password" id="backupImportPassphrase" autocomplete="off" />
+        </label>
+        <button type="button" class="btn" id="backupImportInspectBtn">Read archive</button>
+        <p id="backupImportInspectStatus" class="muted backup-status" role="status"></p>
+        <div id="backupImportOptions" hidden>
+          <label class="backup-toggle backup-toggle-master">
+            <input type="checkbox" id="backupImportSelectAll" />
+            <span>Select all</span>
+          </label>
+          <div id="backupImportToggles" class="backup-toggle-groups"></div>
+          <fieldset class="backup-mode">
+            <legend>On conflict</legend>
+            <label><input type="radio" name="backupImportMode" value="merge" checked /> Merge (update matching records, keep extras)</label>
+            <label><input type="radio" name="backupImportMode" value="replace" /> Replace selected categories (wipe those tables, then load)</label>
+          </fieldset>
+          <label class="backup-toggle">
+            <input type="checkbox" id="backupImportSecrets" />
+            <span>Import secrets from this archive</span>
+          </label>
+          <label class="backup-toggle">
+            <input type="checkbox" id="backupImportDryRun" />
+            <span>Dry run (report only, no writes)</span>
+          </label>
+          <label class="backup-toggle">
+            <input type="checkbox" id="backupImportOnboarding" />
+            <span>Email newly created users that they must reset their password</span>
+          </label>
+          <div class="backup-actions">
+            <button type="button" class="btn" id="backupImportStartBtn">Start import</button>
+          </div>
+        </div>
+        <p id="backupImportStatus" class="muted backup-status" role="status"></p>
+        <pre id="backupImportReport" class="backup-report" hidden></pre>
+      </div>
+    </div>
+  </div>
+
 
   <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
   <div class="modalOverlay settings-modal-overlay" id="settingsModal-tak-maintenance" data-settings-modal="tak-maintenance" style="display:none;" aria-hidden="true">
@@ -4648,51 +4730,361 @@
           }
         });
       });
+    })();
+  </script>
 
-      // Import Configuration (restore data from zip) — hub card triggers file picker
-      var importInput = document.getElementById("configZipInput");
-      var importForm = document.getElementById("importConfigForm");
+  <script>
+    (function () {
+      var catalogCache = null;
+      var inspectState = { filename: null, manifest: null, encrypted: false };
+      var pollTimer = null;
 
-      function openImportPicker() {
-        if (importInput) importInput.click();
+      function api(path, opts) {
+        return fetch(path, opts).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (body) {
+            if (!res.ok) throw new Error(body.error || res.statusText || "Request failed");
+            return body;
+          });
+        });
       }
 
-      document.addEventListener("click", function (e) {
-        var card = e.target.closest && e.target.closest("[data-import-config]");
-        if (!card) return;
-        e.preventDefault();
-        openImportPicker();
-      });
+      function loadCatalog() {
+        if (catalogCache) return Promise.resolve(catalogCache);
+        return api("/api/settings/backup/catalog").then(function (data) {
+          catalogCache = data;
+          return data;
+        });
+      }
 
-      document.addEventListener("keydown", function (e) {
-        if (e.key !== "Enter" && e.key !== " ") return;
-        var card = e.target.closest && e.target.closest("[data-import-config]");
-        if (!card) return;
-        e.preventDefault();
-        openImportPicker();
-      });
+      function depsOf(cat, byId) {
+        var out = [];
+        (cat.deps || []).forEach(function (id) {
+          out.push(id);
+          var next = byId[id];
+          if (next) out = out.concat(depsOf(next, byId));
+        });
+        return out;
+      }
 
-      if (importInput && importForm) {
-        importInput.addEventListener("change", function () {
-          if (!importInput.files || !importInput.files.length) return;
+      function renderGroups(container, catalog, allowedIds, secretsChecked) {
+        container.innerHTML = "";
+        var byId = {};
+        (catalog.categories || []).forEach(function (c) { byId[c.id] = c; });
+        var allowed = allowedIds ? new Set(allowedIds) : null;
+        (catalog.groups || []).forEach(function (group) {
+          var cats = (catalog.categories || []).filter(function (c) {
+            if (c.group !== group.id) return false;
+            if (allowed && !allowed.has(c.id)) return false;
+            return true;
+          });
+          if (!cats.length) return;
+          var section = document.createElement("section");
+          section.className = "backup-cat-group";
+          var h = document.createElement("h3");
+          h.textContent = group.label;
+          section.appendChild(h);
+          if (group.id === "settings") {
+            var parent = document.createElement("label");
+            parent.className = "backup-toggle backup-toggle-parent";
+            parent.innerHTML = '<input type="checkbox" data-backup-parent="settings" /><span>All server settings</span>';
+            section.appendChild(parent);
+          }
+          cats.forEach(function (c) {
+            var lab = document.createElement("label");
+            lab.className = "backup-toggle" + (c.parentId ? " backup-toggle-child" : "");
+            var inp = document.createElement("input");
+            inp.type = "checkbox";
+            inp.setAttribute("data-backup-cat", c.id);
+            if (c.requiresSecrets && !secretsChecked) inp.disabled = true;
+            lab.appendChild(inp);
+            var title = document.createElement("span");
+            title.textContent = c.label;
+            lab.appendChild(title);
+            if (c.description) {
+              var hint = document.createElement("span");
+              hint.className = "muted backup-cat-desc";
+              hint.textContent = c.description;
+              lab.appendChild(hint);
+            }
+            section.appendChild(lab);
+          });
+          container.appendChild(section);
+        });
+        return byId;
+      }
 
-          var fileName = importInput.files[0].name || "selected file";
+      function selectedFrom(container) {
+        return Array.prototype.map.call(
+          container.querySelectorAll("input[data-backup-cat]:checked:not(:disabled)"),
+          function (el) { return el.getAttribute("data-backup-cat"); }
+        );
+      }
 
-          var ok = window.confirm(
-            "Importing a configuration will OVERWRITE files in the data folder with the contents of the zip.\n\nContinue?"
+      function setAll(container, on) {
+        container.querySelectorAll("input[data-backup-cat]:not(:disabled)").forEach(function (el) {
+          el.checked = on;
+        });
+        container.querySelectorAll("input[data-backup-parent]").forEach(function (el) {
+          el.checked = on;
+          el.indeterminate = false;
+        });
+      }
+
+      function syncSelectAll(container, master) {
+        var boxes = container.querySelectorAll("input[data-backup-cat]:not(:disabled)");
+        var checked = 0;
+        boxes.forEach(function (el) { if (el.checked) checked += 1; });
+        if (!master) return;
+        master.checked = boxes.length > 0 && checked === boxes.length;
+        master.indeterminate = checked > 0 && checked < boxes.length;
+      }
+
+      function syncSettingsParent(container) {
+        var parent = container.querySelector('input[data-backup-parent="settings"]');
+        if (!parent) return;
+        var kids = container.querySelectorAll('input[data-backup-cat^="settings."]:not(:disabled)');
+        var checked = 0;
+        kids.forEach(function (el) { if (el.checked) checked += 1; });
+        parent.checked = kids.length > 0 && checked === kids.length;
+        parent.indeterminate = checked > 0 && checked < kids.length;
+      }
+
+      function wireToggles(container, master, catalog, secretsEl) {
+        var byId = {};
+        (catalog.categories || []).forEach(function (c) { byId[c.id] = c; });
+        container.onchange = function (e) {
+          var t = e.target;
+          if (t && t.getAttribute("data-backup-parent") === "settings") {
+            container.querySelectorAll('input[data-backup-cat^="settings."]:not(:disabled)').forEach(function (el) {
+              el.checked = t.checked;
+            });
+          }
+          if (t && t.hasAttribute("data-backup-cat") && t.checked) {
+            var cat = byId[t.getAttribute("data-backup-cat")];
+            if (cat) {
+              depsOf(cat, byId).forEach(function (id) {
+                var box = container.querySelector('input[data-backup-cat="' + id + '"]');
+                if (box && !box.disabled) box.checked = true;
+              });
+            }
+          }
+          syncSettingsParent(container);
+          syncSelectAll(container, master);
+        };
+        if (master) {
+          master.onchange = function () {
+            setAll(container, master.checked);
+          };
+        }
+        if (secretsEl) {
+          secretsEl.onchange = function () {
+            container.querySelectorAll("input[data-backup-cat]").forEach(function (el) {
+              var cat = byId[el.getAttribute("data-backup-cat")];
+              if (cat && cat.requiresSecrets) {
+                el.disabled = !secretsEl.checked;
+                if (el.disabled) el.checked = false;
+              }
+            });
+            syncSelectAll(container, master);
+            syncSettingsParent(container);
+          };
+        }
+      }
+
+      function setStatus(el, text) {
+        if (el) el.textContent = text || "";
+      }
+
+      function pollJob(id, onDone) {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(function () {
+          api("/api/settings/backup/jobs/" + encodeURIComponent(id)).then(function (body) {
+            var job = body.job || {};
+            var progress = job.progress || {};
+            var msg = (progress.message || job.status || "") +
+              (progress.percent != null ? " (" + progress.percent + "%)" : "");
+            onDone(job, msg, false);
+            if (job.status === "complete" || job.status === "failed" || job.status === "cancelled") {
+              clearInterval(pollTimer);
+              pollTimer = null;
+              onDone(job, msg, true);
+            }
+          }).catch(function (err) {
+            onDone({ status: "failed", error: err.message }, err.message, true);
+            clearInterval(pollTimer);
+            pollTimer = null;
+          });
+        }, 1000);
+      }
+
+      var exportModal = document.getElementById("settingsModal-backup-export");
+      if (exportModal) {
+        loadCatalog().then(function (catalog) {
+          var box = document.getElementById("backupExportToggles");
+          renderGroups(box, catalog, null, false);
+          wireToggles(
+            box,
+            document.getElementById("backupExportSelectAll"),
+            catalog,
+            document.getElementById("backupExportSecrets")
           );
-          if (!ok) {
-            importInput.value = "";
+        }).catch(function (err) {
+          setStatus(document.getElementById("backupExportStatus"), err.message);
+        });
+      }
+
+      var exportBtn = document.getElementById("backupExportStartBtn");
+      if (exportBtn) {
+        exportBtn.addEventListener("click", function () {
+          var cats = selectedFrom(document.getElementById("backupExportToggles"));
+          if (!cats.length) {
+            setStatus(document.getElementById("backupExportStatus"), "Select at least one category.");
             return;
           }
+          var secrets = document.getElementById("backupExportSecrets").checked;
+          var pass = document.getElementById("backupExportPassphrase").value || "";
+          if (secrets && !window.confirm("This export includes secrets (tokens, certs, keys). Continue?")) return;
+          exportBtn.disabled = true;
+          document.getElementById("backupExportDownload").style.display = "none";
+          setStatus(document.getElementById("backupExportStatus"), "Queuing export…");
+          api("/api/settings/backup/export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ categories: cats, includeSecrets: secrets, passphrase: pass })
+          }).then(function (body) {
+            var id = body.job && body.job.id;
+            setStatus(document.getElementById("backupExportStatus"), "Waiting for worker…");
+            pollJob(id, function (job, msg, done) {
+              setStatus(document.getElementById("backupExportStatus"), msg);
+              if (!done) return;
+              exportBtn.disabled = false;
+              if (job.status === "complete") {
+                var a = document.getElementById("backupExportDownload");
+                a.href = "/api/settings/backup/jobs/" + encodeURIComponent(job.id) + "/download";
+                a.textContent = "Download " + (job.downloadName || "backup");
+                a.style.display = "";
+                setStatus(document.getElementById("backupExportStatus"), "Export complete.");
+              } else {
+                setStatus(document.getElementById("backupExportStatus"), job.error || "Export failed.");
+              }
+            });
+          }).catch(function (err) {
+            exportBtn.disabled = false;
+            setStatus(document.getElementById("backupExportStatus"), err.message);
+          });
+        });
+      }
 
-          var ok2 = window.confirm("Import '" + fileName + "' and overwrite existing configuration files?");
-          if (!ok2) {
-            importInput.value = "";
+      var inspectBtn = document.getElementById("backupImportInspectBtn");
+      var importFile = document.getElementById("backupImportFile");
+      if (inspectBtn && importFile) {
+        inspectBtn.addEventListener("click", function () {
+          if (!importFile.files || !importFile.files.length) {
+            setStatus(document.getElementById("backupImportInspectStatus"), "Choose a backup file.");
             return;
           }
+          var fd = new FormData();
+          fd.append("file", importFile.files[0]);
+          fd.append("passphrase", document.getElementById("backupImportPassphrase").value || "");
+          inspectBtn.disabled = true;
+          setStatus(document.getElementById("backupImportInspectStatus"), "Reading archive…");
+          fetch("/api/settings/backup/inspect", { method: "POST", body: fd, headers: { Accept: "application/json" } })
+            .then(function (res) {
+              return res.json().catch(function () { return {}; }).then(function (body) {
+                if (!res.ok) throw new Error(body.error || "Inspect failed");
+                return body;
+              });
+            })
+            .then(function (body) {
+              inspectBtn.disabled = false;
+              inspectState.filename = body.filename;
+              inspectState.encrypted = !!body.encrypted;
+              if (body.needsPassphrase) {
+                document.getElementById("backupImportOptions").hidden = true;
+                setStatus(document.getElementById("backupImportInspectStatus"), "This archive is encrypted. Enter the passphrase and read it again.");
+                return;
+              }
+              inspectState.manifest = body.manifest;
+              setStatus(document.getElementById("backupImportInspectStatus"), "Archive ready. Created " + (body.manifest && body.manifest.createdAt ? body.manifest.createdAt : "") + ".");
+              document.getElementById("backupImportOptions").hidden = false;
+              document.getElementById("backupImportSecrets").checked = !!(body.manifest && body.manifest.includeSecrets);
+              document.getElementById("backupImportSecrets").disabled = !(body.manifest && body.manifest.includeSecrets);
+              loadCatalog().then(function (catalog) {
+                var box = document.getElementById("backupImportToggles");
+                renderGroups(box, catalog, (body.manifest && body.manifest.categories) || [], document.getElementById("backupImportSecrets").checked);
+                wireToggles(
+                  box,
+                  document.getElementById("backupImportSelectAll"),
+                  catalog,
+                  document.getElementById("backupImportSecrets")
+                );
+                setAll(box, true);
+                syncSelectAll(box, document.getElementById("backupImportSelectAll"));
+                syncSettingsParent(box);
+              });
+            })
+            .catch(function (err) {
+              inspectBtn.disabled = false;
+              setStatus(document.getElementById("backupImportInspectStatus"), err.message);
+            });
+        });
+      }
 
-          importForm.submit();
+      var importStart = document.getElementById("backupImportStartBtn");
+      if (importStart) {
+        importStart.addEventListener("click", function () {
+          if (!inspectState.filename) {
+            setStatus(document.getElementById("backupImportStatus"), "Read an archive first.");
+            return;
+          }
+          var cats = selectedFrom(document.getElementById("backupImportToggles"));
+          if (!cats.length) {
+            setStatus(document.getElementById("backupImportStatus"), "Select at least one category.");
+            return;
+          }
+          var modeEl = document.querySelector('input[name="backupImportMode"]:checked');
+          var mode = modeEl ? modeEl.value : "merge";
+          if (mode === "replace" && !window.confirm("Replace will wipe the selected categories on this portal, then load the archive. Continue?")) return;
+          importStart.disabled = true;
+          document.getElementById("backupImportReport").hidden = true;
+          setStatus(document.getElementById("backupImportStatus"), "Queuing import…");
+          api("/api/settings/backup/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({
+              filename: inspectState.filename,
+              categories: cats,
+              mode: mode,
+              dryRun: document.getElementById("backupImportDryRun").checked,
+              includeSecrets: document.getElementById("backupImportSecrets").checked,
+              sendOnboardingEmail: document.getElementById("backupImportOnboarding").checked,
+              passphrase: document.getElementById("backupImportPassphrase").value || ""
+            })
+          }).then(function (body) {
+            var id = body.job && body.job.id;
+            pollJob(id, function (job, msg, done) {
+              setStatus(document.getElementById("backupImportStatus"), msg);
+              if (!done) return;
+              importStart.disabled = false;
+              if (job.status === "complete") {
+                var report = (job.result && job.result.report) || {};
+                var lines = Object.keys(report).map(function (k) {
+                  var r = report[k] || {};
+                  return k + ": create " + (r.create || 0) + ", update " + (r.update || 0) + ", skip " + (r.skip || 0) +
+                    (r.errors && r.errors.length ? " | " + r.errors.join("; ") : "");
+                });
+                var pre = document.getElementById("backupImportReport");
+                pre.textContent = lines.join("\n") || "Done.";
+                pre.hidden = false;
+                setStatus(document.getElementById("backupImportStatus"), job.result && job.result.dryRun ? "Dry run complete." : "Import complete.");
+              } else {
+                setStatus(document.getElementById("backupImportStatus"), job.error || "Import failed.");
+              }
+            });
+          }).catch(function (err) {
+            importStart.disabled = false;
+            setStatus(document.getElementById("backupImportStatus"), err.message);
+          });
         });
       }
     })();
@@ -5753,7 +6145,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup-export" || modalId === "backup-import") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

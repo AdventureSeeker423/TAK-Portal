@@ -40,6 +40,7 @@ const TEST_FILES = [
   "auditLog.distinct.test.js",
   "mouStore.ensure.test.js",
   "directoryPkText.test.js",
+  "backup.test.js",
 ];
 
 const testsDir = path.join(__dirname, "..", "tests");
