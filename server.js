@@ -1749,7 +1749,7 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   atakApk: atakApkSvc.getApkInfo(),
   portalDb: {
     host: "127.0.0.1",
-    port: String(process.env.POSTGRES_HOST_PORT || "5433"),
+    port: String(process.env.POSTGRES_HOST_PORT || "47193"),
     user: "takportal",
     database: "takportal",
     password: String(process.env.POSTGRES_PASSWORD || ""),

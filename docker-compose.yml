@@ -28,12 +28,13 @@ services:
       - log_autovacuum_min_duration=-1
       - -c
       - log_error_verbosity=terse
-    # Localhost only — not the LAN/internet. 5433 avoids clashing with a host Postgres on 5432.
-    # Connection: host 127.0.0.1, port 5433, database/user takportal, password from POSTGRES_PASSWORD (default takportal).
-    # Remote operators: SSH tunnel `ssh -L 5433:127.0.0.1:5433 user@tak-host` then DBeaver to localhost:5433.
+    # Localhost only — not the LAN/internet. 47193 is an unused high port (not 5432/5433).
+    # Connection: host 127.0.0.1, port 47193 (or POSTGRES_HOST_PORT), database/user takportal,
+    # password from POSTGRES_PASSWORD (default takportal).
+    # Remote operators: SSH tunnel `ssh -L 47193:127.0.0.1:47193 user@tak-host` then DBeaver to localhost:47193.
     # To disable host access, delete this ports block (containers still reach postgres:5432 on the compose network).
     ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-47193}:5432"
 
   tak-portal:
     build: .
