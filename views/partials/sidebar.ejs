@@ -21,6 +21,11 @@
     typeof _settings.BETA_MODE === "string"
       ? _settings.BETA_MODE.toLowerCase() === "true"
       : false;
+  const _betaVersion =
+    typeof APP_BETA_VERSION === "string" ? APP_BETA_VERSION.trim() : "";
+  const _isBetaBuild =
+    typeof APP_IS_BETA_BUILD !== "undefined" ? !!APP_IS_BETA_BUILD : false;
+  const _showBetaVersion = betaModeEnabled && _isBetaBuild && !!_betaVersion;
   const mouEnabled =
     typeof _settings.MOU_ENABLED === "string"
       ? _settings.MOU_ENABLED.toLowerCase() === "true"
@@ -191,7 +196,11 @@
           target="_blank"
           rel="noopener noreferrer"
         >
-          TAK Portal Version <%= APP_VERSION %>
+          <% if (_showBetaVersion) { %>
+            TAK Portal BETA Version <%= _betaVersion %>
+          <% } else { %>
+            TAK Portal Version <%= APP_VERSION %>
+          <% } %>
         </a>
       </small>
 

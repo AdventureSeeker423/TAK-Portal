@@ -61,9 +61,17 @@ const FONT_FAMILY_OPTIONS = new Set([
 const DEFAULT_SITE_FONT_FAMILY =
   "system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
 
-// Expose version to all EJS views (e.g. sidebar)
-app.locals.APP_VERSION = pkg.version || "dev";
-app.locals.APP_LATEST_VERSION = pkg.version || "dev";
+// Expose version to all EJS views (e.g. sidebar).
+// `version` stays the last stable release so update checks and 1.4.9 installs
+// are unchanged. `beta-version` is only present on post-stable builds.
+const APP_STABLE_VERSION = String(pkg.version || "dev").trim();
+const APP_BETA_VERSION = String(pkg["beta-version"] || "").trim();
+app.locals.APP_VERSION = APP_STABLE_VERSION;
+app.locals.APP_BETA_VERSION = APP_BETA_VERSION;
+app.locals.APP_IS_BETA_BUILD = Boolean(
+  APP_BETA_VERSION && APP_BETA_VERSION !== APP_STABLE_VERSION
+);
+app.locals.APP_LATEST_VERSION = APP_STABLE_VERSION;
 app.locals.APP_UPDATE_AVAILABLE = false;
 
 // Simple semver compare: returns true if `latest` > `current`
