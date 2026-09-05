@@ -4,6 +4,7 @@ const takDashboardCache = require("../services/takDashboardCache.service");
 const mutualAidService = require("../services/mutualAid.service");
 const bookmarksService = require("../services/bookmarks.service");
 const agenciesStore = require("../services/agencies.service");
+const templatesStore = require("../services/templates.service");
 const accessSvc = require("../services/access.service");
 const mouService = require("../services/mouService");
 const mapPageAssets = require("../services/mapPageAssets.service");
@@ -35,6 +36,13 @@ function agreementLocalsForRequest(req) {
       ),
     }),
   };
+}
+
+function countTemplatesForAuthUser(user) {
+  return templatesStore.countVisibleToUser({
+    isGlobalAdmin: !!(user && user.isGlobalAdmin),
+    allowedAgencySuffixes: user && user.allowedAgencySuffixes,
+  });
 }
 
 router.get("/", async (req, res) => {
@@ -104,7 +112,8 @@ router.get("/", async (req, res) => {
       stats = {
         totalUsers: agencySnap.stats?.totalUsers ?? 0,
         totalGroups: agencySnap.stats?.totalGroups ?? 0,
-        totalAgencies: isMultiAgencyDashboard ? managed.length : 0,
+        totalAgencies: managed.length,
+        totalTemplates: countTemplatesForAuthUser(req.authentikUser),
         totalIntegrations: 0,
       };
       charts = {
@@ -127,6 +136,7 @@ router.get("/", async (req, res) => {
         totalUsers: snap.stats?.totalUsers ?? 0,
         totalGroups: snap.stats?.totalGroups ?? 0,
         totalAgencies: snap.stats?.totalAgencies ?? 0,
+        totalTemplates: countTemplatesForAuthUser(req.authentikUser),
         totalIntegrations: snap.stats?.totalIntegrations ?? 0,
       };
       charts = snap.charts || {
@@ -209,6 +219,7 @@ router.get("/", async (req, res) => {
         totalUsers: 0,
         totalGroups: 0,
         totalAgencies: 0,
+        totalTemplates: 0,
         totalIntegrations: 0,
       },
       mutualAid: {

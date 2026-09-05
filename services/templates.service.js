@@ -22,4 +22,18 @@ function getDefaultTemplateForAgency(agencySuffix) {
   return found || null;
 }
 
-module.exports = { load, save, FILE, getDefaultTemplateForAgency };
+function countVisibleToUser({ isGlobalAdmin, allowedAgencySuffixes } = {}) {
+  const all = load();
+  if (isGlobalAdmin) return all.length;
+  const allowedSet = new Set(
+    (Array.isArray(allowedAgencySuffixes) ? allowedAgencySuffixes : [])
+      .map((s) => String(s || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  if (!allowedSet.size) return 0;
+  return all.filter((t) =>
+    allowedSet.has(String(t.agencySuffix || "").trim().toLowerCase())
+  ).length;
+}
+
+module.exports = { load, save, FILE, getDefaultTemplateForAgency, countVisibleToUser };

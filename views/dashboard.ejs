@@ -81,7 +81,9 @@
   <!-- Top stats -->
   <% const agencyDash = typeof isAgencyDashboard !== "undefined" && isAgencyDashboard; %>
   <% const multiAgencyDash = agencyDash && typeof isMultiAgencyDashboard !== "undefined" && isMultiAgencyDashboard; %>
-  <div class="<%= multiAgencyDash ? 'grid3' : (agencyDash ? 'grid2 dashboardAgencyStats' : 'grid3') %>">
+  <% const canOpenTemplates = typeof perm === "function" ? perm("page.templates") : (isGlobalAdmin || isAgencyAdmin); %>
+  <% const canOpenAgencies = typeof perm === "function" ? perm("page.agencies") : !!isGlobalAdmin; %>
+  <div class="grid4">
     <a href="/users" class="statCardLink">
       <div class="card stat">
         <div class="statLabel">Total Users</div>
@@ -90,14 +92,27 @@
       </div>
     </a>
 
-    <% if (multiAgencyDash) { %>
+    <a href="/groups" class="statCardLink">
+      <div class="card stat">
+        <div class="statLabel">Total Groups</div>
+        <div class="statValue"><%= stats.totalGroups %></div>
+        <div class="statHint"></div>
+      </div>
+    </a>
+
+    <% if (canOpenTemplates) { %>
+    <a href="/templates" class="statCardLink">
+    <% } %>
     <div class="card stat">
-      <div class="statLabel">Managed Agencies</div>
-      <div class="statValue"><%= stats.totalAgencies %></div>
+      <div class="statLabel">Total Templates</div>
+      <div class="statValue"><%= stats.totalTemplates || 0 %></div>
       <div class="statHint"></div>
     </div>
-    <% } else if (!agencyDash) { %>
-    <% if (isGlobalAdmin) { %>
+    <% if (canOpenTemplates) { %>
+    </a>
+    <% } %>
+
+    <% if (canOpenAgencies) { %>
     <a href="/agencies" class="statCardLink">
     <% } %>
     <div class="card stat">
@@ -105,18 +120,9 @@
       <div class="statValue"><%= stats.totalAgencies %></div>
       <div class="statHint"></div>
     </div>
-    <% if (isGlobalAdmin) { %>
+    <% if (canOpenAgencies) { %>
     </a>
     <% } %>
-    <% } %>
-
-    <a href="/groups" class="statCardLink">
-      <div class="card stat">
-        <div class="statLabel">Total Groups / Channels</div>
-        <div class="statValue"><%= stats.totalGroups %></div>
-        <div class="statHint"></div>
-      </div>
-    </a>
   </div>
 
   <!-- TAK stats row: 4-wide global; agency admin shows connected users only -->
@@ -1551,6 +1557,9 @@
   }
   @media (max-width: 1100px){
     .grid3{ grid-template-columns: 1fr; }
+    .grid4{ grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 640px){
     .grid4{ grid-template-columns: 1fr; }
   }
 
