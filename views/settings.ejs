@@ -555,12 +555,12 @@
                 fetch("/api/system/health", { headers: { Accept: "application/json" } })
                   .then(function (r) { return r.json(); })
                   .then(function (h) {
-                    setChip("postgres", !!(h && h.postgres && h.postgres.ok), "Reachable", "Unreachable");
-                    setChip("worker", !!(h && h.worker && h.worker.ok), "Running", "Not running");
+                    setChip("postgres", !!(h && h.postgres && h.postgres.ok), "Healthy", "Unreachable");
+                    setChip("worker", !!(h && h.worker && h.worker.ok), "Healthy", "Not running");
                   })
                   .catch(function () {
-                    setChip("postgres", false, "Reachable", "Unreachable");
-                    setChip("worker", false, "Running", "Not running");
+                    setChip("postgres", false, "Healthy", "Unreachable");
+                    setChip("worker", false, "Healthy", "Not running");
                   });
               }
             })();

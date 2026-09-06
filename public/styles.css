@@ -2861,6 +2861,8 @@ a.settings-hub-card:visited {
     z-index: 3;
     background: var(--raised, var(--panel, #111827));
     overflow: visible;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
 }
 
 .settings-modal .modalHeader .settings-help-popover {
@@ -2905,6 +2907,11 @@ a.settings-hub-card:visited {
         max-width: 100%;
         max-height: 96dvh;
         border-radius: 12px;
+    }
+
+    .settings-modal .modalHeader {
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
     }
 
     .settings-modal .modalBody,
