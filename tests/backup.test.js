@@ -71,6 +71,10 @@ assert.ok(
   /\/api\/settings\/backup[\s\S]{0,180}requirePermission\("page\.settings"\)/.test(serverSrc),
   "backup routes must be mounted with page.settings"
 );
+assert.ok(
+  /\/api\/settings\/legacy-import[\s\S]{0,180}requirePermission\("page\.settings"\)/.test(serverSrc),
+  "legacy-import routes must be mounted with page.settings"
+);
 assert.ok(!/\/settings\/export-data/.test(serverSrc), "legacy export-data stub should be gone");
 
 const registry = require("../services/permissions.registry");
@@ -80,6 +84,14 @@ assert.deepStrictEqual(
 );
 assert.deepStrictEqual(
   registry.getRequiredPermissionsForRequest("/api/settings/backup/export", "POST"),
+  ["page.settings"]
+);
+assert.deepStrictEqual(
+  registry.getRequiredPermissionsForRequest("/api/settings/legacy-import/status", "GET"),
+  ["page.settings"]
+);
+assert.deepStrictEqual(
+  registry.getRequiredPermissionsForRequest("/api/settings/legacy-import/rerun", "POST"),
   ["page.settings"]
 );
 

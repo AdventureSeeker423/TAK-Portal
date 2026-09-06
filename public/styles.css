@@ -2713,6 +2713,30 @@ a.settings-hub-card:visited {
     white-space: pre-wrap;
 }
 
+.legacy-import-table-wrap {
+    overflow: auto;
+    margin: 0.5rem 0 0.75rem;
+}
+
+.legacy-import-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.legacy-import-table th,
+.legacy-import-table td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.45rem 0.55rem;
+    border-bottom: 1px solid var(--line, #374151);
+}
+
+.legacy-import-table th {
+    font-weight: 650;
+    white-space: nowrap;
+}
+
 .settings-modal .modalHeader {
     flex-shrink: 0;
     position: relative;

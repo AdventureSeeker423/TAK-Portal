@@ -34,6 +34,7 @@ const TEST_FILES = [
   "migrationGate.test.js",
   "stackHealthGate.test.js",
   "jsonImport.retire.test.js",
+  "jsonImport.restore.test.js",
   "directorySearch.sql.test.js",
   "outbox.skipLocked.test.js",
   "directorySync.deadLetter.test.js",

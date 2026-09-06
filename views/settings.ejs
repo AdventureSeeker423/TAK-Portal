@@ -187,6 +187,9 @@
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="backup">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Import / Export</span></span>
         </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="legacy-import">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">1.4.9 Data Migration</span></span>
+        </div>
       </div>
     </section>
 
@@ -4632,6 +4635,43 @@
     </div>
   </div>
 
+  <div class="modalOverlay settings-modal-overlay" id="settingsModal-legacy-import" data-settings-modal="legacy-import" style="display:none;" aria-hidden="true">
+    <div class="modal settings-modal settings-modal-backup" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-legacy-import">
+      <div class="modalHeader">
+        <div class="modalHeaderLeft">
+          <h2 id="settingsModalTitle-legacy-import">1.4.9 data migration</h2>
+          <span class="settings-help-tip">
+            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+            <span class="settings-help-popover">After upgrading from 1.4.9, JSON files in the data volume are imported into Postgres and then moved to data/migrated/. Use this if the portal came up but agencies or other records look empty.</span>
+          </span>
+        </div>
+        <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+      </div>
+      <div class="modalBody settings-body">
+        <p class="muted">The 1.4.9 updater keeps the Docker data volume. This build then copies those JSON files into Postgres and leaves a backup in <code>data/migrated/</code>. If that import did not run, restore the backup and import again. Matching Postgres tables are replaced from the JSON files. Users and groups still come from Authentik; settings.json is not part of this import.</p>
+        <p id="legacyImportStatus" class="muted backup-status" role="status">Checking JSON files…</p>
+        <div class="backup-actions" style="margin-bottom:12px;">
+          <button type="button" class="btn" id="legacyImportRefreshBtn">Refresh</button>
+          <button type="button" class="btn danger" id="legacyImportRerunBtn">Restore backup and re-run import</button>
+        </div>
+        <div class="legacy-import-table-wrap">
+          <table class="legacy-import-table" id="legacyImportTable">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>JSON in data volume</th>
+                <th>Migrated backup</th>
+                <th>Last import</th>
+              </tr>
+            </thead>
+            <tbody id="legacyImportTableBody"></tbody>
+          </table>
+        </div>
+        <pre id="legacyImportReport" class="backup-report" hidden></pre>
+      </div>
+    </div>
+  </div>
+
 
   <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
   <div class="modalOverlay settings-modal-overlay" id="settingsModal-tak-maintenance" data-settings-modal="tak-maintenance" style="display:none;" aria-hidden="true">
@@ -5086,6 +5126,161 @@
           });
         });
       }
+    })();
+  </script>
+
+  <script>
+    (function () {
+      var pollTimer = null;
+      var statusEl = document.getElementById("legacyImportStatus");
+      var tbody = document.getElementById("legacyImportTableBody");
+      var report = document.getElementById("legacyImportReport");
+      var rerunBtn = document.getElementById("legacyImportRerunBtn");
+      var refreshBtn = document.getElementById("legacyImportRefreshBtn");
+      var modal = document.getElementById("settingsModal-legacy-import");
+      if (!modal || !statusEl || !tbody) return;
+
+      function setStatus(text, isError) {
+        statusEl.textContent = text || "";
+        statusEl.style.color = isError ? "var(--danger, #ff3b3b)" : "";
+      }
+
+      function bytesLabel(n) {
+        var bytes = Number(n) || 0;
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      }
+
+      function importLabel(file) {
+        if (file.importError) return "Error: " + file.importError;
+        if (file.importStatus === "ok") {
+          return "Imported " + (file.importRows || 0) + " row" + (file.importRows === 1 ? "" : "s");
+        }
+        if (file.importStatus) return file.importStatus;
+        return "Not imported";
+      }
+
+      function render(data) {
+        var files = (data && data.files) || [];
+        tbody.innerHTML = "";
+        files.forEach(function (file) {
+          var tr = document.createElement("tr");
+          function td(text) {
+            var cell = document.createElement("td");
+            cell.textContent = text;
+            tr.appendChild(cell);
+          }
+          td(file.name || "");
+          td(file.originalPresent ? "Present (" + bytesLabel(file.originalBytes) + ")" : "Missing");
+          td(
+            file.latestBackup
+              ? "Yes (" + (file.backupCount || 1) + ")"
+              : "None"
+          );
+          td(importLabel(file));
+          tbody.appendChild(tr);
+        });
+        var progress = (data && data.progress) || {};
+        if (progress.phase === "running") {
+          var pct = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+          var msg = progress.message || "Importing…";
+          if (progress.currentFile) msg += " (" + progress.currentFile + ")";
+          setStatus(pct + "% — " + msg);
+          if (rerunBtn) rerunBtn.disabled = true;
+        } else if (progress.phase === "failed") {
+          setStatus(progress.message || "Import failed", true);
+          if (rerunBtn) rerunBtn.disabled = !data.canRerun;
+        } else if (progress.phase === "complete") {
+          setStatus(progress.message || "Import complete.");
+          if (rerunBtn) rerunBtn.disabled = !data.canRerun;
+        } else {
+          if (!data.hasSource) {
+            setStatus("No leftover JSON files or migrated backups were found.");
+          } else {
+            setStatus("Ready. JSON still in the data volume is kept; missing files are restored from data/migrated/.");
+          }
+          if (rerunBtn) rerunBtn.disabled = !data.canRerun;
+        }
+      }
+
+      function loadStatus() {
+        return fetch("/api/settings/legacy-import/status", {
+          headers: { Accept: "application/json" },
+          cache: "no-store"
+        }).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (body) {
+            if (!res.ok) throw new Error(body.error || res.statusText || "Request failed");
+            return body;
+          });
+        }).then(function (data) {
+          render(data);
+          var phase = data && data.progress && data.progress.phase;
+          if (phase === "running") startPoll();
+          else stopPoll();
+          return data;
+        }).catch(function (err) {
+          setStatus(err.message || "Could not read migration status", true);
+        });
+      }
+
+      function startPoll() {
+        if (pollTimer) return;
+        pollTimer = setInterval(loadStatus, 1000);
+      }
+
+      function stopPoll() {
+        if (!pollTimer) return;
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+
+      if (refreshBtn) refreshBtn.addEventListener("click", function () { loadStatus(); });
+      if (rerunBtn) {
+        rerunBtn.addEventListener("click", function () {
+          if (!window.confirm("Restore migrated JSON backups and re-import them into Postgres? This replaces matching portal tables from those files.")) return;
+          rerunBtn.disabled = true;
+          if (report) {
+            report.hidden = true;
+            report.textContent = "";
+          }
+          setStatus("Restoring backups and starting import…");
+          fetch("/api/settings/legacy-import/rerun", {
+            method: "POST",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: "{}"
+          }).then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (body) {
+              if (!res.ok) throw new Error(body.error || res.statusText || "Request failed");
+              return body;
+            });
+          }).then(function (body) {
+            var lines = (body.restore || []).map(function (row) {
+              var action = row.action === "kept_original"
+                ? "kept existing JSON"
+                : row.action === "replaced_empty"
+                  ? "replaced empty JSON from backup"
+                  : row.action === "restored"
+                    ? "restored from backup"
+                    : "no source";
+              return row.name + ": " + action + (row.from ? " (" + row.from + ")" : "");
+            });
+            if (report) {
+              report.textContent = lines.join("\n") || "Queued.";
+              report.hidden = false;
+            }
+            setStatus("Import queued. Watching progress…");
+            startPoll();
+            return loadStatus();
+          }).catch(function (err) {
+            rerunBtn.disabled = false;
+            setStatus(err.message || "Could not start import", true);
+          });
+        });
+      }
+
+      window.startLegacyImportStatus = loadStatus;
+      window.stopLegacyImportStatus = stopPoll;
     })();
   </script>
 
@@ -5879,6 +6074,7 @@
       function closeSettingsModal() {
         var wasMaintenance = openId === "tak-maintenance";
         var wasLiveMap = openId === "live-map";
+        var wasLegacyImport = openId === "legacy-import";
         if (!openId) {
           document.querySelectorAll(".settings-modal-overlay").forEach(function (el) {
             el.style.display = "none";
@@ -5900,6 +6096,9 @@
         if (wasLiveMap && typeof window.stopOpenAddressesPoll === "function") {
           window.stopOpenAddressesPoll();
         }
+        if (wasLegacyImport && typeof window.stopLegacyImportStatus === "function") {
+          window.stopLegacyImportStatus();
+        }
       }
 
       function openSettingsModal(id) {
@@ -5918,6 +6117,9 @@
         }
         if (id === "live-map" && typeof window.startOpenAddressesPoll === "function") {
           window.startOpenAddressesPoll();
+        }
+        if (id === "legacy-import" && typeof window.startLegacyImportStatus === "function") {
+          window.startLegacyImportStatus();
         }
       }
 
@@ -6144,7 +6346,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup" || modalId === "legacy-import") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

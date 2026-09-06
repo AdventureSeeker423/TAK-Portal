@@ -3,6 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 const db = require("./db");
 const cryptoSecrets = require("./cryptoSecrets");
+const jsonImportFiles = require("./jsonImport.files");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const MIGRATED_DIR = path.join(DATA_DIR, "migrated");
@@ -115,6 +116,14 @@ function retireFile(absPath, fileName) {
   fs.mkdirSync(MIGRATED_DIR, { recursive: true });
   const dest = path.join(MIGRATED_DIR, `${fileName}.${isoStamp()}.json`);
   fs.renameSync(absPath, dest);
+}
+
+function inspectLegacySources() {
+  return jsonImportFiles.inspectLegacySourcesIn(DATA_DIR, MIGRATED_DIR, IMPORT_FILES);
+}
+
+function restoreLatestBackups(opts) {
+  return jsonImportFiles.restoreLatestBackupsIn(DATA_DIR, MIGRATED_DIR, IMPORT_FILES, opts);
 }
 
 function readJson(absPath) {
@@ -675,6 +684,77 @@ async function retry() {
   return run();
 }
 
+async function listImportRuns() {
+  const r = await db.query(
+    `SELECT file_name, row_count, status, error, finished_at
+     FROM json_import_runs
+     ORDER BY file_name`
+  );
+  return r.rows || [];
+}
+
+async function readRecoveryStatus() {
+  const progress = await readStatusJson();
+  const sources = inspectLegacySources();
+  let runs = [];
+  try {
+    runs = await listImportRuns();
+  } catch (e) {
+    console.warn("[json-import] read runs:", e?.message || e);
+  }
+  const byName = new Map(runs.map((row) => [row.file_name, row]));
+  const files = sources.map((s) => {
+    const run = byName.get(s.name) || null;
+    return {
+      ...s,
+      importStatus: run ? String(run.status || "") : "",
+      importRows: run ? Number(run.row_count || 0) : 0,
+      importError: run && run.error ? String(run.error) : "",
+      importFinishedAt: run && run.finished_at ? run.finished_at : null,
+    };
+  });
+  const hasSource = files.some((f) => f.originalPresent || f.latestBackup);
+  const running = progress.phase === "running";
+  return {
+    progress,
+    files,
+    canRerun: hasSource && !running,
+    hasSource,
+    running,
+  };
+}
+
+async function startRerunFromBackup() {
+  const row = await getProgressRow();
+  if (String(row.phase || "") === "running") {
+    const err = new Error("Legacy JSON import is already running");
+    err.code = "import_running";
+    throw err;
+  }
+  const restore = restoreLatestBackups({ overwriteExisting: false });
+  const queued = restore.filter((r) => r.usable).map((r) => r.name);
+  if (!queued.length) {
+    const err = new Error(
+      "No legacy JSON files or migrated backups were found in the data volume"
+    );
+    err.code = "nothing_to_import";
+    throw err;
+  }
+  await db.query("DELETE FROM json_import_runs WHERE file_name = ANY($1::text[])", [queued]);
+  await setProgress({
+    phase: "idle",
+    percent: 0,
+    files_done: 0,
+    files_total: queued.length,
+    current_file: null,
+    eta_seconds: null,
+    message: "Retrying import from restored JSON",
+    error: null,
+  });
+  run().catch((e) => console.error("[json-import] rerun:", e?.message || e));
+  return { restore, queuedFiles: queued };
+}
+
 module.exports = {
   run,
   retry,
@@ -682,5 +762,9 @@ module.exports = {
   readStatusJson,
   pendingFiles,
   retireFile,
+  inspectLegacySources,
+  restoreLatestBackups,
+  readRecoveryStatus,
+  startRerunFromBackup,
   IMPORT_FILES,
 };

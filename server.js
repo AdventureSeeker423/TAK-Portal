@@ -701,6 +701,11 @@ app.use(
   requirePermission("page.settings"),
   require("./routes/settingsBackup.routes")
 );
+app.use(
+  "/api/settings/legacy-import",
+  requirePermission("page.settings"),
+  require("./routes/settingsLegacyImport.routes")
+);
 // Locate + data packages (admin + JSON APIs): page-aligned capability.
 app.use("/api/locate", requirePermission("page.locate"), require("./routes/locate.routes"));
 

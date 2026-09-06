@@ -77,6 +77,18 @@ const stackHealthGate = require("../services/stackHealthGate.middleware");
   assert.strictEqual(nextCalled, true);
   assert.strictEqual(healthRes.statusCode, 200);
 
+  nextCalled = false;
+  const rerunRes = mockRes();
+  await stackHealthGate(
+    { path: "/api/settings/legacy-import/rerun", headers: { accept: "application/json" } },
+    rerunRes,
+    () => {
+      nextCalled = true;
+    }
+  );
+  assert.strictEqual(nextCalled, true);
+  assert.strictEqual(rerunRes.statusCode, 200);
+
   stackHealth.getStackHealth = async () => ({
     ok: true,
     migrating: false,

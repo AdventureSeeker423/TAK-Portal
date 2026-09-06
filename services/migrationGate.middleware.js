@@ -8,6 +8,13 @@ const ALLOW_EXACT = new Set([
   "/api/system/migration-retry",
 ]);
 
+const ALLOW_PREFIX = ["/api/settings/legacy-import"];
+
+function isAllowedPath(p) {
+  if (ALLOW_EXACT.has(p)) return true;
+  return ALLOW_PREFIX.some((pre) => p === pre || p.startsWith(pre + "/"));
+}
+
 function isStaticAllowed(req) {
   const p = req.path || "";
   if (p.startsWith("/branding/") || p.startsWith("/mutual-aid-logos/")) return true;
@@ -24,7 +31,7 @@ function wantsHtml(req) {
 async function migrationGate(req, res, next) {
   try {
     const p = (req.path || "").replace(/\/+$/, "") || "/";
-    if (ALLOW_EXACT.has(p) || isStaticAllowed(req)) return next();
+    if (isAllowedPath(p) || isStaticAllowed(req)) return next();
 
     const status = await jsonImport.readStatusJson();
     if (!status.active) return next();

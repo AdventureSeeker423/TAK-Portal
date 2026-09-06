@@ -73,6 +73,18 @@ function mockRes() {
   assert.strictEqual(nextCalled, true);
   assert.strictEqual(healthRes.statusCode, 200);
 
+  nextCalled = false;
+  const rerunRes = mockRes();
+  await migrationGate(
+    { path: "/api/settings/legacy-import/status", headers: { accept: "application/json" } },
+    rerunRes,
+    () => {
+      nextCalled = true;
+    }
+  );
+  assert.strictEqual(nextCalled, true);
+  assert.strictEqual(rerunRes.statusCode, 200);
+
   jsonImport.readStatusJson = originalRead;
   console.log("migrationGate.test.js: ok");
 })().catch((err) => {
