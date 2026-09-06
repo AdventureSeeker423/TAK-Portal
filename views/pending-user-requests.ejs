@@ -932,15 +932,11 @@ th.sortable:hover{
   }
 
   // -------------------- Groups (cache once) --------------------
-  async function loadGroups(q) {
-    const res = await fetch('/api/groups/search?' + new URLSearchParams({
-      q: String(q || '').trim(),
-      page: '1',
-      pageSize: '25',
-    }).toString());
+  async function loadGroups() {
+    const res = await fetch('/api/groups');
     const out = await res.json();
     if (!res.ok) throw new Error(out.error || 'Failed to load groups');
-    groupsCache = Array.isArray(out.groups) ? out.groups : [];
+    groupsCache = Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []);
   }
 
   // -------------------- Templates (per form) --------------------
@@ -1043,13 +1039,29 @@ th.sortable:hover{
     const pickedManualGroupIds = new Set();
 
     function renderGroupsBox() {
+      const filterText = String(groupFilter.value || '').trim().toLowerCase();
       const sorted = groupsCache
         .slice()
+        .filter((g) => {
+          if (!filterText) return true;
+          const raw = String(g.name || '').toLowerCase();
+          const display = raw.replace(/^tak_/, '');
+          return raw.includes(filterText) || display.includes(filterText);
+        })
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+
+      if (!groupsCache.length) {
+        groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">No groups found.</p>';
+        return;
+      }
+      if (!sorted.length) {
+        groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">No matching groups.</p>';
+        return;
+      }
 
       groupsInner.innerHTML = sorted
         .map((g) => {
-          const id = String(g.pk);
+          const id = String(g.pk || g.id || '');
           const rawName = String(g.name || '');
           const name = rawName.replace(/^tak_/, '');
           return `
@@ -1075,11 +1087,7 @@ th.sortable:hover{
     });
 
     groupFilter.addEventListener('input', () => {
-      clearTimeout(window.__pendingGroupFilterTimer);
-      window.__pendingGroupFilterTimer = setTimeout(async () => {
-        await loadGroups(groupFilter.value);
-        renderGroupsBox();
-      }, 280);
+      renderGroupsBox();
     });
 
     selectAllBtn.addEventListener('click', () => {

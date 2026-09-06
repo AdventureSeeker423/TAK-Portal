@@ -435,7 +435,10 @@
 
   function renderGroupsPicker(innerEl, filterInput, pickedSet) {
     if (!innerEl) return;
-    var filtered = sortedGroupsCache();
+    var needle = String(filterInput && filterInput.value || "").trim().toLowerCase();
+    var filtered = sortedGroupsCache().filter(function (g) {
+      return groupMatchesFilter(g, needle);
+    });
     if (!filtered.length) {
       innerEl.innerHTML = groupsCache.length
         ? "<p class=\"muted\" style=\"margin:0;padding:8px;\">No groups match your search.</p>"
@@ -443,8 +446,8 @@
       return;
     }
     innerEl.innerHTML = filtered.map(function (g) {
-      var id = String(g.pk);
-      var name = stripTakPrefix(g.name) || g.pk;
+      var id = String(g.pk || g.id || "");
+      var name = stripTakPrefix(g.name) || id;
       var checked = pickedSet.has(id) ? "checked" : "";
       return "<label class=\"groupItem\">" +
         "<input type=\"checkbox\" value=\"" + esc(id) + "\" " + checked + " />" +
@@ -461,16 +464,11 @@
     renderGroupsPicker(editGroupsInner, editGroupFilter, editPickedGroupIds);
   }
 
-  async function loadGroups(q) {
-    const query = String(q != null ? q : (createGroupFilter && createGroupFilter.value) || "").trim();
-    const res = await fetch("/api/groups/search?" + new URLSearchParams({
-      q: query,
-      page: "1",
-      pageSize: "25",
-    }).toString());
+  async function loadGroups() {
+    const res = await fetch("/api/groups");
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to load groups");
-    groupsCache = Array.isArray(data.groups) ? data.groups : [];
+    groupsCache = Array.isArray(data) ? data : (Array.isArray(data.groups) ? data.groups : []);
     renderCreateGroups();
     renderEditGroups();
   }
@@ -881,12 +879,8 @@
     });
   }
   if (createGroupFilter) {
-    var createGroupTimer = null;
     createGroupFilter.addEventListener("input", function () {
-      clearTimeout(createGroupTimer);
-      createGroupTimer = setTimeout(function () {
-        loadGroups(createGroupFilter.value).catch(function () {});
-      }, 280);
+      renderCreateGroups();
     });
   }
   if (createSelectAllBtn) {
@@ -915,12 +909,8 @@
     });
   }
   if (editGroupFilter) {
-    var editGroupTimer = null;
     editGroupFilter.addEventListener("input", function () {
-      clearTimeout(editGroupTimer);
-      editGroupTimer = setTimeout(function () {
-        loadGroups(editGroupFilter.value).catch(function () {});
-      }, 280);
+      renderEditGroups();
     });
   }
   if (editSelectAllBtn) {

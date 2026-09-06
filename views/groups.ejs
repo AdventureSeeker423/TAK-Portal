@@ -2531,13 +2531,20 @@ userClearAll.onclick = () => {
 };
 
 function renderSourceGroupList(){
+  const needle = String(sourceGroupSearch?.value || "").trim().toLowerCase();
   const items = (sourceGroupsCache || [])
-    .filter(g => String(g.pk) !== String(activeMassGroupId))
+    .filter(g => String(g.pk || g.id) !== String(activeMassGroupId))
     .slice()
-    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
+    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")))
+    .filter(g => {
+      if (!needle) return true;
+      const raw = String(g.name || "").toLowerCase();
+      const display = stripTakPrefix(String(g.name || "")).toLowerCase();
+      return raw.includes(needle) || display.includes(needle);
+    });
 
   sourceGroupList.innerHTML = items.map(g => {
-    const id = String(g.pk);
+    const id = String(g.pk || g.id || "");
     const checked = selectedSourceGroupIds.has(id) ? "checked" : "";
     return `
       <label class="groupItem">
@@ -2545,29 +2552,26 @@ function renderSourceGroupList(){
         <span>${esc(stripTakPrefix(String(g.name || id)))}</span>
       </label>
     `;
-  }).join("") || `<div style="padding:10px; color: var(--muted);">No groups found.</div>`;
+  }).join("") || `<div style="padding:10px; color: var(--muted);">${
+    (sourceGroupsCache || []).length ? "No matching groups." : "No groups found."
+  }</div>`;
 }
 
 async function loadSourceGroups() {
-  const q = String(sourceGroupSearch?.value || "").trim();
   try {
-    const res = await fetch("/api/groups/search?" + new URLSearchParams({
-      q,
-      page: "1",
-      pageSize: "25",
-    }).toString());
+    const res = await fetch("/api/groups");
     const out = await res.json();
-    sourceGroupsCache = res.ok && Array.isArray(out.groups) ? out.groups : [];
+    sourceGroupsCache = res.ok
+      ? (Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []))
+      : [];
   } catch (_) {
     sourceGroupsCache = [];
   }
   renderSourceGroupList();
 }
 
-let sourceGroupSearchTimer = null;
 sourceGroupSearch.oninput = () => {
-  clearTimeout(sourceGroupSearchTimer);
-  sourceGroupSearchTimer = setTimeout(loadSourceGroups, 280);
+  renderSourceGroupList();
 };
 groupSelectAll.onclick = () => {
   sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(c => {

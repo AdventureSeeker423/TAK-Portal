@@ -2943,14 +2943,11 @@ if (agencyTypeClearAll) {
 }
 
 async function loadGroups(){
-  const q = String(sourceGroupSearch && sourceGroupSearch.value || "").trim();
-  const res = await fetch("/api/groups/search?" + new URLSearchParams({
-    q,
-    page: "1",
-    pageSize: "25",
-  }).toString());
+  const res = await fetch("/api/groups");
   const out = await res.json();
-  groupsCache = res.ok && Array.isArray(out.groups) ? out.groups : [];
+  groupsCache = res.ok
+    ? (Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []))
+    : [];
   renderSourceGroupList();
   renderExistingGroupSelect();
 }
@@ -2981,8 +2978,7 @@ function renderSourceGroupList(){
 }
 
 sourceGroupSearch.oninput = () => {
-  clearTimeout(window.__maSourceGroupTimer);
-  window.__maSourceGroupTimer = setTimeout(loadGroups, 280);
+  renderSourceGroupList();
 };
 groupSelectAll.onclick = () => {
   sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(ch => {

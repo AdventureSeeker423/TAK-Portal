@@ -2664,7 +2664,7 @@ window.openAccessGroupsModal = async (agencyId) => {
 
   try {
     const [groupsRes, allowedRes] = await Promise.all([
-      fetch("/api/groups/search?" + new URLSearchParams({ q: "", page: "1", pageSize: "25" }).toString()),
+      fetch("/api/groups"),
       fetch(`/api/agencies/${encodeURIComponent(agencyId)}/access-groups`)
     ]);
     const groupsData = await groupsRes.json();
@@ -2672,7 +2672,10 @@ window.openAccessGroupsModal = async (agencyId) => {
     if (!groupsRes.ok) throw new Error(groupsData.error || "Failed to load groups");
     if (!allowedRes.ok) throw new Error(allowedData.error || "Failed to load access groups");
 
-    const allGroups = Array.isArray(groupsData.groups) ? groupsData.groups : (Array.isArray(groupsData) ? groupsData : []);
+    const allGroups = Array.isArray(groupsData)
+      ? groupsData
+      : (Array.isArray(groupsData.groups) ? groupsData.groups : []);
+    accessGroupsAllGroups = allGroups;
     accessGroupsSelectable = allGroups.filter(g => !isGroupRelatedToAgency(g, a));
     accessGroupsPickedIds = new Set(Array.isArray(allowedData.allowedAdminGroupIds) ? allowedData.allowedAdminGroupIds : []);
 
@@ -2686,24 +2689,7 @@ window.openAccessGroupsModal = async (agencyId) => {
 };
 
 if (accessGroupSearch) accessGroupSearch.addEventListener("input", () => {
-  clearTimeout(window.__accessGroupSearchTimer);
-  window.__accessGroupSearchTimer = setTimeout(async () => {
-    try {
-      const q = String(accessGroupSearch.value || "").trim();
-      const res = await fetch("/api/groups/search?" + new URLSearchParams({
-        q,
-        page: "1",
-        pageSize: "25",
-      }).toString());
-      const groupsData = await res.json();
-      const allGroups = Array.isArray(groupsData.groups) ? groupsData.groups : [];
-      const a = (agencies || []).find(x => String(x._id ?? x.id) === String(accessGroupsAgencyId));
-      accessGroupsSelectable = allGroups.filter(g => !a || !isGroupRelatedToAgency(g, a));
-      renderAccessGroupsGrid("");
-    } catch (_) {
-      renderAccessGroupsGrid(accessGroupSearch.value);
-    }
-  }, 280);
+  renderAccessGroupsGrid(accessGroupSearch.value);
 });
 if (accessGroupsSelectAllBtn) accessGroupsSelectAllBtn.onclick = () => {
   accessGroupsSelectable.forEach(g => accessGroupsPickedIds.add(String(g.pk ?? g.id ?? "")));

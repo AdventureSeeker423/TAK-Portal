@@ -427,12 +427,18 @@
 
     function renderEmailGroupList() {
       if (!emailGroupListInner) return;
-      const items = (groupsCache || []).slice();
+      const needle = String(emailGroupSearch && emailGroupSearch.value || "").trim().toLowerCase();
+      const items = (groupsCache || []).filter((g) => {
+        if (!needle) return true;
+        const raw = String(g.name || "").toLowerCase();
+        const display = raw.replace(/^tak[_-]/i, "");
+        return raw.includes(needle) || display.includes(needle);
+      });
 
       emailGroupListInner.innerHTML =
         items
           .map((g) => {
-            const id = String(g.pk);
+            const id = String(g.pk || g.id || "");
             const checked = selectedGroupIdsSet.has(id) ? " checked" : "";
             const rawName = String(g.name || "");
             const displayName = rawName.replace(/^tak[_-]/i, "");
@@ -444,7 +450,9 @@
             `;
           })
           .join("") ||
-        `<div style="padding:10px; color: var(--muted);">Type to search groups.</div>`;
+        `<div style="padding:10px; color: var(--muted);">${
+          (groupsCache || []).length ? "No matching groups." : "No groups found."
+        }</div>`;
       updateEmailDropdownLabels();
     }
 
@@ -463,16 +471,14 @@
 
     async function loadEmailGroups() {
       try {
-        const q = String(emailGroupSearch && emailGroupSearch.value || "").trim();
-        const params = new URLSearchParams({
-          q,
-          page: "1",
-          pageSize: "25",
-        });
+        const params = new URLSearchParams();
         if (IS_GLOBAL_ADMIN) params.set("includeMutualAid", "1");
-        const res = await fetch("/api/groups/search?" + params.toString());
+        const qs = params.toString();
+        const res = await fetch("/api/groups" + (qs ? "?" + qs : ""));
         const out = await res.json();
-        groupsCache = res.ok && Array.isArray(out.groups) ? out.groups : [];
+        groupsCache = res.ok
+          ? (Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []))
+          : [];
         renderEmailGroupList();
       } catch (e) {
         groupsCache = [];
@@ -722,10 +728,7 @@
       emailAgencySearch.addEventListener("input", renderEmailAgencyList);
     }
     if (emailGroupSearch) {
-      emailGroupSearch.addEventListener("input", () => {
-        clearTimeout(window.__emailGroupSearchTimer);
-        window.__emailGroupSearchTimer = setTimeout(loadEmailGroups, 280);
-      });
+      emailGroupSearch.addEventListener("input", renderEmailGroupList);
     }
     if (emailUserSearch) {
       emailUserSearch.addEventListener("input", () => {
