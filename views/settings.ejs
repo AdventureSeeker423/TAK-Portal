@@ -497,8 +497,18 @@
         </div>
         <div class="modalBody settings-body">
           <% const pdb = typeof portalDb !== "undefined" && portalDb ? portalDb : { host: "127.0.0.1", port: "47193", user: "takportal", database: "takportal", password: "" }; %>
-          <p class="muted">Host tools connect to this localhost port. Containers use the compose network. This password is not stored in settings.json.</p>
-          <p id="portalDbStackStatus" class="muted" style="margin-top:8px;">Checking database and worker…</p>
+          <div id="portalDbStackStatus" class="portal-db-status" role="status">
+            <span class="portal-db-status-chip is-pending" data-portal-db-chip="postgres">
+              <span class="portal-db-status-dot" aria-hidden="true"></span>
+              <span class="portal-db-status-label">Database</span>
+              <span class="portal-db-status-value" data-portal-db-value="postgres">Checking…</span>
+            </span>
+            <span class="portal-db-status-chip is-pending" data-portal-db-chip="worker">
+              <span class="portal-db-status-dot" aria-hidden="true"></span>
+              <span class="portal-db-status-label">Worker</span>
+              <span class="portal-db-status-value" data-portal-db-value="worker">Checking…</span>
+            </span>
+          </div>
           <div class="grid2" style="margin-top:12px;">
             <label class="settings-field"><span class="settings-label">Host</span><input type="text" readonly value="<%= pdb.host %>" /></label>
             <label class="settings-field"><span class="settings-label">Port</span><input type="text" readonly value="<%= pdb.port %>" /></label>
@@ -534,17 +544,23 @@
               }
               var statusEl = document.getElementById("portalDbStackStatus");
               if (statusEl) {
+                function setChip(kind, ok, okText, badText) {
+                  var chip = statusEl.querySelector('[data-portal-db-chip="' + kind + '"]');
+                  var value = statusEl.querySelector('[data-portal-db-value="' + kind + '"]');
+                  if (!chip || !value) return;
+                  chip.classList.remove("is-pending", "is-ok", "is-bad");
+                  chip.classList.add(ok ? "is-ok" : "is-bad");
+                  value.textContent = ok ? okText : badText;
+                }
                 fetch("/api/system/health", { headers: { Accept: "application/json" } })
                   .then(function (r) { return r.json(); })
                   .then(function (h) {
-                    var pg = h && h.postgres && h.postgres.ok ? "reachable" : "unreachable";
-                    var wk = h && h.worker && h.worker.ok ? "running" : "not running";
-                    statusEl.textContent = "Database: " + pg + ". Background worker: " + wk + ".";
-                    if (!h || !h.ok) statusEl.style.color = "var(--danger, #ff3b3b)";
+                    setChip("postgres", !!(h && h.postgres && h.postgres.ok), "Reachable", "Unreachable");
+                    setChip("worker", !!(h && h.worker && h.worker.ok), "Running", "Not running");
                   })
                   .catch(function () {
-                    statusEl.textContent = "Could not read stack health.";
-                    statusEl.style.color = "var(--danger, #ff3b3b)";
+                    setChip("postgres", false, "Reachable", "Unreachable");
+                    setChip("worker", false, "Running", "Not running");
                   });
               }
             })();
@@ -552,7 +568,6 @@
 
           <hr class="legacy-import-divider" />
           <h3 class="legacy-import-heading">1.4.9 data migration</h3>
-          <p class="muted">The 1.4.9 updater keeps the Docker data volume. This build then copies those JSON files into Postgres and leaves a backup in <code>data/migrated/</code>. If that import did not run, restore the backup and import again. Matching Postgres tables are replaced from the JSON files. Users and groups still come from Authentik; settings.json is not part of this import.</p>
           <div id="legacyImportNotice" class="legacy-import-notice" role="status" aria-live="polite" hidden></div>
           <p id="legacyImportStatus" class="muted backup-status" role="status">Checking JSON files…</p>
           <div id="legacyImportProgressWrap" class="legacy-import-progress" hidden>

@@ -2802,6 +2802,59 @@ a.settings-hub-card:visited {
     flex: 0 0 auto;
 }
 
+.portal-db-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 12px;
+}
+
+.portal-db-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--line, #374151);
+    border-radius: 8px;
+    background: var(--raised, var(--panel, #111827));
+    font-size: 0.85rem;
+    line-height: 1.2;
+}
+
+.portal-db-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted, #9a9a9a);
+    flex: 0 0 auto;
+}
+
+.portal-db-status-label {
+    color: var(--muted, #9a9a9a);
+    font-weight: 650;
+}
+
+.portal-db-status-value {
+    color: var(--text, #f2f2f2);
+    font-weight: 650;
+}
+
+.portal-db-status-chip.is-ok .portal-db-status-dot {
+    background: var(--ok-text, #4ade80);
+}
+
+.portal-db-status-chip.is-ok .portal-db-status-value {
+    color: var(--ok-text, #4ade80);
+}
+
+.portal-db-status-chip.is-bad .portal-db-status-dot {
+    background: var(--bad-text, #f87171);
+}
+
+.portal-db-status-chip.is-bad .portal-db-status-value {
+    color: var(--bad-text, #f87171);
+}
+
 .settings-modal .modalHeader {
     flex-shrink: 0;
     position: relative;
