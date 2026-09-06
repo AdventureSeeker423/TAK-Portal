@@ -5,8 +5,9 @@
  * EUD's UID/SA would make TAK Server treat webadmin as a second instance of that
  * client (same callsign, admin's full group list). We therefore:
  *  - assign a distinct UID per dest (…callsign.takportal.dest)
+ *  - keep type, team (__group), usericon, color, and the rest of the marker payload
  *  - keep <contact callsign> so ATAK does not label markers "NO CALLSIGN"
- *  - strip endpoint / device identity / self-SA group announce from the copy
+ *  - strip only endpoint / flow-tags / detail uid so the copy is not a live ClientEndpoint
  *  - ignore our own echoes on the map stream
  */
 const cotStream = require("./cotStream.service");
@@ -151,9 +152,24 @@ function patchedUid(srcUid, destGroup, callsign) {
   return `${slugLabel || "unit"}.takportal.${slugDest || "dest"}`.slice(0, 128);
 }
 
+function stripContactEndpoint(contact) {
+  if (!contact || typeof contact !== "object") return contact;
+  if (contact._attributes && typeof contact._attributes === "object") {
+    const attrs = { ...contact._attributes };
+    delete attrs.endpoint;
+    delete attrs.Endpoint;
+    return { ...contact, _attributes: attrs };
+  }
+  const next = { ...contact };
+  delete next.endpoint;
+  delete next.Endpoint;
+  return next;
+}
+
 /**
- * Strip elements that make TAK treat this as the injecting connection's own SA.
- * Keeps callsign on <contact> (ATAK labels) but drops endpoint / device identity.
+ * Strip only routing/identity that would bind this copy to the webadmin socket.
+ * Keep type, team (__group), usericon, color, takv, status, and other marker
+ * payload so dest clients draw the same icon as the source.
  * Returns the callsign used on the copy.
  */
 function neutralizeAsInjectedCopy(detail, fallbackCallsign) {
@@ -168,13 +184,7 @@ function neutralizeAsInjectedCopy(detail, fallbackCallsign) {
       ""
   ).trim();
 
-  // Connection/group membership announcements from the original EUD
-  delete detail.__group;
-  delete detail._group;
-  delete detail.group;
-  // Client identity / device fingerprint — leave these off the bridge write
-  delete detail.takv;
-  delete detail.status;
+  // Detail <uid> is a device identity handle — do not advertise it on webadmin.
   delete detail.uid;
   delete detail._uid_;
   // Do not carry original flow tags onto the webadmin write
@@ -184,12 +194,17 @@ function neutralizeAsInjectedCopy(detail, fallbackCallsign) {
   delete detail.flowTags;
 
   // ATAK shows "NO CALLSIGN" when <contact callsign> is missing. Keep the
-  // callsign for display, but strip endpoint so this is not a routable
+  // rest of <contact>, but strip endpoint so this is not a routable
   // ClientEndpoint advertise on the webadmin socket.
-  if (callsign) {
+  if (detail.contact) {
+    detail.contact = stripContactEndpoint(detail.contact);
+    const attrs =
+      detail.contact._attributes && typeof detail.contact._attributes === "object"
+        ? detail.contact._attributes
+        : detail.contact;
+    if (callsign && !safeStr(attrs.callsign).trim()) attrs.callsign = callsign;
+  } else if (callsign) {
     detail.contact = { _attributes: { callsign } };
-  } else {
-    delete detail.contact;
   }
 
   return callsign;
@@ -214,13 +229,8 @@ async function buildTargetedCot(sourceCot, destGroup, meta) {
   const callsign = neutralizeAsInjectedCopy(detail, meta?.callsign);
 
   // Distinct UID so TAK does not bind this copy to the webadmin ClientEndpoint.
+  // CoT type is left unchanged so dest clients keep the source icon.
   clone.uid(patchedUid(srcUid, destGroup, callsign));
-
-  // Demote self-SA type so TAK is less likely to treat this as a live client.
-  const typ = safeStr(clone.type()).trim();
-  if (/^a-f-G-U-C/i.test(typ)) {
-    clone.type("a-f-G");
-  }
 
   const martiGroup = toMartiGroupName(destGroup);
   if (!martiGroup) throw new Error("Empty Marti dest group");

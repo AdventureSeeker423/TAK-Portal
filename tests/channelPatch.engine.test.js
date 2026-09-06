@@ -65,6 +65,7 @@ assert.strictEqual(
 
 // Patched copies must keep callsign on <contact> (ATAK shows "NO CALLSIGN" otherwise)
 // while dropping endpoint so the copy is not a routable ClientEndpoint advertise.
+// Team (__group), takv, usericon, and color stay — dest clients should draw the same icon.
 const detailWithEndpoint = {
   contact: {
     _attributes: {
@@ -73,7 +74,9 @@ const detailWithEndpoint = {
     },
   },
   takv: { _attributes: { platform: "ATAK" } },
-  __group: { _attributes: { name: "Cyan" } },
+  __group: { _attributes: { name: "Cyan", role: "Team Member" } },
+  usericon: { _attributes: { iconsetpath: "COT_MAPPING_2525C/a-f/a-f-G-U-C" } },
+  color: { _attributes: { argb: "-1" } },
   remarks: { _text: "keep me" },
 };
 assert.strictEqual(
@@ -83,8 +86,16 @@ assert.strictEqual(
 assert.deepStrictEqual(detailWithEndpoint.contact, {
   _attributes: { callsign: "HCSO-DAVIS-3598" },
 });
-assert.strictEqual(detailWithEndpoint.takv, undefined);
-assert.strictEqual(detailWithEndpoint.__group, undefined);
+assert.deepStrictEqual(detailWithEndpoint.takv, {
+  _attributes: { platform: "ATAK" },
+});
+assert.deepStrictEqual(detailWithEndpoint.__group, {
+  _attributes: { name: "Cyan", role: "Team Member" },
+});
+assert.deepStrictEqual(detailWithEndpoint.usericon, {
+  _attributes: { iconsetpath: "COT_MAPPING_2525C/a-f/a-f-G-U-C" },
+});
+assert.deepStrictEqual(detailWithEndpoint.color, { _attributes: { argb: "-1" } });
 assert.deepStrictEqual(detailWithEndpoint.remarks, { _text: "keep me" });
 
 assert.strictEqual(
