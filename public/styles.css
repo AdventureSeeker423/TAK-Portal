@@ -2787,6 +2787,21 @@ a.settings-hub-card:visited {
     color: #fff;
 }
 
+.portal-db-password-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.portal-db-password-row .passwordWrap {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.portal-db-password-row .btn {
+    flex: 0 0 auto;
+}
+
 .settings-modal .modalHeader {
     flex-shrink: 0;
     position: relative;

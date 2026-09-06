@@ -506,10 +506,12 @@
             <label class="settings-field"><span class="settings-label">User</span><input type="text" readonly value="<%= pdb.user %>" /></label>
             <label class="settings-field" style="grid-column:1 / -1;">
               <span class="settings-label">Password</span>
-              <div class="passwordWrap">
-                <input id="portalDbPassword" type="password" readonly value="<%= pdb.password || '' %>" autocomplete="off" />
-                <button type="button" class="passwordToggle" id="portalDbPasswordToggle" aria-label="Show password">👁</button>
-                <button type="button" class="btn" id="portalDbPasswordCopy" style="margin-left:8px;">Copy</button>
+              <div class="portal-db-password-row">
+                <div class="passwordWrap">
+                  <input id="portalDbPassword" type="password" readonly value="<%= pdb.password || '' %>" autocomplete="off" />
+                  <button type="button" class="passwordToggle" id="portalDbPasswordToggle" aria-label="Show password">👁</button>
+                </div>
+                <button type="button" class="btn" id="portalDbPasswordCopy">Copy</button>
               </div>
             </label>
           </div>
