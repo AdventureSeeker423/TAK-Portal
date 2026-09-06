@@ -16,13 +16,18 @@
   <% 
     const hasMutualAid = mutualAid && (mutualAid.activeIncidents > 0 || mutualAid.activeEvents > 0);
     const hasUserRequests = typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0;
+    const canSeeChannelPatch = typeof perm === "function" ? perm("page.channel_patch") : (isGlobalAdmin || isAgencyAdmin);
+    const hasActiveChannelPatches =
+      canSeeChannelPatch &&
+      typeof activeChannelPatchesCount !== "undefined" &&
+      activeChannelPatchesCount > 0;
     const hasPendingMouDocs =
       !!(typeof isAgencyDashboard !== "undefined" && isAgencyDashboard) &&
       typeof pendingMouDocumentsCount !== "undefined" &&
       pendingMouDocumentsCount > 0;
   %>
 
-  <% if (hasMutualAid || hasUserRequests || hasPendingMouDocs) { %>
+  <% if (hasMutualAid || hasUserRequests || hasActiveChannelPatches || hasPendingMouDocs) { %>
     <div style="margin: 10px 0 14px 0;">
 
       <!-- Mutual Aid Incident -->
@@ -41,6 +46,16 @@
           <div class="maBanner maBannerEvent">
             <%= mutualAid.activeEvents %> Mutual Aid Event<%= mutualAid.activeEvents === 1 ? "" : "s" %> 
             <%= mutualAid.activeEvents === 1 ? "Is" : "Are" %> Active
+          </div>
+        </a>
+      <% } %>
+
+      <!-- Active Channel Patches -->
+      <% if (hasActiveChannelPatches) { %>
+        <a href="/channel-patch" style="text-decoration:none;">
+          <div class="maBanner channelPatchBanner">
+            <%= activeChannelPatchesCount %> Channel Patch<%= activeChannelPatchesCount === 1 ? "" : "es" %>
+            <%= activeChannelPatchesCount === 1 ? "Is" : "Are" %> Active
           </div>
         </a>
       <% } %>
@@ -1673,6 +1688,7 @@
   }
   .maBannerIncident{ background: #992525; }
   .maBannerEvent{ background: #995725; }
+  .channelPatchBanner{ background: #995725; }
   .userReqBanner{
     padding: 12px 14px;
     border-radius: 12px;

@@ -11,6 +11,8 @@ const mapPageAssets = require("../services/mapPageAssets.service");
 const mapBasemapsConfig = require("../config/mapBasemaps");
 
 const userRequestsSvc = require("../services/userRequests.service");
+const channelPatchStore = require("../services/channelPatch.store");
+const channelPatchAccess = require("../services/channelPatchAccess.service");
 const { hasAcceptedAgreementForSession } = require("../services/userAgreementSession.service");
 
 function mapRenderLocals(req) {
@@ -45,6 +47,19 @@ function countTemplatesForAuthUser(user) {
   });
 }
 
+async function countActiveChannelPatches(authUser) {
+  try {
+    const enabled = channelPatchStore.listEnabled();
+    if (!enabled.length) return 0;
+    const access = accessSvc.getAgencyAccess(authUser);
+    const allowed = await channelPatchAccess.resolveAllowedChannelKeySet(authUser);
+    return channelPatchAccess.filterPatchesForAccess(access, enabled, allowed).length;
+  } catch (e) {
+    console.error("[DASHBOARD] Channel patch stats failed:", e?.message || e);
+    return 0;
+  }
+}
+
 router.get("/", async (req, res) => {
   const user = req.authentikUser;
   const isAdmin = !!(user && (user.isGlobalAdmin || user.isAgencyAdmin));
@@ -63,6 +78,7 @@ router.get("/", async (req, res) => {
     const takStatView = takSnap.view || takDashboardCache.viewFields(takMetrics);
 
     const pendingUserRequestsCount = userRequestsSvc.countRequestsForUser(req.authentikUser);
+    const activeChannelPatchesCount = await countActiveChannelPatches(req.authentikUser);
     const pendingMouDocumentsCount =
       user?.isAgencyAdmin && mouService.isEnabled()
         ? mouService
@@ -192,6 +208,7 @@ router.get("/", async (req, res) => {
       takStatView,
       pendingUserRequestsCount,
       pendingMouDocumentsCount,
+      activeChannelPatchesCount,
       isAgencyDashboard,
       isMultiAgencyDashboard,
       agencyDisplayName,
@@ -240,6 +257,7 @@ router.get("/", async (req, res) => {
       takMetrics: cachedTak,
       takStatView: errTakSnap.view || takDashboardCache.viewFields(cachedTak),
       pendingUserRequestsCount: userRequestsSvc.countRequestsForUser(req.authentikUser),
+      activeChannelPatchesCount: 0,
       pendingMouDocumentsCount:
         user?.isAgencyAdmin && mouService.isEnabled()
           ? mouService
