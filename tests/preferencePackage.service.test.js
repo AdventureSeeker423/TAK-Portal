@@ -8,7 +8,9 @@ const {
   buildTeamSelectOptions,
   buildRoleSelectOptions,
   buildTeamColorLabelMap,
+  buildRoleLabelMap,
   teamColorDisplayLabel,
+  roleDisplayLabel,
 } = require("../services/preferencePackage.service");
 
 async function unzipBuffer(buffer) {
@@ -87,6 +89,17 @@ async function unzipBuffer(buffer) {
   const hq = roleOptions.find((o) => o.value === "HQ");
   assert.ok(hq);
   assert.strictEqual(hq.label, "HQ — Command Staff / Admin Support");
+
+  const roleLabels = buildRoleLabelMap({
+    DP_ROLE_HQ: "Command Staff / Admin Support",
+    DP_ROLE_RTO: "  ",
+  });
+  assert.strictEqual(roleLabels.HQ, "HQ — Command Staff / Admin Support");
+  assert.strictEqual(roleLabels.RTO, "RTO");
+  assert.strictEqual(
+    roleDisplayLabel("Medic", { DP_ROLE_MEDIC: "Advanced Medical Capabilities" }),
+    "Medic — Advanced Medical Capabilities"
+  );
 
   const entries = await unzipBuffer(built.buffer);
   assert.ok(entries.has("MANIFEST/manifest.xml"));

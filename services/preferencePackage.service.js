@@ -127,9 +127,23 @@ function teamColorDisplayLabel(name, settings = {}) {
   return buildDeploymentOptionLabel(n, settings, TEAM_DEPLOYMENT_SETTING_KEYS);
 }
 
+function roleDisplayLabel(name, settings = {}) {
+  const n = String(name || "").trim();
+  if (!n) return "";
+  return buildDeploymentOptionLabel(n, settings, ROLE_DEPLOYMENT_SETTING_KEYS);
+}
+
 function buildTeamColorLabelMap(settings = {}) {
   const map = {};
   for (const { value, label } of buildTeamSelectOptions(settings)) {
+    map[value] = label;
+  }
+  return map;
+}
+
+function buildRoleLabelMap(settings = {}) {
+  const map = {};
+  for (const { value, label } of buildRoleSelectOptions(settings)) {
     map[value] = label;
   }
   return map;
@@ -341,7 +355,9 @@ module.exports = {
   ALLOWED_TEAM_COLORS,
   ALLOWED_ATAK_ROLES,
   teamColorDisplayLabel,
+  roleDisplayLabel,
   buildTeamColorLabelMap,
+  buildRoleLabelMap,
   buildTeamSelectOptions,
   buildRoleSelectOptions,
   buildPreferencePackageZip,

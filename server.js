@@ -313,6 +313,7 @@ app.use((req, res, next) => {
       : "";
     res.locals.settings = settings || {};
     res.locals.teamColorLabels = prefPkgSvc.buildTeamColorLabelMap(settings || {});
+    res.locals.roleLabels = prefPkgSvc.buildRoleLabelMap(settings || {});
     // Server default is used when no per-device theme has been saved yet.
     res.locals.brandTheme = defaultTheme === "light" ? "light" : "dark";
     res.locals.brandLogoUrl = settings.BRAND_LOGO_URL || "";
@@ -334,6 +335,7 @@ app.use((req, res, next) => {
     console.warn("Failed to load settings for request:", err?.message || err);
     res.locals.settings = {};
     res.locals.teamColorLabels = {};
+    res.locals.roleLabels = {};
     res.locals.brandTheme = "dark";
     res.locals.brandLogoUrl = "";
     res.locals.serverAbbrev = "TAK";

@@ -144,6 +144,8 @@ const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
 /** Color name → "Blue — Aircraft" from Settings → Deployment Packet Colors / Teams */
 const TEAM_COLOR_LABELS = <%- JSON.stringify((typeof teamColorLabels === "object" && teamColorLabels) ? teamColorLabels : {}) %>;
+/** Role name → "HQ — Command Staff / Admin Support" from Settings → Deployment Packet Roles */
+const ROLE_LABELS = <%- JSON.stringify((typeof roleLabels === "object" && roleLabels) ? roleLabels : {}) %>;
 const IS_MULTI_AGENCY_ADMIN =
   IS_AGENCY_ADMIN &&
   !IS_GLOBAL_ADMIN &&
@@ -171,22 +173,6 @@ function getAgencyDisplay(t){
 
 function displayGroupName(name){
   return String(name || "").replace(/^tak_/, "");
-}
-
-/** Abbreviations for Existing Templates table only */
-function abbrevRoleForTable(role){
-  const r = String(role || "").trim();
-  const map = {
-    "Team Member": "TM",
-    "Team Lead": "TL",
-    "HQ": "HQ",
-    "Sniper": "S",
-    "Medic": "M",
-    "Forward Observer": "FO",
-    "RTO": "RTO",
-    "K9": "K9",
-  };
-  return map[r] || (r ? esc(r) : "TM");
 }
 
 function getSortValue(pair, key){
@@ -240,7 +226,7 @@ function renderTemplates(list){
         ${t.isDefault ? `<span class="tplDefaultBadge cardMetaBadge">Default</span>` : ""}
       </td>
       <td class="tplColorCell">${t.colorOverride ? esc(templateColorLabel(t.colorOverride)) : "—"}</td>
-      <td class="tplRoleCell" data-label="Role">${abbrevRoleForTable(t.role)}</td>
+      <td class="tplRoleCell" data-label="Role">${esc(templateRoleLabel(t.role || "Team Member"))}</td>
       <td class="tplDefaultCell">${t.isDefault ? "Yes" : ""}</td>
       <td class="groupsCell tplGroupsCell" data-label="Groups">${groupsText || "—"}</td>
       <td class="tplUsersCell" data-label="Users">${templateUserCountForRow(t)}</td>
@@ -397,11 +383,16 @@ function templateColorLabel(color) {
   return TEAM_COLOR_LABELS[c] || c;
 }
 
+function templateRoleLabel(role) {
+  const r = String(role || "").trim();
+  return ROLE_LABELS[r] || r;
+}
+
 function renderRoleOptions(selectedRole){
   if (!roleEl) return;
   const role = String(selectedRole || "Team Member").trim() || "Team Member";
   roleEl.innerHTML = ATAK_ROLE_OPTIONS
-    .map((r) => `<option value="${esc(r)}">${esc(r)}</option>`)
+    .map((r) => `<option value="${esc(r)}">${esc(templateRoleLabel(r))}</option>`)
     .join("");
   roleEl.value = ATAK_ROLE_OPTIONS.includes(role) ? role : "Team Member";
 }
