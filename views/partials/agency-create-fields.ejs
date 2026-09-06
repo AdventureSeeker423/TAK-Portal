@@ -33,6 +33,10 @@
     "Blue","Dark Blue","Brown","Cyan","Green","Dark Green","Magenta","Maroon",
     "Orange","Purple","Red","Teal","White","Yellow"
   ];
+  const _colorLabels = (typeof teamColorLabels === "object" && teamColorLabels) ? teamColorLabels : {};
+  function _colorLabel(c) {
+    return String(_colorLabels[c] || c);
+  }
   function _sel(cur, want) {
     return String(cur || "") === String(want || "") ? "selected" : "";
   }
@@ -173,7 +177,7 @@
     <select name="color" <%= _reqAttr %>>
       <option value="" disabled <%= !_selectedColor ? "selected" : "" %>>Color</option>
       <% _colors.forEach(function (c) { %>
-        <option value="<%= c %>" <%= _sel(_selectedColor, c) %>><%= c %></option>
+        <option value="<%= c %>" <%= _sel(_selectedColor, c) %>><%= _colorLabel(c) %></option>
       <% }); %>
     </select>
   </label>

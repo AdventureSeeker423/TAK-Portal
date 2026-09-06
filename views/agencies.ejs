@@ -442,6 +442,13 @@ const AGENCY_COLOR_OPTIONS = [
   "Blue", "Dark Blue", "Brown", "Cyan", "Green", "Dark Green", "Magenta", "Maroon",
   "Orange", "Purple", "Red", "Teal", "White", "Yellow",
 ];
+/** Color name → "Blue — Aircraft" from Settings → Deployment Packet Colors / Teams */
+const TEAM_COLOR_LABELS = <%- JSON.stringify((typeof teamColorLabels === "object" && teamColorLabels) ? teamColorLabels : {}) %>;
+
+function agencyColorLabel(color) {
+  const c = String(color || "").trim();
+  return TEAM_COLOR_LABELS[c] || c;
+}
 
 function isAgencyStateFederal(a) {
   const raw = a?.stateFederalAgency;
@@ -658,11 +665,11 @@ function buildAgencyColorCellHtml(a) {
   }
   opts += AGENCY_COLOR_OPTIONS.map((c) => {
     const sel = c === current ? " selected" : "";
-    return `<option value="${esc(c)}"${sel}>${esc(c)}</option>`;
+    return `<option value="${esc(c)}"${sel}>${esc(agencyColorLabel(c))}</option>`;
   }).join("");
   const legacyExtra =
     current && !AGENCY_COLOR_OPTIONS.includes(current)
-      ? `<option value="${esc(current)}" selected>${esc(current)} (current)</option>`
+      ? `<option value="${esc(current)}" selected>${esc(agencyColorLabel(current))} (current)</option>`
       : "";
   const aria = esc(a.name || "Agency");
   return `<select aria-label="Color for ${aria}" onchange="updateAgencyColor(${Number(idx)}, this.value)">${legacyExtra}${opts}</select>`;
@@ -1054,7 +1061,7 @@ function renderAgencies(){
           : ""
       }
       <td class="agencyColorCell" data-label="Color">${
-        agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(a.color || "")
+        agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(agencyColorLabel(a.color || ""))
       }</td>
       ${
         agencyAttributesEditMode

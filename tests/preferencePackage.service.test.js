@@ -7,6 +7,8 @@ const {
   buildPreferencePackageFilename,
   buildTeamSelectOptions,
   buildRoleSelectOptions,
+  buildTeamColorLabelMap,
+  teamColorDisplayLabel,
 } = require("../services/preferencePackage.service");
 
 async function unzipBuffer(buffer) {
@@ -67,6 +69,19 @@ async function unzipBuffer(buffer) {
   const darkBlue = teamOptions.find((o) => o.value === "Dark Blue");
   assert.ok(darkBlue);
   assert.strictEqual(darkBlue.label, "Dark Blue — Law Enforcement");
+
+  const colorLabels = buildTeamColorLabelMap({
+    DP_COLOR_BLUE: "Aircraft",
+    DP_COLOR_DARK_BLUE: "Law Enforcement",
+    DP_COLOR_YELLOW: "  ",
+  });
+  assert.strictEqual(colorLabels.Blue, "Blue — Aircraft");
+  assert.strictEqual(colorLabels["Dark Blue"], "Dark Blue — Law Enforcement");
+  assert.strictEqual(colorLabels.Yellow, "Yellow");
+  assert.strictEqual(
+    teamColorDisplayLabel("Red", { DP_COLOR_RED: "Fire" }),
+    "Red — Fire"
+  );
 
   const roleOptions = buildRoleSelectOptions({ DP_ROLE_HQ: "Command Staff / Admin Support" });
   const hq = roleOptions.find((o) => o.value === "HQ");

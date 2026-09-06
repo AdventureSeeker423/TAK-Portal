@@ -34,20 +34,16 @@
         <label>Color Override (optional)
           <select id="colorOverride">
             <option value="">Use Default Agency Color</option>
-            <option value="Blue">Blue</option>
-            <option value="Dark Blue">Dark Blue</option>
-            <option value="Brown">Brown</option>
-            <option value="Cyan">Cyan</option>
-            <option value="Green">Green</option>
-            <option value="Dark Green">Dark Green</option>
-            <option value="Magenta">Magenta</option>
-            <option value="Maroon">Maroon</option>
-            <option value="Orange">Orange</option>
-            <option value="Purple">Purple</option>
-            <option value="Red">Red</option>
-            <option value="Teal">Teal</option>
-            <option value="White">White</option>
-            <option value="Yellow">Yellow</option>
+            <%
+              const _tplColors = [
+                "Blue","Dark Blue","Brown","Cyan","Green","Dark Green","Magenta","Maroon",
+                "Orange","Purple","Red","Teal","White","Yellow"
+              ];
+              const _tplColorLabels = (typeof teamColorLabels === "object" && teamColorLabels) ? teamColorLabels : {};
+            %>
+            <% _tplColors.forEach(function (c) { %>
+              <option value="<%= c %>"><%= _tplColorLabels[c] || c %></option>
+            <% }); %>
           </select>
         </label>
 
@@ -146,6 +142,8 @@ const form = document.getElementById("form");
 const IS_GLOBAL_ADMIN = <%= isGlobalAdmin ? 'true' : 'false' %>;
 const IS_AGENCY_ADMIN = <%= isAgencyAdmin ? 'true' : 'false' %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+/** Color name → "Blue — Aircraft" from Settings → Deployment Packet Colors / Teams */
+const TEAM_COLOR_LABELS = <%- JSON.stringify((typeof teamColorLabels === "object" && teamColorLabels) ? teamColorLabels : {}) %>;
 const IS_MULTI_AGENCY_ADMIN =
   IS_AGENCY_ADMIN &&
   !IS_GLOBAL_ADMIN &&
@@ -241,7 +239,7 @@ function renderTemplates(list){
         <div class="tplNameText cardTitleText">${esc(t.name)}</div>
         ${t.isDefault ? `<span class="tplDefaultBadge cardMetaBadge">Default</span>` : ""}
       </td>
-      <td class="tplColorCell">${t.colorOverride ? esc(t.colorOverride) : "—"}</td>
+      <td class="tplColorCell">${t.colorOverride ? esc(templateColorLabel(t.colorOverride)) : "—"}</td>
       <td class="tplRoleCell" data-label="Role">${abbrevRoleForTable(t.role)}</td>
       <td class="tplDefaultCell">${t.isDefault ? "Yes" : ""}</td>
       <td class="groupsCell tplGroupsCell" data-label="Groups">${groupsText || "—"}</td>
@@ -392,6 +390,11 @@ function esc(s){
     .replaceAll(">","&gt;")
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#39;");
+}
+
+function templateColorLabel(color) {
+  const c = String(color || "").trim();
+  return TEAM_COLOR_LABELS[c] || c;
 }
 
 function renderRoleOptions(selectedRole){

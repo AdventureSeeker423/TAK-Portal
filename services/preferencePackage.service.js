@@ -121,6 +121,20 @@ function buildDeploymentOptionLabel(name, settings, keyMap) {
   return definition ? `${name} — ${definition}` : name;
 }
 
+function teamColorDisplayLabel(name, settings = {}) {
+  const n = String(name || "").trim();
+  if (!n) return "";
+  return buildDeploymentOptionLabel(n, settings, TEAM_DEPLOYMENT_SETTING_KEYS);
+}
+
+function buildTeamColorLabelMap(settings = {}) {
+  const map = {};
+  for (const { value, label } of buildTeamSelectOptions(settings)) {
+    map[value] = label;
+  }
+  return map;
+}
+
 function buildTeamSelectOptions(settings = {}) {
   return ALLOWED_TEAM_COLORS.map((name) => ({
     value: name,
@@ -326,6 +340,8 @@ async function buildPreferencePackageZip({ callsign, teamLabel, roleLabel }) {
 module.exports = {
   ALLOWED_TEAM_COLORS,
   ALLOWED_ATAK_ROLES,
+  teamColorDisplayLabel,
+  buildTeamColorLabelMap,
   buildTeamSelectOptions,
   buildRoleSelectOptions,
   buildPreferencePackageZip,
