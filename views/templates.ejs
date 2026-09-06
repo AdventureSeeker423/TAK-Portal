@@ -225,8 +225,8 @@ function renderTemplates(list){
         <div class="tplNameText cardTitleText">${esc(t.name)}</div>
         ${t.isDefault ? `<span class="tplDefaultBadge cardMetaBadge">Default</span>` : ""}
       </td>
-      <td class="tplColorCell">${t.colorOverride ? esc(templateColorLabel(t.colorOverride)) : "—"}</td>
-      <td class="tplRoleCell" data-label="Role">${esc(templateRoleLabel(t.role || "Team Member"))}</td>
+      <td class="tplColorCell">${t.colorOverride ? esc(t.colorOverride) : "—"}</td>
+      <td class="tplRoleCell" data-label="Role">${esc(t.role || "Team Member")}</td>
       <td class="tplDefaultCell">${t.isDefault ? "Yes" : ""}</td>
       <td class="groupsCell tplGroupsCell" data-label="Groups">${groupsText || "—"}</td>
       <td class="tplUsersCell" data-label="Users">${templateUserCountForRow(t)}</td>

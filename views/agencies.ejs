@@ -1061,7 +1061,7 @@ function renderAgencies(){
           : ""
       }
       <td class="agencyColorCell" data-label="Color">${
-        agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(agencyColorLabel(a.color || ""))
+        agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(a.color || "")
       }</td>
       ${
         agencyAttributesEditMode
