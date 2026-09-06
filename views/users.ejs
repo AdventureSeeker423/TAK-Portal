@@ -534,6 +534,7 @@ const csvFileInput = document.getElementById("createCsvFileInput");
 const downloadCsvTemplateBtn = document.getElementById("downloadCsvTemplateBtn");
 
 let groupsCache = [];
+let groupsFullyLoaded = false;
 let templatesCache = [];
 let allAgenciesCache = [];
 let pickedManualGroupIds = new Set();
@@ -752,16 +753,15 @@ async function loadAgencies() {
 }
 
 // -------------------- Templates + manual group list (single /api/users/meta call) --------------------
-async function searchPortalGroups(q) {
-  const res = await fetch("/api/groups/search?" + new URLSearchParams({
-    q: String(q || "").trim(),
-    page: "1",
-    pageSize: "25",
-  }).toString());
+async function searchPortalGroups() {
+  if (groupsFullyLoaded) return groupsCache;
+  const res = await fetch("/api/groups");
   const out = await res.json();
-  const groups = res.ok && Array.isArray(out.groups) ? out.groups : [];
-  groupsCache = groups;
-  return groups;
+  groupsCache = res.ok
+    ? (Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []))
+    : [];
+  if (res.ok) groupsFullyLoaded = true;
+  return groupsCache;
 }
 
 async function loadMeta() {
@@ -841,13 +841,29 @@ agencySelect.addEventListener("change", () => {
 
 // -------------------- Manual Groups --------------------
 function renderGroupsBox() {
+  const filterText = String(groupFilter.value || "").trim().toLowerCase();
   const sorted = (groupsCache || [])
     .slice()
+    .filter((g) => {
+      if (!filterText) return true;
+      const raw = String(g.name || "").toLowerCase();
+      const display = raw.replace(/^tak_/, "");
+      return raw.includes(filterText) || display.includes(filterText);
+    })
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+
+  if (!groupsCache.length) {
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">No groups found.</p>';
+    return;
+  }
+  if (!sorted.length) {
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">No matching groups.</p>';
+    return;
+  }
 
   groupsInner.innerHTML = sorted
     .map((g) => {
-      const id = String(g.pk);
+      const id = String(g.pk || g.id || "");
       const rawName = String(g.name || "");
       const name = rawName.replace(/^tak_/, "");
       return `
@@ -857,7 +873,7 @@ function renderGroupsBox() {
       </label>
     `;
     })
-    .join("") || '<p class="muted" style="margin:0;padding:8px;">Type to search groups…</p>';
+    .join("");
 
   Array.from(groupsBox.querySelectorAll('input[type="checkbox"]')).forEach(
     (cb) => {
@@ -875,11 +891,7 @@ groupsBox.addEventListener("change", (e) => {
 });
 
 groupFilter.oninput = () => {
-  clearTimeout(window.__usersGroupFilterTimer);
-  window.__usersGroupFilterTimer = setTimeout(async () => {
-    await searchPortalGroups(groupFilter.value);
-    renderGroupsBox();
-  }, 280);
+  renderGroupsBox();
 };
 
 selectAllBtn.onclick = () => {
@@ -2511,20 +2523,22 @@ function roleForUser(user){
   return "Standard User";
 }
 
-async function searchPortalGroups(q) {
-  const res = await fetch("/api/groups/search?" + new URLSearchParams({
-    q: String(q || "").trim(),
-    page: "1",
-    pageSize: "25",
-  }).toString());
+let portalGroupsLoaded = false;
+
+async function searchPortalGroups() {
+  if (portalGroupsLoaded) return;
+  const res = await fetch("/api/groups");
   const out = await res.json();
-  const groups = res.ok && Array.isArray(out.groups) ? out.groups : [];
+  const groups = res.ok
+    ? (Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []))
+    : [];
   for (const g of groups) {
     const id = String(g.pk || g.id || "");
     if (!id) continue;
     groupIndex.set(id, g.name || ("Group " + id));
     visibleGroupIds.add(id);
   }
+  if (res.ok) portalGroupsLoaded = true;
   return groups;
 }
 
@@ -2750,11 +2764,7 @@ function renderGroupsBox(){
 }
 
 groupFilter.addEventListener("input", () => {
-  clearTimeout(window.__usersEditGroupFilterTimer);
-  window.__usersEditGroupFilterTimer = setTimeout(async () => {
-    await searchPortalGroups(groupFilter.value);
-    renderGroupsBox();
-  }, 280);
+  renderGroupsBox();
 });
 
 if (selectAllBtn) selectAllBtn.addEventListener("click", function() {

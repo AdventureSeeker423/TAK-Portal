@@ -402,14 +402,33 @@ function renderGroups(filterText = ""){
     groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">Loading groups…</p>';
     return;
   }
-  if (!allGroups.length) {
-    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">Type to search groups…</p>';
+
+  const names = allGroups.map((g) => String(g.name || "").trim()).filter(Boolean);
+  const seen = new Set(names.map((n) => n.toLowerCase()));
+  for (const n of pickedGroupNames) {
+    const name = String(n || "").trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    names.push(name);
+    seen.add(name.toLowerCase());
+  }
+  names.sort((a, b) => a.localeCompare(b));
+
+  if (!names.length) {
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">No groups found.</p>';
     return;
   }
 
-  const list = allGroups
-    .map(g => String(g.name))
-    .sort((a,b)=>a.localeCompare(b));
+  const q = String(filterText || "").trim().toLowerCase();
+  const list = q
+    ? names.filter((n) => {
+        return n.toLowerCase().includes(q) || displayGroupName(n).toLowerCase().includes(q);
+      })
+    : names;
+
+  if (!list.length) {
+    groupsInner.innerHTML = '<p class="muted" style="margin:0;padding:8px;">No matching groups.</p>';
+    return;
+  }
 
   groupsInner.innerHTML = list.map(rawName => {
     const checked = pickedGroupNames.has(rawName) ? "checked" : "";
@@ -473,7 +492,7 @@ async function loadAgencies(){
 
 async function loadGroups(options = {}){
   const { force = false } = options || {};
-  if (groupsLoaded && !force && !String(groupSearch.value || "").trim()) {
+  if (groupsLoaded && !force) {
     renderGroups(groupSearch.value);
     return;
   }
@@ -481,20 +500,16 @@ async function loadGroups(options = {}){
   groupsLoadingForAgency = true;
   renderGroups(groupSearch.value);
   try {
-    const res = await fetch("/api/groups/search?" + new URLSearchParams({
-      q: String(groupSearch.value || "").trim(),
-      page: "1",
-      pageSize: "25",
-    }).toString());
+    const res = await fetch("/api/groups");
     const out = await res.json();
     if (!res.ok) throw new Error(out.error || "Failed to load groups");
 
-    allGroups = Array.isArray(out.groups) ? out.groups : [];
+    allGroups = Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []);
 
     groupsLoaded = true;
-    renderGroups(groupSearch.value);
   } finally {
     groupsLoadingForAgency = false;
+    renderGroups(groupSearch.value);
   }
 }
 
@@ -712,11 +727,7 @@ window.deleteTemplate = async (idx) => {
 };
 
 groupSearch.oninput = () => {
-  clearTimeout(window.__tplGroupSearchTimer);
-  window.__tplGroupSearchTimer = setTimeout(() => {
-    groupsLoaded = false;
-    loadGroups({ force: true }).catch(() => {});
-  }, 280);
+  renderGroups(groupSearch.value);
 };
 
 agencyEl.addEventListener("change", () => {
