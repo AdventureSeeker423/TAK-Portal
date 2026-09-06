@@ -4,6 +4,8 @@ const {
   isPreferenceConfigSubscription,
   findCollapsedGroupForMission,
   isMissionGroupChannelActive,
+  cachePreferenceCallsign,
+  getCachedPreferenceCallsign,
   REMOTE_ACTIONS_TAK_CLIENTS,
   PREFERENCE_CONFIG_TAK_CLIENTS,
 } = require("../services/takGroupControl.service");
@@ -44,5 +46,9 @@ assert.strictEqual(findCollapsedGroupForMission(collapsed, "missing"), null);
 assert.strictEqual(isMissionGroupChannelActive(collapsed[0]), true);
 assert.strictEqual(isMissionGroupChannelActive(collapsed[1]), false);
 assert.strictEqual(isMissionGroupChannelActive(null), false);
+
+cachePreferenceCallsign("client-uid-1", "HCSO-BUCK-3633");
+assert.strictEqual(getCachedPreferenceCallsign("client-uid-1"), "HCSO-BUCK-3633");
+assert.strictEqual(getCachedPreferenceCallsign("missing-uid"), undefined);
 
 console.log("takGroupControl.test.js OK");

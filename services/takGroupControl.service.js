@@ -564,12 +564,39 @@ async function sendClientDataSyncInvite(clientId, authUser, { missionName }) {
   };
 }
 
-async function getClientPreferenceConfig(clientId, authUser) {
+const PREF_CALLSIGN_CACHE_TTL_MS = 60_000;
+const prefCallsignCache = new Map();
+const prefConfigInFlight = new Map();
+
+function cachePreferenceCallsign(clientId, callsign) {
+  const key = safeStr(clientId).trim();
+  if (!key) return;
+  prefCallsignCache.set(key, {
+    callsign: safeStr(callsign).trim(),
+    ts: Date.now(),
+  });
+}
+
+function getCachedPreferenceCallsign(clientId) {
+  const key = safeStr(clientId).trim();
+  if (!key) return undefined;
+  const hit = prefCallsignCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() - hit.ts > PREF_CALLSIGN_CACHE_TTL_MS) {
+    prefCallsignCache.delete(key);
+    return undefined;
+  }
+  return hit.callsign;
+}
+
+async function loadClientPreferenceConfig(clientId, authUser) {
   const ctx = await resolveSubscriptionForControl(clientId, authUser);
   assertPreferenceConfigSubscription(ctx.subscription);
   const authPref = await lookupAuthentikPreferenceData(ctx.username);
   const prefills = mergePreferencePrefills(authPref, ctx.subscription);
   const settings = settingsSvc.getSettings() || {};
+  cachePreferenceCallsign(ctx.clientUid, prefills.callsign);
+  cachePreferenceCallsign(clientId, prefills.callsign);
 
   return {
     configured: true,
@@ -583,6 +610,31 @@ async function getClientPreferenceConfig(clientId, authUser) {
     teamOptions: prefPkgSvc.buildTeamSelectOptions(settings),
     roleOptions: prefPkgSvc.buildRoleSelectOptions(settings),
   };
+}
+
+async function getClientPreferenceConfig(clientId, authUser) {
+  const key = safeStr(clientId).trim();
+  const existing = prefConfigInFlight.get(key);
+  if (existing) return existing;
+
+  const pending = loadClientPreferenceConfig(clientId, authUser).finally(() => {
+    if (prefConfigInFlight.get(key) === pending) prefConfigInFlight.delete(key);
+  });
+  prefConfigInFlight.set(key, pending);
+  return pending;
+}
+
+async function getCachedClientPreferenceCallsign(clientId, authUser) {
+  const cached = getCachedPreferenceCallsign(clientId);
+  if (cached !== undefined) return cached;
+  try {
+    const pref = await getClientPreferenceConfig(clientId, authUser);
+    return safeStr(pref?.callsign).trim();
+  } catch (err) {
+    const status = Number(err?.status) || Number(err?.response?.status) || 0;
+    if (status === 403 || status === 404) cachePreferenceCallsign(clientId, "");
+    return "";
+  }
 }
 
 async function sendClientPreferenceConfig(clientId, authUser, { callsign, teamLabel, roleLabel }) {
@@ -624,6 +676,9 @@ module.exports = {
   getClientGroupControlState,
   setClientGroupActive,
   getClientPreferenceConfig,
+  getCachedClientPreferenceCallsign,
+  cachePreferenceCallsign,
+  getCachedPreferenceCallsign,
   sendClientPreferenceConfig,
   getClientDataSyncMissions,
   sendClientDataSyncInvite,

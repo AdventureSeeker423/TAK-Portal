@@ -612,6 +612,19 @@
       var EXPANDED_REFRESH_MS = 20000;
       var GROUP_CONTROL_REFRESH_MS = 8000;
       var currentGroupControlClientId = null;
+      var clientLoadAbort = null;
+
+      function abortClientLoads() {
+        if (!clientLoadAbort) return;
+        try { clientLoadAbort.abort(); } catch (_) {}
+        clientLoadAbort = null;
+      }
+
+      function beginClientLoads() {
+        abortClientLoads();
+        clientLoadAbort = typeof AbortController !== "undefined" ? new AbortController() : null;
+        return clientLoadAbort ? clientLoadAbort.signal : undefined;
+      }
 
       function esc(s) {
         if (s == null || s === "") return "";
@@ -881,6 +894,34 @@
         var dataSyncFormEl = document.getElementById("dataSyncForm");
         var dataSyncSendInFlight = false;
 
+        function isAbortErr(err) {
+          return !!(err && (err.name === "AbortError" || err.code === 20));
+        }
+
+        function isCurrentClient(clientId) {
+          return !!clientId && clientId === currentGroupControlClientId;
+        }
+
+        function portalJsonFetch(url, options) {
+          options = options || {};
+          var headers = Object.assign({ Accept: "application/json" }, options.headers || {});
+          return fetch(url, Object.assign({}, options, {
+            headers: headers,
+            credentials: "same-origin",
+            redirect: "manual"
+          })).then(function (res) {
+            if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+              throw new Error("Session expired. Refresh the page.");
+            }
+            return res.json().then(function (body) {
+              if (!res.ok) throw new Error((body && body.error) || "Request failed");
+              return body;
+            }, function () {
+              throw new Error("Request failed" + (res.status ? " (" + res.status + ")" : ""));
+            });
+          });
+        }
+
         function resolveSubTakClient(sub) {
           if (!sub) return "";
           var raw = sub.takClient != null ? String(sub.takClient).trim() : "";
@@ -991,20 +1032,15 @@
           }
         }
 
-        function loadPreferenceConfig(clientId) {
+        function loadPreferenceConfig(clientId, signal) {
           if (!clientId) return Promise.reject(new Error("Missing client id"));
           setPrefConfigLoading(true);
           showPrefConfigStatus("");
-          return fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/preference-config", {
-            headers: { Accept: "application/json" },
+          return portalJsonFetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/preference-config", {
+            signal: signal
           })
-            .then(function (res) {
-              return res.json().then(function (body) {
-                if (!res.ok) throw new Error((body && body.error) || "Failed to load configuration");
-                return body;
-              });
-            })
             .then(function (data) {
+              if (!isCurrentClient(clientId)) return data;
               setPrefConfigLoading(false);
               if (prefConfigCallsignEl) prefConfigCallsignEl.value = data.callsign || "";
               fillSelectOptions(prefConfigTeamEl, data.teamOptions || [], data.teamLabel || "", "Select team…");
@@ -1020,6 +1056,7 @@
               return data;
             })
             .catch(function (err) {
+              if (isAbortErr(err) || !isCurrentClient(clientId)) return;
               setPrefConfigLoading(false);
               showPrefConfigStatus(err.message || "Failed to load configuration", "error");
               throw err;
@@ -1043,17 +1080,11 @@
           }
           showPrefConfigStatus("");
 
-          fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/send-preference-config", {
+          portalJsonFetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/send-preference-config", {
             method: "POST",
             headers: { Accept: "application/json", "Content-Type": "application/json" },
-            body: JSON.stringify({ callsign: callsign, teamLabel: teamLabel, roleLabel: roleLabel }),
+            body: JSON.stringify({ callsign: callsign, teamLabel: teamLabel, roleLabel: roleLabel })
           })
-            .then(function (res) {
-              return res.json().then(function (body) {
-                if (!res.ok) throw new Error((body && body.error) || "Failed to send configuration");
-                return body;
-              });
-            })
             .then(function (data) {
               var label = data.callsign || data.username || "client";
               showPrefConfigStatus("Configuration sent to " + label + ".", "success");
@@ -1088,20 +1119,15 @@
           if (dataSyncFormEl) dataSyncFormEl.style.display = "block";
         }
 
-        function loadDataSyncMissions(clientId) {
+        function loadDataSyncMissions(clientId, signal) {
           if (!clientId) return Promise.reject(new Error("Missing client id"));
           setDataSyncLoading(true);
           showDataSyncStatus("");
-          return fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/data-sync-missions", {
-            headers: { Accept: "application/json" },
+          return portalJsonFetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/data-sync-missions", {
+            signal: signal
           })
-            .then(function (res) {
-              return res.json().then(function (body) {
-                if (!res.ok) throw new Error((body && body.error) || "Failed to load missions");
-                return body;
-              });
-            })
             .then(function (data) {
+              if (!isCurrentClient(clientId)) return data;
               setDataSyncLoading(false);
               var missions = Array.isArray(data.missions) ? data.missions : [];
               var options = missions.map(function (m) {
@@ -1113,6 +1139,7 @@
               return data;
             })
             .catch(function (err) {
+              if (isAbortErr(err) || !isCurrentClient(clientId)) return;
               setDataSyncLoading(false);
               showDataSyncStatus(err.message || "Failed to load missions", "error");
               throw err;
@@ -1134,17 +1161,11 @@
           }
           showDataSyncStatus("");
 
-          fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/send-data-sync-invite", {
+          portalJsonFetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/send-data-sync-invite", {
             method: "POST",
             headers: { Accept: "application/json", "Content-Type": "application/json" },
-            body: JSON.stringify({ missionName: missionName }),
+            body: JSON.stringify({ missionName: missionName })
           })
-            .then(function (res) {
-              return res.json().then(function (body) {
-                if (!res.ok) throw new Error((body && body.error) || "Failed to send invite");
-                return body;
-              });
-            })
             .then(function (data) {
               var label = data.callsign || data.username || "client";
               showDataSyncStatus('Data Sync invite sent for "' + (data.missionName || missionName) + '" to ' + label + ".", "success");
@@ -1213,21 +1234,17 @@
           opts = opts || {};
           if (!clientId) return Promise.reject(new Error("Missing client id"));
           if (opts.showLoading !== false) setGroupControlLoading(true);
-          return fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/groups", {
-            headers: { Accept: "application/json" },
+          return portalJsonFetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/groups", {
+            signal: opts.signal
           })
-            .then(function (res) {
-              return res.json().then(function (body) {
-                if (!res.ok) throw new Error((body && body.error) || "Failed to load groups");
-                return body;
-              });
-            })
             .then(function (data) {
+              if (!isCurrentClient(clientId)) return data;
               setGroupControlLoading(false);
               renderGroupControlRows(data.groups || []);
               return data;
             })
             .catch(function (err) {
+              if (isAbortErr(err) || !isCurrentClient(clientId)) return;
               setGroupControlLoading(false);
               if (!opts.silent) showGroupControlError(err.message || "Failed to load groups");
               throw err;
@@ -1243,6 +1260,7 @@
             clearInterval(groupControlRefreshTimer);
             groupControlRefreshTimer = null;
           }
+          abortClientLoads();
           currentGroupControlClientId = null;
           showGroupControlError("");
           showPrefConfigStatus("");
@@ -1263,6 +1281,7 @@
           if (!clientId) return;
 
           currentGroupControlClientId = clientId;
+          var loadSignal = beginClientLoads();
           var username = (sub.username && String(sub.username).trim()) || "";
           var callsign = (sub.callsign && String(sub.callsign).trim()) || "";
           var titleParts = ["Connected User"];
@@ -1282,24 +1301,28 @@
 
           overlay.style.display = "flex";
 
-          loadGroupControlState(clientId).catch(function () {});
+          loadGroupControlState(clientId, { signal: loadSignal }).catch(function () {});
           if (canPreferenceConfig) {
-            loadPreferenceConfig(clientId).catch(function () {});
+            loadPreferenceConfig(clientId, loadSignal).catch(function () {});
           }
           if (canDataSync) {
-            loadDataSyncMissions(clientId).catch(function () {});
+            loadDataSyncMissions(clientId, loadSignal).catch(function () {});
           }
 
           if (groupControlRefreshTimer) clearInterval(groupControlRefreshTimer);
           groupControlRefreshTimer = setInterval(function () {
             if (!currentGroupControlClientId || groupToggleInFlight) return;
-            loadGroupControlState(currentGroupControlClientId, { showLoading: false, silent: true }).catch(function () {});
+            loadGroupControlState(currentGroupControlClientId, {
+              showLoading: false,
+              silent: true,
+              signal: clientLoadAbort && clientLoadAbort.signal
+            }).catch(function () {});
           }, GROUP_CONTROL_REFRESH_MS);
 
           if (window.DashboardMiniMap && (callsign || username || clientId)) {
             requestAnimationFrame(function () {
               requestAnimationFrame(function () {
-                if (!currentGroupControlClientId) return;
+                if (currentGroupControlClientId !== clientId) return;
                 window.DashboardMiniMap.open(clientId, callsign, username).catch(function () {});
               });
             });
@@ -1331,21 +1354,18 @@
           toggle.disabled = true;
           showGroupControlError("");
 
-          fetch("/api/tak/clients/" + encodeURIComponent(currentGroupControlClientId) + "/groups", {
+          var toggleClientId = currentGroupControlClientId;
+          portalJsonFetch("/api/tak/clients/" + encodeURIComponent(toggleClientId) + "/groups", {
             method: "PUT",
             headers: { Accept: "application/json", "Content-Type": "application/json" },
-            body: JSON.stringify({ groupName: groupName, accessMode: accessMode, active: active }),
+            body: JSON.stringify({ groupName: groupName, accessMode: accessMode, active: active })
           })
-            .then(function (res) {
-              return res.json().then(function (body) {
-                if (!res.ok) throw new Error((body && body.error) || "Failed to update group");
-                return body;
-              });
-            })
             .then(function (data) {
+              if (!isCurrentClient(toggleClientId)) return;
               renderGroupControlRows(data.groups || []);
             })
             .catch(function (err) {
+              if (isAbortErr(err) || !isCurrentClient(toggleClientId)) return;
               setGroupToggleVisual(toggle, previous);
               tr.className = (previous ? "group-control-row-active" : "group-control-row-inactive") + " group-control-row";
               showGroupControlError(err.message || "Failed to update group");
@@ -1420,7 +1440,11 @@
         if (expandedRefreshTimer) clearInterval(expandedRefreshTimer);
         expandedRefreshTimer = setInterval(function () {
           if (!card.classList.contains("connected-clients-expanded-card")) return;
-          fetch("/api/tak/subscriptions", { headers: { Accept: "application/json" } })
+          fetch("/api/tak/subscriptions", {
+            headers: { Accept: "application/json" },
+            credentials: "same-origin",
+            redirect: "manual"
+          })
             .then(function (res) { return res.json(); })
             .then(function (data) {
               if (!data.configured || !Array.isArray(data.data)) return;
@@ -1446,6 +1470,7 @@
       }
 
       function collapse() {
+        abortClientLoads();
         if (window.DashboardMiniMap) window.DashboardMiniMap.destroy();
         if (expandedRefreshTimer) {
           clearInterval(expandedRefreshTimer);
@@ -1472,7 +1497,11 @@
       function tryExpand() {
         if (card.classList.contains("connected-clients-expanded-card")) return;
         card.querySelector(".statValue").textContent = "…";
-        fetch("/api/tak/subscriptions", { headers: { Accept: "application/json" } })
+        fetch("/api/tak/subscriptions", {
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+          redirect: "manual"
+        })
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (!data.configured || !Array.isArray(data.data)) {

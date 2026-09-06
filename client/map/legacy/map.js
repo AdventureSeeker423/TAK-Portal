@@ -5580,12 +5580,11 @@
     if (connectedSubsCache.promise) return connectedSubsCache.promise;
     connectedSubsCache.promise = fetch("/api/tak/subscriptions", {
       headers: { Accept: "application/json" },
+      credentials: "same-origin",
+      redirect: "manual",
     })
       .then(function (res) {
-        return res.json().then(function (body) {
-          if (!res.ok) throw new Error((body && body.error) || "subscriptions");
-          return body;
-        });
+        return parsePortalJson(res, "subscriptions");
       })
       .then(function (body) {
         const list = body && Array.isArray(body.data) ? body.data : [];
@@ -5778,6 +5777,36 @@
     });
   }
 
+  function isAbortErr(err) {
+    return !!(err && (err.name === "AbortError" || err.code === 20));
+  }
+
+  function beginWrapClientFetch(wrap) {
+    if (!wrap) return;
+    if (wrap._clientFetchAbort) {
+      try {
+        wrap._clientFetchAbort.abort();
+      } catch (_) {}
+    }
+    wrap._clientFetchAbort =
+      typeof AbortController !== "undefined" ? new AbortController() : null;
+  }
+
+  function parsePortalJson(res, fallback) {
+    if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+      throw new Error("Session expired. Refresh the page.");
+    }
+    return res.json().then(
+      function (body) {
+        if (!res.ok) throw new Error((body && body.error) || fallback || "Request failed");
+        return body;
+      },
+      function () {
+        throw new Error(fallback || "Request failed");
+      }
+    );
+  }
+
   function loadDetailGroups(wrap, clientId) {
     const loadingEl = wrap.querySelector("[data-groups-loading]");
     const msgEl = wrap.querySelector("[data-groups-msg]");
@@ -5786,12 +5815,12 @@
     setClientPanelMsg(msgEl, "", "");
     return fetch("/api/tak/clients/" + encodeURIComponent(clientId) + "/groups", {
       headers: { Accept: "application/json" },
+      credentials: "same-origin",
+      redirect: "manual",
+      signal: wrap._clientFetchAbort && wrap._clientFetchAbort.signal,
     })
       .then(function (res) {
-        return res.json().then(function (body) {
-          if (!res.ok) throw new Error((body && body.error) || "Failed to load groups");
-          return body;
-        });
+        return parsePortalJson(res, "Failed to load groups");
       })
       .then(function (data) {
         if (loadingEl) loadingEl.hidden = true;
@@ -5799,6 +5828,7 @@
         return data;
       })
       .catch(function (err) {
+        if (isAbortErr(err)) return;
         if (loadingEl) loadingEl.hidden = true;
         setClientPanelMsg(msgEl, err.message || "Failed to load groups", "error");
         throw err;
@@ -5869,13 +5899,15 @@
     setClientPanelMsg(msgEl, "", "");
     return fetch(
       "/api/tak/clients/" + encodeURIComponent(clientId) + "/preference-config",
-      { headers: { Accept: "application/json" } }
+      {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+        redirect: "manual",
+        signal: wrap._clientFetchAbort && wrap._clientFetchAbort.signal,
+      }
     )
       .then(function (res) {
-        return res.json().then(function (body) {
-          if (!res.ok) throw new Error((body && body.error) || "Failed to load configuration");
-          return body;
-        });
+        return parsePortalJson(res, "Failed to load configuration");
       })
       .then(function (data) {
         if (loadingEl) loadingEl.hidden = true;
@@ -5896,6 +5928,7 @@
         return data;
       })
       .catch(function (err) {
+        if (isAbortErr(err)) return;
         if (loadingEl) loadingEl.hidden = true;
         setClientPanelMsg(msgEl, err.message || "Failed to load configuration", "error");
         throw err;
@@ -6033,6 +6066,7 @@
   }
 
   function refreshDetailClientConnection(pane, wrap, uid) {
+    beginWrapClientFetch(wrap);
     const m = getMarkerRecord(uid);
     const state = detailClientState(uid);
     if (!markerMayBeConnectedClient(m)) {

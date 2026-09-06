@@ -284,8 +284,9 @@ router.get("/clients/:clientId/live-marker", async (req, res) => {
     // preference lookup when the cheap match misses.
     if ((!markers || !markers.length) && clientId) {
       try {
-        const pref = await takGroupControl.getClientPreferenceConfig(clientId, user);
-        const preferenceCallsign = String(pref?.callsign || "").trim();
+        const preferenceCallsign = String(
+          (await takGroupControl.getCachedClientPreferenceCallsign(clientId, user)) || ""
+        ).trim();
         if (preferenceCallsign) {
           markers = cotStream.findMarkersForConnectedClient({
             callsign,

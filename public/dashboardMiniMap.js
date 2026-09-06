@@ -28,6 +28,9 @@
   let map = null;
   let pollTimer = null;
   let assetsPromise = null;
+  let openGen = 0;
+  let initPromise = null;
+  let markerAbort = null;
   let currentClientId = null;
   let currentCallsign = null;
   let currentUsername = null;
@@ -500,12 +503,15 @@
     if (!list.length || !map) return Promise.resolve();
     if (iconLoadPending) return iconLoadPending;
 
-    iconLoadPending = fetch("/api/map/icons/rendered/batch", {
+    const opts = {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
+      redirect: "manual",
       body: JSON.stringify({ icons: list }),
-    })
+    };
+    if (markerAbort && markerAbort.signal) opts.signal = markerAbort.signal;
+    iconLoadPending = fetch("/api/map/icons/rendered/batch", opts)
       .then(function (resp) {
         if (!resp.ok) throw new Error("icon batch " + resp.status);
         return resp.json();
@@ -588,6 +594,39 @@
     return !!(currentClientId && (currentCallsign || currentUsername));
   }
 
+  function isStaleOpen(gen) {
+    return gen != null && gen !== openGen;
+  }
+
+  function isAbortError(err) {
+    return !!(err && (err.name === "AbortError" || err.code === 20));
+  }
+
+  function abortMarkerFetch() {
+    if (!markerAbort) return;
+    try {
+      markerAbort.abort();
+    } catch (_) {}
+    markerAbort = null;
+  }
+
+  function beginMarkerFetch() {
+    abortMarkerFetch();
+    markerAbort =
+      typeof AbortController !== "undefined" ? new AbortController() : null;
+    return markerAbort ? markerAbort.signal : undefined;
+  }
+
+  function readPortalJson(resp) {
+    if (resp.type === "opaqueredirect" || (resp.status >= 300 && resp.status < 400)) {
+      throw new Error("Session expired");
+    }
+    return resp.json().then(function (body) {
+      if (!resp.ok) throw new Error((body && body.error) || "Request failed");
+      return body;
+    });
+  }
+
   function fetchLiveMarker(clientId, callsign, username) {
     const q =
       "/api/tak/clients/" +
@@ -596,48 +635,91 @@
       encodeURIComponent(callsign || "") +
       "&username=" +
       encodeURIComponent(username || "");
-    return fetch(q, {
+    const opts = {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
-    }).then(function (resp) {
-      return resp.json().then(function (body) {
-        if (!resp.ok) throw new Error((body && body.error) || "Failed to load marker");
-        return body;
-      });
-    });
+      redirect: "manual",
+    };
+    if (markerAbort && markerAbort.signal) opts.signal = markerAbort.signal;
+    return fetch(q, opts).then(readPortalJson);
   }
 
-  function fetchMarkerWithRetry(attempt) {
-    if (!hasIdentity()) {
+  function fetchMarkerWithRetry(attempt, gen) {
+    if (isStaleOpen(gen) || !hasIdentity()) {
       return Promise.resolve({ found: false });
     }
     const tryNum = attempt != null ? attempt : 0;
     return fetchLiveMarker(currentClientId, currentCallsign, currentUsername)
       .then(function (payload) {
-        if (!payload.found && tryNum < 5) {
+        if (isStaleOpen(gen)) return { found: false };
+        if (!payload.found && tryNum < 2) {
           return new Promise(function (resolve) {
             setTimeout(function () {
-              resolve(fetchMarkerWithRetry(tryNum + 1));
+              resolve(fetchMarkerWithRetry(tryNum + 1, gen));
             }, 400);
           });
         }
         return payload;
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (isAbortError(err) || isStaleOpen(gen)) return { found: false };
         return { found: false };
       });
   }
 
   function refreshMarker() {
     if (!hasIdentity() || !map) return Promise.resolve();
+    const gen = openGen;
     return fetchLiveMarker(currentClientId, currentCallsign, currentUsername)
       .then(function (payload) {
+        if (isStaleOpen(gen)) return;
         if (payload && payload.found) lastMarkerPayload = payload;
         return updateMarkerOnMap(payload);
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (isAbortError(err) || isStaleOpen(gen)) return;
         if (!hasLiveMarker) setEmptyVisible(true);
       });
+  }
+
+  function applyMapView(center, zoom) {
+    if (!map || !center || center.length < 2) return;
+    const nextZoom = zoom != null ? zoom : Math.max(map.getZoom(), LOCKED_ZOOM);
+    try {
+      map.jumpTo({ center: center, zoom: nextZoom });
+    } catch (_) {}
+  }
+
+  function ensureMap(options) {
+    if (map) {
+      const opts = options || {};
+      if (opts.center && opts.center.length >= 2) {
+        applyMapView(opts.center, opts.zoom);
+      }
+      return whenMapReady().then(function () {
+        return true;
+      });
+    }
+    if (!initPromise) {
+      initPromise = init(options)
+        .then(function (ok) {
+          if (!map) initPromise = null;
+          return ok;
+        })
+        .catch(function (err) {
+          initPromise = null;
+          throw err;
+        });
+    }
+    return initPromise.then(function () {
+      const opts = options || {};
+      if (map && opts.center && opts.center.length >= 2) {
+        applyMapView(opts.center, opts.zoom);
+      }
+      return whenMapReady().then(function () {
+        return !!map;
+      });
+    });
   }
 
   function open(clientId, callsign, username) {
@@ -645,14 +727,9 @@
     const container = document.getElementById("clientMiniMap");
     if (!container) return Promise.resolve(false);
 
+    const gen = ++openGen;
     stopPolling();
-    if (map) {
-      try {
-        unbindMapInteraction();
-        map.remove();
-      } catch (_) {}
-      map = null;
-    }
+    beginMarkerFetch();
 
     currentClientId = clientId || null;
     currentCallsign = callsign || null;
@@ -669,8 +746,9 @@
       return Promise.resolve(false);
     }
 
-    return Promise.all([fetchMarkerWithRetry(0), ensureMapLibre()])
+    return Promise.all([fetchMarkerWithRetry(0, gen), ensureMapLibre()])
       .then(function (results) {
+        if (isStaleOpen(gen)) return false;
         const payload = results[0];
         lastMarkerPayload = payload && payload.found ? payload : null;
         let center = DEFAULT_CENTER.slice();
@@ -686,18 +764,21 @@
         }
         revealMap();
         bindContainerResizeObserver();
-        return init({ center: center, zoom: zoom }).then(function () {
+        return ensureMap({ center: center, zoom: zoom }).then(function () {
+          if (isStaleOpen(gen)) return false;
           return updateMarkerOnMap(payload);
         });
       })
       .then(function () {
+        if (isStaleOpen(gen)) return false;
         revealMap();
         scheduleMarkerSync();
         scheduleRecenterIfLocked();
         startPolling(clientId, callsign, username);
         return true;
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (isAbortError(err) || isStaleOpen(gen)) return false;
         revealMap();
         if (!hasLiveMarker) setEmptyVisible(true);
         return false;
@@ -720,11 +801,17 @@
     const initialZoom = opts.zoom != null ? opts.zoom : DEFAULT_ZOOM;
 
     return ensureMapLibre().then(function () {
+      if (map) {
+        return whenMapReady().then(function () {
+          return true;
+        });
+      }
+      const gen = openGen;
       const style = getBasemapStyle();
       const initialStyle =
         typeof style === "string" ? style : withMapGlyphs(style);
 
-      map = new maplibregl.Map({
+      const instance = new maplibregl.Map({
         container: container,
         style: initialStyle,
         center: initialCenter,
@@ -734,30 +821,51 @@
         pitchWithRotate: false,
         touchPitch: false,
       });
-
-      map.scrollZoom.enable();
+      map = instance;
+      instance.scrollZoom.enable();
 
       return new Promise(function (resolve) {
-        map.on("load", function () {
+        let settled = false;
+        function finish(ok) {
+          if (settled) return;
+          settled = true;
+          resolve(!!ok);
+        }
+        function stillCurrent() {
+          return !isStaleOpen(gen) && map === instance;
+        }
+        instance.once("load", function () {
+          if (!stillCurrent()) {
+            try {
+              instance.remove();
+            } catch (_) {}
+            finish(false);
+            return;
+          }
           try {
             bindMapInteraction();
           } catch (_) {}
           whenMapReady().then(function () {
+            if (!stillCurrent()) {
+              finish(false);
+              return;
+            }
             if (centerLocked && lockedCenter) {
               centerOnLockedMarker({ zoom: LOCKED_ZOOM, duration: 0 });
               scheduleRecenterIfLocked();
             }
             scheduleMarkerSync();
-            resolve(true);
+            finish(true);
           });
         });
-        map.on("styledata", function () {
-          if (!map || !map.isStyleLoaded()) return;
+        instance.on("styledata", function () {
+          if (!stillCurrent() || !instance.isStyleLoaded()) return;
           scheduleMarkerSync();
           if (centerLocked && lockedCenter) scheduleRecenterIfLocked();
         });
-        map.on("error", function () {
-          resolve(false);
+        instance.on("error", function () {
+          // Carto/OSM tile or glyph failures show as CORS in the console
+          // when maps are torn down mid-load. They are not fatal to the modal.
         });
       });
     });
@@ -797,7 +905,9 @@
   }
 
   function destroy() {
+    openGen += 1;
     stopPolling();
+    abortMarkerFetch();
     currentClientId = null;
     currentCallsign = null;
     currentUsername = null;
@@ -807,6 +917,7 @@
     lockedCenter = null;
     recenterOnIdleScheduled = false;
     lastMarkerPayload = null;
+    initPromise = null;
     unbindContainerResizeObserver();
     setMapReadyVisible(false);
     if (map) {
