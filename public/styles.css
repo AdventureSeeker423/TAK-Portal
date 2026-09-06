@@ -2264,6 +2264,7 @@ body.modal-open .sidebarToggle {
 
 .main.settings-page > h1,
 .main.settings-page > #settingsAutoSaveStatus,
+.main.settings-page > #legacyImportPageNotice,
 .main.settings-page > .alert,
 .main.settings-page > .settings-hub {
     width: 100%;
@@ -2735,6 +2736,55 @@ a.settings-hub-card:visited {
 .legacy-import-table th {
     font-weight: 650;
     white-space: nowrap;
+}
+
+.legacy-import-divider {
+    border: 0;
+    border-top: 1px solid var(--line, #374151);
+    margin: 1.25rem 0 1rem;
+}
+
+.legacy-import-heading {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 650;
+}
+
+.legacy-import-progress {
+    height: 10px;
+    background: var(--line, #243040);
+    border-radius: 99px;
+    overflow: hidden;
+    margin: 0 0 0.75rem;
+}
+
+.legacy-import-progress-bar {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: var(--btn, #3b82f6);
+    transition: width 0.35s ease;
+}
+
+.legacy-import-notice,
+.legacy-import-page-notice {
+    margin: 0.75rem 0;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.legacy-import-notice.is-success,
+.legacy-import-page-notice.is-success {
+    background: #166534;
+    color: #fff;
+}
+
+.legacy-import-notice.is-error,
+.legacy-import-page-notice.is-error {
+    background: #991b1b;
+    color: #fff;
 }
 
 .settings-modal .modalHeader {

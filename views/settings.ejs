@@ -4,6 +4,7 @@
 <main class="main settings-page">
   <h1>Settings</h1>
   <div id="settingsAutoSaveStatus" class="muted settings-autosave-status" aria-live="polite"></div>
+  <div id="legacyImportPageNotice" class="legacy-import-page-notice" role="status" aria-live="polite" hidden></div>
 
 <% if (typeof smsTest !== 'undefined' && smsTest === 'ok') { %>
   <div class="alert success" style="margin-top: 12px;">
@@ -186,9 +187,6 @@
         </div>
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="backup">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Import / Export</span></span>
-        </div>
-        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="legacy-import">
-          <span class="settings-hub-card-main"><span class="settings-hub-card-title">1.4.9 Data Migration</span></span>
         </div>
       </div>
     </section>
@@ -492,7 +490,7 @@
             <h2 id="settingsModalTitle-portal-database">Portal database</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Read-only Postgres connection for DBeaver/psql. Changing .env after the volume exists does not rotate this password.</span>
+              <span class="settings-help-popover">Read-only Postgres connection for DBeaver/psql. Changing .env after the volume exists does not rotate this password. If a 1.4.9 upgrade left agencies or other records empty, restore the migrated JSON backup and re-run the import from this same dialog.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -549,6 +547,32 @@
               }
             })();
           </script>
+
+          <hr class="legacy-import-divider" />
+          <h3 class="legacy-import-heading">1.4.9 data migration</h3>
+          <p class="muted">The 1.4.9 updater keeps the Docker data volume. This build then copies those JSON files into Postgres and leaves a backup in <code>data/migrated/</code>. If that import did not run, restore the backup and import again. Matching Postgres tables are replaced from the JSON files. Users and groups still come from Authentik; settings.json is not part of this import.</p>
+          <div id="legacyImportNotice" class="legacy-import-notice" role="status" aria-live="polite" hidden></div>
+          <p id="legacyImportStatus" class="muted backup-status" role="status">Checking JSON files…</p>
+          <div id="legacyImportProgressWrap" class="legacy-import-progress" hidden>
+            <div class="legacy-import-progress-bar" id="legacyImportProgressBar"></div>
+          </div>
+          <div class="backup-actions" style="margin-bottom:12px;">
+            <button type="button" class="btn danger" id="legacyImportRerunBtn">Restore backup and re-run import</button>
+          </div>
+          <div class="legacy-import-table-wrap">
+            <table class="legacy-import-table" id="legacyImportTable">
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>JSON in data volume</th>
+                  <th>Migrated backup</th>
+                  <th>Last import</th>
+                </tr>
+              </thead>
+              <tbody id="legacyImportTableBody"></tbody>
+            </table>
+          </div>
+          <pre id="legacyImportReport" class="backup-report" hidden></pre>
         </div>
       </div>
     </div>
@@ -4635,43 +4659,6 @@
     </div>
   </div>
 
-  <div class="modalOverlay settings-modal-overlay" id="settingsModal-legacy-import" data-settings-modal="legacy-import" style="display:none;" aria-hidden="true">
-    <div class="modal settings-modal settings-modal-backup" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-legacy-import">
-      <div class="modalHeader">
-        <div class="modalHeaderLeft">
-          <h2 id="settingsModalTitle-legacy-import">1.4.9 data migration</h2>
-          <span class="settings-help-tip">
-            <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-            <span class="settings-help-popover">After upgrading from 1.4.9, JSON files in the data volume are imported into Postgres and then moved to data/migrated/. Use this if the portal came up but agencies or other records look empty.</span>
-          </span>
-        </div>
-        <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
-      </div>
-      <div class="modalBody settings-body">
-        <p class="muted">The 1.4.9 updater keeps the Docker data volume. This build then copies those JSON files into Postgres and leaves a backup in <code>data/migrated/</code>. If that import did not run, restore the backup and import again. Matching Postgres tables are replaced from the JSON files. Users and groups still come from Authentik; settings.json is not part of this import.</p>
-        <p id="legacyImportStatus" class="muted backup-status" role="status">Checking JSON files…</p>
-        <div class="backup-actions" style="margin-bottom:12px;">
-          <button type="button" class="btn" id="legacyImportRefreshBtn">Refresh</button>
-          <button type="button" class="btn danger" id="legacyImportRerunBtn">Restore backup and re-run import</button>
-        </div>
-        <div class="legacy-import-table-wrap">
-          <table class="legacy-import-table" id="legacyImportTable">
-            <thead>
-              <tr>
-                <th>File</th>
-                <th>JSON in data volume</th>
-                <th>Migrated backup</th>
-                <th>Last import</th>
-              </tr>
-            </thead>
-            <tbody id="legacyImportTableBody"></tbody>
-          </table>
-        </div>
-        <pre id="legacyImportReport" class="backup-report" hidden></pre>
-      </div>
-    </div>
-  </div>
-
 
   <% if (typeof takSshMaintenanceVisible !== "undefined" && takSshMaintenanceVisible) { %>
   <div class="modalOverlay settings-modal-overlay" id="settingsModal-tak-maintenance" data-settings-modal="tak-maintenance" style="display:none;" aria-hidden="true">
@@ -5132,17 +5119,42 @@
   <script>
     (function () {
       var pollTimer = null;
+      var watching = false;
+      var modalOpen = false;
       var statusEl = document.getElementById("legacyImportStatus");
       var tbody = document.getElementById("legacyImportTableBody");
       var report = document.getElementById("legacyImportReport");
       var rerunBtn = document.getElementById("legacyImportRerunBtn");
-      var refreshBtn = document.getElementById("legacyImportRefreshBtn");
-      var modal = document.getElementById("settingsModal-legacy-import");
-      if (!modal || !statusEl || !tbody) return;
+      var noticeEl = document.getElementById("legacyImportNotice");
+      var pageNotice = document.getElementById("legacyImportPageNotice");
+      var progressWrap = document.getElementById("legacyImportProgressWrap");
+      var progressBar = document.getElementById("legacyImportProgressBar");
+      if (!statusEl || !tbody) return;
 
       function setStatus(text, isError) {
         statusEl.textContent = text || "";
         statusEl.style.color = isError ? "var(--danger, #ff3b3b)" : "";
+      }
+
+      function setNotice(text, kind) {
+        var show = !!text;
+        if (noticeEl) {
+          noticeEl.hidden = !show;
+          noticeEl.textContent = text || "";
+          noticeEl.className = "legacy-import-notice" + (kind ? " is-" + kind : "");
+        }
+        if (pageNotice) {
+          pageNotice.hidden = !show;
+          pageNotice.textContent = text || "";
+          pageNotice.className = "legacy-import-page-notice" + (kind ? " is-" + kind : "");
+        }
+      }
+
+      function setProgressBar(percent, visible) {
+        if (!progressWrap || !progressBar) return;
+        progressWrap.hidden = !visible;
+        var pct = Math.max(0, Math.min(100, Number(percent) || 0));
+        progressBar.style.width = pct + "%";
       }
 
       function bytesLabel(n) {
@@ -5173,28 +5185,31 @@
           }
           td(file.name || "");
           td(file.originalPresent ? "Present (" + bytesLabel(file.originalBytes) + ")" : "Missing");
-          td(
-            file.latestBackup
-              ? "Yes (" + (file.backupCount || 1) + ")"
-              : "None"
-          );
+          td(file.latestBackup ? "Yes (" + (file.backupCount || 1) + ")" : "None");
           td(importLabel(file));
           tbody.appendChild(tr);
         });
         var progress = (data && data.progress) || {};
-        if (progress.phase === "running") {
+        var phase = progress.phase || "";
+        if (phase === "running") {
           var pct = Math.max(0, Math.min(100, Number(progress.percent) || 0));
           var msg = progress.message || "Importing…";
           if (progress.currentFile) msg += " (" + progress.currentFile + ")";
           setStatus(pct + "% — " + msg);
+          setProgressBar(pct, true);
           if (rerunBtn) rerunBtn.disabled = true;
-        } else if (progress.phase === "failed") {
+        } else if (phase === "failed") {
           setStatus(progress.message || "Import failed", true);
+          setProgressBar(0, false);
           if (rerunBtn) rerunBtn.disabled = !data.canRerun;
-        } else if (progress.phase === "complete") {
+          if (watching) setNotice(progress.message || "Data migration failed.", "error");
+        } else if (phase === "complete") {
           setStatus(progress.message || "Import complete.");
+          setProgressBar(0, false);
           if (rerunBtn) rerunBtn.disabled = !data.canRerun;
+          if (watching) setNotice("Data migration completed successfully.", "success");
         } else {
+          setProgressBar(0, false);
           if (!data.hasSource) {
             setStatus("No leftover JSON files or migrated backups were found.");
           } else {
@@ -5202,6 +5217,10 @@
           }
           if (rerunBtn) rerunBtn.disabled = !data.canRerun;
         }
+      }
+
+      function shouldKeepPolling(phase) {
+        return watching || phase === "running";
       }
 
       function loadStatus() {
@@ -5214,32 +5233,41 @@
             return body;
           });
         }).then(function (data) {
-          render(data);
           var phase = data && data.progress && data.progress.phase;
-          if (phase === "running") startPoll();
+          render(data);
+          if (watching && (phase === "complete" || phase === "failed")) {
+            watching = false;
+          }
+          if (shouldKeepPolling(phase)) schedulePoll();
           else stopPoll();
           return data;
         }).catch(function (err) {
           setStatus(err.message || "Could not read migration status", true);
+          if (watching || modalOpen) schedulePoll();
         });
       }
 
-      function startPoll() {
+      function schedulePoll() {
         if (pollTimer) return;
-        pollTimer = setInterval(loadStatus, 1000);
+        pollTimer = setTimeout(function () {
+          pollTimer = null;
+          loadStatus();
+        }, 1000);
       }
 
       function stopPoll() {
         if (!pollTimer) return;
-        clearInterval(pollTimer);
+        clearTimeout(pollTimer);
         pollTimer = null;
       }
 
-      if (refreshBtn) refreshBtn.addEventListener("click", function () { loadStatus(); });
       if (rerunBtn) {
         rerunBtn.addEventListener("click", function () {
           if (!window.confirm("Restore migrated JSON backups and re-import them into Postgres? This replaces matching portal tables from those files.")) return;
           rerunBtn.disabled = true;
+          watching = true;
+          setNotice("", "");
+          setProgressBar(1, true);
           if (report) {
             report.hidden = true;
             report.textContent = "";
@@ -5270,17 +5298,25 @@
               report.hidden = false;
             }
             setStatus("Import queued. Watching progress…");
-            startPoll();
             return loadStatus();
           }).catch(function (err) {
+            watching = false;
             rerunBtn.disabled = false;
+            setProgressBar(0, false);
             setStatus(err.message || "Could not start import", true);
+            setNotice(err.message || "Could not start import", "error");
           });
         });
       }
 
-      window.startLegacyImportStatus = loadStatus;
-      window.stopLegacyImportStatus = stopPoll;
+      window.startLegacyImportStatus = function () {
+        modalOpen = true;
+        loadStatus();
+      };
+      window.stopLegacyImportStatus = function () {
+        modalOpen = false;
+        if (!watching) stopPoll();
+      };
     })();
   </script>
 
@@ -6074,7 +6110,7 @@
       function closeSettingsModal() {
         var wasMaintenance = openId === "tak-maintenance";
         var wasLiveMap = openId === "live-map";
-        var wasLegacyImport = openId === "legacy-import";
+        var wasPortalDb = openId === "portal-database";
         if (!openId) {
           document.querySelectorAll(".settings-modal-overlay").forEach(function (el) {
             el.style.display = "none";
@@ -6096,7 +6132,7 @@
         if (wasLiveMap && typeof window.stopOpenAddressesPoll === "function") {
           window.stopOpenAddressesPoll();
         }
-        if (wasLegacyImport && typeof window.stopLegacyImportStatus === "function") {
+        if (wasPortalDb && typeof window.stopLegacyImportStatus === "function") {
           window.stopLegacyImportStatus();
         }
       }
@@ -6118,7 +6154,7 @@
         if (id === "live-map" && typeof window.startOpenAddressesPoll === "function") {
           window.startOpenAddressesPoll();
         }
-        if (id === "legacy-import" && typeof window.startLegacyImportStatus === "function") {
+        if (id === "portal-database" && typeof window.startLegacyImportStatus === "function") {
           window.startLegacyImportStatus();
         }
       }
@@ -6346,7 +6382,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup" || modalId === "legacy-import") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

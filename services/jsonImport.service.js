@@ -742,13 +742,14 @@ async function startRerunFromBackup() {
   }
   await db.query("DELETE FROM json_import_runs WHERE file_name = ANY($1::text[])", [queued]);
   await setProgress({
-    phase: "idle",
-    percent: 0,
+    phase: "running",
+    started_at: new Date(),
+    percent: 1,
     files_done: 0,
     files_total: queued.length,
     current_file: null,
     eta_seconds: null,
-    message: "Retrying import from restored JSON",
+    message: "Restoring JSON backups and starting import",
     error: null,
   });
   run().catch((e) => console.error("[json-import] rerun:", e?.message || e));
