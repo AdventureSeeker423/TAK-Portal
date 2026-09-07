@@ -117,10 +117,13 @@
           }) %>
 
           <div class="editAgencyDomainRow">
-            <label class="editAgencyDomainField">Agency email domains
-              <span class="settings-help-tip">
-                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-                <span class="settings-help-popover" role="tooltip">If you list one or more domains, the public Request Access form will only accept email addresses ending in those domains. Leave the field empty to allow any email domain for requests.</span>
+            <label class="editAgencyDomainField">
+              <span class="settings-label">
+                <span>Agency email domains</span>
+                <span class="settings-help-tip">
+                  <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                  <span class="settings-help-popover" role="tooltip">If you list one or more domains, the public Request Access form will only accept email addresses ending in those domains. Leave the field empty to allow any email domain for requests.</span>
+                </span>
               </span>
               <input type="text" id="lookupDomain" placeholder="agency.gov, county.org" />
               <small id="domainError" class="msg bad" style="display:none;">
@@ -172,12 +175,21 @@
           <div class="editAgencySplitPane">
             <div class="editAgencySplitPaneHead">
               <h3>Agency Admins</h3>
-              <div id="adminsSummary" class="msg"></div>
+              <button class="btn" type="button" id="addAdminsBtn" disabled>Add Admins</button>
             </div>
+            <div id="adminsSummary" class="msg"></div>
             <input
               id="adminsFilter"
               placeholder="Filter by username, name, or email..."
             />
+            <div id="addAdminsPanel" class="editAgencyAddAdminsPanel">
+              <input
+                id="addAdminsSearch"
+                placeholder="Search username, name, or email to add..."
+                autocomplete="off"
+              />
+              <div id="addAdminsResults" class="groupsBox editAgencyListBox"></div>
+            </div>
             <div id="adminsList" class="groupsBox editAgencyListBox"></div>
             <div class="pagination" id="adminsPagination" style="display:none;">
               <button class="btn pagination-first-last" id="adminsFirstBtn" type="button">First</button>
@@ -251,6 +263,13 @@ const adminsSummary = document.getElementById("adminsSummary");
 const adminsFilter = document.getElementById("adminsFilter");
 const adminsList = document.getElementById("adminsList");
 const adminsHint = document.getElementById("adminsHint");
+const addAdminsBtn = document.getElementById("addAdminsBtn");
+const addAdminsPanel = document.getElementById("addAdminsPanel");
+const addAdminsSearch = document.getElementById("addAdminsSearch");
+const addAdminsResults = document.getElementById("addAdminsResults");
+const adminsPane = addAdminsPanel && addAdminsPanel.closest
+  ? addAdminsPanel.closest(".editAgencySplitPane")
+  : null;
 const adminsFirstBtn = document.getElementById("adminsFirstBtn");
 const adminsPrevBtn = document.getElementById("adminsPrevBtn");
 const adminsNextBtn = document.getElementById("adminsNextBtn");
@@ -718,7 +737,150 @@ function renderAdminsList(){
     : (activeAdmins || []);
 
   const rowsHtml = filtered.map(memberRow).join("");
-  adminsList.innerHTML = rowsHtml || `<p class="muted" style="margin:0;padding:8px;">No users found.</p>`;
+  if (adminsList) adminsList.innerHTML = rowsHtml || `<p class="muted" style="margin:0;padding:8px;">No users found.</p>`;
+}
+
+let addAdminsOpen = false;
+let addAdminsSearchTimer = null;
+let addAdminsSearchSeq = 0;
+
+function setAddAdminsButtonEnabled(enabled) {
+  if (addAdminsBtn) addAdminsBtn.disabled = !enabled;
+}
+
+function setAddAdminsOpen(open) {
+  addAdminsOpen = !!open && !!activeAdminsGroupId;
+  if (adminsPane) adminsPane.classList.toggle("is-adding-admins", addAdminsOpen);
+  if (addAdminsPanel) addAdminsPanel.classList.toggle("is-open", addAdminsOpen);
+  if (addAdminsBtn) addAdminsBtn.textContent = addAdminsOpen ? "Done" : "Add Admins";
+  if (!addAdminsOpen) {
+    if (addAdminsSearch) addAdminsSearch.value = "";
+    if (addAdminsResults) addAdminsResults.innerHTML = "";
+    return;
+  }
+  if (addAdminsResults) {
+    addAdminsResults.innerHTML = `<p class="muted" style="margin:0;padding:8px;">Type to search users.</p>`;
+  }
+  if (addAdminsSearch) {
+    addAdminsSearch.focus();
+    addAdminsSearch.select();
+  }
+}
+
+function adminMemberIds() {
+  return new Set((activeAdmins || []).map((u) => String(u?.pk || u?.id || "")).filter(Boolean));
+}
+
+function renderAddAdminsResults(users) {
+  if (!addAdminsResults) return;
+  const existing = adminMemberIds();
+  const items = Array.isArray(users) ? users : [];
+  if (!items.length) {
+    addAdminsResults.innerHTML = `<p class="muted" style="margin:0;padding:8px;">No matching users.</p>`;
+    return;
+  }
+  addAdminsResults.innerHTML = items.map((u) => {
+    const username = String(u?.username || "");
+    const name = String(u?.name || u?.displayName || "");
+    const email = String(u?.email || "");
+    const pk = String(u?.pk || u?.id || "");
+    const detail = [name, email].filter(Boolean).join(" · ");
+    const already = existing.has(pk);
+    return `
+      <div class="editAgencyAdminItem">
+        <div class="editAgencyAdminMeta">
+          <div class="editAgencyAdminUser">${escAttr(username) || "—"}</div>
+          ${detail ? `<div class="muted">${escAttr(detail)}</div>` : ""}
+        </div>
+        ${
+          already
+            ? `<span class="muted">Already admin</span>`
+            : pk
+              ? `<button class="btn success" type="button" data-add-admin-pk="${escAttr(pk)}">Add</button>`
+              : ""
+        }
+      </div>
+    `;
+  }).join("");
+}
+
+async function runAddAdminsSearch() {
+  if (!addAdminsOpen || !addAdminsResults) return;
+  const q = String(addAdminsSearch?.value || "").trim();
+  if (q.length < 2) {
+    addAdminsResults.innerHTML = `<p class="muted" style="margin:0;padding:8px;">Type to search users.</p>`;
+    return;
+  }
+  const seq = ++addAdminsSearchSeq;
+  addAdminsResults.innerHTML = `<p class="muted" style="margin:0;padding:8px;">Searching...</p>`;
+  try {
+    const params = new URLSearchParams({
+      q,
+      page: "1",
+      pageSize: "25",
+      sortKey: "name",
+      sortDir: "asc",
+    });
+    const res = await fetch(`/api/users/search?${params.toString()}`, { headers: { Accept: "application/json" } });
+    const out = await res.json().catch(() => ({}));
+    if (seq !== addAdminsSearchSeq) return;
+    if (!res.ok) throw new Error(out.error || "Search failed");
+    renderAddAdminsResults(Array.isArray(out.users) ? out.users : []);
+  } catch (e) {
+    if (seq !== addAdminsSearchSeq) return;
+    addAdminsResults.innerHTML = `<p class="muted" style="margin:0;padding:8px;">${esc(e.message || "Search failed.")}</p>`;
+  }
+}
+
+if (addAdminsBtn) {
+  addAdminsBtn.addEventListener("click", () => {
+    if (!activeAdminsGroupId) return;
+    setAddAdminsOpen(!addAdminsOpen);
+  });
+}
+if (addAdminsSearch) {
+  addAdminsSearch.addEventListener("input", () => {
+    clearTimeout(addAdminsSearchTimer);
+    addAdminsSearchTimer = setTimeout(() => {
+      runAddAdminsSearch().catch(() => {});
+    }, 220);
+  });
+  addAdminsSearch.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") e.preventDefault();
+  });
+}
+if (addAdminsResults) {
+  addAdminsResults.addEventListener("click", (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest("[data-add-admin-pk]") : null;
+    if (!btn) return;
+    addUserToAdminsGroup(btn.getAttribute("data-add-admin-pk"), btn);
+  });
+}
+
+async function addUserToAdminsGroup(userPk, btn) {
+  if (!activeAdminsGroupId || !userPk) return;
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/groups/mass-assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        groupId: activeAdminsGroupId,
+        userIds: [String(userPk)],
+      }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(out.error || "Failed to add user to admin group.");
+      if (btn) btn.disabled = false;
+      return;
+    }
+    await loadAdminsPage(1);
+    await runAddAdminsSearch();
+  } catch (e) {
+    alert("Failed to add user to admin group.");
+    if (btn) btn.disabled = false;
+  }
 }
 
 if (adminsFilter) adminsFilter.oninput = renderAdminsList;
@@ -758,8 +920,10 @@ async function loadAdminsPage(page) {
   if (adminsPrevBtn) adminsPrevBtn.disabled = !adminsHasPrev;
   if (adminsNextBtn) adminsNextBtn.disabled = !adminsHasNext;
   if (adminsLastBtn) adminsLastBtn.disabled = adminsCurrentPage >= totalPages || !adminsHasNext;
-  adminsSummary.textContent = `${adminsTotalCount} admin${adminsTotalCount === 1 ? "" : "s"}`;
-  adminsSummary.className = "msg ok";
+  if (adminsSummary) {
+    adminsSummary.textContent = "";
+    adminsSummary.className = "msg";
+  }
   if (adminsHint) adminsHint.textContent = "";
   renderAdminsList();
 }
@@ -871,6 +1035,8 @@ function renderAgencies(){
 
 // Open admins modal for the agency's computed admin group.
 async function loadAdminsForEditAgency(agencyId) {
+  setAddAdminsOpen(false);
+  setAddAdminsButtonEnabled(false);
   const a = (agencies || []).find(x => String(x._id ?? x.id) === String(agencyId));
   if(!a){
     if (adminsSummary) {
@@ -894,10 +1060,10 @@ async function loadAdminsForEditAgency(agencyId) {
   activeAdmins = [];
 
   if (adminsSummary) {
-    adminsSummary.textContent = `Loading admins for "${groupName}"...`;
+    adminsSummary.textContent = "";
     adminsSummary.className = "msg";
   }
-  if (adminsList) adminsList.innerHTML = "";
+  if (adminsList) adminsList.innerHTML = `<p class="muted" style="margin:0;padding:8px;">Loading admins...</p>`;
   if (adminsHint) adminsHint.textContent = "";
   if (adminsFilter) adminsFilter.value = "";
 
@@ -915,6 +1081,7 @@ async function loadAdminsForEditAgency(agencyId) {
     }
 
     activeAdminsGroupId = String(g.pk);
+    setAddAdminsButtonEnabled(true);
     await loadAdminsPage(1);
   } catch (e) {
     adminsSummary.textContent = "Failed to load admins.";
@@ -922,6 +1089,7 @@ async function loadAdminsForEditAgency(agencyId) {
     if (adminsList) adminsList.innerHTML = "";
     if (adminsHint) adminsHint.textContent = "";
     activeAdmins = [];
+    setAddAdminsButtonEnabled(false);
   }
 }
 
@@ -947,8 +1115,10 @@ window.removeUserFromAdminsGroup = async (userPk) => {
 
     // Optimistically update local list
     activeAdmins = (activeAdmins || []).filter(u => String(u?.pk || u?.id) !== String(userPk));
-    adminsSummary.textContent = `${activeAdmins.length} admin${activeAdmins.length === 1 ? "" : "s"}`;
-    adminsSummary.className = "msg ok";
+    if (adminsSummary) {
+      adminsSummary.textContent = "";
+      adminsSummary.className = "msg";
+    }
     renderAdminsList();
   } catch (e) {
     alert("Failed to remove user from admin group.");
@@ -1268,10 +1438,22 @@ function showDomainModalError(message) {
 
 function syncLookupModalToggles() {
   setSettingsToggleState(document.getElementById("accountLookupToggle"), currentLookupModalEnabled);
-  setSettingsToggleState(document.getElementById("autoApproveToggle"), currentLookupModalAutoApprove);
+  const autoToggle = document.getElementById("autoApproveToggle");
+  setSettingsToggleState(autoToggle, currentLookupModalAutoApprove);
+  const locked = !currentLookupModalHasDefaultTemplate;
+  if (autoToggle) {
+    autoToggle.classList.toggle("is-locked", locked);
+    if (!autoToggle.hasAttribute("data-busy")) {
+      autoToggle.disabled = locked;
+    }
+    autoToggle.setAttribute("aria-disabled", locked ? "true" : "false");
+    autoToggle.title = locked
+      ? "Set a default template for this agency on the Templates page before enabling auto-approve."
+      : "";
+  }
   const hint = document.getElementById("autoApproveHint");
   if (hint) {
-    hint.style.display = currentLookupModalHasDefaultTemplate ? "none" : "block";
+    hint.style.display = locked ? "block" : "none";
   }
 }
 
@@ -1516,13 +1698,11 @@ if (autoApproveToggle) {
     const enabling = !currentLookupModalAutoApprove;
 
     if (enabling && !currentLookupModalHasDefaultTemplate) {
-      showDomainModalError(
-        "Set a default template for this agency on the Templates page before enabling auto-approve."
-      );
       syncLookupModalToggles();
       return;
     }
 
+    autoApproveToggle.setAttribute("data-busy", "1");
     autoApproveToggle.disabled = true;
     const url = enabling
       ? `/api/agencies/${encodeURIComponent(currentLookupAgencyId)}/auto-approve/enable`
@@ -1550,7 +1730,8 @@ if (autoApproveToggle) {
         syncLookupModalToggles();
       })
       .finally(() => {
-        autoApproveToggle.disabled = false;
+        autoApproveToggle.removeAttribute("data-busy");
+        syncLookupModalToggles();
       });
   });
 }
@@ -2525,6 +2706,8 @@ function openEditAgencyModal() {
 
 function closeEditAgencyModal() {
   if (!editAgencyOverlay) return;
+  setAddAdminsOpen(false);
+  setAddAdminsButtonEnabled(false);
   flushLookupDomainOnClose();
   restoreAgenciesFromSnapshots();
   editAgencyOverlay.style.display = "none";
@@ -2562,7 +2745,12 @@ if (editAgencyCloseBtn) {
   editAgencyCloseBtn.onclick = () => closeEditAgencyModal();
 }
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && isEditAgencyModalOpen()) closeEditAgencyModal();
+  if (e.key !== "Escape" || !isEditAgencyModalOpen()) return;
+  if (addAdminsOpen) {
+    setAddAdminsOpen(false);
+    return;
+  }
+  closeEditAgencyModal();
 });
 
 if (editAgencyForm) {
@@ -3278,6 +3466,40 @@ input.readonly {
   white-space: nowrap;
 }
 
+#editAgencyOverlay .editAgencyDomainField .settings-label {
+  flex-wrap: nowrap;
+}
+
+#editAgencyOverlay .settings-toggle.is-locked {
+  background: #6b7280;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+#editAgencyOverlay .editAgencyAddAdminsPanel {
+  display: none;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#editAgencyOverlay .editAgencyAddAdminsPanel.is-open {
+  display: flex;
+}
+
+#editAgencyOverlay .editAgencyAddAdminsPanel #addAdminsSearch {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+#editAgencyOverlay .editAgencySplitPane.is-adding-admins #adminsFilter,
+#editAgencyOverlay .editAgencySplitPane.is-adding-admins #adminsList,
+#editAgencyOverlay .editAgencySplitPane.is-adding-admins #adminsPagination {
+  display: none !important;
+}
+
 #editAgencyOverlay .editAgencyFooter {
   flex: 0 0 auto;
   justify-content: flex-end;
@@ -3285,8 +3507,7 @@ input.readonly {
   gap: 10px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--line);
-  background: var(--panel);
+  background: transparent;
 }
 
 #editAgencyOverlay .editAgencyFooter .msg {
