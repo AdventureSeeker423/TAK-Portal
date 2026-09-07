@@ -778,8 +778,8 @@ function broadcast(obj) {
   }
 }
 
-function retagStaleMarkerGroup(marker, now) {
-  if (!marker || !cotStale.isCotStale(marker, now)) return false;
+function retagStaleMarkerGroup(marker) {
+  if (!marker) return false;
   const nextGroups = mapMeta.resolveGroupsForMarker(marker, null);
   const prevGroups = Array.isArray(marker.groups) ? marker.groups : [];
   const groupsChanged =
@@ -808,7 +808,7 @@ function sweepStaleMarkers(notify = true) {
       }
       continue;
     }
-    if (retagStaleMarkerGroup(marker, now)) {
+    if (retagStaleMarkerGroup(marker)) {
       groupsChanged = true;
       if (notify) queueMarkerUpdate(marker);
     }

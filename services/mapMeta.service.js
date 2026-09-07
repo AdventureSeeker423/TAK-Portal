@@ -929,15 +929,59 @@ function isGroupActive(entry) {
 }
 
 /**
- * TAK Server: IN = publish (send CoT to group). Use publish groups when inferring
- * which channel a marker is on from its sender's subscription.
+ * Marti /api/subscriptions/all has shipped groups as an array, a CSV string,
+ * or an { IN: [...], OUT: [...] } map depending on TAK Server version.
  */
+function flattenSubscriptionGroupEntries(raw, inheritedDir) {
+  if (raw == null || raw === "") return [];
+  if (Array.isArray(raw)) {
+    return raw.flatMap((item) => flattenSubscriptionGroupEntries(item, inheritedDir));
+  }
+  if (typeof raw === "string" || typeof raw === "number") {
+    return String(raw)
+      .split(/[,;]/)
+      .map((part) => normalizeGroupName(part))
+      .filter(Boolean)
+      .map((name) => ({
+        name,
+        direction: inheritedDir || "IN",
+        active: true,
+      }));
+  }
+  if (typeof raw !== "object") return [];
+
+  if (raw.name || raw.groupName || raw.group || raw.cn) {
+    return [
+      {
+        ...raw,
+        direction: raw.direction || inheritedDir || "",
+      },
+    ];
+  }
+
+  const out = [];
+  for (const [key, val] of Object.entries(raw)) {
+    if (!/^(IN|OUT)$/i.test(key)) continue;
+    out.push(...flattenSubscriptionGroupEntries(val, key.toUpperCase()));
+  }
+  return out;
+}
+
+function addChannelName(set, raw) {
+  const name = stripLdapDnGroupName(raw);
+  if (name && isTakChannelGroupName(name)) set.add(name);
+}
+
 function subscriptionPublishGroups(sub) {
-  const raw = Array.isArray(sub?.groups) ? sub.groups : [];
+  // TAK Server: IN = publish (send CoT to group). Infer the map channel from
+  // the sender's publish groups when Marti dest tags are absent.
   const publish = new Set();
   const any = new Set();
 
-  for (const g of raw) {
+  const rawGroups = flattenSubscriptionGroupEntries(
+    sub?.groups ?? sub?.groupList ?? sub?.group
+  );
+  for (const g of rawGroups) {
     if (!isGroupActive(g)) continue;
     const name = subscriptionGroupName(g);
     if (!name || !isTakChannelGroupName(name)) continue;
@@ -946,11 +990,14 @@ function subscriptionPublishGroups(sub) {
     if (dir === "IN" || dir === "") publish.add(name);
   }
 
-  const filterGroups = normalizeGroupName(sub.filterGroups || sub.filtergroups || "");
-  if (filterGroups) {
-    for (const part of filterGroups.split(/[,;]/)) {
-      const name = normalizeGroupName(part);
-      if (name && isTakChannelGroupName(name)) publish.add(name);
+  const filterRaw = sub?.filterGroups ?? sub?.filtergroups ?? "";
+  if (Array.isArray(filterRaw) || (filterRaw && typeof filterRaw === "object")) {
+    for (const entry of flattenSubscriptionGroupEntries(filterRaw)) {
+      addChannelName(publish, entry?.name || entry);
+    }
+  } else {
+    for (const part of String(filterRaw || "").split(/[,;]/)) {
+      addChannelName(publish, part);
     }
   }
 
@@ -1139,10 +1186,17 @@ function lookupSubscriptionGroupsByKey(key) {
   const k = String(key || "").trim().toLowerCase();
   if (!k) return [];
   const idx = subscriptionIndex;
+  let emptyLive = null;
+  for (const variant of connectionUidLookupKeys(k)) {
+    const hit = idx.byUid.get(variant);
+    if (!Array.isArray(hit)) continue;
+    if (hit.length) return hit;
+    emptyLive = hit;
+  }
   return (
-    idx.byUid.get(k) ||
     idx.byCallsign.get(k) ||
     idx.byUsername.get(k) ||
+    emptyLive ||
     []
   );
 }
@@ -1560,6 +1614,54 @@ function normalizeTakColor(raw) {
   );
 }
 
+function rememberSubscriptionKey(map, key, groups) {
+  const k = String(key || "").trim().toLowerCase();
+  if (!k) return;
+  const prev = map.get(k);
+  if (!prev || groups.length >= prev.length) map.set(k, groups);
+}
+
+/** Index live Marti connections for group lookup and last-known Stale detection. */
+function rebuildSubscriptionIndex(subList) {
+  const list = Array.isArray(subList) ? subList : [];
+  const byCallsign = new Map();
+  const byUsername = new Map();
+  const byUid = new Map();
+
+  for (const sub of list) {
+    const groups = subscriptionPublishGroups(sub);
+    const callsign = normalizeGroupName(sub?.callsign || sub?.callSign);
+    const username = normalizeGroupName(sub?.username);
+    const uidFields = [
+      sub?.uid,
+      sub?.clientUid,
+      sub?.clientUuid,
+      sub?.connectionUid,
+      sub?.deviceUid,
+    ];
+
+    // Index identity even when groups are missing so connected EUDs are not
+    // treated as last-known / Stale.
+    if (callsign) rememberSubscriptionKey(byCallsign, callsign, groups);
+    if (username) rememberSubscriptionKey(byUsername, username, groups);
+    for (const rawUid of uidFields) {
+      for (const key of connectionUidLookupKeys(rawUid)) {
+        rememberSubscriptionKey(byUid, key, groups);
+      }
+    }
+  }
+
+  subscriptionIndex = {
+    byCallsign,
+    byUsername,
+    byUid,
+    fetchedAt: Date.now(),
+    error: null,
+  };
+  subscriptionListCache = list;
+  rebuildConnectionGroupIndex(list);
+}
+
 async function refreshSubscriptionIndex() {
   if (isTakBypassed() || !isTakConfigured()) {
     subscriptionIndex = {
@@ -1576,41 +1678,7 @@ async function refreshSubscriptionIndex() {
   try {
     const result = await takMetrics.getSubscriptionsAll();
     const list = Array.isArray(result?.data) ? result.data : [];
-    const byCallsign = new Map();
-    const byUsername = new Map();
-    const byUid = new Map();
-
-    for (const sub of list) {
-      const groups = subscriptionPublishGroups(sub);
-      if (!groups.length) continue;
-
-      const callsign = normalizeGroupName(sub.callsign);
-      const username = normalizeGroupName(sub.username);
-      const uidFields = [
-        sub.uid,
-        sub.clientUid,
-        sub.clientUuid,
-        sub.connectionUid,
-        sub.deviceUid,
-      ];
-
-      if (callsign) byCallsign.set(callsign.toLowerCase(), groups);
-      if (username) byUsername.set(username.toLowerCase(), groups);
-      for (const rawUid of uidFields) {
-        const uid = normalizeGroupName(rawUid);
-        if (uid) byUid.set(uid.toLowerCase(), groups);
-      }
-    }
-
-    subscriptionIndex = {
-      byCallsign,
-      byUsername,
-      byUid,
-      fetchedAt: Date.now(),
-      error: null,
-    };
-    subscriptionListCache = list;
-    rebuildConnectionGroupIndex(list);
+    rebuildSubscriptionIndex(list);
     mergeDataFeedConnectionIndex();
     notifySubscriptionIndexRefreshed();
   } catch (err) {
@@ -1676,14 +1744,35 @@ function isDataFeedConnectionKey(key) {
 }
 
 function isLiveEudSubscription(marker) {
-  const uid = String(marker?.uid || "").trim().toLowerCase();
-  if (uid && subscriptionIndex.byUid.has(uid)) return true;
+  const uid = String(marker?.uid || "").trim();
+  if (uid) {
+    for (const variant of connectionUidLookupKeys(uid)) {
+      if (subscriptionIndex.byUid.has(variant)) return true;
+    }
+  }
 
   const callsign = normalizeGroupName(marker?.callsign).toLowerCase();
   if (callsign && subscriptionIndex.byCallsign.has(callsign)) return true;
   if (callsign && subscriptionIndex.byUsername.has(callsign)) return true;
 
   return false;
+}
+
+/**
+ * Unassigned vs Stale when no TAK channel could be resolved.
+ * Last-known local EUD SA kept after disconnect is Stale immediately,
+ * not only after the CoT stale timestamp.
+ */
+function fallbackUnassignedOrStale(marker) {
+  if (cotStale.isCotStale(marker)) return STALE_GROUP;
+  if (
+    cotStale.shouldKeepUntilStale(marker) &&
+    !isLiveEudSubscription(marker) &&
+    classifyMarkerOrigin(marker) === "eud"
+  ) {
+    return STALE_GROUP;
+  }
+  return UNASSIGNED_GROUP;
 }
 
 function markerHasDataFeedProvenance(marker) {
@@ -1810,7 +1899,7 @@ function resolveGroupsForMarker(marker, cotDetail) {
 
   if (patchDests.length) return patchDests;
 
-  return [cotStale.isCotStale(marker) ? STALE_GROUP : UNASSIGNED_GROUP];
+  return [fallbackUnassignedOrStale(marker)];
 }
 
 function buildGroupsCatalogWithCounts(markers) {
@@ -1963,6 +2052,7 @@ module.exports = {
   connectionUidLookupKeys,
   registerConnectionGroups,
   rebuildConnectionGroupIndex,
+  rebuildSubscriptionIndex,
   lookupConnectionGroups,
   resolveGroupsFromFlowTags,
   getFederationSubscriptionGroups: () => federationSubscriptionGroups.slice(),

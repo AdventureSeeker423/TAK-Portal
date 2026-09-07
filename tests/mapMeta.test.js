@@ -146,11 +146,79 @@ assert.deepStrictEqual(
   ["tak_Channel Charlie"]
 );
 
-assert.strictEqual(
-  mapMeta.sanitizeCallsign("TN\uFFFC\uFFFCHumphsheriff\uFFFC-102\uFFFCi"),
+assert.strictEqual(mapMeta.sanitizeCallsign("TN\uFFFC\uFFFCHumphsheriff\uFFFC-102\uFFFCi"),
   "TN Humphsheriff -102 i"
 );
 assert.strictEqual(mapMeta.sanitizeCallsign("  ALPHA\u200B-1  "), "ALPHA-1");
 assert.strictEqual(mapMeta.sanitizeCallsign(""), "");
+
+const futureStale = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+const davisMarker = {
+  uid: "11927918-E536-425E-888C-D53C43AD5121",
+  callsign: "HCSO-DAVIS-3598",
+  type: "a-f-G-U-C",
+  stale: futureStale,
+};
+
+mapMeta.rebuildSubscriptionIndex([]);
+assert.deepStrictEqual(
+  mapMeta.resolveGroupsForMarker(davisMarker),
+  [mapMeta.STALE_GROUP],
+  "last-known local EUD SA should be Stale, not Unassigned"
+);
+
+mapMeta.rebuildSubscriptionIndex([
+  {
+    clientUid: "11927918-E536-425E-888C-D53C43AD5121",
+    callsign: "HCSO-DAVIS-3598",
+    groups: [],
+  },
+]);
+assert.deepStrictEqual(
+  mapMeta.resolveGroupsForMarker(davisMarker),
+  [mapMeta.UNASSIGNED_GROUP],
+  "connected EUD with no parsed channel stays Unassigned"
+);
+
+mapMeta.rebuildSubscriptionIndex([
+  {
+    clientUid: "11927918-E536-425E-888C-D53C43AD5121",
+    callsign: "HCSO-DAVIS-3598",
+    groups: [{ name: "tak_DAVIS Main", direction: "IN", active: true }],
+  },
+]);
+assert.deepStrictEqual(mapMeta.resolveGroupsForMarker(davisMarker), ["tak_DAVIS Main"]);
+
+mapMeta.rebuildSubscriptionIndex([
+  {
+    clientUid: "takaware-csv-groups",
+    groups: "tak_HCSO Main",
+  },
+]);
+assert.deepStrictEqual(
+  mapMeta.resolveGroupsForMarker({
+    uid: "takaware-csv-groups",
+    type: "a-f-G-U-C",
+    stale: futureStale,
+  }),
+  ["tak_HCSO Main"]
+);
+
+mapMeta.rebuildSubscriptionIndex([
+  {
+    clientUid: "takaware-inout-groups",
+    groups: { IN: [{ name: "tak_HCSO Main", active: true }] },
+  },
+]);
+assert.deepStrictEqual(
+  mapMeta.resolveGroupsForMarker({
+    uid: "takaware-inout-groups",
+    type: "a-f-G-U-C",
+    stale: futureStale,
+  }),
+  ["tak_HCSO Main"]
+);
+
+mapMeta.rebuildSubscriptionIndex([]);
 
 console.log("mapMeta.test.js OK");
