@@ -15,15 +15,15 @@
     </div>
 
     <div class="row loc-create-row">
-      <label class="loc-field loc-field-title">Title
-        <input id="locTitle" type="text" maxlength="120" placeholder="Missing Person" />
+      <label class="loc-field loc-field-title">Locator Title
+        <input id="locTitle" type="text" maxlength="120" placeholder="e.g. Missing Person" />
       </label>
-      <label class="loc-field">Channel
+      <label class="loc-field">Assigned Channel
         <select id="locChannel">
           <option value="">Select…</option>
         </select>
       </label>
-      <label class="loc-field">Data Sync
+      <label class="loc-field">Data Sync Mission
         <select id="locMission">
           <option value="">None</option>
         </select>
@@ -31,25 +31,22 @@
       <label class="loc-field">Color
         <select id="locColor"></select>
       </label>
-      <label class="loc-field loc-field-interval">Interval
+      <label class="loc-field loc-field-interval">Interval (seconds)
         <input id="locPing" type="number" min="0" max="86400" value="15" placeholder="0 = once" />
       </label>
-      <div class="loc-field loc-drop-wrap">
-        <span>Drop Points</span>
-        <button
-          type="button"
-          id="locDropPoints"
-          class="settings-toggle is-off"
-          aria-pressed="false"
-          aria-label="Drop Points"
-          disabled
-        ></button>
-      </div>
+    </div>
+    <div class="loc-drop-row settings-field settings-field-bool">
+      <span class="settings-label">Drop Points</span>
+      <button
+        type="button"
+        id="locDropPoints"
+        class="settings-toggle is-off"
+        aria-pressed="false"
+        aria-label="Drop Points"
+        disabled
+      ></button>
     </div>
 
-    <label class="loc-field loc-field-block">Heading
-      <input id="locHeading" type="text" maxlength="160" value="<%= defaultLocateHeading %>" />
-    </label>
     <label class="loc-field loc-field-block">Message
       <textarea id="locIntro" rows="3"><%= defaultLocateIntro %></textarea>
     </label>
@@ -62,7 +59,7 @@
 
     <div class="row loc-create-footer">
       <div id="locFormMsg" class="msg"></div>
-      <button class="btn success" type="button" id="locSubmitBtn">Create Locator</button>
+      <button class="btn success" type="button" id="locSubmitBtn">Create New Locator</button>
     </div>
   </div>
 
@@ -160,6 +157,7 @@
         </div>
         <div id="sendLinkCopyWrap">
           <button type="button" class="btn" id="sendLinkCopyBtn">Copy Link</button>
+          <div id="sendLinkCopyMsg" class="msg" style="margin-left:0; margin-top:8px;"></div>
         </div>
       </div>
     </div>
@@ -172,11 +170,10 @@
   .loc-create-row { align-items: flex-end; gap: 12px; flex-wrap: wrap; }
   .loc-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 160px; }
   .loc-field-title { flex: 2 1 220px; }
-  .loc-field-interval { flex: 0 1 120px; }
+  .loc-field-interval { flex: 0 1 160px; }
   .loc-field-block { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
   .loc-field-block textarea { width: 100%; box-sizing: border-box; resize: vertical; }
-  .loc-drop-wrap { display: flex; flex-direction: column; gap: 6px; justify-content: flex-end; flex: 0 0 auto; }
-  .loc-drop-wrap .settings-toggle { margin-top: 4px; }
+  .loc-drop-row { margin-top: 12px; }
   .loc-fields-head { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 8px; font-weight: 600; }
   .loc-fields { display: flex; flex-direction: column; gap: 8px; }
   .loc-field-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; padding: 8px 0; border-top: 1px solid rgba(127,127,127,.18); }
@@ -234,7 +231,6 @@
   var colorSel = document.getElementById("locColor");
   var pingIn = document.getElementById("locPing");
   var dropBtn = document.getElementById("locDropPoints");
-  var headingIn = document.getElementById("locHeading");
   var introIn = document.getElementById("locIntro");
   var fieldsEl = document.getElementById("locFields");
   var formMsg = document.getElementById("locFormMsg");
@@ -399,7 +395,7 @@
       fields.push(item);
     });
     return {
-      heading: headingIn.value.trim() || DEFAULT_HEADING,
+      heading: DEFAULT_HEADING,
       intro: introIn.value.trim() || DEFAULT_INTRO,
       fields: fields
     };
@@ -408,7 +404,7 @@
   function resetForm() {
     editingId = null;
     formTitle.textContent = "Create Locator";
-    submitBtn.textContent = "Create Locator";
+    submitBtn.textContent = "Create New Locator";
     cancelBtn.style.display = "none";
     titleIn.value = "";
     channelSel.value = "";
@@ -418,7 +414,6 @@
     colorSel.value = "Cyan";
     pingIn.value = "15";
     setDrop(false, false);
-    headingIn.value = DEFAULT_HEADING;
     introIn.value = DEFAULT_INTRO;
     fieldsEl.innerHTML = "";
     setMsg(formMsg, "", false);
@@ -662,7 +657,6 @@
     });
     colorSel.value = loc.color || "Cyan";
     pingIn.value = loc.pingIntervalSeconds != null ? String(loc.pingIntervalSeconds) : "15";
-    headingIn.value = (loc.form && loc.form.heading) || DEFAULT_HEADING;
     introIn.value = (loc.form && loc.form.intro) || DEFAULT_INTRO;
     fieldsEl.innerHTML = "";
     ((loc.form && loc.form.fields) || []).forEach(function (f) { addFieldRow(f); });
@@ -757,10 +751,45 @@
       tb.appendChild(tr);
     });
   }
-  document.getElementById("locHistCloseBtn").addEventListener("click", function () {
-    document.getElementById("locHistOverlay").style.display = "none";
-    document.getElementById("locHistOverlay").setAttribute("aria-hidden", "true");
+  function closeHistoryModal() {
+    var overlay = document.getElementById("locHistOverlay");
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
+  document.getElementById("locHistCloseBtn").addEventListener("click", closeHistoryModal);
+  document.getElementById("locHistOverlay").addEventListener("click", function (e) {
+    if (e.target === this) closeHistoryModal();
   });
+
+  var sendLinkCopyBtn = document.getElementById("sendLinkCopyBtn");
+  var sendLinkCopyMsg = document.getElementById("sendLinkCopyMsg");
+  var sendLinkCopyTimer = null;
+
+  function resetSendLinkCopyFeedback() {
+    if (sendLinkCopyTimer) {
+      clearTimeout(sendLinkCopyTimer);
+      sendLinkCopyTimer = null;
+    }
+    sendLinkCopyBtn.textContent = "Copy Link";
+    sendLinkCopyBtn.classList.remove("success");
+    setMsg(sendLinkCopyMsg, "", false);
+  }
+
+  function showSendLinkCopied() {
+    sendLinkCopyBtn.textContent = "Link Copied";
+    sendLinkCopyBtn.classList.add("success");
+    setMsg(sendLinkCopyMsg, "Link Copied", false);
+    if (sendLinkCopyTimer) clearTimeout(sendLinkCopyTimer);
+    sendLinkCopyTimer = setTimeout(resetSendLinkCopyFeedback, 2500);
+  }
+
+  function closeSendLinkModal() {
+    var overlay = document.getElementById("sendLinkOverlay");
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+    sendLinkLoc = null;
+    resetSendLinkCopyFeedback();
+  }
 
   function openSendLink(loc) {
     sendLinkLoc = loc;
@@ -768,24 +797,26 @@
     document.getElementById("sendLinkEmailWrap").style.display = EMAIL_CONFIGURED ? "" : "none";
     document.getElementById("sendLinkPhonesIn").value = "";
     document.getElementById("sendLinkRecipientsIn").value = "";
+    resetSendLinkCopyFeedback();
     document.getElementById("sendLinkOverlay").style.display = "flex";
     document.getElementById("sendLinkOverlay").setAttribute("aria-hidden", "false");
   }
-  document.getElementById("sendLinkCloseBtn").addEventListener("click", function () {
-    document.getElementById("sendLinkOverlay").style.display = "none";
-    document.getElementById("sendLinkOverlay").setAttribute("aria-hidden", "true");
-    sendLinkLoc = null;
+  document.getElementById("sendLinkCloseBtn").addEventListener("click", closeSendLinkModal);
+  document.getElementById("sendLinkOverlay").addEventListener("click", function (e) {
+    if (e.target === this) closeSendLinkModal();
   });
-  document.getElementById("sendLinkCopyBtn").addEventListener("click", function () {
+  sendLinkCopyBtn.addEventListener("click", function () {
     if (!sendLinkLoc) return;
     var url = publicUrl(sendLinkLoc.slug);
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).catch(function () {
-        window.prompt("", url);
-      });
-    } else {
-      window.prompt("", url);
+    function fallback() {
+      window.prompt("Copy this link:", url);
+      showSendLinkCopied();
     }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(showSendLinkCopied).catch(fallback);
+      return;
+    }
+    fallback();
   });
   document.getElementById("sendLinkSmsBtn").addEventListener("click", function () {
     if (!sendLinkLoc) return;

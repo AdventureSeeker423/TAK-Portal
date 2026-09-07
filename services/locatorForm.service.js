@@ -6,7 +6,7 @@ const { ALLOWED_TEAM_COLORS } = require("./preferencePackage.service");
 
 const DEFAULT_HEADING = "Share Location";
 const DEFAULT_INTRO =
-  "A responder has requested your location to aid in emergency response efforts. Please tap the button to start sharing your location and allow location services if prompted. PLEASE KEEP THIS PAGE OPEN AND DO NOT CLOSE UNTIL INSTRUCTED TO BY A RESPONDER.";
+  "A responder has requested your location to aid in emergency response efforts. Please tap the button to start sharing your location and allow location services if prompted. Please keep this page open and do not close until instructed to by a responder.";
 
 const FIELD_TYPES = ["firstName", "lastName", "message", "text", "choice"];
 const BUILTIN_TYPES = new Set(["firstName", "lastName", "message"]);
