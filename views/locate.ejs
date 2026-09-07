@@ -80,6 +80,7 @@
             <th>Color</th>
             <th>Status</th>
             <th>Last Fix</th>
+            <th>Last Seen</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -514,6 +515,33 @@
     return formatLocateWhen(loc.lastCoordsAt);
   }
 
+  function lastSeenElapsed(iso) {
+    if (!iso) return "—";
+    var t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) return "—";
+    var sec = Math.floor((Date.now() - t) / 1000);
+    if (sec < 0) sec = 0;
+    var days = Math.floor(sec / 86400);
+    var hours = Math.floor((sec % 86400) / 3600);
+    var mins = Math.floor((sec % 3600) / 60);
+    var secs = sec % 60;
+    var parts = [];
+    if (days) parts.push(days + "d");
+    if (hours) parts.push(hours + "hr");
+    if (mins) parts.push(mins + "min");
+    if (!parts.length) {
+      return secs === 1 ? "1 second" : secs + " seconds";
+    }
+    parts.push(secs + "sec");
+    return parts.join(" ");
+  }
+
+  function tickLastSeenCells() {
+    tbody.querySelectorAll("[data-last-seen-at]").forEach(function (el) {
+      el.textContent = lastSeenElapsed(el.getAttribute("data-last-seen-at"));
+    });
+  }
+
   function addBtn(wrap, label, onClick, extra) {
     var b = document.createElement("button");
     b.type = "button";
@@ -570,7 +598,7 @@
       var tr0 = document.createElement("tr");
       tr0.className = "emptyStateRow";
       var td0 = document.createElement("td");
-      td0.colSpan = 6;
+      td0.colSpan = 7;
       td0.textContent = "No locators.";
       tr0.appendChild(td0);
       tbody.appendChild(tr0);
@@ -593,6 +621,10 @@
         var tdFix = document.createElement("td");
         tdFix.setAttribute("data-label", "Last Fix");
         tdFix.textContent = lastFixText(loc);
+        var tdSeen = document.createElement("td");
+        tdSeen.setAttribute("data-label", "Last Seen");
+        if (loc.lastCoordsAt) tdSeen.setAttribute("data-last-seen-at", loc.lastCoordsAt);
+        tdSeen.textContent = lastSeenElapsed(loc.lastCoordsAt);
         var tdAct = document.createElement("td");
         tdAct.className = "locate-actions-cell cardActionsCell";
         var wrap = document.createElement("div");
@@ -614,6 +646,7 @@
         tr.appendChild(tdColor);
         tr.appendChild(tdSt);
         tr.appendChild(tdFix);
+        tr.appendChild(tdSeen);
         tr.appendChild(tdAct);
         tbody.appendChild(tr);
       });
@@ -892,5 +925,6 @@
   });
   loadLocators();
   setInterval(loadLocators, 8000);
+  setInterval(tickLastSeenCells, 1000);
 })();
 </script>
