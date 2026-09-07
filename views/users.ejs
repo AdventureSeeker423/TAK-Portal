@@ -171,7 +171,7 @@
         </label>
       </div>
 
-      <div class="createActionsRow" style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap;">
+      <div class="createActionsRow row" style="grid-column: 1 / -1; display:flex; align-items:center; gap:10px; flex-wrap: wrap;">
         <button class="btn btn-access createTemplateDownloadBtn" type="button" id="downloadCsvTemplateBtn">Download CSV Template</button>
         <button class="btn" type="button" id="createCsvBtn">Create from CSV</button>
         <button class="btn success createUserSubmitBtnAlignRight" type="submit" id="createUserSubmitBtn">Create New User</button>
@@ -4444,6 +4444,9 @@ th.sortable:hover{
 
 .createUserSubmitBtnAlignRight{
   margin-left: auto;
+  flex: 0 0 auto;
+  width: auto;
+  white-space: nowrap;
 }
 
 /* Purple accent used elsewhere in portal (Mutual Aid / Manage Access). */

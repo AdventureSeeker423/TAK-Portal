@@ -18,7 +18,7 @@
         agencyFieldValues: {}
       }) %>
 
-      <div class="createActionsRow agencyCreateActionsRow">
+      <div class="createActionsRow agencyCreateActionsRow row">
         <button class="btn btn-access createTemplateDownloadBtn" type="button" id="agencyCsvTemplateBtn">Download CSV Template</button>
         <button class="btn" type="button" id="agencyCsvBtn">Create from CSV</button>
         <button class="btn success createAgencySubmitBtnAlignRight" type="submit">Create New Agency</button>
@@ -3074,6 +3074,9 @@ if (addForm) {
 
 .createAgencySubmitBtnAlignRight {
   margin-left: auto;
+  flex: 0 0 auto;
+  width: auto;
+  white-space: nowrap;
 }
 
 .agenciesListFilters label {
@@ -3088,8 +3091,6 @@ if (addForm) {
 @media (max-width: 900px) {
   .createAgencySubmitBtnAlignRight {
     margin-left: 0;
-    width: 100%;
-    flex: 1 1 100%;
   }
 }
 

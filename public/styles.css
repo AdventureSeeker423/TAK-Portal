@@ -1982,8 +1982,12 @@ body.modal-open .sidebarToggle {
 
     /* Keep button rows usable (buttons should size to content there) */
     .row .btn,
-    .modalHeader .btn {
+    .modalHeader .btn,
+    .createActionsRow .btn,
+    .agencyCreateActionsRow .btn {
         width: auto;
+        flex: 0 0 auto;
+        max-width: none;
     }
 
     /* Keep wide tables usable but avoid expanding page width */
