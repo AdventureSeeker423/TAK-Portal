@@ -320,12 +320,7 @@
 
         <div class="membersSplitPane" id="membersMassPane">
           <div class="membersSplitPaneHead">
-            <h3>Bulk update</h3>
-          </div>
-          <p class="muted membersMassIntro">Add or remove this group for many users at once. Choose an action, pick who it applies to, then apply.</p>
-
-          <div class="membersMassStep">
-            <div class="membersMassStepLabel">1. Action</div>
+            <h3>Bulk Update</h3>
             <div class="segmented membersMassActionToggle">
               <button class="segBtn active" type="button" id="massActionAssignBtn">Assign</button>
               <button class="segBtn" type="button" id="massActionUnassignBtn">Unassign</button>
@@ -334,15 +329,12 @@
 
           <p id="massHelp" class="membersMassHelp"></p>
 
-          <div class="membersMassStep">
-            <div class="membersMassStepLabel">2. Who it applies to</div>
-            <div class="segmented" id="massSegmented">
-              <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
-              <button class="segBtn" type="button" data-mode="template">Templates</button>
-              <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
-              <button class="segBtn" type="button" data-mode="group">Existing Groups</button>
-              <button class="segBtn" type="button" data-mode="users">Specific Users</button>
-            </div>
+          <div class="segmented" id="massSegmented">
+            <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
+            <button class="segBtn" type="button" data-mode="template">Templates</button>
+            <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
+            <button class="segBtn" type="button" data-mode="group">Existing Groups</button>
+            <button class="segBtn" type="button" data-mode="users">Specific Users</button>
           </div>
 
           <div class="membersMassPanes">
@@ -425,8 +417,7 @@
 
           <div class="membersMassFooter row">
             <span id="massMsg" class="msg"></span>
-            <span id="massSelectionHint" class="muted membersMassSelectionHint"></span>
-            <button class="btn success" id="massApplyBtn" type="button">Assign for selected agencies</button>
+            <button class="btn success" id="massApplyBtn" type="button">ASSIGN FOR SELECTED AGENCIES</button>
           </div>
         </div>
       </div>
@@ -553,7 +544,6 @@ const reloadBtn = document.getElementById("reloadBtn");
 const massTitle = document.getElementById("massTitle");
 const massMsg = document.getElementById("massMsg");
 const massHelp = document.getElementById("massHelp");
-const massSelectionHint = document.getElementById("massSelectionHint");
 const massApplyBtn = document.getElementById("massApplyBtn");
 const massActionAssignBtn = document.getElementById("massActionAssignBtn");
 const massActionUnassignBtn = document.getElementById("massActionUnassignBtn");
@@ -1976,9 +1966,9 @@ function updateMassChrome(){
   const verb = adding ? "Assign" : "Unassign";
   if (massTitle) massTitle.textContent = verb;
   if (massApplyBtn) {
-    massApplyBtn.textContent = count
+    massApplyBtn.textContent = (count
       ? `${verb} for ${count} selected ${who}`
-      : `${verb} for selected ${who}`;
+      : `${verb} for selected ${who}`).toUpperCase();
     massApplyBtn.className = adding ? "btn success" : "btn caution";
     massApplyBtn.disabled = count < 1;
   }
@@ -1986,9 +1976,6 @@ function updateMassChrome(){
   if (massActionUnassignBtn) massActionUnassignBtn.classList.toggle("active", !adding);
   if (templateModeVerb) templateModeVerb.textContent = adding ? "add" : "remove";
   if (massHelp) massHelp.textContent = massHelpText();
-  if (massSelectionHint) {
-    massSelectionHint.textContent = count ? `${count} ${who} selected` : "Nothing selected yet";
-  }
 }
 
 function setMassAction(next){
@@ -3690,28 +3677,8 @@ th.sortable:hover{
   white-space: nowrap;
 }
 
-#membersOverlay .membersMassIntro {
-  margin: 0 0 10px;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-#membersOverlay .membersMassStep {
-  flex: 0 0 auto;
-  margin-top: 8px;
-}
-
-#membersOverlay .membersMassStepLabel {
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
 #membersOverlay .membersMassHelp {
-  margin: 8px 0 0;
+  margin: 6px 0 8px;
   font-size: 13px;
   line-height: 1.4;
   color: var(--text);
@@ -3792,6 +3759,11 @@ th.sortable:hover{
   flex-wrap: wrap;
 }
 
+#membersOverlay #massApplyBtn {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 #membersOverlay .membersMassPanes {
   flex: 1 1 auto;
   min-height: 0;
@@ -3823,11 +3795,6 @@ th.sortable:hover{
 
 #membersOverlay .membersMassFooter .msg {
   margin-right: auto;
-}
-
-#membersOverlay .membersMassSelectionHint {
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 body.noScroll .main {
