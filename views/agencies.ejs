@@ -29,34 +29,7 @@
   </div>
 
   <div class="card">
-    <div class="row" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-      <h2 style="margin:0;">Existing Agencies</h2>
-      <div class="agencyAttributesEditActions" id="agencyAttributesEditActions">
-        <button
-          type="button"
-          class="btn agency-view-mode-only"
-          id="agencyAttributesEditBtn"
-          aria-pressed="false"
-          aria-controls="agencyTable"
-        >
-          Edit Agency Attributes
-        </button>
-        <button
-          type="button"
-          class="btn agency-edit-mode-only"
-          id="agencyAttributesCancelBtn"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="btn success agency-edit-mode-only"
-          id="agencyAttributesDoneBtn"
-        >
-          Save Changes
-        </button>
-      </div>
-    </div>
+    <h2>Existing Agencies</h2>
 
     <div class="row agenciesListFilters" style="align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
       <label style="min-width: 160px;">
@@ -98,7 +71,6 @@
             <th data-sort="name" role="button" tabindex="0" title="Sort by Agency">Agency</th>
             <th data-sort="groupPrefix" role="button" tabindex="0" title="Sort by Agency Abbreviation / Short Name">Abbreviation / Short Name</th>
             <th data-sort="suffix" role="button" tabindex="0" title="Sort by username identifier">Username Identifier</th>
-            <th class="agencyStateFederalHeader" data-sort="stateFederalAgency" role="button" tabindex="0" title="Sort by State/Federal Agency">State/Federal</th>
             <th data-sort="county" role="button" tabindex="0" title="Sort by County">County</th>
             <th data-sort="countyAbbrev" role="button" tabindex="0" title="Sort by County Abbreviation">County Abbrev</th>
             <th data-sort="state" role="button" tabindex="0">State</th>
@@ -120,163 +92,137 @@
   </div>
 </main>
 
-<!-- Agency Admins Modal (same behavior as Groups -> View Members) -->
-<div class="modalOverlay" id="adminsOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="adminsTitle">
+<!-- Edit Agency Modal -->
+<div class="modalOverlay" id="editAgencyOverlay" style="display:none;">
+  <div class="modal editAgencyModal" role="dialog" aria-modal="true" aria-labelledby="editAgencyTitle">
     <div class="modalHeader">
-      <h2 id="adminsTitle" style="margin:0;">Agency Admins</h2>
-      <button class="btn" id="adminsCloseBtn" type="button">Close</button>
+      <div class="modalHeaderLeft">
+        <h2 id="editAgencyTitle" style="margin:0;">Edit Agency</h2>
+      </div>
+      <button class="btn" id="editAgencyCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div id="adminsSummary" class="msg"></div>
+      <form id="editAgencyForm" autocomplete="off">
+        <section class="editAgencySection">
+          <h3>Details</h3>
+          <%- include("partials/agency-create-fields", {
+            agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
+            regionOptions: typeof regionOptions !== "undefined" ? regionOptions : [],
+            regionCountyLocks: typeof regionCountyLocks !== "undefined" ? regionCountyLocks : [],
+            includeColor: true,
+            includeName: true,
+            fieldsRequired: true,
+            idPrefix: "edit",
+            usernameReadOnly: true,
+            agencyFieldValues: {}
+          }) %>
+        </section>
 
-      <div style="margin-top:14px;">
-        <input
-          id="adminsFilter"
-          placeholder="Filter by username, name, or email..."
-          style="width: 100%; box-sizing: border-box;"
-        />
-      </div>
-
-      <div
-        id="adminsList"
-        class="groupsBox"
-        style="margin-top:10px; max-height: 320px; overflow:auto;"
-      ></div>
-      <div class="pagination" id="adminsPagination" style="display:none;">
-        <button class="btn pagination-first-last" id="adminsFirstBtn" type="button">First</button>
-        <button class="btn" id="adminsPrevBtn" type="button">Previous</button>
-        <span id="adminsPageInfo"></span>
-        <button class="btn" id="adminsNextBtn" type="button">Next</button>
-        <button class="btn pagination-first-last" id="adminsLastBtn" type="button">Last</button>
-      </div>
-      <small id="adminsHint" class="muted"></small>
-    </div>
-  </div>
-</div>
-
-<!-- Access Groups Modal (which extra groups this agency's admins can see) -->
-<div class="modalOverlay" id="accessGroupsOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="accessGroupsTitle">
-    <div class="modalHeader">
-      <h2 id="accessGroupsTitle" style="margin:0;">Agency Access Groups</h2>
-      <button class="btn" id="accessGroupsCloseBtn" type="button">Close</button>
-    </div>
-    <div class="modalBody">
-      <p id="accessGroupsSummary" class="msg"></p>
-        <input id="accessGroupSearch" placeholder="Search groups..." style="width:100%; box-sizing:border-box; margin-top:6px;" />
-      <div class="row" style="gap:10px; margin-top:8px;">
-        <button class="btn" type="button" id="accessGroupsSelectAllBtn">Select All</button>
-        <button class="btn" type="button" id="accessGroupsClearBtn">Clear</button>
-      </div>
-      <div id="accessGroupsBox" class="groupsBox" style="margin-top:10px; max-height:320px; overflow:auto;">
-        <div id="accessGroupsInner" class="groupsInner"></div>
-      </div>
-      <div style="margin-top:14px; text-align:right;">
-        <button class="btn" type="button" id="accessGroupsCancelBtn">Cancel</button>
-        <button class="btn success" type="button" id="accessGroupsSaveBtn">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Configure domain + account lookup (same agency JSON field: lookupDomain, comma-separated) -->
-  <div class="modalOverlay" id="lookupModal" style="display:none;">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="domainModalTitle">
-      <div class="modalHeader">
-        <h2 id="domainModalTitle" style="margin:0;">Configure Agency Domain(s)</h2>
-        <button class="btn" type="button" onclick="showLookupModal(false)">Close</button>
-      </div>
-      <div class="modalBody">
-        <p>Configure approved email domains for this agency (comma-separated, no @ symbol).</p>
-
-        <div style="margin-top:14px;">
-          <span class="settings-label">
-            <span>Agency email domains</span>
-            <span class="settings-help-tip">
-              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover" role="tooltip">If you list one or more domains, the public Request Access form will only accept email addresses ending in those domains. Leave the field empty to allow any email domain for requests.</span>
+        <section class="editAgencySection">
+          <h3>Domain</h3>
+          <p class="muted" style="margin-top:0;">Configure approved email domains for this agency (comma-separated, no @ symbol).</p>
+          <div>
+            <span class="settings-label">
+              <span>Agency email domains</span>
+              <span class="settings-help-tip">
+                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                <span class="settings-help-popover" role="tooltip">If you list one or more domains, the public Request Access form will only accept email addresses ending in those domains. Leave the field empty to allow any email domain for requests.</span>
+              </span>
             </span>
-          </span>
-          <input type="text" id="lookupDomain" placeholder="agency.gov, county.org"
-                style="width:100%; box-sizing:border-box; margin-top:6px;" />
-          <small class="muted" style="display:block; margin-top:4px;">Separate multiple domains with commas.</small>
-          <small id="domainError" class="msg bad" style="display:none;">
-            Enter valid domains (e.g., agency.gov) with no @ symbol. Use commas between multiple domains.
+            <input type="text" id="lookupDomain" placeholder="agency.gov, county.org"
+                  style="width:100%; box-sizing:border-box; margin-top:6px;" />
+            <small class="muted" style="display:block; margin-top:4px;">Separate multiple domains with commas.</small>
+            <small id="domainError" class="msg bad" style="display:none;">
+              Enter valid domains (e.g., agency.gov) with no @ symbol. Use commas between multiple domains.
+            </small>
+          </div>
+
+          <div class="settings-field settings-field-bool" style="margin-top:16px;">
+            <span class="settings-label">
+              <span>Auto-approve user requests</span>
+              <span class="settings-help-tip">
+                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                <span class="settings-help-popover" role="tooltip">When enabled, matching Request Access submissions are approved automatically and a user account is created with this agency's default template. A default template must be set before this can be turned on. If domains are listed, only matching emails are auto-approved. If no domains are listed, any email that selects this agency is auto-approved.</span>
+              </span>
+            </span>
+            <button
+              type="button"
+              class="settings-toggle is-off"
+              id="autoApproveToggle"
+              aria-pressed="false"
+              aria-label="Auto-approve user requests"
+            ></button>
+          </div>
+          <small id="autoApproveHint" class="muted" style="display:none; margin-top:4px;">
+            A default template must be set for this agency on the Templates page before auto-approve can be enabled.
           </small>
-        </div>
 
-        <div class="settings-field settings-field-bool" style="margin-top:16px;">
-          <span class="settings-label">
-            <span>Auto-approve user requests</span>
-            <span class="settings-help-tip">
-              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover" role="tooltip">When enabled, matching Request Access submissions are approved automatically and a user account is created with this agency's default template. A default template must be set before this can be turned on. If domains are listed, only matching emails are auto-approved. If no domains are listed, any email that selects this agency is auto-approved.</span>
+          <div class="settings-field settings-field-bool" style="margin-top:8px;">
+            <span class="settings-label">
+              <span>Account Lookup</span>
+              <span class="settings-help-tip">
+                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                <span class="settings-help-popover" role="tooltip">Account Lookup (when enabled) lets users request an enrollment QR code by email and username, for shared or apparatus accounts. Lookup still requires a matching approved domain and only works while lookup is enabled.</span>
+              </span>
             </span>
-          </span>
-          <button
-            type="button"
-            class="settings-toggle is-off"
-            id="autoApproveToggle"
-            aria-pressed="false"
-            aria-label="Auto-approve user requests"
-          ></button>
-        </div>
-        <small id="autoApproveHint" class="muted" style="display:none; margin-top:4px;">
-          A default template must be set for this agency on the Templates page before auto-approve can be enabled.
-        </small>
+            <button
+              type="button"
+              class="settings-toggle is-off"
+              id="accountLookupToggle"
+              aria-pressed="false"
+              aria-label="Account Lookup"
+            ></button>
+          </div>
+        </section>
 
-        <div class="settings-field settings-field-bool" style="margin-top:8px;">
-          <span class="settings-label">
-            <span>Account Lookup</span>
-            <span class="settings-help-tip">
-              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover" role="tooltip">Account Lookup (when enabled) lets users request an enrollment QR code by email and username, for shared or apparatus accounts. Lookup still requires a matching approved domain and only works while lookup is enabled.</span>
-            </span>
-          </span>
-          <button
-            type="button"
-            class="settings-toggle is-off"
-            id="accountLookupToggle"
-            aria-pressed="false"
-            aria-label="Account Lookup"
-          ></button>
-        </div>
-      </div>
-    </div>
-  </div>
+        <section class="editAgencySection">
+          <h3>Agency Admins</h3>
+          <div id="adminsSummary" class="msg"></div>
+          <div style="margin-top:10px;">
+            <input
+              id="adminsFilter"
+              placeholder="Filter by username, name, or email..."
+              style="width: 100%; box-sizing: border-box;"
+            />
+          </div>
+          <div
+            id="adminsList"
+            class="groupsBox"
+            style="margin-top:10px; max-height: 240px; overflow:auto;"
+          ></div>
+          <div class="pagination" id="adminsPagination" style="display:none;">
+            <button class="btn pagination-first-last" id="adminsFirstBtn" type="button">First</button>
+            <button class="btn" id="adminsPrevBtn" type="button">Previous</button>
+            <span id="adminsPageInfo"></span>
+            <button class="btn" id="adminsNextBtn" type="button">Next</button>
+            <button class="btn pagination-first-last" id="adminsLastBtn" type="button">Last</button>
+          </div>
+          <small id="adminsHint" class="muted"></small>
+        </section>
 
-<!-- County Abbreviation Update Modal -->
-<div class="modalOverlay" id="countyAbbrevOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="countyAbbrevTitle">
-    <div class="modalHeader">
-      <h2 id="countyAbbrevTitle" style="margin:0;">Update County Abbreviation</h2>
-      <button class="btn" type="button" id="countyAbbrevCloseBtn">Close</button>
-    </div>
-    <div class="modalBody">
-      <p id="countyAbbrevSummary" class="msg"></p>
-      <label style="display:block; margin-top:8px;">
-        County Abbreviation
-        <input
-          id="countyAbbrevInput"
-          placeholder="(ex. HM or HML)"
-          required
-          minlength="2"
-          style="width:100%; box-sizing:border-box; margin-top:4px;"
-          oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '')"
-        />
-      </label>
-      <small class="muted">
-        Must be at least 2 characters (letters or numbers).
-      </small>
-      <div style="margin-top:14px; text-align:right;">
-        <button class="btn" type="button" id="countyAbbrevCancelBtn">Cancel</button>
-        <button class="btn success" type="button" id="countyAbbrevSaveBtn">Save</button>
-      </div>
+        <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
+        <section class="editAgencySection" id="editAgencyAccessGroupsSection">
+          <h3>Extra Groups</h3>
+          <p id="accessGroupsSummary" class="msg"></p>
+          <input id="accessGroupSearch" placeholder="Search groups..." style="width:100%; box-sizing:border-box; margin-top:6px;" />
+          <div class="row" style="gap:10px; margin-top:8px; flex-wrap:wrap;">
+            <button class="btn" type="button" id="accessGroupsSelectAllBtn">Select All</button>
+            <button class="btn" type="button" id="accessGroupsClearBtn">Clear</button>
+          </div>
+          <div id="accessGroupsBox" class="groupsBox" style="margin-top:10px; max-height:240px; overflow:auto;">
+            <div id="accessGroupsInner" class="groupsInner"></div>
+          </div>
+        </section>
+        <% } %>
+
+        <div class="editAgencyFooter row">
+          <span id="editAgencyMsg" class="msg"></span>
+          <button class="btn success" id="editAgencySaveBtn" type="submit">Save Changes</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
-  </div>
 
 <script>
 /** Same list as Add Agency state dropdown and PUT /api/agencies/:index/state */
@@ -300,14 +246,15 @@ const agencyCsvBtn = document.getElementById("agencyCsvBtn");
 const agencyCsvFileInput = document.getElementById("agencyCsvFileInput");
 const agencyCsvTemplateBtn = document.getElementById("agencyCsvTemplateBtn");
 const refreshBtn = document.getElementById("refreshBtn");
-const agencyAttributesEditBtn = document.getElementById("agencyAttributesEditBtn");
-const agencyAttributesDoneBtn = document.getElementById("agencyAttributesDoneBtn");
-const agencyAttributesCancelBtn = document.getElementById("agencyAttributesCancelBtn");
 const agencyTable = document.getElementById("agencyTable");
 
-// Admins modal (mirrors Groups page View Members)
-const adminsOverlay = document.getElementById("adminsOverlay");
-const adminsCloseBtn = document.getElementById("adminsCloseBtn");
+const editAgencyOverlay = document.getElementById("editAgencyOverlay");
+const editAgencyForm = document.getElementById("editAgencyForm");
+const editAgencyTitle = document.getElementById("editAgencyTitle");
+const editAgencyCloseBtn = document.getElementById("editAgencyCloseBtn");
+const editAgencySaveBtn = document.getElementById("editAgencySaveBtn");
+const editAgencyMsg = document.getElementById("editAgencyMsg");
+
 const adminsSummary = document.getElementById("adminsSummary");
 const adminsFilter = document.getElementById("adminsFilter");
 const adminsList = document.getElementById("adminsList");
@@ -340,15 +287,18 @@ const agenciesLastBtn = document.getElementById("agenciesLastBtn");
 const agenciesPageInfo = document.getElementById("agenciesPageInfo");
 
 let agencies = [];
-/** When true, Name, Type, Color, Abbreviation, State, County, and County Abbrev columns are editable. */
-let agencyAttributesEditMode = false;
-/** Snapshots per agency id when entering edit mode (Save Changes applies diffs). */
+/** Snapshots per agency id when opening the edit modal (Save Changes applies diffs). */
 let nameSnapshotById = {};
 let abbrevSnapshotById = {};
 let stateSnapshotById = {};
 let countySnapshotById = {};
 let countyAbbrevSnapshotById = {};
 let stateFederalSnapshotById = {};
+let colorSnapshotById = {};
+let typeSnapshotById = {};
+let regionSnapshotById = {};
+let accessGroupsSnapshotIds = [];
+let editingAgencyId = null;
 let sortState = { key: "name", dir: 1 }; // default: Agency asc
 
 function setMsg(text, ok=true){
@@ -360,10 +310,24 @@ function setMsg(text, ok=true){
   }
 }
 
-function setAgencyAttributesEditControlsVisible(editing) {
-  const wrap = document.getElementById("agencyAttributesEditActions");
-  if (wrap) wrap.classList.toggle("is-editing", !!editing);
-  if (agencyTable) agencyTable.classList.toggle("is-editing-attributes", !!editing);
+function setEditMsg(text, ok=true){
+  if (!editAgencyMsg) return;
+  editAgencyMsg.textContent = text || "";
+  if (ok === "progress") {
+    editAgencyMsg.className = "msg progress";
+  } else {
+    editAgencyMsg.className = "msg " + (ok ? "ok" : "bad");
+  }
+}
+
+function setListMsg(text, ok=true){
+  if (!agenciesListMsg) return;
+  agenciesListMsg.textContent = text || "";
+  if (ok === "progress") {
+    agenciesListMsg.className = "msg progress";
+  } else {
+    agenciesListMsg.className = "msg " + (ok ? "ok" : "bad");
+  }
 }
 
 if (agencyCsvTemplateBtn) {
@@ -580,57 +544,6 @@ function isAgencyStateFederal(a) {
   return s === "yes" || s === "true" || s === "1" || s === "y";
 }
 
-function buildAgencyCountyAbbrevViewHtml(a) {
-  const abbrev = String(a?.countyAbbrev || "")
-    .trim()
-    .toUpperCase();
-  if (abbrev) return esc(abbrev);
-  // State/Federal agencies do not need a county abbreviation — never show Update.
-  if (isAgencyStateFederal(a)) return "";
-  const agencyId = esc(a._id ?? a.id ?? "");
-  return (
-    `<button class="btn" type="button" onclick="openCountyAbbrevModal('${agencyId}')">Update</button>`
-  );
-}
-
-function buildAgencyStateFederalCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const yes = isAgencyStateFederal(a);
-  const aria = esc(a.name || a.groupPrefix || "agency");
-  return `<select class="agency-state-federal-select" aria-label="State/Federal Agency for ${aria}" title="When Yes, County and County Abbreviation are optional" onchange="updateAgencyStateFederalLocal(${Number(idx)}, this.value)"><option value="no" ${yes ? "" : "selected"}>No</option><option value="yes" ${yes ? "selected" : ""}>Yes</option></select>`;
-}
-
-function updateAgencyStateFederalLocal(agencyIndex, raw) {
-  const row = agencies.find((x) => Number(x._id ?? x.id) === Number(agencyIndex));
-  if (!row) return;
-  const yes = String(raw || "").trim().toLowerCase() === "yes";
-  row.stateFederalAgency = yes;
-  renderAgencies();
-}
-
-function buildAgencyNameCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const val = String(a.name || "").trim();
-  return `<input type="text" class="agency-name-input" aria-label="Agency full name" value="${esc(val)}" maxlength="200" oninput="updateAgencyNameLocal(${Number(idx)}, this.value)" />`;
-}
-
-function updateAgencyNameLocal(agencyIndex, raw) {
-  const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
-  if (row) row.name = String(raw || "").trim();
-}
-
-function buildAgencyAbbrCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const val = String(a.groupPrefix || "").trim();
-  const aria = esc(a.name || "Agency");
-  return `<input type="text" class="agency-abbr-input" aria-label="Abbreviation / Short Name for ${aria}" value="${esc(val)}" pattern="[A-Za-z0-9 _-]+" title="Letters, numbers, spaces, dashes, and underscores" oninput="updateAgencyAbbrLocal(${Number(idx)}, this.value)" />`;
-}
-
-function updateAgencyAbbrLocal(agencyIndex, raw) {
-  const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
-  if (row) row.groupPrefix = String(raw || "").trim();
-}
-
 function countyMatchKey(state, county) {
   return `${String(state || "").trim().toUpperCase()}|${String(county || "").trim().toLowerCase()}`;
 }
@@ -655,29 +568,11 @@ function stateEditGroupKeyForAgency(a) {
   return stateScopeMatchKey(snapState, snapCounty, snapCountyAbbrev);
 }
 
-function buildAgencyStateCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const current = String(a.state || "").trim().toUpperCase();
-  const editKey = stateEditGroupKeyForAgency(a);
-  const aria = esc(a.name || "Agency");
-  const opts = AGENCY_STATE_OPTIONS.map((st) => {
-    const sel = st === current ? " selected" : "";
-    return `<option value="${esc(st)}"${sel}>${esc(st)}</option>`;
-  }).join("");
-  const legacyExtra =
-    current && !AGENCY_STATE_OPTIONS.includes(current)
-      ? `<option value="${esc(current)}" selected>${esc(current)} (current)</option>`
-      : "";
-  return `<select class="agency-state-select" data-edit-key="${esc(editKey)}" aria-label="State for ${aria}" title="Updates agencies matching this state, county, and county abbreviation; renames state groups only if no agencies remain on the old state" onchange="updateAgencyStateLocal(${Number(idx)}, this.value)">${legacyExtra}${opts}</select>`;
-}
-
-function syncStateInputsForEditKey(editKey, value) {
-  if (!tbody || !agencyAttributesEditMode) return;
-  tbody.querySelectorAll(".agency-state-select").forEach((sel) => {
-    if (sel.dataset.editKey === editKey && sel !== document.activeElement) {
-      sel.value = value;
-    }
-  });
+function updateAgencyStateFederalLocal(agencyIndex, raw) {
+  const row = agencies.find((x) => Number(x._id ?? x.id) === Number(agencyIndex));
+  if (!row) return;
+  const yes = String(raw || "").trim().toLowerCase() === "yes";
+  row.stateFederalAgency = yes;
 }
 
 function updateAgencyStateLocal(agencyIndex, raw) {
@@ -691,25 +586,6 @@ function updateAgencyStateLocal(agencyIndex, raw) {
       a.state = value;
     }
   }
-
-  syncStateInputsForEditKey(editKey, value);
-}
-
-function buildAgencyCountyCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const val = String(a.county || "").trim();
-  const editKey = countyEditGroupKeyForAgency(a);
-  const aria = esc(a.name || "Agency");
-  return `<input type="text" class="agency-county-input" data-edit-key="${esc(editKey)}" aria-label="County for ${aria}" value="${esc(val)}" maxlength="100" title="Updates all agencies in this state and county; renames county groups" oninput="updateAgencyCountyNameLocal(${Number(idx)}, this.value)" />`;
-}
-
-function syncCountyNameInputsForEditKey(editKey, value) {
-  if (!tbody || !agencyAttributesEditMode) return;
-  tbody.querySelectorAll(".agency-county-input").forEach((inp) => {
-    if (inp.dataset.editKey === editKey && inp !== document.activeElement) {
-      inp.value = value;
-    }
-  });
 }
 
 function updateAgencyCountyNameLocal(agencyIndex, raw) {
@@ -727,36 +603,6 @@ function updateAgencyCountyNameLocal(agencyIndex, raw) {
       a.county = value;
     }
   }
-
-  syncCountyNameInputsForEditKey(editKey, value);
-
-  const newCountyKey = String(value || "").trim().toLowerCase();
-  tbody.querySelectorAll(".agency-county-abbrev-input").forEach((inp) => {
-    if (inp.dataset.editKey === editKey) {
-      inp.dataset.county = newCountyKey;
-    }
-  });
-}
-
-function buildAgencyCountyAbbrevCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const val = String(a.countyAbbrev || "").trim().toUpperCase();
-  const editKey = countyEditGroupKeyForAgency(a);
-  const county = String(a.county || "").trim().toLowerCase();
-  const aria = esc(`${a.county || "County"}, ${a.state || ""}`);
-  const requiredHint = isAgencyStateFederal(a)
-    ? "Optional for State/Federal agencies"
-    : "At least 2 characters (letters or numbers); updates all agencies in this county";
-  return `<input type="text" class="agency-county-abbrev-input" data-edit-key="${esc(editKey)}" data-county="${esc(county)}" aria-label="County abbreviation for ${aria}" value="${esc(val)}" maxlength="8" placeholder="(ex. HM)" title="${esc(requiredHint)}" oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); updateAgencyCountyAbbrevLocal(${Number(idx)}, this.value)" />`;
-}
-
-function syncCountyAbbrevInputsForCounty(editKey, value) {
-  if (!tbody || !agencyAttributesEditMode) return;
-  tbody.querySelectorAll(".agency-county-abbrev-input").forEach((inp) => {
-    if (inp.dataset.editKey === editKey && inp !== document.activeElement) {
-      inp.value = value;
-    }
-  });
 }
 
 function updateAgencyCountyAbbrevLocal(agencyIndex, raw) {
@@ -773,86 +619,6 @@ function updateAgencyCountyAbbrevLocal(agencyIndex, raw) {
     if (countyEditGroupKeyForAgency(a) === editKey) {
       a.countyAbbrev = value;
     }
-  }
-
-  syncCountyAbbrevInputsForCounty(editKey, value);
-}
-
-function buildAgencyColorCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const current = String(a.color || "").trim();
-  let opts = "";
-  if (!current) {
-    opts += `<option value="" disabled selected>Choose color…</option>`;
-  }
-  opts += AGENCY_COLOR_OPTIONS.map((c) => {
-    const sel = c === current ? " selected" : "";
-    return `<option value="${esc(c)}"${sel}>${esc(agencyColorLabel(c))}</option>`;
-  }).join("");
-  const legacyExtra =
-    current && !AGENCY_COLOR_OPTIONS.includes(current)
-      ? `<option value="${esc(current)}" selected>${esc(agencyColorLabel(current))} (current)</option>`
-      : "";
-  const aria = esc(a.name || "Agency");
-  return `<select aria-label="Color for ${aria}" onchange="updateAgencyColor(${Number(idx)}, this.value)">${legacyExtra}${opts}</select>`;
-}
-
-async function updateAgencyColor(agencyIndex, newColor) {
-  if (!String(newColor || "").trim()) return;
-  try {
-    const res = await fetch(`/api/agencies/${encodeURIComponent(agencyIndex)}/color`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ color: newColor }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Failed to update color");
-    setMsg("Color saved.", true);
-    const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
-    if (row) row.color = newColor;
-    renderAgencies();
-  } catch (e) {
-    setMsg(e.message || String(e), false);
-    await loadAgenciesWithCounts();
-  }
-}
-
-function buildAgencyTypeCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const current = String(a.type || "").trim();
-  let opts = "";
-  if (!current) {
-    opts += `<option value="" disabled selected>Choose type…</option>`;
-  }
-  opts += AGENCY_TYPE_OPTIONS.map((t) => {
-    const sel = t === current ? " selected" : "";
-    return `<option value="${esc(t)}"${sel}>${esc(t)}</option>`;
-  }).join("");
-  const legacyExtra =
-    current && !AGENCY_TYPE_OPTIONS.includes(current)
-      ? `<option value="${esc(current)}" selected>${esc(current)} (current)</option>`
-      : "";
-  const aria = esc(a.name || "Agency");
-  return `<select class="agency-type-select" aria-label="Type for ${aria}" onchange="updateAgencyType(${Number(idx)}, this.value)">${legacyExtra}${opts}</select>`;
-}
-
-async function updateAgencyType(agencyIndex, newType) {
-  if (!String(newType || "").trim()) return;
-  try {
-    const res = await fetch(`/api/agencies/${encodeURIComponent(agencyIndex)}/type`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: newType }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Failed to update agency type");
-    setMsg("Type saved.", true);
-    const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
-    if (row) row.type = newType;
-    renderAgencies();
-  } catch (e) {
-    setMsg(e.message || String(e), false);
-    await loadAgenciesWithCounts();
   }
 }
 
@@ -875,7 +641,7 @@ function anyAgencyHasRegion() {
 }
 
 function shouldShowRegionColumn() {
-  return agencyAttributesEditMode || anyAgencyHasRegion();
+  return anyAgencyHasRegion();
 }
 
 function findAgencyCountyRegionLock(a) {
@@ -900,56 +666,6 @@ function findAgencyCountyRegionLock(a) {
   );
 }
 
-function buildAgencyRegionCellHtml(a) {
-  const idx = a._id ?? a.id;
-  const lock = findAgencyCountyRegionLock(a);
-  const current = String((lock && lock.regionId) || a.regionId || "").trim();
-  let opts = `<option value=""${!current ? " selected" : ""}>None</option>`;
-  opts += (AGENCY_REGION_OPTIONS || [])
-    .map((r) => {
-      const id = String(r?.id || "").trim();
-      const name = String(r?.name || "").trim();
-      if (!id) return "";
-      const sel = id === current ? " selected" : "";
-      return `<option value="${esc(id)}"${sel}>${esc(name)}</option>`;
-    })
-    .join("");
-  if (current && !(AGENCY_REGION_OPTIONS || []).some((r) => String(r?.id || "") === current)) {
-    opts += `<option value="${esc(current)}" selected>${esc(a.regionName || current)} (missing)</option>`;
-  }
-  const aria = esc(a.name || "Agency");
-  if (lock) {
-    const lockTitle =
-      lock.scope === "state"
-        ? "Assigned to this state's region"
-        : "Assigned to this county's region";
-    return `<select class="agency-region-select" aria-label="Region for ${aria}" disabled title="${esc(lockTitle)}">${opts}</select>`;
-  }
-  return `<select class="agency-region-select" aria-label="Region for ${aria}" onchange="updateAgencyRegion(${Number(idx)}, this.value)">${opts}</select>`;
-}
-
-async function updateAgencyRegion(agencyIndex, newRegionId) {
-  try {
-    const res = await fetch(`/api/agencies/${encodeURIComponent(agencyIndex)}/region`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ regionId: newRegionId || null }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Failed to update region");
-    setMsg("Region saved.", true);
-    const row = agencies.find((x) => String(x._id ?? x.id) === String(agencyIndex));
-    if (row) {
-      row.regionId = data.regionId || null;
-      row.regionName = data.regionName || "";
-    }
-    renderAgencies();
-  } catch (e) {
-    setMsg(e.message || String(e), false);
-    await loadAgenciesWithCounts();
-  }
-}
-
 function normalizeVal(v){
   if (v === null || v === undefined) return "";
   return String(v).toLowerCase().trim();
@@ -970,12 +686,6 @@ function adminGroupNameForAgency(a){
 let activeAdmins = [];
 let activeAdminsGroupId = "";
 let activeAdminsGroupName = "";
-
-function showAdminsModal(on){
-  if(!adminsOverlay) return;
-  adminsOverlay.style.display = on ? "flex" : "none";
-  document.body.style.overflow = on ? "hidden" : "";
-}
 
 function escAttr(s){
   return String(s ?? "")
@@ -1033,10 +743,6 @@ function renderAdminsList(){
   `;
 }
 
-if (adminsCloseBtn) adminsCloseBtn.onclick = () => showAdminsModal(false);
-if (adminsOverlay) adminsOverlay.addEventListener("click", (e) => {
-  if (e.target === adminsOverlay) showAdminsModal(false);
-});
 if (adminsFilter) adminsFilter.oninput = renderAdminsList;
 if (adminsFirstBtn) adminsFirstBtn.onclick = () => {
   if (adminsCurrentPage > 1) loadAdminsPage(1).catch(() => {});
@@ -1138,7 +844,7 @@ function renderAgencies(){
 
   if (!pageRows.length) {
     tbody.innerHTML =
-      `<tr class="emptyStateRow"><td colspan="11" class="muted">${esc(
+      `<tr class="emptyStateRow"><td colspan="${showRegionColumn ? 10 : 9}" class="muted">${esc(
         (agenciesListMsg && agenciesListMsg.textContent) || "No agencies found."
       )}</td></tr>`;
     return;
@@ -1152,67 +858,27 @@ function renderAgencies(){
     return `
     <tr class="${active ? "" : "row-disabled"}">
       <td class="agencyNameCell cardTitleCell" data-label="Agency">
-        ${
-          agencyAttributesEditMode
-            ? buildAgencyNameCellHtml(a)
-            : `<div class="agencyNameText cardTitleText">${esc(a.name)}</div>${
-                !active ? `<span class="agencyStatusBadge cardMetaBadge">Disabled</span>` : ""
-              }`
+        <div class="agencyNameText cardTitleText">${esc(a.name)}</div>${
+          !active ? `<span class="agencyStatusBadge cardMetaBadge">Disabled</span>` : ""
         }
       </td>
-      <td class="agencyAbbrCell" data-label="Abbreviation / Short Name">${
-        agencyAttributesEditMode ? buildAgencyAbbrCellHtml(a) : esc(a.groupPrefix)
-      }</td>
+      <td class="agencyAbbrCell" data-label="Abbreviation / Short Name">${esc(a.groupPrefix)}</td>
       <td class="agencySuffixCell" data-label="Username Identifier">${esc(formatAgencyIdentifierDisplay(a))}</td>
-      ${
-        agencyAttributesEditMode
-          ? `<td class="agencyStateFederalCell" data-label="State/Federal">${buildAgencyStateFederalCellHtml(a)}</td>`
-          : ""
-      }
-      <td class="agencyCountyCell" data-label="County">${
-        agencyAttributesEditMode ? buildAgencyCountyCellHtml(a) : esc(a.county || "")
-      }</td>
-      <td class="agencyCountyAbbrevCell" data-label="County Abbrev">${
-        agencyAttributesEditMode
-          ? buildAgencyCountyAbbrevCellHtml(a)
-          : buildAgencyCountyAbbrevViewHtml(a)
-      }</td>
-      <td class="agencyStateCell" data-label="State">${
-        agencyAttributesEditMode ? buildAgencyStateCellHtml(a) : esc(a.state || "")
-      }</td>
-      <td class="agencyTypeCell${agencyAttributesEditMode ? " agency-type-td" : ""}" data-label="Type">${
-        agencyAttributesEditMode ? buildAgencyTypeCellHtml(a) : esc(a.type || "")
-      }</td>
+      <td class="agencyCountyCell" data-label="County">${esc(a.county || "")}</td>
+      <td class="agencyCountyAbbrevCell" data-label="County Abbrev">${esc(String(a.countyAbbrev || "").trim().toUpperCase())}</td>
+      <td class="agencyStateCell" data-label="State">${esc(a.state || "")}</td>
+      <td class="agencyTypeCell" data-label="Type">${esc(a.type || "")}</td>
       ${
         showRegionColumn
-          ? `<td class="agencyRegionCell" data-label="Region">${
-              agencyAttributesEditMode
-                ? buildAgencyRegionCellHtml(a)
-                : esc(a.regionName || regionNameForId(a.regionId) || "")
-            }</td>`
+          ? `<td class="agencyRegionCell" data-label="Region">${esc(a.regionName || regionNameForId(a.regionId) || "")}</td>`
           : ""
       }
-      <td class="agencyColorCell" data-label="Color">${
-        agencyAttributesEditMode ? buildAgencyColorCellHtml(a) : esc(a.color || "")
-      }</td>
-      ${
-        agencyAttributesEditMode
-          ? ""
-          : `<td class="agencyActionsCell cardActionsCell">
+      <td class="agencyColorCell" data-label="Color">${esc(agencyColorLabel(a.color) || a.color || "")}</td>
+      <td class="agencyActionsCell cardActionsCell">
         <div class="agencyActionsRow cardActionsRow">
           <button class="btn" type="button"
-            onclick="openAgencyAdmins('${agencyId}')">
-            Agency Admins
-          </button>
-          <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
-          <button class="btn btn-access" type="button"
-            onclick="openAccessGroupsModal('${agencyId}')">
-            Manage Groups
-          </button>
-          <% } %>
-          <button class="btn" type="button"
-            onclick="openDomainModal('${agencyId}')">
-            Domain
+            onclick="openEditAgency('${agencyId}')">
+            Edit
           </button>
           <button class="${toggleBtnClass} agency-active-toggle-btn" type="button"
             onclick="toggleAgencyActive('${agencyId}', ${active ? "false" : "true"})">${toggleLabel}</button>
@@ -1221,24 +887,29 @@ function renderAgencies(){
             Delete
           </button>
         </div>
-      </td>`
-      }
+      </td>
     </tr>
   `;
   }).join("");
 }
 
 // Open admins modal for the agency's computed admin group.
-window.openAgencyAdmins = async (agencyId) => {
+async function loadAdminsForEditAgency(agencyId) {
   const a = (agencies || []).find(x => String(x._id ?? x.id) === String(agencyId));
   if(!a){
-    setMsg("Could not find agency.", false);
+    if (adminsSummary) {
+      adminsSummary.textContent = "Could not find agency.";
+      adminsSummary.className = "msg bad";
+    }
     return;
   }
 
   const groupName = adminGroupNameForAgency(a);
   if(!groupName){
-    setMsg("Agency abbreviation is missing; cannot determine admin group.", false);
+    if (adminsSummary) {
+      adminsSummary.textContent = "Agency abbreviation is missing; cannot determine admin group.";
+      adminsSummary.className = "msg bad";
+    }
     return;
   }
 
@@ -1246,16 +917,15 @@ window.openAgencyAdmins = async (agencyId) => {
   activeAdminsGroupId = "";
   activeAdmins = [];
 
-  adminsSummary.textContent = `Loading admins for "${groupName}"...`;
-  adminsSummary.className = "msg";
-  adminsList.innerHTML = "";
-  adminsHint.textContent = "";
+  if (adminsSummary) {
+    adminsSummary.textContent = `Loading admins for "${groupName}"...`;
+    adminsSummary.className = "msg";
+  }
+  if (adminsList) adminsList.innerHTML = "";
+  if (adminsHint) adminsHint.textContent = "";
   if (adminsFilter) adminsFilter.value = "";
 
-  showAdminsModal(true);
-
   try {
-    // Resolve group via agencies API (unfiltered; bypasses GROUPS_HIDDEN_PREFIXES)
     const gRes = await fetch(`/api/agencies/${encodeURIComponent(String(a._id ?? a.id ?? ""))}/admin-group`);
     const gOut = await gRes.json();
     if(!gRes.ok) throw new Error(gOut.error || "Failed to resolve admin group");
@@ -1273,11 +943,11 @@ window.openAgencyAdmins = async (agencyId) => {
   } catch (e) {
     adminsSummary.textContent = "Failed to load admins.";
     adminsSummary.className = "msg bad";
-    adminsList.innerHTML = "";
-    adminsHint.textContent = "";
+    if (adminsList) adminsList.innerHTML = "";
+    if (adminsHint) adminsHint.textContent = "";
     activeAdmins = [];
   }
-};
+}
 
 window.removeUserFromAdminsGroup = async (userPk) => {
   if(!activeAdminsGroupId) return;
@@ -1533,6 +1203,8 @@ window.delAgency = async (id) => {
   );
   if (!finalOk) return;
 
+  if (String(editingAgencyId) === String(id)) closeEditAgencyModal();
+
   const deleteButtons = document.querySelectorAll(".agency-delete-btn");
   deleteButtons.forEach((btn) => {
     btn.disabled = true;
@@ -1627,7 +1299,7 @@ function syncLookupModalToggles() {
   }
 }
 
-window.openDomainModal = (id) => {
+function fillDomainSection(id) {
   if (!id) return;
   const a = (agencies || []).find((x) => String(x._id ?? x.id) === String(id));
   currentLookupAgencyId = id;
@@ -1643,28 +1315,19 @@ window.openDomainModal = (id) => {
   lastSavedLookupDomain = domainInput ? String(domainInput.value || "") : "";
   showDomainModalError("");
   syncLookupModalToggles();
-  showLookupModal(true);
-};
+}
 
-// Close lookup modal helper
-function showLookupModal(on) {
-  const modal = document.getElementById("lookupModal");
-  if (!modal) return;
-
-  if (!on) {
-    if (lookupDomainSaveTimer) {
-      clearTimeout(lookupDomainSaveTimer);
-      lookupDomainSaveTimer = null;
-    }
-    saveLookupDomains();
-    closeLookupModalHelpTips();
+function flushLookupDomainOnClose() {
+  if (lookupDomainSaveTimer) {
+    clearTimeout(lookupDomainSaveTimer);
+    lookupDomainSaveTimer = null;
   }
-  modal.style.display = on ? "flex" : "none";
-  document.body.style.overflow = on ? "hidden" : "";
+  saveLookupDomains();
+  closeLookupModalHelpTips();
 }
 
 function closeLookupModalHelpTips() {
-  document.querySelectorAll("#lookupModal .settings-help-tip.is-open").forEach(function (t) {
+  document.querySelectorAll("#editAgencyOverlay .settings-help-tip.is-open").forEach(function (t) {
     t.classList.remove("is-open");
     var b = t.querySelector(".settings-help-btn");
     if (b) b.setAttribute("aria-expanded", "false");
@@ -1675,7 +1338,7 @@ function placeLookupModalHelpTip(tip) {
   if (!tip || !tip.classList) return;
   var btn = tip.querySelector(".settings-help-btn");
   if (!btn) return;
-  var container = tip.closest(".modalBody") || document.getElementById("lookupModal");
+  var container = tip.closest(".modalBody") || document.getElementById("editAgencyOverlay");
   var btnRect = btn.getBoundingClientRect();
   var bounds = container
     ? container.getBoundingClientRect()
@@ -1687,12 +1350,12 @@ function placeLookupModalHelpTip(tip) {
 }
 
 // Close when clicking outside modal (overlay)
-const lookupOverlay = document.getElementById("lookupModal");
+const lookupOverlay = document.getElementById("editAgencyOverlay");
 
 if (lookupOverlay) {
   lookupOverlay.addEventListener("click", (e) => {
     if (e.target === lookupOverlay) {
-      showLookupModal(false);
+      closeEditAgencyModal();
     }
   });
 
@@ -1978,83 +1641,6 @@ function syncCountyAbbrevFromExisting() {
   }
 }
 
-let countyAbbrevAgencyId = null;
-
-function showCountyAbbrevModal(on) {
-  const overlay = document.getElementById("countyAbbrevOverlay");
-  if (!overlay) return;
-  overlay.style.display = on ? "flex" : "none";
-  document.body.style.overflow = on ? "hidden" : "";
-}
-
-window.openCountyAbbrevModal = (agencyId) => {
-  countyAbbrevAgencyId = agencyId;
-  const input = document.getElementById("countyAbbrevInput");
-  const summary = document.getElementById("countyAbbrevSummary");
-  if (input) input.value = "";
-  if (summary) {
-    const a = (agencies || []).find(x => String(x._id ?? x.id) === String(agencyId));
-    summary.textContent = a
-      ? `Set county abbreviation for ${a.name} (${a.groupPrefix}).`
-      : "Set county abbreviation for this agency.";
-    summary.className = "msg";
-  }
-  showCountyAbbrevModal(true);
-};
-
-const countyAbbrevOverlay = document.getElementById("countyAbbrevOverlay");
-const countyAbbrevCloseBtn = document.getElementById("countyAbbrevCloseBtn");
-const countyAbbrevCancelBtn = document.getElementById("countyAbbrevCancelBtn");
-const countyAbbrevSaveBtn = document.getElementById("countyAbbrevSaveBtn");
-
-if (countyAbbrevOverlay) {
-  countyAbbrevOverlay.addEventListener("click", (e) => {
-    if (e.target === countyAbbrevOverlay) showCountyAbbrevModal(false);
-  });
-}
-if (countyAbbrevCloseBtn) countyAbbrevCloseBtn.onclick = () => showCountyAbbrevModal(false);
-if (countyAbbrevCancelBtn) countyAbbrevCancelBtn.onclick = () => showCountyAbbrevModal(false);
-if (countyAbbrevSaveBtn) {
-  countyAbbrevSaveBtn.onclick = async () => {
-    const input = document.getElementById("countyAbbrevInput");
-    const summary = document.getElementById("countyAbbrevSummary");
-    const raw = (input && input.value) || "";
-    const value = String(raw).trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (!value || value.length < 2) {
-      if (summary) {
-        summary.textContent = "County abbreviation must be at least 2 characters.";
-        summary.className = "msg bad";
-      }
-      return;
-    }
-    if (!countyAbbrevAgencyId) return;
-
-    try {
-      const res = await fetch(`/api/agencies/${encodeURIComponent(countyAbbrevAgencyId)}/county-abbrev`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ countyAbbrev: value }),
-      });
-      const out = await res.json();
-      if (!res.ok) {
-        if (summary) {
-          summary.textContent = out.error || "Failed to update county abbreviation.";
-          summary.className = "msg bad";
-        }
-        return;
-      }
-      showCountyAbbrevModal(false);
-      setMsg("County abbreviation updated.", true);
-      loadAgenciesWithCounts();
-    } catch (e) {
-      if (summary) {
-        summary.textContent = "Failed to update county abbreviation.";
-        summary.className = "msg bad";
-      }
-    }
-  };
-}
-
 addForm.onsubmit = async (e) => {
   e.preventDefault();
   setMsg("");
@@ -2316,28 +1902,33 @@ async function finishAgencyAttributesEditing() {
     const countyAbbrev = String(a.countyAbbrev || "").trim().toUpperCase();
     if (!isAgencyStateFederal(a)) {
       if (!county) {
-        setMsg(`${label}: County is required unless State/Federal Agency is Yes`, false);
-        return;
+        setEditMsg(`${label}: County is required unless State/Federal Agency is Yes`, false);
+        return false;
       }
       if (!countyAbbrev || countyAbbrev.length < 2 || !/^[A-Z0-9]+$/.test(countyAbbrev)) {
-        setMsg(
+        setEditMsg(
           `${label}: County Abbreviation is required (at least 2 letters or numbers) unless State/Federal Agency is Yes`,
           false
         );
-        return;
+        return false;
       }
     } else if (countyAbbrev && (countyAbbrev.length < 2 || !/^[A-Z0-9]+$/.test(countyAbbrev))) {
-      setMsg(`${label}: County Abbreviation must be at least 2 characters (letters or numbers) when provided`, false);
-      return;
+      setEditMsg(`${label}: County Abbreviation must be at least 2 characters (letters or numbers) when provided`, false);
+      return false;
     }
   }
+
+  const colorTypeRegionChanges = getColorTypeRegionChangesToApply();
+  const groupsDirty = accessGroupsDirty();
 
   const hasWork =
     agenciesToUpdate.length > 0 ||
     stateFederalChanges.length > 0 ||
     stateChanges.length > 0 ||
     countyNameChanges.length > 0 ||
-    countyChanges.length > 0;
+    countyChanges.length > 0 ||
+    colorTypeRegionChanges.length > 0 ||
+    groupsDirty;
 
   if (hasWork) {
     const lines = [];
@@ -2378,18 +1969,22 @@ async function finishAgencyAttributesEditing() {
       const label = String(nameSnapshotById[id] || a.name || "Agency");
       lines.push(`${label}: ${parts.join("; ")}`);
     }
+    for (const ch of colorTypeRegionChanges) {
+      lines.push(ch.line);
+    }
+    if (groupsDirty) lines.push("Extra groups for agency admins");
     const ok = confirm(
       `Apply agency changes?\n\n${lines.join("\n")}`
     );
-    if (!ok) return;
+    if (!ok) {
+      restoreAgenciesFromSnapshots();
+      return false;
+    }
   }
 
-  const doneBtn = agencyAttributesDoneBtn;
-  const cancelBtn = agencyAttributesCancelBtn;
   if (hasWork) {
-    if (doneBtn) doneBtn.disabled = true;
-    if (cancelBtn) cancelBtn.disabled = true;
-    setMsg("Applying agency changes…", true);
+    if (editAgencySaveBtn) editAgencySaveBtn.disabled = true;
+    setEditMsg("Applying agency changes…", true);
   }
 
   const errors = [];
@@ -2616,103 +2211,160 @@ async function finishAgencyAttributesEditing() {
     }
   }
 
-  if (doneBtn) doneBtn.disabled = false;
-  if (cancelBtn) cancelBtn.disabled = false;
-  if (errors.length) {
-    setMsg(errors.join(" | "), false);
-    return;
+  for (const ch of colorTypeRegionChanges) {
+    try {
+      const res = await fetch(ch.url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ch.body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : data.error?.detail || data.error || ch.failLabel
+        );
+      }
+      summaries.push(ch.line);
+    } catch (e) {
+      errors.push(`${ch.failLabel}: ${e.message || String(e)}`);
+    }
   }
 
-  agencyAttributesEditMode = false;
+  if (groupsDirty && editingAgencyId) {
+    try {
+      const res = await fetch(`/api/agencies/${encodeURIComponent(editingAgencyId)}/access-groups`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowedAdminGroupIds: Array.from(accessGroupsPickedIds) })
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "Access groups save failed");
+      summaries.push("Extra groups updated");
+    } catch (e) {
+      errors.push(e.message || "Access groups save failed");
+    }
+  }
+
+  if (editAgencySaveBtn) editAgencySaveBtn.disabled = false;
+  if (errors.length) {
+    setEditMsg(errors.join(" | "), false);
+    return false;
+  }
+
+  const summaryText = summaries.length
+    ? `Agency updates applied. ${summaries.join("; ")}`
+    : "No attribute changes.";
+
+  clearAgencyAttributeSnapshots();
+  await loadAgenciesWithCounts();
+  return { ok: true, summary: summaryText };
+}
+
+function getColorTypeRegionChangesToApply() {
+  const a = (agencies || []).find((x) => String(x._id ?? x.id) === String(editingAgencyId));
+  if (!a || !editingAgencyId) return [];
+  const id = String(editingAgencyId);
+  const idx = a._id ?? a.id;
+  const changes = [];
+  const newColor = String(a.color || "").trim();
+  const oldColor = String(colorSnapshotById[id] || "").trim();
+  if (newColor && newColor !== oldColor) {
+    changes.push({
+      url: `/api/agencies/${encodeURIComponent(idx)}/color`,
+      body: { color: newColor },
+      line: `Color: ${oldColor || "(none)"} → ${newColor}`,
+      failLabel: "Color update failed",
+    });
+  }
+  const newType = String(a.type || "").trim();
+  const oldType = String(typeSnapshotById[id] || "").trim();
+  if (newType && newType !== oldType) {
+    changes.push({
+      url: `/api/agencies/${encodeURIComponent(idx)}/type`,
+      body: { type: newType },
+      line: `Type: ${oldType || "(none)"} → ${newType}`,
+      failLabel: "Type update failed",
+    });
+  }
+  const newRegion = String(a.regionId || "").trim();
+  const oldRegion = String(regionSnapshotById[id] || "").trim();
+  if (newRegion !== oldRegion) {
+    changes.push({
+      url: `/api/agencies/${encodeURIComponent(idx)}/region`,
+      body: { regionId: newRegion || null },
+      line: `Region: ${regionNameForId(oldRegion) || oldRegion || "(none)"} → ${regionNameForId(newRegion) || newRegion || "(none)"}`,
+      failLabel: "Region update failed",
+    });
+  }
+  return changes;
+}
+
+function accessGroupsDirty() {
+  const now = Array.from(accessGroupsPickedIds || []).map(String).sort().join(",");
+  const snap = (accessGroupsSnapshotIds || []).map(String).sort().join(",");
+  return now !== snap;
+}
+
+function clearAgencyAttributeSnapshots() {
   nameSnapshotById = {};
   abbrevSnapshotById = {};
   stateSnapshotById = {};
   countySnapshotById = {};
   countyAbbrevSnapshotById = {};
   stateFederalSnapshotById = {};
-  if (agencyAttributesEditBtn) agencyAttributesEditBtn.setAttribute("aria-pressed", "false");
-  setAgencyAttributesEditControlsVisible(false);
-
-  if (summaries.length) {
-    setMsg(`Agency updates applied. ${summaries.join("; ")}`, true);
-  }
-
-  await loadAgenciesWithCounts();
+  colorSnapshotById = {};
+  typeSnapshotById = {};
+  regionSnapshotById = {};
+  accessGroupsSnapshotIds = [];
 }
 
-function cancelAgencyAttributesEditing() {
+function snapshotAgenciesForEdit() {
+  nameSnapshotById = {};
+  abbrevSnapshotById = {};
+  stateSnapshotById = {};
+  countySnapshotById = {};
+  countyAbbrevSnapshotById = {};
+  stateFederalSnapshotById = {};
+  colorSnapshotById = {};
+  typeSnapshotById = {};
+  regionSnapshotById = {};
   for (const a of agencies) {
     const id = String(a._id ?? a.id ?? "");
     if (!id) continue;
-    if (id in nameSnapshotById) {
-      a.name = nameSnapshotById[id];
-    }
-    if (id in abbrevSnapshotById) {
-      a.groupPrefix = abbrevSnapshotById[id];
-    }
-    if (id in stateSnapshotById) {
-      a.state = stateSnapshotById[id];
-    }
-    if (id in countySnapshotById) {
-      a.county = countySnapshotById[id];
-    }
-    if (id in countyAbbrevSnapshotById) {
-      a.countyAbbrev = countyAbbrevSnapshotById[id];
-    }
-    if (id in stateFederalSnapshotById) {
-      a.stateFederalAgency = !!stateFederalSnapshotById[id];
+    nameSnapshotById[id] = String(a.name || "").trim();
+    abbrevSnapshotById[id] = String(a.groupPrefix || "").trim();
+    stateSnapshotById[id] = String(a.state || "").trim().toUpperCase();
+    countySnapshotById[id] = String(a.county || "").trim();
+    countyAbbrevSnapshotById[id] = String(a.countyAbbrev || "").trim().toUpperCase();
+    stateFederalSnapshotById[id] = isAgencyStateFederal(a);
+    colorSnapshotById[id] = String(a.color || "").trim();
+    typeSnapshotById[id] = String(a.type || "").trim();
+    regionSnapshotById[id] = String(a.regionId || "").trim();
+  }
+}
+
+function restoreAgenciesFromSnapshots() {
+  for (const a of agencies) {
+    const id = String(a._id ?? a.id ?? "");
+    if (!id) continue;
+    if (id in nameSnapshotById) a.name = nameSnapshotById[id];
+    if (id in abbrevSnapshotById) a.groupPrefix = abbrevSnapshotById[id];
+    if (id in stateSnapshotById) a.state = stateSnapshotById[id];
+    if (id in countySnapshotById) a.county = countySnapshotById[id];
+    if (id in countyAbbrevSnapshotById) a.countyAbbrev = countyAbbrevSnapshotById[id];
+    if (id in stateFederalSnapshotById) a.stateFederalAgency = !!stateFederalSnapshotById[id];
+    if (id in colorSnapshotById) a.color = colorSnapshotById[id];
+    if (id in typeSnapshotById) a.type = typeSnapshotById[id];
+    if (id in regionSnapshotById) {
+      a.regionId = regionSnapshotById[id] || "";
+      a.regionName = regionNameForId(a.regionId);
     }
   }
-  agencyAttributesEditMode = false;
-  nameSnapshotById = {};
-  abbrevSnapshotById = {};
-  stateSnapshotById = {};
-  countySnapshotById = {};
-  countyAbbrevSnapshotById = {};
-  stateFederalSnapshotById = {};
-  if (agencyAttributesEditBtn) agencyAttributesEditBtn.setAttribute("aria-pressed", "false");
-  setAgencyAttributesEditControlsVisible(false);
-  renderAgencies();
-}
-
-if (agencyAttributesEditBtn) {
-  agencyAttributesEditBtn.addEventListener("click", function () {
-    nameSnapshotById = {};
-    abbrevSnapshotById = {};
-    stateSnapshotById = {};
-    countySnapshotById = {};
-    countyAbbrevSnapshotById = {};
-    stateFederalSnapshotById = {};
-    for (const a of agencies) {
-      const id = String(a._id ?? a.id ?? "");
-      if (!id) continue;
-      nameSnapshotById[id] = String(a.name || "").trim();
-      abbrevSnapshotById[id] = String(a.groupPrefix || "").trim();
-      stateSnapshotById[id] = String(a.state || "").trim().toUpperCase();
-      countySnapshotById[id] = String(a.county || "").trim();
-      countyAbbrevSnapshotById[id] = String(a.countyAbbrev || "").trim().toUpperCase();
-      stateFederalSnapshotById[id] = isAgencyStateFederal(a);
-    }
-    agencyAttributesEditMode = true;
-    agencyAttributesEditBtn.setAttribute("aria-pressed", "true");
-    setAgencyAttributesEditControlsVisible(true);
-    renderAgencies();
-  });
-}
-
-if (agencyAttributesDoneBtn) {
-  agencyAttributesDoneBtn.addEventListener("click", () => finishAgencyAttributesEditing());
-}
-
-if (agencyAttributesCancelBtn) {
-  agencyAttributesCancelBtn.addEventListener("click", () => cancelAgencyAttributesEditing());
 }
 
 // ---- Access Groups modal ----
-const accessGroupsOverlay = document.getElementById("accessGroupsOverlay");
-const accessGroupsCloseBtn = document.getElementById("accessGroupsCloseBtn");
-const accessGroupsCancelBtn = document.getElementById("accessGroupsCancelBtn");
-const accessGroupsSaveBtn = document.getElementById("accessGroupsSaveBtn");
 const accessGroupsSummary = document.getElementById("accessGroupsSummary");
 const accessGroupSearch = document.getElementById("accessGroupSearch");
 const accessGroupsBox = document.getElementById("accessGroupsBox");
@@ -2744,6 +2396,7 @@ function isGroupRelatedToAgency(group, agency) {
 }
 
 function renderAccessGroupsGrid(filterText) {
+  if (!accessGroupsInner) return;
   const q = String(filterText || "").trim().toLowerCase();
   const list = q
     ? accessGroupsSelectable.filter(g => {
@@ -2766,6 +2419,7 @@ function renderAccessGroupsGrid(filterText) {
     `;
   }).join("");
 
+  if (!accessGroupsBox) return;
   accessGroupsBox.querySelectorAll("input[type=checkbox]").forEach(cb => {
     cb.addEventListener("change", () => {
       const id = String(cb.value);
@@ -2775,25 +2429,21 @@ function renderAccessGroupsGrid(filterText) {
   });
 }
 
-function showAccessGroupsModal(on) {
-  if (!accessGroupsOverlay) return;
-  accessGroupsOverlay.style.display = on ? "flex" : "none";
-  document.body.style.overflow = on ? "hidden" : "";
-}
-
-window.openAccessGroupsModal = async (agencyId) => {
+async function loadAccessGroupsForEditAgency(agencyId) {
   const a = (agencies || []).find(x => String(x._id ?? x.id) === String(agencyId));
-  if (!a) {
-    setMsg("Agency not found.", false);
+  if (!a || !accessGroupsInner) {
+    accessGroupsSnapshotIds = [];
     return;
   }
   accessGroupsAgencyId = agencyId;
-  accessGroupsSummary.textContent = `Loading groups for "${esc(a.name || "")}"...`;
-  accessGroupsSummary.className = "msg";
+  if (accessGroupsSummary) {
+    accessGroupsSummary.textContent = `Loading groups for "${a.name || ""}"...`;
+    accessGroupsSummary.className = "msg";
+  }
   accessGroupsInner.innerHTML = "";
   if (accessGroupSearch) accessGroupSearch.value = "";
   accessGroupsPickedIds = new Set();
-  showAccessGroupsModal(true);
+  accessGroupsSnapshotIds = [];
 
   try {
     const [groupsRes, allowedRes] = await Promise.all([
@@ -2810,16 +2460,22 @@ window.openAccessGroupsModal = async (agencyId) => {
       : (Array.isArray(groupsData.groups) ? groupsData.groups : []);
     accessGroupsAllGroups = allGroups;
     accessGroupsSelectable = allGroups.filter(g => !isGroupRelatedToAgency(g, a));
-    accessGroupsPickedIds = new Set(Array.isArray(allowedData.allowedAdminGroupIds) ? allowedData.allowedAdminGroupIds : []);
+    const allowed = Array.isArray(allowedData.allowedAdminGroupIds) ? allowedData.allowedAdminGroupIds : [];
+    accessGroupsPickedIds = new Set(allowed.map(String));
+    accessGroupsSnapshotIds = allowed.map(String);
 
-    accessGroupsSummary.textContent = `Select extra groups that administrators for "${esc(a.name || "")}" can see. They always see their own agency groups.`;
-    accessGroupsSummary.className = "msg ok";
+    if (accessGroupsSummary) {
+      accessGroupsSummary.textContent = `Select extra groups that administrators for "${a.name || ""}" can see. They always see their own agency groups.`;
+      accessGroupsSummary.className = "msg ok";
+    }
     renderAccessGroupsGrid("");
   } catch (e) {
-    accessGroupsSummary.textContent = e.message || "Failed to load.";
-    accessGroupsSummary.className = "msg bad";
+    if (accessGroupsSummary) {
+      accessGroupsSummary.textContent = e.message || "Failed to load.";
+      accessGroupsSummary.className = "msg bad";
+    }
   }
-};
+}
 
 if (accessGroupSearch) accessGroupSearch.addEventListener("input", () => {
   renderAccessGroupsGrid(accessGroupSearch.value);
@@ -2832,27 +2488,134 @@ if (accessGroupsClearBtn) accessGroupsClearBtn.onclick = () => {
   accessGroupsPickedIds.clear();
   renderAccessGroupsGrid(accessGroupSearch?.value || "");
 };
-if (accessGroupsCloseBtn) accessGroupsCloseBtn.onclick = () => showAccessGroupsModal(false);
-if (accessGroupsCancelBtn) accessGroupsCancelBtn.onclick = () => showAccessGroupsModal(false);
-if (accessGroupsOverlay) accessGroupsOverlay.addEventListener("click", e => { if (e.target === accessGroupsOverlay) showAccessGroupsModal(false); });
 
-if (accessGroupsSaveBtn) accessGroupsSaveBtn.onclick = async () => {
-  if (!accessGroupsAgencyId) return;
-  try {
-    const res = await fetch(`/api/agencies/${encodeURIComponent(accessGroupsAgencyId)}/access-groups`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ allowedAdminGroupIds: Array.from(accessGroupsPickedIds) })
-    });
-    const out = await res.json();
-    if (!res.ok) throw new Error(out.error || "Save failed");
-    setMsg("Access groups updated.", true);
-    showAccessGroupsModal(false);
-    loadAgenciesWithCounts();
-  } catch (e) {
-    setMsg(e.message || "Save failed", false);
+function isEditAgencyModalOpen() {
+  return !!(editAgencyOverlay && editAgencyOverlay.style.display !== "none");
+}
+
+function fillEditAgencyForm(a) {
+  if (!editAgencyForm || !a) return;
+  const set = (name, value) => {
+    const el = editAgencyForm.elements[name];
+    if (el) el.value = value;
+  };
+  set("name", a.name || "");
+  set("groupPrefix", a.groupPrefix || "");
+  set(
+    "usernameTokenPlacement",
+    String(a.usernameTokenPlacement || "suffix").toLowerCase() === "prefix" ? "prefix" : "suffix"
+  );
+  set("suffix", a.suffix || "");
+  set("state", String(a.state || "").trim().toUpperCase());
+  set("stateFederalAgency", isAgencyStateFederal(a) ? "yes" : "no");
+  set("county", a.county || "");
+  set("countyAbbrev", String(a.countyAbbrev || "").trim().toUpperCase());
+  set("type", a.type || "");
+  set("color", a.color || "");
+  set("regionId", a.regionId || "");
+  const sf = document.getElementById("editstateFederalAgencySelect");
+  if (typeof window.takSyncStateFederalAgencyFields === "function" && sf) {
+    window.takSyncStateFederalAgencyFields(sf);
   }
+  if (typeof window.takSyncAgencyRegionLock === "function") {
+    window.takSyncAgencyRegionLock(editAgencyForm);
+  }
+  const label = document.getElementById("editusernameIdentifierLabelText");
+  if (label) {
+    label.textContent =
+      String(a.usernameTokenPlacement || "suffix").toLowerCase() === "prefix"
+        ? "Username Prefix"
+        : "Username Suffix";
+  }
+}
+
+function applyEditFormToAgencies() {
+  if (!editAgencyForm || !editingAgencyId) return null;
+  const a = agencies.find((x) => String(x._id ?? x.id) === String(editingAgencyId));
+  if (!a) return null;
+  const idx = a._id ?? a.id;
+  const val = (name) => {
+    const el = editAgencyForm.elements[name];
+    return el ? String(el.value || "") : "";
+  };
+  a.name = val("name").trim();
+  a.groupPrefix = val("groupPrefix").trim();
+  updateAgencyStateFederalLocal(idx, val("stateFederalAgency"));
+  updateAgencyStateLocal(idx, val("state"));
+  updateAgencyCountyNameLocal(idx, val("county"));
+  updateAgencyCountyAbbrevLocal(idx, val("countyAbbrev"));
+  a.type = val("type").trim();
+  a.color = val("color").trim();
+  const regionEl = editAgencyForm.elements.regionId;
+  a.regionId = regionEl ? String(regionEl.value || "").trim() : "";
+  a.regionName = regionNameForId(a.regionId);
+  return a;
+}
+
+function openEditAgencyModal() {
+  if (!editAgencyOverlay) return;
+  editAgencyOverlay.style.display = "flex";
+  document.body.classList.add("noScroll");
+  document.body.style.overflow = "hidden";
+}
+
+function closeEditAgencyModal() {
+  if (!editAgencyOverlay) return;
+  flushLookupDomainOnClose();
+  restoreAgenciesFromSnapshots();
+  editAgencyOverlay.style.display = "none";
+  document.body.classList.remove("noScroll");
+  document.body.style.overflow = "";
+  editingAgencyId = null;
+  currentLookupAgencyId = null;
+  clearAgencyAttributeSnapshots();
+  setEditMsg("");
+  if (editAgencySaveBtn) editAgencySaveBtn.disabled = false;
+}
+
+window.openEditAgency = async (agencyId) => {
+  const a = (agencies || []).find((x) => String(x._id ?? x.id) === String(agencyId));
+  if (!a) {
+    setMsg("Could not find agency.", false);
+    return;
+  }
+  editingAgencyId = String(a._id ?? a.id ?? "");
+  snapshotAgenciesForEdit();
+  if (editAgencyTitle) {
+    const name = String(a.name || "").trim();
+    editAgencyTitle.textContent = name ? `Edit Agency - ${name}` : "Edit Agency";
+  }
+  setEditMsg("");
+  fillEditAgencyForm(a);
+  fillDomainSection(editingAgencyId);
+  openEditAgencyModal();
+  const loads = [loadAdminsForEditAgency(editingAgencyId)];
+  if (accessGroupsInner) loads.push(loadAccessGroupsForEditAgency(editingAgencyId));
+  await Promise.all(loads);
 };
+
+if (editAgencyCloseBtn) {
+  editAgencyCloseBtn.onclick = () => closeEditAgencyModal();
+}
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isEditAgencyModalOpen()) closeEditAgencyModal();
+});
+
+if (editAgencyForm) {
+  editAgencyForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setEditMsg("");
+    if (!editingAgencyId) {
+      setEditMsg("No agency selected.", false);
+      return;
+    }
+    applyEditFormToAgencies();
+    const result = await finishAgencyAttributesEditing();
+    if (!result || result.ok !== true) return;
+    closeEditAgencyModal();
+    setListMsg(result.summary, true);
+  });
+}
 
 const exportAgenciesCsvBtn = document.getElementById("exportAgenciesCsvBtn");
 if (exportAgenciesCsvBtn) {
@@ -2972,7 +2735,6 @@ agencyTable.querySelectorAll("thead th[data-sort]").forEach(th => {
 });
 
 // Initialize last county + data on page load
-setAgencyAttributesEditControlsVisible(false);
 loadLastCounty();
 loadAgenciesWithCounts();
 
@@ -3053,38 +2815,7 @@ if (addForm) {
 }
 
 .agenciesTable td {
-  vertical-align: top;
-}
-
-.agencyAttributesEditActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.agencyAttributesEditActions .agency-edit-mode-only {
-  display: none;
-}
-
-.agencyAttributesEditActions.is-editing .agency-edit-mode-only {
-  display: inline-flex;
-}
-
-.agencyAttributesEditActions.is-editing .agency-view-mode-only {
-  display: none;
-}
-
-.agenciesTable.is-editing-attributes .agencyActionsHeader {
-  display: none;
-}
-
-.agenciesTable .agencyStateFederalHeader {
-  display: none;
-}
-
-.agenciesTable.is-editing-attributes .agencyStateFederalHeader {
-  display: table-cell;
+  vertical-align: middle;
 }
 
 .agenciesTable.hide-region-column .agencyRegionHeader,
@@ -3154,44 +2885,7 @@ if (addForm) {
   opacity: 0.7;
 }
 
-/* Agency type: dropdown always visible; size to selected label, not widest option (field-sizing) */
-.agency-type-td {
-  min-width: 0;
-  vertical-align: middle;
-}
-.agency-type-select {
-  field-sizing: content;
-  width: auto;
-  max-width: min(24rem, 100%);
-  min-width: 0;
-  box-sizing: border-box;
-}
-.agency-state-federal-select {
-  width: auto;
-  max-width: 100%;
-  min-width: 4.5rem;
-  box-sizing: border-box;
-}
-@supports not (field-sizing: content) {
-  .agency-type-select {
-    max-width: min(14rem, 100%);
-  }
-}
-
-/* Edit mode: stretch all attribute controls to the column width */
-.agenciesTable.is-editing-attributes td {
-  min-width: 0;
-}
-.agenciesTable.is-editing-attributes input[type="text"],
-.agenciesTable.is-editing-attributes select {
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0;
-  box-sizing: border-box;
-  field-sizing: fixed;
-}
-
-/* Grey button for Disable Lookup */
+/* Sort indicator */
 .btn-grey {
   background-color: #6c757d;
   border-color: #6c757d;
@@ -3358,7 +3052,7 @@ if (addForm) {
 
   .listCardTable .cardActionsRow {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     width: 100%;
     min-width: 0;
@@ -3376,7 +3070,6 @@ if (addForm) {
     text-align: center;
   }
 
-  .agenciesTable .agency-type-td select,
   .agenciesTable .agencyColorCell select {
     width: 100%;
     max-width: 100%;
@@ -3446,6 +3139,100 @@ input.readonly {
 .agenciesExportCardActions {
   display: flex;
   justify-content: flex-end;
+}
+
+#editAgencyOverlay {
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+#editAgencyOverlay .editAgencyModal {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  max-height: 92vh;
+  overflow: hidden;
+}
+
+#editAgencyOverlay .modalHeader {
+  flex: 0 0 auto;
+}
+
+#editAgencyOverlay .modalHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+#editAgencyOverlay .modalHeaderLeft h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#editAgencyOverlay .modalBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+#editAgencyOverlay .editAgencySection {
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+#editAgencyOverlay .editAgencySection h3 {
+  margin: 0 0 12px;
+}
+
+#editAgencyOverlay .editAgencyFooter {
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  position: sticky;
+  bottom: 0;
+  background: var(--panel);
+  padding-top: 12px;
+}
+
+#editAgencyOverlay .editAgencyFooter .msg {
+  margin-right: auto;
+}
+
+#editAgencyOverlay label > input:not([type="checkbox"]),
+#editAgencyOverlay label > select {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+#editAgencyOverlay select[disabled],
+#editAgencyOverlay input[disabled] {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+body.noScroll .main {
+  overflow: hidden !important;
+}
+
+@media (max-width: 990px) {
+  #editAgencyOverlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  #editAgencyOverlay .editAgencyModal {
+    width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+  #accessGroupsInner.groupsInner {
+    column-count: 2;
+    column-width: 160px;
+  }
 }
 </style>
 

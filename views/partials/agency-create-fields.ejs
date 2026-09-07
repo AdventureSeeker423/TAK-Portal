@@ -6,6 +6,8 @@
   const _fieldsRequired = (typeof fieldsRequired === "undefined") ? true : !!fieldsRequired;
   const _reqAttr = _fieldsRequired ? "required" : "";
   const _idPrefix = String(typeof idPrefix !== "undefined" ? idPrefix : "");
+  const _usernameReadOnly = !!(typeof usernameReadOnly !== "undefined" && usernameReadOnly);
+  const _usernameRoAttr = _usernameReadOnly ? "disabled" : "";
   const _typeOpts = Array.isArray(agencyTypeOptions) && agencyTypeOptions.length ? agencyTypeOptions : [];
   const _regionOpts = Array.isArray(regionOptions) && regionOptions.length ? regionOptions : [];
   const _regionLocks = Array.isArray(typeof regionCountyLocks !== "undefined" ? regionCountyLocks : null)
@@ -85,7 +87,7 @@
   </label>
 
   <label>Username Agency Identifier
-    <select name="usernameTokenPlacement" id="<%= _idPrefix %>usernameTokenPlacementSelect">
+    <select name="usernameTokenPlacement" id="<%= _idPrefix %>usernameTokenPlacementSelect" <%= _usernameRoAttr %>>
       <option value="suffix" <%= _sel(_placement, "suffix") %>>Suffix - End Of Username (e.g. 1234abcd)</option>
       <option value="prefix" <%= _sel(_placement, "prefix") %>>Prefix - Beginning Of Username (e.g. abcd1234)</option>
     </select>
@@ -93,8 +95,9 @@
 
   <label>
     <span id="<%= _idPrefix %>usernameIdentifierLabelText"><%= _placement === "prefix" ? "Username Prefix" : "Username Suffix" %></span>
-    <input name="suffix" placeholder="(ex. abcd, hcoem, etc...)" <%= _reqAttr %>
+    <input name="suffix" placeholder="(ex. abcd, hcoem, etc...)" <%= _usernameReadOnly ? "" : _reqAttr %>
            value="<%= _vals.suffix || '' %>"
+           <%= _usernameRoAttr %>
            oninput="this.value = this.value.toLowerCase()" />
   </label>
 </div>
