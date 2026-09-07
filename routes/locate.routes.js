@@ -75,6 +75,36 @@ function isEmailConfigured() {
   return !!(emailSvc.isEmailEnabled() && emailCfg.host && emailCfg.from);
 }
 
+async function resolveChannelAndMission(req, channelRaw, missionRaw) {
+  const authUser = req.authentikUser || null;
+  const access = accessSvc.getAgencyAccess(authUser);
+  const { channels, allowedChannelKeys } = await locatorAccess.listChannelsForUser(authUser);
+  const raw = String(channelRaw || "").trim();
+  if (!raw) {
+    const err = new Error("Channel is required.");
+    err.status = 400;
+    throw err;
+  }
+  locatorAccess.assertChannelInScope(access, raw, allowedChannelKeys);
+  const match = channels.find(
+    (c) =>
+      c.name === raw ||
+      c.displayName === raw ||
+      locatorAccess.channelKeyOf(c.name) === locatorAccess.channelKeyOf(raw)
+  );
+  if (!match) {
+    const err = new Error("Channel is required.");
+    err.status = 400;
+    throw err;
+  }
+  const mission = await locatorAccess.assertMissionOnChannel(
+    authUser,
+    String(missionRaw || "").trim(),
+    match.name
+  );
+  return { match, mission };
+}
+
 async function scopedLocator(req, id) {
   const loc = locatorsSvc.getById(id);
   const access = accessSvc.getAgencyAccess(req.authentikUser || null);
@@ -148,24 +178,11 @@ router.get("/locators", async (req, res) => {
 router.post("/locators", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    const access = accessSvc.getAgencyAccess(authUser);
-    const { channels, allowedChannelKeys } = await locatorAccess.listChannelsForUser(authUser);
-    const channelRaw = String(req.body?.channel || "").trim();
-    if (!channelRaw) {
-      return res.status(400).json({ ok: false, error: "Channel is required." });
-    }
-    locatorAccess.assertChannelInScope(access, channelRaw, allowedChannelKeys);
-    const match = channels.find(
-      (c) =>
-        c.name === channelRaw ||
-        c.displayName === channelRaw ||
-        locatorAccess.channelKeyOf(c.name) === locatorAccess.channelKeyOf(channelRaw)
+    const { match, mission } = await resolveChannelAndMission(
+      req,
+      req.body?.channel,
+      req.body?.mission
     );
-    if (!match) {
-      return res.status(400).json({ ok: false, error: "Channel is required." });
-    }
-    const missionRaw = String(req.body?.mission || "").trim();
-    const mission = await locatorAccess.assertMissionOnChannel(authUser, missionRaw, match.name);
     const loc = locatorsSvc.createLive({
       title: req.body?.title,
       pingIntervalSeconds: req.body?.pingIntervalSeconds,
@@ -204,16 +221,29 @@ router.patch("/locators/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();
     const before = await scopedLocator(req, id);
-    const loc = locatorsSvc.update(id, {
+    const patch = {
       title: req.body?.title,
       pingIntervalSeconds: req.body?.pingIntervalSeconds,
       active: req.body?.active,
       color: req.body?.color,
       dropPoints: req.body?.dropPoints,
       form: req.body?.form,
-    });
-    if (before.active && loc.active === false) {
-      locatorCot.publishDelete(loc).catch(() => {});
+    };
+    if (req.body?.channel !== undefined || req.body?.mission !== undefined) {
+      const { match, mission } = await resolveChannelAndMission(
+        req,
+        req.body?.channel !== undefined ? req.body.channel : before.channel,
+        req.body?.mission !== undefined ? req.body.mission : before.mission
+      );
+      patch.channel = match.name;
+      patch.channelDisplay = match.displayName;
+      patch.mission = mission;
+    }
+    const loc = locatorsSvc.update(id, patch);
+    const channelChanged =
+      locatorAccess.channelKeyOf(before.channel) !== locatorAccess.channelKeyOf(loc.channel);
+    if ((before.active && loc.active === false) || channelChanged) {
+      locatorCot.publishDelete(before).catch(() => {});
     }
     auditSvc.logEvent({
       actor: req.authentikUser || null,

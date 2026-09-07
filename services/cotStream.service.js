@@ -482,13 +482,30 @@ function isFeedOriginMarker(marker) {
 
 function parseMarkerFromCoT(cot) {
   try {
-    const uid = cot.uid();
-    if (!uid) return null;
     const attrs = cot.raw?.event?._attributes || {};
     const point = cot.raw?.event?.point?._attributes;
     if (!point) return null;
 
-    const [lon, lat] = cot.position();
+    let uid = "";
+    try {
+      uid = String(cot.uid?.() || "").trim();
+    } catch (_) {}
+    if (!uid) uid = String(attrs.uid || "").trim();
+    if (!uid) return null;
+
+    let lat;
+    let lon;
+    try {
+      const pos = cot.position?.();
+      if (Array.isArray(pos) && pos.length >= 2) {
+        lon = Number(pos[0]);
+        lat = Number(pos[1]);
+      }
+    } catch (_) {}
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      lat = Number(point.lat);
+      lon = Number(point.lon);
+    }
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
     if (lat === 0 && lon === 0) return null;
 
@@ -503,7 +520,12 @@ function parseMarkerFromCoT(cot) {
     callsign = mapMeta.sanitizeCallsign(callsign);
 
     const detail = cot.raw?.event?.detail || {};
-    const type = String(attrs.type || cot.type() || "");
+    let type = String(attrs.type || "").trim();
+    if (!type) {
+      try {
+        type = String(cot.type?.() || "").trim();
+      } catch (_) {}
+    }
     const team = mapMeta.parseTeamName(detail) || null;
     const role = mapMeta.parseTeamRole(detail);
     const platform = mapMeta.parseTakPlatform(detail);
@@ -633,7 +655,11 @@ function handleCot(cot) {
     return;
   }
 
-  const type = String(cot.type?.() || cot.raw?.event?._attributes?.type || "").trim();
+  let type = "";
+  try {
+    type = String(cot.type?.() || "").trim();
+  } catch (_) {}
+  if (!type) type = String(cot.raw?.event?._attributes?.type || "").trim();
   if (type === "t-x-d-d") {
     handleDeleteCot(cot);
     return;
@@ -702,6 +728,22 @@ async function writeCot(cotOrList, opts = {}) {
     return true;
   } catch (err) {
     console.error("[map-cot] writeCot failed:", err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * Apply a CoT event to the in-memory map store (SSE). TAK does not echo
+ * events back to the connection that wrote them, so injected locators must
+ * be ingested here or they never appear on the portal live map.
+ */
+function ingestCot(cot) {
+  if (!cot) return false;
+  try {
+    handleCot(cot);
+    return true;
+  } catch (err) {
+    console.error("[map-cot] ingestCot failed:", err?.message || err);
     return false;
   }
 }
@@ -1204,5 +1246,6 @@ module.exports = {
   enrichSubscriptionsWithLiveMarkerBattery,
   onCotProcessed,
   writeCot,
+  ingestCot,
   isBridgeConnected,
 };

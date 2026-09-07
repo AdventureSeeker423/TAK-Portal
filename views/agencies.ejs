@@ -66,12 +66,12 @@
       </label>
       <label style="min-width: 180px;">
         <select id="agencyTypeFilter" aria-label="Filter by agency type">
-          <option value="">All Types</option>
+          <option value="">All Agency Types</option>
         </select>
       </label>
       <label style="min-width: 180px;">
         <select id="agencyColorFilter" aria-label="Filter by color">
-          <option value="">All Colors</option>
+          <option value="">All Colors / Teams</option>
         </select>
       </label>
       <input
@@ -481,6 +481,20 @@ function agencyColorLabel(color) {
   return TEAM_COLOR_LABELS[c] || c;
 }
 
+function uniqueAgencyFieldValues(key) {
+  const seen = new Set();
+  const out = [];
+  (agencies || []).forEach((a) => {
+    const raw = String(a?.[key] || "").trim();
+    if (!raw) return;
+    const k = raw.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(raw);
+  });
+  return out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
 function fillAgencyListFilterOptions() {
   function fill(selectEl, values, labelFn) {
     if (!selectEl) return;
@@ -496,11 +510,18 @@ function fillAgencyListFilterOptions() {
       opt.textContent = labelFn ? labelFn(val) : val;
       selectEl.appendChild(opt);
     });
-    if (prev) selectEl.value = prev;
+    const stillValid = Array.from(selectEl.options).some((o) => o.value === prev);
+    selectEl.value = stillValid ? prev : "";
   }
-  fill(agencyStateFilter, AGENCY_STATE_OPTIONS);
-  fill(agencyTypeFilter, AGENCY_TYPE_OPTIONS);
-  fill(agencyColorFilter, AGENCY_COLOR_OPTIONS, agencyColorLabel);
+  fill(agencyStateFilter, uniqueAgencyFieldValues("state"));
+  fill(agencyTypeFilter, uniqueAgencyFieldValues("type"));
+  fill(
+    agencyColorFilter,
+    uniqueAgencyFieldValues("color").sort((a, b) =>
+      agencyColorLabel(a).localeCompare(agencyColorLabel(b), undefined, { sensitivity: "base" })
+    ),
+    agencyColorLabel
+  );
 }
 
 function getFilteredAgencies() {
@@ -1307,6 +1328,7 @@ async function loadAgenciesWithCounts(){
       regionName: regionNameForId(a?.regionId) || String(a?.regionName || "").trim(),
     });
   });
+  fillAgencyListFilterOptions();
   renderAgencies();
 }
 

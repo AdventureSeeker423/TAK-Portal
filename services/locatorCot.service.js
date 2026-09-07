@@ -153,13 +153,22 @@ async function toCot(js, dest) {
   return cot;
 }
 
-async function writeEvent(js, dest) {
+async function writeEvent(js, dest, { ingest = false } = {}) {
   try {
     const cot = await toCot(js, dest);
-    const ok = await cotStream.writeCot(cot, { stripFlow: true });
-    return !!ok;
+    const written = await cotStream.writeCot(cot, { stripFlow: true });
+    if (ingest) {
+      cotStream.ingestCot(cot);
+    }
+    return !!written;
   } catch (err) {
     console.error("[locator cot] write failed:", err?.message || err);
+    if (ingest) {
+      try {
+        const cot = await toCot(js, dest);
+        cotStream.ingestCot(cot);
+      } catch (_) {}
+    }
     return false;
   }
 }
@@ -182,7 +191,7 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
     now,
     staleDate,
   });
-  await writeEvent(liveJs, destGroup ? { group: destGroup } : null);
+  await writeEvent(liveJs, destGroup ? { group: destGroup } : null, { ingest: true });
 
   const mission = String(locator.mission || "").trim();
   if (mission && locator.dropPoints) {
@@ -211,7 +220,7 @@ async function publishDelete(locator) {
     destGroup,
     now: new Date(),
   });
-  return writeEvent(js, destGroup ? { group: destGroup } : null);
+  return writeEvent(js, destGroup ? { group: destGroup } : null, { ingest: true });
 }
 
 module.exports = {

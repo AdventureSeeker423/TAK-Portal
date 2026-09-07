@@ -35,7 +35,7 @@
     <p class="h"><%= formIntro %></p>
     <% (formFields || []).forEach(function (field) { %>
       <label>
-        <%= field.label %>
+        <%= field.label %><% if (field.required) { %> (required)<% } %>
         <% if (field.type === "message") { %>
           <textarea id="lp_<%= field.id %>" rows="3" <%= locatorActive ? "" : "disabled" %> <%= field.required ? "required" : "" %>></textarea>
         <% } else if (field.type === "choice") { %>

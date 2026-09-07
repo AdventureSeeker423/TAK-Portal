@@ -325,8 +325,20 @@ function update(id, patch) {
   if (isLiveLocator(l)) {
     if (patch.color !== undefined) l.color = locatorForm.normalizeColor(patch.color);
     if (patch.form !== undefined) l.form = locatorForm.normalizeForm(patch.form);
-    if (patch.dropPoints !== undefined) {
-      l.dropPoints = !!patch.dropPoints && !!String(l.mission || "").trim();
+    if (patch.channel !== undefined) {
+      const channelName = String(patch.channel || "").trim();
+      if (!channelName) throw new Error("Channel is required.");
+      l.channel = channelName;
+      l.channelDisplay =
+        String(patch.channelDisplay || "").trim() || channelName;
+    }
+    if (patch.mission !== undefined) {
+      l.mission = String(patch.mission || "").trim();
+    }
+    if (patch.dropPoints !== undefined || patch.mission !== undefined) {
+      const drop =
+        patch.dropPoints !== undefined ? !!patch.dropPoints : !!l.dropPoints;
+      l.dropPoints = drop && !!String(l.mission || "").trim();
     }
   }
 

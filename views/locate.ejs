@@ -16,7 +16,7 @@
 
     <div class="row loc-create-row">
       <label class="loc-field loc-field-title">Title
-        <input id="locTitle" type="text" maxlength="120" />
+        <input id="locTitle" type="text" maxlength="120" placeholder="Missing Person" />
       </label>
       <label class="loc-field">Channel
         <select id="locChannel">
@@ -55,7 +55,7 @@
     </label>
 
     <div class="loc-fields-head">
-      <span>Fields</span>
+      <span>Additional Fields</span>
       <button class="btn" type="button" id="locAddFieldBtn">Add Field</button>
     </div>
     <div id="locFields" class="loc-fields"></div>
@@ -89,26 +89,31 @@
         <tbody id="locTbody"></tbody>
       </table>
     </div>
+  </div>
 
-    <details class="loc-archived" style="margin-top:1.25rem;">
-      <summary style="cursor:pointer;font-weight:600;user-select:none;">
-        Archived <span id="archivedLocCount">0</span>
-      </summary>
+  <details class="card" style="margin-top:1.25rem;">
+    <summary style="cursor:pointer;font-weight:600;user-select:none;">
+      Archived Locators <span id="archivedCountWrap">(<span id="archivedLocCount">0</span>)</span>
+    </summary>
+    <div style="margin-top:12px;">
+      <div id="archivedListMsg" class="msg" style="margin-left:0;"></div>
       <div class="listCardTableWrap locate-table-scroll" style="margin-top:12px;">
         <table class="table locate-table locate-table-archived listCardTable">
           <thead>
             <tr>
               <th>Title</th>
               <th>Channel</th>
+              <th>Color</th>
               <th>Status</th>
+              <th>Last Fix</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="locArchivedTbody"></tbody>
         </table>
       </div>
-    </details>
-  </div>
+    </div>
+  </details>
 
   <div id="locHistOverlay" class="modalOverlay" style="display:none;" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="locHistTitle" style="width:min(900px,96vw); max-height:85vh; overflow:auto;">
@@ -237,6 +242,7 @@
   var tbody = document.getElementById("locTbody");
   var archivedTbody = document.getElementById("locArchivedTbody");
   var archivedCountEl = document.getElementById("archivedLocCount");
+  var archivedListMsg = document.getElementById("archivedListMsg");
   var listMsg = document.getElementById("locListMsg");
   var filterIn = document.getElementById("locFilter");
 
@@ -461,9 +467,11 @@
   }
 
   channelSel.addEventListener("change", function () {
-    if (editingId) return;
-    setDrop(false, false);
-    loadMissionsForChannel(channelSel.value);
+    var keep = missionSel.value;
+    setDrop(dropOn(), false);
+    loadMissionsForChannel(channelSel.value, keep).then(function () {
+      setDrop(dropOn() && !!missionSel.value, !!missionSel.value);
+    });
   });
   missionSel.addEventListener("change", function () {
     setDrop(dropOn() && !!missionSel.value, !!missionSel.value);
@@ -579,43 +587,58 @@
     }
 
     archivedTbody.innerHTML = "";
-    archivedCountEl.textContent = String(archived.length);
+    if (archivedCountEl) archivedCountEl.textContent = String(archived.length);
     if (!archived.length) {
       var trA = document.createElement("tr");
       trA.className = "emptyStateRow";
       var tdA = document.createElement("td");
-      tdA.colSpan = 4;
-      tdA.textContent = "None.";
+      tdA.colSpan = 6;
+      tdA.textContent = "No archived locators.";
       trA.appendChild(tdA);
       archivedTbody.appendChild(trA);
     } else {
       archived.forEach(function (loc) {
         var tr = document.createElement("tr");
         var tdTitle = document.createElement("td");
-        tdTitle.textContent = loc.title || "";
+        tdTitle.className = "cardTitleCell";
         tdTitle.setAttribute("data-label", "Title");
+        tdTitle.textContent = loc.title || "";
         var tdCh = document.createElement("td");
-        tdCh.textContent = loc.channelDisplay || loc.channel || "";
         tdCh.setAttribute("data-label", "Channel");
+        tdCh.textContent = loc.channelDisplay || loc.channel || "";
+        var tdColor = document.createElement("td");
+        tdColor.setAttribute("data-label", "Color");
+        tdColor.textContent = loc.color || "";
         var tdSt = document.createElement("td");
         tdSt.setAttribute("data-label", "Status");
         tdSt.appendChild(statusPill(loc));
+        var tdFix = document.createElement("td");
+        tdFix.setAttribute("data-label", "Last Fix");
+        tdFix.textContent = lastFixText(loc);
         var tdAct = document.createElement("td");
         tdAct.className = "locate-actions-cell cardActionsCell";
         var wrap = document.createElement("div");
-        wrap.className = "cardActionsRow";
+        wrap.className = "cardActionsRow locate-actions-cell";
         addBtn(wrap, "History", function () { openHistory(loc.id); });
         addBtn(wrap, "Restore", function () {
-          api("/api/locate/locators/" + encodeURIComponent(loc.id) + "/reactivate", { method: "POST" }).then(loadLocators).catch(function (e) { setMsg(listMsg, e.message, true); });
+          api("/api/locate/locators/" + encodeURIComponent(loc.id) + "/reactivate", { method: "POST" }).then(function () {
+            setMsg(archivedListMsg, "Locator restored.", false);
+            return loadLocators();
+          }).catch(function (e) { setMsg(archivedListMsg, e.message, true); });
         }, "success");
         addBtn(wrap, "Delete", function () {
           if (!window.confirm("Delete this locator?")) return;
-          api("/api/locate/locators/" + encodeURIComponent(loc.id), { method: "DELETE" }).then(loadLocators).catch(function (e) { setMsg(listMsg, e.message, true); });
+          api("/api/locate/locators/" + encodeURIComponent(loc.id), { method: "DELETE" }).then(function () {
+            setMsg(archivedListMsg, "Locator deleted.", false);
+            return loadLocators();
+          }).catch(function (e) { setMsg(archivedListMsg, e.message, true); });
         }, "danger");
         tdAct.appendChild(wrap);
         tr.appendChild(tdTitle);
         tr.appendChild(tdCh);
+        tr.appendChild(tdColor);
         tr.appendChild(tdSt);
+        tr.appendChild(tdFix);
         tr.appendChild(tdAct);
         archivedTbody.appendChild(tr);
       });
@@ -631,8 +654,8 @@
     cancelBtn.style.display = "";
     titleIn.value = loc.title || "";
     channelSel.value = loc.channel || "";
-    channelSel.disabled = true;
-    missionSel.disabled = true;
+    channelSel.disabled = false;
+    missionSel.disabled = false;
     loadMissionsForChannel(loc.channel, loc.mission || "").then(function () {
       missionSel.value = loc.mission || "";
       setDrop(!!loc.dropPoints, !!loc.mission);
@@ -673,6 +696,8 @@
       pingIntervalSeconds: ping,
       color: colorSel.value,
       dropPoints: dropOn(),
+      channel: channelSel.value,
+      mission: missionSel.value,
       form: collectForm()
     };
     var req;
@@ -682,8 +707,6 @@
         body: JSON.stringify(payload)
       });
     } else {
-      payload.channel = channelSel.value;
-      payload.mission = missionSel.value;
       req = api("/api/locate/locators", { method: "POST", body: JSON.stringify(payload) });
     }
     req.then(function () {
