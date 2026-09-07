@@ -321,13 +321,11 @@
         <div class="membersSplitPane" id="membersMassPane">
           <div class="membersSplitPaneHead">
             <h3>Bulk Update</h3>
-            <div class="segmented membersMassActionToggle">
-              <button class="segBtn active" type="button" id="massActionAssignBtn">Assign</button>
-              <button class="segBtn" type="button" id="massActionUnassignBtn">Unassign</button>
-            </div>
           </div>
-
-          <p id="massHelp" class="membersMassHelp"></p>
+          <div class="segmented membersMassActionToggle">
+            <button class="segBtn active" type="button" id="massActionAssignBtn">Assign</button>
+            <button class="segBtn" type="button" id="massActionUnassignBtn">Unassign</button>
+          </div>
 
           <div class="segmented" id="massSegmented">
             <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
@@ -543,7 +541,6 @@ const reloadBtn = document.getElementById("reloadBtn");
 // Mass assign / unassign (embedded in Members modal)
 const massTitle = document.getElementById("massTitle");
 const massMsg = document.getElementById("massMsg");
-const massHelp = document.getElementById("massHelp");
 const massApplyBtn = document.getElementById("massApplyBtn");
 const massActionAssignBtn = document.getElementById("massActionAssignBtn");
 const massActionUnassignBtn = document.getElementById("massActionUnassignBtn");
@@ -1927,38 +1924,6 @@ function massWhoNoun(count){
   return n === 1 ? "item" : "items";
 }
 
-function massHelpText(){
-  const groupLabel = stripTakPrefix(String(activeMassGroupName || "this group"));
-  const adding = massAction !== "unassign";
-  const mode = selectedMassMode();
-  if (mode === "agency") {
-    return adding
-      ? `Adds "${groupLabel}" to every user in the agencies you check.`
-      : `Removes "${groupLabel}" from every user in the agencies you check.`;
-  }
-  if (mode === "template") {
-    return adding
-      ? `Adds "${groupLabel}" to the selected templates and their matching users.`
-      : `Removes "${groupLabel}" from the selected templates and their matching users.`;
-  }
-  if (mode === "agencyType") {
-    return adding
-      ? `Adds "${groupLabel}" to every user in agencies of the types you check.`
-      : `Removes "${groupLabel}" from every user in agencies of the types you check.`;
-  }
-  if (mode === "group") {
-    return adding
-      ? `Adds "${groupLabel}" to users who are already in the groups you check.`
-      : `Removes "${groupLabel}" from users who are already in the groups you check.`;
-  }
-  if (mode === "users") {
-    return adding
-      ? `Adds "${groupLabel}" to the specific users you check.`
-      : `Removes "${groupLabel}" from the specific users you check.`;
-  }
-  return "";
-}
-
 function updateMassChrome(){
   const adding = massAction !== "unassign";
   const count = selectedMassCount();
@@ -1975,7 +1940,6 @@ function updateMassChrome(){
   if (massActionAssignBtn) massActionAssignBtn.classList.toggle("active", adding);
   if (massActionUnassignBtn) massActionUnassignBtn.classList.toggle("active", !adding);
   if (templateModeVerb) templateModeVerb.textContent = adding ? "add" : "remove";
-  if (massHelp) massHelp.textContent = massHelpText();
 }
 
 function setMassAction(next){
@@ -3677,13 +3641,6 @@ th.sortable:hover{
   white-space: nowrap;
 }
 
-#membersOverlay .membersMassHelp {
-  margin: 6px 0 8px;
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--text);
-}
-
 #membersOverlay .membersSplitPane .msg:empty {
   display: none;
 }
@@ -3751,7 +3708,18 @@ th.sortable:hover{
 }
 
 #membersOverlay .membersMassActionToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
   flex: 0 0 auto;
+  flex-wrap: nowrap;
+  margin-bottom: 10px;
+}
+
+#membersOverlay .membersMassActionToggle .segBtn {
+  width: 100%;
+  text-align: center;
 }
 
 #membersOverlay #massSegmented {
