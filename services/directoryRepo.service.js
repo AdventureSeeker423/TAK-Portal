@@ -689,7 +689,7 @@ async function getGroupMemberPks(groupId) {
   return r.rows.map((row) => (row.authentik_pk != null ? String(row.authentik_pk) : String(row.id)));
 }
 
-async function getGroupMembersPaged(groupId, { page = 1, pageSize = 100, agencyAbbreviation } = {}) {
+async function getGroupMembersPaged(groupId, { page = 1, pageSize = 100, agencyAbbreviation, q } = {}) {
   const g = await getGroupById(groupId);
   if (!g) return { users: [], total: 0, page: 1, pageSize, hasNext: false, hasPrev: false };
   const params = [g.uuid || g.id];
@@ -697,6 +697,12 @@ async function getGroupMembersPaged(groupId, { page = 1, pageSize = 100, agencyA
   if (agencyAbbreviation) {
     params.push(String(agencyAbbreviation).trim());
     extra += ` AND lower(u.agency_abbreviation) = lower($${params.length})`;
+  }
+  const needle = String(q || "").trim();
+  if (needle) {
+    params.push(`%${needle}%`);
+    const i = params.length;
+    extra += ` AND (u.username ILIKE $${i} OR u.name ILIKE $${i} OR u.email ILIKE $${i} OR u.agency_abbreviation ILIKE $${i} OR u.agency_name ILIKE $${i} OR u.current_template ILIKE $${i})`;
   }
   extra += hiddenUserClause(params, false);
   const count = await db.query(

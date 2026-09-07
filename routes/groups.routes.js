@@ -1013,6 +1013,7 @@ router.get("/:groupId/members", async (req, res) => {
     const groupId = req.params.groupId;
     const page = parseInt(req.query.page, 10) || 1;
     const pageSize = parseInt(req.query.pageSize, 10) || 100;
+    const q = String(req.query.q || "").trim();
     const group = await groups.getGroupById(groupId);
     const authUser = req.authentikUser || null;
     const access = accessSvc.getAgencyAccess(authUser);
@@ -1051,6 +1052,7 @@ router.get("/:groupId/members", async (req, res) => {
       agencyAbbreviations,
       page,
       pageSize,
+      q,
     });
     const users = Array.isArray(members?.users) ? members.users : [];
 

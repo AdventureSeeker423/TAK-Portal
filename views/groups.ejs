@@ -301,13 +301,13 @@
         <div class="membersSplitPane" id="membersListPane">
           <div class="membersSplitPaneHead">
             <h3>Current Members</h3>
+            <span id="membersRange" class="muted membersRange"></span>
           </div>
           <div id="membersSummary" class="msg"></div>
           <input
             id="membersFilter"
-            placeholder="Filter by username, name, or email..."
+            placeholder="Search name, username, email, agency, or template..."
           />
-          <div id="membersList" class="groupsBox membersListBox"></div>
           <div class="pagination" id="membersPagination" style="display:none;">
             <button class="btn pagination-first-last" id="membersFirstBtn" type="button">First</button>
             <button class="btn" id="membersPrevBtn" type="button">Previous</button>
@@ -315,23 +315,34 @@
             <button class="btn" id="membersNextBtn" type="button">Next</button>
             <button class="btn pagination-first-last" id="membersLastBtn" type="button">Last</button>
           </div>
+          <div id="membersList" class="groupsBox membersListBox"></div>
         </div>
 
         <div class="membersSplitPane" id="membersMassPane">
           <div class="membersSplitPaneHead">
-            <h3 id="massTitle">Assign</h3>
+            <h3>Bulk update</h3>
+          </div>
+          <p class="muted membersMassIntro">Add or remove this group for many users at once. Choose an action, pick who it applies to, then apply.</p>
+
+          <div class="membersMassStep">
+            <div class="membersMassStepLabel">1. Action</div>
             <div class="segmented membersMassActionToggle">
               <button class="segBtn active" type="button" id="massActionAssignBtn">Assign</button>
               <button class="segBtn" type="button" id="massActionUnassignBtn">Unassign</button>
             </div>
           </div>
 
-          <div class="segmented" id="massSegmented">
-            <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
-            <button class="segBtn" type="button" data-mode="template">Templates</button>
-            <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
-            <button class="segBtn" type="button" data-mode="group">Users With An Existing Group</button>
-            <button class="segBtn" type="button" data-mode="users">Specific Users</button>
+          <p id="massHelp" class="membersMassHelp"></p>
+
+          <div class="membersMassStep">
+            <div class="membersMassStepLabel">2. Who it applies to</div>
+            <div class="segmented" id="massSegmented">
+              <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
+              <button class="segBtn" type="button" data-mode="template">Templates</button>
+              <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
+              <button class="segBtn" type="button" data-mode="group">Existing Groups</button>
+              <button class="segBtn" type="button" data-mode="users">Specific Users</button>
+            </div>
           </div>
 
           <div class="membersMassPanes">
@@ -414,7 +425,8 @@
 
           <div class="membersMassFooter row">
             <span id="massMsg" class="msg"></span>
-            <button class="btn success" id="massApplyBtn" type="button">Mass Assign</button>
+            <span id="massSelectionHint" class="muted membersMassSelectionHint"></span>
+            <button class="btn success" id="massApplyBtn" type="button">Assign for selected agencies</button>
           </div>
         </div>
       </div>
@@ -428,6 +440,7 @@ const membersOverlay = document.getElementById("membersOverlay");
 const membersCloseBtn = document.getElementById("membersCloseBtn");
 const membersTitle = document.getElementById("membersTitle");
 const membersSummary = document.getElementById("membersSummary");
+const membersRange = document.getElementById("membersRange");
 const membersFilter = document.getElementById("membersFilter");
 const membersList = document.getElementById("membersList");
 const membersSplit = document.getElementById("membersSplit");
@@ -539,6 +552,8 @@ const reloadBtn = document.getElementById("reloadBtn");
 // Mass assign / unassign (embedded in Members modal)
 const massTitle = document.getElementById("massTitle");
 const massMsg = document.getElementById("massMsg");
+const massHelp = document.getElementById("massHelp");
+const massSelectionHint = document.getElementById("massSelectionHint");
 const massApplyBtn = document.getElementById("massApplyBtn");
 const massActionAssignBtn = document.getElementById("massActionAssignBtn");
 const massActionUnassignBtn = document.getElementById("massActionUnassignBtn");
@@ -1897,14 +1912,88 @@ window.deleteGroup = async (groupId) => {
   await loadGroups();
 };
 
+function selectedMassCount(){
+  const mode = selectedMassMode();
+  if (mode === "agency") {
+    return agencyList ? agencyList.querySelectorAll("input.agencyChk:checked").length : 0;
+  }
+  if (mode === "agencyType") {
+    return agencyTypeList ? agencyTypeList.querySelectorAll("input.agencyTypeChk:checked").length : 0;
+  }
+  if (mode === "group") return selectedSourceGroupIds.size;
+  if (mode === "template") return selectedTemplateIndices.size;
+  if (mode === "users") return selectedUserIds.size;
+  return 0;
+}
+
+function massWhoNoun(count){
+  const mode = selectedMassMode();
+  const n = Number(count || 0);
+  if (mode === "agency") return n === 1 ? "agency" : "agencies";
+  if (mode === "agencyType") return n === 1 ? "agency type" : "agency types";
+  if (mode === "group") return n === 1 ? "group" : "groups";
+  if (mode === "template") return n === 1 ? "template" : "templates";
+  if (mode === "users") return n === 1 ? "user" : "users";
+  return n === 1 ? "item" : "items";
+}
+
+function massHelpText(){
+  const groupLabel = stripTakPrefix(String(activeMassGroupName || "this group"));
+  const adding = massAction !== "unassign";
+  const mode = selectedMassMode();
+  if (mode === "agency") {
+    return adding
+      ? `Adds "${groupLabel}" to every user in the agencies you check.`
+      : `Removes "${groupLabel}" from every user in the agencies you check.`;
+  }
+  if (mode === "template") {
+    return adding
+      ? `Adds "${groupLabel}" to the selected templates and their matching users.`
+      : `Removes "${groupLabel}" from the selected templates and their matching users.`;
+  }
+  if (mode === "agencyType") {
+    return adding
+      ? `Adds "${groupLabel}" to every user in agencies of the types you check.`
+      : `Removes "${groupLabel}" from every user in agencies of the types you check.`;
+  }
+  if (mode === "group") {
+    return adding
+      ? `Adds "${groupLabel}" to users who are already in the groups you check.`
+      : `Removes "${groupLabel}" from users who are already in the groups you check.`;
+  }
+  if (mode === "users") {
+    return adding
+      ? `Adds "${groupLabel}" to the specific users you check.`
+      : `Removes "${groupLabel}" from the specific users you check.`;
+  }
+  return "";
+}
+
+function updateMassChrome(){
+  const adding = massAction !== "unassign";
+  const count = selectedMassCount();
+  const who = massWhoNoun(count);
+  const verb = adding ? "Assign" : "Unassign";
+  if (massTitle) massTitle.textContent = verb;
+  if (massApplyBtn) {
+    massApplyBtn.textContent = count
+      ? `${verb} for ${count} selected ${who}`
+      : `${verb} for selected ${who}`;
+    massApplyBtn.className = adding ? "btn success" : "btn caution";
+    massApplyBtn.disabled = count < 1;
+  }
+  if (massActionAssignBtn) massActionAssignBtn.classList.toggle("active", adding);
+  if (massActionUnassignBtn) massActionUnassignBtn.classList.toggle("active", !adding);
+  if (templateModeVerb) templateModeVerb.textContent = adding ? "add" : "remove";
+  if (massHelp) massHelp.textContent = massHelpText();
+  if (massSelectionHint) {
+    massSelectionHint.textContent = count ? `${count} ${who} selected` : "Nothing selected yet";
+  }
+}
+
 function setMassAction(next){
   massAction = next === "unassign" ? "unassign" : "assign";
-  const actionLabel = massAction === "assign" ? "Mass Assign" : "Mass Unassign";
-  if (massTitle) massTitle.textContent = massAction === "assign" ? "Assign" : "Unassign";
-  if (massApplyBtn) massApplyBtn.textContent = actionLabel;
-  if (massActionAssignBtn) massActionAssignBtn.classList.toggle("active", massAction === "assign");
-  if (massActionUnassignBtn) massActionUnassignBtn.classList.toggle("active", massAction === "unassign");
-  if (templateModeVerb) templateModeVerb.textContent = massAction === "assign" ? "add" : "remove";
+  updateMassChrome();
   setMsg(massMsg, "");
 }
 
@@ -2041,10 +2130,12 @@ let membersPageSize = 100;
 let membersTotalCount = 0;
 let membersHasNext = false;
 let membersHasPrev = false;
+let membersQuery = "";
+let membersFilterTimer = null;
 
 window.setMembersSort = function(key){
   key = String(key || "").toLowerCase();
-  if (!["username", "name", "email"].includes(key)) return;
+  if (!["username", "name", "agency", "template", "status"].includes(key)) return;
   if (membersSortKey === key) {
     membersSortDir = membersSortDir === "asc" ? "desc" : "asc";
   } else {
@@ -2054,28 +2145,47 @@ window.setMembersSort = function(key){
   renderMembersList();
 };
 
-function renderMembersList(){
-  const needle = String(membersFilter.value || "").trim().toLowerCase();
+function memberAgencyLabel(u){
+  const abbr = String(
+    u?.agency_abbreviation ||
+    u?.attributes?.agency_abbreviation ||
+    u?.attributes?.agencyAbbreviation ||
+    ""
+  ).trim();
+  const name = String(u?.agency_name || u?.attributes?.agency_name || u?.agency || "").trim();
+  if (abbr && name && name.toLowerCase() !== abbr.toLowerCase()) return { abbr, name };
+  if (abbr) return { abbr, name: "" };
+  if (name) return { abbr: name, name: "" };
+  return { abbr: "", name: "" };
+}
 
+function memberTemplateLabel(u){
+  const raw = String(u?.current_template || u?.attributes?.current_template || "").trim();
+  if (!raw || raw.toLowerCase() === "manual group selection") return "";
+  return raw;
+}
+
+function memberSortValue(u, key){
+  if (key === "agency") return memberAgencyLabel(u).abbr.toLowerCase();
+  if (key === "template") return memberTemplateLabel(u).toLowerCase();
+  if (key === "status") return u?.is_active ? "enabled" : "disabled";
+  return String(u?.[key] || "").toLowerCase();
+}
+
+function renderMembersList(){
+  if (!membersList) return;
   const items = (activeMembers || []).slice().sort((a, b) => {
-    const ak = String(a[membersSortKey] || "").toLowerCase();
-    const bk = String(b[membersSortKey] || "").toLowerCase();
+    const ak = memberSortValue(a, membersSortKey);
+    const bk = memberSortValue(b, membersSortKey);
     if (ak < bk) return membersSortDir === "asc" ? -1 : 1;
     if (ak > bk) return membersSortDir === "asc" ? 1 : -1;
-    return 0;
+    return String(a.username || "").localeCompare(String(b.username || ""));
   });
 
-  const filtered = needle
-    ? items.filter(u => {
-        const uName = String(u.username || "").toLowerCase();
-        const n = String(u.name || "").toLowerCase();
-        const em = String(u.email || "").toLowerCase();
-        return uName.includes(needle) || n.includes(needle) || em.includes(needle);
-      })
-    : items;
-
-  if (!filtered.length) {
-    membersList.innerHTML = `<div class="muted">No members match your filter.</div>`;
+  if (!items.length) {
+    membersList.innerHTML = `<div class="muted" style="padding:10px;">${
+      membersQuery ? "No members match your search." : "No members in this group."
+    }</div>`;
     return;
   }
 
@@ -2084,25 +2194,37 @@ function renderMembersList(){
     return membersSortDir === "asc" ? " ▲" : " ▼";
   };
 
-  const rowsHtml = filtered.map(u => `
-    <tr>
-      <td>${esc(u.username || "")}</td>
-      <td>${esc(u.name || "")}</td>
-      <td>${esc(u.email || "")}</td>
-      <td style="text-align:right;">
+  const rowsHtml = items.map(u => {
+    const agency = memberAgencyLabel(u);
+    const template = memberTemplateLabel(u);
+    const active = u.is_active !== false;
+    const email = String(u.email || "").trim();
+    return `
+    <tr class="${active ? "" : "membersRowDisabled"}">
+      <td class="membersUserCell">
+        <div class="membersUserName">${esc(u.username || "")}</div>
+        <div class="muted membersUserMeta">${esc(u.name || "—")}</div>
+        ${email ? `<div class="muted membersUserMeta">${esc(email)}</div>` : ""}
+      </td>
+      <td class="membersAgencyCell" title="${esc(agency.name || agency.abbr)}">${esc(agency.abbr || "—")}</td>
+      <td class="membersTemplateCell">${esc(template || "—")}</td>
+      <td class="membersStatusCell">${active ? "Enabled" : "Disabled"}</td>
+      <td class="membersRemoveCell">
         <button class="btn danger" type="button"
           onclick="removeUserFromGroup('${esc(u.pk)}')">Remove</button>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   membersList.innerHTML = `
-    <table class="table">
+    <table class="table membersTable">
       <thead>
         <tr>
-          <th><span style="cursor:pointer;" onclick="setMembersSort('username')">Username${sortArrow('username')}</span></th>
-          <th><span style="cursor:pointer;" onclick="setMembersSort('name')">Name${sortArrow('name')}</span></th>
-          <th><span style="cursor:pointer;" onclick="setMembersSort('email')">Email${sortArrow('email')}</span></th>
+          <th><span style="cursor:pointer;" onclick="setMembersSort('username')">User${sortArrow('username')}</span></th>
+          <th><span style="cursor:pointer;" onclick="setMembersSort('agency')">Agency${sortArrow('agency')}</span></th>
+          <th><span style="cursor:pointer;" onclick="setMembersSort('template')">Template${sortArrow('template')}</span></th>
+          <th><span style="cursor:pointer;" onclick="setMembersSort('status')">Status${sortArrow('status')}</span></th>
           <th style="text-align:right;">Actions</th>
         </tr>
       </thead>
@@ -2124,6 +2246,16 @@ function renderMembersPagination() {
   if (membersLastBtn) membersLastBtn.disabled = membersCurrentPage >= totalPages || !membersHasNext;
   if (membersPrevBtn) membersPrevBtn.disabled = !membersHasPrev;
   if (membersNextBtn) membersNextBtn.disabled = !membersHasNext;
+
+  if (membersRange) {
+    if (!total) {
+      membersRange.textContent = "";
+    } else {
+      const start = (membersCurrentPage - 1) * size + 1;
+      const end = Math.min(membersCurrentPage * size, total);
+      membersRange.textContent = `${start}–${end} of ${total}`;
+    }
+  }
 }
 
 async function loadMembersPage(page) {
@@ -2132,8 +2264,14 @@ async function loadMembersPage(page) {
   membersSummary.textContent = "Loading members...";
   membersSummary.className = "msg";
 
+  const params = new URLSearchParams({
+    page: String(targetPage),
+    pageSize: String(membersPageSize),
+  });
+  if (membersQuery) params.set("q", membersQuery);
+
   const res = await fetch(
-    `/api/groups/${encodeURIComponent(activeMembersGroupId)}/members?page=${targetPage}&pageSize=${membersPageSize}`
+    `/api/groups/${encodeURIComponent(activeMembersGroupId)}/members?${params.toString()}`
   );
   const out = await res.json();
   if (!res.ok) throw new Error(out.error || "Failed to load members");
@@ -2145,8 +2283,12 @@ async function loadMembersPage(page) {
   membersHasNext = !!out.hasNext;
   membersHasPrev = !!out.hasPrev;
 
-    const groupLabel = stripTakPrefix(String(activeMembersGroupName || out.group?.name || activeMembersGroupId || ""));
-  membersSummary.textContent = `${membersTotalCount} member${membersTotalCount === 1 ? "" : "s"} in group "${groupLabel}".`;
+  const groupLabel = stripTakPrefix(String(activeMembersGroupName || out.group?.name || activeMembersGroupId || ""));
+  if (membersQuery) {
+    membersSummary.textContent = `${membersTotalCount} member${membersTotalCount === 1 ? "" : "s"} matching "${membersQuery}" in "${groupLabel}".`;
+  } else {
+    membersSummary.textContent = `${membersTotalCount} member${membersTotalCount === 1 ? "" : "s"} in "${groupLabel}".`;
+  }
   membersSummary.className = "msg ok";
 
   renderMembersList();
@@ -2184,6 +2326,8 @@ window.openGroupMembers = async (groupId) => {
   membersSummary.className = "msg";
   membersList.innerHTML = "";
   if (membersFilter) membersFilter.value = "";
+  membersQuery = "";
+  if (membersRange) membersRange.textContent = "";
   membersCurrentPage = 1;
   membersTotalCount = 0;
   membersHasNext = false;
@@ -2394,7 +2538,15 @@ if (membersOverlay) {
     if (e.target === membersOverlay) showMembersModal(false);
   });
 }
-if (membersFilter) membersFilter.oninput = renderMembersList;
+if (membersFilter) {
+  membersFilter.oninput = () => {
+    clearTimeout(membersFilterTimer);
+    membersFilterTimer = setTimeout(() => {
+      membersQuery = String(membersFilter.value || "").trim();
+      loadMembersPage(1).catch(() => {});
+    }, 250);
+  };
+}
 if (membersFirstBtn) {
   membersFirstBtn.onclick = () => {
     if (membersCurrentPage > 1) {
@@ -2433,6 +2585,7 @@ function setMassMode(next){
   });
   updateMassPanes();
   if (next === "agencyType") renderAgencyTypeList();
+  updateMassChrome();
 }
 
 if (massActionAssignBtn) {
@@ -2446,15 +2599,21 @@ document.querySelectorAll("#massSegmented .segBtn").forEach(btn => {
   btn.addEventListener("click", () => setMassMode(btn.dataset.mode));
 });
 
-if (agencySearch) agencySearch.oninput = renderAgencyList;
+if (membersMassPane) {
+  membersMassPane.addEventListener("change", () => updateMassChrome());
+}
+
+if (agencySearch) agencySearch.oninput = () => { renderAgencyList(); updateMassChrome(); };
 if (agencySelectAll) {
   agencySelectAll.onclick = () => {
     agencyList.querySelectorAll('input.agencyChk').forEach(c => (c.checked = true));
+    updateMassChrome();
   };
 }
 if (agencyClearAll) {
   agencyClearAll.onclick = () => {
     agencyList.querySelectorAll('input.agencyChk').forEach(c => (c.checked = false));
+    updateMassChrome();
   };
 }
 
@@ -2462,11 +2621,13 @@ if (agencyTypeSearch) agencyTypeSearch.oninput = renderAgencyTypeList;
 if (agencyTypeSelectAll) {
   agencyTypeSelectAll.onclick = () => {
     agencyTypeList.querySelectorAll("input.agencyTypeChk").forEach((c) => (c.checked = true));
+    updateMassChrome();
   };
 }
 if (agencyTypeClearAll) {
   agencyTypeClearAll.onclick = () => {
     agencyTypeList.querySelectorAll("input.agencyTypeChk").forEach((c) => (c.checked = false));
+    updateMassChrome();
   };
 }
 
@@ -2531,12 +2692,14 @@ if (userSelectAll) {
       if (id) selectedUserIds.add(id);
     });
     renderUserList(usersSearchCache);
+    updateMassChrome();
   };
 }
 if (userClearAll) {
   userClearAll.onclick = () => {
     selectedUserIds.clear();
     renderUserList(usersSearchCache);
+    updateMassChrome();
   };
 }
 
@@ -2593,12 +2756,14 @@ if (groupSelectAll) {
       if (id) selectedSourceGroupIds.add(id);
     });
     renderSourceGroupList();
+    updateMassChrome();
   };
 }
 if (groupClearAll) {
   groupClearAll.onclick = () => {
     selectedSourceGroupIds.clear();
     renderSourceGroupList();
+    updateMassChrome();
   };
 }
 
@@ -2623,12 +2788,14 @@ if (templateSelectAll) {
       if (id) selectedTemplateIndices.add(id);
     });
     renderTemplateSourceList();
+    updateMassChrome();
   };
 }
 if (templateClearAll) {
   templateClearAll.onclick = () => {
     selectedTemplateIndices.clear();
     renderTemplateSourceList();
+    updateMassChrome();
   };
 }
 if (templateList) {
@@ -3367,7 +3534,7 @@ th.sortable:hover{
 #membersOverlay .membersModal {
   display: flex;
   flex-direction: column;
-  width: min(1200px, 100%);
+  width: min(1280px, 100%);
   max-height: 92vh;
   overflow: hidden;
 }
@@ -3491,7 +3658,7 @@ th.sortable:hover{
 }
 
 #membersOverlay .membersSplit.has-mass {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
 }
 
 #membersOverlay .membersSplit:not(.has-mass) #membersMassPane {
@@ -3518,6 +3685,38 @@ th.sortable:hover{
   margin: 0;
 }
 
+#membersOverlay .membersRange {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#membersOverlay .membersMassIntro {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+#membersOverlay .membersMassStep {
+  flex: 0 0 auto;
+  margin-top: 8px;
+}
+
+#membersOverlay .membersMassStepLabel {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+#membersOverlay .membersMassHelp {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
 #membersOverlay .membersSplitPane .msg:empty {
   display: none;
 }
@@ -3540,11 +3739,48 @@ th.sortable:hover{
 
 #membersOverlay .membersSplitPane .pagination {
   flex: 0 0 auto;
-  margin-top: 8px;
+  margin: 0 0 4px;
 }
 
-#membersOverlay .membersListBox .table {
+#membersOverlay .membersTable {
   width: 100%;
+  border-collapse: collapse;
+}
+
+#membersOverlay .membersTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  box-shadow: 0 1px 0 var(--line);
+}
+
+#membersOverlay .membersUserCell {
+  min-width: 12rem;
+}
+
+#membersOverlay .membersUserName {
+  font-weight: 600;
+}
+
+#membersOverlay .membersUserMeta {
+  font-size: 12px;
+  margin-top: 1px;
+}
+
+#membersOverlay .membersAgencyCell,
+#membersOverlay .membersTemplateCell,
+#membersOverlay .membersStatusCell {
+  white-space: nowrap;
+}
+
+#membersOverlay .membersRemoveCell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+#membersOverlay .membersRowDisabled td {
+  opacity: 0.7;
 }
 
 #membersOverlay .membersMassActionToggle {
@@ -3554,7 +3790,6 @@ th.sortable:hover{
 #membersOverlay #massSegmented {
   flex: 0 0 auto;
   flex-wrap: wrap;
-  margin-top: 4px;
 }
 
 #membersOverlay .membersMassPanes {
@@ -3583,10 +3818,16 @@ th.sortable:hover{
   gap: 10px;
   margin-top: 12px;
   padding-top: 12px;
+  flex-wrap: wrap;
 }
 
 #membersOverlay .membersMassFooter .msg {
   margin-right: auto;
+}
+
+#membersOverlay .membersMassSelectionHint {
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 body.noScroll .main {

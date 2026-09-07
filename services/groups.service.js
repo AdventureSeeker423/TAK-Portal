@@ -354,6 +354,7 @@ function compareGroupMembersByName(a, b) {
 }
 
 function projectGroupMember(u) {
+  const attrs = u.attributes || {};
   return {
     pk: u.pk,
     username: u.username,
@@ -361,13 +362,22 @@ function projectGroupMember(u) {
     email: u.email,
     is_active: u.is_active,
     path: u.path,
-    attributes: u.attributes || {},
+    attributes: attrs,
+    agency: u.agency || attrs.agency || null,
+    agency_name: u.agency_name || attrs.agency_name || null,
+    agency_abbreviation:
+      u.agency_abbreviation ||
+      attrs.agency_abbreviation ||
+      attrs.agencyAbbreviation ||
+      null,
+    current_template: u.current_template || attrs.current_template || null,
+    role: u.role || attrs.role || null,
   };
 }
 
 async function getGroupMembersMultiAgencyPaged(
   groupId,
-  { authUser, agencyAbbreviations, page = 1, pageSize = 100 } = {}
+  { authUser, agencyAbbreviations, page = 1, pageSize = 100, q } = {}
 ) {
   const gid = normalizeId(groupId);
   const abbrs = normalizeAgencyAbbreviations(agencyAbbreviations);
@@ -385,6 +395,7 @@ async function getGroupMembersMultiAgencyPaged(
         agencyAbbreviation: abbr,
         page: 1,
         pageSize: 1,
+        q,
       })
     )
   );
@@ -431,6 +442,7 @@ async function getGroupMembersMultiAgencyPaged(
           agencyAbbreviation: cursor.abbr,
           page: cursor.page,
           pageSize: Math.max(safePageSize, 50),
+          q,
         });
         cursor.page += 1;
         const batch = Array.isArray(res?.users) ? res.users : [];
@@ -605,13 +617,14 @@ async function getUsersByGroupIdRaw({ groupId, agencyAbbreviation } = {}) {
 }
 
 // Fetch one page of users in a group via Authentik filtering.
-async function getUsersByGroupIdPagedRaw({ groupId, agencyAbbreviation, page = 1, pageSize = 100 } = {}) {
+async function getUsersByGroupIdPagedRaw({ groupId, agencyAbbreviation, page = 1, pageSize = 100, q } = {}) {
   const gid = normalizeId(groupId);
   if (!gid) throw new Error("Group id is required");
   return directoryRepo.getGroupMembersPaged(gid, {
     page,
     pageSize,
     agencyAbbreviation,
+    q,
   });
 }
 
@@ -1275,7 +1288,7 @@ async function getGroupMembers(groupId, { authUser, agencyAbbreviation, agencyAb
   return members.map(projectGroupMember);
 }
 
-async function getGroupMembersPaged(groupId, { authUser, agencyAbbreviation, agencyAbbreviations, page = 1, pageSize = 100 } = {}) {
+async function getGroupMembersPaged(groupId, { authUser, agencyAbbreviation, agencyAbbreviations, page = 1, pageSize = 100, q } = {}) {
   const gid = normalizeId(groupId);
   if (!gid) throw new Error("Group id is required");
 
@@ -1286,6 +1299,7 @@ async function getGroupMembersPaged(groupId, { authUser, agencyAbbreviation, age
       agencyAbbreviations: abbrs,
       page,
       pageSize,
+      q,
     });
   }
 
@@ -1294,6 +1308,7 @@ async function getGroupMembersPaged(groupId, { authUser, agencyAbbreviation, age
     agencyAbbreviation: abbrs[0] || null,
     page,
     pageSize,
+    q,
   });
 
   let members = Array.isArray(result.users) ? result.users : [];
