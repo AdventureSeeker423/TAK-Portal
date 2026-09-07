@@ -149,14 +149,14 @@
       <table class="table listCardTable groupsListTable">
         <thead>
           <tr>
-            <th class="sortable" data-key="name">
-              Group Name <span class="sortIndicator" aria-hidden="true"></span>
-            </th>
             <th class="sortable groupTypeCol" data-key="type">
               Type <span class="sortIndicator" aria-hidden="true"></span>
             </th>
+            <th class="sortable" data-key="name">
+              Group Name <span class="sortIndicator" aria-hidden="true"></span>
+            </th>
             <th class="sortable groupScopeCol" data-key="scope">
-              Scope <span class="sortIndicator" aria-hidden="true"></span>
+              Agency <span class="sortIndicator" aria-hidden="true"></span>
             </th>
             <th class="sortable groupBehaviorCol" data-key="behavior">
               Behavior <span class="sortIndicator" aria-hidden="true"></span>
@@ -1401,14 +1401,14 @@ function renderGroups(){
 
     return `
     <tr>
+      <td class="groupTypeCell" data-label="Type">${esc(typeLabel)}</td>
       <td class="groupNameCell cardTitleCell">
         <div class="groupNameText cardTitleText">${esc(stripTakPrefix(g.name))}</div>
         ${desc ? `<div class="muted groupDescText">${esc(desc)}</div>` : ""}
         ${patchedWithLabel ? `<div class="groupPatchedText">Channel Patched With ${esc(patchedWithLabel)}</div>` : ""}
         ${IS_GLOBAL_ADMIN && isPrivate ? `<span class="groupPrivateBadge cardMetaBadge">Private</span>` : ""}
       </td>
-      <td class="groupTypeCell" data-label="Type">${esc(typeLabel)}</td>
-      <td class="groupScopeCell" data-label="Scope">${esc(scopeLabel || "—")}</td>
+      <td class="groupScopeCell" data-label="Agency">${esc(scopeLabel || "—")}</td>
       <td class="groupBehaviorCell" data-label="Behavior">${esc(behaviorLabel)}</td>
       ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell" data-label="Private">${isPrivate ? "Private" : ""}</td>` : ``}
       <td class="groupActionsCell cardActionsCell">
@@ -3454,8 +3454,8 @@ th.sortable:hover{
     overflow: hidden;
   }
 
-  .groupsListTable .cardTitleCell { order: 1; }
-  .groupsListTable .groupTypeCell { order: 2; }
+  .groupsListTable .groupTypeCell { order: 1; }
+  .groupsListTable .cardTitleCell { order: 2; }
   .groupsListTable .groupScopeCell { order: 3; }
   .groupsListTable .groupBehaviorCell { order: 4; }
   .groupsListTable .cardActionsCell { order: 5; }
