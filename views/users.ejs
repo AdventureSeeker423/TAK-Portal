@@ -4030,6 +4030,7 @@ if (exportUsersCsvBtn) {
                   return;
                 }
                 const updated = Number(body.updated || 0);
+                const failed = Number(body.failed || 0);
                 banner.textContent = updated > 0
                   ? `Current-template migration complete. Updated ${updated} user${updated === 1 ? "" : "s"}. Re-checking...`
                   : "Current-template migration complete. Re-checking...";
@@ -4042,7 +4043,9 @@ if (exportUsersCsvBtn) {
                     }
                     if (body2.needsBackfill) {
                       const remaining = Number(body2.missing || 0) + Number(body2.mismatch || 0);
-                      banner.textContent = `${remaining} user current-template migration${remaining === 1 ? "" : "s"} still pending. Click to run again.`;
+                      banner.textContent = failed > 0
+                        ? `${remaining} user current-template migration${remaining === 1 ? "" : "s"} still pending (${failed} failed to save). Click to run again.`
+                        : `${remaining} user current-template migration${remaining === 1 ? "" : "s"} still pending. Click to run again.`;
                       link.style.display = "block";
                       actions.style.display = "block";
                     } else {

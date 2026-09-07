@@ -657,6 +657,25 @@ async function listGroupsMatching({ includeHidden = false, names, prefix, q, lim
   return r.groups;
 }
 
+async function listAllLocalUsers({ includeHiddenPrefixes = false, includeGroups = true } = {}) {
+  const params = [];
+  let where = `pending_delete = false`;
+  where += hiddenUserClause(params, includeHiddenPrefixes);
+  where += userPathClause(params);
+  const r = await db.query(`SELECT * FROM users WHERE ${where} ORDER BY username ASC`, params);
+  const users = r.rows.map((row) => rowToUser(row));
+  if (includeGroups) await attachGroups(users);
+  return users;
+}
+
+async function listAllLocalGroups({ includeHidden = false } = {}) {
+  const params = [];
+  let where = `pending_delete = false`;
+  where += hiddenGroupClause(params, includeHidden);
+  const r = await db.query(`SELECT * FROM groups WHERE ${where} ORDER BY name ASC`, params);
+  return r.rows.map(rowToGroup);
+}
+
 async function getGroupMemberPks(groupId) {
   const g = await getGroupById(groupId);
   if (!g) return [];
@@ -1120,6 +1139,8 @@ module.exports = {
   listUsersByTemplate,
   searchGroupsPaged,
   listGroupsMatching,
+  listAllLocalUsers,
+  listAllLocalGroups,
   getGroupMemberPks,
   getGroupMembersPaged,
   insertLocalUser,

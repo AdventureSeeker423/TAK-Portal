@@ -1022,21 +1022,7 @@ function applyHiddenPrefixFilter(users, includeHiddenPrefixes) {
 // - optionally filter by AUTHENTIK_USER_PATH if set
 async function getAllUsersRaw(options = {}) {
   const { includeHiddenPrefixes = false, includeGroups = true } = options;
-  const pageSize = 200;
-  const all = [];
-  let page = 1;
-  for (;;) {
-    const r = await directoryRepo.searchUsersPaged({
-      includeHiddenPrefixes,
-      includeGroups,
-      page,
-      pageSize,
-    });
-    all.push(...(r.users || []));
-    if (!r.hasNext) break;
-    page += 1;
-  }
-  return all;
+  return directoryRepo.listAllLocalUsers({ includeHiddenPrefixes, includeGroups });
 }
 
 async function getAllUsersLightweightRaw(options = {}) {
@@ -3734,107 +3720,14 @@ function computeCurrentTemplateForUser({
   return "Manual Group Selection";
 }
 
-/**
- * Recompute attributes.current_template for users in an agency after group/template renames.
- * Uses fresh group list + template definitions so template-prefill matching stays consistent.
- */
-async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
-  const sfx = String(agencySuffix || "").trim().toLowerCase();
-  if (!sfx) return { scanned: 0, updated: 0 };
-
-  const templates = templatesStore.load();
-  const templatesByAgencySuffix = new Map();
-  for (const t of Array.isArray(templates) ? templates : []) {
-    const ts = String(t?.agencySuffix || "").trim().toLowerCase();
-    if (ts !== sfx) continue;
-    if (!templatesByAgencySuffix.has(ts)) templatesByAgencySuffix.set(ts, []);
-    templatesByAgencySuffix.get(ts).push(t);
-  }
-
-  const allGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
-  const groupNameToId = new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
-      String(g?.name || "").trim().toLowerCase(),
-      String(g?.pk || "").trim(),
-    ])
-  );
-  const visibleGroupIds = new Set(
-    (Array.isArray(allGroups) ? allGroups : [])
-      .map((g) => String(g?.pk || "").trim())
-      .filter(Boolean)
-  );
-  const mutualAidCreatedGroupIds = loadMutualAidCreatedGroupIdSet();
-
-  let scanned = 0;
-  let updated = 0;
-  let page = 1;
-  let hasNext = true;
-
-  while (hasNext) {
-    const result = await directoryRepo.searchUsersPaged({
-      agencySuffix: sfx,
-      page,
-      pageSize: 200,
-      includeGroups: true,
-      includeHiddenPrefixes: true,
-    });
-    const rows = Array.isArray(result.users) ? result.users : [];
-
-    for (const user of rows) {
-      const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
-      if (String(attrs.agency || user.agency || "").trim().toLowerCase() !== sfx) continue;
-      if (shouldSkipCurrentTemplateBackfillForUser(user)) continue;
-
-      scanned += 1;
-      const desired = computeCurrentTemplateForUser({
-        user,
-        templatesByAgencySuffix,
-        groupNameToId,
-        visibleGroupIds,
-        ignoredGroupIds: mutualAidCreatedGroupIds,
-      });
-      if (desired == null) continue;
-
-      const current = String(attrs.current_template || user.current_template || "").trim();
-      if (current === desired) continue;
-
-      const uid = String(user?.pk ?? user?.id ?? "").trim();
-      if (!uid) continue;
-
-      const nextAttrs = { ...attrs, current_template: desired };
-      await db.withTransaction(async (c) => {
-        await directoryRepo.updateLocalUser(user.uuid || user.id, { attributes: nextAttrs }, c);
-        if (user.authentik_pk) {
-          await authentikOutbox.enqueue(
-            {
-              kind: "patch_user",
-              entityType: "user",
-              entityId: user.uuid || user.id,
-              authentikPk: user.authentik_pk,
-              username: user.username,
-              payload: { authentikPk: user.authentik_pk, patch: { attributes: nextAttrs } },
-            },
-            c
-          );
-        }
-      });
-      updated += 1;
-    }
-
-    hasNext = !!result.hasNext;
-    page += 1;
-    if (page > 500) break;
-  }
-
-  if (updated > 0) invalidateUsersCache();
-  return { scanned, updated };
+function userCurrentTemplate(user) {
+  const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
+  return String(attrs.current_template || user?.current_template || "").trim();
 }
 
-async function getCurrentTemplateBackfillStats() {
-  const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
-  const list = Array.isArray(users) ? users : [];
+async function loadCurrentTemplateMatchContext() {
   const templates = templatesStore.load();
-  const allGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
+  const allGroups = await directoryRepo.listAllLocalGroups({ includeHidden: false });
 
   const groupNameToId = new Map(
     (Array.isArray(allGroups) ? allGroups : []).map((g) => [
@@ -3855,7 +3748,84 @@ async function getCurrentTemplateBackfillStats() {
     if (!templatesByAgencySuffix.has(sfx)) templatesByAgencySuffix.set(sfx, []);
     templatesByAgencySuffix.get(sfx).push(t);
   }
-  const mutualAidCreatedGroupIds = loadMutualAidCreatedGroupIdSet();
+
+  return {
+    templatesByAgencySuffix,
+    groupNameToId,
+    visibleGroupIds,
+    ignoredGroupIds: loadMutualAidCreatedGroupIdSet(),
+  };
+}
+
+async function persistUserCurrentTemplate(user, desired) {
+  const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
+  const nextAttrs = { ...attrs, current_template: desired };
+  await db.withTransaction(async (c) => {
+    await directoryRepo.updateLocalUser(user.uuid || user.id, { attributes: nextAttrs }, c);
+    if (user.authentik_pk) {
+      await authentikOutbox.enqueue(
+        {
+          kind: "patch_user",
+          entityType: "user",
+          entityId: user.uuid || user.id,
+          authentikPk: user.authentik_pk,
+          username: user.username,
+          payload: { authentikPk: user.authentik_pk, patch: { attributes: nextAttrs } },
+        },
+        c
+      );
+    }
+  });
+}
+
+/**
+ * Recompute attributes.current_template for users in an agency after group/template renames.
+ * Uses fresh group list + template definitions so template-prefill matching stays consistent.
+ */
+async function reconcileCurrentTemplateForAgencySuffix(agencySuffix) {
+  const sfx = String(agencySuffix || "").trim().toLowerCase();
+  if (!sfx) return { scanned: 0, updated: 0 };
+
+  const ctx = await loadCurrentTemplateMatchContext();
+  const templatesByAgencySuffix = new Map();
+  templatesByAgencySuffix.set(sfx, ctx.templatesByAgencySuffix.get(sfx) || []);
+
+  let scanned = 0;
+  let updated = 0;
+  const users = await directoryRepo.listUsersByAgencySuffix(sfx);
+
+  for (const user of users) {
+    const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
+    if (String(attrs.agency || user.agency || "").trim().toLowerCase() !== sfx) continue;
+    if (shouldSkipCurrentTemplateBackfillForUser(user)) continue;
+
+    scanned += 1;
+    const desired = computeCurrentTemplateForUser({
+      user,
+      templatesByAgencySuffix,
+      groupNameToId: ctx.groupNameToId,
+      visibleGroupIds: ctx.visibleGroupIds,
+      ignoredGroupIds: ctx.ignoredGroupIds,
+    });
+    if (desired == null) continue;
+
+    const current = userCurrentTemplate(user);
+    if (current === desired) continue;
+    if (!String(user?.uuid || user?.id || "").trim()) continue;
+
+    await persistUserCurrentTemplate(user, desired);
+    updated += 1;
+  }
+
+  if (updated > 0) invalidateUsersCache();
+  return { scanned, updated };
+}
+
+async function getCurrentTemplateBackfillStats() {
+  const [list, ctx] = await Promise.all([
+    getAllUsersRaw({ includeHiddenPrefixes: true }),
+    loadCurrentTemplateMatchContext(),
+  ]);
 
   let missing = 0;
   let mismatch = 0;
@@ -3867,18 +3837,12 @@ async function getCurrentTemplateBackfillStats() {
       skipped += 1;
       continue;
     }
-    const desired = computeCurrentTemplateForUser({
-      user,
-      templatesByAgencySuffix,
-      groupNameToId,
-      visibleGroupIds,
-      ignoredGroupIds: mutualAidCreatedGroupIds,
-    });
+    const desired = computeCurrentTemplateForUser({ user, ...ctx });
     if (desired == null) {
       skipped += 1;
       continue;
     }
-    const current = String(user?.attributes?.current_template || "").trim();
+    const current = userCurrentTemplate(user);
     if (!current) {
       missing += 1;
       if (sampleUsers.length < 25) sampleUsers.push(String(user?.username || user?.pk || ""));
@@ -3902,66 +3866,40 @@ async function getCurrentTemplateBackfillStats() {
 }
 
 async function backfillCurrentTemplateAttributes({ dryRun = true } = {}) {
-  const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
-  const list = Array.isArray(users) ? users : [];
-  const templates = templatesStore.load();
-  const allGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
-
-  const groupNameToId = new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
-      String(g?.name || "").trim().toLowerCase(),
-      String(g?.pk || "").trim(),
-    ])
-  );
-  const visibleGroupIds = new Set(
-    (Array.isArray(allGroups) ? allGroups : [])
-      .map((g) => String(g?.pk || "").trim())
-      .filter(Boolean)
-  );
-
-  const templatesByAgencySuffix = new Map();
-  for (const t of Array.isArray(templates) ? templates : []) {
-    const sfx = String(t?.agencySuffix || "").trim().toLowerCase();
-    if (!sfx) continue;
-    if (!templatesByAgencySuffix.has(sfx)) templatesByAgencySuffix.set(sfx, []);
-    templatesByAgencySuffix.get(sfx).push(t);
-  }
-  const mutualAidCreatedGroupIds = loadMutualAidCreatedGroupIdSet();
+  const [list, ctx] = await Promise.all([
+    getAllUsersRaw({ includeHiddenPrefixes: true }),
+    loadCurrentTemplateMatchContext(),
+  ]);
 
   let updated = 0;
   let skipped = 0;
+  let failed = 0;
   const sampleUsers = [];
+  const failedUsers = [];
 
   for (const user of list) {
     if (shouldSkipCurrentTemplateBackfillForUser(user)) {
       skipped += 1;
       continue;
     }
-    const desired = computeCurrentTemplateForUser({
-      user,
-      templatesByAgencySuffix,
-      groupNameToId,
-      visibleGroupIds,
-      ignoredGroupIds: mutualAidCreatedGroupIds,
-    });
+    const desired = computeCurrentTemplateForUser({ user, ...ctx });
     if (desired == null) {
       skipped += 1;
       continue;
     }
-    const current = String(user?.attributes?.current_template || "").trim();
+    const current = userCurrentTemplate(user);
     if (current === desired) continue;
+    if (!String(user?.uuid || user?.id || "").trim()) {
+      skipped += 1;
+      continue;
+    }
 
     if (!dryRun) {
-      const attrs = user?.attributes && typeof user.attributes === "object" ? user.attributes : {};
       try {
-        await api.patch(`/core/users/${user.pk}/`, {
-          attributes: {
-            ...attrs,
-            current_template: desired,
-          },
-        });
+        await persistUserCurrentTemplate(user, desired);
       } catch {
-        skipped += 1;
+        failed += 1;
+        if (failedUsers.length < 100) failedUsers.push(String(user?.username || user?.pk || ""));
         continue;
       }
     }
@@ -3974,43 +3912,24 @@ async function backfillCurrentTemplateAttributes({ dryRun = true } = {}) {
     scanned: list.length,
     updated,
     skipped,
+    failed,
     dryRun: !!dryRun,
     sampleUsers,
+    failedUsers,
   };
 }
 
 async function getCurrentTemplateBackfillPreviewRows() {
-  const users = await getAllUsersRaw({ includeHiddenPrefixes: true });
-  const list = Array.isArray(users) ? users : [];
-  const templates = templatesStore.load();
-  const allGroups = await directoryRepo.listGroupsMatching({ includeHidden: false, limit: 500 });
-
-  const groupNameToId = new Map(
-    (Array.isArray(allGroups) ? allGroups : []).map((g) => [
-      String(g?.name || "").trim().toLowerCase(),
-      String(g?.pk || "").trim(),
-    ])
-  );
-  const visibleGroupIds = new Set(
-    (Array.isArray(allGroups) ? allGroups : [])
-      .map((g) => String(g?.pk || "").trim())
-      .filter(Boolean)
-  );
-
-  const templatesByAgencySuffix = new Map();
-  for (const t of Array.isArray(templates) ? templates : []) {
-    const sfx = String(t?.agencySuffix || "").trim().toLowerCase();
-    if (!sfx) continue;
-    if (!templatesByAgencySuffix.has(sfx)) templatesByAgencySuffix.set(sfx, []);
-    templatesByAgencySuffix.get(sfx).push(t);
-  }
-  const mutualAidCreatedGroupIds = loadMutualAidCreatedGroupIdSet();
+  const [list, ctx] = await Promise.all([
+    getAllUsersRaw({ includeHiddenPrefixes: true }),
+    loadCurrentTemplateMatchContext(),
+  ]);
 
   const rows = [];
   for (const user of list) {
     const attrs = user?.attributes || {};
-    const agencySuffix = String(attrs.agency || "").trim().toLowerCase();
-    const current = String(attrs.current_template || "").trim();
+    const agencySuffix = String(attrs.agency || user.agency || "").trim().toLowerCase();
+    const current = userCurrentTemplate(user);
     const username = String(user?.username || "").trim();
     const displayName = String(user?.name || "").trim();
     const userId = String(user?.pk || user?.id || "").trim();
@@ -4028,13 +3947,7 @@ async function getCurrentTemplateBackfillPreviewRows() {
       continue;
     }
 
-    const desired = computeCurrentTemplateForUser({
-      user,
-      templatesByAgencySuffix,
-      groupNameToId,
-      visibleGroupIds,
-      ignoredGroupIds: mutualAidCreatedGroupIds,
-    });
+    const desired = computeCurrentTemplateForUser({ user, ...ctx });
 
     if (desired == null) {
       rows.push({
