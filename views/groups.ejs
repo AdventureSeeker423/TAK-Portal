@@ -152,6 +152,15 @@
             <th class="sortable" data-key="name">
               Group Name <span class="sortIndicator" aria-hidden="true"></span>
             </th>
+            <th class="sortable groupTypeCol" data-key="type">
+              Type <span class="sortIndicator" aria-hidden="true"></span>
+            </th>
+            <th class="sortable groupScopeCol" data-key="scope">
+              Scope <span class="sortIndicator" aria-hidden="true"></span>
+            </th>
+            <th class="sortable groupBehaviorCol" data-key="behavior">
+              Behavior <span class="sortIndicator" aria-hidden="true"></span>
+            </th>
             <% if (isGlobalAdmin) { %>
             <th class="sortable groupPrivateCol" data-key="private">
               Private <span class="sortIndicator" aria-hidden="true"></span>
@@ -484,6 +493,9 @@ function normalizeSortValue(v){
 function getSortValue(group, key){
   if (!group) return "";
   if (key === "name") return normalizeSortValue(group.name);
+  if (key === "type") return normalizeSortValue(groupTypeLabel(group));
+  if (key === "scope") return normalizeSortValue(groupScopeLabel(group));
+  if (key === "behavior") return normalizeSortValue(groupBehaviorLabel(group));
   if (key === "private") {
     const isPriv = groupIsPrivate(group);
     // Sort as 0/1 so non-private comes first in ascending order
@@ -1069,6 +1081,43 @@ function getPortalGroupScope(g) {
   return "global";
 }
 
+function groupTypeLabel(g) {
+  switch (getPortalGroupScope(g)) {
+    case "agency": return "Agency";
+    case "county": return "County";
+    case "region": return "Region";
+    case "state": return "State";
+    default: return "Global";
+  }
+}
+
+function groupScopeLabel(g) {
+  const type = getPortalGroupScope(g);
+  const detail = groupCreatedTypeDetail(g);
+  if (type === "agency") {
+    if (detail) return detail;
+    const prefix = getPortalGroupAgencyPrefixDetail(g);
+    if (prefix) {
+      const agency = (agenciesCache || []).find(
+        (a) => String(a.groupPrefix || "").trim().toUpperCase() === prefix.toUpperCase()
+      );
+      return String(agency?.name || prefix).trim();
+    }
+    return "";
+  }
+  if (type === "county") return getPortalGroupCountyDetail(g) || detail;
+  if (type === "region") return getPortalGroupRegionDetail(g) || detail;
+  if (type === "state") return getPortalGroupStateDetail(g) || detail;
+  return "";
+}
+
+function groupBehaviorLabel(g) {
+  const behavior = parseGroupName(g?.name || "").behavior;
+  if (behavior === "read") return "READ";
+  if (behavior === "write") return "WRITE";
+  return "BOTH";
+}
+
 function getPortalGroupStateDetail(g) {
   const parsed = parseGroupName(g?.name || "");
   if (parsed.type === "state" && parsed.state) {
@@ -1342,6 +1391,9 @@ function renderGroups(){
     const editable = !locked && isGroupEditable(g);
     const desc = groupDescriptionText(g);
     const isPrivate = groupIsPrivate(g);
+    const typeLabel = groupTypeLabel(g);
+    const scopeLabel = groupScopeLabel(g);
+    const behaviorLabel = groupBehaviorLabel(g);
     const patchedWithLabel =
       CAN_SEE_CHANNEL_PATCH && Array.isArray(g.patchedWith) && g.patchedWith.length
         ? g.patchedWith.join(", ")
@@ -1355,14 +1407,17 @@ function renderGroups(){
         ${patchedWithLabel ? `<div class="groupPatchedText">Channel Patched With ${esc(patchedWithLabel)}</div>` : ""}
         ${IS_GLOBAL_ADMIN && isPrivate ? `<span class="groupPrivateBadge cardMetaBadge">Private</span>` : ""}
       </td>
-      ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell">${isPrivate ? "Private" : ""}</td>` : ``}
+      <td class="groupTypeCell" data-label="Type">${esc(typeLabel)}</td>
+      <td class="groupScopeCell" data-label="Scope">${esc(scopeLabel || "—")}</td>
+      <td class="groupBehaviorCell" data-label="Behavior">${esc(behaviorLabel)}</td>
+      ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell" data-label="Private">${isPrivate ? "Private" : ""}</td>` : ``}
       <td class="groupActionsCell cardActionsCell">
         <div class="groupActionsRow cardActionsRow">
           ${editable ? `
             <button class="btn" type="button"
               onclick="editGroupName('${esc(g.pk)}')">Edit</button>
           ` : ``}
-          <button class="btn" type="button"
+          <button class="btn btn-access" type="button"
             onclick="openGroupMembers('${esc(g.pk)}')">Members</button>
           ${locked ? `<span class="muted">Actions Hidden</span>` : editable ? `
             <button class="btn danger" type="button"
@@ -2086,7 +2141,7 @@ let membersFilterTimer = null;
 
 window.setMembersSort = function(key){
   key = String(key || "").toLowerCase();
-  if (!["username", "name", "agency", "template", "status"].includes(key)) return;
+  if (!["username", "name", "agency", "template"].includes(key)) return;
   if (membersSortKey === key) {
     membersSortDir = membersSortDir === "asc" ? "desc" : "asc";
   } else {
@@ -2117,9 +2172,11 @@ function memberTemplateLabel(u){
 }
 
 function memberSortValue(u, key){
-  if (key === "agency") return memberAgencyLabel(u).abbr.toLowerCase();
+  if (key === "agency") {
+    const agency = memberAgencyLabel(u);
+    return String(agency.name || agency.abbr || "").toLowerCase();
+  }
   if (key === "template") return memberTemplateLabel(u).toLowerCase();
-  if (key === "status") return u?.is_active ? "enabled" : "disabled";
   return String(u?.[key] || "").toLowerCase();
 }
 
@@ -2157,9 +2214,8 @@ function renderMembersList(){
         <div class="muted membersUserMeta">${esc(u.name || "—")}</div>
         ${email ? `<div class="muted membersUserMeta">${esc(email)}</div>` : ""}
       </td>
-      <td class="membersAgencyCell" title="${esc(agency.name || agency.abbr)}">${esc(agency.abbr || "—")}</td>
+      <td class="membersAgencyCell">${esc(agency.name || agency.abbr || "—")}</td>
       <td class="membersTemplateCell">${esc(template || "—")}</td>
-      <td class="membersStatusCell">${active ? "Enabled" : "Disabled"}</td>
       <td class="membersRemoveCell">
         <button class="btn danger" type="button"
           onclick="removeUserFromGroup('${esc(u.pk)}')">Remove</button>
@@ -2175,7 +2231,6 @@ function renderMembersList(){
           <th><span style="cursor:pointer;" onclick="setMembersSort('username')">User${sortArrow('username')}</span></th>
           <th><span style="cursor:pointer;" onclick="setMembersSort('agency')">Agency${sortArrow('agency')}</span></th>
           <th><span style="cursor:pointer;" onclick="setMembersSort('template')">Template${sortArrow('template')}</span></th>
-          <th><span style="cursor:pointer;" onclick="setMembersSort('status')">Status${sortArrow('status')}</span></th>
           <th style="text-align:right;">Actions</th>
         </tr>
       </thead>
@@ -3311,6 +3366,16 @@ th.sortable:hover{
   max-width: 320px;
 }
 
+.groupsListTable .groupTypeCell,
+.groupsListTable .groupBehaviorCell,
+.groupsListTable .groupPrivateCell {
+  white-space: nowrap;
+}
+
+.groupsListTable .groupScopeCell {
+  max-width: 220px;
+}
+
 .groupsListTable .groupNameText {
   white-space: nowrap;
   overflow: hidden;
@@ -3390,7 +3455,10 @@ th.sortable:hover{
   }
 
   .groupsListTable .cardTitleCell { order: 1; }
-  .groupsListTable .cardActionsCell { order: 2; }
+  .groupsListTable .groupTypeCell { order: 2; }
+  .groupsListTable .groupScopeCell { order: 3; }
+  .groupsListTable .groupBehaviorCell { order: 4; }
+  .groupsListTable .cardActionsCell { order: 5; }
   .groupsListTable .groupPrivateCell { order: 99; display: none !important; }
 
   .listCardTable tbody td {
@@ -3401,6 +3469,22 @@ th.sortable:hover{
     overflow-wrap: normal;
     min-width: 0 !important;
     max-width: none !important;
+  }
+
+  .listCardTable tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .listCardTable .cardTitleCell::before,
+  .listCardTable .cardActionsCell::before {
+    display: none;
   }
 
   .listCardTable .cardTitleCell {
@@ -3692,9 +3776,11 @@ th.sortable:hover{
   margin-top: 1px;
 }
 
-#membersOverlay .membersAgencyCell,
-#membersOverlay .membersTemplateCell,
-#membersOverlay .membersStatusCell {
+#membersOverlay .membersAgencyCell {
+  min-width: 8rem;
+}
+
+#membersOverlay .membersTemplateCell {
   white-space: nowrap;
 }
 
