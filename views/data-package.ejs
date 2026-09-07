@@ -12,8 +12,9 @@
 
   <div id="statusBanner" class="card data-packages-status" style="display:none;" role="status"></div>
 
-  <div class="card">
-    <h2 style="margin-top:0;">Upload Data Package</h2>
+  <div class="card createFormCard">
+    <h2>Upload Data Package</h2>
+    <div class="createForm">
     <div class="data-packages-upload-block">
       <label class="data-packages-upload-label" for="uploadFile">Choose File</label>
       <div class="data-packages-upload-inline">
@@ -26,7 +27,8 @@
         <button type="button" class="btn success data-packages-upload-btn" id="btnUploadPackage">Upload Data Package</button>
       </div>
     </div>
-    <div id="uploadMsg" class="msg" style="margin-top:10px;"></div>
+    <div id="uploadMsg" class="msg"></div>
+    </div>
   </div>
 
   <div class="card" style="margin-top:1.25rem;">
@@ -117,7 +119,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
   }
   .data-packages-page .data-packages-upload-input {
     flex: 1 1 260px;

@@ -8,9 +8,10 @@
     singleFallbackTitle: "Agency Mutual Aid"
   }) %>
 
-  <div class="card">
+  <div class="card createFormCard">
     <h2>Create Mutual Aid</h2>
 
+    <div class="createForm">
     <div class="row createMaFields">
       <label class="createMaField createMaField--type">Type
         <select id="maType">
@@ -55,7 +56,8 @@
       </div>
     </div>
 
-    <div id="maCreateMsg" class="msg" style="margin-top:10px;"></div>
+    <div id="maCreateMsg" class="msg"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -155,13 +157,13 @@
   .row.createMaFields {
     align-items: flex-end;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
   }
   .createMaField {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     min-width: 0;
   }
   .createMaField select,

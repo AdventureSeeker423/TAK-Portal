@@ -12,9 +12,9 @@
 
   <div id="statusBanner" class="card data-sync-status" style="display: none;" role="status"></div>
 
-  <div class="card">
-    <h2 style="margin-top: 0;">Create Data Sync Mission</h2>
-    <div class="grid2">
+  <div class="card createFormCard">
+    <h2>Create Data Sync Mission</h2>
+    <div class="grid2 createForm">
       <div class="grid3 data-sync-create-top" style="grid-column: 1 / -1;">
         <label>Data Sync Name
           <input type="text" id="createMissionName" autocomplete="off" placeholder="e.g. Incident Alpha" style="width: 100%; box-sizing: border-box;" />
@@ -41,7 +41,7 @@
           <button type="button" id="createMissionPwToggle" class="passwordToggle" aria-label="Show password" title="Show password">👁</button>
         </div>
       </label>
-      <div class="data-sync-create-actions" style="grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
+      <div class="data-sync-create-actions createActionsRow" style="grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
         <span id="createMissionMsg" class="msg" style="margin-right: auto;"></span>
         <button type="button" class="btn success" id="btnCreateMissionSubmit">Create New Data Sync</button>
       </div>

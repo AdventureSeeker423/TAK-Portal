@@ -720,7 +720,7 @@ label {
     color: var(--text);
 }
 
-/* Compact create forms (Users, Groups, Templates, Agencies) */
+/* Compact create forms (Users, Groups, Templates, Agencies, Mutual Aid, Locate, Channel Patch, Integrations, Email, Data Sync, Data Package) */
 .createFormCard > h2 {
     margin-bottom: 10px;
 }
@@ -731,6 +731,7 @@ label {
 }
 
 .createForm.grid2,
+.createForm.grid3,
 .createForm.templatesGrid {
     gap: 10px;
 }
@@ -743,7 +744,11 @@ label {
 .createForm .createFinalRow,
 .createForm .agencyCreateRow,
 .createForm .templateTopRow,
-.createForm .templateSecondRow {
+.createForm .templateSecondRow,
+.createForm .createMaFields,
+.createForm .loc-create-row,
+.createForm .data-sync-create-top,
+.createForm .grid3 {
     gap: 10px;
 }
 
@@ -754,17 +759,51 @@ label {
 }
 
 .createForm .createActionsRow,
-.createForm .createGroupActionRow {
+.createForm .createGroupActionRow,
+.createForm .loc-create-footer,
+.createForm .cp-formFooter,
+.createForm .data-sync-create-actions {
     margin-top: 0;
+    margin-bottom: 0;
     align-items: center;
+    gap: 10px;
 }
 
-.createForm .groupFilterRow {
+.createForm .groupFilterRow,
+.createForm .cp-channelToolbar {
     margin-top: 0;
 }
 
 .createForm .groupsBox {
     margin-top: 0;
+}
+
+.createForm .createMaField,
+.createForm .loc-field,
+.createForm .loc-field-block,
+.createForm .cp-field {
+    gap: 6px;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.createForm .loc-drop-row,
+.createForm .loc-fields-head,
+.createForm .segmented {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.createForm .loc-fields:empty {
+    display: none;
+}
+
+.createForm .msg {
+    margin-left: 0;
+}
+
+.createFormHeader {
+    margin-bottom: 10px;
 }
 
 input,

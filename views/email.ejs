@@ -10,8 +10,8 @@
     emailMode: true
   }) %>
 
-  <div class="card">
-    <h2 style="margin-top:0;">Choose Recipients</h2>
+  <div class="card createFormCard">
+    <h2>Choose Recipients</h2>
 
     <%
       const settingsObj = (typeof settings !== "undefined" && settings) ? settings : {};
@@ -20,13 +20,14 @@
     %>
 
     <% if (!emailEnabled) { %>
-      <div class="alert error" style="margin-bottom:12px;">
+      <div class="alert error">
         Email is currently disabled. Configure SMTP and set EMAIL_ENABLED=true in Settings to use this page.
       </div>
     <% } %>
 
-    <label style="display:block; margin-bottom:6px;">Send to</label>
-    <div class="segmented" style="margin-bottom:14px;">
+    <div class="createForm">
+    <label>Send to
+    <div class="segmented">
       <button class="segBtn active" type="button" data-mode="agency"><%= (agencyOnlyEmailPage && !(typeof isMultiAgencyAdmin !== "undefined" && isMultiAgencyAdmin)) ? "Entire Agency" : "Agency" %></button>
       <% if (isGlobalAdmin) { %>
         <button class="segBtn" type="button" data-mode="agency_admins">Agency Admins</button>
@@ -38,10 +39,11 @@
         <button class="segBtn" type="button" data-mode="all_agency_admins" id="emailAllAgencyAdminsModeBtn">All Agency Admins</button>
       <% } %>
     </div>
+    </label>
 
     <% if (isGlobalAdmin || (agencyOnlyEmailPage && typeof isMultiAgencyAdmin !== "undefined" && isMultiAgencyAdmin)) { %>
     <!-- Agency: dropdown (global admins and multi-agency admins) -->
-    <div id="emailAgencyPane" style="margin-top:8px;">
+    <div id="emailAgencyPane">
       <label class="email-dropdown-label">Agencies</label>
       <div id="emailAgencyDropdown" class="email-dropdown filter-multiselect">
         <button type="button" class="btn filter-toggle email-dropdown-toggle" id="emailAgencyToggle">Select agencies ▾</button>
@@ -60,7 +62,7 @@
     <% } %>
 
     <!-- Groups: dropdown with checkboxes -->
-    <div id="emailGroupsPane" style="display:none; margin-top:8px;">
+    <div id="emailGroupsPane" style="display:none;">
       <label class="email-dropdown-label">Groups</label>
       <div id="emailGroupDropdown" class="email-dropdown filter-multiselect">
         <button type="button" class="btn filter-toggle email-dropdown-toggle" id="emailGroupToggle">Select groups ▾</button>
@@ -78,7 +80,7 @@
     </div>
 
     <!-- Users: dropdown with checkboxes -->
-    <div id="emailUsersPane" style="display:none; margin-top:8px;">
+    <div id="emailUsersPane" style="display:none;">
       <label class="email-dropdown-label">Users</label>
       <div id="emailUserDropdown" class="email-dropdown filter-multiselect">
         <button type="button" class="btn filter-toggle email-dropdown-toggle" id="emailUserToggle">Select users ▾</button>
@@ -96,7 +98,7 @@
     </div>
 
     <!-- All users (global admins only) -->
-    <div id="emailAllPane" style="display:none; margin-top:8px;">
+    <div id="emailAllPane" style="display:none;">
       <p>
         This will send an email to <strong>all users across all agencies</strong>.
       </p>
@@ -107,7 +109,7 @@
     </div>
 
     <!-- All agency admins (global admins only) -->
-    <div id="emailAllAgencyAdminsPane" style="display:none; margin-top:8px;">
+    <div id="emailAllAgencyAdminsPane" style="display:none;">
       <p>
         This will send an email to <strong>all users in any agency admin group</strong> across all agencies.
       </p>
@@ -116,17 +118,19 @@
         <span>I understand and want to email all agency admins.</span>
       </label>
     </div>
+    </div>
   </div>
 
-  <div class="card" style="margin-top:16px;">
-    <h2 style="margin-top:0;">Compose Message</h2>
+  <div class="card createFormCard">
+    <h2>Compose Message</h2>
 
+    <div class="createForm">
     <label>
       Subject
       <input id="emailSubject" placeholder="Subject" />
     </label>
 
-    <label style="margin-top:8px;">
+    <label>
       Message
       <textarea
         id="emailBody"
@@ -136,7 +140,7 @@
       ></textarea>
     </label>
 
-    <div class="row" style="margin-top:12px; align-items:center; justify-content:space-between;">
+    <div class="row createActionsRow" style="align-items:center; justify-content:space-between;">
       <span id="emailStatus" class="msg"></span>
       <div class="row" style="gap:8px;">
         <button class="btn" type="button" id="emailResetBtn">Reset</button>
@@ -144,6 +148,7 @@
           Send Email
         </button>
       </div>
+    </div>
     </div>
   </div>
 </main>

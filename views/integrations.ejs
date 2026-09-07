@@ -4,10 +4,10 @@
 <main class="main">
   <h1>Integrations</h1>
 
-  <div class="card">
+  <div class="card createFormCard">
     <h2>Create Integration</h2>
 
-    <form id="createForm" autocomplete="off">
+    <form id="createForm" class="createForm" autocomplete="off">
       <div class="row">
         <label>Integration Type
           <select id="integrationType" name="type" style="min-width: 160px;">
@@ -48,8 +48,8 @@
         </label>
 
       </div>
-      <div id="createManualGroupsWrap" style="margin-top: 12px;">
-        <label style="display:block;">
+      <div id="createManualGroupsWrap">
+        <label>
           Groups
           <div class="groupFilterRow">
             <input id="createGroupFilter" placeholder="Search groups..." />
@@ -63,7 +63,7 @@
           </div>
         </label>
       </div>
-      <div class="createActionsRow" style="margin-top: 12px; display:flex; align-items:center; gap:10px; flex-wrap: wrap;">
+      <div class="createActionsRow" style="display:flex; align-items:center; gap:10px; flex-wrap: wrap;">
         <div id="createMsg" class="msg"></div>
         <button class="btn success createIntegrationSubmitBtn" type="submit">Create New Integration</button>
       </div>

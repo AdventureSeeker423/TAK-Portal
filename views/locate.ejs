@@ -8,12 +8,13 @@
     singleFallbackTitle: "Agency Locate Persons"
   }) %>
 
-  <div class="card">
-    <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
+  <div class="card createFormCard">
+    <div class="row createFormHeader" style="justify-content: space-between; align-items: center;">
       <h2 style="margin: 0;" id="locFormTitle">Create Locator</h2>
       <button class="btn" id="locCancelEditBtn" type="button" style="display:none;">Cancel</button>
     </div>
 
+    <div class="createForm">
     <div class="row loc-create-row">
       <label class="loc-field loc-field-title">Locator Title
         <input id="locTitle" type="text" maxlength="120" placeholder="e.g. Missing Person" />
@@ -57,9 +58,10 @@
     </div>
     <div id="locFields" class="loc-fields"></div>
 
-    <div class="row loc-create-footer">
+    <div class="row loc-create-footer createActionsRow">
       <div id="locFormMsg" class="msg"></div>
       <button class="btn success" type="button" id="locSubmitBtn">Create New Locator</button>
+    </div>
     </div>
   </div>
 
@@ -168,15 +170,15 @@
 <style>
   .locate-page.main { min-width: 0; max-width: 100%; }
   .locate-page .card { min-width: 0; }
-  .loc-create-row { align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+  .loc-create-row { align-items: flex-end; gap: 10px; flex-wrap: wrap; }
   .loc-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 160px; }
   .loc-field-title { flex: 2 1 220px; }
   .loc-field-interval { flex: 0 1 160px; }
-  .loc-field-block { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .loc-field-block { display: flex; flex-direction: column; gap: 6px; }
   .loc-field-block textarea { width: 100%; box-sizing: border-box; resize: vertical; }
-  .loc-drop-row { margin-top: 12px; }
+  .loc-drop-row { margin-top: 0; }
   .loc-drop-row[hidden] { display: none; }
-  .loc-fields-head { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 8px; font-weight: 600; }
+  .loc-fields-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
   .loc-fields { display: flex; flex-direction: column; gap: 8px; }
   .loc-field-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; padding: 8px 0; border-top: 1px solid rgba(127,127,127,.18); }
   .loc-field-row select, .loc-field-row input { min-width: 0; }
@@ -191,7 +193,7 @@
   }
   .loc-field-row > .btn { align-self: flex-end; }
   .loc-field-options { flex: 1 1 100%; }
-  .loc-create-footer { margin-top: 14px; justify-content: flex-end; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .loc-create-footer { justify-content: flex-end; gap: 10px; align-items: center; flex-wrap: wrap; }
   .loc-create-footer .msg { margin-right: auto; margin-left: 0; }
   #sendLinkOverlay label { display: block; margin-top: 12px; font-weight: 600; }
   #sendLinkOverlay input { width: 100%; box-sizing: border-box; margin-top: 6px; }
