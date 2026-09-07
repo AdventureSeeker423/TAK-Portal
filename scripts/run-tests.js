@@ -41,6 +41,8 @@ const TEST_FILES = [
   "jsonImport.restore.test.js",
   "directorySearch.sql.test.js",
   "outbox.skipLocked.test.js",
+  "cryptoSecrets.crossProcess.test.js",
+  "outbox.secrets.test.js",
   "directorySync.deadLetter.test.js",
   "directorySync.inboundAbort.test.js",
   "health.migration.test.js",
