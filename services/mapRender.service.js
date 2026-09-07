@@ -60,6 +60,21 @@ function parseKeySet(raw, delimiter) {
   return out;
 }
 
+function expandSpecialChannelKeySet(keys) {
+  if (keys == null) return keys;
+  const out = new Set(keys);
+  const special =
+    out.has(mapMeta.UNASSIGNED_CHANNEL_KEY) ||
+    out.has("unassigned") ||
+    out.has(mapMeta.STALE_CHANNEL_KEY) ||
+    out.has("stale");
+  if (special) {
+    out.add(mapMeta.UNASSIGNED_CHANNEL_KEY);
+    out.add(mapMeta.STALE_CHANNEL_KEY);
+  }
+  return out;
+}
+
 function parseGeoJsonQuery(query) {
   const channelsRaw = String(query?.channels || "").trim();
   /** @type {Set<string>|null} */
@@ -68,10 +83,10 @@ function parseGeoJsonQuery(query) {
   if (channelsRaw === "__none__") {
     enabledChannelKeys = new Set();
   } else if (channelsRaw) {
-    enabledChannelKeys = parseKeySet(channelsRaw, ",");
+    enabledChannelKeys = expandSpecialChannelKeySet(parseKeySet(channelsRaw, ","));
   }
 
-  const scopeKeys = parseKeySet(query?.scopeKeys, ",");
+  const scopeKeys = expandSpecialChannelKeySet(parseKeySet(query?.scopeKeys, ","));
 
   const zoom = Number.parseFloat(query?.zoom);
   const boundsRaw = String(query?.bounds || "").trim();
@@ -121,27 +136,27 @@ function markerInBounds(marker, bounds) {
 }
 
 function markerVisible(marker, options) {
+  const uid = String(marker?.uid || "");
+  const isPriority =
+    (options?.selectedUid && uid === String(options.selectedUid)) ||
+    (options?.lockedUid && uid === String(options.lockedUid));
   const keys = markerChannelKeys(marker);
-  const scopeChannelKeys = options?.scopeChannelKeys;
+  const scopeChannelKeys = expandSpecialChannelKeySet(options?.scopeChannelKeys);
 
-  if (scopeChannelKeys !== null && scopeChannelKeys !== undefined) {
+  if (!isPriority && scopeChannelKeys !== null && scopeChannelKeys !== undefined) {
     if (scopeChannelKeys.size === 0) return false;
     if (!keys.length) return false;
     if (!keys.some((k) => scopeChannelKeys.has(k))) return false;
   }
 
-  const enabledChannelKeys = options?.enabledChannelKeys;
-  if (enabledChannelKeys !== null && enabledChannelKeys !== undefined) {
+  const enabledChannelKeys = expandSpecialChannelKeySet(options?.enabledChannelKeys);
+  if (!isPriority && enabledChannelKeys !== null && enabledChannelKeys !== undefined) {
     if (enabledChannelKeys.size === 0) return false;
     if (!keys.length) return false;
     if (!keys.some((k) => enabledChannelKeys.has(k))) return false;
   }
 
   if (!markerMatchesSearch(marker, options?.search)) return false;
-  const uid = String(marker?.uid || "");
-  const isPriority =
-    (options?.selectedUid && uid === String(options.selectedUid)) ||
-    (options?.lockedUid && uid === String(options.lockedUid));
   if (!isPriority && !markerInBounds(marker, options?.bounds)) return false;
   return true;
 }

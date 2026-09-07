@@ -19,6 +19,7 @@ import {
   isMarkerExpired,
   isMarkerStale,
   isSpecialChannelKey,
+  aliasSpecialChannelKeys,
   paintChannelKeys,
   pointInBounds,
 } from "../featureBuild";
@@ -385,9 +386,8 @@ function handle(msg: WorkerInbound): void {
     case "setChannels": {
       channelMode = msg.mode;
       enabledKeys =
-        msg.enabledKeys == null ? null : new Set(msg.enabledKeys.map((k) => String(k).toLowerCase()));
-      scopeKeys =
-        msg.scopeKeys == null ? null : new Set(msg.scopeKeys.map((k) => String(k).toLowerCase()));
+        msg.enabledKeys == null ? null : aliasSpecialChannelKeys(msg.enabledKeys);
+      scopeKeys = msg.scopeKeys == null ? null : aliasSpecialChannelKeys(msg.scopeKeys);
       labelsNeedRecompute = true;
       scheduleFlush();
       break;

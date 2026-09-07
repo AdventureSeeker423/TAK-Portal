@@ -110,6 +110,24 @@ function withUnassignedAlias(keys: string[]): string {
   return out.join(",");
 }
 
+/** If Unassigned or Stale is enabled, both keys match so last-known SA stays on the map. */
+export function aliasSpecialChannelKeys(keys: Iterable<string> | null | undefined): Set<string> | null {
+  if (keys == null) return null;
+  const out = new Set<string>();
+  for (const raw of keys) {
+    const k = String(raw || "").trim().toLowerCase();
+    if (k) out.add(k);
+  }
+  const special = [...out].some(
+    (k) => k === "__unassigned__" || k === "unassigned" || k === "__stale__" || k === "stale"
+  );
+  if (special) {
+    out.add("__unassigned__");
+    out.add("__stale__");
+  }
+  return out;
+}
+
 /** Channel keys used for paint/filter. Stale keeps the Unassigned alias so the CoT stays visible. */
 export function paintChannelKeys(
   marker: { channelKeys?: string; groups?: string[]; stale?: string | null },

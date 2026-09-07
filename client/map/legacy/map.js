@@ -1205,6 +1205,15 @@
       const key = channelBaseKeyForName(name);
       if (key) keys.add(key);
     }
+    const special =
+      keys.has("__unassigned__") ||
+      keys.has("unassigned") ||
+      keys.has("__stale__") ||
+      keys.has("stale");
+    if (special) {
+      keys.add("__unassigned__");
+      keys.add("__stale__");
+    }
     return keys;
   }
 
@@ -1307,7 +1316,11 @@
 
   function allScopedChannelsEnabled() {
     if (enabledGroups === null) return false;
-    const scoped = groupsCatalog.filter(isGroupInChannelScope);
+    const scoped = groupsCatalog.filter(function (g) {
+      if (!isGroupInChannelScope(g)) return false;
+      const key = channelGroupKey(g.name);
+      return key !== "__unassigned__" && key !== "__stale__";
+    });
     if (!scoped.length) return enabledGroups.size === 0;
     for (let i = 0; i < scoped.length; i++) {
       if (!enabledGroups.has(scoped[i].name)) return false;
@@ -1329,8 +1342,8 @@
       }
     }
     if (parts.length === 0) return null;
-    if (parts.length === 1) return parts[0];
-    return ["all"].concat(parts);
+    const channelExpr = parts.length === 1 ? parts[0] : ["all"].concat(parts);
+    return ["any", markerSelectedOrLockedExpr(), channelExpr];
   }
 
   function mergeMarkerLayerFilter(extraParts) {
@@ -2861,6 +2874,11 @@
         }
       }
       if (match) out.add(match.name);
+      else {
+        const key = channelGroupKey(itemStr);
+        if (key === "__unassigned__") out.add("Unassigned");
+        else if (key === "__stale__") out.add("Stale");
+      }
     }
     return out;
   }
@@ -4205,6 +4223,8 @@
     if (enabledGroups && enabledGroups.size) {
       let pruned = false;
       for (const n of Array.from(enabledGroups)) {
+        const key = channelGroupKey(n);
+        if (key === "__unassigned__" || key === "__stale__") continue;
         if (!nameSet.has(n)) {
           enabledGroups.delete(n);
           pruned = true;
