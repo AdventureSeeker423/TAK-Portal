@@ -2394,8 +2394,11 @@ async function boot() {
     console.warn("[boot] settings init:", e?.message || e);
   }
   try {
-    require("./services/cryptoSecrets").getKeyBuffer();
-  } catch (_) {}
+    require("./services/cryptoSecrets").getKeyBuffer({ allowCreate: true });
+  } catch (error) {
+    console.error("[boot] encryption key initialization failed:", error.message);
+    process.exit(1);
+  }
   if (!db.isConfigured()) {
     console.error("DATABASE_URL is not set");
     process.exit(1);
