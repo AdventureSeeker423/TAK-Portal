@@ -174,93 +174,111 @@
 
 <!-- Edit Group Modal -->
 <div class="modalOverlay" id="editGroupOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editGroupTitle">
+  <div class="modal editGroupModal" role="dialog" aria-modal="true" aria-labelledby="editGroupTitle">
     <div class="modalHeader">
-      <h2 id="editGroupTitle" style="margin:0;">Edit Group</h2>
+      <div class="modalHeaderLeft">
+        <h2 id="editGroupTitle" style="margin:0;">Edit Group</h2>
+      </div>
       <button class="btn" id="editGroupCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div class="card" style="margin:0;">
-        <h2 style="margin-top:0;">Edit Group</h2>
-
-        <!-- Row that mirrors Create Group -->
-        <div class="row">
-          <% if (isGlobalAdmin) { %>
-          <label>Group Type
-            <select id="editType">
-              <option value="agency">Agency-Specific Group</option>
-              <option value="county">County-Specific Group</option>
-              <option value="region">Region-Specific Group</option>
-              <option value="state">State-Specific Group</option>
-              <option value="generic">Global Group</option>
+      <div class="editGroupForm">
+        <section class="editGroupTop">
+          <div class="row">
+            <% if (isGlobalAdmin) { %>
+            <label>Group Type
+              <select id="editType">
+                <option value="agency">Agency-Specific Group</option>
+                <option value="county">County-Specific Group</option>
+                <option value="region">Region-Specific Group</option>
+                <option value="state">State-Specific Group</option>
+                <option value="generic">Global Group</option>
+              </select>
+            </label>
+            <% } else { %>
+            <select id="editType" style="display:none;" disabled>
+              <option value="agency" selected>Agency-Specific Group</option>
             </select>
-          </label>
-          <% } else { %>
-          <select id="editType" style="display:none;" disabled>
-            <option value="agency" selected>Agency-Specific Group</option>
-          </select>
-          <% } %>
+            <% } %>
 
-          <label id="editAgencyPrefixWrap" style="display:none;">Select Agency
-            <select id="editAgencyPrefixSelect">
-              <option value="">Select Agency</option>
-            </select>
-          </label>
+            <label id="editAgencyPrefixWrap" style="display:none;">Select Agency
+              <select id="editAgencyPrefixSelect">
+                <option value="">Select Agency</option>
+              </select>
+            </label>
 
-          <label id="editCountyWrap" style="display:none;">Select County
-            <select id="editCountySelect">
-              <option value="">Select County</option>
-            </select>
-          </label>
+            <label id="editCountyWrap" style="display:none;">Select County
+              <select id="editCountySelect">
+                <option value="">Select County</option>
+              </select>
+            </label>
 
-          <label id="editRegionWrap" style="display:none;">Select Region
-            <select id="editRegionSelect">
-              <option value="">Select Region</option>
-            </select>
-          </label>
-<label id="editStateWrap" style="display:none;">Select State
-  <select id="editStateSelect">
-    <option value="">Select State</option>
-  </select>
-</label>
+            <label id="editRegionWrap" style="display:none;">Select Region
+              <select id="editRegionSelect">
+                <option value="">Select Region</option>
+              </select>
+            </label>
+            <label id="editStateWrap" style="display:none;">Select State
+              <select id="editStateSelect">
+                <option value="">Select State</option>
+              </select>
+            </label>
 
-          <label style="flex: 1; min-width: 160px;">Group Name
-            <input
-              id="editGroupName"
-              placeholder="Group Name"
-              style="width: 100%;"
-            />
-          </label>
+            <label style="flex: 1; min-width: 160px;">Group Name
+              <input
+                id="editGroupName"
+                placeholder="Group Name"
+                style="width: 100%;"
+              />
+            </label>
 
-          <label style="min-width: 220px;">Channel Behavior
-            <select id="editBehaviorSelect" style="min-width: 120px;">
-              <option value="both">BOTH - Send and Recieve (default)</option>
-              <option value="read">READ - Recieve Only</option>
-              <option value="write">WRITE - Send Only</option>
-            </select>
-          </label>
+            <label style="min-width: 220px;">Channel Behavior
+              <select id="editBehaviorSelect" style="min-width: 120px;">
+                <option value="both">BOTH - Send and Receive (default)</option>
+                <option value="read">READ - Receive Only</option>
+                <option value="write">WRITE - Send Only</option>
+              </select>
+            </label>
 
-          <% if (isGlobalAdmin) { %>
-          <label id="editPrivateWrap" style="min-width: 220px;">Hide From Agency Admins
-            <select id="editPrivateSelect" style="min-width: 120px;">
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
-          </label>
-          <% } %>
-        </div>
+            <% if (isGlobalAdmin) { %>
+            <label id="editPrivateWrap" style="min-width: 220px;">Hide From Agency Admins
+              <select id="editPrivateSelect" style="min-width: 120px;">
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </label>
+            <% } %>
+          </div>
 
-        <div class="row" style="margin-top:8px;">
-          <label style="flex: 1; min-width: 0;">Group Description
-            <input
-              id="editGroupDescription"
-              placeholder="One-line description for this group (optional)"
-              style="width: 100%;"
-            />
-          </label>
-        </div>
+          <div class="row" style="margin-top:8px;">
+            <label style="flex: 1; min-width: 0;">Group Description
+              <input
+                id="editGroupDescription"
+                placeholder="One-line description for this group (optional)"
+                style="width: 100%;"
+              />
+            </label>
+          </div>
+        </section>
 
-        <div class="row" style="margin-top:16px; align-items:center; justify-content:flex-end;">
+        <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
+        <section class="editGroupAdminAccess" id="editGroupAdminAccessSection">
+          <div class="editGroupAdminAccessHead">
+            <h3>Admin Access</h3>
+            <div class="row" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
+              <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
+            </div>
+          </div>
+          <p id="adminAccessSummary" class="msg"></p>
+          <input id="adminAccessSearch" placeholder="Search agencies..." />
+          <div id="adminAccessBox" class="groupsBox editGroupAdminAccessBox">
+            <div id="adminAccessInner" class="groupsInner"></div>
+          </div>
+        </section>
+        <% } %>
+
+        <div class="editGroupFooter row">
           <span id="editGroupMsg" class="msg"></span>
           <button class="btn success" id="editGroupSaveBtn" type="button">Save Changes</button>
         </div>
@@ -269,162 +287,136 @@
   </div>
 </div>
 
-<!-- Mass Assign Modal -->
-<div class="modalOverlay" id="massOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="massTitle">
-    <div class="modalHeader">
-      <h2 id="massTitle" style="margin:0;">Mass Assign</h2>
-      <button class="btn" id="massCloseBtn" type="button">Close</button>
-    </div>
-
-    <div class="modalBody">
-      <div class="segmented" style="margin-top:4px;">
-        <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
-        <button class="segBtn" type="button" data-mode="template">Templates</button>
-        <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
-        <button class="segBtn" type="button" data-mode="group">Users With An Existing Group</button>
-        <button class="segBtn" type="button" data-mode="users">Specific Users</button>
-      </div>
-
-      <!-- Agency mode -->
-      <div id="massAgencyPane" style="margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="agencySearch"
-            placeholder="Search agencies..."
-            style="flex: 1; min-width: 0;"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="agencySelectAll" type="button">Select All</button>
-            <button class="btn" id="agencyClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="agencyList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Group mode -->
-      <div id="massGroupPane" style="display:none; margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="sourceGroupSearch"
-            placeholder="Search groups..."
-            style="flex: 1; min-width: 0;"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="groupSelectAll" type="button">Select All</button>
-            <button class="btn" id="groupClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="sourceGroupList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Template mode -->
-      <div id="massTemplatePane" style="display:none; margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="templateSearch"
-            placeholder="Search templates..."
-            style="flex: 1; min-width: 0;"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="templateSelectAll" type="button">Select All</button>
-            <button class="btn" id="templateClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="templateList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Agency Types mode -->
-      <div id="massAgencyTypePane" style="display:none; margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="agencyTypeSearch"
-            placeholder="Search agency types..."
-            style="flex: 1; min-width: 0;"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="agencyTypeSelectAll" type="button">Select All</button>
-            <button class="btn" id="agencyTypeClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="agencyTypeList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Users mode -->
-      <div id="massUsersPane" style="display:none; margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="userSearch"
-            placeholder="Search username, name, or email..."
-            style="flex: 1; min-width: 0;"
-            autocomplete="off"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="userSelectAll" type="button">Select All (shown)</button>
-            <button class="btn" id="userClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="userList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <div class="row" style="margin-top:16px; align-items:center; justify-content:flex-end;">
-        <span id="massMsg" class="msg"></span>
-        <button class="btn success" id="massApplyBtn" type="button">Mass Assign</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Group Members Modal (read-only) -->
+<!-- Group Members Modal -->
 <div class="modalOverlay" id="membersOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
+  <div class="modal membersModal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
     <div class="modalHeader">
-      <h2 id="membersTitle" style="margin:0;">Group Members</h2>
+      <div class="modalHeaderLeft">
+        <h2 id="membersTitle" style="margin:0;">Members</h2>
+      </div>
       <button class="btn" id="membersCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div id="membersSummary" class="msg"></div>
+      <div class="membersSplit" id="membersSplit">
+        <div class="membersSplitPane" id="membersListPane">
+          <div class="membersSplitPaneHead">
+            <h3>Current Members</h3>
+          </div>
+          <div id="membersSummary" class="msg"></div>
+          <input
+            id="membersFilter"
+            placeholder="Filter by username, name, or email..."
+          />
+          <div id="membersList" class="groupsBox membersListBox"></div>
+          <div class="pagination" id="membersPagination" style="display:none;">
+            <button class="btn pagination-first-last" id="membersFirstBtn" type="button">First</button>
+            <button class="btn" id="membersPrevBtn" type="button">Previous</button>
+            <span id="membersPageInfo"></span>
+            <button class="btn" id="membersNextBtn" type="button">Next</button>
+            <button class="btn pagination-first-last" id="membersLastBtn" type="button">Last</button>
+          </div>
+        </div>
 
-      <div style="margin-top:14px;">
-        <input
-          id="membersFilter"
-          placeholder="Filter by username, name, or email..."
-          style="width: 100%; box-sizing: border-box;"
-        />
-      </div>
+        <div class="membersSplitPane" id="membersMassPane">
+          <div class="membersSplitPaneHead">
+            <h3 id="massTitle">Assign</h3>
+            <div class="segmented membersMassActionToggle">
+              <button class="segBtn active" type="button" id="massActionAssignBtn">Assign</button>
+              <button class="segBtn" type="button" id="massActionUnassignBtn">Unassign</button>
+            </div>
+          </div>
 
-      <div class="pagination" id="membersPagination" style="display:none;">
-        <button class="btn pagination-first-last" id="membersFirstBtn" type="button">First</button>
-        <button class="btn" id="membersPrevBtn" type="button">Previous</button>
-        <span id="membersPageInfo"></span>
-        <button class="btn" id="membersNextBtn" type="button">Next</button>
-        <button class="btn pagination-first-last" id="membersLastBtn" type="button">Last</button>
-      </div>
+          <div class="segmented" id="massSegmented">
+            <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
+            <button class="segBtn" type="button" data-mode="template">Templates</button>
+            <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
+            <button class="segBtn" type="button" data-mode="group">Users With An Existing Group</button>
+            <button class="segBtn" type="button" data-mode="users">Specific Users</button>
+          </div>
 
-      <div
-        id="membersList"
-        class="groupsBox"
-        style="margin-top:10px; max-height: 320px; overflow:auto;"
-      ></div>
-    </div>
-  </div>
-</div>
+          <div class="membersMassPanes">
+            <div id="massAgencyPane">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="agencySearch"
+                  placeholder="Search agencies..."
+                  style="flex: 1; min-width: 0;"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="agencySelectAll">Select All</button>
+                  <button class="btn" type="button" id="agencyClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="agencyList" class="groupsBox membersMassListBox"></div>
+            </div>
 
-<!-- Admin Access Modal (which agencies' admins can see this group) -->
-<div class="modalOverlay" id="adminAccessOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="adminAccessTitle">
-    <div class="modalHeader">
-      <h2 id="adminAccessTitle" style="margin:0;">Group Admin Access</h2>
-      <button class="btn" id="adminAccessCloseBtn" type="button">Close</button>
-    </div>
-    <div class="modalBody">
-      <p id="adminAccessSummary" class="msg"></p>
-      <div class="row" style="justify-content:flex-end; align-items:center; gap:10px; margin-top:8px;">
-        <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
-        <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
-      </div>
-      <div id="adminAccessBox" class="groupsBox" style="margin-top:10px; max-height:320px; overflow:auto;">
-        <div id="adminAccessInner" class="groupsInner"></div>
+            <div id="massGroupPane" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="sourceGroupSearch"
+                  placeholder="Search groups..."
+                  style="flex: 1; min-width: 0;"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="groupSelectAll">Select All</button>
+                  <button class="btn" type="button" id="groupClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="sourceGroupList" class="groupsBox membersMassListBox"></div>
+            </div>
+
+            <div id="massTemplatePane" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="templateSearch"
+                  placeholder="Search templates..."
+                  style="flex: 1; min-width: 0;"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="templateSelectAll">Select All</button>
+                  <button class="btn" type="button" id="templateClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="templateList" class="groupsBox membersMassListBox"></div>
+            </div>
+
+            <div id="massAgencyTypePane" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="agencyTypeSearch"
+                  placeholder="Search agency types..."
+                  style="flex: 1; min-width: 0;"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="agencyTypeSelectAll">Select All</button>
+                  <button class="btn" type="button" id="agencyTypeClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="agencyTypeList" class="groupsBox membersMassListBox"></div>
+            </div>
+
+            <div id="massUsersPane" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="userSearch"
+                  placeholder="Search username, name, or email..."
+                  style="flex: 1; min-width: 0;"
+                  autocomplete="off"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="userSelectAll">Select All (shown)</button>
+                  <button class="btn" type="button" id="userClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="userList" class="groupsBox membersMassListBox"></div>
+            </div>
+          </div>
+
+          <div class="membersMassFooter row">
+            <span id="massMsg" class="msg"></span>
+            <button class="btn success" id="massApplyBtn" type="button">Mass Assign</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -434,9 +426,12 @@
 <script>
 const membersOverlay = document.getElementById("membersOverlay");
 const membersCloseBtn = document.getElementById("membersCloseBtn");
+const membersTitle = document.getElementById("membersTitle");
 const membersSummary = document.getElementById("membersSummary");
 const membersFilter = document.getElementById("membersFilter");
 const membersList = document.getElementById("membersList");
+const membersSplit = document.getElementById("membersSplit");
+const membersMassPane = document.getElementById("membersMassPane");
 const membersFirstBtn = document.getElementById("membersFirstBtn");
 const membersPrevBtn = document.getElementById("membersPrevBtn");
 const membersNextBtn = document.getElementById("membersNextBtn");
@@ -541,12 +536,12 @@ function initGroupSort(){
 }
 const reloadBtn = document.getElementById("reloadBtn");
 
-// Mass assign modal
-const massOverlay = document.getElementById("massOverlay");
-const massCloseBtn = document.getElementById("massCloseBtn");
+// Mass assign / unassign (embedded in Members modal)
 const massTitle = document.getElementById("massTitle");
 const massMsg = document.getElementById("massMsg");
 const massApplyBtn = document.getElementById("massApplyBtn");
+const massActionAssignBtn = document.getElementById("massActionAssignBtn");
+const massActionUnassignBtn = document.getElementById("massActionUnassignBtn");
 
 const massAgencyPane = document.getElementById("massAgencyPane");
 const massGroupPane = document.getElementById("massGroupPane");
@@ -1206,7 +1201,8 @@ function isGroupEditable(groupOrName){
 }
 
 function renderAgencyList(){
-  const needle = String(agencySearch.value || "").trim().toLowerCase();
+  if (!agencyList) return;
+  const needle = String(agencySearch?.value || "").trim().toLowerCase();
   const items = agencyItems().filter(x => {
     if (!needle) return true;
     return (
@@ -1360,24 +1356,16 @@ function renderGroups(){
       ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell">${isPrivate ? "Private" : ""}</td>` : ``}
       <td class="groupActionsCell cardActionsCell">
         <div class="groupActionsRow cardActionsRow">
-          <button class="btn" type="button"
-            onclick="openGroupMembers('${esc(g.pk)}')">View Members</button>
-          ${locked ? `<span class="muted">Actions Hidden</span>` : `
-            <button class="btn success" type="button"
-              onclick="openMassAssign('${esc(g.pk)}')">Assign</button>
-            <button class="btn" type="button"
-              onclick="openMassUnassign('${esc(g.pk)}')">Unassign</button>
-            ${IS_GLOBAL_ADMIN ? `
-            <button class="btn btn-access" type="button"
-              onclick="openGroupAdminAccess('${esc(g.pk)}')">Admin Access</button>
-            ` : ``}
-            ${editable ? `
+          ${editable ? `
             <button class="btn" type="button"
               onclick="editGroupName('${esc(g.pk)}')">Edit</button>
+          ` : ``}
+          <button class="btn" type="button"
+            onclick="openGroupMembers('${esc(g.pk)}')">Members</button>
+          ${locked ? `<span class="muted">Actions Hidden</span>` : editable ? `
             <button class="btn danger" type="button"
               onclick="deleteGroup('${esc(g.pk)}')">Delete</button>
-            ` : ``}
-          `}
+          ` : ``}
         </div>
       </td>
     </tr>
@@ -1753,6 +1741,7 @@ createBtn.onclick = async () => {
 // ---- Edit Group modal ----
 const editGroupOverlay = document.getElementById("editGroupOverlay");
 const editGroupCloseBtn = document.getElementById("editGroupCloseBtn");
+const editGroupTitle = document.getElementById("editGroupTitle");
 const editGroupNameInput = document.getElementById("editGroupName");
 const editGroupDescriptionInput = document.getElementById("editGroupDescription");
 const editGroupSaveBtn = document.getElementById("editGroupSaveBtn");
@@ -1834,8 +1823,16 @@ window.editGroupName = async (groupId) => {
     editPrivateSelect.value = currentPrivate === "yes" ? "yes" : "no";
   }
 
+  if (editGroupTitle) {
+    const label = stripTakPrefix(currentName);
+    editGroupTitle.textContent = label ? `Edit Group - ${label}` : "Edit Group";
+  }
+
   setMsg(editGroupMsg, "");
   showEditGroupModal(true);
+  if (IS_GLOBAL_ADMIN) {
+    loadAdminAccessForEdit(groupId).catch(() => {});
+  }
 };
 
 // Delete w/ impact
@@ -1900,19 +1897,46 @@ window.deleteGroup = async (groupId) => {
   await loadGroups();
 };
 
-function showMassModal(show){
-  massOverlay.style.display = show ? "flex" : "none";
-  document.body.classList.toggle("noScroll", !!show);
-}
-
 function setMassAction(next){
   massAction = next === "unassign" ? "unassign" : "assign";
   const actionLabel = massAction === "assign" ? "Mass Assign" : "Mass Unassign";
-  const groupLabel = stripTakPrefix(String(activeMassGroupName || activeMassGroupId || ""));
-  massTitle.textContent = `${actionLabel}: ${groupLabel}`.trim();
-  massApplyBtn.textContent = actionLabel;
+  if (massTitle) massTitle.textContent = massAction === "assign" ? "Assign" : "Unassign";
+  if (massApplyBtn) massApplyBtn.textContent = actionLabel;
+  if (massActionAssignBtn) massActionAssignBtn.classList.toggle("active", massAction === "assign");
+  if (massActionUnassignBtn) massActionUnassignBtn.classList.toggle("active", massAction === "unassign");
   if (templateModeVerb) templateModeVerb.textContent = massAction === "assign" ? "add" : "remove";
   setMsg(massMsg, "");
+}
+
+function resetMassPane(){
+  if (agencySearch) agencySearch.value = "";
+  if (agencyTypeSearch) agencyTypeSearch.value = "";
+  if (userSearch) userSearch.value = "";
+  usersSearchCache = [];
+  selectedSourceGroupIds.clear();
+  selectedUserIds.clear();
+  selectedTemplateIndices.clear();
+  renderAgencyList();
+  renderUserList([]);
+  if (sourceGroupSearch) sourceGroupSearch.value = "";
+  loadSourceGroups();
+  if (templateSearch) templateSearch.value = "";
+  renderTemplateSourceList();
+  renderAgencyTypeList();
+  setMassMode("agency");
+  updateMassPanes();
+}
+
+function prepareMassPane(groupId, groupName){
+  activeMassGroupId = String(groupId || "");
+  activeMassGroupName = String(groupName || "");
+  setMassAction("assign");
+  resetMassPane();
+}
+
+function setMembersMassPaneVisible(show){
+  if (membersSplit) membersSplit.classList.toggle("has-mass", !!show);
+  if (membersMassPane) membersMassPane.style.display = show ? "flex" : "none";
 }
 
 function selectedMassMode(){
@@ -1921,11 +1945,11 @@ function selectedMassMode(){
 
 function updateMassPanes(){
   const mode = selectedMassMode();
-  massAgencyPane.style.display = mode === "agency" ? "block" : "none";
-  massGroupPane.style.display = mode === "group" ? "block" : "none";
-  massTemplatePane.style.display = mode === "template" ? "block" : "none";
-  if (massAgencyTypePane) massAgencyTypePane.style.display = mode === "agencyType" ? "block" : "none";
-  massUsersPane.style.display = mode === "users" ? "block" : "none";
+  if (massAgencyPane) massAgencyPane.style.display = mode === "agency" ? "flex" : "none";
+  if (massGroupPane) massGroupPane.style.display = mode === "group" ? "flex" : "none";
+  if (massTemplatePane) massTemplatePane.style.display = mode === "template" ? "flex" : "none";
+  if (massAgencyTypePane) massAgencyTypePane.style.display = mode === "agencyType" ? "flex" : "none";
+  if (massUsersPane) massUsersPane.style.display = mode === "users" ? "flex" : "none";
   setMsg(massMsg, "");
 }
 
@@ -2129,17 +2153,37 @@ async function loadMembersPage(page) {
   renderMembersPagination();
 }
 
+async function refreshMembersAfterMass() {
+  if (!activeMembersGroupId) return;
+  try {
+    await loadMembersPage(membersCurrentPage || 1);
+  } catch (_) {}
+}
+
 window.openGroupMembers = async (groupId) => {
   setMsg(listMsg, "");
 
   const g = (groupsCache || []).find(x => String(x.pk) === String(groupId));
   activeMembersGroupName = String(g?.name || "");
   activeMembersGroupId = String(groupId || "");
+  const groupLabel = stripTakPrefix(activeMembersGroupName || activeMembersGroupId);
+  if (membersTitle) {
+    membersTitle.textContent = groupLabel ? `Members - ${groupLabel}` : "Members";
+  }
+
+  const locked = groupActionsLocked(activeMembersGroupName);
+  setMembersMassPaneVisible(!locked);
+  if (!locked) {
+    prepareMassPane(groupId, activeMembersGroupName);
+  } else {
+    activeMassGroupId = "";
+    activeMassGroupName = "";
+  }
 
   membersSummary.textContent = "Loading members...";
   membersSummary.className = "msg";
   membersList.innerHTML = "";
-  membersFilter.value = "";
+  if (membersFilter) membersFilter.value = "";
   membersCurrentPage = 1;
   membersTotalCount = 0;
   membersHasNext = false;
@@ -2326,22 +2370,31 @@ editGroupSaveBtn.onclick = async () => {
   showEditGroupModal(false);
 };
 
-editGroupCloseBtn.onclick = () => showEditGroupModal(false);
-editGroupOverlay.addEventListener("click", (e) => {
-  if (e.target === editGroupOverlay) showEditGroupModal(false);
-});
+if (editGroupCloseBtn) editGroupCloseBtn.onclick = () => showEditGroupModal(false);
+if (editGroupOverlay) {
+  editGroupOverlay.addEventListener("click", (e) => {
+    if (e.target === editGroupOverlay) showEditGroupModal(false);
+  });
+}
 
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && editGroupOverlay.style.display !== "none") {
+  if (e.key !== "Escape") return;
+  if (membersOverlay && membersOverlay.style.display !== "none") {
+    showMembersModal(false);
+    return;
+  }
+  if (editGroupOverlay && editGroupOverlay.style.display !== "none") {
     showEditGroupModal(false);
   }
 });
 
-membersCloseBtn.onclick = () => showMembersModal(false);
-membersOverlay.addEventListener("click", (e) => {
-  if (e.target === membersOverlay) showMembersModal(false);
-});
-membersFilter.oninput = renderMembersList;
+if (membersCloseBtn) membersCloseBtn.onclick = () => showMembersModal(false);
+if (membersOverlay) {
+  membersOverlay.addEventListener("click", (e) => {
+    if (e.target === membersOverlay) showMembersModal(false);
+  });
+}
+if (membersFilter) membersFilter.oninput = renderMembersList;
 if (membersFirstBtn) {
   membersFirstBtn.onclick = () => {
     if (membersCurrentPage > 1) {
@@ -2373,91 +2426,37 @@ if (membersLastBtn) {
   };
 }
 
-window.openMassAssign = async (groupId) => {
-  const g = (groupsCache || []).find(x => String(x.pk) === String(groupId));
-  if (g && groupActionsLocked(g.name)) {
-    setMsg(listMsg, `Actions are locked for group ${String(g.name || groupId)}`, false);
-    return;
-  }
-  activeMassGroupId = String(groupId);
-  activeMassGroupName = String(g?.name || "");
-  setMassAction("assign");
-
-  agencySearch.value = "";
-  if (agencyTypeSearch) agencyTypeSearch.value = "";
-  userSearch.value = "";
-  usersSearchCache = [];
-  selectedSourceGroupIds.clear();
-  selectedUserIds.clear();
-  selectedTemplateIndices.clear();
-  renderAgencyList();
-  renderUserList([]);
-  sourceGroupSearch.value = "";
-  loadSourceGroups();
-  if (templateSearch) templateSearch.value = "";
-  renderTemplateSourceList();
-  renderAgencyTypeList();
-
-  setMassMode("agency");
-  updateMassPanes();
-  showMassModal(true);
-};
-
-window.openMassUnassign = async (groupId) => {
-  const g = (groupsCache || []).find(x => String(x.pk) === String(groupId));
-  if (g && groupActionsLocked(g.name)) {
-    setMsg(listMsg, `Actions are locked for group ${String(g.name || groupId)}`, false);
-    return;
-  }
-  activeMassGroupId = String(groupId);
-  activeMassGroupName = String(g?.name || "");
-  setMassAction("unassign");
-
-  agencySearch.value = "";
-  if (agencyTypeSearch) agencyTypeSearch.value = "";
-  userSearch.value = "";
-  usersSearchCache = [];
-  selectedSourceGroupIds.clear();
-  selectedUserIds.clear();
-  selectedTemplateIndices.clear();
-  renderAgencyList();
-  renderUserList([]);
-  sourceGroupSearch.value = "";
-  loadSourceGroups();
-  if (templateSearch) templateSearch.value = "";
-  renderTemplateSourceList();
-  renderAgencyTypeList();
-
-  setMassMode("agency");
-  updateMassPanes();
-  showMassModal(true);
-};
-
-massCloseBtn.onclick = () => showMassModal(false);
-massOverlay.addEventListener("click", (e) => {
-  if (e.target === massOverlay) showMassModal(false);
-});
-
 function setMassMode(next){
   massMode = next;
-  document.querySelectorAll("#massOverlay .segBtn").forEach(b => {
+  document.querySelectorAll("#massSegmented .segBtn").forEach(b => {
     b.classList.toggle("active", String(b.dataset.mode) === String(next));
   });
   updateMassPanes();
   if (next === "agencyType") renderAgencyTypeList();
 }
 
-document.querySelectorAll("#massOverlay .segBtn").forEach(btn => {
+if (massActionAssignBtn) {
+  massActionAssignBtn.addEventListener("click", () => setMassAction("assign"));
+}
+if (massActionUnassignBtn) {
+  massActionUnassignBtn.addEventListener("click", () => setMassAction("unassign"));
+}
+
+document.querySelectorAll("#massSegmented .segBtn").forEach(btn => {
   btn.addEventListener("click", () => setMassMode(btn.dataset.mode));
 });
 
-agencySearch.oninput = renderAgencyList;
-agencySelectAll.onclick = () => {
-  agencyList.querySelectorAll('input.agencyChk').forEach(c => (c.checked = true));
-};
-agencyClearAll.onclick = () => {
-  agencyList.querySelectorAll('input.agencyChk').forEach(c => (c.checked = false));
-};
+if (agencySearch) agencySearch.oninput = renderAgencyList;
+if (agencySelectAll) {
+  agencySelectAll.onclick = () => {
+    agencyList.querySelectorAll('input.agencyChk').forEach(c => (c.checked = true));
+  };
+}
+if (agencyClearAll) {
+  agencyClearAll.onclick = () => {
+    agencyList.querySelectorAll('input.agencyChk').forEach(c => (c.checked = false));
+  };
+}
 
 if (agencyTypeSearch) agencyTypeSearch.oninput = renderAgencyTypeList;
 if (agencyTypeSelectAll) {
@@ -2472,6 +2471,7 @@ if (agencyTypeClearAll) {
 }
 
 function renderUserList(users){
+  if (!userList) return;
   userList.innerHTML = (users || []).map(u => {
     const pk = String(u.pk);
     const username = String(u.username || "");
@@ -2488,17 +2488,20 @@ function renderUserList(users){
   }).join("") || `<div style="padding:10px; color: var(--muted);">No users loaded.</div>`;
 }
 
-userList.addEventListener("change", (e) => {
-  const t = e.target;
-  if (!(t && t.classList && t.classList.contains("userChk"))) return;
-  const id = String(t.value || "").trim();
-  if (!id) return;
-  if (t.checked) selectedUserIds.add(id);
-  else selectedUserIds.delete(id);
-});
+if (userList) {
+  userList.addEventListener("change", (e) => {
+    const t = e.target;
+    if (!(t && t.classList && t.classList.contains("userChk"))) return;
+    const id = String(t.value || "").trim();
+    if (!id) return;
+    if (t.checked) selectedUserIds.add(id);
+    else selectedUserIds.delete(id);
+  });
+}
 
 let userSearchT = null;
-userSearch.oninput = () => {
+if (userSearch) {
+  userSearch.oninput = () => {
   clearTimeout(userSearchT);
   userSearchT = setTimeout(async () => {
     const q = String(userSearch.value || "").trim();
@@ -2518,21 +2521,27 @@ userSearch.oninput = () => {
       renderUserList([]);
     }
   }, 220);
-};
+  };
+}
 
-userSelectAll.onclick = () => {
-  usersSearchCache.forEach(u => {
-    const id = String(u.pk || "").trim();
-    if (id) selectedUserIds.add(id);
-  });
-  renderUserList(usersSearchCache);
-};
-userClearAll.onclick = () => {
-  selectedUserIds.clear();
-  renderUserList(usersSearchCache);
-};
+if (userSelectAll) {
+  userSelectAll.onclick = () => {
+    usersSearchCache.forEach(u => {
+      const id = String(u.pk || "").trim();
+      if (id) selectedUserIds.add(id);
+    });
+    renderUserList(usersSearchCache);
+  };
+}
+if (userClearAll) {
+  userClearAll.onclick = () => {
+    selectedUserIds.clear();
+    renderUserList(usersSearchCache);
+  };
+}
 
 function renderSourceGroupList(){
+  if (!sourceGroupList) return;
   const needle = String(sourceGroupSearch?.value || "").trim().toLowerCase();
   const items = (sourceGroupsCache || [])
     .filter(g => String(g.pk || g.id) !== String(activeMassGroupId))
@@ -2572,29 +2581,37 @@ async function loadSourceGroups() {
   renderSourceGroupList();
 }
 
-sourceGroupSearch.oninput = () => {
-  renderSourceGroupList();
-};
-groupSelectAll.onclick = () => {
-  sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(c => {
-    const id = String(c.value || "").trim();
-    if (id) selectedSourceGroupIds.add(id);
-  });
-  renderSourceGroupList();
-};
-groupClearAll.onclick = () => {
-  selectedSourceGroupIds.clear();
-  renderSourceGroupList();
-};
+if (sourceGroupSearch) {
+  sourceGroupSearch.oninput = () => {
+    renderSourceGroupList();
+  };
+}
+if (groupSelectAll) {
+  groupSelectAll.onclick = () => {
+    sourceGroupList.querySelectorAll("input.srcGroupChk").forEach(c => {
+      const id = String(c.value || "").trim();
+      if (id) selectedSourceGroupIds.add(id);
+    });
+    renderSourceGroupList();
+  };
+}
+if (groupClearAll) {
+  groupClearAll.onclick = () => {
+    selectedSourceGroupIds.clear();
+    renderSourceGroupList();
+  };
+}
 
-sourceGroupList.addEventListener("change", (e) => {
-  const t = e.target;
-  if (!(t && t.classList && t.classList.contains("srcGroupChk"))) return;
-  const id = String(t.value || "").trim();
-  if (!id) return;
-  if (t.checked) selectedSourceGroupIds.add(id);
-  else selectedSourceGroupIds.delete(id);
-});
+if (sourceGroupList) {
+  sourceGroupList.addEventListener("change", (e) => {
+    const t = e.target;
+    if (!(t && t.classList && t.classList.contains("srcGroupChk"))) return;
+    const id = String(t.value || "").trim();
+    if (!id) return;
+    if (t.checked) selectedSourceGroupIds.add(id);
+    else selectedSourceGroupIds.delete(id);
+  });
+}
 
 if (templateSearch) {
   templateSearch.oninput = renderTemplateSourceList;
@@ -2644,7 +2661,8 @@ const templateBulkPhaseLabel = (phase) => {
   }
 };
 
-massApplyBtn.onclick = async () => {
+if (massApplyBtn) {
+  massApplyBtn.onclick = async () => {
   setMsg(massMsg, "");
   if (!activeMassGroupId) return setMsg(massMsg, "No target group selected.", false);
   if (groupActionsLocked(activeMassGroupName)) {
@@ -2769,6 +2787,7 @@ massApplyBtn.onclick = async () => {
     } catch (e) {
       return setMsg(massMsg, e?.message || "Template update failed", false);
     }
+    await refreshMembersAfterMass();
     return;
   }
 
@@ -2837,18 +2856,19 @@ massApplyBtn.onclick = async () => {
       );
       done = true;
     }
+    await refreshMembersAfterMass();
   } catch (e) {
     setMsg(massMsg, `Mass ${massAction} failed`, false);
   }
 };
+}
 
 if (reloadBtn) reloadBtn.onclick = loadGroups;
 
-// ---- Admin Access modal (global admins: which agencies can see this group) ----
-const adminAccessOverlay = document.getElementById("adminAccessOverlay");
-const adminAccessCloseBtn = document.getElementById("adminAccessCloseBtn");
+// ---- Admin Access (global admins: which agencies can see this group) ----
 const adminAccessSummary = document.getElementById("adminAccessSummary");
 const adminAccessInner = document.getElementById("adminAccessInner");
+const adminAccessSearch = document.getElementById("adminAccessSearch");
 const adminAccessSelectAllBtn = document.getElementById("adminAccessSelectAllBtn");
 const adminAccessClearBtn = document.getElementById("adminAccessClearBtn");
 
@@ -2869,12 +2889,6 @@ function setAdminAccessControlsDisabled(disabled) {
   }
 }
 
-function showAdminAccessModal(on) {
-  if (!adminAccessOverlay) return;
-  adminAccessOverlay.style.display = on ? "flex" : "none";
-  document.body.style.overflow = on ? "hidden" : "";
-}
-
 function adminAccessAgencyLabel(a) {
   const prefix = String(a.groupPrefix || "").trim();
   const name = String(a.name || "").trim();
@@ -2884,9 +2898,15 @@ function adminAccessAgencyLabel(a) {
 function renderAdminAccessGrid() {
   if (!adminAccessInner) return;
 
-  const sorted = [...adminAccessSelectable].sort((a, b) =>
-    adminAccessAgencyLabel(a).localeCompare(adminAccessAgencyLabel(b), undefined, { sensitivity: "base" })
-  );
+  const needle = String(adminAccessSearch?.value || "").trim().toLowerCase();
+  const sorted = [...adminAccessSelectable]
+    .sort((a, b) =>
+      adminAccessAgencyLabel(a).localeCompare(adminAccessAgencyLabel(b), undefined, { sensitivity: "base" })
+    )
+    .filter((a) => {
+      if (!needle) return true;
+      return adminAccessAgencyLabel(a).toLowerCase().includes(needle);
+    });
 
   adminAccessInner.innerHTML = sorted.map(a => {
     const id = String(a.id ?? "");
@@ -2901,7 +2921,9 @@ function renderAdminAccessGrid() {
         <span>${esc(adminAccessAgencyLabel(a))}</span>
       </label>
     `;
-  }).join("") || `<div style="padding:10px; color: var(--muted);">No agencies found.</div>`;
+  }).join("") || `<div style="padding:10px; color: var(--muted);">${
+    adminAccessSelectable.length ? "No agencies match your filter." : "No agencies found."
+  }</div>`;
 
   adminAccessInner.querySelectorAll("input.adminAccessChk").forEach(cb => {
     cb.addEventListener("change", () => {
@@ -2934,8 +2956,10 @@ async function saveAdminAccess() {
 
   adminAccessSaving = true;
   setAdminAccessControlsDisabled(true);
-  adminAccessSummary.textContent = "Saving...";
-  adminAccessSummary.className = "msg";
+  if (adminAccessSummary) {
+    adminAccessSummary.textContent = "Saving...";
+    adminAccessSummary.className = "msg";
+  }
 
   const agencyIds = Array.from(adminAccessPickedIds)
     .map(x => Number(x))
@@ -2957,8 +2981,10 @@ async function saveAdminAccess() {
       const id = String(a.id ?? "");
       a.hasAccess = adminAccessPickedIds.has(id);
     });
-    adminAccessSummary.textContent = "Changes saved.";
-    adminAccessSummary.className = "msg ok";
+    if (adminAccessSummary) {
+      adminAccessSummary.textContent = "Changes saved.";
+      adminAccessSummary.className = "msg ok";
+    }
   } catch (e) {
     try {
       const res = await fetch(`/api/groups/${encodeURIComponent(adminAccessGroupId)}/admin-access`);
@@ -2976,8 +3002,10 @@ async function saveAdminAccess() {
     } catch (_) {
       // ignore reload failure
     }
-    adminAccessSummary.textContent = e.message || "Save failed";
-    adminAccessSummary.className = "msg bad";
+    if (adminAccessSummary) {
+      adminAccessSummary.textContent = e.message || "Save failed";
+      adminAccessSummary.className = "msg bad";
+    }
   } finally {
     adminAccessSaving = false;
     setAdminAccessControlsDisabled(false);
@@ -2988,13 +3016,16 @@ async function saveAdminAccess() {
   }
 }
 
-window.openGroupAdminAccess = async (groupId) => {
+async function loadAdminAccessForEdit(groupId) {
   if (!IS_GLOBAL_ADMIN) return;
   adminAccessGroupId = String(groupId || "").trim();
   if (!adminAccessGroupId) return;
 
-  adminAccessSummary.textContent = "Loading agencies...";
-  adminAccessSummary.className = "msg";
+  if (adminAccessSearch) adminAccessSearch.value = "";
+  if (adminAccessSummary) {
+    adminAccessSummary.textContent = "Loading agencies...";
+    adminAccessSummary.className = "msg";
+  }
   if (adminAccessInner) adminAccessInner.innerHTML = "";
   adminAccessPickedIds = new Set();
   adminAccessSelectable = [];
@@ -3003,7 +3034,6 @@ window.openGroupAdminAccess = async (groupId) => {
     clearTimeout(adminAccessSaveTimer);
     adminAccessSaveTimer = null;
   }
-  showAdminAccessModal(true);
 
   try {
     const res = await fetch(`/api/groups/${encodeURIComponent(adminAccessGroupId)}/admin-access`);
@@ -3019,16 +3049,24 @@ window.openGroupAdminAccess = async (groupId) => {
         .filter(Boolean)
     );
 
-    adminAccessSummary.textContent = groupLabel
-      ? `Select agencies whose administrators can access "${groupLabel}". Changes save automatically.`
-      : "Select agencies whose administrators can access this group. Changes save automatically.";
-    adminAccessSummary.className = "msg ok";
+    if (adminAccessSummary) {
+      adminAccessSummary.textContent = groupLabel
+        ? `Select agencies whose administrators can access "${groupLabel}". Changes save automatically.`
+        : "Select agencies whose administrators can access this group. Changes save automatically.";
+      adminAccessSummary.className = "msg ok";
+    }
     renderAdminAccessGrid();
   } catch (e) {
-    adminAccessSummary.textContent = e.message || "Failed to load.";
-    adminAccessSummary.className = "msg bad";
+    if (adminAccessSummary) {
+      adminAccessSummary.textContent = e.message || "Failed to load.";
+      adminAccessSummary.className = "msg bad";
+    }
   }
-};
+}
+
+if (adminAccessSearch) {
+  adminAccessSearch.addEventListener("input", () => renderAdminAccessGrid());
+}
 
 if (adminAccessSelectAllBtn) {
   adminAccessSelectAllBtn.onclick = () => {
@@ -3045,12 +3083,6 @@ if (adminAccessClearBtn) {
     renderAdminAccessGrid();
     saveAdminAccess();
   };
-}
-if (adminAccessCloseBtn) adminAccessCloseBtn.onclick = () => showAdminAccessModal(false);
-if (adminAccessOverlay) {
-  adminAccessOverlay.addEventListener("click", e => {
-    if (e.target === adminAccessOverlay) showAdminAccessModal(false);
-  });
 }
 
 (async () => {
@@ -3323,6 +3355,274 @@ th.sortable:hover{
 .groupsExportCardActions {
   display: flex;
   justify-content: flex-end;
+}
+
+#editGroupOverlay,
+#membersOverlay {
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+#editGroupOverlay .editGroupModal,
+#membersOverlay .membersModal {
+  display: flex;
+  flex-direction: column;
+  width: min(1200px, 100%);
+  max-height: 92vh;
+  overflow: hidden;
+}
+
+#editGroupOverlay .modalHeader,
+#membersOverlay .modalHeader {
+  flex: 0 0 auto;
+}
+
+#editGroupOverlay .modalHeaderLeft,
+#membersOverlay .modalHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+#editGroupOverlay .modalHeaderLeft h2,
+#membersOverlay .modalHeaderLeft h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#editGroupOverlay .modalBody,
+#membersOverlay .modalBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#editGroupOverlay .editGroupForm {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#editGroupOverlay .editGroupTop {
+  flex: 0 0 auto;
+}
+
+#editGroupOverlay .editGroupAdminAccess {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+}
+
+#editGroupOverlay .editGroupAdminAccessHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+}
+
+#editGroupOverlay .editGroupAdminAccessHead h3 {
+  margin: 0;
+}
+
+#editGroupOverlay .editGroupAdminAccess .msg:empty {
+  display: none;
+}
+
+#editGroupOverlay #adminAccessSearch {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+#editGroupOverlay .editGroupAdminAccessBox {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow: auto;
+  max-height: none;
+  margin-top: 0;
+}
+
+#editGroupOverlay .editGroupFooter {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+#editGroupOverlay .editGroupFooter .msg {
+  margin-right: auto;
+}
+
+#editGroupOverlay label > input:not([type="checkbox"]),
+#editGroupOverlay label > select {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+#editGroupOverlay select[disabled],
+#editGroupOverlay input[disabled] {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+#membersOverlay .membersSplit {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+#membersOverlay .membersSplit.has-mass {
+  grid-template-columns: 1fr 1fr;
+}
+
+#membersOverlay .membersSplit:not(.has-mass) #membersMassPane {
+  display: none !important;
+}
+
+#membersOverlay .membersSplitPane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#membersOverlay .membersSplitPaneHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+}
+
+#membersOverlay .membersSplitPaneHead h3 {
+  margin: 0;
+}
+
+#membersOverlay .membersSplitPane .msg:empty {
+  display: none;
+}
+
+#membersOverlay #membersFilter {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+#membersOverlay .membersListBox,
+#membersOverlay .membersMassListBox {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow: auto;
+  max-height: none;
+  margin-top: 8px;
+}
+
+#membersOverlay .membersSplitPane .pagination {
+  flex: 0 0 auto;
+  margin-top: 8px;
+}
+
+#membersOverlay .membersListBox .table {
+  width: 100%;
+}
+
+#membersOverlay .membersMassActionToggle {
+  flex: 0 0 auto;
+}
+
+#membersOverlay #massSegmented {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+#membersOverlay .membersMassPanes {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+}
+
+#membersOverlay #massAgencyPane,
+#membersOverlay #massGroupPane,
+#membersOverlay #massTemplatePane,
+#membersOverlay #massAgencyTypePane,
+#membersOverlay #massUsersPane {
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#membersOverlay .membersMassFooter {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+#membersOverlay .membersMassFooter .msg {
+  margin-right: auto;
+}
+
+body.noScroll .main {
+  overflow: hidden !important;
+}
+
+@media (max-width: 990px) {
+  #editGroupOverlay,
+  #membersOverlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  #editGroupOverlay .editGroupModal,
+  #membersOverlay .membersModal {
+    width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+  #editGroupOverlay .modalBody,
+  #membersOverlay .modalBody {
+    overflow: auto;
+  }
+  #editGroupOverlay .editGroupForm,
+  #membersOverlay .membersSplit {
+    overflow: visible;
+  }
+  #membersOverlay .membersSplit,
+  #membersOverlay .membersSplit.has-mass {
+    grid-template-columns: 1fr;
+  }
+  #editGroupOverlay .editGroupAdminAccessBox,
+  #membersOverlay .membersListBox,
+  #membersOverlay .membersMassListBox {
+    min-height: 12rem;
+  }
 }
 </style>
 
