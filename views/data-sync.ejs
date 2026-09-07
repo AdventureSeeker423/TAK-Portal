@@ -26,7 +26,7 @@
             <option value="MISSION_READONLY_SUBSCRIBER">Read-only (MISSION_READONLY_SUBSCRIBER)</option>
           </select>
         </label>
-        <label>AssignedGroup
+        <label>Assigned Group
           <select id="createMissionGroup" style="width: 100%; box-sizing: border-box;">
             <option value="">Select a group…</option>
           </select>
@@ -598,9 +598,15 @@
     mDefaultRole.value = allowed.indexOf(t) >= 0 ? t : "MISSION_SUBSCRIBER";
   }
 
+  function isHiddenAssignedGroupName(name) {
+    return String(name || "").trim().toLowerCase().startsWith("cn=");
+  }
+
   function normalizeGroupNames(payload) {
     var raw = unwrapList(payload);
-    return extractGroupNames(raw).sort(function (a, b) { return a.localeCompare(b); });
+    return extractGroupNames(raw)
+      .filter(function (n) { return !isHiddenAssignedGroupName(n); })
+      .sort(function (a, b) { return a.localeCompare(b); });
   }
 
   /** One entry from TAK: string or { name, groupName, … } — list vs GET mission may differ slightly. */

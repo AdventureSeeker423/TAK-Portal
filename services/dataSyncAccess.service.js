@@ -33,7 +33,10 @@ function isHiddenGlobalAdminGroupName(name) {
   const n = String(name || "").trim();
   if (!n) return true;
   if (n.startsWith("_")) return true;
-  return n.toLowerCase().startsWith("tak_");
+  const lower = n.toLowerCase();
+  if (lower.startsWith("tak_")) return true;
+  if (lower.startsWith("cn=")) return true;
+  return false;
 }
 
 function filterGlobalAdminGroupNames(names) {
@@ -86,6 +89,7 @@ async function getGlobalAdminGroupDisplayNames(authUser) {
     if (!authentikName || isAuthentikAgencyAdminGroupName(authentikName)) continue;
     const display = takDisplayName(authentikName);
     if (!display || display.startsWith("_")) continue;
+    if (display.toLowerCase().startsWith("cn=")) continue;
     const key = canonicalGroupKey(display);
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -352,7 +356,9 @@ async function resolveGroupsForUser(authUser, takPayload) {
     const beforeMaMerge = byKey.size;
     mergeMutualAidGroupNames(byKey, takByKey);
 
-    const groups = Array.from(byKey.values()).sort((a, b) => a.localeCompare(b));
+    const groups = Array.from(byKey.values())
+      .filter((n) => !String(n || "").trim().toLowerCase().startsWith("cn="))
+      .sort((a, b) => a.localeCompare(b));
     return {
       groups,
       debug: {
@@ -382,7 +388,9 @@ async function resolveGroupsForUser(authUser, takPayload) {
     });
   }
 
-  const groups = [...new Set(resolved)].sort((a, b) => a.localeCompare(b));
+  const groups = [...new Set(resolved)]
+    .filter((n) => !String(n || "").trim().toLowerCase().startsWith("cn="))
+    .sort((a, b) => a.localeCompare(b));
 
   return {
     groups,
