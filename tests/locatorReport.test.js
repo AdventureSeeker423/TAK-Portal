@@ -58,6 +58,11 @@ assert.strictEqual(collected.find((a) => a.label === "First Name").value, "Jane"
 assert.strictEqual(collected.find((a) => a.label === "Last Name").value, "Doe");
 assert.strictEqual(collected.find((a) => a.label === "Unit").value, "");
 
+assert.strictEqual(report.pinStyleForIndex(0, 4).hex, "#15803d");
+assert.strictEqual(report.pinStyleForIndex(1, 4).hex, "#94a3b8");
+assert.strictEqual(report.pinStyleForIndex(3, 4).hex, "#dc2626");
+assert.strictEqual(report.pinStyleForIndex(0, 1).hex, "#dc2626");
+
 const generatedAt = new Date("2026-09-06T21:00:00.000Z");
 assert.strictEqual(
   report.reportFileName({ slug: "missing-person" }, generatedAt),

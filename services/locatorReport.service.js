@@ -15,21 +15,21 @@ const LINE = "#cbd5e1";
 const RULE = "#94a3b8";
 const TILE_SIZE = 256;
 const MAP_MAX_TILES = 12;
-const TEAM_HEX = {
-  Blue: "#2563eb",
-  "Dark Blue": "#1e3a8a",
-  Brown: "#92400e",
-  Cyan: "#0891b2",
-  Green: "#16a34a",
-  "Dark Green": "#166534",
-  Magenta: "#c026d3",
-  Maroon: "#9f1239",
-  Orange: "#ea580c",
-  Purple: "#7c3aed",
-  Red: "#dc2626",
-  Teal: "#0d9488",
-  White: "#e2e8f0",
-  Yellow: "#ca8a04",
+const PIN_FIRST = "#15803d";
+const PIN_MIDDLE = "#94a3b8";
+const PIN_LAST = "#dc2626";
+const MAP_LAYERS = {
+  street: {
+    label: "Street",
+    url: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`,
+    attribution: "Map data © OpenStreetMap contributors",
+  },
+  satellite: {
+    label: "Satellite",
+    url: (z, x, y) =>
+      `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`,
+    attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+  },
 };
 
 function pdfSafe(value) {
@@ -84,6 +84,28 @@ function formatReportWhen(d) {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function formatLogWhen(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return "—";
+  return dt.toLocaleString(undefined, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function pinStyleForIndex(index, total) {
+  const n = Number(total) || 0;
+  const i = Number(index);
+  if (n <= 1) return { hex: PIN_LAST, radius: 7 };
+  if (i === 0) return { hex: PIN_FIRST, radius: 7 };
+  if (i === n - 1) return { hex: PIN_LAST, radius: 7 };
+  return { hex: PIN_MIDDLE, radius: 4 };
 }
 
 function haversineMeters(a, b) {
@@ -284,17 +306,18 @@ function drawPin(img, px, py, hex, radius) {
   });
 }
 
-async function fetchOsmTile(z, x, y) {
+async function fetchMapTile(layerId, z, x, y) {
+  const layer = MAP_LAYERS[layerId] || MAP_LAYERS.street;
   const max = 2 ** z;
   const xx = ((x % max) + max) % max;
-  const url = `https://tile.openstreetmap.org/${z}/${xx}/${y}.png`;
+  const url = layer.url(z, xx, y);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 4000);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
       headers: {
-        Accept: "image/png",
+        Accept: "image/png,image/jpeg",
         "User-Agent": "TAK-Portal/1.0 (locator after-action report)",
       },
     });
@@ -307,7 +330,7 @@ async function fetchOsmTile(z, x, y) {
   }
 }
 
-async function buildTrackMapPng(history, { pinColor } = {}) {
+async function buildTrackMapPng(history, { layer = "street" } = {}) {
   const fixes = numberedFixes(history);
   if (!fixes.length) return null;
   const view = fitMapView(fixes);
@@ -321,7 +344,7 @@ async function buildTrackMapPng(history, { pinColor } = {}) {
   const jobs = [];
   for (let ty = y0; ty <= y1; ty += 1) {
     for (let tx = x0; tx <= x1; tx += 1) {
-      jobs.push({ tx, ty, buf: fetchOsmTile(zoom, tx, ty) });
+      jobs.push({ tx, ty, buf: fetchMapTile(layer, zoom, tx, ty) });
     }
   }
   const tiles = await Promise.all(jobs.map((j) => j.buf));
@@ -339,13 +362,11 @@ async function buildTrackMapPng(history, { pinColor } = {}) {
   }
   if (!anyTile) return null;
 
-  const color = TEAM_HEX[pinColor] || TEAM_HEX.Cyan;
   fixes.forEach((pt, i) => {
     const px = (lon2tile(pt.longitude, zoom) - x0) * TILE_SIZE;
     const py = (lat2tile(pt.latitude, zoom) - y0) * TILE_SIZE;
-    const last = i === fixes.length - 1;
-    const first = i === 0;
-    drawPin(canvas, px, py, last ? color : first ? "#0f172a" : color, last ? 7 : 4);
+    const pin = pinStyleForIndex(i, fixes.length);
+    drawPin(canvas, px, py, pin.hex, pin.radius);
   });
   return canvas.getBufferAsync(Jimp.MIME_PNG);
 }
@@ -456,7 +477,15 @@ function drawHeader(doc, { serverName, generatedAt, logoPng }) {
 }
 
 function renderPdf(doc, payload) {
-  const { locator, history, serverName, generatedAt, logoPng, mapPng } = payload;
+  const {
+    locator,
+    history,
+    serverName,
+    generatedAt,
+    logoPng,
+    streetMapPng,
+    satelliteMapPng,
+  } = payload;
   const form = locatorForm.normalizeForm(locator?.form || {});
   const stats = summarizeTrack(history);
   const answers = collectFormAnswers(form, history);
@@ -535,59 +564,87 @@ function renderPdf(doc, payload) {
     }
   }
 
-  if (mapPng) {
-    sectionHeading(doc, "Track map");
-    const maxW = contentWidth(doc);
-    const maxH = 280;
-    ensureSpace(doc, maxH + 28);
-    try {
-      const imgY = doc.y;
-      doc.image(mapPng, doc.page.margins.left, imgY, { fit: [maxW, maxH], align: "center" });
-      doc.y = imgY + maxH + 8;
-      doc
-        .font("Helvetica")
-        .fontSize(8)
-        .fillColor(MUTED)
-        .text("Pins mark recorded positions. Dark pin is the first fix; larger pin is the latest. Map data © OpenStreetMap contributors.", {
-          width: maxW,
-        });
-    } catch (_) {
-      doc.font("Helvetica").fontSize(10).fillColor(MUTED).text("Map image could not be embedded.");
-    }
-  }
-
+  doc.addPage({ size: "LETTER", margin: 50 });
   sectionHeading(doc, "Position log");
   const rows = Array.isArray(history) ? history : [];
   if (!rows.length) {
     doc.font("Helvetica").fontSize(10).fillColor(MUTED).text("No location history was recorded.");
-    return;
+  } else {
+    drawLogTable(doc, rows, form);
   }
-  drawLogTable(doc, rows, form);
+
+  if (streetMapPng || satelliteMapPng) {
+    doc.addPage({ size: "LETTER", margin: 50 });
+    drawMapsPage(doc, { streetMapPng, satelliteMapPng });
+  }
+}
+
+function drawMapsPage(doc, { streetMapPng, satelliteMapPng }) {
+  sectionHeading(doc, "Track maps");
+  doc
+    .font("Helvetica")
+    .fontSize(9)
+    .fillColor(MUTED)
+    .text("First fix is dark green. Later pings are grey. The last fix is red.", {
+      width: contentWidth(doc),
+    });
+  doc.moveDown(0.4);
+  const maps = [
+    { png: streetMapPng, title: "Street", attribution: MAP_LAYERS.street.attribution },
+    { png: satelliteMapPng, title: "Satellite", attribution: MAP_LAYERS.satellite.attribution },
+  ].filter((m) => m.png);
+  const maxW = contentWidth(doc);
+  const remaining = doc.page.height - doc.page.margins.bottom - doc.y;
+  const maxH = Math.max(180, Math.min(280, (remaining - 70 * maps.length) / Math.max(maps.length, 1)));
+  maps.forEach((map, idx) => {
+    if (idx > 0) doc.moveDown(0.5);
+    ensureSpace(doc, 36 + Math.min(maxH, 220));
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(map.title, {
+      width: maxW,
+    });
+    try {
+      const imgY = doc.y + 4;
+      doc.image(map.png, doc.page.margins.left, imgY, {
+        fit: [maxW, maxH],
+        align: "center",
+      });
+      doc.y = imgY + maxH + 6;
+      doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(map.attribution, { width: maxW });
+    } catch (_) {
+      doc.font("Helvetica").fontSize(10).fillColor(MUTED).text(`${map.title} map could not be embedded.`);
+    }
+  });
 }
 
 function drawLogTable(doc, rows, form) {
   const left = doc.page.margins.left;
-  const widths = [118, 68, 72, 48, 52];
+  const widths = [132, 64, 72, 42, 48];
   const detailsW = contentWidth(doc) - widths.reduce((a, b) => a + b, 0);
   const cols = [...widths, detailsW];
   const headers = ["Time", "Latitude", "Longitude", "Acc.", "Source", "Details"];
 
   function headerRow() {
     ensureSpace(doc, 22);
+    const y = doc.y;
     let x = left;
     doc.font("Helvetica-Bold").fontSize(8).fillColor(MUTED);
     headers.forEach((h, i) => {
-      doc.text(h, x, doc.y, { width: cols[i] });
+      doc.text(h, x, y, {
+        width: cols[i] - 4,
+        lineBreak: false,
+      });
       x += cols[i];
     });
-    doc.moveDown(0.7);
+    doc.x = left;
+    doc.y = y + 12;
     doc
       .moveTo(left, doc.y)
       .lineTo(doc.page.width - doc.page.margins.right, doc.y)
       .strokeColor(LINE)
       .lineWidth(0.6)
       .stroke();
-    doc.moveDown(0.25);
+    doc.y += 6;
+    doc.x = left;
   }
 
   headerRow();
@@ -604,7 +661,7 @@ function drawLogTable(doc, rows, form) {
       .filter(Boolean)
       .join(" | ");
     const cells = [
-      row.at ? formatReportWhen(row.at) : "—",
+      row.at ? formatLogWhen(row.at) : "—",
       Number.isFinite(lat) ? lat.toFixed(6) : "—",
       Number.isFinite(lon) ? lon.toFixed(6) : "—",
       Number.isFinite(acc) ? `${Math.round(acc)} m` : "—",
@@ -620,21 +677,21 @@ function drawLogTable(doc, rows, form) {
       doc.addPage({ size: "LETTER", margin: 50 });
       headerRow();
     }
+    const y = doc.y;
     if (idx % 2 === 1) {
       doc
-        .rect(left, doc.y - 1, contentWidth(doc), rowH)
+        .rect(left, y - 1, contentWidth(doc), rowH)
         .fillColor("#f8fafc")
         .fill();
-      doc.fillColor(INK);
     }
     let x = left;
-    const y = doc.y;
     cells.forEach((text, i) => {
       doc.font("Helvetica").fontSize(7.5).fillColor(INK).text(pdfSafe(text), x, y, {
         width: cols[i] - 4,
       });
       x += cols[i];
     });
+    doc.x = left;
     doc.y = y + rowH;
   });
 }
@@ -695,13 +752,15 @@ async function generateLocatorReportPdf(locator, history, options = {}) {
   const serverName = String(options.serverName || serverNameFromSettings()).trim() || "TAK Portal";
   const logoPath = options.logoPath !== undefined ? options.logoPath : defaultBrandLogoPath();
   const logoPng = await loadLogoPng(logoPath);
-  let mapPng = options.mapPng !== undefined ? options.mapPng : null;
-  if (options.mapPng === undefined && options.includeMap !== false) {
-    try {
-      mapPng = await buildTrackMapPng(history, { pinColor: locator?.color });
-    } catch (_) {
-      mapPng = null;
-    }
+  let streetMapPng = options.streetMapPng !== undefined ? options.streetMapPng : null;
+  let satelliteMapPng = options.satelliteMapPng !== undefined ? options.satelliteMapPng : null;
+  if (options.includeMap !== false && options.streetMapPng === undefined && options.satelliteMapPng === undefined) {
+    const [street, satellite] = await Promise.all([
+      buildTrackMapPng(history, { layer: "street" }).catch(() => null),
+      buildTrackMapPng(history, { layer: "satellite" }).catch(() => null),
+    ]);
+    streetMapPng = street;
+    satelliteMapPng = satellite;
   }
   const buffer = await collectPdfBuffer(async (doc) => {
     renderPdf(doc, {
@@ -710,7 +769,8 @@ async function generateLocatorReportPdf(locator, history, options = {}) {
       serverName,
       generatedAt,
       logoPng,
-      mapPng,
+      streetMapPng,
+      satelliteMapPng,
     });
     stampPageNumbers(doc, serverName);
   });
@@ -726,10 +786,12 @@ module.exports = {
   collectFormAnswers,
   reportFileName,
   formatReportWhen,
+  formatLogWhen,
   formatDistance,
   formatDuration,
   locatorStatusLabel,
   intervalLabel,
   fitMapView,
+  pinStyleForIndex,
   generateLocatorReportPdf,
 };

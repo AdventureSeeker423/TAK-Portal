@@ -591,14 +591,13 @@
         tdAct.className = "locate-actions-cell cardActionsCell";
         var wrap = document.createElement("div");
         wrap.className = "cardActionsRow locate-actions-cell";
-        addBtn(wrap, "Send", function () { openSendLink(loc); }, "qr");
         addBtn(wrap, "Edit", function () { beginEdit(loc); });
-        addBtn(wrap, "Ping", function () { api("/api/locate/locators/" + encodeURIComponent(loc.id) + "/manual-ping", { method: "POST" }).then(loadLocators).catch(function (e) { setMsg(listMsg, e.message, true); }); });
+        addBtn(wrap, "Send Link", function () { openSendLink(loc); }, "success");
         addBtn(wrap, "History", function () { openHistory(loc.id); });
-        addBtn(wrap, "Generate PDF Report", function () { downloadReport(loc, listMsg); });
+        addBtn(wrap, "Generate PDF Report", function () { downloadReport(loc, listMsg); }, "qr");
         addBtn(wrap, loc.active ? "Disable" : "Enable", function () {
           api("/api/locate/locators/" + encodeURIComponent(loc.id), { method: "PATCH", body: JSON.stringify({ active: !loc.active }) }).then(loadLocators).catch(function (e) { setMsg(listMsg, e.message, true); });
-        }, loc.active ? "" : "success");
+        }, loc.active ? "caution" : "success");
         addBtn(wrap, "Archive", function () {
           if (!window.confirm("Archive this locator?")) return;
           api("/api/locate/locators/" + encodeURIComponent(loc.id) + "/archive", { method: "POST" }).then(loadLocators).catch(function (e) { setMsg(listMsg, e.message, true); });
@@ -648,7 +647,7 @@
         var wrap = document.createElement("div");
         wrap.className = "cardActionsRow locate-actions-cell";
         addBtn(wrap, "History", function () { openHistory(loc.id); });
-        addBtn(wrap, "Generate PDF Report", function () { downloadReport(loc, archivedListMsg); });
+        addBtn(wrap, "Generate PDF Report", function () { downloadReport(loc, archivedListMsg); }, "qr");
         addBtn(wrap, "Restore", function () {
           api("/api/locate/locators/" + encodeURIComponent(loc.id) + "/reactivate", { method: "POST" }).then(function () {
             setMsg(archivedListMsg, "Locator restored.", false);
