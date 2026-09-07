@@ -7,7 +7,6 @@
   const _reqAttr = _fieldsRequired ? "required" : "";
   const _idPrefix = String(typeof idPrefix !== "undefined" ? idPrefix : "");
   const _usernameReadOnly = !!(typeof usernameReadOnly !== "undefined" && usernameReadOnly);
-  const _usernameRoAttr = _usernameReadOnly ? "disabled" : "";
   const _typeOpts = Array.isArray(agencyTypeOptions) && agencyTypeOptions.length ? agencyTypeOptions : [];
   const _regionOpts = Array.isArray(regionOptions) && regionOptions.length ? regionOptions : [];
   const _regionLocks = Array.isArray(typeof regionCountyLocks !== "undefined" ? regionCountyLocks : null)
@@ -72,7 +71,7 @@
 </style>
 
 <% if (_includeExtendedFields) { %>
-<div class="agencyCreateRow <%= _includeName ? 'agencyCreateRow4' : 'agencyCreateRow3' %>">
+<div class="agencyCreateRow <%= _usernameReadOnly ? (_includeName ? 'agencyCreateRow2' : 'agencyCreateRow') : (_includeName ? 'agencyCreateRow4' : 'agencyCreateRow3') %>">
   <% if (_includeName) { %>
   <label>Agency Full Name
     <input name="name" placeholder="Agency Name" <%= _reqAttr %>
@@ -86,8 +85,9 @@
            title="Letters, numbers, spaces, dashes, and underscores" />
   </label>
 
+  <% if (!_usernameReadOnly) { %>
   <label>Username Agency Identifier
-    <select name="usernameTokenPlacement" id="<%= _idPrefix %>usernameTokenPlacementSelect" <%= _usernameRoAttr %>>
+    <select name="usernameTokenPlacement" id="<%= _idPrefix %>usernameTokenPlacementSelect">
       <option value="suffix" <%= _sel(_placement, "suffix") %>>Suffix - End Of Username (e.g. 1234abcd)</option>
       <option value="prefix" <%= _sel(_placement, "prefix") %>>Prefix - Beginning Of Username (e.g. abcd1234)</option>
     </select>
@@ -95,11 +95,11 @@
 
   <label>
     <span id="<%= _idPrefix %>usernameIdentifierLabelText"><%= _placement === "prefix" ? "Username Prefix" : "Username Suffix" %></span>
-    <input name="suffix" placeholder="(ex. abcd, hcoem, etc...)" <%= _usernameReadOnly ? "" : _reqAttr %>
+    <input name="suffix" placeholder="(ex. abcd, hcoem, etc...)" <%= _reqAttr %>
            value="<%= _vals.suffix || '' %>"
-           <%= _usernameRoAttr %>
            oninput="this.value = this.value.toLowerCase()" />
   </label>
+  <% } %>
 </div>
 
 <div class="agencyCreateRow agencyCreateRow4">

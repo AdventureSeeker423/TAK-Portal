@@ -102,9 +102,8 @@
       <button class="btn" id="editAgencyCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <form id="editAgencyForm" autocomplete="off">
-        <section class="editAgencySection">
-          <h3>Details</h3>
+      <form id="editAgencyForm" class="editAgencyForm" autocomplete="off">
+        <section class="editAgencyTop">
           <%- include("partials/agency-create-fields", {
             agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
             regionOptions: typeof regionOptions !== "undefined" ? regionOptions : [],
@@ -116,104 +115,97 @@
             usernameReadOnly: true,
             agencyFieldValues: {}
           }) %>
-        </section>
 
-        <section class="editAgencySection">
-          <h3>Domain</h3>
-          <p class="muted" style="margin-top:0;">Configure approved email domains for this agency (comma-separated, no @ symbol).</p>
-          <div>
-            <span class="settings-label">
-              <span>Agency email domains</span>
+          <div class="editAgencyDomainRow">
+            <label class="editAgencyDomainField">Agency email domains
               <span class="settings-help-tip">
                 <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
                 <span class="settings-help-popover" role="tooltip">If you list one or more domains, the public Request Access form will only accept email addresses ending in those domains. Leave the field empty to allow any email domain for requests.</span>
               </span>
-            </span>
-            <input type="text" id="lookupDomain" placeholder="agency.gov, county.org"
-                  style="width:100%; box-sizing:border-box; margin-top:6px;" />
-            <small class="muted" style="display:block; margin-top:4px;">Separate multiple domains with commas.</small>
-            <small id="domainError" class="msg bad" style="display:none;">
-              Enter valid domains (e.g., agency.gov) with no @ symbol. Use commas between multiple domains.
-            </small>
-          </div>
+              <input type="text" id="lookupDomain" placeholder="agency.gov, county.org" />
+              <small id="domainError" class="msg bad" style="display:none;">
+                Enter valid domains (e.g., agency.gov) with no @ symbol. Use commas between multiple domains.
+              </small>
+            </label>
 
-          <div class="settings-field settings-field-bool" style="margin-top:16px;">
-            <span class="settings-label">
-              <span>Auto-approve user requests</span>
-              <span class="settings-help-tip">
-                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-                <span class="settings-help-popover" role="tooltip">When enabled, matching Request Access submissions are approved automatically and a user account is created with this agency's default template. A default template must be set before this can be turned on. If domains are listed, only matching emails are auto-approved. If no domains are listed, any email that selects this agency is auto-approved.</span>
-              </span>
-            </span>
-            <button
-              type="button"
-              class="settings-toggle is-off"
-              id="autoApproveToggle"
-              aria-pressed="false"
-              aria-label="Auto-approve user requests"
-            ></button>
-          </div>
-          <small id="autoApproveHint" class="muted" style="display:none; margin-top:4px;">
-            A default template must be set for this agency on the Templates page before auto-approve can be enabled.
-          </small>
-
-          <div class="settings-field settings-field-bool" style="margin-top:8px;">
-            <span class="settings-label">
-              <span>Account Lookup</span>
-              <span class="settings-help-tip">
-                <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-                <span class="settings-help-popover" role="tooltip">Account Lookup (when enabled) lets users request an enrollment QR code by email and username, for shared or apparatus accounts. Lookup still requires a matching approved domain and only works while lookup is enabled.</span>
-              </span>
-            </span>
-            <button
-              type="button"
-              class="settings-toggle is-off"
-              id="accountLookupToggle"
-              aria-pressed="false"
-              aria-label="Account Lookup"
-            ></button>
+            <div class="editAgencyToggles">
+              <div class="settings-field settings-field-bool">
+                <span class="settings-label">
+                  <span>Auto-approve user requests</span>
+                  <span class="settings-help-tip">
+                    <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                    <span class="settings-help-popover" role="tooltip">When enabled, matching Request Access submissions are approved automatically and a user account is created with this agency's default template. A default template must be set before this can be turned on. If domains are listed, only matching emails are auto-approved. If no domains are listed, any email that selects this agency is auto-approved.</span>
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  class="settings-toggle is-off"
+                  id="autoApproveToggle"
+                  aria-pressed="false"
+                  aria-label="Auto-approve user requests"
+                ></button>
+              </div>
+              <small id="autoApproveHint" class="muted" style="display:none;">
+                A default template must be set for this agency on the Templates page before auto-approve can be enabled.
+              </small>
+              <div class="settings-field settings-field-bool">
+                <span class="settings-label">
+                  <span>Account Lookup</span>
+                  <span class="settings-help-tip">
+                    <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                    <span class="settings-help-popover" role="tooltip">Account Lookup (when enabled) lets users request an enrollment QR code by email and username, for shared or apparatus accounts. Lookup still requires a matching approved domain and only works while lookup is enabled.</span>
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  class="settings-toggle is-off"
+                  id="accountLookupToggle"
+                  aria-pressed="false"
+                  aria-label="Account Lookup"
+                ></button>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section class="editAgencySection">
-          <h3>Agency Admins</h3>
-          <div id="adminsSummary" class="msg"></div>
-          <div style="margin-top:10px;">
+        <section class="editAgencySplit <%= (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) ? "has-extra-groups" : "admins-only" %>">
+          <div class="editAgencySplitPane">
+            <div class="editAgencySplitPaneHead">
+              <h3>Agency Admins</h3>
+              <div id="adminsSummary" class="msg"></div>
+            </div>
             <input
               id="adminsFilter"
               placeholder="Filter by username, name, or email..."
-              style="width: 100%; box-sizing: border-box;"
             />
+            <div id="adminsList" class="groupsBox editAgencyListBox"></div>
+            <div class="pagination" id="adminsPagination" style="display:none;">
+              <button class="btn pagination-first-last" id="adminsFirstBtn" type="button">First</button>
+              <button class="btn" id="adminsPrevBtn" type="button">Previous</button>
+              <span id="adminsPageInfo"></span>
+              <button class="btn" id="adminsNextBtn" type="button">Next</button>
+              <button class="btn pagination-first-last" id="adminsLastBtn" type="button">Last</button>
+            </div>
+            <small id="adminsHint" class="muted"></small>
           </div>
-          <div
-            id="adminsList"
-            class="groupsBox"
-            style="margin-top:10px; max-height: 240px; overflow:auto;"
-          ></div>
-          <div class="pagination" id="adminsPagination" style="display:none;">
-            <button class="btn pagination-first-last" id="adminsFirstBtn" type="button">First</button>
-            <button class="btn" id="adminsPrevBtn" type="button">Previous</button>
-            <span id="adminsPageInfo"></span>
-            <button class="btn" id="adminsNextBtn" type="button">Next</button>
-            <button class="btn pagination-first-last" id="adminsLastBtn" type="button">Last</button>
-          </div>
-          <small id="adminsHint" class="muted"></small>
-        </section>
 
-        <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
-        <section class="editAgencySection" id="editAgencyAccessGroupsSection">
-          <h3>Extra Groups</h3>
-          <p id="accessGroupsSummary" class="msg"></p>
-          <input id="accessGroupSearch" placeholder="Search groups..." style="width:100%; box-sizing:border-box; margin-top:6px;" />
-          <div class="row" style="gap:10px; margin-top:8px; flex-wrap:wrap;">
-            <button class="btn" type="button" id="accessGroupsSelectAllBtn">Select All</button>
-            <button class="btn" type="button" id="accessGroupsClearBtn">Clear</button>
+          <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
+          <div class="editAgencySplitPane" id="editAgencyAccessGroupsSection">
+            <div class="editAgencySplitPaneHead">
+              <h3>Extra Groups</h3>
+              <div class="row" style="gap:8px; flex-wrap:wrap;">
+                <button class="btn" type="button" id="accessGroupsSelectAllBtn">Select All</button>
+                <button class="btn" type="button" id="accessGroupsClearBtn">Clear</button>
+              </div>
+            </div>
+            <p id="accessGroupsSummary" class="msg"></p>
+            <input id="accessGroupSearch" placeholder="Search groups..." />
+            <div id="accessGroupsBox" class="groupsBox editAgencyListBox">
+              <div id="accessGroupsInner" class="groupsInner"></div>
+            </div>
           </div>
-          <div id="accessGroupsBox" class="groupsBox" style="margin-top:10px; max-height:240px; overflow:auto;">
-            <div id="accessGroupsInner" class="groupsInner"></div>
-          </div>
+          <% } %>
         </section>
-        <% } %>
 
         <div class="editAgencyFooter row">
           <span id="editAgencyMsg" class="msg"></span>
@@ -702,15 +694,15 @@ function memberRow(u){
   const email = String(u?.email || "");
   const pk = String(u?.pk || u?.id || "");
   const canRemove = !!(activeAdminsGroupId && pk);
+  const detail = [name, email].filter(Boolean).join(" · ");
   return `
-    <tr>
-      <td>${escAttr(username)}</td>
-      <td>${escAttr(name)}</td>
-      <td>${escAttr(email)}</td>
-      <td style="text-align:right;">
-        ${canRemove ? `<button class="btn danger" type="button" onclick="removeUserFromAdminsGroup('${escAttr(pk)}')">Remove</button>` : ``}
-      </td>
-    </tr>
+    <div class="editAgencyAdminItem">
+      <div class="editAgencyAdminMeta">
+        <div class="editAgencyAdminUser">${escAttr(username) || "—"}</div>
+        ${detail ? `<div class="muted">${escAttr(detail)}</div>` : ""}
+      </div>
+      ${canRemove ? `<button class="btn danger" type="button" onclick="removeUserFromAdminsGroup('${escAttr(pk)}')">Remove</button>` : ""}
+    </div>
   `;
 }
 
@@ -726,21 +718,7 @@ function renderAdminsList(){
     : (activeAdmins || []);
 
   const rowsHtml = filtered.map(memberRow).join("");
-  adminsList.innerHTML = `
-    <table class="table" style="margin:0;">
-      <thead>
-        <tr>
-          <th>Username</th>
-          <th>Name</th>
-          <th>Email</th>
-          <th style="text-align:right;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rowsHtml || `<tr><td colspan="4" class="muted">No users found.</td></tr>`}
-      </tbody>
-    </table>
-  `;
+  adminsList.innerHTML = rowsHtml || `<p class="muted" style="margin:0;padding:8px;">No users found.</p>`;
 }
 
 if (adminsFilter) adminsFilter.oninput = renderAdminsList;
@@ -780,11 +758,9 @@ async function loadAdminsPage(page) {
   if (adminsPrevBtn) adminsPrevBtn.disabled = !adminsHasPrev;
   if (adminsNextBtn) adminsNextBtn.disabled = !adminsHasNext;
   if (adminsLastBtn) adminsLastBtn.disabled = adminsCurrentPage >= totalPages || !adminsHasNext;
-  adminsSummary.textContent = `${adminsTotalCount} admin${adminsTotalCount === 1 ? "" : "s"} in group "${activeAdminsGroupName}".`;
+  adminsSummary.textContent = `${adminsTotalCount} admin${adminsTotalCount === 1 ? "" : "s"}`;
   adminsSummary.className = "msg ok";
-  adminsHint.textContent = adminsTotalCount
-    ? "Showing current admins for this agency. Use Remove to strip admin access from individual users."
-    : "No users are currently assigned to this agency admin group.";
+  if (adminsHint) adminsHint.textContent = "";
   renderAdminsList();
 }
 
@@ -971,7 +947,7 @@ window.removeUserFromAdminsGroup = async (userPk) => {
 
     // Optimistically update local list
     activeAdmins = (activeAdmins || []).filter(u => String(u?.pk || u?.id) !== String(userPk));
-    adminsSummary.textContent = `${activeAdmins.length} admin${activeAdmins.length === 1 ? "" : "s"} in group "${activeAdminsGroupName || activeAdminsGroupId}".`;
+    adminsSummary.textContent = `${activeAdmins.length} admin${activeAdmins.length === 1 ? "" : "s"}`;
     adminsSummary.className = "msg ok";
     renderAdminsList();
   } catch (e) {
@@ -2465,7 +2441,7 @@ async function loadAccessGroupsForEditAgency(agencyId) {
     accessGroupsSnapshotIds = allowed.map(String);
 
     if (accessGroupsSummary) {
-      accessGroupsSummary.textContent = `Select extra groups that administrators for "${a.name || ""}" can see. They always see their own agency groups.`;
+      accessGroupsSummary.textContent = "";
       accessGroupsSummary.className = "msg ok";
     }
     renderAccessGroupsGrid("");
@@ -2501,11 +2477,6 @@ function fillEditAgencyForm(a) {
   };
   set("name", a.name || "");
   set("groupPrefix", a.groupPrefix || "");
-  set(
-    "usernameTokenPlacement",
-    String(a.usernameTokenPlacement || "suffix").toLowerCase() === "prefix" ? "prefix" : "suffix"
-  );
-  set("suffix", a.suffix || "");
   set("state", String(a.state || "").trim().toUpperCase());
   set("stateFederalAgency", isAgencyStateFederal(a) ? "yes" : "no");
   set("county", a.county || "");
@@ -2519,13 +2490,6 @@ function fillEditAgencyForm(a) {
   }
   if (typeof window.takSyncAgencyRegionLock === "function") {
     window.takSyncAgencyRegionLock(editAgencyForm);
-  }
-  const label = document.getElementById("editusernameIdentifierLabelText");
-  if (label) {
-    label.textContent =
-      String(a.usernameTokenPlacement || "suffix").toLowerCase() === "prefix"
-        ? "Username Prefix"
-        : "Username Suffix";
   }
 }
 
@@ -3083,7 +3047,7 @@ if (addForm) {
   }
 }
 
-/* Access Groups modal checkbox grid (match templates page) */
+/* Extra groups checkbox list */
 #accessGroupsBox.groupsBox {
   border: 1px solid var(--line);
   background: var(--panel);
@@ -3091,9 +3055,11 @@ if (addForm) {
   padding: 10px;
 }
 #accessGroupsInner.groupsInner {
-  column-width: 280px;
-  column-gap: 14px;
-  column-count: 4;
+  column-count: 1;
+  column-width: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 #accessGroupsBox .groupItem {
   display: flex;
@@ -3104,7 +3070,7 @@ if (addForm) {
   border-radius: 10px;
   cursor: pointer;
   user-select: none;
-  white-space: nowrap;
+  break-inside: avoid;
 }
 #accessGroupsBox .groupItem:hover {
   background: rgba(255,255,255,.06);
@@ -3117,19 +3083,15 @@ if (addForm) {
 }
 #accessGroupsBox .groupItem span {
   display: inline-block;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
 }
 
 input.readonly {
   background-color: rgba(255,255,255,0.04);
   cursor: not-allowed;
-}
-@media (max-width: 768px) {
-  #accessGroupsInner.groupsInner { column-count: 2; }
-}
-@media (max-width: 480px) {
-  #accessGroupsInner.groupsInner { column-count: 1; }
 }
 
 .agenciesExportCard {
@@ -3149,7 +3111,7 @@ input.readonly {
 #editAgencyOverlay .editAgencyModal {
   display: flex;
   flex-direction: column;
-  width: min(1100px, 100%);
+  width: min(1200px, 100%);
   max-height: 92vh;
   overflow: hidden;
 }
@@ -3174,27 +3136,157 @@ input.readonly {
 #editAgencyOverlay .modalBody {
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#editAgencyOverlay .editAgencyForm {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#editAgencyOverlay .editAgencyTop {
+  flex: 0 0 auto;
+}
+
+#editAgencyOverlay .editAgencyTop .agencyCreateRow {
+  gap: 8px 12px;
+}
+
+#editAgencyOverlay .editAgencyDomainRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  gap: 8px 16px;
+  align-items: start;
+  margin-top: 10px;
+}
+
+#editAgencyOverlay .editAgencyDomainField {
+  min-width: 0;
+}
+
+#editAgencyOverlay .editAgencyToggles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 1.35em;
+}
+
+#editAgencyOverlay .editAgencyToggles .settings-field-bool {
+  min-height: 2rem;
+  padding: 0;
+}
+
+#editAgencyOverlay .editAgencyToggles .muted {
+  margin: 0;
+}
+
+#editAgencyOverlay .editAgencySplit {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+#editAgencyOverlay .editAgencySplit.has-extra-groups {
+  grid-template-columns: 1fr 1fr;
+}
+
+#editAgencyOverlay .editAgencySplitPane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#editAgencyOverlay .editAgencySplitPane h3 {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+#editAgencyOverlay .editAgencySplitPaneHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+}
+
+#editAgencyOverlay .editAgencySplitPaneHead .row {
+  margin: 0;
+}
+
+#editAgencyOverlay .editAgencySplitPane .msg:empty,
+#editAgencyOverlay .editAgencySplitPane .muted:empty {
+  display: none;
+}
+
+#editAgencyOverlay .editAgencySplitPane #adminsFilter,
+#editAgencyOverlay .editAgencySplitPane #accessGroupSearch {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+#editAgencyOverlay .editAgencyListBox {
+  flex: 1 1 auto;
+  min-height: 8rem;
   overflow: auto;
+  max-height: none;
+  margin-top: 0;
 }
 
-#editAgencyOverlay .editAgencySection {
-  margin-bottom: 22px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--line);
+#editAgencyOverlay .editAgencySplitPane .pagination {
+  flex: 0 0 auto;
+  margin-top: 8px;
 }
 
-#editAgencyOverlay .editAgencySection h3 {
-  margin: 0 0 12px;
+#editAgencyOverlay .editAgencyAdminItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+#editAgencyOverlay .editAgencyAdminItem:hover {
+  background: rgba(255,255,255,.06);
+}
+
+#editAgencyOverlay .editAgencyAdminMeta {
+  min-width: 0;
+}
+
+#editAgencyOverlay .editAgencyAdminUser {
+  font-weight: 600;
+}
+
+#editAgencyOverlay .editAgencyAdminMeta .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #editAgencyOverlay .editAgencyFooter {
+  flex: 0 0 auto;
   justify-content: flex-end;
   align-items: center;
   gap: 10px;
-  position: sticky;
-  bottom: 0;
-  background: var(--panel);
+  margin-top: 12px;
   padding-top: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
 }
 
 #editAgencyOverlay .editAgencyFooter .msg {
@@ -3229,9 +3321,22 @@ body.noScroll .main {
     height: 100%;
     border-radius: 0;
   }
-  #accessGroupsInner.groupsInner {
-    column-count: 2;
-    column-width: 160px;
+  #editAgencyOverlay .modalBody {
+    overflow: auto;
+  }
+  #editAgencyOverlay .editAgencyForm {
+    overflow: visible;
+  }
+  #editAgencyOverlay .editAgencySplit,
+  #editAgencyOverlay .editAgencySplit.has-extra-groups,
+  #editAgencyOverlay .editAgencyDomainRow {
+    grid-template-columns: 1fr;
+  }
+  #editAgencyOverlay .editAgencyToggles {
+    padding-top: 0;
+  }
+  #editAgencyOverlay .editAgencyListBox {
+    min-height: 12rem;
   }
 }
 </style>
