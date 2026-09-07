@@ -72,10 +72,18 @@ function reportFileName(locator, generatedAt) {
   return `locate-report-${slug}-${stamp}.pdf`;
 }
 
-function formatReportWhen(d) {
+function formatUtcStamp(d, options) {
   const dt = d instanceof Date ? d : new Date(d);
   if (Number.isNaN(dt.getTime())) return "—";
-  return dt.toLocaleString(undefined, {
+  const text = dt.toLocaleString(undefined, {
+    ...options,
+    timeZone: "UTC",
+  });
+  return /\bUTC\b/i.test(text) ? text : `${text} UTC`;
+}
+
+function formatReportWhen(d) {
+  return formatUtcStamp(d, {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -87,9 +95,7 @@ function formatReportWhen(d) {
 }
 
 function formatLogWhen(d) {
-  const dt = d instanceof Date ? d : new Date(d);
-  if (Number.isNaN(dt.getTime())) return "—";
-  return dt.toLocaleString(undefined, {
+  return formatUtcStamp(d, {
     year: "numeric",
     month: "numeric",
     day: "numeric",
@@ -588,28 +594,37 @@ function drawMapsPage(doc, { streetMapPng, satelliteMapPng }) {
     .text("First fix is dark green. Later pings are grey. The last fix is red.", {
       width: contentWidth(doc),
     });
-  doc.moveDown(0.4);
+  doc.moveDown(0.35);
   const maps = [
     { png: streetMapPng, title: "Street", attribution: MAP_LAYERS.street.attribution },
     { png: satelliteMapPng, title: "Satellite", attribution: MAP_LAYERS.satellite.attribution },
   ].filter((m) => m.png);
   const maxW = contentWidth(doc);
-  const remaining = doc.page.height - doc.page.margins.bottom - doc.y;
-  const maxH = Math.max(180, Math.min(280, (remaining - 70 * maps.length) / Math.max(maps.length, 1)));
+  const bottom = () => doc.page.height - doc.page.margins.bottom;
   maps.forEach((map, idx) => {
-    if (idx > 0) doc.moveDown(0.5);
-    ensureSpace(doc, 36 + Math.min(maxH, 220));
+    const captionH = 22;
+    let avail = bottom() - doc.y - captionH - 8;
+    if (idx > 0 && avail < 150) {
+      doc.addPage({ size: "LETTER", margin: 50 });
+      avail = bottom() - doc.y - captionH - 8;
+    }
+    const fitH = Math.max(120, Math.min(260, avail));
+    doc.x = doc.page.margins.left;
     doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(map.title, {
       width: maxW,
     });
     try {
-      const imgY = doc.y + 4;
+      const imgY = doc.y + 2;
       doc.image(map.png, doc.page.margins.left, imgY, {
-        fit: [maxW, maxH],
+        fit: [maxW, fitH],
         align: "center",
       });
-      doc.y = imgY + maxH + 6;
-      doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(map.attribution, { width: maxW });
+      doc.y = Math.min(imgY + fitH + 4, bottom() - 12);
+      doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(map.attribution, {
+        width: maxW,
+        height: 12,
+        lineBreak: false,
+      });
     } catch (_) {
       doc.font("Helvetica").fontSize(10).fillColor(MUTED).text(`${map.title} map could not be embedded.`);
     }
@@ -618,7 +633,7 @@ function drawMapsPage(doc, { streetMapPng, satelliteMapPng }) {
 
 function drawLogTable(doc, rows, form) {
   const left = doc.page.margins.left;
-  const widths = [132, 64, 72, 42, 48];
+  const widths = [148, 64, 72, 42, 48];
   const detailsW = contentWidth(doc) - widths.reduce((a, b) => a + b, 0);
   const cols = [...widths, detailsW];
   const headers = ["Time", "Latitude", "Longitude", "Acc.", "Source", "Details"];
@@ -711,17 +726,22 @@ function stampPageNumbers(doc, serverName) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i += 1) {
     doc.switchToPage(i);
-    const y = doc.page.height - 36;
+    const savedBottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    const y = doc.page.height - 34;
     doc.font("Helvetica").fontSize(8).fillColor(MUTED);
     doc.text(pdfSafe(serverName), doc.page.margins.left, y, {
       width: contentWidth(doc) / 2,
       lineBreak: false,
+      height: 10,
     });
     doc.text(`Page ${i + 1} of ${range.count}`, doc.page.margins.left, y, {
       width: contentWidth(doc),
       align: "right",
       lineBreak: false,
+      height: 10,
     });
+    doc.page.margins.bottom = savedBottom;
   }
 }
 

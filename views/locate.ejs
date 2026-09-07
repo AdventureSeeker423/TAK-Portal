@@ -501,11 +501,17 @@
     return pill;
   }
 
+  function formatLocateWhen(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    var text = d.toLocaleString(undefined, { timeZone: "UTC" });
+    return /UTC/i.test(text) ? text : text + " UTC";
+  }
+
   function lastFixText(loc) {
     if (!loc.lastCoordsAt) return "—";
-    var d = new Date(loc.lastCoordsAt);
-    if (isNaN(d.getTime())) return "—";
-    return d.toLocaleString();
+    return formatLocateWhen(loc.lastCoordsAt);
   }
 
   function addBtn(wrap, label, onClick, extra) {
@@ -765,7 +771,7 @@
       rows.forEach(function (h) {
         var tr = document.createElement("tr");
         var t1 = document.createElement("td");
-        t1.textContent = h.at ? new Date(h.at).toLocaleString() : "";
+        t1.textContent = h.at ? formatLocateWhen(h.at) : "";
         var t2 = document.createElement("td");
         t2.textContent = h.callsign || h.name || "";
         var t3 = document.createElement("td");

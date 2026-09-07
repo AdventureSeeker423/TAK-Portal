@@ -69,6 +69,9 @@ assert.strictEqual(
   "locate-report-missing-person-2026-09-06-21-00-00.pdf"
 );
 
+assert.ok(report.formatReportWhen("2026-09-06T21:00:00.000Z").includes("UTC"));
+assert.ok(report.formatLogWhen("2026-09-06T21:00:00.000Z").includes("UTC"));
+
 const view = report.fitMapView(history);
 assert.ok(view);
 assert.ok(view.zoom >= 3 && view.zoom <= 16);
@@ -103,6 +106,8 @@ async function main() {
   assert.ok(pdf.buffer.slice(0, 4).toString() === "%PDF");
   assert.ok(pdf.buffer.length > 500);
   assert.strictEqual(pdf.fileName, "locate-report-missing-person-2026-09-06-21-00-00.pdf");
+  const pageCount = (pdf.buffer.toString("latin1").match(/\/Type\s*\/Page(?!s)/g) || []).length;
+  assert.strictEqual(pageCount, 2);
   console.log("locatorReport.test.js: ok");
 }
 

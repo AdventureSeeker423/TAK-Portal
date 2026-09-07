@@ -841,7 +841,8 @@
   function formatTime(iso) {
     if (!iso) return "—";
     try {
-      return new Date(iso).toLocaleString();
+      var text = new Date(iso).toLocaleString(undefined, { timeZone: "UTC" });
+      return /UTC/i.test(text) ? text : text + " UTC";
     } catch (e) {
       return iso;
     }
