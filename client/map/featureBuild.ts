@@ -1,5 +1,5 @@
 import type { MarkerFeature, PaintFeatureProperties, SlimMarker } from "./types";
-import { AFFILIATION_COLORS } from "./constants";
+import { AFFILIATION_COLORS, STALE_COLOR_FACTOR, STALE_GRACE_MS } from "./constants";
 import { computeLabelSortKey } from "./labelDeclutter";
 import { vectorId } from "./uidHash";
 
@@ -77,6 +77,56 @@ function resolveColor(marker: SlimMarker): string {
   return AFFILIATION_COLORS[aff] || AFFILIATION_COLORS.other;
 }
 
+export function parseStaleTimeMs(marker: { stale?: string | null } | null | undefined): number {
+  if (!marker?.stale) return NaN;
+  const t = Date.parse(String(marker.stale));
+  return Number.isFinite(t) ? t : NaN;
+}
+
+/** True once the CoT `stale` timestamp has elapsed (icon should darken). */
+export function isMarkerStale(
+  marker: { stale?: string | null } | null | undefined,
+  now: number = Date.now()
+): boolean {
+  const t = parseStaleTimeMs(marker);
+  return Number.isFinite(t) && now > t;
+}
+
+/** True after stale time plus grace — drop the marker from the map. */
+export function isMarkerExpired(
+  marker: { stale?: string | null } | null | undefined,
+  now: number = Date.now()
+): boolean {
+  const t = parseStaleTimeMs(marker);
+  return Number.isFinite(t) && now > t + STALE_GRACE_MS;
+}
+
+export function darkenHexColor(
+  color: unknown,
+  factor: number = STALE_COLOR_FACTOR
+): string {
+  const raw = String(color || "").trim();
+  const hex = raw.startsWith("#") ? raw.slice(1) : raw;
+  const full =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : hex;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return raw || "#1e293b";
+  const n = parseInt(full, 16);
+  const r = Math.round(((n >> 16) & 255) * factor);
+  const g = Math.round(((n >> 8) & 255) * factor);
+  const b = Math.round((n & 255) * factor);
+  return (
+    "#" +
+    [r, g, b]
+      .map((v) => v.toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
 /** Paint-only GeoJSON feature for the live marker source. */
 export function buildPaintFeature(
   marker: SlimMarker,
@@ -86,6 +136,7 @@ export function buildPaintFeature(
     showLabel?: number;
     overviewMode?: boolean;
     iconReady?: boolean;
+    now?: number;
   } = {}
 ): MarkerFeature | null {
   const lat = Number(marker.lat);
@@ -93,7 +144,9 @@ export function buildPaintFeature(
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   if (!marker.uid) return null;
 
-  const color = resolveColor(marker);
+  const now = options.now != null ? options.now : Date.now();
+  const stale = isMarkerStale(marker, now) ? 1 : 0;
+  const color = stale ? darkenHexColor(resolveColor(marker)) : resolveColor(marker);
   // Slim markers carry mapImageId (mimg-*); never treat raw api iconId as a MapLibre image name.
   const mapImageId = effectiveMapImageId(marker);
   const apiIconId = mapImageId ? String(marker.iconId || "") : "";
@@ -142,6 +195,7 @@ export function buildPaintFeature(
       marker.course != null && Number.isFinite(Number(marker.course))
         ? Math.round(Number(marker.course))
         : null,
+    stale,
   };
 
   return {
@@ -185,6 +239,7 @@ export function featurePropertyPatch(
     { key: "showLabel", value: p.showLabel },
     { key: "channelKeys", value: p.channelKeys },
     { key: "course", value: p.course },
+    { key: "stale", value: p.stale },
   ];
 }
 

@@ -34,21 +34,22 @@ const drop = cot.buildEventJs({
   type: cot.DROP_TYPE,
   lat: 35.1,
   lon: -85.2,
-  callsign: "LOCATOR - Hiker",
-  color: "Red",
-  destGroup: "HCSO Main",
+  callsign: "Hiker",
   destMission: "Search Alpha",
   archive: true,
+  team: false,
   now,
   staleDate: new Date(now.getTime() + 1000),
 });
 assert.strictEqual(drop.event._attributes.type, "a-u-G");
 assert.ok(drop.event.detail.archive);
-assert.strictEqual(drop.event.detail.filtergroup._attributes.group, "HCSO Main");
+assert.ok(!drop.event.detail.__group);
+assert.strictEqual(drop.event.detail.contact._attributes.callsign, "Hiker");
 assert.deepStrictEqual(
   drop.event.detail.marti.dest.map((d) => d._attributes),
-  [{ mission: "Search Alpha" }, { group: "HCSO Main" }]
+  [{ mission: "Search Alpha" }]
 );
+assert.ok(!drop.event.detail.filtergroup);
 
 const del = cot.buildDeleteEventJs({
   uid: cot.liveTrackUid("id1"),

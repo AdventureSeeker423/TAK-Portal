@@ -13,6 +13,9 @@ import {
   MARKER_FILTER,
   MARKER_LAYER_IDS,
   SOURCE_ID,
+  STALE_CIRCLE_OPACITY,
+  STALE_ICON_OPACITY,
+  STALE_LABEL_OPACITY,
 } from "../constants";
 
 /** Minimal MapLibre map surface used by layer helpers. */
@@ -26,8 +29,17 @@ type MapLibreMap = {
   removeLayer: (id: string) => void;
 };
 
+function markerStaleExpr(): unknown[] {
+  return ["==", ["coalesce", ["get", "stale"], 0], 1];
+}
+
 function markerCircleOpacityPaint(): unknown {
-  return ["case", ["==", ["get", "showCircle"], 1], 1, 0];
+  return [
+    "case",
+    ["==", ["get", "showCircle"], 1],
+    ["case", markerStaleExpr(), STALE_CIRCLE_OPACITY, 1],
+    0,
+  ];
 }
 
 function markerIconOpacityPaint(): unknown {
@@ -35,7 +47,7 @@ function markerIconOpacityPaint(): unknown {
     "case",
     ["==", ["get", "showCircle"], 1],
     0,
-    ["case", ["==", ["get", "iconId"], ""], 0, 1],
+    ["case", ["==", ["get", "iconId"], ""], 0, ["case", markerStaleExpr(), STALE_ICON_OPACITY, 1]],
   ];
 }
 
@@ -56,7 +68,7 @@ function markerCircleLayerSpec(id: string, drawTier: number): object {
     paint: {
       "circle-radius": ["case", ["get", "selected"], 16, 13],
       "circle-color": ["get", "color"],
-      "circle-stroke-color": "#ffffff",
+      "circle-stroke-color": ["case", markerStaleExpr(), "#475569", "#ffffff"],
       "circle-stroke-width": 1.5,
       "circle-opacity": markerCircleOpacityPaint(),
     },
@@ -83,8 +95,8 @@ function markerIconLayerSpec(id: string, drawTier: number): object {
     },
     paint: {
       "icon-opacity": markerIconOpacityPaint(),
-      "icon-halo-color": "#ffffff",
-      "icon-halo-width": 4,
+      "icon-halo-color": ["case", markerStaleExpr(), "#000000", "#ffffff"],
+      "icon-halo-width": ["case", markerStaleExpr(), 1.5, 4],
     },
   };
 }
@@ -118,7 +130,7 @@ const markerLabelPaint = {
   "text-halo-color": "rgba(0, 0, 0, 0.92)",
   "text-halo-width": 2,
   "text-halo-blur": 0.35,
-  "text-opacity": 1,
+  "text-opacity": ["case", markerStaleExpr(), STALE_LABEL_OPACITY, 1],
 };
 
 export function markerLayersComplete(map: MapLibreMap): boolean {

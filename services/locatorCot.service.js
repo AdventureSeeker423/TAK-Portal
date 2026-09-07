@@ -58,6 +58,7 @@ function buildEventJs({
   destGroup,
   destMission,
   archive,
+  team = true,
   now,
   staleDate,
   how,
@@ -66,8 +67,10 @@ function buildEventJs({
   const stale = iso(staleDate);
   const detail = {
     contact: { _attributes: { callsign: String(callsign || "").trim() || "LOCATOR" } },
-    __group: { _attributes: { name: locatorForm.normalizeColor(color), role: TEAM_ROLE } },
   };
+  if (team !== false) {
+    detail.__group = { _attributes: { name: locatorForm.normalizeColor(color), role: TEAM_ROLE } };
+  }
   const note = String(remarks || "").trim();
   if (note) detail.remarks = { _text: note };
   if (archive) detail.archive = {};
@@ -324,17 +327,18 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
   if (!mission || !locator.dropPoints) return;
 
   const dropUid = dropTrackUid(locator.id, now);
+  const dropCallsign = String(locator.title || "").trim() || "LOCATOR";
   const dropJs = buildEventJs({
     uid: dropUid,
     type: DROP_TYPE,
     lat: latitude,
     lon: longitude,
     ce: accuracyMeters,
-    callsign,
-    color,
+    callsign: dropCallsign,
     remarks,
     destMission: mission,
     archive: true,
+    team: false,
     now,
     staleDate: new Date(now.getTime() + 365 * 24 * 3600 * 1000),
   });

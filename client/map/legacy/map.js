@@ -85,8 +85,13 @@
     "tak-markers-icon",
     "tak-markers-course",
   ];
-  /** Must match cotStream.service.js STALE_GRACE_MS */
+  /** Must match cotStream.service.js STALE_GRACE_MS / client/map/constants.ts */
   const STALE_GRACE_MS = 30000;
+  const STALE_SWEEP_MS = 2000;
+  const STALE_COLOR_FACTOR = 0.42;
+  const STALE_ICON_OPACITY = 0.4;
+  const STALE_CIRCLE_OPACITY = 0.88;
+  const STALE_LABEL_OPACITY = 0.55;
 
   const mapBasemaps = window.TAK_MAP_BASEMAPS || {};
   const MAP_GLYPHS = mapBasemaps.MAP_GLYPHS || "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
@@ -466,12 +471,31 @@
     return { iconId: iconId, showCircle: showCircle };
   }
 
+  function markerStaleExpr() {
+    return ["==", ["coalesce", ["get", "stale"], 0], 1];
+  }
+
   function markerCircleOpacityPaint() {
-    return ["case", ["==", ["get", "showCircle"], 1], 1, 0];
+    return [
+      "case",
+      ["==", ["get", "showCircle"], 1],
+      ["case", markerStaleExpr(), STALE_CIRCLE_OPACITY, 1],
+      0,
+    ];
   }
 
   function markerIconOpacityPaint() {
-    return ["case", ["!=", ["get", "iconId"], ""], 1, 0];
+    return [
+      "case",
+      ["==", ["get", "showCircle"], 1],
+      0,
+      [
+        "case",
+        ["==", ["get", "iconId"], ""],
+        0,
+        ["case", markerStaleExpr(), STALE_ICON_OPACITY, 1],
+      ],
+    ];
   }
 
   function rebuildIconUidIndex(features) {
@@ -569,7 +593,9 @@
         )
       : "";
     const apiIconId = mapImageId ? String(m.iconId || "") : "";
-    const color = m.color || m.teamColor || "#1e88e5";
+    let color = m.color || m.teamColor || "#1e88e5";
+    const stale = isMarkerStaleNow(m) ? 1 : 0;
+    if (stale) color = darkenHexColor(color);
     const uid = String(m.uid);
     if (shouldSuppressLiveMarkerGraphic(uid)) return null;
     if (
@@ -621,6 +647,7 @@
         labelSort: 0,
         showLabel: featureShowLabelValue(uid, m),
         channelKeys: m.channelKeys || "",
+        stale: stale,
       },
     };
   }
@@ -1110,10 +1137,44 @@
     return 5;
   }
 
+  function isMarkerStaleNow(m) {
+    if (!m || !m.stale) return false;
+    const t = Date.parse(m.stale);
+    return Number.isFinite(t) && Date.now() > t;
+  }
+
   function isMarkerExpiredAtIngest(m) {
     if (!m || !m.stale) return false;
     const t = Date.parse(m.stale);
     return Number.isFinite(t) && Date.now() > t + STALE_GRACE_MS;
+  }
+
+  function darkenHexColor(color, factor) {
+    const mul = factor == null ? STALE_COLOR_FACTOR : factor;
+    const raw = String(color || "").trim();
+    const hex = raw.charAt(0) === "#" ? raw.slice(1) : raw;
+    const full =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map(function (c) {
+              return c + c;
+            })
+            .join("")
+        : hex;
+    if (!/^[0-9a-fA-F]{6}$/.test(full)) return raw || "#1e293b";
+    const n = parseInt(full, 16);
+    const r = Math.round(((n >> 16) & 255) * mul);
+    const g = Math.round(((n >> 8) & 255) * mul);
+    const b = Math.round((n & 255) * mul);
+    return (
+      "#" +
+      [r, g, b]
+        .map(function (v) {
+          return v.toString(16).padStart(2, "0");
+        })
+        .join("")
+    );
   }
 
   function storeMarker(m) {
@@ -4662,7 +4723,7 @@
       "text-halo-color": "rgba(0, 0, 0, 0.92)",
       "text-halo-width": 2,
       "text-halo-blur": 0.35,
-      "text-opacity": 1,
+      "text-opacity": ["case", markerStaleExpr(), STALE_LABEL_OPACITY, 1],
     };
   }
 
@@ -4684,7 +4745,7 @@
         "circle-radius": ["case", markerSelectedExpr(), 16, 13],
         "circle-color": ["get", "color"],
         "circle-stroke-width": ["case", markerSelectedExpr(), 2, 1.5],
-        "circle-stroke-color": "#ffffff",
+        "circle-stroke-color": ["case", markerStaleExpr(), "#475569", "#ffffff"],
         "circle-opacity": markerCircleOpacityPaint(),
       },
     };
@@ -4711,8 +4772,8 @@
       },
       paint: {
         "icon-opacity": markerIconOpacityPaint(),
-        "icon-halo-color": "#ffffff",
-        "icon-halo-width": 4,
+        "icon-halo-color": ["case", markerStaleExpr(), "#000000", "#ffffff"],
+        "icon-halo-width": ["case", markerStaleExpr(), 1.5, 4],
       },
     };
   }
@@ -7406,11 +7467,20 @@
     openGoToPalette(text);
   });
 
+  function sweepExpiredLiveMarkers() {
+    const removes = [];
+    markersByUid.forEach(function (m, uid) {
+      if (isMarkerExpiredAtIngest(m)) removes.push(uid);
+    });
+    if (removes.length) applyBatch({ removes: removes });
+  }
+
   setInterval(function () {
     if (mapRefreshPending && markerLayersReady && !serverGeoFetchInFlight && !lastGeoJsonFetchOk) {
       refreshMapFromMarkers();
     }
-  }, 2000);
+    sweepExpiredLiveMarkers();
+  }, STALE_SWEEP_MS);
 
   const es = new EventSource("/api/map/stream");
   es.onmessage = (ev) => {

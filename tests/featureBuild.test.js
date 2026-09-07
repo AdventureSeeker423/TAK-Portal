@@ -46,6 +46,9 @@ async function run() {
     markerPaintsMapIcon,
     effectiveMapImageId,
     isStandardGroundEudType,
+    isMarkerStale,
+    isMarkerExpired,
+    darkenHexColor,
   } = await loadFeatureBuild();
 
   assert.strictEqual(isStandardGroundEudType("a-f-G-U-C"), true);
@@ -110,6 +113,28 @@ async function run() {
     color: "#00ff00",
   });
   assert.strictEqual(air.properties.iconId, "mimg-abcdef0123456789");
+
+  assert.strictEqual(darkenHexColor("#ffffff", 0.5), "#808080");
+  assert.strictEqual(isMarkerStale({ stale: "2026-01-01T00:00:00.000Z" }, Date.parse("2026-01-01T00:00:01.000Z")), true);
+  assert.strictEqual(isMarkerStale({ stale: "2026-01-01T00:00:00.000Z" }, Date.parse("2025-12-31T23:59:59.000Z")), false);
+  assert.strictEqual(isMarkerExpired({ stale: "2026-01-01T00:00:00.000Z" }, Date.parse("2026-01-01T00:00:29.000Z")), false);
+  assert.strictEqual(isMarkerExpired({ stale: "2026-01-01T00:00:00.000Z" }, Date.parse("2026-01-01T00:00:31.000Z")), true);
+
+  const staleAt = "2026-01-01T00:00:00.000Z";
+  const freshFeat = buildPaintFeature(groundEud({ stale: staleAt, color: "#22c55e" }), {
+    now: Date.parse("2025-12-31T23:59:59.000Z"),
+  });
+  assert.ok(freshFeat);
+  assert.strictEqual(freshFeat.properties.stale, 0);
+  assert.strictEqual(freshFeat.properties.color, "#22c55e");
+
+  const staleFeat = buildPaintFeature(groundEud({ stale: staleAt, color: "#22c55e" }), {
+    now: Date.parse("2026-01-01T00:00:01.000Z"),
+  });
+  assert.ok(staleFeat);
+  assert.strictEqual(staleFeat.properties.stale, 1);
+  assert.strictEqual(staleFeat.properties.color, darkenHexColor("#22c55e"));
+  assert.notStrictEqual(staleFeat.properties.color, "#22c55e");
 
   console.log("ok - featureBuild ground EUD team dots");
 }

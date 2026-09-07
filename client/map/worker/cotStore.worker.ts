@@ -11,11 +11,13 @@ import type {
   WorkerInbound,
   WorkerOutbound,
 } from "../types";
-import { MAP_DIFF_FLUSH_MS, VIEW_FLUSH_MS } from "../constants";
+import { MAP_DIFF_FLUSH_MS, STALE_SWEEP_MS, VIEW_FLUSH_MS } from "../constants";
 import {
   buildPaintFeature,
   effectiveMapImageId,
   featurePropertyPatch,
+  isMarkerExpired,
+  isMarkerStale,
   pointInBounds,
 } from "../featureBuild";
 import { computeLabelVisibility } from "../labelDeclutter";
@@ -27,6 +29,8 @@ const readyIcons = new Set<string>();
 const liveShapes = new Map<string, LiveShapeFeature>();
 /** Sticky label flags — recomputed on camera/selection, not every CoT move. */
 const showLabelByUid = new Map<string, number>();
+/** Last painted stale flag so we only flush when a CoT crosses stale/expiry. */
+const staleFlagByUid = new Map<string, number>();
 
 let revision = 0;
 let bounds: LonLatBounds | null = null;
@@ -263,6 +267,7 @@ function flush(): void {
           { key: "showLabel", value: showLabel },
           { key: "selected", value: uid === selectedUid },
           { key: "locked", value: uid === lockedUid },
+          { key: "stale", value: feat.properties.stale },
         ],
       });
     }
@@ -287,9 +292,58 @@ function emitShapes(): void {
   post({ type: "shapes", features: Array.from(liveShapes.values()) });
 }
 
+function dropMarker(uid: string): void {
+  const id = String(uid || "");
+  if (!id) return;
+  markers.delete(id);
+  showLabelByUid.delete(id);
+  staleFlagByUid.delete(id);
+}
+
 function upsertMarker(marker: SlimMarker): void {
   if (!marker?.uid) return;
-  markers.set(String(marker.uid), marker);
+  const uid = String(marker.uid);
+  const now = Date.now();
+  if (isMarkerExpired(marker, now)) {
+    dropMarker(uid);
+    return;
+  }
+  markers.set(uid, marker);
+  staleFlagByUid.set(uid, isMarkerStale(marker, now) ? 1 : 0);
+}
+
+function shapeStaleValue(feature: LiveShapeFeature): string | null {
+  const props = feature?.properties as { stale?: string | null } | null | undefined;
+  return props?.stale != null ? String(props.stale) : null;
+}
+
+function sweepStale(): void {
+  const now = Date.now();
+  let markersChanged = false;
+  let shapesChanged = false;
+  for (const [uid, marker] of markers) {
+    if (isMarkerExpired(marker, now)) {
+      dropMarker(uid);
+      markersChanged = true;
+      continue;
+    }
+    const flag = isMarkerStale(marker, now) ? 1 : 0;
+    if (staleFlagByUid.get(uid) !== flag) {
+      staleFlagByUid.set(uid, flag);
+      markersChanged = true;
+    }
+  }
+  for (const [uid, feat] of liveShapes) {
+    if (isMarkerExpired({ stale: shapeStaleValue(feat) }, now)) {
+      liveShapes.delete(uid);
+      shapesChanged = true;
+    }
+  }
+  if (markersChanged) {
+    emitSearchIndex();
+    scheduleFlush();
+  }
+  if (shapesChanged) emitShapes();
 }
 
 function handle(msg: WorkerInbound): void {
@@ -298,6 +352,7 @@ function handle(msg: WorkerInbound): void {
       markers.clear();
       sourceUids.clear();
       showLabelByUid.clear();
+      staleFlagByUid.clear();
       for (const m of msg.markers || []) upsertMarker(m);
       revision = Number(msg.revision) || revision;
       needFullResync = true;
@@ -308,8 +363,7 @@ function handle(msg: WorkerInbound): void {
     }
     case "batch": {
       for (const uid of msg.removes || []) {
-        markers.delete(String(uid));
-        showLabelByUid.delete(String(uid));
+        dropMarker(String(uid));
       }
       for (const m of msg.updates || []) upsertMarker(m);
       if (msg.revision != null) revision = Number(msg.revision) || revision;
@@ -389,5 +443,7 @@ self.onmessage = (ev: MessageEvent<WorkerInbound>) => {
     console.error("[cotStore.worker]", err);
   }
 };
+
+setInterval(sweepStale, STALE_SWEEP_MS);
 
 post({ type: "ready" });

@@ -64,6 +64,8 @@ export type PaintFeatureProperties = {
   showLabel: number;
   channelKeys: string;
   course: number | null;
+  /** 1 once Date.now() is past the CoT stale timestamp; 0 otherwise. */
+  stale: number;
 };
 
 export type MarkerFeature = {

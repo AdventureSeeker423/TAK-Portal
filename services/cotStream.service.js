@@ -13,7 +13,8 @@ const mapRender = require("./mapRender.service");
 const shapeDecor = require("../public/shapeDecorFilter.js");
 
 const STALE_SWEEP_MS = 5000;
-/** Keep markers on the map this long after their CoT stale time before removing. */
+/** Keep markers on the map this long after their CoT stale time before removing.
+ *  Clients darken the icon at `stale`; this grace is the remaining "stale out". */
 const STALE_GRACE_MS = 30000;
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 30000;
@@ -252,6 +253,10 @@ async function trackLiveShapeFeature(cot, marker) {
     const uid = String(feat?.id || marker.uid || "");
     const geomType = String(feat?.geometry?.type || "");
     if (!uid || (geomType !== "Polygon" && geomType !== "LineString")) return;
+    feat.properties = Object.assign({}, feat.properties, {
+      uid,
+      stale: marker.stale || null,
+    });
     liveShapeFeatures.set(uid, feat);
     purgeShapeDecorMarkers(true);
   } catch (_) {}
@@ -311,6 +316,7 @@ function parseSpiOverlayFeature(cot, marker) {
       cotType: marker.type || "",
       kind: "spi-fov",
       channelKeys: mapRender.markerChannelKeys(marker).join(","),
+      stale: marker.stale || null,
       stroke,
       fill,
       "fill-opacity": 0.1,
@@ -337,11 +343,9 @@ function trackSpiOverlayFeature(cot, marker) {
 function forgetLiveShape(uid) {
   const id = String(uid || "").trim();
   if (!id) return;
-  liveShapeFeatures.delete(id);
-  if (liveOverlayFeatures.has(id)) {
-    liveOverlayFeatures.delete(id);
-    queueShapeRemove(id);
-  }
+  const hadShape = liveShapeFeatures.delete(id);
+  const hadOverlay = liveOverlayFeatures.delete(id);
+  if (hadShape || hadOverlay) queueShapeRemove(id);
 }
 
 function getLiveOverlayGeoJson() {
@@ -425,11 +429,7 @@ function queueMarkerRemove(uid) {
   bumpMarkerRevision();
   pendingBroadcast.updates.delete(id);
   pendingBroadcast.removes.add(id);
-  if (liveOverlayFeatures.has(id)) {
-    liveOverlayFeatures.delete(id);
-    pendingBroadcast.shapeUpdates.delete(id);
-    pendingBroadcast.shapeRemoves.add(id);
-  }
+  forgetLiveShape(id);
   scheduleBatchFlush();
 }
 
@@ -668,6 +668,11 @@ function handleCot(cot) {
 
   const marker = parseMarkerFromCoT(cot);
   if (!marker) return;
+  // Mission drop pins share the locator name but are not live SA — skip them
+  // so the map does not show a new "copy" of the locator on every ping.
+  if (/takportal\.locator\.[^.]+\.drop\./i.test(String(marker.uid || ""))) {
+    return;
+  }
 
   if (isShapeDrawingCotType(marker.type) && hasShapeDetail(cot)) {
     void trackLiveShapeFeature(cot, marker);
@@ -771,10 +776,18 @@ function sweepStaleMarkers(notify = true) {
       removed = true;
       if (notify) {
         queueMarkerRemove(uid);
-      } else if (liveOverlayFeatures.has(uid)) {
+      } else {
+        liveShapeFeatures.delete(uid);
         liveOverlayFeatures.delete(uid);
       }
     }
+  }
+  for (const [uid, feat] of liveShapeFeatures) {
+    const stale = feat?.properties?.stale || null;
+    if (!isMarkerExpired({ stale }, now)) continue;
+    removed = true;
+    if (notify) forgetLiveShape(uid);
+    else liveShapeFeatures.delete(uid);
   }
   if (removed && !notify) bumpMarkerRevision();
 }

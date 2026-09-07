@@ -34,6 +34,13 @@ export const LEGACY_MARKER_LAYER_IDS = [
 export const MARKER_FILTER: unknown[] = ["==", ["get", "kind"], "marker"];
 export const MAP_LABEL_FONT = ["Open Sans Semibold"];
 export const STALE_GRACE_MS = 30000;
+/** Client/worker sweep so icons darken and drop without waiting on the next CoT. */
+export const STALE_SWEEP_MS = 2000;
+/** Multiply RGB when a CoT is past its stale time (ATAK-style darker icon). */
+export const STALE_COLOR_FACTOR = 0.42;
+export const STALE_ICON_OPACITY = 0.4;
+export const STALE_CIRCLE_OPACITY = 0.88;
+export const STALE_LABEL_OPACITY = 0.55;
 export const MAP_DIFF_FLUSH_MS = 400;
 /** Extra viewport fringe so markers just off-screen are already painted while panning. */
 export const VIEWPORT_PAD_RATIO = 0.55;
