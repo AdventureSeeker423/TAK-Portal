@@ -143,15 +143,105 @@ async function putMissionKeywords(missionName, keywordsPayload) {
   return res.data;
 }
 
+const missionSubCache = new Map();
+
+function extractMissionToken(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  if (typeof payload.token === "string" && payload.token.trim()) return payload.token.trim();
+  const d = payload.data;
+  if (d && typeof d === "object") {
+    if (!Array.isArray(d) && typeof d.token === "string" && d.token.trim()) return d.token.trim();
+    if (Array.isArray(d) && d[0] && typeof d[0].token === "string" && d[0].token.trim()) {
+      return d[0].token.trim();
+    }
+  }
+  return "";
+}
+
+function extractMissionGuid(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  let m = payload.data != null ? payload.data : payload;
+  if (Array.isArray(m)) m = m[0];
+  if (m && m.mission && typeof m.mission === "object") m = m.mission;
+  return String((m && (m.guid || m.GUID)) || "").trim();
+}
+
+/**
+ * Subscribe the portal cert to a mission so content writes can use a mission JWT.
+ * TAK often accepts PUT /contents with HTTP 200 but leaves uids empty without this token.
+ */
+async function ensureMissionSubscription(missionName, clientUid) {
+  assertTakAvailable();
+  const name = String(missionName || "").trim();
+  const uid = String(clientUid || "takportal").trim() || "takportal";
+  const cacheKey = `${name}\0${uid}`;
+  const cached = missionSubCache.get(cacheKey);
+  if (cached && cached.token && Date.now() - cached.at < 30 * 60 * 1000) {
+    return { token: cached.token, guid: cached.guid, status: cached.status, cached: true };
+  }
+  const client = buildTakAxios({ timeout: 30000 });
+  const params = { uid };
+  let status = null;
+  let payload = null;
+  try {
+    const res = await client.put(`${missionPath(name)}/subscription`, undefined, { params });
+    status = res.status;
+    payload = res.data;
+  } catch (err) {
+    const got = await client.get(`${missionPath(name)}/subscription`, {
+      params,
+      validateStatus: () => true,
+    });
+    if (got.status >= 200 && got.status < 300) {
+      status = got.status;
+      payload = got.data;
+    } else {
+      const e = new Error(
+        `Mission subscribe failed: HTTP ${err?.response?.status || got.status}`
+      );
+      e.status = err?.response?.status || got.status;
+      throw e;
+    }
+  }
+  const token = extractMissionToken(payload);
+  const guid = extractMissionGuid(payload);
+  if (token) missionSubCache.set(cacheKey, { token, guid, status, at: Date.now() });
+  return { token, guid, status, cached: false };
+}
+
 /**
  * PUT /api/missions/:name/contents — associate uploaded content or CoT UIDs with a mission.
- * queryParams may include creatorUid (TAK records who added the content).
+ * queryParams may include creatorUid and uid. extraHeaders may include Authorization Bearer token.
  */
-async function putMissionContents(missionName, body, queryParams) {
+async function putMissionContents(missionName, body, queryParams, extraHeaders) {
   assertTakAvailable();
   const client = buildTakAxios({ timeout: 120000 });
   const res = await client.put(`${missionPath(missionName)}/contents`, body, {
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(extraHeaders && typeof extraHeaders === "object" ? extraHeaders : {}),
+    },
+    params: queryParams && typeof queryParams === "object" ? queryParams : undefined,
+  });
+  return res.data;
+}
+
+async function putMissionContentsByGuid(guid, body, queryParams, extraHeaders) {
+  assertTakAvailable();
+  const g = String(guid || "").trim();
+  if (!g) {
+    const e = new Error("Mission GUID is required.");
+    e.code = "INVALID_MISSION_GUID";
+    throw e;
+  }
+  const client = buildTakAxios({ timeout: 120000 });
+  const res = await client.put(`/api/missions/guid/${encodeURIComponent(g)}/contents`, body, {
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(extraHeaders && typeof extraHeaders === "object" ? extraHeaders : {}),
+    },
     params: queryParams && typeof queryParams === "object" ? queryParams : undefined,
   });
   return res.data;
@@ -311,6 +401,8 @@ module.exports = {
   listGroupsAll,
   putMissionKeywords,
   putMissionContents,
+  putMissionContentsByGuid,
+  ensureMissionSubscription,
   getSyncSearch,
   exportMissionKmlStream,
   exportMissionArchiveStream,

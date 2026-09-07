@@ -7,7 +7,7 @@ const groupsSvc = require("./groups.service");
 const locatorForm = require("./locatorForm.service");
 
 const LIVE_TYPE = "a-f-G-U-C";
-const DROP_TYPE = "b-m-p-s-m";
+const DROP_TYPE = "b-m-p-w-GOTO";
 const DELETE_TYPE = "t-x-d-d";
 const TEAM_ROLE = "Team Member";
 const DROP_TRACE_CAP = 25;
@@ -25,7 +25,11 @@ function liveTrackUid(locatorId) {
 }
 
 function dropTrackUid(locatorId, at) {
-  const stamp = String(at || new Date().toISOString()).replace(/[^0-9]/g, "").slice(0, 17);
+  const d = at instanceof Date ? at : new Date(at || Date.now());
+  const stamp = (Number.isNaN(d.getTime()) ? new Date() : d)
+    .toISOString()
+    .replace(/[^0-9]/g, "")
+    .slice(0, 17);
   return `takportal.locator.${String(locatorId || "").trim()}.drop.${stamp}`;
 }
 
@@ -184,7 +188,10 @@ function rememberDropTrace(trace) {
     bridgeConnected: trace.bridgeConnected,
     written: trace.write && trace.write.written,
     bindOk: trace.bind && trace.bind.ok,
+    lastBindVia: lastAttempt ? lastAttempt.via : null,
     lastBindStatus: lastAttempt ? lastAttempt.status : null,
+    uidInResponse: lastAttempt ? lastAttempt.uidInResponse : null,
+    tokenPresent: trace.bind && trace.bind.subscribe && trace.bind.subscribe.tokenPresent,
     lastBindBody: lastAttempt ? lastAttempt.body : null,
     cotXmlStatus: trace.probe && trace.probe.cotXmlStatus,
     missionHasUid: trace.probe && trace.probe.missionHasUid,
@@ -244,13 +251,14 @@ async function toCot(js, dest, { archive = false } = {}) {
   return cot;
 }
 
-async function writeEvent(js, dest, { ingest = false, archive = false } = {}) {
+async function writeEvent(js, dest, { ingest = false, archive = false, stripFlow = true } = {}) {
   const result = {
     bridgeConnected: cotStream.isBridgeConnected(),
     written: false,
     xml: "",
     error: null,
     dests: destList(dest),
+    stripFlow: !!stripFlow,
   };
   try {
     const cot = await toCot(js, dest, { archive });
@@ -262,7 +270,7 @@ async function writeEvent(js, dest, { ingest = false, archive = false } = {}) {
       "";
     result.archived =
       typeof cot.archived === "function" ? cot.archived() : !!(js && js.event && js.event.detail && js.event.detail.archive);
-    const written = await cotStream.writeCot(cot, { stripFlow: true });
+    const written = await cotStream.writeCot(cot, { stripFlow: !!stripFlow });
     result.written = !!written;
     if (ingest) {
       cotStream.ingestCot(cot);
@@ -311,31 +319,90 @@ function collectMissionUids(payload) {
   return out;
 }
 
+function payloadHasUid(payload, uid) {
+  return collectMissionUids(payload).includes(uid);
+}
+
+function authHeaders(token) {
+  const t = String(token || "").trim();
+  if (!t) return {};
+  return { Authorization: "Bearer " + t };
+}
+
 async function bindUidToMission(missionName, uid, creatorUid) {
   const dataSyncSvc = require("./dataSync.service");
-  const delays = [250, 700, 1500];
+  const creator = String(creatorUid || uid);
   const attempts = [];
-  for (let i = 0; i < delays.length; i++) {
-    await sleep(delays[i]);
-    const attempt = { n: i + 1, delayMs: delays[i], ok: false, status: null, body: "" };
+  const delays = [400, 900, 1600];
+  const body = { hashes: [], uids: [uid] };
+  const params = { creatorUid: creator, uid };
+
+  let token = "";
+  let guid = "";
+  const subscribe = { tokenPresent: false, guidPresent: false, status: null, cached: false, error: null };
+  try {
+    const sub = await dataSyncSvc.ensureMissionSubscription(missionName, creator);
+    token = sub.token || "";
+    guid = sub.guid || "";
+    subscribe.tokenPresent = !!token;
+    subscribe.guidPresent = !!guid;
+    subscribe.status = sub.status;
+    subscribe.cached = !!sub.cached;
+  } catch (err) {
+    subscribe.error = err?.message || String(err);
+    subscribe.status = err?.status || err?.response?.status || null;
+  }
+  if (!guid) {
     try {
-      const data = await dataSyncSvc.putMissionContents(
-        missionName,
-        { uids: [uid] },
-        { creatorUid: String(creatorUid || uid) }
-      );
-      attempt.ok = true;
+      const payload = await dataSyncSvc.getMission(missionName);
+      const m = unwrapMission(payload) || {};
+      guid = String(m.guid || m.GUID || "").trim();
+      subscribe.guidPresent = !!guid;
+    } catch (_) {}
+  }
+
+  async function tryPut(via, fn) {
+    const attempt = {
+      n: attempts.length + 1,
+      via,
+      ok: false,
+      status: null,
+      body: "",
+      uidInResponse: false,
+    };
+    try {
+      const data = await fn();
       attempt.status = 200;
       attempt.body = axiosBody(data);
+      attempt.uidInResponse = payloadHasUid(data, uid);
+      attempt.ok = attempt.uidInResponse;
       attempts.push(attempt);
-      return { ok: true, attempts };
+      return attempt.ok;
     } catch (err) {
       attempt.status = err?.response?.status || err?.status || null;
       attempt.body = axiosBody(err?.response?.data) || err?.message || String(err);
       attempts.push(attempt);
+      return false;
     }
   }
-  return { ok: false, attempts };
+
+  for (let i = 0; i < delays.length; i++) {
+    await sleep(delays[i]);
+    const ok = await tryPut(token ? "name+token" : "name", () =>
+      dataSyncSvc.putMissionContents(missionName, body, params, authHeaders(token))
+    );
+    if (ok) return { ok: true, subscribe, attempts };
+  }
+
+  if (guid) {
+    await sleep(400);
+    const ok = await tryPut(token ? "guid+token" : "guid", () =>
+      dataSyncSvc.putMissionContentsByGuid(guid, body, params, authHeaders(token))
+    );
+    if (ok) return { ok: true, subscribe, attempts };
+  }
+
+  return { ok: false, subscribe, attempts };
 }
 
 async function probeTakForDrop(missionName, uid) {
@@ -422,8 +489,6 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
   }
 
   const dropUid = dropTrackUid(locator.id, now);
-  const dropDest = [{ mission }];
-  if (destGroup) dropDest.push({ group: destGroup });
   const dropJs = buildEventJs({
     uid: dropUid,
     type: DROP_TYPE,
@@ -433,7 +498,6 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
     callsign,
     color,
     remarks,
-    destGroup,
     destMission: mission,
     archive: true,
     now,
@@ -442,7 +506,7 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
   trace.dropUid = dropUid;
   trace.dropJsDest = dropJs.event?.detail?.marti || null;
   trace.dropJsArchive = !!dropJs.event?.detail?.archive;
-  const written = await writeEvent(dropJs, dropDest, { archive: true });
+  const written = await writeEvent(dropJs, null, { archive: true, stripFlow: false });
   trace.write = written;
   if (!written.written) {
     trace.skipReason = "cot-write-failed";
