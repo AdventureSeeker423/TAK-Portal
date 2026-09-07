@@ -42,9 +42,19 @@ export async function renderMilSymPng(cotType, size = DEFAULT_SIZE) {
     throw new Error("CoT type is not 2525B-convertable");
   }
   const sidc = Type2525.to2525D(t);
-  const symbol = new ms.Symbol(sidc, { size: Number(size) || DEFAULT_SIZE });
+  const symbol = new ms.Symbol(sidc, milSymOptions(size));
   const svg = symbol.asSVG();
   return sharp(Buffer.from(svg, "utf8")).png().toBuffer();
+}
+
+function milSymOptions(size) {
+  return {
+    size: Number(size) || DEFAULT_SIZE,
+    fill: true,
+    fillOpacity: 1,
+    frame: true,
+    strokeWidth: 4,
+  };
 }
 
 export async function renderMilSymPngByIconId(apiIconId, size = DEFAULT_SIZE) {
@@ -53,7 +63,7 @@ export async function renderMilSymPngByIconId(apiIconId, size = DEFAULT_SIZE) {
     throw new Error("Expected 2525D: icon id");
   }
   const sidc = raw.slice("2525D:".length);
-  const symbol = new ms.Symbol(sidc, { size: Number(size) || DEFAULT_SIZE });
+  const symbol = new ms.Symbol(sidc, milSymOptions(size));
   const svg = symbol.asSVG();
   return sharp(Buffer.from(svg, "utf8")).png().toBuffer();
 }

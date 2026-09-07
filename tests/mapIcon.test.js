@@ -295,14 +295,13 @@ async function runTests() {
     "SPI markers should render with map icons"
   );
 
-  const unknownGround = mapIcon.resolveIcon({ type: "a-u-G", affiliation: "unknown" });
-  assert.ok(unknownGround, "unknown ground should resolve");
-  assert.strictEqual(unknownGround.source, "type-override");
-  assert.ok(
-    /FalconView\/A-U-G\.png/i.test(unknownGround.relPath || unknownGround.iconId),
-    "a-u-G should use FalconView yellow unknown cross, got " + unknownGround.iconId
-  );
-  assert.ok(mapIcon.getIconFilePath(unknownGround.iconId), "A-U-G.png must exist");
+  const unknownGroundSync = mapIcon.resolveIcon({ type: "a-u-G", affiliation: "unknown" });
+  assert.strictEqual(unknownGroundSync, null, "a-u-G should skip PNG flags and use filled milsym");
+  assert.strictEqual(mapIconResolve.prefersMilSymCotType("a-u-G"), true);
+  const unknownGround = await mapIcon.resolveIconAsync({ type: "a-u-G", affiliation: "unknown" });
+  assert.ok(unknownGround, "unknown ground should resolve via milsym");
+  assert.strictEqual(unknownGround.source, "milsym");
+  assert.ok(/^2525D:/i.test(unknownGround.iconId), "a-u-G milsym id, got " + unknownGround.iconId);
   assert.strictEqual(
     mapRender.markerUsesMapIcon({
       type: "a-u-G",
@@ -311,7 +310,7 @@ async function runTests() {
       iconSource: unknownGround.source,
     }),
     true,
-    "mission drop pins should render with the unknown-ground map icon"
+    "mission drop pins should render with the filled unknown-ground milsym"
   );
 
   const sensorLocIcon = mapIcon.resolveIcon({ type: "b-m-p-s-p-loc", affiliation: "other" });

@@ -6,7 +6,8 @@
 
   const LS_PREFIX = "tak-portal-map-missions:";
   const MISSION_FILTER = ["==", ["get", "kind"], "mission-feature"];
-  const MISSION_AUTO_REFRESH_MS = 60000;
+  /** Poll enabled Data Sync missions so new CoT (locator drops, edits) shows up promptly. */
+  const MISSION_AUTO_REFRESH_MS = 15000;
 
   const openMissions = new Map();
   let bridge = null;
@@ -42,7 +43,11 @@
 
   function tickMissionAutoRefresh() {
     openMissions.forEach(function (entry, name) {
-      if (!entry || !entry.visible || !entry.geojson || entry.loading) return;
+      if (!entry || !entry.visible || entry.loading) return;
+      if (!entry.geojson) {
+        loadMission(name, { refresh: true });
+        return;
+      }
       refreshVisibleMissionBackground(name);
     });
   }
@@ -83,7 +88,7 @@
     try {
       const [geojson, layers] = await Promise.all([
         fetchMissionGeojson(name, { refresh: true }),
-        fetchMissionLayers(name).catch(function () {
+        fetchMissionLayers(name, { refresh: true }).catch(function () {
           return { folders: [], orphaned: [] };
         }),
       ]);
@@ -856,9 +861,13 @@
     return resp.json();
   }
 
-  async function fetchMissionLayers(name) {
+  async function fetchMissionLayers(name, options) {
+    const opts = options || {};
     const resp = await fetch(
-      "/api/map/missions/" + encodeURIComponent(name) + "/layers",
+      "/api/map/missions/" +
+        encodeURIComponent(name) +
+        "/layers?refresh=" +
+        (opts.refresh ? "1" : "0"),
       { credentials: "same-origin" }
     );
     if (!resp.ok) throw new Error("layers " + resp.status);
@@ -1386,7 +1395,7 @@
     renderMissionList();
 
     const geojsonPromise = fetchMissionGeojson(name, { refresh: !!opts.refresh });
-    const layersPromise = fetchMissionLayers(name).catch(function () {
+    const layersPromise = fetchMissionLayers(name, { refresh: !!opts.refresh }).catch(function () {
       return { folders: [], orphaned: [] };
     });
     const liveReadyPromise = whenLiveReady(function () {});
@@ -2088,6 +2097,9 @@
     map.on("zoomend", scheduleMissionLabelDeclutter);
     refreshMissionCatalog().then(restoreOpenMissions);
     syncMissionAutoRefreshTimer();
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) tickMissionAutoRefresh();
+    });
   }
 
   window.TakMapMissions = {

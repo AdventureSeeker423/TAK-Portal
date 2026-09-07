@@ -79,10 +79,10 @@ const COT_TYPE_ICON_OVERRIDES = {
   "b-m-p-s-p-i": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/crosshair.png" },
   // Sensor point location (cameras, fixed sensors) — not a targeting SPI
   "b-m-p-s-p-loc": { iconsetUid: GENERIC_ICONS_UID, relPath: "Shapes/camera.png" },
-  // Unknown ground (ATAK yellow quatrefoil). Generic type2525b="a-u-G" tags
-  // otherwise match Google flag.png / hunting icons.
-  "a-u-g": { iconsetUid: FALCONVIEW_UID, relPath: "FalconView/A-U-G.png" },
 };
+
+/** Exact CoT types that must use filled 2525D milsym (not type2525b PNG outlines/flags). */
+const COT_TYPES_PREFER_MILSYM = new Set(["a-u-g"]);
 
 function cotTypeSegments(cotType) {
   return String(cotType || "")
@@ -412,6 +412,10 @@ function prefersMilSymIconPath(iconsetpath) {
   return false;
 }
 
+function prefersMilSymCotType(cotType) {
+  return COT_TYPES_PREFER_MILSYM.has(String(cotType || "").trim().toLowerCase());
+}
+
 function parseUserIcon(detail) {
   const attrs = detail?.usericon?._attributes || detail?.usericon || {};
   const iconsetpath = attrs.iconsetpath || attrs.iconsetPath || "";
@@ -517,7 +521,7 @@ function resolvePngIcon(
     }
   }
 
-  if (prefersMilSymIconPath(ui.iconsetpath)) {
+  if (prefersMilSymIconPath(ui.iconsetpath) || prefersMilSymCotType(cotType)) {
     return null;
   }
 
@@ -598,6 +602,7 @@ module.exports = {
   isIconsetUidToken,
   looksLikeIconsetPath,
   prefersMilSym2525C,
+  prefersMilSymCotType,
   prefersMilSymIconPath,
   resolvePngIcon,
   resolveRelativePath,

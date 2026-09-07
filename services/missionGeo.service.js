@@ -309,13 +309,15 @@ function filterNormalizedDecorPoints(fc) {
   return Object.assign({}, fc, { features: out });
 }
 
-async function fetchRawMissionCotFeatureCollection(missionName, queryParams = {}) {
+async function fetchRawMissionCotFeatureCollection(missionName, queryParams = {}, options = {}) {
   const key = `${String(missionName || "").trim()}:${JSON.stringify(queryParams || {})}`;
-  const cached = cacheGet(rawFcCache, key);
-  if (cached) return cached;
-
-  const pending = rawFcInFlight.get(key);
-  if (pending) return pending;
+  const refresh = !!options.refresh;
+  if (!refresh) {
+    const cached = cacheGet(rawFcCache, key);
+    if (cached) return cached;
+    const pending = rawFcInFlight.get(key);
+    if (pending) return pending;
+  }
 
   const promise = (async () => {
     const res = await dataSyncSvc.getMissionCotXml(missionName, queryParams);
@@ -333,7 +335,9 @@ async function fetchRawMissionCotFeatureCollection(missionName, queryParams = {}
     rawFcInFlight.delete(key);
   });
 
-  rawFcInFlight.set(key, promise);
+  if (!refresh) {
+    rawFcInFlight.set(key, promise);
+  }
   return promise;
 }
 
@@ -348,13 +352,15 @@ async function auditMissionShapeDecor(missionName, options = {}) {
   };
 }
 
-async function fetchMissionCotGeoJson(missionName, queryParams = {}) {
-  const rawFc = await fetchRawMissionCotFeatureCollection(missionName, queryParams);
+async function fetchMissionCotGeoJson(missionName, queryParams = {}, options = {}) {
+  const rawFc = await fetchRawMissionCotFeatureCollection(missionName, queryParams, options);
   return normalizeFeatureCollection(rawFc, missionName);
 }
 
 async function buildMissionGeoJson(name, options = {}) {
-  let fc = await fetchMissionCotGeoJson(name, options.queryParams || {});
+  let fc = await fetchMissionCotGeoJson(name, options.queryParams || {}, {
+    refresh: !!options.refresh,
+  });
 
   let rasterOverlays = [];
   let attachmentSummary = { kml: 0, raster: 0 };
@@ -477,7 +483,9 @@ async function getMissionLayerTree(missionName, options = {}) {
 
   let featureUids = options.featureUids;
   if (!featureUids) {
-    const rawFc = await fetchRawMissionCotFeatureCollection(name, options.queryParams || {});
+    const rawFc = await fetchRawMissionCotFeatureCollection(name, options.queryParams || {}, {
+      refresh: !!options.refresh,
+    });
     featureUids = (rawFc.features || []).map((f) => String(f.id || f.properties?.uid || ""));
   }
 
