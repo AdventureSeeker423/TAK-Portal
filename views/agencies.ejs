@@ -118,8 +118,7 @@
 
           <div class="editAgencyDomainRow">
             <label class="editAgencyDomainField">
-              <span class="settings-label">
-                <span>Agency email domains</span>
+              <span class="editAgencyFieldLabel">Agency Email Domains
                 <span class="settings-help-tip">
                   <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
                   <span class="settings-help-popover" role="tooltip">If you list one or more domains, the public Request Access form will only accept email addresses ending in those domains. Leave the field empty to allow any email domain for requests.</span>
@@ -134,7 +133,7 @@
             <div class="editAgencyToggles">
               <div class="settings-field settings-field-bool">
                 <span class="settings-label">
-                  <span>Auto-approve user requests</span>
+                  <span>Auto-Approve User Requests</span>
                   <span class="settings-help-tip">
                     <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
                     <span class="settings-help-popover" role="tooltip">When enabled, matching Request Access submissions are approved automatically and a user account is created with this agency's default template. A default template must be set before this can be turned on. If domains are listed, only matching emails are auto-approved. If no domains are listed, any email that selects this agency is auto-approved.</span>
@@ -145,7 +144,7 @@
                   class="settings-toggle is-off"
                   id="autoApproveToggle"
                   aria-pressed="false"
-                  aria-label="Auto-approve user requests"
+                  aria-label="Auto-Approve User Requests"
                 ></button>
               </div>
               <small id="autoApproveHint" class="muted" style="display:none;">
@@ -3348,7 +3347,7 @@ input.readonly {
 
 #editAgencyOverlay .editAgencyDomainRow {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+  grid-template-columns: 1fr 1fr;
   gap: 8px 16px;
   align-items: start;
   margin-top: 10px;
@@ -3356,6 +3355,12 @@ input.readonly {
 
 #editAgencyOverlay .editAgencyDomainField {
   min-width: 0;
+}
+
+#editAgencyOverlay .editAgencyFieldLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 #editAgencyOverlay .editAgencyToggles {
@@ -3465,10 +3470,6 @@ input.readonly {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-#editAgencyOverlay .editAgencyDomainField .settings-label {
-  flex-wrap: nowrap;
 }
 
 #editAgencyOverlay .settings-toggle.is-locked {
