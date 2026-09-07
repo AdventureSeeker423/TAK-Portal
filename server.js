@@ -35,6 +35,8 @@ const accessSvc = require("./services/access.service");
 const agencyTypesSvc = require("./services/agencyTypes.service");
 const regionsSvc = require("./services/regions.service");
 const locatorsSvc = require("./services/locators.service");
+const locatorForm = require("./services/locatorForm.service");
+const locatorCot = require("./services/locatorCot.service");
 const pluginsSvc = require("./services/plugins.service");
 const atakApkSvc = require("./services/atakApk.service");
 const { toSafeApiError } = require("./services/apiErrorPayload.service");
@@ -263,6 +265,7 @@ function pageTitleForPath(pathname, portalTitle, serverAbbrev) {
     ["/data-sync", "Data Sync"],
     ["/email", "Email Users"],
     ["/locate-persons", "Locate Persons"],
+    ["/locate-legacy", "Locate Persons"],
     ["/locate", "Locate Persons"],
     ["/mutual-aid", "Mutual Aid"],
     ["/admin/mou", "MOU Documents"],
@@ -713,6 +716,11 @@ app.use(
 );
 // Locate + data packages (admin + JSON APIs): page-aligned capability.
 app.use("/api/locate", requirePermission("page.locate"), require("./routes/locate.routes"));
+app.use(
+  "/api/locate-legacy",
+  requirePermission("page.locate"),
+  require("./routes/locate-legacy.routes")
+);
 
 app.use(
   "/api/data-sync",
@@ -781,10 +789,28 @@ async function handlePublicLocatePing(req, res) {
       Number.isFinite(accuracyMeters) && accuracyMeters >= 0 && accuracyMeters < 1e7
         ? accuracyMeters
         : null;
-    const last = formStringField(body.lastName);
-    const first = formStringField(body.firstName);
-    const name = locatorsSvc.formatLocatePingNameForTak(first, last);
-    const remarks = formStringField(body.remarks);
+
+    const live = locatorsSvc.isLiveLocator(loc);
+    let name;
+    let remarks;
+    let answers;
+    let callsign;
+    if (live) {
+      const form = locatorForm.normalizeForm(loc.form);
+      const parsed = locatorForm.validateAnswers(form, locatorForm.parseAnswers(body));
+      if (parsed.error) {
+        return res.status(400).json({ ok: false, error: parsed.error });
+      }
+      answers = parsed.answers;
+      callsign = locatorForm.formatLiveCallsign(loc.title, form, answers);
+      remarks = locatorForm.formatLiveRemarks(form, answers);
+      name = callsign;
+    } else {
+      const last = formStringField(body.lastName);
+      const first = formStringField(body.firstName);
+      name = locatorsSvc.formatLocatePingNameForTak(first, last);
+      remarks = formStringField(body.remarks);
+    }
 
     locatorsSvc.addHistoryEntry({
       locatorId: loc.id,
@@ -794,6 +820,8 @@ async function handlePublicLocatePing(req, res) {
       remarks,
       kind: "interval",
       accuracyMeters: acc,
+      answers,
+      callsign,
     });
 
     const accLabel =
@@ -814,6 +842,7 @@ async function handlePublicLocatePing(req, res) {
       details: {
         slug,
         locatorTitle: loc.title,
+        kind: locatorsSvc.locatorKind(loc),
         latitude: lat,
         longitude: lng,
         accuracyMeters: acc,
@@ -831,6 +860,20 @@ async function handlePublicLocatePing(req, res) {
     res.json({ ok: true });
 
     setImmediate(() => {
+      if (live) {
+        locatorCot
+          .publishPing(loc, {
+            latitude: lat,
+            longitude: lng,
+            accuracyMeters: acc,
+            callsign,
+            remarks,
+          })
+          .catch((err) => {
+            console.error("[locate ping] live CoT failed:", err?.message || err);
+          });
+        return;
+      }
       locatorsSvc
         .relayPingToTak({
           latitude: lat,
@@ -858,6 +901,11 @@ function handlePublicLocateStopSharing(req, res) {
       return res.status(403).json({ ok: false, error: "This locator is inactive." });
     }
     locatorsSvc.setSharingStoppedByUser(loc.id, true);
+    if (locatorsSvc.isLiveLocator(loc)) {
+      locatorCot.publishDelete(loc).catch((err) => {
+        console.error("[locate stop] live CoT delete failed:", err?.message || err);
+      });
+    }
     auditSvc.logEvent({
       actor: null,
       request: {
@@ -1021,8 +1069,25 @@ app.get("/locate-persons", (req, res) => {
   res.redirect(301, "/locate");
 });
 
-// Locate admin page: global admins only (not beta-gated).
-app.get("/locate", requirePermission("page.locate"), (req, res) => res.render("locate"));
+app.get("/locate-legacy", requirePermission("page.locate"), (req, res) =>
+  res.render("locate-legacy")
+);
+
+function locateEmailConfigured() {
+  const emailCfg = emailSvc.getSmtpConfig();
+  return !!(emailSvc.isEmailEnabled() && emailCfg.host && emailCfg.from);
+}
+
+// Locate admin page: global + agency admins with page.locate.
+app.get("/locate", requirePermission("page.locate"), (req, res) =>
+  res.render("locate", {
+    smsConfigured: smsSvc.isSmsConfigured(),
+    emailConfigured: locateEmailConfigured(),
+    teamColors: prefPkgSvc.ALLOWED_TEAM_COLORS,
+    defaultLocateHeading: locatorForm.DEFAULT_HEADING,
+    defaultLocateIntro: locatorForm.DEFAULT_INTRO,
+  })
+);
 
 app.get("/data-sync", requirePermission("page.data_sync"), (req, res) =>
   res.render("data-sync")
@@ -1034,6 +1099,19 @@ app.get("/locate/:slug", (req, res) => {
   const loc = locatorsSvc.getBySlug(slug);
   if (!loc || loc.archived) {
     return res.status(404).render("locate-not-found");
+  }
+  if (locatorsSvc.isLiveLocator(loc)) {
+    const form = locatorForm.normalizeForm(loc.form);
+    return res.render("locate-public-live", {
+      slug: loc.slug,
+      pingIntervalSeconds: locatorsSvc.normalizePingIntervalSeconds(loc.pingIntervalSeconds, 15),
+      locatorActive: loc.active,
+      intervalEpoch: Number(loc.intervalEpoch) || 1,
+      remotePingEpoch: Number(loc.remotePingEpoch) || 1,
+      formHeading: form.heading,
+      formIntro: form.intro,
+      formFields: form.fields,
+    });
   }
   return res.render("locate-public", {
     slug: loc.slug,

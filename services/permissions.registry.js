@@ -138,6 +138,7 @@ const AGENCY_DEFAULT = new Set([
   "page.data_sync",
   "page.channel_patch",
   "page.mutual_aid",
+  "page.locate",
 ]);
 
 /** Standard defaults are now handled by always-on routes (plugins/setup), not configurable keys. */
@@ -171,6 +172,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/plugins")) return ["page.plugin_manager"];
   if (p.startsWith("/api/integrations")) return ["page.integrations"];
   if (p.startsWith("/api/ssh")) return ["page.integrations"];
+  if (p.startsWith("/api/locate-legacy")) return ["page.locate"];
   if (p.startsWith("/api/locate")) return ["page.locate"];
   if (p.startsWith("/api/data-sync")) return ["page.data_sync"];
   if (p.startsWith("/api/data-packages")) return ["page.data_package"];
@@ -230,6 +232,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p === "/mutual-aid" || p.startsWith("/mutual-aid/")) return ["page.mutual_aid"];
   // Admin locate console is exactly /locate (public share /locate/:slug bypasses portalAuth in server.js)
   if (p === "/locate") return ["page.locate"];
+  if (p === "/locate-legacy") return ["page.locate"];
   if (p === "/data-sync" || p.startsWith("/data-sync/")) return ["page.data_sync"];
   if (p === "/data-package" || p === "/data-packages" || p.startsWith("/data-package/")) return ["page.data_package"];
   if (p === "/plugin-manager" || p.startsWith("/plugin-manager/")) return ["page.plugin_manager"];

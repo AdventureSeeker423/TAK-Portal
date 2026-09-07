@@ -58,6 +58,31 @@
       </div>
     </div>
 
+    <div class="row agenciesListFilters" style="align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+      <label style="min-width: 160px;">
+        <select id="agencyStateFilter" aria-label="Filter by state">
+          <option value="">All States</option>
+        </select>
+      </label>
+      <label style="min-width: 180px;">
+        <select id="agencyTypeFilter" aria-label="Filter by agency type">
+          <option value="">All Types</option>
+        </select>
+      </label>
+      <label style="min-width: 180px;">
+        <select id="agencyColorFilter" aria-label="Filter by color">
+          <option value="">All Colors</option>
+        </select>
+      </label>
+      <input
+        id="agencySearch"
+        placeholder="Search name, abbreviation, suffix, or county..."
+        style="margin: 10px 0; flex: 1; min-width: 260px; width: auto; box-sizing: border-box;"
+        autocomplete="off"
+      />
+    </div>
+    <div id="agenciesListMsg" class="msg"></div>
+
     <div class="pagination" id="agenciesPagination" style="display:none;">
       <button class="btn pagination-first-last" type="button" id="agenciesFirstBtn">First</button>
       <button class="btn" type="button" id="agenciesPrevBtn">Previous</button>
@@ -301,6 +326,12 @@ let adminsHasPrev = false;
 
 const AGENCIES_PAGE_SIZE = 25;
 let agenciesPage = 1;
+let agenciesFilterTimer = null;
+const agencyStateFilter = document.getElementById("agencyStateFilter");
+const agencyTypeFilter = document.getElementById("agencyTypeFilter");
+const agencyColorFilter = document.getElementById("agencyColorFilter");
+const agencySearch = document.getElementById("agencySearch");
+const agenciesListMsg = document.getElementById("agenciesListMsg");
 const agenciesPagination = document.getElementById("agenciesPagination");
 const agenciesFirstBtn = document.getElementById("agenciesFirstBtn");
 const agenciesPrevBtn = document.getElementById("agenciesPrevBtn");
@@ -448,6 +479,76 @@ const TEAM_COLOR_LABELS = <%- JSON.stringify((typeof teamColorLabels === "object
 function agencyColorLabel(color) {
   const c = String(color || "").trim();
   return TEAM_COLOR_LABELS[c] || c;
+}
+
+function fillAgencyListFilterOptions() {
+  function fill(selectEl, values, labelFn) {
+    if (!selectEl) return;
+    const prev = String(selectEl.value || "");
+    const first = selectEl.querySelector("option");
+    selectEl.innerHTML = "";
+    if (first) selectEl.appendChild(first);
+    (values || []).forEach((v) => {
+      const val = String(v || "").trim();
+      if (!val) return;
+      const opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = labelFn ? labelFn(val) : val;
+      selectEl.appendChild(opt);
+    });
+    if (prev) selectEl.value = prev;
+  }
+  fill(agencyStateFilter, AGENCY_STATE_OPTIONS);
+  fill(agencyTypeFilter, AGENCY_TYPE_OPTIONS);
+  fill(agencyColorFilter, AGENCY_COLOR_OPTIONS, agencyColorLabel);
+}
+
+function getFilteredAgencies() {
+  const state = String(agencyStateFilter && agencyStateFilter.value || "").trim().toUpperCase();
+  const type = String(agencyTypeFilter && agencyTypeFilter.value || "").trim().toLowerCase();
+  const color = String(agencyColorFilter && agencyColorFilter.value || "").trim().toLowerCase();
+  const needle = String(agencySearch && agencySearch.value || "").trim().toLowerCase();
+  return (agencies || []).filter((a) => {
+    if (state && String(a.state || "").trim().toUpperCase() !== state) return false;
+    if (type && String(a.type || "").trim().toLowerCase() !== type) return false;
+    if (color && String(a.color || "").trim().toLowerCase() !== color) return false;
+    if (!needle) return true;
+    const hay = [
+      a.name,
+      a.groupPrefix,
+      a.suffix,
+      formatAgencyIdentifierDisplay(a),
+      a.county,
+      a.countyAbbrev,
+      a.state,
+      a.type,
+      a.color,
+      a.regionName,
+      regionNameForId(a.regionId),
+    ].map((x) => String(x || "").toLowerCase()).join(" ");
+    return hay.includes(needle);
+  });
+}
+
+function updateAgenciesListMsg(shown, total) {
+  if (!agenciesListMsg) return;
+  const needle = String(agencySearch && agencySearch.value || "").trim();
+  const n = Number(shown || 0);
+  const t = Number(total || 0);
+  agenciesListMsg.className = "msg ok";
+  if (!t) {
+    agenciesListMsg.textContent = "No agencies found.";
+    return;
+  }
+  if (!n) {
+    agenciesListMsg.textContent = needle ? `No agencies found for "${needle}".` : "No agencies found.";
+    return;
+  }
+  if (needle) {
+    agenciesListMsg.textContent = `Showing ${n} of ${t} agenc${t === 1 ? "y" : "ies"} for "${needle}".`;
+  } else {
+    agenciesListMsg.textContent = `Showing ${n} of ${t} agenc${t === 1 ? "y" : "ies"}.`;
+  }
 }
 
 function isAgencyStateFederal(a) {
@@ -965,7 +1066,7 @@ function renderAgencies(){
   if (agencyTable) agencyTable.classList.toggle("hide-region-column", !showRegionColumn);
 
   // apply sort (copy to avoid mutating original order if you later want it)
-  const rows = [...agencies];
+  const rows = [...getFilteredAgencies()];
 
   if (sortState.key){
     const key = sortState.key;
@@ -1011,6 +1112,16 @@ function renderAgencies(){
   if (agenciesPrevBtn) agenciesPrevBtn.disabled = agenciesPage <= 1;
   if (agenciesNextBtn) agenciesNextBtn.disabled = agenciesPage >= totalPages;
   if (agenciesLastBtn) agenciesLastBtn.disabled = agenciesPage >= totalPages;
+
+  updateAgenciesListMsg(total, (agencies || []).length);
+
+  if (!pageRows.length) {
+    tbody.innerHTML =
+      `<tr class="emptyStateRow"><td colspan="11" class="muted">${esc(
+        (agenciesListMsg && agenciesListMsg.textContent) || "No agencies found."
+      )}</td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = pageRows.map((a)=>{
     const agencyId = esc(a._id ?? a.id ?? "");
@@ -2778,7 +2889,7 @@ if (agenciesPrevBtn) {
 }
 if (agenciesNextBtn) {
   agenciesNextBtn.onclick = () => {
-    const totalPages = Math.max(1, Math.ceil((agencies || []).length / AGENCIES_PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(getFilteredAgencies().length / AGENCIES_PAGE_SIZE));
     if (agenciesPage >= totalPages) return;
     agenciesPage += 1;
     renderAgencies();
@@ -2786,12 +2897,36 @@ if (agenciesNextBtn) {
 }
 if (agenciesLastBtn) {
   agenciesLastBtn.onclick = () => {
-    const totalPages = Math.max(1, Math.ceil((agencies || []).length / AGENCIES_PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(getFilteredAgencies().length / AGENCIES_PAGE_SIZE));
     if (agenciesPage >= totalPages) return;
     agenciesPage = totalPages;
     renderAgencies();
   };
 }
+
+function applyAgencyListFilter() {
+  agenciesPage = 1;
+  renderAgencies();
+}
+
+function scheduleAgencyListFilter() {
+  clearTimeout(agenciesFilterTimer);
+  agenciesFilterTimer = setTimeout(applyAgencyListFilter, 100);
+}
+
+if (agencyStateFilter) agencyStateFilter.addEventListener("change", applyAgencyListFilter);
+if (agencyTypeFilter) agencyTypeFilter.addEventListener("change", applyAgencyListFilter);
+if (agencyColorFilter) agencyColorFilter.addEventListener("change", applyAgencyListFilter);
+if (agencySearch) {
+  agencySearch.addEventListener("input", scheduleAgencyListFilter);
+  agencySearch.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      agencySearch.value = "";
+      applyAgencyListFilter();
+    }
+  });
+}
+fillAgencyListFilterOptions();
 
 // click-to-sort + keyboard support (Enter/Space)
 agencyTable.querySelectorAll("thead th[data-sort]").forEach(th => {
@@ -3073,6 +3208,15 @@ if (addForm) {
   margin-left: auto;
 }
 
+.agenciesListFilters label {
+  display: flex;
+  min-width: 160px;
+}
+
+.agenciesListFilters select {
+  width: 100%;
+}
+
 @media (max-width: 900px) {
   .createAgencySubmitBtnAlignRight {
     margin-left: 0;
@@ -3083,6 +3227,17 @@ if (addForm) {
 
 /* Mobile: stacked cards, no horizontal scroll */
 @media (max-width: 990px) {
+  .agenciesListFilters {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+  .agenciesListFilters label,
+  .agenciesListFilters select,
+  .agenciesListFilters input {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
   .listCardTableWrap {
     overflow-x: hidden;
   }
@@ -3104,6 +3259,12 @@ if (addForm) {
     border-radius: 12px;
     background: var(--panel);
     overflow: hidden;
+  }
+
+  .agenciesTable tbody tr.emptyStateRow {
+    display: block;
+    border: none;
+    background: transparent;
   }
 
   .agenciesTable .agencyNameCell { order: 1; }

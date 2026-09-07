@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title><%= formHeading %></title>
+    <style>
+      body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:1rem;max-width:36rem;margin-inline:auto;background:#f5f5f5;color:#1a1a1a;line-height:1.45;font-size:16px}
+      h1{font-size:1.35rem;margin:0 0 1rem;font-weight:600;color:#111}
+      label{display:block;margin-top:.65rem}
+      input,textarea,select{width:100%;box-sizing:border-box;padding:.5rem;margin-top:.25rem;font:inherit;border:1px solid #bbb;border-radius:4px;background:#fff;color:#111}
+      textarea{min-height:4.5rem;resize:vertical}
+      .h{font-size:.95rem;margin:0 0 .75rem;color:#333;white-space:pre-wrap}
+      .warn{background:#fff8e6;border:1px solid #e6c96a;padding:.65rem;border-radius:4px;margin-bottom:1rem;color:#5c4a00}
+      .keep{display:none;margin:0 0 1rem;padding:.85rem 1rem;background:#e8f4fc;border:2px solid #2180c4;border-radius:6px;color:#0a3d5c;font-size:.95rem;line-height:1.4}
+      .keep.on{display:block}
+      .keep strong{display:block;margin-top:.4rem;font-size:1rem}
+      .btns{margin-top:.85rem;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+      button{font:inherit;padding:.55rem 1rem;border:0;border-radius:4px;cursor:pointer;background:#1a6b3a;color:#fff}
+      button.d{background:#a82a2a;color:#fff}
+      .m{margin-top:.75rem;padding:.5rem;border-radius:4px;display:none}
+      .m.on{display:block}
+      .bad{background:#fde8e8;color:#8b1a1a;border:1px solid #f0b4b4}
+    </style>
+  </head>
+  <body>
+<main>
+  <h1><%= formHeading %></h1>
+
+  <% if (!locatorActive) { %>
+    <div class="warn">This locator is inactive.</div>
+  <% } %>
+
+  <div id="lpBeforeShare">
+    <p class="h"><%= formIntro %></p>
+    <% (formFields || []).forEach(function (field) { %>
+      <label>
+        <%= field.label %>
+        <% if (field.type === "message") { %>
+          <textarea id="lp_<%= field.id %>" rows="3" <%= locatorActive ? "" : "disabled" %> <%= field.required ? "required" : "" %>></textarea>
+        <% } else if (field.type === "choice") { %>
+          <select id="lp_<%= field.id %>" <%= locatorActive ? "" : "disabled" %> <%= field.required ? "required" : "" %>>
+            <option value=""></option>
+            <% (field.options || []).forEach(function (opt) { %>
+              <option value="<%= opt %>"><%= opt %></option>
+            <% }); %>
+          </select>
+        <% } else { %>
+          <input id="lp_<%= field.id %>" type="text" <%= locatorActive ? "" : "disabled" %> <%= field.required ? "required" : "" %> <%= field.type === "firstName" ? 'autocomplete="given-name"' : field.type === "lastName" ? 'autocomplete="family-name"' : "" %> />
+        <% } %>
+      </label>
+    <% }); %>
+  </div>
+
+  <p id="lpKeepOpen" class="keep" role="status">Your location is being shared.<strong>PLEASE KEEP THIS PAGE OPEN UNTIL INSTRUCTED TO CLOSE BY A RESPONDER.</strong></p>
+
+  <div class="btns">
+    <button type="button" id="lpSendBtn" <%= locatorActive ? "" : "disabled" %>>Start Sharing Location</button>
+    <button type="button" class="d" id="lpStopBtn" style="display:none;">Stop Sharing Location</button>
+  </div>
+
+  <div id="lpMsg" class="m" aria-live="polite"></div>
+</main>
+
+<script>
+(function(){
+var slug=<%- JSON.stringify(slug) %>;
+var pingSecRaw=Number(<%- JSON.stringify(pingIntervalSeconds != null ? pingIntervalSeconds : 15) %>);
+if(!Number.isFinite(pingSecRaw))pingSecRaw=15;
+var intervalMs=pingSecRaw===0?0:Math.max(10,pingSecRaw)*1000;
+var active=<%= locatorActive?"true":"false" %>;
+var lastIntervalEpoch=<%= Number(intervalEpoch)||1 %>;
+var lastRemoteEpoch=<%= Number(remotePingEpoch)||1 %>;
+var fields=<%- JSON.stringify(formFields || []) %>;
+var sendBtn=document.getElementById("lpSendBtn");
+var stopBtn=document.getElementById("lpStopBtn");
+var msg=document.getElementById("lpMsg");
+var beforeShare=document.getElementById("lpBeforeShare");
+var keepOpen=document.getElementById("lpKeepOpen");
+var timer=null,sending=false,frozenAnswers=null;
+function setMsg(t,bad){
+  msg.textContent=t||"";
+  msg.className="m on"+(bad?" bad":"");
+  if(!t)msg.className="m";
+}
+function friendlyNetworkError(e){
+  var m=String(e&&e.message!=null?e.message:e||"");
+  if(/load failed|failed to fetch|networkerror|timed out|network error/i.test(m)){
+    return "Could not reach the server. Check signal or Wi‑Fi and try again.";
+  }
+  return m||"Request failed";
+}
+function apiBase(){
+  return String(window.location.origin||"").replace(/\/$/,"");
+}
+function pingUrl(){
+  return apiBase()+"/locate/"+encodeURIComponent(slug)+"/ping";
+}
+function parseJsonResponseSafe(text){
+  if(text==null)return null;
+  var s=String(text).replace(/^\uFEFF/,"").trim();
+  if(!s)return null;
+  try{return JSON.parse(s);}catch(e1){}
+  var pre=s.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+  if(pre&&pre[1]){
+    try{return JSON.parse(pre[1].trim());}catch(e2){}
+  }
+  return null;
+}
+function pingResponseLooksSuccessful(d){
+  return d&&(d.ok===true||d.ok==="true");
+}
+function stopSharingUrl(){
+  return apiBase()+"/locate/"+encodeURIComponent(slug)+"/stop-sharing";
+}
+function clientConfigUrl(){
+  return apiBase()+"/locate/"+encodeURIComponent(slug)+"/client-config";
+}
+function collectAnswers(){
+  var out={};
+  for(var i=0;i<fields.length;i++){
+    var f=fields[i];
+    var el=document.getElementById("lp_"+f.id);
+    out[f.id]=el?String(el.value||"").trim():"";
+  }
+  return out;
+}
+function validateAnswers(answers){
+  for(var i=0;i<fields.length;i++){
+    var f=fields[i];
+    if(f.required&&!String(answers[f.id]||"").trim()){
+      return (f.label||"Field")+" is required.";
+    }
+  }
+  return "";
+}
+function postStopSharing(){
+  return fetch(stopSharingUrl(),{
+    method:"POST",
+    credentials:"omit",
+    cache:"no-store",
+    headers:{"Content-Type":"application/json","Accept":"application/json"},
+    body:"{}"
+  }).then(function(r){
+    return r.text().then(function(t){
+      var d=parseJsonResponseSafe(t);
+      if(!r.ok){
+        var he=new Error((d&&d.error)||t||"Request failed");
+        he.isHttpError=true;
+        throw he;
+      }
+      return d||{};
+    });
+  });
+}
+function parsePingResponse(res){
+  return res.text().then(function(text){
+    var d=parseJsonResponseSafe(text);
+    if(!res.ok){
+      var he=new Error((d&&d.error)||text||"Request failed");
+      he.isHttpError=true;
+      throw he;
+    }
+    if(!pingResponseLooksSuccessful(d)){
+      var he2=new Error((d&&d.error)||"Unexpected response from server.");
+      he2.isHttpError=false;
+      throw he2;
+    }
+    return d;
+  });
+}
+function shouldRetryPing(err){
+  if(err&&err.isHttpError)return false;
+  var m=String(err&&err.message!=null?err.message:err||"");
+  return /failed to fetch|load failed|networkerror|network error|timed out|aborted/i.test(m)||(typeof TypeError!=="undefined"&&err instanceof TypeError);
+}
+function isMobileDevice(){
+  var ua=navigator.userAgent||"";
+  if(/iPhone|iPad|iPod|Android/i.test(ua))return true;
+  if(navigator.platform==="MacIntel"&&typeof navigator.maxTouchPoints==="number"&&navigator.maxTouchPoints>1)return true;
+  return false;
+}
+function pingBody(lat,lng,accuracy,answers){
+  var body={latitude:lat,longitude:lng,answers:answers};
+  if(accuracy!=null&&Number.isFinite(accuracy))body.accuracyMeters=accuracy;
+  return body;
+}
+function encodedAnswers(answers){
+  try{return JSON.stringify(answers||{});}catch(e){return "{}";}
+}
+var lpPingFormEl=null,lpPingIframeEl=null;
+function postPingFormIframe(body){
+  if(!lpPingFormEl){
+    lpPingIframeEl=document.createElement("iframe");
+    lpPingIframeEl.name="lpPingFrame";
+    lpPingIframeEl.id="lpPingFrame";
+    lpPingIframeEl.title="Location send";
+    lpPingIframeEl.style.cssText="position:absolute;width:0;height:0;border:0;visibility:hidden";
+    lpPingIframeEl.setAttribute("aria-hidden","true");
+    lpPingFormEl=document.createElement("form");
+    lpPingFormEl.method="POST";
+    lpPingFormEl.action=pingUrl();
+    lpPingFormEl.target="lpPingFrame";
+    lpPingFormEl.enctype="application/x-www-form-urlencoded";
+    lpPingFormEl.style.display="none";
+    lpPingFormEl.setAttribute("novalidate","novalidate");
+    ["latitude","longitude","answers","accuracyMeters"].forEach(function(n){
+      var inp=document.createElement("input");
+      inp.type="hidden";
+      inp.name=n;
+      inp.id="lpHidden_"+n;
+      lpPingFormEl.appendChild(inp);
+    });
+    document.body.appendChild(lpPingIframeEl);
+    document.body.appendChild(lpPingFormEl);
+  }
+  return new Promise(function(resolve,reject){
+    document.getElementById("lpHidden_latitude").value=String(body.latitude);
+    document.getElementById("lpHidden_longitude").value=String(body.longitude);
+    document.getElementById("lpHidden_answers").value=encodedAnswers(body.answers);
+    var accEl=document.getElementById("lpHidden_accuracyMeters");
+    if(body.accuracyMeters!=null&&Number.isFinite(body.accuracyMeters)){
+      accEl.value=String(body.accuracyMeters);
+    }else{
+      accEl.value="";
+    }
+    var to=setTimeout(function(){
+      lpPingIframeEl.onload=null;
+      reject(new Error("Request timed out"));
+    },90000);
+    lpPingIframeEl.onload=function(){
+      clearTimeout(to);
+      setTimeout(function(){
+        try{
+          var doc=lpPingIframeEl.contentDocument||lpPingIframeEl.contentWindow.document;
+          var text=(doc.body&&doc.body.textContent)?String(doc.body.textContent).trim():"";
+          if(!text){
+            reject(new Error("Empty response"));
+            return;
+          }
+          var d=parseJsonResponseSafe(text);
+          if(pingResponseLooksSuccessful(d))resolve(d);
+          else if(d&&d.ok===false){
+            var he0=new Error(d.error||"Request failed");
+            he0.isHttpError=true;
+            reject(he0);
+          }else{
+            var he=new Error((d&&d.error)||"Could not send location. Try again.");
+            he.isHttpError=false;
+            reject(he);
+          }
+        }catch(ex){
+          reject(ex);
+        }
+      },0);
+    };
+    lpPingFormEl.action=pingUrl()+"?_="+String(Date.now());
+    lpPingFormEl.submit();
+  });
+}
+function postPingXHRJSON(body){
+  var payload;
+  try{payload=JSON.stringify(body);}catch(encErr){
+    return Promise.reject(new Error("Could not send this message. Remove unusual characters and try again."));
+  }
+  return new Promise(function(resolve,reject){
+    var xhr=new XMLHttpRequest();
+    xhr.open("POST",pingUrl());
+    xhr.setRequestHeader("Content-Type","application/json;charset=UTF-8");
+    xhr.setRequestHeader("Accept","application/json");
+    xhr.timeout=90000;
+    xhr.onload=function(){
+      var text=xhr.responseText||"",d=parseJsonResponseSafe(text),st=xhr.status;
+      if(st>=200&&st<300){
+        if(pingResponseLooksSuccessful(d))resolve(d);
+        else if(d&&d.ok===false){
+          var he0=new Error(d.error||"Request failed");
+          he0.isHttpError=true;
+          reject(he0);
+        }else{
+          var he=new Error((d&&d.error)||"Unexpected response from server.");
+          he.isHttpError=false;
+          reject(he);
+        }
+      }else{
+        var he2=new Error((d&&d.error)||text||"Request failed");
+        he2.isHttpError=true;
+        reject(he2);
+      }
+    };
+    xhr.onerror=function(){reject(new Error("Failed to fetch"));};
+    xhr.ontimeout=function(){reject(new Error("Request timed out"));};
+    xhr.send(payload);
+  });
+}
+function postPingXHRUrlEncoded(body){
+  var params=new URLSearchParams();
+  params.set("latitude",String(body.latitude));
+  params.set("longitude",String(body.longitude));
+  params.set("answers",encodedAnswers(body.answers));
+  if(body.accuracyMeters!=null&&Number.isFinite(body.accuracyMeters)){
+    params.set("accuracyMeters",String(body.accuracyMeters));
+  }
+  var enc=params.toString();
+  return new Promise(function(resolve,reject){
+    var xhr=new XMLHttpRequest();
+    xhr.open("POST",pingUrl());
+    xhr.setRequestHeader("Content-Type","application/x-www-form-urlencoded;charset=UTF-8");
+    xhr.setRequestHeader("Accept","application/json");
+    xhr.timeout=90000;
+    xhr.onload=function(){
+      var text=xhr.responseText||"",d=parseJsonResponseSafe(text),st=xhr.status;
+      if(st>=200&&st<300){
+        if(pingResponseLooksSuccessful(d))resolve(d);
+        else if(d&&d.ok===false){
+          var he0=new Error(d.error||"Request failed");
+          he0.isHttpError=true;
+          reject(he0);
+        }else{
+          var he=new Error((d&&d.error)||"Unexpected response from server.");
+          he.isHttpError=false;
+          reject(he);
+        }
+      }else{
+        var he2=new Error((d&&d.error)||text||"Request failed");
+        he2.isHttpError=true;
+        reject(he2);
+      }
+    };
+    xhr.onerror=function(){reject(new Error("Failed to fetch"));};
+    xhr.ontimeout=function(){reject(new Error("Request timed out"));};
+    xhr.send(enc);
+  });
+}
+function setSharingUi(on){
+  if(beforeShare)beforeShare.style.display=on?"none":"";
+  if(keepOpen)keepOpen.className=on?"keep on":"keep";
+}
+function postPingViaHttpApis(body){
+  var payload;
+  try{payload=JSON.stringify(body);}catch(encErr){
+    return Promise.reject(new Error("Could not send this message. Remove unusual characters and try again."));
+  }
+  var fetchOpts={
+    method:"POST",
+    credentials:"omit",
+    cache:"no-store",
+    headers:{"Content-Type":"application/json;charset=UTF-8","Accept":"application/json"},
+    body:payload
+  };
+  function tryFetch(){
+    return fetch(pingUrl(),fetchOpts).then(parsePingResponse);
+  }
+  function runPingChain(primary,secondary){
+    return primary(body)
+      .catch(function(err){
+        if(err&&err.isHttpError)throw err;
+        return secondary(body);
+      })
+      .catch(function(err){
+        if(err&&err.isHttpError)throw err;
+        return tryFetch();
+      })
+      .catch(function(err){
+        if(!shouldRetryPing(err))throw err;
+        return new Promise(function(r){setTimeout(r,400);}).then(tryFetch);
+      })
+      .catch(function(err){
+        if(!shouldRetryPing(err))throw err;
+        return new Promise(function(r){setTimeout(r,1200);}).then(tryFetch);
+      })
+      .catch(function(err){
+        if(!shouldRetryPing(err))throw err;
+        return postPingXHRJSON(body);
+      });
+  }
+  if(isMobileDevice()){
+    return runPingChain(postPingXHRUrlEncoded,postPingXHRJSON);
+  }
+  return runPingChain(postPingXHRJSON,postPingXHRUrlEncoded);
+}
+function postPing(lat,lng,accuracy){
+  var answers=frozenAnswers||collectAnswers();
+  var body=pingBody(lat,lng,accuracy,answers);
+  if(isMobileDevice()){
+    return postPingFormIframe(body).catch(function(err){
+      if(err&&err.isHttpError)throw err;
+      return postPingViaHttpApis(body);
+    });
+  }
+  return postPingViaHttpApis(body);
+}
+function getBestFix(onOk,onErr){
+  var opt={enableHighAccuracy:true,maximumAge:0,timeout:60000};
+  navigator.geolocation.getCurrentPosition(function(p1){
+    var a1=p1.coords.accuracy;
+    if(a1!=null&&a1>50&&a1<1e5){
+      setTimeout(function(){
+        navigator.geolocation.getCurrentPosition(function(p2){
+          var a2=p2.coords.accuracy;
+          if(a2!=null&&a1!=null&&a2<a1)onOk(p2);else onOk(p1);
+        },function(){onOk(p1);},opt);
+      },2000);
+      return;
+    }
+    onOk(p1);
+  },onErr,opt);
+}
+function sharingUiActive(){return stopBtn&&stopBtn.style.display!=="none";}
+function restartSharingTimer(){
+  if(timer){clearInterval(timer);timer=null;}
+  if(intervalMs<=0)return;
+  if(!sharingUiActive())return;
+  timer=setInterval(tick,intervalMs);
+}
+function tick(){
+  if(!navigator.geolocation){setMsg("Location is not available in this browser.",true);stop();return;}
+  if(sending)return;
+  sending=true;
+  getBestFix(function(pos){
+    postPing(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy).then(function(){
+      setMsg("",false);
+    }).catch(function(e){setMsg(friendlyNetworkError(e),true);}).then(function(){sending=false;});
+  },function(err){sending=false;setMsg("Could not read GPS/location: "+(err&&err.message||"denied or unavailable"),true);});
+}
+function start(){
+  var answers=collectAnswers();
+  var err=validateAnswers(answers);
+  if(err){setMsg(err,true);return;}
+  frozenAnswers=answers;
+  setMsg("Requesting location…",false);
+  sending=true;
+  getBestFix(function(pos){
+    postPing(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy).then(function(){
+      setMsg("",false);
+      sendBtn.style.display="none";stopBtn.style.display="";
+      setSharingUi(true);
+      if(timer){clearInterval(timer);timer=null;}
+      if(intervalMs>0){timer=setInterval(tick,intervalMs);}
+    }).catch(function(e){setMsg(friendlyNetworkError(e),true);frozenAnswers=null;}).then(function(){sending=false;});
+  },function(err){sending=false;frozenAnswers=null;setMsg("Could not read GPS/location: "+(err&&err.message||"denied or unavailable"),true);});
+}
+function stop(byUser){
+  if(timer)clearInterval(timer);
+  timer=null;
+  sendBtn.style.display="";
+  stopBtn.style.display="none";
+  setSharingUi(false);
+  frozenAnswers=null;
+  if(byUser){
+    setMsg("",false);
+    postStopSharing().catch(function(){});
+  }
+}
+function pollConfig(){
+  fetch(clientConfigUrl(),{credentials:"omit",cache:"no-store",headers:{Accept:"application/json"}}).then(function(r){return r.json().then(function(d){return{ok:r.ok,data:d};});}).then(function(out){
+    var data=out.data;if(!data||!data.ok)return;
+    if(data.active===false&&(timer||sharingUiActive())){stop();setMsg("This locator was disabled.",true);return;}
+    if(data.intervalEpoch!==lastIntervalEpoch){
+      lastIntervalEpoch=data.intervalEpoch;
+      var ps=Number(data.pingIntervalSeconds);
+      intervalMs=(ps===0)?0:Math.max(10,Number.isFinite(ps)?ps:15)*1000;
+      restartSharingTimer();
+    }
+    if(data.remotePingEpoch>lastRemoteEpoch){lastRemoteEpoch=data.remotePingEpoch;if(sharingUiActive())tick();}
+  }).catch(function(){});
+}
+if(active){
+  sendBtn.addEventListener("click",start);
+  stopBtn.addEventListener("click",function(){stop(true);});
+  setInterval(pollConfig,8000);
+}
+})();
+</script>
+  </body>
+</html>

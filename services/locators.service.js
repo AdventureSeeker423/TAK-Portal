@@ -8,6 +8,7 @@ const { getString } = require("./env");
 const settingsSvc = require("./settings.service");
 const { buildTakAxios } = require("./tak.service");
 const pgCache = require("./pgCache");
+const locatorForm = require("./locatorForm.service");
 
 const FILE = null;
 const HISTORY_CAP_PER_LOCATOR = 5000;
@@ -111,14 +112,25 @@ function getById(id) {
   return load().locators.find((l) => l.id === id) || null;
 }
 
+function isLiveLocator(l) {
+  return !!(l && String(l.kind || "").trim().toLowerCase() === "live");
+}
+
+function locatorKind(l) {
+  return isLiveLocator(l) ? "live" : "legacy";
+}
+
 /**
  * 0 = one-time location send (no repeating pings; manual / remote wake still work).
  * Otherwise clamp to 10–86400 seconds.
  */
-function normalizePingIntervalSeconds(raw) {
+function normalizePingIntervalSeconds(raw, fallback = 60) {
   const n = Number(raw);
   if (n === 0) return 0;
-  if (!Number.isFinite(n)) return 60;
+  if (!Number.isFinite(n)) {
+    const fb = Number(fallback);
+    return Number.isFinite(fb) ? fb : 60;
+  }
   return Math.max(10, Math.min(86400, n));
 }
 
@@ -128,14 +140,33 @@ function normalizePingIntervalSeconds(raw) {
 function getClientConfigForPublicSlug(slug) {
   const l = getBySlug(slug);
   if (!l || l.archived) return null;
-  const ping = normalizePingIntervalSeconds(l.pingIntervalSeconds);
-  return {
+  const ping = normalizePingIntervalSeconds(
+    l.pingIntervalSeconds,
+    isLiveLocator(l) ? 15 : 60
+  );
+  const cfg = {
     ok: true,
+    kind: locatorKind(l),
     pingIntervalSeconds: ping,
     active: !!l.active,
     intervalEpoch: Number(l.intervalEpoch) || 1,
     remotePingEpoch: Number(l.remotePingEpoch) || 1,
   };
+  if (isLiveLocator(l)) {
+    const form = locatorForm.normalizeForm(l.form);
+    cfg.form = {
+      heading: form.heading,
+      intro: form.intro,
+      fields: form.fields.map((f) => ({
+        id: f.id,
+        type: f.type,
+        label: f.label,
+        required: !!f.required,
+        options: f.type === "choice" ? f.options.slice() : undefined,
+      })),
+    };
+  }
+  return cfg;
 }
 
 function bumpRemotePingEpoch(locatorId) {
@@ -147,9 +178,12 @@ function bumpRemotePingEpoch(locatorId) {
   save(data);
 }
 
-function listLocatorsForAdmin() {
+function listLocatorsForAdmin({ kind } = {}) {
   const data = load();
-  const locators = data.locators.slice().sort((a, b) => {
+  let locators = data.locators.slice();
+  if (kind === "live") locators = locators.filter(isLiveLocator);
+  else if (kind === "legacy") locators = locators.filter((l) => !isLiveLocator(l));
+  locators.sort((a, b) => {
     const ua = String(a.updatedAt || a.createdAt || "");
     const ub = String(b.updatedAt || b.createdAt || "");
     return ub.localeCompare(ua);
@@ -184,25 +218,80 @@ function create({ title, pingIntervalSeconds }) {
   let titleStr = String(title || "").trim();
   if (!titleStr) titleStr = "Missing Person";
   const ping = normalizePingIntervalSeconds(pingIntervalSeconds);
-
-  let slug = titleToSlug(titleStr);
   const data = load();
-  let n = 0;
-  while (data.locators.some((l) => l.slug === slug)) {
-    n += 1;
-    slug = `${titleToSlug(titleStr)}-${n}`;
-  }
-
+  const slug = allocateSlug(titleStr, data);
   const now = new Date().toISOString();
   const loc = {
     id: crypto.randomUUID(),
     slug,
     title: titleStr,
+    kind: "legacy",
     pingIntervalSeconds: ping,
     intervalEpoch: 1,
     remotePingEpoch: 1,
     active: true,
     archived: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+  data.locators.push(loc);
+  save(data);
+  return loc;
+}
+
+function allocateSlug(titleStr, data) {
+  let slug = titleToSlug(titleStr);
+  let n = 0;
+  while (data.locators.some((l) => l.slug === slug)) {
+    n += 1;
+    slug = `${titleToSlug(titleStr)}-${n}`;
+  }
+  return slug;
+}
+
+function createLive({
+  title,
+  pingIntervalSeconds,
+  channel,
+  channelDisplay,
+  mission,
+  dropPoints,
+  color,
+  form,
+  agencyScope,
+}) {
+  let titleStr = String(title || "").trim();
+  if (!titleStr) titleStr = "Missing Person";
+  const ping = normalizePingIntervalSeconds(pingIntervalSeconds, 15);
+  const channelName = String(channel || "").trim();
+  if (!channelName) throw new Error("Channel is required.");
+  const missionName = String(mission || "").trim();
+  const drop = !!dropPoints && !!missionName;
+  const colorName = locatorForm.normalizeColor(color);
+  const formNorm = locatorForm.normalizeForm(form);
+
+  const data = load();
+  const slug = allocateSlug(titleStr, data);
+  const now = new Date().toISOString();
+  const loc = {
+    id: crypto.randomUUID(),
+    slug,
+    title: titleStr,
+    kind: "live",
+    pingIntervalSeconds: ping,
+    intervalEpoch: 1,
+    remotePingEpoch: 1,
+    active: true,
+    archived: false,
+    channel: channelName,
+    channelDisplay: String(channelDisplay || "").trim() || channelName,
+    mission: missionName,
+    dropPoints: drop,
+    color: colorName,
+    form: formNorm,
+    agencyScope: Array.isArray(agencyScope)
+      ? agencyScope.map((s) => String(s || "").trim()).filter(Boolean)
+      : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -222,13 +311,24 @@ function update(id, patch) {
     if (t) l.title = t;
   }
   if (patch.pingIntervalSeconds !== undefined) {
-    const next = normalizePingIntervalSeconds(patch.pingIntervalSeconds);
+    const next = normalizePingIntervalSeconds(
+      patch.pingIntervalSeconds,
+      isLiveLocator(l) ? 15 : 60
+    );
     if (next !== l.pingIntervalSeconds) {
       l.pingIntervalSeconds = next;
       l.intervalEpoch = (Number(l.intervalEpoch) || 0) + 1;
     }
   }
   if (patch.active !== undefined) l.active = !!patch.active;
+
+  if (isLiveLocator(l)) {
+    if (patch.color !== undefined) l.color = locatorForm.normalizeColor(patch.color);
+    if (patch.form !== undefined) l.form = locatorForm.normalizeForm(patch.form);
+    if (patch.dropPoints !== undefined) {
+      l.dropPoints = !!patch.dropPoints && !!String(l.mission || "").trim();
+    }
+  }
 
   l.updatedAt = new Date().toISOString();
   data.locators[idx] = l;
@@ -270,7 +370,17 @@ function permanentDelete(id) {
   save(data);
 }
 
-function addHistoryEntry({ locatorId, latitude, longitude, name, remarks, kind, accuracyMeters }) {
+function addHistoryEntry({
+  locatorId,
+  latitude,
+  longitude,
+  name,
+  remarks,
+  kind,
+  accuracyMeters,
+  answers,
+  callsign,
+}) {
   const data = load();
   const acc =
     accuracyMeters != null && Number.isFinite(Number(accuracyMeters))
@@ -283,10 +393,14 @@ function addHistoryEntry({ locatorId, latitude, longitude, name, remarks, kind, 
     latitude: latitude == null ? null : Number(latitude),
     longitude: longitude == null ? null : Number(longitude),
     accuracyMeters: acc,
-    name: String(name || "").trim(),
+    name: String(name || callsign || "").trim(),
     remarks: String(remarks || "").trim(),
     kind: kind === "manual" ? "manual" : "interval",
   };
+  if (answers && typeof answers === "object") {
+    entry.answers = answers;
+  }
+  if (callsign) entry.callsign = String(callsign).trim();
   data.history.push(entry);
 
   const li = data.locators.findIndex((l) => l.id === locatorId);
@@ -432,8 +546,11 @@ module.exports = {
   getClientConfigForPublicSlug,
   getBySlug,
   getById,
+  isLiveLocator,
+  locatorKind,
   listLocatorsForAdmin,
   create,
+  createLive,
   update,
   archive,
   reactivate,

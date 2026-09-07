@@ -1,0 +1,1584 @@
+<%- include("partials/header") %>
+<%- include("partials/sidebar") %>
+
+<main class="main locate-page">
+  <%- include("partials/scoped-admin-page-title", {
+    globalTitle: "Locate Missing Persons",
+    scopedSuffix: "Locate Missing Persons",
+    singleFallbackTitle: "Agency Locate Missing Persons"
+  }) %>
+
+  <div class="card">
+    <h2 style="margin-top:0;">TAK Server Locate Configuration</h2>
+
+    <div
+      id="locateSshWarn"
+      class="msg bad"
+      role="alert"
+      style="display:none; margin-left:0; margin-bottom:1rem; padding:10px 12px; border-radius:6px; background:rgba(255,80,80,.12); border:1px solid rgba(255,120,120,.35);"
+    ></div>
+
+    <div class="row locate-config-row">
+      <label class="locate-field-grow">
+        Locate Status
+        <select id="locateEnabledSelect" aria-label="Locate mode">
+          <option value="disabled">Disabled</option>
+          <option value="group_only">Enabled — Group Only</option>
+          <option value="data_sync">Enabled — Data Sync</option>
+        </select>
+      </label>
+
+      <label id="locateMissionWrap" class="locate-field-grow" style="display: none;">
+        Data Sync Mission
+        <select id="locateMissionSelect">
+          <option value="">Select a mission…</option>
+        </select>
+      </label>
+
+      <label id="locateGroupWrap" class="locate-field-grow" style="display: none;">
+        Notification Group
+        <select id="locateGroupSelect"></select>
+      </label>
+
+      <label class="locate-apply-wrap">
+        <span class="locate-apply-spacer" aria-hidden="true">&nbsp;</span>
+        <button class="btn locate-apply-btn" type="button" id="locateApplyBtn">Apply Changes &amp; Restart TAK Server</button>
+      </label>
+    </div>
+
+    <div
+      id="locateMsg"
+      class="msg"
+      aria-live="polite"
+      style="margin-top:12px; margin-left:0;"
+    ></div>
+  </div>
+
+  <div class="card" id="createLocatorCard" style="margin-top:1.25rem;">
+    <h2 style="margin-top:0;">Create Locator</h2>
+    <div class="row locate-create-row">
+      <label class="locate-field-grow locate-title-field">Title (optional)
+        <input id="newLocTitle" type="text" placeholder="e.g. Missing Person — or leave blank" />
+      </label>
+      <label class="locate-field-grow locate-ping-field">Ping Interval (in seconds) (0 = One Time Only)
+        <input id="newLocPing" type="number" min="0" max="86400" value="60" />
+      </label>
+      <label class="locate-create-btn-wrap">
+        <span class="locate-apply-spacer" aria-hidden="true">&nbsp;</span>
+        <button type="button" class="btn locate-create-btn" id="newLocCreateBtn">Create locator</button>
+      </label>
+    </div>
+    <div id="newLocMsg" class="msg" style="margin-top:10px; margin-left:0;"></div>
+  </div>
+
+  <div class="card" id="existingLocatorsCard" style="margin-top:1.25rem;">
+    <h2 style="margin-top:0;">Existing Locators</h2>
+    <div id="locListMsg" class="msg" style="margin-left:0;"></div>
+    <div class="locate-table-scroll listCardTableWrap">
+      <table class="table locate-table locate-table-active listCardTable">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th class="locate-col-ping">Ping Interval</th>
+            <th class="locate-col-status">Status</th>
+            <th class="locate-col-last">Last Update</th>
+            <th class="locate-col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="locatorsTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <details class="card" style="margin-top:1.25rem;">
+    <summary style="cursor:pointer;font-weight:600;user-select:none;">
+      Archived locators <span id="archivedCountWrap">(<span id="archivedCount">0</span>)</span>
+    </summary>
+    <div style="margin-top:12px;">
+      <div id="archivedListMsg" class="msg" style="margin-left:0;"></div>
+      <div class="locate-table-scroll listCardTableWrap">
+        <table class="table locate-table locate-table-archived listCardTable">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th class="locate-col-ping">Ping Interval</th>
+              <th class="locate-col-status">Status</th>
+              <th class="locate-col-last">Last Update</th>
+              <th class="locate-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="archivedLocatorsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <div id="locHistOverlay" class="modalOverlay" style="display:none;" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="locHistTitle" style="width:min(900px,96vw); max-height:85vh; overflow:auto;">
+      <div class="modalHeader">
+        <h2 id="locHistTitle" style="margin:0;">Locator history</h2>
+        <button type="button" class="btn" id="locHistCloseBtn">Close</button>
+      </div>
+      <div class="modalBody">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Name</th>
+              <th>Position</th>
+              <th>Remarks</th>
+            </tr>
+          </thead>
+          <tbody id="locHistTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="sendLinkOverlay" class="modalOverlay" style="display:none;" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sendLinkModalTitle" style="width:min(480px,96vw);">
+      <div class="modalHeader">
+        <h2 id="sendLinkModalTitle" style="margin:0;">Send Locator Link</h2>
+        <button type="button" class="btn" id="sendLinkCloseBtn">Close</button>
+      </div>
+      <div class="modalBody">
+        <label for="sendLinkPhonesIn" style="display:block;margin-top:12px;font-weight:600;">Phone numbers (SMS)</label>
+        <input type="text" id="sendLinkPhonesIn" autocomplete="tel" placeholder="+15551234567, 5559876543" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:var(--panel-bg, #1e1e1e);color:inherit;" />
+        <div style="margin-top:10px;">
+          <button type="button" class="btn success" id="sendLinkSmsBtn">Send SMS</button>
+        </div>
+        <label for="sendLinkRecipientsIn" style="display:block;margin-top:18px;font-weight:600;">Email addresses</label>
+        <input type="text" id="sendLinkRecipientsIn" autocomplete="email" placeholder="one@example.com, two@example.com" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:var(--panel-bg, #1e1e1e);color:inherit;" />
+        <div style="margin-top:10px;">
+          <button type="button" class="btn success" id="sendLinkEmailBtn">Send Email</button>
+        </div>
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);">
+          <button type="button" class="btn" id="sendLinkCopyBtn">Copy Link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    /* Mobile-friendly layout (aligned with agencies / groups patterns) */
+    /* Flex child (.main) must be allowed to shrink or wide tables/URLs force body horizontal scroll */
+    .locate-page.main {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .locate-page .card,
+    .locate-page .locate-table-scroll {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .locate-page .locate-config-row,
+    .locate-page .locate-create-row {
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px;
+    }
+    .locate-page .locate-field-grow {
+      min-width: 0;
+      flex: 1 1 220px;
+    }
+    .locate-page .locate-field-grow select,
+    .locate-page .locate-field-grow input {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .locate-page .locate-title-field {
+      flex: 2 1 260px;
+    }
+    .locate-page .locate-ping-field {
+      flex: 1 1 140px;
+      max-width: 100%;
+    }
+    .locate-page .locate-apply-wrap,
+    .locate-page .locate-create-btn-wrap {
+      flex: 1 1 100%;
+      min-width: 0;
+    }
+    .locate-page .locate-apply-spacer {
+      display: none;
+    }
+    .locate-page .locate-apply-btn,
+    .locate-page .locate-create-btn {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    @media (min-width: 640px) {
+      .locate-page .locate-apply-wrap,
+      .locate-page .locate-create-btn-wrap {
+        flex: 0 0 auto;
+        width: auto;
+      }
+      .locate-page .locate-apply-spacer {
+        display: inline;
+      }
+      .locate-page .locate-apply-btn,
+      .locate-page .locate-create-btn {
+        width: auto;
+      }
+    }
+    .locate-page .locate-table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-top: 10px;
+      width: 100%;
+    }
+    /* Wide viewports: allow inner horizontal scroll when many columns need space */
+    .locate-page .locate-table {
+      width: 100%;
+    }
+    @media (min-width: 641px) {
+      .locate-page .locate-table {
+        min-width: 520px;
+      }
+    }
+    .locate-page .locate-actions-cell {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .locate-page .locate-actions-cell .btn {
+      margin: 0 !important;
+    }
+    @media (max-width: 900px) {
+      .locate-page.main {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+    }
+    @media (max-width: 990px) {
+      .locate-page .listCardTableWrap {
+        overflow-x: hidden;
+      }
+      .locate-table.listCardTable {
+        width: 100%;
+        min-width: 0 !important;
+        border-collapse: separate;
+        border-spacing: 0 12px;
+      }
+      .locate-table.listCardTable thead { display: none; }
+      .locate-table.listCardTable tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .locate-table.listCardTable tbody tr {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+          "title title"
+          "ping status"
+          "last last"
+          "actions actions";
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+      .locate-table .cardTitleCell { grid-area: title; }
+      .locate-table .locate-col-ping { grid-area: ping; }
+      .locate-table .locate-col-status { grid-area: status; }
+      .locate-table .locate-col-last { grid-area: last; }
+      .locate-table .cardActionsCell { grid-area: actions; }
+      .locate-table.listCardTable tbody tr.emptyStateRow {
+        display: block;
+        border: none;
+        background: transparent;
+      }
+      .locate-table.listCardTable tbody td {
+        display: block;
+        border-top: none;
+        padding: 8px 12px;
+        word-break: normal;
+        overflow-wrap: anywhere;
+        min-width: 0 !important;
+        max-width: none !important;
+        white-space: normal;
+      }
+      .locate-table.listCardTable tbody td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .locate-table .cardTitleCell::before,
+      .locate-table .cardActionsCell::before {
+        display: none;
+      }
+      .locate-table .cardTitleCell { padding-top: 12px; padding-bottom: 4px; }
+      .locate-table .cardTitleText { font-weight: 600; font-size: 15px; line-height: 1.3; word-break: break-word; }
+      .locate-table .cardActionsCell { padding-top: 10px; padding-bottom: 12px; }
+      .locate-table .cardActionsRow {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+      }
+      .locate-table .cardActionsRow .btn {
+        width: 100% !important;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        white-space: nowrap;
+        box-sizing: border-box;
+        text-align: center;
+        word-break: normal;
+        overflow-wrap: normal;
+      }
+    }
+  </style>
+</main>
+
+<script>
+(function () {
+  function stripTakPrefix(name) {
+    var n = String(name || "").trim();
+    return n.toLowerCase().indexOf("tak_") === 0 ? n.slice(4) : n;
+  }
+
+  async function readApiError(res) {
+    var text = await res.text();
+    if (!text) {
+      return res.status ? "HTTP " + res.status + " " + (res.statusText || "") : "Request failed.";
+    }
+    try {
+      var j = JSON.parse(text);
+      if (j && typeof j.error === "string" && j.error) return j.error;
+      if (j && typeof j.message === "string" && j.message) return j.message;
+    } catch (e) {}
+    if (looksLikeHtml(text)) {
+      return "The server returned an error (HTML response). Check the portal logs or try again.";
+    }
+    return text.length > 800 ? text.slice(0, 800) + "…" : text;
+  }
+
+  function looksLikeHtml(s) {
+    var t = String(s || "").trim().slice(0, 80).toLowerCase();
+    return t.indexOf("<!doctype") === 0 || t.indexOf("<html") === 0;
+  }
+
+  var enabledSelect = document.getElementById("locateEnabledSelect");
+  var groupWrap = document.getElementById("locateGroupWrap");
+  var groupSelect = document.getElementById("locateGroupSelect");
+  var missionWrap = document.getElementById("locateMissionWrap");
+  var missionSelect = document.getElementById("locateMissionSelect");
+  var applyBtn = document.getElementById("locateApplyBtn");
+  var msg = document.getElementById("locateMsg");
+  var sshWarn = document.getElementById("locateSshWarn");
+  var createLocatorCard = document.getElementById("createLocatorCard");
+  var existingLocatorsCard = document.getElementById("existingLocatorsCard");
+
+  /** @type {boolean} */
+  var sshConfigured = false;
+  /** @type {string} */
+  var appliedLocateMode = "disabled";
+
+  function setMsg(text, kind) {
+    msg.textContent = text || "";
+    msg.style.display = text ? "block" : "none";
+    msg.classList.remove("ok", "bad");
+    if (kind === "error") msg.classList.add("bad");
+    else if (kind === "success") msg.classList.add("ok");
+  }
+
+  function setSshWarning(show) {
+    if (show) {
+      sshWarn.style.display = "block";
+      sshWarn.textContent =
+        "SSH is not configured. Open Server Settings, complete the TAK Server SSH handshake (host, user, and key), and test the connection before you can apply locate changes. Until then, Apply is disabled.";
+    } else {
+      sshWarn.style.display = "none";
+      sshWarn.textContent = "";
+    }
+  }
+
+  /** Sorted short names (no tak_) for Enabled — Group only. */
+  var cachedAllTakShorts = [];
+
+  function getLocateMode() {
+    return enabledSelect.value || "disabled";
+  }
+
+  function syncLocatorCardsVisibility() {
+    var selectedMode = getLocateMode();
+    var shouldShow = appliedLocateMode !== "disabled" && selectedMode === appliedLocateMode;
+    if (createLocatorCard) createLocatorCard.style.display = shouldShow ? "" : "none";
+    if (existingLocatorsCard) existingLocatorsCard.style.display = shouldShow ? "" : "none";
+  }
+
+  function syncLocateModeUi() {
+    var mode = getLocateMode();
+    if (mode === "disabled") {
+      missionWrap.style.display = "none";
+      groupWrap.style.display = "none";
+      return;
+    }
+    if (mode === "group_only") {
+      missionWrap.style.display = "none";
+      groupWrap.style.display = "";
+      groupSelect.disabled = false;
+      fillGroupSelectAllTakNoNone(groupSelect.value);
+      return;
+    }
+    if (mode === "data_sync") {
+      missionWrap.style.display = "";
+      groupWrap.style.display = "";
+      var ms = String(missionSelect.value || "").trim();
+      if (!ms) {
+        groupSelect.innerHTML = "";
+        groupSelect.disabled = true;
+      } else {
+        groupSelect.disabled = false;
+      }
+    }
+  }
+
+  /** If CoreConfig names a mission that TAK did not return as tool=public, add it so the select can match the server. */
+  function ensureMissionInDropdown(name) {
+    var n = String(name || "").trim();
+    if (!n) return;
+    var found = Array.prototype.some.call(missionSelect.options, function (o) {
+      return o.value === n;
+    });
+    if (found) return;
+    var opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = n;
+    missionSelect.appendChild(opt);
+  }
+
+  function fillGroupSelectAllTakNoNone(preferred) {
+    var prev = String(preferred || "").trim();
+    groupSelect.innerHTML = "";
+    cachedAllTakShorts.forEach(function (shortName) {
+      var opt = document.createElement("option");
+      opt.value = shortName;
+      opt.textContent = shortName;
+      groupSelect.appendChild(opt);
+    });
+    if (prev && cachedAllTakShorts.indexOf(prev) >= 0) {
+      groupSelect.value = prev;
+    } else if (cachedAllTakShorts.length) {
+      groupSelect.value = cachedAllTakShorts[0];
+    }
+  }
+
+  async function fillGroupSelectForMission(missionName, preferredShort) {
+    var name = String(missionName || "").trim();
+    var pref = String(preferredShort || "").trim();
+    if (!name) {
+      groupSelect.innerHTML = "";
+      groupSelect.disabled = true;
+      return { groups: [] };
+    }
+    groupSelect.disabled = false;
+    var res = await fetch("/api/locate-legacy/mission-groups/" + encodeURIComponent(name));
+    var text = await res.text();
+    var data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error("Invalid response from mission-groups.");
+    }
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) || "Failed to load groups for mission.");
+    }
+    if (data.missionNotFound && data.warning) {
+      return { groups: [], warning: data.warning };
+    }
+    var groups = Array.isArray(data.groups) ? data.groups : [];
+    groupSelect.innerHTML = "";
+    groups.forEach(function (shortName) {
+      var opt = document.createElement("option");
+      opt.value = shortName;
+      opt.textContent = shortName;
+      groupSelect.appendChild(opt);
+    });
+    if (pref && groups.indexOf(pref) >= 0) {
+      groupSelect.value = pref;
+    } else if (groups.length) {
+      groupSelect.value = groups[0];
+    }
+    return { groups: groups, warning: data.warning || "" };
+  }
+
+  async function refreshAllTakShortNames() {
+    var res = await fetch("/api/locate-legacy/tak-channel-groups");
+    var text = await res.text();
+    var data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error("Invalid response from /api/locate-legacy/tak-channel-groups.");
+    }
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) || text.slice(0, 600) || "Failed to load TAK channel groups.");
+    }
+    cachedAllTakShorts = Array.isArray(data.groups) ? data.groups.slice() : [];
+    if (data.warning) {
+      console.warn("Locate: TAK channel groups:", data.warning);
+    }
+    return cachedAllTakShorts;
+  }
+
+  async function loadPublicDataSyncMissions() {
+    var res = await fetch("/api/locate-legacy/data-sync-missions");
+    if (!res.ok) {
+      throw new Error(await readApiError(res));
+    }
+    var text = await res.text();
+    var data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error("Invalid response from /api/locate-legacy/data-sync-missions.");
+    }
+    if (!data.ok) {
+      throw new Error((data && data.error) || "Failed to load data sync missions.");
+    }
+    var missions = Array.isArray(data.missions) ? data.missions : [];
+    var prev = missionSelect.value;
+    missionSelect.innerHTML = '<option value="">Select a mission…</option>';
+    missions.forEach(function (item) {
+      var name = item && item.name != null ? String(item.name).trim() : "";
+      if (!name) return;
+      var opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      missionSelect.appendChild(opt);
+    });
+    if (
+      prev &&
+      Array.prototype.some.call(missionSelect.options, function (o) {
+        return o.value === prev;
+      })
+    ) {
+      missionSelect.value = prev;
+    }
+    return missions;
+  }
+
+  /** Fetches CoreConfig from the TAK Server over SSH (GET /api/locate-legacy/config). Only for initial full page load — not for polling or background refresh. */
+  async function loadConfig() {
+    var res = await fetch("/api/locate-legacy/config");
+    var text = await res.text();
+    var data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error(
+        looksLikeHtml(text)
+          ? "Server returned an HTML error page instead of JSON when loading locate config."
+          : "Invalid response from /api/locate-legacy/config."
+      );
+    }
+    if (!res.ok || !data.ok) {
+      throw new Error((data && data.error) || text.slice(0, 600) || "Failed to load locate config.");
+    }
+    sshConfigured = !!data.sshConfigured;
+    if (!data.sshConfigured) {
+      setSshWarning(true);
+      applyBtn.disabled = true;
+    } else {
+      setSshWarning(false);
+      applyBtn.disabled = false;
+    }
+    var mode = data.mode;
+    if (!mode) {
+      if (!data.enabled) mode = "disabled";
+      else if (data.mission && data.addToMission) mode = "data_sync";
+      else mode = "group_only";
+    }
+    appliedLocateMode = mode;
+    enabledSelect.value = mode;
+
+    if (mode === "group_only") {
+      fillGroupSelectAllTakNoNone(data.group || "");
+    } else if (mode === "data_sync") {
+      var savedMission = String(data.mission || "").trim();
+      if (savedMission) {
+        ensureMissionInDropdown(savedMission);
+        missionSelect.value = savedMission;
+        try {
+          var mg = await fillGroupSelectForMission(savedMission, data.group || "");
+          if (mg && mg.warning) {
+            setMsg(mg.warning, "error");
+          }
+        } catch (mgErr) {
+          groupSelect.innerHTML = "";
+          groupSelect.disabled = true;
+          setMsg(
+            (mgErr && mgErr.message ? mgErr.message : String(mgErr)) +
+              " Locate is still enabled on the TAK Server; pick a valid mission or switch to Group only.",
+            "error"
+          );
+        }
+      } else {
+        missionSelect.value = "";
+        groupSelect.innerHTML = "";
+        groupSelect.disabled = true;
+      }
+    } else {
+      missionSelect.value = "";
+      groupSelect.innerHTML = "";
+    }
+    syncLocateModeUi();
+    syncLocatorCardsVisibility();
+  }
+
+  enabledSelect.addEventListener("change", function () {
+    syncLocateModeUi();
+    syncLocatorCardsVisibility();
+    var mode = getLocateMode();
+    if (mode !== "disabled" && !sshConfigured) {
+      setMsg(
+        "Locate cannot be applied until SSH is configured under Server Settings. Connected TAK changes require a working SSH session to the TAK Server.",
+        "error"
+      );
+      return;
+    }
+    if (mode === "data_sync") {
+      var ms = String(missionSelect.value || "").trim();
+      if (ms) {
+        fillGroupSelectForMission(ms, "").catch(function (e) {
+          setMsg(e.message || String(e), "error");
+        });
+      } else {
+        groupSelect.innerHTML = "";
+        groupSelect.disabled = true;
+      }
+    }
+  });
+
+  missionSelect.addEventListener("change", function () {
+    if (getLocateMode() !== "data_sync") return;
+    var ms = String(missionSelect.value || "").trim();
+    if (!ms) {
+      groupSelect.innerHTML = "";
+      groupSelect.disabled = true;
+      return;
+    }
+    fillGroupSelectForMission(ms, "").catch(function (e) {
+      setMsg(e.message || String(e), "error");
+    });
+  });
+
+  applyBtn.addEventListener("click", async function () {
+    setMsg("");
+    if (!sshConfigured) {
+      setMsg("SSH is not configured. Configure SSH under Server Settings first.", "error");
+      return;
+    }
+    var mode = getLocateMode();
+    var group = String(groupSelect.value || "").trim();
+    var mission = String(missionSelect.value || "").trim();
+    if (mode === "group_only" && !group) {
+      setMsg("Select a notification group.", "error");
+      return;
+    }
+    if (mode === "data_sync") {
+      if (!mission) {
+        setMsg("Select a Data Sync mission.", "error");
+        return;
+      }
+      if (!group || groupSelect.disabled) {
+        setMsg("Select a notification group for that mission (or fix mission groups on Data Sync).", "error");
+        return;
+      }
+    }
+
+    var sshPrivilegeCmd = "<%= String((typeof settings !== 'undefined' && settings && settings.TAK_SSH_PRIVILEGE_CMD) || 'sudo').trim().toLowerCase() === 'dzdo' ? 'dzdo' : 'sudo' %>";
+    var confirmText =
+      "This will update CoreConfig.xml on the TAK Server over SSH and run: " +
+      sshPrivilegeCmd +
+      " systemctl restart takserver\n\n" +
+      "Connected ATAK / TAK clients may lose connection temporarily while the service restarts.\n\n" +
+      "Do you want to continue?";
+    if (!window.confirm(confirmText)) {
+      return;
+    }
+
+    applyBtn.disabled = true;
+    setMsg(
+      "Updating CoreConfig.xml on the TAK Server and restarting the takserver service. Please wait—this step can take up to a minute. Do not close this tab.",
+      "info"
+    );
+
+    try {
+      var res = await fetch("/api/locate-legacy/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: mode,
+          group: mode === "disabled" ? "" : group,
+          mission: mode === "data_sync" ? mission : "",
+        }),
+      });
+      var text = await res.text();
+      var data;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (parseErr) {
+        throw new Error(
+          looksLikeHtml(text)
+            ? "The server returned an error page instead of JSON. Check portal logs or network connectivity to the TAK Server host."
+            : (text.slice(0, 600) || "Invalid response from apply.")
+        );
+      }
+      if (!res.ok || !data.ok) {
+        throw new Error((data && data.error) ? data.error : text.slice(0, 600) || "Apply failed.");
+      }
+
+      setMsg(
+        (data.message ? data.message + " " : "") +
+          "The TAK Server restart is in progress. Wait about 2 minutes before making more locate changes here, using other SSH actions, or expecting stable TAK/ATAK connectivity.",
+        "success"
+      );
+      /* Do not call loadConfig() here — that re-reads CoreConfig over SSH. The form already matches what was applied; reload the page to re-sync from the server file. */
+      if (mode === "disabled") {
+        missionSelect.value = "";
+        groupSelect.innerHTML = "";
+      } else if (mode === "group_only") {
+        missionSelect.value = "";
+      }
+      appliedLocateMode = mode;
+      syncLocateModeUi();
+      syncLocatorCardsVisibility();
+    } catch (e) {
+      var errText = e && e.message ? e.message : String(e);
+      setMsg(
+        "Apply failed: " + errText + " In Server Settings, run Test SSH Connection or Configure Sudo Access (or re-run handshake) so privileged commands work for the portal SSH user.",
+        "error"
+      );
+    } finally {
+      if (sshConfigured) applyBtn.disabled = false;
+    }
+  });
+
+  (async function init() {
+    var warnings = [];
+    try {
+      try {
+        await refreshAllTakShortNames();
+      } catch (eGroups) {
+        cachedAllTakShorts = [];
+        warnings.push(
+          (eGroups && eGroups.message ? eGroups.message : String(eGroups)) +
+            " (group dropdown may be empty until TAK groups load.)"
+        );
+        console.warn("Locate: could not load TAK channel groups", eGroups);
+      }
+      try {
+        await loadPublicDataSyncMissions();
+      } catch (e2) {
+        missionSelect.innerHTML = '<option value="">Select a mission…</option>';
+        warnings.push(
+          (e2 && e2.message ? e2.message : String(e2)) + " (mission list may be incomplete.)"
+        );
+        console.warn("Locate: could not load public Data Sync missions", e2);
+      }
+      await loadConfig();
+      syncLocateModeUi();
+      syncLocatorCardsVisibility();
+      if (warnings.length) {
+        setMsg(warnings.join(" "), "error");
+      }
+    } catch (e) {
+      var errText = e && e.message ? e.message : String(e);
+      setMsg("Could not load this page: " + errText, "error");
+    }
+  })();
+})();
+</script>
+
+<script>
+(function () {
+  var tbody = document.getElementById("locatorsTbody");
+  var archivedTbody = document.getElementById("archivedLocatorsTbody");
+  var archivedCountEl = document.getElementById("archivedCount");
+  var archivedListMsg = document.getElementById("archivedListMsg");
+  var listMsg = document.getElementById("locListMsg");
+  var newLocMsg = document.getElementById("newLocMsg");
+  var titleIn = document.getElementById("newLocTitle");
+  var pingIn = document.getElementById("newLocPing");
+  var createBtn = document.getElementById("newLocCreateBtn");
+  var histOverlay = document.getElementById("locHistOverlay");
+  var histTbody = document.getElementById("locHistTbody");
+  var histClose = document.getElementById("locHistCloseBtn");
+  var sendLinkOverlay = document.getElementById("sendLinkOverlay");
+  var sendLinkCloseBtn = document.getElementById("sendLinkCloseBtn");
+  var sendLinkPhonesIn = document.getElementById("sendLinkPhonesIn");
+  var sendLinkRecipientsIn = document.getElementById("sendLinkRecipientsIn");
+  var sendLinkSmsBtn = document.getElementById("sendLinkSmsBtn");
+  var sendLinkEmailBtn = document.getElementById("sendLinkEmailBtn");
+  var sendLinkCopyBtn = document.getElementById("sendLinkCopyBtn");
+  var sendLinkCurrentUrl = "";
+  var sendLinkCurrentLocatorId = "";
+
+  function setListMsg(text, bad) {
+    listMsg.textContent = text || "";
+    listMsg.style.display = text ? "block" : "none";
+    listMsg.classList.toggle("bad", !!bad);
+  }
+
+  function setNewMsg(text, bad) {
+    newLocMsg.textContent = text || "";
+    newLocMsg.style.display = text ? "block" : "none";
+    newLocMsg.classList.toggle("bad", !!bad);
+  }
+
+  function formatTime(iso) {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString();
+    } catch (e) {
+      return iso;
+    }
+  }
+
+  function formatRelative(iso) {
+    if (!iso) return "—";
+    var t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) return "—";
+    var sec = Math.floor((Date.now() - t) / 1000);
+    if (sec < 0) return "just now";
+    if (sec < 10) return "just now";
+    if (sec < 60) return sec + "s ago";
+    if (sec < 3600) {
+      var m = Math.floor(sec / 60);
+      var s = sec % 60;
+      return m + "m " + s + "s ago";
+    }
+    if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
+    if (sec < 604800) return Math.floor(sec / 86400) + "d ago";
+    return formatTime(iso);
+  }
+
+  function formatPingInterval(seconds) {
+    if (seconds == null) return "—";
+    var n = Number(seconds);
+    if (n === 0) return "Once";
+    return String(n);
+  }
+
+  function publicUrl(slug) {
+    return window.location.origin + "/locate/" + encodeURIComponent(slug);
+  }
+
+  function closeSendLinkModal() {
+    if (!sendLinkOverlay) return;
+    sendLinkOverlay.style.display = "none";
+    sendLinkOverlay.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  function openSendLinkModal(loc) {
+    sendLinkCurrentUrl = publicUrl(loc.slug);
+    sendLinkCurrentLocatorId = loc.id ? String(loc.id) : "";
+    if (sendLinkPhonesIn) sendLinkPhonesIn.value = "";
+    if (sendLinkRecipientsIn) sendLinkRecipientsIn.value = "";
+    if (sendLinkSmsBtn) sendLinkSmsBtn.disabled = false;
+    if (sendLinkEmailBtn) sendLinkEmailBtn.disabled = false;
+    if (sendLinkOverlay) {
+      sendLinkOverlay.style.display = "flex";
+      sendLinkOverlay.setAttribute("aria-hidden", "false");
+    }
+    document.body.style.overflow = "hidden";
+    if (sendLinkPhonesIn) {
+      setTimeout(function () {
+        try {
+          sendLinkPhonesIn.focus();
+        } catch (e) {}
+      }, 0);
+    }
+  }
+
+  function copySendLinkToClipboard() {
+    var url = sendLinkCurrentUrl;
+    if (!url) return;
+    function done() {
+      setListMsg("Link copied to clipboard.", false);
+      closeSendLinkModal();
+    }
+    function fallback() {
+      window.prompt("Copy this link:", url);
+      closeSendLinkModal();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done).catch(fallback);
+      return;
+    }
+    var ta = document.createElement("textarea");
+    ta.value = url;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      if (document.execCommand("copy")) done();
+      else fallback();
+    } catch (e) {
+      fallback();
+    }
+    document.body.removeChild(ta);
+  }
+
+  function sendLocateLinkSms() {
+    var id = sendLinkCurrentLocatorId;
+    var phones = sendLinkPhonesIn ? String(sendLinkPhonesIn.value || "").trim() : "";
+    if (!id) {
+      setListMsg("Missing locator; close and open Send Link again.", true);
+      return;
+    }
+    if (!phones) {
+      setListMsg("Enter at least one phone number.", true);
+      return;
+    }
+    if (sendLinkSmsBtn) sendLinkSmsBtn.disabled = true;
+    fetch("/api/locate-legacy/locators/" + encodeURIComponent(id) + "/send-link-sms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phones: phones }),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, status: r.status, j: j };
+        });
+      })
+      .then(function (x) {
+        if (sendLinkSmsBtn) sendLinkSmsBtn.disabled = false;
+        if (x.ok && x.j && x.j.ok) {
+          setListMsg(
+            "SMS sent" +
+              (typeof x.j.count === "number" ? " to " + x.j.count + " number(s)." : "."),
+            false
+          );
+          closeSendLinkModal();
+          return;
+        }
+        var err =
+          (x.j && (x.j.error || x.j.message)) || (x.ok ? "Send failed." : "Request failed.");
+        setListMsg(err, true);
+      })
+      .catch(function () {
+        if (sendLinkSmsBtn) sendLinkSmsBtn.disabled = false;
+        setListMsg("Network error.", true);
+      });
+  }
+
+  function sendLocateLinkEmail() {
+    var id = sendLinkCurrentLocatorId;
+    var recipients = sendLinkRecipientsIn ? String(sendLinkRecipientsIn.value || "").trim() : "";
+    if (!id) {
+      setListMsg("Missing locator; close and open Send Link again.", true);
+      return;
+    }
+    if (!recipients) {
+      setListMsg("Enter at least one email address.", true);
+      return;
+    }
+    if (sendLinkEmailBtn) sendLinkEmailBtn.disabled = true;
+    fetch(
+      "/api/locate-legacy/locators/" + encodeURIComponent(id) + "/send-link-email",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipients: recipients }),
+      }
+    )
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, j: j };
+        });
+      })
+      .then(function (x) {
+        if (sendLinkEmailBtn) sendLinkEmailBtn.disabled = false;
+        if (x.ok && x.j && x.j.ok) {
+          setListMsg(
+            "Email sent" +
+              (typeof x.j.count === "number" ? " to " + x.j.count + " address(es)." : "."),
+            false
+          );
+          closeSendLinkModal();
+          return;
+        }
+        var err =
+          (x.j && (x.j.error || x.j.message)) || (x.ok ? "Send failed." : "Request failed.");
+        setListMsg(err, true);
+      })
+      .catch(function () {
+        if (sendLinkEmailBtn) sendLinkEmailBtn.disabled = false;
+        setListMsg("Network error.", true);
+      });
+  }
+
+  function googleMapsPinUrl(lat, lng) {
+    var la = Number(lat);
+    var ln = Number(lng);
+    if (!Number.isFinite(la) || !Number.isFinite(ln)) return "#";
+    return "https://www.google.com/maps?q=" + encodeURIComponent(la + "," + ln);
+  }
+
+  /** Same visual as plain coordinate text; opens Google Maps in a new tab. Optional accuracy from Geolocation API (meters). */
+  function coordsLinkEl(lat, lng, accuracyMeters) {
+    var wrap = document.createElement("div");
+    wrap.className = "settings-help";
+    wrap.style.marginTop = "2px";
+    var a = document.createElement("a");
+    a.href = googleMapsPinUrl(lat, lng);
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = Number(lat).toFixed(7) + ", " + Number(lng).toFixed(7);
+    a.title = "Open in Google Maps";
+    a.style.color = "inherit";
+    a.style.textDecoration = "none";
+    a.style.cursor = "pointer";
+    wrap.appendChild(a);
+    if (accuracyMeters != null && Number.isFinite(Number(accuracyMeters))) {
+      var acc = document.createElement("div");
+      acc.className = "settings-help";
+      acc.style.marginTop = "2px";
+      acc.style.fontSize = "0.85em";
+      acc.style.opacity = "0.9";
+      acc.textContent = "±" + Math.round(Number(accuracyMeters)) + " m (GPS estimate)";
+      wrap.appendChild(acc);
+    }
+    return wrap;
+  }
+
+  function setArchivedMsg(text, bad) {
+    archivedListMsg.textContent = text || "";
+    archivedListMsg.style.display = text ? "block" : "none";
+    archivedListMsg.classList.toggle("bad", !!bad);
+  }
+
+  function titleCellPlain(loc) {
+    var tdTitle = document.createElement("td");
+    tdTitle.className = "cardTitleCell";
+    var titleText = document.createElement("div");
+    titleText.className = "cardTitleText";
+    titleText.textContent = loc.title;
+    tdTitle.appendChild(titleText);
+    var small = document.createElement("div");
+    small.className = "settings-help";
+    small.style.marginTop = "4px";
+    small.textContent = publicUrl(loc.slug);
+    tdTitle.appendChild(small);
+    return tdTitle;
+  }
+
+  function appendRecentCell(tdRecent, loc) {
+    tdRecent.style.fontSize = "0.9rem";
+    tdRecent.style.lineHeight = "1.35";
+    if (loc.lastCoordsAt) {
+      var rel = document.createElement("div");
+      rel.className = "loc-recent-live";
+      rel.setAttribute("data-at", loc.lastCoordsAt);
+      rel.textContent = formatRelative(loc.lastCoordsAt);
+      tdRecent.appendChild(rel);
+      tdRecent.appendChild(coordsLinkEl(loc.lastLatitude, loc.lastLongitude, loc.lastAccuracyMeters));
+      return;
+    }
+    if (!loc.lastPingAt) {
+      tdRecent.textContent = "—";
+      return;
+    }
+    tdRecent.textContent = "";
+    var dash = document.createElement("div");
+    dash.textContent = "—";
+    tdRecent.appendChild(dash);
+    var noCoord = document.createElement("div");
+    noCoord.className = "settings-help";
+    noCoord.style.marginTop = "2px";
+    noCoord.textContent = "No GPS stored yet";
+    tdRecent.appendChild(noCoord);
+  }
+
+  function tickRecentLiveCells() {
+    var nodes = document.querySelectorAll(".loc-recent-live");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var at = el.getAttribute("data-at");
+      el.textContent = formatRelative(at);
+    }
+  }
+
+  function openHistoryForId(locId) {
+    fetch("/api/locate-legacy/locators/" + encodeURIComponent(locId) + "/history")
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.error || "Failed");
+        histTbody.innerHTML = "";
+        (data.history || []).forEach(function (h) {
+          var hr = document.createElement("tr");
+          function cell(x) {
+            var td = document.createElement("td");
+            td.textContent = x == null ? "—" : String(x);
+            hr.appendChild(td);
+          }
+          cell(formatTime(h.at));
+          cell(h.name);
+          var tdPos = document.createElement("td");
+          if (h.latitude != null && h.longitude != null) {
+            tdPos.appendChild(coordsLinkEl(h.latitude, h.longitude, h.accuracyMeters));
+          } else {
+            tdPos.textContent = "—";
+          }
+          hr.appendChild(tdPos);
+          cell(h.remarks);
+          histTbody.appendChild(hr);
+        });
+        histOverlay.style.display = "flex";
+        document.body.style.overflow = "hidden";
+      })
+      .catch(function (e) {
+        setListMsg(e.message || String(e), true);
+      });
+  }
+
+  function renderRows(locators) {
+    tbody.innerHTML = "";
+    if (!locators || !locators.length) {
+      var tr = document.createElement("tr");
+      tr.className = "emptyStateRow";
+      var td = document.createElement("td");
+      td.colSpan = 5;
+      td.textContent = "No existing locators.";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+    locators.forEach(function (loc) {
+      if (loc.archived) return;
+      var tr = document.createElement("tr");
+
+      var tdTitle = titleCellPlain(loc);
+
+      var tdPing = document.createElement("td");
+      tdPing.className = "locate-col-ping";
+      tdPing.setAttribute("data-label", "Ping Interval");
+      tdPing.textContent = formatPingInterval(loc.pingIntervalSeconds);
+
+      var tdStatus = document.createElement("td");
+      tdStatus.className = "locate-col-status";
+      tdStatus.setAttribute("data-label", "Status");
+      var pill = document.createElement("span");
+      var statusLabel;
+      var statusTone = "muted";
+      if (!loc.active) {
+        statusLabel = "Disabled";
+      } else if (!loc.hasPositionPing) {
+        statusLabel = "Inactive";
+      } else if (loc.sharingStoppedByUser) {
+        statusLabel = "Stopped By User";
+        statusTone = "stopped";
+      } else {
+        statusLabel = "Active";
+        statusTone = "active";
+      }
+      pill.textContent = statusLabel;
+      pill.style.display = "inline-block";
+      pill.style.padding = "2px 10px";
+      pill.style.borderRadius = "999px";
+      pill.style.fontSize = "0.85rem";
+      if (statusTone === "active") {
+        pill.style.background = "#1f4d2a";
+        pill.style.color = "#b8ffc8";
+      } else if (statusTone === "stopped") {
+        pill.style.background = "#b45309";
+        pill.style.color = "#ffedd5";
+      } else {
+        pill.style.background = "#3a3a3a";
+        pill.style.color = "#ccc";
+      }
+      tdStatus.appendChild(pill);
+
+      var tdRecent = document.createElement("td");
+      tdRecent.className = "locate-col-last";
+      tdRecent.setAttribute("data-label", "Last Update");
+      appendRecentCell(tdRecent, loc);
+
+      var tdAct = document.createElement("td");
+      tdAct.className = "locate-col-actions locate-actions-cell cardActionsCell";
+      var actWrap = document.createElement("div");
+      actWrap.className = "cardActionsRow locate-actions-cell";
+
+      function addBtn(label, onClick, extraClass) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = extraClass ? "btn " + String(extraClass).trim() : "btn";
+        b.textContent = label;
+        b.addEventListener("click", onClick);
+        actWrap.appendChild(b);
+      }
+
+      /* qr: purple accent (same as Mutual Aid QR); success on Activate; danger on Archive */
+      addBtn("Send Link", function () {
+        openSendLinkModal(loc);
+      }, "qr");
+
+      addBtn("Edit Interval", function () {
+        var p = window.prompt(
+          "Ping interval (seconds; 0 = once, or 10–86400)",
+          String(loc.pingIntervalSeconds)
+        );
+        if (p === null) return;
+        var ping = parseInt(String(p), 10);
+        if (!Number.isFinite(ping) || ping < 0 || ping > 86400) {
+          setListMsg("Invalid ping interval.", true);
+          return;
+        }
+        if (ping > 0 && ping < 10) {
+          setListMsg("Ping interval must be 0 (one-time) or at least 10 seconds.", true);
+          return;
+        }
+        patchLoc(loc.id, { pingIntervalSeconds: ping });
+      });
+
+      addBtn(
+        loc.active ? "Deactivate" : "Activate",
+        function () {
+          patchLoc(loc.id, { active: !loc.active });
+        },
+        loc.active ? "" : "success"
+      );
+
+      addBtn("Manual Ping", function () {
+        fetch("/api/locate-legacy/locators/" + encodeURIComponent(loc.id) + "/manual-ping", { method: "POST" })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data.ok) throw new Error(data.error || "Failed");
+            setListMsg(data.message || "Recorded.", false);
+            loadLocators();
+          })
+          .catch(function (e) {
+            setListMsg(e.message || String(e), true);
+          });
+      });
+
+      addBtn("History", function () {
+        openHistoryForId(loc.id);
+      });
+
+      addBtn("Archive", function () {
+        if (!window.confirm("Archive this locator? Its public link will stop working.")) return;
+        fetch("/api/locate-legacy/locators/" + encodeURIComponent(loc.id) + "/archive", { method: "POST" })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data.ok) throw new Error(data.error || "Failed");
+            loadLocators();
+          })
+          .catch(function (e) {
+            setListMsg(e.message || String(e), true);
+          });
+      }, "danger");
+
+      tdAct.appendChild(actWrap);
+      tr.appendChild(tdTitle);
+      tr.appendChild(tdPing);
+      tr.appendChild(tdStatus);
+      tr.appendChild(tdRecent);
+      tr.appendChild(tdAct);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderArchivedRows(locators) {
+    archivedTbody.innerHTML = "";
+    if (archivedCountEl) archivedCountEl.textContent = String((locators && locators.length) || 0);
+    if (!locators || !locators.length) {
+      var tr0 = document.createElement("tr");
+      tr0.className = "emptyStateRow";
+      var td0 = document.createElement("td");
+      td0.colSpan = 5;
+      td0.textContent = "No archived locators.";
+      tr0.appendChild(td0);
+      archivedTbody.appendChild(tr0);
+      return;
+    }
+    locators.forEach(function (loc) {
+      var tr = document.createElement("tr");
+      var tdTitle = titleCellPlain(loc);
+      var tdPing = document.createElement("td");
+      tdPing.className = "locate-col-ping";
+      tdPing.setAttribute("data-label", "Ping Interval");
+      tdPing.textContent = formatPingInterval(loc.pingIntervalSeconds);
+      var tdStatus = document.createElement("td");
+      tdStatus.className = "locate-col-status";
+      tdStatus.setAttribute("data-label", "Status");
+      var pill = document.createElement("span");
+      pill.textContent = "Archived";
+      pill.style.display = "inline-block";
+      pill.style.padding = "2px 10px";
+      pill.style.borderRadius = "999px";
+      pill.style.fontSize = "0.85rem";
+      pill.style.background = "#4a4a2a";
+      pill.style.color = "#eee8a8";
+      tdStatus.appendChild(pill);
+      var tdRecent = document.createElement("td");
+      tdRecent.className = "locate-col-last";
+      tdRecent.setAttribute("data-label", "Last Update");
+      appendRecentCell(tdRecent, loc);
+      var tdAct = document.createElement("td");
+      tdAct.className = "locate-col-actions locate-actions-cell cardActionsCell";
+      var actWrap = document.createElement("div");
+      actWrap.className = "cardActionsRow locate-actions-cell";
+      function addBtn(label, onClick, extraClass) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = extraClass ? "btn " + String(extraClass).trim() : "btn";
+        b.textContent = label;
+        b.addEventListener("click", onClick);
+        actWrap.appendChild(b);
+      }
+      addBtn("History", function () {
+        openHistoryForId(loc.id);
+      });
+      addBtn("Reactivate", function () {
+        fetch("/api/locate-legacy/locators/" + encodeURIComponent(loc.id) + "/reactivate", { method: "POST" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (data) {
+            if (!data.ok) throw new Error(data.error || "Failed");
+            setArchivedMsg("");
+            loadLocators();
+          })
+          .catch(function (e) {
+            setArchivedMsg(e.message || String(e), true);
+          });
+      }, "success");
+      addBtn(
+        "Permanently Delete",
+        function () {
+          if (
+            !window.confirm(
+              "Permanently delete this locator and all of its ping history? This cannot be undone."
+            )
+          ) {
+            return;
+          }
+          fetch("/api/locate-legacy/locators/" + encodeURIComponent(loc.id), { method: "DELETE" })
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (data) {
+              if (!data.ok) throw new Error(data.error || "Failed");
+              setArchivedMsg("");
+              loadLocators();
+            })
+            .catch(function (e) {
+              setArchivedMsg(e.message || String(e), true);
+            });
+        },
+        "danger"
+      );
+      tdAct.appendChild(actWrap);
+      tr.appendChild(tdTitle);
+      tr.appendChild(tdPing);
+      tr.appendChild(tdStatus);
+      tr.appendChild(tdRecent);
+      tr.appendChild(tdAct);
+      archivedTbody.appendChild(tr);
+    });
+  }
+
+  function patchLoc(id, body) {
+    fetch("/api/locate-legacy/locators/" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.error || "Failed");
+        loadLocators();
+      })
+      .catch(function (e) {
+        setListMsg(e.message || String(e), true);
+      });
+  }
+
+  function isTransientNetworkError(err) {
+    if (!err) return false;
+    if (err.name === "TypeError") return true;
+    var m = String(err.message || err || "");
+    return /failed to fetch|load failed|networkerror|network error|timed out|aborted/i.test(m);
+  }
+
+  function parseLocateLocatorsResponse(r) {
+    if (r.status === 401) {
+      return Promise.reject(
+        new Error("Session expired or not signed in. Refresh the page to continue.")
+      );
+    }
+    if (r.status === 403) {
+      return Promise.reject(new Error("Access denied. Refresh the page."));
+    }
+    var ct = (r.headers.get("content-type") || "").toLowerCase();
+    if (ct.indexOf("application/json") === -1) {
+      return r.text().then(function (t) {
+        var s = (t && String(t).trim()) || "";
+        throw new Error(s.slice(0, 200) || "HTTP " + r.status);
+      });
+    }
+    return r.json().then(function (data) {
+      if (!r.ok) {
+        throw new Error((data && (data.error || data.message)) || "HTTP " + r.status);
+      }
+      if (!data || data.ok !== true) {
+        throw new Error((data && data.error) || "Failed to load locators");
+      }
+      return data;
+    });
+  }
+
+  /**
+   * @param {boolean} [silent] - background poll: do not clear messages first; retry transient network errors; only surface errors after retries
+   * @param {number} [attempt] - internal retry counter
+   */
+  function loadLocators(silent, attempt) {
+    silent = !!silent;
+    attempt = attempt || 0;
+    if (!silent) {
+      setListMsg("");
+      setArchivedMsg("");
+    }
+    return fetch("/api/locate-legacy/locators", { credentials: "same-origin" })
+      .then(parseLocateLocatorsResponse)
+      .then(function (data) {
+        var all = data.locators || [];
+        var active = all.filter(function (l) {
+          return !l.archived;
+        });
+        var archived = all.filter(function (l) {
+          return l.archived;
+        });
+        renderRows(active);
+        renderArchivedRows(archived);
+        tickRecentLiveCells();
+        if (silent) {
+          setListMsg("");
+          setArchivedMsg("");
+        }
+      })
+      .catch(function (e) {
+        var msg = e.message || String(e);
+        if (silent && isTransientNetworkError(e) && attempt < 2) {
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              resolve(loadLocators(true, attempt + 1));
+            }, 1500 * (attempt + 1));
+          });
+        }
+        if (!silent && isTransientNetworkError(e) && attempt < 1) {
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              resolve(loadLocators(false, attempt + 1));
+            }, 1200);
+          });
+        }
+        if (silent && isTransientNetworkError(e)) {
+          setListMsg(
+            "Could not refresh the list (connection issue). Will retry when you focus this tab or refresh the page.",
+            true
+          );
+          return;
+        }
+        setListMsg(msg, true);
+      });
+  }
+
+  createBtn.addEventListener("click", function () {
+    setNewMsg("");
+    var title = String(titleIn.value || "").trim();
+    var ping = parseInt(String(pingIn.value || "60"), 10);
+    if (!Number.isFinite(ping) || ping < 0 || ping > 86400) {
+      setNewMsg("Enter a valid ping interval (0 = once, or 10–86400 seconds).", true);
+      return;
+    }
+    if (ping > 0 && ping < 10) {
+      setNewMsg("Ping interval must be 0 (one-time) or at least 10 seconds.", true);
+      return;
+    }
+    fetch("/api/locate-legacy/locators", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title, pingIntervalSeconds: ping }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.error || "Create failed");
+        titleIn.value = "";
+        pingIn.value = "60";
+        setNewMsg("Created.", false);
+        var created = data.locator;
+        return loadLocators().then(function () {
+          if (created && created.slug) {
+            openSendLinkModal(created);
+          }
+        });
+      })
+      .catch(function (e) {
+        setNewMsg(e.message || String(e), true);
+      });
+  });
+
+  histClose.addEventListener("click", function () {
+    histOverlay.style.display = "none";
+    document.body.style.overflow = "";
+  });
+  histOverlay.addEventListener("click", function (e) {
+    if (e.target === histOverlay) {
+      histOverlay.style.display = "none";
+      document.body.style.overflow = "";
+    }
+  });
+
+  if (sendLinkCloseBtn) {
+    sendLinkCloseBtn.addEventListener("click", closeSendLinkModal);
+  }
+  if (sendLinkOverlay) {
+    sendLinkOverlay.addEventListener("click", function (e) {
+      if (e.target === sendLinkOverlay) closeSendLinkModal();
+    });
+  }
+  if (sendLinkSmsBtn) {
+    sendLinkSmsBtn.addEventListener("click", sendLocateLinkSms);
+  }
+  if (sendLinkEmailBtn) {
+    sendLinkEmailBtn.addEventListener("click", sendLocateLinkEmail);
+  }
+  if (sendLinkCopyBtn) {
+    sendLinkCopyBtn.addEventListener("click", copySendLinkToClipboard);
+  }
+
+  loadLocators(false);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") {
+      loadLocators(true);
+    }
+  });
+  /* Locator list only — does not call /api/locate-legacy/config (no SSH CoreConfig read). */
+  setInterval(function () {
+    if (document.visibilityState === "visible") loadLocators(true);
+  }, 8000);
+  setInterval(function () {
+    if (document.visibilityState === "visible") tickRecentLiveCells();
+  }, 1000);
+})();
+</script>
