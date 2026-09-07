@@ -35,14 +35,14 @@
         <input id="locPing" type="number" min="0" max="86400" value="15" placeholder="0 = once" />
       </label>
     </div>
-    <div class="loc-drop-row settings-field settings-field-bool">
-      <span class="settings-label">Drop Points</span>
+    <div class="loc-drop-row settings-field settings-field-bool" id="locDropRow" hidden>
+      <span class="settings-label">Drop Points To Data Sync Mission</span>
       <button
         type="button"
         id="locDropPoints"
         class="settings-toggle is-off"
         aria-pressed="false"
-        aria-label="Drop Points"
+        aria-label="Drop Points To Data Sync Mission"
         disabled
       ></button>
     </div>
@@ -175,13 +175,21 @@
   .loc-field-block { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
   .loc-field-block textarea { width: 100%; box-sizing: border-box; resize: vertical; }
   .loc-drop-row { margin-top: 12px; }
+  .loc-drop-row[hidden] { display: none; }
   .loc-fields-head { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 8px; font-weight: 600; }
   .loc-fields { display: flex; flex-direction: column; gap: 8px; }
-  .loc-field-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; padding: 8px 0; border-top: 1px solid rgba(127,127,127,.18); }
+  .loc-field-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; padding: 8px 0; border-top: 1px solid rgba(127,127,127,.18); }
   .loc-field-row select, .loc-field-row input { min-width: 0; }
   .loc-field-type { flex: 0 1 150px; }
   .loc-field-label { flex: 1 1 180px; }
-  .loc-field-req { display: flex; flex-direction: column; gap: 6px; }
+  .loc-field-req {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .loc-field-row > .btn { align-self: flex-end; }
   .loc-field-options { flex: 1 1 100%; }
   .loc-create-footer { margin-top: 14px; justify-content: flex-end; gap: 14px; align-items: center; flex-wrap: wrap; }
   .loc-create-footer .msg { margin-right: auto; margin-left: 0; }
@@ -232,6 +240,7 @@
   var colorSel = document.getElementById("locColor");
   var pingIn = document.getElementById("locPing");
   var dropBtn = document.getElementById("locDropPoints");
+  var dropRow = document.getElementById("locDropRow");
   var introIn = document.getElementById("locIntro");
   var fieldsEl = document.getElementById("locFields");
   var formMsg = document.getElementById("locFormMsg");
@@ -255,6 +264,7 @@
   function setDrop(on, enabled) {
     var allow = !!enabled;
     dropBtn.disabled = !allow;
+    dropRow.hidden = !allow;
     if (!allow) on = false;
     dropBtn.classList.toggle("is-on", !!on);
     dropBtn.classList.toggle("is-off", !on);
