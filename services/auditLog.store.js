@@ -87,6 +87,15 @@ function rowToLog(r) {
   };
 }
 
+function boundTimestamp(value, endOfDay) {
+  const s = String(value || "").trim();
+  if (!s || Number.isNaN(Date.parse(s))) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return endOfDay ? `${s}T23:59:59.999Z` : `${s}T00:00:00.000Z`;
+  }
+  return new Date(s).toISOString();
+}
+
 async function queryRows({
   q,
   actorNeedles,
@@ -103,17 +112,13 @@ async function queryRows({
   }
   const where = [];
   const params = [];
-  const add = (sql, val) => {
-    params.push(val);
-    where.push(sql.replace("?", `$${params.length}`));
-  };
 
   if (q && String(q).trim()) {
     const needle = `%${String(q).trim()}%`;
     params.push(needle);
     const i = params.length;
     where.push(
-      `(action ILIKE $${i} OR target_type ILIKE $${i} OR target_id ILIKE $${i} OR actor::text ILIKE $${i} OR details::text ILIKE $${i})`
+      `(action ILIKE $${i} OR target_type ILIKE $${i} OR target_id ILIKE $${i} OR COALESCE(agency_suffix,'') ILIKE $${i} OR COALESCE(agency_name,'') ILIKE $${i} OR actor::text ILIKE $${i} OR details::text ILIKE $${i} OR request::text ILIKE $${i})`
     );
   }
   if (actorNeedles && actorNeedles.length) {
@@ -132,26 +137,29 @@ async function queryRows({
     params.push(agencyNeedles);
     where.push(`LOWER(COALESCE(agency_suffix,'')) = ANY($${params.length})`);
   }
-  if (from && !Number.isNaN(Date.parse(from))) {
-    params.push(new Date(from).toISOString());
+  const fromTs = boundTimestamp(from, false);
+  if (fromTs) {
+    params.push(fromTs);
     where.push(`timestamp >= $${params.length}`);
   }
-  if (to && !Number.isNaN(Date.parse(to))) {
-    params.push(new Date(to).toISOString());
+  const toTs = boundTimestamp(to, true);
+  if (toTs) {
+    params.push(toTs);
     where.push(`timestamp <= $${params.length}`);
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const count = await db.query(`SELECT COUNT(*)::int AS n FROM audit_events ${clause}`, params);
   const total = count.rows[0]?.n || 0;
   const ps = Math.max(1, Number(pageSize) || 50);
-  const safePage = Math.max(1, Number(page) || 1);
+  const pageCount = Math.max(1, Math.ceil(total / ps) || 1);
+  const safePage = Math.min(pageCount, Math.max(1, Number(page) || 1));
   const offset = (safePage - 1) * ps;
   params.push(ps, offset);
   const rows = await db.query(
     `SELECT * FROM audit_events ${clause} ORDER BY timestamp DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
-  return { items: rows.rows.map(rowToLog), total };
+  return { items: rows.rows.map(rowToLog), total, page: safePage, pageCount };
 }
 
 async function listDistinct(field, limit = 250) {

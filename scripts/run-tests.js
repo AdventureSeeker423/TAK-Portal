@@ -41,6 +41,7 @@ const TEST_FILES = [
   "directorySync.inboundAbort.test.js",
   "health.migration.test.js",
   "auditLog.distinct.test.js",
+  "auditLog.query.test.js",
   "mouStore.ensure.test.js",
   "directoryPkText.test.js",
   "backup.test.js",

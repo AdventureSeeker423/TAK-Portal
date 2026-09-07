@@ -283,7 +283,7 @@ async function queryLogs({
 
   const p = Math.max(1, Number(page) || 1);
   const ps = Math.min(500, Math.max(10, Number(pageSize) || 50));
-  const { items, total } = await store.queryRows({
+  const { items, total, page: storedPage } = await store.queryRows({
     q,
     actorNeedles,
     actionNeedles,
@@ -295,7 +295,7 @@ async function queryLogs({
     pageSize: ps,
   });
   const pageCount = Math.max(1, Math.ceil((total || 0) / ps));
-  const safePage = Math.min(pageCount, p);
+  const safePage = Math.min(pageCount, storedPage || p);
   return {
     items,
     total,

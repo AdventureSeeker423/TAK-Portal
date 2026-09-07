@@ -57,10 +57,19 @@ router.get("/", async (req, res) => {
     }
 
     if (String(req.query.export || "").trim() === "1") {
+      const hasFilters = !!(
+        query.q ||
+        query.actor ||
+        query.action ||
+        query.targetType ||
+        query.agencySuffix ||
+        query.from ||
+        query.to
+      );
       auditSvc.auditFromRequest(req, {
         action: "AUDIT_LOG_EXPORTED",
         targetType: "audit_log",
-        targetId: "filtered",
+        targetId: hasFilters ? "view" : "all",
         details: {
           filters: {
             q: query.q,
@@ -71,7 +80,9 @@ router.get("/", async (req, res) => {
             from: query.from,
             to: query.to,
           },
-          summary: "Exported filtered audit log as CSV from the Audit Log page.",
+          summary: hasFilters
+            ? "Exported the current audit log view as CSV from the Audit Log page."
+            : "Exported the full audit log as CSV from the Audit Log page.",
         },
       });
     }

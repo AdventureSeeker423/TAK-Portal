@@ -6,6 +6,16 @@
     if (!s) return "—";
     return s.replace(/_/g, " ");
   }
+  function csvFilterCount(val) {
+    return String(val || "")
+      .split(",")
+      .map(function (s) { return s.trim(); })
+      .filter(Boolean).length;
+  }
+  function filterToggleLabel(base, val) {
+    const n = csvFilterCount(val);
+    return n ? (base + " (" + n + ") ▾") : (base + " ▾");
+  }
 %>
 
 <main class="main">
@@ -21,10 +31,12 @@
     <div class="row" style="justify-content: space-between; align-items:center; gap:12px; flex-wrap:wrap;">
       <h2 style="margin:0;">Audit Events</h2>
 
-      <form method="GET" action="/audit-log" class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+      <form id="auditFilterForm" method="GET" action="/audit-log" class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
         <input type="hidden" name="actor" id="actorFilterInput" value="<%= filters?.actor || '' %>" />
         <input type="hidden" name="action" id="actionFilterInput" value="<%= filters?.action || '' %>" />
         <input type="hidden" name="agencySuffix" id="agencyFilterInput" value="<%= filters?.agencySuffix || '' %>" />
+        <input type="hidden" name="page" id="auditPageInput" value="<%= result?.page || 1 %>" />
+        <input type="hidden" name="pageSize" value="<%= result?.pageSize || filters?.pageSize || 50 %>" />
         <%
           const fromDateVal = (filters && filters.from) ? String(filters.from).slice(0, 10) : '';
           const toDateVal = (filters && filters.to) ? String(filters.to).slice(0, 10) : '';
@@ -47,7 +59,7 @@
         />
 
         <div class="filter-multiselect" data-filter="actor">
-          <button type="button" class="btn filter-toggle" id="actorFilterToggle">Actor ▾</button>
+          <button type="button" class="btn filter-toggle" id="actorFilterToggle" data-filter-label="Actor"><%= filterToggleLabel("Actor", filters?.actor) %></button>
           <div class="filter-menu">
             <div class="filter-menu-inner">
               <label class="filter-option">
@@ -68,7 +80,7 @@
         </div>
 
         <div class="filter-multiselect" data-filter="action">
-          <button type="button" class="btn filter-toggle" id="actionFilterToggle">Action ▾</button>
+          <button type="button" class="btn filter-toggle" id="actionFilterToggle" data-filter-label="Action"><%= filterToggleLabel("Action", filters?.action) %></button>
           <div class="filter-menu">
             <div class="filter-menu-inner">
               <label class="filter-option">
@@ -86,7 +98,7 @@
         </div>
 
         <div class="filter-multiselect" data-filter="agency">
-          <button type="button" class="btn filter-toggle" id="agencyFilterToggle">Agency ▾</button>
+          <button type="button" class="btn filter-toggle" id="agencyFilterToggle" data-filter-label="Agency"><%= filterToggleLabel("Agency", filters?.agencySuffix) %></button>
           <div class="filter-menu">
             <div class="filter-menu-inner">
               <label class="filter-option">
@@ -104,8 +116,20 @@
           </div>
         </div>
 
-        <button class="btn" type="submit">Filter</button>
-        <button class="btn" id="exportAuditCsvBtn" type="button">Export CSV</button>
+        <button class="btn success" type="submit" id="auditFilterBtn">Filter</button>
+        <%
+          const hasActiveFilters = !!(
+            String(filters?.q || "").trim() ||
+            String(filters?.from || "").trim() ||
+            String(filters?.to || "").trim() ||
+            csvFilterCount(filters?.actor) ||
+            csvFilterCount(filters?.action) ||
+            csvFilterCount(filters?.agencySuffix) ||
+            String(filters?.targetType || "").trim()
+          );
+        %>
+        <button class="btn btn-grey" type="button" id="auditClearFiltersBtn" <%= hasActiveFilters ? "" : "hidden" %>>Clear Filters</button>
+        <button class="btn qr" id="exportAuditCsvBtn" type="button">Export View To CSV</button>
       </form>
     </div>
 
@@ -264,17 +288,17 @@
     </table>
     </div>
 
-    <!-- Pagination -->
+    <!-- Pagination: submit the current form (search + filters) with a new page -->
     <% if (result && result.pageCount > 1) {
       const atFirst = result.page <= 1;
       const atLast = result.page >= result.pageCount;
     %>
       <nav class="audit-pagination" aria-label="Audit log pages">
-        <% if (atFirst) { %><span class="btn disabled" aria-disabled="true">First</span><% } else { %><a class="btn" href="<%= pageLinks.first %>">First</a><% } %>
-        <% if (atFirst) { %><span class="btn disabled" aria-disabled="true">Prev</span><% } else { %><a class="btn" href="<%= pageLinks.prev %>">Prev</a><% } %>
+        <button type="submit" class="btn<%= atFirst ? ' disabled' : '' %>" form="auditFilterForm" data-audit-page="1" <%= atFirst ? 'disabled' : '' %>>First</button>
+        <button type="submit" class="btn<%= atFirst ? ' disabled' : '' %>" form="auditFilterForm" data-audit-page="<%= Math.max(1, result.page - 1) %>" <%= atFirst ? 'disabled' : '' %>>Prev</button>
         <span class="audit-page-info" id="auditPageInfo">Page <%= result.page %> of <%= result.pageCount %></span>
-        <% if (atLast) { %><span class="btn disabled" aria-disabled="true">Next</span><% } else { %><a class="btn" href="<%= pageLinks.next %>">Next</a><% } %>
-        <% if (atLast) { %><span class="btn disabled" aria-disabled="true">Last</span><% } else { %><a class="btn" href="<%= pageLinks.last %>">Last</a><% } %>
+        <button type="submit" class="btn<%= atLast ? ' disabled' : '' %>" form="auditFilterForm" data-audit-page="<%= Math.min(result.pageCount, result.page + 1) %>" <%= atLast ? 'disabled' : '' %>>Next</button>
+        <button type="submit" class="btn<%= atLast ? ' disabled' : '' %>" form="auditFilterForm" data-audit-page="<%= result.pageCount %>" <%= atLast ? 'disabled' : '' %>>Last</button>
       </nav>
     <% } %>
 
@@ -312,6 +336,15 @@
 }
 .filter-multiselect .filter-toggle{
   white-space:nowrap;
+}
+.btn-grey {
+  background-color: #6c757d;
+  border-color: #6c757d;
+  color: #fff;
+}
+.btn-grey:hover {
+  background-color: #5a6268;
+  border-color: #545b62;
 }
 .filter-multiselect .filter-menu{
   position:absolute;
@@ -402,6 +435,9 @@
   min-width:4.5rem;
   text-align:center;
   text-decoration:none;
+  appearance:none;
+  font: inherit;
+  cursor:pointer;
 }
 .audit-pagination .btn.disabled{
   opacity:0.45;
@@ -778,8 +814,10 @@
 </script>
 <script>
 (function(){
-  const form = document.querySelector('form[action="/audit-log"]');
+  const form = document.getElementById("auditFilterForm") || document.querySelector('form[action="/audit-log"]');
   if (!form) return;
+
+  const pageInput = document.getElementById("auditPageInput");
 
   function parseCsv(val) {
     return String(val || "")
@@ -787,6 +825,58 @@
       .map(function(s){ return s.trim(); })
       .filter(Boolean);
   }
+
+  function resetToFirstPage() {
+    if (pageInput) pageInput.value = "1";
+  }
+
+  function submitFilters(page) {
+    if (pageInput) pageInput.value = page != null ? String(page) : "1";
+    form.submit();
+  }
+
+  function formHasActiveFilters() {
+    const keys = ["q", "from", "to"];
+    for (let i = 0; i < keys.length; i++) {
+      const el = form.querySelector('[name="' + keys[i] + '"]');
+      if (el && String(el.value || "").trim()) return true;
+    }
+    const hiddenIds = ["actorFilterInput", "actionFilterInput", "agencyFilterInput"];
+    for (let i = 0; i < hiddenIds.length; i++) {
+      const el = document.getElementById(hiddenIds[i]);
+      if (el && String(el.value || "").trim()) return true;
+    }
+    return false;
+  }
+
+  const clearBtn = document.getElementById("auditClearFiltersBtn");
+  function syncClearBtn() {
+    if (!clearBtn) return;
+    clearBtn.hidden = !formHasActiveFilters();
+  }
+  syncClearBtn();
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      window.location.assign(form.getAttribute("action") || "/audit-log");
+    });
+  }
+
+  form.addEventListener("submit", function () {
+    const submitter = form.querySelector("[data-audit-page]:focus");
+    if (submitter && submitter.getAttribute("data-audit-page")) return;
+    resetToFirstPage();
+  });
+
+  document.querySelectorAll("[data-audit-page]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      if (btn.disabled) return;
+      const nextPage = btn.getAttribute("data-audit-page");
+      submitFilters(nextPage);
+    });
+  });
 
   function setupFilter(opts) {
     const container = document.querySelector(opts.containerSelector);
@@ -800,6 +890,15 @@
     );
 
     const initial = parseCsv(input.value);
+    let filterTimer = null;
+
+    function updateToggleLabel(selectedCount) {
+      if (!toggle) return;
+      const base = toggle.getAttribute("data-filter-label") || "Filter";
+      toggle.textContent = selectedCount
+        ? (base + " (" + selectedCount + ") ▾")
+        : (base + " ▾");
+    }
 
     checkboxes.forEach(function(cb){
       const val = cb.getAttribute("data-filter-value");
@@ -809,6 +908,7 @@
         cb.checked = initial.includes(val);
       }
     });
+    updateToggleLabel(initial.length);
 
     function syncInput() {
       const selected = checkboxes
@@ -821,6 +921,8 @@
       if (allBox) {
         allBox.checked = selected.length === 0;
       }
+      updateToggleLabel(selected.length);
+      syncClearBtn();
     }
 
     checkboxes.forEach(function(cb){
@@ -840,6 +942,10 @@
           }
         }
         syncInput();
+        clearTimeout(filterTimer);
+        filterTimer = setTimeout(function () {
+          submitFilters(1);
+        }, 350);
       });
     });
 
@@ -875,6 +981,15 @@
     });
   });
 
+  const fromInput = form.querySelector('input[name="from"]');
+  const toInput = form.querySelector('input[name="to"]');
+  function onDateChange() {
+    syncClearBtn();
+    submitFilters(1);
+  }
+  if (fromInput) fromInput.addEventListener("change", onDateChange);
+  if (toInput) toInput.addEventListener("change", onDateChange);
+
   const searchInput = form.querySelector('input[name="q"]');
   if (searchInput) {
     const FOCUS_KEY = "auditLogSearchFocus";
@@ -888,13 +1003,17 @@
     let searchTimer = null;
     function applyLiveSearch() {
       const next = String(searchInput.value || "").trim();
-      const url = new URL(window.location.href);
-      const current = String(url.searchParams.get("q") || "").trim();
-      if (next === current) return;
-
-      if (next) url.searchParams.set("q", next);
-      else url.searchParams.delete("q");
-      url.searchParams.delete("page");
+      const url = new URL(window.location.origin + form.getAttribute("action"));
+      const fd = new FormData(form);
+      fd.set("q", next);
+      fd.set("page", "1");
+      fd.forEach(function (value, key) {
+        const v = String(value == null ? "" : value).trim();
+        if (!v) return;
+        if (key === "page" && v === "1") return;
+        url.searchParams.set(key, v);
+      });
+      if (!next) url.searchParams.delete("q");
 
       const dest = url.pathname + url.search;
       if (dest === window.location.pathname + window.location.search) return;
@@ -904,6 +1023,7 @@
     }
 
     searchInput.addEventListener("input", function() {
+      syncClearBtn();
       clearTimeout(searchTimer);
       const empty = String(searchInput.value || "").trim() === "";
       searchTimer = setTimeout(applyLiveSearch, empty ? 0 : 300);
@@ -1007,9 +1127,17 @@
   }
 
   async function fetchAllFilteredRows() {
-    const params = new URLSearchParams(window.location.search || "");
-    params.delete("page");
-    params.delete("pageSize");
+    const form = document.getElementById("auditFilterForm");
+    const params = new URLSearchParams();
+    const filterKeys = ["q", "actor", "action", "targetType", "agencySuffix", "from", "to"];
+    if (form) {
+      const fd = new FormData(form);
+      filterKeys.forEach(function (key) {
+        const v = String(fd.get(key) == null ? "" : fd.get(key)).trim();
+        if (v) params.set(key, v);
+      });
+    }
+    const hasFilters = filterKeys.some(function (key) { return params.has(key); });
 
     const rows = [];
     let page = 1;
@@ -1044,7 +1172,7 @@
       page += 1;
     }
 
-    return rows;
+    return { rows, hasFilters };
   }
 
   exportBtn.addEventListener("click", async function() {
@@ -1053,8 +1181,11 @@
     exportBtn.textContent = "Exporting...";
 
     let rows = [];
+    let hasFilters = false;
     try {
-      rows = await fetchAllFilteredRows();
+      const out = await fetchAllFilteredRows();
+      rows = out.rows;
+      hasFilters = !!out.hasFilters;
     } catch (err) {
       alert(err?.message || "Failed to export audit logs.");
       exportBtn.disabled = false;
@@ -1071,7 +1202,7 @@
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const a = document.createElement("a");
     a.href = url;
-    a.download = `audit-log-filtered-${ts}.csv`;
+    a.download = hasFilters ? `audit-log-view-${ts}.csv` : `audit-log-${ts}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
