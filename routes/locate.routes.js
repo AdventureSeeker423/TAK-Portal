@@ -113,6 +113,14 @@ async function scopedLocator(req, id) {
   return locatorAccess.assertLocatorAccessible(access, loc, allowedChannelKeys);
 }
 
+router.get("/drop-debug", (req, res) => {
+  try {
+    res.json({ ok: true, ...locatorCot.getDropDebug() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: toSafeApiError(err) });
+  }
+});
+
 router.get("/meta", async (req, res) => {
   try {
     const { channels } = await locatorAccess.listChannelsForUser(req.authentikUser || null);
