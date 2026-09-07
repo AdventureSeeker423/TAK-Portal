@@ -7539,8 +7539,41 @@
     sweepExpiredLiveMarkers();
   }, STALE_SWEEP_MS);
 
+  let mapStreamWasLive = false;
+  let mapStreamNeedsReload = false;
+  let mapStreamReloadQueued = false;
+  const MAP_STREAM_RELOAD_KEY = "tak-portal-map-stream-reload-at";
+  const MAP_STREAM_RELOAD_GUARD_MS = 15000;
+
+  function reloadLiveMapAfterReconnect() {
+    if (!mapStreamNeedsReload || mapStreamReloadQueued) return;
+    try {
+      const last = Number(sessionStorage.getItem(MAP_STREAM_RELOAD_KEY) || 0);
+      if (last && Date.now() - last < MAP_STREAM_RELOAD_GUARD_MS) {
+        mapStreamNeedsReload = false;
+        if (elOffline) elOffline.hidden = true;
+        return;
+      }
+      sessionStorage.setItem(MAP_STREAM_RELOAD_KEY, String(Date.now()));
+    } catch (_) {}
+    mapStreamReloadQueued = true;
+    window.location.reload();
+  }
+
   const es = new EventSource("/api/map/stream");
+  es.onopen = function () {
+    if (mapStreamNeedsReload) {
+      reloadLiveMapAfterReconnect();
+      return;
+    }
+    mapStreamWasLive = true;
+    if (elOffline) elOffline.hidden = true;
+  };
   es.onmessage = (ev) => {
+    if (mapStreamNeedsReload) {
+      reloadLiveMapAfterReconnect();
+      return;
+    }
     let msg;
     try {
       msg = JSON.parse(ev.data);
@@ -7562,8 +7595,9 @@
     }
   };
   es.onerror = () => {
+    if (mapStreamWasLive) mapStreamNeedsReload = true;
     setConnStatus(false, "SSE disconnected");
-    elOffline.hidden = false;
+    if (elOffline) elOffline.hidden = false;
   };
 
   fetch("/api/map/state")
