@@ -102,18 +102,11 @@ async function augmentPointFeature(feature, missionName) {
   const affiliation = affiliationFromType(cotType);
   const explicitTeamColor = explicitMarkerColorFromProps(props);
 
-  let resolved = mapIcon.resolveIcon({
+  const resolved = await mapIcon.resolveIconAsync({
     type: cotType,
     affiliation,
     usericon,
   });
-  if (!resolved) {
-    resolved = await mapIcon.resolveIconAsync({
-      type: cotType,
-      affiliation,
-      usericon,
-    });
-  }
 
   const marker = {
     uid,

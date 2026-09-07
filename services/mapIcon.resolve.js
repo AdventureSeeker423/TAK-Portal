@@ -443,11 +443,14 @@ function parseUserIcon(detail) {
 
 /**
  * Resolve bundled PNG icon (no 2525D fallback — caller adds milsym when needed).
+ * explicitOnly: custom usericon/path and type-overrides only (skip type2525b index).
  */
 function resolvePngIcon(
   { type, affiliation, detail, usericon },
-  { iconsetsByUid, typesByPrefix }
+  { iconsetsByUid, typesByPrefix },
+  options = {}
 ) {
+  const explicitOnly = !!options.explicitOnly;
   let ui = usericon || parseUserIcon(detail);
   let cotType = String(type || "").trim();
   let directPath = null;
@@ -539,6 +542,8 @@ function resolvePngIcon(
       if (hit) return hit;
     }
   }
+
+  if (explicitOnly) return null;
 
   const globalTypeHit = findBestTypeMatch(cotType, typesByPrefix, iconsetsByUid);
   if (globalTypeHit) {

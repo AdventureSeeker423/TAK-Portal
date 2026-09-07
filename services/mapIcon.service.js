@@ -115,12 +115,18 @@ function resolveIcon({ type, affiliation, detail, usericon }) {
   );
 }
 
-async function resolveIconAsync({ type, affiliation, detail, usericon }) {
-  const png = mapIconResolve.resolvePngIcon(
+function resolveExplicitIcon({ type, affiliation, detail, usericon }) {
+  return mapIconResolve.resolvePngIcon(
     { type, affiliation, detail, usericon },
-    registry()
+    registry(),
+    { explicitOnly: true }
   );
-  if (png) return png;
+}
+
+/** Live map: custom usericon/path first, then 2525D milsym, then iconset PNG. */
+async function resolveIconAsync({ type, affiliation, detail, usericon }) {
+  const explicit = resolveExplicitIcon({ type, affiliation, detail, usericon });
+  if (explicit) return explicit;
 
   const ui = usericon || mapIconResolve.parseUserIcon(detail);
   const parsedPath = mapIconResolve.parseIconsetPath(ui.iconsetpath);
@@ -150,7 +156,11 @@ async function resolveIconAsync({ type, affiliation, detail, usericon }) {
       source: "milsym",
     };
   }
-  return null;
+
+  return mapIconResolve.resolvePngIcon(
+    { type, affiliation, detail, usericon },
+    registry()
+  );
 }
 
 function explainIconResolution({ type, affiliation, detail, usericon, origin }) {
@@ -205,15 +215,14 @@ async function explainIconResolutionAsync({
   const milId = convertable ? await mapMilSym.cotTypeTo2525DIconId(cotType) : null;
   const sidc2525b = convertable ? await mapMilSym.cotTypeTo2525B(cotType) : null;
 
-  if (!base.resolved) {
-    const asyncResolved = await resolveIconAsync({ type, affiliation, detail, usericon });
-    if (asyncResolved) {
-      base.resolved = {
-        ...asyncResolved,
-        fileExists: mapMilSym.isMilSymIconId(asyncResolved.iconId),
-        filePath: null,
-      };
-    }
+  const asyncResolved = await resolveIconAsync({ type, affiliation, detail, usericon });
+  if (asyncResolved) {
+    const filePath = asyncResolved.iconId ? getIconFilePath(asyncResolved.iconId) : null;
+    base.resolved = {
+      ...asyncResolved,
+      fileExists: !!filePath || mapMilSym.isMilSymIconId(asyncResolved.iconId),
+      filePath: filePath || null,
+    };
   }
 
   base.milsym = {
@@ -394,6 +403,7 @@ function listIconsets() {
 module.exports = {
   ensureIconsets,
   resolveIcon,
+  resolveExplicitIcon,
   resolveIconAsync,
   explainIconResolution,
   explainIconResolutionAsync,

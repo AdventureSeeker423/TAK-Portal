@@ -43,6 +43,36 @@ async function runTests() {
   );
   assert.ok(/fed_fixed_wing/i.test(airHit.iconName || airHit.relPath || ""));
 
+  // Live map: 2525D milsym is primary; iconset PNG is fallback / explicit usericon only.
+  const liveFixed = await mapIcon.resolveIconAsync({ type: "a-f-A-C-F", affiliation: "friend" });
+  assert.ok(liveFixed, "live map aircraft should resolve");
+  assert.strictEqual(liveFixed.source, "milsym");
+  assert.ok(/^2525D:/i.test(liveFixed.iconId), "live map aircraft should be 2525D, got " + liveFixed.iconId);
+  assert.strictEqual(
+    mapRender.markerUsesMapIcon({
+      type: "a-f-A-C-F",
+      origin: "feed",
+      iconId: liveFixed.iconId,
+      iconSource: liveFixed.source,
+    }),
+    true,
+    "2525D aircraft should paint as map icons"
+  );
+  const liveVehicle = await mapIcon.resolveIconAsync({ type: "a-f-G-E-V", affiliation: "friend" });
+  assert.ok(liveVehicle, "live map ground vehicle should resolve");
+  assert.strictEqual(liveVehicle.source, "milsym");
+  const liveMapped2525b = await mapIcon.resolveIconAsync({
+    type: "a-f-G-E-V",
+    affiliation: "friend",
+    usericon: { iconsetpath: "COT_MAPPING_2525B/a/f/A/C/H" },
+  });
+  assert.ok(liveMapped2525b);
+  assert.strictEqual(
+    liveMapped2525b.source,
+    "milsym",
+    "COT_MAPPING_2525B on live map should use 2525D of the remapped type"
+  );
+
   // EUD ground uses dots; EUD air keeps type2525b/milsym symbology
   const eudAir = {
     type: "a-f-A-C-H",
@@ -163,6 +193,16 @@ async function runTests() {
   assert.strictEqual(geoOpsCamp.source, "path");
   assert.ok(/WildFire\/Camp\.png/i.test(geoOpsCamp.relPath || geoOpsCamp.iconId));
   assert.ok(mapIcon.getIconFilePath(geoOpsCamp.iconId), "GeoOps Camp file must exist");
+  const liveGeoOpsCamp = await mapIcon.resolveIconAsync({
+    type: "a-n-G",
+    affiliation: "neutral",
+    usericon: {
+      iconsetpath:
+        "83198b4872a8c34eb9c549da8a4de5a28f07821185b39a2277948f66c24ac17a/WildFire/Camp.png",
+    },
+  });
+  assert.strictEqual(liveGeoOpsCamp.source, "path", "explicit usericon stays PNG on live map");
+  assert.ok(/WildFire\/Camp\.png/i.test(liveGeoOpsCamp.relPath || liveGeoOpsCamp.iconId));
 
   const geoOpsMedical = mapIcon.resolveIcon({
     type: "a-n-G",
