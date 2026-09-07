@@ -448,21 +448,23 @@
   align-items:center;
   gap:0;
   width:auto;
-  min-width:148px;
-  padding:8px 32px 8px 10px;
+  min-width:168px;
+  padding:8px 34px 8px 12px;
+  box-sizing:border-box;
 }
 .audit-date-control .audit-date-part{
   background:transparent;
   border:none;
   box-shadow:none;
-  padding:0 1px;
+  padding:0 2px;
   margin:0;
-  min-width:0;
   border-radius:4px;
   text-align:center;
   color:inherit;
   font:inherit;
   outline:none;
+  box-sizing:content-box;
+  overflow:visible;
 }
 .audit-date-control .audit-date-part:focus{
   border:none;
@@ -471,10 +473,12 @@
 }
 .audit-date-part[data-part="month"],
 .audit-date-part[data-part="day"]{
-  width:2.25ch;
+  width:3ch;
+  min-width:3ch;
 }
 .audit-date-part[data-part="year"]{
-  width:4.4ch;
+  width:5ch;
+  min-width:5ch;
 }
 .audit-date-sep{
   color:var(--muted,#a8b3cf);
