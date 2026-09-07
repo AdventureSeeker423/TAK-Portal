@@ -520,7 +520,7 @@ function renderPdf(doc, payload) {
     { label: "Status", value: locatorStatusLabel(locator) },
     { label: "Assigned channel", value: locator?.channelDisplay || locator?.channel || "—" },
     { label: "Data sync mission", value: locator?.mission || "None" },
-    { label: "Team color", value: locator?.color || "—" },
+    { label: "Marker Color", value: locator?.color || "—" },
     { label: "Interval", value: intervalLabel(locator?.pingIntervalSeconds) },
     { label: "Drop points", value: locator?.dropPoints ? "On" : "Off" },
     { label: "Created", value: locator?.createdAt ? formatReportWhen(locator.createdAt) : "—" },
@@ -633,10 +633,10 @@ function drawMapsPage(doc, { streetMapPng, satelliteMapPng }) {
 
 function drawLogTable(doc, rows, form) {
   const left = doc.page.margins.left;
-  const widths = [148, 64, 72, 42, 48];
+  const widths = [28, 140, 64, 72, 42, 48];
   const detailsW = contentWidth(doc) - widths.reduce((a, b) => a + b, 0);
   const cols = [...widths, detailsW];
-  const headers = ["Time", "Latitude", "Longitude", "Acc.", "Source", "Details"];
+  const headers = ["#", "Time", "Latitude", "Longitude", "Acc.", "Source", "Details"];
 
   function headerRow() {
     ensureSpace(doc, 22);
@@ -676,6 +676,7 @@ function drawLogTable(doc, rows, form) {
       .filter(Boolean)
       .join(" | ");
     const cells = [
+      String(idx + 1),
       row.at ? formatLogWhen(row.at) : "—",
       Number.isFinite(lat) ? lat.toFixed(6) : "—",
       Number.isFinite(lon) ? lon.toFixed(6) : "—",
