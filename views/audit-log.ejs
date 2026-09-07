@@ -38,13 +38,15 @@
         <input type="hidden" name="page" id="auditPageInput" value="<%= result?.page || 1 %>" />
         <input type="hidden" name="pageSize" value="<%= result?.pageSize || filters?.pageSize || 50 %>" />
         <%
-          const fromDateVal = (filters && filters.from) ? String(filters.from).slice(0, 10) : '';
-          const toDateVal = (filters && filters.to) ? String(filters.to).slice(0, 10) : '';
+          const fromRaw = (filters && filters.from) ? String(filters.from).trim() : '';
+          const toRaw = (filters && filters.to) ? String(filters.to).trim() : '';
+          const fromDateVal = /^\d{4}(-\d{2}(-\d{2})?)?$/.test(fromRaw) ? fromRaw : (fromRaw ? fromRaw.slice(0, 10) : '');
+          const toDateVal = /^\d{4}(-\d{2}(-\d{2})?)?$/.test(toRaw) ? toRaw : (toRaw ? toRaw.slice(0, 10) : '');
         %>
         <span class="audit-date-row">
-          <input type="date" name="from" class="input audit-date-input" value="<%= fromDateVal %>" />
+          <input type="text" name="from" class="input audit-date-input" value="<%= fromDateVal %>" placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" aria-label="From date (year, month, or full date)" />
           <span class="audit-date-to">to</span>
-          <input type="date" name="to" class="input audit-date-input" value="<%= toDateVal %>" />
+          <input type="text" name="to" class="input audit-date-input" value="<%= toDateVal %>" placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" aria-label="To date (year, month, or full date)" />
         </span>
 
         <input
@@ -288,6 +290,7 @@
     </div>
 
     <!-- Pagination: submit the current form (search + filters) with a new page -->
+    <div id="auditPaginationWrap">
     <% if (result && result.pageCount > 1) {
       const atFirst = result.page <= 1;
       const atLast = result.page >= result.pageCount;
@@ -300,6 +303,7 @@
         <button type="submit" class="btn<%= atLast ? ' disabled' : '' %>" form="auditFilterForm" data-audit-page="<%= result.pageCount %>" <%= atLast ? 'disabled' : '' %>>Last</button>
       </nav>
     <% } %>
+    </div>
 
   </div>
 
@@ -323,6 +327,9 @@
 
 </main>
 
+<script type="application/json" id="auditUserMapJson"><%- JSON.stringify(typeof userMap !== 'undefined' ? userMap : {}) %></script>
+<script type="application/json" id="auditGroupMapJson"><%- JSON.stringify(typeof groupMap !== 'undefined' ? groupMap : {}) %></script>
+<script type="application/json" id="auditAgencyMapJson"><%- JSON.stringify(typeof agencyMap !== 'undefined' ? agencyMap : {}) %></script>
 <script>
   window.AUDIT_USER_MAP = <%- JSON.stringify(typeof userMap !== 'undefined' ? userMap : {}) %>;
   window.AUDIT_GROUP_MAP = <%- JSON.stringify(typeof groupMap !== 'undefined' ? groupMap : {}) %>;
@@ -407,7 +414,7 @@
 }
 .audit-date-input{
   width:auto;
-  min-width:140px;
+  min-width:148px;
 }
 .audit-search-input{
   width:auto;
@@ -592,8 +599,8 @@
   const tbody = document.getElementById('auditTbody');
   const tpl = document.getElementById('detailsTemplate');
 
-  const USER_MAP = window.AUDIT_USER_MAP || {};
-  const GROUP_MAP = window.AUDIT_GROUP_MAP || {};
+  function getUserMap() { return window.AUDIT_USER_MAP || {}; }
+  function getGroupMap() { return window.AUDIT_GROUP_MAP || {}; }
 
   const FRIENDLY_LABELS = {
     username: 'Username',
@@ -654,7 +661,7 @@
   function resolveUserName(id) {
     if (id == null || id === '') return null;
     var key = String(id);
-    var u = USER_MAP[key];
+    var u = getUserMap()[key];
     if (!u) return null;
     if (u.username && u.name) return u.username + ' - ' + u.name;
     return u.username || u.name || null;
@@ -662,7 +669,7 @@
 
   function resolveGroupName(uuid) {
     if (uuid == null || uuid === '') return null;
-    return GROUP_MAP[String(uuid)] || null;
+    return getGroupMap()[String(uuid)] || null;
   }
 
   function formatValue(val, key) {
@@ -769,11 +776,11 @@
     try { details = JSON.parse(raw || '{}'); } catch {}
 
     var targetDisplay = targetId;
-    if (targetType.toLowerCase() === 'user' && targetId && USER_MAP[targetId]) {
-      var u = USER_MAP[targetId];
+    if (targetType.toLowerCase() === 'user' && targetId && getUserMap()[targetId]) {
+      var u = getUserMap()[targetId];
       targetDisplay = (u.username && u.name) ? (u.username + ' - ' + u.name) : (u.username || u.name || targetId);
-    } else if (targetType.toLowerCase() === 'group' && targetId && GROUP_MAP[targetId]) {
-      targetDisplay = GROUP_MAP[targetId];
+    } else if (targetType.toLowerCase() === 'group' && targetId && getGroupMap()[targetId]) {
+      targetDisplay = getGroupMap()[targetId];
     } else if (targetType.toLowerCase() === 'group') {
       var detailGroupName = String(details?.groupName || details?.name || '').trim();
       if (detailGroupName) targetDisplay = detailGroupName;
@@ -832,9 +839,105 @@
     if (pageInput) pageInput.value = "1";
   }
 
+  function isReadyDateValue(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return true;
+    return /^\d{4}$/.test(s) || /^\d{4}-(0[1-9]|1[0-2])$/.test(s) || /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(s);
+  }
+
+  function buildFilterDest(page) {
+    const url = new URL(window.location.origin + (form.getAttribute("action") || "/audit-log"));
+    const fd = new FormData(form);
+    if (page != null) fd.set("page", String(page));
+    fd.forEach(function (value, key) {
+      const v = String(value == null ? "" : value).trim();
+      if (!v) return;
+      if (key === "page" && v === "1") return;
+      if ((key === "from" || key === "to") && !isReadyDateValue(v)) return;
+      url.searchParams.set(key, v);
+    });
+    return url.pathname + url.search;
+  }
+
+  function formatAuditLogTimestamps(root) {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    (root || document).querySelectorAll(".ts").forEach(function (el) {
+      const raw = el.getAttribute("data-ts");
+      if (!raw) return;
+      try {
+        el.textContent = new Date(raw).toLocaleString(undefined, { timeZone: tz });
+      } catch (_) {
+        el.textContent = raw;
+      }
+    });
+  }
+  window.formatAuditLogTimestamps = formatAuditLogTimestamps;
+
+  function applyJsonMap(doc, id, windowKey) {
+    const el = doc.getElementById(id);
+    if (!el) return;
+    try {
+      window[windowKey] = JSON.parse(el.textContent || "{}");
+    } catch (_) {}
+  }
+
+  let refreshGen = 0;
+  let refreshAbort = null;
+
+  async function refreshAuditView(page) {
+    if (page != null && pageInput) pageInput.value = String(page);
+    const dest = buildFilterDest();
+    if (refreshAbort) refreshAbort.abort();
+    if (dest === window.location.pathname + window.location.search) {
+      syncClearBtn();
+      return;
+    }
+
+    const gen = ++refreshGen;
+    refreshAbort = new AbortController();
+
+    try {
+      const res = await fetch(dest, {
+        credentials: "same-origin",
+        redirect: "manual",
+        signal: refreshAbort.signal,
+        headers: { Accept: "text/html" },
+      });
+      if (gen !== refreshGen) return;
+      if (res.type === "opaqueredirect" || res.status === 401) {
+        window.location.assign(dest);
+        return;
+      }
+      if (!res.ok) return;
+      const html = await res.text();
+      if (gen !== refreshGen) return;
+
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const nextBody = doc.getElementById("auditTbody");
+      const curBody = document.getElementById("auditTbody");
+      if (nextBody && curBody) curBody.innerHTML = nextBody.innerHTML;
+
+      const nextPager = doc.getElementById("auditPaginationWrap");
+      const curPager = document.getElementById("auditPaginationWrap");
+      if (nextPager && curPager) curPager.innerHTML = nextPager.innerHTML;
+
+      const nextPageInput = doc.getElementById("auditPageInput");
+      if (pageInput && nextPageInput) pageInput.value = nextPageInput.value;
+
+      applyJsonMap(doc, "auditUserMapJson", "AUDIT_USER_MAP");
+      applyJsonMap(doc, "auditGroupMapJson", "AUDIT_GROUP_MAP");
+      applyJsonMap(doc, "auditAgencyMapJson", "AUDIT_AGENCY_MAP");
+
+      formatAuditLogTimestamps(curBody);
+      history.replaceState(null, "", dest);
+      syncClearBtn();
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+    }
+  }
+
   function submitFilters(page) {
-    if (pageInput) pageInput.value = page != null ? String(page) : "1";
-    form.submit();
+    refreshAuditView(page != null ? page : "1");
   }
 
   function formHasActiveFilters() {
@@ -866,19 +969,17 @@
     });
   }
 
-  form.addEventListener("submit", function () {
-    const submitter = form.querySelector("[data-audit-page]:focus");
-    if (submitter && submitter.getAttribute("data-audit-page")) return;
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const submitter = e.submitter || document.activeElement;
+    const pageAttr = submitter && submitter.getAttribute ? submitter.getAttribute("data-audit-page") : null;
+    if (pageAttr) {
+      if (submitter.disabled) return;
+      refreshAuditView(pageAttr);
+      return;
+    }
     resetToFirstPage();
-  });
-
-  document.querySelectorAll("[data-audit-page]").forEach(function (btn) {
-    btn.addEventListener("click", function (e) {
-      e.preventDefault();
-      if (btn.disabled) return;
-      const nextPage = btn.getAttribute("data-audit-page");
-      submitFilters(nextPage);
-    });
+    refreshAuditView("1");
   });
 
   function setupFilter(opts) {
@@ -986,65 +1087,50 @@
 
   const fromInput = form.querySelector('input[name="from"]');
   const toInput = form.querySelector('input[name="to"]');
-  function onDateChange() {
+  let dateTimer = null;
+  function onDateInput() {
     syncClearBtn();
-    submitFilters(1);
+    clearTimeout(dateTimer);
+    const fromVal = fromInput ? String(fromInput.value || "").trim() : "";
+    const toVal = toInput ? String(toInput.value || "").trim() : "";
+    if (!isReadyDateValue(fromVal) || !isReadyDateValue(toVal)) return;
+    dateTimer = setTimeout(function () {
+      const stillFrom = fromInput ? String(fromInput.value || "").trim() : "";
+      const stillTo = toInput ? String(toInput.value || "").trim() : "";
+      if (!isReadyDateValue(stillFrom) || !isReadyDateValue(stillTo)) return;
+      submitFilters(1);
+    }, 400);
   }
-  if (fromInput) fromInput.addEventListener("change", onDateChange);
-  if (toInput) toInput.addEventListener("change", onDateChange);
+  if (fromInput) fromInput.addEventListener("input", onDateInput);
+  if (toInput) toInput.addEventListener("input", onDateInput);
 
   const searchInput = form.querySelector('input[name="q"]');
   if (searchInput) {
-    const FOCUS_KEY = "auditLogSearchFocus";
-    if (sessionStorage.getItem(FOCUS_KEY) === "1") {
-      sessionStorage.removeItem(FOCUS_KEY);
-      searchInput.focus();
-      const len = searchInput.value.length;
-      try { searchInput.setSelectionRange(len, len); } catch (_) {}
-    }
-
     let searchTimer = null;
-    function applyLiveSearch() {
-      const next = String(searchInput.value || "").trim();
-      const url = new URL(window.location.origin + form.getAttribute("action"));
-      const fd = new FormData(form);
-      fd.set("q", next);
-      fd.set("page", "1");
-      fd.forEach(function (value, key) {
-        const v = String(value == null ? "" : value).trim();
-        if (!v) return;
-        if (key === "page" && v === "1") return;
-        url.searchParams.set(key, v);
-      });
-      if (!next) url.searchParams.delete("q");
-
-      const dest = url.pathname + url.search;
-      if (dest === window.location.pathname + window.location.search) return;
-
-      sessionStorage.setItem(FOCUS_KEY, "1");
-      window.location.assign(dest);
-    }
-
     searchInput.addEventListener("input", function() {
       syncClearBtn();
       clearTimeout(searchTimer);
-      const empty = String(searchInput.value || "").trim() === "";
-      searchTimer = setTimeout(applyLiveSearch, empty ? 0 : 300);
+      const typed = searchInput.value;
+      searchTimer = setTimeout(function () {
+        if (searchInput.value !== typed) return;
+        submitFilters(1);
+      }, 400);
     });
   }
 })();
 </script>
 <script>
 (function() {
+  if (typeof window.formatAuditLogTimestamps === "function") {
+    window.formatAuditLogTimestamps(document);
+    return;
+  }
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
   document.querySelectorAll(".ts").forEach(el => {
     const raw = el.getAttribute("data-ts");
     if (!raw) return;
-
     try {
-      const d = new Date(raw);
-      el.textContent = d.toLocaleString(undefined, { timeZone: tz });
+      el.textContent = new Date(raw).toLocaleString(undefined, { timeZone: tz });
     } catch (e) {
       el.textContent = raw;
     }
@@ -1137,7 +1223,9 @@
       const fd = new FormData(form);
       filterKeys.forEach(function (key) {
         const v = String(fd.get(key) == null ? "" : fd.get(key)).trim();
-        if (v) params.set(key, v);
+        if (!v) return;
+        if ((key === "from" || key === "to") && !/^\d{4}(-\d{2}(-\d{2})?)?$/.test(v)) return;
+        params.set(key, v);
       });
     }
     const hasFilters = filterKeys.some(function (key) { return params.has(key); });

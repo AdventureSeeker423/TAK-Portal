@@ -89,11 +89,36 @@ function rowToLog(r) {
 
 function boundTimestamp(value, endOfDay) {
   const s = String(value || "").trim();
-  if (!s || Number.isNaN(Date.parse(s))) return null;
+  if (!s) return null;
+
+  const yearOnly = /^(\d{4})$/.exec(s);
+  if (yearOnly) {
+    const y = yearOnly[1];
+    return endOfDay ? `${y}-12-31T23:59:59.999Z` : `${y}-01-01T00:00:00.000Z`;
+  }
+
+  const yearMonth = /^(\d{4})-(\d{2})$/.exec(s);
+  if (yearMonth) {
+    const y = Number(yearMonth[1]);
+    const m = Number(yearMonth[2]);
+    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return null;
+    const mm = yearMonth[2];
+    if (endOfDay) {
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const dd = String(last).padStart(2, "0");
+      return `${yearMonth[1]}-${mm}-${dd}T23:59:59.999Z`;
+    }
+    return `${yearMonth[1]}-${mm}-01T00:00:00.000Z`;
+  }
+
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    if (Number.isNaN(Date.parse(`${s}T00:00:00.000Z`))) return null;
     return endOfDay ? `${s}T23:59:59.999Z` : `${s}T00:00:00.000Z`;
   }
-  return new Date(s).toISOString();
+
+  const ms = Date.parse(s);
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms).toISOString();
 }
 
 async function queryRows({

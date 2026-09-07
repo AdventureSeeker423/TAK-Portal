@@ -73,6 +73,18 @@ const store = require("../services/auditLog.store");
     "date-only 'to' must include the whole day"
   );
 
+  sqlCalls.length = 0;
+  await store.queryRows({ from: "2026", to: "2026", page: 1, pageSize: 50 });
+  const yearCount = sqlCalls.find((c) => /COUNT\(\*\)/.test(c.sql));
+  assert.ok(yearCount.params.includes("2026-01-01T00:00:00.000Z"), "year-only from starts Jan 1");
+  assert.ok(yearCount.params.includes("2026-12-31T23:59:59.999Z"), "year-only to ends Dec 31");
+
+  sqlCalls.length = 0;
+  await store.queryRows({ from: "2026-09", to: "2026-09", page: 1, pageSize: 50 });
+  const monthCount = sqlCalls.find((c) => /COUNT\(\*\)/.test(c.sql));
+  assert.ok(monthCount.params.includes("2026-09-01T00:00:00.000Z"), "year-month from starts the 1st");
+  assert.ok(monthCount.params.includes("2026-09-30T23:59:59.999Z"), "year-month to ends last day of month");
+
   console.log("auditLog.query.test.js: ok");
 })().catch((err) => {
   console.error(err);
