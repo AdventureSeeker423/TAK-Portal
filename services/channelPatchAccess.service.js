@@ -10,28 +10,67 @@
 const accessSvc = require("./access.service");
 const groupsSvc = require("./groups.service");
 const mapMeta = require("./mapMeta.service");
+const mutualAidStore = require("./mutualAid.store");
 const { getString } = require("./env");
+
+const MUTUAL_AID_GROUP_PREFIX = "ma -";
 
 function isAuthentikAgencyAdminGroupName(name) {
   return /-AgencyAdmin$/i.test(String(name || "").trim());
 }
 
-function getHiddenGroupPrefixes() {
-  return String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
+function getHiddenGroupPrefixes({ includeMutualAid = false } = {}) {
+  const prefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
     .split(",")
     .map((p) => String(p || "").trim().toLowerCase())
     .filter(Boolean);
+  if (!includeMutualAid) return prefixes;
+  return prefixes.filter((p) => p !== MUTUAL_AID_GROUP_PREFIX);
 }
 
-function isHiddenGroupName(name) {
+function isHiddenGroupName(name, { includeMutualAid = false } = {}) {
   const raw = String(name || "").trim().toLowerCase();
   if (!raw) return true;
   const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
   if (withoutTak.startsWith("_")) return true;
-  const hiddenPrefixes = getHiddenGroupPrefixes();
+  const hiddenPrefixes = getHiddenGroupPrefixes({ includeMutualAid });
   return hiddenPrefixes.some(
     (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
   );
+}
+
+/**
+ * Add MA-workflow-created channels to a picker list (global admins only).
+ * Existing/reused MA groups are already visible as normal channels.
+ * @param {Array<{ name: string, displayName: string, baseKey: string, count?: number }>} channels
+ * @param {string[]|null} [groupNames] - defaults to created groups from the MA store
+ */
+function mergeCreatedMutualAidPickerChannels(channels, groupNames) {
+  const list = Array.isArray(channels) ? channels : [];
+  const names = Array.isArray(groupNames)
+    ? groupNames
+    : mutualAidStore.getCreatedGroupNames();
+  const seen = new Set();
+  for (const c of list) {
+    if (c?.baseKey) seen.add(c.baseKey);
+  }
+  for (const rawName of names) {
+    const displayName = groupsSvc.stripTakPrefix(rawName);
+    const name = groupsSvc.ensureTakPrefix(displayName || rawName);
+    if (!name || isAuthentikAgencyAdminGroupName(name)) continue;
+    const baseKey = mapMeta.channelBaseKey(name);
+    if (!baseKey || baseKey === mapMeta.UNASSIGNED_CHANNEL_KEY || seen.has(baseKey)) {
+      continue;
+    }
+    seen.add(baseKey);
+    list.push({
+      name,
+      displayName: displayName || name,
+      baseKey,
+      count: 0,
+    });
+  }
+  return list;
 }
 
 function patchGroupKeys(patch) {
@@ -144,8 +183,9 @@ async function resolveAllowedChannelKeySet(authUser) {
 
 /**
  * Channel picker + allowlist for the Channel Patch page/API.
- * Global admins: live map catalog. Agency admins: Groups-page access,
- * enriched with catalog display names / live counts when present.
+ * Global admins: live map catalog plus mutual-aid-created groups.
+ * Agency admins: Groups-page access, enriched with catalog display names /
+ * live counts when present (MA-created groups stay hidden).
  */
 async function buildScopedChannelPicker(authUser, catalogGroups) {
   const access = accessSvc.getAgencyAccess(authUser);
@@ -158,7 +198,9 @@ async function buildScopedChannelPicker(authUser, catalogGroups) {
   if (access.isGlobalAdmin) {
     return {
       access,
-      channels: [...catalogByKey.values()].map(toPickerChannel),
+      channels: mergeCreatedMutualAidPickerChannels(
+        [...catalogByKey.values()].map(toPickerChannel)
+      ),
       channelScope: "all",
       allowedChannelKeys: null,
     };
@@ -201,4 +243,6 @@ module.exports = {
   resolveAllowedChannelKeySet,
   buildScopedChannelPicker,
   allowedKeySetFromPicker,
+  isHiddenGroupName,
+  mergeCreatedMutualAidPickerChannels,
 };

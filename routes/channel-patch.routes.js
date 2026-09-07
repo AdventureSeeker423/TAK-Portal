@@ -24,8 +24,9 @@ function actorLabel(authUser) {
 }
 
 /**
- * Global admins: all map channels. Agency admins: Groups-page access only
- * (agency-owned + allowedAdminGroupIds), not personal map membership.
+ * Global admins: all map channels plus mutual-aid-created groups.
+ * Agency admins: Groups-page access only (agency-owned + allowedAdminGroupIds),
+ * not personal map membership. MA-created groups stay hidden from agency admins.
  */
 async function loadScopedChannels(authUser) {
   cotStream.ensureBridgeStarted();

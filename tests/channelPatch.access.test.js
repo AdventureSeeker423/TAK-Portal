@@ -83,6 +83,25 @@ assert.ok(picker instanceof Set);
 assert.ok(picker.has("hcso ops"));
 assert.strictEqual(access.allowedKeySetFromPicker({ allowedChannelKeys: null }), null);
 
+const merged = access.mergeCreatedMutualAidPickerChannels(
+  [{ name: "tak_HCSO Ops", displayName: "HCSO Ops", baseKey: "hcso ops", count: 2 }],
+  ["tak_MA - Disaster", "MA - Disaster", "tak_HCSO Ops"]
+);
+assert.strictEqual(
+  merged.filter((c) => c.baseKey === "ma - disaster").length,
+  1,
+  "global picker adds unique MA-created channels"
+);
+assert.strictEqual(merged.length, 2, "existing channels are not duplicated");
+assert.strictEqual(merged.find((c) => c.baseKey === "ma - disaster").displayName, "MA - Disaster");
+assert.strictEqual(merged.find((c) => c.baseKey === "ma - disaster").name, "tak_MA - Disaster");
+
+const agencyOnly = access.mergeCreatedMutualAidPickerChannels(
+  [{ name: "tak_HCSO Ops", displayName: "HCSO Ops", baseKey: "hcso ops" }],
+  []
+);
+assert.strictEqual(agencyOnly.length, 1, "agency picker does not receive MA names");
+
 const annotated = store.annotateGroupsWithPatchPeers(
   [{ name: "tak_HCSO Ops" }, { name: "tak_County Law" }],
   [{ enabled: true, groups: ["tak_HCSO Ops", "tak_HCSO Tac"] }]

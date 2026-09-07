@@ -46,4 +46,33 @@ assert.throws(
   (err) => err && err.status === 403
 );
 
+const channelPatchAccess = require("../services/channelPatchAccess.service");
+const locatorSrc = fs.readFileSync(
+  path.join(__dirname, "..", "services", "locatorAccess.service.js"),
+  "utf8"
+);
+assert.ok(
+  locatorSrc.includes("mergeCreatedMutualAidPickerChannels"),
+  "locate channel list merges MA-created groups for global admins"
+);
+assert.ok(
+  locatorSrc.includes("includeMutualAid"),
+  "locate hides MA-created groups from agency admins"
+);
+
+const legacySrc = fs.readFileSync(
+  path.join(__dirname, "..", "routes", "locate-legacy.routes.js"),
+  "utf8"
+);
+assert.ok(
+  legacySrc.includes("locatorAccess.listChannelsForUser"),
+  "legacy locate persons uses the same channel allowlist as /locate"
+);
+
+const maMerged = channelPatchAccess.mergeCreatedMutualAidPickerChannels(
+  [{ name: "tak_HCSO Ops", displayName: "HCSO Ops", baseKey: "hcso ops" }],
+  ["tak_MA - Event"]
+);
+assert.ok(maMerged.some((c) => c.baseKey === "ma - event"));
+
 console.log("locatorAccess.test.js: ok");

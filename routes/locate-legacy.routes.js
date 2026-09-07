@@ -2,8 +2,7 @@ const router = require("express").Router();
 const locateConfig = require("../services/locateConfig.service");
 const locatorsSvc = require("../services/locators.service");
 const dataSyncSvc = require("../services/dataSync.service");
-const groupsSvc = require("../services/groups.service");
-const accessSvc = require("../services/access.service");
+const locatorAccess = require("../services/locatorAccess.service");
 const emailSvc = require("../services/email.service");
 const auditSvc = require("../services/auditLog.service");
 const { renderTemplate, htmlToText } = require("../services/emailTemplates.service");
@@ -131,10 +130,9 @@ function requireLegacyLocator(id) {
 router.get("/tak-channel-groups", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    const all = await groupsSvc.getGroupsForAuthUser(authUser);
-    const filtered = accessSvc.filterGroupsForUser(authUser, all);
-    const shorts = filtered
-      .map((g) => stripTakPrefix(g?.name))
+    const { channels } = await locatorAccess.listChannelsForUser(authUser);
+    const shorts = channels
+      .map((c) => String(c?.displayName || stripTakPrefix(c?.name) || "").trim())
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
     res.json({ ok: true, groups: shorts });

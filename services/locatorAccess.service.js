@@ -1,7 +1,8 @@
 /**
  * Agency-scoped access for live locators.
- * Channels use Groups-page allowlist (Channel Patch). Missions use Data Sync scope
- * and must belong to the selected channel.
+ * Channels use Groups-page allowlist (Channel Patch). Global admins also see
+ * mutual-aid-created groups. Missions use Data Sync scope and must belong to
+ * the selected channel.
  */
 
 const accessSvc = require("./access.service");
@@ -10,6 +11,7 @@ const mapMeta = require("./mapMeta.service");
 const dataSyncSvc = require("./dataSync.service");
 const dataSyncAccess = require("./dataSyncAccess.service");
 const locatorsSvc = require("./locators.service");
+const channelPatchAccess = require("./channelPatchAccess.service");
 
 function unwrapPagedMissions(payload) {
   if (!payload) return [];
@@ -83,18 +85,25 @@ async function listChannelsForUser(authUser) {
   try {
     all = await groupsSvc.getGroupsForAuthUser(authUser);
   } catch (_) {
+    const channels = [];
+    if (access.isGlobalAdmin) {
+      channelPatchAccess.mergeCreatedMutualAidPickerChannels(channels);
+      channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    }
     return {
       access,
-      channels: [],
+      channels,
       allowedChannelKeys: access.isGlobalAdmin ? null : new Set(),
     };
   }
   const filtered = accessSvc.filterGroupsForUser(authUser, all);
+  const includeMutualAid = !!access.isGlobalAdmin;
   const channels = [];
   const seen = new Set();
   for (const g of filtered) {
     const name = String(g?.name || "").trim();
     if (!name || /-AgencyAdmin$/i.test(name)) continue;
+    if (channelPatchAccess.isHiddenGroupName(name, { includeMutualAid })) continue;
     const displayName = groupsSvc.stripTakPrefix(name);
     const baseKey = mapMeta.channelBaseKey(name);
     if (!baseKey || baseKey === mapMeta.UNASSIGNED_CHANNEL_KEY || seen.has(baseKey)) continue;
@@ -104,6 +113,9 @@ async function listChannelsForUser(authUser) {
       displayName: displayName || name,
       baseKey,
     });
+  }
+  if (includeMutualAid) {
+    channelPatchAccess.mergeCreatedMutualAidPickerChannels(channels);
   }
   channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
   return {
