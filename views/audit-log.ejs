@@ -16,6 +16,16 @@
     const n = csvFilterCount(val);
     return n ? (base + " (" + n + ") ▾") : (base + " ▾");
   }
+  function auditDateParts(val) {
+    const s = String(val || "").trim();
+    const m = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(s);
+    return {
+      value: m ? s : (s ? s.slice(0, 10) : ""),
+      y: m ? m[1] : "",
+      m: m && m[2] ? m[2] : "",
+      d: m && m[3] ? m[3] : "",
+    };
+  }
 %>
 
 <main class="main">
@@ -38,15 +48,35 @@
         <input type="hidden" name="page" id="auditPageInput" value="<%= result?.page || 1 %>" />
         <input type="hidden" name="pageSize" value="<%= result?.pageSize || filters?.pageSize || 50 %>" />
         <%
-          const fromRaw = (filters && filters.from) ? String(filters.from).trim() : '';
-          const toRaw = (filters && filters.to) ? String(filters.to).trim() : '';
-          const fromDateVal = /^\d{4}(-\d{2}(-\d{2})?)?$/.test(fromRaw) ? fromRaw : (fromRaw ? fromRaw.slice(0, 10) : '');
-          const toDateVal = /^\d{4}(-\d{2}(-\d{2})?)?$/.test(toRaw) ? toRaw : (toRaw ? toRaw.slice(0, 10) : '');
+          const fromParts = auditDateParts(filters && filters.from);
+          const toParts = auditDateParts(filters && filters.to);
         %>
         <span class="audit-date-row">
-          <input type="text" name="from" class="input audit-date-input" value="<%= fromDateVal %>" placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" aria-label="From date (year, month, or full date)" />
+          <span class="input audit-date-control" data-date-bound="from">
+            <input type="hidden" name="from" value="<%= fromParts.value %>" />
+            <input type="text" class="audit-date-part" data-part="month" maxlength="2" inputmode="numeric" placeholder="mm" value="<%= fromParts.m %>" aria-label="From month" autocomplete="off" spellcheck="false" />
+            <span class="audit-date-sep">/</span>
+            <input type="text" class="audit-date-part" data-part="day" maxlength="2" inputmode="numeric" placeholder="dd" value="<%= fromParts.d %>" aria-label="From day" autocomplete="off" spellcheck="false" />
+            <span class="audit-date-sep">/</span>
+            <input type="text" class="audit-date-part" data-part="year" maxlength="4" inputmode="numeric" placeholder="yyyy" value="<%= fromParts.y %>" aria-label="From year" autocomplete="off" spellcheck="false" />
+            <button type="button" class="audit-date-cal" aria-label="Choose from date" tabindex="-1">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3" width="13" height="11.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.25"/><path d="M1.5 6.5h13M5 1.5v3M11 1.5v3" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>
+            </button>
+            <input type="date" class="audit-date-native" tabindex="-1" aria-hidden="true"<%= fromParts.d ? ' value="' + fromParts.value + '"' : "" %> />
+          </span>
           <span class="audit-date-to">to</span>
-          <input type="text" name="to" class="input audit-date-input" value="<%= toDateVal %>" placeholder="YYYY-MM-DD" autocomplete="off" spellcheck="false" aria-label="To date (year, month, or full date)" />
+          <span class="input audit-date-control" data-date-bound="to">
+            <input type="hidden" name="to" value="<%= toParts.value %>" />
+            <input type="text" class="audit-date-part" data-part="month" maxlength="2" inputmode="numeric" placeholder="mm" value="<%= toParts.m %>" aria-label="To month" autocomplete="off" spellcheck="false" />
+            <span class="audit-date-sep">/</span>
+            <input type="text" class="audit-date-part" data-part="day" maxlength="2" inputmode="numeric" placeholder="dd" value="<%= toParts.d %>" aria-label="To day" autocomplete="off" spellcheck="false" />
+            <span class="audit-date-sep">/</span>
+            <input type="text" class="audit-date-part" data-part="year" maxlength="4" inputmode="numeric" placeholder="yyyy" value="<%= toParts.y %>" aria-label="To year" autocomplete="off" spellcheck="false" />
+            <button type="button" class="audit-date-cal" aria-label="Choose to date" tabindex="-1">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.5" y="3" width="13" height="11.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.25"/><path d="M1.5 6.5h13M5 1.5v3M11 1.5v3" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>
+            </button>
+            <input type="date" class="audit-date-native" tabindex="-1" aria-hidden="true"<%= toParts.d ? ' value="' + toParts.value + '"' : "" %> />
+          </span>
         </span>
 
         <input
@@ -412,9 +442,73 @@
   font-size:13px;
   color:var(--muted,#a8b3cf);
 }
-.audit-date-input{
+.audit-date-control{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:0;
   width:auto;
   min-width:148px;
+  padding:8px 32px 8px 10px;
+}
+.audit-date-control .audit-date-part{
+  background:transparent;
+  border:none;
+  box-shadow:none;
+  padding:0 1px;
+  margin:0;
+  min-width:0;
+  border-radius:4px;
+  text-align:center;
+  color:inherit;
+  font:inherit;
+  outline:none;
+}
+.audit-date-control .audit-date-part:focus{
+  border:none;
+  box-shadow:none;
+  background:color-mix(in srgb, var(--btn) 18%, transparent);
+}
+.audit-date-part[data-part="month"],
+.audit-date-part[data-part="day"]{
+  width:2.25ch;
+}
+.audit-date-part[data-part="year"]{
+  width:4.4ch;
+}
+.audit-date-sep{
+  color:var(--muted,#a8b3cf);
+  padding:0 1px;
+  user-select:none;
+}
+.audit-date-cal{
+  position:absolute;
+  right:6px;
+  top:50%;
+  transform:translateY(-50%);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:22px;
+  height:22px;
+  padding:0;
+  border:none;
+  background:transparent;
+  color:var(--muted,#a8b3cf);
+  cursor:pointer;
+}
+.audit-date-cal:hover{
+  color:var(--text,#e5e7eb);
+}
+.audit-date-native{
+  position:absolute;
+  width:0;
+  height:0;
+  opacity:0;
+  pointer-events:none;
+  border:0;
+  padding:0;
+  margin:0;
 }
 .audit-search-input{
   width:auto;
@@ -1088,7 +1182,7 @@
   const fromInput = form.querySelector('input[name="from"]');
   const toInput = form.querySelector('input[name="to"]');
   let dateTimer = null;
-  function onDateInput() {
+  function onDateReady() {
     syncClearBtn();
     clearTimeout(dateTimer);
     const fromVal = fromInput ? String(fromInput.value || "").trim() : "";
@@ -1099,10 +1193,112 @@
       const stillTo = toInput ? String(toInput.value || "").trim() : "";
       if (!isReadyDateValue(stillFrom) || !isReadyDateValue(stillTo)) return;
       submitFilters(1);
-    }, 400);
+    }, 350);
   }
-  if (fromInput) fromInput.addEventListener("input", onDateInput);
-  if (toInput) toInput.addEventListener("input", onDateInput);
+
+  function digitsOnly(el, max) {
+    const next = String(el.value || "").replace(/\D/g, "").slice(0, max);
+    if (el.value !== next) el.value = next;
+    return next;
+  }
+
+  function composeSlotDate(month, day, year) {
+    const y = String(year || "").replace(/\D/g, "");
+    const m = String(month || "").replace(/\D/g, "");
+    const d = String(day || "").replace(/\D/g, "");
+    if (!y && !m && !d) return "";
+    if (y.length !== 4) return null;
+    if (!m && !d) return y;
+    if (m.length < 2) return null;
+    const mi = Number(m);
+    if (mi < 1 || mi > 12) return null;
+    if (!d) return y + "-" + m;
+    if (d.length < 2) return null;
+    const di = Number(d);
+    if (di < 1 || di > 31) return null;
+    return y + "-" + m + "-" + d;
+  }
+
+  function setupDateControl(wrap) {
+    if (!wrap) return;
+    const hidden = wrap.querySelector('input[type="hidden"]');
+    const month = wrap.querySelector('[data-part="month"]');
+    const day = wrap.querySelector('[data-part="day"]');
+    const year = wrap.querySelector('[data-part="year"]');
+    const native = wrap.querySelector(".audit-date-native");
+    const calBtn = wrap.querySelector(".audit-date-cal");
+    if (!hidden || !month || !day || !year) return;
+    const parts = [month, day, year];
+
+    function syncHidden() {
+      const composed = composeSlotDate(month.value, day.value, year.value);
+      if (composed == null) return false;
+      hidden.value = composed;
+      if (native) native.value = /^\d{4}-\d{2}-\d{2}$/.test(composed) ? composed : "";
+      return true;
+    }
+
+    function focusPart(el) {
+      el.focus();
+      try { el.select(); } catch (_) {}
+    }
+
+    parts.forEach(function (el, idx) {
+      el.addEventListener("focus", function () {
+        try { el.select(); } catch (_) {}
+      });
+      el.addEventListener("keydown", function (e) {
+        if (e.key === "/" || e.key === "-" || e.key === "ArrowRight") {
+          if (e.key !== "ArrowRight" || el.selectionStart === String(el.value || "").length) {
+            e.preventDefault();
+            if (parts[idx + 1]) focusPart(parts[idx + 1]);
+          }
+        } else if (e.key === "ArrowLeft" || e.key === "Backspace") {
+          if (!String(el.value || "") || (e.key === "ArrowLeft" && el.selectionStart === 0)) {
+            if (parts[idx - 1]) {
+              e.preventDefault();
+              focusPart(parts[idx - 1]);
+            }
+          }
+        }
+      });
+      el.addEventListener("input", function () {
+        const max = el.getAttribute("data-part") === "year" ? 4 : 2;
+        const val = digitsOnly(el, max);
+        if (el.getAttribute("data-part") !== "year" && val.length >= 2 && parts[idx + 1]) {
+          focusPart(parts[idx + 1]);
+        }
+        if (syncHidden()) onDateReady();
+        else syncClearBtn();
+      });
+      el.addEventListener("blur", function () {
+        if (el.getAttribute("data-part") !== "year" && el.value.length === 1) {
+          el.value = "0" + el.value;
+        }
+        if (syncHidden()) onDateReady();
+      });
+    });
+
+    if (calBtn && native) {
+      calBtn.addEventListener("click", function () {
+        if (typeof native.showPicker === "function") {
+          try { native.showPicker(); return; } catch (_) {}
+        }
+        native.click();
+      });
+      native.addEventListener("change", function () {
+        const v = String(native.value || "");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+        year.value = v.slice(0, 4);
+        month.value = v.slice(5, 7);
+        day.value = v.slice(8, 10);
+        hidden.value = v;
+        onDateReady();
+      });
+    }
+  }
+
+  document.querySelectorAll(".audit-date-control").forEach(setupDateControl);
 
   const searchInput = form.querySelector('input[name="q"]');
   if (searchInput) {
