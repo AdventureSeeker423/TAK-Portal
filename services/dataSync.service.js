@@ -297,22 +297,6 @@ async function exportMissionArchiveStream(missionName, queryParams = {}) {
   });
 }
 
-/** Latest CoT for a UID — TAK GET /Marti/api/cot/xml/{uid} */
-async function getCotXmlByUid(uid) {
-  assertTakAvailable();
-  const id = String(uid || "").trim();
-  if (!id) {
-    const e = new Error("CoT UID is required.");
-    e.code = "INVALID_UID";
-    throw e;
-  }
-  const client = buildTakAxios({ timeout: 30000 });
-  return client.get(`/api/cot/xml/${encodeURIComponent(id)}`, {
-    responseType: "text",
-    validateStatus: () => true,
-  });
-}
-
 /** Mission CoT items as XML — TAK GET /Marti/api/missions/{name}/cot */
 async function getMissionCotXml(missionName, queryParams = {}) {
   assertTakAvailable();
@@ -406,7 +390,6 @@ module.exports = {
   getSyncSearch,
   exportMissionKmlStream,
   exportMissionArchiveStream,
-  getCotXmlByUid,
   getMissionCotXml,
   getMissionLayers,
   getSyncContent,

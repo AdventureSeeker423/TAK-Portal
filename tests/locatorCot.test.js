@@ -42,7 +42,7 @@ const drop = cot.buildEventJs({
   now,
   staleDate: new Date(now.getTime() + 1000),
 });
-assert.strictEqual(drop.event._attributes.type, "b-m-p-w-GOTO");
+assert.strictEqual(drop.event._attributes.type, "a-u-G");
 assert.ok(drop.event.detail.archive);
 assert.strictEqual(drop.event.detail.filtergroup._attributes.group, "HCSO Main");
 assert.deepStrictEqual(

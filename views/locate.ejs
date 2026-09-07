@@ -113,19 +113,6 @@
     </div>
   </details>
 
-  <details class="card" id="locDropDebugCard" style="margin-top:1.25rem;">
-    <summary style="cursor:pointer;font-weight:600;user-select:none;">Drop Points Debug</summary>
-    <p class="settings-help" style="margin-top:10px;">
-      After a locate ping, refresh and copy this JSON. It shows whether drop points ran, the CoT that was sent, and TAK’s mission bind/probe responses.
-    </p>
-    <div class="row" style="gap:8px;margin:10px 0;flex-wrap:wrap;">
-      <button type="button" class="btn" id="locDropDebugRefreshBtn">Refresh</button>
-      <button type="button" class="btn" id="locDropDebugCopyBtn">Copy</button>
-      <span id="locDropDebugMsg" class="msg" style="margin-left:0;"></span>
-    </div>
-    <pre id="locDropDebugPre" style="white-space:pre-wrap;max-height:420px;overflow:auto;font-size:12px;margin:0;"></pre>
-  </details>
-
   <div id="locHistOverlay" class="modalOverlay" style="display:none;" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="locHistTitle" style="width:min(900px,96vw); max-height:85vh; overflow:auto;">
       <div class="modalHeader">
@@ -926,36 +913,6 @@
       method: "POST",
       body: JSON.stringify({ recipients: document.getElementById("sendLinkRecipientsIn").value })
     }).catch(function (e) { window.alert(e.message || String(e)); });
-  });
-
-  function loadDropDebug() {
-    var pre = document.getElementById("locDropDebugPre");
-    var msg = document.getElementById("locDropDebugMsg");
-    return api("/api/locate/drop-debug").then(function (data) {
-      pre.textContent = JSON.stringify(data, null, 2);
-      setMsg(msg, "", false);
-      return data;
-    }).catch(function (e) {
-      setMsg(msg, e.message || String(e), true);
-    });
-  }
-  document.getElementById("locDropDebugRefreshBtn").addEventListener("click", function () {
-    loadDropDebug();
-  });
-  document.getElementById("locDropDebugCopyBtn").addEventListener("click", function () {
-    var text = document.getElementById("locDropDebugPre").textContent || "";
-    if (!text) {
-      setMsg(document.getElementById("locDropDebugMsg"), "Refresh first.", true);
-      return;
-    }
-    navigator.clipboard.writeText(text).then(function () {
-      setMsg(document.getElementById("locDropDebugMsg"), "Copied.", false);
-    }).catch(function () {
-      setMsg(document.getElementById("locDropDebugMsg"), "Copy failed.", true);
-    });
-  });
-  document.getElementById("locDropDebugCard").addEventListener("toggle", function () {
-    if (document.getElementById("locDropDebugCard").open) loadDropDebug();
   });
 
   function loadLocators() {

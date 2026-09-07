@@ -7,13 +7,11 @@ const groupsSvc = require("./groups.service");
 const locatorForm = require("./locatorForm.service");
 
 const LIVE_TYPE = "a-f-G-U-C";
-const DROP_TYPE = "b-m-p-w-GOTO";
+const DROP_TYPE = "a-u-G";
 const DELETE_TYPE = "t-x-d-d";
 const TEAM_ROLE = "Team Member";
-const DROP_TRACE_CAP = 25;
 
 let nodeCotPromise = null;
-const dropTraces = [];
 
 function loadNodeCot() {
   if (!nodeCotPromise) nodeCotPromise = import("@tak-ps/node-cot");
@@ -149,84 +147,9 @@ function buildDeleteEventJs({ uid, destGroup, now }) {
   };
 }
 
-function clip(value, max) {
-  const n = max || 4000;
-  if (value == null) return "";
-  const s = typeof value === "string" ? value : safeJson(value);
-  return s.length > n ? s.slice(0, n) + `…[+${s.length - n} chars]` : s;
-}
-
-function safeJson(value) {
-  try {
-    return JSON.stringify(value);
-  } catch (_) {
-    return String(value);
-  }
-}
-
-function axiosBody(data) {
-  if (data == null) return "";
-  if (Buffer.isBuffer(data)) return clip(data.toString("utf8"), 2500);
-  if (typeof data === "string") return clip(data, 2500);
-  return clip(safeJson(data), 2500);
-}
-
-function rememberDropTrace(trace) {
-  dropTraces.unshift(trace);
-  if (dropTraces.length > DROP_TRACE_CAP) dropTraces.length = DROP_TRACE_CAP;
-  const lastAttempt =
-    trace.bind && Array.isArray(trace.bind.attempts) && trace.bind.attempts.length
-      ? trace.bind.attempts[trace.bind.attempts.length - 1]
-      : null;
-  const summary = {
-    at: trace.at,
-    skipReason: trace.skipReason || null,
-    locatorId: trace.locatorId,
-    title: trace.title,
-    mission: trace.mission,
-    dropPoints: trace.dropPoints,
-    bridgeConnected: trace.bridgeConnected,
-    written: trace.write && trace.write.written,
-    bindOk: trace.bind && trace.bind.ok,
-    lastBindVia: lastAttempt ? lastAttempt.via : null,
-    lastBindStatus: lastAttempt ? lastAttempt.status : null,
-    uidInResponse: lastAttempt ? lastAttempt.uidInResponse : null,
-    tokenPresent: trace.bind && trace.bind.subscribe && trace.bind.subscribe.tokenPresent,
-    lastBindBody: lastAttempt ? lastAttempt.body : null,
-    cotXmlStatus: trace.probe && trace.probe.cotXmlStatus,
-    missionHasUid: trace.probe && trace.probe.missionHasUid,
-    missionCotHasUid: trace.probe && trace.probe.missionCotHasUid,
-  };
-  console.info("[locator-drop]", safeJson(summary));
-  console.info("[locator-drop:json]", safeJson(trace));
-}
-
-function getDropDebug() {
-  return {
-    at: new Date().toISOString(),
-    bridgeConnected: cotStream.isBridgeConnected(),
-    traces: dropTraces.slice(),
-  };
-}
-
 function destList(dest) {
   if (!dest) return [];
   return Array.isArray(dest) ? dest.filter(Boolean) : [dest];
-}
-
-function extractCotXml(cot) {
-  if (!cot) return "";
-  const methods = ["to_xml", "toXML", "toXml", "xml"];
-  for (const name of methods) {
-    if (typeof cot[name] === "function") {
-      try {
-        const xml = cot[name]();
-        if (xml) return String(xml);
-      } catch (_) {}
-    }
-  }
-  if (cot.raw) return safeJson(cot.raw);
-  return "";
 }
 
 async function toCot(js, dest, { archive = false } = {}) {
@@ -252,40 +175,23 @@ async function toCot(js, dest, { archive = false } = {}) {
 }
 
 async function writeEvent(js, dest, { ingest = false, archive = false, stripFlow = true } = {}) {
-  const result = {
-    bridgeConnected: cotStream.isBridgeConnected(),
-    written: false,
-    xml: "",
-    error: null,
-    dests: destList(dest),
-    stripFlow: !!stripFlow,
-  };
   try {
     const cot = await toCot(js, dest, { archive });
-    result.xml = clip(extractCotXml(cot), 5000);
-    result.uid =
-      (typeof cot.uid === "function" && cot.uid()) ||
-      (cot.raw && cot.raw.event && cot.raw.event._attributes && cot.raw.event._attributes.uid) ||
-      (js && js.event && js.event._attributes && js.event._attributes.uid) ||
-      "";
-    result.archived =
-      typeof cot.archived === "function" ? cot.archived() : !!(js && js.event && js.event.detail && js.event.detail.archive);
     const written = await cotStream.writeCot(cot, { stripFlow: !!stripFlow });
-    result.written = !!written;
     if (ingest) {
       cotStream.ingestCot(cot);
     }
+    return !!written;
   } catch (err) {
-    result.error = err?.message || String(err);
-    console.error("[locator cot] write failed:", result.error);
+    console.error("[locator cot] write failed:", err?.message || err);
     if (ingest) {
       try {
         const cot = await toCot(js, dest, { archive });
         cotStream.ingestCot(cot);
       } catch (_) {}
     }
+    return false;
   }
-  return result;
 }
 
 function sleep(ms) {
@@ -332,115 +238,66 @@ function authHeaders(token) {
 async function bindUidToMission(missionName, uid, creatorUid) {
   const dataSyncSvc = require("./dataSync.service");
   const creator = String(creatorUid || uid);
-  const attempts = [];
-  const delays = [400, 900, 1600];
+  const delays = [1000, 2000];
   const body = { hashes: [], uids: [uid] };
   const params = { creatorUid: creator, uid };
 
   let token = "";
   let guid = "";
-  const subscribe = { tokenPresent: false, guidPresent: false, status: null, cached: false, error: null };
   try {
     const sub = await dataSyncSvc.ensureMissionSubscription(missionName, creator);
     token = sub.token || "";
     guid = sub.guid || "";
-    subscribe.tokenPresent = !!token;
-    subscribe.guidPresent = !!guid;
-    subscribe.status = sub.status;
-    subscribe.cached = !!sub.cached;
   } catch (err) {
-    subscribe.error = err?.message || String(err);
-    subscribe.status = err?.status || err?.response?.status || null;
+    console.error(
+      "[locator cot] mission subscribe failed:",
+      missionName,
+      err?.message || err
+    );
   }
   if (!guid) {
     try {
       const payload = await dataSyncSvc.getMission(missionName);
       const m = unwrapMission(payload) || {};
       guid = String(m.guid || m.GUID || "").trim();
-      subscribe.guidPresent = !!guid;
     } catch (_) {}
   }
 
-  async function tryPut(via, fn) {
-    const attempt = {
-      n: attempts.length + 1,
-      via,
-      ok: false,
-      status: null,
-      body: "",
-      uidInResponse: false,
-    };
-    try {
-      const data = await fn();
-      attempt.status = 200;
-      attempt.body = axiosBody(data);
-      attempt.uidInResponse = payloadHasUid(data, uid);
-      attempt.ok = attempt.uidInResponse;
-      attempts.push(attempt);
-      return attempt.ok;
-    } catch (err) {
-      attempt.status = err?.response?.status || err?.status || null;
-      attempt.body = axiosBody(err?.response?.data) || err?.message || String(err);
-      attempts.push(attempt);
-      return false;
-    }
-  }
+  const headers = authHeaders(token);
 
   for (let i = 0; i < delays.length; i++) {
     await sleep(delays[i]);
-    const ok = await tryPut(token ? "name+token" : "name", () =>
-      dataSyncSvc.putMissionContents(missionName, body, params, authHeaders(token))
-    );
-    if (ok) return { ok: true, subscribe, attempts };
+    try {
+      const data = await dataSyncSvc.putMissionContents(missionName, body, params, headers);
+      if (payloadHasUid(data, uid)) return true;
+    } catch (err) {
+      console.error(
+        "[locator cot] mission bind failed:",
+        missionName,
+        uid,
+        err?.response?.status || "",
+        err?.message || err
+      );
+    }
   }
 
   if (guid) {
-    await sleep(400);
-    const ok = await tryPut(token ? "guid+token" : "guid", () =>
-      dataSyncSvc.putMissionContentsByGuid(guid, body, params, authHeaders(token))
-    );
-    if (ok) return { ok: true, subscribe, attempts };
+    try {
+      const data = await dataSyncSvc.putMissionContentsByGuid(guid, body, params, headers);
+      if (payloadHasUid(data, uid)) return true;
+    } catch (err) {
+      console.error(
+        "[locator cot] mission bind by guid failed:",
+        missionName,
+        uid,
+        err?.response?.status || "",
+        err?.message || err
+      );
+    }
   }
 
-  return { ok: false, subscribe, attempts };
-}
-
-async function probeTakForDrop(missionName, uid) {
-  const dataSyncSvc = require("./dataSync.service");
-  const probe = {};
-  try {
-    const cotRes = await dataSyncSvc.getCotXmlByUid(uid);
-    probe.cotXmlStatus = cotRes.status;
-    probe.cotXml = clip(cotRes.data, 2500);
-  } catch (err) {
-    probe.cotXmlError = err?.message || String(err);
-  }
-  try {
-    const payload = await dataSyncSvc.getMission(missionName);
-    const uids = collectMissionUids(payload);
-    const mission = unwrapMission(payload) || {};
-    probe.missionName = mission.name || missionName;
-    probe.missionGuid = mission.guid || mission.GUID || "";
-    probe.missionUidCount = uids.length;
-    probe.missionHasUid = uids.includes(uid);
-    probe.missionUidSample = uids.slice(0, 25);
-  } catch (err) {
-    probe.missionError = err?.message || String(err);
-    probe.missionStatus = err?.response?.status || err?.status || null;
-    probe.missionBody = axiosBody(err?.response?.data);
-  }
-  try {
-    const cotMission = await dataSyncSvc.getMissionCotXml(missionName);
-    const text =
-      typeof cotMission.data === "string" ? cotMission.data : axiosBody(cotMission.data);
-    probe.missionCotStatus = cotMission.status;
-    probe.missionCotLen = text.length;
-    probe.missionCotHasUid = text.includes(uid);
-    probe.missionCotSnippet = clip(text, 1500);
-  } catch (err) {
-    probe.missionCotError = err?.message || String(err);
-  }
-  return probe;
+  console.error("[locator cot] could not add drop point to mission", missionName, uid);
+  return false;
 }
 
 async function publishPing(locator, { latitude, longitude, accuracyMeters, callsign, remarks, at }) {
@@ -461,32 +318,10 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
     now,
     staleDate,
   });
-  const liveWrite = await writeEvent(liveJs, destGroup ? { group: destGroup } : null, { ingest: true });
+  await writeEvent(liveJs, destGroup ? { group: destGroup } : null, { ingest: true });
 
   const mission = String(locator.mission || "").trim();
-  const dropEnabled = !!locator.dropPoints;
-  const trace = {
-    at: now.toISOString(),
-    locatorId: locator.id,
-    slug: locator.slug,
-    title: locator.title,
-    channel: locator.channel,
-    channelDisplay: locator.channelDisplay,
-    destGroup,
-    mission: mission || "",
-    dropPoints: locator.dropPoints,
-    dropPointsType: typeof locator.dropPoints,
-    ping: { latitude, longitude, accuracyMeters, callsign },
-    bridgeConnected: cotStream.isBridgeConnected(),
-    liveWritten: !!liveWrite.written,
-    liveWriteError: liveWrite.error || null,
-  };
-
-  if (!mission || !dropEnabled) {
-    trace.skipReason = !mission ? "no-mission" : "drop-points-off";
-    rememberDropTrace(trace);
-    return;
-  }
+  if (!mission || !locator.dropPoints) return;
 
   const dropUid = dropTrackUid(locator.id, now);
   const dropJs = buildEventJs({
@@ -503,19 +338,12 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
     now,
     staleDate: new Date(now.getTime() + 365 * 24 * 3600 * 1000),
   });
-  trace.dropUid = dropUid;
-  trace.dropJsDest = dropJs.event?.detail?.marti || null;
-  trace.dropJsArchive = !!dropJs.event?.detail?.archive;
   const written = await writeEvent(dropJs, null, { archive: true, stripFlow: false });
-  trace.write = written;
-  if (!written.written) {
-    trace.skipReason = "cot-write-failed";
-    rememberDropTrace(trace);
+  if (!written) {
+    console.error("[locator cot] drop CoT was not written; skip mission bind", mission, dropUid);
     return;
   }
-  trace.bind = await bindUidToMission(mission, dropUid, liveTrackUid(locator.id));
-  trace.probe = await probeTakForDrop(mission, dropUid);
-  rememberDropTrace(trace);
+  await bindUidToMission(mission, dropUid, liveTrackUid(locator.id));
 }
 
 async function publishDelete(locator) {
@@ -526,8 +354,7 @@ async function publishDelete(locator) {
     destGroup,
     now: new Date(),
   });
-  const result = await writeEvent(js, destGroup ? { group: destGroup } : null, { ingest: true });
-  return !!result.written;
+  return writeEvent(js, destGroup ? { group: destGroup } : null, { ingest: true });
 }
 
 module.exports = {
@@ -542,5 +369,4 @@ module.exports = {
   buildDeleteEventJs,
   publishPing,
   publishDelete,
-  getDropDebug,
 };
