@@ -21,9 +21,7 @@ async function requireActiveLoggedIn(req, res) {
   const user = requireLoggedIn(req, res);
   if (!user) return null;
 
-  const localUser = await usersSvc
-    .getUserById(user.uid || user.username)
-    .catch(() => null);
+  const localUser = await usersSvc.getUserById(user.uid || user.username);
   if (!localUser || localUser.is_active === false) {
     res.status(403).json({ ok: false, error: "Account is disabled" });
     return null;
