@@ -17,6 +17,9 @@ function getKeyBuffer({ allowCreate = false } = {}) {
   } catch (_) {
     throw new Error("Unable to read encryption key settings; restore settings.json before retrying.");
   }
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    throw new Error("Invalid settings.json: expected an object; restore it before retrying.");
+  }
   let hex = String(settings?.[KEY_NAME] || "").trim();
   if (hex && !/^[0-9a-fA-F]{64}$/.test(hex)) {
     throw new Error("Invalid persisted encryption key; restore it before retrying.");

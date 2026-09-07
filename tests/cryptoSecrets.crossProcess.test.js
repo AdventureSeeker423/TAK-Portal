@@ -103,6 +103,16 @@ if (process.argv[2] === "child") {
       assert.ok((await send(web, "decryptSecret", cipher)).error);
       assert.equal(fs.readFileSync(settingsPath, "utf8"), before);
     });
+    for (const value of [null, [], "damaged", 42, false]) {
+      await scenario(`non-object settings ${JSON.stringify(value)} are not rewritten`, async ({ start, settingsPath }) => {
+        const web = await start("web");
+        const before = JSON.stringify(value);
+        fs.writeFileSync(settingsPath, before);
+        const result = await send(web, "getKeyBuffer", { allowCreate: true });
+        assert.match(result.error || "", /settings.*object/i);
+        assert.equal(fs.readFileSync(settingsPath, "utf8"), before);
+      });
+    }
     await scenario("invalid persisted key is not replaced", async ({ start, settingsPath }) => {
       fs.writeFileSync(settingsPath, JSON.stringify({ MUTUAL_AID_ENCRYPTION_KEY: "damaged" }));
       const web = await start("web");
