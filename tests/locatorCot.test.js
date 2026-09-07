@@ -36,13 +36,19 @@ const drop = cot.buildEventJs({
   lon: -85.2,
   callsign: "LOCATOR - Hiker",
   color: "Red",
+  destGroup: "HCSO Main",
   destMission: "Search Alpha",
+  archive: true,
   now,
   staleDate: new Date(now.getTime() + 1000),
 });
 assert.strictEqual(drop.event._attributes.type, "b-m-p-s-m");
-assert.strictEqual(drop.event.detail.marti.dest[0]._attributes.mission, "Search Alpha");
-assert.ok(!drop.event.detail.filtergroup);
+assert.ok(drop.event.detail.archive);
+assert.strictEqual(drop.event.detail.filtergroup._attributes.group, "HCSO Main");
+assert.deepStrictEqual(
+  drop.event.detail.marti.dest.map((d) => d._attributes),
+  [{ mission: "Search Alpha" }, { group: "HCSO Main" }]
+);
 
 const del = cot.buildDeleteEventJs({
   uid: cot.liveTrackUid("id1"),

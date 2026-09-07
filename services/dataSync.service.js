@@ -144,13 +144,15 @@ async function putMissionKeywords(missionName, keywordsPayload) {
 }
 
 /**
- * PUT /api/missions/:name/contents — associate uploaded content with a mission.
+ * PUT /api/missions/:name/contents — associate uploaded content or CoT UIDs with a mission.
+ * queryParams may include creatorUid (TAK records who added the content).
  */
-async function putMissionContents(missionName, body) {
+async function putMissionContents(missionName, body, queryParams) {
   assertTakAvailable();
   const client = buildTakAxios({ timeout: 120000 });
   const res = await client.put(`${missionPath(missionName)}/contents`, body, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
+    params: queryParams && typeof queryParams === "object" ? queryParams : undefined,
   });
   return res.data;
 }

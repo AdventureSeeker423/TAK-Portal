@@ -53,6 +53,7 @@ function buildEventJs({
   remarks,
   destGroup,
   destMission,
+  archive,
   now,
   staleDate,
   how,
@@ -65,13 +66,17 @@ function buildEventJs({
   };
   const note = String(remarks || "").trim();
   if (note) detail.remarks = { _text: note };
+  if (archive) detail.archive = {};
 
+  const dests = [];
+  if (destMission) {
+    dests.push({ _attributes: { mission: destMission } });
+  }
   if (destGroup) {
     detail.filtergroup = { _attributes: { group: destGroup } };
-    detail.marti = { dest: [{ _attributes: { group: destGroup } }] };
-  } else if (destMission) {
-    detail.marti = { dest: [{ _attributes: { mission: destMission } }] };
+    dests.push({ _attributes: { group: destGroup } });
   }
+  if (dests.length) detail.marti = { dest: dests };
 
   const ceVal =
     ce != null && Number.isFinite(Number(ce)) && Number(ce) >= 0
@@ -138,24 +143,36 @@ function buildDeleteEventJs({ uid, destGroup, now }) {
   };
 }
 
-async function toCot(js, dest) {
+function destList(dest) {
+  if (!dest) return [];
+  return Array.isArray(dest) ? dest.filter(Boolean) : [dest];
+}
+
+async function toCot(js, dest, { archive = false } = {}) {
   const mod = await loadNodeCot();
   const CoT = mod.default || mod.CoT;
   if (!CoT) throw new Error("node-cot CoT constructor unavailable");
   const cot = new CoT(js);
-  if (dest && typeof cot.addDest === "function") {
-    try {
-      cot.addDest(dest);
-    } catch (_) {
-      /* marti dest already stamped on the JS tree */
+  if (typeof cot.addDest === "function") {
+    for (const d of destList(dest)) {
+      try {
+        cot.addDest(d);
+      } catch (_) {
+        /* marti dest already stamped on the JS tree */
+      }
     }
+  }
+  if (archive && typeof cot.archived === "function") {
+    try {
+      cot.archived(true);
+    } catch (_) {}
   }
   return cot;
 }
 
-async function writeEvent(js, dest, { ingest = false } = {}) {
+async function writeEvent(js, dest, { ingest = false, archive = false } = {}) {
   try {
-    const cot = await toCot(js, dest);
+    const cot = await toCot(js, dest, { archive });
     const written = await cotStream.writeCot(cot, { stripFlow: true });
     if (ingest) {
       cotStream.ingestCot(cot);
@@ -165,12 +182,52 @@ async function writeEvent(js, dest, { ingest = false } = {}) {
     console.error("[locator cot] write failed:", err?.message || err);
     if (ingest) {
       try {
-        const cot = await toCot(js, dest);
+        const cot = await toCot(js, dest, { archive });
         cotStream.ingestCot(cot);
       } catch (_) {}
     }
     return false;
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function missionBindError(err) {
+  const status = err?.response?.status || err?.status;
+  const data = err?.response?.data;
+  const msg =
+    (data && (data.message || data.error || data.statusMessage)) ||
+    err?.message ||
+    String(err || "unknown error");
+  return status ? `HTTP ${status} ${msg}` : msg;
+}
+
+async function bindUidToMission(missionName, uid, creatorUid) {
+  const dataSyncSvc = require("./dataSync.service");
+  const delays = [250, 700, 1500];
+  let lastErr;
+  for (let i = 0; i < delays.length; i++) {
+    await sleep(delays[i]);
+    try {
+      await dataSyncSvc.putMissionContents(
+        missionName,
+        { uids: [uid] },
+        { creatorUid: String(creatorUid || uid) }
+      );
+      return true;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  console.error(
+    "[locator cot] could not add drop point to mission",
+    missionName,
+    uid,
+    missionBindError(lastErr)
+  );
+  return false;
 }
 
 async function publishPing(locator, { latitude, longitude, accuracyMeters, callsign, remarks, at }) {
@@ -195,8 +252,11 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
 
   const mission = String(locator.mission || "").trim();
   if (mission && locator.dropPoints) {
+    const dropUid = dropTrackUid(locator.id, now);
+    const dropDest = [{ mission }];
+    if (destGroup) dropDest.push({ group: destGroup });
     const dropJs = buildEventJs({
-      uid: dropTrackUid(locator.id, now),
+      uid: dropUid,
       type: DROP_TYPE,
       lat: latitude,
       lon: longitude,
@@ -204,11 +264,18 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
       callsign,
       color,
       remarks,
+      destGroup,
       destMission: mission,
+      archive: true,
       now,
       staleDate: new Date(now.getTime() + 365 * 24 * 3600 * 1000),
     });
-    await writeEvent(dropJs, { mission });
+    const written = await writeEvent(dropJs, dropDest, { archive: true });
+    if (written) {
+      await bindUidToMission(mission, dropUid, liveTrackUid(locator.id));
+    } else {
+      console.error("[locator cot] drop CoT was not written; skip mission bind", mission, dropUid);
+    }
   }
 }
 
