@@ -46,10 +46,10 @@
 
 
   <!-- Create user (stacked above manage tools) -->
-  <div class="card">
+  <div class="card createFormCard">
     <h2>Create User</h2>
 
-    <form id="createForm" class="grid2" autocomplete="off">
+    <form id="createForm" class="grid2 createForm" autocomplete="off">
       <label class="<%= isSingleAgencyUsersAdmin ? 'agency-admin-badge-full' : '' %>"><%= usernamePrefixLabel %>
         <input
           type="text"
@@ -154,7 +154,7 @@
       <div id="createManualGroupsWrap" style="display:none; grid-column: 1 / -1;">
         <h3 style="margin-top:0;">Manual Groups</h3>
 
-        <label style="display:block;">
+        <label>
           Groups
           <div class="groupFilterRow">
             <input id="createGroupFilter" placeholder="Search groups..." />
@@ -4434,7 +4434,7 @@ th.sortable:hover{
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .agency-admin-badge-full{

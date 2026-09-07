@@ -4,9 +4,9 @@
 <main class="main">
   <h1>Agencies</h1>
 
-  <div class="card">
+  <div class="card createFormCard">
     <h2>Create New Agency</h2>
-    <form id="addForm" class="grid2">
+    <form id="addForm" class="grid2 createForm">
       <%- include("partials/agency-create-fields", {
         agencyTypeOptions: typeof agencyTypeOptions !== "undefined" ? agencyTypeOptions : [],
         regionOptions: typeof regionOptions !== "undefined" ? regionOptions : [],

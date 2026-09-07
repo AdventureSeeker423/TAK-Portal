@@ -17,10 +17,10 @@
     const _tplColorLabels = (typeof teamColorLabels === "object" && teamColorLabels) ? teamColorLabels : {};
   %>
 
-  <div class="card">
+  <div class="card createFormCard">
     <h2>Create New Template</h2>
 
-    <form id="form" class="templatesGrid" autocomplete="off">
+    <form id="form" class="templatesGrid createForm" autocomplete="off">
       <div class="templateTopRow <%= singleAgencyTemplatesAdmin ? 'agency-admin-locked' : '' %>">
         <label class="<%= singleAgencyTemplatesAdmin ? 'agency-hidden' : '' %>">Agency
           <select id="agency">
@@ -57,7 +57,7 @@
 
       <div style="grid-column:1/-1;">
         <label>Groups
-          <div class="row" style="gap:10px; margin-top:8px; align-items:center;">
+          <div class="row" style="gap:10px; align-items:center;">
             <input id="groupSearch" placeholder="Search groups..." style="flex:1; min-width:0;" />
             <button class="btn" type="button" id="selectAllBtn">Select All</button>
             <button class="btn" type="button" id="clearAllBtn">Clear</button>
@@ -69,7 +69,7 @@
         </label>
       </div>
 
-      <div style="grid-column:1/-1; justify-content:flex-end;" class="row">
+      <div style="grid-column:1/-1; justify-content:flex-end;" class="row createActionsRow">
         <span id="msg" class="msg"></span>
         <button class="btn success" id="submitBtn" type="submit">Create New Template</button>
       </div>

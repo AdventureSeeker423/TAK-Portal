@@ -16,9 +16,10 @@
     </a>
   <% } %>
 
-  <div class="card">
+  <div class="card createFormCard">
   <h2>Create Group / Channel</h2>
 
+  <div class="createForm">
   <div class="row">
     <% if (isGlobalAdmin) { %>
     <label>Group Type
@@ -86,7 +87,7 @@
 
   </div>
 
-  <div class="row" style="margin-top:8px;">
+  <div class="row">
     <label style="flex: 1; min-width: 0;">Group Description
       <input
         id="groupDescription"
@@ -96,11 +97,12 @@
     </label>
   </div>
 
-  <div class="row createGroupActionRow" style="margin-top:10px; justify-content:flex-end;">
+  <div class="row createGroupActionRow" style="justify-content:flex-end;">
     <button class="btn success createGroupSubmitBtnAlignRight" id="createBtn" type="button">Create New Group</button>
   </div>
 
   <div id="createMsg" class="msg"></div>
+  </div>
 </div>
 
 

@@ -720,6 +720,53 @@ label {
     color: var(--text);
 }
 
+/* Compact create forms (Users, Groups, Templates, Agencies) */
+.createFormCard > h2 {
+    margin-bottom: 10px;
+}
+
+.createForm {
+    display: grid;
+    gap: 10px;
+}
+
+.createForm.grid2,
+.createForm.templatesGrid {
+    gap: 10px;
+}
+
+.createForm label {
+    gap: 6px;
+}
+
+.createForm .createEmailPwdRow,
+.createForm .createFinalRow,
+.createForm .agencyCreateRow,
+.createForm .templateTopRow,
+.createForm .templateSecondRow {
+    gap: 10px;
+}
+
+.createForm .row {
+    gap: 10px;
+    margin-top: 0;
+    align-items: flex-end;
+}
+
+.createForm .createActionsRow,
+.createForm .createGroupActionRow {
+    margin-top: 0;
+    align-items: center;
+}
+
+.createForm .groupFilterRow {
+    margin-top: 0;
+}
+
+.createForm .groupsBox {
+    margin-top: 0;
+}
+
 input,
 select,
 textarea {
