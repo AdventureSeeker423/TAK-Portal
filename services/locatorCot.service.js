@@ -22,13 +22,14 @@ function liveTrackUid(locatorId) {
   return `takportal.locator.${String(locatorId || "").trim()}`;
 }
 
-function dropTrackUid(locatorId, at) {
+function dropPinStamp(at) {
   const d = at instanceof Date ? at : new Date(at || Date.now());
-  const stamp = (Number.isNaN(d.getTime()) ? new Date() : d)
-    .toISOString()
-    .replace(/[^0-9]/g, "")
-    .slice(0, 17);
-  return `takportal.locator.${String(locatorId || "").trim()}.drop.${stamp}`;
+  return (Number.isNaN(d.getTime()) ? new Date() : d).toISOString();
+}
+
+function dropTrackUid(title, at) {
+  const name = String(title || "").trim() || "LOCATOR";
+  return `${name} - ${dropPinStamp(at)}`;
 }
 
 function toMartiGroupName(name) {
@@ -58,6 +59,7 @@ function buildEventJs({
   destGroup,
   destMission,
   archive,
+  dropPin,
   team = true,
   now,
   staleDate,
@@ -74,6 +76,7 @@ function buildEventJs({
   const note = String(remarks || "").trim();
   if (note) detail.remarks = { _text: note };
   if (archive) detail.archive = {};
+  if (dropPin) detail.__takportal_drop = {};
 
   const dests = [];
   if (destMission) {
@@ -326,28 +329,28 @@ async function publishPing(locator, { latitude, longitude, accuracyMeters, calls
   const mission = String(locator.mission || "").trim();
   if (!mission || !locator.dropPoints) return;
 
-  const dropUid = dropTrackUid(locator.id, now);
-  const dropCallsign = String(locator.title || "").trim() || "LOCATOR";
+  const dropLabel = dropTrackUid(locator.title, now);
   const dropJs = buildEventJs({
-    uid: dropUid,
+    uid: dropLabel,
     type: DROP_TYPE,
     lat: latitude,
     lon: longitude,
     ce: accuracyMeters,
-    callsign: dropCallsign,
+    callsign: dropLabel,
     remarks,
     destMission: mission,
     archive: true,
+    dropPin: true,
     team: false,
     now,
     staleDate: new Date(now.getTime() + 365 * 24 * 3600 * 1000),
   });
   const written = await writeEvent(dropJs, null, { archive: true, stripFlow: false });
   if (!written) {
-    console.error("[locator cot] drop CoT was not written; skip mission bind", mission, dropUid);
+    console.error("[locator cot] drop CoT was not written; skip mission bind", mission, dropLabel);
     return;
   }
-  await bindUidToMission(mission, dropUid, liveTrackUid(locator.id));
+  await bindUidToMission(mission, dropLabel, liveTrackUid(locator.id));
 }
 
 async function publishDelete(locator) {

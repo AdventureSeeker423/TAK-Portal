@@ -79,6 +79,9 @@ const COT_TYPE_ICON_OVERRIDES = {
   "b-m-p-s-p-i": { iconsetUid: DEFAULT_ICONSET_UID, relPath: "Hunting/crosshair.png" },
   // Sensor point location (cameras, fixed sensors) — not a targeting SPI
   "b-m-p-s-p-loc": { iconsetUid: GENERIC_ICONS_UID, relPath: "Shapes/camera.png" },
+  // Unknown ground (ATAK yellow quatrefoil). Generic type2525b="a-u-G" tags
+  // otherwise match Google flag.png / hunting icons.
+  "a-u-g": { iconsetUid: FALCONVIEW_UID, relPath: "FalconView/A-U-G.png" },
 };
 
 function cotTypeSegments(cotType) {

@@ -15,6 +15,7 @@ const TEST_FILES = [
   "labelDeclutter.test.js",
   "featureBuild.test.js",
   "cotStreamSlim.test.js",
+  "cotStale.test.js",
   "mapPerfSoak.test.js",
   "missionGeo.test.js",
   "missionKml.test.js",

@@ -295,6 +295,25 @@ async function runTests() {
     "SPI markers should render with map icons"
   );
 
+  const unknownGround = mapIcon.resolveIcon({ type: "a-u-G", affiliation: "unknown" });
+  assert.ok(unknownGround, "unknown ground should resolve");
+  assert.strictEqual(unknownGround.source, "type-override");
+  assert.ok(
+    /FalconView\/A-U-G\.png/i.test(unknownGround.relPath || unknownGround.iconId),
+    "a-u-G should use FalconView yellow unknown cross, got " + unknownGround.iconId
+  );
+  assert.ok(mapIcon.getIconFilePath(unknownGround.iconId), "A-U-G.png must exist");
+  assert.strictEqual(
+    mapRender.markerUsesMapIcon({
+      type: "a-u-G",
+      origin: "mission",
+      iconId: unknownGround.iconId,
+      iconSource: unknownGround.source,
+    }),
+    true,
+    "mission drop pins should render with the unknown-ground map icon"
+  );
+
   const sensorLocIcon = mapIcon.resolveIcon({ type: "b-m-p-s-p-loc", affiliation: "other" });
   assert.ok(sensorLocIcon, "sensor location type should resolve");
   assert.strictEqual(sensorLocIcon.source, "type-override");

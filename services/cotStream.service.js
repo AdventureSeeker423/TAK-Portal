@@ -11,11 +11,9 @@ const mapMeta = require("./mapMeta.service");
 const mapIcon = require("./mapIcon.service");
 const mapRender = require("./mapRender.service");
 const shapeDecor = require("../public/shapeDecorFilter.js");
+const cotStale = require("./cotStale.util");
 
 const STALE_SWEEP_MS = 5000;
-/** Keep markers on the map this long after their CoT stale time before removing.
- *  Clients darken the icon at `stale`; this grace is the remaining "stale out". */
-const STALE_GRACE_MS = 30000;
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 30000;
 const SSE_BATCH_MS = 400;
@@ -469,11 +467,7 @@ function getStreamEndpoint() {
 }
 
 function isMarkerExpired(marker, now = Date.now()) {
-  if (marker?.stale) {
-    const t = Date.parse(marker.stale);
-    if (Number.isFinite(t) && now > t + STALE_GRACE_MS) return true;
-  }
-  return false;
+  return cotStale.isMarkerExpired(marker, now);
 }
 
 function isFeedOriginMarker(marker) {
@@ -601,12 +595,16 @@ function tryRemoveMarker(uid, notify = true) {
   if (!id) return;
   const existing = markers.get(id);
   if (existing && isFeedOriginMarker(existing)) return;
+  // TAK Aware / TAK Server send t-x-d-d on client disconnect. Keep last SA
+  // until the CoT stale timestamp (then darken / sweep).
+  if (existing && cotStale.shouldKeepUntilStale(existing)) return;
   removeMarker(id, notify);
 }
 
 function handleDeleteCot(cot) {
   const uid = String(cot.uid?.() || cot.raw?.event?._attributes?.uid || "").trim();
-  if (uid) {
+  const existing = uid ? markers.get(uid) : null;
+  if (uid && !cotStale.shouldKeepUntilStale(existing)) {
     forgetLiveShape(uid);
     tryRemoveMarker(uid);
   }
@@ -615,11 +613,19 @@ function handleDeleteCot(cot) {
   const linkList = Array.isArray(links) ? links : links ? [links] : [];
   for (const link of linkList) {
     const linkUid = String(link?._attributes?.uid || link?.uid || "").trim();
-    if (linkUid) {
-      forgetLiveShape(linkUid);
-      tryRemoveMarker(linkUid);
-    }
+    if (!linkUid) continue;
+    const linked = markers.get(linkUid);
+    if (cotStale.shouldKeepUntilStale(linked)) continue;
+    forgetLiveShape(linkUid);
+    tryRemoveMarker(linkUid);
   }
+}
+
+function isLocatorDropMarker(marker) {
+  const uid = String(marker?.uid || "");
+  if (/takportal\.locator\.[^.]+\.drop\./i.test(uid)) return true;
+  const type = String(marker?.type || "").trim().toLowerCase();
+  return type === "a-u-g" && / - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/i.test(uid);
 }
 
 function enrichMarkerIconAsync(marker) {
@@ -651,7 +657,7 @@ function handleCot(cot) {
   // Ignore CoT we injected (channel-patch rebroadcasts / bridge identity).
   // Otherwise TAK echoes update this connection as a ghost duplicate of the EUD.
   const detail = cot?.raw?.event?.detail;
-  if (detail && (detail.__takportal_patch || detail.__takportal_bridge)) {
+  if (detail && (detail.__takportal_patch || detail.__takportal_bridge || detail.__takportal_drop)) {
     return;
   }
 
@@ -668,9 +674,14 @@ function handleCot(cot) {
 
   const marker = parseMarkerFromCoT(cot);
   if (!marker) return;
-  // Mission drop pins share the locator name but are not live SA — skip them
-  // so the map does not show a new "copy" of the locator on every ping.
-  if (/takportal\.locator\.[^.]+\.drop\./i.test(String(marker.uid || ""))) {
+  // Mission drop pins are not live SA — skip stream copies so each ping
+  // does not appear as another unit on the live map (mission overlay owns them).
+  if (isLocatorDropMarker(marker)) {
+    return;
+  }
+
+  const existing = markers.get(marker.uid);
+  if (cotStale.shouldIgnoreIncomingSa(existing, marker)) {
     return;
   }
 
@@ -1261,4 +1272,6 @@ module.exports = {
   writeCot,
   ingestCot,
   isBridgeConnected,
+  shouldKeepUntilStale: cotStale.shouldKeepUntilStale,
+  shouldIgnoreIncomingSa: cotStale.shouldIgnoreIncomingSa,
 };
