@@ -116,7 +116,6 @@
           </div>
         </div>
 
-        <button class="btn success" type="submit" id="auditFilterBtn">Filter</button>
         <%
           const hasActiveFilters = !!(
             String(filters?.q || "").trim() ||
@@ -345,6 +344,9 @@
 .btn-grey:hover {
   background-color: #5a6268;
   border-color: #545b62;
+}
+#auditClearFiltersBtn[hidden] {
+  display: none !important;
 }
 .filter-multiselect .filter-menu{
   position:absolute;
@@ -859,6 +861,7 @@
   if (clearBtn) {
     clearBtn.addEventListener("click", function (e) {
       e.preventDefault();
+      clearBtn.hidden = true;
       window.location.assign(form.getAttribute("action") || "/audit-log");
     });
   }
