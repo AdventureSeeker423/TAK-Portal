@@ -176,6 +176,24 @@ assert.strictEqual(
 );
 assert.strictEqual(mapRender.markerUsesMapIcon(unassignedMarker), false);
 
+const staleMarker = {
+  uid: "stale-eud-1",
+  callsign: "STALE-EUD-1",
+  type: "a-f-G-U-C",
+  lat: 35.04,
+  lon: -85.2,
+  stale: "2020-01-01T00:00:00.000Z",
+  affiliation: "friend",
+  origin: "eud",
+};
+assert.deepStrictEqual(mapRender.markerChannelKeys(staleMarker), [mapMeta.STALE_CHANNEL_KEY]);
+assert.strictEqual(
+  mapRender.markerVisible(staleMarker, {
+    enabledChannelKeys: new Set([mapMeta.STALE_CHANNEL_KEY]),
+  }),
+  true
+);
+
 const fedAirMarker = {
   uid: "790HP_COT_THP-AirBear1",
   callsign: "THP-AirBear1",

@@ -7,6 +7,7 @@ const mapMeta = require("./mapMeta.service");
 const mapIconResolve = require("./mapIcon.resolve");
 const mapIconRender = require("./mapIconRender.service");
 const shapeDecor = require("../public/shapeDecorFilter.js");
+const cotStale = require("./cotStale.util");
 
 const GEOJSON_CACHE_MS = getInt("MAP_GEOJSON_CACHE_MS", 0);
 
@@ -28,7 +29,7 @@ function markerChannelKeys(marker) {
   const groups =
     Array.isArray(marker?.groups) && marker.groups.length
       ? marker.groups
-      : [mapMeta.UNASSIGNED_GROUP];
+      : [cotStale.isCotStale(marker) ? mapMeta.STALE_GROUP : mapMeta.UNASSIGNED_GROUP];
   const keys = new Set();
   for (const g of groups) {
     const channelName = mapMeta.toChannelGroupName(g) || g;

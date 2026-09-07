@@ -115,6 +115,7 @@
       if (missionLayersInstalled(name) && manifest.length) {
         preloadMissionIcons(manifest, { prioritize: false });
       }
+      renderMissionList();
     } catch (err) {
       console.warn("[map-missions] auto-refresh failed:", name, err?.message || err);
     } finally {
@@ -700,6 +701,7 @@
     const features = (geojson.features || []).map(function (feature) {
       return {
         type: feature.type,
+        id: feature.id,
         geometry: feature.geometry,
         properties: Object.assign({}, feature.properties || {}, { missionVisible: show ? 1 : 0 }),
       };
@@ -1629,19 +1631,36 @@
     return id.length > 18 ? id.slice(0, 16) + "…" : id || "Feature";
   }
 
+  function overlayFeatureUidSet(entry) {
+    const seen = new Set();
+    const features = (entry && entry.geojson && entry.geojson.features) || [];
+    for (let i = 0; i < features.length; i++) {
+      const id = featureUid(features[i]);
+      if (id) seen.add(id);
+    }
+    return seen;
+  }
+
   function appendMissionItemsDropdown(row, name, entry) {
     const listed = new Set();
     const folders = (entry.layers && entry.layers.folders) || [];
     const orphaned = (entry.layers && entry.layers.orphaned) || [];
     const features = (entry.geojson && entry.geojson.features) || [];
     const rasters = entry.rasterOverlays || [];
+    const overlayUids = overlayFeatureUidSet(entry);
     const extraUids = [];
 
     for (let i = 0; i < folders.length; i++) {
       const uids = folders[i].uids || [];
-      for (let j = 0; j < uids.length; j++) listed.add(String(uids[j]));
+      for (let j = 0; j < uids.length; j++) {
+        const uid = String(uids[j]);
+        if (overlayUids.has(uid)) listed.add(uid);
+      }
     }
-    for (let i = 0; i < orphaned.length; i++) listed.add(String(orphaned[i]));
+    for (let i = 0; i < orphaned.length; i++) {
+      const uid = String(orphaned[i]);
+      if (overlayUids.has(uid)) listed.add(uid);
+    }
     for (let i = 0; i < features.length; i++) {
       const id = featureUid(features[i]);
       if (id && !listed.has(id)) extraUids.push(id);
@@ -1690,6 +1709,10 @@
 
     for (let i = 0; i < folders.length; i++) {
       const folder = folders[i];
+      const uids = (folder.uids || []).map(String).filter(function (uid) {
+        return overlayUids.has(uid);
+      });
+      if (!uids.length) continue;
       const folderOn = !entry.hiddenPaths.has(folder.path);
       appendItemRow(panel, {
         kind: "folder",
@@ -1699,9 +1722,8 @@
           toggleFolderVisible(name, folder);
         },
       });
-      const uids = folder.uids || [];
       for (let j = 0; j < uids.length; j++) {
-        const uid = String(uids[j]);
+        const uid = uids[j];
         appendItemRow(panel, {
           kind: "feature",
           nested: true,
@@ -1716,6 +1738,7 @@
 
     for (let i = 0; i < orphaned.length; i++) {
       const uid = String(orphaned[i]);
+      if (!overlayUids.has(uid)) continue;
       appendItemRow(panel, {
         kind: "feature",
         label: itemLabelForUid(entry, uid),

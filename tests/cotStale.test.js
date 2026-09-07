@@ -34,6 +34,8 @@ assert.strictEqual(
   false
 );
 
+assert.strictEqual(stale.isCotStale(eud, now), false);
+assert.strictEqual(stale.isCotStale(eud, Date.parse("2026-09-07T14:14:44Z")), true);
 assert.strictEqual(stale.isMarkerExpired(eud, now), false);
 assert.strictEqual(
   stale.isMarkerExpired(eud, Date.parse("2026-09-07T14:15:20Z")),

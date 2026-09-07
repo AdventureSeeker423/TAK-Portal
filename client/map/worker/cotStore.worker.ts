@@ -18,6 +18,7 @@ import {
   featurePropertyPatch,
   isMarkerExpired,
   isMarkerStale,
+  paintChannelKeys,
   pointInBounds,
 } from "../featureBuild";
 import { computeLabelVisibility } from "../labelDeclutter";
@@ -53,21 +54,11 @@ function post(msg: WorkerOutbound): void {
 }
 
 function channelKeyList(marker: SlimMarker): string[] {
-  const raw = String(marker.channelKeys || "").trim();
-  if (raw) {
-    return raw
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-  }
-  const groups = Array.isArray(marker.groups) ? marker.groups : [];
-  return groups
-    .map((g) =>
-      String(g || "")
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, " ")
-    )
+  const raw = paintChannelKeys(marker);
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 }
 
@@ -80,7 +71,14 @@ function markerInChannelScope(marker: SlimMarker): boolean {
   if (channelMode === "none") return false;
   if (!enabledKeys) return true;
   if (!enabledKeys.size) return false;
-  if (!keys.length) return enabledKeys.has("__unassigned__") || enabledKeys.has("unassigned");
+  if (!keys.length) {
+    return (
+      enabledKeys.has("__unassigned__") ||
+      enabledKeys.has("unassigned") ||
+      enabledKeys.has("__stale__") ||
+      enabledKeys.has("stale")
+    );
+  }
   return keys.some((k) => enabledKeys!.has(k));
 }
 

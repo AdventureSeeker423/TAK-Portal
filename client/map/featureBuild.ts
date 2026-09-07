@@ -92,6 +92,35 @@ export function isMarkerStale(
   return Number.isFinite(t) && now > t;
 }
 
+function isUnassignedChannelKey(key: string): boolean {
+  const k = String(key || "").trim().toLowerCase();
+  return !k || k === "unassigned" || k === "__unassigned__" || k === "stale" || k === "__stale__";
+}
+
+/** Channel keys used for paint/filter; Unassigned becomes Stale after CoT stale time. */
+export function paintChannelKeys(
+  marker: { channelKeys?: string; groups?: string[]; stale?: string | null },
+  now: number = Date.now()
+): string {
+  const raw = String(marker.channelKeys || "").trim();
+  const keys = raw
+    ? raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+    : Array.isArray(marker.groups)
+      ? marker.groups
+          .map((g) =>
+            String(g || "")
+              .trim()
+              .toLowerCase()
+              .replace(/\s+/g, " ")
+          )
+          .filter(Boolean)
+      : [];
+  if (isMarkerStale(marker, now) && keys.every(isUnassignedChannelKey)) {
+    return "__stale__";
+  }
+  return keys.join(",") || raw;
+}
+
 /** True after stale time plus grace — drop the marker from the map. */
 export function isMarkerExpired(
   marker: { stale?: string | null } | null | undefined,
@@ -190,7 +219,7 @@ export function buildPaintFeature(
     renderSort,
     labelSort,
     showLabel,
-    channelKeys: String(marker.channelKeys || ""),
+    channelKeys: paintChannelKeys(marker, now),
     course:
       marker.course != null && Number.isFinite(Number(marker.course))
         ? Math.round(Number(marker.course))

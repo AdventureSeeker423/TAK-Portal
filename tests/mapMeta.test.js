@@ -38,6 +38,16 @@ assert.deepStrictEqual(
 
 assert.strictEqual(mapMeta.channelBaseKey(mapMeta.UNASSIGNED_GROUP), mapMeta.UNASSIGNED_CHANNEL_KEY);
 assert.strictEqual(mapMeta.channelBaseKey("__unassigned__"), mapMeta.UNASSIGNED_CHANNEL_KEY);
+assert.strictEqual(mapMeta.channelBaseKey(mapMeta.STALE_GROUP), mapMeta.STALE_CHANNEL_KEY);
+assert.strictEqual(mapMeta.channelBaseKey("__stale__"), mapMeta.STALE_CHANNEL_KEY);
+
+assert.deepStrictEqual(
+  mapMeta.resolveGroupsForMarker({
+    uid: "stale-eud",
+    stale: "2020-01-01T00:00:00.000Z",
+  }),
+  [mapMeta.STALE_GROUP]
+);
 
 const catalog = mapMeta.buildGroupsCatalogWithCounts([
   {
@@ -49,6 +59,18 @@ const catalog = mapMeta.buildGroupsCatalogWithCounts([
 const unassignedEntry = catalog.find((g) => g.baseKey === mapMeta.UNASSIGNED_CHANNEL_KEY);
 assert.ok(unassignedEntry, "Unassigned should appear in channel catalog when markers exist");
 assert.strictEqual(unassignedEntry.markerCount, 1);
+
+const staleCatalog = mapMeta.buildGroupsCatalogWithCounts([
+  {
+    uid: "stale-1",
+    callsign: "STALE-1",
+    groups: [mapMeta.STALE_GROUP],
+  },
+]);
+const staleEntry = staleCatalog.find((g) => g.baseKey === mapMeta.STALE_CHANNEL_KEY);
+assert.ok(staleEntry, "Stale should appear in channel catalog when markers exist");
+assert.strictEqual(staleEntry.markerCount, 1);
+assert.strictEqual(staleEntry.displayName, mapMeta.STALE_GROUP);
 
 assert.strictEqual(
   mapMeta.classifyMarkerOrigin({

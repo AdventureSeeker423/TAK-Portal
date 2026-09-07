@@ -32,6 +32,12 @@ function isMarkerExpired(marker, now = Date.now()) {
   return Number.isFinite(t) && now > t + STALE_GRACE_MS;
 }
 
+/** True once the CoT `stale` timestamp has elapsed (icon darkens; still on the map until grace). */
+function isCotStale(marker, now = Date.now()) {
+  const t = parseStaleMs(marker?.stale);
+  return Number.isFinite(t) && now > t;
+}
+
 /**
  * Keep last-known SA on the map despite disconnect deletes.
  * Portal locator UIDs still honor explicit t-x-d-d (operator stop).
@@ -63,6 +69,7 @@ module.exports = {
   isPortalLocatorUid,
   isLiveSaPresenceType,
   isMarkerExpired,
+  isCotStale,
   shouldKeepUntilStale,
   shouldIgnoreIncomingSa,
 };

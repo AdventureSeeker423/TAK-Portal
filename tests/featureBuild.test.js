@@ -49,6 +49,7 @@ async function run() {
     isMarkerStale,
     isMarkerExpired,
     darkenHexColor,
+    paintChannelKeys,
   } = await loadFeatureBuild();
 
   assert.strictEqual(isStandardGroundEudType("a-f-G-U-C"), true);
@@ -135,6 +136,20 @@ async function run() {
   assert.strictEqual(staleFeat.properties.stale, 1);
   assert.strictEqual(staleFeat.properties.color, darkenHexColor("#22c55e"));
   assert.notStrictEqual(staleFeat.properties.color, "#22c55e");
+  assert.strictEqual(
+    paintChannelKeys(
+      { channelKeys: "__unassigned__", stale: staleAt },
+      Date.parse("2026-01-01T00:00:01.000Z")
+    ),
+    "__stale__"
+  );
+  assert.strictEqual(
+    paintChannelKeys(
+      { channelKeys: "__unassigned__", stale: staleAt },
+      Date.parse("2025-12-31T23:59:59.000Z")
+    ),
+    "__unassigned__"
+  );
 
   console.log("ok - featureBuild ground EUD team dots");
 }

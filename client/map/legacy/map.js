@@ -993,6 +993,7 @@
   function isMemberChannelKeyAllowed(key) {
     if (mapChannelScope !== "member" || !allowedMemberChannelKeys) return true;
     const k = String(key || "").trim().toLowerCase();
+    if (k === "__unassigned__" || k === "__stale__") return true;
     return k && allowedMemberChannelKeys.has(k);
   }
 
@@ -4167,6 +4168,15 @@
 
   function isMapChannelName(name) {
     const n = String(name || "").trim();
+    const lower = n.toLowerCase();
+    if (
+      lower === "unassigned" ||
+      lower === "__unassigned__" ||
+      lower === "stale" ||
+      lower === "__stale__"
+    ) {
+      return true;
+    }
     if (!n.toLowerCase().startsWith("tak_") || n.startsWith("_")) return false;
     const display = stripChannelBehaviorSuffix(n).toLowerCase();
     if (display.startsWith("__")) return false;
@@ -4212,12 +4222,34 @@
   function channelGroupKey(name) {
     const raw = String(name || "").trim();
     if (!raw) return "";
-    if (raw.toLowerCase() === "unassigned" || raw.toLowerCase() === "__unassigned__") {
+    const lower = raw.toLowerCase();
+    if (lower === "unassigned" || lower === "__unassigned__") {
       return "__unassigned__";
     }
+    if (lower === "stale" || lower === "__stale__") {
+      return "__stale__";
+    }
     const base = stripChannelBehaviorSuffix(name);
-    if (!base || base.toLowerCase() === "unassigned") return "__unassigned__";
-    return base.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!base) return "";
+    const baseLower = base.toLowerCase();
+    if (baseLower === "unassigned") return "__unassigned__";
+    if (baseLower === "stale") return "__stale__";
+    return baseLower.replace(/\s+/g, " ").trim();
+  }
+
+  function markerGroups(m) {
+    if (isMarkerStaleNow(m)) {
+      const groups = Array.isArray(m.groups) && m.groups.length ? m.groups : [];
+      const onlyUnassigned =
+        !groups.length ||
+        groups.every(function (g) {
+          const key = channelGroupKey(g);
+          return key === "__unassigned__" || key === "__stale__";
+        });
+      if (onlyUnassigned) return ["Stale"];
+    }
+    if (Array.isArray(m.groups) && m.groups.length) return m.groups;
+    return ["Unassigned"];
   }
 
   function markerChannelKeys(m) {
@@ -4231,11 +4263,6 @@
         return match && match.baseKey ? match.baseKey : key;
       })
       .filter(Boolean);
-  }
-
-  function markerGroups(m) {
-    if (Array.isArray(m.groups) && m.groups.length) return m.groups;
-    return ["Unassigned"];
   }
 
   function isChannelKeyEnabled(key) {
@@ -4473,13 +4500,15 @@
 
   function ensureDefaultGroupsEnabled() {
     if (!enabledGroups) return;
-    const unassigned = groupsCatalog.find(function (g) {
-      return channelGroupKey(g.name) === "__unassigned__";
+    let changed = false;
+    groupsCatalog.forEach(function (g) {
+      const key = channelGroupKey(g.name);
+      if (key !== "__unassigned__" && key !== "__stale__") return;
+      if (enabledGroups.has(g.name)) return;
+      enabledGroups.add(g.name);
+      changed = true;
     });
-    if (!unassigned || enabledGroups.has(unassigned.name)) return;
-    // Always surface Unassigned when markers land there (federation often does).
-    enabledGroups.add(unassigned.name);
-    saveEnabledGroups();
+    if (changed) saveEnabledGroups();
   }
 
   function mergeGroupsCatalog(incoming) {
