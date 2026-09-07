@@ -3,6 +3,7 @@ const locatorsSvc = require("../services/locators.service");
 const locatorAccess = require("../services/locatorAccess.service");
 const locatorForm = require("../services/locatorForm.service");
 const locatorCot = require("../services/locatorCot.service");
+const locatorReport = require("../services/locatorReport.service");
 const accessSvc = require("../services/access.service");
 const emailSvc = require("../services/email.service");
 const auditSvc = require("../services/auditLog.service");
@@ -379,6 +380,35 @@ router.get("/locators/:id/history", async (req, res) => {
     const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || "200"), 10) || 200));
     const history = locatorsSvc.listHistory(id, { limit });
     res.json({ ok: true, history });
+  } catch (err) {
+    const status = err?.status || 500;
+    res.status(status).json({ ok: false, error: toSafeApiError(err) });
+  }
+});
+
+router.get("/locators/:id/report.pdf", async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    const loc = await scopedLocator(req, id);
+    const history = locatorsSvc.listHistory(id, { limit: 5000 });
+    const { buffer, fileName } = await locatorReport.generateLocatorReportPdf(loc, history);
+    auditSvc.logEvent({
+      actor: req.authentikUser || null,
+      request: auditRequest(req),
+      action: "LOCATE_REPORT_GENERATED",
+      targetType: "locator",
+      targetId: id,
+      details: {
+        kind: "live",
+        title: loc.title,
+        slug: loc.slug,
+        pingCount: history.length,
+        summary: `Generated a PDF after-action report for locator "${loc.title}" (${history.length} history row(s)).`,
+      },
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.send(buffer);
   } catch (err) {
     const status = err?.status || 500;
     res.status(status).json({ ok: false, error: toSafeApiError(err) });

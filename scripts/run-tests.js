@@ -25,6 +25,7 @@ const TEST_FILES = [
   "locatorForm.test.js",
   "locatorCot.test.js",
   "locatorAccess.test.js",
+  "locatorReport.test.js",
   "geocode.test.js",
   "openaddresses.test.js",
   "preferencePackage.service.test.js",

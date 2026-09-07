@@ -517,6 +517,38 @@
     wrap.appendChild(b);
   }
 
+  function downloadReport(loc, msgEl) {
+    if (!loc || !loc.id) return;
+    setMsg(msgEl, "Generating report…", false);
+    fetch("/api/locate/locators/" + encodeURIComponent(loc.id) + "/report.pdf", {
+      credentials: "same-origin"
+    }).then(function (res) {
+      if (!res.ok) {
+        return res.json().then(function (j) {
+          throw new Error((j && j.error) || "Report failed");
+        }).catch(function (err) {
+          if (err && err.message && err.message !== "Unexpected token") throw err;
+          throw new Error("Report failed");
+        });
+      }
+      var disp = res.headers.get("Content-Disposition") || "";
+      var match = /filename="?([^"]+)"?/i.exec(disp);
+      var name = (match && match[1]) || "locate-report.pdf";
+      return res.blob().then(function (blob) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+        setMsg(msgEl, "Report downloaded.", false);
+      });
+    }).catch(function (e) {
+      setMsg(msgEl, e.message || String(e), true);
+    });
+  }
+
   function matchesFilter(loc, q) {
     if (!q) return true;
     var hay = [loc.title, loc.channelDisplay, loc.channel, loc.color, loc.slug].join(" ").toLowerCase();
@@ -563,6 +595,7 @@
         addBtn(wrap, "Edit", function () { beginEdit(loc); });
         addBtn(wrap, "Ping", function () { api("/api/locate/locators/" + encodeURIComponent(loc.id) + "/manual-ping", { method: "POST" }).then(loadLocators).catch(function (e) { setMsg(listMsg, e.message, true); }); });
         addBtn(wrap, "History", function () { openHistory(loc.id); });
+        addBtn(wrap, "Generate PDF Report", function () { downloadReport(loc, listMsg); });
         addBtn(wrap, loc.active ? "Disable" : "Enable", function () {
           api("/api/locate/locators/" + encodeURIComponent(loc.id), { method: "PATCH", body: JSON.stringify({ active: !loc.active }) }).then(loadLocators).catch(function (e) { setMsg(listMsg, e.message, true); });
         }, loc.active ? "" : "success");
@@ -615,6 +648,7 @@
         var wrap = document.createElement("div");
         wrap.className = "cardActionsRow locate-actions-cell";
         addBtn(wrap, "History", function () { openHistory(loc.id); });
+        addBtn(wrap, "Generate PDF Report", function () { downloadReport(loc, archivedListMsg); });
         addBtn(wrap, "Restore", function () {
           api("/api/locate/locators/" + encodeURIComponent(loc.id) + "/reactivate", { method: "POST" }).then(function () {
             setMsg(archivedListMsg, "Locator restored.", false);
