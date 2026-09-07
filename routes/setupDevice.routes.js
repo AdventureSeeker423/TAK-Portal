@@ -17,9 +17,23 @@ function requireLoggedIn(req, res) {
   return u;
 }
 
+async function requireActiveLoggedIn(req, res) {
+  const user = requireLoggedIn(req, res);
+  if (!user) return null;
+
+  const localUser = await usersSvc
+    .getUserById(user.uid || user.username)
+    .catch(() => null);
+  if (!localUser || localUser.is_active === false) {
+    res.status(403).json({ ok: false, error: "Account is disabled" });
+    return null;
+  }
+  return user;
+}
+
 router.post("/enroll-qr", async (req, res) => {
   try {
-    const user = requireLoggedIn(req, res);
+    const user = await requireActiveLoggedIn(req, res);
     if (!user) return;
 
     const takUrl = qrSvc.getTakUrl();
@@ -118,7 +132,7 @@ router.post("/enroll-qr", async (req, res) => {
 // GET preference data + QR for Android Step 3 (Configure Device Preferences)
 router.get("/preference-data", async (req, res) => {
   try {
-    const user = requireLoggedIn(req, res);
+    const user = await requireActiveLoggedIn(req, res);
     if (!user) return;
 
     const uid = String(user.uid || "").trim();
@@ -161,7 +175,7 @@ router.get("/preference-data", async (req, res) => {
 
 router.get("/data-package", async (req, res) => {
   try {
-    const user = requireLoggedIn(req, res);
+    const user = await requireActiveLoggedIn(req, res);
     if (!user) return;
 
     if (!enrollmentPkg.isDataPackageAvailable()) {
@@ -221,4 +235,5 @@ router.get("/data-package", async (req, res) => {
   }
 });
 
+router.requireActiveLoggedIn = requireActiveLoggedIn;
 module.exports = router;

@@ -45,6 +45,7 @@ const TEST_FILES = [
   "mouStore.ensure.test.js",
   "directoryPkText.test.js",
   "backup.test.js",
+  "setupDeviceAccess.test.js",
 ];
 
 const testsDir = path.join(__dirname, "..", "tests");
