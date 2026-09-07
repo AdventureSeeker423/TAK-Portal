@@ -1012,7 +1012,7 @@ function renderAgencies(){
           ? `<td class="agencyRegionCell" data-label="Region">${esc(a.regionName || regionNameForId(a.regionId) || "")}</td>`
           : ""
       }
-      <td class="agencyColorCell" data-label="Color">${esc(agencyColorLabel(a.color) || a.color || "")}</td>
+      <td class="agencyColorCell" data-label="Color">${esc(a.color || "")}</td>
       <td class="agencyActionsCell cardActionsCell">
         <div class="agencyActionsRow cardActionsRow">
           <button class="btn" type="button"
