@@ -141,7 +141,7 @@ async function run() {
       { channelKeys: "__unassigned__", stale: staleAt },
       Date.parse("2026-01-01T00:00:01.000Z")
     ),
-    "__stale__"
+    "__stale__,__unassigned__"
   );
   assert.strictEqual(
     paintChannelKeys(

@@ -186,12 +186,22 @@ const staleMarker = {
   affiliation: "friend",
   origin: "eud",
 };
-assert.deepStrictEqual(mapRender.markerChannelKeys(staleMarker), [mapMeta.STALE_CHANNEL_KEY]);
+assert.deepStrictEqual(mapRender.markerChannelKeys(staleMarker), [
+  mapMeta.STALE_CHANNEL_KEY,
+  mapMeta.UNASSIGNED_CHANNEL_KEY,
+]);
 assert.strictEqual(
   mapRender.markerVisible(staleMarker, {
     enabledChannelKeys: new Set([mapMeta.STALE_CHANNEL_KEY]),
   }),
   true
+);
+assert.strictEqual(
+  mapRender.markerVisible(staleMarker, {
+    enabledChannelKeys: new Set([mapMeta.UNASSIGNED_CHANNEL_KEY]),
+  }),
+  true,
+  "Stale SA stays visible under Unassigned for the keep-until-stale window"
 );
 
 const fedAirMarker = {

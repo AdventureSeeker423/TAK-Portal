@@ -92,12 +92,25 @@ export function isMarkerStale(
   return Number.isFinite(t) && now > t;
 }
 
-function isUnassignedChannelKey(key: string): boolean {
+export function isSpecialChannelKey(key: string): boolean {
   const k = String(key || "").trim().toLowerCase();
   return !k || k === "unassigned" || k === "__unassigned__" || k === "stale" || k === "__stale__";
 }
 
-/** Channel keys used for paint/filter; Unassigned becomes Stale after CoT stale time. */
+function isStaleChannelKey(key: string): boolean {
+  const k = String(key || "").trim().toLowerCase();
+  return k === "stale" || k === "__stale__";
+}
+
+function withUnassignedAlias(keys: string[]): string {
+  const out = keys.slice();
+  if (out.some(isStaleChannelKey) && !out.some((k) => k === "unassigned" || k === "__unassigned__")) {
+    out.push("__unassigned__");
+  }
+  return out.join(",");
+}
+
+/** Channel keys used for paint/filter. Stale keeps the Unassigned alias so the CoT stays visible. */
 export function paintChannelKeys(
   marker: { channelKeys?: string; groups?: string[]; stale?: string | null },
   now: number = Date.now()
@@ -115,10 +128,10 @@ export function paintChannelKeys(
           )
           .filter(Boolean)
       : [];
-  if (isMarkerStale(marker, now) && keys.every(isUnassignedChannelKey)) {
-    return "__stale__";
+  if (isMarkerStale(marker, now) && keys.every(isSpecialChannelKey)) {
+    return withUnassignedAlias(["__stale__"]);
   }
-  return keys.join(",") || raw;
+  return withUnassignedAlias(keys) || raw;
 }
 
 /** True after stale time plus grace — drop the marker from the map. */

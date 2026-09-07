@@ -34,6 +34,9 @@ function markerChannelKeys(marker) {
     const channelName = mapMeta.toChannelGroupName(g) || g;
     const key = mapMeta.channelBaseKey(channelName);
     if (key) keys.add(key);
+    // Stale is a Group label only. Keep last-known SA on the map under the
+    // same Unassigned visibility until the CoT stale window expires.
+    if (key === mapMeta.STALE_CHANNEL_KEY) keys.add(mapMeta.UNASSIGNED_CHANNEL_KEY);
   }
   return Array.from(keys);
 }

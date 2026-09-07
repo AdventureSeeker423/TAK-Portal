@@ -18,6 +18,7 @@ import {
   featurePropertyPatch,
   isMarkerExpired,
   isMarkerStale,
+  isSpecialChannelKey,
   paintChannelKeys,
   pointInBounds,
 } from "../featureBuild";
@@ -71,15 +72,14 @@ function markerInChannelScope(marker: SlimMarker): boolean {
   if (channelMode === "none") return false;
   if (!enabledKeys) return true;
   if (!enabledKeys.size) return false;
-  if (!keys.length) {
-    return (
-      enabledKeys.has("__unassigned__") ||
-      enabledKeys.has("unassigned") ||
-      enabledKeys.has("__stale__") ||
-      enabledKeys.has("stale")
-    );
-  }
-  return keys.some((k) => enabledKeys!.has(k));
+  const specialEnabled =
+    enabledKeys.has("__unassigned__") ||
+    enabledKeys.has("unassigned") ||
+    enabledKeys.has("__stale__") ||
+    enabledKeys.has("stale");
+  if (!keys.length) return specialEnabled;
+  if (keys.some((k) => enabledKeys!.has(k))) return true;
+  return specialEnabled && keys.every(isSpecialChannelKey);
 }
 
 function isPriority(uid: string): boolean {

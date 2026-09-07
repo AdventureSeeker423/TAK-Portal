@@ -939,6 +939,8 @@
           return String(k || "").trim().toLowerCase();
         }).filter(Boolean)
       );
+      allowedMemberChannelKeys.add("__unassigned__");
+      allowedMemberChannelKeys.add("__stale__");
     } else {
       allowedMemberChannelKeys = null;
     }
@@ -4253,7 +4255,7 @@
   }
 
   function markerChannelKeys(m) {
-    return markerGroups(m)
+    const keys = markerGroups(m)
       .map((g) => {
         const key = channelGroupKey(g);
         if (!key) return "";
@@ -4263,6 +4265,10 @@
         return match && match.baseKey ? match.baseKey : key;
       })
       .filter(Boolean);
+    if (keys.indexOf("__stale__") >= 0 && keys.indexOf("__unassigned__") < 0) {
+      keys.push("__unassigned__");
+    }
+    return keys;
   }
 
   function isChannelKeyEnabled(key) {
@@ -4563,8 +4569,10 @@
   function recomputeGroupCounts() {
     const counts = new Map();
     for (const m of markersByUid.values()) {
-      for (const key of markerChannelKeys(m)) {
-        counts.set(key, (counts.get(key) || 0) + 1);
+      const groups = markerGroups(m);
+      for (let i = 0; i < groups.length; i++) {
+        const key = channelGroupKey(groups[i]);
+        if (key) counts.set(key, (counts.get(key) || 0) + 1);
       }
     }
     groupsCatalog = groupsCatalog
