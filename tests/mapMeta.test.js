@@ -38,15 +38,15 @@ assert.deepStrictEqual(
 
 assert.strictEqual(mapMeta.channelBaseKey(mapMeta.UNASSIGNED_GROUP), mapMeta.UNASSIGNED_CHANNEL_KEY);
 assert.strictEqual(mapMeta.channelBaseKey("__unassigned__"), mapMeta.UNASSIGNED_CHANNEL_KEY);
-assert.strictEqual(mapMeta.channelBaseKey(mapMeta.STALE_GROUP), mapMeta.STALE_CHANNEL_KEY);
-assert.strictEqual(mapMeta.channelBaseKey("__stale__"), mapMeta.STALE_CHANNEL_KEY);
+assert.strictEqual(mapMeta.channelBaseKey("Stale"), "");
+assert.strictEqual(mapMeta.channelBaseKey("__stale__"), "");
 
 assert.deepStrictEqual(
   mapMeta.resolveGroupsForMarker({
     uid: "stale-eud",
     stale: "2020-01-01T00:00:00.000Z",
   }),
-  [mapMeta.STALE_GROUP]
+  [mapMeta.UNASSIGNED_GROUP]
 );
 
 const catalog = mapMeta.buildGroupsCatalogWithCounts([
@@ -57,20 +57,25 @@ const catalog = mapMeta.buildGroupsCatalogWithCounts([
   },
 ]);
 const unassignedEntry = catalog.find((g) => g.baseKey === mapMeta.UNASSIGNED_CHANNEL_KEY);
-assert.ok(unassignedEntry, "Unassigned should appear in channel catalog when markers exist");
-assert.strictEqual(unassignedEntry.markerCount, 1);
+assert.strictEqual(
+  unassignedEntry,
+  undefined,
+  "Unassigned should not appear in the channel catalog"
+);
 
 const staleCatalog = mapMeta.buildGroupsCatalogWithCounts([
   {
     uid: "stale-1",
     callsign: "STALE-1",
-    groups: [mapMeta.STALE_GROUP],
+    groups: ["Stale"],
   },
 ]);
-const staleEntry = staleCatalog.find((g) => g.baseKey === mapMeta.STALE_CHANNEL_KEY);
-assert.ok(staleEntry, "Stale should appear in channel catalog when markers exist");
-assert.strictEqual(staleEntry.markerCount, 1);
-assert.strictEqual(staleEntry.displayName, mapMeta.STALE_GROUP);
+const staleEntry = staleCatalog.find((g) => g.baseKey === "__stale__" || g.displayName === "Stale");
+assert.strictEqual(
+  staleEntry,
+  undefined,
+  "Stale should not appear in the channel catalog"
+);
 
 assert.strictEqual(
   mapMeta.classifyMarkerOrigin({
@@ -163,8 +168,8 @@ const davisMarker = {
 mapMeta.rebuildSubscriptionIndex([]);
 assert.deepStrictEqual(
   mapMeta.resolveGroupsForMarker(davisMarker),
-  [mapMeta.STALE_GROUP],
-  "last-known local EUD SA should be Stale, not Unassigned"
+  [mapMeta.UNASSIGNED_GROUP],
+  "last-known local EUD SA with no channel stays Unassigned"
 );
 
 mapMeta.rebuildSubscriptionIndex([

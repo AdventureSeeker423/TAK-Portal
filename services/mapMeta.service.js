@@ -6,16 +6,13 @@ const groupsSvc = require("./groups.service");
 const takMetrics = require("./takMetrics.service");
 const { isTakBypassed, isTakConfigured, buildTakAxios } = require("./tak.service");
 const { sanitizeCallsign } = require("./callsignSanitize");
-const cotStale = require("./cotStale.util");
 
 const SUBSCRIPTION_REFRESH_MS = 30000;
 const DATAFEED_DETAIL_CACHE_MS = 5 * 60 * 1000;
 const INTEGRATION_LINK_REFRESH_MS = 60000;
 const UNASSIGNED_GROUP = "Unassigned";
-/** Stable channel key for Unassigned so channel/member filters can show those markers. */
+/** Internal key for unresolved markers; not shown as a map channel. */
 const UNASSIGNED_CHANNEL_KEY = "__unassigned__";
-const STALE_GROUP = "Stale";
-const STALE_CHANNEL_KEY = "__stale__";
 
 let catalogCache = {
   names: [],
@@ -82,8 +79,8 @@ function isSpecialCatalogGroupName(name) {
   return (
     n === UNASSIGNED_GROUP.toLowerCase() ||
     n === UNASSIGNED_CHANNEL_KEY ||
-    n === STALE_GROUP.toLowerCase() ||
-    n === STALE_CHANNEL_KEY
+    n === "stale" ||
+    n === "__stale__"
   );
 }
 
@@ -93,8 +90,8 @@ function channelGroupKey(name) {
   if (n === UNASSIGNED_GROUP.toLowerCase() || n === UNASSIGNED_CHANNEL_KEY) {
     return UNASSIGNED_CHANNEL_KEY;
   }
-  if (n === STALE_GROUP.toLowerCase() || n === STALE_CHANNEL_KEY) {
-    return STALE_CHANNEL_KEY;
+  if (n === "stale" || n === "__stale__") {
+    return "";
   }
   return channelBaseKey(name);
 }
@@ -115,15 +112,15 @@ function channelBaseKey(name) {
   if (lower === UNASSIGNED_GROUP.toLowerCase() || lower === UNASSIGNED_CHANNEL_KEY) {
     return UNASSIGNED_CHANNEL_KEY;
   }
-  if (lower === STALE_GROUP.toLowerCase() || lower === STALE_CHANNEL_KEY) {
-    return STALE_CHANNEL_KEY;
+  if (lower === "stale" || lower === "__stale__") {
+    return "";
   }
   const base = stripChannelBehaviorSuffix(raw);
   if (!base || base.toLowerCase() === UNASSIGNED_GROUP.toLowerCase()) {
     return UNASSIGNED_CHANNEL_KEY;
   }
-  if (base.toLowerCase() === STALE_GROUP.toLowerCase()) {
-    return STALE_CHANNEL_KEY;
+  if (base.toLowerCase() === "stale") {
+    return "";
   }
   return base.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -1621,7 +1618,7 @@ function rememberSubscriptionKey(map, key, groups) {
   if (!prev || groups.length >= prev.length) map.set(k, groups);
 }
 
-/** Index live Marti connections for group lookup and last-known Stale detection. */
+/** Index live Marti connections for group lookup. */
 function rebuildSubscriptionIndex(subList) {
   const list = Array.isArray(subList) ? subList : [];
   const byCallsign = new Map();
@@ -1640,8 +1637,7 @@ function rebuildSubscriptionIndex(subList) {
       sub?.deviceUid,
     ];
 
-    // Index identity even when groups are missing so connected EUDs are not
-    // treated as last-known / Stale.
+    // Index identity even when groups are missing so connected EUDs still match.
     if (callsign) rememberSubscriptionKey(byCallsign, callsign, groups);
     if (username) rememberSubscriptionKey(byUsername, username, groups);
     for (const rawUid of uidFields) {
@@ -1756,23 +1752,6 @@ function isLiveEudSubscription(marker) {
   if (callsign && subscriptionIndex.byUsername.has(callsign)) return true;
 
   return false;
-}
-
-/**
- * Unassigned vs Stale when no TAK channel could be resolved.
- * Last-known local EUD SA kept after disconnect is Stale immediately,
- * not only after the CoT stale timestamp.
- */
-function fallbackUnassignedOrStale(marker) {
-  if (cotStale.isCotStale(marker)) return STALE_GROUP;
-  if (
-    cotStale.shouldKeepUntilStale(marker) &&
-    !isLiveEudSubscription(marker) &&
-    classifyMarkerOrigin(marker) === "eud"
-  ) {
-    return STALE_GROUP;
-  }
-  return UNASSIGNED_GROUP;
 }
 
 function markerHasDataFeedProvenance(marker) {
@@ -1899,39 +1878,23 @@ function resolveGroupsForMarker(marker, cotDetail) {
 
   if (patchDests.length) return patchDests;
 
-  return [fallbackUnassignedOrStale(marker)];
+  return [UNASSIGNED_GROUP];
 }
 
 function buildGroupsCatalogWithCounts(markers) {
   ensureRefreshLoop();
   const counts = new Map();
   const markerList = Array.isArray(markers) ? markers : [];
-  let unassignedCount = 0;
-  let staleCount = 0;
 
   for (const m of markerList) {
-    const groups = Array.isArray(m.groups) && m.groups.length ? m.groups : [UNASSIGNED_GROUP];
-    let assigned = false;
+    const groups = Array.isArray(m.groups) && m.groups.length ? m.groups : [];
     for (const g of groups) {
-      const label = normalizeGroupName(g);
-      if (label === STALE_GROUP) {
-        staleCount += 1;
-        assigned = true;
-        continue;
-      }
-      if (label === UNASSIGNED_GROUP) {
-        unassignedCount += 1;
-        assigned = true;
-        continue;
-      }
       const channelName = toChannelGroupName(g);
       if (!channelName) continue;
       const key = channelBaseKey(channelName);
-      if (!key || key === UNASSIGNED_CHANNEL_KEY || key === STALE_CHANNEL_KEY) continue;
+      if (!key || key === UNASSIGNED_CHANNEL_KEY) continue;
       counts.set(key, (counts.get(key) || 0) + 1);
-      assigned = true;
     }
-    if (!assigned) unassignedCount += 1;
   }
 
   const groups = [];
@@ -1945,34 +1908,7 @@ function buildGroupsCatalogWithCounts(markers) {
     });
   }
 
-  if (staleCount > 0) {
-    groups.push({
-      name: STALE_GROUP,
-      displayName: STALE_GROUP,
-      baseKey: STALE_CHANNEL_KEY,
-      markerCount: staleCount,
-    });
-  }
-
-  if (unassignedCount > 0) {
-    groups.push({
-      name: UNASSIGNED_GROUP,
-      displayName: UNASSIGNED_GROUP,
-      baseKey: UNASSIGNED_CHANNEL_KEY,
-      markerCount: unassignedCount,
-    });
-  }
-
-  groups.sort((a, b) => {
-    const rank = (entry) => {
-      if (entry.baseKey === UNASSIGNED_CHANNEL_KEY) return 2;
-      if (entry.baseKey === STALE_CHANNEL_KEY) return 1;
-      return 0;
-    };
-    const d = rank(a) - rank(b);
-    if (d) return d;
-    return a.displayName.localeCompare(b.displayName);
-  });
+  groups.sort((a, b) => a.displayName.localeCompare(b.displayName));
   return groups;
 }
 
@@ -1992,8 +1928,8 @@ function filterMapGroupsForUserMembership(groups, userGroupNames) {
   if (!memberKeys.size) return [];
   return (Array.isArray(groups) ? groups : []).filter((g) => {
     const key = g.baseKey || channelBaseKey(g.name);
-    if (key === UNASSIGNED_CHANNEL_KEY || key === STALE_CHANNEL_KEY) return true;
-    return key && memberKeys.has(key);
+    if (!key || key === UNASSIGNED_CHANNEL_KEY) return false;
+    return memberKeys.has(key);
   });
 }
 
@@ -2017,8 +1953,6 @@ async function getTakGroupCatalog(markers, options = {}) {
 module.exports = {
   UNASSIGNED_GROUP,
   UNASSIGNED_CHANNEL_KEY,
-  STALE_GROUP,
-  STALE_CHANNEL_KEY,
   isMapChannelGroupName,
   channelGroupKey,
   channelBaseKey,

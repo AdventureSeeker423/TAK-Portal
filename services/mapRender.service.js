@@ -34,9 +34,6 @@ function markerChannelKeys(marker) {
     const channelName = mapMeta.toChannelGroupName(g) || g;
     const key = mapMeta.channelBaseKey(channelName);
     if (key) keys.add(key);
-    // Stale is a Group label only. Keep last-known SA on the map under the
-    // same Unassigned visibility until the CoT stale window expires.
-    if (key === mapMeta.STALE_CHANNEL_KEY) keys.add(mapMeta.UNASSIGNED_CHANNEL_KEY);
   }
   return Array.from(keys);
 }
@@ -60,21 +57,6 @@ function parseKeySet(raw, delimiter) {
   return out;
 }
 
-function expandSpecialChannelKeySet(keys) {
-  if (keys == null) return keys;
-  const out = new Set(keys);
-  const special =
-    out.has(mapMeta.UNASSIGNED_CHANNEL_KEY) ||
-    out.has("unassigned") ||
-    out.has(mapMeta.STALE_CHANNEL_KEY) ||
-    out.has("stale");
-  if (special) {
-    out.add(mapMeta.UNASSIGNED_CHANNEL_KEY);
-    out.add(mapMeta.STALE_CHANNEL_KEY);
-  }
-  return out;
-}
-
 function parseGeoJsonQuery(query) {
   const channelsRaw = String(query?.channels || "").trim();
   /** @type {Set<string>|null} */
@@ -83,10 +65,10 @@ function parseGeoJsonQuery(query) {
   if (channelsRaw === "__none__") {
     enabledChannelKeys = new Set();
   } else if (channelsRaw) {
-    enabledChannelKeys = expandSpecialChannelKeySet(parseKeySet(channelsRaw, ","));
+    enabledChannelKeys = parseKeySet(channelsRaw, ",");
   }
 
-  const scopeKeys = expandSpecialChannelKeySet(parseKeySet(query?.scopeKeys, ","));
+  const scopeKeys = parseKeySet(query?.scopeKeys, ",");
 
   const zoom = Number.parseFloat(query?.zoom);
   const boundsRaw = String(query?.bounds || "").trim();
@@ -141,7 +123,7 @@ function markerVisible(marker, options) {
     (options?.selectedUid && uid === String(options.selectedUid)) ||
     (options?.lockedUid && uid === String(options.lockedUid));
   const keys = markerChannelKeys(marker);
-  const scopeChannelKeys = expandSpecialChannelKeySet(options?.scopeChannelKeys);
+  const scopeChannelKeys = options?.scopeChannelKeys;
 
   if (!isPriority && scopeChannelKeys !== null && scopeChannelKeys !== undefined) {
     if (scopeChannelKeys.size === 0) return false;
@@ -149,7 +131,7 @@ function markerVisible(marker, options) {
     if (!keys.some((k) => scopeChannelKeys.has(k))) return false;
   }
 
-  const enabledChannelKeys = expandSpecialChannelKeySet(options?.enabledChannelKeys);
+  const enabledChannelKeys = options?.enabledChannelKeys;
   if (!isPriority && enabledChannelKeys !== null && enabledChannelKeys !== undefined) {
     if (enabledChannelKeys.size === 0) return false;
     if (!keys.length) return false;

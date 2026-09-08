@@ -18,8 +18,6 @@ import {
   featurePropertyPatch,
   isMarkerExpired,
   isMarkerStale,
-  isSpecialChannelKey,
-  aliasSpecialChannelKeys,
   paintChannelKeys,
   pointInBounds,
 } from "../featureBuild";
@@ -73,14 +71,8 @@ function markerInChannelScope(marker: SlimMarker): boolean {
   if (channelMode === "none") return false;
   if (!enabledKeys) return true;
   if (!enabledKeys.size) return false;
-  const specialEnabled =
-    enabledKeys.has("__unassigned__") ||
-    enabledKeys.has("unassigned") ||
-    enabledKeys.has("__stale__") ||
-    enabledKeys.has("stale");
-  if (!keys.length) return specialEnabled;
-  if (keys.some((k) => enabledKeys!.has(k))) return true;
-  return specialEnabled && keys.every(isSpecialChannelKey);
+  if (!keys.length) return false;
+  return keys.some((k) => enabledKeys!.has(k));
 }
 
 function isPriority(uid: string): boolean {
@@ -386,8 +378,21 @@ function handle(msg: WorkerInbound): void {
     case "setChannels": {
       channelMode = msg.mode;
       enabledKeys =
-        msg.enabledKeys == null ? null : aliasSpecialChannelKeys(msg.enabledKeys);
-      scopeKeys = msg.scopeKeys == null ? null : aliasSpecialChannelKeys(msg.scopeKeys);
+        msg.enabledKeys == null
+          ? null
+          : new Set(
+              [...msg.enabledKeys]
+                .map((k) => String(k || "").trim().toLowerCase())
+                .filter(Boolean)
+            );
+      scopeKeys =
+        msg.scopeKeys == null
+          ? null
+          : new Set(
+              [...msg.scopeKeys]
+                .map((k) => String(k || "").trim().toLowerCase())
+                .filter(Boolean)
+            );
       labelsNeedRecompute = true;
       scheduleFlush();
       break;

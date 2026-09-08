@@ -137,17 +137,7 @@ async function run() {
   assert.strictEqual(staleFeat.properties.color, darkenHexColor("#22c55e"));
   assert.notStrictEqual(staleFeat.properties.color, "#22c55e");
   assert.strictEqual(
-    paintChannelKeys(
-      { channelKeys: "__unassigned__", stale: staleAt },
-      Date.parse("2026-01-01T00:00:01.000Z")
-    ),
-    "__stale__,__unassigned__"
-  );
-  assert.strictEqual(
-    paintChannelKeys(
-      { channelKeys: "__unassigned__", stale: staleAt },
-      Date.parse("2025-12-31T23:59:59.000Z")
-    ),
+    paintChannelKeys({ channelKeys: "__unassigned__", stale: staleAt }),
     "__unassigned__"
   );
 

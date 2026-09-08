@@ -778,23 +778,9 @@ function broadcast(obj) {
   }
 }
 
-function retagStaleMarkerGroup(marker) {
-  if (!marker) return false;
-  const nextGroups = mapMeta.resolveGroupsForMarker(marker, null);
-  const prevGroups = Array.isArray(marker.groups) ? marker.groups : [];
-  const groupsChanged =
-    nextGroups.length !== prevGroups.length ||
-    !nextGroups.every((g, i) => g === prevGroups[i]);
-  if (!groupsChanged) return false;
-  marker.groups = nextGroups;
-  marker.updatedAt = new Date().toISOString();
-  return true;
-}
-
 function sweepStaleMarkers(notify = true) {
   const now = Date.now();
   let removed = false;
-  let groupsChanged = false;
   for (const [uid, marker] of markers) {
     if (isMarkerExpired(marker, now)) {
       markers.delete(uid);
@@ -806,11 +792,6 @@ function sweepStaleMarkers(notify = true) {
         liveShapeFeatures.delete(uid);
         liveOverlayFeatures.delete(uid);
       }
-      continue;
-    }
-    if (retagStaleMarkerGroup(marker)) {
-      groupsChanged = true;
-      if (notify) queueMarkerUpdate(marker);
     }
   }
   for (const [uid, feat] of liveShapeFeatures) {
@@ -821,7 +802,6 @@ function sweepStaleMarkers(notify = true) {
     else liveShapeFeatures.delete(uid);
   }
   if (removed && !notify) bumpMarkerRevision();
-  if (groupsChanged) queueGroupsCatalogRefresh();
 }
 
 async function refreshAllMarkerIcons() {

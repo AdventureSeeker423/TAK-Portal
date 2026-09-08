@@ -170,9 +170,10 @@ assert.deepStrictEqual(mapRender.markerChannelKeys(unassignedMarker), [
 ]);
 assert.strictEqual(
   mapRender.markerVisible(unassignedMarker, {
-    enabledChannelKeys: new Set([mapMeta.UNASSIGNED_CHANNEL_KEY]),
+    enabledChannelKeys: new Set(["hcso main"]),
   }),
-  true
+  false,
+  "Unassigned markers are not shown when filtering by real channels"
 );
 assert.strictEqual(mapRender.markerUsesMapIcon(unassignedMarker), false);
 
@@ -187,21 +188,14 @@ const staleMarker = {
   origin: "eud",
 };
 assert.deepStrictEqual(mapRender.markerChannelKeys(staleMarker), [
-  mapMeta.STALE_CHANNEL_KEY,
   mapMeta.UNASSIGNED_CHANNEL_KEY,
 ]);
 assert.strictEqual(
   mapRender.markerVisible(staleMarker, {
-    enabledChannelKeys: new Set([mapMeta.STALE_CHANNEL_KEY]),
+    enabledChannelKeys: new Set(["hcso main"]),
   }),
-  true
-);
-assert.strictEqual(
-  mapRender.markerVisible(staleMarker, {
-    enabledChannelKeys: new Set([mapMeta.UNASSIGNED_CHANNEL_KEY]),
-  }),
-  true,
-  "Stale SA stays visible under Unassigned for the keep-until-stale window"
+  false,
+  "Stale/unresolved SA is not shown under a real channel filter"
 );
 
 const fedAirMarker = {

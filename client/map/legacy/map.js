@@ -939,8 +939,6 @@
           return String(k || "").trim().toLowerCase();
         }).filter(Boolean)
       );
-      allowedMemberChannelKeys.add("__unassigned__");
-      allowedMemberChannelKeys.add("__stale__");
     } else {
       allowedMemberChannelKeys = null;
     }
@@ -995,7 +993,6 @@
   function isMemberChannelKeyAllowed(key) {
     if (mapChannelScope !== "member" || !allowedMemberChannelKeys) return true;
     const k = String(key || "").trim().toLowerCase();
-    if (k === "__unassigned__" || k === "__stale__") return true;
     return k && allowedMemberChannelKeys.has(k);
   }
 
@@ -1205,15 +1202,6 @@
       const key = channelBaseKeyForName(name);
       if (key) keys.add(key);
     }
-    const special =
-      keys.has("__unassigned__") ||
-      keys.has("unassigned") ||
-      keys.has("__stale__") ||
-      keys.has("stale");
-    if (special) {
-      keys.add("__unassigned__");
-      keys.add("__stale__");
-    }
     return keys;
   }
 
@@ -1317,9 +1305,7 @@
   function allScopedChannelsEnabled() {
     if (enabledGroups === null) return false;
     const scoped = groupsCatalog.filter(function (g) {
-      if (!isGroupInChannelScope(g)) return false;
-      const key = channelGroupKey(g.name);
-      return key !== "__unassigned__" && key !== "__stale__";
+      return isGroupInChannelScope(g);
     });
     if (!scoped.length) return enabledGroups.size === 0;
     for (let i = 0; i < scoped.length; i++) {
@@ -2874,11 +2860,6 @@
         }
       }
       if (match) out.add(match.name);
-      else {
-        const key = channelGroupKey(itemStr);
-        if (key === "__unassigned__") out.add("Unassigned");
-        else if (key === "__stale__") out.add("Stale");
-      }
     }
     return out;
   }
@@ -4188,15 +4169,6 @@
 
   function isMapChannelName(name) {
     const n = String(name || "").trim();
-    const lower = n.toLowerCase();
-    if (
-      lower === "unassigned" ||
-      lower === "__unassigned__" ||
-      lower === "stale" ||
-      lower === "__stale__"
-    ) {
-      return true;
-    }
     if (!n.toLowerCase().startsWith("tak_") || n.startsWith("_")) return false;
     const display = stripChannelBehaviorSuffix(n).toLowerCase();
     if (display.startsWith("__")) return false;
@@ -4223,8 +4195,6 @@
     if (enabledGroups && enabledGroups.size) {
       let pruned = false;
       for (const n of Array.from(enabledGroups)) {
-        const key = channelGroupKey(n);
-        if (key === "__unassigned__" || key === "__stale__") continue;
         if (!nameSet.has(n)) {
           enabledGroups.delete(n);
           pruned = true;
@@ -4249,33 +4219,23 @@
       return "__unassigned__";
     }
     if (lower === "stale" || lower === "__stale__") {
-      return "__stale__";
+      return "";
     }
     const base = stripChannelBehaviorSuffix(name);
     if (!base) return "";
     const baseLower = base.toLowerCase();
     if (baseLower === "unassigned") return "__unassigned__";
-    if (baseLower === "stale") return "__stale__";
+    if (baseLower === "stale") return "";
     return baseLower.replace(/\s+/g, " ").trim();
   }
 
   function markerGroups(m) {
-    if (isMarkerStaleNow(m)) {
-      const groups = Array.isArray(m.groups) && m.groups.length ? m.groups : [];
-      const onlyUnassigned =
-        !groups.length ||
-        groups.every(function (g) {
-          const key = channelGroupKey(g);
-          return key === "__unassigned__" || key === "__stale__";
-        });
-      if (onlyUnassigned) return ["Stale"];
-    }
     if (Array.isArray(m.groups) && m.groups.length) return m.groups;
     return ["Unassigned"];
   }
 
   function markerChannelKeys(m) {
-    const keys = markerGroups(m)
+    return markerGroups(m)
       .map((g) => {
         const key = channelGroupKey(g);
         if (!key) return "";
@@ -4285,10 +4245,6 @@
         return match && match.baseKey ? match.baseKey : key;
       })
       .filter(Boolean);
-    if (keys.indexOf("__stale__") >= 0 && keys.indexOf("__unassigned__") < 0) {
-      keys.push("__unassigned__");
-    }
-    return keys;
   }
 
   function isChannelKeyEnabled(key) {
@@ -4524,19 +4480,6 @@
     };
   }
 
-  function ensureDefaultGroupsEnabled() {
-    if (!enabledGroups) return;
-    let changed = false;
-    groupsCatalog.forEach(function (g) {
-      const key = channelGroupKey(g.name);
-      if (key !== "__unassigned__" && key !== "__stale__") return;
-      if (enabledGroups.has(g.name)) return;
-      enabledGroups.add(g.name);
-      changed = true;
-    });
-    if (changed) saveEnabledGroups();
-  }
-
   function mergeGroupsCatalog(incoming) {
     const list = Array.isArray(incoming) ? incoming : [];
     const prevNames = groupsCatalog
@@ -4571,7 +4514,6 @@
       enabledGroups = normalizeEnabledGroups(enabledGroups);
     }
     syncEnabledGroupsWithCatalog();
-    ensureDefaultGroupsEnabled();
     const nextNames = groupsCatalog
       .filter(isGroupInChannelScope)
       .map(function (g) {

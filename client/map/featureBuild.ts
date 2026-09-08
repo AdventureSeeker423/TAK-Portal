@@ -92,64 +92,30 @@ export function isMarkerStale(
   return Number.isFinite(t) && now > t;
 }
 
-export function isSpecialChannelKey(key: string): boolean {
-  const k = String(key || "").trim().toLowerCase();
-  return !k || k === "unassigned" || k === "__unassigned__" || k === "stale" || k === "__stale__";
-}
-
-function isStaleChannelKey(key: string): boolean {
-  const k = String(key || "").trim().toLowerCase();
-  return k === "stale" || k === "__stale__";
-}
-
-function withUnassignedAlias(keys: string[]): string {
-  const out = keys.slice();
-  if (out.some(isStaleChannelKey) && !out.some((k) => k === "unassigned" || k === "__unassigned__")) {
-    out.push("__unassigned__");
-  }
-  return out.join(",");
-}
-
-/** If Unassigned or Stale is enabled, both keys match so last-known SA stays on the map. */
-export function aliasSpecialChannelKeys(keys: Iterable<string> | null | undefined): Set<string> | null {
-  if (keys == null) return null;
-  const out = new Set<string>();
-  for (const raw of keys) {
-    const k = String(raw || "").trim().toLowerCase();
-    if (k) out.add(k);
-  }
-  const special = [...out].some(
-    (k) => k === "__unassigned__" || k === "unassigned" || k === "__stale__" || k === "stale"
-  );
-  if (special) {
-    out.add("__unassigned__");
-    out.add("__stale__");
-  }
-  return out;
-}
-
-/** Channel keys used for paint/filter. Stale keeps the Unassigned alias so the CoT stays visible. */
+/** Channel keys used for paint/filter. Unassigned/Stale are not special catalog channels. */
 export function paintChannelKeys(
-  marker: { channelKeys?: string; groups?: string[]; stale?: string | null },
-  now: number = Date.now()
+  marker: { channelKeys?: string; groups?: string[]; stale?: string | null }
 ): string {
   const raw = String(marker.channelKeys || "").trim();
-  const keys = raw
-    ? raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
-    : Array.isArray(marker.groups)
-      ? marker.groups
-          .map((g) =>
-            String(g || "")
-              .trim()
-              .toLowerCase()
-              .replace(/\s+/g, " ")
-          )
-          .filter(Boolean)
-      : [];
-  if (isMarkerStale(marker, now) && keys.every(isSpecialChannelKey)) {
-    return withUnassignedAlias(["__stale__"]);
+  if (raw) {
+    return raw
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+      .join(",") || raw;
   }
-  return withUnassignedAlias(keys) || raw;
+  if (Array.isArray(marker.groups)) {
+    return marker.groups
+      .map((g) =>
+        String(g || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+      )
+      .filter(Boolean)
+      .join(",");
+  }
+  return "";
 }
 
 /** True after stale time plus grace — drop the marker from the map. */
@@ -250,7 +216,7 @@ export function buildPaintFeature(
     renderSort,
     labelSort,
     showLabel,
-    channelKeys: paintChannelKeys(marker, now),
+    channelKeys: paintChannelKeys(marker),
     course:
       marker.course != null && Number.isFinite(Number(marker.course))
         ? Math.round(Number(marker.course))
