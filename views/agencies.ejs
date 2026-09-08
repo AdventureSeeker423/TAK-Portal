@@ -438,6 +438,23 @@ function formatAgencyIdentifierDisplay(a) {
   return `${sfx} (${isPrefix ? "Prefix" : "Suffix"})`;
 }
 
+function agencyCardMetaLine(a) {
+  return [a?.groupPrefix, a?.state, a?.type]
+    .map((x) => String(x || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function toggleAgencyCard(ev, btn) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const tr = btn && btn.closest ? btn.closest("tr") : null;
+  if (!tr) return;
+  const expanded = tr.classList.toggle("is-expanded");
+  btn.setAttribute("aria-expanded", expanded ? "true" : "false");
+  btn.textContent = expanded ? "Less" : "Details";
+}
+
 function isAgencyActive(a) {
   return a?.isActive !== false;
 }
@@ -994,25 +1011,30 @@ function renderAgencies(){
     const active = isAgencyActive(a);
     const toggleBtnClass = active ? "btn caution" : "btn";
     const toggleLabel = active ? "Disable" : "Enable";
+    const metaLine = agencyCardMetaLine(a);
     return `
     <tr class="${active ? "" : "row-disabled"}">
       <td class="agencyNameCell cardTitleCell" data-label="Agency">
-        <div class="agencyNameText cardTitleText">${esc(a.name)}</div>${
-          !active ? `<span class="agencyStatusBadge cardMetaBadge">Disabled</span>` : ""
-        }
+        <div class="agencyCardHead">
+          <div class="agencyNameText cardTitleText">${esc(a.name)}</div>
+          <button type="button" class="agencyCardToggle" aria-expanded="false"
+            onclick="toggleAgencyCard(event, this)">Details</button>
+        </div>
+        ${metaLine ? `<div class="agencyCardMeta muted">${esc(metaLine)}</div>` : ""}
+        ${!active ? `<span class="agencyStatusBadge cardMetaBadge">Disabled</span>` : ""}
       </td>
-      <td class="agencyAbbrCell" data-label="Abbreviation / Short Name">${esc(a.groupPrefix)}</td>
-      <td class="agencySuffixCell" data-label="Username Identifier">${esc(formatAgencyIdentifierDisplay(a))}</td>
-      <td class="agencyCountyCell" data-label="County">${esc(a.county || "")}</td>
-      <td class="agencyCountyAbbrevCell" data-label="County Abbrev">${esc(String(a.countyAbbrev || "").trim().toUpperCase())}</td>
-      <td class="agencyStateCell" data-label="State">${esc(a.state || "")}</td>
-      <td class="agencyTypeCell" data-label="Type">${esc(a.type || "")}</td>
+      <td class="agencyAbbrCell agencyDetailCell" data-label="Abbreviation / Short Name">${esc(a.groupPrefix)}</td>
+      <td class="agencySuffixCell agencyDetailCell" data-label="Username Identifier">${esc(formatAgencyIdentifierDisplay(a))}</td>
+      <td class="agencyCountyCell agencyDetailCell" data-label="County">${esc(a.county || "")}</td>
+      <td class="agencyCountyAbbrevCell agencyDetailCell" data-label="County Abbrev">${esc(String(a.countyAbbrev || "").trim().toUpperCase())}</td>
+      <td class="agencyStateCell agencyDetailCell" data-label="State">${esc(a.state || "")}</td>
+      <td class="agencyTypeCell agencyDetailCell" data-label="Type">${esc(a.type || "")}</td>
       ${
         showRegionColumn
-          ? `<td class="agencyRegionCell" data-label="Region">${esc(a.regionName || regionNameForId(a.regionId) || "")}</td>`
+          ? `<td class="agencyRegionCell agencyDetailCell" data-label="Region">${esc(a.regionName || regionNameForId(a.regionId) || "")}</td>`
           : ""
       }
-      <td class="agencyColorCell" data-label="Color">${esc(a.color || "")}</td>
+      <td class="agencyColorCell agencyDetailCell" data-label="Color">${esc(a.color || "")}</td>
       <td class="agencyActionsCell cardActionsCell">
         <div class="agencyActionsRow cardActionsRow">
           <button class="btn" type="button"
@@ -2984,6 +3006,11 @@ if (addForm) {
   text-overflow: ellipsis;
 }
 
+.agenciesTable .agencyCardToggle,
+.agenciesTable .agencyCardMeta {
+  display: none;
+}
+
 .agenciesTable .agencyStatusBadge {
   display: none;
 }
@@ -3152,6 +3179,46 @@ if (addForm) {
   .agenciesTable .agencyColorCell { order: 10; }
   .agenciesTable .cardActionsCell { order: 11; }
 
+  .agenciesTable .agencyCardHead {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .agenciesTable .agencyCardToggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+
+  .agenciesTable .agencyCardMeta {
+    display: block;
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .agenciesTable tbody tr.is-expanded .agencyCardMeta {
+    display: none;
+  }
+
+  .agenciesTable tbody tr:not(.is-expanded) .agencyDetailCell {
+    display: none;
+  }
+
   .listCardTable tbody td {
     display: block;
     border-top: none;
@@ -3232,6 +3299,10 @@ if (addForm) {
 @media (max-width: 400px) {
   .listCardTable .cardActionsRow {
     grid-template-columns: 1fr;
+  }
+
+  .agenciesTable .cardActionsRow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -3541,29 +3612,127 @@ body.noScroll .main {
   #editAgencyOverlay {
     padding: 0;
     align-items: stretch;
+    justify-content: stretch;
   }
   #editAgencyOverlay .editAgencyModal {
     width: 100%;
-    max-height: 100%;
+    max-width: 100%;
     height: 100%;
+    max-height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
     border-radius: 0;
+  }
+  #editAgencyOverlay .modalHeader {
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    gap: 8px;
+    align-items: center;
+  }
+  #editAgencyOverlay .modalHeaderLeft {
+    flex: 1 1 auto;
+  }
+  #editAgencyOverlay .modalHeaderLeft h2 {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 16px;
+    line-height: 1.3;
+  }
+  #editAgencyOverlay .modalHeader > .btn {
+    flex: 0 0 auto;
+    min-height: 44px;
   }
   #editAgencyOverlay .modalBody {
     overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
   }
   #editAgencyOverlay .editAgencyForm {
+    display: flex;
+    flex-direction: column;
     overflow: visible;
+    flex: 0 0 auto;
+    min-height: auto;
+    height: auto;
+  }
+  #editAgencyOverlay .agencyCreateRow4,
+  #editAgencyOverlay .agencyCreateRow3,
+  #editAgencyOverlay .agencyCreateRow2 {
+    grid-template-columns: 1fr;
   }
   #editAgencyOverlay .editAgencySplit,
   #editAgencyOverlay .editAgencySplit.has-extra-groups,
   #editAgencyOverlay .editAgencyDomainRow {
+    display: flex;
+    flex-direction: column;
     grid-template-columns: 1fr;
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  #editAgencyOverlay .editAgencySplitPane {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  #editAgencyOverlay .editAgencySplitPaneHead {
+    flex-wrap: wrap;
   }
   #editAgencyOverlay .editAgencyToggles {
     padding-top: 0;
   }
   #editAgencyOverlay .editAgencyListBox {
-    min-height: 12rem;
+    flex: 0 0 auto;
+    min-height: 10rem;
+    max-height: min(40dvh, 22rem);
+  }
+  #editAgencyOverlay .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #editAgencyOverlay .editAgencyFooter {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    background: var(--raised);
+    margin-top: 12px;
+    padding-top: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 16px var(--raised);
+    flex-wrap: wrap;
+  }
+  #editAgencyOverlay .editAgencyFooter .btn {
+    min-height: 44px;
+    width: 100%;
+  }
+  #editAgencyOverlay .editAgencyFooter .msg {
+    margin: 0 0 8px;
+    width: 100%;
+  }
+  #editAgencyOverlay .editAgencyFooter .msg:empty {
+    display: none;
+  }
+  #editAgencyOverlay .settings-help-popover {
+    max-width: min(320px, calc(100vw - 48px));
+    left: auto;
+    right: 0;
+  }
+  #editAgencyOverlay input:not([type="checkbox"]),
+  #editAgencyOverlay select {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  #editAgencyOverlay .pagination-first-last {
+    display: none;
   }
 }
 </style>

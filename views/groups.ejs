@@ -2209,14 +2209,14 @@ function renderMembersList(){
     const email = String(u.email || "").trim();
     return `
     <tr class="${active ? "" : "membersRowDisabled"}">
-      <td class="membersUserCell">
+      <td class="membersUserCell" data-label="User">
         <div class="membersUserName">${esc(u.username || "")}</div>
         <div class="muted membersUserMeta">${esc(u.name || "—")}</div>
         ${email ? `<div class="muted membersUserMeta">${esc(email)}</div>` : ""}
       </td>
-      <td class="membersAgencyCell">${esc(agency.name || agency.abbr || "—")}</td>
-      <td class="membersTemplateCell">${esc(template || "—")}</td>
-      <td class="membersRemoveCell">
+      <td class="membersAgencyCell" data-label="Agency">${esc(agency.name || agency.abbr || "—")}</td>
+      <td class="membersTemplateCell" data-label="Template">${esc(template || "—")}</td>
+      <td class="membersRemoveCell" data-label="Actions">
         <button class="btn danger" type="button"
           onclick="removeUserFromGroup('${esc(u.pk)}')">Remove</button>
       </td>
@@ -3860,30 +3860,202 @@ body.noScroll .main {
   #membersOverlay {
     padding: 0;
     align-items: stretch;
+    justify-content: stretch;
   }
   #editGroupOverlay .editGroupModal,
   #membersOverlay .membersModal {
     width: 100%;
-    max-height: 100%;
+    max-width: 100%;
     height: 100%;
+    max-height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
     border-radius: 0;
+  }
+  #editGroupOverlay .modalHeader,
+  #membersOverlay .modalHeader {
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    gap: 8px;
+    align-items: center;
+  }
+  #editGroupOverlay .modalHeaderLeft,
+  #membersOverlay .modalHeaderLeft {
+    flex: 1 1 auto;
+  }
+  #editGroupOverlay .modalHeaderLeft h2,
+  #membersOverlay .modalHeaderLeft h2 {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 16px;
+    line-height: 1.3;
+  }
+  #editGroupOverlay .modalHeader > .btn,
+  #membersOverlay .modalHeader > .btn {
+    flex: 0 0 auto;
+    min-height: 44px;
   }
   #editGroupOverlay .modalBody,
   #membersOverlay .modalBody {
     overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
   }
   #editGroupOverlay .editGroupForm,
-  #membersOverlay .membersSplit {
-    overflow: visible;
-  }
   #membersOverlay .membersSplit,
   #membersOverlay .membersSplit.has-mass {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    flex: 0 0 auto;
+    min-height: auto;
+    height: auto;
     grid-template-columns: 1fr;
+  }
+  #editGroupOverlay .editGroupTop .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #editGroupOverlay .editGroupTop label {
+    min-width: 0 !important;
+    width: 100%;
+  }
+  #editGroupOverlay .editGroupAdminAccess {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  #editGroupOverlay .editGroupAdminAccessHead {
+    flex-wrap: wrap;
   }
   #editGroupOverlay .editGroupAdminAccessBox,
   #membersOverlay .membersListBox,
   #membersOverlay .membersMassListBox {
-    min-height: 12rem;
+    flex: 0 0 auto;
+    min-height: 10rem;
+    max-height: min(40dvh, 22rem);
+  }
+  #membersOverlay .membersSplitPane {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  #membersOverlay .membersSplitPaneHead {
+    flex-wrap: wrap;
+  }
+  #membersOverlay .membersRange {
+    white-space: normal;
+  }
+  #membersOverlay .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #membersOverlay .membersMassPanes,
+  #membersOverlay #massAgencyPane,
+  #membersOverlay #massGroupPane,
+  #membersOverlay #massTemplatePane,
+  #membersOverlay #massAgencyTypePane,
+  #membersOverlay #massUsersPane {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  #membersOverlay .membersMassPanes > div > .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #membersOverlay .membersMassPanes > div > .row input {
+    width: 100%;
+  }
+  #membersOverlay .membersMassPanes > div > .row > .row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  #membersOverlay #massSegmented .segBtn {
+    flex: 1 1 calc(50% - 8px);
+    text-align: center;
+  }
+  #membersOverlay .membersTable thead {
+    display: none;
+  }
+  #membersOverlay .membersTable tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  #membersOverlay .membersTable td {
+    display: block;
+    min-width: 0 !important;
+    white-space: normal;
+    padding: 0;
+  }
+  #membersOverlay .membersTable td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  #membersOverlay .membersUserCell::before,
+  #membersOverlay .membersRemoveCell::before {
+    display: none;
+  }
+  #membersOverlay .membersRemoveCell .btn {
+    width: 100%;
+    min-height: 44px;
+    margin-top: 4px;
+  }
+  #editGroupOverlay .editGroupFooter,
+  #membersOverlay .membersMassFooter {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    background: var(--raised);
+    margin-top: 12px;
+    padding-top: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 16px var(--raised);
+    flex-wrap: wrap;
+  }
+  #editGroupOverlay .editGroupFooter .btn,
+  #membersOverlay .membersMassFooter .btn {
+    min-height: 44px;
+    width: 100%;
+    white-space: normal;
+  }
+  #editGroupOverlay .editGroupFooter .msg,
+  #membersOverlay .membersMassFooter .msg {
+    margin: 0 0 8px;
+    width: 100%;
+  }
+  #editGroupOverlay .editGroupFooter .msg:empty,
+  #membersOverlay .membersMassFooter .msg:empty {
+    display: none;
+  }
+  #editGroupOverlay input:not([type="checkbox"]),
+  #editGroupOverlay select,
+  #membersOverlay input:not([type="checkbox"]),
+  #membersOverlay select {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  #membersOverlay .pagination-first-last {
+    display: none;
   }
 }
 </style>
