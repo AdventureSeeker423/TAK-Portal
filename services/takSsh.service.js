@@ -1544,6 +1544,92 @@ async function fetchTakTruststoreP12FromRemote() {
   return { p12, password: password || "atakatak", sourcePath };
 }
 
+/**
+ * Fetch the TAK signing/intermediate CA truststore (.p12) from the server.
+ * Matches truststore*intermediate*.p12 by name (any CN), else any truststore*.p12
+ * that is not the root truststore — does not hardcode a specific CA title.
+ */
+async function fetchTakIntermediateTruststoreP12FromRemote() {
+  const cfg = getTakSshConfig();
+  if (!cfg) {
+    throw new Error("SSH is not configured. Complete SSH handshake in Settings.");
+  }
+
+  const remoteScript =
+    "bash -lc 'set -e; cd /opt/tak/certs; " +
+    "pass=atakatak; " +
+    "if [ -r cert-metadata.sh ]; then set +e; . ./cert-metadata.sh >/dev/null 2>&1; set -e; " +
+    "if [ -n \"$CAPASS\" ]; then pass=\"$CAPASS\"; elif [ -n \"$PASS\" ]; then pass=\"$PASS\"; fi; fi; " +
+    "p12path=\"\"; " +
+    "pick_from_dir() { " +
+    "  local d=\"$1\"; [ -d \"$d\" ] || return 0; " +
+    "  local f bn; " +
+    "  for f in \"$d\"/truststore*.p12; do " +
+    "    [ -f \"$f\" ] || continue; " +
+    "    bn=$(basename \"$f\"); " +
+    "    case \"$bn\" in *[Ii][Nn][Tt][Ee][Rr][Mm][Ee][Dd][Ii][Aa][Tt][Ee]*) p12path=\"$f\"; return 0;; esac; " +
+    "  done; " +
+    "  for f in \"$d\"/truststore*.p12; do " +
+    "    [ -f \"$f\" ] || continue; " +
+    "    bn=$(basename \"$f\"); " +
+    "    case \"$bn\" in *[Rr][Oo][Oo][Tt]*) continue;; esac; " +
+    "    p12path=\"$f\"; return 0; " +
+    "  done; " +
+    "}; " +
+    "pick_from_dir ./files; " +
+    "if [ -z \"$p12path\" ]; then pick_from_dir .; fi; " +
+    "if [ -z \"$p12path\" ]; then pick_from_dir /opt/tak/certs/files; fi; " +
+    "if [ -z \"$p12path\" ]; then pick_from_dir /opt/tak/certs; fi; " +
+    "if [ -z \"$p12path\" ]; then echo \"Missing intermediate truststore*.p12 on TAK server\" 1>&2; exit 44; fi; " +
+    "echo __TAK_TRUST_PASS_BEGIN__; printf \"%s\" \"$pass\"; echo; echo __TAK_TRUST_PASS_END__; " +
+    "echo __TAK_TRUST_PATH_BEGIN__; printf \"%s\" \"$p12path\"; echo; echo __TAK_TRUST_PATH_END__; " +
+    "echo __TAK_TRUST_P12_BEGIN__; base64 \"$p12path\" | tr -d \"\\n\"; echo; echo __TAK_TRUST_P12_END__'";
+
+  const connect = toConnectConfig(cfg);
+  const mode = await getPrivilegedMode(connect);
+  const command = buildPrivilegedCommand(
+    remoteScript,
+    mode,
+    takCertCommandOptions(connect, { runAsUser: "tak" })
+  );
+  const result = await execOverSsh(connect, command, 45000);
+  if (!result.ok) {
+    throw new Error(
+      result.message || "Failed to fetch TAK intermediate truststore from the TAK server."
+    );
+  }
+
+  const out = String(result.stdout || "");
+  const passMatch = out.match(/__TAK_TRUST_PASS_BEGIN__\s*([\s\S]*?)\s*__TAK_TRUST_PASS_END__/);
+  const pathMatch = out.match(/__TAK_TRUST_PATH_BEGIN__\s*([\s\S]*?)\s*__TAK_TRUST_PATH_END__/);
+  const p12Match = out.match(/__TAK_TRUST_P12_BEGIN__\s*([\s\S]*?)\s*__TAK_TRUST_P12_END__/);
+  if (!p12Match) {
+    throw new Error("Remote intermediate truststore output could not be parsed.");
+  }
+  const p12B64 = String(p12Match[1] || "").replace(/\s+/g, "");
+  const p12 = Buffer.from(p12B64, "base64");
+  if (!p12.length) {
+    throw new Error("Remote intermediate truststore was empty.");
+  }
+  const password = String(passMatch && passMatch[1] != null ? passMatch[1] : "atakatak").replace(
+    /\r?\n/g,
+    ""
+  );
+  const sourcePath = String(pathMatch && pathMatch[1] ? pathMatch[1] : "").trim();
+  const baseName = path.basename(sourcePath || "truststore-intermediate.p12");
+  const safeFileName =
+    String(baseName || "truststore-intermediate.p12")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^\.+/, "") || "truststore-intermediate.p12";
+  return {
+    p12,
+    password: password || "atakatak",
+    sourcePath,
+    fileName: safeFileName,
+  };
+}
+
 const REMOTE_TMP_SYNC_DIR = "/tmp/tak-portal-plugin-sync";
 
 function withSshConnection(connectConfig, timeoutMs, workFn) {
@@ -1756,4 +1842,5 @@ module.exports = {
   isPrivilegedSshReady,
   createTakClientCertForIntegration,
   fetchTakTruststoreP12FromRemote,
+  fetchTakIntermediateTruststoreP12FromRemote,
 };

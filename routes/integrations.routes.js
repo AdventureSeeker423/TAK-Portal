@@ -486,9 +486,33 @@ router.get("/:userId/certs/download", async (req, res) => {
     const safeName = String(username).replace(/[^a-z0-9-]/g, "");
     const includesP12 =
       !!(certPaths.p12Path && fs.existsSync(certPaths.p12Path));
-    const fileList = includesP12
-      ? `${safeName}.pem, ${safeName}.key, ${safeName}.p12`
-      : `${safeName}.pem, ${safeName}.key`;
+
+    let intermediateTrust = null;
+    let intermediateError = "";
+    try {
+      intermediateTrust = await takSshSvc.fetchTakIntermediateTruststoreP12FromRemote();
+    } catch (err) {
+      intermediateError = String(err?.message || err || "Intermediate truststore unavailable");
+      console.warn(
+        `[integrations] Intermediate truststore not included in cert zip for "${username}":`,
+        intermediateError
+      );
+    }
+    const intermediateFileName =
+      intermediateTrust && intermediateTrust.p12 && intermediateTrust.p12.length
+        ? String(intermediateTrust.fileName || "truststore-intermediate.p12")
+        : "";
+
+    const filesIncluded = includesP12 ? ["pem", "key", "p12"] : ["pem", "key"];
+    if (intermediateFileName) filesIncluded.push("intermediateTruststore");
+    const fileListParts = [
+      `${safeName}.pem`,
+      `${safeName}.key`,
+      ...(includesP12 ? [`${safeName}.p12`] : []),
+      ...(intermediateFileName ? [intermediateFileName] : []),
+    ];
+    const fileList = fileListParts.join(", ");
+
     auditSvc.logEvent({
       actor: req.authentikUser || null,
       request: {
@@ -503,7 +527,10 @@ router.get("/:userId/certs/download", async (req, res) => {
         username,
         displayName: String(user?.name || "").trim() || undefined,
         zipFileName: `${safeName}-certs.zip`,
-        filesIncluded: includesP12 ? ["pem", "key", "p12"] : ["pem", "key"],
+        filesIncluded,
+        intermediateTruststore: intermediateFileName || undefined,
+        intermediateTruststoreSource: intermediateTrust?.sourcePath || undefined,
+        intermediateTruststoreSkipped: intermediateFileName ? undefined : intermediateError || undefined,
         summary: `Downloaded integration certificate bundle for ${username} (${fileList} in zip).`,
       },
     });
@@ -526,6 +553,9 @@ router.get("/:userId/certs/download", async (req, res) => {
     archive.file(certPaths.keyPath, { name: `${safeName}.key` });
     if (certPaths.p12Path && fs.existsSync(certPaths.p12Path)) {
       archive.file(certPaths.p12Path, { name: `${safeName}.p12` });
+    }
+    if (intermediateTrust?.p12?.length && intermediateFileName) {
+      archive.append(intermediateTrust.p12, { name: intermediateFileName });
     }
     archive.finalize();
   } catch (err) {
