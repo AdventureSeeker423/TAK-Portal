@@ -4,8 +4,8 @@
 <main class="main">
   <h1>Plugin Manager</h1>
 
-  <!-- Link TAK.gov Account (OAuth 2.0 device flow – same as OpenTAKServer). When linked, only show badge. -->
-  <div class="card">
+  <!-- Link TAK.gov Account (OAuth 2.0 device flow – same as OpenTAKServer). Hidden entirely when linked. -->
+  <div class="card" id="takGovLinkCard">
     <h2>Link TAK.gov Account</h2>
     <div id="linkSetupBlock">
       <div class="grid2">
@@ -27,10 +27,6 @@
       <a id="verificationUriLink" href="https://tak.gov/register-device" target="_blank" rel="noopener noreferrer" style="display: none;" aria-hidden="true"></a>
     </div>
     <div id="linkStatus" class="msg"></div>
-    <div id="linkedBadge" class="row" style="display: none; margin-top: 8px; align-items: center; gap: 10px;">
-      <span class="status-pill status-connected">TAK.gov account linked</span>
-      <button class="btn" type="button" id="unlinkBtnBadge">Unlink account</button>
-    </div>
   </div>
 
   <!-- Downloaded plugins: cards (above Plugin Browser) -->
@@ -86,9 +82,12 @@
     </div>
   </div>
 
-  <!-- TAK.gov Plugin Browser (visible when linked) -->
+  <!-- TAK.gov Plugin Browser (browse UI visible when linked) -->
   <div class="card" id="marketplaceCard">
-    <h2 style="margin-top: 0;">TAK Plugin Browser</h2>
+    <div class="plugin-browser-header" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 0;">
+      <h2 style="margin: 0;">TAK Plugin Browser</h2>
+      <button class="btn" type="button" id="unlinkBtnBadge" style="display: none; margin-left: auto;">Unlink Account</button>
+    </div>
     <div id="marketplaceBrowse" style="display: none;">
       <div class="row" style="flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px;">
         <label>ATAK version
@@ -252,7 +251,7 @@
   const linkCodeArea = document.getElementById("linkCodeArea");
   const verificationUriLink = document.getElementById("verificationUriLink");
   const linkStatus = document.getElementById("linkStatus");
-  const linkedBadge = document.getElementById("linkedBadge");
+  const takGovLinkCard = document.getElementById("takGovLinkCard");
   const pluginFile = document.getElementById("pluginFile");
   const uploadName = document.getElementById("uploadName");
   const uploadPluginBtn = document.getElementById("uploadPluginBtn");
@@ -523,19 +522,19 @@
       const link = data.takGovLink || {};
       const plugins = data.plugins || [];
       if (link.linked) {
-        linkedBadge.style.display = "flex";
-        const linkSetup = document.getElementById("linkSetupBlock");
-        if (linkSetup) linkSetup.style.display = "none";
+        if (takGovLinkCard) takGovLinkCard.style.display = "none";
+        if (unlinkBtn) unlinkBtn.style.display = "";
         linkCodeArea.style.display = "none";
         setLinkStatus("", true);
         if (marketplaceIntro) marketplaceIntro.style.display = "none";
         if (marketplaceBrowse) marketplaceBrowse.style.display = "block";
       } else {
+        if (takGovLinkCard) takGovLinkCard.style.display = "";
+        if (unlinkBtn) unlinkBtn.style.display = "none";
         const linkSetup = document.getElementById("linkSetupBlock");
         if (linkSetup) linkSetup.style.display = "";
         if (marketplaceIntro) marketplaceIntro.style.display = "block";
         if (marketplaceBrowse) marketplaceBrowse.style.display = "none";
-        linkedBadge.style.display = "none";
         if (link.linkCode && link.linkCodeExpiry && Date.now() < link.linkCodeExpiry) {
           linkCodeArea.style.display = "block";
           linkCodeDisplay.textContent = link.linkCode;
@@ -935,18 +934,19 @@
     }
   });
 
-  unlinkBtn.addEventListener("click", async function () {
-    if (!confirm("Unlink your TAK.gov account? Downloaded plugins will remain stored.")) return;
-    try {
-      const res = await fetch("/api/plugins/unlink", { method: "POST", headers: { "Content-Type": "application/json" } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Unlink failed");
-      setLinkStatus("Account unlinked.", true);
-      loadState();
-    } catch (err) {
-      setLinkStatus(err.message || "Error", false);
-    }
-  });
+  if (unlinkBtn) {
+    unlinkBtn.addEventListener("click", async function () {
+      if (!confirm("Unlink your TAK.gov account? Downloaded plugins will remain stored.")) return;
+      try {
+        const res = await fetch("/api/plugins/unlink", { method: "POST", headers: { "Content-Type": "application/json" } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Unlink failed");
+        loadState();
+      } catch (err) {
+        setMarketplaceMsg(err.message || "Unlink failed", false);
+      }
+    });
+  }
 
   uploadPluginBtn.addEventListener("click", function () {
     const file = pluginFile && pluginFile.files && pluginFile.files[0];
@@ -1022,10 +1022,13 @@
   const initialPlugins = typeof plugins !== "undefined" && Array.isArray(plugins) ? plugins : [];
   const initialLink = typeof takGovLink !== "undefined" && takGovLink ? takGovLink : { linked: false };
   if (initialLink.linked) {
-    linkedBadge.style.display = "flex";
+    if (takGovLinkCard) takGovLinkCard.style.display = "none";
+    if (unlinkBtn) unlinkBtn.style.display = "";
     if (marketplaceIntro) marketplaceIntro.style.display = "none";
     if (marketplaceBrowse) marketplaceBrowse.style.display = "block";
   } else {
+    if (takGovLinkCard) takGovLinkCard.style.display = "";
+    if (unlinkBtn) unlinkBtn.style.display = "none";
     if (marketplaceIntro) marketplaceIntro.style.display = "block";
     if (marketplaceBrowse) marketplaceBrowse.style.display = "none";
   }
