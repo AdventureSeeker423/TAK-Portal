@@ -3963,12 +3963,14 @@ body .agenciesTable tr.row-disabled td {
 
 body #pageInfoTop,
 body #pageInfoBottom,
-body #agenciesPageInfo,
+body #agenciesPageInfoTop,
+body #agenciesPageInfoBottom,
 body #adminsPageInfo,
 body #groupsPageInfo,
 body #membersPageInfo,
 body #integrationsPageInfo,
-body #templatesPageInfo {
+body #templatesPageInfoTop,
+body #templatesPageInfoBottom {
     background: var(--glass-fill);
     border-color: var(--glass-border);
 }

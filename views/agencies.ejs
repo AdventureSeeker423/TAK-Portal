@@ -56,12 +56,12 @@
     </div>
     <div id="agenciesListMsg" class="msg"></div>
 
-    <div class="pagination" id="agenciesPagination" style="display:none;">
-      <button class="btn pagination-first-last" type="button" id="agenciesFirstBtn">First</button>
-      <button class="btn" type="button" id="agenciesPrevBtn">Previous</button>
-      <span id="agenciesPageInfo"></span>
-      <button class="btn" type="button" id="agenciesNextBtn">Next</button>
-      <button class="btn pagination-first-last" type="button" id="agenciesLastBtn">Last</button>
+    <div class="pagination" id="agenciesPaginationTop" style="display:none;">
+      <button class="btn pagination-first-last" type="button" id="agenciesFirstBtnTop">First</button>
+      <button class="btn" type="button" id="agenciesPrevBtnTop">Previous</button>
+      <span id="agenciesPageInfoTop"></span>
+      <button class="btn" type="button" id="agenciesNextBtnTop">Next</button>
+      <button class="btn pagination-first-last" type="button" id="agenciesLastBtnTop">Last</button>
     </div>
 
     <div class="listCardTableWrap">
@@ -82,6 +82,14 @@
         </thead>
         <tbody id="tbody"></tbody>
       </table>
+    </div>
+
+    <div class="pagination" id="agenciesPaginationBottom" style="display:none;">
+      <button class="btn pagination-first-last" type="button" id="agenciesFirstBtnBottom">First</button>
+      <button class="btn" type="button" id="agenciesPrevBtnBottom">Previous</button>
+      <span id="agenciesPageInfoBottom"></span>
+      <button class="btn" type="button" id="agenciesNextBtnBottom">Next</button>
+      <button class="btn pagination-first-last" type="button" id="agenciesLastBtnBottom">Last</button>
     </div>
   </div>
 
@@ -289,12 +297,18 @@ const agencyTypeFilter = document.getElementById("agencyTypeFilter");
 const agencyColorFilter = document.getElementById("agencyColorFilter");
 const agencySearch = document.getElementById("agencySearch");
 const agenciesListMsg = document.getElementById("agenciesListMsg");
-const agenciesPagination = document.getElementById("agenciesPagination");
-const agenciesFirstBtn = document.getElementById("agenciesFirstBtn");
-const agenciesPrevBtn = document.getElementById("agenciesPrevBtn");
-const agenciesNextBtn = document.getElementById("agenciesNextBtn");
-const agenciesLastBtn = document.getElementById("agenciesLastBtn");
-const agenciesPageInfo = document.getElementById("agenciesPageInfo");
+const agenciesPaginationTop = document.getElementById("agenciesPaginationTop");
+const agenciesPaginationBottom = document.getElementById("agenciesPaginationBottom");
+const agenciesFirstBtnTop = document.getElementById("agenciesFirstBtnTop");
+const agenciesPrevBtnTop = document.getElementById("agenciesPrevBtnTop");
+const agenciesNextBtnTop = document.getElementById("agenciesNextBtnTop");
+const agenciesLastBtnTop = document.getElementById("agenciesLastBtnTop");
+const agenciesPageInfoTop = document.getElementById("agenciesPageInfoTop");
+const agenciesFirstBtnBottom = document.getElementById("agenciesFirstBtnBottom");
+const agenciesPrevBtnBottom = document.getElementById("agenciesPrevBtnBottom");
+const agenciesNextBtnBottom = document.getElementById("agenciesNextBtnBottom");
+const agenciesLastBtnBottom = document.getElementById("agenciesLastBtnBottom");
+const agenciesPageInfoBottom = document.getElementById("agenciesPageInfoBottom");
 
 let agencies = [];
 /** Snapshots per agency id when opening the edit modal (Save Changes applies diffs). */
@@ -561,6 +575,26 @@ function updateAgenciesListMsg(shown, total) {
   } else {
     agenciesListMsg.textContent = `Showing ${n} of ${t} agenc${t === 1 ? "y" : "ies"}.`;
   }
+}
+
+function updateAgenciesPaginationControls(total, totalPages) {
+  const show = total > AGENCIES_PAGE_SIZE;
+  if (agenciesPaginationTop) agenciesPaginationTop.style.display = show ? "flex" : "none";
+  if (agenciesPaginationBottom) agenciesPaginationBottom.style.display = show ? "flex" : "none";
+  if (!show) return;
+
+  const infoText = `Page ${agenciesPage} of ${totalPages}`;
+  if (agenciesPageInfoTop) agenciesPageInfoTop.textContent = infoText;
+  if (agenciesPageInfoBottom) agenciesPageInfoBottom.textContent = infoText;
+
+  const disablePrev = agenciesPage <= 1;
+  const disableNext = agenciesPage >= totalPages;
+  [agenciesFirstBtnTop, agenciesFirstBtnBottom, agenciesPrevBtnTop, agenciesPrevBtnBottom].forEach((btn) => {
+    if (btn) btn.disabled = disablePrev;
+  });
+  [agenciesNextBtnTop, agenciesNextBtnBottom, agenciesLastBtnTop, agenciesLastBtnBottom].forEach((btn) => {
+    if (btn) btn.disabled = disableNext;
+  });
 }
 
 function isAgencyStateFederal(a) {
@@ -989,14 +1023,9 @@ function renderAgencies(){
   const pageRows = total > AGENCIES_PAGE_SIZE
     ? rows.slice((agenciesPage - 1) * AGENCIES_PAGE_SIZE, agenciesPage * AGENCIES_PAGE_SIZE)
     : rows;
-  if (agenciesPagination) agenciesPagination.style.display = total > AGENCIES_PAGE_SIZE ? "flex" : "none";
-  if (agenciesPageInfo) agenciesPageInfo.textContent = `Page ${agenciesPage} of ${totalPages}`;
-  if (agenciesFirstBtn) agenciesFirstBtn.disabled = agenciesPage <= 1;
-  if (agenciesPrevBtn) agenciesPrevBtn.disabled = agenciesPage <= 1;
-  if (agenciesNextBtn) agenciesNextBtn.disabled = agenciesPage >= totalPages;
-  if (agenciesLastBtn) agenciesLastBtn.disabled = agenciesPage >= totalPages;
+  updateAgenciesPaginationControls(total, totalPages);
 
-  updateAgenciesListMsg(total, (agencies || []).length);
+  updateAgenciesListMsg(pageRows.length, total);
 
   if (!pageRows.length) {
     tbody.innerHTML =
@@ -2831,36 +2860,40 @@ if (exportAgenciesCsvBtn) {
   });
 }
 
-if (agenciesFirstBtn) {
-  agenciesFirstBtn.onclick = () => {
+[agenciesFirstBtnTop, agenciesFirstBtnBottom].forEach((btn) => {
+  if (!btn) return;
+  btn.onclick = () => {
     if (agenciesPage <= 1) return;
     agenciesPage = 1;
     renderAgencies();
   };
-}
-if (agenciesPrevBtn) {
-  agenciesPrevBtn.onclick = () => {
+});
+[agenciesPrevBtnTop, agenciesPrevBtnBottom].forEach((btn) => {
+  if (!btn) return;
+  btn.onclick = () => {
     if (agenciesPage <= 1) return;
     agenciesPage -= 1;
     renderAgencies();
   };
-}
-if (agenciesNextBtn) {
-  agenciesNextBtn.onclick = () => {
+});
+[agenciesNextBtnTop, agenciesNextBtnBottom].forEach((btn) => {
+  if (!btn) return;
+  btn.onclick = () => {
     const totalPages = Math.max(1, Math.ceil(getFilteredAgencies().length / AGENCIES_PAGE_SIZE));
     if (agenciesPage >= totalPages) return;
     agenciesPage += 1;
     renderAgencies();
   };
-}
-if (agenciesLastBtn) {
-  agenciesLastBtn.onclick = () => {
+});
+[agenciesLastBtnTop, agenciesLastBtnBottom].forEach((btn) => {
+  if (!btn) return;
+  btn.onclick = () => {
     const totalPages = Math.max(1, Math.ceil(getFilteredAgencies().length / AGENCIES_PAGE_SIZE));
     if (agenciesPage >= totalPages) return;
     agenciesPage = totalPages;
     renderAgencies();
   };
-}
+});
 
 function applyAgencyListFilter() {
   agenciesPage = 1;
@@ -2896,6 +2929,7 @@ agencyTable.querySelectorAll("thead th[data-sort]").forEach(th => {
       sortState.key = key;
       sortState.dir = 1;
     }
+    agenciesPage = 1;
     renderAgencies();
   });
 
@@ -2968,7 +3002,8 @@ if (addForm) {
   cursor: default;
 }
 
-#agenciesPageInfo,
+#agenciesPageInfoTop,
+#agenciesPageInfoBottom,
 #adminsPageInfo {
   padding: 3px 10px;
   border-radius: 999px;

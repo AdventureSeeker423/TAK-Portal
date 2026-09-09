@@ -97,12 +97,12 @@
 
     <div id="templateListMsg" class="msg"></div>
 
-    <div class="pagination" id="templatesPagination" style="display:none;">
-      <button class="btn pagination-first-last" type="button" id="templatesFirstBtn">First</button>
-      <button class="btn" type="button" id="templatesPrevBtn">Previous</button>
-      <span id="templatesPageInfo"></span>
-      <button class="btn" type="button" id="templatesNextBtn">Next</button>
-      <button class="btn pagination-first-last" type="button" id="templatesLastBtn">Last</button>
+    <div class="pagination" id="templatesPaginationTop" style="display:none;">
+      <button class="btn pagination-first-last" type="button" id="templatesFirstBtnTop">First</button>
+      <button class="btn" type="button" id="templatesPrevBtnTop">Previous</button>
+      <span id="templatesPageInfoTop"></span>
+      <button class="btn" type="button" id="templatesNextBtnTop">Next</button>
+      <button class="btn pagination-first-last" type="button" id="templatesLastBtnTop">Last</button>
     </div>
 
     <div class="listCardTableWrap">
@@ -121,6 +121,14 @@
         </thead>
         <tbody id="tbody"></tbody>
       </table>
+    </div>
+
+    <div class="pagination" id="templatesPaginationBottom" style="display:none;">
+      <button class="btn pagination-first-last" type="button" id="templatesFirstBtnBottom">First</button>
+      <button class="btn" type="button" id="templatesPrevBtnBottom">Previous</button>
+      <span id="templatesPageInfoBottom"></span>
+      <button class="btn" type="button" id="templatesNextBtnBottom">Next</button>
+      <button class="btn pagination-first-last" type="button" id="templatesLastBtnBottom">Last</button>
     </div>
   </div>
 
@@ -220,12 +228,18 @@ const templateNameSearch = document.getElementById("templateNameSearch");
 const templateAgencyFilterSelect = document.getElementById("templateAgencyFilterSelect");
 const TEMPLATES_PAGE_SIZE = 25;
 let templatesPage = 1;
-const templatesPagination = document.getElementById("templatesPagination");
-const templatesFirstBtn = document.getElementById("templatesFirstBtn");
-const templatesPrevBtn = document.getElementById("templatesPrevBtn");
-const templatesNextBtn = document.getElementById("templatesNextBtn");
-const templatesLastBtn = document.getElementById("templatesLastBtn");
-const templatesPageInfo = document.getElementById("templatesPageInfo");
+const templatesPaginationTop = document.getElementById("templatesPaginationTop");
+const templatesPaginationBottom = document.getElementById("templatesPaginationBottom");
+const templatesFirstBtnTop = document.getElementById("templatesFirstBtnTop");
+const templatesPrevBtnTop = document.getElementById("templatesPrevBtnTop");
+const templatesNextBtnTop = document.getElementById("templatesNextBtnTop");
+const templatesLastBtnTop = document.getElementById("templatesLastBtnTop");
+const templatesPageInfoTop = document.getElementById("templatesPageInfoTop");
+const templatesFirstBtnBottom = document.getElementById("templatesFirstBtnBottom");
+const templatesPrevBtnBottom = document.getElementById("templatesPrevBtnBottom");
+const templatesNextBtnBottom = document.getElementById("templatesNextBtnBottom");
+const templatesLastBtnBottom = document.getElementById("templatesLastBtnBottom");
+const templatesPageInfoBottom = document.getElementById("templatesPageInfoBottom");
 
 // ---- sortable Existing Templates table ----
 let viewTemplates = []; // [{ t, idx }] where idx is the original index in the stored templates array
@@ -338,7 +352,6 @@ function updateSortIndicators(){
 }
 
 function applySortAndRender(){
-  const agencyScoped = getAgencyScopedTemplatePairs();
   const filtered = getFilteredTemplatePairs();
   const sorted = stableSort(filtered, sortState.key, sortState.dir);
   const total = sorted.length;
@@ -348,15 +361,30 @@ function applySortAndRender(){
   const pageList = total > TEMPLATES_PAGE_SIZE
     ? sorted.slice((templatesPage - 1) * TEMPLATES_PAGE_SIZE, templatesPage * TEMPLATES_PAGE_SIZE)
     : sorted;
-  if (templatesPagination) templatesPagination.style.display = total > TEMPLATES_PAGE_SIZE ? "flex" : "none";
-  if (templatesPageInfo) templatesPageInfo.textContent = `Page ${templatesPage} of ${totalPages}`;
-  if (templatesFirstBtn) templatesFirstBtn.disabled = templatesPage <= 1;
-  if (templatesPrevBtn) templatesPrevBtn.disabled = templatesPage <= 1;
-  if (templatesNextBtn) templatesNextBtn.disabled = templatesPage >= totalPages;
-  if (templatesLastBtn) templatesLastBtn.disabled = templatesPage >= totalPages;
+  updateTemplatesPaginationControls(total, totalPages);
   renderTemplates(pageList);
   updateSortIndicators();
-  updateTemplateListMsg(sorted.length, agencyScoped.length);
+  updateTemplateListMsg(pageList.length, total);
+}
+
+function updateTemplatesPaginationControls(total, totalPages) {
+  const show = total > TEMPLATES_PAGE_SIZE;
+  if (templatesPaginationTop) templatesPaginationTop.style.display = show ? "flex" : "none";
+  if (templatesPaginationBottom) templatesPaginationBottom.style.display = show ? "flex" : "none";
+  if (!show) return;
+
+  const infoText = `Page ${templatesPage} of ${totalPages}`;
+  if (templatesPageInfoTop) templatesPageInfoTop.textContent = infoText;
+  if (templatesPageInfoBottom) templatesPageInfoBottom.textContent = infoText;
+
+  const disablePrev = templatesPage <= 1;
+  const disableNext = templatesPage >= totalPages;
+  [templatesFirstBtnTop, templatesFirstBtnBottom, templatesPrevBtnTop, templatesPrevBtnBottom].forEach((btn) => {
+    if (btn) btn.disabled = disablePrev;
+  });
+  [templatesNextBtnTop, templatesNextBtnBottom, templatesLastBtnTop, templatesLastBtnBottom].forEach((btn) => {
+    if (btn) btn.disabled = disableNext;
+  });
 }
 
 // click-to-sort headers
@@ -377,6 +405,7 @@ function applySortAndRender(){
       sortState.key = key;
       sortState.dir = "asc";
     }
+    templatesPage = 1;
     applySortAndRender();
   });
 })();
@@ -928,35 +957,39 @@ if (templateAgencyFilterSelect) {
   });
 }
 
-if (templatesFirstBtn) {
-  templatesFirstBtn.onclick = () => {
+[templatesFirstBtnTop, templatesFirstBtnBottom].forEach((btn) => {
+  if (!btn) return;
+  btn.onclick = () => {
     if (templatesPage <= 1) return;
     templatesPage = 1;
     applySortAndRender();
   };
-}
-if (templatesPrevBtn) {
-  templatesPrevBtn.onclick = () => {
+});
+[templatesPrevBtnTop, templatesPrevBtnBottom].forEach((btn) => {
+  if (!btn) return;
+  btn.onclick = () => {
     if (templatesPage <= 1) return;
     templatesPage -= 1;
     applySortAndRender();
   };
-}
-if (templatesNextBtn) {
-  templatesNextBtn.onclick = () => {
+});
+[templatesNextBtnTop, templatesNextBtnBottom].forEach((btn) => {
+  if (!btn) return;
+  btn.onclick = () => {
     templatesPage += 1;
     applySortAndRender();
   };
-}
-if (templatesLastBtn) {
-  templatesLastBtn.onclick = () => {
+});
+[templatesLastBtnTop, templatesLastBtnBottom].forEach((btn) => {
+  if (!btn) return;
+  btn.onclick = () => {
     const total = getFilteredTemplatePairs().length;
     const totalPages = Math.max(1, Math.ceil(total / TEMPLATES_PAGE_SIZE));
     if (templatesPage >= totalPages) return;
     templatesPage = totalPages;
     applySortAndRender();
   };
-}
+});
 
 selectAllBtn.onclick = () => {
   Array.from(groupsBox.querySelectorAll('input[type="checkbox"]')).forEach(cb => {
@@ -1184,7 +1217,8 @@ if (exportTemplatesCsvBtn) {
   cursor: default;
 }
 
-#templatesPageInfo {
+#templatesPageInfoTop,
+#templatesPageInfoBottom {
   padding: 3px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);
