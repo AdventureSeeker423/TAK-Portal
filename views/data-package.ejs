@@ -140,8 +140,19 @@
   }
   .data-packages-page .data-packages-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 12px; width: 100%; }
   .data-packages-page .data-packages-table { width: 100%; }
-  .data-packages-page .data-packages-actions-cell { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .data-packages-page .data-packages-actions-cell .btn { margin: 0 !important; }
+  .data-packages-page .data-packages-actions-cell .cardActionsRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .data-packages-page .data-packages-actions-cell .cardActionsRow .btn {
+    width: auto;
+    margin: 0;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
   .data-packages-page #packageFilter{
     width: 100%;
     max-width: 100%;

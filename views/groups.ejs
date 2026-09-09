@@ -156,7 +156,7 @@
               Group Name <span class="sortIndicator" aria-hidden="true"></span>
             </th>
             <th class="sortable groupScopeCol" data-key="scope">
-              Agency <span class="sortIndicator" aria-hidden="true"></span>
+              Scope <span class="sortIndicator" aria-hidden="true"></span>
             </th>
             <th class="sortable groupBehaviorCol" data-key="behavior">
               Behavior <span class="sortIndicator" aria-hidden="true"></span>
@@ -1105,7 +1105,11 @@ function groupScopeLabel(g) {
     }
     return "";
   }
-  if (type === "county") return getPortalGroupCountyDetail(g) || detail;
+  if (type === "county") {
+    const county = String(getPortalGroupCountyDetail(g) || detail || "").trim();
+    if (!county) return "";
+    return / county$/i.test(county) ? county : `${county} County`;
+  }
   if (type === "region") return getPortalGroupRegionDetail(g) || detail;
   if (type === "state") return getPortalGroupStateDetail(g) || detail;
   return "";
@@ -1408,7 +1412,7 @@ function renderGroups(){
         ${patchedWithLabel ? `<div class="groupPatchedText">Channel Patched With ${esc(patchedWithLabel)}</div>` : ""}
         ${IS_GLOBAL_ADMIN && isPrivate ? `<span class="groupPrivateBadge cardMetaBadge">Private</span>` : ""}
       </td>
-      <td class="groupScopeCell" data-label="Agency">${esc(scopeLabel || "—")}</td>
+      <td class="groupScopeCell" data-label="Scope">${esc(scopeLabel || "—")}</td>
       <td class="groupBehaviorCell" data-label="Behavior">${esc(behaviorLabel)}</td>
       ${IS_GLOBAL_ADMIN ? `<td class="groupPrivateCell" data-label="Private">${isPrivate ? "Private" : ""}</td>` : ``}
       <td class="groupActionsCell cardActionsCell">

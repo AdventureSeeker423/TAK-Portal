@@ -299,9 +299,9 @@ function renderTemplates(list){
         <div class="tplNameText cardTitleText">${esc(t.name)}</div>
         ${t.isDefault ? `<span class="tplDefaultBadge cardMetaBadge">Default</span>` : ""}
       </td>
-      <td class="tplColorCell">${t.colorOverride ? esc(t.colorOverride) : "—"}</td>
+      <td class="tplColorCell">${t.colorOverride ? esc(t.colorOverride) : "Default"}</td>
       <td class="tplRoleCell" data-label="Role">${esc(t.role || "Team Member")}</td>
-      <td class="tplDefaultCell">${t.isDefault ? "Yes" : ""}</td>
+      <td class="tplDefaultCell">${t.isDefault ? "✓" : ""}</td>
       <td class="tplGroupsCell" data-label="Groups">${esc(formatGroupsCount(t.groups))}</td>
       <td class="tplUsersCell" data-label="Users">${templateUserCountForRow(t)}</td>
       <td class="tplActionsCell cardActionsCell">
