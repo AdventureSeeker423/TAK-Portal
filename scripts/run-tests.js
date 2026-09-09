@@ -53,6 +53,7 @@ const TEST_FILES = [
   "directoryPkText.test.js",
   "backup.test.js",
   "setupDeviceAccess.test.js",
+  "activeUserGate.test.js",
 ];
 
 const testsDir = path.join(__dirname, "..", "tests");

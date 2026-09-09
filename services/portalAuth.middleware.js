@@ -3,6 +3,7 @@ const { getBool, getString } = require("./env");
 const accessSvc = require("./access.service");
 const { parseGroupList } = require("./authzRoles.service");
 const permsSvc = require("./permissions.service");
+const activeUserGate = require("./activeUserGate.service");
 
 /**
  * Optional Authentik-based access control with role levels.
@@ -46,6 +47,12 @@ function attachPermissions(req, res, authUser, authEnabled) {
 }
 
 function portalAuthMiddleware(req, res, next) {
+  Promise.resolve()
+    .then(() => portalAuthMiddlewareAsync(req, res, next))
+    .catch((err) => next(err));
+}
+
+async function portalAuthMiddlewareAsync(req, res, next) {
   const authEnabled = getBool("PORTAL_AUTH_ENABLED", false);
   const method = String(req.method || "").toUpperCase();
 
@@ -228,6 +235,16 @@ function portalAuthMiddleware(req, res, next) {
     if (!permsSvc.canAccessPath(eff, normalizedPath, method)) {
       return deny();
     }
+  }
+
+  // Local directory disable: cheap cached check so open admin sessions die
+  // within TTL without a DB hit on every request.
+  const locallyActive = await activeUserGate.isLocalUserActive(username);
+  if (!locallyActive) {
+    if (normalizedPath.startsWith("/api/")) {
+      return res.status(403).json({ ok: false, error: "Account is disabled" });
+    }
+    return res.redirect("/logout");
   }
 
   const displayNameHeader =

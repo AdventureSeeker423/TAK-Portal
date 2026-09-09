@@ -2235,6 +2235,11 @@ async function bulkDisableUsersForAgency(users) {
   });
 
   invalidateUsersCache();
+  try {
+    require("./activeUserGate.service").invalidateAllActiveUsers();
+  } catch (_) {
+    /* optional gate */
+  }
 
   if (failures.length) {
     const detail = failures
@@ -2293,7 +2298,14 @@ async function bulkEnableUsersForAgency(userIds) {
     }
   });
 
-  if (reenabledIds.length > 0) invalidateUsersCache();
+  if (reenabledIds.length > 0) {
+    invalidateUsersCache();
+    try {
+      require("./activeUserGate.service").invalidateAllActiveUsers();
+    } catch (_) {
+      /* optional gate */
+    }
+  }
 
   if (failures.length) {
     const detail = failures
@@ -2577,6 +2589,11 @@ async function toggleUserActive(userId, isActive) {
   await authentikOutbox.waitForOutbox(outboxId, 8000);
 
   invalidateUsersCache();
+  try {
+    require("./activeUserGate.service").invalidateActiveUser(userBefore?.username);
+  } catch (_) {
+    /* optional gate */
+  }
 
   if (isActive && !wasActive) {
     try {
