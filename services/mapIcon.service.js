@@ -123,7 +123,7 @@ function resolveExplicitIcon({ type, affiliation, detail, usericon }) {
   );
 }
 
-/** Live map: custom usericon/path first, then 2525D milsym, then iconset PNG. */
+/** Live map: custom usericon/path first; 2525D milsym only when CoT asks for it. */
 async function resolveIconAsync({ type, affiliation, detail, usericon }) {
   const explicit = resolveExplicitIcon({ type, affiliation, detail, usericon });
   if (explicit) return explicit;
@@ -139,7 +139,7 @@ async function resolveIconAsync({ type, affiliation, detail, usericon }) {
     cotType = parsedPath.cotType || cotType;
   }
 
-  // Never milsym-render ground EUDs. Type2525.to2525D("a-f-G-U-C") is land aviation (bowtie).
+  // Team-dot presence (ATAK G-U-C / CloudTAK G-E-V-C). Never milsym/car frames.
   if (
     mapIconResolve.isStandardGroundEudType(type) ||
     mapIconResolve.isStandardGroundEudType(cotType)
@@ -147,14 +147,20 @@ async function resolveIconAsync({ type, affiliation, detail, usericon }) {
     return null;
   }
 
-  const milId = await mapMilSym.cotTypeTo2525DIconId(cotType);
-  if (milId) {
-    return {
-      iconId: milId,
-      iconsetUid: null,
-      relPath: null,
-      source: "milsym",
-    };
+  // Only invent 2525D when the CoT explicitly requests 2525 mapping (or prefer-list).
+  const wantMilsym =
+    mapIconResolve.prefersMilSymIconPath(ui.iconsetpath) ||
+    mapIconResolve.prefersMilSymCotType(cotType);
+  if (wantMilsym) {
+    const milId = await mapMilSym.cotTypeTo2525DIconId(cotType);
+    if (milId) {
+      return {
+        iconId: milId,
+        iconsetUid: null,
+        relPath: null,
+        source: "milsym",
+      };
+    }
   }
 
   return mapIconResolve.resolvePngIcon(

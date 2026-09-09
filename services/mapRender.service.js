@@ -150,7 +150,7 @@ function isAirCotType(type) {
   return parts.length >= 3 && parts[2].toUpperCase() === "A";
 }
 
-/** ATAK/TAK Aware self-SA ground (a-f-G-U-C). Other clients draw a team dot. */
+/** ATAK/TAK Aware self-SA ground (a-f-G-U-C). CloudTAK browser SA uses a-f-G-E-V-C. */
 function isStandardGroundEudCotType(type) {
   return mapIconResolve.isStandardGroundEudType(type);
 }

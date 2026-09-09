@@ -3,13 +3,16 @@ import { AFFILIATION_COLORS, STALE_COLOR_FACTOR, STALE_GRACE_MS } from "./consta
 import { computeLabelSortKey } from "./labelDeclutter";
 import { vectorId } from "./uidHash";
 
-/** ATAK/TAK Aware self-SA ground (a-f-G-U-C). Other clients draw a team dot. */
+/** ATAK/TAK Aware self-SA ground (a-f-G-U-C). CloudTAK browser SA uses a-f-G-E-V-C. Other clients draw a team dot. */
 export function isStandardGroundEudType(type: unknown): boolean {
   const t = String(type || "")
     .trim()
     .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
     .toLowerCase();
-  return /^a-[a-z0-9]+-g-u-c(?:-|$)/.test(t);
+  if (/^a-[a-z0-9]+-g-u-c(?:-|$)/.test(t)) return true;
+  // CloudTAK publishes live users as civilian vehicle — keep team dots, not milsym cars.
+  if (/^a-[a-z0-9]+-g-e-v-c(?:-|$)/.test(t)) return true;
+  return false;
 }
 
 function isAirCotType(type: unknown): boolean {

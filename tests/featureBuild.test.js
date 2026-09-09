@@ -53,6 +53,8 @@ async function run() {
   } = await loadFeatureBuild();
 
   assert.strictEqual(isStandardGroundEudType("a-f-G-U-C"), true);
+  assert.strictEqual(isStandardGroundEudType("a-f-G-E-V-C"), true);
+  assert.strictEqual(isStandardGroundEudType("a-f-G-E-V"), false);
   assert.strictEqual(isStandardGroundEudType("a-f-A-C-F"), false);
 
   assert.strictEqual(markerPaintsMapIcon(groundEud()), false);
@@ -63,6 +65,17 @@ async function run() {
   assert.strictEqual(feat.properties.iconId, "");
   assert.strictEqual(feat.properties.showCircle, 1);
   assert.strictEqual(feat.properties.usesMapIcon, 0);
+
+  const cloudTak = buildPaintFeature(
+    groundEud({
+      type: "a-f-G-E-V-C",
+      iconId: "2525D:10031000001211000000",
+      iconSource: "milsym",
+    })
+  );
+  assert.strictEqual(cloudTak.properties.iconId, "");
+  assert.strictEqual(cloudTak.properties.showCircle, 1);
+  assert.strictEqual(cloudTak.properties.usesMapIcon, 0);
 
   const custom = buildPaintFeature(
     groundEud({

@@ -10,7 +10,9 @@ const eud = {
 
 assert.strictEqual(stale.isLiveSaPresenceType("a-f-G-U-C"), true);
 assert.strictEqual(stale.isLiveSaPresenceType("a-h-G-U-C"), true);
+assert.strictEqual(stale.isLiveSaPresenceType("a-f-G-E-V-C"), true);
 assert.strictEqual(stale.isLiveSaPresenceType("a-f-A-C-F"), true);
+assert.strictEqual(stale.isLiveSaPresenceType("a-f-G-E-V"), false);
 assert.strictEqual(stale.isLiveSaPresenceType("a-u-G"), false);
 assert.strictEqual(stale.isLiveSaPresenceType("b-m-p-s-m"), false);
 

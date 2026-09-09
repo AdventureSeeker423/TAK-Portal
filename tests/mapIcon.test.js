@@ -43,11 +43,16 @@ async function runTests() {
   );
   assert.ok(/fed_fixed_wing/i.test(airHit.iconName || airHit.relPath || ""));
 
-  // Live map: 2525D milsym is primary; iconset PNG is fallback / explicit usericon only.
+  // Live map: 2525D milsym only when CoT explicitly requests 2525 mapping.
+  // Bare aircraft/vehicle CoT types use iconset PNG (or team dots for SA types).
   const liveFixed = await mapIcon.resolveIconAsync({ type: "a-f-A-C-F", affiliation: "friend" });
   assert.ok(liveFixed, "live map aircraft should resolve");
-  assert.strictEqual(liveFixed.source, "milsym");
-  assert.ok(/^2525D:/i.test(liveFixed.iconId), "live map aircraft should be 2525D, got " + liveFixed.iconId);
+  assert.notStrictEqual(
+    liveFixed.source,
+    "milsym",
+    "bare aircraft CoT must not invent 2525D milsym"
+  );
+  assert.ok(liveFixed.iconId, "live map aircraft should resolve a PNG icon");
   assert.strictEqual(
     mapRender.markerUsesMapIcon({
       type: "a-f-A-C-F",
@@ -56,11 +61,39 @@ async function runTests() {
       iconSource: liveFixed.source,
     }),
     true,
-    "2525D aircraft should paint as map icons"
+    "aircraft PNG should paint as map icons"
   );
   const liveVehicle = await mapIcon.resolveIconAsync({ type: "a-f-G-E-V", affiliation: "friend" });
   assert.ok(liveVehicle, "live map ground vehicle should resolve");
-  assert.strictEqual(liveVehicle.source, "milsym");
+  assert.notStrictEqual(
+    liveVehicle.source,
+    "milsym",
+    "bare vehicle CoT must not invent 2525D milsym"
+  );
+  const cloudTakSa = await mapIcon.resolveIconAsync({
+    type: "a-f-G-E-V-C",
+    affiliation: "friend",
+  });
+  assert.strictEqual(
+    cloudTakSa,
+    null,
+    "CloudTAK civilian-vehicle SA type must stay a team dot"
+  );
+  assert.strictEqual(
+    mapIconResolve.isStandardGroundEudType("a-f-G-E-V-C"),
+    true,
+    "a-f-G-E-V-C is treated as ground SA for team dots"
+  );
+  assert.strictEqual(
+    mapRender.markerUsesMapIcon({
+      type: "a-f-G-E-V-C",
+      origin: "eud",
+      iconId: "2525D:10031000001211000000",
+      iconSource: "milsym",
+    }),
+    false,
+    "CloudTAK SA stays a team dot even with leftover milsym id"
+  );
   const liveMapped2525b = await mapIcon.resolveIconAsync({
     type: "a-f-G-E-V",
     affiliation: "friend",

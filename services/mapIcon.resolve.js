@@ -113,9 +113,16 @@ function normalizeCotTypeKey(cotType) {
     .toLowerCase();
 }
 
-/** ATAK self-SA ground type (a-f-G-U-C and affiliation variants) — team dots, not 2525 frames. */
+/**
+ * Self-SA / presence that other TAK clients draw as a team-colored EUD dot.
+ * Includes ATAK a-*-G-U-C and CloudTAK browser SA (published as a-*-G-E-V-C).
+ */
 function isStandardGroundEudType(cotType) {
-  return /^a-[a-z0-9]+-g-u-c(?:-|$)/.test(normalizeCotTypeKey(cotType));
+  const t = normalizeCotTypeKey(cotType);
+  if (/^a-[a-z0-9]+-g-u-c(?:-|$)/.test(t)) return true;
+  // CloudTAK uses civilian-vehicle CoT for live users — never milsym/car frames.
+  if (/^a-[a-z0-9]+-g-e-v-c(?:-|$)/.test(t)) return true;
+  return false;
 }
 
 function isCotMappingIconPath(iconsetpath) {
@@ -407,7 +414,8 @@ function prefersMilSym2525C(iconsetpath) {
 
 function prefersMilSymIconPath(iconsetpath) {
   const raw = String(iconsetpath || "").trim();
-  if (/^COT_MAPPING_2525C\//i.test(raw)) return true;
+  // Explicit 2525 mapping paths (B or C) — not every CoT type string.
+  if (/^COT_MAPPING_2525[BC]\//i.test(raw)) return true;
   if (/^a-[a-z]-/i.test(raw) && raw.indexOf("/") === -1) return true;
   return false;
 }

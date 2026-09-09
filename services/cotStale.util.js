@@ -16,13 +16,14 @@ function isPortalLocatorUid(uid) {
   return /^takportal\.locator\./i.test(String(uid || ""));
 }
 
-/** Self-SA / PLI (ground EUD a-*-G-U-C and air a-*-A-*). */
+/** Self-SA / PLI (ground EUD a-*-G-U-C, CloudTAK a-*-G-E-V-C, and air a-*-A-*). */
 function isLiveSaPresenceType(type) {
   const t = String(type || "")
     .trim()
     .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
     .toLowerCase();
   if (/^a-[a-z0-9]+-g-u-c(?:-|$)/.test(t)) return true;
+  if (/^a-[a-z0-9]+-g-e-v-c(?:-|$)/.test(t)) return true;
   const parts = t.split("-").filter(Boolean);
   return parts.length >= 3 && parts[2] === "a";
 }
