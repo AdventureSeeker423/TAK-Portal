@@ -642,7 +642,7 @@
       const name = esc(p.display_name || p.package_name || p.name || "Plugin");
       const desc = (p.description || "").slice(0, 120);
       const alreadyInstalled = p.package_name && downloaded.some(function (d) { return d.package_name === p.package_name; });
-      const btnLabel = alreadyInstalled ? "Check for Update" : "Add to server";
+      const btnLabel = alreadyInstalled ? "Check for Update" : "Add To Server";
       const btnClass = alreadyInstalled ? "btn" : "btn success";
       return "<div class=\"plugin-card\" data-takgov-index=\"" + idx + "\">" +
         "<div class=\"plugin-card-header\">" +
@@ -680,7 +680,7 @@
             const errMsg = (data && data.error) || (typeof text === "string" && text.slice(0, 200)) || "Download failed";
             if (!res.ok) {
               setMarketplaceMsg(errMsg, false);
-              btn.textContent = btn.textContent === "Update" ? "Update" : "Add to server";
+              btn.textContent = btn.textContent === "Update" ? "Update" : "Add To Server";
               btn.disabled = false;
               return;
             }
@@ -689,7 +689,7 @@
             loadState();
           })
           .catch(function (err) {
-            btn.textContent = btn.classList.contains("success") ? "Add to server" : "Check for Update";
+            btn.textContent = btn.classList.contains("success") ? "Add To Server" : "Check for Update";
             btn.disabled = false;
             setMarketplaceMsg(err.message || "Failed to add plugin", false);
           });
@@ -786,11 +786,8 @@
         if (!dKey || !pKey) return !dVer;
         return dKey[1] + "." + dKey[2] === pKey[1] + "." + pKey[2];
       });
-      const btnLabel = alreadyInstalled ? "Check for Update" : "Add to server";
+      const btnLabel = alreadyInstalled ? "Check for Update" : "Add To Server";
       const btnClass = alreadyInstalled ? "btn" : "btn success";
-      const repoLink = p.repo_url
-        ? "<a class=\"btn\" href=\"" + esc(p.repo_url) + "\" target=\"_blank\" rel=\"noopener noreferrer\">GitHub</a>"
-        : "";
       return "<div class=\"plugin-card\" data-takwerx-index=\"" + idx + "\">" +
         "<div class=\"plugin-card-header\">" +
         "<div class=\"plugin-name\">" + name + "</div>" +
@@ -799,7 +796,6 @@
         (desc ? "<div class=\"plugin-desc\">" + esc(desc) + (desc.length >= 120 ? "…" : "") + "</div>" : "") +
         "<div class=\"plugin-actions\">" +
         "<button class=\"" + btnClass + "\" type=\"button\" data-takwerx-download data-takwerx-index=\"" + idx + "\">" + btnLabel + "</button>" +
-        repoLink +
         "</div></div>";
     }).join("");
     takwerxGrid.querySelectorAll("[data-takwerx-download]").forEach(function (btn) {
@@ -829,7 +825,7 @@
             const errMsg = (data && data.error) || (typeof text === "string" && text.slice(0, 200)) || "Download failed";
             if (!res.ok) {
               setTakwerxMsg(errMsg, false);
-              btn.textContent = alreadyInstalled ? "Check for Update" : "Add to server";
+              btn.textContent = alreadyInstalled ? "Check for Update" : "Add To Server";
               btn.disabled = false;
               return;
             }
@@ -839,7 +835,7 @@
             loadState();
           })
           .catch(function (err) {
-            btn.textContent = btn.classList.contains("success") ? "Add to server" : "Check for Update";
+            btn.textContent = btn.classList.contains("success") ? "Add To Server" : "Check for Update";
             btn.disabled = false;
             setTakwerxMsg(err.message || "Failed to add plugin", false);
           });
