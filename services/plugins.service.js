@@ -177,69 +177,219 @@ function takGovHttp2Get(url, accessToken, options = {}) {
   });
 }
 
+/**
+ * Only clear the stored link on definitive refresh-token death.
+ * Do NOT match bare words like "session" / "expired" — those caused false unlinks.
+ */
 const TAK_GOV_SESSION_EXPIRED_MARKERS = [
   "session doesn't have required client",
-  "invalid_grant",
-  "refresh token",
-  "session",
-  "expired",
+  "invalid refresh token",
+  "refresh token is not active",
+  "refresh token expired",
+  "token is not active",
+  "offline user session not found",
 ];
 
-function isTakGovSessionExpiredError(message) {
-  const lower = String(message || "").toLowerCase();
-  return TAK_GOV_SESSION_EXPIRED_MARKERS.some((m) => lower.includes(m));
+function isTakGovSessionExpiredError(error, description) {
+  const err = String(error || "").toLowerCase();
+  const desc = String(description || "").toLowerCase();
+  const combined = `${err} ${desc}`.trim();
+  if (err === "invalid_grant") return true;
+  return TAK_GOV_SESSION_EXPIRED_MARKERS.some((m) => combined.includes(m));
+}
+
+/** In-memory access token cache (TAK.gov access tokens last ~3 minutes). */
+let takGovAccessTokenCache = { accessToken: null, expiresAt: 0 };
+/** Single-flight refresh so concurrent callers don't rotate/invalidate each other. */
+let takGovRefreshInFlight = null;
+let takGovKeepaliveTimer = null;
+const TAK_GOV_ACCESS_TOKEN_SKEW_MS = 30 * 1000;
+const TAK_GOV_KEEPALIVE_MS = 2 * 60 * 1000;
+
+function clearTakGovAccessTokenCache() {
+  takGovAccessTokenCache = { accessToken: null, expiresAt: 0 };
+}
+
+function stopTakGovKeepalive() {
+  if (takGovKeepaliveTimer) {
+    clearInterval(takGovKeepaliveTimer);
+    takGovKeepaliveTimer = null;
+  }
+}
+
+/**
+ * While the portal process is running, periodically refresh so SSO-bound refresh
+ * tokens (when offline_access is not honored) do not idle-expire overnight.
+ */
+function startTakGovKeepalive() {
+  if (takGovKeepaliveTimer) return;
+  takGovKeepaliveTimer = setInterval(() => {
+    try {
+      const manifest = loadManifest();
+      if (!manifest.takGovLink?.linked || !manifest.takGovLink?.refreshToken) {
+        stopTakGovKeepalive();
+        return;
+      }
+      getTakGovAccessToken().catch((err) => {
+        console.warn("[plugins.service] TAK.gov keepalive refresh failed:", err?.message || err);
+      });
+    } catch (err) {
+      console.warn("[plugins.service] TAK.gov keepalive tick failed:", err?.message || err);
+    }
+  }, TAK_GOV_KEEPALIVE_MS);
+  if (typeof takGovKeepaliveTimer.unref === "function") {
+    takGovKeepaliveTimer.unref();
+  }
+}
+
+function clearStoredTakGovLink(manifest, reason) {
+  const updated = {
+    ...manifest.takGovLink,
+    linked: false,
+    refreshToken: null,
+    linkCode: null,
+    linkCodeExpiry: null,
+    deviceCode: null,
+    deviceCodeExpiry: null,
+    interval: null,
+    verificationUri: null,
+    verificationUriComplete: null,
+    accessTokenExpiresAt: null,
+    lastRefreshAt: null,
+    lastUnlinkReason: String(reason || "").slice(0, 500) || undefined,
+    unlinkedAt: Date.now(),
+  };
+  clearTakGovAccessTokenCache();
+  stopTakGovKeepalive();
+  saveManifest({ ...manifest, takGovLink: updated });
+  return updated;
+}
+
+async function refreshTakGovAccessTokenOnce(refreshToken) {
+  const formBody = new URLSearchParams({
+    client_id: TAK_GOV_CLIENT_ID,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    // Re-assert offline_access so Keycloak keeps / re-issues a long-lived offline token when allowed.
+    scope: "openid offline_access email profile",
+  }).toString();
+  const { statusCode, data } = await takGovHttp2Post(TAK_GOV_TOKEN_URL, formBody);
+  return { statusCode, data };
 }
 
 /**
  * Get a new access_token using stored refresh_token (for TAK.gov eud_api calls).
- * If TAK.gov returns a session/refresh error (e.g. "Session doesn't have required client"),
- * we clear the stored link so the user can re-link.
+ * Caches the access token, serializes refresh, and only clears the link on definitive
+ * refresh-token invalidation (after one retry for rotation races).
  * @returns {Promise<{ success: boolean, access_token?: string, error?: string, sessionExpired?: boolean }>}
  */
 async function getTakGovAccessToken() {
-  const manifest = loadManifest();
-  const refreshToken = manifest.takGovLink?.refreshToken;
-  if (!refreshToken) {
-    return { success: false, error: "Not linked to TAK.gov. Link your account first." };
+  const now = Date.now();
+  if (
+    takGovAccessTokenCache.accessToken &&
+    takGovAccessTokenCache.expiresAt > now + TAK_GOV_ACCESS_TOKEN_SKEW_MS
+  ) {
+    return { success: true, access_token: takGovAccessTokenCache.accessToken };
   }
-  try {
-    const formBody = new URLSearchParams({
-      client_id: TAK_GOV_CLIENT_ID,
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    }).toString();
-    const { statusCode, data } = await takGovHttp2Post(TAK_GOV_TOKEN_URL, formBody);
-    if (statusCode !== 200 || !data.access_token) {
-      const msg = data.error_description || data.error || `Token exchange returned ${statusCode}`;
-      if (isTakGovSessionExpiredError(msg)) {
-        const updated = {
-          ...manifest.takGovLink,
-          linked: false,
-          refreshToken: null,
-          linkCode: null,
-          linkCodeExpiry: null,
-          deviceCode: null,
-          deviceCodeExpiry: null,
-          interval: null,
-          verificationUri: null,
-        };
-        saveManifest({ ...manifest, takGovLink: updated });
-        return {
-          success: false,
-          error: "Your TAK.gov session has expired. Please unlink and link your account again: click Unlink account, then Get Link Code → enter the code at TAK.gov → Link Account.",
-          sessionExpired: true,
-        };
+
+  if (takGovRefreshInFlight) {
+    return takGovRefreshInFlight;
+  }
+
+  takGovRefreshInFlight = (async () => {
+    try {
+      // Re-check cache after winning the lock (another waiter may have refreshed).
+      const cachedNow = Date.now();
+      if (
+        takGovAccessTokenCache.accessToken &&
+        takGovAccessTokenCache.expiresAt > cachedNow + TAK_GOV_ACCESS_TOKEN_SKEW_MS
+      ) {
+        return { success: true, access_token: takGovAccessTokenCache.accessToken };
       }
-      return { success: false, error: msg };
-    }
-    if (data.refresh_token) {
-      const updated = { ...manifest.takGovLink, refreshToken: data.refresh_token };
+
+      let manifest = loadManifest();
+      let refreshToken = manifest.takGovLink?.refreshToken;
+      if (!refreshToken) {
+        return { success: false, error: "Not linked to TAK.gov. Link your account first." };
+      }
+
+      let statusCode;
+      let data;
+      try {
+        ({ statusCode, data } = await refreshTakGovAccessTokenOnce(refreshToken));
+      } catch (err) {
+        // Transient network/HTTP2 errors must NOT unlink.
+        return { success: false, error: err?.message || "Failed to get access token." };
+      }
+
+      if (statusCode !== 200 || !data.access_token) {
+        const errCode = data?.error;
+        const errDesc = data?.error_description || data?.error || `Token exchange returned ${statusCode}`;
+        if (isTakGovSessionExpiredError(errCode, errDesc)) {
+          // Refresh-token rotation race: another request may have already saved a new token.
+          manifest = loadManifest();
+          const newest = manifest.takGovLink?.refreshToken;
+          if (newest && newest !== refreshToken) {
+            try {
+              ({ statusCode, data } = await refreshTakGovAccessTokenOnce(newest));
+              if (statusCode === 200 && data.access_token) {
+                refreshToken = newest;
+              } else {
+                const reason = `${errCode || "invalid_grant"}: ${errDesc}`;
+                console.warn("[plugins.service] Clearing TAK.gov link after refresh failure:", reason);
+                clearStoredTakGovLink(manifest, reason);
+                return {
+                  success: false,
+                  error:
+                    "Your TAK.gov session has expired. Please unlink and link your account again: click Unlink account, then Get Link Code → enter the code at TAK.gov → Link Account.",
+                  sessionExpired: true,
+                };
+              }
+            } catch (retryErr) {
+              return { success: false, error: retryErr?.message || "Failed to get access token." };
+            }
+          } else {
+            const reason = `${errCode || "invalid_grant"}: ${errDesc}`;
+            console.warn("[plugins.service] Clearing TAK.gov link after refresh failure:", reason);
+            clearStoredTakGovLink(manifest, reason);
+            return {
+              success: false,
+              error:
+                "Your TAK.gov session has expired. Please unlink and link your account again: click Unlink account, then Get Link Code → enter the code at TAK.gov → Link Account.",
+              sessionExpired: true,
+            };
+          }
+        } else {
+          return { success: false, error: errDesc };
+        }
+      }
+
+      const expiresInSec = Number(data.expires_in) > 0 ? Number(data.expires_in) : 180;
+      const expiresAt = Date.now() + expiresInSec * 1000;
+      takGovAccessTokenCache = { accessToken: data.access_token, expiresAt };
+
+      manifest = loadManifest();
+      const updated = {
+        ...manifest.takGovLink,
+        linked: true,
+        lastRefreshAt: Date.now(),
+        accessTokenExpiresAt: expiresAt,
+      };
+      if (data.refresh_token) {
+        updated.refreshToken = data.refresh_token;
+      }
+      if (data.refresh_expires_in != null) {
+        updated.refreshExpiresIn = Number(data.refresh_expires_in) || null;
+      }
       saveManifest({ ...manifest, takGovLink: updated });
+      startTakGovKeepalive();
+      return { success: true, access_token: data.access_token };
+    } finally {
+      takGovRefreshInFlight = null;
     }
-    return { success: true, access_token: data.access_token };
-  } catch (err) {
-    return { success: false, error: err?.message || "Failed to get access token." };
-  }
+  })();
+
+  return takGovRefreshInFlight;
 }
 
 const TAK_GOV_PLUGINS_URL = "https://tak.gov/eud_api/software/v1/plugins";
@@ -587,8 +737,10 @@ async function getTakGovLinkState(generateNewCode = false) {
   }
 
   const hasValidCode = takGovLink.linkCode && takGovLink.linkCodeExpiry && Date.now() < takGovLink.linkCodeExpiry;
+  const isLinked = !!(takGovLink.linked && takGovLink.refreshToken);
+  if (isLinked) startTakGovKeepalive();
   return {
-    linked: !!takGovLink.linked,
+    linked: isLinked,
     linkCode: hasValidCode ? takGovLink.linkCode : null,
     linkCodeExpiry: takGovLink.linkCodeExpiry || null,
     verificationUri: takGovLink.verificationUri || "https://tak.gov/register-device",
@@ -622,6 +774,11 @@ async function linkTakGovAccount() {
 
     if (statusCode === 200 && data.access_token) {
       const refreshToken = data.refresh_token;
+      const expiresInSec = Number(data.expires_in) > 0 ? Number(data.expires_in) : 180;
+      const expiresAt = Date.now() + expiresInSec * 1000;
+      if (data.access_token) {
+        takGovAccessTokenCache = { accessToken: data.access_token, expiresAt };
+      }
       const updated = {
         ...takGovLink,
         linked: true,
@@ -632,8 +789,17 @@ async function linkTakGovAccount() {
         deviceCodeExpiry: null,
         interval: null,
         verificationUri: null,
+        verificationUriComplete: null,
+        linkedAt: Date.now(),
+        lastRefreshAt: Date.now(),
+        accessTokenExpiresAt: expiresAt,
+        refreshExpiresIn:
+          data.refresh_expires_in != null ? Number(data.refresh_expires_in) || null : null,
+        lastUnlinkReason: null,
+        unlinkedAt: null,
       };
       saveManifest({ ...manifest, takGovLink: updated });
+      startTakGovKeepalive();
       return { success: true, message: "TAK.gov account linked successfully." };
     }
 
@@ -658,18 +824,7 @@ async function linkTakGovAccount() {
  */
 function unlinkTakGovAccount() {
   const manifest = loadManifest();
-  const updated = {
-    ...manifest.takGovLink,
-    linked: false,
-    refreshToken: null,
-    linkCode: null,
-    linkCodeExpiry: null,
-    deviceCode: null,
-    deviceCodeExpiry: null,
-    interval: null,
-    verificationUri: null,
-  };
-  saveManifest({ ...manifest, takGovLink: updated });
+  clearStoredTakGovLink(manifest, "manual_unlink");
   return { success: true };
 }
 
@@ -992,3 +1147,13 @@ module.exports = {
   updatePluginFromTakGov,
   getUpdateStatus,
 };
+
+// Resume keepalive after process restart if already linked.
+try {
+  const bootManifest = loadManifest();
+  if (bootManifest.takGovLink?.linked && bootManifest.takGovLink?.refreshToken) {
+    startTakGovKeepalive();
+  }
+} catch (_) {
+  /* ignore */
+}
