@@ -33,14 +33,7 @@
   <div class="card">
     <h2 style="margin-top: 0;">Downloaded Plugins</h2>
     <div id="takServerSyncStatus" class="plugin-sync-status" aria-live="polite">
-      <div class="plugin-sync-status-main">
-        <strong>TAK Server auto-sync</strong>
-        <span id="takServerSyncLabel" class="muted">Checking…</span>
-      </div>
-      <div class="plugin-sync-status-actions">
-        <code id="takServerSyncUrl" class="plugin-sync-url" style="display:none;"></code>
-      </div>
-      <div id="takServerSyncDetail" class="muted" style="margin-top: 6px;"></div>
+      <span id="takServerSyncLabel" class="muted">Checking…</span>
     </div>
     <div class="row" style="flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px;">
       <label>Filter by ATAK version
@@ -173,36 +166,16 @@
   .btn.favorite.is-favorite { background: #f0d000; color: #000; }
   .marketplace-grid .plugin-card .plugin-desc { font-size: 0.85rem; color: var(--muted); max-height: 2.6em; overflow: hidden; text-overflow: ellipsis; }
   .plugin-sync-status {
-    margin-top: 10px;
-    margin-bottom: 4px;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--bg);
-  }
-  .plugin-sync-status-main {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 14px;
-    align-items: baseline;
-  }
-  .plugin-sync-status-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    margin-top: 8px;
-  }
-  .plugin-sync-url {
-    font-size: 0.8rem;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin: 4px 0 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: 0.9rem;
   }
   .plugin-sync-status.is-error #takServerSyncLabel { color: #c44; }
   .plugin-sync-status.is-success #takServerSyncLabel { color: #2a7; }
   .plugin-sync-status.is-blocked #takServerSyncLabel { color: #c80; }
+  .plugin-sync-status.is-syncing #takServerSyncLabel { color: var(--muted); }
 
   @media (max-width: 990px) {
     .plugin-cards {
@@ -1077,22 +1050,7 @@
   // --- TAK Server OTA auto-sync status ---
   const syncStatusEl = document.getElementById("takServerSyncStatus");
   const syncLabelEl = document.getElementById("takServerSyncLabel");
-  const syncDetailEl = document.getElementById("takServerSyncDetail");
-  const syncUrlEl = document.getElementById("takServerSyncUrl");
   let syncPollTimer = null;
-
-  function formatRelativeTime(iso) {
-    if (!iso) return "";
-    const t = Date.parse(iso);
-    if (!Number.isFinite(t)) return "";
-    const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
-    if (sec < 60) return sec + "s ago";
-    const min = Math.round(sec / 60);
-    if (min < 60) return min + "m ago";
-    const hr = Math.round(min / 60);
-    if (hr < 48) return hr + "h ago";
-    return Math.round(hr / 24) + "d ago";
-  }
 
   function applySyncStatus(sync) {
     if (!syncStatusEl || !syncLabelEl) return;
@@ -1100,42 +1058,29 @@
     const state = (sync && sync.state) || "idle";
     const portalCount = sync && sync.portalCount != null ? sync.portalCount : null;
     const syncedCount = sync && sync.syncedCount != null ? sync.syncedCount : null;
-    let label = "Idle";
+    let label = "";
     if (state === "pending" || state === "syncing" || (sync && sync.inProgress)) {
-      label = portalCount != null ? ("Auto-syncing " + portalCount + " plugin(s)…") : "Auto-syncing…";
+      label = portalCount != null ? (portalCount + "/" + portalCount + " syncing…") : "Syncing…";
       syncStatusEl.classList.add("is-syncing");
     } else if (state === "success") {
-      const counts =
+      label =
         portalCount != null && syncedCount != null
-          ? (syncedCount + "/" + portalCount + " on TAK Server")
-          : (syncedCount != null ? syncedCount + " on TAK Server" : "Synced");
-      label = counts + (sync.lastSuccessAt ? " · " + formatRelativeTime(sync.lastSuccessAt) : "");
+          ? syncedCount + "/" + portalCount + " on TAK Server"
+          : syncedCount != null
+            ? syncedCount + " on TAK Server"
+            : "Synced";
       syncStatusEl.classList.add("is-success");
     } else if (state === "blocked_ssh") {
-      label = "SSH required";
+      label = "SSH required for TAK Server sync";
       syncStatusEl.classList.add("is-blocked");
     } else if (state === "error") {
       label = "Sync failed";
       syncStatusEl.classList.add("is-error");
+    } else if (portalCount != null) {
+      label = (syncedCount != null ? syncedCount : 0) + "/" + portalCount + " on TAK Server";
     }
     syncLabelEl.textContent = label;
-    if (syncDetailEl) {
-      const parts = [];
-      if (sync && sync.message) parts.push(sync.message);
-      if (sync && sync.error) parts.push(sync.error);
-      syncDetailEl.textContent = parts.join(" ");
-    }
-    if (syncUrlEl) {
-      const url = sync && sync.updateServerUrl;
-      if (url) {
-        syncUrlEl.style.display = "";
-        syncUrlEl.textContent = url;
-        syncUrlEl.title = url;
-      } else {
-        syncUrlEl.style.display = "none";
-        syncUrlEl.textContent = "";
-      }
-    }
+    syncLabelEl.className = "";
   }
 
   function refreshSyncStatus() {
@@ -1155,7 +1100,7 @@
         }
       })
       .catch(function () {
-        applySyncStatus({ state: "error", message: "Could not load sync status." });
+        applySyncStatus({ state: "error" });
       });
   }
 
