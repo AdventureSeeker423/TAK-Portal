@@ -912,7 +912,7 @@ function addPluginFromFile(sourceFilePath, meta = {}) {
 /**
  * Add a plugin from a URL (download and store).
  * @param {string} downloadUrl - URL to the plugin file (e.g. from TAK.gov or direct link)
- * @param {{ name?: string, source?: string, atakFlavor?: string, atakVersion?: string }} meta
+ * @param {{ name?: string, source?: string, atakFlavor?: string, atakVersion?: string, description?: string, package_name?: string, version?: string }} meta
  * @returns {Promise<{ success: boolean, plugin?: object, error?: string }>}
  */
 async function addPluginFromUrl(downloadUrl, meta = {}) {
@@ -926,7 +926,9 @@ async function addPluginFromUrl(downloadUrl, meta = {}) {
       responseType: "arraybuffer",
       timeout: 120000,
       maxContentLength: 500 * 1024 * 1024, // 500 MB
+      maxRedirects: 5,
       validateStatus: (status) => status === 200,
+      headers: { "User-Agent": USER_AGENT },
     });
   } catch (err) {
     const msg = err?.response?.status
@@ -952,8 +954,24 @@ async function addPluginFromUrl(downloadUrl, meta = {}) {
   const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, "_") || "plugin.apk";
   const destPath = path.join(PLUGINS_DIR, safeName);
 
-  const existing = manifest.plugins.find((p) => p.filename === safeName);
+  const packageName = meta.package_name || null;
+  const incomingAtakVersion = meta.atakVersion || null;
+  const incomingCompatKey = getAtakCompatibilityKey(incomingAtakVersion);
+  let preservedFavorite = false;
+
+  // Prefer replace by package_name + ATAK compat (side-by-side versions), else same filename.
+  const existingByPkg = packageName
+    ? manifest.plugins.find((p) => {
+      if (p.package_name !== packageName) return false;
+      const existingCompatKey = getAtakCompatibilityKey(getAtakVersionValue(p));
+      if (!incomingCompatKey) return !existingCompatKey;
+      return existingCompatKey === incomingCompatKey;
+    })
+    : null;
+  const existingByFile = manifest.plugins.find((p) => p.filename === safeName);
+  const existing = existingByPkg || existingByFile;
   if (existing) {
+    preservedFavorite = existing.favorite === true;
     try {
       const oldPath = path.join(PLUGINS_DIR, existing.filename);
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
@@ -972,13 +990,16 @@ async function addPluginFromUrl(downloadUrl, meta = {}) {
   const plugin = {
     id,
     name: meta.name || path.basename(safeName, path.extname(safeName)) || safeName,
+    description: meta.description || null,
     filename: safeName,
     size: stat.size,
     downloadedAt: new Date().toISOString(),
     source: meta.source || "tak.gov",
     atakFlavor: meta.atakFlavor || null,
-    atakVersion: meta.atakVersion || null,
-    favorite: false,
+    atakVersion: incomingAtakVersion,
+    package_name: packageName,
+    version: meta.version || null,
+    favorite: preservedFavorite,
   };
   manifest.plugins.push(plugin);
   saveManifest(manifest);

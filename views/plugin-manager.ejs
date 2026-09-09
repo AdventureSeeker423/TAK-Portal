@@ -60,7 +60,32 @@
       <!-- Filled by JS -->
     </div>
     <div id="pluginsEmpty" style="display: none; margin-top: 16px; color: var(--muted);">
-      No plugins yet. Add plugins from the Plugin Browser below or use Manual Plugin Upload at the bottom.
+      No plugins yet. Add plugins from TAKwerx Plugins or the Plugin Browser below, or use Manual Plugin Upload at the bottom.
+    </div>
+  </div>
+
+  <!-- TAKwerx Plugins (public GitHub Releases; no TAK.gov link required) -->
+  <div class="card" id="takwerxCard">
+    <h2 style="margin-top: 0;">TAKwerx Plugins</h2>
+    <p class="muted" style="margin-top: 4px;">Community plugins from <a href="https://github.com/takwerx/atak-plugins" target="_blank" rel="noopener noreferrer">takwerx</a>. Pick the build that matches your ATAK version, then add it to this server.</p>
+    <div class="row" style="flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px;">
+      <label>ATAK version
+        <select id="takwerxVersion" style="min-width: 120px;">
+          <option value="5.8.0" selected>5.8.0</option>
+          <option value="5.7.0">5.7.0</option>
+          <option value="5.6.0">5.6.0</option>
+        </select>
+      </label>
+      <label style="flex: 1; min-width: 200px;">Search
+        <input type="text" id="takwerxSearch" placeholder="Search plugins…" style="width: 100%;" />
+      </label>
+    </div>
+    <div id="takwerxMsg" class="msg" style="margin-top: 8px;"></div>
+    <div id="takwerxGrid" class="plugin-cards marketplace-grid" style="display: none; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 16px;">
+      <!-- TAKwerx plugin cards -->
+    </div>
+    <div id="takwerxEmpty" style="display: none; margin-top: 16px; color: var(--muted);">
+      No TAKwerx plugins available for this ATAK version.
     </div>
   </div>
 
@@ -250,6 +275,11 @@
   const marketplaceMsg = document.getElementById("marketplaceMsg");
   const marketplaceGrid = document.getElementById("marketplaceGrid");
   const marketplaceEmpty = document.getElementById("marketplaceEmpty");
+  const takwerxVersion = document.getElementById("takwerxVersion");
+  const takwerxSearch = document.getElementById("takwerxSearch");
+  const takwerxMsg = document.getElementById("takwerxMsg");
+  const takwerxGrid = document.getElementById("takwerxGrid");
+  const takwerxEmpty = document.getElementById("takwerxEmpty");
 
   let takgovPluginsCache = [];
   let takgovSearchText = "";
@@ -257,6 +287,9 @@
   let updateStatusCache = {};
   let downloadedVersionFilterValue = "";
   let takgovVersionsLoaded = false;
+  let takwerxPluginsCache = [];
+  let takwerxSearchText = "";
+  let takwerxVersionsLoaded = false;
 
   function esc(s) {
     if (s == null || s === undefined) return "";
@@ -543,6 +576,7 @@
       } else if (takgovPluginsCache.length > 0) {
         renderTakgovMarketplace(getTakgovDisplayList());
       }
+      loadTakwerxPlugins();
     } catch (err) {
       if (pluginsLoading) pluginsLoading.style.display = "none";
       setPluginsMsg(err.message || "Failed to load plugins", false);
@@ -697,6 +731,162 @@
     downloadedVersionFilter.addEventListener("change", function () {
       downloadedVersionFilterValue = downloadedVersionFilter.value || "";
       renderPluginCards(downloadedPluginsCache);
+    });
+  }
+
+  function setTakwerxMsg(text, ok) {
+    if (!takwerxMsg) return;
+    takwerxMsg.textContent = text || "";
+    takwerxMsg.style.color = ok === false ? "var(--danger)" : "";
+  }
+
+  function getTakwerxDisplayList() {
+    const raw = takwerxPluginsCache || [];
+    const sorted = raw.slice().sort(function (a, b) {
+      const na = (a.display_name || a.package_name || a.name || "").toLowerCase();
+      const nb = (b.display_name || b.package_name || b.name || "").toLowerCase();
+      return na.localeCompare(nb);
+    });
+    const q = (takwerxSearchText || "").trim().toLowerCase();
+    if (!q) return sorted;
+    return sorted.filter(function (p) {
+      const name = (p.display_name || p.package_name || p.name || "").toLowerCase();
+      const desc = (p.description || "").toLowerCase();
+      const pkg = (p.package_name || "").toLowerCase();
+      return name.includes(q) || desc.includes(q) || pkg.includes(q);
+    });
+  }
+
+  function renderTakwerxMarketplace(plugins) {
+    if (!takwerxGrid || !takwerxEmpty) return;
+    const list = Array.isArray(plugins) ? plugins : [];
+    if (list.length === 0) {
+      takwerxGrid.innerHTML = "";
+      takwerxGrid.style.display = "none";
+      takwerxEmpty.style.display = "block";
+      takwerxEmpty.textContent = (takwerxSearchText || "").trim()
+        ? "No plugins match your search."
+        : "No TAKwerx plugins available for this ATAK version.";
+      return;
+    }
+    takwerxEmpty.style.display = "none";
+    takwerxGrid.style.display = "grid";
+    const downloaded = downloadedPluginsCache || [];
+    takwerxGrid.innerHTML = list.map(function (p, idx) {
+      const name = esc(p.display_name || p.package_name || p.name || "Plugin");
+      const desc = (p.description || "").slice(0, 120);
+      const ver = (p.version || "").trim();
+      const alreadyInstalled = p.package_name && downloaded.some(function (d) {
+        if (d.package_name !== p.package_name) return false;
+        const dVer = (d.atakVersion || d.atak_version || "").toString();
+        const pVer = (p.atakVersion || p.atak_version || "").toString();
+        if (!pVer) return true;
+        const dKey = dVer.match(/^(\d+)\.(\d+)/);
+        const pKey = pVer.match(/^(\d+)\.(\d+)/);
+        if (!dKey || !pKey) return !dVer;
+        return dKey[1] + "." + dKey[2] === pKey[1] + "." + pKey[2];
+      });
+      const btnLabel = alreadyInstalled ? "Check for Update" : "Add to server";
+      const btnClass = alreadyInstalled ? "btn" : "btn success";
+      const repoLink = p.repo_url
+        ? "<a class=\"btn\" href=\"" + esc(p.repo_url) + "\" target=\"_blank\" rel=\"noopener noreferrer\">GitHub</a>"
+        : "";
+      return "<div class=\"plugin-card\" data-takwerx-index=\"" + idx + "\">" +
+        "<div class=\"plugin-card-header\">" +
+        "<div class=\"plugin-name\">" + name + "</div>" +
+        (ver ? "<span class=\"plugin-version-pill\">" + esc(ver) + "</span>" : "") +
+        "</div>" +
+        (desc ? "<div class=\"plugin-desc\">" + esc(desc) + (desc.length >= 120 ? "…" : "") + "</div>" : "") +
+        "<div class=\"plugin-actions\">" +
+        "<button class=\"" + btnClass + "\" type=\"button\" data-takwerx-download data-takwerx-index=\"" + idx + "\">" + btnLabel + "</button>" +
+        repoLink +
+        "</div></div>";
+    }).join("");
+    takwerxGrid.querySelectorAll("[data-takwerx-download]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const idx = parseInt(btn.getAttribute("data-takwerx-index"), 10);
+        const pluginItem = list[idx];
+        if (!pluginItem || !pluginItem.apk_url) return;
+        btn.disabled = true;
+        btn.textContent = "Adding…";
+        setTakwerxMsg("", true);
+        fetch("/api/plugins/takwerx/download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plugin: pluginItem }),
+        })
+          .then(function (res) {
+            return res.text().then(function (text) {
+              var data = {};
+              try { data = text ? JSON.parse(text) : {}; } catch (_) {}
+              return { res: res, data: data, text: text };
+            });
+          })
+          .then(function (_ref) {
+            const res = _ref.res;
+            const data = _ref.data;
+            const text = _ref.text;
+            const errMsg = (data && data.error) || (typeof text === "string" && text.slice(0, 200)) || "Download failed";
+            if (!res.ok) {
+              setTakwerxMsg(errMsg, false);
+              btn.textContent = alreadyInstalled ? "Check for Update" : "Add to server";
+              btn.disabled = false;
+              return;
+            }
+            btn.textContent = "Check for Update";
+            btn.className = "btn";
+            setTakwerxMsg("Plugin added/updated on server.", true);
+            loadState();
+          })
+          .catch(function (err) {
+            btn.textContent = btn.classList.contains("success") ? "Add to server" : "Check for Update";
+            btn.disabled = false;
+            setTakwerxMsg(err.message || "Failed to add plugin", false);
+          });
+      });
+    });
+  }
+
+  async function loadTakwerxPlugins() {
+    const version = (takwerxVersion && takwerxVersion.value || "5.8.0").trim();
+    setTakwerxMsg("Loading…", true);
+    try {
+      const res = await fetch("/api/plugins/takwerx/plugins?product_version=" + encodeURIComponent(version));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load TAKwerx plugins");
+      const versions = Array.isArray(data.versions) ? data.versions.filter(Boolean) : [];
+      if (takwerxVersion && versions.length > 0 && !takwerxVersionsLoaded) {
+        const previous = (takwerxVersion.value || "").trim();
+        takwerxVersion.innerHTML = versions.map(function (v) {
+          return "<option value=\"" + esc(v) + "\">" + esc(v) + "</option>";
+        }).join("");
+        takwerxVersion.value = versions.includes(previous) ? previous : versions[0];
+        takwerxVersionsLoaded = true;
+        if (takwerxVersion.value !== version) {
+          return loadTakwerxPlugins();
+        }
+      }
+      takwerxPluginsCache = data.plugins || [];
+      takwerxSearchText = "";
+      if (takwerxSearch) takwerxSearch.value = "";
+      setTakwerxMsg(takwerxPluginsCache.length ? "" : "No plugins found for this ATAK version.", true);
+      renderTakwerxMarketplace(getTakwerxDisplayList());
+    } catch (err) {
+      setTakwerxMsg(err.message || "Failed to load", false);
+      takwerxPluginsCache = [];
+      takwerxSearchText = "";
+      if (takwerxSearch) takwerxSearch.value = "";
+      renderTakwerxMarketplace([]);
+    }
+  }
+
+  if (takwerxVersion) {
+    takwerxVersion.addEventListener("change", function () { loadTakwerxPlugins(); });
+  }
+  if (takwerxSearch) {
+    takwerxSearch.addEventListener("input", function () {
+      takwerxSearchText = takwerxSearch.value || "";
+      renderTakwerxMarketplace(getTakwerxDisplayList());
     });
   }
 

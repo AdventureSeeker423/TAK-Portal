@@ -7,6 +7,7 @@ const router = require("express").Router();
 const path = require("path");
 const fs = require("fs");
 const pluginsSvc = require("../services/plugins.service");
+const takwerxPluginsSvc = require("../services/takwerxPlugins.service");
 const pluginUpdateSyncSvc = require("../services/pluginUpdateSync.service");
 const auditSvc = require("../services/auditLog.service");
 const multer = require("multer");
@@ -245,6 +246,55 @@ router.post("/takgov/download", async (req, res) => {
       targetType: "plugin",
       targetId: result.plugin?.id || null,
       details: { name: result.plugin?.name, filename: result.plugin?.filename },
+    });
+    res.json({ success: true, plugin: result.plugin });
+  } catch (err) {
+    res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
+/**
+ * GET /api/plugins/takwerx/plugins
+ * List TAKwerx plugins from public GitHub Releases. Query: product_version (e.g. 5.8.0).
+ */
+router.get("/takwerx/plugins", async (req, res) => {
+  try {
+    const product_version = (req.query.product_version || "").trim();
+    const result = await takwerxPluginsSvc.fetchTakwerxPlugins(product_version || undefined);
+    if (!result.success) {
+      return res.status(502).json({ error: result.error || "Failed to load TAKwerx plugins." });
+    }
+    res.json({
+      success: true,
+      plugins: result.plugins || [],
+      versions: result.versions || [],
+    });
+  } catch (err) {
+    res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
+/**
+ * POST /api/plugins/takwerx/download
+ * Download a TAKwerx plugin APK from GitHub Releases and add to server.
+ * Body: { plugin } with apk_url, display_name, package_name, atakVersion, etc.
+ */
+router.post("/takwerx/download", async (req, res) => {
+  try {
+    const pluginItem = req.body?.plugin || req.body;
+    const result = await takwerxPluginsSvc.downloadTakwerxPlugin(pluginItem);
+    if (!result.success) {
+      console.error("[plugins] TAKwerx download failed:", result.error);
+      return res.status(400).json({ error: result.error });
+    }
+    const auditUser = req.authentikUser;
+    auditSvc.logEvent({
+      actor: auditUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "PLUGIN_DOWNLOADED_TAKWERX",
+      targetType: "plugin",
+      targetId: result.plugin?.id || null,
+      details: { name: result.plugin?.name, filename: result.plugin?.filename, source: "takwerx" },
     });
     res.json({ success: true, plugin: result.plugin });
   } catch (err) {
