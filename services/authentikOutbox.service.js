@@ -20,19 +20,11 @@ function decryptPayload(payload) {
   const out = payload && typeof payload === "object" ? { ...payload } : {};
   for (const k of SECRET_KEYS) {
     if (out[k] && String(out[k]).startsWith("v1:")) {
-      try {
-        out[k] = cryptoSecrets.decryptSecret(String(out[k]));
-      } catch (_) {
-        out[k] = "";
-      }
+      out[k] = cryptoSecrets.decryptSecret(String(out[k]));
     }
   }
   if (out.password_enc && String(out.password_enc).startsWith("v1:")) {
-    try {
-      out.password = cryptoSecrets.decryptSecret(String(out.password_enc));
-    } catch (_) {
-      out.password = "";
-    }
+    out.password = cryptoSecrets.decryptSecret(String(out.password_enc));
   }
   return out;
 }
@@ -68,9 +60,12 @@ async function waitForOutbox(id, timeoutMs = 8000) {
   while (Date.now() - started < timeoutMs) {
     const r = await db.query("SELECT id, last_error, attempts FROM authentik_outbox WHERE id = $1", [oid]);
     if (!r.rows.length) return { done: true, timedOut: false };
+    if (r.rows[0].last_error) {
+      throw new Error("Authentik operation failed and remains queued for retry; check sync status.");
+    }
     await new Promise((res) => setTimeout(res, 200));
   }
-  return { done: false, timedOut: true };
+  throw new Error("Authentik operation is still pending; check its status before retrying.");
 }
 
 async function pendingEntityKeys() {
