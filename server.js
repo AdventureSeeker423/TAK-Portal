@@ -1299,24 +1299,29 @@ app.get("/setup-my-device", async (req, res) => {
     qrSvc.getTakUrl()
   ) {
     try {
-      const tokensSvc = require("./services/authentikTokens.service");
-      const { identifier, key, expiresAt } =
-        await tokensSvc.getOrCreateEnrollmentAppPassword({
+      const localUser = await usersSvc.getUserById(user.uid || u);
+      if (!localUser || localUser.is_active === false) {
+        enrollQrBootstrap = null;
+      } else {
+        const tokensSvc = require("./services/authentikTokens.service");
+        const { identifier, key, expiresAt } =
+          await tokensSvc.getOrCreateEnrollmentAppPassword({
+            username: u,
+            userId: user.uid || null,
+          });
+        const enrollUrl = qrSvc.buildEnrollUrl({ username: u, token: key });
+        const qrCode = enrollUrl
+          ? await qrSvc.generateDisplayQrDataUrl(enrollUrl)
+          : "";
+        enrollQrBootstrap = {
           username: u,
-          userId: user.uid || null,
-        });
-      const enrollUrl = qrSvc.buildEnrollUrl({ username: u, token: key });
-      const qrCode = enrollUrl
-        ? await qrSvc.generateDisplayQrDataUrl(enrollUrl)
-        : "";
-      enrollQrBootstrap = {
-        username: u,
-        tokenIdentifier: identifier,
-        token: key,
-        expiresAt,
-        enrollUrl: enrollUrl || "",
-        qrCode,
-      };
+          tokenIdentifier: identifier,
+          token: key,
+          expiresAt,
+          enrollUrl: enrollUrl || "",
+          qrCode,
+        };
+      }
     } catch (err) {
       console.warn(
         "[setup-my-device] enroll QR bootstrap failed:",

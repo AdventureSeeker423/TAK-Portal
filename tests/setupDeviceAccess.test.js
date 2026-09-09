@@ -1,4 +1,6 @@
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 const router = require("../routes/setupDevice.routes");
 const usersSvc = require("../services/users.service");
 
@@ -7,6 +9,21 @@ usersSvc.getUserById = async (id) => {
   if (id === "error") throw new Error("directory unavailable");
   return { username: String(id), is_active: id !== "disabled" };
 };
+
+const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+assert.ok(
+  /setup-my-device[\s\S]{0,1200}is_active\s*===\s*false/.test(serverSrc) ||
+    /is_active\s*===\s*false[\s\S]{0,400}enrollQrBootstrap/.test(serverSrc),
+  "setup-my-device page must refuse enroll QR bootstrap for disabled users"
+);
+const setupViewSrc = fs.readFileSync(
+  path.join(__dirname, "..", "views", "setup-my-device.ejs"),
+  "utf8"
+);
+assert.ok(
+  setupViewSrc.includes("Account is disabled") || setupViewSrc.includes("clearEnrollCache"),
+  "setup-my-device client must clear cached QR when enroll is denied"
+);
 
 function response() {
   return {

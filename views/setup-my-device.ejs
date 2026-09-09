@@ -885,6 +885,14 @@
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(obj)); } catch {}
   }
 
+  function clearEnrollCache() {
+    cached = null;
+    try {
+      if (CACHE_KEY) localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(LEGACY_CACHE_KEY);
+    } catch {}
+  }
+
   // Server-rendered enrollment payload (same as POST /api/setup-my-device/enroll-qr) so the
   // first QR open after page load does not depend on fetch (avoids proxy/session/CORS edge cases).
   (function seedEnrollFromServer() {
@@ -1030,6 +1038,9 @@
     let data = {};
     try { data = JSON.parse(rawText); } catch { data = {}; }
     if (!res.ok || !data || !data.ok) {
+      if (res.status === 401 || res.status === 403) {
+        clearEnrollCache();
+      }
       throw new Error((data && data.error) || "Failed to generate enrollment QR");
     }
 
@@ -1065,32 +1076,8 @@
     const isItak = mode === "itak";
     const enrollApp = resolveEnrollApp(isItak ? "itak" : "atak");
 
-    // If we can't determine current username, don't reuse cache
-    if (!CURRENT_USERNAME) {
-      try {
-        await fetchAndShowQr(enrollApp);
-        if (mode === "takaware" || mode === "taktracker" || mode === "itak") {
-          await applyIosQrEnrollmentPreferences(mode);
-        }
-      } catch (err) {
-        setMsg(msg, err?.message || String(err), false);
-        openModal();
-      }
-      return;
-    }
-
-    // iTAK never uses cache (different QR content); ATAK may use cache
-    if (!isItak) {
-      const existing = loadCache();
-      if (existing && existing.qrCode && existing.enrollUrl && existing.token) {
-        renderFromCache(existing);
-        if (mode === "takaware" || mode === "taktracker") {
-          await applyIosQrEnrollmentPreferences(mode);
-        }
-        return;
-      }
-    }
-
+    // Always re-check with the server. A page loaded before disable must not reuse
+    // bootstrap/localStorage enrollment credentials for a disabled account.
     try {
       await fetchAndShowQr(enrollApp);
       if (mode === "takaware" || mode === "taktracker" || mode === "itak") {
