@@ -53,7 +53,8 @@ router.get("/state", async (req, res) => {
 
 /**
  * GET /api/plugins/update-status
- * Returns which plugin ids have an update available from TAK.gov. { updateStatus: { "plugin-1": true, ... } }
+ * Returns which plugin ids have an update available (TAK.gov + TAKwerx).
+ * { updateStatus: { "plugin-1": true, ... } }
  */
 router.get("/update-status", async (req, res) => {
   try {
@@ -341,13 +342,13 @@ router.post("/download", async (req, res) => {
  * POST /api/plugins/upload
  * Multipart: single file field "plugin". Adds to data/plugins and manifest.
  */
-router.post("/upload", upload.single("plugin"), (req, res) => {
+router.post("/upload", upload.single("plugin"), async (req, res) => {
   try {
     if (!req.file || !req.file.path) {
       return res.status(400).json({ error: "No plugin file uploaded." });
     }
     const { name, atakFlavor, atakVersion } = req.body || {};
-    const result = pluginsSvc.addPluginFromFile(req.file.path, {
+    const result = await pluginsSvc.addPluginFromFile(req.file.path, {
       name: name || undefined,
       source: "upload",
       atakFlavor: atakFlavor || undefined,
@@ -402,13 +403,43 @@ router.patch("/:id", async (req, res) => {
 });
 
 /**
+ * POST /api/plugins/:id/update
+ * Update an installed plugin from its source (TAK.gov or TAKwerx).
+ */
+router.post("/:id/update", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pluginsSvc.updateInstalledPlugin(id);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    const auditUser = req.authentikUser;
+    auditSvc.logEvent({
+      actor: auditUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "PLUGIN_UPDATED",
+      targetType: "plugin",
+      targetId: result.plugin?.id || id,
+      details: {
+        name: result.plugin?.name,
+        filename: result.plugin?.filename,
+        source: result.plugin?.source,
+      },
+    });
+    res.json({ success: true, plugin: result.plugin });
+  } catch (err) {
+    res.status(500).json({ error: toErrorPayload(err) });
+  }
+});
+
+/**
  * POST /api/plugins/:id/update-from-takgov
- * Update a TAK.gov plugin to the latest version from TAK.gov (by package_name).
+ * Legacy alias for TAK.gov updates.
  */
 router.post("/:id/update-from-takgov", async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pluginsSvc.updatePluginFromTakGov(id);
+    const result = await pluginsSvc.updateInstalledPlugin(id);
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
@@ -431,10 +462,10 @@ router.post("/:id/update-from-takgov", async (req, res) => {
  * DELETE /api/plugins/:id
  * Remove plugin and its file.
  */
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const result = pluginsSvc.deletePlugin(id);
+    const result = await pluginsSvc.deletePlugin(id);
     if (!result.success) {
       return res.status(404).json({ error: result.error });
     }

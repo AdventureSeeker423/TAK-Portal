@@ -318,9 +318,67 @@ async function downloadTakwerxPlugin(pluginItem) {
   });
 }
 
+/**
+ * Map installed TAKwerx plugin ids -> whether a newer GitHub release exists for their ATAK version.
+ * @param {object[]} installed
+ * @returns {Promise<Record<string, boolean>>}
+ */
+async function getUpdateStatusForInstalled(installed) {
+  const loaded = await loadCatalogEntries();
+  if (!loaded.success) return {};
+  const out = {};
+  for (const p of installed || []) {
+    if (!p || !p.id || !p.package_name) continue;
+    const want = normalizeAtakVersion(
+      p.atakVersion || p.atak_version || pluginsSvc.getAtakVersionValue(p) || ""
+    );
+    const entry = (loaded.entries || []).find((e) => e.package_name === p.package_name);
+    if (!entry) {
+      out[p.id] = false;
+      continue;
+    }
+    const asset = (entry.assets || []).find(
+      (a) => a.apk_url && normalizeAtakVersion(a.atakVersion) === want
+    );
+    if (!asset) {
+      out[p.id] = false;
+      continue;
+    }
+    out[p.id] = pluginsSvc.isNewerVersion(p, { version: entry.version });
+  }
+  return out;
+}
+
+/**
+ * Re-download the latest matching TAKwerx release for an installed plugin.
+ * @param {object} plugin - manifest plugin entry
+ */
+async function updateInstalledPlugin(plugin) {
+  if (!plugin || !plugin.package_name) {
+    return { success: false, error: "Plugin package name is required." };
+  }
+  const productVersion = normalizeAtakVersion(
+    plugin.atakVersion || plugin.atak_version || pluginsSvc.getAtakVersionValue(plugin) || ""
+  );
+  const listResult = await fetchTakwerxPlugins(productVersion || undefined);
+  if (!listResult.success) {
+    return { success: false, error: listResult.error || "Failed to load TAKwerx catalog." };
+  }
+  const remote = (listResult.plugins || []).find((r) => r.package_name === plugin.package_name);
+  if (!remote || !remote.apk_url) {
+    return { success: false, error: "Plugin not found in TAKwerx releases for this ATAK version." };
+  }
+  if (!pluginsSvc.isNewerVersion(plugin, remote)) {
+    return { success: false, error: "Plugin is already up to date." };
+  }
+  return downloadTakwerxPlugin(remote);
+}
+
 module.exports = {
   TAKWERX_CATALOG,
   fetchTakwerxPlugins,
   downloadTakwerxPlugin,
+  getUpdateStatusForInstalled,
+  updateInstalledPlugin,
   isAllowedTakwerxApkUrl,
 };

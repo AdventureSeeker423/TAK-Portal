@@ -19,11 +19,15 @@ const STATUS_PATH = path.join(DATA_DIR, "plugin-update-sync-status.json");
 const MANAGED_SIDE_CAR = "tak-portal-managed.json";
 
 const DEFAULT_REMOTE_DIR = "/opt/tak/webcontent/update";
-const DEBOUNCE_MS = 4000;
+/** Wait for a quiet period after the last catalog change before syncing (covers back-to-back adds). */
+const DEBOUNCE_MS = 2500;
 
 let debounceTimer = null;
 let running = false;
 let rerunAfter = false;
+/** Bumps on every catalog change; sync must catch up to the latest generation. */
+let catalogGeneration = 0;
+let syncedGeneration = -1;
 let inMemoryStatus = null;
 
 function ensureStagingDir() {
@@ -48,25 +52,33 @@ function getUpdateServerUrl() {
 function defaultStatus() {
   return {
     inProgress: false,
-    state: "idle", // idle | syncing | success | error | blocked_ssh
+    state: "idle", // idle | syncing | success | error | blocked_ssh | pending
     lastStartedAt: null,
     lastFinishedAt: null,
     lastSuccessAt: null,
     error: null,
     message: null,
     pluginCount: 0,
+    portalCount: 0,
+    syncedCount: 0,
     remoteDir: getRemoteUpdateDir(),
     updateServerUrl: getUpdateServerUrl(),
   };
 }
 
 function loadStatus() {
+  const portalCount = pluginsSvc.listPlugins().filter((p) => p.exists).length;
   if (inMemoryStatus) {
+    const pending =
+      catalogGeneration !== syncedGeneration ||
+      !!(debounceTimer) ||
+      running;
     return {
       ...inMemoryStatus,
+      portalCount,
       remoteDir: getRemoteUpdateDir(),
       updateServerUrl: getUpdateServerUrl(),
-      inProgress: running || inMemoryStatus.state === "syncing",
+      inProgress: running || inMemoryStatus.state === "syncing" || (pending && inMemoryStatus.state !== "blocked_ssh"),
     };
   }
   try {
@@ -75,6 +87,7 @@ function loadStatus() {
       inMemoryStatus = { ...defaultStatus(), ...raw };
       return {
         ...inMemoryStatus,
+        portalCount,
         remoteDir: getRemoteUpdateDir(),
         updateServerUrl: getUpdateServerUrl(),
         inProgress: running || inMemoryStatus.state === "syncing",
@@ -84,6 +97,7 @@ function loadStatus() {
     /* ignore */
   }
   inMemoryStatus = defaultStatus();
+  inMemoryStatus.portalCount = portalCount;
   return { ...inMemoryStatus };
 }
 
@@ -166,13 +180,15 @@ async function enrichPluginMetadata(plugin) {
     if (Object.keys(updates).length) {
       // Persist via direct manifest update (updatePluginMetadata only allows favorite/description).
       try {
-        const manifest = JSON.parse(fs.readFileSync(pluginsSvc.MANIFEST_PATH, "utf8"));
-        const idx = (manifest.plugins || []).findIndex((p) => p.id === plugin.id);
-        if (idx >= 0) {
-          manifest.plugins[idx] = { ...manifest.plugins[idx], ...updates };
-          fs.writeFileSync(pluginsSvc.MANIFEST_PATH, JSON.stringify(manifest, null, 2));
-          plugin = { ...plugin, ...updates };
-        }
+        await pluginsSvc.withCatalogLock(() => {
+          const manifest = JSON.parse(fs.readFileSync(pluginsSvc.MANIFEST_PATH, "utf8"));
+          const idx = (manifest.plugins || []).findIndex((p) => p.id === plugin.id);
+          if (idx >= 0) {
+            manifest.plugins[idx] = { ...manifest.plugins[idx], ...updates };
+            fs.writeFileSync(pluginsSvc.MANIFEST_PATH, JSON.stringify(manifest, null, 2));
+            plugin = { ...plugin, ...updates };
+          }
+        });
       } catch (err) {
         console.warn("[plugin-update-sync] Failed to persist APK metadata:", err?.message || err);
       }
@@ -316,6 +332,10 @@ async function buildStagingBundle(plugins) {
   return { rows, managedFiles, stagingDir: STAGING_DIR };
 }
 
+function portalPluginCount() {
+  return pluginsSvc.listPlugins().filter((p) => p.exists).length;
+}
+
 async function runSyncOnce() {
   if (running) {
     rerunAfter = true;
@@ -324,11 +344,16 @@ async function runSyncOnce() {
 
   running = true;
   rerunAfter = false;
+  const generationAtStart = catalogGeneration;
+  const expectedCount = portalPluginCount();
   saveStatus({
     state: "syncing",
     lastStartedAt: new Date().toISOString(),
     error: null,
-    message: "Syncing plugins to TAK Server…",
+    message: expectedCount
+      ? `Auto-syncing ${expectedCount} plugin(s) to TAK Server…`
+      : "Clearing TAK Server plugin catalog…",
+    portalCount: expectedCount,
   });
 
   try {
@@ -339,7 +364,9 @@ async function runSyncOnce() {
         error: null,
         message:
           "SSH privileged access is required. Complete Generate Key + Handshake in Settings.",
-        pluginCount: pluginsSvc.listPlugins().filter((p) => p.exists).length,
+        pluginCount: expectedCount,
+        portalCount: expectedCount,
+        syncedCount: loadStatus().syncedCount || 0,
       });
       return loadStatus();
     }
@@ -348,10 +375,15 @@ async function runSyncOnce() {
     const previousManaged = Array.isArray(loadStatus().managedFiles)
       ? loadStatus().managedFiles.slice()
       : [];
-    const { managedFiles, stagingDir } = await buildStagingBundle(plugins);
+    const { rows, managedFiles, stagingDir } = await buildStagingBundle(plugins);
     const remoteDir = getRemoteUpdateDir();
 
-    // Upload all staged files
+    if (rows.length !== plugins.length) {
+      throw new Error(
+        `Catalog mismatch while staging: portal has ${plugins.length} plugin(s) but only ${rows.length} could be packaged.`
+      );
+    }
+
     for (const name of managedFiles) {
       const localPath = path.join(stagingDir, name);
       if (!fs.existsSync(localPath)) continue;
@@ -366,7 +398,6 @@ async function runSyncOnce() {
       }
     }
 
-    // Remove files we previously managed that are no longer in the catalog
     const managedSet = new Set(managedFiles);
     for (const name of previousManaged) {
       if (managedSet.has(name)) continue;
@@ -377,15 +408,19 @@ async function runSyncOnce() {
     }
 
     const finishedAt = new Date().toISOString();
+    const portalNow = portalPluginCount();
     saveStatus({
       state: "success",
       lastFinishedAt: finishedAt,
       lastSuccessAt: finishedAt,
       error: null,
-      message: `Synced ${plugins.length} plugin(s) to ${remoteDir}.`,
-      pluginCount: plugins.length,
+      message: `Auto-synced ${rows.length} plugin(s) to TAK Server.`,
+      pluginCount: rows.length,
+      portalCount: portalNow,
+      syncedCount: rows.length,
       managedFiles,
     });
+    syncedGeneration = generationAtStart;
 
     try {
       auditSvc.logEvent({
@@ -395,10 +430,10 @@ async function runSyncOnce() {
         targetType: "plugin_update_sync",
         targetId: "tak-server",
         details: {
-          pluginCount: plugins.length,
+          pluginCount: rows.length,
           remoteDir,
           updateServerUrl: getUpdateServerUrl(),
-          summary: `Synced ${plugins.length} plugin(s) to TAK Server update directory.`,
+          summary: `Synced ${rows.length} plugin(s) to TAK Server update directory.`,
         },
       });
     } catch (_) {
@@ -412,7 +447,8 @@ async function runSyncOnce() {
       state: "error",
       lastFinishedAt: new Date().toISOString(),
       error: message,
-      message: "Plugin sync failed.",
+      message: "Plugin sync failed — will retry after the next catalog change.",
+      portalCount: portalPluginCount(),
     });
     try {
       auditSvc.logEvent({
@@ -430,15 +466,25 @@ async function runSyncOnce() {
   } finally {
     running = false;
     saveStatus({ inProgress: false });
-    if (rerunAfter) {
-      rerunAfter = false;
-      scheduleSync("follow-up");
+    const statusAfter = loadStatus();
+    const genAdvancedDuringRun = catalogGeneration !== generationAtStart;
+    const stillBehind = catalogGeneration !== syncedGeneration;
+    const failedSameGeneration =
+      statusAfter.state === "error" && !genAdvancedDuringRun && !rerunAfter;
+    const shouldCatchUp =
+      !failedSameGeneration &&
+      (rerunAfter || stillBehind) &&
+      takSshSvc.isPrivilegedSshReady();
+    rerunAfter = false;
+    if (shouldCatchUp) {
+      scheduleSync("catch-up");
     }
   }
 }
 
 function scheduleSync(reason) {
   if (debounceTimer) clearTimeout(debounceTimer);
+  const portalCount = portalPluginCount();
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     void runSyncOnce().catch((err) => {
@@ -446,7 +492,9 @@ function scheduleSync(reason) {
     });
   }, DEBOUNCE_MS);
   saveStatus({
-    message: `Sync scheduled (${reason || "change"})…`,
+    state: running ? "syncing" : "pending",
+    message: `Auto-sync scheduled (${reason || "change"}) for ${portalCount} plugin(s)…`,
+    portalCount,
   });
 }
 
@@ -455,6 +503,7 @@ function scheduleSync(reason) {
  */
 function notifyCatalogChanged(reason) {
   try {
+    catalogGeneration += 1;
     scheduleSync(reason || "catalog-change");
   } catch (err) {
     console.warn("[plugin-update-sync] schedule failed:", err?.message || err);
@@ -466,11 +515,13 @@ async function syncNow() {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
+  catalogGeneration += 1;
   saveStatus({
     state: "syncing",
     message: "Sync starting…",
     lastStartedAt: new Date().toISOString(),
     error: null,
+    portalCount: portalPluginCount(),
   });
   try {
     auditSvc.logEvent({
@@ -491,6 +542,24 @@ function getSyncStatus() {
   return loadStatus();
 }
 
+/** On boot, push current catalog if SSH is ready and plugins exist (or prior sync left a gap). */
+function startAutoSyncOnBoot() {
+  try {
+    const count = portalPluginCount();
+    const status = loadStatus();
+    const outOfDate =
+      count !== (status.syncedCount || 0) ||
+      status.state === "error" ||
+      status.state === "pending";
+    if (count > 0 || outOfDate) {
+      catalogGeneration += 1;
+      scheduleSync("boot");
+    }
+  } catch (err) {
+    console.warn("[plugin-update-sync] boot sync schedule failed:", err?.message || err);
+  }
+}
+
 module.exports = {
   DEFAULT_REMOTE_DIR,
   getRemoteUpdateDir,
@@ -499,4 +568,8 @@ module.exports = {
   notifyCatalogChanged,
   syncNow,
   scheduleSync,
+  startAutoSyncOnBoot,
 };
+
+// Keep TAK Server aligned after process restart.
+setTimeout(() => startAutoSyncOnBoot(), 5000);

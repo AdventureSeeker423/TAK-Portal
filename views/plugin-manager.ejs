@@ -34,12 +34,11 @@
     <h2 style="margin-top: 0;">Downloaded Plugins</h2>
     <div id="takServerSyncStatus" class="plugin-sync-status" aria-live="polite">
       <div class="plugin-sync-status-main">
-        <strong>TAK Server plugin sync</strong>
+        <strong>TAK Server auto-sync</strong>
         <span id="takServerSyncLabel" class="muted">Checking…</span>
       </div>
       <div class="plugin-sync-status-actions">
         <code id="takServerSyncUrl" class="plugin-sync-url" style="display:none;"></code>
-        <button class="btn" type="button" id="takServerSyncNowBtn">Sync now</button>
       </div>
       <div id="takServerSyncDetail" class="muted" style="margin-top: 6px;"></div>
     </div>
@@ -390,7 +389,7 @@
       const exists = p.exists !== false;
       const downloadUrl = "/api/plugins/" + esc(p.id) + "/download";
       const isFavorite = p.favorite === true;
-      const updateAvailable = p.source === "tak.gov" && p.package_name && updateStatusCache[p.id] === true;
+      const updateAvailable = !!p.package_name && updateStatusCache[p.id] === true;
       const versionPill = p.version ? "<span class=\"plugin-version-pill\">v" + esc(p.version) + "</span>" : "";
       return "<div class=\"plugin-card\" data-id=\"" + esc(p.id) + "\">" +
         "<div class=\"plugin-card-header\">" +
@@ -403,7 +402,7 @@
         "<button class=\"btn favorite " + (isFavorite ? "is-favorite" : "") + "\" type=\"button\" data-favorite=\"" + esc(p.id) + "\" title=\"" + (isFavorite ? "Unfavorite" : "Favorite") + "\">" + (isFavorite ? "★ Unfavorite" : "☆ Favorite") + "</button>" +
         "<button class=\"btn\" type=\"button\" data-edit-desc=\"" + esc(p.id) + "\" title=\"Edit description\">Edit description</button>" +
         (exists ? "<a href=\"" + downloadUrl + "\" class=\"btn\" download>Download</a>" : "") +
-        (updateAvailable ? "<button class=\"btn\" type=\"button\" data-update=\"" + esc(p.id) + "\">Check for Updates</button>" : "") +
+        (updateAvailable ? "<button class=\"btn success\" type=\"button\" data-update=\"" + esc(p.id) + "\">Update To Latest</button>" : "") +
         "<button class=\"btn danger\" type=\"button\" data-delete=\"" + esc(p.id) + "\">Delete</button>" +
         "</div></div>";
     }).join("");
@@ -427,7 +426,7 @@
       btn.addEventListener("click", function () {
         const id = btn.getAttribute("data-update");
         if (!id) return;
-        updatePluginFromTakgov(id, btn);
+        updateInstalledPlugin(id, btn);
       });
     });
     pluginCards.querySelectorAll("[data-edit-desc]").forEach(function (btn) {
@@ -485,15 +484,55 @@
       });
   }
 
-  function updatePluginFromTakgov(id, btnEl) {
-    if (btnEl) { btnEl.disabled = true; btnEl.textContent = "Checking…"; }
+  function versionCore(v) {
+    const s = String(v || "").trim().replace(/^v/i, "");
+    const m = s.match(/^(\d+(?:\.\d+)*)/);
+    return m ? m[1] : s;
+  }
+
+  function isRemoteNewer(installed, remote) {
+    const cv = versionCore(installed && installed.version);
+    const rv = versionCore(remote && remote.version);
+    if (!rv) return false;
+    if (!cv) return true;
+    const cParts = cv.split(".").map(function (n) { return parseInt(n, 10) || 0; });
+    const rParts = rv.split(".").map(function (n) { return parseInt(n, 10) || 0; });
+    for (let i = 0; i < Math.max(cParts.length, rParts.length); i++) {
+      const c = cParts[i] || 0;
+      const r = rParts[i] || 0;
+      if (r > c) return true;
+      if (r < c) return false;
+    }
+    const cr = installed && installed.revision_code != null ? installed.revision_code : 0;
+    const rr = remote && remote.revision_code != null ? remote.revision_code : 0;
+    return rr > cr;
+  }
+
+  function findInstalledMatch(remotePlugin) {
+    const pkg = remotePlugin && remotePlugin.package_name;
+    if (!pkg) return null;
+    const pVer = (remotePlugin.atakVersion || remotePlugin.atak_version || "").toString();
+    const pKeyMatch = pVer.match(/^(\d+)\.(\d+)/);
+    const pKey = pKeyMatch ? pKeyMatch[1] + "." + pKeyMatch[2] : "";
+    return (downloadedPluginsCache || []).find(function (d) {
+      if (d.package_name !== pkg) return false;
+      if (!pKey) return true;
+      const dVer = (d.atakVersion || d.atak_version || "").toString();
+      const dKeyMatch = dVer.match(/^(\d+)\.(\d+)/);
+      if (!dKeyMatch) return !dVer;
+      return dKeyMatch[1] + "." + dKeyMatch[2] === pKey;
+    }) || null;
+  }
+
+  function updateInstalledPlugin(id, btnEl) {
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = "Updating…"; }
     setPluginsMsg("", true);
-    fetch("/api/plugins/" + encodeURIComponent(id) + "/update-from-takgov", { method: "POST" })
+    fetch("/api/plugins/" + encodeURIComponent(id) + "/update", { method: "POST" })
       .then(function (res) {
         return res.text().then(function (text) {
           var data = {};
           try { data = text ? JSON.parse(text) : {}; } catch (_) {}
-          return { res, data, text };
+          return { res: res, data: data };
         });
       })
       .then(function (_ref) {
@@ -501,16 +540,15 @@
         const data = _ref.data;
         if (!res.ok) {
           setPluginsMsg((data && data.error) || "Update failed", false);
-          if (btnEl) { btnEl.disabled = false; btnEl.textContent = "Check for Updates"; }
+          if (btnEl) { btnEl.disabled = false; btnEl.textContent = "Update To Latest"; }
           return;
         }
-        setPluginsMsg("Plugin updated.", true);
+        setPluginsMsg("Plugin updated to latest.", true);
         loadState();
-        if (btnEl) { btnEl.disabled = false; btnEl.textContent = "Check for Updates"; }
       })
       .catch(function (err) {
         setPluginsMsg(err.message || "Update failed", false);
-        if (btnEl) { btnEl.disabled = false; btnEl.textContent = "Check for Updates"; }
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = "Update To Latest"; }
       });
   }
 
@@ -551,16 +589,17 @@
       updateStatusCache = {};
       renderPluginCards(plugins);
 
-      // Fetch TAK.gov update status in the background so we don't block rendering.
-      if (link.linked && plugins.some(function (p) { return p.source === "tak.gov" && p.package_name; })) {
+      // Auto-detect available updates (TAK.gov + TAKwerx) in the background.
+      if (plugins.some(function (p) { return !!p.package_name && (p.source === "tak.gov" || p.source === "takwerx"); })) {
         (async function () {
           try {
             const statusRes = await fetch("/api/plugins/update-status");
             const statusData = await statusRes.json();
             if (statusData && statusData.updateStatus) {
               updateStatusCache = statusData.updateStatus;
-              // Re-render to show/hide update buttons once status arrives.
               renderPluginCards(downloadedPluginsCache);
+              if (takgovPluginsCache.length) renderTakgovMarketplace(getTakgovDisplayList());
+              if (takwerxPluginsCache.length) renderTakwerxMarketplace(getTakwerxDisplayList());
             }
           } catch (_) {}
         })();
@@ -573,6 +612,7 @@
         renderTakgovMarketplace(getTakgovDisplayList());
       }
       loadTakwerxPlugins();
+      if (typeof refreshSyncStatus === "function") refreshSyncStatus();
     } catch (err) {
       if (pluginsLoading) pluginsLoading.style.display = "none";
       setPluginsMsg(err.message || "Failed to load plugins", false);
@@ -633,20 +673,24 @@
     }
     marketplaceEmpty.style.display = "none";
     marketplaceGrid.style.display = "grid";
-    const downloaded = downloadedPluginsCache || [];
     marketplaceGrid.innerHTML = list.map(function (p, idx) {
       const name = esc(p.display_name || p.package_name || p.name || "Plugin");
       const desc = (p.description || "").slice(0, 120);
-      const alreadyInstalled = p.package_name && downloaded.some(function (d) { return d.package_name === p.package_name; });
-      const btnLabel = alreadyInstalled ? "Check for Update" : "Add To Server";
-      const btnClass = alreadyInstalled ? "btn" : "btn success";
+      const installed = findInstalledMatch(p);
+      const needsUpdate = !!(installed && isRemoteNewer(installed, p));
+      let actionBtn = "";
+      if (needsUpdate) {
+        actionBtn = "<button class=\"btn success\" type=\"button\" data-takgov-download data-takgov-index=\"" + idx + "\">Update To Latest</button>";
+      } else if (!installed) {
+        actionBtn = "<button class=\"btn success\" type=\"button\" data-takgov-download data-takgov-index=\"" + idx + "\">Add To Server</button>";
+      }
       return "<div class=\"plugin-card\" data-takgov-index=\"" + idx + "\">" +
         "<div class=\"plugin-card-header\">" +
         "<div class=\"plugin-name\">" + name + "</div>" +
         "</div>" +
         (desc ? "<div class=\"plugin-desc\">" + esc(desc) + (desc.length >= 120 ? "…" : "") + "</div>" : "") +
         "<div class=\"plugin-actions\">" +
-        "<button class=\"" + btnClass + "\" type=\"button\" data-takgov-download data-takgov-index=\"" + idx + "\">" + btnLabel + "</button>" +
+        actionBtn +
         "</div></div>";
     }).join("");
     marketplaceGrid.querySelectorAll("[data-takgov-download]").forEach(function (btn) {
@@ -654,8 +698,9 @@
         const idx = parseInt(btn.getAttribute("data-takgov-index"), 10);
         const pluginItem = list[idx];
         if (!pluginItem || !pluginItem.apk_url) return;
+        const isUpdate = btn.textContent === "Update To Latest";
         btn.disabled = true;
-        btn.textContent = "Adding…";
+        btn.textContent = isUpdate ? "Updating…" : "Adding…";
         setMarketplaceMsg("", true);
         fetch("/api/plugins/takgov/download", {
           method: "POST",
@@ -666,7 +711,7 @@
             return res.text().then(function (text) {
               var data = {};
               try { data = text ? JSON.parse(text) : {}; } catch (_) {}
-              return { res, data, text };
+              return { res: res, data: data, text: text };
             });
           })
           .then(function (_ref) {
@@ -676,16 +721,15 @@
             const errMsg = (data && data.error) || (typeof text === "string" && text.slice(0, 200)) || "Download failed";
             if (!res.ok) {
               setMarketplaceMsg(errMsg, false);
-              btn.textContent = btn.textContent === "Update" ? "Update" : "Add To Server";
+              btn.textContent = isUpdate ? "Update To Latest" : "Add To Server";
               btn.disabled = false;
               return;
             }
-            btn.textContent = "Check for Update";
-            setMarketplaceMsg("Plugin added/updated on server.", true);
+            setMarketplaceMsg(isUpdate ? "Plugin updated on server." : "Plugin added/updated on server.", true);
             loadState();
           })
           .catch(function (err) {
-            btn.textContent = btn.classList.contains("success") ? "Add To Server" : "Check for Update";
+            btn.textContent = isUpdate ? "Update To Latest" : "Add To Server";
             btn.disabled = false;
             setMarketplaceMsg(err.message || "Failed to add plugin", false);
           });
@@ -767,23 +811,18 @@
     }
     takwerxEmpty.style.display = "none";
     takwerxGrid.style.display = "grid";
-    const downloaded = downloadedPluginsCache || [];
     takwerxGrid.innerHTML = list.map(function (p, idx) {
       const name = esc(p.display_name || p.package_name || p.name || "Plugin");
       const desc = (p.description || "").slice(0, 120);
       const ver = (p.version || "").trim();
-      const alreadyInstalled = p.package_name && downloaded.some(function (d) {
-        if (d.package_name !== p.package_name) return false;
-        const dVer = (d.atakVersion || d.atak_version || "").toString();
-        const pVer = (p.atakVersion || p.atak_version || "").toString();
-        if (!pVer) return true;
-        const dKey = dVer.match(/^(\d+)\.(\d+)/);
-        const pKey = pVer.match(/^(\d+)\.(\d+)/);
-        if (!dKey || !pKey) return !dVer;
-        return dKey[1] + "." + dKey[2] === pKey[1] + "." + pKey[2];
-      });
-      const btnLabel = alreadyInstalled ? "Check for Update" : "Add To Server";
-      const btnClass = alreadyInstalled ? "btn" : "btn success";
+      const installed = findInstalledMatch(p);
+      const needsUpdate = !!(installed && isRemoteNewer(installed, p));
+      let actionBtn = "";
+      if (needsUpdate) {
+        actionBtn = "<button class=\"btn success\" type=\"button\" data-takwerx-download data-takwerx-index=\"" + idx + "\">Update To Latest</button>";
+      } else if (!installed) {
+        actionBtn = "<button class=\"btn success\" type=\"button\" data-takwerx-download data-takwerx-index=\"" + idx + "\">Add To Server</button>";
+      }
       return "<div class=\"plugin-card\" data-takwerx-index=\"" + idx + "\">" +
         "<div class=\"plugin-card-header\">" +
         "<div class=\"plugin-name\">" + name + "</div>" +
@@ -791,7 +830,7 @@
         "</div>" +
         (desc ? "<div class=\"plugin-desc\">" + esc(desc) + (desc.length >= 120 ? "…" : "") + "</div>" : "") +
         "<div class=\"plugin-actions\">" +
-        "<button class=\"" + btnClass + "\" type=\"button\" data-takwerx-download data-takwerx-index=\"" + idx + "\">" + btnLabel + "</button>" +
+        actionBtn +
         "</div></div>";
     }).join("");
     takwerxGrid.querySelectorAll("[data-takwerx-download]").forEach(function (btn) {
@@ -799,8 +838,9 @@
         const idx = parseInt(btn.getAttribute("data-takwerx-index"), 10);
         const pluginItem = list[idx];
         if (!pluginItem || !pluginItem.apk_url) return;
+        const isUpdate = btn.textContent === "Update To Latest";
         btn.disabled = true;
-        btn.textContent = "Adding…";
+        btn.textContent = isUpdate ? "Updating…" : "Adding…";
         setTakwerxMsg("", true);
         fetch("/api/plugins/takwerx/download", {
           method: "POST",
@@ -821,17 +861,15 @@
             const errMsg = (data && data.error) || (typeof text === "string" && text.slice(0, 200)) || "Download failed";
             if (!res.ok) {
               setTakwerxMsg(errMsg, false);
-              btn.textContent = alreadyInstalled ? "Check for Update" : "Add To Server";
+              btn.textContent = isUpdate ? "Update To Latest" : "Add To Server";
               btn.disabled = false;
               return;
             }
-            btn.textContent = "Check for Update";
-            btn.className = "btn";
-            setTakwerxMsg("Plugin added/updated on server.", true);
+            setTakwerxMsg(isUpdate ? "Plugin updated on server." : "Plugin added/updated on server.", true);
             loadState();
           })
           .catch(function (err) {
-            btn.textContent = btn.classList.contains("success") ? "Add To Server" : "Check for Update";
+            btn.textContent = isUpdate ? "Update To Latest" : "Add To Server";
             btn.disabled = false;
             setTakwerxMsg(err.message || "Failed to add plugin", false);
           });
@@ -1036,12 +1074,11 @@
   renderPluginCards(initialPlugins);
   loadState();
 
-  // --- TAK Server OTA sync status ---
+  // --- TAK Server OTA auto-sync status ---
   const syncStatusEl = document.getElementById("takServerSyncStatus");
   const syncLabelEl = document.getElementById("takServerSyncLabel");
   const syncDetailEl = document.getElementById("takServerSyncDetail");
   const syncUrlEl = document.getElementById("takServerSyncUrl");
-  const syncNowBtn = document.getElementById("takServerSyncNowBtn");
   let syncPollTimer = null;
 
   function formatRelativeTime(iso) {
@@ -1061,12 +1098,18 @@
     if (!syncStatusEl || !syncLabelEl) return;
     syncStatusEl.classList.remove("is-error", "is-success", "is-blocked", "is-syncing");
     const state = (sync && sync.state) || "idle";
+    const portalCount = sync && sync.portalCount != null ? sync.portalCount : null;
+    const syncedCount = sync && sync.syncedCount != null ? sync.syncedCount : null;
     let label = "Idle";
-    if (state === "syncing" || (sync && sync.inProgress)) {
-      label = "Syncing…";
+    if (state === "pending" || state === "syncing" || (sync && sync.inProgress)) {
+      label = portalCount != null ? ("Auto-syncing " + portalCount + " plugin(s)…") : "Auto-syncing…";
       syncStatusEl.classList.add("is-syncing");
     } else if (state === "success") {
-      label = "Synced" + (sync.lastSuccessAt ? " " + formatRelativeTime(sync.lastSuccessAt) : "");
+      const counts =
+        portalCount != null && syncedCount != null
+          ? (syncedCount + "/" + portalCount + " on TAK Server")
+          : (syncedCount != null ? syncedCount + " on TAK Server" : "Synced");
+      label = counts + (sync.lastSuccessAt ? " · " + formatRelativeTime(sync.lastSuccessAt) : "");
       syncStatusEl.classList.add("is-success");
     } else if (state === "blocked_ssh") {
       label = "SSH required";
@@ -1080,9 +1123,6 @@
       const parts = [];
       if (sync && sync.message) parts.push(sync.message);
       if (sync && sync.error) parts.push(sync.error);
-      if (sync && sync.pluginCount != null && state === "success") {
-        parts.push(sync.pluginCount + " plugin(s) on server.");
-      }
       syncDetailEl.textContent = parts.join(" ");
     }
     if (syncUrlEl) {
@@ -1096,9 +1136,6 @@
         syncUrlEl.textContent = "";
       }
     }
-    if (syncNowBtn) {
-      syncNowBtn.disabled = !!(sync && sync.inProgress);
-    }
   }
 
   function refreshSyncStatus() {
@@ -1107,7 +1144,7 @@
       .then(function (data) {
         const sync = data && data.sync ? data.sync : null;
         applySyncStatus(sync);
-        const busy = !!(sync && (sync.inProgress || sync.state === "syncing"));
+        const busy = !!(sync && (sync.inProgress || sync.state === "syncing" || sync.state === "pending"));
         if (busy) {
           if (!syncPollTimer) {
             syncPollTimer = setInterval(refreshSyncStatus, 2000);
@@ -1120,22 +1157,6 @@
       .catch(function () {
         applySyncStatus({ state: "error", message: "Could not load sync status." });
       });
-  }
-
-  if (syncNowBtn) {
-    syncNowBtn.addEventListener("click", function () {
-      syncNowBtn.disabled = true;
-      fetch("/api/plugins/sync-now", { method: "POST" })
-        .then(function (res) { return res.json(); })
-        .then(function (data) {
-          applySyncStatus(data && data.sync ? data.sync : { state: "syncing", inProgress: true });
-          if (!syncPollTimer) syncPollTimer = setInterval(refreshSyncStatus, 2000);
-        })
-        .catch(function (err) {
-          applySyncStatus({ state: "error", error: err.message || "Sync failed to start." });
-          syncNowBtn.disabled = false;
-        });
-    });
   }
 
   refreshSyncStatus();
