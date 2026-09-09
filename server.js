@@ -1299,7 +1299,10 @@ app.get("/setup-my-device", async (req, res) => {
     qrSvc.getTakUrl()
   ) {
     try {
-      const localUser = await usersSvc.getUserById(user.uid || u);
+      let localUser = null;
+      const uid = String(user.uid || "").trim();
+      if (uid) localUser = await usersSvc.getUserById(uid);
+      if (!localUser) localUser = await usersSvc.getUserById(u);
       if (!localUser || localUser.is_active === false) {
         enrollQrBootstrap = null;
       } else {

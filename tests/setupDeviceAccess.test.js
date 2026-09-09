@@ -7,7 +7,11 @@ const usersSvc = require("../services/users.service");
 usersSvc.getUserById = async (id) => {
   if (id === "missing") return null;
   if (id === "error") throw new Error("directory unavailable");
-  return { username: String(id), is_active: id !== "disabled" };
+  if (id === "active" || id === "disabled") {
+    return { username: String(id), is_active: id !== "disabled" };
+  }
+  // Simulate Authentik uid that does not match local id / authentik_pk.
+  return null;
 };
 
 const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
@@ -42,6 +46,15 @@ function response() {
   const active = await router.requireActiveLoggedIn(activeReq, activeRes);
   assert.strictEqual(active.username, "active");
   assert.strictEqual(activeRes.statusCode, 200);
+
+  // Authentik uid often does not match local id/authentik_pk; username must still resolve.
+  const uidMissReq = {
+    authentikUser: { uid: "00000000-0000-4000-8000-000000000099", username: "active" },
+  };
+  const uidMissRes = response();
+  const uidMiss = await router.requireActiveLoggedIn(uidMissReq, uidMissRes);
+  assert.strictEqual(uidMiss.username, "active");
+  assert.strictEqual(uidMissRes.statusCode, 200);
 
   const disabledReq = { authentikUser: { uid: "disabled", username: "disabled" } };
   const disabledRes = response();

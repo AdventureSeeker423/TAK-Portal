@@ -21,7 +21,18 @@ async function requireActiveLoggedIn(req, res) {
   const user = requireLoggedIn(req, res);
   if (!user) return null;
 
-  const localUser = await usersSvc.getUserById(user.uid || user.username);
+  // Prefer uid, but Authentik's uid is often a UUID that is neither local id nor
+  // authentik_pk (numeric). Fall back to username so active users are not
+  // treated as missing/disabled.
+  let localUser = null;
+  const uid = String(user.uid || "").trim();
+  const username = String(user.username || "").trim();
+  if (uid) {
+    localUser = await usersSvc.getUserById(uid);
+  }
+  if (!localUser && username) {
+    localUser = await usersSvc.getUserById(username);
+  }
   if (!localUser || localUser.is_active === false) {
     res.status(403).json({ ok: false, error: "Account is disabled" });
     return null;
