@@ -220,6 +220,7 @@ async function loadCatalogEntries() {
 
 /**
  * Collect ATAK CIV versions present across catalog assets (desc).
+ * Only versions that have at least one CIV release APK.
  * @param {object[]} entries
  * @returns {string[]}
  */
@@ -227,7 +228,7 @@ function collectAvailableVersions(entries) {
   const set = new Set();
   for (const e of entries || []) {
     for (const a of e.assets || []) {
-      if (a.atakVersion) set.add(a.atakVersion);
+      if (a.atakVersion && a.apk_url) set.add(normalizeAtakVersion(a.atakVersion));
     }
   }
   return Array.from(set).sort((a, b) =>
@@ -235,8 +236,17 @@ function collectAvailableVersions(entries) {
   );
 }
 
+/** Normalize ATAK version strings to major.minor.patch (e.g. 5.8 → 5.8.0). */
+function normalizeAtakVersion(version) {
+  const s = String(version || "").trim();
+  const m = s.match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (!m) return s;
+  return `${m[1]}.${m[2]}.${m[3] != null ? m[3] : "0"}`;
+}
+
 /**
  * List TAKwerx plugins for a given ATAK CIV product version.
+ * Plugins without a CIV APK for that exact ATAK version are omitted.
  * @param {string} [productVersion] e.g. "5.8.0"
  * @returns {Promise<{ success: boolean, plugins?: object[], versions?: string[], error?: string }>}
  */
@@ -245,22 +255,18 @@ async function fetchTakwerxPlugins(productVersion) {
   if (!loaded.success) return loaded;
 
   const versions = collectAvailableVersions(loaded.entries);
-  let want = (productVersion || "").trim();
+  let want = normalizeAtakVersion((productVersion || "").trim());
   if (!want && versions.length) want = versions[0];
-
-  const wantMajorMinor = (() => {
-    const m = want.match(/^(\d+)\.(\d+)/);
-    return m ? `${m[1]}.${m[2]}` : want;
-  })();
+  if (want && versions.length && !versions.includes(want)) {
+    // Selected ATAK version has no builds in the catalog — return empty list.
+    return { success: true, plugins: [], versions };
+  }
 
   const plugins = [];
   for (const e of loaded.entries) {
-    const asset =
-      (e.assets || []).find((a) => a.atakVersion === want) ||
-      (e.assets || []).find((a) => {
-        const m = String(a.atakVersion || "").match(/^(\d+)\.(\d+)/);
-        return m && `${m[1]}.${m[2]}` === wantMajorMinor;
-      });
+    const asset = (e.assets || []).find(
+      (a) => a.apk_url && normalizeAtakVersion(a.atakVersion) === want
+    );
     if (!asset) continue;
     plugins.push({
       id: e.id,
@@ -272,8 +278,8 @@ async function fetchTakwerxPlugins(productVersion) {
       apk_url: asset.apk_url,
       apk_size_bytes: asset.size,
       filename: asset.filename,
-      atakVersion: asset.atakVersion,
-      atak_version: asset.atakVersion,
+      atakVersion: normalizeAtakVersion(asset.atakVersion),
+      atak_version: normalizeAtakVersion(asset.atakVersion),
       product: "ATAK-CIV",
       repo_url: e.repo_url,
       release_url: e.release_url,

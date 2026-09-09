@@ -71,9 +71,7 @@
     <div class="row" style="flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px;">
       <label>ATAK version
         <select id="takwerxVersion" style="min-width: 120px;">
-          <option value="5.8.0" selected>5.8.0</option>
-          <option value="5.7.0">5.7.0</option>
-          <option value="5.6.0">5.6.0</option>
+          <option value="" selected>Loading…</option>
         </select>
       </label>
       <label style="flex: 1; min-width: 200px;">Search
@@ -844,25 +842,36 @@
   }
 
   async function loadTakwerxPlugins() {
-    const version = (takwerxVersion && takwerxVersion.value || "5.8.0").trim();
+    const version = (takwerxVersion && takwerxVersion.value || "").trim();
     setTakwerxMsg("Loading…", true);
     try {
-      const res = await fetch("/api/plugins/takwerx/plugins?product_version=" + encodeURIComponent(version));
+      const qs = version ? ("?product_version=" + encodeURIComponent(version)) : "";
+      const res = await fetch("/api/plugins/takwerx/plugins" + qs);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load TAKwerx plugins");
       const versions = Array.isArray(data.versions) ? data.versions.filter(Boolean) : [];
-      if (takwerxVersion && versions.length > 0 && !takwerxVersionsLoaded) {
+      if (takwerxVersion) {
         const previous = (takwerxVersion.value || "").trim();
-        takwerxVersion.innerHTML = versions.map(function (v) {
-          return "<option value=\"" + esc(v) + "\">" + esc(v) + "</option>";
-        }).join("");
-        takwerxVersion.value = versions.includes(previous) ? previous : versions[0];
-        takwerxVersionsLoaded = true;
-        if (takwerxVersion.value !== version) {
-          return loadTakwerxPlugins();
+        if (versions.length === 0) {
+          takwerxVersion.innerHTML = "<option value=\"\">No versions available</option>";
+          takwerxVersion.value = "";
+        } else {
+          takwerxVersion.innerHTML = versions.map(function (v) {
+            return "<option value=\"" + esc(v) + "\">" + esc(v) + "</option>";
+          }).join("");
+          const selected = versions.includes(previous) ? previous : versions[0];
+          takwerxVersion.value = selected;
+          takwerxVersionsLoaded = true;
+          // Refetch only if we asked for a concrete version that isn't what's selected now.
+          if (version && selected !== version) {
+            return loadTakwerxPlugins();
+          }
         }
       }
-      takwerxPluginsCache = data.plugins || [];
+      // Only show plugins that have a downloadable APK for the selected ATAK version.
+      takwerxPluginsCache = (data.plugins || []).filter(function (p) {
+        return p && p.apk_url;
+      });
       takwerxSearchText = "";
       if (takwerxSearch) takwerxSearch.value = "";
       setTakwerxMsg(takwerxPluginsCache.length ? "" : "No plugins found for this ATAK version.", true);
