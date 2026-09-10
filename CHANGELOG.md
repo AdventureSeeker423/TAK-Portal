@@ -9,6 +9,17 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.0 - 9/10/26
+🎉 `New Feature` - TAK Portal 2.0.0 introduces two additional containers, a postgres container and a worker container.  Both of these paired together greatly improve performance and usability of TAK Portal at scale (easily handling 1,000+ users)<br>
+🎉 `New Feature` - Locate functionality has been rebuilt from the ground-up and no longer relies on built in TAK Server for full functionality.  This shift allows admins to have better control of their locators, historical data, and channel/data sync selection<br>
+🎉 `New Feature` - Added option to agencies page (per agency) to "auto approve" user requests and assign the agency's defualt template.  This can be restricted to specific domains.<br>
+✨ `Enhancement` - Dashboard, Users, Groups, Agencies - Pages reorganized to provide easier access to functions<br>
+✨ `Enhancement` - Channel Patching and Locate Persons pages are now accessible and scoped for agency admins<br>
+✨ `Enhancement` - Integration cert download now includes the intermediate cert to assist with setting up 3rd party devices such as Skydio UAS platforms<br>
+✨ `Enhancement` - Plugin Manger page now includes a plugin library from TAKwerx as well as fixes to keep tak.gov plugin library alive without a need to keep resyncing to an account<br>
+✨ `Enhancement` - Page colors have been optimized for a more modern feel
+
+
 ### v1.4.9 - 9/4/26
 ✨ `Enhancement` - Dashboard - Charts - When more than 8 items are shown, the key is hidden<br>
 🐛 `Bug Fix` - Fixes issue with incorrect hover actions/placement on charts<br>
