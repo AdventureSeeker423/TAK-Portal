@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v1.4.10 - 9/10/26
+🎉 `New Feature` - Plugin Manager - TAKwerx Plugins browser lists community plugins from public GitHub Releases and supports Add To Server into the existing catalog<br>
+✨ `Enhancement` - Plugin Manager - TAK Server plugin sync is fully automatic; back-to-back Add To Server is serialized safely<br>
+✨ `Enhancement` - Plugin Manager - Installed plugins show Update To Latest when a newer TAK.gov or TAKwerx release is available<br>
+✨ `Enhancement` - Plugin Manager - TAKwerx catalog auto-discovers plugins from the atak-plugins monorepo `plugins/` folder so newly published plugins appear without a code change
+
 ### v1.4.9 - 9/4/26
 ✨ `Enhancement` - Dashboard - Charts - When more than 8 items are shown, the key is hidden<br>
 🐛 `Bug Fix` - Fixes issue with incorrect hover actions/placement on charts<br>

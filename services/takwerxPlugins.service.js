@@ -1,64 +1,28 @@
 /**
- * TAKwerx plugin catalog: curated public GitHub release repos.
- * Fetches latest release assets and maps CIV APKs by ATAK version.
+ * TAKwerx plugin catalog.
+ * Discovers plugins from takwerx/atak-plugins `plugins/` folders, maps each to its
+ * public GitHub release repo, and lists CIV APKs by ATAK version.
  *
- * No GitHub auth — stays under the unauthenticated API limit by:
- * caching the full catalog for hours, coalescing concurrent refreshes,
- * and serving stale cache if GitHub is unreachable/rate-limited.
+ * No GitHub auth — stays under the unauthenticated API limit by caching,
+ * coalescing concurrent refreshes, and serving stale cache on failure.
  */
 
 const pluginsSvc = require("./plugins.service");
 
 const GITHUB_API = "https://api.github.com";
 const USER_AGENT = "TAK-Portal-TAKwerx-Plugins";
-/** Six repos × one request; long TTL keeps us well under GitHub's unauthenticated hourly limit. */
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const MONOREPO = "takwerx/atak-plugins";
+/** Full catalog refresh interval — short enough to pick up newly published plugins. */
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-/** Curated catalog matching takwerx/atak-plugins README public repos. */
-const TAKWERX_CATALOG = [
-  {
-    id: "plss-grid",
-    repo: "plss-grid",
-    displayName: "PLSS Grid",
-    description: "Township, range and section overlay from BLM survey data",
-    packageName: "com.atakmap.android.plss.plugin",
-  },
-  {
-    id: "traffic",
-    repo: "traffic",
-    displayName: "Traffic",
-    description: "Live traffic over your own base map, refreshing while the map sits still",
-    packageName: "com.atakmap.android.traffic.plugin",
-  },
-  {
-    id: "map-depot",
-    repo: "map-depot",
-    displayName: "Map Depot",
-    description: "Elevation, base maps and offline public-lands maps, downloaded from inside ATAK",
-    packageName: "com.atakmap.android.mapdepot.plugin",
-  },
-  {
-    id: "cam-depot",
-    repo: "cam-depot",
-    displayName: "Cam Depot",
-    description: "Public traffic and wildfire cameras on the map, with live video where the agency streams",
-    packageName: "com.atakmap.android.camdepot.plugin",
-  },
-  {
-    id: "fobs",
-    repo: "fobs",
-    displayName: "FOBS",
-    description: "Field Observation Survey: walk, draw, import, split and join a perimeter into an ATAK shape",
-    packageName: "com.atakmap.android.fobs.plugin",
-  },
-  {
-    id: "takwerx-market",
-    repo: "takwerx-market",
-    displayName: "TAKwerx Market",
-    description: "Install and update TAKwerx plugins from inside ATAK, with a count of waiting updates on the toolbar",
-    packageName: "com.atakmap.android.takwerxmarket.plugin",
-  },
-];
+/**
+ * Folder name in monorepo plugins/ → public distribution repo slug.
+ * Default mapping is PascalCase → kebab-case (EvacZone → evac-zone).
+ * Only unusual names need an override (e.g. PLSS → plss-grid).
+ */
+const REPO_OVERRIDES = {
+  PLSS: "plss-grid",
+};
 
 /** @type {{ expiry: number, entries: object[] } | null} */
 let catalogCache = null;
@@ -66,6 +30,29 @@ let catalogCache = null;
 let catalogRefreshInFlight = null;
 
 const APK_ASSET_RE = /^ATAK-Plugin-.+?--(\d+\.\d+\.\d+)-civ-release\.apk$/i;
+
+function folderToRepoSlug(folderName) {
+  const name = String(folderName || "").trim();
+  if (!name) return "";
+  if (REPO_OVERRIDES[name]) return REPO_OVERRIDES[name];
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
+function folderToDisplayName(folderName) {
+  const name = String(folderName || "").trim();
+  if (!name) return "Plugin";
+  // Already spaced acronyms like FOBS / PLSS stay as-is; PascalCase gets spaces.
+  if (/^[A-Z0-9]+$/.test(name) && name.length <= 5) return name;
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+}
+
+function folderToPackageName(folderName) {
+  return `com.atakmap.android.${String(folderName || "").toLowerCase()}.plugin`;
+}
+
+function folderToId(folderName) {
+  return folderToRepoSlug(folderName) || String(folderName || "").toLowerCase();
+}
 
 /**
  * @param {string} assetName
@@ -123,11 +110,95 @@ async function githubGetJson(path) {
 }
 
 /**
+ * List plugin directories from the takwerx/atak-plugins monorepo.
+ * @returns {Promise<string[]>}
+ */
+async function listMonorepoPluginFolders() {
+  const items = await githubGetJson(`/repos/${MONOREPO}/contents/plugins`);
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((it) => it && it.type === "dir" && it.name)
+    .map((it) => String(it.name))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Build a seed from a monorepo folder + optional GitHub repo metadata.
+ * @param {string} folderName
+ * @param {object|null} repoMeta
+ */
+function buildSeed(folderName, repoMeta) {
+  const repo = folderToRepoSlug(folderName);
+  const displayName = folderToDisplayName(folderName);
+  let description = "";
+  if (repoMeta && typeof repoMeta.description === "string") {
+    description = repoMeta.description
+      .replace(/^ATAK Plugin:\s*/i, "")
+      .replace(/\s*—\s*/, " — ")
+      .replace(/\s*Downloads, guide and issues here\.?\s*$/i, "")
+      .trim();
+  }
+  if (!description) description = `${displayName} ATAK plugin from takwerx`;
+  return {
+    id: folderToId(folderName),
+    folder: folderName,
+    repo,
+    displayName,
+    description,
+    packageName: folderToPackageName(folderName),
+  };
+}
+
+/**
+ * Discover public release repos for each monorepo plugin folder.
+ * Skips folders with no public repo or no published CIV release APKs.
+ * @returns {Promise<object[]>}
+ */
+async function discoverCatalogSeeds() {
+  const folders = await listMonorepoPluginFolders();
+  const seeds = [];
+
+  const results = await Promise.allSettled(
+    folders.map(async (folderName) => {
+      const repo = folderToRepoSlug(folderName);
+      if (!repo) return null;
+      // Confirm public repo exists (404 → not published yet, e.g. Weather).
+      const repoMeta = await githubGetJson(`/repos/takwerx/${repo}`);
+      return buildSeed(folderName, repoMeta);
+    })
+  );
+
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled" && r.value) {
+      seeds.push(r.value);
+    } else if (r.status === "rejected") {
+      const status = r.reason?.statusCode;
+      if (status !== 404) {
+        console.warn(
+          "[takwerxPlugins] seed resolve failed for",
+          folders[i],
+          r.reason?.message || r.reason
+        );
+      }
+    }
+  });
+
+  return seeds;
+}
+
+/**
  * Fetch latest release for one catalog entry and normalize assets.
- * @param {typeof TAKWERX_CATALOG[0]} seed
+ * Returns null when the repo has no CIV release APKs yet.
+ * @param {object} seed
  */
 async function fetchLatestForSeed(seed) {
-  const release = await githubGetJson(`/repos/takwerx/${seed.repo}/releases/latest`);
+  let release;
+  try {
+    release = await githubGetJson(`/repos/takwerx/${seed.repo}/releases/latest`);
+  } catch (err) {
+    if (err?.statusCode === 404) return null;
+    throw err;
+  }
   const assets = Array.isArray(release.assets) ? release.assets : [];
   const civAssets = [];
   for (const a of assets) {
@@ -143,7 +214,11 @@ async function fetchLatestForSeed(seed) {
       filename: name,
     });
   }
-  civAssets.sort((a, b) => String(b.atakVersion).localeCompare(String(a.atakVersion), undefined, { numeric: true }));
+  if (civAssets.length === 0) return null;
+
+  civAssets.sort((a, b) =>
+    String(b.atakVersion).localeCompare(String(a.atakVersion), undefined, { numeric: true })
+  );
   const tag = (release.tag_name || release.name || "").replace(/^v/i, "") || null;
   return {
     id: seed.id,
@@ -160,14 +235,23 @@ async function fetchLatestForSeed(seed) {
 }
 
 async function refreshCatalogFromGithub() {
-  const results = await Promise.allSettled(TAKWERX_CATALOG.map((seed) => fetchLatestForSeed(seed)));
+  const seeds = await discoverCatalogSeeds();
+  if (seeds.length === 0) {
+    return {
+      success: false,
+      error: "No TAKwerx plugin folders found in the monorepo.",
+    };
+  }
+
+  const results = await Promise.allSettled(seeds.map((seed) => fetchLatestForSeed(seed)));
   const entries = [];
   const errors = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") {
-      entries.push(r.value);
+      if (r.value) entries.push(r.value);
+      // null = repo exists but no CIV release yet — skip quietly
     } else {
-      const seed = TAKWERX_CATALOG[i];
+      const seed = seeds[i];
       errors.push(`${seed.displayName}: ${r.reason?.message || "failed"}`);
       console.warn("[takwerxPlugins] fetch failed for", seed.repo, r.reason?.message || r.reason);
     }
@@ -176,7 +260,9 @@ async function refreshCatalogFromGithub() {
   if (entries.length === 0) {
     return {
       success: false,
-      error: errors.length ? errors.join("; ") : "Failed to load TAKwerx plugins from GitHub.",
+      error: errors.length
+        ? errors.join("; ")
+        : "No TAKwerx plugins with published CIV release APKs were found.",
     };
   }
 
@@ -201,11 +287,10 @@ async function loadCatalogEntries() {
     try {
       const result = await refreshCatalogFromGithub();
       if (!result.success && catalogCache?.entries?.length) {
-        // Rate limit / outage: keep serving last known catalog.
         console.warn("[takwerxPlugins] refresh failed; serving stale cache:", result.error);
         catalogCache = {
           entries: catalogCache.entries,
-          expiry: Date.now() + Math.min(CACHE_TTL_MS, 30 * 60 * 1000),
+          expiry: Date.now() + Math.min(CACHE_TTL_MS, 15 * 60 * 1000),
         };
         return { success: true, entries: catalogCache.entries };
       }
@@ -258,7 +343,6 @@ async function fetchTakwerxPlugins(productVersion) {
   let want = normalizeAtakVersion((productVersion || "").trim());
   if (!want && versions.length) want = versions[0];
   if (want && versions.length && !versions.includes(want)) {
-    // Selected ATAK version has no builds in the catalog — return empty list.
     return { success: true, plugins: [], versions };
   }
 
@@ -375,10 +459,11 @@ async function updateInstalledPlugin(plugin) {
 }
 
 module.exports = {
-  TAKWERX_CATALOG,
   fetchTakwerxPlugins,
   downloadTakwerxPlugin,
   getUpdateStatusForInstalled,
   updateInstalledPlugin,
   isAllowedTakwerxApkUrl,
+  discoverCatalogSeeds,
+  loadCatalogEntries,
 };
