@@ -425,15 +425,28 @@
 .userQrPairActions {
   gap: 10px;
   margin-top: 14px;
-  justify-content: center;
-  flex-wrap: wrap;
+  justify-content: stretch;
+  flex-wrap: nowrap;
 }
 .userQrPairActions .btn {
-  flex: 1 1 0;
   width: auto;
   min-width: 0;
   max-width: none;
   white-space: nowrap;
+}
+.userQrPairActions .btn#qrSaveBtn {
+  flex: 2 1 0;
+}
+.userQrPairActions .btn#qrCopyBtn {
+  flex: 1 1 0;
+}
+.qrPacketBtn {
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+.qrPacketBtn:hover {
+  filter: brightness(0.95);
 }
 .maQrPacketFooter {
   margin-top: 16px;
@@ -501,17 +514,34 @@
 #membersOverlay .membersSplit.has-mass {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
 }
-#membersOverlay .membersSplit.has-delegate:not(.has-mass) {
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-}
-#membersOverlay .membersSplit.has-mass.has-delegate {
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.95fr);
-}
 #membersOverlay .membersSplit:not(.has-mass) #membersMassPane {
   display: none !important;
 }
-#membersOverlay .membersSplit:not(.has-delegate) #membersDelegatePane {
+#membersOverlay:not(.has-delegate) #membersDelegatePane {
   display: none !important;
+}
+#membersOverlay .membersDelegatePane {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 42%;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+}
+#membersOverlay .membersDelegatePane .msg:empty {
+  display: none;
+}
+#membersOverlay .membersDelegatePane .membersMassListBox {
+  min-height: 6rem;
+}
+#membersOverlay #adminAccessInner {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  align-content: start;
 }
 #membersOverlay .membersSplitPane {
   display: flex;
@@ -628,10 +658,11 @@ body.noScroll .main {
   overflow: hidden !important;
 }
 @media (max-width: 990px) {
-  #membersOverlay .membersSplit.has-mass,
-  #membersOverlay .membersSplit.has-delegate:not(.has-mass),
-  #membersOverlay .membersSplit.has-mass.has-delegate {
+  #membersOverlay .membersSplit.has-mass {
     grid-template-columns: 1fr;
+  }
+  #membersOverlay .membersDelegatePane {
+    max-height: 36%;
   }
 }
 
@@ -649,8 +680,8 @@ body.noScroll .main {
       <div class="userQrSingleCol">
         <img id="qrImg" alt="Enrollment QR Code" class="userQrPairImg" />
         <div class="row userQrPairActions">
+          <button class="btn success" type="button" id="qrSaveBtn" disabled>Save Image</button>
           <button class="btn qrCopy" type="button" id="qrCopyBtn" disabled>Copy URL</button>
-          <button class="btn" type="button" id="qrSaveBtn" disabled>Save Image</button>
         </div>
       </div>
       <div class="maQrPacketFooter">
@@ -883,20 +914,20 @@ body.noScroll .main {
             <button class="btn success" id="massApplyBtn" type="button">ASSIGN FOR SELECTED AGENCIES</button>
           </div>
         </div>
+      </div>
 
-        <div class="membersSplitPane" id="membersDelegatePane">
-          <div class="membersSplitPaneHead">
-            <h3>Delegate to Agencies</h3>
-            <div class="row" style="gap:8px; flex-wrap:wrap;">
-              <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
-              <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
-            </div>
+      <div class="membersDelegatePane" id="membersDelegatePane">
+        <div class="membersSplitPaneHead">
+          <h3>Delegate to Agency Admins</h3>
+          <div class="row" style="gap:8px; flex-wrap:wrap;">
+            <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
+            <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
           </div>
-          <p id="adminAccessSummary" class="msg"></p>
-          <input id="adminAccessSearch" placeholder="Search agencies..." />
-          <div id="adminAccessBox" class="groupsBox membersMassListBox">
-            <div id="adminAccessInner" class="groupsInner"></div>
-          </div>
+        </div>
+        <p id="adminAccessSummary" class="msg"></p>
+        <input id="adminAccessSearch" placeholder="Search agencies..." />
+        <div id="adminAccessBox" class="groupsBox membersMassListBox">
+          <div id="adminAccessInner" class="groupsInner"></div>
         </div>
       </div>
     </div>
@@ -995,9 +1026,8 @@ function showMembersModal(show) {
 }
 
 function setMembersSplitPanes() {
-  if (!membersSplit) return;
-  membersSplit.classList.toggle("has-mass", !!membersShowMass);
-  membersSplit.classList.toggle("has-delegate", !!membersShowDelegate);
+  if (membersSplit) membersSplit.classList.toggle("has-mass", !!membersShowMass);
+  if (membersOverlay) membersOverlay.classList.toggle("has-delegate", !!membersShowDelegate);
 }
 
 function memberAgencyLabel(u) {
@@ -2846,15 +2876,23 @@ function updateEditExpireUi(){
   }
 }
 
-editType.onchange = updateEditExpireUi;
-editExpireEnabled.onchange = updateEditExpireUi;
-editCloseBtn.onclick = () => {
+function closeEditModal() {
+  if (!editOverlay) return;
   editOverlay.style.display = "none";
   document.body.classList.remove("noScroll");
   editLogoRemovePending = false;
   if (editLogoFile) editLogoFile.value = "";
   setEditLogoCurrentLabel("No file chosen");
-};
+}
+
+editType.onchange = updateEditExpireUi;
+editExpireEnabled.onchange = updateEditExpireUi;
+if (editCloseBtn) editCloseBtn.onclick = closeEditModal;
+if (editOverlay) {
+  editOverlay.addEventListener("click", (e) => {
+    if (e.target === editOverlay) closeEditModal();
+  });
+}
 
 // ----- Additional MA user modal -----
 const addMaUserOverlay = document.getElementById("addMaUserOverlay");
@@ -3806,9 +3844,7 @@ async function loadAdminAccess(itemId) {
     adminAccessAgencies = Array.isArray(out.agencies) ? out.agencies : [];
     renderAdminAccessList();
     if (adminAccessSummary) {
-      adminAccessSummary.textContent = out.canDelegate
-        ? "Agency admins for selected agencies can view, edit, and delete this mutual aid."
-        : "";
+      adminAccessSummary.textContent = "";
       adminAccessSummary.className = "msg";
     }
   } catch (e) {
@@ -3995,7 +4031,7 @@ function renderMutualAidRow(it, opts = {}) {
         <div class="maActionsRow cardActionsRow">
           <button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>
           ${isSub ? "" : `<button class="btn btn-access" type="button" data-act="members" data-id="${esc(it.id)}">Members</button>`}
-          <button class="btn qr" type="button" data-act="qr" data-id="${esc(it.id)}">QR</button>
+          <button class="btn qrPacketBtn" type="button" data-act="qr" data-id="${esc(it.id)}">QR / Packet</button>
           ${canCreateSub ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">${esc(createSubButtonLabel(it.type))}</button>` : ""}
           <button class="btn danger" type="button" data-act="del" data-id="${esc(it.id)}">Delete</button>
         </div>
