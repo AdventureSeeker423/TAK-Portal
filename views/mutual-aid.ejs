@@ -935,7 +935,6 @@ const FLYER_USER_AGREEMENT = <%- JSON.stringify(
     ? flyerUserAgreement
     : { enabled: false, text: "" }
 ) %>;
-const TAK_HOST = <%- JSON.stringify(typeof takHost !== "undefined" ? takHost : "") %>;
 // ----- Shared helpers -----
 function esc(s){
   return String(s ?? "")
@@ -1552,133 +1551,33 @@ let qrActiveItem = null;
 /** @type {Map<string, { enrollUrl: string, qrCode: string }>} */
 const enrollmentQrByItemId = new Map();
 
-function buildEnrollUrlForItem(item) {
-  const host = String(TAK_HOST || "").trim();
-  const username = String(item?.username || "").trim();
-  const token = String(item?.password || "").trim();
-  if (!host || !username || !token) return "";
-  return (
-    `tak://com.atakmap.app/enroll?` +
-    `host=${host}` +
-    `&username=${encodeURIComponent(username)}` +
-    `&token=${encodeURIComponent(token)}`
-  );
-}
-
-function logoUrlForQrItem(item) {
-  const anchor =
-    item?.groupId && typeof getGroupAnchorForGroup === "function"
-      ? getGroupAnchorForGroup(item.groupId)
-      : null;
-  const custom = String((anchor || item)?.logoUrl || "").trim();
-  if (custom) return custom;
-  const brand = document.querySelector(".brand-logo");
-  return brand && brand.src ? String(brand.src) : "";
-}
-
-function makeEnrollmentQrDataUrl(enrollUrl) {
-  return makeQrDataUrl(enrollUrl, 10, 2, "H");
-}
-
-function overlayLogoOnQr(qrDataUrl, logoUrl) {
-  return new Promise((resolve) => {
-    if (!qrDataUrl || !logoUrl) {
-      resolve(qrDataUrl);
-      return;
-    }
-    const qrEl = new Image();
-    const logoEl = new Image();
-    let left = 2;
-    let failed = false;
-    function finish() {
-      left -= 1;
-      if (left > 0) return;
-      if (failed || !qrEl.naturalWidth || !logoEl.naturalWidth) {
-        resolve(qrDataUrl);
-        return;
-      }
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = qrEl.naturalWidth;
-        canvas.height = qrEl.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(qrEl, 0, 0);
-        const badge = Math.floor(Math.min(canvas.width, canvas.height) * 0.28);
-        const pad = Math.max(2, Math.floor(badge * 0.04));
-        const inner = Math.max(1, badge - pad * 2);
-        const scale = Math.min(
-          inner / logoEl.naturalWidth,
-          inner / logoEl.naturalHeight,
-          1
-        );
-        const lw = Math.max(1, Math.floor(logoEl.naturalWidth * scale));
-        const lh = Math.max(1, Math.floor(logoEl.naturalHeight * scale));
-        const bgW = lw + pad * 2;
-        const bgH = lh + pad * 2;
-        const bgX = Math.floor((canvas.width - bgW) / 2);
-        const bgY = Math.floor((canvas.height - bgH) / 2);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(bgX, bgY, bgW, bgH);
-        ctx.drawImage(logoEl, bgX + pad, bgY + pad, lw, lh);
-        resolve(canvas.toDataURL("image/png"));
-      } catch {
-        resolve(qrDataUrl);
-      }
-    }
-    qrEl.onload = finish;
-    qrEl.onerror = () => {
-      failed = true;
-      finish();
-    };
-    logoEl.onload = finish;
-    logoEl.onerror = () => {
-      failed = true;
-      finish();
-    };
-    qrEl.src = qrDataUrl;
-    logoEl.src = logoUrl;
-  });
-}
-
-function applyEnrollmentQr(item, enrollUrl, qrCode) {
-  qrActiveId = item.id;
-  qrActiveItem = item;
-  qrEnrollUrl = enrollUrl;
-  qrCodeDataUrl = qrCode;
-  if (qrImg && qrCode) qrImg.src = qrCode;
-  enrollmentQrByItemId.set(String(item.id), { enrollUrl, qrCode });
-}
-
-function decorateEnrollmentQr(item, enrollUrl) {
-  const base = makeEnrollmentQrDataUrl(enrollUrl);
-  const logoUrl = logoUrlForQrItem(item);
-  if (!logoUrl) return Promise.resolve(base);
-  return overlayLogoOnQr(base, logoUrl);
-}
-
-async function fetchEnrollUrl(item) {
-  const local = buildEnrollUrlForItem(item);
-  if (local) return local;
-  const res = await fetch(`/api/mutual-aid/${encodeURIComponent(item.id)}/qr`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Failed to generate QR");
-  const enrollUrl = data.enrollUrl || "";
-  if (!enrollUrl) throw new Error("Enrollment URL missing.");
-  return enrollUrl;
-}
-
 async function ensureEnrollmentQrReady(item) {
   if (!item?.id) throw new Error("Mutual Aid item is required.");
   const cacheKey = String(item.id);
   const cached = enrollmentQrByItemId.get(cacheKey);
   if (cached?.enrollUrl && cached?.qrCode) {
-    applyEnrollmentQr(item, cached.enrollUrl, cached.qrCode);
+    qrActiveId = item.id;
+    qrActiveItem = item;
+    qrEnrollUrl = cached.enrollUrl;
+    qrCodeDataUrl = cached.qrCode;
+    if (qrImg && qrCodeDataUrl) qrImg.src = qrCodeDataUrl;
     return;
   }
 
-  const enrollUrl = await fetchEnrollUrl(item);
-  const qrCode = await decorateEnrollmentQr(item, enrollUrl);
-  applyEnrollmentQr(item, enrollUrl, qrCode);
+  qrActiveId = item.id;
+  qrActiveItem = item;
+
+  const res = await fetch(`/api/mutual-aid/${encodeURIComponent(item.id)}/qr`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Failed to generate QR");
+  qrEnrollUrl = data.enrollUrl || "";
+  if (!qrEnrollUrl) throw new Error("Enrollment URL missing.");
+  qrCodeDataUrl = String(data.qrCode || "");
+  enrollmentQrByItemId.set(cacheKey, {
+    enrollUrl: qrEnrollUrl,
+    qrCode: qrCodeDataUrl,
+  });
+  if (qrImg && qrCodeDataUrl) qrImg.src = qrCodeDataUrl;
 }
 
 function setQrPacketButtonsEnabled(enabled) {
@@ -1703,19 +1602,6 @@ function openQrModal(item){
     qrImg.src = cached.qrCode;
     setQrPacketButtonsEnabled(true);
     setMsg(qrMsg, "QR ready.", true);
-    return;
-  }
-
-  const localEnrollUrl = buildEnrollUrlForItem(item);
-  if (localEnrollUrl && typeof window.qrcode === "function") {
-    const instantQr = makeEnrollmentQrDataUrl(localEnrollUrl);
-    applyEnrollmentQr(item, localEnrollUrl, instantQr);
-    setQrPacketButtonsEnabled(true);
-    setMsg(qrMsg, "QR ready.", true);
-    decorateEnrollmentQr(item, localEnrollUrl).then((decorated) => {
-      if (String(qrActiveId) !== String(item.id) || !decorated) return;
-      applyEnrollmentQr(item, localEnrollUrl, decorated);
-    });
     return;
   }
 
@@ -1911,9 +1797,9 @@ function hexToRgb(hex) {
   }
 }
 
-function makeQrDataUrl(text, cellSize = 8, margin = 2, ecc = "M") {
+function makeQrDataUrl(text, cellSize = 8, margin = 2) {
   // qrcode-generator (cdnjs) exposes global: qrcode
-  const qr = qrcode(0, ecc);
+  const qr = qrcode(0, "M");
   qr.addData(String(text || ""));
   qr.make();
   return qr.createDataURL(cellSize, margin);
@@ -2601,7 +2487,7 @@ async function buildDeploymentPacketPdf() {
     // Slightly larger margins so content isn't so close to the page edges.
     const margin = 54;
 
-    // Flyer and packet enrollment page share the modal QR (client-generated).
+    // Flyer and packet enrollment page share the cached 1024px modal QR.
     // The PDF draws the username as text, so the labeled 1800px download is not needed.
     let flyerQr = String(qrCodeDataUrl || (qrImg && qrImg.src) || "").trim();
     if (!flyerQr || flyerQr.indexOf("data:image") !== 0) {

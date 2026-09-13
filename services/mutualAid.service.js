@@ -10,6 +10,7 @@ const settingsSvc = require("./settings.service");
 const emailSvc = require("./email.service");
 const { renderTemplate, htmlToText } = require("./emailTemplates.service");
 const qrSvc = require("./qr.service");
+const { logoCacheIdentity } = require("./qrLogoOverlay.service");
 const accessSvc = require("./access.service");
 const agenciesSvc = require("./agencies.service");
 
@@ -285,8 +286,9 @@ async function applyDeploymentLogo({ id, file, removeLogo }) {
     delete nextOwner.logoUrl;
     nextOwner.updatedAt = nowIso();
     items[ownerIdx] = nextOwner;
+    clearEnrollmentQrForGroup(items, nextOwner.groupId);
     saveAll(items);
-    return nextOwner;
+    return items[ownerIdx];
   }
 
   if (!file || !file.path) return items[ownerIdx];
@@ -315,8 +317,9 @@ async function applyDeploymentLogo({ id, file, removeLogo }) {
     updatedAt: nowIso(),
   };
   items[ownerIdx] = nextOwner;
+  clearEnrollmentQrForGroup(items, nextOwner.groupId);
   saveAll(items);
-  return nextOwner;
+  return items[ownerIdx];
 }
 
 // ---- QR helpers (cached PNG + logo overlay via qr.service) ----
@@ -343,6 +346,59 @@ async function qrPngBuffer(username, token, item) {
     usernameLabel: username,
     ...(logoPath ? { logoPath } : {}),
   });
+}
+
+function enrollmentQrLogoId(item) {
+  const logoPath = resolveLogoFsPathForItem(item);
+  if (!logoPath) return "nologo";
+  return logoCacheIdentity(logoPath) || logoPath;
+}
+
+function clearEnrollmentQrForGroup(items, groupId) {
+  const gid = String(groupId || "").trim();
+  if (!gid || !Array.isArray(items)) return;
+  for (let i = 0; i < items.length; i++) {
+    if (String(items[i]?.groupId || "") !== gid || !items[i]?.enrollmentQr) continue;
+    const next = { ...items[i] };
+    delete next.enrollmentQr;
+    next.updatedAt = nowIso();
+    items[i] = next;
+  }
+}
+
+function persistEnrollmentQr(itemId, payload) {
+  const items = store.load();
+  const idx = items.findIndex((x) => String(x.id) === String(itemId));
+  if (idx < 0) return;
+  items[idx] = {
+    ...items[idx],
+    enrollmentQr: payload,
+    updatedAt: nowIso(),
+  };
+  saveAll(items);
+}
+
+async function getOrBuildEnrollmentQr(item) {
+  const enrollUrl = enrollUrlForCreds(item.username, item.password);
+  const logoId = enrollmentQrLogoId(item);
+  const stored = item?.enrollmentQr && typeof item.enrollmentQr === "object"
+    ? item.enrollmentQr
+    : null;
+  if (
+    stored &&
+    String(stored.enrollUrl || "") === String(enrollUrl || "") &&
+    String(stored.logoId || "") === String(logoId || "") &&
+    String(stored.qrCode || "").startsWith("data:image")
+  ) {
+    return { enrollUrl, qrCode: stored.qrCode };
+  }
+  const built = await qrDataUrl(item.username, item.password, item);
+  persistEnrollmentQr(item.id, {
+    enrollUrl: built.enrollUrl,
+    qrCode: built.qrCode,
+    logoId,
+  });
+  return built;
 }
 
 function isSubMutualAidType(type) {
@@ -677,11 +733,14 @@ function canDelegateMutualAid(authUser, item) {
 function listForUser(authUser) {
   return list()
     .filter((item) => canViewMutualAid(authUser, item))
-    .map((item) => ({
-      ...item,
-      delegatedAgencySuffixes: normalizeDelegatedAgencySuffixes(item),
-      canDelegate: canDelegateMutualAid(authUser, item),
-    }));
+    .map((item) => {
+      const { enrollmentQr: _enrollmentQr, ...rest } = item || {};
+      return {
+        ...rest,
+        delegatedAgencySuffixes: normalizeDelegatedAgencySuffixes(item),
+        canDelegate: canDelegateMutualAid(authUser, item),
+      };
+    });
 }
 
 function assertCanManage(authUser, id) {
@@ -808,7 +867,16 @@ function saveAll(items) {
   store.save(items);
 }
 
-async function sendMutualAidCreatedEmail({ type, title, username, password, groupName }) {
+async function sendMutualAidCreatedEmail({
+  type,
+  title,
+  username,
+  password,
+  groupName,
+  enrollUrl,
+  qrCode,
+  item,
+}) {
   // Requirement: notify EMAIL_ALWAYS_CC and EMAIL_SEND_COPY_TO recipients.
   // We'll send *to* the union list to ensure delivery even if cc/bcc are empty.
   const cfg = emailSvc.getSmtpConfig();
@@ -823,7 +891,13 @@ async function sendMutualAidCreatedEmail({ type, title, username, password, grou
   const recipients = Array.from(new Set([...parse(cfg.alwaysCc), ...parse(cfg.sendCopyTo)]));
   if (!recipients.length) return;
 
-  const { enrollUrl, qrCode } = await qrDataUrl(username, password);
+  let url = String(enrollUrl || "").trim();
+  let qr = String(qrCode || "").trim();
+  if (!url || !qr) {
+    const built = await qrDataUrl(username, password, item);
+    url = built.enrollUrl;
+    qr = built.qrCode;
+  }
   const subject = `${String(type || "").toUpperCase()} Created: ${title}`;
 
   const html = renderTemplate("mutual_aid_created.html", {
@@ -832,8 +906,8 @@ async function sendMutualAidCreatedEmail({ type, title, username, password, grou
     groupName: String(groupName || ""),
     username: String(username || ""),
     password: String(password || ""),
-    enrollUrl,
-    qrDataUrl: qrCode,
+    enrollUrl: url,
+    qrDataUrl: qr,
     takPortalPublicUrl: getTakPortalPublicUrl(),
   });
   const text = htmlToText(html);
@@ -1046,6 +1120,16 @@ async function create({
   };
 
   const items = store.load();
+  try {
+    const built = await qrDataUrl(username, password, item);
+    item.enrollmentQr = {
+      enrollUrl: built.enrollUrl,
+      qrCode: built.qrCode,
+      logoId: enrollmentQrLogoId(item),
+    };
+  } catch (e) {
+    console.warn("[MUTUAL AID] failed to prebuild enrollment QR:", e?.message || e);
+  }
   items.push(item);
   saveAll(items);
   warmQrCache(item);
@@ -1061,6 +1145,9 @@ async function create({
       username,
       password,
       groupName,
+      enrollUrl: item.enrollmentQr?.enrollUrl,
+      qrCode: item.enrollmentQr?.qrCode,
+      item,
     });
   } catch (e) {
     console.error("[EMAIL] mutual aid created notice failed:", e?.message || e);
@@ -1277,10 +1364,10 @@ async function remove({ id }) {
   };
 }
 
-function getQr({ id }) {
+async function getQr({ id }) {
   const item = getById(id);
   if (!item) throw new Error("Mutual aid item not found");
-  const enrollUrl = enrollUrlForCreds(item.username, item.password);
+  const { enrollUrl, qrCode } = await getOrBuildEnrollmentQr(item);
   const items = store.load();
   const anchor = findGroupAnchorItem(items, item.groupId);
   return {
@@ -1289,6 +1376,7 @@ function getQr({ id }) {
     title: item.title,
     username: item.username,
     enrollUrl,
+    qrCode,
     hasCustomLogo: !!anchor?.logoUrl,
     logoUrl: anchor?.logoUrl || null,
   };

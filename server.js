@@ -1050,11 +1050,7 @@ app.get("/mutual-aid", requirePermission("page.mutual_aid"), (req, res) => {
       err?.message || err
     );
   }
-  res.render("mutual-aid", {
-    enrollmentFlyerHtml,
-    flyerUserAgreement,
-    takHost: qrSvc.getTakHost() || "",
-  });
+  res.render("mutual-aid", { enrollmentFlyerHtml, flyerUserAgreement });
 }); //require Global Admin
 app.get("/integrations", requirePermission("page.integrations"), (req, res) =>
   res.render("integrations")
