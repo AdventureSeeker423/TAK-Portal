@@ -1048,6 +1048,7 @@ async function create({
   const items = store.load();
   items.push(item);
   saveAll(items);
+  warmQrCache(item);
 
   // 4b) Schedule expiration (best-effort)
   scheduleExpiration(item);
@@ -1276,10 +1277,10 @@ async function remove({ id }) {
   };
 }
 
-async function getQr({ id }) {
+function getQr({ id }) {
   const item = getById(id);
   if (!item) throw new Error("Mutual aid item not found");
-  const { enrollUrl, qrCode } = await qrDataUrl(item.username, item.password, item);
+  const enrollUrl = enrollUrlForCreds(item.username, item.password);
   const items = store.load();
   const anchor = findGroupAnchorItem(items, item.groupId);
   return {
@@ -1288,10 +1289,18 @@ async function getQr({ id }) {
     title: item.title,
     username: item.username,
     enrollUrl,
-    qrCode,
     hasCustomLogo: !!anchor?.logoUrl,
     logoUrl: anchor?.logoUrl || null,
   };
+}
+
+function warmQrCache(item) {
+  if (!item?.username || !item?.password) return;
+  Promise.resolve()
+    .then(() => qrPngBuffer(item.username, item.password, item))
+    .catch((err) => {
+      console.warn("[MUTUAL AID] QR cache warm failed:", err?.message || err);
+    });
 }
 
 async function getQrDownload({ id }) {
