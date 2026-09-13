@@ -678,6 +678,17 @@ function canUserModifyGroup(authUser, group) {
   const pk = String(group.pk).trim();
   const allowedExtraIds = getAllowedAdminGroupIdsForUser(authUser);
   if (allowedExtraIds && pk && allowedExtraIds.has(pk)) return true;
+  try {
+    const mutualAidSvc = require("./mutualAid.service");
+    if (
+      typeof mutualAidSvc.userCanModifyMutualAidGroup === "function" &&
+      mutualAidSvc.userCanModifyMutualAidGroup(authUser, pk)
+    ) {
+      return true;
+    }
+  } catch (_) {
+    // Avoid load-order failures; ownership check below still applies.
+  }
   const managed = getManagedAgenciesForUser(authUser);
   if (!Array.isArray(managed) || !managed.length) return false;
   return managed.some((a) => agenciesStore.isAgencyOwnedGroup(group, a));

@@ -397,54 +397,272 @@
   }
 }
 
+.btn-access {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #fff;
+}
+.btn-access:hover {
+  filter: brightness(0.95);
+}
+
+.userQrModal {
+  max-width: 480px;
+}
+.userQrSingleCol {
+  text-align: center;
+  margin: 0 auto;
+  max-width: 320px;
+}
+.userQrPairImg {
+  max-width: 280px;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  display: block;
+  margin: 0 auto;
+}
+.userQrPairActions {
+  gap: 10px;
+  margin-top: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.userQrPairActions .btn {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+}
+.maQrPacketFooter {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.maQrEmailField textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.maQrPacketActions {
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.maQrPacketActions .msg {
+  margin-right: auto;
+  margin-left: 0;
+}
+
+#membersOverlay {
+  overflow: hidden;
+  box-sizing: border-box;
+}
+#membersOverlay .membersModal {
+  display: flex;
+  flex-direction: column;
+  width: min(1280px, 100%);
+  max-height: 92vh;
+  overflow: hidden;
+}
+#membersOverlay .modalHeader {
+  flex: 0 0 auto;
+}
+#membersOverlay .modalHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+#membersOverlay .modalHeaderLeft h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#membersOverlay .modalBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#membersOverlay .membersSplit {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+#membersOverlay .membersSplit.has-mass {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+}
+#membersOverlay .membersSplit.has-delegate:not(.has-mass) {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+}
+#membersOverlay .membersSplit.has-mass.has-delegate {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.95fr);
+}
+#membersOverlay .membersSplit:not(.has-mass) #membersMassPane {
+  display: none !important;
+}
+#membersOverlay .membersSplit:not(.has-delegate) #membersDelegatePane {
+  display: none !important;
+}
+#membersOverlay .membersSplitPane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+#membersOverlay .membersSplitPaneHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+}
+#membersOverlay .membersSplitPaneHead h3 {
+  margin: 0;
+}
+#membersOverlay .membersRange {
+  font-size: 12px;
+  white-space: nowrap;
+}
+#membersOverlay .membersSplitPane .msg:empty {
+  display: none;
+}
+#membersOverlay #membersFilter,
+#membersOverlay #adminAccessSearch {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+#membersOverlay .membersListBox,
+#membersOverlay .membersMassListBox {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow: auto;
+  max-height: none;
+  margin-top: 8px;
+}
+#membersOverlay .membersSplitPane .pagination {
+  flex: 0 0 auto;
+  margin: 0 0 4px;
+}
+#membersOverlay .membersTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+#membersOverlay .membersTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  box-shadow: 0 1px 0 var(--line);
+}
+#membersOverlay .membersUserName {
+  font-weight: 600;
+}
+#membersOverlay .membersUserMeta {
+  font-size: 12px;
+  margin-top: 1px;
+}
+#membersOverlay .membersRemoveCell {
+  text-align: right;
+  white-space: nowrap;
+}
+#membersOverlay .membersMassActionToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  margin-bottom: 10px;
+}
+#membersOverlay .membersMassActionToggle .segBtn {
+  width: 100%;
+  text-align: center;
+}
+#membersOverlay #massApplyBtn {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+#membersOverlay .membersMassPanes {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+}
+#membersOverlay #massAgencyPane,
+#membersOverlay #massGroupPane,
+#membersOverlay #massTemplatePane,
+#membersOverlay #massAgencyTypePane,
+#membersOverlay #massUsersPane {
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+#membersOverlay .membersMassFooter {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  flex-wrap: wrap;
+}
+#membersOverlay .membersMassFooter .msg {
+  margin-right: auto;
+}
+body.noScroll .main {
+  overflow: hidden !important;
+}
+@media (max-width: 990px) {
+  #membersOverlay .membersSplit.has-mass,
+  #membersOverlay .membersSplit.has-delegate:not(.has-mass),
+  #membersOverlay .membersSplit.has-mass.has-delegate {
+    grid-template-columns: 1fr;
+  }
+}
+
 </style>
 
 
-<!-- QR Modal -->
+<!-- QR / Packet Modal -->
 <div class="modalOverlay" id="qrOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+  <div class="modal userQrModal" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
     <div class="modalHeader">
-      <h2 id="qrTitle" style="margin:0;">QR Code</h2>
+      <h2 id="qrTitle" style="margin:0;">Enrollment QR</h2>
       <button class="btn" id="qrCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div class="row" style="gap: 24px; align-items: flex-start; flex-wrap: wrap;">
-        <div style="text-align:center; min-width: 260px;">
-          <img id="qrImg" alt="Enrollment QR Code" style="max-width: 280px; width: 100%; height: auto; border-radius: 14px;" />
-          <div class="row" style="gap: 10px; margin-top: 14px; justify-content: center;">
-            <button class="btn qrCopy" type="button" id="qrCopyBtn" disabled>Copy URL</button>
-            <button class="btn" type="button" id="qrSaveBtn" disabled>Save Image</button>
-          </div>
+      <div class="userQrSingleCol">
+        <img id="qrImg" alt="Enrollment QR Code" class="userQrPairImg" />
+        <div class="row userQrPairActions">
+          <button class="btn qrCopy" type="button" id="qrCopyBtn" disabled>Copy URL</button>
+          <button class="btn" type="button" id="qrSaveBtn" disabled>Save Image</button>
         </div>
-        <div style="min-width: 320px;">
-          <h3 style="margin-top:0;">Details</h3>
-          <div class="chips" id="qrDetails"></div>
-          <div id="qrMsg" class="msg"></div>
-          </div>
       </div>
-    </div>
-  </div>
-</div>
-
-
-<!-- Email Packet Modal -->
-<div class="modalOverlay" id="emailPacketOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="emailPacketTitle">
-    <div class="modalHeader">
-      <h2 id="emailPacketTitle" style="margin:0;">Email Deployment Packet</h2>
-      <button class="btn" id="emailPacketCloseBtn" type="button">Close</button>
-    </div>
-    <div class="modalBody">
-      <p style="margin-top:0;">
-        Enter recipient email addresses (comma separated).
-      </p>
-      <label style="display:block;">
-        To
-        <textarea id="emailPacketTo" rows="3" placeholder="name@example.com, other@example.com" style="width:100%;"></textarea>
-      </label>
-      <div class="row maModalActions">
-        <span id="emailPacketMsg" class="msg"></span>
-        <button class="btn success" type="button" id="emailPacketSendBtn">Send</button>
+      <div class="maQrPacketFooter">
+        <label class="maQrEmailField">
+          Email packet to
+          <textarea id="emailPacketTo" rows="2" placeholder="name@example.com, other@example.com"></textarea>
+        </label>
+        <div class="row maQrPacketActions">
+          <span id="qrMsg" class="msg"></span>
+          <button class="btn" type="button" id="qrDownloadPacketBtn" disabled style="background:#2e7d32;border-color:#2e7d32;">Download Packet</button>
+          <button class="btn qrEmail" type="button" id="emailPacketSendBtn" disabled>Email Packet</button>
+        </div>
       </div>
     </div>
   </div>
@@ -533,143 +751,154 @@
   </div>
 </div>
 
-<!-- Mass Assign Modal (same modes/logic as Manage Groups) -->
-<div class="modalOverlay" id="massOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="massTitle">
-    <div class="modalHeader">
-      <h2 id="massTitle" style="margin:0;">Mass Assign</h2>
-      <button class="btn" id="massCloseBtn" type="button">Close</button>
-    </div>
-
-    <div class="modalBody">
-      <div class="segmented" style="margin-top:4px;">
-        <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
-        <button class="segBtn" type="button" data-mode="template">Templates</button>
-        <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
-        <button class="segBtn" type="button" data-mode="group">Users With An Existing Group</button>
-        <button class="segBtn" type="button" data-mode="users">Specific Users</button>
-      </div>
-
-      <!-- Agency mode -->
-      <div id="massAgencyPane" style="margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="agencySearch"
-            placeholder="Search agencies..."
-            style="flex: 1; min-width: 0;"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="agencySelectAll" type="button">Select All</button>
-            <button class="btn" id="agencyClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="agencyList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Group mode -->
-      <div id="massGroupPane" style="display:none; margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="sourceGroupSearch"
-            placeholder="Search groups..."
-            style="flex: 1; min-width: 0;"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="groupSelectAll" type="button">Select All</button>
-            <button class="btn" id="groupClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="sourceGroupList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Template mode -->
-      <div id="massTemplatePane" style="display:none; margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="templateSearch"
-            placeholder="Search templates..."
-            style="flex: 1; min-width: 0;"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="templateSelectAll" type="button">Select All</button>
-            <button class="btn" id="templateClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="templateList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Agency Types mode -->
-      <div id="massAgencyTypePane" style="display:none; margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="agencyTypeSearch"
-            placeholder="Search agency types..."
-            style="flex: 1; min-width: 0;"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="agencyTypeSelectAll" type="button">Select All</button>
-            <button class="btn" id="agencyTypeClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="agencyTypeList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Users mode -->
-      <div id="massUsersPane" style="display:none; margin-top:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <input
-            id="userSearch"
-            placeholder="Search username, name, or email..."
-            style="flex: 1; min-width: 0;"
-            autocomplete="off"
-          />
-          <div class="row" style="gap:10px;">
-            <button class="btn" id="userSelectAll" type="button">Select All (shown)</button>
-            <button class="btn" id="userClearAll" type="button">Clear</button>
-          </div>
-        </div>
-        <div id="userList" class="groupsBox" style="margin-top:10px;"></div>
-      </div>
-
-      <div class="row maModalActions" style="margin-top:16px;">
-        <span id="massMsg" class="msg"></span>
-        <button class="btn" id="massSkipBtn" type="button">Skip Group Assignment</button>
-        <button class="btn success" id="massApplyBtn" type="button">Mass Assign</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Mutual Aid Members Modal (read-only) -->
+<!-- Mutual Aid Members Modal -->
 <div class="modalOverlay" id="membersOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
+  <div class="modal membersModal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
     <div class="modalHeader">
-      <h2 id="membersTitle" style="margin:0;">Mutual Aid Members</h2>
+      <div class="modalHeaderLeft">
+        <h2 id="membersTitle" style="margin:0;">Members</h2>
+      </div>
       <button class="btn" id="membersCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div id="membersSummary" class="msg"></div>
+      <div class="membersSplit" id="membersSplit">
+        <div class="membersSplitPane" id="membersListPane">
+          <div class="membersSplitPaneHead">
+            <h3>Current Members</h3>
+            <span id="membersRange" class="muted membersRange"></span>
+          </div>
+          <div id="membersSummary" class="msg"></div>
+          <input
+            id="membersFilter"
+            placeholder="Search name, username, email, agency, or template..."
+          />
+          <div class="pagination" id="membersPagination" style="display:none;">
+            <button class="btn pagination-first-last" id="membersFirstBtn" type="button">First</button>
+            <button class="btn" id="membersPrevBtn" type="button">Previous</button>
+            <span id="membersPageInfo"></span>
+            <button class="btn" id="membersNextBtn" type="button">Next</button>
+            <button class="btn pagination-first-last" id="membersLastBtn" type="button">Last</button>
+          </div>
+          <div id="membersList" class="groupsBox membersListBox"></div>
+        </div>
 
-      <div style="margin-top:14px;">
-        <input id="membersFilter" placeholder="Filter by username, name, or email..." style="min-width: 360px;" />
+        <div class="membersSplitPane" id="membersMassPane">
+          <div class="membersSplitPaneHead">
+            <h3>Bulk Update</h3>
+          </div>
+          <div class="segmented membersMassActionToggle">
+            <button class="segBtn active" type="button" id="massActionAssignBtn">Assign</button>
+            <button class="segBtn" type="button" id="massActionUnassignBtn">Unassign</button>
+          </div>
+
+          <div class="segmented" id="massSegmented">
+            <button class="segBtn active" type="button" data-mode="agency">Agencies</button>
+            <button class="segBtn" type="button" data-mode="template">Templates</button>
+            <button class="segBtn" type="button" data-mode="agencyType">Agency Types</button>
+            <button class="segBtn" type="button" data-mode="group">Existing Groups</button>
+            <button class="segBtn" type="button" data-mode="users">Specific Users</button>
+          </div>
+
+          <div class="membersMassPanes">
+            <div id="massAgencyPane">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="agencySearch"
+                  placeholder="Search agencies..."
+                  style="flex: 1; min-width: 0;"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="agencySelectAll">Select All</button>
+                  <button class="btn" type="button" id="agencyClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="agencyList" class="groupsBox membersMassListBox"></div>
+            </div>
+
+            <div id="massGroupPane" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="sourceGroupSearch"
+                  placeholder="Search groups..."
+                  style="flex: 1; min-width: 0;"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="groupSelectAll">Select All</button>
+                  <button class="btn" type="button" id="groupClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="sourceGroupList" class="groupsBox membersMassListBox"></div>
+            </div>
+
+            <div id="massTemplatePane" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="templateSearch"
+                  placeholder="Search templates..."
+                  style="flex: 1; min-width: 0;"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="templateSelectAll">Select All</button>
+                  <button class="btn" type="button" id="templateClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="templateList" class="groupsBox membersMassListBox"></div>
+            </div>
+
+            <div id="massAgencyTypePane" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="agencyTypeSearch"
+                  placeholder="Search agency types..."
+                  style="flex: 1; min-width: 0;"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="agencyTypeSelectAll">Select All</button>
+                  <button class="btn" type="button" id="agencyTypeClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="agencyTypeList" class="groupsBox membersMassListBox"></div>
+            </div>
+
+            <div id="massUsersPane" style="display:none;">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                <input
+                  id="userSearch"
+                  placeholder="Search username, name, or email..."
+                  style="flex: 1; min-width: 0;"
+                  autocomplete="off"
+                />
+                <div class="row" style="gap:10px;">
+                  <button class="btn" type="button" id="userSelectAll">Select All (shown)</button>
+                  <button class="btn" type="button" id="userClearAll">Clear</button>
+                </div>
+              </div>
+              <div id="userList" class="groupsBox membersMassListBox"></div>
+            </div>
+          </div>
+
+          <div class="membersMassFooter row">
+            <span id="massMsg" class="msg"></span>
+            <button class="btn" id="massSkipBtn" type="button" style="display:none;">Skip Group Assignment</button>
+            <button class="btn success" id="massApplyBtn" type="button">ASSIGN FOR SELECTED AGENCIES</button>
+          </div>
+        </div>
+
+        <div class="membersSplitPane" id="membersDelegatePane">
+          <div class="membersSplitPaneHead">
+            <h3>Delegate to Agencies</h3>
+            <div class="row" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
+              <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
+            </div>
+          </div>
+          <p id="adminAccessSummary" class="msg"></p>
+          <input id="adminAccessSearch" placeholder="Search agencies..." />
+          <div id="adminAccessBox" class="groupsBox membersMassListBox">
+            <div id="adminAccessInner" class="groupsInner"></div>
+          </div>
+        </div>
       </div>
-
-      <div class="pagination" style="margin-top:10px; display:flex; align-items:center; justify-content:center; gap:8px; font-size:14px;">
-        <button class="btn" id="membersPrevBtn" type="button"
-          style="padding: 4px 14px; border-radius:999px; background:#2f3241; border:1px solid #3a3d4d; color:#e4e4e4; font-size:13px; line-height:1.2;">
-          Previous
-        </button>
-        <span id="membersPageInfo"
-          style="padding:3px 10px; border-radius:999px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); opacity:.9; font-size:12px;">
-        </span>
-        <button class="btn" id="membersNextBtn" type="button"
-          style="padding: 4px 14px; border-radius:999px; background:#2f3241; border:1px solid #3a3d4d; color:#e4e4e4; font-size:13px; line-height:1.2;">
-          Next
-        </button>
-      </div>
-
-      <div id="membersList" class="groupsBox" style="margin-top:10px; max-height: 320px; overflow:auto;"></div>
-      <small id="membersHint" class="muted"></small>
     </div>
   </div>
 </div>
@@ -726,67 +955,168 @@ async function copyToClipboard(text) {
 // ----- Mutual aid members modal -----
 const membersOverlay = document.getElementById("membersOverlay");
 const membersCloseBtn = document.getElementById("membersCloseBtn");
+const membersTitle = document.getElementById("membersTitle");
 const membersSummary = document.getElementById("membersSummary");
 const membersFilter = document.getElementById("membersFilter");
 const membersList = document.getElementById("membersList");
-const membersHint = document.getElementById("membersHint");
+const membersRange = document.getElementById("membersRange");
 const membersPrevBtn = document.getElementById("membersPrevBtn");
 const membersNextBtn = document.getElementById("membersNextBtn");
+const membersFirstBtn = document.getElementById("membersFirstBtn");
+const membersLastBtn = document.getElementById("membersLastBtn");
 const membersPageInfo = document.getElementById("membersPageInfo");
+const membersSplit = document.getElementById("membersSplit");
+const membersMassPane = document.getElementById("membersMassPane");
+const membersDelegatePane = document.getElementById("membersDelegatePane");
 
 let activeMembers = [];
 let activeMembersGroupId = "";
 let activeMembersGroupName = "";
+let activeMembersItemId = "";
+let membersShowMass = false;
+let membersShowDelegate = false;
+let membersPostCreate = false;
 let membersCurrentPage = 1;
 let membersPageSize = 100;
 let membersTotalCount = 0;
 let membersHasNext = false;
 let membersHasPrev = false;
+let membersSortKey = "username";
+let membersSortDir = "asc";
 
 function showMembersModal(show) {
   if (!membersOverlay) return;
   membersOverlay.style.display = show ? "flex" : "none";
   document.body.classList.toggle("noScroll", !!show);
+  if (!show) {
+    membersPostCreate = false;
+    if (massSkipBtn) massSkipBtn.style.display = "none";
+  }
+}
+
+function setMembersSplitPanes() {
+  if (!membersSplit) return;
+  membersSplit.classList.toggle("has-mass", !!membersShowMass);
+  membersSplit.classList.toggle("has-delegate", !!membersShowDelegate);
+}
+
+function memberAgencyLabel(u) {
+  const abbr = String(
+    u?.agency_abbreviation ||
+    u?.attributes?.agency_abbreviation ||
+    u?.attributes?.agencyAbbreviation ||
+    u?.agencySuffix ||
+    u?.suffix ||
+    ""
+  ).trim();
+  const name = String(u?.agency_name || u?.attributes?.agency_name || u?.agency || "").trim();
+  if (abbr && name && name.toLowerCase() !== abbr.toLowerCase()) return { abbr, name };
+  if (abbr) return { abbr, name: "" };
+  if (name) return { abbr: name, name: "" };
+  return { abbr: "", name: "" };
+}
+
+function memberTemplateLabel(u) {
+  const raw = String(u?.current_template || u?.attributes?.current_template || u?.currentTemplate || u?.templateName || u?.template || "").trim();
+  if (!raw || raw.toLowerCase() === "manual group selection") return "";
+  return raw;
+}
+
+function memberSortValue(u, key) {
+  if (key === "agency") {
+    const a = memberAgencyLabel(u);
+    return String(a.name || a.abbr || "").toLowerCase();
+  }
+  if (key === "template") return memberTemplateLabel(u).toLowerCase();
+  return String(u.username || "").toLowerCase();
+}
+
+function setMembersSort(key) {
+  if (membersSortKey === key) {
+    membersSortDir = membersSortDir === "asc" ? "desc" : "asc";
+  } else {
+    membersSortKey = key;
+    membersSortDir = "asc";
+  }
+  renderMembersList();
 }
 
 function renderMembersList() {
+  if (!membersList) return;
   const needle = String(membersFilter?.value || "").trim().toLowerCase();
-  const items = (activeMembers || []).filter((u) => {
-    if (!needle) return true;
-    const uname = String(u.username || "").toLowerCase();
-    const name = String(u.name || "").toLowerCase();
-    const em = String(u.email || "").toLowerCase();
-    return uname.includes(needle) || name.includes(needle) || em.includes(needle);
-  });
+  const items = (activeMembers || [])
+    .filter((u) => {
+      if (!needle) return true;
+      const uname = String(u.username || "").toLowerCase();
+      const name = String(u.name || "").toLowerCase();
+      const em = String(u.email || "").toLowerCase();
+      const agency = memberAgencyLabel(u);
+      const template = memberTemplateLabel(u).toLowerCase();
+      return (
+        uname.includes(needle) ||
+        name.includes(needle) ||
+        em.includes(needle) ||
+        String(agency.name || "").toLowerCase().includes(needle) ||
+        String(agency.abbr || "").toLowerCase().includes(needle) ||
+        template.includes(needle)
+      );
+    })
+    .slice()
+    .sort((a, b) => {
+      const ak = memberSortValue(a, membersSortKey);
+      const bk = memberSortValue(b, membersSortKey);
+      if (ak < bk) return membersSortDir === "asc" ? -1 : 1;
+      if (ak > bk) return membersSortDir === "asc" ? 1 : -1;
+      return String(a.username || "").localeCompare(String(b.username || ""));
+    });
 
   if (!items.length) {
-    membersList.innerHTML = '<div class="muted">No members match your filter.</div>';
+    membersList.innerHTML = `<div class="muted" style="padding:10px;">${
+      needle ? "No members match your search." : "No members in this group."
+    }</div>`;
     return;
   }
 
-  const rows = items
-    .map(
-      (u) => `
-    <tr>
-      <td>${esc(u.username || "")}</td>
-      <td>${esc(u.name || "")}</td>
-      <td>${esc(u.email || "")}</td>
+  const sortArrow = (key) => {
+    if (membersSortKey !== key) return "";
+    return membersSortDir === "asc" ? " ▲" : " ▼";
+  };
+
+  const rowsHtml = items.map((u) => {
+    const agency = memberAgencyLabel(u);
+    const template = memberTemplateLabel(u);
+    const active = u.is_active !== false;
+    const email = String(u.email || "").trim();
+    const pk = String(u.pk || "");
+    const removeBtn = membersShowMass
+      ? `<button class="btn danger" type="button" data-remove-pk="${esc(pk)}">Remove</button>`
+      : "";
+    return `
+    <tr class="${active ? "" : "membersRowDisabled"}">
+      <td class="membersUserCell" data-label="User">
+        <div class="membersUserName">${esc(u.username || "")}</div>
+        <div class="muted membersUserMeta">${esc(u.name || "—")}</div>
+        ${email ? `<div class="muted membersUserMeta">${esc(email)}</div>` : ""}
+      </td>
+      <td class="membersAgencyCell" data-label="Agency">${esc(agency.name || agency.abbr || "—")}</td>
+      <td class="membersTemplateCell" data-label="Template">${esc(template || "—")}</td>
+      <td class="membersRemoveCell" data-label="Actions">${removeBtn}</td>
     </tr>
-  `
-    )
-    .join("");
+  `;
+  }).join("");
 
   membersList.innerHTML = `
-    <table class="table">
+    <table class="table membersTable">
       <thead>
         <tr>
-          <th>Username</th>
-          <th>Name</th>
-          <th>Email</th>
+          <th><span style="cursor:pointer;" data-members-sort="username">User${sortArrow("username")}</span></th>
+          <th><span style="cursor:pointer;" data-members-sort="agency">Agency${sortArrow("agency")}</span></th>
+          <th><span style="cursor:pointer;" data-members-sort="template">Template${sortArrow("template")}</span></th>
+          <th style="text-align:right;">Actions</th>
         </tr>
       </thead>
       <tbody>
-        ${rows}
+        ${rowsHtml}
       </tbody>
     </table>
   `;
@@ -796,9 +1126,22 @@ function renderMembersPagination() {
   const total = Number(membersTotalCount || 0);
   const size = Math.max(1, Number(membersPageSize || 100));
   const totalPages = total > 0 ? Math.max(1, Math.ceil(total / size)) : 1;
+  const wrap = document.getElementById("membersPagination");
+  if (wrap) wrap.style.display = total > size ? "flex" : "none";
   if (membersPageInfo) membersPageInfo.textContent = `Page ${membersCurrentPage} of ${totalPages}`;
+  if (membersFirstBtn) membersFirstBtn.disabled = membersCurrentPage <= 1 || !membersHasPrev;
+  if (membersLastBtn) membersLastBtn.disabled = membersCurrentPage >= totalPages || !membersHasNext;
   if (membersPrevBtn) membersPrevBtn.disabled = !membersHasPrev;
   if (membersNextBtn) membersNextBtn.disabled = !membersHasNext;
+  if (membersRange) {
+    if (!total) {
+      membersRange.textContent = "";
+    } else {
+      const start = (membersCurrentPage - 1) * size + 1;
+      const end = Math.min(total, start + (activeMembers || []).length - 1);
+      membersRange.textContent = `${start}–${end} of ${total}`;
+    }
+  }
 }
 
 async function loadMembersPage(page) {
@@ -825,22 +1168,35 @@ async function loadMembersPage(page) {
     membersTotalCount === 1 ? "" : "s"
   } in group "${label}".`;
   membersSummary.className = "msg ok";
-  membersHint.textContent = membersTotalCount
-    ? "Showing current members of this mutual aid group."
-    : "No users are currently assigned to this mutual aid group.";
 
   renderMembersList();
   renderMembersPagination();
 }
 
-async function openMutualAidMembers(groupId, groupName) {
+async function openMutualAidMembers(item, opts = {}) {
+  const it = item && typeof item === "object" ? item : null;
+  const groupId = it ? it.groupId : item;
+  const groupName = it ? it.groupName : opts.groupName;
+  activeMembersItemId = it ? String(it.id || "") : String(opts.itemId || "");
   activeMembersGroupId = String(groupId || "");
   activeMembersGroupName = displayGroupName(groupName || "");
+
+  const groupAnchor = getGroupAnchorForGroup(activeMembersGroupId);
+  const isAnchor = !!(it && groupAnchor && String(groupAnchor.id) === String(it.id));
+  membersShowMass = !!(opts.showMass || (isAnchor && isGroupCreatorItem(it || groupAnchor)));
+  membersShowDelegate = !!(it && it.canDelegate);
+  membersPostCreate = !!opts.postCreate;
+  setMembersSplitPanes();
+  if (membersTitle) {
+    membersTitle.textContent = activeMembersGroupName
+      ? `Members — ${activeMembersGroupName}`
+      : "Members";
+  }
+  if (massSkipBtn) massSkipBtn.style.display = membersPostCreate ? "" : "none";
 
   membersSummary.textContent = "Loading members...";
   membersSummary.className = "msg";
   membersList.innerHTML = "";
-  membersHint.textContent = "";
   if (membersFilter) membersFilter.value = "";
   membersCurrentPage = 1;
   membersTotalCount = 0;
@@ -850,18 +1206,52 @@ async function openMutualAidMembers(groupId, groupName) {
 
   showMembersModal(true);
 
+  if (membersShowMass) {
+    prepareMassPane({
+      groupId: activeMembersGroupId,
+      groupName: it?.groupName || groupName || "",
+      action: opts.massAction || "assign",
+    });
+  }
+  if (membersShowDelegate && activeMembersItemId) {
+    loadAdminAccess(activeMembersItemId).catch(() => {});
+  }
+
   try {
     await loadMembersPage(1);
   } catch (e) {
     membersSummary.textContent = "Failed to load members.";
     membersSummary.className = "msg bad";
     membersList.innerHTML = "";
-    membersHint.textContent = "";
     activeMembers = [];
     membersTotalCount = 0;
     membersHasNext = false;
     membersHasPrev = false;
     renderMembersPagination();
+  }
+}
+
+async function removeUserFromGroup(userPk) {
+  if (!activeMembersGroupId) return;
+  const label = activeMembersGroupName || activeMembersGroupId;
+  if (!confirm(`Remove this user from group "${label}"?`)) return;
+  try {
+    const res = await fetch("/api/groups/mass-unassign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        groupId: activeMembersGroupId,
+        userIds: [String(userPk)],
+      }),
+    });
+    const out = await res.json();
+    if (!res.ok) {
+      alert(out.error || "Failed to remove user from group.");
+      return;
+    }
+    await loadMembersPage(membersCurrentPage);
+  } catch (e) {
+    alert("Failed to remove user from group.");
   }
 }
 
@@ -874,6 +1264,22 @@ if (membersCloseBtn && membersOverlay) {
 if (membersFilter) {
   membersFilter.oninput = renderMembersList;
 }
+if (membersList) {
+  membersList.addEventListener("click", (e) => {
+    const sortEl = e.target && e.target.closest ? e.target.closest("[data-members-sort]") : null;
+    if (sortEl) {
+      setMembersSort(sortEl.getAttribute("data-members-sort"));
+      return;
+    }
+    const removeBtn = e.target && e.target.closest ? e.target.closest("[data-remove-pk]") : null;
+    if (removeBtn) removeUserFromGroup(removeBtn.getAttribute("data-remove-pk"));
+  });
+}
+if (membersFirstBtn) {
+  membersFirstBtn.onclick = () => {
+    if (membersHasPrev && membersCurrentPage > 1) loadMembersPage(1).catch(() => {});
+  };
+}
 if (membersPrevBtn) {
   membersPrevBtn.onclick = () => {
     if (membersHasPrev && membersCurrentPage > 1) {
@@ -883,9 +1289,15 @@ if (membersPrevBtn) {
 }
 if (membersNextBtn) {
   membersNextBtn.onclick = () => {
-    if (membersHasNext) {
-      loadMembersPage(membersCurrentPage + 1).catch(() => {});
-    }
+    if (membersHasNext) loadMembersPage(membersCurrentPage + 1).catch(() => {});
+  };
+}
+if (membersLastBtn) {
+  membersLastBtn.onclick = () => {
+    if (!membersHasNext) return;
+    const size = Math.max(1, Number(membersPageSize || 100));
+    const totalPages = Math.max(1, Math.ceil(Number(membersTotalCount || 0) / size));
+    loadMembersPage(totalPages).catch(() => {});
   };
 }
 
@@ -1106,8 +1518,10 @@ const qrTitle = document.getElementById("qrTitle");
 const qrImg = document.getElementById("qrImg");
 const qrCopyBtn = document.getElementById("qrCopyBtn");
 const qrSaveBtn = document.getElementById("qrSaveBtn");
-const qrDetails = document.getElementById("qrDetails");
+const qrDownloadPacketBtn = document.getElementById("qrDownloadPacketBtn");
 const qrMsg = document.getElementById("qrMsg");
+const emailPacketSendBtn = document.getElementById("emailPacketSendBtn");
+const emailPacketTo = document.getElementById("emailPacketTo");
 
 let qrEnrollUrl = "";
 let qrCodeDataUrl = "";
@@ -1145,45 +1559,54 @@ async function ensureEnrollmentQrReady(item) {
   if (qrImg && qrCodeDataUrl) qrImg.src = qrCodeDataUrl;
 }
 
+function setQrPacketButtonsEnabled(enabled) {
+  if (qrCopyBtn) qrCopyBtn.disabled = !enabled;
+  if (qrSaveBtn) qrSaveBtn.disabled = !enabled;
+  if (qrDownloadPacketBtn) qrDownloadPacketBtn.disabled = !enabled;
+  if (emailPacketSendBtn) emailPacketSendBtn.disabled = !enabled;
+}
+
 function openQrModal(item){
   qrOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
-  qrTitle.textContent = `QR Code — ${item.type} — ${item.title}`;
+  qrTitle.textContent = `Enrollment QR — ${item.type} — ${item.title}`;
   qrActiveId = item.id;
   qrActiveItem = item;
-  qrDetails.innerHTML = `
-    <span class="chip">Group: ${esc(displayGroupName(item.groupName || ""))}</span>
-    <span class="chip">Username: ${esc(item.username || "")}</span>
-  `;
+  if (emailPacketTo) emailPacketTo.value = "";
 
   const cached = enrollmentQrByItemId.get(String(item.id));
   if (cached?.enrollUrl && cached?.qrCode) {
     qrEnrollUrl = cached.enrollUrl;
     qrCodeDataUrl = cached.qrCode;
     qrImg.src = cached.qrCode;
-    qrCopyBtn.disabled = false;
-    qrSaveBtn.disabled = false;
+    setQrPacketButtonsEnabled(true);
     setMsg(qrMsg, "QR ready.", true);
     return;
   }
 
   qrImg.src = "";
-  qrCopyBtn.disabled = true;
-  qrSaveBtn.disabled = true;
+  setQrPacketButtonsEnabled(false);
   qrEnrollUrl = "";
   qrCodeDataUrl = "";
   setMsg(qrMsg, "Loading...", true);
 
   ensureEnrollmentQrReady(item)
     .then(() => {
-      qrCopyBtn.disabled = false;
-      qrSaveBtn.disabled = false;
+      setQrPacketButtonsEnabled(true);
       setMsg(qrMsg, "QR ready.", true);
     })
     .catch((e) => setMsg(qrMsg, e.message || String(e), false));
 }
 
 qrCloseBtn.onclick = () => { qrOverlay.style.display = "none"; document.body.classList.remove("noScroll"); };
+if (qrOverlay) {
+  qrOverlay.addEventListener("click", (e) => {
+    if (e.target === qrOverlay) {
+      qrOverlay.style.display = "none";
+      document.body.classList.remove("noScroll");
+    }
+  });
+}
 qrCopyBtn.onclick = async () => {
   if (!qrEnrollUrl) return;
   await copyToClipboard(qrEnrollUrl);
@@ -1201,55 +1624,30 @@ qrSaveBtn.onclick = () => {
   setMsg(qrMsg, "Downloading high-res QR...", true);
 };
 
-
-// ----- Email Packet modal -----
-const emailPacketOverlay = document.getElementById("emailPacketOverlay");
-const emailPacketCloseBtn = document.getElementById("emailPacketCloseBtn");
-const emailPacketSendBtn = document.getElementById("emailPacketSendBtn");
-const emailPacketTo = document.getElementById("emailPacketTo");
-const emailPacketMsg = document.getElementById("emailPacketMsg");
-
-function openEmailPacketModal() {
-  if (!qrActiveItem) return;
-  if (!emailPacketOverlay) return;
-  emailPacketMsg.textContent = "";
-  emailPacketMsg.className = "msg";
-  emailPacketTo.value = "";
-  emailPacketOverlay.style.display = "flex";
-  document.body.classList.add("noScroll");
+if (qrDownloadPacketBtn) {
+  qrDownloadPacketBtn.onclick = async () => {
+    if (!qrActiveItem) return;
+    try {
+      setMsg(qrMsg, "Building packet...", "progress");
+      await downloadDeploymentPacketForItem(qrActiveItem);
+      setMsg(qrMsg, "Packet download started.", true);
+    } catch (e) {
+      setMsg(qrMsg, e?.message || String(e), false);
+    }
+  };
 }
 
-function closeEmailPacketModal() {
-  if (!emailPacketOverlay) return;
-  emailPacketOverlay.style.display = "none";
-  document.body.classList.remove("noScroll");
-}
 
-if (emailPacketCloseBtn) emailPacketCloseBtn.onclick = closeEmailPacketModal;
-if (emailPacketOverlay) emailPacketOverlay.addEventListener("click", (e) => {
-  if (e.target === emailPacketOverlay) closeEmailPacketModal();
-});
-
-async function startEmailPacketForItem(item) {
-  try {
-    setMsg(maListMsg, "Preparing packet...", "progress");
-    await ensureEnrollmentQrReady(item);
-    openEmailPacketModal();
-    setMsg(maListMsg, "", true);
-  } catch (e) {
-    setMsg(maListMsg, e?.message || String(e), false);
-  }
-}
-
+// ----- Email packet (in QR modal) -----
 async function emailDeploymentPacket() {
   try {
     if (!qrEnrollUrl || !qrActiveId) {
-      setMsg(emailPacketMsg, "QR not ready yet.", false);
+      setMsg(qrMsg, "QR not ready yet.", false);
       return;
     }
     const rawTo = String(emailPacketTo?.value || "").trim();
     if (!rawTo) {
-      setMsg(emailPacketMsg, "Please enter at least one email address.", false);
+      setMsg(qrMsg, "Please enter at least one email address.", false);
       return;
     }
 
@@ -1260,7 +1658,7 @@ async function emailDeploymentPacket() {
 
     // Reuse the existing builder and just output bytes.
     emailPacketSendBtn.disabled = true;
-    setMsg(emailPacketMsg, "Building packet...", "progress");
+    setMsg(qrMsg, "Building packet...", "progress");
     const doc = await buildDeploymentPacketPdf();
     const ab = doc.output("arraybuffer");
 
@@ -1272,7 +1670,7 @@ async function emailDeploymentPacket() {
       || "deployment-packet").toLowerCase();
     const filename = `${filenameSafe}-packet.pdf`;
 
-    setMsg(emailPacketMsg, "Sending...", true);
+    setMsg(qrMsg, "Sending...", true);
 
     const form = new FormData();
     form.append("to", rawTo);
@@ -1302,11 +1700,10 @@ async function emailDeploymentPacket() {
       throw new Error(msg);
     }
 
-    setMsg(emailPacketMsg, "Sent!", true);
-    closeEmailPacketModal();
+    setMsg(qrMsg, "Sent!", true);
     setMsg(maListMsg, "Packet emailed.", true);
   } catch (e) {
-    setMsg(emailPacketMsg, e?.message || String(e), false);
+    setMsg(qrMsg, e?.message || String(e), false);
   } finally {
     if (emailPacketSendBtn) emailPacketSendBtn.disabled = false;
   }
@@ -2308,6 +2705,7 @@ async function downloadDeploymentPacketForItem(item) {
     setMsg(maListMsg, "Packet downloaded.", true);
   } catch (e) {
     setMsg(maListMsg, e?.message || String(e), false);
+    throw e;
   }
 }
 
@@ -2627,12 +3025,11 @@ editSaveBtn.onclick = async () => {
 // Group assignment is handled via the "Assign" button on each row.
 
 // ----- Mass assign modal (same modes/logic as Manage Groups) -----
-const massOverlay = document.getElementById("massOverlay");
-const massCloseBtn = document.getElementById("massCloseBtn");
-const massTitle = document.getElementById("massTitle");
 const massMsg = document.getElementById("massMsg");
 const massApplyBtn = document.getElementById("massApplyBtn");
 const massSkipBtn = document.getElementById("massSkipBtn");
+const massActionAssignBtn = document.getElementById("massActionAssignBtn");
+const massActionUnassignBtn = document.getElementById("massActionUnassignBtn");
 
 const massAgencyPane = document.getElementById("massAgencyPane");
 const massGroupPane = document.getElementById("massGroupPane");
@@ -2708,7 +3105,7 @@ function updateMassPanes(){
 
 function setMassMode(mode){
   massMode = mode;
-  document.querySelectorAll("#massOverlay .segBtn").forEach(b => {
+  document.querySelectorAll("#massSegmented .segBtn").forEach(b => {
     b.classList.toggle("active", b.dataset.mode === mode);
   });
   updateMassPanes();
@@ -2717,6 +3114,7 @@ function setMassMode(mode){
   if(mode === "template") renderTemplateSourceList();
   if(mode === "agencyType") renderAgencyTypeList();
   if(mode === "users") renderUserList(usersSearchCache);
+  updateMassChrome();
 }
 
 async function loadTemplatesForMassModal(){
@@ -2788,39 +3186,36 @@ function renderTemplateSourceList(){
   }).join("") || `<div style="padding:10px; color: var(--muted);">No templates found.</div>`;
 }
 
-function openMassAssign({ groupId, groupName }){
-  activeMassGroupId = String(groupId || "");
-  activeMassGroupName = String(groupName || "").trim();
-  massAction = "assign";
-  massTitle.textContent = `Mass Assign — ${massGroupLabel()}`;
-  massApplyBtn.textContent = "Mass Assign";
-  setMsg(massMsg, "", true);
-  resetMassState();
-  setMassMode("agency");
-  massOverlay.style.display = "flex";
-  document.body.classList.add("noScroll");
-
-  Promise.all([loadAgencies(), loadGroups(), loadTemplatesForMassModal()])
-    .then(() => {
-      renderAgencyList();
-      renderSourceGroupList();
-      renderTemplateSourceList();
-      renderUserList([]);
-    })
-    .catch(()=>{});
+function updateMassChrome(){
+  const isUnassign = massAction === "unassign";
+  if (massActionAssignBtn) massActionAssignBtn.classList.toggle("active", !isUnassign);
+  if (massActionUnassignBtn) massActionUnassignBtn.classList.toggle("active", isUnassign);
+  if (massApplyBtn) {
+    massApplyBtn.classList.toggle("success", !isUnassign);
+    massApplyBtn.classList.toggle("caution", isUnassign);
+    const mode = massMode || "agency";
+    const noun =
+      mode === "template" ? "TEMPLATES" :
+      mode === "group" ? "GROUPS" :
+      mode === "users" ? "USERS" :
+      mode === "agencyType" ? "AGENCY TYPES" :
+      "AGENCIES";
+    massApplyBtn.textContent = `${isUnassign ? "UNASSIGN" : "ASSIGN"} FOR SELECTED ${noun}`;
+  }
 }
 
-function openMassUnassign({ groupId, groupName }){
+function setMassAction(action){
+  massAction = action === "unassign" ? "unassign" : "assign";
+  updateMassChrome();
+}
+
+function prepareMassPane({ groupId, groupName, action }){
   activeMassGroupId = String(groupId || "");
   activeMassGroupName = String(groupName || "").trim();
-  massAction = "unassign";
-  massTitle.textContent = `Mass Unassign — ${massGroupLabel()}`;
-  massApplyBtn.textContent = "Mass Unassign";
+  setMassAction(action || "assign");
   setMsg(massMsg, "", true);
   resetMassState();
   setMassMode("agency");
-  massOverlay.style.display = "flex";
-  document.body.classList.add("noScroll");
 
   Promise.all([loadAgencies(), loadGroups(), loadTemplatesForMassModal()])
     .then(() => {
@@ -2833,14 +3228,14 @@ function openMassUnassign({ groupId, groupName }){
 }
 
 function closeMassAssign(){
-  massOverlay.style.display = "none";
-  document.body.classList.remove("noScroll");
+  showMembersModal(false);
 }
 
-massCloseBtn.onclick = closeMassAssign;
-massSkipBtn.onclick = closeMassAssign;
+if (massSkipBtn) massSkipBtn.onclick = closeMassAssign;
+if (massActionAssignBtn) massActionAssignBtn.onclick = () => setMassAction("assign");
+if (massActionUnassignBtn) massActionUnassignBtn.onclick = () => setMassAction("unassign");
 
-document.querySelectorAll("#massOverlay .segBtn").forEach(b => {
+document.querySelectorAll("#massSegmented .segBtn").forEach(b => {
   b.onclick = () => setMassMode(b.dataset.mode);
 });
 
@@ -3230,6 +3625,7 @@ massApplyBtn.onclick = async () => {
     } catch (e) {
       return setMsg(massMsg, e?.message || "Template update failed", false);
     }
+    if (activeMembersGroupId) loadMembersPage(membersCurrentPage).catch(() => {});
     return;
   }
 
@@ -3297,7 +3693,164 @@ massApplyBtn.onclick = async () => {
   } catch (e) {
     setMsg(massMsg, `Mass ${actionVerb} failed`, false);
   }
+  if (activeMembersGroupId) loadMembersPage(membersCurrentPage).catch(() => {});
 };
+
+// ----- Delegate to agencies -----
+const adminAccessInner = document.getElementById("adminAccessInner");
+const adminAccessSearch = document.getElementById("adminAccessSearch");
+const adminAccessSummary = document.getElementById("adminAccessSummary");
+const adminAccessSelectAllBtn = document.getElementById("adminAccessSelectAllBtn");
+const adminAccessClearBtn = document.getElementById("adminAccessClearBtn");
+
+let adminAccessAgencies = [];
+let adminAccessItemId = "";
+let adminAccessSaveTimer = null;
+let adminAccessSaving = false;
+
+function selectedAdminAccessSuffixes() {
+  if (!adminAccessInner) return [];
+  return Array.from(adminAccessInner.querySelectorAll("input.adminAccessChk:checked"))
+    .map((cb) => String(cb.value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function renderAdminAccessList() {
+  if (!adminAccessInner) return;
+  const needle = String(adminAccessSearch?.value || "").trim().toLowerCase();
+  const items = (adminAccessAgencies || []).filter((a) => {
+    if (!needle) return true;
+    return (
+      String(a.name || "").toLowerCase().includes(needle) ||
+      String(a.suffix || "").toLowerCase().includes(needle) ||
+      String(a.groupPrefix || "").toLowerCase().includes(needle)
+    );
+  });
+  adminAccessInner.innerHTML = items.map((a) => {
+    const suffix = String(a.suffix || "");
+    const checked = a.hasAccess ? "checked" : "";
+    const disabled = a.selectable === false ? "disabled" : "";
+    const implicit = a.implicitAccess
+      ? `<span class="muted" style="margin-left:6px; font-size:12px;">(owner)</span>`
+      : "";
+    const rowStyle = a.hasAccess
+      ? "background: rgba(46, 160, 67, 0.18); border: 1px solid rgba(46, 160, 67, 0.45);"
+      : "background: rgba(248, 81, 73, 0.14); border: 1px solid rgba(248, 81, 73, 0.35);";
+    return `
+      <label class="groupItem" style="${rowStyle}">
+        <input type="checkbox" class="adminAccessChk" value="${esc(suffix)}" ${checked} ${disabled} />
+        <span>${esc(a.name || suffix)}${implicit}</span>
+      </label>
+    `;
+  }).join("") || `<div class="muted" style="padding:10px;">No agencies found.</div>`;
+}
+
+async function saveAdminAccess() {
+  if (!adminAccessItemId || adminAccessSaving) return;
+  adminAccessSaving = true;
+  if (adminAccessSummary) {
+    adminAccessSummary.textContent = "Saving...";
+    adminAccessSummary.className = "msg progress";
+  }
+  try {
+    const res = await fetch(`/api/mutual-aid/${encodeURIComponent(adminAccessItemId)}/admin-access`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agencySuffixes: selectedAdminAccessSuffixes() }),
+    });
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error || "Failed to save");
+    const selected = new Set((out.delegatedAgencySuffixes || []).map((s) => String(s).toLowerCase()));
+    adminAccessAgencies = (adminAccessAgencies || []).map((a) => {
+      if (a.implicitAccess) return { ...a, hasAccess: true };
+      const sfx = String(a.suffix || "").toLowerCase();
+      return { ...a, hasAccess: selected.has(sfx) };
+    });
+    renderAdminAccessList();
+    if (adminAccessSummary) {
+      adminAccessSummary.textContent = "Saved.";
+      adminAccessSummary.className = "msg ok";
+    }
+    const current = (allItems || []).find((x) => String(x.id) === String(adminAccessItemId));
+    if (current) current.delegatedAgencySuffixes = out.delegatedAgencySuffixes || [];
+  } catch (e) {
+    if (adminAccessSummary) {
+      adminAccessSummary.textContent = e.message || "Failed to save.";
+      adminAccessSummary.className = "msg bad";
+    }
+  } finally {
+    adminAccessSaving = false;
+  }
+}
+
+function scheduleAdminAccessSave() {
+  if (adminAccessSaveTimer) clearTimeout(adminAccessSaveTimer);
+  adminAccessSaveTimer = setTimeout(() => saveAdminAccess(), 200);
+}
+
+async function loadAdminAccess(itemId) {
+  adminAccessItemId = String(itemId || "");
+  adminAccessAgencies = [];
+  if (adminAccessSummary) {
+    adminAccessSummary.textContent = "Loading...";
+    adminAccessSummary.className = "msg";
+  }
+  if (adminAccessInner) adminAccessInner.innerHTML = "";
+  if (!adminAccessItemId) return;
+  try {
+    const res = await fetch(`/api/mutual-aid/${encodeURIComponent(adminAccessItemId)}/admin-access`);
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error || "Failed to load");
+    membersShowDelegate = !!out.canDelegate;
+    setMembersSplitPanes();
+    adminAccessAgencies = Array.isArray(out.agencies) ? out.agencies : [];
+    renderAdminAccessList();
+    if (adminAccessSummary) {
+      adminAccessSummary.textContent = out.canDelegate
+        ? "Agency admins for selected agencies can view, edit, and delete this mutual aid."
+        : "";
+      adminAccessSummary.className = "msg";
+    }
+  } catch (e) {
+    if (adminAccessSummary) {
+      adminAccessSummary.textContent = e.message || "Failed to load.";
+      adminAccessSummary.className = "msg bad";
+    }
+  }
+}
+
+if (adminAccessInner) {
+  adminAccessInner.addEventListener("change", (e) => {
+    const cb = e.target && e.target.matches ? e.target : null;
+    if (!cb || !cb.classList.contains("adminAccessChk")) return;
+    const sfx = String(cb.value || "").toLowerCase();
+    adminAccessAgencies = (adminAccessAgencies || []).map((a) => {
+      if (String(a.suffix || "").toLowerCase() !== sfx || a.selectable === false) return a;
+      return { ...a, hasAccess: !!cb.checked };
+    });
+    renderAdminAccessList();
+    scheduleAdminAccessSave();
+  });
+}
+if (adminAccessSearch) adminAccessSearch.oninput = renderAdminAccessList;
+if (adminAccessSelectAllBtn) {
+  adminAccessSelectAllBtn.onclick = () => {
+    adminAccessAgencies = (adminAccessAgencies || []).map((a) => (
+      a.selectable === false ? a : { ...a, hasAccess: true }
+    ));
+    renderAdminAccessList();
+    scheduleAdminAccessSave();
+  };
+}
+if (adminAccessClearBtn) {
+  adminAccessClearBtn.onclick = () => {
+    adminAccessAgencies = (adminAccessAgencies || []).map((a) => (
+      a.implicitAccess ? a : { ...a, hasAccess: false }
+    ));
+    renderAdminAccessList();
+    scheduleAdminAccessSave();
+  };
+}
 
 // ----- List rendering -----
 function isGroupCreatorItem(it) {
@@ -3417,7 +3970,6 @@ function renderMutualAidRow(it, opts = {}) {
   const typeLabel = formatMutualAidTypeLabel(it.type);
   const displayTitle = displayTitleForRow(it, master);
   const isAnchor = !!(groupAnchor && String(groupAnchor.id) === String(it.id));
-  const showMassAssign = isAnchor && isGroupCreatorItem(it);
   const rowClass = [
     isAnchor && !isSub ? "ma-unit-master" : "",
     isChild || isSub ? "ma-unit-child" : "",
@@ -3441,13 +3993,9 @@ function renderMutualAidRow(it, opts = {}) {
       <td class="maCreatedByCell">${formatCreatedByHtml(it)}</td>
       <td class="maActionsCell cardActionsCell">
         <div class="maActionsRow cardActionsRow">
-          ${isSub ? "" : `<button class="btn" type="button" data-act="members" data-id="${esc(it.id)}">View Members</button>`}
-          ${showMassAssign ? `<button class="btn success" type="button" data-act="assign" data-id="${esc(it.id)}">Assign</button>` : ""}
-          ${showMassAssign ? `<button class="btn" type="button" data-act="unassign" data-id="${esc(it.id)}">Unassign</button>` : ""}
           <button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>
-          <button class="btn qr" type="button" data-act="qr" data-id="${esc(it.id)}">Show QR</button>
-          <button class="btn" type="button" data-act="packet" data-id="${esc(it.id)}" style="background:#2e7d32;border-color:#2e7d32;">Download</button>
-          <button class="btn qrEmail" type="button" data-act="emailpacket" data-id="${esc(it.id)}">Email</button>
+          ${isSub ? "" : `<button class="btn btn-access" type="button" data-act="members" data-id="${esc(it.id)}">Members</button>`}
+          <button class="btn qr" type="button" data-act="qr" data-id="${esc(it.id)}">QR</button>
           ${canCreateSub ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">${esc(createSubButtonLabel(it.type))}</button>` : ""}
           <button class="btn danger" type="button" data-act="del" data-id="${esc(it.id)}">Delete</button>
         </div>
@@ -3504,13 +4052,9 @@ function renderList(){
     const it = allItems.find(x => String(x.id) === id);
     if(!it) return;
     btn.onclick = () => {
-      if(act === "members") return openMutualAidMembers(it.groupId, it.groupName);
-      if(act === "assign") return openMassAssign({ groupId: it.groupId, groupName: it.groupName });
-      if(act === "unassign") return openMassUnassign({ groupId: it.groupId, groupName: it.groupName });
+      if(act === "members") return openMutualAidMembers(it);
       if(act === "edit") return openEdit(it);
       if(act === "qr") return openQrModal(it);
-      if(act === "packet") return downloadDeploymentPacketForItem(it);
-      if(act === "emailpacket") return startEmailPacketForItem(it);
       if(act === "adduser") return openAddMaUserModal(it);
       if(act === "del") return deleteItem(it);
     };
@@ -3627,7 +4171,8 @@ maCreateBtn.onclick = async () => {
     await loadList();
 
     if (groupMode !== "existing") {
-      openMassAssign({ groupId: item.groupId, groupName: item.groupName });
+      const created = (allItems || []).find((x) => String(x.id) === String(item.id)) || item;
+      openMutualAidMembers(created, { showMass: true, postCreate: true, massAction: "assign" });
     }
   } catch (e){
     setMsg(maCreateMsg, e.message || String(e), false);

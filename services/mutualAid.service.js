@@ -474,6 +474,7 @@ function enrichItemForList(item, allItems) {
   return {
     ...item,
     createdBy: normalizeCreatedBy(item),
+    delegatedAgencySuffixes: normalizeDelegatedAgencySuffixes(item),
     isGroupMaster,
     isLinkedDeployment: !isGroupCreatorItem(item) && siblings.length > 1,
     groupMasterId: master ? String(master.id) : null,
@@ -615,29 +616,72 @@ function cloneCreatedBy(createdBy) {
   };
 }
 
+function normalizeDelegatedAgencySuffixes(itemOrList) {
+  const raw = Array.isArray(itemOrList)
+    ? itemOrList
+    : itemOrList && Array.isArray(itemOrList.delegatedAgencySuffixes)
+      ? itemOrList.delegatedAgencySuffixes
+      : [];
+  const seen = new Set();
+  const out = [];
+  for (const value of raw) {
+    const sfx = normalizeSuffix(value);
+    if (!sfx || seen.has(sfx)) continue;
+    seen.add(sfx);
+    out.push(sfx);
+  }
+  return out;
+}
+
+function userManagedSuffixSet(authUser) {
+  return new Set(
+    accessSvc
+      .getUserManagedAgencySuffixes(authUser)
+      .map(normalizeSuffix)
+      .filter(Boolean)
+  );
+}
+
 function canViewMutualAid(authUser, item) {
   if (!authUser) return false;
   if (authUser.isGlobalAdmin) return true;
 
+  const allowedSet = userManagedSuffixSet(authUser);
+  if (!allowedSet.size) return false;
+
   const createdBy = normalizeCreatedBy(item);
-  if (!isAgencyCreatedRole(createdBy.role)) return false;
+  if (
+    isAgencyCreatedRole(createdBy.role) &&
+    createdBy.agencySuffixes.some((sfx) => allowedSet.has(sfx))
+  ) {
+    return true;
+  }
 
-  const allowed = accessSvc
-    .getUserManagedAgencySuffixes(authUser)
-    .map(normalizeSuffix)
-    .filter(Boolean);
-  if (!allowed.length || !createdBy.agencySuffixes.length) return false;
-
-  const allowedSet = new Set(allowed);
-  return createdBy.agencySuffixes.some((sfx) => allowedSet.has(sfx));
+  return normalizeDelegatedAgencySuffixes(item).some((sfx) => allowedSet.has(sfx));
 }
 
 function canManageMutualAid(authUser, item) {
   return canViewMutualAid(authUser, item);
 }
 
+function canDelegateMutualAid(authUser, item) {
+  if (!authUser) return false;
+  if (authUser.isGlobalAdmin) return true;
+  const createdBy = normalizeCreatedBy(item);
+  if (!isAgencyCreatedRole(createdBy.role)) return false;
+  const allowedSet = userManagedSuffixSet(authUser);
+  if (!allowedSet.size || !createdBy.agencySuffixes.length) return false;
+  return createdBy.agencySuffixes.some((sfx) => allowedSet.has(sfx));
+}
+
 function listForUser(authUser) {
-  return list().filter((item) => canViewMutualAid(authUser, item));
+  return list()
+    .filter((item) => canViewMutualAid(authUser, item))
+    .map((item) => ({
+      ...item,
+      delegatedAgencySuffixes: normalizeDelegatedAgencySuffixes(item),
+      canDelegate: canDelegateMutualAid(authUser, item),
+    }));
 }
 
 function assertCanManage(authUser, id) {
@@ -655,6 +699,109 @@ function assertCanManage(authUser, id) {
     throw err;
   }
   return item;
+}
+
+function assertCanDelegate(authUser, id) {
+  const item = assertCanManage(authUser, id);
+  if (!canDelegateMutualAid(authUser, item)) {
+    const err = new Error(
+      "You do not have permission to delegate this mutual aid deployment."
+    );
+    err.status = 403;
+    throw err;
+  }
+  return item;
+}
+
+function userCanModifyMutualAidGroup(authUser, groupId) {
+  const gid = String(groupId || "").trim();
+  if (!authUser || !gid) return false;
+  if (authUser.isGlobalAdmin) return true;
+  return list().some(
+    (item) =>
+      String(item.groupId || "").trim() === gid &&
+      canManageMutualAid(authUser, item)
+  );
+}
+
+function getAdminAccess(authUser, id) {
+  const item = assertCanManage(authUser, id);
+  const delegated = new Set(normalizeDelegatedAgencySuffixes(item));
+  const createdBy = normalizeCreatedBy(item);
+  const ownerSet = new Set(
+    isAgencyCreatedRole(createdBy.role) ? createdBy.agencySuffixes : []
+  );
+  const allAgencies = agenciesSvc.load() || [];
+  const agenciesOut = [];
+  for (const agency of allAgencies) {
+    const suffix = normalizeSuffix(agency?.suffix);
+    if (!suffix) continue;
+    const implicitAccess = ownerSet.has(suffix);
+    agenciesOut.push({
+      name: String(agency.name || "").trim(),
+      suffix,
+      groupPrefix: agenciesSvc.normalizeGroupPrefix
+        ? agenciesSvc.normalizeGroupPrefix(agency.groupPrefix)
+        : String(agency.groupPrefix || "").trim(),
+      hasAccess: implicitAccess || delegated.has(suffix),
+      implicitAccess,
+      selectable: !implicitAccess,
+    });
+  }
+  agenciesOut.sort((a, b) =>
+    String(a.name || a.suffix).localeCompare(String(b.name || b.suffix), undefined, {
+      sensitivity: "base",
+    })
+  );
+  return {
+    id: item.id,
+    title: item.title,
+    groupId: item.groupId || null,
+    groupName: item.groupName || null,
+    canDelegate: canDelegateMutualAid(authUser, item),
+    delegatedAgencySuffixes: [...delegated],
+    agencies: agenciesOut,
+  };
+}
+
+function setAdminAccess(authUser, id, agencySuffixes) {
+  const item = assertCanDelegate(authUser, id);
+  const createdBy = normalizeCreatedBy(item);
+  const ownerSet = new Set(
+    isAgencyCreatedRole(createdBy.role) ? createdBy.agencySuffixes : []
+  );
+  const valid = new Set(
+    (agenciesSvc.load() || [])
+      .map((a) => normalizeSuffix(a?.suffix))
+      .filter(Boolean)
+  );
+  const next = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(agencySuffixes) ? agencySuffixes : []) {
+    const sfx = normalizeSuffix(raw);
+    if (!sfx || seen.has(sfx) || !valid.has(sfx) || ownerSet.has(sfx)) continue;
+    seen.add(sfx);
+    next.push(sfx);
+  }
+
+  const items = store.load();
+  const gid = String(item.groupId || "").trim();
+  const updatedIds = [];
+  const now = nowIso();
+  for (const it of items) {
+    const sameRecord = String(it.id) === String(item.id);
+    const sameGroup = gid && String(it.groupId || "").trim() === gid;
+    if (!sameRecord && !sameGroup) continue;
+    it.delegatedAgencySuffixes = next.slice();
+    it.updatedAt = now;
+    updatedIds.push(String(it.id));
+  }
+  saveAll(items);
+  return {
+    success: true,
+    delegatedAgencySuffixes: next,
+    updatedIds,
+  };
 }
 
 function saveAll(items) {
@@ -746,6 +893,7 @@ async function create({
   createdBy = null,
   authUser = null,
   preserveMissingCreatedBy = false,
+  delegatedAgencySuffixes = null,
 } = {}) {
   const t = String(type || "").trim().toUpperCase();
   const name = sanitizeTitle(title);
@@ -888,6 +1036,12 @@ async function create({
     expireAt: parsedExpireAt,
     createdAt: nowIso(),
     updatedAt: nowIso(),
+    delegatedAgencySuffixes: normalizeDelegatedAgencySuffixes(
+      delegatedAgencySuffixes != null
+        ? { delegatedAgencySuffixes }
+        : existingItems.find((x) => String(x.groupId) === String(group.pk)) ||
+            { delegatedAgencySuffixes: [] }
+    ),
     ...(stampedCreatedBy ? { createdBy: stampedCreatedBy } : {}),
   };
 
@@ -941,6 +1095,12 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt, auth
     ? cloneCreatedBy(sourceCreatedBy)
     : null;
 
+  const inheritedDelegated = normalizeDelegatedAgencySuffixes(
+    parent.delegatedAgencySuffixes != null
+      ? parent
+      : master
+  );
+
   const subType = `SUB-${parentType}`;
   return create({
     type: subType,
@@ -953,6 +1113,7 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt, auth
     groupMasterId: parent.id,
     usernameOverride: username,
     createdBy: inheritedCreatedBy,
+    delegatedAgencySuffixes: inheritedDelegated,
     authUser,
     // Legacy parent with no createdBy: keep child untagged (global).
     preserveMissingCreatedBy: !inheritedCreatedBy,
@@ -1170,5 +1331,11 @@ module.exports = {
   buildCreatedByFromAuthUser,
   canViewMutualAid,
   canManageMutualAid,
+  canDelegateMutualAid,
   assertCanManage,
+  assertCanDelegate,
+  userCanModifyMutualAidGroup,
+  getAdminAccess,
+  setAdminAccess,
+  normalizeDelegatedAgencySuffixes,
 };

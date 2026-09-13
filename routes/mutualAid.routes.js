@@ -233,6 +233,54 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+router.get("/:id/admin-access", (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const out = mutualAid.getAdminAccess(authUser, req.params.id);
+    res.json(out);
+  } catch (err) {
+    res.status(statusForError(err)).json({ error: toErrorPayload(err) });
+  }
+});
+
+router.put("/:id/admin-access", (req, res) => {
+  try {
+    const authUser = req.authentikUser || null;
+    const item = mutualAid.assertCanDelegate(authUser, req.params.id);
+    const raw = req.body?.agencySuffixes;
+    const out = mutualAid.setAdminAccess(authUser, req.params.id, raw);
+
+    const agencies = require("../services/agencies.service").load() || [];
+    const selectedNames = (out.delegatedAgencySuffixes || []).map((sfx) => {
+      const ag = agencies.find(
+        (a) => String(a?.suffix || "").trim().toLowerCase() === String(sfx)
+      );
+      return String(ag?.name || sfx);
+    });
+
+    auditSvc.logEvent({
+      actor: authUser,
+      request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
+      action: "UPDATE_MUTUAL_AID_ADMIN_ACCESS",
+      targetType: "mutual_aid",
+      targetId: String(item?.title || req.params.id),
+      details: {
+        title: item?.title,
+        type: item?.type,
+        groupName: item?.groupName,
+        delegatedAgencySuffixes: out.delegatedAgencySuffixes,
+        selectedAgencyNames: selectedNames,
+        updatedIds: out.updatedIds,
+        summary: `Updated which agencies can manage mutual aid "${item?.title || req.params.id}" (${(out.delegatedAgencySuffixes || []).length} delegated).`,
+      },
+    });
+
+    res.json(out);
+  } catch (err) {
+    res.status(statusForError(err)).json({ error: toErrorPayload(err) });
+  }
+});
+
 router.get("/:id/qr", async (req, res) => {
   try {
     mutualAid.assertCanManage(req.authentikUser || null, req.params.id);
