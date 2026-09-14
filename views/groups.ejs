@@ -2180,6 +2180,15 @@ function memberTemplateLabel(u){
   return raw;
 }
 
+function memberVisibleName(u) {
+  const name = String(u?.name || "").trim();
+  if (!name) return "";
+  if (name.includes("@")) return "";
+  const email = String(u?.email || "").trim();
+  if (email && name.toLowerCase() === email.toLowerCase()) return "";
+  return name;
+}
+
 function memberSortValue(u, key){
   if (key === "agency") {
     const agency = memberAgencyLabel(u);
@@ -2216,6 +2225,7 @@ function renderMembersList(){
     const template = memberTemplateLabel(u);
     const active = u.is_active !== false;
     const pk = String(u.pk || "");
+    const displayName = memberVisibleName(u);
     const actionsCell = membersShowMass
       ? `<td class="membersRemoveCell" data-label="Actions"><button class="btn danger" type="button" onclick="removeUserFromGroup('${esc(pk)}')">Remove</button></td>`
       : "";
@@ -2223,7 +2233,7 @@ function renderMembersList(){
     <tr class="${active ? "" : "membersRowDisabled"}">
       <td class="membersUserCell" data-label="User">
         <div class="membersUserName">${esc(u.username || "")}</div>
-        <div class="muted membersUserMeta">${esc(u.name || "—")}</div>
+        <div class="muted membersUserMeta">${esc(displayName || "—")}</div>
       </td>
       <td class="membersAgencyCell" data-label="Agency">${esc(agency.name || agency.abbr || "—")}</td>
       <td class="membersTemplateCell" data-label="Template">${esc(template || "—")}</td>
