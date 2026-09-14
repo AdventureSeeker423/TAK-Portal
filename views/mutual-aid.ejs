@@ -1061,7 +1061,7 @@ body.noScroll .main {
 <div class="modalOverlay" id="addMaUserOverlay" style="display:none;">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addMaUserTitle">
     <div class="modalHeader">
-      <h2 id="addMaUserTitle" style="margin:0;">Create Additional MA User</h2>
+      <h2 id="addMaUserTitle" style="margin:0;">Create Additional One Time User(s)</h2>
       <button class="btn" id="addMaUserCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
@@ -1082,7 +1082,7 @@ body.noScroll .main {
       </div>
       <div class="row maModalActions">
         <span id="addMaUserMsg" class="msg"></span>
-        <button class="btn maAddUser" id="addMaUserSaveBtn" type="button">Create User</button>
+        <button class="btn maAddUser" id="addMaUserSaveBtn" type="button">Create Additional One Time User(s)</button>
       </div>
     </div>
   </div>
@@ -3248,11 +3248,7 @@ function formatMutualAidTypeLabel(type) {
   return `${t.charAt(0)}${t.slice(1).toLowerCase()}`;
 }
 
-function createSubButtonLabel(type) {
-  const base = baseMutualAidType(type);
-  if (!base) return "Create Sub";
-  return `Create Sub-${base.charAt(0)}${base.slice(1).toLowerCase()}`;
-}
+const CREATE_ADDITIONAL_USER_LABEL = "Create Additional One Time User(s)";
 
 function updateAddMaUserExpireUi() {
   const enabled = String(addMaUserExpireEnabled?.value || "").toLowerCase() === "yes";
@@ -3265,9 +3261,8 @@ function updateAddMaUserExpireUi() {
 
 function openAddMaUserModal(parentItem) {
   addMaUserParent = parentItem;
-  const subBtnLabel = createSubButtonLabel(parentItem?.type);
-  if (addMaUserTitleEl) addMaUserTitleEl.textContent = subBtnLabel;
-  if (addMaUserSaveBtn) addMaUserSaveBtn.textContent = subBtnLabel;
+  if (addMaUserTitleEl) addMaUserTitleEl.textContent = CREATE_ADDITIONAL_USER_LABEL;
+  if (addMaUserSaveBtn) addMaUserSaveBtn.textContent = CREATE_ADDITIONAL_USER_LABEL;
   if (addMaUserTitleInput) addMaUserTitleInput.value = "";
   if (addMaUserExpireEnabled) addMaUserExpireEnabled.value = "no";
   if (addMaExpireAt) addMaExpireAt.value = "";
@@ -4353,7 +4348,7 @@ function renderMutualAidRow(it, opts = {}) {
           ${canEdit ? `<button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>` : ""}
           ${isSub ? "" : `<button class="btn btn-access" type="button" data-act="members" data-id="${esc(it.id)}">Members</button>`}
           <button class="btn qrPacketBtn" type="button" data-act="qr" data-id="${esc(it.id)}">QR / Packet</button>
-          ${canCreateSub ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">${esc(createSubButtonLabel(it.type))}</button>` : ""}
+          ${canCreateSub ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">${esc(CREATE_ADDITIONAL_USER_LABEL)}</button>` : ""}
           ${canEdit ? `<button class="btn danger" type="button" data-act="del" data-id="${esc(it.id)}">Delete</button>` : ""}
         </div>
       </td>
