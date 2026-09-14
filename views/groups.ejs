@@ -270,23 +270,6 @@
           </div>
         </section>
 
-        <% if (typeof isGlobalAdmin !== "undefined" && isGlobalAdmin) { %>
-        <section class="editGroupAdminAccess" id="editGroupAdminAccessSection">
-          <div class="editGroupAdminAccessHead">
-            <h3>Admin Access</h3>
-            <div class="row" style="gap:8px; flex-wrap:wrap;">
-              <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
-              <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
-            </div>
-          </div>
-          <p id="adminAccessSummary" class="msg"></p>
-          <input id="adminAccessSearch" placeholder="Search agencies..." />
-          <div id="adminAccessBox" class="groupsBox editGroupAdminAccessBox">
-            <div id="adminAccessInner" class="groupsInner"></div>
-          </div>
-        </section>
-        <% } %>
-
         <div class="editGroupFooter row">
           <span id="editGroupMsg" class="msg"></span>
           <button class="btn success" id="editGroupSaveBtn" type="button">Save Changes</button>
@@ -315,7 +298,7 @@
           <div id="membersSummary" class="msg"></div>
           <input
             id="membersFilter"
-            placeholder="Search name, username, email, agency, or template..."
+            placeholder="Search name, username, agency, or template..."
           />
           <div class="pagination" id="membersPagination" style="display:none;">
             <button class="btn pagination-first-last" id="membersFirstBtn" type="button">First</button>
@@ -428,6 +411,21 @@
           </div>
         </div>
       </div>
+
+      <div class="membersDelegatePane" id="membersDelegatePane">
+        <div class="membersSplitPaneHead">
+          <h3>Delegate Management to Agency Admins</h3>
+          <div class="row" style="gap:8px; flex-wrap:wrap;">
+            <button class="btn" type="button" id="adminAccessSelectAllBtn">Select All</button>
+            <button class="btn" type="button" id="adminAccessClearBtn">Clear</button>
+          </div>
+        </div>
+        <p id="adminAccessSummary" class="msg"></p>
+        <input id="adminAccessSearch" placeholder="Search agencies..." />
+        <div id="adminAccessBox" class="groupsBox membersMassListBox">
+          <div id="adminAccessInner" class="groupsInner"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -443,6 +441,7 @@ const membersFilter = document.getElementById("membersFilter");
 const membersList = document.getElementById("membersList");
 const membersSplit = document.getElementById("membersSplit");
 const membersMassPane = document.getElementById("membersMassPane");
+const membersDelegatePane = document.getElementById("membersDelegatePane");
 const membersFirstBtn = document.getElementById("membersFirstBtn");
 const membersPrevBtn = document.getElementById("membersPrevBtn");
 const membersNextBtn = document.getElementById("membersNextBtn");
@@ -1891,9 +1890,6 @@ window.editGroupName = async (groupId) => {
 
   setMsg(editGroupMsg, "");
   showEditGroupModal(true);
-  if (IS_GLOBAL_ADMIN) {
-    loadAdminAccessForEdit(groupId).catch(() => {});
-  }
 };
 
 // Delete w/ impact
@@ -2033,9 +2029,18 @@ function prepareMassPane(groupId, groupName){
   resetMassPane();
 }
 
+let membersShowMass = false;
+let membersShowDelegate = false;
+
+function setMembersSplitPanes() {
+  if (membersSplit) membersSplit.classList.toggle("has-mass", !!membersShowMass);
+  if (membersMassPane) membersMassPane.style.display = membersShowMass ? "flex" : "none";
+  if (membersOverlay) membersOverlay.classList.toggle("has-delegate", !!membersShowDelegate);
+}
+
 function setMembersMassPaneVisible(show){
-  if (membersSplit) membersSplit.classList.toggle("has-mass", !!show);
-  if (membersMassPane) membersMassPane.style.display = show ? "flex" : "none";
+  membersShowMass = !!show;
+  setMembersSplitPanes();
 }
 
 function selectedMassMode(){
@@ -2210,20 +2215,19 @@ function renderMembersList(){
     const agency = memberAgencyLabel(u);
     const template = memberTemplateLabel(u);
     const active = u.is_active !== false;
-    const email = String(u.email || "").trim();
+    const pk = String(u.pk || "");
+    const actionsCell = membersShowMass
+      ? `<td class="membersRemoveCell" data-label="Actions"><button class="btn danger" type="button" onclick="removeUserFromGroup('${esc(pk)}')">Remove</button></td>`
+      : "";
     return `
     <tr class="${active ? "" : "membersRowDisabled"}">
       <td class="membersUserCell" data-label="User">
         <div class="membersUserName">${esc(u.username || "")}</div>
         <div class="muted membersUserMeta">${esc(u.name || "—")}</div>
-        ${email ? `<div class="muted membersUserMeta">${esc(email)}</div>` : ""}
       </td>
       <td class="membersAgencyCell" data-label="Agency">${esc(agency.name || agency.abbr || "—")}</td>
       <td class="membersTemplateCell" data-label="Template">${esc(template || "—")}</td>
-      <td class="membersRemoveCell" data-label="Actions">
-        <button class="btn danger" type="button"
-          onclick="removeUserFromGroup('${esc(u.pk)}')">Remove</button>
-      </td>
+      ${actionsCell}
     </tr>
   `;
   }).join("");
@@ -2235,7 +2239,7 @@ function renderMembersList(){
           <th><span style="cursor:pointer;" onclick="setMembersSort('username')">User${sortArrow('username')}</span></th>
           <th><span style="cursor:pointer;" onclick="setMembersSort('agency')">Agency${sortArrow('agency')}</span></th>
           <th><span style="cursor:pointer;" onclick="setMembersSort('template')">Template${sortArrow('template')}</span></th>
-          <th style="text-align:right;">Actions</th>
+          ${membersShowMass ? `<th style="text-align:right;">Actions</th>` : ""}
         </tr>
       </thead>
       <tbody>
@@ -2271,8 +2275,10 @@ function renderMembersPagination() {
 async function loadMembersPage(page) {
   if (!activeMembersGroupId) return;
   const targetPage = Math.max(1, Number(page || 1));
-  membersSummary.textContent = "Loading members...";
-  membersSummary.className = "msg";
+  if (membersSummary) {
+    membersSummary.textContent = "";
+    membersSummary.className = "msg";
+  }
 
   const params = new URLSearchParams({
     page: String(targetPage),
@@ -2293,13 +2299,10 @@ async function loadMembersPage(page) {
   membersHasNext = !!out.hasNext;
   membersHasPrev = !!out.hasPrev;
 
-  const groupLabel = stripTakPrefix(String(activeMembersGroupName || out.group?.name || activeMembersGroupId || ""));
-  if (membersQuery) {
-    membersSummary.textContent = `${membersTotalCount} member${membersTotalCount === 1 ? "" : "s"} matching "${membersQuery}" in "${groupLabel}".`;
-  } else {
-    membersSummary.textContent = `${membersTotalCount} member${membersTotalCount === 1 ? "" : "s"} in "${groupLabel}".`;
+  if (membersSummary) {
+    membersSummary.textContent = "";
+    membersSummary.className = "msg";
   }
-  membersSummary.className = "msg ok";
 
   renderMembersList();
   renderMembersPagination();
@@ -2324,7 +2327,9 @@ window.openGroupMembers = async (groupId, opts = {}) => {
   }
 
   const locked = groupActionsLocked(activeMembersGroupName);
-  setMembersMassPaneVisible(!locked);
+  membersShowMass = !locked;
+  membersShowDelegate = !!IS_GLOBAL_ADMIN;
+  setMembersSplitPanes();
   if (!locked) {
     prepareMassPane(groupId, activeMembersGroupName);
   } else {
@@ -2332,7 +2337,7 @@ window.openGroupMembers = async (groupId, opts = {}) => {
     activeMassGroupName = "";
   }
 
-  membersSummary.textContent = "Loading members...";
+  membersSummary.textContent = "";
   membersSummary.className = "msg";
   membersList.innerHTML = "";
   if (membersFilter) membersFilter.value = "";
@@ -2345,6 +2350,9 @@ window.openGroupMembers = async (groupId, opts = {}) => {
   renderMembersPagination();
 
   showMembersModal(true);
+  if (membersShowDelegate) {
+    loadAdminAccessForEdit(groupId).catch(() => {});
+  }
 
   try {
     await loadMembersPage(1);
@@ -2382,14 +2390,11 @@ window.removeUserFromGroup = async (userPk) => {
     }
 
     activeMembers = activeMembers.filter(u => String(u.pk) !== String(userPk));
-    const memberCount = Math.max(0, Number(membersTotalCount || 0) - 1);
-    membersTotalCount = memberCount;
-    const groupLabel = stripTakPrefix(String(label || ""));
-
-    membersSummary.textContent =
-      `${memberCount} member${memberCount === 1 ? "" : "s"} in group "${groupLabel}".`;
-    membersSummary.className = "msg ok";
-
+    membersTotalCount = Math.max(0, Number(membersTotalCount || 0) - 1);
+    if (membersSummary) {
+      membersSummary.textContent = "";
+      membersSummary.className = "msg";
+    }
 
     renderMembersList();
     renderMembersPagination();
@@ -3134,7 +3139,7 @@ async function saveAdminAccess() {
   adminAccessSaving = true;
   setAdminAccessControlsDisabled(true);
   if (adminAccessSummary) {
-    adminAccessSummary.textContent = "Saving...";
+    adminAccessSummary.textContent = "";
     adminAccessSummary.className = "msg";
   }
 
@@ -3159,8 +3164,8 @@ async function saveAdminAccess() {
       a.hasAccess = adminAccessPickedIds.has(id);
     });
     if (adminAccessSummary) {
-      adminAccessSummary.textContent = "Changes saved.";
-      adminAccessSummary.className = "msg ok";
+      adminAccessSummary.textContent = "";
+      adminAccessSummary.className = "msg";
     }
   } catch (e) {
     try {
@@ -3200,7 +3205,7 @@ async function loadAdminAccessForEdit(groupId) {
 
   if (adminAccessSearch) adminAccessSearch.value = "";
   if (adminAccessSummary) {
-    adminAccessSummary.textContent = "Loading agencies...";
+    adminAccessSummary.textContent = "";
     adminAccessSummary.className = "msg";
   }
   if (adminAccessInner) adminAccessInner.innerHTML = "";
@@ -3217,7 +3222,6 @@ async function loadAdminAccessForEdit(groupId) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to load admin access");
 
-    const groupLabel = stripTakPrefix(data.groupName || "");
     adminAccessSelectable = (Array.isArray(data.agencies) ? data.agencies : []).filter(a => a.selectable !== false);
     adminAccessPickedIds = new Set(
       adminAccessSelectable
@@ -3227,10 +3231,8 @@ async function loadAdminAccessForEdit(groupId) {
     );
 
     if (adminAccessSummary) {
-      adminAccessSummary.textContent = groupLabel
-        ? `Select agencies whose administrators can access "${groupLabel}". Changes save automatically.`
-        : "Select agencies whose administrators can access this group. Changes save automatically.";
-      adminAccessSummary.className = "msg ok";
+      adminAccessSummary.textContent = "";
+      adminAccessSummary.className = "msg";
     }
     renderAdminAccessGrid();
   } catch (e) {
@@ -3607,12 +3609,21 @@ th.sortable:hover{
   box-sizing: border-box;
 }
 
-#editGroupOverlay .editGroupModal,
-#membersOverlay .membersModal {
+#editGroupOverlay .editGroupModal {
   display: flex;
   flex-direction: column;
   width: min(1280px, 100%);
   max-height: 92vh;
+  overflow: hidden;
+}
+
+#membersOverlay .membersModal {
+  display: flex;
+  flex-direction: column;
+  width: min(1280px, 100%);
+  height: min(92vh, 100%);
+  max-height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -3657,49 +3668,6 @@ th.sortable:hover{
   flex: 0 0 auto;
 }
 
-#editGroupOverlay .editGroupAdminAccess {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  overflow: hidden;
-}
-
-#editGroupOverlay .editGroupAdminAccessHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex: 0 0 auto;
-  margin-bottom: 6px;
-}
-
-#editGroupOverlay .editGroupAdminAccessHead h3 {
-  margin: 0;
-}
-
-#editGroupOverlay .editGroupAdminAccess .msg:empty {
-  display: none;
-}
-
-#editGroupOverlay #adminAccessSearch {
-  width: 100%;
-  box-sizing: border-box;
-  margin-bottom: 8px;
-  flex: 0 0 auto;
-}
-
-#editGroupOverlay .editGroupAdminAccessBox {
-  flex: 1 1 auto;
-  min-height: 8rem;
-  overflow: auto;
-  max-height: none;
-  margin-top: 0;
-}
-
 #editGroupOverlay .editGroupFooter {
   flex: 0 0 auto;
   justify-content: flex-end;
@@ -3727,11 +3695,18 @@ th.sortable:hover{
 }
 
 #membersOverlay .membersSplit {
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
+  overflow: hidden;
+}
+
+#membersOverlay.has-delegate .membersSplit {
+  flex: 0 0 auto;
+  height: min(29rem, 48vh);
+  max-height: min(29rem, 48vh);
 }
 
 #membersOverlay .membersSplit.has-mass {
@@ -3740,6 +3715,43 @@ th.sortable:hover{
 
 #membersOverlay .membersSplit:not(.has-mass) #membersMassPane {
   display: none !important;
+}
+
+#membersOverlay:not(.has-delegate) #membersDelegatePane {
+  display: none !important;
+}
+
+#membersOverlay .membersDelegatePane {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+}
+
+#membersOverlay.has-delegate .membersDelegatePane {
+  flex: 1 1 0%;
+  min-height: 10rem;
+  max-height: none;
+}
+
+#membersOverlay .membersDelegatePane .msg:empty {
+  display: none;
+}
+
+#membersOverlay .membersDelegatePane .membersMassListBox {
+  flex: 1 1 auto;
+  min-height: 8rem;
+}
+
+#membersOverlay #adminAccessInner {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  align-content: start;
 }
 
 #membersOverlay .membersSplitPane {
@@ -3771,7 +3783,8 @@ th.sortable:hover{
   display: none;
 }
 
-#membersOverlay #membersFilter {
+#membersOverlay #membersFilter,
+#membersOverlay #adminAccessSearch {
   width: 100%;
   box-sizing: border-box;
   margin-bottom: 8px;
@@ -3781,15 +3794,59 @@ th.sortable:hover{
 #membersOverlay .membersListBox,
 #membersOverlay .membersMassListBox {
   flex: 1 1 auto;
-  min-height: 8rem;
+  min-height: 0;
   overflow: auto;
   max-height: none;
   margin-top: 8px;
 }
 
+#membersOverlay .membersListBox {
+  padding: 0;
+}
+
 #membersOverlay .membersSplitPane .pagination {
   flex: 0 0 auto;
-  margin: 0 0 4px;
+  margin: 8px 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 14px;
+}
+
+#membersOverlay .pagination .btn {
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 600;
+  width: auto;
+  min-width: 0;
+  box-shadow: none;
+}
+
+#membersOverlay .pagination .btn:hover:not(:disabled) {
+  background: var(--hover-strong);
+  border-color: var(--line);
+  filter: none;
+}
+
+#membersOverlay .pagination .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#membersOverlay #membersPageInfo {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  opacity: 0.9;
+  font-size: 12px;
 }
 
 #membersOverlay .membersTable {
@@ -3873,6 +3930,7 @@ th.sortable:hover{
 #membersOverlay #massTemplatePane,
 #membersOverlay #massAgencyTypePane,
 #membersOverlay #massUsersPane {
+  display: flex;
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
@@ -3914,6 +3972,9 @@ body.noScroll .main {
     max-height: 100dvh;
     border-radius: 0;
   }
+  #membersOverlay .membersModal {
+    overflow-x: hidden;
+  }
   #editGroupOverlay .modalHeader,
   #membersOverlay .modalHeader {
     padding-top: max(14px, env(safe-area-inset-top));
@@ -3952,14 +4013,58 @@ body.noScroll .main {
   }
   #editGroupOverlay .editGroupForm,
   #membersOverlay .membersSplit,
-  #membersOverlay .membersSplit.has-mass {
+  #membersOverlay .membersSplit.has-mass,
+  #membersOverlay.has-delegate .membersSplit {
     display: flex;
     flex-direction: column;
     overflow: visible;
     flex: 0 0 auto;
     min-height: auto;
     height: auto;
+    max-height: none;
     grid-template-columns: 1fr;
+    gap: 0;
+  }
+  #membersOverlay .membersSplitPane + .membersSplitPane {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  #membersOverlay .membersDelegatePane,
+  #membersOverlay.has-delegate .membersDelegatePane {
+    flex: 0 0 auto;
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  #membersOverlay .membersDelegatePane .membersMassListBox {
+    max-height: min(40dvh, 22rem);
+  }
+  #membersOverlay .membersDelegatePane .membersSplitPaneHead {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  #membersOverlay .membersDelegatePane .membersSplitPaneHead .row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  #membersOverlay .membersDelegatePane .membersSplitPaneHead .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+  #membersOverlay #adminAccessInner {
+    grid-template-columns: 1fr;
+  }
+  #membersOverlay .groupItem {
+    align-items: flex-start;
+  }
+  #membersOverlay .groupItem span {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
   }
   #editGroupOverlay .editGroupTop .row {
     flex-direction: column;
@@ -3969,20 +4074,15 @@ body.noScroll .main {
     min-width: 0 !important;
     width: 100%;
   }
-  #editGroupOverlay .editGroupAdminAccess {
-    flex: 0 0 auto;
-    min-height: auto;
-    overflow: visible;
-  }
-  #editGroupOverlay .editGroupAdminAccessHead {
-    flex-wrap: wrap;
-  }
-  #editGroupOverlay .editGroupAdminAccessBox,
   #membersOverlay .membersListBox,
   #membersOverlay .membersMassListBox {
     flex: 0 0 auto;
     min-height: 10rem;
     max-height: min(40dvh, 22rem);
+    -webkit-overflow-scrolling: touch;
+  }
+  #membersOverlay .membersListBox {
+    padding: 6px 10px 10px;
   }
   #membersOverlay .membersSplitPane {
     flex: 0 0 auto;
@@ -3991,13 +4091,24 @@ body.noScroll .main {
   }
   #membersOverlay .membersSplitPaneHead {
     flex-wrap: wrap;
+    align-items: flex-start;
   }
   #membersOverlay .membersRange {
     white-space: normal;
   }
+  #membersOverlay .membersMassActionToggle .segBtn,
+  #membersOverlay #massSegmented .segBtn {
+    min-height: 44px;
+  }
   #membersOverlay .pagination {
     flex-wrap: wrap;
     justify-content: center;
+  }
+  #membersOverlay .pagination .btn {
+    width: auto;
+    flex: 0 0 auto;
+    max-width: none;
+    min-height: 36px;
   }
   #membersOverlay .membersMassPanes,
   #membersOverlay #massAgencyPane,
@@ -4020,6 +4131,10 @@ body.noScroll .main {
     width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+  #membersOverlay .membersMassPanes > div > .row > .row .btn {
+    width: 100%;
+    min-height: 44px;
   }
   #membersOverlay #massSegmented .segBtn {
     flex: 1 1 calc(50% - 8px);
