@@ -1244,6 +1244,7 @@ body.noScroll .main {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
+const CAN_SEE_GROUPS = <%= typeof perm === "function" && perm("page.groups") ? "true" : "false" %>;
 const ENROLLMENT_FLYER_HTML = <%- JSON.stringify(typeof enrollmentFlyerHtml !== "undefined" ? enrollmentFlyerHtml : "") %>;
 const FLYER_USER_AGREEMENT = <%- JSON.stringify(
   typeof flyerUserAgreement !== "undefined" && flyerUserAgreement
@@ -1320,6 +1321,7 @@ let membersHasNext = false;
 let membersHasPrev = false;
 let membersSortKey = "username";
 let membersSortDir = "asc";
+let membersVisibleOnGroupsPage = null;
 
 function showMembersModal(show) {
   if (!membersOverlay) return;
@@ -1486,21 +1488,35 @@ function setMembersExistingGroupNote() {
     membersSummary.className = "msg";
     return;
   }
+  if (membersVisibleOnGroupsPage == null) {
+    membersSummary.textContent = "";
+    membersSummary.className = "msg";
+    return;
+  }
   membersSummary.className = "msg membersExistingGroupNote";
-  membersSummary.innerHTML =
-    'This mutual aid uses an existing group. Membership is managed from the <a href="/groups">Groups</a> page.';
+  const gid = String(activeMembersGroupId || "").trim();
+  if (CAN_SEE_GROUPS && membersVisibleOnGroupsPage && gid) {
+    membersSummary.innerHTML =
+      'This mutual aid uses an existing group. Membership is managed from the <a href="/groups?members=' +
+      encodeURIComponent(gid) +
+      '">Groups</a> page.';
+    return;
+  }
+  membersSummary.textContent =
+    "This mutual aid uses an existing group. Membership is managed from the Groups page. You may not have access to that group.";
 }
 
 async function loadMembersPage(page) {
   if (!activeMembersGroupId) return;
   const targetPage = Math.max(1, Number(page || 1));
-  setMembersExistingGroupNote();
 
   const res = await fetch(
     `/api/groups/${encodeURIComponent(activeMembersGroupId)}/members?page=${targetPage}&pageSize=${membersPageSize}`
   );
   const out = await res.json();
   if (!res.ok) throw new Error(out.error || "Failed to load members");
+  membersVisibleOnGroupsPage = !!out.visibleOnGroupsPage;
+  setMembersExistingGroupNote();
 
   activeMembers = Array.isArray(out.users) ? out.users : [];
   membersCurrentPage = Number(out.page || targetPage || 1);
@@ -1524,6 +1540,7 @@ async function openMutualAidMembers(item, opts = {}) {
   membersShowMass = isGroupCreatorItem(it);
   membersShowDelegate = !!(it && it.canDelegate);
   membersPostCreate = !!opts.postCreate;
+  membersVisibleOnGroupsPage = null;
   setMembersSplitPanes();
   if (membersTitle) {
     membersTitle.textContent = activeMembersGroupName

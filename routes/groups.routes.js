@@ -206,6 +206,18 @@ function filterGroupsVisibleToUser(authUser, all, options = {}) {
   return filtered;
 }
 
+/** Whether this group appears (or can be managed) on the Groups page for the user. */
+function isGroupVisibleOnGroupsPage(authUser, group) {
+  if (!group) return false;
+  const access = accessSvc.getAgencyAccess(authUser);
+  if (access.isGlobalAdmin) return true;
+  const pk = String(group.pk ?? group.id ?? "").trim();
+  if (!pk) return false;
+  return filterGroupsVisibleToUser(authUser, [group]).some(
+    (g) => String(g?.pk ?? g?.id ?? "").trim() === pk
+  );
+}
+
 router.get("/export-csv", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
@@ -1079,6 +1091,7 @@ router.get("/:groupId/members", async (req, res) => {
       pageSize: Number(members?.pageSize || pageSize),
       hasNext: !!members?.hasNext,
       hasPrev: !!members?.hasPrev,
+      visibleOnGroupsPage: isGroupVisibleOnGroupsPage(authUser, group),
     });
   } catch (err) {
     res.status(400).json({ error: toErrorPayload(err) });

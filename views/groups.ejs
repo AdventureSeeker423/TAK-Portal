@@ -2312,11 +2312,11 @@ async function refreshMembersAfterMass() {
   } catch (_) {}
 }
 
-window.openGroupMembers = async (groupId) => {
+window.openGroupMembers = async (groupId, opts = {}) => {
   setMsg(listMsg, "");
 
   const g = (groupsCache || []).find(x => String(x.pk) === String(groupId));
-  activeMembersGroupName = String(g?.name || "");
+  activeMembersGroupName = String(opts.groupName || g?.name || "");
   activeMembersGroupId = String(groupId || "");
   const groupLabel = stripTakPrefix(activeMembersGroupName || activeMembersGroupId);
   if (membersTitle) {
@@ -3262,6 +3262,43 @@ if (adminAccessClearBtn) {
   };
 }
 
+async function openMembersFromDeepLink(groupId) {
+  const id = String(groupId || "").trim();
+  if (!id) return;
+  try {
+    const res = await fetch(
+      `/api/groups/${encodeURIComponent(id)}/members?page=1&pageSize=1`
+    );
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMsg(listMsg, out.error || "Unable to open that group's members.", false);
+      return;
+    }
+    if (!out.visibleOnGroupsPage) {
+      setMsg(
+        listMsg,
+        "You don't have access to manage that group from the Groups page.",
+        false
+      );
+      return;
+    }
+    await window.openGroupMembers(id, { groupName: out.group?.name || "" });
+  } catch (e) {
+    setMsg(listMsg, e.message || "Unable to open that group's members.", false);
+  }
+}
+
+function consumeMembersDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const membersId = String(params.get("members") || "").trim();
+  if (!membersId) return;
+  params.delete("members");
+  const qs = params.toString();
+  const nextUrl = window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash;
+  window.history.replaceState({}, "", nextUrl);
+  openMembersFromDeepLink(membersId);
+}
+
 (async () => {
   createType.onchange();
   if (editType) editType.onchange();
@@ -3272,6 +3309,7 @@ if (adminAccessClearBtn) {
   updateCreateEditTypeOptions();
   updateGroupScopeDetailOptions();
   await loadGroups();
+  consumeMembersDeepLink();
 })();
 </script>
 
