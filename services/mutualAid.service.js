@@ -1355,8 +1355,11 @@ async function remove({ id }) {
   // Delete linked deployment users first, then remove shared group once.
   for (const entry of cascade) {
     clearExpirationTimer(entry.id);
-    if (entry.userId) {
-      await usersSvc.deleteUser(entry.userId, { ignoreLocks: true });
+    if (entry.userId || entry.username) {
+      await usersSvc.deleteUser(entry.userId || entry.username, {
+        ignoreLocks: true,
+        usernameHint: entry.username,
+      });
     }
   }
 

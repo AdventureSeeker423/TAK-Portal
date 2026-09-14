@@ -2609,12 +2609,18 @@ async function toggleUserActive(userId, isActive) {
 
 async function deleteUser(userId, opts = {}) {
   // This will skip the lock check if opts.ignoreLocks === true
-  const user = await assertUserNotActionLocked(userId, opts);
+  let user = await assertUserNotActionLocked(userId, opts);
+  if (!user && opts.usernameHint) {
+    user = await getUserById(opts.usernameHint);
+  }
   // Revoke + VERIFY TAK certs BEFORE deleting the Authentik user
   // requireVerified defaults to true, but making it explicit is good.
-  if (!opts.skipTakCertRevoke) {
-    await tak.revokeCertsForUser(user?.username, { requireVerified: true });
+  const username = String(user?.username || opts.usernameHint || "").trim();
+  if (!opts.skipTakCertRevoke && username) {
+    await tak.revokeCertsForUser(username, { requireVerified: true });
   }
+
+  if (!user) return true;
 
   const outboxId = await db.withTransaction(async (c) => {
     await directoryRepo.updateLocalUser(user.uuid || user.id, { pending_delete: true }, c);
