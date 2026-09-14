@@ -580,10 +580,13 @@
 #membersOverlay .membersListBox,
 #membersOverlay .membersMassListBox {
   flex: 1 1 auto;
-  min-height: 10rem;
+  min-height: 0;
   overflow: auto;
   max-height: none;
   margin-top: 8px;
+}
+#membersOverlay .membersListBox {
+  padding: 0;
 }
 #membersOverlay .membersSplitPane .pagination {
   flex: 0 0 auto;
@@ -632,7 +635,7 @@
 #membersOverlay .membersTable thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   background: var(--panel);
   box-shadow: 0 1px 0 var(--line);
 }
@@ -692,10 +695,18 @@
 #membersOverlay #massTemplatePane,
 #membersOverlay #massAgencyTypePane,
 #membersOverlay #massUsersPane {
+  display: flex;
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
+}
+#membersOverlay #massAgencyPane > .row,
+#membersOverlay #massGroupPane > .row,
+#membersOverlay #massTemplatePane > .row,
+#membersOverlay #massAgencyTypePane > .row,
+#membersOverlay #massUsersPane > .row {
+  flex: 0 0 auto;
 }
 #membersOverlay .membersMassFooter {
   flex: 0 0 auto;
@@ -3366,11 +3377,11 @@ function resetMassState() {
 
 function updateMassPanes(){
   const mode = massMode || "agency";
-  massAgencyPane.style.display = mode === "agency" ? "block" : "none";
-  massGroupPane.style.display = mode === "group" ? "block" : "none";
-  if (massTemplatePane) massTemplatePane.style.display = mode === "template" ? "block" : "none";
-  if (massAgencyTypePane) massAgencyTypePane.style.display = mode === "agencyType" ? "block" : "none";
-  massUsersPane.style.display = mode === "users" ? "block" : "none";
+  massAgencyPane.style.display = mode === "agency" ? "flex" : "none";
+  massGroupPane.style.display = mode === "group" ? "flex" : "none";
+  if (massTemplatePane) massTemplatePane.style.display = mode === "template" ? "flex" : "none";
+  if (massAgencyTypePane) massAgencyTypePane.style.display = mode === "agencyType" ? "flex" : "none";
+  massUsersPane.style.display = mode === "users" ? "flex" : "none";
   setMsg(massMsg, "", true);
 }
 
