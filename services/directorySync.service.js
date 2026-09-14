@@ -6,6 +6,7 @@ const repo = require("./directoryRepo.service");
 const { extractUserColumns, extractGroupColumns, membershipHash } = require("./userAttributes.util");
 const agenciesStore = require("./agencies.service");
 const accessSvc = require("./access.service");
+const { parseAuthentikLastLogin } = require("./userLoginStatus.service");
 
 let _snapshotRunning = false;
 let _backupPause = 0;
@@ -278,17 +279,18 @@ async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
       radio_callsign, current_template, created_template, created_at_attr, created_method,
       created_by_username, created_by_display_name, mutual_aid, mutual_aid_type, mutual_aid_group,
       integration_type, integration_scope, integration_title, tak_integration_group, state, county,
-      groups_hash, sync_status, pending_delete, updated_at
+      last_login, groups_hash, sync_status, pending_delete, updated_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,
       $10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,
-      $32,'ok', false, now()
+      $32::timestamptz, $33,'ok', false, now()
     )
     ON CONFLICT (username) DO UPDATE SET
       authentik_pk = EXCLUDED.authentik_pk,
       name = EXCLUDED.name,
       email = EXCLUDED.email,
       is_active = EXCLUDED.is_active,
+      last_login = COALESCE(EXCLUDED.last_login, users.last_login),
       is_superuser = EXCLUDED.is_superuser,
       path = EXCLUDED.path,
       type = EXCLUDED.type,
@@ -325,6 +327,7 @@ async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
       cols.radio_callsign, cols.current_template, cols.created_template, cols.created_at_attr, cols.created_method,
       cols.created_by_username, cols.created_by_display_name, cols.mutual_aid, cols.mutual_aid_type, cols.mutual_aid_group,
       cols.integration_type, cols.integration_scope, cols.integration_title, cols.tak_integration_group, cols.state, cols.county,
+      parseAuthentikLastLogin(akUser.last_login),
       hash || priorHash || null,
     ]
   );

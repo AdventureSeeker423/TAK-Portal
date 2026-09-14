@@ -785,6 +785,7 @@ router.get("/search", async (req, res) => {
       currentTemplate: requestedCurrentTemplate,
       agencySuffixes,
       excludeGroupPks,
+      includeLoginStatus: true,
     });
     return res.json(out);
   } catch (err) {

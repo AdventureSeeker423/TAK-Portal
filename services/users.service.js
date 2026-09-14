@@ -9,6 +9,7 @@ const { sanitizeCallsign } = require("./callsignSanitize");
 const directoryRepo = require("./directoryRepo.service");
 const authentikOutbox = require("./authentikOutbox.service");
 const db = require("./db");
+const userLoginStatus = require("./userLoginStatus.service");
 
 function getHiddenUserPrefixes() {
   return String(getString("USERS_HIDDEN_PREFIXES", ""))
@@ -2014,8 +2015,9 @@ async function searchUsersPaged({
   agencySuffixes,
   excludeGroupPks,
   includeGroups = false,
+  includeLoginStatus = false,
 } = {}) {
-  return directoryRepo.searchUsersPaged({
+  const out = await directoryRepo.searchUsersPaged({
     q,
     page,
     pageSize,
@@ -2027,6 +2029,10 @@ async function searchUsersPaged({
     excludeGroupPks,
     includeGroups,
   });
+  if (includeLoginStatus) {
+    out.users = await userLoginStatus.annotateUsersLoginStatus(out.users);
+  }
+  return out;
 }
 
 async function searchUsersByAgencyAbbreviationPaged({

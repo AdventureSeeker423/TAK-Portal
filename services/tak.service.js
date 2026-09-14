@@ -318,6 +318,76 @@ async function getAllCerts(client, TAK_DEBUG) {
   return { ok: false, list: [], url: null };
 }
 
+function isExpiredGeneric(cert) {
+  const status = toLowerTrim(cert?.status || cert?.state || cert?.certStatus);
+  if (status && status.includes("expir")) return true;
+
+  const exp =
+    cert?.expirationDate ||
+    cert?.expiration ||
+    cert?.expires ||
+    cert?.notAfter ||
+    cert?.validTo;
+  if (exp == null || exp === "") return false;
+  if (typeof exp === "number" && Number.isFinite(exp)) {
+    const ms = exp < 1e12 ? exp * 1000 : exp;
+    return ms <= Date.now();
+  }
+  const t = Date.parse(exp);
+  return Number.isFinite(t) && t <= Date.now();
+}
+
+function isActiveUnrevokedCert(cert) {
+  if (!cert) return false;
+  if (isRevokedGeneric(cert)) return false;
+  if (isExpiredGeneric(cert)) return false;
+  return true;
+}
+
+function buildActiveCertUsernameSet(allCerts) {
+  const set = new Set();
+  for (const c of Array.isArray(allCerts) ? allCerts : []) {
+    if (!isActiveUnrevokedCert(c)) continue;
+    const u = toLowerTrim(c?.creatorDn);
+    if (u) set.add(u);
+  }
+  return set;
+}
+
+let _certCatalogCache = { at: 0, result: null };
+const CERT_CATALOG_TTL_MS = 45_000;
+
+/**
+ * Usernames (lowercase) with at least one unrevoked, unexpired TAK cert.
+ * ok=false when TAK is off/bypassed or the cert catalog could not be listed
+ * (callers must not treat that as "no certs").
+ */
+async function getActiveCertUsernameSet() {
+  if (!isTakConfigured()) {
+    return { ok: false, usernames: new Set(), reason: "not_configured" };
+  }
+  if (isTakBypassed()) {
+    return { ok: false, usernames: new Set(), reason: "bypass" };
+  }
+
+  try {
+    const now = Date.now();
+    let catalog = _certCatalogCache.result;
+    if (!catalog || !catalog.ok || now - _certCatalogCache.at >= CERT_CATALOG_TTL_MS) {
+      const client = buildTakAxios();
+      const TAK_DEBUG = getBool("TAK_DEBUG", false);
+      catalog = await getAllCerts(client, TAK_DEBUG);
+      if (catalog.ok) _certCatalogCache = { at: now, result: catalog };
+    }
+    if (!catalog || !catalog.ok) {
+      return { ok: false, usernames: new Set(), reason: "list_failed" };
+    }
+    return { ok: true, usernames: buildActiveCertUsernameSet(catalog.list) };
+  } catch (e) {
+    return { ok: false, usernames: new Set(), reason: e?.message || "error" };
+  }
+}
+
 function isRevokedGeneric(cert) {
   // Different TAK builds expose different fields. We check common ones.
   const status = toLowerTrim(cert?.status || cert?.state || cert?.certStatus);
@@ -617,4 +687,8 @@ module.exports = {
   buildTakAxios,
   getTakTlsAuth,
   getTakBaseUrl,
+  isExpiredGeneric,
+  isActiveUnrevokedCert,
+  buildActiveCertUsernameSet,
+  getActiveCertUsernameSet,
 };

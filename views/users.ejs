@@ -2013,6 +2013,20 @@ function lastNameForSort(full){
   return `${last} ${first}`.trim();
 }
 
+function userStatusLabel(user) {
+  if (!user?.is_active) return "Disabled";
+  if (user.hasActiveTakCert || user.hasAuthentikLogin) return "Enabled";
+  if (user.takCertsKnown === true) return "Enabled - No Logins";
+  return "Enabled";
+}
+
+function applyActiveFlip(row, userPk, newState) {
+  if (String(row.pk) !== String(userPk)) return row;
+  const next = { ...row, is_active: newState };
+  next.statusLabel = userStatusLabel(next);
+  return next;
+}
+
 function normalizeSortValue(v) {
   return String(v || "").trim().toLowerCase();
 }
@@ -2024,7 +2038,7 @@ function getSortValue(user, key){
   if (key === "agency") return normalizeSortValue(getUserAgencyAbbreviation(user));
   if (key === "email") return normalizeSortValue(user.email);
   if (key === "name") return normalizeSortValue(lastNameForSort(user.name));
-  if (key === "status") return user.is_active ? "enabled" : "disabled";
+  if (key === "status") return normalizeSortValue(userStatusLabel(user));
   if (key === "template") {
     const raw = String(user?.current_template || user?.attributes?.current_template || "").trim();
     if (!raw || raw.toLowerCase() === "manual group selection") return "";
@@ -2062,18 +2076,19 @@ function renderResults(users){
     const agencyAbbrev = escapeHtml(getUserAgencyAbbreviation(u) || "—");
     const displayName = escapeHtml(u.name || "");
     const email = escapeHtml(u.email || "");
-    const statusLabel = u.is_active ? "Enabled" : "Disabled";
+    const statusLabel = escapeHtml(userStatusLabel(u));
+    const noLogins = statusLabel === "Enabled - No Logins";
     return `
-      <tr class="${u.is_active ? "" : "row-disabled"}">
+      <tr class="${u.is_active ? "" : "row-disabled"}${noLogins ? " row-no-logins" : ""}">
         <td class="userUsernameCell cardTitleCell">
           <div class="userUsernameText cardTitleText">${escapeHtml(u.username)}</div>
-          ${!u.is_active ? `<span class="userStatusBadge cardMetaBadge">${statusLabel}</span>` : ""}
+          ${!u.is_active || noLogins ? `<span class="userStatusBadge cardMetaBadge">${statusLabel}</span>` : ""}
         </td>
         <td class="userAgencyCell" data-label="Agency">${agencyAbbrev}</td>
         <td class="userNameCell" data-label="Name">${displayName || "—"}</td>
         <td class="userTemplateCell" data-label="Template">${escapeHtml(currentTemplateDisplay)}</td>
         <td class="userEmailCell" data-label="Email">${email || "—"}</td>
-        <td class="userStatusCell" data-label="Status">${statusLabel}</td>
+        <td class="userStatusCell${noLogins ? " is-no-logins" : ""}" data-label="Status">${statusLabel}</td>
         <td class="userActionsCell cardActionsCell">
           ${locked ? `<span class="muted">Actions Hidden</span>` : `
             <div class="userActionsRow cardActionsRow">
@@ -3206,14 +3221,14 @@ window.toggleUserFromTable = async (userPk) => {
 
   if (!res.ok) return setMsgEl(msg, out.error || "Toggle failed", false);
 
-  const flip = (row) =>
-    (String(row.pk) === String(u.pk) ? { ...row, is_active: newState } : row);
+  const flip = (row) => applyActiveFlip(row, u.pk, newState);
 
   allUsers = (allUsers || []).map(flip);
   const updatedVisible = (window.__lastUsers || []).map(flip);
 
   if (selectedUser && String(selectedUser.pk) === String(u.pk)) {
     selectedUser.is_active = newState;
+    selectedUser.statusLabel = userStatusLabel(selectedUser);
     if (toggleBtn) toggleBtn.textContent = selectedUser.is_active ? "Disable User" : "Enable User";
     setMsgEl(actionMsg, `User is now ${selectedUser.is_active ? "ENABLED" : "DISABLED"}.`, true);
   }
@@ -4777,6 +4792,11 @@ tr.row-disabled {
 
 tr.row-disabled td {
   border-color: var(--line);
+}
+
+.usersListTable .userStatusCell.is-no-logins {
+  color: var(--muted);
+  font-weight: 600;
 }
 
 /* Mobile: stacked cards with 2-column detail grid */

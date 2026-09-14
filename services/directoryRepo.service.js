@@ -114,6 +114,7 @@ function rowToUser(r, groupPks) {
     name: r.name,
     email: r.email,
     is_active: r.is_active,
+    last_login: r.last_login || null,
     is_superuser: r.is_superuser,
     path: r.path,
     type: r.type,
