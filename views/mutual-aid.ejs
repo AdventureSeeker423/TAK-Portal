@@ -204,10 +204,225 @@
   }
   #addMaUserOverlay #addMaExpireAt {
     color: #fff;
+    min-width: 0;
+    width: 100%;
   }
-  #addMaUserPreview {
-    margin-top: 10px;
+  #addMaUserOverlay .addMaUserModal {
+    width: min(560px, 96vw);
+    max-height: min(92vh, 740px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #addMaUserOverlay .modalHeader {
+    align-items: center;
+    gap: 12px;
+    flex: 0 0 auto;
+  }
+  #addMaUserOverlay .modalHeaderLeft {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  #addMaUserOverlay .modalHeader h2 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.3;
+  }
+  #addMaUserOverlay .modalHeader > .btn {
+    flex: 0 0 auto;
+  }
+  #addMaUserOverlay .modalBody {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+    overflow: auto;
+  }
+  #addMaUserOverlay .addMaUserForm {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  #addMaUserOverlay .addMaUserRow {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    align-items: end;
+  }
+  #addMaUserOverlay .addMaUserRow--expire {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+  #addMaUserOverlay .addMaUserField {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    font-weight: 600;
+  }
+  #addMaUserOverlay .addMaUserField > span {
+    font-weight: 600;
+  }
+  #addMaUserOverlay .addMaUserField input,
+  #addMaUserOverlay .addMaUserField select {
+    width: 100%;
+    box-sizing: border-box;
+    font-weight: 500;
+  }
+  #addMaUserOverlay .addMaUserStepper {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+  }
+  #addMaUserOverlay .addMaUserStepper input {
+    width: 4.25rem;
+    min-width: 4.25rem;
+    text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  #addMaUserOverlay .addMaUserStepper input::-webkit-outer-spin-button,
+  #addMaUserOverlay .addMaUserStepper input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  #addMaUserOverlay .addMaUserStepper .btn {
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    flex: 0 0 40px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+  #addMaUserOverlay .addMaUserNamingToggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+  #addMaUserOverlay .addMaUserNamingToggle .segBtn {
+    width: 100%;
+    text-align: center;
+    white-space: nowrap;
+  }
+  #addMaUserOverlay .addMaUserPreview {
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 10px 12px;
+    min-width: 0;
+  }
+  #addMaUserOverlay .addMaUserPreviewLabel {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  #addMaUserOverlay .addMaUserPreviewList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 9.5rem;
+    overflow: auto;
+  }
+  #addMaUserOverlay .addMaUserChip {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.3;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(234, 88, 12, 0.14);
+    border: 1px solid rgba(234, 88, 12, 0.38);
+    color: var(--text);
+    word-break: break-all;
+  }
+  #addMaUserOverlay .addMaUserPreviewHint {
+    color: var(--muted);
     font-size: 13px;
+  }
+  #addMaUserOverlay .addMaUserActions {
+    margin-top: auto;
+    flex: 0 0 auto;
+  }
+
+  @media (max-width: 990px) {
+    #addMaUserOverlay {
+      padding: 0;
+      align-items: stretch;
+      justify-content: stretch;
+    }
+    #addMaUserOverlay .addMaUserModal {
+      width: 100%;
+      max-width: 100%;
+      height: 100dvh;
+      max-height: 100dvh;
+      border-radius: 0;
+    }
+    #addMaUserOverlay .modalHeader {
+      padding-top: max(14px, env(safe-area-inset-top));
+      padding-left: max(14px, env(safe-area-inset-left));
+      padding-right: max(14px, env(safe-area-inset-right));
+    }
+    #addMaUserOverlay .modalHeader h2 {
+      font-size: 16px;
+      white-space: normal;
+    }
+    #addMaUserOverlay .modalHeader > .btn {
+      min-height: 44px;
+      width: auto;
+    }
+    #addMaUserOverlay .modalBody {
+      padding-left: max(14px, env(safe-area-inset-left));
+      padding-right: max(14px, env(safe-area-inset-right));
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
+      -webkit-overflow-scrolling: touch;
+    }
+    #addMaUserOverlay .addMaUserRow,
+    #addMaUserOverlay .addMaUserRow--expire {
+      grid-template-columns: 1fr;
+    }
+    #addMaUserOverlay .addMaUserStepper {
+      width: 100%;
+    }
+    #addMaUserOverlay .addMaUserStepper input {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+      min-height: 44px;
+    }
+    #addMaUserOverlay .addMaUserStepper .btn {
+      width: 44px !important;
+      min-width: 44px !important;
+      max-width: 44px !important;
+      flex: 0 0 44px;
+      min-height: 44px;
+    }
+    #addMaUserOverlay .addMaUserNamingToggle .segBtn,
+    #addMaUserOverlay .addMaUserField select,
+    #addMaUserOverlay .addMaUserField--title input,
+    #addMaUserOverlay .addMaUserField--expireAt input {
+      min-height: 44px;
+    }
+    #addMaUserOverlay .addMaUserActions {
+      flex-direction: column-reverse;
+      align-items: stretch;
+      position: sticky;
+      bottom: 0;
+      background: var(--raised);
+      padding-top: 10px;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+      margin-top: 4px;
+    }
+    #addMaUserOverlay .addMaUserActions .msg {
+      margin-right: 0;
+    }
+    #addMaUserOverlay .addMaUserActions .btn {
+      width: 100% !important;
+      max-width: 100%;
+      min-height: 44px;
+      white-space: normal;
+    }
   }
 
   /* Modal footer actions: secondary left, primary/success on the far right */
@@ -1063,40 +1278,58 @@ body.noScroll .main {
 
 <!-- Create Additional One Time User Modal -->
 <div class="modalOverlay" id="addMaUserOverlay" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addMaUserTitle">
+  <div class="modal addMaUserModal" role="dialog" aria-modal="true" aria-labelledby="addMaUserTitle">
     <div class="modalHeader">
-      <h2 id="addMaUserTitle" style="margin:0;">Create Additional One Time User(s)</h2>
+      <div class="modalHeaderLeft">
+        <h2 id="addMaUserTitle">Create Additional One Time User(s)</h2>
+      </div>
       <button class="btn" id="addMaUserCloseBtn" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div class="grid2">
-        <label>How many
-          <input id="addMaUserCount" type="number" min="1" max="25" value="1" />
+      <div class="addMaUserForm">
+        <div class="addMaUserRow">
+          <label class="addMaUserField addMaUserField--count">How many
+            <div class="addMaUserStepper">
+              <button class="btn" type="button" id="addMaUserCountDec" aria-label="Decrease count">−</button>
+              <input id="addMaUserCount" type="number" min="1" max="25" value="1" inputmode="numeric" autocomplete="off" />
+              <button class="btn" type="button" id="addMaUserCountInc" aria-label="Increase count">+</button>
+            </div>
+          </label>
+          <div class="addMaUserField addMaUserField--naming">
+            <span>Naming</span>
+            <input type="hidden" id="addMaUserNaming" value="auto" />
+            <div class="segmented addMaUserNamingToggle" role="group" aria-label="Naming">
+              <button class="segBtn active" type="button" data-naming="auto">Auto-name</button>
+              <button class="segBtn" type="button" data-naming="custom">Custom title</button>
+            </div>
+          </div>
+        </div>
+
+        <label id="addMaUserTitleWrap" class="addMaUserField addMaUserField--title" style="display:none;">Title
+          <input id="addMaUserTitleInput" placeholder="e.g. Staging, Medical, Extra radio" autocomplete="off" />
         </label>
-        <label>Naming
-          <select id="addMaUserNaming">
-            <option value="auto" selected>Auto-name</option>
-            <option value="custom">Custom title</option>
-          </select>
-        </label>
-        <label id="addMaUserTitleWrap" style="display:none;">Title
-          <input id="addMaUserTitleInput" placeholder="Title For Event/Standby/Incident" />
-        </label>
-        <label id="addMaUserExpireEnabledWrap" style="display:block;">
-          <span>Expires</span>
-          <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap;">
+
+        <div class="addMaUserRow addMaUserRow--expire">
+          <label class="addMaUserField addMaUserField--expire">Expires
             <select id="addMaUserExpireEnabled">
               <option value="no" selected>No</option>
               <option value="yes">Yes</option>
             </select>
-            <input id="addMaExpireAt" type="datetime-local" style="min-width: 240px; display:none;" />
-          </div>
-        </label>
+          </label>
+          <label id="addMaExpireAtWrap" class="addMaUserField addMaUserField--expireAt" style="display:none;">Expire at
+            <input id="addMaExpireAt" type="datetime-local" />
+          </label>
+        </div>
+
+        <div id="addMaUserPreview" class="addMaUserPreview">
+          <div id="addMaUserPreviewLabel" class="addMaUserPreviewLabel">Usernames</div>
+          <div id="addMaUserPreviewList" class="addMaUserPreviewList"></div>
+        </div>
       </div>
-      <div id="addMaUserPreview" class="muted"></div>
-      <div class="row maModalActions">
+
+      <div class="row maModalActions addMaUserActions">
         <span id="addMaUserMsg" class="msg"></span>
-        <button class="btn maAddUser" id="addMaUserSaveBtn" type="button">Create Additional One Time User(s)</button>
+        <button class="btn maAddUser" id="addMaUserSaveBtn" type="button">Create User</button>
       </div>
     </div>
   </div>
@@ -3239,10 +3472,15 @@ const addMaUserTitleEl = document.getElementById("addMaUserTitle");
 const addMaUserTitleWrap = document.getElementById("addMaUserTitleWrap");
 const addMaUserTitleInput = document.getElementById("addMaUserTitleInput");
 const addMaUserCountInput = document.getElementById("addMaUserCount");
+const addMaUserCountDec = document.getElementById("addMaUserCountDec");
+const addMaUserCountInc = document.getElementById("addMaUserCountInc");
 const addMaUserNaming = document.getElementById("addMaUserNaming");
 const addMaUserPreview = document.getElementById("addMaUserPreview");
+const addMaUserPreviewLabel = document.getElementById("addMaUserPreviewLabel");
+const addMaUserPreviewList = document.getElementById("addMaUserPreviewList");
 const addMaUserExpireEnabled = document.getElementById("addMaUserExpireEnabled");
 const addMaExpireAt = document.getElementById("addMaExpireAt");
+const addMaExpireAtWrap = document.getElementById("addMaExpireAtWrap");
 const addMaUserSaveBtn = document.getElementById("addMaUserSaveBtn");
 const addMaUserMsg = document.getElementById("addMaUserMsg");
 let addMaUserParent = null;
@@ -3277,12 +3515,6 @@ function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function parseAddMaUserCount() {
-  const n = Number.parseInt(String(addMaUserCountInput?.value || "1"), 10);
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return Math.min(ADD_MA_USER_MAX_COUNT, n);
-}
-
 function nextUsernameNumbers(prefix, count) {
   const base = String(prefix || "").trim().toLowerCase();
   if (!base) return [];
@@ -3301,53 +3533,95 @@ function nextUsernameNumbers(prefix, count) {
   return out;
 }
 
+function parseAddMaUserCount() {
+  const n = Number.parseInt(String(addMaUserCountInput?.value || "1"), 10);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(ADD_MA_USER_MAX_COUNT, n);
+}
+
+function setAddMaUserCount(n) {
+  const next = Math.max(1, Math.min(ADD_MA_USER_MAX_COUNT, Number(n) || 1));
+  if (addMaUserCountInput) addMaUserCountInput.value = String(next);
+  if (addMaUserCountDec) addMaUserCountDec.disabled = next <= 1;
+  if (addMaUserCountInc) addMaUserCountInc.disabled = next >= ADD_MA_USER_MAX_COUNT;
+  updateAddMaUserPreview();
+}
+
+function setAddMaUserNaming(mode) {
+  const next = String(mode || "auto") === "custom" ? "custom" : "auto";
+  if (addMaUserNaming) addMaUserNaming.value = next;
+  document.querySelectorAll("#addMaUserOverlay [data-naming]").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-naming") === next);
+  });
+  updateAddMaUserNamingUi();
+}
+
 function isAddMaUserAutoName() {
   return String(addMaUserNaming?.value || "auto") !== "custom";
 }
 
+function updateAddMaUserSaveLabel() {
+  if (!addMaUserSaveBtn) return;
+  const count = parseAddMaUserCount();
+  addMaUserSaveBtn.textContent = count === 1 ? "Create User" : `Create ${count} Users`;
+}
+
+function renderAddMaUserPreview(names, hint) {
+  if (!addMaUserPreviewList) return;
+  if (hint) {
+    if (addMaUserPreviewLabel) addMaUserPreviewLabel.textContent = "Usernames";
+    addMaUserPreviewList.innerHTML = `<span class="addMaUserPreviewHint">${esc(hint)}</span>`;
+    return;
+  }
+  const list = Array.isArray(names) ? names : [];
+  if (addMaUserPreviewLabel) {
+    addMaUserPreviewLabel.textContent =
+      list.length === 1 ? "Username" : `Usernames (${list.length})`;
+  }
+  addMaUserPreviewList.innerHTML = list
+    .map((n) => `<span class="addMaUserChip">${esc(n)}</span>`)
+    .join("");
+}
+
 function updateAddMaUserNamingUi() {
   const auto = isAddMaUserAutoName();
-  if (addMaUserTitleWrap) addMaUserTitleWrap.style.display = auto ? "none" : "block";
+  if (addMaUserTitleWrap) addMaUserTitleWrap.style.display = auto ? "none" : "";
   updateAddMaUserPreview();
 }
 
 function updateAddMaUserPreview() {
-  if (!addMaUserPreview) return;
+  updateAddMaUserSaveLabel();
   const count = parseAddMaUserCount();
   const parentUser = String(addMaUserParent?.username || "").trim().toLowerCase();
   if (!parentUser) {
-    addMaUserPreview.textContent = "Usernames will use the next available -1, -2, -3 suffix.";
+    renderAddMaUserPreview([], "Usernames will use the next available -1, -2, -3 suffix.");
     return;
   }
   if (isAddMaUserAutoName()) {
     const nums = nextUsernameNumbers(parentUser, count);
-    const names = nums.map((n) => `${parentUser}-${n}`);
-    addMaUserPreview.textContent =
-      names.length === 1
-        ? `Will create username: ${names[0]}`
-        : `Will create usernames: ${names.join(", ")}`;
+    renderAddMaUserPreview(nums.map((n) => `${parentUser}-${n}`));
     return;
   }
   const title = String(addMaUserTitleInput?.value || "").trim();
   const childSlug = slugUsernamePart(title);
   if (!childSlug) {
-    addMaUserPreview.textContent = "Enter a title to preview usernames.";
+    renderAddMaUserPreview([], "Enter a title to preview usernames.");
     return;
   }
   const prefix = `${parentUser}-${childSlug}`;
   if (count === 1) {
-    addMaUserPreview.textContent = `Will create username: ${prefix}`;
+    renderAddMaUserPreview([prefix]);
     return;
   }
   const nums = nextUsernameNumbers(prefix, count);
-  addMaUserPreview.textContent = `Will create usernames: ${nums.map((n) => `${prefix}-${n}`).join(", ")}`;
+  renderAddMaUserPreview(nums.map((n) => `${prefix}-${n}`));
 }
 
 function updateAddMaUserExpireUi() {
   const enabled = String(addMaUserExpireEnabled?.value || "").toLowerCase() === "yes";
+  if (addMaExpireAtWrap) addMaExpireAtWrap.style.display = enabled ? "" : "none";
   if (addMaExpireAt) {
     addMaExpireAt.disabled = !enabled;
-    addMaExpireAt.style.display = enabled ? "block" : "none";
     if (!enabled) addMaExpireAt.value = "";
   }
 }
@@ -3355,10 +3629,9 @@ function updateAddMaUserExpireUi() {
 function openAddMaUserModal(parentItem) {
   addMaUserParent = parentItem;
   if (addMaUserTitleEl) addMaUserTitleEl.textContent = CREATE_ADDITIONAL_USER_LABEL;
-  if (addMaUserSaveBtn) addMaUserSaveBtn.textContent = CREATE_ADDITIONAL_USER_LABEL;
   if (addMaUserTitleInput) addMaUserTitleInput.value = "";
-  if (addMaUserCountInput) addMaUserCountInput.value = "1";
-  if (addMaUserNaming) addMaUserNaming.value = "auto";
+  setAddMaUserCount(1);
+  setAddMaUserNaming("auto");
   if (addMaUserExpireEnabled) addMaUserExpireEnabled.value = "no";
   if (addMaExpireAt) addMaExpireAt.value = "";
   updateAddMaUserExpireUi();
@@ -3375,9 +3648,32 @@ function closeAddMaUserModal() {
 }
 
 if (addMaUserCloseBtn) addMaUserCloseBtn.onclick = closeAddMaUserModal;
+if (addMaUserOverlay) {
+  addMaUserOverlay.addEventListener("click", (e) => {
+    if (e.target === addMaUserOverlay) closeAddMaUserModal();
+  });
+}
 if (addMaUserExpireEnabled) addMaUserExpireEnabled.onchange = updateAddMaUserExpireUi;
-if (addMaUserNaming) addMaUserNaming.onchange = updateAddMaUserNamingUi;
-if (addMaUserCountInput) addMaUserCountInput.addEventListener("input", updateAddMaUserPreview);
+document.querySelectorAll("#addMaUserOverlay [data-naming]").forEach((btn) => {
+  btn.addEventListener("click", () => setAddMaUserNaming(btn.getAttribute("data-naming")));
+});
+if (addMaUserCountDec) {
+  addMaUserCountDec.onclick = () => setAddMaUserCount(parseAddMaUserCount() - 1);
+}
+if (addMaUserCountInc) {
+  addMaUserCountInc.onclick = () => setAddMaUserCount(parseAddMaUserCount() + 1);
+}
+if (addMaUserCountInput) {
+  addMaUserCountInput.addEventListener("input", () => {
+    const raw = String(addMaUserCountInput.value || "").trim();
+    if (raw === "") {
+      updateAddMaUserSaveLabel();
+      return;
+    }
+    setAddMaUserCount(parseAddMaUserCount());
+  });
+  addMaUserCountInput.addEventListener("blur", () => setAddMaUserCount(parseAddMaUserCount()));
+}
 if (addMaUserTitleInput) addMaUserTitleInput.addEventListener("input", updateAddMaUserPreview);
 if (addMaUserSaveBtn) {
   addMaUserSaveBtn.onclick = async () => {
