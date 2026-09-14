@@ -103,6 +103,65 @@ function sanitizeUsernameSlug(title) {
     .replace(/[^a-z0-9_-]/g, "");
 }
 
+const MAX_ADDITIONAL_USERS_PER_REQUEST = 25;
+
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseAdditionalUserCount(raw) {
+  const n = Number.parseInt(String(raw ?? "1"), 10);
+  if (!Number.isFinite(n) || n < 1) {
+    throw new Error("Count must be at least 1");
+  }
+  if (n > MAX_ADDITIONAL_USERS_PER_REQUEST) {
+    throw new Error(`Count cannot exceed ${MAX_ADDITIONAL_USERS_PER_REQUEST}`);
+  }
+  return n;
+}
+
+function coerceAutoName(v) {
+  if (v === undefined || v === null || v === "") return true;
+  return coerceBool(v);
+}
+
+function linkedUserUsernameBase(parent, master) {
+  const fromUser = String(parent?.username || master?.username || "")
+    .trim()
+    .toLowerCase();
+  if (fromUser) return fromUser;
+  const title = sanitizeTitle(parent?.title || master?.title);
+  return buildMutualAidUsername(parent?.type || master?.type, title);
+}
+
+async function allocateNumberedUsernames(baseUsername, count) {
+  const prefix = String(baseUsername || "").trim().toLowerCase();
+  if (!prefix) {
+    throw new Error("Name must contain at least one letter/number for username");
+  }
+  const re = new RegExp(`^${escapeRegExp(prefix)}-(\\d+)$`, "i");
+  const taken = new Set();
+  for (const it of store.load() || []) {
+    const m = String(it?.username || "").trim().match(re);
+    if (m) taken.add(Number(m[1]));
+  }
+
+  const out = [];
+  let n = 1;
+  while (out.length < count) {
+    if (n > 10000) {
+      throw new Error("Could not allocate unique usernames");
+    }
+    if (!taken.has(n)) {
+      const username = `${prefix}-${n}`;
+      const exists = await usersSvc.userExists(username);
+      if (!exists) out.push({ n, username });
+    }
+    n += 1;
+  }
+  return out;
+}
+
 function buildMutualAidUsername(type, title) {
   const slug = sanitizeUsernameSlug(title);
   if (!slug) return "";
@@ -418,11 +477,7 @@ function baseMutualAidType(type) {
 function formatMutualAidTypeLabel(type) {
   const t = String(type || "").trim().toUpperCase();
   if (!t) return "";
-  if (isSubMutualAidType(t)) {
-    const base = baseMutualAidType(t);
-    if (!base) return "Sub";
-    return `Sub-${base.charAt(0)}${base.slice(1).toLowerCase()}`;
-  }
+  if (isSubMutualAidType(t)) return "One Time User";
   return `${t.charAt(0)}${t.slice(1).toLowerCase()}`;
 }
 
@@ -959,14 +1014,14 @@ function assertNotMutualAidChannelGroup(group, { allowMutualAidGroup = false } =
   // be reused by more than one standalone mutual aid deployment.
   if (gid && store.getCreatedGroupIdSet().has(gid)) {
     throw new Error(
-      "Mutual aid channels cannot be selected as an existing group. Use Create Additional MA User on an existing deployment instead."
+      "Mutual aid channels cannot be selected as an existing group. Use Create Additional One Time User(s) on an existing deployment instead."
     );
   }
   const raw = String(group.name || "").trim().toLowerCase();
   const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
   if (withoutTak.startsWith("ma -") || withoutTak.startsWith("ma-")) {
     throw new Error(
-      "Mutual aid channels cannot be selected as an existing group. Use Create Additional MA User on an existing deployment instead."
+      "Mutual aid channels cannot be selected as an existing group. Use Create Additional One Time User(s) on an existing deployment instead."
     );
   }
 }
@@ -1176,7 +1231,14 @@ async function create({
 /**
  * Add another deployment user on the same channel as an existing master MA record.
  */
-async function createLinkedUser({ parentId, title, expireEnabled, expireAt, authUser = null }) {
+async function createLinkedUser({
+  parentId,
+  title,
+  expireEnabled,
+  expireAt,
+  authUser = null,
+  usernameOverride = null,
+} = {}) {
   const parent = getById(parentId);
   if (!parent) throw new Error("Parent mutual aid item not found");
 
@@ -1189,7 +1251,8 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt, auth
   const items = store.load();
   const master = findGroupAnchorItem(items, parent.groupId) || parent;
   const masterTitle = sanitizeTitle(parent.title || master.title);
-  const username = buildLinkedMutualAidUsername(masterTitle, childTitle);
+  const username = String(usernameOverride || "").trim()
+    || buildLinkedMutualAidUsername(masterTitle, childTitle);
   if (!username) {
     throw new Error("Name must contain at least one letter/number for username");
   }
@@ -1223,6 +1286,73 @@ async function createLinkedUser({ parentId, title, expireEnabled, expireAt, auth
     // Legacy parent with no createdBy: keep child untagged (global).
     preserveMissingCreatedBy: !inheritedCreatedBy,
   });
+}
+
+async function createLinkedUsers({
+  parentId,
+  count = 1,
+  autoName,
+  title,
+  expireEnabled,
+  expireAt,
+  authUser = null,
+} = {}) {
+  const n = parseAdditionalUserCount(count);
+  const auto = coerceAutoName(autoName);
+  const parent = getById(parentId);
+  if (!parent) throw new Error("Parent mutual aid item not found");
+
+  const items = store.load();
+  const master = findGroupAnchorItem(items, parent.groupId) || parent;
+  const specs = [];
+
+  if (auto) {
+    const prefix = linkedUserUsernameBase(parent, master);
+    const allocated = await allocateNumberedUsernames(prefix, n);
+    for (const { n: num, username } of allocated) {
+      specs.push({ title: String(num), usernameOverride: username });
+    }
+  } else {
+    const childTitle = sanitizeTitle(title);
+    if (!childTitle) throw new Error("Title is required");
+    if (n === 1) {
+      specs.push({ title: childTitle, usernameOverride: null });
+    } else {
+      const masterTitle = sanitizeTitle(parent.title || master.title);
+      const prefix = buildLinkedMutualAidUsername(masterTitle, childTitle);
+      const allocated = await allocateNumberedUsernames(prefix, n);
+      for (const { n: num, username } of allocated) {
+        specs.push({
+          title: `${childTitle} - ${num}`,
+          usernameOverride: username,
+        });
+      }
+    }
+  }
+
+  const created = [];
+  try {
+    for (const spec of specs) {
+      created.push(
+        await createLinkedUser({
+          parentId,
+          title: spec.title,
+          usernameOverride: spec.usernameOverride,
+          expireEnabled,
+          expireAt,
+          authUser,
+        })
+      );
+    }
+  } catch (err) {
+    if (!created.length) throw err;
+    const failed = new Error(
+      `Created ${created.length} of ${n} user(s), then failed: ${err.message || err}`
+    );
+    failed.created = created;
+    throw failed;
+  }
+  return created;
 }
 
 async function update({ id, type, title, expireEnabled, expireAt, logoFile, removeLogo }) {
@@ -1438,6 +1568,7 @@ module.exports = {
   listForUser,
   create,
   createLinkedUser,
+  createLinkedUsers,
   update,
   remove,
   getQr,

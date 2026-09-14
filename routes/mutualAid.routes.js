@@ -112,13 +112,17 @@ router.post("/:id/additional-user", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     mutualAid.assertCanManage(authUser, req.params.id);
-    const out = await mutualAid.createLinkedUser({
+    const items = await mutualAid.createLinkedUsers({
       parentId: req.params.id,
+      count: req.body?.count,
+      autoName: req.body?.autoName,
       title: req.body?.title,
       expireEnabled: req.body?.expireEnabled,
       expireAt: req.body?.expireAt,
       authUser,
     });
+    const out = items[0] || null;
+    const usernames = items.map((it) => it?.username).filter(Boolean);
 
     auditSvc.logEvent({
       actor: authUser,
@@ -127,19 +131,25 @@ router.post("/:id/additional-user", async (req, res) => {
       targetType: "mutual_aid",
       targetId: String(out?.title || out?.id || ""),
       details: {
-        summary: auditDetails.buildMutualAidSummary("CREATE_MUTUAL_AID_LINKED_USER", out),
+        summary:
+          items.length > 1
+            ? `Created ${items.length} additional one time users (${usernames.join(", ")}).`
+            : auditDetails.buildMutualAidSummary("CREATE_MUTUAL_AID_LINKED_USER", out),
         parentId: String(req.params.id),
+        count: items.length,
         type: out?.type,
         title: out?.title,
+        titles: items.map((it) => it?.title).filter(Boolean),
         groupId: out?.groupId,
         groupName: out?.groupName,
         groupMasterId: out?.groupMasterId,
         username: out?.username,
+        usernames,
         createdByRole: out?.createdBy?.role || null,
       },
     });
 
-    res.json({ success: true, item: out });
+    res.json({ success: true, items, item: out });
   } catch (err) {
     res.status(statusForError(err)).json({ error: toErrorPayload(err) });
   }

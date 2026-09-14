@@ -205,6 +205,10 @@
   #addMaUserOverlay #addMaExpireAt {
     color: #fff;
   }
+  #addMaUserPreview {
+    margin-top: 10px;
+    font-size: 13px;
+  }
 
   /* Modal footer actions: secondary left, primary/success on the far right */
   .maModalActions {
@@ -1057,7 +1061,7 @@ body.noScroll .main {
   </div>
 </div>
 
-<!-- Create Additional MA User Modal -->
+<!-- Create Additional One Time User Modal -->
 <div class="modalOverlay" id="addMaUserOverlay" style="display:none;">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addMaUserTitle">
     <div class="modalHeader">
@@ -1066,7 +1070,16 @@ body.noScroll .main {
     </div>
     <div class="modalBody">
       <div class="grid2">
-        <label>Title
+        <label>How many
+          <input id="addMaUserCount" type="number" min="1" max="25" value="1" />
+        </label>
+        <label>Naming
+          <select id="addMaUserNaming">
+            <option value="auto" selected>Auto-name</option>
+            <option value="custom">Custom title</option>
+          </select>
+        </label>
+        <label id="addMaUserTitleWrap" style="display:none;">Title
           <input id="addMaUserTitleInput" placeholder="Title For Event/Standby/Incident" />
         </label>
         <label id="addMaUserExpireEnabledWrap" style="display:block;">
@@ -1080,6 +1093,7 @@ body.noScroll .main {
           </div>
         </label>
       </div>
+      <div id="addMaUserPreview" class="muted"></div>
       <div class="row maModalActions">
         <span id="addMaUserMsg" class="msg"></span>
         <button class="btn maAddUser" id="addMaUserSaveBtn" type="button">Create Additional One Time User(s)</button>
@@ -1923,7 +1937,7 @@ function setQrPacketButtonsEnabled(enabled) {
 function openQrModal(item){
   qrOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
-  qrTitle.textContent = `Enrollment QR — ${item.type} — ${item.title}`;
+  qrTitle.textContent = `Enrollment QR — ${formatMutualAidTypeLabel(item.type) || item.type} — ${item.title}`;
   qrActiveId = item.id;
   qrActiveItem = item;
   if (emailPacketTo) emailPacketTo.value = "";
@@ -2505,7 +2519,7 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
     String(qrActiveItem?.title || "").trim() ||
     "Mutual Aid Channel";
   const eventName = String(qrActiveItem?.title || "").trim() || "Mutual Aid Operation";
-  const typeLabel = String(qrActiveItem?.type || "Event").trim() || "Event";
+  const typeLabel = formatMutualAidTypeLabel(qrActiveItem?.type) || "Event";
   const portalBase = String(getSetting("TAK_PORTAL_PUBLIC_URL") || "")
     .trim()
     .replace(/\/+$/, "");
@@ -3222,12 +3236,17 @@ if (editOverlay) {
 const addMaUserOverlay = document.getElementById("addMaUserOverlay");
 const addMaUserCloseBtn = document.getElementById("addMaUserCloseBtn");
 const addMaUserTitleEl = document.getElementById("addMaUserTitle");
+const addMaUserTitleWrap = document.getElementById("addMaUserTitleWrap");
 const addMaUserTitleInput = document.getElementById("addMaUserTitleInput");
+const addMaUserCountInput = document.getElementById("addMaUserCount");
+const addMaUserNaming = document.getElementById("addMaUserNaming");
+const addMaUserPreview = document.getElementById("addMaUserPreview");
 const addMaUserExpireEnabled = document.getElementById("addMaUserExpireEnabled");
 const addMaExpireAt = document.getElementById("addMaExpireAt");
 const addMaUserSaveBtn = document.getElementById("addMaUserSaveBtn");
 const addMaUserMsg = document.getElementById("addMaUserMsg");
 let addMaUserParent = null;
+const ADD_MA_USER_MAX_COUNT = 25;
 
 function isSubMutualAidType(type) {
   return String(type || "").trim().toUpperCase().startsWith("SUB-");
@@ -3240,15 +3259,89 @@ function baseMutualAidType(type) {
 function formatMutualAidTypeLabel(type) {
   const t = String(type || "").trim().toUpperCase();
   if (!t) return "";
-  if (isSubMutualAidType(t)) {
-    const base = baseMutualAidType(t);
-    if (!base) return "Sub";
-    return `Sub-${base.charAt(0)}${base.slice(1).toLowerCase()}`;
-  }
+  if (isSubMutualAidType(t)) return "One Time User";
   return `${t.charAt(0)}${t.slice(1).toLowerCase()}`;
 }
 
 const CREATE_ADDITIONAL_USER_LABEL = "Create Additional One Time User(s)";
+
+function slugUsernamePart(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9_-]/g, "");
+}
+
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseAddMaUserCount() {
+  const n = Number.parseInt(String(addMaUserCountInput?.value || "1"), 10);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(ADD_MA_USER_MAX_COUNT, n);
+}
+
+function nextUsernameNumbers(prefix, count) {
+  const base = String(prefix || "").trim().toLowerCase();
+  if (!base) return [];
+  const re = new RegExp(`^${escapeRegExp(base)}-(\\d+)$`, "i");
+  const taken = new Set();
+  (typeof allItems !== "undefined" && Array.isArray(allItems) ? allItems : []).forEach((it) => {
+    const m = String(it?.username || "").trim().match(re);
+    if (m) taken.add(Number(m[1]));
+  });
+  const out = [];
+  let n = 1;
+  while (out.length < count && n < 10000) {
+    if (!taken.has(n)) out.push(n);
+    n += 1;
+  }
+  return out;
+}
+
+function isAddMaUserAutoName() {
+  return String(addMaUserNaming?.value || "auto") !== "custom";
+}
+
+function updateAddMaUserNamingUi() {
+  const auto = isAddMaUserAutoName();
+  if (addMaUserTitleWrap) addMaUserTitleWrap.style.display = auto ? "none" : "block";
+  updateAddMaUserPreview();
+}
+
+function updateAddMaUserPreview() {
+  if (!addMaUserPreview) return;
+  const count = parseAddMaUserCount();
+  const parentUser = String(addMaUserParent?.username || "").trim().toLowerCase();
+  if (!parentUser) {
+    addMaUserPreview.textContent = "Usernames will use the next available -1, -2, -3 suffix.";
+    return;
+  }
+  if (isAddMaUserAutoName()) {
+    const nums = nextUsernameNumbers(parentUser, count);
+    const names = nums.map((n) => `${parentUser}-${n}`);
+    addMaUserPreview.textContent =
+      names.length === 1
+        ? `Will create username: ${names[0]}`
+        : `Will create usernames: ${names.join(", ")}`;
+    return;
+  }
+  const title = String(addMaUserTitleInput?.value || "").trim();
+  const childSlug = slugUsernamePart(title);
+  if (!childSlug) {
+    addMaUserPreview.textContent = "Enter a title to preview usernames.";
+    return;
+  }
+  const prefix = `${parentUser}-${childSlug}`;
+  if (count === 1) {
+    addMaUserPreview.textContent = `Will create username: ${prefix}`;
+    return;
+  }
+  const nums = nextUsernameNumbers(prefix, count);
+  addMaUserPreview.textContent = `Will create usernames: ${nums.map((n) => `${prefix}-${n}`).join(", ")}`;
+}
 
 function updateAddMaUserExpireUi() {
   const enabled = String(addMaUserExpireEnabled?.value || "").toLowerCase() === "yes";
@@ -3264,9 +3357,12 @@ function openAddMaUserModal(parentItem) {
   if (addMaUserTitleEl) addMaUserTitleEl.textContent = CREATE_ADDITIONAL_USER_LABEL;
   if (addMaUserSaveBtn) addMaUserSaveBtn.textContent = CREATE_ADDITIONAL_USER_LABEL;
   if (addMaUserTitleInput) addMaUserTitleInput.value = "";
+  if (addMaUserCountInput) addMaUserCountInput.value = "1";
+  if (addMaUserNaming) addMaUserNaming.value = "auto";
   if (addMaUserExpireEnabled) addMaUserExpireEnabled.value = "no";
   if (addMaExpireAt) addMaExpireAt.value = "";
   updateAddMaUserExpireUi();
+  updateAddMaUserNamingUi();
   setMsg(addMaUserMsg, "", true);
   addMaUserOverlay.style.display = "flex";
   document.body.classList.add("noScroll");
@@ -3280,14 +3376,20 @@ function closeAddMaUserModal() {
 
 if (addMaUserCloseBtn) addMaUserCloseBtn.onclick = closeAddMaUserModal;
 if (addMaUserExpireEnabled) addMaUserExpireEnabled.onchange = updateAddMaUserExpireUi;
+if (addMaUserNaming) addMaUserNaming.onchange = updateAddMaUserNamingUi;
+if (addMaUserCountInput) addMaUserCountInput.addEventListener("input", updateAddMaUserPreview);
+if (addMaUserTitleInput) addMaUserTitleInput.addEventListener("input", updateAddMaUserPreview);
 if (addMaUserSaveBtn) {
   addMaUserSaveBtn.onclick = async () => {
     if (!addMaUserParent) return;
+    const count = parseAddMaUserCount();
+    const autoName = isAddMaUserAutoName();
     const title = String(addMaUserTitleInput?.value || "").trim();
-    if (!title) {
+    if (!autoName && !title) {
       setMsg(addMaUserMsg, "Title is required.", false);
       return;
     }
+    if (addMaUserCountInput) addMaUserCountInput.value = String(count);
 
     let expireEnabled = false;
     let expireAt = null;
@@ -3302,23 +3404,36 @@ if (addMaUserSaveBtn) {
     }
 
     addMaUserSaveBtn.disabled = true;
-    setMsg(addMaUserMsg, "Creating...", true);
+    setMsg(addMaUserMsg, count > 1 ? `Creating ${count} users...` : "Creating...", true);
     try {
       const res = await fetch(
         `/api/mutual-aid/${encodeURIComponent(addMaUserParent.id)}/additional-user`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, expireEnabled, expireAt }),
+          body: JSON.stringify({ count, autoName, title, expireEnabled, expireAt }),
         }
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Create failed");
+      const created = Array.isArray(data.items)
+        ? data.items
+        : data.item
+          ? [data.item]
+          : [];
+      const names = created.map((it) => it?.username).filter(Boolean);
       closeAddMaUserModal();
-      setMsg(maListMsg, `Additional user created (${data.item?.username || "ok"}).`, true);
+      setMsg(
+        maListMsg,
+        created.length > 1
+          ? `${created.length} additional one time users created (${names.join(", ") || "ok"}).`
+          : `Additional one time user created (${names[0] || data.item?.username || "ok"}).`,
+        true
+      );
       await loadList();
     } catch (e) {
       setMsg(addMaUserMsg, e?.message || String(e), false);
+      try { await loadList(); } catch (_) {}
     } finally {
       addMaUserSaveBtn.disabled = false;
     }
@@ -4364,6 +4479,7 @@ function renderList(){
     const rowTitle = displayTitleForRow(it, master).toLowerCase();
     return (
       String(it.type||"").toLowerCase().includes(needle) ||
+      formatMutualAidTypeLabel(it.type).toLowerCase().includes(needle) ||
       String(it.title||"").toLowerCase().includes(needle) ||
       rowTitle.includes(needle) ||
       String(it.groupName||"").toLowerCase().includes(needle) ||
@@ -4465,7 +4581,7 @@ async function deleteItem(item){
       "This will revoke TAK certs and delete this deployment user only. The shared group and any other mutual aid deployments using it will remain.";
   }
 
-  const ok = confirm(`Delete ${item.type} "${item.title}"?\n\n${extra}`);
+  const ok = confirm(`Delete ${formatMutualAidTypeLabel(item.type) || item.type} "${item.title}"?\n\n${extra}`);
   if(!ok) return;
   setMsg(maListMsg, "Deleting...", true);
   const res = await fetch(`/api/mutual-aid/${encodeURIComponent(item.id)}`, { method: "DELETE" });
