@@ -1504,7 +1504,7 @@ async function openMutualAidMembers(item, opts = {}) {
   activeMembersGroupId = String(groupId || "");
   activeMembersGroupName = displayGroupName(groupName || "");
 
-  membersShowMass = true;
+  membersShowMass = isGroupCreatorItem(it);
   membersShowDelegate = !!(it && it.canDelegate);
   membersPostCreate = !!opts.postCreate;
   setMembersSplitPanes();
@@ -1513,7 +1513,7 @@ async function openMutualAidMembers(item, opts = {}) {
       ? `Members — ${activeMembersGroupName}`
       : "Members";
   }
-  if (massSkipBtn) massSkipBtn.style.display = membersPostCreate ? "" : "none";
+  if (massSkipBtn) massSkipBtn.style.display = membersShowMass && membersPostCreate ? "" : "none";
 
   membersSummary.textContent = "";
   membersSummary.className = "msg";
@@ -1527,11 +1527,13 @@ async function openMutualAidMembers(item, opts = {}) {
 
   showMembersModal(true);
 
-  prepareMassPane({
-    groupId: activeMembersGroupId,
-    groupName: it?.groupName || groupName || "",
-    action: opts.massAction || "assign",
-  });
+  if (membersShowMass) {
+    prepareMassPane({
+      groupId: activeMembersGroupId,
+      groupName: it?.groupName || groupName || "",
+      action: opts.massAction || "assign",
+    });
+  }
   if (membersShowDelegate && activeMembersItemId) {
     loadAdminAccess(activeMembersItemId).catch(() => {});
   }
