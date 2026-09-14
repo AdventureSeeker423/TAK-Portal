@@ -471,7 +471,8 @@
   display: flex;
   flex-direction: column;
   width: min(1280px, 100%);
-  max-height: 92vh;
+  height: min(92vh, 100%);
+  max-height: 100%;
   min-height: 0;
   overflow: hidden;
 }
@@ -497,11 +498,12 @@
   overflow: hidden;
 }
 #membersOverlay .membersSplit {
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
+  overflow: hidden;
 }
 #membersOverlay .membersSplit.has-mass {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
@@ -513,11 +515,11 @@
   display: none !important;
 }
 #membersOverlay .membersDelegatePane {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-height: min(240px, 32vh);
+  max-height: min(220px, 30vh);
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
@@ -979,7 +981,7 @@ body.noScroll .main {
           <div id="membersSummary" class="msg"></div>
           <input
             id="membersFilter"
-            placeholder="Search name, username, email, agency, or template..."
+            placeholder="Search name, username, agency, or template..."
           />
           <div class="pagination" id="membersPagination" style="display:none;">
             <button class="btn pagination-first-last" id="membersFirstBtn" type="button">First</button>
@@ -1295,7 +1297,6 @@ function renderMembersList() {
     const agency = memberAgencyLabel(u);
     const template = memberTemplateLabel(u);
     const active = u.is_active !== false;
-    const email = String(u.email || "").trim();
     const pk = String(u.pk || "");
     const actionsCell = membersShowMass
       ? `<td class="membersRemoveCell" data-label="Actions"><button class="btn danger" type="button" data-remove-pk="${esc(pk)}">Remove</button></td>`
@@ -1305,7 +1306,6 @@ function renderMembersList() {
       <td class="membersUserCell" data-label="User">
         <div class="membersUserName">${esc(u.username || "")}</div>
         <div class="muted membersUserMeta">${esc(u.name || "—")}</div>
-        ${email ? `<div class="muted membersUserMeta">${esc(email)}</div>` : ""}
       </td>
       <td class="membersAgencyCell" data-label="Agency">${esc(agency.name || agency.abbr || "—")}</td>
       <td class="membersTemplateCell" data-label="Template">${esc(template || "—")}</td>
