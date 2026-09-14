@@ -1425,8 +1425,10 @@ function renderMembersPagination() {
 async function loadMembersPage(page) {
   if (!activeMembersGroupId) return;
   const targetPage = Math.max(1, Number(page || 1));
-  membersSummary.textContent = "Loading members...";
-  membersSummary.className = "msg";
+  if (membersSummary) {
+    membersSummary.textContent = "";
+    membersSummary.className = "msg";
+  }
 
   const res = await fetch(
     `/api/groups/${encodeURIComponent(activeMembersGroupId)}/members?page=${targetPage}&pageSize=${membersPageSize}`
@@ -1440,12 +1442,6 @@ async function loadMembersPage(page) {
   membersTotalCount = Number(out.memberCount || activeMembers.length || 0);
   membersHasNext = !!out.hasNext;
   membersHasPrev = !!out.hasPrev;
-
-  const label = activeMembersGroupName || displayGroupName(out.group?.name || "") || activeMembersGroupId;
-  membersSummary.textContent = `${membersTotalCount} member${
-    membersTotalCount === 1 ? "" : "s"
-  } in group "${label}".`;
-  membersSummary.className = "msg ok";
 
   renderMembersList();
   renderMembersPagination();
@@ -1470,7 +1466,7 @@ async function openMutualAidMembers(item, opts = {}) {
   }
   if (massSkipBtn) massSkipBtn.style.display = membersPostCreate ? "" : "none";
 
-  membersSummary.textContent = "Loading members...";
+  membersSummary.textContent = "";
   membersSummary.className = "msg";
   membersList.innerHTML = "";
   if (membersFilter) membersFilter.value = "";
@@ -4031,8 +4027,8 @@ async function saveAdminAccess() {
   if (!adminAccessItemId || adminAccessSaving) return;
   adminAccessSaving = true;
   if (adminAccessSummary) {
-    adminAccessSummary.textContent = "Saving...";
-    adminAccessSummary.className = "msg progress";
+    adminAccessSummary.textContent = "";
+    adminAccessSummary.className = "msg";
   }
   try {
     const res = await fetch(`/api/mutual-aid/${encodeURIComponent(adminAccessItemId)}/admin-access`, {
@@ -4049,10 +4045,6 @@ async function saveAdminAccess() {
       return { ...a, hasAccess: selected.has(sfx) };
     });
     renderAdminAccessList();
-    if (adminAccessSummary) {
-      adminAccessSummary.textContent = "Saved.";
-      adminAccessSummary.className = "msg ok";
-    }
     const current = (allItems || []).find((x) => String(x.id) === String(adminAccessItemId));
     if (current) current.delegatedAgencySuffixes = out.delegatedAgencySuffixes || [];
   } catch (e) {
@@ -4074,7 +4066,7 @@ async function loadAdminAccess(itemId) {
   adminAccessItemId = String(itemId || "");
   adminAccessAgencies = [];
   if (adminAccessSummary) {
-    adminAccessSummary.textContent = "Loading...";
+    adminAccessSummary.textContent = "";
     adminAccessSummary.className = "msg";
   }
   if (adminAccessInner) adminAccessInner.innerHTML = "";
