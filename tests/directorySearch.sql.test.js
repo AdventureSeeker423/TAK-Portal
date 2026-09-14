@@ -94,6 +94,38 @@ const directoryRepo = require("../services/directoryRepo.service");
   const pkSql = sqlCalls.find((c) => /COALESCE\(authentik_pk/.test(c.sql) && /lower\(agency\)/.test(c.sql));
   assert.ok(pkSql, "agency mass-assign should select user pks by agency suffix");
 
+  sqlCalls.length = 0;
+  await directoryRepo.searchUsersPaged({
+    page: 1,
+    pageSize: 25,
+    sortKey: "email",
+    sortDir: "asc",
+    includeGroups: false,
+  });
+  const emailSql = sqlCalls.find((c) => /LIMIT/.test(c.sql) && /FROM users/.test(c.sql));
+  assert.ok(
+    /lower\(NULLIF\(btrim\(email\), ''\)\) ASC NULLS LAST/.test(emailSql.sql),
+    "email sort should be case-insensitive and treat blanks as empty"
+  );
+
+  sqlCalls.length = 0;
+  await directoryRepo.searchUsersPaged({
+    page: 1,
+    pageSize: 25,
+    sortKey: "status",
+    sortDir: "asc",
+    includeGroups: false,
+    takCertsKnown: true,
+    activeCertUsernames: ["2888hs"],
+  });
+  const statusSql = sqlCalls.find((c) => /LIMIT/.test(c.sql) && /FROM users/.test(c.sql));
+  assert.ok(/WHEN last_login IS NOT NULL/.test(statusSql.sql), "status sort should use last_login");
+  assert.ok(/ANY\(\$\d+::text\[\]\)/.test(statusSql.sql), "status sort should include TAK cert usernames");
+  assert.ok(
+    statusSql.params.some((p) => Array.isArray(p) && p.includes("2888hs")),
+    "status sort should bind active cert usernames"
+  );
+
   const { extractUserColumns, extractGroupColumns } = require("../services/userAttributes.util");
   const userCols = extractUserColumns({
     agency: "so",

@@ -2017,6 +2017,13 @@ async function searchUsersPaged({
   includeGroups = false,
   includeLoginStatus = false,
 } = {}) {
+  let takResult = null;
+  if (includeLoginStatus) {
+    takResult = await tak.getActiveCertUsernameSet().catch(() => ({
+      ok: false,
+      usernames: new Set(),
+    }));
+  }
   const out = await directoryRepo.searchUsersPaged({
     q,
     page,
@@ -2028,9 +2035,16 @@ async function searchUsersPaged({
     agencySuffixes,
     excludeGroupPks,
     includeGroups,
+    takCertsKnown: !!(takResult && takResult.ok),
+    activeCertUsernames:
+      takResult && takResult.ok ? Array.from(takResult.usernames || []) : undefined,
   });
   if (includeLoginStatus) {
-    out.users = await userLoginStatus.annotateUsersLoginStatus(out.users);
+    out.users = await userLoginStatus.annotateUsersLoginStatus(out.users, { takResult });
+    if (String(sortKey || "").toLowerCase() === "status") {
+      const dir = String(sortDir || "asc").toLowerCase() === "desc" ? -1 : 1;
+      out.users.sort((a, b) => userLoginStatus.compareUsersByStatus(a, b) * dir);
+    }
   }
   return out;
 }

@@ -4,6 +4,8 @@ const {
   loginStatusLabel,
   hasStoredLastLogin,
   parseAuthentikLastLogin,
+  statusSortRank,
+  compareUsersByStatus,
 } = require("../services/userLoginStatus.service");
 
 assert.strictEqual(
@@ -67,6 +69,36 @@ assert.strictEqual(set.has("other-user"), false);
 assert.strictEqual(
   tak.isActiveUnrevokedCert({ creatorDn: "ok", status: "expired" }),
   false
+);
+
+assert.strictEqual(statusSortRank({ is_active: false, takCertsKnown: true }), 0);
+assert.strictEqual(
+  statusSortRank({
+    is_active: true,
+    hasActiveTakCert: false,
+    hasAuthentikLogin: false,
+    takCertsKnown: true,
+  }),
+  1
+);
+assert.strictEqual(
+  statusSortRank({
+    is_active: true,
+    hasActiveTakCert: true,
+    hasAuthentikLogin: false,
+    takCertsKnown: true,
+  }),
+  2
+);
+
+const ordered = [
+  { username: "zulu", is_active: true, hasAuthentikLogin: true, takCertsKnown: true },
+  { username: "alpha", is_active: false, takCertsKnown: true },
+  { username: "mike", is_active: true, takCertsKnown: true },
+].sort(compareUsersByStatus);
+assert.deepStrictEqual(
+  ordered.map((u) => u.username),
+  ["alpha", "mike", "zulu"]
 );
 
 console.log("userLoginStatus.test.js: ok");

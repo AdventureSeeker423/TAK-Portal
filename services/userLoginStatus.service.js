@@ -35,6 +35,22 @@ function loginStatusLabel({
   return "Enabled";
 }
 
+/** 0 Disabled, 1 Enabled - No Logins, 2 Enabled */
+function statusSortRank(user) {
+  if (!user?.is_active) return 0;
+  if (user.hasActiveTakCert || user.hasAuthentikLogin) return 2;
+  if (user.takCertsKnown === true) return 1;
+  return 2;
+}
+
+function compareUsersByStatus(a, b) {
+  const d = statusSortRank(a) - statusSortRank(b);
+  if (d) return d;
+  return String(a?.username || "").localeCompare(String(b?.username || ""), undefined, {
+    sensitivity: "base",
+  });
+}
+
 async function mapLimit(items, limit, fn) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) return [];
@@ -105,14 +121,20 @@ async function fetchLiveAuthentikLogins(users, certUsernames, takCertsKnown) {
   return found;
 }
 
-async function annotateUsersLoginStatus(users) {
+async function annotateUsersLoginStatus(users, opts = {}) {
   const list = Array.isArray(users) ? users : [];
   if (!list.length) return list;
 
   const anyEnabled = list.some((u) => u && u.is_active);
   let takCertsKnown = false;
   let certUsernames = new Set();
-  if (anyEnabled) {
+  if (opts.takResult) {
+    takCertsKnown = !!opts.takResult.ok;
+    certUsernames =
+      opts.takResult.usernames instanceof Set
+        ? opts.takResult.usernames
+        : new Set(opts.takResult.usernames || []);
+  } else if (anyEnabled) {
     const takResult = await tak.getActiveCertUsernameSet().catch(() => ({
       ok: false,
       usernames: new Set(),
@@ -151,5 +173,7 @@ module.exports = {
   parseAuthentikLastLogin,
   hasStoredLastLogin,
   loginStatusLabel,
+  statusSortRank,
+  compareUsersByStatus,
   annotateUsersLoginStatus,
 };

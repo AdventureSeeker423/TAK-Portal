@@ -166,19 +166,42 @@ function rowToGroup(r) {
   };
 }
 
-function sortSql(sortKey, sortDir) {
+function sortSql(sortKey, sortDir, params = [], extras = {}) {
   const dir = String(sortDir || "asc").toLowerCase() === "desc" ? "DESC" : "ASC";
   const key = String(sortKey || "username").toLowerCase();
-  if (key === "name") return `name ${dir} NULLS LAST, username ASC`;
-  if (key === "email") return `email ${dir} NULLS LAST, username ASC`;
-  if (key === "status" || key === "is_active") return `is_active ${dir}, username ASC`;
+  if (key === "name") {
+    return `lower(NULLIF(btrim(name), '')) ${dir} NULLS LAST, username ASC`;
+  }
+  if (key === "email") {
+    return `lower(NULLIF(btrim(email), '')) ${dir} NULLS LAST, username ASC`;
+  }
+  if (key === "status" || key === "is_active") {
+    // 0 Disabled, 1 Enabled - No Logins, 2 Enabled — matches the Users page labels.
+    if (extras.takCertsKnown === true && Array.isArray(extras.activeCertUsernames)) {
+      const certs = extras.activeCertUsernames
+        .map((s) => String(s || "").trim().toLowerCase())
+        .filter(Boolean);
+      params.push(certs);
+      const i = params.length;
+      return `CASE
+        WHEN COALESCE(is_active, false) = false THEN 0
+        WHEN last_login IS NOT NULL OR lower(username) = ANY($${i}::text[]) THEN 2
+        ELSE 1
+      END ${dir}, username ASC`;
+    }
+    return `CASE WHEN COALESCE(is_active, false) = false THEN 0 ELSE 1 END ${dir}, username ASC`;
+  }
   if (key === "agency") {
-    return `lower(COALESCE(agency_name, agency, '')) ${dir} NULLS LAST, name ASC, username ASC`;
+    return `lower(COALESCE(NULLIF(btrim(agency_abbreviation), ''), NULLIF(btrim(agency), ''), '')) ${dir} NULLS LAST, name ASC, username ASC`;
   }
   if (key === "template") {
-    return `lower(COALESCE(current_template, '')) ${dir} NULLS LAST, username ASC`;
+    return `CASE
+      WHEN NULLIF(btrim(current_template), '') IS NULL
+        OR lower(btrim(current_template)) = 'manual group selection' THEN NULL
+      ELSE lower(btrim(current_template))
+    END ${dir} NULLS LAST, username ASC`;
   }
-  return `username ${dir}`;
+  return `lower(username) ${dir}`;
 }
 
 async function attachGroups(users) {
@@ -432,6 +455,8 @@ async function searchUsersPaged({
   includeGroups = false,
   activeOnly,
   excludeGroupPks,
+  takCertsKnown = false,
+  activeCertUsernames,
 } = {}) {
   const params = [];
   let where = `pending_delete = false`;
@@ -506,9 +531,13 @@ async function searchUsersPaged({
   const p = Math.max(1, Number(page) || 1);
   const count = await db.query(`SELECT COUNT(*)::int AS n FROM users WHERE ${where}`, params);
   const total = count.rows[0]?.n || 0;
+  const orderBy = sortSql(sortKey, sortDir, params, {
+    takCertsKnown,
+    activeCertUsernames,
+  });
   params.push(ps, (p - 1) * ps);
   const rows = await db.query(
-    `SELECT * FROM users WHERE ${where} ORDER BY ${sortSql(sortKey, sortDir)} LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    `SELECT * FROM users WHERE ${where} ORDER BY ${orderBy} LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
   let users = rows.rows.map((row) => rowToUser(row));
