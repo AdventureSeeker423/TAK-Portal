@@ -735,6 +735,7 @@ body.noScroll .main {
     height: 100dvh;
     max-height: 100dvh;
     border-radius: 0;
+    overflow-x: hidden;
   }
   #membersOverlay .modalHeader {
     padding-top: max(14px, env(safe-area-inset-top));
@@ -745,6 +746,7 @@ body.noScroll .main {
   }
   #membersOverlay .modalHeaderLeft {
     flex: 1 1 auto;
+    min-width: 0;
   }
   #membersOverlay .modalHeaderLeft h2 {
     white-space: normal;
@@ -757,12 +759,14 @@ body.noScroll .main {
   }
   #membersOverlay .modalHeader > .btn {
     flex: 0 0 auto;
+    width: auto;
     min-height: 44px;
   }
   #membersOverlay .modalBody {
     display: flex;
     flex-direction: column;
     overflow: auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     padding-left: max(14px, env(safe-area-inset-left));
@@ -780,6 +784,12 @@ body.noScroll .main {
     height: auto;
     max-height: none;
     grid-template-columns: 1fr;
+    gap: 0;
+  }
+  #membersOverlay .membersSplitPane + .membersSplitPane {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
   }
   #membersOverlay .membersDelegatePane,
   #membersOverlay.has-delegate .membersDelegatePane {
@@ -789,16 +799,43 @@ body.noScroll .main {
     overflow: visible;
   }
   #membersOverlay .membersDelegatePane .membersMassListBox {
-    max-height: min(30dvh, 16rem);
+    max-height: min(40dvh, 22rem);
   }
   #membersOverlay .membersDelegatePane .membersSplitPaneHead {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  #membersOverlay .membersDelegatePane .membersSplitPaneHead .row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  #membersOverlay .membersDelegatePane .membersSplitPaneHead .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+  #membersOverlay #adminAccessInner {
+    grid-template-columns: 1fr;
+  }
+  #membersOverlay .groupItem {
+    align-items: flex-start;
+  }
+  #membersOverlay .groupItem span {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
   }
   #membersOverlay .membersListBox,
   #membersOverlay .membersMassListBox {
     flex: 0 0 auto;
     min-height: 10rem;
     max-height: min(40dvh, 22rem);
+    -webkit-overflow-scrolling: touch;
+  }
+  #membersOverlay .membersListBox {
+    padding: 6px 10px 10px;
   }
   #membersOverlay .membersSplitPane {
     flex: 0 0 auto;
@@ -807,9 +844,14 @@ body.noScroll .main {
   }
   #membersOverlay .membersSplitPaneHead {
     flex-wrap: wrap;
+    align-items: flex-start;
   }
   #membersOverlay .membersRange {
     white-space: normal;
+  }
+  #membersOverlay .membersMassActionToggle .segBtn,
+  #membersOverlay #massSegmented .segBtn {
+    min-height: 44px;
   }
   #membersOverlay .pagination {
     flex-wrap: wrap;
@@ -817,6 +859,8 @@ body.noScroll .main {
   }
   #membersOverlay .pagination .btn {
     width: auto;
+    flex: 0 0 auto;
+    max-width: none;
     min-height: 36px;
   }
   #membersOverlay .membersMassPanes,
@@ -840,6 +884,10 @@ body.noScroll .main {
     width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+  #membersOverlay .membersMassPanes > div > .row > .row .btn {
+    width: 100%;
+    min-height: 44px;
   }
   #membersOverlay #massSegmented .segBtn {
     flex: 1 1 calc(50% - 8px);
