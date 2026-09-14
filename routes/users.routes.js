@@ -15,6 +15,7 @@ const { getString, getBool } = require("../services/env");
 const auditSvc = require("../services/auditLog.service");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 const mutualAidStore = require("../services/mutualAid.store");
+const userLoginStatus = require("../services/userLoginStatus.service");
 
 // Cache resolved Global Admin group PKs (from PORTAL_AUTH_REQUIRED_GROUP)
 // so we can cheaply hide global-admin users from agency-admin views.
@@ -911,7 +912,8 @@ router.get("/export-csv", async (req, res) => {
           String(g.name || "").trim(),
         ])
       );
-      const csv = users.buildUsersExportCsv(batch, {
+      const annotated = await userLoginStatus.annotateUsersLoginStatus(batch);
+      const csv = users.buildUsersExportCsv(annotated, {
         groupNameByPk,
         globalAdminGroupPks,
         agencyNameByAbbr,

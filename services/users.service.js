@@ -4175,7 +4175,12 @@ function buildUsersExportCsv(users, options = {}) {
       String(attrs.current_template || "").trim() || "Manual Group Selection",
       normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
       resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }),
-      user?.is_active ? "Active" : "Disabled",
+      userLoginStatus.loginStatusLabel({
+        is_active: !!user?.is_active,
+        hasActiveTakCert: !!user?.hasActiveTakCert,
+        hasAuthentikLogin: !!user?.hasAuthentikLogin,
+        takCertsKnown: user?.takCertsKnown === true,
+      }),
       formatUserGroupMemberships(user, groupNameByPk, hiddenGroupPrefixes),
     ];
 
