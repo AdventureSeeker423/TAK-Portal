@@ -505,6 +505,10 @@
   gap: 16px;
   overflow: hidden;
 }
+#membersOverlay.has-delegate .membersSplit {
+  flex: 0 1 auto;
+  max-height: min(29rem, 48vh);
+}
 #membersOverlay .membersSplit.has-mass {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
 }
@@ -519,17 +523,22 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-height: min(220px, 30vh);
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
   overflow: hidden;
 }
+#membersOverlay.has-delegate .membersDelegatePane {
+  flex: 1 1 0%;
+  min-height: 10rem;
+  max-height: none;
+}
 #membersOverlay .membersDelegatePane .msg:empty {
   display: none;
 }
 #membersOverlay .membersDelegatePane .membersMassListBox {
-  min-height: 4.5rem;
+  flex: 1 1 auto;
+  min-height: 8rem;
 }
 #membersOverlay #adminAccessInner {
   display: grid;
@@ -571,7 +580,7 @@
 #membersOverlay .membersListBox,
 #membersOverlay .membersMassListBox {
   flex: 1 1 auto;
-  min-height: 8rem;
+  min-height: 10rem;
   overflow: auto;
   max-height: none;
   margin-top: 8px;
@@ -750,16 +759,19 @@ body.noScroll .main {
     padding-bottom: max(14px, env(safe-area-inset-bottom));
   }
   #membersOverlay .membersSplit,
-  #membersOverlay .membersSplit.has-mass {
+  #membersOverlay .membersSplit.has-mass,
+  #membersOverlay.has-delegate .membersSplit {
     display: flex;
     flex-direction: column;
     overflow: visible;
     flex: 0 0 auto;
     min-height: auto;
     height: auto;
+    max-height: none;
     grid-template-columns: 1fr;
   }
-  #membersOverlay .membersDelegatePane {
+  #membersOverlay .membersDelegatePane,
+  #membersOverlay.has-delegate .membersDelegatePane {
     flex: 0 0 auto;
     min-height: auto;
     max-height: none;
