@@ -571,6 +571,14 @@
 #membersOverlay .membersSplitPane .msg:empty {
   display: none;
 }
+#membersOverlay .membersExistingGroupNote {
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+#membersOverlay .membersExistingGroupNote a {
+  color: inherit;
+  text-decoration: underline;
+}
 #membersOverlay #membersFilter,
 #membersOverlay #adminAccessSearch {
   width: 100%;
@@ -1471,13 +1479,22 @@ function renderMembersPagination() {
   }
 }
 
+function setMembersExistingGroupNote() {
+  if (!membersSummary) return;
+  if (membersShowMass) {
+    membersSummary.textContent = "";
+    membersSummary.className = "msg";
+    return;
+  }
+  membersSummary.className = "msg membersExistingGroupNote";
+  membersSummary.innerHTML =
+    'This mutual aid uses an existing group. Membership is managed from the <a href="/groups">Groups</a> page.';
+}
+
 async function loadMembersPage(page) {
   if (!activeMembersGroupId) return;
   const targetPage = Math.max(1, Number(page || 1));
-  if (membersSummary) {
-    membersSummary.textContent = "";
-    membersSummary.className = "msg";
-  }
+  setMembersExistingGroupNote();
 
   const res = await fetch(
     `/api/groups/${encodeURIComponent(activeMembersGroupId)}/members?page=${targetPage}&pageSize=${membersPageSize}`
@@ -1515,8 +1532,7 @@ async function openMutualAidMembers(item, opts = {}) {
   }
   if (massSkipBtn) massSkipBtn.style.display = membersShowMass && membersPostCreate ? "" : "none";
 
-  membersSummary.textContent = "";
-  membersSummary.className = "msg";
+  setMembersExistingGroupNote();
   membersList.innerHTML = "";
   if (membersFilter) membersFilter.value = "";
   membersCurrentPage = 1;
