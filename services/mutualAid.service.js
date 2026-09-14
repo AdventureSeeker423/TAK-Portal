@@ -730,6 +730,10 @@ function canDelegateMutualAid(authUser, item) {
   return createdBy.agencySuffixes.some((sfx) => allowedSet.has(sfx));
 }
 
+function canEditMutualAid(authUser, item) {
+  return canDelegateMutualAid(authUser, item);
+}
+
 function listForUser(authUser) {
   return list()
     .filter((item) => canViewMutualAid(authUser, item))
@@ -739,6 +743,7 @@ function listForUser(authUser) {
         ...rest,
         delegatedAgencySuffixes: normalizeDelegatedAgencySuffixes(item),
         canDelegate: canDelegateMutualAid(authUser, item),
+        canEdit: canEditMutualAid(authUser, item),
       };
     });
 }
@@ -753,6 +758,18 @@ function assertCanManage(authUser, id) {
   if (!canManageMutualAid(authUser, item)) {
     const err = new Error(
       "You do not have permission to manage this mutual aid deployment."
+    );
+    err.status = 403;
+    throw err;
+  }
+  return item;
+}
+
+function assertCanEdit(authUser, id) {
+  const item = assertCanManage(authUser, id);
+  if (!canEditMutualAid(authUser, item)) {
+    const err = new Error(
+      "You do not have permission to edit or delete this mutual aid deployment."
     );
     err.status = 403;
     throw err;
@@ -1429,7 +1446,9 @@ module.exports = {
   canViewMutualAid,
   canManageMutualAid,
   canDelegateMutualAid,
+  canEditMutualAid,
   assertCanManage,
+  assertCanEdit,
   assertCanDelegate,
   userCanModifyMutualAidGroup,
   getAdminAccess,

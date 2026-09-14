@@ -4299,6 +4299,7 @@ function renderMutualAidRow(it, opts = {}) {
     .filter(Boolean)
     .join(" ");
 
+  const canEdit = it.canEdit !== false;
   const titleBlock = `<div class="cardTitleText">${esc(displayTitle)}</div>`;
   const channelLine = `<div class="muted" style="font-size: 12px;">${esc(displayGroupName(it.groupName || ""))}</div>`;
 
@@ -4314,11 +4315,11 @@ function renderMutualAidRow(it, opts = {}) {
       <td class="maCreatedByCell">${formatCreatedByHtml(it)}</td>
       <td class="maActionsCell cardActionsCell">
         <div class="maActionsRow cardActionsRow">
-          <button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>
+          ${canEdit ? `<button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>` : ""}
           ${isSub ? "" : `<button class="btn btn-access" type="button" data-act="members" data-id="${esc(it.id)}">Members</button>`}
           <button class="btn qrPacketBtn" type="button" data-act="qr" data-id="${esc(it.id)}">QR / Packet</button>
           ${canCreateSub ? `<button class="btn maAddUser" type="button" data-act="adduser" data-id="${esc(it.id)}">${esc(createSubButtonLabel(it.type))}</button>` : ""}
-          <button class="btn danger" type="button" data-act="del" data-id="${esc(it.id)}">Delete</button>
+          ${canEdit ? `<button class="btn danger" type="button" data-act="del" data-id="${esc(it.id)}">Delete</button>` : ""}
         </div>
       </td>
     </tr>
@@ -4374,10 +4375,16 @@ function renderList(){
     if(!it) return;
     btn.onclick = () => {
       if(act === "members") return openMutualAidMembers(it);
-      if(act === "edit") return openEdit(it);
+      if(act === "edit") {
+        if (it.canEdit === false) return;
+        return openEdit(it);
+      }
       if(act === "qr") return openQrModal(it);
       if(act === "adduser") return openAddMaUserModal(it);
-      if(act === "del") return deleteItem(it);
+      if(act === "del") {
+        if (it.canEdit === false) return;
+        return deleteItem(it);
+      }
     };
   });
 }

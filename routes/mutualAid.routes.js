@@ -148,7 +148,7 @@ router.post("/:id/additional-user", async (req, res) => {
 router.patch("/:id", uploadMaLogo.single("logo"), async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    mutualAid.assertCanManage(authUser, req.params.id);
+    mutualAid.assertCanEdit(authUser, req.params.id);
     const before =
       mutualAid.list().find((x) => String(x?.id) === String(req.params.id)) || null;
     const removeLogo =
@@ -207,7 +207,7 @@ router.patch("/:id", uploadMaLogo.single("logo"), async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
-    mutualAid.assertCanManage(authUser, req.params.id);
+    mutualAid.assertCanEdit(authUser, req.params.id);
     const before =
       mutualAid.list().find((x) => String(x?.id) === String(req.params.id)) || null;
     const out = await mutualAid.remove({ id: req.params.id });
