@@ -471,11 +471,8 @@
   display: flex;
   flex-direction: column;
   width: min(1280px, 100%);
-  max-width: 100%;
-  align-self: stretch;
+  max-height: 92vh;
   min-height: 0;
-  height: auto;
-  max-height: 100%;
   overflow: hidden;
 }
 #membersOverlay .modalHeader {
@@ -499,22 +496,12 @@
   flex-direction: column;
   overflow: hidden;
 }
-#membersOverlay.has-delegate .modalBody {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(12rem, 36%);
-  gap: 0;
-}
 #membersOverlay .membersSplit {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
-  overflow: hidden;
-}
-#membersOverlay.has-delegate .membersSplit {
-  height: auto;
-  max-height: none;
 }
 #membersOverlay .membersSplit.has-mass {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
@@ -526,18 +513,21 @@
   display: none !important;
 }
 #membersOverlay .membersDelegatePane {
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  max-height: min(240px, 32vh);
+  margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+  overflow: hidden;
 }
 #membersOverlay .membersDelegatePane .msg:empty {
   display: none;
 }
 #membersOverlay .membersDelegatePane .membersMassListBox {
-  min-height: 0;
+  min-height: 4.5rem;
 }
 #membersOverlay #adminAccessInner {
   display: grid;
@@ -579,7 +569,7 @@
 #membersOverlay .membersListBox,
 #membersOverlay .membersMassListBox {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 8rem;
   overflow: auto;
   max-height: none;
   margin-top: 8px;
@@ -634,6 +624,10 @@
 #membersOverlay .membersMassActionToggle .segBtn {
   width: 100%;
   text-align: center;
+}
+#membersOverlay #massSegmented {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
 }
 #membersOverlay #massApplyBtn {
   text-transform: uppercase;
@@ -707,8 +701,7 @@ body.noScroll .main {
     flex: 0 0 auto;
     min-height: 44px;
   }
-  #membersOverlay .modalBody,
-  #membersOverlay.has-delegate .modalBody {
+  #membersOverlay .modalBody {
     display: flex;
     flex-direction: column;
     overflow: auto;
@@ -719,8 +712,7 @@ body.noScroll .main {
     padding-bottom: max(14px, env(safe-area-inset-bottom));
   }
   #membersOverlay .membersSplit,
-  #membersOverlay .membersSplit.has-mass,
-  #membersOverlay.has-delegate .membersSplit {
+  #membersOverlay .membersSplit.has-mass {
     display: flex;
     flex-direction: column;
     overflow: visible;
@@ -732,7 +724,11 @@ body.noScroll .main {
   #membersOverlay .membersDelegatePane {
     flex: 0 0 auto;
     min-height: auto;
+    max-height: none;
     overflow: visible;
+  }
+  #membersOverlay .membersDelegatePane .membersMassListBox {
+    max-height: min(30dvh, 16rem);
   }
   #membersOverlay .membersDelegatePane .membersSplitPaneHead {
     flex-wrap: wrap;
@@ -1209,6 +1205,7 @@ function showMembersModal(show) {
 
 function setMembersSplitPanes() {
   if (membersSplit) membersSplit.classList.toggle("has-mass", !!membersShowMass);
+  if (membersMassPane) membersMassPane.style.display = membersShowMass ? "flex" : "none";
   if (membersOverlay) membersOverlay.classList.toggle("has-delegate", !!membersShowDelegate);
 }
 
@@ -1393,9 +1390,7 @@ async function openMutualAidMembers(item, opts = {}) {
   activeMembersGroupId = String(groupId || "");
   activeMembersGroupName = displayGroupName(groupName || "");
 
-  const groupAnchor = getGroupAnchorForGroup(activeMembersGroupId);
-  const isAnchor = !!(it && groupAnchor && String(groupAnchor.id) === String(it.id));
-  membersShowMass = !!(opts.showMass || (isAnchor && isGroupCreatorItem(it || groupAnchor)));
+  membersShowMass = true;
   membersShowDelegate = !!(it && it.canDelegate);
   membersPostCreate = !!opts.postCreate;
   setMembersSplitPanes();
@@ -1418,13 +1413,11 @@ async function openMutualAidMembers(item, opts = {}) {
 
   showMembersModal(true);
 
-  if (membersShowMass) {
-    prepareMassPane({
-      groupId: activeMembersGroupId,
-      groupName: it?.groupName || groupName || "",
-      action: opts.massAction || "assign",
-    });
-  }
+  prepareMassPane({
+    groupId: activeMembersGroupId,
+    groupName: it?.groupName || groupName || "",
+    action: opts.massAction || "assign",
+  });
   if (membersShowDelegate && activeMembersItemId) {
     loadAdminAccess(activeMembersItemId).catch(() => {});
   }
