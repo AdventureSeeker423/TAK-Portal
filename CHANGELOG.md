@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.1 - 9/14/26
+✨ `Enhancement` - Mutual Aid - Page reorganized to match the simplicity and structure of the groups page<br>
+✨ `Enhancement` - Mutual Aid - Changed wording from "Sub-Event,Incident,Standby" to "Additional One Time Users" and implemented logic to create multiple one time users at once using auto or custom naming<br>
+✨ `Enhancement` - Mutual Aid - Events, Incidents, and Standbys can be delegated to agency admins to manage<br>
+✨ `Enhancement` - Groups - Agency admin access moved to the Members popup modal
+
 ### v2.0.0 - 9/10/26
 🎉 `New Feature` - TAK Portal 2.0.0 introduces two additional containers, a postgres container and a worker container.  Both of these paired together greatly improve performance and usability of TAK Portal at scale (easily handling 1,000+ users)<br>
 🎉 `New Feature` - Locate functionality has been rebuilt from the ground-up and no longer relies on built in TAK Server for full functionality.  This shift allows admins to have better control of their locators, historical data, and channel/data sync selection<br>
