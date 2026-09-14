@@ -578,7 +578,43 @@
 }
 #membersOverlay .membersSplitPane .pagination {
   flex: 0 0 auto;
-  margin: 0 0 4px;
+  margin: 8px 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 14px;
+}
+#membersOverlay .pagination .btn {
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 600;
+  width: auto;
+  min-width: 0;
+  box-shadow: none;
+}
+#membersOverlay .pagination .btn:hover:not(:disabled) {
+  background: var(--hover-strong);
+  border-color: var(--line);
+  filter: none;
+}
+#membersOverlay .pagination .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+#membersOverlay #membersPageInfo {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  opacity: 0.9;
+  font-size: 12px;
 }
 #membersOverlay .membersTable {
   width: 100%;
@@ -756,6 +792,10 @@ body.noScroll .main {
     flex-wrap: wrap;
     justify-content: center;
   }
+  #membersOverlay .pagination .btn {
+    width: auto;
+    min-height: 36px;
+  }
   #membersOverlay .membersMassPanes,
   #membersOverlay #massAgencyPane,
   #membersOverlay #massGroupPane,
@@ -843,6 +883,12 @@ body.noScroll .main {
   #membersOverlay input:not([type="checkbox"]),
   #membersOverlay select {
     font-size: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  #membersOverlay .pagination-first-last {
+    display: none;
   }
 }
 
