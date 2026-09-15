@@ -310,11 +310,12 @@
 <script src="/managed-agencies-picker.js"></script>
 <script>
 (function () {
+  const SECTION_ORDER = ["core", "usersGroups", "operations", "incidentResponse"];
   const SECTION_LABELS = {
     core: "Core",
     usersGroups: "Users & Groups",
-    administration: "Administration",
-    configuration: "Configuration",
+    operations: "Operations",
+    incidentResponse: "Incident Response",
     other: "Other",
   };
 
@@ -593,7 +594,9 @@
   function buildEditor() {
     const by = new Map();
     // Show only permissions allowed by the selected user's base role.
-    const visible = registryFlat.filter((m) => currentBaseAllowed.has(m.id));
+    const visible = registryFlat.filter(
+      (m) => m.editorVisible !== false && currentBaseAllowed.has(m.id)
+    );
     for (const m of visible) {
       const s = m.section || "other";
       if (!by.has(s)) by.set(s, []);
@@ -605,7 +608,12 @@
       host.innerHTML = "<p class=\"muted\">No configurable permissions for this access level.</p>";
       return;
     }
-    for (const [section, items] of by) {
+    const sectionKeys = SECTION_ORDER.filter((s) => by.has(s));
+    for (const s of by.keys()) {
+      if (!sectionKeys.includes(s)) sectionKeys.push(s);
+    }
+    for (const section of sectionKeys) {
+      const items = by.get(section);
       const wrap = document.createElement("div");
       wrap.style.marginBottom = "18px";
       const h = document.createElement("h3");

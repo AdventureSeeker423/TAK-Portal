@@ -19,18 +19,16 @@ const PERMISSION_UI_ORDER = [
   "page.users",
   "page.groups",
   "page.templates",
-  "page.audit_log",
+  "page.agencies",
   "page.data_package",
   "page.data_sync",
-  "page.channel_patch",
   "page.email",
+  "page.integrations",
+  "page.mou",
+  "page.settings",
+  "page.channel_patch",
   "page.locate",
   "page.mutual_aid",
-  "page.agencies",
-  "page.integrations",
-  "page.plugin_manager",
-  "page.access_control",
-  "page.settings",
 ];
 
 async function loadGroupNamesForUserId(userId) {
@@ -80,14 +78,17 @@ async function assertCanAssignManagedAgencies(actor, suffixes) {
 }
 
 router.get("/registry", (req, res) => {
-  const flat = registry.listAllPermissionMeta().slice().sort((a, b) => {
-    const ai = PERMISSION_UI_ORDER.indexOf(a.id);
-    const bi = PERMISSION_UI_ORDER.indexOf(b.id);
-    const aa = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
-    const bb = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
-    if (aa !== bb) return aa - bb;
-    return String(a.label || a.id).localeCompare(String(b.label || b.id));
-  });
+  const flat = registry
+    .listAllPermissionMeta()
+    .filter((m) => m.editorVisible !== false)
+    .sort((a, b) => {
+      const ai = PERMISSION_UI_ORDER.indexOf(a.id);
+      const bi = PERMISSION_UI_ORDER.indexOf(b.id);
+      const aa = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
+      const bb = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
+      if (aa !== bb) return aa - bb;
+      return String(a.label || a.id).localeCompare(String(b.label || b.id));
+    });
   const bySection = new Map();
   for (const m of flat) {
     const s = m.section || "other";

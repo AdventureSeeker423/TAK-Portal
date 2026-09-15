@@ -9,6 +9,11 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.2 - PENDING
+✨ `Enhancement` - Dashboard - Client version added on desktop view<br>
+✨ `Enhancement` - Users - Database built for Status column to include the role of the user and flag users that have never signed into Authentik or generated a TAK client cert<br>
+✨ `Enhancement` - Access Control - Updated list of permissions to match the new sidebar (will be planning to relocate this page to a modal in the near future)
+
 ### v2.0.1 - 9/14/26
 ✨ `Enhancement` - Mutual Aid - Page reorganized to match the simplicity and structure of the groups page<br>
 ✨ `Enhancement` - Mutual Aid - Changed wording from "Sub-Event,Incident,Standby" to "Additional One Time Users" and implemented logic to create multiple one time users at once using auto or custom naming<br>
