@@ -1739,16 +1739,19 @@
   .connected-clients-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   .connected-clients-table th.sortable:hover { text-decoration: underline; }
   .connected-clients-table .sortIndicator { display: inline-block; min-width: 12px; margin-left: 6px; opacity: 0.9; }
+  .connected-clients-table .ccUsernameCell,
+  .connected-clients-table .ccClientCell,
   .connected-clients-table .ccVersionHead,
-  .connected-clients-table .ccVersionCell {
-    display: none;
+  .connected-clients-table .ccVersionCell,
+  .connected-clients-table .ccBatteryCell,
+  .connected-clients-table .ccRoleCell,
+  .connected-clients-table th[data-key="username"],
+  .connected-clients-table th[data-key="takClient"],
+  .connected-clients-table th[data-key="version"],
+  .connected-clients-table th[data-key="battery"],
+  .connected-clients-table th[data-key="role"] {
+    width: 1%;
     white-space: nowrap;
-  }
-  @media (min-width: 1200px) {
-    .connected-clients-table .ccVersionHead,
-    .connected-clients-table .ccVersionCell {
-      display: table-cell;
-    }
   }
   .connected-clients-table tbody tr:hover { background: var(--hover); }
   @media (max-width: 990px) {
