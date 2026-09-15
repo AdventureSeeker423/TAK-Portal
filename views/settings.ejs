@@ -4546,7 +4546,7 @@
             <h2 id="settingsModalTitle-request-access">Request Access Page</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Public /request-access enrollment form and new-agency request options.</span>
+              <span class="settings-help-popover">Public /request-access enrollment form, new-agency request options, and hCaptcha keys.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -4555,6 +4555,8 @@
           <div class="grid2">
             <% renderField("REQUEST_ACCESS_ENABLED","Enable Request Access Page","Makes the public /request-access form available.","true"); %>
             <% renderField("REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS","Require All Details For New Agency","When No, Other-agency requests only ask for agency name, type, and reason. Admins complete the rest on review.","false"); %>
+            <% renderField("HCAPTCHA_SITE_KEY","hCaptcha Site Key","Visit hcaptcha.com for a free public site key for the Request Access form. Leave blank to disable."); %>
+            <% renderField("HCAPTCHA_SECRET_KEY","hCaptcha Secret Key","Visit hcaptcha.com for a free secret key for server-side verification. Leave blank to disable."); %>
           </div>
         </div>
       </div>
@@ -4568,7 +4570,7 @@
             <h2 id="settingsModalTitle-portal-access">Portal Access Control</h2>
             <span class="settings-help-tip">
               <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
-              <span class="settings-help-popover">Require Authentik login, public URLs, admin groups, and hCaptcha keys.</span>
+              <span class="settings-help-popover">Require Authentik login, public URLs, and admin groups.</span>
             </span>
           </div>
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
@@ -4579,8 +4581,6 @@
             <% renderField("AUTHENTIK_PUBLIC_URL","Authentik Public URL","Used for logout redirects."); %>
             <% renderField("TAK_PORTAL_PUBLIC_URL","TAK Portal Public URL","Public base URL of this portal (used in email links), e.g. https://portal.example.gov"); %>
             <% renderField("PORTAL_AUTH_REQUIRED_GROUP","Global Admin group(s)","Groups with full global access."); %>
-            <% renderField("HCAPTCHA_SITE_KEY","hCaptcha Site Key","Visit hcaptcha.com for a free public site key for the Request Access form. Leave blank to disable."); %>
-            <% renderField("HCAPTCHA_SECRET_KEY","hCaptcha Secret Key","Visit hcaptcha.com for a free secret key for server-side verification. Leave blank to disable."); %>
           </div>
         
         </div>
