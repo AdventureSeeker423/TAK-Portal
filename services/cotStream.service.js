@@ -523,6 +523,7 @@ function parseMarkerFromCoT(cot) {
     const team = mapMeta.parseTeamName(detail) || null;
     const role = mapMeta.parseTeamRole(detail);
     const platform = mapMeta.parseTakPlatform(detail);
+    const version = mapMeta.parseTakVersion(detail);
     const battery = mapMeta.parseBatteryPercent(detail);
     const { course, speed } = mapMeta.parseCourseAndSpeed(detail, point);
 
@@ -542,6 +543,7 @@ function parseMarkerFromCoT(cot) {
       team,
       role,
       platform,
+      version,
       battery,
       teamColor: mapMeta.parseTeamColor(detail),
       affiliation: mapMeta.parseAffiliationFromType(type),
@@ -1208,7 +1210,21 @@ function buildLiveMarkerBatteryIndex(markerList) {
   return { byCallsign, byUid };
 }
 
-function resolveSubscriptionBattery(sub, index) {
+function buildLiveMarkerVersionIndex(markerList) {
+  const byCallsign = new Map();
+  const byUid = new Map();
+  for (const marker of Array.isArray(markerList) ? markerList : []) {
+    const label = String(marker?.version || "").trim();
+    if (!label) continue;
+    const callsign = String(marker?.callsign || "").trim().toLowerCase();
+    if (callsign && !byCallsign.has(callsign)) byCallsign.set(callsign, label);
+    const uid = String(marker?.uid || "").trim().toLowerCase();
+    if (uid) byUid.set(uid, label);
+  }
+  return { byCallsign, byUid };
+}
+
+function lookupSubscriptionIndex(sub, index) {
   const uidFields = [
     sub?.uid,
     sub?.clientUid,
@@ -1227,12 +1243,49 @@ function resolveSubscriptionBattery(sub, index) {
   return null;
 }
 
-/** Join live CoT marker battery onto Marti subscription rows for dashboard. */
+function resolveSubscriptionBattery(sub, index) {
+  return lookupSubscriptionIndex(sub, index);
+}
+
+function stringifyVersionCandidate(raw) {
+  if (raw == null) return "";
+  if (typeof raw === "object") {
+    const attrs = raw._attributes || raw;
+    return String(attrs.version || attrs.appVersion || "").trim();
+  }
+  return String(raw).trim();
+}
+
+function pickMartiClientVersion(sub) {
+  const candidates = [
+    sub?.takVersion,
+    sub?.appVersion,
+    sub?.clientVersion,
+    sub?.version,
+    sub?.takv,
+  ];
+  for (const raw of candidates) {
+    const s = stringifyVersionCandidate(raw);
+    if (!s || s === "—") continue;
+    if (!/\d/.test(s)) continue;
+    return s;
+  }
+  return null;
+}
+
+function resolveSubscriptionVersion(sub, index) {
+  return lookupSubscriptionIndex(sub, index) || pickMartiClientVersion(sub);
+}
+
+/** Join live CoT marker battery/version onto Marti subscription rows for dashboard. */
 function enrichSubscriptionsWithLiveMarkerBattery(list) {
-  const index = buildLiveMarkerBatteryIndex(getMarkerList());
+  const markers = getMarkerList();
+  const batteryIndex = buildLiveMarkerBatteryIndex(markers);
+  const versionIndex = buildLiveMarkerVersionIndex(markers);
   return (Array.isArray(list) ? list : []).map((sub) => ({
     ...sub,
-    battery: resolveSubscriptionBattery(sub, index),
+    battery: resolveSubscriptionBattery(sub, batteryIndex),
+    version: resolveSubscriptionVersion(sub, versionIndex),
   }));
 }
 

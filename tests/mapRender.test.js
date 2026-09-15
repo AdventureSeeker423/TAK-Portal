@@ -137,6 +137,19 @@ assert.strictEqual(
   "TAKAware-CIV"
 );
 assert.strictEqual(
+  mapMeta.parseTakVersion({
+    takv: { _attributes: { platform: "ATAK-CIV", version: "5.4.0 (47e7b2a2)" } },
+  }),
+  "5.4.0 (47e7b2a2)"
+);
+assert.strictEqual(
+  mapMeta.parseTakVersion({
+    takv: { platform: "iTAK", version: "2.12.3" },
+  }),
+  "2.12.3"
+);
+assert.strictEqual(mapMeta.parseTakVersion({ takv: { platform: "ATAK-CIV" } }), null);
+assert.strictEqual(
   mapMeta.parseBatteryPercent({
     status: { _attributes: { battery: "60" } },
   }),

@@ -653,6 +653,7 @@
         if (key === "callsign") return normalizeConnectedSortValue(row.callsign);
         if (key === "username") return normalizeConnectedSortValue(row.username);
         if (key === "takClient") return normalizeConnectedSortValue(row.takClient);
+        if (key === "version") return normalizeConnectedSortValue(row.version);
         if (key === "battery") return normalizeConnectedSortValue(row.battery);
         if (key === "role") return normalizeConnectedSortValue(row.role);
         return "";
@@ -733,11 +734,25 @@
         return s ? esc(s) : "—";
       }
 
+      function mapConnectedClientRow(item) {
+        return {
+          callsign: item.callsign != null ? String(item.callsign).trim() : "",
+          username: item.username != null ? String(item.username).trim() : "",
+          takClient: item.takClient != null ? String(item.takClient).trim() || "—" : "—",
+          version: item.version != null && String(item.version).trim() !== "—" ? String(item.version).trim() : "",
+          battery: item.battery != null ? String(item.battery).trim() : "",
+          role: item.role != null ? String(item.role).trim() || "—" : "—",
+          team: item.team != null ? String(item.team).trim() : "",
+          subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : "",
+          clientUid: item.clientUid != null ? String(item.clientUid).trim() : ""
+        };
+      }
+
       function fillExpandedTableBody(rows, rawItems) {
         latestSubscriptions = (Array.isArray(rows) ? rows : []).map(function (r, idx) {
           var raw = Array.isArray(rawItems) && rawItems[idx] ? rawItems[idx] : {};
           var merged = Object.assign({}, raw, r);
-          ["takClient", "callsign", "username", "role", "battery"].forEach(function (key) {
+          ["takClient", "callsign", "username", "role", "battery", "version"].forEach(function (key) {
             if (merged[key] === "—") merged[key] = raw[key];
           });
           return merged;
@@ -752,7 +767,7 @@
           }
           var bg = teamToBg(r.team);
           if (bg !== "transparent") tr.style.backgroundColor = bg;
-          tr.innerHTML = "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + esc(r.callsign) + "</div></td><td class=\"ccUsernameCell\" data-label=\"Username\">" + esc(r.username) + "</td><td class=\"ccClientCell\" data-label=\"TAK Client\">" + esc(r.takClient) + "</td><td class=\"ccBatteryCell\" data-label=\"Battery\">" + batteryCell(r.battery) + "</td><td class=\"ccRoleCell\" data-label=\"Role\">" + esc(r.role) + "</td>";
+          tr.innerHTML = "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + esc(r.callsign) + "</div></td><td class=\"ccUsernameCell\" data-label=\"Username\">" + esc(r.username) + "</td><td class=\"ccClientCell\" data-label=\"TAK Client\">" + esc(r.takClient) + "</td><td class=\"ccVersionCell\" data-label=\"Version\">" + batteryCell(r.version) + "</td><td class=\"ccBatteryCell\" data-label=\"Battery\">" + batteryCell(r.battery) + "</td><td class=\"ccRoleCell\" data-label=\"Role\">" + esc(r.role) + "</td>";
           tbody.appendChild(tr);
         });
       }
@@ -768,6 +783,7 @@
           '<th class="sortable" data-key="callsign">Callsign <span class="sortIndicator" aria-hidden="true"></span></th>' +
           '<th class="sortable" data-key="username">Username <span class="sortIndicator" aria-hidden="true"></span></th>' +
           '<th class="sortable" data-key="takClient">TAK Client <span class="sortIndicator" aria-hidden="true"></span></th>' +
+          '<th class="sortable ccVersionHead" data-key="version">Version <span class="sortIndicator" aria-hidden="true"></span></th>' +
           '<th class="sortable" data-key="battery">Battery <span class="sortIndicator" aria-hidden="true"></span></th>' +
           '<th class="sortable" data-key="role">Role <span class="sortIndicator" aria-hidden="true"></span></th>' +
           '</tr></thead>' +
@@ -1451,18 +1467,7 @@
               var list = data.data.filter(function (item) {
                 return !isExcludedConnectedClient(item);
               });
-              var nextRows = list.map(function (item) {
-                return {
-                  callsign: item.callsign != null ? String(item.callsign).trim() : "",
-                  username: item.username != null ? String(item.username).trim() : "",
-                  takClient: item.takClient != null ? String(item.takClient).trim() || "—" : "—",
-                  battery: item.battery != null ? String(item.battery).trim() : "",
-                  role: item.role != null ? String(item.role).trim() || "—" : "—",
-                  team: item.team != null ? String(item.team).trim() : "",
-                  subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : "",
-                  clientUid: item.clientUid != null ? String(item.clientUid).trim() : ""
-                };
-              });
+              var nextRows = list.map(mapConnectedClientRow);
               setConnectedClientsData(nextRows, list);
             })
             .catch(function () {});
@@ -1511,18 +1516,7 @@
             var list = data.data.filter(function (item) {
               return !isExcludedConnectedClient(item);
             });
-            var rows = list.map(function (item) {
-              return {
-                callsign: item.callsign != null ? String(item.callsign).trim() : "",
-                username: item.username != null ? String(item.username).trim() : "",
-                takClient: item.takClient != null ? String(item.takClient).trim() || "—" : "—",
-                battery: item.battery != null ? String(item.battery).trim() : "",
-                role: item.role != null ? String(item.role).trim() || "—" : "—",
-                team: item.team != null ? String(item.team).trim() : "",
-                subscriptionUid: item.subscriptionUid != null ? String(item.subscriptionUid).trim() : "",
-                clientUid: item.clientUid != null ? String(item.clientUid).trim() : ""
-              };
-            });
+            var rows = list.map(mapConnectedClientRow);
             renderExpandedView(rows, list);
           })
           .catch(function () { collapse(); });
@@ -1745,7 +1739,16 @@
   .connected-clients-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   .connected-clients-table th.sortable:hover { text-decoration: underline; }
   .connected-clients-table .sortIndicator { display: inline-block; min-width: 12px; margin-left: 6px; opacity: 0.9; }
-  .connected-clients-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .connected-clients-table .ccVersionHead,
+  .connected-clients-table .ccVersionCell {
+    display: none;
+  }
+  @media (min-width: 1200px) {
+    .connected-clients-table .ccVersionHead,
+    .connected-clients-table .ccVersionCell {
+      display: table-cell;
+    }
+  }
   .connected-clients-table tbody tr:hover { background: var(--hover); }
   @media (max-width: 990px) {
     .connected-clients-table-wrap.listCardTableWrap {
@@ -1779,6 +1782,8 @@
     .connected-clients-table .cardTitleCell { grid-area: title; }
     .connected-clients-table .ccUsernameCell { grid-area: username; }
     .connected-clients-table .ccClientCell { grid-area: tak; }
+    .connected-clients-table .ccVersionHead,
+    .connected-clients-table .ccVersionCell { display: none !important; }
     .connected-clients-table .ccBatteryCell { grid-area: battery; }
     .connected-clients-table .ccRoleCell { grid-area: role; }
     .connected-clients-table.listCardTable tbody tr.emptyStateRow {

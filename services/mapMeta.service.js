@@ -1316,6 +1316,20 @@ function parseTakPlatform(detail) {
   return null;
 }
 
+/** CoT detail.takv version (e.g. 5.4.0 (47e7b2a2)). */
+function parseTakVersion(detail) {
+  const takv = detail?.takv;
+  if (!takv) return null;
+  const list = Array.isArray(takv) ? takv : [takv];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const attrs = item._attributes || item;
+    const version = String(attrs?.version || "").trim();
+    if (version) return version;
+  }
+  return null;
+}
+
 /** CoT detail.status battery percentage when present. */
 function parseBatteryPercent(detail) {
   const status = detail?.status;
@@ -1969,6 +1983,7 @@ module.exports = {
   parseTeamName,
   parseTeamRole,
   parseTakPlatform,
+  parseTakVersion,
   parseBatteryPercent,
   parseCourseAndSpeed,
   parseTeamColor,
