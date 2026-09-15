@@ -119,7 +119,7 @@ const directoryRepo = require("../services/directoryRepo.service");
     activeCertUsernames: ["2888hs"],
   });
   const statusSql = sqlCalls.find((c) => /LIMIT/.test(c.sql) && /FROM users/.test(c.sql));
-  assert.ok(/WHEN last_login IS NOT NULL/.test(statusSql.sql), "status sort should use last_login");
+  assert.ok(/last_login IS NOT NULL/.test(statusSql.sql), "status sort should use last_login");
   assert.ok(/ANY\(\$\d+::text\[\]\)/.test(statusSql.sql), "status sort should include TAK cert usernames");
   assert.ok(
     statusSql.params.some((p) => Array.isArray(p) && p.includes("2888hs")),

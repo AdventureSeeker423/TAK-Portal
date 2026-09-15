@@ -44,7 +44,19 @@ function computePortalRolesFromGroupNames(groupNames) {
   };
 }
 
+function portalPermissionLabelFromGroupNames(groupNames) {
+  const roles = computePortalRolesFromGroupNames(groupNames);
+  if (roles.isGlobalAdmin) return "Global Admin";
+  const n = Array.isArray(roles.allowedAgencySuffixes)
+    ? roles.allowedAgencySuffixes.length
+    : 0;
+  if (n > 1) return "Multi-Agency Admin";
+  if (n >= 1) return "Agency Admin";
+  return "User";
+}
+
 module.exports = {
   computePortalRolesFromGroupNames,
+  portalPermissionLabelFromGroupNames,
   parseGroupList,
 };

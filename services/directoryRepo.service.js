@@ -176,20 +176,77 @@ function sortSql(sortKey, sortDir, params = [], extras = {}) {
     return `lower(NULLIF(btrim(email), '')) ${dir} NULLS LAST, username ASC`;
   }
   if (key === "status" || key === "is_active") {
-    // 0 Disabled, 1 Enabled - No Logins, 2 Enabled — matches the Users page labels.
-    if (extras.takCertsKnown === true && Array.isArray(extras.activeCertUsernames)) {
-      const certs = extras.activeCertUsernames
-        .map((s) => String(s || "").trim().toLowerCase())
-        .filter(Boolean);
-      params.push(certs);
-      const i = params.length;
+    const takKnown = extras.takCertsKnown === true;
+    const certs = takKnown && Array.isArray(extras.activeCertUsernames)
+      ? extras.activeCertUsernames
+          .map((s) => String(s || "").trim().toLowerCase())
+          .filter(Boolean)
+      : null;
+    if (certs) params.push(certs);
+    const certIdx = certs ? params.length : null;
+    const loggedInSql = takKnown
+      ? certIdx
+        ? `(last_login IS NOT NULL OR lower(username) = ANY($${certIdx}::text[]))`
+        : `last_login IS NOT NULL`
+      : `TRUE`;
+
+    const globalPks = Array.isArray(extras.globalAdminGroupPks)
+      ? extras.globalAdminGroupPks.map((s) => String(s || "").trim()).filter(Boolean)
+      : [];
+    const adminPks = Array.isArray(extras.agencyAdminGroupPks)
+      ? extras.agencyAdminGroupPks.map((s) => String(s || "").trim())
+      : [];
+    const adminSfx = Array.isArray(extras.agencyAdminGroupSuffixes)
+      ? extras.agencyAdminGroupSuffixes.map((s) => String(s || "").trim().toLowerCase())
+      : [];
+    const hasRoleSort =
+      adminPks.length === adminSfx.length && (globalPks.length > 0 || adminPks.length > 0);
+
+    if (!hasRoleSort) {
       return `CASE
         WHEN COALESCE(is_active, false) = false THEN 0
-        WHEN last_login IS NOT NULL OR lower(username) = ANY($${i}::text[]) THEN 2
+        WHEN ${loggedInSql} THEN 2
         ELSE 1
       END ${dir}, username ASC`;
     }
-    return `CASE WHEN COALESCE(is_active, false) = false THEN 0 ELSE 1 END ${dir}, username ASC`;
+
+    params.push(globalPks);
+    const gIdx = params.length;
+    params.push(adminPks);
+    const aPkIdx = params.length;
+    params.push(adminSfx);
+    const aSfxIdx = params.length;
+
+    const roleSql = `CASE
+      WHEN EXISTS (
+        SELECT 1 FROM group_members gm
+        JOIN groups g ON g.id = gm.group_id
+        WHERE gm.user_id = users.id
+          AND (COALESCE(g.authentik_pk, '') = ANY($${gIdx}::text[]) OR g.id::text = ANY($${gIdx}::text[]))
+      ) THEN 4
+      WHEN (
+        SELECT COUNT(DISTINCT x.sfx)
+        FROM group_members gm
+        JOIN groups g ON g.id = gm.group_id
+        JOIN unnest($${aPkIdx}::text[], $${aSfxIdx}::text[]) AS x(pk, sfx)
+          ON x.pk = COALESCE(g.authentik_pk, g.id::text)
+        WHERE gm.user_id = users.id
+      ) > 1 THEN 3
+      WHEN (
+        SELECT COUNT(DISTINCT x.sfx)
+        FROM group_members gm
+        JOIN groups g ON g.id = gm.group_id
+        JOIN unnest($${aPkIdx}::text[], $${aSfxIdx}::text[]) AS x(pk, sfx)
+          ON x.pk = COALESCE(g.authentik_pk, g.id::text)
+        WHERE gm.user_id = users.id
+      ) >= 1 THEN 2
+      ELSE 1
+    END`;
+
+    return `CASE
+      WHEN COALESCE(is_active, false) = false THEN 0
+      ELSE (${roleSql}) * 2 - CASE WHEN ${loggedInSql} THEN 0 ELSE 1 END
+    END ${dir}, username ASC`;
   }
   if (key === "agency") {
     return `lower(COALESCE(NULLIF(btrim(agency_abbreviation), ''), NULLIF(btrim(agency), ''), '')) ${dir} NULLS LAST, name ASC, username ASC`;
@@ -457,6 +514,9 @@ async function searchUsersPaged({
   excludeGroupPks,
   takCertsKnown = false,
   activeCertUsernames,
+  globalAdminGroupPks,
+  agencyAdminGroupPks,
+  agencyAdminGroupSuffixes,
 } = {}) {
   const params = [];
   let where = `pending_delete = false`;
@@ -534,6 +594,9 @@ async function searchUsersPaged({
   const orderBy = sortSql(sortKey, sortDir, params, {
     takCertsKnown,
     activeCertUsernames,
+    globalAdminGroupPks,
+    agencyAdminGroupPks,
+    agencyAdminGroupSuffixes,
   });
   params.push(ps, (p - 1) * ps);
   const rows = await db.query(

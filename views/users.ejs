@@ -2015,9 +2015,11 @@ function lastNameForSort(full){
 
 function userStatusLabel(user) {
   if (!user?.is_active) return "Disabled";
-  if (user.hasActiveTakCert || user.hasAuthentikLogin) return "Enabled";
-  if (user.takCertsKnown === true) return "Enabled - No Logins";
-  return "Enabled";
+  const role = String(user.permissionLabel || "User").trim() || "User";
+  if (user.takCertsKnown === true && !user.hasActiveTakCert && !user.hasAuthentikLogin) {
+    return `${role} - No Logins`;
+  }
+  return role;
 }
 
 function applyActiveFlip(row, userPk, newState) {
@@ -2077,7 +2079,7 @@ function renderResults(users){
     const displayName = escapeHtml(u.name || "");
     const email = escapeHtml(u.email || "");
     const statusLabel = escapeHtml(userStatusLabel(u));
-    const noLogins = statusLabel === "Enabled - No Logins";
+    const noLogins = / - No Logins$/.test(statusLabel);
     return `
       <tr class="${u.is_active ? "" : "row-disabled"}${noLogins ? " row-no-logins" : ""}">
         <td class="userUsernameCell cardTitleCell">
@@ -3155,6 +3157,16 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
     pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
     lastConfirmedGroupIds = Array.from(pickedGroupIds);
     selectedUser.__role = roleForUser(selectedUser);
+    selectedUser.permissionLabel =
+      desired === "global_admin"
+        ? "Global Admin"
+        : desiredUi === "multi_agency_admin" ||
+            (desired === "agency_admin" && managedSuffixes.length > 1)
+          ? "Multi-Agency Admin"
+          : desired === "agency_admin"
+            ? "Agency Admin"
+            : "User";
+    selectedUser.statusLabel = userStatusLabel(selectedUser);
     renderGroupChips(selectedUser);
     renderGroupsBox();
     if (permissionsSelect && desired === "agency_admin") {
@@ -3167,7 +3179,20 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
 
     const patch = (u) =>
       String(u.pk) === String(selectedUser.pk)
-        ? { ...u, groups: selectedUser.groups, __role: selectedUser.__role }
+        ? {
+            ...u,
+            groups: selectedUser.groups,
+            __role: selectedUser.__role,
+            permissionLabel:
+              desired === "global_admin"
+                ? "Global Admin"
+                : desiredUi === "multi_agency_admin" ||
+                    (desired === "agency_admin" && managedSuffixes.length > 1)
+                  ? "Multi-Agency Admin"
+                  : desired === "agency_admin"
+                    ? "Agency Admin"
+                    : "User",
+          }
         : u;
     allUsers = (allUsers || []).map(patch);
     const updatedVisible = (window.__lastUsers || []).map(patch);
@@ -3181,7 +3206,7 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
         ? "Permissions updated: Multi-Agency Admin."
         : desired === "agency_admin"
         ? "Permissions updated: Agency Admin."
-        : "Permissions updated: Standard User.";
+        : "Permissions updated: User.";
     if (!silentSuccess) setMsgEl(actionMsg, doneLabel, true);
     return { ok: true, desired };
   } catch (err) {
@@ -4797,6 +4822,13 @@ tr.row-disabled td {
 .usersListTable .userStatusCell.is-no-logins {
   color: var(--muted);
   font-weight: 600;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.usersListTable .userStatusCell {
+  white-space: normal;
+  line-height: 1.25;
 }
 
 /* Mobile: stacked cards with 2-column detail grid */

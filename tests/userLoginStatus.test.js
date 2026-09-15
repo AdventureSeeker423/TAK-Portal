@@ -19,7 +19,7 @@ assert.strictEqual(
     hasAuthentikLogin: false,
     takCertsKnown: true,
   }),
-  "Enabled"
+  "User"
 );
 assert.strictEqual(
   loginStatusLabel({
@@ -27,8 +27,9 @@ assert.strictEqual(
     hasActiveTakCert: false,
     hasAuthentikLogin: true,
     takCertsKnown: true,
+    permissionLabel: "Agency Admin",
   }),
-  "Enabled"
+  "Agency Admin"
 );
 assert.strictEqual(
   loginStatusLabel({
@@ -36,8 +37,9 @@ assert.strictEqual(
     hasActiveTakCert: false,
     hasAuthentikLogin: false,
     takCertsKnown: true,
+    permissionLabel: "Global Admin",
   }),
-  "Enabled - No Logins"
+  "Global Admin - No Logins"
 );
 assert.strictEqual(
   loginStatusLabel({
@@ -45,8 +47,9 @@ assert.strictEqual(
     hasActiveTakCert: false,
     hasAuthentikLogin: false,
     takCertsKnown: false,
+    permissionLabel: "Multi-Agency Admin",
   }),
-  "Enabled"
+  "Multi-Agency Admin"
 );
 
 assert.strictEqual(hasStoredLastLogin(null), false);
@@ -75,6 +78,7 @@ assert.strictEqual(statusSortRank({ is_active: false, takCertsKnown: true }), 0)
 assert.strictEqual(
   statusSortRank({
     is_active: true,
+    permissionLabel: "User",
     hasActiveTakCert: false,
     hasAuthentikLogin: false,
     takCertsKnown: true,
@@ -84,17 +88,27 @@ assert.strictEqual(
 assert.strictEqual(
   statusSortRank({
     is_active: true,
+    permissionLabel: "User",
     hasActiveTakCert: true,
     hasAuthentikLogin: false,
     takCertsKnown: true,
   }),
   2
 );
+assert.strictEqual(
+  statusSortRank({
+    is_active: true,
+    permissionLabel: "Agency Admin",
+    hasAuthentikLogin: true,
+    takCertsKnown: true,
+  }),
+  4
+);
 
 const ordered = [
-  { username: "zulu", is_active: true, hasAuthentikLogin: true, takCertsKnown: true },
+  { username: "zulu", is_active: true, hasAuthentikLogin: true, takCertsKnown: true, permissionLabel: "User" },
   { username: "alpha", is_active: false, takCertsKnown: true },
-  { username: "mike", is_active: true, takCertsKnown: true },
+  { username: "mike", is_active: true, takCertsKnown: true, permissionLabel: "User" },
 ].sort(compareUsersByStatus);
 assert.deepStrictEqual(
   ordered.map((u) => u.username),

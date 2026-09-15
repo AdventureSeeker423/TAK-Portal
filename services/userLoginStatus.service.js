@@ -1,16 +1,30 @@
 /**
- * Users page status: Enabled / Enabled - No Logins / Disabled.
+ * Users page status: portal role, with " - No Logins" when they have never
+ * authenticated (no active TAK cert and no Authentik last_login).
  *
- * "No Logins" = enabled, TAK cert catalog is known, no active (unrevoked,
- * unexpired) cert for creatorDn == username, and Authentik has no last_login.
- * A successful Authentik login flips the row back to Enabled.
+ * Disabled accounts stay "Disabled".
  */
 
 const api = require("./authentik");
 const db = require("./db");
 const tak = require("./tak.service");
+const directoryRepo = require("./directoryRepo.service");
+const authzRoles = require("./authzRoles.service");
+const accessSvc = require("./access.service");
+const agenciesStore = require("./agencies.service");
+const { getString } = require("./env");
 
 const AUTHENTIK_LOGIN_CONCURRENCY = 8;
+const ROLE_SORT_TTL_MS = 5 * 60 * 1000;
+
+const PERMISSION_SORT_INDEX = {
+  User: 1,
+  "Agency Admin": 2,
+  "Multi-Agency Admin": 3,
+  "Global Admin": 4,
+};
+
+let _roleSortCache = { at: 0, value: null };
 
 function parseAuthentikLastLogin(v) {
   if (v == null || v === "" || v === false) return null;
@@ -23,24 +37,43 @@ function hasStoredLastLogin(v) {
   return !!parseAuthentikLastLogin(v);
 }
 
+function hasNoLogins({
+  hasActiveTakCert = false,
+  hasAuthentikLogin = false,
+  takCertsKnown = false,
+} = {}) {
+  return takCertsKnown === true && !hasActiveTakCert && !hasAuthentikLogin;
+}
+
 function loginStatusLabel({
   is_active,
   hasActiveTakCert = false,
   hasAuthentikLogin = false,
   takCertsKnown = false,
+  permissionLabel = "User",
 } = {}) {
   if (!is_active) return "Disabled";
-  if (hasActiveTakCert || hasAuthentikLogin) return "Enabled";
-  if (takCertsKnown) return "Enabled - No Logins";
-  return "Enabled";
+  const role = String(permissionLabel || "User").trim() || "User";
+  if (hasNoLogins({ hasActiveTakCert, hasAuthentikLogin, takCertsKnown })) {
+    return `${role} - No Logins`;
+  }
+  return role;
 }
 
-/** 0 Disabled, 1 Enabled - No Logins, 2 Enabled */
+/**
+ * 0 Disabled, then User / Agency Admin / Multi-Agency Admin / Global Admin,
+ * with each role's "- No Logins" variant immediately before the logged-in one.
+ */
 function statusSortRank(user) {
   if (!user?.is_active) return 0;
-  if (user.hasActiveTakCert || user.hasAuthentikLogin) return 2;
-  if (user.takCertsKnown === true) return 1;
-  return 2;
+  const role = String(user.permissionLabel || "User").trim() || "User";
+  const idx = PERMISSION_SORT_INDEX[role] || 1;
+  const noLogins = hasNoLogins({
+    hasActiveTakCert: !!user.hasActiveTakCert,
+    hasAuthentikLogin: !!user.hasAuthentikLogin,
+    takCertsKnown: user.takCertsKnown === true,
+  });
+  return idx * 2 - (noLogins ? 1 : 0);
 }
 
 function compareUsersByStatus(a, b) {
@@ -49,6 +82,96 @@ function compareUsersByStatus(a, b) {
   return String(a?.username || "").localeCompare(String(b?.username || ""), undefined, {
     sensitivity: "base",
   });
+}
+
+async function getPortalRoleSortContext() {
+  const now = Date.now();
+  if (_roleSortCache.value && now - _roleSortCache.at < ROLE_SORT_TTL_MS) {
+    return _roleSortCache.value;
+  }
+
+  const globalNames = String(getString("PORTAL_AUTH_REQUIRED_GROUP", "") || "")
+    .split(",")
+    .map((g) => String(g || "").trim())
+    .filter(Boolean);
+  const globalGroups = globalNames.length
+    ? await directoryRepo.getGroupsByNames(globalNames)
+    : [];
+  const globalAdminGroupPks = (Array.isArray(globalGroups) ? globalGroups : [])
+    .map((g) => (g?.pk != null ? String(g.pk) : ""))
+    .filter(Boolean);
+
+  const agencies = agenciesStore.load() || [];
+  const names = [];
+  const nameToSuffix = new Map();
+  for (const ag of agencies) {
+    const sfx = String(ag?.suffix || "").trim().toLowerCase();
+    if (!sfx) continue;
+    for (const n of accessSvc.getAgencyAdminGroupNamesForAgency(ag) || []) {
+      const key = String(n || "").trim().toLowerCase();
+      if (!key) continue;
+      names.push(n);
+      nameToSuffix.set(key, sfx);
+    }
+  }
+  const adminGroups = names.length ? await directoryRepo.getGroupsByNames(names) : [];
+  const agencyAdminGroupPks = [];
+  const agencyAdminGroupSuffixes = [];
+  for (const g of Array.isArray(adminGroups) ? adminGroups : []) {
+    const sfx = nameToSuffix.get(String(g?.name || "").trim().toLowerCase());
+    const pk = g?.pk != null ? String(g.pk) : "";
+    const id = g?.id != null ? String(g.id) : "";
+    if (!sfx) continue;
+    if (pk) {
+      agencyAdminGroupPks.push(pk);
+      agencyAdminGroupSuffixes.push(sfx);
+    }
+    if (id && id !== pk) {
+      agencyAdminGroupPks.push(id);
+      agencyAdminGroupSuffixes.push(sfx);
+    }
+  }
+
+  const value = {
+    globalAdminGroupPks,
+    agencyAdminGroupPks,
+    agencyAdminGroupSuffixes,
+  };
+  _roleSortCache = { at: now, value };
+  return value;
+}
+
+function groupNameMapFromGroups(groups) {
+  const map = new Map();
+  for (const g of Array.isArray(groups) ? groups : []) {
+    const name = String(g?.name || "").trim();
+    if (!name) continue;
+    if (g.pk != null) map.set(String(g.pk), name);
+    if (g.id != null) map.set(String(g.id), name);
+    if (g.authentik_pk != null) map.set(String(g.authentik_pk), name);
+  }
+  return map;
+}
+
+async function groupNameByPkForUsers(users, existing) {
+  if (existing instanceof Map) return existing;
+  const pks = [];
+  for (const u of Array.isArray(users) ? users : []) {
+    for (const g of Array.isArray(u?.groups) ? u.groups : []) {
+      const pk = String(g || "").trim();
+      if (pk) pks.push(pk);
+    }
+  }
+  if (!pks.length) return new Map();
+  const named = await directoryRepo.getGroupsByPks(pks);
+  return groupNameMapFromGroups(named);
+}
+
+function permissionLabelForUser(user, groupNameByPk) {
+  const names = (Array.isArray(user?.groups) ? user.groups : [])
+    .map((gid) => String(groupNameByPk.get(String(gid)) || "").trim())
+    .filter(Boolean);
+  return authzRoles.portalPermissionLabelFromGroupNames(names);
 }
 
 async function mapLimit(items, limit, fn) {
@@ -143,6 +266,8 @@ async function annotateUsersLoginStatus(users, opts = {}) {
     certUsernames = takResult.usernames instanceof Set ? takResult.usernames : new Set();
   }
 
+  const groupNameByPk = await groupNameByPkForUsers(list, opts.groupNameByPk);
+
   const liveLogins = anyEnabled
     ? await fetchLiveAuthentikLogins(list, certUsernames, takCertsKnown)
     : new Map();
@@ -152,11 +277,13 @@ async function annotateUsersLoginStatus(users, opts = {}) {
     const hasActiveTakCert = !!(takCertsKnown && uname && certUsernames.has(uname));
     const liveIso = u?.pk != null ? liveLogins.get(String(u.pk)) : null;
     const hasAuthentikLogin = hasStoredLastLogin(u?.last_login) || !!liveIso;
+    const permissionLabel = permissionLabelForUser(u, groupNameByPk);
     const statusLabel = loginStatusLabel({
       is_active: !!u?.is_active,
       hasActiveTakCert,
       hasAuthentikLogin,
       takCertsKnown,
+      permissionLabel,
     });
     return {
       ...u,
@@ -164,6 +291,7 @@ async function annotateUsersLoginStatus(users, opts = {}) {
       hasActiveTakCert,
       hasAuthentikLogin,
       takCertsKnown,
+      permissionLabel,
       statusLabel,
     };
   });
@@ -172,8 +300,10 @@ async function annotateUsersLoginStatus(users, opts = {}) {
 module.exports = {
   parseAuthentikLastLogin,
   hasStoredLastLogin,
+  hasNoLogins,
   loginStatusLabel,
   statusSortRank,
   compareUsersByStatus,
+  getPortalRoleSortContext,
   annotateUsersLoginStatus,
 };

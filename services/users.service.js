@@ -5,6 +5,7 @@ const templatesStore = require("./templates.service");
 const tak = require("./tak.service");
 const settingsSvc = require("./settings.service");
 const accessSvc = require("./access.service");
+const authzRoles = require("./authzRoles.service");
 const { sanitizeCallsign } = require("./callsignSanitize");
 const directoryRepo = require("./directoryRepo.service");
 const authentikOutbox = require("./authentikOutbox.service");
@@ -2018,11 +2019,15 @@ async function searchUsersPaged({
   includeLoginStatus = false,
 } = {}) {
   let takResult = null;
+  let roleSort = {};
   if (includeLoginStatus) {
     takResult = await tak.getActiveCertUsernameSet().catch(() => ({
       ok: false,
       usernames: new Set(),
     }));
+    if (String(sortKey || "").toLowerCase() === "status") {
+      roleSort = await userLoginStatus.getPortalRoleSortContext().catch(() => ({}));
+    }
   }
   const out = await directoryRepo.searchUsersPaged({
     q,
@@ -2034,10 +2039,13 @@ async function searchUsersPaged({
     agencySuffix,
     agencySuffixes,
     excludeGroupPks,
-    includeGroups,
+    includeGroups: includeGroups || includeLoginStatus,
     takCertsKnown: !!(takResult && takResult.ok),
     activeCertUsernames:
       takResult && takResult.ok ? Array.from(takResult.usernames || []) : undefined,
+    globalAdminGroupPks: roleSort.globalAdminGroupPks,
+    agencyAdminGroupPks: roleSort.agencyAdminGroupPks,
+    agencyAdminGroupSuffixes: roleSort.agencyAdminGroupSuffixes,
   });
   if (includeLoginStatus) {
     out.users = await userLoginStatus.annotateUsersLoginStatus(out.users, { takResult });
@@ -4102,19 +4110,11 @@ function isGroupNameHiddenByPrefix(groupName, hiddenPrefixes) {
   );
 }
 
-function resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }) {
-  const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
-  const globalSet = new Set((globalAdminGroupPks || []).map(String));
-  if (groups.some((gid) => globalSet.has(gid))) return "Global Admin";
-
-  for (const gid of groups) {
-    const name = String(groupNameByPk.get(String(gid)) || "")
-      .trim()
-      .toLowerCase();
-    if (name && name.endsWith("-agencyadmin")) return "Agency Admin";
-  }
-
-  return "Standard User";
+function resolvePortalPermissionLabel(user, { groupNameByPk = new Map() } = {}) {
+  const names = (Array.isArray(user?.groups) ? user.groups : [])
+    .map((gid) => String(groupNameByPk.get(String(gid)) || "").trim())
+    .filter(Boolean);
+  return authzRoles.portalPermissionLabelFromGroupNames(names);
 }
 
 function formatUserGroupMemberships(user, groupNameByPk, hiddenGroupPrefixes) {
@@ -4188,13 +4188,18 @@ function buildUsersExportCsv(users, options = {}) {
       agency,
       String(attrs.current_template || "").trim() || "Manual Group Selection",
       normalizeTakRole(attrs.role, DEFAULT_ATAK_ROLE),
-      resolvePortalPermissionLabel(user, { globalAdminGroupPks, groupNameByPk }),
-      userLoginStatus.loginStatusLabel({
-        is_active: !!user?.is_active,
-        hasActiveTakCert: !!user?.hasActiveTakCert,
-        hasAuthentikLogin: !!user?.hasAuthentikLogin,
-        takCertsKnown: user?.takCertsKnown === true,
-      }),
+      user.permissionLabel ||
+        resolvePortalPermissionLabel(user, { groupNameByPk }),
+      user.statusLabel ||
+        userLoginStatus.loginStatusLabel({
+          is_active: !!user?.is_active,
+          hasActiveTakCert: !!user?.hasActiveTakCert,
+          hasAuthentikLogin: !!user?.hasAuthentikLogin,
+          takCertsKnown: user?.takCertsKnown === true,
+          permissionLabel:
+            user.permissionLabel ||
+            resolvePortalPermissionLabel(user, { groupNameByPk }),
+        }),
       formatUserGroupMemberships(user, groupNameByPk, hiddenGroupPrefixes),
     ];
 
