@@ -95,12 +95,183 @@ function normalizeBadge(badge) {
     .replace(/\p{White_Space}+/gu, "");
 }
 
-function validateBadgeNumber(badge) {
+const DEFAULT_USERNAME_PREFIX_LABEL = "Badge Number / Username";
+
+function getUsernamePrefixLabel() {
+  const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
+  return String(settings.USERNAME_PREFIX_LABEL || "").trim() || DEFAULT_USERNAME_PREFIX_LABEL;
+}
+
+function normalizeCsvHeaderName(h) {
+  return String(h || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function csvHeaderKey(h) {
+  return normalizeCsvHeaderName(h).replace(/[^a-z0-9]+/g, "");
+}
+
+/** Minimal CSV line parser (supports quotes / escaped quotes). Used for import headers. */
+function parseCsvHeaderLine(line) {
+  const raw = String(line ?? "");
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (raw[i + 1] === '"') {
+          cur += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (ch === ",") {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function findCsvBadgeColumnIndex(header) {
+  const label = getUsernamePrefixLabel();
+  const aliases = new Set(["badge", csvHeaderKey(label), normalizeCsvHeaderName(label)]);
+  for (let i = 0; i < header.length; i++) {
+    const n = normalizeCsvHeaderName(header[i]);
+    const k = csvHeaderKey(header[i]);
+    if (aliases.has(n) || aliases.has(k)) return i;
+  }
+  return -1;
+}
+
+function csvEscapeIfNeeded(value) {
+  const s = String(value == null ? "" : value);
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function buildUsersImportTemplateCsv() {
+  const header = [
+    getUsernamePrefixLabel(),
+    "agency",
+    "firstName",
+    "lastName",
+    "email",
+    "password",
+    "radioCallsign",
+    "template",
+    "role",
+  ];
+  const rows = [
+    ["1001", "TEST", "John", "Doe", "john.doe@example.org", "Password!23456", "T05", "Patrol", ""],
+    ["1002", "test", "Jane", "Smith", "jane.smith@example.org", "", "", "Patrol", "Team Lead"],
+  ];
+  return (
+    [header.map(csvEscapeIfNeeded).join(",")]
+      .concat(rows.map((r) => r.map(csvEscapeIfNeeded).join(",")))
+      .join("\n") + "\n"
+  );
+}
+
+function buildUsersImportCsvInstructions() {
+  const label = getUsernamePrefixLabel();
+  return `CSV User Creation Instructions
+====================================
+
+Use this with: users-import-template.csv
+
+CSV format (DO NOT change the header line except to optionally omit optional columns):
+${label},agency,firstName,lastName,email,password,radioCallsign,template,role
+
+What each column means:
+1) ${label}
+   - Username base (do not include the agency suffix).
+   - Letters and numbers only (no spaces or special characters).
+   - Older templates may still use the column name "badge".
+
+2) agency
+   - Can be either:
+     a) Agency abbreviation/prefix (example: TEST), OR
+     b) Agency suffix (preferred).
+   - Suffix is preferred as it will lead to less abbreviation conflicts.
+
+3) firstName
+   - User first name.
+
+4) lastName
+   - User last name.
+
+5) email
+   - Optional (can be blank).
+   - Must be a valid email address.
+   - No spaces (example: john.doe@agency.gov is valid, john.doe @agency.gov is NOT).
+
+6) password
+   - Optional (can be blank).
+   - If you enter a password, it MUST include ALL of these:
+     - at least 12 characters
+     - at least 1 lowercase letter
+     - at least 1 uppercase letter
+     - at least 1 number
+     - at least 1 symbol
+
+7) radioCallsign  (optional)
+   - Optional (can be blank or column omitted entirely).
+   - If set, stored on the Authentik user as attribute radio_callsign.
+   - Place before template when included in the header row.
+
+8) template
+   - This is the user group template name to apply to the new user.
+   - Example from sample file: Patrol
+   - The template must already exist for that agency, or that row will fail.
+
+9) role  (optional – last column)
+   - If this column is missing, left blank, or the value is empty, the new user's
+     role is taken from the selected template (same as creating a user in the UI
+     without overriding role).
+   - If you set a value, it must be one of:
+     Team Member, Team Lead, HQ, Sniper, Medic, Forward Observer, RTO, K9
+   - Matching is not case-sensitive (e.g. "team lead" and "Team Lead" are both ok).
+
+Quick rules:
+- Keep the first row (header) as shown; you may omit optional columns
+  (email, radioCallsign, and/or role) for older spreadsheets.
+- The first column header matches Username Descriptor Text in Settings.
+- One user per line.
+- Do not add other extra columns.
+- Save as .csv.
+
+Examples:
+- Good row (role from template, with radio callsign):
+  1001,TEST,John,Doe,john.doe@example.org,Password!23456,HCSO-1001,Patrol,
+- Good row with blank password and explicit role (no radio callsign):
+  1002,test,Jane,Smith,jane.smith@example.org,,,Patrol,Team Lead
+`;
+}
+
+function validateBadgeNumber(badge, descriptorLabel) {
   const b = String(badge || "").trim();
-  if (!b) return "Badge / Username is required.";
+  const name = String(descriptorLabel || "").trim() || "Badge / Username";
+  if (!b) return `${name} is required.`;
   // Allow letters, numbers, periods, dashes, and underscores only.
   if (!/^[A-Za-z0-9._-]+$/.test(b)) {
-    return "Badge / Username can only contain letters, numbers, periods, dashes, and underscores.";
+    return `${name} can only contain letters, numbers, periods, dashes, and underscores.`;
   }
   return null;
 }
@@ -1604,7 +1775,7 @@ async function fetchUsersForDashboardStats() {
 // Bulk CSV import
 // This CSV format is intentionally minimal and strict:
 // REQUIRED columns (case-insensitive):
-//   badge
+//   badge  (or the Username Descriptor Text from Settings)
 //   agency   (suffix or prefix)
 //   firstName
 //   lastName
@@ -1660,9 +1831,10 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
   reportProgress({ phase: "parsing", total: Math.max(0, lines.length - 1), processed: 0, created: 0, skipped: 0, force: true });
 
   // ----------- Columns -----------
-  const header = lines[0].split(",").map(h => h.trim().toLowerCase());
+  const usernamePrefixLabel = getUsernamePrefixLabel();
+  const header = parseCsvHeaderLine(lines[0]).map((h) => h.trim().toLowerCase());
+  const badgeColIdx = findCsvBadgeColumnIndex(header);
   const required = [
-    "badge",
     "agency",
     "firstname",
     "lastname",
@@ -1670,6 +1842,9 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
     "template",
   ];
 
+  if (badgeColIdx < 0) {
+    throw new Error(`Missing required column: ${usernamePrefixLabel}`);
+  }
   for (const req of required) {
     if (!header.includes(req)) {
       throw new Error(`Missing required column: ${req}`);
@@ -1679,6 +1854,10 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
   function get(parts, name) {
     const idx = header.indexOf(name);
     return idx >= 0 ? String(parts[idx] ?? "").trim() : "";
+  }
+
+  function getBadge(parts) {
+    return badgeColIdx >= 0 ? String(parts[badgeColIdx] ?? "").trim() : "";
   }
 
   function getRadioCallsign(parts) {
@@ -1709,7 +1888,7 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
     const lineNum = i + 1;
 
     // Normalize badge so spaces/NBSP/weird chars from CSV (e.g. Excel) are stripped before validation and storage
-    const badge = normalizeBadge(get(parts, "badge"));
+    const badge = normalizeBadge(getBadge(parts));
     const agencyRaw = get(parts, "agency");
     const firstName = get(parts, "firstname");
     const lastName = get(parts, "lastname");
@@ -1737,7 +1916,7 @@ async function importUsersFromCsvBuffer(buffer, opts = {}) {
     if (emailErr) rowErrors.push(emailErr);
 
     // Badge/username base must match the same allowed characters as UI/backend validation.
-    const badgeErr = validateBadgeNumber(badge);
+    const badgeErr = validateBadgeNumber(badge, usernamePrefixLabel);
     if (badgeErr) rowErrors.push(badgeErr);
 
     // Password: blank allowed. If non-blank, must pass validatePassword.
@@ -4225,6 +4404,8 @@ module.exports = {
   findAgencyIntegrationUsersForSuffix,
   deleteIntegrationUser,
   importUsersFromCsvBuffer,
+  buildUsersImportTemplateCsv,
+  buildUsersImportCsvInstructions,
   getUserById,
   findUsers,
   searchUsersPaged,

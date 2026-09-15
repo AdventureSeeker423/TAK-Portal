@@ -3,11 +3,11 @@ CSV User Creation Instructions
 
 Use this with: sample-users.csv
 
-CSV format (DO NOT change the header line except to optionally omit optional columns):
+CSV format (the first column header matches Username Descriptor Text in Settings; older files may still use "badge"):
 badge,agency,firstName,lastName,email,password,radioCallsign,template,role
 
 What each column means:
-1) badge
+1) badge (or Username Descriptor Text from Settings)
    - User badge number / username base (do not include username suffix).
    - Letters and numbers only (no spaces or special characters).
 

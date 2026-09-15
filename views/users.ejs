@@ -513,6 +513,7 @@
 const IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
 const IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+const USERNAME_PREFIX_LABEL = <%- JSON.stringify(usernamePrefixLabel) %>;
 
 const agencySelect = document.getElementById("createAgencySelect");
 const filterAgencySelect = document.getElementById("filterAgencySelect");
@@ -1184,7 +1185,7 @@ if (csvBtn && csvFileInput) {
             const msgs = Array.isArray(f.messages) ? f.messages.join("; ") : String(f.messages || "");
             const bits = [`line ${f.line}`];
             if (f.username) bits.push(f.username);
-            else if (f.badge) bits.push(`badge ${f.badge}`);
+            else if (f.badge) bits.push(`${USERNAME_PREFIX_LABEL} ${f.badge}`);
             return `${bits.join(" · ")} — ${msgs}`;
           });
           message += ` Not imported (${failedCount} row${failedCount === 1 ? "" : "s"}): ${lines.join(" | ")}`;

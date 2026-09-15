@@ -981,16 +981,26 @@ app.get("/users", requirePermission("page.users"), async (req, res) => {
 app.get("/users/manage", requirePermission("page.users"), (req, res) => res.redirect(301, "/users"));
 app.get("/users/create", requirePermission("page.users"), (req, res) => res.redirect(301, "/users"));
 app.get("/sample-users.csv", requirePermission("page.users"), (req, res) => {
-  const filePath = path.join(__dirname, "sample-users.csv");
-  return res.download(filePath, "users-import-template.csv");
+  const csv = usersSvc.buildUsersImportTemplateCsv();
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="users-import-template.csv"'
+  );
+  return res.send(csv);
 });
 app.get("/sample-agencies.csv", requirePermission("page.users"), (req, res) => {
   const filePath = path.join(__dirname, "sample-agencies.csv");
   return res.download(filePath, "agencies-import-template.csv");
 });
 app.get("/csv-instructions-readme.txt", requirePermission("page.users"), (req, res) => {
-  const filePath = path.join(__dirname, "csv-instructions-readme.txt");
-  return res.download(filePath, "csv-instructions-readme.txt");
+  const text = usersSvc.buildUsersImportCsvInstructions();
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="csv-instructions-readme.txt"'
+  );
+  return res.send(text);
 });
 app.get("/groups", async (req, res) => {
   const canSeeChannelPatch =
