@@ -140,13 +140,26 @@ assert.strictEqual(
   mapMeta.parseTakVersion({
     takv: { _attributes: { platform: "ATAK-CIV", version: "5.4.0 (47e7b2a2)" } },
   }),
-  "5.4.0 (47e7b2a2)"
+  "5.4.0"
+);
+assert.strictEqual(
+  mapMeta.parseTakVersion({
+    takv: {
+      platform: "ATAK-CIV",
+      version: "5.6.0.12 (9c9a5897)[playstore].1769863102-CIV",
+    },
+  }),
+  "5.6.0.12"
 );
 assert.strictEqual(
   mapMeta.parseTakVersion({
     takv: { platform: "iTAK", version: "2.12.3" },
   }),
   "2.12.3"
+);
+assert.strictEqual(
+  mapMeta.formatTakVersionLabel("2.0.1.338"),
+  "2.0.1.338"
 );
 assert.strictEqual(mapMeta.parseTakVersion({ takv: { platform: "ATAK-CIV" } }), null);
 assert.strictEqual(

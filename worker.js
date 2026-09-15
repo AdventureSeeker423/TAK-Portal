@@ -155,6 +155,14 @@ async function main() {
   void writeTakDashboard();
 
   try {
+    const userLoginStatus = require("./services/userLoginStatus.service");
+    every(60 * 1000, () => userLoginStatus.refreshStoredUserStatus({ includeTakCerts: true }));
+    void userLoginStatus.refreshStoredUserStatus({ includeTakCerts: true });
+  } catch (e) {
+    console.warn("[worker] user status refresh:", e?.message || e);
+  }
+
+  try {
     const mutualAidSvc = require("./services/mutualAid.service");
     mutualAidSvc.initExpirationScheduler();
   } catch (e) {

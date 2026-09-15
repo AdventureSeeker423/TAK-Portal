@@ -110,21 +110,24 @@ const directoryRepo = require("../services/directoryRepo.service");
 
   sqlCalls.length = 0;
   await directoryRepo.searchUsersPaged({
+    q: "No Logins",
+    page: 1,
+    pageSize: 25,
+    includeGroups: false,
+  });
+  const statusSearch = sqlCalls.find((c) => /COUNT\(\*\)/.test(c.sql));
+  assert.ok(/status_label ILIKE/.test(statusSearch.sql), "search should match stored status_label");
+
+  sqlCalls.length = 0;
+  await directoryRepo.searchUsersPaged({
     page: 1,
     pageSize: 25,
     sortKey: "status",
     sortDir: "asc",
     includeGroups: false,
-    takCertsKnown: true,
-    activeCertUsernames: ["2888hs"],
   });
   const statusSql = sqlCalls.find((c) => /LIMIT/.test(c.sql) && /FROM users/.test(c.sql));
-  assert.ok(/last_login IS NOT NULL/.test(statusSql.sql), "status sort should use last_login");
-  assert.ok(/ANY\(\$\d+::text\[\]\)/.test(statusSql.sql), "status sort should include TAK cert usernames");
-  assert.ok(
-    statusSql.params.some((p) => Array.isArray(p) && p.includes("2888hs")),
-    "status sort should bind active cert usernames"
-  );
+  assert.ok(/status_sort_rank/.test(statusSql.sql), "status sort should use stored status_sort_rank");
 
   const { extractUserColumns, extractGroupColumns } = require("../services/userAttributes.util");
   const userCols = extractUserColumns({

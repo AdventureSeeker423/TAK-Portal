@@ -1214,7 +1214,7 @@ function buildLiveMarkerVersionIndex(markerList) {
   const byCallsign = new Map();
   const byUid = new Map();
   for (const marker of Array.isArray(markerList) ? markerList : []) {
-    const label = String(marker?.version || "").trim();
+    const label = mapMeta.formatTakVersionLabel(marker?.version);
     if (!label) continue;
     const callsign = String(marker?.callsign || "").trim().toLowerCase();
     if (callsign && !byCallsign.has(callsign)) byCallsign.set(callsign, label);
@@ -1251,9 +1251,9 @@ function stringifyVersionCandidate(raw) {
   if (raw == null) return "";
   if (typeof raw === "object") {
     const attrs = raw._attributes || raw;
-    return String(attrs.version || attrs.appVersion || "").trim();
+    return mapMeta.formatTakVersionLabel(attrs.version || attrs.appVersion) || "";
   }
-  return String(raw).trim();
+  return mapMeta.formatTakVersionLabel(raw) || "";
 }
 
 function pickMartiClientVersion(sub) {
@@ -1266,8 +1266,7 @@ function pickMartiClientVersion(sub) {
   ];
   for (const raw of candidates) {
     const s = stringifyVersionCandidate(raw);
-    if (!s || s === "—") continue;
-    if (!/\d/.test(s)) continue;
+    if (!s) continue;
     return s;
   }
   return null;

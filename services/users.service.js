@@ -2018,17 +2018,6 @@ async function searchUsersPaged({
   includeGroups = false,
   includeLoginStatus = false,
 } = {}) {
-  let takResult = null;
-  let roleSort = {};
-  if (includeLoginStatus) {
-    takResult = await tak.getActiveCertUsernameSet().catch(() => ({
-      ok: false,
-      usernames: new Set(),
-    }));
-    if (String(sortKey || "").toLowerCase() === "status") {
-      roleSort = await userLoginStatus.getPortalRoleSortContext().catch(() => ({}));
-    }
-  }
   const out = await directoryRepo.searchUsersPaged({
     q,
     page,
@@ -2039,20 +2028,10 @@ async function searchUsersPaged({
     agencySuffix,
     agencySuffixes,
     excludeGroupPks,
-    includeGroups: includeGroups || includeLoginStatus,
-    takCertsKnown: !!(takResult && takResult.ok),
-    activeCertUsernames:
-      takResult && takResult.ok ? Array.from(takResult.usernames || []) : undefined,
-    globalAdminGroupPks: roleSort.globalAdminGroupPks,
-    agencyAdminGroupPks: roleSort.agencyAdminGroupPks,
-    agencyAdminGroupSuffixes: roleSort.agencyAdminGroupSuffixes,
+    includeGroups,
   });
   if (includeLoginStatus) {
-    out.users = await userLoginStatus.annotateUsersLoginStatus(out.users, { takResult });
-    if (String(sortKey || "").toLowerCase() === "status") {
-      const dir = String(sortDir || "asc").toLowerCase() === "desc" ? -1 : 1;
-      out.users.sort((a, b) => userLoginStatus.compareUsersByStatus(a, b) * dir);
-    }
+    out.users = userLoginStatus.annotateUsersLoginStatus(out.users);
   }
   return out;
 }
@@ -2552,6 +2531,11 @@ async function setUserGroups(userId, groupIds, opts = {}) {
   if (wait) await authentikOutbox.waitForOutbox(outboxId, 8000);
 
   invalidateUsersCache();
+  try {
+    await userLoginStatus.refreshStoredStatusForUserIds([userBefore.uuid || userBefore.id]);
+  } catch (_) {
+    /* worker snapshot will refresh */
+  }
 
   // Notify user via debounced email (do not fail operation if email fails)
   try {
@@ -2617,6 +2601,11 @@ async function toggleUserActive(userId, isActive) {
   await authentikOutbox.waitForOutbox(outboxId, 8000);
 
   invalidateUsersCache();
+  try {
+    await userLoginStatus.refreshStoredStatusForUserIds([userBefore.uuid || userBefore.id]);
+  } catch (_) {
+    /* worker snapshot will refresh */
+  }
   try {
     require("./activeUserGate.service").invalidateActiveUser(userBefore?.username);
   } catch (_) {

@@ -2,20 +2,18 @@
  * Users page status: portal role, with " - No Logins" when they have never
  * authenticated (no active TAK cert and no Authentik last_login).
  *
+ * Role and status are stored on users so the Users page can list/search/sort
+ * without recomputing from groups, TAK certs, or Authentik on every request.
  * Disabled accounts stay "Disabled".
  */
 
-const api = require("./authentik");
 const db = require("./db");
 const tak = require("./tak.service");
-const directoryRepo = require("./directoryRepo.service");
-const authzRoles = require("./authzRoles.service");
 const accessSvc = require("./access.service");
 const agenciesStore = require("./agencies.service");
 const { getString } = require("./env");
 
-const AUTHENTIK_LOGIN_CONCURRENCY = 8;
-const ROLE_SORT_TTL_MS = 5 * 60 * 1000;
+const ROLE_LIST_TTL_MS = 5 * 60 * 1000;
 
 const PERMISSION_SORT_INDEX = {
   User: 1,
@@ -24,7 +22,8 @@ const PERMISSION_SORT_INDEX = {
   "Global Admin": 4,
 };
 
-let _roleSortCache = { at: 0, value: null };
+let _roleNameCache = { at: 0, value: null };
+let _statusRefreshRunning = false;
 
 function parseAuthentikLastLogin(v) {
   if (v == null || v === "" || v === false) return null;
@@ -66,7 +65,7 @@ function loginStatusLabel({
  */
 function statusSortRank(user) {
   if (!user?.is_active) return 0;
-  const role = String(user.permissionLabel || "User").trim() || "User";
+  const role = String(user.permissionLabel || user.portal_role || "User").trim() || "User";
   const idx = PERMISSION_SORT_INDEX[role] || 1;
   const noLogins = hasNoLogins({
     hasActiveTakCert: !!user.hasActiveTakCert,
@@ -84,217 +83,233 @@ function compareUsersByStatus(a, b) {
   });
 }
 
-async function getPortalRoleSortContext() {
+function applyStoredStatusFields(user) {
+  if (!user) return user;
+  const permissionLabel =
+    String(user.permissionLabel || user.portal_role || "").trim() || "User";
+  const hasAuthentikLogin = hasStoredLastLogin(user.last_login) || !!user.hasAuthentikLogin;
+  const hasActiveTakCert = !!user.hasActiveTakCert;
+  const storedLabel = String(user.statusLabel || user.status_label || "").trim();
+  return {
+    ...user,
+    permissionLabel,
+    hasAuthentikLogin,
+    hasActiveTakCert,
+    statusLabel:
+      storedLabel ||
+      loginStatusLabel({
+        is_active: !!user.is_active,
+        hasActiveTakCert,
+        hasAuthentikLogin,
+        takCertsKnown: user.takCertsKnown === true,
+        permissionLabel,
+      }),
+  };
+}
+
+function annotateUsersLoginStatus(users) {
+  return (Array.isArray(users) ? users : []).map(applyStoredStatusFields);
+}
+
+function getPortalRoleNameLists() {
   const now = Date.now();
-  if (_roleSortCache.value && now - _roleSortCache.at < ROLE_SORT_TTL_MS) {
-    return _roleSortCache.value;
+  if (_roleNameCache.value && now - _roleNameCache.at < ROLE_LIST_TTL_MS) {
+    return _roleNameCache.value;
   }
 
   const globalNames = String(getString("PORTAL_AUTH_REQUIRED_GROUP", "") || "")
     .split(",")
-    .map((g) => String(g || "").trim())
-    .filter(Boolean);
-  const globalGroups = globalNames.length
-    ? await directoryRepo.getGroupsByNames(globalNames)
-    : [];
-  const globalAdminGroupPks = (Array.isArray(globalGroups) ? globalGroups : [])
-    .map((g) => (g?.pk != null ? String(g.pk) : ""))
+    .map((g) => String(g || "").trim().toLowerCase())
     .filter(Boolean);
 
+  const adminNames = [];
+  const adminSuffixes = [];
   const agencies = agenciesStore.load() || [];
-  const names = [];
-  const nameToSuffix = new Map();
   for (const ag of agencies) {
     const sfx = String(ag?.suffix || "").trim().toLowerCase();
     if (!sfx) continue;
+    const seen = new Set();
     for (const n of accessSvc.getAgencyAdminGroupNamesForAgency(ag) || []) {
       const key = String(n || "").trim().toLowerCase();
-      if (!key) continue;
-      names.push(n);
-      nameToSuffix.set(key, sfx);
-    }
-  }
-  const adminGroups = names.length ? await directoryRepo.getGroupsByNames(names) : [];
-  const agencyAdminGroupPks = [];
-  const agencyAdminGroupSuffixes = [];
-  for (const g of Array.isArray(adminGroups) ? adminGroups : []) {
-    const sfx = nameToSuffix.get(String(g?.name || "").trim().toLowerCase());
-    const pk = g?.pk != null ? String(g.pk) : "";
-    const id = g?.id != null ? String(g.id) : "";
-    if (!sfx) continue;
-    if (pk) {
-      agencyAdminGroupPks.push(pk);
-      agencyAdminGroupSuffixes.push(sfx);
-    }
-    if (id && id !== pk) {
-      agencyAdminGroupPks.push(id);
-      agencyAdminGroupSuffixes.push(sfx);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      adminNames.push(key);
+      adminSuffixes.push(sfx);
     }
   }
 
-  const value = {
-    globalAdminGroupPks,
-    agencyAdminGroupPks,
-    agencyAdminGroupSuffixes,
-  };
-  _roleSortCache = { at: now, value };
+  const value = { globalNames, adminNames, adminSuffixes };
+  _roleNameCache = { at: now, value };
   return value;
 }
 
-function groupNameMapFromGroups(groups) {
-  const map = new Map();
-  for (const g of Array.isArray(groups) ? groups : []) {
-    const name = String(g?.name || "").trim();
-    if (!name) continue;
-    if (g.pk != null) map.set(String(g.pk), name);
-    if (g.id != null) map.set(String(g.id), name);
-    if (g.authentik_pk != null) map.set(String(g.authentik_pk), name);
-  }
-  return map;
-}
+const STATUS_LABEL_SQL = `CASE
+  WHEN COALESCE(u.is_active, false) = false THEN 'Disabled'
+  WHEN COALESCE(d.tak_certs_known, false) = true
+    AND u.last_login IS NULL
+    AND COALESCE(u.has_active_tak_cert, false) = false
+    THEN COALESCE(NULLIF(btrim(u.portal_role), ''), 'User') || ' - No Logins'
+  ELSE COALESCE(NULLIF(btrim(u.portal_role), ''), 'User')
+END`;
 
-async function groupNameByPkForUsers(users, existing) {
-  if (existing instanceof Map) return existing;
-  const pks = [];
-  for (const u of Array.isArray(users) ? users : []) {
-    for (const g of Array.isArray(u?.groups) ? u.groups : []) {
-      const pk = String(g || "").trim();
-      if (pk) pks.push(pk);
-    }
-  }
-  if (!pks.length) return new Map();
-  const named = await directoryRepo.getGroupsByPks(pks);
-  return groupNameMapFromGroups(named);
-}
+const STATUS_RANK_SQL = `CASE
+  WHEN COALESCE(u.is_active, false) = false THEN 0
+  ELSE (
+    CASE COALESCE(NULLIF(btrim(u.portal_role), ''), 'User')
+      WHEN 'Agency Admin' THEN 2
+      WHEN 'Multi-Agency Admin' THEN 3
+      WHEN 'Global Admin' THEN 4
+      ELSE 1
+    END
+  ) * 2 - CASE
+    WHEN COALESCE(d.tak_certs_known, false) = true
+      AND u.last_login IS NULL
+      AND COALESCE(u.has_active_tak_cert, false) = false
+      THEN 1
+    ELSE 0
+  END
+END`;
 
-function permissionLabelForUser(user, groupNameByPk) {
-  const names = (Array.isArray(user?.groups) ? user.groups : [])
-    .map((gid) => String(groupNameByPk.get(String(gid)) || "").trim())
+async function refreshPortalRoleColumns(userIds) {
+  const { globalNames, adminNames, adminSuffixes } = getPortalRoleNameLists();
+  const ids = (Array.isArray(userIds) ? userIds : [])
+    .map((id) => String(id || "").trim())
     .filter(Boolean);
-  return authzRoles.portalPermissionLabelFromGroupNames(names);
+  const params = [globalNames, adminNames, adminSuffixes];
+  let memberFilter = "";
+  let userFilter = "";
+  if (ids.length) {
+    params.push(ids);
+    memberFilter = `WHERE gm.user_id = ANY($4::uuid[])`;
+    userFilter = `WHERE u2.id = ANY($4::uuid[])`;
+  }
+  await db.query(
+    `UPDATE users u
+     SET portal_role = v.portal_role
+     FROM (
+       SELECT
+         u2.id,
+         CASE
+           WHEN COALESCE(mr.is_global, false) THEN 'Global Admin'
+           WHEN COALESCE(mr.agency_admin_count, 0) > 1 THEN 'Multi-Agency Admin'
+           WHEN COALESCE(mr.agency_admin_count, 0) >= 1 THEN 'Agency Admin'
+           ELSE 'User'
+         END AS portal_role
+       FROM users u2
+       LEFT JOIN (
+         SELECT
+           gm.user_id,
+           BOOL_OR(lower(g.name) = ANY($1::text[])) AS is_global,
+           COUNT(DISTINCT am.suffix) FILTER (WHERE am.suffix IS NOT NULL) AS agency_admin_count
+         FROM group_members gm
+         JOIN groups g ON g.id = gm.group_id
+         LEFT JOIN unnest($2::text[], $3::text[]) AS am(name, suffix)
+           ON lower(g.name) = am.name
+         ${memberFilter}
+         GROUP BY gm.user_id
+       ) mr ON mr.user_id = u2.id
+       ${userFilter}
+     ) v
+     WHERE u.id = v.id
+       AND u.portal_role IS DISTINCT FROM v.portal_role`,
+    params
+  );
 }
 
-async function mapLimit(items, limit, fn) {
-  const list = Array.isArray(items) ? items : [];
-  if (!list.length) return [];
-  const results = new Array(list.length);
-  let next = 0;
-  const n = Math.max(1, Math.min(limit, list.length));
-  async function worker() {
-    while (true) {
-      const i = next++;
-      if (i >= list.length) return;
-      results[i] = await fn(list[i], i);
-    }
-  }
-  await Promise.all(Array.from({ length: n }, () => worker()));
-  return results;
+async function refreshTakCertFlags() {
+  const takResult = await tak.getActiveCertUsernameSet().catch(() => ({
+    ok: false,
+    usernames: new Set(),
+  }));
+  if (!takResult || !takResult.ok) return false;
+
+  const usernames = Array.from(takResult.usernames || []).map((s) =>
+    String(s || "").trim().toLowerCase()
+  );
+  await db.query(
+    `UPDATE users
+     SET has_active_tak_cert = (lower(username) = ANY($1::text[]))
+     WHERE pending_delete = false
+       AND has_active_tak_cert IS DISTINCT FROM (lower(username) = ANY($1::text[]))`,
+    [usernames]
+  );
+  await db.query(
+    `UPDATE directory_sync
+     SET tak_certs_known = true, tak_certs_checked_at = now()
+     WHERE id = 1`
+  );
+  return true;
 }
 
-async function persistLastLogin(authentikPk, iso) {
-  const pk = String(authentikPk || "").trim();
-  if (!pk || !iso) return;
-  try {
-    await db.query(
-      `UPDATE users
-       SET last_login = $2::timestamptz, updated_at = now()
-       WHERE authentik_pk = $1
-         AND (last_login IS NULL OR last_login < $2::timestamptz)`,
-      [pk, iso]
-    );
-  } catch {
-    // Listing still works if the column is missing or the write fails.
-  }
+async function refreshStatusLabelColumns() {
+  await db.query(
+    `UPDATE users u
+     SET
+       status_label = v.status_label,
+       status_sort_rank = v.status_sort_rank
+     FROM (
+       SELECT
+         u.id,
+         ${STATUS_LABEL_SQL} AS status_label,
+         ${STATUS_RANK_SQL} AS status_sort_rank
+       FROM users u
+       CROSS JOIN directory_sync d
+       WHERE d.id = 1
+     ) v
+     WHERE u.id = v.id
+       AND (
+         u.status_label IS DISTINCT FROM v.status_label
+         OR u.status_sort_rank IS DISTINCT FROM v.status_sort_rank
+       )`
+  );
 }
 
-async function fetchAuthentikLastLogin(user) {
-  const pk = user?.pk != null ? String(user.pk).trim() : "";
-  if (!pk) return null;
-  try {
-    const res = await api.get(`/core/users/${encodeURIComponent(pk)}/`, { timeout: 5000 });
-    return parseAuthentikLastLogin(res?.data?.last_login);
-  } catch {
-    return null;
-  }
+async function refreshStoredStatusForUserIds(userIds) {
+  const ids = (Array.isArray(userIds) ? userIds : [])
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  if (!ids.length) return;
+  await refreshPortalRoleColumns(ids);
+  await db.query(
+    `UPDATE users u
+     SET
+       status_label = v.status_label,
+       status_sort_rank = v.status_sort_rank
+     FROM (
+       SELECT
+         u.id,
+         ${STATUS_LABEL_SQL} AS status_label,
+         ${STATUS_RANK_SQL} AS status_sort_rank
+       FROM users u
+       CROSS JOIN directory_sync d
+       WHERE d.id = 1
+         AND u.id = ANY($1::uuid[])
+     ) v
+     WHERE u.id = v.id
+       AND (
+         u.status_label IS DISTINCT FROM v.status_label
+         OR u.status_sort_rank IS DISTINCT FROM v.status_sort_rank
+       )`,
+    [ids]
+  );
 }
 
 /**
- * For enabled users on this page with no stored last_login and no active TAK
- * cert, ask Authentik whether they have ever authenticated.
+ * Worker/sync: write portal_role, TAK cert flags, and status_label in Postgres.
+ * includeTakCerts=false still refreshes role + label from the last successful cert snapshot.
  */
-async function fetchLiveAuthentikLogins(users, certUsernames, takCertsKnown) {
-  const found = new Map();
-  const candidates = (Array.isArray(users) ? users : []).filter((u) => {
-    if (!u?.is_active) return false;
-    if (hasStoredLastLogin(u.last_login)) return false;
-    const uname = String(u.username || "").trim().toLowerCase();
-    if (takCertsKnown && uname && certUsernames.has(uname)) return false;
-    return !!(u.pk != null && String(u.pk).trim());
-  });
-  if (!candidates.length) return found;
-
-  const deadline = Date.now() + 8000;
-  await mapLimit(candidates, AUTHENTIK_LOGIN_CONCURRENCY, async (u) => {
-    if (Date.now() > deadline) return;
-    const iso = await fetchAuthentikLastLogin(u);
-    if (!iso) return;
-    found.set(String(u.pk), iso);
-    void persistLastLogin(u.pk, iso);
-  });
-  return found;
-}
-
-async function annotateUsersLoginStatus(users, opts = {}) {
-  const list = Array.isArray(users) ? users : [];
-  if (!list.length) return list;
-
-  const anyEnabled = list.some((u) => u && u.is_active);
-  let takCertsKnown = false;
-  let certUsernames = new Set();
-  if (opts.takResult) {
-    takCertsKnown = !!opts.takResult.ok;
-    certUsernames =
-      opts.takResult.usernames instanceof Set
-        ? opts.takResult.usernames
-        : new Set(opts.takResult.usernames || []);
-  } else if (anyEnabled) {
-    const takResult = await tak.getActiveCertUsernameSet().catch(() => ({
-      ok: false,
-      usernames: new Set(),
-    }));
-    takCertsKnown = !!takResult.ok;
-    certUsernames = takResult.usernames instanceof Set ? takResult.usernames : new Set();
+async function refreshStoredUserStatus({ includeTakCerts = true } = {}) {
+  if (_statusRefreshRunning) return;
+  _statusRefreshRunning = true;
+  try {
+    await refreshPortalRoleColumns();
+    if (includeTakCerts) await refreshTakCertFlags();
+    await refreshStatusLabelColumns();
+  } catch (e) {
+    console.warn("[user-status] refresh failed:", e?.message || e);
+  } finally {
+    _statusRefreshRunning = false;
   }
-
-  const groupNameByPk = await groupNameByPkForUsers(list, opts.groupNameByPk);
-
-  const liveLogins = anyEnabled
-    ? await fetchLiveAuthentikLogins(list, certUsernames, takCertsKnown)
-    : new Map();
-
-  return list.map((u) => {
-    const uname = String(u?.username || "").trim().toLowerCase();
-    const hasActiveTakCert = !!(takCertsKnown && uname && certUsernames.has(uname));
-    const liveIso = u?.pk != null ? liveLogins.get(String(u.pk)) : null;
-    const hasAuthentikLogin = hasStoredLastLogin(u?.last_login) || !!liveIso;
-    const permissionLabel = permissionLabelForUser(u, groupNameByPk);
-    const statusLabel = loginStatusLabel({
-      is_active: !!u?.is_active,
-      hasActiveTakCert,
-      hasAuthentikLogin,
-      takCertsKnown,
-      permissionLabel,
-    });
-    return {
-      ...u,
-      last_login: liveIso || u?.last_login || null,
-      hasActiveTakCert,
-      hasAuthentikLogin,
-      takCertsKnown,
-      permissionLabel,
-      statusLabel,
-    };
-  });
 }
 
 module.exports = {
@@ -304,6 +319,9 @@ module.exports = {
   loginStatusLabel,
   statusSortRank,
   compareUsersByStatus,
-  getPortalRoleSortContext,
+  applyStoredStatusFields,
   annotateUsersLoginStatus,
+  getPortalRoleNameLists,
+  refreshStoredUserStatus,
+  refreshStoredStatusForUserIds,
 };

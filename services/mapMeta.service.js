@@ -1324,10 +1324,18 @@ function parseTakVersion(detail) {
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
     const attrs = item._attributes || item;
-    const version = String(attrs?.version || "").trim();
+    const version = formatTakVersionLabel(attrs?.version);
     if (version) return version;
   }
   return null;
+}
+
+/** Keep dotted version (5.6.0.12); drop ATAK hash / playstore / flavor suffixes. */
+function formatTakVersionLabel(raw) {
+  const s = String(raw == null ? "" : raw).trim();
+  if (!s || s === "—") return null;
+  const m = s.match(/(\d+(?:\.\d+)+)/);
+  return m ? m[1] : s;
 }
 
 /** CoT detail.status battery percentage when present. */
@@ -1984,6 +1992,7 @@ module.exports = {
   parseTeamRole,
   parseTakPlatform,
   parseTakVersion,
+  formatTakVersionLabel,
   parseBatteryPercent,
   parseCourseAndSpeed,
   parseTeamColor,

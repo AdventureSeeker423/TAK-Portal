@@ -912,9 +912,7 @@ router.get("/export-csv", async (req, res) => {
           String(g.name || "").trim(),
         ])
       );
-      const annotated = await userLoginStatus.annotateUsersLoginStatus(batch, {
-        groupNameByPk,
-      });
+      const annotated = userLoginStatus.annotateUsersLoginStatus(batch);
       const csv = users.buildUsersExportCsv(annotated, {
         groupNameByPk,
         globalAdminGroupPks,

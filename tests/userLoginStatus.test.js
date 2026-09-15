@@ -6,6 +6,7 @@ const {
   parseAuthentikLastLogin,
   statusSortRank,
   compareUsersByStatus,
+  annotateUsersLoginStatus,
 } = require("../services/userLoginStatus.service");
 
 assert.strictEqual(
@@ -114,5 +115,18 @@ assert.deepStrictEqual(
   ordered.map((u) => u.username),
   ["alpha", "mike", "zulu"]
 );
+
+const annotated = annotateUsersLoginStatus([
+  {
+    username: "2888hs",
+    is_active: true,
+    portal_role: "Agency Admin",
+    statusLabel: "Agency Admin - No Logins",
+    last_login: null,
+    hasActiveTakCert: false,
+  },
+]);
+assert.strictEqual(annotated[0].permissionLabel, "Agency Admin");
+assert.strictEqual(annotated[0].statusLabel, "Agency Admin - No Logins");
 
 console.log("userLoginStatus.test.js: ok");

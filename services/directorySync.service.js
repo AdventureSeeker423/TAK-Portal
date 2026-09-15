@@ -513,6 +513,12 @@ async function inboundSnapshot() {
       [users.length, groups.length]
     );
     await writeDashboardStats();
+    try {
+      const userLoginStatus = require("./userLoginStatus.service");
+      await userLoginStatus.refreshStoredUserStatus({ includeTakCerts: false });
+    } catch (e) {
+      console.warn("[directory-sync] user status refresh failed:", e?.message || e);
+    }
   } catch (e) {
     await setDirectoryError(e?.message || String(e));
     console.warn("[directory-sync] snapshot failed:", e?.message || e);
