@@ -3,22 +3,47 @@ const fs = require("fs");
 const path = require("path");
 const router = require("../routes/setupDevice.routes");
 const usersSvc = require("../services/users.service");
+const qrSvc = require("../services/qr.service");
 
 usersSvc.getUserById = async (id) => {
   if (id === "missing") return null;
   if (id === "error") throw new Error("directory unavailable");
   if (id === "active" || id === "disabled") {
-    return { username: String(id), is_active: id !== "disabled" };
+    return {
+      username: String(id),
+      is_active: id !== "disabled",
+      attributes: { role: "Team Member", radio_callsign: "GA1" },
+    };
   }
   // Simulate Authentik uid that does not match local id / authentik_pk.
   return null;
 };
 
 const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+const setupSrc = fs.readFileSync(
+  path.join(__dirname, "..", "routes", "setupDevice.routes.js"),
+  "utf8"
+);
 assert.ok(
   /setup-my-device[\s\S]{0,1200}is_active\s*===\s*false/.test(serverSrc) ||
     /is_active\s*===\s*false[\s\S]{0,400}enrollQrBootstrap/.test(serverSrc),
   "setup-my-device page must refuse enroll QR bootstrap for disabled users"
+);
+assert.ok(
+  setupSrc.includes("getLocalUserForAuth"),
+  "setup-my-device APIs must resolve the session user from the local Postgres directory"
+);
+assert.ok(
+  !/getUserById\(\s*uid\s*\|\|\s*user\.username\s*\)/.test(setupSrc),
+  "preference-data must not look up only by Authentik uid"
+);
+assert.ok(
+  !setupSrc.includes("tokensSvc.getUserIdByUsername"),
+  "preference-data must not resolve users via live Authentik"
+);
+assert.ok(
+  serverSrc.includes("getLocalUserForAuth"),
+  "setup-my-device enroll bootstrap must use the local Postgres user lookup"
 );
 const setupViewSrc = fs.readFileSync(
   path.join(__dirname, "..", "views", "setup-my-device.ejs"),
@@ -28,6 +53,18 @@ assert.ok(
   setupViewSrc.includes("Account is disabled") || setupViewSrc.includes("clearEnrollCache"),
   "setup-my-device client must clear cached QR when enroll is denied"
 );
+
+function getRouteHandler(method, routePath) {
+  const layer = (router.stack || []).find(
+    (l) =>
+      l.route &&
+      l.route.path === routePath &&
+      l.route.methods &&
+      l.route.methods[method]
+  );
+  assert.ok(layer, `missing ${method.toUpperCase()} ${routePath}`);
+  return layer.route.stack[0].handle;
+}
 
 function response() {
   return {
@@ -54,7 +91,43 @@ function response() {
   const uidMissRes = response();
   const uidMiss = await router.requireActiveLoggedIn(uidMissReq, uidMissRes);
   assert.strictEqual(uidMiss.username, "active");
+  assert.strictEqual(uidMiss.localUser.username, "active");
   assert.strictEqual(uidMissRes.statusCode, 200);
+
+  const localFromUsername = await usersSvc.getLocalUserForAuth({
+    uid: "00000000-0000-4000-8000-000000000099",
+    username: "active",
+  });
+  assert.strictEqual(localFromUsername.username, "active");
+
+  const origPref = usersSvc.getPreferenceDataForUser;
+  const origBuildPref = qrSvc.buildPreferenceUrl;
+  const origQr = qrSvc.generateDisplayQrDataUrl;
+  usersSvc.getPreferenceDataForUser = (user) => {
+    assert.strictEqual(user.username, "active");
+    return { callsign: "GA1", teamLabel: "Cyan", roleLabel: "Team Member" };
+  };
+  qrSvc.buildPreferenceUrl = () => "tak://com.atakmap.app/preference?x=1";
+  qrSvc.generateDisplayQrDataUrl = async () => "data:image/png;base64,xx";
+  try {
+    const prefHandler = getRouteHandler("get", "/preference-data");
+    const prefReq = {
+      authentikUser: {
+        uid: "00000000-0000-4000-8000-000000000099",
+        username: "active",
+      },
+    };
+    const prefRes = response();
+    await prefHandler(prefReq, prefRes);
+    assert.strictEqual(prefRes.statusCode, 200);
+    assert.strictEqual(prefRes.body.ok, true);
+    assert.strictEqual(prefRes.body.callsign, "GA1");
+    assert.ok(prefRes.body.qrCode);
+  } finally {
+    usersSvc.getPreferenceDataForUser = origPref;
+    qrSvc.buildPreferenceUrl = origBuildPref;
+    qrSvc.generateDisplayQrDataUrl = origQr;
+  }
 
   const disabledReq = { authentikUser: { uid: "disabled", username: "disabled" } };
   const disabledRes = response();

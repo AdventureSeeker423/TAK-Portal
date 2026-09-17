@@ -21,22 +21,14 @@ async function requireActiveLoggedIn(req, res) {
   const user = requireLoggedIn(req, res);
   if (!user) return null;
 
-  // Prefer uid, but Authentik's uid is often a UUID that is neither local id nor
-  // authentik_pk (numeric). Fall back to username so active users are not
-  // treated as missing/disabled.
-  let localUser = null;
-  const uid = String(user.uid || "").trim();
-  const username = String(user.username || "").trim();
-  if (uid) {
-    localUser = await usersSvc.getUserById(uid);
-  }
-  if (!localUser && username) {
-    localUser = await usersSvc.getUserById(username);
-  }
+  // Postgres-only lookup. Authentik uid is often a UUID that is neither local
+  // users.id nor authentik_pk, so this falls back to username.
+  const localUser = await usersSvc.getLocalUserForAuth(user);
   if (!localUser || localUser.is_active === false) {
     res.status(403).json({ ok: false, error: "Account is disabled" });
     return null;
   }
+  user.localUser = localUser;
   return user;
 }
 
@@ -144,8 +136,7 @@ router.get("/preference-data", async (req, res) => {
     const user = await requireActiveLoggedIn(req, res);
     if (!user) return;
 
-    const uid = String(user.uid || "").trim();
-    const fullUser = await usersSvc.getUserById(uid || user.username);
+    const fullUser = user.localUser || (await usersSvc.getLocalUserForAuth(user));
     if (!fullUser) {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
@@ -197,8 +188,7 @@ router.get("/data-package", async (req, res) => {
 
     let prefs = { callsign: "", teamLabel: "", roleLabel: "" };
     try {
-      const userId = String(user.uid || "").trim() || user.username;
-      const fullUser = await usersSvc.getUserById(userId);
+      const fullUser = user.localUser || (await usersSvc.getLocalUserForAuth(user));
       prefs = usersSvc.getPreferenceDataForUser(fullUser);
     } catch (prefErr) {
       console.warn(

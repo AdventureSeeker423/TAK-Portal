@@ -2877,6 +2877,28 @@ async function getUserById(userId) {
   return user;
 }
 
+/**
+ * Resolve a logged-in Authentik session against the local Postgres directory only.
+ * Authentik's uid header is often a UUID that is neither local users.id nor
+ * authentik_pk (numeric), so fall back to username. Never calls Authentik live.
+ */
+async function getLocalUserForAuth(authUser) {
+  const lookup =
+    typeof module.exports.getUserById === "function"
+      ? module.exports.getUserById
+      : getUserById;
+  const uid = String(authUser?.uid || "").trim();
+  const username = String(authUser?.username || "").trim();
+  let localUser = null;
+  if (uid) {
+    localUser = await lookup(uid);
+  }
+  if (!localUser && username) {
+    localUser = await lookup(username);
+  }
+  return localUser || null;
+}
+
 // Update specific attributes on a user (merging with existing)
 async function updateUserAttributes(userId, changes) {
   await assertUserNotActionLocked(userId, { ignoreLocks: true });
@@ -4407,6 +4429,7 @@ module.exports = {
   buildUsersImportTemplateCsv,
   buildUsersImportCsvInstructions,
   getUserById,
+  getLocalUserForAuth,
   findUsers,
   searchUsersPaged,
   searchUsersByAgencyAbbreviationPaged,
