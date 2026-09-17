@@ -2,7 +2,6 @@ const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const { getString } = require("./env");
-const api = require("./authentik");
 const groupsSvc = require("./groups.service");
 const usersSvc = require("./users.service");
 const store = require("./mutualAid.store");
@@ -523,6 +522,26 @@ function itemsSharingGroupId(items, groupId) {
   return (Array.isArray(items) ? items : []).filter((x) => String(x?.groupId || "") === gid);
 }
 
+async function patchMutualAidDirectoryUser(userId, { name, attributes } = {}) {
+  const id = String(userId || "").trim();
+  if (!id) return;
+  try {
+    const user = await usersSvc.getUserById(id);
+    if (!user) return;
+    if (name) {
+      await usersSvc.updateName(id, name, { waitForOutbox: false, ignoreLocks: true });
+    }
+    if (attributes) {
+      await usersSvc.enqueueLocalUserAttributePatch(user, {
+        ...(user.attributes || {}),
+        ...attributes,
+      });
+    }
+  } catch (_) {
+    /* non-fatal if the directory user is missing */
+  }
+}
+
 async function syncLinkedSubDeployments(items, parentItem, { nextBaseType } = {}) {
   const gid = String(parentItem?.groupId || "").trim();
   if (!gid) return 0;
@@ -543,17 +562,14 @@ async function syncLinkedSubDeployments(items, parentItem, { nextBaseType } = {}
     const childTitle = sanitizeTitle(entry?.title);
 
     if (String(entry?.userId || "").trim()) {
-      await api
-        .patch(`/core/users/${entry.userId}/`, {
-          name: childTitle,
-          attributes: {
-            ...(entry.attributes || {}),
-            mutual_aid: true,
-            mutual_aid_type: subType,
-            mutual_aid_group: String(parentItem?.groupName || entry?.groupName || ""),
-          },
-        })
-        .catch(() => null);
+      await patchMutualAidDirectoryUser(entry.userId, {
+        name: childTitle,
+        attributes: {
+          mutual_aid: true,
+          mutual_aid_type: subType,
+          mutual_aid_group: String(parentItem?.groupName || entry?.groupName || ""),
+        },
+      });
     }
 
     const nextEntry = {
@@ -1105,42 +1121,28 @@ async function create({
           : findGroupAnchorItem(existingItems, String(group.pk)))
       : null;
 
-  // 2) Create user (minimal fields; password is numeric as requested)
+  // 2) Create user locally, then enqueue Authentik create_user (password + groups).
   const password = randomPassword(18);
-  const userPayload = {
-    username,
-    name, // display name
-    is_active: true,
-    password,
-    attributes: {
-      mutual_aid: true,
-      mutual_aid_type: t,
-      mutual_aid_group: groupName,
-    },
+  const attributes = {
+    mutual_aid: true,
+    mutual_aid_type: t,
+    mutual_aid_group: groupName,
   };
-
-  const folderRaw = String(process.env.AUTHENTIK_USER_PATH || "").trim();
-  if (folderRaw) {
-    userPayload.path = String(folderRaw).replace(/^\/+|\/+$/g, "");
+  const { user } = await usersSvc.createDirectoryUser(
+    {
+      username,
+      name,
+      attributes,
+      groupPks: [String(group.pk)],
+      password,
+      sendOnboardingEmail: false,
+    },
+    { waitForOutbox: true }
+  );
+  const userPk = user?.authentik_pk ?? user?.pk;
+  if (userPk == null) {
+    throw new Error("Mutual aid user was created locally but Authentik pk is not available yet.");
   }
-
-  const res = await api.post("/core/users/", userPayload);
-  const user = res.data;
-
-  // IMPORTANT:
-  // Authentik's create-user endpoint may not reliably apply the provided
-  // password field (depending on configuration / permissions). The main
-  // users.service.js was updated to always set passwords using the dedicated
-  // set_password endpoint; mutual-aid users should follow the same pattern
-  // so the stored password always matches the actual Authentik password.
-  await api.post(`/core/users/${user.pk}/set_password/`, { password });
-
-  // 3) Ensure user gets this mutual aid group
-  const finalGroups = [group];
-
-  await api.patch(`/core/users/${user.pk}/`, {
-    groups: finalGroups.map((g) => g.pk),
-  });
 
   // 4) Persist record (stores password so QR can be regenerated later)
   // createdBy:
@@ -1175,7 +1177,7 @@ async function create({
     groupMode: mode,
     groupWasCreated,
     groupMasterId: groupMaster ? String(groupMaster.id) : null,
-    userId: String(user.pk),
+    userId: String(userPk),
     username,
     password,
     expireEnabled: wantExpire,
@@ -1397,20 +1399,14 @@ async function update({ id, type, title, expireEnabled, expireAt, logoFile, remo
 
   // Update display name and MA metadata only; username stays fixed.
   if (String(current.userId || "").trim()) {
-    await api
-      .patch(`/core/users/${current.userId}/`, {
-        name: nextTitle,
-        attributes: {
-          ...(current.attributes || {}),
-          mutual_aid: true,
-          mutual_aid_type: nextType,
-          mutual_aid_group: nextGroupName,
-        },
-      })
-      .catch(() => {
-        // Non-fatal if attribute patch fails due to schema
-        return null;
-      });
+    await patchMutualAidDirectoryUser(current.userId, {
+      name: nextTitle,
+      attributes: {
+        mutual_aid: true,
+        mutual_aid_type: nextType,
+        mutual_aid_group: nextGroupName,
+      },
+    });
   }
 
   const updated = {

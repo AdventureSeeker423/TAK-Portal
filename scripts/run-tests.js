@@ -53,6 +53,7 @@ const TEST_FILES = [
   "mouStore.ensure.test.js",
   "directoryPkText.test.js",
   "groupsMembership.test.js",
+  "directoryWritePath.test.js",
   "userLoginStatus.test.js",
   "backup.test.js",
   "setupDeviceAccess.test.js",

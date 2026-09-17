@@ -1,5 +1,4 @@
 const { getString, getInt, getBool } = require("./env");
-const api = require("./authentik");
 const agenciesStore = require("./agencies.service");
 const templatesStore = require("./templates.service");
 const tak = require("./tak.service");
@@ -1534,6 +1533,82 @@ async function createUser(
   return { user, groups: groupsToApply };
 }
 
+/**
+ * Insert a local directory user and enqueue create_user for the worker.
+ * Used by Mutual Aid (and similar) so the page never live-posts Authentik.
+ */
+async function createDirectoryUser(
+  {
+    username,
+    name,
+    email = "",
+    attributes = {},
+    groupPks = [],
+    password = "",
+    sendOnboardingEmail = false,
+    path: pathOverride,
+  } = {},
+  opts = {}
+) {
+  const uname = String(username || "").trim();
+  if (!uname) throw new Error("Username is required");
+  const displayName = String(name || "").trim();
+  if (!displayName) throw new Error("Name is required");
+
+  const folderRaw =
+    pathOverride != null && String(pathOverride).trim()
+      ? String(pathOverride).trim()
+      : String(getString("AUTHENTIK_USER_PATH", "")).trim();
+  const payloadPath = folderRaw ? normalizePath(folderRaw) : undefined;
+  const ids = (Array.isArray(groupPks) ? groupPks : []).map((x) => String(x).trim()).filter(Boolean);
+  const wait = opts.waitForOutbox !== false && opts.bulk !== true;
+
+  const outboxId = await db.withTransaction(async (c) => {
+    const local = await directoryRepo.insertLocalUser(
+      {
+        username: uname,
+        name: displayName,
+        email: email || null,
+        path: payloadPath || null,
+        attributes: attributes || {},
+        isActive: true,
+      },
+      c
+    );
+    if (ids.length) {
+      await directoryRepo.setUserMemberships(local.uuid || local.id, ids, c);
+    }
+    return authentikOutbox.enqueue(
+      {
+        kind: "create_user",
+        entityType: "user",
+        entityId: local.uuid || local.id,
+        username: uname,
+        payload: {
+          username: uname,
+          email: email || "",
+          name: displayName,
+          path: payloadPath,
+          is_active: true,
+          attributes: attributes || {},
+          groupPks: ids,
+          password: password || "",
+          sendOnboardingEmail: !!sendOnboardingEmail,
+        },
+      },
+      c
+    );
+  });
+
+  if (wait) {
+    await authentikOutbox.waitForOutbox(outboxId, 8000);
+  }
+
+  invalidateUsersCache();
+  const user = await directoryRepo.getUserByUsername(uname);
+  return { user, outboxId };
+}
+
 const INTEGRATION_PREFIX = "nodered-";
 
 function toSlug(s) {
@@ -2402,8 +2477,8 @@ async function runWithConcurrencyLimit(items, limit, worker) {
 }
 
 /**
- * Disable many agency users efficiently: one TAK cert fetch/verify pass, then
- * concurrent Authentik PATCH calls (no redundant GET per user).
+ * Disable many agency users: one TAK cert fetch/verify pass, then Postgres
+ * is_active + patch_user outbox (no live Authentik PATCH).
  */
 async function bulkDisableUsersForAgency(users) {
   const active = (Array.isArray(users) ? users : []).filter((u) => {
@@ -2437,7 +2512,11 @@ async function bulkDisableUsersForAgency(users) {
   await runWithConcurrencyLimit(toDisable, concurrency, async (user) => {
     const userId = String(user.pk ?? user.id);
     try {
-      await api.patch(`/core/users/${userId}/`, { is_active: false });
+      await toggleUserActive(user.uuid || user.id || userId, false, {
+        bulk: true,
+        skipTakCertRevoke: true,
+        waitForOutbox: false,
+      });
       affectedIds.push(userId);
     } catch (err) {
       failures.push({
@@ -2470,8 +2549,7 @@ async function bulkDisableUsersForAgency(users) {
 }
 
 /**
- * Re-enable users previously disabled with an agency. Uses concurrent GET/PATCH
- * and sends re-enable emails for users that were inactive.
+ * Re-enable users previously disabled with an agency via Postgres + patch_user outbox.
  */
 async function bulkEnableUsersForAgency(userIds) {
   const ids = (Array.isArray(userIds) ? userIds : [])
@@ -2489,20 +2567,11 @@ async function bulkEnableUsersForAgency(userIds) {
       const user = await getUserById(userId);
       if (!user) return;
 
-      if (isUserActionLocked(user?.username)) {
-        throw new Error(`Actions are locked for user ${user?.username || userId}`);
-      }
-
-      if (user.is_active) return;
-
-      await api.patch(`/core/users/${userId}/`, { is_active: true });
+      await toggleUserActive(user.uuid || user.id || userId, true, {
+        bulk: true,
+        waitForOutbox: false,
+      });
       reenabledIds.push(String(userId));
-
-      try {
-        await emailUserReenabled(user);
-      } catch (e) {
-        console.error("[EMAIL] user re-enabled notice failed:", e?.message || e);
-      }
     } catch (err) {
       failures.push({
         userId: String(userId),
@@ -2536,7 +2605,7 @@ async function bulkEnableUsersForAgency(userIds) {
 }
 
 /**
- * Delete many agency users: bulk TAK cert revoke, then concurrent Authentik DELETE.
+ * Delete many agency users: bulk TAK cert revoke, then pending_delete + delete_user outbox.
  */
 async function bulkDeleteUsersForAgency(users) {
   const list = (Array.isArray(users) ? users : []).filter((u) => {
@@ -2556,7 +2625,13 @@ async function bulkDeleteUsersForAgency(users) {
   await runWithConcurrencyLimit(list, concurrency, async (user) => {
     const userId = String(user.pk ?? user.id);
     try {
-      await api.delete(`/core/users/${userId}/`);
+      await deleteUser(user.uuid || user.id || userId, {
+        bulk: true,
+        skipTakCertRevoke: true,
+        ignoreLocks: true,
+        waitForOutbox: false,
+        usernameHint: user.username,
+      });
       deletedIds.push(userId);
     } catch (err) {
       failures.push({
@@ -2759,8 +2834,8 @@ async function setUserGroups(userId, groupIds, opts = {}) {
   return ids;
 }
 
-async function toggleUserActive(userId, isActive) {
-  await assertUserNotActionLocked(userId);
+async function toggleUserActive(userId, isActive, opts = {}) {
+  await assertUserNotActionLocked(userId, opts);
 
   let userBefore;
   try {
@@ -2778,7 +2853,7 @@ async function toggleUserActive(userId, isActive) {
   }
 
   // If disabling, revoke + VERIFY TAK certs first (if enabled)
-  if (!isActive) {
+  if (!isActive && !opts.skipTakCertRevoke) {
     const shouldRevoke = getBool("TAK_REVOKE_ON_DISABLE", true);
 
     if (shouldRevoke) {
@@ -2790,6 +2865,7 @@ async function toggleUserActive(userId, isActive) {
     }
   }
 
+  const wait = opts.waitForOutbox !== false && opts.bulk !== true;
   const outboxId = await db.withTransaction(async (c) => {
     await directoryRepo.updateLocalUser(userBefore.uuid || userBefore.id, { is_active: !!isActive }, c);
     return authentikOutbox.enqueue(
@@ -2804,7 +2880,7 @@ async function toggleUserActive(userId, isActive) {
       c
     );
   });
-  await authentikOutbox.waitForOutbox(outboxId, 8000);
+  if (wait) await authentikOutbox.waitForOutbox(outboxId, 8000);
 
   invalidateUsersCache();
   try {
@@ -2845,6 +2921,7 @@ async function deleteUser(userId, opts = {}) {
 
   if (!user) return true;
 
+  const wait = opts.waitForOutbox !== false && opts.bulk !== true;
   const outboxId = await db.withTransaction(async (c) => {
     await directoryRepo.updateLocalUser(user.uuid || user.id, { pending_delete: true }, c);
     return authentikOutbox.enqueue(
@@ -2859,17 +2936,18 @@ async function deleteUser(userId, opts = {}) {
       c
     );
   });
-  await authentikOutbox.waitForOutbox(outboxId, 8000);
+  if (wait) await authentikOutbox.waitForOutbox(outboxId, 8000);
   invalidateUsersCache();
   return true;
 }
 
-async function updateName(userId, name) {
-  await assertUserNotActionLocked(userId);
+async function updateName(userId, name, opts = {}) {
+  await assertUserNotActionLocked(userId, opts);
   const n = String(name || "").trim();
   if (!n) throw new Error("Name is required");
   const user = await directoryRepo.getUserById(userId);
   if (!user) throw new Error("User not found");
+  const wait = opts.waitForOutbox !== false && opts.bulk !== true;
   const outboxId = await db.withTransaction(async (c) => {
     await directoryRepo.updateLocalUser(user.uuid || user.id, { name: n }, c);
     return authentikOutbox.enqueue(
@@ -2884,7 +2962,7 @@ async function updateName(userId, name) {
       c
     );
   });
-  await authentikOutbox.waitForOutbox(outboxId, 8000);
+  if (wait) await authentikOutbox.waitForOutbox(outboxId, 8000);
 }
 
 // Fetch single user (if you don't already have it)
@@ -3887,9 +3965,12 @@ async function backfillMissingUserRoles({ dryRun = true } = {}) {
 
     if (!dryRun) {
       try {
-        await api.patch(`/core/users/${user.pk}/`, { attributes: newAttrs });
+        if (!String(user?.uuid || user?.id || "").trim()) {
+          throw new Error("Missing local user id");
+        }
+        await enqueueLocalUserAttributePatch(user, newAttrs);
       } catch (err) {
-        // Ignore accounts Authentik will not allow us to update (common for internal service accounts).
+        // Ignore accounts we cannot update locally (common for incomplete directory rows).
         skipped += 1;
         if (skippedUsers.length < 100) {
           skippedUsers.push(String(user?.username || user?.pk || ""));
@@ -4515,6 +4596,7 @@ module.exports = {
   // user ops
   userExists,
   createUser,
+  createDirectoryUser,
   createIntegrationUser,
   getStreamingDataFeedNameForTitle,
   STREAMING_DATA_FEED_NAME_MAX_LEN,
@@ -4539,6 +4621,7 @@ module.exports = {
   resendOnboardingEmail,
   updateEmail,
   updateName,
+  enqueueLocalUserAttributePatch,
   setUserGroups,
   updateUserAttributes,
   updateRadioCallsign,
