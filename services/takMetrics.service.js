@@ -26,6 +26,7 @@ const https = require("https");
 const axios = require("axios");
 const { URL } = require("url");
 const { getBool, getString } = require("./env");
+const { attachCookieStore, getSharedTakCookieStore } = require("./takHttpSession");
 
 function resolvePathMaybe(p) {
   const v = String(p || "").trim();
@@ -100,6 +101,7 @@ function buildTakAxios() {
   const caPath = resolvePathMaybe(getString("TAK_CA_PATH", ""));
 
   const agentOptions = {
+    keepAlive: true,
     ca: caPath ? fs.readFileSync(caPath) : undefined,
     rejectUnauthorized: true,
     // keep previous behavior (skip hostname verification)
@@ -130,6 +132,8 @@ function buildTakAxios() {
     validateStatus: (s) => s >= 200 && s < 500,
   });
 
+  attachCookieStore(client, getSharedTakCookieStore());
+
   if (TAK_DEBUG) {
     client.interceptors.request.use((cfg) => {
       // eslint-disable-next-line no-console
@@ -144,6 +148,13 @@ function buildTakAxios() {
   }
 
   return client;
+}
+
+let _metricsAxios = null;
+
+function getMetricsAxios() {
+  if (!_metricsAxios) _metricsAxios = buildTakAxios();
+  return _metricsAxios;
 }
 
 /**
@@ -378,7 +389,7 @@ async function buildTakMetricsSnapshot() {
   const root = getHostRootFromTakUrl(base);
   const actuatorBase = root;
 
-  const client = buildTakAxios();
+  const client = getMetricsAxios();
 
   // Start background sampler (collects samples even if snapshot isn't called often)
   startSamplerIfNeeded({ client, actuatorBase });
@@ -610,7 +621,7 @@ async function fetchSubscriptionsAll() {
   }
 
   const base = normalizeBase(takUrl);
-  const client = buildTakAxios();
+  const client = getMetricsAxios();
   const url = `${base}/api/subscriptions/all`;
 
   try {

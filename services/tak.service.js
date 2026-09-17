@@ -36,6 +36,7 @@ const path = require("path");
 const https = require("https");
 const axios = require("axios");
 const { getBool, getString } = require("./env");
+const { attachCookieStore, getSharedTakCookieStore } = require("./takHttpSession");
 
 // IMPORTANT: env.js reads from settingsStore first, then process.env.
 // We need the same behavior here, but ALSO need to support empty string
@@ -202,7 +203,69 @@ function getTakTlsAuth(options = {}) {
  *   timeout?: number;
  * }} [options] - allowInsecureServer: skip server cert verify (locate relay). baseURL/timeout: optional overrides (locate relay uses locate API origin, not Marti).
  */
-function buildTakAxios(options = {}) {
+function withDefaultTimeout(client, timeoutMs) {
+  if (typeof timeoutMs !== "number") return client;
+  const merge = (config) => {
+    const next = { ...(config || {}) };
+    if (typeof next.timeout !== "number") next.timeout = timeoutMs;
+    return next;
+  };
+  return {
+    get: (url, config) => client.get(url, merge(config)),
+    delete: (url, config) => client.delete(url, merge(config)),
+    head: (url, config) => client.head(url, merge(config)),
+    options: (url, config) => client.options(url, merge(config)),
+    post: (url, data, config) => client.post(url, data, merge(config)),
+    put: (url, data, config) => client.put(url, data, merge(config)),
+    patch: (url, data, config) => client.patch(url, data, merge(config)),
+    request: (config) => client.request(merge(config)),
+  };
+}
+
+function attachTakDebugInterceptors(client) {
+  const TAK_DEBUG = getBool("TAK_DEBUG", false);
+  if (!TAK_DEBUG || client.__takDebugAttached) return client;
+  client.__takDebugAttached = true;
+
+  const fullUrl = (config) => {
+    const base = config.baseURL || "";
+    const url = config.url || "";
+    return base.replace(/\/+$/, "") + "/" + String(url).replace(/^\/+/, "");
+  };
+
+  client.interceptors.request.use((config) => {
+    console.log(
+      "\n[TAK REQ]",
+      (config.method || "get").toUpperCase(),
+      fullUrl(config)
+    );
+    if (config.params) console.log("[TAK REQ params]", config.params);
+    if (config.data) console.log("[TAK REQ body]", config.data);
+    return config;
+  });
+
+  client.interceptors.response.use(
+    (res) => {
+      console.log("[TAK RES]", res.status, res.config?.url);
+      if (res.data && typeof res.data === "object" && !Array.isArray(res.data)) {
+        console.log("[TAK RES keys]", Object.keys(res.data).slice(0, 30));
+      }
+      return res;
+    },
+    (err) => {
+      if (err.response) {
+        console.error("[TAK ERR]", err.response.status, err.config?.url);
+        console.error("[TAK ERR body]", err.response.data);
+      } else {
+        console.error("[TAK NET ERR]", err.message);
+      }
+      return Promise.reject(err);
+    }
+  );
+  return client;
+}
+
+function createTakAxiosClient(options = {}) {
   const TAK_DEBUG = getBool("TAK_DEBUG", false);
 
   if (TAK_DEBUG) {
@@ -220,6 +283,7 @@ function buildTakAxios(options = {}) {
   const tlsAuth = getTakTlsAuth(options);
 
   const agentOptions = {
+    keepAlive: true,
     ca: tlsAuth.ca,
     rejectUnauthorized: tlsAuth.rejectUnauthorized !== false,
     checkServerIdentity: () => undefined,
@@ -238,45 +302,39 @@ function buildTakAxios(options = {}) {
     timeout: typeof options.timeout === "number" ? options.timeout : 5000,
   });
 
-  if (TAK_DEBUG) {
-    const fullUrl = (config) => {
-      const base = config.baseURL || "";
-      const url = config.url || "";
-      return base.replace(/\/+$/, "") + "/" + String(url).replace(/^\/+/, "");
-    };
-
-    client.interceptors.request.use((config) => {
-      console.log(
-        "\n[TAK REQ]",
-        (config.method || "get").toUpperCase(),
-        fullUrl(config)
-      );
-      if (config.params) console.log("[TAK REQ params]", config.params);
-      if (config.data) console.log("[TAK REQ body]", config.data);
-      return config;
-    });
-
-    client.interceptors.response.use(
-      (res) => {
-        console.log("[TAK RES]", res.status, res.config?.url);
-        if (res.data && typeof res.data === "object" && !Array.isArray(res.data)) {
-          console.log("[TAK RES keys]", Object.keys(res.data).slice(0, 30));
-        }
-        return res;
-      },
-      (err) => {
-        if (err.response) {
-          console.error("[TAK ERR]", err.response.status, err.config?.url);
-          console.error("[TAK ERR body]", err.response.data);
-        } else {
-          console.error("[TAK NET ERR]", err.message);
-        }
-        return Promise.reject(err);
-      }
-    );
+  const shareCookies = options.allowInsecureServer !== true;
+  if (shareCookies) {
+    attachCookieStore(client, getSharedTakCookieStore());
   }
 
+  attachTakDebugInterceptors(client);
   return client;
+}
+
+let _martiAxios = null;
+let _martiAxiosKey = "";
+
+function getDefaultMartiAxios() {
+  let key = "marti";
+  try {
+    key = `marti:${getTakBaseUrl()}`;
+  } catch (_) {
+    key = "marti";
+  }
+  if (_martiAxios && _martiAxiosKey === key) return _martiAxios;
+  _martiAxios = createTakAxiosClient();
+  _martiAxiosKey = key;
+  return _martiAxios;
+}
+
+function buildTakAxios(options = {}) {
+  const customBase = options.baseURL !== undefined;
+  const insecure = options.allowInsecureServer === true;
+  const client =
+    !customBase && !insecure
+      ? getDefaultMartiAxios()
+      : createTakAxiosClient(options);
+  return withDefaultTimeout(client, options.timeout);
 }
 
 /**
