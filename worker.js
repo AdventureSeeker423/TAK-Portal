@@ -7,6 +7,7 @@ const directorySync = require("./services/directorySync.service");
 const pgCache = require("./services/pgCache");
 const axios = require("axios");
 const pkg = require("./package.json");
+const appVersion = require("./services/appVersion.service");
 
 const INBOUND_SECONDS = Number(process.env.AUTHENTIK_INBOUND_SYNC_SECONDS || 30) || 30;
 
@@ -14,21 +15,7 @@ let _stopping = false;
 const _timers = [];
 
 function stripVersionPrefix(v) {
-  return String(v || "")
-    .trim()
-    .replace(/^v/i, "");
-}
-
-function isNewerVersion(latest, current) {
-  const toParts = (v) =>
-    String(v || "0.0.0")
-      .split(".")
-      .map((n) => parseInt(n, 10) || 0);
-  const [la, lb, lc] = toParts(latest);
-  const [ca, cb, cc] = toParts(current);
-  if (la !== ca) return la > ca;
-  if (lb !== cb) return lb > cb;
-  return lc > cc;
+  return appVersion.stripVersionPrefix(v);
 }
 
 async function writeAppUpdateMeta() {
@@ -44,7 +31,7 @@ async function writeAppUpdateMeta() {
     });
     const tag = stripVersionPrefix((response.data && response.data.tag_name) || "");
     if (!/^\d+\.\d+\.\d+/.test(tag)) return;
-    const updateAvailable = isNewerVersion(tag, pkg.version || "0.0.0");
+    const updateAvailable = appVersion.isUpdateAvailable(tag, pkg);
     await db.query(
       `INSERT INTO app_update_meta (id, latest, update_available, checked_at)
        VALUES (1, $1, $2, now())

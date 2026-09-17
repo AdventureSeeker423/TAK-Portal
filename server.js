@@ -10,6 +10,7 @@ const axios = require("axios");
 const { getString, getBool, isLiveMapEnabled } = require("./services/env");
 const { URL } = require("url");
 const pkg = require("./package.json");
+const appVersion = require("./services/appVersion.service");
 const mutualAidSvc = require("./services/mutualAid.service");
 const portalAuth = require("./services/portalAuth.middleware");
 const portalAuthEnrich = require("./services/portalAuthEnrich.middleware");
@@ -79,21 +80,6 @@ app.locals.APP_IS_BETA_BUILD = Boolean(
 app.locals.APP_LATEST_VERSION = APP_STABLE_VERSION;
 app.locals.APP_UPDATE_AVAILABLE = false;
 
-// Simple semver compare: returns true if `latest` > `current`
-function isNewerVersion(latest, current) {
-  const toParts = (v) =>
-    String(v || "0.0.0")
-      .split(".")
-      .map((n) => parseInt(n, 10) || 0);
-
-  const [la, lb, lc] = toParts(latest);
-  const [ca, cb, cc] = toParts(current);
-
-  if (la !== ca) return la > ca;
-  if (lb !== cb) return lb > cb;
-  return lc > cc;
-}
-
 let loggedAvailableUpdateVersion = null;
 
 async function refreshAppUpdateLocals() {
@@ -104,10 +90,11 @@ async function refreshAppUpdateLocals() {
     const row = r.rows[0];
     if (!row) return;
     if (row.latest) app.locals.APP_LATEST_VERSION = row.latest;
-    app.locals.APP_UPDATE_AVAILABLE = !!row.update_available;
+    const running = appVersion.runningVersion(pkg);
+    app.locals.APP_UPDATE_AVAILABLE = appVersion.isUpdateAvailable(row.latest, pkg);
     if (app.locals.APP_UPDATE_AVAILABLE && loggedAvailableUpdateVersion !== row.latest) {
       loggedAvailableUpdateVersion = row.latest;
-      console.log(`[update] ${app.locals.APP_VERSION} → ${row.latest} available`);
+      console.log(`[update] ${running} → ${row.latest} available`);
     }
   } catch (_) {}
 }
