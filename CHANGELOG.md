@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.4 - 9/17/26
+🐛 `Bug Fix` - Fixes issue with non-functioning / improper logic for preference QR codes on the setup my device page
+
 ### v2.0.3 - 9/16/26
 🐛 `Bug Fix` - Fixes issue with a small memory leak caused by TAK Portal.  Fix implemented to reuse and reduce tomcat sessions.<br>
 🐛 `Bug Fix` - Fixes issue with the Update Available pill showing when the beta version is ahead of the stable version
