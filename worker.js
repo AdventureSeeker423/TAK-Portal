@@ -30,7 +30,8 @@ async function writeAppUpdateMeta() {
       },
     });
     const tag = stripVersionPrefix((response.data && response.data.tag_name) || "");
-    if (!/^\d+\.\d+\.\d+/.test(tag)) return;
+    if (!appVersion.isStableSemver(tag)) return;
+    if (response.data && response.data.prerelease) return;
     const updateAvailable = appVersion.isUpdateAvailable(tag, pkg);
     await db.query(
       `INSERT INTO app_update_meta (id, latest, update_available, checked_at)

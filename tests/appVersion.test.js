@@ -34,7 +34,17 @@ assert.strictEqual(
 );
 assert.strictEqual(
   isUpdateAvailable("2.0.4", { version: "2.0.2", "beta-version": "2.0.3" }),
-  true
+  true,
+  "pill only when installed beta is behind a newer stable"
+);
+assert.strictEqual(
+  isUpdateAvailable("2.0.4-beta", { version: "2.0.2", "beta-version": "2.0.3" }),
+  false,
+  "never flag a newer beta tag"
+);
+assert.strictEqual(
+  isUpdateAvailable("v2.0.4-rc.1", { version: "2.0.2" }),
+  false
 );
 
 console.log("appVersion.test.js: ok");

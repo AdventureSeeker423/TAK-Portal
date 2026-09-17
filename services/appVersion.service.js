@@ -1,7 +1,6 @@
 /**
- * Installed app version vs GitHub latest.
- * `package.json` `version` is the last stable; `beta-version` is the running
- * post-stable build when present and newer.
+ * Installed app version vs GitHub latest *stable* release.
+ * Never flags a newer beta. The pill is only for being behind that stable tag.
  */
 "use strict";
 
@@ -9,6 +8,10 @@ function stripVersionPrefix(v) {
   return String(v || "")
     .trim()
     .replace(/^v/i, "");
+}
+
+function isStableSemver(v) {
+  return /^\d+\.\d+\.\d+$/.test(stripVersionPrefix(v));
 }
 
 function isNewerVersion(latest, current) {
@@ -30,14 +33,15 @@ function runningVersion(pkg) {
   return stable || "0.0.0";
 }
 
-function isUpdateAvailable(latest, pkg) {
-  const tag = stripVersionPrefix(latest);
-  if (!/^\d+\.\d+\.\d+/.test(tag)) return false;
+function isUpdateAvailable(latestStable, pkg) {
+  if (!isStableSemver(latestStable)) return false;
+  const tag = stripVersionPrefix(latestStable);
   return isNewerVersion(tag, runningVersion(pkg));
 }
 
 module.exports = {
   stripVersionPrefix,
+  isStableSemver,
   isNewerVersion,
   runningVersion,
   isUpdateAvailable,
