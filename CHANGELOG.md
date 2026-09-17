@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.3 - 9/16/26
+🐛 `Bug Fix` - Fixes issue with a small memory leak caused by TAK Portal.  Fix implemented to reuse and reduce tomcat sessions.<br>
+🐛 `Bug Fix` - Fixes issue with the Update Available pill showing when the beta version is ahead of the stable version
+
 ### v2.0.2 - 9/16/26
 ✨ `Enhancement` - Dashboard - Client version added on desktop view<br>
 ✨ `Enhancement` - Users - Database built for Status column to include the role of the user and flag users that have never signed into Authentik or generated a TAK client cert<br>
