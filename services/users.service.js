@@ -591,6 +591,33 @@ function getPreferenceDataForUser(user) {
   };
 }
 
+/**
+ * Same preference QR payload used by the Users page and Setup My Device.
+ * Reads the local Postgres user row only; does not call Authentik live.
+ */
+async function buildPreferenceQrForUser(targetUser) {
+  if (!targetUser || targetUser.pk == null) return null;
+  const pref = getPreferenceDataForUser(targetUser);
+  const qrSvc = require("./qr.service");
+  const preferenceUrl = qrSvc.buildPreferenceUrl({
+    callsign: pref.callsign,
+    teamLabel: pref.teamLabel,
+    roleLabel: pref.roleLabel,
+  });
+  let qrCode = null;
+  if (preferenceUrl) {
+    qrCode = await qrSvc.generateDisplayQrDataUrl(preferenceUrl);
+  }
+  return {
+    username: String(targetUser.username || "").trim(),
+    callsign: pref.callsign,
+    teamLabel: pref.teamLabel,
+    roleLabel: pref.roleLabel,
+    preferenceUrl: preferenceUrl || "",
+    qrCode,
+  };
+}
+
 function getTakPortalPublicUrl() {
   try {
     const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
@@ -2887,16 +2914,18 @@ async function getLocalUserForAuth(authUser) {
     typeof module.exports.getUserById === "function"
       ? module.exports.getUserById
       : getUserById;
-  const uid = String(authUser?.uid || "").trim();
   const username = String(authUser?.username || "").trim();
+  const uid = String(authUser?.uid || "").trim();
   let localUser = null;
-  if (uid) {
-    localUser = await lookup(uid);
-  }
-  if (!localUser && username) {
+  // Username is the same directory key the Users page uses when pk is not in session.
+  if (username) {
     localUser = await lookup(username);
   }
-  return localUser || null;
+  if (!localUser && uid && uid.toLowerCase() !== username.toLowerCase()) {
+    localUser = await lookup(uid);
+  }
+  if (!localUser || localUser.pk == null) return null;
+  return localUser;
 }
 
 // Update specific attributes on a user (merging with existing)
@@ -4413,8 +4442,9 @@ module.exports = {
   invalidateUsersCache,
   invalidateGroupsCache,
 
-  // preference data for setup-my-device (Android Step 3)
+  // preference data / QR (Users page + setup-my-device)
   getPreferenceDataForUser,
+  buildPreferenceQrForUser,
 
   // user ops
   userExists,

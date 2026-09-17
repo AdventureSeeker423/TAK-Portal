@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 const router = require("../routes/setupDevice.routes");
 const usersSvc = require("../services/users.service");
-const qrSvc = require("../services/qr.service");
 
 usersSvc.getUserById = async (id) => {
   if (id === "missing") return null;
@@ -11,6 +10,7 @@ usersSvc.getUserById = async (id) => {
   if (id === "active" || id === "disabled") {
     return {
       username: String(id),
+      pk: String(id),
       is_active: id !== "disabled",
       attributes: { role: "Team Member", radio_callsign: "GA1" },
     };
@@ -32,6 +32,18 @@ assert.ok(
 assert.ok(
   setupSrc.includes("getLocalUserForAuth"),
   "setup-my-device APIs must resolve the session user from the local Postgres directory"
+);
+assert.ok(
+  setupSrc.includes("buildPreferenceQrForUser"),
+  "setup-my-device preference QR must use the same builder as the Users page"
+);
+const usersRouteSrc = fs.readFileSync(
+  path.join(__dirname, "..", "routes", "users.routes.js"),
+  "utf8"
+);
+assert.ok(
+  usersRouteSrc.includes("buildPreferenceQrForUser"),
+  "Users page preference QR must use the shared Postgres builder"
 );
 assert.ok(
   !/getUserById\(\s*uid\s*\|\|\s*user\.username\s*\)/.test(setupSrc),
@@ -100,15 +112,19 @@ function response() {
   });
   assert.strictEqual(localFromUsername.username, "active");
 
-  const origPref = usersSvc.getPreferenceDataForUser;
-  const origBuildPref = qrSvc.buildPreferenceUrl;
-  const origQr = qrSvc.generateDisplayQrDataUrl;
-  usersSvc.getPreferenceDataForUser = (user) => {
+  const origBuildPrefQr = usersSvc.buildPreferenceQrForUser;
+  usersSvc.buildPreferenceQrForUser = async (user) => {
     assert.strictEqual(user.username, "active");
-    return { callsign: "GA1", teamLabel: "Cyan", roleLabel: "Team Member" };
+    assert.ok(user.pk != null);
+    return {
+      username: "active",
+      callsign: "GA1",
+      teamLabel: "Cyan",
+      roleLabel: "Team Member",
+      preferenceUrl: "tak://com.atakmap.app/preference?x=1",
+      qrCode: "data:image/png;base64,xx",
+    };
   };
-  qrSvc.buildPreferenceUrl = () => "tak://com.atakmap.app/preference?x=1";
-  qrSvc.generateDisplayQrDataUrl = async () => "data:image/png;base64,xx";
   try {
     const prefHandler = getRouteHandler("get", "/preference-data");
     const prefReq = {
@@ -124,9 +140,7 @@ function response() {
     assert.strictEqual(prefRes.body.callsign, "GA1");
     assert.ok(prefRes.body.qrCode);
   } finally {
-    usersSvc.getPreferenceDataForUser = origPref;
-    qrSvc.buildPreferenceUrl = origBuildPref;
-    qrSvc.generateDisplayQrDataUrl = origQr;
+    usersSvc.buildPreferenceQrForUser = origBuildPrefQr;
   }
 
   const disabledReq = { authentikUser: { uid: "disabled", username: "disabled" } };

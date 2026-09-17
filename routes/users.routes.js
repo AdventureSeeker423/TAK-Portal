@@ -1683,16 +1683,9 @@ router.post("/preference-qr", async (req, res) => {
       return res.status(403).json({ ok: false, error: "You do not have access to that user." });
     }
 
-    const pref = users.getPreferenceDataForUser(targetUser);
-    const preferenceUrl = qrSvc.buildPreferenceUrl({
-      callsign: pref.callsign,
-      teamLabel: pref.teamLabel,
-      roleLabel: pref.roleLabel,
-    });
-
-    let qrCode = null;
-    if (preferenceUrl) {
-      qrCode = await qrSvc.generateDisplayQrDataUrl(preferenceUrl);
+    const prefQr = await users.buildPreferenceQrForUser(targetUser);
+    if (!prefQr) {
+      return res.status(404).json({ ok: false, error: "User not found" });
     }
 
     auditSvc.logEvent({
@@ -1702,21 +1695,16 @@ router.post("/preference-qr", async (req, res) => {
       targetType: "user",
       targetId: String(userId),
       details: {
-        username: String(targetUser.username || "").trim(),
-        callsign: pref.callsign || null,
-        teamLabel: pref.teamLabel || null,
-        roleLabel: pref.roleLabel || null,
+        username: prefQr.username,
+        callsign: prefQr.callsign || null,
+        teamLabel: prefQr.teamLabel || null,
+        roleLabel: prefQr.roleLabel || null,
       },
     });
 
     return res.json({
       ok: true,
-      username: String(targetUser.username || "").trim(),
-      callsign: pref.callsign,
-      teamLabel: pref.teamLabel,
-      roleLabel: pref.roleLabel,
-      preferenceUrl: preferenceUrl || "",
-      qrCode,
+      ...prefQr,
     });
   } catch (err) {
     console.error("[users] Failed to create preference QR:", err?.message || err);

@@ -136,30 +136,15 @@ router.get("/preference-data", async (req, res) => {
     const user = await requireActiveLoggedIn(req, res);
     if (!user) return;
 
-    const fullUser = user.localUser || (await usersSvc.getLocalUserForAuth(user));
-    if (!fullUser) {
+    const targetUser = user.localUser || (await usersSvc.getLocalUserForAuth(user));
+    const prefQr = await usersSvc.buildPreferenceQrForUser(targetUser);
+    if (!prefQr) {
       return res.status(404).json({ ok: false, error: "User not found" });
-    }
-    const data = usersSvc.getPreferenceDataForUser(fullUser);
-
-    const preferenceUrl = qrSvc.buildPreferenceUrl({
-      callsign: data.callsign,
-      teamLabel: data.teamLabel,
-      roleLabel: data.roleLabel,
-    });
-
-    let qrCode = null;
-    if (preferenceUrl) {
-      qrCode = await qrSvc.generateDisplayQrDataUrl(preferenceUrl);
     }
 
     return res.json({
       ok: true,
-      callsign: data.callsign,
-      teamLabel: data.teamLabel,
-      roleLabel: data.roleLabel,
-      preferenceUrl: preferenceUrl || "",
-      qrCode,
+      ...prefQr,
     });
   } catch (err) {
     console.error(
