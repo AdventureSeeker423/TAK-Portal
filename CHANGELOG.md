@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.5 - 9/17/26
+🐛 `Bug Fix` - Fixes issue with Groups, Mutual Aid, etc - Pages not honoring removed members.  (In the backend there was a power struggle between postgres and authentik leading to no actions being taken
+
 ### v2.0.4 - 9/17/26
 🐛 `Bug Fix` - Fixes issue with non-functioning / improper logic for preference QR codes on the setup my device page
 
