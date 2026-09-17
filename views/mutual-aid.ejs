@@ -1850,6 +1850,9 @@ async function removeUserFromGroup(userPk) {
       alert(out.error || "Failed to remove user from group.");
       return;
     }
+    if (!Number(out.updated)) {
+      alert("That user could not be removed from this group.");
+    }
     await loadMembersPage(membersCurrentPage);
   } catch (e) {
     alert("Failed to remove user from group.");

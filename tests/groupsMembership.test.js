@@ -56,6 +56,41 @@ assert.ok(
   "pending outbox keys must include membership userPks so inbound snapshot skips those users"
 );
 
+const syncSrc = fs.readFileSync(
+  path.join(__dirname, "..", "services", "directorySync.service.js"),
+  "utf8"
+);
+assert.ok(
+  /add_user[\s\S]{0,400}remove_user/.test(syncSrc) &&
+    syncSrc.includes("for (const userPk of users)"),
+  "worker must add/remove Authentik group members one user at a time"
+);
+assert.ok(
+  !/add_user\/`, \{ pk: users \}/.test(syncSrc),
+  "worker must not send an array of user pks to Authentik add_user/remove_user"
+);
+assert.ok(
+  !syncSrc.includes("g.data.users"),
+  "worker must not rewrite a group's full users list as a membership fallback"
+);
+
+const usersSrc = fs.readFileSync(
+  path.join(__dirname, "..", "services", "users.service.js"),
+  "utf8"
+);
+const tplStart = usersSrc.indexOf("async function applyTemplateSyncWorkItems");
+const tplEnd = usersSrc.indexOf("async function syncUsersForTemplateSave");
+assert.ok(tplStart >= 0 && tplEnd > tplStart, "applyTemplateSyncWorkItems not found");
+const tplFn = usersSrc.slice(tplStart, tplEnd);
+assert.ok(
+  tplFn.includes("applyBulkGroupMembership"),
+  "template group overwrite must use Postgres membership + worker outbox"
+);
+assert.ok(
+  !tplFn.includes("api.patch(`/core/users/${item.userId}/`, item.payload)"),
+  "template sync must not live-patch Authentik user groups"
+);
+
 const agenciesViewSrc = fs.readFileSync(
   path.join(__dirname, "..", "views", "agencies.ejs"),
   "utf8"

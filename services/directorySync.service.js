@@ -210,21 +210,24 @@ async function handleOutboxRow(row) {
   if (kind === "add_members" || kind === "remove_members") {
     const pk = row.authentik_pk || payload.authentikPk;
     if (!pk) throw new Error("No authentik pk for membership change");
-    const users = payload.userPks || [];
-    if (kind === "add_members") {
-      await api.post(`/core/groups/${pk}/add_user/`, { pk: users }).catch(async () => {
-        const g = await api.get(`/core/groups/${pk}/`);
-        const current = Array.isArray(g.data.users) ? g.data.users.map(String) : [];
-        const next = Array.from(new Set([...current, ...users.map(String)]));
-        await api.patch(`/core/groups/${pk}/`, { users: next });
-      });
-    } else {
-      await api.post(`/core/groups/${pk}/remove_user/`, { pk: users }).catch(async () => {
-        const g = await api.get(`/core/groups/${pk}/`);
-        const current = Array.isArray(g.data.users) ? g.data.users.map(String) : [];
-        const drop = new Set(users.map(String));
-        await api.patch(`/core/groups/${pk}/`, { users: current.filter((x) => !drop.has(String(x))) });
-      });
+    const users = [
+      ...new Set(
+        (Array.isArray(payload.userPks) ? payload.userPks : [])
+          .map((x) => String(x || "").trim())
+          .filter(Boolean)
+      ),
+    ];
+    const path = kind === "add_members" ? "add_user" : "remove_user";
+    for (const userPk of users) {
+      const body = { pk: /^\d+$/.test(userPk) ? Number(userPk) : userPk };
+      try {
+        await api.post(`/core/groups/${pk}/${path}/`, body);
+      } catch (err) {
+        const status = Number(err?.response?.status || 0);
+        // Already absent on Authentik; local membership was already removed.
+        if (kind === "remove_members" && (status === 404 || status === 400)) continue;
+        throw err;
+      }
     }
     return;
   }

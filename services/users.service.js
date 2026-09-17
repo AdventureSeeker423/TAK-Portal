@@ -3145,6 +3145,31 @@ function computeTemplateSyncWorkItem(
   };
 }
 
+async function enqueueLocalUserAttributePatch(user, attributes) {
+  const target = user || {};
+  const entityId = target.uuid || target.id;
+  if (!entityId) {
+    throw new Error("Missing local user id for attribute patch");
+  }
+  await db.withTransaction(async (c) => {
+    await directoryRepo.updateLocalUser(entityId, { attributes }, c);
+    await authentikOutbox.enqueue(
+      {
+        kind: "patch_user",
+        entityType: "user",
+        entityId,
+        authentikPk: target.authentik_pk,
+        username: target.username,
+        payload: {
+          authentikPk: target.authentik_pk,
+          patch: { attributes },
+        },
+      },
+      c
+    );
+  });
+}
+
 async function applyTemplateSyncWorkItems(workItems, { invalidateCache = true, onProgress } = {}) {
   const items = Array.isArray(workItems) ? workItems : [];
   if (!items.length) {
@@ -3167,24 +3192,65 @@ async function applyTemplateSyncWorkItems(workItems, { invalidateCache = true, o
 
   emitProgress();
 
-  await runWithConcurrencyLimit(items, concurrency, async (item) => {
-    await api.patch(`/core/users/${item.userId}/`, item.payload);
-    stats.updated += 1;
-    if (item.attrsChanged) stats.templateAttrUpdated += 1;
+  const groupsSvc = require("./groups.service");
+  const addByGroup = new Map();
+  const removeByGroup = new Map();
+  const attrItems = [];
+
+  for (const item of items) {
     if (item.groupsChanged) {
-      stats.groupsUpdated += 1;
-      try {
-        scheduleDebouncedGroupsEmail({
-          user: item.user,
-          beforeIds: item.beforeGroups,
-          afterIds: item.afterGroups,
-        });
-      } catch (e) {
-        // Never fail template sync because an email enqueue failed.
+      const beforeSet = normalizeIdSet(item.beforeGroups);
+      const nextSet = normalizeIdSet(item.afterGroups);
+      for (const gid of nextSet) {
+        if (!beforeSet.has(gid)) {
+          if (!addByGroup.has(gid)) addByGroup.set(gid, new Set());
+          addByGroup.get(gid).add(item.userId);
+        }
+      }
+      for (const gid of beforeSet) {
+        if (!nextSet.has(gid)) {
+          if (!removeByGroup.has(gid)) removeByGroup.set(gid, new Set());
+          removeByGroup.get(gid).add(item.userId);
+        }
       }
     }
+    if (item.attrsChanged) attrItems.push(item);
+  }
+
+  const usersWithGroupChange = new Set();
+  const removeJobs = Array.from(removeByGroup.entries());
+  await runWithConcurrencyLimit(removeJobs, getTemplateSyncFetchConcurrency(), async ([groupId, pkSet]) => {
+    const out = await groupsSvc.applyBulkGroupMembership(groupId, "remove", [...pkSet]);
+    for (const pk of out?.affectedPks || []) usersWithGroupChange.add(String(pk));
+  });
+  const addJobs = Array.from(addByGroup.entries());
+  await runWithConcurrencyLimit(addJobs, getTemplateSyncFetchConcurrency(), async ([groupId, pkSet]) => {
+    const out = await groupsSvc.applyBulkGroupMembership(groupId, "add", [...pkSet]);
+    for (const pk of out?.affectedPks || []) usersWithGroupChange.add(String(pk));
+  });
+
+  await runWithConcurrencyLimit(attrItems, concurrency, async (item) => {
+    await enqueueLocalUserAttributePatch(item.user, item.payload.attributes);
+    stats.templateAttrUpdated += 1;
+    stats.updated += 1;
     emitProgress();
   });
+
+  for (const item of items) {
+    if (!item.groupsChanged) continue;
+    stats.groupsUpdated += 1;
+    stats.updated += 1;
+    try {
+      scheduleDebouncedGroupsEmail({
+        user: item.user,
+        beforeIds: item.beforeGroups,
+        afterIds: item.afterGroups,
+      });
+    } catch (e) {
+      // Never fail template sync because an email enqueue failed.
+    }
+  }
+  emitProgress();
 
   if (invalidateCache && stats.updated > 0) invalidateUsersCache();
   return stats;
@@ -3247,7 +3313,7 @@ async function syncUsersForTemplateSave({
     let templateAttrUpdated = 0;
     const updatedUsers = new Set();
     await runWithConcurrencyLimit(workItems, getTemplateSyncConcurrency(), async (item) => {
-      await api.patch(`/core/users/${item.userId}/`, { attributes: item.payload.attributes });
+      await enqueueLocalUserAttributePatch(item.user, item.payload.attributes);
       templateAttrUpdated += 1;
       updatedUsers.add(item.userId);
     });
@@ -3311,7 +3377,7 @@ async function syncUsersForTemplateSave({
   const updatedUsers = new Set(usersWithGroupChange);
   if (attrItems.length) {
     await runWithConcurrencyLimit(attrItems, getTemplateSyncConcurrency(), async (item) => {
-      await api.patch(`/core/users/${item.userId}/`, { attributes: item.payload.attributes });
+      await enqueueLocalUserAttributePatch(item.user, item.payload.attributes);
       templateAttrUpdated += 1;
       updatedUsers.add(item.userId);
     });
