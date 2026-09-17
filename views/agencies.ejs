@@ -1162,14 +1162,12 @@ window.removeUserFromAdminsGroup = async (userPk) => {
       alert(out.error || "Failed to remove user from admin group.");
       return;
     }
-
-    // Optimistically update local list
-    activeAdmins = (activeAdmins || []).filter(u => String(u?.pk || u?.id) !== String(userPk));
-    if (adminsSummary) {
-      adminsSummary.textContent = "";
-      adminsSummary.className = "msg";
+    if (!Number(out.updated)) {
+      alert("That user could not be removed from the admin group.");
+      await loadAdminsPage(adminsCurrentPage);
+      return;
     }
-    renderAdminsList();
+    await loadAdminsPage(adminsCurrentPage);
   } catch (e) {
     alert("Failed to remove user from admin group.");
   }

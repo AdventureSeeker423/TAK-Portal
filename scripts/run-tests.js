@@ -52,6 +52,7 @@ const TEST_FILES = [
   "auditLog.query.test.js",
   "mouStore.ensure.test.js",
   "directoryPkText.test.js",
+  "groupsMembership.test.js",
   "userLoginStatus.test.js",
   "backup.test.js",
   "setupDeviceAccess.test.js",

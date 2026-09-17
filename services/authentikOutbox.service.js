@@ -70,7 +70,7 @@ async function waitForOutbox(id, timeoutMs = 8000) {
 
 async function pendingEntityKeys() {
   const r = await db.query(
-    `SELECT entity_id, username, authentik_pk, kind FROM authentik_outbox`
+    `SELECT entity_id, username, authentik_pk, kind, payload FROM authentik_outbox`
   );
   const byUserId = new Set();
   const byUsername = new Set();
@@ -80,6 +80,14 @@ async function pendingEntityKeys() {
     if (row.entity_id) byUserId.add(String(row.entity_id));
     if (row.username) byUsername.add(String(row.username).toLowerCase());
     if (row.authentik_pk != null) byPk.add(String(row.authentik_pk));
+    const kind = String(row.kind || "");
+    if (kind === "add_members" || kind === "remove_members") {
+      const payload = decryptPayload(row.payload || {});
+      for (const upk of payload.userPks || []) {
+        const s = String(upk || "").trim();
+        if (s) byPk.add(s);
+      }
+    }
     const k = `${row.kind}:${row.entity_id || row.username || row.authentik_pk}`;
     byKind.set(k, row);
   }

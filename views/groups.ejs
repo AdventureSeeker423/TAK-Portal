@@ -2398,16 +2398,16 @@ window.removeUserFromGroup = async (userPk) => {
       alert(out.error || "Failed to remove user from group.");
       return;
     }
-
-    activeMembers = activeMembers.filter(u => String(u.pk) !== String(userPk));
-    membersTotalCount = Math.max(0, Number(membersTotalCount || 0) - 1);
-    if (membersSummary) {
-      membersSummary.textContent = "";
-      membersSummary.className = "msg";
+    if (!Number(out.updated)) {
+      alert("That user could not be removed from this group.");
+      await loadMembersPage(membersCurrentPage);
+      return;
     }
 
-    renderMembersList();
-    renderMembersPagination();
+    await loadMembersPage(membersCurrentPage);
+    if (!activeMembers.length && membersHasPrev) {
+      await loadMembersPage(Math.max(1, membersCurrentPage - 1));
+    }
   } catch (e) {
     alert("Failed to remove user from group.");
   }

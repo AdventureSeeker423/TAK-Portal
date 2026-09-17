@@ -842,6 +842,39 @@ async function updateLocalGroup(id, patch, client) {
   return rowToGroup(r.rows[0]);
 }
 
+async function refreshUserGroupsHashes(userUuids, client) {
+  const q = client || db;
+  const ids = [
+    ...new Set(
+      (Array.isArray(userUuids) ? userUuids : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+  if (!ids.length) return;
+  const r = await q.query(
+    `SELECT gm.user_id, g.authentik_pk, g.id AS group_uuid
+     FROM group_members gm
+     JOIN groups g ON g.id = gm.group_id
+     WHERE gm.user_id = ANY($1::uuid[])
+       AND COALESCE(g.pending_delete, false) = false`,
+    [ids]
+  );
+  const byUser = new Map(ids.map((id) => [id, []]));
+  for (const row of r.rows) {
+    const uid = String(row.user_id);
+    const pk = row.authentik_pk != null ? String(row.authentik_pk) : String(row.group_uuid);
+    if (!byUser.has(uid)) byUser.set(uid, []);
+    byUser.get(uid).push(pk);
+  }
+  for (const [uid, pks] of byUser.entries()) {
+    await q.query(`UPDATE users SET groups_hash = $2, updated_at = now() WHERE id = $1`, [
+      uid,
+      membershipHash(pks),
+    ]);
+  }
+}
+
 async function addLocalMembers(groupId, userIds, client) {
   const g = await getGroupById(groupId);
   if (!g) return [];
@@ -853,6 +886,10 @@ async function addLocalMembers(groupId, userIds, client) {
       [u.uuid || u.id, g.uuid || g.id]
     );
   }
+  await refreshUserGroupsHashes(
+    users.map((u) => u.uuid || u.id),
+    q
+  );
   return users;
 }
 
@@ -867,6 +904,7 @@ async function removeLocalMembers(groupId, userIds, client) {
       "DELETE FROM group_members WHERE group_id = $1 AND user_id = ANY($2::uuid[])",
       [g.uuid || g.id, ids]
     );
+    await refreshUserGroupsHashes(ids, q);
   }
   return users;
 }

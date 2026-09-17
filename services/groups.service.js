@@ -53,6 +53,28 @@ function normalizeIdList(value) {
   return value.map(v => String(v).trim()).filter(Boolean);
 }
 
+function authentikUserPksFromUsers(users) {
+  return (Array.isArray(users) ? users : [])
+    .map((u) => (u?.authentik_pk != null ? String(u.authentik_pk).trim() : ""))
+    .filter(Boolean);
+}
+
+async function enqueueGroupMembershipOutbox(group, kind, users, client) {
+  const groupPk = group?.authentik_pk != null ? String(group.authentik_pk).trim() : "";
+  const userPks = authentikUserPksFromUsers(users);
+  if (!groupPk || !userPks.length) return null;
+  return authentikOutbox.enqueue(
+    {
+      kind,
+      entityType: "group",
+      entityId: group.uuid || group.id,
+      authentikPk: groupPk,
+      payload: { authentikPk: groupPk, userPks },
+    },
+    client
+  );
+}
+
 function getGroupMembersCacheTtlMs() {
   const seconds = getInt("GROUP_MEMBERS_CACHE_TTL_SECONDS", 60);
   const s = Number.isFinite(Number(seconds)) ? Number(seconds) : 60;
@@ -1019,7 +1041,6 @@ async function bulkAddUsersToGroup(groupId, userPks, { preloadedGroup } = {}) {
   const toAdd = normalizeIdList(userPks);
   if (!toAdd.length) return { matched: 0, changed: 0 };
 
-  // Use group.users as source of truth so we don't drop unseen members
   const group = preloadedGroup || await getGroupById(id);
   const currentUsers = await directoryRepo.getGroupMemberPks(id);
 
@@ -1033,20 +1054,8 @@ async function bulkAddUsersToGroup(groupId, userPks, { preloadedGroup } = {}) {
   }
 
   await db.withTransaction(async (c) => {
-    await directoryRepo.addLocalMembers(id, toAdd, c);
-    await authentikOutbox.enqueue(
-      {
-        kind: "add_members",
-        entityType: "group",
-        entityId: group.uuid || group.id,
-        authentikPk: group.authentik_pk,
-        payload: {
-          authentikPk: group.authentik_pk,
-          userPks: toAdd.filter((x) => directoryRepo.isAuthentikPkToken(x)),
-        },
-      },
-      c
-    );
+    const added = await directoryRepo.addLocalMembers(id, toAdd, c);
+    await enqueueGroupMembershipOutbox(group, "add_members", added, c);
   });
   invalidateGroupUsersCache();
 
@@ -1080,20 +1089,8 @@ async function bulkRemoveUsersFromGroup(groupId, userPks, { preloadedGroup } = {
   }
 
   await db.withTransaction(async (c) => {
-    await directoryRepo.removeLocalMembers(id, Array.from(toRemove), c);
-    await authentikOutbox.enqueue(
-      {
-        kind: "remove_members",
-        entityType: "group",
-        entityId: group.uuid || group.id,
-        authentikPk: group.authentik_pk,
-        payload: {
-          authentikPk: group.authentik_pk,
-          userPks: Array.from(toRemove).filter((x) => directoryRepo.isAuthentikPkToken(x)),
-        },
-      },
-      c
-    );
+    const removed = await directoryRepo.removeLocalMembers(id, Array.from(toRemove), c);
+    await enqueueGroupMembershipOutbox(group, "remove_members", removed, c);
   });
   invalidateGroupUsersCache();
 
@@ -1107,7 +1104,7 @@ async function bulkRemoveUsersFromGroup(groupId, userPks, { preloadedGroup } = {
 }
 
 /**
- * Apply add/remove to a group with one membership read and at most one PATCH.
+ * Apply add/remove to a group using Postgres group_members.
  * Filters to users who actually need a membership change.
  */
 async function applyBulkGroupMembership(groupId, action, userPks) {
@@ -1117,8 +1114,10 @@ async function applyBulkGroupMembership(groupId, action, userPks) {
   if (!id || !pks.length) return { matched: 0, changed: 0, affectedPks: [] };
 
   const group = await getGroupById(id);
+  // Postgres group_members is the source of truth. Local group rows no longer
+  // carry a users[] array the way Authentik group objects used to.
   const memberSet = new Set(
-    (Array.isArray(group?.users) ? group.users : []).map((x) => String(x))
+    (await directoryRepo.getGroupMemberPks(id)).map((x) => String(x))
   );
   const filtered =
     normalizedAction === "remove"
