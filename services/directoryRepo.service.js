@@ -237,11 +237,61 @@ async function getUserByRadioCallsign(callsign) {
   const cs = String(callsign || "").trim();
   if (!cs) return null;
   const r = await db.query(
-    `SELECT * FROM users WHERE pending_delete = false AND lower(radio_callsign) = lower($1) LIMIT 1`,
+    `SELECT * FROM users
+     WHERE pending_delete = false
+       AND (
+         lower(radio_callsign) = lower($1)
+         OR lower(name) = lower($1)
+         OR lower(COALESCE(attributes->>'radio_callsign', '')) = lower($1)
+       )
+     LIMIT 1`,
     [cs]
   );
   if (!r.rows[0]) return null;
   return rowToUser(r.rows[0]);
+}
+
+async function getUsersByCallsignKeys(callsigns) {
+  const keys = [
+    ...new Set(
+      (Array.isArray(callsigns) ? callsigns : [])
+        .map((c) => String(c || "").trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+  const byKey = new Map();
+  if (!keys.length || !db.isConfigured()) return byKey;
+  const r = await db.query(
+    `SELECT username, radio_callsign, name, attributes
+     FROM users
+     WHERE pending_delete = false
+       AND (
+         lower(radio_callsign) = ANY($1::text[])
+         OR lower(name) = ANY($1::text[])
+         OR lower(COALESCE(attributes->>'radio_callsign', '')) = ANY($1::text[])
+       )`,
+    [keys]
+  );
+  for (const row of r.rows || []) {
+    const username = String(row.username || "").trim();
+    if (!username) continue;
+    const radio = String(row.radio_callsign || "").trim().toLowerCase();
+    const name = String(row.name || "").trim().toLowerCase();
+    let attrs = row.attributes;
+    if (typeof attrs === "string") {
+      try {
+        attrs = JSON.parse(attrs);
+      } catch (_) {
+        attrs = {};
+      }
+    }
+    if (!attrs || typeof attrs !== "object") attrs = {};
+    const attrRadio = String(attrs.radio_callsign || "").trim().toLowerCase();
+    if (radio) byKey.set(radio, username);
+    if (name) byKey.set(name, username);
+    if (attrRadio) byKey.set(attrRadio, username);
+  }
+  return byKey;
 }
 
 async function getUserById(id) {
@@ -1195,6 +1245,7 @@ module.exports = {
   rowToGroup,
   getUserByUsername,
   getUserByRadioCallsign,
+  getUsersByCallsignKeys,
   getUserById,
   getUsersByIds,
   getUsersByUsernames,

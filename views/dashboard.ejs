@@ -596,11 +596,18 @@
       var NODERED_PREFIX = "nodered-";
       var TLS_CALLSIGN_PREFIX = "tls:";
 
+      function isBlankConnectedField(v) {
+        var s = (v != null ? String(v).trim() : "");
+        return !s || /^[—–−\-]+$/.test(s);
+      }
+
       function isExcludedConnectedClient(item) {
-        var u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
-        if (u.indexOf(NODERED_PREFIX) === 0) return true;
-        var c = (item.callsign != null ? String(item.callsign).trim() : "").toLowerCase();
-        return c.indexOf(TLS_CALLSIGN_PREFIX) === 0;
+        if (!item) return true;
+        var u = item.username != null ? String(item.username).trim() : "";
+        var c = item.callsign != null ? String(item.callsign).trim() : "";
+        if (isBlankConnectedField(u) && isBlankConnectedField(c)) return true;
+        if (u.toLowerCase().indexOf(NODERED_PREFIX) === 0) return true;
+        return c.toLowerCase().indexOf(TLS_CALLSIGN_PREFIX) === 0;
       }
 
       var TEAM_COLORS = {
@@ -789,6 +796,7 @@
         if (!tbody) return;
         tbody.innerHTML = "";
         (rows || []).forEach(function (r) {
+          if (isBlankConnectedField(r && r.callsign) && isBlankConnectedField(r && r.username)) return;
           var tr = document.createElement("tr");
           if (r.clientUid || r.subscriptionUid) {
             tr.setAttribute("data-client-uid", r.clientUid || r.subscriptionUid);

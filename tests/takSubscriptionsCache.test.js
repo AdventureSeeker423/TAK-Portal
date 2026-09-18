@@ -25,6 +25,8 @@ const {
   normalizeConnectedClientRow,
   slimSubscriptionsForClientList,
   mergeClientEndpointUsernames,
+  filterConnectedUserSubscriptions,
+  isEmptyConnectedClient,
   getSubscriptionsAll,
 } = require("../services/takMetrics.service");
 
@@ -60,11 +62,39 @@ assert.strictEqual(liteRow.version, "5.4.0");
 assert.strictEqual(liteRow.clientUid, "device-1");
 assert.strictEqual(liteRow.groups, undefined);
 
+assert.strictEqual(
+  normalizeConnectedClientRow({ uid: "ghost", team: "Cyan" }),
+  null,
+  "rows with no callsign or username must be dropped"
+);
+assert.strictEqual(
+  normalizeConnectedClientRow({ uid: "ghost", callsign: "—", username: "—", role: "—" }),
+  null,
+  "dash-only placeholder rows must be dropped"
+);
+assert.ok(isEmptyConnectedClient({ callsign: "", username: "", takClient: "ATAK-CIV" }));
+assert.ok(isEmptyConnectedClient({ callsign: "—", username: "-", role: "HQ" }));
+
 const merged = mergeClientEndpointUsernames(
   [{ uid: "device-1", callsign: "HCSO-DAVIS-3598", team: "Cyan" }],
   [{ uid: "device-1", callsign: "HCSO-DAVIS-3598", username: "davis.hcso" }]
 );
 assert.strictEqual(merged[0].username, "davis.hcso");
+
+const mergedAlt = mergeClientEndpointUsernames(
+  [{ uid: "device-2", callsign: "HCSO-2", team: "Cyan" }],
+  [{ uid: "device-2", callsign: "HCSO-2", userName: "alt.hcso" }]
+);
+assert.strictEqual(mergedAlt[0].username, "alt.hcso");
+
+const filtered = filterConnectedUserSubscriptions([
+  { username: "alice", callsign: "A1" },
+  { uid: "ghost", team: "Cyan" },
+  { callsign: "—", username: "", takClient: "—" },
+  { username: "nodered-bridge", callsign: "NR1" },
+]);
+assert.strictEqual(filtered.length, 1);
+assert.strictEqual(filtered[0].username, "alice");
 
 const dash = require("../services/takDashboardCache.service");
 
@@ -78,6 +108,8 @@ dash.getDashboardTakSnapshot = async () => ({
         callsign: "A1",
         groups: [{ name: "should-not-be-sent-to-browser" }],
       },
+      { uid: "ghost", team: "Cyan" },
+      { callsign: "—", username: "—", takClient: "—", role: "—" },
     ],
   },
 });
@@ -85,6 +117,7 @@ dash.getDashboardTakSnapshot = async () => ({
 (async () => {
   try {
     const cached = await getSubscriptionsAll();
+    assert.strictEqual(cached.data.length, 1, "empty placeholder rows must not be returned");
     assert.strictEqual(
       cached.data[0].username,
       "alice",
