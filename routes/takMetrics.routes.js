@@ -59,6 +59,7 @@ router.get("/metrics", async (req, res) => {
       agencyOnly: isAgencyOnly,
     });
     if (snap.takMetrics) {
+      res.set("Cache-Control", "no-store");
       return res.json(snap.takMetrics);
     }
     let metrics = await getTakMetricsSnapshot();
@@ -71,6 +72,7 @@ router.get("/metrics", async (req, res) => {
     } catch (_) {
       // leave metrics.connectedClients as-is if subscriptions fetch fails
     }
+    res.set("Cache-Control", "no-store");
     return res.json(metrics);
   } catch (err) {
     return res.status(500).json({
@@ -98,6 +100,7 @@ router.get("/subscriptions", async (req, res) => {
         cotStream.enrichSubscriptionsWithLiveMarkerBattery(result.data)
       );
     }
+    res.set("Cache-Control", "no-store");
     return res.json(result);
   } catch (err) {
     return res.status(500).json({

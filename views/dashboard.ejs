@@ -525,7 +525,8 @@
           ciStr = String(rawCi);
         }
 
-        $("takClients").textContent = ccStr;
+        var ccEl = $("takClients");
+        if (ccEl) ccEl.textContent = ccStr;
         window.__latestConnectedClients = ccStr;
 
         var ciEl = document.getElementById("takConnectedIntegrations");
@@ -540,15 +541,15 @@
 
       async function refresh(){
         try{
-          const res = await fetch("/api/tak/metrics", { headers: { "Accept": "application/json" } });
+          const res = await fetch("/api/tak/metrics", { headers: { "Accept": "application/json" }, cache: "no-store" });
           if (!res.ok) throw new Error("HTTP " + res.status);
           const data = await res.json();
           apply(data);
-          if (typeof window.__refreshConnectedClientsList === "function") {
-            window.__refreshConnectedClientsList();
-          }
         }catch(e){
           // no "Connected"/status pill on this page; just leave values as-is
+        }
+        if (typeof window.__refreshConnectedClientsList === "function") {
+          window.__refreshConnectedClientsList();
         }
       }
 
@@ -744,7 +745,8 @@
         return fetch("/api/tak/subscriptions", {
           headers: { Accept: "application/json" },
           credentials: "same-origin",
-          redirect: "manual"
+          redirect: "manual",
+          cache: "no-store"
         })
           .then(function (res) { return res.json(); })
           .then(function (data) {
@@ -1511,7 +1513,8 @@
         fetch("/api/tak/subscriptions", {
           headers: { Accept: "application/json" },
           credentials: "same-origin",
-          redirect: "manual"
+          redirect: "manual",
+          cache: "no-store"
         })
           .then(function (res) { return res.json(); })
           .then(function (data) {
