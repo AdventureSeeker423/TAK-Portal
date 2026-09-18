@@ -319,6 +319,9 @@ let _metricsInFlight = null;
 let _subscriptionsCache = null;
 let _subscriptionsCacheTs = 0;
 let _subscriptionsInFlight = null;
+let _subscriptionsFullCache = null;
+let _subscriptionsFullCacheTs = 0;
+let _subscriptionsFullInFlight = null;
 
 /** Each sample: { ts, disk, net, uptimeSeconds } */
 let _samples = [];
@@ -614,6 +617,82 @@ function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = 
   };
 }
 
+function unwrapMartiList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return null;
+}
+
+async function fetchMartiList(client, url) {
+  const res = await client.get(url, { headers: { Accept: "application/json" } });
+  if (res.status !== 200 || !res.data) return null;
+  return unwrapMartiList(res.data);
+}
+
+function pickConnectedUsername(row) {
+  const direct = String(row?.username || "").trim();
+  if (direct) return direct;
+  const user = row?.user;
+  if (typeof user === "string") return user.trim();
+  if (user && typeof user === "object") {
+    return String(user.name || user.identifier || user.id || "").trim();
+  }
+  return "";
+}
+
+function parseTakvFields(raw) {
+  if (raw && typeof raw === "object") {
+    const attrs = raw._attributes || raw;
+    return {
+      takClient: String(attrs.platform || attrs.device || "").trim(),
+      version: String(attrs.version || "").trim(),
+    };
+  }
+  const s = String(raw || "").trim();
+  if (!s) return { takClient: "", version: "" };
+  const versionMatch = s.match(/(\d+(?:\.\d+)+.*)$/);
+  if (!versionMatch) return { takClient: s, version: "" };
+  const version = String(versionMatch[1] || "").trim();
+  const takClient = s
+    .slice(0, Math.max(0, s.length - version.length))
+    .replace(/[-_\s]+$/, "");
+  return { takClient, version };
+}
+
+/** Table/dashboard fields only — never keep Marti group vectors. */
+function normalizeConnectedClientRow(row) {
+  if (!row || typeof row !== "object") return null;
+  const uid = String(
+    row.clientUid || row.uid || row.subscriptionUid || row.deviceUid || ""
+  ).trim();
+  const parsed = parseTakvFields(row.takv);
+  const takClient = String(row.takClient || row.platform || parsed.takClient || "").trim();
+  const version = String(
+    row.version || row.takVersion || row.appVersion || row.clientVersion || parsed.version || ""
+  ).trim();
+  return {
+    username: pickConnectedUsername(row),
+    callsign: String(row.callsign || row.callSign || "").trim(),
+    takClient,
+    platform: takClient,
+    team: String(row.team || "").trim(),
+    role: String(row.role || "").trim(),
+    takv: row.takv,
+    version,
+    clientUid: uid,
+    subscriptionUid: String(row.subscriptionUid || uid).trim(),
+    uid: String(row.uid || uid).trim(),
+    clientUuid: row.clientUuid != null ? String(row.clientUuid).trim() : "",
+    connectionUid: row.connectionUid != null ? String(row.connectionUid).trim() : "",
+    deviceUid: row.deviceUid != null ? String(row.deviceUid).trim() : "",
+  };
+}
+
+/**
+ * Connected-client list for the dashboard table.
+ * Prefer Marti contacts lite (callsign/user/team/role/takv, no group dump).
+ * `/api/subscriptions/all` always resolves group vectors per connection and is the slow path.
+ */
 async function fetchSubscriptionsAll() {
   const takUrl = getString("TAK_URL", "");
   if (!String(takUrl || "").trim()) {
@@ -622,22 +701,63 @@ async function fetchSubscriptionsAll() {
 
   const base = normalizeBase(takUrl);
   const client = getMetricsAxios();
-  const url = `${base}/api/subscriptions/all`;
+  const liteUrls = [`${base}/api/contacts/all/lite`, `${base}/api/contacts/all`];
 
-  try {
-    const res = await client.get(url, { headers: { Accept: "application/json" } });
-    if (res.status !== 200 || !res.data) return { configured: true, data: [] };
-    const list = Array.isArray(res.data.data) ? res.data.data : [];
-    return { configured: true, data: list };
-  } catch (err) {
-    throw err;
+  for (const url of liteUrls) {
+    try {
+      const list = await fetchMartiList(client, url);
+      if (Array.isArray(list)) {
+        return {
+          configured: true,
+          data: list.map(normalizeConnectedClientRow).filter(Boolean),
+        };
+      }
+    } catch (_) {
+      /* try next lite path, then subscriptions/all */
+    }
   }
+
+  const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
+  return {
+    configured: true,
+    data: (Array.isArray(list) ? list : []).map(normalizeConnectedClientRow).filter(Boolean),
+  };
 }
 
-async function getSubscriptionsAll() {
+async function readDashboardSubscriptionsCache() {
+  const dash = require("./takDashboardCache.service");
+  const snap = await dash.getDashboardTakSnapshot();
+  const cached = snap && snap.subscriptions;
+  if (cached && Array.isArray(cached.data)) return cached;
+  return null;
+}
+
+/**
+ * Connected-client list for the dashboard table (lite Marti contacts).
+ * Default: memory TTL, then the worker's Postgres snapshot (no live TAK wait).
+ * `{ live: true }` always hits TAK — used by the worker refresher.
+ */
+async function getSubscriptionsAll(options = {}) {
+  const live = options.live === true;
   const now = Date.now();
-  if (_subscriptionsCache && now - _subscriptionsCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS) {
+  if (!live && _subscriptionsCache && now - _subscriptionsCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS) {
     return { ..._subscriptionsCache };
+  }
+
+  if (!live) {
+    try {
+      const cached = await readDashboardSubscriptionsCache();
+      if (cached) {
+        _subscriptionsCache = {
+          ...cached,
+          data: cached.data.slice(),
+        };
+        _subscriptionsCacheTs = Date.now();
+        return { ..._subscriptionsCache, data: _subscriptionsCache.data.slice() };
+      }
+    } catch (_) {
+      /* fall through to live TAK */
+    }
   }
 
   if (_subscriptionsInFlight) {
@@ -667,9 +787,83 @@ async function getSubscriptionsAll() {
   return result ? { ...result } : result;
 }
 
+async function fetchSubscriptionsAllFull() {
+  const takUrl = getString("TAK_URL", "");
+  if (!String(takUrl || "").trim()) {
+    return { configured: false, data: [] };
+  }
+  const base = normalizeBase(takUrl);
+  const client = getMetricsAxios();
+  const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
+  return { configured: true, data: Array.isArray(list) ? list : [] };
+}
+
+async function getSubscriptionsAllFull() {
+  const now = Date.now();
+  if (_subscriptionsFullCache && now - _subscriptionsFullCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS) {
+    return { ..._subscriptionsFullCache };
+  }
+  if (_subscriptionsFullInFlight) {
+    const snapshot = await _subscriptionsFullInFlight;
+    return snapshot ? { ...snapshot } : snapshot;
+  }
+  _subscriptionsFullInFlight = fetchSubscriptionsAllFull()
+    .then((result) => {
+      _subscriptionsFullCache = result;
+      _subscriptionsFullCacheTs = Date.now();
+      return result;
+    })
+    .catch((err) => {
+      if (_subscriptionsFullCache) return _subscriptionsFullCache;
+      return {
+        configured: true,
+        data: [],
+        error: err?.response?.data || err?.message || "Failed to fetch subscriptions",
+      };
+    })
+    .finally(() => {
+      _subscriptionsFullInFlight = null;
+    });
+  const result = await _subscriptionsFullInFlight;
+  return result ? { ...result } : result;
+}
+
+/** Dashboard/map client list only — drop Marti group payloads from the HTTP response. */
+function slimSubscriptionForClientList(item) {
+  if (!item || typeof item !== "object") return item;
+  return {
+    username: item.username,
+    callsign: item.callsign,
+    takClient: item.takClient,
+    platform: item.platform,
+    team: item.team,
+    role: item.role,
+    battery: item.battery,
+    version: item.version,
+    takVersion: item.takVersion,
+    appVersion: item.appVersion,
+    clientVersion: item.clientVersion,
+    takv: item.takv,
+    clientUid: item.clientUid,
+    subscriptionUid: item.subscriptionUid,
+    uid: item.uid,
+    clientUuid: item.clientUuid,
+    connectionUid: item.connectionUid,
+    deviceUid: item.deviceUid,
+  };
+}
+
+function slimSubscriptionsForClientList(list) {
+  return (Array.isArray(list) ? list : []).map(slimSubscriptionForClientList);
+}
+
 module.exports = {
   getTakMetricsSnapshot,
   getSubscriptionsAll,
+  getSubscriptionsAllFull,
+  slimSubscriptionsForClientList,
+  normalizeConnectedClientRow,
+  parseTakvFields,
   buildTakMtlsHttpsAgent,
   isFederationTokenUsername,
   isNoderedUsername,

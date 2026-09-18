@@ -1694,7 +1694,7 @@ async function refreshSubscriptionIndex() {
   }
 
   try {
-    const result = await takMetrics.getSubscriptionsAll();
+    const result = await takMetrics.getSubscriptionsAllFull();
     const list = Array.isArray(result?.data) ? result.data : [];
     rebuildSubscriptionIndex(list);
     mergeDataFeedConnectionIndex();

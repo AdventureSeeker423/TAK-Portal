@@ -6,6 +6,7 @@ const {
   applySubscriptionMetricsSplit,
   filterConnectedUserSubscriptions,
   filterFederationSubscriptions,
+  slimSubscriptionsForClientList,
 } = require("../services/takMetrics.service");
 const cotStream = require("../services/cotStream.service");
 const mapRender = require("../services/mapRender.service");
@@ -93,7 +94,9 @@ router.get("/subscriptions", async (req, res) => {
           })
         : filterFederationSubscriptions(result.data);
       cotStream.ensureBridgeStarted();
-      result.data = cotStream.enrichSubscriptionsWithLiveMarkerBattery(result.data);
+      result.data = slimSubscriptionsForClientList(
+        cotStream.enrichSubscriptionsWithLiveMarkerBattery(result.data)
+      );
     }
     return res.json(result);
   } catch (err) {

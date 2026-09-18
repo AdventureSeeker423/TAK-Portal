@@ -34,6 +34,7 @@ const TEST_FILES = [
   "qr.cache.test.js",
   "takHttpSession.test.js",
   "takGroupControl.test.js",
+  "takSubscriptionsCache.test.js",
   "geofence.test.js",
   "userRequestsOtherAgency.test.js",
   "agencyAutoApprove.test.js",
