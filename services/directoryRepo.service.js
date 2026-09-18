@@ -233,6 +233,17 @@ async function getUserByUsername(username) {
   return user;
 }
 
+async function getUserByRadioCallsign(callsign) {
+  const cs = String(callsign || "").trim();
+  if (!cs) return null;
+  const r = await db.query(
+    `SELECT * FROM users WHERE pending_delete = false AND lower(radio_callsign) = lower($1) LIMIT 1`,
+    [cs]
+  );
+  if (!r.rows[0]) return null;
+  return rowToUser(r.rows[0]);
+}
+
 async function getUserById(id) {
   const raw = String(id || "").trim();
   if (!raw) return null;
@@ -1183,6 +1194,7 @@ module.exports = {
   rowToUser,
   rowToGroup,
   getUserByUsername,
+  getUserByRadioCallsign,
   getUserById,
   getUsersByIds,
   getUsersByUsernames,

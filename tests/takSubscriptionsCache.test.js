@@ -24,12 +24,21 @@ const {
   parseTakvFields,
   normalizeConnectedClientRow,
   slimSubscriptionsForClientList,
+  mergeClientEndpointUsernames,
   getSubscriptionsAll,
 } = require("../services/takMetrics.service");
 
 assert.deepStrictEqual(parseTakvFields("ATAK-CIV-5.4.0 (abc)"), {
   takClient: "ATAK-CIV",
   version: "5.4.0 (abc)",
+});
+assert.deepStrictEqual(parseTakvFields("TAKAware-CIV:5.2.0"), {
+  takClient: "TAKAware-CIV",
+  version: "5.2.0",
+});
+assert.deepStrictEqual(parseTakvFields("TAKAware-CIV:"), {
+  takClient: "TAKAware-CIV",
+  version: "",
 });
 assert.deepStrictEqual(parseTakvFields({ platform: "iTAK", version: "2.9.1" }), {
   takClient: "iTAK",
@@ -50,6 +59,12 @@ assert.strictEqual(liteRow.takClient, "ATAK-CIV");
 assert.strictEqual(liteRow.version, "5.4.0");
 assert.strictEqual(liteRow.clientUid, "device-1");
 assert.strictEqual(liteRow.groups, undefined);
+
+const merged = mergeClientEndpointUsernames(
+  [{ uid: "device-1", callsign: "HCSO-DAVIS-3598", team: "Cyan" }],
+  [{ uid: "device-1", callsign: "HCSO-DAVIS-3598", username: "davis.hcso" }]
+);
+assert.strictEqual(merged[0].username, "davis.hcso");
 
 const dash = require("../services/takDashboardCache.service");
 

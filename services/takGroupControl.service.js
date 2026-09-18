@@ -340,6 +340,19 @@ async function resolveSubscriptionForControl(clientId, authUser) {
   }
 
   const subscription = findSubscriptionByClientId(list, clientId);
+  if (subscription && !safeStr(subscription.username).trim()) {
+    const callsign = safeStr(subscription.callsign).trim();
+    if (callsign) {
+      try {
+        const directoryRepo = require("./directoryRepo.service");
+        const portalUser = await directoryRepo.getUserByRadioCallsign(callsign);
+        const portalUsername = safeStr(portalUser?.username).trim();
+        if (portalUsername) subscription.username = portalUsername;
+      } catch (_) {
+        /* keep empty username; fetchGroupsForUser will error clearly */
+      }
+    }
+  }
   const username = assertCanControlSubscription(authUser, subscription, { agencyOnly: isAgencyOnly });
 
   return {

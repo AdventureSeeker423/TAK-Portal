@@ -623,40 +623,91 @@ function unwrapMartiList(payload) {
   return null;
 }
 
-async function fetchMartiList(client, url) {
-  const res = await client.get(url, { headers: { Accept: "application/json" } });
+async function fetchMartiList(client, url, params) {
+  const res = await client.get(url, {
+    headers: { Accept: "application/json" },
+    params: params || undefined,
+  });
   if (res.status !== 200 || !res.data) return null;
   return unwrapMartiList(res.data);
 }
 
 function pickConnectedUsername(row) {
-  const direct = String(row?.username || "").trim();
-  if (direct) return direct;
   const user = row?.user;
-  if (typeof user === "string") return user.trim();
-  if (user && typeof user === "object") {
-    return String(user.name || user.identifier || user.id || "").trim();
+  const candidates = [
+    row?.username,
+    row?.userName,
+    row?.user_name,
+    typeof user === "string" ? user : "",
+    user && typeof user === "object" ? user.name : "",
+    user && typeof user === "object" ? user.identifier : "",
+    row?.xn,
+  ];
+  for (const raw of candidates) {
+    const s = String(raw || "").trim();
+    if (s) return s;
   }
   return "";
+}
+
+function mergeClientEndpointUsernames(contacts, endpoints) {
+  const byUid = new Map();
+  const byCallsign = new Map();
+  for (const ep of Array.isArray(endpoints) ? endpoints : []) {
+    const username = String(ep?.username || "").trim();
+    if (!username) continue;
+    const uid = String(ep?.uid || "").trim().toLowerCase();
+    const cs = String(ep?.callsign || "").trim().toLowerCase();
+    if (uid) byUid.set(uid, username);
+    if (cs) byCallsign.set(cs, username);
+  }
+  const list = Array.isArray(contacts) ? contacts : [];
+  if (!list.length && Array.isArray(endpoints) && endpoints.length) {
+    return endpoints.slice();
+  }
+  return list.map((row) => {
+    if (pickConnectedUsername(row)) return row;
+    const uid = String(row?.uid || row?.clientUid || "").trim().toLowerCase();
+    const cs = String(row?.callsign || row?.callSign || "").trim().toLowerCase();
+    const username = (uid && byUid.get(uid)) || (cs && byCallsign.get(cs)) || "";
+    if (!username) return row;
+    return Object.assign({}, row, { username });
+  });
+}
+
+function cleanTakClientLabel(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[:\-_\s]+$/g, "");
 }
 
 function parseTakvFields(raw) {
   if (raw && typeof raw === "object") {
     const attrs = raw._attributes || raw;
     return {
-      takClient: String(attrs.platform || attrs.device || "").trim(),
+      takClient: cleanTakClientLabel(attrs.platform || attrs.device || ""),
       version: String(attrs.version || "").trim(),
     };
   }
   const s = String(raw || "").trim();
   if (!s) return { takClient: "", version: "" };
+
+  const colon = s.lastIndexOf(":");
+  if (colon > 0) {
+    const left = s.slice(0, colon).trim();
+    const right = s.slice(colon + 1).trim();
+    if (!right || /\d+(?:\.\d+)+/.test(right)) {
+      return { takClient: cleanTakClientLabel(left), version: right };
+    }
+  }
+
   const versionMatch = s.match(/(\d+(?:\.\d+)+.*)$/);
-  if (!versionMatch) return { takClient: s, version: "" };
+  if (!versionMatch) return { takClient: cleanTakClientLabel(s), version: "" };
   const version = String(versionMatch[1] || "").trim();
-  const takClient = s
-    .slice(0, Math.max(0, s.length - version.length))
-    .replace(/[-_\s]+$/, "");
-  return { takClient, version };
+  return {
+    takClient: cleanTakClientLabel(s.slice(0, Math.max(0, s.length - version.length))),
+    version,
+  };
 }
 
 /** Table/dashboard fields only — never keep Marti group vectors. */
@@ -666,7 +717,7 @@ function normalizeConnectedClientRow(row) {
     row.clientUid || row.uid || row.subscriptionUid || row.deviceUid || ""
   ).trim();
   const parsed = parseTakvFields(row.takv);
-  const takClient = String(row.takClient || row.platform || parsed.takClient || "").trim();
+  const takClient = cleanTakClientLabel(row.takClient || row.platform || parsed.takClient || "");
   const version = String(
     row.version || row.takVersion || row.appVersion || row.clientVersion || parsed.version || ""
   ).trim();
@@ -690,8 +741,8 @@ function normalizeConnectedClientRow(row) {
 
 /**
  * Connected-client list for the dashboard table.
- * Prefer Marti contacts lite (callsign/user/team/role/takv, no group dump).
- * `/api/subscriptions/all` always resolves group vectors per connection and is the slow path.
+ * Prefer Marti contacts lite (callsign/team/role/takv, no group dump) and merge
+ * usernames from clientEndPoints. `/api/subscriptions/all` is the slow fallback.
  */
 async function fetchSubscriptionsAll() {
   const takUrl = getString("TAK_URL", "");
@@ -701,26 +752,33 @@ async function fetchSubscriptionsAll() {
 
   const base = normalizeBase(takUrl);
   const client = getMetricsAxios();
-  const liteUrls = [`${base}/api/contacts/all/lite`, `${base}/api/contacts/all`];
+  const endpointsPromise = fetchMartiList(client, `${base}/api/clientEndPoints`, {
+    showCurrentlyConnectedClients: true,
+  }).catch(() => null);
 
+  const liteUrls = [`${base}/api/contacts/all/lite`, `${base}/api/contacts/all`];
+  let contacts = null;
   for (const url of liteUrls) {
     try {
       const list = await fetchMartiList(client, url);
       if (Array.isArray(list)) {
-        return {
-          configured: true,
-          data: list.map(normalizeConnectedClientRow).filter(Boolean),
-        };
+        contacts = list;
+        break;
       }
     } catch (_) {
       /* try next lite path, then subscriptions/all */
     }
   }
+  if (!Array.isArray(contacts)) {
+    const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
+    contacts = Array.isArray(list) ? list : [];
+  }
 
-  const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
+  const endpoints = await endpointsPromise;
+  const merged = mergeClientEndpointUsernames(contacts, endpoints);
   return {
     configured: true,
-    data: (Array.isArray(list) ? list : []).map(normalizeConnectedClientRow).filter(Boolean),
+    data: merged.map(normalizeConnectedClientRow).filter(Boolean),
   };
 }
 
@@ -728,35 +786,50 @@ async function readDashboardSubscriptionsCache() {
   const dash = require("./takDashboardCache.service");
   const snap = await dash.getDashboardTakSnapshot();
   const cached = snap && snap.subscriptions;
-  if (cached && Array.isArray(cached.data)) return cached;
-  return null;
+  if (!(cached && Array.isArray(cached.data))) return null;
+  const refreshedAt = snap.refreshedAt ? new Date(snap.refreshedAt).getTime() : 0;
+  return { cached, refreshedAt };
 }
 
 /**
  * Connected-client list for the dashboard table (lite Marti contacts).
- * Default: memory TTL, then the worker's Postgres snapshot (no live TAK wait).
+ * Default: worker Postgres snapshot (refreshed ~15s). Memory is used only when
+ * it is at least as new as that snapshot.
  * `{ live: true }` always hits TAK — used by the worker refresher.
  */
 async function getSubscriptionsAll(options = {}) {
   const live = options.live === true;
   const now = Date.now();
-  if (!live && _subscriptionsCache && now - _subscriptionsCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS) {
-    return { ..._subscriptionsCache };
-  }
 
   if (!live) {
     try {
-      const cached = await readDashboardSubscriptionsCache();
-      if (cached) {
+      const fromDash = await readDashboardSubscriptionsCache();
+      if (fromDash) {
+        const memoryFresh =
+          _subscriptionsCache &&
+          now - _subscriptionsCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS &&
+          (!fromDash.refreshedAt || _subscriptionsCacheTs >= fromDash.refreshedAt);
+        if (memoryFresh) {
+          return {
+            ..._subscriptionsCache,
+            data: Array.isArray(_subscriptionsCache.data) ? _subscriptionsCache.data.slice() : [],
+          };
+        }
         _subscriptionsCache = {
-          ...cached,
-          data: cached.data.slice(),
+          ...fromDash.cached,
+          data: fromDash.cached.data.slice(),
         };
-        _subscriptionsCacheTs = Date.now();
+        _subscriptionsCacheTs = fromDash.refreshedAt || Date.now();
         return { ..._subscriptionsCache, data: _subscriptionsCache.data.slice() };
       }
     } catch (_) {
-      /* fall through to live TAK */
+      /* fall through to memory / live TAK */
+    }
+    if (_subscriptionsCache && now - _subscriptionsCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS) {
+      return {
+        ..._subscriptionsCache,
+        data: Array.isArray(_subscriptionsCache.data) ? _subscriptionsCache.data.slice() : [],
+      };
     }
   }
 
@@ -864,6 +937,7 @@ module.exports = {
   slimSubscriptionsForClientList,
   normalizeConnectedClientRow,
   parseTakvFields,
+  mergeClientEndpointUsernames,
   buildTakMtlsHttpsAgent,
   isFederationTokenUsername,
   isNoderedUsername,

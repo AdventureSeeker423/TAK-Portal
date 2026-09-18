@@ -544,6 +544,9 @@
           if (!res.ok) throw new Error("HTTP " + res.status);
           const data = await res.json();
           apply(data);
+          if (typeof window.__refreshConnectedClientsList === "function") {
+            window.__refreshConnectedClientsList();
+          }
         }catch(e){
           // no "Connected"/status pill on this page; just leave values as-is
         }
@@ -607,9 +610,7 @@
       };
 
       var originalCardHtml = card.innerHTML;
-      var expandedRefreshTimer = null;
       var groupControlRefreshTimer = null;
-      var EXPANDED_REFRESH_MS = 20000;
       var GROUP_CONTROL_REFRESH_MS = 8000;
       var currentGroupControlClientId = null;
       var clientLoadAbort = null;
@@ -728,6 +729,31 @@
         fillExpandedTableBody(sorted.rows, sorted.rawItems);
         updateConnectedClientsSortIndicators();
       }
+
+      function applyConnectedClientsPayload(data) {
+        if (!data || !data.configured || !Array.isArray(data.data)) return false;
+        var list = data.data.filter(function (item) {
+          return !isExcludedConnectedClient(item);
+        });
+        setConnectedClientsData(list.map(mapConnectedClientRow), list);
+        return true;
+      }
+
+      function refreshConnectedClientsList() {
+        if (!card.classList.contains("connected-clients-expanded-card")) return Promise.resolve();
+        return fetch("/api/tak/subscriptions", {
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+          redirect: "manual"
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!card.classList.contains("connected-clients-expanded-card")) return;
+            applyConnectedClientsPayload(data);
+          })
+          .catch(function () {});
+      }
+      window.__refreshConnectedClientsList = refreshConnectedClientsList;
 
       function batteryCell(value) {
         var s = value != null ? String(value).trim() : "";
@@ -1452,35 +1478,11 @@
             openClientGroupsModal(sub);
           });
         }
-
-        if (expandedRefreshTimer) clearInterval(expandedRefreshTimer);
-        expandedRefreshTimer = setInterval(function () {
-          if (!card.classList.contains("connected-clients-expanded-card")) return;
-          fetch("/api/tak/subscriptions", {
-            headers: { Accept: "application/json" },
-            credentials: "same-origin",
-            redirect: "manual"
-          })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-              if (!data.configured || !Array.isArray(data.data)) return;
-              var list = data.data.filter(function (item) {
-                return !isExcludedConnectedClient(item);
-              });
-              var nextRows = list.map(mapConnectedClientRow);
-              setConnectedClientsData(nextRows, list);
-            })
-            .catch(function () {});
-        }, EXPANDED_REFRESH_MS);
       }
 
       function collapse() {
         abortClientLoads();
         if (window.DashboardMiniMap) window.DashboardMiniMap.destroy();
-        if (expandedRefreshTimer) {
-          clearInterval(expandedRefreshTimer);
-          expandedRefreshTimer = null;
-        }
         if (groupControlRefreshTimer) {
           clearInterval(groupControlRefreshTimer);
           groupControlRefreshTimer = null;
@@ -1514,15 +1516,7 @@
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (!card.classList.contains("connected-clients-expanded-card")) return;
-            if (!data.configured || !Array.isArray(data.data)) {
-              collapse();
-              return;
-            }
-            var list = data.data.filter(function (item) {
-              return !isExcludedConnectedClient(item);
-            });
-            var rows = list.map(mapConnectedClientRow);
-            setConnectedClientsData(rows, list);
+            if (!applyConnectedClientsPayload(data)) collapse();
           })
           .catch(function () { collapse(); });
       }
@@ -1575,6 +1569,9 @@
                 if (s < 86400) parts.push(m + "m");
                 up.textContent = parts.join(" ");
               }
+            }
+            if (typeof window.__refreshConnectedClientsList === "function") {
+              window.__refreshConnectedClientsList();
             }
           }).catch(function () {});
       };

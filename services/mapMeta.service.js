@@ -1310,7 +1310,9 @@ function parseTakPlatform(detail) {
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
     const attrs = item._attributes || item;
-    const platform = String(attrs?.platform || "").trim();
+    const platform = String(attrs?.platform || "")
+      .trim()
+      .replace(/[:\-_\s]+$/g, "");
     if (platform) return platform;
   }
   return null;
