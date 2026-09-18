@@ -404,7 +404,7 @@ async function writeDashboardStats() {
       : "";
   const params = hidden.length ? [hidden] : [];
   const vis = await db.query(
-    `SELECT COUNT(*)::int AS n FROM users u WHERE pending_delete = false AND is_active = true ${hiddenSql}`,
+    `SELECT COUNT(*)::int AS n FROM users u WHERE pending_delete = false ${hiddenSql}`,
     params
   );
   const integ = await db.query(
