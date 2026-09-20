@@ -314,7 +314,7 @@ function renderTemplates(list){
         ${t.isDefault ? `<span class="tplDefaultBadge cardMetaBadge">Default</span>` : ""}
       </td>
       <td class="tplColorCell">${t.colorOverride ? esc(t.colorOverride) : "Default"}</td>
-      <td class="tplRoleCell" data-label="Role">${esc(t.role || "Team Member")}</td>
+      <td class="tplRoleCell" data-label="Role" title="${esc(t.role || "Team Member")}">${esc(atakRoleAbbreviation(t.role || "Team Member"))}</td>
       <td class="tplDefaultCell">${t.isDefault ? "✓" : ""}</td>
       <td class="tplGroupsCell" data-label="Groups">${esc(formatGroupsCount(t.groups))}</td>
       <td class="tplUsersCell" data-label="Users">${templateUserCountForRow(t)}</td>
@@ -548,6 +548,22 @@ function templateColorLabel(color) {
 function templateRoleLabel(role) {
   const r = String(role || "").trim();
   return ROLE_LABELS[r] || r;
+}
+
+function atakRoleAbbreviation(role) {
+  const raw = String(role || "").trim();
+  if (!raw || raw === "—") return "—";
+  const map = {
+    "team member": "TM",
+    "team lead": "TL",
+    hq: "HQ",
+    sniper: "S",
+    medic: "MED",
+    "forward observer": "FO",
+    rto: "RTO",
+    k9: "K9",
+  };
+  return map[raw.toLowerCase()] || raw;
 }
 
 function renderRoleOptions(selectEl, selectedRole){

@@ -785,6 +785,22 @@
         return s ? esc(s) : "—";
       }
 
+      function atakRoleAbbreviation(role) {
+        var raw = String(role || "").trim();
+        if (!raw || raw === "—") return "—";
+        var map = {
+          "team member": "TM",
+          "team lead": "TL",
+          hq: "HQ",
+          sniper: "S",
+          medic: "MED",
+          "forward observer": "FO",
+          rto: "RTO",
+          k9: "K9"
+        };
+        return map[raw.toLowerCase()] || raw;
+      }
+
       function mapConnectedClientRow(item) {
         return {
           callsign: item.callsign != null ? String(item.callsign).trim() : "",
@@ -819,7 +835,9 @@
           }
           var bg = teamToBg(r.team);
           if (bg !== "transparent") tr.style.backgroundColor = bg;
-          tr.innerHTML = "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + esc(r.callsign) + "</div></td><td class=\"ccUsernameCell\" data-label=\"Username\">" + esc(r.username) + "</td><td class=\"ccClientCell\" data-label=\"TAK Client\">" + esc(r.takClient) + "</td><td class=\"ccVersionCell\" data-label=\"Version\">" + batteryCell(r.version) + "</td><td class=\"ccBatteryCell\" data-label=\"Battery\">" + batteryCell(r.battery) + "</td><td class=\"ccRoleCell\" data-label=\"Role\">" + esc(r.role) + "</td>";
+          var roleFull = r.role != null ? String(r.role).trim() : "";
+          var roleAbbr = atakRoleAbbreviation(roleFull);
+          tr.innerHTML = "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + esc(r.callsign) + "</div></td><td class=\"ccUsernameCell\" data-label=\"Username\">" + esc(r.username) + "</td><td class=\"ccClientCell\" data-label=\"TAK Client\">" + esc(r.takClient) + "</td><td class=\"ccVersionCell\" data-label=\"Version\">" + batteryCell(r.version) + "</td><td class=\"ccBatteryCell\" data-label=\"Battery\">" + batteryCell(r.battery) + "</td><td class=\"ccRoleCell\" data-label=\"Role\" title=\"" + esc(roleFull || roleAbbr) + "\">" + esc(roleAbbr) + "</td>";
           tbody.appendChild(tr);
         });
       }
