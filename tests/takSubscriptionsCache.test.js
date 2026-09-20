@@ -142,6 +142,22 @@ const splitExtras = applySubscriptionMetricsSplit(
 assert.strictEqual(splitExtras.connectedClients, 2);
 assert.strictEqual(splitExtras.connectedIntegrations, 1);
 
+const listAheadOfNumClients = applySubscriptionMetricsSplit(
+  { connectedClients: 2 },
+  {
+    data: [
+      { username: "alice", callsign: "A1" },
+      { username: "bob", callsign: "B1" },
+      { username: "carol", callsign: "C1" },
+    ],
+  }
+);
+assert.strictEqual(
+  listAheadOfNumClients.connectedClients,
+  3,
+  "human subscription list must not undercount vs a lagging numClients"
+);
+
 const dash = require("../services/takDashboardCache.service");
 
 const origSnapshot = dash.getDashboardTakSnapshot;

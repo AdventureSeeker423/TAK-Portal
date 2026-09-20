@@ -527,7 +527,9 @@
 
         var ccEl = $("takClients");
         if (ccEl) ccEl.textContent = ccStr;
-        window.__latestConnectedClients = ccStr;
+        var ccCard = document.getElementById("connectedClientsStatCard");
+        var tableOpen = !!(ccCard && ccCard.classList.contains("connected-clients-expanded-card"));
+        if (!tableOpen) window.__latestConnectedClients = ccStr;
 
         var ciEl = document.getElementById("takConnectedIntegrations");
         if (ciEl) ciEl.textContent = ciStr;
@@ -602,10 +604,16 @@
       }
 
       function isExcludedConnectedClient(item) {
+        if (!item) return true;
         var u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
         if (u.indexOf(NODERED_PREFIX) === 0) return true;
         var c = (item.callsign != null ? String(item.callsign).trim() : "").toLowerCase();
-        return c.indexOf(TLS_CALLSIGN_PREFIX) === 0;
+        if (c.indexOf(TLS_CALLSIGN_PREFIX) === 0) return true;
+        var uid = String(item.uid || item.clientUid || "").trim().toLowerCase();
+        if (c === "tak-portal") return true;
+        if (uid === "takportal-channel-patch-bridge") return true;
+        if (c.indexOf(".takportal.") >= 0 || uid.indexOf(".takportal.") >= 0) return true;
+        return false;
       }
 
       var TEAM_COLORS = {
@@ -736,12 +744,22 @@
         updateConnectedClientsSortIndicators();
       }
 
+      function visibleConnectedUserCount(rows) {
+        var n = 0;
+        (rows || []).forEach(function (r) {
+          if (isBlankConnectedField(r && r.callsign) && isBlankConnectedField(r && r.username)) return;
+          n += 1;
+        });
+        return n;
+      }
+
       function applyConnectedClientsPayload(data) {
         if (!data || !data.configured || !Array.isArray(data.data)) return false;
         var list = data.data.filter(function (item) {
           return !isExcludedConnectedClient(item);
         });
         setConnectedClientsData(list.map(mapConnectedClientRow), list);
+        window.__latestConnectedClients = String(visibleConnectedUserCount(latestConnectedRows));
         return true;
       }
 
@@ -1561,7 +1579,9 @@
               var el = document.getElementById("takClients");
               var cc = data && typeof data.connectedClients === "number" ? String(data.connectedClients) : "--";
               if (el) el.textContent = cc;
-              window.__latestConnectedClients = cc;
+              if (!card.classList.contains("connected-clients-expanded-card")) {
+                window.__latestConnectedClients = cc;
+              }
               var ci = document.getElementById("takConnectedIntegrations");
               var ciVal = data && typeof data.connectedIntegrations === "number" ? String(data.connectedIntegrations) : "--";
               if (ci) ci.textContent = ciVal;

@@ -609,10 +609,14 @@ function applySubscriptionMetricsSplit(takMetricsBase, subscriptions, options = 
 
   const total =
     typeof takMetricsBase.connectedClients === "number" ? takMetricsBase.connectedClients : 0;
+  const splitCount = Math.max(0, total - noderedCount - federationCount - tlsCallsignCount);
+  const listCount = filterConnectedUserSubscriptions(list).length;
 
   return {
     ...takMetricsBase,
-    connectedClients: Math.max(0, total - noderedCount - federationCount - tlsCallsignCount),
+    // Prefer the human list when it is ahead of actuator numClients (new EUD
+    // already in subscriptions/all). Keep the split when numClients is higher.
+    connectedClients: Math.max(splitCount, listCount),
     connectedIntegrations: noderedDistinctCount,
   };
 }
