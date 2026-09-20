@@ -602,12 +602,10 @@
       }
 
       function isExcludedConnectedClient(item) {
-        if (!item) return true;
-        var u = item.username != null ? String(item.username).trim() : "";
-        var c = item.callsign != null ? String(item.callsign).trim() : "";
-        if (isBlankConnectedField(u) && isBlankConnectedField(c)) return true;
-        if (u.toLowerCase().indexOf(NODERED_PREFIX) === 0) return true;
-        return c.toLowerCase().indexOf(TLS_CALLSIGN_PREFIX) === 0;
+        var u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
+        if (u.indexOf(NODERED_PREFIX) === 0) return true;
+        var c = (item.callsign != null ? String(item.callsign).trim() : "").toLowerCase();
+        return c.indexOf(TLS_CALLSIGN_PREFIX) === 0;
       }
 
       var TEAM_COLORS = {

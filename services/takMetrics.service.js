@@ -508,7 +508,7 @@ function isTlsCallsign(callsign) {
 }
 
 function isTlsCallsignSubscription(item) {
-  return isTlsCallsign(item && (item.callsign || item.callSign));
+  return isTlsCallsign(item && item.callsign);
 }
 
 /** Channel-patch bridge / rebroadcast ghosts on the webadmin stream. */
@@ -521,21 +521,9 @@ function isChannelPatchBridgeSubscription(item) {
   return false;
 }
 
-function isBlankConnectedField(value) {
-  const s = String(value == null ? "" : value).trim();
-  return !s || /^[—–−\-]+$/.test(s);
-}
-
-function isEmptyConnectedClient(item) {
-  const username = pickConnectedUsername(item);
-  const callsign = String((item && (item.callsign || item.callSign)) || "").trim();
-  return isBlankConnectedField(username) && isBlankConnectedField(callsign);
-}
-
 function isExcludedConnectedUserSubscription(item) {
-  const username = pickConnectedUsername(item);
+  const username = item && item.username;
   return (
-    isEmptyConnectedClient(item) ||
     isNoderedUsername(username) ||
     isFederationTokenUsername(username) ||
     isTlsCallsignSubscription(item) ||
@@ -551,22 +539,19 @@ function subscriptionMatchesAgencyScope(authUser, username, agencyOnly) {
 
 /** Remove federation hub token rows; keep nodered (needed by integrations page). */
 function filterFederationSubscriptions(list) {
-  return (Array.isArray(list) ? list : []).filter((item) => {
-    if (isEmptyConnectedClient(item)) return false;
-    return !isFederationTokenUsername(pickConnectedUsername(item));
-  });
+  return (Array.isArray(list) ? list : []).filter(
+    (item) => !isFederationTokenUsername(item && item.username)
+  );
 }
 
 /** Human connected users for dashboard list/count (no nodered, no federation). */
 function filterConnectedUserSubscriptions(list, options = {}) {
   const { authUser = null, agencyOnly = false } = options;
   return filterFederationSubscriptions(list).filter((item) => {
-    if (isEmptyConnectedClient(item)) return false;
-    const username = pickConnectedUsername(item);
-    if (isNoderedUsername(username)) return false;
+    if (isNoderedUsername(item && item.username)) return false;
     if (isTlsCallsignSubscription(item)) return false;
     if (isChannelPatchBridgeSubscription(item)) return false;
-    return subscriptionMatchesAgencyScope(authUser, username, agencyOnly);
+    return subscriptionMatchesAgencyScope(authUser, item && item.username, agencyOnly);
   });
 }
 
@@ -582,7 +567,7 @@ function computeSubscriptionExclusionCounts(list, options = {}) {
   const noderedUsernames = new Set();
 
   for (const item of Array.isArray(list) ? list : []) {
-    const username = pickConnectedUsername(item);
+    const username = item && item.username;
     if (isNoderedUsername(username)) {
       if (subscriptionMatchesAgencyScope(authUser, username, agencyOnly)) {
         noderedCount += 1;
@@ -647,112 +632,6 @@ async function fetchMartiList(client, url, params) {
   return unwrapMartiList(res.data);
 }
 
-function pickConnectedUsername(row) {
-  const user = row?.user;
-  const lastSa = row?.lastSA || row?.lastSa;
-  const candidates = [
-    row?.username,
-    row?.userName,
-    row?.user_name,
-    typeof user === "string" ? user : "",
-    user && typeof user === "object" ? user.name : "",
-    user && typeof user === "object" ? user.identifier : "",
-    user && typeof user === "object" ? user.username : "",
-    lastSa && typeof lastSa === "object" ? lastSa.username : "",
-    row?.xn,
-  ];
-  for (const raw of candidates) {
-    if (isBlankConnectedField(raw)) continue;
-    return String(raw).trim();
-  }
-  return "";
-}
-
-function connectedRowUid(row) {
-  return String(
-    row?.uid || row?.clientUid || row?.subscriptionUid || row?.deviceUid || row?.lastSA?.uid || ""
-  )
-    .trim()
-    .toLowerCase();
-}
-
-function connectedRowCallsign(row) {
-  return String(row?.callsign || row?.callSign || "")
-    .trim()
-    .toLowerCase();
-}
-
-function indexConnectedRows(rows) {
-  const byUid = new Map();
-  const byCallsign = new Map();
-  for (const row of Array.isArray(rows) ? rows : []) {
-    if (!row || typeof row !== "object") continue;
-    const uid = connectedRowUid(row);
-    const cs = connectedRowCallsign(row);
-    if (uid) byUid.set(uid, row);
-    if (cs && !isBlankConnectedField(cs)) byCallsign.set(cs, row);
-  }
-  return { byUid, byCallsign };
-}
-
-const CONNECTED_DISPLAY_KEYS = [
-  "team",
-  "role",
-  "takv",
-  "takClient",
-  "platform",
-  "version",
-  "takVersion",
-  "appVersion",
-  "clientVersion",
-];
-
-function enrichLiveConnectedRow(liveRow, contact) {
-  const out = Object.assign({}, liveRow);
-  if (contact) {
-    if (!pickConnectedUsername(out)) {
-      const username = pickConnectedUsername(contact);
-      if (username) out.username = username;
-    }
-    if (isBlankConnectedField(out.callsign || out.callSign)) {
-      const cs = contact.callsign || contact.callSign;
-      if (!isBlankConnectedField(cs)) out.callsign = cs;
-    }
-    for (const key of CONNECTED_DISPLAY_KEYS) {
-      if (isBlankConnectedField(out[key]) && !isBlankConnectedField(contact[key])) {
-        out[key] = contact[key];
-      }
-    }
-  }
-  const username = pickConnectedUsername(out);
-  if (username && out.username !== username) out.username = username;
-  return out;
-}
-
-/**
- * Live connected membership comes from currently-connected clientEndPoints.
- * Contacts lite is a display lookup (team/role/takv) and never adds extra rows.
- * If endpoints is missing (fetch failed), fall back to the contacts/subscription list.
- */
-function mergeClientEndpointUsernames(contacts, endpoints) {
-  const liveIsEndpoints = Array.isArray(endpoints);
-  const live = liveIsEndpoints
-    ? endpoints
-    : Array.isArray(contacts)
-      ? contacts
-      : [];
-  if (!live.length) return [];
-  if (!liveIsEndpoints) return live.map((row) => enrichLiveConnectedRow(row, null));
-
-  const { byUid, byCallsign } = indexConnectedRows(contacts);
-  return live.map((row) => {
-    const uid = connectedRowUid(row);
-    const cs = connectedRowCallsign(row);
-    const contact = (uid && byUid.get(uid)) || (cs && byCallsign.get(cs)) || null;
-    return enrichLiveConnectedRow(row, contact);
-  });
-}
-
 function cleanTakClientLabel(value) {
   return String(value || "")
     .trim()
@@ -799,15 +678,9 @@ function normalizeConnectedClientRow(row) {
   const version = String(
     row.version || row.takVersion || row.appVersion || row.clientVersion || parsed.version || ""
   ).trim();
-  const usernameRaw = pickConnectedUsername(row);
-  const callsignRaw = String(row.callsign || row.callSign || "").trim();
-  const username = isBlankConnectedField(usernameRaw) ? "" : usernameRaw;
-  const callsign = isBlankConnectedField(callsignRaw) ? "" : callsignRaw;
-  // Keep live sessions that only have a uid yet; drop true ghosts with no identity.
-  if (!uid && !username && !callsign) return null;
   return {
-    username,
-    callsign,
+    username: String(row.username || "").trim(),
+    callsign: String(row.callsign || "").trim(),
     takClient,
     platform: takClient,
     team: String(row.team || "").trim(),
@@ -823,24 +696,18 @@ function normalizeConnectedClientRow(row) {
   };
 }
 
-async function fetchContactsLookup(client, base) {
-  const liteUrls = [`${base}/api/contacts/all/lite`, `${base}/api/contacts/all`];
-  for (const url of liteUrls) {
-    try {
-      const list = await fetchMartiList(client, url);
-      if (Array.isArray(list)) return list;
-    } catch (_) {
-      /* try next lite path */
-    }
-  }
-  return null;
+function cloneSubscriptionsResult(result) {
+  if (!result) return result;
+  return {
+    ...result,
+    data: Array.isArray(result.data) ? result.data.slice() : result.data,
+  };
 }
 
 /**
  * Connected-client list for dashboard counts/table.
- * Live membership is currently-connected clientEndPoints. Contacts lite is a
- * display lookup only. `/api/subscriptions/all` is the slow fallback if
- * endpoints cannot be fetched.
+ * Live membership is Marti `/api/subscriptions/all` (2.0.5). Group vectors are
+ * stripped immediately so the worker snapshot stays small at 1000+ clients.
  */
 async function fetchSubscriptionsAll() {
   const takUrl = getString("TAK_URL", "");
@@ -850,63 +717,10 @@ async function fetchSubscriptionsAll() {
 
   const base = normalizeBase(takUrl);
   const client = getMetricsAxios();
-  const endpointsPromise = fetchMartiList(client, `${base}/api/clientEndPoints`, {
-    showCurrentlyConnectedClients: true,
-  }).catch(() => null);
-  const contactsPromise = fetchContactsLookup(client, base).catch(() => null);
-
-  const [endpoints, contacts] = await Promise.all([endpointsPromise, contactsPromise]);
-  let liveMembership = Array.isArray(endpoints) ? endpoints : null;
-  if (liveMembership === null) {
-    try {
-      const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
-      liveMembership = Array.isArray(list) ? list : null;
-    } catch (_) {
-      liveMembership = null;
-    }
-  }
-
-  const merged = mergeClientEndpointUsernames(
-    Array.isArray(contacts) ? contacts : [],
-    liveMembership
-  );
+  const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
   return {
     configured: true,
-    data: merged.map(normalizeConnectedClientRow).filter(Boolean),
-  };
-}
-
-async function attachPortalUsernames(list) {
-  const rows = Array.isArray(list) ? list : [];
-  const missing = [];
-  for (const row of rows) {
-    if (!isBlankConnectedField(pickConnectedUsername(row))) continue;
-    const callsign = String(row?.callsign || row?.callSign || "").trim();
-    if (!isBlankConnectedField(callsign)) missing.push(callsign);
-  }
-  if (!missing.length) return rows;
-  try {
-    const directoryRepo = require("./directoryRepo.service");
-    const byKey = await directoryRepo.getUsersByCallsignKeys(missing);
-    if (!byKey || !byKey.size) return rows;
-    return rows.map((row) => {
-      if (!isBlankConnectedField(pickConnectedUsername(row))) return row;
-      const callsign = String(row?.callsign || row?.callSign || "").trim().toLowerCase();
-      const username = (callsign && byKey.get(callsign)) || "";
-      if (!username) return row;
-      return Object.assign({}, row, { username });
-    });
-  } catch (_) {
-    return rows;
-  }
-}
-
-async function finalizeConnectedClientList(result) {
-  if (!result || !Array.isArray(result.data)) return result;
-  const withNames = await attachPortalUsernames(result.data);
-  return {
-    ...result,
-    data: withNames,
+    data: (Array.isArray(list) ? list : []).map(normalizeConnectedClientRow).filter(Boolean),
   };
 }
 
@@ -920,7 +734,7 @@ async function readDashboardSubscriptionsCache() {
 }
 
 /**
- * Connected-client list for dashboard counts/table (live endpoints + contacts lookup).
+ * Connected-client list for dashboard counts/table.
  * Default: worker Postgres snapshot (refreshed ~15s). Memory is used only when
  * it is at least as new as that snapshot.
  * `{ live: true }` always hits TAK — used by the worker refresher.
@@ -938,35 +752,26 @@ async function getSubscriptionsAll(options = {}) {
           now - _subscriptionsCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS &&
           (!fromDash.refreshedAt || _subscriptionsCacheTs >= fromDash.refreshedAt);
         if (memoryFresh) {
-          return finalizeConnectedClientList({
-            ..._subscriptionsCache,
-            data: Array.isArray(_subscriptionsCache.data) ? _subscriptionsCache.data.slice() : [],
-          });
+          return cloneSubscriptionsResult(_subscriptionsCache);
         }
         _subscriptionsCache = {
           ...fromDash.cached,
           data: fromDash.cached.data.slice(),
         };
         _subscriptionsCacheTs = fromDash.refreshedAt || Date.now();
-        return finalizeConnectedClientList({
-          ..._subscriptionsCache,
-          data: _subscriptionsCache.data.slice(),
-        });
+        return cloneSubscriptionsResult(_subscriptionsCache);
       }
     } catch (_) {
       /* fall through to memory / live TAK */
     }
     if (_subscriptionsCache && now - _subscriptionsCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS) {
-      return finalizeConnectedClientList({
-        ..._subscriptionsCache,
-        data: Array.isArray(_subscriptionsCache.data) ? _subscriptionsCache.data.slice() : [],
-      });
+      return cloneSubscriptionsResult(_subscriptionsCache);
     }
   }
 
   if (_subscriptionsInFlight) {
     const snapshot = await _subscriptionsInFlight;
-    return finalizeConnectedClientList(snapshot ? { ...snapshot } : snapshot);
+    return cloneSubscriptionsResult(snapshot);
   }
 
   _subscriptionsInFlight = fetchSubscriptionsAll()
@@ -988,7 +793,7 @@ async function getSubscriptionsAll(options = {}) {
     });
 
   const result = await _subscriptionsInFlight;
-  return finalizeConnectedClientList(result ? { ...result } : result);
+  return cloneSubscriptionsResult(result);
 }
 
 async function fetchSubscriptionsAllFull() {
@@ -1068,8 +873,6 @@ module.exports = {
   slimSubscriptionsForClientList,
   normalizeConnectedClientRow,
   parseTakvFields,
-  mergeClientEndpointUsernames,
-  isEmptyConnectedClient,
   buildTakMtlsHttpsAgent,
   isFederationTokenUsername,
   isNoderedUsername,

@@ -16,34 +16,24 @@ const takMetricsSrc = fs.readFileSync(
   "utf8"
 );
 assert.ok(
-  takMetricsSrc.includes("/api/clientEndPoints"),
-  "dashboard Marti pull must use currently-connected clientEndPoints as membership"
+  takMetricsSrc.includes("/api/subscriptions/all"),
+  "dashboard Marti pull must use /api/subscriptions/all as membership"
 );
 assert.ok(
-  takMetricsSrc.includes("showCurrentlyConnectedClients"),
-  "clientEndPoints fetch must request currently connected clients only"
-);
-
-const directoryRepoSrc = fs.readFileSync(
-  path.join(__dirname, "..", "services", "directoryRepo.service.js"),
-  "utf8"
-);
-const callsignKeysFn = directoryRepoSrc.slice(
-  directoryRepoSrc.indexOf("async function getUsersByCallsignKeys"),
-  directoryRepoSrc.indexOf("async function getUserById")
+  !takMetricsSrc.includes("/api/clientEndPoints"),
+  "dashboard count path must not use clientEndPoints as membership"
 );
 assert.ok(
-  !/lower\(name\) = ANY/.test(callsignKeysFn),
-  "portal username lookup must not match display name"
+  !takMetricsSrc.includes("/api/contacts/all/lite"),
+  "dashboard count path must not use contacts lite as membership"
 );
 
 const {
   parseTakvFields,
   normalizeConnectedClientRow,
   slimSubscriptionsForClientList,
-  mergeClientEndpointUsernames,
   filterConnectedUserSubscriptions,
-  isEmptyConnectedClient,
+  filterFederationSubscriptions,
   getSubscriptionsAll,
   applySubscriptionMetricsSplit,
 } = require("../services/takMetrics.service");
@@ -65,102 +55,49 @@ assert.deepStrictEqual(parseTakvFields({ platform: "iTAK", version: "2.9.1" }), 
   version: "2.9.1",
 });
 
-const liteRow = normalizeConnectedClientRow({
+const slimRow = normalizeConnectedClientRow({
   uid: "device-1",
+  username: "jsmith.hcso",
   callsign: "HCSO-1",
   team: "Cyan",
   role: "Team Member",
   takv: "ATAK-CIV-5.4.0",
-  user: { name: "jsmith.hcso" },
   groups: [{ name: "TAK_SHOULD_DROP" }],
 });
-assert.strictEqual(liteRow.username, "jsmith.hcso");
-assert.strictEqual(liteRow.takClient, "ATAK-CIV");
-assert.strictEqual(liteRow.version, "5.4.0");
-assert.strictEqual(liteRow.clientUid, "device-1");
-assert.strictEqual(liteRow.groups, undefined);
-
-const uidOnly = normalizeConnectedClientRow({ uid: "live-uid", team: "Cyan" });
-assert.ok(uidOnly, "live endpoint rows with a uid must be kept for membership");
-assert.strictEqual(uidOnly.uid, "live-uid");
-assert.strictEqual(uidOnly.username, "");
-assert.ok(isEmptyConnectedClient(uidOnly));
-
-const dashPlaceholder = normalizeConnectedClientRow({
-  uid: "ghost",
-  callsign: "—",
-  username: "—",
-  role: "—",
-});
-assert.ok(dashPlaceholder, "dash placeholders with a uid stay in the live set");
-assert.strictEqual(dashPlaceholder.username, "");
-assert.strictEqual(dashPlaceholder.callsign, "");
-assert.ok(isEmptyConnectedClient(dashPlaceholder));
+assert.strictEqual(slimRow.username, "jsmith.hcso");
+assert.strictEqual(slimRow.callsign, "HCSO-1");
+assert.strictEqual(slimRow.takClient, "ATAK-CIV");
+assert.strictEqual(slimRow.version, "5.4.0");
+assert.strictEqual(slimRow.clientUid, "device-1");
+assert.strictEqual(slimRow.groups, undefined);
 
 assert.strictEqual(
-  normalizeConnectedClientRow({ team: "Cyan", role: "HQ" }),
-  null,
-  "rows with no uid, callsign, or username must be dropped"
+  normalizeConnectedClientRow({
+    uid: "nr1",
+    user: { name: "nodered-wx" },
+    callsign: "WX",
+  }).username,
+  "",
+  "2.0.5 classification uses item.username only, not nested user.name"
 );
-assert.ok(isEmptyConnectedClient({ callsign: "", username: "", takClient: "ATAK-CIV" }));
-assert.ok(isEmptyConnectedClient({ callsign: "—", username: "-", role: "HQ" }));
-
-const merged = mergeClientEndpointUsernames(
-  [{ uid: "device-1", callsign: "HCSO-DAVIS-3598", team: "Cyan", role: "HQ" }],
-  [{ uid: "device-1", callsign: "HCSO-DAVIS-3598", username: "davis.hcso" }]
-);
-assert.strictEqual(merged[0].username, "davis.hcso");
-assert.strictEqual(merged[0].team, "Cyan");
-assert.strictEqual(merged[0].role, "HQ");
-
-const mergedAlt = mergeClientEndpointUsernames(
-  [{ uid: "device-2", callsign: "HCSO-2", team: "Cyan" }],
-  [{ uid: "device-2", callsign: "HCSO-2", userName: "alt.hcso" }]
-);
-assert.strictEqual(mergedAlt[0].username, "alt.hcso");
-
-const liveWithIntegration = mergeClientEndpointUsernames(
-  [
-    { uid: "device-1", callsign: "A", team: "Cyan", role: "Team Member" },
-    { uid: "stale-contact", callsign: "OLD", username: "stale.hcso", team: "Red" },
-  ],
-  [
-    { uid: "device-1", callsign: "A", username: "alice.hcso" },
-    { uid: "nodered-1", username: "nodered-weather", callsign: "WX" },
-  ]
-);
-assert.strictEqual(liveWithIntegration.length, 2, "contacts-only rows must not become connected");
-assert.ok(liveWithIntegration.some((row) => row.username === "nodered-weather"));
-assert.ok(!liveWithIntegration.some((row) => row.uid === "stale-contact"));
-const enrichedHuman = liveWithIntegration.find((row) => row.uid === "device-1");
-assert.strictEqual(enrichedHuman.team, "Cyan");
-assert.strictEqual(enrichedHuman.role, "Team Member");
-
-const zeroConnected = mergeClientEndpointUsernames(
-  [{ uid: "stale-contact", username: "stale.hcso" }],
-  []
-);
-assert.strictEqual(
-  zeroConnected.length,
-  0,
-  "empty currently-connected endpoints must not fall back to contacts"
-);
-
-const endpointsFailed = mergeClientEndpointUsernames(
-  [{ uid: "fallback", username: "fallback.hcso" }],
-  null
-);
-assert.strictEqual(endpointsFailed.length, 1);
-assert.strictEqual(endpointsFailed[0].username, "fallback.hcso");
 
 const filtered = filterConnectedUserSubscriptions([
   { username: "alice", callsign: "A1" },
-  { uid: "ghost", team: "Cyan" },
-  { callsign: "—", username: "", takClient: "—" },
   { username: "nodered-bridge", callsign: "NR1" },
+  { username: "aa:bb:cc:dd:ee:ff", callsign: "FED" },
+  { username: "bob", callsign: "tls:24" },
+  { username: "portal", callsign: "tak-portal" },
 ]);
 assert.strictEqual(filtered.length, 1);
 assert.strictEqual(filtered[0].username, "alice");
+
+const keptNodered = filterFederationSubscriptions([
+  { username: "alice", callsign: "A1" },
+  { username: "nodered-weather", callsign: "WX" },
+  { username: "aa:bb:cc:dd:ee:ff", callsign: "FED" },
+]);
+assert.strictEqual(keptNodered.length, 2);
+assert.ok(keptNodered.some((row) => row.username === "nodered-weather"));
 
 const humans = Array.from({ length: 1000 }, (_, i) => ({
   uid: `user-${i}`,
@@ -190,17 +127,20 @@ const splitDup = applySubscriptionMetricsSplit(
 assert.strictEqual(splitDup.connectedClients, 1000, "duplicate nodered sessions still subtract from users");
 assert.strictEqual(splitDup.connectedIntegrations, 70, "duplicate nodered sessions do not inflate integrations");
 
-const nestedNodered = applySubscriptionMetricsSplit(
-  { connectedClients: 2 },
+const splitExtras = applySubscriptionMetricsSplit(
+  { connectedClients: 5 },
   {
     data: [
-      { uid: "nr1", user: { name: "nodered-wx" } },
-      { uid: "u1", username: "alice.hcso" },
+      { username: "alice", callsign: "A1" },
+      { username: "nodered-wx", callsign: "WX" },
+      { username: "aa:bb:cc:dd:ee:ff", callsign: "FED" },
+      { username: "bob", callsign: "tls:24" },
+      { username: "carol", callsign: "C1" },
     ],
   }
 );
-assert.strictEqual(nestedNodered.connectedClients, 1);
-assert.strictEqual(nestedNodered.connectedIntegrations, 1);
+assert.strictEqual(splitExtras.connectedClients, 2);
+assert.strictEqual(splitExtras.connectedIntegrations, 1);
 
 const dash = require("../services/takDashboardCache.service");
 
@@ -214,8 +154,6 @@ dash.getDashboardTakSnapshot = async () => ({
         callsign: "A1",
         groups: [{ name: "should-not-be-sent-to-browser" }],
       },
-      { uid: "ghost", team: "Cyan" },
-      { callsign: "—", username: "—", takClient: "—", role: "—" },
       { uid: "nodered-1", username: "nodered-weather", callsign: "WX" },
     ],
   },
@@ -235,7 +173,7 @@ dash.getDashboardTakSnapshot = async () => ({
     assert.strictEqual(humanList.length, 1);
     assert.strictEqual(humanList[0].username, "alice");
 
-    const slim = slimSubscriptionsForClientList([alice]);
+    const slim = slimSubscriptionsForClientList(cached.data);
     assert.strictEqual(slim[0].username, "alice");
     assert.strictEqual(slim[0].callsign, "A1");
     assert.strictEqual(
