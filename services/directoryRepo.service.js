@@ -241,7 +241,6 @@ async function getUserByRadioCallsign(callsign) {
      WHERE pending_delete = false
        AND (
          lower(radio_callsign) = lower($1)
-         OR lower(name) = lower($1)
          OR lower(COALESCE(attributes->>'radio_callsign', '')) = lower($1)
        )
      LIMIT 1`,
@@ -262,12 +261,11 @@ async function getUsersByCallsignKeys(callsigns) {
   const byKey = new Map();
   if (!keys.length || !db.isConfigured()) return byKey;
   const r = await db.query(
-    `SELECT username, radio_callsign, name, attributes
+    `SELECT username, radio_callsign, attributes
      FROM users
      WHERE pending_delete = false
        AND (
          lower(radio_callsign) = ANY($1::text[])
-         OR lower(name) = ANY($1::text[])
          OR lower(COALESCE(attributes->>'radio_callsign', '')) = ANY($1::text[])
        )`,
     [keys]
@@ -276,7 +274,6 @@ async function getUsersByCallsignKeys(callsigns) {
     const username = String(row.username || "").trim();
     if (!username) continue;
     const radio = String(row.radio_callsign || "").trim().toLowerCase();
-    const name = String(row.name || "").trim().toLowerCase();
     let attrs = row.attributes;
     if (typeof attrs === "string") {
       try {
@@ -288,7 +285,6 @@ async function getUsersByCallsignKeys(callsigns) {
     if (!attrs || typeof attrs !== "object") attrs = {};
     const attrRadio = String(attrs.radio_callsign || "").trim().toLowerCase();
     if (radio) byKey.set(radio, username);
-    if (name) byKey.set(name, username);
     if (attrRadio) byKey.set(attrRadio, username);
   }
   return byKey;

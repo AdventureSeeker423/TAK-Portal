@@ -508,7 +508,7 @@ function isTlsCallsign(callsign) {
 }
 
 function isTlsCallsignSubscription(item) {
-  return isTlsCallsign(item && item.callsign);
+  return isTlsCallsign(item && (item.callsign || item.callSign));
 }
 
 /** Channel-patch bridge / rebroadcast ghosts on the webadmin stream. */
@@ -533,7 +533,7 @@ function isEmptyConnectedClient(item) {
 }
 
 function isExcludedConnectedUserSubscription(item) {
-  const username = item && item.username;
+  const username = pickConnectedUsername(item);
   return (
     isEmptyConnectedClient(item) ||
     isNoderedUsername(username) ||
@@ -551,9 +551,10 @@ function subscriptionMatchesAgencyScope(authUser, username, agencyOnly) {
 
 /** Remove federation hub token rows; keep nodered (needed by integrations page). */
 function filterFederationSubscriptions(list) {
-  return (Array.isArray(list) ? list : []).filter(
-    (item) => !isFederationTokenUsername(item && item.username) && !isEmptyConnectedClient(item)
-  );
+  return (Array.isArray(list) ? list : []).filter((item) => {
+    if (isEmptyConnectedClient(item)) return false;
+    return !isFederationTokenUsername(pickConnectedUsername(item));
+  });
 }
 
 /** Human connected users for dashboard list/count (no nodered, no federation). */
@@ -561,10 +562,11 @@ function filterConnectedUserSubscriptions(list, options = {}) {
   const { authUser = null, agencyOnly = false } = options;
   return filterFederationSubscriptions(list).filter((item) => {
     if (isEmptyConnectedClient(item)) return false;
-    if (isNoderedUsername(item && item.username)) return false;
+    const username = pickConnectedUsername(item);
+    if (isNoderedUsername(username)) return false;
     if (isTlsCallsignSubscription(item)) return false;
     if (isChannelPatchBridgeSubscription(item)) return false;
-    return subscriptionMatchesAgencyScope(authUser, item && item.username, agencyOnly);
+    return subscriptionMatchesAgencyScope(authUser, username, agencyOnly);
   });
 }
 
@@ -580,7 +582,7 @@ function computeSubscriptionExclusionCounts(list, options = {}) {
   const noderedUsernames = new Set();
 
   for (const item of Array.isArray(list) ? list : []) {
-    const username = item && item.username;
+    const username = pickConnectedUsername(item);
     if (isNoderedUsername(username)) {
       if (subscriptionMatchesAgencyScope(authUser, username, agencyOnly)) {
         noderedCount += 1;
@@ -666,28 +668,88 @@ function pickConnectedUsername(row) {
   return "";
 }
 
-function mergeClientEndpointUsernames(contacts, endpoints) {
+function connectedRowUid(row) {
+  return String(
+    row?.uid || row?.clientUid || row?.subscriptionUid || row?.deviceUid || row?.lastSA?.uid || ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function connectedRowCallsign(row) {
+  return String(row?.callsign || row?.callSign || "")
+    .trim()
+    .toLowerCase();
+}
+
+function indexConnectedRows(rows) {
   const byUid = new Map();
   const byCallsign = new Map();
-  for (const ep of Array.isArray(endpoints) ? endpoints : []) {
-    const username = pickConnectedUsername(ep);
-    if (!username) continue;
-    const uid = String(ep?.uid || ep?.clientUid || ep?.lastSA?.uid || "").trim().toLowerCase();
-    const cs = String(ep?.callsign || ep?.callSign || "").trim().toLowerCase();
-    if (uid) byUid.set(uid, username);
-    if (cs) byCallsign.set(cs, username);
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || typeof row !== "object") continue;
+    const uid = connectedRowUid(row);
+    const cs = connectedRowCallsign(row);
+    if (uid) byUid.set(uid, row);
+    if (cs && !isBlankConnectedField(cs)) byCallsign.set(cs, row);
   }
-  const list = Array.isArray(contacts) ? contacts : [];
-  if (!list.length && Array.isArray(endpoints) && endpoints.length) {
-    return endpoints.slice();
+  return { byUid, byCallsign };
+}
+
+const CONNECTED_DISPLAY_KEYS = [
+  "team",
+  "role",
+  "takv",
+  "takClient",
+  "platform",
+  "version",
+  "takVersion",
+  "appVersion",
+  "clientVersion",
+];
+
+function enrichLiveConnectedRow(liveRow, contact) {
+  const out = Object.assign({}, liveRow);
+  if (contact) {
+    if (!pickConnectedUsername(out)) {
+      const username = pickConnectedUsername(contact);
+      if (username) out.username = username;
+    }
+    if (isBlankConnectedField(out.callsign || out.callSign)) {
+      const cs = contact.callsign || contact.callSign;
+      if (!isBlankConnectedField(cs)) out.callsign = cs;
+    }
+    for (const key of CONNECTED_DISPLAY_KEYS) {
+      if (isBlankConnectedField(out[key]) && !isBlankConnectedField(contact[key])) {
+        out[key] = contact[key];
+      }
+    }
   }
-  return list.map((row) => {
-    if (pickConnectedUsername(row)) return row;
-    const uid = String(row?.uid || row?.clientUid || "").trim().toLowerCase();
-    const cs = String(row?.callsign || row?.callSign || "").trim().toLowerCase();
-    const username = (uid && byUid.get(uid)) || (cs && byCallsign.get(cs)) || "";
-    if (!username) return row;
-    return Object.assign({}, row, { username });
+  const username = pickConnectedUsername(out);
+  if (username && out.username !== username) out.username = username;
+  return out;
+}
+
+/**
+ * Live connected membership comes from currently-connected clientEndPoints.
+ * Contacts lite is a display lookup (team/role/takv) and never adds extra rows.
+ * If endpoints is missing (fetch failed), fall back to the contacts/subscription list.
+ */
+function mergeClientEndpointUsernames(contacts, endpoints) {
+  const liveIsEndpoints = Array.isArray(endpoints);
+  const live = liveIsEndpoints
+    ? endpoints
+    : Array.isArray(contacts)
+      ? contacts
+      : [];
+  if (!live.length) return [];
+  if (!liveIsEndpoints) return live.map((row) => enrichLiveConnectedRow(row, null));
+
+  const { byUid, byCallsign } = indexConnectedRows(contacts);
+  return live.map((row) => {
+    const uid = connectedRowUid(row);
+    const cs = connectedRowCallsign(row);
+    const contact = (uid && byUid.get(uid)) || (cs && byCallsign.get(cs)) || null;
+    return enrichLiveConnectedRow(row, contact);
   });
 }
 
@@ -737,9 +799,12 @@ function normalizeConnectedClientRow(row) {
   const version = String(
     row.version || row.takVersion || row.appVersion || row.clientVersion || parsed.version || ""
   ).trim();
-  const username = pickConnectedUsername(row);
-  const callsign = String(row.callsign || row.callSign || "").trim();
-  if (isBlankConnectedField(username) && isBlankConnectedField(callsign)) return null;
+  const usernameRaw = pickConnectedUsername(row);
+  const callsignRaw = String(row.callsign || row.callSign || "").trim();
+  const username = isBlankConnectedField(usernameRaw) ? "" : usernameRaw;
+  const callsign = isBlankConnectedField(callsignRaw) ? "" : callsignRaw;
+  // Keep live sessions that only have a uid yet; drop true ghosts with no identity.
+  if (!uid && !username && !callsign) return null;
   return {
     username,
     callsign,
@@ -758,10 +823,24 @@ function normalizeConnectedClientRow(row) {
   };
 }
 
+async function fetchContactsLookup(client, base) {
+  const liteUrls = [`${base}/api/contacts/all/lite`, `${base}/api/contacts/all`];
+  for (const url of liteUrls) {
+    try {
+      const list = await fetchMartiList(client, url);
+      if (Array.isArray(list)) return list;
+    } catch (_) {
+      /* try next lite path */
+    }
+  }
+  return null;
+}
+
 /**
- * Connected-client list for the dashboard table.
- * Prefer Marti contacts lite (callsign/team/role/takv, no group dump) and merge
- * usernames from clientEndPoints. `/api/subscriptions/all` is the slow fallback.
+ * Connected-client list for dashboard counts/table.
+ * Live membership is currently-connected clientEndPoints. Contacts lite is a
+ * display lookup only. `/api/subscriptions/all` is the slow fallback if
+ * endpoints cannot be fetched.
  */
 async function fetchSubscriptionsAll() {
   const takUrl = getString("TAK_URL", "");
@@ -774,27 +853,23 @@ async function fetchSubscriptionsAll() {
   const endpointsPromise = fetchMartiList(client, `${base}/api/clientEndPoints`, {
     showCurrentlyConnectedClients: true,
   }).catch(() => null);
+  const contactsPromise = fetchContactsLookup(client, base).catch(() => null);
 
-  const liteUrls = [`${base}/api/contacts/all/lite`, `${base}/api/contacts/all`];
-  let contacts = null;
-  for (const url of liteUrls) {
+  const [endpoints, contacts] = await Promise.all([endpointsPromise, contactsPromise]);
+  let liveMembership = Array.isArray(endpoints) ? endpoints : null;
+  if (liveMembership === null) {
     try {
-      const list = await fetchMartiList(client, url);
-      if (Array.isArray(list)) {
-        contacts = list;
-        break;
-      }
+      const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
+      liveMembership = Array.isArray(list) ? list : null;
     } catch (_) {
-      /* try next lite path, then subscriptions/all */
+      liveMembership = null;
     }
   }
-  if (!Array.isArray(contacts)) {
-    const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
-    contacts = Array.isArray(list) ? list : [];
-  }
 
-  const endpoints = await endpointsPromise;
-  const merged = mergeClientEndpointUsernames(contacts, endpoints);
+  const merged = mergeClientEndpointUsernames(
+    Array.isArray(contacts) ? contacts : [],
+    liveMembership
+  );
   return {
     configured: true,
     data: merged.map(normalizeConnectedClientRow).filter(Boolean),
@@ -831,7 +906,7 @@ async function finalizeConnectedClientList(result) {
   const withNames = await attachPortalUsernames(result.data);
   return {
     ...result,
-    data: withNames.filter((row) => !isEmptyConnectedClient(row)),
+    data: withNames,
   };
 }
 
@@ -845,7 +920,7 @@ async function readDashboardSubscriptionsCache() {
 }
 
 /**
- * Connected-client list for the dashboard table (lite Marti contacts).
+ * Connected-client list for dashboard counts/table (live endpoints + contacts lookup).
  * Default: worker Postgres snapshot (refreshed ~15s). Memory is used only when
  * it is at least as new as that snapshot.
  * `{ live: true }` always hits TAK — used by the worker refresher.
