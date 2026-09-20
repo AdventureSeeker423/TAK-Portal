@@ -310,6 +310,10 @@ const SUBSCRIPTIONS_CACHE_TTL_MS = Math.max(
   1000,
   Number(process.env.TAK_SUBSCRIPTIONS_CACHE_TTL_MS ?? 15000)
 );
+const SUBSCRIPTIONS_FETCH_TIMEOUT_MS = Math.max(
+  10_000,
+  Number(process.env.TAK_SUBSCRIPTIONS_FETCH_TIMEOUT_MS ?? 30_000)
+);
 
 let _samplerStarted = false;
 let _sampleTimer = null;
@@ -321,7 +325,6 @@ let _subscriptionsCacheTs = 0;
 let _subscriptionsInFlight = null;
 let _subscriptionsFullCache = null;
 let _subscriptionsFullCacheTs = 0;
-let _subscriptionsFullInFlight = null;
 
 /** Each sample: { ts, disk, net, uptimeSeconds } */
 let _samples = [];
@@ -627,10 +630,15 @@ function unwrapMartiList(payload) {
   return null;
 }
 
-async function fetchMartiList(client, url, params) {
+async function fetchMartiList(client, url, params, extra = {}) {
   const res = await client.get(url, {
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
     params: params || undefined,
+    decompress: true,
+    timeout: extra.timeout || undefined,
   });
   if (res.status !== 200 || !res.data) return null;
   return unwrapMartiList(res.data);
@@ -689,7 +697,6 @@ function normalizeConnectedClientRow(row) {
     platform: takClient,
     team: String(row.team || "").trim(),
     role: String(row.role || "").trim(),
-    takv: row.takv,
     version,
     clientUid: uid,
     subscriptionUid: String(row.subscriptionUid || uid).trim(),
@@ -709,32 +716,70 @@ function cloneSubscriptionsResult(result) {
 }
 
 /**
- * Connected-client list for dashboard counts/table.
- * Live membership is Marti `/api/subscriptions/all` (2.0.5). Group vectors are
- * stripped immediately so the worker snapshot stays small at 1000+ clients.
+ * One Marti `/api/subscriptions/all` GET. Slim rows are the 2.0.5 dashboard
+ * membership set (groups stripped). The raw list is kept only when a caller
+ * needs map/group vectors.
  */
-async function fetchSubscriptionsAll() {
+async function fetchSubscriptionsBundle() {
   const takUrl = getString("TAK_URL", "");
   if (!String(takUrl || "").trim()) {
-    return { configured: false, data: [] };
+    return {
+      slim: { configured: false, data: [] },
+      full: { configured: false, data: [] },
+    };
   }
 
   const base = normalizeBase(takUrl);
   const client = getMetricsAxios();
-  const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
+  const list = await fetchMartiList(client, `${base}/api/subscriptions/all`, undefined, {
+    timeout: SUBSCRIPTIONS_FETCH_TIMEOUT_MS,
+  });
+  const raw = Array.isArray(list) ? list : [];
+  const slimData = [];
+  for (let i = 0; i < raw.length; i++) {
+    const row = normalizeConnectedClientRow(raw[i]);
+    if (row) slimData.push(row);
+  }
   return {
-    configured: true,
-    data: (Array.isArray(list) ? list : []).map(normalizeConnectedClientRow).filter(Boolean),
+    slim: { configured: true, data: slimData },
+    full: { configured: true, data: raw },
   };
 }
 
-async function readDashboardSubscriptionsCache() {
-  const dash = require("./takDashboardCache.service");
-  const snap = await dash.getDashboardTakSnapshot();
-  const cached = snap && snap.subscriptions;
-  if (!(cached && Array.isArray(cached.data))) return null;
-  const refreshedAt = snap.refreshedAt ? new Date(snap.refreshedAt).getTime() : 0;
-  return { cached, refreshedAt };
+async function ensureSubscriptionsBundle(options = {}) {
+  const keepFull = options.keepFull !== false;
+  if (_subscriptionsInFlight) return _subscriptionsInFlight;
+
+  _subscriptionsInFlight = fetchSubscriptionsBundle()
+    .then((bundle) => {
+      const ts = Date.now();
+      _subscriptionsCache = bundle.slim;
+      _subscriptionsCacheTs = ts;
+      if (keepFull) {
+        _subscriptionsFullCache = bundle.full;
+        _subscriptionsFullCacheTs = ts;
+      }
+      return bundle;
+    })
+    .catch((err) => {
+      if (_subscriptionsCache || _subscriptionsFullCache) {
+        return {
+          slim: _subscriptionsCache || { configured: true, data: [] },
+          full: _subscriptionsFullCache || { configured: true, data: [] },
+        };
+      }
+      const empty = {
+        configured: true,
+        data: [],
+        error: err?.response?.data || err?.message || "Failed to fetch subscriptions",
+      };
+      return { slim: empty, full: empty };
+    })
+    .finally(() => {
+      _subscriptionsInFlight = null;
+    });
+
+  return _subscriptionsInFlight;
 }
 
 /**
@@ -773,42 +818,8 @@ async function getSubscriptionsAll(options = {}) {
     }
   }
 
-  if (_subscriptionsInFlight) {
-    const snapshot = await _subscriptionsInFlight;
-    return cloneSubscriptionsResult(snapshot);
-  }
-
-  _subscriptionsInFlight = fetchSubscriptionsAll()
-    .then((result) => {
-      _subscriptionsCache = result;
-      _subscriptionsCacheTs = Date.now();
-      return result;
-    })
-    .catch((err) => {
-      if (_subscriptionsCache) return _subscriptionsCache;
-      return {
-        configured: true,
-        data: [],
-        error: err?.response?.data || err?.message || "Failed to fetch subscriptions",
-      };
-    })
-    .finally(() => {
-      _subscriptionsInFlight = null;
-    });
-
-  const result = await _subscriptionsInFlight;
-  return cloneSubscriptionsResult(result);
-}
-
-async function fetchSubscriptionsAllFull() {
-  const takUrl = getString("TAK_URL", "");
-  if (!String(takUrl || "").trim()) {
-    return { configured: false, data: [] };
-  }
-  const base = normalizeBase(takUrl);
-  const client = getMetricsAxios();
-  const list = await fetchMartiList(client, `${base}/api/subscriptions/all`);
-  return { configured: true, data: Array.isArray(list) ? list : [] };
+  const bundle = await ensureSubscriptionsBundle({ keepFull: options.keepFull !== false });
+  return cloneSubscriptionsResult(bundle && bundle.slim);
 }
 
 async function getSubscriptionsAllFull() {
@@ -816,29 +827,18 @@ async function getSubscriptionsAllFull() {
   if (_subscriptionsFullCache && now - _subscriptionsFullCacheTs <= SUBSCRIPTIONS_CACHE_TTL_MS) {
     return { ..._subscriptionsFullCache };
   }
-  if (_subscriptionsFullInFlight) {
-    const snapshot = await _subscriptionsFullInFlight;
-    return snapshot ? { ...snapshot } : snapshot;
-  }
-  _subscriptionsFullInFlight = fetchSubscriptionsAllFull()
-    .then((result) => {
-      _subscriptionsFullCache = result;
-      _subscriptionsFullCacheTs = Date.now();
-      return result;
-    })
-    .catch((err) => {
-      if (_subscriptionsFullCache) return _subscriptionsFullCache;
-      return {
-        configured: true,
-        data: [],
-        error: err?.response?.data || err?.message || "Failed to fetch subscriptions",
-      };
-    })
-    .finally(() => {
-      _subscriptionsFullInFlight = null;
-    });
-  const result = await _subscriptionsFullInFlight;
-  return result ? { ...result } : result;
+  const bundle = await ensureSubscriptionsBundle({ keepFull: true });
+  const full = bundle && bundle.full;
+  return full ? { ...full } : { configured: true, data: [] };
+}
+
+async function readDashboardSubscriptionsCache() {
+  const dash = require("./takDashboardCache.service");
+  const snap = await dash.getDashboardTakSnapshot();
+  const cached = snap && snap.subscriptions;
+  if (!(cached && Array.isArray(cached.data))) return null;
+  const refreshedAt = snap.refreshedAt ? new Date(snap.refreshedAt).getTime() : 0;
+  return { cached, refreshedAt };
 }
 
 /** Dashboard/map client list only — drop Marti group payloads from the HTTP response. */
@@ -853,10 +853,6 @@ function slimSubscriptionForClientList(item) {
     role: item.role,
     battery: item.battery,
     version: item.version,
-    takVersion: item.takVersion,
-    appVersion: item.appVersion,
-    clientVersion: item.clientVersion,
-    takv: item.takv,
     clientUid: item.clientUid,
     subscriptionUid: item.subscriptionUid,
     uid: item.uid,

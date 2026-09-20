@@ -184,7 +184,7 @@ async function refreshNow() {
     try {
       const [takMetricsBase, subscriptions] = await Promise.all([
         getTakMetricsSnapshot().catch(() => null),
-        getSubscriptionsAll({ live: true }).catch(() => null),
+        getSubscriptionsAll({ live: true, keepFull: false }).catch(() => null),
       ]);
       applyStateFromParts(takMetricsBase, subscriptions, new Date());
       return persistPayload();

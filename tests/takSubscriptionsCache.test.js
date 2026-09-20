@@ -7,8 +7,12 @@ const dashSrc = fs.readFileSync(
   "utf8"
 );
 assert.ok(
-  /getSubscriptionsAll\(\{\s*live:\s*true\s*\}/.test(dashSrc),
+  /getSubscriptionsAll\(\{\s*live:\s*true/.test(dashSrc),
   "worker TAK dashboard refresh must live-fetch subscriptions"
+);
+assert.ok(
+  /keepFull:\s*false/.test(dashSrc),
+  "worker must not retain Marti group vectors after slimming"
 );
 
 const takMetricsSrc = fs.readFileSync(
@@ -18,6 +22,10 @@ const takMetricsSrc = fs.readFileSync(
 assert.ok(
   takMetricsSrc.includes("/api/subscriptions/all"),
   "dashboard Marti pull must use /api/subscriptions/all as membership"
+);
+assert.ok(
+  takMetricsSrc.includes("gzip"),
+  "Marti subscription fetch should request gzip to shrink group-vector payloads"
 );
 assert.ok(
   !takMetricsSrc.includes("/api/clientEndPoints"),
@@ -70,6 +78,7 @@ assert.strictEqual(slimRow.takClient, "ATAK-CIV");
 assert.strictEqual(slimRow.version, "5.4.0");
 assert.strictEqual(slimRow.clientUid, "device-1");
 assert.strictEqual(slimRow.groups, undefined);
+assert.strictEqual(slimRow.takv, undefined, "slim rows must drop Marti takv payloads");
 
 assert.strictEqual(
   normalizeConnectedClientRow({
