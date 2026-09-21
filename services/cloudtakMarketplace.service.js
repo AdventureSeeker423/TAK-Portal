@@ -781,7 +781,7 @@ function buildUiPlugins(options = {}) {
     byId.set(id, {
       id,
       name: s.dest,
-      description: "Found on the CloudTAK host, not in the catalog.",
+      description: "",
       maintainer: "",
       repo: s.gitRemote || "",
       ref: "",

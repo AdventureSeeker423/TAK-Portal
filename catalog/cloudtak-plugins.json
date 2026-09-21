@@ -155,8 +155,7 @@
           ],
           "snippet": "wss://*.blitzortung.org"
         }
-      ],
-      "notes": "Marketplace nests flat sample-shaped plugin trees into lib/."
+      ]
     }
   ]
 }
