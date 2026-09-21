@@ -824,6 +824,21 @@ async function onEnabled(opts = {}) {
 
 const MAX_JOB_LOG_LINES = 2500;
 
+function isNoisyBuildLine(s) {
+  const t = String(s || "")
+    .replace(/^\s*(=>\s*)+/, "")
+    .replace(/^#\s*/, "")
+    .trim();
+  if (!t) return true;
+  if (/^dist\/(?:assets\/|\.vite\/)/.test(t) || /\/dist\/(?:assets\/|\.vite\/)/.test(t)) return true;
+  if (/\bkB\b/.test(t) && /gzip:/i.test(t)) return true;
+  if (/Unexpected any\. Specify a different type/.test(t)) return true;
+  if (/^\d+:\d+\s+warning\b/.test(t)) return true;
+  if (/^\/home\/etl\//.test(t)) return true;
+  if (/^✖ \d+ problems/.test(t)) return true;
+  return false;
+}
+
 function formatRemoteLogLine(line) {
   let s = String(line || "")
     .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
@@ -841,11 +856,14 @@ function formatRemoteLogLine(line) {
   }
   if (/^#\d+\s+DONE\s+/.test(s) || /^#\d+\s+CACHED$/.test(s)) return "";
   m = s.match(/^#\d+\s+\d+(?:\.\d+)?\s+(.*)$/);
-  if (m) return ` => => # ${m[1]}`;
-  m = s.match(/^#\d+\s+(.*)$/);
-  if (m) return ` => => # ${m[1]}`;
+  if (m) s = ` => => # ${m[1]}`;
+  else {
+    m = s.match(/^#\d+\s+(.*)$/);
+    if (m) s = ` => => # ${m[1]}`;
+  }
   m = s.match(/^Image\s+(.+)\s+Building$/);
   if (m) return `[+] Building ${m[1]}`;
+  if (isNoisyBuildLine(s)) return "";
   return s;
 }
 

@@ -499,14 +499,25 @@
     if (!s || /^(UNINSTALL_OK|REBUILD_OK|INSTALL_OK)$/.test(s) || s.indexOf("INSTALL_SHA ") === 0) return "";
     if (/^\$\s*bash\s+-lc/.test(s) || /^--progress is a global compose flag/.test(s)) return "";
     var m = s.match(/^#\d+\s+(\[[^\]]+\])\s+(.*)$/);
-    if (m) return " => " + m[1] + " " + m[2];
-    if (/^#\d+\s+DONE\s+/.test(s) || /^#\d+\s+CACHED$/.test(s)) return "";
-    m = s.match(/^#\d+\s+\d+(?:\.\d+)?\s+(.*)$/);
-    if (m) return " => => # " + m[1];
-    m = s.match(/^#\d+\s+(.*)$/);
-    if (m) return " => => # " + m[1];
+    if (m) s = " => " + m[1] + " " + m[2];
+    else if (/^#\d+\s+DONE\s+/.test(s) || /^#\d+\s+CACHED$/.test(s)) return "";
+    else {
+      m = s.match(/^#\d+\s+\d+(?:\.\d+)?\s+(.*)$/);
+      if (m) s = " => => # " + m[1];
+      else {
+        m = s.match(/^#\d+\s+(.*)$/);
+        if (m) s = " => => # " + m[1];
+      }
+    }
     m = s.match(/^Image\s+(.+)\s+Building$/);
     if (m) return "[+] Building " + m[1];
+    var t = s.replace(/^\s*(=>\s*)+/, "").replace(/^#\s*/, "").trim();
+    if (/^dist\/(?:assets\/|\.vite\/)/.test(t) || /\/dist\/(?:assets\/|\.vite\/)/.test(t)) return "";
+    if (/\bkB\b/.test(t) && /gzip:/i.test(t)) return "";
+    if (/Unexpected any\. Specify a different type/.test(t)) return "";
+    if (/^\d+:\d+\s+warning\b/.test(t)) return "";
+    if (/^\/home\/etl\//.test(t)) return "";
+    if (/^✖ \d+ problems/.test(t)) return "";
     return s;
   }
 
