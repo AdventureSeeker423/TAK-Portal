@@ -131,7 +131,7 @@ assert.ok(!livewx.csp["img-src"].some((s) => /blitzortung/i.test(s)));
 assert.ok(!livewx.additionalActions.some((a) => /nginx/i.test(JSON.stringify(a))));
 const installScript = marketplace.installRemoteScript("/root/CloudTAK", livewx);
 assert.match(installScript, /Fetching latest plugin source/);
-assert.match(installScript, /clone --depth 1 --single-branch --branch/);
+assert.match(installScript, /clone --quiet --depth 1 --single-branch --branch/);
 assert.doesNotMatch(installScript, /fetch --depth 1 origin/);
 assert.match(installScript, /Clearing previous plugin files at/);
 assert.match(installScript, /rm -rf "\$PERSIST"/);
@@ -145,6 +145,7 @@ assert.match(installScript, /mesonet\.agron\.iastate\.edu/);
 assert.match(installScript, /wss:\/\/ws1\.blitzortung\.org/);
 assert.match(installScript, /wss:\/\/\*\.blitzortung\.org/);
 assert.match(installScript, /apply_plugin_csp/);
+assert.match(installScript, /docker compose --progress=plain/);
 
 assert.deepStrictEqual(
   marketplace.normalizeCsp({ csp: ["wss://*.example.org", "https://tiles.example.com"] }),
@@ -238,6 +239,9 @@ ssh.sendRemoteInterrupt(
 );
 assert.deepStrictEqual(interruptWrites, ["\x03"]);
 assert.deepStrictEqual(interruptSignals, ["INT"]);
+const crProgress = ssh.feedPtyChunk("", "Counting objects: 3% (1/30)\rCounting objects: 100% (30/30), done.\n");
+assert.deepStrictEqual(crProgress.lines, ["Counting objects: 100% (30/30), done."]);
+assert.strictEqual(ssh.stripAnsi("\u001b[1A[+] up 3/4"), "[+] up 3/4");
 
 async function assertOnboardValidation() {
   await assert.rejects(

@@ -1587,9 +1587,9 @@ function pluginCspBash() {
     '  if ! command -v docker >/dev/null 2>&1; then return 0; fi',
     '  echo "Recreating $api_svc so CSP environment applies"',
     '  if [ -f "$OVERRIDE" ]; then',
-    '    ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" up -d --force-recreate "$api_svc" )',
+    '    ( cd "$STACK" && COMPOSE_ANSI=never COMPOSE_PROGRESS=plain docker compose --progress=plain -f "$CF" -f "$OVERRIDE" up -d --force-recreate "$api_svc" )',
     "  else",
-    '    ( cd "$STACK" && docker compose -f "$CF" up -d --force-recreate "$api_svc" )',
+    '    ( cd "$STACK" && COMPOSE_ANSI=never COMPOSE_PROGRESS=plain docker compose --progress=plain -f "$CF" up -d --force-recreate "$api_svc" )',
     "  fi",
     "  return 0",
     "}",
@@ -1725,7 +1725,7 @@ function pluginRuntimeExtrasBash() {
     'SVC="$compose_svc_hint"',
     "start_overlay() {",
     '  echo "Starting plugin Docker service${SVC:+ $SVC} from $OVERRIDE"',
-    '  ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" up -d --build ${SVC:+$SVC} )',
+    '  ( cd "$STACK" && COMPOSE_ANSI=never COMPOSE_PROGRESS=plain docker compose --progress=plain -f "$CF" -f "$OVERRIDE" up -d --build ${SVC:+$SVC} )',
     "}",
     'if [ -n "$COMPOSE_SRC" ]; then',
     '  {',
@@ -1887,7 +1887,7 @@ run_as_writer() {
 echo "Fetching latest plugin source"
 echo "Cloning $REPO ($REF)"
 reset_cache
-GIT_TERMINAL_PROMPT=0 git_ok clone --depth 1 --single-branch --branch "$REF" "$REPO" "$CACHE"
+GIT_TERMINAL_PROMPT=0 git_ok clone --quiet --depth 1 --single-branch --branch "$REF" "$REPO" "$CACHE"
 REPO_DIR="$CACHE"
 SHA=$(git_ok -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 echo "Plugin source $REPO_DIR @ $SHA"
@@ -2049,8 +2049,9 @@ if [ -f docker-compose.marketplace.yml ]; then
 fi
 export BUILDKIT_PROGRESS=plain
 export COMPOSE_ANSI=never
+export COMPOSE_PROGRESS=plain
 docker compose --progress=plain -f "$CF" $MPF build --no-cache "$SVC"
-docker compose -f "$CF" $MPF up -d --force-recreate "$SVC"
+docker compose --progress=plain -f "$CF" $MPF up -d --force-recreate "$SVC"
 echo "Waiting for $SVC to be running"
 n=0
 while [ "$n" -lt 90 ]; do

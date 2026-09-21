@@ -351,6 +351,34 @@ function sendRemoteInterrupt(stream, signalName) {
   } catch (_) {}
 }
 
+function stripAnsi(text) {
+  return String(text || "")
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
+    .replace(/\u001b[()]./g, "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+}
+
+function feedPtyChunk(hold, chunk) {
+  let all = String(hold || "") + String(chunk || "");
+  all = all.replace(/\r\n/g, "\n");
+  const lines = [];
+  let current = "";
+  for (let i = 0; i < all.length; i++) {
+    const ch = all[i];
+    if (ch === "\n") {
+      const cleaned = stripAnsi(current).replace(/\s+$/, "");
+      if (cleaned) lines.push(cleaned);
+      current = "";
+    } else if (ch === "\r") {
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  return { lines, hold: current };
+}
+
 function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
   return new Promise((resolve) => {
     const conn = new Client();
@@ -418,12 +446,8 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
 
     const emit = (text) => {
       if (!onChunk || !text) return;
-      String(text)
-        .split(/\r\n|\n|\r/)
-        .forEach((line) => {
-          const raw = String(line || "").replace(/\s+$/, "");
-          if (raw) onChunk(raw);
-        });
+      const raw = stripAnsi(text).replace(/\s+$/, "");
+      if (raw) onChunk(raw);
     };
 
     const connectOpts = {
@@ -475,11 +499,9 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
           let stdoutHold = "";
           let stderrHold = "";
           const takeLines = (hold, chunk) => {
-            const all = hold + chunk;
-            const parts = all.split(/\r\n|\n|\r/);
-            const rest = parts.pop() || "";
-            parts.forEach((line) => emit(line));
-            return rest;
+            const next = feedPtyChunk(hold, chunk);
+            next.lines.forEach((line) => emit(line));
+            return next.hold;
           };
           stream.on("data", (data) => {
             const s = data.toString();
@@ -494,8 +516,8 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
             });
           }
           stream.on("close", (code) => {
-            emit(stdoutHold);
-            emit(stderrHold);
+            emit(stripAnsi(stdoutHold).replace(/\s+$/, ""));
+            emit(stripAnsi(stderrHold).replace(/\s+$/, ""));
             if (cancelled) {
               done(cancelledPayload());
               return;
@@ -762,6 +784,8 @@ module.exports = {
   runCommand,
   abortActiveCommand,
   sendRemoteInterrupt,
+  stripAnsi,
+  feedPtyChunk,
   detectCheckout,
   testConnection,
   shellQuote,
