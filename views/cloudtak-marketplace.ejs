@@ -16,8 +16,7 @@
         <button type="button" class="btn mp-filter-btn" id="mpFilterAvailable" data-mp-filter="available">Available</button>
         <button type="button" class="btn mp-filter-btn" id="mpFilterNew" data-mp-filter="new">New</button>
         <button type="button" class="btn mp-filter-btn" id="mpFilterInstalled" data-mp-filter="installed">Installed</button>
-        <button type="button" class="btn qr" id="mpUpdateAll">Update all</button>
-        <button type="button" class="btn" id="mpRefreshCatalog">Refresh catalog</button>
+        <button type="button" class="btn qr" id="mpUpdateAll" style="display:none;">Update all</button>
       </div>
     </div>
     <div id="mpMsg" class="msg" style="margin-top:8px;"></div>
@@ -331,7 +330,7 @@
       grid.appendChild(el);
     });
     var canUpdateAll = plugins.some(function (p) { return p.installed && p.updateAvailable; });
-    $("mpUpdateAll").disabled = !canUpdateAll;
+    $("mpUpdateAll").style.display = canUpdateAll ? "" : "none";
   }
 
   function jobLines(j, logLimit) {
@@ -434,9 +433,6 @@
     });
   });
   $("mpSearch").addEventListener("input", renderCards);
-  $("mpRefreshCatalog").addEventListener("click", function () {
-    postJob({ kind: "refresh-catalog" }).then(function () { setMsg("Catalog refresh queued."); loadAll(); });
-  });
   $("mpUpdateAll").addEventListener("click", function () {
     postJob({ kind: "update-all" }).then(function () { setMsg("Update all queued on the worker."); loadAll(); });
   });
@@ -483,6 +479,10 @@
 
   fetch("/api/cloudtak-marketplace/jobs/clear-idle", { method: "POST", headers: { Accept: "application/json" } })
     .catch(function () {})
+    .then(function () {
+      loadAll();
+      return fetch("/api/cloudtak-marketplace/catalog/refresh", { method: "POST", headers: { Accept: "application/json" } }).catch(function () {});
+    })
     .then(function () { return loadAll(); });
   setInterval(loadAll, 4000);
 })();

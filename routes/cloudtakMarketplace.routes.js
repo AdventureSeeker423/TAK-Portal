@@ -100,13 +100,14 @@ router.post("/jobs", (req, res) => {
   }
 });
 
-router.post("/catalog/refresh", (req, res) => {
+router.post("/catalog/refresh", async (req, res) => {
   try {
-    const job = marketplace.enqueueJob({
-      kind: "refresh-catalog",
-      createdBy: username(req),
+    const result = await marketplace.fetchCatalog();
+    res.json({
+      ok: !!result.ok,
+      error: result.ok ? undefined : result.message,
+      count: result.catalog && result.catalog.plugins ? result.catalog.plugins.length : 0,
     });
-    res.json({ ok: true, job });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
   }

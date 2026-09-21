@@ -98,7 +98,7 @@ function sshStatus() {
   };
 }
 
-function execOverSsh(connectConfig, command, timeoutMs = 30000) {
+function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
   return new Promise((resolve) => {
     const conn = new Client();
     let finished = false;
@@ -122,6 +122,16 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000) {
       });
     }, timeoutMs);
 
+    const emit = (text) => {
+      if (!onChunk || !text) return;
+      String(text)
+        .split(/\r\n|\n|\r/)
+        .forEach((line) => {
+          const trimmed = String(line || "").trim();
+          if (trimmed) onChunk(trimmed);
+        });
+    };
+
     conn
       .on("ready", () => {
         conn.exec(command, (err, stream) => {
@@ -137,13 +147,28 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000) {
           }
           let stdout = "";
           let stderr = "";
+          let stdoutHold = "";
+          let stderrHold = "";
+          const takeLines = (hold, chunk) => {
+            const all = hold + chunk;
+            const parts = all.split(/\r\n|\n|\r/);
+            const rest = parts.pop() || "";
+            parts.forEach((line) => emit(line));
+            return rest;
+          };
           stream.on("data", (data) => {
-            stdout += data.toString();
+            const s = data.toString();
+            stdout += s;
+            stdoutHold = takeLines(stdoutHold, s);
           });
           stream.stderr.on("data", (data) => {
-            stderr += data.toString();
+            const s = data.toString();
+            stderr += s;
+            stderrHold = takeLines(stderrHold, s);
           });
           stream.on("close", (code) => {
+            emit(stdoutHold);
+            emit(stderrHold);
             const exitCode = Number.isInteger(code) ? code : null;
             if (exitCode !== 0) {
               done({
@@ -179,7 +204,7 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000) {
   });
 }
 
-async function runCommand(command, timeoutMs = 30000) {
+async function runCommand(command, timeoutMs = 30000, onChunk) {
   const raw = String(command || "").trim();
   if (!raw) {
     return { ok: false, message: "Command is required.", stdout: "", stderr: "", exitCode: null };
@@ -196,7 +221,7 @@ async function runCommand(command, timeoutMs = 30000) {
       exitCode: null,
     };
   }
-  return execOverSsh(cfg, raw, timeoutMs);
+  return execOverSsh(cfg, raw, timeoutMs, onChunk);
 }
 
 function detectScript() {

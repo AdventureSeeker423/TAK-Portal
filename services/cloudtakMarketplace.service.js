@@ -784,9 +784,12 @@ function isActiveJob(job) {
 }
 
 function clearIdleJobs() {
-  const kept = store.readJobs().jobs.filter(isActiveJob);
-  store.writeJobs({ jobs: kept });
-  return kept;
+  const jobs = store.readJobs().jobs;
+  if (jobs.some(isActiveJob)) return jobs;
+  return store.withJobs((current) => {
+    if (current.some(isActiveJob)) return current;
+    return [];
+  }).jobs;
 }
 
 function pluginById(id) {
@@ -903,7 +906,7 @@ SHA=$(git_ok -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 echo "Plugin source $REPO_DIR @ $SHA"
 
 if [ -f "$REPO_DIR/install.sh" ]; then
-  INSTALL="./install.sh --no-build --no-pull"
+  INSTALL="./install.sh --no-pull"
 fi
 
 if [ -n "$INSTALL" ]; then
@@ -971,7 +974,7 @@ elif [ -f compose.yml ]; then CF=compose.yml
 elif [ -f compose.yaml ]; then CF=compose.yaml
 else echo "No compose file in $CT" >&2; exit 1
 fi
-docker compose -f "$CF" build "$SVC"
+docker compose -f "$CF" build --no-cache --progress=plain "$SVC"
 docker compose -f "$CF" up -d --force-recreate "$SVC"
 echo REBUILD_OK
 `.trim();
@@ -979,16 +982,22 @@ echo REBUILD_OK
 
 async function runLogged(jobId, command, timeoutMs) {
   appendJobLog(jobId, `$ ${command.slice(0, 180)}`);
-  const result = await ssh.runCommand(command, timeoutMs);
-  if (result.stdout) {
-    String(result.stdout)
-      .split("\n")
-      .forEach((line) => line.trim() && appendJobLog(jobId, line.trim()));
-  }
-  if (!result.ok && result.stderr) {
-    String(result.stderr)
-      .split("\n")
-      .forEach((line) => line.trim() && appendJobLog(jobId, line.trim()));
+  let streamed = false;
+  const result = await ssh.runCommand(command, timeoutMs, (line) => {
+    streamed = true;
+    appendJobLog(jobId, line);
+  });
+  if (!streamed) {
+    if (result.stdout) {
+      String(result.stdout)
+        .split("\n")
+        .forEach((line) => line.trim() && appendJobLog(jobId, line.trim()));
+    }
+    if (!result.ok && result.stderr) {
+      String(result.stderr)
+        .split("\n")
+        .forEach((line) => line.trim() && appendJobLog(jobId, line.trim()));
+    }
   }
   if (!result.ok) {
     throw new Error(result.message || "SSH command failed");
@@ -1001,7 +1010,11 @@ async function performInstall(job, plugin) {
   const loc = await ensureCheckoutPath();
   if (!loc.ok) throw new Error(loc.message || "CloudTAK path not found");
   appendJobLog(job.id, `Using CloudTAK at ${loc.path}`);
-  const result = await runLogged(job.id, `bash -lc ${ssh.shellQuote(installRemoteScript(loc.path, plugin))}`, 180000);
+  const result = await runLogged(
+    job.id,
+    `bash -lc ${ssh.shellQuote(installRemoteScript(loc.path, plugin))}`,
+    20 * 60 * 1000
+  );
   const shaLine = String(result.stdout || "")
     .split("\n")
     .find((l) => l.startsWith("INSTALL_SHA "));
@@ -1015,7 +1028,16 @@ async function performInstall(job, plugin) {
     ref: plugin.ref,
   };
   store.writeInstalled(rec);
-  return { sha, path: loc.path, composeService: loc.composeService || ssh.resolvedComposeService() };
+  const out = String(result.stdout || "") + "\n" + String(result.stderr || "");
+  const skipRebuild =
+    /Rebuilding CloudTAK API image/i.test(out) ||
+    (/Plugin installed/i.test(out) && !/Skipped rebuild/i.test(out));
+  return {
+    sha,
+    path: loc.path,
+    composeService: loc.composeService || ssh.resolvedComposeService(),
+    skipRebuild,
+  };
 }
 
 async function performUninstall(job, dest, plugin) {
@@ -1036,12 +1058,13 @@ async function performUninstall(job, dest, plugin) {
 }
 
 async function performRebuild(job, ctPath, service) {
-  appendJobLog(job.id, `Rebuilding CloudTAK API service ${service} (this can take several minutes)`);
+  appendJobLog(job.id, `Rebuilding CloudTAK API service ${service} with --no-cache (usually 5–15 minutes)`);
   await runLogged(job.id, `bash -lc ${ssh.shellQuote(rebuildRemoteScript(ctPath, service))}`, 20 * 60 * 1000);
 }
 
 async function runInstallBatch(jobs) {
   let lastLoc = null;
+  let needsRebuild = false;
   for (const job of jobs) {
     updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
     try {
@@ -1049,6 +1072,7 @@ async function runInstallBatch(jobs) {
       if (!plugin) throw new Error(`Plugin ${job.pluginId} is not in the catalog`);
       const loc = await performInstall(job, plugin);
       lastLoc = loc;
+      if (!loc.skipRebuild) needsRebuild = true;
       updateJob(job.id, { extra: { ...(job.extra || {}), sha: loc.sha } });
     } catch (err) {
       updateJob(job.id, {
@@ -1062,7 +1086,7 @@ async function runInstallBatch(jobs) {
   const succeeded = store
     .readJobs()
     .jobs.filter((j) => jobs.some((x) => x.id === j.id) && j.status === "running");
-  if (succeeded.length && lastLoc) {
+  if (succeeded.length && lastLoc && needsRebuild) {
     try {
       await performRebuild(succeeded[0], lastLoc.path, lastLoc.composeService);
       for (const j of succeeded) {
@@ -1078,6 +1102,11 @@ async function runInstallBatch(jobs) {
         });
         appendJobLog(j.id, `Rebuild failed: ${err.message || err}`);
       }
+    }
+  } else if (succeeded.length) {
+    for (const j of succeeded) {
+      updateJob(j.id, { status: "complete", finishedAt: new Date().toISOString() });
+      appendJobLog(j.id, "Complete. In CloudTAK use Settings → Refresh App.");
     }
   }
   try {
@@ -1194,11 +1223,13 @@ async function claimAndRunJobs() {
             appendJobLog(job.id, `Updating ${p.name}`);
           }
           let lastLoc = null;
+          let needsRebuild = false;
           try {
             for (const p of pending) {
               lastLoc = await performInstall(job, p.catalog);
+              if (lastLoc && !lastLoc.skipRebuild) needsRebuild = true;
             }
-            if (lastLoc) await performRebuild(job, lastLoc.path, lastLoc.composeService);
+            if (lastLoc && needsRebuild) await performRebuild(job, lastLoc.path, lastLoc.composeService);
             updateJob(job.id, { status: "complete", finishedAt: new Date().toISOString() });
             appendJobLog(job.id, "Update all complete. In CloudTAK use Settings → Refresh App.");
             await scanHost();
