@@ -815,8 +815,21 @@ SRC=${ssh.shellQuote(source)}
 ROUTES=${ssh.shellQuote(routes)}
 INSTALL=${ssh.shellQuote(installScript)}
 WANT=${ssh.shellQuote(repoName)}
-CACHE="/tmp/ctak-marketplace-cache/$ID"
-mkdir -p /tmp/ctak-marketplace-cache
+CACHE="$HOME/.cache/cloudtak-marketplace/$ID"
+mkdir -p "$(dirname "$CACHE")"
+git_ok() {
+  git -c "safe.directory=$CACHE" -c safe.directory=* "$@"
+}
+reset_cache() {
+  rm -rf "$CACHE" 2>/dev/null || true
+  if [ -e "$CACHE" ]; then
+    sudo -n rm -rf "$CACHE" 2>/dev/null || true
+  fi
+  if [ -e "$CACHE" ]; then
+    echo "ERROR: cannot replace plugin cache $CACHE (owned by another user)." >&2
+    exit 1
+  fi
+}
 
 cloudtak_owner() {
   stat -c '%U' "$CT" 2>/dev/null || stat -f '%Su' "$CT" 2>/dev/null || true
@@ -872,14 +885,21 @@ run_as_writer() {
 
 echo "Fetching plugin source"
 if [ -d "$CACHE/.git" ]; then
-  git -C "$CACHE" fetch --depth 1 origin "$REF"
-  git -C "$CACHE" checkout --force FETCH_HEAD
+  cache_owner=$(stat -c '%U' "$CACHE" 2>/dev/null || stat -f '%Su' "$CACHE" 2>/dev/null || true)
+  if [ -n "$cache_owner" ] && [ "$cache_owner" != "$(id -un)" ]; then
+    echo "Replacing plugin cache owned by $cache_owner"
+    reset_cache
+  fi
+fi
+if [ -d "$CACHE/.git" ]; then
+  git_ok -C "$CACHE" fetch --depth 1 origin "$REF"
+  git_ok -C "$CACHE" checkout --force FETCH_HEAD
 else
-  rm -rf "$CACHE"
-  git clone --depth 1 --branch "$REF" "$REPO" "$CACHE"
+  reset_cache
+  git_ok clone --depth 1 --branch "$REF" "$REPO" "$CACHE"
 fi
 REPO_DIR="$CACHE"
-SHA=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
+SHA=$(git_ok -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 echo "Plugin source $REPO_DIR @ $SHA"
 
 if [ -f "$REPO_DIR/install.sh" ]; then
