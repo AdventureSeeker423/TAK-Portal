@@ -119,10 +119,17 @@ function loadCatalog() {
   const bundledById = new Map(bundled.plugins.map((p) => [p.id, p]));
   normalized.plugins = normalized.plugins.map((p) => {
     const seed = bundledById.get(p.id);
-    if (seed && seed.installScript && !p.installScript) {
-      return { ...p, installScript: seed.installScript };
-    }
-    return p;
+    if (!seed) return p;
+    return {
+      ...seed,
+      ...p,
+      web: { ...seed.web, ...(p.web || {}) },
+      routes: p.routes || seed.routes,
+      installScript: p.installScript || seed.installScript,
+      detect: p.detect && p.detect.length ? p.detect : seed.detect,
+      detectAliases: p.detectAliases && p.detectAliases.length ? p.detectAliases : seed.detectAliases,
+      exclude: p.exclude && p.exclude.length ? p.exclude : seed.exclude,
+    };
   });
   return normalized;
 }
@@ -899,12 +906,23 @@ function safeDestName(name) {
   return /^[A-Za-z0-9._-]+$/.test(String(name || ""));
 }
 
+function normalizeInstallScript(script) {
+  const raw = String(script || "").trim();
+  if (!raw) return "";
+  const parts = raw.split(/\s+/);
+  const cmd = parts[0];
+  if (cmd && !cmd.startsWith("/") && !cmd.startsWith("./") && cmd !== "bash" && cmd !== "sh") {
+    parts[0] = `./${cmd}`;
+  }
+  return parts.join(" ");
+}
+
 function installRemoteScript(ct, plugin) {
   const dest = plugin.web.dest;
   const source = plugin.web.source === "." ? "." : plugin.web.source;
   const routes = plugin.routes ? plugin.routes.source : "";
   const excludes = (plugin.exclude || []).join("\n");
-  const installScript = plugin.installScript || "";
+  const installScript = normalizeInstallScript(plugin.installScript || "");
   const repoName = repoBasename(plugin.repo) || plugin.id;
   return `
 set -euo pipefail
@@ -1004,25 +1022,42 @@ REPO_DIR="$CACHE"
 SHA=$(git_ok -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 echo "Plugin source $REPO_DIR @ $SHA"
 
+# Generic layouts, in order:
+# 1) repo install.sh (pass --no-build / --no-pull only if that script documents them)
+# 2) optional catalog installer
+# 3) copy web files from catalog source, plugin/, or repo root; copy server/*.ts routes if present
 if [ -f "$REPO_DIR/install.sh" ]; then
-  if [ -z "$INSTALL" ]; then
-    INSTALL="./install.sh --no-pull --no-build"
-  fi
-fi
-
-if [ -n "$INSTALL" ]; then
-  echo "Installing the same way the plugin repo documents: cd $REPO_DIR && $INSTALL $CT"
-  run_as_writer "cd $(printf '%q' "$REPO_DIR") && $INSTALL $(printf '%q' "$CT")"
+  flags=""
+  if grep -q -- '--no-build' "$REPO_DIR/install.sh"; then flags="$flags --no-build"; fi
+  if grep -q -- '--no-pull' "$REPO_DIR/install.sh"; then flags="$flags --no-pull"; fi
+  echo "Found install.sh; running: bash ./install.sh$flags $CT"
+  chmod +x "$REPO_DIR/install.sh" 2>/dev/null || true
+  run_as_writer "cd $(printf '%q' "$REPO_DIR") && bash ./install.sh$flags $(printf '%q' "$CT")"
+elif [ -n "$INSTALL" ]; then
+  echo "Running installer: cd $REPO_DIR && bash $INSTALL $CT"
+  run_as_writer "cd $(printf '%q' "$REPO_DIR") && bash $INSTALL $(printf '%q' "$CT")"
 else
   WEBSRC="$REPO_DIR"
-  if [ "$SRC" != "." ]; then WEBSRC="$REPO_DIR/$SRC"; fi
-  if [ ! -d "$WEBSRC" ]; then echo "Missing web source $WEBSRC" >&2; exit 1; fi
+  if [ "$SRC" != "." ] && [ -d "$REPO_DIR/$SRC" ]; then
+    WEBSRC="$REPO_DIR/$SRC"
+    echo "Using catalog web source $SRC"
+  elif [ -d "$REPO_DIR/plugin" ]; then
+    WEBSRC="$REPO_DIR/plugin"
+    echo "Detected plugin/ web layout"
+  elif [ -f "$REPO_DIR/index.ts" ] || [ -f "$REPO_DIR/index.js" ]; then
+    WEBSRC="$REPO_DIR"
+    echo "Detected repo-root web layout"
+  else
+    echo "Missing web source in $REPO_DIR" >&2
+    exit 1
+  fi
   PLUGIN_ROOT="$CT/api/web/plugins"
   TARGET="$PLUGIN_ROOT/$DEST"
   case "$TARGET" in
     */api/web/plugins/$DEST) ;;
     *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
   esac
+  echo "Copying plugin files to $TARGET"
   run_as_writer "mkdir -p $(printf '%q' "$TARGET") && cp -a $(printf '%q' "$WEBSRC")/. $(printf '%q' "$TARGET")/"
   cat <<'EXCL' > /tmp/ctak-marketplace-excludes-$ID
 ${excludes}
@@ -1034,8 +1069,15 @@ EXCL
       run_as_writer "rm -rf $(printf '%q' "$TARGET/$base")" || true
     done < /tmp/ctak-marketplace-excludes-$ID
   fi
+  ROUTES_DIR=""
   if [ -n "$ROUTES" ] && [ -d "$REPO_DIR/$ROUTES" ]; then
-    run_as_writer "mkdir -p $(printf '%q' "$CT/api/stateless/routes") && cp -a $(printf '%q' "$REPO_DIR/$ROUTES")/*.ts $(printf '%q' "$CT/api/stateless/routes")/" || true
+    ROUTES_DIR="$REPO_DIR/$ROUTES"
+  elif [ -d "$REPO_DIR/server" ] && ls "$REPO_DIR/server"/*.ts >/dev/null 2>&1; then
+    ROUTES_DIR="$REPO_DIR/server"
+  fi
+  if [ -n "$ROUTES_DIR" ]; then
+    echo "Copying route files from $ROUTES_DIR"
+    run_as_writer "mkdir -p $(printf '%q' "$CT/api/stateless/routes") && cp -a $(printf '%q' "$ROUTES_DIR")/*.ts $(printf '%q' "$CT/api/stateless/routes")/" || true
   fi
 fi
 printf 'INSTALL_SHA %s\\n' "$SHA"
@@ -1111,22 +1153,24 @@ echo REBUILD_OK
 `.trim();
 }
 
-async function runLogged(jobId, command, timeoutMs) {
+async function runLogged(jobIds, command, timeoutMs) {
+  const ids = (Array.isArray(jobIds) ? jobIds : [jobIds]).filter(Boolean);
+  const log = (line) => ids.forEach((id) => appendJobLog(id, line));
   let streamed = false;
   const result = await ssh.runCommand(command, timeoutMs, (line) => {
     streamed = true;
-    appendJobLog(jobId, line);
+    log(line);
   });
   if (!streamed) {
     if (result.stdout) {
       String(result.stdout)
         .split("\n")
-        .forEach((line) => appendJobLog(jobId, line));
+        .forEach((line) => log(line));
     }
     if (!result.ok && result.stderr) {
       String(result.stderr)
         .split("\n")
-        .forEach((line) => appendJobLog(jobId, line));
+        .forEach((line) => log(line));
     }
   }
   if (!result.ok) {
@@ -1188,9 +1232,10 @@ async function performUninstall(job, dest, plugin) {
   return { path: loc.path, composeService: loc.composeService || ssh.resolvedComposeService() };
 }
 
-async function performRebuild(job, ctPath, service) {
-  appendJobLog(job.id, `$ docker compose --progress=plain build --no-cache ${service}`);
-  await runLogged(job.id, `bash -lc ${ssh.shellQuote(rebuildRemoteScript(ctPath, service))}`, 20 * 60 * 1000);
+async function performRebuild(jobs, ctPath, service) {
+  const ids = (Array.isArray(jobs) ? jobs : [jobs]).map((j) => j.id);
+  ids.forEach((id) => appendJobLog(id, `$ docker compose --progress=plain build --no-cache ${service}`));
+  await runLogged(ids, `bash -lc ${ssh.shellQuote(rebuildRemoteScript(ctPath, service))}`, 20 * 60 * 1000);
 }
 
 async function runChangeBatch(jobs) {
@@ -1256,9 +1301,10 @@ async function runChangeBatch(jobs) {
     .jobs.filter((j) => jobs.some((x) => x.id === j.id) && j.status === "running");
   if (succeeded.length && lastLoc && needsRebuild) {
     try {
-      appendJobLog(succeeded[0].id, `Applying ${succeeded.length} change${succeeded.length === 1 ? "" : "s"} with one CloudTAK rebuild`);
-      await performRebuild(succeeded[0], lastLoc.path, lastLoc.composeService);
-      appendJobLog(succeeded[0].id, "Containers recreated and running.");
+      const msg = `Applying ${succeeded.length} change${succeeded.length === 1 ? "" : "s"} with one CloudTAK rebuild`;
+      succeeded.forEach((j) => appendJobLog(j.id, msg));
+      await performRebuild(succeeded, lastLoc.path, lastLoc.composeService);
+      succeeded.forEach((j) => appendJobLog(j.id, "Containers recreated and running."));
       for (const j of succeeded) {
         updateJob(j.id, { status: "complete", finishedAt: new Date().toISOString() });
         appendJobLog(j.id, "Complete. In CloudTAK use Settings → Refresh App.");
@@ -1522,4 +1568,5 @@ module.exports = {
   detectAndPersist,
   persistDetectedPath,
   onEnabled,
+  normalizeInstallScript,
 };

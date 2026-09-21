@@ -34,8 +34,11 @@ assert.deepStrictEqual(gh, {
   repo: "cloudtak-plugin-quick-point-dropper",
 });
 
+assert.strictEqual(marketplace.normalizeInstallScript("install.sh --no-build"), "./install.sh --no-build");
+assert.strictEqual(marketplace.normalizeInstallScript("./setup.sh"), "./setup.sh");
+
 const qpd = normalized.plugins.find((p) => p.id === "quick-point-dropper");
-assert.ok(qpd && /install\.sh/.test(qpd.installScript || ""), "QPD should use install.sh");
+assert.ok(qpd && qpd.web && qpd.web.dest === "quick-point-dropper");
 const matchDest = marketplace.matchCatalogPlugin({ dest: "quick-point-dropper" }, normalized.plugins);
 assert.strictEqual(matchDest && matchDest.id, "quick-point-dropper");
 

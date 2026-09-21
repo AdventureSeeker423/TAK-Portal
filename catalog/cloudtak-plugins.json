@@ -15,8 +15,7 @@
       "exclude": ["**/*.md"],
       "detect": ["api/web/plugins/quick-point-dropper/index.ts"],
       "detectAliases": ["cloudtak-plugin-quick-point-dropper", "QuickPointDropper", "quick_point_dropper"],
-      "installScript": "./install.sh --no-build",
-      "notes": "Uses the plugin install.sh. After install: CloudTAK Settings → Refresh App."
+      "notes": "After install: CloudTAK Settings → Refresh App."
     },
     {
       "id": "helloworld",
@@ -119,10 +118,9 @@
       "maintainer": "takwerx",
       "web": { "source": "plugin", "dest": "tak-dispatcher" },
       "routes": { "source": "server" },
-      "installScript": "install.sh --no-build",
       "detectAliases": ["tak-dispatcher", "cloudtak-dispatcher-plugin", "dispatcher"],
       "detect": ["api/web/plugins/tak-dispatcher/index.ts"],
-      "notes": "Uses the plugin install.sh --no-build path. After install: CloudTAK Settings → Refresh App."
+      "notes": "After install: CloudTAK Settings → Refresh App."
     },
     {
       "id": "lightning",
