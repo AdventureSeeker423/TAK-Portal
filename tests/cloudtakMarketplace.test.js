@@ -96,6 +96,36 @@ assert.match(unknownUninstall, /api\/web\/src\/plugins\/\$DEST/);
 assert.match(unknownUninstall, /plugin-host-only-plugin\.ts/);
 assert.match(unknownUninstall, /cleanup_plugin_runtime/);
 
+assert.strictEqual(marketplace.CLOUDTAK_JOB_ID, "__cloudtak__");
+const scanScript = marketplace.scanRemoteScript("/root/CloudTAK", []);
+assert.match(scanScript, /CTAK_PATH/);
+assert.match(scanScript, /CTAK_HEAD/);
+assert.match(scanScript, /CTAK_REMOTE_HEAD/);
+const parsedCt = marketplace.parseScanStdout(
+  [
+    "SCAN_BEGIN",
+    "CTAK_PATH /root/CloudTAK",
+    "CTAK_HEAD abcdef1234567890",
+    "CTAK_BRANCH master",
+    "CTAK_REMOTE https://github.com/dfpc-coe/CloudTAK.git",
+    "CTAK_DESCRIBE v13.53.2",
+    "CTAK_VERSION 13.53.2",
+    "CTAK_REMOTE_HEAD fedcba0987654321",
+    "SCAN_END",
+  ].join("\n"),
+  []
+);
+assert.strictEqual(parsedCt.instance.path, "/root/CloudTAK");
+assert.strictEqual(parsedCt.instance.sha, "abcdef1234567890");
+assert.strictEqual(parsedCt.instance.branch, "master");
+assert.strictEqual(parsedCt.instance.version, "13.53.2");
+assert.strictEqual(parsedCt.instance.remoteSha, "fedcba0987654321");
+const ctUpdate = marketplace.updateCloudtakRemoteScript("/root/CloudTAK");
+assert.match(ctUpdate, /pull --ff-only/);
+assert.match(ctUpdate, /CLOUDTAK_SHA /);
+assert.doesNotMatch(ctUpdate, /git clean/);
+assert.doesNotMatch(ctUpdate, /reset --hard/);
+
 const udash = normalized.plugins.find((p) => p.id === "udash");
 assert.ok(udash.additionalActions.some((a) => /webhook sidecar/i.test(JSON.stringify(a))));
 assert.ok(!udash.additionalActions.some((a) => /does not start/i.test(JSON.stringify(a))));

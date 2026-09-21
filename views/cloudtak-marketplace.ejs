@@ -6,6 +6,21 @@
 
   <div id="mpBanners"></div>
 
+  <div class="card" id="mpInstanceCard" style="margin-top:16px;">
+    <div class="mp-instance">
+      <div class="mp-instance-copy">
+        <div class="mp-instance-title-row">
+          <h2 style="margin:0;">CloudTAK</h2>
+          <span id="mpInstancePill" class="plugin-version-pill is-installed">Current</span>
+        </div>
+        <div id="mpInstanceMeta" class="muted" style="margin-top:6px;font-size:0.85rem;">Waiting for host scan…</div>
+        <p id="mpInstanceHint" class="muted" style="margin:8px 0 0;font-size:0.8rem;line-height:1.4;">Queue an update with plugin jobs. Deploy rebuilds CloudTAK once. Plugin files and the CSP overlay stay in place.</p>
+        <p id="mpInstanceError" class="mp-wait-note" style="display:none;margin-top:8px;color:var(--danger,#c44);"></p>
+      </div>
+      <div class="mp-instance-actions" id="mpInstanceActions"></div>
+    </div>
+  </div>
+
   <div class="card" style="margin-top:16px;">
     <div class="row mp-toolbar">
       <label class="mp-search-label">Search
@@ -372,6 +387,52 @@
     background: color-mix(in srgb, #6b7280 12%, transparent);
   }
   .mp-banner.warn { border-color: #c80; }
+  .mp-instance {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .mp-instance-copy {
+    min-width: 220px;
+    flex: 1;
+  }
+  .mp-instance-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .mp-instance .plugin-version-pill {
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--hover-strong);
+    color: var(--muted);
+  }
+  .mp-instance .plugin-version-pill.is-installed {
+    background: color-mix(in srgb, var(--success) 22%, transparent);
+    color: var(--ok-text);
+  }
+  .mp-instance .plugin-version-pill.is-error {
+    background: color-mix(in srgb, var(--danger, #c44) 22%, transparent);
+    color: var(--danger, #c44);
+  }
+  .mp-instance .plugin-version-pill.is-update {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--text);
+  }
+  .mp-instance-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
   @media (max-width: 990px) {
     .marketplace-grid { grid-template-columns: minmax(0, 1fr); }
   }
@@ -387,6 +448,7 @@
   var jobLogPinned = true;
   var stagedJobs = [];
   var jobBusy = false;
+  var instance = null;
   var WAIT_HINT = "Wait until the current job is complete and containers are recreated and running";
 
   function $(id) { return document.getElementById(id); }
@@ -399,7 +461,7 @@
   function changeJobsBusy(jobs) {
     return (jobs || []).some(function (j) {
       return (j.status === "queued" || j.status === "running") &&
-        (j.kind === "install" || j.kind === "update" || j.kind === "uninstall" || j.kind === "update-all");
+        (j.kind === "install" || j.kind === "update" || j.kind === "uninstall" || j.kind === "update-all" || j.kind === "update-cloudtak");
     });
   }
 
@@ -561,6 +623,69 @@
     return '<button type="button" class="btn mp-wait-btn' + (extraClass ? " " + extraClass : "") + '" disabled>' + label + "</button>";
   }
 
+  function shortSha(sha) {
+    var s = String(sha || "").trim();
+    if (!s) return "";
+    return s.length > 12 ? s.slice(0, 7) : s;
+  }
+
+  function stagedCloudtakJob() {
+    return stagedJobs.filter(function (j) { return j.kind === "update-cloudtak"; })[0] || null;
+  }
+
+  function renderInstance() {
+    var pill = $("mpInstancePill");
+    var meta = $("mpInstanceMeta");
+    var errEl = $("mpInstanceError");
+    var actions = $("mpInstanceActions");
+    if (!pill || !meta || !actions) return;
+    var inst = instance || {};
+    var staged = stagedCloudtakJob();
+    var bits = [];
+    if (inst.version) bits.push("v" + inst.version);
+    else if (inst.describe) bits.push(inst.describe);
+    if (inst.branch) bits.push(inst.branch);
+    if (inst.sha) bits.push(shortSha(inst.sha));
+    if (inst.updateAvailable && inst.remoteSha) bits.push("behind " + shortSha(inst.remoteSha));
+    if (inst.path) bits.push(inst.path);
+    meta.textContent = bits.length ? bits.join(" · ") : "Waiting for host scan…";
+    pill.className = "plugin-version-pill";
+    if (inst.error) {
+      pill.classList.add("is-error");
+      pill.textContent = "Error";
+      pill.title = inst.errorMessage || "";
+    } else if (inst.updateAvailable) {
+      pill.classList.add("is-update");
+      pill.textContent = "Update";
+      pill.title = "";
+    } else {
+      pill.classList.add("is-installed");
+      pill.textContent = "Current";
+      pill.title = "";
+    }
+    if (errEl) {
+      if (inst.error && inst.errorMessage) {
+        errEl.style.display = "";
+        errEl.textContent = inst.errorMessage;
+      } else {
+        errEl.style.display = "none";
+        errEl.textContent = "";
+      }
+    }
+    var html = "";
+    var canQueue = !!inst.path && !!inst.sha;
+    if (jobBusy) {
+      html = disabledAction("Queue Update");
+    } else if (staged) {
+      html = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
+    } else if (!canQueue) {
+      html = '<button type="button" class="btn qr" id="mpInstanceUpdateBtn" disabled title="CloudTAK path is not a git checkout yet.">Queue Update</button>';
+    } else {
+      html = '<button type="button" class="btn qr" id="mpInstanceUpdateBtn">Queue Update</button>';
+    }
+    actions.innerHTML = html;
+  }
+
   function renderCards() {
     var q = ($("mpSearch").value || "").trim().toLowerCase();
     var list = plugins.filter(matchesFilter).filter(function (p) {
@@ -681,12 +806,16 @@
       if (note) el.querySelector(".plugin-notes").textContent = note;
       grid.appendChild(el);
     });
-    var hasUpdates = plugins.some(function (p) { return p.installed && p.updateAvailable && !p.unknown && !p.error; });
-    var canUpdateAll = !jobBusy && plugins.some(function (p) {
-      if (!(p.installed && p.updateAvailable) || p.unknown || p.error) return false;
-      var s = stagedForPlugin(p);
-      return !s || s.kind !== "update";
-    });
+    var instanceUpdate = !!(instance && instance.updateAvailable && !instance.error);
+    var instanceQueued = stagedJobs.some(function (j) { return j.kind === "update-cloudtak"; });
+    var hasUpdates = plugins.some(function (p) { return p.installed && p.updateAvailable && !p.unknown && !p.error; }) || instanceUpdate;
+    var canUpdateAll = !jobBusy && (
+      plugins.some(function (p) {
+        if (!(p.installed && p.updateAvailable) || p.unknown || p.error) return false;
+        var s = stagedForPlugin(p);
+        return !s || s.kind !== "update";
+      }) || (instanceUpdate && !instanceQueued)
+    );
     $("mpUpdateAll").style.display = hasUpdates ? "" : "none";
     $("mpUpdateAll").disabled = jobBusy || !canUpdateAll;
     $("mpUpdateAll").title = jobBusy ? WAIT_HINT : "";
@@ -701,6 +830,7 @@
   }
 
   function queueLabel(j) {
+    if (j.kind === "update-cloudtak" || j.pluginId === "__cloudtak__") return "Update CloudTAK";
     var verb = j.kind === "uninstall" ? "Uninstall" : (j.kind === "update" ? "Update" : "Install");
     if (j.extra && j.extra.reinstall) verb = "Reinstall";
     var p = plugins.filter(function (x) {
@@ -744,7 +874,7 @@
 
   function displayLogLine(l) {
     var s = String(l || "").replace(/^\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s+/, "");
-    if (!s || /^(UNINSTALL_OK|REBUILD_OK|INSTALL_OK)$/.test(s) || s.indexOf("INSTALL_SHA ") === 0) return "";
+    if (!s || /^(UNINSTALL_OK|REBUILD_OK|INSTALL_OK)$/.test(s) || s.indexOf("INSTALL_SHA ") === 0 || s.indexOf("CLOUDTAK_SHA") === 0) return "";
     if (/^\$\s*bash\s+-lc/.test(s) || /^--progress is a global compose flag/.test(s)) return "";
     var m = s.match(/^#\d+\s+(\[[^\]]+\])\s+(.*)$/);
     if (m) s = " => " + m[1] + " " + m[2];
@@ -774,6 +904,9 @@
   }
 
   function jobLabel(j) {
+    if (j.kind === "update-cloudtak" || j.pluginId === "__cloudtak__") {
+      return (j.status || "") + " · Update CloudTAK" + (j.error ? " — " + j.error : "");
+    }
     return (j.status || "") + (j.kind ? " · " + j.kind : "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : "");
   }
 
@@ -868,6 +1001,7 @@
       var snap = pair[0];
       var status = pair[1];
       plugins = (snap && snap.plugins) || [];
+      instance = (snap && snap.instance) || null;
       jobBusy = !!(status && (status.busy || changeJobsBusy(status.jobs)));
       if (jobBusy && $("mpUninstallModal")) {
         $("mpUninstallModal").style.display = "none";
@@ -875,6 +1009,7 @@
       }
       renderBanners(status, snap);
       renderQueue(status && status.jobs);
+      renderInstance();
       renderCards();
       renderJobs((status && status.jobs || []).filter(function (j) { return j.status !== "staged"; }));
       document.querySelectorAll("[data-mp-filter]").forEach(function (btn) {
@@ -1003,6 +1138,31 @@
     var btn = e.target && e.target.closest ? e.target.closest("[data-unstage]") : null;
     if (!btn) return;
     unstage(decodeURIComponent(btn.getAttribute("data-unstage") || ""));
+  });
+  $("mpInstanceCard").addEventListener("click", function (e) {
+    var unstageBtn = e.target && e.target.closest ? e.target.closest("[data-unstage]") : null;
+    if (unstageBtn && $("mpInstanceCard").contains(unstageBtn)) {
+      if (jobBusy) {
+        setMsg(WAIT_HINT + ".", true);
+        return;
+      }
+      unstage(decodeURIComponent(unstageBtn.getAttribute("data-unstage") || ""));
+      return;
+    }
+    var btn = e.target && e.target.closest ? e.target.closest("#mpInstanceUpdateBtn") : null;
+    if (!btn || btn.disabled) return;
+    if (jobBusy) {
+      setMsg(WAIT_HINT + ".", true);
+      return;
+    }
+    postJob({ kind: "update-cloudtak" }).then(function (out) {
+      if (!out.ok) {
+        setMsg((out.json && out.json.error) || "Could not queue CloudTAK update", true);
+        return;
+      }
+      setMsg(out.json && out.json.removed ? "Removed CloudTAK update from queue." : "CloudTAK update added to queue.");
+      loadAll();
+    });
   });
   $("mpUninstallCancel").addEventListener("click", function () {
     $("mpUninstallModal").style.display = "none";

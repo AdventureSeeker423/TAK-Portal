@@ -133,7 +133,7 @@ router.post("/jobs/unstage", (req, res) => {
 router.post("/jobs", (req, res) => {
   try {
     const kind = String((req.body && req.body.kind) || "").trim();
-    const allowed = new Set(["install", "update", "update-all", "uninstall", "refresh-catalog", "scan"]);
+    const allowed = new Set(["install", "update", "update-all", "uninstall", "update-cloudtak", "refresh-catalog", "scan"]);
     if (!allowed.has(kind)) {
       return res.status(400).json({ ok: false, error: "Unknown job kind" });
     }
@@ -142,11 +142,21 @@ router.post("/jobs", (req, res) => {
     if (req.body && req.body.dest) extra.dest = String(req.body.dest).trim();
     if (req.body && req.body.reinstall) extra.reinstall = true;
     const createdBy = username(req);
-    if (["install", "update", "update-all", "uninstall"].includes(kind) && busyChangeError(res)) return;
+    if (["install", "update", "update-all", "uninstall", "update-cloudtak"].includes(kind) && busyChangeError(res)) return;
 
     if (kind === "update-all") {
       const snap = marketplace.buildUiPlugins({ skipRemoteSha: true });
       const staged = [];
+      if (snap.instance && snap.instance.updateAvailable && !snap.instance.error) {
+        const result = marketplace.stageJob({
+          kind: "update-cloudtak",
+          pluginId: marketplace.CLOUDTAK_JOB_ID,
+          createdBy,
+          extra: { dest: "cloudtak" },
+          toggle: false,
+        });
+        if (result.job) staged.push(result.job);
+      }
       for (const p of snap.plugins || []) {
         if (p.installed && p.updateAvailable && !p.unknown && !p.error) {
           const result = marketplace.stageJob({ kind: "update", pluginId: p.id, createdBy, toggle: false });
@@ -157,9 +167,31 @@ router.post("/jobs", (req, res) => {
         action: "CLOUDTAK_MARKETPLACE_JOB",
         targetType: "cloudtak_plugin",
         targetId: "update-all",
-        details: { kind, count: staged.length, summary: `Staged ${staged.length} CloudTAK plugin update(s)` },
+        details: { kind, count: staged.length, summary: `Staged ${staged.length} CloudTAK marketplace update(s)` },
       });
       return res.json({ ok: true, jobs: staged, count: staged.length });
+    }
+
+    if (kind === "update-cloudtak") {
+      extra.dest = extra.dest || "cloudtak";
+      const result = marketplace.stageJob({
+        kind,
+        pluginId: pluginId || marketplace.CLOUDTAK_JOB_ID,
+        createdBy,
+        extra,
+      });
+      auditSvc.auditFromRequest(req, {
+        action: "CLOUDTAK_MARKETPLACE_JOB",
+        targetType: "cloudtak_plugin",
+        targetId: "cloudtak",
+        details: {
+          kind,
+          staged: !result.removed,
+          removed: !!result.removed,
+          summary: result.removed ? "Removed CloudTAK update from queue" : "Staged CloudTAK update",
+        },
+      });
+      return res.json({ ok: true, ...result });
     }
 
     if (kind === "install" || kind === "update") {
