@@ -140,6 +140,7 @@ router.post("/jobs", (req, res) => {
     const pluginId = req.body && req.body.pluginId ? String(req.body.pluginId).trim() : null;
     const extra = {};
     if (req.body && req.body.dest) extra.dest = String(req.body.dest).trim();
+    if (req.body && req.body.reinstall) extra.reinstall = true;
     const createdBy = username(req);
     if (["install", "update", "update-all", "uninstall"].includes(kind) && busyChangeError(res)) return;
 
@@ -147,7 +148,7 @@ router.post("/jobs", (req, res) => {
       const snap = marketplace.buildUiPlugins({ skipRemoteSha: true });
       const staged = [];
       for (const p of snap.plugins || []) {
-        if (p.installed && p.updateAvailable && !p.unknown) {
+        if (p.installed && p.updateAvailable && !p.unknown && !p.error) {
           const result = marketplace.stageJob({ kind: "update", pluginId: p.id, createdBy, toggle: false });
           if (result.job) staged.push(result.job);
         }
@@ -182,6 +183,9 @@ router.post("/jobs", (req, res) => {
     }
 
     if (kind === "uninstall") {
+      if (!extra.dest) {
+        return res.status(400).json({ ok: false, error: "dest is required to uninstall a plugin." });
+      }
       const result = marketplace.stageJob({ kind, pluginId, createdBy, extra });
       auditSvc.auditFromRequest(req, {
         action: "CLOUDTAK_MARKETPLACE_JOB",

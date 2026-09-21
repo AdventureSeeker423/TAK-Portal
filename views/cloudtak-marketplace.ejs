@@ -179,6 +179,10 @@
     background: color-mix(in srgb, var(--success) 22%, transparent);
     color: var(--ok-text);
   }
+  .plugin-cards .plugin-version-pill.is-error {
+    background: color-mix(in srgb, var(--danger, #c44) 22%, transparent);
+    color: var(--danger, #c44);
+  }
   .plugin-cards .plugin-desc {
     font-size: 0.88rem;
     line-height: 1.4;
@@ -527,9 +531,9 @@
 
   function matchesFilter(p) {
     if (filter === "all") return true;
-    if (filter === "available") return !p.installed;
-    if (filter === "new") return !!p.isNew && !p.installed;
-    if (filter === "installed") return !!p.installed;
+    if (filter === "available") return !p.installed && !p.error;
+    if (filter === "new") return !!p.isNew && !p.installed && !p.error;
+    if (filter === "installed") return !!p.installed || !!p.error;
     return true;
   }
 
@@ -578,14 +582,16 @@
       }
     }
     list.forEach(function (p) {
-      var pillClass = p.installed ? "plugin-version-pill is-installed" : (p.isNew ? "plugin-version-pill is-new" : "");
-      var pillLabel = p.installed ? "Installed" : (p.isNew ? "New" : "");
+      var pillClass = p.error ? "plugin-version-pill is-error" : (p.installed ? "plugin-version-pill is-installed" : (p.isNew ? "plugin-version-pill is-new" : ""));
+      var pillLabel = p.error ? "Error" : (p.installed ? "Installed" : (p.isNew ? "New" : ""));
       var pill = pillClass ? '<span class="' + pillClass + '">' + pillLabel + "</span>" : "";
       var staged = stagedForPlugin(p);
       var actions = "";
+      var canReinstall = !!p.error && !p.unknown;
       if (jobBusy) {
-        if (p.installed || p.unknown) {
-          if (!p.unknown) actions += disabledAction("Update");
+        if (p.installed || p.unknown || p.error) {
+          if (canReinstall) actions += disabledAction("Reinstall");
+          else if (!p.unknown) actions += disabledAction("Update");
           actions += disabledAction("Uninstall");
         } else {
           actions = disabledAction("Install");
@@ -596,6 +602,15 @@
           actions = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
         } else {
           actions = '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+        }
+      } else if (p.error) {
+        if (staged && (staged.kind === "install" || staged.kind === "update" || staged.kind === "uninstall")) {
+          actions += '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
+        } else {
+          if (canReinstall) {
+            actions += '<button type="button" class="btn qr" data-reinstall="' + encodeURIComponent(p.id) + '">Reinstall</button>';
+          }
+          actions += '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
         }
       } else if (p.installed) {
         if (p.updateAvailable) {
@@ -639,6 +654,8 @@
         '<div class="plugin-actions">' + actions + "</div></div>";
       var titleBlock = el.querySelector(".plugin-title-block");
       titleBlock.querySelector(".plugin-name").textContent = p.name;
+      var pillEl = el.querySelector(".plugin-version-pill");
+      if (pillEl && p.error && p.errorMessage) pillEl.title = p.errorMessage;
       if (repoHref) {
         var link = document.createElement("a");
         link.className = "plugin-repo-link";
@@ -664,9 +681,9 @@
       if (note) el.querySelector(".plugin-notes").textContent = note;
       grid.appendChild(el);
     });
-    var hasUpdates = plugins.some(function (p) { return p.installed && p.updateAvailable && !p.unknown; });
+    var hasUpdates = plugins.some(function (p) { return p.installed && p.updateAvailable && !p.unknown && !p.error; });
     var canUpdateAll = !jobBusy && plugins.some(function (p) {
-      if (!(p.installed && p.updateAvailable) || p.unknown) return false;
+      if (!(p.installed && p.updateAvailable) || p.unknown || p.error) return false;
       var s = stagedForPlugin(p);
       return !s || s.kind !== "update";
     });
@@ -685,6 +702,7 @@
 
   function queueLabel(j) {
     var verb = j.kind === "uninstall" ? "Uninstall" : (j.kind === "update" ? "Update" : "Install");
+    if (j.extra && j.extra.reinstall) verb = "Reinstall";
     var p = plugins.filter(function (x) {
       return (j.pluginId && x.id === j.pluginId) || (j.extra && j.extra.dest && x.dest === j.extra.dest);
     })[0];
@@ -952,11 +970,16 @@
       unstage(decodeURIComponent(unstageBtn.getAttribute("data-unstage") || ""));
       return;
     }
-    var t = e.target && e.target.closest ? e.target.closest("[data-install],[data-update],[data-uninstall]") : null;
+    var t = e.target && e.target.closest ? e.target.closest("[data-install],[data-update],[data-uninstall],[data-reinstall]") : null;
     if (!t) return;
-    var id = decodeURIComponent(t.getAttribute("data-install") || t.getAttribute("data-update") || t.getAttribute("data-uninstall") || "");
+    var id = decodeURIComponent(t.getAttribute("data-install") || t.getAttribute("data-update") || t.getAttribute("data-uninstall") || t.getAttribute("data-reinstall") || "");
     if (t.hasAttribute("data-install")) {
       postJob({ kind: "install", pluginId: id }).then(function () { setMsg("Added to queue."); loadAll(); });
+      return;
+    }
+    if (t.hasAttribute("data-reinstall")) {
+      var rp = plugins.filter(function (x) { return x.id === id; })[0];
+      postJob({ kind: "install", pluginId: id, dest: rp && rp.dest, reinstall: true }).then(function () { setMsg("Reinstall added to queue."); loadAll(); });
       return;
     }
     if (t.hasAttribute("data-update")) {
@@ -968,7 +991,7 @@
     confirmArmed = false;
     $("mpUninstallConfirm").disabled = false;
     $("mpUninstallConfirm").textContent = "Add to queue";
-    $("mpUninstallBody").textContent = "Remove " + (p && p.name || id) + " from " + (p && p.dest || id) + " (web folder" + (p && p.layout && p.layout.routes ? " and owned route files" : "") + "). Plugin Docker services, leftover images, and runtime files are also removed.";
+    $("mpUninstallBody").textContent = "Remove " + (p && p.name || id) + " from " + (p && p.dest || id) + " (web folder" + (p && p.layout && p.layout.routes ? " and owned route files" : "") + "). Plugin Docker services, leftover images, and runtime files are also removed." + (p && p.unknown ? " This plugin is not in the marketplace catalog." : "");
     $("mpUninstallModal").style.display = "flex";
     $("mpUninstallModal").setAttribute("aria-hidden", "false");
   });
@@ -1008,7 +1031,11 @@
       $("mpUninstallConfirm").textContent = "Click again to add to queue";
       return;
     }
-    postJob({ kind: "uninstall", pluginId: uninstallTarget.unknown ? null : uninstallTarget.id, dest: uninstallTarget.dest }).then(function () {
+    postJob({
+      kind: "uninstall",
+      pluginId: uninstallTarget.unknown ? null : uninstallTarget.id,
+      dest: uninstallTarget.dest
+    }).then(function () {
       setMsg("Uninstall added to queue.");
       $("mpUninstallModal").style.display = "none";
       $("mpUninstallConfirm").textContent = "Add to queue";

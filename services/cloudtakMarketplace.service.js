@@ -905,6 +905,73 @@ async function enrichUpdateShas(uiPlugins) {
   return out;
 }
 
+function pluginErrorMessage(installedRec, id, dest) {
+  const plugins = (installedRec && installedRec.plugins) || {};
+  const byId = id ? plugins[id] : null;
+  if (byId && byId.lastError) return String(byId.lastError);
+  const destKey = String(dest || "").toLowerCase();
+  if (!destKey) return "";
+  for (const row of Object.values(plugins)) {
+    if (row && String(row.dest || "").toLowerCase() === destKey && row.lastError) {
+      return String(row.lastError);
+    }
+  }
+  return "";
+}
+
+function setInstalledError(id, dest, message) {
+  const key = String(id || dest || "").trim();
+  if (!key) return;
+  const rec = store.readInstalled();
+  const prev = rec.plugins[key] && typeof rec.plugins[key] === "object" ? rec.plugins[key] : {};
+  rec.plugins[key] = {
+    ...prev,
+    dest: dest || prev.dest || "",
+    lastError: String(message || "Install failed."),
+    lastErrorAt: new Date().toISOString(),
+  };
+  store.writeInstalled(rec);
+}
+
+function clearInstalledError(id) {
+  const key = String(id || "").trim();
+  if (!key) return;
+  const rec = store.readInstalled();
+  if (!rec.plugins[key] || !rec.plugins[key].lastError) return;
+  const next = { ...rec.plugins[key] };
+  delete next.lastError;
+  delete next.lastErrorAt;
+  rec.plugins[key] = next;
+  store.writeInstalled(rec);
+}
+
+function jobPluginIds(job) {
+  const extraIds = job && job.extra && Array.isArray(job.extra.pluginIds) ? job.extra.pluginIds : null;
+  if (extraIds && extraIds.length) {
+    return extraIds.map((id) => String(id || "").trim()).filter(Boolean);
+  }
+  return job && job.pluginId ? [String(job.pluginId)] : [];
+}
+
+function markJobInstallError(job, message) {
+  if (!job || job.kind === "uninstall") return;
+  const ids = jobPluginIds(job);
+  if (!ids.length) {
+    const dest = job.extra && job.extra.dest;
+    if (dest) setInstalledError(dest, dest, message);
+    return;
+  }
+  for (const id of ids) {
+    const plugin = pluginById(id);
+    const dest = (job.extra && job.extra.dest) || (plugin && plugin.web && plugin.web.dest) || "";
+    setInstalledError(id, dest, message);
+  }
+}
+
+function clearJobInstallError(job) {
+  for (const id of jobPluginIds(job)) clearInstalledError(id);
+}
+
 function buildUiPlugins(options = {}) {
   const catalog = loadCatalog();
   const scan = store.readScanCache();
@@ -917,7 +984,9 @@ function buildUiPlugins(options = {}) {
   const byId = new Map();
   for (const p of catalog.plugins) {
     const scanHit = scanPlugins.find((s) => s.catalogId === p.id);
-    const installed = !!(scanHit || installedRec.plugins[p.id]);
+    const rec = installedRec.plugins[p.id];
+    const errorMessage = pluginErrorMessage(installedRec, p.id, p.web.dest);
+    const installed = !!(scanHit || rec);
     byId.set(p.id, {
       id: p.id,
       name: p.name,
@@ -930,7 +999,9 @@ function buildUiPlugins(options = {}) {
       added: p.added,
       isNew: installed ? false : isNewPlugin(p, now),
       installed,
-      origin: scanHit ? scanHit.origin : installedRec.plugins[p.id] ? "marketplace" : "",
+      error: !!errorMessage,
+      errorMessage,
+      origin: scanHit ? scanHit.origin : rec ? "marketplace" : "",
       layout: {
         web: true,
         routes: !!p.routes,
@@ -942,28 +1013,43 @@ function buildUiPlugins(options = {}) {
       unknown: false,
     });
   }
-  for (const s of scanPlugins) {
-    if (s.catalogId && byId.has(s.catalogId)) continue;
-    const id = s.catalogId || `unknown:${s.dest}`;
-    byId.set(id, {
+  const destListed = (dest) =>
+    [...byId.values()].some((row) => String(row.dest || "").toLowerCase() === String(dest || "").toLowerCase());
+  const hostOnlyPlugin = ({ id, dest, repo, scan }) => {
+    const errorMessage = pluginErrorMessage(installedRec, id, dest);
+    return {
       id,
-      name: s.dest,
-      description: "",
+      name: dest,
+      description: "Installed on this CloudTAK host. Not in the marketplace catalog.",
       maintainer: "",
-      repo: s.gitRemote || "",
+      repo: repo || "",
       ref: "",
       notes: "",
       additionalActions: [],
       added: "",
       isNew: false,
       installed: true,
+      error: !!errorMessage,
+      errorMessage,
       origin: "unknown",
       layout: { web: true, routes: false, sidecar: false },
-      dest: s.dest,
+      dest,
       catalog: null,
-      scan: s,
+      scan: scan || null,
       unknown: true,
-    });
+    };
+  };
+  for (const s of scanPlugins) {
+    if (s.catalogId && byId.has(s.catalogId)) continue;
+    if (!s.dest || destListed(s.dest)) continue;
+    const id = s.catalogId || `unknown:${s.dest}`;
+    byId.set(id, hostOnlyPlugin({ id, dest: s.dest, repo: s.gitRemote || "", scan: s }));
+  }
+  for (const [id, rec] of Object.entries(installedRec.plugins || {})) {
+    if (byId.has(id)) continue;
+    const dest = String((rec && rec.dest) || "").trim();
+    if (!dest || !safeDestName(dest) || destListed(dest)) continue;
+    byId.set(id, hostOnlyPlugin({ id, dest, repo: (rec && rec.repo) || "", scan: null }));
   }
 
   const shaCache = store.readShaCache();
@@ -1899,7 +1985,10 @@ printf 'INSTALL_SHA %s\\n' "$SHA"
 }
 
 function uninstallRemoteScript(ct, dest, routeFiles, pluginId, options = {}) {
+  const destName = String(dest || "").trim();
   const files = (routeFiles || []).filter((f) => /^[A-Za-z0-9._-]+\.ts$/.test(f));
+  const guessed = destName && /^[A-Za-z0-9._-]+$/.test(destName) ? `plugin-${destName}.ts` : "";
+  if (guessed && !files.includes(guessed)) files.push(guessed);
   const routeRm = files
     .map((f) => `rm -f "$CT/api/stateless/routes/${f}"`)
     .join("\n");
@@ -1911,6 +2000,7 @@ CT=${ssh.shellQuote(ct)}
 DEST=${ssh.shellQuote(dest)}
 ID=${ssh.shellQuote(id)}
 CT_COMPOSE_SVC=${ssh.shellQuote(apiSvc)}
+if [ -z "$ID" ]; then ID="$DEST"; fi
 ${pluginRuntimeCleanupBash()}
 ${pluginCspBash()}
 if [ -n "$ID" ]; then
@@ -1925,6 +2015,12 @@ case "$TARGET" in
   *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
 esac
 rm -rf "$TARGET"
+SRC_TARGET="$CT/api/web/src/plugins/$DEST"
+case "$SRC_TARGET" in
+  */api/web/src/plugins/$DEST)
+    if [ -e "$SRC_TARGET" ]; then rm -rf "$SRC_TARGET"; fi
+    ;;
+esac
 ${routeRm}
 echo UNINSTALL_OK
 `.trim();
@@ -2058,13 +2154,22 @@ async function performUninstall(job, dest, plugin) {
   if (plugin && plugin.routes) {
     routeGuess.push(`plugin-${plugin.id}.ts`);
   }
-  appendJobLog(job.id, `$ rm -rf api/web/plugins/${dest}`);
-  await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess, plugin && plugin.id, { composeService: loc.composeService }))}`, 5 * 60 * 1000);
-  if (plugin) {
-    const rec = store.readInstalled();
-    delete rec.plugins[plugin.id];
-    store.writeInstalled(rec);
+  const extraRoutes = job && job.extra && Array.isArray(job.extra.routeFiles) ? job.extra.routeFiles : [];
+  for (const f of extraRoutes) {
+    if (/^[A-Za-z0-9._-]+\.ts$/.test(f) && !routeGuess.includes(f)) routeGuess.push(f);
   }
+  const runtimeId = (plugin && plugin.id) || dest;
+  appendJobLog(job.id, `$ rm -rf api/web/plugins/${dest}`);
+  await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess, runtimeId, { composeService: loc.composeService }))}`, 5 * 60 * 1000);
+  const rec = store.readInstalled();
+  if (plugin) {
+    delete rec.plugins[plugin.id];
+  } else {
+    for (const [id, row] of Object.entries(rec.plugins || {})) {
+      if (row && String(row.dest || "") === dest) delete rec.plugins[id];
+    }
+  }
+  store.writeInstalled(rec);
   return { path: loc.path, composeService: loc.composeService || ssh.resolvedComposeService() };
 }
 
@@ -2080,14 +2185,28 @@ async function runChangeBatch(jobs) {
     if (job.kind === "update-all") {
       updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
       const snap = await getSnapshot();
-      const pending = snap.plugins.filter((p) => p.installed && p.updateAvailable && p.catalog);
+      const pending = snap.plugins.filter((p) => p.installed && p.updateAvailable && p.catalog && !p.error);
       if (!pending.length) {
         appendJobLog(job.id, "No updates available.");
         updateJob(job.id, { status: "complete", finishedAt: new Date().toISOString() });
         continue;
       }
+      updateJob(job.id, {
+        extra: { ...(job.extra || {}), pluginIds: pending.map((p) => p.id) },
+      });
       expanded.push({ job, plugins: pending });
     } else {
+      const plugin = job.pluginId ? pluginById(job.pluginId) : null;
+      const dest = (job.extra && job.extra.dest) || (plugin && plugin.web && plugin.web.dest) || "";
+      if (job.pluginId || dest) {
+        updateJob(job.id, {
+          extra: {
+            ...(job.extra || {}),
+            dest,
+            pluginIds: job.pluginId ? [job.pluginId] : [],
+          },
+        });
+      }
       expanded.push({ job, plugins: null });
     }
   }
@@ -2141,6 +2260,7 @@ async function runChangeBatch(jobs) {
         error: err.message || String(err),
       });
       appendJobLog(job.id, `FAILED ${err.message || err}`);
+      markJobInstallError(job, err.message || String(err));
     }
   }
 
@@ -2158,6 +2278,7 @@ async function runChangeBatch(jobs) {
       for (const j of succeeded) {
         updateJob(j.id, { status: "complete", finishedAt: new Date().toISOString() });
         appendJobLog(j.id, "Complete. In CloudTAK use Settings → Refresh App.");
+        clearJobInstallError(j);
       }
     } catch (err) {
       const cancelled = _cancelRequested || isCancelledError(err);
@@ -2168,12 +2289,14 @@ async function runChangeBatch(jobs) {
           error: cancelled ? "Cancelled." : err.message || String(err),
         });
         appendJobLog(j.id, cancelled ? "Cancelled." : `Rebuild failed: ${err.message || err}`);
+        if (!cancelled) markJobInstallError(j, err.message || String(err));
       }
     }
   } else if (succeeded.length) {
     for (const j of succeeded) {
       updateJob(j.id, { status: "complete", finishedAt: new Date().toISOString() });
       appendJobLog(j.id, "Complete. In CloudTAK use Settings → Refresh App.");
+      clearJobInstallError(j);
     }
   }
   if (!_cancelRequested) {

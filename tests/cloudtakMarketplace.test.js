@@ -86,7 +86,15 @@ assert.match(uninstallPrint, /docker rmi/);
 assert.match(uninstallPrint, /docker image prune -f/);
 assert.match(uninstallPrint, /cloudtak-marketplace-plugins/);
 assert.match(uninstallPrint, /\.cache\/cloudtak-marketplace/);
+assert.match(uninstallPrint, /api\/web\/src\/plugins/);
 assert.doesNotMatch(uninstallPrint, /docker compose -f "\$CF" -f "\$OVERRIDE" stop \)/);
+
+const unknownUninstall = marketplace.uninstallRemoteScript("/root/CloudTAK", "host-only-plugin", [], "");
+assert.match(unknownUninstall, /if \[ -z "\$ID" \]; then ID="\$DEST"; fi/);
+assert.match(unknownUninstall, /api\/web\/plugins\/\$DEST/);
+assert.match(unknownUninstall, /api\/web\/src\/plugins\/\$DEST/);
+assert.match(unknownUninstall, /plugin-host-only-plugin\.ts/);
+assert.match(unknownUninstall, /cleanup_plugin_runtime/);
 
 const udash = normalized.plugins.find((p) => p.id === "udash");
 assert.ok(udash.additionalActions.some((a) => /webhook sidecar/i.test(JSON.stringify(a))));
