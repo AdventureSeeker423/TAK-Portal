@@ -341,7 +341,7 @@
   function originLabel(p) {
     if (!p.installed) return "";
     if (p.unknown) return "Not in catalog";
-    if (p.origin === "marketplace") return "Installed by marketplace";
+    if (p.origin === "marketplace") return "";
     if (p.origin === "web_plugins") return "In WEB_PLUGINS build arg";
     return "Found on host";
   }
