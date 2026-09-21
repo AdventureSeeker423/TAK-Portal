@@ -57,6 +57,7 @@ const TEST_FILES = [
   "directoryWritePath.test.js",
   "userLoginStatus.test.js",
   "backup.test.js",
+  "cloudtakMarketplace.test.js",
   "setupDeviceAccess.test.js",
   "activeUserGate.test.js",
   "appVersion.test.js",

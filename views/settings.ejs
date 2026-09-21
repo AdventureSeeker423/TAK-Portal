@@ -191,6 +191,18 @@
       </div>
     </section>
 
+    <section class="settings-hub-category" aria-labelledby="settingsCatModules">
+      <h2 class="settings-hub-category-title" id="settingsCatModules">
+        <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Additional Modules
+      </h2>
+      <div class="settings-hub-grid">
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="cloudtak-marketplace">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">CloudTAK Plugin Marketplace</span></span>
+        </div>
+      </div>
+    </section>
+
     </div>
   </div>
 
@@ -218,6 +230,11 @@
         "LIVE_MAP_ENABLED",
         "MOU_ENABLED",
         "MOU_SEND_EMAILS",
+        "CLOUDTAK_MARKETPLACE_ENABLED",
+        "CLOUDTAK_MARKETPLACE_USE_TAK_SSH",
+        "CLOUDTAK_MARKETPLACE_NOTIFY_ENABLED",
+        "CLOUDTAK_MARKETPLACE_NOTIFY_NEW",
+        "CLOUDTAK_MARKETPLACE_NOTIFY_UPDATES",
         "AUTO_CREATE_AGENCY_GROUPS_ENABLED",
         "AUTO_CREATE_COUNTY_GROUPS_ENABLED",
         "AUTO_CREATE_REGION_GROUPS_ENABLED",
@@ -421,7 +438,23 @@
         "SERVER_NAME",
         "BRAND_LOGO_URL",
 
-        "CALLSIGN_FORMAT_EXPRESSION"
+        "CALLSIGN_FORMAT_EXPRESSION",
+        "CLOUDTAK_MARKETPLACE_ENABLED",
+        "CLOUDTAK_MARKETPLACE_USE_TAK_SSH",
+        "CLOUDTAK_SSH_HOST",
+        "CLOUDTAK_SSH_PORT",
+        "CLOUDTAK_SSH_USER",
+        "CLOUDTAK_SSH_PRIVATE_KEY_PATH",
+        "CLOUDTAK_SSH_PASSPHRASE",
+        "CLOUDTAK_MARKETPLACE_PATH",
+        "CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE",
+        "CLOUDTAK_MARKETPLACE_NOTIFY_ENABLED",
+        "CLOUDTAK_MARKETPLACE_NOTIFY_NEW",
+        "CLOUDTAK_MARKETPLACE_NOTIFY_UPDATES",
+        "CLOUDTAK_MARKETPLACE_NOTIFY_TO",
+        "CLOUDTAK_MARKETPLACE_POLL_MINUTES",
+        "CLOUDTAK_MARKETPLACE_CATALOG_URL",
+        "CLOUDTAK_MARKETPLACE_CATALOG_REF"
       ]);
 
       const otherKeys = keys.filter(k => !knownKeys.has(k));
@@ -4587,6 +4620,102 @@
       </div>
     </div>
 
+    <!-- CloudTAK Plugin Marketplace -->
+    <%
+      const mpEnabledRaw = String((settings && settings.CLOUDTAK_MARKETPLACE_ENABLED) || "").trim().toLowerCase();
+      const mpEnabledOn = mpEnabledRaw === "true";
+      const mpUseTakRaw = String((settings && settings.CLOUDTAK_MARKETPLACE_USE_TAK_SSH) || "true").trim().toLowerCase();
+      const mpUseTakOn = mpUseTakRaw !== "false";
+      const mpNotifyRaw = String((settings && settings.CLOUDTAK_MARKETPLACE_NOTIFY_ENABLED) || "").trim().toLowerCase();
+      const mpNotifyOn = mpNotifyRaw === "true";
+      const takSshReady = String((settings && settings.TAK_SSH_ONBOARDED) || "").toLowerCase() === "true";
+      const takSshHostLabel = String((settings && settings.TAK_SSH_HOST) || "").trim() || "not set";
+      const emailOn = String((settings && settings.EMAIL_ENABLED) || "").toLowerCase() === "true";
+    %>
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-cloudtak-marketplace" data-settings-modal="cloudtak-marketplace" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-cloudtak-marketplace">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-cloudtak-marketplace">CloudTAK Plugin Marketplace</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Additional Modules. Optional CloudTAK plugin marketplace. Global admins can install community CloudTAK plugins over SSH. Disabled by default. Catalog updates from GitHub without a portal release.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          <div class="grid2">
+            <% renderField("CLOUDTAK_MARKETPLACE_ENABLED","Enable CloudTAK Plugin Marketplace","When off, the marketplace page is hidden and the worker does not scan or install.","false"); %>
+          </div>
+          <div id="cloudtakMarketplaceEnabledFields" style="display:<%= mpEnabledOn ? 'block' : 'none' %>;">
+            <h3 style="margin:1rem 0 0.5rem;">SSH</h3>
+            <div class="grid2">
+              <% renderField("CLOUDTAK_MARKETPLACE_USE_TAK_SSH","Use TAK Server SSH","On: reuse Connection &amp; Certificates SSH. Off: a different CloudTAK host.","true"); %>
+            </div>
+            <div id="cloudtakMarketplaceTakSshStatus" class="settings-help" style="margin:0.5rem 0;display:<%= mpUseTakOn ? 'block' : 'none' %>;">
+              <% if (takSshReady) { %>
+                TAK Server SSH is configured (<%= takSshHostLabel %>).
+              <% } else { %>
+                TAK Server SSH is not configured. Open TAK Server → Connection &amp; Certificates and complete SSH setup.
+              <% } %>
+            </div>
+            <div id="cloudtakMarketplaceCustomSsh" style="display:<%= mpUseTakOn ? 'none' : 'block' %>;">
+              <div class="grid2">
+                <% renderField("CLOUDTAK_SSH_HOST","CloudTAK SSH host","Hostname or IP of the CloudTAK machine."); %>
+                <% renderField("CLOUDTAK_SSH_PORT","CloudTAK SSH port","Usually 22.","22"); %>
+                <% renderField("CLOUDTAK_SSH_USER","CloudTAK SSH user","Account that can run docker compose in the CloudTAK directory."); %>
+                <% renderField("CLOUDTAK_SSH_PASSPHRASE","CloudTAK SSH key passphrase","Optional. Leave empty if the key is unencrypted."); %>
+              </div>
+              <p class="muted" style="font-size:0.85rem;">If no dedicated key is uploaded, the existing portal TAK SSH key is used. Add that public key on the CloudTAK host.</p>
+              <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:0.5rem;">
+                <input type="file" id="cloudtakMarketplaceKeyFile" accept=".pem,.key,*" />
+                <button type="button" class="btn" id="cloudtakMarketplaceKeyUploadBtn">Upload private key</button>
+              </div>
+              <div id="cloudtakMarketplaceKeyStatus" class="muted" style="margin-top:0.35rem;"></div>
+            </div>
+            <div class="grid2" style="margin-top:0.75rem;">
+              <% renderField("CLOUDTAK_MARKETPLACE_PATH","CloudTAK checkout path","Optional. Leave blank and use Detect. Example: /home/takwerx/CloudTAK"); %>
+              <% renderField("CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE","Compose service name","API service to rebuild. Leave blank to detect (api or cloudtak-api)."); %>
+            </div>
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+              <button type="button" class="btn" id="cloudtakMarketplaceDetectBtn">Detect CloudTAK</button>
+              <button type="button" class="btn" id="cloudtakMarketplaceTestBtn">Test connection</button>
+            </div>
+            <div id="cloudtakMarketplaceSshStatus" class="settings-help" style="margin-top:0.5rem;white-space:pre-line;"></div>
+
+            <h3 style="margin:1.25rem 0 0.5rem;">Email alerts</h3>
+            <p class="muted" style="font-size:0.85rem;">Uses Messaging → Email SMTP. <% if (!emailOn) { %>Email is currently disabled.<% } %></p>
+            <div class="grid2">
+              <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_ENABLED","Email alerts","Mail when new catalog plugins appear or installed plugins have updates.","false"); %>
+            </div>
+            <div id="cloudtakMarketplaceNotifyFields" style="display:<%= mpNotifyOn ? 'block' : 'none' %>;">
+              <div class="grid2">
+                <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_NEW","Alert on new plugins","When a new plugin id appears in the catalog.","true"); %>
+                <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_UPDATES","Alert on updates","When an installed plugin is behind the catalog ref.","true"); %>
+                <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_TO","Notify recipients","Comma-separated. Empty uses Always CC, then SMTP From."); %>
+                <% renderField("CLOUDTAK_MARKETPLACE_POLL_MINUTES","Catalog poll (minutes)","How often the worker refreshes the catalog and checks for mail.","60"); %>
+              </div>
+              <div style="margin-top:0.75rem;">
+                <button type="button" class="btn" id="cloudtakMarketplaceTestEmailBtn">Send test email</button>
+                <span id="cloudtakMarketplaceTestEmailStatus" class="muted" style="margin-left:0.5rem;"></span>
+              </div>
+            </div>
+
+            <h3 style="margin:1.25rem 0 0.5rem;">Catalog</h3>
+            <div class="grid2">
+              <% renderField("CLOUDTAK_MARKETPLACE_CATALOG_URL","Catalog URL override","Leave blank to fetch catalog/cloudtak-plugins.json from this portal repo on GitHub."); %>
+              <% renderField("CLOUDTAK_MARKETPLACE_CATALOG_REF","Catalog git ref","Branch or tag used with the default GitHub URL.","main"); %>
+            </div>
+
+            <div style="margin-top:1.25rem;">
+              <a class="btn" id="cloudtakMarketplaceOpenBtn" href="/cloudtak-marketplace">Open marketplace</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </form>
 
   <div class="modalOverlay settings-modal-overlay" id="settingsModal-backup" data-settings-modal="backup" style="display:none;" aria-hidden="true">
@@ -5377,6 +5506,100 @@
         window.scheduleSettingsAutoSave();
       }
     });
+
+    function syncCloudtakMarketplaceModal() {
+      var enabledInput = document.querySelector('#settingsModal-cloudtak-marketplace input[name="settings[CLOUDTAK_MARKETPLACE_ENABLED]"]');
+      var extra = document.getElementById("cloudtakMarketplaceEnabledFields");
+      var enabled = enabledInput && enabledInput.value === "true";
+      if (extra) extra.style.display = enabled ? "block" : "none";
+      var useTak = document.querySelector('#settingsModal-cloudtak-marketplace input[name="settings[CLOUDTAK_MARKETPLACE_USE_TAK_SSH]"]');
+      var takStatus = document.getElementById("cloudtakMarketplaceTakSshStatus");
+      var custom = document.getElementById("cloudtakMarketplaceCustomSsh");
+      var usingTak = !useTak || useTak.value !== "false";
+      if (takStatus) takStatus.style.display = usingTak ? "block" : "none";
+      if (custom) custom.style.display = usingTak ? "none" : "block";
+      var notify = document.querySelector('#settingsModal-cloudtak-marketplace input[name="settings[CLOUDTAK_MARKETPLACE_NOTIFY_ENABLED]"]');
+      var notifyExtra = document.getElementById("cloudtakMarketplaceNotifyFields");
+      if (notifyExtra) notifyExtra.style.display = notify && notify.value === "true" ? "block" : "none";
+    }
+    syncCloudtakMarketplaceModal();
+    document.addEventListener("click", function (e) {
+      if (e.target && e.target.closest && e.target.closest("#settingsModal-cloudtak-marketplace [data-settings-bool-toggle]")) {
+        window.setTimeout(syncCloudtakMarketplaceModal, 0);
+      }
+    });
+    function mpJson(url, opts) {
+      return fetch(url, Object.assign({ headers: { Accept: "application/json" } }, opts || {})).then(function (r) {
+        return r.json();
+      });
+    }
+    var detectBtn = document.getElementById("cloudtakMarketplaceDetectBtn");
+    var testBtn = document.getElementById("cloudtakMarketplaceTestBtn");
+    var sshMpStatus = document.getElementById("cloudtakMarketplaceSshStatus");
+    if (detectBtn && sshMpStatus) {
+      detectBtn.addEventListener("click", function () {
+        sshMpStatus.textContent = "Detecting…";
+        mpJson("/api/cloudtak-marketplace/ssh/detect", { method: "POST" })
+          .then(function (j) {
+            if (!j || !j.ok) {
+              sshMpStatus.textContent = (j && (j.message || j.error)) || "Detect failed.";
+              return;
+            }
+            var pathInput = document.querySelector('input[name="settings[CLOUDTAK_MARKETPLACE_PATH]"]');
+            var svcInput = document.querySelector('input[name="settings[CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE]"]');
+            if (pathInput && j.path) pathInput.value = j.path;
+            if (svcInput && j.composeService) svcInput.value = j.composeService;
+            sshMpStatus.textContent = "Found " + (j.path || "") + (j.composeService ? " (service " + j.composeService + ")" : "");
+            if (typeof window.scheduleSettingsAutoSave === "function") window.scheduleSettingsAutoSave();
+          })
+          .catch(function (err) { sshMpStatus.textContent = err.message || "Detect failed."; });
+      });
+    }
+    if (testBtn && sshMpStatus) {
+      testBtn.addEventListener("click", function () {
+        sshMpStatus.textContent = "Testing…";
+        mpJson("/api/cloudtak-marketplace/ssh/test", { method: "POST" })
+          .then(function (j) {
+            sshMpStatus.textContent = ((j && j.ok) ? "OK. " : "") + ((j && (j.message || j.error)) || "") +
+              (j && j.path ? "\nCloudTAK: " + j.path : "") +
+              (j && j.composeService ? "\nService: " + j.composeService : "") +
+              (j && j.uname ? "\n" + j.uname : "");
+          })
+          .catch(function (err) { sshMpStatus.textContent = err.message || "Test failed."; });
+      });
+    }
+    var keyBtn = document.getElementById("cloudtakMarketplaceKeyUploadBtn");
+    var keyFile = document.getElementById("cloudtakMarketplaceKeyFile");
+    var keyStatus = document.getElementById("cloudtakMarketplaceKeyStatus");
+    if (keyBtn && keyFile && keyStatus) {
+      keyBtn.addEventListener("click", function () {
+        if (!keyFile.files || !keyFile.files[0]) {
+          keyStatus.textContent = "Choose a private key file first.";
+          return;
+        }
+        var fd = new FormData();
+        fd.append("key", keyFile.files[0]);
+        keyStatus.textContent = "Uploading…";
+        fetch("/api/cloudtak-marketplace/ssh/key", { method: "POST", body: fd })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            keyStatus.textContent = j.ok ? "Key saved to " + (j.path || "data/ssh") : (j.error || "Upload failed");
+          })
+          .catch(function (err) { keyStatus.textContent = err.message || "Upload failed."; });
+      });
+    }
+    var testEmailBtn = document.getElementById("cloudtakMarketplaceTestEmailBtn");
+    var testEmailStatus = document.getElementById("cloudtakMarketplaceTestEmailStatus");
+    if (testEmailBtn && testEmailStatus) {
+      testEmailBtn.addEventListener("click", function () {
+        testEmailStatus.textContent = "Sending…";
+        mpJson("/api/cloudtak-marketplace/notify/test", { method: "POST" })
+          .then(function (j) {
+            testEmailStatus.textContent = (j && (j.sent || j.ok)) ? "Sent." : ((j && (j.message || j.error)) || "Failed");
+          })
+          .catch(function (err) { testEmailStatus.textContent = err.message || "Failed"; });
+      });
+    }
 
     const statusBox = document.getElementById("sshStatusBox");
     const hostInput = document.getElementById("sshHostInput");
@@ -6399,7 +6622,7 @@
             });
 
             // Sections with custom UI (callsign builder, agency types, bookmarks, templates, maintenance)
-            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup") {
+            if (!fields.length || modalId === "callsign" || modalId === "agency-types" || modalId === "regions" || modalId === "bookmarks" || modalId === "auto-create-groups" || modalId === "auto-create-data-sync" || modalId === "email-templates" || modalId === "tak-maintenance" || modalId === "live-map" || modalId === "backup" || modalId === "cloudtak-marketplace") {
               var sectionHelp = "";
               var sectionHelpEl = modal.querySelector(".modalHeader .settings-help-popover");
               if (sectionHelpEl) sectionHelp = cleanText(sectionHelpEl.textContent);

@@ -260,6 +260,7 @@ function pageTitleForPath(pathname, portalTitle, serverAbbrev) {
     ["/agencies", "Agencies"],
     ["/integrations", "Integrations"],
     ["/plugin-manager", "Plugin Manager"],
+    ["/cloudtak-marketplace", "CloudTAK Plugin Marketplace"],
     ["/access-control", "Access Control"],
     ["/settings", "Server Settings"],
     ["/plugins", "ATAK Plugins"],
@@ -553,6 +554,23 @@ function requireLiveMapEnabled(req, res, next) {
   return res.redirect(dest);
 }
 
+function requireCloudtakMarketplaceEnabled(req, res, next) {
+  if (getBool("CLOUDTAK_MARKETPLACE_ENABLED", false)) return next();
+  const p = String(req.originalUrl || req.path || "").split("?")[0];
+  if (
+    /\/api\/cloudtak-marketplace\/ssh\/(test|detect|key)\/?$/.test(p) ||
+    /\/api\/cloudtak-marketplace\/notify\/test\/?$/.test(p)
+  ) {
+    return next();
+  }
+  if (isApiRequest(req)) {
+    return res.status(404).json({ error: "CloudTAK Plugin Marketplace is disabled" });
+  }
+  return res.status(404).render("access-denied", {
+    username: req.authentikUser?.username || "",
+  });
+}
+
 function requireMapAccess(req, res, next) {
   const u = req.authentikUser;
   if (!u) {
@@ -668,6 +686,12 @@ app.get("/api/atak/download", (req, res) => {
 });
 app.use("/api/audit-log", requirePermission("page.audit_log"), require("./routes/auditLog.routes"));
 app.use("/api/plugins", requirePermission("page.plugin_manager"), require("./routes/plugins.routes"));
+app.use(
+  "/api/cloudtak-marketplace",
+  requireGlobalAdminRole,
+  requireCloudtakMarketplaceEnabled,
+  require("./routes/cloudtakMarketplace.routes")
+);
 app.use("/api/integrations", requirePermission("page.integrations"), require("./routes/integrations.routes"));
 app.use("/api/ssh", requirePermission("page.integrations"), require("./routes/ssh.routes"));
 app.use("/api/map", requireMapAccess, requireLiveMapEnabled, require("./routes/map.routes"));
@@ -1126,6 +1150,13 @@ app.get("/plugin-manager", requirePermission("page.plugin_manager"), async (req,
   const plugins = pluginsSvc.listPlugins();
   return res.render("plugin-manager", { takGovLink, plugins });
 });
+
+app.get(
+  "/cloudtak-marketplace",
+  requireGlobalAdminRole,
+  requireCloudtakMarketplaceEnabled,
+  (req, res) => res.render("cloudtak-marketplace")
+);
 
 // Beta: Getting Started (global admins only, beta mode)
 app.get("/map", requireMapAccess, requireLiveMapEnabled, (req, res) => {

@@ -176,6 +176,21 @@ async function main() {
     const backup = require("./services/backup");
     return backup.runOnce();
   });
+
+  every(1000, () => {
+    const marketplace = require("./services/cloudtakMarketplace.service");
+    return marketplace.workerTick();
+  });
+  every(30 * 1000, () => {
+    const marketplace = require("./services/cloudtakMarketplace.service");
+    return marketplace.workerBackground();
+  });
+  try {
+    const marketplace = require("./services/cloudtakMarketplace.service");
+    void marketplace.workerBackground();
+  } catch (e) {
+    console.warn("[worker] marketplace:", e?.message || e);
+  }
 }
 
 async function shutdown() {

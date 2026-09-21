@@ -14,6 +14,7 @@ const SECRET_SETTINGS_KEYS = [
   "HCAPTCHA_SECRET_KEY",
   "MUTUAL_AID_ENCRYPTION_KEY",
   "OPENADDRESSES_TOKEN",
+  "CLOUDTAK_SSH_PASSPHRASE",
 ];
 
 const SETTINGS_SUBCATEGORIES = [
@@ -180,6 +181,31 @@ const SETTINGS_SUBCATEGORIES = [
       "CLOUDTAK_URL",
       "BETA_MODE",
     ],
+  },
+  {
+    id: "settings.cloudtak_marketplace",
+    label: "CloudTAK Plugin Marketplace",
+    description: "Optional CloudTAK plugin module: enable flag, SSH target, catalog URL, and email alerts.",
+    requiresSecrets: false,
+    keys: [
+      "CLOUDTAK_MARKETPLACE_ENABLED",
+      "CLOUDTAK_MARKETPLACE_USE_TAK_SSH",
+      "CLOUDTAK_SSH_HOST",
+      "CLOUDTAK_SSH_PORT",
+      "CLOUDTAK_SSH_USER",
+      "CLOUDTAK_SSH_PRIVATE_KEY_PATH",
+      "CLOUDTAK_SSH_PASSPHRASE",
+      "CLOUDTAK_MARKETPLACE_PATH",
+      "CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE",
+      "CLOUDTAK_MARKETPLACE_NOTIFY_ENABLED",
+      "CLOUDTAK_MARKETPLACE_NOTIFY_NEW",
+      "CLOUDTAK_MARKETPLACE_NOTIFY_UPDATES",
+      "CLOUDTAK_MARKETPLACE_NOTIFY_TO",
+      "CLOUDTAK_MARKETPLACE_POLL_MINUTES",
+      "CLOUDTAK_MARKETPLACE_CATALOG_URL",
+      "CLOUDTAK_MARKETPLACE_CATALOG_REF",
+    ],
+    files: ["cloudtak-marketplace"],
   },
   {
     id: "settings.openaddresses",

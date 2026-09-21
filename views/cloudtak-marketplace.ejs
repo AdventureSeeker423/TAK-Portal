@@ -1,0 +1,272 @@
+<%- include("partials/header") %>
+<%- include("partials/sidebar") %>
+
+<main class="main">
+  <h1>CloudTAK Plugin Marketplace</h1>
+  <p class="muted" style="margin-top:0;">Install and update community CloudTAK plugins on the CloudTAK host over SSH. Official plugins compile in; this copies files into the checkout and rebuilds the API image once per batch.</p>
+
+  <div id="mpBanners"></div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-end;">
+      <label style="flex:1;min-width:200px;">Search
+        <input type="search" id="mpSearch" placeholder="Search plugins…" style="width:100%;" />
+      </label>
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="mpFilterAvailable" data-mp-filter="available">Available</button>
+        <button type="button" class="btn" id="mpFilterNew" data-mp-filter="new">New</button>
+        <button type="button" class="btn" id="mpFilterInstalled" data-mp-filter="installed">Installed</button>
+        <button type="button" class="btn" id="mpUpdateAll">Update all</button>
+        <button type="button" class="btn" id="mpRefreshCatalog">Refresh catalog</button>
+      </div>
+    </div>
+    <div id="mpMsg" class="msg" style="margin-top:8px;"></div>
+    <div id="mpGrid" class="plugin-cards marketplace-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px;"></div>
+    <div id="mpEmpty" class="muted" style="display:none;margin-top:16px;">No plugins match this filter.</div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2 style="margin-top:0;">Jobs</h2>
+    <p class="muted" id="mpJobHint">Install and rebuild run on the portal worker. This page only queues work and shows the log.</p>
+    <pre id="mpJobs" class="mp-job-log"></pre>
+  </div>
+</main>
+
+<div class="modalOverlay" id="mpUninstallModal" style="display:none;" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mpUninstallTitle">
+    <div class="modalHeader">
+      <h2 id="mpUninstallTitle">Uninstall plugin</h2>
+      <button type="button" class="btn" id="mpUninstallCancel">Close</button>
+    </div>
+    <div class="modalBody">
+      <p id="mpUninstallBody"></p>
+      <p class="muted">The CloudTAK API image will rebuild (often 5–15 minutes). After it finishes, open CloudTAK <strong>Settings → Refresh App</strong> so the plugin leaves the menu.</p>
+      <div class="row" style="gap:8px;margin-top:12px;">
+        <button type="button" class="btn" id="mpUninstallConfirm" disabled>Uninstall plugin</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .plugin-cards .plugin-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+  }
+  .plugin-cards .plugin-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .plugin-cards .plugin-name { font-weight:600; flex:1; min-width:0; }
+  .plugin-cards .plugin-version-pill {
+    flex-shrink:0; font-size:0.75rem; padding:2px 8px; border-radius:999px;
+    background: var(--line); color: var(--muted);
+  }
+  .plugin-cards .plugin-version-pill.is-new { background:#245; color:#cfe; }
+  .plugin-cards .plugin-desc { font-size:0.85rem; color:var(--muted); }
+  .plugin-cards .plugin-meta { font-size:0.85rem; color:var(--muted); }
+  .plugin-cards .plugin-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .plugin-cards .chip { font-size:0.72rem; border:1px solid var(--line); border-radius:999px; padding:1px 8px; color:var(--muted); }
+  .plugin-cards .plugin-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:auto; }
+  .mp-job-log {
+    max-height: 280px; overflow:auto; background: var(--bg); border:1px solid var(--line);
+    border-radius:8px; padding:12px; white-space:pre-wrap; font-size:0.8rem;
+  }
+  .mp-banner { padding:10px 12px; border-radius:8px; margin-top:12px; border:1px solid var(--line); }
+  .mp-banner.warn { border-color:#c80; }
+  .btn.is-filter-on { filter: brightness(1.15); }
+  @media (max-width: 990px) {
+    .plugin-cards { grid-template-columns: minmax(0,1fr) !important; }
+  }
+</style>
+
+<script>
+(function () {
+  var filter = "available";
+  var plugins = [];
+  var uninstallTarget = null;
+  var confirmArmed = false;
+
+  function $(id) { return document.getElementById(id); }
+  function setMsg(text, isError) {
+    var el = $("mpMsg");
+    el.textContent = text || "";
+    el.style.color = isError ? "#c44" : "";
+  }
+
+  function originLabel(p) {
+    if (!p.installed) return "";
+    if (p.unknown) return "Not in catalog";
+    if (p.origin === "marketplace") return "Installed by marketplace";
+    if (p.origin === "web_plugins") return "In WEB_PLUGINS build arg";
+    return "Found on host";
+  }
+
+  function matchesFilter(p) {
+    if (filter === "available") return !p.installed;
+    if (filter === "new") return !!p.isNew;
+    if (filter === "installed") return !!p.installed;
+    return true;
+  }
+
+  function renderBanners(status, snapshot) {
+    var html = "";
+    if (status && status.worker && status.worker.ok === false) {
+      html += '<div class="mp-banner warn">Portal worker is not running. Catalog refresh and installs wait until the worker is up. This page will not rebuild CloudTAK itself.</div>';
+    }
+    if (snapshot && snapshot.scanStale) {
+      html += '<div class="mp-banner warn">Host scan is stale or SSH failed. Showing the last good scan.</div>';
+    }
+    $("mpBanners").innerHTML = html;
+  }
+
+  function renderCards() {
+    var q = ($("mpSearch").value || "").trim().toLowerCase();
+    var list = plugins.filter(matchesFilter).filter(function (p) {
+      if (!q) return true;
+      return [p.name, p.description, p.maintainer, p.id, p.repo].join(" ").toLowerCase().indexOf(q) !== -1;
+    });
+    var grid = $("mpGrid");
+    grid.innerHTML = "";
+    $("mpEmpty").style.display = list.length ? "none" : "block";
+    list.forEach(function (p) {
+      var chips = [];
+      if (p.layout && p.layout.web) chips.push("web");
+      if (p.layout && p.layout.routes) chips.push("routes");
+      if (p.layout && p.layout.sidecar) chips.push("sidecar");
+      var pill = p.isNew ? '<span class="plugin-version-pill is-new">New</span>' : (p.installed ? '<span class="plugin-version-pill">Installed</span>' : "");
+      var actions = "";
+      if (p.unknown) {
+        actions = '<button type="button" class="btn" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+      } else if (p.installed) {
+        if (p.updateAvailable) actions += '<button type="button" class="btn" data-update="' + encodeURIComponent(p.id) + '">Update</button>';
+        actions += '<button type="button" class="btn" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+      } else {
+        actions = '<button type="button" class="btn" data-install="' + encodeURIComponent(p.id) + '">Install</button>';
+      }
+      var repoHref = "";
+      if (p.repo && /^https?:\/\//i.test(p.repo)) {
+        repoHref = p.repo.replace(/\.git$/i, "");
+      }
+      var repo = repoHref ? '<a href="' + repoHref.replace(/"/g, "") + '" target="_blank" rel="noopener noreferrer">repo</a>' : "";
+      var el = document.createElement("div");
+      el.className = "plugin-card";
+      el.innerHTML =
+        '<div class="plugin-card-header"><span class="plugin-name"></span>' + pill + "</div>" +
+        '<div class="plugin-desc"></div>' +
+        '<div class="plugin-meta"></div>' +
+        '<div class="plugin-chips">' + chips.map(function (c) { return '<span class="chip">' + c + "</span>"; }).join("") + "</div>" +
+        (p.notes ? '<div class="plugin-meta"></div>' : "") +
+        '<div class="plugin-actions">' + actions + "</div>";
+      el.querySelector(".plugin-name").textContent = p.name;
+      el.querySelector(".plugin-desc").textContent = p.description || "";
+      el.querySelectorAll(".plugin-meta")[0].innerHTML = (p.maintainer ? p.maintainer + " · " : "") + repo + (originLabel(p) ? " · " + originLabel(p) : "");
+      if (p.notes) el.querySelectorAll(".plugin-meta")[1].textContent = p.notes;
+      grid.appendChild(el);
+    });
+    var canUpdateAll = plugins.some(function (p) { return p.installed && p.updateAvailable; });
+    $("mpUpdateAll").disabled = !canUpdateAll;
+  }
+
+  function renderJobs(jobs) {
+    var lines = [];
+    (jobs || []).slice(0, 12).forEach(function (j) {
+      lines.push((j.status || "") + "  " + (j.kind || "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : ""));
+      (j.log || []).slice(-8).forEach(function (l) { lines.push("  " + l); });
+      if (j.status === "complete" && (j.kind === "install" || j.kind === "update" || j.kind === "update-all" || j.kind === "uninstall")) {
+        lines.push("  Reminder: CloudTAK Settings → Refresh App");
+      }
+    });
+    $("mpJobs").textContent = lines.join("\n") || "No jobs yet.";
+  }
+
+  function postJob(body) {
+    return fetch("/api/cloudtak-marketplace/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok && j.ok, json: j }; }); });
+  }
+
+  function loadAll() {
+    return Promise.all([
+      fetch("/api/cloudtak-marketplace/plugins", { headers: { Accept: "application/json" } }).then(function (r) { return r.json(); }),
+      fetch("/api/cloudtak-marketplace/status", { headers: { Accept: "application/json" } }).then(function (r) { return r.json(); })
+    ]).then(function (pair) {
+      var snap = pair[0];
+      var status = pair[1];
+      plugins = (snap && snap.plugins) || [];
+      renderBanners(status, snap);
+      renderCards();
+      renderJobs(status && status.jobs);
+      document.querySelectorAll("[data-mp-filter]").forEach(function (btn) {
+        btn.classList.toggle("is-filter-on", btn.getAttribute("data-mp-filter") === filter);
+      });
+    }).catch(function (err) {
+      setMsg(err.message || "Failed to load marketplace", true);
+    });
+  }
+
+  document.querySelectorAll("[data-mp-filter]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      filter = btn.getAttribute("data-mp-filter");
+      renderCards();
+      document.querySelectorAll("[data-mp-filter]").forEach(function (b) {
+        b.classList.toggle("is-filter-on", b.getAttribute("data-mp-filter") === filter);
+      });
+    });
+  });
+  $("mpSearch").addEventListener("input", renderCards);
+  $("mpRefreshCatalog").addEventListener("click", function () {
+    postJob({ kind: "refresh-catalog" }).then(function () { setMsg("Catalog refresh queued."); loadAll(); });
+  });
+  $("mpUpdateAll").addEventListener("click", function () {
+    postJob({ kind: "update-all" }).then(function () { setMsg("Update all queued on the worker."); loadAll(); });
+  });
+  $("mpGrid").addEventListener("click", function (e) {
+    var t = e.target && e.target.closest ? e.target.closest("[data-install],[data-update],[data-uninstall]") : null;
+    if (!t) return;
+    var id = decodeURIComponent(t.getAttribute("data-install") || t.getAttribute("data-update") || t.getAttribute("data-uninstall") || "");
+    if (t.hasAttribute("data-install")) {
+      postJob({ kind: "install", pluginId: id }).then(function () { setMsg("Install queued."); loadAll(); });
+      return;
+    }
+    if (t.hasAttribute("data-update")) {
+      postJob({ kind: "update", pluginId: id }).then(function () { setMsg("Update queued."); loadAll(); });
+      return;
+    }
+    var p = plugins.filter(function (x) { return x.id === id; })[0];
+    uninstallTarget = p;
+    confirmArmed = false;
+    $("mpUninstallConfirm").disabled = false;
+    $("mpUninstallBody").textContent = "Remove " + (p && p.name || id) + " from " + (p && p.dest || id) + " (web folder" + (p && p.layout && p.layout.routes ? " and owned route files" : "") + "). Sidecar containers are not stopped.";
+    $("mpUninstallModal").style.display = "flex";
+    $("mpUninstallModal").setAttribute("aria-hidden", "false");
+  });
+  $("mpUninstallCancel").addEventListener("click", function () {
+    $("mpUninstallModal").style.display = "none";
+    uninstallTarget = null;
+  });
+  $("mpUninstallConfirm").addEventListener("click", function () {
+    if (!uninstallTarget) return;
+    if (!confirmArmed) {
+      confirmArmed = true;
+      $("mpUninstallConfirm").textContent = "Click again to uninstall";
+      return;
+    }
+    postJob({ kind: "uninstall", pluginId: uninstallTarget.unknown ? null : uninstallTarget.id, dest: uninstallTarget.dest }).then(function () {
+      setMsg("Uninstall queued.");
+      $("mpUninstallModal").style.display = "none";
+      $("mpUninstallConfirm").textContent = "Uninstall plugin";
+      confirmArmed = false;
+      loadAll();
+    });
+  });
+
+  loadAll();
+  setInterval(loadAll, 4000);
+})();
+</script>

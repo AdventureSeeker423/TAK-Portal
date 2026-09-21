@@ -103,6 +103,13 @@ const PERMISSIONS = {
       section: "operations",
       editorVisible: false,
     },
+    cloudtak_marketplace: {
+      id: "page.cloudtak_marketplace",
+      label: "CloudTAK Plugin Marketplace",
+      description: "Install and update CloudTAK plugins on the CloudTAK host.",
+      section: "operations",
+      editorVisible: false,
+    },
     access_control: {
       id: "page.access_control",
       label: "Access Control",
@@ -173,6 +180,7 @@ function getRequiredPermissionsForRequest(path, method) {
   // APIs now inherit from their owning page capability.
   if (p.startsWith("/api/audit-log")) return ["page.audit_log"];
   if (p.startsWith("/api/plugins")) return ["page.plugin_manager"];
+  if (p.startsWith("/api/cloudtak-marketplace")) return ["page.cloudtak_marketplace"];
   if (p.startsWith("/api/integrations")) return ["page.integrations"];
   if (p.startsWith("/api/ssh")) return ["page.integrations"];
   if (p.startsWith("/api/locate-legacy")) return ["page.locate"];
@@ -239,6 +247,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p === "/data-sync" || p.startsWith("/data-sync/")) return ["page.data_sync"];
   if (p === "/data-package" || p === "/data-packages" || p.startsWith("/data-package/")) return ["page.data_package"];
   if (p === "/plugin-manager" || p.startsWith("/plugin-manager/")) return ["page.plugin_manager"];
+  if (p === "/cloudtak-marketplace" || p.startsWith("/cloudtak-marketplace/")) return ["page.cloudtak_marketplace"];
   if (p === "/sample-users.csv" || p === "/sample-agencies.csv" || p === "/csv-instructions-readme.txt")
     return ["page.users"];
 
