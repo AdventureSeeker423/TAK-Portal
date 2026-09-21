@@ -123,6 +123,11 @@ const livewx = normalized.plugins.find((p) => p.id === "livewx");
 assert.ok(livewx);
 assert.ok(livewx.csp && livewx.csp["img-src"].includes("https://mesonet.agron.iastate.edu"));
 assert.ok(livewx.csp["connect-src"].includes("https://api.weather.gov"));
+assert.ok(livewx.csp["connect-src"].includes("wss://ws1.blitzortung.org"));
+assert.ok(livewx.csp["connect-src"].includes("wss://ws7.blitzortung.org"));
+assert.ok(livewx.csp["connect-src"].includes("wss://ws8.blitzortung.org"));
+assert.ok(livewx.csp["connect-src"].includes("wss://*.blitzortung.org"));
+assert.ok(!livewx.csp["img-src"].some((s) => /blitzortung/i.test(s)));
 assert.ok(!livewx.additionalActions.some((a) => /nginx/i.test(JSON.stringify(a))));
 const installScript = marketplace.installRemoteScript("/root/CloudTAK", livewx);
 assert.match(installScript, /Fetching latest plugin source/);
@@ -137,6 +142,8 @@ assert.match(installScript, /NGINX_CSP_/);
 assert.match(installScript, /docker-compose.marketplace.yml/);
 assert.match(installScript, /Updating CloudTAK CSP overlay/);
 assert.match(installScript, /mesonet\.agron\.iastate\.edu/);
+assert.match(installScript, /wss:\/\/ws1\.blitzortung\.org/);
+assert.match(installScript, /wss:\/\/\*\.blitzortung\.org/);
 assert.match(installScript, /apply_plugin_csp/);
 
 assert.deepStrictEqual(

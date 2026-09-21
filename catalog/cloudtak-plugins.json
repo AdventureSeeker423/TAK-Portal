@@ -146,7 +146,11 @@
       "detect": ["api/web/plugins/livewx-radar/index.ts"],
       "csp": [
         "https://mesonet.agron.iastate.edu",
-        "https://api.weather.gov"
+        "https://api.weather.gov",
+        "wss://ws1.blitzortung.org",
+        "wss://ws7.blitzortung.org",
+        "wss://ws8.blitzortung.org",
+        "wss://*.blitzortung.org"
       ]
     }
   ]
