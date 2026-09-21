@@ -106,7 +106,7 @@
     {
       "id": "location-search",
       "name": "Location Search",
-      "description": "Search addresses and jump to them on the map.",
+      "description": "Search addresses from openaddresses.io and jump to them on the map.",
       "repo": "https://github.com/clptak/cloudtak-plugin-location-search.git",
       "added": "2026-09-20",
       "maintainer": "clptak",
