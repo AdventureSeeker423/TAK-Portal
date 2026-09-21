@@ -223,11 +223,80 @@ router.post("/catalog/refresh", async (req, res) => {
   }
 });
 
+router.post("/ssh/setup", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const host = String(body.host || "").trim();
+    const sshUser = String(body.username || "").trim();
+    const password = String(body.password || "");
+    const port = Number.parseInt(String(body.port || "22"), 10) || 22;
+
+    if (!host || !sshUser || !password) {
+      return res.status(400).json({
+        ok: false,
+        error: "Host, username, and password are required to generate and install the CloudTAK SSH key.",
+      });
+    }
+
+    const handshake = await ssh.onboardWithPassword({ host, port, username: sshUser, password });
+    const test = await ssh.testConnection();
+    if (!test.ok) {
+      return res.status(400).json({
+        ok: false,
+        error: test.message || "SSH key was installed, but the connection test failed.",
+        handshakeMessage: handshake.message,
+        keyStatus: handshake.keyStatus,
+        loginOk: false,
+      });
+    }
+
+    const detected = await marketplace.detectAndPersist({ overwritePath: true });
+    if (detected && detected.ok && detected.path) {
+      marketplace.enqueueJobOnce("scan", username(req));
+    }
+
+    auditSvc.auditFromRequest(req, {
+      action: "CLOUDTAK_MARKETPLACE_SSH_SETUP",
+      targetType: "settings",
+      targetId: host,
+      details: {
+        host,
+        port: String(port),
+        username: sshUser,
+        path: detected && detected.path,
+        summary: "Generated CloudTAK SSH key, installed it on the host, and tested the connection.",
+      },
+    });
+
+    res.json({
+      ok: true,
+      testPassed: true,
+      message: handshake.message,
+      host: test.host,
+      username: test.username,
+      uname: test.uname,
+      path: (detected && detected.path) || test.path || "",
+      composeService: (detected && detected.composeService) || test.composeService || "",
+      composeFile: (detected && detected.composeFile) || test.composeFile || "",
+      detectOk: !!(detected && detected.ok),
+      detectMessage: detected && !detected.ok ? detected.message : undefined,
+      keyStatus: handshake.keyStatus,
+    });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 router.post("/ssh/test", async (req, res) => {
   try {
     const result = await ssh.testConnection();
     if (result.ok) {
-      marketplace.enqueueJob({ kind: "scan", createdBy: username(req) });
+      const detected = await marketplace.persistDetectedPath(result, { overwritePath: true });
+      if (detected && detected.path) {
+        result.path = detected.path;
+        if (detected.composeService) result.composeService = detected.composeService;
+      }
+      marketplace.enqueueJobOnce("scan", username(req));
     }
     res.json(result);
   } catch (err) {

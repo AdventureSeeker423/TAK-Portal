@@ -445,6 +445,7 @@
         "CLOUDTAK_SSH_PORT",
         "CLOUDTAK_SSH_USER",
         "CLOUDTAK_SSH_PRIVATE_KEY_PATH",
+        "CLOUDTAK_SSH_PUBLIC_KEY_PATH",
         "CLOUDTAK_SSH_PASSPHRASE",
         "CLOUDTAK_MARKETPLACE_PATH",
         "CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE",
@@ -4665,12 +4666,41 @@
                 <% renderField("CLOUDTAK_SSH_HOST","CloudTAK SSH host","Hostname or IP of the CloudTAK machine."); %>
                 <% renderField("CLOUDTAK_SSH_PORT","CloudTAK SSH port","Usually 22.","22"); %>
                 <% renderField("CLOUDTAK_SSH_USER","CloudTAK SSH user","Account that can run docker compose in the CloudTAK directory."); %>
-                <% renderField("CLOUDTAK_SSH_PASSPHRASE","CloudTAK SSH key passphrase","Optional. Leave empty if the key is unencrypted."); %>
+                <label class="settings-field">
+                  <span class="settings-label">
+                    <span>SSH password</span>
+                    <span class="settings-help-tip">
+                      <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+                      <span class="settings-help-popover">Account password for the CloudTAK host. Used once to generate an SSH key and install it. Not saved.</span>
+                    </span>
+                  </span>
+                  <div class="passwordWrap">
+                    <input
+                      id="cloudtakSshPasswordInput"
+                      type="password"
+                      value=""
+                      autocomplete="new-password"
+                      placeholder="Account password (used once to generate and install the key)"
+                    />
+                    <button
+                      type="button"
+                      id="cloudtakSshPasswordToggle"
+                      class="passwordToggle"
+                      aria-label="Show password"
+                      title="Show password"
+                    >
+                      👁
+                    </button>
+                  </div>
+                </label>
               </div>
-              <p class="muted" style="font-size:0.85rem;">If no dedicated key is uploaded, the existing portal TAK SSH key is used. Add that public key on the CloudTAK host.</p>
-              <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:0.5rem;">
+              <p class="muted" style="font-size:0.85rem;">Enter host, user, and password, then save. The portal generates a key, installs it on that host, tests the login, and detects CloudTAK if the test passes.</p>
+              <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <button type="button" class="btn" id="cloudtakMarketplaceSetupBtn">Save SSH, generate key, and test</button>
+              </div>
+              <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:0.75rem;">
                 <input type="file" id="cloudtakMarketplaceKeyFile" accept=".pem,.key,*" />
-                <button type="button" class="btn" id="cloudtakMarketplaceKeyUploadBtn">Upload private key</button>
+                <button type="button" class="btn" id="cloudtakMarketplaceKeyUploadBtn">Upload existing private key</button>
               </div>
               <div id="cloudtakMarketplaceKeyStatus" class="muted" style="margin-top:0.35rem;"></div>
             </div>
@@ -4700,12 +4730,6 @@
                 <button type="button" class="btn" id="cloudtakMarketplaceTestEmailBtn">Send test email</button>
                 <span id="cloudtakMarketplaceTestEmailStatus" class="muted" style="margin-left:0.5rem;"></span>
               </div>
-            </div>
-
-            <h3 style="margin:1.25rem 0 0.5rem;">Catalog</h3>
-            <div class="grid2">
-              <% renderField("CLOUDTAK_MARKETPLACE_CATALOG_URL","Catalog URL override","Leave blank to fetch catalog/cloudtak-plugins.json from this portal repo on GitHub."); %>
-              <% renderField("CLOUDTAK_MARKETPLACE_CATALOG_REF","Catalog git ref","Branch or tag used with the default GitHub URL.","main"); %>
             </div>
 
             <div style="margin-top:1.25rem;">
@@ -5485,6 +5509,7 @@
     wirePasswordToggle("p12PassphraseInput", "p12PassphraseToggle");
     wirePasswordToggle("sshPasswordInput", "sshPasswordToggle");
     wirePasswordToggle("oaTokenInput", "oaTokenToggle");
+    wirePasswordToggle("cloudtakSshPasswordInput", "cloudtakSshPasswordToggle");
 
     document.addEventListener("click", function (e) {
       var btn = e.target && e.target.closest
@@ -5522,23 +5547,58 @@
       var notifyExtra = document.getElementById("cloudtakMarketplaceNotifyFields");
       if (notifyExtra) notifyExtra.style.display = notify && notify.value === "true" ? "block" : "none";
     }
+    function mpSettingInput(key) {
+      return document.querySelector('#settingsModal-cloudtak-marketplace input[name="settings[' + key + ']"]');
+    }
+    function applyCloudtakDetectFields(j) {
+      var pathInput = mpSettingInput("CLOUDTAK_MARKETPLACE_PATH");
+      var svcInput = mpSettingInput("CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE");
+      if (pathInput && j && j.path) pathInput.value = j.path;
+      if (svcInput && j && j.composeService) svcInput.value = j.composeService;
+      if (j && j.path && typeof window.scheduleSettingsAutoSave === "function") {
+        window.scheduleSettingsAutoSave();
+      }
+    }
+    function formatCloudtakSshResult(j, prefix) {
+      var lines = [];
+      if (prefix) lines.push(prefix);
+      if (j && (j.message || j.error)) lines.push(j.message || j.error);
+      if (j && j.path) lines.push("CloudTAK: " + j.path);
+      if (j && j.composeService) lines.push("Service: " + j.composeService);
+      if (j && j.uname) lines.push(j.uname);
+      return lines.join("\n");
+    }
     function autoDetectCloudtakCheckout() {
-      if (!sshMpStatus) return;
+      if (!sshMpStatus) return Promise.resolve();
       sshMpStatus.textContent = "Detecting CloudTAK checkout…";
-      mpJson("/api/cloudtak-marketplace/ssh/detect", { method: "POST" })
+      return mpJson("/api/cloudtak-marketplace/ssh/detect", { method: "POST" })
         .then(function (j) {
           if (!j || !j.ok) {
             sshMpStatus.textContent = (j && (j.message || j.error)) || "Could not find a CloudTAK checkout. Configure SSH, then use Detect.";
-            return;
+            return j;
           }
-          var pathInput = document.querySelector('input[name="settings[CLOUDTAK_MARKETPLACE_PATH]"]');
-          var svcInput = document.querySelector('input[name="settings[CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE]"]');
-          if (pathInput && j.path) pathInput.value = j.path;
-          if (svcInput && j.composeService) svcInput.value = j.composeService;
+          applyCloudtakDetectFields(j);
           sshMpStatus.textContent = "Found " + (j.path || "") + (j.composeService ? " (service " + j.composeService + ")" : "");
-          if (typeof window.scheduleSettingsAutoSave === "function") window.scheduleSettingsAutoSave();
+          return j;
         })
-        .catch(function (err) { sshMpStatus.textContent = err.message || "Detect failed."; });
+        .catch(function (err) {
+          sshMpStatus.textContent = err.message || "Detect failed.";
+        });
+    }
+    function tryAutoDetectOnEnable() {
+      var useTak = mpSettingInput("CLOUDTAK_MARKETPLACE_USE_TAK_SSH");
+      var usingTak = !useTak || useTak.value !== "false";
+      if (!usingTak) {
+        var host = mpSettingInput("CLOUDTAK_SSH_HOST");
+        var user = mpSettingInput("CLOUDTAK_SSH_USER");
+        if (!host || !String(host.value || "").trim() || !user || !String(user.value || "").trim()) {
+          if (sshMpStatus) {
+            sshMpStatus.textContent = "Enter CloudTAK SSH host, user, and password, then Save SSH, generate key, and test.";
+          }
+          return;
+        }
+      }
+      autoDetectCloudtakCheckout();
     }
     syncCloudtakMarketplaceModal();
     document.addEventListener("click", function (e) {
@@ -5551,18 +5611,23 @@
         var field = toggle.closest(".settings-field");
         var input = field && field.querySelector("[data-settings-bool-input]");
         if (input && input.name === "settings[CLOUDTAK_MARKETPLACE_ENABLED]" && input.value === "true") {
-          autoDetectCloudtakCheckout();
+          window.setTimeout(tryAutoDetectOnEnable, 450);
         }
       }, 0);
     });
     function mpJson(url, opts) {
       return fetch(url, Object.assign({ headers: { Accept: "application/json" } }, opts || {})).then(function (r) {
-        return r.json();
+        return r.json().then(function (j) {
+          if (!r.ok && j && !j.error && !j.message) j.error = r.statusText || "Request failed";
+          return j;
+        });
       });
     }
     var detectBtn = document.getElementById("cloudtakMarketplaceDetectBtn");
     var testBtn = document.getElementById("cloudtakMarketplaceTestBtn");
+    var setupBtn = document.getElementById("cloudtakMarketplaceSetupBtn");
     var sshMpStatus = document.getElementById("cloudtakMarketplaceSshStatus");
+    var cloudtakPassInput = document.getElementById("cloudtakSshPasswordInput");
     if (detectBtn && sshMpStatus) {
       detectBtn.addEventListener("click", autoDetectCloudtakCheckout);
     }
@@ -5571,12 +5636,51 @@
         sshMpStatus.textContent = "Testing…";
         mpJson("/api/cloudtak-marketplace/ssh/test", { method: "POST" })
           .then(function (j) {
-            sshMpStatus.textContent = ((j && j.ok) ? "OK. " : "") + ((j && (j.message || j.error)) || "") +
-              (j && j.path ? "\nCloudTAK: " + j.path : "") +
-              (j && j.composeService ? "\nService: " + j.composeService : "") +
-              (j && j.uname ? "\n" + j.uname : "");
+            if (j && j.ok) {
+              applyCloudtakDetectFields(j);
+              if (j.path) {
+                sshMpStatus.textContent = formatCloudtakSshResult(j, "OK. Detected CloudTAK.");
+                return;
+              }
+              sshMpStatus.textContent = formatCloudtakSshResult(j, "OK. Detecting CloudTAK…");
+              return autoDetectCloudtakCheckout();
+            }
+            sshMpStatus.textContent = formatCloudtakSshResult(j, "");
           })
           .catch(function (err) { sshMpStatus.textContent = err.message || "Test failed."; });
+      });
+    }
+    if (setupBtn && sshMpStatus) {
+      setupBtn.addEventListener("click", function () {
+        var host = ((mpSettingInput("CLOUDTAK_SSH_HOST") || {}).value || "").trim();
+        var port = ((mpSettingInput("CLOUDTAK_SSH_PORT") || {}).value || "22").trim();
+        var sshUser = ((mpSettingInput("CLOUDTAK_SSH_USER") || {}).value || "").trim();
+        var password = (cloudtakPassInput && cloudtakPassInput.value) || "";
+        if (!host || !sshUser || !password) {
+          sshMpStatus.textContent = "Host, username, and password are required to generate and install the SSH key.";
+          return;
+        }
+        setupBtn.disabled = true;
+        sshMpStatus.textContent = "Saving SSH, generating key, installing on host, and testing…";
+        fetch("/api/cloudtak-marketplace/ssh/setup", {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ host: host, port: port, username: sshUser, password: password }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || !j.ok) {
+              sshMpStatus.textContent = (j && (j.error || j.message)) || "SSH setup failed.";
+              return;
+            }
+            if (cloudtakPassInput) cloudtakPassInput.value = "";
+            applyCloudtakDetectFields(j);
+            sshMpStatus.textContent = formatCloudtakSshResult(j, j.detectOk === false
+              ? "SSH key installed and test passed, but CloudTAK was not detected."
+              : "SSH key installed. Test passed. CloudTAK detected.");
+          })
+          .catch(function (err) { sshMpStatus.textContent = err.message || "SSH setup failed."; })
+          .finally(function () { setupBtn.disabled = false; });
       });
     }
     var keyBtn = document.getElementById("cloudtakMarketplaceKeyUploadBtn");

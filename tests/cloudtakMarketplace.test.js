@@ -80,4 +80,26 @@ assert.deepStrictEqual(
 const bundled = store.readBundledCatalog();
 assert.ok(Array.isArray(bundled.plugins) && bundled.plugins.length >= 10);
 
-console.log("cloudtakMarketplace tests passed");
+const ssh = require("../services/cloudtakMarketplace.ssh");
+assert.strictEqual(typeof ssh.onboardWithPassword, "function");
+assert.strictEqual(typeof ssh.ensureCloudtakSshKeyPair, "function");
+
+async function assertOnboardValidation() {
+  await assert.rejects(
+    () => ssh.onboardWithPassword({ host: "", username: "cloudtak", password: "x" }),
+    /host is required/i
+  );
+  await assert.rejects(
+    () => ssh.onboardWithPassword({ host: "10.0.0.1", username: "cloudtak", password: "" }),
+    /password is required/i
+  );
+}
+
+assertOnboardValidation()
+  .then(() => {
+    console.log("cloudtakMarketplace tests passed");
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

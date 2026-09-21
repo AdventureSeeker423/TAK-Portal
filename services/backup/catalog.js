@@ -185,7 +185,7 @@ const SETTINGS_SUBCATEGORIES = [
   {
     id: "settings.cloudtak_marketplace",
     label: "CloudTAK Plugin Marketplace",
-    description: "Optional CloudTAK plugin module: enable flag, SSH target, catalog URL, and email alerts.",
+    description: "Optional CloudTAK plugin module: enable flag, SSH target, and email alerts.",
     requiresSecrets: false,
     keys: [
       "CLOUDTAK_MARKETPLACE_ENABLED",
@@ -194,6 +194,7 @@ const SETTINGS_SUBCATEGORIES = [
       "CLOUDTAK_SSH_PORT",
       "CLOUDTAK_SSH_USER",
       "CLOUDTAK_SSH_PRIVATE_KEY_PATH",
+      "CLOUDTAK_SSH_PUBLIC_KEY_PATH",
       "CLOUDTAK_SSH_PASSPHRASE",
       "CLOUDTAK_MARKETPLACE_PATH",
       "CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE",

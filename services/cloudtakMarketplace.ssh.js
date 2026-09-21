@@ -2,11 +2,15 @@
 
 const fs = require("fs");
 const path = require("path");
-const { Client } = require("ssh2");
+const crypto = require("crypto");
+const { Client, utils: sshUtils } = require("ssh2");
 const { getString, getInt, getBool } = require("./env");
 const takSshSvc = require("./takSsh.service");
+const settingsSvc = require("./settings.service");
 
-const DEFAULT_CLOUDTAK_KEY = path.join(__dirname, "..", "data", "ssh", "cloudtak_ssh_ed25519");
+const DATA_SSH_DIR = path.join(__dirname, "..", "data", "ssh");
+const DEFAULT_CLOUDTAK_KEY = path.join(DATA_SSH_DIR, "cloudtak_ssh_ed25519");
+const DEFAULT_CLOUDTAK_PUB = `${DEFAULT_CLOUDTAK_KEY}.pub`;
 
 function resolvePathMaybe(p) {
   if (!p || !String(p).trim()) return null;
@@ -16,6 +20,232 @@ function resolvePathMaybe(p) {
 
 function shellQuote(str) {
   return `'${String(str || "").replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function quoteForSingleQuotedShell(str) {
+  return String(str || "").replace(/'/g, "'\"'\"'");
+}
+
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function isUsablePrivateKey(privateKeyText, passphrase) {
+  try {
+    const parsed = sshUtils.parseKey(String(privateKeyText || ""), passphrase);
+    if (parsed instanceof Error) return false;
+    if (Array.isArray(parsed)) {
+      return parsed.length > 0 && parsed.every((p) => !(p instanceof Error));
+    }
+    return !!parsed;
+  } catch (_) {
+    return false;
+  }
+}
+
+function b64UrlToBuffer(input) {
+  const s = String(input || "");
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const padLen = (4 - (b64.length % 4)) % 4;
+  return Buffer.from(b64 + "=".repeat(padLen), "base64");
+}
+
+function packSshString(buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(b.length, 0);
+  return Buffer.concat([len, b]);
+}
+
+function toMpint(buf) {
+  let b = Buffer.isBuffer(buf) ? Buffer.from(buf) : Buffer.from(buf || []);
+  while (b.length > 0 && b[0] === 0x00) {
+    b = b.slice(1);
+  }
+  if (b.length === 0) return Buffer.alloc(0);
+  if (b[0] & 0x80) {
+    return Buffer.concat([Buffer.from([0x00]), b]);
+  }
+  return b;
+}
+
+function buildSshRsaPublicFromJwk(jwk, comment) {
+  const e = toMpint(b64UrlToBuffer(jwk.e));
+  const n = toMpint(b64UrlToBuffer(jwk.n));
+  const payload = Buffer.concat([
+    packSshString(Buffer.from("ssh-rsa")),
+    packSshString(e),
+    packSshString(n),
+  ]);
+  return `ssh-rsa ${payload.toString("base64")} ${comment || "tak-portal-cloudtak"}`;
+}
+
+function opensshPublicFromPrivate(privateKeyText, passphrase, comment) {
+  const label = comment || "tak-portal-cloudtak";
+  try {
+    const keyObj = crypto.createPrivateKey({
+      key: String(privateKeyText || ""),
+      format: "pem",
+      passphrase: passphrase || undefined,
+    });
+    const publicKey = crypto.createPublicKey(keyObj);
+    const jwk = publicKey.export({ format: "jwk" });
+    if (jwk && jwk.kty === "RSA") return buildSshRsaPublicFromJwk(jwk, label);
+  } catch (_) {}
+  try {
+    const parsed = sshUtils.parseKey(String(privateKeyText || ""), passphrase);
+    if (parsed instanceof Error) return null;
+    const key = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!key || typeof key.getPublicSSH !== "function") return null;
+    const pub = key.getPublicSSH();
+    const asUtf8 = Buffer.isBuffer(pub) ? pub.toString("utf8") : String(pub || "");
+    if (/^(ssh-|ecdsa-)/.test(asUtf8)) {
+      const parts = asUtf8.trim().split(/\s+/);
+      return `${parts[0]} ${parts[1]} ${label}`;
+    }
+    const type = (key.type && String(key.type)) || "ssh-rsa";
+    const b64 = Buffer.isBuffer(pub) ? pub.toString("base64") : Buffer.from(pub).toString("base64");
+    return `${type} ${b64} ${label}`;
+  } catch (_) {
+    return null;
+  }
+}
+
+function getLocalKeyStatus() {
+  const privateKeyPath =
+    resolvePathMaybe(getString("CLOUDTAK_SSH_PRIVATE_KEY_PATH", "")) || DEFAULT_CLOUDTAK_KEY;
+  const publicKeyPath =
+    resolvePathMaybe(getString("CLOUDTAK_SSH_PUBLIC_KEY_PATH", "")) || DEFAULT_CLOUDTAK_PUB;
+  const hasPrivateKey = fs.existsSync(privateKeyPath);
+  const hasPublicKey = fs.existsSync(publicKeyPath);
+  return {
+    privateKeyPath: path.relative(process.cwd(), privateKeyPath).replace(/\\/g, "/"),
+    publicKeyPath: path.relative(process.cwd(), publicKeyPath).replace(/\\/g, "/"),
+    hasPrivateKey,
+    hasPublicKey,
+    hasKeyPair: hasPrivateKey && hasPublicKey,
+  };
+}
+
+function persistKeyPaths(keyStatus) {
+  const current = settingsSvc.getSettings() || {};
+  const next = { ...current };
+  let changed = false;
+  if (String(next.CLOUDTAK_SSH_PRIVATE_KEY_PATH || "") !== keyStatus.privateKeyPath) {
+    next.CLOUDTAK_SSH_PRIVATE_KEY_PATH = keyStatus.privateKeyPath;
+    changed = true;
+  }
+  if (String(next.CLOUDTAK_SSH_PUBLIC_KEY_PATH || "") !== keyStatus.publicKeyPath) {
+    next.CLOUDTAK_SSH_PUBLIC_KEY_PATH = keyStatus.publicKeyPath;
+    changed = true;
+  }
+  if (changed) settingsSvc.saveSettings(next);
+}
+
+function ensureCloudtakSshKeyPair() {
+  ensureDir(DATA_SSH_DIR);
+
+  const existingPrivate = readKeyFile(DEFAULT_CLOUDTAK_KEY);
+  if (existingPrivate && isUsablePrivateKey(existingPrivate, undefined)) {
+    if (!fs.existsSync(DEFAULT_CLOUDTAK_PUB)) {
+      const derived = opensshPublicFromPrivate(existingPrivate, undefined, "tak-portal-cloudtak");
+      if (derived) {
+        fs.writeFileSync(DEFAULT_CLOUDTAK_PUB, `${derived.trim()}\n`, { mode: 0o644 });
+      }
+    }
+    const status = getLocalKeyStatus();
+    persistKeyPaths(status);
+    return status;
+  }
+
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: 4096,
+    publicExponent: 0x10001,
+  });
+  const privatePem = privateKey.export({ format: "pem", type: "pkcs1" });
+  fs.writeFileSync(DEFAULT_CLOUDTAK_KEY, String(privatePem), { mode: 0o600 });
+
+  const jwk = publicKey.export({ format: "jwk" });
+  const opensshPublic = buildSshRsaPublicFromJwk(jwk, "tak-portal-cloudtak");
+  fs.writeFileSync(DEFAULT_CLOUDTAK_PUB, `${String(opensshPublic).trim()}\n`, { mode: 0o644 });
+
+  const verifyPrivate = fs.readFileSync(DEFAULT_CLOUDTAK_KEY, "utf8");
+  if (!isUsablePrivateKey(verifyPrivate, undefined)) {
+    throw new Error("Generated CloudTAK private key is not parseable by ssh2.");
+  }
+
+  const status = getLocalKeyStatus();
+  persistKeyPaths(status);
+  return status;
+}
+
+function readPublicKeyText(keyStatus) {
+  const pubPath = path.resolve(process.cwd(), keyStatus.publicKeyPath);
+  if (fs.existsSync(pubPath)) {
+    const pub = fs.readFileSync(pubPath, "utf8").trim();
+    if (pub) return pub;
+  }
+  const privPath = path.resolve(process.cwd(), keyStatus.privateKeyPath);
+  if (fs.existsSync(privPath)) {
+    const derived = opensshPublicFromPrivate(fs.readFileSync(privPath, "utf8"), undefined, "tak-portal-cloudtak");
+    if (derived) return derived.trim();
+  }
+  return "";
+}
+
+async function onboardWithPassword({ host, port, username, password }) {
+  const h = String(host || "").trim();
+  const u = String(username || "").trim();
+  const p = String(password || "");
+  const sshPort = Number.parseInt(String(port || "22"), 10) || 22;
+
+  if (!h) throw new Error("CloudTAK SSH host is required.");
+  if (!u) throw new Error("CloudTAK SSH username is required.");
+  if (!p) throw new Error("SSH password is required to generate and install the key.");
+
+  const keyStatus = ensureCloudtakSshKeyPair();
+  const pubKey = readPublicKeyText(keyStatus);
+  if (!pubKey) throw new Error("Generated public key is empty.");
+
+  const safePub = quoteForSingleQuotedShell(pubKey);
+  const addKeyCommand =
+    "umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; " +
+    `grep -qxF '${safePub}' ~/.ssh/authorized_keys || echo '${safePub}' >> ~/.ssh/authorized_keys`;
+
+  const result = await execOverSsh(
+    {
+      host: h,
+      port: sshPort,
+      username: u,
+      password: p,
+      readyTimeout: 15000,
+      tryKeyboard: true,
+    },
+    addKeyCommand
+  );
+
+  if (!result.ok) {
+    throw new Error(result.message || "Could not log in with that password to install the SSH key.");
+  }
+
+  const current = settingsSvc.getSettings() || {};
+  settingsSvc.saveSettings({
+    ...current,
+    CLOUDTAK_MARKETPLACE_USE_TAK_SSH: "false",
+    CLOUDTAK_SSH_HOST: h,
+    CLOUDTAK_SSH_PORT: String(sshPort),
+    CLOUDTAK_SSH_USER: u,
+    CLOUDTAK_SSH_PRIVATE_KEY_PATH: keyStatus.privateKeyPath,
+    CLOUDTAK_SSH_PUBLIC_KEY_PATH: keyStatus.publicKeyPath,
+  });
+
+  return {
+    ok: true,
+    keyStatus: getLocalKeyStatus(),
+    message: "SSH key generated and installed on the CloudTAK host.",
+  };
 }
 
 function useTakSsh() {
@@ -93,6 +323,7 @@ function sshStatus() {
     username: cfg ? cfg.username : String(getString("CLOUDTAK_SSH_USER", "")).trim(),
     takConfigured: !!tak,
     hasDedicatedKey: !!(dedicatedKeyPath && fs.existsSync(dedicatedKeyPath)),
+    hasKeyPair: getLocalKeyStatus().hasKeyPair,
     checkoutPath: String(getString("CLOUDTAK_MARKETPLACE_PATH", "")).trim(),
     composeService: String(getString("CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE", "")).trim(),
   };
@@ -159,7 +390,29 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
         });
     };
 
+    const connectOpts = {
+      host: connectConfig.host,
+      port: connectConfig.port,
+      username: connectConfig.username,
+      readyTimeout: connectConfig.readyTimeout || 15000,
+    };
+    if (connectConfig.privateKey) {
+      connectOpts.privateKey = connectConfig.privateKey;
+      if (connectConfig.passphrase) connectOpts.passphrase = connectConfig.passphrase;
+    }
+    if (connectConfig.password) {
+      connectOpts.password = connectConfig.password;
+      connectOpts.tryKeyboard = true;
+    }
+
     conn
+      .on("keyboard-interactive", (name, instructions, instructionsLang, prompts, finish) => {
+        if (connectConfig && connectConfig.password) {
+          finish([String(connectConfig.password)]);
+          return;
+        }
+        finish([]);
+      })
       .on("ready", () => {
         conn.exec(command, (err, stream) => {
           if (err) {
@@ -222,14 +475,7 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
           exitCode: null,
         });
       })
-      .connect({
-        host: connectConfig.host,
-        port: connectConfig.port,
-        username: connectConfig.username,
-        privateKey: connectConfig.privateKey,
-        passphrase: connectConfig.passphrase,
-        readyTimeout: connectConfig.readyTimeout || 15000,
-      });
+      .connect(connectOpts);
   });
 }
 
@@ -244,7 +490,7 @@ async function runCommand(command, timeoutMs = 30000, onChunk) {
       ok: false,
       message: useTakSsh()
         ? "TAK Server SSH is not configured. Complete SSH setup under Connection & Certificates."
-        : "CloudTAK SSH is not configured. Enter host, user, and a key (or reuse the portal TAK SSH key).",
+        : "CloudTAK SSH is not configured. Enter host, user, and password, then generate and install a key.",
       stdout: "",
       stderr: "",
       exitCode: null,
@@ -381,7 +627,7 @@ async function testConnection() {
       ok: false,
       message: useTakSsh()
         ? "TAK Server SSH is not configured. Complete SSH setup under Connection & Certificates."
-        : "CloudTAK SSH is not configured. Enter host, user, and a key.",
+        : "CloudTAK SSH is not configured. Enter host, user, and password, then generate and install a key.",
     };
   }
   const uname = await runCommand("uname -s && whoami && echo HOST:$(hostname)", 15000);
@@ -456,9 +702,13 @@ function resolvedComposeService() {
 
 module.exports = {
   DEFAULT_CLOUDTAK_KEY,
+  DEFAULT_CLOUDTAK_PUB,
   useTakSsh,
   getConnectConfig,
   sshStatus,
+  getLocalKeyStatus,
+  ensureCloudtakSshKeyPair,
+  onboardWithPassword,
   runCommand,
   abortActiveCommand,
   detectCheckout,
