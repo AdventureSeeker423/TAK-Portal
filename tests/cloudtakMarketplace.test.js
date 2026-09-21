@@ -35,6 +35,7 @@ assert.deepStrictEqual(gh, {
 });
 
 const qpd = normalized.plugins.find((p) => p.id === "quick-point-dropper");
+assert.ok(qpd && /install\.sh/.test(qpd.installScript || ""), "QPD should use install.sh");
 const matchDest = marketplace.matchCatalogPlugin({ dest: "quick-point-dropper" }, normalized.plugins);
 assert.strictEqual(matchDest && matchDest.id, "quick-point-dropper");
 
@@ -58,6 +59,11 @@ assert.strictEqual(matchRepo && matchRepo.id, "quick-point-dropper");
 
 const unknown = marketplace.matchCatalogPlugin({ dest: "totally-unknown" }, normalized.plugins);
 assert.strictEqual(unknown, null);
+
+assert.ok(marketplace.isHostPluginNoise("example.ts"));
+assert.ok(marketplace.isHostPluginNoise("README.md"));
+assert.ok(marketplace.isHostPluginNoise("readme.md"));
+assert.ok(!marketplace.isHostPluginNoise("quick-point-dropper"));
 
 const bundled = store.readBundledCatalog();
 assert.ok(Array.isArray(bundled.plugins) && bundled.plugins.length >= 10);

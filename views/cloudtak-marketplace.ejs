@@ -12,10 +12,11 @@
         <input type="search" id="mpSearch" placeholder="Search plugins…" />
       </label>
       <div class="row mp-toolbar-actions">
-        <button type="button" class="btn mp-filter-btn is-filter-on" id="mpFilterAvailable" data-mp-filter="available">Available</button>
+        <button type="button" class="btn mp-filter-btn is-filter-on" id="mpFilterAll" data-mp-filter="all">All</button>
+        <button type="button" class="btn mp-filter-btn" id="mpFilterAvailable" data-mp-filter="available">Available</button>
         <button type="button" class="btn mp-filter-btn" id="mpFilterNew" data-mp-filter="new">New</button>
         <button type="button" class="btn mp-filter-btn" id="mpFilterInstalled" data-mp-filter="installed">Installed</button>
-        <button type="button" class="btn" id="mpUpdateAll">Update all</button>
+        <button type="button" class="btn qr" id="mpUpdateAll">Update all</button>
         <button type="button" class="btn" id="mpRefreshCatalog">Refresh catalog</button>
       </div>
     </div>
@@ -26,7 +27,6 @@
 
   <div class="card" style="margin-top:16px;">
     <h2 style="margin-top:0;">Jobs</h2>
-    <p class="muted" id="mpJobHint">Install and rebuild run on the portal worker. This page only queues work and shows the log.</p>
     <pre id="mpJobs" class="mp-job-log"></pre>
   </div>
 </main>
@@ -41,7 +41,7 @@
       <p id="mpUninstallBody"></p>
       <p class="muted">The CloudTAK API image will rebuild (often 5–15 minutes). After it finishes, open CloudTAK <strong>Settings → Refresh App</strong> so the plugin leaves the menu.</p>
       <div class="row" style="gap:8px;margin-top:12px;">
-        <button type="button" class="btn" id="mpUninstallConfirm" disabled>Uninstall plugin</button>
+        <button type="button" class="btn danger" id="mpUninstallConfirm" disabled>Uninstall plugin</button>
       </div>
     </div>
   </div>
@@ -152,21 +152,6 @@
   .plugin-cards .plugin-meta a:hover {
     border-bottom-color: var(--text);
   }
-  .plugin-cards .plugin-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .plugin-cards .chip {
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    border-radius: 999px;
-    padding: 3px 8px;
-    background: var(--hover);
-    color: var(--muted);
-  }
   .plugin-cards .plugin-notes {
     margin: 0;
     font-size: 0.78rem;
@@ -213,7 +198,7 @@
 
 <script>
 (function () {
-  var filter = "available";
+  var filter = "all";
   var plugins = [];
   var uninstallTarget = null;
   var confirmArmed = false;
@@ -234,6 +219,7 @@
   }
 
   function matchesFilter(p) {
+    if (filter === "all") return true;
     if (filter === "available") return !p.installed;
     if (filter === "new") return !!p.isNew;
     if (filter === "installed") return !!p.installed;
@@ -269,8 +255,8 @@
     if (!list.length) {
       if (!plugins.length) {
         $("mpEmpty").textContent = "Catalog has not loaded yet.";
-      } else if (filter === "available" && plugins.some(function (p) { return p.installed; })) {
-        $("mpEmpty").textContent = "No uninstalled catalog plugins. Installed plugins are under Installed.";
+      } else if (filter === "available") {
+        $("mpEmpty").textContent = "No uninstalled catalog plugins.";
       } else if (filter === "installed") {
         $("mpEmpty").textContent = "No plugins found on the CloudTAK host yet.";
       } else {
@@ -278,19 +264,15 @@
       }
     }
     list.forEach(function (p) {
-      var chips = [];
-      if (p.layout && p.layout.web) chips.push("web");
-      if (p.layout && p.layout.routes) chips.push("routes");
-      if (p.layout && p.layout.sidecar) chips.push("sidecar");
       var pillClass = p.isNew ? "plugin-version-pill is-new" : (p.installed ? "plugin-version-pill is-installed" : "");
       var pillLabel = p.isNew ? "New" : (p.installed ? "Installed" : "");
       var pill = pillClass ? '<span class="' + pillClass + '">' + pillLabel + "</span>" : "";
       var actions = "";
       if (p.unknown) {
-        actions = '<button type="button" class="btn" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+        actions = '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
       } else if (p.installed) {
-        if (p.updateAvailable) actions += '<button type="button" class="btn" data-update="' + encodeURIComponent(p.id) + '">Update</button>';
-        actions += '<button type="button" class="btn" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+        if (p.updateAvailable) actions += '<button type="button" class="btn qr" data-update="' + encodeURIComponent(p.id) + '">Update</button>';
+        actions += '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
       } else {
         actions = '<button type="button" class="btn" data-install="' + encodeURIComponent(p.id) + '">Install</button>';
       }
@@ -309,7 +291,6 @@
         '<div class="plugin-card-header"><span class="plugin-name"></span>' + pill + "</div>" +
         '<div class="plugin-desc"></div>' +
         ((p.maintainer || repoHref || origin) ? '<div class="plugin-meta"></div>' : "") +
-        (chips.length ? '<div class="plugin-chips">' + chips.map(function (c) { return '<span class="chip">' + c + "</span>"; }).join("") + "</div>" : "") +
         (note ? '<p class="plugin-notes"></p>' : "") +
         '<div class="plugin-actions">' + actions + "</div>";
       el.querySelector(".plugin-name").textContent = p.name;

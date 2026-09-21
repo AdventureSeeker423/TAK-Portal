@@ -15,7 +15,8 @@
       "exclude": ["**/*.md"],
       "detect": ["api/web/plugins/quick-point-dropper/index.ts"],
       "detectAliases": ["cloudtak-plugin-quick-point-dropper", "QuickPointDropper", "quick_point_dropper"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "installScript": "./install.sh --no-build",
+      "notes": "Uses the plugin install.sh. After install: CloudTAK Settings → Refresh App."
     },
     {
       "id": "helloworld",

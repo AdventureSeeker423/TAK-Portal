@@ -51,6 +51,21 @@ function pluginMatchKey(s) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+function isHostPluginNoise(dest) {
+  const name = String(dest || "")
+    .trim()
+    .replace(/^.*\//, "");
+  if (!name || name === "." || name === ".." || name.startsWith(".")) return true;
+  const lower = name.toLowerCase();
+  if (/^example\.(ts|js|tsx|jsx)$/.test(lower)) return true;
+  if (/\.(md|markdown|txt|rst)$/.test(lower)) return true;
+  if (/^(readme|license|licence|changelog|contributing|copying|notice|authors|credits)(\.|$)/.test(lower)) {
+    return true;
+  }
+  if (lower === "package.json" || lower === "tsconfig.json" || lower === "dockerfile") return true;
+  return false;
+}
+
 function parseGitHubRepo(repoUrl) {
   const s = String(repoUrl || "").trim();
   let m = s.match(/github\.com[:/]+([^/]+)\/([^/]+?)(?:\.git)?$/i);
@@ -250,6 +265,12 @@ emit_plugin() {
   [ -e "$p" ] || return 0
   local name kind target has_index pkg remote head
   name=$(basename "$p")
+  case "$name" in
+    example.ts|example.js|example.tsx|README.md|readme.md|README|LICENSE|LICENSE.md|.gitkeep|.DS_Store|package.json|tsconfig.json) return 0 ;;
+  esac
+  case "$name" in
+    *.md|*.markdown|*.txt) return 0 ;;
+  esac
   kind=dir
   target=""
   if [ -L "$p" ]; then
@@ -317,6 +338,12 @@ if command -v docker >/dev/null 2>&1; then
       printf 'CONTAINER %s dir=%s\\n' "$c" "$inner"
       echo "$listing" | while IFS= read -r name; do
         [ -n "$name" ] || continue
+        case "$name" in
+          example.ts|example.js|README.md|readme.md|README|LICENSE|.gitkeep|.DS_Store) continue ;;
+        esac
+        case "$name" in
+          *.md|*.txt) continue ;;
+        esac
         printf 'PLUGIN\\t%s\\tdir\\t1\\t\\t\\t\\t\\n' "$name"
       done
     done
@@ -335,7 +362,7 @@ function parseScanStdout(stdout, catalogPlugins) {
   let webPluginsRaw = "";
   const pushPlugin = (row) => {
     const dest = String(row.dest || "").trim();
-    if (!dest || dest === "*" || dest === "." || dest === "..") return;
+    if (!dest || dest === "*" || dest === "." || dest === ".." || isHostPluginNoise(dest)) return;
     const key = dest.toLowerCase();
     if (seenDest.has(key)) return;
     seenDest.add(key);
@@ -571,7 +598,9 @@ function buildUiPlugins(options = {}) {
   const catalog = loadCatalog();
   const scan = store.readScanCache();
   const installedRec = store.readInstalled();
-  const scanPlugins = (scan && Array.isArray(scan.plugins) ? scan.plugins : []) || [];
+  const scanPlugins = ((scan && Array.isArray(scan.plugins) ? scan.plugins : []) || []).filter(
+    (s) => s && !isHostPluginNoise(s.dest)
+  );
   const now = Date.now();
 
   const byId = new Map();
@@ -753,6 +782,7 @@ function installRemoteScript(ct, plugin) {
   const routes = plugin.routes ? plugin.routes.source : "";
   const excludes = (plugin.exclude || []).join("\n");
   const installScript = plugin.installScript || "";
+  const repoName = repoBasename(plugin.repo) || plugin.id;
   return `
 set -euo pipefail
 CT=${ssh.shellQuote(ct)}
@@ -763,21 +793,91 @@ DEST=${ssh.shellQuote(dest)}
 SRC=${ssh.shellQuote(source)}
 ROUTES=${ssh.shellQuote(routes)}
 INSTALL=${ssh.shellQuote(installScript)}
+WANT=${ssh.shellQuote(repoName)}
 CACHE="/tmp/ctak-marketplace-cache/$ID"
-mkdir -p /tmp/ctak-marketplace-cache
-if [ -d "$CACHE/.git" ]; then
-  git -C "$CACHE" fetch --depth 1 origin "$REF"
-  git -C "$CACHE" checkout --force FETCH_HEAD
+run_privileged() {
+  if sudo -n true >/dev/null 2>&1; then
+    sudo -n "$@"
+  else
+    "$@"
+  fi
+}
+write_plugins() {
+  local plugins="$CT/api/web/plugins"
+  local dest="$plugins/$DEST"
+  if { [ -e "$plugins" ] && [ ! -w "$plugins" ]; } || { [ -e "$dest" ] && [ ! -w "$dest" ]; }; then
+    run_privileged "$@"
+  else
+    "$@"
+  fi
+}
+looks_like_plugin_repo() {
+  local d="$1"
+  [ -d "$d" ] || return 1
+  local base remote want
+  base=$(basename "$d")
+  remote=""
+  if [ -d "$d/.git" ]; then
+    remote=$(git -C "$d" remote get-url origin 2>/dev/null || true)
+  fi
+  remote=$(printf '%s' "$remote" | tr 'A-Z' 'a-z' | sed 's/\\.git$//')
+  want=$(printf '%s' "$REPO" | tr 'A-Z' 'a-z' | sed 's/\\.git$//')
+  if [ -n "$remote" ] && [ -n "$want" ] && [ "$remote" = "$want" ]; then return 0; fi
+  case "$remote" in
+    *"$WANT"*) return 0 ;;
+  esac
+  if [ "$base" = "$WANT" ] && [ -f "$d/install.sh" ]; then return 0; fi
+  return 1
+}
+find_plugin_repo() {
+  local d
+  for d in \\
+    "$HOME/$WANT" \\
+    "$(dirname "$CT")/$WANT" \\
+    "/home/takwerx/$WANT" \\
+    "$CT/../$WANT" \\
+    "$CACHE"
+  do
+    looks_like_plugin_repo "$d" || continue
+    (cd "$d" && pwd)
+    return 0
+  done
+  for d in "$HOME"/* "$(dirname "$CT")"/* /home/takwerx/*; do
+    looks_like_plugin_repo "$d" || continue
+    (cd "$d" && pwd)
+    return 0
+  done
+  return 1
+}
+REPO_DIR=""
+if FOUND=$(find_plugin_repo); then
+  REPO_DIR="$FOUND"
+  echo "Using existing plugin checkout $REPO_DIR"
+  if [ -d "$REPO_DIR/.git" ]; then
+    git -C "$REPO_DIR" pull --ff-only || true
+  fi
 else
-  rm -rf "$CACHE"
-  git clone --depth 1 --branch "$REF" "$REPO" "$CACHE"
+  if [ ! -e "$HOME/$WANT" ]; then
+    REPO_DIR="$HOME/$WANT"
+  else
+    mkdir -p /tmp/ctak-marketplace-cache
+    REPO_DIR="$CACHE"
+  fi
+  echo "Cloning plugin to $REPO_DIR"
+  if [ -d "$REPO_DIR/.git" ]; then
+    git -C "$REPO_DIR" fetch --depth 1 origin "$REF"
+    git -C "$REPO_DIR" checkout --force FETCH_HEAD
+  else
+    git clone --depth 1 --branch "$REF" "$REPO" "$REPO_DIR"
+  fi
 fi
-SHA=$(git -C "$CACHE" rev-parse HEAD)
+SHA=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 if [ -n "$INSTALL" ]; then
-  (cd "$CACHE" && bash -lc "$INSTALL")
+  echo "Running plugin installer from $REPO_DIR"
+  write_plugins bash -lc "cd $(printf '%q' "$REPO_DIR") && $INSTALL $(printf '%q' "$CT")"
 else
-  WEBSRC="$CACHE"
-  if [ "$SRC" != "." ]; then WEBSRC="$CACHE/$SRC"; fi
+  WEBSRC="$REPO_DIR"
+  if [ "$SRC" != "." ]; then WEBSRC="$REPO_DIR/$SRC"; fi
   if [ ! -d "$WEBSRC" ]; then echo "Missing web source $WEBSRC" >&2; exit 1; fi
   PLUGIN_ROOT="$CT/api/web/plugins"
   TARGET="$PLUGIN_ROOT/$DEST"
@@ -785,10 +885,8 @@ else
     */api/web/plugins/$DEST) ;;
     *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
   esac
-  mkdir -p "$PLUGIN_ROOT"
-  rm -rf "$TARGET"
-  mkdir -p "$TARGET"
-  cp -a "$WEBSRC"/. "$TARGET"/
+  write_plugins mkdir -p "$TARGET"
+  write_plugins cp -a "$WEBSRC"/. "$TARGET"/
   cat <<'EXCL' > /tmp/ctak-marketplace-excludes-$ID
 ${excludes}
 EXCL
@@ -796,13 +894,12 @@ EXCL
     while IFS= read -r pat; do
       [ -n "$pat" ] || continue
       base=$(echo "$pat" | sed 's#^\\*\\*/##' | sed 's#/$##')
-      rm -rf "$TARGET/$base" 2>/dev/null || true
-      find "$TARGET" -name "$base" -exec rm -rf {} + 2>/dev/null || true
+      write_plugins rm -rf "$TARGET/$base" 2>/dev/null || true
     done < /tmp/ctak-marketplace-excludes-$ID
   fi
-  if [ -n "$ROUTES" ] && [ -d "$CACHE/$ROUTES" ]; then
-    mkdir -p "$CT/api/stateless/routes"
-    cp -a "$CACHE/$ROUTES"/*.ts "$CT/api/stateless/routes/" 2>/dev/null || true
+  if [ -n "$ROUTES" ] && [ -d "$REPO_DIR/$ROUTES" ]; then
+    write_plugins mkdir -p "$CT/api/stateless/routes"
+    write_plugins cp -a "$REPO_DIR/$ROUTES"/*.ts "$CT/api/stateless/routes/" 2>/dev/null || true
   fi
 fi
 printf 'INSTALL_SHA %s\\n' "$SHA"
@@ -1249,6 +1346,7 @@ module.exports = {
   parseGitHubRepo,
   repoBasename,
   pluginMatchKey,
+  isHostPluginNoise,
   normalizeCatalog,
   matchCatalogPlugin,
   loadCatalog,
