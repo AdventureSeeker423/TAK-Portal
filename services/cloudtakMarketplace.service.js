@@ -92,6 +92,158 @@ function parseGitHubRepo(repoUrl) {
   return null;
 }
 
+const CSP_DIRECTIVES = new Set([
+  "connect-src",
+  "img-src",
+  "media-src",
+  "font-src",
+  "worker-src",
+  "style-src-elem",
+  "style-src-attr",
+  "default-src",
+]);
+const CSP_SOURCE_RE = /^[A-Za-z0-9.:/*_'~%+-]+$/;
+const CSP_DIR_ALIASES = {
+  connect: "connect-src",
+  connectsrc: "connect-src",
+  "connect-src": "connect-src",
+  img: "img-src",
+  image: "img-src",
+  images: "img-src",
+  imgsrc: "img-src",
+  "img-src": "img-src",
+  media: "media-src",
+  "media-src": "media-src",
+  font: "font-src",
+  "font-src": "font-src",
+  worker: "worker-src",
+  "worker-src": "worker-src",
+  style: "style-src-elem",
+  "style-src": "style-src-elem",
+  "style-src-elem": "style-src-elem",
+  "style-src-attr": "style-src-attr",
+  default: "default-src",
+  "default-src": "default-src",
+};
+
+function cspDirectiveName(raw) {
+  const key = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+  return CSP_DIR_ALIASES[key] || (CSP_DIRECTIVES.has(key) ? key : "");
+}
+
+function cspSourcesFromText(text) {
+  return String(text || "")
+    .split(/[\s,]+/)
+    .map((s) => String(s || "").trim())
+    .filter((s) => CSP_SOURCE_RE.test(s) && /^(https?:|wss?:)/i.test(s));
+}
+
+function inferCspDirectives(src) {
+  if (/^wss?:/i.test(src)) return ["connect-src"];
+  if (/^https?:/i.test(src)) return ["connect-src", "img-src"];
+  return ["connect-src"];
+}
+
+function addCspSource(out, dir, src) {
+  const directive = cspDirectiveName(dir);
+  const source = String(src || "").trim();
+  if (!directive || !CSP_SOURCE_RE.test(source)) return;
+  if (!out[directive]) out[directive] = [];
+  if (!out[directive].includes(source)) out[directive].push(source);
+}
+
+function addCspSourceInferred(out, src, dirs) {
+  const source = String(src || "").trim();
+  const list = Array.isArray(dirs) && dirs.length ? dirs : inferCspDirectives(source);
+  list.forEach((dir) => addCspSource(out, dir, source));
+}
+
+function ingestCspValue(out, value, dir) {
+  if (value == null || value === "") return;
+  if (Array.isArray(value)) {
+    value.forEach((item) => ingestCspValue(out, item, dir));
+    return;
+  }
+  if (typeof value === "string") {
+    const sources = cspSourcesFromText(value);
+    (sources.length ? sources : [value.trim()]).forEach((src) => {
+      if (dir) addCspSource(out, dir, src);
+      else addCspSourceInferred(out, src);
+    });
+    return;
+  }
+  if (typeof value !== "object") return;
+  const src = String(value.src || value.source || value.host || value.url || "").trim();
+  const nestedDirs = []
+    .concat(value.directives || value.directive || value.kind || [])
+    .map(cspDirectiveName)
+    .filter(Boolean);
+  if (src) {
+    addCspSourceInferred(out, src, nestedDirs.length ? nestedDirs : dir ? [dir] : null);
+    return;
+  }
+  Object.entries(value).forEach(([key, nested]) => {
+    if (["src", "source", "host", "url", "directives", "directive", "kind"].includes(key)) return;
+    const mapped = cspDirectiveName(key);
+    if (mapped) ingestCspValue(out, nested, mapped);
+    else if (key === "sources" || key === "hosts") ingestCspValue(out, nested, dir);
+  });
+}
+
+function cspFromAdditionalActions(p) {
+  const raw = p && p.additionalActions;
+  const items = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  const out = {};
+  items.forEach((item) => {
+    const action = additionalActionFromRaw(item);
+    if (!action) return;
+    const blob = [action.kind, action.title, action.text, action.snippet].join(" ");
+    if (/\b(caddy|reverse_proxy|handle_path|Caddyfile)\b/i.test(blob)) return;
+    const kind = String(action.kind || "").toLowerCase();
+    const snippetSources = cspSourcesFromText(action.snippet);
+    const kindIsCsp = /\b(csp|nginx)\b/.test(kind);
+    const snippetIsCspOnly =
+      snippetSources.length > 0 &&
+      action.snippet.split(/[\s,]+/).filter(Boolean).every((t) => cspSourcesFromText(t).length > 0);
+    if (!kindIsCsp && !snippetIsCspOnly) return;
+    const dirs = [];
+    if (/img/.test(kind) || /\bimg-src\b/i.test(blob)) dirs.push("img-src");
+    if (/connect|wss|websocket/.test(kind) || /\bconnect-src\b/i.test(blob)) dirs.push("connect-src");
+    snippetSources.forEach((src) => addCspSourceInferred(out, src, dirs.length ? dirs : null));
+  });
+  return out;
+}
+
+function normalizeCsp(p) {
+  const out = {};
+  ingestCspValue(out, p && p.csp);
+  ingestCspValue(out, p && p.cspSources);
+  ingestCspValue(out, p && p.cspHosts);
+  const extra = cspFromAdditionalActions(p);
+  Object.entries(extra).forEach(([dir, sources]) => {
+    sources.forEach((src) => addCspSource(out, dir, src));
+  });
+  return out;
+}
+
+function cspSpecText(plugin) {
+  const csp = normalizeCsp(plugin);
+  const lines = [];
+  Object.keys(csp)
+    .sort()
+    .forEach((dir) => {
+      csp[dir].forEach((src) => lines.push(`${dir} ${src}`));
+    });
+  return lines.join("\n");
+}
+
+function pluginHasCsp(p) {
+  return Object.keys(normalizeCsp(p)).length > 0;
+}
+
 function isProxyOperatorNote(text) {
   return /\b(caddy|nginx|csp|connect-src|reverse.?proxy|Caddyfile)\b/i.test(String(text || ""));
 }
@@ -99,6 +251,13 @@ function isProxyOperatorNote(text) {
 function isInstallerHandledNote(text) {
   return /\b(docker|sidecar|compose|webhook process|does not start)\b/i.test(String(text || "")) &&
     !isProxyOperatorNote(text);
+}
+
+function isInstallerHandledCsp(p, action) {
+  if (!pluginHasCsp(p)) return false;
+  return /\b(nginx|csp|connect-src|img-src|nginx\.conf)\b/i.test(
+    [action && action.title, action && action.text, action && action.snippet].join(" ")
+  );
 }
 
 function additionalActionFromRaw(item) {
@@ -136,6 +295,7 @@ function normalizeAdditionalActions(p) {
     const action = additionalActionFromRaw(raw);
     if (!action) return;
     if (isInstallerHandledNote(action.text) && !action.snippet && !action.instructions.length) return;
+    if (isInstallerHandledCsp(p, action)) return;
     const key = additionalActionKey(action);
     if (seen.has(key)) return;
     seen.add(key);
@@ -206,6 +366,7 @@ function normalizeCatalog(doc) {
       composeService: String(p.composeService || "").trim(),
       composeFile: String(p.composeFile || "").trim(),
       sidecars: Array.isArray(p.sidecars) ? p.sidecars : [],
+      csp: normalizeCsp(p),
     });
   }
   return { version: Number(doc && doc.version) || 1, plugins: out, fetchedAt: doc && doc.fetchedAt ? doc.fetchedAt : null };
@@ -225,6 +386,12 @@ function mergeCatalogPlugin(seed, remote) {
       additionalActions:
         seed.additionalActions && seed.additionalActions.length ? seed.additionalActions : remote.additionalActions,
       sidecars: seed.sidecars && seed.sidecars.length ? seed.sidecars : remote.sidecars,
+      csp:
+        seed.csp && Object.keys(seed.csp).length
+          ? seed.csp
+          : remote.csp && Object.keys(remote.csp).length
+            ? remote.csp
+            : {},
       notes: seed.notes || remote.notes,
       description: seed.description || remote.description,
       name: seed.name || remote.name,
@@ -1240,6 +1407,106 @@ function flatSampleLibNormalizeBash() {
   ].join("\n");
 }
 
+function pluginCspBash() {
+  return [
+    "apply_plugin_csp() {",
+    '  local plugin_id="$1"',
+    '  local target_ct="$2"',
+    '  local api_svc="${3:-api}"',
+    '  local spec_file="$4"',
+    '  local remove_only="${5:-}"',
+    '  [ -n "$plugin_id" ] || return 0',
+    "  local d STACK CF STATE OVERRIDE dir src envn csv line had f key val",
+    '  STACK=""',
+    '  for d in "$target_ct" "$(dirname "$target_ct")"; do',
+    '    [ -n "$d" ] && [ -d "$d" ] || continue',
+    '    if [ -f "$d/docker-compose.yml" ] || [ -f "$d/docker-compose.yaml" ] || [ -f "$d/compose.yml" ] || [ -f "$d/compose.yaml" ]; then',
+    '      STACK="$d"',
+    "      break",
+    "    fi",
+    "  done",
+    '  [ -n "$STACK" ] || return 0',
+    '  CF=""',
+    "  for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do",
+    '    if [ -f "$STACK/$f" ]; then CF="$f"; break; fi',
+    "  done",
+    '  [ -n "$CF" ] || return 0',
+    '  mkdir -p "$STACK/cloudtak-marketplace-plugins"',
+    '  STATE="$STACK/cloudtak-marketplace-plugins/csp.tsv"',
+    '  OVERRIDE="$STACK/docker-compose.marketplace.yml"',
+    '  touch "$STATE"',
+    '  if ! grep -q "^_host[[:space:]]" "$STATE" 2>/dev/null; then',
+    "    for f in .env docker-compose.yml docker-compose.yaml compose.yml compose.yaml docker-compose.override.yml; do",
+    '      [ -f "$STACK/$f" ] || continue',
+    '      host_lines=$(grep -E "NGINX_CSP_[A-Z0-9_]+" "$STACK/$f" 2>/dev/null || true)',
+    '      [ -n "$host_lines" ] || continue',
+    '      printf "%s\\n" "$host_lines" | while IFS= read -r line; do',
+    '        key=$(printf "%s\\n" "$line" | sed -n "s/.*\\(NGINX_CSP_[A-Z0-9_]*\\).*/\\1/p")',
+    '        [ -n "$key" ] || continue',
+    '        val=$(printf "%s\\n" "$line" | sed -E "s/.*NGINX_CSP_[A-Z0-9_]*=[[:space:]]*//; s/.*NGINX_CSP_[A-Z0-9_]*:[[:space:]]*//; s/[\\"\\047]//g")',
+    '        dir=$(printf "%s\\n" "$key" | sed "s/^NGINX_CSP_//" | tr "[:upper:]" "[:lower:]" | tr "_" "-")',
+    '        printf "%s\\n" "$val" | tr "," "\\n" | while IFS= read -r src; do',
+    '          src=$(printf "%s" "$src" | tr -d "[:space:]")',
+    '          [ -n "$src" ] || continue',
+    '          printf "_host\\t%s\\t%s\\n" "$dir" "$src" >> "$STATE"',
+    "        done",
+    "      done",
+    "    done",
+    "  fi",
+    "  had=$(awk -F '\\t' -v id=\"$plugin_id\" '$1==id { n++ } END { print n+0 }' \"$STATE\")",
+    "  awk -F '\\t' -v id=\"$plugin_id\" '$1!=id { print }' \"$STATE\" > \"$STATE.tmp\"",
+    '  mv "$STATE.tmp" "$STATE"',
+    '  if [ "$remove_only" != "1" ] && [ -n "$spec_file" ] && [ -f "$spec_file" ]; then',
+    '    while read -r dir src; do',
+    '      [ -n "$dir" ] && [ -n "$src" ] || continue',
+    '      case "$dir" in connect-src|img-src|media-src|font-src|worker-src|style-src-elem|style-src-attr|default-src) ;; *) continue ;; esac',
+    "      echo \"$src\" | grep -Eq '^[A-Za-z0-9.:/*_~%+-]+$' || continue",
+    "      printf '%s\\t%s\\t%s\\n' \"$plugin_id\" \"$dir\" \"$src\" >> \"$STATE\"",
+    "    done < \"$spec_file\"",
+    "  fi",
+    '  if [ "$remove_only" = "1" ] && [ "$had" = "0" ]; then return 0; fi',
+    '  if [ "$remove_only" != "1" ] && [ ! -s "$spec_file" ] && [ "$had" = "0" ]; then return 0; fi',
+    '  echo "Updating CloudTAK CSP overlay $OVERRIDE"',
+    '  if [ -f "$target_ct/api/nginx.conf.js" ] && ! grep -q NGINX_CSP_ "$target_ct/api/nginx.conf.js" 2>/dev/null; then',
+    '    echo "Note: this CloudTAK nginx.conf.js does not read NGINX_CSP_* (needs 13.53.2+). Overlay is still saved."',
+    "  fi",
+    "  {",
+    '    echo "# Managed by TAK Portal CloudTAK marketplace. Do not edit by hand."',
+    '    echo "services:"',
+    '    echo "  $api_svc:"',
+    '    echo "    environment:"',
+    "    csv_any=0",
+    "    for dir in connect-src img-src media-src font-src worker-src style-src-elem style-src-attr default-src; do",
+    "      csv=$(awk -F \"\\t\" -v d=\"$dir\" '$2==d { print $3 }' \"$STATE\" | awk 'NF && !seen[$0]++' | paste -sd, -)",
+    '      [ -n "$csv" ] || continue',
+    "      csv_any=1",
+    "      envn=$(printf '%s' \"$dir\" | tr '[:lower:]' '[:upper:]' | tr '-' '_')",
+    '      echo "      NGINX_CSP_$envn: \\"$csv\\""',
+    "    done",
+    '    if [ "$csv_any" = "0" ]; then',
+    '      rm -f "$OVERRIDE" "$STATE.tmp" || true',
+    '      : > "$STATE"',
+    "    fi",
+    '  } > "$OVERRIDE.tmp"',
+    '  if [ -f "$OVERRIDE.tmp" ]; then',
+    '    if grep -q NGINX_CSP_ "$OVERRIDE.tmp" 2>/dev/null; then',
+    '      mv "$OVERRIDE.tmp" "$OVERRIDE"',
+    "    else",
+    '      rm -f "$OVERRIDE.tmp" "$OVERRIDE" || true',
+    "    fi",
+    "  fi",
+    '  if ! command -v docker >/dev/null 2>&1; then return 0; fi',
+    '  echo "Recreating $api_svc so CSP environment applies"',
+    '  if [ -f "$OVERRIDE" ]; then',
+    '    ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" up -d --force-recreate "$api_svc" )',
+    "  else",
+    '    ( cd "$STACK" && docker compose -f "$CF" up -d --force-recreate "$api_svc" )',
+    "  fi",
+    "  return 0",
+    "}",
+  ].join("\n");
+}
+
 function pluginRuntimeCleanupBash() {
   return [
     "cleanup_plugin_runtime() {",
@@ -1433,7 +1700,7 @@ function pluginRuntimeExtrasBash() {
   ].join("\n");
 }
 
-function installRemoteScript(ct, plugin) {
+function installRemoteScript(ct, plugin, options = {}) {
   const dest = plugin.web.dest;
   const source = plugin.web.source === "." ? "." : plugin.web.source;
   const routes = plugin.routes ? plugin.routes.source : "";
@@ -1441,6 +1708,8 @@ function installRemoteScript(ct, plugin) {
   const installScript = normalizeInstallScript(plugin.installScript || "");
   const repoName = repoBasename(plugin.repo) || plugin.id;
   const runtime = pluginRuntimeHints(plugin);
+  const apiSvc = String((options && options.composeService) || "api").trim() || "api";
+  const cspSpec = cspSpecText(plugin);
   return `
 set -euo pipefail
 CT=${ssh.shellQuote(ct)}
@@ -1456,6 +1725,7 @@ COMPOSE_FILE_HINT=${ssh.shellQuote(runtime.composeFile)}
 COMPOSE_SVC_HINT=${ssh.shellQuote(runtime.composeService)}
 SIDECAR_DIR_HINT=${ssh.shellQuote(runtime.sidecarDir)}
 SIDECAR_PORT_HINT=${ssh.shellQuote(runtime.sidecarPort)}
+CT_COMPOSE_SVC=${ssh.shellQuote(apiSvc)}
 CACHE="$HOME/.cache/cloudtak-marketplace/$ID"
 mkdir -p "$(dirname "$CACHE")"
 git_ok() {
@@ -1621,24 +1891,35 @@ RUNTIME
 chmod a+rX "$REPO_DIR/.ctak-runtime-plugin.sh" 2>/dev/null || true
 bash "$REPO_DIR/.ctak-runtime-plugin.sh" "$CT" "$REPO_DIR" "$ID" "$COMPOSE_FILE_HINT" "$COMPOSE_SVC_HINT" "$SIDECAR_DIR_HINT" "$SIDECAR_PORT_HINT"
 rm -f "$REPO_DIR/.ctak-runtime-plugin.sh" || true
+
+${pluginCspBash()}
+cat <<'CSPSPEC' > /tmp/ctak-csp-$ID.spec
+${cspSpec}
+CSPSPEC
+apply_plugin_csp "$ID" "$CT" "$CT_COMPOSE_SVC" /tmp/ctak-csp-$ID.spec
+rm -f /tmp/ctak-csp-$ID.spec || true
 printf 'INSTALL_SHA %s\\n' "$SHA"
 `.trim();
 }
 
-function uninstallRemoteScript(ct, dest, routeFiles, pluginId) {
+function uninstallRemoteScript(ct, dest, routeFiles, pluginId, options = {}) {
   const files = (routeFiles || []).filter((f) => /^[A-Za-z0-9._-]+\.ts$/.test(f));
   const routeRm = files
     .map((f) => `rm -f "$CT/api/stateless/routes/${f}"`)
     .join("\n");
   const id = String(pluginId || "").trim();
+  const apiSvc = String((options && options.composeService) || "api").trim() || "api";
   return `
 set -euo pipefail
 CT=${ssh.shellQuote(ct)}
 DEST=${ssh.shellQuote(dest)}
 ID=${ssh.shellQuote(id)}
+CT_COMPOSE_SVC=${ssh.shellQuote(apiSvc)}
 ${pluginRuntimeCleanupBash()}
+${pluginCspBash()}
 if [ -n "$ID" ]; then
   cleanup_plugin_runtime "$ID" "$CT"
+  apply_plugin_csp "$ID" "$CT" "$CT_COMPOSE_SVC" "" 1
   rm -rf "$HOME/.cache/cloudtak-marketplace/$ID" || true
   rm -f /tmp/ctak-marketplace-excludes-$ID || true
 fi
@@ -1666,10 +1947,15 @@ elif [ -f compose.yml ]; then CF=compose.yml
 elif [ -f compose.yaml ]; then CF=compose.yaml
 else echo "No compose file in $CT" >&2; exit 1
 fi
+MPF=""
+if [ -f docker-compose.marketplace.yml ]; then
+  MPF="-f docker-compose.marketplace.yml"
+  echo "Using marketplace CSP overlay"
+fi
 export BUILDKIT_PROGRESS=plain
 export COMPOSE_ANSI=never
-docker compose --progress=plain -f "$CF" build --no-cache "$SVC"
-docker compose -f "$CF" up -d --force-recreate "$SVC"
+docker compose --progress=plain -f "$CF" $MPF build --no-cache "$SVC"
+docker compose -f "$CF" $MPF up -d --force-recreate "$SVC"
 echo "Waiting for $SVC to be running"
 n=0
 while [ "$n" -lt 90 ]; do
@@ -1740,7 +2026,7 @@ async function performInstall(job, plugin) {
   appendJobLog(job.id, `Using CloudTAK at ${loc.path}`);
   const result = await runLogged(
     job.id,
-    `bash -lc ${ssh.shellQuote(installRemoteScript(loc.path, plugin))}`,
+    `bash -lc ${ssh.shellQuote(installRemoteScript(loc.path, plugin, { composeService: loc.composeService }))}`,
     20 * 60 * 1000
   );
   const shaLine = String(result.stdout || "")
@@ -1777,7 +2063,7 @@ async function performUninstall(job, dest, plugin) {
     routeGuess.push(`plugin-${plugin.id}.ts`);
   }
   appendJobLog(job.id, `$ rm -rf api/web/plugins/${dest}`);
-  await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess, plugin && plugin.id))}`, 5 * 60 * 1000);
+  await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess, plugin && plugin.id, { composeService: loc.composeService }))}`, 5 * 60 * 1000);
   if (plugin) {
     const rec = store.readInstalled();
     delete rec.plugins[plugin.id];
@@ -2147,6 +2433,7 @@ module.exports = {
   normalizeInstallScript,
   installRemoteScript,
   uninstallRemoteScript,
+  normalizeCsp,
   normalizeFlatSamplePluginTree,
   pluginEntryImportsLib,
 };

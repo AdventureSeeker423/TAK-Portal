@@ -112,10 +112,52 @@ assert.ok(Array.isArray(bundled.plugins) && bundled.plugins.length >= 10);
 const os = require("os");
 const lightning = normalized.plugins.find((p) => p.id === "lightning");
 assert.ok(lightning);
+assert.ok(lightning.csp && lightning.csp["connect-src"].some((s) => /blitzortung/.test(s)));
+assert.ok(!lightning.additionalActions.some((a) => /nginx/i.test(JSON.stringify(a))));
 const installScript = marketplace.installRemoteScript("/root/CloudTAK", lightning);
 assert.match(installScript, /Normalizing flat plugin into lib/);
 assert.match(installScript, /index\.ts imports \.\/lib\//);
 assert.match(installScript, /rm -rf "\$target\/\.git"/);
+assert.match(installScript, /NGINX_CSP_/);
+assert.match(installScript, /docker-compose.marketplace.yml/);
+assert.match(installScript, /Updating CloudTAK CSP overlay/);
+
+const livewx = normalized.plugins.find((p) => p.id === "livewx");
+assert.ok(livewx);
+assert.ok(livewx.csp && livewx.csp["img-src"].includes("https://mesonet.agron.iastate.edu"));
+assert.ok(livewx.csp["connect-src"].includes("https://api.weather.gov"));
+assert.ok(!livewx.additionalActions.some((a) => /nginx/i.test(JSON.stringify(a))));
+const livewxScript = marketplace.installRemoteScript("/root/CloudTAK", livewx);
+assert.match(livewxScript, /mesonet\.agron\.iastate\.edu/);
+assert.match(livewxScript, /apply_plugin_csp/);
+
+assert.deepStrictEqual(
+  marketplace.normalizeCsp({ csp: ["wss://*.example.org", "https://tiles.example.com"] }),
+  {
+    "connect-src": ["wss://*.example.org", "https://tiles.example.com"],
+    "img-src": ["https://tiles.example.com"],
+  }
+);
+assert.deepStrictEqual(
+  marketplace.normalizeCsp({
+    csp: { connect: "https://api.example.com", img: ["https://cdn.example.com"] },
+  })["connect-src"],
+  ["https://api.example.com"]
+);
+assert.ok(
+  marketplace.normalizeCsp({
+    additionalActions: [{ kind: "nginx-csp", snippet: "wss://*.blitzortung.org" }],
+  })["connect-src"].includes("wss://*.blitzortung.org")
+);
+assert.deepStrictEqual(
+  marketplace.normalizeCsp({
+    additionalActions: [{ kind: "caddy", snippet: "handle_path /print-api* {\n\treverse_proxy cloudtak-print:5010\n}" }],
+  }),
+  {}
+);
+
+assert.match(uninstallPrint, /apply_plugin_csp/);
+assert.match(uninstallPrint, /docker-compose.marketplace.yml/);
 
 function writeFlatPluginFixture(dir, opts) {
   fs.mkdirSync(dir, { recursive: true });

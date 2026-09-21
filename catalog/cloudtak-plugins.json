@@ -144,18 +144,7 @@
       "maintainer": "cmlaird",
       "web": { "dest": "lightning" },
       "detect": ["api/web/plugins/lightning/index.ts"],
-      "additionalActions": [
-        {
-          "title": "Allow the Blitzortung websocket in nginx CSP",
-          "text": "Production CloudTAK nginx sets Content-Security-Policy connect-src to 'self', which blocks the live lightning feed. Marketplace does not patch nginx.",
-          "instructions": [
-            "Edit CloudTAK api/nginx.conf.js and add the snippet below to the connect-src list in Content-Security-Policy.",
-            "Rebuild or restart the CloudTAK api container after saving.",
-            "Until that change is in place, Start in the plugin can no-op in production even though install succeeded."
-          ],
-          "snippet": "wss://*.blitzortung.org"
-        }
-      ]
+      "csp": ["wss://*.blitzortung.org"]
     },
     {
       "id": "livewx",
@@ -166,17 +155,9 @@
       "maintainer": "AdventureSeeker423",
       "web": { "dest": "livewx-radar" },
       "detect": ["api/web/plugins/livewx-radar/index.ts"],
-      "additionalActions": [
-        {
-          "title": "Allow Iowa Mesonet and NWS in nginx CSP",
-          "text": "Production CloudTAK nginx sets Content-Security-Policy connect-src and img-src to 'self', which blocks radar tiles and watches/warnings. Marketplace does not patch nginx.",
-          "instructions": [
-            "Edit CloudTAK api/nginx.conf.js and add the hosts below to connect-src.",
-            "Also add https://mesonet.agron.iastate.edu to img-src so MapLibre can load radar tiles.",
-            "Rebuild or restart the CloudTAK api container after saving."
-          ],
-          "snippet": "https://mesonet.agron.iastate.edu https://api.weather.gov"
-        }
+      "csp": [
+        "https://mesonet.agron.iastate.edu",
+        "https://api.weather.gov"
       ]
     }
   ]
