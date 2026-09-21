@@ -25,8 +25,11 @@
     <div id="mpEmpty" class="muted" style="display:none;margin-top:16px;">No plugins match this filter.</div>
   </div>
 
-  <div class="card" style="margin-top:16px;">
-    <h2 style="margin-top:0;">Jobs</h2>
+  <div class="card" id="mpJobsCard" style="margin-top:16px;display:none;">
+    <div class="mp-jobs-header">
+      <h2 style="margin:0;">Jobs</h2>
+      <button type="button" class="btn" id="mpJobsCopyBtn">Copy</button>
+    </div>
     <pre id="mpJobs" class="mp-job-log"></pre>
   </div>
 </main>
@@ -184,6 +187,13 @@
     white-space: pre-wrap;
     font-size: 0.8rem;
   }
+  .mp-jobs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
   .mp-banner {
     padding: 10px 12px;
     border-radius: 8px;
@@ -202,6 +212,7 @@
   var plugins = [];
   var uninstallTarget = null;
   var confirmArmed = false;
+  var jobLogFullText = "";
 
   function $(id) { return document.getElementById(id); }
   function setMsg(text, isError) {
@@ -323,16 +334,70 @@
     $("mpUpdateAll").disabled = !canUpdateAll;
   }
 
-  function renderJobs(jobs) {
+  function isActiveJob(j) {
+    return j && (j.status === "queued" || j.status === "running");
+  }
+
+  function jobLines(j, logLimit) {
     var lines = [];
-    (jobs || []).slice(0, 12).forEach(function (j) {
-      lines.push((j.status || "") + "  " + (j.kind || "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : ""));
-      (j.log || []).slice(-8).forEach(function (l) { lines.push("  " + l); });
-      if (j.status === "complete" && (j.kind === "install" || j.kind === "update" || j.kind === "update-all" || j.kind === "uninstall")) {
-        lines.push("  Reminder: CloudTAK Settings → Refresh App");
+    lines.push((j.status || "") + "  " + (j.kind || "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : ""));
+    var log = Array.isArray(j.log) ? j.log : [];
+    var slice = logLimit ? log.slice(-logLimit) : log;
+    slice.forEach(function (l) { lines.push("  " + l); });
+    return lines;
+  }
+
+  function renderJobs(jobs) {
+    var active = (jobs || []).filter(isActiveJob);
+    var card = $("mpJobsCard");
+    if (!active.length) {
+      if (card) card.style.display = "none";
+      $("mpJobs").textContent = "";
+      jobLogFullText = "";
+      return;
+    }
+    if (card) card.style.display = "";
+    var preview = [];
+    var full = [];
+    active.slice(0, 12).forEach(function (j) {
+      preview = preview.concat(jobLines(j, 8));
+      full = full.concat(jobLines(j, 0));
+    });
+    $("mpJobs").textContent = preview.join("\n");
+    jobLogFullText = full.join("\n");
+  }
+
+  function copyJobLog() {
+    var text = jobLogFullText || ($("mpJobs") && $("mpJobs").textContent) || "";
+    var btn = $("mpJobsCopyBtn");
+    var done = function (ok) {
+      if (!btn) return;
+      btn.textContent = ok ? "Copied!" : "Copy failed";
+      window.setTimeout(function () { btn.textContent = "Copy"; }, 1600);
+    };
+    if (!text.trim()) {
+      done(false);
+      return;
+    }
+    var copy = (navigator.clipboard && navigator.clipboard.writeText)
+      ? navigator.clipboard.writeText(text)
+      : Promise.reject();
+    copy.then(function () { done(true); }).catch(function () {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        done(true);
+      } catch (e) {
+        done(false);
+      } finally {
+        document.body.removeChild(ta);
       }
     });
-    $("mpJobs").textContent = lines.join("\n") || "No jobs yet.";
   }
 
   function postJob(body) {
@@ -378,6 +443,7 @@
   $("mpUpdateAll").addEventListener("click", function () {
     postJob({ kind: "update-all" }).then(function () { setMsg("Update all queued on the worker."); loadAll(); });
   });
+  $("mpJobsCopyBtn").addEventListener("click", copyJobLog);
   $("mpGrid").addEventListener("click", function (e) {
     var t = e.target && e.target.closest ? e.target.closest("[data-install],[data-update],[data-uninstall]") : null;
     if (!t) return;
@@ -418,7 +484,9 @@
     });
   });
 
-  loadAll();
+  fetch("/api/cloudtak-marketplace/jobs/clear-idle", { method: "POST", headers: { Accept: "application/json" } })
+    .catch(function () {})
+    .then(function () { return loadAll(); });
   setInterval(loadAll, 4000);
 })();
 </script>

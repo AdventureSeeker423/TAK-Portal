@@ -60,6 +60,15 @@ router.get("/jobs", (req, res) => {
   }
 });
 
+router.post("/jobs/clear-idle", (req, res) => {
+  try {
+    const jobs = marketplace.clearIdleJobs();
+    res.json({ ok: true, jobs });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 router.post("/jobs", (req, res) => {
   try {
     const kind = String((req.body && req.body.kind) || "").trim();

@@ -110,11 +110,21 @@ function normalizeCatalog(doc) {
 }
 
 function loadCatalog() {
+  const bundled = normalizeCatalog(store.readBundledCatalog());
   const cached = store.readPluginsCache();
-  if (cached && Array.isArray(cached.plugins) && cached.plugins.length) {
-    return normalizeCatalog(cached);
+  if (!cached || !Array.isArray(cached.plugins) || !cached.plugins.length) {
+    return bundled;
   }
-  return normalizeCatalog(store.readBundledCatalog());
+  const normalized = normalizeCatalog(cached);
+  const bundledById = new Map(bundled.plugins.map((p) => [p.id, p]));
+  normalized.plugins = normalized.plugins.map((p) => {
+    const seed = bundledById.get(p.id);
+    if (seed && seed.installScript && !p.installScript) {
+      return { ...p, installScript: seed.installScript };
+    }
+    return p;
+  });
+  return normalized;
 }
 
 function isNewPlugin(plugin, now = Date.now()) {
@@ -768,6 +778,17 @@ function listJobs() {
   return store.readJobs().jobs;
 }
 
+function isActiveJob(job) {
+  const status = String((job && job.status) || "");
+  return status === "queued" || status === "running";
+}
+
+function clearIdleJobs() {
+  const kept = store.readJobs().jobs.filter(isActiveJob);
+  store.writeJobs({ jobs: kept });
+  return kept;
+}
+
 function pluginById(id) {
   return loadCatalog().plugins.find((p) => p.id === id) || null;
 }
@@ -795,86 +816,79 @@ ROUTES=${ssh.shellQuote(routes)}
 INSTALL=${ssh.shellQuote(installScript)}
 WANT=${ssh.shellQuote(repoName)}
 CACHE="/tmp/ctak-marketplace-cache/$ID"
-run_privileged() {
-  if sudo -n true >/dev/null 2>&1; then
-    sudo -n "$@"
-  else
-    "$@"
-  fi
+mkdir -p /tmp/ctak-marketplace-cache
+
+cloudtak_owner() {
+  stat -c '%U' "$CT" 2>/dev/null || stat -f '%Su' "$CT" 2>/dev/null || true
 }
-write_plugins() {
+
+can_write_plugins() {
   local plugins="$CT/api/web/plugins"
-  local dest="$plugins/$DEST"
-  if { [ -e "$plugins" ] && [ ! -w "$plugins" ]; } || { [ -e "$dest" ] && [ ! -w "$dest" ]; }; then
-    run_privileged "$@"
-  else
-    "$@"
-  fi
+  [ -d "$plugins" ] && [ -w "$plugins" ] || return 1
+  if [ -e "$plugins/$DEST" ] && [ ! -w "$plugins/$DEST" ]; then return 1; fi
+  return 0
 }
-looks_like_plugin_repo() {
-  local d="$1"
-  [ -d "$d" ] || return 1
-  local base remote want
-  base=$(basename "$d")
-  remote=""
-  if [ -d "$d/.git" ]; then
-    remote=$(git -C "$d" remote get-url origin 2>/dev/null || true)
-  fi
-  remote=$(printf '%s' "$remote" | tr 'A-Z' 'a-z' | sed 's/\\.git$//')
-  want=$(printf '%s' "$REPO" | tr 'A-Z' 'a-z' | sed 's/\\.git$//')
-  if [ -n "$remote" ] && [ -n "$want" ] && [ "$remote" = "$want" ]; then return 0; fi
-  case "$remote" in
-    *"$WANT"*) return 0 ;;
-  esac
-  if [ "$base" = "$WANT" ] && [ -f "$d/install.sh" ]; then return 0; fi
-  return 1
-}
-find_plugin_repo() {
-  local d
-  for d in \\
-    "$HOME/$WANT" \\
-    "$(dirname "$CT")/$WANT" \\
-    "/home/takwerx/$WANT" \\
-    "$CT/../$WANT" \\
-    "$CACHE"
-  do
-    looks_like_plugin_repo "$d" || continue
-    (cd "$d" && pwd)
+
+run_as_writer() {
+  local cmd="$1"
+  if can_write_plugins; then
+    bash -lc "$cmd"
     return 0
-  done
-  for d in "$HOME"/* "$(dirname "$CT")"/* /home/takwerx/*; do
-    looks_like_plugin_repo "$d" || continue
-    (cd "$d" && pwd)
-    return 0
-  done
-  return 1
-}
-REPO_DIR=""
-if FOUND=$(find_plugin_repo); then
-  REPO_DIR="$FOUND"
-  echo "Using existing plugin checkout $REPO_DIR"
-  if [ -d "$REPO_DIR/.git" ]; then
-    git -C "$REPO_DIR" pull --ff-only || true
   fi
+  local owner
+  owner=$(cloudtak_owner)
+  echo "Plugin files are not writable by $(id -un) (CloudTAK owner: $owner)"
+  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && sudo -n -u "$owner" true >/dev/null 2>&1; then
+    echo "Running installer as $owner"
+    sudo -n -u "$owner" bash -lc "$cmd"
+    return 0
+  fi
+  if sudo -n true >/dev/null 2>&1; then
+    echo "Running installer with sudo"
+    sudo -n bash -lc "$cmd"
+    return 0
+  fi
+  local img=""
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    img=$(cd "$CT" && docker compose ps -q 2>/dev/null | head -n 1 | xargs -r docker inspect -f '{{.Config.Image}}' 2>/dev/null || true)
+    if [ -z "$img" ]; then
+      img=$(docker ps --format '{{.Image}}' 2>/dev/null | head -n 1 || true)
+    fi
+  fi
+  if [ -n "$img" ]; then
+    echo "Writing plugin files via docker image $img (root)"
+    docker run --rm -u 0 \
+      -v "$REPO_DIR:$REPO_DIR" \
+      -v "$CT:$CT" \
+      -w "$REPO_DIR" \
+      --entrypoint /bin/sh \
+      "$img" \
+      -c "if command -v bash >/dev/null 2>&1; then bash -lc $(printf '%q' "$cmd"); else sh -c $(printf '%q' "$cmd"); fi"
+    return 0
+  fi
+  echo "ERROR: cannot write $CT/api/web/plugins as $(id -un). Point CloudTAK SSH at the account that owns that checkout (likely $owner)." >&2
+  exit 1
+}
+
+echo "Fetching plugin source"
+if [ -d "$CACHE/.git" ]; then
+  git -C "$CACHE" fetch --depth 1 origin "$REF"
+  git -C "$CACHE" checkout --force FETCH_HEAD
 else
-  if [ ! -e "$HOME/$WANT" ]; then
-    REPO_DIR="$HOME/$WANT"
-  else
-    mkdir -p /tmp/ctak-marketplace-cache
-    REPO_DIR="$CACHE"
-  fi
-  echo "Cloning plugin to $REPO_DIR"
-  if [ -d "$REPO_DIR/.git" ]; then
-    git -C "$REPO_DIR" fetch --depth 1 origin "$REF"
-    git -C "$REPO_DIR" checkout --force FETCH_HEAD
-  else
-    git clone --depth 1 --branch "$REF" "$REPO" "$REPO_DIR"
-  fi
+  rm -rf "$CACHE"
+  git clone --depth 1 --branch "$REF" "$REPO" "$CACHE"
 fi
+REPO_DIR="$CACHE"
 SHA=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
+echo "Plugin source $REPO_DIR @ $SHA"
+
+if [ -f "$REPO_DIR/install.sh" ]; then
+  INSTALL="./install.sh --no-build --no-pull"
+fi
+
 if [ -n "$INSTALL" ]; then
-  echo "Running plugin installer from $REPO_DIR"
-  write_plugins bash -lc "cd $(printf '%q' "$REPO_DIR") && $INSTALL $(printf '%q' "$CT")"
+  echo "Installing the same way the plugin repo documents: cd $REPO_DIR && $INSTALL $CT"
+  run_as_writer "cd $(printf '%q' "$REPO_DIR") && $INSTALL $(printf '%q' "$CT")"
 else
   WEBSRC="$REPO_DIR"
   if [ "$SRC" != "." ]; then WEBSRC="$REPO_DIR/$SRC"; fi
@@ -885,8 +899,7 @@ else
     */api/web/plugins/$DEST) ;;
     *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
   esac
-  write_plugins mkdir -p "$TARGET"
-  write_plugins cp -a "$WEBSRC"/. "$TARGET"/
+  run_as_writer "mkdir -p $(printf '%q' "$TARGET") && cp -a $(printf '%q' "$WEBSRC")/. $(printf '%q' "$TARGET")/"
   cat <<'EXCL' > /tmp/ctak-marketplace-excludes-$ID
 ${excludes}
 EXCL
@@ -894,12 +907,11 @@ EXCL
     while IFS= read -r pat; do
       [ -n "$pat" ] || continue
       base=$(echo "$pat" | sed 's#^\\*\\*/##' | sed 's#/$##')
-      write_plugins rm -rf "$TARGET/$base" 2>/dev/null || true
+      run_as_writer "rm -rf $(printf '%q' "$TARGET/$base")" || true
     done < /tmp/ctak-marketplace-excludes-$ID
   fi
   if [ -n "$ROUTES" ] && [ -d "$REPO_DIR/$ROUTES" ]; then
-    write_plugins mkdir -p "$CT/api/stateless/routes"
-    write_plugins cp -a "$REPO_DIR/$ROUTES"/*.ts "$CT/api/stateless/routes/" 2>/dev/null || true
+    run_as_writer "mkdir -p $(printf '%q' "$CT/api/stateless/routes") && cp -a $(printf '%q' "$REPO_DIR/$ROUTES")/*.ts $(printf '%q' "$CT/api/stateless/routes")/" || true
   fi
 fi
 printf 'INSTALL_SHA %s\\n' "$SHA"
@@ -1358,6 +1370,8 @@ module.exports = {
   enqueueJob,
   enqueueJobOnce,
   listJobs,
+  clearIdleJobs,
+  isActiveJob,
   claimAndRunJobs,
   workerTick,
   workerBackground,
