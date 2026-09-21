@@ -12,7 +12,24 @@ const NEW_DAYS = 14;
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
 
 let _jobRunning = false;
+let _cancelRequested = false;
 let _lastBackgroundAt = 0;
+
+function cancelledError() {
+  const err = new Error("Cancelled.");
+  err.cancelled = true;
+  return err;
+}
+
+function isCancelledError(err) {
+  if (!err) return false;
+  if (err.cancelled) return true;
+  return /cancelled/i.test(String(err.message || err));
+}
+
+function throwIfCancelled() {
+  if (_cancelRequested) throw cancelledError();
+}
 
 function isEnabled() {
   return getBool("CLOUDTAK_MARKETPLACE_ENABLED", false);
@@ -73,6 +90,39 @@ function parseGitHubRepo(repoUrl) {
   return null;
 }
 
+function normalizeAdditionalActions(p) {
+  const seen = new Set();
+  const out = [];
+  const push = (raw) => {
+    const t = String(raw || "").trim();
+    if (!t) return;
+    const key = t.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(t);
+  };
+  const raw = p && p.additionalActions;
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (typeof item === "string") push(item);
+      else if (item && typeof item === "object") {
+        push(item.text || item.note || item.action || item.label);
+      }
+    }
+  } else if (typeof raw === "string") {
+    String(raw)
+      .split(/\n|;/)
+      .forEach(push);
+  }
+  if (!out.length && Array.isArray(p && p.sidecars)) {
+    for (const s of p.sidecars) {
+      if (typeof s === "string") push(s);
+      else if (s && typeof s === "object") push(s.note || s.action || s.text);
+    }
+  }
+  return out;
+}
+
 function normalizeCatalog(doc) {
   const plugins = Array.isArray(doc && doc.plugins) ? doc.plugins : [];
   const out = [];
@@ -98,6 +148,7 @@ function normalizeCatalog(doc) {
       detect: Array.isArray(p.detect) ? p.detect.map((x) => String(x)) : [],
       detectAliases: Array.isArray(p.detectAliases) ? p.detectAliases.map((x) => String(x)) : [],
       notes: String(p.notes || ""),
+      additionalActions: normalizeAdditionalActions(p),
       description: String(p.description || ""),
       maintainer: String(p.maintainer || ""),
       added: String(p.added || ""),
@@ -129,6 +180,9 @@ function loadCatalog() {
       detect: p.detect && p.detect.length ? p.detect : seed.detect,
       detectAliases: p.detectAliases && p.detectAliases.length ? p.detectAliases : seed.detectAliases,
       exclude: p.exclude && p.exclude.length ? p.exclude : seed.exclude,
+      additionalActions:
+        p.additionalActions && p.additionalActions.length ? p.additionalActions : seed.additionalActions,
+      sidecars: p.sidecars && p.sidecars.length ? p.sidecars : seed.sidecars,
     };
   });
   return normalized;
@@ -632,8 +686,9 @@ function buildUiPlugins(options = {}) {
       repo: p.repo,
       ref: p.ref,
       notes: p.notes,
+      additionalActions: Array.isArray(p.additionalActions) ? p.additionalActions : [],
       added: p.added,
-      isNew: isNewPlugin(p, now),
+      isNew: installed ? false : isNewPlugin(p, now),
       installed,
       origin: scanHit ? scanHit.origin : installedRec.plugins[p.id] ? "marketplace" : "",
       layout: {
@@ -658,6 +713,7 @@ function buildUiPlugins(options = {}) {
       repo: s.gitRemote || "",
       ref: "",
       notes: "",
+      additionalActions: [],
       added: "",
       isNew: false,
       installed: true,
@@ -882,7 +938,13 @@ function appendJobLog(jobId, line) {
 }
 
 function updateJob(jobId, patch) {
-  store.withJobs((jobs) => jobs.map((j) => (j.id === jobId ? { ...j, ...patch } : j)));
+  store.withJobs((jobs) =>
+    jobs.map((j) => {
+      if (j.id !== jobId) return j;
+      if (j.status === "cancelled") return j;
+      return { ...j, ...patch };
+    })
+  );
 }
 
 function listJobs() {
@@ -914,6 +976,30 @@ function clearIdleJobs() {
     if (current.some(isBusyJob)) return current;
     return current.filter(isKeptJob);
   }).jobs;
+}
+
+function cancelCurrentJobs() {
+  _cancelRequested = true;
+  ssh.abortActiveCommand();
+  const now = new Date().toISOString();
+  let count = 0;
+  const result = store.withJobs((jobs) =>
+    jobs.map((j) => {
+      if (!isBusyJob(j)) return j;
+      count += 1;
+      const log = Array.isArray(j.log) ? j.log.slice() : [];
+      if (!log.length || log[log.length - 1] !== "Cancelled.") log.push("Cancelled.");
+      return {
+        ...j,
+        status: "cancelled",
+        finishedAt: now,
+        error: "Cancelled.",
+        log,
+      };
+    })
+  );
+  if (!count) _cancelRequested = false;
+  return { ok: true, count, jobs: result.jobs };
 }
 
 function pluginById(id) {
@@ -1191,6 +1277,9 @@ async function runLogged(jobIds, command, timeoutMs) {
         .forEach((line) => log(line));
     }
   }
+  if (result.cancelled || _cancelRequested) {
+    throw cancelledError();
+  }
   if (!result.ok) {
     throw new Error(result.message || "SSH command failed");
   }
@@ -1281,8 +1370,11 @@ async function runChangeBatch(jobs) {
 
   for (const item of [...uninstalls, ...installs]) {
     const job = item.job;
+    const live = store.readJobs().jobs.find((j) => j.id === job.id);
+    if (!live || live.status === "cancelled" || _cancelRequested) continue;
     if (job.status !== "running") updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
     try {
+      throwIfCancelled();
       if (job.kind === "uninstall") {
         const plugin = job.pluginId ? pluginById(job.pluginId) : null;
         const dest = (job.extra && job.extra.dest) || (plugin && plugin.web && plugin.web.dest);
@@ -1305,6 +1397,15 @@ async function runChangeBatch(jobs) {
         }
       }
     } catch (err) {
+      if (_cancelRequested || isCancelledError(err)) {
+        appendJobLog(job.id, "Cancelled.");
+        updateJob(job.id, {
+          status: "cancelled",
+          finishedAt: new Date().toISOString(),
+          error: "Cancelled.",
+        });
+        continue;
+      }
       updateJob(job.id, {
         status: "failed",
         finishedAt: new Date().toISOString(),
@@ -1317,7 +1418,9 @@ async function runChangeBatch(jobs) {
   const succeeded = store
     .readJobs()
     .jobs.filter((j) => jobs.some((x) => x.id === j.id) && j.status === "running");
-  if (succeeded.length && lastLoc && needsRebuild) {
+  if (_cancelRequested) {
+    // skip rebuild when cancelled
+  } else if (succeeded.length && lastLoc && needsRebuild) {
     try {
       const msg = `Applying ${succeeded.length} change${succeeded.length === 1 ? "" : "s"} with one CloudTAK rebuild`;
       succeeded.forEach((j) => appendJobLog(j.id, msg));
@@ -1328,13 +1431,14 @@ async function runChangeBatch(jobs) {
         appendJobLog(j.id, "Complete. In CloudTAK use Settings → Refresh App.");
       }
     } catch (err) {
+      const cancelled = _cancelRequested || isCancelledError(err);
       for (const j of succeeded) {
         updateJob(j.id, {
-          status: "failed",
+          status: cancelled ? "cancelled" : "failed",
           finishedAt: new Date().toISOString(),
-          error: err.message || String(err),
+          error: cancelled ? "Cancelled." : err.message || String(err),
         });
-        appendJobLog(j.id, `Rebuild failed: ${err.message || err}`);
+        appendJobLog(j.id, cancelled ? "Cancelled." : `Rebuild failed: ${err.message || err}`);
       }
     }
   } else if (succeeded.length) {
@@ -1343,11 +1447,13 @@ async function runChangeBatch(jobs) {
       appendJobLog(j.id, "Complete. In CloudTAK use Settings → Refresh App.");
     }
   }
-  try {
-    await scanHost();
-    await refreshShaCache();
-  } catch (err) {
-    console.warn("[cloudtak-marketplace] rescan:", err?.message || err);
+  if (!_cancelRequested) {
+    try {
+      await scanHost();
+      await refreshShaCache();
+    } catch (err) {
+      console.warn("[cloudtak-marketplace] rescan:", err?.message || err);
+    }
   }
 }
 
@@ -1365,6 +1471,7 @@ async function claimAndRunJobs() {
     const catalogs = queued.filter((j) => j.kind === "refresh-catalog");
 
     for (const job of catalogs) {
+      if (_cancelRequested) break;
       updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
       appendJobLog(job.id, "Refreshing catalog…");
       const result = await fetchCatalog();
@@ -1382,6 +1489,7 @@ async function claimAndRunJobs() {
     }
 
     for (const job of scans) {
+      if (_cancelRequested) break;
       updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
       appendJobLog(job.id, "Scanning CloudTAK host…");
       const result = await scanHost();
@@ -1398,9 +1506,10 @@ async function claimAndRunJobs() {
       }
     }
 
-    if (changes.length) await runChangeBatch(changes);
+    if (changes.length && !_cancelRequested) await runChangeBatch(changes);
   } finally {
     _jobRunning = false;
+    _cancelRequested = false;
   }
 }
 
@@ -1559,6 +1668,7 @@ module.exports = {
   pluginMatchKey,
   isHostPluginNoise,
   normalizeCatalog,
+  normalizeAdditionalActions,
   matchCatalogPlugin,
   loadCatalog,
   fetchCatalog,
@@ -1573,6 +1683,7 @@ module.exports = {
   deployStaged,
   listJobs,
   clearIdleJobs,
+  cancelCurrentJobs,
   isBusyJob,
   hasBusyChangeJobs,
   claimAndRunJobs,

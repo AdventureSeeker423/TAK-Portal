@@ -41,7 +41,10 @@
         <h2 style="margin:0;">Jobs</h2>
         <div id="mpJobsMeta" class="muted" style="margin-top:2px;font-size:0.85rem;"></div>
       </div>
-      <button type="button" class="btn" id="mpJobsCopyBtn">Copy</button>
+      <div class="mp-jobs-actions">
+        <button type="button" class="btn" id="mpJobsCopyBtn">Copy</button>
+        <button type="button" class="btn danger" id="mpJobsCancelBtn" disabled>Cancel Current Jobs</button>
+      </div>
     </div>
     <pre id="mpJobs" class="mp-job-log"></pre>
   </div>
@@ -117,11 +120,32 @@
     align-items: flex-start;
     gap: 10px;
   }
+  .plugin-cards .plugin-title-block {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
   .plugin-cards .plugin-name {
     font-weight: 650;
     font-size: 1rem;
     line-height: 1.3;
     min-width: 0;
+  }
+  .plugin-cards .plugin-repo-link {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+    width: fit-content;
+  }
+  .plugin-cards .plugin-repo-link:hover {
+    border-bottom-color: var(--text);
+  }
+  .plugin-cards .plugin-by {
+    font-size: 0.8rem;
+    color: var(--muted);
   }
   .plugin-cards .plugin-version-pill {
     flex-shrink: 0;
@@ -173,10 +197,24 @@
     font-size: 0.78rem;
     line-height: 1.4;
     color: var(--muted);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+  }
+  .plugin-cards .plugin-extra-actions {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+  .plugin-cards .plugin-extra-actions-label {
+    display: block;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .plugin-cards .plugin-extra-actions ul {
+    margin: 0;
+    padding-left: 1.15em;
+  }
+  .plugin-cards .plugin-extra-actions li {
+    color: var(--muted);
   }
   .plugin-cards .plugin-actions {
     display: flex;
@@ -209,6 +247,13 @@
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 8px;
+  }
+  .mp-jobs-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
   }
   .mp-queue-list {
     list-style: none;
@@ -304,7 +349,7 @@
   function matchesFilter(p) {
     if (filter === "all") return true;
     if (filter === "available") return !p.installed;
-    if (filter === "new") return !!p.isNew;
+    if (filter === "new") return !!p.isNew && !p.installed;
     if (filter === "installed") return !!p.installed;
     return true;
   }
@@ -337,7 +382,7 @@
     var q = ($("mpSearch").value || "").trim().toLowerCase();
     var list = plugins.filter(matchesFilter).filter(function (p) {
       if (!q) return true;
-      return [p.name, p.description, p.maintainer, p.id, p.repo].join(" ").toLowerCase().indexOf(q) !== -1;
+      return [p.name, p.description, p.maintainer, p.id, p.repo, (p.additionalActions || []).join(" ")].join(" ").toLowerCase().indexOf(q) !== -1;
     });
     var grid = $("mpGrid");
     grid.innerHTML = "";
@@ -354,8 +399,8 @@
       }
     }
     list.forEach(function (p) {
-      var pillClass = p.isNew ? "plugin-version-pill is-new" : (p.installed ? "plugin-version-pill is-installed" : "");
-      var pillLabel = p.isNew ? "New" : (p.installed ? "Installed" : "");
+      var pillClass = p.installed ? "plugin-version-pill is-installed" : (p.isNew ? "plugin-version-pill is-new" : "");
+      var pillLabel = p.installed ? "Installed" : (p.isNew ? "New" : "");
       var pill = pillClass ? '<span class="' + pillClass + '">' + pillLabel + "</span>" : "";
       var staged = stagedForPlugin(p);
       var actions = "";
@@ -399,37 +444,50 @@
         .replace(/\s*After install:\s*CloudTAK Settings\s*→\s*Refresh App\.?/gi, "")
         .replace(/^After install:\s*CloudTAK Settings\s*→\s*Refresh App\.?/i, "")
         .trim();
+      var extraActions = Array.isArray(p.additionalActions)
+        ? p.additionalActions.map(function (s) { return String(s || "").trim(); }).filter(Boolean)
+        : [];
       var origin = originLabel(p);
       var el = document.createElement("div");
       el.className = "plugin-card";
       el.innerHTML =
-        '<div class="plugin-card-header"><span class="plugin-name"></span>' + pill + "</div>" +
+        '<div class="plugin-card-header"><div class="plugin-title-block"><span class="plugin-name"></span></div>' + pill + "</div>" +
         '<div class="plugin-desc"></div>' +
-        ((p.maintainer || repoHref || origin) ? '<div class="plugin-meta"></div>' : "") +
+        (origin ? '<div class="plugin-meta"></div>' : "") +
+        (extraActions.length ? '<div class="plugin-extra-actions"><span class="plugin-extra-actions-label">Additional actions needed</span><ul></ul></div>' : "") +
         (note ? '<p class="plugin-notes"></p>' : "") +
         '<div class="plugin-actions">' + actions + "</div>";
-      el.querySelector(".plugin-name").textContent = p.name;
+      var titleBlock = el.querySelector(".plugin-title-block");
+      titleBlock.querySelector(".plugin-name").textContent = p.name;
+      if (repoHref) {
+        var link = document.createElement("a");
+        link.className = "plugin-repo-link";
+        link.href = repoHref;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "View Original Repository";
+        titleBlock.appendChild(link);
+      }
+      if (p.maintainer) {
+        var by = document.createElement("div");
+        by.className = "plugin-by";
+        by.textContent = "Plugin By: " + p.maintainer;
+        titleBlock.appendChild(by);
+      }
       el.querySelector(".plugin-desc").textContent = p.description || "";
       var meta = el.querySelector(".plugin-meta");
-      if (meta) {
-        if (p.maintainer) {
-          var who = document.createElement("span");
-          who.textContent = p.maintainer;
-          meta.appendChild(who);
-        }
-        if (repoHref) {
-          var link = document.createElement("a");
-          link.href = repoHref;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.textContent = "Repository";
-          meta.appendChild(link);
-        }
-        if (origin) {
-          var originEl = document.createElement("span");
-          originEl.textContent = origin;
-          meta.appendChild(originEl);
-        }
+      if (meta && origin) {
+        var originEl = document.createElement("span");
+        originEl.textContent = origin;
+        meta.appendChild(originEl);
+      }
+      if (extraActions.length) {
+        var ul = el.querySelector(".plugin-extra-actions ul");
+        extraActions.forEach(function (item) {
+          var li = document.createElement("li");
+          li.textContent = item;
+          ul.appendChild(li);
+        });
       }
       if (note) el.querySelector(".plugin-notes").textContent = note;
       grid.appendChild(el);
@@ -539,6 +597,7 @@
       if (el) el.textContent = "";
       if (meta) meta.textContent = "";
       jobLogFullText = "";
+      if ($("mpJobsCancelBtn")) $("mpJobsCancelBtn").disabled = true;
       return;
     }
     if (card) card.style.display = "";
@@ -556,6 +615,13 @@
     if (el) {
       el.textContent = text;
       if (jobLogPinned) el.scrollTop = el.scrollHeight;
+    }
+    var cancelBtn = $("mpJobsCancelBtn");
+    if (cancelBtn) {
+      var canCancel = (jobs || []).some(function (j) {
+        return j.status === "queued" || j.status === "running";
+      });
+      cancelBtn.disabled = !canCancel;
     }
   }
 
@@ -657,6 +723,30 @@
       });
   });
   $("mpJobsCopyBtn").addEventListener("click", copyJobLog);
+  $("mpJobsCancelBtn").addEventListener("click", function () {
+    var btn = $("mpJobsCancelBtn");
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    fetch("/api/cloudtak-marketplace/jobs/cancel", {
+      method: "POST",
+      headers: { Accept: "application/json" }
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok && j.ok, json: j }; }); })
+      .then(function (out) {
+        if (!out.ok) {
+          setMsg((out.json && out.json.error) || "Cancel failed", true);
+          loadAll();
+          return;
+        }
+        var n = out.json && out.json.count;
+        setMsg(n ? ("Cancelled " + n + " job" + (n === 1 ? "" : "s") + ".") : "Cancelled.");
+        loadAll();
+      })
+      .catch(function (err) {
+        setMsg(err.message || "Cancel failed", true);
+        loadAll();
+      });
+  });
   $("mpJobs").addEventListener("scroll", function () {
     var el = $("mpJobs");
     jobLogPinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;

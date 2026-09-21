@@ -68,6 +68,15 @@ assert.ok(marketplace.isHostPluginNoise("README.md"));
 assert.ok(marketplace.isHostPluginNoise("readme.md"));
 assert.ok(!marketplace.isHostPluginNoise("quick-point-dropper"));
 
+const print = normalized.plugins.find((p) => p.id === "print");
+assert.ok(print.additionalActions.some((s) => /caddy/i.test(s)));
+assert.deepStrictEqual(
+  marketplace.normalizeAdditionalActions({
+    sidecars: [{ note: "Add Caddy /example" }],
+  }),
+  ["Add Caddy /example"]
+);
+
 const bundled = store.readBundledCatalog();
 assert.ok(Array.isArray(bundled.plugins) && bundled.plugins.length >= 10);
 

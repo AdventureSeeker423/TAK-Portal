@@ -39,8 +39,11 @@
       "maintainer": "snstac",
       "web": { "source": ".", "dest": "udash" },
       "sidecars": [{ "note": "Also run the repo server/ webhook process. Marketplace does not start that sidecar." }],
+      "additionalActions": [
+        "Run the webhook sidecar in server/. Marketplace does not start that process."
+      ],
       "detect": ["api/web/plugins/udash/index.ts"],
-      "notes": "Sidecar in server/ is not auto-wired. After install: CloudTAK Settings → Refresh App."
+      "notes": "After install: CloudTAK Settings → Refresh App."
     },
     {
       "id": "print",
@@ -53,8 +56,12 @@
       "web": { "source": "plugin", "dest": "print" },
       "sidecars": [{ "note": "Deploy service/ Docker and Caddy /print-api. Marketplace does not write Caddy." }],
       "composeService": "cloudtak-print",
+      "additionalActions": [
+        "Deploy the print plugin Docker service (service/ in the repo).",
+        "Add a Caddy reverse proxy for /print-api. Marketplace does not write Caddy."
+      ],
       "detect": ["api/web/plugins/print/index.ts"],
-      "notes": "Caddy /print-api snippet is not auto-applied. After install: CloudTAK Settings → Refresh App."
+      "notes": "After install: CloudTAK Settings → Refresh App."
     },
     {
       "id": "cellphone",
@@ -132,7 +139,10 @@
       "maintainer": "cmlaird",
       "web": { "source": ".", "dest": "lightning" },
       "detect": ["api/web/plugins/lightning/index.ts"],
-      "notes": "Production also needs a CloudTAK nginx CSP allow for wss://*.blitzortung.org. Marketplace does not patch nginx.conf.js. After install: CloudTAK Settings → Refresh App."
+      "additionalActions": [
+        "Allow wss://*.blitzortung.org in CloudTAK nginx CSP. Marketplace does not patch nginx.conf.js."
+      ],
+      "notes": "After install: CloudTAK Settings → Refresh App."
     }
   ]
 }

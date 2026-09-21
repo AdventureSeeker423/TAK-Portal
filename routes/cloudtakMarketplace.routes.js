@@ -79,6 +79,24 @@ router.post("/jobs/clear-idle", (req, res) => {
   }
 });
 
+router.post("/jobs/cancel", (req, res) => {
+  try {
+    const result = marketplace.cancelCurrentJobs();
+    if (!result.count) {
+      return res.status(400).json({ ok: false, error: "No current jobs to cancel." });
+    }
+    auditSvc.auditFromRequest(req, {
+      action: "CLOUDTAK_MARKETPLACE_CANCEL",
+      targetType: "cloudtak_plugin",
+      targetId: "jobs",
+      details: { count: result.count, summary: `Cancelled ${result.count} CloudTAK marketplace job(s)` },
+    });
+    res.json({ ok: true, count: result.count, jobs: result.jobs });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 router.post("/jobs/deploy", (req, res) => {
   try {
     if (busyChangeError(res)) return;

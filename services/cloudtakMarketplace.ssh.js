@@ -98,19 +98,46 @@ function sshStatus() {
   };
 }
 
+let activeAbort = null;
+
+function abortActiveCommand() {
+  const abort = activeAbort;
+  activeAbort = null;
+  if (!abort) return false;
+  try {
+    abort();
+  } catch (_) {}
+  return true;
+}
+
 function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
   return new Promise((resolve) => {
     const conn = new Client();
     let finished = false;
+    let cancelled = false;
     const done = (payload) => {
       if (finished) return;
       finished = true;
+      if (activeAbort === abort) activeAbort = null;
       clearTimeout(t);
       try {
-        conn.end();
+        if (cancelled) conn.destroy();
+        else conn.end();
       } catch (_) {}
       resolve(payload);
     };
+    const abort = () => {
+      cancelled = true;
+      done({
+        ok: false,
+        cancelled: true,
+        message: "Cancelled.",
+        stdout: "",
+        stderr: "",
+        exitCode: null,
+      });
+    };
+    activeAbort = abort;
 
     const t = setTimeout(() => {
       done({
@@ -169,6 +196,7 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
           stream.on("close", (code) => {
             emit(stdoutHold);
             emit(stderrHold);
+            if (cancelled) return;
             const exitCode = Number.isInteger(code) ? code : null;
             if (exitCode !== 0) {
               done({
@@ -185,6 +213,7 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
         });
       })
       .on("error", (err) => {
+        if (cancelled) return;
         done({
           ok: false,
           message: err.message || String(err),
@@ -431,6 +460,7 @@ module.exports = {
   getConnectConfig,
   sshStatus,
   runCommand,
+  abortActiveCommand,
   detectCheckout,
   testConnection,
   shellQuote,
