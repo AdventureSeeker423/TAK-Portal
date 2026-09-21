@@ -12,7 +12,6 @@ const settingsSvc = require("./settings.service");
 
 const NEW_DAYS = 14;
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
-const CLOUDTAK_JOB_ID = "__cloudtak__";
 
 let _jobRunning = false;
 let _cancelRequested = false;
@@ -572,24 +571,6 @@ set -eu
 CT='${ct}'
 if [ ! -d "$CT/api" ]; then echo SCAN_FAIL missing api/; exit 1; fi
 printf 'SCAN_BEGIN\\n'
-printf 'CTAK_PATH %s\\n' "$CT"
-if [ -d "$CT/.git" ]; then
-  printf 'CTAK_HEAD %s\\n' "$(git -c safe.directory=* -C "$CT" rev-parse HEAD 2>/dev/null || true)"
-  printf 'CTAK_BRANCH %s\\n' "$(git -c safe.directory=* -C "$CT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  printf 'CTAK_REMOTE %s\\n' "$(git -c safe.directory=* -C "$CT" remote get-url origin 2>/dev/null || true)"
-  printf 'CTAK_DESCRIBE %s\\n' "$(git -c safe.directory=* -C "$CT" describe --tags --always 2>/dev/null || true)"
-  _ct_branch=$(git -c safe.directory=* -C "$CT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-  if [ -n "$_ct_branch" ] && [ "$_ct_branch" != "HEAD" ]; then
-    printf 'CTAK_REMOTE_HEAD %s\\n' "$(GIT_TERMINAL_PROMPT=0 git -c safe.directory=* -C "$CT" ls-remote origin "refs/heads/$_ct_branch" 2>/dev/null | awk '{print \$1}' | head -n 1 || true)"
-  else
-    printf 'CTAK_REMOTE_HEAD %s\\n' "$(GIT_TERMINAL_PROMPT=0 git -c safe.directory=* -C "$CT" ls-remote origin HEAD 2>/dev/null | awk '{print \$1}' | head -n 1 || true)"
-  fi
-fi
-_ct_ver=""
-if [ -f "$CT/api/package.json" ]; then
-  _ct_ver=$(grep -m1 '"version"' "$CT/api/package.json" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/' || true)
-fi
-printf 'CTAK_VERSION %s\\n' "$_ct_ver"
 emit_plugin() {
   local p="$1"
   [ -e "$p" ] || return 0
@@ -690,15 +671,6 @@ function parseScanStdout(stdout, catalogPlugins) {
   const seenDest = new Set();
   const routeFiles = [];
   let webPluginsRaw = "";
-  const instance = {
-    path: "",
-    sha: "",
-    branch: "",
-    remote: "",
-    describe: "",
-    version: "",
-    remoteSha: "",
-  };
   const pushPlugin = (row) => {
     const dest = String(row.dest || "").trim();
     if (!dest || dest === "*" || dest === "." || dest === ".." || isHostPluginNoise(dest)) return;
@@ -761,20 +733,6 @@ function parseScanStdout(stdout, catalogPlugins) {
       routeFiles.push(t.slice(6).trim());
     } else if (t.startsWith("WEB_PLUGINS ")) {
       webPluginsRaw += t.slice(12);
-    } else if (t.startsWith("CTAK_PATH ")) {
-      instance.path = t.slice(10).trim();
-    } else if (t.startsWith("CTAK_HEAD ")) {
-      instance.sha = t.slice(10).trim();
-    } else if (t.startsWith("CTAK_BRANCH ")) {
-      instance.branch = t.slice(12).trim();
-    } else if (t.startsWith("CTAK_REMOTE ")) {
-      instance.remote = t.slice(12).trim();
-    } else if (t.startsWith("CTAK_DESCRIBE ")) {
-      instance.describe = t.slice(14).trim();
-    } else if (t.startsWith("CTAK_VERSION ")) {
-      instance.version = t.slice(13).trim();
-    } else if (t.startsWith("CTAK_REMOTE_HEAD ")) {
-      instance.remoteSha = t.slice(17).trim();
     }
   }
   for (const p of plugins) p.routeFiles = routeFiles;
@@ -800,7 +758,7 @@ function parseScanStdout(stdout, catalogPlugins) {
   let m;
   while ((m = urlRe.exec(webPluginsRaw))) webUrls.push(m[0].replace(/"/g, ""));
 
-  return { plugins, routeFiles, webPluginUrls: webUrls, instance };
+  return { plugins, routeFiles, webPluginUrls: webUrls };
 }
 
 async function scanHost() {
@@ -815,7 +773,6 @@ async function scanHost() {
       stale: true,
       path: "",
       plugins: (prev && prev.plugins) || [],
-      instance: (prev && prev.instance) || {},
     };
     store.writeScanCache(err);
     return err;
@@ -830,7 +787,6 @@ async function scanHost() {
       stale: true,
       path: loc.path,
       plugins: (prev && prev.plugins) || [],
-      instance: (prev && prev.instance) || {},
     };
     store.writeScanCache(err);
     return err;
@@ -888,7 +844,6 @@ async function scanHost() {
     ok: true,
     plugins: found,
     routeFiles: parsed.routeFiles,
-    instance: parsed.instance || {},
   };
   store.writeScanCache(cache);
   const state = store.readNotifyState();
@@ -1017,30 +972,6 @@ function clearJobInstallError(job) {
   for (const id of jobPluginIds(job)) clearInstalledError(id);
 }
 
-function instanceFromScan(scan, installedRec) {
-  const raw = (scan && scan.instance) || {};
-  const errorMessage = pluginErrorMessage(installedRec, CLOUDTAK_JOB_ID, "cloudtak");
-  const sha = String(raw.sha || "").trim();
-  const remoteSha = String(raw.remoteSha || "").trim();
-  const branch = String(raw.branch || "").trim();
-  const detached = !branch || branch === "HEAD";
-  return {
-    id: CLOUDTAK_JOB_ID,
-    name: "CloudTAK",
-    path: raw.path || (scan && scan.path) || "",
-    version: String(raw.version || "").trim(),
-    describe: String(raw.describe || "").trim(),
-    branch: detached ? "" : branch,
-    detached,
-    sha,
-    remoteSha,
-    remote: String(raw.remote || "").trim(),
-    updateAvailable: !!(sha && remoteSha && sha !== remoteSha),
-    error: !!errorMessage,
-    errorMessage,
-  };
-}
-
 function buildUiPlugins(options = {}) {
   const catalog = loadCatalog();
   const scan = store.readScanCache();
@@ -1115,7 +1046,6 @@ function buildUiPlugins(options = {}) {
     byId.set(id, hostOnlyPlugin({ id, dest: s.dest, repo: s.gitRemote || "", scan: s }));
   }
   for (const [id, rec] of Object.entries(installedRec.plugins || {})) {
-    if (id === CLOUDTAK_JOB_ID) continue;
     if (byId.has(id)) continue;
     const dest = String((rec && rec.dest) || "").trim();
     if (!dest || !safeDestName(dest) || destListed(dest)) continue;
@@ -1138,7 +1068,6 @@ function buildUiPlugins(options = {}) {
     .sort((a, b) => a.name.localeCompare(b.name));
   return {
     plugins,
-    instance: instanceFromScan(scan, installedRec),
     catalogFetchedAt: catalog.fetchedAt || null,
     scannedAt: scan && scan.scannedAt ? scan.scannedAt : null,
     scanOk: !!(scan && scan.ok),
@@ -1354,7 +1283,7 @@ function isBusyJob(job) {
 }
 
 function isChangeKind(kind) {
-  return ["install", "update", "uninstall", "update-all", "update-cloudtak"].includes(String(kind || ""));
+  return ["install", "update", "uninstall", "update-all"].includes(String(kind || ""));
 }
 
 function hasBusyChangeJobs() {
@@ -2097,49 +2026,6 @@ echo UNINSTALL_OK
 `.trim();
 }
 
-function updateCloudtakRemoteScript(ct) {
-  return `
-set -euo pipefail
-CT=${ssh.shellQuote(ct)}
-cd "$CT"
-if [ ! -d .git ]; then
-  echo "CloudTAK path is not a git checkout: $CT" >&2
-  exit 1
-fi
-echo "Fetching origin"
-GIT_TERMINAL_PROMPT=0 git -c safe.directory=* fetch --prune --tags origin
-BEFORE=$(git -c safe.directory=* rev-parse HEAD)
-BRANCH=$(git -c safe.directory=* rev-parse --abbrev-ref HEAD)
-if [ "$BRANCH" = "HEAD" ]; then
-  BRANCH=$(git -c safe.directory=* symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)
-  if [ -z "$BRANCH" ]; then
-    if git -c safe.directory=* show-ref --verify --quiet refs/remotes/origin/master; then BRANCH=master
-    elif git -c safe.directory=* show-ref --verify --quiet refs/remotes/origin/main; then BRANCH=main
-    else
-      echo "Detached HEAD and could not determine origin default branch" >&2
-      exit 1
-    fi
-  fi
-  echo "Detached HEAD; checking out $BRANCH"
-  git -c advice.detachedHead=false -c safe.directory=* checkout -B "$BRANCH" "origin/$BRANCH"
-else
-  echo "Pulling origin/$BRANCH (fast-forward only)"
-  GIT_TERMINAL_PROMPT=0 git -c safe.directory=* pull --ff-only origin "$BRANCH"
-fi
-AFTER=$(git -c safe.directory=* rev-parse HEAD)
-DESCRIBE=$(git -c safe.directory=* describe --tags --always 2>/dev/null || true)
-echo "CLOUDTAK_SHA_BEFORE $BEFORE"
-echo "CLOUDTAK_SHA $AFTER"
-echo "CLOUDTAK_BRANCH $BRANCH"
-echo "CLOUDTAK_DESCRIBE $DESCRIBE"
-if [ "$BEFORE" = "$AFTER" ]; then
-  echo "CloudTAK already up to date"
-else
-  echo "CloudTAK updated $BEFORE -> $AFTER"
-fi
-`.trim();
-}
-
 function rebuildRemoteScript(ct, service) {
   return `
 set -euo pipefail
@@ -2287,36 +2173,6 @@ async function performUninstall(job, dest, plugin) {
   return { path: loc.path, composeService: loc.composeService || ssh.resolvedComposeService() };
 }
 
-async function performCloudtakUpdate(job) {
-  const loc = await ensureCheckoutPath();
-  if (!loc.ok) throw new Error(loc.message || "Could not resolve CloudTAK path.");
-  appendJobLog(job.id, `Updating CloudTAK at ${loc.path}`);
-  const result = await runLogged(
-    job.id,
-    `bash -lc ${ssh.shellQuote(updateCloudtakRemoteScript(loc.path))}`,
-    5 * 60 * 1000
-  );
-  const stdout = String(result.stdout || "");
-  const shaLine = stdout.split("\n").find((l) => l.startsWith("CLOUDTAK_SHA "));
-  const beforeLine = stdout.split("\n").find((l) => l.startsWith("CLOUDTAK_SHA_BEFORE "));
-  const sha = shaLine ? shaLine.slice(13).trim() : "";
-  const before = beforeLine ? beforeLine.slice(20).trim() : "";
-  updateJob(job.id, {
-    extra: {
-      ...(job.extra || {}),
-      dest: "cloudtak",
-      pluginIds: [CLOUDTAK_JOB_ID],
-      sha,
-    },
-  });
-  return {
-    path: loc.path,
-    composeService: loc.composeService || ssh.resolvedComposeService(),
-    sha,
-    skipRebuild: !!(before && sha && before === sha),
-  };
-}
-
 async function performRebuild(jobs, ctPath, service) {
   const ids = (Array.isArray(jobs) ? jobs : [jobs]).map((j) => j.id);
   ids.forEach((id) => appendJobLog(id, `$ docker compose --progress=plain build --no-cache ${service}`));
@@ -2357,21 +2213,17 @@ async function runChangeBatch(jobs) {
 
   let lastLoc = null;
   let needsRebuild = false;
-  const coreUpdates = expanded.filter((x) => x.job.kind === "update-cloudtak");
   const uninstalls = expanded.filter((x) => x.job.kind === "uninstall");
-  const installs = expanded.filter((x) => x.job.kind !== "uninstall" && x.job.kind !== "update-cloudtak");
+  const installs = expanded.filter((x) => x.job.kind !== "uninstall");
 
-  for (const item of [...coreUpdates, ...uninstalls, ...installs]) {
+  for (const item of [...uninstalls, ...installs]) {
     const job = item.job;
     const live = store.readJobs().jobs.find((j) => j.id === job.id);
     if (!live || live.status === "cancelled" || _cancelRequested) continue;
     if (job.status !== "running") updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
     try {
       throwIfCancelled();
-      if (job.kind === "update-cloudtak") {
-        lastLoc = await performCloudtakUpdate(job);
-        if (lastLoc && !lastLoc.skipRebuild) needsRebuild = true;
-      } else if (job.kind === "uninstall") {
+      if (job.kind === "uninstall") {
         const plugin = job.pluginId ? pluginById(job.pluginId) : null;
         const dest = (job.extra && job.extra.dest) || (plugin && plugin.web && plugin.web.dest);
         if (!dest) throw new Error("Missing dest folder");
@@ -2465,7 +2317,7 @@ async function claimAndRunJobs() {
   _jobRunning = true;
   try {
     const changes = queued.filter((j) =>
-      ["install", "update", "update-all", "uninstall", "update-cloudtak"].includes(j.kind)
+      ["install", "update", "update-all", "uninstall"].includes(j.kind)
     );
     const scans = queued.filter((j) => j.kind === "scan");
     const catalogs = queued.filter((j) => j.kind === "refresh-catalog");
@@ -2660,7 +2512,6 @@ function rememberSeenCatalog() {
 
 module.exports = {
   NEW_DAYS,
-  CLOUDTAK_JOB_ID,
   isEnabled,
   notifyEnabled,
   defaultCatalogUrl,
@@ -2701,9 +2552,6 @@ module.exports = {
   normalizeInstallScript,
   installRemoteScript,
   uninstallRemoteScript,
-  updateCloudtakRemoteScript,
-  scanRemoteScript,
-  parseScanStdout,
   normalizeCsp,
   normalizeFlatSamplePluginTree,
   pluginEntryImportsLib,
