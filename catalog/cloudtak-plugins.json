@@ -138,7 +138,7 @@
     {
       "id": "livewx",
       "name": "LiveWX Radar",
-      "description": "Live NEXRAD overlay and nationwide NWS watches/warnings.",
+      "description": "Live NEXRAD overlay, Blitzortung lightning data, and nationwide NWS watches/warnings.",
       "repo": "https://github.com/AdventureSeeker423/cloudtak-plugin-livewx.git",
       "added": "2026-09-21",
       "maintainer": "AdventureSeeker423",
