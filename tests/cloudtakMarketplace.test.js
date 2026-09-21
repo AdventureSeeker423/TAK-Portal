@@ -75,6 +75,17 @@ assert.ok(!print.additionalActions.some((a) => /Deploy the print plugin Docker/i
 const printScript = marketplace.installRemoteScript("/root/CloudTAK", print);
 assert.match(printScript, /Starting plugin Docker service/);
 assert.match(printScript, /cloudtak-marketplace-plugins/);
+assert.match(printScript, /Cleaning plugin runtime/);
+assert.match(printScript, /docker rmi/);
+assert.match(printScript, /docker image prune -f/);
+
+const uninstallPrint = marketplace.uninstallRemoteScript("/root/CloudTAK", "print", [], "print");
+assert.match(uninstallPrint, /Cleaning plugin runtime/);
+assert.match(uninstallPrint, /docker rmi/);
+assert.match(uninstallPrint, /docker image prune -f/);
+assert.match(uninstallPrint, /cloudtak-marketplace-plugins/);
+assert.match(uninstallPrint, /\.cache\/cloudtak-marketplace/);
+assert.doesNotMatch(uninstallPrint, /docker compose -f "\$CF" -f "\$OVERRIDE" stop \)/);
 
 const udash = normalized.plugins.find((p) => p.id === "udash");
 assert.ok(udash.additionalActions.some((a) => /webhook sidecar/i.test(JSON.stringify(a))));

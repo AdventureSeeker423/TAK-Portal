@@ -1240,6 +1240,75 @@ function flatSampleLibNormalizeBash() {
   ].join("\n");
 }
 
+function pluginRuntimeCleanupBash() {
+  return [
+    "cleanup_plugin_runtime() {",
+    '  local plugin_id="$1"',
+    '  local target_ct="$2"',
+    '  [ -n "$plugin_id" ] || return 0',
+    "  local d STACK CF OVERRIDE SVCS svc cids cid img IMGS",
+    '  STACK=""',
+    '  for d in "$target_ct" "$(dirname "$target_ct")"; do',
+    '    [ -n "$d" ] && [ -d "$d" ] || continue',
+    '    if [ -f "$d/docker-compose.yml" ] || [ -f "$d/docker-compose.yaml" ] || [ -f "$d/compose.yml" ] || [ -f "$d/compose.yaml" ]; then',
+    '      STACK="$d"',
+    "      break",
+    "    fi",
+    "  done",
+    '  [ -n "$STACK" ] || return 0',
+    '  CF=""',
+    "  for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do",
+    '    if [ -f "$STACK/$f" ]; then CF="$f"; break; fi',
+    "  done",
+    '  OVERRIDE="$STACK/docker-compose.plugin-$plugin_id.yml"',
+    '  PERSIST_DIR="$STACK/cloudtak-marketplace-plugins/$plugin_id"',
+    '  if [ ! -f "$OVERRIDE" ] && [ ! -d "$PERSIST_DIR" ]; then return 0; fi',
+    '  echo "Cleaning plugin runtime for $plugin_id"',
+    '  if [ -n "$CF" ] && [ -f "$OVERRIDE" ]; then',
+    "    SVCS=$(awk '",
+    "      /^services:[[:space:]]*$/ { s=1; next }",
+    "      s && /^[^[:space:]#]/ { s=0 }",
+    '      s && /^  [A-Za-z0-9._-]+:[[:space:]]*$/ { sub(/^  /, ""); sub(/:[[:space:]]*$/, ""); print }',
+    "' \"$OVERRIDE\" | tr '\\n' ' ')",
+    '    IMGS=""',
+    '    if command -v docker >/dev/null 2>&1; then',
+    '      for svc in $SVCS; do',
+    '        [ -n "$svc" ] || continue',
+    '        cids=$(cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" ps -a -q "$svc" 2>/dev/null || true)',
+    "        for cid in $cids; do",
+    '          [ -n "$cid" ] || continue',
+    "          img=$(docker inspect -f '{{.Image}}' \"$cid\" 2>/dev/null || true)",
+    '          [ -n "$img" ] && IMGS="$IMGS $img"',
+    "        done",
+    "      done",
+    '      if [ -n "$SVCS" ]; then',
+    '        echo "Stopping plugin services:$SVCS"',
+    '        ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" stop $SVCS ) || true',
+    '        ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" rm -f $SVCS ) || true',
+    "      fi",
+    '      cids=$(docker ps -a -q --filter "name=cloudtak-plugin-${plugin_id}" 2>/dev/null || true)',
+    "      for cid in $cids; do",
+    '        [ -n "$cid" ] || continue',
+    "        img=$(docker inspect -f '{{.Image}}' \"$cid\" 2>/dev/null || true)",
+    '        [ -n "$img" ] && IMGS="$IMGS $img"',
+    '        docker rm -f "$cid" >/dev/null 2>&1 || true',
+    "      done",
+    "      for img in $IMGS; do",
+    '        [ -n "$img" ] || continue',
+    '        echo "Removing plugin image $img"',
+    '        docker rmi "$img" >/dev/null 2>&1 || true',
+    "      done",
+    '      echo "Pruning unused Docker images"',
+    "      docker image prune -f || true",
+    "    fi",
+    '    rm -f "$OVERRIDE" || true',
+    "  fi",
+    '  rm -rf "$PERSIST_DIR" || true',
+    "  return 0",
+    "}",
+  ].join("\n");
+}
+
 function pluginRuntimeExtrasBash() {
   return [
     'target_ct="$1"',
@@ -1251,6 +1320,8 @@ function pluginRuntimeExtrasBash() {
     'sidecar_port_hint="$7"',
     '[ -n "$target_ct" ] && [ -d "$repo_dir" ] && [ -n "$plugin_id" ] || exit 0',
     "set -e",
+    pluginRuntimeCleanupBash(),
+    'cleanup_plugin_runtime "$plugin_id" "$target_ct"',
     "find_stack() {",
     '  local d',
     '  for d in "$target_ct" "$(dirname "$target_ct")"; do',
@@ -1565,6 +1636,12 @@ set -euo pipefail
 CT=${ssh.shellQuote(ct)}
 DEST=${ssh.shellQuote(dest)}
 ID=${ssh.shellQuote(id)}
+${pluginRuntimeCleanupBash()}
+if [ -n "$ID" ]; then
+  cleanup_plugin_runtime "$ID" "$CT"
+  rm -rf "$HOME/.cache/cloudtak-marketplace/$ID" || true
+  rm -f /tmp/ctak-marketplace-excludes-$ID || true
+fi
 TARGET="$CT/api/web/plugins/$DEST"
 case "$TARGET" in
   */api/web/plugins/$DEST) ;;
@@ -1572,30 +1649,6 @@ case "$TARGET" in
 esac
 rm -rf "$TARGET"
 ${routeRm}
-if [ -n "$ID" ]; then
-  STACK=""
-  for d in "$CT" "$(dirname "$CT")"; do
-    [ -n "$d" ] && [ -d "$d" ] || continue
-    if [ -f "$d/docker-compose.yml" ] || [ -f "$d/docker-compose.yaml" ] || [ -f "$d/compose.yml" ] || [ -f "$d/compose.yaml" ]; then
-      STACK="$d"
-      break
-    fi
-  done
-  if [ -n "$STACK" ]; then
-    CF=""
-    for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
-      if [ -f "$STACK/$f" ]; then CF="$f"; break; fi
-    done
-    OVERRIDE="$STACK/docker-compose.plugin-$ID.yml"
-    if [ -n "$CF" ] && [ -f "$OVERRIDE" ]; then
-      echo "Stopping plugin runtime services from $OVERRIDE"
-      ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" stop ) || true
-      ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" rm -f ) || true
-      rm -f "$OVERRIDE" || true
-    fi
-    rm -rf "$STACK/cloudtak-marketplace-plugins/$ID" || true
-  fi
-fi
 echo UNINSTALL_OK
 `.trim();
 }
@@ -1646,6 +1699,8 @@ while [ "$n" -lt 90 ]; do
   sleep 2
 done
 echo REBUILD_OK
+echo "Removing unused Docker images"
+docker image prune -f || true
 `.trim();
 }
 
@@ -1722,7 +1777,7 @@ async function performUninstall(job, dest, plugin) {
     routeGuess.push(`plugin-${plugin.id}.ts`);
   }
   appendJobLog(job.id, `$ rm -rf api/web/plugins/${dest}`);
-  await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess, plugin && plugin.id))}`, 60000);
+  await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess, plugin && plugin.id))}`, 5 * 60 * 1000);
   if (plugin) {
     const rec = store.readInstalled();
     delete rec.plugins[plugin.id];
@@ -2091,6 +2146,7 @@ module.exports = {
   onEnabled,
   normalizeInstallScript,
   installRemoteScript,
+  uninstallRemoteScript,
   normalizeFlatSamplePluginTree,
   pluginEntryImportsLib,
 };

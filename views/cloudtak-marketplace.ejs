@@ -964,7 +964,7 @@
     confirmArmed = false;
     $("mpUninstallConfirm").disabled = false;
     $("mpUninstallConfirm").textContent = "Add to queue";
-    $("mpUninstallBody").textContent = "Remove " + (p && p.name || id) + " from " + (p && p.dest || id) + " (web folder" + (p && p.layout && p.layout.routes ? " and owned route files" : "") + "). Sidecar containers are not stopped.";
+    $("mpUninstallBody").textContent = "Remove " + (p && p.name || id) + " from " + (p && p.dest || id) + " (web folder" + (p && p.layout && p.layout.routes ? " and owned route files" : "") + "). Plugin Docker services, leftover images, and runtime files are also removed.";
     $("mpUninstallModal").style.display = "flex";
     $("mpUninstallModal").setAttribute("aria-hidden", "false");
   });
