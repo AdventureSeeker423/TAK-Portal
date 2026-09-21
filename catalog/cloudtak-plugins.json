@@ -156,6 +156,28 @@
           "snippet": "wss://*.blitzortung.org"
         }
       ]
+    },
+    {
+      "id": "livewx",
+      "name": "LiveWX Radar",
+      "description": "Live NEXRAD overlay and nationwide NWS watches/warnings.",
+      "repo": "https://github.com/AdventureSeeker423/cloudtak-plugin-livewx.git",
+      "added": "2026-09-21",
+      "maintainer": "AdventureSeeker423",
+      "web": { "dest": "livewx-radar" },
+      "detect": ["api/web/plugins/livewx-radar/index.ts"],
+      "additionalActions": [
+        {
+          "title": "Allow Iowa Mesonet and NWS in nginx CSP",
+          "text": "Production CloudTAK nginx sets Content-Security-Policy connect-src and img-src to 'self', which blocks radar tiles and watches/warnings. Marketplace does not patch nginx.",
+          "instructions": [
+            "Edit CloudTAK api/nginx.conf.js and add the hosts below to connect-src.",
+            "Also add https://mesonet.agron.iastate.edu to img-src so MapLibre can load radar tiles.",
+            "Rebuild or restart the CloudTAK api container after saving."
+          ],
+          "snippet": "https://mesonet.agron.iastate.edu https://api.weather.gov"
+        }
+      ]
     }
   ]
 }
