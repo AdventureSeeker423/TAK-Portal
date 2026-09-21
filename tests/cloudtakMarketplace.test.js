@@ -221,6 +221,16 @@ assert.ok(!marketplace.pluginEntryImportsLib("import x from './foo.ts'"));
 const ssh = require("../services/cloudtakMarketplace.ssh");
 assert.strictEqual(typeof ssh.onboardWithPassword, "function");
 assert.strictEqual(typeof ssh.ensureCloudtakSshKeyPair, "function");
+assert.strictEqual(typeof ssh.abortActiveCommand, "function");
+assert.strictEqual(ssh.abortActiveCommand(), false);
+const interruptWrites = [];
+const interruptSignals = [];
+ssh.sendRemoteInterrupt(
+  { write: (s) => interruptWrites.push(s), signal: (s) => interruptSignals.push(s) },
+  "INT"
+);
+assert.deepStrictEqual(interruptWrites, ["\x03"]);
+assert.deepStrictEqual(interruptSignals, ["INT"]);
 
 async function assertOnboardValidation() {
   await assert.rejects(

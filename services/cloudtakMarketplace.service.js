@@ -1306,7 +1306,7 @@ function clearIdleJobs() {
 
 function cancelCurrentJobs() {
   _cancelRequested = true;
-  ssh.abortActiveCommand();
+  const interrupted = ssh.abortActiveCommand();
   const now = new Date().toISOString();
   let count = 0;
   const result = store.withJobs((jobs) =>
@@ -1314,6 +1314,9 @@ function cancelCurrentJobs() {
       if (!isBusyJob(j)) return j;
       count += 1;
       const log = Array.isArray(j.log) ? j.log.slice() : [];
+      if (interrupted && j.status === "running") {
+        log.push("Sending Ctrl+C to the running host command.");
+      }
       if (!log.length || log[log.length - 1] !== "Cancelled.") log.push("Cancelled.");
       return {
         ...j,

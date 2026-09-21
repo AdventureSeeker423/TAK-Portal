@@ -341,16 +341,45 @@ function abortActiveCommand() {
   return true;
 }
 
+function sendRemoteInterrupt(stream, signalName) {
+  if (!stream) return;
+  try {
+    if (signalName === "INT" && typeof stream.write === "function") stream.write("\x03");
+  } catch (_) {}
+  try {
+    if (typeof stream.signal === "function") stream.signal(signalName);
+  } catch (_) {}
+}
+
 function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
   return new Promise((resolve) => {
     const conn = new Client();
     let finished = false;
     let cancelled = false;
+    let stream = null;
+    const timers = [];
+    const later = (ms, fn) => {
+      const id = setTimeout(fn, ms);
+      timers.push(id);
+      return id;
+    };
+    const clearTimers = () => {
+      while (timers.length) clearTimeout(timers.pop());
+    };
+    const cancelledPayload = () => ({
+      ok: false,
+      cancelled: true,
+      message: "Cancelled.",
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+    });
     const done = (payload) => {
       if (finished) return;
       finished = true;
       if (activeAbort === abort) activeAbort = null;
       clearTimeout(t);
+      clearTimers();
       try {
         if (cancelled) conn.destroy();
         else conn.end();
@@ -358,14 +387,21 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
       resolve(payload);
     };
     const abort = () => {
+      if (finished) return;
       cancelled = true;
-      done({
-        ok: false,
-        cancelled: true,
-        message: "Cancelled.",
-        stdout: "",
-        stderr: "",
-        exitCode: null,
+      sendRemoteInterrupt(stream, "INT");
+      if (!stream) {
+        done(cancelledPayload());
+        return;
+      }
+      later(800, () => {
+        if (finished) return;
+        sendRemoteInterrupt(stream, "TERM");
+        later(800, () => {
+          if (finished) return;
+          sendRemoteInterrupt(stream, "KILL");
+          done(cancelledPayload());
+        });
       });
     };
     activeAbort = abort;
@@ -414,7 +450,11 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
         finish([]);
       })
       .on("ready", () => {
-        conn.exec(command, (err, stream) => {
+        if (cancelled) {
+          done(cancelledPayload());
+          return;
+        }
+        conn.exec(command, { pty: { term: "xterm", cols: 120, rows: 32 } }, (err, strm) => {
           if (err) {
             done({
               ok: false,
@@ -423,6 +463,11 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
               stderr: "",
               exitCode: null,
             });
+            return;
+          }
+          stream = strm;
+          if (cancelled) {
+            sendRemoteInterrupt(stream, "INT");
             return;
           }
           let stdout = "";
@@ -441,15 +486,20 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
             stdout += s;
             stdoutHold = takeLines(stdoutHold, s);
           });
-          stream.stderr.on("data", (data) => {
-            const s = data.toString();
-            stderr += s;
-            stderrHold = takeLines(stderrHold, s);
-          });
+          if (stream.stderr && typeof stream.stderr.on === "function") {
+            stream.stderr.on("data", (data) => {
+              const s = data.toString();
+              stderr += s;
+              stderrHold = takeLines(stderrHold, s);
+            });
+          }
           stream.on("close", (code) => {
             emit(stdoutHold);
             emit(stderrHold);
-            if (cancelled) return;
+            if (cancelled) {
+              done(cancelledPayload());
+              return;
+            }
             const exitCode = Number.isInteger(code) ? code : null;
             if (exitCode !== 0) {
               done({
@@ -711,6 +761,7 @@ module.exports = {
   onboardWithPassword,
   runCommand,
   abortActiveCommand,
+  sendRemoteInterrupt,
   detectCheckout,
   testConnection,
   shellQuote,
