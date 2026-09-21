@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.6 - 9/20/26
+✨ `Enhancement` - Connected Users and Connected Integrations card logic updated to be more efficient<br>
+✨ `Enhancement` - Total User count updated to reflect both active and disabled users
+
 ### v2.0.5 - 9/17/26
 🐛 `Bug Fix` - Fixes issue with Groups, Mutual Aid, etc - Pages not honoring removed members.  (In the backend there was a power struggle between postgres and authentik leading to no actions being taken
 
