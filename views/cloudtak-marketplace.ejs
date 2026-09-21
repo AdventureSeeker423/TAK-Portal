@@ -231,11 +231,35 @@
   .mp-queue-item-label {
     font-weight: 600;
   }
-  .mp-banner {
-    padding: 10px 12px;
-    border-radius: 8px;
-    margin-top: 12px;
-    border: 1px solid var(--line);
+  .mp-wait-btn,
+  .plugin-actions .btn:disabled,
+  .mp-toolbar-actions .btn:disabled,
+  .mp-queue-item .btn:disabled,
+  #mpDeployBtn:disabled {
+    background: #6b7280;
+    color: #f3f4f6;
+    cursor: not-allowed;
+    box-shadow: none;
+    filter: none;
+    opacity: 0.9;
+  }
+  .mp-wait-btn:hover,
+  .plugin-actions .btn:disabled:hover,
+  .mp-toolbar-actions .btn:disabled:hover,
+  .mp-queue-item .btn:disabled:hover,
+  #mpDeployBtn:disabled:hover {
+    filter: none;
+  }
+  .mp-wait-note {
+    width: 100%;
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    color: var(--muted, #6b7280);
+  }
+  .mp-banner.wait {
+    border-color: #6b7280;
+    background: color-mix(in srgb, #6b7280 12%, transparent);
   }
   .mp-banner.warn { border-color: #c80; }
   @media (max-width: 990px) {
@@ -252,12 +276,21 @@
   var jobLogFullText = "";
   var jobLogPinned = true;
   var stagedJobs = [];
+  var jobBusy = false;
+  var WAIT_HINT = "Wait until the current job is complete and containers are recreated and running";
 
   function $(id) { return document.getElementById(id); }
   function setMsg(text, isError) {
     var el = $("mpMsg");
     el.textContent = text || "";
     el.style.color = isError ? "#c44" : "";
+  }
+
+  function changeJobsBusy(jobs) {
+    return (jobs || []).some(function (j) {
+      return (j.status === "queued" || j.status === "running") &&
+        (j.kind === "install" || j.kind === "update" || j.kind === "uninstall" || j.kind === "update-all");
+    });
   }
 
   function originLabel(p) {
@@ -278,6 +311,9 @@
 
   function renderBanners(status, snapshot) {
     var html = "";
+    if (jobBusy) {
+      html += '<div class="mp-banner wait">' + WAIT_HINT + ".</div>";
+    }
     if (status && status.worker && status.worker.ok === false) {
       html += '<div class="mp-banner warn">Portal worker is not running. Catalog refresh and installs wait until the worker is up. This page will not rebuild CloudTAK itself.</div>';
     }
@@ -291,6 +327,10 @@
       html += '<div class="mp-banner warn">Host scan is stale or SSH failed. Showing the last good scan.</div>';
     }
     $("mpBanners").innerHTML = html;
+  }
+
+  function disabledAction(label, extraClass) {
+    return '<button type="button" class="btn mp-wait-btn' + (extraClass ? " " + extraClass : "") + '" disabled>' + label + "</button>";
   }
 
   function renderCards() {
@@ -319,7 +359,15 @@
       var pill = pillClass ? '<span class="' + pillClass + '">' + pillLabel + "</span>" : "";
       var staged = stagedForPlugin(p);
       var actions = "";
-      if (p.unknown) {
+      if (jobBusy) {
+        if (p.installed || p.unknown) {
+          if (!p.unknown) actions += disabledAction("Update");
+          actions += disabledAction("Uninstall");
+        } else {
+          actions = disabledAction("Install");
+        }
+        actions += '<p class="mp-wait-note">' + WAIT_HINT + ".</p>";
+      } else if (p.unknown) {
         if (staged && staged.kind === "uninstall") {
           actions = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
         } else {
@@ -386,12 +434,15 @@
       if (note) el.querySelector(".plugin-notes").textContent = note;
       grid.appendChild(el);
     });
-    var canUpdateAll = plugins.some(function (p) {
+    var hasUpdates = plugins.some(function (p) { return p.installed && p.updateAvailable && !p.unknown; });
+    var canUpdateAll = !jobBusy && plugins.some(function (p) {
       if (!(p.installed && p.updateAvailable) || p.unknown) return false;
       var s = stagedForPlugin(p);
       return !s || s.kind !== "update";
     });
-    $("mpUpdateAll").style.display = canUpdateAll ? "" : "none";
+    $("mpUpdateAll").style.display = hasUpdates ? "" : "none";
+    $("mpUpdateAll").disabled = jobBusy || !canUpdateAll;
+    $("mpUpdateAll").title = jobBusy ? WAIT_HINT : "";
   }
 
   function stagedForPlugin(p) {
@@ -421,13 +472,23 @@
       return;
     }
     if (card) card.style.display = "";
-    if (deploy) deploy.textContent = stagedJobs.length === 1 ? "Deploy" : "Deploy (" + stagedJobs.length + ")";
+    if (deploy) {
+      deploy.disabled = jobBusy;
+      deploy.title = jobBusy ? WAIT_HINT : "";
+      deploy.textContent = jobBusy
+        ? "Waiting for rebuild"
+        : (stagedJobs.length === 1 ? "Deploy" : "Deploy (" + stagedJobs.length + ")");
+    }
     if (!list) return;
     list.innerHTML = "";
     stagedJobs.forEach(function (j) {
       var li = document.createElement("li");
       li.className = "mp-queue-item";
-      li.innerHTML = '<span class="mp-queue-item-label"></span><button type="button" class="btn" data-unstage="' + encodeURIComponent(j.id) + '">Remove</button>';
+      if (jobBusy) {
+        li.innerHTML = '<span class="mp-queue-item-label"></span><button type="button" class="btn mp-wait-btn" disabled>Waiting for rebuild</button>';
+      } else {
+        li.innerHTML = '<span class="mp-queue-item-label"></span><button type="button" class="btn" data-unstage="' + encodeURIComponent(j.id) + '">Remove</button>';
+      }
       li.querySelector(".mp-queue-item-label").textContent = queueLabel(j);
       list.appendChild(li);
     });
@@ -536,6 +597,11 @@
       var snap = pair[0];
       var status = pair[1];
       plugins = (snap && snap.plugins) || [];
+      jobBusy = !!(status && (status.busy || changeJobsBusy(status.jobs)));
+      if (jobBusy && $("mpUninstallModal")) {
+        $("mpUninstallModal").style.display = "none";
+        uninstallTarget = null;
+      }
       renderBanners(status, snap);
       renderQueue(status && status.jobs);
       renderCards();
@@ -559,6 +625,7 @@
   });
   $("mpSearch").addEventListener("input", renderCards);
   $("mpUpdateAll").addEventListener("click", function () {
+    if (jobBusy || $("mpUpdateAll").disabled) return;
     postJob({ kind: "update-all" }).then(function (out) {
       var n = out && out.json && out.json.count;
       setMsg(n ? ("Queued " + n + " update" + (n === 1 ? "" : "s") + ". Click Deploy when ready.") : "No updates to queue.");
@@ -566,6 +633,7 @@
     });
   });
   $("mpDeployBtn").addEventListener("click", function () {
+    if (jobBusy || $("mpDeployBtn").disabled) return;
     fetch("/api/cloudtak-marketplace/jobs/deploy", { method: "POST", headers: { Accept: "application/json" } })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok && j.ok, json: j }; }); })
       .then(function (out) {
@@ -591,6 +659,10 @@
   }
 
   $("mpGrid").addEventListener("click", function (e) {
+    if (jobBusy) {
+      setMsg(WAIT_HINT + ".", true);
+      return;
+    }
     var unstageBtn = e.target && e.target.closest ? e.target.closest("[data-unstage]") : null;
     if (unstageBtn && $("mpGrid").contains(unstageBtn)) {
       unstage(decodeURIComponent(unstageBtn.getAttribute("data-unstage") || ""));
@@ -617,6 +689,10 @@
     $("mpUninstallModal").setAttribute("aria-hidden", "false");
   });
   $("mpQueueList").addEventListener("click", function (e) {
+    if (jobBusy) {
+      setMsg(WAIT_HINT + ".", true);
+      return;
+    }
     var btn = e.target && e.target.closest ? e.target.closest("[data-unstage]") : null;
     if (!btn) return;
     unstage(decodeURIComponent(btn.getAttribute("data-unstage") || ""));
@@ -626,6 +702,11 @@
     uninstallTarget = null;
   });
   $("mpUninstallConfirm").addEventListener("click", function () {
+    if (jobBusy) {
+      setMsg(WAIT_HINT + ".", true);
+      $("mpUninstallModal").style.display = "none";
+      return;
+    }
     if (!uninstallTarget) return;
     if (!confirmArmed) {
       confirmArmed = true;

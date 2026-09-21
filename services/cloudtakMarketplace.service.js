@@ -869,6 +869,14 @@ function isBusyJob(job) {
   return status === "queued" || status === "running";
 }
 
+function isChangeKind(kind) {
+  return ["install", "update", "uninstall", "update-all"].includes(String(kind || ""));
+}
+
+function hasBusyChangeJobs() {
+  return store.readJobs().jobs.some((j) => isBusyJob(j) && isChangeKind(j.kind));
+}
+
 function isKeptJob(job) {
   const status = String((job && job.status) || "");
   return isBusyJob(job) || status === "staged";
@@ -1071,6 +1079,34 @@ export BUILDKIT_PROGRESS=plain
 export COMPOSE_ANSI=never
 docker compose --progress=plain -f "$CF" build --no-cache "$SVC"
 docker compose -f "$CF" up -d --force-recreate "$SVC"
+echo "Waiting for $SVC to be running"
+n=0
+while [ "$n" -lt 90 ]; do
+  n=$((n+1))
+  fmt=$(docker compose -f "$CF" ps "$SVC" --format '{{.State}} {{.Health}}' 2>/dev/null || true)
+  if [ -z "$fmt" ]; then
+    fmt=$(docker compose -f "$CF" ps "$SVC" 2>/dev/null | tail -n +2 || true)
+  fi
+  echo "  $SVC status: $fmt"
+  low=$(printf '%s' "$fmt" | tr '[:upper:]' '[:lower:]')
+  state=$(printf '%s' "$low" | awk '{print $1}')
+  health=$(printf '%s' "$low" | awk '{print $2}')
+  if [ "$state" = "running" ] && [ "$health" != "starting" ]; then
+    echo "Container $SVC is running${health:+ ($health)}"
+    break
+  fi
+  if printf '%s' "$low" | grep -qE '(^|[[:space:]])running([[:space:]]|$)|[[:space:]]up[[:space:]]|\\(healthy\\)'; then
+    if ! printf '%s' "$low" | grep -qE 'restarting|starting|exited|dead|created|paused'; then
+      echo "Container $SVC is running"
+      break
+    fi
+  fi
+  if [ "$n" -ge 90 ]; then
+    echo "Timed out waiting for $SVC to be running" >&2
+    exit 1
+  fi
+  sleep 2
+done
 echo REBUILD_OK
 `.trim();
 }
@@ -1222,6 +1258,7 @@ async function runChangeBatch(jobs) {
     try {
       appendJobLog(succeeded[0].id, `Applying ${succeeded.length} change${succeeded.length === 1 ? "" : "s"} with one CloudTAK rebuild`);
       await performRebuild(succeeded[0], lastLoc.path, lastLoc.composeService);
+      appendJobLog(succeeded[0].id, "Containers recreated and running.");
       for (const j of succeeded) {
         updateJob(j.id, { status: "complete", finishedAt: new Date().toISOString() });
         appendJobLog(j.id, "Complete. In CloudTAK use Settings → Refresh App.");
@@ -1473,6 +1510,7 @@ module.exports = {
   listJobs,
   clearIdleJobs,
   isBusyJob,
+  hasBusyChangeJobs,
   claimAndRunJobs,
   workerTick,
   workerBackground,

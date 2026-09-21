@@ -17,6 +17,15 @@ function username(req) {
   return req.authentikUser && req.authentikUser.username ? req.authentikUser.username : "";
 }
 
+function busyChangeError(res) {
+  if (!marketplace.hasBusyChangeJobs()) return false;
+  res.status(409).json({
+    ok: false,
+    error: "Wait until the current job is complete and containers are recreated and running.",
+  });
+  return true;
+}
+
 router.get("/status", async (req, res) => {
   try {
     let worker = { ok: true };
@@ -26,7 +35,7 @@ router.get("/status", async (req, res) => {
     } catch (_) {}
     if (marketplace.isEnabled()) {
       const scan = store.readScanCache();
-      if (!scan || !scan.scannedAt) {
+      if ((!scan || !scan.scannedAt) && !marketplace.hasBusyChangeJobs()) {
         marketplace.enqueueJobOnce("scan", username(req) || "page");
       }
     }
@@ -36,6 +45,7 @@ router.get("/status", async (req, res) => {
       ssh: ssh.sshStatus(),
       catalogUrl: marketplace.defaultCatalogUrl(),
       worker,
+      busy: marketplace.hasBusyChangeJobs(),
       jobs: marketplace.listJobs().slice(0, 20),
     });
   } catch (err) {
@@ -71,6 +81,7 @@ router.post("/jobs/clear-idle", (req, res) => {
 
 router.post("/jobs/deploy", (req, res) => {
   try {
+    if (busyChangeError(res)) return;
     const result = marketplace.deployStaged();
     if (!result.count) {
       return res.status(400).json({ ok: false, error: "Queue is empty" });
@@ -89,6 +100,7 @@ router.post("/jobs/deploy", (req, res) => {
 
 router.post("/jobs/unstage", (req, res) => {
   try {
+    if (busyChangeError(res)) return;
     const jobId = req.body && req.body.jobId ? String(req.body.jobId).trim() : "";
     const result = marketplace.unstageJob(jobId);
     if (!result.ok) {
@@ -111,6 +123,7 @@ router.post("/jobs", (req, res) => {
     const extra = {};
     if (req.body && req.body.dest) extra.dest = String(req.body.dest).trim();
     const createdBy = username(req);
+    if (["install", "update", "update-all", "uninstall"].includes(kind) && busyChangeError(res)) return;
 
     if (kind === "update-all") {
       const snap = marketplace.buildUiPlugins({ skipRemoteSha: true });
