@@ -334,10 +334,6 @@
     $("mpUpdateAll").disabled = !canUpdateAll;
   }
 
-  function isActiveJob(j) {
-    return j && (j.status === "queued" || j.status === "running");
-  }
-
   function jobLines(j, logLimit) {
     var lines = [];
     lines.push((j.status || "") + "  " + (j.kind || "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : ""));
@@ -348,9 +344,9 @@
   }
 
   function renderJobs(jobs) {
-    var active = (jobs || []).filter(isActiveJob);
+    var list = (jobs || []).slice(0, 12);
     var card = $("mpJobsCard");
-    if (!active.length) {
+    if (!list.length) {
       if (card) card.style.display = "none";
       $("mpJobs").textContent = "";
       jobLogFullText = "";
@@ -359,8 +355,9 @@
     if (card) card.style.display = "";
     var preview = [];
     var full = [];
-    active.slice(0, 12).forEach(function (j) {
-      preview = preview.concat(jobLines(j, 8));
+    list.forEach(function (j) {
+      var limit = (j.status === "queued" || j.status === "running") ? 12 : 40;
+      preview = preview.concat(jobLines(j, limit));
       full = full.concat(jobLines(j, 0));
     });
     $("mpJobs").textContent = preview.join("\n");
