@@ -6,143 +6,157 @@
       "name": "Quick Point Dropper",
       "description": "Drop and edit map points from icon packs, with shared Favorites.",
       "repo": "https://github.com/AdventureSeeker423/cloudtak-plugin-quick-point-dropper.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "AdventureSeeker423",
-      "minCloudtak": "13.45",
       "web": { "source": "plugin", "dest": "quick-point-dropper" },
       "routes": { "source": "server" },
       "exclude": ["**/*.md"],
-      "detect": ["api/web/plugins/quick-point-dropper/index.ts"],
-      "detectAliases": ["cloudtak-plugin-quick-point-dropper", "QuickPointDropper", "quick_point_dropper"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "detect": ["api/web/plugins/quick-point-dropper/index.ts"]
     },
     {
       "id": "helloworld",
       "name": "HelloWorld",
       "description": "Official CloudTAK sample plugin.",
       "repo": "https://github.com/snstac/CloudTAK-Plugin-HelloWorld.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "snstac",
-      "web": { "source": ".", "dest": "helloworld" },
-      "detect": ["api/web/plugins/helloworld/index.ts"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "web": { "dest": "helloworld" },
+      "detect": ["api/web/plugins/helloworld/index.ts"]
     },
     {
       "id": "udash",
       "name": "uDash",
       "description": "Dashboard widgets for CloudTAK.",
       "repo": "https://github.com/snstac/CloudTAK-Plugin-uDash.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "snstac",
-      "web": { "source": ".", "dest": "udash" },
-      "sidecars": [{ "note": "Also run the repo server/ webhook process. Marketplace does not start that sidecar." }],
+      "web": { "dest": "udash" },
+      "sidecars": [{ "dir": "server", "port": 3080 }],
       "additionalActions": [
-        "Run the webhook sidecar in server/. Marketplace does not start that process."
+        {
+          "title": "Expose the detection webhook to browsers",
+          "text": "Marketplace starts the webhook sidecar (default port 3080). The plugin UI needs a URL the browser can reach.",
+          "instructions": [
+            "Marketplace starts the server/ webhook sidecar in Docker. You do not need to run npm start yourself.",
+            "In the plugin UI, set the backend URL to an address the browser can open (not only localhost on the CloudTAK host).",
+            "If users open CloudTAK remotely, reverse-proxy a path to the sidecar and use that HTTPS URL in the plugin.",
+            "Paste the snippet below into the Caddy site block that already reverse-proxies cloudtak-api, then reload Caddy."
+          ],
+          "snippet": "handle_path /udash-api* {\n\treverse_proxy cloudtak-plugin-udash-sidecar:3080\n}"
+        }
       ],
-      "detect": ["api/web/plugins/udash/index.ts"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "detect": ["api/web/plugins/udash/index.ts"]
     },
     {
       "id": "print",
       "name": "Print",
       "description": "Print maps from CloudTAK.",
       "repo": "https://github.com/clptak/cloudtak-plugin-print.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "clptak",
       "web": { "source": "plugin", "dest": "print" },
-      "sidecars": [{ "note": "Deploy service/ Docker and Caddy /print-api. Marketplace does not write Caddy." }],
+      "composeFile": "deploy/compose.service.yml",
       "composeService": "cloudtak-print",
       "additionalActions": [
-        "Deploy the print plugin Docker service (service/ in the repo).",
-        "Add a Caddy reverse proxy for /print-api. Marketplace does not write Caddy."
+        {
+          "title": "Route /print-api through Caddy",
+          "text": "The print Docker service is started by Marketplace. Browsers still need Caddy (or equivalent) to reach /print-api.",
+          "instructions": [
+            "Marketplace starts the print Docker service. Do not paste the compose block by hand.",
+            "Paste the snippet below at the TOP LEVEL of your Caddyfile, outside every site block.",
+            "Inside the site block that already has reverse_proxy cloudtak-api:5000, add: import cloudtak_print",
+            "Reload Caddy: docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile",
+            "Check both https://YOURHOST/print-api/health and https://YOURHOST/print-api. The second must return application/json, not HTML."
+          ],
+          "snippet": "(cloudtak_print) {\n\t@cloudtak_print path /print-api /print-api/*\n\thandle @cloudtak_print {\n\t\treverse_proxy cloudtak-print:5010\n\t}\n}"
+        },
+        {
+          "title": "Optional: transparent print margins",
+          "text": "Add GDAL_PDF_BANDS=4 to the CloudTAK events service environment so printed sheet margins stay transparent when imported back onto the map.",
+          "instructions": [
+            "In the CloudTAK events service environment, add: GDAL_PDF_BANDS=4",
+            "Recreate the events container after saving compose."
+          ],
+          "snippet": "GDAL_PDF_BANDS=4"
+        }
       ],
-      "detect": ["api/web/plugins/print/index.ts"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "detect": ["api/web/plugins/print/index.ts"]
     },
     {
       "id": "cellphone",
       "name": "Cellphone / Ping",
       "description": "Ping cellphones and show results on the map.",
       "repo": "https://github.com/clptak/cloudtak-plugin-cellphone.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "clptak",
-      "web": { "source": ".", "dest": "ping" },
-      "detectAliases": ["ping", "cellphone", "cloudtak-plugin-cellphone"],
-      "detect": ["api/web/plugins/ping/index.ts"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "web": { "dest": "ping" },
+      "detect": ["api/web/plugins/ping/index.ts"]
     },
     {
       "id": "d4h",
       "name": "D4H",
       "description": "Connect CloudTAK with D4H.",
       "repo": "https://github.com/clptak/cloudtak-plugin-d4h.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "clptak",
-      "web": { "source": ".", "dest": "d4h" },
+      "web": { "dest": "d4h" },
       "routes": { "source": "server" },
-      "detect": ["api/web/plugins/d4h/index.ts"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "detect": ["api/web/plugins/d4h/index.ts"]
     },
     {
       "id": "location-search",
       "name": "Location Search",
       "description": "Search addresses and jump to them on the map.",
       "repo": "https://github.com/clptak/cloudtak-plugin-location-search.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "clptak",
-      "web": { "source": ".", "dest": "address-search" },
+      "web": { "dest": "address-search" },
       "exclude": ["cli", "test", "bench"],
-      "detectAliases": ["address-search", "location-search"],
-      "detect": ["api/web/plugins/address-search/index.ts"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "detect": ["api/web/plugins/address-search/index.ts"]
     },
     {
       "id": "incident-manager",
       "name": "Incident Manager",
       "description": "Create and track incidents in CloudTAK.",
       "repo": "https://github.com/clptak/cloudtak-plugin-incident-manager.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "clptak",
-      "web": { "source": ".", "dest": "incident-manager" },
-      "detect": ["api/web/plugins/incident-manager/index.ts"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "web": { "dest": "incident-manager" },
+      "detect": ["api/web/plugins/incident-manager/index.ts"]
     },
     {
       "id": "dispatcher",
       "name": "Dispatcher",
       "description": "Dispatch and track calls in CloudTAK.",
       "repo": "https://github.com/takwerx/cloudtak-dispatcher-plugin.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "takwerx",
       "web": { "source": "plugin", "dest": "tak-dispatcher" },
       "routes": { "source": "server" },
-      "detectAliases": ["tak-dispatcher", "cloudtak-dispatcher-plugin", "dispatcher"],
-      "detect": ["api/web/plugins/tak-dispatcher/index.ts"],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "detect": ["api/web/plugins/tak-dispatcher/index.ts"]
     },
     {
       "id": "lightning",
       "name": "Lightning",
       "description": "Live lightning overlay from Blitzortung.",
       "repo": "https://github.com/cmlaird/CloudTAK-Plugin-Lightning.git",
-      "ref": "main",
       "added": "2026-09-20",
       "maintainer": "cmlaird",
-      "web": { "source": ".", "dest": "lightning" },
+      "web": { "dest": "lightning" },
       "detect": ["api/web/plugins/lightning/index.ts"],
       "additionalActions": [
-        "Allow wss://*.blitzortung.org in CloudTAK nginx CSP. Marketplace does not patch nginx.conf.js."
+        {
+          "title": "Allow the Blitzortung websocket in nginx CSP",
+          "text": "Production CloudTAK nginx sets Content-Security-Policy connect-src to 'self', which blocks the live lightning feed. Marketplace does not patch nginx.",
+          "instructions": [
+            "Edit CloudTAK api/nginx.conf.js and add the snippet below to the connect-src list in Content-Security-Policy.",
+            "Rebuild or restart the CloudTAK api container after saving.",
+            "Until that change is in place, Start in the plugin can no-op in production even though install succeeded."
+          ],
+          "snippet": "wss://*.blitzortung.org"
+        }
       ],
-      "notes": "After install: CloudTAK Settings → Refresh App. Marketplace nests flat sample-shaped plugin trees into lib/."
+      "notes": "Marketplace nests flat sample-shaped plugin trees into lib/."
     }
   ]
 }

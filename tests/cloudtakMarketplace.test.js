@@ -69,12 +69,30 @@ assert.ok(marketplace.isHostPluginNoise("readme.md"));
 assert.ok(!marketplace.isHostPluginNoise("quick-point-dropper"));
 
 const print = normalized.plugins.find((p) => p.id === "print");
-assert.ok(print.additionalActions.some((s) => /caddy/i.test(s)));
+assert.ok(print.additionalActions.some((a) => /caddy/i.test(JSON.stringify(a))));
+assert.ok(print.additionalActions.some((a) => a.snippet && /print-api/.test(a.snippet)));
+assert.ok(!print.additionalActions.some((a) => /Deploy the print plugin Docker/i.test(JSON.stringify(a))));
+const printScript = marketplace.installRemoteScript("/root/CloudTAK", print);
+assert.match(printScript, /Starting plugin Docker service/);
+assert.match(printScript, /cloudtak-marketplace-plugins/);
+
+const udash = normalized.plugins.find((p) => p.id === "udash");
+assert.ok(udash.additionalActions.some((a) => /webhook sidecar/i.test(JSON.stringify(a))));
+assert.ok(!udash.additionalActions.some((a) => /does not start/i.test(JSON.stringify(a))));
+const udashScript = marketplace.installRemoteScript("/root/CloudTAK", udash);
+assert.match(udashScript, /plugin node sidecar/);
+
 assert.deepStrictEqual(
   marketplace.normalizeAdditionalActions({
     sidecars: [{ note: "Add Caddy /example" }],
-  }),
+  }).map((a) => a.text),
   ["Add Caddy /example"]
+);
+assert.deepStrictEqual(
+  marketplace.normalizeAdditionalActions({
+    sidecars: [{ note: "Marketplace does not start that sidecar." }],
+  }),
+  []
 );
 
 const bundled = store.readBundledCatalog();

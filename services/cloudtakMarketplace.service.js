@@ -92,25 +92,58 @@ function parseGitHubRepo(repoUrl) {
   return null;
 }
 
+function isProxyOperatorNote(text) {
+  return /\b(caddy|nginx|csp|connect-src|reverse.?proxy|Caddyfile)\b/i.test(String(text || ""));
+}
+
+function isInstallerHandledNote(text) {
+  return /\b(docker|sidecar|compose|webhook process|does not start)\b/i.test(String(text || "")) &&
+    !isProxyOperatorNote(text);
+}
+
+function additionalActionFromRaw(item) {
+  if (typeof item === "string") {
+    const text = item.trim();
+    if (!text) return null;
+    return { kind: "note", title: "", text, instructions: [], snippet: "" };
+  }
+  if (!item || typeof item !== "object") return null;
+  const text = String(item.text || item.note || item.action || item.label || "").trim();
+  const title = String(item.title || "").trim();
+  const kind = String(item.kind || item.type || "").trim() || (item.snippet ? "config" : "note");
+  const instructions = Array.isArray(item.instructions)
+    ? item.instructions.map((s) => String(s || "").trim()).filter(Boolean)
+    : [];
+  const snippet = String(item.snippet || item.config || "").trim();
+  if (!text && !title && !instructions.length && !snippet) return null;
+  return { kind, title, text, instructions, snippet };
+}
+
+function additionalActionKey(action) {
+  return [
+    action.kind,
+    action.title,
+    action.text,
+    (action.instructions || []).join("\n"),
+    action.snippet,
+  ].join("\0");
+}
+
 function normalizeAdditionalActions(p) {
-  const seen = new Set();
   const out = [];
+  const seen = new Set();
   const push = (raw) => {
-    const t = String(raw || "").trim();
-    if (!t) return;
-    const key = t.toLowerCase();
+    const action = additionalActionFromRaw(raw);
+    if (!action) return;
+    if (isInstallerHandledNote(action.text) && !action.snippet && !action.instructions.length) return;
+    const key = additionalActionKey(action);
     if (seen.has(key)) return;
     seen.add(key);
-    out.push(t);
+    out.push(action);
   };
   const raw = p && p.additionalActions;
   if (Array.isArray(raw)) {
-    for (const item of raw) {
-      if (typeof item === "string") push(item);
-      else if (item && typeof item === "object") {
-        push(item.text || item.note || item.action || item.label);
-      }
-    }
+    raw.forEach(push);
   } else if (typeof raw === "string") {
     String(raw)
       .split(/\n|;/)
@@ -118,11 +151,26 @@ function normalizeAdditionalActions(p) {
   }
   if (!out.length && Array.isArray(p && p.sidecars)) {
     for (const s of p.sidecars) {
-      if (typeof s === "string") push(s);
-      else if (s && typeof s === "object") push(s.note || s.action || s.text);
+      if (typeof s === "string") {
+        if (isProxyOperatorNote(s)) push(s);
+      } else if (s && typeof s === "object") {
+        const note = s.note || s.action || s.text;
+        if (note && isProxyOperatorNote(note)) push(s);
+      }
     }
   }
   return out;
+}
+
+function pluginRuntimeHints(plugin) {
+  const list = Array.isArray(plugin && plugin.sidecars) ? plugin.sidecars : [];
+  const obj = list.find((s) => s && typeof s === "object") || {};
+  return {
+    composeFile: String((plugin && plugin.composeFile) || obj.file || "").trim(),
+    composeService: String((plugin && plugin.composeService) || obj.service || "").trim(),
+    sidecarDir: String(obj.dir || obj.path || "").trim(),
+    sidecarPort: String(obj.port || "").trim(),
+  };
 }
 
 function normalizeCatalog(doc) {
@@ -156,6 +204,7 @@ function normalizeCatalog(doc) {
       added: String(p.added || ""),
       installScript: String(p.installScript || "").trim(),
       composeService: String(p.composeService || "").trim(),
+      composeFile: String(p.composeFile || "").trim(),
       sidecars: Array.isArray(p.sidecars) ? p.sidecars : [],
     });
   }
@@ -718,7 +767,7 @@ function buildUiPlugins(options = {}) {
       layout: {
         web: true,
         routes: !!p.routes,
-        sidecar: Array.isArray(p.sidecars) && p.sidecars.length > 0,
+        sidecar: !!(p.composeFile || p.composeService || (Array.isArray(p.sidecars) && p.sidecars.length)),
       },
       dest: p.web.dest,
       catalog: p,
@@ -1191,6 +1240,128 @@ function flatSampleLibNormalizeBash() {
   ].join("\n");
 }
 
+function pluginRuntimeExtrasBash() {
+  return [
+    'target_ct="$1"',
+    'repo_dir="$2"',
+    'plugin_id="$3"',
+    'compose_file_hint="$4"',
+    'compose_svc_hint="$5"',
+    'sidecar_dir_hint="$6"',
+    'sidecar_port_hint="$7"',
+    '[ -n "$target_ct" ] && [ -d "$repo_dir" ] && [ -n "$plugin_id" ] || exit 0',
+    "set -e",
+    "find_stack() {",
+    '  local d',
+    '  for d in "$target_ct" "$(dirname "$target_ct")"; do',
+    '    [ -n "$d" ] && [ -d "$d" ] || continue',
+    '    if [ -f "$d/docker-compose.yml" ] || [ -f "$d/docker-compose.yaml" ] || [ -f "$d/compose.yml" ] || [ -f "$d/compose.yaml" ]; then',
+    '      echo "$d"',
+    "      return 0",
+    "    fi",
+    "  done",
+    "  return 1",
+    "}",
+    "stack_compose_file() {",
+    '  local d="$1"',
+    "  local f",
+    "  for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do",
+    '    if [ -f "$d/$f" ]; then echo "$f"; return 0; fi',
+    "  done",
+    "  return 1",
+    "}",
+    "STACK=$(find_stack || true)",
+    '[ -n "$STACK" ] || { echo "No docker compose stack next to CloudTAK; skipping plugin runtime services."; exit 0; }',
+    'CF=$(stack_compose_file "$STACK" || true)',
+    '[ -n "$CF" ] || { echo "No compose file in $STACK; skipping plugin runtime services."; exit 0; }',
+    'PERSIST="$STACK/cloudtak-marketplace-plugins/$plugin_id"',
+    'REL="cloudtak-marketplace-plugins/$plugin_id"',
+    'echo "Persisting plugin runtime files to $PERSIST"',
+    'mkdir -p "$PERSIST"',
+    'cp -a "$repo_dir/." "$PERSIST/"',
+    'rm -rf "$PERSIST/.git" "$PERSIST/.ctak-normalize-plugin.sh" "$PERSIST/.ctak-runtime-plugin.sh" || true',
+    'COMPOSE_SRC=""',
+    'if [ -n "$compose_file_hint" ] && [ -f "$repo_dir/$compose_file_hint" ]; then',
+    '  COMPOSE_SRC="$repo_dir/$compose_file_hint"',
+    "else",
+    "  for f in \\",
+    "    deploy/compose.service.yml deploy/compose.service.yaml \\",
+    "    deploy/docker-compose.yml deploy/docker-compose.yaml deploy/compose.yml \\",
+    "    docker-compose.yml docker-compose.yaml compose.yml compose.yaml \\",
+    "    service/docker-compose.yml service/docker-compose.yaml",
+    "  do",
+    '    if [ -f "$repo_dir/$f" ]; then COMPOSE_SRC="$repo_dir/$f"; break; fi',
+    "  done",
+    "fi",
+    'OVERRIDE="$STACK/docker-compose.plugin-$plugin_id.yml"',
+    'SVC="$compose_svc_hint"',
+    "start_overlay() {",
+    '  echo "Starting plugin Docker service${SVC:+ $SVC} from $OVERRIDE"',
+    '  ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" up -d --build ${SVC:+$SVC} )',
+    "}",
+    'if [ -n "$COMPOSE_SRC" ]; then',
+    '  {',
+    '    echo "# Managed by TAK Portal CloudTAK marketplace. Do not edit by hand."',
+    '    if grep -qE "^[[:space:]]*services:[[:space:]]*$" "$COMPOSE_SRC"; then',
+    '      cat "$COMPOSE_SRC"',
+    "    else",
+    '      echo "services:"',
+    '      sed "s/^/  /" "$COMPOSE_SRC"',
+    "    fi",
+    '  } > "$OVERRIDE.tmp"',
+    '  if [ -d "$PERSIST/service" ]; then',
+    '    sed -E "s#(context:[[:space:]]*)[^[:space:]]+#\\1./cloudtak-marketplace-plugins/$plugin_id/service#" "$OVERRIDE.tmp" > "$OVERRIDE"',
+    '  elif [ -f "$PERSIST/Dockerfile" ]; then',
+    '    sed -E "s#(context:[[:space:]]*)[^[:space:]]+#\\1./cloudtak-marketplace-plugins/$plugin_id#" "$OVERRIDE.tmp" > "$OVERRIDE"',
+    "  else",
+    '    mv "$OVERRIDE.tmp" "$OVERRIDE"',
+    '    OVERRIDE_READY=1',
+    "  fi",
+    '  if [ -z "${OVERRIDE_READY:-}" ]; then rm -f "$OVERRIDE.tmp"; fi',
+    '  if [ -z "$SVC" ]; then',
+    '    SVC=$(sed -n "s/^[[:space:]]*\\([A-Za-z0-9._-]*\\):[[:space:]]*$/\\1/p" "$OVERRIDE" | grep -vx services | head -n 1 || true)',
+    "  fi",
+    "  start_overlay",
+    "  exit 0",
+    "fi",
+    'NODE_DIR=""',
+    'if [ -n "$sidecar_dir_hint" ] && [ -d "$repo_dir/$sidecar_dir_hint" ]; then',
+    '  NODE_DIR="$sidecar_dir_hint"',
+    "else",
+    "  for d in server sidecar backend; do",
+    '    if [ -f "$repo_dir/$d/package.json" ] && { [ -f "$repo_dir/$d/server.js" ] || [ -f "$repo_dir/$d/index.js" ]; }; then',
+    '      if ls "$repo_dir/$d"/*.ts >/dev/null 2>&1; then continue; fi',
+    '      NODE_DIR="$d"',
+    "      break",
+    "    fi",
+    "  done",
+    "fi",
+    '[ -n "$NODE_DIR" ] || exit 0',
+    'PORT="$sidecar_port_hint"',
+    'if [ -z "$PORT" ]; then',
+    '  PORT=$(grep -Eo "listen\\([0-9]+" "$repo_dir/$NODE_DIR/server.js" "$repo_dir/$NODE_DIR/index.js" 2>/dev/null | grep -Eo "[0-9]+" | head -n 1 || true)',
+    "fi",
+    '[ -n "$PORT" ] || PORT=3080',
+    'SVC="cloudtak-plugin-${plugin_id}-sidecar"',
+    'echo "Starting plugin node sidecar $SVC (port $PORT) from $NODE_DIR/"',
+    'cat > "$OVERRIDE" <<YAML',
+    "# Managed by TAK Portal CloudTAK marketplace. Do not edit by hand.",
+    "services:",
+    '  $SVC:',
+    "    image: node:22-alpine",
+    '    container_name: $SVC',
+    "    working_dir: /app",
+    "    volumes:",
+    '      - ./cloudtak-marketplace-plugins/$plugin_id/$NODE_DIR:/app',
+    '    command: sh -c "npm install --omit=dev && npm start"',
+    "    restart: unless-stopped",
+    "    expose:",
+    '      - "$PORT"',
+    "YAML",
+    "start_overlay",
+  ].join("\n");
+}
+
 function installRemoteScript(ct, plugin) {
   const dest = plugin.web.dest;
   const source = plugin.web.source === "." ? "." : plugin.web.source;
@@ -1198,6 +1369,7 @@ function installRemoteScript(ct, plugin) {
   const excludes = (plugin.exclude || []).join("\n");
   const installScript = normalizeInstallScript(plugin.installScript || "");
   const repoName = repoBasename(plugin.repo) || plugin.id;
+  const runtime = pluginRuntimeHints(plugin);
   return `
 set -euo pipefail
 CT=${ssh.shellQuote(ct)}
@@ -1209,6 +1381,10 @@ SRC=${ssh.shellQuote(source)}
 ROUTES=${ssh.shellQuote(routes)}
 INSTALL=${ssh.shellQuote(installScript)}
 WANT=${ssh.shellQuote(repoName)}
+COMPOSE_FILE_HINT=${ssh.shellQuote(runtime.composeFile)}
+COMPOSE_SVC_HINT=${ssh.shellQuote(runtime.composeService)}
+SIDECAR_DIR_HINT=${ssh.shellQuote(runtime.sidecarDir)}
+SIDECAR_PORT_HINT=${ssh.shellQuote(runtime.sidecarPort)}
 CACHE="$HOME/.cache/cloudtak-marketplace/$ID"
 mkdir -p "$(dirname "$CACHE")"
 git_ok() {
@@ -1367,19 +1543,28 @@ NORM
 chmod a+rX "$REPO_DIR/.ctak-normalize-plugin.sh" 2>/dev/null || true
 run_as_writer "sh $(printf '%q' "$REPO_DIR/.ctak-normalize-plugin.sh") $(printf '%q' "$TARGET")"
 rm -f "$REPO_DIR/.ctak-normalize-plugin.sh" || true
+
+cat <<'RUNTIME' > "$REPO_DIR/.ctak-runtime-plugin.sh"
+${pluginRuntimeExtrasBash()}
+RUNTIME
+chmod a+rX "$REPO_DIR/.ctak-runtime-plugin.sh" 2>/dev/null || true
+bash "$REPO_DIR/.ctak-runtime-plugin.sh" "$CT" "$REPO_DIR" "$ID" "$COMPOSE_FILE_HINT" "$COMPOSE_SVC_HINT" "$SIDECAR_DIR_HINT" "$SIDECAR_PORT_HINT"
+rm -f "$REPO_DIR/.ctak-runtime-plugin.sh" || true
 printf 'INSTALL_SHA %s\\n' "$SHA"
 `.trim();
 }
 
-function uninstallRemoteScript(ct, dest, routeFiles) {
+function uninstallRemoteScript(ct, dest, routeFiles, pluginId) {
   const files = (routeFiles || []).filter((f) => /^[A-Za-z0-9._-]+\.ts$/.test(f));
   const routeRm = files
     .map((f) => `rm -f "$CT/api/stateless/routes/${f}"`)
     .join("\n");
+  const id = String(pluginId || "").trim();
   return `
 set -euo pipefail
 CT=${ssh.shellQuote(ct)}
 DEST=${ssh.shellQuote(dest)}
+ID=${ssh.shellQuote(id)}
 TARGET="$CT/api/web/plugins/$DEST"
 case "$TARGET" in
   */api/web/plugins/$DEST) ;;
@@ -1387,6 +1572,30 @@ case "$TARGET" in
 esac
 rm -rf "$TARGET"
 ${routeRm}
+if [ -n "$ID" ]; then
+  STACK=""
+  for d in "$CT" "$(dirname "$CT")"; do
+    [ -n "$d" ] && [ -d "$d" ] || continue
+    if [ -f "$d/docker-compose.yml" ] || [ -f "$d/docker-compose.yaml" ] || [ -f "$d/compose.yml" ] || [ -f "$d/compose.yaml" ]; then
+      STACK="$d"
+      break
+    fi
+  done
+  if [ -n "$STACK" ]; then
+    CF=""
+    for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
+      if [ -f "$STACK/$f" ]; then CF="$f"; break; fi
+    done
+    OVERRIDE="$STACK/docker-compose.plugin-$ID.yml"
+    if [ -n "$CF" ] && [ -f "$OVERRIDE" ]; then
+      echo "Stopping plugin runtime services from $OVERRIDE"
+      ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" stop ) || true
+      ( cd "$STACK" && docker compose -f "$CF" -f "$OVERRIDE" rm -f ) || true
+      rm -f "$OVERRIDE" || true
+    fi
+    rm -rf "$STACK/cloudtak-marketplace-plugins/$ID" || true
+  fi
+fi
 echo UNINSTALL_OK
 `.trim();
 }
@@ -1513,7 +1722,7 @@ async function performUninstall(job, dest, plugin) {
     routeGuess.push(`plugin-${plugin.id}.ts`);
   }
   appendJobLog(job.id, `$ rm -rf api/web/plugins/${dest}`);
-  await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess))}`, 60000);
+  await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess, plugin && plugin.id))}`, 60000);
   if (plugin) {
     const rec = store.readInstalled();
     delete rec.plugins[plugin.id];

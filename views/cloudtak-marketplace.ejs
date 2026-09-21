@@ -66,6 +66,19 @@
   </div>
 </div>
 
+<div class="modalOverlay" id="mpExtraConfigModal" style="display:none;" aria-hidden="true">
+  <div class="modal mp-extra-config-dialog" role="dialog" aria-modal="true" aria-labelledby="mpExtraConfigTitle">
+    <div class="modalHeader">
+      <h2 id="mpExtraConfigTitle">Additional configuration needed</h2>
+      <button type="button" class="btn" id="mpExtraConfigClose">Close</button>
+    </div>
+    <div class="modalBody">
+      <p id="mpExtraConfigLead" class="muted"></p>
+      <div id="mpExtraConfigBody" class="mp-extra-config-body"></div>
+    </div>
+  </div>
+</div>
+
 <style>
   .mp-toolbar {
     flex-wrap: wrap;
@@ -198,29 +211,77 @@
     line-height: 1.4;
     color: var(--muted);
   }
-  .plugin-cards .plugin-extra-actions {
+  .plugin-cards .plugin-card-footer {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .plugin-cards .plugin-extra-config-btn {
+    width: 100%;
+    background: color-mix(in srgb, #c80 18%, transparent);
+    border-color: #c80;
+    color: var(--text);
+    white-space: normal;
+    line-height: 1.25;
+  }
+  .plugin-cards .plugin-extra-config-btn:hover {
+    background: color-mix(in srgb, #c80 28%, transparent);
+  }
+  .mp-extra-config-dialog {
+    width: min(720px, 96vw);
+  }
+  .mp-extra-config-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .mp-extra-config-item {
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+  }
+  .mp-extra-config-title {
+    font-weight: 650;
+    margin: 0 0 6px;
+  }
+  .mp-extra-config-text {
     margin: 0;
-    font-size: 0.82rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .mp-extra-config-steps {
+    margin: 8px 0 0;
+    padding-left: 1.2em;
+  }
+  .mp-extra-config-steps li {
+    margin-bottom: 0.4rem;
     line-height: 1.4;
   }
-  .plugin-cards .plugin-extra-actions-label {
-    display: block;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 4px;
+  .mp-extra-config-snippet-wrap {
+    margin-top: 10px;
   }
-  .plugin-cards .plugin-extra-actions ul {
+  .mp-extra-config-snippet {
     margin: 0;
-    padding-left: 1.15em;
+    padding: 0.65rem 0.8rem;
+    overflow-x: auto;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 6px;
   }
-  .plugin-cards .plugin-extra-actions li {
-    color: var(--muted);
+  .mp-extra-config-copy {
+    margin-top: 8px;
   }
   .plugin-cards .plugin-actions {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-    margin-top: auto;
     padding-top: 4px;
   }
   .plugin-cards .plugin-actions .btn {
@@ -338,6 +399,124 @@
     });
   }
 
+  function extraActionsNormalized(p) {
+    return (Array.isArray(p.additionalActions) ? p.additionalActions : []).map(function (item) {
+      if (typeof item === "string") {
+        return { kind: "note", title: "", text: item, instructions: [], snippet: "" };
+      }
+      if (!item || typeof item !== "object") return null;
+      return {
+        kind: String(item.kind || "note"),
+        title: String(item.title || ""),
+        text: String(item.text || item.note || ""),
+        instructions: Array.isArray(item.instructions) ? item.instructions.map(String).filter(Boolean) : [],
+        snippet: String(item.snippet || "")
+      };
+    }).filter(function (a) { return a && (a.title || a.text || a.snippet || a.instructions.length); });
+  }
+
+  function extraActionSearchText(p) {
+    return extraActionsNormalized(p).map(function (a) {
+      return [a.title, a.text, a.instructions.join(" "), a.snippet].join(" ");
+    }).join(" ");
+  }
+
+  function closeExtraConfigModal() {
+    var overlay = $("mpExtraConfigModal");
+    if (!overlay) return;
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  function copySnippetText(text, btn) {
+    var done = function (ok) {
+      if (!btn) return;
+      btn.textContent = ok ? "Copied" : "Copy failed";
+      setTimeout(function () { btn.textContent = "Copy snippet"; }, 1500);
+    };
+    var copy = (navigator.clipboard && navigator.clipboard.writeText)
+      ? navigator.clipboard.writeText(text)
+      : Promise.reject();
+    copy.then(function () { done(true); }).catch(function () {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        done(true);
+      } catch (e) {
+        done(false);
+      } finally {
+        document.body.removeChild(ta);
+      }
+    });
+  }
+
+  function extraActionItemEl(item) {
+    var section = document.createElement("section");
+    section.className = "mp-extra-config-item";
+    if (item.title) {
+      var titleEl = document.createElement("h3");
+      titleEl.className = "mp-extra-config-title";
+      titleEl.textContent = item.title;
+      section.appendChild(titleEl);
+    }
+    if (item.text) {
+      var textEl = document.createElement("p");
+      textEl.className = "mp-extra-config-text";
+      textEl.textContent = item.text;
+      section.appendChild(textEl);
+    }
+    if (item.instructions.length) {
+      var ol = document.createElement("ol");
+      ol.className = "mp-extra-config-steps";
+      item.instructions.forEach(function (step) {
+        var stepLi = document.createElement("li");
+        stepLi.textContent = step;
+        ol.appendChild(stepLi);
+      });
+      section.appendChild(ol);
+    }
+    if (item.snippet) {
+      var wrap = document.createElement("div");
+      wrap.className = "mp-extra-config-snippet-wrap";
+      var pre = document.createElement("pre");
+      pre.className = "mp-extra-config-snippet";
+      pre.textContent = item.snippet;
+      wrap.appendChild(pre);
+      var copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "btn mp-extra-config-copy";
+      copyBtn.textContent = "Copy snippet";
+      copyBtn.addEventListener("click", function () {
+        copySnippetText(item.snippet, copyBtn);
+      });
+      wrap.appendChild(copyBtn);
+      section.appendChild(wrap);
+    }
+    return section;
+  }
+
+  function openExtraConfigModal(p) {
+    var overlay = $("mpExtraConfigModal");
+    var title = $("mpExtraConfigTitle");
+    var lead = $("mpExtraConfigLead");
+    var body = $("mpExtraConfigBody");
+    if (!overlay || !body) return;
+    var extras = extraActionsNormalized(p);
+    if (!extras.length) return;
+    title.textContent = "Additional configuration needed";
+    if (p && p.name) title.textContent += " — " + p.name;
+    lead.textContent = "Marketplace starts Docker services and sidecars. Nginx and Caddy are not changed automatically — use the steps below.";
+    body.innerHTML = "";
+    extras.forEach(function (item) { body.appendChild(extraActionItemEl(item)); });
+    overlay.style.display = "flex";
+    overlay.setAttribute("aria-hidden", "false");
+  }
+
   function originLabel(p) {
     if (!p.installed) return "";
     if (p.unknown) return "Not in catalog";
@@ -382,7 +561,7 @@
     var q = ($("mpSearch").value || "").trim().toLowerCase();
     var list = plugins.filter(matchesFilter).filter(function (p) {
       if (!q) return true;
-      return [p.name, p.description, p.maintainer, p.id, p.repo, (p.additionalActions || []).join(" ")].join(" ").toLowerCase().indexOf(q) !== -1;
+      return [p.name, p.description, p.maintainer, p.id, p.repo, extraActionSearchText(p)].join(" ").toLowerCase().indexOf(q) !== -1;
     });
     var grid = $("mpGrid");
     grid.innerHTML = "";
@@ -436,6 +615,10 @@
       } else {
         actions = '<button type="button" class="btn" data-install="' + encodeURIComponent(p.id) + '">Install</button>';
       }
+      var extraActions = extraActionsNormalized(p);
+      var extraConfigBtn = extraActions.length
+        ? '<button type="button" class="btn plugin-extra-config-btn" data-extra-config="' + encodeURIComponent(p.id) + '">Additional Configuration Needed</button>'
+        : "";
       var repoHref = "";
       if (p.repo && /^https?:\/\//i.test(p.repo)) {
         repoHref = p.repo.replace(/\.git$/i, "");
@@ -444,9 +627,6 @@
         .replace(/\s*After install:\s*CloudTAK Settings\s*→\s*Refresh App\.?/gi, "")
         .replace(/^After install:\s*CloudTAK Settings\s*→\s*Refresh App\.?/i, "")
         .trim();
-      var extraActions = Array.isArray(p.additionalActions)
-        ? p.additionalActions.map(function (s) { return String(s || "").trim(); }).filter(Boolean)
-        : [];
       var origin = originLabel(p);
       var el = document.createElement("div");
       el.className = "plugin-card";
@@ -454,9 +634,9 @@
         '<div class="plugin-card-header"><div class="plugin-title-block"><span class="plugin-name"></span></div>' + pill + "</div>" +
         '<div class="plugin-desc"></div>' +
         (origin ? '<div class="plugin-meta"></div>' : "") +
-        (extraActions.length ? '<div class="plugin-extra-actions"><span class="plugin-extra-actions-label">Additional actions needed</span><ul></ul></div>' : "") +
         (note ? '<p class="plugin-notes"></p>' : "") +
-        '<div class="plugin-actions">' + actions + "</div>";
+        '<div class="plugin-card-footer">' + extraConfigBtn +
+        '<div class="plugin-actions">' + actions + "</div></div>";
       var titleBlock = el.querySelector(".plugin-title-block");
       titleBlock.querySelector(".plugin-name").textContent = p.name;
       if (repoHref) {
@@ -480,14 +660,6 @@
         var originEl = document.createElement("span");
         originEl.textContent = origin;
         meta.appendChild(originEl);
-      }
-      if (extraActions.length) {
-        var ul = el.querySelector(".plugin-extra-actions ul");
-        extraActions.forEach(function (item) {
-          var li = document.createElement("li");
-          li.textContent = item;
-          ul.appendChild(li);
-        });
       }
       if (note) el.querySelector(".plugin-notes").textContent = note;
       grid.appendChild(el);
@@ -760,6 +932,13 @@
   }
 
   $("mpGrid").addEventListener("click", function (e) {
+    var extraBtn = e.target && e.target.closest ? e.target.closest("[data-extra-config]") : null;
+    if (extraBtn && $("mpGrid").contains(extraBtn)) {
+      var extraId = decodeURIComponent(extraBtn.getAttribute("data-extra-config") || "");
+      var extraPlugin = plugins.filter(function (x) { return x.id === extraId; })[0];
+      if (extraPlugin) openExtraConfigModal(extraPlugin);
+      return;
+    }
     if (jobBusy) {
       setMsg(WAIT_HINT + ".", true);
       return;
@@ -801,6 +980,17 @@
   $("mpUninstallCancel").addEventListener("click", function () {
     $("mpUninstallModal").style.display = "none";
     uninstallTarget = null;
+  });
+  function extraConfigOverlayOpen() {
+    var overlay = $("mpExtraConfigModal");
+    return !!(overlay && overlay.style.display !== "none");
+  }
+  $("mpExtraConfigClose").addEventListener("click", closeExtraConfigModal);
+  $("mpExtraConfigModal").addEventListener("click", function (e) {
+    if (e.target === $("mpExtraConfigModal")) closeExtraConfigModal();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && extraConfigOverlayOpen()) closeExtraConfigModal();
   });
   $("mpUninstallConfirm").addEventListener("click", function () {
     if (jobBusy) {
