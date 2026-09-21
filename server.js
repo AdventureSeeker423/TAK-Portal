@@ -2195,6 +2195,13 @@ app.post(
       merged.ALLOWED_CLIENT_DATA_PACKAGE = "false";
     }
 
+    // Autosave can POST empty detect fields while Detect is still running.
+    for (const key of ["CLOUDTAK_MARKETPLACE_PATH", "CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE"]) {
+      if (!String(merged[key] || "").trim() && String(currentSettings[key] || "").trim()) {
+        merged[key] = currentSettings[key];
+      }
+    }
+
     // Save the FULL merged settings object
     try {
       settingsSvc.saveSettings(merged);
@@ -2279,6 +2286,20 @@ app.post(
     }
 
     applyLiveMapRuntime();
+
+    try {
+      const marketplace = require("./services/cloudtakMarketplace.service");
+      if (
+        marketplace.isEnabledValue(merged.CLOUDTAK_MARKETPLACE_ENABLED) &&
+        !marketplace.isEnabledValue(currentSettings.CLOUDTAK_MARKETPLACE_ENABLED)
+      ) {
+        void marketplace.onEnabled({ createdBy: req.authentikUser && req.authentikUser.username }).catch((err) => {
+          console.warn("[cloudtak-marketplace] enable:", err?.message || err);
+        });
+      }
+    } catch (err) {
+      console.warn("[cloudtak-marketplace] enable hook:", err?.message || err);
+    }
 
     if (wantsJson) {
       return res.json({ ok: true });

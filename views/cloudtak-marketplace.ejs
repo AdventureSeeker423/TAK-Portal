@@ -3,25 +3,24 @@
 
 <main class="main">
   <h1>CloudTAK Plugin Marketplace</h1>
-  <p class="muted" style="margin-top:0;">Install and update community CloudTAK plugins on the CloudTAK host over SSH. Official plugins compile in; this copies files into the checkout and rebuilds the API image once per batch.</p>
 
   <div id="mpBanners"></div>
 
   <div class="card" style="margin-top:16px;">
-    <div class="row" style="flex-wrap:wrap;gap:12px;align-items:flex-end;">
-      <label style="flex:1;min-width:200px;">Search
-        <input type="search" id="mpSearch" placeholder="Search plugins…" style="width:100%;" />
+    <div class="row mp-toolbar">
+      <label class="mp-search-label">Search
+        <input type="search" id="mpSearch" placeholder="Search plugins…" />
       </label>
-      <div class="row" style="gap:8px;flex-wrap:wrap;">
-        <button type="button" class="btn" id="mpFilterAvailable" data-mp-filter="available">Available</button>
-        <button type="button" class="btn" id="mpFilterNew" data-mp-filter="new">New</button>
-        <button type="button" class="btn" id="mpFilterInstalled" data-mp-filter="installed">Installed</button>
+      <div class="row mp-toolbar-actions">
+        <button type="button" class="btn mp-filter-btn is-filter-on" id="mpFilterAvailable" data-mp-filter="available">Available</button>
+        <button type="button" class="btn mp-filter-btn" id="mpFilterNew" data-mp-filter="new">New</button>
+        <button type="button" class="btn mp-filter-btn" id="mpFilterInstalled" data-mp-filter="installed">Installed</button>
         <button type="button" class="btn" id="mpUpdateAll">Update all</button>
         <button type="button" class="btn" id="mpRefreshCatalog">Refresh catalog</button>
       </div>
     </div>
     <div id="mpMsg" class="msg" style="margin-top:8px;"></div>
-    <div id="mpGrid" class="plugin-cards marketplace-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px;"></div>
+    <div id="mpGrid" class="plugin-cards marketplace-grid"></div>
     <div id="mpEmpty" class="muted" style="display:none;margin-top:16px;">No plugins match this filter.</div>
   </div>
 
@@ -49,37 +48,166 @@
 </div>
 
 <style>
+  .mp-toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .mp-search-label {
+    flex: 1;
+    min-width: 200px;
+  }
+  .mp-search-label input {
+    width: 100%;
+  }
+  .mp-toolbar-actions {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .mp-filter-btn:not(.is-filter-on) {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--line);
+    box-shadow: none;
+  }
+  .mp-filter-btn:not(.is-filter-on):hover {
+    background: var(--hover);
+  }
+  .marketplace-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+  }
   .plugin-cards .plugin-card {
-    background: var(--card);
+    background: var(--raised);
     border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 14px;
+    border-radius: 12px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    height: 100%;
+    gap: 10px;
+    min-height: 220px;
+    box-shadow: var(--elevate);
+    transition: border-color 0.15s ease, transform 0.15s ease;
   }
-  .plugin-cards .plugin-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
-  .plugin-cards .plugin-name { font-weight:600; flex:1; min-width:0; }
+  .plugin-cards .plugin-card:hover {
+    border-color: var(--glass-border);
+    transform: translateY(-1px);
+  }
+  .plugin-cards .plugin-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .plugin-cards .plugin-name {
+    font-weight: 650;
+    font-size: 1rem;
+    line-height: 1.3;
+    min-width: 0;
+  }
   .plugin-cards .plugin-version-pill {
-    flex-shrink:0; font-size:0.75rem; padding:2px 8px; border-radius:999px;
-    background: var(--line); color: var(--muted);
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--hover-strong);
+    color: var(--muted);
   }
-  .plugin-cards .plugin-version-pill.is-new { background:#245; color:#cfe; }
-  .plugin-cards .plugin-desc { font-size:0.85rem; color:var(--muted); }
-  .plugin-cards .plugin-meta { font-size:0.85rem; color:var(--muted); }
-  .plugin-cards .plugin-chips { display:flex; flex-wrap:wrap; gap:6px; }
-  .plugin-cards .chip { font-size:0.72rem; border:1px solid var(--line); border-radius:999px; padding:1px 8px; color:var(--muted); }
-  .plugin-cards .plugin-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:auto; }
+  .plugin-cards .plugin-version-pill.is-new {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--text);
+  }
+  .plugin-cards .plugin-version-pill.is-installed {
+    background: color-mix(in srgb, var(--success) 22%, transparent);
+    color: var(--ok-text);
+  }
+  .plugin-cards .plugin-desc {
+    font-size: 0.88rem;
+    line-height: 1.4;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.5em;
+  }
+  .plugin-cards .plugin-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .plugin-cards .plugin-meta a {
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .plugin-cards .plugin-meta a:hover {
+    border-bottom-color: var(--text);
+  }
+  .plugin-cards .plugin-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .plugin-cards .chip {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 3px 8px;
+    background: var(--hover);
+    color: var(--muted);
+  }
+  .plugin-cards .plugin-notes {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .plugin-cards .plugin-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: auto;
+    padding-top: 4px;
+  }
+  .plugin-cards .plugin-actions .btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+  }
   .mp-job-log {
-    max-height: 280px; overflow:auto; background: var(--bg); border:1px solid var(--line);
-    border-radius:8px; padding:12px; white-space:pre-wrap; font-size:0.8rem;
+    max-height: 280px;
+    overflow: auto;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    white-space: pre-wrap;
+    font-size: 0.8rem;
   }
-  .mp-banner { padding:10px 12px; border-radius:8px; margin-top:12px; border:1px solid var(--line); }
-  .mp-banner.warn { border-color:#c80; }
-  .btn.is-filter-on { filter: brightness(1.15); }
+  .mp-banner {
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-top: 12px;
+    border: 1px solid var(--line);
+  }
+  .mp-banner.warn { border-color: #c80; }
   @media (max-width: 990px) {
-    .plugin-cards { grid-template-columns: minmax(0,1fr) !important; }
+    .marketplace-grid { grid-template-columns: minmax(0, 1fr); }
   }
 </style>
 
@@ -117,7 +245,13 @@
     if (status && status.worker && status.worker.ok === false) {
       html += '<div class="mp-banner warn">Portal worker is not running. Catalog refresh and installs wait until the worker is up. This page will not rebuild CloudTAK itself.</div>';
     }
-    if (snapshot && snapshot.scanStale) {
+    if (status && status.ssh && !status.ssh.configured) {
+      html += '<div class="mp-banner warn">CloudTAK SSH is not configured. Open Server Settings → Additional Modules → CloudTAK Plugin Marketplace.</div>';
+    } else if (snapshot && snapshot.scanError) {
+      html += '<div class="mp-banner warn">' + String(snapshot.scanError).replace(/[<>&]/g, function (c) { return ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]; }) + "</div>";
+    } else if (snapshot && !snapshot.scannedAt) {
+      html += '<div class="mp-banner warn">Host has not been scanned yet. Turning the module on detects the CloudTAK path and queues a scan.</div>';
+    } else if (snapshot && snapshot.scanStale) {
       html += '<div class="mp-banner warn">Host scan is stale or SSH failed. Showing the last good scan.</div>';
     }
     $("mpBanners").innerHTML = html;
@@ -132,12 +266,25 @@
     var grid = $("mpGrid");
     grid.innerHTML = "";
     $("mpEmpty").style.display = list.length ? "none" : "block";
+    if (!list.length) {
+      if (!plugins.length) {
+        $("mpEmpty").textContent = "Catalog has not loaded yet.";
+      } else if (filter === "available" && plugins.some(function (p) { return p.installed; })) {
+        $("mpEmpty").textContent = "No uninstalled catalog plugins. Installed plugins are under Installed.";
+      } else if (filter === "installed") {
+        $("mpEmpty").textContent = "No plugins found on the CloudTAK host yet.";
+      } else {
+        $("mpEmpty").textContent = "No plugins match this filter.";
+      }
+    }
     list.forEach(function (p) {
       var chips = [];
       if (p.layout && p.layout.web) chips.push("web");
       if (p.layout && p.layout.routes) chips.push("routes");
       if (p.layout && p.layout.sidecar) chips.push("sidecar");
-      var pill = p.isNew ? '<span class="plugin-version-pill is-new">New</span>' : (p.installed ? '<span class="plugin-version-pill">Installed</span>' : "");
+      var pillClass = p.isNew ? "plugin-version-pill is-new" : (p.installed ? "plugin-version-pill is-installed" : "");
+      var pillLabel = p.isNew ? "New" : (p.installed ? "Installed" : "");
+      var pill = pillClass ? '<span class="' + pillClass + '">' + pillLabel + "</span>" : "";
       var actions = "";
       if (p.unknown) {
         actions = '<button type="button" class="btn" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
@@ -151,20 +298,44 @@
       if (p.repo && /^https?:\/\//i.test(p.repo)) {
         repoHref = p.repo.replace(/\.git$/i, "");
       }
-      var repo = repoHref ? '<a href="' + repoHref.replace(/"/g, "") + '" target="_blank" rel="noopener noreferrer">repo</a>' : "";
+      var note = String(p.notes || "")
+        .replace(/\s*After install:\s*CloudTAK Settings\s*→\s*Refresh App\.?/gi, "")
+        .replace(/^After install:\s*CloudTAK Settings\s*→\s*Refresh App\.?/i, "")
+        .trim();
+      var origin = originLabel(p);
       var el = document.createElement("div");
       el.className = "plugin-card";
       el.innerHTML =
         '<div class="plugin-card-header"><span class="plugin-name"></span>' + pill + "</div>" +
         '<div class="plugin-desc"></div>' +
-        '<div class="plugin-meta"></div>' +
-        '<div class="plugin-chips">' + chips.map(function (c) { return '<span class="chip">' + c + "</span>"; }).join("") + "</div>" +
-        (p.notes ? '<div class="plugin-meta"></div>' : "") +
+        ((p.maintainer || repoHref || origin) ? '<div class="plugin-meta"></div>' : "") +
+        (chips.length ? '<div class="plugin-chips">' + chips.map(function (c) { return '<span class="chip">' + c + "</span>"; }).join("") + "</div>" : "") +
+        (note ? '<p class="plugin-notes"></p>' : "") +
         '<div class="plugin-actions">' + actions + "</div>";
       el.querySelector(".plugin-name").textContent = p.name;
       el.querySelector(".plugin-desc").textContent = p.description || "";
-      el.querySelectorAll(".plugin-meta")[0].innerHTML = (p.maintainer ? p.maintainer + " · " : "") + repo + (originLabel(p) ? " · " + originLabel(p) : "");
-      if (p.notes) el.querySelectorAll(".plugin-meta")[1].textContent = p.notes;
+      var meta = el.querySelector(".plugin-meta");
+      if (meta) {
+        if (p.maintainer) {
+          var who = document.createElement("span");
+          who.textContent = p.maintainer;
+          meta.appendChild(who);
+        }
+        if (repoHref) {
+          var link = document.createElement("a");
+          link.href = repoHref;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = "Repository";
+          meta.appendChild(link);
+        }
+        if (origin) {
+          var originEl = document.createElement("span");
+          originEl.textContent = origin;
+          meta.appendChild(originEl);
+        }
+      }
+      if (note) el.querySelector(".plugin-notes").textContent = note;
       grid.appendChild(el);
     });
     var canUpdateAll = plugins.some(function (p) { return p.installed && p.updateAvailable; });

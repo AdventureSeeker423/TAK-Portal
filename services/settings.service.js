@@ -14,6 +14,15 @@ function ensureDirExists(filePath) {
 }
 
 let _settings = null;
+let _settingsMtimeMs = -1;
+
+function settingsFileMtimeMs() {
+  try {
+    return fs.statSync(SETTINGS_PATH).mtimeMs;
+  } catch (_) {
+    return -1;
+  }
+}
 
 function readJsonSafe(filePath) {
   try {
@@ -102,13 +111,22 @@ function loadSettingsFromDisk() {
   return merged;
 }
 
+function rememberLoadedSettings(next) {
+  _settings = next;
+  _settingsMtimeMs = settingsFileMtimeMs();
+  return _settings;
+}
+
 function ensureSettingsInitialized() {
-  _settings = loadSettingsFromDisk();
+  rememberLoadedSettings(loadSettingsFromDisk());
 }
 
 function getSettings() {
-  if (_settings === null) {
-    _settings = loadSettingsFromDisk();
+  const mtime = settingsFileMtimeMs();
+  // Web and worker are separate processes that share data/settings.json.
+  // Reload when the file changes so enabling a module in the UI is visible to the worker.
+  if (_settings === null || mtime !== _settingsMtimeMs) {
+    rememberLoadedSettings(loadSettingsFromDisk());
   }
   return _settings;
 }
@@ -129,6 +147,7 @@ function saveSettings(newSettings) {
       fs.unlinkSync(tmpPath);
     } catch (_) {}
   }
+  _settingsMtimeMs = settingsFileMtimeMs();
 }
 
 function updateSettings(patch) {

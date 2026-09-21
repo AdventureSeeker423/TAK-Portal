@@ -5522,11 +5522,38 @@
       var notifyExtra = document.getElementById("cloudtakMarketplaceNotifyFields");
       if (notifyExtra) notifyExtra.style.display = notify && notify.value === "true" ? "block" : "none";
     }
+    function autoDetectCloudtakCheckout() {
+      if (!sshMpStatus) return;
+      sshMpStatus.textContent = "Detecting CloudTAK checkout…";
+      mpJson("/api/cloudtak-marketplace/ssh/detect", { method: "POST" })
+        .then(function (j) {
+          if (!j || !j.ok) {
+            sshMpStatus.textContent = (j && (j.message || j.error)) || "Could not find a CloudTAK checkout. Configure SSH, then use Detect.";
+            return;
+          }
+          var pathInput = document.querySelector('input[name="settings[CLOUDTAK_MARKETPLACE_PATH]"]');
+          var svcInput = document.querySelector('input[name="settings[CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE]"]');
+          if (pathInput && j.path) pathInput.value = j.path;
+          if (svcInput && j.composeService) svcInput.value = j.composeService;
+          sshMpStatus.textContent = "Found " + (j.path || "") + (j.composeService ? " (service " + j.composeService + ")" : "");
+          if (typeof window.scheduleSettingsAutoSave === "function") window.scheduleSettingsAutoSave();
+        })
+        .catch(function (err) { sshMpStatus.textContent = err.message || "Detect failed."; });
+    }
     syncCloudtakMarketplaceModal();
     document.addEventListener("click", function (e) {
-      if (e.target && e.target.closest && e.target.closest("#settingsModal-cloudtak-marketplace [data-settings-bool-toggle]")) {
-        window.setTimeout(syncCloudtakMarketplaceModal, 0);
-      }
+      var toggle = e.target && e.target.closest
+        ? e.target.closest("#settingsModal-cloudtak-marketplace [data-settings-bool-toggle]")
+        : null;
+      if (!toggle) return;
+      window.setTimeout(function () {
+        syncCloudtakMarketplaceModal();
+        var field = toggle.closest(".settings-field");
+        var input = field && field.querySelector("[data-settings-bool-input]");
+        if (input && input.name === "settings[CLOUDTAK_MARKETPLACE_ENABLED]" && input.value === "true") {
+          autoDetectCloudtakCheckout();
+        }
+      }, 0);
     });
     function mpJson(url, opts) {
       return fetch(url, Object.assign({ headers: { Accept: "application/json" } }, opts || {})).then(function (r) {
@@ -5537,23 +5564,7 @@
     var testBtn = document.getElementById("cloudtakMarketplaceTestBtn");
     var sshMpStatus = document.getElementById("cloudtakMarketplaceSshStatus");
     if (detectBtn && sshMpStatus) {
-      detectBtn.addEventListener("click", function () {
-        sshMpStatus.textContent = "Detecting…";
-        mpJson("/api/cloudtak-marketplace/ssh/detect", { method: "POST" })
-          .then(function (j) {
-            if (!j || !j.ok) {
-              sshMpStatus.textContent = (j && (j.message || j.error)) || "Detect failed.";
-              return;
-            }
-            var pathInput = document.querySelector('input[name="settings[CLOUDTAK_MARKETPLACE_PATH]"]');
-            var svcInput = document.querySelector('input[name="settings[CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE]"]');
-            if (pathInput && j.path) pathInput.value = j.path;
-            if (svcInput && j.composeService) svcInput.value = j.composeService;
-            sshMpStatus.textContent = "Found " + (j.path || "") + (j.composeService ? " (service " + j.composeService + ")" : "");
-            if (typeof window.scheduleSettingsAutoSave === "function") window.scheduleSettingsAutoSave();
-          })
-          .catch(function (err) { sshMpStatus.textContent = err.message || "Detect failed."; });
-      });
+      detectBtn.addEventListener("click", autoDetectCloudtakCheckout);
     }
     if (testBtn && sshMpStatus) {
       testBtn.addEventListener("click", function () {

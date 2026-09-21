@@ -24,6 +24,12 @@ router.get("/status", async (req, res) => {
       const health = await stackHealth.getStackHealth();
       worker = health.worker || worker;
     } catch (_) {}
+    if (marketplace.isEnabled()) {
+      const scan = store.readScanCache();
+      if (!scan || !scan.scannedAt) {
+        marketplace.enqueueJobOnce("scan", username(req) || "page");
+      }
+    }
     res.json({
       ok: true,
       enabled: marketplace.isEnabled(),
@@ -111,17 +117,9 @@ router.post("/ssh/test", async (req, res) => {
 
 router.post("/ssh/detect", async (req, res) => {
   try {
-    const result = await ssh.detectCheckout();
+    const result = await marketplace.detectAndPersist({ overwritePath: true });
     if (result.ok && result.path) {
-      const current = settingsSvc.getSettings() || {};
-      const next = { ...current };
-      if (!String(current.CLOUDTAK_MARKETPLACE_PATH || "").trim()) {
-        next.CLOUDTAK_MARKETPLACE_PATH = result.path;
-      }
-      if (!String(current.CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE || "").trim() && result.composeService) {
-        next.CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE = result.composeService;
-      }
-      settingsSvc.saveSettings(next);
+      marketplace.enqueueJobOnce("scan", username(req));
     }
     res.json(result);
   } catch (err) {

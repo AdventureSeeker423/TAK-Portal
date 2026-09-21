@@ -202,26 +202,75 @@ async function runCommand(command, timeoutMs = 30000) {
 function detectScript() {
   return `
 set -eu
+is_ct() {
+  [ -n "\$1" ] && [ -d "\$1/api" ]
+}
+consider() {
+  local d="\$1"
+  [ -n "\$d" ] || return 1
+  d=\${d%/}
+  if is_ct "\$d"; then
+    found="\$d"
+    return 0
+  fi
+  return 1
+}
 found=""
-if [ -n "\${CLOUDTAK:-}" ] && [ -d "\$CLOUDTAK/api" ]; then
-  found="\$CLOUDTAK"
-fi
-if [ -z "\$found" ] && [ -d "\$HOME/CloudTAK/api" ]; then
-  found="\$HOME/CloudTAK"
-fi
-if [ -z "\$found" ] && [ -d /home/takwerx/CloudTAK/api ]; then
-  found="/home/takwerx/CloudTAK"
+if [ -n "\${CLOUDTAK:-}" ]; then consider "\$CLOUDTAK" || true; fi
+for d in \\
+  "\$HOME/CloudTAK" "\$HOME/cloudtak" "\$HOME/src/CloudTAK" "\$HOME/git/CloudTAK" "\$HOME/apps/CloudTAK" \\
+  /home/takwerx/CloudTAK /home/tak/CloudTAK /opt/CloudTAK /opt/cloudtak \\
+  /root/CloudTAK /root/cloudtak /usr/local/CloudTAK /var/lib/CloudTAK
+do
+  [ -z "\$found" ] || break
+  consider "\$d" || true
+done
+if [ -z "\$found" ]; then
+  for d in /home/*/CloudTAK /home/*/cloudtak /opt/*/CloudTAK; do
+    [ -z "\$found" ] || break
+    consider "\$d" || true
+  done
 fi
 if [ -z "\$found" ]; then
-  for d in /home/*/CloudTAK; do
-    if [ -d "\$d/api" ]; then
-      if [ -f "\$d/docker-compose.yml" ] || [ -f "\$d/compose.yml" ] || [ -f "\$d/docker-compose.yaml" ]; then
-        found="\$d"
-        break
-      fi
-      if [ -z "\$found" ]; then found="\$d"; fi
-    fi
-  done
+  while IFS= read -r d; do
+    [ -n "\$d" ] || continue
+    case "\$d" in
+      */api/web/plugins)
+        consider "\$(dirname "\$(dirname "\$(dirname "\$d")")")" && break
+        ;;
+      *)
+        consider "\$d" && break
+        ;;
+    esac
+  done <<EOF
+\$(find /home /opt /root /usr/local /var/lib -maxdepth 5 -type d \\( -iname CloudTAK -o -path '*/api/web/plugins' \\) 2>/dev/null | head -n 40 || true)
+EOF
+fi
+if [ -z "\$found" ] && command -v docker >/dev/null 2>&1; then
+  while IFS= read -r c; do
+    [ -n "\$c" ] || continue
+    echo "\$c" | grep -qiE 'cloudtak|takwerx' || continue
+    while IFS=\$'\\t' read -r src dest; do
+      [ -n "\${src:-}" ] || continue
+      case "\$src" in
+        *[Cc]loud[Tt][Aa][Kk]*) consider "\$src" && break 2 ;;
+      esac
+      case "\$dest" in
+        */api/web/plugins|*/web/plugins)
+          consider "\$src" && break 2
+          consider "\$(dirname "\$src")" && break 2
+          consider "\$(dirname "\$(dirname "\$src")")" && break 2
+          ;;
+        */api)
+          consider "\$(dirname "\$src")" && break 2
+          ;;
+      esac
+    done <<MOUNTS
+\$(docker inspect -f '{{range .Mounts}}{{.Source}}	{{.Destination}}{{println}}{{end}}' "\$c" 2>/dev/null || true)
+MOUNTS
+  done <<CONTAINERS
+\$(docker ps --format '{{.Names}}' 2>/dev/null || true)
+CONTAINERS
 fi
 if [ -z "\$found" ]; then
   echo "DETECT_FAIL no CloudTAK checkout with api/"
@@ -250,7 +299,7 @@ printf 'DETECT_OK path=%s compose=%s service=%s\\n' "\$found" "\$compose" "\${sv
 }
 
 async function detectCheckout() {
-  const result = await runCommand(`bash -lc ${shellQuote(detectScript())}`, 20000);
+  const result = await runCommand(`bash -lc ${shellQuote(detectScript())}`, 40000);
   if (!result.ok) return result;
   const line = String(result.stdout || "")
     .split("\n")

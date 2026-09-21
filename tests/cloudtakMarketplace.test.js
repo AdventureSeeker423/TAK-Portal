@@ -38,6 +38,15 @@ const qpd = normalized.plugins.find((p) => p.id === "quick-point-dropper");
 const matchDest = marketplace.matchCatalogPlugin({ dest: "quick-point-dropper" }, normalized.plugins);
 assert.strictEqual(matchDest && matchDest.id, "quick-point-dropper");
 
+const matchRepoFolder = marketplace.matchCatalogPlugin(
+  { dest: "cloudtak-plugin-quick-point-dropper" },
+  normalized.plugins
+);
+assert.strictEqual(matchRepoFolder && matchRepoFolder.id, "quick-point-dropper");
+
+const matchSpaced = marketplace.matchCatalogPlugin({ dest: "Quick Point Dropper" }, normalized.plugins);
+assert.strictEqual(matchSpaced && matchSpaced.id, "quick-point-dropper");
+
 const matchAlias = marketplace.matchCatalogPlugin({ dest: "ping" }, normalized.plugins);
 assert.strictEqual(matchAlias && matchAlias.id, "cellphone");
 

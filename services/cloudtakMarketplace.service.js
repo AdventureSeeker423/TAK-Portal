@@ -6,6 +6,7 @@ const { getString, getInt, getBool } = require("./env");
 const emailSvc = require("./email.service");
 const store = require("./cloudtakMarketplace.store");
 const ssh = require("./cloudtakMarketplace.ssh");
+const settingsSvc = require("./settings.service");
 
 const NEW_DAYS = 14;
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
@@ -40,6 +41,14 @@ function repoBasename(repo) {
     .split("/")
     .filter(Boolean)
     .pop() || "";
+}
+
+function pluginMatchKey(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\.git$/i, "")
+    .replace(/^(cloudtak-plugin-|cloudtak-|plugin-)/, "")
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 function parseGitHubRepo(repoUrl) {
@@ -104,10 +113,13 @@ function isNewPlugin(plugin, now = Date.now()) {
 
 function matchCatalogPlugin(hostPlugin, catalogPlugins) {
   const dest = String(hostPlugin.dest || "").toLowerCase();
+  const destKey = pluginMatchKey(hostPlugin.dest);
   const pkgName = String(hostPlugin.packageName || "").toLowerCase();
+  const pkgKey = pluginMatchKey(hostPlugin.packageName);
   const remote = String(hostPlugin.gitRemote || "")
     .replace(/\.git$/i, "")
     .toLowerCase();
+  const remoteKey = pluginMatchKey(repoBasename(hostPlugin.gitRemote));
   const routeFiles = Array.isArray(hostPlugin.routeFiles) ? hostPlugin.routeFiles : [];
 
   for (const p of catalogPlugins) {
@@ -120,11 +132,16 @@ function matchCatalogPlugin(hostPlugin, catalogPlugins) {
       .map((x) => String(x || "").toLowerCase())
       .filter(Boolean);
     if (aliases.includes(dest)) return p;
+    const aliasKeys = aliases.map(pluginMatchKey).filter((k) => k.length >= 4);
+    if (destKey && destKey.length >= 4 && aliasKeys.includes(destKey)) return p;
   }
   for (const p of catalogPlugins) {
     if (pkgName && (pkgName === p.id.toLowerCase() || pkgName === repoBasename(p.repo).toLowerCase())) {
       return p;
     }
+    const idKey = pluginMatchKey(p.id);
+    const repoKey = pluginMatchKey(repoBasename(p.repo));
+    if (pkgKey && pkgKey.length >= 4 && (pkgKey === idKey || pkgKey === repoKey)) return p;
   }
   for (const p of catalogPlugins) {
     const want = String(p.repo || "")
@@ -133,6 +150,7 @@ function matchCatalogPlugin(hostPlugin, catalogPlugins) {
     if (remote && want && (remote === want || remote.endsWith("/" + repoBasename(p.repo).toLowerCase()))) {
       return p;
     }
+    if (remoteKey && remoteKey.length >= 4 && remoteKey === pluginMatchKey(p.id)) return p;
   }
   for (const p of catalogPlugins) {
     if (!p.routes) continue;
@@ -176,11 +194,42 @@ async function fetchCatalog() {
   }
 }
 
+function isEnabledValue(v) {
+  return ["1", "true", "yes", "on"].includes(String(v || "").trim().toLowerCase());
+}
+
+async function persistDetectedPath(detected, { overwritePath = false } = {}) {
+  if (!detected || !detected.ok || !detected.path) return detected;
+  const current = settingsSvc.getSettings() || {};
+  const next = { ...current };
+  let changed = false;
+  const curPath = String(current.CLOUDTAK_MARKETPLACE_PATH || "").trim();
+  if (overwritePath || !curPath) {
+    if (String(next.CLOUDTAK_MARKETPLACE_PATH || "") !== detected.path) {
+      next.CLOUDTAK_MARKETPLACE_PATH = detected.path;
+      changed = true;
+    }
+  }
+  const curSvc = String(current.CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE || "").trim();
+  if (!curSvc && detected.composeService) {
+    next.CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE = detected.composeService;
+    changed = true;
+  }
+  if (changed) settingsSvc.saveSettings(next);
+  return detected;
+}
+
+async function detectAndPersist({ overwritePath = true } = {}) {
+  const detected = await ssh.detectCheckout();
+  return persistDetectedPath(detected, { overwritePath });
+}
+
 async function ensureCheckoutPath() {
   let ct = ssh.resolvedCheckoutPath();
   if (ct) return { ok: true, path: ct, composeService: ssh.resolvedComposeService() };
   const detected = await ssh.detectCheckout();
   if (!detected.ok) return detected;
+  await persistDetectedPath(detected, { overwritePath: false });
   return {
     ok: true,
     path: detected.path,
@@ -189,42 +238,56 @@ async function ensureCheckoutPath() {
   };
 }
 
-function scanRemoteScript(ctPath) {
+function scanRemoteScript(ctPath, catalogPlugins) {
   const ct = String(ctPath || "").replace(/'/g, "");
   return `
 set -eu
 CT='${ct}'
 if [ ! -d "$CT/api" ]; then echo SCAN_FAIL missing api/; exit 1; fi
 printf 'SCAN_BEGIN\\n'
-if [ -d "$CT/api/web/plugins" ]; then
-  for p in "$CT/api/web/plugins"/*; do
+emit_plugin() {
+  local p="$1"
+  [ -e "$p" ] || return 0
+  local name kind target has_index pkg remote head
+  name=$(basename "$p")
+  kind=dir
+  target=""
+  if [ -L "$p" ]; then
+    kind=symlink
+    target=$(readlink "$p" || true)
+  elif [ -f "$p" ]; then
+    kind=file
+  fi
+  has_index=0
+  if [ -f "$p/index.ts" ] || [ -f "$p/plugin/index.ts" ] || [ -f "$p/src/index.ts" ] || [ -f "$p/index.js" ]; then has_index=1; fi
+  pkg=""
+  if [ -f "$p/package.json" ]; then
+    pkg=$(grep -m1 '"name"' "$p/package.json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/' || true)
+  elif [ -f "$p/plugin/package.json" ]; then
+    pkg=$(grep -m1 '"name"' "$p/plugin/package.json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/' || true)
+  fi
+  remote=""
+  head=""
+  if [ -d "$p/.git" ]; then
+    remote=$(git -C "$p" remote get-url origin 2>/dev/null || true)
+    head=$(git -C "$p" rev-parse HEAD 2>/dev/null || true)
+  elif [ -d "$p/plugin/.git" ]; then
+    remote=$(git -C "$p/plugin" remote get-url origin 2>/dev/null || true)
+    head=$(git -C "$p/plugin" rev-parse HEAD 2>/dev/null || true)
+  fi
+  printf 'PLUGIN\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$name" "$kind" "$has_index" "$pkg" "$remote" "$head" "$target"
+}
+scan_plugin_dir() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  local p
+  for p in "$dir"/*; do
     [ -e "$p" ] || continue
-    name=$(basename "$p")
-    kind=dir
-    if [ -L "$p" ]; then
-      kind=symlink
-      target=$(readlink "$p" || true)
-    elif [ -f "$p" ]; then
-      kind=file
-      target=""
-    else
-      target=""
-    fi
-    has_index=0
-    if [ -f "$p/index.ts" ] || [ -f "$p" ] && echo "$p" | grep -q '\\.ts$'; then has_index=1; fi
-    pkg=""
-    if [ -f "$p/package.json" ]; then
-      pkg=$(grep -m1 '"name"' "$p/package.json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/' || true)
-    fi
-    remote=""
-    head=""
-    if [ -d "$p/.git" ]; then
-      remote=$(git -C "$p" remote get-url origin 2>/dev/null || true)
-      head=$(git -C "$p" rev-parse HEAD 2>/dev/null || true)
-    fi
-    printf 'PLUGIN dest=%s kind=%s index=%s pkg=%s remote=%s head=%s target=%s\\n' "$name" "$kind" "$has_index" "$pkg" "$remote" "$head" "$target"
+    emit_plugin "$p"
   done
-fi
+}
+scan_plugin_dir "$CT/api/web/plugins"
+scan_plugin_dir "$CT/api/web/src/plugins"
 if [ -d "$CT/api/stateless/routes" ]; then
   for f in "$CT/api/stateless/routes"/*.ts; do
     [ -f "$f" ] || continue
@@ -239,22 +302,74 @@ for f in "$CT/docker-compose.yml" "$CT/docker-compose.yaml" "$CT/docker-compose.
   fi
 done
 printf 'WEB_PLUGINS %s\\n' "$web_plugins"
+${(catalogPlugins || [])
+  .flatMap((p) => p.detect || [])
+  .filter((d) => /^[A-Za-z0-9._/-]+$/.test(String(d)))
+  .map((d) => `if [ -e "$CT/${String(d).replace(/"/g, "")}" ]; then printf 'DETECT_HIT %s\\n' "${String(d).replace(/"/g, "")}"; fi`)
+  .join("\n")}
+if command -v docker >/dev/null 2>&1; then
+  while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    echo "$c" | grep -qiE 'cloudtak|takwerx' || continue
+    for inner in web/plugins /home/node/web/plugins /usr/src/app/web/plugins /opt/app/web/plugins api/web/plugins; do
+      listing=$(docker exec "$c" sh -c "ls -1 $inner 2>/dev/null" || true)
+      [ -n "$listing" ] || continue
+      printf 'CONTAINER %s dir=%s\\n' "$c" "$inner"
+      echo "$listing" | while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        printf 'PLUGIN\\t%s\\tdir\\t1\\t\\t\\t\\t\\n' "$name"
+      done
+    done
+  done <<CONTAINERS
+$(docker ps --format '{{.Names}}' 2>/dev/null || true)
+CONTAINERS
+fi
 printf 'SCAN_END\\n'
 `.trim();
 }
 
 function parseScanStdout(stdout, catalogPlugins) {
   const plugins = [];
+  const seenDest = new Set();
   const routeFiles = [];
   let webPluginsRaw = "";
+  const pushPlugin = (row) => {
+    const dest = String(row.dest || "").trim();
+    if (!dest || dest === "*" || dest === "." || dest === "..") return;
+    const key = dest.toLowerCase();
+    if (seenDest.has(key)) return;
+    seenDest.add(key);
+    plugins.push({
+      dest,
+      kind: row.kind || "dir",
+      hasIndex: row.hasIndex === true || row.hasIndex === "1",
+      packageName: row.packageName || "",
+      gitRemote: row.gitRemote || "",
+      gitHead: row.gitHead || "",
+      symlinkTarget: row.symlinkTarget || "",
+      routeFiles: [],
+      detectHits: [],
+    });
+  };
   for (const line of String(stdout || "").split("\n")) {
     const t = line.trim();
-    if (t.startsWith("PLUGIN ")) {
+    if (t.startsWith("PLUGIN\t")) {
+      const parts = t.split("\t");
+      pushPlugin({
+        dest: parts[1] || "",
+        kind: parts[2] || "dir",
+        hasIndex: parts[3] === "1",
+        packageName: parts[4] || "",
+        gitRemote: parts[5] || "",
+        gitHead: parts[6] || "",
+        symlinkTarget: parts[7] || "",
+      });
+    } else if (t.startsWith("PLUGIN ")) {
       const get = (key) => {
         const m = t.match(new RegExp(`(?:^|\\s)${key}=(\\S*)`));
         return m ? m[1] : "";
       };
-      plugins.push({
+      pushPlugin({
         dest: get("dest"),
         kind: get("kind"),
         hasIndex: get("index") === "1",
@@ -262,8 +377,20 @@ function parseScanStdout(stdout, catalogPlugins) {
         gitRemote: get("remote"),
         gitHead: get("head"),
         symlinkTarget: get("target"),
-        routeFiles: [],
       });
+    } else if (t.startsWith("DETECT_HIT ")) {
+      const hit = t.slice(11).trim();
+      const destFromDetect = String(hit).includes("plugins/")
+        ? String(hit).split("plugins/")[1].split("/")[0]
+        : "";
+      if (destFromDetect) {
+        pushPlugin({ dest: destFromDetect, kind: "detect", hasIndex: true });
+        const row = plugins.find((p) => p.dest === destFromDetect);
+        if (row) {
+          row.detectHits = row.detectHits || [];
+          if (!row.detectHits.includes(hit)) row.detectHits.push(hit);
+        }
+      }
     } else if (t.startsWith("ROUTE ")) {
       routeFiles.push(t.slice(6).trim());
     } else if (t.startsWith("WEB_PLUGINS ")) {
@@ -285,7 +412,7 @@ function parseScanStdout(stdout, catalogPlugins) {
     }
   }
   for (const p of plugins) {
-    p.detectHits = detectHitsByDest[p.dest] || [];
+    p.detectHits = [...new Set([...(p.detectHits || []), ...(detectHitsByDest[p.dest] || [])])];
   }
 
   const webUrls = [];
@@ -297,30 +424,35 @@ function parseScanStdout(stdout, catalogPlugins) {
 }
 
 async function scanHost() {
+  const catalog = loadCatalog();
   const loc = await ensureCheckoutPath();
   if (!loc.ok) {
     const prev = store.readScanCache();
     const err = {
       ok: false,
       message: loc.message || "Could not resolve CloudTAK path.",
-      scannedAt: prev && prev.scannedAt,
+      scannedAt: new Date().toISOString(),
       stale: true,
+      path: "",
       plugins: (prev && prev.plugins) || [],
     };
+    store.writeScanCache(err);
     return err;
   }
-  const result = await ssh.runCommand(`bash -lc ${ssh.shellQuote(scanRemoteScript(loc.path))}`, 45000);
+  const result = await ssh.runCommand(`bash -lc ${ssh.shellQuote(scanRemoteScript(loc.path, catalog.plugins))}`, 60000);
   if (!result.ok) {
     const prev = store.readScanCache();
-    return {
+    const err = {
       ok: false,
       message: result.message || "Host scan failed.",
-      scannedAt: prev && prev.scannedAt,
+      scannedAt: new Date().toISOString(),
       stale: true,
+      path: loc.path,
       plugins: (prev && prev.plugins) || [],
     };
+    store.writeScanCache(err);
+    return err;
   }
-  const catalog = loadCatalog();
   const parsed = parseScanStdout(result.stdout, catalog.plugins);
   const installedRec = store.readInstalled();
   const found = [];
@@ -512,6 +644,7 @@ function buildUiPlugins(options = {}) {
     scannedAt: scan && scan.scannedAt ? scan.scannedAt : null,
     scanOk: !!(scan && scan.ok),
     scanStale: !!(scan && scan.stale) || (scan && scan.scannedAt && now - Date.parse(scan.scannedAt) > SCAN_INTERVAL_MS * 2),
+    scanError: scan && !scan.ok ? String(scan.message || "") : "",
     scanPath: scan && scan.path,
     shaUpdatedAt: shaCache && shaCache.updatedAt ? shaCache.updatedAt : null,
     skipRemoteSha: !!options.skipRemoteSha,
@@ -561,6 +694,27 @@ function enqueueJob({ kind, pluginId, createdBy, extra }) {
   };
   store.withJobs((jobs) => [job, ...jobs].slice(0, store.MAX_JOBS));
   return job;
+}
+
+function enqueueJobOnce(kind, createdBy) {
+  const existing = store
+    .readJobs()
+    .jobs.find((j) => j.kind === kind && (j.status === "queued" || j.status === "running"));
+  if (existing) return existing;
+  return enqueueJob({ kind, createdBy });
+}
+
+async function onEnabled(opts = {}) {
+  const createdBy = opts.createdBy || "settings";
+  rememberSeenCatalog();
+  enqueueJobOnce("refresh-catalog", createdBy);
+  try {
+    await detectAndPersist({ overwritePath: false });
+  } catch (err) {
+    console.warn("[cloudtak-marketplace] detect on enable:", err?.message || err);
+  }
+  enqueueJobOnce("scan", createdBy);
+  return { ok: true };
 }
 
 function appendJobLog(jobId, line) {
@@ -1053,6 +1207,13 @@ async function workerBackground() {
   if (now - _lastBackgroundAt < 15000) return;
   _lastBackgroundAt = now;
   const state = store.readNotifyState();
+  if (!ssh.resolvedCheckoutPath()) {
+    try {
+      await detectAndPersist({ overwritePath: false });
+    } catch (err) {
+      console.warn("[cloudtak-marketplace] background detect:", err?.message || err);
+    }
+  }
   try {
     if (!state.lastCatalogAt || now - Number(state.lastCatalogAt || 0) > pollIntervalMs()) {
       await fetchCatalog();
@@ -1087,6 +1248,7 @@ module.exports = {
   defaultCatalogUrl,
   parseGitHubRepo,
   repoBasename,
+  pluginMatchKey,
   normalizeCatalog,
   matchCatalogPlugin,
   loadCatalog,
@@ -1096,6 +1258,7 @@ module.exports = {
   buildUiPlugins,
   refreshShaCache,
   enqueueJob,
+  enqueueJobOnce,
   listJobs,
   claimAndRunJobs,
   workerTick,
@@ -1104,4 +1267,8 @@ module.exports = {
   maybeNotify,
   rememberSeenCatalog,
   notifyRecipients,
+  isEnabledValue,
+  detectAndPersist,
+  persistDetectedPath,
+  onEnabled,
 };
