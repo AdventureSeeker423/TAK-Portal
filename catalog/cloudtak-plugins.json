@@ -142,7 +142,7 @@
       "additionalActions": [
         "Allow wss://*.blitzortung.org in CloudTAK nginx CSP. Marketplace does not patch nginx.conf.js."
       ],
-      "notes": "After install: CloudTAK Settings → Refresh App."
+      "notes": "After install: CloudTAK Settings → Refresh App. Marketplace nests flat sample-shaped plugin trees into lib/."
     }
   ]
 }

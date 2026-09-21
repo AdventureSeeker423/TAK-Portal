@@ -80,6 +80,65 @@ assert.deepStrictEqual(
 const bundled = store.readBundledCatalog();
 assert.ok(Array.isArray(bundled.plugins) && bundled.plugins.length >= 10);
 
+const os = require("os");
+const lightning = normalized.plugins.find((p) => p.id === "lightning");
+assert.ok(lightning);
+const installScript = marketplace.installRemoteScript("/root/CloudTAK", lightning);
+assert.match(installScript, /Normalizing flat plugin into lib/);
+assert.match(installScript, /index\.ts imports \.\/lib\//);
+assert.match(installScript, /rm -rf "\$target\/\.git"/);
+
+function writeFlatPluginFixture(dir, opts) {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "index.ts"),
+    opts.entrySource || "import x from './lib/foo.ts';\nexport default class P {}\n"
+  );
+  fs.writeFileSync(path.join(dir, "foo.ts"), "export const x = 1;\n");
+  fs.writeFileSync(path.join(dir, "MenuTemplate.vue"), "<template></template>\n");
+  fs.writeFileSync(path.join(dir, "icon.svg"), "<svg></svg>\n");
+  fs.writeFileSync(path.join(dir, "README.md"), "# plugin\n");
+  fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".git", "config"), "dummy\n");
+}
+
+const flatDir = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-flat-"));
+writeFlatPluginFixture(flatDir, {});
+const flatResult = marketplace.normalizeFlatSamplePluginTree(flatDir);
+assert.strictEqual(flatResult.ok, true);
+assert.strictEqual(flatResult.changed, true);
+assert.ok(fs.existsSync(path.join(flatDir, "index.ts")), "index.ts stays at dest root");
+assert.ok(fs.existsSync(path.join(flatDir, "lib", "foo.ts")));
+assert.ok(fs.existsSync(path.join(flatDir, "lib", "MenuTemplate.vue")));
+assert.ok(fs.existsSync(path.join(flatDir, "lib", "icon.svg")));
+assert.ok(fs.existsSync(path.join(flatDir, "README.md")), "README stays at dest root");
+assert.ok(!fs.existsSync(path.join(flatDir, "foo.ts")));
+assert.ok(!fs.existsSync(path.join(flatDir, ".git")));
+fs.rmSync(flatDir, { recursive: true, force: true });
+
+const libExistsDir = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-lib-"));
+writeFlatPluginFixture(libExistsDir, {});
+fs.mkdirSync(path.join(libExistsDir, "lib"), { recursive: true });
+fs.writeFileSync(path.join(libExistsDir, "lib", "already.ts"), "export {}\n");
+const libExistsResult = marketplace.normalizeFlatSamplePluginTree(libExistsDir);
+assert.strictEqual(libExistsResult.reason, "lib-exists");
+assert.ok(fs.existsSync(path.join(libExistsDir, "foo.ts")), "do not nest when lib/ already exists");
+assert.ok(!fs.existsSync(path.join(libExistsDir, ".git")), "still strip .git");
+fs.rmSync(libExistsDir, { recursive: true, force: true });
+
+const noLibImportDir = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-nolib-"));
+writeFlatPluginFixture(noLibImportDir, {
+  entrySource: "import Menu from './MenuTemplate.vue';\nexport default class P {}\n",
+});
+const noLibResult = marketplace.normalizeFlatSamplePluginTree(noLibImportDir);
+assert.strictEqual(noLibResult.changed, false);
+assert.ok(fs.existsSync(path.join(noLibImportDir, "foo.ts")), "do not nest without ./lib/ imports");
+assert.ok(!fs.existsSync(path.join(noLibImportDir, "lib")));
+fs.rmSync(noLibImportDir, { recursive: true, force: true });
+
+assert.ok(marketplace.pluginEntryImportsLib("import x from './lib/foo.ts'"));
+assert.ok(!marketplace.pluginEntryImportsLib("import x from './foo.ts'"));
+
 const ssh = require("../services/cloudtakMarketplace.ssh");
 assert.strictEqual(typeof ssh.onboardWithPassword, "function");
 assert.strictEqual(typeof ssh.ensureCloudtakSshKeyPair, "function");

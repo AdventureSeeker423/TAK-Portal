@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const crypto = require("crypto");
 const axios = require("axios");
 const { getString, getInt, getBool } = require("./env");
@@ -1043,6 +1045,152 @@ function normalizeInstallScript(script) {
   return parts.join(" ");
 }
 
+/** Entry files that stay at the CloudTAK plugin dest root (Vite glob: plugins/<name>/index.ts). */
+const SAMPLE_PLUGIN_ROOT_KEEP = [
+  "index.ts",
+  "index.js",
+  "index.tsx",
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "tsconfig.json",
+  "eslint.config.js",
+  "eslint.config.ts",
+  "env.d.ts",
+  "LICENSE",
+  "LICENCE",
+  "COPYING",
+  "README.md",
+  "README",
+];
+
+/** Assets that belong under lib/ in the official CloudTAK sample layout. */
+const SAMPLE_PLUGIN_NEST_EXT = [
+  ".ts",
+  ".tsx",
+  ".vue",
+  ".svg",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".css",
+  ".scss",
+  ".sass",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".ico",
+];
+
+function pluginEntryImportsLib(source) {
+  return /['"]\.\/lib\//.test(String(source || ""));
+}
+
+function shouldNestFlatPluginFile(name) {
+  const base = String(name || "");
+  if (!base || SAMPLE_PLUGIN_ROOT_KEEP.includes(base)) return false;
+  const lower = base.toLowerCase();
+  return SAMPLE_PLUGIN_NEST_EXT.some((ext) => lower.endsWith(ext));
+}
+
+function readPluginEntrySource(destDir) {
+  for (const name of ["index.ts", "index.tsx", "index.js"]) {
+    const full = path.join(destDir, name);
+    try {
+      if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+        return { name, source: fs.readFileSync(full, "utf8") };
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+/**
+ * Official sample layout is index.ts at dest root and Vue/TS/assets in lib/.
+ * Some catalog repos copy that import style but leave the files flat at repo root.
+ * Nest those siblings into lib/ so vue-tsc and Vite resolve ./lib/... .
+ * No-op when lib/ already exists (HelloWorld, QPD, dispatcher, etc.).
+ */
+function normalizeFlatSamplePluginTree(destDir) {
+  const dest = String(destDir || "").trim();
+  if (!dest) return { ok: false, changed: false, moved: 0 };
+  let destStat = null;
+  try {
+    destStat = fs.statSync(dest);
+  } catch (_) {
+    return { ok: false, changed: false, moved: 0 };
+  }
+  if (!destStat.isDirectory()) return { ok: false, changed: false, moved: 0 };
+
+  const gitDir = path.join(dest, ".git");
+  try {
+    if (fs.existsSync(gitDir)) fs.rmSync(gitDir, { recursive: true, force: true });
+  } catch (_) {}
+
+  const libDir = path.join(dest, "lib");
+  if (fs.existsSync(libDir)) return { ok: true, changed: false, moved: 0, reason: "lib-exists" };
+
+  const entry = readPluginEntrySource(dest);
+  if (!entry || !pluginEntryImportsLib(entry.source)) {
+    return { ok: true, changed: false, moved: 0 };
+  }
+
+  fs.mkdirSync(libDir, { recursive: true });
+  let moved = 0;
+  for (const name of fs.readdirSync(dest)) {
+    if (name === "lib") continue;
+    const full = path.join(dest, name);
+    let st;
+    try {
+      st = fs.statSync(full);
+    } catch (_) {
+      continue;
+    }
+    if (!st.isFile()) continue;
+    if (!shouldNestFlatPluginFile(name)) continue;
+    fs.renameSync(full, path.join(libDir, name));
+    moved += 1;
+  }
+  return { ok: true, changed: moved > 0, moved };
+}
+
+function flatSampleLibNormalizeBash() {
+  const keep = SAMPLE_PLUGIN_ROOT_KEEP.join("|");
+  const glob = SAMPLE_PLUGIN_NEST_EXT.map((ext) => `*${ext}`).join("|");
+  return [
+    'target="$1"',
+    '[ -n "$target" ] && [ -d "$target" ] || exit 0',
+    'rm -rf "$target/.git" || true',
+    'entry=""',
+    'if [ -f "$target/index.ts" ]; then entry="$target/index.ts"',
+    'elif [ -f "$target/index.tsx" ]; then entry="$target/index.tsx"',
+    'elif [ -f "$target/index.js" ]; then entry="$target/index.js"',
+    "fi",
+    '[ -n "$entry" ] || exit 0',
+    '[ -d "$target/lib" ] && exit 0',
+    'if grep -q "./lib/" "$entry"; then',
+    '  echo "Normalizing flat plugin into lib/ (index.ts imports ./lib/*)"',
+    '  mkdir -p "$target/lib"',
+    '  for f in "$target"/*; do',
+    '    [ -e "$f" ] || continue',
+    '    [ -f "$f" ] || continue',
+    '    base=$(basename "$f")',
+    '    case "$base" in',
+    `      ${keep}) continue ;;`,
+    "    esac",
+    '    case "$base" in',
+    `      ${glob})`,
+    '        mv "$f" "$target/lib/"',
+    "        ;;",
+    "    esac",
+    "  done",
+    "fi",
+  ].join("\n");
+}
+
 function installRemoteScript(ct, plugin) {
   const dest = plugin.web.dest;
   const source = plugin.web.source === "." ? "." : plugin.web.source;
@@ -1148,6 +1296,9 @@ REPO_DIR="$CACHE"
 SHA=$(git_ok -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 echo "Plugin source $REPO_DIR @ $SHA"
 
+PLUGIN_ROOT="$CT/api/web/plugins"
+TARGET="$PLUGIN_ROOT/$DEST"
+
 # Generic layouts, in order:
 # 1) repo install.sh (pass --no-build / --no-pull only if that script documents them)
 # 2) optional catalog installer
@@ -1206,6 +1357,16 @@ EXCL
     run_as_writer "mkdir -p $(printf '%q' "$CT/api/stateless/routes") && cp -a $(printf '%q' "$ROUTES_DIR")/*.ts $(printf '%q' "$CT/api/stateless/routes")/" || true
   fi
 fi
+
+# Official CloudTAK sample: index.ts at dest root, Vue/TS/assets in lib/.
+# Some catalog repos ship those ./lib/ imports with a flat tree; nest siblings into lib/.
+# Also drop .git so it is not copied into the api image build context.
+cat <<'NORM' > "$REPO_DIR/.ctak-normalize-plugin.sh"
+${flatSampleLibNormalizeBash()}
+NORM
+chmod a+rX "$REPO_DIR/.ctak-normalize-plugin.sh" 2>/dev/null || true
+run_as_writer "sh $(printf '%q' "$REPO_DIR/.ctak-normalize-plugin.sh") $(printf '%q' "$TARGET")"
+rm -f "$REPO_DIR/.ctak-normalize-plugin.sh" || true
 printf 'INSTALL_SHA %s\\n' "$SHA"
 `.trim();
 }
@@ -1720,4 +1881,7 @@ module.exports = {
   persistDetectedPath,
   onEnabled,
   normalizeInstallScript,
+  installRemoteScript,
+  normalizeFlatSamplePluginTree,
+  pluginEntryImportsLib,
 };
