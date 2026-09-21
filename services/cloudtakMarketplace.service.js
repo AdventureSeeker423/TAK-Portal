@@ -1615,6 +1615,7 @@ function pluginRuntimeExtrasBash() {
     'PERSIST="$STACK/cloudtak-marketplace-plugins/$plugin_id"',
     'REL="cloudtak-marketplace-plugins/$plugin_id"',
     'echo "Persisting plugin runtime files to $PERSIST"',
+    'rm -rf "$PERSIST" || true',
     'mkdir -p "$PERSIST"',
     'cp -a "$repo_dir/." "$PERSIST/"',
     'rm -rf "$PERSIST/.git" "$PERSIST/.ctak-normalize-plugin.sh" "$PERSIST/.ctak-runtime-plugin.sh" || true',
@@ -1794,27 +1795,22 @@ run_as_writer() {
   exit 1
 }
 
-echo "Fetching plugin source"
-if [ -d "$CACHE/.git" ]; then
-  cache_owner=$(stat -c '%U' "$CACHE" 2>/dev/null || stat -f '%Su' "$CACHE" 2>/dev/null || true)
-  if [ -n "$cache_owner" ] && [ "$cache_owner" != "$(id -un)" ]; then
-    echo "Replacing plugin cache owned by $cache_owner"
-    reset_cache
-  fi
-fi
-if [ -d "$CACHE/.git" ]; then
-  git_ok -C "$CACHE" fetch --depth 1 origin "$REF"
-  git_ok -C "$CACHE" checkout --force FETCH_HEAD
-else
-  reset_cache
-  git_ok clone --depth 1 --branch "$REF" "$REPO" "$CACHE"
-fi
+echo "Fetching latest plugin source"
+echo "Cloning $REPO ($REF)"
+reset_cache
+GIT_TERMINAL_PROMPT=0 git_ok clone --depth 1 --single-branch --branch "$REF" "$REPO" "$CACHE"
 REPO_DIR="$CACHE"
 SHA=$(git_ok -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 echo "Plugin source $REPO_DIR @ $SHA"
 
 PLUGIN_ROOT="$CT/api/web/plugins"
 TARGET="$PLUGIN_ROOT/$DEST"
+case "$TARGET" in
+  */api/web/plugins/$DEST) ;;
+  *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
+esac
+echo "Clearing previous plugin files at $TARGET"
+run_as_writer "rm -rf $(printf '%q' "$TARGET")"
 
 # Generic layouts, in order:
 # 1) repo install.sh (pass --no-build / --no-pull only if that script documents them)

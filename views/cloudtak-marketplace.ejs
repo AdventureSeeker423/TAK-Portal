@@ -43,7 +43,7 @@
       </div>
       <div class="mp-jobs-actions">
         <button type="button" class="btn" id="mpJobsCopyBtn">Copy</button>
-        <button type="button" class="btn danger" id="mpJobsCancelBtn" disabled>Cancel Current Jobs</button>
+        <button type="button" class="btn danger" id="mpJobsCancelBtn" disabled style="display:none;">Cancel Current Jobs</button>
       </div>
     </div>
     <pre id="mpJobs" class="mp-job-log"></pre>
@@ -769,7 +769,10 @@
       if (el) el.textContent = "";
       if (meta) meta.textContent = "";
       jobLogFullText = "";
-      if ($("mpJobsCancelBtn")) $("mpJobsCancelBtn").disabled = true;
+      if ($("mpJobsCancelBtn")) {
+        $("mpJobsCancelBtn").disabled = true;
+        $("mpJobsCancelBtn").style.display = "none";
+      }
       return;
     }
     if (card) card.style.display = "";
@@ -794,6 +797,7 @@
         return j.status === "queued" || j.status === "running";
       });
       cancelBtn.disabled = !canCancel;
+      cancelBtn.style.display = canCancel ? "" : "none";
     }
   }
 

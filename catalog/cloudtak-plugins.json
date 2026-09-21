@@ -136,17 +136,6 @@
       "detect": ["api/web/plugins/tak-dispatcher/index.ts"]
     },
     {
-      "id": "lightning",
-      "name": "Lightning",
-      "description": "Live lightning overlay from Blitzortung.",
-      "repo": "https://github.com/cmlaird/CloudTAK-Plugin-Lightning.git",
-      "added": "2026-09-20",
-      "maintainer": "cmlaird",
-      "web": { "dest": "lightning" },
-      "detect": ["api/web/plugins/lightning/index.ts"],
-      "csp": ["wss://*.blitzortung.org"]
-    },
-    {
       "id": "livewx",
       "name": "LiveWX Radar",
       "description": "Live NEXRAD overlay and nationwide NWS watches/warnings.",
