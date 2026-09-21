@@ -160,32 +160,54 @@ function normalizeCatalog(doc) {
   return { version: Number(doc && doc.version) || 1, plugins: out, fetchedAt: doc && doc.fetchedAt ? doc.fetchedAt : null };
 }
 
+function mergeCatalogPlugin(seed, remote) {
+  if (seed && remote) {
+    return {
+      ...remote,
+      ...seed,
+      web: { ...(remote.web || {}), ...(seed.web || {}) },
+      routes: seed.routes || remote.routes,
+      installScript: seed.installScript || remote.installScript,
+      detect: seed.detect && seed.detect.length ? seed.detect : remote.detect,
+      detectAliases: seed.detectAliases && seed.detectAliases.length ? seed.detectAliases : remote.detectAliases,
+      exclude: seed.exclude && seed.exclude.length ? seed.exclude : remote.exclude,
+      additionalActions:
+        seed.additionalActions && seed.additionalActions.length ? seed.additionalActions : remote.additionalActions,
+      sidecars: seed.sidecars && seed.sidecars.length ? seed.sidecars : remote.sidecars,
+      notes: seed.notes || remote.notes,
+      description: seed.description || remote.description,
+      name: seed.name || remote.name,
+      maintainer: seed.maintainer || remote.maintainer,
+    };
+  }
+  return seed || remote;
+}
+
 function loadCatalog() {
   const bundled = normalizeCatalog(store.readBundledCatalog());
   const cached = store.readPluginsCache();
   if (!cached || !Array.isArray(cached.plugins) || !cached.plugins.length) {
     return bundled;
   }
-  const normalized = normalizeCatalog(cached);
+  const remote = normalizeCatalog(cached);
   const bundledById = new Map(bundled.plugins.map((p) => [p.id, p]));
-  normalized.plugins = normalized.plugins.map((p) => {
-    const seed = bundledById.get(p.id);
-    if (!seed) return p;
-    return {
-      ...seed,
-      ...p,
-      web: { ...seed.web, ...(p.web || {}) },
-      routes: p.routes || seed.routes,
-      installScript: p.installScript || seed.installScript,
-      detect: p.detect && p.detect.length ? p.detect : seed.detect,
-      detectAliases: p.detectAliases && p.detectAliases.length ? p.detectAliases : seed.detectAliases,
-      exclude: p.exclude && p.exclude.length ? p.exclude : seed.exclude,
-      additionalActions:
-        p.additionalActions && p.additionalActions.length ? p.additionalActions : seed.additionalActions,
-      sidecars: p.sidecars && p.sidecars.length ? p.sidecars : seed.sidecars,
-    };
-  });
-  return normalized;
+  const remoteById = new Map(remote.plugins.map((p) => [p.id, p]));
+  const ids = [];
+  const seen = new Set();
+  for (const p of bundled.plugins) {
+    ids.push(p.id);
+    seen.add(p.id);
+  }
+  for (const p of remote.plugins) {
+    if (seen.has(p.id)) continue;
+    ids.push(p.id);
+    seen.add(p.id);
+  }
+  return {
+    version: bundled.version || remote.version,
+    fetchedAt: remote.fetchedAt,
+    plugins: ids.map((id) => mergeCatalogPlugin(bundledById.get(id), remoteById.get(id))),
+  };
 }
 
 function isNewPlugin(plugin, now = Date.now()) {

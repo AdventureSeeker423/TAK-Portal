@@ -826,7 +826,6 @@
   fetch("/api/cloudtak-marketplace/jobs/clear-idle", { method: "POST", headers: { Accept: "application/json" } })
     .catch(function () {})
     .then(function () {
-      loadAll();
       return fetch("/api/cloudtak-marketplace/catalog/refresh", { method: "POST", headers: { Accept: "application/json" } }).catch(function () {});
     })
     .then(function () { return loadAll(); });
