@@ -1092,7 +1092,7 @@ while [ "$n" -lt 90 ]; do
   state=$(printf '%s' "$low" | awk '{print $1}')
   health=$(printf '%s' "$low" | awk '{print $2}')
   if [ "$state" = "running" ] && [ "$health" != "starting" ]; then
-    echo "Container $SVC is running${health:+ ($health)}"
+    echo "Container $SVC is running"
     break
   fi
   if printf '%s' "$low" | grep -qE '(^|[[:space:]])running([[:space:]]|$)|[[:space:]]up[[:space:]]|\\(healthy\\)'; then
