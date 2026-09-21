@@ -69,6 +69,37 @@ router.post("/jobs/clear-idle", (req, res) => {
   }
 });
 
+router.post("/jobs/deploy", (req, res) => {
+  try {
+    const result = marketplace.deployStaged();
+    if (!result.count) {
+      return res.status(400).json({ ok: false, error: "Queue is empty" });
+    }
+    auditSvc.auditFromRequest(req, {
+      action: "CLOUDTAK_MARKETPLACE_DEPLOY",
+      targetType: "cloudtak_plugin",
+      targetId: "queue",
+      details: { count: result.count, summary: `Deployed ${result.count} CloudTAK marketplace change(s)` },
+    });
+    res.json({ ok: true, count: result.count });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+router.post("/jobs/unstage", (req, res) => {
+  try {
+    const jobId = req.body && req.body.jobId ? String(req.body.jobId).trim() : "";
+    const result = marketplace.unstageJob(jobId);
+    if (!result.ok) {
+      return res.status(404).json({ ok: false, error: "Queue item not found" });
+    }
+    res.json({ ok: true, job: result.job });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 router.post("/jobs", (req, res) => {
   try {
     const kind = String((req.body && req.body.kind) || "").trim();
@@ -77,15 +108,63 @@ router.post("/jobs", (req, res) => {
       return res.status(400).json({ ok: false, error: "Unknown job kind" });
     }
     const pluginId = req.body && req.body.pluginId ? String(req.body.pluginId).trim() : null;
-    if ((kind === "install" || kind === "update") && !pluginId) {
-      return res.status(400).json({ ok: false, error: "pluginId is required" });
-    }
     const extra = {};
     if (req.body && req.body.dest) extra.dest = String(req.body.dest).trim();
+    const createdBy = username(req);
+
+    if (kind === "update-all") {
+      const snap = marketplace.buildUiPlugins({ skipRemoteSha: true });
+      const staged = [];
+      for (const p of snap.plugins || []) {
+        if (p.installed && p.updateAvailable && !p.unknown) {
+          const result = marketplace.stageJob({ kind: "update", pluginId: p.id, createdBy, toggle: false });
+          if (result.job) staged.push(result.job);
+        }
+      }
+      auditSvc.auditFromRequest(req, {
+        action: "CLOUDTAK_MARKETPLACE_JOB",
+        targetType: "cloudtak_plugin",
+        targetId: "update-all",
+        details: { kind, count: staged.length, summary: `Staged ${staged.length} CloudTAK plugin update(s)` },
+      });
+      return res.json({ ok: true, jobs: staged, count: staged.length });
+    }
+
+    if (kind === "install" || kind === "update") {
+      if (!pluginId) {
+        return res.status(400).json({ ok: false, error: "pluginId is required" });
+      }
+      const result = marketplace.stageJob({ kind, pluginId, createdBy, extra });
+      auditSvc.auditFromRequest(req, {
+        action: "CLOUDTAK_MARKETPLACE_JOB",
+        targetType: "cloudtak_plugin",
+        targetId: pluginId,
+        details: {
+          kind,
+          pluginId,
+          staged: !result.removed,
+          removed: !!result.removed,
+          summary: result.removed ? `Removed CloudTAK marketplace ${kind} from queue` : `Staged CloudTAK marketplace ${kind}`,
+        },
+      });
+      return res.json({ ok: true, ...result });
+    }
+
+    if (kind === "uninstall") {
+      const result = marketplace.stageJob({ kind, pluginId, createdBy, extra });
+      auditSvc.auditFromRequest(req, {
+        action: "CLOUDTAK_MARKETPLACE_JOB",
+        targetType: "cloudtak_plugin",
+        targetId: pluginId || extra.dest || kind,
+        details: { kind, pluginId, staged: !result.removed, summary: "Staged CloudTAK marketplace uninstall" },
+      });
+      return res.json({ ok: true, ...result });
+    }
+
     const job = marketplace.enqueueJob({
       kind,
       pluginId,
-      createdBy: username(req),
+      createdBy,
       extra,
     });
     auditSvc.auditFromRequest(req, {

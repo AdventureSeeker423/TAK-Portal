@@ -716,13 +716,16 @@ async function getSnapshot() {
   return { ...base, plugins };
 }
 
-function enqueueJob({ kind, pluginId, createdBy, extra }) {
-  const id = crypto.randomUUID();
-  const job = {
-    id,
+function jobKey(job) {
+  return String((job && job.pluginId) || (job && job.extra && job.extra.dest) || "").trim();
+}
+
+function makeJob({ kind, pluginId, createdBy, extra, status }) {
+  return {
+    id: crypto.randomUUID(),
     kind: String(kind || "").trim(),
     pluginId: pluginId || null,
-    status: "queued",
+    status: status || "queued",
     createdBy: createdBy || null,
     createdAt: new Date().toISOString(),
     startedAt: null,
@@ -731,8 +734,64 @@ function enqueueJob({ kind, pluginId, createdBy, extra }) {
     error: null,
     extra: extra || null,
   };
+}
+
+function enqueueJob({ kind, pluginId, createdBy, extra, status }) {
+  const job = makeJob({ kind, pluginId, createdBy, extra, status: status || "queued" });
   store.withJobs((jobs) => [job, ...jobs].slice(0, store.MAX_JOBS));
   return job;
+}
+
+function stageJob({ kind, pluginId, createdBy, extra, toggle }) {
+  const incoming = makeJob({ kind, pluginId, createdBy, extra, status: "staged" });
+  const key = jobKey(incoming);
+  let removed = null;
+  let replaced = null;
+  let job = incoming;
+  store.withJobs((jobs) => {
+    const same = jobs.find((j) => j.status === "staged" && j.kind === kind && jobKey(j) === key);
+    if (same) {
+      if (toggle === false) {
+        job = same;
+        return jobs;
+      }
+      removed = same;
+      return jobs.filter((j) => j.id !== same.id);
+    }
+    const rest = jobs.filter((j) => {
+      if (j.status !== "staged") return true;
+      if (jobKey(j) !== key) return true;
+      replaced = j;
+      return false;
+    });
+    return [job, ...rest].slice(0, store.MAX_JOBS);
+  });
+  if (removed) return { ok: true, job: null, removed: true, previous: removed };
+  return { ok: true, job, removed: false, replaced: replaced || undefined };
+}
+
+function unstageJob(jobId) {
+  const id = String(jobId || "").trim();
+  let removed = null;
+  store.withJobs((jobs) => {
+    const hit = jobs.find((j) => j.id === id && j.status === "staged");
+    if (!hit) return jobs;
+    removed = hit;
+    return jobs.filter((j) => j.id !== id);
+  });
+  return { ok: !!removed, job: removed };
+}
+
+function deployStaged() {
+  let count = 0;
+  store.withJobs((jobs) =>
+    jobs.map((j) => {
+      if (j.status !== "staged") return j;
+      count += 1;
+      return { ...j, status: "queued" };
+    })
+  );
+  return { ok: true, count };
 }
 
 function enqueueJobOnce(kind, createdBy) {
@@ -756,15 +815,42 @@ async function onEnabled(opts = {}) {
   return { ok: true };
 }
 
+const MAX_JOB_LOG_LINES = 2500;
+
+function formatRemoteLogLine(line) {
+  let s = String(line || "")
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\u001b\][^\u0007]*\u0007/g, "")
+    .replace(/\s+$/, "");
+  if (!s) return "";
+  if (/^(UNINSTALL_OK|REBUILD_OK|INSTALL_OK)$/.test(s) || s.startsWith("INSTALL_SHA ")) return "";
+  if (/^--progress is a global compose flag/.test(s)) return "";
+  if (/^\$\s*bash\s+-lc/.test(s)) return "";
+
+  let m = s.match(/^#\d+\s+(\[[^\]]+\])\s+(.*)$/);
+  if (m) {
+    if (/^(DONE|CACHED)\b/.test(m[2])) return ` => ${m[1]} ${m[2]}`;
+    return ` => ${m[1]} ${m[2]}`;
+  }
+  if (/^#\d+\s+DONE\s+/.test(s) || /^#\d+\s+CACHED$/.test(s)) return "";
+  m = s.match(/^#\d+\s+\d+(?:\.\d+)?\s+(.*)$/);
+  if (m) return ` => => # ${m[1]}`;
+  m = s.match(/^#\d+\s+(.*)$/);
+  if (m) return ` => => # ${m[1]}`;
+  m = s.match(/^Image\s+(.+)\s+Building$/);
+  if (m) return `[+] Building ${m[1]}`;
+  return s;
+}
+
 function appendJobLog(jobId, line) {
-  const text = String(line || "").trimEnd();
+  const text = formatRemoteLogLine(line);
   if (!text) return;
   store.withJobs((jobs) =>
     jobs.map((j) => {
       if (j.id !== jobId) return j;
       const log = Array.isArray(j.log) ? j.log.slice() : [];
-      log.push(`${new Date().toISOString()} ${text}`);
-      if (log.length > 400) log.splice(0, log.length - 400);
+      log.push(text);
+      if (log.length > MAX_JOB_LOG_LINES) log.splice(0, log.length - MAX_JOB_LOG_LINES);
       return { ...j, log };
     })
   );
@@ -778,17 +864,22 @@ function listJobs() {
   return store.readJobs().jobs;
 }
 
-function isActiveJob(job) {
+function isBusyJob(job) {
   const status = String((job && job.status) || "");
   return status === "queued" || status === "running";
 }
 
+function isKeptJob(job) {
+  const status = String((job && job.status) || "");
+  return isBusyJob(job) || status === "staged";
+}
+
 function clearIdleJobs() {
   const jobs = store.readJobs().jobs;
-  if (jobs.some(isActiveJob)) return jobs;
+  if (jobs.some(isBusyJob)) return jobs;
   return store.withJobs((current) => {
-    if (current.some(isActiveJob)) return current;
-    return [];
+    if (current.some(isBusyJob)) return current;
+    return current.filter(isKeptJob);
   }).jobs;
 }
 
@@ -906,7 +997,9 @@ SHA=$(git_ok -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 echo "Plugin source $REPO_DIR @ $SHA"
 
 if [ -f "$REPO_DIR/install.sh" ]; then
-  INSTALL="./install.sh --no-pull"
+  if [ -z "$INSTALL" ]; then
+    INSTALL="./install.sh --no-pull --no-build"
+  fi
 fi
 
 if [ -n "$INSTALL" ]; then
@@ -974,14 +1067,15 @@ elif [ -f compose.yml ]; then CF=compose.yml
 elif [ -f compose.yaml ]; then CF=compose.yaml
 else echo "No compose file in $CT" >&2; exit 1
 fi
-docker compose -f "$CF" build --no-cache --progress=plain "$SVC"
+export BUILDKIT_PROGRESS=plain
+export COMPOSE_ANSI=never
+docker compose --progress=plain -f "$CF" build --no-cache "$SVC"
 docker compose -f "$CF" up -d --force-recreate "$SVC"
 echo REBUILD_OK
 `.trim();
 }
 
 async function runLogged(jobId, command, timeoutMs) {
-  appendJobLog(jobId, `$ ${command.slice(0, 180)}`);
   let streamed = false;
   const result = await ssh.runCommand(command, timeoutMs, (line) => {
     streamed = true;
@@ -991,12 +1085,12 @@ async function runLogged(jobId, command, timeoutMs) {
     if (result.stdout) {
       String(result.stdout)
         .split("\n")
-        .forEach((line) => line.trim() && appendJobLog(jobId, line.trim()));
+        .forEach((line) => appendJobLog(jobId, line));
     }
     if (!result.ok && result.stderr) {
       String(result.stderr)
         .split("\n")
-        .forEach((line) => line.trim() && appendJobLog(jobId, line.trim()));
+        .forEach((line) => appendJobLog(jobId, line));
     }
   }
   if (!result.ok) {
@@ -1048,6 +1142,7 @@ async function performUninstall(job, dest, plugin) {
   if (plugin && plugin.routes) {
     routeGuess.push(`plugin-${plugin.id}.ts`);
   }
+  appendJobLog(job.id, `$ rm -rf api/web/plugins/${dest}`);
   await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess))}`, 60000);
   if (plugin) {
     const rec = store.readInstalled();
@@ -1058,22 +1153,58 @@ async function performUninstall(job, dest, plugin) {
 }
 
 async function performRebuild(job, ctPath, service) {
-  appendJobLog(job.id, `Rebuilding CloudTAK API service ${service} with --no-cache (usually 5–15 minutes)`);
+  appendJobLog(job.id, `$ docker compose --progress=plain build --no-cache ${service}`);
   await runLogged(job.id, `bash -lc ${ssh.shellQuote(rebuildRemoteScript(ctPath, service))}`, 20 * 60 * 1000);
 }
 
-async function runInstallBatch(jobs) {
+async function runChangeBatch(jobs) {
+  const expanded = [];
+  for (const job of jobs) {
+    if (job.kind === "update-all") {
+      updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
+      const snap = await getSnapshot();
+      const pending = snap.plugins.filter((p) => p.installed && p.updateAvailable && p.catalog);
+      if (!pending.length) {
+        appendJobLog(job.id, "No updates available.");
+        updateJob(job.id, { status: "complete", finishedAt: new Date().toISOString() });
+        continue;
+      }
+      expanded.push({ job, plugins: pending });
+    } else {
+      expanded.push({ job, plugins: null });
+    }
+  }
+
   let lastLoc = null;
   let needsRebuild = false;
-  for (const job of jobs) {
-    updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
+  const uninstalls = expanded.filter((x) => x.job.kind === "uninstall");
+  const installs = expanded.filter((x) => x.job.kind !== "uninstall");
+
+  for (const item of [...uninstalls, ...installs]) {
+    const job = item.job;
+    if (job.status !== "running") updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
     try {
-      const plugin = pluginById(job.pluginId);
-      if (!plugin) throw new Error(`Plugin ${job.pluginId} is not in the catalog`);
-      const loc = await performInstall(job, plugin);
-      lastLoc = loc;
-      if (!loc.skipRebuild) needsRebuild = true;
-      updateJob(job.id, { extra: { ...(job.extra || {}), sha: loc.sha } });
+      if (job.kind === "uninstall") {
+        const plugin = job.pluginId ? pluginById(job.pluginId) : null;
+        const dest = (job.extra && job.extra.dest) || (plugin && plugin.web && plugin.web.dest);
+        if (!dest) throw new Error("Missing dest folder");
+        lastLoc = await performUninstall(job, dest, plugin);
+        needsRebuild = true;
+      } else if (job.kind === "update-all") {
+        for (const p of item.plugins) {
+          appendJobLog(job.id, `Updating ${p.name}`);
+          lastLoc = await performInstall(job, p.catalog);
+          if (lastLoc && !lastLoc.skipRebuild) needsRebuild = true;
+        }
+      } else {
+        const plugin = pluginById(job.pluginId);
+        if (!plugin) throw new Error(`Plugin ${job.pluginId} is not in the catalog`);
+        lastLoc = await performInstall(job, plugin);
+        if (lastLoc && !lastLoc.skipRebuild) needsRebuild = true;
+        if (lastLoc && lastLoc.sha) {
+          updateJob(job.id, { extra: { ...(job.extra || {}), sha: lastLoc.sha } });
+        }
+      }
     } catch (err) {
       updateJob(job.id, {
         status: "failed",
@@ -1083,11 +1214,13 @@ async function runInstallBatch(jobs) {
       appendJobLog(job.id, `FAILED ${err.message || err}`);
     }
   }
+
   const succeeded = store
     .readJobs()
     .jobs.filter((j) => jobs.some((x) => x.id === j.id) && j.status === "running");
   if (succeeded.length && lastLoc && needsRebuild) {
     try {
+      appendJobLog(succeeded[0].id, `Applying ${succeeded.length} change${succeeded.length === 1 ? "" : "s"} with one CloudTAK rebuild`);
       await performRebuild(succeeded[0], lastLoc.path, lastLoc.composeService);
       for (const j of succeeded) {
         updateJob(j.id, { status: "complete", finishedAt: new Date().toISOString() });
@@ -1117,50 +1250,6 @@ async function runInstallBatch(jobs) {
   }
 }
 
-async function runUninstallBatch(jobs) {
-  let lastLoc = null;
-  for (const job of jobs) {
-    updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
-    try {
-      const plugin = job.pluginId ? pluginById(job.pluginId) : null;
-      const dest = (job.extra && job.extra.dest) || (plugin && plugin.web.dest);
-      if (!dest) throw new Error("Missing dest folder");
-      lastLoc = await performUninstall(job, dest, plugin);
-    } catch (err) {
-      updateJob(job.id, {
-        status: "failed",
-        finishedAt: new Date().toISOString(),
-        error: err.message || String(err),
-      });
-      appendJobLog(job.id, `FAILED ${err.message || err}`);
-    }
-  }
-  const succeeded = store
-    .readJobs()
-    .jobs.filter((j) => jobs.some((x) => x.id === j.id) && j.status === "running");
-  if (succeeded.length && lastLoc) {
-    try {
-      await performRebuild(succeeded[0], lastLoc.path, lastLoc.composeService);
-      for (const j of succeeded) {
-        updateJob(j.id, { status: "complete", finishedAt: new Date().toISOString() });
-        appendJobLog(j.id, "Complete. In CloudTAK use Settings → Refresh App.");
-      }
-    } catch (err) {
-      for (const j of succeeded) {
-        updateJob(j.id, {
-          status: "failed",
-          finishedAt: new Date().toISOString(),
-          error: err.message || String(err),
-        });
-      }
-    }
-  }
-  try {
-    await scanHost();
-    await refreshShaCache();
-  } catch (_) {}
-}
-
 async function claimAndRunJobs() {
   if (_jobRunning) return;
   if (!isEnabled()) return;
@@ -1168,8 +1257,9 @@ async function claimAndRunJobs() {
   if (!queued.length) return;
   _jobRunning = true;
   try {
-    const installs = queued.filter((j) => j.kind === "install" || j.kind === "update" || j.kind === "update-all");
-    const uninstalls = queued.filter((j) => j.kind === "uninstall");
+    const changes = queued.filter((j) =>
+      ["install", "update", "update-all", "uninstall"].includes(j.kind)
+    );
     const scans = queued.filter((j) => j.kind === "scan");
     const catalogs = queued.filter((j) => j.kind === "refresh-catalog");
 
@@ -1207,50 +1297,7 @@ async function claimAndRunJobs() {
       }
     }
 
-    if (installs.length) {
-      const expanded = [];
-      for (const job of installs) {
-        if (job.kind === "update-all") {
-          updateJob(job.id, { status: "running", startedAt: new Date().toISOString() });
-          const snap = await getSnapshot();
-          const pending = snap.plugins.filter((p) => p.installed && p.updateAvailable && p.catalog);
-          if (!pending.length) {
-            appendJobLog(job.id, "No updates available.");
-            updateJob(job.id, { status: "complete", finishedAt: new Date().toISOString() });
-            continue;
-          }
-          for (const p of pending) {
-            appendJobLog(job.id, `Updating ${p.name}`);
-          }
-          let lastLoc = null;
-          let needsRebuild = false;
-          try {
-            for (const p of pending) {
-              lastLoc = await performInstall(job, p.catalog);
-              if (lastLoc && !lastLoc.skipRebuild) needsRebuild = true;
-            }
-            if (lastLoc && needsRebuild) await performRebuild(job, lastLoc.path, lastLoc.composeService);
-            updateJob(job.id, { status: "complete", finishedAt: new Date().toISOString() });
-            appendJobLog(job.id, "Update all complete. In CloudTAK use Settings → Refresh App.");
-            await scanHost();
-            await refreshShaCache();
-          } catch (err) {
-            updateJob(job.id, {
-              status: "failed",
-              finishedAt: new Date().toISOString(),
-              error: err.message || String(err),
-            });
-            appendJobLog(job.id, `FAILED ${err.message || err}`);
-          }
-        } else {
-          expanded.push(job);
-        }
-      }
-      const single = expanded.filter((j) => j.kind !== "update-all");
-      if (single.length) await runInstallBatch(single);
-    }
-
-    if (uninstalls.length) await runUninstallBatch(uninstalls);
+    if (changes.length) await runChangeBatch(changes);
   } finally {
     _jobRunning = false;
   }
@@ -1420,9 +1467,12 @@ module.exports = {
   refreshShaCache,
   enqueueJob,
   enqueueJobOnce,
+  stageJob,
+  unstageJob,
+  deployStaged,
   listJobs,
   clearIdleJobs,
-  isActiveJob,
+  isBusyJob,
   claimAndRunJobs,
   workerTick,
   workerBackground,

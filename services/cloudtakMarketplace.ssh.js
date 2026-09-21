@@ -127,8 +127,8 @@ function execOverSsh(connectConfig, command, timeoutMs = 30000, onChunk) {
       String(text)
         .split(/\r\n|\n|\r/)
         .forEach((line) => {
-          const trimmed = String(line || "").trim();
-          if (trimmed) onChunk(trimmed);
+          const raw = String(line || "").replace(/\s+$/, "");
+          if (raw) onChunk(raw);
         });
     };
 

@@ -16,7 +16,7 @@
         <button type="button" class="btn mp-filter-btn" id="mpFilterAvailable" data-mp-filter="available">Available</button>
         <button type="button" class="btn mp-filter-btn" id="mpFilterNew" data-mp-filter="new">New</button>
         <button type="button" class="btn mp-filter-btn" id="mpFilterInstalled" data-mp-filter="installed">Installed</button>
-        <button type="button" class="btn qr" id="mpUpdateAll" style="display:none;">Update all</button>
+        <button type="button" class="btn qr" id="mpUpdateAll" style="display:none;">Queue all updates</button>
       </div>
     </div>
     <div id="mpMsg" class="msg" style="margin-top:8px;"></div>
@@ -24,9 +24,23 @@
     <div id="mpEmpty" class="muted" style="display:none;margin-top:16px;">No plugins match this filter.</div>
   </div>
 
+  <div class="card" id="mpQueueCard" style="margin-top:16px;display:none;">
+    <div class="mp-jobs-header">
+      <div>
+        <h2 style="margin:0;">Queue</h2>
+        <div class="muted" style="margin-top:2px;font-size:0.85rem;">CloudTAK rebuilds once when you deploy.</div>
+      </div>
+      <button type="button" class="btn success" id="mpDeployBtn">Deploy</button>
+    </div>
+    <ul id="mpQueueList" class="mp-queue-list"></ul>
+  </div>
+
   <div class="card" id="mpJobsCard" style="margin-top:16px;display:none;">
     <div class="mp-jobs-header">
-      <h2 style="margin:0;">Jobs</h2>
+      <div>
+        <h2 style="margin:0;">Jobs</h2>
+        <div id="mpJobsMeta" class="muted" style="margin-top:2px;font-size:0.85rem;"></div>
+      </div>
       <button type="button" class="btn" id="mpJobsCopyBtn">Copy</button>
     </div>
     <pre id="mpJobs" class="mp-job-log"></pre>
@@ -41,9 +55,9 @@
     </div>
     <div class="modalBody">
       <p id="mpUninstallBody"></p>
-      <p class="muted">The CloudTAK API image will rebuild (often 5–15 minutes). After it finishes, open CloudTAK <strong>Settings → Refresh App</strong> so the plugin leaves the menu.</p>
+      <p class="muted">This is added to the deploy queue. CloudTAK rebuilds once when you click Deploy. After it finishes, open CloudTAK <strong>Settings → Refresh App</strong> so the plugin leaves the menu.</p>
       <div class="row" style="gap:8px;margin-top:12px;">
-        <button type="button" class="btn danger" id="mpUninstallConfirm" disabled>Uninstall plugin</button>
+        <button type="button" class="btn danger" id="mpUninstallConfirm" disabled>Add to queue</button>
       </div>
     </div>
   </div>
@@ -177,14 +191,17 @@
     text-align: center;
   }
   .mp-job-log {
-    max-height: 280px;
+    max-height: min(70vh, 640px);
     overflow: auto;
-    background: var(--bg);
+    background: var(--panel, #111827);
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 12px;
     white-space: pre-wrap;
-    font-size: 0.8rem;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.4;
   }
   .mp-jobs-header {
     display: flex;
@@ -192,6 +209,27 @@
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 8px;
+  }
+  .mp-queue-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mp-queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .mp-queue-item-label {
+    font-weight: 600;
   }
   .mp-banner {
     padding: 10px 12px;
@@ -212,6 +250,8 @@
   var uninstallTarget = null;
   var confirmArmed = false;
   var jobLogFullText = "";
+  var jobLogPinned = true;
+  var stagedJobs = [];
 
   function $(id) { return document.getElementById(id); }
   function setMsg(text, isError) {
@@ -277,12 +317,29 @@
       var pillClass = p.isNew ? "plugin-version-pill is-new" : (p.installed ? "plugin-version-pill is-installed" : "");
       var pillLabel = p.isNew ? "New" : (p.installed ? "Installed" : "");
       var pill = pillClass ? '<span class="' + pillClass + '">' + pillLabel + "</span>" : "";
+      var staged = stagedForPlugin(p);
       var actions = "";
       if (p.unknown) {
-        actions = '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+        if (staged && staged.kind === "uninstall") {
+          actions = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
+        } else {
+          actions = '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+        }
       } else if (p.installed) {
-        if (p.updateAvailable) actions += '<button type="button" class="btn qr" data-update="' + encodeURIComponent(p.id) + '">Update</button>';
-        actions += '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+        if (p.updateAvailable) {
+          if (staged && staged.kind === "update") {
+            actions += '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
+          } else if (!(staged && staged.kind === "uninstall")) {
+            actions += '<button type="button" class="btn qr" data-update="' + encodeURIComponent(p.id) + '">Update</button>';
+          }
+        }
+        if (staged && staged.kind === "uninstall") {
+          actions += '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
+        } else {
+          actions += '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+        }
+      } else if (staged && staged.kind === "install") {
+        actions = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
       } else {
         actions = '<button type="button" class="btn" data-install="' + encodeURIComponent(p.id) + '">Install</button>';
       }
@@ -329,38 +386,105 @@
       if (note) el.querySelector(".plugin-notes").textContent = note;
       grid.appendChild(el);
     });
-    var canUpdateAll = plugins.some(function (p) { return p.installed && p.updateAvailable; });
+    var canUpdateAll = plugins.some(function (p) {
+      if (!(p.installed && p.updateAvailable) || p.unknown) return false;
+      var s = stagedForPlugin(p);
+      return !s || s.kind !== "update";
+    });
     $("mpUpdateAll").style.display = canUpdateAll ? "" : "none";
   }
 
-  function jobLines(j, logLimit) {
-    var lines = [];
-    lines.push((j.status || "") + "  " + (j.kind || "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : ""));
-    var log = Array.isArray(j.log) ? j.log : [];
-    var slice = logLimit ? log.slice(-logLimit) : log;
-    slice.forEach(function (l) { lines.push("  " + l); });
-    return lines;
+  function stagedForPlugin(p) {
+    return stagedJobs.filter(function (j) {
+      if (p.id && j.pluginId === p.id) return true;
+      if (p.dest && j.extra && j.extra.dest === p.dest) return true;
+      return false;
+    })[0] || null;
+  }
+
+  function queueLabel(j) {
+    var verb = j.kind === "uninstall" ? "Uninstall" : (j.kind === "update" ? "Update" : "Install");
+    var p = plugins.filter(function (x) {
+      return (j.pluginId && x.id === j.pluginId) || (j.extra && j.extra.dest && x.dest === j.extra.dest);
+    })[0];
+    return verb + " " + ((p && p.name) || j.pluginId || (j.extra && j.extra.dest) || "plugin");
+  }
+
+  function renderQueue(jobs) {
+    stagedJobs = (jobs || []).filter(function (j) { return j.status === "staged"; });
+    var card = $("mpQueueCard");
+    var list = $("mpQueueList");
+    var deploy = $("mpDeployBtn");
+    if (!stagedJobs.length) {
+      if (card) card.style.display = "none";
+      if (list) list.innerHTML = "";
+      return;
+    }
+    if (card) card.style.display = "";
+    if (deploy) deploy.textContent = stagedJobs.length === 1 ? "Deploy" : "Deploy (" + stagedJobs.length + ")";
+    if (!list) return;
+    list.innerHTML = "";
+    stagedJobs.forEach(function (j) {
+      var li = document.createElement("li");
+      li.className = "mp-queue-item";
+      li.innerHTML = '<span class="mp-queue-item-label"></span><button type="button" class="btn" data-unstage="' + encodeURIComponent(j.id) + '">Remove</button>';
+      li.querySelector(".mp-queue-item-label").textContent = queueLabel(j);
+      list.appendChild(li);
+    });
+  }
+
+  function displayLogLine(l) {
+    var s = String(l || "").replace(/^\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s+/, "");
+    if (!s || /^(UNINSTALL_OK|REBUILD_OK|INSTALL_OK)$/.test(s) || s.indexOf("INSTALL_SHA ") === 0) return "";
+    if (/^\$\s*bash\s+-lc/.test(s) || /^--progress is a global compose flag/.test(s)) return "";
+    var m = s.match(/^#\d+\s+(\[[^\]]+\])\s+(.*)$/);
+    if (m) return " => " + m[1] + " " + m[2];
+    if (/^#\d+\s+DONE\s+/.test(s) || /^#\d+\s+CACHED$/.test(s)) return "";
+    m = s.match(/^#\d+\s+\d+(?:\.\d+)?\s+(.*)$/);
+    if (m) return " => => # " + m[1];
+    m = s.match(/^#\d+\s+(.*)$/);
+    if (m) return " => => # " + m[1];
+    m = s.match(/^Image\s+(.+)\s+Building$/);
+    if (m) return "[+] Building " + m[1];
+    return s;
+  }
+
+  function jobLines(j) {
+    return (Array.isArray(j.log) ? j.log : []).map(displayLogLine).filter(Boolean);
+  }
+
+  function jobLabel(j) {
+    return (j.status || "") + (j.kind ? " · " + j.kind : "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : "");
   }
 
   function renderJobs(jobs) {
     var list = (jobs || []).slice(0, 12);
     var card = $("mpJobsCard");
+    var el = $("mpJobs");
+    var meta = $("mpJobsMeta");
     if (!list.length) {
       if (card) card.style.display = "none";
-      $("mpJobs").textContent = "";
+      if (el) el.textContent = "";
+      if (meta) meta.textContent = "";
       jobLogFullText = "";
       return;
     }
     if (card) card.style.display = "";
-    var preview = [];
-    var full = [];
-    list.forEach(function (j) {
-      var limit = (j.status === "queued" || j.status === "running") ? 12 : 40;
-      preview = preview.concat(jobLines(j, limit));
-      full = full.concat(jobLines(j, 0));
+    if (meta) meta.textContent = list.map(jobLabel).join("  |  ");
+    var lines = [];
+    list.forEach(function (j, i) {
+      if (list.length > 1) {
+        if (i) lines.push("");
+        lines.push("# " + jobLabel(j));
+      }
+      lines = lines.concat(jobLines(j));
     });
-    $("mpJobs").textContent = preview.join("\n");
-    jobLogFullText = full.join("\n");
+    var text = lines.join("\n");
+    jobLogFullText = text;
+    if (el) {
+      el.textContent = text;
+      if (jobLogPinned) el.scrollTop = el.scrollHeight;
+    }
   }
 
   function copyJobLog() {
@@ -413,8 +537,9 @@
       var status = pair[1];
       plugins = (snap && snap.plugins) || [];
       renderBanners(status, snap);
+      renderQueue(status && status.jobs);
       renderCards();
-      renderJobs(status && status.jobs);
+      renderJobs((status && status.jobs || []).filter(function (j) { return j.status !== "staged"; }));
       document.querySelectorAll("[data-mp-filter]").forEach(function (btn) {
         btn.classList.toggle("is-filter-on", btn.getAttribute("data-mp-filter") === filter);
       });
@@ -434,28 +559,67 @@
   });
   $("mpSearch").addEventListener("input", renderCards);
   $("mpUpdateAll").addEventListener("click", function () {
-    postJob({ kind: "update-all" }).then(function () { setMsg("Update all queued on the worker."); loadAll(); });
+    postJob({ kind: "update-all" }).then(function (out) {
+      var n = out && out.json && out.json.count;
+      setMsg(n ? ("Queued " + n + " update" + (n === 1 ? "" : "s") + ". Click Deploy when ready.") : "No updates to queue.");
+      loadAll();
+    });
+  });
+  $("mpDeployBtn").addEventListener("click", function () {
+    fetch("/api/cloudtak-marketplace/jobs/deploy", { method: "POST", headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok && j.ok, json: j }; }); })
+      .then(function (out) {
+        if (!out.ok) {
+          setMsg((out.json && out.json.error) || "Deploy failed", true);
+          return;
+        }
+        setMsg("Deploy started. CloudTAK will rebuild once.");
+        loadAll();
+      });
   });
   $("mpJobsCopyBtn").addEventListener("click", copyJobLog);
+  $("mpJobs").addEventListener("scroll", function () {
+    var el = $("mpJobs");
+    jobLogPinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  });
+  function unstage(jobId) {
+    return fetch("/api/cloudtak-marketplace/jobs/unstage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ jobId: jobId })
+    }).then(function (r) { return r.json(); }).then(function () { loadAll(); });
+  }
+
   $("mpGrid").addEventListener("click", function (e) {
+    var unstageBtn = e.target && e.target.closest ? e.target.closest("[data-unstage]") : null;
+    if (unstageBtn && $("mpGrid").contains(unstageBtn)) {
+      unstage(decodeURIComponent(unstageBtn.getAttribute("data-unstage") || ""));
+      return;
+    }
     var t = e.target && e.target.closest ? e.target.closest("[data-install],[data-update],[data-uninstall]") : null;
     if (!t) return;
     var id = decodeURIComponent(t.getAttribute("data-install") || t.getAttribute("data-update") || t.getAttribute("data-uninstall") || "");
     if (t.hasAttribute("data-install")) {
-      postJob({ kind: "install", pluginId: id }).then(function () { setMsg("Install queued."); loadAll(); });
+      postJob({ kind: "install", pluginId: id }).then(function () { setMsg("Added to queue."); loadAll(); });
       return;
     }
     if (t.hasAttribute("data-update")) {
-      postJob({ kind: "update", pluginId: id }).then(function () { setMsg("Update queued."); loadAll(); });
+      postJob({ kind: "update", pluginId: id }).then(function () { setMsg("Added to queue."); loadAll(); });
       return;
     }
     var p = plugins.filter(function (x) { return x.id === id; })[0];
     uninstallTarget = p;
     confirmArmed = false;
     $("mpUninstallConfirm").disabled = false;
+    $("mpUninstallConfirm").textContent = "Add to queue";
     $("mpUninstallBody").textContent = "Remove " + (p && p.name || id) + " from " + (p && p.dest || id) + " (web folder" + (p && p.layout && p.layout.routes ? " and owned route files" : "") + "). Sidecar containers are not stopped.";
     $("mpUninstallModal").style.display = "flex";
     $("mpUninstallModal").setAttribute("aria-hidden", "false");
+  });
+  $("mpQueueList").addEventListener("click", function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest("[data-unstage]") : null;
+    if (!btn) return;
+    unstage(decodeURIComponent(btn.getAttribute("data-unstage") || ""));
   });
   $("mpUninstallCancel").addEventListener("click", function () {
     $("mpUninstallModal").style.display = "none";
@@ -465,13 +629,13 @@
     if (!uninstallTarget) return;
     if (!confirmArmed) {
       confirmArmed = true;
-      $("mpUninstallConfirm").textContent = "Click again to uninstall";
+      $("mpUninstallConfirm").textContent = "Click again to add to queue";
       return;
     }
     postJob({ kind: "uninstall", pluginId: uninstallTarget.unknown ? null : uninstallTarget.id, dest: uninstallTarget.dest }).then(function () {
-      setMsg("Uninstall queued.");
+      setMsg("Uninstall added to queue.");
       $("mpUninstallModal").style.display = "none";
-      $("mpUninstallConfirm").textContent = "Uninstall plugin";
+      $("mpUninstallConfirm").textContent = "Add to queue";
       confirmArmed = false;
       loadAll();
     });
@@ -484,6 +648,6 @@
       return fetch("/api/cloudtak-marketplace/catalog/refresh", { method: "POST", headers: { Accept: "application/json" } }).catch(function () {});
     })
     .then(function () { return loadAll(); });
-  setInterval(loadAll, 4000);
+  setInterval(loadAll, 2000);
 })();
 </script>
