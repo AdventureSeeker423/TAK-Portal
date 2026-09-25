@@ -1790,6 +1790,49 @@ function pluginRuntimeExtrasBash() {
   ].join("\n");
 }
 
+function pluginHostAlignRunnerBash() {
+  const js = fs.readFileSync(path.join(__dirname, "cloudtakMarketplace.align.js"), "utf8");
+  if (js.includes("\nCTAK_PLUGIN_ALIGN_JS\n")) {
+    throw new Error("plugin align script contains the heredoc delimiter");
+  }
+  return `
+align_plugins_to_host() {
+  local ct="$1"
+  [ -n "$ct" ] && [ -d "$ct/api/web/src" ] && [ -d "$ct/api/web/plugins" ] || return 0
+  local script="/tmp/ctak-marketplace-align.cjs"
+  cat <<'CTAK_PLUGIN_ALIGN_JS' > "$script"
+${js}
+CTAK_PLUGIN_ALIGN_JS
+  chmod a+r "$script" 2>/dev/null || true
+  echo "Aligning marketplace plugins to the installed CloudTAK API"
+  if command -v node >/dev/null 2>&1; then
+    if declare -F run_as_writer >/dev/null 2>&1; then
+      if run_as_writer "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$ct")"; then
+        return 0
+      fi
+      echo "Plugin owner has no usable node; aligning via docker"
+    else
+      node "$script" "$ct"
+      return 0
+    fi
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    local uid gid
+    uid=$(stat -c '%u' "$ct/api/web/plugins" 2>/dev/null || stat -f '%u' "$ct/api/web/plugins")
+    gid=$(stat -c '%g' "$ct/api/web/plugins" 2>/dev/null || stat -f '%g' "$ct/api/web/plugins")
+    docker run --rm --user "\${uid}:\${gid}" \\
+      -v "$ct:$ct" \\
+      -v "$script:/align.cjs:ro" \\
+      node:22-alpine \\
+      node /align.cjs "$ct"
+    return 0
+  fi
+  echo "WARNING: skipped plugin API alignment; node and docker are unavailable" >&2
+  return 0
+}
+`.trim();
+}
+
 function installRemoteScript(ct, plugin, options = {}) {
   const dest = plugin.web.dest;
   const source = plugin.web.source === "." ? "." : plugin.web.source;
@@ -1970,6 +2013,11 @@ chmod a+rX "$REPO_DIR/.ctak-normalize-plugin.sh" 2>/dev/null || true
 run_as_writer "sh $(printf '%q' "$REPO_DIR/.ctak-normalize-plugin.sh") $(printf '%q' "$TARGET")"
 rm -f "$REPO_DIR/.ctak-normalize-plugin.sh" || true
 
+# Match plugin calls and imports to this CloudTAK checkout before vue-tsc.
+# Applies to every plugin already on disk, not only the one being installed.
+${pluginHostAlignRunnerBash()}
+align_plugins_to_host "$CT"
+
 cat <<'RUNTIME' > "$REPO_DIR/.ctak-runtime-plugin.sh"
 ${pluginRuntimeExtrasBash()}
 RUNTIME
@@ -2042,6 +2090,9 @@ elif [ -f compose.yml ]; then CF=compose.yml
 elif [ -f compose.yaml ]; then CF=compose.yaml
 else echo "No compose file in $CT" >&2; exit 1
 fi
+# A plugin copied earlier can still fail vue-tsc and block this rebuild.
+${pluginHostAlignRunnerBash()}
+align_plugins_to_host "$CT"
 MPF=""
 if [ -f docker-compose.marketplace.yml ]; then
   MPF="-f docker-compose.marketplace.yml"
@@ -2556,6 +2607,7 @@ module.exports = {
   normalizeInstallScript,
   installRemoteScript,
   uninstallRemoteScript,
+  rebuildRemoteScript,
   normalizeCsp,
   normalizeFlatSamplePluginTree,
   pluginEntryImportsLib,

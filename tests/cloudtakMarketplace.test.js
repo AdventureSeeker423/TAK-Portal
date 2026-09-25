@@ -226,6 +226,104 @@ fs.rmSync(noLibImportDir, { recursive: true, force: true });
 assert.ok(marketplace.pluginEntryImportsLib("import x from './lib/foo.ts'"));
 assert.ok(!marketplace.pluginEntryImportsLib("import x from './foo.ts'"));
 
+const align = require("../services/cloudtakMarketplace.align");
+assert.deepStrictEqual(
+  align.readSubscriptionLoadKeys(`
+    static async load(guid: string, opts: { reload?: boolean, missiontoken?: string, subscribed?: boolean } = {}) {}
+  `),
+  ["reload", "missiontoken", "subscribed"]
+);
+assert.deepStrictEqual(
+  align.parseObjectProperties("{ token: await sessionToken(), missiontoken: missionAuthToken(mission), subscribed: true }").map((p) => p.key),
+  ["token", "missiontoken", "subscribed"]
+);
+
+function writeAlignFixture(root, opts) {
+  const webSrc = path.join(root, "api", "web", "src");
+  const plugin = path.join(root, "api", "web", "plugins", "incident-manager", "src", "lib");
+  fs.mkdirSync(path.join(webSrc, "base"), { recursive: true });
+  fs.mkdirSync(path.join(webSrc, "workers"), { recursive: true });
+  fs.mkdirSync(path.join(webSrc, "utils"), { recursive: true });
+  fs.mkdirSync(plugin, { recursive: true });
+  fs.writeFileSync(
+    path.join(webSrc, "base", "subscription.ts"),
+    opts.subscription ||
+      "export default class Subscription {\n  static async load(guid: string, opts: {\n    reload?: boolean,\n    missiontoken?: string,\n    subscribed?: boolean,\n  } = {}) { return this; }\n}\n"
+  );
+  fs.writeFileSync(
+    path.join(webSrc, "workers", "atlas-connection.ts"),
+    opts.atlas ||
+      "export default class AtlasConnection {\n  connect(connection: string) { return connection; }\n  private scheduleReconnect(connection: string) { return connection; }\n}\n"
+  );
+  fs.writeFileSync(path.join(webSrc, "utils", "coordinateFormat.ts"), "export function formatCoordPair() { return ''; }\n");
+  if (opts.extraCoord) {
+    fs.mkdirSync(path.join(webSrc, "base", "utils"), { recursive: true });
+    fs.writeFileSync(path.join(webSrc, "base", "utils", "coordinateFormat.ts"), "export function formatCoordPair() { return ''; }\n");
+  }
+  fs.writeFileSync(
+    path.join(plugin, "irBriefing.ts"),
+    "import Subscription from '../../../../src/base/subscription.ts';\nimport { formatCoordPair } from '../../../../src/base/utils/coordinateFormat.ts';\nexport async function loadIrBriefingFromMission(missionGuid: string, missionToken?: string) {\n  const sub = await Subscription.load(missionGuid, { token: missionToken ?? '' });\n  return formatCoordPair(sub);\n}\n"
+  );
+  fs.writeFileSync(
+    path.join(plugin, "incidentSubscription.ts"),
+    "import { Preferences } from '@capacitor/preferences';\nimport Subscription from '../../../../src/base/subscription.ts';\nexport async function sessionToken() {\n  const { value } = await Preferences.get({ key: 'token' });\n  return value || '';\n}\nexport async function loadIncidentSubscription(mission: { guid: string }) {\n  const sub = await Subscription.load(mission.guid, {\n    token: await sessionToken(),\n    missiontoken: mission.guid,\n    subscribed: true,\n  });\n  return sub;\n}\n"
+  );
+  fs.writeFileSync(
+    path.join(plugin, "missionFeatures.ts"),
+    "import { Preferences } from '@capacitor/preferences';\nimport Subscription from '../../../../src/base/subscription.ts';\nasync function sessionToken() {\n  const { value } = await Preferences.get({ key: 'token' });\n  return value || '';\n}\nasync function ensureConnOpen(worker: { conn: { isOpen: boolean, reconnect: (u: string) => Promise<void> }, username: string }) {\n  if (await worker.conn.isOpen) return;\n  await worker.conn.reconnect(await worker.username);\n}\nexport async function pushFeature(worker: { conn: { isOpen: boolean, reconnect: (u: string) => Promise<void> }, username: string }, missionGuid: string) {\n  await ensureConnOpen(worker);\n  return Subscription.load(missionGuid, {\n    token: await sessionToken(),\n    missiontoken: 'm',\n    subscribed: true,\n  });\n}\n"
+  );
+}
+
+const alignRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-align-"));
+writeAlignFixture(alignRoot, {});
+const aligned = align.alignInstalledPlugins(alignRoot);
+assert.ok(aligned.ok);
+assert.ok(aligned.changes.some((line) => line.includes("coordinateFormat.ts") && line.includes("src/utils/coordinateFormat.ts")));
+assert.ok(aligned.changes.some((line) => line.includes("token -> missiontoken")));
+assert.ok(aligned.changes.some((line) => line.includes("dropped Subscription.load session token")));
+assert.ok(aligned.changes.some((line) => line.includes("conn.reconnect -> conn.connect")));
+const briefing = fs.readFileSync(path.join(alignRoot, "api", "web", "plugins", "incident-manager", "src", "lib", "irBriefing.ts"), "utf8");
+assert.match(briefing, /from '\.\.\/\.\.\/\.\.\/\.\.\/src\/utils\/coordinateFormat\.ts'/);
+assert.match(briefing, /missiontoken: missionToken \?\? ''/);
+assert.doesNotMatch(briefing, /\btoken:/);
+const incidentSub = fs.readFileSync(path.join(alignRoot, "api", "web", "plugins", "incident-manager", "src", "lib", "incidentSubscription.ts"), "utf8");
+assert.match(incidentSub, /export async function sessionToken/);
+assert.match(incidentSub, /missiontoken: mission\.guid/);
+assert.doesNotMatch(incidentSub, /\btoken:/);
+const features = fs.readFileSync(path.join(alignRoot, "api", "web", "plugins", "incident-manager", "src", "lib", "missionFeatures.ts"), "utf8");
+assert.match(features, /worker\.conn\.connect\(/);
+assert.doesNotMatch(features, /function sessionToken/);
+assert.doesNotMatch(features, /Preferences/);
+assert.doesNotMatch(features, /\btoken:/);
+const alignedAgain = align.alignInstalledPlugins(alignRoot);
+assert.deepStrictEqual(alignedAgain.changes, []);
+fs.rmSync(alignRoot, { recursive: true, force: true });
+
+const keepTokenRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-align-keep-"));
+writeAlignFixture(keepTokenRoot, {
+  subscription:
+    "export default class Subscription {\n  static async load(guid: string, opts: { token?: string, missiontoken?: string } = {}) { return this; }\n}\n",
+  atlas: "export default class AtlasConnection {\n  connect(connection: string) {}\n  reconnect(connection: string) { this.connect(connection); }\n}\n",
+  extraCoord: true,
+});
+const kept = align.alignInstalledPlugins(keepTokenRoot);
+assert.deepStrictEqual(kept.changes, []);
+const keptBrief = fs.readFileSync(path.join(keepTokenRoot, "api", "web", "plugins", "incident-manager", "src", "lib", "irBriefing.ts"), "utf8");
+assert.match(keptBrief, /base\/utils\/coordinateFormat\.ts/);
+assert.match(keptBrief, /\{ token: missionToken \?\? '' \}/);
+const keptFeatures = fs.readFileSync(path.join(keepTokenRoot, "api", "web", "plugins", "incident-manager", "src", "lib", "missionFeatures.ts"), "utf8");
+assert.match(keptFeatures, /conn\.reconnect\(/);
+fs.rmSync(keepTokenRoot, { recursive: true, force: true });
+
+const installAligned = marketplace.installRemoteScript("/root/CloudTAK", livewx);
+assert.match(installAligned, /align_plugins_to_host/);
+assert.match(installAligned, /Aligning marketplace plugins to the installed CloudTAK API/);
+assert.match(installAligned, /readSubscriptionLoadKeys/);
+assert.doesNotMatch(installAligned, /incident-manager/);
+const rebuildAligned = marketplace.rebuildRemoteScript("/root/CloudTAK", "api");
+assert.match(rebuildAligned, /align_plugins_to_host/);
+assert.match(rebuildAligned, /node:22-alpine/);
+
 const ssh = require("../services/cloudtakMarketplace.ssh");
 assert.strictEqual(typeof ssh.onboardWithPassword, "function");
 assert.strictEqual(typeof ssh.ensureCloudtakSshKeyPair, "function");
