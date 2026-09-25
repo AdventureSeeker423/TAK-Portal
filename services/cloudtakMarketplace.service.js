@@ -1173,14 +1173,15 @@ function unstageJob(jobId) {
 
 function deployStaged() {
   let count = 0;
+  const batchId = crypto.randomUUID();
   store.withJobs((jobs) =>
     jobs.map((j) => {
       if (j.status !== "staged") return j;
       count += 1;
-      return { ...j, status: "queued" };
+      return { ...j, status: "queued", batchId, log: [] };
     })
   );
-  return { ok: true, count };
+  return { ok: true, count, batchId: count ? batchId : null };
 }
 
 function enqueueJobOnce(kind, createdBy) {
@@ -1284,6 +1285,30 @@ function isBusyJob(job) {
 
 function isChangeKind(kind) {
   return ["install", "update", "uninstall", "update-all"].includes(String(kind || ""));
+}
+
+function newestJobStamp(job) {
+  return String((job && (job.startedAt || job.finishedAt || job.createdAt)) || "");
+}
+
+/** Jobs whose log should be on screen: the deploy that is running, or the latest one that finished. */
+function selectLogJobs(jobs) {
+  const list = (Array.isArray(jobs) ? jobs : []).filter((j) => j && j.status !== "staged");
+  const deploy = list.filter((j) => isChangeKind(j.kind));
+  const live = deploy.filter((j) => isBusyJob(j));
+  if (live.length) {
+    const batch = live.map((j) => j.batchId).find(Boolean) || "";
+    if (batch) return deploy.filter((j) => j.batchId === batch);
+    return live;
+  }
+  const withBatch = deploy.filter((j) => j.batchId);
+  if (withBatch.length) {
+    const newest = withBatch.reduce((best, job) => (newestJobStamp(job) > newestJobStamp(best) ? job : best));
+    return deploy.filter((j) => j.batchId === newest.batchId);
+  }
+  const finished = deploy.filter((j) => !isBusyJob(j));
+  if (finished.length) return [finished[0]];
+  return list.slice(0, 12);
 }
 
 function hasBusyChangeJobs() {
@@ -2588,6 +2613,7 @@ module.exports = {
   stageJob,
   unstageJob,
   deployStaged,
+  selectLogJobs,
   listJobs,
   clearIdleJobs,
   cancelCurrentJobs,

@@ -385,6 +385,8 @@
   var confirmArmed = false;
   var jobLogFullText = "";
   var jobLogPinned = true;
+  var jobLogKey = "";
+  var loadGen = 0;
   var stagedJobs = [];
   var jobBusy = false;
   var WAIT_HINT = "Wait until the current job is complete and containers are recreated and running";
@@ -781,11 +783,18 @@
     return (j.status || "") + (j.kind ? " · " + j.kind : "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : "");
   }
 
-  function renderJobs(jobs) {
-    var list = (jobs || []).slice(0, 12);
+  function renderJobs(jobs, allJobs) {
+    var list = jobs || [];
     var card = $("mpJobsCard");
     var el = $("mpJobs");
     var meta = $("mpJobsMeta");
+    var key = list.map(function (j) { return j.id; }).join(",");
+    if (key !== jobLogKey) {
+      jobLogKey = key;
+      jobLogPinned = true;
+      jobLogFullText = "";
+      if (el) el.textContent = "";
+    }
     if (!list.length) {
       if (card) card.style.display = "none";
       if (el) el.textContent = "";
@@ -815,7 +824,7 @@
     }
     var cancelBtn = $("mpJobsCancelBtn");
     if (cancelBtn) {
-      var canCancel = (jobs || []).some(function (j) {
+      var canCancel = (allJobs || jobs || []).some(function (j) {
         return j.status === "queued" || j.status === "running";
       });
       cancelBtn.disabled = !canCancel;
@@ -865,10 +874,12 @@
   }
 
   function loadAll() {
+    var gen = ++loadGen;
     return Promise.all([
       fetch("/api/cloudtak-marketplace/plugins", { headers: { Accept: "application/json" } }).then(function (r) { return r.json(); }),
       fetch("/api/cloudtak-marketplace/status", { headers: { Accept: "application/json" } }).then(function (r) { return r.json(); })
     ]).then(function (pair) {
+      if (gen !== loadGen) return;
       var snap = pair[0];
       var status = pair[1];
       plugins = (snap && snap.plugins) || [];
@@ -880,7 +891,10 @@
       renderBanners(status, snap);
       renderQueue(status && status.jobs);
       renderCards();
-      renderJobs((status && status.jobs || []).filter(function (j) { return j.status !== "staged"; }));
+      var logJobs = status && Array.isArray(status.logJobs)
+        ? status.logJobs
+        : (status && status.jobs || []).filter(function (j) { return j.status !== "staged"; }).slice(0, 12);
+      renderJobs(logJobs, status && status.jobs);
       document.querySelectorAll("[data-mp-filter]").forEach(function (btn) {
         btn.classList.toggle("is-filter-on", btn.getAttribute("data-mp-filter") === filter);
       });
@@ -917,6 +931,12 @@
           return;
         }
         setMsg("Deploy started. CloudTAK will rebuild once.");
+        jobLogKey = "";
+        jobLogFullText = "";
+        jobLogPinned = true;
+        if ($("mpJobs")) $("mpJobs").textContent = "";
+        if ($("mpJobsMeta")) $("mpJobsMeta").textContent = "Starting…";
+        if ($("mpJobsCard")) $("mpJobsCard").style.display = "";
         loadAll();
       });
   });

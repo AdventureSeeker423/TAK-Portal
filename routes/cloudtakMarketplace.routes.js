@@ -47,6 +47,7 @@ router.get("/status", async (req, res) => {
       worker,
       busy: marketplace.hasBusyChangeJobs(),
       jobs: marketplace.listJobs().slice(0, 20),
+      logJobs: marketplace.selectLogJobs(marketplace.listJobs()),
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });

@@ -327,6 +327,22 @@ assert.match(rebuildAligned, /docker run --rm -u 0/);
 assert.doesNotMatch(installAligned, /--user /);
 assert.doesNotMatch(rebuildAligned, /--user /);
 
+const done = { id: "done", kind: "install", status: "complete", batchId: "old", startedAt: "2026-09-25T12:00:00.000Z", log: ["old install"] };
+const next = { id: "next", kind: "uninstall", status: "running", batchId: "new", startedAt: "2026-09-25T13:00:00.000Z", log: ["removing"] };
+const sibling = { id: "sib", kind: "install", status: "queued", batchId: "new", createdAt: "2026-09-25T12:59:00.000Z", log: [] };
+const scan = { id: "scan", kind: "scan", status: "complete", log: ["scanned"] };
+const followed = marketplace.selectLogJobs([scan, sibling, next, done]);
+assert.deepStrictEqual(followed.map((j) => j.id), ["sib", "next"]);
+const after = marketplace.selectLogJobs([
+  scan,
+  { ...sibling, status: "complete", finishedAt: "2026-09-25T13:10:00.000Z" },
+  { ...next, status: "complete", finishedAt: "2026-09-25T13:05:00.000Z" },
+  done,
+]);
+assert.deepStrictEqual(after.map((j) => j.id), ["sib", "next"]);
+const onlyFinished = marketplace.selectLogJobs([done, scan]);
+assert.deepStrictEqual(onlyFinished.map((j) => j.id), ["done"]);
+
 const ssh = require("../services/cloudtakMarketplace.ssh");
 assert.strictEqual(typeof ssh.onboardWithPassword, "function");
 assert.strictEqual(typeof ssh.ensureCloudtakSshKeyPair, "function");
