@@ -264,19 +264,33 @@ function removeTopLevelSnippet(text, name) {
   return text.slice(0, lineStart) + text.slice(end);
 }
 
-function placeNamedSnippet(text, snippet, name) {
-  const body = String(snippet || "").trim();
-  let markerAt = userAddedInsertAt(text);
+function lineStart(text, index) {
+  return text.lastIndexOf("\n", Math.max(0, index - 1)) + 1;
+}
+
+function namedSnippetDestination(text, options) {
+  const site = findCloudtakSite(text, options);
+  const siteAt = site ? lineStart(text, site.block.open) : text.length;
+  const markerAt = userAddedInsertAt(text);
+  if (markerAt != null && markerAt <= siteAt) return { at: markerAt, siteAt, markerAt };
+  return { at: siteAt, siteAt, markerAt };
+}
+
+function snippetSitsLegally(block, dest) {
+  if (!block) return false;
+  if (block.open >= dest.siteAt) return false;
+  if (dest.markerAt != null && dest.markerAt <= dest.siteAt && block.open < dest.markerAt) return false;
+  return true;
+}
+
+function placeNamedSnippet(text, snippet, name, options) {
+  const body = String(snippet || "").trim() + "\n";
+  let dest = namedSnippetDestination(text, options);
   const block = topLevelSnippetBlock(text, name);
-  if (markerAt != null && block && block.open < markerAt) {
-    text = removeTopLevelSnippet(text, name);
-    markerAt = userAddedInsertAt(text);
-    text = insertAt(text, markerAt == null ? text.length : markerAt, body + "\n");
-    return { text, did: true };
-  }
-  if (block) return { text, did: false };
-  const at = markerAt == null ? text.length : markerAt;
-  return { text: insertAt(text, at, body + "\n"), did: true };
+  if (snippetSitsLegally(block, dest)) return { text, did: false };
+  if (block) text = removeTopLevelSnippet(text, name);
+  dest = namedSnippetDestination(text, options);
+  return { text: insertAt(text, dest.at, body), did: true };
 }
 
 function applyCaddySnippets(source, snippets, options = {}) {
@@ -297,7 +311,7 @@ function applyCaddySnippets(source, snippets, options = {}) {
     }
     if (name) {
       let did = false;
-      const placed = placeNamedSnippet(text, snippet, name);
+      const placed = placeNamedSnippet(text, snippet, name, options);
       text = placed.text;
       did = placed.did;
       const again = findCloudtakSite(text, options);

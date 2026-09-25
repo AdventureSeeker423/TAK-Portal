@@ -156,33 +156,32 @@ assert.match(onMap.text, /map\.example\.com \{[\s\S]*import cloudtak_print[\s\S]
 assert.doesNotMatch(onMap.text.split("map.example.com")[1].split("tiles.map")[0], /body\{color/);
 assert.doesNotMatch(onMap.text.split("tiles.map.example.com")[1], /import cloudtak_print/);
 assert.strictEqual(caddy.applyCaddySnippets(onMap.text, [printSnippet], { host: "map.example.com" }).changed, false);
-assert.match(onMap.text, /tiles\.map\.example\.com \{[\s\S]*\}\s*\(cloudtak_print\) \{/);
-const marked = hostFile + [
+assert.match(onMap.text, /\(cloudtak_print\) \{[\s\S]*map\.example\.com \{/);
+assert.doesNotMatch(onMap.text.split("map.example.com")[1], /\(cloudtak_print\)/);
+const earlyMarker = [
   "# --- User-added blocks (do not remove) ---",
   "# Anything below this line survives every infra-TAK regeneration.",
   "# Add custom site blocks here (extra domains, redirects, monitors).",
-  "extra.example.com {",
-  "\tredir https://example.com",
-  "}",
+  "",
+].join("\n") + hostFile;
+const inSection = caddy.applyCaddySnippets(earlyMarker, [printSnippet]);
+assert.strictEqual(inSection.ok, true);
+const earlyMarkerAt = inSection.text.indexOf("# --- User-added blocks (do not remove) ---");
+const earlySnippetAt = inSection.text.indexOf("(cloudtak_print)");
+assert.ok(earlySnippetAt > earlyMarkerAt);
+assert.ok(earlySnippetAt < inSection.text.indexOf("map.example.com"));
+assert.strictEqual(caddy.applyCaddySnippets(inSection.text, [printSnippet]).changed, false);
+const lateMarker = hostFile + [
+  "# --- User-added blocks (do not remove) ---",
+  "# Anything below this line survives every infra-TAK regeneration.",
+  "# Add custom site blocks here (extra domains, redirects, monitors).",
   "",
 ].join("\n");
-const inSection = caddy.applyCaddySnippets(marked, [printSnippet]);
-assert.strictEqual(inSection.ok, true);
-const markerAt = inSection.text.indexOf("# --- User-added blocks (do not remove) ---");
-const snippetAt = inSection.text.indexOf("(cloudtak_print)");
-assert.ok(markerAt >= 0 && snippetAt > markerAt);
-assert.ok(snippetAt < inSection.text.indexOf("extra.example.com"));
-assert.doesNotMatch(inSection.text.slice(0, markerAt), /\(cloudtak_print\)/);
-assert.strictEqual(caddy.applyCaddySnippets(inSection.text, [printSnippet]).changed, false);
-const parked = marked.replace(
-  "# --- User-added blocks (do not remove) ---",
-  "(cloudtak_print) {\n\t@cloudtak_print path /print-api /print-api/*\n\thandle @cloudtak_print {\n\t\treverse_proxy cloudtak-print:5010\n\t}\n}\n\n# --- User-added blocks (do not remove) ---"
-);
-const moved = caddy.applyCaddySnippets(parked, [printSnippet]);
-assert.strictEqual(moved.ok, true);
-assert.ok(moved.text.indexOf("(cloudtak_print)") > moved.text.indexOf("# --- User-added blocks (do not remove) ---"));
-assert.strictEqual(moved.text.split("(cloudtak_print)").length, 2);
-assert.strictEqual(caddy.applyCaddySnippets(moved.text, [printSnippet]).changed, false);
+const beforeSite = caddy.applyCaddySnippets(lateMarker, [printSnippet]);
+assert.strictEqual(beforeSite.ok, true);
+assert.ok(beforeSite.text.indexOf("(cloudtak_print)") < beforeSite.text.indexOf("map.example.com"));
+assert.ok(beforeSite.text.indexOf("(cloudtak_print)") < beforeSite.text.indexOf("# --- User-added blocks (do not remove) ---"));
+assert.strictEqual(caddy.applyCaddySnippets(beforeSite.text, [printSnippet]).changed, false);
 const udashApplied = caddy.appliedKeys([udash, print], withUdash.text);
 assert.strictEqual(caddy.extraConfigStatus(udash.additionalActions, { available: true, applied: udashApplied }).complete, true);
 assert.strictEqual(caddy.extraConfigStatus(udash.additionalActions, { available: true, applied: [] }).caddyPending, true);
