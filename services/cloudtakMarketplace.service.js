@@ -1817,10 +1817,10 @@ CTAK_PLUGIN_ALIGN_JS
     fi
   fi
   if command -v docker >/dev/null 2>&1; then
-    local uid gid
-    uid=$(stat -c '%u' "$ct/api/web/plugins" 2>/dev/null || stat -f '%u' "$ct/api/web/plugins")
-    gid=$(stat -c '%g' "$ct/api/web/plugins" 2>/dev/null || stat -f '%g' "$ct/api/web/plugins")
-    docker run --rm --user "\${uid}:\${gid}" \\
+    # Same writer as run_as_writer's docker fallback. Plugin files are often
+    # owned by the SSH user (root), not by the plugins directory owner.
+    echo "Aligning plugin files via docker (root)"
+    docker run --rm -u 0 \\
       -v "$ct:$ct" \\
       -v "$script:/align.cjs:ro" \\
       node:22-alpine \\

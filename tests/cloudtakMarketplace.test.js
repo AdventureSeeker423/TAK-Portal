@@ -323,6 +323,9 @@ assert.doesNotMatch(installAligned, /incident-manager/);
 const rebuildAligned = marketplace.rebuildRemoteScript("/root/CloudTAK", "api");
 assert.match(rebuildAligned, /align_plugins_to_host/);
 assert.match(rebuildAligned, /node:22-alpine/);
+assert.match(rebuildAligned, /docker run --rm -u 0/);
+assert.doesNotMatch(installAligned, /--user /);
+assert.doesNotMatch(rebuildAligned, /--user /);
 
 const ssh = require("../services/cloudtakMarketplace.ssh");
 assert.strictEqual(typeof ssh.onboardWithPassword, "function");
