@@ -183,6 +183,10 @@
     background: color-mix(in srgb, var(--danger, #c44) 22%, transparent);
     color: var(--danger, #c44);
   }
+  .plugin-cards .plugin-version-pill.is-progress {
+    background: color-mix(in srgb, #6b7280 22%, transparent);
+    color: var(--text);
+  }
   .plugin-cards .plugin-desc {
     font-size: 0.88rem;
     line-height: 1.4;
@@ -405,6 +409,7 @@
   var jobLogKey = "";
   var loadGen = 0;
   var stagedJobs = [];
+  var activeJobs = [];
   var jobBusy = false;
   var jobPoll = null;
   var WAIT_HINT = "Wait until the current job is complete and containers are recreated and running";
@@ -665,21 +670,25 @@
       }
     }
     list.forEach(function (p) {
-      var pillClass = p.error ? "plugin-version-pill is-error" : (p.installed ? "plugin-version-pill is-installed" : (p.isNew ? "plugin-version-pill is-new" : ""));
-      var pillLabel = p.error ? "Error" : (p.installed ? "Installed" : (p.isNew ? "New" : ""));
+      var active = activeJobForPlugin(p);
+      var progress = progressLabel(active);
+      var pillClass = progress ? "plugin-version-pill is-progress" : (p.error ? "plugin-version-pill is-error" : (p.installed ? "plugin-version-pill is-installed" : (p.isNew ? "plugin-version-pill is-new" : "")));
+      var pillLabel = progress || (p.error ? "Error" : (p.installed ? "Installed" : (p.isNew ? "New" : "")));
       var pill = pillClass ? '<span class="' + pillClass + '">' + pillLabel + "</span>" : "";
       var staged = stagedForPlugin(p);
       var actions = "";
       var canReinstall = !!p.error && !p.unknown;
       if (jobBusy) {
-        if (p.installed || p.unknown || p.error) {
+        if (progress) {
+          actions = disabledAction(progress);
+        } else if (p.installed || p.unknown || p.error) {
           if (canReinstall) actions += disabledAction("Reinstall");
           else if (!p.unknown) actions += disabledAction("Update");
           actions += disabledAction("Uninstall");
         } else {
           actions = disabledAction("Install");
         }
-        actions += '<p class="mp-wait-note">' + WAIT_HINT + ".</p>";
+        if (!progress) actions += '<p class="mp-wait-note">' + WAIT_HINT + ".</p>";
       } else if (p.unknown) {
         if (staged && staged.kind === "uninstall") {
           actions = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
@@ -777,12 +786,24 @@
     $("mpUpdateAll").title = jobBusy ? WAIT_HINT : "";
   }
 
+  function jobMatchesPlugin(j, p) {
+    if (p.id && j.pluginId === p.id) return true;
+    if (p.dest && j.extra && j.extra.dest === p.dest) return true;
+    var ids = j.extra && Array.isArray(j.extra.pluginIds) ? j.extra.pluginIds : [];
+    return !!(p.id && ids.indexOf(p.id) >= 0);
+  }
+
   function stagedForPlugin(p) {
-    return stagedJobs.filter(function (j) {
-      if (p.id && j.pluginId === p.id) return true;
-      if (p.dest && j.extra && j.extra.dest === p.dest) return true;
-      return false;
-    })[0] || null;
+    return stagedJobs.filter(function (j) { return jobMatchesPlugin(j, p); })[0] || null;
+  }
+
+  function activeJobForPlugin(p) {
+    return activeJobs.filter(function (j) { return jobMatchesPlugin(j, p); })[0] || null;
+  }
+
+  function progressLabel(job) {
+    if (!job) return "";
+    return job.kind === "uninstall" ? "Uninstall In Progress" : "Install In Progress";
   }
 
   function queueLabel(j) {
@@ -796,6 +817,10 @@
 
   function renderQueue(jobs) {
     stagedJobs = (jobs || []).filter(function (j) { return j.status === "staged"; });
+    activeJobs = (jobs || []).filter(function (j) {
+      return (j.status === "queued" || j.status === "running") &&
+        (j.kind === "install" || j.kind === "update" || j.kind === "uninstall" || j.kind === "update-all");
+    });
     var card = $("mpQueueCard");
     var list = $("mpQueueList");
     var deploy = $("mpDeployBtn");
