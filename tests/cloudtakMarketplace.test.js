@@ -376,9 +376,14 @@ fs.writeFileSync(
 );
 const linted = align.alignInstalledPlugins(lintRoot);
 assert.ok(linted.changes.some((line) => line.includes("image lint no longer includes marketplace plugin files")));
-const lintScript = JSON.parse(fs.readFileSync(lintPkg, "utf8")).scripts.lint;
-assert.strictEqual(lintScript, "eslint --config eslint.config.js ./src/ ./public/");
-assert.doesNotMatch(lintScript, /\.\/plugins/);
+assert.ok(linted.changes.some((line) => line.includes("image typecheck no longer includes marketplace plugin files")));
+const lintScripts = JSON.parse(fs.readFileSync(lintPkg, "utf8")).scripts;
+assert.strictEqual(lintScripts.lint, "eslint --config eslint.config.js ./src/ ./public/");
+assert.doesNotMatch(lintScripts.lint, /\.\/plugins/);
+assert.strictEqual(lintScripts.check, "vue-tsc --project tsconfig.marketplace.json");
+const checkConfig = JSON.parse(fs.readFileSync(path.join(lintRoot, "api", "web", "tsconfig.marketplace.json"), "utf8"));
+assert.strictEqual(checkConfig.extends, "./tsconfig.json");
+assert.ok(checkConfig.exclude.includes("plugins"));
 const lintedAgain = align.alignInstalledPlugins(lintRoot);
 assert.deepStrictEqual(lintedAgain.changes, []);
 fs.rmSync(lintRoot, { recursive: true, force: true });

@@ -788,6 +788,51 @@ function relaxHostPluginLint(webDir) {
   return ["api/web/package.json: image lint no longer includes marketplace plugin files"];
 }
 
+const MARKETPLACE_TSCONFIG = "tsconfig.marketplace.json";
+
+function marketplaceTsconfigText() {
+  return JSON.stringify({
+    extends: "./tsconfig.json",
+    exclude: ["plugins", "node_modules", "dist"],
+  }, null, 2) + "\n";
+}
+
+function relaxHostPluginCheck(webDir) {
+  const pkgPath = path.join(webDir, "package.json");
+  if (!fs.existsSync(pkgPath)) return [];
+  let text = "";
+  try {
+    text = fs.readFileSync(pkgPath, "utf8");
+  } catch (_) {
+    return [];
+  }
+  const changes = [];
+  const next = text.replace(/("check"\s*:\s*")((?:\\.|[^"\\])*)(")/, (full, open, script, close) => {
+    if (!/\bvue-tsc\b/.test(script) || script.includes(MARKETPLACE_TSCONFIG)) return full;
+    const stripped = script.replace(/(?:--project|-p)\s+\S+/g, " ").replace(/[ \t]{2,}/g, " ").trim();
+    const updated = stripped.replace(/\bvue-tsc\b/, "vue-tsc --project " + MARKETPLACE_TSCONFIG);
+    if (!updated || updated === script) return full;
+    return open + updated + close;
+  });
+  if (next !== text) {
+    fs.writeFileSync(pkgPath, next);
+    changes.push("api/web/package.json: image typecheck no longer includes marketplace plugin files");
+  }
+  if (!next.includes(MARKETPLACE_TSCONFIG)) return changes;
+  const overlayPath = path.join(webDir, MARKETPLACE_TSCONFIG);
+  const overlay = marketplaceTsconfigText();
+  let existing = "";
+  try {
+    if (fs.existsSync(overlayPath)) existing = fs.readFileSync(overlayPath, "utf8");
+  } catch (_) {
+    return changes;
+  }
+  if (existing === overlay) return changes;
+  fs.writeFileSync(overlayPath, overlay);
+  changes.push("api/web/" + MARKETPLACE_TSCONFIG + ": typecheck excludes marketplace plugin files");
+  return changes;
+}
+
 function indentOf(line) {
   const m = String(line || "").match(/^[ \t]*/);
   return m ? m[0].length : 0;
@@ -999,6 +1044,7 @@ function alignInstalledPlugins(ctRoot) {
     changes.push(...alignPluginDir(path.join(plugins, ent.name), ctx));
   }
   changes.push(...relaxHostPluginLint(web));
+  changes.push(...relaxHostPluginCheck(web));
   return { ok: true, changes };
 }
 
@@ -1055,6 +1101,7 @@ module.exports = {
   parseObjectProperties,
   rewriteLoadObject,
   relaxHostPluginLint,
+  relaxHostPluginCheck,
   composeServiceNames,
   rewriteComposeDepends,
   fixComposeDependsFile,
