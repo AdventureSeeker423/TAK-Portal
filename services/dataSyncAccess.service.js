@@ -192,8 +192,22 @@ function extractTakGroupNameList(payload) {
 }
 
 function extractMissionGroupNames(mission) {
-  const groups = mission && Array.isArray(mission.groups) ? mission.groups : [];
-  return groups.map(entryToGroupName).filter(Boolean);
+  if (!mission) return [];
+  let groups = mission.groups;
+  if (typeof groups === "string") {
+    groups = parsePackageGroupsField(groups);
+  }
+  if (!Array.isArray(groups)) return [];
+  const names = groups.map(entryToGroupName).filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const n of names) {
+    const key = canonicalGroupKey(n);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(n);
+  }
+  return out;
 }
 
 function missionSingleGroupName(mission) {

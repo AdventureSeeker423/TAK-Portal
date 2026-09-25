@@ -63,11 +63,100 @@ async function missionExists(missionName) {
   }
 }
 
+/**
+ * TAK Marti create/update reads mission fields from the URI, not the JSON body:
+ * PUT/POST /Marti/api/missions/{name}?group=&defaultRole=&creatorUid=&tool=...
+ * Default group is __ANON__ if `group` is omitted; defaultRole is often READONLY.
+ * See TAK MissionApi createMission query params.
+ */
+function defaultRoleQueryValue(raw) {
+  if (raw == null || raw === "") return "";
+  if (typeof raw === "string") return raw.trim();
+  if (typeof raw === "object" && raw.type != null) return String(raw.type).trim();
+  return "";
+}
+
+function groupNamesFromMissionBody(body) {
+  const o = body && typeof body === "object" ? body : {};
+  const out = [];
+  const push = (v) => {
+    const n = String(v || "").trim();
+    if (n) out.push(n);
+  };
+  if (Array.isArray(o.groups)) {
+    for (const g of o.groups) {
+      if (g && typeof g === "object") push(g.name || g.groupName || g.group || g.title);
+      else push(g);
+    }
+  }
+  if (Array.isArray(o.group)) {
+    for (const g of o.group) push(g);
+  } else if (o.group != null && o.group !== "") {
+    push(o.group);
+  }
+  const seen = new Set();
+  return out.filter((n) => {
+    const k = n.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function buildMissionWriteQuery(body, options = {}) {
+  const o = body && typeof body === "object" ? body : {};
+  const allowDupe = options.allowDupe;
+  const query = {
+    creatorUid: String(o.creatorUid || "takportal").trim() || "takportal",
+    tool: String(o.tool || "public").trim() || "public",
+    inviteOnly: o.inviteOnly === true,
+  };
+  if (o.description !== undefined) query.description = String(o.description ?? "");
+  if (o.chatRoom !== undefined) query.chatRoom = String(o.chatRoom ?? "");
+  if (o.baseLayer !== undefined) query.baseLayer = String(o.baseLayer ?? "");
+  if (o.bbox !== undefined) query.bbox = String(o.bbox ?? "");
+  if (o.path !== undefined) query.path = String(o.path ?? "");
+  if (o.classification !== undefined) query.classification = String(o.classification ?? "");
+  if (o.expiration !== undefined && o.expiration !== null && o.expiration !== "") {
+    query.expiration = o.expiration;
+  }
+  const role = defaultRoleQueryValue(o.defaultRole);
+  if (role) query.defaultRole = role;
+  const groups = groupNamesFromMissionBody(o);
+  if (groups.length) query.group = groups;
+  if (groups.length || options.allowGroupChange) query.allowGroupChange = true;
+  if (allowDupe !== undefined) query.allowDupe = !!allowDupe;
+  if (o.password) query.password = String(o.password);
+  return query;
+}
+
+function toMissionSearchParams(query) {
+  const usp = new URLSearchParams();
+  const q = query && typeof query === "object" ? query : {};
+  for (const [k, v] of Object.entries(q)) {
+    if (v == null) continue;
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (item == null || item === "") continue;
+        usp.append(k, String(item));
+      }
+      continue;
+    }
+    if (typeof v === "boolean") {
+      usp.append(k, v ? "true" : "false");
+      continue;
+    }
+    usp.append(k, String(v));
+  }
+  return usp;
+}
+
 async function putMission(missionName, body) {
   assertTakAvailable();
   const client = buildTakAxios({ timeout: 60000 });
   const res = await client.put(missionPath(missionName), body, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
+    params: toMissionSearchParams(buildMissionWriteQuery(body)),
   });
   return res.data;
 }
@@ -77,6 +166,7 @@ async function postMission(missionName, body) {
   const client = buildTakAxios({ timeout: 60000 });
   const res = await client.post(missionPath(missionName), body, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
+    params: toMissionSearchParams(buildMissionWriteQuery(body, { allowDupe: false })),
   });
   return res.data;
 }
@@ -86,13 +176,20 @@ async function changeMission(missionName, body) {
   assertTakAvailable();
   const client = buildTakAxios({ timeout: 60000 });
   const headers = { "Content-Type": "application/json", Accept: "application/json" };
+  const postParams = toMissionSearchParams(buildMissionWriteQuery(body, { allowDupe: false }));
   try {
-    const res = await client.post(missionPath(missionName), body, { headers });
+    const res = await client.post(missionPath(missionName), body, {
+      headers,
+      params: postParams,
+    });
     return res.data;
   } catch (postErr) {
     const st = postErr?.response?.status;
     if (st === 405 || st === 501) {
-      const res = await client.put(missionPath(missionName), body, { headers });
+      const res = await client.put(missionPath(missionName), body, {
+        headers,
+        params: toMissionSearchParams(buildMissionWriteQuery(body)),
+      });
       return res.data;
     }
     throw postErr;
@@ -379,6 +476,9 @@ module.exports = {
   putMission,
   postMission,
   changeMission,
+  buildMissionWriteQuery,
+  toMissionSearchParams,
+  defaultRoleQueryValue,
   deleteMission,
   setMissionPassword,
   clearMissionPassword,

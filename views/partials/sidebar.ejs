@@ -55,6 +55,11 @@
     _perm("page.locate") ||
     _perm("page.mutual_aid");
   const canSeeOnboardingSection = _isAnyAdmin;
+  const cloudtakMarketplaceEnabled =
+    typeof _settings.CLOUDTAK_MARKETPLACE_ENABLED === "string"
+      ? _settings.CLOUDTAK_MARKETPLACE_ENABLED.toLowerCase() === "true"
+      : false;
+  const canSeeAddonsSection = _isGlobalAdmin && cloudtakMarketplaceEnabled;
 
   const _path = (typeof currentPath !== "undefined" && currentPath) ? String(currentPath).replace(/\/+$/, "") || "/" : "/";
   function isActive(href) {
@@ -133,7 +138,7 @@
               <a href="/mou" class="<%= isActive('/mou') || isActive('/admin/mou') ? 'active' : '' %>">MOU Documents</a>
             <% } %>
             <% if (_perm("page.settings")) { %>
-            <a href="/settings" class="<%= isActive('/settings') || isActive('/audit-log') || isActive('/plugin-manager') || isActive('/access-control') || isActive('/cloudtak-marketplace') ? 'active' : '' %>">Server Settings</a>
+            <a href="/settings" class="<%= isActive('/settings') || isActive('/audit-log') || isActive('/plugin-manager') || isActive('/access-control') ? 'active' : '' %>">Server Settings</a>
             <% } %>
           </div>
         </div>
@@ -156,6 +161,19 @@
             <% if (_perm("page.mutual_aid")) { %>
               <a href="/mutual-aid" class="<%= isActive('/mutual-aid') ? 'active' : '' %>">Mutual Aid</a>
             <% } %>
+          </div>
+        </div>
+      <% } %>
+
+      <% if (canSeeAddonsSection) { %>
+        <!-- Addons -->
+        <div class="nav-section" data-section="addons">
+          <button type="button" class="nav-section-toggle" aria-expanded="true" aria-controls="nav-addons" id="nav-toggle-addons">
+            <span class="nav-section-label">Addons</span>
+            <span class="nav-section-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="nav-section-links" id="nav-addons">
+            <a href="/cloudtak-marketplace" class="<%= isActive('/cloudtak-marketplace') ? 'active' : '' %>">CloudTAK Marketplace</a>
           </div>
         </div>
       <% } %>

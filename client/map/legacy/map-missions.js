@@ -147,7 +147,7 @@
         loadMission(name);
       } else if (entry.visible && entry.geojson) {
         showMissionOverlays(name, entry).catch(function (err) {
-          entry.error = err?.message || String(err);
+          entry.error = overlayNetworkError(err, "this mission");
           renderMissionList();
         });
       } else if (pending != null && pending !== entry.visible) {
@@ -850,6 +850,24 @@
     }
   }
 
+  function overlayNetworkError(err, label) {
+    const msg = err && err.message ? String(err.message) : String(err || "");
+    if (/NetworkError|Failed to fetch|Load failed|network error/i.test(msg)) {
+      return "Could not load " + label + ". TAK Portal may have restarted or lost its TAK Server connection — try again.";
+    }
+    return msg || "Could not load " + label;
+  }
+
+  async function throwIfOverlayResponseFailed(resp, fallback) {
+    if (resp.ok) return;
+    let msg = fallback + " (HTTP " + resp.status + ")";
+    try {
+      const body = await resp.json();
+      if (body && body.error) msg = body.error;
+    } catch (_) {}
+    throw new Error(msg);
+  }
+
   async function fetchMissionGeojson(name, options) {
     const opts = options || {};
     let url =
@@ -859,7 +877,7 @@
       (opts.refresh ? "1" : "0") +
       "&attachments=1";
     const resp = await fetch(url, { credentials: "same-origin" });
-    if (!resp.ok) throw new Error("geojson " + resp.status);
+    await throwIfOverlayResponseFailed(resp, "Mission overlay failed");
     return resp.json();
   }
 
@@ -872,7 +890,7 @@
         (opts.refresh ? "1" : "0"),
       { credentials: "same-origin" }
     );
-    if (!resp.ok) throw new Error("layers " + resp.status);
+    await throwIfOverlayResponseFailed(resp, "Mission layers failed");
     return resp.json();
   }
 
@@ -935,7 +953,7 @@
           renderMissionList();
         })
         .catch(function (err) {
-          entry.error = err?.message || String(err);
+          entry.error = overlayNetworkError(err, "this mission");
           renderMissionList();
         });
     }
@@ -950,7 +968,7 @@
     })
       .catch(function (err) {
         if (!missionOpStale(name, gen)) {
-          entry.error = err?.message || String(err);
+          entry.error = overlayNetworkError(err, "this mission");
         }
       })
       .finally(function () {
@@ -1355,7 +1373,7 @@
       syncMissionAutoRefreshTimer();
       if (entry.geojson) {
         showMissionOverlays(name, entry).catch(function (err) {
-          entry.error = err?.message || String(err);
+          entry.error = overlayNetworkError(err, "this mission");
           renderMissionList();
         });
         return;
@@ -1433,7 +1451,7 @@
       }
     } catch (err) {
       if (!missionOpStale(name, gen)) {
-        entry.error = err?.message || String(err);
+        entry.error = overlayNetworkError(err, "this mission");
       }
     } finally {
       finishMissionBusy(name, entry, gen);

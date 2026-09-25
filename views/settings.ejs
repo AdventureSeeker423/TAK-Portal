@@ -4647,7 +4647,7 @@
         </div>
         <div class="modalBody settings-body">
           <div class="grid2">
-            <% renderField("CLOUDTAK_MARKETPLACE_ENABLED","Enable CloudTAK Plugin Marketplace","When off, the marketplace page is hidden and the worker does not scan or install.","false"); %>
+            <% renderField("CLOUDTAK_MARKETPLACE_ENABLED","Enable CloudTAK Plugin Marketplace","When on, CloudTAK Marketplace appears under Addons for global admins. When off, that link is hidden and the worker does not scan or install.","false"); %>
           </div>
           <div id="cloudtakMarketplaceEnabledFields" style="display:<%= mpEnabledOn ? 'block' : 'none' %>;">
             <h3 style="margin:1rem 0 0.5rem;">SSH</h3>
@@ -4714,26 +4714,25 @@
             </div>
             <div id="cloudtakMarketplaceSshStatus" class="settings-help" style="margin-top:0.5rem;white-space:pre-line;"></div>
 
-            <h3 style="margin:1.25rem 0 0.5rem;">Email alerts</h3>
-            <p class="muted" style="font-size:0.85rem;">Uses Messaging → Email SMTP. <% if (!emailOn) { %>Email is currently disabled.<% } %></p>
-            <div class="grid2">
-              <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_ENABLED","Email alerts","Mail when new catalog plugins appear or installed plugins have updates.","false"); %>
-            </div>
-            <div id="cloudtakMarketplaceNotifyFields" style="display:<%= mpNotifyOn ? 'block' : 'none' %>;">
+            <% /* Email alerts stay in the form so saved values persist. Hidden until the section is ready to show again. */ %>
+            <div id="cloudtakMarketplaceEmailAlerts" hidden>
+              <h3 style="margin:1.25rem 0 0.5rem;">Email alerts</h3>
+              <p class="muted" style="font-size:0.85rem;">Uses Messaging → Email SMTP. <% if (!emailOn) { %>Email is currently disabled.<% } %></p>
               <div class="grid2">
-                <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_NEW","Alert on new plugins","When a new plugin id appears in the catalog.","true"); %>
-                <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_UPDATES","Alert on updates","When an installed plugin is behind the catalog ref.","true"); %>
-                <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_TO","Notify recipients","Comma-separated. Empty uses Always CC, then SMTP From."); %>
-                <% renderField("CLOUDTAK_MARKETPLACE_POLL_MINUTES","Catalog poll (minutes)","How often the worker refreshes the catalog and checks for mail.","60"); %>
+                <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_ENABLED","Email alerts","Mail when new catalog plugins appear or installed plugins have updates.","false"); %>
               </div>
-              <div style="margin-top:0.75rem;">
-                <button type="button" class="btn" id="cloudtakMarketplaceTestEmailBtn">Send test email</button>
-                <span id="cloudtakMarketplaceTestEmailStatus" class="muted" style="margin-left:0.5rem;"></span>
+              <div id="cloudtakMarketplaceNotifyFields" style="display:<%= mpNotifyOn ? 'block' : 'none' %>;">
+                <div class="grid2">
+                  <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_NEW","Alert on new plugins","When a new plugin id appears in the catalog.","true"); %>
+                  <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_UPDATES","Alert on updates","When an installed plugin is behind the catalog ref.","true"); %>
+                  <% renderField("CLOUDTAK_MARKETPLACE_NOTIFY_TO","Notify recipients","Comma-separated. Empty uses Always CC, then SMTP From."); %>
+                  <% renderField("CLOUDTAK_MARKETPLACE_POLL_MINUTES","Catalog poll (minutes)","How often the worker refreshes the catalog and checks for mail.","60"); %>
+                </div>
+                <div style="margin-top:0.75rem;">
+                  <button type="button" class="btn" id="cloudtakMarketplaceTestEmailBtn">Send test email</button>
+                  <span id="cloudtakMarketplaceTestEmailStatus" class="muted" style="margin-left:0.5rem;"></span>
+                </div>
               </div>
-            </div>
-
-            <div style="margin-top:1.25rem;">
-              <a class="btn" id="cloudtakMarketplaceOpenBtn" href="/cloudtak-marketplace">Open marketplace</a>
             </div>
           </div>
         </div>

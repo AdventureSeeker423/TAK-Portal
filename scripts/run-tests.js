@@ -22,6 +22,7 @@ const TEST_FILES = [
   "missionContents.test.js",
   "missionRaster.test.js",
   "dataSyncAccess.test.js",
+  "dataSync.missionWrite.test.js",
   "channelPatch.access.test.js",
   "locatorForm.test.js",
   "locatorCot.test.js",

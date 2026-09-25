@@ -54,6 +54,24 @@
     };
   }
 
+  function overlayNetworkError(err, label) {
+    const msg = err && err.message ? String(err.message) : String(err || "");
+    if (/NetworkError|Failed to fetch|Load failed|network error/i.test(msg)) {
+      return "Could not load " + label + ". TAK Portal may have restarted or lost its TAK Server connection — try again.";
+    }
+    return msg || "Could not load " + label;
+  }
+
+  async function throwIfOverlayResponseFailed(resp, fallback) {
+    if (resp.ok) return;
+    let msg = fallback + " (HTTP " + resp.status + ")";
+    try {
+      const body = await resp.json();
+      if (body && body.error) msg = body.error;
+    } catch (_) {}
+    throw new Error(msg);
+  }
+
   function rasterAbsoluteUrl(url) {
     const raw = String(url || "").trim();
     if (!raw) return raw;
@@ -866,7 +884,7 @@
     })
       .catch(function (err) {
         if (!packageOpStale(hash, gen)) {
-          entry.error = err?.message || String(err);
+          entry.error = overlayNetworkError(err, "this data package");
         }
       })
       .finally(function () {
@@ -886,14 +904,7 @@
       "/geojson" +
       (qs.toString() ? "?" + qs.toString() : "");
     const resp = await fetch(url, { credentials: "same-origin" });
-    if (!resp.ok) {
-      let msg = "package " + resp.status;
-      try {
-        const body = await resp.json();
-        if (body && body.error) msg = body.error;
-      } catch (_) {}
-      throw new Error(msg);
-    }
+    await throwIfOverlayResponseFailed(resp, "Package overlay failed");
     return resp.json();
   }
 
@@ -934,7 +945,7 @@
       }
     } catch (err) {
       if (!packageOpStale(hash, gen)) {
-        entry.error = err?.message || String(err);
+        entry.error = overlayNetworkError(err, "this data package");
       }
     } finally {
       finishPackageBusy(hash, entry, gen);
@@ -963,7 +974,7 @@
       entry.visible = true;
       if (entry.geojson) {
         showPackageOverlays(hash, entry).catch(function (err) {
-          entry.error = err?.message || String(err);
+          entry.error = overlayNetworkError(err, "this data package");
           renderPackageList();
         });
         return;
