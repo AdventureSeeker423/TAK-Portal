@@ -191,6 +191,10 @@
       </div>
     </section>
 
+    <%
+      const _marketplaceCardBetaOn = String((settings && settings.BETA_MODE) || "").trim().toLowerCase() === "true";
+    %>
+    <% if (_marketplaceCardBetaOn) { %>
     <section class="settings-hub-category" aria-labelledby="settingsCatModules">
       <h2 class="settings-hub-category-title" id="settingsCatModules">
         <svg class="settings-hub-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -202,6 +206,7 @@
         </div>
       </div>
     </section>
+    <% } %>
 
     </div>
   </div>

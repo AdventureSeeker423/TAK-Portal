@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.7 - 9/25/26
+🐛 `Bug Fix` - Fixes issue with Data Sync missions created in TAK Portal not applying group and default role to TAK Server (subscribers could subscribe but not add content via send/lasso)
+
 ### v2.0.6 - 9/20/26
 ✨ `Enhancement` - Connected Users and Connected Integrations card logic updated to be more efficient<br>
 ✨ `Enhancement` - Total User count updated to reflect both active and disabled users
