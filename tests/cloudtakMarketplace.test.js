@@ -4,6 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const marketplace = require("../services/cloudtakMarketplace.service");
+const pluginPatch = require("../services/cloudtakMarketplace.patch");
 const store = require("../services/cloudtakMarketplace.store");
 
 const catalogPath = path.join(__dirname, "..", "catalog", "cloudtak-plugins.json");
@@ -29,6 +30,30 @@ assert.ok(ids.includes("replay"));
 const replay = normalized.plugins.find((p) => p.id === "replay");
 assert.strictEqual(replay.web.dest, "replay");
 assert.match(marketplace.uninstallRemoteScript("/root/CloudTAK", "replay", [], "replay"), /--remove/);
+assert.match(marketplace.installRemoteScript("/root/CloudTAK", replay), /apply_plugin_patches/);
+assert.match(marketplace.installRemoteScript("/root/CloudTAK", replay), /marketplace-install-status/);
+const drifted = [
+  "import type ConfigStateful from '../config.js';",
+  "import { randomUUID } from 'node:crypto';",
+  "",
+].join("\n");
+const driftedPatch = [
+  "--- a/pool.ts",
+  "+++ b/pool.ts",
+  "@@ -1,3 +1,4 @@",
+  " import type ConfigStateful from '../config.js';",
+  " import Sinks from './sinks.js';",
+  "+import Recorder from './replay-recorder.js';",
+  " import { randomUUID } from 'node:crypto';",
+  "",
+].join("\n");
+const driftedOnce = pluginPatch.applyPatchToText(drifted, driftedPatch);
+assert.ok(driftedOnce.ok);
+assert.match(driftedOnce.text, /import Recorder from '\.\/replay-recorder\.js';/);
+assert.ok(!driftedOnce.text.includes("Sinks"));
+const driftedTwice = pluginPatch.applyPatchToText(driftedOnce.text, driftedPatch);
+assert.strictEqual(driftedTwice.applied, 0);
+assert.strictEqual(driftedTwice.text, driftedOnce.text);
 assert.ok(!ids.includes("lightning"));
 
 const gh = marketplace.parseGitHubRepo(

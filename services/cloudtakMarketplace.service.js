@@ -2074,6 +2074,49 @@ CTAK_PLUGIN_ALIGN_JS
 `.trim();
 }
 
+function pluginPatchRunnerBash() {
+  const js = fs.readFileSync(path.join(__dirname, "cloudtakMarketplace.patch.js"), "utf8");
+  if (js.includes("\nCTAK_PLUGIN_PATCH_JS\n")) {
+    throw new Error("plugin patch script contains the heredoc delimiter");
+  }
+  return `
+apply_plugin_patches() {
+  local ct="$1"
+  local repo="$2"
+  [ -n "$ct" ] && [ -n "$repo" ] && [ -d "$ct" ] && [ -d "$repo" ] || return 0
+  local script="/tmp/ctak-marketplace-patch.cjs"
+  cat <<'CTAK_PLUGIN_PATCH_JS' > "$script"
+${js}
+CTAK_PLUGIN_PATCH_JS
+  chmod a+r "$script" 2>/dev/null || true
+  echo "Applying plugin patches onto this CloudTAK checkout"
+  if command -v node >/dev/null 2>&1; then
+    if declare -F run_as_writer >/dev/null 2>&1; then
+      if run_as_writer "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$repo") $(printf '%q' "$ct")"; then
+        return 0
+      fi
+      echo "Plugin owner has no usable node; applying patches via docker"
+    else
+      node "$script" "$repo" "$ct"
+      return 0
+    fi
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    echo "Applying plugin patches via docker (root)"
+    docker run --rm -u 0 \\
+      -v "$ct:$ct" \\
+      -v "$repo:$repo" \\
+      -v "$script:/patch.cjs:ro" \\
+      node:22-alpine \\
+      node /patch.cjs "$repo" "$ct"
+    return 0
+  fi
+  echo "ERROR: cannot apply plugin patches; node and docker are unavailable" >&2
+  return 1
+}
+`.trim();
+}
+
 function installRemoteScript(ct, plugin, options = {}) {
   const dest = plugin.web.dest;
   const source = plugin.web.source === "." ? "." : plugin.web.source;
@@ -2189,13 +2232,44 @@ run_as_writer "rm -rf $(printf '%q' "$TARGET")"
 # 1) repo install.sh (pass --no-build / --no-pull only if that script documents them)
 # 2) optional catalog installer
 # 3) copy web files from catalog source, plugin/, or repo root; copy server/*.ts routes if present
+${pluginPatchRunnerBash()}
 if [ -f "$REPO_DIR/install.sh" ]; then
   flags=""
   if grep -q -- '--no-build' "$REPO_DIR/install.sh"; then flags="$flags --no-build"; fi
   if grep -q -- '--no-pull' "$REPO_DIR/install.sh"; then flags="$flags --no-pull"; fi
   echo "Found install.sh; running: bash ./install.sh$flags $CT"
   chmod +x "$REPO_DIR/install.sh" 2>/dev/null || true
-  run_as_writer "cd $(printf '%q' "$REPO_DIR") && bash ./install.sh$flags $(printf '%q' "$CT")"
+  cat > "$REPO_DIR/.ctak-run-install.sh" <<'EOS'
+#!/bin/bash
+set +e
+repo="$1"
+ct="$2"
+shift 2
+cd "$repo" || exit 1
+bash ./install.sh "$@" "$ct"
+echo $? > "$repo/.marketplace-install-status"
+exit 0
+EOS
+  chmod a+rX "$REPO_DIR/.ctak-run-install.sh" 2>/dev/null || true
+  run_as_writer "bash $(printf '%q' "$REPO_DIR/.ctak-run-install.sh") $(printf '%q' "$REPO_DIR") $(printf '%q' "$CT")$flags"
+  install_ec=1
+  if [ -f "$REPO_DIR/.marketplace-install-status" ]; then
+    install_ec=$(tr -cd '0-9' < "$REPO_DIR/.marketplace-install-status" || echo 1)
+  fi
+  rm -f "$REPO_DIR/.ctak-run-install.sh" "$REPO_DIR/.marketplace-install-status" || true
+  if [ "$install_ec" != 0 ] && [ ! -d "$TARGET" ]; then
+    echo "ERROR: install.sh failed before plugin files were copied" >&2
+    exit 1
+  fi
+  if [ -d "$TARGET" ] && find "$REPO_DIR" -name '*.patch' -not -path '*/node_modules/*' -print -quit | grep -q .; then
+    if [ "$install_ec" != 0 ]; then
+      echo "install.sh exited $install_ec; applying patches that did not match this CloudTAK checkout"
+    fi
+    apply_plugin_patches "$CT" "$REPO_DIR"
+  elif [ "$install_ec" != 0 ]; then
+    echo "ERROR: install.sh failed" >&2
+    exit 1
+  fi
 elif [ -n "$INSTALL" ]; then
   echo "Running installer: cd $REPO_DIR && bash $INSTALL $CT"
   run_as_writer "cd $(printf '%q' "$REPO_DIR") && bash $INSTALL $(printf '%q' "$CT")"
