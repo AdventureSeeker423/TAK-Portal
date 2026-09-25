@@ -2045,6 +2045,11 @@ align_plugins_to_host() {
 ${js}
 CTAK_PLUGIN_ALIGN_JS
   chmod a+r "$script" 2>/dev/null || true
+  # Untracked api TypeScript is plugin code copied into this checkout. The image
+  # build typechecks it as CloudTAK source unless align marks those paths.
+  if command -v git >/dev/null 2>&1 && [ -d "$ct/.git" ]; then
+    git -C "$ct" -c safe.directory="$ct" -c safe.directory='*' ls-files --others --exclude-standard 2>/dev/null | grep '\\.ts$' > "$ct/api/.marketplace-owned-ts" || true
+  fi
   echo "Aligning marketplace plugins to the installed CloudTAK API"
   if command -v node >/dev/null 2>&1; then
     if declare -F run_as_writer >/dev/null 2>&1; then
