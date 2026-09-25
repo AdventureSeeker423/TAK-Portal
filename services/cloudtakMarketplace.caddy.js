@@ -48,6 +48,13 @@ function listBlocks(text) {
       i += 1;
       continue;
     }
+    if (c === "<" && text[i + 1] === "<") {
+      const next = skipHeredoc(text, i);
+      if (next > i) {
+        i = next;
+        continue;
+      }
+    }
     if (c === "\n") {
       headerStart = i + 1;
       i += 1;
@@ -75,8 +82,20 @@ function isSiteHeader(header) {
   const value = String(header || "").trim();
   if (!value) return false;
   if (value.startsWith("(") || value.startsWith("@")) return false;
+  const first = value.split(/\s+/)[0];
+  if (/[.:]/.test(first) || /^https?:\/\//i.test(first)) return true;
   if (DIRECTIVE_HEADER.test(value)) return false;
   return true;
+}
+
+function skipHeredoc(text, i) {
+  const match = text.slice(i).match(/^<<-?\s*["']?([A-Za-z0-9_]+)["']?/);
+  if (!match) return i;
+  const marker = match[1];
+  const after = i + match[0].length;
+  const end = text.slice(after).search(new RegExp(`(?:^|\\n)[ \\t]*${marker}(?=\\s|$)`));
+  if (end < 0) return text.length;
+  return after + end + text.slice(after + end).indexOf(marker) + marker.length;
 }
 
 function isCloudtakProxyLine(line) {
@@ -85,13 +104,60 @@ function isCloudtakProxyLine(line) {
   return /\bcloudtak[-_]?api\b/i.test(line) || /\bcloudtak\b/i.test(line);
 }
 
-function findCloudtakSite(text) {
+function siteHosts(header) {
+  return String(header || "")
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.replace(/^https?:\/\//i, "").replace(/:\d+$/, "").replace(/\.$/, "").toLowerCase())
+    .filter((part) => part.includes("."));
+}
+
+function commentsAbove(text, block) {
+  const lines = text.slice(0, block.open).split("\n");
+  const collected = [];
+  let skippedHeader = false;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim();
+    if (!skippedHeader) {
+      skippedHeader = true;
+      if (!line.startsWith("#")) continue;
+    }
+    if (!line) {
+      if (collected.length) break;
+      continue;
+    }
+    if (!line.startsWith("#")) break;
+    collected.push(line);
+  }
+  return collected.join("\n");
+}
+
+function cloudtakCommentScore(comment) {
+  if (!/\bcloudtak\b/i.test(comment)) return 0;
+  if (/\bweb ui\b/i.test(comment)) return 80;
+  if (/\b(tile|tiles|media|video)\b/i.test(comment)) return 0;
+  return 50;
+}
+
+function findCloudtakSite(text, options = {}) {
   const blocks = listBlocks(text);
-  const sites = blocks.filter((b) => isSiteHeader(b.header));
-  const matched = sites.filter((b) => text.slice(b.open, b.close).split("\n").some(isCloudtakProxyLine));
-  if (matched.length) {
-    matched.sort((a, b) => a.depth - b.depth || a.open - b.open);
-    return { block: matched[0], assumed: false };
+  const sites = blocks.filter((b) => b.depth === 0 && isSiteHeader(b.header));
+  const wantHost = String((options && options.host) || "").trim().toLowerCase();
+  const scored = sites
+    .map((block) => {
+      const body = text.slice(block.open, block.close);
+      const hosts = siteHosts(block.header);
+      let score = 0;
+      if (body.split("\n").some(isCloudtakProxyLine)) score += 100;
+      if (wantHost && hosts.includes(wantHost)) score += 90;
+      score += cloudtakCommentScore(commentsAbove(text, block));
+      if (hosts.some((host) => host.startsWith("map.")) && /\breverse_proxy\b/.test(body)) score += 30;
+      return { block, score };
+    })
+    .filter((row) => row.score > 0);
+  if (scored.length) {
+    scored.sort((a, b) => b.score - a.score || a.block.open - b.block.open);
+    return { block: scored[0].block, assumed: scored[0].score < 50 };
   }
   if (sites.length === 1) return { block: sites[0], assumed: true };
   return null;
@@ -164,13 +230,13 @@ function definitionPresent(text, snippet) {
   return squash(text).includes(squash(snippet));
 }
 
-function applyCaddySnippets(source, snippets) {
+function applyCaddySnippets(source, snippets, options = {}) {
   let text = String(source || "").replace(/\r\n/g, "\n");
   const changes = [];
   const list = (Array.isArray(snippets) ? snippets : []).map((item) => String(item || "").trim()).filter(Boolean);
   for (const snippet of list) {
     const name = namedSnippet(snippet);
-    const site = findCloudtakSite(text);
+    const site = findCloudtakSite(text, options);
     if (!site) {
       return {
         ok: false,
@@ -189,7 +255,7 @@ function applyCaddySnippets(source, snippets) {
         text = insertAt(text, anchor, snippet.trim() + "\n");
         did = true;
       }
-      const again = findCloudtakSite(text);
+      const again = findCloudtakSite(text, options);
       if (again && !blockHasImport(text, again.block, name)) {
         const point = insertionPoint(text, again.block);
         text = insertAt(text, point.at, `${point.indent}import ${name}`);
@@ -212,17 +278,17 @@ function applyCaddySnippets(source, snippets) {
   return { ok: true, changed: text !== normalized, text, changes, message: "" };
 }
 
-function snippetIsApplied(source, snippet) {
-  const result = applyCaddySnippets(source, [snippet]);
+function snippetIsApplied(source, snippet, options) {
+  const result = applyCaddySnippets(source, [snippet], options);
   return !!(result.ok && !result.changed);
 }
 
-function appliedKeys(plugins, caddyText) {
+function appliedKeys(plugins, caddyText, options) {
   const keys = [];
   for (const plugin of Array.isArray(plugins) ? plugins : []) {
     for (const action of (plugin && plugin.additionalActions) || []) {
       if (!isCaddyAction(action)) continue;
-      if (snippetIsApplied(caddyText, action.snippet)) keys.push(actionKey(action));
+      if (snippetIsApplied(caddyText, action.snippet, options)) keys.push(actionKey(action));
     }
   }
   return keys;

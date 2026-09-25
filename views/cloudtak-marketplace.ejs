@@ -952,7 +952,17 @@
       return;
     }
     if (card) card.style.display = "";
-    if (meta) meta.textContent = list.map(jobLabel).join("  |  ");
+    if (meta) {
+      var finished = list.filter(function (j) { return j.status === "complete"; });
+      var failed = list.filter(function (j) { return j.status === "failed" || j.status === "cancelled"; });
+      var still = list.some(function (j) { return j.status === "queued" || j.status === "running"; });
+      var head = list.map(jobLabel).join("  |  ");
+      if (!still && finished.length && !failed.length) {
+        meta.textContent = "Done. " + finished.length + " job" + (finished.length === 1 ? "" : "s") + " finished. " + head;
+      } else {
+        meta.textContent = head;
+      }
+    }
     var lines = [];
     list.forEach(function (j, i) {
       if (list.length > 1) {

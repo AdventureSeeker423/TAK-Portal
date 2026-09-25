@@ -128,6 +128,34 @@ assert.match(withPrint.text, /cloud\.example\.com \{[\s\S]*import cloudtak_print
 assert.doesNotMatch(withPrint.text.split("cloud.example.com")[0], /import cloudtak_print/);
 assert.strictEqual(caddy.applyCaddySnippets(withPrint.text, [printSnippet]).changed, false);
 assert.strictEqual(caddy.applyCaddySnippets("a.example.com {\n\treverse_proxy other:1\n}\n\nb.example.com {\n\treverse_proxy other:2\n}\n", [udashSnippet]).ok, false);
+const hostFile = [
+  "{",
+  "\tgrace_period 10s",
+  "}",
+  "",
+  "portal.example.com {",
+  "\trespond <<PAGE",
+  "\t\t<style>body{color:#fff</style>",
+  "\t\tPAGE 200",
+  "}",
+  "",
+  "# CloudTAK Web UI",
+  "map.example.com {",
+  "\treverse_proxy 127.0.0.1:5000",
+  "}",
+  "",
+  "# CloudTAK Tile Server",
+  "tiles.map.example.com {",
+  "\treverse_proxy 127.0.0.1:5002",
+  "}",
+  "",
+].join("\n");
+const onMap = caddy.applyCaddySnippets(hostFile, [printSnippet]);
+assert.strictEqual(onMap.ok, true);
+assert.match(onMap.text, /map\.example\.com \{[\s\S]*import cloudtak_print[\s\S]*reverse_proxy 127\.0\.0\.1:5000/);
+assert.doesNotMatch(onMap.text.split("map.example.com")[1].split("tiles.map")[0], /body\{color/);
+assert.doesNotMatch(onMap.text.split("tiles.map.example.com")[1], /import cloudtak_print/);
+assert.strictEqual(caddy.applyCaddySnippets(onMap.text, [printSnippet], { host: "map.example.com" }).changed, false);
 const udashApplied = caddy.appliedKeys([udash, print], withUdash.text);
 assert.strictEqual(caddy.extraConfigStatus(udash.additionalActions, { available: true, applied: udashApplied }).complete, true);
 assert.strictEqual(caddy.extraConfigStatus(udash.additionalActions, { available: true, applied: [] }).caddyPending, true);
@@ -479,6 +507,8 @@ assert.match(installAligned, /Aligning marketplace plugins to the installed Clou
 assert.match(installAligned, /readSubscriptionLoadKeys/);
 assert.doesNotMatch(installAligned, /incident-manager/);
 const rebuildAligned = marketplace.rebuildRemoteScript("/root/CloudTAK", "api");
+assert.match(rebuildAligned, /CloudTAK image build finished\./);
+assert.match(rebuildAligned, /CloudTAK container recreate finished\./);
 assert.match(rebuildAligned, /align_plugins_to_host/);
 assert.match(rebuildAligned, /node:22-alpine/);
 assert.match(rebuildAligned, /docker run --rm -u 0/);

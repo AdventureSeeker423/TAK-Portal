@@ -17,6 +17,8 @@ const SCAN_INTERVAL_MS = 5 * 60 * 1000;
 let _jobRunning = false;
 let _cancelRequested = false;
 let _lastBackgroundAt = 0;
+let _uiSnapshot = null;
+let _uiSnapshotAt = 0;
 
 function cancelledError() {
   const err = new Error("Cancelled.");
@@ -806,9 +808,19 @@ async function probeHostCaddy(opts = {}) {
   }
   const probe = caddyMod.parseProbe(result.stdout);
   probe.checkedAt = checkedAt;
-  probe.applied = probe.file ? caddyMod.appliedKeys(loadCatalog().plugins, probe.file) : [];
+  probe.applied = probe.file ? caddyMod.appliedKeys(loadCatalog().plugins, probe.file, { host: cloudtakPublicHost() }) : [];
   if (opts.persist !== false) saveCaddyCache(probe);
   return probe;
+}
+
+function cloudtakPublicHost() {
+  const raw = String(getString("CLOUDTAK_URL", "") || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw.includes("://") ? raw : `https://${raw}`).hostname.toLowerCase();
+  } catch (_) {
+    return "";
+  }
 }
 
 async function deployPluginCaddy(pluginId) {
@@ -824,7 +836,8 @@ async function deployPluginCaddy(pluginId) {
   }
   const edited = caddyMod.applyCaddySnippets(
     probe.file,
-    actions.map((action) => action.snippet)
+    actions.map((action) => action.snippet),
+    { host: cloudtakPublicHost() }
   );
   const appliedNow = caddyMod.appliedKeys(catalog.plugins, edited.ok ? edited.text : probe.file);
   if (!edited.ok) {
@@ -1210,6 +1223,23 @@ async function getSnapshot() {
   return { ...base, plugins };
 }
 
+function refreshUiSnapshot() {
+  if (!isEnabled()) {
+    _uiSnapshot = null;
+    _uiSnapshotAt = 0;
+    return null;
+  }
+  _uiSnapshot = buildUiPlugins({ skipRemoteSha: true });
+  _uiSnapshotAt = Date.now();
+  return _uiSnapshot;
+}
+
+function uiSnapshot() {
+  if (!isEnabled()) return buildUiPlugins({ skipRemoteSha: true });
+  if (_uiSnapshot && _uiSnapshotAt) return _uiSnapshot;
+  return refreshUiSnapshot();
+}
+
 function jobKey(job) {
   return String((job && job.pluginId) || (job && job.extra && job.extra.dest) || "").trim();
 }
@@ -1307,6 +1337,7 @@ async function onEnabled(opts = {}) {
     console.warn("[cloudtak-marketplace] detect on enable:", err?.message || err);
   }
   enqueueJobOnce("scan", createdBy);
+  refreshUiSnapshot();
   return { ok: true };
 }
 
@@ -2279,7 +2310,9 @@ export BUILDKIT_PROGRESS=plain
 export COMPOSE_ANSI=never
 export COMPOSE_PROGRESS=plain
 docker compose --progress=plain -f "$CF" $MPF build --no-cache "$SVC"
+echo "CloudTAK image build finished."
 docker compose --progress=plain -f "$CF" $MPF up -d --force-recreate "$SVC"
+echo "CloudTAK container recreate finished."
 echo "Waiting for $SVC to be running"
 n=0
 while [ "$n" -lt 90 ]; do
@@ -2407,8 +2440,10 @@ async function performUninstall(job, dest, plugin) {
 
 async function performRebuild(jobs, ctPath, service) {
   const ids = (Array.isArray(jobs) ? jobs : [jobs]).map((j) => j.id);
+  const primary = ids[0];
   ids.forEach((id) => appendJobLog(id, `$ docker compose --progress=plain build --no-cache ${service}`));
-  await runLogged(ids, `bash -lc ${ssh.shellQuote(rebuildRemoteScript(ctPath, service))}`, 20 * 60 * 1000);
+  ids.slice(1).forEach((id) => appendJobLog(id, "CloudTAK rebuild output is on the first job in this batch."));
+  await runLogged(primary ? [primary] : [], `bash -lc ${ssh.shellQuote(rebuildRemoteScript(ctPath, service))}`, 20 * 60 * 1000);
 }
 
 async function runChangeBatch(jobs) {
@@ -2541,6 +2576,7 @@ async function runChangeBatch(jobs) {
       console.warn("[cloudtak-marketplace] rescan:", err?.message || err);
     }
   }
+  refreshUiSnapshot();
 }
 
 async function claimAndRunJobs() {
@@ -2705,7 +2741,12 @@ async function workerTick() {
 }
 
 async function workerBackground() {
-  if (!isEnabled()) return;
+  if (!isEnabled()) {
+    _uiSnapshot = null;
+    _uiSnapshotAt = 0;
+    return;
+  }
+  refreshUiSnapshot();
   const now = Date.now();
   if (now - _lastBackgroundAt < 15000) return;
   _lastBackgroundAt = now;
@@ -2733,6 +2774,7 @@ async function workerBackground() {
   } catch (err) {
     console.warn("[cloudtak-marketplace] scan poll:", err?.message || err);
   }
+  refreshUiSnapshot();
 }
 
 function rememberSeenCatalog() {
@@ -2763,6 +2805,8 @@ module.exports = {
   deployPluginCaddy,
   getSnapshot,
   buildUiPlugins,
+  refreshUiSnapshot,
+  uiSnapshot,
   refreshShaCache,
   enqueueJob,
   enqueueJobOnce,

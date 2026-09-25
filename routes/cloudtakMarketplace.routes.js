@@ -12,6 +12,7 @@ const stackHealth = require("../services/stackHealth.service");
 const auditSvc = require("../services/auditLog.service");
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 64 * 1024 } });
+let workerHealthCache = { at: 0, worker: { ok: true } };
 
 function username(req) {
   return req.authentikUser && req.authentikUser.username ? req.authentikUser.username : "";
@@ -28,11 +29,14 @@ function busyChangeError(res) {
 
 router.get("/status", async (req, res) => {
   try {
-    let worker = { ok: true };
-    try {
-      const health = await stackHealth.getStackHealth();
-      worker = health.worker || worker;
-    } catch (_) {}
+    let worker = workerHealthCache.worker;
+    if (Date.now() - workerHealthCache.at > 20000) {
+      try {
+        const health = await stackHealth.getStackHealth();
+        worker = health.worker || { ok: true };
+        workerHealthCache = { at: Date.now(), worker };
+      } catch (_) {}
+    }
     if (marketplace.isEnabled()) {
       const scan = store.readScanCache();
       if ((!scan || !scan.scannedAt) && !marketplace.hasBusyChangeJobs()) {
@@ -56,7 +60,7 @@ router.get("/status", async (req, res) => {
 
 router.get("/plugins", async (req, res) => {
   try {
-    const snapshot = marketplace.buildUiPlugins({ skipRemoteSha: true });
+    const snapshot = marketplace.uiSnapshot();
     res.json({ ok: true, ...snapshot });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
