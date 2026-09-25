@@ -543,7 +543,7 @@
     if (!overlay || !body) return;
     var extras = extraActionsNormalized(p);
     if (!extras.length) return;
-    var configTitle = p && p.extraConfigComplete ? "Additional Configuration" : "Additional Configuration Needed";
+    var configTitle = p && p.extraConfigComplete ? "Additional Configuration Complete" : "Additional Configuration Needed";
     title.textContent = configTitle;
     if (p && p.name) title.textContent += " — " + p.name;
     if (p && p.caddyOnHost && p.hasCaddyActions) {
@@ -724,7 +724,7 @@
         actions = '<button type="button" class="btn" data-install="' + encodeURIComponent(p.id) + '">Install</button>';
       }
       var extraActions = extraActionsNormalized(p);
-      var extraLabel = p.extraConfigComplete ? "Additional Configuration" : "Additional Configuration Needed";
+      var extraLabel = p.extraConfigComplete ? "Additional Configuration Complete" : "Additional Configuration Needed";
       var extraClass = p.extraConfigComplete ? " is-complete" : "";
       var extraConfigBtn = extraActions.length
         ? '<button type="button" class="btn plugin-extra-config-btn' + extraClass + '" data-extra-config="' + encodeURIComponent(p.id) + '">' + extraLabel + "</button>"

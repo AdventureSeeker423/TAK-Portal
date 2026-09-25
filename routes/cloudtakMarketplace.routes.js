@@ -27,31 +27,51 @@ function busyChangeError(res) {
   return true;
 }
 
+let workerHealthInflight = null;
+
+function scheduleWorkerHealth() {
+  if (workerHealthInflight || Date.now() - workerHealthCache.at < 20000) return;
+  workerHealthInflight = stackHealth.getStackHealth()
+    .then((health) => {
+      workerHealthCache = { at: Date.now(), worker: (health && health.worker) || { ok: true } };
+    })
+    .catch(() => {})
+    .finally(() => {
+      workerHealthInflight = null;
+    });
+}
+
+function presentJob(job, keepLog) {
+  if (!job) return job;
+  const log = Array.isArray(job.log) ? job.log : [];
+  const next = { ...job };
+  if (!keepLog) {
+    delete next.log;
+    return next;
+  }
+  next.log = log.length > 120 ? log.slice(-120) : log;
+  return next;
+}
+
 router.get("/status", async (req, res) => {
   try {
-    let worker = workerHealthCache.worker;
-    if (Date.now() - workerHealthCache.at > 20000) {
-      try {
-        const health = await stackHealth.getStackHealth();
-        worker = health.worker || { ok: true };
-        workerHealthCache = { at: Date.now(), worker };
-      } catch (_) {}
-    }
+    scheduleWorkerHealth();
     if (marketplace.isEnabled()) {
       const scan = store.readScanCache();
       if ((!scan || !scan.scannedAt) && !marketplace.hasBusyChangeJobs()) {
         marketplace.enqueueJobOnce("scan", username(req) || "page");
       }
     }
+    const allJobs = marketplace.listJobs();
     res.json({
       ok: true,
       enabled: marketplace.isEnabled(),
       ssh: ssh.sshStatus(),
       catalogUrl: marketplace.defaultCatalogUrl(),
-      worker,
+      worker: workerHealthCache.worker,
       busy: marketplace.hasBusyChangeJobs(),
-      jobs: marketplace.listJobs().slice(0, 20),
-      logJobs: marketplace.selectLogJobs(marketplace.listJobs()),
+      jobs: allJobs.slice(0, 20).map((job) => presentJob(job, false)),
+      logJobs: marketplace.selectLogJobs(allJobs).map((job) => presentJob(job, true)),
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
@@ -61,7 +81,15 @@ router.get("/status", async (req, res) => {
 router.get("/plugins", async (req, res) => {
   try {
     const snapshot = marketplace.uiSnapshot();
-    res.json({ ok: true, ...snapshot });
+    const plugins = Array.isArray(snapshot && snapshot.plugins)
+      ? snapshot.plugins.map((plugin) => {
+          const copy = { ...plugin };
+          delete copy.catalog;
+          delete copy.scan;
+          return copy;
+        })
+      : [];
+    res.json({ ok: true, ...snapshot, plugins });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
   }

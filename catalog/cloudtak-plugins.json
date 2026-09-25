@@ -152,6 +152,17 @@
         "wss://ws8.blitzortung.org",
         "wss://*.blitzortung.org"
       ]
+    },
+    {
+      "id": "replay",
+      "name": "Replay",
+      "description": "Record and play back CoT traffic for training and after-action review.",
+      "repo": "https://github.com/dfndr13/cloudtak-replay-plugin.git",
+      "added": "2026-09-25",
+      "maintainer": "dfndr13",
+      "notes": "Recording needs CloudTAK Server Mode both. Playback of an existing recording works without it. The plugin install script patches the CloudTAK checkout with git apply.",
+      "web": { "dest": "replay" },
+      "detect": ["api/web/plugins/replay/index.ts"]
     }
   ]
 }

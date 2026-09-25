@@ -25,6 +25,10 @@ assert.ok(ids.includes("quick-point-dropper"));
 assert.ok(ids.includes("helloworld"));
 assert.ok(ids.includes("dispatcher"));
 assert.ok(ids.includes("livewx"));
+assert.ok(ids.includes("replay"));
+const replay = normalized.plugins.find((p) => p.id === "replay");
+assert.strictEqual(replay.web.dest, "replay");
+assert.match(marketplace.uninstallRemoteScript("/root/CloudTAK", "replay", [], "replay"), /--remove/);
 assert.ok(!ids.includes("lightning"));
 
 const gh = marketplace.parseGitHubRepo(

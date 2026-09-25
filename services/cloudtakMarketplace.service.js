@@ -813,6 +813,34 @@ async function probeHostCaddy(opts = {}) {
   return probe;
 }
 
+const CADDY_RECHECK_MS = 2 * 60 * 1000;
+let _lastCaddyRecheckAt = 0;
+
+async function recheckCaddyFile() {
+  if (!isEnabled() || hasBusyChangeJobs()) return null;
+  const now = Date.now();
+  if (now - _lastCaddyRecheckAt < CADDY_RECHECK_MS) return null;
+  _lastCaddyRecheckAt = now;
+  const prev = store.readScanCache();
+  const hostPath = prev && prev.caddy && prev.caddy.path ? String(prev.caddy.path) : "";
+  if (!hostPath) return null;
+  const result = await ssh.runCommand(
+    `bash -lc ${ssh.shellQuote(`cat -- ${ssh.shellQuote(hostPath)}`)}`,
+    20000
+  );
+  if (!result.ok) return null;
+  const applied = caddyMod.appliedKeys(loadCatalog().plugins, result.stdout || "", { host: cloudtakPublicHost() });
+  saveCaddyCache({
+    ...(prev.caddy || {}),
+    available: true,
+    applied,
+    checkedAt: new Date().toISOString(),
+    file: "",
+  });
+  refreshUiSnapshot();
+  return applied;
+}
+
 function cloudtakPublicHost() {
   const raw = String(getString("CLOUDTAK_URL", "") || "").trim();
   if (!raw) return "";
@@ -1237,9 +1265,11 @@ function refreshUiSnapshot() {
   return _uiSnapshot;
 }
 
+const UI_SNAPSHOT_MS = 20 * 1000;
+
 function uiSnapshot() {
   if (!isEnabled()) return buildUiPlugins({ skipRemoteSha: true });
-  if (_uiSnapshot && _uiSnapshotAt) return _uiSnapshot;
+  if (_uiSnapshot && Date.now() - _uiSnapshotAt < UI_SNAPSHOT_MS) return _uiSnapshot;
   return refreshUiSnapshot();
 }
 
@@ -2268,6 +2298,13 @@ ${pluginCspBash()}
 if [ -n "$ID" ]; then
   cleanup_plugin_runtime "$ID" "$CT"
   apply_plugin_csp "$ID" "$CT" "$CT_COMPOSE_SVC" "" 1
+  CACHE="$HOME/.cache/cloudtak-marketplace/$ID"
+  if [ -f "$CACHE/install.sh" ] && grep -q -- '--remove' "$CACHE/install.sh"; then
+    flags="--remove"
+    if grep -q -- '--no-build' "$CACHE/install.sh"; then flags="$flags --no-build"; fi
+    echo "Found install.sh; running: bash ./install.sh $flags $CT"
+    ( cd "$CACHE" && bash ./install.sh $flags "$CT" ) || echo "install.sh --remove did not finish cleanly"
+  fi
   rm -rf "$HOME/.cache/cloudtak-marketplace/$ID" || true
   rm -f /tmp/ctak-marketplace-excludes-$ID || true
 fi
@@ -2776,6 +2813,11 @@ async function workerBackground() {
     }
   } catch (err) {
     console.warn("[cloudtak-marketplace] scan poll:", err?.message || err);
+  }
+  try {
+    await recheckCaddyFile();
+  } catch (err) {
+    console.warn("[cloudtak-marketplace] caddy recheck:", err?.message || err);
   }
   refreshUiSnapshot();
 }
