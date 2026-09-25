@@ -388,6 +388,39 @@ const lintedAgain = align.alignInstalledPlugins(lintRoot);
 assert.deepStrictEqual(lintedAgain.changes, []);
 fs.rmSync(lintRoot, { recursive: true, force: true });
 
+const apiLintRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-align-api-lint-"));
+writeAlignFixture(apiLintRoot, {
+  subscription:
+    "export default class Subscription {\n  static async load(guid: string, opts: { token?: string, missiontoken?: string } = {}) { return this; }\n}\n",
+  atlas: "export default class AtlasConnection {\n  connect(connection: string) {}\n  reconnect(connection: string) { this.connect(connection); }\n}\n",
+  extraCoord: true,
+});
+const routesDir = path.join(apiLintRoot, "api", "stateless", "routes");
+fs.mkdirSync(routesDir, { recursive: true });
+fs.writeFileSync(path.join(routesDir, "plugin-demo.ts"), "export default function demo() { return 1 }\n");
+fs.writeFileSync(path.join(routesDir, "helper-sync.ts"), "// @ts-nocheck\nexport default function helper() {}\n");
+fs.writeFileSync(path.join(routesDir, "video.ts"), "export default function video() { return 1 }\n");
+fs.writeFileSync(
+  path.join(apiLintRoot, "api", "eslint.config.js"),
+  "export default tseslint.config(\n    eslint.configs.recommended,\n);\n"
+);
+const apiLinted = align.alignInstalledPlugins(apiLintRoot);
+assert.ok(apiLinted.changes.some((line) => line.includes("image lint no longer includes marketplace server routes")));
+assert.ok(apiLinted.changes.some((line) => line.includes("plugin-demo.ts") && line.includes("skips image typecheck")));
+const demoRoute = fs.readFileSync(path.join(routesDir, "plugin-demo.ts"), "utf8");
+assert.match(demoRoute, /^\/\/ @ts-nocheck\n/);
+const helperRoute = fs.readFileSync(path.join(routesDir, "helper-sync.ts"), "utf8");
+assert.strictEqual((helperRoute.match(/@ts-nocheck/g) || []).length, 1);
+const videoRoute = fs.readFileSync(path.join(routesDir, "video.ts"), "utf8");
+assert.doesNotMatch(videoRoute, /@ts-nocheck/);
+const apiEslint = fs.readFileSync(path.join(apiLintRoot, "api", "eslint.config.js"), "utf8");
+assert.match(apiEslint, /stateless\/routes\/plugin-\*\.ts/);
+assert.match(apiEslint, /stateless\/routes\/helper-sync\.ts/);
+assert.doesNotMatch(apiEslint, /video\.ts/);
+const apiLintedAgain = align.alignInstalledPlugins(apiLintRoot);
+assert.deepStrictEqual(apiLintedAgain.changes, []);
+fs.rmSync(apiLintRoot, { recursive: true, force: true });
+
 const overlay = [
   "services:",
   "  cloudtak-print:",

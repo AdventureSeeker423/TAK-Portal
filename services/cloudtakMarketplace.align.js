@@ -833,6 +833,70 @@ function relaxHostPluginCheck(webDir) {
   return changes;
 }
 
+function fileHasTsNoCheck(text) {
+  return /@ts-nocheck\b/.test(String(text || "").slice(0, 4000));
+}
+
+function routeIgnoreBlock(patterns) {
+  const list = patterns.map((p) => "'" + String(p).replace(/'/g, "") + "'").join(", ");
+  return "    /* cloudtak-marketplace-routes */\n    { ignores: [" + list + "] },";
+}
+
+function relaxMarketplaceServerRoutes(apiDir) {
+  const changes = [];
+  const routesDir = path.join(apiDir, "stateless", "routes");
+  const nocheckExtras = [];
+  if (fs.existsSync(routesDir)) {
+    let names = [];
+    try {
+      names = fs.readdirSync(routesDir);
+    } catch (_) {
+      names = [];
+    }
+    for (const name of names) {
+      if (!/^[A-Za-z0-9._-]+\.ts$/.test(name)) continue;
+      const file = path.join(routesDir, name);
+      let text = "";
+      try {
+        text = fs.readFileSync(file, "utf8");
+      } catch (_) {
+        continue;
+      }
+      const pluginRoute = name.startsWith("plugin-");
+      if (pluginRoute && !fileHasTsNoCheck(text)) {
+        fs.writeFileSync(file, "// @ts-nocheck\n" + text);
+        changes.push("api/stateless/routes/" + name + ": marketplace server route skips image typecheck");
+      } else if (!pluginRoute && fileHasTsNoCheck(text)) {
+        nocheckExtras.push("stateless/routes/" + name);
+      }
+    }
+  }
+  nocheckExtras.sort();
+  const configPath = path.join(apiDir, "eslint.config.js");
+  if (!fs.existsSync(configPath)) return changes;
+  let config = "";
+  try {
+    config = fs.readFileSync(configPath, "utf8");
+  } catch (_) {
+    return changes;
+  }
+  const patterns = ["stateless/routes/plugin-*.ts"].concat(nocheckExtras);
+  const block = routeIgnoreBlock(patterns);
+  const blockRe = /[ \t]*\/\* cloudtak-marketplace-routes \*\/\r?\n[ \t]*\{ ignores: \[[^\]]*\] \},/;
+  let next = config;
+  if (blockRe.test(config)) next = config.replace(blockRe, block);
+  else {
+    const needle = "export default tseslint.config(";
+    const at = config.indexOf(needle);
+    if (at < 0) return changes;
+    next = config.slice(0, at + needle.length) + "\n" + block + config.slice(at + needle.length);
+  }
+  if (next === config) return changes;
+  fs.writeFileSync(configPath, next);
+  changes.push("api/eslint.config.js: image lint no longer includes marketplace server routes");
+  return changes;
+}
+
 function indentOf(line) {
   const m = String(line || "").match(/^[ \t]*/);
   return m ? m[0].length : 0;
@@ -1045,6 +1109,7 @@ function alignInstalledPlugins(ctRoot) {
   }
   changes.push(...relaxHostPluginLint(web));
   changes.push(...relaxHostPluginCheck(web));
+  changes.push(...relaxMarketplaceServerRoutes(path.join(root, "api")));
   return { ok: true, changes };
 }
 
@@ -1102,6 +1167,7 @@ module.exports = {
   rewriteLoadObject,
   relaxHostPluginLint,
   relaxHostPluginCheck,
+  relaxMarketplaceServerRoutes,
   composeServiceNames,
   rewriteComposeDepends,
   fixComposeDependsFile,
