@@ -69,6 +69,23 @@ assert.ok(marketplace.isHostPluginNoise("README.md"));
 assert.ok(marketplace.isHostPluginNoise("readme.md"));
 assert.ok(!marketplace.isHostPluginNoise("quick-point-dropper"));
 
+const caddy = require("../services/cloudtakMarketplace.caddy");
+const caddyFile = [
+  "{",
+  "\temail admin@example.com",
+  "}",
+  "",
+  "auth.example.com {",
+  "\treverse_proxy authentik:9000",
+  "}",
+  "",
+  "cloud.example.com {",
+  "\tencode gzip",
+  "\treverse_proxy cloudtak-api:5000",
+  "}",
+  "",
+].join("\n");
+
 const print = normalized.plugins.find((p) => p.id === "print");
 assert.ok(print.additionalActions.some((a) => /caddy/i.test(JSON.stringify(a))));
 assert.ok(print.additionalActions.some((a) => a.snippet && /print-api/.test(a.snippet)));
@@ -97,6 +114,32 @@ assert.match(unknownUninstall, /plugin-host-only-plugin\.ts/);
 assert.match(unknownUninstall, /cleanup_plugin_runtime/);
 
 const udash = normalized.plugins.find((p) => p.id === "udash");
+const udashSnippet = udash.additionalActions.find((a) => caddy.isCaddyAction(a)).snippet;
+const printSnippet = print.additionalActions.find((a) => caddy.isCaddyAction(a)).snippet;
+const withUdash = caddy.applyCaddySnippets(caddyFile, [udashSnippet]);
+assert.strictEqual(withUdash.ok, true);
+assert.match(withUdash.text, /cloud\.example\.com \{[\s\S]*handle_path \/udash-api\*[\s\S]*reverse_proxy cloudtak-api:5000/);
+assert.doesNotMatch(withUdash.text.split("cloud.example.com")[0], /udash/);
+assert.strictEqual(caddy.applyCaddySnippets(withUdash.text, [udashSnippet]).changed, false);
+const withPrint = caddy.applyCaddySnippets(caddyFile, [printSnippet]);
+assert.strictEqual(withPrint.ok, true);
+assert.match(withPrint.text, /^\(cloudtak_print\) \{/m);
+assert.match(withPrint.text, /cloud\.example\.com \{[\s\S]*import cloudtak_print[\s\S]*reverse_proxy cloudtak-api:5000/);
+assert.doesNotMatch(withPrint.text.split("cloud.example.com")[0], /import cloudtak_print/);
+assert.strictEqual(caddy.applyCaddySnippets(withPrint.text, [printSnippet]).changed, false);
+assert.strictEqual(caddy.applyCaddySnippets("a.example.com {\n\treverse_proxy other:1\n}\n\nb.example.com {\n\treverse_proxy other:2\n}\n", [udashSnippet]).ok, false);
+const udashApplied = caddy.appliedKeys([udash, print], withUdash.text);
+assert.strictEqual(caddy.extraConfigStatus(udash.additionalActions, { available: true, applied: udashApplied }).complete, true);
+assert.strictEqual(caddy.extraConfigStatus(udash.additionalActions, { available: true, applied: [] }).caddyPending, true);
+assert.strictEqual(caddy.extraConfigStatus(print.additionalActions, { available: true, applied: caddy.appliedKeys([print], withPrint.text) }).complete, true);
+assert.strictEqual(caddy.extraConfigStatus(print.additionalActions, { available: false, applied: [] }).caddyOnHost, false);
+const discover = caddy.discoverScript("/home/takwerx/CloudTAK");
+assert.match(discover, /systemctl is-active caddy/);
+assert.match(discover, /\$runtime inspect/);
+assert.match(discover, /Caddyfile/);
+assert.doesNotMatch(discover, /incident-manager/);
+const probed = caddy.parseProbe("CADDY_NONE\n");
+assert.strictEqual(probed.available, false);
 assert.ok(udash.additionalActions.some((a) => /webhook sidecar/i.test(JSON.stringify(a))));
 assert.ok(!udash.additionalActions.some((a) => /does not start/i.test(JSON.stringify(a))));
 const udashScript = marketplace.installRemoteScript("/root/CloudTAK", udash);

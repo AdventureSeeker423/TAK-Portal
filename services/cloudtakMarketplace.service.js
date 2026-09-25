@@ -8,6 +8,7 @@ const { getString, getInt, getBool } = require("./env");
 const emailSvc = require("./email.service");
 const store = require("./cloudtakMarketplace.store");
 const ssh = require("./cloudtakMarketplace.ssh");
+const caddyMod = require("./cloudtakMarketplace.caddy");
 const settingsSvc = require("./settings.service");
 
 const NEW_DAYS = 14;
@@ -761,6 +762,98 @@ function parseScanStdout(stdout, catalogPlugins) {
   return { plugins, routeFiles, webPluginUrls: webUrls };
 }
 
+function caddyCacheRecord(probe) {
+  return {
+    available: !!(probe && probe.available),
+    via: (probe && probe.via) || "",
+    path: (probe && probe.hostPath) || "",
+    checkedAt: (probe && probe.checkedAt) || new Date().toISOString(),
+    applied: probe && Array.isArray(probe.applied) ? probe.applied : [],
+    message: (probe && probe.message) || "",
+  };
+}
+
+function saveCaddyCache(probe) {
+  const prev = store.readScanCache();
+  const record = caddyCacheRecord(probe);
+  if (!prev) {
+    store.writeScanCache({ plugins: [], caddy: record });
+    return record;
+  }
+  prev.caddy = record;
+  store.writeScanCache(prev);
+  return record;
+}
+
+async function probeHostCaddy(opts = {}) {
+  const prev = store.readScanCache();
+  const checked = prev && prev.caddy ? Date.parse(prev.caddy.checkedAt || "") : NaN;
+  if (!opts.force && prev && prev.caddy && Number.isFinite(checked) && Date.now() - checked < 60 * 1000) {
+    return { ...prev.caddy, file: "", cached: true };
+  }
+  const ct = ssh.resolvedCheckoutPath() || (prev && prev.path) || "";
+  const result = await ssh.runCommand(`bash -lc ${ssh.shellQuote(caddyMod.discoverScript(ct))}`, 45000);
+  const checkedAt = new Date().toISOString();
+  if (!result.ok) {
+    const probe = {
+      available: false,
+      applied: [],
+      message: result.message || "Could not look for Caddy.",
+      checkedAt,
+    };
+    if (opts.persist !== false) saveCaddyCache(probe);
+    return probe;
+  }
+  const probe = caddyMod.parseProbe(result.stdout);
+  probe.checkedAt = checkedAt;
+  probe.applied = probe.file ? caddyMod.appliedKeys(loadCatalog().plugins, probe.file) : [];
+  if (opts.persist !== false) saveCaddyCache(probe);
+  return probe;
+}
+
+async function deployPluginCaddy(pluginId) {
+  const catalog = loadCatalog();
+  const plugin = catalog.plugins.find((p) => p.id === pluginId);
+  if (!plugin) return { ok: false, message: "Plugin is not in the catalog." };
+  const actions = (plugin.additionalActions || []).filter(caddyMod.isCaddyAction);
+  if (!actions.length) return { ok: false, message: "This plugin has no Caddy configuration." };
+  const probe = await probeHostCaddy({ force: true, persist: false });
+  if (!probe.available) return { ok: false, message: "Caddy is not running on the CloudTAK host." };
+  if (!probe.hostPath || !probe.file) {
+    return { ok: false, message: "Caddy is running, but its Caddyfile was not found on the host." };
+  }
+  const edited = caddyMod.applyCaddySnippets(
+    probe.file,
+    actions.map((action) => action.snippet)
+  );
+  const appliedNow = caddyMod.appliedKeys(catalog.plugins, edited.ok ? edited.text : probe.file);
+  if (!edited.ok) {
+    saveCaddyCache({ ...probe, applied: caddyMod.appliedKeys(catalog.plugins, probe.file) });
+    return { ok: false, message: edited.message };
+  }
+  if (!edited.changed) {
+    saveCaddyCache({ ...probe, applied: appliedNow });
+    return { ok: true, changed: false, message: "Caddy already has this plugin's routes." };
+  }
+  const write = await ssh.runCommand(
+    `bash -lc ${ssh.shellQuote(
+      caddyMod.applyScript({
+        b64: Buffer.from(edited.text, "utf8").toString("base64"),
+        hostPath: probe.hostPath,
+        via: probe.via,
+        validateCmd: probe.validateCmd,
+        reloadCmd: probe.reloadCmd,
+      })
+    )}`,
+    60000
+  );
+  if (!write.ok || !/APPLY_OK/.test(write.stdout || "")) {
+    return { ok: false, message: write.message || "Caddy update failed." };
+  }
+  saveCaddyCache({ ...probe, applied: appliedNow });
+  return { ok: true, changed: true, message: "Updated the CloudTAK Caddy site and reloaded Caddy." };
+}
+
 async function scanHost() {
   const catalog = loadCatalog();
   const loc = await ensureCheckoutPath();
@@ -837,6 +930,12 @@ async function scanHost() {
     });
   }
 
+  let caddy = { available: false, applied: [], checkedAt: new Date().toISOString() };
+  try {
+    caddy = await probeHostCaddy({ force: true, persist: false });
+  } catch (err) {
+    caddy = { available: false, applied: [], message: err?.message || String(err), checkedAt: new Date().toISOString() };
+  }
   const cache = {
     scannedAt: new Date().toISOString(),
     path: loc.path,
@@ -844,6 +943,7 @@ async function scanHost() {
     ok: true,
     plugins: found,
     routeFiles: parsed.routeFiles,
+    caddy: caddyCacheRecord(caddy),
   };
   store.writeScanCache(cache);
   const state = store.readNotifyState();
@@ -987,6 +1087,7 @@ function buildUiPlugins(options = {}) {
     const rec = installedRec.plugins[p.id];
     const errorMessage = pluginErrorMessage(installedRec, p.id, p.web.dest);
     const installed = !!(scanHit || rec);
+    const extra = caddyMod.extraConfigStatus(p.additionalActions, scan && scan.caddy);
     byId.set(p.id, {
       id: p.id,
       name: p.name,
@@ -996,6 +1097,10 @@ function buildUiPlugins(options = {}) {
       ref: p.ref,
       notes: p.notes,
       additionalActions: Array.isArray(p.additionalActions) ? p.additionalActions : [],
+      caddyOnHost: extra.caddyOnHost,
+      hasCaddyActions: extra.hasCaddyActions,
+      caddyPending: extra.caddyPending,
+      extraConfigComplete: extra.complete,
       added: p.added,
       isNew: installed ? false : isNewPlugin(p, now),
       installed,
@@ -2605,6 +2710,8 @@ module.exports = {
   loadCatalog,
   fetchCatalog,
   scanHost,
+  probeHostCaddy,
+  deployPluginCaddy,
   getSnapshot,
   buildUiPlugins,
   refreshShaCache,

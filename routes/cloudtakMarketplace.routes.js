@@ -215,6 +215,40 @@ router.post("/jobs", (req, res) => {
   }
 });
 
+router.get("/caddy", async (req, res) => {
+  try {
+    const probe = await marketplace.probeHostCaddy();
+    res.json({
+      ok: true,
+      available: !!probe.available,
+      via: probe.via || "",
+      path: probe.hostPath || probe.path || "",
+      message: probe.message || "",
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+router.post("/caddy/deploy", async (req, res) => {
+  try {
+    if (busyChangeError(res)) return;
+    const pluginId = req.body && req.body.pluginId ? String(req.body.pluginId).trim() : "";
+    if (!pluginId) return res.status(400).json({ ok: false, error: "pluginId is required" });
+    const result = await marketplace.deployPluginCaddy(pluginId);
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.message });
+    auditSvc.auditFromRequest(req, {
+      action: "CLOUDTAK_MARKETPLACE_CADDY",
+      targetType: "cloudtak_plugin",
+      targetId: pluginId,
+      details: { pluginId, changed: !!result.changed, summary: result.message },
+    });
+    res.json({ ok: true, changed: !!result.changed, message: result.message });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 router.post("/catalog/refresh", async (req, res) => {
   try {
     const result = await marketplace.fetchCatalog();

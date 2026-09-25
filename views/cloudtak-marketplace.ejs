@@ -9,7 +9,7 @@
   <div class="card" style="margin-top:16px;">
     <div class="row mp-toolbar">
       <label class="mp-search-label">Search
-        <input type="search" id="mpSearch" placeholder="Search plugins…" />
+        <input type="search" id="mpSearch" placeholder="Search Plugins…" />
       </label>
       <div class="row mp-toolbar-actions">
         <button type="button" class="btn mp-filter-btn is-filter-on" id="mpFilterAll" data-mp-filter="all">All</button>
@@ -28,7 +28,7 @@
     <div class="mp-jobs-header">
       <div>
         <h2 style="margin:0;">Queue</h2>
-        <div class="muted" style="margin-top:2px;font-size:0.85rem;">CloudTAK rebuilds once when you deploy.</div>
+        <div class="muted" style="margin-top:2px;font-size:0.85rem;">CloudTAK Rebuilds Once When You Deploy.</div>
       </div>
       <button type="button" class="btn success" id="mpDeployBtn">Deploy</button>
     </div>
@@ -53,14 +53,14 @@
 <div class="modalOverlay" id="mpUninstallModal" style="display:none;" aria-hidden="true">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mpUninstallTitle">
     <div class="modalHeader">
-      <h2 id="mpUninstallTitle">Uninstall plugin</h2>
+      <h2 id="mpUninstallTitle">Uninstall Plugin</h2>
       <button type="button" class="btn" id="mpUninstallCancel">Close</button>
     </div>
     <div class="modalBody">
       <p id="mpUninstallBody"></p>
       <p class="muted">This is added to the deploy queue. CloudTAK rebuilds once when you click Deploy. After it finishes, open CloudTAK <strong>Settings → Refresh App</strong> so the plugin leaves the menu.</p>
       <div class="row" style="gap:8px;margin-top:12px;">
-        <button type="button" class="btn danger" id="mpUninstallConfirm" disabled>Add to queue</button>
+        <button type="button" class="btn danger" id="mpUninstallConfirm" disabled>Add To Queue</button>
       </div>
     </div>
   </div>
@@ -69,7 +69,7 @@
 <div class="modalOverlay" id="mpExtraConfigModal" style="display:none;" aria-hidden="true">
   <div class="modal mp-extra-config-dialog" role="dialog" aria-modal="true" aria-labelledby="mpExtraConfigTitle">
     <div class="modalHeader">
-      <h2 id="mpExtraConfigTitle">Additional configuration needed</h2>
+      <h2 id="mpExtraConfigTitle">Additional Configuration Needed</h2>
       <button type="button" class="btn" id="mpExtraConfigClose">Close</button>
     </div>
     <div class="modalBody">
@@ -232,6 +232,23 @@
   .plugin-cards .plugin-extra-config-btn:hover {
     background: color-mix(in srgb, #c80 28%, transparent);
   }
+  .plugin-cards .plugin-extra-config-btn.is-complete {
+    background: color-mix(in srgb, var(--success, #15803d) 22%, transparent);
+    border-color: var(--success, #15803d);
+  }
+  .plugin-cards .plugin-extra-config-btn.is-complete:hover {
+    background: color-mix(in srgb, var(--success, #15803d) 32%, transparent);
+  }
+  .mp-caddy-deploy {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .mp-caddy-deploy .muted {
+    margin: 0;
+  }
   .mp-extra-config-dialog {
     width: min(720px, 96vw);
   }
@@ -389,7 +406,14 @@
   var loadGen = 0;
   var stagedJobs = [];
   var jobBusy = false;
+  var jobPoll = null;
   var WAIT_HINT = "Wait until the current job is complete and containers are recreated and running";
+
+  function titleCase(value) {
+    return String(value || "").replace(/(^|[^A-Za-z0-9])([a-z])/g, function (_all, pre, ch) {
+      return pre + ch.toUpperCase();
+    });
+  }
 
   function $(id) { return document.getElementById(id); }
   function setMsg(text, isError) {
@@ -437,8 +461,8 @@
   function copySnippetText(text, btn) {
     var done = function (ok) {
       if (!btn) return;
-      btn.textContent = ok ? "Copied" : "Copy failed";
-      setTimeout(function () { btn.textContent = "Copy snippet"; }, 1500);
+      btn.textContent = ok ? "Copied" : "Copy Failed";
+      setTimeout(function () { btn.textContent = "Copy Snippet"; }, 1500);
     };
     var copy = (navigator.clipboard && navigator.clipboard.writeText)
       ? navigator.clipboard.writeText(text)
@@ -467,7 +491,7 @@
     if (item.title) {
       var titleEl = document.createElement("h3");
       titleEl.className = "mp-extra-config-title";
-      titleEl.textContent = item.title;
+      titleEl.textContent = titleCase(item.title);
       section.appendChild(titleEl);
     }
     if (item.text) {
@@ -496,7 +520,7 @@
       var copyBtn = document.createElement("button");
       copyBtn.type = "button";
       copyBtn.className = "btn mp-extra-config-copy";
-      copyBtn.textContent = "Copy snippet";
+      copyBtn.textContent = "Copy Snippet";
       copyBtn.addEventListener("click", function () {
         copySnippetText(item.snippet, copyBtn);
       });
@@ -514,20 +538,77 @@
     if (!overlay || !body) return;
     var extras = extraActionsNormalized(p);
     if (!extras.length) return;
-    title.textContent = "Additional configuration needed";
+    var configTitle = p && p.extraConfigComplete ? "Additional Configuration" : "Additional Configuration Needed";
+    title.textContent = configTitle;
     if (p && p.name) title.textContent += " — " + p.name;
-    lead.textContent = "Marketplace starts Docker services and sidecars. Nginx and Caddy are not changed automatically — use the steps below.";
+    if (p && p.caddyOnHost && p.hasCaddyActions) {
+      lead.textContent = p.caddyPending
+        ? "Caddy is running on the CloudTAK host. Deploy To Caddy edits the site block that reverse-proxies CloudTAK, then reloads Caddy."
+        : "Caddy on the CloudTAK host already has these routes.";
+    } else {
+      lead.textContent = "Marketplace starts Docker services and sidecars. Use the steps below for anything that stays outside CloudTAK.";
+    }
     body.innerHTML = "";
+    if (p && p.caddyOnHost && p.hasCaddyActions) body.appendChild(caddyDeployEl(p));
     extras.forEach(function (item) { body.appendChild(extraActionItemEl(item)); });
     overlay.style.display = "flex";
     overlay.setAttribute("aria-hidden", "false");
   }
 
+  function caddyDeployEl(p) {
+    var wrap = document.createElement("div");
+    wrap.className = "mp-caddy-deploy";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn success";
+    btn.textContent = p.caddyPending ? "Deploy To Caddy" : "Deployed To Caddy";
+    btn.disabled = !p.caddyPending;
+    var note = document.createElement("p");
+    note.className = "muted";
+    btn.addEventListener("click", function () {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = "Deploying To Caddy…";
+      note.textContent = "";
+      note.style.color = "";
+      fetch("/api/cloudtak-marketplace/caddy/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ pluginId: p.id })
+      }).then(function (r) {
+        return r.json().then(function (j) { return { ok: r.ok && j.ok, json: j }; });
+      }).then(function (out) {
+        if (!out.ok) {
+          btn.disabled = false;
+          btn.textContent = "Deploy To Caddy";
+          note.style.color = "#c44";
+          note.textContent = (out.json && (out.json.error || out.json.message)) || "Caddy update failed.";
+          return;
+        }
+        note.style.color = "";
+        note.textContent = (out.json && out.json.message) || "Updated Caddy.";
+        btn.textContent = "Deployed To Caddy";
+        loadAll().then(function () {
+          var fresh = plugins.filter(function (x) { return x.id === p.id; })[0];
+          if (fresh) openExtraConfigModal(fresh);
+        });
+      }).catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = "Deploy To Caddy";
+        note.style.color = "#c44";
+        note.textContent = err.message || "Caddy update failed.";
+      });
+    });
+    wrap.appendChild(btn);
+    wrap.appendChild(note);
+    return wrap;
+  }
+
   function originLabel(p) {
     if (!p.installed) return "";
-    if (p.unknown) return "Not in catalog";
+    if (p.unknown) return "Not In Catalog";
     if (p.origin === "marketplace") return "";
-    if (p.origin === "web_plugins") return "In WEB_PLUGINS build arg";
+    if (p.origin === "web_plugins") return "In WEB_PLUGINS Build Arg";
     return "";
   }
 
@@ -633,8 +714,10 @@
         actions = '<button type="button" class="btn" data-install="' + encodeURIComponent(p.id) + '">Install</button>';
       }
       var extraActions = extraActionsNormalized(p);
+      var extraLabel = p.extraConfigComplete ? "Additional Configuration" : "Additional Configuration Needed";
+      var extraClass = p.extraConfigComplete ? " is-complete" : "";
       var extraConfigBtn = extraActions.length
-        ? '<button type="button" class="btn plugin-extra-config-btn" data-extra-config="' + encodeURIComponent(p.id) + '">Additional Configuration Needed</button>'
+        ? '<button type="button" class="btn plugin-extra-config-btn' + extraClass + '" data-extra-config="' + encodeURIComponent(p.id) + '">' + extraLabel + "</button>"
         : "";
       var repoHref = "";
       if (p.repo && /^https?:\/\//i.test(p.repo)) {
@@ -726,7 +809,7 @@
       deploy.disabled = jobBusy;
       deploy.title = jobBusy ? WAIT_HINT : "";
       deploy.textContent = jobBusy
-        ? "Waiting for rebuild"
+        ? "Waiting For Rebuild"
         : (stagedJobs.length === 1 ? "Deploy" : "Deploy (" + stagedJobs.length + ")");
     }
     if (!list) return;
@@ -735,7 +818,7 @@
       var li = document.createElement("li");
       li.className = "mp-queue-item";
       if (jobBusy) {
-        li.innerHTML = '<span class="mp-queue-item-label"></span><button type="button" class="btn mp-wait-btn" disabled>Waiting for rebuild</button>';
+        li.innerHTML = '<span class="mp-queue-item-label"></span><button type="button" class="btn mp-wait-btn" disabled>Waiting For Rebuild</button>';
       } else {
         li.innerHTML = '<span class="mp-queue-item-label"></span><button type="button" class="btn" data-unstage="' + encodeURIComponent(j.id) + '">Remove</button>';
       }
@@ -898,7 +981,14 @@
       document.querySelectorAll("[data-mp-filter]").forEach(function (btn) {
         btn.classList.toggle("is-filter-on", btn.getAttribute("data-mp-filter") === filter);
       });
+      if (jobBusy) {
+        if (!jobPoll) jobPoll = setInterval(loadAll, 2000);
+      } else if (jobPoll) {
+        clearInterval(jobPoll);
+        jobPoll = null;
+      }
     }).catch(function (err) {
+      if (jobPoll) return;
       setMsg(err.message || "Failed to load marketplace", true);
     });
   }
@@ -1014,7 +1104,7 @@
     uninstallTarget = p;
     confirmArmed = false;
     $("mpUninstallConfirm").disabled = false;
-    $("mpUninstallConfirm").textContent = "Add to queue";
+    $("mpUninstallConfirm").textContent = "Add To Queue";
     $("mpUninstallBody").textContent = "Remove " + (p && p.name || id) + " from " + (p && p.dest || id) + " (web folder" + (p && p.layout && p.layout.routes ? " and owned route files" : "") + "). Plugin Docker services, leftover images, and runtime files are also removed." + (p && p.unknown ? " This plugin is not in the marketplace catalog." : "");
     $("mpUninstallModal").style.display = "flex";
     $("mpUninstallModal").setAttribute("aria-hidden", "false");
@@ -1052,7 +1142,7 @@
     if (!uninstallTarget) return;
     if (!confirmArmed) {
       confirmArmed = true;
-      $("mpUninstallConfirm").textContent = "Click again to add to queue";
+      $("mpUninstallConfirm").textContent = "Click Again To Add To Queue";
       return;
     }
     postJob({
@@ -1062,7 +1152,7 @@
     }).then(function () {
       setMsg("Uninstall added to queue.");
       $("mpUninstallModal").style.display = "none";
-      $("mpUninstallConfirm").textContent = "Add to queue";
+      $("mpUninstallConfirm").textContent = "Add To Queue";
       confirmArmed = false;
       loadAll();
     });
@@ -1073,7 +1163,9 @@
     .then(function () {
       return fetch("/api/cloudtak-marketplace/catalog/refresh", { method: "POST", headers: { Accept: "application/json" } }).catch(function () {});
     })
+    .then(function () {
+      return fetch("/api/cloudtak-marketplace/caddy", { headers: { Accept: "application/json" } }).catch(function () {});
+    })
     .then(function () { return loadAll(); });
-  setInterval(loadAll, 2000);
 })();
 </script>
