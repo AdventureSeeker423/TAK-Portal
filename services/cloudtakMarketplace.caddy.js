@@ -404,11 +404,11 @@ if [ -n "\$runtime" ]; then
     [ -n "\$host" ] || continue
     running=1
     if printf '%s' "\$entry" | grep -Eq 'caddy'; then
-      vcmd="\$runtime exec \$name validate --config \$dest"
-      rcmd="\$runtime exec \$name reload --config \$dest"
+      vcmd="\$runtime exec \$name validate --config \$dest --adapter caddyfile"
+      rcmd="\$runtime exec \$name reload --config \$dest --adapter caddyfile"
     else
-      vcmd="\$runtime exec \$name caddy validate --config \$dest"
-      rcmd="\$runtime exec \$name caddy reload --config \$dest"
+      vcmd="\$runtime exec \$name caddy validate --config \$dest --adapter caddyfile"
+      rcmd="\$runtime exec \$name caddy reload --config \$dest --adapter caddyfile"
     fi
     consider 40 docker "\$name" "\$host" "\$dest" "\$vcmd" "\$rcmd"
   done < "\$cand"
@@ -419,7 +419,7 @@ if command -v systemctl >/dev/null 2>&1 && systemctl is-active caddy >/dev/null 
   config=\$(echo "\$execstart" | sed -n 's/.*--config[= ]\\([^ ]*\\).*/\\1/p' | head -n 1)
   [ -n "\$config" ] || config=/etc/caddy/Caddyfile
   vcmd=""
-  if command -v caddy >/dev/null 2>&1; then vcmd="caddy validate --config \$config"; fi
+  if command -v caddy >/dev/null 2>&1; then vcmd="caddy validate --config \$config --adapter caddyfile"; fi
   consider 40 systemd "" "\$config" "\$config" "\$vcmd" "systemctl reload caddy"
 fi
 if command -v pgrep >/dev/null 2>&1 && pgrep -x caddy >/dev/null 2>&1; then
@@ -429,7 +429,7 @@ if [ -z "\$best_host" ]; then
 for f in /etc/caddy/Caddyfile "\$CT/Caddyfile" "\$CT/caddy/Caddyfile" "\$CT/deploy/Caddyfile" "\$CT/docker/Caddyfile"; do
   [ -n "\$f" ] && [ -f "\$f" ] || continue
   vcmd=""
-  if command -v caddy >/dev/null 2>&1; then vcmd="caddy validate --config \$f"; fi
+  if command -v caddy >/dev/null 2>&1; then vcmd="caddy validate --config \$f --adapter caddyfile"; fi
   rcmd="\$vcmd"
   if [ -n "\$vcmd" ]; then rcmd=\${vcmd/validate/reload}; fi
   consider 10 file "" "\$f" "\$f" "\$vcmd" "\$rcmd"

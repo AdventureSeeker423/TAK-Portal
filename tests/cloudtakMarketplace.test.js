@@ -162,6 +162,7 @@ assert.strictEqual(caddy.extraConfigStatus(udash.additionalActions, { available:
 assert.strictEqual(caddy.extraConfigStatus(print.additionalActions, { available: true, applied: caddy.appliedKeys([print], withPrint.text) }).complete, true);
 assert.strictEqual(caddy.extraConfigStatus(print.additionalActions, { available: false, applied: [] }).caddyOnHost, false);
 const discover = caddy.discoverScript("/home/takwerx/CloudTAK");
+assert.match(discover, /--adapter caddyfile/);
 assert.match(discover, /systemctl is-active caddy/);
 assert.match(discover, /\$runtime inspect/);
 assert.match(discover, /Caddyfile/);
