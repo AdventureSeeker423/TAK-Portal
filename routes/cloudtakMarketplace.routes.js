@@ -249,6 +249,19 @@ router.post("/jobs", (req, res) => {
 
 router.get("/caddy", async (req, res) => {
   try {
+    const scan = store.readScanCache();
+    const cached = scan && scan.caddy;
+    if (cached && cached.checkedAt) {
+      res.json({
+        ok: true,
+        available: !!cached.available,
+        via: cached.via || "",
+        path: cached.path || "",
+        message: cached.message || "",
+      });
+      marketplace.probeHostCaddy().catch(() => {});
+      return;
+    }
     const probe = await marketplace.probeHostCaddy();
     res.json({
       ok: true,

@@ -1231,14 +1231,11 @@
     });
   });
 
-  fetch("/api/cloudtak-marketplace/jobs/clear-idle", { method: "POST", headers: { Accept: "application/json" } })
-    .catch(function () {})
-    .then(function () {
-      return fetch("/api/cloudtak-marketplace/catalog/refresh", { method: "POST", headers: { Accept: "application/json" } }).catch(function () {});
-    })
-    .then(function () {
-      return fetch("/api/cloudtak-marketplace/caddy", { headers: { Accept: "application/json" } }).catch(function () {});
-    })
-    .then(function () { return loadAll(); });
+  loadAll();
+  Promise.all([
+    fetch("/api/cloudtak-marketplace/jobs/clear-idle", { method: "POST", headers: { Accept: "application/json" } }).catch(function () {}),
+    fetch("/api/cloudtak-marketplace/catalog/refresh", { method: "POST", headers: { Accept: "application/json" } }).catch(function () {}),
+    fetch("/api/cloudtak-marketplace/caddy", { headers: { Accept: "application/json" } }).catch(function () {})
+  ]).then(function () { return loadAll(); });
 })();
 </script>
