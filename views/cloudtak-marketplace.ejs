@@ -593,6 +593,7 @@
         note.style.color = "";
         note.textContent = (out.json && out.json.message) || "Updated Caddy.";
         btn.textContent = "Deployed To Caddy";
+        setMsg(note.textContent);
         loadAll().then(function () {
           var fresh = plugins.filter(function (x) { return x.id === p.id; })[0];
           if (fresh) openExtraConfigModal(fresh);

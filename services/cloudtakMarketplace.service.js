@@ -839,13 +839,15 @@ async function deployPluginCaddy(pluginId) {
     actions.map((action) => action.snippet),
     { host: cloudtakPublicHost() }
   );
-  const appliedNow = caddyMod.appliedKeys(catalog.plugins, edited.ok ? edited.text : probe.file);
+  const appliedNow = caddyMod.appliedKeys(catalog.plugins, edited.ok ? edited.text : probe.file, { host: cloudtakPublicHost() });
   if (!edited.ok) {
-    saveCaddyCache({ ...probe, applied: caddyMod.appliedKeys(catalog.plugins, probe.file) });
+    saveCaddyCache({ ...probe, applied: caddyMod.appliedKeys(catalog.plugins, probe.file, { host: cloudtakPublicHost() }) });
+    refreshUiSnapshot();
     return { ok: false, message: edited.message };
   }
   if (!edited.changed) {
     saveCaddyCache({ ...probe, applied: appliedNow });
+    refreshUiSnapshot();
     return { ok: true, changed: false, message: "Caddy already has this plugin's routes." };
   }
   const write = await ssh.runCommand(
@@ -864,6 +866,7 @@ async function deployPluginCaddy(pluginId) {
     return { ok: false, message: write.message || "Caddy update failed." };
   }
   saveCaddyCache({ ...probe, applied: appliedNow });
+  refreshUiSnapshot();
   return { ok: true, changed: true, message: "Updated the CloudTAK Caddy site and reloaded Caddy." };
 }
 

@@ -230,6 +230,55 @@ function definitionPresent(text, snippet) {
   return squash(text).includes(squash(snippet));
 }
 
+const USER_ADDED_MARKER = [
+  "# --- User-added blocks (do not remove) ---",
+  "# Anything below this line survives every infra-TAK regeneration.",
+  "# Add custom site blocks here (extra domains, redirects, monitors).",
+];
+
+function userAddedInsertAt(text) {
+  const lines = String(text || "").split("\n");
+  for (let i = 0; i <= lines.length - USER_ADDED_MARKER.length; i += 1) {
+    if (!USER_ADDED_MARKER.every((line, offset) => lines[i + offset].trim() === line)) continue;
+    const last = i + USER_ADDED_MARKER.length - 1;
+    let at = 0;
+    for (let j = 0; j <= last; j += 1) {
+      at += lines[j].length;
+      if (j < lines.length - 1 || text.endsWith("\n")) at += 1;
+    }
+    return Math.min(at, text.length);
+  }
+  return null;
+}
+
+function topLevelSnippetBlock(text, name) {
+  return listBlocks(text).find((block) => block.depth === 0 && block.header.replace(/\s/g, "") === `(${name})`) || null;
+}
+
+function removeTopLevelSnippet(text, name) {
+  const block = topLevelSnippetBlock(text, name);
+  if (!block) return text;
+  const lineStart = text.lastIndexOf("\n", Math.max(0, block.open - 1)) + 1;
+  let end = block.close + 1;
+  if (text[end] === "\n") end += 1;
+  return text.slice(0, lineStart) + text.slice(end);
+}
+
+function placeNamedSnippet(text, snippet, name) {
+  const body = String(snippet || "").trim();
+  let markerAt = userAddedInsertAt(text);
+  const block = topLevelSnippetBlock(text, name);
+  if (markerAt != null && block && block.open < markerAt) {
+    text = removeTopLevelSnippet(text, name);
+    markerAt = userAddedInsertAt(text);
+    text = insertAt(text, markerAt == null ? text.length : markerAt, body + "\n");
+    return { text, did: true };
+  }
+  if (block) return { text, did: false };
+  const at = markerAt == null ? text.length : markerAt;
+  return { text: insertAt(text, at, body + "\n"), did: true };
+}
+
 function applyCaddySnippets(source, snippets, options = {}) {
   let text = String(source || "").replace(/\r\n/g, "\n");
   const changes = [];
@@ -248,13 +297,9 @@ function applyCaddySnippets(source, snippets, options = {}) {
     }
     if (name) {
       let did = false;
-      if (!definitionPresent(text, snippet)) {
-        const blocks = listBlocks(text).filter((b) => b.depth === 0 && b.header.startsWith("("));
-        const global = listBlocks(text).filter((b) => b.depth === 0 && !b.header);
-        const anchor = blocks.length ? blocks[blocks.length - 1].close + 1 : global.length ? global[0].close + 1 : 0;
-        text = insertAt(text, anchor, snippet.trim() + "\n");
-        did = true;
-      }
+      const placed = placeNamedSnippet(text, snippet, name);
+      text = placed.text;
+      did = placed.did;
       const again = findCloudtakSite(text, options);
       if (again && !blockHasImport(text, again.block, name)) {
         const point = insertionPoint(text, again.block);
