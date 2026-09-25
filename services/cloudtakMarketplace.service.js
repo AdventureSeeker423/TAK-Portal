@@ -1355,6 +1355,29 @@ function formatRemoteLogLine(line) {
   return s;
 }
 
+function summarizeCommandError(message) {
+  const lines = String(message || "")
+    .split(/\r?\n/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (!lines.length) return "SSH command failed";
+  const clip = (s) => (s.length > 220 ? s.slice(0, 217) + "..." : s);
+  const interesting = /failed to solve|invalid compose|ERROR:|exit code|✖\s+\d+\s+problems|EACCES|permission denied|Could not|not found|Refusing /i;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].replace(/^#\d+\s+/, "").replace(/^(?:=>\s*)+/, "");
+    if (line.length > 400) continue;
+    if (/^Dockerfile:\d+$/.test(line) || /^-{3,}$/.test(line)) continue;
+    if (interesting.test(line)) return clip(line);
+  }
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    if (line.length > 240) continue;
+    if (/^#\d+\b/.test(line) || /^(?:=>\s*)+/.test(line) || /^Dockerfile:/.test(line) || /^-{3,}$/.test(line)) continue;
+    return clip(line);
+  }
+  return clip(lines[lines.length - 1]);
+}
+
 function appendJobLog(jobId, line) {
   const text = formatRemoteLogLine(line);
   if (!text) return;
@@ -1857,6 +1880,28 @@ function pluginRuntimeExtrasBash() {
     '  echo "Starting plugin Docker service${SVC:+ $SVC} from $OVERRIDE"',
     '  ( cd "$STACK" && COMPOSE_ANSI=never COMPOSE_PROGRESS=plain docker compose --progress=plain -f "$CF" -f "$OVERRIDE" up -d --build ${SVC:+$SVC} )',
     "}",
+    "fix_overlay_depends() {",
+    '  [ -f "$OVERRIDE" ] || return 0',
+    '  local script="/tmp/ctak-marketplace-align.cjs"',
+    '  [ -f "$script" ] || return 0',
+    '  local base="$STACK/$CF"',
+    '  local proj',
+    '  proj=$(basename "$STACK")',
+    '  echo "Checking plugin compose dependencies against the CloudTAK stack"',
+    '  if command -v node >/dev/null 2>&1; then',
+    '    node "$script" --fix-compose-depends "$OVERRIDE" "$base" --project "$proj" || echo "WARNING: could not check plugin depends_on" >&2',
+    "    return 0",
+    "  fi",
+    '  if command -v docker >/dev/null 2>&1; then',
+    '    docker run --rm -u 0 \\',
+    '      -v "$script:/align.cjs:ro" \\',
+    '      -v "$OVERRIDE:/overlay.yml" \\',
+    '      -v "$base:/base.yml:ro" \\',
+    "      node:22-alpine \\",
+    '      node /align.cjs --fix-compose-depends /overlay.yml /base.yml --project "$proj" || echo "WARNING: could not check plugin depends_on" >&2',
+    "  fi",
+    "  return 0",
+    "}",
     'if [ -n "$COMPOSE_SRC" ]; then',
     '  {',
     '    echo "# Managed by TAK Portal CloudTAK marketplace. Do not edit by hand."',
@@ -1879,6 +1924,7 @@ function pluginRuntimeExtrasBash() {
     '  if [ -z "$SVC" ]; then',
     '    SVC=$(sed -n "s/^[[:space:]]*\\([A-Za-z0-9._-]*\\):[[:space:]]*$/\\1/p" "$OVERRIDE" | grep -vx services | head -n 1 || true)',
     "  fi",
+    "  fix_overlay_depends",
     "  start_overlay",
     "  exit 0",
     "fi",
@@ -1916,6 +1962,7 @@ function pluginRuntimeExtrasBash() {
     "    expose:",
     '      - "$PORT"',
     "YAML",
+    "fix_overlay_depends",
     "start_overlay",
   ].join("\n");
 }
@@ -2439,13 +2486,14 @@ async function runChangeBatch(jobs) {
         });
         continue;
       }
+      const summary = summarizeCommandError(err.message || String(err));
       updateJob(job.id, {
         status: "failed",
         finishedAt: new Date().toISOString(),
-        error: err.message || String(err),
+        error: summary,
       });
-      appendJobLog(job.id, `FAILED ${err.message || err}`);
-      markJobInstallError(job, err.message || String(err));
+      appendJobLog(job.id, `FAILED ${summary}`);
+      markJobInstallError(job, summary);
     }
   }
 
@@ -2467,14 +2515,15 @@ async function runChangeBatch(jobs) {
       }
     } catch (err) {
       const cancelled = _cancelRequested || isCancelledError(err);
+      const summary = cancelled ? "Cancelled." : summarizeCommandError(err.message || String(err));
       for (const j of succeeded) {
         updateJob(j.id, {
           status: cancelled ? "cancelled" : "failed",
           finishedAt: new Date().toISOString(),
-          error: cancelled ? "Cancelled." : err.message || String(err),
+          error: summary,
         });
-        appendJobLog(j.id, cancelled ? "Cancelled." : `Rebuild failed: ${err.message || err}`);
-        if (!cancelled) markJobInstallError(j, err.message || String(err));
+        appendJobLog(j.id, cancelled ? "Cancelled." : `Rebuild failed: ${summary}`);
+        if (!cancelled) markJobInstallError(j, summary);
       }
     }
   } else if (succeeded.length) {
@@ -2721,6 +2770,7 @@ module.exports = {
   unstageJob,
   deployStaged,
   selectLogJobs,
+  summarizeCommandError,
   listJobs,
   clearIdleJobs,
   cancelCurrentJobs,

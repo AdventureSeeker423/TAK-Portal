@@ -768,6 +768,202 @@ function alignPluginDir(pluginDir, ctx) {
   return changes;
 }
 
+function relaxHostPluginLint(webDir) {
+  const pkgPath = path.join(webDir, "package.json");
+  if (!fs.existsSync(pkgPath)) return [];
+  let text = "";
+  try {
+    text = fs.readFileSync(pkgPath, "utf8");
+  } catch (_) {
+    return [];
+  }
+  const next = text.replace(/("lint"\s*:\s*")((?:\\.|[^"\\])*)(")/, (full, open, script, close) => {
+    if (!script.includes("./plugins")) return full;
+    const updated = script.replace(/(?:^|\s)\.\/plugins\/?(?=\s|$)/g, "").replace(/[ \t]{2,}/g, " ").trim();
+    if (!updated || updated === script) return full;
+    return open + updated + close;
+  });
+  if (next === text) return [];
+  fs.writeFileSync(pkgPath, next);
+  return ["api/web/package.json: image lint no longer includes marketplace plugin files"];
+}
+
+function indentOf(line) {
+  const m = String(line || "").match(/^[ \t]*/);
+  return m ? m[0].length : 0;
+}
+
+function composeServiceNames(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  let inServices = false;
+  let serviceIndent = null;
+  const names = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (!inServices) {
+      if (/^services:\s*(?:#.*)?$/.test(trimmed)) inServices = true;
+      continue;
+    }
+    if (/^\S/.test(line)) break;
+    const m = line.match(/^[ \t]+([A-Za-z0-9._-]+):\s*(?:#.*)?$/);
+    if (!m) continue;
+    const indent = indentOf(line);
+    if (serviceIndent == null) serviceIndent = indent;
+    if (indent === serviceIndent) names.push(m[1]);
+    else if (indent < serviceIndent) break;
+  }
+  return names;
+}
+
+function resolveDepName(name, known, project) {
+  const raw = String(name || "").replace(/^['"]|['"]$/g, "");
+  if (!raw) return "";
+  if (known.has(raw)) return raw;
+  const prefix = project ? String(project).replace(/\/+$/, "").split(/[\\/]/).pop().toLowerCase() + "-" : "";
+  if (prefix && raw.toLowerCase().startsWith(prefix)) {
+    const tail = raw.slice(prefix.length);
+    for (const svc of known) {
+      if (svc.toLowerCase() === tail.toLowerCase()) return svc;
+    }
+  }
+  return "";
+}
+
+function filterDependsEntries(block, known, project, notes) {
+  const kept = [];
+  const seen = new Set();
+  let i = 0;
+  while (i < block.length) {
+    const line = block[i];
+    if (!line.trim() || line.trim().startsWith("#")) {
+      i += 1;
+      continue;
+    }
+    const list = line.match(/^([ \t]*)-\s+([^:#\s]+)\s*(?:#.*)?$/);
+    if (list) {
+      const name = list[2].replace(/^['"]|['"]$/g, "");
+      const resolved = resolveDepName(name, known, project);
+      if (!resolved) notes.push("dropped " + name);
+      else if (!seen.has(resolved)) {
+        seen.add(resolved);
+        if (resolved !== name) notes.push(name + " -> " + resolved);
+        kept.push(list[1] + "- " + resolved);
+      }
+      i += 1;
+      continue;
+    }
+    const map = line.match(/^([ \t]*)([A-Za-z0-9._-]+):\s*(.*)$/);
+    if (map && !line.trim().startsWith("-")) {
+      const keyIndent = map[1].length;
+      const nested = [];
+      let j = i + 1;
+      while (j < block.length) {
+        const nxt = block[j];
+        if (!nxt.trim()) {
+          nested.push(nxt);
+          j += 1;
+          continue;
+        }
+        if (indentOf(nxt) <= keyIndent) break;
+        nested.push(nxt);
+        j += 1;
+      }
+      const resolved = resolveDepName(map[2], known, project);
+      if (!resolved) notes.push("dropped " + map[2]);
+      else if (!seen.has(resolved)) {
+        seen.add(resolved);
+        if (resolved !== map[2]) notes.push(map[2] + " -> " + resolved);
+        kept.push(map[1] + resolved + ":" + (map[3] ? " " + map[3].trim() : ""));
+        while (nested.length && !nested[nested.length - 1].trim()) nested.pop();
+        kept.push(...nested);
+      }
+      i = j;
+      continue;
+    }
+    kept.push(line);
+    i += 1;
+  }
+  return kept;
+}
+
+function rewriteComposeDepends(text, externalNames, project) {
+  const raw = String(text == null ? "" : text);
+  const trailingNl = raw.endsWith("\n");
+  const lines = raw.split(/\r?\n/);
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  const known = new Set(composeServiceNames(raw).concat(externalNames || []).filter(Boolean));
+  const out = [];
+  const notes = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const dep = line.match(/^([ \t]*)depends_on:\s*(.*)$/);
+    if (!dep || line.trim().startsWith("#")) {
+      out.push(line);
+      i += 1;
+      continue;
+    }
+    const indent = dep[1].length;
+    const rest = dep[2].trim();
+    if (rest && rest !== "|" && rest !== ">" && !rest.startsWith("#")) {
+      const names = rest
+        .replace(/^\[|\]$/g, "")
+        .split(",")
+        .map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
+        .filter(Boolean);
+      const keep = [];
+      names.forEach((name) => {
+        const resolved = resolveDepName(name, known, project);
+        if (!resolved) notes.push("dropped " + name);
+        else {
+          if (resolved !== name) notes.push(name + " -> " + resolved);
+          if (!keep.includes(resolved)) keep.push(resolved);
+        }
+      });
+      if (keep.length) out.push(dep[1] + "depends_on: [" + keep.join(", ") + "]");
+      i += 1;
+      continue;
+    }
+    const block = [];
+    let j = i + 1;
+    while (j < lines.length) {
+      const nxt = lines[j];
+      if (!nxt.trim()) {
+        block.push(nxt);
+        j += 1;
+        continue;
+      }
+      if (indentOf(nxt) <= indent) break;
+      block.push(nxt);
+      j += 1;
+    }
+    const kept = filterDependsEntries(block, known, project, notes);
+    if (kept.length) {
+      out.push(dep[1] + "depends_on:");
+      out.push(...kept);
+    }
+    i = j;
+  }
+  let joined = out.join("\n");
+  if (trailingNl) joined += "\n";
+  return { text: joined, notes };
+}
+
+function fixComposeDependsFile(overlayPath, basePaths, project) {
+  const overlay = fs.readFileSync(overlayPath, "utf8");
+  const known = [];
+  for (const p of basePaths || []) {
+    try {
+      if (p && fs.existsSync(p)) known.push(...composeServiceNames(fs.readFileSync(p, "utf8")));
+    } catch (_) {}
+  }
+  const result = rewriteComposeDepends(overlay, known, project);
+  if (result.text === overlay) return result;
+  fs.writeFileSync(overlayPath, result.text);
+  return result;
+}
+
 function alignInstalledPlugins(ctRoot) {
   const root = String(ctRoot || "").trim();
   const web = path.join(root, "api", "web");
@@ -802,10 +998,35 @@ function alignInstalledPlugins(ctRoot) {
     if (!ent.isDirectory()) continue;
     changes.push(...alignPluginDir(path.join(plugins, ent.name), ctx));
   }
+  changes.push(...relaxHostPluginLint(web));
   return { ok: true, changes };
 }
 
 function main() {
+  if (process.argv[2] === "--fix-compose-depends") {
+    const args = process.argv.slice(3);
+    const paths = [];
+    let project = "";
+    for (let i = 0; i < args.length; i += 1) {
+      if (args[i] === "--project") {
+        project = args[i + 1] || "";
+        i += 1;
+        continue;
+      }
+      paths.push(args[i]);
+    }
+    const overlayPath = paths[0];
+    if (!overlayPath) {
+      console.error("overlay path required");
+      process.exit(1);
+    }
+    const result = fixComposeDependsFile(overlayPath, paths.slice(1), project);
+    if (result.text && result.notes && result.notes.length) {
+      console.log("Adjusted plugin depends_on to services in this CloudTAK stack");
+      result.notes.forEach((line) => console.log("  " + line));
+    }
+    return;
+  }
   const ct = process.argv[2];
   if (!ct) {
     console.error("CloudTAK path required");
@@ -833,4 +1054,8 @@ module.exports = {
   hostHasMethod,
   parseObjectProperties,
   rewriteLoadObject,
+  relaxHostPluginLint,
+  composeServiceNames,
+  rewriteComposeDepends,
+  fixComposeDependsFile,
 };

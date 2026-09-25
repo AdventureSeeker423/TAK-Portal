@@ -358,8 +358,85 @@ const keptFeatures = fs.readFileSync(path.join(keepTokenRoot, "api", "web", "plu
 assert.match(keptFeatures, /conn\.reconnect\(/);
 fs.rmSync(keepTokenRoot, { recursive: true, force: true });
 
+const lintRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-align-lint-"));
+writeAlignFixture(lintRoot, {});
+const lintPkg = path.join(lintRoot, "api", "web", "package.json");
+fs.writeFileSync(
+  lintPkg,
+  JSON.stringify(
+    {
+      scripts: {
+        lint: "eslint --config eslint.config.js ./src/ ./public/ ./plugins/",
+        check: "vue-tsc",
+      },
+    },
+    null,
+    2
+  ) + "\n"
+);
+const linted = align.alignInstalledPlugins(lintRoot);
+assert.ok(linted.changes.some((line) => line.includes("image lint no longer includes marketplace plugin files")));
+const lintScript = JSON.parse(fs.readFileSync(lintPkg, "utf8")).scripts.lint;
+assert.strictEqual(lintScript, "eslint --config eslint.config.js ./src/ ./public/");
+assert.doesNotMatch(lintScript, /\.\/plugins/);
+const lintedAgain = align.alignInstalledPlugins(lintRoot);
+assert.deepStrictEqual(lintedAgain.changes, []);
+fs.rmSync(lintRoot, { recursive: true, force: true });
+
+const overlay = [
+  "services:",
+  "  cloudtak-print:",
+  "    image: print",
+  "    depends_on:",
+  "      - cloudtak-api",
+  "      - cloudtak-tiles",
+  "      - cloudtak-store",
+].join("\n") + "\n";
+const baseServices = ["api", "store", "media", "postgis"];
+const fixed = align.rewriteComposeDepends(overlay, baseServices, "CloudTAK");
+assert.match(fixed.text, /-\s+api/);
+assert.match(fixed.text, /-\s+store/);
+assert.doesNotMatch(fixed.text, /cloudtak-tiles/);
+assert.doesNotMatch(fixed.text, /cloudtak-store/);
+assert.ok(fixed.notes.some((n) => n.includes("cloudtak-api") && n.includes("api")));
+assert.ok(fixed.notes.some((n) => n.includes("dropped cloudtak-tiles")));
+const fixedAgain = align.rewriteComposeDepends(fixed.text, baseServices, "cloudtak");
+assert.strictEqual(fixedAgain.text, fixed.text);
+assert.deepStrictEqual(fixedAgain.notes, []);
+
+const inline = align.rewriteComposeDepends(
+  "services:\n  sidecar:\n    depends_on: [cloudtak-api, cloudtak-missing]\n",
+  ["api"],
+  "cloudtak"
+);
+assert.match(inline.text, /depends_on: \[api\]/);
+assert.doesNotMatch(inline.text, /cloudtak-missing/);
+
+const mapped = align.rewriteComposeDepends(
+  "services:\n  worker:\n    depends_on:\n      cloudtak-store:\n        condition: service_healthy\n      other:\n        condition: service_started\n",
+  ["store"],
+  "cloudtak"
+);
+assert.match(mapped.text, /store:\n {8}condition: service_healthy/);
+assert.doesNotMatch(mapped.text, /cloudtak-store/);
+assert.doesNotMatch(mapped.text, /^\s+other:/m);
+
+const solve = marketplace.summarizeCommandError(
+  "Aligning marketplace plugins to the installed CloudTAK API\n#23 ERROR: process failed\n------\nfailed to solve: process \"/bin/sh -c cd web && npm run lint\" did not complete successfully: exit code: 1\n"
+);
+assert.match(solve, /failed to solve/);
+assert.doesNotMatch(solve, /Aligning marketplace/);
+const composeErr = marketplace.summarizeCommandError(
+  'WARN The "CLOUDTAK_Hub_URL" variable is not set.\nservice "cloudtak-print" depends on undefined service "cloudtak-store": invalid compose project\n'
+);
+assert.match(composeErr, /invalid compose/);
+assert.ok(composeErr.length < 240);
+assert.strictEqual(marketplace.summarizeCommandError("Plugin print is not in the catalog"), "Plugin print is not in the catalog");
+
 const installAligned = marketplace.installRemoteScript("/root/CloudTAK", livewx);
 assert.match(installAligned, /align_plugins_to_host/);
+assert.match(installAligned, /fix_overlay_depends/);
+assert.match(installAligned, /--fix-compose-depends/);
 assert.match(installAligned, /Aligning marketplace plugins to the installed CloudTAK API/);
 assert.match(installAligned, /readSubscriptionLoadKeys/);
 assert.doesNotMatch(installAligned, /incident-manager/);

@@ -852,6 +852,28 @@
     });
   }
 
+  function shortJobError(message) {
+    var lines = String(message || "").split(/\r?\n/).map(function (s) {
+      return s.replace(/\s+/g, " ").trim();
+    }).filter(Boolean);
+    if (!lines.length) return "";
+    function clip(s) { return s.length > 220 ? s.slice(0, 217) + "..." : s; }
+    var interesting = /failed to solve|invalid compose|ERROR:|exit code|✖\s+\d+\s+problems|EACCES|permission denied|Could not|not found|Refusing /i;
+    var i;
+    for (i = lines.length - 1; i >= 0; i--) {
+      var line = lines[i].replace(/^#\d+\s+/, "").replace(/^(?:=>\s*)+/, "");
+      if (line.length > 400) continue;
+      if (/^Dockerfile:\d+$/.test(line) || /^-{3,}$/.test(line)) continue;
+      if (interesting.test(line)) return clip(line);
+    }
+    for (i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].length > 240) continue;
+      if (/^#\d+\b/.test(lines[i]) || /^(?:=>\s*)+/.test(lines[i]) || /^Dockerfile:/.test(lines[i]) || /^-{3,}$/.test(lines[i])) continue;
+      return clip(lines[i]);
+    }
+    return clip(lines[lines.length - 1]);
+  }
+
   function displayLogLine(l) {
     var s = String(l || "").replace(/^\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s+/, "");
     if (!s || /^(UNINSTALL_OK|REBUILD_OK|INSTALL_OK)$/.test(s) || s.indexOf("INSTALL_SHA ") === 0) return "";
@@ -884,11 +906,26 @@
   }
 
   function jobLines(j) {
-    return (Array.isArray(j.log) ? j.log : []).map(displayLogLine).filter(Boolean);
+    var out = [];
+    (Array.isArray(j.log) ? j.log : []).forEach(function (entry) {
+      var text = String(entry || "");
+      if (text.length > 240 && (text.indexOf("\n") >= 0 || /^(FAILED |Rebuild failed:)/.test(text))) {
+        var prefix = text.indexOf("Rebuild failed:") === 0 ? "Rebuild failed: " : (text.indexOf("FAILED ") === 0 ? "FAILED " : "");
+        var short = shortJobError(text.replace(/^(FAILED |Rebuild failed:)\s*/, ""));
+        if (short) out.push(prefix + short);
+        return;
+      }
+      text.split(/\r?\n/).forEach(function (part) {
+        var shown = displayLogLine(part);
+        if (shown) out.push(shown);
+      });
+    });
+    return out;
   }
 
   function jobLabel(j) {
-    return (j.status || "") + (j.kind ? " · " + j.kind : "") + (j.pluginId ? " " + j.pluginId : "") + (j.error ? " — " + j.error : "");
+    var err = j.error ? shortJobError(j.error) : "";
+    return (j.status || "") + (j.kind ? " · " + j.kind : "") + (j.pluginId ? " " + j.pluginId : "") + (err ? " — " + err : "");
   }
 
   function renderJobs(jobs, allJobs) {
