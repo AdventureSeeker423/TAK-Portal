@@ -696,17 +696,47 @@
     }
   }
 
+  function missionPointShowCircle(props) {
+    const iconId = String((props && props.iconId) || "");
+    if (!iconId) return props && props.showCircle === 0 ? 0 : 1;
+    const ready = map && typeof map.hasImage === "function" && map.hasImage(iconId);
+    return ready ? 0 : 1;
+  }
+
   function stampMissionVisibility(geojson, visible) {
     const show = visible !== false;
     const features = (geojson.features || []).map(function (feature) {
+      const props = Object.assign({}, feature.properties || {}, { missionVisible: show ? 1 : 0 });
+      if (String(props.geometryType || "") === "point" || (feature.geometry && feature.geometry.type === "Point")) {
+        props.showCircle = missionPointShowCircle(props);
+      }
       return {
         type: feature.type,
         id: feature.id,
         geometry: feature.geometry,
-        properties: Object.assign({}, feature.properties || {}, { missionVisible: show ? 1 : 0 }),
+        properties: props,
       };
     });
     return Object.assign({}, geojson, { features: features });
+  }
+
+  function refreshMissionIconCircles(mapImageId) {
+    const id = String(mapImageId || "");
+    if (!id || !map) return;
+    openMissions.forEach(function (entry, name) {
+      if (!entry || !entry.visible || !entry.geojson || !Array.isArray(entry.geojson.features)) return;
+      let hit = false;
+      for (let i = 0; i < entry.geojson.features.length; i++) {
+        const props = entry.geojson.features[i] && entry.geojson.features[i].properties;
+        if (props && String(props.iconId || "") === id) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) return;
+      const src = map.getSource(missionSourceId(name));
+      if (src) src.setData(stampMissionVisibility(entry.geojson, true));
+    });
   }
 
   function ensureMissionLayers(name, geojson) {
@@ -789,7 +819,7 @@
             "icon-size": 1.1,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
-            "icon-optional": true,
+            "icon-optional": false,
           },
           paint: {
             "icon-opacity": 1,
@@ -2153,5 +2183,7 @@
     isShapeDecorMarker: isShapeDecorMarker,
     flyToMissionExtent: flyToMissionExtent,
     setAllMissionsEnabled: setAllMissionsEnabled,
+    onMapIconReady: refreshMissionIconCircles,
+    onMapIconFailed: refreshMissionIconCircles,
   };
 })();

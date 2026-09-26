@@ -548,7 +548,18 @@
     return h >>> 0 || 1;
   }
 
+  function notifyOverlayIcon(mapImageId, ready) {
+    const id = String(mapImageId || "");
+    if (!id) return;
+    const missions = window.TakMapMissions;
+    const packages = window.TakMapPackages;
+    const fnName = ready ? "onMapIconReady" : "onMapIconFailed";
+    if (missions && typeof missions[fnName] === "function") missions[fnName](id);
+    if (packages && typeof packages[fnName] === "function") packages[fnName](id);
+  }
+
   function hideCirclesForMapImage(mapImageId) {
+    notifyOverlayIcon(mapImageId, true);
     if (!map || !mapImageId) return;
     const uids = iconUidByMapImageId.get(String(mapImageId));
     if (!uids || !uids.size) return;
@@ -1818,6 +1829,7 @@
           mapImageId: canonicalId,
           err: err,
         });
+        notifyOverlayIcon(canonicalId, false);
       })
       .finally(function () {
         iconLoadPending.delete(canonicalId);
@@ -2507,6 +2519,10 @@
       })
       .catch(function (err) {
         console.warn("Batch icon preload failed", err);
+        for (let i = 0; i < needed.length; i++) {
+          const failedId = normalizeMapImageId(needed[i].mapImageId || "");
+          if (failedId && !map.hasImage(failedId)) notifyOverlayIcon(failedId, false);
+        }
         scheduleMissingIconSweep();
       })
       .finally(function () {
@@ -2554,6 +2570,12 @@
       if (!mapImageId) return;
       consider(mapImageId, m.iconId, m);
     });
+
+    for (let m = 0; m < missionIconManifest.length; m++) {
+      const entry = missionIconManifest[m];
+      if (!entry) continue;
+      consider(entry.mapImageId, entry.apiIconId, entry);
+    }
   }
 
   /** Build batch-preload manifest from slim markers (worker / SSE path). */

@@ -230,18 +230,48 @@
     };
   }
 
+  function packagePointShowCircle(props) {
+    const iconId = String((props && props.iconId) || "");
+    if (!iconId) return props && props.showCircle === 0 ? 0 : 1;
+    const ready = map && typeof map.hasImage === "function" && map.hasImage(iconId);
+    return ready ? 0 : 1;
+  }
+
   function stampPackageVisibility(geojson, visible) {
     const show = visible !== false;
     const features = (geojson.features || []).map(function (feature) {
+      const props = Object.assign({}, feature.properties || {}, {
+        packageVisible: show ? 1 : 0,
+      });
+      if (feature.geometry && feature.geometry.type === "Point") {
+        props.showCircle = packagePointShowCircle(props);
+      }
       return {
         type: feature.type,
         geometry: feature.geometry,
-        properties: Object.assign({}, feature.properties || {}, {
-          packageVisible: show ? 1 : 0,
-        }),
+        properties: props,
       };
     });
     return Object.assign({}, geojson, { features: features });
+  }
+
+  function refreshPackageIconCircles(mapImageId) {
+    const id = String(mapImageId || "");
+    if (!id || !map) return;
+    openPackages.forEach(function (entry, hash) {
+      if (!entry || !entry.visible || !entry.geojson || !Array.isArray(entry.geojson.features)) return;
+      let hit = false;
+      for (let i = 0; i < entry.geojson.features.length; i++) {
+        const props = entry.geojson.features[i] && entry.geojson.features[i].properties;
+        if (props && String(props.iconId || "") === id) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) return;
+      const src = map.getSource(packageSourceId(hash));
+      if (src) src.setData(geojsonForMapSource(stampPackageVisibility(entry.geojson, true)));
+    });
   }
 
   function geojsonForMapSource(geojson) {
@@ -600,7 +630,7 @@
             "icon-size": 1.1,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
-            "icon-optional": true,
+            "icon-optional": false,
           },
         },
         beforeId
@@ -1383,5 +1413,7 @@
     getHitLayers: getPackageHitLayers,
     setAllPackagesEnabled: setAllPackagesEnabled,
     flyToPackageExtent: flyToPackageExtent,
+    onMapIconReady: refreshPackageIconCircles,
+    onMapIconFailed: refreshPackageIconCircles,
   };
 })();
