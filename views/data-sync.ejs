@@ -15,9 +15,8 @@
   <div class="card createFormCard">
     <h2>Create Data Sync Mission</h2>
     <p class="muted" style="margin: 0 0 1rem 0;">
-      Assign exactly one channel. Missions created on a TAK client with more than one channel
-      selected will not appear here — TAK Server still requires the user to be in every assigned
-      channel, so TAK Portal (and geofence assignment) only lists single-channel missions.
+      New missions created here use one channel. Missions that already have more than one channel
+      are listed below. TAK Server still requires a subscriber to be in every assigned channel.
     </p>
     <div class="grid2 createForm">
       <div class="grid3 data-sync-create-top" style="grid-column: 1 / -1;">
@@ -85,7 +84,7 @@
             <th>Name</th>
             <th>Description</th>
             <th>Default Role</th>
-            <th>Group</th>
+            <th>Channels</th>
             <th>Password</th>
             <th>Created</th>
             <th style="min-width: 340px;">Actions</th>
@@ -153,10 +152,11 @@
       </label>
 
       <label style="display: block; margin-top: 14px;">
-        Assigned Group
+        Assigned Channels
         <select id="mGroup" style="width: 100%; box-sizing: border-box;">
           <option value="">Select a group…</option>
         </select>
+        <p id="mGroupList" class="muted" style="display: none; margin: 6px 0 0;"></p>
       </label>
 
       <div class="card" style="margin-top: 16px; background: var(--card);">
@@ -378,6 +378,8 @@
   var mDescription = document.getElementById("mDescription");
   var mDefaultRole = document.getElementById("mDefaultRole");
   var mGroup = document.getElementById("mGroup");
+  var mGroupList = document.getElementById("mGroupList");
+  var editingGroupNames = [];
   var mNewPw = document.getElementById("mNewPw");
   var mBtnSetPw = document.getElementById("mBtnSetPw");
   var mBtnClearPw = document.getElementById("mBtnClearPw");
@@ -661,8 +663,27 @@
     return null;
   }
 
-  function missionSingleGroupName(mission) {
+  function canonicalGroupKey(name) {
+    var n = String(name || "").trim().toLowerCase();
+    if (n.indexOf("tak_") === 0) n = n.slice(4);
+    return n.replace(/\s+/g, " ").trim();
+  }
+
+  function missionGroupNames(mission) {
     var names = extractGroupNames(Array.isArray(mission && mission.groups) ? mission.groups : []);
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < names.length; i++) {
+      var key = canonicalGroupKey(names[i]);
+      if (!key || seen[key]) continue;
+      seen[key] = true;
+      out.push(names[i]);
+    }
+    return out;
+  }
+
+  function missionSingleGroupName(mission) {
+    var names = missionGroupNames(mission);
     if (names.length !== 1) return "";
     return names[0];
   }
@@ -826,8 +847,9 @@
 
   function renderMissionRow(m, tbody) {
     var name = m && m.name != null ? String(m.name) : "";
-    var groupName = missionSingleGroupName(m);
-    if (!groupName) return false;
+    var groupNames = missionGroupNames(m);
+    if (!groupNames.length) return false;
+    var groupName = groupNames.join(", ");
 
     var pw = m.passwordProtected === true ? "Yes" : "No";
     var ct = m.createTime ? String(m.createTime) : "";
@@ -835,11 +857,12 @@
     if (desc.length > 48) desc = desc.slice(0, 45) + "…";
     var dr = m && m.defaultRole;
     var defaultRoleLabel = defaultRoleTypeToLabel(dr && dr.type ? String(dr.type) : "MISSION_SUBSCRIBER");
-    var displayGroup = m.assignedGroup ? String(m.assignedGroup) : groupName;
+    var displayGroup = groupNames.length === 1 && m.assignedGroup ? String(m.assignedGroup) : groupName;
     var agencyName = m.assignedAgencyName ? String(m.assignedAgencyName) : "";
     var nameSubLines = "";
     if (displayGroup) {
-      nameSubLines += "<div class=\"data-sync-mission-sub\">Group: " + esc(displayGroup) + "</div>";
+      nameSubLines += "<div class=\"data-sync-mission-sub\">" +
+        (groupNames.length > 1 ? "Channels: " : "Group: ") + esc(displayGroup) + "</div>";
     }
     if (agencyName) {
       nameSubLines += "<div class=\"data-sync-mission-sub\">Agency: " + esc(agencyName) + "</div>";
@@ -851,7 +874,7 @@
       "<td class=\"cardTitleCell\"><div class=\"cardTitleText\">" + esc(name) + "</div>" + nameSubLines + "</td>" +
       "<td class=\"dsDescCell\" data-label=\"Description\" style=\"max-width:220px;font-size:13px;\">" + esc(desc) + "</td>" +
       "<td class=\"dsRoleCell\" data-label=\"Default Role\" style=\"font-size:13px;white-space:nowrap;\">" + esc(defaultRoleLabel) + "</td>" +
-      "<td class=\"dsGroupCell\" data-label=\"Group\" style=\"font-size:13px;\">" + esc(groupName) + "</td>" +
+      "<td class=\"dsGroupCell\" data-label=\"Channels\" style=\"font-size:13px;\">" + esc(groupName) + "</td>" +
       "<td class=\"dsPasswordCell\" data-label=\"Password\">" + esc(pw) + "</td>" +
       "<td class=\"dsCreatedCell\" data-label=\"Created\" style=\"font-size:12px;white-space:nowrap;\">" + esc(ct) + "</td>" +
       "<td></td>";
@@ -1363,6 +1386,12 @@
     document.body.classList.remove("noScroll");
     missionDetail = null;
     editingOriginalName = "";
+    editingGroupNames = [];
+    if (mGroup) mGroup.style.display = "";
+    if (mGroupList) {
+      mGroupList.style.display = "none";
+      mGroupList.textContent = "";
+    }
   }
 
   async function openEditMission(name) {
@@ -1387,13 +1416,27 @@
       syncDefaultRoleSelectFromMission(missionDetail);
 
       /* GET /missions/:name often returns groups as {name:"…"} objects; list endpoint uses strings. */
-      var mg = Array.isArray(missionDetail.groups) ? missionDetail.groups : [];
-      var selectedGroup = missionSingleGroupName({ groups: mg });
-      if (!selectedGroup) {
+      var editGroups = missionGroupNames(missionDetail);
+      if (!editGroups.length) {
         var row = missionRowFromCache(name);
-        if (row) selectedGroup = missionSingleGroupName(row);
+        if (row) editGroups = missionGroupNames(row);
       }
-      renderEditGroupSelect(selectedGroup);
+      if (editGroups.length > 1) {
+        editingGroupNames = editGroups.slice();
+        if (mGroup) mGroup.style.display = "none";
+        if (mGroupList) {
+          mGroupList.style.display = "block";
+          mGroupList.textContent = editGroups.join(", ");
+        }
+      } else {
+        editingGroupNames = [];
+        if (mGroup) mGroup.style.display = "";
+        if (mGroupList) {
+          mGroupList.style.display = "none";
+          mGroupList.textContent = "";
+        }
+        renderEditGroupSelect(editGroups[0] || "");
+      }
 
       mContentsTbody.innerHTML = "";
       var contents = Array.isArray(missionDetail.contents) ? missionDetail.contents : [];
@@ -1431,13 +1474,16 @@
   function buildSavePayload() {
     var name = (mName.value || "").trim();
     var groupName = getSelectedGroupName();
+    var groups = editingGroupNames.length > 1
+      ? editingGroupNames.slice()
+      : (groupName ? [groupName] : []);
     var kw = missionDetail && Array.isArray(missionDetail.keywords) ? missionDetail.keywords.slice() : [];
     return {
       name: name,
       tool: "public",
       description: mDescription ? String(mDescription.value || "") : "",
       defaultRole: buildDefaultRoleObject(mDefaultRole && mDefaultRole.value),
-      groups: groupName ? [groupName] : [],
+      groups: groups,
       keywords: kw,
       inviteOnly: false,
     };

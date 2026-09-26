@@ -210,7 +210,7 @@ async function prepareMissionWrite(req, res) {
   const authUser = req.authentikUser || null;
   const allowedKeySet = await dataSyncAccess.getAllowedCanonicalKeySet(authUser);
   try {
-    dataSyncAccess.assertSingleGroupBody(req.body);
+    if (req.method === "PUT") dataSyncAccess.assertSingleGroupBody(req.body);
     dataSyncAccess.assertGroupAllowed(req.body, allowedKeySet);
   } catch (err) {
     const handled = sendAccessError(res, err);

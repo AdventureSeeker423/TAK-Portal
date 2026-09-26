@@ -74,4 +74,33 @@ assert.deepStrictEqual(
   ["Single", "Dedupe"]
 );
 
+const bothKeys = new Set([
+  canonicalGroupKey("HCSO Ops"),
+  canonicalGroupKey("HCSO Tac"),
+]);
+const visibleMulti = filterMissionsForAccess(
+  [
+    { name: "Single", groups: ["HCSO Ops"] },
+    { name: "Multi", groups: ["HCSO Ops", "HCSO Tac"] },
+    { name: "Empty", groups: [] },
+  ],
+  bothKeys
+);
+assert.deepStrictEqual(
+  visibleMulti.map((m) => m.name),
+  ["Single", "Multi"]
+);
+
+const visibleAll = filterMissionsForAccess(
+  [
+    { name: "Multi", groups: ["HCSO Ops", "HCSO Tac"] },
+    { name: "Empty", groups: [] },
+  ],
+  null
+);
+assert.deepStrictEqual(
+  visibleAll.map((m) => m.name),
+  ["Multi"]
+);
+
 console.log("dataSync.missionWrite.test.js: ok");

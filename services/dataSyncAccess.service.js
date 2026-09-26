@@ -1,6 +1,7 @@
 /**
- * Access rules for Data Sync missions — single-group missions only;
- * agency admins scoped to agency-specific groups (not county/state extras).
+ * Access rules for Data Sync missions.
+ * A mission is listed when it has at least one channel and every channel is in
+ * the caller's scope. Agency admins stay limited to agency-specific groups.
  *
  * TAK Marti uses LDAP CN (no tak_ prefix). Authentik stores tak_<CN>.
  * All matching compares canonical keys after stripping tak_.
@@ -420,13 +421,15 @@ async function resolveGroupsForUser(authUser, takPayload) {
   };
 }
 
+function missionVisibleForAccess(mission, allowedKeySet) {
+  const names = extractMissionGroupNames(mission);
+  if (!names.length) return false;
+  return names.every((g) => takGroupNameAllowed(g, allowedKeySet));
+}
+
 function filterMissionsForAccess(missions, allowedKeySet) {
   const list = Array.isArray(missions) ? missions : [];
-  return list.filter((m) => {
-    const g = missionSingleGroupName(m);
-    if (!g) return false;
-    return takGroupNameAllowed(g, allowedKeySet);
-  });
+  return list.filter((m) => missionVisibleForAccess(m, allowedKeySet));
 }
 
 function filterGroupsPayload(payload, allowedKeySet) {
@@ -492,8 +495,7 @@ async function assertMissionReadable(authUser, missionName, options = {}) {
   const allowedKeySet = await getAllowedCanonicalKeySet(authUser, options);
   const raw = await dataSyncSvc.getMission(missionName);
   const mission = unwrapMission(raw);
-  const g = missionSingleGroupName(mission);
-  if (!g || !takGroupNameAllowed(g, allowedKeySet)) {
+  if (!missionVisibleForAccess(mission, allowedKeySet)) {
     const err = new Error("Forbidden");
     err.code = "FORBIDDEN";
     throw err;
@@ -773,13 +775,10 @@ async function permanentlyDeleteMissionForUser(authUser, missionName) {
   try {
     const raw = await dataSyncSvc.getMission(name);
     const mission = unwrapMission(raw);
-    if (mission) {
-      const g = missionSingleGroupName(mission);
-      if (!g || !takGroupNameAllowed(g, allowedKeySet)) {
-        const err = new Error("Forbidden");
-        err.code = "FORBIDDEN";
-        throw err;
-      }
+    if (mission && !missionVisibleForAccess(mission, allowedKeySet)) {
+      const err = new Error("Forbidden");
+      err.code = "FORBIDDEN";
+      throw err;
     }
   } catch (err) {
     const status = err?.response?.status;
@@ -859,6 +858,7 @@ module.exports = {
   extractTakGroupNameList,
   extractMissionGroupNames,
   missionSingleGroupName,
+  missionVisibleForAccess,
   resolveAssignmentMetaForGroup,
   enrichMissionAssignmentMeta,
   enrichMissionListAssignmentMeta,
