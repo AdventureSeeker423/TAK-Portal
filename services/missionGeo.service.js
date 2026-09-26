@@ -365,9 +365,13 @@ async function buildMissionGeoJson(name, options = {}) {
       const kmlFeatures = await missionKml.loadKmlFeaturesFromMission(name, mission);
       attachmentSummary.kml = kmlFeatures.length;
       if (kmlFeatures.length) {
+        const normalizedKml = await normalizeFeatureCollection(
+          { type: "FeatureCollection", features: kmlFeatures },
+          name
+        );
         fc = filterNormalizedDecorPoints({
           type: "FeatureCollection",
-          features: [...fc.features, ...kmlFeatures],
+          features: [...fc.features, ...(normalizedKml.features || [])],
         });
       }
       rasterOverlays = await missionRaster.buildRasterOverlays(name, mission, {

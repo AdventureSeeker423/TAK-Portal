@@ -215,10 +215,14 @@ async function extractFeaturesFromZipBuffer(buf, meta) {
           hash: `${meta.hash}:${base}`,
           name: base,
         });
-        for (const f of feats) {
+        const normalized = await missionGeo.normalizeFeatureCollection(
+          { type: "FeatureCollection", features: feats },
+          meta.filename
+        );
+        for (const f of normalized.features || []) {
           kmlFeatures.push(stampPackageFeature(f, meta));
         }
-        kmlCount += feats.length;
+        kmlCount += (normalized.features || []).length;
         continue;
       }
 
