@@ -13,6 +13,8 @@ const settingsSvc = require("./settings.service");
 
 const NEW_DAYS = 14;
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
+const INSTALL_TIMEOUT_MS = 20 * 60 * 1000;
+const REBUILD_TIMEOUT_MS = 60 * 60 * 1000;
 
 let _jobRunning = false;
 let _cancelRequested = false;
@@ -2503,7 +2505,7 @@ async function performInstall(job, plugin) {
   const result = await runLogged(
     job.id,
     `bash -lc ${ssh.shellQuote(installRemoteScript(loc.path, plugin, { composeService: loc.composeService }))}`,
-    20 * 60 * 1000
+    INSTALL_TIMEOUT_MS
   );
   const shaLine = String(result.stdout || "")
     .split("\n")
@@ -2557,12 +2559,34 @@ async function performUninstall(job, dest, plugin) {
   return { path: loc.path, composeService: loc.composeService || ssh.resolvedComposeService() };
 }
 
+function rebuildTimeoutMs() {
+  const n = getInt("CLOUDTAK_MARKETPLACE_REBUILD_TIMEOUT_MS", REBUILD_TIMEOUT_MS);
+  return Math.max(INSTALL_TIMEOUT_MS, n || REBUILD_TIMEOUT_MS);
+}
+
 async function performRebuild(jobs, ctPath, service) {
   const ids = (Array.isArray(jobs) ? jobs : [jobs]).map((j) => j.id);
   const primary = ids[0];
+  const timeoutMs = rebuildTimeoutMs();
+  const timeoutMin = Math.round(timeoutMs / 60000);
   ids.forEach((id) => appendJobLog(id, `$ docker compose --progress=plain build --no-cache ${service}`));
+  ids.forEach((id) =>
+    appendJobLog(
+      id,
+      `No-cache CloudTAK rebuild includes npm install, lint, vue-tsc, and vite. Timeout ${timeoutMin} minutes.`
+    )
+  );
   ids.slice(1).forEach((id) => appendJobLog(id, "CloudTAK rebuild output is on the first job in this batch."));
-  await runLogged(primary ? [primary] : [], `bash -lc ${ssh.shellQuote(rebuildRemoteScript(ctPath, service))}`, 20 * 60 * 1000);
+  try {
+    await runLogged(primary ? [primary] : [], `bash -lc ${ssh.shellQuote(rebuildRemoteScript(ctPath, service))}`, timeoutMs);
+  } catch (err) {
+    if (/timed out/i.test(String(err && err.message))) {
+      throw new Error(
+        `CloudTAK rebuild timed out after ${timeoutMin} minutes. vue-tsc can stay quiet for a long time; the docker build may still be running on the host.`
+      );
+    }
+    throw err;
+  }
 }
 
 async function runChangeBatch(jobs) {
@@ -2959,6 +2983,7 @@ module.exports = {
   installRemoteScript,
   uninstallRemoteScript,
   rebuildRemoteScript,
+  rebuildTimeoutMs,
   normalizeCsp,
   normalizeFlatSamplePluginTree,
   pluginEntryImportsLib,

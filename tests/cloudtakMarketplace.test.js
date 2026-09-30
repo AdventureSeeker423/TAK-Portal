@@ -580,6 +580,7 @@ assert.match(rebuildAligned, /node:22-alpine/);
 assert.match(rebuildAligned, /docker run --rm -u 0/);
 assert.doesNotMatch(installAligned, /--user /);
 assert.doesNotMatch(rebuildAligned, /--user /);
+assert.ok(marketplace.rebuildTimeoutMs() >= 60 * 60 * 1000);
 
 const done = { id: "done", kind: "install", status: "complete", batchId: "old", startedAt: "2026-09-25T12:00:00.000Z", log: ["old install"] };
 const next = { id: "next", kind: "uninstall", status: "running", batchId: "new", startedAt: "2026-09-25T13:00:00.000Z", log: ["removing"] };
