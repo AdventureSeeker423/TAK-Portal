@@ -122,6 +122,19 @@ async function syncDataFeedFilterGroups({ dataFeedName, nextGroupNames }) {
   return { updated: true, filterGroups: next };
 }
 
+const RESERVED_DATA_FEED_PORTS = new Set([8089, 8443, 8446]);
+
+function parseDataFeedPort(raw) {
+  const n = parseInt(String(raw ?? ""), 10);
+  if (!Number.isFinite(n) || n < 1 || n > 65535) {
+    throw new Error("Data feed port must be between 1 and 65535.");
+  }
+  if (RESERVED_DATA_FEED_PORTS.has(n)) {
+    throw new Error("Ports 8089, 8443, and 8446 are reserved and cannot be used for a streaming data feed.");
+  }
+  return n;
+}
+
 function parseStoredDataFeedPort(raw) {
   if (raw == null || raw === "") return null;
   const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
@@ -150,13 +163,83 @@ function isDataFeedNameAlreadyExistsError(err) {
 }
 
 function formatDataFeedCreateError(err) {
-  if (isDataFeedNameAlreadyExistsError(err)) {
+  if (isDataFeedNameAlreadyExistsError(err) || err?.code === "DATAFEED_NAME_EXISTS") {
     return (
       "A data feed with this name already exists on TAK Server. " +
-      "Remove the existing feed on TAK Server (or choose a different integration title) and try again."
+      "Choose a different data feed name and try again."
     );
   }
   return toErrorPayload(err);
+}
+
+function dataFeedNameConflictError(existingName) {
+  const err = new Error(
+    `A data feed named "${existingName}" already exists on TAK Server. Choose a different data feed name and try again.`
+  );
+  err.code = "DATAFEED_NAME_EXISTS";
+  return err;
+}
+
+function feedsFromTakListPayload(payload) {
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload)) return payload;
+  return [];
+}
+
+/**
+ * Return the existing TAK feed name when `dataFeedName` is already taken
+ * (case-insensitive). Null when the name is free.
+ */
+async function findConflictingDataFeedName(dataFeedName) {
+  const wanted = String(dataFeedName || "").trim().toLowerCase();
+  if (!wanted || !takSvc.isTakConfigured()) return null;
+
+  const takClient = takSvc.buildTakAxios({ timeout: DATAFEED_WRITE_TIMEOUT_MS });
+  try {
+    const listRes = await takClient.get("/api/datafeeds", {
+      headers: { Accept: "application/json" },
+    });
+    const hit = feedsFromTakListPayload(listRes.data).find(
+      (feed) => String(feed?.name || "").trim().toLowerCase() === wanted
+    );
+    if (hit?.name) return String(hit.name);
+  } catch (listErr) {
+    console.warn(
+      "[integrations] Could not list TAK data feeds while checking for a name conflict:",
+      listErr?.message || listErr
+    );
+  }
+
+  const probe = await takClient.get(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`, {
+    validateStatus: (status) => status === 200 || status === 404,
+  });
+  if (probe.status !== 200) return null;
+  const feed = unwrapDataFeed(probe.data);
+  return feed?.name ? String(feed.name) : dataFeedName;
+}
+
+/**
+ * Refuse to create a feed whose name is already on TAK Server or already
+ * bound to another integration. Does not modify the existing feed.
+ */
+async function assertDataFeedNameAvailable(dataFeedName) {
+  const wanted = String(dataFeedName || "").trim().toLowerCase();
+  if (!wanted) return;
+
+  const integrations = await users.findIntegrationUsers();
+  const owner = integrations.find(
+    (u) => String(u.attributes?.tak_data_feed_name || "").trim().toLowerCase() === wanted
+  );
+  if (owner) {
+    const err = new Error(
+      `Data feed name "${dataFeedName}" is already used by integration "${owner.username}". Choose a different name.`
+    );
+    err.code = "DATAFEED_NAME_EXISTS";
+    throw err;
+  }
+
+  const conflict = await findConflictingDataFeedName(dataFeedName);
+  if (conflict) throw dataFeedNameConflictError(conflict);
 }
 
 /**
@@ -335,8 +418,16 @@ router.post("/", async (req, res) => {
     const titleStr = String(title || "").trim();
     const isSkipDataFeed = String(skipDataFeed) === "true";
     let streamingDataFeedName = null;
+    let streamingDataFeedPort = null;
     if (!isSkipDataFeed) {
-      streamingDataFeedName = users.getStreamingDataFeedNameForTitle(titleStr);
+      const requestedName = String(req.body?.dataFeedName || "").trim();
+      streamingDataFeedName = requestedName
+        ? users.normalizeStreamingDataFeedName(requestedName)
+        : users.getStreamingDataFeedNameForTitle(titleStr);
+      streamingDataFeedPort = parseDataFeedPort(port);
+      if (takSvc.isTakConfigured()) {
+        await assertDataFeedNameAvailable(streamingDataFeedName);
+      }
     }
 
     const result = await users.createIntegrationUser(
@@ -371,7 +462,7 @@ router.post("/", async (req, res) => {
         name: finalDataFeedName,
         protocol: protocol || "tls",
         auth: authType || "X_509",
-        port: port ? parseInt(port, 10) : 8089,
+        port: streamingDataFeedPort,
         coreVersion: coreVersion || "2",
         coreVersion2TlsVersions: coreVersion2TlsVersions || "",
         group: multicastGroup || "",
@@ -385,6 +476,9 @@ router.post("/", async (req, res) => {
         tag: payloadTags,
         filtergroup: strippedGroups,
       };
+
+      const conflictNow = await findConflictingDataFeedName(finalDataFeedName);
+      if (conflictNow) throw dataFeedNameConflictError(conflictNow);
 
       createdDataFeedName = finalDataFeedName;
       dataFeedCreateAttempted = true;
@@ -429,10 +523,12 @@ router.post("/", async (req, res) => {
     let rollbackError = "";
     if (createdUserId) {
       try {
+        const preserveExistingFeed =
+          isDataFeedNameAlreadyExistsError(err) || err?.code === "DATAFEED_NAME_EXISTS";
         await rollbackIntegrationCreation({
           userId: createdUserId,
           username: createdUsername,
-          dataFeedName: createdDataFeedName,
+          dataFeedName: preserveExistingFeed ? null : createdDataFeedName,
         });
         auditSvc.logEvent({
           actor: req.authentikUser || null,
@@ -747,19 +843,24 @@ router.post("/:username/datafeed", async (req, res) => {
       return res.status(400).json({ error: "Integration already has an associated Data Feed." });
     }
 
-    const { protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags } = req.body || {};
+    const { dataFeedName: requestedDataFeedName, protocol, authType, port, coreVersion, coreVersion2TlsVersions, multicastGroup, iface, syncCacheRetention, archive, anongroup, archiveOnly, sync, federated, tags } = req.body || {};
 
     const titleForFeed = String(user.attributes?.integration_title || "").trim();
-    if (!titleForFeed) {
-      return res.status(400).json({
-        error:
-          "This integration has no stored title; cannot create a data feed name. Recreate the integration or set integration_title in Authentik.",
-      });
-    }
-
     let dataFeedName;
+    let dataFeedPort;
     try {
-      dataFeedName = users.getStreamingDataFeedNameForTitle(titleForFeed);
+      const requestedName = String(requestedDataFeedName || "").trim();
+      if (requestedName) {
+        dataFeedName = users.normalizeStreamingDataFeedName(requestedName);
+      } else if (!titleForFeed) {
+        return res.status(400).json({
+          error:
+            "This integration has no stored title; enter a data feed name to continue.",
+        });
+      } else {
+        dataFeedName = users.getStreamingDataFeedNameForTitle(titleForFeed);
+      }
+      dataFeedPort = parseDataFeedPort(port);
     } catch (e) {
       return res.status(400).json({ error: toErrorPayload(e) });
     }
@@ -767,6 +868,8 @@ router.post("/:username/datafeed", async (req, res) => {
     if (!takSvc.isTakConfigured()) {
       return res.status(503).json({ error: "TAK Server connection is not configured." });
     }
+
+    await assertDataFeedNameAvailable(dataFeedName);
 
     const payloadTags = tags ? tags.split(/[\n,]+/).map(t => t.trim()).filter(Boolean) : [];
     const named = await require("../services/directoryRepo.service").getGroupsByPks(
@@ -783,7 +886,7 @@ router.post("/:username/datafeed", async (req, res) => {
       name: dataFeedName,
       protocol: protocol || "tls",
       auth: authType || "X_509",
-      port: port ? parseInt(port, 10) : 8089,
+      port: dataFeedPort,
       coreVersion: coreVersion || "2",
       coreVersion2TlsVersions: coreVersion2TlsVersions || "",
       group: multicastGroup || "",
@@ -821,7 +924,12 @@ router.post("/:username/datafeed", async (req, res) => {
 
     res.json({ message: "Data Feed successfully created and bound to Integration." });
   } catch (err) {
-    res.status(500).json({ error: "TAK Server Error: " + formatDataFeedCreateError(err) });
+    const message = formatDataFeedCreateError(err);
+    const nameTaken =
+      err?.code === "DATAFEED_NAME_EXISTS" || isDataFeedNameAlreadyExistsError(err);
+    res.status(nameTaken ? 409 : 500).json({
+      error: nameTaken ? message : "TAK Server Error: " + message,
+    });
   }
 });
 

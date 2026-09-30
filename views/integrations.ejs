@@ -153,8 +153,10 @@
           
           <div class="row">
             <label style="display: block; margin-bottom: 8px; font-weight: bold;">Data Feed Name (TAK)
-              <input type="text" name="dataFeedName" disabled style="width: 100%; color: var(--text-2);" placeholder="(letters/numbers from title, max 30)" />
+              <input type="text" name="dataFeedName" maxlength="30" autocomplete="off" style="width: 100%;" placeholder="letters and numbers, max 30" />
+              <small id="dataFeedNameHint" style="display: block; color: var(--text-2); font-size: 0.85em; margin-top: 4px; font-weight: normal;">Letters and numbers only, up to 30 characters. Suggested from the integration title; you can change it.</small>
             </label>
+            <div id="dataFeedMsg" class="msg" style="margin-top: 8px;"></div>
           </div>
           <div class="row" style="margin-top: 12px;">
             <label style="flex: 1; min-width: 200px;">Tags
@@ -179,8 +181,8 @@
           </div>
           <div class="row" style="margin-top: 12px;">
              <label style="flex: 1; min-width: 200px;">*Port
-              <input type="number" name="port" required style="width: 100%;" placeholder="e.g. 8089" min="1" max="65535" />
-              <small style="display: block; color: var(--text-2); font-size: 0.85em; margin-top: 4px;">Note: Ensure this port is opened in your firewall prior to establishing a data connection.</small>
+              <input type="number" name="port" required style="width: 100%;" placeholder="e.g. 8090" min="1" max="65535" />
+              <small style="display: block; color: var(--text-2); font-size: 0.85em; margin-top: 4px;">Ports 8089, 8443, and 8446 are reserved. Any other port from 1 to 65535 can be used. Open it in your firewall before connecting.</small>
             </label>
             <label style="flex: 1; min-width: 200px;">Core Messaging Version
               <select name="coreVersion" style="width: 100%;">
@@ -284,9 +286,6 @@
   const integrationsNextBtn = document.getElementById("integrationsNextBtn");
   const integrationsLastBtn = document.getElementById("integrationsLastBtn");
   const integrationsPageInfo = document.getElementById("integrationsPageInfo");
-  const integrationTitleInput = document.getElementById("integrationTitle");
-  const makeDataFeedSelect = document.getElementById("makeDataFeed");
-
   var STREAMING_DATA_FEED_NAME_MAX_LEN = 30;
 
   function toTitleSlug(s) {
@@ -297,18 +296,46 @@
       .replace(/[^a-z0-9]/g, "");
   }
 
-  function updateIntegrationTitleConstraints() {
-    if (!integrationTitleInput) return;
-    var feedOn = makeDataFeedSelect && makeDataFeedSelect.value === "yes";
-    if (feedOn) {
-      integrationTitleInput.setAttribute("maxlength", String(STREAMING_DATA_FEED_NAME_MAX_LEN));
-    } else {
-      integrationTitleInput.removeAttribute("maxlength");
+  function suggestedDataFeedName(title) {
+    var slug = toTitleSlug(title) || "integration";
+    if (slug.length > STREAMING_DATA_FEED_NAME_MAX_LEN) {
+      slug = slug.slice(0, STREAMING_DATA_FEED_NAME_MAX_LEN);
     }
+    return slug;
   }
 
-  if (makeDataFeedSelect) {
-    makeDataFeedSelect.addEventListener("change", updateIntegrationTitleConstraints);
+  function dataFeedNameError(raw) {
+    var name = String(raw || "").trim().toLowerCase();
+    if (!name) return "Data feed name is required.";
+    if (!/^[a-z0-9]+$/.test(name)) {
+      return "Data feed name may contain only letters and numbers (no spaces or punctuation).";
+    }
+    if (name.length > STREAMING_DATA_FEED_NAME_MAX_LEN) {
+      return "Data feed name must be at most " + STREAMING_DATA_FEED_NAME_MAX_LEN + " characters.";
+    }
+    return "";
+  }
+
+  function setDataFeedMsg(text, ok) {
+    var el = document.getElementById("dataFeedMsg");
+    if (!el) return;
+    el.textContent = text || "";
+    el.style.color = ok ? "" : "var(--error, #c00)";
+  }
+
+  function openCreateDataFeedModal(prefill) {
+    dataFeedForm.reset();
+    document.getElementById("dataFeedTitle").innerText = "Create Streaming Data Feed";
+    Array.from(dataFeedForm.elements).forEach(function (el) {
+      el.disabled = false;
+    });
+    document.getElementById("dataFeedSubmitBtn").style.display = "block";
+    var hint = document.getElementById("dataFeedNameHint");
+    if (hint) hint.style.display = "block";
+    dataFeedForm.dataFeedName.value = prefill || "";
+    dataFeedForm.port.value = String(nextUnusedDataFeedPort());
+    setDataFeedMsg("");
+    dataFeedModalOverlay.style.display = "flex";
   }
 
   const dataFeedModalOverlay = document.getElementById("dataFeedModalOverlay");
@@ -319,7 +346,27 @@
   let groupsCache = [];
   let usersCache = [];
   let connectedUsernamesSet = new Set();
-  let sortState = { key: "username", dir: 1 };
+  let sortState = { key: "port", dir: 1 };
+  var RESERVED_DATA_FEED_PORTS = { 8089: true, 8443: true, 8446: true };
+
+  function isReservedDataFeedPort(port) {
+    return !!RESERVED_DATA_FEED_PORTS[Number(port)];
+  }
+
+  function nextUnusedDataFeedPort() {
+    var used = {};
+    var lowest = null;
+    (usersCache || []).forEach(function (u) {
+      if (u.dataFeedPort == null || u.dataFeedPort === "") return;
+      var n = Number(u.dataFeedPort);
+      if (!Number.isFinite(n) || n < 1 || n > 65535) return;
+      used[n] = true;
+      if (!isReservedDataFeedPort(n) && (lowest == null || n < lowest)) lowest = n;
+    });
+    var port = lowest == null ? 8090 : lowest;
+    while (port <= 65535 && (used[port] || isReservedDataFeedPort(port))) port += 1;
+    return port > 65535 ? 8090 : port;
+  }
 
   function stripTakPrefix(name) {
     if (name == null || name === undefined) return "";
@@ -503,17 +550,18 @@
           var bGroup = (b.groupNames || []).join(", ");
           var aDataFeed = a.dataFeedName ? "enabled" : "none";
           var bDataFeed = b.dataFeedName ? "enabled" : "none";
-          var aPort = (a.dataFeedName && a.dataFeedPort != null && a.dataFeedPort !== "") ? Number(a.dataFeedPort) : -1;
-          var bPort = (b.dataFeedName && b.dataFeedPort != null && b.dataFeedPort !== "") ? Number(b.dataFeedPort) : -1;
+          var aHasPort = a.dataFeedName && a.dataFeedPort != null && a.dataFeedPort !== "" && Number.isFinite(Number(a.dataFeedPort));
+          var bHasPort = b.dataFeedName && b.dataFeedPort != null && b.dataFeedPort !== "" && Number.isFinite(Number(b.dataFeedPort));
           var aConnected = connectedUsernamesSet.has(aUsername) ? "connected" : "disconnected";
           var bConnected = connectedUsernamesSet.has(bUsername) ? "connected" : "disconnected";
 
           var av;
           var bv;
+          if (key === "port" && aHasPort !== bHasPort) return aHasPort ? -1 : 1;
           if (key === "username") { av = aUsername.toLowerCase(); bv = bUsername.toLowerCase(); }
           else if (key === "group") { av = String(aGroup || "").toLowerCase(); bv = String(bGroup || "").toLowerCase(); }
           else if (key === "dataFeed") { av = aDataFeed; bv = bDataFeed; }
-          else if (key === "port") { av = aPort; bv = bPort; }
+          else if (key === "port") { av = Number(a.dataFeedPort); bv = Number(b.dataFeedPort); }
           else if (key === "status") { av = aConnected; bv = bConnected; }
           else { av = aUsername.toLowerCase(); bv = bUsername.toLowerCase(); }
 
@@ -754,25 +802,7 @@
         if (mode === "create") {
             integrationRetroactiveUsername = username;
             
-            dataFeedForm.reset();
-            document.getElementById("dataFeedTitle").innerText = "Create Streaming Data Feed";
-            Array.from(dataFeedForm.elements).forEach(el => {
-                if (el.name !== "dataFeedName") el.disabled = false;
-            });
-            document.getElementById("dataFeedSubmitBtn").style.display = "block";
-            var retroSlug = toTitleSlug(integrationTitleAttr || "") || "integration";
-            if (retroSlug.length > STREAMING_DATA_FEED_NAME_MAX_LEN) {
-              setTableMsg(
-                "This integration’s title is too long for a TAK data feed name (max " +
-                  STREAMING_DATA_FEED_NAME_MAX_LEN +
-                  " letters/numbers). Shorten integration_title in Authentik, then try again.",
-                false
-              );
-              integrationRetroactiveUsername = null;
-              return;
-            }
-            dataFeedForm.dataFeedName.value = retroSlug;
-            dataFeedModalOverlay.style.display = "flex";
+            openCreateDataFeedModal(suggestedDataFeedName(integrationTitleAttr || ""));
             
         } else if (mode === "view") {
             try {
@@ -786,12 +816,15 @@
                  dataFeedForm.reset();
                  document.getElementById("dataFeedTitle").innerText = "Data Feed Details";
                  document.getElementById("dataFeedSubmitBtn").style.display = "none";
+                 var viewHint = document.getElementById("dataFeedNameHint");
+                 if (viewHint) viewHint.style.display = "none";
+                 setDataFeedMsg("");
                  
                  dataFeedForm.dataFeedName.value = f.name || "";
                  dataFeedForm.tags.value = (f.tag || []).join("\n");
                  dataFeedForm.protocol.value = f.protocol || "tls";
                  dataFeedForm.authType.value = f.auth || "X_509";
-                 dataFeedForm.port.value = f.port || 8089;
+                 dataFeedForm.port.value = f.port != null && f.port !== "" ? f.port : "";
                  dataFeedForm.coreVersion.value = f.coreVersion || "2";
 
                  const tls = String(f.coreVersion2TlsVersions || "").split(",");
@@ -1003,29 +1036,9 @@
        return;
     }
 
-    var titleSlugForFeed = toTitleSlug(title);
-    if (titleSlugForFeed.length > STREAMING_DATA_FEED_NAME_MAX_LEN) {
-      setCreateMsg(
-        "With a streaming data feed, letters and numbers from the title must be at most " +
-          STREAMING_DATA_FEED_NAME_MAX_LEN +
-          " characters. Shorten the title.",
-        false
-      );
-      return;
-    }
-
     integrationPayloadCache = payload;
     integrationRetroactiveUsername = null;
-
-    dataFeedForm.reset();
-    document.getElementById("dataFeedTitle").innerText = "Create Streaming Data Feed";
-    Array.from(dataFeedForm.elements).forEach(el => {
-        if (el.name !== "dataFeedName") el.disabled = false;
-    });
-    document.getElementById("dataFeedSubmitBtn").style.display = "block";
-    dataFeedForm.dataFeedName.value = titleSlugForFeed;
-
-    dataFeedModalOverlay.style.display = "flex";
+    openCreateDataFeedModal(suggestedDataFeedName(title));
   });
 
   let integrationPayloadCache = null;
@@ -1042,6 +1055,25 @@
   dataFeedForm.addEventListener("submit", async function(e) {
     e.preventDefault();
     if (!integrationPayloadCache && !integrationRetroactiveUsername) return;
+
+    const feedName = String(dataFeedForm.dataFeedName.value || "").trim().toLowerCase();
+    const feedNameProblem = dataFeedNameError(feedName);
+    if (feedNameProblem) {
+      dataFeedForm.dataFeedName.value = feedName;
+      setDataFeedMsg(feedNameProblem, false);
+      return;
+    }
+    dataFeedForm.dataFeedName.value = feedName;
+    var feedPort = parseInt(String(dataFeedForm.port.value || ""), 10);
+    if (!Number.isFinite(feedPort) || feedPort < 1 || feedPort > 65535) {
+      setDataFeedMsg("Data feed port must be between 1 and 65535.", false);
+      return;
+    }
+    if (isReservedDataFeedPort(feedPort)) {
+      setDataFeedMsg("Ports 8089, 8443, and 8446 are reserved. Choose a different port.", false);
+      return;
+    }
+    setDataFeedMsg("");
 
     const tlsVersions = [];
     if (dataFeedForm.tlsv1.checked) tlsVersions.push("TLSv1");
@@ -1121,7 +1153,6 @@
       renderCreateGroups();
       integrationType.value = "global";
       integrationType.dispatchEvent(new Event("change"));
-      updateIntegrationTitleConstraints();
       await loadGroups();
       await loadIntegrations();
       if (out.user && out.user.pk) {
@@ -1152,7 +1183,6 @@
       await loadGroups();
       await loadIntegrations();
       integrationType.dispatchEvent(new Event("change"));
-      updateIntegrationTitleConstraints();
     } catch (err) {
       setTableMsg(err.message || "Failed to load page", false);
     }

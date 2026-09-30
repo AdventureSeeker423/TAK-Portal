@@ -1645,6 +1645,28 @@ function getStreamingDataFeedNameForTitle(title) {
   return slug;
 }
 
+/**
+ * Validate a user-entered TAK streaming data feed name.
+ * Letters and digits only, lowercased, max length enforced by TAK.
+ */
+function normalizeStreamingDataFeedName(raw) {
+  const name = String(raw || "").trim().toLowerCase();
+  if (!name) {
+    throw new Error("Data feed name is required.");
+  }
+  if (!/^[a-z0-9]+$/.test(name)) {
+    throw new Error(
+      "Data feed name may contain only letters and numbers (no spaces or punctuation)."
+    );
+  }
+  if (name.length > STREAMING_DATA_FEED_NAME_MAX_LEN) {
+    throw new Error(
+      `Data feed name must be at most ${STREAMING_DATA_FEED_NAME_MAX_LEN} characters.`
+    );
+  }
+  return name;
+}
+
 function uniqueGroupIds(groupIds, groupId) {
   const ids = [];
   if (Array.isArray(groupIds)) ids.push(...groupIds);
@@ -4599,6 +4621,7 @@ module.exports = {
   createDirectoryUser,
   createIntegrationUser,
   getStreamingDataFeedNameForTitle,
+  normalizeStreamingDataFeedName,
   STREAMING_DATA_FEED_NAME_MAX_LEN,
   findIntegrationUsers,
   findAgencyIntegrationUsersForSuffix,
