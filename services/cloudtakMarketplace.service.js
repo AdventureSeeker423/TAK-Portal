@@ -590,6 +590,50 @@ function pluginLayoutBash() {
   ].join("\n");
 }
 
+function pluginRemoveBash() {
+  return [
+    "remove_plugin_tree() {",
+    '  local target="$1"',
+    '  [ -n "$target" ] || return 0',
+    '  if [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
+    '  case "$target" in',
+    '    "$CT/app/plugins/$DEST"|"$CT/api/web/plugins/$DEST"|"$CT/app/src/plugins/$DEST"|"$CT/api/web/src/plugins/$DEST") ;;',
+    '    "$CT/api/stateless/routes/"*.ts) ;;',
+    '    *) echo "Refusing to remove $target" >&2; return 1 ;;',
+    "  esac",
+    '  if rm -rf "$target" 2>/dev/null && [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
+    '  if [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
+    '  echo "Removing $target as another user (not writable by $(id -un))"',
+    "  local owner img q",
+    "  owner=$(stat -c '%U' \"$CT\" 2>/dev/null || stat -f '%Su' \"$CT\" 2>/dev/null || true)",
+    '  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && sudo -n -u "$owner" true >/dev/null 2>&1; then',
+    '    echo "Removing as $owner"',
+    '    if sudo -n -u "$owner" rm -rf "$target" && [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
+    "  fi",
+    "  if sudo -n true >/dev/null 2>&1; then",
+    '    echo "Removing with sudo"',
+    '    if sudo -n rm -rf "$target" && [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
+    "  fi",
+    '  img=""',
+    "  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then",
+    "    img=$(cd \"$CT\" && docker compose ps -q 2>/dev/null | head -n 1 | xargs -r docker inspect -f '{{.Config.Image}}' 2>/dev/null || true)",
+    "    if [ -z \"$img\" ]; then",
+    "      img=$(docker ps --format '{{.Image}}' 2>/dev/null | head -n 1 || true)",
+    "    fi",
+    "  fi",
+    '  if [ -n "$img" ]; then',
+    '    echo "Removing via docker image $img (root)"',
+    "    q=$(printf '%q' \"$target\")",
+    '    docker run --rm -u 0 -v "$CT:$CT" --entrypoint /bin/sh "$img" -c "rm -rf $q" || true',
+    "  fi",
+    '  if [ -e "$target" ] || [ -L "$target" ]; then',
+    '    echo "ERROR: cannot remove $target as $(id -un)." >&2',
+    "    return 1",
+    "  fi",
+    "}",
+  ].join("\n");
+}
+
 function detectProbeLines(catalogPlugins) {
   const lines = [];
   for (const plugin of catalogPlugins || []) {
@@ -2290,6 +2334,7 @@ cloudtak_owner() {
 }
 
 ${pluginLayoutBash()}
+${pluginRemoveBash()}
 WEB_REL=$(cloudtak_web_rel "$CT")
 PLUGIN_ROOT="$CT/$WEB_REL/plugins"
 echo "CloudTAK plugin directory: $PLUGIN_ROOT"
@@ -2457,7 +2502,7 @@ if [ "$WEB_REL" = "app" ] && [ -e "$CT/api/web/plugins/$DEST" ] && [ ! -e "$PLUG
 fi
 if [ "$WEB_REL" = "app" ] && [ -e "$PLUGIN_ROOT/$DEST" ] && [ -e "$CT/api/web/plugins/$DEST" ]; then
   echo "Removing leftover api/web/plugins/$DEST"
-  run_as_writer "rm -rf $(printf '%q' "$CT/api/web/plugins/$DEST")"
+  remove_plugin_tree "$CT/api/web/plugins/$DEST"
 fi
 
 # Official CloudTAK sample: index.ts at dest root, Vue/TS/assets in lib/.
@@ -2498,7 +2543,7 @@ function uninstallRemoteScript(ct, dest, routeFiles, pluginId, options = {}) {
   const guessed = destName && /^[A-Za-z0-9._-]+$/.test(destName) ? `plugin-${destName}.ts` : "";
   if (guessed && !files.includes(guessed)) files.push(guessed);
   const routeRm = files
-    .map((f) => `rm -f "$CT/api/stateless/routes/${f}"`)
+    .map((f) => `remove_plugin_tree "$CT/api/stateless/routes/${f}"`)
     .join("\n");
   const id = String(pluginId || "").trim();
   const apiSvc = String((options && options.composeService) || "api").trim() || "api";
@@ -2513,12 +2558,17 @@ ${pluginLayoutBash()}
 WEB_REL=$(cloudtak_web_rel "$CT")
 PLUGIN_ROOT="$CT/$WEB_REL/plugins"
 echo "CloudTAK plugin directory: $PLUGIN_ROOT"
+${pluginRemoveBash()}
 ${pluginRuntimeCleanupBash()}
 ${pluginCspBash()}
 if [ -n "$ID" ]; then
   cleanup_plugin_runtime "$ID" "$CT"
   apply_plugin_csp "$ID" "$CT" "$CT_COMPOSE_SVC" "" 1
   CACHE="$HOME/.cache/cloudtak-marketplace/$ID"
+  if [ "$WEB_REL" = "app" ]; then
+    remove_plugin_tree "$CT/api/web/plugins/$DEST"
+    remove_plugin_tree "$CT/api/web/src/plugins/$DEST"
+  fi
   if [ -f "$CACHE/install.sh" ] && grep -q -- '--remove' "$CACHE/install.sh"; then
     flags="--remove"
     if grep -q -- '--no-build' "$CACHE/install.sh"; then flags="$flags --no-build"; fi
@@ -2533,13 +2583,11 @@ case "$TARGET" in
   */app/plugins/$DEST|*/api/web/plugins/$DEST) ;;
   *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
 esac
-rm -rf "$TARGET"
+remove_plugin_tree "$TARGET"
 for extra in "$CT/app/plugins/$DEST" "$CT/api/web/plugins/$DEST" "$CT/app/src/plugins/$DEST" "$CT/api/web/src/plugins/$DEST"; do
   [ "$extra" = "$TARGET" ] && continue
   case "$extra" in
-    */plugins/$DEST)
-      if [ -e "$extra" ]; then rm -rf "$extra"; fi
-      ;;
+    */plugins/$DEST) remove_plugin_tree "$extra" ;;
   esac
 done
 ${routeRm}
