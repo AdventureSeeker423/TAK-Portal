@@ -607,6 +607,9 @@ if [ -z "\$found" ]; then
   while IFS= read -r d; do
     [ -n "\$d" ] || continue
     case "\$d" in
+      */app/plugins)
+        consider "\$(dirname "\$(dirname "\$d")")" && break
+        ;;
       */api/web/plugins)
         consider "\$(dirname "\$(dirname "\$(dirname "\$d")")")" && break
         ;;
@@ -615,7 +618,7 @@ if [ -z "\$found" ]; then
         ;;
     esac
   done <<EOF
-\$(find /home /opt /root /usr/local /var/lib -maxdepth 5 -type d \\( -iname CloudTAK -o -path '*/api/web/plugins' \\) 2>/dev/null | head -n 40 || true)
+\$(find /home /opt /root /usr/local /var/lib -maxdepth 5 -type d \\( -iname CloudTAK -o -path '*/api/web/plugins' -o -path '*/app/plugins' \\) 2>/dev/null | head -n 40 || true)
 EOF
 fi
 if [ -z "\$found" ] && command -v docker >/dev/null 2>&1; then
@@ -628,10 +631,11 @@ if [ -z "\$found" ] && command -v docker >/dev/null 2>&1; then
         *[Cc]loud[Tt][Aa][Kk]*) consider "\$src" && break 2 ;;
       esac
       case "\$dest" in
-        */api/web/plugins|*/web/plugins)
+        */api/web/plugins|*/web/plugins|*/app/plugins)
           consider "\$src" && break 2
           consider "\$(dirname "\$src")" && break 2
           consider "\$(dirname "\$(dirname "\$src")")" && break 2
+          consider "\$(dirname "\$(dirname "\$(dirname "\$src")")")" && break 2
           ;;
         */api)
           consider "\$(dirname "\$src")" && break 2

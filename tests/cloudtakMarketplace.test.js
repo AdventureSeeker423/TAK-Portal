@@ -133,6 +133,8 @@ assert.match(uninstallPrint, /docker image prune -f/);
 assert.match(uninstallPrint, /cloudtak-marketplace-plugins/);
 assert.match(uninstallPrint, /\.cache\/cloudtak-marketplace/);
 assert.match(uninstallPrint, /api\/web\/src\/plugins/);
+assert.match(uninstallPrint, /app\/plugins\/\$DEST/);
+assert.match(uninstallPrint, /cloudtak_web_rel/);
 assert.doesNotMatch(uninstallPrint, /docker compose -f "\$CF" -f "\$OVERRIDE" stop \)/);
 
 const unknownUninstall = marketplace.uninstallRemoteScript("/root/CloudTAK", "host-only-plugin", [], "");
@@ -277,6 +279,9 @@ assert.match(installScript, /mesonet\.agron\.iastate\.edu/);
 assert.match(installScript, /wss:\/\/ws1\.blitzortung\.org/);
 assert.match(installScript, /wss:\/\/\*\.blitzortung\.org/);
 assert.match(installScript, /apply_plugin_csp/);
+assert.match(installScript, /cloudtak_web_rel/);
+assert.match(installScript, /app\/plugins/);
+assert.match(installScript, /Moving \$DEST from api\/web\/plugins to app\/plugins/);
 assert.match(installScript, /docker compose --progress=plain/);
 
 assert.deepStrictEqual(
@@ -371,8 +376,13 @@ assert.deepStrictEqual(
 );
 
 function writeAlignFixture(root, opts) {
-  const webSrc = path.join(root, "api", "web", "src");
-  const plugin = path.join(root, "api", "web", "plugins", "incident-manager", "src", "lib");
+  const webParts = opts.layout === "app" ? ["app"] : ["api", "web"];
+  const webSrc = path.join(root, ...webParts, "src");
+  const plugin = path.join(root, ...webParts, "plugins", "incident-manager", "src", "lib");
+  if (opts.layout === "app") {
+    fs.mkdirSync(path.join(root, "app"), { recursive: true });
+    fs.writeFileSync(path.join(root, "app", "package.json"), "{}\n");
+  }
   fs.mkdirSync(path.join(webSrc, "base"), { recursive: true });
   fs.mkdirSync(path.join(webSrc, "workers"), { recursive: true });
   fs.mkdirSync(path.join(webSrc, "utils"), { recursive: true });
@@ -476,6 +486,34 @@ assert.ok(checkConfig.exclude.includes("plugins"));
 const lintedAgain = align.alignInstalledPlugins(lintRoot);
 assert.deepStrictEqual(lintedAgain.changes, []);
 fs.rmSync(lintRoot, { recursive: true, force: true });
+
+const appAlignRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-align-app-"));
+writeAlignFixture(appAlignRoot, { layout: "app" });
+const appLintPkg = path.join(appAlignRoot, "app", "package.json");
+fs.writeFileSync(
+  appLintPkg,
+  JSON.stringify(
+    {
+      scripts: {
+        lint: "eslint --config eslint.config.js ./src/ ./public/ ./plugins/",
+        check: "vue-tsc",
+      },
+    },
+    null,
+    2
+  ) + "\n"
+);
+const appAligned = align.alignInstalledPlugins(appAlignRoot);
+assert.ok(appAligned.ok);
+assert.ok(!appAligned.skipped);
+assert.ok(appAligned.changes.some((line) => line.startsWith("app/package.json:")));
+const appBrief = fs.readFileSync(
+  path.join(appAlignRoot, "app", "plugins", "incident-manager", "src", "lib", "irBriefing.ts"),
+  "utf8"
+);
+assert.match(appBrief, /from '\.\.\/\.\.\/\.\.\/\.\.\/src\/utils\/coordinateFormat\.ts'/);
+assert.ok(!fs.existsSync(path.join(appAlignRoot, "api", "web", "plugins")));
+fs.rmSync(appAlignRoot, { recursive: true, force: true });
 
 const apiLintRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-align-api-lint-"));
 writeAlignFixture(apiLintRoot, {

@@ -785,7 +785,13 @@ function relaxHostPluginLint(webDir) {
   });
   if (next === text) return [];
   fs.writeFileSync(pkgPath, next);
-  return ["api/web/package.json: image lint no longer includes marketplace plugin files"];
+  return [webRelLabel(webDir) + "/package.json: image lint no longer includes marketplace plugin files"];
+}
+
+function webRelLabel(webDir) {
+  const norm = path.resolve(String(webDir || "")).replace(/\\/g, "/");
+  if (norm.endsWith("/app")) return "app";
+  return "api/web";
 }
 
 const MARKETPLACE_TSCONFIG = "tsconfig.marketplace.json";
@@ -816,7 +822,7 @@ function relaxHostPluginCheck(webDir) {
   });
   if (next !== text) {
     fs.writeFileSync(pkgPath, next);
-    changes.push("api/web/package.json: image typecheck no longer includes marketplace plugin files");
+    changes.push(webRelLabel(webDir) + "/package.json: image typecheck no longer includes marketplace plugin files");
   }
   if (!next.includes(MARKETPLACE_TSCONFIG)) return changes;
   const overlayPath = path.join(webDir, MARKETPLACE_TSCONFIG);
@@ -829,7 +835,7 @@ function relaxHostPluginCheck(webDir) {
   }
   if (existing === overlay) return changes;
   fs.writeFileSync(overlayPath, overlay);
-  changes.push("api/web/" + MARKETPLACE_TSCONFIG + ": typecheck excludes marketplace plugin files");
+  changes.push(webRelLabel(webDir) + "/" + MARKETPLACE_TSCONFIG + ": typecheck excludes marketplace plugin files");
   return changes;
 }
 
@@ -1144,12 +1150,23 @@ function fixComposeDependsFile(overlayPath, basePaths, project) {
   return result;
 }
 
+function resolveWebDir(ctRoot) {
+  const root = String(ctRoot || "").trim();
+  if (!root) return "";
+  const appDir = path.join(root, "app");
+  const legacyDir = path.join(root, "api", "web");
+  if (fs.existsSync(path.join(appDir, "package.json")) && fs.existsSync(path.join(appDir, "src"))) return appDir;
+  if (fs.existsSync(path.join(legacyDir, "src")) || fs.existsSync(path.join(legacyDir, "plugins"))) return legacyDir;
+  if (fs.existsSync(path.join(appDir, "package.json")) || fs.existsSync(path.join(appDir, "plugins"))) return appDir;
+  return "";
+}
+
 function alignInstalledPlugins(ctRoot) {
   const root = String(ctRoot || "").trim();
-  const web = path.join(root, "api", "web");
-  const webSrc = path.join(web, "src");
-  const plugins = path.join(web, "plugins");
-  if (!root || !fs.existsSync(webSrc) || !fs.existsSync(plugins)) {
+  const web = resolveWebDir(root);
+  const webSrc = web ? path.join(web, "src") : "";
+  const plugins = web ? path.join(web, "plugins") : "";
+  if (!web || !fs.existsSync(webSrc) || !fs.existsSync(plugins)) {
     return { ok: true, changes: [], skipped: true };
   }
   const subPath = path.join(webSrc, "base", "subscription.ts");

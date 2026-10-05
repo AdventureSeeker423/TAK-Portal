@@ -569,6 +569,43 @@ async function ensureCheckoutPath() {
   };
 }
 
+function pluginLayoutBash() {
+  return [
+    "cloudtak_web_rel() {",
+    '  local ct="$1"',
+    '  if [ -f "$ct/app/package.json" ] && [ -d "$ct/app/src" ]; then',
+    "    printf '%s' app",
+    "    return 0",
+    "  fi",
+    '  if [ -d "$ct/api/web/src" ] || [ -d "$ct/api/web/plugins" ]; then',
+    "    printf '%s' api/web",
+    "    return 0",
+    "  fi",
+    '  if [ -f "$ct/app/package.json" ] || [ -d "$ct/app/plugins" ]; then',
+    "    printf '%s' app",
+    "    return 0",
+    "  fi",
+    "  printf '%s' api/web",
+    "}",
+  ].join("\n");
+}
+
+function detectProbeLines(catalogPlugins) {
+  const lines = [];
+  for (const plugin of catalogPlugins || []) {
+    for (const raw of plugin.detect || []) {
+      const rel = String(raw).replace(/"/g, "");
+      if (!/^[A-Za-z0-9._/-]+$/.test(rel)) continue;
+      const alts = [rel];
+      if (rel.startsWith("api/web/plugins/")) alts.push("app/plugins/" + rel.slice("api/web/plugins/".length));
+      else if (rel.startsWith("app/plugins/")) alts.push("api/web/plugins/" + rel.slice("app/plugins/".length));
+      const checks = alts.map((alt) => `[ -e "$CT/${alt}" ]`).join(" || ");
+      lines.push(`if ${checks}; then printf 'DETECT_HIT %s\\n' "${rel}"; fi`);
+    }
+  }
+  return lines.join("\n");
+}
+
 function scanRemoteScript(ctPath, catalogPlugins) {
   const ct = String(ctPath || "").replace(/'/g, "");
   return `
@@ -623,8 +660,10 @@ scan_plugin_dir() {
     emit_plugin "$p"
   done
 }
+scan_plugin_dir "$CT/app/plugins"
 scan_plugin_dir "$CT/api/web/plugins"
 scan_plugin_dir "$CT/api/web/src/plugins"
+scan_plugin_dir "$CT/app/src/plugins"
 if [ -d "$CT/api/stateless/routes" ]; then
   for f in "$CT/api/stateless/routes"/*.ts; do
     [ -f "$f" ] || continue
@@ -639,16 +678,12 @@ for f in "$CT/docker-compose.yml" "$CT/docker-compose.yaml" "$CT/docker-compose.
   fi
 done
 printf 'WEB_PLUGINS %s\\n' "$web_plugins"
-${(catalogPlugins || [])
-  .flatMap((p) => p.detect || [])
-  .filter((d) => /^[A-Za-z0-9._/-]+$/.test(String(d)))
-  .map((d) => `if [ -e "$CT/${String(d).replace(/"/g, "")}" ]; then printf 'DETECT_HIT %s\\n' "${String(d).replace(/"/g, "")}"; fi`)
-  .join("\n")}
+${detectProbeLines(catalogPlugins)}
 if command -v docker >/dev/null 2>&1; then
   while IFS= read -r c; do
     [ -n "$c" ] || continue
     echo "$c" | grep -qiE 'cloudtak|takwerx' || continue
-    for inner in web/plugins /home/node/web/plugins /usr/src/app/web/plugins /opt/app/web/plugins api/web/plugins; do
+    for inner in app/plugins /home/etl/app/plugins web/plugins /home/node/web/plugins /usr/src/app/web/plugins /opt/app/web/plugins api/web/plugins; do
       listing=$(docker exec "$c" sh -c "ls -1 $inner 2>/dev/null" || true)
       [ -n "$listing" ] || continue
       printf 'CONTAINER %s dir=%s\\n' "$c" "$inner"
@@ -2118,7 +2153,14 @@ function pluginHostAlignRunnerBash() {
   return `
 align_plugins_to_host() {
   local ct="$1"
-  [ -n "$ct" ] && [ -d "$ct/api/web/src" ] && [ -d "$ct/api/web/plugins" ] || return 0
+  [ -n "$ct" ] || return 0
+  if [ -f "$ct/app/package.json" ] && [ -d "$ct/app/src" ] && [ -d "$ct/app/plugins" ]; then
+    :
+  elif [ -d "$ct/api/web/src" ] && [ -d "$ct/api/web/plugins" ]; then
+    :
+  else
+    return 0
+  fi
   local script="/tmp/ctak-marketplace-align.cjs"
   cat <<'CTAK_PLUGIN_ALIGN_JS' > "$script"
 ${js}
@@ -2247,9 +2289,17 @@ cloudtak_owner() {
   stat -c '%U' "$CT" 2>/dev/null || stat -f '%Su' "$CT" 2>/dev/null || true
 }
 
+${pluginLayoutBash()}
+WEB_REL=$(cloudtak_web_rel "$CT")
+PLUGIN_ROOT="$CT/$WEB_REL/plugins"
+echo "CloudTAK plugin directory: $PLUGIN_ROOT"
+
 can_write_plugins() {
-  local plugins="$CT/api/web/plugins"
-  [ -d "$plugins" ] && [ -w "$plugins" ] || return 1
+  local plugins="$PLUGIN_ROOT"
+  local parent
+  parent=$(dirname "$plugins")
+  [ -d "$parent" ] && [ -w "$parent" ] || return 1
+  if [ -d "$plugins" ] && [ ! -w "$plugins" ]; then return 1; fi
   if [ -e "$plugins/$DEST" ] && [ ! -w "$plugins/$DEST" ]; then return 1; fi
   return 0
 }
@@ -2291,7 +2341,7 @@ run_as_writer() {
       -c "if command -v bash >/dev/null 2>&1; then bash -lc $(printf '%q' "$cmd"); else sh -c $(printf '%q' "$cmd"); fi"
     return 0
   fi
-  echo "ERROR: cannot write $CT/api/web/plugins as $(id -un). Point CloudTAK SSH at the account that owns that checkout (likely $owner)." >&2
+  echo "ERROR: cannot write $PLUGIN_ROOT as $(id -un). Point CloudTAK SSH at the account that owns that checkout (likely $owner)." >&2
   exit 1
 }
 
@@ -2303,10 +2353,9 @@ REPO_DIR="$CACHE"
 SHA=$(git_ok -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)
 echo "Plugin source $REPO_DIR @ $SHA"
 
-PLUGIN_ROOT="$CT/api/web/plugins"
 TARGET="$PLUGIN_ROOT/$DEST"
 case "$TARGET" in
-  */api/web/plugins/$DEST) ;;
+  */app/plugins/$DEST|*/api/web/plugins/$DEST) ;;
   *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
 esac
 echo "Clearing previous plugin files at $TARGET"
@@ -2341,7 +2390,7 @@ EOS
     install_ec=$(tr -cd '0-9' < "$REPO_DIR/.marketplace-install-status" || echo 1)
   fi
   rm -f "$REPO_DIR/.ctak-run-install.sh" "$REPO_DIR/.marketplace-install-status" || true
-  if [ "$install_ec" != 0 ] && [ ! -d "$TARGET" ]; then
+  if [ "$install_ec" != 0 ] && [ ! -d "$TARGET" ] && [ ! -e "$CT/api/web/plugins/$DEST" ]; then
     echo "ERROR: install.sh failed before plugin files were copied" >&2
     exit 1
   fi
@@ -2372,10 +2421,9 @@ else
     echo "Missing web source in $REPO_DIR" >&2
     exit 1
   fi
-  PLUGIN_ROOT="$CT/api/web/plugins"
   TARGET="$PLUGIN_ROOT/$DEST"
   case "$TARGET" in
-    */api/web/plugins/$DEST) ;;
+    */app/plugins/$DEST|*/api/web/plugins/$DEST) ;;
     *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
   esac
   echo "Copying plugin files to $TARGET"
@@ -2400,6 +2448,16 @@ EXCL
     echo "Copying route files from $ROUTES_DIR"
     run_as_writer "mkdir -p $(printf '%q' "$CT/api/stateless/routes") && cp -a $(printf '%q' "$ROUTES_DIR")/*.ts $(printf '%q' "$CT/api/stateless/routes")/" || true
   fi
+fi
+
+# Plugin install.sh scripts written for CloudTAK before 13.102 copy into api/web/plugins.
+if [ "$WEB_REL" = "app" ] && [ -e "$CT/api/web/plugins/$DEST" ] && [ ! -e "$PLUGIN_ROOT/$DEST" ]; then
+  echo "Moving $DEST from api/web/plugins to app/plugins (CloudTAK 13.102+)"
+  run_as_writer "mkdir -p $(printf '%q' "$PLUGIN_ROOT") && mv $(printf '%q' "$CT/api/web/plugins/$DEST") $(printf '%q' "$PLUGIN_ROOT/$DEST")"
+fi
+if [ "$WEB_REL" = "app" ] && [ -e "$PLUGIN_ROOT/$DEST" ] && [ -e "$CT/api/web/plugins/$DEST" ]; then
+  echo "Removing leftover api/web/plugins/$DEST"
+  run_as_writer "rm -rf $(printf '%q' "$CT/api/web/plugins/$DEST")"
 fi
 
 # Official CloudTAK sample: index.ts at dest root, Vue/TS/assets in lib/.
@@ -2451,6 +2509,10 @@ DEST=${ssh.shellQuote(dest)}
 ID=${ssh.shellQuote(id)}
 CT_COMPOSE_SVC=${ssh.shellQuote(apiSvc)}
 if [ -z "$ID" ]; then ID="$DEST"; fi
+${pluginLayoutBash()}
+WEB_REL=$(cloudtak_web_rel "$CT")
+PLUGIN_ROOT="$CT/$WEB_REL/plugins"
+echo "CloudTAK plugin directory: $PLUGIN_ROOT"
 ${pluginRuntimeCleanupBash()}
 ${pluginCspBash()}
 if [ -n "$ID" ]; then
@@ -2466,18 +2528,20 @@ if [ -n "$ID" ]; then
   rm -rf "$HOME/.cache/cloudtak-marketplace/$ID" || true
   rm -f /tmp/ctak-marketplace-excludes-$ID || true
 fi
-TARGET="$CT/api/web/plugins/$DEST"
+TARGET="$PLUGIN_ROOT/$DEST"
 case "$TARGET" in
-  */api/web/plugins/$DEST) ;;
+  */app/plugins/$DEST|*/api/web/plugins/$DEST) ;;
   *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
 esac
 rm -rf "$TARGET"
-SRC_TARGET="$CT/api/web/src/plugins/$DEST"
-case "$SRC_TARGET" in
-  */api/web/src/plugins/$DEST)
-    if [ -e "$SRC_TARGET" ]; then rm -rf "$SRC_TARGET"; fi
-    ;;
-esac
+for extra in "$CT/app/plugins/$DEST" "$CT/api/web/plugins/$DEST" "$CT/app/src/plugins/$DEST" "$CT/api/web/src/plugins/$DEST"; do
+  [ "$extra" = "$TARGET" ] && continue
+  case "$extra" in
+    */plugins/$DEST)
+      if [ -e "$extra" ]; then rm -rf "$extra"; fi
+      ;;
+  esac
+done
 ${routeRm}
 echo UNINSTALL_OK
 `.trim();
@@ -2622,7 +2686,7 @@ async function performUninstall(job, dest, plugin) {
     if (/^[A-Za-z0-9._-]+\.ts$/.test(f) && !routeGuess.includes(f)) routeGuess.push(f);
   }
   const runtimeId = (plugin && plugin.id) || dest;
-  appendJobLog(job.id, `$ rm -rf api/web/plugins/${dest}`);
+  appendJobLog(job.id, `Removing ${dest} from the CloudTAK plugins directory`);
   await runLogged(job.id, `bash -lc ${ssh.shellQuote(uninstallRemoteScript(loc.path, dest, routeGuess, runtimeId, { composeService: loc.composeService }))}`, 5 * 60 * 1000);
   const rec = store.readInstalled();
   if (plugin) {
