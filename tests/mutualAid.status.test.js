@@ -56,10 +56,10 @@ const banners = status.summarizeMutualAidBanners(
   now
 );
 
-assert.strictEqual(banners.activeIncidents, 2);
-assert.strictEqual(banners.incidentUsers, 5);
-assert.strictEqual(banners.activeEvents, 1);
-assert.strictEqual(banners.eventUsers, 4);
+assert.strictEqual(banners.activeIncidents, 3);
+assert.strictEqual(banners.incidentUsers, 6);
+assert.strictEqual(banners.activeEvents, 2);
+assert.strictEqual(banners.eventUsers, 5);
 
 const promote = status.standbysToPromote(
   [

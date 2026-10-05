@@ -54,8 +54,8 @@ function isMutualAidExpired(item, nowMs = Date.now()) {
 }
 
 /**
- * Dashboard banners only include deployments that are active with more than
- * one unrevoked client certificate. User totals are the sum of those certificates.
+ * Dashboard banners include incidents and events that are Active (at least one
+ * unrevoked client certificate). User totals are the sum of those certificates.
  */
 function summarizeMutualAidBanners(items, nowMs = Date.now()) {
   let activeIncidents = 0;
@@ -67,7 +67,7 @@ function summarizeMutualAidBanners(items, nowMs = Date.now()) {
     if (isMutualAidExpired(item, nowMs)) continue;
     if (item?.certStatusKnown !== true) continue;
     const n = Number(item.activeUserCount) || 0;
-    if (n <= 1) continue;
+    if (n < 1) continue;
     const type = String(item.type || "").trim().toUpperCase();
     if (type === "INCIDENT") {
       activeIncidents += 1;
