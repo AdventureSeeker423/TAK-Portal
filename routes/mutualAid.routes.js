@@ -58,9 +58,9 @@ function statusForError(err, fallback = 400) {
   return fallback;
 }
 
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const out = mutualAid.listForUser(req.authentikUser || null);
+    const out = await mutualAid.listForUserWithCertStatus(req.authentikUser || null);
     res.json(out);
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });

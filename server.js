@@ -2461,6 +2461,7 @@ async function boot() {
     await db.connectWithRetry(60000);
     await db.migrate();
     await pgCache.hydrate();
+    mutualAidSvc.startCertStatusScheduler();
   } catch (e) {
     console.error("[boot] Postgres migrate failed:", e?.message || e);
     process.exit(1);

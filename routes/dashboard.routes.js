@@ -60,6 +60,19 @@ async function countActiveChannelPatches(authUser) {
   }
 }
 
+router.get("/mutual-aid-banners", async (req, res) => {
+  const user = req.authentikUser;
+  const isAdmin = !!(user && (user.isGlobalAdmin || user.isAgencyAdmin));
+  if (!isAdmin) return res.status(403).json({ error: "Forbidden" });
+  try {
+    const mutualAid = await mutualAidService.getBannerStatsForUser(user);
+    res.json(mutualAid);
+  } catch (e) {
+    console.error("[DASHBOARD] MutualAid banner refresh failed:", e?.message || e);
+    res.status(500).json({ error: "Failed to load mutual aid status" });
+  }
+});
+
 router.get("/", async (req, res) => {
   const user = req.authentikUser;
   const isAdmin = !!(user && (user.isGlobalAdmin || user.isAgencyAdmin));
@@ -91,18 +104,14 @@ router.get("/", async (req, res) => {
         : 0;
     let activeIncidentCount = 0;
     let activeEventCount = 0;
+    let incidentUsers = 0;
+    let eventUsers = 0;
     try {
-      const nowMs = Date.now();
-      const items = mutualAidService.listForUser(req.authentikUser || null);
-      for (const it of items) {
-        const t = String(it.type || "").trim().toUpperCase();
-        const enabled = !!it.expireEnabled;
-        const atMs = it.expireAt ? new Date(it.expireAt).getTime() : NaN;
-        const expired = enabled && Number.isFinite(atMs) && atMs <= nowMs;
-        if (expired) continue;
-        if (t === "INCIDENT") activeIncidentCount += 1;
-        if (t === "EVENT") activeEventCount += 1;
-      }
+      const banner = await mutualAidService.getBannerStatsForUser(req.authentikUser || null);
+      activeIncidentCount = banner.activeIncidents;
+      activeEventCount = banner.activeEvents;
+      incidentUsers = banner.incidentUsers;
+      eventUsers = banner.eventUsers;
     } catch (e) {
       console.error("[DASHBOARD] MutualAid stats failed:", e?.message || e);
     }
@@ -199,6 +208,8 @@ router.get("/", async (req, res) => {
       mutualAid: {
         activeIncidents: activeIncidentCount,
         activeEvents: activeEventCount,
+        incidentUsers,
+        eventUsers,
       },
       charts,
       agencyColors,
@@ -242,6 +253,8 @@ router.get("/", async (req, res) => {
       mutualAid: {
         activeIncidents: 0,
         activeEvents: 0,
+        incidentUsers: 0,
+        eventUsers: 0,
       },
       charts: isAgencyOnly
         ? { usersByTemplate: {}, usersByAgency: {} }

@@ -76,6 +76,7 @@
             <th class="sortable maTypeCol" data-key="type">Type <span class="sortIndicator" aria-hidden="true"></span></th>
             <th class="sortable" data-key="title">Title <span class="sortIndicator" aria-hidden="true"></span></th>
             <th class="sortable" data-key="createdBy">Created By <span class="sortIndicator" aria-hidden="true"></span></th>
+            <th class="sortable" data-key="status">Status <span class="sortIndicator" aria-hidden="true"></span></th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -108,15 +109,19 @@
   .btn.qrEmail:disabled { opacity: 0.6; }
 
   /* Linked mutual aid deployments (shared channel) */
+  .maListTable tbody tr.ma-status-inactive td {
+    background: rgba(120, 124, 130, 0.38);
+  }
+  .maListTable tbody tr.ma-status-active td {
+    background: rgba(34, 160, 70, 0.38);
+  }
   .ma-unit-master td {
-    background: rgba(124, 58, 237, 0.08);
     border-top: 1px solid var(--line);
   }
   .ma-unit-master:first-child td {
     border-top: none;
   }
   .ma-unit-child td {
-    background: rgba(255, 255, 255, 0.02);
     border-top: 1px dashed rgba(255, 255, 255, 0.08);
   }
   .ma-unit-child .maTitleCell {
@@ -512,7 +517,8 @@
 
   .maListTable .maTitleCell.cardTitleCell { order: 1; }
   .maListTable .maCreatedByCell { order: 2; }
-  .maListTable .maActionsCell.cardActionsCell { order: 3; }
+  .maListTable .maStatusCell { order: 3; }
+  .maListTable .maActionsCell.cardActionsCell { order: 4; }
   .maListTable .maTypeCell,
   .maListTable th.maTypeCol {
     order: 99;
@@ -555,8 +561,17 @@
     color: var(--muted);
   }
 
+  .listCardTable tbody tr.ma-status-inactive {
+    background: rgba(120, 124, 130, 0.45);
+  }
+  .listCardTable tbody tr.ma-status-active {
+    background: rgba(34, 160, 70, 0.42);
+  }
+  .maListTable tr.ma-status-inactive td,
+  .maListTable tr.ma-status-active td {
+    background: transparent;
+  }
   .ma-unit-master td {
-    background: rgba(124, 58, 237, 0.08);
     border-top: none;
   }
   .ma-unit-child {
@@ -564,7 +579,13 @@
   }
   .ma-unit-child .maTitleCell {
     padding-left: 20px;
-    border-left: 3px solid rgba(124, 58, 237, 0.45);
+    border-left: 3px solid var(--line);
+  }
+  .ma-status-inactive.ma-unit-child .maTitleCell {
+    border-left-color: rgba(160, 160, 160, 0.85);
+  }
+  .ma-status-active.ma-unit-child .maTitleCell {
+    border-left-color: rgba(34, 160, 70, 0.95);
   }
   .ma-unit-child td {
     border-top: none;
@@ -1940,6 +1961,10 @@ function maGetSortValue(it, key){
   if (key === "type") return normalizeSortValue(it.type);
   if (key === "title") return normalizeSortValue(it.title);
   if (key === "createdBy") return normalizeSortValue(createdBySortLabel(it));
+  if (key === "status") {
+    if (it?.certStatusKnown !== true) return "";
+    return String(Number(it.activeUserCount) || 0);
+  }
   return "";
 }
 
@@ -4735,10 +4760,18 @@ function renderMutualAidRow(it, opts = {}) {
   const typeLabel = formatMutualAidTypeLabel(it.type);
   const displayTitle = displayTitleForRow(it, master);
   const isAnchor = !!(groupAnchor && String(groupAnchor.id) === String(it.id));
+  const statusClass =
+    it.certStatus === "active"
+      ? "ma-status-active"
+      : it.certStatus === "inactive"
+        ? "ma-status-inactive"
+        : "";
+  const statusLabel = String(it.certStatusLabel || "").trim() || "—";
   const rowClass = [
     isAnchor && !isSub ? "ma-unit-master" : "",
     isChild || isSub ? "ma-unit-child" : "",
     (isChild || isSub) && isLastChild ? "ma-unit-child-last" : "",
+    statusClass,
   ]
     .filter(Boolean)
     .join(" ");
@@ -4757,6 +4790,7 @@ function renderMutualAidRow(it, opts = {}) {
         ${it.expireEnabled && it.expireAt ? `<div class="muted" style="font-size: 12px;">Expires: ${esc(new Date(it.expireAt).toLocaleString())}</div>` : ""}
       </td>
       <td class="maCreatedByCell">${formatCreatedByHtml(it)}</td>
+      <td class="maStatusCell">${esc(statusLabel)}</td>
       <td class="maActionsCell cardActionsCell">
         <div class="maActionsRow cardActionsRow">
           ${canEdit ? `<button class="btn" type="button" data-act="edit" data-id="${esc(it.id)}">Edit</button>` : ""}
@@ -4783,7 +4817,8 @@ function renderList(){
       rowTitle.includes(needle) ||
       String(it.groupName||"").toLowerCase().includes(needle) ||
       displayGroupName(it.groupName||"").toLowerCase().includes(needle) ||
-      String(it.username||"").toLowerCase().includes(needle)
+      String(it.username||"").toLowerCase().includes(needle) ||
+      String(it.certStatusLabel||"").toLowerCase().includes(needle)
     );
   });
 
@@ -4811,7 +4846,7 @@ function renderList(){
     .join("");
 
   maTbody.innerHTML =
-    html || `<tr><td colspan="4" style="color:var(--muted); padding: 10px;">No mutual aid items found.</td></tr>`;
+    html || `<tr><td colspan="5" style="color:var(--muted); padding: 10px;">No mutual aid items found.</td></tr>`;
 
   maTbody.querySelectorAll("button[data-act]").forEach(btn => {
     const id = String(btn.dataset.id);
@@ -4834,10 +4869,14 @@ function renderList(){
   });
 }
 
-async function loadList(){
-  setMsg(maListMsg, "Loading...", true);
-  const res = await fetch("/api/mutual-aid");
+let maListLoadSeq = 0;
+async function loadList(opts = {}){
+  const quiet = !!opts.quiet;
+  const seq = ++maListLoadSeq;
+  if (!quiet) setMsg(maListMsg, "Loading...", true);
+  const res = await fetch("/api/mutual-aid", { cache: "no-store" });
   const data = await res.json();
+  if (seq !== maListLoadSeq) return;
   if(!res.ok){
     allItems = [];
     renderList();
@@ -4848,8 +4887,13 @@ async function loadList(){
   refreshMutualAidExcludedGroupIds();
   renderExistingGroupSelect();
   renderList();
-  setMsg(maListMsg, `Loaded ${allItems.length} item(s).`, true);
+  if (!quiet) setMsg(maListMsg, `Loaded ${allItems.length} item(s).`, true);
 }
+
+setInterval(() => {
+  if (document.hidden) return;
+  loadList({ quiet: true }).catch(() => {});
+}, 60000);
 
 maFilter.oninput = () => renderList();
 

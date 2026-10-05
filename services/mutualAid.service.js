@@ -12,6 +12,8 @@ const qrSvc = require("./qr.service");
 const { logoCacheIdentity } = require("./qrLogoOverlay.service");
 const accessSvc = require("./access.service");
 const agenciesSvc = require("./agencies.service");
+const takSvc = require("./tak.service");
+const mutualAidStatus = require("./mutualAid.status");
 
 const MA_LOGO_DIR = path.join(__dirname, "..", "data", "mutual-aid-logos");
 const MA_LOGO_ALLOWED_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
@@ -1558,10 +1560,130 @@ function initExpirationScheduler() {
   }
 }
 
+const CERT_STATUS_MIN_MS = 20_000;
+const CERT_STATUS_INTERVAL_MS = 60_000;
+let _certStatusSnapshot = { at: 0, ok: false, counts: new Map() };
+let _certStatusRefresh = null;
+let _certStatusTimer = null;
+
+async function promoteActiveStandbys(counts) {
+  const targets = mutualAidStatus.standbysToPromote(store.load(), counts);
+  if (!targets.length) return [];
+
+  for (const item of targets) {
+    await patchMutualAidDirectoryUser(item.userId, {
+      name: sanitizeTitle(item.title),
+      attributes: {
+        mutual_aid: true,
+        mutual_aid_type: "INCIDENT",
+        mutual_aid_group: String(item.groupName || ""),
+      },
+    });
+  }
+
+  const targetIds = new Set(targets.map((item) => String(item.id)));
+  const items = store.load().map((item) => ({ ...item }));
+  const promoted = [];
+
+  for (let i = 0; i < items.length; i++) {
+    if (!targetIds.has(String(items[i].id))) continue;
+    if (String(items[i].type || "").trim().toUpperCase() !== "STANDBY") continue;
+    const next = { ...items[i], type: "INCIDENT", updatedAt: nowIso() };
+    items[i] = next;
+    await syncLinkedSubDeployments(items, next, { nextBaseType: "INCIDENT" });
+    scheduleExpiration(next);
+    promoted.push(next);
+  }
+
+  if (promoted.length) {
+    saveAll(items);
+    console.log(
+      `[MUTUAL AID] promoted ${promoted.length} standby deployment(s) to incident`
+    );
+  }
+  return promoted;
+}
+
+async function refreshCertActivity() {
+  const now = Date.now();
+  if (_certStatusRefresh) return _certStatusRefresh;
+  if (_certStatusSnapshot.at && now - _certStatusSnapshot.at < CERT_STATUS_MIN_MS) {
+    return _certStatusSnapshot;
+  }
+
+  _certStatusRefresh = (async () => {
+    const result = await takSvc.getActiveCertCountsByUsername();
+    if (!result?.ok) {
+      if (_certStatusSnapshot.ok) {
+        _certStatusSnapshot = {
+          at: Date.now(),
+          ok: true,
+          counts: _certStatusSnapshot.counts,
+          stale: true,
+        };
+        return _certStatusSnapshot;
+      }
+      _certStatusSnapshot = { at: Date.now(), ok: false, counts: new Map() };
+      return _certStatusSnapshot;
+    }
+
+    try {
+      await promoteActiveStandbys(result.counts);
+    } catch (e) {
+      console.error("[MUTUAL AID] standby promotion failed:", e?.message || e);
+    }
+
+    _certStatusSnapshot = {
+      at: Date.now(),
+      ok: true,
+      counts: result.counts instanceof Map ? result.counts : new Map(),
+      stale: false,
+    };
+    return _certStatusSnapshot;
+  })().finally(() => {
+    _certStatusRefresh = null;
+  });
+
+  return _certStatusRefresh;
+}
+
+function attachCertStatus(item, snapshot) {
+  return {
+    ...item,
+    ...mutualAidStatus.certStatusForUsername(item?.username, snapshot),
+  };
+}
+
+async function listForUserWithCertStatus(authUser) {
+  const snapshot = await refreshCertActivity();
+  return listForUser(authUser).map((item) => attachCertStatus(item, snapshot));
+}
+
+async function getBannerStatsForUser(authUser) {
+  const items = await listForUserWithCertStatus(authUser);
+  return mutualAidStatus.summarizeMutualAidBanners(items);
+}
+
+function startCertStatusScheduler() {
+  if (_certStatusTimer) return;
+  const tick = () => {
+    refreshCertActivity().catch((e) => {
+      console.warn("[MUTUAL AID] certificate status check failed:", e?.message || e);
+    });
+  };
+  _certStatusTimer = setInterval(tick, CERT_STATUS_INTERVAL_MS);
+  if (typeof _certStatusTimer.unref === "function") _certStatusTimer.unref();
+  tick();
+  console.log("[MUTUAL AID] checking client certificates every 60s");
+}
+
 module.exports = {
   initExpirationScheduler,
+  startCertStatusScheduler,
   list,
   listForUser,
+  listForUserWithCertStatus,
+  getBannerStatsForUser,
   create,
   createLinkedUser,
   createLinkedUsers,

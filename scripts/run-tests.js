@@ -57,6 +57,7 @@ const TEST_FILES = [
   "groupsMembership.test.js",
   "directoryWritePath.test.js",
   "userLoginStatus.test.js",
+  "mutualAid.status.test.js",
   "backup.test.js",
   "cloudtakMarketplace.test.js",
   "setupDeviceAccess.test.js",

@@ -15,6 +15,8 @@
 
   <% 
     const hasMutualAid = mutualAid && (mutualAid.activeIncidents > 0 || mutualAid.activeEvents > 0);
+    const incidentUsers = mutualAid && mutualAid.incidentUsers ? mutualAid.incidentUsers : 0;
+    const eventUsers = mutualAid && mutualAid.eventUsers ? mutualAid.eventUsers : 0;
     const hasUserRequests = typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0;
     const canSeeChannelPatch = typeof perm === "function" ? perm("page.channel_patch") : (isGlobalAdmin || isAgencyAdmin);
     const hasActiveChannelPatches =
@@ -27,15 +29,15 @@
       pendingMouDocumentsCount > 0;
   %>
 
-  <% if (hasMutualAid || hasUserRequests || hasActiveChannelPatches || hasPendingMouDocs) { %>
-    <div style="margin: 10px 0 14px 0;">
+  <div id="dashboardAlertBanners" style="margin: 10px 0 14px 0; <%= (hasMutualAid || hasUserRequests || hasActiveChannelPatches || hasPendingMouDocs) ? '' : 'display:none;' %>">
 
+      <div id="maDashboardBanners">
       <!-- Mutual Aid Incident -->
       <% if (mutualAid && mutualAid.activeIncidents > 0) { %>
         <a href="/mutual-aid" style="text-decoration:none;">
           <div class="maBanner maBannerIncident">
-            <%= mutualAid.activeIncidents %> Mutual Aid Incident<%= mutualAid.activeIncidents === 1 ? "" : "s" %> 
-            <%= mutualAid.activeIncidents === 1 ? "Is" : "Are" %> Active
+            <%= mutualAid.activeIncidents %> Mutual Aid Incident<%= mutualAid.activeIncidents === 1 ? "" : "s" %>
+            <%= mutualAid.activeIncidents === 1 ? "Is" : "Are" %> Active - <%= incidentUsers %> Users
           </div>
         </a>
       <% } %>
@@ -44,11 +46,12 @@
       <% if (mutualAid && mutualAid.activeEvents > 0) { %>
         <a href="/mutual-aid" style="text-decoration:none;">
           <div class="maBanner maBannerEvent">
-            <%= mutualAid.activeEvents %> Mutual Aid Event<%= mutualAid.activeEvents === 1 ? "" : "s" %> 
-            <%= mutualAid.activeEvents === 1 ? "Is" : "Are" %> Active
+            <%= mutualAid.activeEvents %> Mutual Aid Event<%= mutualAid.activeEvents === 1 ? "" : "s" %>
+            <%= mutualAid.activeEvents === 1 ? "Is" : "Are" %> Active - <%= eventUsers %> Users
           </div>
         </a>
       <% } %>
+      </div>
 
       <!-- Active Channel Patches -->
       <% if (hasActiveChannelPatches) { %>
@@ -85,7 +88,46 @@
       <% } %>
 
     </div>
-  <% } %>
+  <script>
+    (function () {
+      function bannerLine(count, noun, users) {
+        var n = Number(count) || 0;
+        var u = Number(users) || 0;
+        if (n <= 0) return "";
+        var plural = n === 1 ? "" : "s";
+        var verb = n === 1 ? "Is" : "Are";
+        return n + " Mutual Aid " + noun + plural + " " + verb + " Active - " + u + " Users";
+      }
+      function bannerLink(className, text) {
+        return '<a href="/mutual-aid" style="text-decoration:none;"><div class="maBanner ' + className + '">' + text + "</div></a>";
+      }
+      function renderMutualAidBanners(data) {
+        var el = document.getElementById("maDashboardBanners");
+        var wrap = document.getElementById("dashboardAlertBanners");
+        if (!el || !data) return;
+        var html = "";
+        var incidentText = bannerLine(data.activeIncidents, "Incident", data.incidentUsers);
+        var eventText = bannerLine(data.activeEvents, "Event", data.eventUsers);
+        if (incidentText) html += bannerLink("maBannerIncident", incidentText);
+        if (eventText) html += bannerLink("maBannerEvent", eventText);
+        el.innerHTML = html;
+        if (!wrap) return;
+        var hasOther = !!wrap.querySelector(".channelPatchBanner, .userReqBanner, .mouPendingBanner");
+        wrap.style.display = html || hasOther ? "" : "none";
+      }
+      async function refreshMutualAidBanners() {
+        try {
+          var res = await fetch("/dashboard/mutual-aid-banners", {
+            headers: { Accept: "application/json" },
+            cache: "no-store"
+          });
+          if (!res.ok) return;
+          renderMutualAidBanners(await res.json());
+        } catch (_) {}
+      }
+      setInterval(refreshMutualAidBanners, 60000);
+    })();
+  </script>
 
   <% if (typeof error !== "undefined" && error) { %>
     <div class="card">

@@ -403,29 +403,41 @@ function isActiveUnrevokedCert(cert) {
 }
 
 function buildActiveCertUsernameSet(allCerts) {
-  const set = new Set();
+  return new Set(countActiveUnrevokedCertsByUsername(allCerts).keys());
+}
+
+/**
+ * Unrevoked, unexpired client certificates per username (creatorDn).
+ * The same username can appear many times after a mutual aid is deleted and
+ * recreated; revoked certificates are ignored, and duplicate cert ids count once.
+ */
+function countActiveUnrevokedCertsByUsername(allCerts) {
+  const counts = new Map();
+  const seen = new Set();
   for (const c of Array.isArray(allCerts) ? allCerts : []) {
     if (!isActiveUnrevokedCert(c)) continue;
     const u = toLowerTrim(c?.creatorDn);
-    if (u) set.add(u);
+    if (!u) continue;
+    const id = String(c?.id ?? c?.hash ?? c?.serialNumber ?? c?.certificateId ?? "").trim();
+    if (id) {
+      const key = `${u}\n${id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    counts.set(u, (counts.get(u) || 0) + 1);
   }
-  return set;
+  return counts;
 }
 
 let _certCatalogCache = { at: 0, result: null };
 const CERT_CATALOG_TTL_MS = 45_000;
 
-/**
- * Usernames (lowercase) with at least one unrevoked, unexpired TAK cert.
- * ok=false when TAK is off/bypassed or the cert catalog could not be listed
- * (callers must not treat that as "no certs").
- */
-async function getActiveCertUsernameSet() {
+async function loadCachedCertCatalog() {
   if (!isTakConfigured()) {
-    return { ok: false, usernames: new Set(), reason: "not_configured" };
+    return { ok: false, list: [], reason: "not_configured" };
   }
   if (isTakBypassed()) {
-    return { ok: false, usernames: new Set(), reason: "bypass" };
+    return { ok: false, list: [], reason: "bypass" };
   }
 
   try {
@@ -438,12 +450,37 @@ async function getActiveCertUsernameSet() {
       if (catalog.ok) _certCatalogCache = { at: now, result: catalog };
     }
     if (!catalog || !catalog.ok) {
-      return { ok: false, usernames: new Set(), reason: "list_failed" };
+      return { ok: false, list: [], reason: "list_failed" };
     }
-    return { ok: true, usernames: buildActiveCertUsernameSet(catalog.list) };
+    return { ok: true, list: catalog.list, reason: null };
   } catch (e) {
-    return { ok: false, usernames: new Set(), reason: e?.message || "error" };
+    return { ok: false, list: [], reason: e?.message || "error" };
   }
+}
+
+/**
+ * Usernames (lowercase) with at least one unrevoked, unexpired TAK cert.
+ * ok=false when TAK is off/bypassed or the cert catalog could not be listed
+ * (callers must not treat that as "no certs").
+ */
+async function getActiveCertUsernameSet() {
+  const catalog = await loadCachedCertCatalog();
+  if (!catalog.ok) {
+    return { ok: false, usernames: new Set(), reason: catalog.reason || "list_failed" };
+  }
+  return { ok: true, usernames: buildActiveCertUsernameSet(catalog.list) };
+}
+
+/**
+ * Count of unrevoked, unexpired client certificates keyed by lowercase username.
+ * ok=false when the catalog could not be listed (callers must not treat that as zero).
+ */
+async function getActiveCertCountsByUsername() {
+  const catalog = await loadCachedCertCatalog();
+  if (!catalog.ok) {
+    return { ok: false, counts: new Map(), reason: catalog.reason || "list_failed" };
+  }
+  return { ok: true, counts: countActiveUnrevokedCertsByUsername(catalog.list) };
 }
 
 function isRevokedGeneric(cert) {
@@ -748,5 +785,7 @@ module.exports = {
   isExpiredGeneric,
   isActiveUnrevokedCert,
   buildActiveCertUsernameSet,
+  countActiveUnrevokedCertsByUsername,
   getActiveCertUsernameSet,
+  getActiveCertCountsByUsername,
 };
