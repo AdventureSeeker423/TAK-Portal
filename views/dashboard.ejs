@@ -37,7 +37,7 @@
         <a href="/mutual-aid" style="text-decoration:none;">
           <div class="maBanner maBannerIncident">
             <%= mutualAid.activeIncidents %> Mutual Aid Incident<%= mutualAid.activeIncidents === 1 ? "" : "s" %>
-            <%= mutualAid.activeIncidents === 1 ? "Is" : "Are" %> Active - <%= incidentUsers %> Users
+            <%= mutualAid.activeIncidents === 1 ? "Is" : "Are" %> Active - <%= incidentUsers %> <%= incidentUsers === 1 ? "User" : "Users" %>
           </div>
         </a>
       <% } %>
@@ -47,7 +47,7 @@
         <a href="/mutual-aid" style="text-decoration:none;">
           <div class="maBanner maBannerEvent">
             <%= mutualAid.activeEvents %> Mutual Aid Event<%= mutualAid.activeEvents === 1 ? "" : "s" %>
-            <%= mutualAid.activeEvents === 1 ? "Is" : "Are" %> Active - <%= eventUsers %> Users
+            <%= mutualAid.activeEvents === 1 ? "Is" : "Are" %> Active - <%= eventUsers %> <%= eventUsers === 1 ? "User" : "Users" %>
           </div>
         </a>
       <% } %>
@@ -96,7 +96,8 @@
         if (n <= 0) return "";
         var plural = n === 1 ? "" : "s";
         var verb = n === 1 ? "Is" : "Are";
-        return n + " Mutual Aid " + noun + plural + " " + verb + " Active - " + u + " Users";
+        var people = u === 1 ? "User" : "Users";
+        return n + " Mutual Aid " + noun + plural + " " + verb + " Active - " + u + " " + people;
       }
       function bannerLink(className, text) {
         return '<a href="/mutual-aid" style="text-decoration:none;"><div class="maBanner ' + className + '">' + text + "</div></a>";

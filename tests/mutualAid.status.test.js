@@ -30,6 +30,12 @@ const active = status.certStatusForUsername("MA-Fair", {
 assert.strictEqual(active.certStatusLabel, "Active - 2 Users");
 assert.strictEqual(active.activeUserCount, 2);
 
+const oneUser = status.certStatusForUsername("ma-search", {
+  ok: true,
+  counts,
+});
+assert.strictEqual(oneUser.certStatusLabel, "Active - 1 User");
+
 const unknown = status.certStatusForUsername("ma-fair", { ok: false, counts: new Map() });
 assert.strictEqual(unknown.certStatusKnown, false);
 assert.strictEqual(unknown.certStatusLabel, "");

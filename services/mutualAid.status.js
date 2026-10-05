@@ -43,7 +43,7 @@ function certStatusForUsername(username, snapshot) {
     certStatusKnown: true,
     activeUserCount: n,
     certStatus: "active",
-    certStatusLabel: `Active - ${n} Users`,
+    certStatusLabel: `Active - ${n} ${n === 1 ? "User" : "Users"}`,
   };
 }
 
