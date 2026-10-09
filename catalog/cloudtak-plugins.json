@@ -195,6 +195,20 @@
         "api/web/plugins/replay/index.ts",
         "app/plugins/replay/index.ts"
       ]
+    },
+    {
+      "id": "rubber-sheet",
+      "name": "Rubber Sheet",
+      "description": "Stretch an image or PDF over the map (ATAK-style rubber sheet), edit pixels, and export KMZ, GeoTIFF, or GeoPDF. Requires CloudTAK 13.102+.",
+      "repo": "https://github.com/AdventureSeeker423/cloudtak-plugin-rubbersheet.git",
+      "added": "2026-10-09",
+      "maintainer": "AdventureSeeker423",
+      "web": { "dest": "rubber-sheet" },
+      "exclude": ["test", "**/*.md"],
+      "detect": [
+        "api/web/plugins/rubber-sheet/index.ts",
+        "app/plugins/rubber-sheet/index.ts"
+      ]
     }
   ]
 }
