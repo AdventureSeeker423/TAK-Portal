@@ -442,6 +442,21 @@ function isNewPlugin(plugin, now = Date.now()) {
   return false;
 }
 
+function catalogAliasKeys(plugin) {
+  const aliases = [
+    plugin && plugin.web && plugin.web.dest,
+    plugin && plugin.id,
+    repoBasename(plugin && plugin.repo),
+    ...((plugin && plugin.detectAliases) || []),
+  ]
+    .map((x) => String(x || "").toLowerCase())
+    .filter(Boolean);
+  return {
+    aliases,
+    keys: aliases.map(pluginMatchKey).filter((k) => k.length >= 4),
+  };
+}
+
 function matchCatalogPlugin(hostPlugin, catalogPlugins) {
   const dest = String(hostPlugin.dest || "").toLowerCase();
   const destKey = pluginMatchKey(hostPlugin.dest);
@@ -452,27 +467,42 @@ function matchCatalogPlugin(hostPlugin, catalogPlugins) {
     .toLowerCase();
   const remoteKey = pluginMatchKey(repoBasename(hostPlugin.gitRemote));
   const routeFiles = Array.isArray(hostPlugin.routeFiles) ? hostPlugin.routeFiles : [];
+  const detectHits = Array.isArray(hostPlugin.detectHits) ? hostPlugin.detectHits : [];
+  const hitDestKeys = new Set();
+  for (const hit of detectHits) {
+    const fromHit = destFromPluginPath(hit);
+    if (fromHit) hitDestKeys.add(pluginMatchKey(fromHit));
+  }
 
   for (const p of catalogPlugins) {
-    if ((p.detect || []).some((d) => hostPlugin.detectHits && hostPlugin.detectHits.includes(d))) {
-      return p;
+    if ((p.detect || []).some((d) => detectHits.includes(d))) return p;
+    for (const hit of detectHits) {
+      for (const cand of pluginDetectPaths(p)) {
+        if (layoutDetectAlts(cand).includes(hit)) return p;
+      }
     }
   }
   for (const p of catalogPlugins) {
-    const aliases = [p.web.dest, p.id, repoBasename(p.repo), ...(p.detectAliases || [])]
-      .map((x) => String(x || "").toLowerCase())
-      .filter(Boolean);
+    const want = pluginMatchKey(p.web && p.web.dest);
+    if (want && hitDestKeys.has(want)) return p;
+    if (want && destKey && want === destKey) return p;
+  }
+  for (const p of catalogPlugins) {
+    const { aliases, keys } = catalogAliasKeys(p);
     if (aliases.includes(dest)) return p;
-    const aliasKeys = aliases.map(pluginMatchKey).filter((k) => k.length >= 4);
-    if (destKey && destKey.length >= 4 && aliasKeys.includes(destKey)) return p;
+    if (destKey && destKey.length >= 4 && keys.includes(destKey)) return p;
   }
   for (const p of catalogPlugins) {
-    if (pkgName && (pkgName === p.id.toLowerCase() || pkgName === repoBasename(p.repo).toLowerCase())) {
+    const { keys } = catalogAliasKeys(p);
+    if (
+      pkgName &&
+      (pkgName === p.id.toLowerCase() ||
+        pkgName === String(p.web.dest || "").toLowerCase() ||
+        pkgName === repoBasename(p.repo).toLowerCase())
+    ) {
       return p;
     }
-    const idKey = pluginMatchKey(p.id);
-    const repoKey = pluginMatchKey(repoBasename(p.repo));
-    if (pkgKey && pkgKey.length >= 4 && (pkgKey === idKey || pkgKey === repoKey)) return p;
+    if (pkgKey && pkgKey.length >= 4 && keys.includes(pkgKey)) return p;
   }
   for (const p of catalogPlugins) {
     const want = String(p.repo || "")
@@ -481,7 +511,8 @@ function matchCatalogPlugin(hostPlugin, catalogPlugins) {
     if (remote && want && (remote === want || remote.endsWith("/" + repoBasename(p.repo).toLowerCase()))) {
       return p;
     }
-    if (remoteKey && remoteKey.length >= 4 && remoteKey === pluginMatchKey(p.id)) return p;
+    const { keys } = catalogAliasKeys(p);
+    if (remoteKey && remoteKey.length >= 4 && keys.includes(remoteKey)) return p;
   }
   for (const p of catalogPlugins) {
     if (!p.routes) continue;
@@ -634,17 +665,54 @@ function pluginRemoveBash() {
   ].join("\n");
 }
 
+function destFromPluginPath(rel) {
+  const s = String(rel || "").replace(/\\/g, "/");
+  const m = s.match(/(?:^|\/)plugins\/([^/]+)\//);
+  return m ? m[1] : "";
+}
+
+function layoutDetectAlts(rel) {
+  const pathRel = String(rel || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!pathRel || !/^[A-Za-z0-9._/-]+$/.test(pathRel)) return [];
+  const alts = [pathRel];
+  if (pathRel.startsWith("api/web/plugins/")) alts.push("app/plugins/" + pathRel.slice("api/web/plugins/".length));
+  else if (pathRel.startsWith("app/plugins/")) alts.push("api/web/plugins/" + pathRel.slice("app/plugins/".length));
+  else if (pathRel.startsWith("api/web/src/plugins/")) alts.push("app/src/plugins/" + pathRel.slice("api/web/src/plugins/".length));
+  else if (pathRel.startsWith("app/src/plugins/")) alts.push("api/web/src/plugins/" + pathRel.slice("app/src/plugins/".length));
+  return [...new Set(alts)];
+}
+
+function pluginDetectPaths(plugin) {
+  const paths = new Set();
+  for (const raw of (plugin && plugin.detect) || []) {
+    const rel = String(raw || "").replace(/\\/g, "/").replace(/^\/+/, "");
+    if (/^[A-Za-z0-9._/-]+$/.test(rel)) paths.add(rel);
+  }
+  const dest = String((plugin && plugin.web && plugin.web.dest) || "").trim();
+  if (dest && /^[A-Za-z0-9._-]+$/.test(dest)) {
+    for (const root of ["app/plugins", "api/web/plugins", "app/src/plugins", "api/web/src/plugins"]) {
+      paths.add(root + "/" + dest + "/index.ts");
+      paths.add(root + "/" + dest + "/index.js");
+      paths.add(root + "/" + dest + "/plugin/index.ts");
+      paths.add(root + "/" + dest + "/src/index.ts");
+    }
+  }
+  return [...paths];
+}
+
 function detectProbeLines(catalogPlugins) {
   const lines = [];
+  const seen = new Set();
   for (const plugin of catalogPlugins || []) {
-    for (const raw of plugin.detect || []) {
-      const rel = String(raw).replace(/"/g, "");
-      if (!/^[A-Za-z0-9._/-]+$/.test(rel)) continue;
-      const alts = [rel];
-      if (rel.startsWith("api/web/plugins/")) alts.push("app/plugins/" + rel.slice("api/web/plugins/".length));
-      else if (rel.startsWith("app/plugins/")) alts.push("api/web/plugins/" + rel.slice("app/plugins/".length));
-      const checks = alts.map((alt) => `[ -e "$CT/${alt}" ]`).join(" || ");
-      lines.push(`if ${checks}; then printf 'DETECT_HIT %s\\n' "${rel}"; fi`);
+    const dest = String((plugin && plugin.web && plugin.web.dest) || "").trim();
+    if (dest && !/^[A-Za-z0-9._-]+$/.test(dest)) continue;
+    for (const rel of pluginDetectPaths(plugin)) {
+      for (const alt of layoutDetectAlts(rel)) {
+        if (seen.has(alt)) continue;
+        seen.add(alt);
+        const destPrintf = dest ? `printf 'DETECT_DEST %s\\n' "${dest}"; ` : "";
+        lines.push(`if [ -e "$CT/${alt}" ]; then printf 'DETECT_HIT %s\\n' "${alt}"; ${destPrintf}fi`);
+      }
     }
   }
   return lines.join("\n");
@@ -802,16 +870,20 @@ function parseScanStdout(stdout, catalogPlugins) {
       });
     } else if (t.startsWith("DETECT_HIT ")) {
       const hit = t.slice(11).trim();
-      const destFromDetect = String(hit).includes("plugins/")
-        ? String(hit).split("plugins/")[1].split("/")[0]
-        : "";
+      const destFromDetect = destFromPluginPath(hit);
       if (destFromDetect) {
         pushPlugin({ dest: destFromDetect, kind: "detect", hasIndex: true });
-        const row = plugins.find((p) => p.dest === destFromDetect);
+        const row = plugins.find((p) => p.dest === destFromDetect || pluginMatchKey(p.dest) === pluginMatchKey(destFromDetect));
         if (row) {
           row.detectHits = row.detectHits || [];
           if (!row.detectHits.includes(hit)) row.detectHits.push(hit);
+          row.hasIndex = true;
         }
+      }
+    } else if (t.startsWith("DETECT_DEST ")) {
+      const destFromDetect = t.slice(12).trim();
+      if (destFromDetect && !isHostPluginNoise(destFromDetect)) {
+        pushPlugin({ dest: destFromDetect, kind: "detect", hasIndex: true });
       }
     } else if (t.startsWith("ROUTE ")) {
       routeFiles.push(t.slice(6).trim());
@@ -821,20 +893,18 @@ function parseScanStdout(stdout, catalogPlugins) {
   }
   for (const p of plugins) p.routeFiles = routeFiles;
 
-  const detectHitsByDest = {};
-  for (const cat of catalogPlugins) {
-    for (const d of cat.detect || []) {
-      const destFromDetect = String(d).includes("plugins/")
-        ? String(d).split("plugins/")[1].split("/")[0]
-        : "";
-      if (destFromDetect) {
-        detectHitsByDest[destFromDetect] = detectHitsByDest[destFromDetect] || [];
-        detectHitsByDest[destFromDetect].push(d);
+  // Attach catalog detect paths only when the host already proved that dest exists.
+  for (const p of plugins) {
+    const hits = Array.isArray(p.detectHits) ? p.detectHits.slice() : [];
+    for (const cat of catalogPlugins || []) {
+      if (pluginMatchKey(cat.web && cat.web.dest) !== pluginMatchKey(p.dest) && pluginMatchKey(cat.id) !== pluginMatchKey(p.dest)) {
+        continue;
+      }
+      for (const d of cat.detect || []) {
+        if (!hits.includes(d)) hits.push(d);
       }
     }
-  }
-  for (const p of plugins) {
-    p.detectHits = [...new Set([...(p.detectHits || []), ...(detectHitsByDest[p.dest] || [])])];
+    p.detectHits = [...new Set(hits)];
   }
 
   const webUrls = [];
@@ -1206,9 +1276,23 @@ function buildUiPlugins(options = {}) {
   );
   const now = Date.now();
 
+  const scanHitForCatalog = (p) => {
+    const byIdHit = scanPlugins.find((s) => s.catalogId === p.id);
+    if (byIdHit) return byIdHit;
+    const destKey = pluginMatchKey(p.web && p.web.dest);
+    const idKey = pluginMatchKey(p.id);
+    return (
+      scanPlugins.find((s) => {
+        if (s.catalogId && s.catalogId !== p.id) return false;
+        const sk = pluginMatchKey(s.dest);
+        return !!sk && (sk === destKey || sk === idKey);
+      }) || null
+    );
+  };
+
   const byId = new Map();
   for (const p of catalog.plugins) {
-    const scanHit = scanPlugins.find((s) => s.catalogId === p.id);
+    const scanHit = scanHitForCatalog(p);
     const rec = installedRec.plugins[p.id];
     const errorMessage = pluginErrorMessage(installedRec, p.id, p.web.dest);
     const installed = !!(scanHit || rec);
@@ -1272,6 +1356,23 @@ function buildUiPlugins(options = {}) {
   for (const s of scanPlugins) {
     if (s.catalogId && byId.has(s.catalogId)) continue;
     if (!s.dest || destListed(s.dest)) continue;
+    const matched = matchCatalogPlugin(
+      { dest: s.dest, gitRemote: s.gitRemote || "", detectHits: [] },
+      catalog.plugins
+    );
+    if (matched && byId.has(matched.id)) {
+      const row = byId.get(matched.id);
+      if (!row.scan) {
+        byId.set(matched.id, {
+          ...row,
+          installed: true,
+          isNew: false,
+          origin: s.origin || row.origin || "host",
+          scan: { ...s, catalogId: matched.id },
+        });
+      }
+      continue;
+    }
     const id = s.catalogId || `unknown:${s.dest}`;
     byId.set(id, hostOnlyPlugin({ id, dest: s.dest, repo: s.gitRemote || "", scan: s }));
   }
@@ -3135,6 +3236,10 @@ module.exports = {
   normalizeCatalog,
   normalizeAdditionalActions,
   matchCatalogPlugin,
+  destFromPluginPath,
+  pluginDetectPaths,
+  detectProbeLines,
+  parseScanStdout,
   loadCatalog,
   fetchCatalog,
   scanHost,

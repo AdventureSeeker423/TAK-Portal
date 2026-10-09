@@ -205,6 +205,7 @@
       "maintainer": "AdventureSeeker423",
       "web": { "dest": "rubber-sheet" },
       "exclude": ["test", "**/*.md"],
+      "detectAliases": ["rubbersheet", "cloudtak-plugin-rubber-sheet", "cloudtak-plugin-rubbersheet"],
       "detect": [
         "api/web/plugins/rubber-sheet/index.ts",
         "app/plugins/rubber-sheet/index.ts"

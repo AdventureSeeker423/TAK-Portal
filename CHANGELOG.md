@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 ### v2.0.8 - TBD
 🐛 `Bug Fix` - Fixes issue with Pending User Requests remaining on the list after Create User when Authentik sync takes longer than expected<br>
 🐛 `Bug Fix` - Fixes issue with Users modal not showing the list of agencies when setting up a multi-agency admin<br>
+🐛 `Bug Fix` - Fixes CloudTAK marketplace install/update on 13.102+ (`app/plugins`) so align re-applies eslint/tsconfig shields after tag checkout (plugin lint no longer breaks Docker rebuilds)<br>
+🐛 `Bug Fix` - Fixes CloudTAK marketplace not marking already-installed plugins (including Rubber Sheet) as installed when scan finds them under `app/plugins`<br>
+🎉 `New Feature` - CloudTAK Marketplace - Rubber Sheet plugin (image/PDF rubber-sheeting; requires CloudTAK 13.102+)<br>
 ✨ `Enhancement` - Mutual Aid Incidents/Events/Standbys are in an "inactive" mode until a user enrolls with the one-time username.  The count of users on the mutual aid is reflected on the dashboard and Mutual Aid page.
 
 ### v2.0.7 - 9/25/26

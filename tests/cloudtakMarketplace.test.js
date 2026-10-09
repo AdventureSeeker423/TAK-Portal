@@ -33,6 +33,59 @@ const matchAppOnlyDetect = marketplace.matchCatalogPlugin(
   normalized.plugins
 );
 assert.strictEqual(matchAppOnlyDetect && matchAppOnlyDetect.id, "udash");
+assert.strictEqual(marketplace.destFromPluginPath("app/plugins/rubber-sheet/index.ts"), "rubber-sheet");
+assert.ok(marketplace.pluginDetectPaths(rubberSheetEntry()).some((p) => p === "app/plugins/rubber-sheet/index.ts"));
+assert.match(marketplace.detectProbeLines(normalized.plugins), /app\/plugins\/rubber-sheet\/index\.ts/);
+assert.match(marketplace.detectProbeLines(normalized.plugins), /DETECT_DEST %s/);
+
+function rubberSheetEntry() {
+  return normalized.plugins.find((p) => p.id === "rubber-sheet");
+}
+
+const scannedRubber = marketplace.parseScanStdout(
+  [
+    "SCAN_BEGIN",
+    "PLUGIN\trubber-sheet\tdir\t1\tcloudtak-plugin-rubber-sheet\t\t\t",
+    "DETECT_HIT app/plugins/rubber-sheet/index.ts",
+    "DETECT_DEST rubber-sheet",
+    "SCAN_END",
+  ].join("\n"),
+  normalized.plugins
+);
+assert.ok(scannedRubber.plugins.some((p) => p.dest === "rubber-sheet"));
+assert.ok(scannedRubber.plugins.find((p) => p.dest === "rubber-sheet").detectHits.includes("app/plugins/rubber-sheet/index.ts"));
+assert.strictEqual(
+  marketplace.matchCatalogPlugin(scannedRubber.plugins.find((p) => p.dest === "rubber-sheet"), normalized.plugins).id,
+  "rubber-sheet"
+);
+assert.strictEqual(
+  marketplace.matchCatalogPlugin(
+    { dest: "host-copy", packageName: "cloudtak-plugin-rubber-sheet", detectHits: [] },
+    normalized.plugins
+  ).id,
+  "rubber-sheet"
+);
+
+const prevScan = store.readScanCache();
+store.writeScanCache({
+  ok: true,
+  scannedAt: new Date().toISOString(),
+  path: "/root/CloudTAK",
+  plugins: [{ dest: "rubber-sheet", catalogId: null, origin: "host", onDisk: true }],
+});
+try {
+  const ui = marketplace.buildUiPlugins({ skipRemoteSha: true });
+  const row = ui.plugins.find((p) => p.id === "rubber-sheet");
+  assert.ok(row, "rubber-sheet catalog row present");
+  assert.strictEqual(row.installed, true, "on-disk rubber-sheet marks catalog row installed even without catalogId");
+} finally {
+  if (prevScan) store.writeScanCache(prevScan);
+  else {
+    try {
+      fs.unlinkSync(require("path").join(store.DIR, "scan-cache.json"));
+    } catch (_) {}
+  }
+}
 
 const ids = normalized.plugins.map((p) => p.id);
 assert.ok(ids.includes("quick-point-dropper"));
