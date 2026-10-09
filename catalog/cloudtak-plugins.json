@@ -11,7 +11,10 @@
       "web": { "source": "plugin", "dest": "quick-point-dropper" },
       "routes": { "source": "server" },
       "exclude": ["**/*.md"],
-      "detect": ["api/web/plugins/quick-point-dropper/index.ts"]
+      "detect": [
+        "api/web/plugins/quick-point-dropper/index.ts",
+        "app/plugins/quick-point-dropper/index.ts"
+      ]
     },
     {
       "id": "helloworld",
@@ -21,7 +24,10 @@
       "added": "2026-09-20",
       "maintainer": "snstac",
       "web": { "dest": "helloworld" },
-      "detect": ["api/web/plugins/helloworld/index.ts"]
+      "detect": [
+        "api/web/plugins/helloworld/index.ts",
+        "app/plugins/helloworld/index.ts"
+      ]
     },
     {
       "id": "udash",
@@ -45,7 +51,10 @@
           "snippet": "handle_path /udash-api* {\n\treverse_proxy cloudtak-plugin-udash-sidecar:3080\n}"
         }
       ],
-      "detect": ["api/web/plugins/udash/index.ts"]
+      "detect": [
+        "api/web/plugins/udash/index.ts",
+        "app/plugins/udash/index.ts"
+      ]
     },
     {
       "id": "print",
@@ -80,7 +89,10 @@
           "snippet": "GDAL_PDF_BANDS=4"
         }
       ],
-      "detect": ["api/web/plugins/print/index.ts"]
+      "detect": [
+        "api/web/plugins/print/index.ts",
+        "app/plugins/print/index.ts"
+      ]
     },
     {
       "id": "cellphone",
@@ -90,7 +102,10 @@
       "added": "2026-09-20",
       "maintainer": "clptak",
       "web": { "dest": "ping" },
-      "detect": ["api/web/plugins/ping/index.ts"]
+      "detect": [
+        "api/web/plugins/ping/index.ts",
+        "app/plugins/ping/index.ts"
+      ]
     },
     {
       "id": "d4h",
@@ -101,7 +116,10 @@
       "maintainer": "clptak",
       "web": { "dest": "d4h" },
       "routes": { "source": "server" },
-      "detect": ["api/web/plugins/d4h/index.ts"]
+      "detect": [
+        "api/web/plugins/d4h/index.ts",
+        "app/plugins/d4h/index.ts"
+      ]
     },
     {
       "id": "location-search",
@@ -112,7 +130,10 @@
       "maintainer": "clptak",
       "web": { "dest": "address-search" },
       "exclude": ["cli", "test", "bench"],
-      "detect": ["api/web/plugins/address-search/index.ts"]
+      "detect": [
+        "api/web/plugins/address-search/index.ts",
+        "app/plugins/address-search/index.ts"
+      ]
     },
     {
       "id": "incident-manager",
@@ -122,7 +143,10 @@
       "added": "2026-09-20",
       "maintainer": "clptak",
       "web": { "dest": "incident-manager" },
-      "detect": ["api/web/plugins/incident-manager/index.ts"]
+      "detect": [
+        "api/web/plugins/incident-manager/index.ts",
+        "app/plugins/incident-manager/index.ts"
+      ]
     },
     {
       "id": "dispatcher",
@@ -133,7 +157,10 @@
       "maintainer": "takwerx",
       "web": { "source": "plugin", "dest": "tak-dispatcher" },
       "routes": { "source": "server" },
-      "detect": ["api/web/plugins/tak-dispatcher/index.ts"]
+      "detect": [
+        "api/web/plugins/tak-dispatcher/index.ts",
+        "app/plugins/tak-dispatcher/index.ts"
+      ]
     },
     {
       "id": "livewx",
@@ -143,7 +170,10 @@
       "added": "2026-09-21",
       "maintainer": "AdventureSeeker423",
       "web": { "dest": "livewx-radar" },
-      "detect": ["api/web/plugins/livewx-radar/index.ts"],
+      "detect": [
+        "api/web/plugins/livewx-radar/index.ts",
+        "app/plugins/livewx-radar/index.ts"
+      ],
       "csp": [
         "https://mesonet.agron.iastate.edu",
         "https://api.weather.gov",
@@ -161,7 +191,10 @@
       "added": "2026-09-25",
       "maintainer": "dfndr13",
       "web": { "dest": "replay" },
-      "detect": ["api/web/plugins/replay/index.ts"]
+      "detect": [
+        "api/web/plugins/replay/index.ts",
+        "app/plugins/replay/index.ts"
+      ]
     }
   ]
 }

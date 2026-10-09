@@ -19,7 +19,20 @@ for (const p of normalized.plugins) {
   assert.ok(p.name, "plugin name");
   assert.ok(p.repo, "plugin repo");
   assert.ok(p.web && p.web.dest, "plugin web.dest");
+  assert.ok(
+    (p.detect || []).some((d) => String(d).startsWith("api/web/plugins/")),
+    p.id + " detect includes legacy api/web path"
+  );
+  assert.ok(
+    (p.detect || []).some((d) => String(d).startsWith("app/plugins/")),
+    p.id + " detect includes CloudTAK 13.102+ app path"
+  );
 }
+const matchAppOnlyDetect = marketplace.matchCatalogPlugin(
+  { dest: "unexpected", detectHits: ["app/plugins/udash/index.ts"] },
+  normalized.plugins
+);
+assert.strictEqual(matchAppOnlyDetect && matchAppOnlyDetect.id, "udash");
 
 const ids = normalized.plugins.map((p) => p.id);
 assert.ok(ids.includes("quick-point-dropper"));
@@ -287,7 +300,11 @@ assert.match(installScript, /apply_plugin_csp/);
 assert.match(installScript, /cloudtak_web_rel/);
 assert.match(installScript, /app\/plugins/);
 assert.match(installScript, /Moving \$DEST from api\/web\/plugins to app\/plugins/);
+assert.match(installScript, /Removing leftover api\/web\/plugins\/\$DEST/);
 assert.match(installScript, /docker compose --progress=plain/);
+const uninstallScript = marketplace.uninstallRemoteScript("/root/CloudTAK", "livewx-radar", [], "livewx-radar");
+assert.match(uninstallScript, /\$CT\/app\/plugins\/\$DEST/);
+assert.match(uninstallScript, /\$CT\/api\/web\/plugins\/\$DEST/);
 
 assert.deepStrictEqual(
   marketplace.normalizeCsp({ csp: ["wss://*.example.org", "https://tiles.example.com"] }),
@@ -508,16 +525,51 @@ fs.writeFileSync(
     2
   ) + "\n"
 );
+fs.writeFileSync(
+  path.join(appAlignRoot, "app", "eslint.config.js"),
+  "export default tseslint.config(\n    eslint.configs.recommended,\n);\n"
+);
+fs.writeFileSync(
+  path.join(appAlignRoot, "app", "tsconfig.json"),
+  JSON.stringify({ compilerOptions: { strict: true }, include: ["src"], exclude: ["node_modules", "dist"] }, null, 2) + "\n"
+);
+const appLayout = align.detectWebLayout(appAlignRoot);
+assert.strictEqual(appLayout.kind, "app");
+assert.deepStrictEqual(align.listInstalledPluginDirs(appLayout.pluginsDir), ["incident-manager"]);
 const appAligned = align.alignInstalledPlugins(appAlignRoot);
 assert.ok(appAligned.ok);
 assert.ok(!appAligned.skipped);
-assert.ok(appAligned.changes.some((line) => line.startsWith("app/package.json:")));
+assert.ok(appAligned.changes.some((line) => line.includes("app/eslint.config.js")));
+assert.ok(appAligned.changes.some((line) => line.includes("app/tsconfig.json")));
+assert.ok(!appAligned.changes.some((line) => line.startsWith("app/package.json:")));
+const appEslint = fs.readFileSync(path.join(appAlignRoot, "app", "eslint.config.js"), "utf8");
+assert.match(appEslint, /cloudtak-marketplace-plugins/);
+assert.match(appEslint, /plugins\/incident-manager\/\*\*/);
+const appTsconfig = JSON.parse(fs.readFileSync(path.join(appAlignRoot, "app", "tsconfig.json"), "utf8"));
+assert.ok(appTsconfig.exclude.includes("plugins/incident-manager"));
+assert.ok(appTsconfig.exclude.includes("node_modules"));
+const appLintScripts = JSON.parse(fs.readFileSync(appLintPkg, "utf8")).scripts;
+assert.match(appLintScripts.lint, /\.\/plugins/);
 const appBrief = fs.readFileSync(
   path.join(appAlignRoot, "app", "plugins", "incident-manager", "src", "lib", "irBriefing.ts"),
   "utf8"
 );
 assert.match(appBrief, /from '\.\.\/\.\.\/\.\.\/\.\.\/src\/utils\/coordinateFormat\.ts'/);
 assert.ok(!fs.existsSync(path.join(appAlignRoot, "api", "web", "plugins")));
+const appAlignedAgain = align.alignInstalledPlugins(appAlignRoot);
+assert.deepStrictEqual(appAlignedAgain.changes, []);
+fs.writeFileSync(
+  path.join(appAlignRoot, "app", "eslint.config.js"),
+  "export default tseslint.config(\n    eslint.configs.recommended,\n);\n"
+);
+fs.writeFileSync(
+  path.join(appAlignRoot, "app", "tsconfig.json"),
+  JSON.stringify({ compilerOptions: { strict: true }, include: ["src"], exclude: ["node_modules", "dist"] }, null, 2) + "\n"
+);
+const appReshield = align.alignInstalledPlugins(appAlignRoot);
+assert.ok(appReshield.changes.some((line) => line.includes("app/eslint.config.js")));
+assert.ok(appReshield.changes.some((line) => line.includes("app/tsconfig.json")));
+assert.ok(!appReshield.changes.some((line) => line.includes("coordinateFormat")));
 fs.rmSync(appAlignRoot, { recursive: true, force: true });
 
 const apiLintRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-align-api-lint-"));

@@ -848,6 +848,122 @@ function routeIgnoreBlock(patterns) {
   return "    /* cloudtak-marketplace-routes */\n    { ignores: [" + list + "] },";
 }
 
+function pluginIgnoreBlock(pluginNames) {
+  const patterns = (pluginNames || []).map((n) => "plugins/" + n + "/**");
+  const list = patterns.map((p) => "'" + String(p).replace(/'/g, "") + "'").join(", ");
+  return "    /* cloudtak-marketplace-plugins */\n    { ignores: [" + list + "] },";
+}
+
+function safePluginDirName(name) {
+  const n = String(name || "").trim();
+  if (!n || n === "." || n === ".." || n.includes("/") || n.includes("\\")) return "";
+  if (!/^[A-Za-z0-9._-]+$/.test(n)) return "";
+  return n;
+}
+
+function listInstalledPluginDirs(pluginsDir) {
+  if (!pluginsDir || !fs.existsSync(pluginsDir)) return [];
+  let entries = [];
+  try {
+    entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
+  } catch (_) {
+    return [];
+  }
+  const names = [];
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const n = safePluginDirName(ent.name);
+    if (n) names.push(n);
+  }
+  names.sort();
+  return names;
+}
+
+function parseJsonc(text) {
+  const stripped = String(text || "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/,\s*([}\]])/g, "$1");
+  return JSON.parse(stripped);
+}
+
+function insertEslintIgnoreBlock(config, block) {
+  const needleTseslint = "export default tseslint.config(";
+  const atTs = config.indexOf(needleTseslint);
+  if (atTs >= 0) {
+    return config.slice(0, atTs + needleTseslint.length) + "\n" + block + config.slice(atTs + needleTseslint.length);
+  }
+  const needleArr = "export default [";
+  const atArr = config.indexOf(needleArr);
+  if (atArr >= 0) {
+    return config.slice(0, atArr + needleArr.length) + "\n" + block + config.slice(atArr + needleArr.length);
+  }
+  return null;
+}
+
+function shieldAppPluginEslint(webDir, pluginNames) {
+  const configPath = path.join(webDir, "eslint.config.js");
+  if (!fs.existsSync(configPath)) return [];
+  let config = "";
+  try {
+    config = fs.readFileSync(configPath, "utf8");
+  } catch (_) {
+    return [];
+  }
+  const names = (pluginNames || []).map(safePluginDirName).filter(Boolean);
+  names.sort();
+  const blockRe = /[ \t]*\/\* cloudtak-marketplace-plugins \*\/\r?\n[ \t]*\{ ignores: \[[^\]]*\] \},/;
+  let next = config;
+  if (!names.length) {
+    if (!blockRe.test(config)) return [];
+    next = config.replace(blockRe, "");
+  } else {
+    const block = pluginIgnoreBlock(names);
+    if (blockRe.test(config)) next = config.replace(blockRe, block);
+    else {
+      const inserted = insertEslintIgnoreBlock(config, block);
+      if (inserted == null) return [];
+      next = inserted;
+    }
+  }
+  if (next === config) return [];
+  fs.writeFileSync(configPath, next);
+  return ["app/eslint.config.js: image lint ignores marketplace plugin dirs"];
+}
+
+function shieldAppPluginTsconfig(webDir, pluginNames) {
+  const configPath = path.join(webDir, "tsconfig.json");
+  if (!fs.existsSync(configPath)) return [];
+  let text = "";
+  try {
+    text = fs.readFileSync(configPath, "utf8");
+  } catch (_) {
+    return [];
+  }
+  let data;
+  try {
+    data = parseJsonc(text);
+  } catch (_) {
+    return [];
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+  const names = (pluginNames || []).map(safePluginDirName).filter(Boolean);
+  names.sort();
+  const want = names.map((n) => "plugins/" + n);
+  const exclude = Array.isArray(data.exclude) ? data.exclude.map((x) => String(x)) : [];
+  const nextExclude = exclude.slice();
+  let changed = false;
+  for (const entry of want) {
+    if (nextExclude.includes(entry)) continue;
+    nextExclude.push(entry);
+    changed = true;
+  }
+  if (!changed) return [];
+  data.exclude = nextExclude;
+  fs.writeFileSync(configPath, JSON.stringify(data, null, 2) + "\n");
+  return ["app/tsconfig.json: typecheck excludes marketplace plugin dirs"];
+}
+
 function marketplaceOwnedTs(apiDir) {
   const listPath = path.join(apiDir, ".marketplace-owned-ts");
   let text = "";
@@ -1150,22 +1266,42 @@ function fixComposeDependsFile(overlayPath, basePaths, project) {
   return result;
 }
 
-function resolveWebDir(ctRoot) {
+function detectWebLayout(ctRoot) {
   const root = String(ctRoot || "").trim();
-  if (!root) return "";
+  if (!root) return { kind: "", webDir: "", pluginsDir: "", webSrc: "" };
   const appDir = path.join(root, "app");
   const legacyDir = path.join(root, "api", "web");
-  if (fs.existsSync(path.join(appDir, "package.json")) && fs.existsSync(path.join(appDir, "src"))) return appDir;
-  if (fs.existsSync(path.join(legacyDir, "src")) || fs.existsSync(path.join(legacyDir, "plugins"))) return legacyDir;
-  if (fs.existsSync(path.join(appDir, "package.json")) || fs.existsSync(path.join(appDir, "plugins"))) return appDir;
-  return "";
+  let kind = "";
+  let webDir = "";
+  if (fs.existsSync(path.join(appDir, "package.json")) && fs.existsSync(path.join(appDir, "src"))) {
+    kind = "app";
+    webDir = appDir;
+  } else if (fs.existsSync(path.join(legacyDir, "src")) || fs.existsSync(path.join(legacyDir, "plugins"))) {
+    kind = "legacy";
+    webDir = legacyDir;
+  } else if (fs.existsSync(path.join(appDir, "package.json")) || fs.existsSync(path.join(appDir, "plugins"))) {
+    kind = "app";
+    webDir = appDir;
+  }
+  if (!webDir) return { kind: "", webDir: "", pluginsDir: "", webSrc: "" };
+  return {
+    kind,
+    webDir,
+    pluginsDir: path.join(webDir, "plugins"),
+    webSrc: path.join(webDir, "src"),
+  };
+}
+
+function resolveWebDir(ctRoot) {
+  return detectWebLayout(ctRoot).webDir;
 }
 
 function alignInstalledPlugins(ctRoot) {
   const root = String(ctRoot || "").trim();
-  const web = resolveWebDir(root);
-  const webSrc = web ? path.join(web, "src") : "";
-  const plugins = web ? path.join(web, "plugins") : "";
+  const layout = detectWebLayout(root);
+  const web = layout.webDir;
+  const webSrc = layout.webSrc;
+  const plugins = layout.pluginsDir;
   if (!web || !fs.existsSync(webSrc) || !fs.existsSync(plugins)) {
     return { ok: true, changes: [], skipped: true };
   }
@@ -1195,8 +1331,14 @@ function alignInstalledPlugins(ctRoot) {
     if (!ent.isDirectory()) continue;
     changes.push(...alignPluginDir(path.join(plugins, ent.name), ctx));
   }
-  changes.push(...relaxHostPluginLint(web));
-  changes.push(...relaxHostPluginCheck(web));
+  const pluginNames = listInstalledPluginDirs(plugins);
+  if (layout.kind === "app") {
+    changes.push(...shieldAppPluginEslint(web, pluginNames));
+    changes.push(...shieldAppPluginTsconfig(web, pluginNames));
+  } else {
+    changes.push(...relaxHostPluginLint(web));
+    changes.push(...relaxHostPluginCheck(web));
+  }
   changes.push(...relaxMarketplaceServerRoutes(path.join(root, "api")));
   return { ok: true, changes };
 }
@@ -1249,6 +1391,10 @@ if (require.main === module) main();
 
 module.exports = {
   alignInstalledPlugins,
+  detectWebLayout,
+  listInstalledPluginDirs,
+  shieldAppPluginEslint,
+  shieldAppPluginTsconfig,
   readSubscriptionLoadKeys,
   hostHasMethod,
   parseObjectProperties,
