@@ -2168,6 +2168,7 @@ function setEditUserModalLoading(on) {
 
 function closeModal(){
   cancelGroupAutosave({ bumpEpoch: true });
+  if (editManagedPicker) editManagedPicker.close();
   modalOverlay.style.display = "none";
   document.body.classList.remove("noScroll");
   setEditUserModalLoading(false);
@@ -2181,7 +2182,14 @@ function closeModal(){
 
 closeBtn.onclick = closeModal;
 modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeModal(); });
-window.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalOverlay.style.display !== "none") closeModal(); });
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || modalOverlay.style.display === "none") return;
+  if (editManagedPicker && document.querySelector(".ma-multiselect-menu.is-open")) {
+    editManagedPicker.close();
+    return;
+  }
+  closeModal();
+});
 
 // Load templates & default groups for a specific agency suffix
 let agencyTemplatesCache = [];

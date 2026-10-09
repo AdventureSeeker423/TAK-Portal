@@ -3194,7 +3194,8 @@ a.settings-hub-card:visited {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ma-multiselect .filter-menu {
+.ma-multiselect .filter-menu,
+.ma-multiselect-menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -3212,15 +3213,19 @@ a.settings-hub-card:visited {
   padding: 0;
   display: none;
 }
-.ma-multiselect.open .filter-menu {
+.ma-multiselect.open .filter-menu,
+.ma-multiselect-menu.is-open {
   display: flex;
 }
-.ma-multiselect .filter-menu-inner {
+.ma-multiselect .filter-menu-inner,
+.ma-multiselect-menu .filter-menu-inner {
   padding: 8px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 .ma-multiselect-search {
   width: 100%;
@@ -3236,8 +3241,11 @@ a.settings-hub-card:visited {
   max-height: 200px;
   overflow-y: auto;
   overflow-x: hidden;
+  min-height: 0;
+  flex: 1 1 auto;
 }
-.ma-multiselect .filter-option {
+.ma-multiselect .filter-option,
+.ma-multiselect-menu .filter-option {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -3247,16 +3255,19 @@ a.settings-hub-card:visited {
   cursor: pointer;
   border-radius: 6px;
 }
-.ma-multiselect .filter-option:hover {
+.ma-multiselect .filter-option:hover,
+.ma-multiselect-menu .filter-option:hover {
   background: var(--hover);
 }
-.ma-multiselect .filter-option input[type="checkbox"] {
+.ma-multiselect .filter-option input[type="checkbox"],
+.ma-multiselect-menu .filter-option input[type="checkbox"] {
   margin: 0;
   flex-shrink: 0;
   width: 1.125em;
   height: 1.125em;
 }
-.ma-multiselect .filter-option span {
+.ma-multiselect .filter-option span,
+.ma-multiselect-menu .filter-option span {
   flex: 1;
   min-width: 0;
   text-align: left;

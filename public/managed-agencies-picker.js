@@ -1,6 +1,9 @@
 (function (global) {
   "use strict";
 
+  /** @type {Set<() => void>} */
+  const openClosers = new Set();
+
   function esc(s) {
     return String(s ?? "")
       .replace(/&/g, "&amp;")
@@ -60,8 +63,19 @@
     );
   }
 
+  function closeAllOpenMenus() {
+    Array.from(openClosers).forEach(function (close) {
+      try {
+        close();
+      } catch (_) {
+        /* ignore */
+      }
+    });
+  }
+
   /**
    * Compact checkbox dropdown for managed-agency selection.
+   * Menu is portaled to document.body while open so modal overflow:hidden cannot clip it.
    * @param {HTMLElement} root - element containing .ma-multiselect
    */
   function bindManagedAgenciesPicker(root, opts) {
@@ -73,10 +87,113 @@
     const selectAll = root.querySelector(".ma-multiselect-select-all");
     const clearBtn = root.querySelector(".ma-multiselect-clear");
     const summary = root.querySelector(".ma-multiselect-summary");
+    const menu = dropdown ? dropdown.querySelector(".filter-menu") : null;
     const inputName = opts.inputName || "managedAgencySuffix";
 
     let agencies = [];
     let selected = new Set();
+    let menuHomeParent = null;
+    let menuHomeNext = null;
+    let positionRaf = 0;
+    let isOpen = false;
+
+    function clearMenuPositionStyles() {
+      if (!menu) return;
+      menu.style.position = "";
+      menu.style.top = "";
+      menu.style.left = "";
+      menu.style.right = "";
+      menu.style.bottom = "";
+      menu.style.width = "";
+      menu.style.minWidth = "";
+      menu.style.maxHeight = "";
+      menu.style.zIndex = "";
+    }
+
+    function restoreMenuHome() {
+      if (!menu || !menuHomeParent) return;
+      if (menuHomeNext && menuHomeNext.parentNode === menuHomeParent) {
+        menuHomeParent.insertBefore(menu, menuHomeNext);
+      } else {
+        menuHomeParent.appendChild(menu);
+      }
+      menuHomeParent = null;
+      menuHomeNext = null;
+      clearMenuPositionStyles();
+    }
+
+    function positionMenu() {
+      if (!menu || !toggle || !isOpen) return;
+      const rect = toggle.getBoundingClientRect();
+      const gap = 4;
+      const viewportPad = 8;
+      const minWidth = Math.max(rect.width, 280);
+      const maxWidth = Math.min(minWidth, window.innerWidth - viewportPad * 2);
+      const spaceBelow = window.innerHeight - rect.bottom - gap - viewportPad;
+      const spaceAbove = rect.top - gap - viewportPad;
+      const preferUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+      const available = Math.max(120, preferUp ? spaceAbove : spaceBelow);
+      let left = rect.left;
+      if (left + maxWidth > window.innerWidth - viewportPad) {
+        left = Math.max(viewportPad, window.innerWidth - viewportPad - maxWidth);
+      }
+      if (left < viewportPad) left = viewportPad;
+
+      menu.style.position = "fixed";
+      menu.style.zIndex = "50000";
+      menu.style.left = left + "px";
+      menu.style.width = maxWidth + "px";
+      menu.style.minWidth = maxWidth + "px";
+      menu.style.right = "auto";
+      menu.style.maxHeight = Math.min(280, available) + "px";
+      if (preferUp) {
+        menu.style.top = "auto";
+        menu.style.bottom = window.innerHeight - rect.top + gap + "px";
+      } else {
+        menu.style.bottom = "auto";
+        menu.style.top = rect.bottom + gap + "px";
+      }
+    }
+
+    function schedulePositionMenu() {
+      if (positionRaf) cancelAnimationFrame(positionRaf);
+      positionRaf = requestAnimationFrame(function () {
+        positionRaf = 0;
+        positionMenu();
+      });
+    }
+
+    function closeMenu() {
+      if (!isOpen) return;
+      isOpen = false;
+      openClosers.delete(closeMenu);
+      if (dropdown) dropdown.classList.remove("open");
+      if (menu) menu.classList.remove("is-open");
+      restoreMenuHome();
+      window.removeEventListener("resize", schedulePositionMenu);
+      window.removeEventListener("scroll", schedulePositionMenu, true);
+      if (positionRaf) {
+        cancelAnimationFrame(positionRaf);
+        positionRaf = 0;
+      }
+    }
+
+    function openMenu() {
+      if (!dropdown || !menu || !toggle) return;
+      closeAllOpenMenus();
+      if (!menuHomeParent) {
+        menuHomeParent = menu.parentNode;
+        menuHomeNext = menu.nextSibling;
+      }
+      document.body.appendChild(menu);
+      dropdown.classList.add("open");
+      menu.classList.add("is-open");
+      isOpen = true;
+      openClosers.add(closeMenu);
+      positionMenu();
+      window.addEventListener("resize", schedulePositionMenu);
+      window.addEventListener("scroll", schedulePositionMenu, true);
+    }
 
     function sortedAgencies() {
       const source = typeof opts.getAgencies === "function" ? opts.getAgencies() : agencies;
@@ -190,10 +307,8 @@
     if (toggle && dropdown) {
       toggle.addEventListener("click", function (e) {
         e.stopPropagation();
-        document.querySelectorAll(".ma-multiselect.open").forEach(function (el) {
-          if (el !== dropdown) el.classList.remove("open");
-        });
-        dropdown.classList.toggle("open");
+        if (isOpen) closeMenu();
+        else openMenu();
       });
     }
 
@@ -237,8 +352,12 @@
       });
     }
 
-    const menu = dropdown ? dropdown.querySelector(".filter-menu") : null;
-    if (menu) menu.addEventListener("click", function (e) { e.stopPropagation(); });
+    if (menu) {
+      menu.classList.add("ma-multiselect-menu");
+      menu.addEventListener("click", function (e) {
+        e.stopPropagation();
+      });
+    }
 
     return {
       setAgencies: function (arr) {
@@ -246,19 +365,20 @@
         renderList();
       },
       setSelected: setSelected,
-      getSelected: function () { return new Set(selected); },
+      getSelected: function () {
+        return new Set(selected);
+      },
       getSelectedArray: getSelectedArray,
       getSelectedWithHomeArray: getSelectedWithHomeArray,
       refresh: renderList,
+      close: closeMenu,
     };
   }
 
   if (!global.__maMultiselectDocClick) {
     global.__maMultiselectDocClick = true;
     document.addEventListener("click", function () {
-      document.querySelectorAll(".ma-multiselect.open").forEach(function (el) {
-        el.classList.remove("open");
-      });
+      closeAllOpenMenus();
     });
   }
 
