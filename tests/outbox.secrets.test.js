@@ -39,9 +39,9 @@ const { handleOutboxRow } = require("../services/directorySync.service");
     db.query = async () => ({ rows: [{ last_error: "fixture failure", attempts: 1 }] });
     await assert.rejects(outbox.waitForOutbox(1, 10), /failed|retry|error/i);
   });
-  await check("pending outbox operation is not success", async () => {
+  await check("pending outbox operation times out softly", async () => {
     db.query = async () => ({ rows: [{ last_error: null, attempts: 0 }] });
-    await assert.rejects(outbox.waitForOutbox(1, 10), /pending|timed out/i);
+    assert.deepEqual(await outbox.waitForOutbox(1, 10), { done: false, timedOut: true });
   });
   await check("completed outbox operation still succeeds", async () => {
     db.query = async () => ({ rows: [] });

@@ -172,13 +172,29 @@ async function postReviewApproveHandler(req, res) {
     }
     payload.permissions = permRaw;
 
-    const result = await usersSvc.createUser(payload, {
-      createdBy: {
-        username: "request-access-review-link",
-        displayName: "Request Access Review Link",
-      },
-      creationMethod: "request_access_review_link",
-    });
+    let result;
+    try {
+      result = await usersSvc.createUser(payload, {
+        createdBy: {
+          username: "request-access-review-link",
+          displayName: "Request Access Review Link",
+        },
+        creationMethod: "request_access_review_link",
+      });
+    } catch (createErr) {
+      const msg = String(createErr?.message || createErr);
+      // Prior timeout left the account created but the request still pending.
+      if (/still pending|already exists/i.test(msg)) {
+        userRequestsSvc.deleteRequest(request.id);
+        return res.json({
+          success: true,
+          clearedPendingRequest: true,
+          syncPending: /still pending/i.test(msg),
+          warning: msg,
+        });
+      }
+      throw createErr;
+    }
 
     userRequestsSvc.deleteRequest(request.id);
 

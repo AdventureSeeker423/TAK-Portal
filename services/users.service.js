@@ -1524,13 +1524,15 @@ async function createUser(
     );
   });
 
+  let syncPending = false;
   if (wait) {
-    await authentikOutbox.waitForOutbox(outboxId, 8000);
+    const waited = await authentikOutbox.waitForOutbox(outboxId, 8000);
+    syncPending = !!(waited && waited.timedOut);
   }
 
   let user = await directoryRepo.getUserByUsername(username);
   invalidateUsersCache();
-  return { user, groups: groupsToApply };
+  return { user, groups: groupsToApply, syncPending };
 }
 
 /**
@@ -1600,13 +1602,15 @@ async function createDirectoryUser(
     );
   });
 
+  let syncPending = false;
   if (wait) {
-    await authentikOutbox.waitForOutbox(outboxId, 8000);
+    const waited = await authentikOutbox.waitForOutbox(outboxId, 8000);
+    syncPending = !!(waited && waited.timedOut);
   }
 
   invalidateUsersCache();
   const user = await directoryRepo.getUserByUsername(uname);
-  return { user, outboxId };
+  return { user, outboxId, syncPending };
 }
 
 const INTEGRATION_PREFIX = "nodered-";

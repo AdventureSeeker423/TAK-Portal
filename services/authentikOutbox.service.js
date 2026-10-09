@@ -65,7 +65,9 @@ async function waitForOutbox(id, timeoutMs = 8000) {
     }
     await new Promise((res) => setTimeout(res, 200));
   }
-  throw new Error("Authentik operation is still pending; check its status before retrying.");
+  // Local write already committed; Authentik sync continues in the worker.
+  // Callers should treat timedOut as soft success for create/update UX (e.g. clear pending requests).
+  return { done: false, timedOut: true };
 }
 
 async function pendingEntityKeys() {

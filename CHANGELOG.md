@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.8 - TBD
+🐛 `Bug Fix` - Fixes issue with Pending User Requests remaining on the list after Create User when Authentik sync takes longer than expected
+✨ `Enhancement` - Mutual Aid Incidents/Events/Standbys are in an "inactive" mode until a user enrolls with the one-time username.  The count of users on the mutual aid is reflected on the dashboard and Mutual Aid page.
+
 ### v2.0.7 - 9/25/26
 🐛 `Bug Fix` - Fixes issue with Data Sync missions created in TAK Portal not applying group and default role to TAK Server (subscribers could subscribe but not add content via send/lasso)
 

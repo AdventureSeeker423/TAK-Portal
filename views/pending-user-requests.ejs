@@ -1234,8 +1234,15 @@ th.sortable:hover{
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        const out = await res.json();
-        if (!res.ok) throw new Error(out.error?.message || out.error || 'Failed to create user');
+        const out = await res.json().catch(() => ({}));
+        const errMsg = out.error?.message || out.error || 'Failed to create user';
+        // Local create can succeed while Authentik sync is still queued; also clear
+        // orphaned requests left from earlier timeout failures (username already exists).
+        const softClear =
+          !!requestId &&
+          !res.ok &&
+          /still pending|already exists/i.test(String(errMsg));
+        if (!res.ok && !softClear) throw new Error(errMsg);
 
         if (requestId) {
           await fetch(
@@ -1244,9 +1251,21 @@ th.sortable:hover{
           );
         }
 
-        // Confirmation message
-        const createdUsername = out?.username || out?.badge || payload.badge || '';
-        setInlineMsg(msg, createdUsername ? `User created: ${createdUsername}` : 'User created.', true);
+        const createdUsername =
+          out?.user?.username || out?.username || out?.badge || payload.badge || '';
+        if (softClear && /already exists/i.test(String(errMsg))) {
+          setInlineMsg(msg, 'User already exists; pending request cleared.', true);
+        } else if (out?.syncPending) {
+          setInlineMsg(
+            msg,
+            createdUsername
+              ? `User created: ${createdUsername} (Authentik sync in progress)`
+              : 'User created (Authentik sync in progress).',
+            true
+          );
+        } else {
+          setInlineMsg(msg, createdUsername ? `User created: ${createdUsername}` : 'User created.', true);
+        }
         setListMsg('Request approved.', true);
 
         approveRow.remove();

@@ -136,7 +136,8 @@ async function handleOutboxRow(row) {
         const found = await repo.getGroupsByPks(groupPks);
         groups.push(...found);
       }
-      await sendOnboardingEmail(user, groups, !!payload.password);
+      // Do not block outbox completion on SMTP; pending-request UX waits on this row.
+      void sendOnboardingEmail(user, groups, !!payload.password);
     }
     return;
   }
