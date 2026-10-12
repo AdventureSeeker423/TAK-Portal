@@ -408,7 +408,7 @@ router.post("/", async (req, res) => {
     if (!allowedPerm.includes(permRaw)) {
       return res.status(400).json({ error: "Invalid permissions value." });
     }
-    if (requestedMultiAgencyAdmin && !authUser?.isGlobalAdmin) {
+    if (requestedMultiAgencyAdmin && !accessSvc.canAssignMultiAgencyAdmin(authUser)) {
       return res.status(403).json({ error: "You do not have permission to create Multi-Agency Admins." });
     }
     if (permRaw === "global_admin" && !authUser?.isGlobalAdmin) {
@@ -1032,11 +1032,23 @@ router.post("/:userId/portal-role", express.json({ limit: "1mb" }), async (req, 
 
     const target = await users.getUserById(userId);
     if (!target) return res.status(404).json({ error: "User not found." });
+    if (accessSvc.isSamePortalUser(actor, target)) {
+      return res.status(403).json({ error: "You cannot change your own permissions." });
+    }
 
     if (!actor.isGlobalAdmin && !accessSvc.isUserInAllowedAgencies(actor, target)) {
       return res.status(403).json({ error: "You do not have access to that user." });
     }
 
+    const { groupNames: currentGroupNames } = await loadGroupNamesForUserId(userId);
+    const currentRoles = authzRoles.computePortalRolesFromGroupNames(currentGroupNames);
+    if (!actor.isGlobalAdmin && currentRoles.isGlobalAdmin) {
+      return res.status(403).json({ error: "You cannot change a Global Admin's permissions." });
+    }
+    const currentManaged =
+      accessSvc.getManagedAgencySuffixesFromGroupNames(currentGroupNames);
+
+    let syncRole = desiredRole;
     let managedAgencySuffixes = [];
     if (desiredRole === "agency_admin") {
       const access = accessSvc.getAgencyAccess(actor);
@@ -1053,16 +1065,32 @@ router.post("/:userId/portal-role", express.json({ limit: "1mb" }), async (req, 
       } else {
         managedAgencySuffixes = resolveDefaultManagedSuffixesForUser(target);
       }
+      managedAgencySuffixes = accessSvc.mergeAssignableManagedAgencySuffixes(
+        actor,
+        managedAgencySuffixes,
+        currentManaged
+      );
       if (!managedAgencySuffixes.length) {
         return res.status(400).json({
           error:
             "Select at least one managed agency, or ensure the user has a home agency abbreviation.",
         });
       }
+    } else if (desiredRole === "user" && !actor.isGlobalAdmin) {
+      // Scoped admins may only remove agency-admin rights within their agencies.
+      const preserved = accessSvc.mergeAssignableManagedAgencySuffixes(
+        actor,
+        [],
+        currentManaged
+      );
+      if (preserved.length) {
+        syncRole = "agency_admin";
+        managedAgencySuffixes = preserved;
+      }
     }
 
     const delta = await accessSvc.syncPortalRoleGroups(userId, {
-      role: desiredRole,
+      role: syncRole,
       managedAgencySuffixes,
     });
 

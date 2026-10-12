@@ -517,6 +517,20 @@ function isUserInAllowedAgencies(authUser, targetUser) {
 }
 
 /**
+ * True when the signed-in actor is the same directory user as target.
+ * Prefer username (Authentik uid often does not match local pk).
+ */
+function isSamePortalUser(actor, target) {
+  const actorName = String(actor?.username || "").trim().toLowerCase();
+  const targetName = String(target?.username || "").trim().toLowerCase();
+  if (actorName && targetName && actorName === targetName) return true;
+
+  const actorId = String(actor?.uid || "").trim();
+  const targetPk = String(target?.pk ?? target?.id ?? "").trim();
+  return !!(actorId && targetPk && actorId === targetPk);
+}
+
+/**
  * Same as {@link isUserInAllowedAgencies} when only a username string is known
  * (e.g. TAK subscription rows). Uses username token at tail or prefix.
  */
@@ -975,6 +989,46 @@ function additionalManagedAgencySuffixes(rawSuffixes, userOrHomeSuffix) {
 }
 
 /**
+ * Combine an actor's in-scope managed-agency assignment with any current
+ * managed agencies outside that actor's scope (so scoped admins cannot strip
+ * rights they cannot see/assign).
+ */
+function mergeAssignableManagedAgencySuffixes(
+  actor,
+  requestedSuffixes,
+  currentManagedSuffixes
+) {
+  const access = getAgencyAccess(actor);
+  const requested = normalizeManagedAgencySuffixes(requestedSuffixes);
+  if (access.isGlobalAdmin) return requested;
+
+  const scope = new Set(
+    (access.allowedAgencySuffixes || []).map(normalizeSuffix).filter(Boolean)
+  );
+  const current = normalizeManagedAgencySuffixes(currentManagedSuffixes);
+  if (!scope.size) return current;
+
+  const inScopeRequested = requested.filter((s) => scope.has(s));
+  const preserved = current.filter((s) => !scope.has(s));
+  return normalizeManagedAgencySuffixes([...inScopeRequested, ...preserved]);
+}
+
+/**
+ * True when the actor may grant Multi-Agency Admin (global, or agency admin
+ * with more than one managed agency).
+ */
+function canAssignMultiAgencyAdmin(actor) {
+  if (!actor) return false;
+  if (actor.isGlobalAdmin) return true;
+  const access = getAgencyAccess(actor);
+  return (
+    !!access.isAgencyAdmin &&
+    Array.isArray(access.allowedAgencySuffixes) &&
+    access.allowedAgencySuffixes.length > 1
+  );
+}
+
+/**
  * Compute Authentik group add/remove sets for a portal role change.
  */
 function computePortalRoleGroupDelta({
@@ -1172,6 +1226,7 @@ module.exports = {
   filterAgenciesForUser,
   isSuffixAllowed,
   isUserInAllowedAgencies,
+  isSamePortalUser,
   isUsernameInAllowedAgencies,
   isUsernameInAllowedAgencySuffixes,
   compareAgencyResolutionToUsernameInference,
@@ -1195,6 +1250,8 @@ module.exports = {
   normalizeManagedAgencySuffixes,
   mergeManagedAgencySuffixesWithHome,
   additionalManagedAgencySuffixes,
+  mergeAssignableManagedAgencySuffixes,
+  canAssignMultiAgencyAdmin,
   computePortalRoleGroupDelta,
   syncPortalRoleGroups,
   getManagedAgencySuffixesFromGroupNames,

@@ -119,8 +119,10 @@
           <select name="permissions" id="createPermissionsSelect" aria-label="User permissions">
             <option value="user" selected>Standard User</option>
             <option value="agency_admin">Agency Admin</option>
-            <% if (isGlobalAdmin) { %>
+            <% if (isGlobalAdmin || (typeof isMultiAgencyAdmin !== "undefined" && isMultiAgencyAdmin)) { %>
               <option value="multi_agency_admin">Multi-Agency Admin</option>
+            <% } %>
+            <% if (isGlobalAdmin) { %>
               <option value="global_admin">Global Admin</option>
             <% } %>
           </select>
@@ -417,8 +419,10 @@
             <select id="permissionsSelect">
               <option value="user">Standard User</option>
               <option value="agency_admin">Agency Admin</option>
-              <% if (isGlobalAdmin) { %>
+              <% if (isGlobalAdmin || (typeof isMultiAgencyAdmin !== "undefined" && isMultiAgencyAdmin)) { %>
                 <option value="multi_agency_admin">Multi-Agency Admin</option>
+              <% } %>
+              <% if (isGlobalAdmin) { %>
                 <option value="global_admin">Global Admin</option>
               <% } %>
             </select>
@@ -597,7 +601,7 @@ function agenciesForManagedPicker() {
 
 function updateCreateManagedAgenciesVisibility() {
   const perm = String(createPermissionsSelect?.value || "user").trim().toLowerCase();
-  const show = perm === "multi_agency_admin" && IS_GLOBAL_ADMIN;
+  const show = perm === "multi_agency_admin" && CAN_ASSIGN_MULTI_AGENCY_ADMIN;
   if (createManagedAgenciesWrap) {
     createManagedAgenciesWrap.hidden = !show;
     createManagedAgenciesWrap.style.display = show ? "block" : "none";
@@ -971,7 +975,7 @@ form.onsubmit = async (e) => {
     payload.manualGroupIds = ids;
   }
 
-  if (payload.permissions === "multi_agency_admin" && IS_GLOBAL_ADMIN) {
+  if (payload.permissions === "multi_agency_admin" && CAN_ASSIGN_MULTI_AGENCY_ADMIN) {
     const home = getCreateHomeSuffix();
     const additional = getCreateManagedSuffixes();
     if (!home) {
@@ -983,7 +987,7 @@ form.onsubmit = async (e) => {
       return;
     }
     payload.managedAgencySuffixes = getCreateManagedSuffixesForSave();
-    payload.permissions = "agency_admin";
+    payload.permissions = "multi_agency_admin";
   } else if (payload.permissions === "agency_admin" && canAssignManagedAgencies()) {
     const suffixes = getCreateManagedSuffixesForSave();
     if (suffixes.length) payload.managedAgencySuffixes = suffixes;
@@ -1349,7 +1353,7 @@ function canAssignManagedAgenciesForEdit() {
 
 function permissionsUiFromManagedCount(hasAdmin, managedCount) {
   if (!hasAdmin) return "user";
-  if (IS_GLOBAL_ADMIN && managedCount > 1) return "multi_agency_admin";
+  if (CAN_ASSIGN_MULTI_AGENCY_ADMIN && managedCount > 1) return "multi_agency_admin";
   return "agency_admin";
 }
 
@@ -1362,7 +1366,10 @@ function permissionsBackendRole(uiRole) {
 }
 
 function showsEditManagedAgenciesPicker(uiRole) {
-  return IS_GLOBAL_ADMIN && String(uiRole || "").trim().toLowerCase() === "multi_agency_admin";
+  return (
+    CAN_ASSIGN_MULTI_AGENCY_ADMIN &&
+    String(uiRole || "").trim().toLowerCase() === "multi_agency_admin"
+  );
 }
 
 function agenciesForManagedPickerEdit() {
@@ -1397,6 +1404,7 @@ function getEditManagedSuffixesFromContainer() {
 
 async function saveEditManagedAgenciesAuto() {
   if (!selectedUser || editManagedSaveInflight) return;
+  if (isEditingOwnAccount(selectedUser)) return;
   if (!showsEditManagedAgenciesPicker(permissionsSelect?.value)) return;
 
   const home = editManagedHomeSuffix || getHomeSuffixForUser(selectedUser);
@@ -1453,6 +1461,7 @@ function scheduleEditManagedSave() {
 function updateEditManagedAgenciesVisibility() {
   const perm = String(permissionsSelect?.value || "user").trim().toLowerCase();
   const show = showsEditManagedAgenciesPicker(perm);
+  const lockedSelf = isEditingOwnAccount(selectedUser);
   if (editManagedAgenciesWrap) {
     editManagedAgenciesWrap.hidden = !show;
     editManagedAgenciesWrap.style.removeProperty("display");
@@ -1460,6 +1469,31 @@ function updateEditManagedAgenciesVisibility() {
   if (show) {
     initEditManagedPicker();
     if (editManagedPicker) editManagedPicker.setSelected(editManagedSuffixes, { silent: true });
+  }
+  const toggle = editManagedAgenciesWrap?.querySelector?.(".managedAgenciesBarToggle");
+  if (toggle) {
+    toggle.disabled = !!lockedSelf;
+    toggle.title = lockedSelf ? "You cannot change your own permissions." : "";
+  }
+}
+
+function updatePermissionsSelectLock() {
+  if (!permissionsSelect) return;
+  const lockedSelf = isEditingOwnAccount(selectedUser);
+  if (lockedSelf) {
+    permissionsSelect.disabled = true;
+    permissionsSelect.title = "You cannot change your own permissions.";
+    return;
+  }
+  permissionsSelect.title = "";
+  const hasAdmin = userHasAnyAgencyAdminGroup(selectedUser);
+  const abbrOk = !!String(getUserAgencyAbbreviation(selectedUser) || "").trim();
+  if (hasAdmin || abbrOk || IS_GLOBAL_ADMIN) {
+    permissionsSelect.disabled = false;
+  } else {
+    const canUse =
+      IS_GLOBAL_ADMIN && !!permissionsSelect.querySelector('option[value="global_admin"]');
+    permissionsSelect.disabled = !canUse;
   }
 }
 
@@ -1551,7 +1585,17 @@ const USERS_ACTIONS_HIDDEN_PREFIXES = String(USERS_ACTIONS_HIDDEN_PREFIXES_RAW |
 const IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
 const IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+const IS_MULTI_AGENCY_ADMIN = <%- JSON.stringify(!!(typeof isMultiAgencyAdmin !== "undefined" && isMultiAgencyAdmin)) %>;
+const CAN_ASSIGN_MULTI_AGENCY_ADMIN = IS_GLOBAL_ADMIN || IS_MULTI_AGENCY_ADMIN ||
+  (IS_AGENCY_ADMIN && Array.isArray(ALLOWED_AGENCY_SUFFIXES) && ALLOWED_AGENCY_SUFFIXES.length > 1);
+const CURRENT_USERNAME = <%- JSON.stringify(String((authUser && authUser.username) || "").trim().toLowerCase()) %>;
 const DATA_PACKAGE_AVAILABLE = <%- JSON.stringify(!!(typeof dataPackageAvailable !== "undefined" && dataPackageAvailable)) %>;
+
+function isEditingOwnAccount(user) {
+  const me = String(CURRENT_USERNAME || "").trim().toLowerCase();
+  const them = String(user?.username || "").trim().toLowerCase();
+  return !!(me && them && me === them);
+}
 
 // Global admin groups (loaded from settings.json via server render)
 const PORTAL_GLOBAL_ADMIN_GROUPS_RAW = <%- JSON.stringify(
@@ -2936,14 +2980,7 @@ window.editUser = async (userPk) => {
           : 0;
         permissionsSelect.value = permissionsUiFromManagedCount(hasAdmin, managedCount);
       }
-      const abbrOk = !!String(getUserAgencyAbbreviation(selectedUser) || "").trim();
-      if (hasAdmin || abbrOk || IS_GLOBAL_ADMIN) {
-        permissionsSelect.disabled = false;
-      } else {
-        const canUse =
-          IS_GLOBAL_ADMIN && !!permissionsSelect.querySelector('option[value="global_admin"]');
-        permissionsSelect.disabled = !canUse;
-      }
+      updatePermissionsSelectLock();
     }
 
     updateEditManagedAgenciesVisibility();
@@ -3010,8 +3047,9 @@ window.editUser = async (userPk) => {
           const hasGlobal = userHasAnyGroupId(selectedUser, globalIds);
           if (hasGlobal) {
             permissionsSelect.value = "global_admin";
-            permissionsSelect.disabled = false;
           }
+          updatePermissionsSelectLock();
+          updateEditManagedAgenciesVisibility();
         })
         .catch(() => {});
     }
@@ -3081,6 +3119,9 @@ async function applyRoleSelection({ silentSuccess = false } = {}) {
 // ---------- Permissions apply ----------
 async function applyPermissionsSelection({ silentSuccess = false } = {}) {
   if (!selectedUser) return;
+  if (isEditingOwnAccount(selectedUser)) {
+    return { ok: true, skipped: true };
+  }
   if (!permissionsSelect || permissionsSelect.disabled) {
     return { ok: true, skipped: true };
   }

@@ -113,6 +113,9 @@ router.post("/user-role/:userId", express.json({ limit: "1mb" }), async (req, re
 
     const target = await usersSvc.getUserById(userId);
     if (!target) return res.status(404).json({ error: "User not found." });
+    if (accessSvc.isSamePortalUser(actor, target)) {
+      return res.status(403).json({ error: "You cannot change your own permissions." });
+    }
 
     const { groupNames: currentGroupNames } = await loadGroupNamesForUserId(userId);
     const currentRoles = authzRoles.computePortalRolesFromGroupNames(currentGroupNames);
@@ -201,6 +204,12 @@ router.put("/managed-agencies/:userId", express.json({ limit: "1mb" }), async (r
 
     const target = await usersSvc.getUserById(userId);
     if (!target) return res.status(404).json({ error: "User not found." });
+    if (accessSvc.isSamePortalUser(actor, target)) {
+      return res.status(403).json({ error: "You cannot change your own permissions." });
+    }
+    if (!actor.isGlobalAdmin && !accessSvc.isUserInAllowedAgencies(actor, target)) {
+      return res.status(403).json({ error: "You do not have access to that user." });
+    }
 
     const { groupNames: beforeGroupNames } = await loadGroupNamesForUserId(userId);
     const beforeRoles = authzRoles.computePortalRolesFromGroupNames(beforeGroupNames);
@@ -222,6 +231,13 @@ router.put("/managed-agencies/:userId", express.json({ limit: "1mb" }), async (r
     managedAgencySuffixes = accessSvc.mergeManagedAgencySuffixesWithHome(
       managedAgencySuffixes,
       target
+    );
+    const currentManaged =
+      accessSvc.getManagedAgencySuffixesFromGroupNames(beforeGroupNames);
+    managedAgencySuffixes = accessSvc.mergeAssignableManagedAgencySuffixes(
+      actor,
+      managedAgencySuffixes,
+      currentManaged
     );
     if (!managedAgencySuffixes.length) {
       return res.status(400).json({ error: "Select at least one managed agency." });
