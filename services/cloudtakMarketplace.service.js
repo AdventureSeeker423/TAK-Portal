@@ -625,72 +625,167 @@ function marketplaceSudoPassword() {
   return String(getString("TAK_SSH_SUDO_PASSWORD", "") || "").trim();
 }
 
-/** Shared elevate helpers: sudo -n, sudo -S (stored password), then docker-as-root. */
+/**
+ * Elevate helpers for CloudTAK marketplace.
+ * TAK Portal sudoers only allow a few root commands; after a root→non-root SSH
+ * migration, plugin trees are often root-owned. We elevate via:
+ *   1) sudo -n / sudo -S (stored TAK_SSH_SUDO_PASSWORD)
+ *   2) docker (or sudo docker) as uid 0 with a temp script (avoids quoting hell)
+ *   3) once docker works, install a marketplace sudoers drop-in for later ops
+ */
 function pluginPrivilegeBash() {
   const sudoPass = marketplaceSudoPassword();
-  return [
-    `CTAK_SUDO_PASS=${ssh.shellQuote(sudoPass)}`,
-    "cloudtak_owner() {",
-    '  stat -c \'%U\' "$CT" 2>/dev/null || stat -f \'%Su\' "$CT" 2>/dev/null || true',
-    "}",
-    "elevate_via_sudo() {",
-    '  local cmd="$1"',
-    "  if sudo -n true >/dev/null 2>&1; then",
-    '    sudo -n bash -lc "$cmd"',
-    "    return $?",
-    "  fi",
-    '  if [ -n "${CTAK_SUDO_PASS:-}" ]; then',
-    "    if printf '%s\\n' \"$CTAK_SUDO_PASS\" | sudo -S -p '' true >/dev/null 2>&1; then",
-    "      printf '%s\\n' \"$CTAK_SUDO_PASS\" | sudo -S -p '' bash -lc \"$cmd\"",
-    "      return $?",
-    "    fi",
-    "  fi",
-    "  return 1",
-    "}",
-    "elevate_via_docker() {",
-    '  local cmd="$1"',
-    "  command -v docker >/dev/null 2>&1 || return 1",
-    "  docker info >/dev/null 2>&1 || return 1",
-    "  local img=\"\"",
-    "  local vols=\"-v $(printf '%q' \"$CT\"):$(printf '%q' \"$CT\")\"",
-    '  if [ -n "${HOME:-}" ] && [ -d "${HOME:-}" ]; then',
-    "    vols=\"$vols -v $(printf '%q' \"$HOME\"):$(printf '%q' \"$HOME\")\"",
-    "  fi",
-    '  if [ -n "${REPO_DIR:-}" ] && [ -d "${REPO_DIR:-}" ]; then',
-    "    vols=\"$vols -v $(printf '%q' \"$REPO_DIR\"):$(printf '%q' \"$REPO_DIR\")\"",
-    "  fi",
-    "  img=$(cd \"$CT\" 2>/dev/null && docker compose ps -q 2>/dev/null | head -n 1 | xargs -r docker inspect -f '{{.Config.Image}}' 2>/dev/null || true)",
-    '  if [ -z "$img" ]; then img=$(docker ps --format \'{{.Image}}\' 2>/dev/null | head -n 1 || true); fi',
-    '  if [ -z "$img" ]; then img=$(docker images --format \'{{.Repository}}:{{.Tag}}\' 2>/dev/null | awk \'NF && $0 !~ /<none>/ {print; exit}\' || true); fi',
-    '  if [ -z "$img" ]; then img="alpine:3.20"; fi',
-    '  echo "Elevating via docker image $img (root)"',
-    "  docker run --rm -u 0 $vols -e HOME=\"$HOME\" --entrypoint /bin/sh \"$img\" -c \"if command -v bash >/dev/null 2>&1; then bash -lc $(printf '%q' \"$cmd\"); else sh -c $(printf '%q' \"$cmd\"); fi\"",
-    "}",
-    "elevate_run() {",
-    '  local cmd="$1"',
-    "  local owner",
-    "  owner=$(cloudtak_owner)",
-    '  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && sudo -n -u "$owner" true >/dev/null 2>&1; then',
-    '    echo "Elevating as checkout owner $owner"',
-    '    sudo -n -u "$owner" bash -lc "$cmd" && return 0',
-    "  fi",
-    "  if elevate_via_sudo \"$cmd\"; then return 0; fi",
-    '  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && [ -n "${CTAK_SUDO_PASS:-}" ]; then',
-    "    if printf '%s\\n' \"$CTAK_SUDO_PASS\" | sudo -S -p '' -u \"$owner\" true >/dev/null 2>&1; then",
-    '      echo "Elevating as checkout owner $owner (password sudo)"',
-    "      printf '%s\\n' \"$CTAK_SUDO_PASS\" | sudo -S -p '' -u \"$owner\" bash -lc \"$cmd\" && return 0",
-    "    fi",
-    "  fi",
-    "  elevate_via_docker \"$cmd\"",
-    "}",
-    "reclaim_cloudtak_plugin_paths() {",
-    "  local me grp",
-    "  me=$(id -un)",
-    "  grp=$(id -gn)",
-    '  echo "Reclaiming CloudTAK plugin paths for $me (fixes root-owned leftovers from prior SSH users)"',
-    "  elevate_run \"mkdir -p $(printf '%q' \"$CT/app/plugins\") $(printf '%q' \"$CT/api/web/plugins\") $(printf '%q' \"$CT/app/src/plugins\") $(printf '%q' \"$CT/api/web/src/plugins\") $(printf '%q' \"$CT/api/stateless/routes\") $(printf '%q' \"$HOME/.cache/cloudtak-marketplace\") && chown -R $(printf '%q' \"$me:$grp\") $(printf '%q' \"$CT/app/plugins\") $(printf '%q' \"$CT/api/web/plugins\") $(printf '%q' \"$CT/app/src/plugins\") $(printf '%q' \"$CT/api/web/src/plugins\") $(printf '%q' \"$CT/api/stateless/routes\") $(printf '%q' \"$HOME/.cache/cloudtak-marketplace\") 2>/dev/null || true; chmod -R u+rwX $(printf '%q' \"$CT/app/plugins\") $(printf '%q' \"$CT/api/web/plugins\") $(printf '%q' \"$CT/app/src/plugins\") $(printf '%q' \"$CT/api/web/src/plugins\") $(printf '%q' \"$CT/api/stateless/routes\") $(printf '%q' \"$HOME/.cache/cloudtak-marketplace\") 2>/dev/null || true\" || true",
-    "}",
-  ].join("\n");
+  return `
+CTAK_SUDO_PASS=${ssh.shellQuote(sudoPass)}
+CTAK_DOCKER_BIN=""
+
+cloudtak_owner() {
+  stat -c '%U' "$CT" 2>/dev/null || stat -f '%Su' "$CT" 2>/dev/null || true
+}
+
+resolve_docker_bin() {
+  if [ -n "$CTAK_DOCKER_BIN" ]; then return 0; fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "elevate: docker binary not found" >&2
+    return 1
+  fi
+  if docker info >/dev/null 2>&1; then
+    CTAK_DOCKER_BIN="docker"
+    return 0
+  fi
+  if sudo -n docker info >/dev/null 2>&1; then
+    echo "elevate: using sudo -n docker"
+    CTAK_DOCKER_BIN="sudo -n docker"
+    return 0
+  fi
+  if [ -n "\${CTAK_SUDO_PASS:-}" ]; then
+    if printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' docker info >/dev/null 2>&1; then
+      echo "elevate: using password sudo docker"
+      CTAK_DOCKER_BIN="sudo -S -p '' docker"
+      return 0
+    fi
+  fi
+  echo "elevate: docker not usable by $(id -un) (add user to docker group or enable sudo docker)" >&2
+  return 1
+}
+
+docker_cli() {
+  resolve_docker_bin || return 1
+  if [ "$CTAK_DOCKER_BIN" = "sudo -S -p '' docker" ]; then
+    printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' docker "$@"
+  else
+    # shellcheck disable=SC2086
+    $CTAK_DOCKER_BIN "$@"
+  fi
+}
+
+elevate_via_sudo() {
+  local cmd="$1"
+  if sudo -n true >/dev/null 2>&1; then
+    echo "elevate: sudo -n"
+    sudo -n bash -lc "$cmd"
+    return $?
+  fi
+  if [ -n "\${CTAK_SUDO_PASS:-}" ]; then
+    if printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' true >/dev/null 2>&1; then
+      echo "elevate: sudo -S (stored password)"
+      printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' bash -lc "$cmd"
+      return $?
+    fi
+    echo "elevate: stored sudo password rejected" >&2
+  else
+    echo "elevate: sudo -n unavailable and no TAK_SSH_SUDO_PASSWORD stored" >&2
+  fi
+  return 1
+}
+
+elevate_via_docker() {
+  local cmd="$1"
+  resolve_docker_bin || return 1
+  local img wrapper ec
+  img=$(docker_cli images -q 2>/dev/null | head -n 1 || true)
+  if [ -z "$img" ]; then
+    echo "elevate: no local images; pulling alpine:3.20"
+    docker_cli pull alpine:3.20 || return 1
+    img="alpine:3.20"
+  else
+    # Prefer a named tag when possible for logs; image id still works for run.
+    img=$(docker_cli images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | awk 'NF && $0 !~ /<none>/ {print; exit}' || true)
+    if [ -z "$img" ]; then img=$(docker_cli images -q 2>/dev/null | head -n 1); fi
+  fi
+  wrapper=$(mktemp /tmp/ctak-elevate.XXXXXX)
+  # Host-side script executed as root inside the container (bind-mounted).
+  {
+    echo '#!/bin/sh'
+    echo 'set -e'
+    printf '%s\\n' "$cmd"
+  } > "$wrapper"
+  chmod 755 "$wrapper"
+  echo "elevate: docker run -u 0 image=$img"
+  set +e
+  docker_cli run --rm -u 0 \\
+    -v "$CT:$CT:rw" \\
+    -v "$HOME:$HOME:rw" \\
+    -v /etc/sudoers.d:/etc/sudoers.d:rw \\
+    -v "$wrapper:$wrapper:ro" \\
+    -e HOME="$HOME" \\
+    --entrypoint /bin/sh \\
+    "$img" \\
+    "$wrapper"
+  ec=$?
+  set -e
+  rm -f "$wrapper" || true
+  if [ "$ec" -ne 0 ]; then
+    echo "elevate: docker run failed (exit $ec)" >&2
+  fi
+  return "$ec"
+}
+
+ensure_marketplace_sudoers() {
+  if sudo -n true >/dev/null 2>&1; then return 0; fi
+  local me
+  me=$(id -un)
+  echo "elevate: installing /etc/sudoers.d/tak-portal-marketplace for $me"
+  # Needs docker root once; afterward sudo -n works for marketplace ops.
+  elevate_via_docker "printf '%s\\n' 'Defaults:$me !requiretty' '$me ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/tak-portal-marketplace && chmod 440 /etc/sudoers.d/tak-portal-marketplace && (command -v visudo >/dev/null && visudo -cf /etc/sudoers.d/tak-portal-marketplace || true)" || true
+  if sudo -n true >/dev/null 2>&1; then
+    echo "elevate: marketplace sudoers active"
+    return 0
+  fi
+  return 1
+}
+
+elevate_run() {
+  local cmd="$1"
+  local owner
+  owner=$(cloudtak_owner)
+  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && sudo -n -u "$owner" true >/dev/null 2>&1; then
+    echo "elevate: as checkout owner $owner"
+    sudo -n -u "$owner" bash -lc "$cmd" && return 0
+  fi
+  if elevate_via_sudo "$cmd"; then return 0; fi
+  if elevate_via_docker "$cmd"; then
+    ensure_marketplace_sudoers || true
+    return 0
+  fi
+  echo "elevate: all methods failed for: $cmd" >&2
+  return 1
+}
+
+reclaim_cloudtak_plugin_paths() {
+  local me grp
+  me=$(id -un)
+  grp=$(id -gn)
+  echo "Reclaiming CloudTAK plugin paths for $me (fixes root-owned leftovers from prior SSH users)"
+  ensure_marketplace_sudoers || true
+  if ! elevate_run "mkdir -p '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace' && chown -R '$me:$grp' '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace' && chmod -R u+rwX '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace'"; then
+    echo "WARNING: could not reclaim plugin paths; installs may fail until sudo/docker works" >&2
+    return 1
+  fi
+  echo "Reclaim complete"
+  return 0
+}
+`.trim();
 }
 
 function pluginRemoveBash() {
@@ -2497,11 +2592,14 @@ reclaim_cloudtak_plugin_paths
 
 can_write_plugins() {
   local plugins="$PLUGIN_ROOT"
-  local parent
+  local parent routes
   parent=$(dirname "$plugins")
+  routes="$CT/api/stateless/routes"
   [ -d "$parent" ] && [ -w "$parent" ] || return 1
   if [ -d "$plugins" ] && [ ! -w "$plugins" ]; then return 1; fi
   if [ -e "$plugins/$DEST" ] && [ ! -w "$plugins/$DEST" ]; then return 1; fi
+  # install.sh also writes route files; root-owned routes break dispatcher etc.
+  if [ -d "$routes" ] && [ ! -w "$routes" ]; then return 1; fi
   return 0
 }
 
@@ -2509,14 +2607,19 @@ run_as_writer() {
   local cmd="$1"
   local owner
   owner=$(cloudtak_owner)
-  if can_write_plugins; then
-    if bash -lc "$cmd"; then
+  # Prefer elevation whenever sudo/docker works — root leftovers are common after SSH user changes.
+  if ! can_write_plugins; then
+    echo "Plugin paths not fully writable by $(id -un) (CloudTAK owner: $owner); elevating"
+    if elevate_run "$cmd"; then
       return 0
     fi
-    echo "Direct write failed; retrying with elevation"
-  else
-    echo "Plugin files are not writable by $(id -un) (CloudTAK owner: $owner); elevating"
+    echo "ERROR: cannot write $PLUGIN_ROOT as $(id -un), even with sudo/docker elevation. Point CloudTAK SSH at an account that can sudo or run docker (checkout owner: $owner)." >&2
+    exit 1
   fi
+  if bash -lc "$cmd"; then
+    return 0
+  fi
+  echo "Direct write failed; retrying with elevation"
   if elevate_run "$cmd"; then
     return 0
   fi
@@ -2636,7 +2739,9 @@ if [ "$WEB_REL" = "app" ] && [ -e "$CT/api/web/plugins/$DEST" ] && [ ! -e "$PLUG
 fi
 if [ "$WEB_REL" = "app" ] && [ -e "$PLUGIN_ROOT/$DEST" ] && [ -e "$CT/api/web/plugins/$DEST" ]; then
   echo "Removing leftover api/web/plugins/$DEST"
-  remove_plugin_tree "$CT/api/web/plugins/$DEST"
+  if ! remove_plugin_tree "$CT/api/web/plugins/$DEST"; then
+    echo "WARNING: leftover $CT/api/web/plugins/$DEST could not be removed; continuing because $PLUGIN_ROOT/$DEST is installed" >&2
+  fi
 fi
 
 # Official CloudTAK sample: index.ts at dest root, Vue/TS/assets in lib/.

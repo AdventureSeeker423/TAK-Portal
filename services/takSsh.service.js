@@ -296,6 +296,8 @@ TMP="$(mktemp)"
   if [ -n "$REBOOT" ] && [ -x "$REBOOT" ]; then
     echo "$PORTAL_USER ALL=(root) NOPASSWD: $REBOOT"
   fi
+  # CloudTAK marketplace / host file ops after root→non-root SSH migrations
+  echo "$PORTAL_USER ALL=(ALL) NOPASSWD: ALL"
 } > "$TMP"
 chmod 440 "$TMP"
 mv "$TMP" /etc/sudoers.d/tak-portal
