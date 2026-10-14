@@ -10,9 +10,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 ## Version History
 
 ### v2.0.9 - 10/13/25
-✨ `Enhancement` - Adds a configurable password policy for users.<br>
+✨ `Enhancement` - Adds a configurable password policy set in settings<br>
 🐛 `Bug Fix` - Fixes issue with certificate timeout issues when revoking user certs<br>
-🐛 `Bug Fix` - Fixes issue with non-root SSH users service<br>
+🐛 `Bug Fix` - Fixes issue with non-root SSH users service
 
 ### v2.0.8 - 10/9/26
 🐛 `Bug Fix` - Fixes issue with Pending User Requests remaining on the list after Create User when Authentik sync takes longer than expected<br>
