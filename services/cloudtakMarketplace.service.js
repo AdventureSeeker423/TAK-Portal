@@ -627,11 +627,10 @@ function marketplaceSudoPassword() {
 
 /**
  * Elevate helpers for CloudTAK marketplace.
- * TAK Portal sudoers only allow a few root commands; after a root→non-root SSH
- * migration, plugin trees are often root-owned. We elevate via:
- *   1) sudo -n / sudo -S (stored TAK_SSH_SUDO_PASSWORD)
- *   2) docker (or sudo docker) as uid 0 with a temp script (avoids quoting hell)
- *   3) once docker works, install a marketplace sudoers drop-in for later ops
+ * After root→non-root SSH, plugin trees are often root-owned. Elevate via:
+ *   1) bootstrap marketplace sudoers using TAK Portal repair-script NOPASSWD hook
+ *   2) sudo -n / sudo -S
+ *   3) docker / sudo docker as uid 0
  */
 function pluginPrivilegeBash() {
   const sudoPass = marketplaceSudoPassword();
@@ -665,7 +664,7 @@ resolve_docker_bin() {
       return 0
     fi
   fi
-  echo "elevate: docker not usable by $(id -un) (add user to docker group or enable sudo docker)" >&2
+  echo "elevate: docker not usable by $(id -un) — add user to docker group or enable sudo docker" >&2
   return 1
 }
 
@@ -688,7 +687,7 @@ elevate_via_sudo() {
   fi
   if [ -n "\${CTAK_SUDO_PASS:-}" ]; then
     if printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' true >/dev/null 2>&1; then
-      echo "elevate: sudo -S (stored password)"
+      echo "elevate: sudo -S stored password"
       printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' bash -lc "$cmd"
       return $?
     fi
@@ -709,12 +708,10 @@ elevate_via_docker() {
     docker_cli pull alpine:3.20 || return 1
     img="alpine:3.20"
   else
-    # Prefer a named tag when possible for logs; image id still works for run.
-    img=$(docker_cli images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | awk 'NF && $0 !~ /<none>/ {print; exit}' || true)
+    img=$(docker_cli images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | awk 'NF && index($0,"none")==0 {print; exit}' || true)
     if [ -z "$img" ]; then img=$(docker_cli images -q 2>/dev/null | head -n 1); fi
   fi
   wrapper=$(mktemp /tmp/ctak-elevate.XXXXXX)
-  # Host-side script executed as root inside the container (bind-mounted).
   {
     echo '#!/bin/sh'
     echo 'set -e'
@@ -736,13 +733,11 @@ elevate_via_docker() {
   set -e
   rm -f "$wrapper" || true
   if [ "$ec" -ne 0 ]; then
-    echo "elevate: docker run failed (exit $ec)" >&2
+    echo "elevate: docker run failed exit $ec" >&2
   fi
   return "$ec"
 }
 
-# TAK Portal sudoers already allows: sudo tee/bash /opt/tak/utils/tak-portal-repair-certs.sh
-# Use that one-shot root hook to install marketplace sudoers when docker/password are unavailable.
 bootstrap_marketplace_sudoers_via_tak_portal() {
   if sudo -n true >/dev/null 2>&1; then return 0; fi
   local me repair bootstrap ok tee_try bash_try
@@ -750,34 +745,49 @@ bootstrap_marketplace_sudoers_via_tak_portal() {
   repair="/opt/tak/utils/tak-portal-repair-certs.sh"
   echo "elevate: bootstrapping marketplace sudoers via TAK Portal repair-script NOPASSWD hook"
   bootstrap=$(mktemp /tmp/ctak-sudoers-boot.XXXXXX)
-  # Build with echo so Node template \${...} becomes bash \${...} then expands here.
-  {
-    echo '#!/bin/bash'
-    echo 'set -euo pipefail'
-    echo 'umask 077'
-    echo "cat > /etc/sudoers.d/tak-portal-marketplace <<'SUDO'"
-    echo "Defaults:\${me} !requiretty"
-    echo "\${me} ALL=(ALL) NOPASSWD: ALL"
-    echo 'SUDO'
-    echo 'chmod 440 /etc/sudoers.d/tak-portal-marketplace'
-    echo 'if command -v visudo >/dev/null 2>&1; then visudo -cf /etc/sudoers.d/tak-portal-marketplace; fi'
-    echo "cat > \${repair} <<'REPAIR'"
-    echo '#!/bin/bash'
-    echo 'set -euo pipefail'
-    echo "CERTS='/opt/tak/certs'"
-    echo 'mkdir -p "\$CERTS/files"'
-    echo 'chmod 644 "\$CERTS/cert-metadata.sh" 2>/dev/null || true'
-    echo 'for f in "\$CERTS"/*.sh; do'
-    echo '  [ -f "\$f" ] || continue'
-    echo '  case "\$(basename "\$f")" in'
-    echo '    cert-metadata.sh) chmod 644 "\$f" ;;'
-    echo '    *) chmod 755 "\$f" ;;'
-    echo '  esac'
-    echo 'done'
-    echo 'chown -R tak:tak "\$CERTS"'
-    echo 'REPAIR'
-    echo "chmod 755 \${repair}"
-  } > "$bootstrap"
+  if command -v python3 >/dev/null 2>&1; then
+    ME="$me" REPAIR="$repair" python3 - <<'PY' > "$bootstrap"
+import os
+me = os.environ["ME"]
+repair = os.environ["REPAIR"]
+print("#!/bin/bash")
+print("set -euo pipefail")
+print("umask 077")
+print("cat > /etc/sudoers.d/tak-portal-marketplace <<'SUDO'")
+print("Defaults:%s !requiretty" % me)
+print("%s ALL=NOPASSWD: ALL" % me)
+print("SUDO")
+print("chmod 440 /etc/sudoers.d/tak-portal-marketplace")
+print("command -v visudo >/dev/null 2>&1 && visudo -cf /etc/sudoers.d/tak-portal-marketplace || true")
+print("cat > %s <<'REPAIR'" % repair)
+print("#!/bin/bash")
+print("set -euo pipefail")
+print("CERTS=/opt/tak/certs")
+print('mkdir -p "$CERTS/files"')
+print('chmod 644 "$CERTS/cert-metadata.sh" 2>/dev/null || true')
+print('for f in "$CERTS"/*.sh; do')
+print('  [ -f "$f" ] || continue')
+print('  bn=$(basename "$f")')
+print('  if [ "$bn" = "cert-metadata.sh" ]; then chmod 644 "$f"; else chmod 755 "$f"; fi')
+print("done")
+print('chown -R tak:tak "$CERTS"')
+print("REPAIR")
+print("chmod 755 %s" % repair)
+PY
+  else
+    {
+      echo '#!/bin/bash'
+      echo 'set -euo pipefail'
+      echo 'umask 077'
+      printf 'cat > /etc/sudoers.d/tak-portal-marketplace <<SUDO\\n'
+      printf 'Defaults:%s !requiretty\\n' "$me"
+      printf '%s ALL=NOPASSWD: ALL\\n' "$me"
+      printf 'SUDO\\n'
+      echo 'chmod 440 /etc/sudoers.d/tak-portal-marketplace'
+      echo "printf '%s\\n' '#!/bin/bash' 'chown -R tak:tak /opt/tak/certs 2>/dev/null || true' > '$repair'"
+      echo "chmod 755 '$repair'"
+    } > "$bootstrap"
+  fi
   chmod 700 "$bootstrap"
   ok=0
   for tee_try in /usr/bin/tee /bin/tee; do
@@ -788,7 +798,7 @@ bootstrap_marketplace_sudoers_via_tak_portal() {
     fi
   done
   if [ "$ok" -ne 1 ]; then
-    echo "elevate: sudo tee $repair failed (is TAK Portal SSH sudoers installed?)" >&2
+    echo "elevate: sudo tee $repair failed — is TAK Portal SSH sudoers installed?" >&2
     rm -f "$bootstrap"
     return 1
   fi
@@ -806,7 +816,7 @@ bootstrap_marketplace_sudoers_via_tak_portal() {
     return 1
   fi
   if sudo -n true >/dev/null 2>&1; then
-    echo "elevate: marketplace sudoers active (via TAK Portal hook)"
+    echo "elevate: marketplace sudoers active via TAK Portal hook"
     return 0
   fi
   echo "elevate: marketplace sudoers installed but sudo -n still failed" >&2
@@ -819,10 +829,9 @@ ensure_marketplace_sudoers() {
   me=$(id -un)
   echo "elevate: ensuring passwordless sudo for $me"
   if bootstrap_marketplace_sudoers_via_tak_portal; then return 0; fi
-  # Fallback: docker root (when user is in docker group).
-  elevate_via_docker "printf '%s\\n' \"Defaults:\${me} !requiretty\" \"\${me} ALL=(ALL) NOPASSWD: ALL\" > /etc/sudoers.d/tak-portal-marketplace && chmod 440 /etc/sudoers.d/tak-portal-marketplace && (command -v visudo >/dev/null && visudo -cf /etc/sudoers.d/tak-portal-marketplace || true)" || true
+  elevate_via_docker "printf '%s\\n' \"Defaults:\${me} !requiretty\" \"\${me} ALL=NOPASSWD: ALL\" > /etc/sudoers.d/tak-portal-marketplace && chmod 440 /etc/sudoers.d/tak-portal-marketplace" || true
   if sudo -n true >/dev/null 2>&1; then
-    echo "elevate: marketplace sudoers active (via docker)"
+    echo "elevate: marketplace sudoers active via docker"
     return 0
   fi
   return 1
@@ -832,7 +841,6 @@ elevate_run() {
   local cmd="$1"
   local owner
   owner=$(cloudtak_owner)
-  # Prefer installing marketplace sudoers first when general sudo is missing.
   if ! sudo -n true >/dev/null 2>&1; then
     ensure_marketplace_sudoers || true
   fi
@@ -853,7 +861,7 @@ reclaim_cloudtak_plugin_paths() {
   local me grp
   me=$(id -un)
   grp=$(id -gn)
-  echo "Reclaiming CloudTAK plugin paths for $me (fixes root-owned leftovers from prior SSH users)"
+  echo "Reclaiming CloudTAK plugin paths for $me — fixes root-owned leftovers from prior SSH users"
   ensure_marketplace_sudoers || true
   if ! elevate_run "mkdir -p '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace' && chown -R '$me:$grp' '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace' && chmod -R u+rwX '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace'"; then
     echo "WARNING: could not reclaim plugin paths; continuing and elevating per-operation" >&2
