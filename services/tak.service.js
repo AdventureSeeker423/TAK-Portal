@@ -23,6 +23,7 @@
  *
  * Optional:
  *   TAK_CA_PATH                   PEM CA bundle
+ *   TAK_CERT_LIST_TIMEOUT_MS      timeout for cert catalog GETs (default 60000)
  *
  * Notes:
  * - For P12 parsing, install:
@@ -35,8 +36,16 @@ const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const axios = require("axios");
-const { getBool, getString } = require("./env");
+const { getBool, getInt, getString } = require("./env");
 const { attachCookieStore, getSharedTakCookieStore } = require("./takHttpSession");
+
+/** Full cert catalogs can exceed the default 5s Marti axios timeout on busy servers. */
+const DEFAULT_CERT_LIST_TIMEOUT_MS = 60_000;
+
+function getCertListTimeoutMs() {
+  const n = getInt("TAK_CERT_LIST_TIMEOUT_MS", DEFAULT_CERT_LIST_TIMEOUT_MS);
+  return Math.max(5_000, n || DEFAULT_CERT_LIST_TIMEOUT_MS);
+}
 
 // IMPORTANT: env.js reads from settingsStore first, then process.env.
 // We need the same behavior here, but ALSO need to support empty string
@@ -337,11 +346,35 @@ function buildTakAxios(options = {}) {
   return withDefaultTimeout(client, options.timeout);
 }
 
+function formatCertListFailure(url, err) {
+  const status = err?.response?.status;
+  if (status) {
+    let body = err.response?.data;
+    if (body != null && typeof body === "object") {
+      try {
+        body = JSON.stringify(body);
+      } catch (_) {
+        body = String(body);
+      }
+    } else if (body != null) {
+      body = String(body);
+    }
+    const clipped = body ? String(body).replace(/\s+/g, " ").trim().slice(0, 240) : "";
+    return clipped ? `${url} (HTTP ${status}: ${clipped})` : `${url} (HTTP ${status})`;
+  }
+  const code = err?.code ? `${err.code}: ` : "";
+  return `${url} (${code}${err?.message || String(err)})`;
+}
+
 /**
  * Generic "all certs" list.
- * GET /api/certadmin/cert
+ * Tries /api/certadmin/cert, /all, then /list. First HTTP success wins.
  *
- * Returns { ok, list, url }.
+ * Uses a longer per-request timeout than the default Marti client (5s) so a slow
+ * catalog does not abort before a working candidate can return. A 500 from one
+ * candidate does not block trying the others.
+ *
+ * Returns { ok, list, url, failures? }.
  * - ok=true when any candidate returned HTTP success (including an empty catalog)
  * - ok=false when every candidate failed (network/HTTP error)
  */
@@ -352,28 +385,29 @@ async function getAllCerts(client, TAK_DEBUG) {
     "/api/certadmin/cert/list",
   ];
 
+  const timeout = getCertListTimeoutMs();
   const failures = [];
 
   for (const url of candidates) {
     try {
-      const res = await client.get(url);
+      const res = await client.get(url, { timeout });
       const list = unwrapTakList(res.data);
-      if (TAK_DEBUG) console.log(`[TAK CERT LIST] ${url} -> ${list.length}`);
+      if (TAK_DEBUG) console.log(`[TAK CERT LIST] ${url} -> ${list.length} (timeout=${timeout}ms)`);
       // A successful response (even with 0 certs) is a valid answer on a fresh system.
-      return { ok: true, list, url };
+      return { ok: true, list, url, failures };
     } catch (e) {
-      const detail = e.response?.status || e.message || String(e);
-      failures.push(`${url} (${detail})`);
-      if (TAK_DEBUG) {
-        console.log(`[TAK CERT LIST] ${url} not available (${detail})`);
-      }
+      const detail = formatCertListFailure(url, e);
+      failures.push(detail);
+      // Per-candidate noise (e.g. expected 404 on /all) stays behind TAK_DEBUG.
+      // Status/body are retained in `failures` for the final warn and revoke errors.
+      if (TAK_DEBUG) console.warn(`[TAK CERT LIST] ${detail}`);
     }
   }
 
   console.warn(
     `[TAK CERT LIST] Unable to list certificates; all candidates failed: ${failures.join("; ")}`
   );
-  return { ok: false, list: [], url: null };
+  return { ok: false, list: [], url: null, failures };
 }
 
 function isExpiredGeneric(cert) {
@@ -647,8 +681,9 @@ async function revokeCertsForUsersBulk(usernames, options = {}) {
   const certCatalog = await getAllCerts(client, TAK_DEBUG);
   if (!certCatalog.ok) {
     if (requireVerified) {
+      const detail = (certCatalog.failures || []).join("; ") || "all candidates failed";
       throw new Error(
-        "TAK: Unable to list certificates from /api/certadmin/cert; refusing to proceed."
+        `TAK: Unable to list certificates; refusing to proceed (${detail}).`
       );
     }
     return {
@@ -733,8 +768,9 @@ async function revokeCertsForUser(username, options = {}) {
   const certCatalog = await getAllCerts(client, TAK_DEBUG);
   if (!certCatalog.ok) {
     if (requireVerified) {
+      const detail = (certCatalog.failures || []).join("; ") || "all candidates failed";
       throw new Error(
-        "TAK: Unable to list certificates from /api/certadmin/cert; refusing to proceed."
+        `TAK: Unable to list certificates; refusing to proceed (${detail}).`
       );
     }
     return { revoked: 0, attempted: 0, skipped: false, verified: false };
