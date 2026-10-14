@@ -16,6 +16,7 @@
         <button type="button" class="btn mp-filter-btn" id="mpFilterAvailable" data-mp-filter="available">Available</button>
         <button type="button" class="btn mp-filter-btn" id="mpFilterNew" data-mp-filter="new">New</button>
         <button type="button" class="btn mp-filter-btn" id="mpFilterInstalled" data-mp-filter="installed">Installed</button>
+        <button type="button" class="btn" id="mpCheckUpdates">Check for Updates</button>
         <button type="button" class="btn qr" id="mpUpdateAll" style="display:none;">Queue All Updates</button>
       </div>
     </div>
@@ -785,6 +786,11 @@
     $("mpUpdateAll").style.display = hasUpdates ? "" : "none";
     $("mpUpdateAll").disabled = jobBusy || !canUpdateAll;
     $("mpUpdateAll").title = jobBusy ? WAIT_HINT : "";
+    var checkBtn = $("mpCheckUpdates");
+    if (checkBtn && !checkBtn.dataset.checking) {
+      checkBtn.disabled = false;
+      checkBtn.title = "";
+    }
   }
 
   function jobMatchesPlugin(j, p) {
@@ -1076,6 +1082,40 @@
     });
   });
   $("mpSearch").addEventListener("input", renderCards);
+  $("mpCheckUpdates").addEventListener("click", function () {
+    var btn = $("mpCheckUpdates");
+    if (!btn || btn.disabled || btn.dataset.checking) return;
+    btn.dataset.checking = "1";
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    setMsg("Checking catalog and installed plugins for updates…");
+    fetch("/api/cloudtak-marketplace/check-updates", {
+      method: "POST",
+      headers: { Accept: "application/json" }
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok && j.ok, json: j }; }); })
+      .then(function (out) {
+        if (!out.ok) {
+          setMsg((out.json && out.json.error) || "Update check failed", true);
+          return;
+        }
+        var n = out.json && out.json.updates;
+        var note = typeof n === "number"
+          ? (n ? (n + " update" + (n === 1 ? "" : "s") + " available.") : "All installed plugins are up to date.")
+          : "Update check complete.";
+        if (out.json && out.json.error) note += " (" + out.json.error + ")";
+        setMsg(note);
+        return loadAll();
+      })
+      .catch(function (err) {
+        setMsg(err.message || "Update check failed", true);
+      })
+      .finally(function () {
+        delete btn.dataset.checking;
+        btn.disabled = false;
+        btn.textContent = "Check for Updates";
+      });
+  });
   $("mpUpdateAll").addEventListener("click", function () {
     if (jobBusy || $("mpUpdateAll").disabled) return;
     postJob({ kind: "update-all" }).then(function (out) {

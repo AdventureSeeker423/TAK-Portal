@@ -307,6 +307,30 @@ router.post("/catalog/refresh", async (req, res) => {
   }
 });
 
+router.post("/check-updates", async (req, res) => {
+  try {
+    if (!marketplace.isEnabled()) {
+      return res.status(400).json({ ok: false, error: "CloudTAK marketplace is not enabled." });
+    }
+    const catalog = await marketplace.fetchCatalog();
+    const scan = await marketplace.scanHost();
+    const byId = await marketplace.refreshShaCache();
+    marketplace.refreshUiSnapshot();
+    const updates = Object.values(byId || {}).filter((row) => row && row.updateAvailable).length;
+    const plugins = byId ? Object.keys(byId).length : 0;
+    res.json({
+      ok: true,
+      updates,
+      plugins,
+      catalogOk: !!catalog.ok,
+      scanOk: !!scan.ok,
+      error: catalog.ok && scan.ok ? undefined : (scan.message || catalog.message || "Partial check completed."),
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 router.post("/ssh/setup", async (req, res) => {
   try {
     const body = req.body || {};
