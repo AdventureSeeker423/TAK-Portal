@@ -382,13 +382,6 @@
   #mpDeployBtn:disabled:hover {
     filter: none;
   }
-  .mp-wait-note {
-    width: 100%;
-    margin: 0;
-    font-size: 0.8rem;
-    line-height: 1.35;
-    color: var(--muted, #6b7280);
-  }
   .mp-banner.wait {
     border-color: #6b7280;
     background: color-mix(in srgb, #6b7280 12%, transparent);
@@ -647,10 +640,6 @@
     $("mpBanners").innerHTML = html;
   }
 
-  function disabledAction(label, extraClass) {
-    return '<button type="button" class="btn mp-wait-btn' + (extraClass ? " " + extraClass : "") + '" disabled>' + label + "</button>";
-  }
-
   function renderCards() {
     var q = ($("mpSearch").value || "").trim().toLowerCase();
     var list = plugins.filter(matchesFilter).filter(function (p) {
@@ -681,16 +670,7 @@
       var actions = "";
       var canReinstall = !!p.error && !p.unknown;
       if (jobBusy) {
-        if (progress) {
-          actions = disabledAction(progress);
-        } else if (p.installed || p.unknown || p.error) {
-          if (canReinstall) actions += disabledAction("Reinstall");
-          else if (!p.unknown) actions += disabledAction("Update");
-          actions += disabledAction("Uninstall");
-        } else {
-          actions = disabledAction("Install");
-        }
-        if (!progress) actions += '<p class="mp-wait-note">' + WAIT_HINT + ".</p>";
+        actions = "";
       } else if (p.unknown) {
         if (staged && staged.kind === "uninstall") {
           actions = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
@@ -783,13 +763,16 @@
       var s = stagedForPlugin(p);
       return !s || s.kind !== "update";
     });
-    $("mpUpdateAll").style.display = hasUpdates ? "" : "none";
-    $("mpUpdateAll").disabled = jobBusy || !canUpdateAll;
-    $("mpUpdateAll").title = jobBusy ? WAIT_HINT : "";
+    $("mpUpdateAll").style.display = hasUpdates && !jobBusy ? "" : "none";
+    $("mpUpdateAll").disabled = !canUpdateAll;
+    $("mpUpdateAll").title = "";
     var checkBtn = $("mpCheckUpdates");
-    if (checkBtn && !checkBtn.dataset.checking) {
-      checkBtn.disabled = false;
-      checkBtn.title = "";
+    if (checkBtn) {
+      checkBtn.style.display = jobBusy ? "none" : "";
+      if (!checkBtn.dataset.checking) {
+        checkBtn.disabled = false;
+        checkBtn.title = "";
+      }
     }
   }
 
@@ -1084,7 +1067,7 @@
   $("mpSearch").addEventListener("input", renderCards);
   $("mpCheckUpdates").addEventListener("click", function () {
     var btn = $("mpCheckUpdates");
-    if (!btn || btn.disabled || btn.dataset.checking) return;
+    if (!btn || jobBusy || btn.disabled || btn.dataset.checking) return;
     btn.dataset.checking = "1";
     btn.disabled = true;
     btn.textContent = "Checking…";
