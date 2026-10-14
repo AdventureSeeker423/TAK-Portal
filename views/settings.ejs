@@ -3719,7 +3719,7 @@
               });
             %>
             <% if (!sshPrivilegedReadyForClients) { %>
-              <p class="settings-help" style="margin:0.5rem 0 0;">Complete SSH Generate Key + Handshake under Connection &amp; Certificates with an account that can sudo before enabling Data Package.</p>
+              <p id="allowedClientDataPackageSshHint" class="settings-help" style="margin:0.5rem 0 0;">Complete SSH setup (or Test Connection) under Connection &amp; Certificates with an account that can sudo before enabling Data Package.</p>
             <% } %>
             <input type="hidden" name="settings[ALLOWED_CLIENT_RECOMMENDED_PC]" value="<%= recommendedPc %>" data-allowed-client-recommended-input="pc" />
             <input type="hidden" name="settings[ALLOWED_CLIENT_ORDER_PC]" value="<%= pcOrder.join(',') %>" data-allowed-client-order-input="pc" />
@@ -5816,6 +5816,19 @@
       return data;
     }
 
+    function unlockDataPackageAfterPrivilegedSsh() {
+      var item = document.querySelector(
+        '[data-allowed-client-section="pc"][data-allowed-client-app="data_package"][data-allowed-client-locked]'
+      );
+      if (!item) return;
+      item.classList.remove("is-disabled");
+      item.removeAttribute("data-allowed-client-locked");
+      var toggle = item.querySelector("[data-settings-bool-toggle]");
+      if (toggle) toggle.disabled = false;
+      var hint = document.getElementById("allowedClientDataPackageSshHint");
+      if (hint) hint.style.display = "none";
+    }
+
     if (btnSetup) {
       btnSetup.addEventListener("click", async function () {
         const host = (hostInput && hostInput.value || "").trim();
@@ -5843,6 +5856,9 @@
           });
           if (passInput) passInput.value = "";
           lastSshTestPassed = !!data.testPassed;
+          if (data.testPassed || data.privilegedOk || data.privilegedReady) {
+            unlockDataPackageAfterPrivilegedSsh();
+          }
           setStatus(formatSshTestSuccess(data), false);
         } catch (err) {
           lastSshTestPassed = false;
@@ -5860,6 +5876,9 @@
           setStatus("Testing SSH login and privileged access (CoreConfig read)…", false);
           const data = await postJson("/api/ssh/test-connection", {});
           lastSshTestPassed = !!data.testPassed;
+          if (data.testPassed || data.privilegedOk || data.privilegedReady) {
+            unlockDataPackageAfterPrivilegedSsh();
+          }
           setStatus(formatSshTestSuccess(data), false);
         } catch (err) {
           lastSshTestPassed = false;

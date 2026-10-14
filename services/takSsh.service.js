@@ -232,6 +232,15 @@ async function getPrivilegedMode(connectConfig, { forceRefresh = false } = {}) {
       });
       mode = await probePrivilegedMode(connectConfig);
     }
+  } else if (!sudoersConfigured && mode.mode === "nopasswd") {
+    // Passwordless sudo/dzdo already works (installer or hand-written sudoers).
+    // Persist so sync gates like isPrivilegedSshReady() unlock Data Package without
+    // requiring Portal to have installed /etc/sudoers.d/tak-portal itself.
+    const current = settingsSvc.getSettings() || {};
+    settingsSvc.saveSettings({
+      ...current,
+      TAK_SSH_SUDOERS_CONFIGURED: "true",
+    });
   }
 
   privilegedModeCache = { key, mode };
@@ -759,7 +768,8 @@ function getTakSshConfig() {
 
 /**
  * Sync check: SSH key login is configured AND privileged access is expected to work
- * (passwordless sudoers installed, stored sudo password, or root SSH user).
+ * (passwordless sudoers confirmed — by Portal install or a live nopasswd probe —
+ * stored sudo password, or root SSH user).
  * Used to gate features that need sudo (e.g. enrollment Data Package truststore fetch).
  */
 function isPrivilegedSshReady(settings) {
