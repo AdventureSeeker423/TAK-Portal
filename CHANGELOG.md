@@ -9,7 +9,10 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
-### v2.0.9 - 10/13/25
+### v2.0.10 - 10/13/26
+🐛 `Bug Fix` - Fixes issue with plugin sync no longer reporting success when APKs fail to copy
+
+### v2.0.9 - 10/13/26
 ✨ `Enhancement` - Adds a configurable password policy set in settings<br>
 🐛 `Bug Fix` - Fixes issue with certificate timeout issues when revoking user certs<br>
 🐛 `Bug Fix` - Fixes issue with non-root SSH users service
