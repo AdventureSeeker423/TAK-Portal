@@ -2996,6 +2996,7 @@ function rebuildRemoteScript(ct, service) {
 set -euo pipefail
 CT=${ssh.shellQuote(ct)}
 SVC=${ssh.shellQuote(service || "api")}
+${pluginPrivilegeBash()}
 cd "$CT"
 CF=""
 if [ -f docker-compose.yml ]; then CF=docker-compose.yml
@@ -3004,6 +3005,8 @@ elif [ -f compose.yml ]; then CF=compose.yml
 elif [ -f compose.yaml ]; then CF=compose.yaml
 else echo "No compose file in $CT" >&2; exit 1
 fi
+# Ensure passwordless sudo / sudo docker before align + compose (takwerx has no docker group).
+ensure_marketplace_sudoers || true
 # A plugin copied earlier can still fail vue-tsc and block this rebuild.
 ${pluginHostAlignRunnerBash()}
 align_plugins_to_host "$CT"
@@ -3015,6 +3018,7 @@ fi
 export BUILDKIT_PROGRESS=plain
 export COMPOSE_ANSI=never
 export COMPOSE_PROGRESS=plain
+# docker() is shadowed by pluginPrivilegeBash to use sudo -n docker when needed.
 docker compose --progress=plain -f "$CF" $MPF build --no-cache "$SVC"
 echo "CloudTAK image build finished."
 docker compose --progress=plain -f "$CF" $MPF up -d --force-recreate "$SVC"
