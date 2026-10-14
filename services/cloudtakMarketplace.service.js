@@ -621,6 +621,78 @@ function pluginLayoutBash() {
   ].join("\n");
 }
 
+function marketplaceSudoPassword() {
+  return String(getString("TAK_SSH_SUDO_PASSWORD", "") || "").trim();
+}
+
+/** Shared elevate helpers: sudo -n, sudo -S (stored password), then docker-as-root. */
+function pluginPrivilegeBash() {
+  const sudoPass = marketplaceSudoPassword();
+  return [
+    `CTAK_SUDO_PASS=${ssh.shellQuote(sudoPass)}`,
+    "cloudtak_owner() {",
+    '  stat -c \'%U\' "$CT" 2>/dev/null || stat -f \'%Su\' "$CT" 2>/dev/null || true',
+    "}",
+    "elevate_via_sudo() {",
+    '  local cmd="$1"',
+    "  if sudo -n true >/dev/null 2>&1; then",
+    '    sudo -n bash -lc "$cmd"',
+    "    return $?",
+    "  fi",
+    '  if [ -n "${CTAK_SUDO_PASS:-}" ]; then',
+    "    if printf '%s\\n' \"$CTAK_SUDO_PASS\" | sudo -S -p '' true >/dev/null 2>&1; then",
+    "      printf '%s\\n' \"$CTAK_SUDO_PASS\" | sudo -S -p '' bash -lc \"$cmd\"",
+    "      return $?",
+    "    fi",
+    "  fi",
+    "  return 1",
+    "}",
+    "elevate_via_docker() {",
+    '  local cmd="$1"',
+    "  command -v docker >/dev/null 2>&1 || return 1",
+    "  docker info >/dev/null 2>&1 || return 1",
+    "  local img=\"\"",
+    "  local vols=\"-v $(printf '%q' \"$CT\"):$(printf '%q' \"$CT\")\"",
+    '  if [ -n "${HOME:-}" ] && [ -d "${HOME:-}" ]; then',
+    "    vols=\"$vols -v $(printf '%q' \"$HOME\"):$(printf '%q' \"$HOME\")\"",
+    "  fi",
+    '  if [ -n "${REPO_DIR:-}" ] && [ -d "${REPO_DIR:-}" ]; then',
+    "    vols=\"$vols -v $(printf '%q' \"$REPO_DIR\"):$(printf '%q' \"$REPO_DIR\")\"",
+    "  fi",
+    "  img=$(cd \"$CT\" 2>/dev/null && docker compose ps -q 2>/dev/null | head -n 1 | xargs -r docker inspect -f '{{.Config.Image}}' 2>/dev/null || true)",
+    '  if [ -z "$img" ]; then img=$(docker ps --format \'{{.Image}}\' 2>/dev/null | head -n 1 || true); fi',
+    '  if [ -z "$img" ]; then img=$(docker images --format \'{{.Repository}}:{{.Tag}}\' 2>/dev/null | awk \'NF && $0 !~ /<none>/ {print; exit}\' || true); fi',
+    '  if [ -z "$img" ]; then img="alpine:3.20"; fi',
+    '  echo "Elevating via docker image $img (root)"',
+    "  docker run --rm -u 0 $vols -e HOME=\"$HOME\" --entrypoint /bin/sh \"$img\" -c \"if command -v bash >/dev/null 2>&1; then bash -lc $(printf '%q' \"$cmd\"); else sh -c $(printf '%q' \"$cmd\"); fi\"",
+    "}",
+    "elevate_run() {",
+    '  local cmd="$1"',
+    "  local owner",
+    "  owner=$(cloudtak_owner)",
+    '  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && sudo -n -u "$owner" true >/dev/null 2>&1; then',
+    '    echo "Elevating as checkout owner $owner"',
+    '    sudo -n -u "$owner" bash -lc "$cmd" && return 0',
+    "  fi",
+    "  if elevate_via_sudo \"$cmd\"; then return 0; fi",
+    '  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && [ -n "${CTAK_SUDO_PASS:-}" ]; then',
+    "    if printf '%s\\n' \"$CTAK_SUDO_PASS\" | sudo -S -p '' -u \"$owner\" true >/dev/null 2>&1; then",
+    '      echo "Elevating as checkout owner $owner (password sudo)"',
+    "      printf '%s\\n' \"$CTAK_SUDO_PASS\" | sudo -S -p '' -u \"$owner\" bash -lc \"$cmd\" && return 0",
+    "    fi",
+    "  fi",
+    "  elevate_via_docker \"$cmd\"",
+    "}",
+    "reclaim_cloudtak_plugin_paths() {",
+    "  local me grp",
+    "  me=$(id -un)",
+    "  grp=$(id -gn)",
+    '  echo "Reclaiming CloudTAK plugin paths for $me (fixes root-owned leftovers from prior SSH users)"',
+    "  elevate_run \"mkdir -p $(printf '%q' \"$CT/app/plugins\") $(printf '%q' \"$CT/api/web/plugins\") $(printf '%q' \"$CT/app/src/plugins\") $(printf '%q' \"$CT/api/web/src/plugins\") $(printf '%q' \"$CT/api/stateless/routes\") $(printf '%q' \"$HOME/.cache/cloudtak-marketplace\") && chown -R $(printf '%q' \"$me:$grp\") $(printf '%q' \"$CT/app/plugins\") $(printf '%q' \"$CT/api/web/plugins\") $(printf '%q' \"$CT/app/src/plugins\") $(printf '%q' \"$CT/api/web/src/plugins\") $(printf '%q' \"$CT/api/stateless/routes\") $(printf '%q' \"$HOME/.cache/cloudtak-marketplace\") 2>/dev/null || true; chmod -R u+rwX $(printf '%q' \"$CT/app/plugins\") $(printf '%q' \"$CT/api/web/plugins\") $(printf '%q' \"$CT/app/src/plugins\") $(printf '%q' \"$CT/api/web/src/plugins\") $(printf '%q' \"$CT/api/stateless/routes\") $(printf '%q' \"$HOME/.cache/cloudtak-marketplace\") 2>/dev/null || true\" || true",
+    "}",
+  ].join("\n");
+}
+
 function pluginRemoveBash() {
   return [
     "remove_plugin_tree() {",
@@ -634,28 +706,9 @@ function pluginRemoveBash() {
     "  esac",
     '  if rm -rf "$target" 2>/dev/null && [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
     '  if [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
-    '  echo "Removing $target as another user (not writable by $(id -un))"',
-    "  local owner img q",
-    "  owner=$(stat -c '%U' \"$CT\" 2>/dev/null || stat -f '%Su' \"$CT\" 2>/dev/null || true)",
-    '  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && sudo -n -u "$owner" true >/dev/null 2>&1; then',
-    '    echo "Removing as $owner"',
-    '    if sudo -n -u "$owner" rm -rf "$target" && [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
-    "  fi",
-    "  if sudo -n true >/dev/null 2>&1; then",
-    '    echo "Removing with sudo"',
-    '    if sudo -n rm -rf "$target" && [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
-    "  fi",
-    '  img=""',
-    "  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then",
-    "    img=$(cd \"$CT\" && docker compose ps -q 2>/dev/null | head -n 1 | xargs -r docker inspect -f '{{.Config.Image}}' 2>/dev/null || true)",
-    "    if [ -z \"$img\" ]; then",
-    "      img=$(docker ps --format '{{.Image}}' 2>/dev/null | head -n 1 || true)",
-    "    fi",
-    "  fi",
-    '  if [ -n "$img" ]; then',
-    '    echo "Removing via docker image $img (root)"',
-    "    q=$(printf '%q' \"$target\")",
-    '    docker run --rm -u 0 -v "$CT:$CT" --entrypoint /bin/sh "$img" -c "rm -rf $q" || true',
+    '  echo "Removing $target with elevated privileges (not writable by $(id -un))"',
+    "  if declare -F elevate_run >/dev/null 2>&1; then",
+    '    elevate_run "rm -rf $(printf \'%q\' "$target")" || true',
     "  fi",
     '  if [ -e "$target" ] || [ -L "$target" ]; then',
     '    echo "ERROR: cannot remove $target as $(id -un)." >&2',
@@ -2422,7 +2475,11 @@ git_ok() {
 reset_cache() {
   rm -rf "$CACHE" 2>/dev/null || true
   if [ -e "$CACHE" ]; then
-    sudo -n rm -rf "$CACHE" 2>/dev/null || true
+    if declare -F elevate_run >/dev/null 2>&1; then
+      elevate_run "rm -rf $(printf '%q' "$CACHE")" || true
+    else
+      sudo -n rm -rf "$CACHE" 2>/dev/null || true
+    fi
   fi
   if [ -e "$CACHE" ]; then
     echo "ERROR: cannot replace plugin cache $CACHE (owned by another user)." >&2
@@ -2430,15 +2487,13 @@ reset_cache() {
   fi
 }
 
-cloudtak_owner() {
-  stat -c '%U' "$CT" 2>/dev/null || stat -f '%Su' "$CT" 2>/dev/null || true
-}
-
 ${pluginLayoutBash()}
+${pluginPrivilegeBash()}
 ${pluginRemoveBash()}
 WEB_REL=$(cloudtak_web_rel "$CT")
 PLUGIN_ROOT="$CT/$WEB_REL/plugins"
 echo "CloudTAK plugin directory: $PLUGIN_ROOT"
+reclaim_cloudtak_plugin_paths
 
 can_write_plugins() {
   local plugins="$PLUGIN_ROOT"
@@ -2452,42 +2507,20 @@ can_write_plugins() {
 
 run_as_writer() {
   local cmd="$1"
-  if can_write_plugins; then
-    bash -lc "$cmd"
-    return 0
-  fi
   local owner
   owner=$(cloudtak_owner)
-  echo "Plugin files are not writable by $(id -un) (CloudTAK owner: $owner)"
-  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && sudo -n -u "$owner" true >/dev/null 2>&1; then
-    echo "Running installer as $owner"
-    sudo -n -u "$owner" bash -lc "$cmd"
-    return 0
-  fi
-  if sudo -n true >/dev/null 2>&1; then
-    echo "Running installer with sudo"
-    sudo -n bash -lc "$cmd"
-    return 0
-  fi
-  local img=""
-  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    img=$(cd "$CT" && docker compose ps -q 2>/dev/null | head -n 1 | xargs -r docker inspect -f '{{.Config.Image}}' 2>/dev/null || true)
-    if [ -z "$img" ]; then
-      img=$(docker ps --format '{{.Image}}' 2>/dev/null | head -n 1 || true)
+  if can_write_plugins; then
+    if bash -lc "$cmd"; then
+      return 0
     fi
+    echo "Direct write failed; retrying with elevation"
+  else
+    echo "Plugin files are not writable by $(id -un) (CloudTAK owner: $owner); elevating"
   fi
-  if [ -n "$img" ]; then
-    echo "Writing plugin files via docker image $img (root)"
-    docker run --rm -u 0 \
-      -v "$REPO_DIR:$REPO_DIR" \
-      -v "$CT:$CT" \
-      -w "$REPO_DIR" \
-      --entrypoint /bin/sh \
-      "$img" \
-      -c "if command -v bash >/dev/null 2>&1; then bash -lc $(printf '%q' "$cmd"); else sh -c $(printf '%q' "$cmd"); fi"
+  if elevate_run "$cmd"; then
     return 0
   fi
-  echo "ERROR: cannot write $PLUGIN_ROOT as $(id -un). Point CloudTAK SSH at the account that owns that checkout (likely $owner)." >&2
+  echo "ERROR: cannot write $PLUGIN_ROOT as $(id -un), even with sudo/docker elevation. Point CloudTAK SSH at an account that can sudo or run docker (checkout owner: $owner)." >&2
   exit 1
 }
 
@@ -2656,9 +2689,11 @@ ID=${ssh.shellQuote(id)}
 CT_COMPOSE_SVC=${ssh.shellQuote(apiSvc)}
 if [ -z "$ID" ]; then ID="$DEST"; fi
 ${pluginLayoutBash()}
+${pluginPrivilegeBash()}
 WEB_REL=$(cloudtak_web_rel "$CT")
 PLUGIN_ROOT="$CT/$WEB_REL/plugins"
 echo "CloudTAK plugin directory: $PLUGIN_ROOT"
+reclaim_cloudtak_plugin_paths
 ${pluginRemoveBash()}
 ${pluginRuntimeCleanupBash()}
 ${pluginCspBash()}
@@ -2674,9 +2709,16 @@ if [ -n "$ID" ]; then
     flags="--remove"
     if grep -q -- '--no-build' "$CACHE/install.sh"; then flags="$flags --no-build"; fi
     echo "Found install.sh; running: bash ./install.sh $flags $CT"
-    ( cd "$CACHE" && bash ./install.sh $flags "$CT" ) || echo "install.sh --remove did not finish cleanly"
+    if declare -F elevate_run >/dev/null 2>&1; then
+      elevate_run "cd $(printf '%q' "$CACHE") && bash ./install.sh $flags $(printf '%q' "$CT")" || echo "install.sh --remove did not finish cleanly"
+    else
+      ( cd "$CACHE" && bash ./install.sh $flags "$CT" ) || echo "install.sh --remove did not finish cleanly"
+    fi
   fi
-  rm -rf "$HOME/.cache/cloudtak-marketplace/$ID" || true
+  rm -rf "$HOME/.cache/cloudtak-marketplace/$ID" 2>/dev/null || true
+  if [ -e "$HOME/.cache/cloudtak-marketplace/$ID" ] && declare -F elevate_run >/dev/null 2>&1; then
+    elevate_run "rm -rf $(printf '%q' "$HOME/.cache/cloudtak-marketplace/$ID")" || true
+  fi
   rm -f /tmp/ctak-marketplace-excludes-$ID || true
 fi
 TARGET="$PLUGIN_ROOT/$DEST"
