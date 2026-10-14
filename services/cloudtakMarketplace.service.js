@@ -729,9 +729,11 @@ elevate_via_docker() {
   chmod 755 "$wrapper"
   echo "elevate: docker run -u 0 image=$img"
   set +e
+  # Mount /tmp so elevate_run can see marketplace align/patch scripts written there.
   docker_cli run --rm -u 0 \\
     -v "$CT:$CT:rw" \\
     -v "$HOME:$HOME:rw" \\
+    -v /tmp:/tmp:rw \\
     -v /etc/sudoers.d:/etc/sudoers.d:rw \\
     -v "$wrapper:$wrapper:ro" \\
     -e HOME="$HOME" \\
@@ -872,7 +874,9 @@ reclaim_cloudtak_plugin_paths() {
   grp=$(id -gn)
   echo "Reclaiming CloudTAK plugin paths for $me — fixes root-owned leftovers from prior SSH users"
   ensure_marketplace_sudoers || true
-  if ! elevate_run "mkdir -p '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace' && chown -R '$me:$grp' '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace' && chmod -R u+rwX '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$HOME/.cache/cloudtak-marketplace'"; then
+  # Include cloudtak-marketplace-plugins (runtime persist) and plugin compose overlays —
+  # prior root SSH installs leave those root-owned and break takwerx rm/cp.
+  if ! elevate_run "mkdir -p '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$CT/cloudtak-marketplace-plugins' '$HOME/.cache/cloudtak-marketplace' && chown -R '$me:$grp' '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$CT/cloudtak-marketplace-plugins' '$HOME/.cache/cloudtak-marketplace' && chmod -R u+rwX '$CT/app/plugins' '$CT/api/web/plugins' '$CT/app/src/plugins' '$CT/api/web/src/plugins' '$CT/api/stateless/routes' '$CT/cloudtak-marketplace-plugins' '$HOME/.cache/cloudtak-marketplace' && { chown '$me:$grp' '$CT'/docker-compose.plugin-*.yml '$CT'/docker-compose.marketplace.yml 2>/dev/null || true; }"; then
     echo "WARNING: could not reclaim plugin paths; continuing and elevating per-operation" >&2
     return 0
   fi
@@ -2375,9 +2379,17 @@ function pluginRuntimeCleanupBash() {
     '      echo "Pruning unused Docker images"',
     "      docker image prune -f || true",
     "    fi",
-    '    rm -f "$OVERRIDE" || true',
+    '    if rm -f "$OVERRIDE" 2>/dev/null; then :; elif declare -F elevate_run >/dev/null 2>&1; then',
+    '      elevate_run "rm -f $(printf \'%q\' "$OVERRIDE")" || true',
+    "    fi",
     "  fi",
-    '  rm -rf "$PERSIST_DIR" || true',
+    '  if [ -e "$PERSIST_DIR" ] || [ -L "$PERSIST_DIR" ]; then',
+    '    if rm -rf "$PERSIST_DIR" 2>/dev/null && [ ! -e "$PERSIST_DIR" ]; then :; elif declare -F elevate_run >/dev/null 2>&1; then',
+    '      elevate_run "rm -rf $(printf \'%q\' "$PERSIST_DIR")" || true',
+    "    else",
+    '      rm -rf "$PERSIST_DIR" || true',
+    "    fi",
+    "  fi",
     "  return 0",
     "}",
   ].join("\n");
@@ -2422,10 +2434,23 @@ function pluginRuntimeExtrasBash() {
     'PERSIST="$STACK/cloudtak-marketplace-plugins/$plugin_id"',
     'REL="cloudtak-marketplace-plugins/$plugin_id"',
     'echo "Persisting plugin runtime files to $PERSIST"',
-    'rm -rf "$PERSIST" || true',
-    'mkdir -p "$PERSIST"',
-    'cp -a "$repo_dir/." "$PERSIST/"',
-    'rm -rf "$PERSIST/.git" "$PERSIST/.ctak-normalize-plugin.sh" "$PERSIST/.ctak-runtime-plugin.sh" || true',
+    'persist_runtime_tree() {',
+    '  rm -rf "$PERSIST"',
+    '  mkdir -p "$PERSIST"',
+    '  cp -a "$repo_dir/." "$PERSIST/"',
+    '  rm -rf "$PERSIST/.git" "$PERSIST/.ctak-normalize-plugin.sh" "$PERSIST/.ctak-runtime-plugin.sh"',
+    "}",
+    'if ! persist_runtime_tree 2>/dev/null; then',
+    '  echo "Direct persist not writable by $(id -un); elevating"',
+    "  if declare -F elevate_run >/dev/null 2>&1; then",
+    '    elevate_run "rm -rf $(printf \'%q\' "$PERSIST") && mkdir -p $(printf \'%q\' "$PERSIST") && cp -a $(printf \'%q\' "$repo_dir")/. $(printf \'%q\' "$PERSIST")/ && rm -rf $(printf \'%q\' "$PERSIST/.git") $(printf \'%q\' "$PERSIST/.ctak-normalize-plugin.sh") $(printf \'%q\' "$PERSIST/.ctak-runtime-plugin.sh") && chown -R $(printf \'%q\' "$(id -un):$(id -gn)") $(printf \'%q\' "$PERSIST")" || {',
+    '      echo "ERROR: cannot persist plugin runtime to $PERSIST" >&2',
+    "      exit 1",
+    "    }",
+    "  else",
+    "    persist_runtime_tree",
+    "  fi",
+    "fi",
     'COMPOSE_SRC=""',
     'if [ -n "$compose_file_hint" ] && [ -f "$repo_dir/$compose_file_hint" ]; then',
     '  COMPOSE_SRC="$repo_dir/$compose_file_hint"',
