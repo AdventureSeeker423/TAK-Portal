@@ -1555,6 +1555,63 @@ async function fetchTakTruststoreP12FromRemote() {
 }
 
 /**
+ * Fetch the TAK CA public certificate (PEM) from the server for Marti API TLS trust.
+ * Prefers ca.pem / ca-trusted.pem under /opt/tak/certs (typical makeRootCa layout).
+ */
+async function fetchTakCaPemFromRemote() {
+  const cfg = getTakSshConfig();
+  if (!cfg) {
+    throw new Error("SSH is not configured. Complete SSH handshake in Settings.");
+  }
+
+  const remoteScript =
+    "bash -lc 'set -e; cd /opt/tak/certs; " +
+    "capath=\"\"; " +
+    "for f in ./files/ca.pem ./ca.pem ./files/ca-trusted.pem ./ca-trusted.pem " +
+    "./files/root-ca.pem ./root-ca.pem ./files/root-ca-trusted.pem ./root-ca-trusted.pem " +
+    "/opt/tak/certs/files/ca.pem /opt/tak/certs/ca.pem; do " +
+    "[ -f \"$f\" ] && capath=\"$f\" && break; done; " +
+    "if [ -z \"$capath\" ]; then " +
+    "  for f in ./files/*.pem ./*.pem /opt/tak/certs/files/*.pem; do " +
+    "    [ -f \"$f\" ] || continue; " +
+    "    bn=$(basename \"$f\"); " +
+    "    case \"$bn\" in *-do-not-share.pem|*key*.pem) continue;; esac; " +
+    "    case \"$bn\" in ca*.pem|*ca.pem|*CA*.pem) capath=\"$f\"; break;; esac; " +
+    "  done; " +
+    "fi; " +
+    "if [ -z \"$capath\" ]; then echo \"Missing CA PEM on TAK server\" 1>&2; exit 44; fi; " +
+    "echo __TAK_CA_PATH_BEGIN__; printf \"%s\" \"$capath\"; echo; echo __TAK_CA_PATH_END__; " +
+    "echo __TAK_CA_PEM_BEGIN__; cat \"$capath\"; echo; echo __TAK_CA_PEM_END__'";
+
+  const connect = toConnectConfig(cfg);
+  const mode = await getPrivilegedMode(connect);
+  const command = buildPrivilegedCommand(
+    remoteScript,
+    mode,
+    takCertCommandOptions(connect, { runAsUser: "tak" })
+  );
+  const result = await execOverSsh(connect, command, 45000);
+  if (!result.ok) {
+    throw new Error(result.message || "Failed to fetch TAK CA certificate from the TAK server.");
+  }
+
+  const out = String(result.stdout || "");
+  const pathMatch = out.match(/__TAK_CA_PATH_BEGIN__\s*([\s\S]*?)\s*__TAK_CA_PATH_END__/);
+  const pemMatch = out.match(/__TAK_CA_PEM_BEGIN__\s*([\s\S]*?)\s*__TAK_CA_PEM_END__/);
+  if (!pemMatch) {
+    throw new Error("Remote TAK CA PEM output could not be parsed.");
+  }
+  const pemText = String(pemMatch[1] || "").trim();
+  if (!pemText.includes("BEGIN CERTIFICATE")) {
+    throw new Error("Remote TAK CA PEM was empty or invalid.");
+  }
+  return {
+    pem: Buffer.from(pemText + "\n", "utf8"),
+    sourcePath: String(pathMatch && pathMatch[1] ? pathMatch[1] : "").trim(),
+  };
+}
+
+/**
  * Fetch the TAK signing/intermediate CA truststore (.p12) from the server.
  * Matches truststore*intermediate*.p12 by name (any CN), else any truststore*.p12
  * that is not the root truststore — does not hardcode a specific CA title.
@@ -1853,4 +1910,5 @@ module.exports = {
   createTakClientCertForIntegration,
   fetchTakTruststoreP12FromRemote,
   fetchTakIntermediateTruststoreP12FromRemote,
+  fetchTakCaPemFromRemote,
 };

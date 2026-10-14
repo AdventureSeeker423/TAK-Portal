@@ -58,6 +58,8 @@ function sendTakError(res, err, fallbackStatus) {
 
     code === "TAK_BYPASS" ||
 
+    code === "TAK_CA_MISSING" ||
+
     code === "INVALID_HASH" ||
 
     code === "INVALID_UPLOAD"

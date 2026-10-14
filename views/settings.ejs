@@ -405,9 +405,13 @@
         "PORTAL_AUTH_REQUIRED_GROUP",
         "PASSWORD_POLICY_MIN_LENGTH",
         "PASSWORD_POLICY_REQUIRE_UPPERCASE",
+        "PASSWORD_POLICY_UPPERCASE_COUNT",
         "PASSWORD_POLICY_REQUIRE_LOWERCASE",
+        "PASSWORD_POLICY_LOWERCASE_COUNT",
         "PASSWORD_POLICY_REQUIRE_NUMBER",
+        "PASSWORD_POLICY_NUMBER_COUNT",
         "PASSWORD_POLICY_REQUIRE_SYMBOL",
+        "PASSWORD_POLICY_SYMBOL_COUNT",
         "AUTHENTIK_PUBLIC_URL",
         "TAK_PORTAL_PUBLIC_URL",
 
@@ -4652,12 +4656,51 @@
           <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
         </div>
         <div class="modalBody settings-body">
+          <%
+            function passwordPolicyRuleOn(key, defaultBool) {
+              const raw = String((settings && settings[key]) || "").trim().toLowerCase();
+              if (raw === "true") return true;
+              if (raw === "false") return false;
+              return defaultBool === "true";
+            }
+            function passwordPolicyCountVal(key) {
+              const raw = String((settings && settings[key]) || "").trim();
+              const n = parseInt(raw, 10);
+              return Number.isFinite(n) && n >= 1 ? String(n) : "1";
+            }
+          %>
           <div class="grid2">
-            <% renderField("PASSWORD_POLICY_MIN_LENGTH","Minimum length","Minimum number of characters required (1–128).","12"); %>
-            <% renderField("PASSWORD_POLICY_REQUIRE_UPPERCASE","Require uppercase letter","At least one A–Z character.","true"); %>
-            <% renderField("PASSWORD_POLICY_REQUIRE_LOWERCASE","Require lowercase letter","At least one a–z character.","true"); %>
-            <% renderField("PASSWORD_POLICY_REQUIRE_NUMBER","Require number","At least one digit 0–9.","true"); %>
-            <% renderField("PASSWORD_POLICY_REQUIRE_SYMBOL","Require symbol","At least one symbol (e.g. ! @ # $ %).","true"); %>
+            <% renderField("PASSWORD_POLICY_MIN_LENGTH","Minimum Length","Minimum number of characters required (1–128).","12"); %>
+          </div>
+          <div class="password-policy-rules">
+            <div class="password-policy-rule" data-password-policy-rule>
+              <% renderField("PASSWORD_POLICY_REQUIRE_UPPERCASE","Require Uppercase Letter","Require A–Z characters. When on, set how many are required.","true"); %>
+              <label class="settings-field password-policy-count" data-password-policy-count style="display:<%= passwordPolicyRuleOn('PASSWORD_POLICY_REQUIRE_UPPERCASE','true') ? '' : 'none' %>;">
+                <span class="settings-label"><span>Uppercase Count</span></span>
+                <input type="number" min="1" max="128" step="1" name="settings[PASSWORD_POLICY_UPPERCASE_COUNT]" value="<%= passwordPolicyCountVal('PASSWORD_POLICY_UPPERCASE_COUNT') %>" />
+              </label>
+            </div>
+            <div class="password-policy-rule" data-password-policy-rule>
+              <% renderField("PASSWORD_POLICY_REQUIRE_LOWERCASE","Require Lowercase Letter","Require a–z characters. When on, set how many are required.","true"); %>
+              <label class="settings-field password-policy-count" data-password-policy-count style="display:<%= passwordPolicyRuleOn('PASSWORD_POLICY_REQUIRE_LOWERCASE','true') ? '' : 'none' %>;">
+                <span class="settings-label"><span>Lowercase Count</span></span>
+                <input type="number" min="1" max="128" step="1" name="settings[PASSWORD_POLICY_LOWERCASE_COUNT]" value="<%= passwordPolicyCountVal('PASSWORD_POLICY_LOWERCASE_COUNT') %>" />
+              </label>
+            </div>
+            <div class="password-policy-rule" data-password-policy-rule>
+              <% renderField("PASSWORD_POLICY_REQUIRE_NUMBER","Require Number","Require digits 0–9. When on, set how many are required.","true"); %>
+              <label class="settings-field password-policy-count" data-password-policy-count style="display:<%= passwordPolicyRuleOn('PASSWORD_POLICY_REQUIRE_NUMBER','true') ? '' : 'none' %>;">
+                <span class="settings-label"><span>Number Count</span></span>
+                <input type="number" min="1" max="128" step="1" name="settings[PASSWORD_POLICY_NUMBER_COUNT]" value="<%= passwordPolicyCountVal('PASSWORD_POLICY_NUMBER_COUNT') %>" />
+              </label>
+            </div>
+            <div class="password-policy-rule" data-password-policy-rule>
+              <% renderField("PASSWORD_POLICY_REQUIRE_SYMBOL","Require Symbol","Require non-alphanumeric characters (e.g. ! @ # $ %). When on, set how many are required.","true"); %>
+              <label class="settings-field password-policy-count" data-password-policy-count style="display:<%= passwordPolicyRuleOn('PASSWORD_POLICY_REQUIRE_SYMBOL','true') ? '' : 'none' %>;">
+                <span class="settings-label"><span>Symbol Count</span></span>
+                <input type="number" min="1" max="128" step="1" name="settings[PASSWORD_POLICY_SYMBOL_COUNT]" value="<%= passwordPolicyCountVal('PASSWORD_POLICY_SYMBOL_COUNT') %>" />
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -5552,6 +5595,20 @@
     wirePasswordToggle("oaTokenInput", "oaTokenToggle");
     wirePasswordToggle("cloudtakSshPasswordInput", "cloudtakSshPasswordToggle");
 
+    function syncPasswordPolicyCounts() {
+      var rules = document.querySelectorAll(
+        "#settingsModal-password-policy [data-password-policy-rule]"
+      );
+      for (var i = 0; i < rules.length; i++) {
+        var rule = rules[i];
+        var boolInput = rule.querySelector("[data-settings-bool-input]");
+        var countEl = rule.querySelector("[data-password-policy-count]");
+        if (!countEl) continue;
+        var on = boolInput && boolInput.value === "true";
+        countEl.style.display = on ? "" : "none";
+      }
+    }
+
     document.addEventListener("click", function (e) {
       var btn = e.target && e.target.closest
         ? e.target.closest("[data-settings-bool-toggle]")
@@ -5568,10 +5625,15 @@
       btn.classList.toggle("is-off", !on);
       btn.setAttribute("aria-pressed", on ? "true" : "false");
       input.value = on ? "true" : "false";
+      if (btn.closest("#settingsModal-password-policy")) {
+        syncPasswordPolicyCounts();
+      }
       if (typeof window.scheduleSettingsAutoSave === "function") {
         window.scheduleSettingsAutoSave();
       }
     });
+
+    syncPasswordPolicyCounts();
 
     function syncCloudtakMarketplaceModal() {
       var enabledInput = document.querySelector('#settingsModal-cloudtak-marketplace input[name="settings[CLOUDTAK_MARKETPLACE_ENABLED]"]');

@@ -99,10 +99,12 @@ function buildTakAxios() {
     : undefined;
 
   const caPath = resolvePathMaybe(getString("TAK_CA_PATH", ""));
+  const ca =
+    caPath && fs.existsSync(caPath) ? fs.readFileSync(caPath) : undefined;
 
   const agentOptions = {
     keepAlive: true,
-    ca: caPath ? fs.readFileSync(caPath) : undefined,
+    ca,
     rejectUnauthorized: true,
     // keep previous behavior (skip hostname verification)
     checkServerIdentity: () => undefined,
@@ -185,8 +187,11 @@ function buildTakMtlsHttpsAgent(opts = {}) {
     );
   }
 
+  const ca =
+    caPath && fs.existsSync(caPath) ? fs.readFileSync(caPath) : undefined;
+
   const agentOptions = {
-    ca: caPath ? fs.readFileSync(caPath) : undefined,
+    ca,
     rejectUnauthorized: !allowInsecureServer,
     checkServerIdentity: () => undefined,
   };

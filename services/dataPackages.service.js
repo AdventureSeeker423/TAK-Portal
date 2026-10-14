@@ -4,7 +4,12 @@
  */
 const crypto = require("crypto");
 const util = require("util");
-const { buildTakAxios, getTakBaseUrl, isTakConfigured } = require("./tak.service");
+const {
+  buildTakAxios,
+  getTakBaseUrl,
+  isTakConfigured,
+  ensureTakCaAvailable,
+} = require("./tak.service");
 const { getBool } = require("./env");
 const packageKind = require("./packageKind.service");
 
@@ -63,7 +68,7 @@ function listKeysDeep(obj, prefix = "", out = new Set(), depth = 0) {
   return out;
 }
 
-function assertTakAvailable() {
+async function assertTakAvailable() {
   if (getBool("TAK_BYPASS_ENABLED", false)) {
     const e = new Error("TAK operations are disabled (TAK_BYPASS_ENABLED=true).");
     e.code = "TAK_BYPASS";
@@ -74,6 +79,9 @@ function assertTakAvailable() {
     e.code = "TAK_NOT_CONFIGURED";
     throw e;
   }
+  // Installer/settings often point at ./certs/tak-ca.pem which is outside the
+  // persisted data volume. Fetch via privileged SSH when the file is missing.
+  await ensureTakCaAvailable();
 }
 
 function getTakOriginBaseUrl() {
@@ -304,7 +312,7 @@ function normalizePackageRecord(item) {
 }
 
 async function listDataPackages(query = {}) {
-  assertTakAvailable();
+  await assertTakAvailable();
   const client = buildTakOriginAxios({ timeout: 60000 });
   dbg("list start", { query });
   const res = await client.get("/Marti/api/files/metadata", { params: query || {} });
@@ -334,7 +342,7 @@ async function listDataPackages(query = {}) {
 }
 
 async function deleteDataPackage(hash) {
-  assertTakAvailable();
+  await assertTakAvailable();
   const h = String(hash || "").trim();
   if (!h) {
     const e = new Error("Data package hash is required.");
@@ -350,7 +358,7 @@ async function deleteDataPackage(hash) {
 }
 
 async function downloadDataPackageStream(hash) {
-  assertTakAvailable();
+  await assertTakAvailable();
   const h = String(hash || "").trim();
   if (!h) {
     const e = new Error("Data package hash is required.");
@@ -418,7 +426,7 @@ function zipDownloadFilename(name, hash) {
 }
 
 async function uploadDataPackage(buffer, originalName, metadata = {}) {
-  assertTakAvailable();
+  await assertTakAvailable();
   if (!buffer || !Buffer.isBuffer(buffer) || !buffer.length) {
     const e = new Error("File content is required.");
     e.code = "INVALID_UPLOAD";
@@ -472,7 +480,7 @@ async function uploadDataPackage(buffer, originalName, metadata = {}) {
 }
 
 async function getDataPackageMetadata(hash) {
-  assertTakAvailable();
+  await assertTakAvailable();
   const h = String(hash || "").trim();
   if (!h) {
     const e = new Error("Data package hash is required.");
@@ -521,7 +529,7 @@ async function getDataPackageMetadata(hash) {
 }
 
 async function updateDataPackageMetadata(hash, patch = {}) {
-  assertTakAvailable();
+  await assertTakAvailable();
   const h = String(hash || "").trim();
   if (!h) {
     const e = new Error("Data package hash is required.");

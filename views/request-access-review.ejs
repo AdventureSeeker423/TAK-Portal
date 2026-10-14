@@ -361,21 +361,29 @@
       const PASSWORD_POLICY = <%- JSON.stringify((typeof passwordPolicy !== "undefined" && passwordPolicy && passwordPolicy.client) ? passwordPolicy.client : {
         minLength: 12,
         requireUppercase: true,
+        uppercaseCount: 1,
         requireLowercase: true,
+        lowercaseCount: 1,
         requireNumber: true,
+        numberCount: 1,
         requireSymbol: true,
+        symbolCount: 1,
         errorOptional: "Password must be at least 12 characters with upper, lower, number, and symbol."
       }) %>;
+
+      function passwordPolicyCount(pwd, re) {
+        return (String(pwd || "").match(re) || []).length;
+      }
 
       function isValidPassword(pwd) {
         if (!pwd) return true;
         const p = String(pwd || "");
         const pol = PASSWORD_POLICY || {};
         if (p.length < (pol.minLength || 12)) return false;
-        if (pol.requireLowercase && !/[a-z]/.test(p)) return false;
-        if (pol.requireUppercase && !/[A-Z]/.test(p)) return false;
-        if (pol.requireNumber && !/[0-9]/.test(p)) return false;
-        if (pol.requireSymbol && !/[^A-Za-z0-9]/.test(p)) return false;
+        if (pol.requireLowercase && passwordPolicyCount(p, /[a-z]/g) < (pol.lowercaseCount || 1)) return false;
+        if (pol.requireUppercase && passwordPolicyCount(p, /[A-Z]/g) < (pol.uppercaseCount || 1)) return false;
+        if (pol.requireNumber && passwordPolicyCount(p, /[0-9]/g) < (pol.numberCount || 1)) return false;
+        if (pol.requireSymbol && passwordPolicyCount(p, /[^A-Za-z0-9]/g) < (pol.symbolCount || 1)) return false;
         return true;
       }
 
