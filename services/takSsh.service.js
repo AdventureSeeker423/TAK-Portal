@@ -948,8 +948,12 @@ async function writeRemoteFileViaSudoTee(remoteAbsolutePath, contentUtf8) {
 /**
  * Run a command on the remote host as root (via direct root login, NOPASSWD sudo, or stored sudo password).
  * @param {string} rootShellCommand Command without a leading sudo (e.g. "cat '/opt/tak/CoreConfig.xml'").
+ * @param {number} [timeoutMs]
+ * @param {{ runAsUser?: string, sshUsername?: string }} [options]
+ *        Prefer runAsUser: "tak" for /opt/tak file ops — portal sudoers grants
+ *        NOPASSWD ALL only as the tak user, not arbitrary root commands.
  */
-async function runRemotePrivilegedCommand(rootShellCommand, timeoutMs = 30000) {
+async function runRemotePrivilegedCommand(rootShellCommand, timeoutMs = 30000, options = {}) {
   const inner = String(rootShellCommand || "").trim();
   if (!inner) {
     return { ok: false, message: "Command is required.", stdout: "", stderr: "", exitCode: null };
@@ -968,7 +972,11 @@ async function runRemotePrivilegedCommand(rootShellCommand, timeoutMs = 30000) {
   const connect = toConnectConfig(cfg);
   try {
     const mode = await getPrivilegedMode(connect);
-    const cmd = buildPrivilegedCommand(inner, mode);
+    const cmd = buildPrivilegedCommand(
+      inner,
+      mode,
+      takCertCommandOptions(connect, options || {})
+    );
     return execOverSsh(connect, cmd, timeoutMs);
   } catch (err) {
     return {
@@ -1777,7 +1785,12 @@ function sftpFastPut(sftp, localPath, remotePath) {
 
 /**
  * Upload a local file to an absolute remote path using SFTP to a temp dir,
- * then privileged move into the destination (handles /opt/tak ownership).
+ * then privileged copy into the destination as the tak user.
+ *
+ * Important: portal sudoers only allows arbitrary commands as (tak), not as root.
+ * Compound shell must run inside `bash -lc` under that privilege so mkdir/cp are
+ * not executed as the unprivileged SSH user. Prefer cp (not mv) because /tmp
+ * sticky-bit prevents the tak user from renaming files owned by the SSH user.
  */
 async function uploadRemoteFilePrivileged({ localPath, remoteAbsolutePath, timeoutMs = 600000 }) {
   const local = String(localPath || "").trim();
@@ -1820,6 +1833,10 @@ async function uploadRemoteFilePrivileged({ localPath, remoteAbsolutePath, timeo
     });
     await sftpMkdirp(sftp, REMOTE_TMP_SYNC_DIR);
     await sftpFastPut(sftp, local, tmpRemote);
+    // Ensure the tak user can read the staged file for cp (SSH user owns it under /tmp).
+    await new Promise((resolve) => {
+      sftp.chmod(tmpRemote, 0o644, () => resolve());
+    });
     return { ok: true };
   });
   if (!uploadResult.ok) return uploadResult;
@@ -1827,12 +1844,42 @@ async function uploadRemoteFilePrivileged({ localPath, remoteAbsolutePath, timeo
   const safeTmp = quoteForSingleQuotedShell(tmpRemote);
   const safeDestDir = quoteForSingleQuotedShell(remoteDir);
   const safeDest = quoteForSingleQuotedShell(remote);
-  const moveCmd =
-    `mkdir -p '${safeDestDir}' && ` +
-    `mv -f '${safeTmp}' '${safeDest}' && ` +
-    `chown tak:tak '${safeDest}' 2>/dev/null || true && ` +
-    `chmod 644 '${safeDest}' 2>/dev/null || true`;
-  return runRemotePrivilegedCommand(moveCmd, Math.max(60000, Math.min(timeoutMs, 120000)));
+  // Whole script under one privileged bash -lc so sudo/dzdo applies to every step.
+  // Do not trail mkdir/cp with `|| true` — that previously forced exit 0 (false success).
+  const installCmd =
+    "bash -lc '" +
+    "set -e; " +
+    `mkdir -p '${safeDestDir}'; ` +
+    `cp -f '${safeTmp}' '${safeDest}'; ` +
+    `chmod 644 '${safeDest}' 2>/dev/null || true; ` +
+    // test -f only: product.inf may be empty when clearing the catalog
+    `test -f '${safeDest}'` +
+    "'";
+  const install = await runRemotePrivilegedCommand(
+    installCmd,
+    Math.max(60000, Math.min(timeoutMs, 120000)),
+    { runAsUser: "tak" }
+  );
+
+  // Best-effort cleanup of the SSH-user-owned temp file (sticky /tmp: only owner can rm).
+  try {
+    await runRemoteSshCommand(`rm -f '${safeTmp}'`, 30000);
+  } catch (_) {
+    /* ignore */
+  }
+
+  if (!install.ok) {
+    return {
+      ok: false,
+      message:
+        install.message ||
+        `Failed to install ${baseName} into ${remoteDir} as user tak.`,
+      stdout: install.stdout || "",
+      stderr: install.stderr || "",
+      exitCode: install.exitCode,
+    };
+  }
+  return install;
 }
 
 /**
@@ -1847,13 +1894,15 @@ async function listRemoteDir(remoteAbsolutePath, timeoutMs = 60000) {
   if (!cfg) {
     return { ok: false, message: "SSH is not configured.", names: [] };
   }
-  const connect = toConnectConfig(cfg);
 
-  // Prefer privileged ls so /opt/tak is readable even when the SSH user cannot SFTP there.
+  // Run as tak: portal sudoers allows ALL as (tak); compound `if` is not a root-allowed command.
   const safe = quoteForSingleQuotedShell(remote);
   const ls = await runRemotePrivilegedCommand(
-    `if [ -d '${safe}' ]; then ls -1A '${safe}'; else echo '__MISSING__'; fi`,
-    timeoutMs
+    "bash -lc '" +
+      `if [ -d '${safe}' ]; then ls -1A '${safe}'; else echo '__MISSING__'; fi` +
+      "'",
+    timeoutMs,
+    { runAsUser: "tak" }
   );
   if (!ls.ok) {
     return { ok: false, message: ls.message || "Failed to list remote directory.", names: [] };
@@ -1871,7 +1920,7 @@ async function listRemoteDir(remoteAbsolutePath, timeoutMs = 60000) {
 }
 
 /**
- * Remove a remote file via privileged rm.
+ * Remove a remote file via privileged rm (as tak — matches portal sudoers).
  */
 async function removeRemoteFilePrivileged(remoteAbsolutePath, timeoutMs = 60000) {
   const remote = String(remoteAbsolutePath || "").trim();
@@ -1879,7 +1928,11 @@ async function removeRemoteFilePrivileged(remoteAbsolutePath, timeoutMs = 60000)
     return { ok: false, message: "Remote path must be absolute.", stdout: "", stderr: "", exitCode: null };
   }
   const safe = quoteForSingleQuotedShell(remote);
-  return runRemotePrivilegedCommand(`rm -f '${safe}'`, timeoutMs);
+  return runRemotePrivilegedCommand(
+    `bash -lc 'rm -f '${safe}''`,
+    timeoutMs,
+    { runAsUser: "tak" }
+  );
 }
 
 module.exports = {
