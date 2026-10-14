@@ -13,6 +13,12 @@
       !isGlobalAdmin &&
       isAgencyAdmin &&
       (!Array.isArray(allowedAgencySuffixes) || allowedAgencySuffixes.length <= 1);
+    const pp = (typeof passwordPolicy !== "undefined" && passwordPolicy) ? passwordPolicy : {
+      minLength: 12,
+      placeholder: "Min 12 characters: upper, lower, number, and symbol",
+      pattern: "(?=.*[A-Z])(?=.*[a-z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{12,}",
+      title: "Password must contain a minimum of 12 characters, upper, lower, number, and symbol"
+    };
   %>
 
   <% if (typeof pendingUserRequestsCount !== "undefined" && pendingUserRequestsCount > 0) { %>
@@ -84,10 +90,10 @@
             id="createPasswordInput"
             name="password"
             type="password"
-            placeholder="Min 12 characters: upper, lower, number, and symbol"
-            minlength="12"
-            pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}"
-            title="Password must contain a minimum of 12 characters, upper, lower, number, and symbol"
+            placeholder="<%= pp.placeholder %>"
+            minlength="<%= pp.minLength %>"
+            pattern="<%= pp.pattern %>"
+            title="<%= pp.title %>"
             autocomplete="off"
           />
           <button
@@ -326,7 +332,10 @@
                   id="pw1"
                   name="newPassword"
                   type="password"
-                  placeholder="New Password"
+                  placeholder="<%= pp.placeholder %>"
+                  minlength="<%= pp.minLength %>"
+                  pattern="<%= pp.pattern %>"
+                  title="<%= pp.title %>"
                   autocomplete="off"
                 />
                 <button
@@ -346,6 +355,9 @@
                   name="confirmPassword"
                   type="password"
                   placeholder="Confirm Password"
+                  minlength="<%= pp.minLength %>"
+                  pattern="<%= pp.pattern %>"
+                  title="<%= pp.title %>"
                   autocomplete="off"
                 />
                 <button
@@ -677,12 +689,27 @@ function esc(s) {
     .replaceAll("'", "&#39;");
 }
 
-// ----- Password validator -----
-// Allow blank. If filled, must have: 12+ chars, upper, lower, digit, symbol.
+// ----- Password validator (from Settings → Password Policy) -----
+const PASSWORD_POLICY = <%- JSON.stringify((typeof passwordPolicy !== "undefined" && passwordPolicy && passwordPolicy.client) ? passwordPolicy.client : {
+  minLength: 12,
+  requireUppercase: true,
+  requireLowercase: true,
+  requireNumber: true,
+  requireSymbol: true,
+  errorOptional: "Password must be at least 12 characters and include uppercase, lowercase, number, and symbol, or be left blank.",
+  errorRequired: "Password must be at least 12 characters and include uppercase, lowercase, number, and symbol."
+}) %>;
+
 function isValidPassword(pwd) {
   if (!pwd) return true;
-  const re = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
-  return re.test(pwd);
+  const p = String(pwd);
+  const pol = PASSWORD_POLICY || {};
+  if (p.length < (pol.minLength || 12)) return false;
+  if (pol.requireLowercase && !/[a-z]/.test(p)) return false;
+  if (pol.requireUppercase && !/[A-Z]/.test(p)) return false;
+  if (pol.requireNumber && !/[0-9]/.test(p)) return false;
+  if (pol.requireSymbol && !/[^A-Za-z0-9]/.test(p)) return false;
+  return true;
 }
 
 function isValidBadgeOrUsername(value) {
@@ -960,7 +987,8 @@ form.onsubmit = async (e) => {
   const pwd = String(payload.password || "");
   if (!isValidPassword(pwd)) {
     setMsg(
-      "Password must be at least 12 characters and include uppercase, lowercase, number, and symbol, or be left blank.",
+      (PASSWORD_POLICY && PASSWORD_POLICY.errorOptional) ||
+        "Password does not meet the configured password policy, or be left blank.",
       false
     );
     return;
@@ -3685,6 +3713,14 @@ resetPwBtn.onclick = async () => {
   if(pw1.value !== pw2.value) return setMsgEl(actionMsg,"Passwords must match.", false);
   const pw = String(pw1.value || "");
   if (!pw) return setMsgEl(actionMsg,"Password cannot be empty.", false);
+  if (!isValidPassword(pw)) {
+    return setMsgEl(
+      actionMsg,
+      (PASSWORD_POLICY && PASSWORD_POLICY.errorRequired) ||
+        "Password does not meet the configured password policy.",
+      false
+    );
+  }
 
   const res = await fetch(`/api/users/${selectedUser.pk}/reset-password`,{
     method:"POST",

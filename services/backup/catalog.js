@@ -21,7 +21,7 @@ const SETTINGS_SUBCATEGORIES = [
   {
     id: "settings.authentik",
     label: "Authentik connection",
-    description: "Authentik URL, token, portal auth groups, and hidden prefixes.",
+    description: "Authentik URL, token, portal auth groups, password policy, and hidden prefixes.",
     requiresSecrets: false,
     keys: [
       "AUTHENTIK_URL",
@@ -34,6 +34,11 @@ const SETTINGS_SUBCATEGORIES = [
       "DASHBOARD_AUTHENTIK_STATS_REFRESH_SECONDS",
       "PORTAL_AUTH_ENABLED",
       "PORTAL_AUTH_REQUIRED_GROUP",
+      "PASSWORD_POLICY_MIN_LENGTH",
+      "PASSWORD_POLICY_REQUIRE_UPPERCASE",
+      "PASSWORD_POLICY_REQUIRE_LOWERCASE",
+      "PASSWORD_POLICY_REQUIRE_NUMBER",
+      "PASSWORD_POLICY_REQUIRE_SYMBOL",
       "AUTHENTIK_USER_PATH",
       "AUTHENTIK_USER_PAGE_SIZE",
     ],

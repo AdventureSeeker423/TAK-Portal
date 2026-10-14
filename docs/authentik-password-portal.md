@@ -26,7 +26,7 @@ You must already have
 3. Select **Password Policy**
 4. Set the **Name** to `password-complexity`
 5. Set the **Static Rules** to the standard that you would like your passwords to be. and click **Finish**
-    *Note: By default TAK Portal enforces a policy of 12+ characters and must include 1 Uppercase, 1 Lowercase, 1 Number, and 1 Symbol.*
+    *Note: Align this with TAK Portal Settings → Authentication → Password Policy (defaults: 12+ characters with uppercase, lowercase, number, and symbol).*
 
 
 ## 2. Create a Recovery Email and Identification Stage

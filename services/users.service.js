@@ -3,6 +3,7 @@ const agenciesStore = require("./agencies.service");
 const templatesStore = require("./templates.service");
 const tak = require("./tak.service");
 const settingsSvc = require("./settings.service");
+const passwordPolicySvc = require("./passwordPolicy.service");
 const accessSvc = require("./access.service");
 const authzRoles = require("./authzRoles.service");
 const { sanitizeCallsign } = require("./callsignSanitize");
@@ -224,11 +225,7 @@ What each column means:
 6) password
    - Optional (can be blank).
    - If you enter a password, it MUST include ALL of these:
-     - at least 12 characters
-     - at least 1 lowercase letter
-     - at least 1 uppercase letter
-     - at least 1 number
-     - at least 1 symbol
+${passwordPolicySvc.csvBulletList()}
 
 7) radioCallsign  (optional)
    - Optional (can be blank or column omitted entirely).
@@ -276,14 +273,7 @@ function validateBadgeNumber(badge, descriptorLabel) {
 }
 
 function validatePassword(password) {
-  const p = String(password || "");
-  if (p.length < 12) return "Password must be at least 12 characters.";
-  if (!/[a-z]/.test(p)) return "Password must contain a lowercase letter.";
-  if (!/[A-Z]/.test(p)) return "Password must contain an uppercase letter.";
-  if (!/[0-9]/.test(p)) return "Password must contain a number.";
-  if (!/[!@#$%^&*()_+\-=[\]{};':\"\\|,.<>/?]/.test(p))
-    return "Password must contain a symbol.";
-  return null;
+  return passwordPolicySvc.validatePassword(password);
 }
 
 /** When non-empty, must be acceptable to Authentik/Django email validation (no leading/trailing check only — trim in caller). */

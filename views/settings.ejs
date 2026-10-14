@@ -46,6 +46,9 @@
         <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="portal-access">
           <span class="settings-hub-card-main"><span class="settings-hub-card-title">Portal Access Control</span></span>
         </div>
+        <div class="settings-hub-card" role="button" tabindex="0" data-open-settings-modal="password-policy">
+          <span class="settings-hub-card-main"><span class="settings-hub-card-title">Password Policy</span></span>
+        </div>
       </div>
     </section>
 
@@ -229,6 +232,10 @@
         "SMTP_SECURE",
         "EMAIL_FAIL_HARD",
         "PORTAL_AUTH_ENABLED",
+        "PASSWORD_POLICY_REQUIRE_UPPERCASE",
+        "PASSWORD_POLICY_REQUIRE_LOWERCASE",
+        "PASSWORD_POLICY_REQUIRE_NUMBER",
+        "PASSWORD_POLICY_REQUIRE_SYMBOL",
         "REQUEST_ACCESS_ENABLED",
         "REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS",
         "BETA_MODE",
@@ -396,6 +403,11 @@
 
         "PORTAL_AUTH_ENABLED",
         "PORTAL_AUTH_REQUIRED_GROUP",
+        "PASSWORD_POLICY_MIN_LENGTH",
+        "PASSWORD_POLICY_REQUIRE_UPPERCASE",
+        "PASSWORD_POLICY_REQUIRE_LOWERCASE",
+        "PASSWORD_POLICY_REQUIRE_NUMBER",
+        "PASSWORD_POLICY_REQUIRE_SYMBOL",
         "AUTHENTIK_PUBLIC_URL",
         "TAK_PORTAL_PUBLIC_URL",
 
@@ -4622,6 +4634,31 @@
             <% renderField("PORTAL_AUTH_REQUIRED_GROUP","Global Admin group(s)","Groups with full global access."); %>
           </div>
         
+        </div>
+      </div>
+    </div>
+
+    <!-- Password Policy -->
+    <div class="modalOverlay settings-modal-overlay" id="settingsModal-password-policy" data-settings-modal="password-policy" style="display:none;" aria-hidden="true">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-password-policy">
+        <div class="modalHeader">
+          <div class="modalHeaderLeft">
+            <h2 id="settingsModalTitle-password-policy">Password Policy</h2>
+            <span class="settings-help-tip">
+              <button type="button" class="settings-help-btn" aria-label="Help" aria-expanded="false">?</button>
+              <span class="settings-help-popover">Rules applied when creating or resetting portal users (Users page, CSV import, and request-access approval). Align Authentik password policies separately if users also change passwords there.</span>
+            </span>
+          </div>
+          <button type="button" class="btn settings-modal-close" data-close-settings-modal aria-label="Close">Close</button>
+        </div>
+        <div class="modalBody settings-body">
+          <div class="grid2">
+            <% renderField("PASSWORD_POLICY_MIN_LENGTH","Minimum length","Minimum number of characters required (1–128).","12"); %>
+            <% renderField("PASSWORD_POLICY_REQUIRE_UPPERCASE","Require uppercase letter","At least one A–Z character.","true"); %>
+            <% renderField("PASSWORD_POLICY_REQUIRE_LOWERCASE","Require lowercase letter","At least one a–z character.","true"); %>
+            <% renderField("PASSWORD_POLICY_REQUIRE_NUMBER","Require number","At least one digit 0–9.","true"); %>
+            <% renderField("PASSWORD_POLICY_REQUIRE_SYMBOL","Require symbol","At least one symbol (e.g. ! @ # $ %).","true"); %>
+          </div>
         </div>
       </div>
     </div>

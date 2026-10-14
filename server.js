@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 const settingsSvc = require("./services/settings.service");
+const passwordPolicySvc = require("./services/passwordPolicy.service");
 const prefPkgSvc = require("./services/preferencePackage.service");
 const takDashboardCache = require("./services/takDashboardCache.service");
 const axios = require("axios");
@@ -305,6 +306,7 @@ app.use((req, res, next) => {
     res.locals.settings = settings || {};
     res.locals.teamColorLabels = prefPkgSvc.buildTeamColorLabelMap(settings || {});
     res.locals.roleLabels = prefPkgSvc.buildRoleLabelMap(settings || {});
+    res.locals.passwordPolicy = passwordPolicySvc.getViewModel(settings || {});
     // Server default is used when no per-device theme has been saved yet.
     res.locals.brandTheme = defaultTheme === "light" ? "light" : "dark";
     res.locals.brandLogoUrl = settings.BRAND_LOGO_URL || "";
@@ -327,6 +329,7 @@ app.use((req, res, next) => {
     res.locals.settings = {};
     res.locals.teamColorLabels = {};
     res.locals.roleLabels = {};
+    res.locals.passwordPolicy = passwordPolicySvc.getViewModel({});
     res.locals.brandTheme = "dark";
     res.locals.brandLogoUrl = "";
     res.locals.serverAbbrev = "TAK";
