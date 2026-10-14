@@ -648,7 +648,9 @@ resolve_docker_bin() {
     echo "elevate: docker binary not found" >&2
     return 1
   fi
-  if docker info >/dev/null 2>&1; then
+  # Probe the real binary (command bypasses a shell function named docker).
+  # sudo runs /usr/bin/docker from secure_path — not the shell function.
+  if command docker info >/dev/null 2>&1; then
     CTAK_DOCKER_BIN="docker"
     return 0
   fi
@@ -672,10 +674,17 @@ docker_cli() {
   resolve_docker_bin || return 1
   if [ "$CTAK_DOCKER_BIN" = "sudo -S -p '' docker" ]; then
     printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' docker "$@"
+  elif [ "$CTAK_DOCKER_BIN" = "sudo -n docker" ]; then
+    sudo -n docker "$@"
   else
-    # shellcheck disable=SC2086
-    $CTAK_DOCKER_BIN "$@"
+    command docker "$@"
   fi
+}
+
+# Shadow docker so marketplace compose/run/align paths use sudo when the SSH
+# user can sudo but is not in the docker group (common for takwerx).
+docker() {
+  docker_cli "$@"
 }
 
 elevate_via_sudo() {
@@ -2555,15 +2564,29 @@ CTAK_PLUGIN_ALIGN_JS
       if run_as_writer "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$ct")"; then
         return 0
       fi
-      echo "Plugin owner has no usable node; aligning via docker"
+      echo "Plugin owner has no usable node; aligning via elevated node/docker"
     else
       node "$script" "$ct"
       return 0
     fi
   fi
+  # Host may lack node in PATH while sudo/root still has it (common after SSH user switch).
+  if declare -F elevate_run >/dev/null 2>&1; then
+    if elevate_run "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$ct")"; then
+      return 0
+    fi
+  fi
+  # Prefer docker_cli (sudo -n docker when the user is not in the docker group).
+  if declare -F docker_cli >/dev/null 2>&1 && resolve_docker_bin; then
+    echo "Aligning plugin files via docker (root)"
+    docker_cli run --rm -u 0 \\
+      -v "$ct:$ct" \\
+      -v "$script:/align.cjs:ro" \\
+      node:22-alpine \\
+      node /align.cjs "$ct"
+    return 0
+  fi
   if command -v docker >/dev/null 2>&1; then
-    # Same writer as run_as_writer's docker fallback. Plugin files are often
-    # owned by the SSH user (root), not by the plugins directory owner.
     echo "Aligning plugin files via docker (root)"
     docker run --rm -u 0 \\
       -v "$ct:$ct" \\
@@ -2599,11 +2622,26 @@ CTAK_PLUGIN_PATCH_JS
       if run_as_writer "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$repo") $(printf '%q' "$ct")"; then
         return 0
       fi
-      echo "Plugin owner has no usable node; applying patches via docker"
+      echo "Plugin owner has no usable node; applying patches via elevated node/docker"
     else
       node "$script" "$repo" "$ct"
       return 0
     fi
+  fi
+  if declare -F elevate_run >/dev/null 2>&1; then
+    if elevate_run "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$repo") $(printf '%q' "$ct")"; then
+      return 0
+    fi
+  fi
+  if declare -F docker_cli >/dev/null 2>&1 && resolve_docker_bin; then
+    echo "Applying plugin patches via docker (root)"
+    docker_cli run --rm -u 0 \\
+      -v "$ct:$ct" \\
+      -v "$repo:$repo" \\
+      -v "$script:/patch.cjs:ro" \\
+      node:22-alpine \\
+      node /patch.cjs "$repo" "$ct"
+    return 0
   fi
   if command -v docker >/dev/null 2>&1; then
     echo "Applying plugin patches via docker (root)"
