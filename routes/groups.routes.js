@@ -64,12 +64,18 @@ router.get("/", async (req, res) => {
   try {
     const forceRefresh = req.query.forceRefresh === "true";
     const authUser = req.authentikUser || null;
-    const all = await groups.getGroupsForAuthUser(authUser, { forceRefresh });
-
     const access = accessSvc.getAgencyAccess(authUser);
+    // Mutual-aid ("MA -") groups are hidden via GROUPS_HIDDEN_PREFIXES at the
+    // directory query layer; includeHidden is required so they exist in `all`
+    // before filterGroupsVisibleToUser / appendMutualAidGroupsFromStore run.
     const includeMutualAid =
       access.isGlobalAdmin && String(req.query.includeMutualAid || "") === "1";
-    const filtered = filterGroupsVisibleToUser(authUser, all, {
+    const all = await groups.getGroupsForAuthUser(authUser, {
+      forceRefresh,
+      includeHidden: includeMutualAid,
+    });
+
+    const filtered = await filterGroupsVisibleToUser(authUser, all, {
       includeMutualAid,
     });
 
@@ -151,14 +157,17 @@ function getGroupsHiddenPrefixes({ includeMutualAid = false } = {}) {
   return hiddenPrefixes;
 }
 
-function appendMutualAidGroupsFromStore(filtered, allGroups) {
+async function appendMutualAidGroupsFromStore(filtered, allGroups) {
   const list = Array.isArray(filtered) ? filtered : [];
   const all = Array.isArray(allGroups) ? allGroups : [];
   const seen = new Set(
     list.map((g) => String(g?.pk ?? g?.id ?? "").trim()).filter(Boolean)
   );
   const byName = new Map();
+  const byPk = new Map();
   for (const g of all) {
+    const pk = String(g?.pk ?? g?.id ?? "").trim();
+    if (pk) byPk.set(pk, g);
     const raw = String(g?.name || "").trim().toLowerCase();
     if (!raw) continue;
     byName.set(raw, g);
@@ -166,22 +175,45 @@ function appendMutualAidGroupsFromStore(filtered, allGroups) {
     if (!byName.has(withoutTak)) byName.set(withoutTak, g);
   }
 
+  const missingIds = [];
   for (const item of mutualAidStore.load()) {
+    const gid = String(item?.groupId || "").trim();
     const name = String(item?.groupName || "").trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    const match = byName.get(key) || byName.get(`tak_${key}`);
-    if (!match) continue;
-    const pk = String(match?.pk ?? match?.id ?? "").trim();
-    if (!pk || seen.has(pk)) continue;
-    seen.add(pk);
-    list.push(match);
+    let match = (gid && byPk.get(gid)) || null;
+    if (!match && name) {
+      const key = name.toLowerCase();
+      match = byName.get(key) || byName.get(`tak_${key}`) || null;
+    }
+    if (match) {
+      const pk = String(match?.pk ?? match?.id ?? "").trim();
+      if (!pk || seen.has(pk)) continue;
+      seen.add(pk);
+      list.push(match);
+      continue;
+    }
+    if (gid && !seen.has(gid)) missingIds.push(gid);
+  }
+
+  if (missingIds.length) {
+    try {
+      const fetched = await require("../services/directoryRepo.service").getGroupsByPks(
+        missingIds
+      );
+      for (const match of fetched || []) {
+        const pk = String(match?.pk ?? match?.id ?? "").trim();
+        if (!pk || seen.has(pk)) continue;
+        seen.add(pk);
+        list.push(match);
+      }
+    } catch (_) {
+      /* leave list as-is if lookup fails */
+    }
   }
 
   return list;
 }
 
-function filterGroupsVisibleToUser(authUser, all, options = {}) {
+async function filterGroupsVisibleToUser(authUser, all, options = {}) {
   let filtered = accessSvc.filterGroupsForUser(authUser, all);
 
   const hiddenPrefixes = getGroupsHiddenPrefixes({
@@ -200,22 +232,21 @@ function filterGroupsVisibleToUser(authUser, all, options = {}) {
   }
 
   if (options.includeMutualAid) {
-    filtered = appendMutualAidGroupsFromStore(filtered, all);
+    filtered = await appendMutualAidGroupsFromStore(filtered, all);
   }
 
   return filtered;
 }
 
 /** Whether this group appears (or can be managed) on the Groups page for the user. */
-function isGroupVisibleOnGroupsPage(authUser, group) {
+async function isGroupVisibleOnGroupsPage(authUser, group) {
   if (!group) return false;
   const access = accessSvc.getAgencyAccess(authUser);
   if (access.isGlobalAdmin) return true;
   const pk = String(group.pk ?? group.id ?? "").trim();
   if (!pk) return false;
-  return filterGroupsVisibleToUser(authUser, [group]).some(
-    (g) => String(g?.pk ?? g?.id ?? "").trim() === pk
-  );
+  const visible = await filterGroupsVisibleToUser(authUser, [group]);
+  return visible.some((g) => String(g?.pk ?? g?.id ?? "").trim() === pk);
 }
 
 router.get("/export-csv", async (req, res) => {
@@ -251,7 +282,7 @@ router.get("/export-csv", async (req, res) => {
         includeMutualAid: access.isGlobalAdmin,
       });
       let visible = Array.isArray(out.groups) ? out.groups : [];
-      visible = filterGroupsVisibleToUser(authUser, visible);
+      visible = await filterGroupsVisibleToUser(authUser, visible);
       const exportRows = await groups.collectGroupsExportRows(visible, {
         authUser,
         agencyAbbreviations,
@@ -1091,7 +1122,7 @@ router.get("/:groupId/members", async (req, res) => {
       pageSize: Number(members?.pageSize || pageSize),
       hasNext: !!members?.hasNext,
       hasPrev: !!members?.hasPrev,
-      visibleOnGroupsPage: isGroupVisibleOnGroupsPage(authUser, group),
+      visibleOnGroupsPage: await isGroupVisibleOnGroupsPage(authUser, group),
     });
   } catch (err) {
     res.status(400).json({ error: toErrorPayload(err) });

@@ -290,10 +290,13 @@ async function getGroupsByAgencyName(agencyName) {
  * Agency / multi-agency admin fast path: attribute-scoped Authentik search per
  * managed agency plus explicitly granted groups (allowedAdminGroupIds).
  */
-async function getGroupsForAuthUser(authUser, { forceRefresh = false } = {}) {
+async function getGroupsForAuthUser(
+  authUser,
+  { forceRefresh = false, includeHidden = false } = {}
+) {
   const access = accessSvc.getAgencyAccess(authUser);
   if (access.isGlobalAdmin) {
-    return getAllGroups({ forceRefresh });
+    return getAllGroups({ forceRefresh, includeHidden: !!includeHidden });
   }
 
   const { agencyNames } = accessSvc.getAgencyAndCountyPrefixesForUser(authUser);
