@@ -512,7 +512,9 @@
   }
 
   async function loadGroups() {
-    const res = await fetch("/api/groups");
+    // Include mutual-aid ("MA -") groups for global admins so they can be
+    // assigned to integration certs / data feeds (same as Email / Data Sync).
+    const res = await fetch("/api/groups?includeMutualAid=1");
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to load groups");
     groupsCache = Array.isArray(data) ? data : (Array.isArray(data.groups) ? data.groups : []);
