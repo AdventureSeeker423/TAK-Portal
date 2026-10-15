@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.11 - 10/15/26
+🐛 `Bug Fix` - Fixes issue with mutual aid created groups not appearing as group options on the Integrations page
+
 ### v2.0.10 - 10/13/26
 🐛 `Bug Fix` - Fixes issue with plugin sync no longer reporting success when APKs fail to copy
 
