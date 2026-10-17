@@ -4,6 +4,7 @@ const auditSvc = require("../services/auditLog.service");
 const permsSvc = require("../services/permissions.service");
 const usersSvc = require("../services/users.service");
 const agenciesSvc = require("../services/agencies.service");
+const groupsSvc = require("../services/groups.service");
 const agenciesRoutes = require("./agencies.routes");
 
 function requireUserRequestsApi(req, res, next) {
@@ -122,14 +123,6 @@ async function getReviewMetaHandler(req, res) {
       req.query.agencySuffix || access.request.agencySuffix
     );
     const templates = usersSvc.getTemplatesForAgency(agencySuffix);
-    const directoryRepo = require("../services/directoryRepo.service");
-    const found = await directoryRepo.searchGroupsPaged({
-      q: agencySuffix,
-      includeHidden: false,
-      page: 1,
-      pageSize: 200,
-    });
-    const groups = found.groups;
     const allAgencies = agenciesSvc.load();
     const lockedSuffix = String(access.request?.agencySuffix || "")
       .trim()
@@ -139,6 +132,23 @@ async function getReviewMetaHandler(req, res) {
       : allAgencies.filter(
           (a) => String(a?.suffix || "").trim().toLowerCase() === lockedSuffix
         );
+
+    // Username suffix often differs from groupPrefix (e.g. suffix "emgwa",
+    // groups named tak_EMG …). Search by prefix/agency name, not suffix text.
+    let groups = [];
+    if (agencySuffix) {
+      const agency =
+        allAgencies.find(
+          (a) => String(a?.suffix || "").trim().toLowerCase() === agencySuffix
+        ) || null;
+      if (agency?.groupPrefix) {
+        groups = await groupsSvc.getGroupsByPrefix(agency.groupPrefix);
+      }
+      if (!groups.length && agency?.name) {
+        groups = await groupsSvc.getGroupsByAgencyName(agency.name);
+      }
+    }
+
     return res.json({
       templates,
       groups,

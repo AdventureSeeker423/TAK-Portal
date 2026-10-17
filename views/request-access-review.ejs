@@ -413,8 +413,22 @@
           String(a.name || "").localeCompare(String(b.name || ""))
         );
         const filtered = needle
-          ? sorted.filter((g) => String(g.name || "").toLowerCase().includes(needle))
+          ? sorted.filter((g) => {
+              const raw = String(g.name || "").toLowerCase();
+              const display = raw.replace(/^tak_/, "");
+              return raw.includes(needle) || display.includes(needle);
+            })
           : sorted;
+        if (!groupsCache.length) {
+          groupsInner.innerHTML =
+            '<p class="muted" style="margin:0;padding:8px;">No groups found.</p>';
+          return;
+        }
+        if (!filtered.length) {
+          groupsInner.innerHTML =
+            '<p class="muted" style="margin:0;padding:8px;">No matching groups.</p>';
+          return;
+        }
         groupsInner.innerHTML = filtered.map((g) => {
           const id = String(g.pk);
           const name = String(g.name || "").replace(/^tak_/i, "");
@@ -582,7 +596,17 @@
           return;
         }
         if (String(payload.templateIndex || "").trim().toLowerCase() === "manual group selection") {
-          payload.manualGroupIds = Array.from(pickedManualGroupIds);
+          const ids = Array.from(pickedManualGroupIds);
+          if (!ids.length) {
+            setMsg(
+              groupsCache.length
+                ? "Select at least one manual group."
+                : "No groups available for this agency. Try again shortly, or approve from the Dashboard.",
+              false
+            );
+            return;
+          }
+          payload.manualGroupIds = ids;
         }
 
         approveBtn.disabled = true;
