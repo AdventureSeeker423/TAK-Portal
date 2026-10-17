@@ -297,8 +297,15 @@ async function resolveAccessRequestRecipients(agency) {
 
 /**
  * Build one scoped review link per admin email recipient.
- * Global admins get isGlobalAdmin + null suffixes; agency admins get their
- * full multi-agency suffix list (not only the requested agency).
+ *
+ * For a normal agency request:
+ *   - Email everyone in that agency's admin groups (pure agency admin,
+ *     multi-agency admin, and dual-role global+agency admin).
+ *   - Dual-role recipients get a global-scoped link; others get agency scope.
+ *   - Do NOT email unrelated global admins.
+ *   - Only if that agency has zero admin recipients, fall back to all globals.
+ *
+ * "__other__" requests pass includeAgencyAdmins=false → globals only.
  */
 async function buildReviewLinksForRequest(agency, { includeAgencyAdmins = true } = {}) {
   const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
@@ -319,27 +326,24 @@ async function buildReviewLinksForRequest(agency, { includeAgencyAdmins = true }
   const links = [];
   const seenEmails = new Set();
 
-  for (const user of globalUsers) {
+  async function pushAgencyScopedLink(user) {
     const email = String(user?.email || "").trim();
     const emailKey = normalizeEmail(email);
-    if (!emailKey || seenEmails.has(emailKey)) continue;
+    if (!emailKey || seenEmails.has(emailKey)) return;
     seenEmails.add(emailKey);
-    links.push({
-      token: genReviewToken(),
-      email,
-      userPk: userPkFromRecord(user),
-      isGlobalAdmin: true,
-      allowedAgencySuffixes: null,
-    });
-  }
 
-  for (const user of agencyUsers) {
-    const email = String(user?.email || "").trim();
-    const emailKey = normalizeEmail(email);
-    if (!emailKey || seenEmails.has(emailKey) || globalEmailSet.has(emailKey)) {
-      continue;
+    // Global admins who are also agency admins still get the email (they are
+    // "part of" this agency), but keep global link scope for groups/agency.
+    if (globalEmailSet.has(emailKey)) {
+      links.push({
+        token: genReviewToken(),
+        email,
+        userPk: userPkFromRecord(user),
+        isGlobalAdmin: true,
+        allowedAgencySuffixes: null,
+      });
+      return;
     }
-    seenEmails.add(emailKey);
 
     const groupNames = await resolveUserGroupNames(user);
     let suffixes = accessSvc
@@ -357,6 +361,31 @@ async function buildReviewLinksForRequest(agency, { includeAgencyAdmins = true }
       isGlobalAdmin: false,
       allowedAgencySuffixes: suffixes,
     });
+  }
+
+  function pushGlobalScopedLink(user) {
+    const email = String(user?.email || "").trim();
+    const emailKey = normalizeEmail(email);
+    if (!emailKey || seenEmails.has(emailKey)) return;
+    seenEmails.add(emailKey);
+    links.push({
+      token: genReviewToken(),
+      email,
+      userPk: userPkFromRecord(user),
+      isGlobalAdmin: true,
+      allowedAgencySuffixes: null,
+    });
+  }
+
+  if (includeAgencyAdmins && agency) {
+    for (const user of agencyUsers) {
+      await pushAgencyScopedLink(user);
+    }
+    if (links.length) return links;
+  }
+
+  for (const user of globalUsers) {
+    pushGlobalScopedLink(user);
   }
 
   return links;

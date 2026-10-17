@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.12 - 10/17/26
+🐛 `Bug Fix` - Fixes issue with review access email links not allowing for manual group selection<br>
+🐛 `Bug Fix` - Fixes issue with global admins receiving user access requests when an agency admin is present<br>
+✨ `Enhancement` - Review Access Request emails now have a unique URL sent PER ADMIN that is scoped to that admin's access level
+
+
 ### v2.0.11 - 10/15/26
 🐛 `Bug Fix` - Fixes issue with mutual aid created groups not appearing as group options on the Integrations page
 
