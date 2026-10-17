@@ -106,11 +106,60 @@ function resolveReviewAgencySuffix(access, requestedSuffix) {
     if (!locked || locked === "__other__") {
       throw new Error("This review link is locked to the requested agency.");
     }
+    if (!userRequestsSvc.isAgencySuffixAllowedForReviewAccess(access, locked)) {
+      throw new Error("This review link is not authorized for the requested agency.");
+    }
     return locked;
   }
   if (requested && requested !== "__other__") return requested;
   if (locked && locked !== "__other__") return locked;
   return "";
+}
+
+async function loadGroupsForReviewAccess(access, allAgencies) {
+  if (access.isGlobalAdmin || access.canChangeAgency) {
+    return groupsSvc.getAllGroups({ includeHidden: false });
+  }
+
+  const suffixes = Array.isArray(access.allowedAgencySuffixes)
+    ? access.allowedAgencySuffixes
+        .map((s) => String(s || "").trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+  const locked = String(access.request?.agencySuffix || "")
+    .trim()
+    .toLowerCase();
+  const targetSuffixes =
+    suffixes.length > 0
+      ? suffixes
+      : locked && locked !== "__other__"
+        ? [locked]
+        : [];
+
+  const seen = new Set();
+  const groups = [];
+  for (const sfx of targetSuffixes) {
+    const agency =
+      allAgencies.find(
+        (a) => String(a?.suffix || "").trim().toLowerCase() === sfx
+      ) || null;
+    if (!agency) continue;
+
+    let batch = [];
+    if (agency.groupPrefix) {
+      batch = await groupsSvc.getGroupsByPrefix(agency.groupPrefix);
+    }
+    if (!batch.length && agency.name) {
+      batch = await groupsSvc.getGroupsByAgencyName(agency.name);
+    }
+    for (const g of batch) {
+      const pk = String(g?.pk ?? g?.id ?? "").trim();
+      if (!pk || seen.has(pk)) continue;
+      seen.add(pk);
+      groups.push(g);
+    }
+  }
+  return groups;
 }
 
 async function getReviewMetaHandler(req, res) {
@@ -133,21 +182,9 @@ async function getReviewMetaHandler(req, res) {
           (a) => String(a?.suffix || "").trim().toLowerCase() === lockedSuffix
         );
 
-    // Username suffix often differs from groupPrefix (e.g. suffix "emgwa",
-    // groups named tak_EMG …). Search by prefix/agency name, not suffix text.
-    let groups = [];
-    if (agencySuffix) {
-      const agency =
-        allAgencies.find(
-          (a) => String(a?.suffix || "").trim().toLowerCase() === agencySuffix
-        ) || null;
-      if (agency?.groupPrefix) {
-        groups = await groupsSvc.getGroupsByPrefix(agency.groupPrefix);
-      }
-      if (!groups.length && agency?.name) {
-        groups = await groupsSvc.getGroupsByAgencyName(agency.name);
-      }
-    }
+    // Global: all groups. Agency admin: union across their managed agencies
+    // (multi-agency admins get every agency they administer).
+    const groups = await loadGroupsForReviewAccess(access, allAgencies);
 
     return res.json({
       templates,
@@ -171,6 +208,11 @@ async function postReviewApproveHandler(req, res) {
     payload.agencySuffix = resolveReviewAgencySuffix(access, payload.agencySuffix);
     if (!payload.agencySuffix || payload.agencySuffix === "__other__") {
       return res.status(400).json({ error: "Select a valid agency for user creation." });
+    }
+    if (!userRequestsSvc.isAgencySuffixAllowedForReviewAccess(access, payload.agencySuffix)) {
+      return res.status(403).json({
+        error: "This review link is not authorized for that agency.",
+      });
     }
     let permRaw = payload.permissions;
     if (Array.isArray(permRaw)) permRaw = permRaw[0];
@@ -209,7 +251,12 @@ async function postReviewApproveHandler(req, res) {
     userRequestsSvc.deleteRequest(request.id);
 
     auditSvc.logEvent({
-      actor: null,
+      actor: access.reviewLink
+        ? {
+            username: access.reviewLink.email || "request-access-review-link",
+            displayName: access.reviewLink.email || "Request Access Review Link",
+          }
+        : null,
       request: { method: req.method, path: req.originalUrl || req.path, ip: req.ip },
       action: "CREATE_USER",
       targetType: "user",
@@ -223,6 +270,8 @@ async function postReviewApproveHandler(req, res) {
           : [],
         created_method: "request_access_review_link",
         sourceRequestId: request.id,
+        reviewLinkEmail: access.reviewLink?.email || null,
+        reviewLinkIsGlobalAdmin: !!access.isGlobalAdmin,
       },
     });
 

@@ -195,6 +195,77 @@ async function collectEmailsForGroupNames(groupNames) {
   return uniqueEmails(emails);
 }
 
+async function collectUsersForGroupNames(groupNames) {
+  const byEmail = new Map();
+  for (const groupName of groupNames) {
+    const users = await getUsersForGroupName(groupName);
+    for (const user of users) {
+      const email = normalizeEmail(user?.email);
+      if (!email || byEmail.has(email)) continue;
+      byEmail.set(email, user);
+    }
+  }
+  return Array.from(byEmail.values());
+}
+
+async function resolveUserGroupNames(user) {
+  if (!user) return [];
+  const existing = Array.isArray(user.groups) ? user.groups : [];
+  const asNames = existing
+    .map((g) => String(g || "").trim())
+    .filter((g) => g && !/^\d+$/.test(g) && !directoryRepo.isUuid(g));
+  if (asNames.length && asNames.length === existing.length) {
+    return asNames;
+  }
+
+  let full = null;
+  const pk = String(user.pk || user.authentik_pk || user.id || "").trim();
+  const username = String(user.username || "").trim();
+  if (pk) {
+    try {
+      full = await usersSvc.getUserById(pk);
+    } catch (_) {
+      full = null;
+    }
+  }
+  if (!full && username) {
+    try {
+      full = await directoryRepo.getUserByUsername(username);
+    } catch (_) {
+      full = null;
+    }
+  }
+
+  const groupIds = Array.isArray(full?.groups)
+    ? full.groups.map((g) => String(g || "").trim()).filter(Boolean)
+    : existing.map((g) => String(g || "").trim()).filter(Boolean);
+  if (!groupIds.length) return asNames;
+
+  const namedDirect = groupIds.filter(
+    (g) => g && !/^\d+$/.test(g) && !directoryRepo.isUuid(g)
+  );
+  const ids = groupIds.filter((g) => /^\d+$/.test(g) || directoryRepo.isUuid(g));
+  const fetched = ids.length ? await directoryRepo.getGroupsByPks(ids) : [];
+  const names = [
+    ...namedDirect,
+    ...fetched.map((g) => String(g?.name || "").trim()).filter(Boolean),
+  ];
+  const seen = new Set();
+  const out = [];
+  for (const name of names) {
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+function userPkFromRecord(user) {
+  const pk = String(user?.pk || user?.authentik_pk || user?.id || "").trim();
+  return pk || null;
+}
+
 async function getGlobalAdminEmails() {
   const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
   return collectEmailsForGroupNames(
@@ -222,6 +293,80 @@ async function resolveAccessRequestRecipients(agency) {
   const { agencyAdminEmails, globalAdminEmails } =
     await resolveAccessRequestRecipientSets(agency);
   return agencyAdminEmails.length ? agencyAdminEmails : globalAdminEmails;
+}
+
+/**
+ * Build one scoped review link per admin email recipient.
+ * Global admins get isGlobalAdmin + null suffixes; agency admins get their
+ * full multi-agency suffix list (not only the requested agency).
+ */
+async function buildReviewLinksForRequest(agency, { includeAgencyAdmins = true } = {}) {
+  const settings = settingsSvc.getSettings ? settingsSvc.getSettings() || {} : {};
+  const globalUsers = await collectUsersForGroupNames(
+    parseConfiguredGroupNames(settings.PORTAL_AUTH_REQUIRED_GROUP)
+  );
+  const agencyUsers =
+    includeAgencyAdmins && agency
+      ? await collectUsersForGroupNames(
+          accessSvc.getAgencyAdminGroupNamesForAgency(agency)
+        )
+      : [];
+
+  const globalEmailSet = new Set(
+    globalUsers.map((u) => normalizeEmail(u?.email)).filter(Boolean)
+  );
+  const requestedSuffix = normalizeStr(agency?.suffix).toLowerCase();
+  const links = [];
+  const seenEmails = new Set();
+
+  for (const user of globalUsers) {
+    const email = String(user?.email || "").trim();
+    const emailKey = normalizeEmail(email);
+    if (!emailKey || seenEmails.has(emailKey)) continue;
+    seenEmails.add(emailKey);
+    links.push({
+      token: genReviewToken(),
+      email,
+      userPk: userPkFromRecord(user),
+      isGlobalAdmin: true,
+      allowedAgencySuffixes: null,
+    });
+  }
+
+  for (const user of agencyUsers) {
+    const email = String(user?.email || "").trim();
+    const emailKey = normalizeEmail(email);
+    if (!emailKey || seenEmails.has(emailKey) || globalEmailSet.has(emailKey)) {
+      continue;
+    }
+    seenEmails.add(emailKey);
+
+    const groupNames = await resolveUserGroupNames(user);
+    let suffixes = accessSvc
+      .getAllowedAgencySuffixesForGroups(groupNames)
+      .map((s) => normalizeStr(s).toLowerCase())
+      .filter(Boolean);
+    if (requestedSuffix && !suffixes.includes(requestedSuffix)) {
+      suffixes = [...suffixes, requestedSuffix];
+    }
+
+    links.push({
+      token: genReviewToken(),
+      email,
+      userPk: userPkFromRecord(user),
+      isGlobalAdmin: false,
+      allowedAgencySuffixes: suffixes,
+    });
+  }
+
+  return links;
+}
+
+function findReviewLink(request, token) {
+  const value = String(token || "").trim();
+  if (!value || !request) return null;
+  const links = Array.isArray(request.reviewLinks) ? request.reviewLinks : [];
+  return links.find((l) => String(l?.token || "").trim() === value) || null;
 }
 
 const ALLOWED_REQUEST_STATES = new Set([
@@ -375,7 +520,8 @@ function listRequests() {
     .slice()
     .sort((a, b) =>
       String(b.createdAt || "").localeCompare(String(a.createdAt || ""))
-    );
+    )
+    .map((r) => toPublicReviewRequest(r) || r);
 }
 
 function listRequestsForUser(authUser) {
@@ -480,11 +626,11 @@ async function createRequest(input) {
   }
 
   const now = new Date().toISOString();
+  const isOtherRequest = v.agencySuffix === "__other__";
 
   const reqObj = {
     id: genId(),
-    reviewToken: genReviewToken(),
-    globalReviewToken: genReviewToken(),
+    reviewLinks: [],
     createdAt: now,
     firstName: v.firstName,
     lastName: v.lastName,
@@ -515,6 +661,16 @@ async function createRequest(input) {
     }
   }
 
+  let reviewLinks = [];
+  try {
+    reviewLinks = await buildReviewLinksForRequest(agency, {
+      includeAgencyAdmins: !isOtherRequest,
+    });
+  } catch (err) {
+    console.error("Failed to resolve access request review recipients:", err);
+  }
+  reqObj.reviewLinks = reviewLinks;
+
   const all = store.load();
   all.push(reqObj);
   store.save(all);
@@ -523,31 +679,13 @@ async function createRequest(input) {
   // Email Notification Logic
   // ===============================
   try {
-    const isOtherRequest = reqObj.agencySuffix === "__other__";
-    const { agencyAdminEmails, globalAdminEmails } =
-      await resolveAccessRequestRecipientSets(isOtherRequest ? null : agency);
-
     const portalBaseUrl = getPortalBaseUrl();
     function reviewUrlForToken(token) {
       const path = `/request-access/${token}`;
       return portalBaseUrl ? `${portalBaseUrl}${path}` : path;
     }
 
-    const noticeBatches = [];
-    if (!isOtherRequest && agencyAdminEmails.length) {
-      noticeBatches.push({
-        recipients: agencyAdminEmails,
-        reviewUrl: reviewUrlForToken(reqObj.reviewToken),
-      });
-    }
-    if (globalAdminEmails.length) {
-      noticeBatches.push({
-        recipients: globalAdminEmails,
-        reviewUrl: reviewUrlForToken(reqObj.globalReviewToken),
-      });
-    }
-
-    if (!noticeBatches.length) {
+    if (!reviewLinks.length) {
       console.warn("No recipients found for access request notification.");
     } else {
       const reasonLine = reqObj.otherReason
@@ -610,14 +748,15 @@ async function createRequest(input) {
             .join("\n  ") + "\n"
         : "";
 
-      for (const batch of noticeBatches) {
-        const safeReviewUrl = escapeHtml(batch.reviewUrl);
+      for (const link of reviewLinks) {
+        const reviewUrl = reviewUrlForToken(link.token);
+        const safeReviewUrl = escapeHtml(reviewUrl);
         await emailSvc.sendMail({
-          to: batch.recipients.join(","),
+          to: link.email,
           subject: "New TAK Portal Access Request",
           text: `A new user has requested access to TAK Portal.
 
-Review Request: ${batch.reviewUrl}
+Review Request: ${reviewUrl}
 
 Name: ${reqObj.lastName}, ${reqObj.firstName}
 Email: ${reqObj.email}
@@ -656,7 +795,7 @@ ${otherAgencyDetailsText}${reasonLine}`,
 </p>
 `,
         });
-        console.log("Access request notification sent to:", batch.recipients);
+        console.log("Access request notification sent to:", link.email);
       }
     }
   } catch (err) {
@@ -734,17 +873,22 @@ function getByReviewToken(token) {
   if (!value) return null;
   const all = store.load();
   return (
-    all.find(
-      (r) =>
+    all.find((r) => {
+      if (findReviewLink(r, value)) return true;
+      return (
         String(r?.reviewToken || "") === value ||
         String(r?.globalReviewToken || "") === value
-    ) || null
+      );
+    }) || null
   );
 }
 
 function canChangeAgencyForReviewToken(token, request) {
   const value = String(token || "").trim();
   if (!request || !value) return false;
+  const link = findReviewLink(request, value);
+  if (link) return !!link.isGlobalAdmin;
+
   const globalToken = String(request.globalReviewToken || "").trim();
   const agencyToken = String(request.reviewToken || "").trim();
   if (globalToken && value === globalToken) return true;
@@ -753,19 +897,74 @@ function canChangeAgencyForReviewToken(token, request) {
   return String(request.agencySuffix || "") === "__other__";
 }
 
+function resolveReviewLinkScope(token, request) {
+  const value = String(token || "").trim();
+  const link = findReviewLink(request, value);
+  if (link) {
+    const isGlobalAdmin = !!link.isGlobalAdmin;
+    return {
+      reviewLink: link,
+      isGlobalAdmin,
+      canChangeAgency: isGlobalAdmin,
+      allowedAgencySuffixes: isGlobalAdmin
+        ? null
+        : (Array.isArray(link.allowedAgencySuffixes)
+            ? link.allowedAgencySuffixes
+                .map((s) => normalizeStr(s).toLowerCase())
+                .filter(Boolean)
+            : []),
+    };
+  }
+
+  const isGlobalAdmin = canChangeAgencyForReviewToken(value, request);
+  const locked = normalizeStr(request?.agencySuffix).toLowerCase();
+  return {
+    reviewLink: null,
+    isGlobalAdmin,
+    canChangeAgency: isGlobalAdmin,
+    allowedAgencySuffixes: isGlobalAdmin
+      ? null
+      : locked && locked !== "__other__"
+        ? [locked]
+        : [],
+  };
+}
+
+function isAgencySuffixAllowedForReviewAccess(access, agencySuffix) {
+  if (!access) return false;
+  if (access.isGlobalAdmin || access.canChangeAgency) return true;
+  const sfx = normalizeStr(agencySuffix).toLowerCase();
+  if (!sfx || sfx === "__other__") return false;
+  const allowed = Array.isArray(access.allowedAgencySuffixes)
+    ? access.allowedAgencySuffixes.map((s) => normalizeStr(s).toLowerCase())
+    : [];
+  if (allowed.length) return allowed.includes(sfx);
+  const locked = normalizeStr(access.request?.agencySuffix).toLowerCase();
+  return !!locked && locked === sfx;
+}
+
 function toPublicReviewRequest(request) {
   if (!request || typeof request !== "object") return null;
-  const { reviewToken, globalReviewToken, ...rest } = request;
+  const {
+    reviewToken,
+    globalReviewToken,
+    reviewLinks,
+    ...rest
+  } = request;
   return rest;
 }
 
 function getReviewAccessForToken(token) {
   const request = getByReviewToken(token);
   if (!request) return null;
+  const scope = resolveReviewLinkScope(token, request);
   return {
     request,
     publicRequest: toPublicReviewRequest(request),
-    canChangeAgency: canChangeAgencyForReviewToken(token, request),
+    canChangeAgency: scope.canChangeAgency,
+    isGlobalAdmin: scope.isGlobalAdmin,
+    allowedAgencySuffixes: scope.allowedAgencySuffixes,
+    reviewLink: scope.reviewLink,
   };
 }
 
@@ -783,7 +982,11 @@ module.exports = {
   getByReviewToken,
   getReviewAccessForToken,
   canChangeAgencyForReviewToken,
+  findReviewLink,
+  resolveReviewLinkScope,
+  isAgencySuffixAllowedForReviewAccess,
   markAgencyCreated,
   validateCreate,
   resolveAccessRequestRecipients,
+  buildReviewLinksForRequest,
 };

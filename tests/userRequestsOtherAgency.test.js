@@ -3,6 +3,10 @@ const settingsSvc = require("../services/settings.service");
 const {
   validateCreate,
   canChangeAgencyForReviewToken,
+  findReviewLink,
+  resolveReviewLinkScope,
+  isAgencySuffixAllowedForReviewAccess,
+  getReviewAccessForToken,
 } = require("../services/userRequests.service");
 const accessSvc = require("../services/access.service");
 
@@ -131,6 +135,93 @@ assert.strictEqual(
   canChangeAgencyForReviewToken("legacy", { reviewToken: "legacy", agencySuffix: "hfd" }),
   false
 );
+
+const perRecipientRequest = {
+  agencySuffix: "hfd",
+  reviewLinks: [
+    {
+      token: "globallinktoken",
+      email: "global@example.gov",
+      isGlobalAdmin: true,
+      allowedAgencySuffixes: null,
+    },
+    {
+      token: "agencylinktoken",
+      email: "multi@example.gov",
+      isGlobalAdmin: false,
+      allowedAgencySuffixes: ["hfd", "efd", "cfd"],
+    },
+  ],
+};
+
+assert.ok(findReviewLink(perRecipientRequest, "agencylinktoken"));
+assert.strictEqual(findReviewLink(perRecipientRequest, "missing"), null);
+
+assert.strictEqual(
+  canChangeAgencyForReviewToken("globallinktoken", perRecipientRequest),
+  true
+);
+assert.strictEqual(
+  canChangeAgencyForReviewToken("agencylinktoken", perRecipientRequest),
+  false
+);
+
+const globalScope = resolveReviewLinkScope("globallinktoken", perRecipientRequest);
+assert.strictEqual(globalScope.isGlobalAdmin, true);
+assert.strictEqual(globalScope.canChangeAgency, true);
+assert.strictEqual(globalScope.allowedAgencySuffixes, null);
+
+const agencyScope = resolveReviewLinkScope("agencylinktoken", perRecipientRequest);
+assert.strictEqual(agencyScope.isGlobalAdmin, false);
+assert.strictEqual(agencyScope.canChangeAgency, false);
+assert.deepStrictEqual(agencyScope.allowedAgencySuffixes, ["hfd", "efd", "cfd"]);
+
+const legacyAgencyScope = resolveReviewLinkScope("agencytoken", dualTokenRequest);
+assert.strictEqual(legacyAgencyScope.isGlobalAdmin, false);
+assert.deepStrictEqual(legacyAgencyScope.allowedAgencySuffixes, ["hfd"]);
+
+const legacyGlobalScope = resolveReviewLinkScope("globaltoken", dualTokenRequest);
+assert.strictEqual(legacyGlobalScope.isGlobalAdmin, true);
+assert.strictEqual(legacyGlobalScope.allowedAgencySuffixes, null);
+
+const agencyAccess = {
+  ...agencyScope,
+  request: perRecipientRequest,
+};
+assert.strictEqual(
+  isAgencySuffixAllowedForReviewAccess(agencyAccess, "efd"),
+  true
+);
+assert.strictEqual(
+  isAgencySuffixAllowedForReviewAccess(agencyAccess, "zzz"),
+  false
+);
+assert.strictEqual(
+  isAgencySuffixAllowedForReviewAccess(
+    { ...globalScope, request: perRecipientRequest },
+    "zzz"
+  ),
+  true
+);
+
+// Prefer reviewLinks over legacy dual tokens when both exist.
+const mixedRequest = {
+  ...dualTokenRequest,
+  reviewLinks: perRecipientRequest.reviewLinks,
+};
+assert.strictEqual(
+  canChangeAgencyForReviewToken("agencylinktoken", mixedRequest),
+  false
+);
+assert.strictEqual(
+  canChangeAgencyForReviewToken("globallinktoken", mixedRequest),
+  true
+);
+// Legacy tokens still resolve when not in reviewLinks.
+assert.strictEqual(canChangeAgencyForReviewToken("globaltoken", mixedRequest), true);
+assert.strictEqual(canChangeAgencyForReviewToken("agencytoken", mixedRequest), false);
+
+assert.strictEqual(typeof getReviewAccessForToken, "function");
 
 settingsSvc.updateSettings({
   REQUEST_ACCESS_REQUIRE_ALL_AGENCY_DETAILS: priorRequireAllDetails,
