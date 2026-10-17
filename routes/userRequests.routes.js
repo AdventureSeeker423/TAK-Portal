@@ -5,6 +5,7 @@ const permsSvc = require("../services/permissions.service");
 const usersSvc = require("../services/users.service");
 const agenciesSvc = require("../services/agencies.service");
 const groupsSvc = require("../services/groups.service");
+const accessSvc = require("../services/access.service");
 const agenciesRoutes = require("./agencies.routes");
 
 function requireUserRequestsApi(req, res, next) {
@@ -138,6 +139,8 @@ async function loadGroupsForReviewAccess(access, allAgencies) {
 
   const seen = new Set();
   const groups = [];
+  const delegatedIds = new Set();
+
   for (const sfx of targetSuffixes) {
     const agency =
       allAgencies.find(
@@ -155,10 +158,35 @@ async function loadGroupsForReviewAccess(access, allAgencies) {
     for (const g of batch) {
       const pk = String(g?.pk ?? g?.id ?? "").trim();
       if (!pk || seen.has(pk)) continue;
+      if (accessSvc.isGroupMarkedPrivate(g)) continue;
+      seen.add(pk);
+      groups.push(g);
+    }
+
+    // Extra groups delegated to this agency's admins (Agencies page).
+    const ids = Array.isArray(agency.allowedAdminGroupIds)
+      ? agency.allowedAdminGroupIds
+      : [];
+    for (const id of ids) {
+      const s = String(id || "").trim();
+      if (s) delegatedIds.add(s);
+    }
+  }
+
+  const toFetch = [...delegatedIds].filter((id) => !seen.has(id));
+  if (toFetch.length) {
+    const extras = await Promise.all(
+      toFetch.map((id) => groupsSvc.getGroupById(id).catch(() => null))
+    );
+    for (const g of extras) {
+      if (!g || accessSvc.isGroupMarkedPrivate(g)) continue;
+      const pk = String(g?.pk ?? g?.id ?? "").trim();
+      if (!pk || seen.has(pk)) continue;
       seen.add(pk);
       groups.push(g);
     }
   }
+
   return groups;
 }
 
@@ -182,8 +210,8 @@ async function getReviewMetaHandler(req, res) {
           (a) => String(a?.suffix || "").trim().toLowerCase() === lockedSuffix
         );
 
-    // Global: all groups. Agency admin: union across their managed agencies
-    // (multi-agency admins get every agency they administer).
+    // Global: all groups. Agency admin: managed-agency groups plus any
+    // allowedAdminGroupIds delegated on those agencies (multi-agency included).
     const groups = await loadGroupsForReviewAccess(access, allAgencies);
 
     return res.json({
