@@ -12,6 +12,7 @@ const dataSyncSvc = require("./dataSync.service");
 const dataSyncAccess = require("./dataSyncAccess.service");
 const locatorsSvc = require("./locators.service");
 const channelPatchAccess = require("./channelPatchAccess.service");
+const { getString } = require("./env");
 
 function unwrapPagedMissions(payload) {
   if (!payload) return [];
@@ -37,6 +38,44 @@ function missionGroupKeys(mission) {
 
 function channelKeyOf(name) {
   return mapMeta.channelBaseKey(name);
+}
+
+/** Groups named in PORTAL_BRIDGE_MEMBER_GROUPS, as channel keys. */
+function channelsFromBridgeGroups(groupNames, memberGroupCsv) {
+  const allowed = new Set(
+    String(memberGroupCsv || "")
+      .split(",")
+      .map((g) => g.trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(groupNames) ? groupNames : []) {
+    const name = String(raw || "").trim();
+    if (!name || !allowed.has(name.toLowerCase())) continue;
+    const baseKey = channelKeyOf(name);
+    if (!baseKey || baseKey === mapMeta.UNASSIGNED_CHANNEL_KEY || seen.has(baseKey)) continue;
+    seen.add(baseKey);
+    const displayName = groupsSvc.stripTakPrefix(name);
+    out.push({ name, displayName: displayName || name, baseKey });
+  }
+  return out;
+}
+
+function mergeBridgeMemberChannels(authUser, channels) {
+  const list = Array.isArray(channels) ? channels.slice() : [];
+  if (!authUser || !authUser.isBridgeMember || authUser.isGlobalAdmin) return list;
+  const seen = new Set(list.map((c) => c.baseKey).filter(Boolean));
+  for (const ch of channelsFromBridgeGroups(
+    authUser.groups,
+    getString("PORTAL_BRIDGE_MEMBER_GROUPS", "")
+  )) {
+    if (seen.has(ch.baseKey)) continue;
+    seen.add(ch.baseKey);
+    list.push(ch);
+  }
+  list.sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
+  return list;
 }
 
 function locatorInScope(locator, allowedKeys) {
@@ -85,15 +124,17 @@ async function listChannelsForUser(authUser) {
   try {
     all = await groupsSvc.getGroupsForAuthUser(authUser);
   } catch (_) {
-    const channels = [];
+    let channels = [];
     if (access.isGlobalAdmin) {
       channelPatchAccess.mergeCreatedMutualAidPickerChannels(channels);
       channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    } else {
+      channels = mergeBridgeMemberChannels(authUser, channels);
     }
     return {
       access,
       channels,
-      allowedChannelKeys: access.isGlobalAdmin ? null : new Set(),
+      allowedChannelKeys: access.isGlobalAdmin ? null : new Set(channels.map((c) => c.baseKey)),
     };
   }
   const filtered = accessSvc.filterGroupsForUser(authUser, all);
@@ -117,11 +158,16 @@ async function listChannelsForUser(authUser) {
   if (includeMutualAid) {
     channelPatchAccess.mergeCreatedMutualAidPickerChannels(channels);
   }
-  channels.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  const scoped = access.isGlobalAdmin
+    ? channels
+    : mergeBridgeMemberChannels(authUser, channels);
+  if (access.isGlobalAdmin) {
+    scoped.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
   return {
     access,
-    channels,
-    allowedChannelKeys: access.isGlobalAdmin ? null : new Set(channels.map((c) => c.baseKey)),
+    channels: scoped,
+    allowedChannelKeys: access.isGlobalAdmin ? null : new Set(scoped.map((c) => c.baseKey)),
   };
 }
 
@@ -180,6 +226,8 @@ function agencyScopeForCreate(authUser) {
 
 module.exports = {
   channelKeyOf,
+  channelsFromBridgeGroups,
+  mergeBridgeMemberChannels,
   locatorInScope,
   filterLocatorsForAccess,
   assertChannelInScope,

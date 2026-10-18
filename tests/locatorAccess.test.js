@@ -46,6 +46,23 @@ assert.throws(
   (err) => err && err.status === 403
 );
 
+const bridgeChannels = access.channelsFromBridgeGroups(
+  ["tak_ROLE_ADMIN", "tak_CCSO Locator"],
+  "tak_CCSO Locator"
+);
+assert.deepStrictEqual(
+  bridgeChannels.map((c) => c.baseKey),
+  ["ccso locator"]
+);
+const bridgeKeys = new Set(bridgeChannels.map((c) => c.baseKey));
+assert.doesNotThrow(() =>
+  access.assertChannelInScope({ isGlobalAdmin: false }, "CCSO Locator", bridgeKeys)
+);
+assert.strictEqual(
+  access.channelKeyOf("tak_CCSO Locator"),
+  access.channelKeyOf("CCSO Locator")
+);
+
 const channelPatchAccess = require("../services/channelPatchAccess.service");
 const locatorSrc = fs.readFileSync(
   path.join(__dirname, "..", "services", "locatorAccess.service.js"),
