@@ -1033,6 +1033,12 @@
         $("mpUninstallModal").style.display = "none";
         uninstallTarget = null;
       }
+      // Drop the wait hint once change jobs finish (banner also clears via renderBanners).
+      if (!jobBusy) {
+        var msgEl = $("mpMsg");
+        var curMsg = msgEl ? String(msgEl.textContent || "") : "";
+        if (curMsg.indexOf(WAIT_HINT) !== -1) setMsg("");
+      }
       renderBanners(status, snap);
       renderQueue(status && status.jobs);
       renderCards();

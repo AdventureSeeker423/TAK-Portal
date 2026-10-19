@@ -701,6 +701,22 @@ async function deleteMatchingFileSyncPackages(missionName, mission, allowedKeySe
 }
 
 /**
+ * Remove a Data Sync mission from live-map geofence action lists.
+ * Best-effort: never throws into the mission archive/delete path.
+ */
+function detachMissionFromGeofences(missionName) {
+  const name = String(missionName || "").trim();
+  if (!name) return { missionName: "", updatedFences: 0 };
+  try {
+    const geofenceStore = require("./geofence.store");
+    return geofenceStore.removeMissionFromAllFences(name);
+  } catch (err) {
+    console.warn("[data-sync] geofence mission detach failed:", err?.message || err);
+    return { missionName: name, updatedFences: 0 };
+  }
+}
+
+/**
  * Permanently delete a Data Sync mission (same as Data Sync page delete):
  * remove matching file-sync copies, delete the active mission, then remove
  * the ARCHIVED_MISSION row TAK typically writes on delete.
@@ -716,6 +732,8 @@ async function permanentlyDeleteMission(missionName, opts = {}) {
     err.code = "INVALID_MISSION_NAME";
     throw err;
   }
+
+  detachMissionFromGeofences(name);
 
   const allowedKeySet = Object.prototype.hasOwnProperty.call(opts, "allowedKeySet")
     ? opts.allowedKeySet
@@ -878,6 +896,7 @@ module.exports = {
   assertFileSyncPackageAllowed,
   permanentlyDeleteMission,
   permanentlyDeleteMissionForUser,
+  detachMissionFromGeofences,
   extractPackageGroupNames,
   assertSingleGroupBody,
   assertGroupAllowed,

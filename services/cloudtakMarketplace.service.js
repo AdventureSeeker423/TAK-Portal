@@ -75,11 +75,23 @@ function pluginMatchKey(s) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+/** Plugin folder names on disk / in catalog must be simple path segments. */
+function safeDestName(name) {
+  return /^[A-Za-z0-9._-]+$/.test(String(name || ""));
+}
+
 function isHostPluginNoise(dest) {
   const name = String(dest || "")
     .trim()
     .replace(/^.*\//, "");
   if (!name || name === "." || name === ".." || name.startsWith(".")) return true;
+  // Host scan occasionally captures docker/OCI stderr as a "plugin" name when
+  // docker exec fails (e.g. distroless images with no `sh`). Reject anything
+  // that is not a valid dest folder name.
+  if (!safeDestName(name)) return true;
+  if (/oci\s+runtime|exec\s+failed|executable file not found|permission denied/i.test(name)) {
+    return true;
+  }
   const lower = name.toLowerCase();
   if (/^example\.(ts|js|tsx|jsx)$/.test(lower)) return true;
   if (/\.(md|markdown|txt|rst)$/.test(lower)) return true;
@@ -1042,11 +1054,17 @@ if command -v docker >/dev/null 2>&1; then
     [ -n "$c" ] || continue
     echo "$c" | grep -qiE 'cloudtak|takwerx' || continue
     for inner in app/plugins /home/etl/app/plugins web/plugins /home/node/web/plugins /usr/src/app/web/plugins /opt/app/web/plugins api/web/plugins; do
-      listing=$(docker exec "$c" sh -c "ls -1 $inner 2>/dev/null" || true)
+      # Capture only stdout; docker exec failures (no sh in distroless images) go to stderr.
+      # Also drop known runtime error text if a runtime still writes it on stdout.
+      listing=$(docker exec "$c" sh -c "ls -1 $inner 2>/dev/null" 2>/dev/null || true)
       [ -n "$listing" ] || continue
+      echo "$listing" | grep -qiE 'OCI runtime|exec failed|executable file not found|no such file' && continue
       printf 'CONTAINER %s dir=%s\\n' "$c" "$inner"
       echo "$listing" | while IFS= read -r name; do
         [ -n "$name" ] || continue
+        case "$name" in
+          .|..|.[!.]*|*[!A-Za-z0-9._-]*) continue ;;
+        esac
         case "$name" in
           example.ts|example.js|README.md|readme.md|README|LICENSE|.gitkeep|.DS_Store) continue ;;
         esac
@@ -1978,10 +1996,6 @@ function cancelCurrentJobs() {
 
 function pluginById(id) {
   return loadCatalog().plugins.find((p) => p.id === id) || null;
-}
-
-function safeDestName(name) {
-  return /^[A-Za-z0-9._-]+$/.test(String(name || ""));
 }
 
 function normalizeInstallScript(script) {

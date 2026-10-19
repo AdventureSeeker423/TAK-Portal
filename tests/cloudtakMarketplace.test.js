@@ -168,6 +168,56 @@ assert.ok(marketplace.isHostPluginNoise("example.ts"));
 assert.ok(marketplace.isHostPluginNoise("README.md"));
 assert.ok(marketplace.isHostPluginNoise("readme.md"));
 assert.ok(!marketplace.isHostPluginNoise("quick-point-dropper"));
+assert.ok(
+  marketplace.isHostPluginNoise(
+    'OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH'
+  ),
+  "docker exec failure text is not a plugin dest"
+);
+assert.ok(marketplace.isHostPluginNoise("has spaces"), "dest names cannot contain spaces");
+
+const ociNoiseScan = marketplace.parseScanStdout(
+  [
+    "SCAN_BEGIN",
+    'PLUGIN\tOCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH\tdir\t1\t\t\t\t',
+    "PLUGIN\tlegit-plugin\tdir\t1\t\t\t\t",
+    "SCAN_END",
+  ].join("\n"),
+  normalized.plugins
+);
+assert.ok(!ociNoiseScan.plugins.some((p) => /OCI runtime/i.test(p.dest)), "parseScanStdout drops OCI noise");
+assert.ok(ociNoiseScan.plugins.some((p) => p.dest === "legit-plugin"));
+
+{
+  const prevOciScan = store.readScanCache();
+  store.writeScanCache({
+    ok: true,
+    scannedAt: new Date().toISOString(),
+    path: "/root/CloudTAK",
+    plugins: [
+      {
+        dest: 'OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH',
+        catalogId: null,
+        origin: "host",
+        onDisk: true,
+      },
+    ],
+  });
+  try {
+    const ui = marketplace.buildUiPlugins({ skipRemoteSha: true });
+    assert.ok(
+      !ui.plugins.some((p) => /OCI runtime/i.test(String(p.name || p.dest || ""))),
+      "stale scan cache OCI noise must not appear as Not In Catalog plugin"
+    );
+  } finally {
+    if (prevOciScan) store.writeScanCache(prevOciScan);
+    else {
+      try {
+        fs.unlinkSync(path.join(store.DIR, "scan-cache.json"));
+      } catch (_) {}
+    }
+  }
+}
 
 const caddy = require("../services/cloudtakMarketplace.caddy");
 const caddyFile = [

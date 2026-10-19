@@ -463,6 +463,7 @@ router.delete("/missions/:missionName", async (req, res) => {
     const authUser = req.authentikUser || null;
     await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
     const data = await dataSyncSvc.deleteMission(req.params.missionName);
+    dataSyncAccess.detachMissionFromGeofences(req.params.missionName);
     auditDataSync(req, "DATA_SYNC_MISSION_ARCHIVED", req.params.missionName, {
       missionName: req.params.missionName,
     });
@@ -693,6 +694,12 @@ router.delete("/file-sync/packages/:hash", async (req, res) => {
     const label = await resolveArchivedFileLabel(hash, fileNameHint);
     const intent = auditIntentFromRequest(req);
     const out = await dataPackagesSvc.deleteDataPackage(hash);
+    // Permanent archived-file delete: clear leftover geofence refs (e.g. pre-cleanup archives).
+    // Skip on restore — the mission is being brought back as active.
+    if (intent !== "restore") {
+      const missionName = String(label || "").trim().replace(/\.zip$/i, "");
+      if (missionName) dataSyncAccess.detachMissionFromGeofences(missionName);
+    }
     const action =
       intent === "restore"
         ? "DATA_SYNC_ARCHIVED_FILE_REMOVED_ON_RESTORE"
