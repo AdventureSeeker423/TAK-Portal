@@ -376,7 +376,7 @@ async function exportMissionKmlStream(missionName, queryParams = {}) {
 }
 
 /**
- * Mission HTML archive (open in browser) — TAK Marti GET /api/missions/{name}/archive
+ * Mission package ZIP archive — TAK Marti GET /api/missions/{name}/archive
  */
 async function exportMissionArchiveStream(missionName, queryParams = {}) {
   assertTakAvailable();
