@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.13 - 10/19/26
+✨ `Enhancement` - Data Sync - Download button for HTML changed to ZIP file<br>
+🐛 `Bug Fix` - Fixes issue with mass group assignments failing due to improper IDs
+
 ### v2.0.12 - 10/17/26
 🐛 `Bug Fix` - Fixes issue with review access email links not allowing for manual group selection<br>
 🐛 `Bug Fix` - Fixes issue with global admins receiving user access requests when an agency admin is present<br>
