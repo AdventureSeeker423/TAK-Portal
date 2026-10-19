@@ -246,6 +246,10 @@ assert.match(printScript, /cloudtak-marketplace-plugins/);
 assert.match(printScript, /Cleaning plugin runtime/);
 assert.match(printScript, /docker rmi/);
 assert.match(printScript, /docker image prune -f/);
+assert.match(printScript, /ensure_caddy_on_cloudtak_network/);
+assert.match(printScript, /Connected Caddy container/);
+assert.doesNotMatch(printScript, /caddy_default/);
+assert.doesNotMatch(printScript, /cloudtak_default/);
 
 const uninstallPrint = marketplace.uninstallRemoteScript("/root/CloudTAK", "print", [], "print");
 assert.match(uninstallPrint, /Cleaning plugin runtime/);
@@ -257,8 +261,8 @@ assert.match(uninstallPrint, /api\/web\/src\/plugins/);
 assert.match(uninstallPrint, /app\/plugins\/\$DEST/);
 assert.match(uninstallPrint, /cloudtak_web_rel/);
 assert.match(uninstallPrint, /remove_plugin_tree/);
-assert.match(uninstallPrint, /Removing with sudo/);
-assert.match(uninstallPrint, /docker run --rm -u 0/);
+assert.match(uninstallPrint, /Removing \$target with elevated privileges/);
+assert.match(uninstallPrint, /docker(_cli)? run --rm -u 0/);
 assert.doesNotMatch(uninstallPrint, /rm -rf "\$TARGET"/);
 assert.doesNotMatch(uninstallPrint, /docker compose -f "\$CF" -f "\$OVERRIDE" stop \)/);
 
@@ -352,6 +356,30 @@ assert.match(discover, /Caddyfile/);
 assert.doesNotMatch(discover, /incident-manager/);
 const probed = caddy.parseProbe("CADDY_NONE\n");
 assert.strictEqual(probed.available, false);
+
+assert.deepStrictEqual(
+  caddy.containerUpstreamsFromSnippets([
+    "(cloudtak_print) {\n\treverse_proxy cloudtak-print:5010\n}",
+    "handle_path /udash-api* {\n\treverse_proxy cloudtak-plugin-udash-sidecar:3080\n}",
+    "reverse_proxy 127.0.0.1:5000",
+    "reverse_proxy 172.22.112.36:5000",
+    "reverse_proxy map.example.com:443",
+  ]),
+  ["cloudtak-print", "cloudtak-plugin-udash-sidecar"]
+);
+const netScript = caddy.ensureSharedNetworkScript({
+  caddyContainer: "caddy",
+  upstreamNames: ["cloudtak-print"],
+});
+assert.match(netScript, /network connect/);
+assert.match(netScript, /pick_network/);
+assert.doesNotMatch(netScript, /caddy_default/);
+assert.doesNotMatch(netScript, /cloudtak_default/);
+assert.match(netScript, /cloudtak-print/);
+const netOk = caddy.parseNetworkResult("NETWORK_OK\nstatus=connected\ncontainer=caddy\nnetwork=tak-stack_default\n");
+assert.strictEqual(netOk.ok, true);
+assert.strictEqual(netOk.network, "tak-stack_default");
+assert.strictEqual(netOk.status, "connected");
 assert.ok(udash.additionalActions.some((a) => /webhook sidecar/i.test(JSON.stringify(a))));
 assert.ok(!udash.additionalActions.some((a) => /does not start/i.test(JSON.stringify(a))));
 const udashScript = marketplace.installRemoteScript("/root/CloudTAK", udash);
@@ -785,7 +813,7 @@ assert.match(rebuildAligned, /CloudTAK image build finished\./);
 assert.match(rebuildAligned, /CloudTAK container recreate finished\./);
 assert.match(rebuildAligned, /align_plugins_to_host/);
 assert.match(rebuildAligned, /node:22-alpine/);
-assert.match(rebuildAligned, /docker run --rm -u 0/);
+assert.match(rebuildAligned, /docker(_cli)? run --rm -u 0/);
 assert.doesNotMatch(installAligned, /--user /);
 assert.doesNotMatch(rebuildAligned, /--user /);
 assert.ok(marketplace.rebuildTimeoutMs() >= 60 * 60 * 1000);

@@ -69,10 +69,11 @@
       "additionalActions": [
         {
           "title": "Route /print-api through Caddy",
-          "text": "The print Docker service is started by Marketplace. Browsers still need Caddy (or equivalent) to reach /print-api.",
+          "text": "The print Docker service is started by Marketplace. Browsers still need Caddy (or equivalent) to reach /print-api. Deploy To Caddy also joins the Caddy container to CloudTAK's Docker network (detected at runtime) so reverse_proxy cloudtak-print works.",
           "instructions": [
             "Marketplace starts the print Docker service. Do not paste the compose block by hand.",
-            "Paste the snippet below at the TOP LEVEL of your Caddyfile, outside every site block.",
+            "Use Deploy To Caddy when available — it pastes the snippet, reloads Caddy, and connects Caddy to whichever Docker network CloudTAK is already on (no hardcoded network name).",
+            "Or paste the snippet below at the TOP LEVEL of your Caddyfile, outside every site block.",
             "Inside the site block that already has reverse_proxy cloudtak-api:5000, add: import cloudtak_print",
             "Reload Caddy: docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile",
             "Check both https://YOURHOST/print-api/health and https://YOURHOST/print-api. The second must return application/json, not HTML."

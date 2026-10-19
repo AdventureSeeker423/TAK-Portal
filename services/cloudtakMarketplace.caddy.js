@@ -580,6 +580,177 @@ echo "Backed up to \$BAK"
 `.trim();
 }
 
+/** Docker DNS names from reverse_proxy targets (skip IPs / FQDNs / localhost). */
+function containerUpstreamsFromSnippets(snippets) {
+  const names = [];
+  const seen = new Set();
+  const re = /(^|\n)\s*reverse_proxy\s+(\S+)/g;
+  for (const snippet of snippets || []) {
+    const text = String(snippet || "");
+    let match;
+    while ((match = re.exec(text))) {
+      let target = match[2].replace(/^https?:\/\//i, "");
+      target = target.split("/")[0] || "";
+      const host = (target.split(":")[0] || "").trim();
+      if (!host || seen.has(host)) continue;
+      if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) continue;
+      if (/^\[?[0-9a-f:]+\]?$/i.test(host)) continue;
+      if (host === "localhost" || host.includes(".")) continue;
+      if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(host)) continue;
+      seen.add(host);
+      names.push(host);
+    }
+  }
+  return names;
+}
+
+/**
+ * Connect the Caddy container to whatever Docker network CloudTAK (or a
+ * plugin upstream) already uses. No hardcoded network names — project names
+ * differ across installs (cloudtak_default, tak-stack_default, …).
+ */
+function ensureSharedNetworkScript(options = {}) {
+  const caddyContainer = String((options && options.caddyContainer) || "").trim();
+  const upstreamNames = Array.isArray(options && options.upstreamNames)
+    ? options.upstreamNames.map((n) => String(n || "").trim()).filter(Boolean)
+    : [];
+  const extras = ["cloudtak-api", "cloudtak-print", "api"];
+  const probes = [];
+  const seen = new Set();
+  for (const name of upstreamNames.concat(extras)) {
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    probes.push(name);
+  }
+  return `
+set -u
+CADDY=${JSON.stringify(caddyContainer)}
+PROBES=${JSON.stringify(probes.join(" "))}
+runtime=""
+if command -v docker >/dev/null 2>&1; then runtime=docker
+elif command -v podman >/dev/null 2>&1; then runtime=podman
+fi
+[ -n "\$runtime" ] || { echo NETWORK_SKIP; echo "reason=no container runtime"; exit 0; }
+run_rt() {
+  if "\$runtime" "\$@"; then return 0; fi
+  if sudo -n "\$runtime" "\$@" 2>/dev/null; then return 0; fi
+  return 1
+}
+container_nets() {
+  local name="\$1"
+  [ -n "\$name" ] || return 1
+  run_rt inspect -f '{{range \$k, \$v := .NetworkSettings.Networks}}{{println \$k}}{{end}}' "\$name" 2>/dev/null || true
+}
+is_usable_net() {
+  case "\$1" in
+    ""|bridge|host|none) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+find_caddy() {
+  if [ -n "\$CADDY" ] && run_rt inspect "\$CADDY" >/dev/null 2>&1; then
+    printf '%s' "\$CADDY"
+    return 0
+  fi
+  local id name image
+  for id in \$(run_rt ps -q 2>/dev/null || true); do
+    [ -n "\$id" ] || continue
+    name=\$(run_rt inspect -f '{{.Name}}' "\$id" 2>/dev/null | sed 's#^/##' || true)
+    image=\$(run_rt inspect -f '{{.Config.Image}}' "\$id" 2>/dev/null || true)
+    if printf '%s %s' "\$name" "\$image" | grep -qi caddy; then
+      printf '%s' "\$name"
+      return 0
+    fi
+  done
+  return 1
+}
+pick_network() {
+  local name net
+  for name in \$PROBES; do
+    for net in \$(container_nets "\$name"); do
+      if is_usable_net "\$net"; then
+        printf '%s' "\$net"
+        return 0
+      fi
+    done
+  done
+  local id cname
+  for id in \$(run_rt ps -q 2>/dev/null || true); do
+    [ -n "\$id" ] || continue
+    cname=\$(run_rt inspect -f '{{.Name}}' "\$id" 2>/dev/null | sed 's#^/##' || true)
+    printf '%s' "\$cname" | grep -Eqi 'cloudtak' || continue
+    printf '%s' "\$cname" | grep -Eqi 'caddy' && continue
+    for net in \$(container_nets "\$cname"); do
+      if is_usable_net "\$net"; then
+        printf '%s' "\$net"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+caddy=\$(find_caddy || true)
+[ -n "\$caddy" ] || { echo NETWORK_SKIP; echo "reason=no caddy container"; exit 0; }
+net=\$(pick_network || true)
+[ -n "\$net" ] || { echo NETWORK_SKIP; echo "reason=no cloudtak network"; exit 0; }
+if container_nets "\$caddy" | grep -Fxq "\$net"; then
+  echo NETWORK_OK
+  echo "status=already"
+  echo "container=\$caddy"
+  echo "network=\$net"
+  exit 0
+fi
+if run_rt network connect "\$net" "\$caddy"; then
+  echo NETWORK_OK
+  echo "status=connected"
+  echo "container=\$caddy"
+  echo "network=\$net"
+  exit 0
+fi
+echo NETWORK_FAIL >&2
+echo "container=\$caddy" >&2
+echo "network=\$net" >&2
+exit 1
+`.trim();
+}
+
+function parseNetworkResult(stdout) {
+  const text = String(stdout || "").replace(/\r\n/g, "\n");
+  const meta = {};
+  for (const line of text.split("\n")) {
+    const match = line.match(/^([A-Za-z]+)=(.*)$/);
+    if (match) meta[match[1]] = match[2];
+  }
+  if (/^NETWORK_OK\b/m.test(text)) {
+    return {
+      ok: true,
+      skipped: false,
+      status: meta.status || "ok",
+      container: meta.container || "",
+      network: meta.network || "",
+      message:
+        meta.status === "already"
+          ? `Caddy already shares Docker network ${meta.network || ""}.`.trim()
+          : `Connected Caddy to Docker network ${meta.network || ""}.`.trim(),
+    };
+  }
+  if (/^NETWORK_SKIP\b/m.test(text)) {
+    return {
+      ok: true,
+      skipped: true,
+      status: "skipped",
+      reason: meta.reason || "",
+      message: meta.reason ? `Skipped network join (${meta.reason}).` : "Skipped network join.",
+    };
+  }
+  return {
+    ok: false,
+    skipped: false,
+    status: "fail",
+    message: "Could not put Caddy on CloudTAK's Docker network.",
+  };
+}
+
 module.exports = {
   actionKey,
   isOptionalAction,
@@ -591,4 +762,7 @@ module.exports = {
   parseProbe,
   discoverScript,
   applyScript,
+  containerUpstreamsFromSnippets,
+  ensureSharedNetworkScript,
+  parseNetworkResult,
 };
