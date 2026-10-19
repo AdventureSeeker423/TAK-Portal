@@ -162,11 +162,27 @@ function isDataFeedNameAlreadyExistsError(err) {
   return /input name already exists/i.test(parts.join(" "));
 }
 
+/** True when TAK returned a Marti envelope with no usable message/data. */
+function isOpaqueMartiEnvelope(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  if (data.message || data.error || data.detail || data.data != null) return false;
+  if (Array.isArray(data.messages) && data.messages.length) return false;
+  return data.version != null && typeof data.type === "string" && data.nodeId != null;
+}
+
 function formatDataFeedCreateError(err) {
   if (isDataFeedNameAlreadyExistsError(err) || err?.code === "DATAFEED_NAME_EXISTS") {
     return (
       "A data feed with this name already exists on TAK Server. " +
       "Choose a different data feed name and try again."
+    );
+  }
+  if (isOpaqueMartiEnvelope(err?.response?.data)) {
+    const status = err?.response?.status;
+    return (
+      `TAK Server rejected the data feed request` +
+      (status ? ` (HTTP ${status})` : "") +
+      ` without details. Check TAK Server API logs (/opt/tak/logs/takserver-api.log).`
     );
   }
   return toErrorPayload(err);
@@ -203,6 +219,9 @@ async function findConflictingDataFeedName(dataFeedName) {
       (feed) => String(feed?.name || "").trim().toLowerCase() === wanted
     );
     if (hit?.name) return String(hit.name);
+    // List is authoritative when it succeeds; skip per-name probe (some TAK
+    // builds return opaque 400 envelopes for missing names instead of 404).
+    return null;
   } catch (listErr) {
     console.warn(
       "[integrations] Could not list TAK data feeds while checking for a name conflict:",
@@ -210,12 +229,21 @@ async function findConflictingDataFeedName(dataFeedName) {
     );
   }
 
-  const probe = await takClient.get(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`, {
-    validateStatus: (status) => status === 200 || status === 404,
-  });
-  if (probe.status !== 200) return null;
-  const feed = unwrapDataFeed(probe.data);
-  return feed?.name ? String(feed.name) : dataFeedName;
+  // Fallback probe only when the list call failed.
+  try {
+    const probe = await takClient.get(`/api/datafeeds/${encodeURIComponent(dataFeedName)}`, {
+      validateStatus: (status) => status === 200 || status === 404,
+    });
+    if (probe.status !== 200) return null;
+    const feed = unwrapDataFeed(probe.data);
+    return feed?.name ? String(feed.name) : null;
+  } catch (probeErr) {
+    console.warn(
+      `[integrations] Data feed name probe failed for "${dataFeedName}" (list also failed); continuing without conflict confirmation:`,
+      probeErr?.response?.status || probeErr?.message || probeErr
+    );
+    return null;
+  }
 }
 
 /**
