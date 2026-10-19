@@ -215,7 +215,7 @@
     {
       "id": "sidebar-configurator",
       "name": "Sidebar Configurator",
-      "description": "Let system admins set Off, Soft, or Forced default main-menu layouts for standard users and admins. Off is the default until a layout is saved. Requires CloudTAK 13.102+.",
+      "description": "Let system admins set Soft or Forced default main-menu layouts for standard users and admins. Requires CloudTAK 13.102+.",
       "repo": "https://github.com/AdventureSeeker423/cloudtak-plugin-sidebar-configurator.git",
       "added": "2026-10-19",
       "maintainer": "AdventureSeeker423",
