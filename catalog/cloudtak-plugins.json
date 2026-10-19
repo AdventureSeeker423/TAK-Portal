@@ -211,6 +211,22 @@
         "api/web/plugins/rubber-sheet/index.ts",
         "app/plugins/rubber-sheet/index.ts"
       ]
+    },
+    {
+      "id": "sidebar-configurator",
+      "name": "Sidebar Configurator",
+      "description": "Let system admins set Soft or Forced default main-menu layouts for standard users and admins. Requires CloudTAK 13.102+.",
+      "repo": "https://github.com/AdventureSeeker423/cloudtak-plugin-sidebar-configurator.git",
+      "added": "2026-10-19",
+      "maintainer": "AdventureSeeker423",
+      "web": { "dest": "sidebar-configurator" },
+      "routes": { "source": "server" },
+      "exclude": ["**/*.md"],
+      "detectAliases": ["cloudtak-plugin-sidebar-configurator"],
+      "detect": [
+        "api/web/plugins/sidebar-configurator/index.ts",
+        "app/plugins/sidebar-configurator/index.ts"
+      ]
     }
   ]
 }
