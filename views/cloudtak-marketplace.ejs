@@ -51,22 +51,6 @@
   </div>
 </main>
 
-<div class="modalOverlay" id="mpUninstallModal" style="display:none;" aria-hidden="true">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mpUninstallTitle">
-    <div class="modalHeader">
-      <h2 id="mpUninstallTitle">Uninstall Plugin</h2>
-      <button type="button" class="btn" id="mpUninstallCancel">Close</button>
-    </div>
-    <div class="modalBody">
-      <p id="mpUninstallBody"></p>
-      <p class="muted">This is added to the deploy queue. CloudTAK rebuilds once when you click Deploy. After it finishes, open CloudTAK <strong>Settings → Refresh App</strong> so the plugin leaves the menu.</p>
-      <div class="row" style="gap:8px;margin-top:12px;">
-        <button type="button" class="btn danger" id="mpUninstallConfirm" disabled>Add To Queue</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="modalOverlay" id="mpExtraConfigModal" style="display:none;" aria-hidden="true">
   <div class="modal mp-extra-config-dialog" role="dialog" aria-modal="true" aria-labelledby="mpExtraConfigTitle">
     <div class="modalHeader">
@@ -396,8 +380,7 @@
 (function () {
   var filter = "all";
   var plugins = [];
-  var uninstallTarget = null;
-  var confirmArmed = false;
+  var uninstallArmedId = "";
   var jobLogFullText = "";
   var jobLogPinned = true;
   var jobLogKey = "";
@@ -612,6 +595,12 @@
     return "";
   }
 
+  function uninstallButtonHtml(pluginId) {
+    var id = String(pluginId || "");
+    var label = uninstallArmedId && uninstallArmedId === id ? "Confirm Uninstall" : "Uninstall";
+    return '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(id) + '">' + label + "</button>";
+  }
+
   function matchesFilter(p) {
     if (filter === "all") return true;
     if (filter === "available") return !p.installed && !p.error;
@@ -675,7 +664,7 @@
         if (staged && staged.kind === "uninstall") {
           actions = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
         } else {
-          actions = '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+          actions = uninstallButtonHtml(p.id);
         }
       } else if (p.error) {
         if (staged && (staged.kind === "install" || staged.kind === "update" || staged.kind === "uninstall")) {
@@ -684,7 +673,7 @@
           if (canReinstall) {
             actions += '<button type="button" class="btn qr" data-reinstall="' + encodeURIComponent(p.id) + '">Reinstall</button>';
           }
-          actions += '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+          actions += uninstallButtonHtml(p.id);
         }
       } else if (p.installed) {
         if (p.updateAvailable) {
@@ -697,7 +686,7 @@
         if (staged && staged.kind === "uninstall") {
           actions += '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
         } else {
-          actions += '<button type="button" class="btn danger" data-uninstall="' + encodeURIComponent(p.id) + '">Uninstall</button>';
+          actions += uninstallButtonHtml(p.id);
         }
       } else if (staged && staged.kind === "install") {
         actions = '<button type="button" class="btn" data-unstage="' + encodeURIComponent(staged.id) + '">Queued</button>';
@@ -1029,10 +1018,7 @@
       var status = pair[1];
       plugins = (snap && snap.plugins) || [];
       jobBusy = !!(status && (status.busy || changeJobsBusy(status.jobs)));
-      if (jobBusy && $("mpUninstallModal")) {
-        $("mpUninstallModal").style.display = "none";
-        uninstallTarget = null;
-      }
+      if (jobBusy) uninstallArmedId = "";
       // Drop the wait hint once change jobs finish (banner also clears via renderBanners).
       if (!jobBusy) {
         var msgEl = $("mpMsg");
@@ -1187,29 +1173,48 @@
       return;
     }
     var t = e.target && e.target.closest ? e.target.closest("[data-install],[data-update],[data-uninstall],[data-reinstall]") : null;
-    if (!t) return;
+    if (!t) {
+      if (uninstallArmedId) {
+        uninstallArmedId = "";
+        renderCards();
+      }
+      return;
+    }
     var id = decodeURIComponent(t.getAttribute("data-install") || t.getAttribute("data-update") || t.getAttribute("data-uninstall") || t.getAttribute("data-reinstall") || "");
     if (t.hasAttribute("data-install")) {
+      uninstallArmedId = "";
       postJob({ kind: "install", pluginId: id }).then(function () { setMsg("Added to queue."); loadAll(); });
       return;
     }
     if (t.hasAttribute("data-reinstall")) {
+      uninstallArmedId = "";
       var rp = plugins.filter(function (x) { return x.id === id; })[0];
       postJob({ kind: "install", pluginId: id, dest: rp && rp.dest, reinstall: true }).then(function () { setMsg("Reinstall added to queue."); loadAll(); });
       return;
     }
     if (t.hasAttribute("data-update")) {
+      uninstallArmedId = "";
       postJob({ kind: "update", pluginId: id }).then(function () { setMsg("Added to queue."); loadAll(); });
       return;
     }
-    var p = plugins.filter(function (x) { return x.id === id; })[0];
-    uninstallTarget = p;
-    confirmArmed = false;
-    $("mpUninstallConfirm").disabled = false;
-    $("mpUninstallConfirm").textContent = "Add To Queue";
-    $("mpUninstallBody").textContent = "Remove " + (p && p.name || id) + " from " + (p && p.dest || id) + " (web folder" + (p && p.layout && p.layout.routes ? " and owned route files" : "") + "). Plugin Docker services, leftover images, and runtime files are also removed." + (p && p.unknown ? " This plugin is not in the marketplace catalog." : "");
-    $("mpUninstallModal").style.display = "flex";
-    $("mpUninstallModal").setAttribute("aria-hidden", "false");
+    if (t.hasAttribute("data-uninstall")) {
+      var p = plugins.filter(function (x) { return x.id === id; })[0];
+      if (!p) return;
+      if (uninstallArmedId !== id) {
+        uninstallArmedId = id;
+        renderCards();
+        return;
+      }
+      uninstallArmedId = "";
+      postJob({
+        kind: "uninstall",
+        pluginId: p.unknown ? null : p.id,
+        dest: p.dest
+      }).then(function () {
+        setMsg("Uninstall added to queue.");
+        loadAll();
+      });
+    }
   });
   $("mpQueueList").addEventListener("click", function (e) {
     if (jobBusy) {
@@ -1219,10 +1224,6 @@
     var btn = e.target && e.target.closest ? e.target.closest("[data-unstage]") : null;
     if (!btn) return;
     unstage(decodeURIComponent(btn.getAttribute("data-unstage") || ""));
-  });
-  $("mpUninstallCancel").addEventListener("click", function () {
-    $("mpUninstallModal").style.display = "none";
-    uninstallTarget = null;
   });
   function extraConfigOverlayOpen() {
     var overlay = $("mpExtraConfigModal");
@@ -1234,30 +1235,6 @@
   });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && extraConfigOverlayOpen()) closeExtraConfigModal();
-  });
-  $("mpUninstallConfirm").addEventListener("click", function () {
-    if (jobBusy) {
-      setMsg(WAIT_HINT + ".", true);
-      $("mpUninstallModal").style.display = "none";
-      return;
-    }
-    if (!uninstallTarget) return;
-    if (!confirmArmed) {
-      confirmArmed = true;
-      $("mpUninstallConfirm").textContent = "Click Again To Add To Queue";
-      return;
-    }
-    postJob({
-      kind: "uninstall",
-      pluginId: uninstallTarget.unknown ? null : uninstallTarget.id,
-      dest: uninstallTarget.dest
-    }).then(function () {
-      setMsg("Uninstall added to queue.");
-      $("mpUninstallModal").style.display = "none";
-      $("mpUninstallConfirm").textContent = "Add To Queue";
-      confirmArmed = false;
-      loadAll();
-    });
   });
 
   loadAll();
