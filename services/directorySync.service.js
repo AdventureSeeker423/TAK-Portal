@@ -96,6 +96,21 @@ async function sendOnboardingEmail(user, groups, hasPassword) {
   }
 }
 
+function formatOutboxError(err) {
+  const status = Number(err?.response?.status || 0);
+  const base = err?.message || String(err);
+  if (!status) return base;
+  let detail = "";
+  try {
+    const data = err?.response?.data;
+    detail = typeof data === "string" ? data : JSON.stringify(data);
+  } catch (_) {
+    detail = "";
+  }
+  detail = String(detail || "").trim().slice(0, 500);
+  return detail ? `HTTP ${status}: ${detail}` : `HTTP ${status}: ${base}`;
+}
+
 async function handleOutboxRow(row) {
   const payload = outbox.decryptPayload(row.payload || {});
   const kind = String(row.kind || "");
@@ -245,7 +260,7 @@ async function drainOutbox() {
       await outbox.deleteRow(row.id);
     } catch (e) {
       const attempts = Number(row.attempts || 0) + 1;
-      const msg = e?.message || String(e);
+      const msg = formatOutboxError(e);
       console.warn(`[outbox] ${row.kind} id=${row.id} attempt ${attempts}:`, msg);
       if (attempts >= 20) {
         row.last_error = msg;

@@ -78,6 +78,26 @@ const usersSrc = fs.readFileSync(
   path.join(__dirname, "..", "services", "users.service.js"),
   "utf8"
 );
+assert.ok(
+  usersSrc.includes("resolveAuthentikGroupPksForAssignment") &&
+    usersSrc.includes("still syncing to Authentik"),
+  "setUserGroups must resolve Authentik group pks and reject unsynced groups"
+);
+const setGroupsStart = usersSrc.indexOf("async function setUserGroups");
+const setGroupsEnd = usersSrc.indexOf("async function toggleUserActive");
+assert.ok(setGroupsStart >= 0 && setGroupsEnd > setGroupsStart, "setUserGroups not found");
+const setGroupsFn = usersSrc.slice(setGroupsStart, setGroupsEnd);
+assert.ok(
+  /payload:\s*\{[\s\S]*?\bgroupPks\b/.test(setGroupsFn) &&
+    setGroupsFn.includes("resolveAuthentikGroupPksForAssignment") &&
+    !/groupPks:\s*ids\b/.test(setGroupsFn),
+  "set_groups outbox payload must use resolved Authentik group pks, not raw UI ids"
+);
+assert.ok(
+  groupsSrc.includes("not synced to Authentik yet"),
+  "membership outbox must fail clearly when a group has no Authentik pk"
+);
+
 const tplStart = usersSrc.indexOf("async function applyTemplateSyncWorkItems");
 const tplEnd = usersSrc.indexOf("async function syncUsersForTemplateSave");
 assert.ok(tplStart >= 0 && tplEnd > tplStart, "applyTemplateSyncWorkItems not found");

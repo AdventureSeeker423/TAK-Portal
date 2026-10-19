@@ -62,7 +62,13 @@ function authentikUserPksFromUsers(users) {
 async function enqueueGroupMembershipOutbox(group, kind, users, client) {
   const groupPk = group?.authentik_pk != null ? String(group.authentik_pk).trim() : "";
   const userPks = authentikUserPksFromUsers(users);
-  if (!groupPk || !userPks.length) return null;
+  if (!userPks.length) return null;
+  if (!groupPk) {
+    const label = String(group?.name || group?.uuid || group?.id || "unknown").trim();
+    throw new Error(
+      `Group "${label}" is not synced to Authentik yet; wait for sync status before changing members.`
+    );
+  }
   return authentikOutbox.enqueue(
     {
       kind,

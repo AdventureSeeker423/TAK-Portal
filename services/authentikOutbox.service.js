@@ -61,7 +61,12 @@ async function waitForOutbox(id, timeoutMs = 8000) {
     const r = await db.query("SELECT id, last_error, attempts FROM authentik_outbox WHERE id = $1", [oid]);
     if (!r.rows.length) return { done: true, timedOut: false };
     if (r.rows[0].last_error) {
-      throw new Error("Authentik operation failed and remains queued for retry; check sync status.");
+      const detail = String(r.rows[0].last_error || "").trim();
+      throw new Error(
+        detail
+          ? `Authentik operation failed and remains queued for retry: ${detail}`
+          : "Authentik operation failed and remains queued for retry; check sync status."
+      );
     }
     await new Promise((res) => setTimeout(res, 200));
   }

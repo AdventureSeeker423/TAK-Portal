@@ -2776,6 +2776,62 @@ async function updateEmail(userId, email) {
   return true;
 }
 
+/**
+ * Resolve portal group ids (Authentik pk or local uuid) to Authentik group pks.
+ * Throws when any id is unknown or the group has not finished Authentik sync yet
+ * (common for agency-created groups still pending create_group).
+ */
+async function resolveAuthentikGroupPksForAssignment(groupIds) {
+  const ids = Array.isArray(groupIds)
+    ? [...new Set(groupIds.map((x) => String(x).trim()).filter(Boolean))]
+    : [];
+  if (!ids.length) return [];
+
+  const groups = await directoryRepo.getGroupsByPks(ids);
+  const byToken = new Map();
+  for (const g of groups) {
+    const tokens = [
+      g.authentik_pk != null ? String(g.authentik_pk).trim() : "",
+      g.uuid || g.id ? String(g.uuid || g.id).trim() : "",
+      g.pk != null ? String(g.pk).trim() : "",
+    ].filter(Boolean);
+    for (const token of tokens) byToken.set(token, g);
+  }
+
+  const missing = [];
+  const unsynced = [];
+  const pks = [];
+  for (const id of ids) {
+    const g = byToken.get(String(id));
+    if (!g) {
+      missing.push(id);
+      continue;
+    }
+    const akPk = g.authentik_pk != null ? String(g.authentik_pk).trim() : "";
+    if (!akPk) {
+      unsynced.push(String(g.name || id).trim() || id);
+      continue;
+    }
+    pks.push(akPk);
+  }
+
+  if (missing.length) {
+    const sample = missing.slice(0, 5).join(", ");
+    throw new Error(
+      `Unknown group id(s): ${sample}${missing.length > 5 ? "…" : ""}`
+    );
+  }
+  if (unsynced.length) {
+    const sample = unsynced.slice(0, 8).join(", ");
+    throw new Error(
+      `Cannot assign group(s) still syncing to Authentik: ${sample}${
+        unsynced.length > 8 ? "…" : ""
+      }. Wait for sync status, then retry.`
+    );
+  }
+  return [...new Set(pks)];
+}
+
 async function setUserGroups(userId, groupIds, opts = {}) {
   const userBefore = await assertUserNotActionLocked(userId, opts);
   let ids = Array.isArray(groupIds)
@@ -2791,7 +2847,10 @@ async function setUserGroups(userId, groupIds, opts = {}) {
     ids = Array.from(new Set([...ids, ...preserved]));
   }
 
-  const payload = { groups: ids };
+  // Always send Authentik group pks to the worker — never portal-only UUIDs.
+  const groupPks = await resolveAuthentikGroupPksForAssignment(ids);
+
+  const payload = { groups: groupPks };
   if (Object.prototype.hasOwnProperty.call(opts || {}, "currentTemplate")) {
     const currentTemplate = String(opts.currentTemplate || "").trim();
     const beforeAttrs =
@@ -2805,7 +2864,7 @@ async function setUserGroups(userId, groupIds, opts = {}) {
   }
   const wait = opts.waitForOutbox !== false && opts.bulk !== true;
   const outboxId = await db.withTransaction(async (c) => {
-    await directoryRepo.setUserMemberships(userBefore.uuid || userBefore.id, ids, c);
+    await directoryRepo.setUserMemberships(userBefore.uuid || userBefore.id, groupPks, c);
     if (payload.attributes) {
       await directoryRepo.updateLocalUser(userBefore.uuid || userBefore.id, { attributes: payload.attributes }, c);
     }
@@ -2818,7 +2877,7 @@ async function setUserGroups(userId, groupIds, opts = {}) {
         username: userBefore.username,
         payload: {
           authentikPk: userBefore.authentik_pk,
-          groupPks: ids,
+          groupPks,
           patch: payload.attributes ? { attributes: payload.attributes } : undefined,
         },
       },
@@ -2839,7 +2898,7 @@ async function setUserGroups(userId, groupIds, opts = {}) {
     scheduleDebouncedGroupsEmail({
       user: userBefore,
       beforeIds: userBefore?.groups || [],
-      afterIds: ids,
+      afterIds: groupPks,
     });
   } catch (e) {
     console.error(
@@ -2847,7 +2906,7 @@ async function setUserGroups(userId, groupIds, opts = {}) {
       e?.message || e
     );
   }
-  return ids;
+  return groupPks;
 }
 
 async function toggleUserActive(userId, isActive, opts = {}) {
