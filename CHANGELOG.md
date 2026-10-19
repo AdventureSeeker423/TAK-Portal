@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.14 - 10/19/26
+🐛 `Bug Fix` - Fixes issue with Integration Data Feed creation failing
+
 ### v2.0.13 - 10/19/26
 ✨ `Enhancement` - Data Sync - Download button for HTML changed to ZIP file<br>
 🐛 `Bug Fix` - Fixes issue with mass group assignments failing due to improper IDs
