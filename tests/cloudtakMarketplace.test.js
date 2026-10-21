@@ -94,10 +94,16 @@ assert.ok(ids.includes("dispatcher"));
 assert.ok(ids.includes("livewx"));
 assert.ok(ids.includes("replay"));
 assert.ok(ids.includes("rubber-sheet"));
+assert.ok(ids.includes("sidebar-configurator"));
 const rubberSheet = normalized.plugins.find((p) => p.id === "rubber-sheet");
 assert.strictEqual(rubberSheet.web.dest, "rubber-sheet");
 assert.ok(rubberSheet.detect.some((d) => d.includes("app/plugins/rubber-sheet/")));
 assert.match(marketplace.installRemoteScript("/root/CloudTAK", rubberSheet), /install\.sh/);
+const sidebarConfigurator = normalized.plugins.find((p) => p.id === "sidebar-configurator");
+assert.strictEqual(sidebarConfigurator.web.dest, "sidebar-configurator");
+assert.ok(sidebarConfigurator.routes && sidebarConfigurator.routes.source === "server");
+assert.ok(sidebarConfigurator.detect.some((d) => d.includes("app/plugins/sidebar-configurator/")));
+assert.match(marketplace.installRemoteScript("/root/CloudTAK", sidebarConfigurator), /install\.sh/);
 const replay = normalized.plugins.find((p) => p.id === "replay");
 assert.strictEqual(replay.web.dest, "replay");
 assert.match(marketplace.uninstallRemoteScript("/root/CloudTAK", "replay", [], "replay"), /--remove/);
@@ -168,6 +174,56 @@ assert.ok(marketplace.isHostPluginNoise("example.ts"));
 assert.ok(marketplace.isHostPluginNoise("README.md"));
 assert.ok(marketplace.isHostPluginNoise("readme.md"));
 assert.ok(!marketplace.isHostPluginNoise("quick-point-dropper"));
+assert.ok(
+  marketplace.isHostPluginNoise(
+    'OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH'
+  ),
+  "docker exec failure text is not a plugin dest"
+);
+assert.ok(marketplace.isHostPluginNoise("has spaces"), "dest names cannot contain spaces");
+
+const ociNoiseScan = marketplace.parseScanStdout(
+  [
+    "SCAN_BEGIN",
+    'PLUGIN\tOCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH\tdir\t1\t\t\t\t',
+    "PLUGIN\tlegit-plugin\tdir\t1\t\t\t\t",
+    "SCAN_END",
+  ].join("\n"),
+  normalized.plugins
+);
+assert.ok(!ociNoiseScan.plugins.some((p) => /OCI runtime/i.test(p.dest)), "parseScanStdout drops OCI noise");
+assert.ok(ociNoiseScan.plugins.some((p) => p.dest === "legit-plugin"));
+
+{
+  const prevOciScan = store.readScanCache();
+  store.writeScanCache({
+    ok: true,
+    scannedAt: new Date().toISOString(),
+    path: "/root/CloudTAK",
+    plugins: [
+      {
+        dest: 'OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH',
+        catalogId: null,
+        origin: "host",
+        onDisk: true,
+      },
+    ],
+  });
+  try {
+    const ui = marketplace.buildUiPlugins({ skipRemoteSha: true });
+    assert.ok(
+      !ui.plugins.some((p) => /OCI runtime/i.test(String(p.name || p.dest || ""))),
+      "stale scan cache OCI noise must not appear as Not In Catalog plugin"
+    );
+  } finally {
+    if (prevOciScan) store.writeScanCache(prevOciScan);
+    else {
+      try {
+        fs.unlinkSync(path.join(store.DIR, "scan-cache.json"));
+      } catch (_) {}
+    }
+  }
+}
 
 const caddy = require("../services/cloudtakMarketplace.caddy");
 const caddyFile = [
@@ -196,6 +252,10 @@ assert.match(printScript, /cloudtak-marketplace-plugins/);
 assert.match(printScript, /Cleaning plugin runtime/);
 assert.match(printScript, /docker rmi/);
 assert.match(printScript, /docker image prune -f/);
+assert.match(printScript, /ensure_caddy_on_cloudtak_network/);
+assert.match(printScript, /Connected Caddy container/);
+assert.doesNotMatch(printScript, /caddy_default/);
+assert.doesNotMatch(printScript, /cloudtak_default/);
 
 const uninstallPrint = marketplace.uninstallRemoteScript("/root/CloudTAK", "print", [], "print");
 assert.match(uninstallPrint, /Cleaning plugin runtime/);
@@ -207,8 +267,8 @@ assert.match(uninstallPrint, /api\/web\/src\/plugins/);
 assert.match(uninstallPrint, /app\/plugins\/\$DEST/);
 assert.match(uninstallPrint, /cloudtak_web_rel/);
 assert.match(uninstallPrint, /remove_plugin_tree/);
-assert.match(uninstallPrint, /Removing with sudo/);
-assert.match(uninstallPrint, /docker run --rm -u 0/);
+assert.match(uninstallPrint, /Removing \$target with elevated privileges/);
+assert.match(uninstallPrint, /docker(_cli)? run --rm -u 0/);
 assert.doesNotMatch(uninstallPrint, /rm -rf "\$TARGET"/);
 assert.doesNotMatch(uninstallPrint, /docker compose -f "\$CF" -f "\$OVERRIDE" stop \)/);
 
@@ -302,6 +362,30 @@ assert.match(discover, /Caddyfile/);
 assert.doesNotMatch(discover, /incident-manager/);
 const probed = caddy.parseProbe("CADDY_NONE\n");
 assert.strictEqual(probed.available, false);
+
+assert.deepStrictEqual(
+  caddy.containerUpstreamsFromSnippets([
+    "(cloudtak_print) {\n\treverse_proxy cloudtak-print:5010\n}",
+    "handle_path /udash-api* {\n\treverse_proxy cloudtak-plugin-udash-sidecar:3080\n}",
+    "reverse_proxy 127.0.0.1:5000",
+    "reverse_proxy 172.22.112.36:5000",
+    "reverse_proxy map.example.com:443",
+  ]),
+  ["cloudtak-print", "cloudtak-plugin-udash-sidecar"]
+);
+const netScript = caddy.ensureSharedNetworkScript({
+  caddyContainer: "caddy",
+  upstreamNames: ["cloudtak-print"],
+});
+assert.match(netScript, /network connect/);
+assert.match(netScript, /pick_network/);
+assert.doesNotMatch(netScript, /caddy_default/);
+assert.doesNotMatch(netScript, /cloudtak_default/);
+assert.match(netScript, /cloudtak-print/);
+const netOk = caddy.parseNetworkResult("NETWORK_OK\nstatus=connected\ncontainer=caddy\nnetwork=tak-stack_default\n");
+assert.strictEqual(netOk.ok, true);
+assert.strictEqual(netOk.network, "tak-stack_default");
+assert.strictEqual(netOk.status, "connected");
 assert.ok(udash.additionalActions.some((a) => /webhook sidecar/i.test(JSON.stringify(a))));
 assert.ok(!udash.additionalActions.some((a) => /does not start/i.test(JSON.stringify(a))));
 const udashScript = marketplace.installRemoteScript("/root/CloudTAK", udash);
@@ -735,7 +819,7 @@ assert.match(rebuildAligned, /CloudTAK image build finished\./);
 assert.match(rebuildAligned, /CloudTAK container recreate finished\./);
 assert.match(rebuildAligned, /align_plugins_to_host/);
 assert.match(rebuildAligned, /node:22-alpine/);
-assert.match(rebuildAligned, /docker run --rm -u 0/);
+assert.match(rebuildAligned, /docker(_cli)? run --rm -u 0/);
 assert.doesNotMatch(installAligned, /--user /);
 assert.doesNotMatch(rebuildAligned, /--user /);
 assert.ok(marketplace.rebuildTimeoutMs() >= 60 * 60 * 1000);

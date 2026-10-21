@@ -36,7 +36,7 @@ const DATA_SYNC_SUMMARIES = {
   DATA_SYNC_MISSION_PASSWORD_SET: (name) => `Set password on data sync mission "${name}".`,
   DATA_SYNC_MISSION_PASSWORD_CLEARED: (name) => `Cleared password on data sync mission "${name}".`,
   DATA_SYNC_MISSION_CONTENTS_UPDATED: (name) => `Updated contents of data sync mission "${name}".`,
-  DATA_SYNC_MISSION_DOWNLOADED_HTML: (name) => `Downloaded HTML archive for data sync mission "${name}".`,
+  DATA_SYNC_MISSION_DOWNLOADED_ZIP: (name) => `Downloaded ZIP archive for data sync mission "${name}".`,
   DATA_SYNC_MISSION_DOWNLOADED_KML: (name) => `Downloaded KML export for data sync mission "${name}".`,
   DATA_SYNC_ARCHIVED_FILE_DOWNLOADED: (label) => `Downloaded archived data sync file "${label}".`,
   DATA_SYNC_ARCHIVED_FILE_DELETED: (label) => `Permanently deleted archived data sync file "${label}".`,
@@ -329,7 +329,7 @@ router.get("/missions/:missionName/export-kml", async (req, res) => {
   }
 });
 
-/** Mission HTML archive — TAK GET /Marti/api/missions/:name/archive */
+/** Mission package ZIP — TAK GET /Marti/api/missions/:name/archive */
 router.get("/missions/:missionName/export-archive", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
@@ -358,25 +358,26 @@ router.get("/missions/:missionName/export-archive", async (req, res) => {
 
     res.status(r.status);
     const ct = r.headers["content-type"];
-    if (ct) res.setHeader("Content-Type", ct);
-    else res.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (ct && !/text\/html/i.test(String(ct))) res.setHeader("Content-Type", ct);
+    else res.setHeader("Content-Type", "application/zip");
 
+    const safe =
+      String(missionName).replace(/[^\w.\- ()\[\]]+/g, "_").trim().slice(0, 120) || "mission";
+    const zipName = /\.zip$/i.test(safe) ? safe : `${safe}.zip`;
     const cd = r.headers["content-disposition"];
-    if (cd) {
+    if (cd && /\.zip/i.test(String(cd))) {
       res.setHeader("Content-Disposition", cd);
     } else {
-      const safe =
-        String(missionName).replace(/[^\w.\- ()\[\]]+/g, "_").trim().slice(0, 120) || "mission";
       res.setHeader(
         "Content-Disposition",
-        `inline; filename="${safe}.html"; filename*=UTF-8''${encodeURIComponent(safe + ".html")}`
+        `attachment; filename="${zipName}"; filename*=UTF-8''${encodeURIComponent(zipName)}`
       );
     }
     const cl = r.headers["content-length"];
     if (cl) res.setHeader("Content-Length", cl);
-    auditDataSync(req, "DATA_SYNC_MISSION_DOWNLOADED_HTML", missionName, {
+    auditDataSync(req, "DATA_SYNC_MISSION_DOWNLOADED_ZIP", missionName, {
       missionName,
-      downloadFormat: "html",
+      downloadFormat: "zip",
     });
     r.data.pipe(res);
   } catch (err) {
@@ -462,6 +463,7 @@ router.delete("/missions/:missionName", async (req, res) => {
     const authUser = req.authentikUser || null;
     await dataSyncAccess.assertMissionReadable(authUser, req.params.missionName);
     const data = await dataSyncSvc.deleteMission(req.params.missionName);
+    dataSyncAccess.detachMissionFromGeofences(req.params.missionName);
     auditDataSync(req, "DATA_SYNC_MISSION_ARCHIVED", req.params.missionName, {
       missionName: req.params.missionName,
     });
@@ -692,6 +694,12 @@ router.delete("/file-sync/packages/:hash", async (req, res) => {
     const label = await resolveArchivedFileLabel(hash, fileNameHint);
     const intent = auditIntentFromRequest(req);
     const out = await dataPackagesSvc.deleteDataPackage(hash);
+    // Permanent archived-file delete: clear leftover geofence refs (e.g. pre-cleanup archives).
+    // Skip on restore — the mission is being brought back as active.
+    if (intent !== "restore") {
+      const missionName = String(label || "").trim().replace(/\.zip$/i, "");
+      if (missionName) dataSyncAccess.detachMissionFromGeofences(missionName);
+    }
     const action =
       intent === "restore"
         ? "DATA_SYNC_ARCHIVED_FILE_REMOVED_ON_RESTORE"

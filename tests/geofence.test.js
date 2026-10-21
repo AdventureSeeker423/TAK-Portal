@@ -236,6 +236,73 @@ assert.ok(d < 0.01);
   );
 }
 
+// --- removeMissionFromAllFences (in-memory; no DB persist) ---
+{
+  const store = require("../services/geofence.store");
+  const pgCache = require("../services/pgCache");
+  const origReplace = pgCache.replaceGeofences;
+  pgCache.replaceGeofences = (fences) => {
+    pgCache.caches.geofences = { fences: fences || [], updatedAt: new Date().toISOString() };
+  };
+  try {
+    store._resetForTests();
+    pgCache.caches.geofences = {
+      fences: [
+        {
+          id: "gf-mission-detach-1",
+          name: "Fence A",
+          active: false,
+          enforceMode: "one-time",
+          geometry: { type: "circle", center: [-85.3, 35.05], radiusMeters: 100 },
+          actions: {
+            channels: [{ groupName: "alpha", accessMode: "BOTH", enterAction: "enable", exitAction: "disable" }],
+            missions: [{ missionName: "Keep Me" }, { missionName: "Remove Me" }],
+          },
+          owner: { username: "t", isGlobalAdmin: true, isAgencyAdmin: false, groups: [] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "gf-mission-detach-2",
+          name: "Fence B",
+          active: false,
+          enforceMode: "one-time",
+          geometry: { type: "circle", center: [-85.3, 35.05], radiusMeters: 50 },
+          actions: {
+            channels: [],
+            missions: [{ missionName: "Other" }],
+          },
+          owner: { username: "t", isGlobalAdmin: true, isAgencyAdmin: false, groups: [] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    const result = store.removeMissionFromAllFences("remove me");
+    assert.strictEqual(result.updatedFences, 1, "updates only fences that referenced the mission");
+    assert.deepStrictEqual(
+      store.getFence("gf-mission-detach-1").actions.missions,
+      [{ missionName: "Keep Me" }],
+      "strips matching mission case-insensitively"
+    );
+    assert.strictEqual(
+      store.getFence("gf-mission-detach-1").actions.channels.length,
+      1,
+      "leaves channel actions alone"
+    );
+    assert.deepStrictEqual(
+      store.getFence("gf-mission-detach-2").actions.missions,
+      [{ missionName: "Other" }],
+      "untouched fences stay the same"
+    );
+    const again = store.removeMissionFromAllFences("Remove Me");
+    assert.strictEqual(again.updatedFences, 0, "idempotent when already removed");
+  } finally {
+    pgCache.replaceGeofences = origReplace;
+    store._resetForTests();
+  }
+}
+
 // --- store round-trip in a temp dir via file path override is heavy;
 // exercise normalize helpers through create/update with isolated paths by
 // writing to the real data paths only if data/ is writable; use store API

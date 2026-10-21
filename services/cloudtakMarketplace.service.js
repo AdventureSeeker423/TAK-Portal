@@ -75,11 +75,23 @@ function pluginMatchKey(s) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+/** Plugin folder names on disk / in catalog must be simple path segments. */
+function safeDestName(name) {
+  return /^[A-Za-z0-9._-]+$/.test(String(name || ""));
+}
+
 function isHostPluginNoise(dest) {
   const name = String(dest || "")
     .trim()
     .replace(/^.*\//, "");
   if (!name || name === "." || name === ".." || name.startsWith(".")) return true;
+  // Host scan occasionally captures docker/OCI stderr as a "plugin" name when
+  // docker exec fails (e.g. distroless images with no `sh`). Reject anything
+  // that is not a valid dest folder name.
+  if (!safeDestName(name)) return true;
+  if (/oci\s+runtime|exec\s+failed|executable file not found|permission denied/i.test(name)) {
+    return true;
+  }
   const lower = name.toLowerCase();
   if (/^example\.(ts|js|tsx|jsx)$/.test(lower)) return true;
   if (/\.(md|markdown|txt|rst)$/.test(lower)) return true;
@@ -1042,11 +1054,17 @@ if command -v docker >/dev/null 2>&1; then
     [ -n "$c" ] || continue
     echo "$c" | grep -qiE 'cloudtak|takwerx' || continue
     for inner in app/plugins /home/etl/app/plugins web/plugins /home/node/web/plugins /usr/src/app/web/plugins /opt/app/web/plugins api/web/plugins; do
-      listing=$(docker exec "$c" sh -c "ls -1 $inner 2>/dev/null" || true)
+      # Capture only stdout; docker exec failures (no sh in distroless images) go to stderr.
+      # Also drop known runtime error text if a runtime still writes it on stdout.
+      listing=$(docker exec "$c" sh -c "ls -1 $inner 2>/dev/null" 2>/dev/null || true)
       [ -n "$listing" ] || continue
+      echo "$listing" | grep -qiE 'OCI runtime|exec failed|executable file not found|no such file' && continue
       printf 'CONTAINER %s dir=%s\\n' "$c" "$inner"
       echo "$listing" | while IFS= read -r name; do
         [ -n "$name" ] || continue
+        case "$name" in
+          .|..|.[!.]*|*[!A-Za-z0-9._-]*) continue ;;
+        esac
         case "$name" in
           example.ts|example.js|README.md|readme.md|README|LICENSE|.gitkeep|.DS_Store) continue ;;
         esac
@@ -1248,6 +1266,29 @@ function cloudtakPublicHost() {
   }
 }
 
+async function ensureCaddySharesCloudtakNetwork(probe, actions) {
+  const upstreamNames = caddyMod.containerUpstreamsFromSnippets(
+    (actions || []).map((action) => action && action.snippet)
+  );
+  if (!upstreamNames.length && String((probe && probe.via) || "") !== "docker") {
+    return { ok: true, skipped: true, message: "" };
+  }
+  const result = await ssh.runCommand(
+    `bash -lc ${ssh.shellQuote(
+      caddyMod.ensureSharedNetworkScript({
+        caddyContainer: (probe && probe.container) || "",
+        upstreamNames,
+      })
+    )}`,
+    45000
+  );
+  const parsed = caddyMod.parseNetworkResult(`${result.stdout || ""}\n${result.stderr || ""}`);
+  if (!result.ok && !parsed.ok) {
+    return { ok: false, skipped: false, message: parsed.message || result.message || "Network join failed." };
+  }
+  return parsed;
+}
+
 async function deployPluginCaddy(pluginId) {
   const catalog = loadCatalog();
   const plugin = catalog.plugins.find((p) => p.id === pluginId);
@@ -1270,29 +1311,52 @@ async function deployPluginCaddy(pluginId) {
     refreshUiSnapshot();
     return { ok: false, message: edited.message };
   }
-  if (!edited.changed) {
-    saveCaddyCache({ ...probe, applied: appliedNow });
-    refreshUiSnapshot();
-    return { ok: true, changed: false, message: "Caddy already has this plugin's routes." };
+  let caddyChanged = false;
+  if (edited.changed) {
+    const write = await ssh.runCommand(
+      `bash -lc ${ssh.shellQuote(
+        caddyMod.applyScript({
+          b64: Buffer.from(edited.text, "utf8").toString("base64"),
+          hostPath: probe.hostPath,
+          via: probe.via,
+          validateCmd: probe.validateCmd,
+          reloadCmd: probe.reloadCmd,
+        })
+      )}`,
+      60000
+    );
+    if (!write.ok || !/APPLY_OK/.test(write.stdout || "")) {
+      return { ok: false, message: write.message || "Caddy update failed." };
+    }
+    caddyChanged = true;
   }
-  const write = await ssh.runCommand(
-    `bash -lc ${ssh.shellQuote(
-      caddyMod.applyScript({
-        b64: Buffer.from(edited.text, "utf8").toString("base64"),
-        hostPath: probe.hostPath,
-        via: probe.via,
-        validateCmd: probe.validateCmd,
-        reloadCmd: probe.reloadCmd,
-      })
-    )}`,
-    60000
-  );
-  if (!write.ok || !/APPLY_OK/.test(write.stdout || "")) {
-    return { ok: false, message: write.message || "Caddy update failed." };
-  }
+  const network = await ensureCaddySharesCloudtakNetwork(probe, actions);
   saveCaddyCache({ ...probe, applied: appliedNow });
   refreshUiSnapshot();
-  return { ok: true, changed: true, message: "Updated the CloudTAK Caddy site and reloaded Caddy." };
+  if (!network.ok) {
+    return {
+      ok: false,
+      changed: caddyChanged,
+      message: caddyChanged
+        ? `Updated Caddy routes, but ${network.message}`
+        : network.message,
+    };
+  }
+  const parts = [];
+  if (caddyChanged) parts.push("Updated the CloudTAK Caddy site and reloaded Caddy");
+  else parts.push("Caddy already has this plugin's routes");
+  if (network.network && !network.skipped) {
+    parts.push(
+      network.status === "already"
+        ? `Caddy already on network ${network.network}`
+        : `joined Caddy to CloudTAK network ${network.network}`
+    );
+  }
+  return {
+    ok: true,
+    changed: caddyChanged || network.status === "connected",
+    message: `${parts.join("; ")}.`,
+  };
 }
 
 async function scanHost() {
@@ -1980,10 +2044,6 @@ function pluginById(id) {
   return loadCatalog().plugins.find((p) => p.id === id) || null;
 }
 
-function safeDestName(name) {
-  return /^[A-Za-z0-9._-]+$/.test(String(name || ""));
-}
-
 function normalizeInstallScript(script) {
   const raw = String(script || "").trim();
   if (!raw) return "";
@@ -2470,6 +2530,50 @@ function pluginRuntimeExtrasBash() {
     '  echo "Starting plugin Docker service${SVC:+ $SVC} from $OVERRIDE"',
     '  ( cd "$STACK" && COMPOSE_ANSI=never COMPOSE_PROGRESS=plain docker compose --progress=plain -f "$CF" -f "$OVERRIDE" up -d --build ${SVC:+$SVC} )',
     "}",
+    "ensure_caddy_on_cloudtak_network() {",
+    '  local runtime="" caddy="" net="" name id image',
+    '  if command -v docker >/dev/null 2>&1; then runtime=docker',
+    '  elif command -v podman >/dev/null 2>&1; then runtime=podman',
+    "  else return 0",
+    "  fi",
+    "  run_rt() {",
+    '    if "$runtime" "$@"; then return 0; fi',
+    '    if sudo -n "$runtime" "$@" 2>/dev/null; then return 0; fi',
+    "    return 1",
+    "  }",
+    '  for id in $(run_rt ps -q 2>/dev/null || true); do',
+    '    [ -n "$id" ] || continue',
+    '    name=$(run_rt inspect -f \'{{.Name}}\' "$id" 2>/dev/null | sed \'s#^/##\' || true)',
+    '    image=$(run_rt inspect -f \'{{.Config.Image}}\' "$id" 2>/dev/null || true)',
+    '    if printf \'%s %s\' "$name" "$image" | grep -qi caddy; then caddy="$name"; break; fi',
+    "  done",
+    '  [ -n "$caddy" ] || return 0',
+    '  for name in ${SVC:+$SVC} cloudtak-print cloudtak-api api; do',
+    '    [ -n "$name" ] || continue',
+    '    net=$(run_rt inspect -f \'{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}\' "$name" 2>/dev/null | awk \'NF && $0!="bridge" && $0!="host" && $0!="none" {print; exit}\' || true)',
+    '    [ -n "$net" ] && break',
+    "  done",
+    '  if [ -z "$net" ]; then',
+    '    for id in $(run_rt ps -q 2>/dev/null || true); do',
+    '      name=$(run_rt inspect -f \'{{.Name}}\' "$id" 2>/dev/null | sed \'s#^/##\' || true)',
+    '      printf \'%s\' "$name" | grep -Eqi \'cloudtak\' || continue',
+    '      printf \'%s\' "$name" | grep -Eqi \'caddy\' && continue',
+    '      net=$(run_rt inspect -f \'{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}\' "$name" 2>/dev/null | awk \'NF && $0!="bridge" && $0!="host" && $0!="none" {print; exit}\' || true)',
+    '      [ -n "$net" ] && break',
+    "    done",
+    "  fi",
+    '  [ -n "$net" ] || return 0',
+    '  if run_rt inspect -f \'{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}\' "$caddy" 2>/dev/null | grep -Fxq "$net"; then',
+    '    echo "Caddy container $caddy already on CloudTAK network $net"',
+    "    return 0",
+    "  fi",
+    '  if run_rt network connect "$net" "$caddy"; then',
+    '    echo "Connected Caddy container $caddy to CloudTAK network $net"',
+    "  else",
+    '    echo "WARNING: could not connect Caddy ($caddy) to CloudTAK network $net" >&2',
+    "  fi",
+    "  return 0",
+    "}",
     "fix_overlay_depends() {",
     '  [ -f "$OVERRIDE" ] || return 0',
     '  local script="/tmp/ctak-marketplace-align.cjs"',
@@ -2516,6 +2620,7 @@ function pluginRuntimeExtrasBash() {
     "  fi",
     "  fix_overlay_depends",
     "  start_overlay",
+    "  ensure_caddy_on_cloudtak_network",
     "  exit 0",
     "fi",
     'NODE_DIR=""',
@@ -2554,6 +2659,7 @@ function pluginRuntimeExtrasBash() {
     "YAML",
     "fix_overlay_depends",
     "start_overlay",
+    "ensure_caddy_on_cloudtak_network",
   ].join("\n");
 }
 

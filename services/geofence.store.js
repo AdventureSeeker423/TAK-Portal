@@ -333,6 +333,39 @@ function deleteFence(id) {
   return true;
 }
 
+/**
+ * Strip a Data Sync mission from every geofence action list (archive / delete).
+ * Case-insensitive match on missionName. Idempotent.
+ * @returns {{ missionName: string, updatedFences: number }}
+ */
+function removeMissionFromAllFences(missionName) {
+  const want = safeStr(missionName).trim();
+  if (!want) return { missionName: "", updatedFences: 0 };
+  const key = want.toLowerCase();
+  const fences = ensureFences();
+  let updatedFences = 0;
+  const now = new Date().toISOString();
+  for (let i = 0; i < fences.length; i++) {
+    const fence = fences[i];
+    const missions = Array.isArray(fence?.actions?.missions) ? fence.actions.missions : [];
+    const nextMissions = missions.filter(
+      (m) => safeStr(m?.missionName || m?.name).trim().toLowerCase() !== key
+    );
+    if (nextMissions.length === missions.length) continue;
+    fences[i] = {
+      ...fence,
+      actions: {
+        channels: Array.isArray(fence.actions?.channels) ? fence.actions.channels : [],
+        missions: nextMissions,
+      },
+      updatedAt: now,
+    };
+    updatedFences += 1;
+  }
+  if (updatedFences) saveFences();
+  return { missionName: want, updatedFences };
+}
+
 function getMembershipMap(fenceId) {
   const state = ensureState();
   const key = safeStr(fenceId).trim();
@@ -450,6 +483,7 @@ module.exports = {
   createFence,
   updateFence,
   deleteFence,
+  removeMissionFromAllFences,
   ownerFromAuthUser,
   getMembershipMap,
   setMemberInside,

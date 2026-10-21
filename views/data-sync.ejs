@@ -14,10 +14,6 @@
 
   <div class="card createFormCard">
     <h2>Create Data Sync Mission</h2>
-    <p class="muted" style="margin: 0 0 1rem 0;">
-      New missions created here use one channel. Missions that already have more than one channel
-      are listed below. TAK Server still requires a subscriber to be in every assigned channel.
-    </p>
     <div class="grid2 createForm">
       <div class="grid3 data-sync-create-top" style="grid-column: 1 / -1;">
         <label>Data Sync Name
@@ -175,7 +171,7 @@
 
       <div id="mContentsWrap" style="margin-top: 16px; display: none;">
         <h3 style="margin: 0 0 8px 0; font-size: 1rem;">Contents</h3>
-        <p class="muted" style="margin: 0 0 8px 0; font-size: 13px;">Per-item downloads use <code>GET /Marti/sync/content</code> (may not be KML). For a full package as KML, use the <strong>KML</strong> button on the mission row.</p>
+        <p class="muted" style="margin: 0 0 8px 0; font-size: 13px;">Per-item downloads use <code>GET /Marti/sync/content</code> (may not be KML). For a full package, use <strong>Download</strong> (ZIP) or <strong>KML</strong> on the mission row.</p>
         <div style="overflow-x: auto;">
           <table class="table" style="margin: 0;">
             <thead>
@@ -915,21 +911,21 @@
       return function () { archiveMission(nm); };
     }(name));
 
-    var bHtml = document.createElement("button");
-    bHtml.type = "button";
-    bHtml.className = "btn";
-    bHtml.textContent = "HTML";
-    bHtml.title = "Download mission archive (HTML)";
-    bHtml.addEventListener("click", function (nm) {
+    var bDl = document.createElement("button");
+    bDl.type = "button";
+    bDl.className = "btn";
+    bDl.textContent = "Download";
+    bDl.title = "Download mission package (ZIP)";
+    bDl.addEventListener("click", function (nm) {
       return function () {
-        setMissionsMsg("Downloading HTML archive…", undefined);
+        setMissionsMsg("Downloading ZIP archive…", undefined);
         fetchMissionArchiveBlob(nm, "")
           .then(function (blob) {
-            triggerBrowserHtmlDownload(blob, nm);
-            setMissionsMsg("HTML download started.", true);
+            triggerBrowserZipDownload(blob, nm);
+            setMissionsMsg("ZIP download started.", true);
           })
           .catch(function (e) {
-            setMissionsMsg(e.message || "HTML download failed", false);
+            setMissionsMsg(e.message || "ZIP download failed", false);
           });
       };
     }(name));
@@ -962,7 +958,7 @@
     }(name));
 
     wrap.appendChild(bEdit);
-    wrap.appendChild(bHtml);
+    wrap.appendChild(bDl);
     wrap.appendChild(bKml);
     wrap.appendChild(bArchive);
     wrap.appendChild(bDel);
@@ -1245,10 +1241,10 @@
     return res.blob();
   }
 
-  function triggerBrowserHtmlDownload(blob, missionName) {
+  function triggerBrowserZipDownload(blob, missionName) {
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = sanitizeDownloadFilename(missionName) + ".html";
+    a.download = sanitizeDownloadFilename(missionName) + ".zip";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1648,8 +1644,8 @@
               }, 2500);
             })(a.href);
           } else if (m.name) {
-            var htmlBlob = await fetchMissionArchiveBlob(m.name, "");
-            triggerBrowserHtmlDownload(htmlBlob, m.name);
+            var zipBlob = await fetchMissionArchiveBlob(m.name, "");
+            triggerBrowserZipDownload(zipBlob, m.name);
             downloaded += 1;
           }
         } catch (_) {}
