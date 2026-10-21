@@ -1,6 +1,8 @@
 /**
- * Users page status: portal role, with " - No Logins" when they have never
- * authenticated (no active TAK cert and no Authentik last_login).
+ * Users page status: portal role, with:
+ * - " - No Logins" when they have never authenticated (no active TAK cert and
+ *   no Authentik last_login)
+ * - " - Web Only" when they have Authentik login but no active TAK cert
  *
  * Role and status are stored on users so the Users page can list/search/sort
  * without recomputing from groups, TAK certs, or Authentik on every request.
@@ -44,6 +46,14 @@ function hasNoLogins({
   return takCertsKnown === true && !hasActiveTakCert && !hasAuthentikLogin;
 }
 
+function hasWebOnly({
+  hasActiveTakCert = false,
+  hasAuthentikLogin = false,
+  takCertsKnown = false,
+} = {}) {
+  return takCertsKnown === true && !hasActiveTakCert && !!hasAuthentikLogin;
+}
+
 function loginStatusLabel({
   is_active,
   hasActiveTakCert = false,
@@ -56,23 +66,28 @@ function loginStatusLabel({
   if (hasNoLogins({ hasActiveTakCert, hasAuthentikLogin, takCertsKnown })) {
     return `${role} - No Logins`;
   }
+  if (hasWebOnly({ hasActiveTakCert, hasAuthentikLogin, takCertsKnown })) {
+    return `${role} - Web Only`;
+  }
   return role;
 }
 
 /**
  * 0 Disabled, then User / Agency Admin / Multi-Agency Admin / Global Admin,
- * with each role's "- No Logins" variant immediately before the logged-in one.
+ * with each role's "- No Logins", then "- Web Only", then full (TAK) status.
  */
 function statusSortRank(user) {
   if (!user?.is_active) return 0;
   const role = String(user.permissionLabel || user.portal_role || "User").trim() || "User";
   const idx = PERMISSION_SORT_INDEX[role] || 1;
-  const noLogins = hasNoLogins({
+  const flags = {
     hasActiveTakCert: !!user.hasActiveTakCert,
     hasAuthentikLogin: !!user.hasAuthentikLogin,
     takCertsKnown: user.takCertsKnown === true,
-  });
-  return idx * 2 - (noLogins ? 1 : 0);
+  };
+  if (hasNoLogins(flags)) return idx * 3 - 2;
+  if (hasWebOnly(flags)) return idx * 3 - 1;
+  return idx * 3;
 }
 
 function compareUsersByStatus(a, b) {
@@ -149,6 +164,10 @@ const STATUS_LABEL_SQL = `CASE
     AND u.last_login IS NULL
     AND COALESCE(u.has_active_tak_cert, false) = false
     THEN COALESCE(NULLIF(btrim(u.portal_role), ''), 'User') || ' - No Logins'
+  WHEN COALESCE(d.tak_certs_known, false) = true
+    AND u.last_login IS NOT NULL
+    AND COALESCE(u.has_active_tak_cert, false) = false
+    THEN COALESCE(NULLIF(btrim(u.portal_role), ''), 'User') || ' - Web Only'
   ELSE COALESCE(NULLIF(btrim(u.portal_role), ''), 'User')
 END`;
 
@@ -161,9 +180,13 @@ const STATUS_RANK_SQL = `CASE
       WHEN 'Global Admin' THEN 4
       ELSE 1
     END
-  ) * 2 - CASE
+  ) * 3 - CASE
     WHEN COALESCE(d.tak_certs_known, false) = true
       AND u.last_login IS NULL
+      AND COALESCE(u.has_active_tak_cert, false) = false
+      THEN 2
+    WHEN COALESCE(d.tak_certs_known, false) = true
+      AND u.last_login IS NOT NULL
       AND COALESCE(u.has_active_tak_cert, false) = false
       THEN 1
     ELSE 0
@@ -316,6 +339,7 @@ module.exports = {
   parseAuthentikLastLogin,
   hasStoredLastLogin,
   hasNoLogins,
+  hasWebOnly,
   loginStatusLabel,
   statusSortRank,
   compareUsersByStatus,

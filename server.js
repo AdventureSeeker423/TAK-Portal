@@ -385,6 +385,8 @@ function isPublicPortalBypass(req) {
   if (method === "GET" && /^\/request-access\/mou\/complete\/[a-f0-9]{32,64}\/pdf$/i.test(p)) {
     return true;
   }
+  // Hosted ATAK APK for mutual-aid packet QR (Caddy @public path /public/*)
+  if (method === "GET" && p === "/public/atak.apk") return true;
   return false;
 }
 
@@ -656,23 +658,24 @@ app.get("/api/plugins/:id/download", (req, res) => {
     return res.status(500).json({ error: toSafeApiError(err) });
   }
 });
-// Hosted ATAK client APK for Setup My Device (same audience as plugin downloads).
-app.get("/api/atak/download", (req, res) => {
+function sendHostedAtakApk(req, res, { audit = true } = {}) {
   try {
     const filePath = atakApkSvc.getApkFilePath();
     if (!filePath) {
       return res.status(404).json({ error: "No ATAK APK has been uploaded." });
     }
     const filename = atakApkSvc.getOriginalName();
-    auditSvc.auditFromRequest(req, {
-      action: "ATAK_APK_DOWNLOADED",
-      targetType: "atak_apk",
-      targetId: "client",
-      details: {
-        filename,
-        summary: `Downloaded hosted ATAK APK ${filename}.`,
-      },
-    });
+    if (audit) {
+      auditSvc.auditFromRequest(req, {
+        action: "ATAK_APK_DOWNLOADED",
+        targetType: "atak_apk",
+        targetId: "client",
+        details: {
+          filename,
+          summary: `Downloaded hosted ATAK APK ${filename}.`,
+        },
+      });
+    }
     const safeDisposition = String(filename || "atak-client.apk").replace(
       /["\\\r\n]/g,
       "_"
@@ -686,7 +689,15 @@ app.get("/api/atak/download", (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: toSafeApiError(err) });
   }
-});
+}
+
+// Hosted ATAK client APK for Setup My Device (same audience as plugin downloads).
+app.get("/api/atak/download", (req, res) => sendHostedAtakApk(req, res));
+
+// Public (Caddy @public `/public/*`) copy for mutual-aid packet QR / anonymous install.
+app.get(atakApkSvc.PUBLIC_DOWNLOAD_PATH, (req, res) =>
+  sendHostedAtakApk(req, res, { audit: false })
+);
 app.use("/api/audit-log", requirePermission("page.audit_log"), require("./routes/auditLog.routes"));
 app.use("/api/plugins", requirePermission("page.plugin_manager"), require("./routes/plugins.routes"));
 app.use(
@@ -1074,7 +1085,11 @@ app.get("/mutual-aid", requirePermission("page.mutual_aid"), (req, res) => {
       err?.message || err
     );
   }
-  res.render("mutual-aid", { enrollmentFlyerHtml, flyerUserAgreement });
+  res.render("mutual-aid", {
+    enrollmentFlyerHtml,
+    flyerUserAgreement,
+    atakApk: atakApkSvc.getApkInfo(),
+  });
 }); //require Global Admin
 app.get("/integrations", requirePermission("page.integrations"), (req, res) =>
   res.render("integrations")

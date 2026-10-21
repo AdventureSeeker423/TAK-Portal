@@ -2347,10 +2347,36 @@ if (emailPacketSendBtn) emailPacketSendBtn.onclick = emailDeploymentPacket;
 //   DP_COLOR_BLUE, DP_COLOR_DARK_BLUE, ... DP_COLOR_YELLOW
 //   DP_ROLE_TEAM_MEMBER, DP_ROLE_TEAM_LEAD, ... DP_ROLE_K9
 const SETTINGS = <%- JSON.stringify(settings || {}) %>;
+const ATAK_APK = <%- JSON.stringify(typeof atakApk !== "undefined" && atakApk ? atakApk : {}) %>;
 
 function getSetting(key) {
   const v = SETTINGS ? SETTINGS[key] : "";
   return String(v ?? "").trim();
+}
+
+function getPortalPublicBase() {
+  const fromSettings = String(getSetting("TAK_PORTAL_PUBLIC_URL") || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (fromSettings) return fromSettings;
+  try {
+    return String(window.location.origin || "").replace(/\/+$/, "");
+  } catch (_) {
+    return "";
+  }
+}
+
+function getAtakDownloadUrlForPacket() {
+  const playStore =
+    "https://play.google.com/store/apps/details?id=com.atakmap.app.civ";
+  const publicPath =
+    ATAK_APK && ATAK_APK.uploaded
+      ? String(ATAK_APK.publicDownloadUrl || "").trim()
+      : "";
+  if (!publicPath) return playStore;
+  const base = getPortalPublicBase();
+  if (!base) return publicPath;
+  return `${base}${publicPath.startsWith("/") ? publicPath : `/${publicPath}`}`;
 }
 
 // If a color/role definition is blank, don't include it.
@@ -2415,10 +2441,11 @@ function makeQrDataUrl(text, cellSize = 8, margin = 2) {
 
 const appStoreQrCache = new Map();
 function getCachedAppStoreQr(name, url) {
-  const hit = appStoreQrCache.get(name);
+  const key = `${name}\0${url}`;
+  const hit = appStoreQrCache.get(key);
   if (hit) return hit;
   const dataUrl = makeQrDataUrl(url, 10, 2);
-  appStoreQrCache.set(name, dataUrl);
+  appStoreQrCache.set(key, dataUrl);
   return dataUrl;
 }
 
@@ -2781,9 +2808,7 @@ async function renderEnrollmentFlyerPageImage(qrDataUrl) {
     "Mutual Aid Channel";
   const eventName = String(qrActiveItem?.title || "").trim() || "Mutual Aid Operation";
   const typeLabel = formatMutualAidTypeLabel(qrActiveItem?.type) || "Event";
-  const portalBase = String(getSetting("TAK_PORTAL_PUBLIC_URL") || "")
-    .trim()
-    .replace(/\/+$/, "");
+  const portalBase = getPortalPublicBase();
   const requestAccessUrl = portalBase
     ? `${portalBase}/request-access`
     : "/request-access";
@@ -3146,7 +3171,7 @@ async function buildDeploymentPacketPdf() {
     let y = margin;
 
     const takAwareUrl = "https://apps.apple.com/us/app/tak-aware/id6738631659";
-    const atakUrl = "https://play.google.com/store/apps/details?id=com.atakmap.app.civ";
+    const atakUrl = getAtakDownloadUrlForPacket();
     const takAwareQr = getCachedAppStoreQr("takAware", takAwareUrl);
     const atakQr = getCachedAppStoreQr("atak", atakUrl);
 

@@ -30,6 +30,16 @@ assert.strictEqual(
     takCertsKnown: true,
     permissionLabel: "Agency Admin",
   }),
+  "Agency Admin - Web Only"
+);
+assert.strictEqual(
+  loginStatusLabel({
+    is_active: true,
+    hasActiveTakCert: true,
+    hasAuthentikLogin: true,
+    takCertsKnown: true,
+    permissionLabel: "Agency Admin",
+  }),
   "Agency Admin"
 );
 assert.strictEqual(
@@ -90,11 +100,21 @@ assert.strictEqual(
   statusSortRank({
     is_active: true,
     permissionLabel: "User",
+    hasActiveTakCert: false,
+    hasAuthentikLogin: true,
+    takCertsKnown: true,
+  }),
+  2
+);
+assert.strictEqual(
+  statusSortRank({
+    is_active: true,
+    permissionLabel: "User",
     hasActiveTakCert: true,
     hasAuthentikLogin: false,
     takCertsKnown: true,
   }),
-  2
+  3
 );
 assert.strictEqual(
   statusSortRank({
@@ -103,17 +123,25 @@ assert.strictEqual(
     hasAuthentikLogin: true,
     takCertsKnown: true,
   }),
-  4
+  5
 );
 
 const ordered = [
   { username: "zulu", is_active: true, hasAuthentikLogin: true, takCertsKnown: true, permissionLabel: "User" },
   { username: "alpha", is_active: false, takCertsKnown: true },
   { username: "mike", is_active: true, takCertsKnown: true, permissionLabel: "User" },
+  {
+    username: "tango",
+    is_active: true,
+    hasActiveTakCert: true,
+    hasAuthentikLogin: true,
+    takCertsKnown: true,
+    permissionLabel: "User",
+  },
 ].sort(compareUsersByStatus);
 assert.deepStrictEqual(
   ordered.map((u) => u.username),
-  ["alpha", "mike", "zulu"]
+  ["alpha", "mike", "zulu", "tango"]
 );
 
 const annotated = annotateUsersLoginStatus([

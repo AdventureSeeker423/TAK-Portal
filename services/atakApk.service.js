@@ -9,7 +9,13 @@ const settingsSvc = require("./settings.service");
 
 const ATAK_DIR = path.join(__dirname, "..", "data", "atak");
 const STORED_FILENAME = "atak-client.apk";
+/** Authenticated Setup My Device download. */
 const DOWNLOAD_PATH = "/api/atak/download";
+/**
+ * Anonymous download under Caddy @public `/public/*` (mutual aid packet QR, etc.).
+ * Must stay under an existing public reverse-proxy bypass path.
+ */
+const PUBLIC_DOWNLOAD_PATH = "/public/atak.apk";
 
 function ensureAtakDir() {
   if (!fs.existsSync(ATAK_DIR)) {
@@ -37,7 +43,13 @@ function getOriginalName() {
 }
 
 /**
- * @returns {{ uploaded: boolean, originalName: string|null, size: number|null, downloadUrl: string|null }}
+ * @returns {{
+ *   uploaded: boolean,
+ *   originalName: string|null,
+ *   size: number|null,
+ *   downloadUrl: string|null,
+ *   publicDownloadUrl: string|null
+ * }}
  */
 function getApkInfo() {
   if (!hasApk()) {
@@ -46,6 +58,7 @@ function getApkInfo() {
       originalName: null,
       size: null,
       downloadUrl: null,
+      publicDownloadUrl: null,
     };
   }
   let size = null;
@@ -59,6 +72,7 @@ function getApkInfo() {
     originalName: getOriginalName(),
     size,
     downloadUrl: DOWNLOAD_PATH,
+    publicDownloadUrl: PUBLIC_DOWNLOAD_PATH,
   };
 }
 
@@ -126,6 +140,7 @@ function removeApk() {
 
 module.exports = {
   DOWNLOAD_PATH,
+  PUBLIC_DOWNLOAD_PATH,
   hasApk,
   getApkInfo,
   getApkFilePath,

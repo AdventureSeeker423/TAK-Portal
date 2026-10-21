@@ -2102,6 +2102,9 @@ function userStatusLabel(user) {
   if (user.takCertsKnown === true && !user.hasActiveTakCert && !user.hasAuthentikLogin) {
     return `${role} - No Logins`;
   }
+  if (user.takCertsKnown === true && !user.hasActiveTakCert && user.hasAuthentikLogin) {
+    return `${role} - Web Only`;
+  }
   return role;
 }
 
@@ -2163,17 +2166,19 @@ function renderResults(users){
     const email = escapeHtml(u.email || "");
     const statusLabel = escapeHtml(userStatusLabel(u));
     const noLogins = / - No Logins$/.test(statusLabel);
+    const webOnly = / - Web Only$/.test(statusLabel);
+    const statusMuted = noLogins || webOnly;
     return `
-      <tr class="${u.is_active ? "" : "row-disabled"}${noLogins ? " row-no-logins" : ""}">
+      <tr class="${u.is_active ? "" : "row-disabled"}${noLogins ? " row-no-logins" : ""}${webOnly ? " row-web-only" : ""}">
         <td class="userUsernameCell cardTitleCell">
           <div class="userUsernameText cardTitleText">${escapeHtml(u.username)}</div>
-          ${!u.is_active || noLogins ? `<span class="userStatusBadge cardMetaBadge">${statusLabel}</span>` : ""}
+          ${!u.is_active || statusMuted ? `<span class="userStatusBadge cardMetaBadge">${statusLabel}</span>` : ""}
         </td>
         <td class="userAgencyCell" data-label="Agency">${agencyAbbrev}</td>
         <td class="userNameCell" data-label="Name">${displayName || "—"}</td>
         <td class="userTemplateCell" data-label="Template">${escapeHtml(currentTemplateDisplay)}</td>
         <td class="userEmailCell" data-label="Email">${email || "—"}</td>
-        <td class="userStatusCell${noLogins ? " is-no-logins" : ""}" data-label="Status">${statusLabel}</td>
+        <td class="userStatusCell${statusMuted ? " is-no-logins" : ""}" data-label="Status">${statusLabel}</td>
         <td class="userActionsCell cardActionsCell">
           ${locked ? `<span class="muted">Actions Hidden</span>` : `
             <div class="userActionsRow cardActionsRow">

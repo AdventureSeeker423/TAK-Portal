@@ -174,6 +174,7 @@ function getRequiredPermissionsForRequest(path, method) {
   if (p.startsWith("/api/qr")) return [];
   if (p.startsWith("/api/plugins/") && p.endsWith("/download") && m === "GET") return [];
   if (p === "/api/atak/download" && m === "GET") return [];
+  if (p === "/public/atak.apk" && m === "GET") return [];
   if (p === "/styles.css" || p === "/favicon.ico") return [];
   if (p === "/api/system/health" && m === "GET") return [];
 

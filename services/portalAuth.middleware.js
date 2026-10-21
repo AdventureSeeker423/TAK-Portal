@@ -31,6 +31,7 @@ const PUBLIC_PATHS = new Set([
   "/api/qr/download",
   "/styles.css",
   "/favicon.ico",
+  "/public/atak.apk",
 ]);
 
 function normalizePath(p) {
