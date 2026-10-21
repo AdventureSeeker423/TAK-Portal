@@ -9,6 +9,11 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.15 - 10/21/26
+✨ `Enhancement` - Mutual Aid packet QR code for ATAK now serves the locally uploaded apk rather than Google Play store if one exists<br>
+✨ `Enhancement` - Users - Status of a user will now indicate "Web Only" if the user has only logged into web and has never generated a client cert by enrolling a client application<br>
+🐛 `Bug Fix` - Fixes issue with admin sided password reset button failing to apply
+
 ### v2.0.14 - 10/19/26
 🐛 `Bug Fix` - Fixes issue with Integration Data Feed creation failing
 
