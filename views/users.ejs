@@ -525,6 +525,37 @@
 
 <script src="/managed-agencies-picker.js"></script>
 <script>
+// Shared with the edit-modal script below (must stay outside the create-form IIFE).
+const PASSWORD_POLICY = <%- JSON.stringify((typeof passwordPolicy !== "undefined" && passwordPolicy && passwordPolicy.client) ? passwordPolicy.client : {
+  minLength: 12,
+  requireUppercase: true,
+  uppercaseCount: 1,
+  requireLowercase: true,
+  lowercaseCount: 1,
+  requireNumber: true,
+  numberCount: 1,
+  requireSymbol: true,
+  symbolCount: 1,
+  errorOptional: "Password must be at least 12 characters and include uppercase, lowercase, number, and symbol, or be left blank.",
+  errorRequired: "Password must be at least 12 characters and include uppercase, lowercase, number, and symbol."
+}) %>;
+
+function passwordPolicyCount(pwd, re) {
+  return (String(pwd || "").match(re) || []).length;
+}
+
+function isValidPassword(pwd) {
+  if (!pwd) return true;
+  const p = String(pwd);
+  const pol = PASSWORD_POLICY || {};
+  if (p.length < (pol.minLength || 12)) return false;
+  if (pol.requireLowercase && passwordPolicyCount(p, /[a-z]/g) < (pol.lowercaseCount || 1)) return false;
+  if (pol.requireUppercase && passwordPolicyCount(p, /[A-Z]/g) < (pol.uppercaseCount || 1)) return false;
+  if (pol.requireNumber && passwordPolicyCount(p, /[0-9]/g) < (pol.numberCount || 1)) return false;
+  if (pol.requireSymbol && passwordPolicyCount(p, /[^A-Za-z0-9]/g) < (pol.symbolCount || 1)) return false;
+  return true;
+}
+
 (function(){
 const IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
 const IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
@@ -687,37 +718,6 @@ function esc(s) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-// ----- Password validator (from Settings → Password Policy) -----
-const PASSWORD_POLICY = <%- JSON.stringify((typeof passwordPolicy !== "undefined" && passwordPolicy && passwordPolicy.client) ? passwordPolicy.client : {
-  minLength: 12,
-  requireUppercase: true,
-  uppercaseCount: 1,
-  requireLowercase: true,
-  lowercaseCount: 1,
-  requireNumber: true,
-  numberCount: 1,
-  requireSymbol: true,
-  symbolCount: 1,
-  errorOptional: "Password must be at least 12 characters and include uppercase, lowercase, number, and symbol, or be left blank.",
-  errorRequired: "Password must be at least 12 characters and include uppercase, lowercase, number, and symbol."
-}) %>;
-
-function passwordPolicyCount(pwd, re) {
-  return (String(pwd || "").match(re) || []).length;
-}
-
-function isValidPassword(pwd) {
-  if (!pwd) return true;
-  const p = String(pwd);
-  const pol = PASSWORD_POLICY || {};
-  if (p.length < (pol.minLength || 12)) return false;
-  if (pol.requireLowercase && passwordPolicyCount(p, /[a-z]/g) < (pol.lowercaseCount || 1)) return false;
-  if (pol.requireUppercase && passwordPolicyCount(p, /[A-Z]/g) < (pol.uppercaseCount || 1)) return false;
-  if (pol.requireNumber && passwordPolicyCount(p, /[0-9]/g) < (pol.numberCount || 1)) return false;
-  if (pol.requireSymbol && passwordPolicyCount(p, /[^A-Za-z0-9]/g) < (pol.symbolCount || 1)) return false;
-  return true;
 }
 
 function isValidBadgeOrUsername(value) {
@@ -1633,6 +1633,11 @@ function isEditingOwnAccount(user) {
   return !!(me && them && me === them);
 }
 
+/** Agency admins (incl. multi-agency) cannot disable/delete themselves. */
+function isSelfDestructiveLocked(user) {
+  return isEditingOwnAccount(user) && IS_AGENCY_ADMIN && !IS_GLOBAL_ADMIN;
+}
+
 // Global admin groups (loaded from settings.json via server render)
 const PORTAL_GLOBAL_ADMIN_GROUPS_RAW = <%- JSON.stringify(
   (settings && settings.PORTAL_AUTH_REQUIRED_GROUP) || ""
@@ -2157,6 +2162,7 @@ function renderResults(users){
     const toggleLabel = u.is_active ? "Disable" : "Enable";
     const toggleBtnClass = u.is_active ? "btn caution" : "btn";
     const locked = userActionsLocked(u.username);
+    const selfLocked = isSelfDestructiveLocked(u);
     const currentTemplateRaw = String(u?.current_template || u?.attributes?.current_template || "").trim();
     const currentTemplateDisplay = (!currentTemplateRaw || currentTemplateRaw === "Manual Group Selection")
       ? "—"
@@ -2168,6 +2174,9 @@ function renderResults(users){
     const noLogins = / - No Logins$/.test(statusLabel);
     const webOnly = / - Web Only$/.test(statusLabel);
     const statusMuted = noLogins || webOnly;
+    const selfDisableTitle = u.is_active
+      ? "You cannot disable your own account."
+      : "You cannot change your own account status.";
     return `
       <tr class="${u.is_active ? "" : "row-disabled"}${noLogins ? " row-no-logins" : ""}${webOnly ? " row-web-only" : ""}">
         <td class="userUsernameCell cardTitleCell">
@@ -2191,8 +2200,8 @@ function renderResults(users){
                   data-pk="${pk}" data-username="${escapeHtml(u.username)}"
                   data-name="${escapeHtml(String(u.name || "").trim())}">Pref QR</button>
               ` : ""}
-              <button class="${toggleBtnClass}" onclick="toggleUserFromTable('${pk}')">${toggleLabel}</button>
-              <button class="btn danger" onclick="deleteUserFromTable('${pk}')">Delete</button>
+              <button class="${toggleBtnClass}" onclick="toggleUserFromTable('${pk}')"${selfLocked ? ` disabled title="${selfDisableTitle}"` : ""}>${toggleLabel}</button>
+              <button class="btn danger" onclick="deleteUserFromTable('${pk}')"${selfLocked ? ` disabled title="You cannot delete your own account."` : ""}>Delete</button>
             </div>
           `}
         </td>
@@ -3318,6 +3327,11 @@ window.toggleUserFromTable = async (userPk) => {
     return;
   }
 
+  if (isSelfDestructiveLocked(u) && u.is_active) {
+    setMsgEl(msg, "You cannot disable your own account.", false);
+    return;
+  }
+
   const action = u.is_active ? "DISABLE" : "ENABLE";
   if (!confirm(`${action} ${u.username}?`)) return;
 
@@ -3364,6 +3378,11 @@ window.deleteUserFromTable = async (userPk) => {
 
   if (userActionsLocked(u.username)) {
     setMsgEl(msg, `Actions are locked for user ${u.username}.`, false);
+    return;
+  }
+
+  if (isSelfDestructiveLocked(u)) {
+    setMsgEl(msg, "You cannot delete your own account.", false);
     return;
   }
 

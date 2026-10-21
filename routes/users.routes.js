@@ -1552,11 +1552,23 @@ router.post("/:userId/groups/remove", async (req, res) => {
   }
 });
 
+function isNonGlobalAgencyAdmin(actor) {
+  return !!(actor && actor.isAgencyAdmin && !actor.isGlobalAdmin);
+}
+
 router.put("/:userId/active", async (req, res) => {
   try {
     const isActive = !!req.body?.is_active;
     const authUser = req.authentikUser || null;
     const beforeUser = await users.getUserById(req.params.userId).catch(() => null);
+    if (
+      !isActive &&
+      beforeUser &&
+      isNonGlobalAgencyAdmin(authUser) &&
+      accessSvc.isSamePortalUser(authUser, beforeUser)
+    ) {
+      return res.status(403).json({ error: "You cannot disable your own account." });
+    }
     await users.toggleUserActive(req.params.userId, isActive);
     const user = await users.getUserById(req.params.userId).catch(() => null);
 
@@ -1582,6 +1594,13 @@ router.delete("/:userId", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const before = await users.getUserById(req.params.userId).catch(() => null);
+    if (
+      before &&
+      isNonGlobalAgencyAdmin(authUser) &&
+      accessSvc.isSamePortalUser(authUser, before)
+    ) {
+      return res.status(403).json({ error: "You cannot delete your own account." });
+    }
     await users.deleteUser(req.params.userId);
 
     auditSvc.logEvent({
