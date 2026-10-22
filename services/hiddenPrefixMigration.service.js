@@ -51,6 +51,19 @@ function stampGroupPrefixes() {
   ]);
 }
 
+/** Exact group names from PORTAL_AUTH_REQUIRED_GROUP (global admin). */
+function portalAuthRequiredGroupNames() {
+  const settings = settingsSvc.getSettings() || {};
+  return [
+    ...new Set(
+      String(settings.PORTAL_AUTH_REQUIRED_GROUP || "")
+        .split(",")
+        .map((s) => String(s || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
 function migrationDone() {
   if (_complete) return true;
   const settings = settingsSvc.getSettings() || {};
@@ -140,6 +153,83 @@ async function countGroupsStillNeedingStamp(prefixes) {
   return r.rows[0]?.n || 0;
 }
 
+/**
+ * Groups whose name equals a configured PORTAL_AUTH_REQUIRED_GROUP entry
+ * (case-insensitive; optional leading tak_ on either side).
+ */
+async function listGroupsNeedingStampByExactNames(names) {
+  const list = (Array.isArray(names) ? names : [])
+    .map((n) => String(n || "").trim())
+    .filter(Boolean);
+  if (!list.length) return [];
+  const r = await db.query(
+    `SELECT id, authentik_pk, name, attributes
+     FROM groups
+     WHERE pending_delete = false
+       AND tak_portal_hidden = false
+       AND EXISTS (
+         SELECT 1 FROM unnest($1::text[]) AS n
+         WHERE lower(name) = lower(n)
+            OR lower(regexp_replace(name, '^tak_', '', 'i')) = lower(n)
+            OR lower(name) = lower(regexp_replace(n, '^tak_', '', 'i'))
+            OR lower(regexp_replace(name, '^tak_', '', 'i')) =
+               lower(regexp_replace(n, '^tak_', '', 'i'))
+       )
+     ORDER BY name
+     LIMIT 500`,
+    [list]
+  );
+  return r.rows;
+}
+
+async function countGroupsStillNeedingStampByExactNames(names) {
+  const list = (Array.isArray(names) ? names : [])
+    .map((n) => String(n || "").trim())
+    .filter(Boolean);
+  if (!list.length) return 0;
+  const r = await db.query(
+    `SELECT COUNT(*)::int AS n
+     FROM groups
+     WHERE pending_delete = false
+       AND tak_portal_hidden = false
+       AND EXISTS (
+         SELECT 1 FROM unnest($1::text[]) AS n
+         WHERE lower(name) = lower(n)
+            OR lower(regexp_replace(name, '^tak_', '', 'i')) = lower(n)
+            OR lower(name) = lower(regexp_replace(n, '^tak_', '', 'i'))
+            OR lower(regexp_replace(name, '^tak_', '', 'i')) =
+               lower(regexp_replace(n, '^tak_', '', 'i'))
+       )`,
+    [list]
+  );
+  return r.rows[0]?.n || 0;
+}
+
+/** Re-entrant: stamp configured global-admin groups even after prefix migration completed. */
+async function stampPortalAuthRequiredGroups() {
+  const names = portalAuthRequiredGroupNames();
+  if (!names.length) return { stampedGlobalAdminGroups: 0 };
+  const rows = await listGroupsNeedingStampByExactNames(names);
+  let stampedGlobalAdminGroups = 0;
+  for (const row of rows) {
+    try {
+      await stampGroup(row);
+      stampedGlobalAdminGroups += 1;
+    } catch (e) {
+      console.warn(
+        `[hidden-prefix-migration] global-admin group ${row.name}:`,
+        e?.message || e
+      );
+    }
+  }
+  if (stampedGlobalAdminGroups) {
+    console.log(
+      `[hidden-prefix-migration] stamped ${stampedGlobalAdminGroups} PORTAL_AUTH_REQUIRED_GROUP group(s)`
+    );
+  }
+  return { stampedGlobalAdminGroups };
+}
+
 async function stampUser(row) {
   const attrs = markHiddenAttributes(
     row.attributes && typeof row.attributes === "object" ? row.attributes : {}
@@ -203,23 +293,38 @@ function markCompleteAndClearPrefixes() {
 
 /**
  * Re-entrant tick: stamp batches until confirmed, then clear prefix settings.
+ * Always ensures PORTAL_AUTH_REQUIRED_GROUP names are attribute-hidden (even
+ * after the one-time prefix migration has completed).
  */
 async function runOnce() {
-  if (_running || migrationDone()) return { skipped: true };
+  if (_running) return { skipped: true };
 
   _running = true;
   try {
+    const globalAdminResult = await stampPortalAuthRequiredGroups();
+
+    if (migrationDone()) {
+      return { skipped: true, ...globalAdminResult };
+    }
+
     const userPrefixes = stampUserPrefixes();
     const groupPrefixes = stampGroupPrefixes();
+    const globalAdminNames = portalAuthRequiredGroupNames();
 
     // Wait until inbound has populated the directory at least once so Authentik
     // system accounts (ak-*, authentik*) exist locally before we mark complete.
     if (!(await directoryInboundReady())) {
-      return { waiting: "directory_sync" };
+      return { waiting: "directory_sync", ...globalAdminResult };
     }
 
     const users = await listUsersNeedingStamp(userPrefixes);
     const groups = await listGroupsNeedingStamp(groupPrefixes);
+    // Also stamp exact global-admin names during the prefix pass (idempotent).
+    const exactGroups = await listGroupsNeedingStampByExactNames(globalAdminNames);
+    const groupRowsById = new Map();
+    for (const row of [...groups, ...exactGroups]) {
+      groupRowsById.set(String(row.id), row);
+    }
 
     let stampedUsers = 0;
     for (const row of users) {
@@ -235,7 +340,7 @@ async function runOnce() {
     }
 
     let stampedGroups = 0;
-    for (const row of groups) {
+    for (const row of groupRowsById.values()) {
       try {
         await stampGroup(row);
         stampedGroups += 1;
@@ -254,7 +359,9 @@ async function runOnce() {
     }
 
     const remainingUsers = await countUsersStillNeedingStamp(userPrefixes);
-    const remainingGroups = await countGroupsStillNeedingStamp(groupPrefixes);
+    const remainingGroups =
+      (await countGroupsStillNeedingStamp(groupPrefixes)) +
+      (await countGroupsStillNeedingStampByExactNames(globalAdminNames));
 
     if (remainingUsers > 0 || remainingGroups > 0) {
       return {
@@ -263,11 +370,12 @@ async function runOnce() {
         remainingGroups,
         stampedUsers,
         stampedGroups,
+        ...globalAdminResult,
       };
     }
 
     markCompleteAndClearPrefixes();
-    return { done: true, stampedUsers, stampedGroups };
+    return { done: true, stampedUsers, stampedGroups, ...globalAdminResult };
   } finally {
     _running = false;
   }
@@ -280,6 +388,8 @@ module.exports = {
   LEGACY_GROUP_HIDDEN_PREFIXES,
   stampUserPrefixes,
   stampGroupPrefixes,
+  portalAuthRequiredGroupNames,
+  stampPortalAuthRequiredGroups,
   runOnce,
   migrationDone,
 };

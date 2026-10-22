@@ -3073,6 +3073,9 @@ async function getUserById(userId) {
   user.groupDetails = (Array.isArray(named) ? named : []).map((g) => ({
     pk: g.pk,
     name: g.name,
+    tak_portal_hidden: g.tak_portal_hidden === true,
+    attributes:
+      g.attributes && typeof g.attributes === "object" ? g.attributes : {},
   }));
   return user;
 }

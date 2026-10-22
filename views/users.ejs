@@ -1721,11 +1721,14 @@ function isInternalAuthGroupId(id) {
   return false;
 }
 
-function shouldOmitFromGroupChips(name, id) {
+function shouldOmitFromGroupChips(name, id, detail) {
+  // Attribute / column is the source of truth (same as /api/groups picker).
+  if (detail && isPortalHiddenGroupClient(detail)) return true;
+  // Hidden memberships are preserved on save but never shown as chips.
+  if (!visibleGroupIds.has(String(id))) return true;
+  // Defense-in-depth for unstamped AgencyAdmin / global-admin groups.
   if (isInternalAuthGroupId(id)) return true;
   if (name && isInternalAuthGroupName(name)) return true;
-  // No resolvable name for an id outside the portal picker — keep it off the chips.
-  if (!name && !visibleGroupIds.has(String(id))) return true;
   return false;
 }
 
@@ -2298,36 +2301,36 @@ function indexUserGroupDetails(user) {
     const id = String(g?.pk || g?.id || "").trim();
     const name = String(g?.name || "").trim();
     if (!id || !name) continue;
-    // Never put AgencyAdmin / global-admin / authentik* into groupIndex — that used to
+    // Never put portal-hidden / AgencyAdmin / global-admin into groupIndex — that used to
     // make Current Groups chips show them even when they were absent from the checkbox grid.
-    if (isInternalAuthGroupName(name)) continue;
+    if (isPortalHiddenGroupClient(g) || isInternalAuthGroupName(name)) continue;
     groupIndex.set(id, name);
   }
 }
 
 function renderGroupChips(user){
   const details = Array.isArray(user?.groupDetails) ? user.groupDetails : [];
-  const detailNameById = new Map();
+  const detailById = new Map();
   for (const g of details) {
     const id = String(g?.pk || g?.id || "").trim();
-    const name = String(g?.name || "").trim();
-    if (id && name) detailNameById.set(id, name);
+    if (id) detailById.set(id, g);
   }
-  // Keep groupIndex warm for non-internal names (checkbox labels, template match, etc.).
+  // Keep groupIndex warm for non-hidden names (checkbox labels, template match, etc.).
   indexUserGroupDetails(user);
 
   const ids = Array.isArray(user.groups)
     ? user.groups.map(x => String(x))
     : [];
 
-  // Chips = membership names the admin should manage here. Never AgencyAdmin / global-admin /
-  // authentik* — those stay on the user for permissions but are not listed above the picker.
+  // Chips = portal-visible memberships only (tak_portal_hidden / picker-visible).
+  // AgencyAdmin / global-admin stay on the user for permissions but never appear here.
   const names = [];
   const seen = new Set();
   for (const id of ids) {
     const key = String(id);
-    const name = detailNameById.get(key) || groupIndex.get(key) || "";
-    if (shouldOmitFromGroupChips(name, key)) continue;
+    const detail = detailById.get(key) || null;
+    const name = String((detail && detail.name) || groupIndex.get(key) || "").trim();
+    if (shouldOmitFromGroupChips(name, key, detail)) continue;
     if (!name) continue;
     const dedupe = name.toLowerCase();
     if (seen.has(dedupe)) continue;

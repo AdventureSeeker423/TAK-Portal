@@ -10,6 +10,7 @@ const templatesStore = require("./templates.service");
 const groupsService = require("./groups.service");
 const accessSvc = require("./access.service");
 const usersService = require("./users.service");
+const { markHiddenAttributes } = require("./portalHidden.util");
 
 function getAgencyAdminGroupName(agency) {
   const abbr = agenciesStore.normalizeGroupPrefix(agency?.groupPrefix);
@@ -35,12 +36,12 @@ async function ensureAgencyAdminGroupExists(agency) {
   const name = getAgencyAdminGroupName(agency);
   if (!name) throw new Error("Agency abbreviation / short name is required");
 
-  const attributes = {
+  const attributes = markHiddenAttributes({
     created_at: new Date().toISOString(),
     created_type: "Agency",
     created_type_detail: String(agency?.name || "").trim() || null,
     description: `Agency admin group for ${String(agency?.name || "").trim()}`,
-  };
+  });
 
   try {
     await groupsService.createGroup(name, { attributes });

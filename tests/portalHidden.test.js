@@ -63,4 +63,29 @@ assert.ok(portalHidden.isMutualAidGroupName("MA - Drill"));
 assert.ok(portalHidden.isMutualAidGroupName("tak_MA - Drill"));
 assert.ok(!portalHidden.isMutualAidGroupName("SO Main"));
 
+// AgencyAdmin create paths must stamp tak_portal_hidden after prefix migration clears.
+const fs = require("fs");
+const path = require("path");
+for (const rel of [
+  "routes/agencies.routes.js",
+  "services/agencyAbbrevRename.service.js",
+  "services/agencyNameRename.service.js",
+]) {
+  const src = fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
+  assert.ok(
+    src.includes("markHiddenAttributes") && src.includes("ensureAgencyAdminGroupExists"),
+    `${rel} must stamp AgencyAdmin groups with markHiddenAttributes`
+  );
+}
+
+const usersEjs = fs.readFileSync(
+  path.join(__dirname, "..", "views", "users.ejs"),
+  "utf8"
+);
+assert.ok(
+  usersEjs.includes("isPortalHiddenGroupClient(detail)") &&
+    usersEjs.includes("shouldOmitFromGroupChips"),
+  "edit-modal chips must omit groups via tak_portal_hidden attribute"
+);
+
 console.log("portalHidden.test.js: ok");

@@ -95,6 +95,12 @@ assert.ok(
   "role backfill must not live-patch Authentik attributes"
 );
 
+const getUserByIdFn = sliceAsyncFn(usersSrc, "getUserById", "getLocalUserForAuth");
+assert.ok(
+  getUserByIdFn.includes("tak_portal_hidden") && getUserByIdFn.includes("attributes"),
+  "getUserById groupDetails must expose tak_portal_hidden for edit-modal chips"
+);
+
 const createDirFn = usersSrc.slice(
   usersSrc.indexOf("async function createDirectoryUser"),
   usersSrc.indexOf("const LEGACY_INTEGRATION_USERNAME_PREFIX")
