@@ -138,13 +138,6 @@ cd ~/TAK-Portal
 
 ---
 
-## Additional Guides
-
-- [Authentik password reset / self-service](docs/authentik-password-portal.md)
-- [FAQ](docs/faq.md)
-
----
-
 ## License
 
 Licensed under the [AGPL-3.0](LICENSE).
