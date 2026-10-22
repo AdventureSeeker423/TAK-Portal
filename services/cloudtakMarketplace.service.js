@@ -380,6 +380,7 @@ function normalizeCatalog(doc) {
       description: String(p.description || ""),
       maintainer: String(p.maintainer || ""),
       added: String(p.added || ""),
+      hidden: !!p.hidden,
       installScript: String(p.installScript || "").trim(),
       composeService: String(p.composeService || "").trim(),
       composeFile: String(p.composeFile || "").trim(),
@@ -414,6 +415,8 @@ function mergeCatalogPlugin(seed, remote) {
       description: seed.description || remote.description,
       name: seed.name || remote.name,
       maintainer: seed.maintainer || remote.maintainer,
+      // Bundled catalog owns temporary marketplace visibility (e.g. broken upstream).
+      hidden: seed.hidden === true || remote.hidden === true,
     };
   }
   return seed || remote;
@@ -1670,6 +1673,9 @@ function buildUiPlugins(options = {}) {
     const rec = installedRec.plugins[p.id];
     const errorMessage = pluginErrorMessage(installedRec, p.id, p.web.dest);
     const installed = !!(scanHit || rec);
+    // Hidden catalog entries stay in loadCatalog/detect/install paths, but are
+    // omitted from the marketplace UI unless already present on the host.
+    if (p.hidden && !installed) continue;
     const extra = caddyMod.extraConfigStatus(p.additionalActions, scan && scan.caddy);
     byId.set(p.id, {
       id: p.id,
@@ -1685,6 +1691,7 @@ function buildUiPlugins(options = {}) {
       caddyPending: extra.caddyPending,
       extraConfigComplete: extra.complete,
       added: p.added,
+      hidden: !!p.hidden,
       isNew: installed ? false : isNewPlugin(p, now),
       installed,
       error: !!errorMessage,
@@ -1850,12 +1857,20 @@ function makeJob({ kind, pluginId, createdBy, extra, status }) {
 }
 
 function enqueueJob({ kind, pluginId, createdBy, extra, status }) {
+  const blocked = assertMarketplaceInstallAllowed(kind, pluginId);
+  if (blocked) {
+    const err = new Error(blocked.error);
+    err.code = "MARKETPLACE_PLUGIN_HIDDEN";
+    throw err;
+  }
   const job = makeJob({ kind, pluginId, createdBy, extra, status: status || "queued" });
   store.withJobs((jobs) => [job, ...jobs].slice(0, store.MAX_JOBS));
   return job;
 }
 
 function stageJob({ kind, pluginId, createdBy, extra, toggle }) {
+  const blocked = assertMarketplaceInstallAllowed(kind, pluginId);
+  if (blocked) return blocked;
   const incoming = makeJob({ kind, pluginId, createdBy, extra, status: "staged" });
   const key = jobKey(incoming);
   let removed = null;
@@ -2106,6 +2121,20 @@ function cancelCurrentJobs() {
 
 function pluginById(id) {
   return loadCatalog().plugins.find((p) => p.id === id) || null;
+}
+
+/** Block new installs/updates for catalog entries marked hidden; uninstall stays allowed. */
+function assertMarketplaceInstallAllowed(kind, pluginId) {
+  const k = String(kind || "").trim();
+  if (k !== "install" && k !== "update") return null;
+  const id = String(pluginId || "").trim();
+  if (!id) return null;
+  const plugin = pluginById(id);
+  if (!plugin || !plugin.hidden) return null;
+  return {
+    ok: false,
+    error: `${plugin.name || id} is temporarily unavailable in the marketplace.`,
+  };
 }
 
 function normalizeInstallScript(script) {
@@ -3571,6 +3600,7 @@ async function maybeNotify() {
   const newPlugins = [];
   if (getBool("CLOUDTAK_MARKETPLACE_NOTIFY_NEW", true)) {
     for (const p of catalog.plugins) {
+      if (p.hidden) continue;
       if (seen.size && !seen.has(p.id) && !mailedNew[p.id]) newPlugins.push(p);
     }
   }

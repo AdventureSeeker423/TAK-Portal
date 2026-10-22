@@ -108,9 +108,17 @@ assert.ok(sidebarConfigurator.detect.some((d) => d.includes("app/plugins/sidebar
 assert.match(marketplace.installRemoteScript("/root/CloudTAK", sidebarConfigurator), /install\.sh/);
 const replay = normalized.plugins.find((p) => p.id === "replay");
 assert.strictEqual(replay.web.dest, "replay");
+assert.strictEqual(replay.hidden, true, "replay stays in catalog but is hidden from marketplace UI");
 assert.match(marketplace.uninstallRemoteScript("/root/CloudTAK", "replay", [], "replay"), /--remove/);
 assert.match(marketplace.installRemoteScript("/root/CloudTAK", replay), /apply_plugin_patches/);
 assert.match(marketplace.installRemoteScript("/root/CloudTAK", replay), /marketplace-install-status/);
+{
+  const ui = marketplace.buildUiPlugins({ skipRemoteSha: true });
+  assert.ok(!ui.plugins.some((p) => p.id === "replay"), "hidden replay omitted from marketplace list when not installed");
+  const blocked = marketplace.stageJob({ kind: "install", pluginId: "replay", createdBy: "test" });
+  assert.strictEqual(blocked.ok, false);
+  assert.match(String(blocked.error || ""), /temporarily unavailable/i);
+}
 const drifted = [
   "import type ConfigStateful from '../config.js';",
   "import { randomUUID } from 'node:crypto';",

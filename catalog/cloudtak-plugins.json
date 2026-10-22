@@ -191,6 +191,8 @@
       "repo": "https://github.com/dfndr13/cloudtak-replay-plugin.git",
       "added": "2026-09-25",
       "maintainer": "dfndr13",
+      "hidden": true,
+      "notes": "Temporarily hidden: core patches target CloudTAK 13.69.0 and fail on newer checkouts (e.g. connection-pool.ts).",
       "web": { "dest": "replay" },
       "detect": [
         "api/web/plugins/replay/index.ts",

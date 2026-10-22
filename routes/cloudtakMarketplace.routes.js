@@ -200,6 +200,9 @@ router.post("/jobs", (req, res) => {
         return res.status(400).json({ ok: false, error: "pluginId is required" });
       }
       const result = marketplace.stageJob({ kind, pluginId, createdBy, extra });
+      if (!result.ok) {
+        return res.status(400).json(result);
+      }
       auditSvc.auditFromRequest(req, {
         action: "CLOUDTAK_MARKETPLACE_JOB",
         targetType: "cloudtak_plugin",
