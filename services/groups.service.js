@@ -303,6 +303,7 @@ async function getGroupsForAuthUser(
     );
     for (const g of extras) {
       if (!g || accessSvc.isGroupMarkedPrivate(g)) continue;
+      if (isGroupHidden(g)) continue;
       const pk = String(g?.pk ?? g?.id ?? "").trim();
       if (!pk || havePks.has(pk)) continue;
       havePks.add(pk);
@@ -310,7 +311,10 @@ async function getGroupsForAuthUser(
     }
   }
 
-  return accessSvc.filterGroupsForUser(authUser, merged);
+  return applyGroupsHiddenPrefixFilter(
+    accessSvc.filterGroupsForUser(authUser, merged),
+    { includeHidden: false }
+  );
 }
 
 function normalizeAgencyAbbreviations(agencyAbbreviations, agencyAbbreviation) {

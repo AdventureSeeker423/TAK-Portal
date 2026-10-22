@@ -244,7 +244,8 @@ router.get("/groups", async (req, res) => {
   try {
     const authUser = req.authentikUser || null;
     const all = await groupsSvc.getGroupsForAuthUser(authUser);
-    const filtered = accessSvc.filterGroupsForUser(authUser, all);
+    const groupsRoutes = require("./groups.routes");
+    const filtered = await groupsRoutes.filterGroupsVisibleToUser(authUser, all);
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: toErrorPayload(err) });
