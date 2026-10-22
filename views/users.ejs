@@ -3305,7 +3305,7 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
     pickedGroupIds = new Set((selectedUser.groups || []).map((x) => String(x)));
     lastConfirmedGroupIds = Array.from(pickedGroupIds);
     selectedUser.__role = roleForUser(selectedUser);
-    selectedUser.permissionLabel =
+    const nextPermissionLabel =
       desired === "global_admin"
         ? "Global Admin"
         : desiredUi === "multi_agency_admin" ||
@@ -3314,6 +3314,8 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
           : desired === "agency_admin"
             ? "Agency Admin"
             : "User";
+    selectedUser.permissionLabel = nextPermissionLabel;
+    selectedUser.portal_role = nextPermissionLabel;
     selectedUser.statusLabel = "";
     selectedUser.statusLabel = userStatusLabel(selectedUser);
     renderGroupChips(selectedUser);
@@ -3326,23 +3328,20 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
     }
     updateEditManagedAgenciesVisibility();
 
-    const patch = (u) =>
-      String(u.pk) === String(selectedUser.pk)
-        ? {
-            ...u,
-            groups: selectedUser.groups,
-            __role: selectedUser.__role,
-            permissionLabel:
-              desired === "global_admin"
-                ? "Global Admin"
-                : desiredUi === "multi_agency_admin" ||
-                    (desired === "agency_admin" && managedSuffixes.length > 1)
-                  ? "Multi-Agency Admin"
-                  : desired === "agency_admin"
-                    ? "Agency Admin"
-                    : "User",
-          }
-        : u;
+    const patch = (u) => {
+      if (String(u.pk) !== String(selectedUser.pk)) return u;
+      const next = {
+        ...u,
+        groups: selectedUser.groups,
+        __role: selectedUser.__role,
+        permissionLabel: nextPermissionLabel,
+        portal_role: nextPermissionLabel,
+        // Clear cached status so User ↔ Admin shows immediately in the table.
+        statusLabel: "",
+      };
+      next.statusLabel = userStatusLabel(next);
+      return next;
+    };
     allUsers = (allUsers || []).map(patch);
     const updatedVisible = (window.__lastUsers || []).map(patch);
     window.__lastUsers = updatedVisible.slice();
