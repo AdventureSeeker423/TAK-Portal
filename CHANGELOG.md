@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.18 - IN PROGRESS
+✨ `Enhancement` - Adds a TXT file button to CloudTAK Plugin Marketplace to assist with troubleshooting failed installs<br>
+
 ### v2.0.17 - 10/22/26
 ✨ `Enhancement` - New Integrations no longer carry the "nodered-" prefix<br>
 ✨ `Enhancement` - Hidden Prefixes are now automatically migrated to user/group attributes and manual settings cleared after the full background migration (this is a backend change, no visual indications)<br>
