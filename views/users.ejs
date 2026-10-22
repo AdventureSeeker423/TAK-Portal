@@ -828,7 +828,16 @@ async function searchPortalGroups() {
   const raw = res.ok
     ? (Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []))
     : [];
-  groupsCache = raw.filter((g) => !isCreateFormHiddenGroup(g));
+  groupsCache = raw.filter((g) => {
+    if (isCreateFormHiddenGroup(g)) return false;
+    // Mirror edit-modal: never offer AgencyAdmin / authentik* / global-admin groups.
+    const name = String(g && g.name || "").trim();
+    const lower = name.toLowerCase();
+    const withoutTak = lower.startsWith("tak_") ? lower.slice(4) : lower;
+    if (withoutTak.startsWith("authentik")) return false;
+    if (withoutTak.endsWith("-agencyadmin") || withoutTak.endsWith("_agencyadmin")) return false;
+    return true;
+  });
   if (res.ok) groupsFullyLoaded = true;
   return groupsCache;
 }
@@ -1676,6 +1685,23 @@ const PORTAL_GLOBAL_ADMIN_GROUP_NAMES = String(PORTAL_GLOBAL_ADMIN_GROUPS_RAW ||
   .split(",")
   .map(s => String(s || "").trim())
   .filter(Boolean);
+
+const PORTAL_GLOBAL_ADMIN_GROUP_NAMES_LOWER = PORTAL_GLOBAL_ADMIN_GROUP_NAMES.map((n) =>
+  String(n || "").trim().toLowerCase()
+).filter(Boolean);
+
+/** Authentik portal-auth / agency-admin groups — never show in edit-modal chips or checkbox grid. */
+function isInternalAuthGroupName(name) {
+  const raw = String(name || "").trim().toLowerCase();
+  if (!raw) return true;
+  const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
+  if (withoutTak.startsWith("authentik")) return true;
+  if (withoutTak.endsWith("-agencyadmin") || withoutTak.endsWith("_agencyadmin")) return true;
+  if (PORTAL_GLOBAL_ADMIN_GROUP_NAMES_LOWER.includes(raw)) return true;
+  if (PORTAL_GLOBAL_ADMIN_GROUP_NAMES_LOWER.includes(withoutTak)) return true;
+  return false;
+}
+
 function userActionsLocked(username) {
   const u = String(username || "").trim().toLowerCase();
   if (!u) return false;
@@ -2255,13 +2281,14 @@ function renderGroupChips(user){
     ? user.groups.map(x => String(x))
     : [];
 
+  // Only portal-visible channel/template groups — never AgencyAdmin / global-admin / authentik*.
   const names = ids
     .map(id => {
       const key = String(id);
-      if (visibleGroupIds.has(key) || groupIndex.has(key)) {
-        return groupIndex.get(key);
-      }
-      return null;
+      if (!visibleGroupIds.has(key)) return null;
+      const name = groupIndex.get(key);
+      if (!name || isInternalAuthGroupName(name)) return null;
+      return name;
     })
     .filter(Boolean)
     .sort((a,b)=>String(a).localeCompare(String(b)));
@@ -2696,9 +2723,11 @@ async function searchPortalGroups() {
     : [];
   for (const g of groups) {
     if (isPortalHiddenGroupClient(g)) continue;
+    const name = g.name || ("Group " + (g.pk || g.id || ""));
+    if (isInternalAuthGroupName(name)) continue;
     const id = String(g.pk || g.id || "");
     if (!id) continue;
-    groupIndex.set(id, g.name || ("Group " + id));
+    groupIndex.set(id, name);
     visibleGroupIds.add(id);
   }
   if (res.ok) portalGroupsLoaded = true;
