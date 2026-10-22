@@ -888,10 +888,23 @@ function parseJsonc(text) {
 }
 
 function insertEslintIgnoreBlock(config, block) {
-  const needleTseslint = "export default tseslint.config(";
-  const atTs = config.indexOf(needleTseslint);
-  if (atTs >= 0) {
-    return config.slice(0, atTs + needleTseslint.length) + "\n" + block + config.slice(atTs + needleTseslint.length);
+  // CloudTAK 13.x app uses `export default ts.config(`; older/docs use tseslint.config(
+  // or a bare array. Match any of those so marketplace plugin ignores actually apply.
+  const needles = [
+    "export default tseslint.config(",
+    "export default ts.config(",
+    "export default defineConfig(",
+  ];
+  for (const needle of needles) {
+    const at = config.indexOf(needle);
+    if (at >= 0) {
+      return config.slice(0, at + needle.length) + "\n" + block + config.slice(at + needle.length);
+    }
+  }
+  const generic = config.match(/export\s+default\s+[A-Za-z_$][\w$]*\.config\s*\(/);
+  if (generic && typeof generic.index === "number") {
+    const at = generic.index + generic[0].length;
+    return config.slice(0, at) + "\n" + block + config.slice(at);
   }
   const needleArr = "export default [";
   const atArr = config.indexOf(needleArr);
@@ -1335,6 +1348,11 @@ function alignInstalledPlugins(ctRoot) {
   if (layout.kind === "app") {
     changes.push(...shieldAppPluginEslint(web, pluginNames));
     changes.push(...shieldAppPluginTsconfig(web, pluginNames));
+    // Belt-and-suspenders: CloudTAK's lint script explicitly passes ./plugins/.
+    // If ignore-block injection misses a config shape, drop that CLI path so a
+    // marketplace plugin cannot fail the image rebuild (livewx unused-vars, etc.).
+    changes.push(...relaxHostPluginLint(web));
+    changes.push(...relaxHostPluginCheck(web));
   } else {
     changes.push(...relaxHostPluginLint(web));
     changes.push(...relaxHostPluginCheck(web));

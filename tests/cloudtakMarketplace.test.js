@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const marketplace = require("../services/cloudtakMarketplace.service");
 const pluginPatch = require("../services/cloudtakMarketplace.patch");
+const pluginAlign = require("../services/cloudtakMarketplace.align");
 const store = require("../services/cloudtakMarketplace.store");
 const settingsSvc = require("../services/settings.service");
 
@@ -691,7 +692,7 @@ assert.ok(appAligned.ok);
 assert.ok(!appAligned.skipped);
 assert.ok(appAligned.changes.some((line) => line.includes("app/eslint.config.js")));
 assert.ok(appAligned.changes.some((line) => line.includes("app/tsconfig.json")));
-assert.ok(!appAligned.changes.some((line) => line.startsWith("app/package.json:")));
+assert.ok(appAligned.changes.some((line) => line.startsWith("app/package.json:")));
 const appEslint = fs.readFileSync(path.join(appAlignRoot, "app", "eslint.config.js"), "utf8");
 assert.match(appEslint, /cloudtak-marketplace-plugins/);
 assert.match(appEslint, /plugins\/incident-manager\/\*\*/);
@@ -699,7 +700,8 @@ const appTsconfig = JSON.parse(fs.readFileSync(path.join(appAlignRoot, "app", "t
 assert.ok(appTsconfig.exclude.includes("plugins/incident-manager"));
 assert.ok(appTsconfig.exclude.includes("node_modules"));
 const appLintScripts = JSON.parse(fs.readFileSync(appLintPkg, "utf8")).scripts;
-assert.match(appLintScripts.lint, /\.\/plugins/);
+assert.doesNotMatch(appLintScripts.lint, /\.\/plugins/);
+assert.match(appLintScripts.lint, /\.\/src\//);
 const appBrief = fs.readFileSync(
   path.join(appAlignRoot, "app", "plugins", "incident-manager", "src", "lib", "irBriefing.ts"),
   "utf8"
@@ -883,6 +885,55 @@ assert.deepStrictEqual(interruptSignals, ["INT"]);
 const crProgress = ssh.feedPtyChunk("", "Counting objects: 3% (1/30)\rCounting objects: 100% (30/30), done.\n");
 assert.deepStrictEqual(crProgress.lines, ["Counting objects: 100% (30/30), done."]);
 assert.strictEqual(ssh.stripAnsi("\u001b[1A[+] up 3/4"), "[+] up 3/4");
+
+// CloudTAK 13.x uses `export default ts.config(` — ignore injection must match that shape,
+// and ./plugins must be dropped from the lint script so a bad marketplace plugin cannot
+// fail docker compose build.
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctak-eslint-"));
+  try {
+    const eslintPath = path.join(tmp, "eslint.config.js");
+    fs.writeFileSync(
+      eslintPath,
+      [
+        "import ts from 'typescript-eslint';",
+        "export default ts.config(",
+        "    { rules: {} },",
+        ")",
+        "",
+      ].join("\n"),
+      "utf8"
+    );
+    const pkgPath = path.join(tmp, "package.json");
+    fs.writeFileSync(
+      pkgPath,
+      JSON.stringify(
+        {
+          scripts: {
+            lint: "eslint --config eslint.config.js ./src/ ./public/ ./plugins/",
+            check: "vue-tsc --noEmit",
+          },
+        },
+        null,
+        2
+      ) + "\n",
+      "utf8"
+    );
+    const eslintChanges = pluginAlign.shieldAppPluginEslint(tmp, ["livewx-radar"]);
+    assert.ok(eslintChanges.length, "eslint ignore block should be inserted for ts.config(");
+    const eslintText = fs.readFileSync(eslintPath, "utf8");
+    assert.match(eslintText, /cloudtak-marketplace-plugins/);
+    assert.match(eslintText, /plugins\/livewx-radar\/\*\*/);
+    assert.match(eslintText, /export default ts\.config\(\s*\/\* cloudtak-marketplace-plugins \*\//);
+    const lintChanges = pluginAlign.relaxHostPluginLint(tmp);
+    assert.ok(lintChanges.length, "lint script should drop ./plugins");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    assert.doesNotMatch(pkg.scripts.lint, /\.\/plugins/);
+    assert.match(pkg.scripts.lint, /\.\/src\//);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 async function assertOnboardValidation() {
   await assert.rejects(
