@@ -560,6 +560,9 @@ function isValidPassword(pwd) {
 const IS_GLOBAL_ADMIN = <%- JSON.stringify(!!isGlobalAdmin) %>;
 const IS_AGENCY_ADMIN = <%- JSON.stringify(!!isAgencyAdmin) %>;
 const ALLOWED_AGENCY_SUFFIXES = <%- JSON.stringify(allowedAgencySuffixes || []) %>;
+const VIEWER_AGENCY_SUFFIX = <%- JSON.stringify(
+  String(typeof viewerAgencySuffix !== "undefined" ? viewerAgencySuffix : "").trim().toLowerCase()
+) %>;
 const USERNAME_PREFIX_LABEL = <%- JSON.stringify(usernamePrefixLabel) %>;
 
 const agencySelect = document.getElementById("createAgencySelect");
@@ -758,6 +761,20 @@ async function loadAgencies() {
           `<option value="${esc(a.suffix)}">${esc(a.name)} (${esc(a.suffix)})</option>`
       )
       .join("");
+  }
+
+  // Global / multi-agency admins: default create agency to the viewer's home agency.
+  if (
+    IS_GLOBAL_ADMIN ||
+    (IS_AGENCY_ADMIN && ALLOWED_AGENCY_SUFFIXES.length > 1)
+  ) {
+    const preferred = String(VIEWER_AGENCY_SUFFIX || "").trim().toLowerCase();
+    if (preferred) {
+      const match = Array.from(agencySelect.options).find(
+        (o) => String(o.value || "").trim().toLowerCase() === preferred
+      );
+      if (match) agencySelect.value = match.value;
+    }
   }
 
   // Agency filter for results table (global admin or multi-agency admin).

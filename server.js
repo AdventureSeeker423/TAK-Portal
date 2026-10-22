@@ -999,9 +999,23 @@ app.get("/users", requirePermission("page.users"), async (req, res) => {
     userRequestsSvc.countRequestsForUser(req.authentikUser);
   const enrollmentPkg = require("./services/enrollmentPackage.service");
 
+  // Home agency for create-form default (global / multi-agency admins).
+  let viewerAgencySuffix = "";
+  try {
+    const authUser = req.authentikUser || null;
+    const localUser = authUser
+      ? await usersSvc.getLocalUserForAuth(authUser).catch(() => null)
+      : null;
+    viewerAgencySuffix =
+      accessSvc.resolveAgencySuffixFromUser(localUser || authUser) || "";
+  } catch (_) {
+    viewerAgencySuffix = "";
+  }
+
   return res.render("users", {
     pendingUserRequestsCount,
     dataPackageAvailable: enrollmentPkg.isDataPackageAvailable(),
+    viewerAgencySuffix,
   });
 });
 app.get("/users/manage", requirePermission("page.users"), (req, res) => res.redirect(301, "/users"));
