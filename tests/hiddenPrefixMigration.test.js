@@ -57,7 +57,7 @@ const migration = require("../services/hiddenPrefixMigration.service");
 
 assert.deepStrictEqual(
   migration.stampUserPrefixes().sort(),
-  ["ak-", "adm_", "ma-", "nodered-"].sort()
+  ["ak-", "akadmin", "adm_", "ma-", "nodered-"].sort()
 );
 assert.deepStrictEqual(
   migration.stampGroupPrefixes().sort(),

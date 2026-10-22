@@ -20,7 +20,7 @@ const {
 const MIGRATION_FLAG = "HIDDEN_PREFIX_ATTR_MIGRATION";
 
 /** Former settings.example defaults — always stamped regardless of settings. */
-const LEGACY_USER_HIDDEN_PREFIXES = ["ak-", "adm_", "nodered-", "ma-"];
+const LEGACY_USER_HIDDEN_PREFIXES = ["ak-", "akadmin", "adm_", "nodered-", "ma-"];
 const LEGACY_GROUP_HIDDEN_PREFIXES = ["authentik", "ma -"];
 
 let _running = false;
