@@ -105,10 +105,11 @@ const usersEjs = fs.readFileSync(
   "utf8"
 );
 assert.ok(
-  usersEjs.includes("chipGroups") &&
+  usersEjs.includes("visibleGroupIds.has") &&
     usersEjs.includes("shouldOmitFromGroupChips") &&
-    usersEjs.includes("isClientHiddenUsername"),
-  "edit-modal chips must prefer server chipGroups; table must filter ak- client-side"
+    usersEjs.includes("HIDDEN_USER_PREFIXES_CLIENT") &&
+    usersEjs.includes("ak-outpost-"),
+  "edit-modal chips must gate on visibleGroupIds; table must filter ak-/ak-outpost client-side"
 );
 
 const dirRepoSrc = fs.readFileSync(

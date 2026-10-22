@@ -253,6 +253,30 @@ async function stampBuiltinPrefixUsers() {
   return { stampedBuiltinUsers: stampedUsers };
 }
 
+/** Re-entrant: local-stamp authentik* / ma - groups that lost tak_portal_hidden. */
+async function stampBuiltinPrefixGroups() {
+  const prefixes = stampGroupPrefixes();
+  const groups = await listGroupsNeedingStamp(prefixes);
+  let stampedGroups = 0;
+  for (const row of groups) {
+    try {
+      await stampGroup(row);
+      stampedGroups += 1;
+    } catch (e) {
+      console.warn(
+        `[hidden-prefix-migration] group ${row.name}:`,
+        e?.message || e
+      );
+    }
+  }
+  if (stampedGroups) {
+    console.log(
+      `[hidden-prefix-migration] stamped ${stampedGroups} builtin-prefix group(s)`
+    );
+  }
+  return { stampedBuiltinGroups: stampedGroups };
+}
+
 async function stampUser(row) {
   const attrs = markHiddenAttributes(
     row.attributes && typeof row.attributes === "object" ? row.attributes : {}
@@ -329,11 +353,20 @@ async function runOnce() {
 
   _running = true;
   try {
+    // Always re-check on every tick / process start — Authentik inbound often
+    // omits tak_portal_hidden, which would otherwise resurface ak-outpost-* and
+    // AgencyAdmin in the UI after migration completed.
     const globalAdminResult = await stampPortalAuthRequiredGroups();
     const builtinUserResult = await stampBuiltinPrefixUsers();
+    const builtinGroupResult = await stampBuiltinPrefixGroups();
 
     if (migrationDone()) {
-      return { skipped: true, ...globalAdminResult, ...builtinUserResult };
+      return {
+        skipped: true,
+        ...globalAdminResult,
+        ...builtinUserResult,
+        ...builtinGroupResult,
+      };
     }
 
     const userPrefixes = stampUserPrefixes();
