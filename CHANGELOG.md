@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ### v2.0.18 - IN PROGRESS
 ✨ `Enhancement` - Adds a TXT file button to CloudTAK Plugin Marketplace to assist with troubleshooting failed installs<br>
+✨ `Enhancement` - CloudTAK Plugin Marketplace: Replay temporarily hidden from the catalog UI (install/detect code retained) until upstream patches support current CloudTAK
 
 ### v2.0.17 - 10/22/26
 ✨ `Enhancement` - New Integrations no longer carry the "nodered-" prefix<br>
