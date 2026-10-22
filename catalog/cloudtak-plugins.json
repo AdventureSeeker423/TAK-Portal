@@ -202,7 +202,7 @@
     {
       "id": "rubber-sheet",
       "name": "Rubber Sheet",
-      "description": "Stretch an image or PDF over the map (ATAK-style rubber sheet), edit pixels, and export KMZ, GeoTIFF, or GeoPDF. Requires CloudTAK 13.102+.",
+      "description": "Stretch an image or PDF over the map (ATAK-style rubber sheet), edit pixels, and export KMZ, GeoTIFF, or GeoPDF.",
       "repo": "https://github.com/ValleyTacticalSolutions/cloudtak-plugin-rubbersheet.git",
       "added": "2026-10-09",
       "maintainer": "ValleyTacticalSolutions",
@@ -217,7 +217,7 @@
     {
       "id": "sidebar-configurator",
       "name": "Sidebar Configurator",
-      "description": "System admins set default main-menu order and visibility for standard users (and optionally admins), with Off, New Users Only, or Forced apply modes. Requires CloudTAK 13.102+.",
+      "description": "System admins set default main-menu order and visibility for users.",
       "repo": "https://github.com/ValleyTacticalSolutions/cloudtak-plugin-sidebar-configurator.git",
       "added": "2026-10-19",
       "maintainer": "ValleyTacticalSolutions",
