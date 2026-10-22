@@ -44,6 +44,7 @@
       </div>
       <div class="mp-jobs-actions">
         <button type="button" class="btn" id="mpJobsCopyBtn">Copy</button>
+        <button type="button" class="btn" id="mpJobsSaveBtn">Save .txt</button>
         <button type="button" class="btn danger" id="mpJobsCancelBtn" disabled style="display:none;">Cancel Current Jobs</button>
       </div>
     </div>
@@ -966,8 +967,12 @@
     }
   }
 
+  function jobLogText() {
+    return jobLogFullText || ($("mpJobs") && $("mpJobs").textContent) || "";
+  }
+
   function copyJobLog() {
-    var text = jobLogFullText || ($("mpJobs") && $("mpJobs").textContent) || "";
+    var text = jobLogText();
     var btn = $("mpJobsCopyBtn");
     var done = function (ok) {
       if (!btn) return;
@@ -997,6 +1002,35 @@
         document.body.removeChild(ta);
       }
     });
+  }
+
+  function saveJobLog() {
+    var text = jobLogText();
+    var btn = $("mpJobsSaveBtn");
+    var done = function (ok) {
+      if (!btn) return;
+      btn.textContent = ok ? "Saved!" : "Save failed";
+      window.setTimeout(function () { btn.textContent = "Save .txt"; }, 1600);
+    };
+    if (!text.trim()) {
+      done(false);
+      return;
+    }
+    try {
+      var stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "cloudtak-marketplace-jobs-" + stamp + ".txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      done(true);
+    } catch (e) {
+      done(false);
+    }
   }
 
   function postJob(body) {
@@ -1119,6 +1153,7 @@
       });
   });
   $("mpJobsCopyBtn").addEventListener("click", copyJobLog);
+  $("mpJobsSaveBtn").addEventListener("click", saveJobLog);
   $("mpJobsCancelBtn").addEventListener("click", function () {
     var btn = $("mpJobsCancelBtn");
     if (!btn || btn.disabled) return;
