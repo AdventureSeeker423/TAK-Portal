@@ -426,10 +426,8 @@ async function writeDashboardStats() {
   const integ = await db.query(
     `SELECT COUNT(*)::int AS n FROM users WHERE pending_delete = false AND lower(username) LIKE 'nodered-%'`
   );
-  const grp = await db.query(
-    `SELECT COUNT(*)::int AS n FROM groups
-     WHERE pending_delete = false AND lower(left(name, 4)) = 'tak_'`
-  );
+  // Match Groups page visibility: tak_ only, excluding GROUPS_HIDDEN_PREFIXES.
+  const totalGroups = await repo.countGroupsMatching({ prefix: "tak_" });
   const byAgency = await db.query(
     `SELECT COALESCE(NULLIF(agency_name,''), '(unknown)') AS k, COUNT(*)::int AS n
      FROM users WHERE pending_delete = false ${hidden.length ? "AND NOT EXISTS (SELECT 1 FROM unnest($1::text[]) AS p WHERE lower(username) LIKE p || '%')" : ""}
@@ -459,7 +457,7 @@ async function writeDashboardStats() {
   const payload = {
     stats: {
       totalUsers: vis.rows[0]?.n || 0,
-      totalGroups: grp.rows[0]?.n || 0,
+      totalGroups: Number(totalGroups) || 0,
       totalAgencies: agencies.length,
       totalIntegrations: integ.rows[0]?.n || 0,
     },
