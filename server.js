@@ -563,6 +563,7 @@ function requireCloudtakMarketplaceEnabled(req, res, next) {
   if (getBool("CLOUDTAK_MARKETPLACE_ENABLED", false)) return next();
   const p = String(req.originalUrl || req.path || "").split("?")[0];
   if (
+    /\/api\/cloudtak-marketplace\/status\/?$/.test(p) ||
     /\/api\/cloudtak-marketplace\/ssh\/(test|detect|key)\/?$/.test(p) ||
     /\/api\/cloudtak-marketplace\/notify\/test\/?$/.test(p)
   ) {
@@ -1918,6 +1919,7 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
 
   const locateConfigSvc = require("./services/locateConfig.service");
   const takSshSvcForSettings = require("./services/takSsh.service");
+  const cloudtakMarketplaceSsh = require("./services/cloudtakMarketplace.ssh");
   const takSshMaintenanceVisible = locateConfigSvc.isSshConfigured().configured;
   const sshPrivilegedReady = takSshSvcForSettings.isPrivilegedSshReady(settings);
 
@@ -1934,6 +1936,7 @@ app.get("/settings", requirePermission("page.settings"), (req, res) => {
   caExists,
   takSshMaintenanceVisible,
   sshPrivilegedReady,
+  cloudtakMarketplaceHostStatus: cloudtakMarketplaceSsh.sshStatus(),
   defaultAgencyTypes: agencyTypesSvc.DEFAULT_AGENCY_TYPES,
   configurableAgencyTypes: agencyTypesSvc.getConfigurableAgencyTypes(settings),
   atakApk: atakApkSvc.getApkInfo(),

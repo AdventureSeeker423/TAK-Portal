@@ -4712,6 +4712,37 @@
       const takSshReady = String((settings && settings.TAK_SSH_ONBOARDED) || "").toLowerCase() === "true";
       const takSshHostLabel = String((settings && settings.TAK_SSH_HOST) || "").trim() || "not set";
       const emailOn = String((settings && settings.EMAIL_ENABLED) || "").toLowerCase() === "true";
+      const mpHost = (typeof cloudtakMarketplaceHostStatus !== "undefined" && cloudtakMarketplaceHostStatus)
+        ? cloudtakMarketplaceHostStatus
+        : {};
+      const mpHostConfigured = !!mpHost.configured;
+      const mpHostPath = String(mpHost.checkoutPath || "").trim();
+      const mpHostReady = mpHostConfigured && !!mpHostPath;
+      const mpHostUserAt = [mpHost.username, mpHost.host].filter(Boolean).join("@");
+      let mpHostStatusClass = "is-pending";
+      let mpHostStatusTitle = "Checking CloudTAK host…";
+      let mpHostStatusDetail = "";
+      if (mpHostReady) {
+        mpHostStatusClass = "is-ok";
+        mpHostStatusTitle = "CloudTAK host configured";
+        mpHostStatusDetail = (mpHostUserAt || "SSH ready") + " — " + mpHostPath
+          + (mpHost.composeService ? " (service " + mpHost.composeService + ")" : "");
+      } else if (mpHostConfigured) {
+        mpHostStatusClass = "is-warn";
+        mpHostStatusTitle = "SSH configured — CloudTAK path not set";
+        mpHostStatusDetail = (mpHostUserAt ? mpHostUserAt + ". " : "")
+          + "Use Detect CloudTAK or Test connection to find the checkout path.";
+      } else {
+        mpHostStatusClass = "is-bad";
+        mpHostStatusTitle = "CloudTAK host not configured";
+        if (mpHost.useTakSsh !== false) {
+          mpHostStatusDetail = mpHost.takConfigured
+            ? "TAK Server SSH is available, but CloudTAK marketplace SSH could not be resolved. Check Connection & Certificates."
+            : "Use TAK Server SSH (enable it above) after completing TAK Server → Connection & Certificates, or turn off Use TAK Server SSH and configure a dedicated CloudTAK host.";
+        } else {
+          mpHostStatusDetail = "Enter CloudTAK SSH host, user, and password, then Save SSH, generate key, and test.";
+        }
+      }
     %>
     <div class="modalOverlay settings-modal-overlay" id="settingsModal-cloudtak-marketplace" data-settings-modal="cloudtak-marketplace" style="display:none;" aria-hidden="true">
       <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle-cloudtak-marketplace">
@@ -4728,6 +4759,13 @@
         <div class="modalBody settings-body">
           <div class="grid2">
             <% renderField("CLOUDTAK_MARKETPLACE_ENABLED","Enable CloudTAK Plugin Marketplace","When on, CloudTAK Marketplace appears under Addons for global admins. When off, that link is hidden and the worker does not scan or install.","false"); %>
+          </div>
+          <div id="cloudtakMarketplaceHostStatus" class="cloudtak-host-status <%= mpHostStatusClass %>" role="status" aria-live="polite">
+            <span class="cloudtak-host-status-dot" aria-hidden="true"></span>
+            <div class="cloudtak-host-status-body">
+              <strong class="cloudtak-host-status-title" id="cloudtakMarketplaceHostStatusTitle"><%= mpHostStatusTitle %></strong>
+              <span class="cloudtak-host-status-detail" id="cloudtakMarketplaceHostStatusDetail"><%= mpHostStatusDetail %></span>
+            </div>
           </div>
           <div id="cloudtakMarketplaceEnabledFields" style="display:<%= mpEnabledOn ? 'block' : 'none' %>;">
             <h3 style="margin:1rem 0 0.5rem;">SSH</h3>
@@ -5648,6 +5686,55 @@
     function mpSettingInput(key) {
       return document.querySelector('#settingsModal-cloudtak-marketplace input[name="settings[' + key + ']"]');
     }
+    function applyCloudtakHostStatus(ssh) {
+      var box = document.getElementById("cloudtakMarketplaceHostStatus");
+      var titleEl = document.getElementById("cloudtakMarketplaceHostStatusTitle");
+      var detailEl = document.getElementById("cloudtakMarketplaceHostStatusDetail");
+      if (!box || !titleEl || !detailEl) return;
+      var s = ssh || {};
+      var configured = !!s.configured;
+      var path = String(s.checkoutPath || "").trim();
+      var userAt = [s.username, s.host].filter(Boolean).join("@");
+      var kind = "is-pending";
+      var title = "Checking CloudTAK host…";
+      var detail = "";
+      if (configured && path) {
+        kind = "is-ok";
+        title = "CloudTAK host configured";
+        detail = (userAt || "SSH ready") + " — " + path
+          + (s.composeService ? " (service " + s.composeService + ")" : "");
+      } else if (configured) {
+        kind = "is-warn";
+        title = "SSH configured — CloudTAK path not set";
+        detail = (userAt ? userAt + ". " : "")
+          + "Use Detect CloudTAK or Test connection to find the checkout path.";
+      } else {
+        kind = "is-bad";
+        title = "CloudTAK host not configured";
+        if (s.useTakSsh !== false) {
+          detail = s.takConfigured
+            ? "TAK Server SSH is available, but CloudTAK marketplace SSH could not be resolved. Check Connection & Certificates."
+            : "Use TAK Server SSH (enable it above) after completing TAK Server → Connection & Certificates, or turn off Use TAK Server SSH and configure a dedicated CloudTAK host.";
+        } else {
+          detail = "Enter CloudTAK SSH host, user, and password, then Save SSH, generate key, and test.";
+        }
+      }
+      box.classList.remove("is-pending", "is-ok", "is-warn", "is-bad");
+      box.classList.add(kind);
+      titleEl.textContent = title;
+      detailEl.textContent = detail;
+    }
+    function refreshCloudtakHostStatus() {
+      return mpJson("/api/cloudtak-marketplace/status")
+        .then(function (j) {
+          if (j && j.ssh) applyCloudtakHostStatus(j.ssh);
+          return j;
+        })
+        .catch(function () {
+          /* keep last known server-rendered status */
+        });
+    }
+    window.refreshCloudtakHostStatus = refreshCloudtakHostStatus;
     function applyCloudtakDetectFields(j) {
       var pathInput = mpSettingInput("CLOUDTAK_MARKETPLACE_PATH");
       var svcInput = mpSettingInput("CLOUDTAK_MARKETPLACE_COMPOSE_SERVICE");
@@ -5673,14 +5760,17 @@
         .then(function (j) {
           if (!j || !j.ok) {
             sshMpStatus.textContent = (j && (j.message || j.error)) || "Could not find a CloudTAK checkout. Configure SSH, then use Detect.";
+            refreshCloudtakHostStatus();
             return j;
           }
           applyCloudtakDetectFields(j);
           sshMpStatus.textContent = "Found " + (j.path || "") + (j.composeService ? " (service " + j.composeService + ")" : "");
+          refreshCloudtakHostStatus();
           return j;
         })
         .catch(function (err) {
           sshMpStatus.textContent = err.message || "Detect failed.";
+          refreshCloudtakHostStatus();
         });
     }
     function tryAutoDetectOnEnable() {
@@ -5708,6 +5798,14 @@
         syncCloudtakMarketplaceModal();
         var field = toggle.closest(".settings-field");
         var input = field && field.querySelector("[data-settings-bool-input]");
+        if (input && (
+          input.name === "settings[CLOUDTAK_MARKETPLACE_ENABLED]" ||
+          input.name === "settings[CLOUDTAK_MARKETPLACE_USE_TAK_SSH]"
+        )) {
+          window.setTimeout(function () {
+            refreshCloudtakHostStatus();
+          }, 500);
+        }
         if (input && input.name === "settings[CLOUDTAK_MARKETPLACE_ENABLED]" && input.value === "true") {
           window.setTimeout(tryAutoDetectOnEnable, 450);
         }
@@ -5738,14 +5836,19 @@
               applyCloudtakDetectFields(j);
               if (j.path) {
                 sshMpStatus.textContent = formatCloudtakSshResult(j, "OK. Detected CloudTAK.");
+                refreshCloudtakHostStatus();
                 return;
               }
               sshMpStatus.textContent = formatCloudtakSshResult(j, "OK. Detecting CloudTAK…");
               return autoDetectCloudtakCheckout();
             }
             sshMpStatus.textContent = formatCloudtakSshResult(j, "");
+            refreshCloudtakHostStatus();
           })
-          .catch(function (err) { sshMpStatus.textContent = err.message || "Test failed."; });
+          .catch(function (err) {
+            sshMpStatus.textContent = err.message || "Test failed.";
+            refreshCloudtakHostStatus();
+          });
       });
     }
     if (setupBtn && sshMpStatus) {
@@ -5769,6 +5872,7 @@
           .then(function (j) {
             if (!j || !j.ok) {
               sshMpStatus.textContent = (j && (j.error || j.message)) || "SSH setup failed.";
+              refreshCloudtakHostStatus();
               return;
             }
             if (cloudtakPassInput) cloudtakPassInput.value = "";
@@ -5776,8 +5880,12 @@
             sshMpStatus.textContent = formatCloudtakSshResult(j, j.detectOk === false
               ? "SSH key installed and test passed, but CloudTAK was not detected."
               : "SSH key installed. Test passed. CloudTAK detected.");
+            refreshCloudtakHostStatus();
           })
-          .catch(function (err) { sshMpStatus.textContent = err.message || "SSH setup failed."; })
+          .catch(function (err) {
+            sshMpStatus.textContent = err.message || "SSH setup failed.";
+            refreshCloudtakHostStatus();
+          })
           .finally(function () { setupBtn.disabled = false; });
       });
     }
@@ -5797,8 +5905,12 @@
           .then(function (r) { return r.json(); })
           .then(function (j) {
             keyStatus.textContent = j.ok ? "Key saved to " + (j.path || "data/ssh") : (j.error || "Upload failed");
+            refreshCloudtakHostStatus();
           })
-          .catch(function (err) { keyStatus.textContent = err.message || "Upload failed."; });
+          .catch(function (err) {
+            keyStatus.textContent = err.message || "Upload failed.";
+            refreshCloudtakHostStatus();
+          });
       });
     }
     var testEmailBtn = document.getElementById("cloudtakMarketplaceTestEmailBtn");
@@ -6628,6 +6740,9 @@
         }
         if (id === "portal-database" && typeof window.startLegacyImportStatus === "function") {
           window.startLegacyImportStatus();
+        }
+        if (id === "cloudtak-marketplace" && typeof window.refreshCloudtakHostStatus === "function") {
+          window.refreshCloudtakHostStatus();
         }
       }
 
