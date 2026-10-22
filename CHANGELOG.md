@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.  Minor qual
 ## Version History
 
 ### v2.0.16 - 10/22/26
-✨ `Enhancement` - Removes beta mode requirement on CloudTAK Plugin Marketplace<br>
+🎉 `New Feature` - CloudTAK Plugin Marketplace now implemented.  Visit Server Settings page to enable the addon and configure an ssh connection.<br>
 🐛 `Bug Fix` - Fixes issue with improper dashboard group count
 
 ### v2.0.15 - 10/21/26
