@@ -43,6 +43,10 @@ const directoryRepo = require("../services/directoryRepo.service");
   assert.ok(countSql, "paged search should COUNT matching users");
   assert.ok(listSql, "paged search should LIMIT/OFFSET rather than select all users");
   assert.ok(/ILIKE/.test(countSql.sql), "search should use SQL ILIKE");
+  assert.ok(
+    /tak_portal_hidden = false/.test(countSql.sql),
+    "search should exclude portal-hidden users via typed column"
+  );
   assert.ok(!/SELECT \* FROM users$/.test(listSql.sql.trim()));
 
   sqlCalls.length = 0;
@@ -81,6 +85,10 @@ const directoryRepo = require("../services/directoryRepo.service");
   const groupList = sqlCalls.find((c) => /LIMIT/.test(c.sql) && /FROM groups/.test(c.sql));
   assert.ok(groupCount, "paged group search should COUNT matching groups");
   assert.ok(groupList, "paged group search should LIMIT/OFFSET rather than select all groups");
+  assert.ok(
+    /tak_portal_hidden = false/.test(groupCount.sql),
+    "group search should exclude portal-hidden groups via typed column"
+  );
 
   sqlCalls.length = 0;
   const emails = await directoryRepo.listUserEmailRowsByGroupPks(["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]);
@@ -135,11 +143,13 @@ const directoryRepo = require("../services/directoryRepo.service");
     agencyAbbreviation: "SO",
     radio_callsign: "UNIT1",
     current_template: "Patrol",
+    tak_portal_hidden: "true",
   });
   assert.strictEqual(userCols.agency, "so");
   assert.strictEqual(userCols.agency_abbreviation, "SO");
   assert.strictEqual(userCols.radio_callsign, "UNIT1");
   assert.strictEqual(userCols.current_template, "Patrol");
+  assert.strictEqual(userCols.tak_portal_hidden, true);
 
   const groupCols = extractGroupColumns({
     CN: "SO Patrol",
@@ -147,12 +157,14 @@ const directoryRepo = require("../services/directoryRepo.service");
     description: "Night shift",
     created_type: "Agency",
     created_type_detail: "Sheriff",
+    tak_portal_hidden: "true",
   });
   assert.strictEqual(groupCols.cn, "SO Patrol");
   assert.strictEqual(groupCols.is_private, true);
   assert.strictEqual(groupCols.description, "Night shift");
   assert.strictEqual(groupCols.created_type, "Agency");
   assert.strictEqual(groupCols.created_type_detail, "Sheriff");
+  assert.strictEqual(groupCols.tak_portal_hidden, true);
 
   console.log("directorySearch.sql.test.js: ok");
 })().catch((err) => {

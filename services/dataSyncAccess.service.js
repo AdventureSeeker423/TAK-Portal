@@ -14,10 +14,6 @@ const dataSyncSvc = require("./dataSync.service");
 const dataPackagesSvc = require("./dataPackages.service");
 const packageKind = require("./packageKind.service");
 const mutualAidStore = require("./mutualAid.store");
-const { getString } = require("./env");
-
-/** Authentik / TAK display prefix for MA-created channels (not hidden on Data Sync for global admins). */
-const MUTUAL_AID_GROUP_PREFIX = "ma -";
 
 function canonicalGroupKey(name) {
   let n = String(name || "").trim().toLowerCase();
@@ -48,31 +44,11 @@ function isAuthentikAgencyAdminGroupName(name) {
   return /-AgencyAdmin$/i.test(String(name || "").trim());
 }
 
-function getDataSyncHiddenPrefixes() {
-  return String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean)
-    .filter((p) => p !== MUTUAL_AID_GROUP_PREFIX);
-}
-
 /** Match Groups page visibility for global admins; MA channels remain selectable on Data Sync. */
 function filterAuthentikGroupsForGlobalAdminDataSync(authUser, allGroups) {
+  const portalHidden = require("./portalHidden.util");
   let filtered = accessSvc.filterGroupsForUser(authUser, allGroups);
-
-  const hiddenPrefixes = getDataSyncHiddenPrefixes();
-
-  if (hiddenPrefixes.length) {
-    filtered = filtered.filter((g) => {
-      const raw = String(g?.name || "").trim().toLowerCase();
-      const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
-      return !hiddenPrefixes.some(
-        (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
-      );
-    });
-  }
-
-  return filtered;
+  return filtered.filter((g) => !portalHidden.isGroupHidden(g, { includeMutualAid: true }));
 }
 
 /**

@@ -11,32 +11,22 @@ const accessSvc = require("./access.service");
 const groupsSvc = require("./groups.service");
 const mapMeta = require("./mapMeta.service");
 const mutualAidStore = require("./mutualAid.store");
-const { getString } = require("./env");
-
-const MUTUAL_AID_GROUP_PREFIX = "ma -";
+const { isGroupHidden } = require("./portalHidden.util");
 
 function isAuthentikAgencyAdminGroupName(name) {
   return /-AgencyAdmin$/i.test(String(name || "").trim());
 }
 
-function getHiddenGroupPrefixes({ includeMutualAid = false } = {}) {
-  const prefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
-  if (!includeMutualAid) return prefixes;
-  return prefixes.filter((p) => p !== MUTUAL_AID_GROUP_PREFIX);
-}
-
-function isHiddenGroupName(name, { includeMutualAid = false } = {}) {
+function isHiddenGroupName(groupOrName, { includeMutualAid = false } = {}) {
+  const name =
+    groupOrName && typeof groupOrName === "object"
+      ? groupOrName.name
+      : groupOrName;
   const raw = String(name || "").trim().toLowerCase();
   if (!raw) return true;
   const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
   if (withoutTak.startsWith("_")) return true;
-  const hiddenPrefixes = getHiddenGroupPrefixes({ includeMutualAid });
-  return hiddenPrefixes.some(
-    (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
-  );
+  return isGroupHidden(groupOrName, { includeMutualAid });
 }
 
 /**
@@ -152,7 +142,7 @@ async function listAgencyScopedGroups(authUser) {
 
   for (const g of visible) {
     const name = String(g?.name || "").trim();
-    if (!name || isAuthentikAgencyAdminGroupName(name) || isHiddenGroupName(name)) {
+    if (!name || isAuthentikAgencyAdminGroupName(name) || isHiddenGroupName(g)) {
       continue;
     }
     const baseKey = mapMeta.channelBaseKey(name);

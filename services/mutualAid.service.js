@@ -1108,8 +1108,11 @@ async function create({
       }
     }
   } else {
-    // 1) Create group
-    group = await groupsSvc.createGroup(desiredGroupName);
+    // 1) Create group (hidden from normal portal lists via tak_portal_hidden)
+    const { markHiddenAttributes } = require("./portalHidden.util");
+    group = await groupsSvc.createGroup(desiredGroupName, {
+      attributes: markHiddenAttributes({}),
+    });
     groupWasCreated = true;
   }
 
@@ -1125,11 +1128,12 @@ async function create({
 
   // 2) Create user locally, then enqueue Authentik create_user (password + groups).
   const password = randomPassword(18);
-  const attributes = {
+  const { markHiddenAttributes } = require("./portalHidden.util");
+  const attributes = markHiddenAttributes({
     mutual_aid: true,
     mutual_aid_type: t,
     mutual_aid_group: groupName,
-  };
+  });
   const { user } = await usersSvc.createDirectoryUser(
     {
       username,

@@ -6,6 +6,7 @@ const agenciesStore = require("./agencies.service");
 const directoryRepo = require("./directoryRepo.service");
 const authentikOutbox = require("./authentikOutbox.service");
 const db = require("./db");
+const { isUserHidden, isGroupHidden } = require("./portalHidden.util");
 
 // ---------------- Action-lock helpers ----------------
 // If a group name starts with any prefix in GROUPS_ACTIONS_HIDDEN_PREFIXES,
@@ -23,13 +24,6 @@ function isGroupActionLocked(groupName) {
   const prefixes = getGroupActionLockPrefixes();
   if (!prefixes.length) return false;
   return prefixes.some(p => n.startsWith(p));
-}
-
-function getHiddenUserPrefixes() {
-  return String(getString("USERS_HIDDEN_PREFIXES", ""))
-    .split(",")
-    .map(p => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
 }
 
 async function assertGroupNotActionLocked(groupId, { ignoreLocks } = {}) {
@@ -163,14 +157,8 @@ function normalizeCNValue(rawValue, nameWithoutTak) {
 function applyUserVisibilityFilters(users) {
   let out = Array.isArray(users) ? users : [];
 
-  // Hide users by username prefix for group-related views (USERS_HIDDEN_PREFIXES)
-  const hiddenPrefixes = getHiddenUserPrefixes();
-  if (hiddenPrefixes.length) {
-    out = out.filter(u => {
-      const username = String(u?.username || "").trim().toLowerCase();
-      return !hiddenPrefixes.some(p => username.startsWith(p));
-    });
-  }
+  // Hide portal-hidden users for group-related views
+  out = out.filter((u) => !isUserHidden(u));
 
   // Respect AUTHENTIK_USER_PATH if set
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
@@ -207,18 +195,7 @@ async function getAllGroupsRaw(options = {}) {
 function applyGroupsHiddenPrefixFilter(groups, { includeHidden = false } = {}) {
   const list = Array.isArray(groups) ? groups : [];
   if (includeHidden) return list;
-
-  const prefixes = String(getString("GROUPS_HIDDEN_PREFIXES", ""))
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
-  if (!prefixes.length) return list;
-
-  return list.filter((g) => {
-    const raw = String(g?.name || "").trim().toLowerCase();
-    const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
-    return !prefixes.some((p) => raw.startsWith(p) || withoutTak.startsWith(p));
-  });
+  return list.filter((g) => !isGroupHidden(g));
 }
 
 async function searchGroupsRaw(searchTerm, { includeHidden = false } = {}) {

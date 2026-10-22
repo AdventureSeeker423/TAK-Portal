@@ -6,13 +6,11 @@ const accessSvc = require("../services/access.service");
 const usersService = require("../services/users.service");
 const auditSvc = require("../services/auditLog.service");
 const auditDetails = require("../services/auditDetails.service");
-const { getString } = require("../services/env");
 const { toSafeApiError } = require("../services/apiErrorPayload.service");
 const mutualAidStore = require("../services/mutualAid.store");
 const channelPatchStore = require("../services/channelPatch.store");
 const channelPatchAccess = require("../services/channelPatchAccess.service");
-
-const MUTUAL_AID_GROUP_PREFIX = "ma -";
+const { isGroupHidden, MUTUAL_AID_GROUP_PREFIX } = require("../services/portalHidden.util");
 
 async function annotateGroupsWithScopedPatchPeers(authUser, groupsList) {
   try {
@@ -146,17 +144,6 @@ async function resolveAgencyAbbreviationsForScopedExport(authUser, access) {
   }
 }
 
-function getGroupsHiddenPrefixes({ includeMutualAid = false } = {}) {
-  let hiddenPrefixes = String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
-  if (includeMutualAid) {
-    hiddenPrefixes = hiddenPrefixes.filter((p) => p !== MUTUAL_AID_GROUP_PREFIX);
-  }
-  return hiddenPrefixes;
-}
-
 async function appendMutualAidGroupsFromStore(filtered, allGroups) {
   const list = Array.isArray(filtered) ? filtered : [];
   const all = Array.isArray(allGroups) ? allGroups : [];
@@ -216,20 +203,9 @@ async function appendMutualAidGroupsFromStore(filtered, allGroups) {
 async function filterGroupsVisibleToUser(authUser, all, options = {}) {
   let filtered = accessSvc.filterGroupsForUser(authUser, all);
 
-  const hiddenPrefixes = getGroupsHiddenPrefixes({
-    includeMutualAid: !!options.includeMutualAid,
-  });
-
-  if (hiddenPrefixes.length) {
-    filtered = filtered.filter((g) => {
-      const raw = String(g.name || "").trim().toLowerCase();
-      const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
-
-      return !hiddenPrefixes.some(
-        (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
-      );
-    });
-  }
+  filtered = filtered.filter(
+    (g) => !isGroupHidden(g, { includeMutualAid: !!options.includeMutualAid })
+  );
 
   if (options.includeMutualAid) {
     filtered = await appendMutualAidGroupsFromStore(filtered, all);

@@ -316,7 +316,7 @@ async function rollbackIntegrationCreation({ userId, username, dataFeedName }) {
     }
   }
 
-  if (un.startsWith("nodered-")) {
+  if (un) {
     try {
       await takSshSvc.revokeIntegrationCertViaSshScript(un);
     } catch (err) {
@@ -339,7 +339,7 @@ async function rollbackIntegrationCreation({ userId, username, dataFeedName }) {
 
 /**
  * GET /api/integrations
- * List all users whose username starts with "nodered-".
+ * List portal integration users (integration_type attribute, plus legacy nodered- usernames).
  * Mounted with requirePermission("page.integrations") in server.js.
  */
 router.get("/", async (req, res) => {
@@ -424,7 +424,7 @@ router.get("/", async (req, res) => {
 
 /**
  * POST /api/integrations
- * Create a new integration user: username "nodered-{slug from title}", one or more groups.
+ * Create a new integration user: scoped slug username (no nodered- prefix), one or more groups.
  * Mounted with requirePermission("page.integrations") in server.js.
  */
 router.post("/", async (req, res) => {
@@ -595,7 +595,7 @@ router.get("/:userId/certs/download", async (req, res) => {
     const userId = req.params.userId;
     const user = await users.getUserById(userId);
     const username = String(user?.username || "").toLowerCase();
-    if (!username.startsWith("nodered-")) {
+    if (!users.isIntegrationUser(user)) {
       return res.status(403).json({ error: "Not an integration user." });
     }
 
@@ -689,7 +689,7 @@ router.get("/:userId/certs/download", async (req, res) => {
 
 /**
  * PUT /api/integrations/:userId/group
- * Set the integration user's groups (replaces current). Only for nodered- users; bypasses action lock.
+ * Set the integration user's groups (replaces current). Integration users only; bypasses action lock.
  * If the integration has a TAK data feed, its filter groups are updated first so a TAK failure
  * leaves Authentik membership unchanged.
  */
@@ -697,8 +697,7 @@ router.put("/:userId/group", async (req, res) => {
   try {
     const userId = req.params.userId;
     const user = await users.getUserById(userId);
-    const username = String(user?.username || "").toLowerCase();
-    if (!username.startsWith("nodered-")) {
+    if (!users.isIntegrationUser(user)) {
       return res.status(403).json({ error: "Not an integration user." });
     }
     const requestedIds = uniqueRequestedGroupIds(req.body || {});
@@ -787,14 +786,13 @@ router.put("/:userId/group", async (req, res) => {
 
 /**
  * DELETE /api/integrations/:userId
- * Delete the integration user. Only for nodered- users; bypasses action lock.
+ * Delete the integration user. Integration users only; bypasses action lock.
  */
 router.delete("/:userId", async (req, res) => {
   try {
     const userId = req.params.userId;
     const user = await users.getUserById(userId);
-    const username = String(user?.username || "").toLowerCase();
-    if (!username.startsWith("nodered-")) {
+    if (!users.isIntegrationUser(user)) {
       return res.status(403).json({ error: "Not an integration user." });
     }
 

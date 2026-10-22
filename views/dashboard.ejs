@@ -640,6 +640,31 @@
 
       var NODERED_PREFIX = "nodered-";
       var TLS_CALLSIGN_PREFIX = "tls:";
+      var integrationUsernamesSet = null;
+      var integrationUsernamesPromise = null;
+
+      function ensureIntegrationUsernames() {
+        if (integrationUsernamesSet) return Promise.resolve(integrationUsernamesSet);
+        if (integrationUsernamesPromise) return integrationUsernamesPromise;
+        integrationUsernamesPromise = fetch("/api/integrations", { headers: { Accept: "application/json" } })
+          .then(function (res) { return res.json().then(function (data) { return { res: res, data: data }; }); })
+          .then(function (out) {
+            var set = new Set();
+            if (out.res.ok && out.data && Array.isArray(out.data.users)) {
+              out.data.users.forEach(function (u) {
+                var name = String(u && u.username || "").trim().toLowerCase();
+                if (name) set.add(name);
+              });
+            }
+            integrationUsernamesSet = set;
+            return set;
+          })
+          .catch(function () {
+            integrationUsernamesSet = new Set();
+            return integrationUsernamesSet;
+          });
+        return integrationUsernamesPromise;
+      }
 
       function isBlankConnectedField(v) {
         var s = (v != null ? String(v).trim() : "");
@@ -650,6 +675,7 @@
         if (!item) return true;
         var u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
         if (u.indexOf(NODERED_PREFIX) === 0) return true;
+        if (integrationUsernamesSet && integrationUsernamesSet.has(u)) return true;
         var c = (item.callsign != null ? String(item.callsign).trim() : "").toLowerCase();
         if (c.indexOf(TLS_CALLSIGN_PREFIX) === 0) return true;
         var uid = String(item.uid || item.clientUid || "").trim().toLowerCase();
@@ -808,12 +834,15 @@
 
       function refreshConnectedClientsList() {
         if (!card.classList.contains("connected-clients-expanded-card")) return Promise.resolve();
-        return fetch("/api/tak/subscriptions", {
-          headers: { Accept: "application/json" },
-          credentials: "same-origin",
-          redirect: "manual",
-          cache: "no-store"
-        })
+        return ensureIntegrationUsernames()
+          .then(function () {
+            return fetch("/api/tak/subscriptions", {
+              headers: { Accept: "application/json" },
+              credentials: "same-origin",
+              redirect: "manual",
+              cache: "no-store"
+            });
+          })
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (!card.classList.contains("connected-clients-expanded-card")) return;
@@ -1595,12 +1624,15 @@
         if (tbody) {
           tbody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align:center;padding:18px;">Loading…</td></tr>';
         }
-        fetch("/api/tak/subscriptions", {
-          headers: { Accept: "application/json" },
-          credentials: "same-origin",
-          redirect: "manual",
-          cache: "no-store"
-        })
+        ensureIntegrationUsernames()
+          .then(function () {
+            return fetch("/api/tak/subscriptions", {
+              headers: { Accept: "application/json" },
+              credentials: "same-origin",
+              redirect: "manual",
+              cache: "no-store"
+            });
+          })
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (!card.classList.contains("connected-clients-expanded-card")) return;

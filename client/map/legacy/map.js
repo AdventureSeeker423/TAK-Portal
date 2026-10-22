@@ -5552,6 +5552,8 @@
   const connectedSubsCache = { at: 0, list: null, promise: null };
   const CONNECTED_SUBS_TTL_MS = 8000;
   const detailClientUiByUid = Object.create(null);
+  let clientCtrlIntegrationUsernames = null;
+  let clientCtrlIntegrationPromise = null;
 
   function mapCanControlClients() {
     return !!(
@@ -5570,9 +5572,36 @@
     return String(value || "").trim().toLowerCase();
   }
 
+  function ensureClientCtrlIntegrationUsernames() {
+    if (clientCtrlIntegrationUsernames) return Promise.resolve(clientCtrlIntegrationUsernames);
+    if (clientCtrlIntegrationPromise) return clientCtrlIntegrationPromise;
+    clientCtrlIntegrationPromise = fetch("/api/integrations", {
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    })
+      .then((res) => res.json().then((data) => ({ res, data })))
+      .then(({ res, data }) => {
+        const set = new Set();
+        if (res.ok && data && Array.isArray(data.users)) {
+          for (const u of data.users) {
+            const name = clientCtrlNorm(u && u.username);
+            if (name) set.add(name);
+          }
+        }
+        clientCtrlIntegrationUsernames = set;
+        return set;
+      })
+      .catch(() => {
+        clientCtrlIntegrationUsernames = new Set();
+        return clientCtrlIntegrationUsernames;
+      });
+    return clientCtrlIntegrationPromise;
+  }
+
   function isExcludedConnectedSub(item) {
     const u = clientCtrlNorm(item && item.username);
     if (u.indexOf(CLIENT_CTRL_NODERED_PREFIX) === 0) return true;
+    if (clientCtrlIntegrationUsernames && clientCtrlIntegrationUsernames.has(u)) return true;
     const c = clientCtrlNorm(item && item.callsign);
     return c.indexOf(CLIENT_CTRL_TLS_PREFIX) === 0;
   }
@@ -5663,11 +5692,14 @@
       return Promise.resolve(connectedSubsCache.list);
     }
     if (connectedSubsCache.promise) return connectedSubsCache.promise;
-    connectedSubsCache.promise = fetch("/api/tak/subscriptions", {
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-      redirect: "manual",
-    })
+    connectedSubsCache.promise = ensureClientCtrlIntegrationUsernames()
+      .then(function () {
+        return fetch("/api/tak/subscriptions", {
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+          redirect: "manual",
+        });
+      })
       .then(function (res) {
         return parsePortalJson(res, "subscriptions");
       })

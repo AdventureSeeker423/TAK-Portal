@@ -541,11 +541,20 @@ function resolveGroupsFromDataFeedIndex(marker) {
 
 function integrationUsernameTitleSlug(username) {
   const u = String(username || "").trim().toLowerCase();
-  if (!u.startsWith("nodered-")) return "";
+  if (!u) return "";
   const parts = u.split("-").filter(Boolean);
-  if (parts.length < 3) return "";
-  if (parts[1] === "global") return parts.slice(2).join("");
-  return parts.slice(3).join("");
+  // Legacy: nodered-global-{title} / nodered-agency-{sfx}-{title}
+  if (parts[0] === "nodered") {
+    if (parts.length < 3) return "";
+    if (parts[1] === "global") return parts.slice(2).join("");
+    return parts.slice(3).join("");
+  }
+  // New: global-{title} / agency-{sfx}-{title}
+  if (parts[0] === "global") return parts.slice(1).join("");
+  if (parts.length >= 3 && (parts[0] === "agency" || parts[0] === "state" || parts[0] === "county")) {
+    return parts.slice(2).join("");
+  }
+  return "";
 }
 
 function integrationPortalGroups(user, groupByPk) {

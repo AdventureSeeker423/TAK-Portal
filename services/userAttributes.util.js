@@ -10,6 +10,12 @@ function attrsOf(userOrAttrs) {
   return userOrAttrs;
 }
 
+function isTruthyHiddenAttr(value) {
+  if (value === true) return true;
+  const s = str(value).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes";
+}
+
 function extractUserColumns(attributes, user = {}) {
   const a = attrsOf(attributes);
   return {
@@ -42,6 +48,7 @@ function extractUserColumns(attributes, user = {}) {
     tak_integration_group: str(a.tak_integration_group || "").trim() || null,
     state: str(a.state || "").trim() || null,
     county: str(a.county || "").trim() || null,
+    tak_portal_hidden: isTruthyHiddenAttr(a.tak_portal_hidden),
   };
 }
 
@@ -57,6 +64,7 @@ function extractGroupColumns(attributes) {
     cn: str(a.CN || a.cn || "").trim() || null,
     description: str(a.description || "").trim() || null,
     is_private: privateRaw === "yes" || privateRaw === "true" || privateRaw === "1",
+    tak_portal_hidden: isTruthyHiddenAttr(a.tak_portal_hidden),
   };
 }
 

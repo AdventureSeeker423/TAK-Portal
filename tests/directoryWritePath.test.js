@@ -97,7 +97,7 @@ assert.ok(
 
 const createDirFn = usersSrc.slice(
   usersSrc.indexOf("async function createDirectoryUser"),
-  usersSrc.indexOf("const INTEGRATION_PREFIX")
+  usersSrc.indexOf("const LEGACY_INTEGRATION_USERNAME_PREFIX")
 );
 assert.ok(
   createDirFn.includes("insertLocalUser") && createDirFn.includes('kind: "create_user"'),

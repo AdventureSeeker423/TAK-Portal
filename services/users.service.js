@@ -11,21 +11,11 @@ const directoryRepo = require("./directoryRepo.service");
 const authentikOutbox = require("./authentikOutbox.service");
 const db = require("./db");
 const userLoginStatus = require("./userLoginStatus.service");
-
-function getHiddenUserPrefixes() {
-  return String(getString("USERS_HIDDEN_PREFIXES", ""))
-    .split(",")
-    .map(p => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function usernameMatchesHiddenPrefix(username) {
-  const u = String(username || "").trim().toLowerCase();
-  if (!u) return false;
-  const prefixes = getHiddenUserPrefixes();
-  if (!prefixes.length) return false;
-  return prefixes.some((p) => u.startsWith(p));
-}
+const {
+  isUserHidden,
+  isGroupHidden,
+  markHiddenAttributes,
+} = require("./portalHidden.util");
 
 // ---------------- Action-lock helpers ----------------
 // If a username starts with any prefix in USERS_ACTIONS_HIDDEN_PREFIXES,
@@ -310,8 +300,8 @@ function shouldSkipRoleBackfillForUser(user) {
   if (type === "service_account" || type === "internal_service_account") return true;
   // Mutual aid deployment users are managed separately.
   if (isMutualAidUser(user)) return true;
-  // Never migrate users hidden by USERS_HIDDEN_PREFIXES.
-  if (usernameMatchesHiddenPrefix(user?.username)) return true;
+  // Never migrate portal-hidden users (attribute/column or legacy prefix).
+  if (isUserHidden(user)) return true;
   return false;
 }
 
@@ -1192,22 +1182,17 @@ async function getAllGroupsRaw(options = {}) {
 }
 
 /**
- * Filter out USERS_HIDDEN_PREFIXES unless includeHiddenPrefixes is true.
+ * Filter out portal-hidden users unless includeHiddenPrefixes is true.
  * Used by list endpoints and dashboard stats (single fetch + split in memory).
  */
 function applyHiddenPrefixFilter(users, includeHiddenPrefixes) {
   if (includeHiddenPrefixes) return users;
-  const hiddenPrefixes = getHiddenUserPrefixes();
-  if (!hiddenPrefixes.length) return users;
-  return users.filter((u) => {
-    const username = String(u?.username || "").trim().toLowerCase();
-    return !hiddenPrefixes.some((p) => username.startsWith(p));
-  });
+  return (Array.isArray(users) ? users : []).filter((u) => !isUserHidden(u));
 }
 
 // Fetch all users, then:
 // - page using Authentik's `pagination` object (no hard cap on total)
-// - hide service/system users by username prefix (USERS_HIDDEN_PREFIXES), unless includeHiddenPrefixes
+// - hide portal-hidden users (attribute/column + legacy prefix), unless includeHiddenPrefixes
 // - optionally filter by AUTHENTIK_USER_PATH if set
 async function getAllUsersRaw(options = {}) {
   const { includeHiddenPrefixes = false, includeGroups = true } = options;
@@ -1603,7 +1588,8 @@ async function createDirectoryUser(
   return { user, outboxId, syncPending };
 }
 
-const INTEGRATION_PREFIX = "nodered-";
+/** Legacy username prefix; kept only to recognize existing integrations. New ones omit it. */
+const LEGACY_INTEGRATION_USERNAME_PREFIX = "nodered-";
 
 function toSlug(s) {
   return String(s || "")
@@ -1611,6 +1597,24 @@ function toSlug(s) {
     .toLowerCase()
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
+}
+
+function integrationTypeOf(user) {
+  const fromCol = String(user?.integration_type || "").trim();
+  if (fromCol) return fromCol;
+  const attrs =
+    user && typeof user.attributes === "object" && user.attributes ? user.attributes : {};
+  return String(attrs.integration_type || "").trim();
+}
+
+/** True for portal integration users (attribute/column or legacy nodered- username). */
+function isIntegrationUser(user) {
+  if (!user) return false;
+  if (integrationTypeOf(user)) return true;
+  const username = String(user.username || "")
+    .trim()
+    .toLowerCase();
+  return username.startsWith(LEGACY_INTEGRATION_USERNAME_PREFIX);
 }
 
 /** Title slug: combine words to one, no dash (e.g. "Weather API" → "weatherapi"). */
@@ -1670,9 +1674,9 @@ function uniqueGroupIds(groupIds, groupId) {
 }
 
 /**
- * Create an integration user (username prefix "nodered-") with one or more groups.
+ * Create an integration user with one or more groups (hidden via tak_portal_hidden).
  * type: "global" | "state" | "county" | "agency". Scope values (state, county, agencySuffix) required when type matches.
- * Username is always lowercase, no spaces: e.g. nodered-state-ca-weather-api, nodered-agency-abc-myapi.
+ * Username is always lowercase, no spaces: e.g. state-ca-weatherapi, agency-abc-myapi (no nodered- prefix).
  */
 async function createIntegrationUser(
   { type, title, groupId, groupIds, state, county, agencySuffix },
@@ -1684,9 +1688,11 @@ async function createIntegrationUser(
   const titleSlug = toTitleSlug(title) || "integration";
 
   let scopeSlug = "";
+  let agencySuffixNorm = "";
   if (integrationType === "agency") {
     const raw = String(agencySuffix || "").trim();
     if (!raw) throw new Error("Agency is required for agency integrations.");
+    agencySuffixNorm = raw.toLowerCase();
     scopeSlug = toSlug(raw);
   } else if (integrationType === "county") {
     const raw = String(county || "").trim();
@@ -1700,8 +1706,8 @@ async function createIntegrationUser(
 
   const username =
     integrationType === "global"
-      ? `${INTEGRATION_PREFIX}global-${titleSlug}`
-      : `${INTEGRATION_PREFIX}${integrationType}-${scopeSlug}-${titleSlug}`;
+      ? `global-${titleSlug}`
+      : `${integrationType}-${scopeSlug}-${titleSlug}`;
 
   if (await userExists(username)) {
     throw new Error(`Integration user "${username}" already exists.`);
@@ -1720,7 +1726,7 @@ async function createIntegrationUser(
   }
 
   const name = username;
-  const attributes = {
+  const attributes = markHiddenAttributes({
     integration_type: "nodered",
     integration_scope: integrationType,
     integration_title: String(title || "").trim() || username,
@@ -1728,7 +1734,10 @@ async function createIntegrationUser(
       .map((g) => String(g.name || "").trim())
       .filter(Boolean)
       .join(","),
-  };
+  });
+  if (integrationType === "agency" && agencySuffixNorm) {
+    attributes.agency = agencySuffixNorm;
+  }
   if (createdBy && createdBy.username) {
     attributes.created_by_username = String(createdBy.username);
   }
@@ -1792,43 +1801,51 @@ async function createIntegrationUser(
   }
 
   invalidateUsersCache();
+  try {
+    require("./takMetrics.service").invalidateIntegrationUsernameCache();
+  } catch (_) {
+    /* optional */
+  }
   const user = await directoryRepo.getUserByUsername(username);
   return { user, groups: selectedGroups };
 }
 
 /**
- * Return users whose username starts with the integration prefix (e.g. "nodered-").
- * Bypasses USERS_HIDDEN_PREFIXES so integration users are visible on the Integrations page.
- * Uses the lightweight list endpoint (same as dashboard) — not full getAllUsersRaw.
+ * Return portal integration users (integration_type set, or legacy nodered- usernames).
+ * Includes portal-hidden accounts so they appear on the Integrations page.
  */
 async function findIntegrationUsers() {
-  const r = await directoryRepo.searchUsersPaged({
-    usernamePrefix: INTEGRATION_PREFIX,
-    includeHiddenPrefixes: true,
-    includeGroups: true,
-    page: 1,
-    pageSize: 200,
-  });
-  return r.users;
-}
-
-function agencyIntegrationUsernamePrefix(agencySuffix) {
-  const sfx = toSlug(agencySuffix);
-  if (!sfx) return "";
-  return `${INTEGRATION_PREFIX}agency-${sfx}-`.toLowerCase();
+  return directoryRepo.listIntegrationUsers({ includeGroups: true });
 }
 
 function isAgencyIntegrationUser(user, agencySuffix) {
-  const username = String(user?.username || "").trim().toLowerCase();
-  if (!username.startsWith(INTEGRATION_PREFIX.toLowerCase())) return false;
+  if (!isIntegrationUser(user)) return false;
 
-  const prefix = agencyIntegrationUsernamePrefix(agencySuffix);
-  if (!prefix || !username.startsWith(prefix)) return false;
-
-  const scope = String(user?.attributes?.integration_scope || "")
+  const sfx = String(agencySuffix || "")
     .trim()
     .toLowerCase();
-  return !scope || scope === "agency";
+  if (!sfx) return false;
+
+  const scope = String(user?.attributes?.integration_scope || user?.integration_scope || "")
+    .trim()
+    .toLowerCase();
+  if (scope && scope !== "agency") return false;
+
+  const agencyAttr = String(
+    user?.agency || user?.attributes?.agency || ""
+  )
+    .trim()
+    .toLowerCase();
+  if (agencyAttr && agencyAttr === sfx) return true;
+
+  const username = String(user?.username || "")
+    .trim()
+    .toLowerCase();
+  const slug = toSlug(sfx);
+  return (
+    username.startsWith(`agency-${slug}-`) ||
+    username.startsWith(`${LEGACY_INTEGRATION_USERNAME_PREFIX}agency-${slug}-`)
+  );
 }
 
 async function findAgencyIntegrationUsersForSuffix(agencySuffix) {
@@ -1846,7 +1863,7 @@ async function deleteIntegrationUser(userOrId) {
 
   const userId = String(user?.pk ?? user?.id ?? "").trim();
   const username = String(user?.username || "").trim().toLowerCase();
-  if (!userId || !username.startsWith(INTEGRATION_PREFIX.toLowerCase())) {
+  if (!userId || !isIntegrationUser(user)) {
     throw new Error("Not an integration user.");
   }
 
@@ -1871,6 +1888,11 @@ async function deleteIntegrationUser(userOrId) {
   }
 
   await deleteUser(userId, { ignoreLocks: true, skipTakCertRevoke: true });
+  try {
+    require("./takMetrics.service").invalidateIntegrationUsernameCache();
+  } catch (_) {
+    /* optional */
+  }
   return { userId, username };
 }
 
@@ -1881,11 +1903,9 @@ async function deleteIntegrationUser(userOrId) {
 async function fetchUsersForDashboardStats() {
   const all = await getAllUsersLightweightRaw({ includeHiddenPrefixes: true });
   const visibleUsers = applyHiddenPrefixFilter(all, false);
-  const integrationPrefix = INTEGRATION_PREFIX.toLowerCase();
   let integrationCount = 0;
   for (const u of all) {
-    const un = String(u?.username || "").toLowerCase();
-    if (un.startsWith(integrationPrefix)) integrationCount += 1;
+    if (isIntegrationUser(u)) integrationCount += 1;
   }
   return { visibleUsers, integrationCount };
 }
@@ -4532,41 +4552,27 @@ function stripTakPrefixForUserExport(name) {
   return n;
 }
 
-function getHiddenGroupPrefixes() {
-  return String(getString("GROUPS_HIDDEN_PREFIXES", "") || "")
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function isGroupNameHiddenByPrefix(groupName, hiddenPrefixes) {
-  const prefixes = Array.isArray(hiddenPrefixes) ? hiddenPrefixes : getHiddenGroupPrefixes();
-  if (!prefixes.length) return false;
-
-  const raw = String(groupName || "").trim().toLowerCase();
-  const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
-
-  return prefixes.some(
-    (prefix) => raw.startsWith(prefix) || withoutTak.startsWith(prefix)
-  );
+function groupEntryName(entry) {
+  if (!entry) return "";
+  if (typeof entry === "object") return String(entry.name || "").trim();
+  return String(entry || "").trim();
 }
 
 function resolvePortalPermissionLabel(user, { groupNameByPk = new Map() } = {}) {
   const names = (Array.isArray(user?.groups) ? user.groups : [])
-    .map((gid) => String(groupNameByPk.get(String(gid)) || "").trim())
+    .map((gid) => groupEntryName(groupNameByPk.get(String(gid))))
     .filter(Boolean);
   return authzRoles.portalPermissionLabelFromGroupNames(names);
 }
 
-function formatUserGroupMemberships(user, groupNameByPk, hiddenGroupPrefixes) {
+function formatUserGroupMemberships(user, groupNameByPk) {
   const groups = Array.isArray(user?.groups) ? user.groups.map(String) : [];
-  const hiddenPrefixes =
-    hiddenGroupPrefixes === undefined ? getHiddenGroupPrefixes() : hiddenGroupPrefixes;
 
   return groups
     .map((gid) => {
-      const raw = groupNameByPk.get(String(gid));
-      if (!raw || isGroupNameHiddenByPrefix(raw, hiddenPrefixes)) return "";
+      const entry = groupNameByPk.get(String(gid));
+      const raw = groupEntryName(entry);
+      if (!raw || isGroupHidden(entry || raw)) return "";
       return stripTakPrefixForUserExport(raw);
     })
     .filter(Boolean)
@@ -4584,7 +4590,6 @@ function buildUsersExportCsv(users, options = {}) {
     groupNameByPk = new Map(),
     globalAdminGroupPks = [],
     agencyNameByAbbr = new Map(),
-    hiddenGroupPrefixes = getHiddenGroupPrefixes(),
   } = options;
 
   const header = [
@@ -4641,7 +4646,7 @@ function buildUsersExportCsv(users, options = {}) {
             user.permissionLabel ||
             resolvePortalPermissionLabel(user, { groupNameByPk }),
         }),
-      formatUserGroupMemberships(user, groupNameByPk, hiddenGroupPrefixes),
+      formatUserGroupMemberships(user, groupNameByPk),
     ];
 
     lines.push(row.map(csvEscapeCell).join(","));
@@ -4677,6 +4682,7 @@ module.exports = {
   normalizeStreamingDataFeedName,
   STREAMING_DATA_FEED_NAME_MAX_LEN,
   findIntegrationUsers,
+  isIntegrationUser,
   findAgencyIntegrationUsersForSuffix,
   deleteIntegrationUser,
   importUsersFromCsvBuffer,

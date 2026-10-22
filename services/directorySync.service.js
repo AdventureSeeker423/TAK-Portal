@@ -298,11 +298,11 @@ async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
       radio_callsign, current_template, created_template, created_at_attr, created_method,
       created_by_username, created_by_display_name, mutual_aid, mutual_aid_type, mutual_aid_group,
       integration_type, integration_scope, integration_title, tak_integration_group, state, county,
-      last_login, groups_hash, sync_status, pending_delete, updated_at
+      tak_portal_hidden, last_login, groups_hash, sync_status, pending_delete, updated_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,
       $10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,
-      $32::timestamptz, $33,'ok', false, now()
+      $32, $33::timestamptz, $34,'ok', false, now()
     )
     ON CONFLICT (username) DO UPDATE SET
       authentik_pk = EXCLUDED.authentik_pk,
@@ -336,6 +336,7 @@ async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
       tak_integration_group = EXCLUDED.tak_integration_group,
       state = EXCLUDED.state,
       county = EXCLUDED.county,
+      tak_portal_hidden = EXCLUDED.tak_portal_hidden,
       sync_status = 'ok',
       pending_delete = false,
       updated_at = now()`,
@@ -346,6 +347,7 @@ async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
       cols.radio_callsign, cols.current_template, cols.created_template, cols.created_at_attr, cols.created_method,
       cols.created_by_username, cols.created_by_display_name, cols.mutual_aid, cols.mutual_aid_type, cols.mutual_aid_group,
       cols.integration_type, cols.integration_scope, cols.integration_title, cols.tak_integration_group, cols.state, cols.county,
+      !!cols.tak_portal_hidden,
       parseAuthentikLastLogin(akUser.last_login),
       hash || priorHash || null,
     ]
@@ -380,10 +382,10 @@ async function upsertAuthentikGroup(akGroup, pending) {
     `INSERT INTO groups (
       authentik_pk, name, cn, description, is_superuser, parent_pk, num_pk, attributes,
       created_type, created_type_detail, created_at_attr, created_by_username, created_by_display_name,
-      is_private,
+      is_private, tak_portal_hidden,
       sync_status, pending_delete, updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,'ok', false, now()
+      $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,'ok', false, now()
     )
     ON CONFLICT (authentik_pk) DO UPDATE SET
       name = EXCLUDED.name,
@@ -399,6 +401,7 @@ async function upsertAuthentikGroup(akGroup, pending) {
       created_by_username = EXCLUDED.created_by_username,
       created_by_display_name = EXCLUDED.created_by_display_name,
       is_private = EXCLUDED.is_private,
+      tak_portal_hidden = EXCLUDED.tak_portal_hidden,
       sync_status = 'ok',
       pending_delete = false,
       updated_at = now()`,
@@ -407,40 +410,43 @@ async function upsertAuthentikGroup(akGroup, pending) {
       !!akGroup.is_superuser, akGroup.parent || null, akGroup.num_pk || null, JSON.stringify(attrs),
       cols.created_type, cols.created_type_detail, cols.created_at_attr, cols.created_by_username, cols.created_by_display_name,
       cols.is_private,
+      !!cols.tak_portal_hidden,
     ]
   );
 }
 
 async function writeDashboardStats() {
   const agencies = agenciesStore.load() || [];
-  const hidden = repo.hiddenUserPrefixes();
-  const hiddenSql =
-    hidden.length
-      ? `AND NOT EXISTS (SELECT 1 FROM unnest($1::text[]) AS p WHERE lower(u.username) LIKE p || '%')`
-      : "";
-  const params = hidden.length ? [hidden] : [];
+  const visParams = [];
+  const visHide = repo.hiddenUserClause(visParams, false, "u");
   const vis = await db.query(
-    `SELECT COUNT(*)::int AS n FROM users u WHERE pending_delete = false ${hiddenSql}`,
-    params
+    `SELECT COUNT(*)::int AS n FROM users u WHERE pending_delete = false ${visHide}`,
+    visParams
   );
   const integ = await db.query(
-    `SELECT COUNT(*)::int AS n FROM users WHERE pending_delete = false AND lower(username) LIKE 'nodered-%'`
+    `SELECT COUNT(*)::int AS n FROM users
+     WHERE pending_delete = false
+       AND ${repo.integrationUserMatchSql()}`
   );
-  // Match Groups page visibility: tak_ only, excluding GROUPS_HIDDEN_PREFIXES.
+  // Match Groups page visibility: tak_ only, excluding portal-hidden / prefix groups.
   const totalGroups = await repo.countGroupsMatching({ prefix: "tak_" });
+  const byAgencyParams = [];
+  const byAgencyHide = repo.hiddenUserClause(byAgencyParams, false);
   const byAgency = await db.query(
     `SELECT COALESCE(NULLIF(agency_name,''), '(unknown)') AS k, COUNT(*)::int AS n
-     FROM users WHERE pending_delete = false ${hidden.length ? "AND NOT EXISTS (SELECT 1 FROM unnest($1::text[]) AS p WHERE lower(username) LIKE p || '%')" : ""}
+     FROM users WHERE pending_delete = false ${byAgencyHide}
      GROUP BY 1`,
-    params
+    byAgencyParams
   );
+  const byTypeParams = [];
+  const byTypeHide = repo.hiddenUserClause(byTypeParams, false, "u");
   const byType = await db.query(
     `SELECT COALESCE(NULLIF(a.type,''), 'Unknown') AS k, COUNT(*)::int AS n
      FROM users u
      LEFT JOIN agencies a ON lower(a.suffix) = lower(u.agency)
-     WHERE u.pending_delete = false ${hidden.length ? "AND NOT EXISTS (SELECT 1 FROM unnest($1::text[]) AS p WHERE lower(u.username) LIKE p || '%')" : ""}
+     WHERE u.pending_delete = false ${byTypeHide}
      GROUP BY 1`,
-    params
+    byTypeParams
   );
   const usersByAgency = {};
   let unknownAgency = 0;

@@ -657,11 +657,16 @@
         return;
       }
       var list = Array.isArray(data.data) ? data.data : [];
-      var nodered = list.filter(function (item) {
+      var known = new Set(
+        (Array.isArray(usersCache) ? usersCache : [])
+          .map(function (u) { return String(u && u.username || "").trim().toLowerCase(); })
+          .filter(Boolean)
+      );
+      var connected = list.filter(function (item) {
         var u = (item.username != null ? String(item.username).trim() : "").toLowerCase();
-        return u.indexOf("nodered-") === 0;
+        return u && known.has(u);
       });
-      connectedUsernamesSet = new Set(nodered.map(function (item) { return String(item.username || "").trim(); }).filter(Boolean));
+      connectedUsernamesSet = new Set(connected.map(function (item) { return String(item.username || "").trim(); }).filter(Boolean));
     } catch (e) {
       connectedUsernamesSet = new Set();
     }

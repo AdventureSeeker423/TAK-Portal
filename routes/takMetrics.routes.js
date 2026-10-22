@@ -7,6 +7,7 @@ const {
   filterConnectedUserSubscriptions,
   filterFederationSubscriptions,
   slimSubscriptionsForClientList,
+  refreshIntegrationUsernameCache,
 } = require("../services/takMetrics.service");
 const cotStream = require("../services/cotStream.service");
 const mapRender = require("../services/mapRender.service");
@@ -64,6 +65,7 @@ router.get("/metrics", async (req, res) => {
     }
     let metrics = await getTakMetricsSnapshot();
     try {
+      await refreshIntegrationUsernameCache();
       const sub = await getSubscriptionsAll();
       metrics = applySubscriptionMetricsSplit(metrics, sub, {
         authUser: user,

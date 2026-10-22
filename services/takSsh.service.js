@@ -2,7 +2,7 @@
  * services/takSsh.service.js
  *
  * Run makeCert.sh on the TAK server via SSH when creating an integration user.
- * Used so that nodered-* integration users get a client cert on the TAK server.
+ * Used so that portal integration users get a client cert on the TAK server.
  *
  * Settings (all optional; if not set, cert creation is skipped):
  *   TAK_SSH_HOST       SSH host (default: hostname from TAK_URL)
@@ -469,7 +469,8 @@ async function configureRemoteSudoAccessAfterHandshake({ host, port, username, p
 
 function sanitizeIntegrationUsername(username) {
   const un = String(username || "").trim().toLowerCase();
-  if (!/^nodered-[a-z0-9-]+$/.test(un)) {
+  // Path-safe slug: legacy nodered-* and new scoped names (global-*, agency-*, …).
+  if (!/^[a-z][a-z0-9-]{0,62}$/.test(un)) {
     throw new Error("Invalid integration username.");
   }
   return un;

@@ -139,6 +139,19 @@ async function main() {
     console.warn("[worker] initial snapshot:", e?.message || e)
   );
 
+  try {
+    const hiddenPrefixMigration = require("./services/hiddenPrefixMigration.service");
+    every(30 * 1000, () => hiddenPrefixMigration.runOnce());
+    // After first inbound has a chance to finish; re-entrant until complete.
+    setTimeout(() => {
+      void hiddenPrefixMigration.runOnce().catch((e) =>
+        console.warn("[worker] hidden-prefix migration:", e?.message || e)
+      );
+    }, 20 * 1000);
+  } catch (e) {
+    console.warn("[worker] hidden-prefix migration:", e?.message || e);
+  }
+
   every(15 * 1000, writeTakDashboard);
   void writeTakDashboard();
 

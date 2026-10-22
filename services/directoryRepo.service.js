@@ -1,6 +1,10 @@
 const db = require("./db");
 const { getString } = require("./env");
 const { extractUserColumns, extractGroupColumns, membershipHash } = require("./userAttributes.util");
+const {
+  hiddenUserPrefixes,
+  hiddenGroupPrefixes,
+} = require("./portalHidden.util");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -15,20 +19,6 @@ function normalizePath(p) {
     .replace(/^\/+|\/+$/g, "");
 }
 
-function hiddenUserPrefixes() {
-  return String(getString("USERS_HIDDEN_PREFIXES", ""))
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function hiddenGroupPrefixes() {
-  return String(getString("GROUPS_HIDDEN_PREFIXES", ""))
-    .split(",")
-    .map((p) => String(p || "").trim().toLowerCase())
-    .filter(Boolean);
-}
-
 function userPathClause(params) {
   const folderRaw = String(getString("AUTHENTIK_USER_PATH", "")).trim();
   if (!folderRaw) return "";
@@ -38,26 +28,46 @@ function userPathClause(params) {
   return ` AND (path = $${i} OR path LIKE $${i} || '/%')`;
 }
 
-function hiddenUserClause(params, includeHiddenPrefixes) {
+/**
+ * Exclude portal-hidden users (typed column) plus legacy prefix fallback while
+ * USERS_HIDDEN_PREFIXES is still non-empty during migration.
+ * @param {any[]} params
+ * @param {boolean} includeHiddenPrefixes
+ * @param {string} [tableAlias] optional alias (e.g. "u") for joined queries
+ */
+function hiddenUserClause(params, includeHiddenPrefixes, tableAlias) {
   if (includeHiddenPrefixes) return "";
+  const col = tableAlias ? `${tableAlias}.tak_portal_hidden` : "tak_portal_hidden";
+  const usernameCol = tableAlias ? `${tableAlias}.username` : "username";
+  let sql = ` AND ${col} = false`;
   const prefixes = hiddenUserPrefixes();
-  if (!prefixes.length) return "";
-  params.push(prefixes);
-  return ` AND NOT EXISTS (SELECT 1 FROM unnest($${params.length}::text[]) AS p WHERE lower(username) LIKE p || '%')`;
+  if (prefixes.length) {
+    params.push(prefixes);
+    sql += ` AND NOT EXISTS (SELECT 1 FROM unnest($${params.length}::text[]) AS p WHERE lower(${usernameCol}) LIKE p || '%')`;
+  }
+  return sql;
 }
 
-function hiddenGroupClause(params, includeHidden) {
+/**
+ * Exclude portal-hidden groups (typed column) plus legacy prefix fallback while
+ * GROUPS_HIDDEN_PREFIXES is still non-empty during migration.
+ */
+function hiddenGroupClause(params, includeHidden, tableAlias) {
   if (includeHidden) return "";
+  const col = tableAlias ? `${tableAlias}.tak_portal_hidden` : "tak_portal_hidden";
+  const nameCol = tableAlias ? `${tableAlias}.name` : "name";
+  let sql = ` AND ${col} = false`;
   const prefixes = hiddenGroupPrefixes();
-  if (!prefixes.length) return "";
-  params.push(prefixes);
-  const i = params.length;
-  // Match Settings prefixes on the stored name and on the name without a leading tak_.
-  return ` AND NOT EXISTS (
-    SELECT 1 FROM unnest($${i}::text[]) AS p
-    WHERE lower(name) LIKE p || '%'
-       OR lower(regexp_replace(name, '^tak_', '', 'i')) LIKE p || '%'
-  )`;
+  if (prefixes.length) {
+    params.push(prefixes);
+    const i = params.length;
+    sql += ` AND NOT EXISTS (
+      SELECT 1 FROM unnest($${i}::text[]) AS p
+      WHERE lower(${nameCol}) LIKE p || '%'
+         OR lower(regexp_replace(${nameCol}, '^tak_', '', 'i')) LIKE p || '%'
+    )`;
+  }
+  return sql;
 }
 
 function isAuthentikPkToken(v) {
@@ -98,6 +108,9 @@ function applyUserColumnAttrs(r, attrs) {
   for (const [key, value] of Object.entries(cols)) {
     if (value != null && String(value).trim() !== "") attrs[key] = value;
   }
+  if (r.tak_portal_hidden === true) {
+    attrs.tak_portal_hidden = "true";
+  }
   return attrs;
 }
 
@@ -125,6 +138,7 @@ function rowToUser(r, groupPks) {
     path: r.path,
     type: r.type,
     attributes: attrs,
+    tak_portal_hidden: r.tak_portal_hidden === true,
     agency: r.agency || attrs.agency || null,
     agency_name: r.agency_name || attrs.agency_name || null,
     agency_abbreviation: r.agency_abbreviation || attrs.agency_abbreviation || null,
@@ -152,6 +166,9 @@ function rowToGroup(r) {
   }
   if (r.description) attrs.description = r.description;
   attrs.private = r.is_private === true ? "yes" : "no";
+  if (r.tak_portal_hidden === true) {
+    attrs.tak_portal_hidden = "true";
+  }
   return {
     pk,
     id: r.id,
@@ -160,6 +177,7 @@ function rowToGroup(r) {
     name: r.name,
     is_superuser: r.is_superuser,
     is_private: !!r.is_private,
+    tak_portal_hidden: r.tak_portal_hidden === true,
     parent: r.parent_pk,
     num_pk: r.num_pk,
     cn: r.cn || attrs.CN || attrs.cn || null,
@@ -349,7 +367,7 @@ async function listUserEmailRowsByGroupPks(groupPks, { includeHiddenPrefixes = f
   const params = [list.filter(isUuid), list];
   let where = `u.pending_delete = false AND u.email IS NOT NULL AND btrim(u.email) <> ''
     AND (g.id = ANY($1::uuid[]) OR g.authentik_pk = ANY($2::text[]))`;
-  where += hiddenUserClause(params, includeHiddenPrefixes).replace(/\busername\b/g, "u.username");
+  where += hiddenUserClause(params, includeHiddenPrefixes, "u");
   where += userPathClause(params).replace(/\bpath\b/g, "u.path");
   const r = await db.query(
     `SELECT DISTINCT u.username, u.name, u.email, u.agency, u.attributes, u.authentik_pk, u.id
@@ -625,11 +643,56 @@ async function listUsersByAgencySuffix(agencySuffix) {
 async function countUsersByAgencyName(agencyName) {
   const name = String(agencyName || "").trim();
   if (!name) return 0;
+  const params = [name];
+  let where = `pending_delete = false AND lower(agency_name) = lower($1)`;
+  where += hiddenUserClause(params, false);
+  where += userPathClause(params);
   const r = await db.query(
-    `SELECT COUNT(*)::int AS n FROM users WHERE pending_delete = false AND lower(agency_name) = lower($1)`,
-    [name]
+    `SELECT COUNT(*)::int AS n FROM users WHERE ${where}`,
+    params
   );
   return r.rows[0]?.n || 0;
+}
+
+/** SQL fragment: portal integration users (typed column or legacy nodered- username). */
+function integrationUserMatchSql(usernameCol = "username", integrationTypeCol = "integration_type") {
+  return `(
+    (${integrationTypeCol} IS NOT NULL AND btrim(${integrationTypeCol}) <> '')
+    OR lower(${usernameCol}) LIKE 'nodered-%'
+  )`;
+}
+
+/**
+ * List integration users (include portal-hidden). Matches integration_type or legacy nodered- usernames.
+ */
+async function listIntegrationUsers({ includeGroups = true } = {}) {
+  const r = await db.query(
+    `SELECT * FROM users
+     WHERE pending_delete = false
+       AND ${integrationUserMatchSql()}
+     ORDER BY lower(username)`
+  );
+  const users = r.rows.map((row) => rowToUser(row));
+  if (includeGroups) await attachGroups(users);
+  return users;
+}
+
+async function countIntegrationUsers() {
+  const r = await db.query(
+    `SELECT COUNT(*)::int AS n FROM users
+     WHERE pending_delete = false
+       AND ${integrationUserMatchSql()}`
+  );
+  return r.rows[0]?.n || 0;
+}
+
+async function listIntegrationUsernamesLower() {
+  const r = await db.query(
+    `SELECT lower(username) AS u FROM users
+     WHERE pending_delete = false
+       AND ${integrationUserMatchSql()}`
+  );
+  return r.rows.map((row) => String(row.u || "").trim()).filter(Boolean);
 }
 
 async function listUsersByTemplate(agencySuffix, templateName) {
@@ -810,10 +873,10 @@ async function insertLocalUser({ username, name, email, path, attributes, isActi
       radio_callsign, current_template, created_template, created_at_attr, created_method,
       created_by_username, created_by_display_name, mutual_aid, mutual_aid_type, mutual_aid_group,
       integration_type, integration_scope, integration_title, tak_integration_group, state, county,
-      sync_status
+      tak_portal_hidden, sync_status
     ) VALUES (
       $1,$2,$3,$4,$5,$6::jsonb,
-      $7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,'pending'
+      $7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,'pending'
     ) RETURNING *`,
     [
       username, name || null, email || null, !!isActive, path || null, JSON.stringify(attributes || {}),
@@ -821,6 +884,7 @@ async function insertLocalUser({ username, name, email, path, attributes, isActi
       cols.radio_callsign, cols.current_template, cols.created_template, cols.created_at_attr, cols.created_method,
       cols.created_by_username, cols.created_by_display_name, cols.mutual_aid, cols.mutual_aid_type, cols.mutual_aid_group,
       cols.integration_type, cols.integration_scope, cols.integration_title, cols.tak_integration_group, cols.state, cols.county,
+      !!cols.tak_portal_hidden,
     ]
   );
   return rowToUser(r.rows[0]);
@@ -830,13 +894,14 @@ async function insertLocalGroup({ name, attributes }, client) {
   const q = client || db;
   const cols = extractGroupColumns(attributes);
   const r = await q.query(
-    `INSERT INTO groups (name, cn, description, is_private, attributes, created_type, created_type_detail, created_at_attr, created_by_username, created_by_display_name, sync_status)
-     VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,'pending') RETURNING *`,
+    `INSERT INTO groups (name, cn, description, is_private, tak_portal_hidden, attributes, created_type, created_type_detail, created_at_attr, created_by_username, created_by_display_name, sync_status)
+     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,'pending') RETURNING *`,
     [
       name,
       cols.cn,
       cols.description,
       cols.is_private,
+      !!cols.tak_portal_hidden,
       JSON.stringify(attributes || {}),
       cols.created_type,
       cols.created_type_detail,
@@ -880,6 +945,7 @@ async function updateLocalGroup(id, patch, client) {
       created_type_detail = COALESCE($6, created_type_detail),
       description = CASE WHEN $4::jsonb IS NULL THEN description ELSE $8 END,
       is_private = CASE WHEN $4::jsonb IS NULL THEN is_private ELSE $9 END,
+      tak_portal_hidden = CASE WHEN $4::jsonb IS NULL THEN tak_portal_hidden ELSE $10 END,
       sync_status = COALESCE($7, sync_status),
       updated_at = now()
      WHERE id = $1
@@ -894,6 +960,7 @@ async function updateLocalGroup(id, patch, client) {
       patch.sync_status || "pending",
       patch.attributes ? cols.description : null,
       patch.attributes ? cols.is_private : null,
+      patch.attributes ? !!cols.tak_portal_hidden : null,
     ]
   );
   return rowToGroup(r.rows[0]);
@@ -993,6 +1060,7 @@ async function updateLocalUser(id, patch, client) {
       current_template = COALESCE($14, current_template),
       pending_delete = COALESCE($15, pending_delete),
       sync_status = COALESCE($16, sync_status),
+      tak_portal_hidden = CASE WHEN $6::jsonb IS NULL THEN tak_portal_hidden ELSE $17 END,
       updated_at = now()
      WHERE id = $1
      RETURNING *`,
@@ -1007,6 +1075,7 @@ async function updateLocalUser(id, patch, client) {
       cols.badge_number, cols.role, cols.radio_callsign, cols.current_template,
       patch.pending_delete !== undefined ? patch.pending_delete : null,
       patch.sync_status || "pending",
+      patch.attributes ? !!cols.tak_portal_hidden : null,
     ]
   );
   const user = rowToUser(r.rows[0]);
@@ -1124,9 +1193,7 @@ async function listGroupMembersForExport(groupIds, { agencyAbbreviations } = {})
     params.push(abbrs.map((a) => a.toLowerCase()));
     extra += ` AND lower(u.agency_abbreviation) = ANY($${params.length}::text[])`;
   }
-  extra += hiddenUserClause(params, false)
-    .replace(/\busername\b/g, "u.username")
-    .replace(/\bpath\b/g, "u.path");
+  extra += hiddenUserClause(params, false, "u");
   extra += userPathClause(params).replace(/\bpath\b/g, "u.path");
   const r = await db.query(
     `SELECT g.id::text AS gid, g.authentik_pk, u.username, u.name, COALESCE(u.authentik_pk, u.id::text) AS user_pk
@@ -1257,6 +1324,10 @@ module.exports = {
   listUsersByAgencyName,
   listUsersByAgencySuffix,
   countUsersByAgencyName,
+  listIntegrationUsers,
+  countIntegrationUsers,
+  listIntegrationUsernamesLower,
+  integrationUserMatchSql,
   listUsersByTemplate,
   searchGroupsPaged,
   listGroupsMatching,
@@ -1278,6 +1349,8 @@ module.exports = {
   attachGroups,
   hiddenUserPrefixes,
   hiddenGroupPrefixes,
+  hiddenUserClause,
+  hiddenGroupClause,
   listUserPksByAgencySuffixes,
   listUserPksByGroupIds,
   filterUserPksByAgencySuffixes,

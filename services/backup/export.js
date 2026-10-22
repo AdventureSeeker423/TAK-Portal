@@ -108,7 +108,11 @@ async function exportCategory(id, { includeSecrets, staging }) {
   if (id === "integrations") {
     const users = await dumpQuery(
       `SELECT * FROM users
-       WHERE pending_delete = false AND lower(username) LIKE 'nodered-%'
+       WHERE pending_delete = false
+         AND (
+           (integration_type IS NOT NULL AND btrim(integration_type) <> '')
+           OR lower(username) LIKE 'nodered-%'
+         )
        ORDER BY username`
     );
     const memberships = await dumpQuery(
@@ -116,7 +120,11 @@ async function exportCategory(id, { includeSecrets, staging }) {
        FROM group_members gm
        JOIN users u ON u.id = gm.user_id
        JOIN groups g ON g.id = gm.group_id
-       WHERE u.pending_delete = false AND lower(u.username) LIKE 'nodered-%'`
+       WHERE u.pending_delete = false
+         AND (
+           (u.integration_type IS NOT NULL AND btrim(u.integration_type) <> '')
+           OR lower(u.username) LIKE 'nodered-%'
+         )`
     );
     const n = files.copyDataRelIntoStaging(filesDir, "integration-certs", includeSecrets);
     writeCategory(staging, id, { users, memberships, filesCopied: n });

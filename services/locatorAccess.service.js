@@ -144,7 +144,7 @@ async function listChannelsForUser(authUser) {
   for (const g of filtered) {
     const name = String(g?.name || "").trim();
     if (!name || /-AgencyAdmin$/i.test(name)) continue;
-    if (channelPatchAccess.isHiddenGroupName(name, { includeMutualAid })) continue;
+    if (channelPatchAccess.isHiddenGroupName(g, { includeMutualAid })) continue;
     const displayName = groupsSvc.stripTakPrefix(name);
     const baseKey = mapMeta.channelBaseKey(name);
     if (!baseKey || baseKey === mapMeta.UNASSIGNED_CHANNEL_KEY || seen.has(baseKey)) continue;

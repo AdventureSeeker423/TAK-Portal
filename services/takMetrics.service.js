@@ -493,6 +493,37 @@ async function getTakMetricsSnapshot() {
 const NODERED_PREFIX = "nodered-";
 const TLS_CALLSIGN_PREFIX = "tls:";
 
+/** Short TTL cache of portal integration usernames (legacy nodered- + integration_type). */
+const _integrationUsernameCache = { at: 0, set: new Set(), inflight: null };
+const INTEGRATION_USERNAME_CACHE_MS = 30000;
+
+async function refreshIntegrationUsernameCache() {
+  try {
+    const directoryRepo = require("./directoryRepo.service");
+    const list = await directoryRepo.listIntegrationUsernamesLower();
+    _integrationUsernameCache.at = Date.now();
+    _integrationUsernameCache.set = new Set(list);
+  } catch (_) {
+    /* keep prior set */
+  } finally {
+    _integrationUsernameCache.inflight = null;
+  }
+}
+
+function ensureIntegrationUsernameCache() {
+  const age = Date.now() - _integrationUsernameCache.at;
+  if (_integrationUsernameCache.at > 0 && age < INTEGRATION_USERNAME_CACHE_MS) return;
+  if (_integrationUsernameCache.inflight) return;
+  _integrationUsernameCache.inflight = refreshIntegrationUsernameCache();
+}
+
+function invalidateIntegrationUsernameCache() {
+  _integrationUsernameCache.at = 0;
+  if (!_integrationUsernameCache.inflight) {
+    _integrationUsernameCache.inflight = refreshIntegrationUsernameCache();
+  }
+}
+
 /**
  * Federation hubs often appear with long colon-separated hex token usernames
  * (not portal/TAK usernames). Hide these from Connected Users and exclude from counts.
@@ -505,9 +536,18 @@ function isFederationTokenUsername(username) {
   return parts.every((part) => /^[0-9a-f]{2}$/i.test(part));
 }
 
-function isNoderedUsername(username) {
+/** True for Marti rows that are portal integrations (legacy nodered- or cached directory usernames). */
+function isIntegrationSubscriptionUsername(username) {
   const u = String(username || "").trim().toLowerCase();
-  return u.indexOf(NODERED_PREFIX) === 0;
+  if (!u) return false;
+  if (u.indexOf(NODERED_PREFIX) === 0) return true;
+  ensureIntegrationUsernameCache();
+  return _integrationUsernameCache.set.has(u);
+}
+
+/** @deprecated Prefer isIntegrationSubscriptionUsername; kept for call-site compatibility. */
+function isNoderedUsername(username) {
+  return isIntegrationSubscriptionUsername(username);
 }
 
 function isTlsCallsign(callsign) {
@@ -881,6 +921,10 @@ module.exports = {
   buildTakMtlsHttpsAgent,
   isFederationTokenUsername,
   isNoderedUsername,
+  isIntegrationSubscriptionUsername,
+  invalidateIntegrationUsernameCache,
+  ensureIntegrationUsernameCache,
+  refreshIntegrationUsernameCache,
   isTlsCallsign,
   isTlsCallsignSubscription,
   isExcludedConnectedUserSubscription,

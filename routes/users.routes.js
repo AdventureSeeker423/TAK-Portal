@@ -909,7 +909,7 @@ router.get("/export-csv", async (req, res) => {
       const groupNameByPk = new Map(
         (Array.isArray(namedGroups) ? namedGroups : []).map((g) => [
           String(g.pk),
-          String(g.name || "").trim(),
+          g,
         ])
       );
       const annotated = userLoginStatus.annotateUsersLoginStatus(batch);
