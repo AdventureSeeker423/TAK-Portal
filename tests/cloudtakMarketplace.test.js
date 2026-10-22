@@ -6,6 +6,7 @@ const path = require("path");
 const marketplace = require("../services/cloudtakMarketplace.service");
 const pluginPatch = require("../services/cloudtakMarketplace.patch");
 const store = require("../services/cloudtakMarketplace.store");
+const settingsSvc = require("../services/settings.service");
 
 const catalogPath = path.join(__dirname, "..", "catalog", "cloudtak-plugins.json");
 const raw = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
@@ -267,6 +268,9 @@ assert.match(uninstallPrint, /api\/web\/src\/plugins/);
 assert.match(uninstallPrint, /app\/plugins\/\$DEST/);
 assert.match(uninstallPrint, /cloudtak_web_rel/);
 assert.match(uninstallPrint, /remove_plugin_tree/);
+assert.match(uninstallPrint, /remove_plugin_dest_all_layouts/);
+assert.match(uninstallPrint, /also clearing legacy api\/web paths/);
+assert.match(uninstallPrint, /plugin path still present after uninstall/);
 assert.match(uninstallPrint, /Removing \$target with elevated privileges/);
 assert.match(uninstallPrint, /docker(_cli)? run --rm -u 0/);
 assert.doesNotMatch(uninstallPrint, /rm -rf "\$TARGET"/);
@@ -444,9 +448,13 @@ assert.match(installScript, /app\/plugins/);
 assert.match(installScript, /Moving \$DEST from api\/web\/plugins to app\/plugins/);
 assert.match(installScript, /Removing leftover api\/web\/plugins\/\$DEST/);
 assert.match(installScript, /docker compose --progress=plain/);
-const uninstallScript = marketplace.uninstallRemoteScript("/root/CloudTAK", "livewx-radar", [], "livewx-radar");
+const uninstallScript = marketplace.uninstallRemoteScript("/root/CloudTAK", "livewx-radar", [], "livewx");
 assert.match(uninstallScript, /\$CT\/app\/plugins\/\$DEST/);
 assert.match(uninstallScript, /\$CT\/api\/web\/plugins\/\$DEST/);
+assert.match(uninstallScript, /remove_plugin_dest_all_layouts "\$DEST"/);
+assert.match(uninstallScript, /Uninstall: clearing/);
+assert.match(uninstallScript, /plugin-livewx-radar\.ts/);
+assert.match(uninstallScript, /plugin-livewx\.ts/);
 
 assert.deepStrictEqual(
   marketplace.normalizeCsp({ csp: ["wss://*.example.org", "https://tiles.example.com"] }),
@@ -823,6 +831,25 @@ assert.match(rebuildAligned, /docker(_cli)? run --rm -u 0/);
 assert.doesNotMatch(installAligned, /--user /);
 assert.doesNotMatch(rebuildAligned, /--user /);
 assert.ok(marketplace.rebuildTimeoutMs() >= 60 * 60 * 1000);
+
+// Marketplace elevate helpers follow TAK_SSH_PRIVILEGE_CMD (sudo default, dzdo when configured).
+assert.match(installAligned, /CTAK_PRIV='sudo'|CTAK_PRIV='dzdo'/);
+assert.match(installAligned, /elevate_via_priv/);
+assert.match(installAligned, /"\$CTAK_PRIV" -n true/);
+assert.match(installAligned, /\[ "\$CTAK_PRIV" != "sudo" \]/);
+{
+  const prev = String((settingsSvc.getSettings() || {}).TAK_SSH_PRIVILEGE_CMD || "");
+  settingsSvc.updateSettings({ TAK_SSH_PRIVILEGE_CMD: "dzdo" });
+  try {
+    assert.strictEqual(marketplace.marketplacePrivilegeBin(), "dzdo");
+    const dzdoInstall = marketplace.installRemoteScript("/root/CloudTAK", livewx);
+    assert.match(dzdoInstall, /CTAK_PRIV='dzdo'/);
+    assert.match(dzdoInstall, /"\$CTAK_PRIV" -n docker/);
+    assert.doesNotMatch(dzdoInstall, /CTAK_PRIV='sudo'/);
+  } finally {
+    settingsSvc.updateSettings({ TAK_SSH_PRIVILEGE_CMD: prev || "sudo" });
+  }
+}
 
 const done = { id: "done", kind: "install", status: "complete", batchId: "old", startedAt: "2026-09-25T12:00:00.000Z", log: ["old install"] };
 const next = { id: "next", kind: "uninstall", status: "running", batchId: "new", startedAt: "2026-09-25T13:00:00.000Z", log: ["removing"] };

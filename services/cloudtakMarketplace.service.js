@@ -10,6 +10,7 @@ const store = require("./cloudtakMarketplace.store");
 const ssh = require("./cloudtakMarketplace.ssh");
 const caddyMod = require("./cloudtakMarketplace.caddy");
 const settingsSvc = require("./settings.service");
+const takSshSvc = require("./takSsh.service");
 
 const NEW_DAYS = 14;
 const SCAN_INTERVAL_MS = 5 * 60 * 1000;
@@ -637,18 +638,31 @@ function marketplaceSudoPassword() {
   return String(getString("TAK_SSH_SUDO_PASSWORD", "") || "").trim();
 }
 
+/** Same binary as TAK SSH (sudo default, or dzdo from TAK_SSH_PRIVILEGE_CMD). */
+function marketplacePrivilegeBin() {
+  try {
+    return takSshSvc.getPrivilegeBin();
+  } catch (_) {
+    return "sudo";
+  }
+}
+
 /**
  * Elevate helpers for CloudTAK marketplace.
  * After root→non-root SSH, plugin trees are often root-owned. Elevate via:
- *   1) bootstrap marketplace sudoers using TAK Portal repair-script NOPASSWD hook
- *   2) sudo -n / sudo -S
- *   3) docker / sudo docker as uid 0
+ *   1) bootstrap marketplace sudoers using TAK Portal repair-script NOPASSWD hook (sudo only)
+ *   2) $CTAK_PRIV -n / -S  (sudo or dzdo — matches TAK_SSH_PRIVILEGE_CMD)
+ *   3) docker / privileged docker as uid 0
  */
 function pluginPrivilegeBash() {
   const sudoPass = marketplaceSudoPassword();
+  const privBin = marketplacePrivilegeBin();
   return `
 CTAK_SUDO_PASS=${ssh.shellQuote(sudoPass)}
+CTAK_PRIV=${ssh.shellQuote(privBin)}
 CTAK_DOCKER_BIN=""
+CTAK_DOCKER_NOPASS=""
+CTAK_DOCKER_PASS=""
 
 cloudtak_owner() {
   stat -c '%U' "$CT" 2>/dev/null || stat -f '%Su' "$CT" 2>/dev/null || true
@@ -660,63 +674,70 @@ resolve_docker_bin() {
     echo "elevate: docker binary not found" >&2
     return 1
   fi
+  CTAK_DOCKER_NOPASS="$CTAK_PRIV -n docker"
+  CTAK_DOCKER_PASS="$CTAK_PRIV -S -p '' docker"
   # Probe the real binary (command bypasses a shell function named docker).
-  # sudo runs /usr/bin/docker from secure_path — not the shell function.
+  # $CTAK_PRIV runs /usr/bin/docker from secure_path — not the shell function.
   if command docker info >/dev/null 2>&1; then
     CTAK_DOCKER_BIN="docker"
     return 0
   fi
-  if sudo -n docker info >/dev/null 2>&1; then
-    echo "elevate: using sudo -n docker"
-    CTAK_DOCKER_BIN="sudo -n docker"
+  if "$CTAK_PRIV" -n docker info >/dev/null 2>&1; then
+    echo "elevate: using $CTAK_PRIV -n docker"
+    CTAK_DOCKER_BIN="$CTAK_DOCKER_NOPASS"
     return 0
   fi
   if [ -n "\${CTAK_SUDO_PASS:-}" ]; then
-    if printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' docker info >/dev/null 2>&1; then
-      echo "elevate: using password sudo docker"
-      CTAK_DOCKER_BIN="sudo -S -p '' docker"
+    if printf '%s\\n' "$CTAK_SUDO_PASS" | "$CTAK_PRIV" -S -p '' docker info >/dev/null 2>&1; then
+      echo "elevate: using password $CTAK_PRIV docker"
+      CTAK_DOCKER_BIN="$CTAK_DOCKER_PASS"
       return 0
     fi
   fi
-  echo "elevate: docker not usable by $(id -un) — add user to docker group or enable sudo docker" >&2
+  echo "elevate: docker not usable by $(id -un) — add user to docker group or enable $CTAK_PRIV docker" >&2
   return 1
 }
 
 docker_cli() {
   resolve_docker_bin || return 1
-  if [ "$CTAK_DOCKER_BIN" = "sudo -S -p '' docker" ]; then
-    printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' docker "$@"
-  elif [ "$CTAK_DOCKER_BIN" = "sudo -n docker" ]; then
-    sudo -n docker "$@"
+  if [ "$CTAK_DOCKER_BIN" = "$CTAK_DOCKER_PASS" ]; then
+    printf '%s\\n' "$CTAK_SUDO_PASS" | "$CTAK_PRIV" -S -p '' docker "$@"
+  elif [ "$CTAK_DOCKER_BIN" = "$CTAK_DOCKER_NOPASS" ]; then
+    "$CTAK_PRIV" -n docker "$@"
   else
     command docker "$@"
   fi
 }
 
-# Shadow docker so marketplace compose/run/align paths use sudo when the SSH
-# user can sudo but is not in the docker group (common for takwerx).
+# Shadow docker so marketplace compose/run/align paths use $CTAK_PRIV when the SSH
+# user can elevate but is not in the docker group (common for takwerx).
 docker() {
   docker_cli "$@"
 }
 
-elevate_via_sudo() {
+elevate_via_priv() {
   local cmd="$1"
-  if sudo -n true >/dev/null 2>&1; then
-    echo "elevate: sudo -n"
-    sudo -n bash -lc "$cmd"
+  if "$CTAK_PRIV" -n true >/dev/null 2>&1; then
+    echo "elevate: $CTAK_PRIV -n"
+    "$CTAK_PRIV" -n bash -lc "$cmd"
     return $?
   fi
   if [ -n "\${CTAK_SUDO_PASS:-}" ]; then
-    if printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' true >/dev/null 2>&1; then
-      echo "elevate: sudo -S stored password"
-      printf '%s\\n' "$CTAK_SUDO_PASS" | sudo -S -p '' bash -lc "$cmd"
+    if printf '%s\\n' "$CTAK_SUDO_PASS" | "$CTAK_PRIV" -S -p '' true >/dev/null 2>&1; then
+      echo "elevate: $CTAK_PRIV -S stored password"
+      printf '%s\\n' "$CTAK_SUDO_PASS" | "$CTAK_PRIV" -S -p '' bash -lc "$cmd"
       return $?
     fi
-    echo "elevate: stored sudo password rejected" >&2
+    echo "elevate: stored $CTAK_PRIV password rejected" >&2
   else
-    echo "elevate: sudo -n unavailable and no TAK_SSH_SUDO_PASSWORD stored" >&2
+    echo "elevate: $CTAK_PRIV -n unavailable and no TAK_SSH_SUDO_PASSWORD stored" >&2
   fi
   return 1
+}
+
+# Back-compat name used by older log greps / mental model.
+elevate_via_sudo() {
+  elevate_via_priv "$@"
 }
 
 elevate_via_docker() {
@@ -762,7 +783,9 @@ elevate_via_docker() {
 }
 
 bootstrap_marketplace_sudoers_via_tak_portal() {
-  if sudo -n true >/dev/null 2>&1; then return 0; fi
+  # /etc/sudoers.d only affects sudo — skip for dzdo.
+  [ "$CTAK_PRIV" = "sudo" ] || return 1
+  if "$CTAK_PRIV" -n true >/dev/null 2>&1; then return 0; fi
   local me repair bootstrap ok tee_try bash_try
   me=$(id -un)
   repair="/opt/tak/utils/tak-portal-repair-certs.sh"
@@ -815,45 +838,50 @@ PY
   ok=0
   for tee_try in /usr/bin/tee /bin/tee; do
     [ -x "$tee_try" ] || continue
-    if sudo -n "$tee_try" "$repair" < "$bootstrap" >/dev/null 2>&1; then
+    if "$CTAK_PRIV" -n "$tee_try" "$repair" < "$bootstrap" >/dev/null 2>&1; then
       ok=1
       break
     fi
   done
   if [ "$ok" -ne 1 ]; then
-    echo "elevate: sudo tee $repair failed — is TAK Portal SSH sudoers installed?" >&2
+    echo "elevate: $CTAK_PRIV tee $repair failed — is TAK Portal SSH sudoers installed?" >&2
     rm -f "$bootstrap"
     return 1
   fi
   ok=0
   for bash_try in /usr/bin/bash /bin/bash; do
     [ -x "$bash_try" ] || continue
-    if sudo -n "$bash_try" "$repair"; then
+    if "$CTAK_PRIV" -n "$bash_try" "$repair"; then
       ok=1
       break
     fi
   done
   rm -f "$bootstrap"
   if [ "$ok" -ne 1 ]; then
-    echo "elevate: sudo bash $repair bootstrap failed" >&2
+    echo "elevate: $CTAK_PRIV bash $repair bootstrap failed" >&2
     return 1
   fi
-  if sudo -n true >/dev/null 2>&1; then
+  if "$CTAK_PRIV" -n true >/dev/null 2>&1; then
     echo "elevate: marketplace sudoers active via TAK Portal hook"
     return 0
   fi
-  echo "elevate: marketplace sudoers installed but sudo -n still failed" >&2
+  echo "elevate: marketplace sudoers installed but $CTAK_PRIV -n still failed" >&2
   return 1
 }
 
 ensure_marketplace_sudoers() {
-  if sudo -n true >/dev/null 2>&1; then return 0; fi
+  if "$CTAK_PRIV" -n true >/dev/null 2>&1; then return 0; fi
   local me
   me=$(id -un)
+  # dzdo does not read /etc/sudoers.d — passwordless must already be configured on the host.
+  if [ "$CTAK_PRIV" != "sudo" ]; then
+    echo "elevate: $CTAK_PRIV -n unavailable for $me (no sudoers.d bootstrap for $CTAK_PRIV)"
+    return 1
+  fi
   echo "elevate: ensuring passwordless sudo for $me"
   if bootstrap_marketplace_sudoers_via_tak_portal; then return 0; fi
   elevate_via_docker "printf '%s\\n' \"Defaults:\${me} !requiretty\" \"\${me} ALL=NOPASSWD: ALL\" > /etc/sudoers.d/tak-portal-marketplace && chmod 440 /etc/sudoers.d/tak-portal-marketplace" || true
-  if sudo -n true >/dev/null 2>&1; then
+  if "$CTAK_PRIV" -n true >/dev/null 2>&1; then
     echo "elevate: marketplace sudoers active via docker"
     return 0
   fi
@@ -864,14 +892,14 @@ elevate_run() {
   local cmd="$1"
   local owner
   owner=$(cloudtak_owner)
-  if ! sudo -n true >/dev/null 2>&1; then
+  if ! "$CTAK_PRIV" -n true >/dev/null 2>&1; then
     ensure_marketplace_sudoers || true
   fi
-  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && sudo -n -u "$owner" true >/dev/null 2>&1; then
+  if [ -n "$owner" ] && [ "$(id -un)" != "$owner" ] && "$CTAK_PRIV" -n -u "$owner" true >/dev/null 2>&1; then
     echo "elevate: as checkout owner $owner"
-    sudo -n -u "$owner" bash -lc "$cmd" && return 0
+    "$CTAK_PRIV" -n -u "$owner" bash -lc "$cmd" && return 0
   fi
-  if elevate_via_sudo "$cmd"; then return 0; fi
+  if elevate_via_priv "$cmd"; then return 0; fi
   if elevate_via_docker "$cmd"; then
     ensure_marketplace_sudoers || true
     return 0
@@ -900,25 +928,61 @@ reclaim_cloudtak_plugin_paths() {
 
 function pluginRemoveBash() {
   return [
+    "# Allowed roots: CloudTAK 13.102+ app/plugins and pre-13.102 api/web/plugins (plus src mirrors).",
+    "plugin_tree_allowed() {",
+    '  local target="$1"',
+    '  case "$target" in',
+    '    "$CT/app/plugins/$DEST"|"$CT/api/web/plugins/$DEST"|"$CT/app/src/plugins/$DEST"|"$CT/api/web/src/plugins/$DEST") return 0 ;;',
+    '    "$CT/api/stateless/routes/"*.ts) return 0 ;;',
+    "  esac",
+    "  return 1",
+    "}",
     "remove_plugin_tree() {",
     '  local target="$1"',
     '  [ -n "$target" ] || return 0',
     '  if [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
-    '  case "$target" in',
-    '    "$CT/app/plugins/$DEST"|"$CT/api/web/plugins/$DEST"|"$CT/app/src/plugins/$DEST"|"$CT/api/web/src/plugins/$DEST") ;;',
-    '    "$CT/api/stateless/routes/"*.ts) ;;',
-    '    *) echo "Refusing to remove $target" >&2; return 1 ;;',
-    "  esac",
-    '  if rm -rf "$target" 2>/dev/null && [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
+    '  if ! plugin_tree_allowed "$target"; then',
+    '    echo "Refusing to remove $target" >&2',
+    "    return 1",
+    "  fi",
+    '  if rm -rf "$target" 2>/dev/null && [ ! -e "$target" ] && [ ! -L "$target" ]; then',
+    '    echo "Removed $target"',
+    "    return 0",
+    "  fi",
     '  if [ ! -e "$target" ] && [ ! -L "$target" ]; then return 0; fi',
     '  echo "Removing $target with elevated privileges (not writable by $(id -un))"',
     "  if declare -F elevate_run >/dev/null 2>&1; then",
     '    elevate_run "rm -rf $(printf \'%q\' "$target")" || true',
+    "  elif declare -F docker_cli >/dev/null 2>&1 && resolve_docker_bin 2>/dev/null; then",
+    '    docker_cli run --rm -u 0 -v "$CT:$CT:rw" alpine:3.20 rm -rf "$target" || true',
     "  fi",
     '  if [ -e "$target" ] || [ -L "$target" ]; then',
     '    echo "ERROR: cannot remove $target as $(id -un)." >&2',
     "    return 1",
     "  fi",
+    '  echo "Removed $target (elevated)"',
+    "  return 0",
+    "}",
+    "# Wipe dest from every known layout. Continues on errors; caller checks leftovers.",
+    "remove_plugin_dest_all_layouts() {",
+    '  local dest="$1"',
+    '  local t failed=0',
+    '  [ -n "$dest" ] || return 0',
+    '  DEST="$dest"',
+    '  for t in \\',
+    '    "$CT/app/plugins/$DEST" \\',
+    '    "$CT/api/web/plugins/$DEST" \\',
+    '    "$CT/app/src/plugins/$DEST" \\',
+    '    "$CT/api/web/src/plugins/$DEST"',
+    "  do",
+    '    if [ -e "$t" ] || [ -L "$t" ]; then',
+    '      echo "Uninstall: clearing $t"',
+    '      remove_plugin_tree "$t" || failed=1',
+    "    else",
+    '      echo "Uninstall: not present $t"',
+    "    fi",
+    "  done",
+    "  return $failed",
     "}",
   ].join("\n");
 }
@@ -2456,6 +2520,7 @@ function pluginRuntimeCleanupBash() {
 }
 
 function pluginRuntimeExtrasBash() {
+  const privBin = marketplacePrivilegeBin();
   return [
     'target_ct="$1"',
     'repo_dir="$2"',
@@ -2466,6 +2531,8 @@ function pluginRuntimeExtrasBash() {
     'sidecar_port_hint="$7"',
     '[ -n "$target_ct" ] && [ -d "$repo_dir" ] && [ -n "$plugin_id" ] || exit 0',
     "set -e",
+    // Match TAK_SSH_PRIVILEGE_CMD when this sidecar script runs outside the install shell.
+    `CTAK_PRIV=${ssh.shellQuote(privBin)}`,
     pluginRuntimeCleanupBash(),
     'cleanup_plugin_runtime "$plugin_id" "$target_ct"',
     "find_stack() {",
@@ -2532,13 +2599,14 @@ function pluginRuntimeExtrasBash() {
     "}",
     "ensure_caddy_on_cloudtak_network() {",
     '  local runtime="" caddy="" net="" name id image',
+    '  local priv="${CTAK_PRIV:-sudo}"',
     '  if command -v docker >/dev/null 2>&1; then runtime=docker',
     '  elif command -v podman >/dev/null 2>&1; then runtime=podman',
     "  else return 0",
     "  fi",
     "  run_rt() {",
     '    if "$runtime" "$@"; then return 0; fi',
-    '    if sudo -n "$runtime" "$@" 2>/dev/null; then return 0; fi',
+    '    if "$priv" -n "$runtime" "$@" 2>/dev/null; then return 0; fi',
     "    return 1",
     "  }",
     '  for id in $(run_rt ps -q 2>/dev/null || true); do',
@@ -2701,13 +2769,13 @@ CTAK_PLUGIN_ALIGN_JS
       return 0
     fi
   fi
-  # Host may lack node in PATH while sudo/root still has it (common after SSH user switch).
+  # Host may lack node in PATH while privileged/root still has it (common after SSH user switch).
   if declare -F elevate_run >/dev/null 2>&1; then
     if elevate_run "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$ct")"; then
       return 0
     fi
   fi
-  # Prefer docker_cli (sudo -n docker when the user is not in the docker group).
+  # Prefer docker_cli ($CTAK_PRIV -n docker when the user is not in the docker group).
   if declare -F docker_cli >/dev/null 2>&1 && resolve_docker_bin; then
     echo "Aligning plugin files via docker (root)"
     docker_cli run --rm -u 0 \\
@@ -2827,7 +2895,7 @@ reset_cache() {
     if declare -F elevate_run >/dev/null 2>&1; then
       elevate_run "rm -rf $(printf '%q' "$CACHE")" || true
     else
-      sudo -n rm -rf "$CACHE" 2>/dev/null || true
+      "\${CTAK_PRIV:-sudo}" -n rm -rf "$CACHE" 2>/dev/null || true
     fi
   fi
   if [ -e "$CACHE" ]; then
@@ -2861,13 +2929,13 @@ run_as_writer() {
   local cmd="$1"
   local owner
   owner=$(cloudtak_owner)
-  # Prefer elevation whenever sudo/docker works — root leftovers are common after SSH user changes.
+  # Prefer elevation whenever privilege/docker works — root leftovers are common after SSH user changes.
   if ! can_write_plugins; then
     echo "Plugin paths not fully writable by $(id -un) (CloudTAK owner: $owner); elevating"
     if elevate_run "$cmd"; then
       return 0
     fi
-    echo "ERROR: cannot write $PLUGIN_ROOT as $(id -un), even with sudo/docker elevation. Point CloudTAK SSH at an account that can sudo or run docker (checkout owner: $owner)." >&2
+    echo "ERROR: cannot write $PLUGIN_ROOT as $(id -un), even with \${CTAK_PRIV:-sudo}/docker elevation. Point CloudTAK SSH at an account that can \${CTAK_PRIV:-sudo} or run docker (checkout owner: $owner)." >&2
     exit 1
   fi
   if bash -lc "$cmd"; then
@@ -2877,7 +2945,7 @@ run_as_writer() {
   if elevate_run "$cmd"; then
     return 0
   fi
-  echo "ERROR: cannot write $PLUGIN_ROOT as $(id -un), even with sudo/docker elevation. Point CloudTAK SSH at an account that can sudo or run docker (checkout owner: $owner)." >&2
+  echo "ERROR: cannot write $PLUGIN_ROOT as $(id -un), even with \${CTAK_PRIV:-sudo}/docker elevation. Point CloudTAK SSH at an account that can \${CTAK_PRIV:-sudo} or run docker (checkout owner: $owner)." >&2
   exit 1
 }
 
@@ -3033,12 +3101,14 @@ printf 'INSTALL_SHA %s\\n' "$SHA"
 function uninstallRemoteScript(ct, dest, routeFiles, pluginId, options = {}) {
   const destName = String(dest || "").trim();
   const files = (routeFiles || []).filter((f) => /^[A-Za-z0-9._-]+\.ts$/.test(f));
-  const guessed = destName && /^[A-Za-z0-9._-]+$/.test(destName) ? `plugin-${destName}.ts` : "";
-  if (guessed && !files.includes(guessed)) files.push(guessed);
-  const routeRm = files
-    .map((f) => `remove_plugin_tree "$CT/api/stateless/routes/${f}"`)
-    .join("\n");
   const id = String(pluginId || "").trim();
+  const idForRoutes = id || destName;
+  for (const guess of [`plugin-${destName}.ts`, `plugin-${idForRoutes}.ts`]) {
+    if (guess && /^[A-Za-z0-9._-]+\.ts$/.test(guess) && !files.includes(guess)) files.push(guess);
+  }
+  const routeRm = files
+    .map((f) => `remove_plugin_tree "$CT/api/stateless/routes/${f}" || true`)
+    .join("\n");
   const apiSvc = String((options && options.composeService) || "api").trim() || "api";
   return `
 set -euo pipefail
@@ -3051,19 +3121,16 @@ ${pluginLayoutBash()}
 ${pluginPrivilegeBash()}
 WEB_REL=$(cloudtak_web_rel "$CT")
 PLUGIN_ROOT="$CT/$WEB_REL/plugins"
-echo "CloudTAK plugin directory: $PLUGIN_ROOT"
+echo "CloudTAK plugin directory: $PLUGIN_ROOT (also clearing legacy api/web paths)"
 reclaim_cloudtak_plugin_paths || true
 ${pluginRemoveBash()}
 ${pluginRuntimeCleanupBash()}
 ${pluginCspBash()}
+UNINSTALL_FAILED=0
 if [ -n "$ID" ]; then
-  cleanup_plugin_runtime "$ID" "$CT"
-  apply_plugin_csp "$ID" "$CT" "$CT_COMPOSE_SVC" "" 1
+  cleanup_plugin_runtime "$ID" "$CT" || true
+  apply_plugin_csp "$ID" "$CT" "$CT_COMPOSE_SVC" "" 1 || true
   CACHE="$HOME/.cache/cloudtak-marketplace/$ID"
-  if [ "$WEB_REL" = "app" ]; then
-    remove_plugin_tree "$CT/api/web/plugins/$DEST"
-    remove_plugin_tree "$CT/api/web/src/plugins/$DEST"
-  fi
   if [ -f "$CACHE/install.sh" ] && grep -q -- '--remove' "$CACHE/install.sh"; then
     flags="--remove"
     if grep -q -- '--no-build' "$CACHE/install.sh"; then flags="$flags --no-build"; fi
@@ -3080,19 +3147,28 @@ if [ -n "$ID" ]; then
   fi
   rm -f /tmp/ctak-marketplace-excludes-$ID || true
 fi
-TARGET="$PLUGIN_ROOT/$DEST"
-case "$TARGET" in
-  */app/plugins/$DEST|*/api/web/plugins/$DEST) ;;
-  *) echo "Refusing dest $TARGET" >&2; exit 1 ;;
-esac
-remove_plugin_tree "$TARGET"
-for extra in "$CT/app/plugins/$DEST" "$CT/api/web/plugins/$DEST" "$CT/app/src/plugins/$DEST" "$CT/api/web/src/plugins/$DEST"; do
-  [ "$extra" = "$TARGET" ] && continue
-  case "$extra" in
-    */plugins/$DEST) remove_plugin_tree "$extra" ;;
-  esac
-done
+# Always clear both CloudTAK 13.102+ (app/plugins) and pre-13.102 (api/web/plugins) layouts,
+# plus src/ mirrors — do not stop after the first path.
+if ! remove_plugin_dest_all_layouts "$DEST"; then
+  UNINSTALL_FAILED=1
+fi
 ${routeRm}
+# Final verification: nothing left under either layout for this dest.
+for leftover in \\
+  "$CT/app/plugins/$DEST" \\
+  "$CT/api/web/plugins/$DEST" \\
+  "$CT/app/src/plugins/$DEST" \\
+  "$CT/api/web/src/plugins/$DEST"
+do
+  if [ -e "$leftover" ] || [ -L "$leftover" ]; then
+    echo "ERROR: plugin path still present after uninstall: $leftover" >&2
+    UNINSTALL_FAILED=1
+  fi
+done
+if [ "$UNINSTALL_FAILED" -ne 0 ]; then
+  echo "ERROR: uninstall did not fully clear $DEST from app/plugins and api/web/plugins" >&2
+  exit 1
+fi
 echo UNINSTALL_OK
 `.trim();
 }
@@ -3111,7 +3187,7 @@ elif [ -f compose.yml ]; then CF=compose.yml
 elif [ -f compose.yaml ]; then CF=compose.yaml
 else echo "No compose file in $CT" >&2; exit 1
 fi
-# Ensure passwordless sudo / sudo docker before align + compose (takwerx has no docker group).
+# Ensure passwordless privilege / privileged docker before align + compose (takwerx has no docker group).
 ensure_marketplace_sudoers || true
 # A plugin copied earlier can still fail vue-tsc and block this rebuild.
 ${pluginHostAlignRunnerBash()}
@@ -3124,7 +3200,7 @@ fi
 export BUILDKIT_PROGRESS=plain
 export COMPOSE_ANSI=never
 export COMPOSE_PROGRESS=plain
-# docker() is shadowed by pluginPrivilegeBash to use sudo -n docker when needed.
+# docker() is shadowed by pluginPrivilegeBash to use $CTAK_PRIV -n docker when needed.
 docker compose --progress=plain -f "$CF" $MPF build --no-cache "$SVC"
 echo "CloudTAK image build finished."
 docker compose --progress=plain -f "$CF" $MPF up -d --force-recreate "$SVC"
@@ -3686,4 +3762,5 @@ module.exports = {
   normalizeCsp,
   normalizeFlatSamplePluginTree,
   pluginEntryImportsLib,
+  marketplacePrivilegeBin,
 };
