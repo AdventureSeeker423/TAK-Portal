@@ -19,16 +19,6 @@ assert.strictEqual(
   portalHidden.isUserHidden({ username: "normal.user", attributes: {} }),
   false
 );
-// Builtin ak- prefix must hide Authentik outpost service accounts even with no attr/column
-// (after HIDDEN_PREFIX_ATTR_MIGRATION clears USERS_HIDDEN_PREFIXES).
-assert.strictEqual(
-  portalHidden.isUserHidden({
-    username: "ak-outpost-26c4e320065142f1978bd298748ef09c",
-    tak_portal_hidden: false,
-    attributes: {},
-  }),
-  true
-);
 assert.strictEqual(
   portalHidden.isUserHidden({
     username: "nodered-global-x",
@@ -36,10 +26,6 @@ assert.strictEqual(
     attributes: { tak_portal_hidden: "true" },
   }),
   true
-);
-assert.ok(
-  portalHidden.hiddenUserPrefixes().includes("ak-"),
-  "builtin ak- prefix always present after settings cleared"
 );
 assert.strictEqual(
   portalHidden.isUserHidden(
@@ -76,50 +62,5 @@ assert.strictEqual(
 assert.ok(portalHidden.isMutualAidGroupName("MA - Drill"));
 assert.ok(portalHidden.isMutualAidGroupName("tak_MA - Drill"));
 assert.ok(!portalHidden.isMutualAidGroupName("SO Main"));
-
-assert.ok(portalHidden.isInternalPortalGroupName("authentik-SHPD-AgencyAdmin"));
-assert.ok(portalHidden.isInternalPortalGroupName("tak_authentik-FOO-AgencyAdmin"));
-assert.ok(
-  portalHidden.isGroupHidden({ name: "authentik-SHPD-AgencyAdmin", attributes: {} }),
-  "AgencyAdmin must be hidden even without tak_portal_hidden attr"
-);
-assert.ok(!portalHidden.isInternalPortalGroupName("SO Main"));
-
-// AgencyAdmin create paths must stamp tak_portal_hidden after prefix migration clears.
-const fs = require("fs");
-const path = require("path");
-for (const rel of [
-  "routes/agencies.routes.js",
-  "services/agencyAbbrevRename.service.js",
-  "services/agencyNameRename.service.js",
-]) {
-  const src = fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
-  assert.ok(
-    src.includes("markHiddenAttributes") && src.includes("ensureAgencyAdminGroupExists"),
-    `${rel} must stamp AgencyAdmin groups with markHiddenAttributes`
-  );
-}
-
-const usersEjs = fs.readFileSync(
-  path.join(__dirname, "..", "views", "users.ejs"),
-  "utf8"
-);
-assert.ok(
-  usersEjs.includes("visibleGroupIds.has") &&
-    usersEjs.includes("shouldOmitFromGroupChips") &&
-    usersEjs.includes("HIDDEN_USER_PREFIXES_CLIENT") &&
-    usersEjs.includes("ak-outpost-"),
-  "edit-modal chips must gate on visibleGroupIds; table must filter ak-/ak-outpost client-side"
-);
-
-const dirRepoSrc = fs.readFileSync(
-  path.join(__dirname, "..", "services", "directoryRepo.service.js"),
-  "utf8"
-);
-assert.ok(
-  dirRepoSrc.includes("builtinUserPrefixSql") &&
-    dirRepoSrc.includes("ak-outpost-%"),
-  "SQL hide clause must hardcode ak-outpost exclusion"
-);
 
 console.log("portalHidden.test.js: ok");

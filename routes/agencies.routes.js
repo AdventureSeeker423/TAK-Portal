@@ -17,7 +17,6 @@ const agencyDeleteSvc = require("../services/agencyDelete.service");
 const userRequestsSvc = require("../services/userRequests.service");
 const autoCreateGroupsSvc = require("../services/autoCreateGroups.service");
 const autoCreateDataSyncSvc = require("../services/autoCreateDataSync.service");
-const { markHiddenAttributes } = require("../services/portalHidden.util");
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getAgencyAdminGroupName(agency) {
@@ -37,14 +36,12 @@ async function ensureAgencyAdminGroupExists(agency) {
 
   // Create (idempotent-ish): if the group already exists, Authentik will reject.
   // We treat "already exists" as success.
-  // Always stamp tak_portal_hidden so edit-modal chips / pickers stay clean after
-  // the one-time prefix migration cleared GROUPS_HIDDEN_PREFIXES.
-  const attributes = markHiddenAttributes({
+  const attributes = {
     created_at: new Date().toISOString(),
     created_type: "Agency",
     created_type_detail: String(agency?.name || agency?.groupPrefix || "").trim() || null,
     description: `Agency admin group for ${String(agency?.name || agency?.groupPrefix || "").trim()}`,
-  });
+  };
 
   try {
     await groupsService.createGroup(name, { attributes });

@@ -14,7 +14,6 @@ const userLoginStatus = require("./userLoginStatus.service");
 const {
   isUserHidden,
   isGroupHidden,
-  isInternalPortalGroupName,
   markHiddenAttributes,
 } = require("./portalHidden.util");
 
@@ -2348,8 +2347,6 @@ async function searchUsersPaged({
     excludeGroupPks,
     includeGroups,
   });
-  // Belt-and-suspenders: SQL already excludes; drop any that still match hide rules.
-  out.users = applyHiddenPrefixFilter(out.users, false);
   if (includeLoginStatus) {
     out.users = userLoginStatus.annotateUsersLoginStatus(out.users);
   }
@@ -3063,28 +3060,6 @@ async function updateName(userId, name, opts = {}) {
   if (wait) await authentikOutbox.waitForOutbox(outboxId, 8000);
 }
 
-function toGroupDetail(g) {
-  return {
-    pk: g.pk,
-    name: g.name,
-    tak_portal_hidden: g.tak_portal_hidden === true,
-    attributes:
-      g.attributes && typeof g.attributes === "object" ? g.attributes : {},
-  };
-}
-
-/** Portal-visible memberships only — edit-modal chips must use this, not groupDetails. */
-function chipGroupsFromDetails(details) {
-  return (Array.isArray(details) ? details : [])
-    .filter((g) => {
-      if (!g || !g.name) return false;
-      if (isGroupHidden(g)) return false;
-      if (isInternalPortalGroupName(g.name)) return false;
-      return true;
-    })
-    .map((g) => ({ pk: g.pk, name: g.name }));
-}
-
 // Fetch single user (if you don't already have it)
 async function getUserById(userId) {
   const user = await directoryRepo.getUserById(userId);
@@ -3092,12 +3067,13 @@ async function getUserById(userId) {
   const pks = Array.isArray(user.groups) ? user.groups : [];
   if (!pks.length) {
     user.groupDetails = [];
-    user.chipGroups = [];
     return user;
   }
   const named = await directoryRepo.getGroupsByPks(pks);
-  user.groupDetails = (Array.isArray(named) ? named : []).map(toGroupDetail);
-  user.chipGroups = chipGroupsFromDetails(user.groupDetails);
+  user.groupDetails = (Array.isArray(named) ? named : []).map((g) => ({
+    pk: g.pk,
+    name: g.name,
+  }));
   return user;
 }
 

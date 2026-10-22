@@ -828,17 +828,7 @@ async function searchPortalGroups() {
   const raw = res.ok
     ? (Array.isArray(out) ? out : (Array.isArray(out.groups) ? out.groups : []))
     : [];
-  groupsCache = raw.filter((g) => {
-    if (isCreateFormHiddenGroup(g)) return false;
-    // Mirror edit-modal: never offer AgencyAdmin / authentik* / global-admin groups.
-    const name = String(g && g.name || "").trim();
-    const lower = name.toLowerCase();
-    const withoutTak = lower.startsWith("tak_") ? lower.slice(4) : lower;
-    if (withoutTak.startsWith("authentik")) return false;
-    if (withoutTak.includes("agencyadmin")) return false;
-    if (/global[\s_-]*admin/.test(lower) || /global[\s_-]*admin/.test(withoutTak)) return false;
-    return true;
-  });
+  groupsCache = raw.filter((g) => !isCreateFormHiddenGroup(g));
   if (res.ok) groupsFullyLoaded = true;
   return groupsCache;
 }
@@ -1686,52 +1676,6 @@ const PORTAL_GLOBAL_ADMIN_GROUP_NAMES = String(PORTAL_GLOBAL_ADMIN_GROUPS_RAW ||
   .split(",")
   .map(s => String(s || "").trim())
   .filter(Boolean);
-
-const PORTAL_GLOBAL_ADMIN_GROUP_NAMES_LOWER = PORTAL_GLOBAL_ADMIN_GROUP_NAMES.map((n) =>
-  String(n || "").trim().toLowerCase()
-).filter(Boolean);
-
-/** Authentik portal-auth / agency-admin groups — never show in edit-modal chips or checkbox grid. */
-function isInternalAuthGroupName(name) {
-  const raw = String(name || "").trim().toLowerCase();
-  if (!raw) return true;
-  const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
-  if (withoutTak.startsWith("authentik")) return true;
-  // AgencyAdmin variants: authentik-*-AgencyAdmin, *-AgencyAdmin, *_agencyadmin, etc.
-  if (withoutTak.includes("agencyadmin")) return true;
-  // Global admin even when PORTAL_AUTH_REQUIRED_GROUP is empty/mismatched.
-  if (/global[\s_-]*admin/.test(raw) || /global[\s_-]*admin/.test(withoutTak)) return true;
-  if (PORTAL_GLOBAL_ADMIN_GROUP_NAMES_LOWER.includes(raw)) return true;
-  if (PORTAL_GLOBAL_ADMIN_GROUP_NAMES_LOWER.includes(withoutTak)) return true;
-  return false;
-}
-
-/** True when this group id is a known AgencyAdmin / global-admin membership (name may be missing). */
-function isInternalAuthGroupId(id) {
-  const key = String(id || "").trim();
-  if (!key) return false;
-  if (Array.isArray(globalAdminGroupIdsCache) && globalAdminGroupIdsCache.some((x) => String(x) === key)) {
-    return true;
-  }
-  if (agencyAdminGroupIdIndexByAbbr instanceof Map) {
-    for (const ids of agencyAdminGroupIdIndexByAbbr.values()) {
-      if ((ids || []).some((x) => String(x) === key)) return true;
-    }
-  }
-  return false;
-}
-
-function shouldOmitFromGroupChips(name, id, detail) {
-  // Hard rule: chips are ONLY portal-visible picker groups. Hidden memberships
-  // (AgencyAdmin / authentik* / global-admin / tak_portal_hidden / MA) stay on
-  // the user for permissions but must never render above the checkbox grid.
-  if (!visibleGroupIds.has(String(id))) return true;
-  if (detail && isPortalHiddenGroupClient(detail)) return true;
-  if (isInternalAuthGroupId(id)) return true;
-  if (name && isInternalAuthGroupName(name)) return true;
-  return false;
-}
-
 function userActionsLocked(username) {
   const u = String(username || "").trim().toLowerCase();
   if (!u) return false;
@@ -2241,24 +2185,8 @@ function updateSortIndicators(){
   });
 }
 
-/** Client-side last line of defense — never paint builtin-hidden usernames. */
-function isClientHiddenUsername(username) {
-  const u = String(username || "").trim().toLowerCase();
-  if (!u) return true;
-  return (
-    u.startsWith("ak-") ||
-    u.startsWith("akadmin") ||
-    u.startsWith("adm_") ||
-    u.startsWith("nodered-") ||
-    u.startsWith("ma-")
-  );
-}
-
 function renderResults(users){
-  const visible = (Array.isArray(users) ? users : []).filter(
-    (u) => !isClientHiddenUsername(u?.username)
-  );
-  tbody.innerHTML = visible.map(u=>{
+  tbody.innerHTML = users.map(u=>{
     const pk = escapeHtml(u.pk);
     const toggleLabel = u.is_active ? "Disable" : "Enable";
     const toggleBtnClass = u.is_active ? "btn caution" : "btn";
@@ -2317,48 +2245,26 @@ function indexUserGroupDetails(user) {
     const id = String(g?.pk || g?.id || "").trim();
     const name = String(g?.name || "").trim();
     if (!id || !name) continue;
-    // Never put portal-hidden / AgencyAdmin / global-admin into groupIndex — that used to
-    // make Current Groups chips show them even when they were absent from the checkbox grid.
-    if (isPortalHiddenGroupClient(g) || isInternalAuthGroupName(name)) continue;
     groupIndex.set(id, name);
   }
 }
 
 function renderGroupChips(user){
-  // HARD RULE: chips = membership ∩ portal picker (visibleGroupIds) only.
-  // AgencyAdmin / global-admin / authentik* / tak_portal_hidden are never in
-  // visibleGroupIds (or are name-filtered). Never paint from raw groupDetails.
   indexUserGroupDetails(user);
+  const ids = Array.isArray(user.groups)
+    ? user.groups.map(x => String(x))
+    : [];
 
-  const details = Array.isArray(user?.groupDetails) ? user.groupDetails : [];
-  const detailById = new Map();
-  for (const g of details) {
-    const id = String(g?.pk || g?.id || "").trim();
-    if (id) detailById.set(id, g);
-  }
-
-  // Membership ids only — visibleGroupIds gate drops AgencyAdmin / global-admin.
-  // (pickedGroupIds may still contain preserved hidden ids; never chip those.)
-  const sourceIds = Array.isArray(user?.groups) ? user.groups : [];
-
-  const names = [];
-  const seen = new Set();
-  for (const rawId of sourceIds) {
-    const key = String(rawId);
-    // Must be a portal-visible picker group — this alone drops AgencyAdmin / global-admin.
-    if (!visibleGroupIds.has(key)) continue;
-    const detail = detailById.get(key) || null;
-    const name = String(
-      (detail && detail.name) || groupIndex.get(key) || ""
-    ).trim();
-    if (shouldOmitFromGroupChips(name, key, detail)) continue;
-    if (!name) continue;
-    const dedupe = name.toLowerCase();
-    if (seen.has(dedupe)) continue;
-    seen.add(dedupe);
-    names.push(name);
-  }
-  names.sort((a, b) => String(a).localeCompare(String(b)));
+  const names = ids
+    .map(id => {
+      const key = String(id);
+      if (visibleGroupIds.has(key) || groupIndex.has(key)) {
+        return groupIndex.get(key);
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .sort((a,b)=>String(a).localeCompare(String(b)));
 
   groupChips.innerHTML = names.length
     ? names.map(n =>
@@ -2790,11 +2696,9 @@ async function searchPortalGroups() {
     : [];
   for (const g of groups) {
     if (isPortalHiddenGroupClient(g)) continue;
-    const name = g.name || ("Group " + (g.pk || g.id || ""));
-    if (isInternalAuthGroupName(name)) continue;
     const id = String(g.pk || g.id || "");
     if (!id) continue;
-    groupIndex.set(id, name);
+    groupIndex.set(id, g.name || ("Group " + id));
     visibleGroupIds.add(id);
   }
   if (res.ok) portalGroupsLoaded = true;
@@ -2981,11 +2885,11 @@ function syncPickedGroupsToUi() {
 }
 
 function renderGroupsBox(){
-  // Only show portal-visible groups in the checkbox grid (never tak_portal_hidden /
-  // AgencyAdmin / global-admin / authentik*). Membership in those is preserved on save.
+  // Only show portal-visible groups in the checkbox grid (never tak_portal_hidden).
+  // Hidden/internal groups may still live in groupIndex for "Current Groups" chips.
   const allGroupsArray = Array.from(groupIndex.entries())
     .map(([id,name]) => ({id: String(id), name}))
-    .filter(g => visibleGroupIds.has(String(g.id)) && !isInternalAuthGroupName(g.name));
+    .filter(g => visibleGroupIds.has(String(g.id)));
 
   const filterText = groupFilter.value.trim().toLowerCase();
   const filteredGroups = filterText
@@ -3081,9 +2985,9 @@ async function resolveGroupIdByName(name){
     const nm = String(out.name || "").trim();
     if (!id || !nm) return null;
 
-    // Cache; only inject non-internal names into groupIndex (chips/picker must stay clean).
+    // Cache and also inject into groupIndex so chips can render the proper name
     groupNameToIdCache.set(key, id);
-    if (!isInternalAuthGroupName(nm)) groupIndex.set(id, nm);
+    groupIndex.set(id, nm);
     return id;
   } catch (e) {
     return null;
@@ -3158,10 +3062,10 @@ window.editUser = async (userPk) => {
     setMsgEl(nameMsg, "");
     setMsgEl(actionMsg, "");
 
+    renderGroupChips(selectedUser);
+
     pickedGroupIds = new Set((selectedUser.groups || []).map(x => String(x)));
     lastConfirmedGroupIds = Array.from(pickedGroupIds);
-    // Chips after pickedGroupIds + after groups are loaded into visibleGroupIds.
-    renderGroupChips(selectedUser);
     renderGroupsBox();
 
     if (permissionsSelect) {
@@ -3211,8 +3115,6 @@ window.editUser = async (userPk) => {
       })(),
       ensureAgencyAdminIdsForUsers([u]),
       ensureAgencyAdminGroupIdIndex(),
-      // Chips gate on visibleGroupIds — must be loaded before paint.
-      searchPortalGroups(),
     ]);
     const managed = await resolveManagedSuffixesForUser(merged);
     editManagedHomeSuffix = getHomeSuffixForUser(merged);
@@ -3242,8 +3144,6 @@ window.editUser = async (userPk) => {
           if (hasGlobal) {
             permissionsSelect.value = "global_admin";
           }
-          // Re-paint chips now that global-admin group ids are cached for omission.
-          renderGroupChips(selectedUser);
           updatePermissionsSelectLock();
           updateEditManagedAgenciesVisibility();
         })
@@ -4124,23 +4024,7 @@ if (applyChangesBtn) applyChangesBtn.addEventListener("click", async () => {
     return;
   }
 
-  // Belt-and-suspenders: never show Authentik service accounts in the table
-  // even if an older API build omitted the SQL hide clause.
-  const HIDDEN_USER_PREFIXES_CLIENT = ["ak-", "akadmin", "adm_", "nodered-", "ma-"];
-  const users = (Array.isArray(out.users) ? out.users : []).filter((u) => {
-    const name = String(u?.username || "").trim().toLowerCase();
-    if (!name) return false;
-    if (u?.tak_portal_hidden === true) return false;
-    const attrs = u?.attributes && typeof u.attributes === "object" ? u.attributes : null;
-    if (attrs) {
-      const v = attrs.tak_portal_hidden;
-      const s = String(v == null ? "" : v).trim().toLowerCase();
-      if (v === true || s === "true" || s === "1" || s === "yes") return false;
-    }
-    if (HIDDEN_USER_PREFIXES_CLIENT.some((p) => name.startsWith(p))) return false;
-    if (name.startsWith("ak-outpost-")) return false;
-    return true;
-  });
+  const users = Array.isArray(out.users) ? out.users : [];
   currentPage = Number(out.page || currentPage || 1);
   totalUsers = Number(out.total || 0);
   hasNextPage = !!out.hasNext;

@@ -995,10 +995,6 @@ app.get("/", (req, res) => {
 });
 
 app.get("/users", requirePermission("page.users"), async (req, res) => {
-  // EJS embeds the chip/list JS — never let browsers keep a stale Users page.
-  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
   const pendingUserRequestsCount =
     userRequestsSvc.countRequestsForUser(req.authentikUser);
   const enrollmentPkg = require("./services/enrollmentPackage.service");
@@ -2505,28 +2501,6 @@ async function boot() {
     console.error("[boot] Postgres migrate failed:", e?.message || e);
     process.exit(1);
   }
-
-  // Stamp/hide check on every web process start (does not rely on worker alone).
-  // After HIDDEN_PREFIX_ATTR_MIGRATION=1 this still re-stamps ak-* / AgencyAdmin /
-  // PORTAL_AUTH_REQUIRED_GROUP rows Authentik may have omitted or cleared.
-  // Await the first pass so Existing Users is clean before we accept traffic.
-  try {
-    const hiddenPrefixMigration = require("./services/hiddenPrefixMigration.service");
-    try {
-      const result = await hiddenPrefixMigration.runOnce();
-      console.log("[boot] hidden-prefix migration:", JSON.stringify(result || {}));
-    } catch (e) {
-      console.warn("[boot] hidden-prefix migration:", e?.message || e);
-    }
-    setInterval(() => {
-      void hiddenPrefixMigration.runOnce().catch((e) =>
-        console.warn("[boot] hidden-prefix migration:", e?.message || e)
-      );
-    }, 30 * 1000).unref?.();
-  } catch (e) {
-    console.warn("[boot] hidden-prefix migration init:", e?.message || e);
-  }
-
   const port = process.env.WEB_UI_PORT || 3000;
   app.listen(port, () => {
     console.log(

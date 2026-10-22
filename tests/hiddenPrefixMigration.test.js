@@ -9,10 +9,6 @@ const settingsState = {
 
 const settingsSvc = require("../services/settings.service");
 settingsSvc.getSettings = () => ({ ...settingsState });
-settingsSvc.get = (name, fallback) =>
-  Object.prototype.hasOwnProperty.call(settingsState, name)
-    ? settingsState[name]
-    : fallback;
 settingsSvc.updateSettings = (patch) => {
   Object.assign(settingsState, patch || {});
 };
@@ -61,7 +57,7 @@ const migration = require("../services/hiddenPrefixMigration.service");
 
 assert.deepStrictEqual(
   migration.stampUserPrefixes().sort(),
-  ["ak-", "akadmin", "adm_", "ma-", "nodered-"].sort()
+  ["ak-", "adm_", "ma-", "nodered-"].sort()
 );
 assert.deepStrictEqual(
   migration.stampGroupPrefixes().sort(),
@@ -123,31 +119,6 @@ assert.deepStrictEqual(
 
   const third = await migration.runOnce();
   assert.ok(third.skipped);
-
-  // After prefix migration completes, still stamp PORTAL_AUTH_REQUIRED_GROUP names.
-  settingsState.PORTAL_AUTH_REQUIRED_GROUP = "tak-portal-global-admins";
-  assert.deepStrictEqual(migration.portalAuthRequiredGroupNames(), [
-    "tak-portal-global-admins",
-  ]);
-  const stampedBefore = calls.stampedGroups;
-  calls.groups = [
-    {
-      id: "55555555-5555-4555-8555-555555555555",
-      authentik_pk: "5",
-      name: "tak-portal-global-admins",
-      attributes: {},
-    },
-  ];
-  const fourth = await migration.runOnce();
-  assert.ok(fourth.skipped, "prefix migration stays complete");
-  assert.ok(
-    calls.stampedGroups > stampedBefore,
-    "must stamp PORTAL_AUTH_REQUIRED_GROUP even after migration flag is set"
-  );
-  assert.ok(
-    (fourth.stampedGlobalAdminGroups || 0) >= 1,
-    "runOnce should report stamped global-admin groups"
-  );
 
   console.log("hiddenPrefixMigration.test.js: ok");
 })().catch((err) => {

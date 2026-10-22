@@ -95,19 +95,6 @@ assert.ok(
   "role backfill must not live-patch Authentik attributes"
 );
 
-const getUserByIdFn = sliceAsyncFn(usersSrc, "getUserById", "getLocalUserForAuth");
-assert.ok(
-  getUserByIdFn.includes("chipGroups") && getUserByIdFn.includes("chipGroupsFromDetails"),
-  "getUserById must expose server-filtered chipGroups for the edit modal"
-);
-assert.ok(
-  usersSrc.includes("function toGroupDetail") &&
-    usersSrc.includes("function chipGroupsFromDetails") &&
-    usersSrc.includes("tak_portal_hidden") &&
-    usersSrc.includes("isInternalPortalGroupName"),
-  "groupDetails/chipGroups helpers must stamp tak_portal_hidden and omit internal groups"
-);
-
 const createDirFn = usersSrc.slice(
   usersSrc.indexOf("async function createDirectoryUser"),
   usersSrc.indexOf("const LEGACY_INTEGRATION_USERNAME_PREFIX")

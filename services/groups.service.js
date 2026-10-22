@@ -1435,8 +1435,7 @@ async function getAllGroups(options = {}) {
 
   // Allow explicitly disabling caching.
   if (GROUPS_CACHE_TTL_MS <= 0) {
-    const raw = await getAllGroupsRaw({ includeHidden });
-    return applyGroupsHiddenPrefixFilter(raw, { includeHidden: !!includeHidden });
+    return await getAllGroupsRaw({ includeHidden });
   }
 
   const key = !!includeHidden;
@@ -1451,10 +1450,7 @@ async function getAllGroups(options = {}) {
 
   if (!forceRefresh && cacheValid) return entry.data;
 
-  const raw = await getAllGroupsRaw({ includeHidden });
-  // Re-apply isGroupHidden (AgencyAdmin / authentik* / attr) in memory so a
-  // stale SQL-only cache cannot leak hidden groups into /api/groups or chips.
-  const data = applyGroupsHiddenPrefixFilter(raw, { includeHidden: !!includeHidden });
+  const data = await getAllGroupsRaw({ includeHidden });
   GROUPS_CACHE_BY_INCLUDE_HIDDEN[key] = { data, loadedAt: now };
   return data;
 }

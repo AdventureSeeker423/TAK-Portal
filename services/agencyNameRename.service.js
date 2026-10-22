@@ -10,7 +10,6 @@ const userRequestsStore = require("./userRequests.store");
 const groupsService = require("./groups.service");
 const accessSvc = require("./access.service");
 const usersService = require("./users.service");
-const { markHiddenAttributes } = require("./portalHidden.util");
 
 const MAX_AGENCY_NAME_LENGTH = 200;
 
@@ -52,12 +51,12 @@ async function ensureAgencyAdminGroupExists(agency) {
   if (!name) throw new Error("Agency abbreviation (groupPrefix) is required");
 
   const fullName = String(agency?.name || "").trim();
-  const attributes = markHiddenAttributes({
+  const attributes = {
     created_at: new Date().toISOString(),
     created_type: "Agency",
     created_type_detail: fullName || null,
     description: `Agency admin group for ${fullName}`,
-  });
+  };
 
   try {
     await groupsService.createGroup(name, { attributes });

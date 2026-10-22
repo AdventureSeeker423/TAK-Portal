@@ -7,12 +7,6 @@ const { extractUserColumns, extractGroupColumns, membershipHash } = require("./u
 const agenciesStore = require("./agencies.service");
 const accessSvc = require("./access.service");
 const { parseAuthentikLastLogin } = require("./userLoginStatus.service");
-const {
-  markHiddenAttributes,
-  usernameMatchesHiddenPrefix,
-  groupNameMatchesHiddenPrefix,
-  isInternalPortalGroupName,
-} = require("./portalHidden.util");
 
 let _snapshotRunning = false;
 let _backupPause = 0;
@@ -287,12 +281,8 @@ async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
   if (pending.byPk.has(String(pk)) || pending.byUsername.has(username.toLowerCase())) {
     return;
   }
-  let attrs = akUser.attributes && typeof akUser.attributes === "object" ? { ...akUser.attributes } : {};
+  const attrs = akUser.attributes || {};
   const cols = extractUserColumns(attrs, akUser);
-  // Builtin prefixes (ak-, nodered-, …): keep hidden even when Authentik omits the attr.
-  const forceHidden = usernameMatchesHiddenPrefix(username);
-  if (forceHidden) attrs = markHiddenAttributes(attrs);
-  const takPortalHidden = !!cols.tak_portal_hidden || forceHidden;
   const hasGroupsField = Array.isArray(akUser.groups);
   const groupPks = hasGroupsField ? akUser.groups.map(String) : [];
   const hash = hasGroupsField ? membershipHash(groupPks) : null;
@@ -357,7 +347,7 @@ async function upsertAuthentikUser(akUser, pending, groupUuidByPk) {
       cols.radio_callsign, cols.current_template, cols.created_template, cols.created_at_attr, cols.created_method,
       cols.created_by_username, cols.created_by_display_name, cols.mutual_aid, cols.mutual_aid_type, cols.mutual_aid_group,
       cols.integration_type, cols.integration_scope, cols.integration_title, cols.tak_integration_group, cols.state, cols.county,
-      takPortalHidden,
+      !!cols.tak_portal_hidden,
       parseAuthentikLastLogin(akUser.last_login),
       hash || priorHash || null,
     ]
@@ -386,12 +376,8 @@ async function upsertAuthentikGroup(akGroup, pending) {
   const name = String(akGroup.name || "").trim();
   if (!name) return;
   if (pending.byPk.has(String(pk))) return;
-  let attrs = akGroup.attributes && typeof akGroup.attributes === "object" ? { ...akGroup.attributes } : {};
+  const attrs = akGroup.attributes || {};
   const cols = extractGroupColumns(attrs);
-  const forceHidden =
-    groupNameMatchesHiddenPrefix(name) || isInternalPortalGroupName(name);
-  if (forceHidden) attrs = markHiddenAttributes(attrs);
-  const takPortalHidden = !!cols.tak_portal_hidden || forceHidden;
   await db.query(
     `INSERT INTO groups (
       authentik_pk, name, cn, description, is_superuser, parent_pk, num_pk, attributes,
@@ -424,7 +410,7 @@ async function upsertAuthentikGroup(akGroup, pending) {
       !!akGroup.is_superuser, akGroup.parent || null, akGroup.num_pk || null, JSON.stringify(attrs),
       cols.created_type, cols.created_type_detail, cols.created_at_attr, cols.created_by_username, cols.created_by_display_name,
       cols.is_private,
-      takPortalHidden,
+      !!cols.tak_portal_hidden,
     ]
   );
 }
