@@ -159,7 +159,7 @@ restore_dotenv() {
 
 # TAKPORTAL_CHANNEL_AWARE=1  — do not re-exec a checkout that lacks this marker (would git-pull main).
 
-GITHUB_REPO="${GITHUB_REPO:-AdventureSeeker423/TAK-Portal}"
+GITHUB_REPO="${GITHUB_REPO:-ValleyTacticalSolutions/TAK-Portal}"
 
 file_sha256() {
   if command -v sha256sum >/dev/null 2>&1; then

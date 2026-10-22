@@ -54,7 +54,7 @@ function pollIntervalMs() {
 function defaultCatalogUrl() {
   const override = String(getString("CLOUDTAK_MARKETPLACE_CATALOG_URL", "")).trim();
   if (override) return override;
-  const repo = process.env.GITHUB_REPO || "AdventureSeeker423/TAK-Portal";
+  const repo = process.env.GITHUB_REPO || "ValleyTacticalSolutions/TAK-Portal";
   const ref = String(getString("CLOUDTAK_MARKETPLACE_CATALOG_REF", "main") || "main").trim() || "main";
   return `https://raw.githubusercontent.com/${repo}/${encodeURIComponent(ref)}/catalog/cloudtak-plugins.json`;
 }

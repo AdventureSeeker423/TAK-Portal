@@ -48,7 +48,7 @@ For manual deployment of TAK Portal:
 On your Docker machine, run:
 
 ```
-git clone https://github.com/AdventureSeeker423/TAK-Portal
+git clone git clone https://github.com/ValleyTacticalSolutions/TAK-Portal
 ```
 
 (Optional) To set a custom web UI port (Default is 3000)

@@ -134,10 +134,10 @@ assert.strictEqual(driftedTwice.text, driftedOnce.text);
 assert.ok(!ids.includes("lightning"));
 
 const gh = marketplace.parseGitHubRepo(
-  "https://github.com/AdventureSeeker423/cloudtak-plugin-quick-point-dropper.git"
+  "https://github.com/ValleyTacticalSolutions/cloudtak-plugin-quick-point-dropper.git"
 );
 assert.deepStrictEqual(gh, {
-  owner: "AdventureSeeker423",
+  owner: "ValleyTacticalSolutions",
   repo: "cloudtak-plugin-quick-point-dropper",
 });
 

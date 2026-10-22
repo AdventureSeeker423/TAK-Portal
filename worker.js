@@ -20,7 +20,7 @@ function stripVersionPrefix(v) {
 
 async function writeAppUpdateMeta() {
   try {
-    const repo = process.env.GITHUB_REPO || "AdventureSeeker423/TAK-Portal";
+    const repo = process.env.GITHUB_REPO || "ValleyTacticalSolutions/TAK-Portal";
     const url = `https://api.github.com/repos/${repo}/releases/latest`;
     const response = await axios.get(url, {
       timeout: 5000,
