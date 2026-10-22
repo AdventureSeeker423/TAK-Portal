@@ -835,7 +835,8 @@ async function searchPortalGroups() {
     const lower = name.toLowerCase();
     const withoutTak = lower.startsWith("tak_") ? lower.slice(4) : lower;
     if (withoutTak.startsWith("authentik")) return false;
-    if (withoutTak.endsWith("-agencyadmin") || withoutTak.endsWith("_agencyadmin")) return false;
+    if (withoutTak.includes("agencyadmin")) return false;
+    if (/global[\s_-]*admin/.test(lower) || /global[\s_-]*admin/.test(withoutTak)) return false;
     return true;
   });
   if (res.ok) groupsFullyLoaded = true;
@@ -1696,9 +1697,35 @@ function isInternalAuthGroupName(name) {
   if (!raw) return true;
   const withoutTak = raw.startsWith("tak_") ? raw.slice(4) : raw;
   if (withoutTak.startsWith("authentik")) return true;
-  if (withoutTak.endsWith("-agencyadmin") || withoutTak.endsWith("_agencyadmin")) return true;
+  // AgencyAdmin variants: authentik-*-AgencyAdmin, *-AgencyAdmin, *_agencyadmin, etc.
+  if (withoutTak.includes("agencyadmin")) return true;
+  // Global admin even when PORTAL_AUTH_REQUIRED_GROUP is empty/mismatched.
+  if (/global[\s_-]*admin/.test(raw) || /global[\s_-]*admin/.test(withoutTak)) return true;
   if (PORTAL_GLOBAL_ADMIN_GROUP_NAMES_LOWER.includes(raw)) return true;
   if (PORTAL_GLOBAL_ADMIN_GROUP_NAMES_LOWER.includes(withoutTak)) return true;
+  return false;
+}
+
+/** True when this group id is a known AgencyAdmin / global-admin membership (name may be missing). */
+function isInternalAuthGroupId(id) {
+  const key = String(id || "").trim();
+  if (!key) return false;
+  if (Array.isArray(globalAdminGroupIdsCache) && globalAdminGroupIdsCache.some((x) => String(x) === key)) {
+    return true;
+  }
+  if (agencyAdminGroupIdIndexByAbbr instanceof Map) {
+    for (const ids of agencyAdminGroupIdIndexByAbbr.values()) {
+      if ((ids || []).some((x) => String(x) === key)) return true;
+    }
+  }
+  return false;
+}
+
+function shouldOmitFromGroupChips(name, id) {
+  if (isInternalAuthGroupId(id)) return true;
+  if (name && isInternalAuthGroupName(name)) return true;
+  // No resolvable name for an id outside the portal picker — keep it off the chips.
+  if (!name && !visibleGroupIds.has(String(id))) return true;
   return false;
 }
 
@@ -2271,27 +2298,43 @@ function indexUserGroupDetails(user) {
     const id = String(g?.pk || g?.id || "").trim();
     const name = String(g?.name || "").trim();
     if (!id || !name) continue;
+    // Never put AgencyAdmin / global-admin / authentik* into groupIndex — that used to
+    // make Current Groups chips show them even when they were absent from the checkbox grid.
+    if (isInternalAuthGroupName(name)) continue;
     groupIndex.set(id, name);
   }
 }
 
 function renderGroupChips(user){
+  const details = Array.isArray(user?.groupDetails) ? user.groupDetails : [];
+  const detailNameById = new Map();
+  for (const g of details) {
+    const id = String(g?.pk || g?.id || "").trim();
+    const name = String(g?.name || "").trim();
+    if (id && name) detailNameById.set(id, name);
+  }
+  // Keep groupIndex warm for non-internal names (checkbox labels, template match, etc.).
   indexUserGroupDetails(user);
+
   const ids = Array.isArray(user.groups)
     ? user.groups.map(x => String(x))
     : [];
 
-  // Only portal-visible channel/template groups — never AgencyAdmin / global-admin / authentik*.
-  const names = ids
-    .map(id => {
-      const key = String(id);
-      if (!visibleGroupIds.has(key)) return null;
-      const name = groupIndex.get(key);
-      if (!name || isInternalAuthGroupName(name)) return null;
-      return name;
-    })
-    .filter(Boolean)
-    .sort((a,b)=>String(a).localeCompare(String(b)));
+  // Chips = membership names the admin should manage here. Never AgencyAdmin / global-admin /
+  // authentik* — those stay on the user for permissions but are not listed above the picker.
+  const names = [];
+  const seen = new Set();
+  for (const id of ids) {
+    const key = String(id);
+    const name = detailNameById.get(key) || groupIndex.get(key) || "";
+    if (shouldOmitFromGroupChips(name, key)) continue;
+    if (!name) continue;
+    const dedupe = name.toLowerCase();
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    names.push(name);
+  }
+  names.sort((a, b) => String(a).localeCompare(String(b)));
 
   groupChips.innerHTML = names.length
     ? names.map(n =>
@@ -2914,11 +2957,11 @@ function syncPickedGroupsToUi() {
 }
 
 function renderGroupsBox(){
-  // Only show portal-visible groups in the checkbox grid (never tak_portal_hidden).
-  // Hidden/internal groups may still live in groupIndex for "Current Groups" chips.
+  // Only show portal-visible groups in the checkbox grid (never tak_portal_hidden /
+  // AgencyAdmin / global-admin / authentik*). Membership in those is preserved on save.
   const allGroupsArray = Array.from(groupIndex.entries())
     .map(([id,name]) => ({id: String(id), name}))
-    .filter(g => visibleGroupIds.has(String(g.id)));
+    .filter(g => visibleGroupIds.has(String(g.id)) && !isInternalAuthGroupName(g.name));
 
   const filterText = groupFilter.value.trim().toLowerCase();
   const filteredGroups = filterText
@@ -3014,9 +3057,9 @@ async function resolveGroupIdByName(name){
     const nm = String(out.name || "").trim();
     if (!id || !nm) return null;
 
-    // Cache and also inject into groupIndex so chips can render the proper name
+    // Cache; only inject non-internal names into groupIndex (chips/picker must stay clean).
     groupNameToIdCache.set(key, id);
-    groupIndex.set(id, nm);
+    if (!isInternalAuthGroupName(nm)) groupIndex.set(id, nm);
     return id;
   } catch (e) {
     return null;
@@ -3173,6 +3216,8 @@ window.editUser = async (userPk) => {
           if (hasGlobal) {
             permissionsSelect.value = "global_admin";
           }
+          // Re-paint chips now that global-admin group ids are cached for omission.
+          renderGroupChips(selectedUser);
           updatePermissionsSelectLock();
           updateEditManagedAgenciesVisibility();
         })
