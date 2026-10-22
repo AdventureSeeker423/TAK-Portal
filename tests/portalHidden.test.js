@@ -105,10 +105,20 @@ const usersEjs = fs.readFileSync(
   "utf8"
 );
 assert.ok(
-  usersEjs.includes("shouldOmitFromGroupChips") &&
-    usersEjs.includes("groupIndex.get(key)") &&
-    usersEjs.includes("visibleGroupIds.has"),
-  "edit-modal chips must use picker-visible groupIndex names only"
+  usersEjs.includes("chipGroups") &&
+    usersEjs.includes("shouldOmitFromGroupChips") &&
+    usersEjs.includes("isClientHiddenUsername"),
+  "edit-modal chips must prefer server chipGroups; table must filter ak- client-side"
+);
+
+const dirRepoSrc = fs.readFileSync(
+  path.join(__dirname, "..", "services", "directoryRepo.service.js"),
+  "utf8"
+);
+assert.ok(
+  dirRepoSrc.includes("builtinUserPrefixSql") &&
+    dirRepoSrc.includes("ak-outpost-%"),
+  "SQL hide clause must hardcode ak-outpost exclusion"
 );
 
 console.log("portalHidden.test.js: ok");

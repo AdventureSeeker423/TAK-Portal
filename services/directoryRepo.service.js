@@ -4,6 +4,8 @@ const { extractUserColumns, extractGroupColumns, membershipHash } = require("./u
 const {
   hiddenUserPrefixes,
   hiddenGroupPrefixes,
+  BUILTIN_USER_HIDDEN_PREFIXES,
+  BUILTIN_GROUP_HIDDEN_PREFIXES,
 } = require("./portalHidden.util");
 
 const UUID_RE =
@@ -35,11 +37,44 @@ function userPathClause(params) {
  * @param {boolean} includeHiddenPrefixes
  * @param {string} [tableAlias] optional alias (e.g. "u") for joined queries
  */
+/**
+ * Hardcoded LIKE exclusions so ak-outpost-* etc. stay out even if prefix settings /
+ * JS helpers are empty or stale in a running process.
+ */
+function builtinUserPrefixSql(usernameCol) {
+  const parts = (BUILTIN_USER_HIDDEN_PREFIXES || []).map(
+    (p) => `lower(${usernameCol}) LIKE '${String(p).replace(/'/g, "''")}%'`
+  );
+  // AgencyAdmin-style service accounts + Authentik outposts.
+  parts.push(`lower(${usernameCol}) LIKE 'ak-outpost-%'`);
+  if (!parts.length) return "";
+  return ` AND NOT (${parts.join(" OR ")})`;
+}
+
+function builtinGroupPrefixSql(nameCol) {
+  const parts = [];
+  for (const p of BUILTIN_GROUP_HIDDEN_PREFIXES || []) {
+    const esc = String(p).replace(/'/g, "''");
+    parts.push(`lower(${nameCol}) LIKE '${esc}%'`);
+    parts.push(
+      `lower(regexp_replace(${nameCol}, '^tak_', '', 'i')) LIKE '${esc}%'`
+    );
+  }
+  // AgencyAdmin even when the name does not start with authentik-
+  parts.push(`lower(${nameCol}) LIKE '%agencyadmin%'`);
+  parts.push(
+    `lower(regexp_replace(${nameCol}, '^tak_', '', 'i')) LIKE '%agencyadmin%'`
+  );
+  if (!parts.length) return "";
+  return ` AND NOT (${parts.join(" OR ")})`;
+}
+
 function hiddenUserClause(params, includeHiddenPrefixes, tableAlias) {
   if (includeHiddenPrefixes) return "";
   const col = tableAlias ? `${tableAlias}.tak_portal_hidden` : "tak_portal_hidden";
   const usernameCol = tableAlias ? `${tableAlias}.username` : "username";
   let sql = ` AND ${col} = false`;
+  sql += builtinUserPrefixSql(usernameCol);
   const prefixes = hiddenUserPrefixes();
   if (prefixes.length) {
     params.push(prefixes);
@@ -56,6 +91,7 @@ function hiddenGroupClause(params, includeHidden, tableAlias) {
   const col = tableAlias ? `${tableAlias}.tak_portal_hidden` : "tak_portal_hidden";
   const nameCol = tableAlias ? `${tableAlias}.name` : "name";
   let sql = ` AND ${col} = false`;
+  sql += builtinGroupPrefixSql(nameCol);
   const prefixes = hiddenGroupPrefixes();
   if (prefixes.length) {
     params.push(prefixes);

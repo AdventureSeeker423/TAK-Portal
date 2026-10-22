@@ -2241,8 +2241,24 @@ function updateSortIndicators(){
   });
 }
 
+/** Client-side last line of defense — never paint builtin-hidden usernames. */
+function isClientHiddenUsername(username) {
+  const u = String(username || "").trim().toLowerCase();
+  if (!u) return true;
+  return (
+    u.startsWith("ak-") ||
+    u.startsWith("akadmin") ||
+    u.startsWith("adm_") ||
+    u.startsWith("nodered-") ||
+    u.startsWith("ma-")
+  );
+}
+
 function renderResults(users){
-  tbody.innerHTML = users.map(u=>{
+  const visible = (Array.isArray(users) ? users : []).filter(
+    (u) => !isClientHiddenUsername(u?.username)
+  );
+  tbody.innerHTML = visible.map(u=>{
     const pk = escapeHtml(u.pk);
     const toggleLabel = u.is_active ? "Disable" : "Enable";
     const toggleBtnClass = u.is_active ? "btn caution" : "btn";
@@ -2309,22 +2325,42 @@ function indexUserGroupDetails(user) {
 }
 
 function renderGroupChips(user){
+  // Prefer server-filtered chipGroups (isGroupHidden + AgencyAdmin / authentik*).
+  // Never paint from raw groupDetails — that is what kept resurfacing hidden chips.
+  const serverChips = Array.isArray(user?.chipGroups) ? user.chipGroups : null;
+  if (serverChips) {
+    indexUserGroupDetails(user);
+    const names = [];
+    const seen = new Set();
+    for (const g of serverChips) {
+      const name = String(g?.name || "").trim();
+      if (!name || isInternalAuthGroupName(name)) continue;
+      const dedupe = name.toLowerCase();
+      if (seen.has(dedupe)) continue;
+      seen.add(dedupe);
+      names.push(name);
+    }
+    names.sort((a, b) => String(a).localeCompare(String(b)));
+    groupChips.innerHTML = names.length
+      ? names.map(n =>
+          `<span class="chip">${escapeHtml(stripTakPrefix(n))}</span>`
+        ).join("")
+      : `<span class="muted">None</span>`;
+    return;
+  }
+
   const details = Array.isArray(user?.groupDetails) ? user.groupDetails : [];
   const detailById = new Map();
   for (const g of details) {
     const id = String(g?.pk || g?.id || "").trim();
     if (id) detailById.set(id, g);
   }
-  // Keep groupIndex warm for non-hidden names only (never AgencyAdmin / hidden).
   indexUserGroupDetails(user);
 
   const ids = Array.isArray(user.groups)
     ? user.groups.map(x => String(x))
     : [];
 
-  // Chips = intersection of memberships with the portal-visible picker set.
-  // Names come from groupIndex (picker), NEVER from groupDetails alone — that
-  // path was resurfacing AgencyAdmin / authentik* chips when the attr was missing.
   const names = [];
   const seen = new Set();
   for (const id of ids) {
