@@ -2142,6 +2142,16 @@ function userStatusLabel(user) {
   return role;
 }
 
+/** Keep " - No Logins" / " - Web Only" when only the permission role changes. */
+function statusLabelAfterPermissionChange(user, permissionLabel) {
+  const role = String(permissionLabel || "User").trim() || "User";
+  const prev = String(user?.statusLabel || "").trim();
+  if (/ - No Logins$/i.test(prev)) return `${role} - No Logins`;
+  if (/ - Web Only$/i.test(prev)) return `${role} - Web Only`;
+  const next = { ...user, permissionLabel: role, portal_role: role, statusLabel: "" };
+  return userStatusLabel(next);
+}
+
 function applyActiveFlip(row, userPk, newState) {
   if (String(row.pk) !== String(userPk)) return row;
   const next = { ...row, is_active: newState, statusLabel: "" };
@@ -3277,6 +3287,13 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error || "Failed to update permissions.");
 
+    // Preserve login suffix from the table row before a fresh fetch can drop it.
+    const priorRow =
+      (window.__lastUsers || []).find((x) => String(x.pk) === String(selectedUser.pk)) ||
+      (allUsers || []).find((x) => String(x.pk) === String(selectedUser.pk)) ||
+      selectedUser;
+    const priorStatusLabel = String(priorRow?.statusLabel || selectedUser.statusLabel || "").trim();
+
     const freshRes = await fetch(`/api/users/${encodeURIComponent(selectedUser.pk)}`);
     const fresh = await freshRes.json().catch(() => ({}));
     if (freshRes.ok && fresh && fresh.pk != null) {
@@ -3316,8 +3333,10 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
             : "User";
     selectedUser.permissionLabel = nextPermissionLabel;
     selectedUser.portal_role = nextPermissionLabel;
-    selectedUser.statusLabel = "";
-    selectedUser.statusLabel = userStatusLabel(selectedUser);
+    selectedUser.statusLabel = statusLabelAfterPermissionChange(
+      { ...selectedUser, statusLabel: priorStatusLabel },
+      nextPermissionLabel
+    );
     renderGroupChips(selectedUser);
     renderGroupsBox();
     if (permissionsSelect && desired === "agency_admin") {
@@ -3330,17 +3349,14 @@ async function applyPermissionsSelection({ silentSuccess = false } = {}) {
 
     const patch = (u) => {
       if (String(u.pk) !== String(selectedUser.pk)) return u;
-      const next = {
+      return {
         ...u,
         groups: selectedUser.groups,
         __role: selectedUser.__role,
         permissionLabel: nextPermissionLabel,
         portal_role: nextPermissionLabel,
-        // Clear cached status so User ↔ Admin shows immediately in the table.
-        statusLabel: "",
+        statusLabel: statusLabelAfterPermissionChange(u, nextPermissionLabel),
       };
-      next.statusLabel = userStatusLabel(next);
-      return next;
     };
     allUsers = (allUsers || []).map(patch);
     const updatedVisible = (window.__lastUsers || []).map(patch);
