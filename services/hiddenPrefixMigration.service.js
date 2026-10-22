@@ -1,6 +1,10 @@
 /**
- * One-time: stamp tak_portal_hidden on users/groups matching legacy hidden
- * prefixes, then blank USERS_HIDDEN_PREFIXES / GROUPS_HIDDEN_PREFIXES.
+ * One-time: stamp tak_portal_hidden on users/groups matching legacy hide
+ * patterns (and any remaining settings prefixes), then blank prefix settings.
+ *
+ * Fresh installs no longer seed USERS_/GROUPS_HIDDEN_PREFIXES, so this always
+ * uses the built-in legacy lists below so Authentik/system/MA/integration
+ * accounts still get the attribute after the first inbound sync.
  */
 const db = require("./db");
 const settingsSvc = require("./settings.service");
@@ -14,8 +18,38 @@ const {
 } = require("./portalHidden.util");
 
 const MIGRATION_FLAG = "HIDDEN_PREFIX_ATTR_MIGRATION";
+
+/** Former settings.example defaults — always stamped regardless of settings. */
+const LEGACY_USER_HIDDEN_PREFIXES = ["ak-", "adm_", "nodered-", "ma-"];
+const LEGACY_GROUP_HIDDEN_PREFIXES = ["authentik", "ma -"];
+
 let _running = false;
 let _complete = false;
+
+function normalizePrefixList(list) {
+  return [
+    ...new Set(
+      (Array.isArray(list) ? list : [])
+        .map((p) => String(p || "").trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+/** Union of hardcoded legacy prefixes and any still-configured settings prefixes. */
+function stampUserPrefixes() {
+  return normalizePrefixList([
+    ...LEGACY_USER_HIDDEN_PREFIXES,
+    ...hiddenUserPrefixes(),
+  ]);
+}
+
+function stampGroupPrefixes() {
+  return normalizePrefixList([
+    ...LEGACY_GROUP_HIDDEN_PREFIXES,
+    ...hiddenGroupPrefixes(),
+  ]);
+}
 
 function migrationDone() {
   if (_complete) return true;
@@ -175,20 +209,11 @@ async function runOnce() {
 
   _running = true;
   try {
-    const userPrefixes = hiddenUserPrefixes();
-    const groupPrefixes = hiddenGroupPrefixes();
+    const userPrefixes = stampUserPrefixes();
+    const groupPrefixes = stampGroupPrefixes();
 
-    if (!userPrefixes.length && !groupPrefixes.length) {
-      settingsSvc.updateSettings({ [MIGRATION_FLAG]: "1" });
-      _complete = true;
-      console.log(
-        "[hidden-prefix-migration] prefixes already empty; marked complete"
-      );
-      return { done: true, stampedUsers: 0, stampedGroups: 0 };
-    }
-
-    // Wait until inbound has populated the directory at least once so we do not
-    // blank prefixes before Authentik system accounts exist locally.
+    // Wait until inbound has populated the directory at least once so Authentik
+    // system accounts (ak-*, authentik*) exist locally before we mark complete.
     if (!(await directoryInboundReady())) {
       return { waiting: "directory_sync" };
     }
@@ -251,6 +276,10 @@ async function runOnce() {
 module.exports = {
   MIGRATION_FLAG,
   ATTR_KEY,
+  LEGACY_USER_HIDDEN_PREFIXES,
+  LEGACY_GROUP_HIDDEN_PREFIXES,
+  stampUserPrefixes,
+  stampGroupPrefixes,
   runOnce,
   migrationDone,
 };
