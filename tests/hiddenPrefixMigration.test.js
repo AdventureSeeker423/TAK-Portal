@@ -9,6 +9,10 @@ const settingsState = {
 
 const settingsSvc = require("../services/settings.service");
 settingsSvc.getSettings = () => ({ ...settingsState });
+settingsSvc.get = (name, fallback) =>
+  Object.prototype.hasOwnProperty.call(settingsState, name)
+    ? settingsState[name]
+    : fallback;
 settingsSvc.updateSettings = (patch) => {
   Object.assign(settingsState, patch || {});
 };

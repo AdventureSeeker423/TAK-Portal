@@ -29,8 +29,8 @@ function userPathClause(params) {
 }
 
 /**
- * Exclude portal-hidden users (typed column) plus legacy prefix fallback while
- * USERS_HIDDEN_PREFIXES is still non-empty during migration.
+ * Exclude portal-hidden users (typed column) plus builtin/settings username prefixes
+ * (builtins always apply after migration clears USERS_HIDDEN_PREFIXES).
  * @param {any[]} params
  * @param {boolean} includeHiddenPrefixes
  * @param {string} [tableAlias] optional alias (e.g. "u") for joined queries
@@ -49,8 +49,7 @@ function hiddenUserClause(params, includeHiddenPrefixes, tableAlias) {
 }
 
 /**
- * Exclude portal-hidden groups (typed column) plus legacy prefix fallback while
- * GROUPS_HIDDEN_PREFIXES is still non-empty during migration.
+ * Exclude portal-hidden groups (typed column) plus builtin/settings name prefixes.
  */
 function hiddenGroupClause(params, includeHidden, tableAlias) {
   if (includeHidden) return "";

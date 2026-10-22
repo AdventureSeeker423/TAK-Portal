@@ -19,6 +19,16 @@ assert.strictEqual(
   portalHidden.isUserHidden({ username: "normal.user", attributes: {} }),
   false
 );
+// Builtin ak- prefix must hide Authentik outpost service accounts even with no attr/column
+// (after HIDDEN_PREFIX_ATTR_MIGRATION clears USERS_HIDDEN_PREFIXES).
+assert.strictEqual(
+  portalHidden.isUserHidden({
+    username: "ak-outpost-26c4e320065142f1978bd298748ef09c",
+    tak_portal_hidden: false,
+    attributes: {},
+  }),
+  true
+);
 assert.strictEqual(
   portalHidden.isUserHidden({
     username: "nodered-global-x",
@@ -26,6 +36,10 @@ assert.strictEqual(
     attributes: { tak_portal_hidden: "true" },
   }),
   true
+);
+assert.ok(
+  portalHidden.hiddenUserPrefixes().includes("ak-"),
+  "builtin ak- prefix always present after settings cleared"
 );
 assert.strictEqual(
   portalHidden.isUserHidden(
@@ -63,6 +77,14 @@ assert.ok(portalHidden.isMutualAidGroupName("MA - Drill"));
 assert.ok(portalHidden.isMutualAidGroupName("tak_MA - Drill"));
 assert.ok(!portalHidden.isMutualAidGroupName("SO Main"));
 
+assert.ok(portalHidden.isInternalPortalGroupName("authentik-SHPD-AgencyAdmin"));
+assert.ok(portalHidden.isInternalPortalGroupName("tak_authentik-FOO-AgencyAdmin"));
+assert.ok(
+  portalHidden.isGroupHidden({ name: "authentik-SHPD-AgencyAdmin", attributes: {} }),
+  "AgencyAdmin must be hidden even without tak_portal_hidden attr"
+);
+assert.ok(!portalHidden.isInternalPortalGroupName("SO Main"));
+
 // AgencyAdmin create paths must stamp tak_portal_hidden after prefix migration clears.
 const fs = require("fs");
 const path = require("path");
@@ -83,9 +105,10 @@ const usersEjs = fs.readFileSync(
   "utf8"
 );
 assert.ok(
-  usersEjs.includes("isPortalHiddenGroupClient(detail)") &&
-    usersEjs.includes("shouldOmitFromGroupChips"),
-  "edit-modal chips must omit groups via tak_portal_hidden attribute"
+  usersEjs.includes("shouldOmitFromGroupChips") &&
+    usersEjs.includes("groupIndex.get(key)") &&
+    usersEjs.includes("visibleGroupIds.has"),
+  "edit-modal chips must use picker-visible groupIndex names only"
 );
 
 console.log("portalHidden.test.js: ok");

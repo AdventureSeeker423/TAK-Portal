@@ -1722,11 +1722,11 @@ function isInternalAuthGroupId(id) {
 }
 
 function shouldOmitFromGroupChips(name, id, detail) {
-  // Attribute / column is the source of truth (same as /api/groups picker).
-  if (detail && isPortalHiddenGroupClient(detail)) return true;
-  // Hidden memberships are preserved on save but never shown as chips.
+  // Hard rule: chips are ONLY portal-visible picker groups. Hidden memberships
+  // (AgencyAdmin / authentik* / global-admin / tak_portal_hidden / MA) stay on
+  // the user for permissions but must never render above the checkbox grid.
   if (!visibleGroupIds.has(String(id))) return true;
-  // Defense-in-depth for unstamped AgencyAdmin / global-admin groups.
+  if (detail && isPortalHiddenGroupClient(detail)) return true;
   if (isInternalAuthGroupId(id)) return true;
   if (name && isInternalAuthGroupName(name)) return true;
   return false;
@@ -2315,21 +2315,22 @@ function renderGroupChips(user){
     const id = String(g?.pk || g?.id || "").trim();
     if (id) detailById.set(id, g);
   }
-  // Keep groupIndex warm for non-hidden names (checkbox labels, template match, etc.).
+  // Keep groupIndex warm for non-hidden names only (never AgencyAdmin / hidden).
   indexUserGroupDetails(user);
 
   const ids = Array.isArray(user.groups)
     ? user.groups.map(x => String(x))
     : [];
 
-  // Chips = portal-visible memberships only (tak_portal_hidden / picker-visible).
-  // AgencyAdmin / global-admin stay on the user for permissions but never appear here.
+  // Chips = intersection of memberships with the portal-visible picker set.
+  // Names come from groupIndex (picker), NEVER from groupDetails alone — that
+  // path was resurfacing AgencyAdmin / authentik* chips when the attr was missing.
   const names = [];
   const seen = new Set();
   for (const id of ids) {
     const key = String(id);
     const detail = detailById.get(key) || null;
-    const name = String((detail && detail.name) || groupIndex.get(key) || "").trim();
+    const name = String(groupIndex.get(key) || "").trim();
     if (shouldOmitFromGroupChips(name, key, detail)) continue;
     if (!name) continue;
     const dedupe = name.toLowerCase();

@@ -12,56 +12,33 @@ const authentikOutbox = require("./authentikOutbox.service");
 const directoryRepo = require("./directoryRepo.service");
 const {
   ATTR_KEY,
+  BUILTIN_USER_HIDDEN_PREFIXES,
+  BUILTIN_GROUP_HIDDEN_PREFIXES,
   markHiddenAttributes,
+  normalizePrefixList,
   hiddenUserPrefixes,
   hiddenGroupPrefixes,
+  usernameMatchesHiddenPrefix,
+  isInternalPortalGroupName,
+  portalAuthRequiredGroupNames,
 } = require("./portalHidden.util");
 
 const MIGRATION_FLAG = "HIDDEN_PREFIX_ATTR_MIGRATION";
 
-/** Former settings.example defaults — always stamped regardless of settings. */
-const LEGACY_USER_HIDDEN_PREFIXES = ["ak-", "akadmin", "adm_", "nodered-", "ma-"];
-const LEGACY_GROUP_HIDDEN_PREFIXES = ["authentik", "ma -"];
+/** @deprecated Prefer BUILTIN_* from portalHidden.util — kept for test/export stability. */
+const LEGACY_USER_HIDDEN_PREFIXES = BUILTIN_USER_HIDDEN_PREFIXES;
+const LEGACY_GROUP_HIDDEN_PREFIXES = BUILTIN_GROUP_HIDDEN_PREFIXES;
 
 let _running = false;
 let _complete = false;
 
-function normalizePrefixList(list) {
-  return [
-    ...new Set(
-      (Array.isArray(list) ? list : [])
-        .map((p) => String(p || "").trim().toLowerCase())
-        .filter(Boolean)
-    ),
-  ];
-}
-
-/** Union of hardcoded legacy prefixes and any still-configured settings prefixes. */
+/** Builtin + settings prefixes (hiddenUserPrefixes already includes builtins). */
 function stampUserPrefixes() {
-  return normalizePrefixList([
-    ...LEGACY_USER_HIDDEN_PREFIXES,
-    ...hiddenUserPrefixes(),
-  ]);
+  return normalizePrefixList(hiddenUserPrefixes());
 }
 
 function stampGroupPrefixes() {
-  return normalizePrefixList([
-    ...LEGACY_GROUP_HIDDEN_PREFIXES,
-    ...hiddenGroupPrefixes(),
-  ]);
-}
-
-/** Exact group names from PORTAL_AUTH_REQUIRED_GROUP (global admin). */
-function portalAuthRequiredGroupNames() {
-  const settings = settingsSvc.getSettings() || {};
-  return [
-    ...new Set(
-      String(settings.PORTAL_AUTH_REQUIRED_GROUP || "")
-        .split(",")
-        .map((s) => String(s || "").trim())
-        .filter(Boolean)
-    ),
-  ];
+  return normalizePrefixList(hiddenGroupPrefixes());
 }
 
 function migrationDone() {
@@ -205,38 +182,87 @@ async function countGroupsStillNeedingStampByExactNames(names) {
   return r.rows[0]?.n || 0;
 }
 
-/** Re-entrant: stamp configured global-admin groups even after prefix migration completed. */
+/** AgencyAdmin groups that never got (or lost) tak_portal_hidden after Authentik sync. */
+async function listAgencyAdminGroupsNeedingStamp() {
+  const r = await db.query(
+    `SELECT id, authentik_pk, name, attributes
+     FROM groups
+     WHERE pending_delete = false
+       AND tak_portal_hidden = false
+       AND (
+         lower(name) LIKE '%agencyadmin%'
+         OR lower(regexp_replace(name, '^tak_', '', 'i')) LIKE '%agencyadmin%'
+       )
+     ORDER BY name
+     LIMIT 500`
+  );
+  return r.rows;
+}
+
+/** Re-entrant: stamp global-admin + AgencyAdmin groups even after prefix migration completed. */
 async function stampPortalAuthRequiredGroups() {
   const names = portalAuthRequiredGroupNames();
-  if (!names.length) return { stampedGlobalAdminGroups: 0 };
-  const rows = await listGroupsNeedingStampByExactNames(names);
+  const byId = new Map();
+  for (const row of await listGroupsNeedingStampByExactNames(names)) {
+    byId.set(String(row.id), row);
+  }
+  for (const row of await listAgencyAdminGroupsNeedingStamp()) {
+    byId.set(String(row.id), row);
+  }
   let stampedGlobalAdminGroups = 0;
-  for (const row of rows) {
+  for (const row of byId.values()) {
     try {
       await stampGroup(row);
       stampedGlobalAdminGroups += 1;
     } catch (e) {
       console.warn(
-        `[hidden-prefix-migration] global-admin group ${row.name}:`,
+        `[hidden-prefix-migration] admin group ${row.name}:`,
         e?.message || e
       );
     }
   }
   if (stampedGlobalAdminGroups) {
     console.log(
-      `[hidden-prefix-migration] stamped ${stampedGlobalAdminGroups} PORTAL_AUTH_REQUIRED_GROUP group(s)`
+      `[hidden-prefix-migration] stamped ${stampedGlobalAdminGroups} admin/AgencyAdmin group(s)`
     );
   }
   return { stampedGlobalAdminGroups };
+}
+
+/** Re-entrant: local-stamp builtin-prefix users (ak-outpost-*, etc.) after migration. */
+async function stampBuiltinPrefixUsers() {
+  const prefixes = stampUserPrefixes();
+  const users = await listUsersNeedingStamp(prefixes);
+  let stampedUsers = 0;
+  for (const row of users) {
+    try {
+      await stampUser(row);
+      stampedUsers += 1;
+    } catch (e) {
+      console.warn(
+        `[hidden-prefix-migration] user ${row.username}:`,
+        e?.message || e
+      );
+    }
+  }
+  if (stampedUsers) {
+    console.log(
+      `[hidden-prefix-migration] stamped ${stampedUsers} builtin-prefix user(s)`
+    );
+  }
+  return { stampedBuiltinUsers: stampedUsers };
 }
 
 async function stampUser(row) {
   const attrs = markHiddenAttributes(
     row.attributes && typeof row.attributes === "object" ? row.attributes : {}
   );
+  // Authentik internal service accounts (ak-outpost-*, etc.) reject attribute writes.
+  // Keep the portal column/attrs local-only; inbound sync force-hides by prefix.
+  const skipAuthentikPatch = usernameMatchesHiddenPrefix(row.username);
   await db.withTransaction(async (c) => {
     await directoryRepo.updateLocalUser(row.id, { attributes: attrs }, c);
-    if (row.authentik_pk != null) {
+    if (!skipAuthentikPatch && row.authentik_pk != null) {
       await authentikOutbox.enqueue(
         {
           kind: "patch_user",
@@ -259,9 +285,11 @@ async function stampGroup(row) {
   const attrs = markHiddenAttributes(
     row.attributes && typeof row.attributes === "object" ? row.attributes : {}
   );
+  // AgencyAdmin / authentik* / global-admin: keep local; sync force-hides by name.
+  const skipAuthentikPatch = isInternalPortalGroupName(row.name);
   await db.withTransaction(async (c) => {
     await directoryRepo.updateLocalGroup(row.id, { attributes: attrs }, c);
-    if (row.authentik_pk != null) {
+    if (!skipAuthentikPatch && row.authentik_pk != null) {
       await authentikOutbox.enqueue(
         {
           kind: "patch_group",
@@ -293,8 +321,8 @@ function markCompleteAndClearPrefixes() {
 
 /**
  * Re-entrant tick: stamp batches until confirmed, then clear prefix settings.
- * Always ensures PORTAL_AUTH_REQUIRED_GROUP names are attribute-hidden (even
- * after the one-time prefix migration has completed).
+ * After complete, keeps re-stamping AgencyAdmin / global-admin groups and
+ * builtin-prefix users (ak-outpost-*) locally — Authentik often omits the attr.
  */
 async function runOnce() {
   if (_running) return { skipped: true };
@@ -302,9 +330,10 @@ async function runOnce() {
   _running = true;
   try {
     const globalAdminResult = await stampPortalAuthRequiredGroups();
+    const builtinUserResult = await stampBuiltinPrefixUsers();
 
     if (migrationDone()) {
-      return { skipped: true, ...globalAdminResult };
+      return { skipped: true, ...globalAdminResult, ...builtinUserResult };
     }
 
     const userPrefixes = stampUserPrefixes();
