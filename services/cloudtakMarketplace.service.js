@@ -2849,12 +2849,183 @@ function pluginRuntimeExtrasBash() {
   ].join("\n");
 }
 
+/** Tracked CloudTAK paths marketplace may dirty; restored before wrapped git pull. */
+const MARKETPLACE_GIT_RESTORE_PATHS = [
+  "app/package-lock.json",
+  "app/package.json",
+  "app/eslint.config.js",
+  "app/tsconfig.json",
+  "api/eslint.config.js",
+];
+
+/**
+ * Host helper: restore marketplace-touched tracked files, git pull, then re-align.
+ * Written to cloudtak-marketplace-plugins/_host/wrap-git-pull.sh on every align.
+ */
+function marketplaceWrapGitPullScript() {
+  const pathLines = MARKETPLACE_GIT_RESTORE_PATHS.map((p) => `  "${p}"`).join("\n");
+  return `#!/usr/bin/env bash
+# CloudTAK Marketplace: safe git pull for a checkout with plugin/align dirtied files.
+# Usage: wrap-git-pull.sh [/path/to/CloudTAK] [git pull args...]
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+HOST_DIR="$SCRIPT_DIR"
+RESTORE_PATHS=(
+${pathLines}
+)
+
+resolve_cloudtak() {
+  local cand
+  if [ "$#" -ge 1 ] && [ -d "$1" ]; then
+    cand="$1"
+    if [ -d "$cand/.git" ] || [ -f "$cand/app/package.json" ] || [ -d "$cand/api" ]; then
+      printf '%s\\n' "$cand"
+      return 0
+    fi
+  fi
+  cand="$(pwd -P)"
+  while [ -n "$cand" ] && [ "$cand" != "/" ]; do
+    if [ -d "$cand/.git" ] && { [ -f "$cand/app/package.json" ] || [ -d "$cand/api" ]; }; then
+      printf '%s\\n' "$cand"
+      return 0
+    fi
+    cand="$(dirname "$cand")"
+  done
+  cand="$(cd "$HOST_DIR/../.." 2>/dev/null && pwd -P || true)"
+  if [ -n "$cand" ] && [ -d "$cand/.git" ]; then
+    printf '%s\\n' "$cand"
+    return 0
+  fi
+  return 1
+}
+
+CT=""
+PULL_ARGS=()
+if [ "$#" -ge 1 ] && [ -d "$1" ]; then
+  CT="$(cd "$1" && pwd -P)"
+  shift
+  PULL_ARGS=("$@")
+else
+  PULL_ARGS=("$@")
+  CT="$(resolve_cloudtak || true)"
+fi
+if [ -z "$CT" ] || [ ! -d "$CT/.git" ]; then
+  echo "ERROR: CloudTAK git checkout not found. Pass the path: $0 /path/to/CloudTAK" >&2
+  exit 1
+fi
+
+echo "CloudTAK: $CT"
+echo "Restoring marketplace-touched tracked files before pull"
+for rel in "\${RESTORE_PATHS[@]}"; do
+  [ -e "$CT/$rel" ] || continue
+  git -C "$CT" -c safe.directory="$CT" -c safe.directory='*' restore --source=HEAD --worktree --staged -- "$rel" 2>/dev/null \\
+    || git -C "$CT" -c safe.directory="$CT" -c safe.directory='*' checkout HEAD -- "$rel" 2>/dev/null \\
+    || true
+done
+
+echo "Pulling CloudTAK"
+git -C "$CT" -c safe.directory="$CT" -c safe.directory='*' pull "\${PULL_ARGS[@]}"
+
+ALIGN_JS="$HOST_DIR/align.cjs"
+if [ -f "$ALIGN_JS" ] && command -v node >/dev/null 2>&1; then
+  echo "Re-aligning marketplace plugins after pull"
+  node "$ALIGN_JS" "$CT" || echo "WARNING: align after pull failed; run a marketplace rebuild" >&2
+elif [ -f "$ALIGN_JS" ]; then
+  echo "WARNING: node not found; skip post-pull align. Run a marketplace rebuild to re-apply shields." >&2
+fi
+
+echo "Note: plugins that add host npm deps (e.g. Rubber Sheet / pdfjs-dist) may need a marketplace reinstall after this pull."
+`.trim();
+}
+
+/** Bash helpers: keep app/package-lock.json clean; refresh _host/wrap-git-pull.sh. */
+function pluginMarketplaceGitHygieneBash() {
+  const wrap = marketplaceWrapGitPullScript();
+  if (wrap.includes("CTAK_WRAP_GIT_PULL")) {
+    throw new Error("wrap-git-pull script contains the heredoc delimiter");
+  }
+  return `
+restore_marketplace_package_lock() {
+  local ct="$1"
+  [ -n "$ct" ] && [ -d "$ct/.git" ] || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  [ -f "$ct/app/package-lock.json" ] || return 0
+  if git -C "$ct" -c safe.directory="$ct" -c safe.directory='*' diff --quiet -- app/package-lock.json 2>/dev/null \\
+    && git -C "$ct" -c safe.directory="$ct" -c safe.directory='*' diff --quiet --cached -- app/package-lock.json 2>/dev/null; then
+    return 0
+  fi
+  echo "Restoring CloudTAK app/package-lock.json (keep host lock clean between updates)"
+  if git -C "$ct" -c safe.directory="$ct" -c safe.directory='*' restore --worktree --staged -- app/package-lock.json 2>/dev/null; then
+    return 0
+  fi
+  if git -C "$ct" -c safe.directory="$ct" -c safe.directory='*' checkout HEAD -- app/package-lock.json 2>/dev/null; then
+    return 0
+  fi
+  if declare -F elevate_run >/dev/null 2>&1; then
+    elevate_run "git -C $(printf '%q' "$ct") -c safe.directory=$(printf '%q' "$ct") -c safe.directory='*' restore --worktree --staged -- app/package-lock.json" 2>/dev/null \\
+      || elevate_run "git -C $(printf '%q' "$ct") -c safe.directory=$(printf '%q' "$ct") -c safe.directory='*' checkout HEAD -- app/package-lock.json" 2>/dev/null \\
+      || true
+  fi
+  return 0
+}
+
+ensure_marketplace_git_pull_wrap() {
+  local ct="$1"
+  local align_script="$2"
+  local stack="" d host_dir tmp_wrap
+  [ -n "$ct" ] || return 0
+  for d in "$ct" "$(dirname "$ct")"; do
+    [ -n "$d" ] && [ -d "$d" ] || continue
+    if [ -f "$d/docker-compose.yml" ] || [ -f "$d/docker-compose.yaml" ] || [ -f "$d/compose.yml" ] || [ -f "$d/compose.yaml" ]; then
+      stack="$d"
+      break
+    fi
+  done
+  [ -n "$stack" ] || stack="$ct"
+  host_dir="$stack/cloudtak-marketplace-plugins/_host"
+  tmp_wrap="$(mktemp /tmp/ctak-wrap-git-pull.XXXXXX)"
+  cat <<'CTAK_WRAP_GIT_PULL' > "$tmp_wrap"
+${wrap}
+CTAK_WRAP_GIT_PULL
+  install_wrap() {
+    mkdir -p "$host_dir"
+    cp "$tmp_wrap" "$host_dir/wrap-git-pull.sh"
+    chmod a+rx "$host_dir/wrap-git-pull.sh" 2>/dev/null || true
+    if [ -n "$align_script" ] && [ -f "$align_script" ]; then
+      cp "$align_script" "$host_dir/align.cjs"
+      chmod a+r "$host_dir/align.cjs" 2>/dev/null || true
+    fi
+  }
+  if install_wrap 2>/dev/null; then
+    echo "Installed marketplace git pull helper: $stack/cloudtak-marketplace-plugins/_host/wrap-git-pull.sh"
+  elif declare -F elevate_run >/dev/null 2>&1; then
+    local elev_cmd
+    elev_cmd="mkdir -p $(printf '%q' "$host_dir") && cp $(printf '%q' "$tmp_wrap") $(printf '%q' "$host_dir/wrap-git-pull.sh") && chmod a+rx $(printf '%q' "$host_dir/wrap-git-pull.sh")"
+    if [ -n "$align_script" ] && [ -f "$align_script" ]; then
+      elev_cmd="$elev_cmd && cp $(printf '%q' "$align_script") $(printf '%q' "$host_dir/align.cjs") && chmod a+r $(printf '%q' "$host_dir/align.cjs")"
+    fi
+    if elevate_run "$elev_cmd"; then
+      echo "Installed marketplace git pull helper: $stack/cloudtak-marketplace-plugins/_host/wrap-git-pull.sh"
+    else
+      echo "WARNING: could not install cloudtak-marketplace-plugins/_host/wrap-git-pull.sh" >&2
+    fi
+  else
+    echo "WARNING: could not install cloudtak-marketplace-plugins/_host/wrap-git-pull.sh" >&2
+  fi
+  rm -f "$tmp_wrap" || true
+  return 0
+}
+`.trim();
+}
+
 function pluginHostAlignRunnerBash() {
   const js = fs.readFileSync(path.join(__dirname, "cloudtakMarketplace.align.js"), "utf8");
   if (js.includes("\nCTAK_PLUGIN_ALIGN_JS\n")) {
     throw new Error("plugin align script contains the heredoc delimiter");
   }
   return `
+${pluginMarketplaceGitHygieneBash()}
 align_plugins_to_host() {
   local ct="$1"
   [ -n "$ct" ] || return 0
@@ -2863,6 +3034,7 @@ align_plugins_to_host() {
   elif [ -d "$ct/api/web/src" ] && [ -d "$ct/api/web/plugins" ]; then
     :
   else
+    restore_marketplace_package_lock "$ct"
     return 0
   fi
   local script="/tmp/ctak-marketplace-align.cjs"
@@ -2879,17 +3051,23 @@ CTAK_PLUGIN_ALIGN_JS
   if command -v node >/dev/null 2>&1; then
     if declare -F run_as_writer >/dev/null 2>&1; then
       if run_as_writer "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$ct")"; then
+        ensure_marketplace_git_pull_wrap "$ct" "$script"
+        restore_marketplace_package_lock "$ct"
         return 0
       fi
       echo "Plugin owner has no usable node; aligning via elevated node/docker"
     else
       node "$script" "$ct"
+      ensure_marketplace_git_pull_wrap "$ct" "$script"
+      restore_marketplace_package_lock "$ct"
       return 0
     fi
   fi
   # Host may lack node in PATH while privileged/root still has it (common after SSH user switch).
   if declare -F elevate_run >/dev/null 2>&1; then
     if elevate_run "command -v node >/dev/null 2>&1 && node $(printf '%q' "$script") $(printf '%q' "$ct")"; then
+      ensure_marketplace_git_pull_wrap "$ct" "$script"
+      restore_marketplace_package_lock "$ct"
       return 0
     fi
   fi
@@ -2901,6 +3079,8 @@ CTAK_PLUGIN_ALIGN_JS
       -v "$script:/align.cjs:ro" \\
       node:22-alpine \\
       node /align.cjs "$ct"
+    ensure_marketplace_git_pull_wrap "$ct" "$script"
+    restore_marketplace_package_lock "$ct"
     return 0
   fi
   if command -v docker >/dev/null 2>&1; then
@@ -2910,9 +3090,13 @@ CTAK_PLUGIN_ALIGN_JS
       -v "$script:/align.cjs:ro" \\
       node:22-alpine \\
       node /align.cjs "$ct"
+    ensure_marketplace_git_pull_wrap "$ct" "$script"
+    restore_marketplace_package_lock "$ct"
     return 0
   fi
   echo "WARNING: skipped plugin API alignment; node and docker are unavailable" >&2
+  ensure_marketplace_git_pull_wrap "$ct" "$script"
+  restore_marketplace_package_lock "$ct"
   return 0
 }
 `.trim();
@@ -3025,6 +3209,7 @@ reset_cache() {
 ${pluginLayoutBash()}
 ${pluginPrivilegeBash()}
 ${pluginRemoveBash()}
+${pluginMarketplaceGitHygieneBash()}
 WEB_REL=$(cloudtak_web_rel "$CT")
 PLUGIN_ROOT="$CT/$WEB_REL/plugins"
 echo "CloudTAK plugin directory: $PLUGIN_ROOT"
@@ -3171,6 +3356,9 @@ EXCL
     run_as_writer "mkdir -p $(printf '%q' "$CT/api/stateless/routes") && cp -a $(printf '%q' "$ROUTES_DIR")/*.ts $(printf '%q' "$CT/api/stateless/routes")/" || true
   fi
 fi
+
+# Plugin install.sh may npm-install into app/ and dirty the lock; clear it before align/rebuild.
+restore_marketplace_package_lock "$CT"
 
 # Plugin install.sh scripts written for CloudTAK before 13.102 copy into api/web/plugins.
 if [ "$WEB_REL" = "app" ] && [ -e "$CT/api/web/plugins/$DEST" ] && [ ! -e "$PLUGIN_ROOT/$DEST" ]; then
@@ -3882,4 +4070,6 @@ module.exports = {
   normalizeFlatSamplePluginTree,
   pluginEntryImportsLib,
   marketplacePrivilegeBin,
+  MARKETPLACE_GIT_RESTORE_PATHS,
+  marketplaceWrapGitPullScript,
 };
