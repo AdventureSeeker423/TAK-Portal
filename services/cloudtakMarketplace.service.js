@@ -2548,8 +2548,82 @@ function pluginRuntimeCleanupBash() {
   ].join("\n");
 }
 
-function pluginRuntimeExtrasBash() {
+/**
+ * Docker / privilege helpers for the plugin runtime child script.
+ * That script is `bash`-spawned (not sourced), so it does not inherit the
+ * install shell's docker()/elevate_run wrappers — without these, print-style
+ * plugins fail depends_on rewrite and compose start when the SSH user is not
+ * in the docker group (common for takwerx).
+ */
+function pluginRuntimePrivilegeBash() {
+  const sudoPass = marketplaceSudoPassword();
   const privBin = marketplacePrivilegeBin();
+  return [
+    `CTAK_SUDO_PASS=${ssh.shellQuote(sudoPass)}`,
+    `CTAK_PRIV=${ssh.shellQuote(privBin)}`,
+    'CTAK_DOCKER_BIN=""',
+    'CTAK_DOCKER_NOPASS=""',
+    'CTAK_DOCKER_PASS=""',
+    "resolve_docker_bin() {",
+    '  if [ -n "$CTAK_DOCKER_BIN" ]; then return 0; fi',
+    '  if ! command -v docker >/dev/null 2>&1; then',
+    '    echo "elevate: docker binary not found" >&2',
+    "    return 1",
+    "  fi",
+    '  CTAK_DOCKER_NOPASS="$CTAK_PRIV -n docker"',
+    '  CTAK_DOCKER_PASS="$CTAK_PRIV -S -p \'\' docker"',
+    '  if command docker info >/dev/null 2>&1; then',
+    '    CTAK_DOCKER_BIN="docker"',
+    "    return 0",
+    "  fi",
+    '  if "$CTAK_PRIV" -n docker info >/dev/null 2>&1; then',
+    '    echo "elevate: using $CTAK_PRIV -n docker"',
+    '    CTAK_DOCKER_BIN="$CTAK_DOCKER_NOPASS"',
+    "    return 0",
+    "  fi",
+    '  if [ -n "${CTAK_SUDO_PASS:-}" ]; then',
+    '    if printf \'%s\\n\' "$CTAK_SUDO_PASS" | "$CTAK_PRIV" -S -p \'\' docker info >/dev/null 2>&1; then',
+    '      echo "elevate: using password $CTAK_PRIV docker"',
+    '      CTAK_DOCKER_BIN="$CTAK_DOCKER_PASS"',
+    "      return 0",
+    "    fi",
+    "  fi",
+    '  echo "elevate: docker not usable by $(id -un) — add user to docker group or enable $CTAK_PRIV docker" >&2',
+    "  return 1",
+    "}",
+    "docker_cli() {",
+    "  resolve_docker_bin || return 1",
+    '  if [ "$CTAK_DOCKER_BIN" = "$CTAK_DOCKER_PASS" ]; then',
+    '    printf \'%s\\n\' "$CTAK_SUDO_PASS" | "$CTAK_PRIV" -S -p \'\' docker "$@"',
+    '  elif [ "$CTAK_DOCKER_BIN" = "$CTAK_DOCKER_NOPASS" ]; then',
+    '    "$CTAK_PRIV" -n docker "$@"',
+    "  else",
+    '    command docker "$@"',
+    "  fi",
+    "}",
+    "docker() {",
+    '  docker_cli "$@"',
+    "}",
+    "elevate_run() {",
+    '  local cmd="$1"',
+    '  if "$CTAK_PRIV" -n true >/dev/null 2>&1; then',
+    '    echo "elevate: $CTAK_PRIV -n"',
+    '    "$CTAK_PRIV" -n bash -lc "$cmd"',
+    "    return $?",
+    "  fi",
+    '  if [ -n "${CTAK_SUDO_PASS:-}" ]; then',
+    '    if printf \'%s\\n\' "$CTAK_SUDO_PASS" | "$CTAK_PRIV" -S -p \'\' true >/dev/null 2>&1; then',
+    '      echo "elevate: $CTAK_PRIV -S stored password"',
+    '      printf \'%s\\n\' "$CTAK_SUDO_PASS" | "$CTAK_PRIV" -S -p \'\' bash -lc "$cmd"',
+    "      return $?",
+    "    fi",
+    "  fi",
+    "  return 1",
+    "}",
+  ].join("\n");
+}
+
+function pluginRuntimeExtrasBash() {
   return [
     'target_ct="$1"',
     'repo_dir="$2"',
@@ -2560,8 +2634,8 @@ function pluginRuntimeExtrasBash() {
     'sidecar_port_hint="$7"',
     '[ -n "$target_ct" ] && [ -d "$repo_dir" ] && [ -n "$plugin_id" ] || exit 0',
     "set -e",
-    // Match TAK_SSH_PRIVILEGE_CMD when this sidecar script runs outside the install shell.
-    `CTAK_PRIV=${ssh.shellQuote(privBin)}`,
+    // Child bash does not inherit install-shell docker()/elevate_run — redefine them.
+    pluginRuntimePrivilegeBash(),
     pluginRuntimeCleanupBash(),
     'cleanup_plugin_runtime "$plugin_id" "$target_ct"',
     "find_stack() {",
@@ -2680,8 +2754,22 @@ function pluginRuntimeExtrasBash() {
     '  proj=$(basename "$STACK")',
     '  echo "Checking plugin compose dependencies against the CloudTAK stack"',
     '  if command -v node >/dev/null 2>&1; then',
-    '    node "$script" --fix-compose-depends "$OVERRIDE" "$base" --project "$proj" || echo "WARNING: could not check plugin depends_on" >&2',
-    "    return 0",
+    '    if node "$script" --fix-compose-depends "$OVERRIDE" "$base" --project "$proj"; then return 0; fi',
+    '    echo "WARNING: host node could not rewrite plugin depends_on; trying elevate/docker" >&2',
+    "  fi",
+    // Host may lack node while privileged/root still has it (same pattern as align_plugins_to_host).
+    '  if declare -F elevate_run >/dev/null 2>&1; then',
+    '    if elevate_run "command -v node >/dev/null 2>&1 && node $(printf \'%q\' "$script") --fix-compose-depends $(printf \'%q\' "$OVERRIDE") $(printf \'%q\' "$base") --project $(printf \'%q\' "$proj")"; then',
+    "      return 0",
+    "    fi",
+    "  fi",
+    '  if declare -F docker_cli >/dev/null 2>&1 && resolve_docker_bin; then',
+    '    docker_cli run --rm -u 0 \\',
+    '      -v "$script:/align.cjs:ro" \\',
+    '      -v "$OVERRIDE:/overlay.yml" \\',
+    '      -v "$base:/base.yml:ro" \\',
+    "      node:22-alpine \\",
+    '      node /align.cjs --fix-compose-depends /overlay.yml /base.yml --project "$proj" && return 0',
     "  fi",
     '  if command -v docker >/dev/null 2>&1; then',
     '    docker run --rm -u 0 \\',
@@ -2689,8 +2777,9 @@ function pluginRuntimeExtrasBash() {
     '      -v "$OVERRIDE:/overlay.yml" \\',
     '      -v "$base:/base.yml:ro" \\',
     "      node:22-alpine \\",
-    '      node /align.cjs --fix-compose-depends /overlay.yml /base.yml --project "$proj" || echo "WARNING: could not check plugin depends_on" >&2',
+    '      node /align.cjs --fix-compose-depends /overlay.yml /base.yml --project "$proj" && return 0',
     "  fi",
+    '  echo "WARNING: could not check plugin depends_on" >&2',
     "  return 0",
     "}",
     'if [ -n "$COMPOSE_SRC" ]; then',

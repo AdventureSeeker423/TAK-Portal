@@ -266,6 +266,10 @@ assert.match(printScript, /ensure_caddy_on_cloudtak_network/);
 assert.match(printScript, /Connected Caddy container/);
 assert.doesNotMatch(printScript, /caddy_default/);
 assert.doesNotMatch(printScript, /cloudtak_default/);
+// Runtime child bash redefines docker()/elevate so depends_on rewrite works without docker group.
+assert.match(printScript, /\.ctak-runtime-plugin\.sh[\s\S]*resolve_docker_bin[\s\S]*fix_overlay_depends/);
+assert.match(printScript, /fix_overlay_depends[\s\S]*docker_cli run --rm -u 0/);
+assert.match(printScript, /fix_overlay_depends[\s\S]*elevate_run "command -v node/);
 
 const uninstallPrint = marketplace.uninstallRemoteScript("/root/CloudTAK", "print", [], "print");
 assert.match(uninstallPrint, /Cleaning plugin runtime/);
