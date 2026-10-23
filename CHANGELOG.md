@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ### v2.0.19 - 10/23/26
 🐛 `Bug Fix` - Fixes issue with CloudTAK Plugin Marketplace causing errors with package-lock.json<br>
+⬆️ `Dependency Update` - Body-Parser 2.4.0
 
 ### v2.0.18 - 10/22/26
 ✨ `Enhancement` - Adds a TXT file button to CloudTAK Plugin Marketplace to assist with troubleshooting failed installs<br>
