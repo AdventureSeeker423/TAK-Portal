@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.  Minor qual
 
 ## Version History
 
+### v2.0.19 - 10/23/26
+🐛 `Bug Fix` - Fixes issue with CloudTAK Plugin Marketplace causing errors with package-lock.json<br>
+
 ### v2.0.18 - 10/22/26
 ✨ `Enhancement` - Adds a TXT file button to CloudTAK Plugin Marketplace to assist with troubleshooting failed installs<br>
 ✨ `Enhancement` - CloudTAK Plugin Marketplace: Replay temporarily hidden from the catalog UI (install/detect code retained) until upstream patches support current CloudTAK
